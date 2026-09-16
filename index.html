@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Ricotta Orders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Vazirmatn:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app"></div>
+<!-- Load order matters: config.js must come before app.js (app.js reads
+     DEFAULT_SETTINGS while building its initial state). Everything else is
+     only used inside function bodies, called after all scripts have loaded,
+     so their relative order doesn't matter. app.js must be last since it
+     calls boot() immediately. -->
+<script src="config.js"></script>
+<script src="icons.js"></script>
+<script src="i18n.js"></script>
+<script src="storage.js"></script>
+<script src="modals.js"></script>
+<script src="app.js"></script>
+<script src="update-check.js"></script>
+</body>
+</html>
