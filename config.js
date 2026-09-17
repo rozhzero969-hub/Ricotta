@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-17.1';
+const APP_VERSION = '2026-09-17.2';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,8 +14,8 @@ const APP_VERSION = '2026-09-17.1';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'Adding and editing suppliers/items now opens a simple popup, and editing an item correctly shows its current unit and supplier.';
-const CHANGELOG_KU = 'زیادکردن و دەستکاریکردنی دابینکەر و کاڵا ئێستا لە ڕێگەی پەنجەرەیەکی سادەوە دەکرێت، هەروەها کاتێک کاڵایەک دەستکاری دەکەیت، یەکە و دابینکەرەکەی ڕاستەقینەی نیشان دەدات.';
+const CHANGELOG_EN = 'Update messages now show only in the language selected on this phone.';
+const CHANGELOG_KU = 'نامەکانی نوێکاری ئێستا تەنها بەو زمانە پیشان دەدرێن کە لەسەر ئەم مۆبایلە هەڵبژێردراوە.';
 
 /* Supabase project this app talks to. The key below is the anon/public
    key, which is DESIGNED to be shipped to the browser -- Supabase's

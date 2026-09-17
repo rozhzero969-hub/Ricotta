@@ -29,15 +29,13 @@ function escUpdateText(s){
 }
 
 function buildUpdateMessage(changelogEn, changelogKu){
-  const enBlock = changelogEn
-    ? `<div style="margin-bottom:12px;"><div style="font-weight:800;margin-bottom:4px;">What's new</div><div>${escUpdateText(changelogEn)}</div></div>`
-    : '';
-  const kuBlock = changelogKu
-    ? `<div style="direction:rtl;text-align:right;"><div style="font-weight:800;margin-bottom:4px;">نوێکارییەکان</div><div>${escUpdateText(changelogKu)}</div></div>`
-    : '';
-  return `<div style="text-align:left;">
-    <div style="margin-bottom:10px;">A new update is available. Reload to get it.</div>
-    ${enBlock}${kuBlock}
+  const kurdish = state.lang === 'ku';
+  const title = kurdish ? 'نوێکارییەکان' : "What's new";
+  const intro = kurdish ? 'وەشانێکی نوێ بەردەستە. نوێی بکەرەوە بۆ وەرگرتنی.' : 'A new update is available. Reload to get it.';
+  const note = kurdish ? changelogKu : changelogEn;
+  return `<div style="${kurdish?'direction:rtl;text-align:right;':'text-align:left;'}">
+    <div style="margin-bottom:10px;">${intro}</div>
+    ${note ? `<div><div style="font-weight:800;margin-bottom:4px;">${title}</div><div>${escUpdateText(note)}</div></div>` : ''}
   </div>`;
 }
 

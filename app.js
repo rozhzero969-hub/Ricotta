@@ -42,6 +42,11 @@ function esc(s){
 
 /* ============ Boot ============ */
 async function boot(){
+  const session=lget('ricottaSession');
+  if(session){
+    try{ state.role=session.role; await refreshFromServer(); render(); return; }
+    catch(e){ lset('ricottaSession',null); state.role=null; }
+  }
   const [suppliers, items, units, history, lang] = await Promise.all([
     sget('suppliers', true), sget('items', true), sget('units', true),
     sget('orderHistory', true), sget('lang', false)
@@ -394,8 +399,8 @@ async function maybeFinishQueue(){
       items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
     }))
   };
+  await apiCall('create_sent',{entries:record.entries});
   state.history.push(record);
-  await sset('orderHistory', state.history, true);
   state.cart = {};
   state.queue = null;
   state.view = 'order';
@@ -439,16 +444,7 @@ function attachHistoryEvents(){
     state.view = 'order';
     render();
   });
-  document.querySelectorAll('[data-delhist]').forEach(b=>b.onclick=async()=>{
-    if(!(await showConfirm(t('confirmDeleteHistory')))) return;
-    const id = b.dataset.delhist;
-    state.history = state.history.filter(r=>r.id!==id);
-    // Rewrites the single orderHistory row in Supabase with the shorter
-    // array, so the deleted order stops taking up space in the database
-    // too, not just on this device.
-    await sset('orderHistory', state.history, true);
-    render();
-  });
+  document.querySelectorAll('[data-delhist]').forEach(b=>b.remove());
 }
 
 /* ============ Admin: Suppliers ============ */

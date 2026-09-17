@@ -39,6 +39,18 @@ async function cloudGet(key){
     return rows.length ? rows[0].value : null;
   }catch(e){ console.error('cloud get failed', e); return undefined; }
 }
+async function apiCall(action, payload={}){
+  const token=lget('ricottaSession')?.token;
+  const res=await fetch(`${SUPABASE_URL}/functions/v1/ricotta-api`,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({action,...payload})});
+  const data=await res.json(); if(!res.ok) throw new Error(data.error||'Request failed'); return data;
+}
+async function refreshFromServer(){
+  const data=await apiCall('bootstrap');
+  state.suppliers=data.suppliers||[];
+  state.items=(data.items||[]).map(i=>({id:i.id,name:i.name,unit:i.unit_id,supplierId:i.supplier_id}));
+  state.units=data.units||[];
+  state.history=(data.orders||[]).filter(o=>o.status==='sent').map(o=>({id:o.id,date:o.sent_at||o.created_at,entries:[{supplierId:o.supplier_id||'__none',items:(o.order_lines||[]).map(l=>({itemId:l.item_id,name:l.item_name,unit:l.unit_id,qty:l.quantity}))}]}));
+}
 async function cloudSet(key, value){
   if(!cloudConfigured()) return;
   try{
@@ -74,6 +86,11 @@ async function sset(key, value, shared){
     catch(e){ console.error('storage set failed', e); }
   }
   if(shared) await cloudSet(key, value);
+  if(shared && lget('ricottaSession')){
+    if(key==='suppliers') await apiCall('catalog',{table:'suppliers',rows:value});
+    if(key==='units') await apiCall('catalog',{table:'units',rows:value});
+    if(key==='items') await apiCall('catalog',{table:'items',rows:value.map(i=>({id:i.id,name:i.name,unit_id:i.unit,supplier_id:i.supplierId}))});
+  }
 }
 
 /* ============ Settings RPCs ============
@@ -100,7 +117,7 @@ async function rpcCall(fnName, params){
 }
 /* Returns 'admin', 'user', or null. */
 async function appVerifyPin(pin){
-  return await rpcCall('app_verify_pin', { p_pin: pin });
+  try{ const r=await apiCall('login',{pin}); lset('ricottaSession',{token:r.token,role:r.role,expiresAt:r.expiresAt}); await refreshFromServer(); return r.role; }catch(e){ return null; }
 }
 /* Returns {adminPin,userPin,cloudPassword,supabaseUrl,supabaseKey} if the
    password is correct, else null. */
