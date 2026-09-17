@@ -1,0 +1,64 @@
+/* Custom confirm/alert dialogs (native confirm()/alert() are blocked
+   inside sandboxed iframe previews). Depends on t() from app.js. */
+/* ============ Confirm / alert (custom, non-blocking) ============ */
+/* Native confirm()/alert() are silently blocked in sandboxed iframe
+   previews (they just return false immediately), which made the
+   unit-delete confirmation always cancel itself. These render a small
+   in-page dialog instead, so they work in any environment. */
+function ensureModalRoot(){
+  let el = document.getElementById('modalRoot');
+  if(!el){ el = document.createElement('div'); el.id='modalRoot'; document.body.appendChild(el); }
+  return el;
+}
+function showConfirm(message, opts){
+  const okLabel = (opts && opts.okLabel) || t('delete');
+  const cancelLabel = (opts && opts.cancelLabel) || t('cancel');
+  const okClass = (opts && opts.okClass) || 'btn-danger';
+  return new Promise(resolve=>{
+    const root = ensureModalRoot();
+    root.innerHTML = `<div class="modal-overlay"><div class="modal-box">
+      <div class="modal-msg">${message}</div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="modalCancelBtn">${cancelLabel}</button>
+        <button class="btn ${okClass}" id="modalOkBtn">${okLabel}</button>
+      </div></div></div>`;
+    document.getElementById('modalOkBtn').onclick = ()=>{ root.innerHTML=''; resolve(true); };
+    document.getElementById('modalCancelBtn').onclick = ()=>{ root.innerHTML=''; resolve(false); };
+  });
+}
+function showAlert(message){
+  return new Promise(resolve=>{
+    const root = ensureModalRoot();
+    root.innerHTML = `<div class="modal-overlay"><div class="modal-box">
+      <div class="modal-msg">${message}</div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="modalAlertOkBtn">OK</button>
+      </div></div></div>`;
+    document.getElementById('modalAlertOkBtn').onclick = ()=>{ root.innerHTML=''; resolve(); };
+  });
+}
+
+/* Generic add/edit form popup (supplier form, item form, etc). Unlike
+   showConfirm/showAlert this isn't promise-based -- the caller builds its
+   own HTML (including a Save/Cancel button pair with whatever ids it
+   wants), wires up its own handlers after calling openModal(), and calls
+   closeModal() itself once saving succeeds. That keeps simple
+   client-side validation (e.g. "don't close if the name field is empty")
+   working exactly like it did in the old inline forms, just inside an
+   overlay instead of at the top of the page. Pressing Enter inside the
+   modal clicks whichever button has id="modalSaveBtn", if present, so
+   fast keyboard-only data entry still works. */
+function openModal(html){
+  const root = ensureModalRoot();
+  root.innerHTML = `<div class="modal-overlay"><div class="modal-box">${html}</div></div>`;
+  root.querySelector('.modal-box').addEventListener('keydown', e=>{
+    if(e.key==='Enter'){
+      const saveBtn = document.getElementById('modalSaveBtn');
+      if(saveBtn){ e.preventDefault(); saveBtn.click(); }
+    }
+  });
+}
+function closeModal(){
+  const root = document.getElementById('modalRoot');
+  if(root) root.innerHTML = '';
+}
