@@ -1,0 +1,1127 @@
+/* Ricotta Orders -- app state, rendering and event handlers.
+   Depends on: DEFAULT_UNITS, SUPABASE_URL, SUPABASE_ANON_KEY, PIN consts
+   (config.js), T (i18n.js), icon strings (icons.js), sget/sset/appVerifyPin/
+   appGetPins/appSetPins/appGetCloudConfig/appSetCloudConfig (storage.js),
+   showConfirm, showAlert, showPrompt and showFormModal (modals.js). Load this
+   file last. */
+/* ============ State ============ */
+let state = {
+  lang: 'en',
+  role: null,           // 'admin' | 'user' | null
+  view: 'order',
+  pinBuffer: '',
+  pinError: false,
+  pinExpanded: false,
+  justExpanded: false,
+  suppliers: [],
+  items: [],
+  units: [],
+  // supabaseUrl/supabaseKey are public connection info, not secrets --
+  // see the comment in config.js. adminPin/userPin/cloudPassword are
+  // NEVER stored here except transiently, right after a correct RPC
+  // check, for as long as the relevant screen needs to display them.
+  settings: { supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_ANON_KEY },
+  adminPinEntered: null,     // this session's admin PIN, kept in memory only,
+                             // used to authorize PIN/cloud-config changes
+  cloudPasswordEntered: null,
+  history: [],
+  cart: {},              // itemId -> qty
+  search: '',
+  orderTab: 'all',        // 'all' | supplierId | '__none'
+  cloudUnlocked: false,   // whether the Cloud Setup section is currently revealed
+  itemFormSupplierId: null, // supplier "locked in" for the add-item form
+  queue: null,           // array of {supplierId, sent} while sending
+  activity: [],          // the Record: [{id, ts, action, type, name, fields, by, role}], synced via Supabase
+  recordFilter: 'all',   // 'all' | 'supplier' | 'item' | 'unit'
+  devices: [],           // [{id, nickname, role, lastLogin, lastSeen, loggedIn, logins}], synced via Supabase
+  deviceId: null         // this device's own id, generated once and kept locally
+};
+
+function t(key){ return T[state.lang][key]; }
+
+/* Escapes text before it's inserted into innerHTML, so an item/supplier/
+   unit name typed by staff can never break out of its tag and inject HTML. */
+function esc(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ============ Device tracking ============ */
+/* Each device has one entry in the shared 'devices' list:
+   {id, nickname, role, lastLogin, lastSeen, loggedIn, logins:[newest first]}
+   - lastLogin / logins: when the PIN was entered on that device
+   - loggedIn: true from login until that device taps Log out
+   - lastSeen: refreshed every couple of minutes while the app is open and
+     on screen, which is how "active now" is told apart from "logged in but
+     the app is closed or idle". */
+const HEARTBEAT_MS = 2*60*1000;       /* how often an open app reports "still here" */
+const ACTIVE_WINDOW_MS = 5*60*1000;   /* seen within this long ago = "active now" */
+const MAX_LOGINS_KEPT = 10;           /* recent logins remembered per device */
+let deviceQueue = Promise.resolve();
+
+/* Generates a random id for this device the first time it's needed, and
+   remembers it in localStorage from then on. It's not a secret -- just a
+   way to recognize "this same phone" across logins. */
+function ensureDeviceId(){
+  let id = lget('deviceId');
+  if(!id){
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('d'+Date.now()+Math.random().toString(36).slice(2));
+    lset('deviceId', id);
+  }
+  return id;
+}
+/* Changes ONE device's entry (creating it if it doesn't exist yet). Writes
+   are queued one after another, and each one re-reads the shared list
+   first, so several phones reporting in at the same time don't overwrite
+   each other's entries or nicknames. */
+function updateDevice(id, mutate){
+  deviceQueue = deviceQueue.then(async ()=>{
+    let latest = await sget('devices', true);
+    if(!Array.isArray(latest)) latest = state.devices;
+    let entry = latest.find(d=>d.id===id);
+    if(!entry){
+      entry = {id, nickname:'', role:'user', lastLogin:null, lastSeen:null, loggedIn:false, logins:[]};
+      latest.push(entry);
+    }
+    mutate(entry);
+    state.devices = latest;
+    await sset('devices', latest, true);
+    if(state.view === 'devices') render();
+  }).catch(e=>console.error('device update failed', e));
+  return deviceQueue;
+}
+/* Called right after a successful PIN login. Marks this device as logged
+   in and adds the time to its recent-logins list, then -- only the first
+   time this device has ever logged in, i.e. it doesn't have a nickname
+   yet -- asks for a nickname. Runs in the background after render() so it
+   never delays the login transition. */
+async function recordDeviceLogin(role){
+  const now = new Date().toISOString();
+  await updateDevice(state.deviceId, d=>{
+    d.role = role; d.loggedIn = true; d.lastLogin = now; d.lastSeen = now;
+    d.logins = [now, ...(d.logins || [])].slice(0, MAX_LOGINS_KEPT);
+  });
+  const entry = state.devices.find(d=>d.id===state.deviceId);
+  if(entry && !entry.nickname){
+    const name = await showPrompt(t('deviceNamePromptMsg'), {
+      placeholder: t('deviceNamePlaceholder'), okLabel: t('save'), cancelLabel: t('skip')
+    });
+    if(name) await updateDevice(state.deviceId, d=>{ d.nickname = name; });
+  }
+}
+/* "Still here" ping: used at startup when a saved session is restored, every
+   couple of minutes while the app is open, and when the app comes back to
+   the foreground. */
+function touchDevice(){
+  const role = state.role;
+  if(!role) return Promise.resolve();
+  const now = new Date().toISOString();
+  return updateDevice(state.deviceId, d=>{
+    d.role = role; d.loggedIn = true; d.lastSeen = now;
+    if(!d.lastLogin) d.lastLogin = now;
+  });
+}
+function markDeviceLoggedOut(){
+  const now = new Date().toISOString();
+  return updateDevice(state.deviceId, d=>{ d.loggedIn = false; d.lastSeen = now; });
+}
+setInterval(()=>{
+  if(state.role && document.visibilityState === 'visible') touchDevice();
+}, HEARTBEAT_MS);
+document.addEventListener('visibilitychange', ()=>{
+  if(state.role && document.visibilityState === 'visible') touchDevice();
+});
+/* Keeps the Devices screen fresh while an admin is looking at it. */
+async function refreshDevices(){
+  const latest = await sget('devices', true);
+  if(Array.isArray(latest)){
+    state.devices = latest;
+    if(state.view === 'devices') render();
+  }
+}
+setInterval(()=>{
+  if(state.role === 'admin' && state.view === 'devices' && document.visibilityState === 'visible') refreshDevices();
+}, 30000);
+
+/* ============ Boot ============ */
+async function boot(){
+  const [suppliers, items, units, history, devices, activity, lang] = await Promise.all([
+    sget('suppliers', true), sget('items', true), sget('units', true),
+    sget('orderHistory', true), sget('devices', true), sget('activityLog', true), sget('lang', false)
+  ]);
+  state.suppliers = suppliers || [];
+  state.items = items || [];
+  state.units = units || DEFAULT_UNITS;
+  if(!units) await sset('units', DEFAULT_UNITS, true);
+  state.history = history || [];
+  state.devices = devices || [];
+  state.activity = Array.isArray(activity) ? activity : [];
+  state.deviceId = ensureDeviceId();
+  state.lang = lang || 'en';
+  const savedRole = lget('session');
+  if(savedRole === 'admin' || savedRole === 'user') state.role = savedRole;
+  render();
+  if(state.role) touchDevice();   // restored session: mark this device as logged in and seen
+}
+
+function applyLangClasses(){
+  document.body.className = state.lang === 'ku' ? 'lang-ku' : '';
+  document.documentElement.className = state.lang === 'ku' ? 'rtl' : '';
+}
+
+/* ============ Render dispatch ============ */
+function render(){
+  applyLangClasses();
+  const app = document.getElementById('app');
+  if(!state.role){ app.innerHTML = renderLogin(); attachLoginEvents(); return; }
+  let body = '';
+  if(state.view === 'order') body = renderOrder();
+  else if(state.view === 'queue') body = renderQueue();
+  else if(state.view === 'history') body = renderHistory();
+  else if(state.view === 'suppliers') body = renderSuppliers();
+  else if(state.view === 'itemsAdmin') body = renderItemsAdmin();
+  else if(state.view === 'units') body = renderUnits();
+  else if(state.view === 'record') body = renderRecord();
+  else if(state.view === 'devices') body = renderDevices();
+  else if(state.view === 'settings') body = renderSettings();
+
+  app.innerHTML = `
+    ${renderTopbar()}
+    <div class="content">${body}</div>
+    ${state.view === 'order' ? renderOrderBottomBar() : ''}
+    ${renderBottomNav()}
+  `;
+  attachCommonEvents();
+  if(state.view === 'order') attachOrderEvents();
+  if(state.view === 'queue') attachQueueEvents();
+  if(state.view === 'history') attachHistoryEvents();
+  if(state.view === 'suppliers') attachSupplierEvents();
+  if(state.view === 'itemsAdmin') attachItemEvents();
+  if(state.view === 'units') attachUnitEvents();
+  if(state.view === 'record') attachRecordEvents();
+  if(state.view === 'devices') attachDeviceEvents();
+  if(state.view === 'settings') attachSettingsEvents();
+}
+
+/* ============ Topbar & nav ============ */
+function renderTopbar(){
+  return `
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span>${t('appName')}</div>
+    <div class="topbar-actions">
+      <button class="pill-btn ${state.lang==='en'?'active':''}" data-lang="en">EN</button>
+      <button class="pill-btn ${state.lang==='ku'?'active':''}" data-lang="ku">KU</button>
+      <button class="pill-btn" id="logoutBtn">${t('logout')}</button>
+    </div>
+  </div>`;
+}
+function renderBottomNav(){
+  const tabs = [
+    {id:'order', label:t('order')},
+    {id:'history', label:t('history')}
+  ];
+  if(state.role === 'admin'){
+    tabs.push({id:'suppliers', label:t('suppliers')});
+    tabs.push({id:'itemsAdmin', label:t('items')});
+    tabs.push({id:'units', label:t('units')});
+    tabs.push({id:'record', label:t('record')});
+    tabs.push({id:'devices', label:t('devicesTitle')});
+    tabs.push({id:'settings', label:t('settings')});
+  }
+  return `<div class="bottomnav">
+    ${tabs.map(tb=>`
+      <button class="navbtn ${state.view===tb.id?'active':''}" data-view="${tb.id}">
+        ${NAV_ICONS[tb.id]}<span>${tb.label}</span>
+      </button>`).join('')}
+  </div>`;
+}
+function attachCommonEvents(){
+  document.querySelectorAll('[data-lang]').forEach(b=>b.onclick=async()=>{
+    state.lang = b.dataset.lang; await sset('lang', state.lang, false); render();
+  });
+  const lo = document.getElementById('logoutBtn');
+  if(lo) lo.onclick = ()=>{
+    markDeviceLoggedOut();
+    state.role=null; state.pinBuffer=''; state.view='order'; state.cloudUnlocked=false;
+    state.adminPinEntered=null; state.cloudPasswordEntered=null;
+    lset('session', null); render();
+  };
+  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
+    state.view=b.dataset.view;
+    if(state.view === 'record') state.recordFilter = 'all';
+    render();
+    if(state.view === 'record') refreshActivity();
+    if(state.view === 'devices') refreshDevices();
+  });
+  // "Record" shortcut buttons on the Suppliers / Items screens: jump to the
+  // Record already filtered to that kind of change.
+  document.querySelectorAll('[data-gorecord]').forEach(b=>b.onclick=()=>{
+    state.recordFilter = b.dataset.gorecord; state.view = 'record'; render(); refreshActivity();
+  });
+}
+
+/* ============ Login (PIN pad) ============ */
+function renderLogin(){
+  const dotCount = state.pinExpanded ? ADMIN_PIN_LEN : USER_PIN_LEN;
+  const dots = Array.from({length:dotCount}).map((_,i)=>{
+    const filled = i < state.pinBuffer.length;
+    const isNew = state.justExpanded && i >= USER_PIN_LEN;
+    return `<span class="pin-dot ${filled?'filled':''} ${state.pinError?'err':''} ${isNew?'pop':''}"><span class="core"></span></span>`;
+  }).join('');
+  const keys = ['1','2','3','4','5','6','7','8','9'];
+  return `
+  <div class="login-wrap">
+    <div class="login-logo">R<span class="dot-i">i</span>cotta</div>
+    <div class="login-heading">
+      <div class="login-title">${t('signIn')}</div>
+      <div class="login-sub">${t('signInSub')}</div>
+    </div>
+    <div class="pin-label">${t('enterPin')}</div>
+    <div class="pin-dots">${dots}</div>
+    ${state.pinExpanded && !state.pinError ? `<div class="admin-hint">${t('adminHint')}</div>` : ''}
+    <div class="login-error" style="visibility:${state.pinError?'visible':'hidden'};">${t('wrongPin')}</div>
+    <div class="keypad">
+      ${keys.map(k=>`<button class="key" data-key="${k}">${k}</button>`).join('')}
+      <button class="key clear" data-key="clear">${t('clear')}</button>
+      <button class="key" data-key="0">0</button>
+      <button class="key backspace" data-key="back">${ICON_BACKSPACE}</button>
+    </div>
+    <button class="lang-pill" id="loginLangToggle">${ICON_GLOBE} ${state.lang==='en'?'English':'کوردی'} ${ICON_CHEVRON}</button>
+  </div>`;
+}
+function attachLoginEvents(){
+  state.justExpanded = false;
+  const toggle = document.getElementById('loginLangToggle');
+  if(toggle) toggle.onclick = async ()=>{
+    state.lang = state.lang==='en' ? 'ku' : 'en';
+    await sset('lang', state.lang, false); render();
+  };
+  document.querySelectorAll('[data-key]').forEach(b=>b.onclick=async ()=>{
+    const k = b.dataset.key;
+    if(k==='clear'){ state.pinBuffer=''; state.pinError=false; state.pinExpanded=false; render(); return; }
+    if(k==='back'){
+      state.pinBuffer = state.pinBuffer.slice(0,-1); state.pinError=false;
+      if(state.pinBuffer.length < USER_PIN_LEN) state.pinExpanded = false;
+      render(); return;
+    }
+    if(state.pinBuffer.length>=MAX_PIN_LEN) return;
+    state.pinBuffer += k;
+
+    if(state.pinBuffer.length===USER_PIN_LEN && !state.pinExpanded){
+      const role = await appVerifyPin(state.pinBuffer);
+      if(role === 'user'){
+        state.role='user'; state.pinBuffer=''; lset('session', 'user'); render();
+        recordDeviceLogin('user'); return;
+      }
+      // Wrong, or possibly just the start of a longer admin PIN -- expand
+      // the pad rather than failing outright, same as before.
+      state.pinExpanded = true;
+      state.justExpanded = true;
+      render();
+      return;
+    }
+    if(state.pinBuffer.length===ADMIN_PIN_LEN){
+      const role = await appVerifyPin(state.pinBuffer);
+      if(role === 'admin'){
+        state.role='admin'; state.adminPinEntered = state.pinBuffer;
+        state.pinBuffer=''; state.pinExpanded=false; lset('session', 'admin'); render();
+        recordDeviceLogin('admin'); return;
+      }
+      state.pinError = true; render();
+      setTimeout(()=>{ state.pinBuffer=''; state.pinError=false; state.pinExpanded=false; render(); }, 700);
+      return;
+    }
+    render();
+  });
+}
+
+/* ============ Order screen ============ */
+function unitLabel(unitId){
+  const u = state.units.find(x=>x.id===unitId);
+  if(!u) return '';
+  return state.lang==='ku' ? (u.ku||u.en) : u.en;
+}
+function supplierName(id){
+  const s = state.suppliers.find(x=>x.id===id);
+  return s ? s.name : t('noSupplier');
+}
+function lastOrderMap(){
+  if(!state.history.length) return null;
+  const last = state.history[state.history.length-1];
+  const map = {};
+  last.entries.forEach(e=>e.items.forEach(it=>{ map[it.itemId] = it.qty; }));
+  return map;
+}
+function renderOrderHero(){
+  const selCount = cartCount();
+  const supCount = new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size;
+  return `<div class="hero-card">
+    <div class="hero-eyebrow">${t('heroEyebrow')}</div>
+    <div class="hero-stat">${t('heroStat')(selCount)}</div>
+    <div class="hero-sub">${t('heroSub')(state.items.length, supCount)}</div>
+  </div>`;
+}
+function orderTabs(){
+  const tabs = [{id:'all', label:t('allSuppliers')}];
+  state.suppliers.forEach(s=>{
+    if(state.items.some(i=>i.supplierId===s.id)) tabs.push({id:s.id, label:s.name});
+  });
+  if(state.items.some(i=>!i.supplierId)) tabs.push({id:'__none', label:t('noSupplier')});
+  return tabs;
+}
+function renderOrder(){
+  if(!state.items.length){
+    return `<div class="empty">${state.role==='admin'?t('noItemsYet'):t('noItemsUser')}</div>`;
+  }
+  const tabs = orderTabs();
+  if(!tabs.some(tb=>tb.id===state.orderTab)) state.orderTab = 'all';
+
+  const q = state.search.trim().toLowerCase();
+  const tabFiltered = state.orderTab==='all'
+    ? state.items
+    : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab);
+  const visibleItems = tabFiltered.filter(i => !q || i.name.toLowerCase().includes(q));
+
+  const groups = {};
+  visibleItems.forEach(i=>{
+    const key = i.supplierId || '__none';
+    (groups[key] = groups[key]||[]).push(i);
+  });
+  const groupHtml = Object.keys(groups).map(key=>{
+    const label = key==='__none' ? t('noSupplier') : supplierName(key);
+    const rows = groups[key].map(i=>{
+      const qty = state.cart[i.id] || 0;
+      return `
+      <div class="item-row ${qty>0?'has-qty':''}">
+        <div class="item-info">
+          <div class="item-name">${esc(i.name)}</div>
+          <div class="item-unit">${esc(unitLabel(i.unit))}</div>
+        </div>
+        <div class="stepper">
+          <button class="step-btn" data-dec="${i.id}">−</button>
+          <input class="qty-input" type="number" inputmode="numeric" min="0" value="${qty}" data-qty="${i.id}">
+          <button class="step-btn" data-inc="${i.id}">+</button>
+        </div>
+      </div>`;
+    }).join('');
+    return state.orderTab==='all' ? `<div class="supplier-group">
+      <div class="supplier-head"><span>${esc(label)}</span></div>
+      ${rows}
+    </div>` : rows;
+  }).join('');
+
+  const tabsHtml = `<div class="order-tabs">${tabs.map(tb=>`
+    <button class="tab-pill ${state.orderTab===tb.id?'active':''}" data-ordertab="${esc(tb.id)}">${esc(tb.label)}</button>
+  `).join('')}</div>`;
+
+  const lastMap = lastOrderMap();
+  return `
+    ${renderOrderHero()}
+    ${tabsHtml}
+    <div class="search-row">
+      <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
+      ${lastMap ? `<button class="quick-btn" id="sameAsLast">${t('sameAsLastTime')}</button>` : ''}
+    </div>
+    ${groupHtml || `<div class="empty">${t('noSearchResults')}</div>`}
+  `;
+}
+function cartCount(){ return Object.values(state.cart).filter(q=>q>0).length; }
+function renderOrderBottomBar(){
+  const c = cartCount();
+  return `<div class="bottom-bar">
+    <button class="send-btn" id="sendOrdersBtn" ${c===0?'disabled':''}>
+      ${c>0 ? t('itemsSelected')(c)+' · '+t('sendOrders') : t('sendOrders')}
+    </button>
+  </div>`;
+}
+function attachOrderEvents(){
+  document.querySelectorAll('[data-ordertab]').forEach(b=>b.onclick=()=>{
+    state.orderTab = b.dataset.ordertab; render();
+  });
+  const search = document.getElementById('itemSearch');
+  if(search) search.oninput = (e)=>{
+    const pos = e.target.selectionStart;
+    state.search = e.target.value;
+    render();
+    const el = document.getElementById('itemSearch');
+    if(el){ el.focus(); el.setSelectionRange(pos, pos); }
+  };
+  document.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{
+    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; render();
+  });
+  document.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>{
+    const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); render();
+  });
+  document.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
+    const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; render();
+  });
+  const same = document.getElementById('sameAsLast');
+  if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = {...m}; render(); };
+  const send = document.getElementById('sendOrdersBtn');
+  if(send) send.onclick = ()=>{
+    const bySupplier = {};
+    Object.keys(state.cart).forEach(id=>{
+      const qty = state.cart[id]; if(!qty) return;
+      const item = state.items.find(i=>i.id===id); if(!item) return;
+      const sid = item.supplierId || '__none';
+      (bySupplier[sid] = bySupplier[sid]||[]).push({itemId:id, name:item.name, qty, unit:item.unit});
+    });
+    state.queue = Object.keys(bySupplier).map(sid=>({
+      supplierId: sid, items: bySupplier[sid], sent:false
+    }));
+    state.view='queue'; render();
+  };
+}
+
+/* ============ Send queue ============ */
+function buildMessage(entry){
+  const lines = entry.items.map(i=>`• ${i.name} — ${i.qty} ${unitLabel(i.unit)}`);
+  const header = state.lang==='ku' ? 'داواکارییەکی نوێ لە چێشتخانەی ریکۆتا:' : 'New order from Ricotta:';
+  return header + '\n' + lines.join('\n');
+}
+function waLink(phone, text){
+  let p = (phone||'').replace(/[^0-9]/g,'');
+  if(p.startsWith('0')) p = '964' + p.slice(1);
+  else if(!p.startsWith('964')) p = '964' + p;
+  return `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
+}
+function renderQueue(){
+  if(!state.queue) return `<div class="empty">${t('noHistory')}</div>`;
+  const cards = state.queue.map((e,idx)=>{
+    const sup = state.suppliers.find(s=>s.id===e.supplierId);
+    const name = sup ? sup.name : t('noSupplier');
+    const itemsLine = e.items.map(i=>`${esc(i.name)} — ${i.qty} ${esc(unitLabel(i.unit))}`).join(' · ');
+    const noSendReason = !sup ? t('noSupplier') : t('noPhoneOnFile');
+    return `<div class="queue-card ${e.sent?'sent':''}">
+      <div class="queue-top"><span class="queue-name">${esc(name)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:''}</div>
+      <div class="queue-items">${itemsLine}</div>
+      ${sup && sup.phone ? `<button class="wa-btn ${e.sent?'done':''}" data-send="${idx}">${e.sent?t('sent'):t('sendVia')}</button>` : `<div class="queue-items">${esc(noSendReason)}</div>`}
+    </div>`;
+  }).join('');
+  return `<div class="section-title">${t('sendQueueTitle')}</div>${cards}`;
+}
+function attachQueueEvents(){
+  document.querySelectorAll('[data-send]').forEach(b=>b.onclick=()=>{
+    const idx = parseInt(b.dataset.send);
+    const entry = state.queue[idx];
+    const sup = state.suppliers.find(s=>s.id===entry.supplierId);
+    if(!sup || !sup.phone) return; // button only renders when this is safe, but guard anyway
+    window.open(waLink(sup.phone, buildMessage(entry)), '_blank');
+    entry.sent = true;
+    render();
+    maybeFinishQueue();
+  });
+}
+async function maybeFinishQueue(){
+  if(!state.queue.every(e=>e.sent)) return;
+  const record = {
+    id: 'o'+Date.now(), date: new Date().toISOString(),
+    entries: state.queue.map(e=>({
+      supplierId: e.supplierId,
+      items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
+    }))
+  };
+  state.history.push(record);
+  await sset('orderHistory', state.history, true);
+  state.cart = {};
+  state.queue = null;
+  state.view = 'order';
+  render();
+}
+
+/* ============ History ============ */
+function renderHistory(){
+  if(!state.history.length) return `<div class="empty">${t('noHistory')}</div>`;
+  const rows = [...state.history].reverse().map(rec=>{
+    const dt = new Date(rec.date).toLocaleString(state.lang==='ku'?'en-GB':'en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    const supplierLines = rec.entries.map(e=>{
+      const name = supplierName(e.supplierId);
+      const itemsLine = e.items.map(i=>`${esc(i.name)} (${i.qty} ${esc(unitLabel(i.unit))})`).join(', ');
+      return `<div class="hist-supplier">${esc(name)}</div><div class="hist-items">${itemsLine}</div>`;
+    }).join('');
+    return `<div class="hist-card">
+      <div class="hist-top">
+        <div class="hist-date">${dt}</div>
+        <div class="row-actions">
+          <button class="icon-btn" data-reorderhist="${rec.id}" title="${t('orderAgain')}">${ICON_REPEAT}</button>
+          <button class="icon-btn danger" data-delhist="${rec.id}" title="${t('delete')}">${ICON_DELETE}</button>
+        </div>
+      </div>
+      ${supplierLines}
+    </div>`;
+  }).join('');
+  return rows;
+}
+function attachHistoryEvents(){
+  document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
+    const rec = state.history.find(r=>r.id===b.dataset.reorderhist);
+    if(!rec) return;
+    const cart = {};
+    rec.entries.forEach(e=>e.items.forEach(it=>{
+      // Skip items that were since deleted from the catalog -- they no
+      // longer have anywhere to show up on the order screen.
+      if(state.items.some(i=>i.id===it.itemId)) cart[it.itemId] = it.qty;
+    }));
+    state.cart = cart;
+    state.view = 'order';
+    render();
+  });
+  document.querySelectorAll('[data-delhist]').forEach(b=>b.onclick=async()=>{
+    if(!(await showConfirm(t('confirmDeleteHistory')))) return;
+    const id = b.dataset.delhist;
+    state.history = state.history.filter(r=>r.id!==id);
+    // Rewrites the single orderHistory row in Supabase with the shorter
+    // array, so the deleted order stops taking up space in the database
+    // too, not just on this device.
+    await sset('orderHistory', state.history, true);
+    render();
+  });
+}
+
+/* ============ Record (activity log) ============ */
+/* Every add / edit / delete of a supplier, item or unit is written here
+   with the date, time and which device did it. Stored as one shared row
+   ('activityLog') in the same app_data table as everything else, so it
+   needs no database changes. Capped so the row can't grow forever. */
+const ACTIVITY_MAX = 1000;
+let activityQueue = Promise.resolve();
+
+function currentDeviceNickname(){
+  const d = state.devices.find(x=>x.id===state.deviceId);
+  return d ? (d.nickname || '') : '';
+}
+/* Adds one entry to the Record. Shows up on this device immediately, then
+   is merged into the shared copy. Writes are queued one after another, and
+   each one re-reads the shared log first, so quick back-to-back saves (or
+   two phones saving at the same moment) don't overwrite each other. */
+function logActivity(entry){
+  const rec = {
+    id: 'a'+Date.now()+Math.random().toString(36).slice(2,6),
+    ts: new Date().toISOString(),
+    by: currentDeviceNickname(),
+    role: state.role,
+    ...entry
+  };
+  state.activity = [...state.activity, rec];
+  activityQueue = activityQueue.then(async ()=>{
+    let latest = await sget('activityLog', true);
+    if(!Array.isArray(latest)) latest = [];
+    if(!latest.some(a=>a.id===rec.id)) latest = [...latest, rec];
+    if(latest.length > ACTIVITY_MAX) latest = latest.slice(-ACTIVITY_MAX);
+    state.activity = latest;
+    await sset('activityLog', latest, true);
+    if(state.view === 'record') render();
+  }).catch(e=>console.error('activity log failed', e));
+  return activityQueue;
+}
+/* Pulls the newest shared Record (so entries made on other phones show up). */
+async function refreshActivity(){
+  const latest = await sget('activityLog', true);
+  if(Array.isArray(latest)){
+    state.activity = latest;
+    if(state.view === 'record') render();
+  }
+}
+/* [[key, oldValue, newValue], ...] -> only the ones that actually changed. */
+function diffFields(list){
+  return list
+    .filter(([k, from, to]) => String(from||'') !== String(to||''))
+    .map(([k, from, to]) => ({k, from: from||'', to: to||''}));
+}
+function unitEn(unitId){
+  const u = state.units.find(x=>x.id===unitId);
+  return u ? u.en : '';
+}
+function recordFieldLabel(k){
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel')})[k] || k;
+}
+function recordValue(k, v){
+  if(k === 'supplier' && !v) return t('noSupplier');
+  if(!v) return '\u2014';
+  if(k === 'unit'){
+    const u = state.units.find(x=>x.en === v);
+    return u ? (state.lang==='ku' ? (u.ku||u.en) : u.en) : v;
+  }
+  return v;
+}
+function renderRecord(){
+  const filters = [
+    {id:'all', label:t('filterAll')},
+    {id:'supplier', label:t('suppliers')},
+    {id:'item', label:t('items')},
+    {id:'unit', label:t('units')}
+  ];
+  const filterHtml = `<div class="order-tabs">${filters.map(f=>`
+    <button class="tab-pill ${state.recordFilter===f.id?'active':''}" data-recfilter="${f.id}">${f.label}</button>`).join('')}</div>`;
+  const rows = state.activity
+    .filter(a => state.recordFilter==='all' || a.type===state.recordFilter)
+    .sort((a,b)=> new Date(b.ts) - new Date(a.ts));
+  const locale = state.lang==='ku' ? 'en-GB' : 'en-US';
+  const cards = rows.map(a=>{
+    const typeLabel = ({supplier:t('typeSupplier'), item:t('typeItem'), unit:t('typeUnit')})[a.type] || a.type;
+    const actLabel = ({add:t('actionAdded'), edit:t('actionEdited'), delete:t('actionDeleted')})[a.action] || a.action;
+    const dt = new Date(a.ts).toLocaleString(locale, {year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+    const who = (a.by ? esc(a.by) : t('unnamedDevice')) + ' \u00b7 ' + (a.role==='admin' ? t('deviceRoleAdmin') : t('deviceRoleStaff'));
+    const lines = (a.fields||[]).map(f=>{
+      const label = esc(recordFieldLabel(f.k));
+      if(a.action === 'edit'){
+        return `<div class="rec-line"><span class="rec-k">${label}</span> <span class="rec-old">${esc(recordValue(f.k, f.from))}</span> \u2192 <span class="rec-new">${esc(recordValue(f.k, f.to))}</span></div>`;
+      }
+      const v = a.action === 'delete' ? f.from : f.to;
+      return `<div class="rec-line"><span class="rec-k">${label}</span> ${esc(recordValue(f.k, v))}</div>`;
+    }).join('');
+    const extra = a.unassigned ? `<div class="rec-line">${t('itemsUnassigned')(a.unassigned)}</div>` : '';
+    return `<div class="rec-card">
+      <div class="rec-top"><span class="rec-badge rec-${esc(a.action)}">${actLabel}</span><span class="rec-type">${typeLabel}</span></div>
+      <div class="rec-name">${esc(a.name)}</div>
+      ${lines}${extra}
+      <div class="rec-meta">${dt} \u00b7 ${who}</div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="action-row">
+      <div class="section-title" style="flex:1;margin:0;">${t('record')} (${rows.length})</div>
+      <button class="btn btn-ghost" id="recRefreshBtn">${ICON_REFRESH} ${t('refresh')}</button>
+    </div>
+    ${filterHtml}
+    ${cards || `<div class="empty">${t('recordEmpty')}</div>`}`;
+}
+function attachRecordEvents(){
+  document.querySelectorAll('[data-recfilter]').forEach(b=>b.onclick=()=>{
+    state.recordFilter = b.dataset.recfilter; render();
+  });
+  const r = document.getElementById('recRefreshBtn');
+  if(r) r.onclick = ()=> refreshActivity();
+}
+
+/* ============ Admin: shared popup pieces ============ */
+/* The banner at the top of an edit popup: says what's being edited and
+   shows how it looks right now, so it's always clear what you're changing. */
+function editingBanner(name, meta){
+  return `<div class="modal-banner-label">${t('editingLabel')}</div>
+    <div class="modal-banner-name">${esc(name)}</div>
+    ${meta ? `<div class="modal-banner-meta">${esc(meta)}</div>` : ''}`;
+}
+
+/* ============ Admin: Suppliers ============ */
+function renderSuppliers(){
+  const list = state.suppliers.length ? state.suppliers.map(s=>`
+    <div class="list-row tappable" data-editsup="${esc(s.id)}">
+      <div><div class="name">${esc(s.name)}</div><div class="meta">${esc(s.phone||'')}</div></div>
+      <div class="row-actions">
+        <span class="icon-btn">${ICON_EDIT}</span>
+        <button class="icon-btn danger" data-delsup="${esc(s.id)}">${ICON_DELETE}</button>
+      </div>
+    </div>`).join('') : `<div class="empty">${t('noSuppliersYet')}</div>`;
+  return `
+    <div class="action-row">
+      <button class="btn btn-primary add-btn" id="supAddBtn">${ICON_PLUS} ${t('addSupplier')}</button>
+      <button class="btn btn-ghost" data-gorecord="supplier">${NAV_ICONS.record} ${t('record')}</button>
+    </div>
+    <div class="section-title">${t('suppliers')} (${state.suppliers.length})</div>${list}`;
+}
+function openSupplierModal(id){
+  const existing = id ? state.suppliers.find(s=>s.id===id) : null;
+  if(id && !existing) return;
+  showFormModal({
+    title: existing ? t('editSupplier') : t('addSupplier'),
+    banner: existing ? editingBanner(existing.name, existing.phone) : '',
+    bodyHtml: `
+      <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
+      <div class="field"><label>${t('phone')}</label><input id="mfPhone" data-clear="1" inputmode="tel" placeholder="07xxxxxxxxx" value="${esc(existing?.phone||'')}"></div>`,
+    okLabel: t('save'),
+    againLabel: existing ? null : t('saveAndAddAnother'),
+    onSubmit: async (again)=>{
+      const name = document.getElementById('mfName').value.trim();
+      const phone = document.getElementById('mfPhone').value.trim();
+      if(!name) return {error: t('nameRequired')};
+      if(existing){
+        const s = state.suppliers.find(x=>x.id===existing.id);
+        if(!s) return {};
+        const fields = diffFields([['name', s.name, name], ['phone', s.phone, phone]]);
+        if(!fields.length) return {};   // nothing changed -- nothing to save or record
+        s.name = name; s.phone = phone;
+        await sset('suppliers', state.suppliers, true);
+        logActivity({action:'edit', type:'supplier', name, fields});
+      } else {
+        state.suppliers.push({id:'s'+Date.now(), name, phone});
+        await sset('suppliers', state.suppliers, true);
+        logActivity({action:'add', type:'supplier', name,
+          fields:[{k:'name', to:name}].concat(phone ? [{k:'phone', to:phone}] : [])});
+      }
+      render();
+      if(again) return {keepOpen:true, message:t('savedMsg')(name)};
+      return {};
+    }
+  });
+}
+function attachSupplierEvents(){
+  document.getElementById('supAddBtn').onclick = ()=> openSupplierModal(null);
+  document.querySelectorAll('[data-editsup]').forEach(row=>row.onclick=()=> openSupplierModal(row.dataset.editsup));
+  document.querySelectorAll('[data-delsup]').forEach(b=>b.onclick=async(e)=>{
+    e.stopPropagation();   // don't also open the edit popup
+    const id = b.dataset.delsup;
+    const sup = state.suppliers.find(s=>s.id===id);
+    if(!sup) return;
+    if(!(await showConfirm(`<b>${esc(sup.name)}</b><br>${t('confirmDeleteSupplier')}`))) return;
+    const unassigned = state.items.filter(i=>i.supplierId===id).length;
+    state.suppliers = state.suppliers.filter(s=>s.id!==id);
+    state.items.forEach(i=>{ if(i.supplierId===id) i.supplierId=null; });
+    if(state.itemFormSupplierId === id) state.itemFormSupplierId = null;
+    await sset('suppliers', state.suppliers, true);
+    await sset('items', state.items, true);
+    logActivity({action:'delete', type:'supplier', name:sup.name, unassigned,
+      fields:[{k:'name', from:sup.name}].concat(sup.phone ? [{k:'phone', from:sup.phone}] : [])});
+    render();
+  });
+}
+
+/* ============ Admin: Items ============ */
+function renderItemsAdmin(){
+  const list = state.items.length ? state.items.map(i=>`
+    <div class="list-row tappable" data-edititem="${esc(i.id)}">
+      <div><div class="name">${esc(i.name)}</div><div class="meta">${esc(unitLabel(i.unit))} \u00b7 ${i.supplierId?esc(supplierName(i.supplierId)):t('noSupplier')}</div></div>
+      <div class="row-actions">
+        <span class="icon-btn">${ICON_EDIT}</span>
+        <button class="icon-btn danger" data-delitem="${esc(i.id)}">${ICON_DELETE}</button>
+      </div>
+    </div>`).join('') : `<div class="empty">${t('noItemsYet')}</div>`;
+  return `
+    <div class="action-row">
+      <button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
+      <button class="btn btn-ghost" data-gorecord="item">${NAV_ICONS.record} ${t('record')}</button>
+    </div>
+    <div class="section-title">${t('items')} (${state.items.length})</div>${list}`;
+}
+function openItemModal(id){
+  const existing = id ? state.items.find(i=>i.id===id) : null;
+  if(id && !existing) return;
+  const unitOptions = state.units.map(u=>`<option value="${esc(u.id)}" ${existing?.unit===u.id?'selected':''}>${esc(state.lang==='ku'?(u.ku||u.en):u.en)}</option>`).join('');
+  // While adding a fresh item, the last supplier picked stays selected so
+  // bulk-adding items for one supplier doesn't need reselecting each time.
+  const currentSupplierId = existing ? existing.supplierId : state.itemFormSupplierId;
+  const supOptions = `<option value="">${t('noSupplier')}</option>` + state.suppliers.map(s=>`<option value="${esc(s.id)}" ${currentSupplierId===s.id?'selected':''}>${esc(s.name)}</option>`).join('');
+  const lockedSupplier = !existing && state.itemFormSupplierId ? state.suppliers.find(s=>s.id===state.itemFormSupplierId) : null;
+  const banner = existing
+    ? editingBanner(existing.name, `${unitLabel(existing.unit)} \u00b7 ${existing.supplierId ? supplierName(existing.supplierId) : t('noSupplier')}`)
+    : '';
+  showFormModal({
+    title: existing ? t('editItem') : t('addItem'),
+    banner,
+    bodyHtml: `
+      <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
+      <div class="field"><label>${t('unit')}</label><select id="mfUnit">${unitOptions}</select></div>
+      <div class="field">
+        <label>${t('supplier')}</label>
+        <select id="mfSupplier">${supOptions}</select>
+        ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
+      </div>`,
+    okLabel: t('save'),
+    againLabel: existing ? null : t('saveAndAddAnother'),
+    onOpen: (box)=>{
+      const sel = box.querySelector('#mfSupplier');
+      const hint = box.querySelector('#mfSupHint');
+      if(sel && hint) sel.onchange = ()=>{
+        const s = state.suppliers.find(x=>x.id===sel.value);
+        hint.textContent = s ? t('supplierStaysSelected')(s.name) : '';
+      };
+    },
+    onSubmit: async (again)=>{
+      const name = document.getElementById('mfName').value.trim();
+      const unit = document.getElementById('mfUnit').value;
+      const supplierId = document.getElementById('mfSupplier').value || null;
+      if(!name) return {error: t('nameRequired')};
+      const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
+      if(existing){
+        const i = state.items.find(x=>x.id===existing.id);
+        if(!i) return {};
+        const oldSupName = i.supplierId ? (state.suppliers.find(s=>s.id===i.supplierId)?.name || '') : '';
+        const fields = diffFields([
+          ['name', i.name, name],
+          ['unit', unitEn(i.unit), unitEn(unit)],
+          ['supplier', oldSupName, newSupName]
+        ]);
+        if(!fields.length) return {};   // nothing changed -- nothing to save or record
+        i.name = name; i.unit = unit; i.supplierId = supplierId;
+        await sset('items', state.items, true);
+        logActivity({action:'edit', type:'item', name, fields});
+      } else {
+        state.items.push({id:'i'+Date.now(), name, unit, supplierId});
+        state.itemFormSupplierId = supplierId; // keep it locked in for the next item
+        await sset('items', state.items, true);
+        logActivity({action:'add', type:'item', name, fields:[
+          {k:'name', to:name}, {k:'unit', to:unitEn(unit)}, {k:'supplier', to:newSupName}
+        ]});
+      }
+      render();
+      if(again) return {keepOpen:true, message:t('savedMsg')(name)};
+      return {};
+    }
+  });
+}
+function attachItemEvents(){
+  document.getElementById('itemAddBtn').onclick = ()=> openItemModal(null);
+  document.querySelectorAll('[data-edititem]').forEach(row=>row.onclick=()=> openItemModal(row.dataset.edititem));
+  document.querySelectorAll('[data-delitem]').forEach(b=>b.onclick=async(e)=>{
+    e.stopPropagation();   // don't also open the edit popup
+    const id = b.dataset.delitem;
+    const item = state.items.find(i=>i.id===id);
+    if(!item) return;
+    if(!(await showConfirm(`<b>${esc(item.name)}</b><br>${t('confirmDeleteItem')}`))) return;
+    const supName = item.supplierId ? (state.suppliers.find(s=>s.id===item.supplierId)?.name || '') : '';
+    state.items = state.items.filter(i=>i.id!==id);
+    delete state.cart[id];
+    await sset('items', state.items, true);
+    logActivity({action:'delete', type:'item', name:item.name, fields:[
+      {k:'name', from:item.name}, {k:'unit', from:unitEn(item.unit)}, {k:'supplier', from:supName}
+    ]});
+    render();
+  });
+}
+
+/* ============ Admin: Units ============ */
+function renderUnits(){
+  const chips = state.units.map(u=>`
+    <span class="unit-chip">${esc(state.lang==='ku'?(u.ku||u.en):u.en)}
+      <button data-delunit="${u.id}">✕</button>
+    </span>`).join('');
+  return `
+    <div class="section-title">${t('units')}</div>
+    <div>${chips || `<div class="empty">${t('noUnitsYet')}</div>`}</div>
+    <div class="section-title">${t('addUnit')}</div>
+    <div class="form-card">
+      <div class="field"><label>English</label><input id="unitEn" placeholder="${t('unitNamePlaceholder')}"></div>
+      <div class="field"><label>Kurdish</label><input id="unitKu" placeholder="${t('unitNameKuPlaceholder')}"></div>
+      <div class="form-actions"><button class="btn btn-primary" id="unitAddBtn">${t('add')}</button></div>
+    </div>`;
+}
+function attachUnitEvents(){
+  document.getElementById('unitAddBtn').onclick = async ()=>{
+    const en = document.getElementById('unitEn').value.trim();
+    const ku = document.getElementById('unitKu').value.trim();
+    if(!en) return;
+    state.units.push({id:'u'+Date.now(), en, ku});
+    await sset('units', state.units, true);
+    logActivity({action:'add', type:'unit', name:en,
+      fields:[{k:'name', to:en}].concat(ku ? [{k:'nameKu', to:ku}] : [])});
+    render();
+  };
+  document.querySelectorAll('[data-delunit]').forEach(b=>b.onclick=async()=>{
+    const id = b.dataset.delunit;
+    const unit = state.units.find(u=>u.id===id);
+    if(!unit) return;
+    if(!(await showConfirm(`<b>${esc(unit.en)}</b><br>${t('confirmDeleteUnit')}`))) return;
+    state.units = state.units.filter(u=>u.id!==id);
+    await sset('units', state.units, true);
+    logActivity({action:'delete', type:'unit', name:unit.en,
+      fields:[{k:'name', from:unit.en}].concat(unit.ku ? [{k:'nameKu', from:unit.ku}] : [])});
+    render();
+  });
+}
+
+/* ============ Admin: Devices ============ */
+/* Its own admin tab: which devices are logged in right now, when each one
+   last logged in, and when it was last seen using the app. */
+function deviceStatus(d){
+  if(!d.loggedIn) return 'out';
+  const seen = d.lastSeen ? new Date(d.lastSeen).getTime() : 0;
+  return (Date.now() - seen <= ACTIVE_WINDOW_MS) ? 'active' : 'idle';
+}
+function timeAgo(iso){
+  if(!iso) return '\u2014';
+  const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  if(mins < 1) return t('agoNow');
+  if(mins < 60) return t('agoMin')(mins);
+  const hrs = Math.floor(mins / 60);
+  if(hrs < 24) return t('agoHour')(hrs);
+  return t('agoDay')(Math.floor(hrs / 24));
+}
+function fmtDateTime(iso){
+  if(!iso) return '\u2014';
+  return new Date(iso).toLocaleString(state.lang==='ku' ? 'en-GB' : 'en-US',
+    {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+}
+function renderDevices(){
+  const head = `
+    <div class="action-row">
+      <div class="section-title" style="flex:1;margin:0;">${t('devicesTitle')} (${state.devices.length})</div>
+      <button class="btn btn-ghost" id="devRefreshBtn">${ICON_REFRESH} ${t('refresh')}</button>
+    </div>`;
+  if(!state.devices.length) return `${head}<div class="empty">${t('noDevicesYet')}</div>`;
+
+  const rank = {active:0, idle:1, out:2};
+  const sorted = [...state.devices].sort((a,b)=>
+    rank[deviceStatus(a)] - rank[deviceStatus(b)] ||
+    new Date(b.lastLogin || 0) - new Date(a.lastLogin || 0));
+  const loggedInCount = state.devices.filter(d=>d.loggedIn).length;
+  const activeCount = state.devices.filter(d=>deviceStatus(d)==='active').length;
+
+  const hero = `<div class="hero-card">
+    <div class="hero-eyebrow">${t('devicesLoggedInEyebrow')}</div>
+    <div class="hero-stat">${t('devicesLoggedInStat')(loggedInCount)}</div>
+    <div class="hero-sub">${t('devicesActiveSub')(activeCount)}</div>
+  </div>`;
+
+  const cards = sorted.map(d=>{
+    const st = deviceStatus(d);
+    const isThis = d.id === state.deviceId;
+    const roleLabel = d.role === 'admin' ? t('deviceRoleAdmin') : t('deviceRoleStaff');
+    const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
+    const logins = (d.logins && d.logins.length ? d.logins : (d.lastLogin ? [d.lastLogin] : [])).slice(0, 5);
+    const recent = logins.length > 1
+      ? `<div class="rec-line dev-recent"><span class="rec-k">${t('recentLogins')}</span> ${logins.map(fmtDateTime).join(' \u00b7 ')}</div>`
+      : '';
+    return `<div class="dev-card">
+      <div class="dev-top">
+        <div class="dev-name">${esc(d.nickname) || t('unnamedDevice')}${isThis ? ` <span class="dev-this">\u00b7 ${t('thisDevice')}</span>` : ''}</div>
+        <div class="row-actions"><button class="icon-btn" data-editdevice="${esc(d.id)}">${ICON_EDIT}</button></div>
+      </div>
+      <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span><span class="dev-role">${roleLabel}</span></div>
+      <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
+      ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
+      ${recent}
+    </div>`;
+  }).join('');
+
+  return `${head}${hero}${cards}<div class="dev-hint">${t('devicesHint')}</div>`;
+}
+function openDeviceModal(id){
+  const d = state.devices.find(x=>x.id===id);
+  if(!d) return;
+  showFormModal({
+    title: t('renameDevice'),
+    banner: editingBanner(d.nickname || t('unnamedDevice'), d.role === 'admin' ? t('deviceRoleAdmin') : t('deviceRoleStaff')),
+    bodyHtml: `<div class="field"><label>${t('renameDevice')}</label><input id="mfNickname" autocomplete="off" placeholder="${esc(t('deviceNamePlaceholder'))}" value="${esc(d.nickname||'')}"></div>`,
+    okLabel: t('save'),
+    onSubmit: async ()=>{
+      const val = document.getElementById('mfNickname').value.trim();
+      if(val === (d.nickname || '')) return {};   // unchanged
+      await updateDevice(id, x=>{ x.nickname = val; });
+      return {};
+    }
+  });
+}
+function attachDeviceEvents(){
+  document.querySelectorAll('[data-editdevice]').forEach(b=>b.onclick=()=> openDeviceModal(b.dataset.editdevice));
+  const r = document.getElementById('devRefreshBtn');
+  if(r) r.onclick = ()=> refreshDevices();
+}
+
+/* ============ Admin: Settings ============ */
+function renderSettings(){
+  // PINs/cloud config live only in the database, gated by functions that
+  // require proof the caller already knows the current value -- so an
+  // admin who reloaded the page (and lost the in-memory PIN they typed
+  // at login) has to re-enter it once before this screen will do anything.
+  if(!state.adminPinEntered){
+    return `
+      <div class="section-title">${t('settings')}</div>
+      <div class="form-card">
+        <div class="field-hint" style="margin-bottom:10px;">${t('reenterAdminPinMsg')}</div>
+        <div class="field"><label>${t('adminPin')}</label><input id="reenterAdminPin" type="password" maxlength="6" inputmode="numeric"></div>
+        <div class="form-actions"><button class="btn btn-primary" id="reenterAdminPinBtn">${t('unlock')}</button></div>
+      </div>`;
+  }
+
+  const pinsCard = `
+    <div class="section-title">${t('changePins')}</div>
+    <div class="form-card">
+      <div class="field"><label>${t('adminPin')}</label><input id="adminPinInput" maxlength="6" inputmode="numeric" value="${esc(state.settings.adminPin||'')}"></div>
+      <div class="field"><label>${t('userPin')}</label><input id="userPinInput" maxlength="4" inputmode="numeric" value="${esc(state.settings.userPin||'')}"></div>
+      <div class="form-actions"><button class="btn btn-primary" id="pinsSaveBtn">${t('savePins')}</button></div>
+    </div>`;
+
+  let cloudCard;
+  if(!state.cloudUnlocked){
+    cloudCard = `
+      <div class="form-card">
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;line-height:1.5;">${t('cloudSetupSub')}</div>
+        <div class="field"><label>${t('cloudPasswordLabel')}</label><input id="cloudUnlockInput" type="password"></div>
+        <div class="form-actions"><button class="btn btn-primary" id="cloudUnlockBtn">${t('unlock')}</button></div>
+      </div>`;
+  } else {
+    cloudCard = `
+      <div class="form-card">
+        <div class="field"><label>${t('supabaseUrlLabel')}</label><input id="supabaseUrlInput" placeholder="https://xxxx.supabase.co" value="${esc(state.settings.supabaseUrl||'')}"></div>
+        <div class="field"><label>${t('supabaseKeyLabel')}</label><input id="supabaseKeyInput" placeholder="eyJhbGciOi..." value="${esc(state.settings.supabaseKey||'')}"></div>
+        <div class="field"><label>${t('cloudPasswordEditLabel')}</label><input id="cloudPasswordInput" value="${esc(state.settings.cloudPassword||'')}"></div>
+        <div style="font-size:12px;color:${cloudConfigured()?'var(--basil)':'var(--ink-soft)'};margin:-2px 0 10px;line-height:1.5;font-weight:${cloudConfigured()?'700':'400'};">${cloudConfigured()?t('cloudConnectedNote'):t('cloudNotConnectedNote')}</div>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="cloudSaveBtn">${t('saveCloudSetup')}</button>
+          <button class="btn btn-ghost" id="cloudLockBtn">${t('lock')}</button>
+        </div>
+      </div>`;
+  }
+
+  return `${pinsCard}<div class="section-title">${t('cloudSetup')}</div>${cloudCard}`;
+}
+function attachSettingsEvents(){
+  const reenterBtn = document.getElementById('reenterAdminPinBtn');
+  if(reenterBtn){
+    reenterBtn.onclick = async ()=>{
+      const pin = document.getElementById('reenterAdminPin').value.trim();
+      const role = await appVerifyPin(pin);
+      if(role !== 'admin'){ await showAlert(t('wrongPin')); return; }
+      state.adminPinEntered = pin;
+      const pins = await appGetPins(pin);
+      if(pins) state.settings = {...state.settings, adminPin: pins.adminPin, userPin: pins.userPin};
+      render();
+    };
+    return; // nothing else is on the page in this state
+  }
+
+  // Lazily fetch the current PINs once per unlocked session, so re-renders
+  // (e.g. after switching language) don't refetch on every keystroke.
+  if(state.settings.adminPin === undefined){
+    appGetPins(state.adminPinEntered).then(pins=>{
+      if(pins){ state.settings = {...state.settings, adminPin: pins.adminPin, userPin: pins.userPin}; render(); }
+    });
+  }
+
+  document.getElementById('pinsSaveBtn').onclick = async ()=>{
+    const ap = document.getElementById('adminPinInput').value.trim();
+    const up = document.getElementById('userPinInput').value.trim();
+    if(ap.length!==ADMIN_PIN_LEN || up.length!==USER_PIN_LEN){ await showAlert(t('pinsInvalidLength')); return; }
+    if(ap.startsWith(up)){ await showAlert(t('pinsPrefixConflict')); return; }
+    const ok = await appSetPins(state.adminPinEntered, ap, up);
+    if(!ok){ await showAlert(t('pinsSaveFailed')); return; }
+    state.adminPinEntered = ap;
+    state.settings = {...state.settings, adminPin: ap, userPin: up};
+    await showAlert(t('pinsSaved'));
+    render();
+  };
+  const unlockBtn = document.getElementById('cloudUnlockBtn');
+  if(unlockBtn) unlockBtn.onclick = async ()=>{
+    const pw = document.getElementById('cloudUnlockInput').value;
+    const cfg = await appGetCloudConfig(pw);
+    if(cfg){
+      state.cloudUnlocked = true;
+      state.cloudPasswordEntered = pw;
+      state.settings = {...state.settings, supabaseUrl: cfg.supabaseUrl, supabaseKey: cfg.supabaseKey, cloudPassword: cfg.cloudPassword};
+      render();
+    } else {
+      await showAlert(t('wrongCloudPassword'));
+    }
+  };
+  const lockBtn = document.getElementById('cloudLockBtn');
+  if(lockBtn) lockBtn.onclick = ()=>{
+    state.cloudUnlocked = false;
+    state.cloudPasswordEntered = null;
+    delete state.settings.cloudPassword;
+    render();
+  };
+  const cloudSaveBtn = document.getElementById('cloudSaveBtn');
+  if(cloudSaveBtn) cloudSaveBtn.onclick = async ()=>{
+    const url = document.getElementById('supabaseUrlInput').value.trim();
+    const key = document.getElementById('supabaseKeyInput').value.trim();
+    const pw = document.getElementById('cloudPasswordInput').value.trim();
+    if(!pw){ await showAlert(t('cloudPasswordRequired')); return; }
+    const ok = await appSetCloudConfig(state.cloudPasswordEntered, url, key, pw);
+    if(!ok){ await showAlert(t('cloudSaveFailed')); return; }
+    state.settings = {...state.settings, supabaseUrl:url, supabaseKey:key, cloudPassword:pw};
+    state.cloudPasswordEntered = pw;
+    await showAlert(t('cloudSaved'));
+    render();
+  };
+}
+
+boot();
