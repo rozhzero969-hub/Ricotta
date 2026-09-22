@@ -21,6 +21,7 @@ function lset(key, value){
 const API_URL = `${SUPABASE_URL}/functions/v1/api`;
 const API_SESSION_KEY = 'apiSession';
 let bootstrapCache = null;
+let bootstrapPromise = null;
 function apiSession(){ return lget(API_SESSION_KEY); }
 function apiHeaders(){
   const s = apiSession();
@@ -29,14 +30,25 @@ function apiHeaders(){
   return h;
 }
 async function apiFetch(path, opts={}){
-  const res = await fetch(`${API_URL}/${path}`, {...opts, headers:{...apiHeaders(), ...(opts.headers||{})}});
-  if(res.status===401){ lset(API_SESSION_KEY, null); lset('session', null); }
-  if(!res.ok) return null;
-  return await res.json().catch(()=>null);
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), 8000);
+  try{
+    const res = await fetch(`${API_URL}/${path}`, {...opts, signal:controller.signal, headers:{...apiHeaders(), ...(opts.headers||{})}});
+    if(typeof setApiHealth === 'function') setApiHealth(true);
+    if(res.status===401){ lset(API_SESSION_KEY, null); lset('session', null); }
+    if(!res.ok) return null;
+    return await res.json().catch(()=>null);
+  }catch(e){
+    if(typeof setApiHealth === 'function') setApiHealth(false);
+    return null;
+  }finally{ clearTimeout(timer); }
 }
 async function apiBootstrap(){
-  if(!bootstrapCache) bootstrapCache = await apiFetch('bootstrap');
-  return bootstrapCache;
+  if(bootstrapCache) return bootstrapCache;
+  if(!bootstrapPromise) bootstrapPromise = apiFetch('bootstrap').then(data=>{
+    bootstrapCache=data; bootstrapPromise=null; return data;
+  }).catch(()=>{ bootstrapPromise=null; return null; });
+  return bootstrapPromise;
 }
 /* Shared values keep their existing in-memory shape during the UI migration,
    but their source of truth is now relational server-side data. */
@@ -87,7 +99,7 @@ async function rpcCall(fnName, params){
   return null;
 }
 /* Returns 'admin', 'user', or null. */
-async function appVerifyPin(pin){
+async function appVerifyPin(pin, opts={}){
   try{
     const res = await fetch(`${API_URL}/login`, {method:'POST', headers:{'Content-Type':'application/json','x-device-id':String(lget('deviceId')||'')}, body:JSON.stringify({pin})});
     const data = await res.json().catch(()=>null);
@@ -97,7 +109,7 @@ async function appVerifyPin(pin){
     // The initial app boot is intentionally unauthenticated. Restart after a
     // successful sign-in so every catalog record (including its unit mapping)
     // is loaded through the authenticated API before the workspace is shown.
-    window.setTimeout(() => window.location.reload(), 0);
+    if(opts.reload !== false) window.setTimeout(() => window.location.reload(), 0);
     return data.role === 'staff' ? 'user' : data.role;
   }catch(e){ console.error('login failed', e); return null; }
 }

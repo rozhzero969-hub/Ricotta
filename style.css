@@ -71,6 +71,7 @@
   }
   .brand .dot{width:9px;height:9px;border-radius:50%;background:#6FCF9A;display:inline-block;}
   .topbar-actions{display:flex; gap:8px; align-items:center; flex-shrink:0;}
+  .connection-status{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:rgba(111,207,154,.16);border:1px solid rgba(111,207,154,.35);font-size:12px;font-weight:800;color:#dff8e8}.connection-status span{width:8px;height:8px;border-radius:50%;background:#6fcf9a;box-shadow:0 0 0 3px rgba(111,207,154,.16)}.connection-status.offline{background:rgba(255,116,108,.15);border-color:rgba(255,116,108,.38);color:#ffe2df}.connection-status.offline span{background:#ff746c;box-shadow:0 0 0 3px rgba(255,116,108,.16)}
   .brand{min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .pill-btn{
     border:1px solid rgba(255,255,255,0.28); background:rgba(255,255,255,0.08); color:#fff;
@@ -456,6 +457,7 @@
     .topbar{padding-left:12px; padding-right:12px;}
     .brand{font-size:16px;}
     .topbar-actions{gap:5px;}
+    .connection-status{font-size:0;padding:7px}.connection-status span{margin:0}
     .pill-btn{padding:6px 9px; font-size:12px;}
     .content{padding-left:12px; padding-right:12px;}
     .hero-stat{font-size:26px;}

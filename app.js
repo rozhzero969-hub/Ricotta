@@ -37,7 +37,8 @@ let state = {
   recordFilter: 'all',   // 'all' | 'supplier' | 'item' | 'unit'
   devices: [],           // [{id, nickname, role, lastLogin, lastSeen, loggedIn, logins}], synced via Supabase
   deviceId: null,        // this device's own id, generated once and kept locally
-  reminder: null         // daily reminder settings {enabled,time}; null = not loaded yet, false = failed to load
+  reminder: null,        // daily reminder settings {enabled,time}; null = not loaded yet, false = failed to load
+  apiOnline: navigator.onLine
 };
 
 function t(key){ return T[state.lang][key]; }
@@ -265,6 +266,18 @@ async function refreshDevices(){
 setInterval(()=>{
   if(state.role === 'admin' && state.view === 'devices' && document.visibilityState === 'visible') refreshDevices();
 }, 30000);
+function setApiHealth(online){
+  state.apiOnline = !!online && navigator.onLine;
+  const el=document.getElementById('connectionStatus');
+  if(el){ el.classList.toggle('offline',!state.apiOnline); el.innerHTML=`<span></span>${state.apiOnline?'Online':'Offline'}`; }
+}
+async function checkConnection(){
+  if(!navigator.onLine){ setApiHealth(false); return; }
+  const result=await apiFetch('health'); setApiHealth(!!result?.ok);
+}
+window.addEventListener('online', checkConnection);
+window.addEventListener('offline', ()=>setApiHealth(false));
+setInterval(()=>{ if(state.role) checkConnection(); }, 30000);
 
 /* ============ Boot ============ */
 async function boot(){
@@ -297,6 +310,7 @@ async function boot(){
     lset('pendingCart', null);
   }
   render();
+  checkConnection();
   // Notifications: register the service worker, read this device's status, and
   // handle being launched from a notification tap.
   initPush().then(()=>{ render(); handleLaunchIntent(); });
@@ -389,6 +403,7 @@ function renderTopbar(){
   <div class="topbar">
     <div class="brand"><span class="dot"></span>${t('appName')}</div>
     <div class="topbar-actions">
+      <div class="connection-status ${state.apiOnline?'':'offline'}" id="connectionStatus" title="Internet and Supabase API status"><span></span>${state.apiOnline?'Online':'Offline'}</div>
       <button class="pill-btn ${state.lang==='en'?'active':''}" data-lang="en">EN</button>
       <button class="pill-btn ${state.lang==='ku'?'active':''}" data-lang="ku">KU</button>
       <button class="pill-btn" id="logoutBtn">${t('logout')}</button>
@@ -1453,7 +1468,7 @@ function attachSettingsEvents(){
   if(reenterBtn){
     reenterBtn.onclick = async ()=>{
       const pin = document.getElementById('reenterAdminPin').value.trim();
-      const role = await appVerifyPin(pin);
+      const role = await appVerifyPin(pin, {reload:false});
       if(role !== 'admin'){ await showAlert(t('wrongPin')); return; }
       state.adminPinEntered = pin;
       const pins = await appGetPins(pin);
