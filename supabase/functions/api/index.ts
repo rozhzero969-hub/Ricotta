@@ -142,7 +142,7 @@ Deno.serve(async req => {
   }
   if (path === "admin/pins" && req.method === "POST") {
     if (!requireAdmin(session)) return json({ error:"forbidden" }, 403);
-    const { error } = await db.rpc("app_internal_set_pins", { p_admin_pin:cleanText(payload.adminPin,6), p_staff_pin:cleanText(payload.staffPin,4) });
+    const { error } = await db.rpc("app_internal_set_pins", { p_admin_pin:cleanText(payload.adminPin,6), p_staff_pin:cleanText(payload.staffPin,6) });
     if (error) return json({ error:"invalid_pin" }, 400); await audit(session,req,"change_pins"); return json({ ok:true });
   }
 

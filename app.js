@@ -446,15 +446,17 @@ function attachCommonEvents(){
 
 /* ============ Login (PIN pad) ============ */
 function renderLogin(){
-  const dotCount = state.pinExpanded ? ADMIN_PIN_LEN : USER_PIN_LEN;
+  const dotCount = MAX_PIN_LEN;
   const dots = Array.from({length:dotCount}).map((_,i)=>{
     const filled = i < state.pinBuffer.length;
-    const isNew = state.justExpanded && i >= USER_PIN_LEN;
+    const isNew = false;
     return `<span class="pin-dot ${filled?'filled':''} ${state.pinError?'err':''} ${isNew?'pop':''}"><span class="core"></span></span>`;
   }).join('');
   const keys = ['1','2','3','4','5','6','7','8','9'];
   return `
   <div class="login-wrap">
+    <aside class="login-brand-panel"><div class="brand-word">Ricotta</div><div class="brand-message">Restaurant<br>Management<br><em>Made Simple.</em></div><div class="brand-detail">Orders · Suppliers · Inventory</div><div class="brand-footer">© 2026 Ricotta</div></aside>
+    <div class="login-card">
     <div class="login-logo">R<span class="dot-i">i</span>cotta</div>
     <div class="login-heading">
       <div class="login-title">${t('signIn')}</div>
@@ -462,7 +464,6 @@ function renderLogin(){
     </div>
     <div class="pin-label">${t('enterPin')}</div>
     <div class="pin-dots">${dots}</div>
-    ${state.pinExpanded && !state.pinError ? `<div class="admin-hint">${t('adminHint')}</div>` : ''}
     <div class="login-error" style="visibility:${state.pinError?'visible':'hidden'};">${t('wrongPin')}</div>
     <div class="keypad">
       ${keys.map(k=>`<button class="key" data-key="${k}">${k}</button>`).join('')}
@@ -471,6 +472,7 @@ function renderLogin(){
       <button class="key backspace" data-key="back">${ICON_BACKSPACE}</button>
     </div>
     <button class="lang-pill" id="loginLangToggle">${ICON_GLOBE} ${state.lang==='en'?'English':'کوردی'} ${ICON_CHEVRON}</button>
+    </div>
   </div>`;
 }
 function attachLoginEvents(){
@@ -483,37 +485,23 @@ function attachLoginEvents(){
   };
   document.querySelectorAll('[data-key]').forEach(b=>b.onclick=async ()=>{
     const k = b.dataset.key;
-    if(k==='clear'){ state.pinBuffer=''; state.pinError=false; state.pinExpanded=false; render(); return; }
+    if(k==='clear'){ state.pinBuffer=''; state.pinError=false; render(); return; }
     if(k==='back'){
       state.pinBuffer = state.pinBuffer.slice(0,-1); state.pinError=false;
-      if(state.pinBuffer.length < USER_PIN_LEN) state.pinExpanded = false;
       render(); return;
     }
     if(state.pinBuffer.length>=MAX_PIN_LEN) return;
     state.pinBuffer += k;
 
-    if(state.pinBuffer.length===USER_PIN_LEN && !state.pinExpanded){
+    if(state.pinBuffer.length===MAX_PIN_LEN){
       const role = await appVerifyPin(state.pinBuffer);
-      if(role === 'user'){
-        state.role='user'; state.pinBuffer=''; lset('session', 'user'); render();
-        recordDeviceLogin('user'); return;
-      }
-      // Wrong, or possibly just the start of a longer admin PIN -- expand
-      // the pad rather than failing outright, same as before.
-      state.pinExpanded = true;
-      state.justExpanded = true;
-      render();
-      return;
-    }
-    if(state.pinBuffer.length===ADMIN_PIN_LEN){
-      const role = await appVerifyPin(state.pinBuffer);
-      if(role === 'admin'){
-        state.role='admin'; state.adminPinEntered = state.pinBuffer;
-        state.pinBuffer=''; state.pinExpanded=false; lset('session', 'admin'); render();
-        recordDeviceLogin('admin'); return;
+      if(role){
+        state.role=role; if(role==='admin') state.adminPinEntered=state.pinBuffer;
+        state.pinBuffer=''; lset('session', role); render();
+        recordDeviceLogin(role); return;
       }
       state.pinError = true; render();
-      setTimeout(()=>{ state.pinBuffer=''; state.pinError=false; state.pinExpanded=false; render(); }, 700);
+      setTimeout(()=>{ state.pinBuffer=''; state.pinError=false; render(); }, 700);
       return;
     }
     render();
@@ -530,6 +518,8 @@ function supplierName(id){
   const s = state.suppliers.find(x=>x.id===id);
   return s ? s.name : t('noSupplier');
 }
+function nameCollator(){ return new Intl.Collator(state.lang==='ku' ? 'ku' : 'en', {sensitivity:'base', numeric:true}); }
+function sortedByName(rows){ return [...rows].sort((a,b)=>nameCollator().compare(a.name||'', b.name||'')); }
 function lastOrderMap(){
   if(!state.history.length) return null;
   const last = state.history[state.history.length-1];
@@ -548,7 +538,7 @@ function renderOrderHero(){
 }
 function orderTabs(){
   const tabs = [{id:'all', label:t('allSuppliers')}];
-  state.suppliers.forEach(s=>{
+  sortedByName(state.suppliers).forEach(s=>{
     if(state.items.some(i=>i.supplierId===s.id)) tabs.push({id:s.id, label:s.name});
   });
   if(state.items.some(i=>!i.supplierId)) tabs.push({id:'__none', label:t('noSupplier')});
@@ -562,6 +552,7 @@ function renderOrder(){
   if(!tabs.some(tb=>tb.id===state.orderTab)) state.orderTab = 'all';
 
   const groupHtml = renderOrderResults();
+  const selectedCount = state.orderTab==='all' ? state.items.length : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab).length;
 
   const tabsHtml = `<div class="order-tabs">${tabs.map(tb=>`
     <button class="tab-pill ${state.orderTab===tb.id?'active':''}" data-ordertab="${esc(tb.id)}">${esc(tb.label)}</button>
@@ -571,6 +562,7 @@ function renderOrder(){
   return `
     ${renderOrderHero()}
     ${tabsHtml}
+    <div class="catalog-count">${esc(t('items'))}: <strong>${selectedCount}</strong></div>
     <div class="search-row">
       <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
       ${lastMap ? `<button class="quick-btn" id="sameAsLast">${t('sameAsLastTime')}</button>` : ''}
@@ -592,9 +584,9 @@ function renderOrderResults(){
     const key = i.supplierId || '__none';
     (groups[key] = groups[key]||[]).push(i);
   });
-  const groupHtml = Object.keys(groups).map(key=>{
+  const groupHtml = Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
     const label = key==='__none' ? t('noSupplier') : supplierName(key);
-    const rows = groups[key].map(i=>{
+    const rows = sortedByName(groups[key]).map(i=>{
       const qty = state.cart[i.id] || 0;
       return `
       <div class="item-row ${qty>0?'has-qty':''}">
@@ -703,12 +695,16 @@ function renderQueue(){
     return `<div class="queue-card ${e.sent?'sent':''}">
       <div class="queue-top"><span class="queue-name">${esc(name)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:''}</div>
       <div class="queue-items">${itemsLine}</div>
-      ${sup && sup.phone ? `<button class="wa-btn ${e.sent?'done':''}" data-send="${idx}">${e.sent?t('sent'):t('sendVia')}</button>` : `<div class="queue-items">${esc(noSendReason)}</div>`}
+      <div class="queue-actions"><button class="pdf-btn" data-pdf="${idx}">Order sheet (PDF)</button>${sup && sup.phone ? `<button class="wa-btn ${e.sent?'done':''}" data-send="${idx}">${e.sent?t('sent'):t('sendVia')}</button>` : `<div class="queue-items">${esc(noSendReason)}</div>`}</div>
     </div>`;
   }).join('');
   return `<div class="section-title">${t('sendQueueTitle')}</div>${cards}`;
 }
 function attachQueueEvents(){
+  document.querySelectorAll('[data-pdf]').forEach(b=>b.onclick=()=>{
+    const entry = state.queue[parseInt(b.dataset.pdf)]; const supplier = state.suppliers.find(s=>s.id===entry?.supplierId);
+    if(entry) printOrderSheet(entry, supplier);
+  });
   document.querySelectorAll('[data-send]').forEach(b=>b.onclick=()=>{
     const idx = parseInt(b.dataset.send);
     const entry = state.queue[idx];
@@ -719,6 +715,14 @@ function attachQueueEvents(){
     render();
     maybeFinishQueue();
   });
+}
+function printOrderSheet(entry, supplier){
+  const ku=state.lang==='ku', title=ku?'داواکارییەکی نوێ':'Purchase order';
+  const supplierLabel=supplier?.name||(ku?'بێ دابینکەر':'No supplier');
+  const rows=sortedByName(entry.items).map((item,n)=>`<tr><td>${n+1}</td><td>${esc(item.name)}</td><td>${esc(unitLabel(item.unit))}</td><td class="qty">${item.qty}</td></tr>`).join('');
+  const w=window.open('', '_blank'); if(!w) return;
+  w.document.write(`<!doctype html><html dir="${ku?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${title} — Ricotta</title><style>body{font-family:Arial,'Noto Sans Arabic',sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${new Date().toLocaleString(ku?'ku':'en-GB')}<br>${entry.items.length} ${ku?'کاڵا':'items'}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${ku?'کاڵا':'Item'}</th><th>${ku?'یەکە':'Unit'}</th><th>${ku?'بڕ':'Qty'}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${ku?'تکایە داواکارییەکە بەپێی ئەم بڕانە ئامادە بکەن. سوپاس.':'Please prepare this order with the quantities listed above. Thank you.'}</div></body></html>`);
+  w.document.close(); w.focus(); setTimeout(()=>w.print(),250);
 }
 async function maybeFinishQueue(){
   if(!state.queue.every(e=>e.sent)) return;
@@ -978,7 +982,7 @@ function resetReminderFields(){
 
 /* ============ Admin: Suppliers ============ */
 function renderSuppliers(){
-  const list = state.suppliers.length ? state.suppliers.map(s=>`
+  const list = state.suppliers.length ? sortedByName(state.suppliers).map(s=>`
     <div class="list-row tappable" data-editsup="${esc(s.id)}">
       <div><div class="name">${esc(s.name)}</div><div class="meta">${esc(s.phone||'')}</div>
         ${s.reminder && s.reminder.enabled ? `<div class="meta rem-line">${ICON_BELL} ${esc(reminderText(s.reminder))}</div>` : ''}</div>
@@ -1078,14 +1082,20 @@ function attachSupplierEvents(){
 
 /* ============ Admin: Items ============ */
 function renderItemsAdmin(){
-  const list = state.items.length ? state.items.map(i=>`
+  const groups = {};
+  state.items.forEach(i=>{ const key=i.supplierId||'__none'; (groups[key] ||= []).push(i); });
+  const list = state.items.length ? Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
+    const label=key==='__none'?t('noSupplier'):supplierName(key); const groupItems=sortedByName(groups[key]);
+    const rows=groupItems.map(i=>`
     <div class="list-row tappable" data-edititem="${esc(i.id)}">
       <div><div class="name">${esc(i.name)}</div><div class="meta">${esc(unitLabel(i.unit))} \u00b7 ${i.supplierId?esc(supplierName(i.supplierId)):t('noSupplier')}</div></div>
       <div class="row-actions">
         <span class="icon-btn">${ICON_EDIT}</span>
         <button class="icon-btn danger" data-delitem="${esc(i.id)}">${ICON_DELETE}</button>
       </div>
-    </div>`).join('') : emptyState(t('noItemsYet'));
+    </div>`).join('');
+    return `<section class="supplier-group admin-item-group"><div class="supplier-head"><span>${esc(label)}</span><span>${groupItems.length}</span></div>${rows}</section>`;
+  }).join('') : emptyState(t('noItemsYet'));
   return `
     <div class="action-row">
       <button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
@@ -1377,7 +1387,7 @@ function renderSettings(){
     <div class="section-title">${t('changePins')}</div>
     <div class="form-card">
       <div class="field"><label>${t('adminPin')}</label><input id="adminPinInput" maxlength="6" inputmode="numeric" value="${esc(state.settings.adminPin||'')}"></div>
-      <div class="field"><label>${t('userPin')}</label><input id="userPinInput" maxlength="4" inputmode="numeric" value="${esc(state.settings.userPin||'')}"></div>
+      <div class="field"><label>${t('userPin')}</label><input id="userPinInput" maxlength="6" inputmode="numeric" value="${esc(state.settings.userPin||'')}"></div>
       <div class="form-actions"><button class="btn btn-primary" id="pinsSaveBtn">${t('savePins')}</button></div>
     </div>`;
 

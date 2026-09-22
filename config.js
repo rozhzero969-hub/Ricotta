@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-20.6';
+const APP_VERSION = '2026-09-22.1';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -59,5 +59,5 @@ const DEFAULT_UNITS = [
 ];
 
 const ADMIN_PIN_LEN = 6;
-const USER_PIN_LEN = 4;
+const USER_PIN_LEN = 6;
 const MAX_PIN_LEN = 6;
