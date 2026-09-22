@@ -11,7 +11,25 @@
     --clay-dim:#FBE7E5;
     --line:#E1E9E4;
     --radius:14px;
-  }
+}
+
+/* 2026 Ricotta responsive sign-in and catalog refinements. */
+.login-card{width:100%;max-width:360px;display:flex;flex-direction:column;align-items:center}
+.login-card .login-heading,.login-card .pin-label{align-self:stretch}
+.login-brand-panel{display:none}
+.catalog-count{margin:12px 0 -2px;color:var(--ink-soft);font-size:13px}
+.catalog-count strong{color:var(--basil);font-size:15px}
+.queue-actions{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}
+.pdf-btn{border:1px solid var(--basil);border-radius:12px;background:#fff;color:var(--basil);font-weight:800;padding:11px 14px;cursor:pointer}
+.admin-item-group{margin-bottom:18px}.admin-item-group .supplier-head{position:sticky;top:0;z-index:1}
+@media (min-width:960px){
+  #app:has(.login-wrap){display:block;padding:0;background:#f8fafb;min-height:100vh}
+  .login-wrap{width:100%;max-width:none;min-height:100vh;padding:0;display:grid;grid-template-columns:minmax(42%,1fr) minmax(420px,58%);align-items:stretch;border:0;border-radius:0;background:none;box-shadow:none}
+  .login-brand-panel{display:flex;flex-direction:column;position:relative;overflow:hidden;padding:62px 54px;color:white;background:linear-gradient(145deg,#1b513b 0%,#153e2f 100%)}
+  .login-brand-panel:after{content:'';position:absolute;width:32rem;height:32rem;border:1px solid rgba(255,255,255,.08);border-radius:50%;right:-17rem;bottom:-14rem}
+  .brand-word{font-size:43px;font-weight:500;letter-spacing:-3px}.brand-message{margin-top:auto;font-size:42px;line-height:1.2;font-weight:800;letter-spacing:-1.7px}.brand-message em{font-style:normal;color:#ffd432}.brand-detail{margin-top:20px;font-size:17px;color:#dbece3}.brand-footer{margin-top:auto;color:#b7d6c8;font-size:13px}
+  .login-card{justify-self:center;align-self:center;max-width:432px;padding:50px 34px;align-items:center}.login-card .login-logo{display:none}.login-card .login-heading,.login-card .pin-label,.login-card .keypad{max-width:432px}.login-card .login-title{font-size:30px}.login-card .login-sub{font-size:15px}.login-card .key{height:64px}.login-card .lang-pill{align-self:stretch;justify-content:space-between;margin-top:30px;border-top:1px solid var(--line);border-radius:0;background:transparent;padding:16px 0 0}
+}
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   html{-webkit-text-size-adjust:100%; text-size-adjust:100%;}
