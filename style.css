@@ -458,6 +458,32 @@
     #app{max-width:600px; box-shadow:0 0 0 1px var(--line);}
   }
 
+  /* A real workspace on desktop, while phones keep the compact bottom tabs. */
+  @media (min-width:960px){
+    body{background:linear-gradient(135deg,#edf5ef 0%,#f8fbf9 48%,#e7f2ea 100%); padding:24px;}
+    #app{max-width:1240px; min-height:calc(100dvh - 48px); border-radius:24px; overflow:hidden;
+      box-shadow:0 24px 64px rgba(21,43,34,.16); display:grid;
+      grid-template-columns:220px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr);}
+    .topbar{grid-column:1/-1; border-radius:0; padding:18px 24px;}
+    .content{grid-column:2; grid-row:2; padding:28px 32px 108px; max-width:980px; width:100%; justify-self:center;}
+    .bottom-stack{display:contents;}
+    .bottomnav{grid-column:1; grid-row:2; display:flex; flex-direction:column; align-items:stretch;
+      overflow:visible; padding:18px 12px; border-top:0; border-inline-end:1px solid var(--line);
+      background:linear-gradient(180deg,#fbfdfb,#f2f8f4); box-shadow:none;}
+    .navbtn{flex:0 0 auto; min-width:0; margin:3px 0; padding:12px; flex-direction:row; justify-content:flex-start; gap:10px;
+      font-size:13px; text-align:start;}
+    .navbtn svg{width:19px; height:19px;}
+    .bottom-bar{grid-column:2; grid-row:2; align-self:end; justify-self:stretch; padding:16px 32px 22px;
+      background:linear-gradient(0deg,var(--bg) 70%,transparent); border:0; z-index:5;}
+    .bottom-bar .send-btn{max-width:460px; margin-inline:auto; display:block;}
+    .hero-card{padding:24px;}
+    .search-row{max-width:760px;}
+    .supplier-group{display:grid; grid-template-columns:180px minmax(0,1fr); gap:12px; align-items:start; margin-bottom:18px;}
+    .supplier-head{position:sticky; top:88px;}
+    .supplier-group .item-row{grid-column:2; margin-bottom:8px;}
+    .form-card,.modal-box.modal-form{max-width:640px;}
+  }
+
   /* ================================================================
      Motion & modern UI polish (added)
      Pure additive layer: every rule below overrides earlier rules of

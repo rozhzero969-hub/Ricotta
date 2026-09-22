@@ -16,43 +16,43 @@ function lset(key, value){
   try{ localStorage.setItem(LS_PREFIX+key, JSON.stringify(value)); }
   catch(e){ console.error('localStorage set failed', e); }
 }
-/* Supabase REST (PostgREST) helpers. Table: public.app_data (key text primary key, value jsonb).
-   Used for 'shared' keys (suppliers/items/units/orderHistory) so every device
-   (kitchen phone, admin phone, etc.) reads and writes the same data. The
-   'settings' key (PINs, cloud password) is deliberately NOT readable or
-   writable through this generic path -- RLS blocks anon access to it
-   entirely. It's only reachable through the narrow RPC functions below.
-   'lang' (shared=false) stays device-local only, since it's just a
-   per-phone display preference. */
+/* All shared data goes through the single Edge API.  The browser has no
+   PostgREST table/RPC access and never stores configuration secrets. */
+const API_URL = `${SUPABASE_URL}/functions/v1/api`;
+const API_SESSION_KEY = 'apiSession';
+let bootstrapCache = null;
+function apiSession(){ return lget(API_SESSION_KEY); }
+function apiHeaders(){
+  const s = apiSession();
+  const h = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||'')};
+  if(s && s.token) h.Authorization = `Bearer ${s.token}`;
+  return h;
+}
+async function apiFetch(path, opts={}){
+  const res = await fetch(`${API_URL}/${path}`, {...opts, headers:{...apiHeaders(), ...(opts.headers||{})}});
+  if(res.status===401){ lset(API_SESSION_KEY, null); lset('session', null); }
+  if(!res.ok) return null;
+  return await res.json().catch(()=>null);
+}
+async function apiBootstrap(){
+  if(!bootstrapCache) bootstrapCache = await apiFetch('bootstrap');
+  return bootstrapCache;
+}
+/* Shared values keep their existing in-memory shape during the UI migration,
+   but their source of truth is now relational server-side data. */
 function cloudConfigured(){
-  return !!(state.settings && state.settings.supabaseUrl && state.settings.supabaseKey);
+  return !!apiSession();
 }
 async function cloudGet(key){
-  if(!cloudConfigured()) return undefined;
-  try{
-    const res = await fetch(
-      `${state.settings.supabaseUrl}/rest/v1/app_data?key=eq.${encodeURIComponent(key)}&select=value`,
-      { headers: { apikey: state.settings.supabaseKey, Authorization: `Bearer ${state.settings.supabaseKey}` } }
-    );
-    if(!res.ok) return undefined;
-    const rows = await res.json();
-    return rows.length ? rows[0].value : null;
-  }catch(e){ console.error('cloud get failed', e); return undefined; }
+  const data = await apiBootstrap();
+  if(!data) return undefined;
+  const names = {orderHistory:'history', activityLog:'activity'};
+  return data[names[key]||key] ?? null;
 }
 async function cloudSet(key, value){
-  if(!cloudConfigured()) return;
-  try{
-    await fetch(`${state.settings.supabaseUrl}/rest/v1/app_data?on_conflict=key`, {
-      method: 'POST',
-      headers: {
-        apikey: state.settings.supabaseKey,
-        Authorization: `Bearer ${state.settings.supabaseKey}`,
-        'Content-Type': 'application/json',
-        Prefer: 'resolution=merge-duplicates'
-      },
-      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() })
-    });
-  }catch(e){ console.error('cloud set failed', e); }
+  const ok = await apiFetch(`state/${encodeURIComponent(key)}`, {method:'PUT', body:JSON.stringify({value})});
+  if(ok && bootstrapCache){ const names={orderHistory:'history',activityLog:'activity'}; bootstrapCache[names[key]||key]=value; }
+  return !!ok;
 }
 async function sget(key, shared){
   if(window.storage){
@@ -76,31 +76,21 @@ async function sset(key, value, shared){
   if(shared) await cloudSet(key, value);
 }
 
-/* ============ Settings RPCs ============
-   The 'settings' row (adminPin, userPin, cloudPassword, supabaseUrl,
-   supabaseKey) never comes back from a plain SELECT -- these call
-   SECURITY DEFINER Postgres functions instead, each of which requires
-   the caller to already know the relevant PIN/password before it will
-   reveal or change anything. See ricotta-supabase-setup.sql. */
+/* ============ Authentication and settings ============ */
 async function rpcCall(fnName, params){
-  if(!cloudConfigured()) return null;
-  try{
-    const res = await fetch(`${state.settings.supabaseUrl}/rest/v1/rpc/${fnName}`, {
-      method: 'POST',
-      headers: {
-        apikey: state.settings.supabaseKey,
-        Authorization: `Bearer ${state.settings.supabaseKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(params)
-    });
-    if(!res.ok) return null;
-    return await res.json();
-  }catch(e){ console.error('rpc call failed:', fnName, e); return null; }
+  console.warn('Legacy RPC blocked:', fnName);
+  return null;
 }
 /* Returns 'admin', 'user', or null. */
 async function appVerifyPin(pin){
-  return await rpcCall('app_verify_pin', { p_pin: pin });
+  try{
+    const res = await fetch(`${API_URL}/login`, {method:'POST', headers:{'Content-Type':'application/json','x-device-id':String(lget('deviceId')||'')}, body:JSON.stringify({pin})});
+    const data = await res.json().catch(()=>null);
+    if(!res.ok || !data) return null;
+    lset(API_SESSION_KEY, {token:data.token, expiresAt:data.expiresAt, role:data.role});
+    bootstrapCache = null;
+    return data.role === 'staff' ? 'user' : data.role;
+  }catch(e){ console.error('login failed', e); return null; }
 }
 /* Returns {adminPin,userPin,cloudPassword,supabaseUrl,supabaseKey} if the
    password is correct, else null. */
@@ -111,17 +101,14 @@ async function appGetCloudConfig(cloudPassword){
    else null. Used only to prefill the Settings form for an admin who is
    already authenticated this session. */
 async function appGetPins(currentAdminPin){
-  return await rpcCall('app_get_pins', { p_current_admin_pin: currentAdminPin });
+  return null; // PINs are intentionally never returned by the server.
 }
 /* Returns true if currentAdminPin matched and the PINs were updated. */
 async function appSetPins(currentAdminPin, newAdminPin, newUserPin){
-  return await rpcCall('app_set_pins', {
-    p_current_admin_pin: currentAdminPin, p_new_admin_pin: newAdminPin, p_new_user_pin: newUserPin
-  });
+  const res = await apiFetch('admin/pins', {method:'POST',body:JSON.stringify({adminPin:newAdminPin,staffPin:newUserPin})});
+  return !!res?.ok;
 }
 /* Returns true if cloudPassword matched and the cloud config was updated. */
 async function appSetCloudConfig(cloudPassword, newUrl, newKey, newPassword){
-  return await rpcCall('app_set_cloud_config', {
-    p_cloud_password: cloudPassword, p_new_url: newUrl, p_new_key: newKey, p_new_password: newPassword
-  });
+  return false; // Cloud connection configuration is no longer a browser feature.
 }
