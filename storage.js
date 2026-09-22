@@ -25,7 +25,7 @@ function apiSession(){ return lget(API_SESSION_KEY); }
 function apiHeaders(){
   const s = apiSession();
   const h = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||'')};
-  if(s && s.token) h.Authorization = `Bearer ${s.token}`;
+  if(s && s.token) h['x-session-token'] = s.token;
   return h;
 }
 async function apiFetch(path, opts={}){
