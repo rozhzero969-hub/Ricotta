@@ -29,7 +29,9 @@
   .login-brand-panel:after{content:'';position:absolute;width:32rem;height:32rem;border:1px solid rgba(255,255,255,.08);border-radius:50%;right:-17rem;bottom:-14rem}
   .brand-word{font-size:43px;font-weight:500;letter-spacing:-3px}.brand-message{margin-top:auto;font-size:42px;line-height:1.2;font-weight:800;letter-spacing:-1.7px}.brand-message em{font-style:normal;color:#ffd432}.brand-detail{margin-top:20px;font-size:17px;color:#dbece3}.brand-footer{margin-top:auto;color:#b7d6c8;font-size:13px}
   .login-card{justify-self:center;align-self:center;max-width:432px;padding:50px 34px;align-items:center}.login-card .login-logo{display:none}.login-card .login-heading,.login-card .pin-label,.login-card .keypad{max-width:432px}.login-card .login-title{font-size:30px}.login-card .login-sub{font-size:15px}.login-card .key{height:64px}.login-card .lang-pill{align-self:stretch;justify-content:space-between;margin-top:30px;border-top:1px solid var(--line);border-radius:0;background:transparent;padding:16px 0 0}
+  .admin-item-group{display:block!important;margin:0 0 26px;padding:0;border:1px solid #dbe9df;border-radius:18px;background:#f8fcf9;overflow:hidden}.admin-item-group .supplier-head{position:static;top:auto;margin:0;padding:14px 18px;background:#e9f5ec;color:#174b35}.admin-item-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}.admin-item-grid .list-row{margin:0;min-height:72px}.admin-item-grid .list-row .meta{margin-top:4px}.admin-item-grid .row-actions{align-self:center}
 }
+@media (min-width:1280px){.admin-item-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   html{-webkit-text-size-adjust:100%; text-size-adjust:100%;}

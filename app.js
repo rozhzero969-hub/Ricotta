@@ -527,13 +527,12 @@ function lastOrderMap(){
   last.entries.forEach(e=>e.items.forEach(it=>{ map[it.itemId] = it.qty; }));
   return map;
 }
-function renderOrderHero(){
+function renderOrderHero(itemCount=state.items.length, supplierCount=new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size){
   const selCount = cartCount();
-  const supCount = new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size;
   return `<div class="hero-card">
     <div class="hero-eyebrow">${t('heroEyebrow')}</div>
     <div class="hero-stat">${t('heroStat')(selCount)}</div>
-    <div class="hero-sub">${t('heroSub')(state.items.length, supCount)}</div>
+    <div class="hero-sub">${t('heroSub')(itemCount, supplierCount)}</div>
   </div>`;
 }
 function orderTabs(){
@@ -553,6 +552,7 @@ function renderOrder(){
 
   const groupHtml = renderOrderResults();
   const selectedCount = state.orderTab==='all' ? state.items.length : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab).length;
+  const selectedSupplierCount = state.orderTab==='all' ? new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size : (selectedCount ? 1 : 0);
 
   const tabsHtml = `<div class="order-tabs">${tabs.map(tb=>`
     <button class="tab-pill ${state.orderTab===tb.id?'active':''}" data-ordertab="${esc(tb.id)}">${esc(tb.label)}</button>
@@ -560,9 +560,8 @@ function renderOrder(){
 
   const lastMap = lastOrderMap();
   return `
-    ${renderOrderHero()}
+    ${renderOrderHero(selectedCount, selectedSupplierCount)}
     ${tabsHtml}
-    <div class="catalog-count">${esc(t('items'))}: <strong>${selectedCount}</strong></div>
     <div class="search-row">
       <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
       ${lastMap ? `<button class="quick-btn" id="sameAsLast">${t('sameAsLastTime')}</button>` : ''}
@@ -781,11 +780,11 @@ function attachHistoryEvents(){
   document.querySelectorAll('[data-delhist]').forEach(b=>b.onclick=async()=>{
     if(!(await showConfirm(t('confirmDeleteHistory')))) return;
     const id = b.dataset.delhist;
+    if(!(await deleteOrderHistory(id))){ await showAlert('Could not delete this order. Please try again.'); return; }
     state.history = state.history.filter(r=>r.id!==id);
     // Rewrites the single orderHistory row in Supabase with the shorter
     // array, so the deleted order stops taking up space in the database
     // too, not just on this device.
-    await sset('orderHistory', state.history, true);
     render();
   });
 }
@@ -1094,7 +1093,7 @@ function renderItemsAdmin(){
         <button class="icon-btn danger" data-delitem="${esc(i.id)}">${ICON_DELETE}</button>
       </div>
     </div>`).join('');
-    return `<section class="supplier-group admin-item-group"><div class="supplier-head"><span>${esc(label)}</span><span>${groupItems.length}</span></div>${rows}</section>`;
+    return `<section class="supplier-group admin-item-group"><div class="supplier-head"><span>${esc(label)}</span><span>${groupItems.length}</span></div><div class="admin-item-grid">${rows}</div></section>`;
   }).join('') : emptyState(t('noItemsYet'));
   return `
     <div class="action-row">

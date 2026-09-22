@@ -54,6 +54,11 @@ async function cloudSet(key, value){
   if(ok && bootstrapCache){ const names={orderHistory:'history',activityLog:'activity'}; bootstrapCache[names[key]||key]=value; }
   return !!ok;
 }
+async function deleteOrderHistory(id){
+  const ok = await apiFetch(`history/${encodeURIComponent(id)}`, {method:'DELETE'});
+  if(ok && bootstrapCache) bootstrapCache.history = (bootstrapCache.history||[]).filter(order=>order.id!==id);
+  return !!ok;
+}
 async function sget(key, shared){
   if(window.storage){
     try{
