@@ -101,6 +101,15 @@ Deno.serve(async req => {
     if (session.deviceId) await app("devices").update({ logged_in:false }).eq("id", session.deviceId);
     return json({ ok:true });
   }
+  const historyDelete = path.match(/^history\/([^/]+)$/);
+  if (req.method === "DELETE" && historyDelete) {
+    const orderId = cleanText(historyDelete[1], 160);
+    if (!orderId) return json({ error:"invalid_order" }, 400);
+    const { error } = await app("orders").delete().eq("id", orderId);
+    if (error) return json({ error:"delete_failed" }, 500);
+    await audit(session, req, "delete", "order", orderId);
+    return json({ ok:true });
+  }
 
   const payload = await body(req);
   const stateMatch = path.match(/^state\/(suppliers|items|units|orderHistory|devices|activityLog)$/);
