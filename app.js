@@ -1400,12 +1400,14 @@ function renderSettings(){
   const pinsCard = `
     <div class="section-title">${t('changePins')}</div>
     <div class="form-card">
+      <div class="field-hint" style="margin-bottom:12px;">${t('pinsChangeHint')}</div>
       <div class="field"><label>${t('adminPin')}</label><input id="adminPinInput" maxlength="6" inputmode="numeric" value="${esc(state.settings.adminPin||'')}"></div>
       <div class="field"><label>${t('userPin')}</label><input id="userPinInput" maxlength="6" inputmode="numeric" value="${esc(state.settings.userPin||'')}"></div>
       <div class="form-actions"><button class="btn btn-primary" id="pinsSaveBtn">${t('savePins')}</button></div>
     </div>`;
 
-  return `${pinsCard}${renderNotifSettings()}`;
+  const connectionCard = `<div class="section-title">${t('cloudSetup')}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote')}</b><div class="field-hint">${t('cloudManagedNote')}</div></div></div></div>`;
+  return `${pinsCard}${connectionCard}${renderNotifSettings()}`;
 }
 /* ---- Settings: Notifications card (this device + daily reminder) ---- */
 function renderNotifSettings(){
@@ -1484,13 +1486,16 @@ function attachSettingsEvents(){
     const ap = document.getElementById('adminPinInput').value.trim();
     const up = document.getElementById('userPinInput').value.trim();
     if(ap.length!==ADMIN_PIN_LEN || up.length!==USER_PIN_LEN){ await showAlert(t('pinsInvalidLength')); return; }
-    if(ap.startsWith(up)){ await showAlert(t('pinsPrefixConflict')); return; }
+    if(ap===up){ await showAlert(t('pinsPrefixConflict')); return; }
     const ok = await appSetPins(state.adminPinEntered, ap, up);
     if(!ok){ await showAlert(t('pinsSaveFailed')); return; }
     state.adminPinEntered = ap;
     state.settings = {...state.settings, adminPin: ap, userPin: up};
     await showAlert(t('pinsSaved'));
-    render();
+    // The server revokes every session after a PIN rotation. Return to the
+    // sign-in screen immediately so this device uses one of the new PINs.
+    lset(API_SESSION_KEY, null); lset('session', null);
+    state.role=null; state.adminPinEntered=null; state.pinBuffer=''; render();
   };
 }
 
