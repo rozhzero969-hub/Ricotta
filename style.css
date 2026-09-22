@@ -482,6 +482,35 @@
     .supplier-head{position:sticky; top:88px;}
     .supplier-group .item-row{grid-column:2; margin-bottom:8px;}
     .form-card,.modal-box.modal-form{max-width:640px;}
+
+    /* Login is its own desktop composition, not a row in the app shell. */
+    #app:has(.login-wrap){
+      display:flex; align-items:center; justify-content:flex-start;
+      padding:52px; position:relative; isolation:isolate;
+      background:
+        radial-gradient(circle at 83% 22%, rgba(111,207,154,.34), transparent 22rem),
+        radial-gradient(circle at 77% 76%, rgba(31,92,63,.14), transparent 25rem),
+        linear-gradient(135deg,#f9fdf9 0%,#eef7f0 100%);
+    }
+    #app:has(.login-wrap)::before{
+      content:'RICOTTA ORDERS'; position:absolute; inset-inline-end:clamp(54px,9vw,150px); top:50%;
+      transform:translateY(-50%); color:rgba(21,43,34,.08); font-size:clamp(44px,7vw,96px);
+      font-weight:900; letter-spacing:-.07em; writing-mode:vertical-rl; pointer-events:none; z-index:-1;
+    }
+    .login-wrap{
+      flex:0 1 460px; min-height:620px; padding:48px 52px; align-items:stretch; justify-content:center;
+      border:1px solid rgba(255,255,255,.9); border-radius:28px; background:rgba(255,255,255,.88);
+      box-shadow:0 24px 52px rgba(21,43,34,.16); backdrop-filter:blur(14px);
+    }
+    .login-logo{font-size:42px; margin-bottom:38px;}
+    .login-heading,.pin-label,.keypad{max-width:356px;}
+    .login-title{font-size:30px;}
+    .login-sub{font-size:15px; line-height:1.55; max-width:280px; margin-bottom:30px;}
+    .pin-dots{margin-bottom:32px;}
+    .pin-dot{width:42px; height:42px; border-radius:13px;}
+    .keypad{gap:12px;}
+    .key{height:68px; border-radius:18px; box-shadow:0 6px 14px rgba(21,43,34,.06);}
+    .lang-pill{align-self:flex-start; margin-top:28px;}
   }
 
   /* ================================================================
