@@ -92,6 +92,10 @@ Deno.serve(async req => {
     if (deviceId) await app("devices").upsert({ id:deviceId, role, logged_in:true, last_login:new Date().toISOString(), last_seen:new Date().toISOString() });
     return json({ token, role, expiresAt });
   }
+  if (req.method === "GET" && path === "health") {
+    const { error } = await app("roles").select("role", { head:true }).limit(1);
+    return error ? json({ ok:false }, 503) : json({ ok:true });
+  }
 
   const session = await authenticate(req);
   if (!session) return json({ error:"unauthorized" }, 401);
