@@ -89,6 +89,10 @@ async function appVerifyPin(pin){
     if(!res.ok || !data) return null;
     lset(API_SESSION_KEY, {token:data.token, expiresAt:data.expiresAt, role:data.role});
     bootstrapCache = null;
+    // The initial app boot is intentionally unauthenticated. Restart after a
+    // successful sign-in so every catalog record (including its unit mapping)
+    // is loaded through the authenticated API before the workspace is shown.
+    window.setTimeout(() => window.location.reload(), 0);
     return data.role === 'staff' ? 'user' : data.role;
   }catch(e){ console.error('login failed', e); return null; }
 }
