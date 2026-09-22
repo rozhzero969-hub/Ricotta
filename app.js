@@ -268,6 +268,14 @@ setInterval(()=>{
 
 /* ============ Boot ============ */
 async function boot(){
+  state.deviceId = ensureDeviceId();
+  state.lang = await sget('lang', false) || 'en';
+  const api = apiSession();
+  if(api && api.expiresAt && new Date(api.expiresAt).getTime() > Date.now()){
+    state.role = api.role === 'staff' ? 'user' : api.role;
+  } else {
+    lset(API_SESSION_KEY, null); lset('session', null);
+  }
   const [suppliers, items, units, history, devices, activity, lang] = await Promise.all([
     sget('suppliers', true), sget('items', true), sget('units', true),
     sget('orderHistory', true), sget('devices', true), sget('activityLog', true), sget('lang', false)
@@ -279,10 +287,7 @@ async function boot(){
   state.history = history || [];
   state.devices = devices || [];
   state.activity = Array.isArray(activity) ? activity : [];
-  state.deviceId = ensureDeviceId();
   state.lang = lang || 'en';
-  const savedRole = lget('session');
-  if(savedRole === 'admin' || savedRole === 'user') state.role = savedRole;
   // A forced refresh saves the current order selection first; put it back.
   const savedCart = lget('pendingCart');
   if(savedCart && typeof savedCart === 'object'){
@@ -556,6 +561,26 @@ function renderOrder(){
   const tabs = orderTabs();
   if(!tabs.some(tb=>tb.id===state.orderTab)) state.orderTab = 'all';
 
+  const groupHtml = renderOrderResults();
+
+  const tabsHtml = `<div class="order-tabs">${tabs.map(tb=>`
+    <button class="tab-pill ${state.orderTab===tb.id?'active':''}" data-ordertab="${esc(tb.id)}">${esc(tb.label)}</button>
+  `).join('')}</div>`;
+
+  const lastMap = lastOrderMap();
+  return `
+    ${renderOrderHero()}
+    ${tabsHtml}
+    <div class="search-row">
+      <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
+      ${lastMap ? `<button class="quick-btn" id="sameAsLast">${t('sameAsLastTime')}</button>` : ''}
+    </div>
+    <div id="orderResults" aria-live="polite">${groupHtml || emptyState(t('noSearchResults'))}</div>
+  `;
+}
+/* Search only replaces this result region; rebuilding #app on each keystroke
+   was the cause of the apparent page refresh on phones. */
+function renderOrderResults(){
   const q = state.search.trim().toLowerCase();
   const tabFiltered = state.orderTab==='all'
     ? state.items
@@ -590,20 +615,13 @@ function renderOrder(){
     </div>` : rows;
   }).join('');
 
-  const tabsHtml = `<div class="order-tabs">${tabs.map(tb=>`
-    <button class="tab-pill ${state.orderTab===tb.id?'active':''}" data-ordertab="${esc(tb.id)}">${esc(tb.label)}</button>
-  `).join('')}</div>`;
-
-  const lastMap = lastOrderMap();
-  return `
-    ${renderOrderHero()}
-    ${tabsHtml}
-    <div class="search-row">
-      <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
-      ${lastMap ? `<button class="quick-btn" id="sameAsLast">${t('sameAsLastTime')}</button>` : ''}
-    </div>
-    ${groupHtml || emptyState(t('noSearchResults'))}
-  `;
+  return groupHtml;
+}
+function refreshOrderResults(){
+  const results = document.getElementById('orderResults');
+  if(!results) return;
+  results.innerHTML = renderOrderResults() || emptyState(t('noSearchResults'));
+  attachOrderResultEvents(results);
 }
 function cartCount(){ return Object.values(state.cart).filter(q=>q>0).length; }
 function renderOrderBottomBar(){
@@ -620,12 +638,10 @@ function attachOrderEvents(){
   });
   const search = document.getElementById('itemSearch');
   if(search) search.oninput = (e)=>{
-    const pos = e.target.selectionStart;
     state.search = e.target.value;
-    render();
-    const el = document.getElementById('itemSearch');
-    if(el){ el.focus(); el.setSelectionRange(pos, pos); }
+    refreshOrderResults();
   };
+  attachOrderResultEvents(document.getElementById('orderResults'));
   document.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{
     const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; render();
   });
@@ -651,6 +667,18 @@ function attachOrderEvents(){
     }));
     state.view='queue'; render();
   };
+}
+function attachOrderResultEvents(root){
+  if(!root) return;
+  root.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{
+    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; render();
+  });
+  root.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>{
+    const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); render();
+  });
+  root.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
+    const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; render();
+  });
 }
 
 /* ============ Send queue ============ */
@@ -1353,29 +1381,7 @@ function renderSettings(){
       <div class="form-actions"><button class="btn btn-primary" id="pinsSaveBtn">${t('savePins')}</button></div>
     </div>`;
 
-  let cloudCard;
-  if(!state.cloudUnlocked){
-    cloudCard = `
-      <div class="form-card">
-        <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;line-height:1.5;">${t('cloudSetupSub')}</div>
-        <div class="field"><label>${t('cloudPasswordLabel')}</label><input id="cloudUnlockInput" type="password"></div>
-        <div class="form-actions"><button class="btn btn-primary" id="cloudUnlockBtn">${t('unlock')}</button></div>
-      </div>`;
-  } else {
-    cloudCard = `
-      <div class="form-card">
-        <div class="field"><label>${t('supabaseUrlLabel')}</label><input id="supabaseUrlInput" placeholder="https://xxxx.supabase.co" value="${esc(state.settings.supabaseUrl||'')}"></div>
-        <div class="field"><label>${t('supabaseKeyLabel')}</label><input id="supabaseKeyInput" placeholder="eyJhbGciOi..." value="${esc(state.settings.supabaseKey||'')}"></div>
-        <div class="field"><label>${t('cloudPasswordEditLabel')}</label><input id="cloudPasswordInput" value="${esc(state.settings.cloudPassword||'')}"></div>
-        <div style="font-size:12px;color:${cloudConfigured()?'var(--basil)':'var(--ink-soft)'};margin:-2px 0 10px;line-height:1.5;font-weight:${cloudConfigured()?'700':'400'};">${cloudConfigured()?t('cloudConnectedNote'):t('cloudNotConnectedNote')}</div>
-        <div class="form-actions">
-          <button class="btn btn-primary" id="cloudSaveBtn">${t('saveCloudSetup')}</button>
-          <button class="btn btn-ghost" id="cloudLockBtn">${t('lock')}</button>
-        </div>
-      </div>`;
-  }
-
-  return `${pinsCard}${renderNotifSettings()}<div class="section-title">${t('cloudSetup')}</div>${cloudCard}`;
+  return `${pinsCard}${renderNotifSettings()}`;
 }
 /* ---- Settings: Notifications card (this device + daily reminder) ---- */
 function renderNotifSettings(){
@@ -1450,14 +1456,6 @@ function attachSettingsEvents(){
 
   attachNotifSettingsEvents();
 
-  // Lazily fetch the current PINs once per unlocked session, so re-renders
-  // (e.g. after switching language) don't refetch on every keystroke.
-  if(state.settings.adminPin === undefined){
-    appGetPins(state.adminPinEntered).then(pins=>{
-      if(pins){ state.settings = {...state.settings, adminPin: pins.adminPin, userPin: pins.userPin}; render(); }
-    });
-  }
-
   document.getElementById('pinsSaveBtn').onclick = async ()=>{
     const ap = document.getElementById('adminPinInput').value.trim();
     const up = document.getElementById('userPinInput').value.trim();
@@ -1468,39 +1466,6 @@ function attachSettingsEvents(){
     state.adminPinEntered = ap;
     state.settings = {...state.settings, adminPin: ap, userPin: up};
     await showAlert(t('pinsSaved'));
-    render();
-  };
-  const unlockBtn = document.getElementById('cloudUnlockBtn');
-  if(unlockBtn) unlockBtn.onclick = async ()=>{
-    const pw = document.getElementById('cloudUnlockInput').value;
-    const cfg = await appGetCloudConfig(pw);
-    if(cfg){
-      state.cloudUnlocked = true;
-      state.cloudPasswordEntered = pw;
-      state.settings = {...state.settings, supabaseUrl: cfg.supabaseUrl, supabaseKey: cfg.supabaseKey, cloudPassword: cfg.cloudPassword};
-      render();
-    } else {
-      await showAlert(t('wrongCloudPassword'));
-    }
-  };
-  const lockBtn = document.getElementById('cloudLockBtn');
-  if(lockBtn) lockBtn.onclick = ()=>{
-    state.cloudUnlocked = false;
-    state.cloudPasswordEntered = null;
-    delete state.settings.cloudPassword;
-    render();
-  };
-  const cloudSaveBtn = document.getElementById('cloudSaveBtn');
-  if(cloudSaveBtn) cloudSaveBtn.onclick = async ()=>{
-    const url = document.getElementById('supabaseUrlInput').value.trim();
-    const key = document.getElementById('supabaseKeyInput').value.trim();
-    const pw = document.getElementById('cloudPasswordInput').value.trim();
-    if(!pw){ await showAlert(t('cloudPasswordRequired')); return; }
-    const ok = await appSetCloudConfig(state.cloudPasswordEntered, url, key, pw);
-    if(!ok){ await showAlert(t('cloudSaveFailed')); return; }
-    state.settings = {...state.settings, supabaseUrl:url, supabaseKey:key, cloudPassword:pw};
-    state.cloudPasswordEntered = pw;
-    await showAlert(t('cloudSaved'));
     render();
   };
 }
