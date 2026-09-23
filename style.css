@@ -168,6 +168,7 @@
   /* ---------- Order screen ---------- */
   .search-row{display:flex; gap:8px; margin-bottom:12px;}
   .search-wrap{position:relative; flex:1; display:flex; align-items:center;}
+  .order-quick-actions{display:flex;flex:0 0 auto;gap:7px;align-items:center;}
   .search-wrap svg{position:absolute; inset-inline-start:14px; color:var(--ink-soft); pointer-events:none;}
   .search-input{
     width:100%; padding:11px 14px 11px 38px; padding-inline-start:38px; border-radius:999px; border:1px solid var(--line);
@@ -178,6 +179,8 @@
     background:var(--basil-dim); color:var(--basil); font-size:13px; font-weight:700;
     white-space:nowrap; cursor:pointer;
   }
+  .quick-btn.clear-order-btn{border-color:var(--line);background:var(--card);color:var(--ink-soft);}
+  .quick-btn:disabled{opacity:.48;cursor:not-allowed;}
   .order-tabs-shell{display:grid;grid-template-columns:minmax(0,1fr);align-items:center;margin-bottom:12px;min-width:0;}
   .order-tabs{
     display:flex; gap:8px; overflow-x:auto; min-width:0; margin:0; padding:2px 1px 4px;
@@ -466,6 +469,8 @@
     .connection-status{font-size:0;padding:7px}.connection-status span{margin:0}
     .pill-btn{padding:6px 9px; font-size:12px;}
     .content{padding-left:12px; padding-right:12px;}
+    .order-quick-actions{gap:5px;}
+    .quick-btn{padding:9px 10px;font-size:11.5px;}
     .hero-stat{font-size:26px;}
     .pin-dot{width:32px; height:32px;}
     .pin-dots{gap:8px;}
