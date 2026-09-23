@@ -609,8 +609,16 @@ function refreshOrderResults(){
    region, hero stats, and bottom-bar button — avoids a full render() so the
    successPulse animation on newly-filled items actually plays (static-update
    suppression doesn't apply because #app.innerHTML isn't rebuilt). */
-function refreshOrderView(){
+function refreshOrderView(pulseItemId=null){
   refreshOrderResults();
+  // A language switch marks the app as a same-screen update, which correctly
+  // disables broad entrance motion. Quantity feedback is different: it is an
+  // intentional response to one tap, so restore it explicitly on that row.
+  if(pulseItemId){
+    const row = [...document.querySelectorAll('#orderResults .item-row')]
+      .find(el=>el.querySelector('[data-inc]')?.dataset.inc === pulseItemId);
+    if(row) row.classList.add('qty-bump');
+  }
   // Hero stat
   const hero = document.querySelector('.hero-card');
   if(hero){
@@ -650,7 +658,7 @@ function attachOrderEvents(){
   };
   attachOrderResultEvents(document.getElementById('orderResults'));
   document.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; refreshOrderView();
+    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; refreshOrderView(id);
   });
   document.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>{
     const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); refreshOrderView();
@@ -678,7 +686,7 @@ function attachOrderEvents(){
 function attachOrderResultEvents(root){
   if(!root) return;
   root.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; refreshOrderView();
+    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; refreshOrderView(id);
   });
   root.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>{
     const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); refreshOrderView();
