@@ -81,6 +81,19 @@ function heartbeat(){
   api('devices/me', {method:'POST', body:{}});
   flushOutbox();
 }
+/* Keep the unfinished order on this device so closing or refreshing the app
+   does not discard the quantities the user has selected. */
+function persistCartDraft(){
+  const draft=Object.fromEntries(Object.entries(state.cart).filter(([,qty])=>Number.isFinite(Number(qty)) && Number(qty)>0));
+  lset('pendingCart',Object.keys(draft).length?draft:null);
+}
+function restoreCartDraft(){
+  const saved=lget('pendingCart');
+  if(!saved || typeof saved!=='object' || Array.isArray(saved)) return;
+  const available=new Set(state.items.map(item=>item.id));
+  state.cart=Object.fromEntries(Object.entries(saved).filter(([id,qty])=>available.has(id) && Number.isFinite(Number(qty)) && Number(qty)>0).map(([id,qty])=>[id,Math.floor(Number(qty))]));
+  persistCartDraft();
+}
 /* Right after signing in: ask for a nickname the first time this device is
    used (or restore the one this phone remembers). */
 async function afterLogin(){
@@ -215,7 +228,7 @@ function retryLoad(){
   const timer = setInterval(async ()=>{
     if(!state.role){ clearInterval(timer); return; }
     if(!isVisible() || !navigator.onLine) return;
-    if(await loadData()){ clearInterval(timer); loadedOk = true; render(); }
+    if(await loadData()){ clearInterval(timer); loadedOk = true; restoreCartDraft(); render(); }
   }, 10000);
 }
 async function boot(){
@@ -226,14 +239,9 @@ async function boot(){
     state.role = session.role === 'staff' ? 'user' : session.role;
     loadedOk = await loadData();
     if(!loadedOk && !apiSession()) state.role = null;   // the session was rejected
-    // A forced refresh saves the current order selection first; put it back.
-    const savedCart = lget('pendingCart');
-    if(savedCart && typeof savedCart === 'object'){
-      Object.keys(savedCart).forEach(id=>{
-        if(state.items.some(i=>i.id===id) && savedCart[id] > 0) state.cart[id] = savedCart[id];
-      });
-    }
-    lset('pendingCart', null);
+    // Load the saved local draft only after the catalog is available, keeping
+    // it intact if the app starts while offline and needs to retry loading.
+    if(loadedOk) restoreCartDraft();
   }
   render();
   hideSplash();
@@ -479,6 +487,7 @@ async function pressKey(k){
   state.role = res.role;
   const ok = await loadData();
   if(!ok){ hideSplash(0); signOut(); state.pinError = 'network'; render(); return; }
+  restoreCartDraft();
   render();
   hideSplash(700);
   heartbeat();
@@ -573,7 +582,10 @@ function renderOrder(){
     ${arrangeButton}
     <div class="search-row">
       <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
-      ${lastMap ? `<button class="quick-btn" id="sameAsLast">${t('sameAsLastTime')}</button>` : ''}
+      <div class="order-quick-actions">
+        ${lastMap ? `<button class="quick-btn" id="sameAsLast">${t('sameAsLastTime')}</button>` : ''}
+        <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${t('clearOrder')}</button>
+      </div>
     </div>
     <div id="orderResults" aria-live="polite">${groupHtml || emptyState(t('noSearchResults'))}</div>
   `;
@@ -630,6 +642,7 @@ function refreshOrderResults(){
    successPulse animation on newly-filled items actually plays (static-update
    suppression doesn't apply because #app.innerHTML isn't rebuilt). */
 function refreshOrderView(pulseItemId=null){
+  persistCartDraft();
   refreshOrderResults();
   // A language switch marks the app as a same-screen update, which correctly
   // disables broad entrance motion. Quantity feedback is different: it is an
@@ -639,6 +652,10 @@ function refreshOrderView(pulseItemId=null){
       .find(el=>el.querySelector('[data-inc]')?.dataset.inc === pulseItemId);
     if(row) row.classList.add('qty-bump');
   }
+  refreshCartSummary();
+}
+function refreshCartSummary(){
+  const c=cartCount();
   // Hero stat
   const hero = document.querySelector('.hero-card');
   if(hero){
@@ -653,10 +670,11 @@ function refreshOrderView(pulseItemId=null){
   // Bottom bar send button
   const send = document.getElementById('sendOrdersBtn');
   if(send){
-    const c = cartCount();
     send.disabled = c === 0;
     send.innerHTML = c>0 ? t('itemsSelected')(c)+' · '+t('sendOrders') : t('sendOrders');
   }
+  const clear=document.getElementById('clearOrderBtn');
+  if(clear) clear.disabled=c===0;
 }
 function cartCount(){ return Object.values(state.cart).filter(q=>q>0).length; }
 function renderOrderBottomBar(){
@@ -701,7 +719,9 @@ function attachOrderEvents(){
   const arrange = document.getElementById('orderArrangeBtn');
   if(arrange) arrange.onclick = ()=>openSupplierItemOrder(arrange.dataset.sortSupplier);
   const same = document.getElementById('sameAsLast');
-  if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = {...m}; render(); };
+  if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id) && qty>0)); persistCartDraft(); render(); };
+  const clear=document.getElementById('clearOrderBtn');
+  if(clear) clear.onclick=()=>{state.cart={};persistCartDraft();refreshOrderView();};
   const send = document.getElementById('sendOrdersBtn');
   if(send) send.onclick = ()=>{
     const bySupplier = {};
@@ -728,6 +748,11 @@ function attachOrderResultEvents(root){
   });
   root.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
     const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; refreshOrderView();
+  });
+  root.querySelectorAll('[data-qty]').forEach(inp=>inp.oninput=()=>{
+    const id=inp.dataset.qty; state.cart[id]=inp.value===''?0:Math.max(0,parseInt(inp.value)||0);
+    persistCartDraft();
+    refreshCartSummary();
   });
 }
 
@@ -795,6 +820,7 @@ async function maybeFinishQueue(){
   const saved = await sendOrQueue('orders', 'POST', record);
   if(!saved) toast(t('orderSavedOffline'), 'warn');
   state.cart = {};
+  persistCartDraft();
   state.queue = null;
   state.view = 'order';
   render();
@@ -834,6 +860,7 @@ function attachHistoryEvents(){
       if(state.items.some(i=>i.id===it.itemId)) cart[it.itemId] = it.qty;
     }));
     state.cart = cart;
+    persistCartDraft();
     state.view = 'order';
     render();
   });
@@ -1343,6 +1370,7 @@ function attachItemEvents(){
     const supName = item.supplierId ? (state.suppliers.find(s=>s.id===item.supplierId)?.name || '') : '';
     state.items = state.items.filter(i=>i.id!==id);
     delete state.cart[id];
+    persistCartDraft();
     logActivity({action:'delete', type:'item', name:item.name, fields:[
       {k:'name', from:item.name}, {k:'unit', from:unitEn(item.unit)}, {k:'supplier', from:supName}
     ]});

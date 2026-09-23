@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-23.5';
+const APP_VERSION = '2026-09-23.6';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,8 +14,8 @@ const APP_VERSION = '2026-09-23.5';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'The desktop login and workspace now use the full screen, supplier tabs have scroll controls, and item groups use a cleaner dark-green responsive design.';
-const CHANGELOG_KU = 'پەڕەی چوونەژوورەوە و شوێنی کار لە کۆمپیوتەر ئێستا تەواوی شاشە بەکاردەهێنن، تابی دابینکەران دوگمەی جوڵاندنی هەیە و گرووپی کاڵاکان دیزاینێکی دارک سەوز و وەڵامدەرەوەیان هەیە.';
+const CHANGELOG_EN = 'Order drafts now save automatically on this device and return when you reopen the app. Use Clear order beside Same as last time to empty the draft.';
+const CHANGELOG_KU = 'داواکارییە نەنێردراوەکان بە شێوەیەکی خۆکار لەم ئامێرەدا پاشەکەوت دەبن و دوای کردنەوەیەوە دەگەڕێنەوە. دوگمەی پاککردنەوەی داواکاری لە تەنیشت وەک جاری پێشووە بۆ بەتاڵکردنەوەی داواکارییەکە.';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN
