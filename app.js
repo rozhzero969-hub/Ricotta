@@ -556,9 +556,13 @@ function renderOrder(){
   const selectedCount = state.orderTab==='all' ? state.items.length : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab).length;
   const selectedSupplierCount = state.orderTab==='all' ? new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size : (selectedCount ? 1 : 0);
 
-  const tabsHtml = `<div class="order-tabs">${tabs.map(tb=>`
-    <button class="tab-pill ${state.orderTab===tb.id?'active':''}" data-ordertab="${esc(tb.id)}">${esc(tb.label)}</button>
-  `).join('')}</div>`;
+  const tabsHtml = `<div class="order-tabs-shell">
+    <button class="tab-scroll tab-scroll-prev" id="orderTabsPrev" aria-label="${t('previousSuppliers')}">‹</button>
+    <div class="order-tabs" id="orderTabs">${tabs.map(tb=>`
+      <button class="tab-pill ${state.orderTab===tb.id?'active':''}" data-ordertab="${esc(tb.id)}">${esc(tb.label)}</button>
+    `).join('')}</div>
+    <button class="tab-scroll tab-scroll-next" id="orderTabsNext" aria-label="${t('nextSuppliers')}">›</button>
+  </div>`;
   const arrangeButton = state.role==='admin' && state.orderTab!=='all' && state.orderTab!=='__none'
     ? `<div class="order-arrange-row"><button class="item-sort-trigger" id="orderArrangeBtn" data-sort-supplier="${esc(state.orderTab)}">${t('sortSupplierItems')}</button></div>` : '';
 
@@ -609,8 +613,8 @@ function renderOrderResults(){
       ? `<button class="item-sort-trigger" data-sort-supplier="${esc(key)}">${t('sortSupplierItems')}</button>` : '';
     return state.orderTab==='all' ? `<div class="supplier-group">
       <div class="supplier-head"><span>${esc(label)}</span>${arrangeButton}</div>
-      ${rows}
-    </div>` : rows;
+      <div class="supplier-items-grid">${rows}</div>
+    </div>` : `<div class="supplier-items-grid standalone">${rows}</div>`;
   }).join('');
 
   return groupHtml;
@@ -673,6 +677,27 @@ function attachOrderEvents(){
     refreshOrderResults();
   };
   attachOrderResultEvents(document.getElementById('orderResults'));
+  const tabs=document.getElementById('orderTabs');
+  if(tabs){
+    const scrollTabs=step=>{
+      const pills=[...tabs.querySelectorAll('.tab-pill')];
+      if(!pills.length) return;
+      const center=tabs.getBoundingClientRect().left+tabs.clientWidth/2;
+      let index=0, distance=Infinity;
+      pills.forEach((pill,i)=>{const rect=pill.getBoundingClientRect();const d=Math.abs(rect.left+rect.width/2-center);if(d<distance){distance=d;index=i;}});
+      pills[Math.max(0,Math.min(pills.length-1,index+step))].scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+    };
+    const prev=document.getElementById('orderTabsPrev');
+    const next=document.getElementById('orderTabsNext');
+    if(prev) prev.onclick=()=>scrollTabs(-1);
+    if(next) next.onclick=()=>scrollTabs(1);
+    tabs.addEventListener('wheel',e=>{
+      if(Math.abs(e.deltaY)<=Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      tabs.scrollBy({left:e.deltaY,behavior:'smooth'});
+    },{passive:false});
+    tabs.querySelector('.tab-pill.active')?.scrollIntoView({block:'nearest',inline:'center'});
+  }
   const arrange = document.getElementById('orderArrangeBtn');
   if(arrange) arrange.onclick = ()=>openSupplierItemOrder(arrange.dataset.sortSupplier);
   const same = document.getElementById('sameAsLast');

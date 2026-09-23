@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-23.4';
+const APP_VERSION = '2026-09-23.5';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,8 +14,8 @@ const APP_VERSION = '2026-09-23.4';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'Arrange all supplier items by dragging on the Order screen. The Items page stays A–Z, and unit names can now be corrected in English and Kurdish without removing them from items.';
-const CHANGELOG_KU = 'لە پەڕەی داواکردن دەتوانیت هەموو کاڵاکانی هەر دابینکەرێک بە ڕاکێشان ڕێکبخەیت. پەڕەی کاڵاکان بە پێی پیت ڕیز دەبێت و ناوی یەکەکان بە ئینگلیزی و کوردی دەستکاری دەکرێن بەبێ لابردنیان لە کاڵاکان.';
+const CHANGELOG_EN = 'The desktop login and workspace now use the full screen, supplier tabs have scroll controls, and item groups use a cleaner dark-green responsive design.';
+const CHANGELOG_KU = 'پەڕەی چوونەژوورەوە و شوێنی کار لە کۆمپیوتەر ئێستا تەواوی شاشە بەکاردەهێنن، تابی دابینکەران دوگمەی جوڵاندنی هەیە و گرووپی کاڵاکان دیزاینێکی دارک سەوز و وەڵامدەرەوەیان هەیە.';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN
