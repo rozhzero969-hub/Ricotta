@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-23.1';
+const APP_VERSION = '2026-09-23.2';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,8 +14,8 @@ const APP_VERSION = '2026-09-23.1';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'A new Ricotta loading screen, faster sign-in with no page reload, a smoother and more polished look, and many reliability fixes: deleted items and units now stay deleted, notifications and reminders work again, remote log out and refresh work instantly, and orders are kept safely even when the Wi-Fi drops.';
-const CHANGELOG_KU = 'شاشەیەکی نوێی بارکردنی ریکۆتا، چوونەژوورەوەی خێراتر بەبێ نوێکردنەوەی پەڕە، ڕووکارێکی ڕێکتر و جوانتر، و چاککردنی زۆر: کاڵا و یەکە سڕاوەکان ئیتر ناگەڕێنەوە، ئاگادارکردنەوە و بیرخەرەوەکان دووبارە کار دەکەن، چوونەدەرەوە و نوێکردنەوەی دوور دەستبەجێ کار دەکەن، و داواکارییەکان بە سەلامەتی هەڵدەگیرێن تەنانەت کاتێک وایفای دەپچڕێت.';
+const CHANGELOG_EN = 'Quantity feedback now stays smooth and reliable after changing language or refreshing the order view. This release also includes a focused reliability and database health check.';
+const CHANGELOG_KU = 'ئێستا ئەنیمەیشنی زیادکردنی بڕ بە نرمی و بەجێگیری کار دەکات، تەنانەت دوای گۆڕینی زمان یان نوێکردنەوەی لیستی داواکاری. لەم وەشانەدا پشکنینی وردی جێگیریی و تەندروستی بنکەدراوەش کراوە.';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN

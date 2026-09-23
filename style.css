@@ -658,6 +658,11 @@
     animation: successPulse .6s var(--ease) forwards;
   }
   #app.static-update .item-row.has-qty{ animation:none !important; }
+  /* This is direct acknowledgement of a + tap, rather than a screen-entry
+     animation.  It must remain available after a language switch or another
+     lightweight same-screen update. */
+  #app .item-row.qty-bump{ animation:successPulse .6s var(--ease) forwards; }
+  #app.static-update .item-row.qty-bump{ animation:successPulse .6s var(--ease) forwards !important; }
 
   /* Pointer devices only: a gentle hover lift (no-op on touch) */
   @media (hover:hover) and (pointer:fine){
