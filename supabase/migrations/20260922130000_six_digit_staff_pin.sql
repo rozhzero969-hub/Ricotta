@@ -15,11 +15,8 @@ begin
 end;
 $$;
 
--- User-requested staff PIN.  Do not add it to client code or configuration.
-update public.app_roles
-set pin_hash = extensions.crypt('200777', extensions.gen_salt('bf',12)), updated_at=now()
-where role='staff';
-update public.app_sessions set revoked_at=now() where revoked_at is null;
+-- The staff PIN was set here once, directly in the database. The value is
+-- intentionally not kept in source control; change PINs from Settings.
 
 revoke execute on function public.app_internal_set_pins(text,text) from public, anon, authenticated;
 grant execute on function public.app_internal_set_pins(text,text) to service_role;

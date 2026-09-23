@@ -93,36 +93,21 @@ async function fetchLiveInfo(){
 }
 
 async function checkForUpdate(){
-  if(updateCheckBusy || updatePromptOpen) return;
-  if(modalIsOpen()) return; /* someone is in the middle of a form -- try again next time */
+  if(updateCheckBusy || updatePromptOpen || modalIsOpen()) return;   /* never interrupt a half-filled form */
   updateCheckBusy = true;
   try{
-    const res = await fetch(`config.js?_=${Date.now()}`, { cache: 'no-store' });
-    if(res.ok){
-      const text = await res.text();
-      const verMatch = text.match(/APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
-      const liveVersion = verMatch && verMatch[1];
-      if(liveVersion && liveVersion !== APP_VERSION){
-        /* A popup may have been opened while the request was in flight. */
-        if(modalIsOpen()){ updateCheckBusy = false; return; }
-        if(cartIsEmpty()){
-          hardReload();
-          return;
-        }
-        if(liveVersion === snoozedVersion){ updateCheckBusy = false; return; }
-        const enMatch = text.match(/CHANGELOG_EN\s*=\s*['"]([^'"]*)['"]/);
-        const kuMatch = text.match(/CHANGELOG_KU\s*=\s*['"]([^'"]*)['"]/);
-        updatePromptOpen = true;
-        const ok = await showConfirm(buildUpdateMessage(enMatch && enMatch[1], kuMatch && kuMatch[1]), {
-          okLabel: t('updateNow'), cancelLabel: t('later'), okClass: 'btn-primary'
-        });
-        if(ok){ hardReload(); return; }
-        snoozedVersion = liveVersion;
-        updatePromptOpen = false;
-      }
-    }
-  }catch(e){ /* offline, or the request was blocked -- just try again later */ }
-  updateCheckBusy = false;
+    const live = await fetchLiveInfo();
+    if(!live || !live.version || live.version === APP_VERSION || modalIsOpen()) return;
+    if(cartIsEmpty()){ hardReload(); return; }
+    if(live.version === snoozedVersion) return;
+    updatePromptOpen = true;
+    const ok = await showConfirm(buildUpdateMessage(live.en, live.ku), {
+      okLabel: t('updateNow'), cancelLabel: t('later'), okClass: 'btn-primary'
+    });
+    updatePromptOpen = false;
+    if(ok){ hardReload(); return; }
+    snoozedVersion = live.version;
+  }finally{ updateCheckBusy = false; }
 }
 
 /* Opened by an "update" notification (tapped, or received while the app is

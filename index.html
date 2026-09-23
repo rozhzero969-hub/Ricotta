@@ -1,35 +1,109 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="booting">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#152B22">
+<meta name="description" content="Ricotta Orders — daily supplier ordering for the Ricotta kitchen.">
 <title>Ricotta Orders</title>
 <!-- Home Screen install + notifications: iOS only allows push for sites
      that have a manifest and are opened from the Home Screen icon. -->
 <link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Ricotta">
+
+<!-- Splash screen. Everything it needs is inline (including a 2 KB subset of
+     the Manrope wordmark font), so it paints on the very first frame instead
+     of a blank white page, while the app's own files load behind it. -->
+<style>
+  @font-face{font-family:'RicottaMark';font-weight:800;font-display:block;
+    src:url(data:font/woff2;base64,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) format('woff2');}
+  html.booting,html.booting body{background:#0E1F18;overflow:hidden;margin:0}
+  .splash{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;overflow:hidden;
+    background:radial-gradient(120% 90% at 50% 38%,#20513b 0%,#152B22 46%,#0B1812 100%);
+    color:#fff;direction:ltr;font-family:'RicottaMark','Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;
+    -webkit-user-select:none;user-select:none}
+  .splash-rings{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+  .splash-rings i{position:absolute;width:min(78vmin,560px);aspect-ratio:1;border-radius:50%;
+    border:1px solid rgba(111,207,154,.13);animation:ringOut 3.6s cubic-bezier(.2,.7,.2,1) infinite}
+  .splash-rings i:nth-child(2){animation-delay:1.8s}
+  .splash-inner{position:relative;display:flex;flex-direction:column;align-items:center}
+  .splash-word{display:flex;align-items:flex-end;font-weight:800;font-size:clamp(46px,13vw,76px);
+    letter-spacing:-.045em;line-height:1;overflow:hidden;padding:.06em .08em .1em}
+  .splash-word span{display:inline-block;transform:translateY(105%);opacity:0;
+    animation:letterUp .75s cubic-bezier(.2,.9,.25,1) forwards;animation-delay:calc(var(--i)*55ms + 120ms)}
+  .splash-word .splash-dot{width:.2em;height:.2em;margin:0 0 .08em .07em;border-radius:50%;background:#6FCF9A;
+    transform:scale(0);opacity:1;animation:dotPop .6s cubic-bezier(.34,1.8,.5,1) .62s forwards,dotGlow 2.2s ease-in-out 1.3s infinite}
+  .splash-sub{margin-top:14px;font-size:12px;font-weight:800;letter-spacing:.9em;text-indent:.9em;
+    color:rgba(255,255,255,.58);opacity:0;animation:trackIn 1s cubic-bezier(.2,.8,.2,1) .55s forwards}
+  .splash-bar{position:relative;margin-top:34px;width:132px;height:3px;border-radius:3px;overflow:hidden;
+    background:rgba(255,255,255,.1);opacity:0;animation:fadeIn .5s ease .85s forwards}
+  .splash-bar i{position:absolute;inset:0 auto 0 0;width:42%;border-radius:3px;
+    background:linear-gradient(90deg,rgba(111,207,154,0),#6FCF9A,rgba(111,207,154,0));
+    animation:sweep 1.15s cubic-bezier(.45,.05,.55,.95) infinite}
+  .splash[data-state=leaving]{animation:curtain .7s cubic-bezier(.7,0,.2,1) .18s forwards;pointer-events:none}
+  .splash[data-state=leaving] .splash-inner{animation:innerOut .38s cubic-bezier(.4,0,.2,1) forwards}
+  .splash[data-state=leaving] .splash-bar i{animation:fillUp .3s ease-out forwards}
+  @keyframes letterUp{to{transform:translateY(0);opacity:1}}
+  @keyframes dotPop{to{transform:scale(1)}}
+  @keyframes dotGlow{0%,100%{box-shadow:0 0 0 0 rgba(111,207,154,.55)}50%{box-shadow:0 0 0 .22em rgba(111,207,154,0)}}
+  @keyframes trackIn{from{opacity:0;letter-spacing:1.6em}to{opacity:1;letter-spacing:.9em}}
+  @keyframes fadeIn{to{opacity:1}}
+  @keyframes sweep{from{transform:translateX(-110%)}to{transform:translateX(260%)}}
+  @keyframes fillUp{to{width:100%;transform:none;background:#6FCF9A}}
+  @keyframes ringOut{0%{transform:scale(.35);opacity:0}25%{opacity:1}100%{transform:scale(1.25);opacity:0}}
+  @keyframes innerOut{to{transform:scale(1.06) translateY(-6px);opacity:0;filter:blur(3px)}}
+  @keyframes curtain{to{clip-path:inset(0 0 100% 0)}}
+  @media (prefers-reduced-motion:reduce){
+    .splash *,.splash{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important}
+  }
+</style>
+<script>window.__splashStart = performance.now();</script>
+
+<!-- Stylesheets load without blocking the first paint (the splash covers the
+     app until they're in; app.js waits for them before revealing it). -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Vazirmatn:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" href="style.css" as="style" onload="this.onload=null;this.rel='stylesheet';window.__cssReady=true;document.dispatchEvent(new Event('cssready'))">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Vazirmatn:wght@500;600;700;800&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="style.css"></noscript>
 </head>
 <body>
+<div id="splash" class="splash" aria-hidden="true">
+  <div class="splash-rings"><i></i><i></i></div>
+  <div class="splash-inner">
+    <div class="splash-word"><span style="--i:0">r</span><span style="--i:1">i</span><span style="--i:2">c</span><span style="--i:3">o</span><span style="--i:4">t</span><span style="--i:5">t</span><span style="--i:6">a</span><span class="splash-dot"></span></div>
+    <div class="splash-sub">ORDERS</div>
+    <div class="splash-bar"><i></i></div>
+  </div>
+</div>
+<!-- Same splash, re-shown for a moment while a fresh sign-in loads. -->
+<template id="splashTpl">
+<div id="splash" class="splash" aria-hidden="true">
+  <div class="splash-rings"><i></i><i></i></div>
+  <div class="splash-inner">
+    <div class="splash-word"><span style="--i:0">r</span><span style="--i:1">i</span><span style="--i:2">c</span><span style="--i:3">o</span><span style="--i:4">t</span><span style="--i:5">t</span><span style="--i:6">a</span><span class="splash-dot"></span></div>
+    <div class="splash-sub">ORDERS</div>
+    <div class="splash-bar"><i></i></div>
+  </div>
+</div>
+</template>
 <div id="app"></div>
-<!-- Load order matters: config.js must come before storage.js and app.js
-     (both read SUPABASE_URL/SUPABASE_ANON_KEY/DEFAULT_UNITS while loading).
-     Everything else is only used inside function bodies, called after all
-     scripts have loaded, so their relative order doesn't matter. app.js
-     must be last since it calls boot() immediately. -->
-<script src="config.js"></script>
-<script src="icons.js"></script>
-<script src="i18n.js"></script>
-<script src="storage.js"></script>
-<script src="modals.js"></script>
-<script src="push.js"></script>
-<script src="app.js"></script>
-<script src="update-check.js"></script>
+<noscript><p style="padding:24px;font-family:sans-serif">Ricotta Orders needs JavaScript turned on.</p></noscript>
+<!-- Load order matters: config.js first (constants), app.js last but one
+     (it calls boot()). `defer` downloads them in parallel and runs them in
+     this order once the page is parsed. -->
+<script defer src="config.js"></script>
+<script defer src="icons.js"></script>
+<script defer src="i18n.js"></script>
+<script defer src="storage.js"></script>
+<script defer src="modals.js"></script>
+<script defer src="push.js"></script>
+<script defer src="app.js"></script>
+<script defer src="update-check.js"></script>
 </body>
 </html>

@@ -1,77 +1,69 @@
 /* Ricotta Orders -- app state, rendering and event handlers.
-   Depends on: DEFAULT_UNITS, SUPABASE_URL, SUPABASE_ANON_KEY, PIN consts
-   (config.js), T (i18n.js), icon strings (icons.js), sget/sset/appVerifyPin/
-   appGetPins/appSetPins/appGetCloudConfig/appSetCloudConfig (storage.js),
-   showConfirm, showAlert, showPrompt, showFormModal and showForcedRefresh
-   (modals.js), hardReload (update-check.js, only called at runtime), push helpers
-   (push.js: initPush, enablePush, pushBannerMode, ...). Load this file after
-   modals.js and push.js. */
+   Depends on: DEFAULT_UNITS, PIN consts (config.js), T (i18n.js), icon strings
+   (icons.js), lget/lset/api/apiLogin/apiSession/sendOrQueue/flushOutbox
+   (storage.js), showConfirm/showAlert/showPrompt/showFormModal/showForcedRefresh
+   (modals.js), push helpers (push.js), hardReload (update-check.js).
+   Load this file after all of those; it calls boot() at the end. */
 /* ============ State ============ */
 let state = {
   lang: 'en',
   role: null,           // 'admin' | 'user' | null
   view: 'order',
   pinBuffer: '',
-  pinError: false,
-  pinExpanded: false,
-  justExpanded: false,
+  pinError: '',         // '' | 'wrong' | 'locked' | 'network' | 'session'
+  pinBusy: false,       // PIN is being checked with the server
+  pinPop: false,        // animate the dot that was just typed
   suppliers: [],
   items: [],
   units: [],
-  // supabaseUrl/supabaseKey are public connection info, not secrets --
-  // see the comment in config.js. adminPin/userPin/cloudPassword are
-  // NEVER stored here except transiently, right after a correct RPC
-  // check, for as long as the relevant screen needs to display them.
-  settings: { supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_ANON_KEY },
-  adminPinEntered: null,     // this session's admin PIN, kept in memory only,
-                             // used to authorize PIN/cloud-config changes
-  cloudPasswordEntered: null,
   history: [],
   cart: {},              // itemId -> qty
   search: '',
   orderTab: 'all',        // 'all' | supplierId | '__none'
-  cloudUnlocked: false,   // whether the Cloud Setup section is currently revealed
   itemFormSupplierId: null, // supplier "locked in" for the add-item form
-  queue: null,           // array of {supplierId, sent} while sending
-  activity: [],          // the Record: [{id, ts, action, type, name, fields, by, role}], synced via Supabase
+  queue: null,           // array of {supplierId, items, sent} while sending
+  activity: [],          // the Record: [{id, ts, action, type, name, fields, by, role}]
   recordFilter: 'all',   // 'all' | 'supplier' | 'item' | 'unit'
-  devices: [],           // [{id, nickname, role, lastLogin, lastSeen, loggedIn, logins}], synced via Supabase
+  devices: [],           // [{id, nickname, role, lastLogin, lastSeen, loggedIn, command, handledCommand}]
   deviceId: null,        // this device's own id, generated once and kept locally
-  reminder: null,        // daily reminder settings {enabled,time}; null = not loaded yet, false = failed to load
+  reminder: null,        // daily reminder settings {enabled,time}
   apiOnline: navigator.onLine
 };
 
 function t(key){ return T[state.lang][key]; }
-/* Consistent "nothing here yet" block: icon + message, used for every empty
-   list in the app (Suppliers, Items, History, Record, Devices, Units,
-   search results). Kept as one helper so all empty states look the same
-   and stay that way if the treatment ever changes. */
+/* Consistent "nothing here yet" block, used for every empty list. */
 function emptyState(msg){
   return `<div class="empty">${ICON_EMPTY}<div class="empty-text">${msg}</div></div>`;
 }
-
-/* Escapes text before it's inserted into innerHTML, so an item/supplier/
-   unit name typed by staff can never break out of its tag and inject HTML. */
+/* Escapes text before it's inserted into innerHTML, so a name typed by staff
+   can never break out of its tag and inject HTML. */
 function esc(s){
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+/* Small, self-dismissing confirmation at the bottom of the screen -- used for
+   successes, so they don't need an extra tap like a popup does. */
+let toastTimer = null;
+function toast(msg, kind='ok'){
+  let el = document.getElementById('toast');
+  if(!el){ el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role','status'); document.body.appendChild(el); }
+  el.className = 'toast ' + kind;
+  el.textContent = msg;
+  requestAnimationFrame(()=> el.classList.add('show'));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> el.classList.remove('show'), 2600);
+}
 
-/* ============ Device tracking ============ */
-/* Each device has one entry in the shared 'devices' list:
-   {id, nickname, role, lastLogin, lastSeen, loggedIn, logins:[newest first]}
-   - lastLogin / logins: when the PIN was entered on that device
-   - loggedIn: true from login until that device taps Log out
-   - lastSeen: refreshed every couple of minutes while the app is open and
-     on screen, which is how "active now" is told apart from "logged in but
-     the app is closed or idle". */
+/* ============ Devices ============
+   The server keeps one row per device. This device reports "still here"
+   every couple of minutes while the app is open (so admins can tell "active
+   now" from "signed in but idle") and polls for remote commands from an admin
+   (log out / refresh). */
 const HEARTBEAT_MS = 2*60*1000;       /* how often an open app reports "still here" */
 const ACTIVE_WINDOW_MS = 5*60*1000;   /* seen within this long ago = "active now" */
-const MAX_LOGINS_KEPT = 10;           /* recent logins remembered per device */
-let deviceQueue = Promise.resolve();
+const COMMAND_POLL_MS = 15*1000;
 
-/* Generates a random id for this device the first time it's needed, and
-   remembers it in localStorage from then on. It's not a secret -- just a
-   way to recognize "this same phone" across logins. */
+/* A random id for this device, created once and remembered. Not a secret --
+   just a way to recognise "this same phone" across sign-ins. */
 function ensureDeviceId(){
   let id = lget('deviceId');
   if(!id){
@@ -80,242 +72,206 @@ function ensureDeviceId(){
   }
   return id;
 }
-/* Changes ONE device's entry (creating it if it doesn't exist yet). Writes
-   are queued one after another, and each one re-reads the shared list
-   first, so several phones reporting in at the same time don't overwrite
-   each other's entries or nicknames. */
-function mutateDevices(fn){
-  deviceQueue = deviceQueue.then(async ()=>{
-    let latest = await sget('devices', true);
-    if(!Array.isArray(latest)) latest = state.devices;
-    fn(latest);
-    latest = pruneDevices(latest);
-    state.devices = latest;
-    await sset('devices', latest, true);
-    if(state.view === 'devices') render();
-  }).catch(e=>console.error('device update failed', e));
-  return deviceQueue;
-}
-/* Only devices that are logged in stay in the list. A device that logs out (or that
-   an admin logs out) is removed, so the list never fills up with old logins. The one
-   exception: a device with a "log out" waiting for it is kept (hidden) until it opens
-   the app and picks the command up -- otherwise it would stay signed in -- but not
-   longer than 30 days. */
-const PENDING_LOGOUT_KEEP_MS = 30*24*60*60*1000;
-function pruneDevices(list){
-  return list.filter(d=>{
-    if(isLoggedIn(d)) return true;
-    if(commandIsPending(d) && d.command.type === 'logout'){
-      const age = Date.now() - new Date(d.command.ts || 0).getTime();
-      return age < PENDING_LOGOUT_KEEP_MS;
-    }
-    return false;
-  });
-}
-function updateDevice(id, mutate){
-  return mutateDevices(list=>{
-    let entry = list.find(d=>d.id===id);
-    if(!entry){
-      // A device that logged out has no entry any more; when it signs in again it
-      // gets its old nickname back from this phone instead of being asked again.
-      const savedName = id === state.deviceId ? (lget('deviceNickname') || '') : '';
-      entry = {id, nickname:savedName, role:'user', lastLogin:null, lastSeen:null, loggedIn:false, logins:[]};
-      list.push(entry);
-    }
-    mutate(entry);
-  });
-}
-/* Called right after a successful PIN login. Marks this device as logged
-   in and adds the time to its recent-logins list, then -- only the first
-   time this device has ever logged in, i.e. it doesn't have a nickname
-   yet -- asks for a nickname. Runs in the background after render() so it
-   never delays the login transition. */
-async function recordDeviceLogin(role){
-  const now = new Date().toISOString();
-  await updateDevice(state.deviceId, d=>{
-    d.role = role; d.loggedIn = true; d.lastLogin = now; d.lastSeen = now;
-    d.logins = [now, ...(d.logins || [])].slice(0, MAX_LOGINS_KEPT);
-    // A command that was sent before this login is old news -- without
-    // this, an old "log out" could kick the person out right after signing in.
-    if(d.command){ d.handledCommand = d.command.id; lset('handledCommand', d.command.id); }
-  });
-  const entry = state.devices.find(d=>d.id===state.deviceId);
-  if(entry && !entry.nickname){
-    const name = await showPrompt(t('deviceNamePromptMsg'), {
-      placeholder: t('deviceNamePlaceholder'), okLabel: t('save'), cancelLabel: t('skip')
-    });
-    if(name){ lset('deviceNickname', name); await updateDevice(state.deviceId, d=>{ d.nickname = name; }); }
-  }
-}
-/* "Still here" ping: used at startup when a saved session is restored, every
-   couple of minutes while the app is open, and when the app comes back to
-   the foreground. */
-function touchDevice(){
-  const role = state.role;
-  if(!role) return Promise.resolve();
-  const now = new Date().toISOString();
-  return updateDevice(state.deviceId, d=>{
-    // An admin already logged this device out and it just hasn't caught up yet:
-    // don't flip it back to "logged in" with a heartbeat.
-    if(commandIsPending(d) && d.command.type === 'logout') return;
-    d.role = role; d.loggedIn = true; d.lastSeen = now;
-    if(!d.lastLogin) d.lastLogin = now;
-  });
-}
-function markDeviceLoggedOut(ackId){
-  const now = new Date().toISOString();
-  return updateDevice(state.deviceId, d=>{
-    d.loggedIn = false; d.lastSeen = now;
-    if(ackId) d.handledCommand = ackId;
-  });
-}
-/* Signs this device out (used by the Log out button and by an admin's
-   remote "log out" command). */
-function doLogout(ackId){
-  const me = state.devices.find(d=>d.id===state.deviceId);
-  if(me && me.nickname) lset('deviceNickname', me.nickname);   // keep the name for the next login
-  markDeviceLoggedOut(ackId);
-  state.role=null; state.pinBuffer=''; state.view='order'; state.cloudUnlocked=false;
-  state.adminPinEntered=null; state.cloudPasswordEntered=null;
-  lset('session', null); render();
-}
-
-/* ============ Remote commands (admin -> other devices) ============ */
-/* An admin can tell another device to log out or to refresh. The command is
-   written onto that device's entry in the shared 'devices' list as
-   d.command = {id, type:'logout'|'refresh', ts}. Every open device checks
-   the list every few seconds; when it sees a command it hasn't handled yet,
-   it does it, then records d.handledCommand = command id so the admin can
-   see it went through (and so it never runs twice). */
-const COMMAND_POLL_MS = 10*1000;
-let commandCheckBusy = false;
-let forcedRefreshOpen = false;
-
-function newCommandId(){ return 'c'+Date.now()+Math.random().toString(36).slice(2,7); }
+function myDevice(){ return state.devices.find(d=>d.id===state.deviceId); }
 function otherDevices(){ return state.devices.filter(d=>d.id !== state.deviceId); }
 function commandIsPending(d){ return !!(d.command && d.command.id !== d.handledCommand); }
 
-/* Admin side: put a command on the given devices. */
-function sendDeviceCommand(type, ids){
-  const ts = new Date().toISOString();
-  return mutateDevices(list=>{
-    list.forEach(d=>{
-      if(!ids.includes(d.id)) return;
-      d.command = {id:newCommandId(), type, ts};
-      // Logging out takes effect in the list straight away -- the device may be
-      // closed and only notice next time it opens, but it is no longer "logged in".
-      if(type === 'logout') d.loggedIn = false;
-    });
+function heartbeat(){
+  if(!state.role) return;
+  api('devices/me', {method:'POST', body:{}});
+  flushOutbox();
+}
+/* Right after signing in: ask for a nickname the first time this device is
+   used (or restore the one this phone remembers). */
+async function afterLogin(){
+  const me = myDevice();
+  const saved = lget('deviceNickname');
+  if(me && me.nickname){ lset('deviceNickname', me.nickname); return; }
+  if(saved){ await setDeviceNickname(state.deviceId, saved); return; }
+  const name = await showPrompt(t('deviceNamePromptMsg'), {
+    placeholder: t('deviceNamePlaceholder'), okLabel: t('save'), cancelLabel: t('skip')
   });
+  if(name) await setDeviceNickname(state.deviceId, name);
+}
+async function setDeviceNickname(id, name){
+  if(id === state.deviceId) lset('deviceNickname', name || null);
+  const r = await api(`devices/${encodeURIComponent(id)}/nickname`, {method:'PUT', body:{nickname:name}});
+  if(r.ok){
+    const d = state.devices.find(x=>x.id===id);
+    if(d) d.nickname = name;
+    if(state.view === 'devices') render();
+  }
+  return r.ok;
 }
 
-/* Device side: look for a command aimed at this device and run it. */
+/* Admin side: tell other devices to log out or refresh. */
+async function sendDeviceCommand(type, ids){
+  const r = await api('devices/command', {method:'POST', body:{type, ids}});
+  if(!r.ok){ await showAlert(t('saveFailed')); return; }
+  await refreshDevices();
+}
+/* Device side: pick up a command aimed at this device. Admins also get the
+   fresh device list for the Devices screen from the same request. */
+let commandCheckBusy = false;
+let forcedRefreshOpen = false;
 async function checkCommands(){
-  if(commandCheckBusy || !state.deviceId) return;
+  if(commandCheckBusy || !state.role) return;
   commandCheckBusy = true;
   try{
-    const latest = await sget('devices', true);
-    if(Array.isArray(latest)){
-      const changed = JSON.stringify(latest) !== JSON.stringify(state.devices);
-      state.devices = latest;
-      if(changed && state.role === 'admin' && state.view === 'devices') render();
-      const me = latest.find(d=>d.id === state.deviceId);
-      if(me && me.command && me.command.id !== lget('handledCommand')) await runCommand(me.command);
+    const r = await api('devices');
+    if(r.ok && Array.isArray(r.data)){
+      const changed = JSON.stringify(r.data) !== JSON.stringify(state.devices);
+      state.devices = r.data;
+      if(changed && state.view === 'devices') render();
+      const me = myDevice();
+      if(me && commandIsPending(me) && me.command.id !== lget('handledCommand')) await runCommand(me.command);
     }
-  }catch(e){ console.error('command check failed', e); }
-  commandCheckBusy = false;
+  }finally{ commandCheckBusy = false; }
 }
 async function runCommand(cmd){
+  lset('handledCommand', cmd.id);
   if(cmd.type === 'logout'){
-    lset('handledCommand', cmd.id);
-    if(state.role){
-      const root = document.getElementById('modalRoot');
-      if(root) root.innerHTML = '';
-      doLogout(cmd.id);
-      showAlert(t('forcedLogoutMsg'));
-    } else {
-      updateDevice(state.deviceId, d=>{ d.handledCommand = cmd.id; });
-    }
+    await api('devices/me/ack', {method:'POST', body:{commandId:cmd.id}});
+    signOut(t('forcedLogoutMsg'));
   } else if(cmd.type === 'refresh'){
     if(forcedRefreshOpen) return;
     forcedRefreshOpen = true;
     await showForcedRefresh(t('refreshRequiredTitle'), t('refreshRequiredMsg'), t('refreshNow'));
-    lset('handledCommand', cmd.id);
-    try{ await updateDevice(state.deviceId, d=>{ d.handledCommand = cmd.id; }); }catch(e){}
+    await api('devices/me/ack', {method:'POST', body:{commandId:cmd.id}});
     await hardReload();
   }
 }
-setInterval(()=>{ if(document.visibilityState === 'visible') checkCommands(); }, COMMAND_POLL_MS);
-document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState === 'visible') checkCommands();
-});
-setInterval(()=>{
-  if(state.role && document.visibilityState === 'visible') touchDevice();
-}, HEARTBEAT_MS);
-document.addEventListener('visibilitychange', ()=>{
-  if(state.role && document.visibilityState === 'visible') touchDevice();
-});
-/* Keeps the Devices screen fresh while an admin is looking at it. */
 async function refreshDevices(){
-  const latest = await sget('devices', true);
-  if(Array.isArray(latest)){
-    state.devices = latest;
+  const r = await api('devices');
+  if(r.ok && Array.isArray(r.data)){
+    state.devices = r.data;
     if(state.view === 'devices') render();
   }
 }
-setInterval(()=>{
-  if(state.role === 'admin' && state.view === 'devices' && document.visibilityState === 'visible') refreshDevices();
-}, 30000);
+const isVisible = ()=> document.visibilityState === 'visible';
+setInterval(()=>{ if(isVisible()) checkCommands(); }, COMMAND_POLL_MS);
+setInterval(()=>{ if(isVisible()) heartbeat(); }, HEARTBEAT_MS);
+document.addEventListener('visibilitychange', ()=>{
+  if(isVisible() && state.role){ checkCommands(); heartbeat(); }
+});
+
+/* ============ Connection status ============ */
 function setApiHealth(online){
-  state.apiOnline = !!online && navigator.onLine;
-  const el=document.getElementById('connectionStatus');
-  if(el){ el.classList.toggle('offline',!state.apiOnline); el.innerHTML=`<span></span>${state.apiOnline?'Online':'Offline'}`; }
+  const next = !!online && navigator.onLine;
+  if(next === state.apiOnline) return;
+  state.apiOnline = next;
+  const el = document.getElementById('connectionStatus');
+  if(el){ el.classList.toggle('offline', !next); el.innerHTML = `<span></span><em>${next ? t('online') : t('offline')}</em>`; }
+  if(next) flushOutbox();
 }
-async function checkConnection(){
-  if(!navigator.onLine){ setApiHealth(false); return; }
-  const result=await apiFetch('health'); setApiHealth(!!result?.ok);
+window.addEventListener('online', ()=>{ api('health'); });
+window.addEventListener('offline', ()=> setApiHealth(false));
+
+/* ============ Session ============ */
+/* Loads everything this role needs from the server in one request. */
+async function loadData(){
+  const r = await api('bootstrap');
+  if(!r.ok || !r.data) return false;
+  const d = r.data;
+  state.suppliers = d.suppliers || [];
+  state.items = d.items || [];
+  state.units = (d.units && d.units.length) ? d.units : DEFAULT_UNITS;
+  state.history = d.history || [];
+  state.devices = d.devices || [];
+  state.activity = d.activity || [];
+  state.reminder = d.reminder || {enabled:false, time:'09:00'};
+  // The server is the authority on this session's role.
+  if(d.role) state.role = d.role === 'staff' ? 'user' : d.role;
+  return true;
 }
-window.addEventListener('online', checkConnection);
-window.addEventListener('offline', ()=>setApiHealth(false));
-setInterval(()=>{ if(state.role) checkConnection(); }, 30000);
+/* Clears this device's sign-in and returns to the PIN pad. */
+function signOut(reason){
+  const me = myDevice();
+  if(me && me.nickname) lset('deviceNickname', me.nickname);
+  clearApiSession();
+  state.role = null; state.pinBuffer = ''; state.view = 'order'; state.queue = null;
+  state.pinError = reason ? 'session' : '';
+  state.sessionMsg = reason || '';
+  const root = document.getElementById('modalRoot');
+  if(root) root.innerHTML = '';
+  render();
+}
+async function doLogout(){
+  const me = myDevice();
+  if(me && me.nickname) lset('deviceNickname', me.nickname);
+  api('logout', {method:'POST'});      // fire-and-forget; the token is dropped locally either way
+  signOut();
+}
+/* Called by storage.js when the server rejects this device's session. */
+function onSessionExpired(){
+  if(state.role) signOut(t('sessionEnded'));
+}
 
 /* ============ Boot ============ */
+let loadedOk = false;
+/* Offline at start-up: show what we can, say so, and keep trying quietly. */
+function retryLoad(){
+  toast(t('loadFailed'), 'warn');
+  const timer = setInterval(async ()=>{
+    if(!state.role){ clearInterval(timer); return; }
+    if(!isVisible() || !navigator.onLine) return;
+    if(await loadData()){ clearInterval(timer); loadedOk = true; render(); }
+  }, 10000);
+}
 async function boot(){
   state.deviceId = ensureDeviceId();
-  state.lang = await sget('lang', false) || 'en';
-  const api = apiSession();
-  if(api && api.expiresAt && new Date(api.expiresAt).getTime() > Date.now()){
-    state.role = api.role === 'staff' ? 'user' : api.role;
-  } else {
-    lset(API_SESSION_KEY, null); lset('session', null);
-  }
-  const [suppliers, items, units, history, devices, activity, lang] = await Promise.all([
-    sget('suppliers', true), sget('items', true), sget('units', true),
-    sget('orderHistory', true), sget('devices', true), sget('activityLog', true), sget('lang', false)
-  ]);
-  state.suppliers = suppliers || [];
-  state.items = items || [];
-  state.units = units || DEFAULT_UNITS;
-  if(!units) await sset('units', DEFAULT_UNITS, true);
-  state.history = history || [];
-  state.devices = devices || [];
-  state.activity = Array.isArray(activity) ? activity : [];
-  state.lang = lang || 'en';
-  // A forced refresh saves the current order selection first; put it back.
-  const savedCart = lget('pendingCart');
-  if(savedCart && typeof savedCart === 'object'){
-    Object.keys(savedCart).forEach(id=>{
-      if(state.items.some(i=>i.id===id) && savedCart[id] > 0) state.cart[id] = savedCart[id];
-    });
+  state.lang = lget('lang') || 'en';
+  const session = apiSession();
+  if(session){
+    state.role = session.role === 'staff' ? 'user' : session.role;
+    loadedOk = await loadData();
+    if(!loadedOk && !apiSession()) state.role = null;   // the session was rejected
+    // A forced refresh saves the current order selection first; put it back.
+    const savedCart = lget('pendingCart');
+    if(savedCart && typeof savedCart === 'object'){
+      Object.keys(savedCart).forEach(id=>{
+        if(state.items.some(i=>i.id===id) && savedCart[id] > 0) state.cart[id] = savedCart[id];
+      });
+    }
     lset('pendingCart', null);
   }
   render();
-  checkConnection();
+  hideSplash();
+  if(state.role){ heartbeat(); checkCommands(); }
+  if(state.role && !loadedOk) retryLoad();
   // Notifications: register the service worker, read this device's status, and
   // handle being launched from a notification tap.
-  initPush().then(()=>{ render(); handleLaunchIntent(); });
-  await checkCommands();          // a logout/refresh sent while this device was closed
-  if(state.role) touchDevice();   // restored session: mark this device as logged in and seen
+  initPush().then(()=>{ if(state.role) render(); handleLaunchIntent(); });
+}
+/* The branded loading screen lives in index.html so it shows instantly.
+   It lifts away once the first real screen is on the page and style.css is
+   in, and never before the intro has had time to play (so it can't flash). */
+function cssReady(){
+  if(window.__cssReady || getComputedStyle(document.documentElement).getPropertyValue('--bg')) return Promise.resolve();
+  return new Promise(res=>{
+    document.addEventListener('cssready', res, {once:true});
+    setTimeout(res, 4000);   // never keep the app hidden because of a slow stylesheet
+  });
+}
+async function hideSplash(minShown = 1150){
+  const el = document.getElementById('splash');
+  if(!el || el.dataset.state === 'leaving') return;
+  await cssReady();
+  const wait = Math.max(0, minShown - (performance.now() - (window.__splashStart || 0)));
+  await new Promise(r=>setTimeout(r, wait));
+  el.dataset.state = 'leaving';
+  document.documentElement.classList.remove('booting');
+  const done = ()=> el.remove();
+  el.addEventListener('animationend', e=>{ if(e.target === el) done(); });
+  setTimeout(done, 1400);   // safety net
+}
+/* Re-shows the splash for a moment while a signed-in session loads. */
+function showSplash(){
+  if(document.getElementById('splash')) return;
+  const tpl = document.getElementById('splashTpl');
+  if(!tpl) return;
+  document.body.appendChild(tpl.content.cloneNode(true));
+  window.__splashStart = performance.now();
 }
 
 function applyLangClasses(){
@@ -399,14 +355,14 @@ function renderPushBanner(){
 
 /* ============ Topbar & nav ============ */
 function renderTopbar(){
+  const other = state.lang === 'en' ? 'ku' : 'en';
   return `
   <div class="topbar">
-    <div class="brand"><span class="dot"></span>${t('appName')}</div>
+    <div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span><span class="brand-sub">${t('order') === 'Order' ? 'Orders' : ''}</span></div>
     <div class="topbar-actions">
-      <div class="connection-status ${state.apiOnline?'':'offline'}" id="connectionStatus" title="Internet and Supabase API status"><span></span>${state.apiOnline?'Online':'Offline'}</div>
-      <button class="pill-btn ${state.lang==='en'?'active':''}" data-lang="en">EN</button>
-      <button class="pill-btn ${state.lang==='ku'?'active':''}" data-lang="ku">KU</button>
-      <button class="pill-btn" id="logoutBtn">${t('logout')}</button>
+      <div class="connection-status ${state.apiOnline?'':'offline'}" id="connectionStatus"><span></span><em>${state.apiOnline?t('online'):t('offline')}</em></div>
+      <button class="pill-btn lang-switch" data-lang="${other}" lang="${other}">${other==='ku'?'کوردی':'English'}</button>
+      <button class="pill-btn icon-pill" id="logoutBtn" aria-label="${t('logout')}" title="${t('logout')}">${ICON_LOGOUT}</button>
     </div>
   </div>`;
 }
@@ -432,8 +388,7 @@ function renderBottomNav(){
 }
 function attachCommonEvents(){
   document.querySelectorAll('[data-lang]').forEach(b=>b.onclick=async()=>{
-    state.lang = b.dataset.lang; await sset('lang', state.lang, false); render();
-    updatePushLang(state.lang);   // so future notifications switch language immediately too
+    setLang(b.dataset.lang);
   });
   const pushOn = document.getElementById('pushEnableBtn');
   if(pushOn) pushOn.onclick = async ()=>{
@@ -449,6 +404,7 @@ function attachCommonEvents(){
     state.view=b.dataset.view;
     if(state.view === 'record') state.recordFilter = 'all';
     render();
+    window.scrollTo({top:0});
     if(state.view === 'record') refreshActivity();
     if(state.view === 'devices') refreshDevices();
   });
@@ -460,68 +416,88 @@ function attachCommonEvents(){
 }
 
 /* ============ Login (PIN pad) ============ */
+function setLang(lang){
+  state.lang = lang; lset('lang', lang); render();
+  updatePushLang(lang);   // so future notifications switch language immediately too
+}
+function loginMessage(){
+  if(state.pinBusy) return t('signingIn');
+  return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), session:state.sessionMsg})[state.pinError] || '';
+}
 function renderLogin(){
-  const dotCount = MAX_PIN_LEN;
-  const dots = Array.from({length:dotCount}).map((_,i)=>{
+  const dots = Array.from({length:MAX_PIN_LEN}).map((_,i)=>{
     const filled = i < state.pinBuffer.length;
-    const isNew = false;
-    return `<span class="pin-dot ${filled?'filled':''} ${state.pinError?'err':''} ${isNew?'pop':''}"><span class="core"></span></span>`;
+    const pop = state.pinPop && i === state.pinBuffer.length - 1;
+    return `<span class="pin-dot ${filled?'filled':''} ${pop?'pop':''}"><span class="core"></span></span>`;
   }).join('');
   const keys = ['1','2','3','4','5','6','7','8','9'];
+  const bad = ['wrong','locked','network'].includes(state.pinError);
+  const msg = loginMessage();
   return `
   <div class="login-wrap">
-    <aside class="login-brand-panel"><div class="brand-word">Ricotta</div><div class="brand-message">Restaurant<br>Management<br><em>Made Simple.</em></div><div class="brand-detail">Orders · Suppliers · Inventory</div><div class="brand-footer">© 2026 Ricotta</div></aside>
+    <aside class="login-brand-panel"><div class="brand-word">ricotta<span class="brand-word-dot"></span></div><div class="brand-message">Restaurant<br>Management<br><em>Made Simple.</em></div><div class="brand-detail">Orders · Suppliers · Inventory</div><div class="brand-footer">© ${new Date().getFullYear()} Ricotta</div></aside>
     <div class="login-card">
-    <div class="login-logo">R<span class="dot-i">i</span>cotta</div>
+    <div class="login-logo">ricotta<span class="dot-i"></span></div>
     <div class="login-heading">
       <div class="login-title">${t('signIn')}</div>
       <div class="login-sub">${t('signInSub')}</div>
     </div>
     <div class="pin-label">${t('enterPin')}</div>
-    <div class="pin-dots">${dots}</div>
-    <div class="login-error" style="visibility:${state.pinError?'visible':'hidden'};">${t('wrongPin')}</div>
+    <div class="pin-dots ${bad?'err':''} ${state.pinBusy?'busy':''}" aria-label="${t('enterPin')}">${dots}</div>
+    <div class="login-error ${state.pinError==='session'?'info':''}" role="alert" style="visibility:${msg?'visible':'hidden'};">${esc(msg) || '&nbsp;'}</div>
     <div class="keypad">
       ${keys.map(k=>`<button class="key" data-key="${k}">${k}</button>`).join('')}
       <button class="key clear" data-key="clear">${t('clear')}</button>
       <button class="key" data-key="0">0</button>
-      <button class="key backspace" data-key="back">${ICON_BACKSPACE}</button>
+      <button class="key backspace" data-key="back" aria-label="Backspace">${ICON_BACKSPACE}</button>
     </div>
     <button class="lang-pill" id="loginLangToggle">${ICON_GLOBE} ${state.lang==='en'?'English':'کوردی'} ${ICON_CHEVRON}</button>
     </div>
   </div>`;
 }
-function attachLoginEvents(){
-  state.justExpanded = false;
-  const toggle = document.getElementById('loginLangToggle');
-  if(toggle) toggle.onclick = async ()=>{
-    state.lang = state.lang==='en' ? 'ku' : 'en';
-    await sset('lang', state.lang, false); render();
-    updatePushLang(state.lang);   // so future notifications switch language immediately too
-  };
-  document.querySelectorAll('[data-key]').forEach(b=>b.onclick=async ()=>{
-    const k = b.dataset.key;
-    if(k==='clear'){ state.pinBuffer=''; state.pinError=false; render(); return; }
-    if(k==='back'){
-      state.pinBuffer = state.pinBuffer.slice(0,-1); state.pinError=false;
-      render(); return;
-    }
-    if(state.pinBuffer.length>=MAX_PIN_LEN) return;
-    state.pinBuffer += k;
+async function pressKey(k){
+  if(state.pinBusy) return;
+  if(state.pinError && state.pinError !== 'session') state.pinError = '';
+  state.pinPop = false;
+  if(k==='clear'){ state.pinBuffer=''; render(); return; }
+  if(k==='back'){ state.pinBuffer = state.pinBuffer.slice(0,-1); render(); return; }
+  if(state.pinBuffer.length>=MAX_PIN_LEN) return;
+  state.pinBuffer += k; state.pinPop = true;
+  if(state.pinBuffer.length < MAX_PIN_LEN){ render(); return; }
 
-    if(state.pinBuffer.length===MAX_PIN_LEN){
-      const role = await appVerifyPin(state.pinBuffer);
-      if(role){
-        state.role=role; if(role==='admin') state.adminPinEntered=state.pinBuffer;
-        state.pinBuffer=''; lset('session', role); render();
-        recordDeviceLogin(role); return;
-      }
-      state.pinError = true; render();
-      setTimeout(()=>{ state.pinBuffer=''; state.pinError=false; render(); }, 700);
-      return;
-    }
-    render();
-  });
+  state.pinBusy = true; state.pinError = ''; render();
+  const res = await apiLogin(state.pinBuffer);
+  state.pinBusy = false;
+  if(res.error){
+    state.pinError = res.error; render();
+    setTimeout(()=>{ state.pinBuffer=''; if(!state.role) render(); }, 650);
+    return;
+  }
+  // Signed in: bring up the workspace behind the splash, then reveal it.
+  state.pinBuffer = ''; state.pinError = ''; state.view = 'order';
+  showSplash();
+  state.role = res.role;
+  const ok = await loadData();
+  if(!ok){ hideSplash(0); signOut(); state.pinError = 'network'; render(); return; }
+  render();
+  hideSplash(700);
+  heartbeat();
+  if(pushStatus.subscribed) resyncPush();
+  afterLogin();
 }
+function attachLoginEvents(){
+  const toggle = document.getElementById('loginLangToggle');
+  if(toggle) toggle.onclick = ()=> setLang(state.lang==='en' ? 'ku' : 'en');
+  document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=> pressKey(b.dataset.key));
+}
+/* Physical keyboards (desktop / tablets with a keyboard) can type the PIN. */
+document.addEventListener('keydown', e=>{
+  if(state.role || e.ctrlKey || e.metaKey || e.altKey) return;
+  if(document.querySelector('#modalRoot .modal-overlay')) return;
+  if(/^[0-9]$/.test(e.key)) pressKey(e.key);
+  else if(e.key === 'Backspace') pressKey('back');
+  else if(e.key === 'Escape') pressKey('clear');
+});
 
 /* ============ Order screen ============ */
 function unitLabel(unitId){
@@ -629,6 +605,31 @@ function refreshOrderResults(){
   results.innerHTML = renderOrderResults() || emptyState(t('noSearchResults'));
   attachOrderResultEvents(results);
 }
+/* Lightweight order-screen refresh for qty changes: updates only the results
+   region, hero stats, and bottom-bar button — avoids a full render() so the
+   successPulse animation on newly-filled items actually plays (static-update
+   suppression doesn't apply because #app.innerHTML isn't rebuilt). */
+function refreshOrderView(){
+  refreshOrderResults();
+  // Hero stat
+  const hero = document.querySelector('.hero-card');
+  if(hero){
+    const selectedCount = state.orderTab==='all' ? state.items.length : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab).length;
+    const selectedSupplierCount = state.orderTab==='all' ? new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size : (selectedCount ? 1 : 0);
+    const selCount = cartCount();
+    const stat = hero.querySelector('.hero-stat');
+    const sub = hero.querySelector('.hero-sub');
+    if(stat) stat.textContent = t('heroStat')(selCount);
+    if(sub) sub.textContent = t('heroSub')(selectedCount, selectedSupplierCount);
+  }
+  // Bottom bar send button
+  const send = document.getElementById('sendOrdersBtn');
+  if(send){
+    const c = cartCount();
+    send.disabled = c === 0;
+    send.innerHTML = c>0 ? t('itemsSelected')(c)+' · '+t('sendOrders') : t('sendOrders');
+  }
+}
 function cartCount(){ return Object.values(state.cart).filter(q=>q>0).length; }
 function renderOrderBottomBar(){
   const c = cartCount();
@@ -649,13 +650,13 @@ function attachOrderEvents(){
   };
   attachOrderResultEvents(document.getElementById('orderResults'));
   document.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; render();
+    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; refreshOrderView();
   });
   document.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); render();
+    const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); refreshOrderView();
   });
   document.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
-    const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; render();
+    const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; refreshOrderView();
   });
   const same = document.getElementById('sameAsLast');
   if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = {...m}; render(); };
@@ -677,13 +678,13 @@ function attachOrderEvents(){
 function attachOrderResultEvents(root){
   if(!root) return;
   root.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; render();
+    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; refreshOrderView();
   });
   root.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); render();
+    const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); refreshOrderView();
   });
   root.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
-    const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; render();
+    const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; refreshOrderView();
   });
 }
 
@@ -709,7 +710,7 @@ function renderQueue(){
     return `<div class="queue-card ${e.sent?'sent':''}">
       <div class="queue-top"><span class="queue-name">${esc(name)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:''}</div>
       <div class="queue-items">${itemsLine}</div>
-      <div class="queue-actions"><button class="pdf-btn" data-pdf="${idx}">Order sheet (PDF)</button>${sup && sup.phone ? `<button class="wa-btn ${e.sent?'done':''}" data-send="${idx}">${e.sent?t('sent'):t('sendVia')}</button>` : `<div class="queue-items">${esc(noSendReason)}</div>`}</div>
+      <div class="queue-actions"><button class="pdf-btn" data-pdf="${idx}">${t('orderSheet')}</button>${sup && sup.phone ? `<button class="wa-btn ${e.sent?'done':''}" data-send="${idx}">${e.sent?t('sent'):t('sendVia')}</button>` : `<div class="queue-items">${esc(noSendReason)}</div>`}</div>
     </div>`;
   }).join('');
   return `<div class="section-title">${t('sendQueueTitle')}</div>${cards}`;
@@ -748,7 +749,8 @@ async function maybeFinishQueue(){
     }))
   };
   state.history.push(record);
-  await sset('orderHistory', state.history, true);
+  const saved = await sendOrQueue('orders', 'POST', record);
+  if(!saved) toast(t('orderSavedOffline'), 'warn');
   state.cart = {};
   state.queue = null;
   state.view = 'order';
@@ -795,56 +797,33 @@ function attachHistoryEvents(){
   document.querySelectorAll('[data-delhist]').forEach(b=>b.onclick=async()=>{
     if(!(await showConfirm(t('confirmDeleteHistory')))) return;
     const id = b.dataset.delhist;
-    if(!(await deleteOrderHistory(id))){ await showAlert('Could not delete this order. Please try again.'); return; }
+    const r = await api(`orders/${encodeURIComponent(id)}`, {method:'DELETE'});
+    if(!r.ok){ await showAlert(t('saveFailed')); return; }
     state.history = state.history.filter(r=>r.id!==id);
-    // Rewrites the single orderHistory row in Supabase with the shorter
-    // array, so the deleted order stops taking up space in the database
-    // too, not just on this device.
     render();
   });
 }
 
 /* ============ Record (activity log) ============ */
-/* Every add / edit / delete of a supplier, item or unit is written here
-   with the date, time and which device did it. Stored as one shared row
-   ('activityLog') in the same app_data table as everything else, so it
-   needs no database changes. Capped so the row can't grow forever. */
-const ACTIVITY_MAX = 1000;
-let activityQueue = Promise.resolve();
-
-function currentDeviceNickname(){
-  const d = state.devices.find(x=>x.id===state.deviceId);
-  return d ? (d.nickname || '') : '';
-}
-/* Adds one entry to the Record. Shows up on this device immediately, then
-   is merged into the shared copy. Writes are queued one after another, and
-   each one re-reads the shared log first, so quick back-to-back saves (or
-   two phones saving at the same moment) don't overwrite each other. */
+/* Every add / edit / delete of a supplier, item or unit is recorded with the
+   date, time and which device did it. */
+const ACTIVITY_MAX = 500;
 function logActivity(entry){
   const rec = {
     id: 'a'+Date.now()+Math.random().toString(36).slice(2,6),
     ts: new Date().toISOString(),
-    by: currentDeviceNickname(),
+    by: (myDevice() || {}).nickname || lget('deviceNickname') || '',
     role: state.role,
     ...entry
   };
-  state.activity = [...state.activity, rec];
-  activityQueue = activityQueue.then(async ()=>{
-    let latest = await sget('activityLog', true);
-    if(!Array.isArray(latest)) latest = [];
-    if(!latest.some(a=>a.id===rec.id)) latest = [...latest, rec];
-    if(latest.length > ACTIVITY_MAX) latest = latest.slice(-ACTIVITY_MAX);
-    state.activity = latest;
-    await sset('activityLog', latest, true);
-    if(state.view === 'record') render();
-  }).catch(e=>console.error('activity log failed', e));
-  return activityQueue;
+  state.activity = [rec, ...state.activity].slice(0, ACTIVITY_MAX);
+  return sendOrQueue('activity', 'POST', {entry: rec});
 }
 /* Pulls the newest shared Record (so entries made on other phones show up). */
 async function refreshActivity(){
-  const latest = await sget('activityLog', true);
-  if(Array.isArray(latest)){
-    state.activity = latest;
+  const r = await api('activity');
+  if(r.ok && Array.isArray(r.data)){
+    state.activity = r.data;
     if(state.view === 'record') render();
   }
 }
@@ -994,6 +973,14 @@ function resetReminderFields(){
   box.querySelectorAll('.day-chip').forEach(b=>b.classList.add('on'));
 }
 
+/* ============ Admin: saving one record ============ */
+async function saveRecord(table, rec){
+  return (await api(`${table}/${encodeURIComponent(rec.id)}`, {method:'PUT', body:rec})).ok;
+}
+async function deleteRecord(table, id){
+  return (await api(`${table}/${encodeURIComponent(id)}`, {method:'DELETE'})).ok;
+}
+
 /* ============ Admin: Suppliers ============ */
 function renderSuppliers(){
   const list = state.suppliers.length ? sortedByName(state.suppliers).map(s=>`
@@ -1045,23 +1032,25 @@ function openSupplierModal(id){
         const oldCode = reminderCode(s.reminder);
         const fields = diffFields([['name', s.name, name], ['phone', s.phone, phone], ['reminder', oldCode, newCode]]);
         if(!fields.length) return {};   // nothing changed -- nothing to save or record
-        s.name = name; s.phone = phone;
-        if(oldCode !== newCode){
-          // updatedAt tells the server when the reminder was last changed, so a time that
-          // has already passed today starts tomorrow instead of firing the moment you save.
-          s.reminder = rem.on ? {...newRem, updatedAt: now} : {...(s.reminder||{}), enabled:false, updatedAt: now};
-        }
-        await sset('suppliers', state.suppliers, true);
+        // updatedAt tells the server when the reminder was last changed, so a time that
+        // has already passed today starts tomorrow instead of firing the moment you save.
+        const reminder = oldCode === newCode ? s.reminder
+          : rem.on ? {...newRem, updatedAt: now} : {...(s.reminder||{}), enabled:false, updatedAt: now};
+        const next = {...s, name, phone, reminder};
+        if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
+        Object.assign(s, next);
         logActivity({action:'edit', type:'supplier', name, fields});
       } else {
-        state.suppliers.push({id:'s'+Date.now(), name, phone, ...(rem.on ? {reminder:{...newRem, updatedAt: now}} : {})});
-        await sset('suppliers', state.suppliers, true);
+        const next = {id:'s'+Date.now(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null};
+        if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
+        state.suppliers.push(next);
         logActivity({action:'add', type:'supplier', name,
           fields:[{k:'name', to:name}].concat(phone ? [{k:'phone', to:phone}] : [])
                  .concat(rem.on ? [{k:'reminder', to:newCode}] : [])});
       }
       render();
       if(again){ resetReminderFields(); return {keepOpen:true, message:t('savedMsg')(name)}; }
+      toast(t('savedMsg')(name));
       return {};
     }
   });
@@ -1082,12 +1071,12 @@ function attachSupplierEvents(){
     const sup = state.suppliers.find(s=>s.id===id);
     if(!sup) return;
     if(!(await showConfirm(`<b>${esc(sup.name)}</b><br>${t('confirmDeleteSupplier')}`))) return;
+    // The database unassigns that supplier's items by itself.
+    if(!(await deleteRecord('suppliers', id))){ await showAlert(t('saveFailed')); return; }
     const unassigned = state.items.filter(i=>i.supplierId===id).length;
     state.suppliers = state.suppliers.filter(s=>s.id!==id);
     state.items.forEach(i=>{ if(i.supplierId===id) i.supplierId=null; });
     if(state.itemFormSupplierId === id) state.itemFormSupplierId = null;
-    await sset('suppliers', state.suppliers, true);
-    await sset('items', state.items, true);
     logActivity({action:'delete', type:'supplier', name:sup.name, unassigned,
       fields:[{k:'name', from:sup.name}].concat(sup.phone ? [{k:'phone', from:sup.phone}] : [])});
     render();
@@ -1166,19 +1155,22 @@ function openItemModal(id){
           ['supplier', oldSupName, newSupName]
         ]);
         if(!fields.length) return {};   // nothing changed -- nothing to save or record
-        i.name = name; i.unit = unit; i.supplierId = supplierId;
-        await sset('items', state.items, true);
+        const next = {...i, name, unit, supplierId};
+        if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
+        Object.assign(i, next);
         logActivity({action:'edit', type:'item', name, fields});
       } else {
-        state.items.push({id:'i'+Date.now(), name, unit, supplierId});
+        const next = {id:'i'+Date.now(), name, unit, supplierId};
+        if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
+        state.items.push(next);
         state.itemFormSupplierId = supplierId; // keep it locked in for the next item
-        await sset('items', state.items, true);
         logActivity({action:'add', type:'item', name, fields:[
           {k:'name', to:name}, {k:'unit', to:unitEn(unit)}, {k:'supplier', to:newSupName}
         ]});
       }
       render();
       if(again) return {keepOpen:true, message:t('savedMsg')(name)};
+      toast(t('savedMsg')(name));
       return {};
     }
   });
@@ -1192,10 +1184,10 @@ function attachItemEvents(){
     const item = state.items.find(i=>i.id===id);
     if(!item) return;
     if(!(await showConfirm(`<b>${esc(item.name)}</b><br>${t('confirmDeleteItem')}`))) return;
+    if(!(await deleteRecord('items', id))){ await showAlert(t('saveFailed')); return; }
     const supName = item.supplierId ? (state.suppliers.find(s=>s.id===item.supplierId)?.name || '') : '';
     state.items = state.items.filter(i=>i.id!==id);
     delete state.cart[id];
-    await sset('items', state.items, true);
     logActivity({action:'delete', type:'item', name:item.name, fields:[
       {k:'name', from:item.name}, {k:'unit', from:unitEn(item.unit)}, {k:'supplier', from:supName}
     ]});
@@ -1207,7 +1199,7 @@ function attachItemEvents(){
 function renderUnits(){
   const chips = state.units.map(u=>`
     <span class="unit-chip">${esc(state.lang==='ku'?(u.ku||u.en):u.en)}
-      <button data-delunit="${u.id}">✕</button>
+      <button data-delunit="${esc(u.id)}" aria-label="${t('delete')}">✕</button>
     </span>`).join('');
   return `
     <div class="section-title">${t('units')}</div>
@@ -1223,20 +1215,23 @@ function attachUnitEvents(){
   document.getElementById('unitAddBtn').onclick = async ()=>{
     const en = document.getElementById('unitEn').value.trim();
     const ku = document.getElementById('unitKu').value.trim();
-    if(!en) return;
-    state.units.push({id:'u'+Date.now(), en, ku});
-    await sset('units', state.units, true);
+    if(!en){ document.getElementById('unitEn').focus(); return; }
+    const next = {id:'u'+Date.now(), en, ku};
+    if(!(await saveRecord('units', next))){ await showAlert(t('saveFailed')); return; }
+    state.units.push(next);
     logActivity({action:'add', type:'unit', name:en,
       fields:[{k:'name', to:en}].concat(ku ? [{k:'nameKu', to:ku}] : [])});
     render();
+    toast(t('savedMsg')(en));
   };
   document.querySelectorAll('[data-delunit]').forEach(b=>b.onclick=async()=>{
     const id = b.dataset.delunit;
     const unit = state.units.find(u=>u.id===id);
     if(!unit) return;
     if(!(await showConfirm(`<b>${esc(unit.en)}</b><br>${t('confirmDeleteUnit')}`))) return;
+    if(!(await deleteRecord('units', id))){ await showAlert(t('saveFailed')); return; }
     state.units = state.units.filter(u=>u.id!==id);
-    await sset('units', state.units, true);
+    state.items.forEach(i=>{ if(i.unit===id) i.unit=null; });
     logActivity({action:'delete', type:'unit', name:unit.en,
       fields:[{k:'name', from:unit.en}].concat(unit.ku ? [{k:'nameKu', from:unit.ku}] : [])});
     render();
@@ -1246,10 +1241,12 @@ function attachUnitEvents(){
 /* ============ Admin: Devices ============ */
 /* Its own admin tab: which devices are logged in right now, when each one
    last logged in, and when it was last seen using the app. */
-/* Logged in = signed in AND no log-out waiting for it. A device an admin has
-   already logged out counts as logged out even if it hasn't opened the app yet. */
+/* Logged in = signed in, no log-out waiting for it, and seen within one
+   session length (a sign-in expires after 18 hours even if nobody logs out). */
+const SESSION_MS = 18*60*60*1000;
 function isLoggedIn(d){
-  return !!d.loggedIn && !(commandIsPending(d) && d.command.type === 'logout');
+  const seen = Date.parse(d.lastSeen || d.lastLogin || 0) || 0;
+  return !!d.loggedIn && Date.now() - seen < SESSION_MS && !(commandIsPending(d) && d.command.type === 'logout');
 }
 function deviceStatus(d){
   if(!isLoggedIn(d)) return 'out';
@@ -1304,10 +1301,6 @@ function renderDevices(){
     const isThis = d.id === state.deviceId;
     const roleLabel = d.role === 'admin' ? t('deviceRoleAdmin') : t('deviceRoleStaff');
     const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
-    const logins = (d.logins && d.logins.length ? d.logins : (d.lastLogin ? [d.lastLogin] : [])).slice(0, 5);
-    const recent = logins.length > 1
-      ? `<div class="rec-line dev-recent"><span class="rec-k">${t('recentLogins')}</span> ${logins.map(fmtDateTime).join(' \u00b7 ')}</div>`
-      : '';
     return `<div class="dev-card">
       <div class="dev-top">
         <div class="dev-name">${esc(d.nickname) || t('unnamedDevice')}${isThis ? ` <span class="dev-this">\u00b7 ${t('thisDevice')}</span>` : ''}</div>
@@ -1316,7 +1309,6 @@ function renderDevices(){
       <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span><span class="dev-role">${roleLabel}</span></div>
       <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
       ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
-      ${recent}
       ${commandIsPending(d) ? `<div class="dev-pending">${d.command.type==='logout'?t('cmdLogoutPending'):t('cmdRefreshPending')} \u00b7 ${timeAgo(d.command.ts)}</div>` : ''}
       ${isThis ? '' : `<div class="dev-actions">
         <button class="btn btn-ghost" data-devrefresh="${esc(d.id)}">${ICON_REFRESH} ${t('refreshDevice')}</button>
@@ -1338,8 +1330,7 @@ function openDeviceModal(id){
     onSubmit: async ()=>{
       const val = document.getElementById('mfNickname').value.trim();
       if(val === (d.nickname || '')) return {};   // unchanged
-      if(id === state.deviceId) lset('deviceNickname', val);
-      await updateDevice(id, x=>{ x.nickname = val; });
+      if(!(await setDeviceNickname(id, val))) return {error: t('saveFailed')};
       return {};
     }
   });
@@ -1382,32 +1373,19 @@ function attachDeviceEvents(){
 }
 
 /* ============ Admin: Settings ============ */
+/* PINs are stored only as bcrypt hashes on the server, so they are never
+   shown -- the admin just types the new ones. */
 function renderSettings(){
-  // PINs/cloud config live only in the database, gated by functions that
-  // require proof the caller already knows the current value -- so an
-  // admin who reloaded the page (and lost the in-memory PIN they typed
-  // at login) has to re-enter it once before this screen will do anything.
-  if(!state.adminPinEntered){
-    return `
-      <div class="section-title">${t('settings')}</div>
-      <div class="form-card">
-        <div class="field-hint" style="margin-bottom:10px;">${t('reenterAdminPinMsg')}</div>
-        <div class="field"><label>${t('adminPin')}</label><input id="reenterAdminPin" type="password" maxlength="6" inputmode="numeric"></div>
-        <div class="form-actions"><button class="btn btn-primary" id="reenterAdminPinBtn">${t('unlock')}</button></div>
-      </div>`;
-  }
-
   const pinsCard = `
     <div class="section-title">${t('changePins')}</div>
     <div class="form-card">
       <div class="field-hint" style="margin-bottom:12px;">${t('pinsChangeHint')}</div>
-      <div class="field"><label>${t('adminPin')}</label><input id="adminPinInput" maxlength="6" inputmode="numeric" value="${esc(state.settings.adminPin||'')}"></div>
-      <div class="field"><label>${t('userPin')}</label><input id="userPinInput" maxlength="6" inputmode="numeric" value="${esc(state.settings.userPin||'')}"></div>
+      <div class="field"><label for="adminPinInput">${t('adminPin')}</label><input id="adminPinInput" type="password" maxlength="6" inputmode="numeric" autocomplete="new-password"></div>
+      <div class="field"><label for="userPinInput">${t('userPin')}</label><input id="userPinInput" type="password" maxlength="6" inputmode="numeric" autocomplete="new-password"></div>
       <div class="form-actions"><button class="btn btn-primary" id="pinsSaveBtn">${t('savePins')}</button></div>
     </div>`;
-
-  const connectionCard = `<div class="section-title">${t('cloudSetup')}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote')}</b><div class="field-hint">${t('cloudManagedNote')}</div></div></div></div>`;
-  return `${pinsCard}${connectionCard}${renderNotifSettings()}`;
+  const connectionCard = `<div class="section-title">${t('cloudSetup')}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote')}</b></div></div></div>`;
+  return `${pinsCard}${connectionCard}${renderNotifSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
 }
 /* ---- Settings: Notifications card (this device + daily reminder) ---- */
 function renderNotifSettings(){
@@ -1421,28 +1399,25 @@ function renderNotifSettings(){
   } else {
     device = `<div class="notif-status off">${ICON_BELL} ${t('notifThisDevice')}: ${t('notifOff')}<button class="btn btn-primary" id="pushToggleBtn">${t('notifEnable')}</button></div>`;
   }
-  let reminder;
-  if(state.reminder === false){
-    reminder = `<div class="notif-sub">${t('reminderLoadFailed')}</div>`;
-  } else if(!state.reminder){
-    reminder = `<div class="notif-sub">\u2026</div>`;
-  } else {
-    reminder = `
+  const r = state.reminder || {enabled:false, time:'09:00'};
+  const reminder = `
       <div class="notif-sub">${t('supplierRemindersHint')}</div>
-      <label class="check-row"><input type="checkbox" id="reminderEnabled" ${state.reminder.enabled?'checked':''}> ${t('reminderEnabledLabel')}</label>
-      <div class="field"><label>${t('reminderTimeLabel')}</label><input id="reminderTime" type="time" value="${esc(state.reminder.time)}"></div>
+      <label class="check-row"><input type="checkbox" id="reminderEnabled" ${r.enabled?'checked':''}> ${t('reminderEnabledLabel')}</label>
+      <div class="field"><label for="reminderTime">${t('reminderTimeLabel')}</label><input id="reminderTime" type="time" value="${esc(r.time)}"></div>
       <div class="form-actions">
         <button class="btn btn-primary" id="reminderSaveBtn">${t('reminderSave')}</button>
         <button class="btn btn-ghost" id="reminderTestBtn">${ICON_BELL} ${t('reminderSendNow')}</button>
       </div>`;
-  }
   return `<div class="section-title">${t('notifSettingsTitle')}</div>
     <div class="form-card">${device}<hr class="notif-divider"><div class="section-title" style="margin-top:0;">${t('reminderTitle')}</div>${reminder}</div>`;
 }
-function attachNotifSettingsEvents(){
-  if(state.reminder === null){
-    loadReminder().then(r=>{ state.reminder = r || false; if(state.view === 'settings') render(); });
-  }
+/* Disables a button while its action runs, so a double tap can't send twice. */
+async function withBusy(btn, fn){
+  if(!btn || btn.disabled) return;
+  btn.disabled = true; btn.classList.add('is-busy');
+  try{ await fn(); } finally { btn.disabled = false; btn.classList.remove('is-busy'); }
+}
+function attachSettingsEvents(){
   const tog = document.getElementById('pushToggleBtn');
   if(tog) tog.onclick = async ()=>{
     if(pushStatus.subscribed){ await disablePush(); render(); return; }
@@ -1451,52 +1426,29 @@ function attachNotifSettingsEvents(){
     await showPushEnableResult(res);
   };
   const save = document.getElementById('reminderSaveBtn');
-  if(save) save.onclick = async ()=>{
+  if(save) save.onclick = ()=> withBusy(save, async ()=>{
     const enabled = document.getElementById('reminderEnabled').checked;
     const time = document.getElementById('reminderTime').value;
-    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){ await showAlert(t('reminderSaveFailed')); return; }
-    const ok = await saveReminder(enabled, time);
-    if(ok === 'cancelled') return;   // PIN prompt cancelled
-    if(ok !== true){ await showAlert(t('reminderSaveFailed')); return; }
+    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){ await showAlert(t('reminderTimeInvalid')); return; }
+    if(!(await saveReminder(enabled, time))){ await showAlert(t('reminderSaveFailed')); return; }
     state.reminder = { enabled, time };
-    await showAlert(t('reminderSaved'));
-    render();
-  };
+    toast(t('reminderSaved'));
+  });
   const test = document.getElementById('reminderTestBtn');
-  if(test) test.onclick = async ()=> reportSendResult(await callSendPush('reminder-now'));
-}
-function attachSettingsEvents(){
-  const reenterBtn = document.getElementById('reenterAdminPinBtn');
-  if(reenterBtn){
-    reenterBtn.onclick = async ()=>{
-      const pin = document.getElementById('reenterAdminPin').value.trim();
-      const role = await appVerifyPin(pin, {reload:false});
-      if(role !== 'admin'){ await showAlert(t('wrongPin')); return; }
-      state.adminPinEntered = pin;
-      const pins = await appGetPins(pin);
-      if(pins) state.settings = {...state.settings, adminPin: pins.adminPin, userPin: pins.userPin};
-      render();
-    };
-    return; // nothing else is on the page in this state
-  }
+  if(test) test.onclick = ()=> withBusy(test, async ()=> reportSendResult(await callSendPush('reminder-now')));
 
-  attachNotifSettingsEvents();
-
-  document.getElementById('pinsSaveBtn').onclick = async ()=>{
+  const pinsBtn = document.getElementById('pinsSaveBtn');
+  pinsBtn.onclick = ()=> withBusy(pinsBtn, async ()=>{
     const ap = document.getElementById('adminPinInput').value.trim();
     const up = document.getElementById('userPinInput').value.trim();
-    if(ap.length!==ADMIN_PIN_LEN || up.length!==USER_PIN_LEN){ await showAlert(t('pinsInvalidLength')); return; }
+    if(!/^\d{6}$/.test(ap) || !/^\d{6}$/.test(up)){ await showAlert(t('pinsInvalidLength')); return; }
     if(ap===up){ await showAlert(t('pinsPrefixConflict')); return; }
-    const ok = await appSetPins(state.adminPinEntered, ap, up);
-    if(!ok){ await showAlert(t('pinsSaveFailed')); return; }
-    state.adminPinEntered = ap;
-    state.settings = {...state.settings, adminPin: ap, userPin: up};
+    const r = await api('admin/pins', {method:'POST', body:{adminPin:ap, staffPin:up}});
+    if(!r.ok){ await showAlert(t('pinsSaveFailed')); return; }
     await showAlert(t('pinsSaved'));
-    // The server revokes every session after a PIN rotation. Return to the
-    // sign-in screen immediately so this device uses one of the new PINs.
-    lset(API_SESSION_KEY, null); lset('session', null);
-    state.role=null; state.adminPinEntered=null; state.pinBuffer=''; render();
-  };
+    // The server signs every device out after a PIN change, this one included.
+    signOut();
+  });
 }
 
 boot();
