@@ -209,7 +209,7 @@ function showFormModal(opts) {
     const root = ensureModalRoot();
     root.innerHTML = `
       <div class="modal-overlay modal-overlay-top">
-        <div class="modal-box">
+        <div class="modal-box modal-form">
           <div class="modal-title">${opts.title}</div>
           ${opts.banner ? `<div class="modal-banner">${opts.banner}</div>` : ''}
           <div class="modal-body">${opts.bodyHtml}</div>
@@ -248,7 +248,7 @@ function showFormModal(opts) {
         res = await opts.onSubmit(!!again); 
       } catch(e) { 
         console.error('form submit failed', e); 
-        res = { error: t('something_went_wrong') || 'Error' }; 
+      res = { error: t('saveFailed') };
       }
       
       busy = false;

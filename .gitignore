@@ -5,3 +5,6 @@ node_modules/
 coverage/
 .DS_Store
 
+
+# Local database backups (may contain business data)
+backups/

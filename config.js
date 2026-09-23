@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-22.3';
+const APP_VERSION = '2026-09-23.1';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,21 +14,13 @@ const APP_VERSION = '2026-09-22.3';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'Update notifications now arrive in each device\u2019s own language, the whole-screen animation no longer replays on every tap, and the app got a bit more visual polish (deeper card shadows, a gradient top bar, a highlighted active nav tab, and nicer empty-list icons).';
-const CHANGELOG_KU = 'ئێستا ئاگادارکردنەوەکانی نوێکاری بە زمانی خۆی بۆ هەر ئامێرێک دەگات، جووڵەی گشتی شاشەکە چیتر لە هەر دەستەکردنێکدا دووبارە نابێتەوە، هەروەها ئەپەکە کەمێک جوانتر کرا (سێبەری قوڵتری کارتەکان، تووڕی سەرەوەی گرادیەنت، تابی چالاکی نیشانکراو، و ئایکۆنی جوانتر بۆ لیستە بەتاڵەکان).';
+const CHANGELOG_EN = 'A new Ricotta loading screen, faster sign-in with no page reload, a smoother and more polished look, and many reliability fixes: deleted items and units now stay deleted, notifications and reminders work again, remote log out and refresh work instantly, and orders are kept safely even when the Wi-Fi drops.';
+const CHANGELOG_KU = 'شاشەیەکی نوێی بارکردنی ریکۆتا، چوونەژوورەوەی خێراتر بەبێ نوێکردنەوەی پەڕە، ڕووکارێکی ڕێکتر و جوانتر، و چاککردنی زۆر: کاڵا و یەکە سڕاوەکان ئیتر ناگەڕێنەوە، ئاگادارکردنەوە و بیرخەرەوەکان دووبارە کار دەکەن، چوونەدەرەوە و نوێکردنەوەی دوور دەستبەجێ کار دەکەن، و داواکارییەکان بە سەلامەتی هەڵدەگیرێن تەنانەت کاتێک وایفای دەپچڕێت.';
 
-/* Supabase project this app talks to. The key below is the anon/public
-   key, which is DESIGNED to be shipped to the browser -- Supabase's
-   client-side model protects data through Row Level Security (RLS)
-   policies on the server, not by keeping this key secret. Real secrets
-   (login PINs, the cloud-setup password) are never stored in this file;
-   they live only in the database and are checked through the
-   app_verify_pin / app_get_cloud_config / app_set_pins / app_set_cloud_config
-   / app_get_pins SQL functions, which return a yes/no or a role name --
-   never the stored value itself, unless the caller already proved they
-   know it. See ricotta-supabase-setup.sql for those policies/functions. */
+/* Supabase project this app talks to. The browser only ever calls this
+   project's `api` Edge Function (with a session token issued after a PIN
+   check); it has no direct database access, and no secret lives here. */
 const SUPABASE_URL = 'https://pxufdcyqjtmtklmrjodg.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4dWZkY3lxanRtdGtsbXJqb2RnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1MTkyMDUsImV4cCI6MjEwNTA5NTIwNX0.3INIUO57uUR5F1-Fqg0jZqkS4T97iGGogbIzxWd3Ho0';
 
 /* Web Push (notifications). This is the PUBLIC half of your VAPID key pair,
    which is meant to be shipped to the browser. Generate the pair with
@@ -58,6 +50,4 @@ const DEFAULT_UNITS = [
   {id:'set', en:'set', ku:'سێت'}
 ];
 
-const ADMIN_PIN_LEN = 6;
-const USER_PIN_LEN = 6;
-const MAX_PIN_LEN = 6;
+const MAX_PIN_LEN = 6;   /* both admin and staff PINs are six digits */

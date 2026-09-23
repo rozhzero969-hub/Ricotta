@@ -1,135 +1,92 @@
-/* Local + Supabase (cloud) persistence for Ricotta Orders.
-   Depends on the global `state` object from app.js (only inside
-   function bodies, so load order relative to app.js doesn't matter),
-   and on SUPABASE_URL / SUPABASE_ANON_KEY from config.js. */
-/* ============ Storage helpers ============ */
-/* Always keep a local copy so data survives even when this page is opened
-   outside a Claude artifact (e.g. hosted directly, or window.storage fails).
-   When window.storage IS available, it's used as the primary/shared store
-   and localStorage is kept in sync as an automatic backup. */
+/* Ricotta Orders -- local storage + the API client.
+   Every shared read/write goes through the `api` Edge Function with this
+   device's session token; the browser has no direct database access.
+   Depends on SUPABASE_URL (config.js). onSessionExpired / setApiHealth are
+   defined in app.js and only called at runtime. */
+
+/* ============ Local storage (this device only) ============ */
 const LS_PREFIX = 'ricottaOrders:';
 function lget(key){
   try{ const v = localStorage.getItem(LS_PREFIX+key); return v ? JSON.parse(v) : null; }
   catch(e){ return null; }
 }
 function lset(key, value){
-  try{ localStorage.setItem(LS_PREFIX+key, JSON.stringify(value)); }
-  catch(e){ console.error('localStorage set failed', e); }
-}
-/* All shared data goes through the single Edge API.  The browser has no
-   PostgREST table/RPC access and never stores configuration secrets. */
-const API_URL = `${SUPABASE_URL}/functions/v1/api`;
-const API_SESSION_KEY = 'apiSession';
-let bootstrapCache = null;
-let bootstrapPromise = null;
-function apiSession(){ return lget(API_SESSION_KEY); }
-function apiHeaders(){
-  const s = apiSession();
-  const h = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||'')};
-  if(s && s.token) h['x-session-token'] = s.token;
-  return h;
-}
-async function apiFetch(path, opts={}){
-  const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort(), 8000);
   try{
-    const res = await fetch(`${API_URL}/${path}`, {...opts, signal:controller.signal, headers:{...apiHeaders(), ...(opts.headers||{})}});
-    if(typeof setApiHealth === 'function') setApiHealth(true);
-    if(res.status===401){ lset(API_SESSION_KEY, null); lset('session', null); }
-    if(!res.ok) return null;
-    return await res.json().catch(()=>null);
-  }catch(e){
-    if(typeof setApiHealth === 'function') setApiHealth(false);
-    return null;
-  }finally{ clearTimeout(timer); }
-}
-async function apiBootstrap(){
-  if(bootstrapCache) return bootstrapCache;
-  if(!bootstrapPromise) bootstrapPromise = apiFetch('bootstrap').then(data=>{
-    bootstrapCache=data; bootstrapPromise=null; return data;
-  }).catch(()=>{ bootstrapPromise=null; return null; });
-  return bootstrapPromise;
-}
-/* Shared values keep their existing in-memory shape during the UI migration,
-   but their source of truth is now relational server-side data. */
-function cloudConfigured(){
-  return !!apiSession();
-}
-async function cloudGet(key){
-  const data = await apiBootstrap();
-  if(!data) return undefined;
-  const names = {orderHistory:'history', activityLog:'activity'};
-  return data[names[key]||key] ?? null;
-}
-async function cloudSet(key, value){
-  const ok = await apiFetch(`state/${encodeURIComponent(key)}`, {method:'PUT', body:JSON.stringify({value})});
-  if(ok && bootstrapCache){ const names={orderHistory:'history',activityLog:'activity'}; bootstrapCache[names[key]||key]=value; }
-  return !!ok;
-}
-async function deleteOrderHistory(id){
-  const ok = await apiFetch(`history/${encodeURIComponent(id)}`, {method:'DELETE'});
-  if(ok && bootstrapCache) bootstrapCache.history = (bootstrapCache.history||[]).filter(order=>order.id!==id);
-  return !!ok;
-}
-async function sget(key, shared){
-  if(window.storage){
-    try{
-      const r = await window.storage.get(key, shared);
-      if(r) return JSON.parse(r.value);
-    }catch(e){ /* fall through */ }
-  }
-  if(shared){
-    const cloudVal = await cloudGet(key);
-    if(cloudVal !== undefined && cloudVal !== null) return cloudVal;
-  }
-  return lget(key);
-}
-async function sset(key, value, shared){
-  lset(key, value);
-  if(window.storage){
-    try{ await window.storage.set(key, JSON.stringify(value), shared); }
-    catch(e){ console.error('storage set failed', e); }
-  }
-  if(shared) await cloudSet(key, value);
+    if(value === null || value === undefined) localStorage.removeItem(LS_PREFIX+key);
+    else localStorage.setItem(LS_PREFIX+key, JSON.stringify(value));
+  }catch(e){ /* private mode / storage full -- the app still works for this visit */ }
 }
 
-/* ============ Authentication and settings ============ */
-async function rpcCall(fnName, params){
-  console.warn('Legacy RPC blocked:', fnName);
+/* ============ API client ============ */
+const API_URL = `${SUPABASE_URL}/functions/v1/api`;
+const API_TIMEOUT_MS = 12000;
+
+function apiSession(){
+  const s = lget('apiSession');
+  if(s && s.token && s.expiresAt && Date.parse(s.expiresAt) > Date.now()) return s;
   return null;
 }
-/* Returns 'admin', 'user', or null. */
-async function appVerifyPin(pin, opts={}){
+function clearApiSession(){ lset('apiSession', null); }
+
+/* Returns {ok, status, data}. Never throws. A 401 on a signed-in device means
+   the session was revoked (PIN change, remote log out) or expired. */
+async function api(path, {method='GET', body} = {}){
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), API_TIMEOUT_MS);
+  const s = apiSession();
+  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||'')};
+  if(s) headers['x-session-token'] = s.token;
   try{
-    const res = await fetch(`${API_URL}/login`, {method:'POST', headers:{'Content-Type':'application/json','x-device-id':String(lget('deviceId')||'')}, body:JSON.stringify({pin})});
+    const res = await fetch(`${API_URL}/${path}`, {
+      method, headers, signal:controller.signal,
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    setApiHealth(true);
     const data = await res.json().catch(()=>null);
-    if(!res.ok || !data) return null;
-    lset(API_SESSION_KEY, {token:data.token, expiresAt:data.expiresAt, role:data.role});
-    bootstrapCache = null;
-    // The initial app boot is intentionally unauthenticated. Restart after a
-    // successful sign-in so every catalog record (including its unit mapping)
-    // is loaded through the authenticated API before the workspace is shown.
-    if(opts.reload !== false) window.setTimeout(() => window.location.reload(), 0);
-    return data.role === 'staff' ? 'user' : data.role;
-  }catch(e){ console.error('login failed', e); return null; }
+    if(res.status === 401 && s && path !== 'login'){ clearApiSession(); onSessionExpired(); }
+    return {ok:res.ok, status:res.status, data};
+  }catch(e){
+    setApiHealth(false);
+    return {ok:false, status:0, data:null};
+  }finally{ clearTimeout(timer); }
 }
-/* Returns {adminPin,userPin,cloudPassword,supabaseUrl,supabaseKey} if the
-   password is correct, else null. */
-async function appGetCloudConfig(cloudPassword){
-  return await rpcCall('app_get_cloud_config', { p_cloud_password: cloudPassword });
+
+/* Returns {role:'admin'|'user'} on success, or {error:'wrong'|'locked'|'network'}. */
+async function apiLogin(pin){
+  const r = await api('login', {method:'POST', body:{pin}});
+  if(r.ok && r.data && r.data.token){
+    lset('apiSession', {token:r.data.token, expiresAt:r.data.expiresAt, role:r.data.role});
+    return {role: r.data.role === 'staff' ? 'user' : r.data.role};
+  }
+  if(r.status === 429) return {error:'locked'};
+  if(r.status === 0) return {error:'network'};
+  return {error:'wrong'};
 }
-/* Returns {adminPin,userPin} if the given admin PIN is currently correct,
-   else null. Used only to prefill the Settings form for an admin who is
-   already authenticated this session. */
-async function appGetPins(currentAdminPin){
-  return null; // PINs are intentionally never returned by the server.
+
+/* ============ Outbox ============
+   Orders and Record entries must never be lost to a flaky restaurant Wi-Fi:
+   if a write fails it is kept on this device and retried later (on the next
+   heartbeat, when the connection comes back, or at the next start-up). */
+function outbox(){ return lget('outbox') || []; }
+async function sendOrQueue(path, method, body){
+  const r = await api(path, {method, body});
+  if(r.ok) return true;
+  if(r.status === 0 || r.status >= 500){
+    lset('outbox', [...outbox(), {path, method, body}]);
+  }
+  return false;
 }
-/* Returns true if currentAdminPin matched and the PINs were updated. */
-async function appSetPins(currentAdminPin, newAdminPin, newUserPin){
-  const res = await apiFetch('admin/pins', {method:'POST',body:JSON.stringify({adminPin:newAdminPin,staffPin:newUserPin})});
-  return !!res?.ok;
-}
-/* Returns true if cloudPassword matched and the cloud config was updated. */
-async function appSetCloudConfig(cloudPassword, newUrl, newKey, newPassword){
-  return false; // Cloud connection configuration is no longer a browser feature.
+let outboxBusy = false;
+async function flushOutbox(){
+  if(outboxBusy || !apiSession()) return;
+  const pending = outbox();
+  if(!pending.length) return;
+  outboxBusy = true;
+  const left = [];
+  for(const job of pending){
+    const r = await api(job.path, {method:job.method, body:job.body});
+    if(!r.ok && (r.status === 0 || r.status >= 500)) left.push(job);   // 4xx = never going to work; drop it
+  }
+  lset('outbox', left.length ? left : null);
+  outboxBusy = false;
 }

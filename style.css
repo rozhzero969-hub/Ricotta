@@ -11,14 +11,14 @@
     --clay-dim:#FBE7E5;
     --line:#E1E9E4;
     --radius:14px;
+    --glow-basil:rgba(31,92,63,.18);
+    --glow-deep:rgba(14,31,24,.12);
 }
 
 /* 2026 Ricotta responsive sign-in and catalog refinements. */
 .login-card{width:100%;max-width:360px;display:flex;flex-direction:column;align-items:center}
 .login-card .login-heading,.login-card .pin-label{align-self:stretch}
 .login-brand-panel{display:none}
-.catalog-count{margin:12px 0 -2px;color:var(--ink-soft);font-size:13px}
-.catalog-count strong{color:var(--basil);font-size:15px}
 .queue-actions{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}
 .pdf-btn{border:1px solid var(--basil);border-radius:12px;background:#fff;color:var(--basil);font-weight:800;padding:11px 14px;cursor:pointer}
 .admin-item-group{margin-bottom:18px}.admin-item-group .supplier-head{position:sticky;top:0;z-index:1}
@@ -27,7 +27,7 @@
   .login-wrap{width:100%;max-width:none;min-height:100vh;padding:0;display:grid;grid-template-columns:minmax(42%,1fr) minmax(420px,58%);align-items:stretch;border:0;border-radius:0;background:none;box-shadow:none}
   .login-brand-panel{display:flex;flex-direction:column;position:relative;overflow:hidden;padding:62px 54px;color:white;background:linear-gradient(145deg,#1b513b 0%,#153e2f 100%)}
   .login-brand-panel:after{content:'';position:absolute;width:32rem;height:32rem;border:1px solid rgba(255,255,255,.08);border-radius:50%;right:-17rem;bottom:-14rem}
-  .brand-word{font-size:43px;font-weight:500;letter-spacing:-3px}.brand-message{margin-top:auto;font-size:42px;line-height:1.2;font-weight:800;letter-spacing:-1.7px}.brand-message em{font-style:normal;color:#ffd432}.brand-detail{margin-top:20px;font-size:17px;color:#dbece3}.brand-footer{margin-top:auto;color:#b7d6c8;font-size:13px}
+  .brand-word{display:flex;align-items:flex-end;font-size:46px;font-weight:800;letter-spacing:-2.4px;line-height:1}.brand-word-dot{width:9px;height:9px;margin:0 0 7px 4px;border-radius:50%;background:#6FCF9A;animation:pulseDot 2.4s ease-in-out infinite}.brand-message{margin-top:auto;font-size:42px;line-height:1.2;font-weight:800;letter-spacing:-1.7px}.brand-message em{font-style:normal;color:#ffd432}.brand-detail{margin-top:20px;font-size:17px;color:#dbece3}.brand-footer{margin-top:auto;color:#b7d6c8;font-size:13px}
   .login-card{justify-self:center;align-self:center;max-width:432px;padding:50px 34px;align-items:center}.login-card .login-logo{display:none}.login-card .login-heading,.login-card .pin-label,.login-card .keypad{max-width:432px}.login-card .login-title{font-size:30px}.login-card .login-sub{font-size:15px}.login-card .key{height:64px}.login-card .lang-pill{align-self:stretch;justify-content:space-between;margin-top:30px;border-top:1px solid var(--line);border-radius:0;background:transparent;padding:16px 0 0}
   .admin-item-group{display:block!important;margin:0 0 26px;padding:0;border:1px solid #dbe9df;border-radius:18px;background:#f8fcf9;overflow:hidden}.admin-item-group .supplier-head{position:static;top:auto;margin:0;padding:14px 18px;background:#e9f5ec;color:#174b35}.admin-item-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}.admin-item-grid .list-row{margin:0;min-height:72px}.admin-item-grid .list-row .meta{margin-top:4px}.admin-item-grid .row-actions{align-self:center}
 }
@@ -62,8 +62,8 @@
     display:flex; align-items:center; justify-content:space-between;
     padding:16px 18px; padding-top:calc(16px + env(safe-area-inset-top, 0px));
     gap:10px;
-    background:linear-gradient(135deg, var(--deep) 0%, var(--deep-dark) 100%); color:#fff;
-    border-radius:0 0 20px 20px;
+    background:linear-gradient(135deg, var(--deep) 0%, #173d2c 50%, var(--deep-dark) 100%); color:#fff;
+    border-radius:0 0 22px 22px;
   }
   .brand{
     font-weight:800; font-size:19px; letter-spacing:-0.01em; color:#fff;
@@ -89,7 +89,9 @@
   .login-logo{
     font-size:34px; font-weight:800; letter-spacing:-0.02em; margin-bottom:22px; color:var(--ink);
   }
-  .login-logo .dot-i{color:var(--basil);}
+  .login-logo{display:flex; align-items:flex-end; letter-spacing:-0.045em; line-height:1;}
+  .login-logo .dot-i{width:.2em; height:.2em; margin:0 0 .1em .08em; border-radius:50%; background:#3FA36F; display:inline-block;
+    box-shadow:0 0 0 0 rgba(63,163,111,.45); animation:pulseDot 2.4s ease-in-out infinite;}
   .login-heading{width:100%; max-width:360px;}
   .login-title{font-size:24px; font-weight:800; margin:0 0 4px;}
   /* Negative letter-spacing looks sharp on Latin text but breaks the joined
@@ -110,8 +112,8 @@
   }
   .pin-dot.filled{border-color:var(--basil); background:var(--basil-dim);}
   .pin-dot.filled .core{background:var(--basil); border-color:var(--basil);}
-  .pin-dot.err{border-color:var(--clay); background:var(--clay-dim);}
-  .pin-dot.err .core{background:var(--clay); border-color:var(--clay);}
+  .pin-dots.err .pin-dot{border-color:var(--clay); background:var(--clay-dim);}
+  .pin-dots.err .pin-dot .core{background:var(--clay); border-color:var(--clay);}
   @keyframes pinPop{
     0%{ transform:scale(0); opacity:0; }
     55%{ transform:scale(1.18); opacity:1; }
@@ -119,15 +121,8 @@
     100%{ transform:scale(1); opacity:1; }
   }
   .pin-dot.pop{ animation: pinPop .45s cubic-bezier(.34,1.56,.64,1); }
-  @keyframes hintFadeIn{
-    0%{ opacity:0; transform:translateY(-4px); }
-    100%{ opacity:1; transform:translateY(0); }
-  }
-  .admin-hint{
-    font-size:12.5px; font-weight:700; color:var(--basil); margin:-16px 0 14px;
-    animation: hintFadeIn .35s ease-out;
-  }
-  .login-error{color:var(--clay); font-size:13px; font-weight:700; height:18px; margin-bottom:14px;}
+  .login-error{color:var(--clay); font-size:13px; font-weight:700; min-height:18px; margin-bottom:14px; text-align:center; max-width:320px;}
+  .login-error.info{color:var(--basil);}
   .keypad{
     display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
     width:100%; max-width:360px;
@@ -221,7 +216,6 @@
     display:flex; align-items:baseline; justify-content:space-between;
     font-size:14px; font-weight:800; margin-bottom:6px; padding:0 2px;
   }
-  .supplier-head span.count{font-size:12px; font-weight:700; color:var(--ink-soft);}
   .item-row{
     display:flex; align-items:center; justify-content:space-between;
     background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
@@ -403,7 +397,6 @@
   .dev-out{background:var(--bg); color:var(--ink-soft); border:1px solid var(--line);}
   .dev-role{font-size:12px; font-weight:700; color:var(--ink-soft);}
   .dev-ago{color:var(--ink-soft); font-weight:600;}
-  .dev-recent{margin-top:4px; color:var(--ink-soft);}
   .dev-hint{font-size:12px; color:var(--ink-soft); line-height:1.5; margin:6px 2px 0;}
 
   /* ---------- Devices: remote actions ---------- */
@@ -451,7 +444,6 @@
   .list-row .meta.rem-line{display:flex; align-items:center; gap:5px; color:var(--basil); font-weight:700;}
   .list-row .meta.rem-line svg{width:13px; height:13px; flex-shrink:0;}
   .check-row svg{color:var(--basil); flex-shrink:0;}
-  .dev-group{margin:16px 0 8px;}
 
   /* ---------- Small phones ---------- */
   @media (max-width:380px){
@@ -537,7 +529,7 @@
   }
 
   /* ================================================================
-     Motion & modern UI polish (added)
+     Motion & modern UI polish
      Pure additive layer: every rule below overrides earlier rules of
      equal specificity by source order, so nothing above had to change.
      Respects prefers-reduced-motion at the very bottom.
@@ -545,40 +537,68 @@
   :root{
     --ease:cubic-bezier(.22,1,.36,1);
     --ease-spring:cubic-bezier(.34,1.56,.64,1);
+    --ease-out-expo:cubic-bezier(.16,1,.3,1);
   }
 
+  /* ---- Keyframes ---- */
   @keyframes viewIn{
-    from{opacity:0; transform:translateY(10px);}
+    from{opacity:0; transform:translateY(12px);}
     to{opacity:1; transform:translateY(0);}
   }
   @keyframes cardIn{
-    from{opacity:0; transform:translateY(8px) scale(.98);}
+    from{opacity:0; transform:translateY(10px) scale(.97);}
     to{opacity:1; transform:translateY(0) scale(1);}
   }
   @keyframes overlayFadeIn{
-    from{opacity:0;}
-    to{opacity:1;}
+    from{opacity:0; backdrop-filter:blur(0);}
+    to{opacity:1; backdrop-filter:blur(6px);}
   }
   @keyframes modalPop{
-    0%{opacity:0; transform:scale(.92) translateY(6px);}
+    0%{opacity:0; transform:scale(.88) translateY(10px);}
     100%{opacity:1; transform:scale(1) translateY(0);}
   }
   @keyframes pulseDot{
     0%,100%{box-shadow:0 0 0 0 rgba(111,207,154,.55);}
-    50%{box-shadow:0 0 0 5px rgba(111,207,154,0);}
+    50%{box-shadow:0 0 0 6px rgba(111,207,154,0);}
   }
   @keyframes chipPop{
-    0%{transform:scale(.85);}
-    60%{transform:scale(1.08);}
+    0%{transform:scale(.82);}
+    55%{transform:scale(1.1);}
     100%{transform:scale(1);}
+  }
+  @keyframes slideUp{
+    from{opacity:0; transform:translateY(20px);}
+    to{opacity:1; transform:translateY(0);}
+  }
+  @keyframes fadeScale{
+    from{opacity:0; transform:scale(.94);}
+    to{opacity:1; transform:scale(1);}
+  }
+  @keyframes shimmer{
+    0%{background-position:-200% 0;}
+    100%{background-position:200% 0;}
+  }
+  @keyframes badgeBounce{
+    0%{transform:scale(.6); opacity:0;}
+    50%{transform:scale(1.15);}
+    100%{transform:scale(1); opacity:1;}
+  }
+  @keyframes floatIn{
+    from{opacity:0; transform:translateY(6px) scale(.96);}
+    to{opacity:1; transform:translateY(0) scale(1);}
+  }
+  @keyframes successPulse{
+    0%{box-shadow:0 0 0 0 rgba(31,92,63,.35);}
+    70%{box-shadow:0 0 0 10px rgba(31,92,63,0);}
+    100%{box-shadow:0 0 0 0 rgba(31,92,63,0);}
   }
 
   /* Every screen fades + rises in on render (view switch, tab change) */
-  .content{ animation: viewIn .35s var(--ease) both; }
+  .content{ animation: viewIn .4s var(--ease-out-expo) both; }
 
-  /* Card-like surfaces lift in, staggered a touch for lists */
+  /* Card-like surfaces lift in, staggered for lists */
   .item-row, .list-row, .hist-card, .rec-card, .dev-card, .queue-card{
-    animation: cardIn .38s var(--ease) both;
+    animation: cardIn .42s var(--ease-out-expo) both;
   }
 
   /* render() marks #app as 'static-update' whenever a re-render lands on the
@@ -595,6 +615,12 @@
   #app.static-update .dev-card,
   #app.static-update .queue-card,
   #app.static-update .hero-card,
+  #app.static-update .push-banner,
+  #app.static-update .search-row,
+  #app.static-update .order-tabs,
+  #app.static-update .action-row,
+  #app.static-update .form-card,
+  #app.static-update .empty,
   #app.static-update .modal-status,
   #app.static-update .login-logo,
   #app.static-update .login-heading,
@@ -604,44 +630,60 @@
   #app.static-update .lang-pill{
     animation: none !important;
   }
-  .item-row:nth-of-type(2), .list-row:nth-of-type(2), .hist-card:nth-of-type(2), .rec-card:nth-of-type(2), .dev-card:nth-of-type(2), .queue-card:nth-of-type(2){animation-delay:.03s;}
-  .item-row:nth-of-type(3), .list-row:nth-of-type(3), .hist-card:nth-of-type(3), .rec-card:nth-of-type(3), .dev-card:nth-of-type(3), .queue-card:nth-of-type(3){animation-delay:.06s;}
-  .item-row:nth-of-type(4), .list-row:nth-of-type(4), .hist-card:nth-of-type(4), .rec-card:nth-of-type(4), .dev-card:nth-of-type(4), .queue-card:nth-of-type(4){animation-delay:.09s;}
-  .item-row:nth-of-type(5), .list-row:nth-of-type(5), .hist-card:nth-of-type(5), .rec-card:nth-of-type(5), .dev-card:nth-of-type(5), .queue-card:nth-of-type(5){animation-delay:.12s;}
-  .item-row:nth-of-type(n+6), .list-row:nth-of-type(n+6), .hist-card:nth-of-type(n+6), .rec-card:nth-of-type(n+6), .dev-card:nth-of-type(n+6), .queue-card:nth-of-type(n+6){animation-delay:.14s;}
+  .item-row:nth-of-type(2), .list-row:nth-of-type(2), .hist-card:nth-of-type(2), .rec-card:nth-of-type(2), .dev-card:nth-of-type(2), .queue-card:nth-of-type(2){animation-delay:.04s;}
+  .item-row:nth-of-type(3), .list-row:nth-of-type(3), .hist-card:nth-of-type(3), .rec-card:nth-of-type(3), .dev-card:nth-of-type(3), .queue-card:nth-of-type(3){animation-delay:.07s;}
+  .item-row:nth-of-type(4), .list-row:nth-of-type(4), .hist-card:nth-of-type(4), .rec-card:nth-of-type(4), .dev-card:nth-of-type(4), .queue-card:nth-of-type(4){animation-delay:.10s;}
+  .item-row:nth-of-type(5), .list-row:nth-of-type(5), .hist-card:nth-of-type(5), .rec-card:nth-of-type(5), .dev-card:nth-of-type(5), .queue-card:nth-of-type(5){animation-delay:.13s;}
+  .item-row:nth-of-type(n+6), .list-row:nth-of-type(n+6), .hist-card:nth-of-type(n+6), .rec-card:nth-of-type(n+6), .dev-card:nth-of-type(n+6), .queue-card:nth-of-type(n+6){animation-delay:.15s;}
 
-  /* Richer, less flat surfaces */
+  /* ---- Richer surfaces with depth ---- */
   .hero-card{
-    background:linear-gradient(135deg, var(--deep) 0%, var(--deep-dark) 100%);
-    box-shadow:0 10px 26px rgba(14,31,24,.28);
-    animation: cardIn .4s var(--ease) both;
+    background:linear-gradient(135deg, var(--deep) 0%, #173d2c 50%, var(--deep-dark) 100%);
+    box-shadow:0 12px 32px rgba(14,31,24,.32), 0 2px 6px rgba(14,31,24,.12);
+    animation: slideUp .5s var(--ease-out-expo) both;
+    position:relative; overflow:hidden;
   }
-  .topbar{ box-shadow:0 6px 20px rgba(14,31,24,.2); }
-  .bottomnav{ box-shadow:0 -6px 20px rgba(14,31,24,.05); }
+  .hero-card::after{
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse at 30% 20%, rgba(111,207,154,.12), transparent 70%);
+  }
+  .topbar{ box-shadow:0 8px 24px rgba(14,31,24,.22), 0 1px 3px rgba(14,31,24,.1); }
+  .bottomnav{ box-shadow:0 -8px 24px rgba(14,31,24,.06); }
   .item-row, .list-row, .hist-card, .rec-card, .dev-card, .queue-card, .form-card{
-    box-shadow:0 2px 8px rgba(21,43,34,.07);
-    transition: transform .18s var(--ease), box-shadow .2s var(--ease), border-color .18s var(--ease);
+    box-shadow:0 2px 8px rgba(21,43,34,.06), 0 1px 2px rgba(21,43,34,.04);
+    transition: transform .2s var(--ease-out-expo), box-shadow .25s var(--ease-out-expo), border-color .2s var(--ease);
   }
-  .item-row.has-qty{ box-shadow:0 4px 14px rgba(31,92,63,.18); }
+  .item-row.has-qty{
+    box-shadow:0 4px 16px var(--glow-basil), 0 1px 3px rgba(31,92,63,.08);
+    animation: successPulse .6s var(--ease) forwards;
+  }
+  #app.static-update .item-row.has-qty{ animation:none !important; }
 
   /* Pointer devices only: a gentle hover lift (no-op on touch) */
   @media (hover:hover) and (pointer:fine){
-    .item-row:hover, .list-row.tappable:hover, .dev-card:hover{
+    .item-row:hover, .list-row.tappable:hover, .dev-card:hover, .queue-card:hover{
       transform:translateY(-2px);
-      box-shadow:0 8px 20px rgba(21,43,34,.1);
+      box-shadow:0 10px 24px rgba(21,43,34,.12), 0 2px 6px rgba(21,43,34,.06);
       border-color:var(--basil);
+    }
+    .hist-card:hover{
+      transform:translateY(-1px);
+      box-shadow:0 6px 18px rgba(21,43,34,.1);
+    }
+    .form-card:hover{
+      border-color:rgba(31,92,63,.25);
     }
   }
 
-  /* ---- Buttons: press feedback + a soft tap flash on every control ---- */
+  /* ---- Buttons: press feedback + ripple flash ---- */
   .btn, .pill-btn, .navbtn, .tab-pill, .step-btn, .icon-btn, .quick-btn,
-  .send-btn, .wa-btn, .day-chip{
+  .send-btn, .wa-btn, .day-chip, .pdf-btn{
     position:relative; overflow:hidden;
     transition:transform .15s var(--ease), box-shadow .2s var(--ease),
       background-color .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease);
   }
   .btn::after, .pill-btn::after, .navbtn::after, .tab-pill::after, .step-btn::after,
-  .icon-btn::after, .quick-btn::after, .send-btn::after, .wa-btn::after, .day-chip::after{
+  .icon-btn::after, .quick-btn::after, .send-btn::after, .wa-btn::after, .day-chip::after, .pdf-btn::after{
     content:''; position:absolute; inset:0; pointer-events:none;
     background:radial-gradient(circle, rgba(255,255,255,.55), rgba(255,255,255,0) 65%);
     opacity:0; transform:scale(.5);
@@ -649,41 +691,47 @@
   }
   .btn:active::after, .pill-btn:active::after, .navbtn:active::after, .tab-pill:active::after,
   .step-btn:active::after, .icon-btn:active::after, .quick-btn:active::after,
-  .send-btn:active::after, .wa-btn:active::after, .day-chip:active::after{
+  .send-btn:active::after, .wa-btn:active::after, .day-chip:active::after, .pdf-btn:active::after{
     opacity:1; transform:scale(1); transition:opacity 0s, transform 0s;
   }
   .btn:active, .pill-btn:active, .navbtn:active, .tab-pill:active, .step-btn:active,
-  .icon-btn:active, .quick-btn:active, .send-btn:active, .wa-btn:active, .day-chip:active, .key:active{
+  .icon-btn:active, .quick-btn:active, .send-btn:active, .wa-btn:active, .day-chip:active, .key:active, .pdf-btn:active{
     transform:scale(.95);
   }
   .key{ transition:transform .12s var(--ease), background-color .15s var(--ease), border-color .15s var(--ease); }
 
   .btn-primary{
     background:linear-gradient(135deg, var(--basil) 0%, #163f2b 100%);
-    box-shadow:0 6px 16px rgba(31,92,63,.3);
+    box-shadow:0 6px 18px rgba(31,92,63,.28), 0 2px 4px rgba(31,92,63,.12);
   }
-  .btn-primary:active{ box-shadow:0 2px 8px rgba(31,92,63,.24); }
+  .btn-primary:active{ box-shadow:0 2px 8px rgba(31,92,63,.22); }
+  .btn-danger{
+    transition: background-color .18s var(--ease), color .18s var(--ease), transform .15s var(--ease);
+  }
   .send-btn{
-    background:linear-gradient(135deg, var(--deep) 0%, var(--deep-dark) 100%);
-    box-shadow:0 8px 20px rgba(14,31,24,.28);
+    background:linear-gradient(135deg, var(--deep) 0%, #173d2c 50%, var(--deep-dark) 100%);
+    box-shadow:0 8px 24px rgba(14,31,24,.3), 0 2px 6px rgba(14,31,24,.1);
   }
   .send-btn:disabled{ box-shadow:none; background:var(--line); }
-  .day-chip.on{ animation:chipPop .3s var(--ease-spring); }
-  .tab-pill.active{ box-shadow:0 4px 12px rgba(14,31,24,.22); }
+  .day-chip.on{ animation:chipPop .32s var(--ease-spring); }
+  .tab-pill.active{ box-shadow:0 4px 14px rgba(14,31,24,.24); }
 
-  /* Nav icon gets a subtle pop when its tab is active */
-  .navbtn svg{ transition:transform .2s var(--ease); }
-  .navbtn.active svg{ transform:scale(1.12); }
+  /* Nav icon + label animate on active state */
+  .navbtn svg{ transition:transform .25s var(--ease-spring); }
+  .navbtn.active svg{ transform:scale(1.14); }
+  .navbtn span{ transition:color .18s var(--ease); }
 
-  /* Brand dot: soft pulsing glow, like a little "we're live" indicator */
+  /* Brand dot: soft pulsing glow */
   .brand .dot{ animation:pulseDot 2.4s ease-in-out infinite; }
 
-  /* ---- Inputs: focus glow (there wasn't one before) ---- */
+  /* ---- Inputs: focus glow ---- */
   .search-input, .field input, .field select, .field textarea{
-    transition:border-color .18s var(--ease), box-shadow .18s var(--ease);
+    transition:border-color .2s var(--ease), box-shadow .2s var(--ease), background-color .2s var(--ease);
   }
   .search-input:focus, .field input:focus, .field select:focus, .field textarea:focus{
-    outline:none; border-color:var(--basil); box-shadow:0 0 0 3px var(--basil-dim);
+    outline:none; border-color:var(--basil);
+    box-shadow:0 0 0 3px var(--basil-dim), 0 2px 8px var(--glow-basil);
+    background:var(--card);
   }
   .field textarea{
     width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--line);
@@ -691,20 +739,212 @@
     resize:vertical; min-height:96px; line-height:1.5;
   }
 
-  /* ---- Modals: pop + fade instead of an instant snap-into-place ---- */
-  .modal-overlay{ animation: overlayFadeIn .2s ease; }
-  .modal-box{ animation: modalPop .26s var(--ease-spring); }
-  #forceRoot .modal-overlay{ animation: overlayFadeIn .25s ease; }
-  .modal-status:not(:empty){ animation:viewIn .2s var(--ease) both; }
+  /* ---- Modals: pop + backdrop blur ---- */
+  .modal-overlay{
+    animation: overlayFadeIn .25s ease both;
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  }
+  .modal-box{ animation: modalPop .3s var(--ease-spring); }
+  #forceRoot .modal-overlay{ animation: overlayFadeIn .28s ease both; }
+  .modal-status:not(:empty){ animation:floatIn .25s var(--ease-out-expo) both; }
+
+  /* ---- Queue card: sent state celebration ---- */
+  .queue-card.sent{
+    animation: successPulse .6s var(--ease) forwards;
+  }
+  .queue-badge{ animation: badgeBounce .4s var(--ease-spring) both; }
+
+  /* ---- Push banner: slides in from above ---- */
+  .push-banner{
+    animation: slideUp .45s var(--ease-out-expo) both;
+  }
+
+  /* ---- Search bar: subtle float-in ---- */
+  .search-row{ animation: floatIn .35s var(--ease-out-expo) .05s both; }
+  .order-tabs{ animation: floatIn .35s var(--ease-out-expo) .08s both; }
+
+  /* ---- Action row + form cards: smooth entrance ---- */
+  .action-row{ animation: floatIn .35s var(--ease-out-expo) both; }
+  .form-card{ animation: fadeScale .35s var(--ease-out-expo) both; }
+
+  /* ---- Empty state: gentle appearance ---- */
+  .empty{ animation: fadeScale .4s var(--ease-out-expo) both; }
+
+  /* ---- Stepper buttons: bounce feedback ---- */
+  .step-btn:active{ transform:scale(.88); }
+  .step-btn{ transition:transform .12s var(--ease-spring), background-color .15s var(--ease), border-color .15s var(--ease); }
+
+  /* ---- Connection status: smooth transitions ---- */
+  .connection-status{
+    transition:background-color .3s var(--ease), border-color .3s var(--ease), color .3s var(--ease);
+  }
+  .connection-status span{
+    transition:background-color .3s var(--ease), box-shadow .3s var(--ease);
+  }
+
+  /* ---- Pill buttons (lang switch): smooth active toggle ---- */
+  .pill-btn{
+    transition:background-color .2s var(--ease), color .2s var(--ease), border-color .2s var(--ease), transform .15s var(--ease);
+  }
+
+  /* ---- Record badges: animate in ---- */
+  .rec-badge{ animation: badgeBounce .35s var(--ease-spring) both; }
+
+  /* ---- Device badges ---- */
+  .dev-badge{ animation: badgeBounce .35s var(--ease-spring) both; }
+  .dev-pending{ animation: floatIn .3s var(--ease-out-expo) both; }
+
+  /* ---- Unit chips: float in staggered ---- */
+  .unit-chip{ animation: floatIn .3s var(--ease-out-expo) both; }
+  .unit-chip:nth-of-type(2){ animation-delay:.03s; }
+  .unit-chip:nth-of-type(3){ animation-delay:.06s; }
+  .unit-chip:nth-of-type(4){ animation-delay:.09s; }
+  .unit-chip:nth-of-type(n+5){ animation-delay:.11s; }
+
+  /* ---- Section titles: subtle slide ---- */
+  .section-title{ animation: floatIn .3s var(--ease-out-expo) both; }
+  #app.static-update .section-title,
+  #app.static-update .unit-chip,
+  #app.static-update .search-row,
+  #app.static-update .order-tabs,
+  #app.static-update .action-row,
+  #app.static-update .form-card,
+  #app.static-update .empty,
+  #app.static-update .push-banner,
+  #app.static-update .queue-badge,
+  #app.static-update .rec-badge,
+  #app.static-update .dev-badge,
+  #app.static-update .dev-pending{
+    animation: none !important;
+  }
 
   /* Login screen: gentle staggered entrance */
   .login-logo, .login-heading, .pin-label, .pin-dots, .keypad, .lang-pill{
-    animation: viewIn .4s var(--ease) both;
+    animation: slideUp .5s var(--ease-out-expo) both;
   }
-  .pin-label{ animation-delay:.03s; }
-  .pin-dots{ animation-delay:.06s; }
-  .keypad{ animation-delay:.09s; }
-  .lang-pill{ animation-delay:.12s; }
+  .login-heading{ animation-delay:.04s; }
+  .pin-label{ animation-delay:.08s; }
+  .pin-dots{ animation-delay:.12s; }
+  .keypad{ animation-delay:.16s; }
+  .lang-pill{ animation-delay:.20s; }
+
+  /* ---- PDF button: better styling ---- */
+  .pdf-btn{
+    border:1px solid var(--basil); border-radius:12px;
+    background:linear-gradient(135deg, #fff 0%, var(--basil-dim) 100%);
+    color:var(--basil); font-weight:800; padding:11px 14px; cursor:pointer;
+    box-shadow:0 2px 6px rgba(31,92,63,.08);
+  }
+
+  /* ---- WhatsApp button: richer green ---- */
+  .wa-btn{
+    background:linear-gradient(135deg, #25D366 0%, #1EBE5A 100%);
+    box-shadow:0 4px 12px rgba(37,211,102,.25);
+  }
+  .wa-btn.done{
+    background:var(--line); color:var(--ink-soft); box-shadow:none;
+  }
+
+  /* ---- Supplier head in order view: sticky with glass effect ---- */
+  .supplier-head{
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    background:rgba(242,246,244,.85);
+    border-radius:10px; padding:6px 10px; margin-bottom:8px;
+  }
+
+  /* ---- Modal backdrop: frosted glass ---- */
+  .modal-overlay{
+    background:rgba(14,31,24,0.4);
+  }
+  .modal-box{
+    box-shadow:0 16px 48px rgba(0,0,0,0.24), 0 4px 12px rgba(0,0,0,0.08);
+    border:1px solid rgba(255,255,255,.6);
+  }
+
+  /* ---- Hero eyebrow shimmer ---- */
+  .hero-eyebrow::before{
+    content:''; display:inline-block; width:6px; height:6px; border-radius:50%;
+    background:#6FCF9A; margin-inline-end:4px; vertical-align:middle;
+    animation:pulseDot 2s ease-in-out infinite;
+  }
+
+  /* ---- Smoother scrollbar for order tabs ---- */
+  .order-tabs{
+    scroll-behavior:smooth;
+    -webkit-mask-image:linear-gradient(90deg, #000 90%, transparent);
+    mask-image:linear-gradient(90deg, #000 90%, transparent);
+  }
+  html.rtl .order-tabs{
+    -webkit-mask-image:linear-gradient(270deg, #000 90%, transparent);
+    mask-image:linear-gradient(270deg, #000 90%, transparent);
+  }
+
+
+  /* ================================================================
+     2026-09-23: sign-in states, toasts, busy buttons, small details
+     ================================================================ */
+  /* PIN pad: the dot that was just typed pops; wrong PIN shakes; checking pulses */
+  @keyframes pinShake{
+    10%,90%{transform:translateX(-1px);} 20%,80%{transform:translateX(3px);}
+    30%,50%,70%{transform:translateX(-7px);} 40%,60%{transform:translateX(7px);}
+  }
+  @keyframes pinBusy{ 0%,100%{transform:scale(1); opacity:1;} 50%{transform:scale(.82); opacity:.55;} }
+  #app .pin-dots.err, #app.static-update .pin-dots.err{ animation:pinShake .5s cubic-bezier(.36,.07,.19,.97) both !important; }
+  .pin-dots.busy .pin-dot{ animation:pinBusy .9s ease-in-out infinite; border-color:var(--basil); background:var(--basil-dim); }
+  .pin-dots.busy .pin-dot:nth-child(2){animation-delay:.08s} .pin-dots.busy .pin-dot:nth-child(3){animation-delay:.16s}
+  .pin-dots.busy .pin-dot:nth-child(4){animation-delay:.24s} .pin-dots.busy .pin-dot:nth-child(5){animation-delay:.32s}
+  .pin-dots.busy .pin-dot:nth-child(6){animation-delay:.40s}
+  .key:focus-visible, .btn:focus-visible, .navbtn:focus-visible, .tab-pill:focus-visible,
+  .pill-btn:focus-visible, .step-btn:focus-visible, .icon-btn:focus-visible, .lang-pill:focus-visible{
+    outline:2px solid var(--basil); outline-offset:2px;
+  }
+
+  /* Toast: short success / info message at the bottom of the screen */
+  .toast{
+    position:fixed; left:50%; bottom:calc(92px + env(safe-area-inset-bottom, 0px)); z-index:200;
+    transform:translate(-50%, 16px) scale(.96); opacity:0; pointer-events:none;
+    max-width:min(420px, calc(100vw - 32px)); padding:12px 18px; border-radius:14px;
+    background:var(--deep); color:#fff; font-size:14px; font-weight:700; line-height:1.4; text-align:center;
+    box-shadow:0 14px 34px rgba(14,31,24,.32);
+    transition:opacity .25s var(--ease), transform .35s var(--ease-spring);
+  }
+  .toast.show{ opacity:1; transform:translate(-50%, 0) scale(1); }
+  .toast.warn{ background:#6b4a06; }
+  .toast::before{ content:''; display:inline-block; width:8px; height:8px; border-radius:50%; background:#6FCF9A;
+    margin-inline-end:9px; vertical-align:1px; }
+  .toast.warn::before{ background:#ffd432; }
+
+  /* A button whose action is running: dimmed with a small spinner */
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .btn.is-busy{ color:transparent !important; pointer-events:none; }
+  .btn.is-busy::before{
+    content:''; position:absolute; left:50%; top:50%; width:16px; height:16px; margin:-8px 0 0 -8px;
+    border-radius:50%; border:2px solid rgba(255,255,255,.45); border-top-color:#fff; animation:spin .7s linear infinite;
+  }
+  .btn-ghost.is-busy::before{ border-color:rgba(31,92,63,.25); border-top-color:var(--basil); }
+
+  .app-version{ margin:22px 0 6px; text-align:center; font-size:11.5px; font-weight:700; color:var(--ink-soft); opacity:.7; }
+  .modal-box.modal-form{ overscroll-behavior:contain; }
+
+  /* The workspace fades up once, right as the splash lifts */
+  @keyframes appReveal{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:none; } }
+  html:not(.booting) #app{ animation:appReveal .55s var(--ease-out-expo) both; }
+
+  /* Top bar: wordmark + compact controls */
+  .brand{gap:0; align-items:flex-end; font-size:22px; letter-spacing:-0.045em; line-height:1; overflow:visible;}
+  .brand .brand-mark{font-weight:800;}
+  .brand .dot{flex-shrink:0; width:7px; height:7px; margin:0 0 3px 3px;}
+  .brand .brand-sub{margin-inline-start:9px; margin-bottom:2px; font-size:11px; font-weight:800; letter-spacing:.22em;
+    text-transform:uppercase; color:rgba(255,255,255,.55);}
+  html.rtl .brand{direction:ltr;}
+  .connection-status em{font-style:normal;}
+  .pill-btn.icon-pill{width:36px; height:36px; min-height:36px; padding:0; display:inline-flex; align-items:center; justify-content:center;}
+  .lang-switch{font-weight:700;}
+  @media (max-width:430px){
+    .connection-status{padding:9px;}
+    .connection-status em{display:none;}
+    .brand .brand-sub{display:none;}
+  }
 
   /* Anyone who has asked their device for reduced motion gets a calm app */
   @media (prefers-reduced-motion: reduce){

@@ -2,10 +2,10 @@
    (admins) sends update notifications / test reminders.
 
    Works on iOS 16.4+ only when the app is opened from the Home Screen icon.
-   Depends on: VAPID_PUBLIC_KEY (config.js), state, t, esc (app.js),
-   lget/lset/rpcCall/appVerifyPin (storage.js), showPrompt/showAlert/showFormModal
-   (modals.js), openUpdatePopup (update-check.js). All are only used at
-   runtime, so load order relative to those files doesn't matter. */
+   Depends on: VAPID_PUBLIC_KEY (config.js), state, t, esc, render, toast
+   (app.js), lget/lset/api (storage.js), showAlert/showFormModal (modals.js),
+   openUpdatePopup (update-check.js). All are only used at runtime, so load
+   order relative to those files doesn't matter. */
 
 /* Bell icon for the notification buttons (kept here so icons.js is unchanged). */
 const ICON_BELL = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`;
@@ -74,7 +74,7 @@ async function initPush(){
         }catch(e){ console.error('silent re-subscribe failed', e); }
       }
       pushStatus.subscribed = !!sub && Notification.permission === 'granted';
-      if(pushStatus.subscribed) savePushSubscription(sub);
+      if(pushStatus.subscribed && apiSession()) savePushSubscription(sub);
     }
   }catch(e){ console.error('push init failed', e); }
   pushStatus.ready = true;
@@ -83,16 +83,15 @@ async function initPush(){
 async function savePushSubscription(sub){
   const j = sub.toJSON();
   if(!j.endpoint || !j.keys) return false;
-  const deviceId = (state && state.deviceId) || lget('deviceId') || null;
   // The server splits every notification by each device's own language (see
   // send-push), so it needs to know what language this device is on, kept
   // fresh here on every save (e.g. the device switched languages, or is
   // re-subscribing after a reload).
   const lang = (state && state.lang) || lget('lang') || 'en';
-  const ok = await rpcCall('push_save_subscription', {
-    p_endpoint:j.endpoint, p_p256dh:j.keys.p256dh, p_auth:j.keys.auth, p_device_id:deviceId, p_lang:lang
-  });
-  return ok === true;
+  const r = await api('push/subscription', {method:'PUT', body:{
+    endpoint:j.endpoint, p256dh:j.keys.p256dh, auth:j.keys.auth, lang
+  }});
+  return r.ok;
 }
 
 /* Must be called straight from a tap (iOS only shows the permission prompt
@@ -126,10 +125,18 @@ async function disablePush(){
     if(sub){
       const endpoint = sub.endpoint;
       await sub.unsubscribe();
-      await rpcCall('push_remove_subscription', { p_endpoint: endpoint });
+      await api('push/subscription', {method:'DELETE', body:{endpoint}});
     }
   }catch(e){ console.error('disable push failed', e); }
   pushStatus.subscribed = false;
+}
+/* After signing in: make sure this device's subscription is linked to the new session's device. */
+async function resyncPush(){
+  try{
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    if(sub) await savePushSubscription(sub);
+  }catch(e){ /* not fatal */ }
 }
 function snoozePushBanner(){ lset('pushBannerSnoozedAt', Date.now()); }
 
@@ -142,52 +149,27 @@ async function updatePushLang(lang){
   try{
     const reg = await navigator.serviceWorker.getRegistration();
     const sub = reg && await reg.pushManager.getSubscription();
-    if(sub) await rpcCall('push_set_lang', { p_endpoint: sub.endpoint, p_lang: lang });
+    if(sub) await api('push/lang', {method:'PUT', body:{endpoint:sub.endpoint, lang}});
   }catch(e){ console.error('update push lang failed', e); }
 }
 
 /* Shows the right message for a failed enablePush(). */
 async function showPushEnableResult(res){
-  if(res.ok){ await showAlert(t('notifEnabledMsg')); return; }
+  if(res.ok){ toast(t('notifEnabledMsg')); return; }
   if(res.reason === 'denied') await showAlert(t('notifDeniedMsg'));
   else if(res.reason === 'dismissed') { /* they closed the prompt -- say nothing */ }
   else await showAlert(t('notifFailedMsg'));
 }
 
-/* ---------- Admin: sending ---------- */
-/* Admin actions need the admin PIN. It's normally still in memory from
-   login; if the page was reloaded, ask for it once. */
-async function ensureAdminPin(){
-  if(state.adminPinEntered) return state.adminPinEntered;
-  const pin = await showPrompt(t('reenterAdminPinMsg'), { okLabel:t('unlock'), password:true });
-  if(!pin) return null;
-  const role = await appVerifyPin(pin);
-  if(role !== 'admin'){ await showAlert(t('wrongPin')); return null; }
-  state.adminPinEntered = pin;
-  return pin;
-}
+/* ---------- Admin: sending ----------
+   The server checks that this session belongs to an admin, so no PIN is
+   needed here. */
 async function callSendPush(type, extra){
-  const pin = await ensureAdminPin();
-  if(!pin) return { ok:false, reason:'cancelled' };
-  try{
-    const key = state.settings.supabaseKey;
-    const res = await fetch(`${state.settings.supabaseUrl}/functions/v1/send-push`, {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', apikey:key, Authorization:`Bearer ${key}` },
-      body: JSON.stringify({ type, pin, ...(extra || {}) })
-    });
-    const data = await res.json().catch(()=>({}));
-    if(res.status === 403){ state.adminPinEntered = null; await showAlert(t('wrongPin')); return { ok:false, reason:'pin' }; }
-    if(!res.ok) return { ok:false, reason:'error', data };
-    return { ok:true, ...data };
-  }catch(e){
-    console.error('send-push failed', e);
-    return { ok:false, reason:'network' };
-  }
+  const r = await api('push/send', {method:'POST', body:{type, ...(extra || {})}});
+  return r.ok ? { ok:true, ...(r.data || {}) } : { ok:false, reason: r.status === 0 ? 'network' : 'error' };
 }
 /* Tells the admin what happened to a test / update send. */
 async function reportSendResult(res){
-  if(res.reason === 'cancelled' || res.reason === 'pin') return;
   if(!res.ok) await showAlert(t('notifSendFailed'));
   else if(res.sent && res.failed) await showAlert(t('notifPartialMsg')(res.sent, res.failed));
   else if(res.sent) await showAlert(t('notifSentMsg')(res.sent));
@@ -227,15 +209,10 @@ async function sendUpdateNotification(){
   });
 }
 
-/* ---------- Daily reminder settings (stored in Supabase via RPCs) ---------- */
-async function loadReminder(){
-  const r = await rpcCall('push_get_reminder', {});
-  return r && typeof r === 'object' ? { enabled: !!r.enabled, time: r.time || '09:00' } : null;
-}
+/* ---------- Daily reminder settings ---------- */
 async function saveReminder(enabled, time){
-  const pin = await ensureAdminPin();
-  if(!pin) return 'cancelled';
-  return await rpcCall('push_set_reminder', { p_pin:pin, p_enabled:enabled, p_time:time });
+  const r = await api('reminder', {method:'PUT', body:{enabled, time}});
+  return r.ok;
 }
 
 /* ---------- Notification taps ---------- */
