@@ -216,6 +216,18 @@
     display:flex; align-items:baseline; justify-content:space-between;
     font-size:14px; font-weight:800; margin-bottom:6px; padding:0 2px;
   }
+  .supplier-head-actions{display:flex;align-items:center;gap:10px;}
+  .supplier-item-count{font-variant-numeric:tabular-nums;color:var(--ink-soft);}
+  .item-sort-trigger{border:1px solid #cfe0d6;border-radius:999px;background:var(--card);color:var(--basil);padding:6px 10px;font:inherit;font-size:11px;font-weight:800;cursor:pointer;}
+  .item-sort-trigger:hover{background:var(--basil-dim);}
+  .item-sort-hint{margin-bottom:12px;color:var(--ink-soft);font-size:13px;line-height:1.5;}
+  .item-sort-list{display:grid;gap:8px;max-height:min(58vh,560px);overflow-y:auto;padding:1px 2px 2px;}
+  .item-sort-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:8px;padding:9px;border:1px solid var(--line);border-radius:12px;background:var(--card);}
+  .item-sort-rank{display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:var(--basil-dim);color:var(--basil);font-size:11px;font-weight:800;}
+  .item-sort-name{min-width:0;overflow-wrap:anywhere;font-size:13px;font-weight:700;}
+  .item-sort-actions{display:flex;gap:5px;}
+  .item-sort-action{border:1px solid #cfe0d6;border-radius:8px;background:#f5faf6;color:var(--basil);padding:6px 8px;font:inherit;font-size:11px;font-weight:800;cursor:pointer;}
+  .item-sort-action:hover{background:var(--basil-dim);}
   .item-row{
     display:flex; align-items:center; justify-content:space-between;
     background:var(--card); border:1px solid var(--line); border-radius:var(--radius);

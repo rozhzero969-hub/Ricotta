@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-23.2';
+const APP_VERSION = '2026-09-23.3';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,8 +14,8 @@ const APP_VERSION = '2026-09-23.2';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'Quantity feedback now stays smooth and reliable after changing language or refreshing the order view. This release also includes a focused reliability and database health check.';
-const CHANGELOG_KU = 'ئێستا ئەنیمەیشنی زیادکردنی بڕ بە نرمی و بەجێگیری کار دەکات، تەنانەت دوای گۆڕینی زمان یان نوێکردنەوەی لیستی داواکاری. لەم وەشانەدا پشکنینی وردی جێگیریی و تەندروستی بنکەدراوەش کراوە.';
+const CHANGELOG_EN = 'Choose a custom item order for each supplier. Suppliers without a saved order continue using A–Z sorting in English or Kurdish.';
+const CHANGELOG_KU = 'ئێستا دەتوانیت ڕیزبەندیی تایبەت بۆ کاڵاکانی هەر دابینکەرێک دابنێیت. دابینکەرەکانی تر کە ڕیزبەندییان بۆ دانەنراوە، بە پیتی A–Z بەپێی زمانی ئینگلیزی یان کوردی ڕیز دەبن.';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN

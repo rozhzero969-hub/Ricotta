@@ -89,7 +89,7 @@ async function audit(s: Session, action: string, type?: string, name?: string, p
 
 /* ---------- Shapes the browser uses ---------- */
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder });
-const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id });
+const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order });
 const toDevice = (d: any) => ({
   id: d.id, nickname: d.nickname, role: d.role, loggedIn: d.logged_in,
   lastLogin: d.last_login, lastSeen: d.last_seen, command: d.command, handledCommand: d.handled_command,
@@ -134,7 +134,7 @@ async function bootstrap(s: Session) {
   const admin = s.role === "admin";
   const [suppliers, items, units, orders, reminder, devices, activity] = await Promise.all([
     app("suppliers").select("id,name,phone,reminder").order("name"),
-    app("items").select("id,name,unit_id,supplier_id").order("name"),
+    app("items").select("id,name,unit_id,supplier_id,sort_order").order("name"),
     app("units").select("id,en,ku"),
     app("orders").select("id,created_at,sent_at").eq("status", "sent").order("sent_at"),
     readReminder(),
@@ -197,7 +197,9 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
   } : null,
   items: (id, b) => text(b.name) ? {
     id, name: text(b.name), unit_id: text(b.unit, 120) || null,
-    supplier_id: text(b.supplierId, 120) || null, updated_at: nowIso(),
+    supplier_id: text(b.supplierId, 120) || null,
+    ...(Object.hasOwn(b, "sortOrder") ? { sort_order: Number.isInteger(b.sortOrder) && b.sortOrder >= 0 ? b.sortOrder : null } : {}),
+    updated_at: nowIso(),
   } : null,
   units: (id, b) => text(b.en, 80) ? { id, en: text(b.en, 80), ku: text(b.ku, 80) || null } : null,
 };
@@ -336,6 +338,15 @@ Deno.serve(async (req) => {
     }
 
     // Catalog
+    if (M === "PUT" && (m = path.match(/^supplier-order\/([^/]{1,120})$/))) {
+      if (!admin) return fail("forbidden", 403);
+      const supplierId = decodeURIComponent(m[1]);
+      const itemIds = Array.isArray(b.itemIds) ? b.itemIds.map((id: unknown) => text(id, 120)) : null;
+      if (!itemIds || itemIds.length > 500 || itemIds.some((id: string) => !id) || new Set(itemIds).size !== itemIds.length) return fail("invalid_order");
+      const { data, error } = await db.rpc("app_internal_set_item_order", { p_supplier_id: supplierId, p_item_ids: itemIds });
+      if (error || data !== true) return fail("invalid_order");
+      return ok();
+    }
     if ((m = path.match(/^(suppliers|items|units)\/([^/]{1,120})$/))) {
       if (!admin) return fail("forbidden", 403);
       const table = m[1], id = decodeURIComponent(m[2]);
