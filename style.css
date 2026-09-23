@@ -29,9 +29,8 @@
   .login-brand-panel:after{content:'';position:absolute;width:32rem;height:32rem;border:1px solid rgba(255,255,255,.08);border-radius:50%;right:-17rem;bottom:-14rem}
   .brand-word{display:flex;align-items:flex-end;font-size:46px;font-weight:800;letter-spacing:-2.4px;line-height:1}.brand-word-dot{width:9px;height:9px;margin:0 0 7px 4px;border-radius:50%;background:#6FCF9A;animation:pulseDot 2.4s ease-in-out infinite}.brand-message{margin-top:auto;font-size:42px;line-height:1.2;font-weight:800;letter-spacing:-1.7px}.brand-message em{font-style:normal;color:#ffd432}.brand-detail{margin-top:20px;font-size:17px;color:#dbece3}.brand-footer{margin-top:auto;color:#b7d6c8;font-size:13px}
   .login-card{justify-self:center;align-self:center;max-width:432px;padding:50px 34px;align-items:center}.login-card .login-logo{display:none}.login-card .login-heading,.login-card .pin-label,.login-card .keypad{max-width:432px}.login-card .login-title{font-size:30px}.login-card .login-sub{font-size:15px}.login-card .key{height:64px}.login-card .lang-pill{align-self:stretch;justify-content:space-between;margin-top:30px;border-top:1px solid var(--line);border-radius:0;background:transparent;padding:16px 0 0}
-  .admin-item-group{display:block!important;margin:0 0 26px;padding:0;border:1px solid #dbe9df;border-radius:18px;background:#f8fcf9;overflow:hidden}.admin-item-group .supplier-head{position:static;top:auto;margin:0;padding:14px 18px;background:#e9f5ec;color:#174b35}.admin-item-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}.admin-item-grid .list-row{margin:0;min-height:72px}.admin-item-grid .list-row .meta{margin-top:4px}.admin-item-grid .row-actions{align-self:center}
+  .admin-item-group{display:block!important;margin:0 0 26px;padding:0;border:1px solid #dbe9df;border-radius:18px;background:#f8fcf9;overflow:hidden}.admin-item-group .supplier-head{position:static;top:auto;margin:0;padding:14px 18px;background:#e9f5ec;color:#174b35}.admin-item-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:10px;padding:12px}.admin-item-grid .list-row{margin:0;min-height:72px}.admin-item-grid .list-row .meta{margin-top:4px}.admin-item-grid .row-actions{align-self:center}
 }
-@media (min-width:1280px){.admin-item-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   html{-webkit-text-size-adjust:100%; text-size-adjust:100%;}
@@ -216,18 +215,21 @@
     display:flex; align-items:baseline; justify-content:space-between;
     font-size:14px; font-weight:800; margin-bottom:6px; padding:0 2px;
   }
-  .supplier-head-actions{display:flex;align-items:center;gap:10px;}
   .supplier-item-count{font-variant-numeric:tabular-nums;color:var(--ink-soft);}
-  .item-sort-trigger{border:1px solid #cfe0d6;border-radius:999px;background:var(--card);color:var(--basil);padding:6px 10px;font:inherit;font-size:11px;font-weight:800;cursor:pointer;}
-  .item-sort-trigger:hover{background:var(--basil-dim);}
+  .order-arrange-row{display:flex;justify-content:flex-end;margin:-2px 0 10px;}
+  .item-sort-trigger{border:1px solid #cfe0d6;border-radius:999px;background:var(--card);color:var(--basil);padding:7px 12px;font:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:background .18s ease,transform .18s ease;}
+  .item-sort-trigger:hover{background:var(--basil-dim);transform:translateY(-1px);}
   .item-sort-hint{margin-bottom:12px;color:var(--ink-soft);font-size:13px;line-height:1.5;}
-  .item-sort-list{display:grid;gap:8px;max-height:min(58vh,560px);overflow-y:auto;padding:1px 2px 2px;}
-  .item-sort-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:8px;padding:9px;border:1px solid var(--line);border-radius:12px;background:var(--card);}
+  .item-sort-list{display:grid;gap:8px;max-height:min(58vh,560px);overflow-y:auto;overscroll-behavior:contain;padding:2px 3px 4px;}
+  .item-sort-row{display:grid;grid-template-columns:28px minmax(0,1fr) 38px;align-items:center;gap:10px;min-height:52px;padding:7px 9px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:0 2px 7px rgba(16,48,34,.04);}
+  .item-sort-row.is-placeholder{border:1px dashed var(--basil);background:var(--basil-dim);color:transparent;box-shadow:none;}
+  .item-sort-row.is-placeholder>*{opacity:0;}
+  .item-sort-ghost{position:fixed;z-index:10000;pointer-events:none;background:#fff;border-color:var(--basil);box-shadow:0 16px 34px rgba(17,47,36,.2),0 3px 9px rgba(17,47,36,.1);will-change:transform;}
   .item-sort-rank{display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:var(--basil-dim);color:var(--basil);font-size:11px;font-weight:800;}
   .item-sort-name{min-width:0;overflow-wrap:anywhere;font-size:13px;font-weight:700;}
-  .item-sort-actions{display:flex;gap:5px;}
-  .item-sort-action{border:1px solid #cfe0d6;border-radius:8px;background:#f5faf6;color:var(--basil);padding:6px 8px;font:inherit;font-size:11px;font-weight:800;cursor:pointer;}
-  .item-sort-action:hover{background:var(--basil-dim);}
+  .item-sort-handle{display:grid;place-items:center;width:38px;height:38px;border:1px solid #cfe0d6;border-radius:9px;background:#f5faf6;color:var(--basil);cursor:grab;touch-action:none;user-select:none;}
+  .item-sort-handle:hover,.item-sort-handle:focus-visible{background:var(--basil-dim);outline-color:var(--basil);}
+  .item-sort-handle:active{cursor:grabbing;}
   .item-row{
     display:flex; align-items:center; justify-content:space-between;
     background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
@@ -320,6 +322,11 @@
     padding:7px 12px; margin:0 6px 6px 0; font-size:13px; font-weight:700;
   }
   .unit-chip button{border:none;background:none;color:var(--clay);font-weight:800;cursor:pointer;font-size:13px;}
+  .unit-names{display:grid;gap:1px;line-height:1.2;padding-inline-end:4px;}
+  .unit-names strong{font-size:13px;}
+  .unit-names small{color:var(--ink-soft);font-size:11px;font-weight:600;}
+  .unit-chip [data-editunit]{color:var(--basil);width:28px;height:28px;display:grid;place-items:center;}
+  .unit-chip [data-editunit] svg{width:16px;height:16px;}
 
   /* Add-button row at the top of the Suppliers / Items screens */
   .action-row{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:6px;}

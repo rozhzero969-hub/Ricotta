@@ -559,11 +559,14 @@ function renderOrder(){
   const tabsHtml = `<div class="order-tabs">${tabs.map(tb=>`
     <button class="tab-pill ${state.orderTab===tb.id?'active':''}" data-ordertab="${esc(tb.id)}">${esc(tb.label)}</button>
   `).join('')}</div>`;
+  const arrangeButton = state.role==='admin' && state.orderTab!=='all' && state.orderTab!=='__none'
+    ? `<div class="order-arrange-row"><button class="item-sort-trigger" id="orderArrangeBtn" data-sort-supplier="${esc(state.orderTab)}">${t('sortSupplierItems')}</button></div>` : '';
 
   const lastMap = lastOrderMap();
   return `
     ${renderOrderHero(selectedCount, selectedSupplierCount)}
     ${tabsHtml}
+    ${arrangeButton}
     <div class="search-row">
       <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
       ${lastMap ? `<button class="quick-btn" id="sameAsLast">${t('sameAsLastTime')}</button>` : ''}
@@ -602,8 +605,10 @@ function renderOrderResults(){
         </div>
       </div>`;
     }).join('');
+    const arrangeButton = state.role==='admin' && key!=='__none'
+      ? `<button class="item-sort-trigger" data-sort-supplier="${esc(key)}">${t('sortSupplierItems')}</button>` : '';
     return state.orderTab==='all' ? `<div class="supplier-group">
-      <div class="supplier-head"><span>${esc(label)}</span></div>
+      <div class="supplier-head"><span>${esc(label)}</span>${arrangeButton}</div>
       ${rows}
     </div>` : rows;
   }).join('');
@@ -668,15 +673,8 @@ function attachOrderEvents(){
     refreshOrderResults();
   };
   attachOrderResultEvents(document.getElementById('orderResults'));
-  document.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; refreshOrderView(id);
-  });
-  document.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); refreshOrderView();
-  });
-  document.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
-    const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; refreshOrderView();
-  });
+  const arrange = document.getElementById('orderArrangeBtn');
+  if(arrange) arrange.onclick = ()=>openSupplierItemOrder(arrange.dataset.sortSupplier);
   const same = document.getElementById('sameAsLast');
   if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = {...m}; render(); };
   const send = document.getElementById('sendOrdersBtn');
@@ -696,6 +694,7 @@ function attachOrderEvents(){
 }
 function attachOrderResultEvents(root){
   if(!root) return;
+  root.querySelectorAll('[data-sort-supplier]').forEach(button=>button.onclick=()=>openSupplierItemOrder(button.dataset.sortSupplier));
   root.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{
     const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; refreshOrderView(id);
   });
@@ -1107,7 +1106,7 @@ function renderItemsAdmin(){
   const groups = {};
   state.items.forEach(i=>{ const key=i.supplierId||'__none'; (groups[key] ||= []).push(i); });
   const list = state.items.length ? Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
-    const label=key==='__none'?t('noSupplier'):supplierName(key); const groupItems=key==='__none'?sortedByName(groups[key]):sortedSupplierItems(groups[key]);
+    const label=key==='__none'?t('noSupplier'):supplierName(key); const groupItems=sortedByName(groups[key]);
     const rows=groupItems.map(i=>`
     <div class="list-row tappable" data-edititem="${esc(i.id)}">
       <div><div class="name">${esc(i.name)}</div><div class="meta">${esc(unitLabel(i.unit))} \u00b7 ${i.supplierId?esc(supplierName(i.supplierId)):t('noSupplier')}</div></div>
@@ -1116,8 +1115,7 @@ function renderItemsAdmin(){
         <button class="icon-btn danger" data-delitem="${esc(i.id)}">${ICON_DELETE}</button>
       </div>
     </div>`).join('');
-    const sortButton=key==='__none'?'':`<button class="item-sort-trigger" data-sort-supplier="${esc(key)}">${t('sortSupplierItems')}</button>`;
-    return `<section class="supplier-group admin-item-group"><div class="supplier-head"><span>${esc(label)}</span><div class="supplier-head-actions">${sortButton}<span class="supplier-item-count">${groupItems.length}</span></div></div><div class="admin-item-grid">${rows}</div></section>`;
+    return `<section class="supplier-group admin-item-group"><div class="supplier-head"><span>${esc(label)}</span><span class="supplier-item-count">${groupItems.length}</span></div><div class="admin-item-grid">${rows}</div></section>`;
   }).join('') : emptyState(t('noItemsYet'));
   return `
     <div class="action-row">
@@ -1129,31 +1127,107 @@ function renderItemsAdmin(){
 function openSupplierItemOrder(supplierId){
   const supplier=state.suppliers.find(s=>s.id===supplierId);
   if(!supplier) return;
-  let draft=sortedSupplierItems(state.items.filter(i=>i.supplierId===supplierId));
+  const draft=sortedSupplierItems(state.items.filter(i=>i.supplierId===supplierId));
   if(!draft.length) return;
+  let list;
   showFormModal({
     title:`${t('sortSupplierItems')} · ${esc(supplier.name)}`,
     bodyHtml:`<div class="item-sort-hint">${t('sortSupplierItemsHint')}</div><div id="supplierItemOrderList" class="item-sort-list"></div>`,
     okLabel:t('save'),
     onOpen:(box)=>{
-      const list=box.querySelector('#supplierItemOrderList');
-      const draw=()=>{
-        list.innerHTML=draft.map((item,index)=>`<div class="item-sort-row"><span class="item-sort-rank">${index+1}</span><span class="item-sort-name">${esc(item.name)}</span><div class="item-sort-actions"><button type="button" class="item-sort-action" data-move-first="${index}">${t('moveFirst')}</button><button type="button" class="item-sort-action" data-move-last="${index}">${t('moveLast')}</button></div></div>`).join('');
-        list.querySelectorAll('[data-move-first]').forEach(button=>button.onclick=()=>{
-          const index=Number(button.dataset.moveFirst); if(index<=0) return;
-          const [item]=draft.splice(index,1); draft.unshift(item); draw();
-        });
-        list.querySelectorAll('[data-move-last]').forEach(button=>button.onclick=()=>{
-          const index=Number(button.dataset.moveLast); if(index>=draft.length-1) return;
-          const [item]=draft.splice(index,1); draft.push(item); draw();
+      list=box.querySelector('#supplierItemOrderList');
+      list.innerHTML=draft.map((item,index)=>`<div class="item-sort-row" data-item-id="${esc(item.id)}"><span class="item-sort-rank">${index+1}</span><span class="item-sort-name">${esc(item.name)}</span><button type="button" class="item-sort-handle" data-drag-handle aria-label="${esc(t('dragItem')(item.name))}" aria-keyshortcuts="ArrowUp ArrowDown" title="${esc(t('sortSupplierItems'))}"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="8" cy="5" r="1.6"/><circle cx="16" cy="5" r="1.6"/><circle cx="8" cy="12" r="1.6"/><circle cx="16" cy="12" r="1.6"/><circle cx="8" cy="19" r="1.6"/><circle cx="16" cy="19" r="1.6"/></svg></button></div>`).join('');
+      const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const rows=()=>[...list.querySelectorAll('.item-sort-row')];
+      const updateRanks=()=>rows().forEach((row,index)=>{row.querySelector('.item-sort-rank').textContent=index+1;});
+      const moveRow=(row,before)=>{
+        if(before===row || (before ? row.nextElementSibling===before : row===list.lastElementChild)) return;
+        const previous=new Map(rows().filter(el=>el!==row).map(el=>[el,el.getBoundingClientRect().top]));
+        list.insertBefore(row,before);
+        updateRanks();
+        if(reducedMotion) return;
+        rows().filter(el=>el!==row).forEach(el=>{
+          const delta=previous.get(el)-el.getBoundingClientRect().top;
+          if(Math.abs(delta)>1) el.animate([{transform:`translateY(${delta}px)`},{transform:'translateY(0)'}],{duration:230,easing:'cubic-bezier(.2,.8,.2,1)'});
         });
       };
-      draw();
+      const placeAt=(row,y)=>{
+        const before=rows().filter(el=>el!==row).find(el=>y<el.getBoundingClientRect().top+el.getBoundingClientRect().height/2) || null;
+        moveRow(row,before);
+      };
+      let active=null;
+      const modalObserver=new MutationObserver(()=>{
+        if(list.isConnected) return;
+        if(active?.frame) cancelAnimationFrame(active.frame);
+        active?.ghost?.remove();
+        active=null;
+        modalObserver.disconnect();
+      });
+      modalObserver.observe(document.getElementById('modalRoot'),{childList:true});
+      list.addEventListener('pointerdown',e=>{
+        const handle=e.target.closest('[data-drag-handle]');
+        if(!handle || e.button!==0 || active) return;
+        const row=handle.closest('.item-sort-row');
+        active={handle,row,pointerId:e.pointerId,startY:e.clientY,lastY:e.clientY,ghost:null,frame:null};
+        handle.setPointerCapture(e.pointerId);
+      });
+      list.addEventListener('pointermove',e=>{
+        if(!active || e.pointerId!==active.pointerId) return;
+        active.lastY=e.clientY;
+        if(!active.ghost && Math.abs(e.clientY-active.startY)<5) return;
+        if(!active.ghost){
+          const rect=active.row.getBoundingClientRect();
+          const ghost=active.row.cloneNode(true);
+          ghost.classList.add('item-sort-ghost');
+          Object.assign(ghost.style,{top:`${rect.top}px`,left:`${rect.left}px`,width:`${rect.width}px`,height:`${rect.height}px`});
+          document.body.appendChild(ghost);
+          active.ghost=ghost;
+          active.ghostTop=rect.top;
+          active.row.classList.add('is-placeholder');
+          const scroll=()=>{
+            if(!active?.ghost) return;
+            const bounds=list.getBoundingClientRect();
+            const edge=40;
+            const speed=active.lastY<bounds.top+edge ? -Math.min(16,(bounds.top+edge-active.lastY)/3) : active.lastY>bounds.bottom-edge ? Math.min(16,(active.lastY-(bounds.bottom-edge))/3) : 0;
+            if(speed){list.scrollTop+=speed;placeAt(active.row,active.lastY);}
+            active.frame=requestAnimationFrame(scroll);
+          };
+          active.frame=requestAnimationFrame(scroll);
+        }
+        e.preventDefault();
+        active.ghost.style.transform=`translate3d(0,${e.clientY-active.startY}px,0)`;
+        placeAt(active.row,e.clientY);
+      });
+      const finish=e=>{
+        if(!active || e.pointerId!==active.pointerId) return;
+        if(active.frame) cancelAnimationFrame(active.frame);
+        if(active.handle.hasPointerCapture(e.pointerId)) active.handle.releasePointerCapture(e.pointerId);
+        if(active.ghost){
+          const {ghost,row}=active;
+          const end=row.getBoundingClientRect();
+          const from=active.lastY-active.startY;
+          const settle=()=>{ghost.remove();row.classList.remove('is-placeholder');};
+          if(reducedMotion) settle();
+          else ghost.animate([{transform:`translate3d(0,${from}px,0)`,opacity:1},{transform:`translate3d(0,${end.top-active.ghostTop}px,0)`,opacity:0}],{duration:190,easing:'ease-out'}).finished.then(settle,settle);
+        }
+        active=null;
+      };
+      list.addEventListener('pointerup',finish);
+      list.addEventListener('pointercancel',finish);
+      list.addEventListener('keydown',e=>{
+        const handle=e.target.closest('[data-drag-handle]');
+        if(!handle || !['ArrowUp','ArrowDown'].includes(e.key)) return;
+        e.preventDefault();
+        const row=handle.closest('.item-sort-row');
+        if(e.key==='ArrowUp' && row.previousElementSibling) moveRow(row,row.previousElementSibling);
+        if(e.key==='ArrowDown' && row.nextElementSibling) moveRow(row,row.nextElementSibling.nextElementSibling);
+      });
     },
     onSubmit:async()=>{
-      const result=await api(`supplier-order/${encodeURIComponent(supplierId)}`,{method:'PUT',body:{itemIds:draft.map(i=>i.id)}});
+      const itemIds=[...list.querySelectorAll('.item-sort-row')].map(row=>row.dataset.itemId);
+      const result=await api(`supplier-order/${encodeURIComponent(supplierId)}`,{method:'PUT',body:{itemIds}});
       if(!result.ok) return {error:t('saveFailed')};
-      draft.forEach((item,index)=>{const current=state.items.find(i=>i.id===item.id);if(current) current.sortOrder=index;});
+      itemIds.forEach((id,index)=>{const current=state.items.find(i=>i.id===id);if(current) current.sortOrder=index;});
       render();
       toast(t('savedMsg')(supplier.name));
       return {};
@@ -1233,9 +1307,6 @@ function openItemModal(id){
 }
 function attachItemEvents(){
   document.getElementById('itemAddBtn').onclick = ()=> openItemModal(null);
-  document.querySelectorAll('[data-sort-supplier]').forEach(button=>button.onclick=e=>{
-    e.stopPropagation(); openSupplierItemOrder(button.dataset.sortSupplier);
-  });
   document.querySelectorAll('[data-edititem]').forEach(row=>row.onclick=()=> openItemModal(row.dataset.edititem));
   document.querySelectorAll('[data-delitem]').forEach(b=>b.onclick=async(e)=>{
     e.stopPropagation();   // don't also open the edit popup
@@ -1257,7 +1328,8 @@ function attachItemEvents(){
 /* ============ Admin: Units ============ */
 function renderUnits(){
   const chips = state.units.map(u=>`
-    <span class="unit-chip">${esc(state.lang==='ku'?(u.ku||u.en):u.en)}
+    <span class="unit-chip"><span class="unit-names"><strong>${esc(state.lang==='ku'?(u.ku||u.en):u.en)}</strong><small>${esc(state.lang==='ku'?u.en:(u.ku||u.en))}</small></span>
+      <button data-editunit="${esc(u.id)}" aria-label="${t('editUnit')}">${ICON_EDIT}</button>
       <button data-delunit="${esc(u.id)}" aria-label="${t('delete')}">✕</button>
     </span>`).join('');
   return `
@@ -1265,12 +1337,34 @@ function renderUnits(){
     <div>${chips || emptyState(t('noUnitsYet'))}</div>
     <div class="section-title">${t('addUnit')}</div>
     <div class="form-card">
-      <div class="field"><label>English</label><input id="unitEn" placeholder="${t('unitNamePlaceholder')}"></div>
-      <div class="field"><label>Kurdish</label><input id="unitKu" placeholder="${t('unitNameKuPlaceholder')}"></div>
+      <div class="field"><label>${t('englishLabel')}</label><input id="unitEn" placeholder="${t('unitNamePlaceholder')}"></div>
+      <div class="field"><label>${t('kurdishLabel')}</label><input id="unitKu" placeholder="${t('unitNameKuPlaceholder')}"></div>
       <div class="form-actions"><button class="btn btn-primary" id="unitAddBtn">${t('add')}</button></div>
     </div>`;
 }
 function attachUnitEvents(){
+  document.querySelectorAll('[data-editunit]').forEach(button=>button.onclick=()=>{
+    const unit=state.units.find(u=>u.id===button.dataset.editunit);
+    if(!unit) return;
+    showFormModal({
+      title:t('editUnit'),
+      bodyHtml:`<div class="field"><label>${t('englishLabel')}</label><input id="mfUnitEn" value="${esc(unit.en)}" maxlength="80"></div><div class="field"><label>${t('kurdishLabel')}</label><input id="mfUnitKu" value="${esc(unit.ku||'')}" maxlength="80"></div>`,
+      okLabel:t('save'),
+      onSubmit:async()=>{
+        const en=document.getElementById('mfUnitEn').value.trim();
+        const ku=document.getElementById('mfUnitKu').value.trim();
+        if(!en) return {error:t('nameRequired')};
+        const fields=diffFields([['name',unit.en,en],['nameKu',unit.ku||'',ku]]);
+        if(!fields.length) return {};
+        if(!(await saveRecord('units',{id:unit.id,en,ku}))) return {error:t('saveFailed')};
+        Object.assign(unit,{en,ku});
+        logActivity({action:'edit',type:'unit',name:en,fields});
+        render();
+        toast(t('savedMsg')(en));
+        return {};
+      }
+    });
+  });
   document.getElementById('unitAddBtn').onclick = async ()=>{
     const en = document.getElementById('unitEn').value.trim();
     const ku = document.getElementById('unitKu').value.trim();
