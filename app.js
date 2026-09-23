@@ -511,6 +511,17 @@ function supplierName(id){
 }
 function nameCollator(){ return new Intl.Collator(state.lang==='ku' ? 'ku' : 'en', {sensitivity:'base', numeric:true}); }
 function sortedByName(rows){ return [...rows].sort((a,b)=>nameCollator().compare(a.name||'', b.name||'')); }
+function sortedSupplierItems(rows){
+  const custom = rows.some(i=>Number.isInteger(i.sortOrder));
+  if(!custom) return sortedByName(rows);
+  return [...rows].sort((a,b)=>{
+    const ar=Number.isInteger(a.sortOrder)?a.sortOrder:null, br=Number.isInteger(b.sortOrder)?b.sortOrder:null;
+    if(ar!==null && br!==null && ar!==br) return ar-br;
+    if(ar!==null && br===null) return -1;
+    if(ar===null && br!==null) return 1;
+    return nameCollator().compare(a.name||'', b.name||'');
+  });
+}
 function lastOrderMap(){
   if(!state.history.length) return null;
   const last = state.history[state.history.length-1];
@@ -576,7 +587,7 @@ function renderOrderResults(){
   });
   const groupHtml = Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
     const label = key==='__none' ? t('noSupplier') : supplierName(key);
-    const rows = sortedByName(groups[key]).map(i=>{
+    const rows = sortedSupplierItems(groups[key]).map(i=>{
       const qty = state.cart[i.id] || 0;
       return `
       <div class="item-row ${qty>0?'has-qty':''}">
@@ -675,7 +686,7 @@ function attachOrderEvents(){
       const qty = state.cart[id]; if(!qty) return;
       const item = state.items.find(i=>i.id===id); if(!item) return;
       const sid = item.supplierId || '__none';
-      (bySupplier[sid] = bySupplier[sid]||[]).push({itemId:id, name:item.name, qty, unit:item.unit});
+      (bySupplier[sid] = bySupplier[sid]||[]).push({itemId:id, name:item.name, qty, unit:item.unit, sortOrder:item.sortOrder});
     });
     state.queue = Object.keys(bySupplier).map(sid=>({
       supplierId: sid, items: bySupplier[sid], sent:false
@@ -698,7 +709,7 @@ function attachOrderResultEvents(root){
 
 /* ============ Send queue ============ */
 function buildMessage(entry){
-  const lines = entry.items.map(i=>`• ${i.name} — ${i.qty} ${unitLabel(i.unit)}`);
+  const lines = sortedSupplierItems(entry.items).map(i=>`• ${i.name} — ${i.qty} ${unitLabel(i.unit)}`);
   const header = state.lang==='ku' ? 'داواکارییەکی نوێ لە چێشتخانەی ریکۆتا:' : 'New order from Ricotta:';
   return header + '\n' + lines.join('\n');
 }
@@ -713,7 +724,7 @@ function renderQueue(){
   const cards = state.queue.map((e,idx)=>{
     const sup = state.suppliers.find(s=>s.id===e.supplierId);
     const name = sup ? sup.name : t('noSupplier');
-    const itemsLine = e.items.map(i=>`${esc(i.name)} — ${i.qty} ${esc(unitLabel(i.unit))}`).join(' · ');
+    const itemsLine = sortedSupplierItems(e.items).map(i=>`${esc(i.name)} — ${i.qty} ${esc(unitLabel(i.unit))}`).join(' · ');
     const noSendReason = !sup ? t('noSupplier') : t('noPhoneOnFile');
     return `<div class="queue-card ${e.sent?'sent':''}">
       <div class="queue-top"><span class="queue-name">${esc(name)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:''}</div>
@@ -742,7 +753,7 @@ function attachQueueEvents(){
 function printOrderSheet(entry, supplier){
   const ku=state.lang==='ku', title=ku?'داواکارییەکی نوێ':'Purchase order';
   const supplierLabel=supplier?.name||(ku?'بێ دابینکەر':'No supplier');
-  const rows=sortedByName(entry.items).map((item,n)=>`<tr><td>${n+1}</td><td>${esc(item.name)}</td><td>${esc(unitLabel(item.unit))}</td><td class="qty">${item.qty}</td></tr>`).join('');
+  const rows=sortedSupplierItems(entry.items).map((item,n)=>`<tr><td>${n+1}</td><td>${esc(item.name)}</td><td>${esc(unitLabel(item.unit))}</td><td class="qty">${item.qty}</td></tr>`).join('');
   const w=window.open('', '_blank'); if(!w) return;
   w.document.write(`<!doctype html><html dir="${ku?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${title} — Ricotta</title><style>body{font-family:Arial,'Noto Sans Arabic',sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${new Date().toLocaleString(ku?'ku':'en-GB')}<br>${entry.items.length} ${ku?'کاڵا':'items'}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${ku?'کاڵا':'Item'}</th><th>${ku?'یەکە':'Unit'}</th><th>${ku?'بڕ':'Qty'}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${ku?'تکایە داواکارییەکە بەپێی ئەم بڕانە ئامادە بکەن. سوپاس.':'Please prepare this order with the quantities listed above. Thank you.'}</div></body></html>`);
   w.document.close(); w.focus(); setTimeout(()=>w.print(),250);
@@ -1096,7 +1107,7 @@ function renderItemsAdmin(){
   const groups = {};
   state.items.forEach(i=>{ const key=i.supplierId||'__none'; (groups[key] ||= []).push(i); });
   const list = state.items.length ? Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
-    const label=key==='__none'?t('noSupplier'):supplierName(key); const groupItems=sortedByName(groups[key]);
+    const label=key==='__none'?t('noSupplier'):supplierName(key); const groupItems=key==='__none'?sortedByName(groups[key]):sortedSupplierItems(groups[key]);
     const rows=groupItems.map(i=>`
     <div class="list-row tappable" data-edititem="${esc(i.id)}">
       <div><div class="name">${esc(i.name)}</div><div class="meta">${esc(unitLabel(i.unit))} \u00b7 ${i.supplierId?esc(supplierName(i.supplierId)):t('noSupplier')}</div></div>
@@ -1105,7 +1116,8 @@ function renderItemsAdmin(){
         <button class="icon-btn danger" data-delitem="${esc(i.id)}">${ICON_DELETE}</button>
       </div>
     </div>`).join('');
-    return `<section class="supplier-group admin-item-group"><div class="supplier-head"><span>${esc(label)}</span><span>${groupItems.length}</span></div><div class="admin-item-grid">${rows}</div></section>`;
+    const sortButton=key==='__none'?'':`<button class="item-sort-trigger" data-sort-supplier="${esc(key)}">${t('sortSupplierItems')}</button>`;
+    return `<section class="supplier-group admin-item-group"><div class="supplier-head"><span>${esc(label)}</span><div class="supplier-head-actions">${sortButton}<span class="supplier-item-count">${groupItems.length}</span></div></div><div class="admin-item-grid">${rows}</div></section>`;
   }).join('') : emptyState(t('noItemsYet'));
   return `
     <div class="action-row">
@@ -1113,6 +1125,40 @@ function renderItemsAdmin(){
       <button class="btn btn-ghost" data-gorecord="item">${NAV_ICONS.record} ${t('record')}</button>
     </div>
     <div class="section-title">${t('items')} (${state.items.length})</div>${list}`;
+}
+function openSupplierItemOrder(supplierId){
+  const supplier=state.suppliers.find(s=>s.id===supplierId);
+  if(!supplier) return;
+  let draft=sortedSupplierItems(state.items.filter(i=>i.supplierId===supplierId));
+  if(!draft.length) return;
+  showFormModal({
+    title:`${t('sortSupplierItems')} · ${esc(supplier.name)}`,
+    bodyHtml:`<div class="item-sort-hint">${t('sortSupplierItemsHint')}</div><div id="supplierItemOrderList" class="item-sort-list"></div>`,
+    okLabel:t('save'),
+    onOpen:(box)=>{
+      const list=box.querySelector('#supplierItemOrderList');
+      const draw=()=>{
+        list.innerHTML=draft.map((item,index)=>`<div class="item-sort-row"><span class="item-sort-rank">${index+1}</span><span class="item-sort-name">${esc(item.name)}</span><div class="item-sort-actions"><button type="button" class="item-sort-action" data-move-first="${index}">${t('moveFirst')}</button><button type="button" class="item-sort-action" data-move-last="${index}">${t('moveLast')}</button></div></div>`).join('');
+        list.querySelectorAll('[data-move-first]').forEach(button=>button.onclick=()=>{
+          const index=Number(button.dataset.moveFirst); if(index<=0) return;
+          const [item]=draft.splice(index,1); draft.unshift(item); draw();
+        });
+        list.querySelectorAll('[data-move-last]').forEach(button=>button.onclick=()=>{
+          const index=Number(button.dataset.moveLast); if(index>=draft.length-1) return;
+          const [item]=draft.splice(index,1); draft.push(item); draw();
+        });
+      };
+      draw();
+    },
+    onSubmit:async()=>{
+      const result=await api(`supplier-order/${encodeURIComponent(supplierId)}`,{method:'PUT',body:{itemIds:draft.map(i=>i.id)}});
+      if(!result.ok) return {error:t('saveFailed')};
+      draft.forEach((item,index)=>{const current=state.items.find(i=>i.id===item.id);if(current) current.sortOrder=index;});
+      render();
+      toast(t('savedMsg')(supplier.name));
+      return {};
+    }
+  });
 }
 function openItemModal(id){
   const existing = id ? state.items.find(i=>i.id===id) : null;
@@ -1163,12 +1209,14 @@ function openItemModal(id){
           ['supplier', oldSupName, newSupName]
         ]);
         if(!fields.length) return {};   // nothing changed -- nothing to save or record
-        const next = {...i, name, unit, supplierId};
+        const next = {...i, name, unit, supplierId, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
         if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
         Object.assign(i, next);
         logActivity({action:'edit', type:'item', name, fields});
       } else {
-        const next = {id:'i'+Date.now(), name, unit, supplierId};
+        const supplierItems=state.items.filter(i=>i.supplierId===supplierId);
+        const maxSort=supplierItems.reduce((max,i)=>Number.isInteger(i.sortOrder)?Math.max(max,i.sortOrder):-1,-1);
+        const next = {id:'i'+Date.now(), name, unit, supplierId, sortOrder:maxSort>=0?maxSort+1:null};
         if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
         state.items.push(next);
         state.itemFormSupplierId = supplierId; // keep it locked in for the next item
@@ -1185,6 +1233,9 @@ function openItemModal(id){
 }
 function attachItemEvents(){
   document.getElementById('itemAddBtn').onclick = ()=> openItemModal(null);
+  document.querySelectorAll('[data-sort-supplier]').forEach(button=>button.onclick=e=>{
+    e.stopPropagation(); openSupplierItemOrder(button.dataset.sortSupplier);
+  });
   document.querySelectorAll('[data-edititem]').forEach(row=>row.onclick=()=> openItemModal(row.dataset.edititem));
   document.querySelectorAll('[data-delitem]').forEach(b=>b.onclick=async(e)=>{
     e.stopPropagation();   // don't also open the edit popup
