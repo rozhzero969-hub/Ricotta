@@ -101,6 +101,12 @@ const server=http.createServer((req,res)=>{
     }
     await login.page.setViewportSize({width:1440,height:1000});await login.page.evaluate(()=>setLang('en'));await snapshot(login.page,'desktop-login.png');
     await login.page.setViewportSize({width:390,height:844});await snapshot(login.page,'phone-login.png');
+    await login.page.locator('#loginLangToggle').click();
+    assert.equal(await login.page.locator('[data-login-lang]').count(),2,'login language popover has two concise choices');
+    assert.equal(await login.page.locator('#loginLangToggle').getAttribute('aria-expanded'),'true','language popover reports its open state');
+    await login.page.locator('[data-login-lang="ku"]').click();
+    assert.equal(await login.page.locator('#loginLangToggle .lang-short').textContent(),'KU','language changes only after choosing an option');
+    await login.page.evaluate(()=>setLang('en'));
     await login.page.keyboard.type('123456');
     await login.page.waitForSelector('#orderResults');await login.page.waitForSelector('#splash',{state:'detached'});
     assert.equal(await login.page.locator('[data-view]').count(),8,'six-digit login opens the admin workspace');

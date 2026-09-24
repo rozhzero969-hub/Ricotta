@@ -19,6 +19,7 @@
 .login-card{width:100%;max-width:360px;display:flex;flex-direction:column;align-items:center}
 .login-card .login-heading,.login-card .pin-label{align-self:stretch}
 .login-brand-panel{display:none}
+.login-mobile-scene,.login-mobile-brand{display:none}
 .queue-actions{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}
 .pdf-btn{border:1px solid var(--basil);border-radius:12px;background:#fff;color:var(--basil);font-weight:800;padding:11px 14px;cursor:pointer}
 .admin-item-group{margin-bottom:18px}.admin-item-group .supplier-head{position:sticky;top:0;z-index:1}
@@ -133,6 +134,15 @@
     border:1px solid var(--line); background:var(--card); border-radius:999px;
     padding:9px 16px; font-size:13.5px; font-weight:700; color:var(--ink); cursor:pointer;
   }
+  .login-lang{position:relative;align-self:stretch;display:flex;justify-content:center;z-index:5}
+  .lang-short{display:none}
+  .login-lang-menu{position:absolute;inset-inline-start:50%;bottom:calc(100% + 9px);width:132px;padding:5px;border-radius:15px;background:var(--deep);box-shadow:0 16px 38px rgba(9,43,30,.23);transform:translateX(-50%);animation:langMenuIn 160ms var(--ease) both}
+  .login-lang-menu[hidden]{display:none}
+  .login-lang-option{width:100%;height:38px;border:0;border-radius:10px;background:transparent;color:#fff;padding:0 10px;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;cursor:pointer}
+  .login-lang-option.active{background:rgba(111,207,154,.16)}
+  .login-lang-option.ku{direction:rtl;font-family:'Vazirmatn',sans-serif}
+  .login-lang-option i{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;background:#6FCF9A;color:#103729;font-size:9px;font-style:normal}
+  @keyframes langMenuIn{from{opacity:0;transform:translate(-50%,7px) scale(.96)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
 
   /* ---------- Bottom nav ---------- */
   /* The send bar (Order screen) and the nav sit in one sticky stack so they
@@ -838,6 +848,47 @@ html.rtl .brand-message,html.rtl .brand-detail,html.rtl .brand-kicker,html.rtl .
   .page-date{font-size:11px;}
   .modal-overlay{padding-inline:14px;}
   .modal-box{padding:22px 18px;}
+
+  /* Mobile sign-in: the forest-green brand stage stays decorative while the
+     white surface contains every interactive control. */
+  #app:has(.login-wrap){background:var(--deep);}
+  .login-wrap{position:relative;isolation:isolate;overflow:hidden;min-height:100dvh;padding:0;background:var(--deep);justify-content:flex-start;}
+  .login-mobile-scene{display:block;position:absolute;z-index:-1;inset:0 0 auto;height:244px;overflow:hidden;pointer-events:none;}
+  .login-orbit{position:absolute;border-radius:50%;border:1px solid rgba(151,224,178,.16);will-change:transform;}
+  .orbit-one{width:350px;height:350px;inset-inline-start:-190px;top:-245px;box-shadow:0 0 0 54px rgba(151,224,178,.045),0 0 0 108px rgba(151,224,178,.026);animation:loginOrbitDrift 9s ease-in-out infinite alternate;}
+  .orbit-two{width:174px;height:174px;inset-inline-end:-116px;bottom:-96px;background:rgba(111,207,154,.055);animation:loginOrbitFloat 7s ease-in-out infinite alternate;}
+  .login-spark{position:absolute;width:5px;height:5px;border-radius:50%;background:#6FCF9A;box-shadow:0 0 0 7px rgba(111,207,154,.08);animation:loginSpark 3.8s ease-in-out infinite;}
+  .spark-one{inset-inline-start:56px;bottom:38px}.spark-two{inset-inline-end:68px;top:92px;animation-delay:1.2s;opacity:.7}.spark-three{inset-inline-end:128px;bottom:28px;width:3px;height:3px;animation-delay:2.1s;}
+  .login-mobile-brand{height:194px;flex:0 0 194px;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;position:relative;z-index:1;padding-top:18px;}
+  .login-mobile-word{font-size:35px;font-weight:800;letter-spacing:-.055em;line-height:1;display:flex;align-items:flex-end;}
+  .login-mobile-word span{width:.2em;height:.2em;margin:0 0 .08em .08em;border-radius:50%;background:#6FCF9A;animation:loginBrandPulse 2.8s ease-in-out infinite;}
+  .login-mobile-orders{margin-top:10px;color:#B8D8C5;font-size:9px;font-weight:800;letter-spacing:.3em;text-indent:.3em;}
+  .login-card{position:relative;z-index:2;flex:1;width:100%;max-width:none;min-height:calc(100dvh - 194px);padding:32px 28px calc(22px + env(safe-area-inset-bottom,0px));border-radius:34px 34px 0 0;background:#F7F9F5;box-shadow:0 -16px 44px rgba(4,25,17,.18);animation:loginSurfaceIn 480ms cubic-bezier(.2,.8,.2,1) both;}
+  .login-card>.login-logo{display:none;}
+  .login-heading{text-align:center;max-width:none;}
+  .login-eyebrow{margin-bottom:9px;color:#739083;font-size:9px;letter-spacing:.2em;}
+  .login-title{font-size:30px;line-height:1.05;margin-bottom:6px;}
+  .login-sub{font-size:13px;line-height:1.5;margin:0 0 25px;}
+  .pin-label{align-self:center!important;width:auto;max-width:none;text-align:center;margin:0;color:#50685C;font-size:12px;}
+  .pin-dots{align-self:center;width:auto;justify-content:center;gap:7px;margin:12px 0 9px;}
+  .pin-dot{width:35px;height:35px;border-radius:50%;box-shadow:0 4px 10px rgba(18,61,47,.035);}
+  .pin-dot:first-child:not(.filled){border-color:#8ACFA4;box-shadow:0 0 0 4px rgba(111,207,154,.10);}
+  .pin-dot .core{width:7px;height:7px;border-color:#AEC0B5;}
+  .login-error{min-height:18px;margin:0 0 17px;font-size:11px;}
+  .keypad{max-width:none;gap:9px;transform:translateY(6px);}
+  .key{height:57px;border-radius:17px;border-color:#DBE6DE;box-shadow:0 5px 13px rgba(18,61,47,.05);animation:keyRise 360ms cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--key-i,0)*24ms + 150ms);}
+  .key:nth-child(1){--key-i:1}.key:nth-child(2){--key-i:2}.key:nth-child(3){--key-i:3}.key:nth-child(4){--key-i:4}.key:nth-child(5){--key-i:5}.key:nth-child(6){--key-i:6}.key:nth-child(7){--key-i:7}.key:nth-child(8){--key-i:8}.key:nth-child(9){--key-i:9}.key:nth-child(10){--key-i:10}.key:nth-child(11){--key-i:11}.key:nth-child(12){--key-i:12}
+  .login-lang{margin-top:28px;align-self:center;}
+  .lang-short{display:inline}.lang-long{display:none}
+  .lang-pill{min-width:72px;height:34px;margin:0;padding:0 10px;justify-content:center;gap:6px;border:1px solid #D7E4DA;border-radius:999px;background:#fff;font-size:10px;letter-spacing:.04em;box-shadow:0 5px 13px rgba(18,61,47,.045);}
+  .lang-pill svg{width:13px;height:13px}.lang-pill svg:last-child{width:11px;height:11px;color:#819289;}
+  .login-lang-menu{width:124px;}
+  @keyframes loginSurfaceIn{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+  @keyframes keyRise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  @keyframes loginOrbitDrift{to{transform:translate(12px,8px) rotate(5deg)}}
+  @keyframes loginOrbitFloat{to{transform:translate(-9px,-8px) scale(1.04)}}
+  @keyframes loginSpark{0%,100%{opacity:.35;transform:translateY(4px) scale(.85)}50%{opacity:1;transform:translateY(-5px) scale(1.08)}}
+  @keyframes loginBrandPulse{0%,100%{box-shadow:0 0 0 0 rgba(111,207,154,.35)}50%{box-shadow:0 0 0 8px rgba(111,207,154,0)}}
 }
 @media(max-width:430px){
   .brand .brand-sub{display:none;}
@@ -855,7 +906,7 @@ html.rtl .brand-message,html.rtl .brand-detail,html.rtl .brand-kicker,html.rtl .
   .item-row{padding:12px 9px;}
   .item-info .item-name{font-size:13px;}
 }
-@media(max-width:959px) and (max-height:740px){
+@media(min-width:600px) and (max-width:959px) and (max-height:740px){
   .login-wrap{padding-block:22px;}
   .login-logo{font-size:32px;margin-bottom:24px;}
   .login-sub{margin-bottom:18px;}
