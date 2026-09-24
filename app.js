@@ -97,6 +97,7 @@ function restoreCartDraft(){
 /* Right after signing in: ask for a nickname the first time this device is
    used (or restore the one this phone remembers). */
 async function afterLogin(){
+  syncPersonName();
   const me = myDevice();
   const saved = lget('deviceNickname');
   if(me && me.nickname){ lset('deviceNickname', me.nickname); return; }
@@ -244,8 +245,8 @@ async function boot(){
     if(loadedOk) restoreCartDraft();
   }
   render();
-  hideSplash();
-  if(state.role){ heartbeat(); checkCommands(); }
+  hideSplash(1450);   // long enough for the ricotta intro to finish playing
+  if(state.role){ heartbeat(); checkCommands(); if(loadedOk) syncPersonName(); }
   if(state.role && !loadedOk) retryLoad();
   // Notifications: register the service worker, read this device's status, and
   // handle being launched from a notification tap.
@@ -274,13 +275,30 @@ async function hideSplash(minShown = 500){
   el.addEventListener('animationend', e=>{ if(e.target === el) done(); });
   setTimeout(done, 1400);   // safety net
 }
-/* Re-shows the splash for a moment while a signed-in session loads. */
-function showSplash(){
-  if(document.getElementById('splash')) return;
-  const tpl = document.getElementById('splashTpl');
-  if(!tpl) return;
-  document.body.appendChild(tpl.content.cloneNode(true));
-  window.__splashStart = performance.now();
+/* After a PIN sign-in: a "Welcome back" card with a drawn checkmark covers
+   the moment the workspace loads (the ricotta splash is kept for app start). */
+let welcomeShownAt = 0;
+function showWelcome(){
+  document.getElementById('welcome')?.remove();
+  const el = document.createElement('div');
+  el.id = 'welcome'; el.className = 'welcome'; el.setAttribute('role','status');
+  el.innerHTML = `<div class="welcome-card">
+      <div class="welcome-badge"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6FCF9A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <div class="welcome-title">${esc(t('welcomeTitle'))}</div>
+      <div class="welcome-sub">${esc(t('splashLoading'))}</div>
+      <div class="welcome-bar"><i></i></div>
+    </div>`;
+  document.body.appendChild(el);
+  welcomeShownAt = performance.now();
+}
+async function hideWelcome(minShown = 1100){
+  const el = document.getElementById('welcome');
+  if(!el) return;
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) minShown = 0;
+  const wait = Math.max(0, minShown - (performance.now() - welcomeShownAt));
+  await new Promise(r=>setTimeout(r, wait));
+  el.classList.add('leaving');
+  setTimeout(()=>el.remove(), 460);
 }
 
 function applyLangClasses(){
@@ -307,6 +325,7 @@ function animateUi(element, frames, duration=220){
 let lastAnimKey = null;
 function render(){
   applyLangClasses();
+  setThemeColor();
   const app = document.getElementById('app');
   if(!state.role){
     const animKey = 'login';
@@ -316,7 +335,6 @@ function render(){
     app.innerHTML = renderLogin(); attachLoginEvents(); return;
   }
   const animKey = state.view + (state.view === 'order' ? ':' + state.orderTab : '');
-  const changedView = animKey !== lastAnimKey;
   app.classList.toggle('static-update', animKey === lastAnimKey);
   lastAnimKey = animKey;
   let body = '';
@@ -329,14 +347,17 @@ function render(){
   else if(state.view === 'record') body = renderRecord();
   else if(state.view === 'devices') body = renderDevices();
   else if(state.view === 'settings') body = renderSettings();
+  else if(state.view === 'assistant') body = renderAssistant();
 
-  const content = `${renderPageHeading()}${state.view === 'order' ? renderPushBanner() : ''}${body}`;
+  const content = `${state.view === 'assistant' ? '' : renderPageHeading()}${state.view === 'order' ? renderPushBanner() : ''}${body}`;
   const keepShell=app.dataset.uiRole===state.role && app.dataset.uiLanguage===state.lang && app.querySelector('.content');
   if(keepShell){
     app.querySelector('.content').innerHTML=content;
     const stack=app.querySelector('.bottom-stack');
     stack.querySelector('.bottom-bar')?.remove();
+    stack.querySelector('.rico-composer')?.remove();
     if(state.view==='order') stack.insertAdjacentHTML('afterbegin',renderOrderBottomBar());
+    if(state.view==='assistant') stack.insertAdjacentHTML('afterbegin',renderRicoComposer());
     stack.querySelectorAll('[data-view]').forEach(button=>{
       const active=button.dataset.view===state.view;
       button.classList.toggle('active',active);
@@ -344,7 +365,7 @@ function render(){
     });
   }else{
     app.innerHTML = `${renderTopbar()}<main class="content" id="mainContent">${content}</main>
-      <div class="bottom-stack">${state.view==='order'?renderOrderBottomBar():''}${renderBottomNav()}</div>`;
+      <div class="bottom-stack">${state.view==='order'?renderOrderBottomBar():''}${state.view==='assistant'?renderRicoComposer():''}${renderBottomNav()}</div>`;
   }
   app.dataset.uiRole=state.role; app.dataset.uiLanguage=state.lang; app.dataset.screen=state.view;
   attachCommonEvents();
@@ -357,13 +378,83 @@ function render(){
   if(state.view === 'record') attachRecordEvents();
   if(state.view === 'devices') attachDeviceEvents();
   if(state.view === 'settings') attachSettingsEvents();
+  if(state.view === 'assistant') attachAssistantEvents();
+  if(state.view !== 'assistant') document.body.classList.remove('rico-typing');
+  updateRicoBadge();
   // The nav scrolls sideways on narrow phones (admins have 8 tabs); keep the current tab in view.
   const activeNav = document.querySelector('.navbtn.active');
   if(activeNav && window.innerWidth<960){
     const nav=activeNav.parentElement, rect=activeNav.getBoundingClientRect(), bounds=nav.getBoundingClientRect();
     nav.scrollLeft+=rect.left+rect.width/2-bounds.left-bounds.width/2;
   }
-  if(changedView) animateUi(app.querySelector('.content'),[{opacity:.45,transform:'translateY(8px)'},{opacity:1,transform:'none'}],260);
+  placeNavIndicator();
+  updateNavFade();
+  updateTopbarShadow();
+}
+
+/* A red dot on Rico's tab while an order is late (checked every minute). */
+function updateRicoBadge(){
+  const dot = document.querySelector('.navbtn[data-view="assistant"] .nav-badge');
+  if(!dot) return;
+  const late = ricoLateOrders().length;
+  dot.hidden = !late;
+  dot.parentElement.setAttribute('aria-label', late ? t('ricoNavLate')(late) : t('ricoName'));
+}
+setInterval(()=>{ if(state.role && isVisible()) updateRicoBadge(); }, 60000);
+
+/* ============ Motion helpers ============ */
+/* The glass pill behind the active tab glides to each new tab. */
+function placeNavIndicator(){
+  const nav=document.querySelector('.bottomnav'), ind=nav?.querySelector('.nav-indicator'), active=nav?.querySelector('.navbtn.active');
+  if(!nav || !ind) return;
+  if(!active){ ind.style.opacity='0'; return; }
+  ind.style.opacity='1';
+  nav.classList.add('has-indicator');
+  if(window.innerWidth>=960){
+    ind.style.setProperty('--iy', active.offsetTop+'px');
+    ind.style.setProperty('--ih', active.offsetHeight+'px');
+  }else{
+    ind.style.setProperty('--ix', active.offsetLeft+'px');
+    ind.style.setProperty('--iw', active.offsetWidth+'px');
+  }
+}
+window.addEventListener('resize', ()=>requestAnimationFrame(()=>{ placeNavIndicator(); updateNavFade(); }));
+/* Phones with many tabs: fade the far edge while more tabs are hidden there. */
+function updateNavFade(){
+  const nav=document.querySelector('.bottomnav');
+  if(!nav) return;
+  const update=()=>{
+    const hidden=nav.scrollWidth-nav.clientWidth-Math.abs(nav.scrollLeft);
+    nav.classList.toggle('more-end', window.innerWidth<960 && hidden>4);
+  };
+  update();
+  if(!nav.dataset.fadeBound){ nav.dataset.fadeBound='1'; nav.addEventListener('scroll', update, {passive:true}); }
+}
+/* The floating top bar gains depth once the page scrolls under it. */
+function updateTopbarShadow(){
+  document.querySelector('.topbar')?.classList.toggle('scrolled', window.scrollY>6);
+}
+window.addEventListener('scroll', updateTopbarShadow, {passive:true});
+/* Glass catches the light where a mouse points (desktop only; cheap: one
+   listener, two CSS variables on the surface under the pointer). */
+if(matchMedia('(hover:hover) and (pointer:fine)').matches){
+  document.addEventListener('pointermove', e=>{
+    const el=e.target.closest?.('.hero-card,.supplier-group,.queue-card,.modal-box,.topbar');
+    if(!el) return;
+    const r=el.getBoundingClientRect();
+    el.style.setProperty('--mx', (e.clientX-r.left)+'px');
+    el.style.setProperty('--my', (e.clientY-r.top)+'px');
+  }, {passive:true});
+}
+/* Restarts a CSS "bump" animation on an element (used for changing numbers). */
+function bump(el){
+  if(!el) return;
+  el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+}
+/* The status bar matches the screen: deep green on sign-in, light in the app. */
+function setThemeColor(){
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content = state.role ? '#F2F5F2' : '#14382C';
 }
 
 function renderPageHeading(){
@@ -393,7 +484,7 @@ function renderTopbar(){
   const other = state.lang === 'en' ? 'ku' : 'en';
   return `
   <div class="topbar">
-    <div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span><span class="brand-sub">${t('order') === 'Order' ? 'Orders' : ''}</span></div>
+    <div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span><span class="brand-sub">Orders</span></div>
     <div class="topbar-actions">
       <div class="connection-status ${state.apiOnline?'':'offline'}" id="connectionStatus"><span></span><em>${state.apiOnline?t('online'):t('offline')}</em></div>
       <button class="pill-btn lang-switch" data-lang="${other}" lang="${other}">${other==='ku'?'کوردی':'English'}</button>
@@ -404,6 +495,7 @@ function renderTopbar(){
 function renderBottomNav(){
   const tabs = [
     {id:'order', label:t('order')},
+    {id:'assistant', label:t('ricoName')},
     {id:'history', label:t('history')}
   ];
   if(state.role === 'admin'){
@@ -414,10 +506,10 @@ function renderBottomNav(){
     tabs.push({id:'devices', label:t('devicesTitle')});
     tabs.push({id:'settings', label:t('settings')});
   }
-  return `<nav class="bottomnav" aria-label="${t('workspaceLabel')}">
+  return `<nav class="bottomnav" aria-label="${t('workspaceLabel')}"><span class="nav-indicator" aria-hidden="true"></span>
     ${tabs.map(tb=>`
       <button class="navbtn ${state.view===tb.id?'active':''}" data-view="${tb.id}" ${state.view===tb.id?'aria-current="page"':''}>
-        ${NAV_ICONS[tb.id]}<span>${tb.label}</span>
+        ${NAV_ICONS[tb.id]}<span>${tb.label}</span>${tb.id==='assistant'?'<i class="nav-badge" hidden></i>':''}
       </button>`).join('')}
   </nav>`;
 }
@@ -459,52 +551,51 @@ function loginMessage(){
   if(state.pinBusy) return t('signingIn');
   return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), session:state.sessionMsg})[state.pinError] || '';
 }
+function pinDotClass(i){
+  const filled = i < state.pinBuffer.length;
+  const next = i === state.pinBuffer.length && !state.pinBusy && !state.pinError;
+  return `pin-dot${filled?' filled':''}${next?' next':''}`;
+}
 function renderLogin(){
-  const dots = Array.from({length:MAX_PIN_LEN}).map((_,i)=>{
-    const filled = i < state.pinBuffer.length;
-    const pop = state.pinPop && i === state.pinBuffer.length - 1;
-    return `<span class="pin-dot ${filled?'filled':''} ${pop?'pop':''}"><span class="core"></span></span>`;
-  }).join('');
+  const dots = Array.from({length:MAX_PIN_LEN}).map((_,i)=>`<span class="${pinDotClass(i)}"><span class="core"></span></span>`).join('');
   const keys = ['1','2','3','4','5','6','7','8','9'];
   const bad = ['wrong','locked','network'].includes(state.pinError);
   const msg = loginMessage();
+  const rings = `<span class="login-ring r1"></span><span class="login-ring r2"></span><span class="login-ring r3"></span>`;
+  const word = 'ricotta'.split('').map((c,i)=>`<b style="--i:${i}">${c}</b>`).join('');
   return `
   <div class="login-wrap">
-    <div class="login-mobile-scene" aria-hidden="true">
-      <span class="login-orbit orbit-one"></span><span class="login-orbit orbit-two"></span>
-      <span class="login-spark spark-one"></span><span class="login-spark spark-two"></span><span class="login-spark spark-three"></span>
+    <div class="login-scene" aria-hidden="true">${rings}<span class="login-spark s1"></span><span class="login-spark s2"></span><span class="login-spark s3"></span></div>
+    <div class="login-mobile-brand" aria-hidden="true">
+      <div class="login-word">${word}<i></i></div><div class="login-orders">ORDERS</div>
     </div>
-    <div class="login-mobile-brand" dir="ltr" aria-hidden="true">
-      <div class="login-mobile-word">ricotta<span></span></div><div class="login-mobile-orders">ORDERS</div>
-    </div>
-    <aside class="login-brand-panel"><div class="brand-word" dir="ltr">ricotta<span class="brand-word-dot"></span></div>
-      <div class="login-brand-content"><div class="brand-kicker">${t('brandKicker')}</div><div class="brand-message">${t('brandMessage')}<br><em>${t('brandMessageAccent')}</em></div><div class="brand-detail">${t('brandDetail')}</div>
-      <div class="brand-illustration" aria-hidden="true"><div class="brand-sheet"><div class="sheet-heading"><span>ricotta.</span><span>↗</span></div><div class="sheet-line long"></div><div class="sheet-line"></div><div class="sheet-rule"></div><div class="sheet-item"><i>✓</i><span></span><b>02</b></div><div class="sheet-item"><i>✓</i><span></span><b>04</b></div><div class="sheet-item"><i>✓</i><span></span><b>01</b></div><div class="sheet-total"><span></span><b>✓</b></div></div><div class="brand-stamp">✓</div></div></div>
-      <div class="brand-footer">© ${new Date().getFullYear()} Ricotta <span>${t('brandFooter')}</span></div></aside>
-    <div class="login-card">
-    <div class="login-logo">ricotta<span class="dot-i"></span></div>
+    <aside class="login-brand-panel">${rings}
+      <div class="brand-word" dir="ltr">ricotta<span class="brand-word-dot"></span></div>
+      <div class="login-brand-content"><div class="brand-kicker">${t('brandKicker')}</div><div class="brand-message">${t('brandMessage')}<br><em>${t('brandMessageAccent')}</em></div><div class="brand-detail">${t('brandDetail')}</div></div>
+      <div class="brand-footer"><span>© ${new Date().getFullYear()} Ricotta</span><span>${t('brandFooter')}</span></div></aside>
+    <div class="login-card"><div class="login-inner">
     <div class="login-heading">
       <div class="login-eyebrow">${t('welcomeBack')}</div>
-      <div class="login-title">${t('signIn')}</div>
-      <div class="login-sub">${t('signInSub')}</div>
+      <h1 class="login-title">${t('signIn')}</h1>
+      <p class="login-sub">${t('signInSub')}</p>
     </div>
-    <div class="pin-label">${t('enterPin')}</div>
-    <div class="pin-dots ${bad?'err':''} ${state.pinBusy?'busy':''}" aria-label="${t('enterPin')}">${dots}</div>
+    <div class="pin-label" id="pinLabel">${t('enterPin')}</div>
+    <div class="pin-dots ${bad?'err':''} ${state.pinBusy?'busy':''}" role="group" aria-labelledby="pinLabel">${dots}</div>
     <div class="login-error ${state.pinError==='session'?'info':''}" role="alert" style="visibility:${msg?'visible':'hidden'};">${esc(msg) || '&nbsp;'}</div>
     <div class="keypad">
-      ${keys.map(k=>`<button class="key" data-key="${k}">${k}</button>`).join('')}
-      <button class="key clear" data-key="clear">${t('clear')}</button>
-      <button class="key" data-key="0">0</button>
-      <button class="key backspace" data-key="back" aria-label="Backspace">${ICON_BACKSPACE}</button>
+      ${keys.map((k,i)=>`<button class="key" data-key="${k}" style="--k:${i}">${k}</button>`).join('')}
+      <button class="key clear" data-key="clear" style="--k:9">${t('clear')}</button>
+      <button class="key" data-key="0" style="--k:10">0</button>
+      <button class="key backspace" data-key="back" style="--k:11" aria-label="${esc(t('deleteDigit'))}">${ICON_BACKSPACE}</button>
     </div>
     <div class="login-lang">
-      <div class="login-lang-menu" id="loginLangMenu" hidden>
-        <button type="button" class="login-lang-option ${state.lang==='en'?'active':''}" data-login-lang="en"><span>English</span>${state.lang==='en'?'<i>✓</i>':''}</button>
-        <button type="button" class="login-lang-option ku ${state.lang==='ku'?'active':''}" data-login-lang="ku"><span>کوردی</span>${state.lang==='ku'?'<i>✓</i>':''}</button>
+      <div class="login-lang-menu" id="loginLangMenu" role="menu" hidden>
+        <button type="button" role="menuitem" class="login-lang-option ${state.lang==='en'?'active':''}" data-login-lang="en"><span>English</span>${state.lang==='en'?'<i>✓</i>':''}</button>
+        <button type="button" role="menuitem" class="login-lang-option ku ${state.lang==='ku'?'active':''}" data-login-lang="ku"><span>کوردی</span>${state.lang==='ku'?'<i>✓</i>':''}</button>
       </div>
       <button type="button" class="lang-pill" id="loginLangToggle" aria-haspopup="menu" aria-expanded="false">${ICON_GLOBE}<span class="lang-short">${state.lang==='en'?'EN':'KU'}</span><span class="lang-long">${state.lang==='en'?'English':'کوردی'}</span>${ICON_CHEVRON}</button>
     </div>
-    </div>
+    </div></div>
   </div>`;
 }
 function updateLoginFeedback(){
@@ -512,11 +603,8 @@ function updateLoginFeedback(){
   if(!dots) return;
   dots.classList.toggle('err',['wrong','locked','network'].includes(state.pinError));
   dots.classList.toggle('busy',state.pinBusy);
-  dots.querySelectorAll('.pin-dot').forEach((dot,index)=>{
-    const wasFilled=dot.classList.contains('filled'), filled=index<state.pinBuffer.length;
-    dot.classList.toggle('filled',filled);
-    if(filled && !wasFilled) animateUi(dot,[{transform:'scale(.92)'},{transform:'scale(1.06)'},{transform:'scale(1)'}]);
-  });
+  // Class changes alone drive the pop / next-box glow (see .pin-dot in style.css).
+  dots.querySelectorAll('.pin-dot').forEach((dot,index)=>{ dot.className = pinDotClass(index); });
   const message=document.querySelector('.login-error');
   message.textContent=loginMessage()||'\u00a0';
   message.style.visibility=loginMessage()?'visible':'hidden';
@@ -541,15 +629,15 @@ async function pressKey(k){
     setTimeout(()=>{ state.pinBuffer=''; if(!state.role) updateLoginFeedback(); }, 650);
     return;
   }
-  // Signed in: bring up the workspace behind the splash, then reveal it.
+  // Signed in: "Welcome back" covers the workspace while it loads, then lifts.
   state.pinBuffer = ''; state.pinError = ''; state.view = 'order';
-  showSplash();
+  showWelcome();
   state.role = res.role;
   const ok = await loadData();
-  if(!ok){ hideSplash(0); signOut(); state.pinError = 'network'; render(); return; }
+  if(!ok){ hideWelcome(0); signOut(); state.pinError = 'network'; render(); return; }
   restoreCartDraft();
   render();
-  hideSplash(150);
+  hideWelcome();
   heartbeat();
   if(pushStatus.subscribed) resyncPush();
   afterLogin();
@@ -611,15 +699,34 @@ function lastOrderMap(){
   last.entries.forEach(e=>e.items.forEach(it=>{ map[it.itemId] = it.qty; }));
   return map;
 }
+/* Suppliers the current tab covers, and how many of them have something picked. */
+function supplierCoverage(){
+  const scope = state.orderTab==='all' ? state.items : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab);
+  // Items with no supplier are ordered too, but only real suppliers count here
+  // (so the ring agrees with "N items across M suppliers" under it).
+  const all = new Set(scope.map(i=>i.supplierId).filter(Boolean));
+  const picked = new Set(scope.filter(i=>i.supplierId && (state.cart[i.id]||0)>0).map(i=>i.supplierId));
+  return {total:all.size, picked:picked.size};
+}
+const RING_C = 2*Math.PI*26;
+function ringOffset(){ const c=supplierCoverage(); return c.total ? RING_C*(1-c.picked/c.total) : RING_C; }
 function renderOrderHero(itemCount=state.items.length, supplierCount=new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size){
   const selCount = cartCount();
-  return `<div class="hero-card order-hero">
+  const cov = supplierCoverage();
+  return `<div class="hero-card order-hero"><span class="sheen" aria-hidden="true"></span>
     <div class="hero-copy"><div class="hero-eyebrow">${t('heroEyebrow')}</div>
-    <div class="hero-stat" aria-live="polite">${t('heroStat')(selCount)}</div>
+    <div class="hero-stat" aria-live="polite" aria-label="${esc(t('heroStat')(selCount))}"><span class="hero-count">${selCount}</span><span class="hero-word">${t('heroStatWord')(selCount)}</span></div>
     <div class="hero-sub">${t('heroSub')(itemCount, supplierCount)}</div></div>
-    <div class="hero-mark" aria-hidden="true">${NAV_ICONS.order}</div>
+    <div class="hero-ring" role="img" aria-label="${esc(t('suppliersCovered')(cov.picked, cov.total))}">
+      <svg viewBox="0 0 68 68" aria-hidden="true"><circle cx="34" cy="34" r="26" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="7"/><circle class="arc" cx="34" cy="34" r="26" fill="none" stroke="#6FCF9A" stroke-width="7" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${ringOffset().toFixed(2)}"/></svg>
+      <b>${cov.picked}/${cov.total}</b></div>
     <div class="hero-footer"><span class="draft-state">${selCount?t('draftLocal'):t('selectToStart')}</span><span class="hero-signature" aria-hidden="true">ricotta.</span></div>
   </div>`;
+}
+/* A small monogram tile for a supplier (first letter, deep green). */
+function supplierMono(name){
+  const ch = Array.from(String(name||'').trim())[0] || '·';
+  return `<span class="supplier-mono" aria-hidden="true">${esc(ch.toLocaleUpperCase())}</span>`;
 }
 function renderOrderArrangeControl(){
   return state.role==='admin' && state.orderTab!=='all' && state.orderTab!=='__none'
@@ -660,7 +767,7 @@ function renderOrder(){
     <div class="search-row">
       <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" aria-label="${t('searchPlaceholder')}" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
       <div class="order-quick-actions">
-        ${lastMap ? `<button class="quick-btn" id="sameAsLast">${t('sameAsLastTime')}</button>` : ''}
+        ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}${t('sameAsLastTime')}</button>` : ''}
         <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${t('clearOrder')}</button>
       </div>
     </div>
@@ -701,7 +808,7 @@ function renderOrderResults(){
     const arrangeButton = state.role==='admin' && key!=='__none'
       ? `<button class="item-sort-trigger" data-sort-supplier="${esc(key)}">${t('sortSupplierItems')}</button>` : '';
     return state.orderTab==='all' ? `<div class="supplier-group">
-      <div class="supplier-head"><span class="supplier-heading-name">${esc(label)}<span class="supplier-item-count">${groups[key].length}</span></span>${arrangeButton}</div>
+      <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}<span class="supplier-item-count">${groups[key].length}</span></span>${arrangeButton}</div>
       <div class="supplier-items-grid">${rows}</div>
     </div>` : `<div class="supplier-items-grid standalone">${rows}</div>`;
   }).join('');
@@ -724,7 +831,7 @@ function refreshOrderView(pulseItemId=null){
     input.value=qty;
     row.classList.toggle('has-qty',qty>0);
     row.querySelector('[data-dec]').disabled=qty===0;
-    if(pulseItemId) animateUi(input,[{transform:'translateY(2px) scale(.88)',opacity:.6},{transform:'translateY(0) scale(1)',opacity:1}],180);
+    if(pulseItemId) bump(input);
   });
   refreshCartSummary();
 }
@@ -735,17 +842,27 @@ function refreshCartSummary(){
   if(hero){
     const selectedCount = state.orderTab==='all' ? state.items.length : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab).length;
     const selectedSupplierCount = state.orderTab==='all' ? new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size : (selectedCount ? 1 : 0);
-    const selCount = cartCount();
     const stat = hero.querySelector('.hero-stat');
+    const count = hero.querySelector('.hero-count');
     const sub = hero.querySelector('.hero-sub');
-    if(stat) stat.textContent = t('heroStat')(selCount);
+    if(count && count.textContent !== String(c)){ count.textContent = c; bump(count); }
+    hero.querySelector('.hero-word').textContent = t('heroStatWord')(c);
+    if(stat) stat.setAttribute('aria-label', t('heroStat')(c));
     if(sub) sub.textContent = t('heroSub')(selectedCount, selectedSupplierCount);
+    const cov = supplierCoverage(), ring = hero.querySelector('.hero-ring');
+    if(ring){
+      ring.querySelector('.arc').setAttribute('stroke-dashoffset', ringOffset().toFixed(2));
+      ring.querySelector('b').textContent = `${cov.picked}/${cov.total}`;
+      ring.setAttribute('aria-label', t('suppliersCovered')(cov.picked, cov.total));
+    }
   }
-  // Bottom bar send button
-  const send = document.getElementById('sendOrdersBtn');
-  if(send){
+  // Floating send bar: springs in with the first picked item, away with the last.
+  const bar = document.querySelector('.bottom-bar');
+  if(bar){
+    bar.classList.toggle('show', c>0);
+    const send = document.getElementById('sendOrdersBtn');
     send.disabled = c === 0;
-    send.innerHTML = c>0 ? t('itemsSelected')(c)+' · '+t('sendOrders') : t('sendOrders');
+    send.querySelector('.send-meta').textContent = sendMeta();
   }
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.disabled=c===0;
@@ -753,11 +870,17 @@ function refreshCartSummary(){
   if(draft) draft.textContent=c?t('draftLocal'):t('selectToStart');
 }
 function cartCount(){ return Object.values(state.cart).filter(q=>q>0).length; }
+function sendMeta(){
+  const c = cartCount();
+  const sups = new Set(Object.keys(state.cart).filter(id=>state.cart[id]>0).map(id=>(state.items.find(i=>i.id===id)||{}).supplierId||'__none')).size;
+  return c ? `${t('itemsSelected')(c)} · ${t('supplierCount')(sups)}` : '';
+}
 function renderOrderBottomBar(){
   const c = cartCount();
-  return `<div class="bottom-bar">
+  return `<div class="bottom-bar ${c>0?'show':''}">
     <button class="send-btn" id="sendOrdersBtn" ${c===0?'disabled':''}>
-      ${c>0 ? t('itemsSelected')(c)+' · '+t('sendOrders') : t('sendOrders')}
+      <span class="send-text"><span class="send-label">${t('sendOrders')}</span><span class="send-meta">${sendMeta()}</span></span>
+      <span class="send-go" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
     </button>
   </div>`;
 }
@@ -856,22 +979,43 @@ function waLink(phone, text){
   else if(!p.startsWith('964')) p = '964' + p;
   return `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
 }
+const ICON_CHAT = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.5A8.4 8.4 0 1 1 21 11.5Z"/></svg>`;
+const ICON_BACK = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>`;
 function renderQueue(){
   if(!state.queue) return emptyState(t('noHistory'));
+  const done = state.queue.filter(e=>e.sent).length, total = state.queue.length;
   const cards = state.queue.map((e,idx)=>{
     const sup = state.suppliers.find(s=>s.id===e.supplierId);
     const name = sup ? sup.name : t('noSupplier');
-    const itemsLine = sortedSupplierItems(e.items).map(i=>`${esc(i.name)} — ${i.qty} ${esc(unitLabel(i.unit))}`).join(' · ');
-    const noSendReason = !sup ? t('noSupplier') : t('noPhoneOnFile');
+    const itemsLine = sortedSupplierItems(e.items).map(i=>`${esc(i.name)} × ${i.qty} ${esc(unitLabel(i.unit))}`).join(' · ');
+    const canWhatsApp = !!(sup && sup.phone);
+    const sendBtn = canWhatsApp
+      ? `<button class="wa-btn ${e.sent?'done':''}" data-send="${idx}">${ICON_CHAT}${e.sent?t('sentSendAgain'):t('sendVia')}</button>`
+      : `<button class="wa-btn ${e.sent?'done':''}" data-marksent="${idx}" ${e.sent?'disabled':''}>${e.sent?t('sent'):t('markSent')}</button>`;
     return `<div class="queue-card ${e.sent?'sent':''}">
-      <div class="queue-top"><span class="queue-name">${esc(name)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:''}</div>
+      <div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
       <div class="queue-items">${itemsLine}</div>
-      <div class="queue-actions"><button class="pdf-btn" data-pdf="${idx}">${t('orderSheet')}</button>${sup && sup.phone ? `<button class="wa-btn ${e.sent?'done':''}" data-send="${idx}">${e.sent?t('sent'):t('sendVia')}</button>` : `<div class="queue-items">${esc(noSendReason)}</div>`}</div>
+      ${canWhatsApp ? '' : `<div class="queue-note">${esc(!sup ? t('noSupplier') : t('noPhoneOnFile'))} · ${esc(t('markSentHint'))}</div>`}
+      <div class="queue-actions">${sendBtn}<button class="pdf-btn" data-pdf="${idx}" aria-label="${esc(t('orderSheet'))}">${NAV_ICONS.record}<span>PDF</span></button></div>
     </div>`;
   }).join('');
-  return `<div class="section-title">${t('sendQueueTitle')}</div>${cards}`;
+  return `<div class="queue-head">
+      <button class="queue-back" id="queueBackBtn" aria-label="${esc(t('backToOrder'))}">${ICON_BACK}</button>
+      <div class="queue-progress"><div class="queue-progress-label">${t('sentProgress')(done,total)}</div><div class="queue-bar"><i style="--p:${Math.round(done/total*100)}%"></i></div></div>
+    </div>
+    ${done===total ? `<div class="queue-done"><span class="tick"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span><b>${t('allSentTitle')}</b><small>${t('allSentSub')}</small></span></div>` : ''}
+    ${cards}`;
+}
+function markQueueSent(idx){
+  const entry = state.queue && state.queue[idx];
+  if(!entry) return;
+  entry.sent = true;
+  render();
+  maybeFinishQueue();
 }
 function attachQueueEvents(){
+  const back = document.getElementById('queueBackBtn');
+  if(back) back.onclick = ()=>{ state.view='order'; render(); window.scrollTo({top:0}); };
   document.querySelectorAll('[data-pdf]').forEach(b=>b.onclick=()=>{
     const entry = state.queue[parseInt(b.dataset.pdf)]; const supplier = state.suppliers.find(s=>s.id===entry?.supplierId);
     if(entry) printOrderSheet(entry, supplier);
@@ -882,10 +1026,12 @@ function attachQueueEvents(){
     const sup = state.suppliers.find(s=>s.id===entry.supplierId);
     if(!sup || !sup.phone) return; // button only renders when this is safe, but guard anyway
     window.open(waLink(sup.phone, buildMessage(entry)), '_blank');
-    entry.sent = true;
-    render();
-    maybeFinishQueue();
+    markQueueSent(idx);
   });
+  // Suppliers without a WhatsApp number (or items with no supplier) are sent
+  // some other way; without this the queue could never finish and the order
+  // was never saved to History.
+  document.querySelectorAll('[data-marksent]').forEach(b=>b.onclick=()=>markQueueSent(parseInt(b.dataset.marksent)));
 }
 function printOrderSheet(entry, supplier){
   const ku=state.lang==='ku', title=ku?'داواکارییەکی نوێ':'Purchase order';
@@ -895,47 +1041,66 @@ function printOrderSheet(entry, supplier){
   w.document.write(`<!doctype html><html dir="${ku?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${title} — Ricotta</title><style>body{font-family:Arial,'Noto Sans Arabic',sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${new Date().toLocaleString(ku?'ku':'en-GB')}<br>${entry.items.length} ${ku?'کاڵا':'items'}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${ku?'کاڵا':'Item'}</th><th>${ku?'یەکە':'Unit'}</th><th>${ku?'بڕ':'Qty'}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${ku?'تکایە داواکارییەکە بەپێی ئەم بڕانە ئامادە بکەن. سوپاس.':'Please prepare this order with the quantities listed above. Thank you.'}</div></body></html>`);
   w.document.close(); w.focus(); setTimeout(()=>w.print(),250);
 }
+let finishingQueue = false;
 async function maybeFinishQueue(){
-  if(!state.queue.every(e=>e.sent)) return;
+  if(finishingQueue || !state.queue || !state.queue.every(e=>e.sent)) return;
+  finishingQueue = true;
   const record = {
     id: 'o'+Date.now(), date: new Date().toISOString(),
     entries: state.queue.map(e=>({
       supplierId: e.supplierId,
+      supplierName: (state.suppliers.find(s=>s.id===e.supplierId)||{}).name || '',
       items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
     }))
   };
   state.history.push(record);
-  const saved = await sendOrQueue('orders', 'POST', record);
-  if(!saved) toast(t('orderSavedOffline'), 'warn');
   state.cart = {};
   persistCartDraft();
+  const saved = await sendOrQueue('orders', 'POST', record);
+  // Let the "All orders sent" card land before returning to the Order screen.
+  await new Promise(r=>setTimeout(r, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1300));
   state.queue = null;
-  state.view = 'order';
-  render();
+  finishingQueue = false;
+  if(state.view === 'queue'){ state.view = 'order'; render(); window.scrollTo({top:0}); }
+  toast(saved ? t('orderSavedToHistory') : t('orderSavedOffline'), saved ? 'ok' : 'warn');
 }
 
 /* ============ History ============ */
+function dayLabel(date){
+  const d = new Date(date), today = new Date();
+  const key = x=>x.getFullYear()+'-'+x.getMonth()+'-'+x.getDate();
+  const yest = new Date(today); yest.setDate(today.getDate()-1);
+  if(key(d)===key(today)) return t('today');
+  if(key(d)===key(yest)) return t('yesterday');
+  return new Intl.DateTimeFormat(state.lang==='ku'?'ckb-IQ':'en-GB',{weekday:'long',day:'numeric',month:'long'}).format(d);
+}
 function renderHistory(){
   if(!state.history.length) return emptyState(t('noHistory'));
-  const rows = [...state.history].reverse().map(rec=>{
-    const dt = new Date(rec.date).toLocaleString(state.lang==='ku'?'en-GB':'en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  const locale = state.lang==='ku' ? 'en-GB' : 'en-GB';
+  let lastDay = '';
+  return [...state.history].reverse().map(rec=>{
+    const day = dayLabel(rec.date);
+    const heading = day !== lastDay ? `<div class="hist-day">${esc(day)}</div>` : '';
+    lastDay = day;
+    const time = new Date(rec.date).toLocaleTimeString(locale,{hour:'2-digit',minute:'2-digit'});
     const supplierLines = rec.entries.map(e=>{
-      const name = supplierName(e.supplierId);
-      const itemsLine = e.items.map(i=>`${esc(i.name)} (${i.qty} ${esc(unitLabel(i.unit))})`).join(', ');
-      return `<div class="hist-supplier">${esc(name)}</div><div class="hist-items">${itemsLine}</div>`;
+      // Prefer the live name; fall back to the name saved with the order (a deleted supplier).
+      const live = state.suppliers.find(s=>s.id===e.supplierId);
+      const name = live ? live.name : (e.supplierName || t('noSupplier'));
+      const itemsLine = e.items.map(i=>`${esc(i.name)} × ${i.qty} ${esc(unitLabel(i.unit))}`).join(' · ');
+      return `<div class="hist-entry"><div class="hist-supplier">${supplierMono(name)}${esc(name)}</div><div class="hist-items">${itemsLine}</div></div>`;
     }).join('');
-    return `<div class="hist-card">
+    return `${heading}<div class="hist-card">
       <div class="hist-top">
-        <div class="hist-date">${dt}</div>
+        <div class="hist-date">${esc(time)}</div>
         <div class="row-actions">
-          <button class="icon-btn" data-reorderhist="${rec.id}" title="${t('orderAgain')}">${ICON_REPEAT}</button>
-          <button class="icon-btn danger" data-delhist="${rec.id}" title="${t('delete')}">${ICON_DELETE}</button>
+          <button class="icon-btn" data-reorderhist="${esc(rec.id)}" aria-label="${esc(t('orderAgain'))}" title="${esc(t('orderAgain'))}">${ICON_REPEAT}</button>
+          ${state.role==='admin' ? `<button class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
         </div>
       </div>
       ${supplierLines}
     </div>`;
   }).join('');
-  return rows;
 }
 function attachHistoryEvents(){
   document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
@@ -951,6 +1116,8 @@ function attachHistoryEvents(){
     persistCartDraft();
     state.view = 'order';
     render();
+    window.scrollTo({top:0});
+    toast(t('reorderReady')(cartCount()));
   });
   document.querySelectorAll('[data-delhist]').forEach(b=>b.onclick=async()=>{
     if(!(await showConfirm(t('confirmDeleteHistory')))) return;
@@ -1015,8 +1182,8 @@ function renderRecord(){
     {id:'item', label:t('items')},
     {id:'unit', label:t('units')}
   ];
-  const filterHtml = `<div class="order-tabs">${filters.map(f=>`
-    <button class="tab-pill ${state.recordFilter===f.id?'active':''}" data-recfilter="${f.id}">${f.label}</button>`).join('')}</div>`;
+  const filterHtml = `<div class="record-filters glass" role="group">${filters.map(f=>`
+    <button class="tab-pill ${state.recordFilter===f.id?'active':''}" aria-pressed="${state.recordFilter===f.id}" data-recfilter="${f.id}">${f.label}</button>`).join('')}</div>`;
   const rows = state.activity
     .filter(a => state.recordFilter==='all' || a.type===state.recordFilter)
     .sort((a,b)=> new Date(b.ts) - new Date(a.ts));
@@ -1255,7 +1422,7 @@ function renderItemsAdmin(){
         <button class="icon-btn danger" data-delitem="${esc(i.id)}">${ICON_DELETE}</button>
       </div>
     </div>`).join('');
-    return `<section class="supplier-group admin-item-group"><div class="supplier-head"><span>${esc(label)}</span><span class="supplier-item-count">${groupItems.length}</span></div><div class="admin-item-grid">${rows}</div></section>`;
+    return `<section class="supplier-group admin-item-group"><div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}</span><span class="supplier-item-count">${groupItems.length}</span></div><div class="admin-item-grid">${rows}</div></section>`;
   }).join('') : emptyState(t('noItemsYet'));
   return `
     <div class="action-row">
@@ -1475,7 +1642,7 @@ function renderUnits(){
     </span>`).join('');
   return `
     <div class="section-title">${t('units')}</div>
-    <div>${chips || emptyState(t('noUnitsYet'))}</div>
+    ${chips ? `<div class="unit-grid">${chips}</div>` : emptyState(t('noUnitsYet'))}
     <div class="section-title">${t('addUnit')}</div>
     <div class="form-card">
       <div class="field"><label>${t('englishLabel')}</label><input id="unitEn" placeholder="${t('unitNamePlaceholder')}"></div>
@@ -1577,7 +1744,7 @@ function renderDevices(){
   const loggedInCount = visible.length;
   const activeCount = visible.filter(d=>deviceStatus(d)==='active').length;
 
-  const hero = `<div class="hero-card">
+  const hero = `<div class="hero-card"><span class="sheen" aria-hidden="true"></span>
     <div class="hero-eyebrow">${t('devicesLoggedInEyebrow')}</div>
     <div class="hero-stat">${t('devicesLoggedInStat')(loggedInCount)}</div>
     <div class="hero-sub">${t('devicesActiveSub')(activeCount)}</div>
@@ -1597,7 +1764,7 @@ function renderDevices(){
     const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
     return `<div class="dev-card">
       <div class="dev-top">
-        <div class="dev-name">${esc(d.nickname) || t('unnamedDevice')}${isThis ? ` <span class="dev-this">\u00b7 ${t('thisDevice')}</span>` : ''}</div>
+        <div class="dev-name">${d.personName ? `${esc(d.personName)} \u00b7 ` : ''}${esc(d.nickname) || t('unnamedDevice')}${isThis ? ` <span class="dev-this">\u00b7 ${t('thisDevice')}</span>` : ''}</div>
         <div class="row-actions"><button class="icon-btn" data-editdevice="${esc(d.id)}">${ICON_EDIT}</button></div>
       </div>
       <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span><span class="dev-role">${roleLabel}</span></div>
@@ -1679,7 +1846,7 @@ function renderSettings(){
       <div class="form-actions"><button class="btn btn-primary" id="pinsSaveBtn">${t('savePins')}</button></div>
     </div>`;
   const connectionCard = `<div class="section-title">${t('cloudSetup')}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote')}</b></div></div></div>`;
-  return `${pinsCard}${connectionCard}${renderNotifSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
+  return `${pinsCard}${connectionCard}${renderNotifSettings()}${renderRicoSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
 }
 /* ---- Settings: Notifications card (this device + daily reminder) ---- */
 function renderNotifSettings(){
@@ -1704,6 +1871,27 @@ function renderNotifSettings(){
       </div>`;
   return `<div class="section-title">${t('notifSettingsTitle')}</div>
     <div class="form-card">${device}<hr class="notif-divider"><div class="section-title" style="margin-top:0;">${t('reminderTitle')}</div>${reminder}</div>`;
+}
+/* ---- Settings: connect Rico to Claude (admins) ---- */
+function renderRicoSettings(){
+  return `<div class="section-title">${t('ricoSettingsTitle')}</div>
+    <div class="form-card" id="ricoKeyCard">
+      <div class="rico-set-head">${ricoAvatar('rico-av-lg')}<div><b>${t('ricoName')}</b><div class="notif-sub" id="ricoKeyState">${t('ricoChecking')}</div></div></div>
+      <div class="field"><label for="ricoKeyInput">${t('ricoKeyLabel')}</label><input id="ricoKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…"></div>
+      <div class="field-hint" style="color:var(--ink-soft)">${t('ricoKeyHint')}</div>
+      <div class="form-actions" style="margin-top:12px"><button class="btn btn-primary" id="ricoKeySave">${t('ricoKeySave')}</button><button class="btn btn-danger" id="ricoKeyRemove" hidden>${t('ricoKeyRemove')}</button></div>
+    </div>`;
+}
+async function loadRicoStatus(){
+  const el = document.getElementById('ricoKeyState');
+  if(!el) return;
+  const r = await api('assistant/status');
+  if(!document.getElementById('ricoKeyState')) return;
+  const st = r.ok && r.data ? r.data : null;
+  el.textContent = !st ? t('loadFailed') : st.configured ? t('ricoConnected')(st.model) : t('ricoNotConnected');
+  el.style.color = st && st.configured ? 'var(--mint-ink)' : '';
+  const rm = document.getElementById('ricoKeyRemove');
+  if(rm) rm.hidden = !(st && st.source === 'app');
 }
 /* Disables a button while its action runs, so a double tap can't send twice. */
 async function withBusy(btn, fn){
@@ -1731,6 +1919,25 @@ function attachSettingsEvents(){
   const test = document.getElementById('reminderTestBtn');
   if(test) test.onclick = ()=> withBusy(test, async ()=> reportSendResult(await callSendPush('reminder-now')));
 
+  loadRicoStatus();
+  const keySave = document.getElementById('ricoKeySave');
+  if(keySave) keySave.onclick = ()=> withBusy(keySave, async ()=>{
+    const input = document.getElementById('ricoKeyInput');
+    const key = input.value.trim();
+    if(!key){ input.focus(); return; }
+    const r = await api('admin/assistant-key', {method:'PUT', body:{key}});
+    if(!r.ok){ await showAlert(r.data && r.data.error === 'key_rejected' ? t('ricoKeyRejected') : r.data && r.data.error === 'invalid_key' ? t('ricoKeyInvalid') : t('saveFailed')); return; }
+    input.value = '';
+    toast(t('ricoKeySaved'));
+    loadRicoStatus();
+  });
+  const keyRemove = document.getElementById('ricoKeyRemove');
+  if(keyRemove) keyRemove.onclick = async ()=>{
+    if(!(await showConfirm(t('ricoKeyRemoveConfirm'), {okLabel:t('ricoKeyRemove')}))) return;
+    const r = await api('admin/assistant-key', {method:'PUT', body:{remove:true}});
+    if(!r.ok){ await showAlert(t('saveFailed')); return; }
+    loadRicoStatus();
+  };
   const pinsBtn = document.getElementById('pinsSaveBtn');
   pinsBtn.onclick = ()=> withBusy(pinsBtn, async ()=>{
     const ap = document.getElementById('adminPinInput').value.trim();

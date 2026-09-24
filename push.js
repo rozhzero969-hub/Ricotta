@@ -145,7 +145,9 @@ function snoozePushBanner(){ lset('pushBannerSnoozedAt', Date.now()); }
    language immediately, instead of only after its next re-subscribe. A
    no-op if this device was never subscribed. */
 async function updatePushLang(lang){
-  if(!pushStatus.subscribed) return;
+  // Signed out (e.g. switching language on the PIN screen) the server would
+  // answer 401; the language is sent with the subscription at the next sign-in.
+  if(!pushStatus.subscribed || !apiSession()) return;
   try{
     const reg = await navigator.serviceWorker.getRegistration();
     const sub = reg && await reg.pushManager.getSubscription();
@@ -220,6 +222,8 @@ async function saveReminder(enabled, time){
    'supplier' (a supplier's own reminder -> Order screen on that supplier's tab). */
 function handlePushIntent(kind, supplierId){
   if(kind === 'update') openUpdatePopup();
+  /* Rico's messages and late-order alerts open Rico (its late-order card offers to prepare the order). */
+  else if((kind === 'assistant' || kind === 'overdue') && state.role){ state.view = 'assistant'; render(); window.scrollTo({top:0}); }
   else if((kind === 'reminder' || kind === 'supplier') && state.role){
     state.view = 'order';
     if(kind === 'supplier' && supplierId && state.suppliers.some(s => s.id === supplierId)) state.orderTab = supplierId;

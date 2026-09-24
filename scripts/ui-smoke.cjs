@@ -9,6 +9,8 @@ const os=require('node:os');
 const http=require('node:http');
 const root=path.resolve(__dirname,'..');
 const artifacts=fs.mkdtempSync(path.join(os.tmpdir(),'ricotta-ui-'));
+const fast=process.env.UI_SMOKE_FAST==='1';
+const viewportWidths=fast?[390,1440]:[360,390,768,1024,1440,1920];
 const supplierNames=['Corner Cake','Golden Bread Bakery','Fresh produce','Daily essentials','Kitchen supplies','Beverages','Dairy','Meat supplier','دابینکەری سەوزە','دابینکەری بەرهەمەکان'];
 const suppliers=supplierNames.map((name,i)=>({id:'s'+i,name,phone:''}));
 const items=Array.from({length:181},(_,i)=>({id:'i'+i,name:i%3===0?'تەماتە '+i:'Kitchen item '+String(i).padStart(3,'0'),unit:'box',supplierId:'s'+(i%10)}));
@@ -74,9 +76,9 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('[data-qty="i1"]').inputValue(),'3','increment works after language switch');
     for(const lang of ['en','ku']){
       await page.evaluate(lang=>setLang(lang),lang);
-      for(const width of [360,390,768,1024,1440,1920]){
+      for(const width of viewportWidths){
         await page.setViewportSize({width,height:900});
-        for(const view of ['order','itemsAdmin','units','settings','suppliers','history','devices','record']){
+        for(const view of ['order','assistant','itemsAdmin','units','settings','suppliers','history','devices','record']){
           await page.locator('[data-view="'+view+'"]').click();
           await noOverflow(page,lang+'/'+width+'/'+view);
         }
@@ -94,7 +96,7 @@ const server=http.createServer((req,res)=>{
     await login.page.locator('[data-key="clear"]').click();
     for(const lang of ['en','ku']){
       await login.page.evaluate(lang=>setLang(lang),lang);
-      for(const width of [360,390,768,1024,1440,1920]){
+      for(const width of viewportWidths){
         await login.page.setViewportSize({width,height:width>=960?900:740});await noOverflow(login.page,'login/'+lang+'/'+width);
         assert.ok(await login.page.locator('#loginLangToggle').isVisible());
       }
@@ -109,9 +111,9 @@ const server=http.createServer((req,res)=>{
     await login.page.evaluate(()=>setLang('en'));
     await login.page.keyboard.type('123456');
     await login.page.waitForSelector('#orderResults');await login.page.waitForSelector('#splash',{state:'detached'});
-    assert.equal(await login.page.locator('[data-view]').count(),8,'six-digit login opens the admin workspace');
+    assert.equal(await login.page.locator('[data-view]').count(),9,'six-digit login opens the admin workspace (including Rico)');
     await login.page.evaluate(()=>{state.role='user';render();});
-    assert.equal(await login.page.locator('[data-view]').count(),2,'staff navigation keeps its permitted screens');
+    assert.equal(await login.page.locator('[data-view]').count(),3,'staff navigation keeps its permitted screens (Order, Rico, History)');
     await login.page.locator('#logoutBtn').click();await login.page.waitForSelector('.keypad');
     assert.equal(await login.page.locator('.pin-dot.filled').count(),0,'logout resets the PIN feedback');
     await login.ctx.close();
@@ -119,6 +121,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await reduced.page.locator('[data-qty="i1"]').evaluate(el=>el.getAnimations().length),0,'reduced motion skips JS feedback');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:'96 workspace layouts, 12 login layouts, stable quantity/PIN/search DOM, supplier counts, draft restore/clear, language switch, reduced motion',artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:'108 workspace layouts (including Rico), 12 login layouts, stable quantity/PIN/search DOM, supplier counts, draft restore/clear, language switch, reduced motion',artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

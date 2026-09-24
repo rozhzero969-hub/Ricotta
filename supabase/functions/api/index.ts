@@ -27,7 +27,12 @@
 //   PUT    reminder                   {enabled, time} (admin)   daily reminder settings
 //   POST   push/send                  {type, ...}     (admin)   forwarded to send-push
 //   POST   admin/pins                 {adminPin, staffPin} (admin)
+//   PUT    devices/me/name            {name}                    who is using this device (for Rico)
+//   POST   assistant/chat             {messages, lang, ...}     Rico's reply, streamed (see assistant.ts)
+//   GET    assistant/status                                     is Rico connected?
+//   PUT    admin/assistant-key        {key, model?} | {remove}  (admin) connect Rico to Claude
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { assistantStatus, handleChat, setAssistantKey } from "./assistant.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -39,6 +44,8 @@ const LOGIN_WINDOW_MS = 10 * 60_000;
 const MAX_FAILED_LOGINS = 8;              // per network address, per window
 const SEEN_WRITE_EVERY_MS = 5 * 60_000;   // throttle session last_seen_at writes
 const ACTIVITY_LIMIT = 500;
+const HISTORY_LIMIT = 300;                // newest sent orders the app loads at start
+const PAGE = 1000;                        // PostgREST returns at most 1000 rows per request
 const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
 
@@ -46,6 +53,9 @@ const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-device-id, x-session-token",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  // Let browsers reuse the pre-flight answer for a day instead of sending an
+  // extra OPTIONS request before every single call.
+  "Access-Control-Max-Age": "86400",
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
@@ -91,13 +101,24 @@ async function audit(s: Session, action: string, type?: string, name?: string, p
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder });
 const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order });
 const toDevice = (d: any) => ({
-  id: d.id, nickname: d.nickname, role: d.role, loggedIn: d.logged_in,
+  id: d.id, nickname: d.nickname, personName: d.person_name ?? null, role: d.role, loggedIn: d.logged_in,
   lastLogin: d.last_login, lastSeen: d.last_seen, command: d.command, handledCommand: d.handled_command,
 });
 const toActivity = (a: any) => ({
   ...(a.payload ?? {}), id: a.id, ts: a.occurred_at, role: a.actor_role, deviceId: a.device_id,
   action: a.action, type: a.entity_type, name: a.entity_name,
 });
+/* Reads every row of a query, 1000 at a time (a single request silently stops
+   at 1000 rows, which used to cut long order histories short). */
+async function readAll(build: () => any): Promise<any[]> {
+  const rows: any[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE) return rows;
+  }
+}
 function groupHistory(orders: any[], lines: any[]) {
   const byOrder = new Map<string, any[]>();
   for (const l of lines) (byOrder.get(l.order_id) ?? byOrder.set(l.order_id, []).get(l.order_id)!).push(l);
@@ -105,7 +126,7 @@ function groupHistory(orders: any[], lines: any[]) {
     const entries: any[] = [];
     for (const l of byOrder.get(o.id) ?? []) {
       let e = entries.find((x) => x.supplierId === l.supplier_id);
-      if (!e) { e = { supplierId: l.supplier_id, items: [] }; entries.push(e); }
+      if (!e) { e = { supplierId: l.supplier_id, supplierName: l.supplier_name ?? null, items: [] }; entries.push(e); }
       e.items.push({ itemId: l.item_id, name: l.item_name, unit: l.unit_id, qty: Number(l.qty) });
     }
     return { id: o.id, date: o.sent_at ?? o.created_at, entries };
@@ -113,7 +134,7 @@ function groupHistory(orders: any[], lines: any[]) {
 }
 
 async function listDevices(s: Session) {
-  let q = app("devices").select("id,nickname,role,logged_in,last_login,last_seen,command,handled_command");
+  let q = app("devices").select("id,nickname,person_name,role,logged_in,last_login,last_seen,command,handled_command");
   if (s.role !== "admin") q = q.eq("id", s.deviceId ?? "");
   const { data } = await q;
   return (data ?? []).map(toDevice);
@@ -136,21 +157,27 @@ async function bootstrap(s: Session) {
     app("suppliers").select("id,name,phone,reminder").order("name"),
     app("items").select("id,name,unit_id,supplier_id,sort_order").order("name"),
     app("units").select("id,en,ku"),
-    app("orders").select("id,created_at,sent_at").eq("status", "sent").order("sent_at"),
+    // Newest orders first, capped, then put back in date order for the app.
+    app("orders").select("id,created_at,sent_at").eq("status", "sent").order("sent_at", { ascending: false }).limit(HISTORY_LIMIT),
     readReminder(),
     listDevices(s),
     admin ? listActivity() : Promise.resolve([]),
   ]);
-  const orderIds = (orders.data ?? []).map((o) => o.id);
-  const { data: lines } = orderIds.length
-    ? await app("order_lines").select("order_id,supplier_id,item_id,item_name,unit_id,qty").in("order_id", orderIds)
-    : { data: [] as any[] };
+  const orderRows = (orders.data ?? []).reverse();
+  // Lines are read in small batches of orders: a long id list in one request
+  // can exceed the URL length limit, and each batch is paged past 1000 rows.
+  const lines: any[] = [];
+  for (let i = 0; i < orderRows.length; i += 60) {
+    const ids = orderRows.slice(i, i + 60).map((o) => o.id);
+    lines.push(...await readAll(() => app("order_lines")
+      .select("order_id,supplier_id,supplier_name,item_id,item_name,unit_id,qty").in("order_id", ids).order("id")));
+  }
   return {
     role: s.role,
     suppliers: (suppliers.data ?? []).map(toSupplier),
     items: (items.data ?? []).map(toItem),
     units: units.data ?? [],
-    history: groupHistory(orders.data ?? [], lines ?? []),
+    history: groupHistory(orderRows, lines),
     reminder, devices, activity,
   };
 }
@@ -161,7 +188,8 @@ async function login(req: Request) {
   // Do not truncate an untrusted value before verifying it: otherwise a
   // valid PIN followed by extra characters could be accepted.
   if (!/^\d{6}$/.test(String(pin ?? ""))) return fail("invalid_credentials", 401);
-  const ip = req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "unknown";
+  const ip = req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip")
+    || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const fingerprint = await hash(`ip|${ip}`);
   const since = new Date(Date.now() - LOGIN_WINDOW_MS).toISOString();
   const { count } = await app("login_attempts").select("id", { count: "exact", head: true })
@@ -212,8 +240,15 @@ async function saveOrder(s: Session, b: any) {
   const date = b.date && !isNaN(Date.parse(b.date)) ? b.date : nowIso();
   const { error } = await app("orders").insert({ id, status: "sent", created_at: date, sent_at: date, created_by_role: s.role, sent_by_role: s.role });
   if (error) return fail("save_failed", 500);
+  // Keep each supplier's name with the order, so History still shows it after
+  // the supplier is renamed or deleted (supplier_id is then set to null).
+  const supplierIds = [...new Set(b.entries.map((e: any) => text(e.supplierId, 120)).filter(Boolean))];
+  const { data: sups } = supplierIds.length ? await app("suppliers").select("id,name").in("id", supplierIds) : { data: [] as any[] };
+  const supplierNames = new Map((sups ?? []).map((x: any) => [x.id, x.name]));
   const lines = b.entries.flatMap((e: any) => (Array.isArray(e.items) ? e.items : []).map((i: any) => ({
-    order_id: id, supplier_id: text(e.supplierId, 120) || null, item_id: text(i.itemId, 120) || "legacy",
+    order_id: id, supplier_id: supplierNames.has(text(e.supplierId, 120)) ? text(e.supplierId, 120) : null,
+    supplier_name: supplierNames.get(text(e.supplierId, 120)) ?? (text(e.supplierName, 160) || null),
+    item_id: text(i.itemId, 120) || "legacy",
     item_name: text(i.name) || text(i.itemId) || "Item", unit_id: text(i.unit, 120) || null,
     qty: Math.max(Number(i.qty) || 0, 0.0001),
   })));
@@ -269,7 +304,7 @@ async function sendCommand(b: any) {
 async function forwardPush(b: any) {
   if (!CRON_SECRET) return fail("push_not_configured", 500);
   const type = text(b.type, 30);
-  if (!["update", "reminder-now", "supplier-test"].includes(type)) return fail("invalid_type");
+  if (!["update", "reminder-now", "supplier-test", "assistant"].includes(type)) return fail("invalid_type");
   const res = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}`, apikey: ANON_KEY, "x-cron-secret": CRON_SECRET },
@@ -365,6 +400,8 @@ Deno.serve(async (req) => {
     // Orders
     if (M === "POST" && path === "orders") return await saveOrder(s, b);
     if (M === "DELETE" && (m = path.match(/^(?:orders|history)\/([^/]{1,160})$/))) {
+      // Sent orders are the kitchen's paper trail: only an admin may remove one.
+      if (!admin) return fail("forbidden", 403);
       const id = decodeURIComponent(m[1]);
       const { error } = await app("orders").delete().eq("id", id);
       if (error) return fail("delete_failed", 500);
@@ -391,6 +428,25 @@ Deno.serve(async (req) => {
       const id = decodeURIComponent(m[1]);
       if (!admin && id !== s.deviceId) return fail("forbidden", 403);
       await app("devices").update({ nickname: text(b.nickname, 120) || null, updated_at: nowIso() }).eq("id", id);
+      return ok();
+    }
+
+    // Who is using this device (Rico greets people by name)
+    if (M === "PUT" && path === "devices/me/name") {
+      if (!s.deviceId) return fail("no_device");
+      const name = text(b.name, 40).replace(/[<>"]/g, "");
+      await app("devices").update({ person_name: name || null, updated_at: nowIso() }).eq("id", s.deviceId);
+      return ok();
+    }
+
+    // Rico, the assistant
+    if (M === "POST" && path === "assistant/chat") return await handleChat(db, s, b, cors, req.signal);
+    if (M === "GET" && path === "assistant/status") return json(await assistantStatus(db));
+    if (M === "PUT" && path === "admin/assistant-key") {
+      if (!admin) return fail("forbidden", 403);
+      const r = await setAssistantKey(db, b);
+      if (r.error) return fail(r.error);
+      await audit(s, b.remove ? "assistant_key_removed" : "assistant_key_set");
       return ok();
     }
 
