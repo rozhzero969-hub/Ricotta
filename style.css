@@ -593,6 +593,13 @@ html:not(.rtl) .rico-hello{letter-spacing:-.035em}
 .rico-status-line i{width:12px;height:12px;border-radius:50%;border:2px solid rgba(20,56,44,.18);border-top-color:#2F8A5B;animation:spin .8s linear infinite}
 .rico-error{font-size:13px;font-weight:700;color:var(--clay-ink);padding:10px 14px;border-radius:16px;background:rgba(251,231,229,.8);border:1px solid rgba(214,72,63,.2)}
 .rico-link{border:0;background:none;padding:0;font:inherit;font-weight:800;color:var(--deep);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.rico-supplier-picker{width:min(100%,440px);display:grid;gap:10px;padding:14px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow)}
+.rico-scope-all,.rico-scope-selected{width:100%}
+.rico-picker-list{max-height:250px;overflow-y:auto;display:grid;gap:5px;scrollbar-color:var(--mint-ink) transparent}
+.rico-picker-row{display:flex;align-items:center;gap:10px;min-height:42px;padding:8px 10px;border-radius:12px;background:rgba(20,56,44,.035);font-size:13px;font-weight:700;cursor:pointer;overflow-wrap:anywhere}
+.rico-picker-row:hover{background:rgba(47,138,91,.1)}
+.rico-picker-row input{width:18px;height:18px;accent-color:var(--deep);flex-shrink:0}
+.rico-picker-row span{min-width:0}
 
 .rico-card{width:min(100%,440px);border-radius:22px;padding:14px;background:rgba(255,255,255,.88);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid rgba(255,255,255,.95);box-shadow:var(--float-shadow);animation:cardIn 520ms var(--spring-soft) both;transition:opacity .3s ease}
 .rico-msg.painted .rico-card{animation:none}

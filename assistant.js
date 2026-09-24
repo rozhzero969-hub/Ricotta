@@ -9,7 +9,7 @@
    persistCartDraft, myDevice, callSendPush, reportSendResult, showPrompt,
    showConfirm, NAV_ICONS. Load before app.js. */
 
-const RICO_MAX_SAVED = 80;              // messages kept on this device
+const RICO_MAX_SAVED = 80;              // messages kept on this device and backed up for this PIN role
 const RICO_HISTORY_SENT = 24;           // messages sent to the server with each question
 const RICO_LATE_AFTER_MIN = 60;
 const RICO_LATE_WINDOW_MIN = 4*60;
@@ -26,6 +26,8 @@ let rico = {
   status: null,        // {configured, model} once fetched (admins, Settings)
   loaded: false,
 };
+let ricoCloudTimer = null;
+let ricoCloudBusy = false;
 
 /* ---------- Rico's face: an original mascot (a green orb with a sprout) ---------- */
 function ricoAvatar(cls = ''){
@@ -39,15 +41,54 @@ function ricoAvatar(cls = ''){
 }
 
 /* ---------- Local storage of the chat ---------- */
+function ricoStorageKey(){ return `ricoChat:${state.role === 'admin' ? 'admin' : 'staff'}`; }
+function ricoStoredMessages(){
+  return rico.messages.slice(-RICO_MAX_SAVED).map(({streaming, statusKey, ...m}) =>
+    streaming && !m.text && !(m.proposals||[]).length ? {...m, error:'stopped', retry:true} : m);
+}
 function ricoLoad(){
   if(rico.loaded) return;
   rico.loaded = true;
-  const saved = lget('ricoChat');
+  const key = ricoStorageKey();
+  const saved = lget(key) || (state.role === 'admin' ? lget('ricoChat') : null);
   rico.messages = Array.isArray(saved) ? saved.filter(m=>m && (m.role==='user' || m.role==='assistant')).slice(-RICO_MAX_SAVED) : [];
   rico.messages.forEach(m=>{ delete m.streaming; });
+  if(!lget(key) && rico.messages.length){ lset(key, rico.messages); lset(key+':updatedAt', Date.now()); }
 }
 function ricoSave(){
-  lset('ricoChat', rico.messages.filter(m=>!m.streaming || m.text).slice(-RICO_MAX_SAVED).map(({streaming, statusKey, ...m})=>m));
+  const key = ricoStorageKey();
+  lset(key, ricoStoredMessages());
+  lset(key+':updatedAt', Date.now());
+  clearTimeout(ricoCloudTimer);
+  if(state.role && apiSession()) ricoCloudTimer = setTimeout(ricoPushCloud, 350);
+}
+async function ricoPushCloud(){
+  if(ricoCloudBusy || !state.role || !apiSession()) return;
+  ricoCloudBusy = true;
+  const key = ricoStorageKey();
+  const messages = lget(key) || [];
+  const updatedAt = Number(lget(key+':updatedAt')) || Date.now();
+  const response = await api('assistant/conversation', {method:'PUT', body:{messages, updatedAt}});
+  ricoCloudBusy = false;
+  if(response.ok && Number(lget(key+':updatedAt')) > updatedAt) ricoCloudTimer = setTimeout(ricoPushCloud, 100);
+}
+async function ricoSyncCloud(){
+  if(!state.role || !apiSession()) return;
+  ricoLoad();
+  const role = state.role, key = ricoStorageKey();
+  const response = await api('assistant/conversation');
+  if(!response.ok || state.role !== role || rico.streaming) return;
+  const remote = response.data || {};
+  const remoteAt = Date.parse(remote.updatedAt || '') || 0;
+  const localAt = Number(lget(key+':updatedAt')) || 0;
+  if(remoteAt > localAt && Array.isArray(remote.messages)){
+    rico.messages = remote.messages.filter(m=>m && (m.role==='user' || m.role==='assistant')).slice(-RICO_MAX_SAVED);
+    lset(key, rico.messages);
+    lset(key+':updatedAt', remoteAt);
+    if(state.view === 'assistant') render();
+  }else if(localAt > remoteAt){
+    ricoPushCloud();
+  }
 }
 function ricoAutoOrder(){ return !!lget('ricoAutoOrder'); }
 
@@ -139,12 +180,15 @@ function renderAssistant(){
 }
 function renderRicoIntro(){
   const chips = t('ricoSuggestions')(state.role==='admin');
+  const actions = state.role==='admin'
+    ? ['prepare_order','last_order','busy_days','add_item','recent_items','late_orders']
+    : ['prepare_order','last_order','busy_days','how_to_send'];
   return `<div class="rico-intro">
     ${ricoAvatar('rico-av-xl')}
     <h2 class="rico-hello">${esc(ricoGreeting())}</h2>
     <p class="rico-intro-text">${esc(t('ricoIntro'))}</p>
     ${personName() ? '' : `<form class="rico-name-form" id="ricoNameForm"><label for="ricoNameInput">${esc(t('ricoAskName'))}</label><div><input id="ricoNameInput" maxlength="40" autocomplete="given-name" placeholder="${esc(t('ricoNamePlaceholder'))}"><button class="btn btn-primary" type="submit">${t('save')}</button></div></form>`}
-    <div class="rico-chips">${chips.map(c=>`<button class="rico-chip" data-rico-ask="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <div class="rico-chips">${chips.map((c,i)=>`<button class="rico-chip" data-rico-ask="${esc(c)}" data-rico-action="${actions[i]}">${esc(c)}</button>`).join('')}</div>
   </div>`;
 }
 function renderRicoMessage(m, i){
@@ -156,11 +200,21 @@ function renderRicoMessage(m, i){
   const err = m.error ? `<div class="rico-error">${esc(ricoErrorText(m.error))}${m.error==='not_configured' && state.role==='admin' ? ` <button class="rico-link" data-rico-settings>${t('ricoOpenSettings')}</button>` : ''}${m.retry ? ` <button class="rico-link" data-rico-retry="${i}">${t('retry')}</button>` : ''}</div>` : '';
   const status = m.streaming && m.text && m.statusKey ? `<div class="rico-status-line"><i></i>${esc(ricoStatusLabel(m.statusKey))}</div>` : '';
   const cards = (m.proposals||[]).map(p=>renderRicoProposal(p, i)).join('');
+  const picker = m.picker ? renderRicoSupplierPicker(m.picker, i) : '';
   return `<div class="rico-msg bot${m.streaming?' streaming':''}" id="rico-m-${i}">
     ${ricoAvatar('rico-av-sm')}
     <div class="rico-col">
-      ${typing}${body ? `<div class="rico-bubble" dir="auto"><div class="rico-text">${body}</div></div>` : ''}${status}${cards}${err}
+      ${typing}${body ? `<div class="rico-bubble" dir="auto"><div class="rico-text">${body}</div></div>` : ''}${status}${picker}${cards}${err}
     </div>
+  </div>`;
+}
+function renderRicoSupplierPicker(picker, i){
+  if(picker.chosen) return '';
+  const selected = new Set(picker.selectedIds || []);
+  return `<div class="rico-supplier-picker" data-rico-picker="${i}">
+    <button class="btn btn-primary rico-scope-all" data-rico-scope-all="${i}">${t('ricoAllSuppliers')}</button>
+    <div class="rico-picker-list">${state.suppliers.map(s=>`<label class="rico-picker-row"><input type="checkbox" data-rico-scope-check="${i}" value="${esc(s.id)}" ${selected.has(s.id)?'checked':''}><span>${esc(s.name)}</span></label>`).join('')}</div>
+    <button class="btn btn-ghost rico-scope-selected" data-rico-scope-selected="${i}" ${selected.size?'':'disabled'}>${t('ricoPrepareSelected')(selected.size)}</button>
   </div>`;
 }
 function ricoStatusLabel(key){
@@ -309,7 +363,17 @@ function attachAssistantEvents(){
   if(rico.messages.length) ricoScroll(false);
 }
 function attachRicoThreadEvents(root){
-  root.querySelectorAll('[data-rico-ask]').forEach(b=>b.onclick=()=>ricoAsk(b.dataset.ricoAsk));
+  root.querySelectorAll('[data-rico-ask]').forEach(b=>b.onclick=()=>ricoAsk(b.dataset.ricoAsk, {quickAction:b.dataset.ricoAction}));
+  root.querySelectorAll('[data-rico-scope-check]').forEach(b=>b.onchange=()=>{
+    const i = Number(b.dataset.ricoScopeCheck), picker = rico.messages[i]?.picker;
+    if(!picker || picker.chosen) return;
+    picker.selectedIds = [...root.querySelectorAll(`[data-rico-scope-check="${i}"]:checked`)].map(input=>input.value);
+    const apply = root.querySelector(`[data-rico-scope-selected="${i}"]`);
+    if(apply){ apply.disabled = !picker.selectedIds.length; apply.textContent = t('ricoPrepareSelected')(picker.selectedIds.length); }
+    ricoSave();
+  });
+  root.querySelectorAll('[data-rico-scope-all]').forEach(b=>b.onclick=()=>ricoChooseScope(Number(b.dataset.ricoScopeAll), state.suppliers.map(s=>s.id)));
+  root.querySelectorAll('[data-rico-scope-selected]').forEach(b=>b.onclick=()=>ricoChooseScope(Number(b.dataset.ricoScopeSelected), rico.messages[Number(b.dataset.ricoScopeSelected)]?.picker?.selectedIds || []));
   root.querySelectorAll('[data-rico-late]').forEach(b=>b.onclick=()=>{
     const s = state.suppliers.find(x=>x.id===b.dataset.ricoLate);
     if(s) ricoAsk(t('ricoPreparePrompt')(s.name));
@@ -324,7 +388,7 @@ function attachRicoThreadEvents(root){
     if(screen === 'order' && sup && state.suppliers.some(s=>s.id===sup)) state.orderTab = sup;
     render(); window.scrollTo({top:0});
   });
-  root.querySelectorAll('[data-rico-settings]').forEach(b=>b.onclick=()=>{ state.view='settings'; render(); requestAnimationFrame(()=>document.getElementById('ricoKeyCard')?.scrollIntoView({block:'center'})); });
+  root.querySelectorAll('[data-rico-settings]').forEach(b=>b.onclick=()=>{ state.view='settings'; render(); requestAnimationFrame(()=>document.querySelector('.rico-status-card')?.scrollIntoView({block:'center'})); });
   root.querySelectorAll('[data-rico-retry]').forEach(b=>b.onclick=()=>{
     const i = +b.dataset.ricoRetry;
     const lastUser = [...rico.messages.slice(0, i)].reverse().find(m=>m.role==='user');
@@ -332,6 +396,21 @@ function attachRicoThreadEvents(root){
     if(lastUser){ rico.messages.splice(rico.messages.lastIndexOf(lastUser), 1); ricoAsk(lastUser.text); }
     else render();
   });
+}
+
+function ricoOrderIntent(text){
+  return /(?:prepare|make|do|build).*(?:today|today’s|todays).*(?:order)|(?:today|today’s|todays).*(?:order)/i.test(text)
+    || /(?:داواکاری|داواکردن).*ئەمڕۆ|ئەمڕۆ.*(?:داواکاری|داواکردن)/.test(text);
+}
+function ricoChooseScope(i, ids){
+  const picker = rico.messages[i]?.picker;
+  const chosen = [...new Set(ids)].filter(id=>state.suppliers.some(s=>s.id===id));
+  if(!picker || picker.chosen || !chosen.length || rico.streaming) return;
+  picker.chosen = true;
+  ricoSave();
+  ricoPaintMessage(i);
+  const names = chosen.map(id=>state.suppliers.find(s=>s.id===id).name);
+  ricoAsk(t('ricoScopedPrompt')(names), {quickAction:'prepare_order', supplierIds:chosen});
 }
 
 /* ---------- Talking to the server ---------- */
@@ -348,9 +427,24 @@ function ricoHistoryForServer(){
 function ricoStop(){
   if(rico.abort){ rico.abort.abort(); rico.abort = null; }
 }
-async function ricoAsk(text){
+async function ricoAsk(text, options = {}){
   if(rico.streaming) return;
   ricoLoad();
+  const scopeIds = options.supplierIds || [];
+  const named = state.suppliers.filter(s=>String(text).toLocaleLowerCase().includes(s.name.toLocaleLowerCase())).map(s=>s.id);
+  if((options.quickAction==='prepare_order' || ricoOrderIntent(text)) && !scopeIds.length && !named.length){
+    rico.messages.push({role:'user', text, ts:Date.now()});
+    rico.messages.push({role:'assistant', text:t('ricoChooseSuppliers'), picker:{selectedIds:[], chosen:false}, ts:Date.now()});
+    ricoSave();
+    if(state.view !== 'assistant') state.view = 'assistant';
+    render(); ricoScroll(true);
+    return;
+  }
+  if(named.length && (options.quickAction==='prepare_order' || ricoOrderIntent(text)) && !scopeIds.length){
+    options = {quickAction:'prepare_order', supplierIds:named};
+  }
+  const previousView = state.view;
+  const requestRole = state.role;
   rico.messages.push({role:'user', text, ts:Date.now()});
   const bot = {role:'assistant', text:'', proposals:[], streaming:true, statusKey:'thinking', ts:Date.now()};
   rico.messages.push(bot);
@@ -365,8 +459,9 @@ async function ricoAsk(text){
   let frame = 0;
   const paint = ()=>{ if(frame) return; frame = requestAnimationFrame(()=>{ frame = 0; ricoPaintMessage(idx); }); };
   const body = {
-    messages: ricoHistoryForServer(), lang: state.lang, screen: state.view, personName: personName(),
+    messages: ricoHistoryForServer(), lang: state.lang, screen: previousView, personName: personName(),
     autoOrder: ricoAutoOrder(), cart: Object.fromEntries(Object.entries(state.cart).filter(([,q])=>q>0)),
+    quickAction: options.quickAction || undefined, supplierIds: options.supplierIds || undefined,
   };
   await apiStream('assistant/chat', body, ev=>{
     if(ev.type === 'text'){ bot.text += ev.text; bot.statusKey = null; paint(); }
@@ -380,9 +475,11 @@ async function ricoAsk(text){
     else if(ev.type === 'name'){ const me = myDevice(); if(me) me.personName = ev.name; lset('personName', ev.name); }
     else if(ev.type === 'error'){ bot.error = ev.code; bot.retry = ['offline','busy','failed'].includes(ev.code); paint(); }
   }, controller.signal);
+  if(state.role !== requestRole) return;
   cancelAnimationFrame(frame);
   bot.streaming = false; bot.statusKey = null;
   if(controller.signal.aborted && !bot.text && !bot.proposals.length) bot.error = 'stopped';
+  if(!controller.signal.aborted && !bot.text && !bot.proposals.length && !bot.error){ bot.error = 'failed'; bot.retry = true; }
   rico.streaming = false; rico.abort = null;
   ricoSave();
   if(state.view === 'assistant'){

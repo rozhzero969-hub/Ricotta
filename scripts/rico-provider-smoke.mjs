@@ -39,11 +39,14 @@ const db = {
 secrets.set('gemini_api_key', 'AIza' + 'A'.repeat(35));
 const requests = [];
 let geminiTurn = 0;
+let emptyReply = false;
 globalThis.fetch = async (input, options = {}) => {
   const url = String(input);
   requests.push({ url, body: JSON.parse(options.body) });
   if (url.includes('streamGenerateContent')) {
-    const payload = geminiTurn++ === 0
+    const payload = emptyReply
+      ? { candidates: [{ content: { role: 'model', parts: [] }, finishReason: 'MAX_TOKENS' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2048 } }
+      : geminiTurn++ === 0
       ? { candidates: [{ content: { role: 'model', parts: [{ functionCall: { id: 'call-1', name: 'open_screen', args: { screen: 'order' } }, thoughtSignature: 'keep-this' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 3 } }
       : { candidates: [{ content: { role: 'model', parts: [{ text: 'All set.' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 4 } };
     const encoded = new TextEncoder().encode(`data: ${JSON.stringify(payload)}\r\n\r\n`);
@@ -65,9 +68,21 @@ const geminiEvents = await chat();
 assert.deepEqual(geminiEvents.map(e => e.type), ['status', 'proposal', 'text', 'text', 'done']);
 assert.equal(geminiEvents[1].proposal.kind, 'open');
 assert.equal(requests[0].body.tools[0].functionDeclarations.some(t => t.name === 'open_screen'), true);
+assert.equal(requests[0].body.generationConfig.thinkingConfig.thinkingLevel, 'minimal');
 assert.match(requests[0].body.systemInstruction.parts[0].text, /You are Rico/);
 assert.equal(requests[1].body.contents[1].parts[0].thoughtSignature, 'keep-this');
+assert.equal(requests[1].body.contents[2].role, 'user');
 assert.equal(requests[1].body.contents[2].parts[0].functionResponse.id, 'call-1');
 assert.equal(usage[0].model, 'gemini-3.5-flash-lite');
+const beforeQuick = requests.length;
+const quick = await handleChat(db, session, { messages: [{role:'user',content:'What did we order last time?'}], lang:'en', quickAction:'last_order' }, {}, new AbortController().signal);
+assert.deepEqual((await quick.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['text','done']);
+for(const quickAction of ['prepare_order','busy_days','add_item','recent_items','late_orders']){
+  const response = await handleChat(db, session, { messages: [{role:'user',content:'Shortcut'}], lang:'en', quickAction }, {}, new AbortController().signal);
+  assert.deepEqual((await response.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['text','done'], quickAction);
+}
+assert.equal(requests.length, beforeQuick, 'quick suggestions do not call Gemini');
+emptyReply = true;
+assert.deepEqual((await chat()).map(e=>e.type), ['error','done'], 'empty MAX_TOKENS produces a visible failure');
 
-console.log('Rico provider smoke: PASS (Gemini tools and stream)');
+console.log('Rico provider smoke: PASS (Gemini tool role, thinking level, quick answer, empty response)');
