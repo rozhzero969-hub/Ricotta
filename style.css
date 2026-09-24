@@ -635,6 +635,11 @@ html:not(.rtl) .rico-hello{letter-spacing:-.035em}
 .rico-set-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .rico-set-head b{font-size:15px}
 .rico-set-head .notif-sub{margin:2px 0 0}
+.rico-status-card{max-width:460px}
+.rico-connection{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;border-radius:999px;background:rgba(214,72,63,.1);border:1px solid rgba(214,72,63,.18);color:var(--clay-ink);font-size:13px;font-weight:800}
+.rico-connection::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 4px rgba(214,72,63,.09)}
+.rico-connection.connected{background:rgba(47,138,91,.1);border-color:rgba(47,138,91,.2);color:var(--mint-ink)}
+.rico-connection.connected::before{box-shadow:0 0 0 4px rgba(47,138,91,.1)}
 @media (max-width:959px){
   body.rico-typing .bottomnav{display:none}
   body.rico-typing #app[data-screen="assistant"] .content{padding-bottom:120px}

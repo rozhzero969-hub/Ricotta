@@ -30,9 +30,8 @@
 //   PUT    devices/me/name            {name}                    who is using this device (for Rico)
 //   POST   assistant/chat             {messages, lang, ...}     Rico's reply, streamed (see assistant.ts)
 //   GET    assistant/status                                     is Rico connected?
-//   PUT    admin/assistant-key        {key, model?} | {remove}  (admin) connect Rico to Claude or Gemini
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { assistantStatus, handleChat, setAssistantKey } from "./assistant.ts";
+import { assistantStatus, handleChat } from "./assistant.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -442,13 +441,6 @@ Deno.serve(async (req) => {
     // Rico, the assistant
     if (M === "POST" && path === "assistant/chat") return await handleChat(db, s, b, cors, req.signal);
     if (M === "GET" && path === "assistant/status") return json(await assistantStatus(db));
-    if (M === "PUT" && path === "admin/assistant-key") {
-      if (!admin) return fail("forbidden", 403);
-      const r = await setAssistantKey(db, b);
-      if (r.error) return fail(r.error);
-      await audit(s, b.remove ? "assistant_key_removed" : "assistant_key_set");
-      return ok();
-    }
 
     // Push notifications
     if (path === "push/subscription") {

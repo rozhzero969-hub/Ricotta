@@ -6,7 +6,7 @@ const secrets = new Map();
 const usage = [];
 const environment = new Map();
 globalThis.Deno = { env: { get: (key) => environment.get(key) ?? '' } };
-const { assistantStatus, setAssistantKey, handleChat } = await import('../supabase/functions/api/assistant.ts');
+const { assistantStatus, handleChat } = await import('../supabase/functions/api/assistant.ts');
 
 const db = {
   from(table) {
@@ -36,14 +36,11 @@ const db = {
   },
 };
 
-const geminiKey = 'AIza' + 'A'.repeat(35);
-const geminiAuthKey = 'AQ.' + 'C'.repeat(35);
-const claudeKey = 'sk-ant-' + 'B'.repeat(28);
+secrets.set('gemini_api_key', 'AIza' + 'A'.repeat(35));
 const requests = [];
 let geminiTurn = 0;
 globalThis.fetch = async (input, options = {}) => {
   const url = String(input);
-  if (url.includes('/models?pageSize=1') || url.includes('api.anthropic.com/v1/models')) return new Response('{}');
   requests.push({ url, body: JSON.parse(options.body) });
   if (url.includes('streamGenerateContent')) {
     const payload = geminiTurn++ === 0
@@ -54,15 +51,6 @@ globalThis.fetch = async (input, options = {}) => {
     const body = new ReadableStream({ start(controller) { controller.enqueue(encoded.slice(0, split)); controller.enqueue(encoded.slice(split)); controller.close(); } });
     return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
   }
-  if (url.includes('api.anthropic.com/v1/messages')) {
-    const events = [
-      { type: 'message_start', message: { usage: { input_tokens: 5 } } },
-      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
-      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Claude still works.' } },
-      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 4 } },
-    ];
-    return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } });
-  }
   throw new Error(`Unexpected upstream: ${url}`);
 };
 
@@ -72,8 +60,7 @@ const chat = async () => {
   return (await response.text()).trim().split('\n').map(JSON.parse);
 };
 
-assert.deepEqual(await setAssistantKey(db, { key: geminiKey }), { ok: true });
-assert.deepEqual(await assistantStatus(db), { configured: true, model: 'gemini-3.5-flash-lite', provider: 'gemini', source: 'app' });
+assert.deepEqual(await assistantStatus(db), { configured: true, model: 'gemini-3.5-flash-lite', provider: 'gemini' });
 const geminiEvents = await chat();
 assert.deepEqual(geminiEvents.map(e => e.type), ['status', 'proposal', 'text', 'text', 'done']);
 assert.equal(geminiEvents[1].proposal.kind, 'open');
@@ -83,17 +70,4 @@ assert.equal(requests[1].body.contents[1].parts[0].thoughtSignature, 'keep-this'
 assert.equal(requests[1].body.contents[2].parts[0].functionResponse.id, 'call-1');
 assert.equal(usage[0].model, 'gemini-3.5-flash-lite');
 
-assert.deepEqual(await setAssistantKey(db, { key: geminiAuthKey }), { ok: true });
-assert.equal((await assistantStatus(db)).provider, 'gemini');
-
-assert.deepEqual(await setAssistantKey(db, { key: claudeKey }), { ok: true });
-assert.equal((await assistantStatus(db)).provider, 'anthropic');
-assert.equal(secrets.has('gemini_api_key'), false);
-assert.deepEqual((await chat()).map(e => e.type), ['text', 'done']);
-assert.equal(requests.at(-1).body.model, 'claude-sonnet-5');
-
-assert.deepEqual(await setAssistantKey(db, { remove: true }), { ok: true });
-assert.equal((await assistantStatus(db)).configured, false);
-environment.set('ANTHROPIC_API_KEY', claudeKey);
-assert.deepEqual(await assistantStatus(db), { configured: true, model: 'claude-sonnet-5', provider: 'anthropic', source: 'secret' });
-console.log('Rico provider smoke: PASS (Gemini tools and stream, Claude stream, key switching and removal)');
+console.log('Rico provider smoke: PASS (Gemini tools and stream)');

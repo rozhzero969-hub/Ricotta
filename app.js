@@ -1872,15 +1872,12 @@ function renderNotifSettings(){
   return `<div class="section-title">${t('notifSettingsTitle')}</div>
     <div class="form-card">${device}<hr class="notif-divider"><div class="section-title" style="margin-top:0;">${t('reminderTitle')}</div>${reminder}</div>`;
 }
-/* ---- Settings: connect Rico to Claude or Gemini (admins) ---- */
+/* ---- Settings: Rico connection is managed server-side, never from a device. ---- */
 function renderRicoSettings(){
   return `<div class="section-title">${t('ricoSettingsTitle')}</div>
-    <div class="form-card" id="ricoKeyCard">
-      <div class="rico-set-head">${ricoAvatar('rico-av-lg')}<div><b>${t('ricoName')}</b><div class="notif-sub" id="ricoKeyState">${t('ricoChecking')}</div></div></div>
-      <div class="field"><label for="ricoKeyInput">${t('ricoKeyLabel')}</label><input id="ricoKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-… / AIza… / AQ.…"></div>
-      <div class="field-hint" id="ricoKeyProvider" aria-live="polite"></div>
-      <div class="field-hint" style="color:var(--ink-soft)">${t('ricoKeyHint')}</div>
-      <div class="form-actions" style="margin-top:12px"><button class="btn btn-primary" id="ricoKeySave">${t('ricoKeySave')}</button><button class="btn btn-danger" id="ricoKeyRemove" hidden>${t('ricoKeyRemove')}</button></div>
+    <div class="form-card rico-status-card">
+      <div class="rico-set-head">${ricoAvatar('rico-av-lg')}<div><b>${t('ricoName')}</b><div class="notif-sub">${t('ricoPoweredBy')}</div></div></div>
+      <div class="rico-connection" id="ricoKeyState" aria-live="polite">${t('ricoChecking')}</div>
     </div>`;
 }
 async function loadRicoStatus(){
@@ -1889,10 +1886,9 @@ async function loadRicoStatus(){
   const r = await api('assistant/status');
   if(!document.getElementById('ricoKeyState')) return;
   const st = r.ok && r.data ? r.data : null;
-  el.textContent = !st ? t('loadFailed') : st.configured ? t('ricoConnected')(`${st.provider === 'gemini' ? 'Gemini' : 'Claude'} · ${st.model}`) : t('ricoNotConnected');
-  el.style.color = st && st.configured ? 'var(--mint-ink)' : '';
-  const rm = document.getElementById('ricoKeyRemove');
-  if(rm) rm.hidden = !(st && st.source === 'app');
+  const connected = !!(st && st.configured);
+  el.textContent = !st ? t('loadFailed') : connected ? t('ricoConnected') : t('ricoDisconnected');
+  el.classList.toggle('connected', connected);
 }
 /* Disables a button while its action runs, so a double tap can't send twice. */
 async function withBusy(btn, fn){
@@ -1921,31 +1917,6 @@ function attachSettingsEvents(){
   if(test) test.onclick = ()=> withBusy(test, async ()=> reportSendResult(await callSendPush('reminder-now')));
 
   loadRicoStatus();
-  const keyInput = document.getElementById('ricoKeyInput');
-  if(keyInput) keyInput.oninput = ()=>{
-    const key = keyInput.value.trim();
-    const provider = document.getElementById('ricoKeyProvider');
-    if(provider) provider.textContent = key.length < 24 ? '' : /^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key) ? t('ricoDetectedClaude') : /^(?:AIza|AQ\.)[A-Za-z0-9_-]{20,}$/.test(key) ? t('ricoDetectedGemini') : t('ricoKeyInvalid');
-  };
-  const keySave = document.getElementById('ricoKeySave');
-  if(keySave) keySave.onclick = ()=> withBusy(keySave, async ()=>{
-    const input = document.getElementById('ricoKeyInput');
-    const key = input.value.trim();
-    if(!key){ input.focus(); return; }
-    if(!/^(sk-ant-[A-Za-z0-9_-]{20,}|(?:AIza|AQ\.)[A-Za-z0-9_-]{20,})$/.test(key)){ await showAlert(t('ricoKeyInvalid')); return; }
-    const r = await api('admin/assistant-key', {method:'PUT', body:{key}});
-    if(!r.ok){ await showAlert(r.data && r.data.error === 'key_rejected' ? t('ricoKeyRejected') : r.data && r.data.error === 'invalid_key' ? t('ricoKeyInvalid') : t('saveFailed')); return; }
-    input.value = '';
-    toast(t('ricoKeySaved'));
-    loadRicoStatus();
-  });
-  const keyRemove = document.getElementById('ricoKeyRemove');
-  if(keyRemove) keyRemove.onclick = async ()=>{
-    if(!(await showConfirm(t('ricoKeyRemoveConfirm'), {okLabel:t('ricoKeyRemove')}))) return;
-    const r = await api('admin/assistant-key', {method:'PUT', body:{remove:true}});
-    if(!r.ok){ await showAlert(t('saveFailed')); return; }
-    loadRicoStatus();
-  };
   const pinsBtn = document.getElementById('pinsSaveBtn');
   pinsBtn.onclick = ()=> withBusy(pinsBtn, async ()=>{
     const ap = document.getElementById('adminPinInput').value.trim();
