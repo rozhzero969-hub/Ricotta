@@ -35,7 +35,7 @@
   .splash-word{display:flex;align-items:flex-end;font-weight:800;font-size:clamp(46px,13vw,76px);
     letter-spacing:-.045em;line-height:1;overflow:hidden;padding:.06em .08em .1em}
   .splash-word span{display:inline-block;transform:translateY(105%);opacity:0;
-    animation:letterUp .75s cubic-bezier(.2,.9,.25,1) forwards;animation-delay:calc(var(--i)*55ms + 120ms)}
+    animation:letterUp .4s cubic-bezier(.2,.9,.25,1) forwards;animation-delay:calc(var(--i)*30ms + 40ms)}
   .splash-word .splash-dot{width:.2em;height:.2em;margin:0 0 .08em .07em;border-radius:50%;background:#6FCF9A;
     transform:scale(0);opacity:1;animation:dotPop .6s cubic-bezier(.34,1.8,.5,1) .62s forwards,dotGlow 2.2s ease-in-out 1.3s infinite}
   .splash-sub{margin-top:14px;font-size:12px;font-weight:800;letter-spacing:.9em;text-indent:.9em;
@@ -45,7 +45,7 @@
   .splash-bar i{position:absolute;inset:0 auto 0 0;width:42%;border-radius:3px;
     background:linear-gradient(90deg,rgba(111,207,154,0),#6FCF9A,rgba(111,207,154,0));
     animation:sweep 1.15s cubic-bezier(.45,.05,.55,.95) infinite}
-  .splash[data-state=leaving]{animation:curtain .7s cubic-bezier(.7,0,.2,1) .18s forwards;pointer-events:none}
+  .splash[data-state=leaving]{animation:curtain .28s cubic-bezier(.2,.8,.2,1) forwards;pointer-events:none}
   .splash[data-state=leaving] .splash-inner{animation:innerOut .38s cubic-bezier(.4,0,.2,1) forwards}
   .splash[data-state=leaving] .splash-bar i{animation:fillUp .3s ease-out forwards}
   @keyframes letterUp{to{transform:translateY(0);opacity:1}}
@@ -56,8 +56,8 @@
   @keyframes sweep{from{transform:translateX(-110%)}to{transform:translateX(260%)}}
   @keyframes fillUp{to{width:100%;transform:none;background:#6FCF9A}}
   @keyframes ringOut{0%{transform:scale(.35);opacity:0}25%{opacity:1}100%{transform:scale(1.25);opacity:0}}
-  @keyframes innerOut{to{transform:scale(1.06) translateY(-6px);opacity:0;filter:blur(3px)}}
-  @keyframes curtain{to{clip-path:inset(0 0 100% 0)}}
+  @keyframes innerOut{to{transform:translateY(-6px);opacity:0}}
+  @keyframes curtain{to{opacity:0;transform:translateY(-8px)}}
   @media (prefers-reduced-motion:reduce){
     .splash *,.splash{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important}
   }
