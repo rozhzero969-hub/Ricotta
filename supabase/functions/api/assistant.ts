@@ -14,12 +14,12 @@
 // *proposed*: the app shows a card and the person taps to confirm, and the app
 // then makes the change through the normal API with that person's session.
 //
-// The Claude API key comes from the ANTHROPIC_API_KEY secret, or, if that is
-// not set, from app_secrets.anthropic_api_key (an admin can paste it in the
-// app under Settings -> Rico). The model comes from ASSISTANT_MODEL /
-// app_secrets.assistant_model, default below.
+// Admins can select Claude or Gemini by pasting the matching API key in
+// Settings -> Rico. Existing ANTHROPIC_API_KEY/ASSISTANT_MODEL secrets remain
+// supported. Keys saved in Settings stay server-side in app_secrets.
 
 const DEFAULT_MODEL = "claude-sonnet-5";
+const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const MAX_TURNS = 7;               // tool round-trips per reply
 const MAX_OUTPUT_TOKENS = 1400;
 const REPLIES_PER_HOUR = 60;       // per device
@@ -42,6 +42,8 @@ const median = (xs: number[]) => {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
 const roundQty = (q: number) => Math.max(1, Math.round(q));   // the app orders whole units
+const providerForKey = (key: string) => /^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key) ? "anthropic"
+  : /^AIza[A-Za-z0-9_-]{20,}$/.test(key) ? "gemini" : null;
 
 function erbilParts(d = new Date()) {
   const p = new Intl.DateTimeFormat("en-CA", {
@@ -502,7 +504,8 @@ async function* readSSE(res: Response) {
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
-    buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+    buf += dec.decode(value, { stream: true });
+    buf = buf.replace(/\r\n/g, "\n");
     let i;
     while ((i = buf.indexOf("\n\n")) >= 0) {
       const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
@@ -513,34 +516,127 @@ async function* readSSE(res: Response) {
 }
 
 async function config(db: any) {
-  let key = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
-  let model = Deno.env.get("ASSISTANT_MODEL") ?? "";
-  if (!key || !model) {
-    const { data } = await db.from("app_secrets").select("key,value").in("key", ["anthropic_api_key", "assistant_model"]);
-    for (const r of data ?? []) {
-      if (r.key === "anthropic_api_key" && !key) key = r.value;
-      if (r.key === "assistant_model" && !model) model = r.value;
-    }
-  }
-  return { key, model: model || DEFAULT_MODEL };
+  const { data } = await db.from("app_secrets").select("key,value")
+    .in("key", ["assistant_provider", "anthropic_api_key", "assistant_model", "gemini_api_key", "gemini_model"]);
+  const saved = Object.fromEntries((data ?? []).map((r: any) => [r.key, r.value]));
+  const claudeSecret = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+  const geminiSecret = Deno.env.get("GEMINI_API_KEY") ?? "";
+  const provider = saved.assistant_provider === "gemini" ? "gemini"
+    : saved.assistant_provider === "anthropic" ? "anthropic"
+    : claudeSecret || saved.anthropic_api_key ? "anthropic" : "gemini";
+  const key = provider === "gemini" ? (saved.gemini_api_key || geminiSecret || "")
+    : (claudeSecret || saved.anthropic_api_key || "");
+  const model = provider === "gemini"
+    ? (Deno.env.get("GEMINI_MODEL") || saved.gemini_model || DEFAULT_GEMINI_MODEL)
+    : (Deno.env.get("ASSISTANT_MODEL") || saved.assistant_model || DEFAULT_MODEL);
+  const source = provider === "gemini" ? (saved.gemini_api_key ? "app" : geminiSecret ? "secret" : null)
+    : (claudeSecret ? "secret" : saved.anthropic_api_key ? "app" : null);
+  return { provider, key, model, source };
 }
 
 export async function assistantStatus(db: any) {
   const c = await config(db);
-  return { configured: !!c.key, model: c.model, source: Deno.env.get("ANTHROPIC_API_KEY") ? "secret" : c.key ? "app" : null };
+  return { configured: !!c.key, model: c.model, provider: c.provider, source: c.source };
 }
 
 export async function setAssistantKey(db: any, b: any) {
   const key = text(b.key, 300);
   const model = text(b.model, 80);
-  if (b.remove) { await db.from("app_secrets").delete().eq("key", "anthropic_api_key"); return { ok: true }; }
-  if (!/^sk-ant-[A-Za-z0-9_\-]{20,}$/.test(key)) return { error: "invalid_key" };
+  if (b.remove) {
+    await db.from("app_secrets").delete().in("key", ["assistant_provider", "anthropic_api_key", "gemini_api_key"]);
+    return { ok: true };
+  }
+  const provider = providerForKey(key);
+  if (!provider) return { error: "invalid_key" };
   // Check the key with a tiny request before saving it.
-  const test = await fetch("https://api.anthropic.com/v1/models?limit=1", { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } });
-  if (test.status === 401 || test.status === 403) return { error: "key_rejected" };
-  await db.from("app_secrets").upsert({ key: "anthropic_api_key", value: key });
-  if (model) await db.from("app_secrets").upsert({ key: "assistant_model", value: model });
+  const test = provider === "gemini"
+    ? await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1", { headers: { "x-goog-api-key": key } })
+    : await fetch("https://api.anthropic.com/v1/models?limit=1", { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } });
+  if (test.status === 401 || test.status === 403 || (provider === "gemini" && test.status === 400)) return { error: "key_rejected" };
+  if (provider === "gemini" && !test.ok) return { error: "failed" };
+  const keyName = provider === "gemini" ? "gemini_api_key" : "anthropic_api_key";
+  const otherKey = provider === "gemini" ? "anthropic_api_key" : "gemini_api_key";
+  const { error: saveError } = await db.from("app_secrets").upsert({ key: keyName, value: key });
+  if (saveError) return { error: "failed" };
+  if (model) await db.from("app_secrets").upsert({ key: provider === "gemini" ? "gemini_model" : "assistant_model", value: model });
+  await db.from("app_secrets").delete().eq("key", otherKey);
+  const { error: providerError } = await db.from("app_secrets").upsert({ key: "assistant_provider", value: provider });
+  if (providerError) return { error: "failed" };
   return { ok: true };
+}
+
+async function streamGemini(db: any, w: World, s: Session, cfg: Awaited<ReturnType<typeof config>>,
+  messages: any[], system: { text: string }[], emit: Emit, auto: boolean, signal: AbortSignal,
+  usage: { input: number; output: number }) {
+  const contents: any[] = messages.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }],
+  }));
+  let instruction = system.map((part) => part.text).join("\n\n");
+  const declarations = TOOLS.map((tool) => ({
+    name: tool.name, description: tool.description, parameters: tool.input_schema,
+  }));
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:streamGenerateContent?alt=sse`, {
+      method: "POST", signal,
+      headers: { "x-goog-api-key": cfg.key, "content-type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: instruction }] }, contents,
+        tools: [{ functionDeclarations: declarations }],
+        generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS },
+      }),
+    });
+    if (!res.ok) {
+      console.error("gemini", res.status);
+      emit({ type: "error", code: res.status === 401 || res.status === 403 ? "key_rejected"
+        : res.status === 429 || res.status === 503 ? "busy" : res.status === 404 ? "model_unavailable" : "failed" });
+      return;
+    }
+    const parts: any[] = [];
+    const calls: any[] = [];
+    let sawText = false;
+    let finish = "";
+    let inputTokens = 0, outputTokens = 0;
+    for await (const chunk of readSSE(res)) {
+      if (chunk.error) throw new Error("gemini_stream_error");
+      const candidate = chunk.candidates?.[0];
+      if (candidate?.finishReason) finish = candidate.finishReason;
+      inputTokens = Math.max(inputTokens, chunk.usageMetadata?.promptTokenCount ?? 0);
+      outputTokens = Math.max(outputTokens, chunk.usageMetadata?.candidatesTokenCount ?? 0);
+      for (const part of candidate?.content?.parts ?? []) {
+        // Keep every part, including thought signatures, for the next tool turn.
+        parts.push(part);
+        if (typeof part.text === "string" && !part.thought && part.text) {
+          if (turn > 0 && !sawText) emit({ type: "text", text: "\n\n" });
+          emit({ type: "text", text: part.text });
+          sawText = true;
+        }
+        if (part.functionCall) {
+          calls.push(part.functionCall);
+          emit({ type: "status", tool: part.functionCall.name });
+        }
+      }
+    }
+    usage.input += inputTokens;
+    usage.output += outputTokens;
+    if (!calls.length) {
+      if (!sawText && finish && finish !== "STOP" && finish !== "MAX_TOKENS") emit({ type: "error", code: "failed" });
+      return;
+    }
+    contents.push({ role: "model", parts });
+    const results: any[] = [];
+    for (const call of calls) {
+      let out: unknown;
+      try { out = await runTool(db, w, s, call.name, call.args ?? {}, emit, auto); }
+      catch (e) { console.error("tool", call.name, e); out = { error: "The tool failed. Try another way or tell the person." }; }
+      const result = JSON.stringify(out) ?? "null";
+      results.push({ functionResponse: {
+        name: call.name, ...(call.id ? { id: call.id } : {}),
+        response: { result: result.length <= 60000 ? out : result.slice(0, 60000) },
+      } });
+    }
+    contents.push({ role: "user", parts: results });
+    if (turn === MAX_TURNS - 2) instruction += "\n- You have used many lookups: answer now with what you have.";
+  }
 }
 
 export async function handleChat(db: any, s: Session, body: any, cors: Record<string, string>, signal: AbortSignal) {
@@ -584,6 +680,9 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
       let open = true;
       const emit: Emit = (e) => { if (!open) return; try { controller.enqueue(enc.encode(nd(e))); } catch { open = false; } };
       try {
+        if (cfg.provider === "gemini") {
+          await streamGemini(db, w, s, cfg, messages, system, emit, auto, upstream.signal, usage);
+        } else {
         for (let turn = 0; turn < MAX_TURNS; turn++) {
           const res = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST", signal: upstream.signal,
@@ -633,6 +732,7 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
           }
           messages.push({ role: "user", content: results });
           if (turn === MAX_TURNS - 2) system[1] = { type: "text", text: system[1].text + "\n- You have used many lookups: answer now with what you have." };
+        }
         }
         emit({ type: "done" });
       } catch (e) {

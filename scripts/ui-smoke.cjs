@@ -85,6 +85,11 @@ const server=http.createServer((req,res)=>{
       }
     }
     await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>setLang('en'));await page.locator('[data-view="order"]').click();await page.locator('[data-ordertab="all"]').click();await snapshot(page,'desktop-order.png');
+    await page.locator('[data-view="settings"]').click();
+    await page.locator('#ricoKeyInput').fill('AIza'+'A'.repeat(35));
+    assert.equal(await page.locator('#ricoKeyProvider').textContent(),'Gemini key detected');
+    await page.locator('#ricoKeyInput').fill('sk-ant-'+'B'.repeat(28));
+    assert.equal(await page.locator('#ricoKeyProvider').textContent(),'Claude key detected');
     await page.locator('[data-view="itemsAdmin"]').click();await snapshot(page,'desktop-catalog.png');
     await page.locator('#itemAddBtn').click();await snapshot(page,'desktop-dialog.png');await page.locator('#modalFormCancel').click();
     await page.setViewportSize({width:390,height:844});await page.evaluate(()=>setLang('ku'));await page.locator('[data-view="order"]').click();await snapshot(page,'phone-order-ku.png');
@@ -121,6 +126,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await reduced.page.locator('[data-qty="i1"]').evaluate(el=>el.getAnimations().length),0,'reduced motion skips JS feedback');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:'108 workspace layouts (including Rico), 12 login layouts, stable quantity/PIN/search DOM, supplier counts, draft restore/clear, language switch, reduced motion',artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`${2*viewportWidths.length*9} workspace layouts (including Rico), ${2*viewportWidths.length} login layouts, stable quantity/PIN/search DOM, supplier counts, draft restore/clear, key detection, language switch, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

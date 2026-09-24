@@ -30,7 +30,7 @@
 //   PUT    devices/me/name            {name}                    who is using this device (for Rico)
 //   POST   assistant/chat             {messages, lang, ...}     Rico's reply, streamed (see assistant.ts)
 //   GET    assistant/status                                     is Rico connected?
-//   PUT    admin/assistant-key        {key, model?} | {remove}  (admin) connect Rico to Claude
+//   PUT    admin/assistant-key        {key, model?} | {remove}  (admin) connect Rico to Claude or Gemini
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { assistantStatus, handleChat, setAssistantKey } from "./assistant.ts";
 
