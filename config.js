@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-24.6';
+const APP_VERSION = '2026-09-24.7';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,8 +14,8 @@ const APP_VERSION = '2026-09-24.6';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'Rico now accepts Google AI Studio’s new Gemini auth keys, alongside Claude and standard Gemini keys.';
-const CHANGELOG_KU = 'ریکۆ ئێستا کلیلی نوێی Gemini auth لە Google AI Studio وەردەگرێت، لەگەڵ کلیلی Claude و Geminiی ئاسایی.';
+const CHANGELOG_EN = 'Rico is now locked to Gemini 3.5 Flash Lite, with a simple protected connection status in Settings.';
+const CHANGELOG_KU = 'ریکۆ ئێستا تەنها بە Gemini 3.5 Flash Lite کاردەکات و دۆخی پەیوەندیی پارێزراوی سادەی لە ڕێکخستنەکان هەیە.';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN

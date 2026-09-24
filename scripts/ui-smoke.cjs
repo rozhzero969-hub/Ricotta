@@ -31,7 +31,7 @@ const server=http.createServer((req,res)=>{
     const ctx=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion,serviceWorkers:'block'});
     await ctx.route('**/functions/v1/api/**',async route=>{
       const endpoint=new URL(route.request().url()).pathname.split('/api/')[1];
-      const data=endpoint==='bootstrap'?fixture:endpoint==='devices'?[]:endpoint==='login'?{token:'fixture-session',expiresAt:'2099-01-01T00:00:00Z',role:'admin'}:{};
+      const data=endpoint==='bootstrap'?fixture:endpoint==='devices'?[]:endpoint==='login'?{token:'fixture-session',expiresAt:'2099-01-01T00:00:00Z',role:'admin'}:endpoint==='assistant/status'?{configured:true,provider:'gemini',model:'gemini-3.5-flash-lite'}:{};
       await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
     });
     await ctx.addInitScript(({loggedIn})=>{
@@ -86,12 +86,10 @@ const server=http.createServer((req,res)=>{
     }
     await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>setLang('en'));await page.locator('[data-view="order"]').click();await page.locator('[data-ordertab="all"]').click();await snapshot(page,'desktop-order.png');
     await page.locator('[data-view="settings"]').click();
-    await page.locator('#ricoKeyInput').fill('AIza'+'A'.repeat(35));
-    assert.equal(await page.locator('#ricoKeyProvider').textContent(),'Gemini key detected');
-    await page.locator('#ricoKeyInput').fill('AQ.'+'C'.repeat(35));
-    assert.equal(await page.locator('#ricoKeyProvider').textContent(),'Gemini key detected');
-    await page.locator('#ricoKeyInput').fill('sk-ant-'+'B'.repeat(28));
-    assert.equal(await page.locator('#ricoKeyProvider').textContent(),'Claude key detected');
+    assert.equal(await page.locator('#ricoKeyInput').count(),0,'Rico connection controls are not available in Settings');
+    assert.equal(await page.locator('#ricoKeyState').count(),1,'Rico connection status remains visible');
+    assert.equal(await page.locator('#ricoKeyState').textContent(),'Connected');
+    assert.equal(await page.locator('.rico-status-card .notif-sub').textContent(),'Powered by Gemini 3.5 Flash Lite');
     await page.locator('[data-view="itemsAdmin"]').click();await snapshot(page,'desktop-catalog.png');
     await page.locator('#itemAddBtn').click();await snapshot(page,'desktop-dialog.png');await page.locator('#modalFormCancel').click();
     await page.setViewportSize({width:390,height:844});await page.evaluate(()=>setLang('ku'));await page.locator('[data-view="order"]').click();await snapshot(page,'phone-order-ku.png');

@@ -156,12 +156,8 @@ const T = {
     ricoOrderApplied:n=>n+' item'+(n===1?'':'s')+' put in today’s order', ricoAdminOnly:'Only an admin can do this.',
     ricoNotificationSent:'Notification sent', ricoUndoneToast:'Your previous order draft is back',
     ricoNavLate:n=>'Rico — '+n+' late order'+(n===1?'':'s'),
-    ricoSettingsTitle:'Rico (AI assistant)', ricoChecking:'Checking…', ricoKeyLabel:'Claude or Gemini API key',
-    ricoKeyHint:'Paste a Claude key from console.anthropic.com or a Gemini key from Google AI Studio. The key stays on the server and is never shown again.',
-    ricoDetectedClaude:'Claude key detected', ricoDetectedGemini:'Gemini key detected',
-    ricoKeySave:'Connect Rico', ricoKeyRemove:'Disconnect', ricoConnected:m=>'Connected · '+m, ricoNotConnected:'Not connected yet',
-    ricoKeyRejected:'The AI provider rejected that key. Check it and try again.', ricoKeyInvalid:'Enter a Claude key starting with sk-ant- or a Gemini key starting with AIza or AQ.',
-    ricoKeySaved:'Rico is connected', ricoKeyRemoveConfirm:'Disconnect Rico? Nobody can chat with Rico until a key is added again.'
+    ricoSettingsTitle:'Rico (AI assistant)', ricoChecking:'Checking…', ricoPoweredBy:'Powered by Gemini 3.5 Flash Lite',
+    ricoConnected:'Connected', ricoDisconnected:'Disconnected'
   },
   ku:{
     workspaceLabel:'چێشتخانەکەت بە ڕێکوپێکی', welcomeBack:'بەخێربێیتەوە',
@@ -319,11 +315,7 @@ const T = {
     ricoOrderApplied:n=>n+' کاڵا خرایە داواکاریی ئەمڕۆ', ricoAdminOnly:'تەنها بەڕێوەبەر دەتوانێت ئەمە بکات.',
     ricoNotificationSent:'ئاگادارکردنەوە نێردرا', ricoUndoneToast:'ڕەشنووسی پێشووی داواکارییەکەت گەڕایەوە',
     ricoNavLate:n=>'ریکۆ — '+n+' داواکاریی دواکەوتوو',
-    ricoSettingsTitle:'ریکۆ (یاریدەدەری AI)', ricoChecking:'دەپشکنرێت…', ricoKeyLabel:'کلیلی API ی Claude یان Gemini',
-    ricoKeyHint:'کلیلی Claude لە console.anthropic.com یان کلیلی Gemini لە Google AI Studio وەربگرە و لێرە دایبنێ. کلیلەکە تەنها لەسەر سێرڤەر هەڵدەگیرێت و دووبارە نیشان نادرێتەوە.',
-    ricoDetectedClaude:'کلیلی Claude ناسرایەوە', ricoDetectedGemini:'کلیلی Gemini ناسرایەوە',
-    ricoKeySave:'پەیوەستکردنی ریکۆ', ricoKeyRemove:'پچڕاندن', ricoConnected:m=>'پەیوەستە · '+m, ricoNotConnected:'هێشتا پەیوەست نەکراوە',
-    ricoKeyRejected:'دابینکەری AI ئەو کلیلەی ڕەتکردەوە. بیپشکنە و دووبارە هەوڵ بدەرەوە.', ricoKeyInvalid:'کلیلی Claude بە sk-ant- یان کلیلی Gemini بە AIza یان AQ. دەست پێ دەکات.',
-    ricoKeySaved:'ریکۆ پەیوەستکرا', ricoKeyRemoveConfirm:'ریکۆ بپچڕێنیت؟ کەس ناتوانێت قسە لەگەڵ ریکۆ بکات تا کلیلێک دووبارە زیاد دەکرێت.'
+    ricoSettingsTitle:'ریکۆ (یاریدەدەری AI)', ricoChecking:'دەپشکنرێت…', ricoPoweredBy:'بەهێزی Gemini 3.5 Flash Lite',
+    ricoConnected:'پەیوەستە', ricoDisconnected:'پچڕاوە'
   }
 };
