@@ -261,10 +261,11 @@ function cssReady(){
     setTimeout(res, 4000);   // never keep the app hidden because of a slow stylesheet
   });
 }
-async function hideSplash(minShown = 1150){
+async function hideSplash(minShown = 500){
   const el = document.getElementById('splash');
   if(!el || el.dataset.state === 'leaving') return;
   await cssReady();
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) minShown=0;
   const wait = Math.max(0, minShown - (performance.now() - (window.__splashStart || 0)));
   await new Promise(r=>setTimeout(r, wait));
   el.dataset.state = 'leaving';
@@ -283,21 +284,26 @@ function showSplash(){
 }
 
 function applyLangClasses(){
-  document.body.className = state.lang === 'ku' ? 'lang-ku' : '';
-  document.documentElement.className = state.lang === 'ku' ? 'rtl' : '';
+  document.body.classList.toggle('lang-ku', state.lang === 'ku');
+  document.documentElement.classList.toggle('rtl', state.lang === 'ku');
+  document.documentElement.lang = state.lang === 'ku' ? 'ckb' : 'en';
+  document.documentElement.dir = state.lang === 'ku' ? 'rtl' : 'ltr';
+}
+
+// Animate only the surface that changed. Cancelling an earlier response keeps
+// rapid taps responsive, without queuing animations or rebuilding controls.
+const uiMotion = new WeakMap();
+function animateUi(element, frames, duration=220){
+  if(!element || !element.animate) return;
+  uiMotion.get(element)?.cancel();
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const animation=element.animate(frames,{duration,easing:'cubic-bezier(.2,.8,.2,1)'});
+  uiMotion.set(element,animation);
 }
 
 /* ============ Render dispatch ============ */
-// Entrance animations (.content fade-up, item/list/card pop-in) should only
-// play when the *view actually changes* -- switching screens, or swiping
-// between supplier tabs on Order -- not on every re-render. render() gets
-// called on every cart tweak (+/-, typing a qty), sync, timer tick, etc.,
-// which used to replay the animation on every single one of those, since
-// app.innerHTML is rebuilt from scratch each time. lastAnimKey remembers the
-// last screen/tab we animated for; renders that land on the same key get a
-// 'static-update' class instead, which turns those entrance animations off
-// (see style.css) while leaving everything else (button taps, modals, the
-// brand dot pulse) untouched.
+// Keep the navigation shell mounted for route changes. Animate a new view
+// once; quantity, search and supplier interactions have smaller update paths.
 let lastAnimKey = null;
 function render(){
   applyLangClasses();
@@ -306,9 +312,11 @@ function render(){
     const animKey = 'login';
     app.classList.toggle('static-update', animKey === lastAnimKey);
     lastAnimKey = animKey;
+    app.dataset.uiRole = ''; app.dataset.uiLanguage = state.lang;
     app.innerHTML = renderLogin(); attachLoginEvents(); return;
   }
   const animKey = state.view + (state.view === 'order' ? ':' + state.orderTab : '');
+  const changedView = animKey !== lastAnimKey;
   app.classList.toggle('static-update', animKey === lastAnimKey);
   lastAnimKey = animKey;
   let body = '';
@@ -322,14 +330,23 @@ function render(){
   else if(state.view === 'devices') body = renderDevices();
   else if(state.view === 'settings') body = renderSettings();
 
-  app.innerHTML = `
-    ${renderTopbar()}
-    <div class="content">${state.view === 'order' ? renderPushBanner() : ''}${body}</div>
-    <div class="bottom-stack">
-      ${state.view === 'order' ? renderOrderBottomBar() : ''}
-      ${renderBottomNav()}
-    </div>
-  `;
+  const content = `${renderPageHeading()}${state.view === 'order' ? renderPushBanner() : ''}${body}`;
+  const keepShell=app.dataset.uiRole===state.role && app.dataset.uiLanguage===state.lang && app.querySelector('.content');
+  if(keepShell){
+    app.querySelector('.content').innerHTML=content;
+    const stack=app.querySelector('.bottom-stack');
+    stack.querySelector('.bottom-bar')?.remove();
+    if(state.view==='order') stack.insertAdjacentHTML('afterbegin',renderOrderBottomBar());
+    stack.querySelectorAll('[data-view]').forEach(button=>{
+      const active=button.dataset.view===state.view;
+      button.classList.toggle('active',active);
+      if(active) button.setAttribute('aria-current','page'); else button.removeAttribute('aria-current');
+    });
+  }else{
+    app.innerHTML = `${renderTopbar()}<main class="content" id="mainContent">${content}</main>
+      <div class="bottom-stack">${state.view==='order'?renderOrderBottomBar():''}${renderBottomNav()}</div>`;
+  }
+  app.dataset.uiRole=state.role; app.dataset.uiLanguage=state.lang; app.dataset.screen=state.view;
   attachCommonEvents();
   if(state.view === 'order') attachOrderEvents();
   if(state.view === 'queue') attachQueueEvents();
@@ -342,7 +359,17 @@ function render(){
   if(state.view === 'settings') attachSettingsEvents();
   // The nav scrolls sideways on narrow phones (admins have 8 tabs); keep the current tab in view.
   const activeNav = document.querySelector('.navbtn.active');
-  if(activeNav && activeNav.scrollIntoView) activeNav.scrollIntoView({inline:'center', block:'nearest'});
+  if(activeNav && window.innerWidth<960){
+    const nav=activeNav.parentElement, rect=activeNav.getBoundingClientRect(), bounds=nav.getBoundingClientRect();
+    nav.scrollLeft+=rect.left+rect.width/2-bounds.left-bounds.width/2;
+  }
+  if(changedView) animateUi(app.querySelector('.content'),[{opacity:.45,transform:'translateY(8px)'},{opacity:1,transform:'none'}],260);
+}
+
+function renderPageHeading(){
+  const keys={order:'order',history:'history',suppliers:'suppliers',itemsAdmin:'items',units:'units',record:'record',devices:'devicesTitle',settings:'settings',queue:'sendQueueTitle'};
+  const date=new Intl.DateTimeFormat(state.lang==='ku'?'ckb-IQ':'en-GB',{weekday:'short',day:'numeric',month:'short'}).format(new Date());
+  return `<header class="page-heading"><div><div class="page-kicker">${t('workspaceLabel')}</div><h1>${t(keys[state.view]||'order')}</h1></div><time class="page-date" datetime="${new Date().toISOString().slice(0,10)}">${esc(date)}</time></header>`;
 }
 
 /* ============ Notifications: banner (everyone) ============ */
@@ -387,12 +414,12 @@ function renderBottomNav(){
     tabs.push({id:'devices', label:t('devicesTitle')});
     tabs.push({id:'settings', label:t('settings')});
   }
-  return `<div class="bottomnav">
+  return `<nav class="bottomnav" aria-label="${t('workspaceLabel')}">
     ${tabs.map(tb=>`
-      <button class="navbtn ${state.view===tb.id?'active':''}" data-view="${tb.id}">
+      <button class="navbtn ${state.view===tb.id?'active':''}" data-view="${tb.id}" ${state.view===tb.id?'aria-current="page"':''}>
         ${NAV_ICONS[tb.id]}<span>${tb.label}</span>
       </button>`).join('')}
-  </div>`;
+  </nav>`;
 }
 function attachCommonEvents(){
   document.querySelectorAll('[data-lang]').forEach(b=>b.onclick=async()=>{
@@ -443,10 +470,14 @@ function renderLogin(){
   const msg = loginMessage();
   return `
   <div class="login-wrap">
-    <aside class="login-brand-panel"><div class="brand-word">ricotta<span class="brand-word-dot"></span></div><div class="brand-message">Restaurant<br>Management<br><em>Made Simple.</em></div><div class="brand-detail">Orders · Suppliers · Inventory</div><div class="brand-footer">© ${new Date().getFullYear()} Ricotta</div></aside>
+    <aside class="login-brand-panel"><div class="brand-word" dir="ltr">ricotta<span class="brand-word-dot"></span></div>
+      <div class="login-brand-content"><div class="brand-kicker">${t('brandKicker')}</div><div class="brand-message">${t('brandMessage')}<br><em>${t('brandMessageAccent')}</em></div><div class="brand-detail">${t('brandDetail')}</div>
+      <div class="brand-illustration" aria-hidden="true"><div class="brand-sheet"><div class="sheet-heading"><span>ricotta.</span><span>↗</span></div><div class="sheet-line long"></div><div class="sheet-line"></div><div class="sheet-rule"></div><div class="sheet-item"><i>✓</i><span></span><b>02</b></div><div class="sheet-item"><i>✓</i><span></span><b>04</b></div><div class="sheet-item"><i>✓</i><span></span><b>01</b></div><div class="sheet-total"><span></span><b>✓</b></div></div><div class="brand-stamp">✓</div></div></div>
+      <div class="brand-footer">© ${new Date().getFullYear()} Ricotta <span>${t('brandFooter')}</span></div></aside>
     <div class="login-card">
     <div class="login-logo">ricotta<span class="dot-i"></span></div>
     <div class="login-heading">
+      <div class="login-eyebrow">${t('welcomeBack')}</div>
       <div class="login-title">${t('signIn')}</div>
       <div class="login-sub">${t('signInSub')}</div>
     </div>
@@ -463,22 +494,38 @@ function renderLogin(){
     </div>
   </div>`;
 }
+function updateLoginFeedback(){
+  const dots=document.querySelector('.pin-dots');
+  if(!dots) return;
+  dots.classList.toggle('err',['wrong','locked','network'].includes(state.pinError));
+  dots.classList.toggle('busy',state.pinBusy);
+  dots.querySelectorAll('.pin-dot').forEach((dot,index)=>{
+    const wasFilled=dot.classList.contains('filled'), filled=index<state.pinBuffer.length;
+    dot.classList.toggle('filled',filled);
+    if(filled && !wasFilled) animateUi(dot,[{transform:'scale(.92)'},{transform:'scale(1.06)'},{transform:'scale(1)'}]);
+  });
+  const message=document.querySelector('.login-error');
+  message.textContent=loginMessage()||'\u00a0';
+  message.style.visibility=loginMessage()?'visible':'hidden';
+  message.classList.toggle('info',state.pinError==='session');
+  document.querySelectorAll('[data-key]').forEach(button=>button.disabled=state.pinBusy);
+}
 async function pressKey(k){
   if(state.pinBusy) return;
   if(state.pinError && state.pinError !== 'session') state.pinError = '';
   state.pinPop = false;
-  if(k==='clear'){ state.pinBuffer=''; render(); return; }
-  if(k==='back'){ state.pinBuffer = state.pinBuffer.slice(0,-1); render(); return; }
+  if(k==='clear'){ state.pinBuffer=''; updateLoginFeedback(); return; }
+  if(k==='back'){ state.pinBuffer = state.pinBuffer.slice(0,-1); updateLoginFeedback(); return; }
   if(state.pinBuffer.length>=MAX_PIN_LEN) return;
   state.pinBuffer += k; state.pinPop = true;
-  if(state.pinBuffer.length < MAX_PIN_LEN){ render(); return; }
+  if(state.pinBuffer.length < MAX_PIN_LEN){ updateLoginFeedback(); return; }
 
-  state.pinBusy = true; state.pinError = ''; render();
+  state.pinBusy = true; state.pinError = ''; updateLoginFeedback();
   const res = await apiLogin(state.pinBuffer);
   state.pinBusy = false;
   if(res.error){
-    state.pinError = res.error; render();
-    setTimeout(()=>{ state.pinBuffer=''; if(!state.role) render(); }, 650);
+    state.pinError = res.error; updateLoginFeedback();
+    setTimeout(()=>{ state.pinBuffer=''; if(!state.role) updateLoginFeedback(); }, 650);
     return;
   }
   // Signed in: bring up the workspace behind the splash, then reveal it.
@@ -489,7 +536,7 @@ async function pressKey(k){
   if(!ok){ hideSplash(0); signOut(); state.pinError = 'network'; render(); return; }
   restoreCartDraft();
   render();
-  hideSplash(700);
+  hideSplash(150);
   heartbeat();
   if(pushStatus.subscribed) resyncPush();
   afterLogin();
@@ -540,11 +587,17 @@ function lastOrderMap(){
 }
 function renderOrderHero(itemCount=state.items.length, supplierCount=new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size){
   const selCount = cartCount();
-  return `<div class="hero-card">
-    <div class="hero-eyebrow">${t('heroEyebrow')}</div>
-    <div class="hero-stat">${t('heroStat')(selCount)}</div>
-    <div class="hero-sub">${t('heroSub')(itemCount, supplierCount)}</div>
+  return `<div class="hero-card order-hero">
+    <div class="hero-copy"><div class="hero-eyebrow">${t('heroEyebrow')}</div>
+    <div class="hero-stat" aria-live="polite">${t('heroStat')(selCount)}</div>
+    <div class="hero-sub">${t('heroSub')(itemCount, supplierCount)}</div></div>
+    <div class="hero-mark" aria-hidden="true">${NAV_ICONS.order}</div>
+    <div class="hero-footer"><span class="draft-state">${selCount?t('draftLocal'):t('selectToStart')}</span><span class="hero-signature" aria-hidden="true">ricotta.</span></div>
   </div>`;
+}
+function renderOrderArrangeControl(){
+  return state.role==='admin' && state.orderTab!=='all' && state.orderTab!=='__none'
+    ? `<button class="item-sort-trigger" data-sort-supplier="${esc(state.orderTab)}">${t('sortSupplierItems')}</button>` : '';
 }
 function orderTabs(){
   const tabs = [{id:'all', label:t('allSuppliers')}];
@@ -568,20 +621,18 @@ function renderOrder(){
   const tabsHtml = `<div class="order-tabs-shell">
     <button class="tab-scroll tab-scroll-prev" id="orderTabsPrev" aria-label="${t('previousSuppliers')}">‹</button>
     <div class="order-tabs" id="orderTabs">${tabs.map(tb=>`
-      <button class="tab-pill ${state.orderTab===tb.id?'active':''}" data-ordertab="${esc(tb.id)}">${esc(tb.label)}</button>
+      <button class="tab-pill ${state.orderTab===tb.id?'active':''}" aria-pressed="${state.orderTab===tb.id}" data-ordertab="${esc(tb.id)}">${esc(tb.label)}<span class="tab-count">${tb.id==='all'?state.items.length:state.items.filter(i=>(i.supplierId||'__none')===tb.id).length}</span></button>
     `).join('')}</div>
     <button class="tab-scroll tab-scroll-next" id="orderTabsNext" aria-label="${t('nextSuppliers')}">›</button>
   </div>`;
-  const arrangeButton = state.role==='admin' && state.orderTab!=='all' && state.orderTab!=='__none'
-    ? `<div class="order-arrange-row"><button class="item-sort-trigger" id="orderArrangeBtn" data-sort-supplier="${esc(state.orderTab)}">${t('sortSupplierItems')}</button></div>` : '';
 
   const lastMap = lastOrderMap();
   return `
     ${renderOrderHero(selectedCount, selectedSupplierCount)}
     ${tabsHtml}
-    ${arrangeButton}
+    <div class="order-arrange-row" id="orderArrangeRow">${renderOrderArrangeControl()}</div>
     <div class="search-row">
-      <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
+      <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" aria-label="${t('searchPlaceholder')}" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
       <div class="order-quick-actions">
         ${lastMap ? `<button class="quick-btn" id="sameAsLast">${t('sameAsLastTime')}</button>` : ''}
         <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${t('clearOrder')}</button>
@@ -609,22 +660,22 @@ function renderOrderResults(){
     const rows = sortedSupplierItems(groups[key]).map(i=>{
       const qty = state.cart[i.id] || 0;
       return `
-      <div class="item-row ${qty>0?'has-qty':''}">
+      <div class="item-row ${qty>0?'has-qty':''}" data-item-id="${esc(i.id)}">
         <div class="item-info">
           <div class="item-name">${esc(i.name)}</div>
           <div class="item-unit">${esc(unitLabel(i.unit))}</div>
         </div>
         <div class="stepper">
-          <button class="step-btn" data-dec="${i.id}">−</button>
-          <input class="qty-input" type="number" inputmode="numeric" min="0" value="${qty}" data-qty="${i.id}">
-          <button class="step-btn" data-inc="${i.id}">+</button>
+          <button class="step-btn" data-dec="${esc(i.id)}" aria-label="${esc(t('decreaseQty')(i.name))}" ${qty>0?'':'disabled'}>−</button>
+          <input class="qty-input" type="number" inputmode="numeric" min="0" value="${qty}" aria-label="${esc(t('quantityFor')(i.name))}" data-qty="${esc(i.id)}">
+          <button class="step-btn" data-inc="${esc(i.id)}" aria-label="${esc(t('increaseQty')(i.name))}">+</button>
         </div>
       </div>`;
     }).join('');
     const arrangeButton = state.role==='admin' && key!=='__none'
       ? `<button class="item-sort-trigger" data-sort-supplier="${esc(key)}">${t('sortSupplierItems')}</button>` : '';
     return state.orderTab==='all' ? `<div class="supplier-group">
-      <div class="supplier-head"><span>${esc(label)}</span>${arrangeButton}</div>
+      <div class="supplier-head"><span class="supplier-heading-name">${esc(label)}<span class="supplier-item-count">${groups[key].length}</span></span>${arrangeButton}</div>
       <div class="supplier-items-grid">${rows}</div>
     </div>` : `<div class="supplier-items-grid standalone">${rows}</div>`;
   }).join('');
@@ -637,21 +688,18 @@ function refreshOrderResults(){
   results.innerHTML = renderOrderResults() || emptyState(t('noSearchResults'));
   attachOrderResultEvents(results);
 }
-/* Lightweight order-screen refresh for qty changes: updates only the results
-   region, hero stats, and bottom-bar button — avoids a full render() so the
-   successPulse animation on newly-filled items actually plays (static-update
-   suppression doesn't apply because #app.innerHTML isn't rebuilt). */
+/* Quantity changes keep every row and input mounted, including keyboard
+   focus and pointer targets. Filtering is the only path rebuilding results. */
 function refreshOrderView(pulseItemId=null){
   persistCartDraft();
-  refreshOrderResults();
-  // A language switch marks the app as a same-screen update, which correctly
-  // disables broad entrance motion. Quantity feedback is different: it is an
-  // intentional response to one tap, so restore it explicitly on that row.
-  if(pulseItemId){
-    const row = [...document.querySelectorAll('#orderResults .item-row')]
-      .find(el=>el.querySelector('[data-inc]')?.dataset.inc === pulseItemId);
-    if(row) row.classList.add('qty-bump');
-  }
+  document.querySelectorAll('#orderResults [data-qty]').forEach(input=>{
+    if(pulseItemId && input.dataset.qty!==pulseItemId) return;
+    const qty=state.cart[input.dataset.qty]||0, row=input.closest('.item-row');
+    input.value=qty;
+    row.classList.toggle('has-qty',qty>0);
+    row.querySelector('[data-dec]').disabled=qty===0;
+    if(pulseItemId) animateUi(input,[{transform:'translateY(2px) scale(.88)',opacity:.6},{transform:'translateY(0) scale(1)',opacity:1}],180);
+  });
   refreshCartSummary();
 }
 function refreshCartSummary(){
@@ -675,6 +723,8 @@ function refreshCartSummary(){
   }
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.disabled=c===0;
+  const draft=document.querySelector('.draft-state');
+  if(draft) draft.textContent=c?t('draftLocal'):t('selectToStart');
 }
 function cartCount(){ return Object.values(state.cart).filter(q=>q>0).length; }
 function renderOrderBottomBar(){
@@ -687,7 +737,18 @@ function renderOrderBottomBar(){
 }
 function attachOrderEvents(){
   document.querySelectorAll('[data-ordertab]').forEach(b=>b.onclick=()=>{
-    state.orderTab = b.dataset.ordertab; render();
+    if(state.orderTab===b.dataset.ordertab) return;
+    state.orderTab = b.dataset.ordertab;
+    lastAnimKey='order:'+state.orderTab;
+    document.querySelectorAll('[data-ordertab]').forEach(tab=>{
+      const active=tab.dataset.ordertab===state.orderTab;
+      tab.classList.toggle('active',active);tab.setAttribute('aria-pressed',String(active));
+    });
+    const arrange=document.getElementById('orderArrangeRow');
+    arrange.innerHTML=renderOrderArrangeControl();
+    attachOrderResultEvents(arrange);
+    refreshOrderResults();refreshCartSummary();
+    animateUi(document.getElementById('orderResults'),[{opacity:.4,transform:'translateY(6px)'},{opacity:1,transform:'none'}]);
   });
   const search = document.getElementById('itemSearch');
   if(search) search.oninput = (e)=>{
@@ -703,7 +764,7 @@ function attachOrderEvents(){
       const center=tabs.getBoundingClientRect().left+tabs.clientWidth/2;
       let index=0, distance=Infinity;
       pills.forEach((pill,i)=>{const rect=pill.getBoundingClientRect();const d=Math.abs(rect.left+rect.width/2-center);if(d<distance){distance=d;index=i;}});
-      pills[Math.max(0,Math.min(pills.length-1,index+step))].scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+      pills[Math.max(0,Math.min(pills.length-1,index+step))].scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest',inline:'center'});
     };
     const prev=document.getElementById('orderTabsPrev');
     const next=document.getElementById('orderTabsNext');
@@ -712,14 +773,13 @@ function attachOrderEvents(){
     tabs.addEventListener('wheel',e=>{
       if(Math.abs(e.deltaY)<=Math.abs(e.deltaX)) return;
       e.preventDefault();
-      tabs.scrollBy({left:e.deltaY,behavior:'smooth'});
+      tabs.scrollBy({left:e.deltaY,behavior:'auto'});
     },{passive:false});
     tabs.querySelector('.tab-pill.active')?.scrollIntoView({block:'nearest',inline:'center'});
   }
-  const arrange = document.getElementById('orderArrangeBtn');
-  if(arrange) arrange.onclick = ()=>openSupplierItemOrder(arrange.dataset.sortSupplier);
+  attachOrderResultEvents(document.getElementById('orderArrangeRow'));
   const same = document.getElementById('sameAsLast');
-  if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id) && qty>0)); persistCartDraft(); render(); };
+  if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id) && qty>0)); refreshOrderView(); };
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.onclick=()=>{state.cart={};persistCartDraft();refreshOrderView();};
   const send = document.getElementById('sendOrdersBtn');
@@ -744,14 +804,16 @@ function attachOrderResultEvents(root){
     const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; refreshOrderView(id);
   });
   root.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); refreshOrderView();
+    const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); refreshOrderView(id);
   });
   root.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
-    const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; refreshOrderView();
+    const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; refreshOrderView(id);
   });
   root.querySelectorAll('[data-qty]').forEach(inp=>inp.oninput=()=>{
     const id=inp.dataset.qty; state.cart[id]=inp.value===''?0:Math.max(0,parseInt(inp.value)||0);
     persistCartDraft();
+    inp.closest('.item-row').classList.toggle('has-qty',state.cart[id]>0);
+    inp.closest('.item-row').querySelector('[data-dec]').disabled=state.cart[id]===0;
     refreshCartSummary();
   });
 }

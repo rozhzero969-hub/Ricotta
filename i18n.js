@@ -1,6 +1,11 @@
 /* English + Kurdish translation strings. */
 const T = {
   en:{
+    workspaceLabel:'Your kitchen, organised', welcomeBack:'WELCOME BACK',
+    brandKicker:'THE RICOTTA WORKSPACE', brandMessage:'A calmer kitchen.', brandMessageAccent:'One order at a time.',
+    brandDetail:'Your suppliers, your essentials. Everything in its place.', brandFooter:'Made for your everyday.',
+    draftLocal:'Draft on this device', selectToStart:'Choose your essentials to get started',
+    increaseQty:name=>'Increase quantity for '+name, decreaseQty:name=>'Decrease quantity for '+name, quantityFor:name=>'Quantity for '+name,
     online:'Online', offline:'Offline',
     sessionEnded:'Your session ended. Sign in again to continue.',
     signingIn:'Signing in\u2026', tooManyAttempts:'Too many wrong PINs. Wait a few minutes, then try again.',
@@ -113,6 +118,11 @@ const T = {
     updateAvailableTitle:'Update available'
   },
   ku:{
+    workspaceLabel:'چێشتخانەکەت بە ڕێکوپێکی', welcomeBack:'بەخێربێیتەوە',
+    brandKicker:'شوێنی کاری ریکۆتا', brandMessage:'چێشتخانەیەکی ڕێکوپێک.', brandMessageAccent:'داواکاری بە داواکاری.',
+    brandDetail:'دابینکەر و پێداویستییەکانت، هەمووی لە شوێنی خۆیدا.', brandFooter:'بۆ کاری ڕۆژانەت.',
+    draftLocal:'ڕەشنووس لەسەر ئەم ئامێرە', selectToStart:'بۆ دەستپێکردن پێداویستییەکانت هەڵبژێرە',
+    increaseQty:name=>'زیادکردنی بڕی '+name, decreaseQty:name=>'کەمکردنەوەی بڕی '+name, quantityFor:name=>'بڕی '+name,
     online:'ئۆنلاین', offline:'ئۆفلاین',
     sessionEnded:'دانیشتنەکەت کۆتایی هات. دووبارە بچۆ ژوورەوە بۆ بەردەوامبوون.',
     signingIn:'چوونەژوورەوە\u2026', tooManyAttempts:'کۆدی هەڵەی زۆر. چەند خولەکێک چاوەڕێ بکە، پاشان دووبارە هەوڵ بدەرەوە.',

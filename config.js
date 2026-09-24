@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-23.6';
+const APP_VERSION = '2026-09-24.1';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,8 +14,8 @@ const APP_VERSION = '2026-09-23.6';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'Order drafts now save automatically on this device and return when you reopen the app. Use Clear order beside Same as last time to empty the draft.';
-const CHANGELOG_KU = 'داواکارییە نەنێردراوەکان بە شێوەیەکی خۆکار لەم ئامێرەدا پاشەکەوت دەبن و دوای کردنەوەیەوە دەگەڕێنەوە. دوگمەی پاککردنەوەی داواکاری لە تەنیشت وەک جاری پێشووە بۆ بەتاڵکردنەوەی داواکارییەکە.';
+const CHANGELOG_EN = 'A refreshed white and dark-green design, a new sign-in layout, clearer supplier cards and smoother transitions. Quantity and PIN controls now respond without rebuilding the screen; drafts and search stay in place.';
+const CHANGELOG_KU = 'دیزاینێکی نوێ بە سپی و سەوزی تۆخ، پەڕەی چوونەژوورەوەی نوێ، کارتی ڕوونتری دابینکەران و جوڵەی نەرمتر. گۆڕینی بڕ و نووسینی کۆد بەبێ نوێکردنەوەی پەڕە وەڵام دەدەنەوە و ڕەشنووس و گەڕان دەپارێزرێن.';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN
