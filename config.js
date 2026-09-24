@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-24.4';
+const APP_VERSION = '2026-09-24.5';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,8 +14,8 @@ const APP_VERSION = '2026-09-24.4';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'Meet Rico, your new AI assistant: he knows your suppliers, items and orders, drafts orders from your history, adds items for you and alerts you when an order is late. Plus a brand-new glass look in white and forest green with smooth animations everywhere.';
-const CHANGELOG_KU = 'ریکۆ، یاریدەدەری زیرەکی نوێتان: دابینکەر و کاڵا و داواکارییەکانتان دەناسێت، لە مێژووەکەتانەوە داواکاری ئامادە دەکات، کاڵاتان بۆ زیاد دەکات و کاتێک داواکارییەک دوادەکەوێت ئاگادارتان دەکاتەوە. لەگەڵ دیزاینێکی نوێی شووشەیی بە سپی و سەوزی تۆخ و جوڵەی نەرم لە هەموو شوێنێک.';
+const CHANGELOG_EN = 'Rico now supports Google Gemini as well as Claude. Admins can connect either API key from Settings.';
+const CHANGELOG_KU = 'ریکۆ ئێستا پاڵپشتی Google Gemini و Claude دەکات. بەڕێوەبەران دەتوانن کلیلی هەر یەکێکیان لە ڕێکخستنەکانەوە پەیوەست بکەن.';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN
