@@ -18,6 +18,23 @@ function ensureModalRoot() {
   return el;
 }
 
+/* Lets a dialog slide away before it is removed (instant with reduced motion).
+   Returns a promise that resolves once the root is empty again. */
+function closeModal(root) {
+  const overlay = root && root.querySelector('.modal-overlay');
+  if (!overlay || matchMedia('(prefers-reduced-motion: reduce)').matches) { if (root) root.innerHTML = ''; return Promise.resolve(); }
+  overlay.classList.add('closing');
+  return new Promise(res => setTimeout(() => {
+    if (overlay.isConnected) root.innerHTML = '';
+    res();
+  }, 210));
+}
+/* Remembers what had focus so closing a dialog returns keyboard users there. */
+function rememberFocus() {
+  const el = document.activeElement;
+  return () => { if (el && el.isConnected && typeof el.focus === 'function') el.focus({ preventScroll: true }); };
+}
+
 function showConfirm(message, opts) {
   const okLabel = (opts && opts.okLabel) || t('delete');
   const cancelLabel = (opts && opts.cancelLabel) || t('cancel');
@@ -36,15 +53,13 @@ function showConfirm(message, opts) {
         </div>
       </div>`;
       
-    document.getElementById('modalOkBtn').onclick = () => { 
-      root.innerHTML = ''; 
-      resolve(true); 
-    };
-    
-    document.getElementById('modalCancelBtn').onclick = () => { 
-      root.innerHTML = ''; 
-      resolve(false); 
-    };
+    const restore = rememberFocus();
+    const done = (v) => { closeModal(root).then(restore); resolve(v); };
+    const ok = document.getElementById('modalOkBtn');
+    ok.onclick = () => done(true);
+    document.getElementById('modalCancelBtn').onclick = () => done(false);
+    root.querySelector('.modal-box').addEventListener('keydown', e => { if (e.key === 'Escape') done(false); });
+    ok.focus();
   });
 }
 
@@ -61,10 +76,10 @@ function showAlert(message) {
         </div>
       </div>`;
       
-    document.getElementById('modalAlertOkBtn').onclick = () => { 
-      root.innerHTML = ''; 
-      resolve(); 
-    };
+    const restore = rememberFocus();
+    const ok = document.getElementById('modalAlertOkBtn');
+    ok.onclick = () => { closeModal(root).then(restore); resolve(); };
+    ok.focus();
   });
 }
 
@@ -99,7 +114,7 @@ function showPrompt(message, opts) {
     input.focus();
     
     const finish = (val) => { 
-      root.innerHTML = ''; 
+      closeModal(root);
       resolve(val); 
     };
     
@@ -174,13 +189,13 @@ function showUpdatePopup(title, message, okLabel, laterLabel) {
     const ok = document.getElementById('updOkBtn');
     ok.onclick = () => {
       if (laterLabel) ok.disabled = true;   /* stays up while the page reloads */
-      else root.innerHTML = '';
+      else closeModal(root);
       resolve(true);
     };
     
     const later = document.getElementById('updLaterBtn');
     if (later) later.onclick = () => { 
-      root.innerHTML = ''; 
+      closeModal(root);
       resolve(false); 
     };
   });
@@ -232,7 +247,7 @@ function showFormModal(opts) {
     };
     
     const close = () => { 
-      root.innerHTML = ''; 
+      closeModal(root);
       resolve(); 
     };
     

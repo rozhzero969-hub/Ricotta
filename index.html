@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Ricotta">
 
 <!-- Splash screen. Everything it needs is inline (including a 2 KB subset of
@@ -81,17 +81,7 @@
     <div class="splash-bar"><i></i></div>
   </div>
 </div>
-<!-- Same splash, re-shown for a moment while a fresh sign-in loads. -->
-<template id="splashTpl">
-<div id="splash" class="splash" aria-hidden="true">
-  <div class="splash-rings"><i></i><i></i></div>
-  <div class="splash-inner">
-    <div class="splash-word"><span style="--i:0">r</span><span style="--i:1">i</span><span style="--i:2">c</span><span style="--i:3">o</span><span style="--i:4">t</span><span style="--i:5">t</span><span style="--i:6">a</span><span class="splash-dot"></span></div>
-    <div class="splash-sub">ORDERS</div>
-    <div class="splash-bar"><i></i></div>
-  </div>
-</div>
-</template>
+<div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
 <div id="app"></div>
 <noscript><p style="padding:24px;font-family:sans-serif">Ricotta Orders needs JavaScript turned on.</p></noscript>
 <!-- Load order matters: config.js first (constants), app.js last but one
@@ -103,6 +93,7 @@
 <script defer src="storage.js"></script>
 <script defer src="modals.js"></script>
 <script defer src="push.js"></script>
+<script defer src="assistant.js"></script>
 <script defer src="app.js"></script>
 <script defer src="update-check.js"></script>
 </body>

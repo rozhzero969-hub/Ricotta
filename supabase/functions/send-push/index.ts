@@ -9,6 +9,11 @@
 //       {type:"update", title, bodyEn, bodyKu}   "new update" push to every device
 //       {type:"reminder-now"}                    test of the daily reminder
 //       {type:"supplier-test", supplierId}       test of one supplier's reminder
+//       {type:"assistant", title, bodyEn, bodyKu} a message an admin sent through Rico
+//
+// Every tick also runs Rico's late-order check: an hour after a supplier's
+// reminder time (or the daily reminder), if nothing was sent to that supplier
+// today, every signed-in device gets one alert (once per supplier per day).
 //
 // Every push is split by the recipient device's own language, so Kurdish
 // devices get Kurdish only and English devices get English only.
@@ -135,6 +140,86 @@ async function dailyTick() {
   return await sendReminder(dailyPayload);
 }
 
+/* ---- Rico: late-order alerts ----
+   An hour after the reminder time, up to LATE_WINDOW_MS later, if nothing
+   was sent today (to that supplier, or at all for the daily reminder).
+   app_assistant_alerts makes each alert fire only once. */
+const LATE_AFTER_MIN = 60;
+const LATE_WINDOW_MIN = 4 * 60;
+async function claimAlert(id: string, kind: string, supplierId: string | null) {
+  const { error } = await sb.from("app_assistant_alerts").insert({ id, kind, supplier_id: supplierId });
+  return !error;   // a duplicate key means this alert was already sent
+}
+type Day = { date: string; weekday: number };
+/* Today and yesterday (Erbil), so a late reminder near midnight (e.g. 23:00)
+   still gets its alert after the date changes. */
+function recentDays(): Day[] {
+  const today = erbilNow();
+  const y = new Date(`${today.date}T12:00:00Z`);
+  y.setUTCDate(y.getUTCDate() - 1);
+  return [{ date: today.date, weekday: today.weekday }, { date: y.toISOString().slice(0, 10), weekday: y.getUTCDay() }];
+}
+/* Minutes late for the most recent occurrence of `time` on one of `days`,
+   or null when it is not inside the alert window. */
+function lateFor(time: string, days: number[], updatedAt?: string): { late: number; date: string } | null {
+  const now = Date.now();
+  for (const d of recentDays()) {
+    if (!days.includes(d.weekday)) continue;
+    const scheduled = Date.parse(`${d.date}T${time}:00${ERBIL_OFFSET}`);
+    if (isNaN(scheduled) || scheduled > now) continue;
+    const edited = updatedAt ? Date.parse(updatedAt) : 0;
+    if (edited && scheduled + EDIT_GRACE_MS < edited) return null;   // set up after that time: starts next time
+    const late = Math.floor((now - scheduled) / 60000);
+    return late >= LATE_AFTER_MIN && late < LATE_WINDOW_MIN ? { late, date: d.date } : null;
+  }
+  return null;
+}
+async function overdueTick() {
+  const due: any[] = [];
+  const { data: sups } = await sb.from("app_suppliers").select("id,name,reminder").not("reminder", "is", null);
+  for (const s of sups ?? []) {
+    const r = s.reminder;
+    if (!r?.enabled || !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(r.time))) continue;
+    const days = Array.isArray(r.days) && r.days.length ? r.days.map(Number) : ALL_DAYS;
+    const hit = lateFor(r.time, days, r.updatedAt);
+    if (hit) due.push({ ...s, ...hit });
+  }
+  const { data: daily } = await sb.from("app_reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle();
+  const dailyHit = daily?.enabled ? lateFor(String(daily.remind_time).slice(0, 5), ALL_DAYS) : null;
+  if (!due.length && !dailyHit) return { skipped: "nothing late" };
+
+  // Orders sent since the start of yesterday, so each check can use its own day.
+  const since = recentDays()[1].date;
+  const { data: orders } = await sb.from("app_orders").select("id,sent_at").eq("status", "sent").gte("sent_at", `${since}T00:00:00${ERBIL_OFFSET}`);
+  const sentAt = new Map((orders ?? []).map((o: any) => [o.id, Date.parse(o.sent_at)]));
+  const ids = [...sentAt.keys()];
+  const { data: lines } = ids.length ? await sb.from("app_order_lines").select("order_id,supplier_id").in("order_id", ids) : { data: [] as any[] };
+  const dayStart = (date: string) => Date.parse(`${date}T00:00:00${ERBIL_OFFSET}`);
+  const sentSince = (date: string, supplierId?: string) =>
+    (lines ?? []).some((l: any) => (!supplierId || l.supplier_id === supplierId) && (sentAt.get(l.order_id) ?? 0) >= dayStart(date))
+    || (!supplierId && [...sentAt.values()].some((t) => t >= dayStart(date)));
+  const out: unknown[] = [];
+  for (const s of due) {
+    if (sentSince(s.date, s.id)) continue;
+    if (!(await claimAlert(`overdue|${s.id}|${s.date}`, "overdue", s.id))) continue;
+    const name = String(s.name).slice(0, 60), time = s.reminder.time;
+    out.push({ supplier: name, ...(await sendReminder((lang) => ({
+      title: lang === "ku" ? "ریکۆ · داواکاری دواکەوت" : "Rico · Order is late",
+      body: lang === "ku" ? `داواکاریی ${name} لە کاتژمێر ${time} بوو و هێشتا نەنێردراوە. با ئێستا ئامادەی بکەین؟` : `The ${name} order was due at ${time} and hasn't been sent yet. Want me to prepare it?`,
+      kind: "overdue", supplierId: String(s.id), tag: `ricotta-overdue-${s.id}`,
+    }))) });
+  }
+  if (dailyHit && !sentSince(dailyHit.date) && await claimAlert(`overdue|daily|${dailyHit.date}`, "overdue-daily", null)) {
+    const time = String(daily!.remind_time).slice(0, 5);
+    out.push({ daily: true, ...(await sendReminder((lang) => ({
+      title: lang === "ku" ? "ریکۆ · هیچ داواکارییەک نەنێردراوە" : "Rico · No orders sent yet",
+      body: lang === "ku" ? `کاتژمێر ${time} تێپەڕی و ئەمڕۆ هیچ داواکارییەک نەنێردراوە.` : `It's past ${time} and no orders have been sent today.`,
+      kind: "overdue", tag: "ricotta-overdue-daily",
+    }))) });
+  }
+  return out;
+}
+
 /* ---- Per-supplier reminders ----
    reminder = { enabled, time: "HH:MM" (Erbil), days: [0..6] (0 = Sunday), updatedAt } */
 async function supplierTick() {
@@ -170,6 +255,7 @@ Deno.serve(async (req) => {
         const result: Record<string, unknown> = {};
         try { result.daily = await dailyTick(); } catch (e) { console.error("daily tick failed", e); result.daily = { error: true }; }
         try { result.suppliers = await supplierTick(); } catch (e) { console.error("supplier tick failed", e); result.suppliers = { error: true }; }
+        try { result.late = await overdueTick(); } catch (e) { console.error("late-order tick failed", e); result.late = { error: true }; }
         return json(result);
       }
       case "update": {
@@ -181,6 +267,15 @@ Deno.serve(async (req) => {
         return json(await sendGrouped(subs, (lang) => ({
           title, body: lang === "ku" ? (bodyKu || bodyEn) : (bodyEn || bodyKu), kind: "update", tag: "ricotta-update",
         }), 86400, "normal"));
+      }
+      case "assistant": {
+        const bodyEn = String(body.bodyEn ?? "").slice(0, 300);
+        const bodyKu = String(body.bodyKu ?? "").slice(0, 300);
+        if (!bodyEn && !bodyKu) return json({ error: "empty message" }, 400);
+        const title = String(body.title || "Rico").slice(0, 80);
+        return json(await sendReminder((lang) => ({
+          title, body: lang === "ku" ? (bodyKu || bodyEn) : (bodyEn || bodyKu), kind: "assistant", tag: `ricotta-assistant-${Date.now()}`,
+        })));
       }
       case "reminder-now":
         return json(await sendReminder((lang) => ({ ...dailyPayload(lang), title: "Ricotta Orders (test)" })));

@@ -51,6 +51,39 @@ async function api(path, {method='GET', body} = {}){
   }finally{ clearTimeout(timer); }
 }
 
+/* Streams an NDJSON reply (Rico's chat): calls onEvent(object) for every line
+   as it arrives. Never throws; network trouble arrives as {type:'error',code:'offline'}. */
+async function apiStream(path, body, onEvent, signal){
+  const s = apiSession();
+  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||'')};
+  if(s) headers['x-session-token'] = s.token;
+  let res;
+  try{
+    res = await fetch(`${API_URL}/${path}`, {method:'POST', headers, body:JSON.stringify(body), signal});
+  }catch(e){
+    if(!(signal && signal.aborted)){ setApiHealth(false); onEvent({type:'error', code:'offline'}); }
+    return;
+  }
+  setApiHealth(true);
+  if(res.status === 401 && s){ clearApiSession(); onSessionExpired(); return; }
+  const handle = line=>{ line = line.trim(); if(!line) return; try{ onEvent(JSON.parse(line)); }catch(e){ /* partial or non-JSON line */ } };
+  if(!res.body || !res.body.getReader){ (await res.text()).split('\n').forEach(handle); return; }
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  try{
+    for(;;){
+      const {value, done} = await reader.read();
+      if(done) break;
+      buf += dec.decode(value, {stream:true});
+      let i;
+      while((i = buf.indexOf('\n')) >= 0){ handle(buf.slice(0, i)); buf = buf.slice(i + 1); }
+    }
+    handle(buf);
+  }catch(e){
+    if(!(signal && signal.aborted)) onEvent({type:'error', code:'offline'});
+  }
+}
+
 /* Returns {role:'admin'|'user'} on success, or {error:'wrong'|'locked'|'network'}. */
 async function apiLogin(pin){
   const r = await api('login', {method:'POST', body:{pin}});

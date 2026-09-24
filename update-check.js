@@ -32,7 +32,7 @@ let updatePromptOpen = false;
 let snoozedVersion = null;
 
 /* Every file the page loads. If you add a new .js/.css file, add it here. */
-const APP_FILES = ['config.js','icons.js','i18n.js','storage.js','modals.js','push.js','app.js','update-check.js','sw.js','style.css'];
+const APP_FILES = ['config.js','icons.js','i18n.js','storage.js','modals.js','push.js','assistant.js','app.js','update-check.js','sw.js','style.css'];
 
 /* Reloads the page and makes sure the newest files are used. Browsers (and
    GitHub Pages) can keep serving cached copies of the scripts for a few
@@ -53,7 +53,8 @@ async function hardReload(){
 }
 
 function cartIsEmpty(){
-  try{ return !state.queue && !Object.values(state.cart).some(q=>q>0); }
+  /* Someone typing a PIN or mid sign-in counts as "in progress" too. */
+  try{ return !state.queue && !state.pinBuffer && !state.pinBusy && !Object.values(state.cart).some(q=>q>0); }
   catch(e){ return false; } /* if state isn't ready yet, be conservative and ask */
 }
 
