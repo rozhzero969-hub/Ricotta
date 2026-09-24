@@ -29,8 +29,23 @@ const server=http.createServer((req,res)=>{
   const errors=[];
   async function context(loggedIn=true,reducedMotion='no-preference'){
     const ctx=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion,serviceWorkers:'block'});
+    let ricoCloud={messages:[],updatedAt:null};
     await ctx.route('**/functions/v1/api/**',async route=>{
       const endpoint=new URL(route.request().url()).pathname.split('/api/')[1];
+      if(endpoint==='assistant/conversation'){
+        if(route.request().method()==='PUT'){
+          const payload=route.request().postDataJSON();
+          ricoCloud={messages:payload.messages,updatedAt:new Date(payload.updatedAt).toISOString()};
+        }
+        await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(ricoCloud)});
+        return;
+      }
+      if(endpoint==='assistant/chat'){
+        const payload=route.request().postDataJSON();
+        const reply=payload.quickAction==='last_order'?'Last sent order · 2026-09-23':'Fixture Rico reply';
+        await route.fulfill({status:200,contentType:'application/x-ndjson',body:JSON.stringify({type:'text',text:reply})+'\n'+JSON.stringify({type:'done'})+'\n'});
+        return;
+      }
       const data=endpoint==='bootstrap'?fixture:endpoint==='devices'?[]:endpoint==='login'?{token:'fixture-session',expiresAt:'2099-01-01T00:00:00Z',role:'admin'}:endpoint==='assistant/status'?{configured:true,provider:'gemini',model:'gemini-3.5-flash-lite'}:{};
       await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
     });
@@ -90,6 +105,23 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#ricoKeyState').count(),1,'Rico connection status remains visible');
     assert.equal(await page.locator('#ricoKeyState').textContent(),'Connected');
     assert.equal(await page.locator('.rico-status-card .notif-sub').textContent(),'Powered by Gemini 3.5 Flash Lite');
+    await page.locator('[data-view="assistant"]').click();
+    await page.locator('[data-rico-action="prepare_order"]').click();
+    assert.equal(await page.locator('[data-rico-scope-check]').count(),suppliers.length,'order shortcut asks which suppliers');
+    await page.locator('[data-rico-scope-check][value="s1"]').check();
+    await page.locator('[data-rico-scope-check][value="s2"]').check();
+    await page.locator('[data-rico-scope-selected]').click();
+    await page.waitForFunction(()=>!rico.streaming);
+    assert.ok((await page.locator('.rico-msg.bot').last().textContent()).includes('Fixture Rico reply'),'selected suppliers reach Rico');
+    await page.reload();await page.waitForSelector('#splash',{state:'detached'});
+    await page.locator('[data-view="assistant"]').click();
+    assert.ok((await page.locator('.rico-msg.bot').count())>=2,'chat survives app reload');
+    await page.waitForTimeout(450);
+    await page.evaluate(()=>{localStorage.removeItem('ricottaOrders:ricoChat:admin');localStorage.removeItem('ricottaOrders:ricoChat:admin:updatedAt');});
+    await page.reload();await page.waitForSelector('#splash',{state:'detached'});
+    await page.locator('[data-view="assistant"]').click();
+    await page.waitForFunction(()=>rico.messages.length>=4);
+    assert.ok((await page.locator('.rico-msg.bot').count())>=2,'chat restores from server backup when local copy is missing');
     await page.locator('[data-view="itemsAdmin"]').click();await snapshot(page,'desktop-catalog.png');
     await page.locator('#itemAddBtn').click();await snapshot(page,'desktop-dialog.png');await page.locator('#modalFormCancel').click();
     await page.setViewportSize({width:390,height:844});await page.evaluate(()=>setLang('ku'));await page.locator('[data-view="order"]').click();await snapshot(page,'phone-order-ku.png');

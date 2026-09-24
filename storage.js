@@ -57,20 +57,21 @@ async function apiStream(path, body, onEvent, signal){
   const s = apiSession();
   const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||'')};
   if(s) headers['x-session-token'] = s.token;
-  let res;
+  const streamController = new AbortController();
+  const stop = ()=>streamController.abort();
+  if(signal?.aborted) stop();
+  else signal?.addEventListener('abort', stop, {once:true});
+  let timedOut = false;
+  const timer = setTimeout(()=>{ timedOut = true; stop(); }, 55000);
   try{
-    res = await fetch(`${API_URL}/${path}`, {method:'POST', headers, body:JSON.stringify(body), signal});
-  }catch(e){
-    if(!(signal && signal.aborted)){ setApiHealth(false); onEvent({type:'error', code:'offline'}); }
-    return;
-  }
-  setApiHealth(true);
-  if(res.status === 401 && s){ clearApiSession(); onSessionExpired(); return; }
-  const handle = line=>{ line = line.trim(); if(!line) return; try{ onEvent(JSON.parse(line)); }catch(e){ /* partial or non-JSON line */ } };
-  if(!res.body || !res.body.getReader){ (await res.text()).split('\n').forEach(handle); return; }
-  const reader = res.body.getReader(), dec = new TextDecoder();
-  let buf = '';
-  try{
+    const res = await fetch(`${API_URL}/${path}`, {method:'POST', headers, body:JSON.stringify(body), signal:streamController.signal});
+    setApiHealth(true);
+    if(res.status === 401 && s){ clearApiSession(); onSessionExpired(); return; }
+    if(!res.ok){ onEvent({type:'error', code:res.status===429?'busy':'failed'}); return; }
+    const handle = line=>{ line = line.trim(); if(!line) return; try{ onEvent(JSON.parse(line)); }catch(e){ /* partial or non-JSON line */ } };
+    if(!res.body || !res.body.getReader){ (await res.text()).split('\n').forEach(handle); return; }
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = '';
     for(;;){
       const {value, done} = await reader.read();
       if(done) break;
@@ -80,7 +81,13 @@ async function apiStream(path, body, onEvent, signal){
     }
     handle(buf);
   }catch(e){
-    if(!(signal && signal.aborted)) onEvent({type:'error', code:'offline'});
+    if(!signal?.aborted){
+      if(timedOut) onEvent({type:'error', code:'busy'});
+      else { setApiHealth(false); onEvent({type:'error', code:'offline'}); }
+    }
+  }finally{
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', stop);
   }
 }
 

@@ -18,8 +18,9 @@
 // not changeable from the app, so a signed-in device cannot disconnect it.
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
-const MAX_TURNS = 7;               // tool round-trips per reply
-const MAX_OUTPUT_TOKENS = 1400;
+const MAX_TURNS = 4;               // cap slow tool round-trips per reply
+const MAX_OUTPUT_TOKENS = 2048;
+const REPLY_TIMEOUT_MS = 45_000;
 const REPLIES_PER_HOUR = 60;       // per device
 const HISTORY_DAYS = 180;          // how far back Rico looks at orders
 const TZ = "Asia/Baghdad";         // Erbil
@@ -435,6 +436,7 @@ HOW YOU TALK
 WHAT YOU CAN DO
 - Answer anything about the kitchen's data with the read tools: items (count, newest, units, suppliers), suppliers (schedules, usual days), order history, patterns (busy and quiet days), and for admins the change log (who added or edited what).
 - Prepare orders: use suggest_order (history of the same weekday) and then propose_order_draft. Mention in one line why (e.g. "you ordered these on 3 of the last 4 Mondays"). Adjust quantities if the person asks (busy weekend, event, etc.).
+- If someone asks for today's order without naming suppliers, ask whether they want one supplier, several, or all before building a draft. Never silently choose the scope.
 - Add or change catalog data (admins only): propose_new_item needs name, unit AND supplier -- if any is missing, ask for it (offer the likely choices from the data, e.g. "kg, box or piece?"). propose_edit_item, propose_new_supplier likewise. Staff cannot change the catalog: tell them kindly an admin can.
 - Notifications (admins only): propose_notification with English and Kurdish text, e.g. to remind the team about a late order.
 - Guide people through the app and use open_screen for a one-tap shortcut.
@@ -507,6 +509,10 @@ async function* readSSE(res: Response) {
       if (data) { try { yield JSON.parse(data); } catch { /* ignore keep-alives */ } }
     }
   }
+  if (buf.trim()) {
+    const data = buf.replace(/\r\n/g, "\n").split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trimStart()).join("");
+    if (data) { try { yield JSON.parse(data); } catch { /* incomplete final event */ } }
+  }
 }
 
 async function config(db: any) {
@@ -540,7 +546,7 @@ async function streamGemini(db: any, w: World, s: Session, cfg: Awaited<ReturnTy
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: instruction }] }, contents,
         tools: [{ functionDeclarations: declarations }],
-        generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS },
+        generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "minimal" } },
       }),
     });
     if (!res.ok) {
@@ -552,12 +558,10 @@ async function streamGemini(db: any, w: World, s: Session, cfg: Awaited<ReturnTy
     const parts: any[] = [];
     const calls: any[] = [];
     let sawText = false;
-    let finish = "";
     let inputTokens = 0, outputTokens = 0;
     for await (const chunk of readSSE(res)) {
       if (chunk.error) throw new Error("gemini_stream_error");
       const candidate = chunk.candidates?.[0];
-      if (candidate?.finishReason) finish = candidate.finishReason;
       inputTokens = Math.max(inputTokens, chunk.usageMetadata?.promptTokenCount ?? 0);
       outputTokens = Math.max(outputTokens, chunk.usageMetadata?.candidatesTokenCount ?? 0);
       for (const part of candidate?.content?.parts ?? []) {
@@ -577,7 +581,7 @@ async function streamGemini(db: any, w: World, s: Session, cfg: Awaited<ReturnTy
     usage.input += inputTokens;
     usage.output += outputTokens;
     if (!calls.length) {
-      if (!sawText && finish && finish !== "STOP" && finish !== "MAX_TOKENS") emit({ type: "error", code: "failed" });
+      if (!sawText) emit({ type: "error", code: "failed" });
       return;
     }
     contents.push({ role: "model", parts });
@@ -594,6 +598,70 @@ async function streamGemini(db: any, w: World, s: Session, cfg: Awaited<ReturnTy
     }
     contents.push({ role: "user", parts: results });
     if (turn === MAX_TURNS - 2) instruction += "\n- You have used many lookups: answer now with what you have.";
+  }
+  emit({ type: "error", code: "failed" });
+}
+
+/* Fast, predictable answers for the introduction chips. These use the same
+   live, role-checked data as Gemini's tools and never spend an AI request. */
+function quickReply(w: World, body: any, emit: Emit): boolean {
+  const ku = body.lang === "ku";
+  const say = (message: string) => emit({ type: "text", text: message });
+  switch (body.quickAction) {
+    case "prepare_order": {
+      const ids = Array.isArray(body.supplierIds) ? [...new Set(body.supplierIds)].slice(0, w.suppliers.length) : [];
+      if (!ids.length || ids.some((id) => !w.suppliers.some((s) => s.id === id))) {
+        say(ku ? "تکایە دابینکەرێک یان چەند دابینکەر هەڵبژێرە." : "Choose one or more suppliers first.");
+        return true;
+      }
+      const plan = toolSuggestOrder(w, { suppliers: ids });
+      const lines = plan.suppliers.flatMap((sp: any) => sp.lines.map((line: any) => ({ item_id: line.item_id, qty: line.qty })));
+      if (!lines.length) {
+        say(ku ? "لە مێژووی ئەو دابینکەرانەدا کاڵایەکی گونجاو بۆ پێشنیارکردن نەدۆزرایەوە. دەتوانیت لە پەڕەی داواکاری خۆت هەڵیان بژێریت." : "I couldn't find a reliable past order for those suppliers. You can still pick their items on the Order page.");
+        return true;
+      }
+      const chosen = plan.suppliers.map((sp: any) => sp.supplier).join(", ");
+      const note = plan.suppliers.slice(0, 2).map((sp: any) => `${sp.supplier}: ${sp.basis}`).join("; ");
+      proposeOrder(w, { lines, mode: "replace", note }, emit, !!body.autoOrder);
+      say(ku ? `ڕەشنووسێکم بۆ ${chosen} لەسەر بنەمای داواکارییەکانی پێشووتر ئامادە کرد. کاڵاکان بپشکنە پێش ناردن.` : `I prepared a draft for ${chosen} from your past orders. Check the items before sending.`);
+      return true;
+    }
+    case "last_order": {
+      const last = toolOrderHistory(w, { limit: 1 }).orders[0];
+      if (!last) say(ku ? "هێشتا داواکارییەکی نێردراو تۆمار نەکراوە." : "There are no sent orders yet.");
+      else say(`${ku ? "دوایین داواکاری" : "Last sent order"} · ${last.date}\n${Object.entries(last.suppliers).map(([name, lines]) => `**${name}**\n${(lines as string[]).map((line) => `- ${line}`).join("\n")}`).join("\n")}`);
+      return true;
+    }
+    case "busy_days": {
+      const patterns = toolPatterns(w, { weeks: 12 });
+      if (!patterns.orders) say(ku ? "هێشتا مێژوویەکی پێویست بۆ دیاریکردنی ڕۆژە قەرەباڵغەکان نییە." : "There isn't enough order history yet to rank busy days.");
+      else say(`${ku ? "قەرەباڵغترین ڕۆژەکان لە ١٢ هەفتەی ڕابردوودا" : "Busiest days in the last 12 weeks"}:\n${patterns.by_weekday.filter((d: any) => d.lines).sort((a: any, b: any) => b.lines - a.lines).slice(0, 3).map((d: any, i: number) => `${i + 1}. ${d.day} — ${d.orders} ${ku ? "داواکاری" : "orders"}, ${d.lines} ${ku ? "کاڵا" : "items"}`).join("\n")}`);
+      return true;
+    }
+    case "recent_items": {
+      const items = toolFindItems(w, { newest: true, limit: 8 }).items;
+      say(items.length ? `${ku ? "دوایین کاڵا زیادکراوەکان" : "Recently added items"}:\n${items.map((i: any) => `- ${i.name} · ${i.supplier} · ${i.added ?? "—"}`).join("\n")}` : ku ? "هێشتا کاڵایەک تۆمار نەکراوە." : "No items have been added yet.");
+      return true;
+    }
+    case "late_orders": {
+      const late = w.suppliers.filter((sp) => {
+        const due = reminderToday(w, sp);
+        if (!due || sentToday(w, sp.id)) return false;
+        const [h, m] = due.split(":").map(Number);
+        return w.now.minutes >= h * 60 + m + 60;
+      });
+      say(late.length ? `${ku ? "داواکارییە دواکەوتووەکان" : "Late supplier orders"}:\n${late.map((sp) => `- ${sp.name}`).join("\n")}` : ku ? "لە ئێستادا داواکارییەکی دواکەوتوو نەدۆزرایەوە." : "No supplier orders are late right now.");
+      return true;
+    }
+    case "how_to_send":
+      say(ku ? "لە پەڕەی داواکاری کاڵاکان و ژمارەیان هەڵبژێرە، پاشان «ناردنی داواکاریی ئەمڕۆ» بکە. داواکاریی هەر دابینکەرێک بپشکنە و لە WhatsApp بینێرە." : "On Order, choose items and quantities, then tap Send today's orders. Review each supplier's list and send it through WhatsApp.");
+      return true;
+    case "add_item":
+      say(!w.admin
+        ? ku ? "تەنها بەڕێوەبەر دەتوانێت کاڵا زیاد بکات." : "Only an admin can add an item."
+        : ku ? "ناوی کاڵا نوێیەکە چییە؟ پاشان یەکە و دابینکەرەکەشی پێم بڵێ." : "What is the new item's name? I'll also need its unit and supplier.");
+      return true;
+    default: return false;
   }
 }
 
@@ -623,6 +691,14 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   }
 
   const w = await loadWorld(db, s);
+  if (body.quickAction) {
+    const events: any[] = [];
+    if (quickReply(w, body, (event) => events.push(event))) {
+      return new Response(events.concat({ type: "done" }).map(nd).join(""), {
+        headers: { ...cors, "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    }
+  }
   const system = [
     { type: "text", text: MANUAL, cache_control: { type: "ephemeral" } },
     { type: "text", text: contextBlock(w, s, body) },
@@ -631,6 +707,8 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   const usage = { input: 0, output: 0 };
   const upstream = new AbortController();
   signal.addEventListener("abort", () => upstream.abort());
+  let timedOut = false;
+  const deadline = setTimeout(() => { timedOut = true; upstream.abort(); }, REPLY_TIMEOUT_MS);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -641,8 +719,10 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
         await streamGemini(db, w, s, cfg, messages, system, emit, auto, upstream.signal, usage);
         emit({ type: "done" });
       } catch (e) {
-        if (!upstream.signal.aborted) { console.error("assistant", e); emit({ type: "error", code: "failed" }); }
+        if (timedOut) emit({ type: "error", code: "busy" });
+        else if (!upstream.signal.aborted) { console.error("assistant", e); emit({ type: "error", code: "failed" }); }
       } finally {
+        clearTimeout(deadline);
         open = false;
         try { controller.close(); } catch { /* already closed */ }
         await db.from("app_assistant_usage").insert({ device_id: s.deviceId, role: s.role, model: cfg.model, input_tokens: usage.input, output_tokens: usage.output }).then(() => {}, () => {});
