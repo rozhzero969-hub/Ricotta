@@ -470,6 +470,13 @@ function renderLogin(){
   const msg = loginMessage();
   return `
   <div class="login-wrap">
+    <div class="login-mobile-scene" aria-hidden="true">
+      <span class="login-orbit orbit-one"></span><span class="login-orbit orbit-two"></span>
+      <span class="login-spark spark-one"></span><span class="login-spark spark-two"></span><span class="login-spark spark-three"></span>
+    </div>
+    <div class="login-mobile-brand" dir="ltr" aria-hidden="true">
+      <div class="login-mobile-word">ricotta<span></span></div><div class="login-mobile-orders">ORDERS</div>
+    </div>
     <aside class="login-brand-panel"><div class="brand-word" dir="ltr">ricotta<span class="brand-word-dot"></span></div>
       <div class="login-brand-content"><div class="brand-kicker">${t('brandKicker')}</div><div class="brand-message">${t('brandMessage')}<br><em>${t('brandMessageAccent')}</em></div><div class="brand-detail">${t('brandDetail')}</div>
       <div class="brand-illustration" aria-hidden="true"><div class="brand-sheet"><div class="sheet-heading"><span>ricotta.</span><span>↗</span></div><div class="sheet-line long"></div><div class="sheet-line"></div><div class="sheet-rule"></div><div class="sheet-item"><i>✓</i><span></span><b>02</b></div><div class="sheet-item"><i>✓</i><span></span><b>04</b></div><div class="sheet-item"><i>✓</i><span></span><b>01</b></div><div class="sheet-total"><span></span><b>✓</b></div></div><div class="brand-stamp">✓</div></div></div>
@@ -490,7 +497,13 @@ function renderLogin(){
       <button class="key" data-key="0">0</button>
       <button class="key backspace" data-key="back" aria-label="Backspace">${ICON_BACKSPACE}</button>
     </div>
-    <button class="lang-pill" id="loginLangToggle">${ICON_GLOBE} ${state.lang==='en'?'English':'کوردی'} ${ICON_CHEVRON}</button>
+    <div class="login-lang">
+      <div class="login-lang-menu" id="loginLangMenu" hidden>
+        <button type="button" class="login-lang-option ${state.lang==='en'?'active':''}" data-login-lang="en"><span>English</span>${state.lang==='en'?'<i>✓</i>':''}</button>
+        <button type="button" class="login-lang-option ku ${state.lang==='ku'?'active':''}" data-login-lang="ku"><span>کوردی</span>${state.lang==='ku'?'<i>✓</i>':''}</button>
+      </div>
+      <button type="button" class="lang-pill" id="loginLangToggle" aria-haspopup="menu" aria-expanded="false">${ICON_GLOBE}<span class="lang-short">${state.lang==='en'?'EN':'KU'}</span><span class="lang-long">${state.lang==='en'?'English':'کوردی'}</span>${ICON_CHEVRON}</button>
+    </div>
     </div>
   </div>`;
 }
@@ -543,7 +556,20 @@ async function pressKey(k){
 }
 function attachLoginEvents(){
   const toggle = document.getElementById('loginLangToggle');
-  if(toggle) toggle.onclick = ()=> setLang(state.lang==='en' ? 'ku' : 'en');
+  const menu = document.getElementById('loginLangMenu');
+  if(toggle && menu){
+    const closeMenu = ()=>{ menu.hidden=true; toggle.setAttribute('aria-expanded','false'); };
+    toggle.onclick = e=>{
+      e.stopPropagation();
+      const opening = menu.hidden;
+      menu.hidden = !opening;
+      toggle.setAttribute('aria-expanded', String(opening));
+      if(opening) setTimeout(()=>document.addEventListener('click', closeMenu, {once:true}),0);
+    };
+    toggle.onkeydown = e=>{ if(e.key==='Escape'){ closeMenu(); toggle.focus(); } };
+    menu.onclick = e=>e.stopPropagation();
+    menu.querySelectorAll('[data-login-lang]').forEach(option=>option.onclick=()=>setLang(option.dataset.loginLang));
+  }
   document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=> pressKey(b.dataset.key));
 }
 /* Physical keyboards (desktop / tablets with a keyboard) can type the PIN. */
