@@ -160,7 +160,7 @@ const T = {
     ricoKeyHint:'Paste a Claude key from console.anthropic.com or a Gemini key from Google AI Studio. The key stays on the server and is never shown again.',
     ricoDetectedClaude:'Claude key detected', ricoDetectedGemini:'Gemini key detected',
     ricoKeySave:'Connect Rico', ricoKeyRemove:'Disconnect', ricoConnected:m=>'Connected · '+m, ricoNotConnected:'Not connected yet',
-    ricoKeyRejected:'The AI provider rejected that key. Check it and try again.', ricoKeyInvalid:'Enter a Claude key starting with sk-ant- or a Gemini key starting with AIza.',
+    ricoKeyRejected:'The AI provider rejected that key. Check it and try again.', ricoKeyInvalid:'Enter a Claude key starting with sk-ant- or a Gemini key starting with AIza or AQ.',
     ricoKeySaved:'Rico is connected', ricoKeyRemoveConfirm:'Disconnect Rico? Nobody can chat with Rico until a key is added again.'
   },
   ku:{
@@ -323,7 +323,7 @@ const T = {
     ricoKeyHint:'کلیلی Claude لە console.anthropic.com یان کلیلی Gemini لە Google AI Studio وەربگرە و لێرە دایبنێ. کلیلەکە تەنها لەسەر سێرڤەر هەڵدەگیرێت و دووبارە نیشان نادرێتەوە.',
     ricoDetectedClaude:'کلیلی Claude ناسرایەوە', ricoDetectedGemini:'کلیلی Gemini ناسرایەوە',
     ricoKeySave:'پەیوەستکردنی ریکۆ', ricoKeyRemove:'پچڕاندن', ricoConnected:m=>'پەیوەستە · '+m, ricoNotConnected:'هێشتا پەیوەست نەکراوە',
-    ricoKeyRejected:'دابینکەری AI ئەو کلیلەی ڕەتکردەوە. بیپشکنە و دووبارە هەوڵ بدەرەوە.', ricoKeyInvalid:'کلیلی Claude بە sk-ant- یان کلیلی Gemini بە AIza دەست پێ دەکات.',
+    ricoKeyRejected:'دابینکەری AI ئەو کلیلەی ڕەتکردەوە. بیپشکنە و دووبارە هەوڵ بدەرەوە.', ricoKeyInvalid:'کلیلی Claude بە sk-ant- یان کلیلی Gemini بە AIza یان AQ. دەست پێ دەکات.',
     ricoKeySaved:'ریکۆ پەیوەستکرا', ricoKeyRemoveConfirm:'ریکۆ بپچڕێنیت؟ کەس ناتوانێت قسە لەگەڵ ریکۆ بکات تا کلیلێک دووبارە زیاد دەکرێت.'
   }
 };

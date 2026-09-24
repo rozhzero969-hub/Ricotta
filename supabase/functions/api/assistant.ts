@@ -43,7 +43,7 @@ const median = (xs: number[]) => {
 };
 const roundQty = (q: number) => Math.max(1, Math.round(q));   // the app orders whole units
 const providerForKey = (key: string) => /^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key) ? "anthropic"
-  : /^AIza[A-Za-z0-9_-]{20,}$/.test(key) ? "gemini" : null;
+  : /^(?:AIza|AQ\.)[A-Za-z0-9_-]{20,}$/.test(key) ? "gemini" : null;
 
 function erbilParts(d = new Date()) {
   const p = new Intl.DateTimeFormat("en-CA", {

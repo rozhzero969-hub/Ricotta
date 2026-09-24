@@ -37,6 +37,7 @@ const db = {
 };
 
 const geminiKey = 'AIza' + 'A'.repeat(35);
+const geminiAuthKey = 'AQ.' + 'C'.repeat(35);
 const claudeKey = 'sk-ant-' + 'B'.repeat(28);
 const requests = [];
 let geminiTurn = 0;
@@ -81,6 +82,9 @@ assert.match(requests[0].body.systemInstruction.parts[0].text, /You are Rico/);
 assert.equal(requests[1].body.contents[1].parts[0].thoughtSignature, 'keep-this');
 assert.equal(requests[1].body.contents[2].parts[0].functionResponse.id, 'call-1');
 assert.equal(usage[0].model, 'gemini-3.5-flash-lite');
+
+assert.deepEqual(await setAssistantKey(db, { key: geminiAuthKey }), { ok: true });
+assert.equal((await assistantStatus(db)).provider, 'gemini');
 
 assert.deepEqual(await setAssistantKey(db, { key: claudeKey }), { ok: true });
 assert.equal((await assistantStatus(db)).provider, 'anthropic');
