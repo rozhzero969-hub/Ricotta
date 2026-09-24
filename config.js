@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-24.8';
+const APP_VERSION = '2026-09-24.9';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,8 +14,8 @@ const APP_VERSION = '2026-09-24.8';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'Rico replies more reliably, remembers chats after closing the app, and lets you choose suppliers before preparing an order.';
-const CHANGELOG_KU = 'ریکۆ ئێستا خێراتر و متمانەپێکراوتر وەڵام دەدات، گفتوگۆکان دوای داخستنی ئەپ دەپارێزێت و پێش ئامادەکردنی داواکاری دابینکەران هەڵدەبژێریت.';
+const CHANGELOG_EN = 'Rico keeps the chat while the app is open, then starts a fresh conversation the next time you open it.';
+const CHANGELOG_KU = 'ریکۆ گفتوگۆکە تا کاتی کراوەبوونی ئەپ دەپارێزێت، بەڵام جارێکی تر کە ئەپ دەکەیتەوە گفتوگۆیەکی نوێ دەست پێدەکات.';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN

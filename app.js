@@ -203,8 +203,7 @@ function signOut(reason){
   const me = myDevice();
   if(me && me.nickname) lset('deviceNickname', me.nickname);
   ricoStop();
-  clearTimeout(ricoCloudTimer);
-  rico.messages = []; rico.loaded = false; rico.streaming = false;
+  rico.messages = []; rico.streaming = false;
   clearApiSession();
   state.role = null; state.pinBuffer = ''; state.view = 'order'; state.queue = null;
   state.pinError = reason ? 'session' : '';
@@ -236,6 +235,7 @@ function retryLoad(){
   }, 10000);
 }
 async function boot(){
+  ricoClearLegacyChats();
   state.deviceId = ensureDeviceId();
   state.lang = lget('lang') || 'en';
   const session = apiSession();
@@ -250,7 +250,6 @@ async function boot(){
   render();
   hideSplash(1450);   // long enough for the ricotta intro to finish playing
   if(state.role){ heartbeat(); checkCommands(); if(loadedOk) syncPersonName(); }
-  if(state.role) ricoSyncCloud();
   if(state.role && !loadedOk) retryLoad();
   // Notifications: register the service worker, read this device's status, and
   // handle being launched from a notification tap.
@@ -641,7 +640,6 @@ async function pressKey(k){
   if(!ok){ hideWelcome(0); signOut(); state.pinError = 'network'; render(); return; }
   restoreCartDraft();
   render();
-  ricoSyncCloud();
   hideWelcome();
   heartbeat();
   if(pushStatus.subscribed) resyncPush();

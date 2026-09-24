@@ -30,7 +30,6 @@
 //   PUT    devices/me/name            {name}                    who is using this device (for Rico)
 //   POST   assistant/chat             {messages, lang, ...}     Rico's reply, streamed (see assistant.ts)
 //   GET    assistant/status                                     is Rico connected?
-//   GET/PUT assistant/conversation    Rico chat backup for this device and role
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { assistantStatus, handleChat } from "./assistant.ts";
 
@@ -442,31 +441,6 @@ Deno.serve(async (req) => {
     // Rico, the assistant
     if (M === "POST" && path === "assistant/chat") return await handleChat(db, s, b, cors, req.signal);
     if (M === "GET" && path === "assistant/status") return json(await assistantStatus(db));
-    if (path === "assistant/conversation") {
-      if (!s.deviceId) return fail("no_device", 400);
-      if (M === "GET") {
-        const { data, error } = await app("assistant_chats").select("messages,updated_at")
-          .eq("device_id", s.deviceId).eq("role", s.role).maybeSingle();
-        return error ? fail("load_failed", 500) : json({ messages: data?.messages ?? [], updatedAt: data?.updated_at ?? null });
-      }
-      if (M === "PUT") {
-        if (!Array.isArray(b.messages) || b.messages.length > 80) return fail("invalid_chat");
-        const messages = b.messages.map((m: any) => ({
-          role: m?.role === "user" ? "user" : m?.role === "assistant" ? "assistant" : null,
-          text: typeof m?.text === "string" ? m.text.slice(0, 6000) : "",
-          ts: Number.isFinite(m?.ts) ? m.ts : Date.now(),
-          ...(m?.error ? { error: text(m.error, 40) } : {}),
-          ...(Array.isArray(m?.proposals) ? { proposals: m.proposals } : {}),
-          ...(m?.picker && typeof m.picker === "object" ? { picker: m.picker } : {}),
-        }));
-        if (messages.some((m: any) => !m.role) || JSON.stringify(messages).length > 160_000) return fail("invalid_chat");
-        const clientAt = Number(b.updatedAt);
-        const updatedAt = Number.isFinite(clientAt) && clientAt > 0 && clientAt <= Date.now() + 60_000
-          ? new Date(clientAt).toISOString() : nowIso();
-        const { error } = await app("assistant_chats").upsert({ device_id: s.deviceId, role: s.role, messages, updated_at: updatedAt }, { onConflict: "device_id,role" });
-        return error ? fail("save_failed", 500) : json({ ok: true, updatedAt });
-      }
-    }
 
     // Push notifications
     if (path === "push/subscription") {
