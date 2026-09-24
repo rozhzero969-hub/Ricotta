@@ -88,6 +88,8 @@ const server=http.createServer((req,res)=>{
     await page.locator('[data-view="settings"]').click();
     await page.locator('#ricoKeyInput').fill('AIza'+'A'.repeat(35));
     assert.equal(await page.locator('#ricoKeyProvider').textContent(),'Gemini key detected');
+    await page.locator('#ricoKeyInput').fill('AQ.'+'C'.repeat(35));
+    assert.equal(await page.locator('#ricoKeyProvider').textContent(),'Gemini key detected');
     await page.locator('#ricoKeyInput').fill('sk-ant-'+'B'.repeat(28));
     assert.equal(await page.locator('#ricoKeyProvider').textContent(),'Claude key detected');
     await page.locator('[data-view="itemsAdmin"]').click();await snapshot(page,'desktop-catalog.png');
