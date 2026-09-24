@@ -3,13 +3,13 @@
    supabase/functions/api/assistant.ts). Rico can only PROPOSE changes: each
    proposal is a card here, and nothing happens until the person taps it; the
    change is then made through the normal API with this person's session.
-   The conversation is kept on this device only.
+   The conversation lives only in this open app session. Closing or reloading
+   the app starts a fresh chat; switching screens keeps the current chat.
    Depends on (runtime only): state, t, esc, render, toast, api, apiStream,
    lget, lset, saveRecord, logActivity, unitEn, unitLabel, supplierName,
    persistCartDraft, myDevice, callSendPush, reportSendResult, showPrompt,
    showConfirm, NAV_ICONS. Load before app.js. */
 
-const RICO_MAX_SAVED = 80;              // messages kept on this device and backed up for this PIN role
 const RICO_HISTORY_SENT = 24;           // messages sent to the server with each question
 const RICO_LATE_AFTER_MIN = 60;
 const RICO_LATE_WINDOW_MIN = 4*60;
@@ -24,10 +24,7 @@ let rico = {
   streaming: false,
   abort: null,
   status: null,        // {configured, model} once fetched (admins, Settings)
-  loaded: false,
 };
-let ricoCloudTimer = null;
-let ricoCloudBusy = false;
 
 /* ---------- Rico's face: an original mascot (a green orb with a sprout) ---------- */
 function ricoAvatar(cls = ''){
@@ -40,55 +37,10 @@ function ricoAvatar(cls = ''){
   </svg></span>`;
 }
 
-/* ---------- Local storage of the chat ---------- */
-function ricoStorageKey(){ return `ricoChat:${state.role === 'admin' ? 'admin' : 'staff'}`; }
-function ricoStoredMessages(){
-  return rico.messages.slice(-RICO_MAX_SAVED).map(({streaming, statusKey, ...m}) =>
-    streaming && !m.text && !(m.proposals||[]).length ? {...m, error:'stopped', retry:true} : m);
-}
-function ricoLoad(){
-  if(rico.loaded) return;
-  rico.loaded = true;
-  const key = ricoStorageKey();
-  const saved = lget(key) || (state.role === 'admin' ? lget('ricoChat') : null);
-  rico.messages = Array.isArray(saved) ? saved.filter(m=>m && (m.role==='user' || m.role==='assistant')).slice(-RICO_MAX_SAVED) : [];
-  rico.messages.forEach(m=>{ delete m.streaming; });
-  if(!lget(key) && rico.messages.length){ lset(key, rico.messages); lset(key+':updatedAt', Date.now()); }
-}
-function ricoSave(){
-  const key = ricoStorageKey();
-  lset(key, ricoStoredMessages());
-  lset(key+':updatedAt', Date.now());
-  clearTimeout(ricoCloudTimer);
-  if(state.role && apiSession()) ricoCloudTimer = setTimeout(ricoPushCloud, 350);
-}
-async function ricoPushCloud(){
-  if(ricoCloudBusy || !state.role || !apiSession()) return;
-  ricoCloudBusy = true;
-  const key = ricoStorageKey();
-  const messages = lget(key) || [];
-  const updatedAt = Number(lget(key+':updatedAt')) || Date.now();
-  const response = await api('assistant/conversation', {method:'PUT', body:{messages, updatedAt}});
-  ricoCloudBusy = false;
-  if(response.ok && Number(lget(key+':updatedAt')) > updatedAt) ricoCloudTimer = setTimeout(ricoPushCloud, 100);
-}
-async function ricoSyncCloud(){
-  if(!state.role || !apiSession()) return;
-  ricoLoad();
-  const role = state.role, key = ricoStorageKey();
-  const response = await api('assistant/conversation');
-  if(!response.ok || state.role !== role || rico.streaming) return;
-  const remote = response.data || {};
-  const remoteAt = Date.parse(remote.updatedAt || '') || 0;
-  const localAt = Number(lget(key+':updatedAt')) || 0;
-  if(remoteAt > localAt && Array.isArray(remote.messages)){
-    rico.messages = remote.messages.filter(m=>m && (m.role==='user' || m.role==='assistant')).slice(-RICO_MAX_SAVED);
-    lset(key, rico.messages);
-    lset(key+':updatedAt', remoteAt);
-    if(state.view === 'assistant') render();
-  }else if(localAt > remoteAt){
-    ricoPushCloud();
-  }
+/* Remove chat copies written by older versions. The current chat stays in
+   memory only, so a fresh launch cannot restore previous conversations. */
+function ricoClearLegacyChats(){
+  for(const key of ['ricoChat','ricoChat:admin','ricoChat:staff','ricoChat:admin:updatedAt','ricoChat:staff:updatedAt']) lset(key, null);
 }
 function ricoAutoOrder(){ return !!lget('ricoAutoOrder'); }
 
@@ -153,7 +105,6 @@ function ricoGreeting(){
   return t('ricoGreeting')(part, personName());
 }
 function renderAssistant(){
-  ricoLoad();
   const name = personName();
   const late = ricoLateOrders();
   const head = `<header class="rico-head">
@@ -337,7 +288,7 @@ function attachAssistantEvents(){
   document.getElementById('ricoNewBtn')?.addEventListener('click', async ()=>{
     if(!rico.messages.length) return;
     if(!(await showConfirm(t('ricoConfirmNewChat'), {okLabel:t('ricoNewChat'), okClass:'btn-primary'}))) return;
-    ricoStop(); rico.messages = []; ricoSave(); render();
+    ricoStop(); rico.messages = []; render();
   });
   document.getElementById('ricoAutoBtn')?.addEventListener('click', async ()=>{
     const on = !ricoAutoOrder();
@@ -370,7 +321,6 @@ function attachRicoThreadEvents(root){
     picker.selectedIds = [...root.querySelectorAll(`[data-rico-scope-check="${i}"]:checked`)].map(input=>input.value);
     const apply = root.querySelector(`[data-rico-scope-selected="${i}"]`);
     if(apply){ apply.disabled = !picker.selectedIds.length; apply.textContent = t('ricoPrepareSelected')(picker.selectedIds.length); }
-    ricoSave();
   });
   root.querySelectorAll('[data-rico-scope-all]').forEach(b=>b.onclick=()=>ricoChooseScope(Number(b.dataset.ricoScopeAll), state.suppliers.map(s=>s.id)));
   root.querySelectorAll('[data-rico-scope-selected]').forEach(b=>b.onclick=()=>ricoChooseScope(Number(b.dataset.ricoScopeSelected), rico.messages[Number(b.dataset.ricoScopeSelected)]?.picker?.selectedIds || []));
@@ -407,7 +357,6 @@ function ricoChooseScope(i, ids){
   const chosen = [...new Set(ids)].filter(id=>state.suppliers.some(s=>s.id===id));
   if(!picker || picker.chosen || !chosen.length || rico.streaming) return;
   picker.chosen = true;
-  ricoSave();
   ricoPaintMessage(i);
   const names = chosen.map(id=>state.suppliers.find(s=>s.id===id).name);
   ricoAsk(t('ricoScopedPrompt')(names), {quickAction:'prepare_order', supplierIds:chosen});
@@ -429,13 +378,11 @@ function ricoStop(){
 }
 async function ricoAsk(text, options = {}){
   if(rico.streaming) return;
-  ricoLoad();
   const scopeIds = options.supplierIds || [];
   const named = state.suppliers.filter(s=>String(text).toLocaleLowerCase().includes(s.name.toLocaleLowerCase())).map(s=>s.id);
   if((options.quickAction==='prepare_order' || ricoOrderIntent(text)) && !scopeIds.length && !named.length){
     rico.messages.push({role:'user', text, ts:Date.now()});
     rico.messages.push({role:'assistant', text:t('ricoChooseSuppliers'), picker:{selectedIds:[], chosen:false}, ts:Date.now()});
-    ricoSave();
     if(state.view !== 'assistant') state.view = 'assistant';
     render(); ricoScroll(true);
     return;
@@ -449,7 +396,6 @@ async function ricoAsk(text, options = {}){
   const bot = {role:'assistant', text:'', proposals:[], streaming:true, statusKey:'thinking', ts:Date.now()};
   rico.messages.push(bot);
   rico.streaming = true;
-  ricoSave();
   if(state.view !== 'assistant'){ state.view = 'assistant'; }
   render();
   ricoScroll(true);
@@ -481,7 +427,6 @@ async function ricoAsk(text, options = {}){
   if(controller.signal.aborted && !bot.text && !bot.proposals.length) bot.error = 'stopped';
   if(!controller.signal.aborted && !bot.text && !bot.proposals.length && !bot.error){ bot.error = 'failed'; bot.retry = true; }
   rico.streaming = false; rico.abort = null;
-  ricoSave();
   if(state.view === 'assistant'){
     ricoPaintMessage(idx);
     ricoRefreshComposer();
@@ -523,7 +468,6 @@ function ricoFind(mi, id){ const m = rico.messages[mi]; return m && (m.proposals
 function ricoSetStatus(mi, id, status, extra = {}){
   const p = ricoFind(mi, id); if(!p) return;
   Object.assign(p, {status}, extra);
-  ricoSave();
   if(state.view === 'assistant') ricoPaintMessage(mi);
 }
 function ricoApplyOrder(p, auto){
@@ -588,7 +532,7 @@ async function ricoApply(mi, id, btn){
   };
   if(btn){ btn.disabled = true; btn.classList.add('is-busy'); }
   const ok = await run().catch(()=>false);
-  if(ok){ p.status = 'applied'; ricoSave(); }
+  if(ok){ p.status = 'applied'; }
   if(state.view === 'assistant') ricoPaintMessage(mi);
 }
 function ricoUndo(mi, id){

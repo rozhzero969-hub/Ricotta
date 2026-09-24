@@ -29,15 +29,12 @@ const server=http.createServer((req,res)=>{
   const errors=[];
   async function context(loggedIn=true,reducedMotion='no-preference'){
     const ctx=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion,serviceWorkers:'block'});
-    let ricoCloud={messages:[],updatedAt:null};
+    let ricoBackupCalls=0;
     await ctx.route('**/functions/v1/api/**',async route=>{
       const endpoint=new URL(route.request().url()).pathname.split('/api/')[1];
       if(endpoint==='assistant/conversation'){
-        if(route.request().method()==='PUT'){
-          const payload=route.request().postDataJSON();
-          ricoCloud={messages:payload.messages,updatedAt:new Date(payload.updatedAt).toISOString()};
-        }
-        await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(ricoCloud)});
+        ricoBackupCalls++;
+        await route.fulfill({status:410,contentType:'application/json',body:'{"error":"retired"}'});
         return;
       }
       if(endpoint==='assistant/chat'){
@@ -56,7 +53,7 @@ const server=http.createServer((req,res)=>{
     },{loggedIn});
     const page=await ctx.newPage();page.on('pageerror',error=>errors.push(String(error)));
     await page.goto(url);await page.waitForSelector(loggedIn?'#orderResults':'.keypad');await page.waitForSelector('#splash',{state:'detached'});
-    return {ctx,page};
+    return {ctx,page,backupCalls:()=>ricoBackupCalls};
   }
   async function noOverflow(page,label){
     const sizes=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));
@@ -66,7 +63,7 @@ const server=http.createServer((req,res)=>{
     await page.screenshot({path:path.join(artifacts,name),animations:'disabled'});
   }
   try{
-    const {ctx,page}=await context();
+    const {ctx,page,backupCalls}=await context();
     await page.evaluate(()=>{window.originalRow=document.querySelector('[data-item-id="i1"]');window.originalInput=document.querySelector('#itemSearch');window.originalNav=document.querySelector('.bottomnav');window.originalTop=document.querySelector('.topbar');});
     const inc=page.locator('[data-inc="i1"]');
     await inc.focus();for(let i=0;i<12;i++) await page.keyboard.press('Enter');
@@ -113,18 +110,23 @@ const server=http.createServer((req,res)=>{
     await page.locator('[data-rico-scope-selected]').click();
     await page.waitForFunction(()=>!rico.streaming);
     assert.ok((await page.locator('.rico-msg.bot').last().textContent()).includes('Fixture Rico reply'),'selected suppliers reach Rico');
+    await page.locator('[data-view="order"]').click();
+    await page.locator('[data-view="assistant"]').click();
+    assert.ok((await page.locator('.rico-msg.bot').count())>=2,'chat stays when switching app tabs');
+    await page.evaluate(()=>localStorage.setItem('ricottaOrders:ricoChat:admin',JSON.stringify([{role:'user',text:'legacy chat'}])));
     await page.reload();await page.waitForSelector('#splash',{state:'detached'});
     await page.locator('[data-view="assistant"]').click();
-    assert.ok((await page.locator('.rico-msg.bot').count())>=2,'chat survives app reload');
-    await page.waitForTimeout(450);
-    await page.evaluate(()=>{localStorage.removeItem('ricottaOrders:ricoChat:admin');localStorage.removeItem('ricottaOrders:ricoChat:admin:updatedAt');});
-    await page.reload();await page.waitForSelector('#splash',{state:'detached'});
-    await page.locator('[data-view="assistant"]').click();
-    await page.waitForFunction(()=>rico.messages.length>=4);
-    assert.ok((await page.locator('.rico-msg.bot').count())>=2,'chat restores from server backup when local copy is missing');
+    assert.equal(await page.locator('.rico-msg.bot').count(),0,'chat resets when app reloads');
+    assert.equal(await page.evaluate(()=>localStorage.getItem('ricottaOrders:ricoChat:admin')),null,'old saved chat is cleared');
+    assert.equal(backupCalls(),0,'app never calls retired chat backup');
     await page.locator('[data-view="itemsAdmin"]').click();await snapshot(page,'desktop-catalog.png');
     await page.locator('#itemAddBtn').click();await snapshot(page,'desktop-dialog.png');await page.locator('#modalFormCancel').click();
     await page.setViewportSize({width:390,height:844});await page.evaluate(()=>setLang('ku'));await page.locator('[data-view="order"]').click();await snapshot(page,'phone-order-ku.png');
+    await page.close();
+    const reopened=await ctx.newPage();reopened.on('pageerror',error=>errors.push(String(error)));
+    await reopened.goto(url);await reopened.waitForSelector('#splash',{state:'detached'});
+    await reopened.locator('[data-view="assistant"]').click();
+    assert.equal(await reopened.locator('.rico-msg.bot').count(),0,'closing and reopening the app starts a fresh chat');
     await ctx.close();
     const login=await context(false);
     await login.page.evaluate(()=>window.originalKey=document.querySelector('[data-key="1"]'));
@@ -158,6 +160,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await reduced.page.locator('[data-qty="i1"]').evaluate(el=>el.getAnimations().length),0,'reduced motion skips JS feedback');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`${2*viewportWidths.length*9} workspace layouts (including Rico), ${2*viewportWidths.length} login layouts, stable quantity/PIN/search DOM, supplier counts, draft restore/clear, key detection, language switch, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`${2*viewportWidths.length*9} workspace layouts (including Rico), ${2*viewportWidths.length} login layouts, stable quantity/PIN/search DOM, supplier counts, draft restore/clear, Rico chat stays across tabs and resets on reload, language switch, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});
