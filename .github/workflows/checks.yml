@@ -1,0 +1,53 @@
+name: Checks
+
+# Runs the repo's two local smoke tests on every push and PR to main. Neither
+# test calls the live Supabase project or any real API key -- both mock
+# everything (see scripts/README.md and the header comment in each script).
+# This is the one thing standing between "someone pushes a change" and "Rico
+# or the app breaks in production with nobody noticing until a kitchen shift
+# hits it" -- there was no CI here before.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check Edge Functions
+        run: deno check supabase/functions/api/index.ts supabase/functions/send-push/index.ts
+
+      - name: Rico provider smoke test (Gemini + Groq, mocked)
+        run: node --experimental-strip-types scripts/rico-provider-smoke.mjs
+
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --no-save playwright@1.55.1
+          npx playwright install --with-deps chromium
+
+      - name: UI smoke test (mocked API, six widths, EN + KU)
+        run: node scripts/ui-smoke.cjs
+
+      - name: Upload UI smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke-screenshots
+          path: ${{ runner.temp }}/ricotta-ui-*/**
+          if-no-files-found: ignore
+          retention-days: 14

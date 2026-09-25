@@ -100,6 +100,9 @@ const server=http.createServer((req,res)=>{
     await page.locator('[data-view="settings"]').click();
     assert.equal(await page.locator('#ricoKeyInput').count(),0,'Rico connection controls are not available in Settings');
     assert.equal(await page.locator('#ricoKeyState').count(),1,'Rico connection status remains visible');
+    // The status starts as "Checking…" and is filled in once assistant/status
+    // answers, so wait for that answer instead of reading the label instantly.
+    await page.waitForFunction(()=>document.querySelector('#ricoKeyState')?.textContent!=='Checking…',null,{timeout:5000});
     assert.equal(await page.locator('#ricoKeyState').textContent(),'Connected');
     assert.equal(await page.locator('.rico-status-card .notif-sub').textContent(),'Powered by Gemini 3.5 Flash Lite');
     await page.evaluate(()=>{location.hash='#rico-provider-setup'; maybeOpenRicoProviderSetup();});

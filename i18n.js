@@ -163,7 +163,15 @@ const T = {
     ricoPoweredByGemini:'Powered by Gemini 3.5 Flash Lite', ricoPoweredByGroq:fallback=>'Powered by GPT-OSS 120B'+(fallback?' · Gemini fallback':''),
     ricoConnected:'Connected', ricoDisconnected:'Disconnected',
     ricoGroqSetupPrompt:'Paste your Groq API key. It is sent directly to the protected server and this one-time setup closes after saving.',
-    ricoGroqSave:'Save Groq key', ricoGroqSaved:'Groq GPT-OSS 120B is ready. Gemini remains the fallback.', ricoGroqInvalid:'Enter a valid Groq key beginning with gsk_.'
+    ricoGroqSave:'Save Groq key', ricoGroqSaved:'Groq GPT-OSS 120B is ready. Gemini remains the fallback.', ricoGroqInvalid:'Enter a valid Groq key beginning with gsk_.',
+    confirmDoubleOrder:names=>`An order was already sent to ${names} today. Send another one?`,
+    loadMoreHistory:'Load earlier history', loading:'Loading…',
+    pinsWeak:'Choose PINs that aren’t all the same digit or a simple sequence (like 123456).',
+    trackStock:'Track stock (par level)',
+    trackStockHint:'Rico keeps an ESTIMATE of how much is on hand and suggests a top-up order when it drops to or below the par level. Correct it any time by telling Rico the real count.',
+    parQty:'Par level (normal target)', parBusyBoost:'Busy-day boost (%)',
+    parCurrentEstimate:(qty,unit)=>`Current estimate: ${qty} ${unit}`,
+    parQtyRequired:'Enter a par level greater than 0.'
   },
   ku:{
     workspaceLabel:'چێشتخانەکەت بە ڕێکوپێکی', welcomeBack:'بەخێربێیتەوە',
@@ -328,6 +336,14 @@ const T = {
     ricoPoweredByGemini:'بەهێزی Gemini 3.5 Flash Lite', ricoPoweredByGroq:fallback=>'بەهێزی GPT-OSS 120B'+(fallback?' · Gemini وەک پاشکەوت':''),
     ricoConnected:'پەیوەستە', ricoDisconnected:'پچڕاوە',
     ricoGroqSetupPrompt:'کلیلی API ـی Groq دابنێ. ڕاستەوخۆ بۆ سێرڤەری پارێزراو دەنێردرێت و ئەم ڕێکخستنە یەکجارەیە دوای پاشەکەوتکردن دادەخرێت.',
-    ricoGroqSave:'پاشەکەوتکردنی کلیلی Groq', ricoGroqSaved:'Groq GPT-OSS 120B ئامادەیە. Gemini وەک پاشکەوت دەمێنێتەوە.', ricoGroqInvalid:'کلیلی دروستی Groq بنووسە کە بە gsk_ دەست پێبکات.'
+    ricoGroqSave:'پاشەکەوتکردنی کلیلی Groq', ricoGroqSaved:'Groq GPT-OSS 120B ئامادەیە. Gemini وەک پاشکەوت دەمێنێتەوە.', ricoGroqInvalid:'کلیلی دروستی Groq بنووسە کە بە gsk_ دەست پێبکات.',
+    confirmDoubleOrder:names=>`ئەمڕۆ پێشتر داواکارییەک بۆ ${names} نێردراوە. یەکێکی تر بنێررێت؟`,
+    loadMoreHistory:'بینینی مێژووی کۆنتر', loading:'بارکردن…',
+    pinsWeak:'کۆدێک هەڵبژێرە کە هەموو ژمارەکانی وەک یەک نەبن یان زنجیرەیەکی سادە نەبێت (وەک ١٢٣٤٥٦).',
+    trackStock:'شوێنپێی کۆگا بگرەوە (ئاستی par)',
+    trackStockHint:'ریکۆ خەمڵاندنێک دەپارێزێت لەوەی چەند دانە ماوە و کاتێک بگاتە ئاستی par یان کەمتر، پێشنیاری داواکاریی زیادکردن دەکات. هەر کاتێک بتەوێت بە ڕاستی بژماردنی ڕاستەقینە بە ریکۆ بڵێ.',
+    parQty:'ئاستی par (ئامانجی ئاسایی)', parBusyBoost:'زیادکردن بۆ ڕۆژی قەرەباڵغ (%)',
+    parCurrentEstimate:(qty,unit)=>`خەمڵاندنی ئێستا: ${qty} ${unit}`,
+    parQtyRequired:'ئاستی parـێک بنووسە کە لە ٠ زیاتر بێت.'
   }
 };
