@@ -102,6 +102,13 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#ricoKeyState').count(),1,'Rico connection status remains visible');
     assert.equal(await page.locator('#ricoKeyState').textContent(),'Connected');
     assert.equal(await page.locator('.rico-status-card .notif-sub').textContent(),'Powered by Gemini 3.5 Flash Lite');
+    await page.evaluate(()=>{location.hash='#rico-provider-setup'; maybeOpenRicoProviderSetup();});
+    await page.waitForSelector('#modalPromptInput');
+    assert.equal(await page.locator('#modalPromptInput').getAttribute('type'),'password','provider key is masked in the one-time setup');
+    await page.locator('#modalPromptInput').fill('gsk_'+ 'A'.repeat(30));
+    await page.locator('#modalPromptOkBtn').click();
+    await page.waitForSelector('#modalPromptInput',{state:'detached'});
+    assert.equal(await page.evaluate(()=>location.hash),'','one-time setup route is removed after saving');
     await page.locator('[data-view="assistant"]').click();
     await page.locator('[data-rico-action="prepare_order"]').click();
     assert.equal(await page.locator('[data-rico-scope-check]').count(),suppliers.length,'order shortcut asks which suppliers');

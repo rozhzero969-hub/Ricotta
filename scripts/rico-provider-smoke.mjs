@@ -6,7 +6,7 @@ const secrets = new Map();
 const usage = [];
 const environment = new Map();
 globalThis.Deno = { env: { get: (key) => environment.get(key) ?? '' } };
-const { assistantStatus, handleChat } = await import('../supabase/functions/api/assistant.ts');
+const { assistantSetupStatus, assistantStatus, handleChat, saveGroqKey } = await import('../supabase/functions/api/assistant.ts');
 
 const db = {
   from(table) {
@@ -40,6 +40,8 @@ secrets.set('gemini_api_key', 'AIza' + 'A'.repeat(35));
 const requests = [];
 let geminiTurn = 0;
 let emptyReply = false;
+let groqTurn = 0;
+let groqUnavailable = false;
 globalThis.fetch = async (input, options = {}) => {
   const url = String(input);
   requests.push({ url, body: JSON.parse(options.body) });
@@ -54,6 +56,14 @@ globalThis.fetch = async (input, options = {}) => {
     const body = new ReadableStream({ start(controller) { controller.enqueue(encoded.slice(0, split)); controller.enqueue(encoded.slice(split)); controller.close(); } });
     return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
   }
+  if (url.includes('api.groq.com/openai/v1/chat/completions')) {
+    if (groqUnavailable) return new Response('{"error":{"message":"busy"}}', { status: 503 });
+    const payload = groqTurn++ === 0
+      ? { choices: [{ delta: { tool_calls: [{ index: 0, id: 'groq-call-1', type: 'function', function: { name: 'open_screen', arguments: '{"screen":"order"}' } }] } }], usage: { prompt_tokens: 10, completion_tokens: 3 } }
+      : { choices: [{ delta: { content: 'Groq is ready.' } }], usage: { prompt_tokens: 20, completion_tokens: 4 } };
+    const body = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(payload)}\n\ndata: [DONE]\n\n`)); controller.close(); } });
+    return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+  }
   throw new Error(`Unexpected upstream: ${url}`);
 };
 
@@ -63,7 +73,7 @@ const chat = async () => {
   return (await response.text()).trim().split('\n').map(JSON.parse);
 };
 
-assert.deepEqual(await assistantStatus(db), { configured: true, model: 'gemini-3.5-flash-lite', provider: 'gemini' });
+assert.deepEqual(await assistantStatus(db), { configured: true, model: 'gemini-3.5-flash-lite', provider: 'gemini', fallback: false });
 const geminiEvents = await chat();
 assert.deepEqual(geminiEvents.map(e => e.type), ['status', 'proposal', 'text', 'text', 'done']);
 assert.equal(geminiEvents[1].proposal.kind, 'open');
@@ -84,5 +94,23 @@ for(const quickAction of ['prepare_order','busy_days','add_item','recent_items',
 assert.equal(requests.length, beforeQuick, 'quick suggestions do not call Gemini');
 emptyReply = true;
 assert.deepEqual((await chat()).map(e=>e.type), ['error','done'], 'empty MAX_TOKENS produces a visible failure');
+emptyReply = false;
+assert.deepEqual(await saveGroqKey(db, 'gsk_' + 'B'.repeat(30)), { ok: true });
+assert.deepEqual(await assistantSetupStatus(db), { groqConfigured: true });
+assert.deepEqual(await assistantStatus(db), { configured: true, model: 'openai/gpt-oss-120b', provider: 'groq', fallback: true });
+const beforeGroq = requests.length;
+const groqEvents = await chat();
+assert.deepEqual(groqEvents.map(e => e.type), ['status', 'proposal', 'text', 'done']);
+assert.equal(requests[beforeGroq].url.includes('api.groq.com'), true);
+assert.equal(requests[beforeGroq].body.model, 'openai/gpt-oss-120b');
+assert.equal(requests[beforeGroq].body.reasoning_effort, 'low');
+assert.equal(requests[beforeGroq].body.parallel_tool_calls, false);
+assert.equal(requests[beforeGroq + 1].body.messages.at(-1).role, 'tool');
+assert.equal(requests[beforeGroq + 1].body.messages.at(-1).tool_call_id, 'groq-call-1');
+assert.equal(usage.at(-1).model, 'openai/gpt-oss-120b');
+groqUnavailable = true; geminiTurn = 0;
+const fallbackEvents = await chat();
+assert.equal(fallbackEvents.at(-1).type, 'done');
+assert.equal(requests.at(-1).url.includes('streamGenerateContent'), true, 'Gemini is used after Groq rejects a request');
 
-console.log('Rico provider smoke: PASS (Gemini tool role, thinking level, quick answer, empty response)');
+console.log('Rico provider smoke: PASS (Gemini, Groq tool calls, Groq-to-Gemini fallback, quick answers, empty response)');

@@ -30,8 +30,10 @@
 //   PUT    devices/me/name            {name}                    who is using this device (for Rico)
 //   POST   assistant/chat             {messages, lang, ...}     Rico's reply, streamed (see assistant.ts)
 //   GET    assistant/status                                     is Rico connected?
+//   GET    assistant/setup-status                               admin-only Groq one-time setup state
+//   PUT    assistant/groq-key          {key}                    admin-only, add-only
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { assistantStatus, handleChat } from "./assistant.ts";
+import { assistantSetupStatus, assistantStatus, handleChat, saveGroqKey } from "./assistant.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -441,6 +443,12 @@ Deno.serve(async (req) => {
     // Rico, the assistant
     if (M === "POST" && path === "assistant/chat") return await handleChat(db, s, b, cors, req.signal);
     if (M === "GET" && path === "assistant/status") return json(await assistantStatus(db));
+    if (M === "GET" && path === "assistant/setup-status") return admin ? json(await assistantSetupStatus(db)) : fail("forbidden", 403);
+    if (M === "PUT" && path === "assistant/groq-key") {
+      if (!admin) return fail("forbidden", 403);
+      const result = await saveGroqKey(db, b.key);
+      return result.ok ? ok() : fail(result.error, result.error === "already_configured" ? 409 : 400);
+    }
 
     // Push notifications
     if (path === "push/subscription") {
