@@ -92,7 +92,9 @@ function showPrompt(message, opts) {
   const cancelLabel = (opts && opts.cancelLabel) || t('cancel');
   const placeholder = (opts && opts.placeholder) || '';
   const initialValue = (opts && opts.value) || '';
-  const inputAttrs = (opts && opts.password) ? 'type="password" inputmode="numeric" autocomplete="off"' : '';
+  const inputAttrs = (opts && (opts.password || opts.secret))
+    ? `type="password" ${opts.password ? 'inputmode="numeric"' : ''} autocomplete="off"`
+    : '';
   
   return new Promise(resolve => {
     const root = ensureModalRoot();
