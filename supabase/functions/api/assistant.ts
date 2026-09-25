@@ -14,10 +14,12 @@
 // *proposed*: the app shows a card and the person taps to confirm, and the app
 // then makes the change through the normal API with that person's session.
 //
-// Rico is locked to Gemini 3.5 Flash Lite. Its server-side key is deliberately
-// not changeable from the app, so a signed-in device cannot disconnect it.
+// Rico prefers Groq's GPT-OSS 120B when configured and falls back to Gemini.
+// Provider keys stay server-side; the one-time Groq setup can only add a key,
+// never remove either provider from a signed-in device.
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
 const MAX_TURNS = 4;               // cap slow tool round-trips per reply
 const MAX_OUTPUT_TOKENS = 2048;
 const REPLY_TIMEOUT_MS = 45_000;
@@ -517,16 +519,34 @@ async function* readSSE(res: Response) {
 
 async function config(db: any) {
   const { data } = await db.from("app_secrets").select("key,value")
-    .in("key", ["gemini_api_key"]);
+    .in("key", ["gemini_api_key", "groq_api_key"]);
   const saved = Object.fromEntries((data ?? []).map((r: any) => [r.key, r.value]));
   const geminiSecret = Deno.env.get("GEMINI_API_KEY") ?? "";
-  const key = geminiSecret || saved.gemini_api_key || "";
-  return { provider: "gemini", key, model: DEFAULT_GEMINI_MODEL };
+  const groqSecret = Deno.env.get("GROQ_API_KEY") ?? "";
+  const geminiKey = geminiSecret || saved.gemini_api_key || "";
+  const groqKey = groqSecret || saved.groq_api_key || "";
+  return groqKey
+    ? { provider: "groq" as const, key: groqKey, model: DEFAULT_GROQ_MODEL, geminiKey }
+    : { provider: "gemini" as const, key: geminiKey, model: DEFAULT_GEMINI_MODEL, geminiKey };
 }
 
 export async function assistantStatus(db: any) {
   const c = await config(db);
-  return { configured: !!c.key, model: DEFAULT_GEMINI_MODEL, provider: "gemini" };
+  return { configured: !!c.key, model: c.model, provider: c.provider, fallback: c.provider === "groq" && !!c.geminiKey };
+}
+
+export async function assistantSetupStatus(db: any) {
+  const c = await config(db);
+  return { groqConfigured: c.provider === "groq" };
+}
+
+export async function saveGroqKey(db: any, key: unknown) {
+  const value = text(key, 300);
+  if (!/^gsk_[A-Za-z0-9_-]{20,}$/.test(value)) return { ok: false, error: "invalid_key" };
+  const c = await config(db);
+  if (c.provider === "groq") return { ok: false, error: "already_configured" };
+  const { error } = await db.from("app_secrets").upsert({ key: "groq_api_key", value }, { onConflict: "key" });
+  return error ? { ok: false, error: "save_failed" } : { ok: true };
 }
 
 async function streamGemini(db: any, w: World, s: Session, cfg: Awaited<ReturnType<typeof config>>,
@@ -600,6 +620,73 @@ async function streamGemini(db: any, w: World, s: Session, cfg: Awaited<ReturnTy
     if (turn === MAX_TURNS - 2) instruction += "\n- You have used many lookups: answer now with what you have.";
   }
   emit({ type: "error", code: "failed" });
+}
+
+/* Groq's chat API is OpenAI-compatible. GPT-OSS does not support parallel
+   local tool calls, so each tool round trip is deliberately sequential. */
+async function streamGroq(db: any, w: World, s: Session, cfg: Awaited<ReturnType<typeof config>>,
+  messages: any[], system: { text: string }[], emit: Emit, auto: boolean, signal: AbortSignal,
+  usage: { input: number; output: number }): Promise<boolean> {
+  const conversation: any[] = [
+    { role: "system", content: system.map((part) => part.text).join("\n\n") },
+    ...messages.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content })),
+  ];
+  const tools = TOOLS.map((tool) => ({ type: "function", function: {
+    name: tool.name, description: tool.description, parameters: tool.input_schema,
+  } }));
+  let used = false;
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST", signal,
+      headers: { "authorization": `Bearer ${cfg.key}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: cfg.model, messages: conversation, tools, tool_choice: "auto",
+        parallel_tool_calls: false, stream: true, reasoning_effort: "low", reasoning_format: "hidden",
+        max_completion_tokens: MAX_OUTPUT_TOKENS,
+      }),
+    });
+    if (!res.ok) {
+      console.error("groq", res.status);
+      return false;
+    }
+    const calls = new Map<number, any>();
+    let sawText = false;
+    for await (const chunk of readSSE(res)) {
+      const choice = chunk.choices?.[0];
+      const delta = choice?.delta ?? {};
+      usage.input = Math.max(usage.input, Number(chunk.usage?.prompt_tokens) || 0);
+      usage.output = Math.max(usage.output, Number(chunk.usage?.completion_tokens) || 0);
+      if (typeof delta.content === "string" && delta.content) {
+        emit({ type: "text", text: delta.content }); sawText = true; used = true;
+      }
+      for (const fragment of delta.tool_calls ?? []) {
+        const index = Number(fragment.index) || 0;
+        const call = calls.get(index) ?? { id: "", type: "function", function: { name: "", arguments: "" } };
+        if (fragment.id) call.id = fragment.id;
+        if (fragment.function?.name) call.function.name += fragment.function.name;
+        if (fragment.function?.arguments) call.function.arguments += fragment.function.arguments;
+        calls.set(index, call); used = true;
+      }
+    }
+    const toolCalls = [...calls.values()].filter((call) => call.id && call.function.name);
+    if (!toolCalls.length) {
+      if (!sawText && used) emit({ type: "error", code: "failed" });
+      return used;
+    }
+    conversation.push({ role: "assistant", content: null, tool_calls: toolCalls });
+    for (const call of toolCalls) {
+      let args: any = {};
+      try { args = JSON.parse(call.function.arguments || "{}"); } catch { args = {}; }
+      emit({ type: "status", tool: call.function.name });
+      let out: unknown;
+      try { out = await runTool(db, w, s, call.function.name, args, emit, auto); }
+      catch (e) { console.error("tool", call.function.name, e); out = { error: "The tool failed. Try another way or tell the person." }; }
+      const result = JSON.stringify(out) ?? "null";
+      conversation.push({ role: "tool", tool_call_id: call.id, content: result.length <= 60000 ? result : result.slice(0, 60000) });
+    }
+  }
+  emit({ type: "error", code: "failed" });
+  return true;
 }
 
 /* Fast, predictable answers for the introduction chips. These use the same
@@ -705,6 +792,7 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   ];
   const auto = !!body.autoOrder;
   const usage = { input: 0, output: 0 };
+  let modelUsed = cfg.model;
   const upstream = new AbortController();
   signal.addEventListener("abort", () => upstream.abort());
   let timedOut = false;
@@ -716,7 +804,15 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
       let open = true;
       const emit: Emit = (e) => { if (!open) return; try { controller.enqueue(enc.encode(nd(e))); } catch { open = false; } };
       try {
-        await streamGemini(db, w, s, cfg, messages, system, emit, auto, upstream.signal, usage);
+        if (cfg.provider === "groq") {
+          const groqAnswered = await streamGroq(db, w, s, cfg, messages, system, emit, auto, upstream.signal, usage);
+          if (!groqAnswered) {
+            if (cfg.geminiKey) {
+              modelUsed = DEFAULT_GEMINI_MODEL;
+              await streamGemini(db, w, s, { provider: "gemini", key: cfg.geminiKey, model: DEFAULT_GEMINI_MODEL, geminiKey: cfg.geminiKey }, messages, system, emit, auto, upstream.signal, usage);
+            } else emit({ type: "error", code: "failed" });
+          }
+        } else await streamGemini(db, w, s, cfg, messages, system, emit, auto, upstream.signal, usage);
         emit({ type: "done" });
       } catch (e) {
         if (timedOut) emit({ type: "error", code: "busy" });
@@ -725,7 +821,7 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
         clearTimeout(deadline);
         open = false;
         try { controller.close(); } catch { /* already closed */ }
-        await db.from("app_assistant_usage").insert({ device_id: s.deviceId, role: s.role, model: cfg.model, input_tokens: usage.input, output_tokens: usage.output }).then(() => {}, () => {});
+        await db.from("app_assistant_usage").insert({ device_id: s.deviceId, role: s.role, model: modelUsed, input_tokens: usage.input, output_tokens: usage.output }).then(() => {}, () => {});
       }
     },
     cancel() { upstream.abort(); },

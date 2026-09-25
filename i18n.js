@@ -159,8 +159,11 @@ const T = {
     ricoOrderApplied:n=>n+' item'+(n===1?'':'s')+' put in today’s order', ricoAdminOnly:'Only an admin can do this.',
     ricoNotificationSent:'Notification sent', ricoUndoneToast:'Your previous order draft is back',
     ricoNavLate:n=>'Rico — '+n+' late order'+(n===1?'':'s'),
-    ricoSettingsTitle:'Rico (AI assistant)', ricoChecking:'Checking…', ricoPoweredBy:'Powered by Gemini 3.5 Flash Lite',
-    ricoConnected:'Connected', ricoDisconnected:'Disconnected'
+    ricoSettingsTitle:'Rico (AI assistant)', ricoChecking:'Checking…', ricoPoweredBy:'Checking provider…',
+    ricoPoweredByGemini:'Powered by Gemini 3.5 Flash Lite', ricoPoweredByGroq:fallback=>'Powered by GPT-OSS 120B'+(fallback?' · Gemini fallback':''),
+    ricoConnected:'Connected', ricoDisconnected:'Disconnected',
+    ricoGroqSetupPrompt:'Paste your Groq API key. It is sent directly to the protected server and this one-time setup closes after saving.',
+    ricoGroqSave:'Save Groq key', ricoGroqSaved:'Groq GPT-OSS 120B is ready. Gemini remains the fallback.', ricoGroqInvalid:'Enter a valid Groq key beginning with gsk_.'
   },
   ku:{
     workspaceLabel:'چێشتخانەکەت بە ڕێکوپێکی', welcomeBack:'بەخێربێیتەوە',
@@ -321,7 +324,10 @@ const T = {
     ricoOrderApplied:n=>n+' کاڵا خرایە داواکاریی ئەمڕۆ', ricoAdminOnly:'تەنها بەڕێوەبەر دەتوانێت ئەمە بکات.',
     ricoNotificationSent:'ئاگادارکردنەوە نێردرا', ricoUndoneToast:'ڕەشنووسی پێشووی داواکارییەکەت گەڕایەوە',
     ricoNavLate:n=>'ریکۆ — '+n+' داواکاریی دواکەوتوو',
-    ricoSettingsTitle:'ریکۆ (یاریدەدەری AI)', ricoChecking:'دەپشکنرێت…', ricoPoweredBy:'بەهێزی Gemini 3.5 Flash Lite',
-    ricoConnected:'پەیوەستە', ricoDisconnected:'پچڕاوە'
+    ricoSettingsTitle:'ریکۆ (یاریدەدەری AI)', ricoChecking:'دەپشکنرێت…', ricoPoweredBy:'دابینکەر دەپشکنرێت…',
+    ricoPoweredByGemini:'بەهێزی Gemini 3.5 Flash Lite', ricoPoweredByGroq:fallback=>'بەهێزی GPT-OSS 120B'+(fallback?' · Gemini وەک پاشکەوت':''),
+    ricoConnected:'پەیوەستە', ricoDisconnected:'پچڕاوە',
+    ricoGroqSetupPrompt:'کلیلی API ـی Groq دابنێ. ڕاستەوخۆ بۆ سێرڤەری پارێزراو دەنێردرێت و ئەم ڕێکخستنە یەکجارەیە دوای پاشەکەوتکردن دادەخرێت.',
+    ricoGroqSave:'پاشەکەوتکردنی کلیلی Groq', ricoGroqSaved:'Groq GPT-OSS 120B ئامادەیە. Gemini وەک پاشکەوت دەمێنێتەوە.', ricoGroqInvalid:'کلیلی دروستی Groq بنووسە کە بە gsk_ دەست پێبکات.'
   }
 };
