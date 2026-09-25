@@ -191,12 +191,31 @@ async function loadData(){
   state.items = d.items || [];
   state.units = (d.units && d.units.length) ? d.units : DEFAULT_UNITS;
   state.history = d.history || [];
+  state.historyHasMore = !!d.historyHasMore;
+  state.historyOldestLoaded = d.historyOldestLoaded || null;
   state.devices = d.devices || [];
   state.activity = d.activity || [];
   state.reminder = d.reminder || {enabled:false, time:'09:00'};
+  state.pars = d.pars || [];
   // The server is the authority on this session's role.
   if(d.role) state.role = d.role === 'staff' ? 'user' : d.role;
   return true;
+}
+/* History only loads the last ~120 days at first (bootstrap); this fetches
+   one further page of older orders, on request, for the History screen. */
+let loadingMoreHistory = false;
+async function loadMoreHistory(){
+  if(loadingMoreHistory || !state.historyOldestLoaded) return;
+  loadingMoreHistory = true;
+  try{
+    const r = await api('history/more?before='+encodeURIComponent(state.historyOldestLoaded));
+    if(r.ok && r.data){
+      state.history = [...(r.data.history||[]), ...state.history];
+      state.historyHasMore = !!r.data.hasMore;
+      state.historyOldestLoaded = r.data.oldestLoaded || null;
+      render();
+    }
+  } finally { loadingMoreHistory = false; }
 }
 /* Clears this device's sign-in and returns to the PIN pad. */
 function signOut(reason){
@@ -697,6 +716,13 @@ function sortedSupplierItems(rows){
     return nameCollator().compare(a.name||'', b.name||'');
   });
 }
+/* Was anything already sent to this supplier today? Used to warn (not
+   block) before sending again. */
+function sentToSupplierToday(supplierId){
+  const key = x=>{ const d=new Date(x); return d.getFullYear()+'-'+d.getMonth()+'-'+d.getDate(); };
+  const today = key(new Date());
+  return state.history.some(rec=> key(rec.date)===today && rec.entries.some(e=>e.supplierId===supplierId));
+}
 function lastOrderMap(){
   if(!state.history.length) return null;
   const last = state.history[state.history.length-1];
@@ -937,7 +963,7 @@ function attachOrderEvents(){
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.onclick=()=>{state.cart={};persistCartDraft();refreshOrderView();};
   const send = document.getElementById('sendOrdersBtn');
-  if(send) send.onclick = ()=>{
+  if(send) send.onclick = async ()=>{
     const bySupplier = {};
     Object.keys(state.cart).forEach(id=>{
       const qty = state.cart[id]; if(!qty) return;
@@ -945,6 +971,13 @@ function attachOrderEvents(){
       const sid = item.supplierId || '__none';
       (bySupplier[sid] = bySupplier[sid]||[]).push({itemId:id, name:item.name, qty, unit:item.unit, sortOrder:item.sortOrder});
     });
+    // Not a hard block -- ordering twice in a day can be intentional -- just
+    // make sure it's not an accident before it goes out again.
+    const already = Object.keys(bySupplier).filter(sid=>sid!=='__none' && sentToSupplierToday(sid));
+    if(already.length){
+      const names = already.map(sid=>(state.suppliers.find(s=>s.id===sid)||{}).name).filter(Boolean).join(', ');
+      if(!(await showConfirm(t('confirmDoubleOrder')(names)))) return;
+    }
     state.queue = Object.keys(bySupplier).map(sid=>({
       supplierId: sid, items: bySupplier[sid], sent:false
     }));
@@ -1105,9 +1138,11 @@ function renderHistory(){
       </div>
       ${supplierLines}
     </div>`;
-  }).join('');
+  }).join('') + (state.historyHasMore ? `<button class="btn btn-ghost" id="loadMoreHistoryBtn" style="margin-top:14px;width:100%">${t('loadMoreHistory')}</button>` : '');
 }
 function attachHistoryEvents(){
+  const more = document.getElementById('loadMoreHistoryBtn');
+  if(more) more.onclick = ()=>{ more.textContent = t('loading'); loadMoreHistory(); };
   document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
     const rec = state.history.find(r=>r.id===b.dataset.reorderhist);
     if(!rec) return;
@@ -1136,18 +1171,21 @@ function attachHistoryEvents(){
 
 /* ============ Record (activity log) ============ */
 /* Every add / edit / delete of a supplier, item or unit is recorded with the
-   date, time and which device did it. */
+   date, time and which device did it. The server writes the real entry
+   itself, in the same request as the change (so it can't be skipped or
+   faked). This only shows it on this phone right away; opening the Record
+   screen reloads the server's copy, which replaces it. */
 const ACTIVITY_MAX = 500;
 function logActivity(entry){
   const rec = {
     id: 'a'+Date.now()+Math.random().toString(36).slice(2,6),
     ts: new Date().toISOString(),
-    by: (myDevice() || {}).nickname || lget('deviceNickname') || '',
+    by: (myDevice() || {}).personName || (myDevice() || {}).nickname || lget('deviceNickname') || '',
     role: state.role,
     ...entry
   };
   state.activity = [rec, ...state.activity].slice(0, ACTIVITY_MAX);
-  return sendOrQueue('activity', 'POST', {entry: rec});
+  return Promise.resolve(true);
 }
 /* Pulls the newest shared Record (so entries made on other phones show up). */
 async function refreshActivity(){
@@ -1558,6 +1596,7 @@ function openItemModal(id){
   const banner = existing
     ? editingBanner(existing.name, `${unitLabel(existing.unit)} \u00b7 ${existing.supplierId ? supplierName(existing.supplierId) : t('noSupplier')}`)
     : '';
+  const par = existing ? (state.pars||[]).find(p=>p.itemId===existing.id) : null;
   showFormModal({
     title: existing ? t('editItem') : t('addItem'),
     banner,
@@ -1568,6 +1607,15 @@ function openItemModal(id){
         <label>${t('supplier')}</label>
         <select id="mfSupplier">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
+      </div>
+      <div class="field" style="border-top:1px solid var(--line,#e5e5e5);padding-top:12px;margin-top:4px;">
+        <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="mfTrackStock" ${par?'checked':''}> ${t('trackStock')}</label>
+        <div class="field-hint">${t('trackStockHint')}</div>
+      </div>
+      <div id="mfParFields" style="display:${par?'block':'none'}">
+        <div class="field"><label>${t('parQty')}</label><input id="mfParQty" type="number" min="1" step="1" value="${par?par.parQty:''}"></div>
+        <div class="field"><label>${t('parBusyBoost')}</label><input id="mfParBoost" type="number" min="0" step="5" value="${par?par.busyBoostPct:50}"></div>
+        ${par ? `<div class="field-hint">${t('parCurrentEstimate')(par.estQty, unitLabel(existing.unit))}</div>` : ''}
       </div>`,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
@@ -1578,37 +1626,61 @@ function openItemModal(id){
         const s = state.suppliers.find(x=>x.id===sel.value);
         hint.textContent = s ? t('supplierStaysSelected')(s.name) : '';
       };
+      const track = box.querySelector('#mfTrackStock');
+      const parFields = box.querySelector('#mfParFields');
+      if(track && parFields) track.onchange = ()=>{ parFields.style.display = track.checked ? 'block' : 'none'; };
     },
     onSubmit: async (again)=>{
       const name = document.getElementById('mfName').value.trim();
       const unit = document.getElementById('mfUnit').value;
       const supplierId = document.getElementById('mfSupplier').value || null;
       if(!name) return {error: t('nameRequired')};
+      const trackStock = document.getElementById('mfTrackStock').checked;
+      const parQty = parseFloat(document.getElementById('mfParQty').value);
+      const parBoost = parseFloat(document.getElementById('mfParBoost').value);
+      if(trackStock && !(parQty > 0)) return {error: t('parQtyRequired')};
       const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
+      let itemId;
       if(existing){
         const i = state.items.find(x=>x.id===existing.id);
         if(!i) return {};
+        itemId = i.id;
         const oldSupName = i.supplierId ? (state.suppliers.find(s=>s.id===i.supplierId)?.name || '') : '';
         const fields = diffFields([
           ['name', i.name, name],
           ['unit', unitEn(i.unit), unitEn(unit)],
           ['supplier', oldSupName, newSupName]
         ]);
-        if(!fields.length) return {};   // nothing changed -- nothing to save or record
-        const next = {...i, name, unit, supplierId, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
-        if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
-        Object.assign(i, next);
-        logActivity({action:'edit', type:'item', name, fields});
+        if(fields.length){
+          const next = {...i, name, unit, supplierId, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
+          if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
+          Object.assign(i, next);
+          logActivity({action:'edit', type:'item', name, fields});
+        }
       } else {
         const supplierItems=state.items.filter(i=>i.supplierId===supplierId);
         const maxSort=supplierItems.reduce((max,i)=>Number.isInteger(i.sortOrder)?Math.max(max,i.sortOrder):-1,-1);
         const next = {id:'i'+Date.now(), name, unit, supplierId, sortOrder:maxSort>=0?maxSort+1:null};
         if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
+        itemId = next.id;
         state.items.push(next);
         state.itemFormSupplierId = supplierId; // keep it locked in for the next item
         logActivity({action:'add', type:'item', name, fields:[
           {k:'name', to:name}, {k:'unit', to:unitEn(unit)}, {k:'supplier', to:newSupName}
         ]});
+      }
+      // Stock tracking is its own small server call -- it never blocks the
+      // item save above, and a failure here is quiet (non-critical).
+      const wasTracked = !!par;
+      if(trackStock){
+        const r = await api(`items/${encodeURIComponent(itemId)}/stock`, {method:'PUT', body:{parQty, busyBoostPct: Number.isFinite(parBoost)?parBoost:50}});
+        if(r.ok){
+          state.pars = (state.pars||[]).filter(p=>p.itemId!==itemId);
+          state.pars.push({itemId, parQty, busyBoostPct: Number.isFinite(parBoost)?parBoost:50, estQty: par?par.estQty:parQty, estUpdatedAt:new Date().toISOString()});
+        }
+      } else if(wasTracked){
+        await api(`items/${encodeURIComponent(itemId)}/stock`, {method:'PUT', body:{track:false}});
+        state.pars = (state.pars||[]).filter(p=>p.itemId!==itemId);
       }
       render();
       if(again) return {keepOpen:true, message:t('savedMsg')(name)};
@@ -1950,7 +2022,7 @@ function attachSettingsEvents(){
     if(!/^\d{6}$/.test(ap) || !/^\d{6}$/.test(up)){ await showAlert(t('pinsInvalidLength')); return; }
     if(ap===up){ await showAlert(t('pinsPrefixConflict')); return; }
     const r = await api('admin/pins', {method:'POST', body:{adminPin:ap, staffPin:up}});
-    if(!r.ok){ await showAlert(t('pinsSaveFailed')); return; }
+    if(!r.ok){ await showAlert(r.data && r.data.error==='weak_pin' ? t('pinsWeak') : t('pinsSaveFailed')); return; }
     await showAlert(t('pinsSaved'));
     // The server signs every device out after a PIN change, this one included.
     signOut();
