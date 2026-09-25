@@ -31,6 +31,24 @@ let state = {
 };
 
 function t(key){ return T[state.lang][key]; }
+const IRAQ_TIME_ZONE = 'Asia/Baghdad';
+function formatIraqDateTime(value, options={}){
+  const date = value instanceof Date ? value : new Date(value);
+  if(Number.isNaN(date.getTime())) return '\u2014';
+  return new Intl.DateTimeFormat(state.lang==='ku'?'ckb-IQ':'en-US', {
+    timeZone: IRAQ_TIME_ZONE, hour12:true, ...options
+  }).format(date);
+}
+/* Reminder values are stored as an Iraq wall-clock HH:MM value for the
+   scheduler. Format that value with AM/PM without shifting its hour. */
+function formatStoredIraqTime(value){
+  const match=String(value||'').match(/^(\d{1,2}):(\d{2})$/);
+  if(!match) return value || '\u2014';
+  const date=new Date(Date.UTC(2000,0,1,Number(match[1]),Number(match[2])));
+  return new Intl.DateTimeFormat(state.lang==='ku'?'ckb-IQ':'en-US', {
+    timeZone:'UTC', hour:'numeric', minute:'2-digit', hour12:true
+  }).format(date);
+}
 /* Consistent "nothing here yet" block, used for every empty list. */
 function emptyState(msg){
   return `<div class="empty">${ICON_EMPTY}<div class="empty-text">${msg}</div></div>`;
@@ -201,6 +219,39 @@ async function loadData(){
   if(d.role) state.role = d.role === 'staff' ? 'user' : d.role;
   return true;
 }
+
+/* ============ Desktop installation ============ */
+let deferredInstallPrompt = null;
+let installPromptDismissed = false;
+function isStandaloneApp(){
+  return matchMedia('(display-mode: standalone)').matches || navigator.standalone===true;
+}
+function removeInstallPrompt(){ document.getElementById('installPrompt')?.remove(); }
+function syncInstallPrompt(){
+  removeInstallPrompt();
+  if(!deferredInstallPrompt || installPromptDismissed || isStandaloneApp() || !matchMedia('(min-width:960px) and (pointer:fine)').matches) return;
+  const card=document.createElement('aside');
+  card.id='installPrompt'; card.className='install-prompt'; card.setAttribute('aria-label',t('installTitle'));
+  card.innerHTML=`<img class="install-prompt-icon" src="icon-192.png" alt=""><div class="install-prompt-copy"><div class="install-prompt-title">${esc(t('installTitle'))}</div><div class="install-prompt-sub">${esc(t('installSub'))}</div><div class="install-prompt-actions"><button type="button" class="btn btn-ghost" id="installLaterBtn">${esc(t('installLater'))}</button><button type="button" class="btn btn-primary" id="installAppBtn">${esc(t('installAction'))}</button></div></div>`;
+  document.body.appendChild(card);
+  document.getElementById('installLaterBtn').onclick=()=>{ installPromptDismissed=true; removeInstallPrompt(); };
+  document.getElementById('installAppBtn').onclick=async()=>{
+    const prompt=deferredInstallPrompt;
+    deferredInstallPrompt=null; removeInstallPrompt();
+    if(!prompt) return;
+    await prompt.prompt();
+    const choice=await prompt.userChoice;
+    if(choice?.outcome!=='accepted') installPromptDismissed=true;
+  };
+}
+window.addEventListener('beforeinstallprompt',event=>{
+  event.preventDefault(); deferredInstallPrompt=event;
+  setTimeout(syncInstallPrompt,1200);
+});
+window.addEventListener('appinstalled',()=>{
+  deferredInstallPrompt=null; installPromptDismissed=true; removeInstallPrompt(); toast(t('installComplete'));
+});
+document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
 /* History only loads the last ~120 days at first (bootstrap); this fetches
    one further page of older orders, on request, for the History screen. */
 let loadingMoreHistory = false;
@@ -355,7 +406,7 @@ function render(){
     app.classList.toggle('static-update', animKey === lastAnimKey);
     lastAnimKey = animKey;
     app.dataset.uiRole = ''; app.dataset.uiLanguage = state.lang;
-    app.innerHTML = renderLogin(); attachLoginEvents(); return;
+    app.innerHTML = renderLogin(); attachLoginEvents(); syncInstallPrompt(); return;
   }
   const animKey = state.view + (state.view === 'order' ? ':' + state.orderTab : '');
   app.classList.toggle('static-update', animKey === lastAnimKey);
@@ -413,6 +464,7 @@ function render(){
   placeNavIndicator();
   updateNavFade();
   updateTopbarShadow();
+  syncInstallPrompt();
 }
 
 /* A red dot on Rico's tab while an order is late (checked every minute). */
@@ -1076,7 +1128,8 @@ function printOrderSheet(entry, supplier){
   const supplierLabel=supplier?.name||(ku?'بێ دابینکەر':'No supplier');
   const rows=sortedSupplierItems(entry.items).map((item,n)=>`<tr><td>${n+1}</td><td>${esc(item.name)}</td><td>${esc(unitLabel(item.unit))}</td><td class="qty">${item.qty}</td></tr>`).join('');
   const w=window.open('', '_blank'); if(!w) return;
-  w.document.write(`<!doctype html><html dir="${ku?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${title} — Ricotta</title><style>body{font-family:Arial,'Noto Sans Arabic',sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${new Date().toLocaleString(ku?'ku':'en-GB')}<br>${entry.items.length} ${ku?'کاڵا':'items'}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${ku?'کاڵا':'Item'}</th><th>${ku?'یەکە':'Unit'}</th><th>${ku?'بڕ':'Qty'}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${ku?'تکایە داواکارییەکە بەپێی ئەم بڕانە ئامادە بکەن. سوپاس.':'Please prepare this order with the quantities listed above. Thank you.'}</div></body></html>`);
+  const printedAt=formatIraqDateTime(new Date(),{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  w.document.write(`<!doctype html><html dir="${ku?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${title} — Ricotta</title><style>body{font-family:Arial,'Noto Sans Arabic',sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${esc(printedAt)}<br>${entry.items.length} ${ku?'کاڵا':'items'}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${ku?'کاڵا':'Item'}</th><th>${ku?'یەکە':'Unit'}</th><th>${ku?'بڕ':'Qty'}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${ku?'تکایە داواکارییەکە بەپێی ئەم بڕانە ئامادە بکەن. سوپاس.':'Please prepare this order with the quantities listed above. Thank you.'}</div></body></html>`);
   w.document.close(); w.focus(); setTimeout(()=>w.print(),250);
 }
 let finishingQueue = false;
@@ -1106,21 +1159,20 @@ async function maybeFinishQueue(){
 /* ============ History ============ */
 function dayLabel(date){
   const d = new Date(date), today = new Date();
-  const key = x=>x.getFullYear()+'-'+x.getMonth()+'-'+x.getDate();
-  const yest = new Date(today); yest.setDate(today.getDate()-1);
+  const key = x=>new Intl.DateTimeFormat('en-CA',{timeZone:IRAQ_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit'}).format(x);
+  const yesterday = new Date(today.getTime()-86400000);
   if(key(d)===key(today)) return t('today');
-  if(key(d)===key(yest)) return t('yesterday');
-  return new Intl.DateTimeFormat(state.lang==='ku'?'ckb-IQ':'en-GB',{weekday:'long',day:'numeric',month:'long'}).format(d);
+  if(key(d)===key(yesterday)) return t('yesterday');
+  return formatIraqDateTime(d,{weekday:'long',day:'numeric',month:'long'});
 }
 function renderHistory(){
   if(!state.history.length) return emptyState(t('noHistory'));
-  const locale = state.lang==='ku' ? 'en-GB' : 'en-GB';
   let lastDay = '';
   return [...state.history].reverse().map(rec=>{
     const day = dayLabel(rec.date);
     const heading = day !== lastDay ? `<div class="hist-day">${esc(day)}</div>` : '';
     lastDay = day;
-    const time = new Date(rec.date).toLocaleTimeString(locale,{hour:'2-digit',minute:'2-digit'});
+    const time = formatIraqDateTime(rec.date,{hour:'numeric',minute:'2-digit'});
     const supplierLines = rec.entries.map(e=>{
       // Prefer the live name; fall back to the name saved with the order (a deleted supplier).
       const live = state.suppliers.find(s=>s.id===e.supplierId);
@@ -1230,11 +1282,10 @@ function renderRecord(){
   const rows = state.activity
     .filter(a => state.recordFilter==='all' || a.type===state.recordFilter)
     .sort((a,b)=> new Date(b.ts) - new Date(a.ts));
-  const locale = state.lang==='ku' ? 'en-GB' : 'en-US';
   const cards = rows.map(a=>{
     const typeLabel = ({supplier:t('typeSupplier'), item:t('typeItem'), unit:t('typeUnit')})[a.type] || a.type;
     const actLabel = ({add:t('actionAdded'), edit:t('actionEdited'), delete:t('actionDeleted')})[a.action] || a.action;
-    const dt = new Date(a.ts).toLocaleString(locale, {year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+    const dt = formatIraqDateTime(a.ts,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
     const who = (a.by ? esc(a.by) : t('unnamedDevice')) + ' \u00b7 ' + (a.role==='admin' ? t('deviceRoleAdmin') : t('deviceRoleStaff'));
     const lines = (a.fields||[]).map(f=>{
       const label = esc(recordFieldLabel(f.k));
@@ -1302,7 +1353,7 @@ function reminderText(r){
   if(!r || !r.enabled) return t('reminderOff');
   const days = reminderDays(r);
   const dayText = days.length === 7 ? t('everyDay') : DAY_ORDER.filter(d=>days.includes(d)).map(d=>t('daysShort')[d]).join(', ');
-  return r.time + ' \u00b7 ' + dayText;
+  return formatStoredIraqTime(r.time) + ' \u00b7 ' + dayText;
 }
 function reminderFieldsHtml(r){
   const on = !!(r && r.enabled);
@@ -1802,8 +1853,7 @@ function timeAgo(iso){
 }
 function fmtDateTime(iso){
   if(!iso) return '\u2014';
-  return new Date(iso).toLocaleString(state.lang==='ku' ? 'en-GB' : 'en-US',
-    {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+  return formatIraqDateTime(iso,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 }
 function renderDevices(){
   const visible = state.devices.filter(isLoggedIn);

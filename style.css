@@ -40,16 +40,30 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
-html{-webkit-text-size-adjust:100%;text-size-adjust:100%;background:var(--bg)}
-body{background:transparent;color:var(--ink);font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100dvh;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;background:var(--bg);touch-action:manipulation}
+body{background:transparent;color:var(--ink);font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100dvh;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overflow-x:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none}
 body.lang-ku{font-family:'Vazirmatn',system-ui,sans-serif;line-height:1.6}
 html.rtl{direction:rtl}
 button,input,select,textarea{font-family:inherit;color:inherit}
+input,textarea{-webkit-user-select:text;user-select:text}
 button{touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent}
 button:disabled{cursor:not-allowed}
 [hidden]{display:none!important}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:3px solid #2F8A5B;outline-offset:3px}
 ::selection{background:rgba(111,207,154,.35)}
+
+/* Browser-backed desktop PWA install prompt. The button calls the browser's
+   real install flow; this is not a bookmark or a hand-made shortcut. */
+.install-prompt{position:fixed;z-index:90;right:22px;bottom:22px;width:min(410px,calc(100vw - 44px));display:grid;grid-template-columns:48px minmax(0,1fr);gap:13px;padding:16px;border-radius:22px;background:rgba(255,255,255,.9);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);border:1px solid rgba(255,255,255,.98);box-shadow:var(--float-shadow);animation:installIn 520ms var(--ease-out-expo) both}
+html.rtl .install-prompt{right:auto;left:22px}
+.install-prompt-icon{width:48px;height:48px;border-radius:14px;box-shadow:0 8px 18px -8px rgba(13,40,31,.5)}
+.install-prompt-copy{min-width:0}
+.install-prompt-title{font-size:14.5px;font-weight:800;color:var(--deep)}
+.install-prompt-sub{margin-top:3px;font-size:12px;line-height:1.45;color:var(--ink-soft);font-weight:600}
+.install-prompt-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:12px}
+.install-prompt-actions .btn{min-height:38px;padding:0 15px;font-size:12px}
+@keyframes installIn{from{opacity:0;transform:translateY(24px) scale(.96)}to{opacity:1;transform:none}}
+@media (max-width:959px),(display-mode:standalone){.install-prompt{display:none}}
 
 /* ---------- Ambient light (behind everything) ---------- */
 .ambient{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:
@@ -648,6 +662,7 @@ html:not(.rtl) .rico-hello{letter-spacing:-.035em}
 .rico-connection.connected{background:rgba(47,138,91,.1);border-color:rgba(47,138,91,.2);color:var(--mint-ink)}
 .rico-connection.connected::before{box-shadow:0 0 0 4px rgba(47,138,91,.1)}
 @media (max-width:959px){
+  input,select,textarea{font-size:16px!important}
   body.rico-typing .bottomnav{display:none}
   body.rico-typing #app[data-screen="assistant"] .content{padding-bottom:120px}
 }

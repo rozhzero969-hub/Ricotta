@@ -64,6 +64,9 @@ const server=http.createServer((req,res)=>{
   }
   try{
     const {ctx,page,backupCalls}=await context();
+    assert.match(await page.locator('meta[name="viewport"]').getAttribute('content'),/maximum-scale=1/,'viewport prevents browser zoom');
+    assert.match(await page.locator('meta[name="viewport"]').getAttribute('content'),/user-scalable=no/,'viewport disables pinch/double-tap zoom');
+    assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).userSelect),'none','app chrome cannot be accidentally selected');
     await page.evaluate(()=>{window.originalRow=document.querySelector('[data-item-id="i1"]');window.originalInput=document.querySelector('#itemSearch');window.originalNav=document.querySelector('.bottomnav');window.originalTop=document.querySelector('.topbar');});
     const inc=page.locator('[data-inc="i1"]');
     await inc.focus();for(let i=0;i<12;i++) await page.keyboard.press('Enter');
@@ -97,6 +100,19 @@ const server=http.createServer((req,res)=>{
       }
     }
     await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>setLang('en'));await page.locator('[data-view="order"]').click();await page.locator('[data-ordertab="all"]').click();await snapshot(page,'desktop-order.png');
+    await page.evaluate(()=>{
+      const event=new Event('beforeinstallprompt',{cancelable:true});
+      event.prompt=async()=>{window.installPromptCalled=true;};
+      event.userChoice=Promise.resolve({outcome:'accepted'});
+      dispatchEvent(event); syncInstallPrompt();
+    });
+    await page.waitForSelector('#installPrompt');
+    assert.equal(await page.locator('#installPrompt .install-prompt-title').textContent(),'Install Ricotta Orders');
+    await page.locator('#installAppBtn').click();
+    await page.waitForFunction(()=>window.installPromptCalled===true);
+    assert.equal(await page.locator('#installPrompt').count(),0,'desktop install uses and closes the real browser prompt');
+    await page.locator('[data-view="history"]').click();
+    assert.match(await page.locator('.hist-date').textContent(),/AM|PM/,'history uses the 12-hour Iraq clock');
     await page.locator('[data-view="settings"]').click();
     assert.equal(await page.locator('#ricoKeyInput').count(),0,'Rico connection controls are not available in Settings');
     assert.equal(await page.locator('#ricoKeyState').count(),1,'Rico connection status remains visible');
@@ -131,7 +147,9 @@ const server=http.createServer((req,res)=>{
     assert.equal(backupCalls(),0,'app never calls retired chat backup');
     await page.locator('[data-view="itemsAdmin"]').click();await snapshot(page,'desktop-catalog.png');
     await page.locator('#itemAddBtn').click();await snapshot(page,'desktop-dialog.png');await page.locator('#modalFormCancel').click();
-    await page.setViewportSize({width:390,height:844});await page.evaluate(()=>setLang('ku'));await page.locator('[data-view="order"]').click();await snapshot(page,'phone-order-ku.png');
+    await page.setViewportSize({width:390,height:844});await page.evaluate(()=>setLang('ku'));await page.locator('[data-view="order"]').click();
+    assert.ok(parseFloat(await page.locator('#itemSearch').evaluate(el=>getComputedStyle(el).fontSize))>=16,'mobile search avoids focus zoom');
+    await snapshot(page,'phone-order-ku.png');
     await page.close();
     const reopened=await ctx.newPage();reopened.on('pageerror',error=>errors.push(String(error)));
     await reopened.goto(url);await reopened.waitForSelector('#splash',{state:'detached'});
@@ -170,6 +188,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await reduced.page.locator('[data-qty="i1"]').evaluate(el=>el.getAnimations().length),0,'reduced motion skips JS feedback');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`${2*viewportWidths.length*9} workspace layouts (including Rico), ${2*viewportWidths.length} login layouts, stable quantity/PIN/search DOM, supplier counts, draft restore/clear, Rico chat stays across tabs and resets on reload, language switch, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`${2*viewportWidths.length*9} workspace layouts (including Rico), ${2*viewportWidths.length} login layouts, native selection/zoom guards, Iraq 12-hour time, browser-backed desktop install, stable quantity/PIN/search DOM, supplier counts, draft restore/clear, Rico chat stays across tabs and resets on reload, language switch, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});
