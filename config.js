@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-25.3';
+const APP_VERSION = '2026-09-25.4';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,8 +14,8 @@ const APP_VERSION = '2026-09-25.3';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'Security fixes, a double-order warning, longer History loads on demand, and Rico can now track par-level stock and suggest top-up orders.';
-const CHANGELOG_KU = 'چاکسازی ئاسایش، ئاگاداری داواکاری دووانەیی، مێژووی زیاتر بە داواکردن بار دەبێت، و ریکۆ ئێستا دەتوانێت ئاستی پاری کاڵاکان بەدواداچوون بکات و داواکاری پڕکردنەوە پێشنیار بکات.';
+const CHANGELOG_EN = 'Native-style interactions now prevent accidental selection and mobile zoom, times use the 12-hour Iraq clock, and desktop app installation is available.';
+const CHANGELOG_KU = 'بەکارهێنانی وەک ئەپی ڕەسەن چاکتر کرا؛ هەڵبژاردنی دەق و زوومی مۆبایل ڕاگیرا، کات بە سیستەمی ١٢ کاتژمێری عێراق پیشان دەدرێت، و دامەزراندنی ئەپ لەسەر کۆمپیوتەر بەردەستە.';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN

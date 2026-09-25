@@ -76,6 +76,7 @@ const T = {
     refreshRequiredMsg:'A new version of the app is ready. Tap Refresh to load it \u2014 your current order selection will be kept.',
     refreshNow:'Refresh',
     /* Notifications */
+    installTitle:'Install Ricotta Orders', installSub:'Open Ricotta Orders from your desktop in its own app window.', installAction:'Install app', installLater:'Not now', installComplete:'Ricotta Orders was installed.',
     notifBannerTitle:'Get order reminders and updates',
     notifBannerSub:'Turn on notifications to get supplier order reminders and app update alerts, even when the app is closed.',
     notifIosHint:'On iPhone: tap Share, then Add to Home Screen, and open Ricotta Orders from your Home Screen icon to turn on notifications.',
@@ -249,6 +250,7 @@ const T = {
     refreshRequiredMsg:'وەشانێکی نوێی ئەپەکە ئامادەیە. دوگمەی نوێکردنەوە بگوشە بۆ بارکردنی \u2014 هەڵبژاردنەکانی داواکارییەکەت دەمێننەوە.',
     refreshNow:'نوێکردنەوە',
     /* Notifications */
+    installTitle:'دامەزراندنی Ricotta Orders', installSub:'Ricotta Orders لەسەر دێسکتۆپەکەت وەک ئەپێکی سەربەخۆ بکەرەوە.', installAction:'دامەزراندنی ئەپ', installLater:'ئێستا نا', installComplete:'Ricotta Orders دامەزرا.',
     notifBannerTitle:'بیرخەرەوەی داواکاری و نوێکاری وەربگرە',
     notifBannerSub:'ئاگادارکردنەوەکان چالاک بکە بۆ وەرگرتنی بیرخەرەوەی داواکاری دابینکەران و ئاگاداری نوێکاری، تەنانەت کاتێک ئەپەکە داخراوە.',
     notifIosHint:'لە ئایفۆن: دوگمەی Share بگوشە، پاشان Add to Home Screen، ئینجا ئەپەکە لە ئایکۆنی Home Screen بکەرەوە بۆ چالاککردنی ئاگادارکردنەوەکان.',
