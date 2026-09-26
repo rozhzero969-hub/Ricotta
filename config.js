@@ -6,7 +6,7 @@
    file). The update checker in update-check.js compares this against the
    live copy on the server and prompts users to reload when they differ.
    Any unique value works -- date-based is easiest to keep straight. */
-const APP_VERSION = '2026-09-25.4';
+const APP_VERSION = '2026-09-26.1';
 
 /* One-line summary of what changed in this version, shown (in both
    languages, regardless of the reader's chosen app language) in the
@@ -14,8 +14,8 @@ const APP_VERSION = '2026-09-25.4';
    simple regex -- it never runs the file, just reads it as text -- so
    keep each one to a single line with no stray quote characters inside
    it. Update both whenever you bump APP_VERSION above. */
-const CHANGELOG_EN = 'Native-style interactions now prevent accidental selection and mobile zoom, times use the 12-hour Iraq clock, and desktop app installation is available.';
-const CHANGELOG_KU = 'بەکارهێنانی وەک ئەپی ڕەسەن چاکتر کرا؛ هەڵبژاردنی دەق و زوومی مۆبایل ڕاگیرا، کات بە سیستەمی ١٢ کاتژمێری عێراق پیشان دەدرێت، و دامەزراندنی ئەپ لەسەر کۆمپیوتەر بەردەستە.';
+const CHANGELOG_EN = 'A new look: clear glass on graphite. Swipe between Order, Rico and History, or hold and slide the tab bar. Hold + or - to count fast, tap a number to type it, press and hold an item for quick amounts. Rico can check your order, show this week, suggest today’s order and listen to voice messages.';
+const CHANGELOG_KU = 'ڕووکارێکی نوێ: شووشەی ڕوون لەسەر خۆڵەمێشی. لە نێوان داواکاری و ریکۆ و مێژوو ڕابکێشە، یان شریتی خوارەوە ڕابگرە و بیجوڵێنە. + یان - ڕابگرە بۆ ژماردنی خێرا، دەست لە ژمارەکە بدە بۆ نووسین، و کاڵایەک ڕابگرە بۆ بڕی خێرا. ریکۆ دەتوانێت داواکارییەکەت بپشکنێت، ئەم هەفتەیە پیشان بدات، داواکاریی ئەمڕۆ پێشنیار بکات و گوێ لە نامەی دەنگی بگرێت.';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN

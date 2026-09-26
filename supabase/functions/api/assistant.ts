@@ -124,6 +124,7 @@ async function loadWorld(db: any, s: Session) {
     devices: (devices.data ?? []) as any[],
     activity: (activity.data ?? []) as any[],
     pars: (pars.data ?? []) as any[],
+    cart: {} as Record<string, number>,   // this device's draft, filled in by handleChat
   };
 }
 
@@ -315,6 +316,140 @@ function toolSuggestOrder(w: World, a: any) {
   };
 }
 
+/* How a supplier is usually ordered: the orders to learn from (same weekday
+   over the last 8 weeks when that is a habit, otherwise its last 4 orders)
+   and, per item, how often it appears and its median quantity. Shared by the
+   draft check and the Order screen suggestion. */
+function usualFor(w: World, supplierId: string | null, weekday = w.now.weekday) {
+  const target = Date.parse(`${w.now.date}T12:00:00Z`);
+  const sameDays = [...Array(8)].map((_, k) => new Date(target - (k + 1) * 7 * 86400_000).toISOString().slice(0, 10));
+  const withSup = w.history.filter((o) => o.lines.some((l) => l.supplierId === supplierId));
+  const onDay = withSup.filter((o) => sameDays.includes(o.date) && o.weekday === weekday);
+  const basis = onDay.length >= 2 ? onDay : withSup.slice(-4);
+  const per = new Map<string, number[]>();
+  for (const o of basis) for (const l of o.lines) if (l.supplierId === supplierId) (per.get(l.itemId) ?? per.set(l.itemId, []).get(l.itemId)!).push(l.qty);
+  return { basis, sameWeekday: onDay.length >= 2, per };
+}
+
+/* Checks the draft on this device before it is sent: usual items that are
+   missing, quantities far from normal, suppliers already sent today, items
+   never ordered before, and suppliers that are usually ordered today but are
+   not in the draft. Pure reading; nothing is changed. */
+function toolReviewDraft(w: World, cart: Record<string, number>) {
+  const live = new Map(w.items.map((i) => [i.id, i]));
+  const lines = Object.entries(cart || {}).map(([id, q]) => ({ it: live.get(id), qty: Number(q) })).filter((x) => x.it && x.qty > 0) as { it: any; qty: number }[];
+  if (!lines.length) return { empty: true, note: "The draft on this device is empty. Offer to prepare one with suggest_order." };
+  const bySup = new Map<string | null, { it: any; qty: number }[]>();
+  for (const l of lines) (bySup.get(l.it.supplier_id ?? null) ?? bySup.set(l.it.supplier_id ?? null, []).get(l.it.supplier_id ?? null)!).push(l);
+  const suppliers: any[] = [];
+  for (const [sid, ls] of bySup) {
+    const u = usualFor(w, sid);
+    const n = u.basis.length;
+    const inDraft = new Set(ls.map((l) => l.it.id));
+    const missing = n >= 2 ? [...u.per.entries()]
+      .filter(([id, q]) => !inDraft.has(id) && live.has(id) && q.length / n >= 0.6)
+      .map(([id, q]) => ({ item_id: id, name: live.get(id)!.name, usual_qty: roundQty(median(q)), unit: unitName(w, live.get(id)!.unit_id), seen: `${q.length}/${n} orders` })) : [];
+    const unusual = ls.flatMap((l) => {
+      const q = u.per.get(l.it.id);
+      if (!q || q.length < 2) return [];
+      const m = median(q);
+      return l.qty >= m * 2 || l.qty <= m / 2 ? [{ item_id: l.it.id, name: l.it.name, in_draft: l.qty, usual_qty: roundQty(m), unit: unitName(w, l.it.unit_id) }] : [];
+    });
+    const neverOrdered = ls.filter((l) => !w.history.some((o) => o.lines.some((x) => x.itemId === l.it.id))).map((l) => l.it.name);
+    suppliers.push({
+      supplier_id: sid, supplier: supplierName(w, sid), items_in_draft: ls.length,
+      already_sent_today: sentToday(w, sid), learned_from: n ? `${n} past order${n > 1 ? "s" : ""}${u.sameWeekday ? ` on ${WEEKDAYS[w.now.weekday]}s` : ""}` : "no past orders",
+      usually_ordered_but_missing: missing.slice(0, 12), quantity_far_from_usual: unusual.slice(0, 12), never_ordered_before: neverOrdered.slice(0, 12),
+    });
+  }
+  const dueNotInDraft = w.suppliers.filter((sp) => !bySup.has(sp.id) && !sentToday(w, sp.id) && (reminderToday(w, sp) || usualFor(w, sp.id).sameWeekday))
+    .map((sp) => sp.name).slice(0, 10);
+  return {
+    items: lines.length, suppliers, usually_ordered_today_but_not_in_draft: dueNotInDraft,
+    note: "Point out only what matters (missing usual items, odd quantities, double sends). To fix, use propose_order_draft with mode 'set' (set exact quantities) or 'add'.",
+  };
+}
+
+/* Week-over-week picture for the kitchen: volume, the items that moved most,
+   items that have gone quiet, new items nobody has ordered yet, and
+   suppliers whose reminder passed before the order went out. */
+function toolInsights(w: World, a: any) {
+  const days = Math.min(Math.max(Number(a.days) || 7, 3), 31);
+  const now = Date.now();
+  const cur = w.history.filter((o) => Date.parse(o.at) > now - days * 86400_000);
+  const prev = w.history.filter((o) => Date.parse(o.at) <= now - days * 86400_000 && Date.parse(o.at) > now - 2 * days * 86400_000);
+  const count = (os: Order[]) => {
+    const m = new Map<string, { name: string; times: number; qty: number }>();
+    for (const o of os) for (const l of o.lines) { const e = m.get(l.itemId) ?? { name: l.name, times: 0, qty: 0 }; e.times++; e.qty += l.qty; m.set(l.itemId, e); }
+    return m;
+  };
+  const c = count(cur), p = count(prev);
+  const movers = [...c.entries()].map(([id, e]) => ({ name: e.name, this_period: Math.round(e.qty * 100) / 100, previous: Math.round((p.get(id)?.qty ?? 0) * 100) / 100 }))
+    .filter((x) => x.previous > 0 && Math.abs(x.this_period - x.previous) / x.previous >= 0.3)
+    .sort((x, y) => Math.abs(y.this_period - y.previous) - Math.abs(x.this_period - x.previous)).slice(0, 8);
+  const lastOrdered = new Map<string, string>();
+  const times = new Map<string, number>();
+  for (const o of w.history) for (const l of o.lines) { lastOrdered.set(l.itemId, o.date); times.set(l.itemId, (times.get(l.itemId) ?? 0) + 1); }
+  const cutoff = new Date(now - 30 * 86400_000).toISOString().slice(0, 10);
+  const dormant = w.items.filter((i) => (times.get(i.id) ?? 0) >= 3 && (lastOrdered.get(i.id) ?? "") < cutoff)
+    .map((i) => ({ name: i.name, last_ordered: lastOrdered.get(i.id), supplier: supplierName(w, i.supplier_id) })).slice(0, 10);
+  const neverOrdered = w.items.filter((i) => !times.has(i.id) && i.created_at && Date.parse(i.created_at) < now - 3 * 86400_000)
+    .map((i) => i.name).slice(0, 12);
+  const late: string[] = [];
+  for (const sp of w.suppliers) {
+    const r = sp.reminder;
+    if (!r?.enabled || !/^\d\d:\d\d$/.test(String(r.time))) continue;
+    const rd: number[] = Array.isArray(r.days) && r.days.length ? r.days.map(Number) : [0, 1, 2, 3, 4, 5, 6];
+    const [h, m] = String(r.time).split(":").map(Number);
+    for (let k = 1; k <= days; k++) {
+      const d = erbilParts(new Date(now - k * 86400_000));
+      if (!rd.includes(d.weekday)) continue;
+      // Days before the reminder (or the supplier) existed don't count as missed.
+      if (r.updatedAt && d.date <= dayOf(r.updatedAt).date) continue;
+      if (sp.created_at && d.date < dayOf(sp.created_at).date) continue;
+      const first = w.history.find((o) => o.date === d.date && o.lines.some((l) => l.supplierId === sp.id));
+      const mins = first ? Number(first.time.slice(0, 2)) * 60 + Number(first.time.slice(3)) - (h * 60 + m) : null;
+      if (mins === null) late.push(`${sp.name}: not sent on ${d.date} (${WEEKDAYS[d.weekday]})`);
+      else if (mins >= 60) late.push(`${sp.name}: sent ${Math.floor(mins / 60)}h ${mins % 60}m after the ${r.time} reminder on ${d.date}`);
+    }
+  }
+  const top = [...c.values()].sort((x, y) => y.times - x.times).slice(0, 8).map((e) => ({ name: e.name, times: e.times }));
+  return {
+    period: `last ${days} days vs the ${days} days before`,
+    orders: { this_period: cur.length, previous: prev.length },
+    item_lines: { this_period: cur.reduce((n, o) => n + o.lines.length, 0), previous: prev.reduce((n, o) => n + o.lines.length, 0) },
+    top_items: top, biggest_changes_in_quantity: movers, gone_quiet_30_days: dormant,
+    added_but_never_ordered: neverOrdered, late_or_missed_reminders: late.slice(0, 12),
+  };
+}
+
+/* The "Rico suggests" card on the Order screen. Computed from history only
+   (no AI call, no rate limit spent): the supplier that is most due today and
+   isn't sent yet, with its usual items. */
+export async function orderSuggestion(db: any, s: Session) {
+  const w = await loadWorld(db, s);
+  const plan = toolSuggestOrder(w, {});
+  const late = new Set(w.suppliers.filter((sp) => {
+    const due = reminderToday(w, sp);
+    if (!due || sentToday(w, sp.id)) return false;
+    const [h, m] = due.split(":").map(Number);
+    return w.now.minutes >= h * 60 + m;
+  }).map((sp) => sp.id));
+  const ranked = [...plan.suppliers].sort((a: any, b: any) => Number(late.has(b.supplier_id)) - Number(late.has(a.supplier_id)) || b.lines.length - a.lines.length);
+  const best = ranked[0];
+  if (!best) return { suggestion: null };
+  const item = (id: string) => w.items.find((i) => i.id === id);
+  return {
+    suggestion: {
+      supplierId: best.supplier_id, supplier: best.supplier, due: late.has(best.supplier_id),
+      reminder: reminderToday(w, w.suppliers.find((sp) => sp.id === best.supplier_id) ?? {}) || null,
+      basis: best.basis, weekday: plan.weekday,
+      lines: best.lines.slice(0, 40).map((l: any) => ({ itemId: l.item_id, name: l.name, unitId: item(l.item_id)?.unit_id ?? null, qty: l.qty })),
+      others: ranked.slice(1, 4).map((x: any) => x.supplier),
+    },
+  };
+}
+
 /* ---------------- par-level stock estimates ----------------
    Ricotta has no receiving/consumption system of its own (a separate app
    handles that for the kitchen), so "how much is left" is never a fact here
@@ -395,15 +530,16 @@ const pid = () => `p${Date.now().toString(36)}${(seq++).toString(36)}`;
 function proposeOrder(w: World, a: any, emit: Emit, auto: boolean) {
   const lines: any[] = [];
   const bad: string[] = [];
+  const mode = a.mode === "add" ? "add" : a.mode === "set" ? "set" : "replace";
   for (const l of Array.isArray(a.lines) ? a.lines.slice(0, 120) : []) {
     const it = w.items.find((i) => i.id === text(l.item_id, 120));
     const qty = Number(l.qty);
     if (!it) { bad.push(String(l.item_id)); continue; }
-    if (!(qty > 0) || qty > 9999) { bad.push(`${it.name} (quantity ${l.qty})`); continue; }
+    // "set" may use 0 to take an item out of the draft; the other modes need a real quantity.
+    if (!(qty > 0 || (mode === "set" && qty === 0)) || qty > 9999) { bad.push(`${it.name} (quantity ${l.qty})`); continue; }
     lines.push({ itemId: it.id, name: it.name, unitId: it.unit_id, supplierId: it.supplier_id, supplier: supplierName(w, it.supplier_id), qty: Math.round(qty * 100) / 100 });
   }
   if (!lines.length) return { error: "No valid lines. Use item_id values from find_items or suggest_order.", invalid: bad };
-  const mode = a.mode === "add" ? "add" : "replace";
   emit({ type: "proposal", proposal: { id: pid(), kind: "order", mode, note: text(a.note, 200), lines } });
   return {
     shown: true, lines: lines.length, invalid: bad.length ? bad : undefined,
@@ -462,7 +598,8 @@ function proposeNotification(w: World, a: any, emit: Emit) {
 }
 
 function proposeOpen(a: any, emit: Emit) {
-  const screens = ["order", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
+  // "send" opens Send to suppliers with the current draft (the person still taps each WhatsApp send).
+  const screens = ["order", "send", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
   const screen = screens.includes(a.screen) ? a.screen : "order";
   emit({ type: "proposal", proposal: { id: pid(), kind: "open", screen, supplierId: text(a.supplier_id, 120) || null, label: text(a.label, 60) } });
   return { shown: true };
@@ -480,6 +617,10 @@ const TOOLS = [
     input_schema: { type: "object", properties: { supplier: { type: "string" }, weeks: { type: "integer", description: "1-26, default 12" } } } },
   { name: "suggest_order", description: "Builds a draft order from history: suppliers usually ordered on that weekday and their usual items and quantities. Default date is today (Erbil).",
     input_schema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD" }, suppliers: { type: "array", items: { type: "string" }, description: "Limit to these suppliers (names or ids)" } } } },
+  { name: "review_draft", description: "Checks the order draft on this device before sending: usual items that are missing, quantities far from normal, suppliers already sent today, items never ordered before, and suppliers usually ordered today that aren't in the draft. Use it whenever the person asks you to check their order, or before suggesting they send.",
+    input_schema: { type: "object", properties: {} } },
+  { name: "insights", description: "Kitchen insights for the last N days compared with the N days before: order volume, top items, the biggest changes in quantity, items that have gone quiet for 30+ days, items added but never ordered, and late or missed supplier reminders.",
+    input_schema: { type: "object", properties: { days: { type: "integer", description: "3-31, default 7" } } } },
   { name: "recent_changes", description: "Admin only. The change log: who added, edited or deleted suppliers, items and units, newest first.",
     input_schema: { type: "object", properties: { limit: { type: "integer" } } } },
   { name: "stock_status", description: "Admin only. Par-level stock ESTIMATES for items that have tracking turned on: current estimated on-hand, par level (boosted automatically on that item's busiest ordering days), and which are at or below par. This is an estimate learned from order history, not an exact count -- say so if asked.",
@@ -488,8 +629,8 @@ const TOOLS = [
     input_schema: { type: "object", properties: { item_id: { type: "string" }, item_name: { type: "string" }, qty: { type: "number" } }, required: ["qty"] } },
   { name: "remember_name", description: "Save the name of the person using this device (only when they tell you their name or ask you to call them something).",
     input_schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
-  { name: "propose_order_draft", description: "Show the person a card to put items into today's order draft on this device (it does NOT send anything to suppliers). mode 'replace' starts a fresh draft; 'add' adds to the current one.",
-    input_schema: { type: "object", properties: { lines: { type: "array", items: { type: "object", properties: { item_id: { type: "string" }, qty: { type: "number" } }, required: ["item_id", "qty"] } }, mode: { type: "string", enum: ["replace", "add"] }, note: { type: "string" } }, required: ["lines"] } },
+  { name: "propose_order_draft", description: "Show the person a card to change today's order draft on this device (it does NOT send anything to suppliers). mode 'replace' starts a fresh draft; 'add' adds quantities to the current one; 'set' sets exact quantities for the listed items and keeps everything else (qty 0 removes an item).",
+    input_schema: { type: "object", properties: { lines: { type: "array", items: { type: "object", properties: { item_id: { type: "string" }, qty: { type: "number" } }, required: ["item_id", "qty"] } }, mode: { type: "string", enum: ["replace", "add", "set"] }, note: { type: "string" } }, required: ["lines"] } },
   { name: "propose_new_item", description: "Admin only. Show a card to add a new catalog item. You must know the name, the unit and the supplier (or 'none') -- ask for anything missing first, one short question at a time.",
     input_schema: { type: "object", properties: { name: { type: "string" }, unit: { type: "string", description: "Unit id or name, e.g. kg, box" }, supplier: { type: "string", description: "Supplier name/id, or 'none'" } }, required: ["name", "unit"] } },
   { name: "propose_edit_item", description: "Admin only. Show a card to rename an item or change its unit or supplier.",
@@ -498,7 +639,7 @@ const TOOLS = [
     input_schema: { type: "object", properties: { name: { type: "string" }, phone: { type: "string" } }, required: ["name"] } },
   { name: "propose_notification", description: "Admin only. Show a card to send a push notification to every signed-in device. Always write both an English and a Kurdish (Sorani) message.",
     input_schema: { type: "object", properties: { title: { type: "string" }, message_en: { type: "string" }, message_ku: { type: "string" } }, required: ["message_en", "message_ku"] } },
-  { name: "open_screen", description: "Show a button that opens a screen of the app (order, history, suppliers, itemsAdmin, units, record, devices, settings). For order you can pass a supplier_id to open that supplier's tab.",
+  { name: "open_screen", description: "Show a button that opens a screen of the app (order, send, history, suppliers, itemsAdmin, units, record, devices, settings). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
     input_schema: { type: "object", properties: { screen: { type: "string" }, supplier_id: { type: "string" }, label: { type: "string" } }, required: ["screen"] } },
 ];
 const STATUS_TOOLS = new Set(TOOLS.map((t) => t.name));
@@ -520,6 +661,9 @@ HOW YOU TALK
 WHAT YOU CAN DO
 - Answer anything about the kitchen's data with the read tools: items (count, newest, units, suppliers), suppliers (schedules, usual days), order history, patterns (busy and quiet days), and for admins the change log (who added or edited what).
 - Prepare orders: use suggest_order (history of the same weekday) and then propose_order_draft. Mention in one line why (e.g. "you ordered these on 3 of the last 4 Mondays"). Adjust quantities if the person asks (busy weekend, event, etc.).
+- Check orders: when someone asks you to check, review or finish their order, or says they are about to send, use review_draft first. Mention only what matters: usual items that are missing, quantities far from normal, suppliers already sent today, suppliers usually ordered today that aren't in the draft. Offer the fix as one propose_order_draft card (mode "set" to change quantities or remove with qty 0, mode "add" for missing items). When the draft looks right, offer open_screen with screen "send".
+- Change quantities: "make the tomatoes 5", "remove the bread", "double everything from X" -> find_items if you need ids, then propose_order_draft with mode "set" (only the lines that change).
+- Insights: use insights for "how was this week", trends, what changed, what we stopped ordering, late suppliers. Lead with the one or two findings that matter, then a short list.
 - If someone asks for today's order without naming suppliers, ask whether they want one supplier, several, or all before building a draft. Never silently choose the scope.
 - Add or change catalog data (admins only): propose_new_item needs name, unit AND supplier -- if any is missing, ask for it (offer the likely choices from the data, e.g. "kg, box or piece?"). propose_edit_item, propose_new_supplier likewise. Staff cannot change the catalog: tell them kindly an admin can.
 - Notifications (admins only): propose_notification with English and Kurdish text, e.g. to remind the team about a late order.
@@ -534,7 +678,9 @@ UNTRUSTED DATA
 
 THE APP (so you can explain it)
 - Sign-in: a shared 6-digit PIN. Admin PIN = full access, staff PIN = Order and History (+ you, Rico). Sessions last 18 hours. Kurdish/English switch on the sign-in screen and in the top bar.
-- Order screen: a summary card (items picked, a ring showing how many suppliers have items), supplier tabs, search, "Same as last time" (copies the last sent order), "Clear order". Each item has − / + and a number field. The draft is kept on this device until sent. "Send today's orders" opens Send to suppliers.
+- Tab bar at the bottom: Order, Rico, History, and for admins More (Suppliers, Items, Units, Record, Devices, Settings). Tap a tab, press and slide along the bar, or swipe the page sideways to move between Order, Rico and History.
+- Order screen: a green summary card (items picked, a ring showing how many suppliers have items), a "Rico suggests" card with today's most due supplier (one tap adds its usual items), supplier tabs, search, "Same as last time" (copies the last sent order), "Clear order". Each item has − / + (hold to count up or down quickly) and a number field (tap it and type; the 0 clears itself). Press and hold an item for Add 1 / 5 / 10 or Remove. The draft is kept on this device until sent. "Send today's orders" opens Send to suppliers.
+- Talking to you: type, or tap the microphone in the message box and speak in Kurdish or English.
 - Send to suppliers: one card per supplier. "Send via WhatsApp" opens WhatsApp with the order text (Iraqi numbers are converted to +964). Suppliers without a number (or items with no supplier) get "Mark as sent". A PDF order sheet is on each card. When every card is sent, the order is saved in History and the draft is cleared.
 - History: sent orders grouped by day; "Order again" copies one into the draft; admins can delete an order.
 - Suppliers (admin): add/edit name, WhatsApp number and an order reminder (time + weekdays, Erbil time). "Arrange items" on the Order screen sets the item order per supplier.
@@ -843,6 +989,39 @@ function quickReply(w: World, body: any, emit: Emit): boolean {
       say(late.length ? `${ku ? "داواکارییە دواکەوتووەکان" : "Late supplier orders"}:\n${late.map((sp) => `- ${sp.name}`).join("\n")}` : ku ? "لە ئێستادا داواکارییەکی دواکەوتوو نەدۆزرایەوە." : "No supplier orders are late right now.");
       return true;
     }
+    case "check_order": {
+      const r: any = toolReviewDraft(w, w.cart);
+      if (r.empty) { say(ku ? "ڕەشنووسی داواکاری لەم ئامێرەدا بەتاڵە. دەتوانم لەسەر بنەمای داواکارییەکانی پێشوو یەکێکت بۆ ئامادە بکەم." : "Your order draft is empty. I can prepare one from your past orders."); return true; }
+      const out: string[] = [];
+      let issues = 0;
+      for (const sp of r.suppliers) {
+        const notes: string[] = [];
+        if (sp.already_sent_today) notes.push(ku ? "⚠︎ ئەمڕۆ پێشتر نێردراوە" : "⚠︎ already sent today");
+        for (const m of sp.usually_ordered_but_missing) notes.push(ku ? `ونە: ${m.name} (بەزۆری ${m.usual_qty} ${m.unit})` : `Missing: ${m.name} (usually ${m.usual_qty} ${m.unit})`);
+        for (const u of sp.quantity_far_from_usual) notes.push(ku ? `${u.name}: ${u.in_draft} لە جیاتی ${u.usual_qty}ی ئاسایی` : `${u.name}: ${u.in_draft} vs usual ${u.usual_qty} ${u.unit}`);
+        issues += notes.length;
+        out.push(`**${sp.supplier}** · ${sp.items_in_draft} ${ku ? "کاڵا" : "items"}${notes.length ? "\n" + notes.map((n) => `- ${n}`).join("\n") : ku ? " ✓" : " ✓ looks normal"}`);
+      }
+      if (r.usually_ordered_today_but_not_in_draft.length) {
+        issues++;
+        out.push(`${ku ? "ئەمڕۆ بەزۆری داوا دەکرێن بەڵام لە ڕەشنووسدا نین" : "Usually ordered today but not in the draft"}: ${r.usually_ordered_today_but_not_in_draft.join(", ")}`);
+      }
+      say(`${issues ? (ku ? "ئەمانەم بینی پێش ناردن:" : "A few things to check before sending:") : (ku ? "داواکارییەکەت ئاسایی دیارە." : "Your order looks normal.")}\n\n${out.join("\n\n")}`);
+      return true;
+    }
+    case "week_insights": {
+      const r: any = toolInsights(w, { days: 7 });
+      const pct = (a: number, b: number) => b ? `${a >= b ? "+" : ""}${Math.round((a - b) / b * 100)}%` : "";
+      const parts = [
+        `${ku ? "٧ ڕۆژی ڕابردوو" : "Last 7 days"}: **${r.orders.this_period}** ${ku ? "داواکاری" : "orders"} ${pct(r.orders.this_period, r.orders.previous)} · ${r.item_lines.this_period} ${ku ? "کاڵا" : "item lines"}`,
+      ];
+      if (r.top_items.length) parts.push(`${ku ? "زۆرترین داواکراو" : "Most ordered"}:\n${r.top_items.slice(0, 5).map((t: any) => `- ${t.name} × ${t.times}`).join("\n")}`);
+      if (r.biggest_changes_in_quantity.length) parts.push(`${ku ? "گۆڕانی گەورە لە بڕدا" : "Biggest changes"}:\n${r.biggest_changes_in_quantity.slice(0, 4).map((m: any) => `- ${m.name}: ${m.previous} → ${m.this_period}`).join("\n")}`);
+      if (r.late_or_missed_reminders.length) parts.push(`${ku ? "دواکەوتن" : "Late or missed"}:\n${r.late_or_missed_reminders.slice(0, 4).map((x: string) => `- ${x}`).join("\n")}`);
+      if (r.gone_quiet_30_days.length) parts.push(`${ku ? "٣٠ ڕۆژە داوا نەکراون" : "Not ordered for 30+ days"}: ${r.gone_quiet_30_days.slice(0, 6).map((d: any) => d.name).join(", ")}`);
+      say(parts.join("\n\n"));
+      return true;
+    }
     case "how_to_send":
       say(ku ? "لە پەڕەی داواکاری کاڵاکان و ژمارەیان هەڵبژێرە، پاشان «ناردنی داواکاریی ئەمڕۆ» بکە. داواکاریی هەر دابینکەرێک بپشکنە و لە WhatsApp بینێرە." : "On Order, choose items and quantities, then tap Send today's orders. Review each supplier's list and send it through WhatsApp.");
       return true;
@@ -892,6 +1071,12 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   if ((totalCount ?? 0) >= REPLIES_PER_HOUR_TOTAL) return errorStream("rate_limited");
 
   const w = await loadWorld(db, s);
+  if (body.cart && typeof body.cart === "object" && !Array.isArray(body.cart)) {
+    for (const [id, q] of Object.entries(body.cart).slice(0, 400)) {
+      const n = Number(q);
+      if (n > 0 && n <= 99999) w.cart[text(id, 120)] = n;
+    }
+  }
   if (body.quickAction) {
     const events: any[] = [];
     if (quickReply(w, body, (event) => events.push(event))) {
@@ -943,6 +1128,79 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   return new Response(stream, { headers: { ...cors, "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" } });
 }
 
+/* ---------------- voice messages ----------------
+   The app records a short clip and sends it here as base64. Kurdish goes to
+   Gemini first (it handles Sorani in Arabic script well); English goes to
+   Groq's Whisper first. Either falls back to the other when available. The
+   clip is never stored. Counts toward the same hourly limits as replies. */
+const AUDIO_TYPES = ["audio/webm", "audio/mp4", "audio/mpeg", "audio/ogg", "audio/wav", "audio/x-m4a", "audio/aac", "audio/m4a"];
+const MAX_AUDIO_B64 = 2_800_000;   // about 2 MB of audio, far more than a 60-second voice note needs
+async function transcribeGroq(key: string, bytes: Uint8Array<ArrayBuffer>, mime: string, lang: string, signal: AbortSignal) {
+  const form = new FormData();
+  const ext = mime.includes("mp4") || mime.includes("m4a") || mime.includes("aac") ? "m4a" : mime.includes("ogg") ? "ogg" : mime.includes("wav") ? "wav" : mime.includes("mpeg") ? "mp3" : "webm";
+  form.append("file", new Blob([bytes], { type: mime }), `voice.${ext}`);
+  form.append("model", "whisper-large-v3-turbo");
+  form.append("response_format", "json");
+  form.append("temperature", "0");
+  if (lang === "en") form.append("language", "en");
+  const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", signal, headers: { authorization: `Bearer ${key}` }, body: form });
+  if (!res.ok) { console.error("groq transcribe", res.status); return null; }
+  const data = await res.json().catch(() => null);
+  return typeof data?.text === "string" ? data.text : null;
+}
+async function transcribeGemini(key: string, b64: string, mime: string, signal: AbortSignal) {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(DEFAULT_GEMINI_MODEL)}:generateContent`, {
+    method: "POST", signal, headers: { "x-goog-api-key": key, "content-type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [
+        { text: "Transcribe this voice message exactly as spoken. It comes from a restaurant kitchen in Erbil and is usually Kurdish (Sorani -- write it in Arabic script) or English; product names may be Arabic. Return only the transcript, with no quotes or notes. If nothing is said, return nothing." },
+        { inline_data: { mime_type: mime, data: b64 } },
+      ] }],
+      generationConfig: { maxOutputTokens: 600, temperature: 0, thinkingConfig: { thinkingLevel: "minimal" } },
+    }),
+  });
+  if (!res.ok) { console.error("gemini transcribe", res.status); return null; }
+  const data = await res.json().catch(() => null);
+  const parts = data?.candidates?.[0]?.content?.parts ?? [];
+  return parts.filter((p: any) => typeof p.text === "string" && !p.thought).map((p: any) => p.text).join("").trim();
+}
+export async function handleTranscribe(db: any, s: Session, body: any, cors: Record<string, string>) {
+  const out = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  const b64 = typeof body.audio === "string" ? body.audio.replace(/^data:[^,]*,/, "") : "";
+  const mime = String(body.mime ?? "").split(";")[0].trim().toLowerCase();
+  if (!b64 || b64.length > MAX_AUDIO_B64 || !/^[A-Za-z0-9+/=]+$/.test(b64)) return out({ error: "invalid_audio" }, 400);
+  if (!AUDIO_TYPES.includes(mime)) return out({ error: "invalid_audio" }, 400);
+  const cfg = await config(db);
+  const groqKey = cfg.provider === "groq" ? cfg.key : "";
+  const geminiKey = cfg.geminiKey;
+  if (!groqKey && !geminiKey) return out({ error: "not_configured" }, 503);
+  const sinceHour = new Date(Date.now() - 3600_000).toISOString();
+  const key = s.deviceId || `__session:${s.id}`;
+  const [{ count }, { count: total }] = await Promise.all([
+    db.from("app_assistant_usage").select("id", { count: "exact", head: true }).eq("device_id", key).gte("created_at", sinceHour),
+    db.from("app_assistant_usage").select("id", { count: "exact", head: true }).gte("created_at", sinceHour),
+  ]);
+  if ((count ?? 0) >= REPLIES_PER_HOUR || (total ?? 0) >= REPLIES_PER_HOUR_TOTAL) return out({ error: "rate_limited" }, 429);
+  let bytes: Uint8Array<ArrayBuffer>;
+  try { bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); } catch { return out({ error: "invalid_audio" }, 400); }
+  if (bytes.length < 800) return out({ text: "" });   // a tap, not a message
+  const lang = body.lang === "ku" ? "ku" : "en";
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  let text: string | null = null, model = "";
+  try {
+    const order = lang === "ku" ? ["gemini", "groq"] : ["groq", "gemini"];
+    for (const p of order) {
+      if (text) break;
+      if (p === "groq" && groqKey) { text = await transcribeGroq(groqKey, bytes, mime, lang, ctrl.signal).catch(() => null); model = "whisper-large-v3-turbo"; }
+      if (p === "gemini" && geminiKey && !text) { text = await transcribeGemini(geminiKey, b64, mime, ctrl.signal).catch(() => null); model = DEFAULT_GEMINI_MODEL; }
+    }
+  } finally { clearTimeout(timer); }
+  await db.from("app_assistant_usage").insert({ device_id: key, role: s.role, model: `transcribe:${model || "none"}`, input_tokens: 0, output_tokens: 0 }).then(() => {}, () => {});
+  if (text === null) return out({ error: ctrl.signal.aborted ? "busy" : "failed" }, 502);
+  return out({ text: text.trim().slice(0, 2000) });
+}
+
 async function runTool(db: any, w: World, s: Session, name: string, a: any, emit: Emit, auto: boolean): Promise<unknown> {
   if (!STATUS_TOOLS.has(name)) return { error: "Unknown tool." };
   switch (name) {
@@ -951,6 +1209,8 @@ async function runTool(db: any, w: World, s: Session, name: string, a: any, emit
     case "order_history": return toolOrderHistory(w, a);
     case "ordering_patterns": return toolPatterns(w, a);
     case "suggest_order": return toolSuggestOrder(w, a);
+    case "review_draft": return toolReviewDraft(w, w.cart);
+    case "insights": return toolInsights(w, a);
     case "recent_changes": return toolRecentChanges(w, a);
     case "stock_status": return toolStockStatus(w);
     case "set_stock_count": return await toolSetStockCount(db, w, a);
@@ -974,4 +1234,4 @@ async function runTool(db: any, w: World, s: Session, name: string, a: any, emit
 }
 
 /* For local tests only (not used by the app). */
-export const _internals = { loadWorld, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, contextBlock, proposeOrder, proposeNewItem, erbilParts };
+export const _internals = { loadWorld, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, erbilParts };

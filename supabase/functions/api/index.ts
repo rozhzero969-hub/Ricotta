@@ -29,11 +29,13 @@
 //   POST   admin/pins                 {adminPin, staffPin} (admin)
 //   PUT    devices/me/name            {name}                    who is using this device (for Rico)
 //   POST   assistant/chat             {messages, lang, ...}     Rico's reply, streamed (see assistant.ts)
+//   POST   assistant/transcribe       {audio, mime, lang}       a voice message to Rico, as text
+//   GET    assistant/suggestion                                 today's "Rico suggests" card (no AI call)
 //   GET    assistant/status                                     is Rico connected?
 //   GET    assistant/setup-status                               admin-only Groq one-time setup state
 //   PUT    assistant/groq-key          {key}                    admin-only, add-only
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { assistantSetupStatus, assistantStatus, handleChat, saveGroqKey } from "./assistant.ts";
+import { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, saveGroqKey } from "./assistant.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -66,7 +68,7 @@ const cors = {
   "Access-Control-Max-Age": "86400",
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
-  status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+  status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
 });
 const ok = () => json({ ok: true });
 const fail = (error: string, status = 400) => json({ error }, status);
@@ -79,7 +81,30 @@ const hash = async (value: string) => {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((x) => x.toString(16).padStart(2, "0")).join("");
 };
-const readBody = async (req: Request): Promise<any> => { try { return await req.json(); } catch { return {}; } };
+/* Request bodies are small JSON everywhere except a voice clip for Rico.
+   Anything larger than the route allows is refused before it is parsed, so a
+   huge upload can't tie up the function. */
+const MAX_BODY_BYTES = 256 * 1024;
+const MAX_AUDIO_BODY_BYTES = 3 * 1024 * 1024;
+class BodyTooLarge extends Error {}
+const readBody = async (req: Request, max = MAX_BODY_BYTES): Promise<any> => {
+  const declared = Number(req.headers.get("content-length") || 0);
+  if (declared > max) throw new BodyTooLarge();
+  let raw = "";
+  try { raw = await req.text(); } catch { return {}; }
+  if (raw.length > max) throw new BodyTooLarge();
+  try { return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+};
+/* A supplier reminder is stored as JSON; only these fields in these shapes
+   are kept, so a client can't park arbitrary data in the database. */
+function cleanReminder(r: any) {
+  if (!r || typeof r !== "object") return null;
+  const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(r.time ?? "")) ? String(r.time) : null;
+  const days = Array.isArray(r.days) ? [...new Set(r.days.map(Number).filter((d: number) => Number.isInteger(d) && d >= 0 && d <= 6))] : [];
+  const updatedAt = r.updatedAt && !isNaN(Date.parse(r.updatedAt)) ? new Date(r.updatedAt).toISOString() : null;
+  if (!time) return r.enabled ? null : (updatedAt ? { enabled: false, updatedAt } : null);
+  return { enabled: !!r.enabled, time, days, ...(updatedAt ? { updatedAt } : {}) };
+}
 /* Rejects the most obviously guessable 6-digit PINs: all one digit
    (000000, 111111...) or a straight run (123456, 654321, ...). Not a full
    strength check -- just closes the easiest guesses first. */
@@ -370,7 +395,7 @@ async function login(req: Request) {
 const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | null> = {
   suppliers: (id, b) => text(b.name) ? {
     id, name: text(b.name), phone: text(b.phone, 40) || null,
-    reminder: b.reminder && typeof b.reminder === "object" ? b.reminder : null, updated_at: nowIso(),
+    reminder: cleanReminder(b.reminder), updated_at: nowIso(),
   } : null,
   items: (id, b) => text(b.name) ? {
     id, name: text(b.name), unit_id: text(b.unit, 120) || null,
@@ -384,6 +409,10 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
 async function saveOrder(s: Session, b: any) {
   const id = text(b.id, 160);
   if (!id || !Array.isArray(b.entries)) return fail("invalid_order");
+  // A real order is at most a few dozen suppliers and a few hundred lines;
+  // anything far beyond that is refused instead of written line by line.
+  const lineCount = b.entries.reduce((n: number, e: any) => n + (Array.isArray(e?.items) ? e.items.length : 0), 0);
+  if (b.entries.length > 80 || lineCount > 800) return fail("invalid_order");
   const { data: existing } = await app("orders").select("id").eq("id", id).maybeSingle();
   if (existing) return ok();   // already saved (a retry) -- never duplicate its lines
   const date = b.date && !isNaN(Date.parse(b.date)) ? b.date : nowIso();
@@ -399,7 +428,7 @@ async function saveOrder(s: Session, b: any) {
     supplier_name: supplierNames.get(text(e.supplierId, 120)) ?? (text(e.supplierName, 160) || null),
     item_id: text(i.itemId, 120) || "legacy",
     item_name: text(i.name) || text(i.itemId) || "Item", unit_id: text(i.unit, 120) || null,
-    qty: Math.max(Number(i.qty) || 0, 0.0001),
+    qty: Math.min(Math.max(Number(i.qty) || 0, 0.0001), 99999),
   })));
   if (lines.length) {
     const { error: e2 } = await app("order_lines").insert(lines);
@@ -543,7 +572,7 @@ Deno.serve(async (req) => {
     const s = await authenticate(req);
     if (!s) return fail("unauthorized", 401);
     const admin = s.role === "admin";
-    const b = M === "GET" || M === "OPTIONS" ? {} : await readBody(req);
+    const b = M === "GET" || M === "OPTIONS" ? {} : await readBody(req, path === "assistant/transcribe" ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES);
     let m: RegExpMatchArray | null;
 
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
@@ -660,6 +689,8 @@ Deno.serve(async (req) => {
 
     // Rico, the assistant
     if (M === "POST" && path === "assistant/chat") return await handleChat(db, s, b, cors, req.signal);
+    if (M === "POST" && path === "assistant/transcribe") return await handleTranscribe(db, s, b, cors);
+    if (M === "GET" && path === "assistant/suggestion") return json(await orderSuggestion(db, s));
     if (M === "GET" && path === "assistant/status") return json(await assistantStatus(db));
     if (M === "GET" && path === "assistant/setup-status") return admin ? json(await assistantSetupStatus(db)) : fail("forbidden", 403);
     if (M === "PUT" && path === "assistant/groq-key") {
@@ -672,7 +703,13 @@ Deno.serve(async (req) => {
     if (path === "push/subscription") {
       const endpoint = text(b.endpoint, 1000);
       if (!/^https:\/\//.test(endpoint)) return fail("invalid_endpoint");
-      if (M === "DELETE") { await app("push_subscriptions").delete().eq("endpoint", endpoint); return ok(); }
+      // A device may only remove its own subscription (admins may remove any).
+      if (M === "DELETE") {
+        let q = app("push_subscriptions").delete().eq("endpoint", endpoint);
+        if (!admin) q = s.deviceId ? q.eq("device_id", s.deviceId) : q.is("device_id", null);
+        await q;
+        return ok();
+      }
       if (M === "PUT") {
         const p256dh = text(b.p256dh, 200), auth = text(b.auth, 100);
         if (!p256dh || !auth) return fail("invalid_keys");
@@ -683,7 +720,9 @@ Deno.serve(async (req) => {
       }
     }
     if (M === "PUT" && path === "push/lang") {
-      await app("push_subscriptions").update({ lang: b.lang === "ku" ? "ku" : "en", updated_at: nowIso() }).eq("endpoint", text(b.endpoint, 1000));
+      let q = app("push_subscriptions").update({ lang: b.lang === "ku" ? "ku" : "en", updated_at: nowIso() }).eq("endpoint", text(b.endpoint, 1000));
+      if (!admin) q = s.deviceId ? q.eq("device_id", s.deviceId) : q.is("device_id", null);
+      await q;
       return ok();
     }
     if (M === "POST" && path === "push/send") return admin ? await forwardPush(b) : fail("forbidden", 403);
@@ -733,6 +772,7 @@ Deno.serve(async (req) => {
 
     return fail("not_found", 404);
   } catch (e) {
+    if (e instanceof BodyTooLarge) return fail("too_large", 413);
     console.error(path, e);
     return fail("server_error", 500);
   }

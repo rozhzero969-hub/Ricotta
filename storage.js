@@ -30,9 +30,9 @@ function clearApiSession(){ lset('apiSession', null); }
 
 /* Returns {ok, status, data}. Never throws. A 401 on a signed-in device means
    the session was revoked (PIN change, remote log out) or expired. */
-async function api(path, {method='GET', body} = {}){
+async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
   const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort(), API_TIMEOUT_MS);
+  const timer = setTimeout(()=>controller.abort(), timeout);
   const s = apiSession();
   const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||'')};
   if(s) headers['x-session-token'] = s.token;
@@ -108,13 +108,17 @@ async function apiLogin(pin){
    if a write fails it is kept on this device and retried later (on the next
    heartbeat, when the connection comes back, or at the next start-up). */
 function outbox(){ return lget('outbox') || []; }
+/* Returns 'saved', 'queued' (kept here and retried later) or 'failed'. A
+   401 is queued too: the sign-in ran out, and the job is sent after the next
+   sign-in instead of being thrown away. */
 async function sendOrQueue(path, method, body){
   const r = await api(path, {method, body});
-  if(r.ok) return true;
-  if(r.status === 0 || r.status >= 500){
+  if(r.ok) return 'saved';
+  if(r.status === 0 || r.status === 401 || r.status >= 500){
     lset('outbox', [...outbox(), {path, method, body}]);
+    return 'queued';
   }
-  return false;
+  return 'failed';
 }
 let outboxBusy = false;
 async function flushOutbox(){
@@ -123,9 +127,14 @@ async function flushOutbox(){
   if(!pending.length) return;
   outboxBusy = true;
   const left = [];
-  for(const job of pending){
+  for(let i = 0; i < pending.length; i++){
+    const job = pending[i];
     const r = await api(job.path, {method:job.method, body:job.body});
-    if(!r.ok && (r.status === 0 || r.status >= 500)) left.push(job);   // 4xx = never going to work; drop it
+    // Keep it for later when offline, on a server error, or when the session
+    // just expired (401); any other 4xx will never work, so it is dropped.
+    if(!r.ok && (r.status === 0 || r.status === 401 || r.status >= 500)) left.push(job);
+    // Signed out: stop here and keep everything that wasn't tried yet.
+    if(r.status === 401){ left.push(...pending.slice(i + 1)); break; }
   }
   lset('outbox', left.length ? left : null);
   outboxBusy = false;

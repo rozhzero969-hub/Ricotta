@@ -133,14 +133,15 @@ const T = {
     ricoPrepareIt:'Prepare it',
     ricoGreeting:(part,name)=>'Good '+part+(name?', '+name:'')+'.',
     ricoSuggestions:admin=>admin
-      ? ['Prepare today’s order','What did we order last time?','Which days are our busiest?','Add a new item','Which items were added recently?','Are any orders late today?']
-      : ['Prepare today’s order','What did we order last time?','Which days are our busiest?','How do I send an order?'],
+      ? ['Prepare today’s order','Check my order','How was this week?','What did we order last time?','Add a new item','Are any orders late today?']
+      : ['Prepare today’s order','Check my order','What did we order last time?','How do I send an order?'],
     ricoIntro:'I’m Rico, your kitchen assistant. I know your suppliers, items and every order you’ve sent. Ask me anything, in English or Kurdish.',
     ricoAskName:'What should Rico call you?', ricoNamePlaceholder:'Your first name',
     ricoStatus:{thinking:'Thinking…', find_items:'Looking through your items…', list_suppliers:'Checking your suppliers…', order_history:'Reading order history…',
       ordering_patterns:'Working out your busy days…', suggest_order:'Preparing a suggestion…', recent_changes:'Checking recent changes…', remember_name:'Saving your name…',
       propose_order_draft:'Getting the order ready…', propose_new_item:'Preparing the new item…', propose_edit_item:'Preparing the change…',
-      propose_new_supplier:'Preparing the new supplier…', propose_notification:'Writing the notification…', open_screen:'One moment…'},
+      propose_new_supplier:'Preparing the new supplier…', propose_notification:'Writing the notification…', open_screen:'One moment…',
+      review_draft:'Checking your order…', insights:'Looking at this week…', stock_status:'Checking stock…', set_stock_count:'Updating the stock count…'},
     ricoErrors:{not_configured:'Rico is disconnected. Please ask the system owner to restore its Gemini connection.', rate_limited:'That’s a lot of questions in one hour — give Rico a short break and try again soon.',
       busy:'Rico is very busy right now. Try again in a moment.', failed:'Something went wrong. Try again.', offline:'No connection. Check the internet and try again.',
       key_rejected:'Gemini rejected Rico’s key. Please ask the system owner to update it.', model_unavailable:'Gemini is unavailable right now. Please try again later.',
@@ -172,7 +173,21 @@ const T = {
     trackStockHint:'Rico keeps an ESTIMATE of how much is on hand and suggests a top-up order when it drops to or below the par level. Correct it any time by telling Rico the real count.',
     parQty:'Par level (normal target)', parBusyBoost:'Busy-day boost (%)',
     parCurrentEstimate:(qty,unit)=>`Current estimate: ${qty} ${unit}`,
-    parQtyRequired:'Enter a par level greater than 0.'
+    parQtyRequired:'Enter a par level greater than 0.',
+    more:'More', moreTitle:'More', undo:'Undo', orderCleared:'Order cleared', itemRemoved:'Removed from the order',
+    cmAdd:n=>'Add '+n, cmType:'Type a quantity', cmRemove:'Remove from order',
+    ricoSuggestsLabel:'Rico suggests',
+    ricoSuggestUsual:(sup,day)=>'Your usual '+day+' order from '+sup+'.',
+    ricoSuggestDue:(sup,time)=>sup+' was due at '+time+' and hasn’t been sent yet.',
+    ricoSuggestAdd:n=>'Add '+n+' item'+(n===1?'':'s'), ricoSuggestAdded:(n,sup)=>n+' item'+(n===1?'':'s')+' from '+sup+' added', ricoSuggestDismiss:'Hide suggestion',
+    weekdays:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
+    ricoWorking:'Working…', ricoWorkedSteps:n=>'Worked through '+n+' step'+(n===1?'':'s'),
+    ricoMic:'Speak to Rico', ricoListening:'Listening… tap to send', ricoTranscribing:'Writing down what you said…',
+    ricoMicDenied:'Microphone access is blocked. Allow it for Ricotta Orders in your phone settings.',
+    ricoMicFailed:'I couldn’t make out that recording. Try again, a little closer to the phone.',
+    ricoMicUnsupported:'Voice messages aren’t available in this browser.',
+    ricoCardSet:n=>'Change '+n+' item'+(n===1?'':'s')+' in your draft', ricoSetsDraft:'Only these items change; the rest of your draft stays as it is.', ricoApplyChanges:'Apply changes',
+    ricoRemoveLine:'remove', ricoOpenSend:'Open Send to suppliers'
   },
   ku:{
     workspaceLabel:'چێشتخانەکەت بە ڕێکوپێکی', welcomeBack:'بەخێربێیتەوە',
@@ -307,14 +322,15 @@ const T = {
     ricoPrepareIt:'ئامادەی بکە',
     ricoGreeting:(part,name)=>({morning:'بەیانیت باش',afternoon:'ڕۆژت باش',evening:'ئێوارەت باش'})[part]+(name?'، '+name:'')+'.',
     ricoSuggestions:admin=>admin
-      ? ['داواکاریی ئەمڕۆ ئامادە بکە','جاری پێشوو چیمان داوا کرد؟','کام ڕۆژ زۆرترین داواکاریمان هەیە؟','کاڵایەکی نوێ زیاد بکە','دوایین کاڵا زیادکراوەکان چین؟','ئەمڕۆ هیچ داواکارییەک دواکەوتووە؟']
-      : ['داواکاریی ئەمڕۆ ئامادە بکە','جاری پێشوو چیمان داوا کرد؟','کام ڕۆژ زۆرترین داواکاریمان هەیە؟','چۆن داواکارییەک بنێرم؟'],
+      ? ['داواکاریی ئەمڕۆ ئامادە بکە','داواکارییەکەم بپشکنە','ئەم هەفتەیە چۆن بوو؟','جاری پێشوو چیمان داوا کرد؟','کاڵایەکی نوێ زیاد بکە','ئەمڕۆ هیچ داواکارییەک دواکەوتووە؟']
+      : ['داواکاریی ئەمڕۆ ئامادە بکە','داواکارییەکەم بپشکنە','جاری پێشوو چیمان داوا کرد؟','چۆن داواکارییەک بنێرم؟'],
     ricoIntro:'من ریکۆم، یاریدەدەری چێشتخانەکەت. دابینکەر و کاڵاکانت و هەموو ئەو داواکارییانەی ناردووتە دەناسم. هەر پرسیارێکت هەیە بە کوردی یان ئینگلیزی بیپرسە.',
     ricoAskName:'ریکۆ بە چی بانگت بکات؟', ricoNamePlaceholder:'ناوی یەکەمت',
     ricoStatus:{thinking:'بیر دەکاتەوە…', find_items:'سەیری کاڵاکانت دەکات…', list_suppliers:'دابینکەرەکانت دەپشکنێت…', order_history:'مێژووی داواکارییەکان دەخوێنێتەوە…',
       ordering_patterns:'ڕۆژە قەرەباڵغەکانت هەژمار دەکات…', suggest_order:'پێشنیارێک ئامادە دەکات…', recent_changes:'دوایین گۆڕانکارییەکان دەپشکنێت…', remember_name:'ناوەکەت پاشەکەوت دەکات…',
       propose_order_draft:'داواکارییەکە ئامادە دەکات…', propose_new_item:'کاڵا نوێیەکە ئامادە دەکات…', propose_edit_item:'گۆڕانکارییەکە ئامادە دەکات…',
-      propose_new_supplier:'دابینکەرە نوێیەکە ئامادە دەکات…', propose_notification:'ئاگادارکردنەوەکە دەنووسێت…', open_screen:'تۆزێک چاوەڕێ بکە…'},
+      propose_new_supplier:'دابینکەرە نوێیەکە ئامادە دەکات…', propose_notification:'ئاگادارکردنەوەکە دەنووسێت…', open_screen:'تۆزێک چاوەڕێ بکە…',
+      review_draft:'داواکارییەکەت دەپشکنێت…', insights:'سەیری ئەم هەفتەیە دەکات…', stock_status:'کۆگا دەپشکنێت…', set_stock_count:'ژمارەی کۆگا نوێ دەکاتەوە…'},
     ricoErrors:{not_configured:'ریکۆ پەیوەست نییە. تکایە داوا لە خاوەنی سیستەمەکە بکە پەیوەندیی Gemini بگەڕێنێتەوە.', rate_limited:'لە یەک کاتژمێردا پرسیاری زۆرت کرد — تۆزێک پشوو بدە و دواتر هەوڵ بدەرەوە.',
       busy:'ریکۆ ئێستا زۆر سەرقاڵە. تۆزێکی تر هەوڵ بدەرەوە.', failed:'هەڵەیەک ڕوویدا. دووبارە هەوڵ بدەرەوە.', offline:'پەیوەندی نییە. ئینتەرنێت بپشکنە و دووبارە هەوڵ بدەرەوە.',
       key_rejected:'Gemini کلیلی ریکۆی ڕەتکردەوە. تکایە داوا لە خاوەنی سیستەمەکە بکە نوێی بکاتەوە.', model_unavailable:'Gemini ئێستا بەردەست نییە. دواتر هەوڵ بدەرەوە.',
@@ -346,6 +362,20 @@ const T = {
     trackStockHint:'ریکۆ خەمڵاندنێک دەپارێزێت لەوەی چەند دانە ماوە و کاتێک بگاتە ئاستی par یان کەمتر، پێشنیاری داواکاریی زیادکردن دەکات. هەر کاتێک بتەوێت بە ڕاستی بژماردنی ڕاستەقینە بە ریکۆ بڵێ.',
     parQty:'ئاستی par (ئامانجی ئاسایی)', parBusyBoost:'زیادکردن بۆ ڕۆژی قەرەباڵغ (%)',
     parCurrentEstimate:(qty,unit)=>`خەمڵاندنی ئێستا: ${qty} ${unit}`,
-    parQtyRequired:'ئاستی parـێک بنووسە کە لە ٠ زیاتر بێت.'
+    parQtyRequired:'ئاستی parـێک بنووسە کە لە ٠ زیاتر بێت.',
+    more:'زیاتر', moreTitle:'زیاتر', undo:'گەڕاندنەوە', orderCleared:'داواکاری پاککرایەوە', itemRemoved:'لە داواکاری لابرا',
+    cmAdd:n=>n+' زیاد بکە', cmType:'بڕێک بنووسە', cmRemove:'لابردن لە داواکاری',
+    ricoSuggestsLabel:'پێشنیاری ریکۆ',
+    ricoSuggestUsual:(sup,day)=>'داواکاریی ئاسایی ڕۆژی '+day+' لە '+sup+'.',
+    ricoSuggestDue:(sup,time)=>'کاتی '+sup+' '+time+' بوو و هێشتا نەنێردراوە.',
+    ricoSuggestAdd:n=>'زیادکردنی '+n+' کاڵا', ricoSuggestAdded:(n,sup)=>n+' کاڵا لە '+sup+' زیادکرا', ricoSuggestDismiss:'شاردنەوەی پێشنیار',
+    weekdays:['یەکشەممە','دووشەممە','سێشەممە','چوارشەممە','پێنجشەممە','هەینی','شەممە'],
+    ricoWorking:'کار دەکات…', ricoWorkedSteps:n=>n+' هەنگاو تەواو کرا',
+    ricoMic:'قسە لەگەڵ ریکۆ بکە', ricoListening:'گوێ دەگرێت… بۆ ناردن دایبگرە', ricoTranscribing:'قسەکانت دەنووسێتەوە…',
+    ricoMicDenied:'مایکرۆفۆن داخراوە. لە ڕێکخستنی مۆبایلەکەت ڕێگەی پێ بدە بۆ Ricotta Orders.',
+    ricoMicFailed:'نەمتوانی تۆمارەکە تێبگەم. دووبارە هەوڵ بدەرەوە، کەمێک نزیکتر لە مۆبایلەکە.',
+    ricoMicUnsupported:'نامەی دەنگی لەم وێبگەڕەدا بەردەست نییە.',
+    ricoCardSet:n=>'گۆڕینی '+n+' کاڵا لە ڕەشنووسەکەت', ricoSetsDraft:'تەنها ئەم کاڵایانە دەگۆڕێن؛ باقی ڕەشنووسەکەت وەک خۆی دەمێنێتەوە.', ricoApplyChanges:'جێبەجێکردنی گۆڕانکارییەکان',
+    ricoRemoveLine:'لابردن', ricoOpenSend:'کردنەوەی ناردن بۆ دابینکەران'
   }
 };

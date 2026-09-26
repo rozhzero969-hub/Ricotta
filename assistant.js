@@ -14,7 +14,7 @@ const RICO_HISTORY_SENT = 24;           // messages sent to the server with each
 const RICO_LATE_AFTER_MIN = 60;
 const RICO_LATE_WINDOW_MIN = 4*60;
 
-NAV_ICONS.assistant = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.5a7.5 7.5 0 0 1-11 6.6L4 20l1.4-4.3A7.5 7.5 0 1 1 20 11.5Z"/><path d="M12.5 7.8l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8Z"/></svg>`;
+NAV_ICONS.assistant = ricoSparkSvg('currentColor');
 const ICON_SEND_UP = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>`;
 const ICON_STOP = `<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"/></svg>`;
 const ICON_NEW_CHAT = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
@@ -26,15 +26,9 @@ let rico = {
   status: null,        // {configured, model} once fetched (admins, Settings)
 };
 
-/* ---------- Rico's face: an original mascot (a green orb with a sprout) ---------- */
+/* ---------- Rico's mark: a small spark in the restaurant green ---------- */
 function ricoAvatar(cls = ''){
-  return `<span class="rico-av ${cls}" aria-hidden="true"><svg viewBox="0 0 64 64">
-    <path class="rico-leaf" d="M32 15c.5-6.5 5-10.5 11.5-10.5C43 11 38.5 15 32 15Z" fill="#6FCF9A"/>
-    <path class="rico-leaf2" d="M31.5 15c-.3-4.5-3.4-7.3-7.9-7.3.3 4.5 3.4 7.3 7.9 7.3Z" fill="#85D9AA"/>
-    <g class="rico-eyes"><ellipse cx="24" cy="33" rx="3.3" ry="4.3" fill="#fff"/><ellipse cx="40" cy="33" rx="3.3" ry="4.3" fill="#fff"/></g>
-    <path d="M26 42.5c3.6 3 8.4 3 12 0" stroke="#6FCF9A" stroke-width="2.6" stroke-linecap="round" fill="none"/>
-    <circle cx="18" cy="40" r="2.6" fill="#6FCF9A" opacity=".35"/><circle cx="46" cy="40" r="2.6" fill="#6FCF9A" opacity=".35"/>
-  </svg></span>`;
+  return `<span class="rico-av ${cls}" aria-hidden="true">${ricoSparkSvg('#214F3D')}</span>`;
 }
 
 /* Remove chat copies written by older versions. The current chat stays in
@@ -121,7 +115,7 @@ function renderAssistant(){
   const alerts = late.length ? `<div class="rico-alerts">${late.map(l=>`
       <div class="rico-alert">
         <span class="rico-alert-dot" aria-hidden="true"></span>
-        <div class="rico-alert-text"><b>${esc(t('ricoLateTitle')(l.name))}</b><span>${esc(t('ricoLateSub')(l.time, Math.floor(l.mins/60), l.mins%60))}</span></div>
+        <div class="rico-alert-text"><b>${esc(t('ricoLateTitle')('\u2068'+l.name+'\u2069'))}</b><span>${esc(t('ricoLateSub')(l.time, Math.floor(l.mins/60), l.mins%60))}</span></div>
         <button class="btn btn-primary" data-rico-late="${esc(l.supplierId)}">${t('ricoPrepareIt')}</button>
       </div>`).join('')}</div>` : '';
   const thread = rico.messages.length
@@ -132,8 +126,8 @@ function renderAssistant(){
 function renderRicoIntro(){
   const chips = t('ricoSuggestions')(state.role==='admin');
   const actions = state.role==='admin'
-    ? ['prepare_order','last_order','busy_days','add_item','recent_items','late_orders']
-    : ['prepare_order','last_order','busy_days','how_to_send'];
+    ? ['prepare_order','check_order','week_insights','last_order','add_item','late_orders']
+    : ['prepare_order','check_order','last_order','how_to_send'];
   return `<div class="rico-intro">
     ${ricoAvatar('rico-av-xl')}
     <h2 class="rico-hello">${esc(ricoGreeting())}</h2>
@@ -147,15 +141,22 @@ function renderRicoMessage(m, i){
     return `<div class="rico-msg me" id="rico-m-${i}"><div class="rico-bubble" dir="auto">${esc(m.text)}</div></div>`;
   }
   const body = m.text ? ricoFormat(m.text) : '';
-  const typing = m.streaming && !m.text ? `<div class="rico-typing"><i></i><i></i><i></i><span>${esc(ricoStatusLabel(m.statusKey))}</span></div>` : '';
+  const steps = m.steps || [];
+  const typing = m.streaming && !m.text && !steps.length ? `<div class="rico-typing"><i></i><i></i><i></i><span>${esc(ricoStatusLabel(m.statusKey))}</span></div>` : '';
+  const tick = '<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  const stepRow = (k, running)=>`<div class="rico-step"><span class="rico-step-ic ${running?'spin':'ok'}">${running?'':tick}</span>${esc(ricoStatusLabel(k))}</div>`;
+  // What Rico is doing, as a short checklist; it folds into one line once the answer starts.
+  const stepsHtml = !steps.length ? '' : (m.streaming && !m.stepsDone)
+    ? `<div class="rico-steps">${steps.map((k,n)=>stepRow(k, n===steps.length-1)).join('')}</div>`
+    : `<details class="rico-steps done" data-rico-steps="${i}" ${m.stepsOpen?'open':''}><summary><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>${esc(t('ricoWorkedSteps')(steps.length))}</summary><div class="rico-steps-list">${steps.map(k=>stepRow(k,false)).join('')}</div></details>`;
   const err = m.error ? `<div class="rico-error">${esc(ricoErrorText(m.error))}${m.error==='not_configured' && state.role==='admin' ? ` <button class="rico-link" data-rico-settings>${t('ricoOpenSettings')}</button>` : ''}${m.retry ? ` <button class="rico-link" data-rico-retry="${i}">${t('retry')}</button>` : ''}</div>` : '';
-  const status = m.streaming && m.text && m.statusKey ? `<div class="rico-status-line"><i></i>${esc(ricoStatusLabel(m.statusKey))}</div>` : '';
+  const status = m.streaming && m.text && m.statusKey && m.stepsDone ? `<div class="rico-status-line"><i></i>${esc(ricoStatusLabel(m.statusKey))}</div>` : '';
   const cards = (m.proposals||[]).map(p=>renderRicoProposal(p, i)).join('');
   const picker = m.picker ? renderRicoSupplierPicker(m.picker, i) : '';
   return `<div class="rico-msg bot${m.streaming?' streaming':''}" id="rico-m-${i}">
-    ${ricoAvatar('rico-av-sm')}
+    ${ricoAvatar('rico-av-sm'+(m.streaming?' live':''))}
     <div class="rico-col">
-      ${typing}${body ? `<div class="rico-bubble" dir="auto"><div class="rico-text">${body}</div></div>` : ''}${status}${picker}${cards}${err}
+      ${stepsHtml}${typing}${body ? `<div class="rico-bubble" dir="auto"><div class="rico-text">${body}</div></div>` : ''}${status}${picker}${cards}${err}
     </div>
   </div>`;
 }
@@ -213,11 +214,13 @@ function renderRicoProposal(p, mi){
     const groups = {};
     p.lines.forEach(l=>{ (groups[l.supplier||t('noSupplier')] ||= []).push(l); });
     icon = NAV_ICONS.order;
-    title = t('ricoCardOrder')(p.lines.length);
-    body = Object.entries(groups).map(([sup, ls])=>`<div class="rico-card-group"><div class="rico-card-sup">${supplierMono(sup)}${esc(sup)}</div>${ls.map(l=>`<div class="rico-card-line"><span>${esc(l.name)}</span><b>${esc(String(l.qty))} ${esc(unitLabel(l.unitId))}</b></div>`).join('')}</div>`).join('')
+    title = p.mode==='set' ? t('ricoCardSet')(p.lines.length) : t('ricoCardOrder')(p.lines.length);
+    const amount = l=> p.mode==='set' && !(Number(l.qty)>0) ? `<s>${esc(t('ricoRemoveLine'))}</s>` : `${esc(String(l.qty))} ${esc(unitLabel(l.unitId))}`;
+    body = Object.entries(groups).map(([sup, ls])=>`<div class="rico-card-group"><div class="rico-card-sup">${supplierMono(sup)}${esc(sup)}</div>${ls.map(l=>`<div class="rico-card-line"><span dir="auto">${esc(l.name)}</span><b>${amount(l)}</b></div>`).join('')}</div>`).join('')
       + (p.note ? `<div class="rico-card-note">${esc(p.note)}</div>` : '')
-      + (p.mode==='add' ? `<div class="rico-card-note">${t('ricoAddsToDraft')}</div>` : '');
-    return ricoCard(icon, title, body, actions('order', t('ricoPutInOrder')), p);
+      + (p.mode==='add' ? `<div class="rico-card-note">${t('ricoAddsToDraft')}</div>` : '')
+      + (p.mode==='set' ? `<div class="rico-card-note">${t('ricoSetsDraft')}</div>` : '');
+    return ricoCard(icon, title, body, actions('order', p.mode==='set' ? t('ricoApplyChanges') : t('ricoPutInOrder')), p);
   }
   if(p.kind === 'new_item'){
     icon = ICON_PLUS; title = t('ricoCardNewItem');
@@ -241,6 +244,7 @@ function renderRicoProposal(p, mi){
     return ricoCard(icon, title, body, actions('notify', t('notifSend')), p);
   }
   if(p.kind === 'open'){
+    if(p.screen === 'send') return `<button class="rico-open" data-rico-open="send">${ICON_CHAT}<span>${esc(p.label || t('ricoOpenSend'))}</span></button>`;
     const key = {order:'order',history:'history',suppliers:'suppliers',itemsAdmin:'items',units:'units',record:'record',devices:'devicesTitle',settings:'settings'}[p.screen] || 'order';
     return `<button class="rico-open" data-rico-open="${esc(p.screen)}" data-rico-sup="${esc(p.supplierId||'')}">${NAV_ICONS[p.screen]||NAV_ICONS.order}<span>${esc(p.label || t('ricoOpenScreen')(t(key)))}</span></button>`;
   }
@@ -255,11 +259,73 @@ function ricoCard(icon, title, body, actions, p){
 
 /* ---------- Composer (lives in the bottom stack above the tab bar) ---------- */
 function renderRicoComposer(){
-  return `<form class="rico-composer" id="ricoComposer" autocomplete="off">
+  const voice = ricoVoiceSupported();
+  return `<form class="rico-composer ${ricoRecorder.active?'recording':''} ${ricoRecorder.busy?'transcribing':''}" id="ricoComposer" autocomplete="off">
     <label class="sr-only" for="ricoInput">${esc(t('ricoPlaceholder'))}</label>
-    <textarea id="ricoInput" rows="1" maxlength="2000" enterkeyhint="send" placeholder="${esc(t('ricoPlaceholder'))}" dir="auto"></textarea>
+    <textarea id="ricoInput" rows="1" maxlength="2000" enterkeyhint="send" placeholder="${esc(ricoComposerHint())}" dir="auto"></textarea>
+    ${voice ? `<button type="button" class="rico-mic" id="ricoMicBtn" aria-label="${esc(t('ricoMic'))}" aria-pressed="${ricoRecorder.active}">${ICON_MIC}<span class="rico-mic-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span></button>` : ''}
     <button type="submit" class="rico-send ${rico.streaming?'stop':''}" id="ricoSendBtn" aria-label="${esc(rico.streaming?t('ricoStop'):t('ricoSend'))}">${rico.streaming?ICON_STOP:ICON_SEND_UP}</button>
   </form>`;
+}
+function ricoComposerHint(){
+  return ricoRecorder.active ? t('ricoListening') : ricoRecorder.busy ? t('ricoTranscribing') : t('ricoPlaceholder');
+}
+
+/* ---------- Voice messages ----------
+   Tap the microphone, speak (Kurdish or English), tap again: the clip goes
+   to the server, comes back as text, and is sent to Rico like a typed
+   message. Recording stops by itself after a minute. Nothing is stored. */
+let ricoRecorder = {active:false, busy:false, rec:null, stream:null, chunks:[], timer:0};
+function ricoVoiceSupported(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder); }
+function blobToBase64(blob){
+  return new Promise((resolve, reject)=>{ const r = new FileReader(); r.onload = ()=>resolve(String(r.result).split(',')[1] || ''); r.onerror = reject; r.readAsDataURL(blob); });
+}
+async function ricoToggleVoice(){
+  if(ricoRecorder.busy) return;
+  if(ricoRecorder.active){ try{ ricoRecorder.rec.stop(); }catch(e){ ricoResetVoice(); } return; }
+  if(rico.streaming) return;
+  if(!ricoVoiceSupported()){ toast(t('ricoMicUnsupported'), 'warn'); return; }
+  let stream;
+  try{ stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true}}); }
+  catch(e){ toast(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError') ? t('ricoMicDenied') : t('ricoMicFailed'), 'warn'); return; }
+  const mime = ['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus'].find(m=>window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+  let rec;
+  try{ rec = new MediaRecorder(stream, mime ? {mimeType:mime, audioBitsPerSecond:32000} : undefined); }
+  catch(e){ stream.getTracks().forEach(tr=>tr.stop()); toast(t('ricoMicFailed'), 'warn'); return; }
+  Object.assign(ricoRecorder, {active:true, rec, stream, chunks:[]});
+  rec.ondataavailable = e=>{ if(e.data && e.data.size) ricoRecorder.chunks.push(e.data); };
+  rec.onstop = ()=>ricoFinishVoice(rec.mimeType || mime || 'audio/webm');
+  rec.start(250);
+  ricoRecorder.timer = setTimeout(()=>{ if(ricoRecorder.active) try{ rec.stop(); }catch(e){} }, 60000);
+  haptic(10);
+  ricoRefreshComposer();
+}
+function ricoResetVoice(){
+  clearTimeout(ricoRecorder.timer);
+  const rec = ricoRecorder.rec;
+  if(rec && rec.state !== 'inactive'){ rec.onstop = null; try{ rec.stop(); }catch(e){} }   // dropped, not sent
+  ricoRecorder.stream && ricoRecorder.stream.getTracks().forEach(tr=>tr.stop());
+  Object.assign(ricoRecorder, {active:false, rec:null, stream:null, chunks:[]});
+}
+async function ricoFinishVoice(mime){
+  const blob = new Blob(ricoRecorder.chunks, {type:mime});
+  ricoResetVoice();
+  ricoRecorder.busy = true;
+  ricoRefreshComposer();
+  try{
+    if(blob.size < 1200) return;   // just a tap
+    const audio = await blobToBase64(blob);
+    const r = await api('assistant/transcribe', {method:'POST', body:{audio, mime:mime.split(';')[0], lang:state.lang}, timeout:45000});
+    const text = r.ok && r.data && typeof r.data.text === 'string' ? r.data.text.trim() : '';
+    if(!text){
+      const code = r.data && r.data.error;
+      toast(code === 'rate_limited' ? t('ricoErrors').rate_limited : code === 'not_configured' ? t('ricoErrors').not_configured : r.status === 0 ? t('ricoErrors').offline : t('ricoMicFailed'), 'warn');
+      return;
+    }
+    ricoRecorder.busy = false;
+    ricoAsk(text);
+  }catch(e){ toast(t('ricoMicFailed'), 'warn'); }
+  finally{ ricoRecorder.busy = false; ricoRefreshComposer(); }
 }
 
 /* ---------- Events ---------- */
@@ -277,8 +343,10 @@ function attachAssistantEvents(){
     const draft = lget('ricoDraft'); if(draft && !input.value){ input.value = draft; grow(); }
     input.addEventListener('input', ()=>lset('ricoDraft', input.value || null));
   }
+  document.getElementById('ricoMicBtn')?.addEventListener('click', ()=>ricoToggleVoice());
   if(form) form.onsubmit = e=>{
     e.preventDefault();
+    if(ricoRecorder.active){ ricoToggleVoice(); return; }
     if(rico.streaming){ ricoStop(); return; }
     const text = input.value.trim();
     if(!text) return;
@@ -315,6 +383,7 @@ function attachAssistantEvents(){
 }
 function attachRicoThreadEvents(root){
   root.querySelectorAll('[data-rico-ask]').forEach(b=>b.onclick=()=>ricoAsk(b.dataset.ricoAsk, {quickAction:b.dataset.ricoAction}));
+  root.querySelectorAll('[data-rico-steps]').forEach(d=>d.ontoggle=()=>{ const m=rico.messages[+d.dataset.ricoSteps]; if(m) m.stepsOpen=d.open; });
   root.querySelectorAll('[data-rico-scope-check]').forEach(b=>b.onchange=()=>{
     const i = Number(b.dataset.ricoScopeCheck), picker = rico.messages[i]?.picker;
     if(!picker || picker.chosen) return;
@@ -333,10 +402,10 @@ function attachRicoThreadEvents(root){
   root.querySelectorAll('[data-rico-undo]').forEach(b=>b.onclick=()=>{ const [mi,id]=b.dataset.ricoUndo.split('|'); ricoUndo(+mi, id); });
   root.querySelectorAll('[data-rico-open]').forEach(b=>b.onclick=()=>{
     const screen = b.dataset.ricoOpen, sup = b.dataset.ricoSup;
+    if(screen === 'send'){ startSendQueue().then(ok=>{ if(!ok) goView('order'); }); return; }
     if(screen !== 'order' && screen !== 'history' && state.role !== 'admin') return;
-    state.view = screen;
     if(screen === 'order' && sup && state.suppliers.some(s=>s.id===sup)) state.orderTab = sup;
-    render(); window.scrollTo({top:0});
+    goView(screen);
   });
   root.querySelectorAll('[data-rico-settings]').forEach(b=>b.onclick=()=>{ state.view='settings'; render(); requestAnimationFrame(()=>document.querySelector('.rico-status-card')?.scrollIntoView({block:'center'})); });
   root.querySelectorAll('[data-rico-retry]').forEach(b=>b.onclick=()=>{
@@ -393,7 +462,7 @@ async function ricoAsk(text, options = {}){
   const previousView = state.view;
   const requestRole = state.role;
   rico.messages.push({role:'user', text, ts:Date.now()});
-  const bot = {role:'assistant', text:'', proposals:[], streaming:true, statusKey:'thinking', ts:Date.now()};
+  const bot = {role:'assistant', text:'', proposals:[], steps:[], streaming:true, statusKey:'thinking', ts:Date.now()};
   rico.messages.push(bot);
   rico.streaming = true;
   if(state.view !== 'assistant'){ state.view = 'assistant'; }
@@ -410,8 +479,13 @@ async function ricoAsk(text, options = {}){
     quickAction: options.quickAction || undefined, supplierIds: options.supplierIds || undefined,
   };
   await apiStream('assistant/chat', body, ev=>{
-    if(ev.type === 'text'){ bot.text += ev.text; bot.statusKey = null; paint(); }
-    else if(ev.type === 'status'){ bot.statusKey = ev.tool; paint(); }
+    if(ev.type === 'text'){ bot.text += ev.text; bot.statusKey = null; bot.stepsDone = true; paint(); }
+    else if(ev.type === 'status'){
+      bot.statusKey = ev.tool;
+      if(bot.steps[bot.steps.length-1] !== ev.tool) bot.steps.push(ev.tool);
+      bot.stepsDone = false;
+      paint();
+    }
     else if(ev.type === 'proposal'){
       const p = {...ev.proposal, status:'pending'};
       bot.proposals.push(p);
@@ -452,6 +526,15 @@ function ricoPaintMessage(i){
   if(wasNear) ricoScroll(false);
 }
 function ricoRefreshComposer(){
+  const form = document.getElementById('ricoComposer');
+  if(form){
+    form.classList.toggle('recording', ricoRecorder.active);
+    form.classList.toggle('transcribing', ricoRecorder.busy);
+    const input = document.getElementById('ricoInput');
+    if(input) input.placeholder = ricoComposerHint();
+    const mic = document.getElementById('ricoMicBtn');
+    if(mic){ mic.setAttribute('aria-pressed', String(ricoRecorder.active)); mic.disabled = ricoRecorder.busy || rico.streaming; }
+  }
   const btn = document.getElementById('ricoSendBtn');
   if(!btn) return;
   btn.classList.toggle('stop', rico.streaming);
@@ -472,10 +555,12 @@ function ricoSetStatus(mi, id, status, extra = {}){
 }
 function ricoApplyOrder(p, auto){
   const before = {...state.cart};
-  if(p.mode !== 'add') state.cart = {};
+  if(p.mode !== 'add' && p.mode !== 'set') state.cart = {};
   let n = 0;
   p.lines.forEach(l=>{
     if(!state.items.some(i=>i.id===l.itemId)) return;
+    // 'set' may take an item out (qty 0); every other line is at least one.
+    if(p.mode === 'set' && !(Number(l.qty) > 0)){ delete state.cart[l.itemId]; n++; return; }
     const q = Math.max(1, Math.round(Number(l.qty) || 1));
     state.cart[l.itemId] = p.mode === 'add' ? (state.cart[l.itemId]||0) + q : q;
     n++;

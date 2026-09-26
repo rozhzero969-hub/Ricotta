@@ -61,14 +61,21 @@ function esc(s){
 /* Small, self-dismissing confirmation at the bottom of the screen -- used for
    successes, so they don't need an extra tap like a popup does. */
 let toastTimer = null;
-function toast(msg, kind='ok'){
+function toast(msg, kind='ok', {undo} = {}){
   let el = document.getElementById('toast');
   if(!el){ el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role','status'); document.body.appendChild(el); }
-  el.className = 'toast ' + kind;
-  el.textContent = msg;
+  el.className = 'toast ' + kind + (undo ? ' has-undo' : '');
+  el.textContent = '';
+  const text = document.createElement('span'); text.textContent = msg; text.dir = 'auto'; el.appendChild(text);
+  if(undo){
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'toast-undo'; b.textContent = t('undo');
+    b.onclick = ()=>{ clearTimeout(toastTimer); el.classList.remove('show'); undo(); };
+    el.appendChild(b);
+  }
   requestAnimationFrame(()=> el.classList.add('show'));
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=> el.classList.remove('show'), 2600);
+  toastTimer = setTimeout(()=> el.classList.remove('show'), undo ? 4800 : 2600);
 }
 
 /* ============ Devices ============
@@ -272,7 +279,7 @@ async function loadMoreHistory(){
 function signOut(reason){
   const me = myDevice();
   if(me && me.nickname) lset('deviceNickname', me.nickname);
-  ricoStop();
+  ricoStop(); ricoResetVoice();
   rico.messages = []; rico.streaming = false;
   clearApiSession();
   state.role = null; state.pinBuffer = ''; state.view = 'order'; state.queue = null;
@@ -410,6 +417,7 @@ function render(){
   }
   const animKey = state.view + (state.view === 'order' ? ':' + state.orderTab : '');
   app.classList.toggle('static-update', animKey === lastAnimKey);
+  app.classList.toggle('slide-nav', sliding);
   lastAnimKey = animKey;
   let body = '';
   if(state.view === 'order') body = renderOrder();
@@ -437,6 +445,7 @@ function render(){
       button.classList.toggle('active',active);
       if(active) button.setAttribute('aria-current','page'); else button.removeAttribute('aria-current');
     });
+    stack.querySelector('#navMoreBtn')?.classList.toggle('active', ADMIN_VIEWS.includes(state.view));
   }else{
     app.innerHTML = `${renderTopbar()}<main class="content" id="mainContent">${content}</main>
       <div class="bottom-stack">${state.view==='order'?renderOrderBottomBar():''}${state.view==='assistant'?renderRicoComposer():''}${renderBottomNav()}</div>`;
@@ -455,12 +464,7 @@ function render(){
   if(state.view === 'assistant') attachAssistantEvents();
   if(state.view !== 'assistant') document.body.classList.remove('rico-typing');
   updateRicoBadge();
-  // The nav scrolls sideways on narrow phones (admins have 8 tabs); keep the current tab in view.
-  const activeNav = document.querySelector('.navbtn.active');
-  if(activeNav && window.innerWidth<960){
-    const nav=activeNav.parentElement, rect=activeNav.getBoundingClientRect(), bounds=nav.getBoundingClientRect();
-    nav.scrollLeft+=rect.left+rect.width/2-bounds.left-bounds.width/2;
-  }
+  initTabBarLens();
   placeNavIndicator();
   updateNavFade();
   updateTopbarShadow();
@@ -478,14 +482,20 @@ function updateRicoBadge(){
 setInterval(()=>{ if(state.role && isVisible()) updateRicoBadge(); }, 60000);
 
 /* ============ Motion helpers ============ */
-/* The glass pill behind the active tab glides to each new tab. */
+/* The glass pill behind the active tab glides to each new tab. On phones it
+   is also a lens that can be held and slid along the bar. */
+function barButtons(nav){ return [...nav.querySelectorAll(':scope > .navbtn')]; }
 function placeNavIndicator(){
-  const nav=document.querySelector('.bottomnav'), ind=nav?.querySelector('.nav-indicator'), active=nav?.querySelector('.navbtn.active');
+  const nav=document.querySelector('.bottomnav'), ind=nav?.querySelector('.nav-indicator');
   if(!nav || !ind) return;
+  const phone = isPhoneLayout();
+  const active = phone
+    ? (ADMIN_VIEWS.includes(state.view) ? nav.querySelector('#navMoreBtn') : nav.querySelector(':scope > .navbtn.active'))
+    : nav.querySelector('.navbtn.active');
   if(!active){ ind.style.opacity='0'; return; }
   ind.style.opacity='1';
   nav.classList.add('has-indicator');
-  if(window.innerWidth>=960){
+  if(!phone){
     ind.style.setProperty('--iy', active.offsetTop+'px');
     ind.style.setProperty('--ih', active.offsetHeight+'px');
   }else{
@@ -493,6 +503,126 @@ function placeNavIndicator(){
     ind.style.setProperty('--iw', active.offsetWidth+'px');
   }
 }
+/* Slides the lens to a fractional tab position (1.5 = halfway between the
+   second and third tab); used while a finger is on the bar or the page. */
+function setLensPosition(pos){
+  const nav=document.querySelector('.bottomnav'), ind=nav?.querySelector('.nav-indicator');
+  if(!nav || !ind || !isPhoneLayout()) return;
+  const btns=barButtons(nav);
+  if(!btns.length) return;
+  const p=Math.max(0, Math.min(btns.length-1, pos)), i=Math.floor(p), f=p-i, a=btns[i], b=btns[Math.min(btns.length-1,i+1)];
+  ind.style.opacity='1';
+  ind.style.setProperty('--ix', (a.offsetLeft + (b.offsetLeft-a.offsetLeft)*f)+'px');
+  ind.style.setProperty('--iw', (a.offsetWidth + (b.offsetWidth-a.offsetWidth)*f)+'px');
+  btns.forEach((x,k)=>x.classList.toggle('lens-over', k===Math.round(p)));
+}
+function initTabBarLens(){
+  const nav=document.querySelector('.bottomnav');
+  if(!nav || nav.dataset.lensBound) return;
+  nav.dataset.lensBound='1';
+  let down=null;
+  const slotAt=x=>{
+    const btns=barButtons(nav);
+    let best=0, dist=Infinity;
+    btns.forEach((b,k)=>{ const r=b.getBoundingClientRect(), d=Math.abs(r.left+r.width/2-x); if(d<dist){dist=d;best=k;} });
+    return {btn:btns[best], index:best, pos:(()=>{ // fractional position under the finger
+      const rs=btns.map(b=>b.getBoundingClientRect()), c=rs.map(r=>r.left+r.width/2);
+      const order=c.map((v,k)=>[v,k]).sort((m,n)=>m[0]-n[0]);
+      if(x<=order[0][0]) return order[0][1];
+      for(let k=0;k<order.length-1;k++){ const [c1,i1]=order[k],[c2,i2]=order[k+1]; if(x<=c2) return i1+(i2-i1)*((x-c1)/(c2-c1)); }
+      return order[order.length-1][1];
+    })()};
+  };
+  nav.addEventListener('pointerdown',e=>{
+    if(!isPhoneLayout() || e.button>0 || e.target.closest('.nav-more')) return;
+    down={x:e.clientX, id:e.pointerId, moved:false, last:null};
+  });
+  nav.addEventListener('pointermove',e=>{
+    if(!down || e.pointerId!==down.id) return;
+    if(!down.moved && Math.abs(e.clientX-down.x)<8) return;
+    if(!down.moved){ down.moved=true; nav.classList.add('held'); try{nav.setPointerCapture(e.pointerId);}catch(_){} setMoreOpen(false); }
+    const s=slotAt(e.clientX);
+    setLensPosition(s.pos);
+    const view=s.btn?.dataset.view;
+    if(view && view!==down.last){ down.last=view; if(view!==state.view){ haptic(); goView(view); setLensPosition(s.pos); } }
+  });
+  const end=e=>{
+    if(!down || e.pointerId!==down.id) return;
+    const wasDrag=down.moved; down=null;
+    nav.classList.remove('held');
+    barButtons(nav).forEach(b=>b.classList.remove('lens-over'));
+    if(wasDrag){
+      const s=slotAt(e.clientX);
+      if(s.btn?.id==='navMoreBtn') setMoreOpen(true);
+      placeNavIndicator();
+    }
+  };
+  nav.addEventListener('pointerup',end);
+  nav.addEventListener('pointercancel',end);
+}
+/* A tap anywhere else, or Escape, closes the More panel. */
+document.addEventListener('click',e=>{ if(!e.target.closest('.bottomnav')) setMoreOpen(false); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') setMoreOpen(false); });
+function haptic(ms=8){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(_){} }
+
+/* Swipe the page sideways to move between Order, Rico and History (phones).
+   The page follows the finger, the tab-bar lens follows the page, and a
+   short fling is enough. Anything that scrolls sideways on its own, inputs,
+   steppers and open dialogs are left alone. */
+(function initPageSwipe(){
+  let g=null;
+  const blocked=el=>el.closest('input,textarea,select,.stepper,.order-tabs,.record-filters,.rico-composer,.bottom-stack,.item-sort-list,.day-chips,.unit-grid,.rico-picker-list,#modalRoot .modal-overlay,.ctx-layer');
+  document.addEventListener('pointerdown',e=>{
+    if(!isPhoneLayout() || e.pointerType==='mouse' || !state.role) return;
+    const content=e.target.closest('.content');
+    if(!content || blocked(e.target) || !MAIN_VIEWS.includes(state.view)) return;
+    g={x:e.clientX, y:e.clientY, t:performance.now(), id:e.pointerId, content, dx:0, mode:null};
+  },{passive:true});
+  document.addEventListener('pointermove',e=>{
+    if(!g || e.pointerId!==g.id) return;
+    const dx=e.clientX-g.x, dy=e.clientY-g.y;
+    if(!g.mode){
+      if(Math.abs(dx)<10 && Math.abs(dy)<10) return;
+      g.mode = Math.abs(dx) > Math.abs(dy)*1.3 ? 'x' : 'y';
+      if(g.mode==='x'){ viewTransition?.cancel(); document.body.classList.add('page-swiping'); }
+    }
+    if(g.mode!=='x') return;
+    const rtl=state.lang==='ku'?-1:1, i=MAIN_VIEWS.indexOf(state.view);
+    const next=i - Math.sign(dx)*rtl;
+    const edge=next<0 || next>=MAIN_VIEWS.length;
+    g.dx = edge ? dx*.28 : dx;
+    g.content.style.transform=`translate3d(${g.dx}px,0,0)`;
+    g.content.style.opacity=String(1-Math.min(.45,Math.abs(g.dx)/window.innerWidth*.9));
+    if(!edge) setLensPosition(i + (-g.dx*rtl)/window.innerWidth);
+  },{passive:true});
+  const end=e=>{
+    if(!g || e.pointerId!==g.id) return;
+    const s=g; g=null;
+    document.body.classList.remove('page-swiping');
+    if(s.mode!=='x') return;
+    // A sideways swipe that started on a button must not also press it.
+    const swallow=ev=>{ ev.stopPropagation(); ev.preventDefault(); };
+    document.addEventListener('click', swallow, {capture:true, once:true});
+    setTimeout(()=>document.removeEventListener('click', swallow, {capture:true}), 350);
+    const rtl=state.lang==='ku'?-1:1, i=MAIN_VIEWS.indexOf(state.view);
+    const v=s.dx/Math.max(1,performance.now()-s.t);
+    const go = Math.abs(s.dx) > window.innerWidth*.26 || Math.abs(v) > .45;
+    const next=i - Math.sign(s.dx)*rtl;
+    if(go && next>=0 && next<MAIN_VIEWS.length){
+      s.content.style.transform=''; s.content.style.opacity='';
+      haptic();
+      // The new page enters from the side the finger was moving away from.
+      goView(MAIN_VIEWS[next], {fromOffset: -Math.sign(s.dx)*Math.min(window.innerWidth*.45,200)});
+      return;
+    }
+    const back=s.content.animate?.([{transform:`translate3d(${s.dx}px,0,0)`, opacity:s.content.style.opacity||1},{transform:'none', opacity:1}],{duration:320,easing:'cubic-bezier(.34,1.3,.5,1)'});
+    s.content.style.transform=''; s.content.style.opacity='';
+    placeNavIndicator();
+    return back;
+  };
+  document.addEventListener('pointerup',end);
+  document.addEventListener('pointercancel',end);
+})();
 window.addEventListener('resize', ()=>requestAnimationFrame(()=>{ placeNavIndicator(); updateNavFade(); }));
 /* Phones with many tabs: fade the far edge while more tabs are hidden there. */
 function updateNavFade(){
@@ -505,9 +635,15 @@ function updateNavFade(){
   update();
   if(!nav.dataset.fadeBound){ nav.dataset.fadeBound='1'; nav.addEventListener('scroll', update, {passive:true}); }
 }
-/* The floating top bar gains depth once the page scrolls under it. */
+/* The floating top bar gains depth once the page scrolls under it, and (like
+   an iOS large title) the ricotta mark gives way to the screen's name. */
 function updateTopbarShadow(){
-  document.querySelector('.topbar')?.classList.toggle('scrolled', window.scrollY>6);
+  const bar=document.querySelector('.topbar');
+  if(!bar) return;
+  bar.classList.toggle('scrolled', window.scrollY>6);
+  const title=bar.querySelector('.topbar-title');
+  if(title){ const label=viewLabel(state.view); if(title.textContent!==label) title.textContent=label; }
+  bar.classList.toggle('titled', window.scrollY>64);
 }
 window.addEventListener('scroll', updateTopbarShadow, {passive:true});
 /* Glass catches the light where a mouse points (desktop only; cheap: one
@@ -559,7 +695,7 @@ function renderTopbar(){
   const other = state.lang === 'en' ? 'ku' : 'en';
   return `
   <div class="topbar">
-    <div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span><span class="brand-sub">Orders</span></div>
+    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span><span class="brand-sub">Orders</span></div><span class="topbar-title" aria-hidden="true"></span></div>
     <div class="topbar-actions">
       <div class="connection-status ${state.apiOnline?'':'offline'}" id="connectionStatus"><span></span><em>${state.apiOnline?t('online'):t('offline')}</em></div>
       <button class="pill-btn lang-switch" data-lang="${other}" lang="${other}">${other==='ku'?'کوردی':'English'}</button>
@@ -567,26 +703,57 @@ function renderTopbar(){
     </div>
   </div>`;
 }
+/* Order, Rico and History are the pages you swipe between. Admin screens sit
+   behind a "More" tab on phones (a glass panel above the bar) and are listed
+   in full in the desktop sidebar. There is only ever one button per screen. */
+const MAIN_VIEWS = ['order','assistant','history'];
+const ADMIN_VIEWS = ['suppliers','itemsAdmin','units','record','devices','settings'];
+function viewLabel(id){
+  return ({order:t('order'), assistant:t('ricoName'), history:t('history'), suppliers:t('suppliers'), itemsAdmin:t('items'), units:t('units'), record:t('record'), devices:t('devicesTitle'), settings:t('settings'), queue:t('sendQueueTitle')})[id] || t('order');
+}
 function renderBottomNav(){
-  const tabs = [
-    {id:'order', label:t('order')},
-    {id:'assistant', label:t('ricoName')},
-    {id:'history', label:t('history')}
-  ];
-  if(state.role === 'admin'){
-    tabs.push({id:'suppliers', label:t('suppliers')});
-    tabs.push({id:'itemsAdmin', label:t('items')});
-    tabs.push({id:'units', label:t('units')});
-    tabs.push({id:'record', label:t('record')});
-    tabs.push({id:'devices', label:t('devicesTitle')});
-    tabs.push({id:'settings', label:t('settings')});
-  }
-  return `<nav class="bottomnav" aria-label="${t('workspaceLabel')}"><span class="nav-indicator" aria-hidden="true"></span>
-    ${tabs.map(tb=>`
-      <button class="navbtn ${state.view===tb.id?'active':''}" data-view="${tb.id}" ${state.view===tb.id?'aria-current="page"':''}>
-        ${NAV_ICONS[tb.id]}<span>${tb.label}</span>${tb.id==='assistant'?'<i class="nav-badge" hidden></i>':''}
-      </button>`).join('')}
+  const admin = state.role === 'admin';
+  const btn = id=>`
+      <button class="navbtn ${state.view===id?'active':''}" data-view="${id}" ${state.view===id?'aria-current="page"':''}>
+        ${NAV_ICONS[id]}<span>${viewLabel(id)}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}
+      </button>`;
+  const moreOn = ADMIN_VIEWS.includes(state.view);
+  return `<nav class="bottomnav ${admin?'has-more':''}" aria-label="${t('workspaceLabel')}"><span class="nav-indicator" aria-hidden="true"></span>
+    ${MAIN_VIEWS.map(btn).join('')}
+    ${admin ? `<button class="navbtn nav-more-btn ${moreOn?'active':''}" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${t('more')}</span></button>
+    <div class="nav-more" id="navMore" role="group" aria-label="${esc(t('moreTitle'))}">${ADMIN_VIEWS.map(btn).join('')}</div>` : ''}
   </nav>`;
+}
+function isPhoneLayout(){ return window.innerWidth < 960; }
+function setMoreOpen(open){
+  const nav=document.querySelector('.bottomnav'), btn=document.getElementById('navMoreBtn');
+  if(!nav || !btn) return;
+  nav.classList.toggle('more-open', open);
+  btn.setAttribute('aria-expanded', String(open));
+}
+/* Moves to another screen with a sideways slide (direction follows the tab
+   order, mirrored in Kurdish). Used by taps, the tab-bar lens and swipes. */
+let viewTransition = null, sliding = false;
+function viewIndex(v){ const i=MAIN_VIEWS.indexOf(v); return i>=0 ? i : MAIN_VIEWS.length + Math.max(0, ADMIN_VIEWS.indexOf(v)); }
+function goView(view, {fromOffset=0} = {}){
+  setMoreOpen(false);
+  if(view !== 'assistant' && ricoRecorder.active) ricoResetVoice();   // leaving Rico drops an unsent recording
+  if(!view || view === state.view) return;
+  if(ADMIN_VIEWS.includes(view) && state.role !== 'admin') return;
+  const dir = Math.sign(viewIndex(view) - viewIndex(state.view)) || 1;
+  state.view = view;
+  if(view === 'record') state.recordFilter = 'all';
+  sliding = true; render(); sliding = false;
+  window.scrollTo({top:0});
+  if(view === 'record') refreshActivity();
+  if(view === 'devices') refreshDevices();
+  const content = document.querySelector('.content');
+  if(content && content.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches){
+    const rtl = state.lang === 'ku' ? -1 : 1;
+    const from = fromOffset || dir*rtl*Math.min(90, window.innerWidth*.22);
+    viewTransition?.cancel();
+    viewTransition = content.animate([{transform:`translate3d(${from}px,0,0)`, opacity:.35},{transform:'none', opacity:1}], {duration:380, easing:'cubic-bezier(.2,.9,.25,1)'});
+  }
 }
 function attachCommonEvents(){
   document.querySelectorAll('[data-lang]').forEach(b=>b.onclick=async()=>{
@@ -602,14 +769,9 @@ function attachCommonEvents(){
   if(pushLater) pushLater.onclick = ()=>{ snoozePushBanner(); render(); };
   const lo = document.getElementById('logoutBtn');
   if(lo) lo.onclick = ()=> doLogout();
-  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
-    state.view=b.dataset.view;
-    if(state.view === 'record') state.recordFilter = 'all';
-    render();
-    window.scrollTo({top:0});
-    if(state.view === 'record') refreshActivity();
-    if(state.view === 'devices') refreshDevices();
-  });
+  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>goView(b.dataset.view));
+  const moreBtn = document.getElementById('navMoreBtn');
+  if(moreBtn) moreBtn.onclick = e=>{ e.stopPropagation(); setMoreOpen(!document.querySelector('.bottomnav')?.classList.contains('more-open')); };
   // "Record" shortcut buttons on the Suppliers / Items screens: jump to the
   // Record already filtered to that kind of change.
   document.querySelectorAll('[data-gorecord]').forEach(b=>b.onclick=()=>{
@@ -771,9 +933,8 @@ function sortedSupplierItems(rows){
 /* Was anything already sent to this supplier today? Used to warn (not
    block) before sending again. */
 function sentToSupplierToday(supplierId){
-  const key = x=>{ const d=new Date(x); return d.getFullYear()+'-'+d.getMonth()+'-'+d.getDate(); };
-  const today = key(new Date());
-  return state.history.some(rec=> key(rec.date)===today && rec.entries.some(e=>e.supplierId===supplierId));
+  const today = erbilDate(new Date().toISOString());
+  return state.history.some(rec=> erbilDate(rec.date)===today && rec.entries.some(e=>e.supplierId===supplierId));
 }
 function lastOrderMap(){
   if(!state.history.length) return null;
@@ -845,6 +1006,7 @@ function renderOrder(){
   const lastMap = lastOrderMap();
   return `
     ${renderOrderHero(selectedCount, selectedSupplierCount)}
+    <div id="ricoSuggest">${renderRicoSuggestion()}</div>
     ${tabsHtml}
     <div class="order-arrange-row" id="orderArrangeRow">${renderOrderArrangeControl()}</div>
     <div class="search-row">
@@ -951,6 +1113,7 @@ function refreshCartSummary(){
   if(clear) clear.disabled=c===0;
   const draft=document.querySelector('.draft-state');
   if(draft) draft.textContent=c?t('draftLocal'):t('selectToStart');
+  paintRicoSuggestion();
 }
 function cartCount(){ return Object.values(state.cart).filter(q=>q>0).length; }
 function sendMeta(){
@@ -1013,38 +1176,55 @@ function attachOrderEvents(){
   const same = document.getElementById('sameAsLast');
   if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id) && qty>0)); refreshOrderView(); };
   const clear=document.getElementById('clearOrderBtn');
-  if(clear) clear.onclick=()=>{state.cart={};persistCartDraft();refreshOrderView();};
-  const send = document.getElementById('sendOrdersBtn');
-  if(send) send.onclick = async ()=>{
-    const bySupplier = {};
-    Object.keys(state.cart).forEach(id=>{
-      const qty = state.cart[id]; if(!qty) return;
-      const item = state.items.find(i=>i.id===id); if(!item) return;
-      const sid = item.supplierId || '__none';
-      (bySupplier[sid] = bySupplier[sid]||[]).push({itemId:id, name:item.name, qty, unit:item.unit, sortOrder:item.sortOrder});
-    });
-    // Not a hard block -- ordering twice in a day can be intentional -- just
-    // make sure it's not an accident before it goes out again.
-    const already = Object.keys(bySupplier).filter(sid=>sid!=='__none' && sentToSupplierToday(sid));
-    if(already.length){
-      const names = already.map(sid=>(state.suppliers.find(s=>s.id===sid)||{}).name).filter(Boolean).join(', ');
-      if(!(await showConfirm(t('confirmDoubleOrder')(names)))) return;
-    }
-    state.queue = Object.keys(bySupplier).map(sid=>({
-      supplierId: sid, items: bySupplier[sid], sent:false
-    }));
-    state.view='queue'; render();
+  if(clear) clear.onclick=()=>{
+    const before={...state.cart};
+    state.cart={};persistCartDraft();refreshOrderView();
+    toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before; persistCartDraft(); refreshOrderView(); }});
   };
+  const send = document.getElementById('sendOrdersBtn');
+  if(send) send.onclick = ()=>startSendQueue();
+  loadRicoSuggestion();
+}
+/* Opens Send to suppliers with the current draft (the Send button, and
+   Rico's "open send" shortcut). Returns false when there is nothing to send. */
+async function startSendQueue(){
+  const bySupplier = {};
+  Object.keys(state.cart).forEach(id=>{
+    const qty = state.cart[id]; if(!qty) return;
+    const item = state.items.find(i=>i.id===id); if(!item) return;
+    const sid = item.supplierId || '__none';
+    (bySupplier[sid] = bySupplier[sid]||[]).push({itemId:id, name:item.name, qty, unit:item.unit, sortOrder:item.sortOrder});
+  });
+  // Not a hard block -- ordering twice in a day can be intentional -- just
+  // make sure it's not an accident before it goes out again.
+  const already = Object.keys(bySupplier).filter(sid=>sid!=='__none' && sentToSupplierToday(sid));
+  if(already.length){
+    const names = already.map(sid=>(state.suppliers.find(s=>s.id===sid)||{}).name).filter(Boolean).join(', ');
+    if(!(await showConfirm(t('confirmDoubleOrder')(names)))) return false;
+  }
+  if(!Object.keys(bySupplier).length) return false;
+  state.queue = Object.keys(bySupplier).map(sid=>({
+    supplierId: sid, items: bySupplier[sid], sent:false
+  }));
+  goView('queue');
+  return true;
 }
 function attachOrderResultEvents(root){
   if(!root) return;
   root.querySelectorAll('[data-sort-supplier]').forEach(button=>button.onclick=()=>openSupplierItemOrder(button.dataset.sortSupplier));
-  root.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.inc; state.cart[id]=(state.cart[id]||0)+1; refreshOrderView(id);
+  root.querySelectorAll('[data-inc],[data-dec]').forEach(b=>{
+    // Pointer presses are handled by the hold-to-repeat code below; a click
+    // with detail 0 comes from the keyboard (Enter or Space).
+    b.onclick=e=>{ if(e.detail===0) stepQty(b); };
+    b.onpointerdown=e=>startStepHold(b,e);
+    b.oncontextmenu=e=>e.preventDefault();
   });
-  root.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.dec; state.cart[id]=Math.max(0,(state.cart[id]||0)-1); refreshOrderView(id);
+  root.querySelectorAll('[data-qty]').forEach(inp=>{
+    inp.onfocus=()=>{ if(inp.value==='0') inp.value=''; else requestAnimationFrame(()=>inp.select()); };
+    inp.onblur=()=>{ if(inp.value===''){ inp.value='0'; } };
+    inp.onkeydown=e=>{ if(e.key==='Enter') inp.blur(); };
   });
+  root.querySelectorAll('.item-row').forEach(row=>{ row.onpointerdown=e=>startRowPress(row,e); });
   root.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
     const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; refreshOrderView(id);
   });
@@ -1055,6 +1235,167 @@ function attachOrderResultEvents(root){
     inp.closest('.item-row').querySelector('[data-dec]').disabled=state.cart[id]===0;
     refreshCartSummary();
   });
+}
+
+/* ============ Order: steppers, press-and-hold menu, Rico suggests ============ */
+/* One step up or down, from a tap, a held button or the keyboard. */
+function stepQty(btn){
+  const id = btn.dataset.inc || btn.dataset.dec;
+  if(!id) return;
+  const next = btn.dataset.inc ? (state.cart[id]||0)+1 : Math.max(0,(state.cart[id]||0)-1);
+  if(next === (state.cart[id]||0)) return;
+  state.cart[id] = next;
+  refreshOrderView(id);
+}
+/* Hold + or − and the number keeps going, faster the longer it's held. */
+let stepHold = null;
+function stopStepHold(){
+  if(!stepHold) return;
+  clearTimeout(stepHold.timer);
+  stepHold.btn.classList.remove('holding');
+  stepHold = null;
+}
+function startStepHold(btn, e){
+  if(e.button > 0 || btn.disabled) return;
+  e.preventDefault();   // no text selection or focus jump while holding
+  stopStepHold();
+  stepHold = {btn, timer:0, n:0};
+  btn.classList.add('holding');
+  stepQty(btn);
+  const tick = ()=>{
+    if(!stepHold || stepHold.btn !== btn || btn.disabled || !btn.isConnected){ stopStepHold(); return; }
+    stepQty(btn); stepHold.n++;
+    if(stepHold.n % 5 === 0) haptic(4);
+    stepHold.timer = setTimeout(tick, Math.max(45, 150 - stepHold.n*9));
+  };
+  stepHold.timer = setTimeout(tick, 420);
+  const up = ()=>{ stopStepHold(); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up); };
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+}
+window.addEventListener('blur', stopStepHold);
+
+/* Press and hold an item row: the page blurs, the row lifts, and a small
+   glass menu offers quick amounts, typing a number, or removing it. */
+let rowPress = null;
+function startRowPress(row, e){
+  if(e.button > 0 || e.target.closest('.stepper,button,input')) return;
+  const x = e.clientX, y = e.clientY;
+  rowPress?.cancel();
+  row.classList.add('pressing');
+  const press = {row, timer:0, cancel:()=>{
+    clearTimeout(press.timer); row.classList.remove('pressing');
+    document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', press.cancel); document.removeEventListener('pointercancel', press.cancel);
+    if(rowPress === press) rowPress = null;
+  }};
+  const move = ev=>{ if(Math.abs(ev.clientX-x) > 8 || Math.abs(ev.clientY-y) > 8) press.cancel(); };
+  press.timer = setTimeout(()=>{ press.cancel(); openItemMenu(row); }, 480);
+  rowPress = press;
+  document.addEventListener('pointermove', move, {passive:true});
+  document.addEventListener('pointerup', press.cancel);
+  document.addEventListener('pointercancel', press.cancel);
+}
+function closeContextMenu(){
+  const layer = document.getElementById('ctxLayer');
+  if(!layer) return;
+  layer.classList.add('closing');
+  setTimeout(()=>layer.remove(), 220);
+}
+function openItemMenu(row){
+  const id = row.dataset.itemId, item = state.items.find(i=>i.id===id);
+  if(!item) return;
+  haptic(12);
+  closeContextMenu();
+  const qty = state.cart[id] || 0;
+  const rect = row.getBoundingClientRect();
+  const layer = document.createElement('div');
+  layer.id = 'ctxLayer'; layer.className = 'ctx-layer';
+  const actions = [[1,t('cmAdd')(1),ICON_PLUS],[5,t('cmAdd')(5),ICON_PLUS],[10,t('cmAdd')(10),ICON_PLUS],['type',t('cmType'),ICON_EDIT]];
+  if(qty) actions.push(['remove',t('cmRemove'),ICON_DELETE]);
+  const menuH = actions.length*48 + 8, below = rect.bottom + 12 + menuH < window.innerHeight - 90;
+  layer.innerHTML = `<div class="ctx-scrim"></div>
+    <div class="ctx-preview" style="top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px"></div>
+    <div class="ctx-menu ${below?'':'up'}" role="menu" style="${below?`top:${rect.bottom+12}px`:`top:${Math.max(12, rect.top-12-menuH)}px`};${state.lang==='ku'?`left:${Math.max(12,rect.left)}px`:`right:${Math.max(12, window.innerWidth-rect.right)}px`}">
+      ${actions.map(([a,label,icon])=>`<button type="button" role="menuitem" class="${a==='remove'?'danger':''} ${a==='type'?'sep':''}" data-ctx="${a}"><span>${esc(label)}</span>${icon}</button>`).join('')}
+    </div>`;
+  const clone = row.cloneNode(true);
+  clone.classList.remove('pressing');
+  clone.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+  clone.querySelectorAll('button,input').forEach(el=>{ el.tabIndex=-1; el.setAttribute('aria-hidden','true'); });
+  layer.querySelector('.ctx-preview').appendChild(clone);
+  document.body.appendChild(layer);
+  layer.querySelector('.ctx-scrim').onclick = closeContextMenu;
+  layer.addEventListener('keydown', e=>{ if(e.key==='Escape') closeContextMenu(); });
+  layer.querySelector('[data-ctx]')?.focus({preventScroll:true});
+  layer.querySelectorAll('[data-ctx]').forEach(b=>b.onclick=()=>{
+    const a = b.dataset.ctx, before = state.cart[id] || 0;
+    closeContextMenu();
+    if(a === 'type'){ setTimeout(()=>document.querySelector(`#orderResults [data-qty="${CSS.escape(id)}"]`)?.focus(), 240); return; }
+    if(a === 'remove'){
+      state.cart[id] = 0; refreshOrderView(id);
+      toast(t('itemRemoved'), 'ok', {undo:()=>{ state.cart[id] = before; refreshOrderView(id); }});
+      return;
+    }
+    state.cart[id] = before + Number(a); refreshOrderView(id); haptic(6);
+  });
+}
+
+/* "Rico suggests": today's most due supplier with its usual items, worked
+   out on the server from order history (no AI call). Loaded quietly after
+   the Order screen appears and cached for a few minutes. */
+let ricoSuggestion = {data:null, at:0, busy:false};
+const RICO_SUGGEST_TTL = 4*60*1000;
+function ricoSuggestionKey(sg){ return sg ? erbilNow().date+'|'+sg.supplierId : ''; }
+function currentRicoSuggestion(){
+  const sg = ricoSuggestion.data;
+  if(!sg || !Array.isArray(sg.lines) || !sg.lines.length) return null;
+  if(lget('ricoSuggestHidden') === ricoSuggestionKey(sg)) return null;
+  const lines = sg.lines.filter(l=>state.items.some(i=>i.id===l.itemId));
+  if(!lines.length || lines.every(l=>(state.cart[l.itemId]||0) >= l.qty)) return null;
+  if(sentToSupplierToday(sg.supplierId)) return null;
+  return {...sg, lines};
+}
+function renderRicoSuggestion(){
+  const sg = currentRicoSuggestion();
+  if(!sg) return '';
+  const name = (state.suppliers.find(s=>s.id===sg.supplierId)||{}).name || sg.supplier;
+  const day = t('weekdays')[erbilNow().weekday];
+  const iso = s=>'\u2068'+s+'\u2069';   // keeps a Kurdish name from flipping an English sentence (and the reverse)
+  const text = sg.due && sg.reminder ? t('ricoSuggestDue')(iso(name), formatStoredIraqTime(sg.reminder)) : t('ricoSuggestUsual')(iso(name), day);
+  const preview = sg.lines.slice(0,3).map(l=>esc(l.name)).join(' · ') + (sg.lines.length>3 ? ` +${sg.lines.length-3}` : '');
+  return `<div class="rico-suggest glass ${sg.due?'due':''}">
+    <span class="rico-suggest-mark">${ricoSparkSvg('#214F3D')}</span>
+    <div class="rico-suggest-text"><b>${esc(t('ricoSuggestsLabel'))}</b><span>${esc(text)}</span><small dir="auto">${preview}</small></div>
+    <button type="button" class="btn btn-primary rico-suggest-add" id="ricoSuggestAdd">${esc(t('ricoSuggestAdd')(sg.lines.length))}</button>
+    <button type="button" class="rico-suggest-x" id="ricoSuggestHide" aria-label="${esc(t('ricoSuggestDismiss'))}">×</button>
+  </div>`;
+}
+function paintRicoSuggestion(){
+  const box = document.getElementById('ricoSuggest');
+  if(!box) return;
+  const html = renderRicoSuggestion();
+  if(box.dataset.html !== html){ box.innerHTML = html; box.dataset.html = html; }
+  const add = document.getElementById('ricoSuggestAdd'), hide = document.getElementById('ricoSuggestHide');
+  if(add) add.onclick = ()=>{
+    const sg = currentRicoSuggestion(); if(!sg) return;
+    const before = {...state.cart};
+    sg.lines.forEach(l=>{ state.cart[l.itemId] = Math.max(state.cart[l.itemId]||0, Math.max(1, Math.round(Number(l.qty)||1))); });
+    persistCartDraft(); refreshOrderView(); haptic(10);
+    const name = (state.suppliers.find(s=>s.id===sg.supplierId)||{}).name || sg.supplier;
+    toast(t('ricoSuggestAdded')(sg.lines.length, '\u2068'+name+'\u2069'), 'ok', {undo:()=>{ state.cart = before; persistCartDraft(); refreshOrderView(); }});
+  };
+  if(hide) hide.onclick = ()=>{ lset('ricoSuggestHidden', ricoSuggestionKey(ricoSuggestion.data)); paintRicoSuggestion(); };
+}
+async function loadRicoSuggestion(){
+  paintRicoSuggestion();
+  if(ricoSuggestion.busy || Date.now() - ricoSuggestion.at < RICO_SUGGEST_TTL) return;
+  ricoSuggestion.busy = true;
+  try{
+    const r = await api('assistant/suggestion');
+    ricoSuggestion.at = Date.now();
+    if(r.ok) ricoSuggestion.data = r.data && r.data.suggestion || null;
+  }finally{ ricoSuggestion.busy = false; }
+  if(state.view === 'order') paintRicoSuggestion();
 }
 
 /* ============ Send queue ============ */
@@ -1105,7 +1446,7 @@ function markQueueSent(idx){
 }
 function attachQueueEvents(){
   const back = document.getElementById('queueBackBtn');
-  if(back) back.onclick = ()=>{ state.view='order'; render(); window.scrollTo({top:0}); };
+  if(back) back.onclick = ()=>goView('order');
   document.querySelectorAll('[data-pdf]').forEach(b=>b.onclick=()=>{
     const entry = state.queue[parseInt(b.dataset.pdf)]; const supplier = state.suppliers.find(s=>s.id===entry?.supplierId);
     if(entry) printOrderSheet(entry, supplier);
@@ -1145,15 +1486,16 @@ async function maybeFinishQueue(){
     }))
   };
   state.history.push(record);
+  ricoSuggestion.at = 0;   // what's due has changed
   state.cart = {};
   persistCartDraft();
-  const saved = await sendOrQueue('orders', 'POST', record);
+  const result = await sendOrQueue('orders', 'POST', record);
   // Let the "All orders sent" card land before returning to the Order screen.
   await new Promise(r=>setTimeout(r, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1300));
   state.queue = null;
   finishingQueue = false;
   if(state.view === 'queue'){ state.view = 'order'; render(); window.scrollTo({top:0}); }
-  toast(saved ? t('orderSavedToHistory') : t('orderSavedOffline'), saved ? 'ok' : 'warn');
+  toast(result === 'saved' ? t('orderSavedToHistory') : result === 'queued' ? t('orderSavedOffline') : t('saveFailed'), result === 'saved' ? 'ok' : 'warn');
 }
 
 /* ============ History ============ */

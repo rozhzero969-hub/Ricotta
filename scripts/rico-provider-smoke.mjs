@@ -6,7 +6,7 @@ const secrets = new Map();
 const usage = [];
 const environment = new Map();
 globalThis.Deno = { env: { get: (key) => environment.get(key) ?? '' } };
-const { assistantSetupStatus, assistantStatus, handleChat, saveGroqKey } = await import('../supabase/functions/api/assistant.ts');
+const { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, saveGroqKey, _internals } = await import('../supabase/functions/api/assistant.ts');
 
 const db = {
   from(table) {
@@ -44,7 +44,9 @@ let groqTurn = 0;
 let groqUnavailable = false;
 globalThis.fetch = async (input, options = {}) => {
   const url = String(input);
-  requests.push({ url, body: JSON.parse(options.body) });
+  requests.push({ url, body: typeof options.body === 'string' ? JSON.parse(options.body) : options.body });
+  if (url.includes(':generateContent')) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'تەماتە پێنج کیلۆ' }] } }] }), { headers: { 'content-type': 'application/json' } });
+  if (url.includes('audio/transcriptions')) return new Response(JSON.stringify({ text: 'five boxes of tomatoes' }), { headers: { 'content-type': 'application/json' } });
   if (url.includes('streamGenerateContent')) {
     const payload = emptyReply
       ? { candidates: [{ content: { role: 'model', parts: [] }, finishReason: 'MAX_TOKENS' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2048 } }
@@ -87,7 +89,7 @@ assert.equal(usage[0].model, 'gemini-3.5-flash-lite');
 const beforeQuick = requests.length;
 const quick = await handleChat(db, session, { messages: [{role:'user',content:'What did we order last time?'}], lang:'en', quickAction:'last_order' }, {}, new AbortController().signal);
 assert.deepEqual((await quick.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['text','done']);
-for(const quickAction of ['prepare_order','busy_days','add_item','recent_items','late_orders']){
+for(const quickAction of ['prepare_order','busy_days','add_item','recent_items','late_orders','check_order','week_insights']){
   const response = await handleChat(db, session, { messages: [{role:'user',content:'Shortcut'}], lang:'en', quickAction }, {}, new AbortController().signal);
   assert.deepEqual((await response.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['text','done'], quickAction);
 }
@@ -113,4 +115,4 @@ const fallbackEvents = await chat();
 assert.equal(fallbackEvents.at(-1).type, 'done');
 assert.equal(requests.at(-1).url.includes('streamGenerateContent'), true, 'Gemini is used after Groq rejects a request');
 
-console.log('Rico provider smoke: PASS (Gemini, Groq tool calls, Groq-to-Gemini fallback, quick answers, empty response)');
+console.log('Rico provider smoke: PASS (Gemini, Groq tool calls, Groq-to-Gemini fallback, quick answers, draft check, insights, voice, empty response)');

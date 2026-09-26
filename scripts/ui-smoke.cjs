@@ -55,6 +55,12 @@ const server=http.createServer((req,res)=>{
     await page.goto(url);await page.waitForSelector(loggedIn?'#orderResults':'.keypad');await page.waitForSelector('#splash',{state:'detached'});
     return {ctx,page,backupCalls:()=>ricoBackupCalls};
   }
+  async function openView(page,view){
+    const tab=page.locator('[data-view="'+view+'"]');
+    const inMore=await tab.evaluate(el=>!!el.closest('.nav-more')&&innerWidth<960&&!el.closest('.bottomnav').classList.contains('more-open'));
+    if(inMore){ await page.locator('#navMoreBtn').click(); await page.waitForFunction(v=>{const el=document.querySelector('.nav-more [data-view="'+v+'"]');return el&&getComputedStyle(el.closest('.nav-more')).opacity==='1';},view); }
+    await tab.click();
+  }
   async function noOverflow(page,label){
     const sizes=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));
     assert.ok(sizes.document<=sizes.viewport+1,label+' horizontal overflow '+JSON.stringify(sizes));
@@ -94,7 +100,7 @@ const server=http.createServer((req,res)=>{
       for(const width of viewportWidths){
         await page.setViewportSize({width,height:900});
         for(const view of ['order','assistant','itemsAdmin','units','settings','suppliers','history','devices','record']){
-          await page.locator('[data-view="'+view+'"]').click();
+          await openView(page,view);
           await noOverflow(page,lang+'/'+width+'/'+view);
         }
       }
@@ -147,7 +153,44 @@ const server=http.createServer((req,res)=>{
     assert.equal(backupCalls(),0,'app never calls retired chat backup');
     await page.locator('[data-view="itemsAdmin"]').click();await snapshot(page,'desktop-catalog.png');
     await page.locator('#itemAddBtn').click();await snapshot(page,'desktop-dialog.png');await page.locator('#modalFormCancel').click();
-    await page.setViewportSize({width:390,height:844});await page.evaluate(()=>setLang('ku'));await page.locator('[data-view="order"]').click();
+    await page.setViewportSize({width:390,height:844});await openView(page,'order');
+    assert.match(await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content'),/script-src 'self'/,'page ships a script security policy');
+    assert.equal(await page.locator('.bottomnav > .navbtn').count(),4,'phone tab bar shows Order, Rico, History and More');
+    await page.locator('#navMoreBtn').click();
+    await page.locator('.nav-more [data-view="settings"]').waitFor({state:'visible'});
+    await page.locator('.nav-more [data-view="settings"]').click();
+    assert.equal(await page.evaluate(()=>state.view),'settings','More opens admin screens');
+    assert.equal(await page.locator('#navMoreBtn').evaluate(el=>el.classList.contains('active')),true,'More stays lit on an admin screen');
+    await openView(page,'order');
+    await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
+    const q5=page.locator('[data-qty="i5"]');
+    await q5.focus();
+    assert.equal(await q5.inputValue(),'','tapping the quantity clears its 0');
+    await page.keyboard.type('7');await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(()=>state.cart.i5),7,'typed quantity is kept');
+    const inc2=page.locator('[data-inc="i2"]');await inc2.scrollIntoViewIfNeeded();
+    const box=await inc2.boundingBox();
+    await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.waitForTimeout(1300);await page.mouse.up();
+    const held=await page.evaluate(()=>state.cart.i2);
+    assert.ok(held>=4,'holding + keeps counting ('+held+')');
+    const row=page.locator('[data-item-id="i8"] .item-info');await row.scrollIntoViewIfNeeded();
+    const rb=await row.boundingBox();
+    await page.mouse.move(rb.x+10,rb.y+rb.height/2);await page.mouse.down();await page.waitForTimeout(700);await page.mouse.up();
+    await page.locator('#ctxLayer [data-ctx="5"]').click();
+    assert.equal(await page.evaluate(()=>state.cart.i8),5,'press-and-hold menu adds 5');
+    await page.locator('#clearOrderBtn').click();
+    await page.locator('.toast-undo').click();
+    assert.equal(await page.evaluate(()=>state.cart.i8),5,'clearing the order can be undone');
+    // A finger swipe to the left moves from Order to Rico.
+    await page.evaluate(()=>{
+      const el=document.querySelector('.content .page-heading'), r=el.getBoundingClientRect(), y=r.top+r.height/2;
+      const fire=(type,x)=>document.dispatchEvent(Object.assign(new PointerEvent(type,{bubbles:true,pointerId:7,pointerType:'touch',clientX:x,clientY:y})));
+      el.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:7,pointerType:'touch',clientX:300,clientY:y}));
+      for(const x of [280,240,180,120]) fire('pointermove',x);
+      fire('pointerup',120);
+    });
+    assert.equal(await page.evaluate(()=>state.view),'assistant','swiping the page moves to the next tab');
+    await page.evaluate(()=>setLang('ku'));await openView(page,'order');
     assert.ok(parseFloat(await page.locator('#itemSearch').evaluate(el=>getComputedStyle(el).fontSize))>=16,'mobile search avoids focus zoom');
     await snapshot(page,'phone-order-ku.png');
     await page.close();
@@ -188,6 +231,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await reduced.page.locator('[data-qty="i1"]').evaluate(el=>el.getAnimations().length),0,'reduced motion skips JS feedback');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`${2*viewportWidths.length*9} workspace layouts (including Rico), ${2*viewportWidths.length} login layouts, native selection/zoom guards, Iraq 12-hour time, browser-backed desktop install, stable quantity/PIN/search DOM, supplier counts, draft restore/clear, Rico chat stays across tabs and resets on reload, language switch, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`${2*viewportWidths.length*9} workspace layouts (including Rico), phone More tab, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, undo, content security policy, ${2*viewportWidths.length} login layouts, native selection/zoom guards, Iraq 12-hour time, browser-backed desktop install, stable quantity/PIN/search DOM, supplier counts, draft restore/clear, Rico chat stays across tabs and resets on reload, language switch, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

@@ -2,8 +2,13 @@
 <html lang="en" class="booting">
 <head>
 <meta charset="UTF-8">
+<!-- Security policy: scripts only from this site (no inline scripts, no
+     eval), the API only on this app's Supabase project, fonts only from
+     Google Fonts. It limits what any injected text could ever do. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://pxufdcyqjtmtklmrjodg.supabase.co; media-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#152B22">
+<meta name="theme-color" content="#14382C">
 <meta name="description" content="Ricotta Orders — daily supplier ordering for the Ricotta kitchen.">
 <title>Ricotta Orders</title>
 <!-- Home Screen install + notifications: iOS only allows push for sites
@@ -62,14 +67,13 @@
     .splash *,.splash{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important}
   }
 </style>
-<script>window.__splashStart = performance.now();</script>
 
 <!-- Stylesheets load without blocking the first paint (the splash covers the
      app until they're in; app.js waits for them before revealing it). -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="preload" href="style.css" as="style" onload="this.onload=null;this.rel='stylesheet';window.__cssReady=true;document.dispatchEvent(new Event('cssready'))">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Vazirmatn:wght@500;600;700;800&display=swap" media="print" onload="this.media='all'">
+<link rel="preload" href="style.css" as="style">
+<script src="boot.js"></script>
 <noscript><link rel="stylesheet" href="style.css"></noscript>
 </head>
 <body>
@@ -81,7 +85,7 @@
     <div class="splash-bar"><i></i></div>
   </div>
 </div>
-<div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="ambient" aria-hidden="true"><i></i></div>
 <div id="app"></div>
 <noscript><p style="padding:24px;font-family:sans-serif">Ricotta Orders needs JavaScript turned on.</p></noscript>
 <!-- Load order matters: config.js first (constants), app.js last but one
