@@ -28,8 +28,8 @@ for(const lang of ['ku','ar']){
   assert.ok(!/[\u0660-\u0669\u06F0-\u06F9]/.test(fs.readFileSync(path.join(root,'i18n.js'),'utf8')),'numbers are written 1 2 3');
 }
 
-const ALL_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings'];
-const YUNIS_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record'];
+const ALL_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings','sounds'];
+const YUNIS_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record','sounds'];
 const supplierNames=['Corner Cake','Golden Bread Bakery','Fresh produce','Daily essentials','Kitchen supplies','Beverages','Dairy','Meat supplier','دابینکەری سەوزە','دابینکەری بەرهەمەکان'];
 const suppliers=supplierNames.map((name,i)=>({id:'s'+i,name,phone:''}));
 const items=Array.from({length:181},(_,i)=>({id:'i'+i,name:i%3===0?'تەماتە '+i:'Kitchen item '+String(i).padStart(3,'0'),unit:'box',supplierId:'s'+(i%10)}));
@@ -127,9 +127,11 @@ const server=http.createServer((req,res)=>{
     await page.evaluate(()=>{ window.__tones=[]; window.soundTone=f=>__tones.push(Math.round(f)); lastTick=0; });
     await inc.click(); await page.waitForTimeout(60); await page.locator('[data-dec="i1"]').click();
     assert.deepEqual(await page.evaluate(()=>__tones),[1150,900],'+ and - each play a soft tap, + a touch higher');
-    await page.evaluate(()=>{ setSoundsOn(false); __tones=[]; lastTick=0; }); await inc.click();
-    assert.deepEqual(await page.evaluate(()=>__tones),[],'no sound when sounds are turned off');
-    await page.evaluate(()=>{ setSoundsOn(true); playOrdersSent(); });
+    await page.evaluate(()=>{ setSoundOn('qty',false); __tones=[]; lastTick=0; }); await inc.click();
+    assert.deepEqual(await page.evaluate(()=>__tones),[],'no sound when that sound is turned off');
+    await page.evaluate(()=>{ setSoundOn('qty',true); __tones=[]; playSwipe(true); playSwipe(false); });
+    assert.deepEqual(await page.evaluate(()=>__tones),[294,441,262,392],'swiping plays the quiet chord, higher going forward');
+    await page.evaluate(()=>{ __tones=[]; playOrdersSent(); });
     assert.deepEqual(await page.evaluate(()=>__tones.filter((f,i)=>i%2===0)),[523,659,784,1047],'orders sent plays the rising chime');
     assert.match(await page.evaluate(()=>maybeFinishQueue.toString()),/playOrdersSent\(\)/,'the chime belongs to finishing the order');
     await page.locator('[data-qty="i1"]').fill('24');
@@ -377,6 +379,21 @@ const server=http.createServer((req,res)=>{
     assert.equal(await y.page.locator('[data-delunit]').count(),1,'Yunis can delete units');
     await y.page.evaluate(()=>goView('settings'));
     assert.notEqual(await y.page.evaluate(()=>state.view),'settings','Settings cannot be opened by Yunis');
+    // Sounds & haptics: in More for Yunis too, one switch per sound plus haptics, never one of the 3 tabs.
+    await y.page.evaluate(()=>goView('sounds')); await settle(y.page);
+    assert.equal(await y.page.evaluate(()=>state.view),'sounds','Yunis can open Sounds & haptics');
+    await snapshot(y.page,'phone-sounds.png');
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['sound-qty:true','sound-sent:true','sound-swipe:true','hapticsToggle:true'],'every sound and haptics has its own switch, all on to start');
+    assert.equal(await y.page.locator('.bottomnav .nav-more [data-view="sounds"]').count(),1,'Sounds & haptics is in More');
+    await y.page.locator('label:has(#sound-swipe)').click();
+    assert.deepEqual(await y.page.evaluate(()=>[soundOn('swipe'),soundOn('qty')]),[false,true],'turning one sound off leaves the others on');
+    await y.page.evaluate(()=>{ Object.defineProperty(Navigator.prototype,'vibrate',{value:undefined,configurable:true}); document.getElementById('sound-qty').focus(); haptic(); });
+    assert.deepEqual(await y.page.evaluate(()=>[!!document.querySelector('label[aria-hidden] input[switch]'), document.activeElement.id]),[true,'sound-qty'],'iPhone haptics use a hidden switch and keep focus where it was');
+    await y.page.locator('label:has(#hapticsToggle)').click();
+    assert.equal(await y.page.evaluate(()=>hapticsOn()),false,'haptics can be turned off');
+    await y.page.evaluate(()=>{ window.__h=0; hapticSwitch.addEventListener('click',()=>__h++); haptic(); });
+    assert.equal(await y.page.evaluate(()=>__h),0,'no haptics once turned off');
+    assert.equal(await y.page.evaluate(()=>tabChoices().includes('sounds')),false,'Sounds & haptics cannot be picked as a main tab');
     await snapshot(y.page,'phone-yunis.png');
     await y.ctx.close();
 
@@ -442,6 +459,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await reduced.page.locator('.content.gliding').count(),0,'reduced motion skips the page transition');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, sounds, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, sounds and haptics, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

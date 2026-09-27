@@ -217,15 +217,20 @@ const ACCOUNT_VIEWS = {
   yunis: ['order','assistant','history','suppliers','itemsAdmin','units','record']
 };
 const DEFAULT_TABS = ['order','assistant','history'];
+/* Screens that only hold this device's own preferences: every account has
+   them, the server never needs to know, and they can't be one of the 3 tabs. */
+const DEVICE_VIEWS = ['sounds'];
+const tabChoices = ()=>state.views.filter(v=>!DEVICE_VIEWS.includes(v));
 function validTabs(tabs){
-  const list = Array.isArray(tabs) ? [...new Set(tabs)].filter(v=>state.views.includes(v)) : [];
+  const list = Array.isArray(tabs) ? [...new Set(tabs)].filter(v=>tabChoices().includes(v)) : [];
   return list.length === 3 ? list : DEFAULT_TABS.filter(v=>state.views.includes(v));
 }
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
 function applyAccount(a){
   state.account = a.account === 'rozha' || a.account === 'yunis' ? a.account : null;
   state.name = a.name || ({rozha:'Rozha', yunis:'Yunis'})[state.account] || '';
-  state.views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
+  const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
+  state.views = state.account ? [...views.filter(v=>!DEVICE_VIEWS.includes(v)), ...DEVICE_VIEWS] : [];
   state.tabs = validTabs(a.tabs);
   if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
 }
@@ -438,7 +443,7 @@ const RENDERERS = {
   history:[()=>renderHistory(),()=>attachHistoryEvents()], suppliers:[()=>renderSuppliers(),()=>attachSupplierEvents()],
   itemsAdmin:[()=>renderItemsAdmin(),()=>attachItemEvents()], units:[()=>renderUnits(),()=>attachUnitEvents()],
   record:[()=>renderRecord(),()=>attachRecordEvents()], devices:[()=>renderDevices(),()=>attachDeviceEvents()],
-  settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
+  settings:[()=>renderSettings(),()=>attachSettingsEvents()], sounds:[()=>renderSoundsView(),()=>attachSoundsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
 };
 function render(){
   applyLangClasses();
@@ -498,7 +503,7 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
    screens and "Edit tabs"). Computers: a sidebar with every screen. A glass
    lens glides to the current tab; on phones it can be held and slid, and
    the page itself can be swiped between the three tabs. */
-const VIEW_LABEL_KEYS = {order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', sounds:'soundsNav', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
@@ -619,7 +624,6 @@ function setMoreOpen(open){
 /* A tap anywhere else, or Escape, closes the More panel. */
 document.addEventListener('click', e=>{ if(!e.target.closest('.bottomnav')) setMoreOpen(false); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ setMoreOpen(false); closeLangMenu(); } });
-function haptic(ms=8){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(_){} }
 
 /* ---------- Page transitions ----------
    One animation per screen change, never on a redraw of the same screen
@@ -762,6 +766,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
     const next = i - Math.sign(s.dx)*rtl;
     if(go && next >= 0 && next < state.tabs.length){
       haptic();
+      playSwipe(next > i);
       // The new page arrives from where the finger left the old one.
       goView(state.tabs[next], {fromOffset:s.dx});
       return;
@@ -927,7 +932,7 @@ function openTabEditor(){
     onOpen: box=>{
       const list = box.querySelector('#tabPick');
       const paint = ()=>{
-        list.innerHTML = state.views.map(v=>{ const n = picked.indexOf(v); return `<button type="button" class="tab-pick-row ${n>=0?'on':''}" data-tab="${v}" aria-pressed="${n>=0}">${NAV_ICONS[v]}<span>${esc(viewLabel(v))}</span><b>${n>=0?n+1:''}</b></button>`; }).join('');
+        list.innerHTML = tabChoices().map(v=>{ const n = picked.indexOf(v); return `<button type="button" class="tab-pick-row ${n>=0?'on':''}" data-tab="${v}" aria-pressed="${n>=0}">${NAV_ICONS[v]}<span>${esc(viewLabel(v))}</span><b>${n>=0?n+1:''}</b></button>`; }).join('');
         list.querySelectorAll('[data-tab]').forEach(b=>b.onclick = ()=>{
           const v = b.dataset.tab, n = picked.indexOf(v);
           if(n >= 0) picked.splice(n, 1); else if(picked.length < 3) picked.push(v); else { picked.shift(); picked.push(v); }
@@ -1476,7 +1481,10 @@ function startStepHold(btn, e){
     stepHold.timer = setTimeout(tick, Math.max(45, 150 - stepHold.n*9));
   };
   stepHold.timer = setTimeout(tick, 420);
-  const up = ()=>{ stopStepHold(); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up); };
+  const up = ev=>{
+    if(ev.type === 'pointerup' && stepHold && stepHold.btn === btn && !stepHold.n) haptic();
+    stopStepHold(); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up);
+  };
   document.addEventListener('pointerup', up);
   document.addEventListener('pointercancel', up);
 }
@@ -2520,8 +2528,7 @@ function attachDeviceEvents(){
    keypad (see startRecovery). */
 function renderSettings(){
   const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  const sounds = `<div class="section-title">${esc(t('soundsTitle'))}</div><div class="form-card"><div class="notif-sub">${esc(t('soundsHint'))}</div><label class="check-row"><input type="checkbox" id="soundsToggle" ${soundsOn()?'checked':''}> ${esc(t('soundsLabel'))}</label></div>`;
-  return `${connectionCard}${renderNotifSettings()}${sounds}${renderRicoSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
+  return `${connectionCard}${renderNotifSettings()}${renderRicoSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
 }
 /* ---- Settings: Notifications card (this device + daily reminder) ---- */
 function renderNotifSettings(){
@@ -2546,6 +2553,28 @@ function renderNotifSettings(){
       </div>`;
   return `<div class="section-title">${t('notifSettingsTitle')}</div>
     <div class="form-card">${device}<hr class="notif-divider"><div class="section-title flush">${t('reminderTitle')}</div>${reminder}</div>`;
+}
+/* ============ Sounds & haptics (this device only, every account) ============ */
+const SOUND_ROWS = [
+  {id:'qty',   label:'soundQtyLabel',   hint:'soundQtyHint',   play:()=>playQtyTick(true)},
+  {id:'sent',  label:'soundSentLabel',  hint:'soundSentHint',  play:()=>playOrdersSent()},
+  {id:'swipe', label:'soundSwipeLabel', hint:'soundSwipeHint', play:()=>playSwipe(true)},
+];
+function renderSoundsView(){
+  const row = (id, on, label, hint)=>`<label class="check-row sound-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;
+  return `<div class="section-title">${esc(t('soundsTitle'))}</div>
+    <div class="form-card"><div class="notif-sub">${esc(t('soundsHint'))}</div>
+      ${SOUND_ROWS.map(r=>row('sound-'+r.id, soundOn(r.id), r.label, r.hint)).join('')}</div>
+    <div class="section-title">${esc(t('hapticsTitle'))}</div>
+    <div class="form-card">${row('hapticsToggle', hapticsOn(), 'hapticsLabel', 'hapticsHint')}</div>`;
+}
+function attachSoundsEvents(){
+  SOUND_ROWS.forEach(r=>{
+    const box = document.getElementById('sound-'+r.id);
+    if(box) box.onchange = ()=>{ setSoundOn(r.id, box.checked); if(box.checked) r.play(); };
+  });
+  const h = document.getElementById('hapticsToggle');
+  if(h) h.onchange = ()=>{ setHapticsOn(h.checked); haptic(12); };
 }
 /* ---- Settings: Rico connection is managed server-side, never from a device. ---- */
 function renderRicoSettings(){
@@ -2600,8 +2629,6 @@ function attachSettingsEvents(){
     render();
     await showPushEnableResult(res);
   };
-  const sounds = document.getElementById('soundsToggle');
-  if(sounds) sounds.onchange = ()=>{ setSoundsOn(sounds.checked); playQtyTick(true); };
   const save = document.getElementById('reminderSaveBtn');
   if(save) save.onclick = ()=> withBusy(save, async ()=>{
     const enabled = document.getElementById('reminderEnabled').checked;
