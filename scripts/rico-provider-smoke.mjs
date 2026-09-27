@@ -42,12 +42,15 @@ let geminiTurn = 0;
 let emptyReply = false;
 let groqTurn = 0;
 let groqUnavailable = false;
+let groqReply = null;
+let strongModelMissing = false;
 globalThis.fetch = async (input, options = {}) => {
   const url = String(input);
   requests.push({ url, body: typeof options.body === 'string' ? JSON.parse(options.body) : options.body });
   if (url.includes(':generateContent')) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'تەماتە پێنج کیلۆ' }] } }] }), { headers: { 'content-type': 'application/json' } });
   if (url.includes('audio/transcriptions')) return new Response(JSON.stringify({ text: 'five boxes of tomatoes' }), { headers: { 'content-type': 'application/json' } });
   if (url.includes('streamGenerateContent')) {
+    if (strongModelMissing && url.includes('/gemini-3.5-flash:')) return new Response('{"error":{"code":404}}', { status: 404 });
     const payload = emptyReply
       ? { candidates: [{ content: { role: 'model', parts: [] }, finishReason: 'MAX_TOKENS' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2048 } }
       : geminiTurn++ === 0
@@ -60,7 +63,8 @@ globalThis.fetch = async (input, options = {}) => {
   }
   if (url.includes('api.groq.com/openai/v1/chat/completions')) {
     if (groqUnavailable) return new Response('{"error":{"message":"busy"}}', { status: 503 });
-    const payload = groqTurn++ === 0
+    const payload = groqReply ? groqReply.map(content => ({ choices: [{ delta: { content } }] }))
+      : groqTurn++ === 0
       ? { choices: [{ delta: { tool_calls: [{ index: 0, id: 'groq-call-1', type: 'function', function: { name: 'open_screen', arguments: '{"screen":"order"}' } }] } }], usage: { prompt_tokens: 10, completion_tokens: 3 } }
       : [{ choices: [{ delta: { content: '[[mood:exc' } }] }, { choices: [{ delta: { content: 'ited]] Groq is ready.' } }], usage: { prompt_tokens: 20, completion_tokens: 4 } }];
     const events = (Array.isArray(payload) ? payload : [payload]).map(p => `data: ${JSON.stringify(p)}\n\n`).join('');
@@ -71,8 +75,8 @@ globalThis.fetch = async (input, options = {}) => {
 };
 
 const session = { id: 'test-session', account: 'rozha', deviceId: null };
-const chat = async () => {
-  const response = await handleChat(db, session, { messages: [{ role: 'user', content: 'Hello' }], lang: 'en' }, {}, new AbortController().signal);
+const chat = async (content = 'Hello', lang = 'en') => {
+  const response = await handleChat(db, session, { messages: [{ role: 'user', content }], lang }, {}, new AbortController().signal);
   return (await response.text()).trim().split('\n').map(JSON.parse);
 };
 
@@ -116,9 +120,24 @@ assert.equal(requests[beforeGroq].body.parallel_tool_calls, false);
 assert.equal(requests[beforeGroq + 1].body.messages.at(-1).role, 'tool');
 assert.equal(requests[beforeGroq + 1].body.messages.at(-1).tool_call_id, 'groq-call-1');
 assert.equal(usage.at(-1).model, 'openai/gpt-oss-120b');
+groqReply = ['[hap', 'py] Hi ', '[[calm]] there, [1] box'];
+const strayEvents = await chat();
+assert.deepEqual(strayEvents.filter(e => e.type === 'mood').map(e => e.mood), ['happy', 'calm'], 'moods in other shapes are still read');
+assert.equal(strayEvents.filter(e => e.type === 'text').map(e => e.text).join(''), 'Hi there, [1] box', 'no mood word is shown as text');
+groqReply = null;
+strongModelMissing = true; geminiTurn = 1;
+const beforeKurdish = requests.length;
+const kurdishEvents = await chat('سڵاو ریکۆ', 'en');
+assert.equal(kurdishEvents.find(e => e.type === 'mood')?.mood, 'happy');
+assert.deepEqual(requests.slice(beforeKurdish).map(r => r.url.match(/models\/([^:]+)/)?.[1] ?? 'groq'), ['gemini-3.5-flash', 'gemini-3.5-flash-lite'], 'Kurdish goes to Gemini first, and to flash-lite if the stronger model is missing');
+assert.match(requests.at(-1).body.systemInstruction.parts[0].text, /KURDISH \(SORANI\)/);
+strongModelMissing = false; geminiTurn = 1;
+const beforeKu = requests.length;
+await chat('hello', 'ku');
+assert.equal(requests[beforeKu].url.includes('/gemini-3.5-flash:'), true, 'the Kurdish app language also uses the stronger Gemini model');
 groqUnavailable = true; geminiTurn = 0;
 const fallbackEvents = await chat();
 assert.equal(fallbackEvents.at(-1).type, 'done');
 assert.equal(requests.at(-1).url.includes('streamGenerateContent'), true, 'Gemini is used after Groq rejects a request');
 
-console.log('Rico provider smoke: PASS (Gemini, Groq tool calls, Groq-to-Gemini fallback, moods, quick answers, draft check, insights, empty response)');
+console.log('Rico provider smoke: PASS (Gemini, Groq tool calls, Groq-to-Gemini fallback, moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');

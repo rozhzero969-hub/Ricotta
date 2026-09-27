@@ -256,9 +256,12 @@ function ricoErrorText(code){
   return map[code] || map.failed;
 }
 /* The server wraps kitchen data in <<DATA>> markers for the AI; now and then
-   the AI copies them, or invents [[data:...]] around a name. Only the name is kept. */
+   the AI copies them, or invents [[data:...]] around a name. Only the name is kept.
+   A mood the AI wrote in the wrong shape ([happy], [[happy]]) is dropped: the
+   face already shows it. */
+const RICO_MOOD_TAG = new RegExp(`\\[\\[?\\s*(?:mood\\s*:\\s*)?(?:${RICO_MOODS.join('|')})\\s*\\]\\]?[ \\t]*`, 'gi');
 function ricoClean(s){
-  return String(s || '').replace(/\[\[\s*data\s*:\s*([^\]]*?)\s*\]\]/gi, '$1').replace(/<<\/?DATA>>/gi, '');
+  return String(s || '').replace(/\[\[\s*data\s*:\s*([^\]]*?)\s*\]\]/gi, '$1').replace(/<<\/?DATA>>/gi, '').replace(RICO_MOOD_TAG, '');
 }
 /* A small, safe Markdown subset: **bold**, `code`, bullet and numbered lists, paragraphs. */
 function ricoFormat(src){

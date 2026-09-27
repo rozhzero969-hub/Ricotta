@@ -114,6 +114,7 @@ const server=http.createServer((req,res)=>{
     assert.match(await page.locator('meta[name="viewport"]').getAttribute('content'),/user-scalable=no/,'viewport disables pinch/double-tap zoom');
     assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).userSelect),'none','app chrome cannot be accidentally selected');
     assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).fontFamily.includes('Sora')),true,'English uses Sora');
+    assert.match(await page.locator('body').evaluate(el=>getComputedStyle(el).fontFamily),/^"?Sora"?, "?Noto Kufi Arabic"?/,'Kurdish or Arabic names inside English text use Noto Kufi Arabic');
     await page.evaluate(()=>{window.originalRow=document.querySelector('[data-item-id="i1"]');});
     const inc=page.locator('[data-inc="i1"]');
     await inc.focus();for(let i=0;i<12;i++) await page.keyboard.press('Enter');
@@ -224,6 +225,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('.rico-msg.bot .rico-bot').last().evaluate(el=>el.classList.contains('mood-angry')),true,'Rico\u2019s face shows his mood');
     assert.equal(await page.locator('.rico-head .rico-bot').evaluate(el=>el.classList.contains('mood-angry')),true,'the header face follows');
     assert.equal(await page.evaluate(()=>ricoFormat('[[data:Mam Fakhir]] has <<DATA>>9<</DATA>> items')),'<p>Mam Fakhir has 9 items</p>','data markers the AI copies are never shown');
+    assert.equal(await page.evaluate(()=>ricoFormat('[happy] Hi [[calm]] there [[mood:sad]], [1] box')),'<p>Hi there , [1] box</p>','a mood written in any shape is never shown as text');
     await page.locator('[data-rico-action]').count();
     await page.evaluate(()=>{ rico.messages=[]; render(); });
     await page.locator('[data-rico-action="prepare_order"]').click();
@@ -293,6 +295,7 @@ const server=http.createServer((req,res)=>{
     });
     assert.equal(await page.evaluate(()=>state.view),'assistant','swiping the page moves to the next tab');
     assert.equal(await page.locator('.content.gliding').count(),1,'the swipe moves to the next page');
+    assert.ok(await page.evaluate(()=>document.querySelector('.content.gliding').getAnimations()[0].effect.getTiming().duration)<600,'a swipe finishes quicker than a tap');
     await settle(page);
     await page.evaluate(()=>setLang('ku'));await openView(page,'order');
     assert.ok(parseFloat(await page.locator('#itemSearch').evaluate(el=>getComputedStyle(el).fontSize))>=16,'mobile search avoids focus zoom');

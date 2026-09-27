@@ -14,11 +14,13 @@
 // *proposed*: the app shows a card and the person taps to confirm, and the app
 // then makes the change through the normal API with that person's session.
 //
-// Rico prefers Groq's GPT-OSS 120B when configured and falls back to Gemini.
+// Rico prefers Groq's GPT-OSS 120B for English when configured and falls back
+// to Gemini. Kurdish and Arabic go to Gemini first: GPT-OSS writes poor Sorani.
 // Provider keys stay server-side; the one-time Groq setup can only add a key,
 // never remove either provider from a signed-in device.
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+const KURDISH_GEMINI_MODEL = "gemini-3.5-flash";   // writes much better Sorani; falls back to flash-lite
 const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
 const MAX_TURNS = 4;               // cap slow tool round-trips per reply
 const MAX_OUTPUT_TOKENS = 2048;
@@ -640,7 +642,7 @@ const STATUS_TOOLS = new Set(TOOLS.map((t) => t.name));
 const MANUAL = `You are Rico (Kurdish: ریکۆ, Arabic: ريكو), the assistant built into "Ricotta Orders", the web app the Ricotta restaurant kitchen in Erbil uses to order from its suppliers. You are warm, quick and practical, like a sharp kitchen manager who likes the team and has real feelings about how the day is going. Light humour is welcome; never waste people's time.
 
 FEELINGS (always)
-- Begin EVERY reply with exactly one mood tag, before any other text: [[mood:NAME]]. The app hides the tag and shows the feeling on your face. NAME is one of:
+- Begin EVERY reply with exactly one mood tag, before any other text, written exactly like [[mood:happy]] (two square brackets, the word mood, a colon, the name). The app hides the tag and shows the feeling on your face. Never write a feeling word in brackets anywhere else ([happy], [[happy]] and similar show up as ugly text). NAME is one of:
   happy (normal friendly help), excited (good news: orders done, a great week, a smart order), grateful (they thanked you or finished their work),
   calm (plain information), thinking (working through something complicated), worried (something looks off: a usual item missing, an odd quantity, low stock, a supplier sent twice),
   sad (you can't do something, something failed, you are apologising), angry (see below).
@@ -649,7 +651,17 @@ FEELINGS (always)
 
 LANGUAGE
 - Reply in the language of the person's latest message: Kurdish (Sorani, Arabic script), Arabic or English. If they mix, follow the main language. If their message is only a greeting or emoji, use the app language given in CONTEXT.
-- Keep Kurdish natural and simple, the way a kitchen team in Erbil speaks; keep Arabic simple and clear (Iraqi-friendly Modern Standard Arabic). Use normal digits 0-9 in every language. Item and supplier names stay exactly as they are stored. Write the two people's names as Rozha / Yunis in English, ڕۆژا / یونس in Kurdish and روژا / يونس in Arabic.
+- Keep Arabic simple and clear (Iraqi-friendly Modern Standard Arabic). Use normal digits 0-9 in every language. Item and supplier names stay exactly as they are stored. Write the two people's names as Rozha / Yunis in English, ڕۆژا / یونس in Kurdish and روژا / يونس in Arabic.
+
+KURDISH (SORANI) -- get it right
+- Write Central Kurdish (Sorani) as it is spoken in Erbil, in the Kurdish Arabic-script alphabet, with short everyday sentences. Never Kurmanji, never Persian, never Arabic sentences in Kurdish letters.
+- Use the Kurdish letters, not the Arabic look-alikes: ە (not ة or ه at a word end for the vowel), ی (not ي or ى), ک (not ك), plus ڕ ڵ ۆ ێ پ چ ژ گ ڤ where the word needs them. Write "ە" for the short a-vowel and "ێ"/"ۆ" for long e/o; "و" is u and "وو" is long u.
+- Grammar: the verb comes last; the definite ending is -ەکە / -ەکان (داواکارییەکە, کاڵاکان); the linking izafe is -ی (بڕی تەماتە); "is/are" is -ە / -ن (ئامادەیە، نێردران). Present tense verbs start with دە- (دەنێرم، دەیبینم); imperatives start with ب- (بنێرە، ببینە، زیادی بکە).
+- People sometimes type Kurdish in Latin letters (e.g. "xoshm", "supas", "chon bashi", "kalakan zyad ka"). Understand it as Sorani and reply in Sorani Arabic script.
+- Use the same words the app uses: داواکاری (order), دابینکەر (supplier), کاڵا (item), یەکە (unit), بڕ (quantity), ڕەشنووس (draft), مێژوو (history), تۆمار (record), ئامێر (device), ئاگادارکردنەوە (notification), ناردن (send), زیادکردن (add), دەستکاریکردن (edit), سڕینەوە (delete), ئەمڕۆ (today), دوێنێ (yesterday), سبەی (tomorrow), هەفتە (week), کاتژمێر (hour/o'clock), دواکەوتوو (late).
+- Weekdays: شەممە، یەکشەممە، دووشەممە، سێشەممە، چوارشەممە، پێنجشەممە، هەینی.
+- Friendly phrases: سڵاو، سوپاس، دەستت خۆش، زۆر باشە، بەڵێ، نەخێر، ببورە، کێشە نییە، چۆن یارمەتیت بدەم؟
+- Before sending a Kurdish reply, reread it once: fix any Arabic letter forms (ي ك ة), any Persian or Kurmanji word, and any sentence that would sound strange to someone from Erbil.
 
 HOW YOU TALK
 - Short answers first; details only when useful. Use short bullet lists for items and numbers. Bold (**like this**) only for the key fact.
@@ -735,25 +747,29 @@ function contextBlock(w: World, s: Session, body: any) {
 
 /* Rico starts every reply with a [[mood:...]] tag. This takes the tags out
    of the text stream (a tag can arrive split across chunks) and sends each
-   one as its own {type:"mood"} event instead. */
+   one as its own {type:"mood"} event instead. The AI sometimes writes the
+   tag in another shape ([[happy]], [happy], [mood:happy]); those are taken
+   out the same way, so a feeling is never shown as text. */
+const MOOD_NAMES = MOODS.join("|");
+const MOOD_TAG = new RegExp(`\\[\\[\\s*(?:mood\\s*:\\s*)?(${MOOD_NAMES})\\s*\\]\\][ \\t]*\\n?|(?<!\\[)\\[\\s*(?:mood\\s*:\\s*)?(${MOOD_NAMES})\\s*\\](?!\\])[ \\t]*\\n?`, "i");
 function moodFilter(emit: Emit) {
   let buf = "";
   const out = (t: string) => { if (t) emit({ type: "text", text: t }); };
   const pump = (final: boolean) => {
     for (;;) {
-      const m = buf.match(/\[\[\s*mood\s*:\s*([a-z]+)\s*\]\]\s*/i);
+      const m = buf.match(MOOD_TAG);
       if (!m || m.index === undefined) break;
       out(buf.slice(0, m.index));
-      const mood = m[1].toLowerCase();
-      if (MOODS.includes(mood)) emit({ type: "mood", mood });
+      emit({ type: "mood", mood: (m[1] ?? m[2]).toLowerCase() });
       buf = buf.slice(m.index + m[0].length);
     }
     if (final) { out(buf); buf = ""; return; }
     // Hold back what could be the start of a tag until the rest arrives.
-    const pair = buf.lastIndexOf("[[");
-    const start = pair >= 0 ? pair : buf.endsWith("[") ? buf.length - 1 : -1;
-    const hold = start >= 0 && buf.length - start < 24 && !buf.slice(start).includes("]]") ? start : -1;
-    if (hold >= 0) { out(buf.slice(0, hold)); buf = buf.slice(hold); } else { out(buf); buf = ""; }
+    let start = buf.lastIndexOf("[");
+    if (start > 0 && buf[start - 1] === "[") start--;
+    const rest = start >= 0 ? buf.slice(start) : "";
+    const closed = rest.startsWith("[[") ? rest.includes("]]") : rest.includes("]");
+    if (start >= 0 && rest.length < 24 && !closed) { out(buf.slice(0, start)); buf = rest; } else { out(buf); buf = ""; }
   };
   return {
     emit: ((e) => { if (e.type === "text") { buf += String(e.text ?? ""); pump(false); } else { pump(true); emit(e); } }) as Emit,
@@ -832,9 +848,11 @@ async function execTool(db: any, w: World, name: string, args: any, emit: Emit, 
   return { value: truncated ? json.slice(0, 60000) : out, text: truncated ? json.slice(0, 60000) : json };
 }
 
+/* Returns true once it has answered (or shown an error), or the error code
+   when the very first request failed, so the caller can try another model. */
 async function streamGemini(db: any, w: World, cfg: Awaited<ReturnType<typeof config>>,
   messages: any[], system: { text: string }[], emit: Emit, auto: boolean, signal: AbortSignal,
-  usage: { input: number; output: number }) {
+  usage: { input: number; output: number }): Promise<true | string> {
   const contents: any[] = messages.map((m) => ({
     role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }],
   }));
@@ -853,10 +871,12 @@ async function streamGemini(db: any, w: World, cfg: Awaited<ReturnType<typeof co
       }),
     });
     if (!res.ok) {
-      console.error("gemini", res.status);
-      emit({ type: "error", code: res.status === 401 || res.status === 403 ? "key_rejected"
-        : res.status === 429 || res.status === 503 ? "busy" : res.status === 404 ? "model_unavailable" : "failed" });
-      return;
+      console.error("gemini", cfg.model, res.status);
+      const code = res.status === 401 || res.status === 403 ? "key_rejected"
+        : res.status === 429 || res.status === 503 ? "busy" : res.status === 404 ? "model_unavailable" : "failed";
+      if (turn === 0) return code;
+      emit({ type: "error", code });
+      return true;
     }
     const parts: any[] = [];
     const calls: any[] = [];
@@ -885,7 +905,7 @@ async function streamGemini(db: any, w: World, cfg: Awaited<ReturnType<typeof co
     usage.output += outputTokens;
     if (!calls.length) {
       if (!sawText) emit({ type: "error", code: "failed" });
-      return;
+      return true;
     }
     contents.push({ role: "model", parts });
     const results: any[] = [];
@@ -900,6 +920,7 @@ async function streamGemini(db: any, w: World, cfg: Awaited<ReturnType<typeof co
     if (turn === MAX_TURNS - 2) instruction += "\n- You have used many lookups: answer now with what you have.";
   }
   emit({ type: "error", code: "failed" });
+  return true;
 }
 
 /* Groq's chat API is OpenAI-compatible. GPT-OSS does not support parallel
@@ -1130,15 +1151,29 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
       const moods = moodFilter(send);
       const emit = moods.emit;
       try {
-        if (cfg.provider === "groq") {
-          const groqAnswered = await streamGroq(db, w, cfg, messages, system, emit, auto, upstream.signal, usage);
-          if (!groqAnswered) {
-            if (cfg.geminiKey) {
-              modelUsed = DEFAULT_GEMINI_MODEL;
-              await streamGemini(db, w, { provider: "gemini", key: cfg.geminiKey, model: DEFAULT_GEMINI_MODEL, geminiKey: cfg.geminiKey }, messages, system, emit, auto, upstream.signal, usage);
-            } else emit({ type: "error", code: "failed" });
+        const gemini = (model: string) => {
+          modelUsed = model;
+          return streamGemini(db, w, { provider: "gemini", key: cfg.geminiKey, model, geminiKey: cfg.geminiKey }, messages, system, emit, auto, upstream.signal, usage);
+        };
+        const groq = cfg.provider === "groq" ? () => { modelUsed = cfg.model; return streamGroq(db, w, cfg, messages, system, emit, auto, upstream.signal, usage); } : null;
+        // Kurdish or Arabic (the app language, or Arabic-script letters in the
+        // latest message): Gemini's stronger model first.
+        const rtl = body.lang === "ku" || body.lang === "ar" || /[\u0600-\u06FF]/.test(messages[messages.length - 1].content);
+        let failed: string | null = null;
+        if (rtl && cfg.geminiKey) {
+          let r = await gemini(KURDISH_GEMINI_MODEL);
+          if (r !== true) r = await gemini(DEFAULT_GEMINI_MODEL);
+          if (r !== true) failed = groq && await groq() ? null : r;
+        } else if (groq) {
+          if (!await groq()) {
+            const r = cfg.geminiKey ? await gemini(DEFAULT_GEMINI_MODEL) : "failed";
+            if (r !== true) failed = r;
           }
-        } else await streamGemini(db, w, cfg, messages, system, emit, auto, upstream.signal, usage);
+        } else {
+          const r = await gemini(DEFAULT_GEMINI_MODEL);
+          if (r !== true) failed = r;
+        }
+        if (failed) emit({ type: "error", code: failed });
         moods.flush();
         emit({ type: "done" });
       } catch (e) {
