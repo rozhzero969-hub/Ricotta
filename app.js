@@ -596,7 +596,7 @@ function initTabBarLens(nav){
     const s = slotAt(e.clientX);
     setLensPosition(s.pos);
     const view = s.btn?.dataset.view;
-    if(view && view !== down.last){ down.last = view; if(view !== state.view){ haptic(); goView(view, {keepLens:true}); setLensPosition(s.pos); } }
+    if(view && view !== down.last){ down.last = view; if(view !== state.view){ goView(view, {keepLens:true}); setLensPosition(s.pos); } }
   });
   const end = e=>{
     if(!down || e.pointerId!==down.id) return;
@@ -765,7 +765,6 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
     const go = Math.abs(s.dx) > window.innerWidth*.26 || Math.abs(v) > .45;
     const next = i - Math.sign(s.dx)*rtl;
     if(go && next >= 0 && next < state.tabs.length){
-      haptic();
       playSwipe(next > i);
       // The new page arrives from where the finger left the old one.
       goView(state.tabs[next], {fromOffset:s.dx});
@@ -1477,14 +1476,10 @@ function startStepHold(btn, e){
   const tick = ()=>{
     if(!stepHold || stepHold.btn !== btn || btn.disabled || !btn.isConnected){ stopStepHold(); return; }
     stepQty(btn); stepHold.n++;
-    if(stepHold.n % 5 === 0) haptic(4);
     stepHold.timer = setTimeout(tick, Math.max(45, 150 - stepHold.n*9));
   };
   stepHold.timer = setTimeout(tick, 420);
-  const up = ev=>{
-    if(ev.type === 'pointerup' && stepHold && stepHold.btn === btn && !stepHold.n) haptic();
-    stopStepHold(); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up);
-  };
+  const up = ()=>{ stopStepHold(); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up); };
   document.addEventListener('pointerup', up);
   document.addEventListener('pointercancel', up);
 }
@@ -1519,7 +1514,6 @@ function closeContextMenu(){
 function openItemMenu(row){
   const id = row.dataset.itemId, item = state.items.find(i=>i.id===id);
   if(!item) return;
-  haptic(12);
   closeContextMenu();
   const qty = state.cart[id] || 0;
   const rect = row.getBoundingClientRect();
@@ -1551,7 +1545,7 @@ function openItemMenu(row){
       toast(t('itemRemoved'), 'ok', {undo:()=>{ state.cart[id] = before; refreshOrderView(id); }});
       return;
     }
-    state.cart[id] = before + Number(a); refreshOrderView(id); haptic(6);
+    state.cart[id] = before + Number(a); refreshOrderView(id);
   });
 }
 
@@ -1595,7 +1589,7 @@ function paintRicoSuggestion(){
     const sg = currentRicoSuggestion(); if(!sg) return;
     const before = {...state.cart};
     sg.lines.forEach(l=>{ state.cart[l.itemId] = Math.max(state.cart[l.itemId]||0, Math.max(1, Math.round(Number(l.qty)||1))); });
-    persistCartDraft(); refreshOrderView(); haptic(10);
+    persistCartDraft(); refreshOrderView();
     const name = (state.suppliers.find(s=>s.id===sg.supplierId)||{}).name || sg.supplier;
     toast(t('ricoSuggestAdded')(sg.lines.length, '\u2068'+name+'\u2069'), 'ok', {undo:()=>{ state.cart = before; persistCartDraft(); refreshOrderView(); }});
   };
@@ -2554,7 +2548,7 @@ function renderNotifSettings(){
   return `<div class="section-title">${t('notifSettingsTitle')}</div>
     <div class="form-card">${device}<hr class="notif-divider"><div class="section-title flush">${t('reminderTitle')}</div>${reminder}</div>`;
 }
-/* ============ Sounds & haptics (this device only, every account) ============ */
+/* ============ Sounds (this device only, every account) ============ */
 const SOUND_ROWS = [
   {id:'qty',   label:'soundQtyLabel',   hint:'soundQtyHint',   play:()=>playQtyTick(true)},
   {id:'sent',  label:'soundSentLabel',  hint:'soundSentHint',  play:()=>playOrdersSent()},
@@ -2562,19 +2556,14 @@ const SOUND_ROWS = [
 ];
 function renderSoundsView(){
   const row = (id, on, label, hint)=>`<label class="check-row sound-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;
-  return `<div class="section-title">${esc(t('soundsTitle'))}</div>
-    <div class="form-card"><div class="notif-sub">${esc(t('soundsHint'))}</div>
-      ${SOUND_ROWS.map(r=>row('sound-'+r.id, soundOn(r.id), r.label, r.hint)).join('')}</div>
-    <div class="section-title">${esc(t('hapticsTitle'))}</div>
-    <div class="form-card">${row('hapticsToggle', hapticsOn(), 'hapticsLabel', 'hapticsHint')}</div>`;
+  return `<div class="form-card"><div class="notif-sub">${esc(t('soundsHint'))}</div>
+      ${SOUND_ROWS.map(r=>row('sound-'+r.id, soundOn(r.id), r.label, r.hint)).join('')}</div>`;
 }
 function attachSoundsEvents(){
   SOUND_ROWS.forEach(r=>{
     const box = document.getElementById('sound-'+r.id);
     if(box) box.onchange = ()=>{ setSoundOn(r.id, box.checked); if(box.checked) r.play(); };
   });
-  const h = document.getElementById('hapticsToggle');
-  if(h) h.onchange = ()=>{ setHapticsOn(h.checked); haptic(12); };
 }
 /* ---- Settings: Rico connection is managed server-side, never from a device. ---- */
 function renderRicoSettings(){
