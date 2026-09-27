@@ -217,6 +217,8 @@ const server=http.createServer((req,res)=>{
     assert.match(await page.locator('.rico-hello').textContent(),/Rozha/,'Rico greets the account by name');
     assert.equal(await page.locator('#ricoNameForm').count(),0,'Rico never asks for a name');
     assert.ok(calls.some(c=>c.endpoint==='assistant/inbox/read'),'opening Rico reads his messages');
+    await settle(page);
+    assert.deepEqual(await page.evaluate(()=>{ render(); return [...document.querySelectorAll('.content, .content *')].flatMap(el=>el.getAnimations().filter(x=>x.playState==='running' && x.effect.getComputedTiming().iterations!==Infinity).map(x=>String(el.className.baseVal??el.className)+':'+(x.animationName||'js'))); }),[],'redrawing the same screen never replays an entrance animation');
     await page.locator('[data-rico-action="late_orders"]').click();
     await page.waitForFunction(()=>!rico.streaming);
     assert.equal(await page.locator('.rico-msg.bot .rico-bot').last().evaluate(el=>el.classList.contains('mood-angry')),true,'Rico\u2019s face shows his mood');

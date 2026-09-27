@@ -28,13 +28,57 @@ function apiSession(){
 }
 function clearApiSession(){ lset('apiSession', null); }
 
+/* What this device is, for the Devices screen: "iPhone 16/17 Pro Max|App",
+   "Windows PC|Chrome"... iPhones don't reveal their exact model to web
+   pages, so the model family comes from the screen size. Android phones
+   report their model (e.g. SM-S918B) through client hints. Sent with every
+   request as x-device-label (plain ASCII). */
+const IPHONE_SCREENS = {
+  '320x568':'iPhone SE (1st gen)', '375x667':'iPhone SE / 8', '414x736':'iPhone 8 Plus',
+  '375x812':'iPhone X / 11 Pro / mini', '414x896@2':'iPhone XR / 11', '414x896@3':'iPhone 11 Pro Max',
+  '390x844':'iPhone 12 / 13 / 14', '428x926':'iPhone 13 Pro Max / 14 Plus', '393x852':'iPhone 14 Pro / 15 / 16',
+  '430x932':'iPhone 15 Pro Max / 16 Plus', '402x874':'iPhone 16 Pro / 17', '440x956':'iPhone 16/17 Pro Max', '420x912':'iPhone Air',
+};
+let deviceLabelCache = '';
+function deviceLabel(){
+  if(deviceLabelCache) return deviceLabelCache;
+  const ua = navigator.userAgent || '';
+  const touch = (navigator.maxTouchPoints || 0) > 1;
+  const w = Math.min(screen.width, screen.height), h = Math.max(screen.width, screen.height), dpr = Math.round(window.devicePixelRatio || 1);
+  let kind;
+  if(/iPhone/.test(ua)) kind = IPHONE_SCREENS[`${w}x${h}@${dpr}`] || IPHONE_SCREENS[`${w}x${h}`] || 'iPhone';
+  else if(/iPad/.test(ua) || (/Macintosh/.test(ua) && touch)) kind = 'iPad';
+  else if(/Android/.test(ua)){
+    const m = ua.match(/Android [\d.]+; (?:[a-z]{2}-[a-z]{2}; )?([^;)]+?)(?: Build|\))/i);
+    const model = m && m[1] && m[1] !== 'K' ? m[1].trim() : (lget('deviceModel') || '');
+    kind = model ? `Android ${model}` : (/Mobile/.test(ua) ? 'Android phone' : 'Android tablet');
+  }
+  else if(/CrOS/.test(ua)) kind = 'Chromebook';
+  else if(/Windows/.test(ua)) kind = 'Windows PC';
+  else if(/Macintosh/.test(ua)) kind = 'Mac';
+  else if(/Linux/.test(ua)) kind = 'Linux PC';
+  else kind = 'Device';
+  const app = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+  const browser = /EdgiOS|Edg\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /CriOS|Chrome\//.test(ua) ? 'Chrome'
+    : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  // "kind|how", e.g. "Windows PC|Chrome" (the app shows the two parts separately).
+  deviceLabelCache = `${kind}|${app ? 'App' : browser}`.replace(/[^\x20-\x7E]/g, '').slice(0, 80);
+  return deviceLabelCache;
+}
+/* Chrome on Android hides the model in the user agent; ask for it once. */
+try{
+  navigator.userAgentData?.getHighEntropyValues?.(['model']).then(v=>{
+    if(v && v.model && v.model !== lget('deviceModel')){ lset('deviceModel', String(v.model).slice(0, 40)); deviceLabelCache = ''; }
+  }, ()=>{});
+}catch(_){}
+
 /* Returns {ok, status, data}. Never throws. A 401 on a signed-in device means
    the session was revoked (new PINs, remote log out) or expired. */
 async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
   const controller = new AbortController();
   const timer = setTimeout(()=>controller.abort(), timeout);
   const s = apiSession();
-  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||'')};
+  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel()};
   if(s) headers['x-session-token'] = s.token;
   try{
     const res = await fetch(`${API_URL}/${path}`, {
@@ -55,7 +99,7 @@ async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
    as it arrives. Never throws; network trouble arrives as {type:'error',code:'offline'}. */
 async function apiStream(path, body, onEvent, signal){
   const s = apiSession();
-  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||'')};
+  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel()};
   if(s) headers['x-session-token'] = s.token;
   const streamController = new AbortController();
   const stop = ()=>streamController.abort();

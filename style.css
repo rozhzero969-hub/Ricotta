@@ -77,15 +77,18 @@ html:not(.rtl) .page-heading h1{letter-spacing:-.04em}
 .section-title{font-size:12.5px;font-weight:700;color:var(--ink-soft);margin:26px 4px 10px}
 .section-title:first-child,.section-title.flush{margin-top:0}
 .section-title.grow{flex:1;margin:0}
-/* A new screen's parts rise in turn (never on quantity or search updates). */
-.content>*{animation:rise 520ms var(--ease-out) both}
-.content>*:nth-child(2){animation-delay:30ms}.content>*:nth-child(3){animation-delay:60ms}.content>*:nth-child(4){animation-delay:90ms}.content>*:nth-child(n+5){animation-delay:120ms}
-#app.static-update .content>*,.content.gliding>*{animation:none}
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes fadeOut{to{opacity:0}}
 @keyframes spin{to{transform:rotate(360deg)}}
-/* Page transition: a still copy of the old page slides away with the new one. */
+/* Page transition (see goView): a still copy of the old page, when the style moves it. */
+.page-ghost{position:fixed;top:0;bottom:0;z-index:20;overflow:hidden;pointer-events:none}
+.page-ghost>.content{position:absolute;left:0;margin:0}
+/* While pages move, the glass blur pauses (the page behind it is plain, so it
+   looks the same): recomputing a 35px blur under every moving card each frame
+   is what made transitions lag on phones. */
+.content.gliding,.page-ghost>.content{will-change:transform,opacity}
+.content.gliding *,.page-ghost *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 body.page-swiping *{transition:none!important}
 
 /* ---------- Top bar: the page's own colour, glass chips on top ---------- */
@@ -493,6 +496,9 @@ html.rtl .queue-back svg{transform:scaleX(-1)}
 /* ---------- Devices ---------- */
 .dev-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .dev-name{font-size:16px;font-weight:800;overflow-wrap:anywhere}
+.dev-kind{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-2px 0 10px;font-size:14px;font-weight:700;color:var(--ink)}
+.dev-kind svg{color:var(--accent-strong);flex-shrink:0}
+.dev-how{font-size:11.5px;font-weight:700;color:var(--ink-soft);padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.6);border:1px solid var(--glass-rim)}
 .dev-this{color:var(--mint-ink);font-weight:700;font-size:11.5px}
 .dev-status{display:flex;align-items:center;gap:8px;margin:6px 0 10px}
 .dev-badge::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
@@ -695,7 +701,7 @@ html:not(.rtl) .rico-name{letter-spacing:-.03em}
 html:not(.rtl) .rico-hello{letter-spacing:-.035em}
 .rico-intro-text{margin:0;max-width:460px;color:var(--ink-soft);font-size:14px;font-weight:500;line-height:1.65}
 .rico-chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:14px;width:100%}
-.rico-chip{padding:13px 15px;border-radius:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:700;color:var(--ink);text-align:start;animation:rise 520ms var(--ease-out) both}
+.rico-chip{padding:13px 15px;border-radius:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:700;color:var(--ink);text-align:start}
 .rico-chip::after{content:'\203A';font-size:19px;line-height:1;color:var(--ink-soft)}
 html.rtl .rico-chip::after{content:'\2039'}
 .rico-chip:nth-child(2){animation-delay:50ms}.rico-chip:nth-child(3){animation-delay:100ms}.rico-chip:nth-child(4){animation-delay:150ms}.rico-chip:nth-child(5){animation-delay:200ms}.rico-chip:nth-child(6){animation-delay:250ms}

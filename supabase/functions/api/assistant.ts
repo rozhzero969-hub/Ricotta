@@ -83,7 +83,7 @@ async function loadWorld(db: any, s: Session) {
     app("units").select("id,en,ku,ar"),
     app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at", { ascending: false }).limit(600),
     app("reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle(),
-    full ? app("devices").select("account,logged_in,last_seen").order("last_seen", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+    full ? app("devices").select("account,label,logged_in,last_seen").order("last_seen", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
     app("audit_events").select("occurred_at,actor,action,entity_type,entity_name,payload")
       .in("action", ["add", "edit", "delete"]).in("entity_type", ["supplier", "item", "unit"])
       .order("occurred_at", { ascending: false }).limit(40),
@@ -716,7 +716,7 @@ function contextBlock(w: World, s: Session, body: any) {
     .map(([id, q]) => { const it = w.items.find((i) => i.id === id); return it ? `${it.name} × ${q} ${unitName(w, it.unit_id)} (${supplierName(w, it.supplier_id)})` : null; })
     .filter(Boolean) : [];
   const phones = w.full ? w.devices.slice(0, 12)
-    .map((d) => `${NAMES[d.account] ?? "nobody"}${d.logged_in ? " (signed in)" : " (signed out)"}`) : [];
+    .map((d) => `${NAMES[d.account] ?? "nobody"} on ${String(d.label ?? "a device").replace("|", ", ")}${d.logged_in ? " (signed in)" : " (signed out)"}`) : [];
   const low = stockRows(w).filter((r) => r.low);
   const stockLine = low.length
     ? `${low.length} tracked item(s) at or below par (estimate): ${low.slice(0, 8).map((r) => `${r.name} (est ${r.est_qty}/${r.effective_par} ${r.unit}${r.busy_today ? ", busy day boost on" : ""})`).join("; ")}.`
