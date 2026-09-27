@@ -207,7 +207,7 @@ const server=http.createServer((req,res)=>{
     assert.deepEqual([sent.body.type,sent.body.bodyEn,sent.body.bodyKu,sent.body.bodyAr],['update','New ordering screen','','تحديث جديد'],'update message goes out as written');
     assert.equal(sent.body.title,undefined,'the app adds no title of its own');
     await page.evaluate(()=>{ const root=document.getElementById('modalRoot'); if(root) root.innerHTML=''; });
-    await page.evaluate(()=>openUpdatePopup('Only these words'));
+    await page.evaluate(()=>{ openUpdatePopup('Only these words'); });
     await page.locator('#forceRoot .update-words').waitFor();
     assert.equal(await page.locator('#forceRoot .modal-msg').textContent(),'Only these words','the update popup shows only the written words');
     await page.locator('#updOkBtn').click();
