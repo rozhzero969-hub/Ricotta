@@ -54,8 +54,10 @@ const server=http.createServer((req,res)=>{
   const executablePath=process.env.EDGE_PATH||(process.platform==='win32'?'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe':undefined);
   const browser=await chromium.launch({headless:true,executablePath});
   const errors=[];
-  async function context({account='rozha',loggedIn=true,reducedMotion='no-preference',touch=false}={}){
+  async function context({account='rozha',loggedIn=true,reducedMotion='no-preference',touch=false,homeScreen=false}={}){
     const ctx=await browser.newContext({viewport:touch?{width:390,height:844}:{width:1440,height:1000},hasTouch:touch,isMobile:touch,reducedMotion,serviceWorkers:'block'});
+    // Opened from the Home Screen (as iOS reports it).
+    if(homeScreen) await ctx.addInitScript(()=>Object.defineProperty(Navigator.prototype,'standalone',{get:()=>true}));
     const calls=[];
     let signedIn=account;
     await ctx.route('**/functions/v1/api/**',async route=>{
@@ -328,6 +330,31 @@ const server=http.createServer((req,res)=>{
     await phone.page.waitForFunction(()=>getComputedStyle(document.querySelector('.bottomnav')).display!=='none');
     await phone.ctx.close();
 
+    /* ---------- The Home Screen app ---------- */
+    const home=await context({touch:true,homeScreen:true});
+    const hp=home.page;
+    assert.equal(await hp.evaluate(()=>document.documentElement.classList.contains('app-shell')),true,'opened from the Home Screen it runs as an app');
+    await openView(hp,'order');
+    const frame=await hp.evaluate(()=>{
+      const c=document.querySelector('.content'), nav=document.querySelector('.bottomnav').getBoundingClientRect(), bar=document.querySelector('.topbar').getBoundingClientRect();
+      return {page:document.scrollingElement.scrollHeight<=innerHeight+1, scrolls:c.scrollHeight>c.clientHeight, navBottom:Math.round(nav.bottom), barTop:Math.round(bar.top)};
+    });
+    assert.equal(frame.page,true,'the page itself never scrolls');
+    assert.equal(frame.scrolls,true,'only the screen content scrolls');
+    assert.ok(frame.barTop===0 && frame.navBottom<=844 && frame.navBottom>780,'top bar and tab bar are fixed parts of the frame');
+    await hp.evaluate(()=>{ const c=document.querySelector('.content'); c.scrollTop=400; c.dispatchEvent(new Event('scroll')); });
+    assert.equal(await hp.evaluate(()=>document.querySelector('.topbar').classList.contains('scrolled')),true,'the top bar reacts to the content scrolling');
+    await hp.evaluate(()=>goView('history'));
+    assert.equal(await hp.evaluate(()=>document.querySelector('.page-ghost > .content')?.scrollTop),400,'the leaving page slides away from where it was');
+    await settle(hp);
+    assert.equal(await hp.evaluate(()=>document.querySelector('.content').scrollTop),0,'a new screen starts at its top');
+    // The keyboard takes 330px: the whole frame fits above it.
+    await hp.evaluate(()=>{ const r=document.documentElement.style; r.setProperty('--vv-height','514px'); });
+    const shrunk=await hp.evaluate(()=>({app:Math.round(document.getElementById('app').getBoundingClientRect().bottom), nav:Math.round(document.querySelector('.bottom-stack').getBoundingClientRect().bottom)}));
+    assert.ok(shrunk.app===514 && shrunk.nav<=514,'with the keyboard up the app fits exactly above it');
+    await snapshot(hp,'phone-home-screen-app.png');
+    await home.ctx.close();
+
     /* ---------- Yunis ---------- */
     const y=await context({account:'yunis'});
     assert.deepEqual(await y.page.evaluate(()=>state.views),YUNIS_VIEWS,'Yunis gets the right screens');
@@ -406,6 +433,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await reduced.page.locator('.content.gliding').count(),0,'reduced motion skips the page transition');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, undo, security policy, desktop install, phone typing and centred popups, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

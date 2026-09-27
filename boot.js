@@ -4,6 +4,13 @@
    for the "cssready" event before lifting the splash. Fonts: Sora (English),
    Noto Kufi Arabic (Kurdish and Arabic) and Manrope for the ricotta logo. */
 window.__splashStart = performance.now();
+/* Opened from the Home Screen on a phone or tablet: run as an app, not a web
+   page. The page itself never scrolls; only the screen's content scrolls
+   inside a frame that always fits the visible area (see style.css). */
+(function(){
+  var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  if(standalone && window.matchMedia && matchMedia('(pointer: coarse)').matches) document.documentElement.classList.add('app-shell');
+})();
 (function(){
   function sheet(href, media, onload){
     var link = document.createElement('link');
