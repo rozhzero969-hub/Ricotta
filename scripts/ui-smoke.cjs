@@ -123,6 +123,15 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('[data-qty="i1"]').inputValue(),'12');
     assert.equal(await page.evaluate(()=>originalRow===document.querySelector('[data-item-id="i1"]')),true,'quantity preserves the actual row');
     assert.equal(await inc.evaluate(el=>el===document.activeElement),true,'repeated taps retain focus');
+    // Sounds: a soft tap on + (higher) and - (lower), none when turned off, and the chime when the order is done.
+    await page.evaluate(()=>{ window.__tones=[]; window.soundTone=f=>__tones.push(Math.round(f)); lastTick=0; });
+    await inc.click(); await page.waitForTimeout(60); await page.locator('[data-dec="i1"]').click();
+    assert.deepEqual(await page.evaluate(()=>__tones),[1150,900],'+ and - each play a soft tap, + a touch higher');
+    await page.evaluate(()=>{ setSoundsOn(false); __tones=[]; lastTick=0; }); await inc.click();
+    assert.deepEqual(await page.evaluate(()=>__tones),[],'no sound when sounds are turned off');
+    await page.evaluate(()=>{ setSoundsOn(true); playOrdersSent(); });
+    assert.deepEqual(await page.evaluate(()=>__tones.filter((f,i)=>i%2===0)),[523,659,784,1047],'orders sent plays the rising chime');
+    assert.match(await page.evaluate(()=>maybeFinishQueue.toString()),/playOrdersSent\(\)/,'the chime belongs to finishing the order');
     await page.locator('[data-qty="i1"]').fill('24');
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('ricottaOrders:pendingCart')).i1),24,'draft saves before blur');
     await page.reload();await page.waitForSelector('#splash',{state:'detached'});
@@ -433,6 +442,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await reduced.page.locator('.content.gliding').count(),0,'reduced motion skips the page transition');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, sounds, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

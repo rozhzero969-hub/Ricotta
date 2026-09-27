@@ -1452,6 +1452,7 @@ function stepQty(btn){
   if(next === (state.cart[id]||0)) return;
   state.cart[id] = next;
   refreshOrderView(id);
+  playQtyTick(!!btn.dataset.inc);
 }
 /* Hold + or − and the number keeps going, faster the longer it's held. */
 let stepHold = null;
@@ -1695,6 +1696,7 @@ let finishingQueue = false;
 async function maybeFinishQueue(){
   if(finishingQueue || !state.queue || !state.queue.every(e=>e.sent)) return;
   finishingQueue = true;
+  playOrdersSent();
   const record = {
     id: 'o'+Date.now(), date: new Date().toISOString(), by: state.account,
     entries: state.queue.map(e=>({
@@ -2518,7 +2520,8 @@ function attachDeviceEvents(){
    keypad (see startRecovery). */
 function renderSettings(){
   const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `${connectionCard}${renderNotifSettings()}${renderRicoSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
+  const sounds = `<div class="section-title">${esc(t('soundsTitle'))}</div><div class="form-card"><div class="notif-sub">${esc(t('soundsHint'))}</div><label class="check-row"><input type="checkbox" id="soundsToggle" ${soundsOn()?'checked':''}> ${esc(t('soundsLabel'))}</label></div>`;
+  return `${connectionCard}${renderNotifSettings()}${sounds}${renderRicoSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
 }
 /* ---- Settings: Notifications card (this device + daily reminder) ---- */
 function renderNotifSettings(){
@@ -2597,6 +2600,8 @@ function attachSettingsEvents(){
     render();
     await showPushEnableResult(res);
   };
+  const sounds = document.getElementById('soundsToggle');
+  if(sounds) sounds.onchange = ()=>{ setSoundsOn(sounds.checked); playQtyTick(true); };
   const save = document.getElementById('reminderSaveBtn');
   if(save) save.onclick = ()=> withBusy(save, async ()=>{
     const enabled = document.getElementById('reminderEnabled').checked;
