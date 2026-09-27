@@ -54,8 +54,8 @@ const server=http.createServer((req,res)=>{
   const executablePath=process.env.EDGE_PATH||(process.platform==='win32'?'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe':undefined);
   const browser=await chromium.launch({headless:true,executablePath});
   const errors=[];
-  async function context({account='rozha',loggedIn=true,reducedMotion='no-preference'}={}){
-    const ctx=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion,serviceWorkers:'block'});
+  async function context({account='rozha',loggedIn=true,reducedMotion='no-preference',touch=false}={}){
+    const ctx=await browser.newContext({viewport:touch?{width:390,height:844}:{width:1440,height:1000},hasTouch:touch,isMobile:touch,reducedMotion,serviceWorkers:'block'});
     const calls=[];
     let signedIn=account;
     await ctx.route('**/functions/v1/api/**',async route=>{
@@ -308,6 +308,26 @@ const server=http.createServer((req,res)=>{
     await openView(page,'assistant');await snapshot(page,'phone-rico-ar.png');
     await ctx.close();
 
+    /* ---------- A phone with a touch screen ---------- */
+    const phone=await context({touch:true});
+    await openView(phone.page,'itemsAdmin');
+    await phone.page.locator('[data-edititem]').first().click();
+    await phone.page.locator('.modal-form').waitFor();
+    assert.equal(await phone.page.evaluate(()=>!!document.activeElement?.matches('input,select,textarea')),false,'editing on a phone does not open the keyboard by itself');
+    await phone.page.waitForFunction(()=>document.querySelector('.modal-form').getAnimations().every(a=>a.playState==='finished'));
+    const formBox=await phone.page.locator('.modal-form').boundingBox();
+    assert.ok(Math.abs(formBox.y+formBox.height/2-844/2)<40,'the popup sits in the middle of the screen, not at the bottom');
+    await phone.page.locator('.modal-form input').first().focus();
+    assert.equal(await phone.page.evaluate(()=>document.body.classList.contains('typing')),true,'typing is noticed');
+    await phone.page.locator('#modalFormCancel').click();
+    await phone.page.waitForFunction(()=>!document.querySelector('.modal-form'));
+    await openView(phone.page,'order');
+    await phone.page.locator('#itemSearch').focus();
+    assert.equal(await phone.page.locator('.bottomnav').evaluate(el=>getComputedStyle(el).display),'none','the tab bar steps aside while typing');
+    await phone.page.locator('#itemSearch').blur();
+    await phone.page.waitForFunction(()=>getComputedStyle(document.querySelector('.bottomnav')).display!=='none');
+    await phone.ctx.close();
+
     /* ---------- Yunis ---------- */
     const y=await context({account:'yunis'});
     assert.deepEqual(await y.page.evaluate(()=>state.views),YUNIS_VIEWS,'Yunis gets the right screens');
@@ -386,6 +406,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await reduced.page.locator('.content.gliding').count(),0,'reduced motion skips the page transition');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, undo, security policy, desktop install, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, undo, security policy, desktop install, phone typing and centred popups, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});
