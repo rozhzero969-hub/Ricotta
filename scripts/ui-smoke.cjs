@@ -221,6 +221,7 @@ const server=http.createServer((req,res)=>{
     await page.waitForFunction(()=>!rico.streaming);
     assert.equal(await page.locator('.rico-msg.bot .rico-bot').last().evaluate(el=>el.classList.contains('mood-angry')),true,'Rico\u2019s face shows his mood');
     assert.equal(await page.locator('.rico-head .rico-bot').evaluate(el=>el.classList.contains('mood-angry')),true,'the header face follows');
+    assert.equal(await page.evaluate(()=>ricoFormat('[[data:Mam Fakhir]] has <<DATA>>9<</DATA>> items')),'<p>Mam Fakhir has 9 items</p>','data markers the AI copies are never shown');
     await page.locator('[data-rico-action]').count();
     await page.evaluate(()=>{ rico.messages=[]; render(); });
     await page.locator('[data-rico-action="prepare_order"]').click();

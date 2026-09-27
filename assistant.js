@@ -255,12 +255,17 @@ function ricoErrorText(code){
   const map = t('ricoErrors');
   return map[code] || map.failed;
 }
+/* The server wraps kitchen data in <<DATA>> markers for the AI; now and then
+   the AI copies them, or invents [[data:...]] around a name. Only the name is kept. */
+function ricoClean(s){
+  return String(s || '').replace(/\[\[\s*data\s*:\s*([^\]]*?)\s*\]\]/gi, '$1').replace(/<<\/?DATA>>/gi, '');
+}
 /* A small, safe Markdown subset: **bold**, `code`, bullet and numbered lists, paragraphs. */
 function ricoFormat(src){
   const inline = s=>s.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/(^|\s)\*([^*\n]+)\*(?=\s|$|[.,!?])/g,'$1<i>$2</i>');
   const out = []; let list = null, para = [];
   const flush = ()=>{ if(para.length){ out.push(`<p>${para.map(inline).join('<br>')}</p>`); para = []; } };
-  esc(src).split('\n').forEach(line=>{
+  esc(ricoClean(src)).split('\n').forEach(line=>{
     const li = line.match(/^\s*(?:[-•*]|(\d+)[.)])\s+(.*)$/);
     const h = line.match(/^\s*#{1,4}\s+(.*)$/);
     if(li){
@@ -501,7 +506,7 @@ function ricoChooseScope(i, ids){
 /* ---------- Talking to the server ---------- */
 function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
-    let content = m.text || '';
+    let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
       const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`}[p.kind] || p.kind;
       content += `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
