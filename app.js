@@ -98,7 +98,7 @@ function toast(msg, kind='ok', {undo} = {}){
 /* ============ Devices ============
    The server keeps one row per device. This device reports "still here"
    every couple of minutes while the app is open (so Rozha can tell "active
-   now" from "signed in but idle") and polls for remote commands from her
+   now" from "signed in but idle") and polls for remote commands from the
    Devices screen (log out / refresh). */
 const HEARTBEAT_MS = 2*60*1000;       /* how often an open app reports "still here" */
 const ACTIVE_WINDOW_MS = 5*60*1000;   /* seen within this long ago = "active now" */

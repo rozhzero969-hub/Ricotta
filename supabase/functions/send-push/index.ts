@@ -164,6 +164,8 @@ async function ricoSays(kind: string, key: string, words: Words, extra: Record<s
 }
 /* "Hey Rozha!" when the name is known, "Hey!" when it isn't. */
 const hi = (word: string, n: string, sep = " ") => (n ? `${word}${sep}${n}` : word);
+/* Arabic "يا" needs a name after it; without one, a plain "Hey" (مرحبًا). */
+const ya = (n: string) => (n ? `يا ${n}` : "مرحبًا");
 
 type Day = { date: string; weekday: number };
 /* Today and yesterday (Erbil), so a late reminder near midnight (e.g. 23:00)
@@ -222,7 +224,7 @@ async function overdueTick() {
       mood: "angry",
       en: (n) => `${hi("Hey", n)}! 😠 ${name} was due at ${time} and still isn't sent. Tomatoes don't order themselves! Want me to prepare it?`,
       ku: (n) => `${hi("هەی", n)}! 😠 داواکاریی ${name} کاتژمێر ${time} بوو و هێشتا نەنێردراوە. تەماتە خۆی داوا ناکات! با ئێستا ئامادەی بکەم؟`,
-      ar: (n) => `${hi("يا", n)}! 😠 طلب ${name} كان موعده ${time} ولم يُرسل بعد. الطماطم لا تطلب نفسها! هل أجهّزه لك الآن؟`,
+      ar: (n) => `${ya(n)}! 😠 طلب ${name} كان موعده ${time} ولم يُرسل بعد. الطماطم لا تطلب نفسها! هل أجهّزه لك الآن؟`,
     }, { supplierId: String(s.id) })) });
   }
   if (dailyHit && !sentSince(dailyHit.date) && await claimAlert(`overdue|daily|${dailyHit.date}`, "overdue-daily", null)) {
@@ -231,7 +233,7 @@ async function overdueTick() {
       mood: "angry",
       en: (n) => `${hi("Hey", n)}! 😠 It's past ${time} and not a single order has gone out today. Let's go!`,
       ku: (n) => `${hi("هەی", n)}! 😠 کاتژمێر ${time} تێپەڕی و ئەمڕۆ هیچ داواکارییەک نەنێردراوە. با دەست پێ بکەین!`,
-      ar: (n) => `${hi("يا", n)}! 😠 تجاوزت الساعة ${time} ولم يُرسل أي طلب اليوم. هيا بنا!`,
+      ar: (n) => `${ya(n)}! 😠 تجاوزت الساعة ${time} ولم يُرسل أي طلب اليوم. هيا بنا!`,
     })) });
   }
   return out;

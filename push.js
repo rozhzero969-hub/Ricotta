@@ -178,7 +178,7 @@ async function reportSendResult(res){
   else await showAlert(t('notifNoDevices'));
 }
 /* "New update" notification to every phone that has notifications on.
-   Rozha writes the message herself in each language; the send-push
+   Rozha writes the message in each language; the send-push
    function gives every phone ONLY the message in its own language (English,
    Kurdish or Arabic). A language left empty gets the first message that was
    written. The app adds no words of its own. */

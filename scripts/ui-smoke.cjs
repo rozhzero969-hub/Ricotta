@@ -196,7 +196,7 @@ const server=http.createServer((req,res)=>{
     await page.locator('#modalPromptInput').fill('gsk_'+ 'A'.repeat(30));
     await page.locator('#modalPromptOkBtn').click();
     await page.waitForSelector('#modalPromptInput',{state:'detached'});
-    // Notify about update: three languages, only her words.
+    // Notify about update: three languages, only the written words.
     await openView(page,'devices');
     await page.locator('#devNotifyBtn').click();
     await page.locator('#mfUpdateMsgAr').fill('تحديث جديد');
@@ -300,7 +300,7 @@ const server=http.createServer((req,res)=>{
 
     /* ---------- Yunis ---------- */
     const y=await context({account:'yunis'});
-    assert.deepEqual(await y.page.evaluate(()=>state.views),YUNIS_VIEWS,'Yunis gets his screens');
+    assert.deepEqual(await y.page.evaluate(()=>state.views),YUNIS_VIEWS,'Yunis gets the right screens');
     await y.page.setViewportSize({width:390,height:844});
     assert.equal(await y.page.locator('.bottomnav [data-view="devices"], .bottomnav [data-view="settings"]').count(),0,'no Devices or Settings for Yunis');
     await openView(y.page,'history');

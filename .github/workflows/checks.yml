@@ -40,7 +40,7 @@ jobs:
           npm install --no-save playwright@1.55.1
           npx playwright install --with-deps chromium
 
-      - name: UI smoke test (mocked API, six widths, EN + KU)
+      - name: UI smoke test (mocked API, six widths, EN + KU + AR)
         run: node scripts/ui-smoke.cjs
 
       - name: Upload UI smoke screenshots

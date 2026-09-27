@@ -604,7 +604,7 @@ async function sendCommand(b: any) {
 
 /* ---------- Push ----------
    Rozha may send anything. Yunis may test a supplier's reminder (Suppliers)
-   and send what Rico wrote for him (Rico has no limits). */
+   and send what Rico wrote (Rico has no limits). */
 async function forwardPush(s: Session, b: any) {
   if (!CRON_SECRET) return fail("push_not_configured", 500);
   const type = text(b.type, 30);
