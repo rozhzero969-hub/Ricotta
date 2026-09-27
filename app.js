@@ -2,17 +2,26 @@
    Depends on: DEFAULT_UNITS, PIN consts (config.js), T (i18n.js), icon strings
    (icons.js), lget/lset/api/apiLogin/apiSession/sendOrQueue/flushOutbox
    (storage.js), showConfirm/showAlert/showPrompt/showFormModal/showForcedRefresh
-   (modals.js), push helpers (push.js), hardReload (update-check.js).
-   Load this file after all of those; it calls boot() at the end. */
+   (modals.js), push helpers (push.js), Rico (assistant.js), hardReload
+   (update-check.js). Load this file after all of those; it calls boot() at
+   the end.
+
+   Two accounts sign in with their own PIN:
+     rozha  every screen
+     yunis  Order, Rico, History (cannot delete), Suppliers, Items, Record, Units
+   The server decides which screens an account may open (bootstrap.views) and
+   enforces the same rules on every request. */
 /* ============ State ============ */
 let state = {
   lang: 'en',
-  role: null,           // 'admin' | 'user' | null
+  account: null,        // 'rozha' | 'yunis' | null (signed out)
+  name: '',             // "Rozha" / "Yunis"
+  tabs: ['order','assistant','history'],   // this account's three tab-bar screens
+  views: [],            // every screen this account may open
   view: 'order',
   pinBuffer: '',
   pinError: '',         // '' | 'wrong' | 'locked' | 'network' | 'session'
   pinBusy: false,       // PIN is being checked with the server
-  pinPop: false,        // animate the dot that was just typed
   suppliers: [],
   items: [],
   units: [],
@@ -30,12 +39,20 @@ let state = {
   apiOnline: navigator.onLine
 };
 
-function t(key){ return T[state.lang][key]; }
+const LANGS = ['en','ku','ar'];
+const LANG_NAMES = {en:'English', ku:'کوردی', ar:'العربية'};
+/* A translation for the current language (English if a key is missing). */
+function t(key){ const v = T[state.lang] && T[state.lang][key]; return v !== undefined ? v : T.en[key]; }
+const isRtl = ()=> state.lang !== 'en';
+const isRozha = ()=> state.account === 'rozha';
+const canOpen = view=> state.views.includes(view) || view === 'queue';
+/* Dates and times always use the digits 1 2 3, in every language. */
+function intlLocale(){ return ({en:'en-US', ku:'ckb-IQ', ar:'ar-IQ'})[state.lang] + '-u-nu-latn'; }
 const IRAQ_TIME_ZONE = 'Asia/Baghdad';
 function formatIraqDateTime(value, options={}){
   const date = value instanceof Date ? value : new Date(value);
   if(Number.isNaN(date.getTime())) return '\u2014';
-  return new Intl.DateTimeFormat(state.lang==='ku'?'ckb-IQ':'en-US', {
+  return new Intl.DateTimeFormat(intlLocale(), {
     timeZone: IRAQ_TIME_ZONE, hour12:true, ...options
   }).format(date);
 }
@@ -45,7 +62,7 @@ function formatStoredIraqTime(value){
   const match=String(value||'').match(/^(\d{1,2}):(\d{2})$/);
   if(!match) return value || '\u2014';
   const date=new Date(Date.UTC(2000,0,1,Number(match[1]),Number(match[2])));
-  return new Intl.DateTimeFormat(state.lang==='ku'?'ckb-IQ':'en-US', {
+  return new Intl.DateTimeFormat(intlLocale(), {
     timeZone:'UTC', hour:'numeric', minute:'2-digit', hour12:true
   }).format(date);
 }
@@ -53,8 +70,8 @@ function formatStoredIraqTime(value){
 function emptyState(msg){
   return `<div class="empty">${ICON_EMPTY}<div class="empty-text">${msg}</div></div>`;
 }
-/* Escapes text before it's inserted into innerHTML, so a name typed by staff
-   can never break out of its tag and inject HTML. */
+/* Escapes text before it's inserted into innerHTML, so a typed name can
+   never break out of its tag and inject HTML. */
 function esc(s){
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -80,9 +97,9 @@ function toast(msg, kind='ok', {undo} = {}){
 
 /* ============ Devices ============
    The server keeps one row per device. This device reports "still here"
-   every couple of minutes while the app is open (so admins can tell "active
-   now" from "signed in but idle") and polls for remote commands from an admin
-   (log out / refresh). */
+   every couple of minutes while the app is open (so Rozha can tell "active
+   now" from "signed in but idle") and polls for remote commands from the
+   Devices screen (log out / refresh). */
 const HEARTBEAT_MS = 2*60*1000;       /* how often an open app reports "still here" */
 const ACTIVE_WINDOW_MS = 5*60*1000;   /* seen within this long ago = "active now" */
 const COMMAND_POLL_MS = 15*1000;
@@ -102,7 +119,7 @@ function otherDevices(){ return state.devices.filter(d=>d.id !== state.deviceId)
 function commandIsPending(d){ return !!(d.command && d.command.id !== d.handledCommand); }
 
 function heartbeat(){
-  if(!state.role) return;
+  if(!state.account) return;
   api('devices/me', {method:'POST', body:{}});
   flushOutbox();
 }
@@ -119,21 +136,7 @@ function restoreCartDraft(){
   state.cart=Object.fromEntries(Object.entries(saved).filter(([id,qty])=>available.has(id) && Number.isFinite(Number(qty)) && Number(qty)>0).map(([id,qty])=>[id,Math.floor(Number(qty))]));
   persistCartDraft();
 }
-/* Right after signing in: ask for a nickname the first time this device is
-   used (or restore the one this phone remembers). */
-async function afterLogin(){
-  syncPersonName();
-  const me = myDevice();
-  const saved = lget('deviceNickname');
-  if(me && me.nickname){ lset('deviceNickname', me.nickname); return; }
-  if(saved){ await setDeviceNickname(state.deviceId, saved); return; }
-  const name = await showPrompt(t('deviceNamePromptMsg'), {
-    placeholder: t('deviceNamePlaceholder'), okLabel: t('save'), cancelLabel: t('skip')
-  });
-  if(name) await setDeviceNickname(state.deviceId, name);
-}
 async function setDeviceNickname(id, name){
-  if(id === state.deviceId) lset('deviceNickname', name || null);
   const r = await api(`devices/${encodeURIComponent(id)}/nickname`, {method:'PUT', body:{nickname:name}});
   if(r.ok){
     const d = state.devices.find(x=>x.id===id);
@@ -143,18 +146,18 @@ async function setDeviceNickname(id, name){
   return r.ok;
 }
 
-/* Admin side: tell other devices to log out or refresh. */
+/* Rozha's Devices screen: tell other devices to log out or refresh. */
 async function sendDeviceCommand(type, ids){
   const r = await api('devices/command', {method:'POST', body:{type, ids}});
   if(!r.ok){ await showAlert(t('saveFailed')); return; }
   await refreshDevices();
 }
-/* Device side: pick up a command aimed at this device. Admins also get the
+/* Device side: pick up a command aimed at this device. Rozha also gets the
    fresh device list for the Devices screen from the same request. */
 let commandCheckBusy = false;
 let forcedRefreshOpen = false;
 async function checkCommands(){
-  if(commandCheckBusy || !state.role) return;
+  if(commandCheckBusy || !state.account) return;
   commandCheckBusy = true;
   try{
     const r = await api('devices');
@@ -191,7 +194,7 @@ const isVisible = ()=> document.visibilityState === 'visible';
 setInterval(()=>{ if(isVisible()) checkCommands(); }, COMMAND_POLL_MS);
 setInterval(()=>{ if(isVisible()) heartbeat(); }, HEARTBEAT_MS);
 document.addEventListener('visibilitychange', ()=>{
-  if(isVisible() && state.role){ checkCommands(); heartbeat(); }
+  if(isVisible() && state.account){ checkCommands(); heartbeat(); }
 });
 
 /* ============ Connection status ============ */
@@ -207,11 +210,35 @@ window.addEventListener('online', ()=>{ api('health'); });
 window.addEventListener('offline', ()=> setApiHealth(false));
 
 /* ============ Session ============ */
-/* Loads everything this role needs from the server in one request. */
+/* An account's name written in the current language's script. */
+function accountLabel(a){ return a === 'rozha' || a === 'yunis' ? t('accountName')(a) : ''; }
+/* Screens each account may open. The server sends the real list with every
+   start (bootstrap.views) and checks every request; this copy only covers
+   an offline start before that answer arrives. */
+const ACCOUNT_VIEWS = {
+  rozha: ['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings'],
+  yunis: ['order','assistant','history','suppliers','itemsAdmin','units','record']
+};
+const DEFAULT_TABS = ['order','assistant','history'];
+function validTabs(tabs){
+  const list = Array.isArray(tabs) ? [...new Set(tabs)].filter(v=>state.views.includes(v)) : [];
+  return list.length === 3 ? list : DEFAULT_TABS.filter(v=>state.views.includes(v));
+}
+/* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
+function applyAccount(a){
+  state.account = a.account === 'rozha' || a.account === 'yunis' ? a.account : null;
+  state.name = a.name || ({rozha:'Rozha', yunis:'Yunis'})[state.account] || '';
+  state.views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
+  state.tabs = validTabs(a.tabs);
+  if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
+}
+/* Loads everything this account needs from the server in one request. */
 async function loadData(){
   const r = await api('bootstrap');
-  if(!r.ok || !r.data) return false;
+  if(!r.ok || !r.data || !r.data.account) return false;
   const d = r.data;
+  applyAccount(d);
+  saveSessionAccount();
   state.suppliers = d.suppliers || [];
   state.items = d.items || [];
   state.units = (d.units && d.units.length) ? d.units : DEFAULT_UNITS;
@@ -222,9 +249,14 @@ async function loadData(){
   state.activity = d.activity || [];
   state.reminder = d.reminder || {enabled:false, time:'09:00'};
   state.pars = d.pars || [];
-  // The server is the authority on this session's role.
-  if(d.role) state.role = d.role === 'staff' ? 'user' : d.role;
+  ricoSetInbox(d.inbox || []);
   return true;
+}
+/* Keeps the saved session's name and tabs current, so an offline start
+   shows the right person and tab bar. */
+function saveSessionAccount(){
+  const s = apiSession();
+  if(s) lset('apiSession', {...s, account:state.account, name:state.name, tabs:state.tabs});
 }
 
 /* ============ Desktop installation ============ */
@@ -277,27 +309,24 @@ async function loadMoreHistory(){
 }
 /* Clears this device's sign-in and returns to the PIN pad. */
 function signOut(reason){
-  const me = myDevice();
-  if(me && me.nickname) lset('deviceNickname', me.nickname);
-  ricoStop(); ricoResetVoice();
-  rico.messages = []; rico.streaming = false;
+  ricoReset();
   clearApiSession();
-  state.role = null; state.pinBuffer = ''; state.view = 'order'; state.queue = null;
+  state.account = null; state.name = ''; state.views = []; state.tabs = DEFAULT_TABS.slice();
+  state.pinBuffer = ''; state.view = 'order'; state.queue = null;
   state.pinError = reason ? 'session' : '';
   state.sessionMsg = reason || '';
   const root = document.getElementById('modalRoot');
   if(root) root.innerHTML = '';
+  closeLangMenu();
   render();
 }
 async function doLogout(){
-  const me = myDevice();
-  if(me && me.nickname) lset('deviceNickname', me.nickname);
   api('logout', {method:'POST'});      // fire-and-forget; the token is dropped locally either way
   signOut();
 }
 /* Called by storage.js when the server rejects this device's session. */
 function onSessionExpired(){
-  if(state.role) signOut(t('sessionEnded'));
+  if(state.account) signOut(t('sessionEnded'));
 }
 
 /* ============ Boot ============ */
@@ -306,32 +335,33 @@ let loadedOk = false;
 function retryLoad(){
   toast(t('loadFailed'), 'warn');
   const timer = setInterval(async ()=>{
-    if(!state.role){ clearInterval(timer); return; }
+    if(!state.account){ clearInterval(timer); return; }
     if(!isVisible() || !navigator.onLine) return;
     if(await loadData()){ clearInterval(timer); loadedOk = true; restoreCartDraft(); render(); }
   }, 10000);
 }
 async function boot(){
-  ricoClearLegacyChats();
   state.deviceId = ensureDeviceId();
-  state.lang = lget('lang') || 'en';
+  const savedLang = lget('lang');
+  state.lang = LANGS.includes(savedLang) ? savedLang : 'en';
   const session = apiSession();
-  if(session){
-    state.role = session.role === 'staff' ? 'user' : session.role;
+  if(session && (session.account === 'rozha' || session.account === 'yunis')){
+    applyAccount(session);
     loadedOk = await loadData();
-    if(!loadedOk && !apiSession()) state.role = null;   // the session was rejected
+    if(!loadedOk && !apiSession()) state.account = null;   // the session was rejected
     // Load the saved local draft only after the catalog is available, keeping
     // it intact if the app starts while offline and needs to retry loading.
     if(loadedOk) restoreCartDraft();
+  } else if(session){
+    clearApiSession();   // a sign-in from before the two accounts: sign in again
   }
   render();
   hideSplash(1450);   // long enough for the ricotta intro to finish playing
-  if(state.role){ heartbeat(); checkCommands(); if(loadedOk) syncPersonName(); }
-  if(state.role) maybeOpenRicoProviderSetup();
-  if(state.role && !loadedOk) retryLoad();
+  if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); }
+  if(state.account && !loadedOk) retryLoad();
   // Notifications: register the service worker, read this device's status, and
   // handle being launched from a notification tap.
-  initPush().then(()=>{ if(state.role) render(); handleLaunchIntent(); });
+  initPush().then(()=>{ if(state.account) render(); handleLaunchIntent(); });
 }
 /* The branded loading screen lives in index.html so it shows instantly.
    It lifts away once the first real screen is on the page and style.css is
@@ -356,23 +386,23 @@ async function hideSplash(minShown = 500){
   el.addEventListener('animationend', e=>{ if(e.target === el) done(); });
   setTimeout(done, 1400);   // safety net
 }
-/* After a PIN sign-in: a "Welcome back" card with a drawn checkmark covers
-   the moment the workspace loads (the ricotta splash is kept for app start). */
+/* After a PIN sign-in: "Welcome back, Yunis" with Rico waving covers the
+   moment the workspace loads (the ricotta splash is kept for app start). */
 let welcomeShownAt = 0;
-function showWelcome(){
+function showWelcome(name){
   document.getElementById('welcome')?.remove();
   const el = document.createElement('div');
   el.id = 'welcome'; el.className = 'welcome'; el.setAttribute('role','status');
   el.innerHTML = `<div class="welcome-card">
-      <div class="welcome-badge"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6FCF9A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
-      <div class="welcome-title">${esc(t('welcomeTitle'))}</div>
+      ${ricoFace('excited','rico-welcome')}
+      <div class="welcome-title">${esc(t('welcomeName')(name))}</div>
       <div class="welcome-sub">${esc(t('splashLoading'))}</div>
       <div class="welcome-bar"><i></i></div>
     </div>`;
   document.body.appendChild(el);
   welcomeShownAt = performance.now();
 }
-async function hideWelcome(minShown = 1100){
+async function hideWelcome(minShown = 1300){
   const el = document.getElementById('welcome');
   if(!el) return;
   if(matchMedia('(prefers-reduced-motion: reduce)').matches) minShown = 0;
@@ -383,10 +413,12 @@ async function hideWelcome(minShown = 1100){
 }
 
 function applyLangClasses(){
+  const rtl = isRtl();
   document.body.classList.toggle('lang-ku', state.lang === 'ku');
-  document.documentElement.classList.toggle('rtl', state.lang === 'ku');
-  document.documentElement.lang = state.lang === 'ku' ? 'ckb' : 'en';
-  document.documentElement.dir = state.lang === 'ku' ? 'rtl' : 'ltr';
+  document.body.classList.toggle('lang-ar', state.lang === 'ar');
+  document.documentElement.classList.toggle('rtl', rtl);
+  document.documentElement.lang = ({en:'en', ku:'ckb', ar:'ar'})[state.lang];
+  document.documentElement.dir = rtl ? 'rtl' : 'ltr';
 }
 
 // Animate only the surface that changed. Cancelling an earlier response keeps
@@ -401,99 +433,116 @@ function animateUi(element, frames, duration=220){
 }
 
 /* ============ Render dispatch ============ */
-// Keep the navigation shell mounted for route changes. Animate a new view
-// once; quantity, search and supplier interactions have smaller update paths.
-let lastAnimKey = null;
+// Keep the navigation shell mounted for route changes. Page changes animate
+// through goView; quantity, search and supplier interactions have smaller
+// update paths that never rebuild the page.
+const RENDERERS = {
+  order:[()=>renderOrder(),()=>attachOrderEvents()], queue:[()=>renderQueue(),()=>attachQueueEvents()],
+  history:[()=>renderHistory(),()=>attachHistoryEvents()], suppliers:[()=>renderSuppliers(),()=>attachSupplierEvents()],
+  itemsAdmin:[()=>renderItemsAdmin(),()=>attachItemEvents()], units:[()=>renderUnits(),()=>attachUnitEvents()],
+  record:[()=>renderRecord(),()=>attachRecordEvents()], devices:[()=>renderDevices(),()=>attachDeviceEvents()],
+  settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
+};
 function render(){
   applyLangClasses();
   setThemeColor();
   const app = document.getElementById('app');
-  if(!state.role){
-    const animKey = 'login';
-    app.classList.toggle('static-update', animKey === lastAnimKey);
-    lastAnimKey = animKey;
-    app.dataset.uiRole = ''; app.dataset.uiLanguage = state.lang;
+  if(!state.account){
+    app.classList.toggle('static-update', app.dataset.screen === 'login');
+    app.dataset.shell = ''; app.dataset.screen = 'login';
     app.innerHTML = renderLogin(); attachLoginEvents(); syncInstallPrompt(); return;
   }
-  const animKey = state.view + (state.view === 'order' ? ':' + state.orderTab : '');
-  app.classList.toggle('static-update', animKey === lastAnimKey);
-  app.classList.toggle('slide-nav', sliding);
-  lastAnimKey = animKey;
-  let body = '';
-  if(state.view === 'order') body = renderOrder();
-  else if(state.view === 'queue') body = renderQueue();
-  else if(state.view === 'history') body = renderHistory();
-  else if(state.view === 'suppliers') body = renderSuppliers();
-  else if(state.view === 'itemsAdmin') body = renderItemsAdmin();
-  else if(state.view === 'units') body = renderUnits();
-  else if(state.view === 'record') body = renderRecord();
-  else if(state.view === 'devices') body = renderDevices();
-  else if(state.view === 'settings') body = renderSettings();
-  else if(state.view === 'assistant') body = renderAssistant();
-
-  const content = `${state.view === 'assistant' ? '' : renderPageHeading()}${state.view === 'order' ? renderPushBanner() : ''}${body}`;
-  const keepShell=app.dataset.uiRole===state.role && app.dataset.uiLanguage===state.lang && app.querySelector('.content');
+  if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
+  const [draw, attach] = RENDERERS[state.view] || RENDERERS.order;
+  const content = `${state.view === 'assistant' ? '' : renderPageHeading()}${state.view === 'order' ? renderPushBanner() : ''}${draw()}`;
+  // The shell (top bar and tab bar) stays mounted while the account, its tabs
+  // and the language stay the same.
+  const shellKey = [state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
+  const keepShell = app.dataset.shell === shellKey && app.querySelector('.content');
   if(keepShell){
-    app.querySelector('.content').innerHTML=content;
-    const stack=app.querySelector('.bottom-stack');
+    app.querySelector('.content').innerHTML = content;
+    const stack = app.querySelector('.bottom-stack');
     stack.querySelector('.bottom-bar')?.remove();
     stack.querySelector('.rico-composer')?.remove();
-    if(state.view==='order') stack.insertAdjacentHTML('afterbegin',renderOrderBottomBar());
-    if(state.view==='assistant') stack.insertAdjacentHTML('afterbegin',renderRicoComposer());
-    stack.querySelectorAll('[data-view]').forEach(button=>{
-      const active=button.dataset.view===state.view;
-      button.classList.toggle('active',active);
-      if(active) button.setAttribute('aria-current','page'); else button.removeAttribute('aria-current');
-    });
-    stack.querySelector('#navMoreBtn')?.classList.toggle('active', ADMIN_VIEWS.includes(state.view));
+    if(state.view === 'order') stack.insertAdjacentHTML('afterbegin', renderOrderBottomBar());
+    if(state.view === 'assistant') stack.insertAdjacentHTML('afterbegin', renderRicoComposer());
+    markActiveNav();
   }else{
     app.innerHTML = `${renderTopbar()}<main class="content" id="mainContent">${content}</main>
       <div class="bottom-stack">${state.view==='order'?renderOrderBottomBar():''}${state.view==='assistant'?renderRicoComposer():''}${renderBottomNav()}</div>`;
+    attachShellEvents();
   }
-  app.dataset.uiRole=state.role; app.dataset.uiLanguage=state.lang; app.dataset.screen=state.view;
-  attachCommonEvents();
-  if(state.view === 'order') attachOrderEvents();
-  if(state.view === 'queue') attachQueueEvents();
-  if(state.view === 'history') attachHistoryEvents();
-  if(state.view === 'suppliers') attachSupplierEvents();
-  if(state.view === 'itemsAdmin') attachItemEvents();
-  if(state.view === 'units') attachUnitEvents();
-  if(state.view === 'record') attachRecordEvents();
-  if(state.view === 'devices') attachDeviceEvents();
-  if(state.view === 'settings') attachSettingsEvents();
-  if(state.view === 'assistant') attachAssistantEvents();
+  app.classList.remove('static-update');
+  app.dataset.shell = shellKey; app.dataset.screen = state.view;
+  attachContentEvents();
+  attach();
   if(state.view !== 'assistant') document.body.classList.remove('rico-typing');
   updateRicoBadge();
-  initTabBarLens();
   placeNavIndicator();
-  updateNavFade();
-  updateTopbarShadow();
+  updateTopbar();
   syncInstallPrompt();
 }
 
-/* A red dot on Rico's tab while an order is late (checked every minute). */
+/* A red dot on Rico's tab while an order is late or Rico has written first
+   (checked every minute). */
 function updateRicoBadge(){
   const dot = document.querySelector('.navbtn[data-view="assistant"] .nav-badge');
   if(!dot) return;
-  const late = ricoLateOrders().length;
-  dot.hidden = !late;
-  dot.parentElement.setAttribute('aria-label', late ? t('ricoNavLate')(late) : t('ricoName'));
+  const late = ricoLateOrders().length, unread = ricoUnread();
+  dot.hidden = !(late || unread);
+  dot.parentElement.setAttribute('aria-label', late ? t('ricoNavLate')(late) : unread ? t('ricoNavUnread') : t('ricoName'));
+  const more = document.getElementById('navMoreBtn');
+  if(more) more.classList.toggle('has-badge', !state.tabs.includes('assistant') && !!(late || unread));
 }
-setInterval(()=>{ if(state.role && isVisible()) updateRicoBadge(); }, 60000);
+setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
 
-/* ============ Motion helpers ============ */
-/* The glass pill behind the active tab glides to each new tab. On phones it
-   is also a lens that can be held and slid along the bar. */
+/* ============ Navigation ============
+   Phones: the account's three tabs plus More (a glass panel with the other
+   screens and "Edit tabs"). Computers: a sidebar with every screen. A glass
+   lens glides to the current tab; on phones it can be held and slid, and
+   the page itself can be swiped between the three tabs. */
+const VIEW_LABEL_KEYS = {order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
+function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
+function isPhoneLayout(){ return window.innerWidth < 960; }
+/* Every screen in tab-bar order: the three tabs first, then the rest. */
+function navOrder(){ return [...state.tabs, ...state.views.filter(v=>!state.tabs.includes(v))]; }
+function moreViews(){ return state.views.filter(v=>!state.tabs.includes(v)); }
+function viewIndex(v){ const i = navOrder().indexOf(v); return i >= 0 ? i : navOrder().length; }
+const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function renderBottomNav(){
+  const btn = id=>`
+      <button class="navbtn" data-view="${id}">
+        ${NAV_ICONS[id]}<span>${esc(viewLabel(id))}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}
+      </button>`;
+  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><span class="nav-indicator" aria-hidden="true"></span>
+    ${state.tabs.map(btn).join('')}
+    <button class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button>
+    <div class="nav-more" id="navMore" role="group" aria-label="${esc(t('moreTitle'))}">${moreViews().map(btn).join('')}
+      <button class="nav-edit" id="navEditTabs">${ICON_EDIT}<span>${esc(t('editTabs'))}</span></button>
+    </div>
+  </nav>`;
+}
+function markActiveNav(){
+  document.querySelectorAll('.bottomnav [data-view]').forEach(b=>{
+    const on = b.dataset.view === state.view;
+    b.classList.toggle('active', on);
+    if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
+  });
+  document.getElementById('navMoreBtn')?.classList.toggle('active', moreViews().includes(state.view));
+}
 function barButtons(nav){ return [...nav.querySelectorAll(':scope > .navbtn')]; }
 function placeNavIndicator(){
-  const nav=document.querySelector('.bottomnav'), ind=nav?.querySelector('.nav-indicator');
+  const nav = document.querySelector('.bottomnav'), ind = nav?.querySelector('.nav-indicator');
   if(!nav || !ind) return;
+  markActiveNav();
   const phone = isPhoneLayout();
+  // On a computer the More button is hidden, so the lens goes to the screen's own row.
   const active = phone
-    ? (ADMIN_VIEWS.includes(state.view) ? nav.querySelector('#navMoreBtn') : nav.querySelector(':scope > .navbtn.active'))
-    : nav.querySelector('.navbtn.active');
-  if(!active){ ind.style.opacity='0'; return; }
-  ind.style.opacity='1';
+    ? (moreViews().includes(state.view) ? nav.querySelector('#navMoreBtn') : nav.querySelector(`:scope > .navbtn[data-view="${state.view}"]`))
+    : nav.querySelector(`.navbtn[data-view="${state.view}"]`);
+  if(!active || !active.offsetWidth){ ind.style.opacity = '0'; return; }
+  ind.style.opacity = '1';
   nav.classList.add('has-indicator');
   if(!phone){
     ind.style.setProperty('--iy', active.offsetTop+'px');
@@ -506,175 +555,214 @@ function placeNavIndicator(){
 /* Slides the lens to a fractional tab position (1.5 = halfway between the
    second and third tab); used while a finger is on the bar or the page. */
 function setLensPosition(pos){
-  const nav=document.querySelector('.bottomnav'), ind=nav?.querySelector('.nav-indicator');
+  const nav = document.querySelector('.bottomnav'), ind = nav?.querySelector('.nav-indicator');
   if(!nav || !ind || !isPhoneLayout()) return;
-  const btns=barButtons(nav);
+  const btns = barButtons(nav);
   if(!btns.length) return;
-  const p=Math.max(0, Math.min(btns.length-1, pos)), i=Math.floor(p), f=p-i, a=btns[i], b=btns[Math.min(btns.length-1,i+1)];
-  ind.style.opacity='1';
+  const p = Math.max(0, Math.min(btns.length-1, pos)), i = Math.floor(p), f = p-i, a = btns[i], b = btns[Math.min(btns.length-1,i+1)];
+  ind.style.opacity = '1';
   ind.style.setProperty('--ix', (a.offsetLeft + (b.offsetLeft-a.offsetLeft)*f)+'px');
   ind.style.setProperty('--iw', (a.offsetWidth + (b.offsetWidth-a.offsetWidth)*f)+'px');
   btns.forEach((x,k)=>x.classList.toggle('lens-over', k===Math.round(p)));
 }
-function initTabBarLens(){
-  const nav=document.querySelector('.bottomnav');
-  if(!nav || nav.dataset.lensBound) return;
-  nav.dataset.lensBound='1';
-  let down=null;
-  const slotAt=x=>{
-    const btns=barButtons(nav);
-    let best=0, dist=Infinity;
-    btns.forEach((b,k)=>{ const r=b.getBoundingClientRect(), d=Math.abs(r.left+r.width/2-x); if(d<dist){dist=d;best=k;} });
-    return {btn:btns[best], index:best, pos:(()=>{ // fractional position under the finger
-      const rs=btns.map(b=>b.getBoundingClientRect()), c=rs.map(r=>r.left+r.width/2);
-      const order=c.map((v,k)=>[v,k]).sort((m,n)=>m[0]-n[0]);
-      if(x<=order[0][0]) return order[0][1];
-      for(let k=0;k<order.length-1;k++){ const [c1,i1]=order[k],[c2,i2]=order[k+1]; if(x<=c2) return i1+(i2-i1)*((x-c1)/(c2-c1)); }
-      return order[order.length-1][1];
-    })()};
+/* Hold the tab bar and slide: the lens follows the finger and each tab it
+   passes opens (with the page transition). Letting go on More opens More. */
+function initTabBarLens(nav){
+  let down = null;
+  const slotAt = x=>{
+    const btns = barButtons(nav), c = btns.map(b=>{ const r = b.getBoundingClientRect(); return r.left + r.width/2; });
+    let best = 0;
+    c.forEach((v,k)=>{ if(Math.abs(v-x) < Math.abs(c[best]-x)) best = k; });
+    const order = c.map((v,k)=>[v,k]).sort((m,n)=>m[0]-n[0]);
+    let pos = order[order.length-1][1];
+    if(x <= order[0][0]) pos = order[0][1];
+    else for(let k=0;k<order.length-1;k++){ const [c1,i1]=order[k],[c2,i2]=order[k+1]; if(x<=c2){ pos = i1+(i2-i1)*((x-c1)/(c2-c1)); break; } }
+    return {btn:btns[best], pos};
   };
-  nav.addEventListener('pointerdown',e=>{
+  nav.addEventListener('pointerdown', e=>{
     if(!isPhoneLayout() || e.button>0 || e.target.closest('.nav-more')) return;
-    down={x:e.clientX, id:e.pointerId, moved:false, last:null};
+    down = {x:e.clientX, id:e.pointerId, moved:false, last:null};
   });
-  nav.addEventListener('pointermove',e=>{
+  nav.addEventListener('pointermove', e=>{
     if(!down || e.pointerId!==down.id) return;
-    if(!down.moved && Math.abs(e.clientX-down.x)<8) return;
-    if(!down.moved){ down.moved=true; nav.classList.add('held'); try{nav.setPointerCapture(e.pointerId);}catch(_){} setMoreOpen(false); }
-    const s=slotAt(e.clientX);
+    if(!down.moved && Math.abs(e.clientX-down.x) < 8) return;
+    if(!down.moved){ down.moved = true; nav.classList.add('held'); try{ nav.setPointerCapture(e.pointerId); }catch(_){} setMoreOpen(false); }
+    const s = slotAt(e.clientX);
     setLensPosition(s.pos);
-    const view=s.btn?.dataset.view;
-    if(view && view!==down.last){ down.last=view; if(view!==state.view){ haptic(); goView(view); setLensPosition(s.pos); } }
+    const view = s.btn?.dataset.view;
+    if(view && view !== down.last){ down.last = view; if(view !== state.view){ haptic(); goView(view, {keepLens:true}); setLensPosition(s.pos); } }
   });
-  const end=e=>{
+  const end = e=>{
     if(!down || e.pointerId!==down.id) return;
-    const wasDrag=down.moved; down=null;
+    const wasDrag = down.moved; down = null;
     nav.classList.remove('held');
     barButtons(nav).forEach(b=>b.classList.remove('lens-over'));
     if(wasDrag){
-      const s=slotAt(e.clientX);
-      if(s.btn?.id==='navMoreBtn') setMoreOpen(true);
+      // The drag must not also count as a tap on the tab under the finger.
+      const swallow = ev=>{ ev.stopPropagation(); ev.preventDefault(); };
+      nav.addEventListener('click', swallow, {capture:true, once:true});
+      setTimeout(()=>nav.removeEventListener('click', swallow, {capture:true}), 300);
+      if(slotAt(e.clientX).btn?.id === 'navMoreBtn') setMoreOpen(true);
       placeNavIndicator();
     }
   };
-  nav.addEventListener('pointerup',end);
-  nav.addEventListener('pointercancel',end);
+  nav.addEventListener('pointerup', end);
+  nav.addEventListener('pointercancel', end);
+}
+function setMoreOpen(open){
+  const nav = document.querySelector('.bottomnav'), btn = document.getElementById('navMoreBtn');
+  if(!nav || !btn) return;
+  nav.classList.toggle('more-open', open);
+  btn.setAttribute('aria-expanded', String(open));
 }
 /* A tap anywhere else, or Escape, closes the More panel. */
-document.addEventListener('click',e=>{ if(!e.target.closest('.bottomnav')) setMoreOpen(false); });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') setMoreOpen(false); });
+document.addEventListener('click', e=>{ if(!e.target.closest('.bottomnav')) setMoreOpen(false); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ setMoreOpen(false); closeLangMenu(); } });
 function haptic(ms=8){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(_){} }
 
-/* Swipe the page sideways to move between Order, Rico and History (phones).
-   The page follows the finger, the tab-bar lens follows the page, and a
-   short fling is enough. Anything that scrolls sideways on its own, inputs,
-   steppers and open dialogs are left alone. */
+/* ---------- Page transitions ----------
+   "Glide": the whole page slides sideways like an iPhone app, the old page
+   and the new one moving together (so clear glass never overlaps). Used for
+   every screen, from taps, the lens and swipes, on phones and computers. */
+const GLIDE_MS = 780;                        // Glide at the chosen speed (0.6 s × 130%)
+const GLIDE_EASE = 'cubic-bezier(.22,1,.36,1)';
+let glide = null;
+function endGlide(){
+  if(!glide) return;
+  glide.anims.forEach(a=>a.cancel());
+  glide.ghost.remove();
+  document.querySelector('.content')?.classList.remove('gliding');
+  glide = null;
+}
+/* A still copy of the page that is leaving, laid exactly over it. */
+function pageGhost(content){
+  const r = content.getBoundingClientRect();
+  const layer = document.createElement('div');
+  layer.className = 'page-ghost'; layer.setAttribute('aria-hidden','true');
+  Object.assign(layer.style, {left:r.left+'px', width:r.width+'px'});
+  const copy = content.cloneNode(true);
+  copy.removeAttribute('id'); copy.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+  copy.classList.add('ghost-copy');
+  Object.assign(copy.style, {top:r.top+'px', width:r.width+'px', transform:content.style.transform || '', opacity:'1'});
+  layer.appendChild(copy);
+  document.body.appendChild(layer);
+  return {layer, copy, width:r.width};
+}
+function goView(view, {fromOffset=0, keepLens=false} = {}){
+  setMoreOpen(false); closeLangMenu();
+  if(view !== 'assistant' && ricoRecorder.active) ricoResetVoice();   // leaving Rico drops an unsent recording
+  if(!view || view === state.view || !canOpen(view)) return;
+  endGlide();
+  const dir = (Math.sign(viewIndex(view) - viewIndex(state.view)) || 1) * (isRtl() ? -1 : 1);
+  const old = document.querySelector('.content');
+  const ghost = old && !reducedMotion() && old.animate ? pageGhost(old) : null;
+  state.view = view;
+  if(view === 'record') state.recordFilter = 'all';
+  render();
+  window.scrollTo({top:0});
+  if(view === 'record') refreshActivity();
+  if(view === 'devices') refreshDevices();
+  if(!keepLens) placeNavIndicator();
+  const content = document.querySelector('.content');
+  if(!ghost || !content) return;
+  const w = ghost.width;
+  content.classList.add('gliding');
+  const opts = {duration:GLIDE_MS, easing:GLIDE_EASE};
+  const anims = [
+    ghost.copy.animate([{transform:`translate3d(${fromOffset}px,0,0)`, opacity:1},{transform:`translate3d(${-dir*w}px,0,0)`, opacity:.4}], opts),
+    content.animate([{transform:`translate3d(${dir*w + fromOffset}px,0,0)`},{transform:'none'}], opts),
+  ];
+  glide = {ghost:ghost.layer, anims};
+  const mine = glide;
+  anims[1].finished.then(()=>{ if(glide === mine) endGlide(); }, ()=>{});
+}
+
+/* Swipe the page sideways to move between the three tabs (phones). The page
+   follows the finger, the lens follows the page, and a short fling is
+   enough. Anything that scrolls sideways on its own, inputs, steppers and
+   open dialogs are left alone. */
 (function initPageSwipe(){
-  let g=null;
-  const blocked=el=>el.closest('input,textarea,select,.stepper,.order-tabs,.record-filters,.rico-composer,.bottom-stack,.item-sort-list,.day-chips,.unit-grid,.rico-picker-list,#modalRoot .modal-overlay,.ctx-layer');
-  document.addEventListener('pointerdown',e=>{
-    if(!isPhoneLayout() || e.pointerType==='mouse' || !state.role) return;
-    const content=e.target.closest('.content');
-    if(!content || blocked(e.target) || !MAIN_VIEWS.includes(state.view)) return;
-    g={x:e.clientX, y:e.clientY, t:performance.now(), id:e.pointerId, content, dx:0, mode:null};
-  },{passive:true});
-  document.addEventListener('pointermove',e=>{
+  let g = null;
+  const blocked = el=>el.closest('input,textarea,select,.stepper,.order-tabs,.record-filters,.rico-composer,.bottom-stack,.item-sort-list,.day-chips,.unit-grid,.rico-picker-list,#modalRoot .modal-overlay,.ctx-layer,.lang-layer');
+  document.addEventListener('pointerdown', e=>{
+    if(!isPhoneLayout() || e.pointerType==='mouse' || !state.account) return;
+    const content = e.target.closest('.content');
+    if(!content || blocked(e.target) || !state.tabs.includes(state.view)) return;
+    g = {x:e.clientX, y:e.clientY, t:performance.now(), id:e.pointerId, content, dx:0, mode:null};
+  }, {passive:true});
+  document.addEventListener('pointermove', e=>{
     if(!g || e.pointerId!==g.id) return;
-    const dx=e.clientX-g.x, dy=e.clientY-g.y;
+    const dx = e.clientX-g.x, dy = e.clientY-g.y;
     if(!g.mode){
-      if(Math.abs(dx)<10 && Math.abs(dy)<10) return;
+      if(Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
       g.mode = Math.abs(dx) > Math.abs(dy)*1.3 ? 'x' : 'y';
-      if(g.mode==='x'){ viewTransition?.cancel(); document.body.classList.add('page-swiping'); }
+      if(g.mode === 'x'){ endGlide(); document.body.classList.add('page-swiping'); }
     }
-    if(g.mode!=='x') return;
-    const rtl=state.lang==='ku'?-1:1, i=MAIN_VIEWS.indexOf(state.view);
-    const next=i - Math.sign(dx)*rtl;
-    const edge=next<0 || next>=MAIN_VIEWS.length;
+    if(g.mode !== 'x') return;
+    const rtl = isRtl() ? -1 : 1, i = state.tabs.indexOf(state.view);
+    const next = i - Math.sign(dx)*rtl;
+    const edge = next < 0 || next >= state.tabs.length;
     g.dx = edge ? dx*.28 : dx;
-    g.content.style.transform=`translate3d(${g.dx}px,0,0)`;
-    g.content.style.opacity=String(1-Math.min(.45,Math.abs(g.dx)/window.innerWidth*.9));
+    g.content.style.transform = `translate3d(${g.dx}px,0,0)`;
     if(!edge) setLensPosition(i + (-g.dx*rtl)/window.innerWidth);
-  },{passive:true});
-  const end=e=>{
+  }, {passive:true});
+  const end = e=>{
     if(!g || e.pointerId!==g.id) return;
-    const s=g; g=null;
+    const s = g; g = null;
     document.body.classList.remove('page-swiping');
-    if(s.mode!=='x') return;
+    if(s.mode !== 'x') return;
     // A sideways swipe that started on a button must not also press it.
-    const swallow=ev=>{ ev.stopPropagation(); ev.preventDefault(); };
+    const swallow = ev=>{ ev.stopPropagation(); ev.preventDefault(); };
     document.addEventListener('click', swallow, {capture:true, once:true});
     setTimeout(()=>document.removeEventListener('click', swallow, {capture:true}), 350);
-    const rtl=state.lang==='ku'?-1:1, i=MAIN_VIEWS.indexOf(state.view);
-    const v=s.dx/Math.max(1,performance.now()-s.t);
+    const rtl = isRtl() ? -1 : 1, i = state.tabs.indexOf(state.view);
+    const v = s.dx/Math.max(1, performance.now()-s.t);
     const go = Math.abs(s.dx) > window.innerWidth*.26 || Math.abs(v) > .45;
-    const next=i - Math.sign(s.dx)*rtl;
-    if(go && next>=0 && next<MAIN_VIEWS.length){
-      s.content.style.transform=''; s.content.style.opacity='';
+    const next = i - Math.sign(s.dx)*rtl;
+    if(go && next >= 0 && next < state.tabs.length){
       haptic();
-      // The new page enters from the side the finger was moving away from.
-      goView(MAIN_VIEWS[next], {fromOffset: -Math.sign(s.dx)*Math.min(window.innerWidth*.45,200)});
+      // The new page arrives from where the finger left the old one.
+      goView(state.tabs[next], {fromOffset:s.dx});
       return;
     }
-    const back=s.content.animate?.([{transform:`translate3d(${s.dx}px,0,0)`, opacity:s.content.style.opacity||1},{transform:'none', opacity:1}],{duration:320,easing:'cubic-bezier(.34,1.3,.5,1)'});
-    s.content.style.transform=''; s.content.style.opacity='';
+    const back = s.content.animate?.([{transform:`translate3d(${s.dx}px,0,0)`},{transform:'none'}], {duration:360, easing:'cubic-bezier(.34,1.3,.5,1)'});
+    s.content.style.transform = '';
     placeNavIndicator();
     return back;
   };
-  document.addEventListener('pointerup',end);
-  document.addEventListener('pointercancel',end);
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
 })();
-window.addEventListener('resize', ()=>requestAnimationFrame(()=>{ placeNavIndicator(); updateNavFade(); }));
-/* Phones with many tabs: fade the far edge while more tabs are hidden there. */
-function updateNavFade(){
-  const nav=document.querySelector('.bottomnav');
-  if(!nav) return;
-  const update=()=>{
-    const hidden=nav.scrollWidth-nav.clientWidth-Math.abs(nav.scrollLeft);
-    nav.classList.toggle('more-end', window.innerWidth<960 && hidden>4);
-  };
-  update();
-  if(!nav.dataset.fadeBound){ nav.dataset.fadeBound='1'; nav.addEventListener('scroll', update, {passive:true}); }
-}
-/* The floating top bar gains depth once the page scrolls under it, and (like
-   an iOS large title) the ricotta mark gives way to the screen's name. */
-function updateTopbarShadow(){
-  const bar=document.querySelector('.topbar');
+window.addEventListener('resize', ()=>requestAnimationFrame(placeNavIndicator));
+
+/* The top bar gains depth once the page scrolls under it, and (like an iOS
+   large title) the ricotta mark gives way to the screen's name. */
+function updateTopbar(){
+  const bar = document.querySelector('.topbar');
   if(!bar) return;
-  bar.classList.toggle('scrolled', window.scrollY>6);
-  const title=bar.querySelector('.topbar-title');
-  if(title){ const label=viewLabel(state.view); if(title.textContent!==label) title.textContent=label; }
-  bar.classList.toggle('titled', window.scrollY>64);
+  bar.classList.toggle('scrolled', window.scrollY > 6);
+  const title = bar.querySelector('.topbar-title');
+  if(title){ const label = viewLabel(state.view); if(title.textContent !== label) title.textContent = label; }
+  bar.classList.toggle('titled', window.scrollY > 64);
 }
-window.addEventListener('scroll', updateTopbarShadow, {passive:true});
-/* Glass catches the light where a mouse points (desktop only; cheap: one
-   listener, two CSS variables on the surface under the pointer). */
-if(matchMedia('(hover:hover) and (pointer:fine)').matches){
-  document.addEventListener('pointermove', e=>{
-    const el=e.target.closest?.('.hero-card,.supplier-group,.queue-card,.modal-box,.topbar');
-    if(!el) return;
-    const r=el.getBoundingClientRect();
-    el.style.setProperty('--mx', (e.clientX-r.left)+'px');
-    el.style.setProperty('--my', (e.clientY-r.top)+'px');
-  }, {passive:true});
-}
+window.addEventListener('scroll', updateTopbar, {passive:true});
 /* Restarts a CSS "bump" animation on an element (used for changing numbers). */
 function bump(el){
   if(!el) return;
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
 }
-/* The status bar matches the screen: deep green on sign-in, light in the app. */
+/* The phone's status bar takes the same colour as the top bar. */
 function setThemeColor(){
-  const meta=document.querySelector('meta[name="theme-color"]');
-  if(meta) meta.content = state.role ? '#F2F5F2' : '#14382C';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content = '#EEF1EF';
 }
 
 function renderPageHeading(){
-  const keys={order:'order',history:'history',suppliers:'suppliers',itemsAdmin:'items',units:'units',record:'record',devices:'devicesTitle',settings:'settings',queue:'sendQueueTitle'};
-  const date=new Intl.DateTimeFormat(state.lang==='ku'?'ckb-IQ':'en-GB',{weekday:'short',day:'numeric',month:'short'}).format(new Date());
-  return `<header class="page-heading"><div><div class="page-kicker">${t('workspaceLabel')}</div><h1>${t(keys[state.view]||'order')}</h1></div><time class="page-date" datetime="${new Date().toISOString().slice(0,10)}">${esc(date)}</time></header>`;
+  const date = new Intl.DateTimeFormat(intlLocale(), {weekday:'short', day:'numeric', month:'short'}).format(new Date());
+  return `<header class="page-heading"><div><div class="page-kicker">${esc(t('workspaceLabel'))}</div><h1>${esc(viewLabel(state.view))}</h1></div><time class="page-date" datetime="${new Date().toISOString().slice(0,10)}">${esc(date)}</time></header>`;
 }
 
-/* ============ Notifications: banner (everyone) ============ */
+/* ============ Notifications: banner ============ */
 /* Shown at the top of the Order screen until this device has notifications
    on. On iPhone, outside the Home Screen app it only explains how to install. */
 function renderPushBanner(){
@@ -682,83 +770,119 @@ function renderPushBanner(){
   if(!mode) return '';
   const text = mode === 'ios' ? t('notifIosHint') : t('notifBannerSub');
   return `<div class="push-banner">
-    <div class="push-banner-text"><b>${t('notifBannerTitle')}</b><br>${text}</div>
+    <div class="push-banner-text"><b>${esc(t('notifBannerTitle'))}</b><br>${esc(text)}</div>
     <div class="push-banner-actions">
-      ${mode === 'enable' ? `<button class="btn btn-primary" id="pushEnableBtn">${ICON_BELL} ${t('notifEnable')}</button>` : ''}
-      <button class="btn btn-ghost" id="pushDismissBtn">${t('notifDismiss')}</button>
+      ${mode === 'enable' ? `<button class="btn btn-primary" id="pushEnableBtn">${ICON_BELL} ${esc(t('notifEnable'))}</button>` : ''}
+      <button class="btn btn-ghost" id="pushDismissBtn">${esc(t('notifDismiss'))}</button>
     </div>
   </div>`;
 }
 
-/* ============ Topbar & nav ============ */
+/* ============ Top bar ============
+   The same colour as the page, with Online, the language and a red glass
+   log-out button on top of it. */
+function langButton(id){
+  return `<button type="button" class="chip lang-chip" id="${id}" aria-haspopup="dialog" aria-label="${esc(t('language'))}">${ICON_GLOBE}<span class="lang-code">${state.lang.toUpperCase()}</span><span class="lang-name">${LANG_NAMES[state.lang]}</span>${ICON_CHEVRON}</button>`;
+}
 function renderTopbar(){
-  const other = state.lang === 'en' ? 'ku' : 'en';
   return `
-  <div class="topbar">
-    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span><span class="brand-sub">Orders</span></div><span class="topbar-title" aria-hidden="true"></span></div>
+  <header class="topbar">
+    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="topbar-title" aria-hidden="true"></span></div>
     <div class="topbar-actions">
-      <div class="connection-status ${state.apiOnline?'':'offline'}" id="connectionStatus"><span></span><em>${state.apiOnline?t('online'):t('offline')}</em></div>
-      <button class="pill-btn lang-switch" data-lang="${other}" lang="${other}">${other==='ku'?'کوردی':'English'}</button>
-      <button class="pill-btn icon-pill" id="logoutBtn" aria-label="${t('logout')}" title="${t('logout')}">${ICON_LOGOUT}</button>
+      <div class="chip conn-chip ${state.apiOnline?'':'offline'}" id="connectionStatus"><span></span><em>${esc(state.apiOnline?t('online'):t('offline'))}</em></div>
+      ${langButton('langBtn')}
+      <button type="button" class="logout-btn" id="logoutBtn" aria-label="${esc(t('logout'))}" title="${esc(t('logout'))}">${ICON_LOGOUT}</button>
     </div>
-  </div>`;
+  </header>`;
 }
-/* Order, Rico and History are the pages you swipe between. Admin screens sit
-   behind a "More" tab on phones (a glass panel above the bar) and are listed
-   in full in the desktop sidebar. There is only ever one button per screen. */
-const MAIN_VIEWS = ['order','assistant','history'];
-const ADMIN_VIEWS = ['suppliers','itemsAdmin','units','record','devices','settings'];
-function viewLabel(id){
-  return ({order:t('order'), assistant:t('ricoName'), history:t('history'), suppliers:t('suppliers'), itemsAdmin:t('items'), units:t('units'), record:t('record'), devices:t('devicesTitle'), settings:t('settings'), queue:t('sendQueueTitle')})[id] || t('order');
+
+/* ---------- Language menu ----------
+   A glass menu under the language button. Nothing changes until Apply. */
+function closeLangMenu(){
+  const layer = document.getElementById('langLayer');
+  if(!layer) return;
+  layer.classList.add('closing');
+  setTimeout(()=>layer.remove(), 200);
 }
-function renderBottomNav(){
-  const admin = state.role === 'admin';
-  const btn = id=>`
-      <button class="navbtn ${state.view===id?'active':''}" data-view="${id}" ${state.view===id?'aria-current="page"':''}>
-        ${NAV_ICONS[id]}<span>${viewLabel(id)}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}
-      </button>`;
-  const moreOn = ADMIN_VIEWS.includes(state.view);
-  return `<nav class="bottomnav ${admin?'has-more':''}" aria-label="${t('workspaceLabel')}"><span class="nav-indicator" aria-hidden="true"></span>
-    ${MAIN_VIEWS.map(btn).join('')}
-    ${admin ? `<button class="navbtn nav-more-btn ${moreOn?'active':''}" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${t('more')}</span></button>
-    <div class="nav-more" id="navMore" role="group" aria-label="${esc(t('moreTitle'))}">${ADMIN_VIEWS.map(btn).join('')}</div>` : ''}
-  </nav>`;
+function openLangMenu(anchor){
+  closeLangMenu();
+  const r = anchor.getBoundingClientRect();
+  let pick = state.lang;
+  const layer = document.createElement('div');
+  layer.id = 'langLayer'; layer.className = 'lang-layer';
+  const side = isRtl() ? `left:${Math.max(10, r.left)}px` : `right:${Math.max(10, window.innerWidth - r.right)}px`;
+  layer.innerHTML = `<div class="lang-scrim"></div>
+    <div class="lang-menu" role="dialog" aria-label="${esc(t('language'))}" style="top:${r.bottom + 8}px;${side}">
+      <div class="lang-title">${esc(t('language'))}</div>
+      ${LANGS.map(l=>`<button type="button" class="lang-row" data-pick="${l}" lang="${({en:'en',ku:'ckb',ar:'ar'})[l]}" dir="${l==='en'?'ltr':'rtl'}"><span>${LANG_NAMES[l]}</span><i class="lang-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i></button>`).join('')}
+      <div class="lang-actions"><button type="button" class="btn btn-ghost" data-lang-cancel>${esc(t('cancel'))}</button><button type="button" class="btn btn-primary" data-lang-apply disabled>${esc(t('apply'))}</button></div>
+    </div>`;
+  document.body.appendChild(layer);
+  const paint = ()=>{
+    layer.querySelectorAll('[data-pick]').forEach(b=>b.classList.toggle('sel', b.dataset.pick === pick));
+    layer.querySelector('[data-lang-apply]').disabled = pick === state.lang;
+  };
+  paint();
+  layer.querySelector('.lang-scrim').onclick = closeLangMenu;
+  layer.querySelector('[data-lang-cancel]').onclick = closeLangMenu;
+  layer.querySelectorAll('[data-pick]').forEach(b=>b.onclick = ()=>{ pick = b.dataset.pick; paint(); });
+  layer.querySelector('[data-lang-apply]').onclick = ()=>{ closeLangMenu(); setLang(pick); };
+  layer.querySelector(`[data-pick="${state.lang}"]`)?.focus({preventScroll:true});
 }
-function isPhoneLayout(){ return window.innerWidth < 960; }
-function setMoreOpen(open){
-  const nav=document.querySelector('.bottomnav'), btn=document.getElementById('navMoreBtn');
-  if(!nav || !btn) return;
-  nav.classList.toggle('more-open', open);
-  btn.setAttribute('aria-expanded', String(open));
+function setLang(lang){
+  if(!LANGS.includes(lang)) return;
+  state.lang = lang; lset('lang', lang); render();
+  updatePushLang(lang);   // so future notifications switch language immediately too
 }
-/* Moves to another screen with a sideways slide (direction follows the tab
-   order, mirrored in Kurdish). Used by taps, the tab-bar lens and swipes. */
-let viewTransition = null, sliding = false;
-function viewIndex(v){ const i=MAIN_VIEWS.indexOf(v); return i>=0 ? i : MAIN_VIEWS.length + Math.max(0, ADMIN_VIEWS.indexOf(v)); }
-function goView(view, {fromOffset=0} = {}){
+
+/* ---------- Edit tabs ----------
+   Each account picks the three screens in its tab bar (saved on the server,
+   so every phone signed in to that account gets the same tabs). */
+function openTabEditor(){
   setMoreOpen(false);
-  if(view !== 'assistant' && ricoRecorder.active) ricoResetVoice();   // leaving Rico drops an unsent recording
-  if(!view || view === state.view) return;
-  if(ADMIN_VIEWS.includes(view) && state.role !== 'admin') return;
-  const dir = Math.sign(viewIndex(view) - viewIndex(state.view)) || 1;
-  state.view = view;
-  if(view === 'record') state.recordFilter = 'all';
-  sliding = true; render(); sliding = false;
-  window.scrollTo({top:0});
-  if(view === 'record') refreshActivity();
-  if(view === 'devices') refreshDevices();
-  const content = document.querySelector('.content');
-  if(content && content.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches){
-    const rtl = state.lang === 'ku' ? -1 : 1;
-    const from = fromOffset || dir*rtl*Math.min(90, window.innerWidth*.22);
-    viewTransition?.cancel();
-    viewTransition = content.animate([{transform:`translate3d(${from}px,0,0)`, opacity:.35},{transform:'none', opacity:1}], {duration:380, easing:'cubic-bezier(.2,.9,.25,1)'});
-  }
-}
-function attachCommonEvents(){
-  document.querySelectorAll('[data-lang]').forEach(b=>b.onclick=async()=>{
-    setLang(b.dataset.lang);
+  let picked = state.tabs.slice();
+  showFormModal({
+    title: t('editTabs'),
+    bodyHtml: `<div class="notif-sub">${esc(t('editTabsHint'))}</div><div class="tab-pick" id="tabPick"></div>`,
+    okLabel: t('save'),
+    onOpen: box=>{
+      const list = box.querySelector('#tabPick');
+      const paint = ()=>{
+        list.innerHTML = state.views.map(v=>{ const n = picked.indexOf(v); return `<button type="button" class="tab-pick-row ${n>=0?'on':''}" data-tab="${v}" aria-pressed="${n>=0}">${NAV_ICONS[v]}<span>${esc(viewLabel(v))}</span><b>${n>=0?n+1:''}</b></button>`; }).join('');
+        list.querySelectorAll('[data-tab]').forEach(b=>b.onclick = ()=>{
+          const v = b.dataset.tab, n = picked.indexOf(v);
+          if(n >= 0) picked.splice(n, 1); else if(picked.length < 3) picked.push(v); else { picked.shift(); picked.push(v); }
+          paint();
+        });
+        box.querySelector('#modalFormOk').disabled = picked.length !== 3;
+      };
+      paint();
+    },
+    onSubmit: async ()=>{
+      if(picked.length !== 3) return {error:t('editTabsNeedThree')};
+      const r = await api('me/tabs', {method:'PUT', body:{tabs:picked}});
+      if(!r.ok) return {error:t('saveFailed')};
+      state.tabs = picked.slice();
+      saveSessionAccount();
+      render();
+      toast(t('tabsSaved'));
+      return {};
+    }
   });
+}
+
+/* Events on the top bar and tab bar (bound once, when they are built). */
+function attachShellEvents(){
+  const nav = document.querySelector('.bottomnav');
+  nav.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>goView(b.dataset.view));
+  document.getElementById('navMoreBtn').onclick = e=>{ e.stopPropagation(); setMoreOpen(!nav.classList.contains('more-open')); };
+  document.getElementById('navEditTabs').onclick = e=>{ e.stopPropagation(); openTabEditor(); };
+  document.getElementById('langBtn').onclick = e=>{ e.stopPropagation(); openLangMenu(e.currentTarget); };
+  document.getElementById('logoutBtn').onclick = ()=>doLogout();
+  initTabBarLens(nav);
+}
+/* Events inside the page that more than one screen uses. */
+function attachContentEvents(){
   const pushOn = document.getElementById('pushEnableBtn');
   if(pushOn) pushOn.onclick = async ()=>{
     const res = await enablePush();   // straight from the tap: iOS needs that for the permission prompt
@@ -767,23 +891,14 @@ function attachCommonEvents(){
   };
   const pushLater = document.getElementById('pushDismissBtn');
   if(pushLater) pushLater.onclick = ()=>{ snoozePushBanner(); render(); };
-  const lo = document.getElementById('logoutBtn');
-  if(lo) lo.onclick = ()=> doLogout();
-  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>goView(b.dataset.view));
-  const moreBtn = document.getElementById('navMoreBtn');
-  if(moreBtn) moreBtn.onclick = e=>{ e.stopPropagation(); setMoreOpen(!document.querySelector('.bottomnav')?.classList.contains('more-open')); };
   // "Record" shortcut buttons on the Suppliers / Items screens: jump to the
   // Record already filtered to that kind of change.
-  document.querySelectorAll('[data-gorecord]').forEach(b=>b.onclick=()=>{
-    state.recordFilter = b.dataset.gorecord; state.view = 'record'; render(); refreshActivity();
+  document.querySelectorAll('[data-gorecord]').forEach(b=>b.onclick = ()=>{
+    goView('record'); state.recordFilter = b.dataset.gorecord; render();
   });
 }
 
 /* ============ Login (PIN pad) ============ */
-function setLang(lang){
-  state.lang = lang; lset('lang', lang); render();
-  updatePushLang(lang);   // so future notifications switch language immediately too
-}
 function loginMessage(){
   if(state.pinBusy) return t('signingIn');
   return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), session:state.sessionMsg})[state.pinError] || '';
@@ -798,78 +913,71 @@ function renderLogin(){
   const keys = ['1','2','3','4','5','6','7','8','9'];
   const bad = ['wrong','locked','network'].includes(state.pinError);
   const msg = loginMessage();
-  const rings = `<span class="login-ring r1"></span><span class="login-ring r2"></span><span class="login-ring r3"></span>`;
   const word = 'ricotta'.split('').map((c,i)=>`<b style="--i:${i}">${c}</b>`).join('');
   return `
   <div class="login-wrap">
-    <div class="login-scene" aria-hidden="true">${rings}<span class="login-spark s1"></span><span class="login-spark s2"></span><span class="login-spark s3"></span></div>
+    <div class="login-corner">${langButton('loginLangBtn')}</div>
+    <aside class="login-brand-panel">
+      <div class="brand-word" dir="ltr">ricotta<span class="brand-word-dot"></span></div>
+      <div class="login-brand-content"><div class="brand-kicker">${esc(t('brandKicker'))}</div><div class="brand-message">${esc(t('brandMessage'))}<br><em>${esc(t('brandMessageAccent'))}</em></div><div class="brand-detail">${esc(t('brandDetail'))}</div></div>
+      <div class="brand-footer"><span>© ${new Date().getFullYear()} Ricotta</span><span>${esc(t('brandFooter'))}</span></div>
+    </aside>
     <div class="login-mobile-brand" aria-hidden="true">
       <div class="login-word">${word}<i></i></div><div class="login-orders">ORDERS</div>
     </div>
-    <aside class="login-brand-panel">${rings}
-      <div class="brand-word" dir="ltr">ricotta<span class="brand-word-dot"></span></div>
-      <div class="login-brand-content"><div class="brand-kicker">${t('brandKicker')}</div><div class="brand-message">${t('brandMessage')}<br><em>${t('brandMessageAccent')}</em></div><div class="brand-detail">${t('brandDetail')}</div></div>
-      <div class="brand-footer"><span>© ${new Date().getFullYear()} Ricotta</span><span>${t('brandFooter')}</span></div></aside>
     <div class="login-card"><div class="login-inner">
-    <div class="login-heading">
-      <div class="login-eyebrow">${t('welcomeBack')}</div>
-      <h1 class="login-title">${t('signIn')}</h1>
-      <p class="login-sub">${t('signInSub')}</p>
-    </div>
-    <div class="pin-label" id="pinLabel">${t('enterPin')}</div>
-    <div class="pin-dots ${bad?'err':''} ${state.pinBusy?'busy':''}" role="group" aria-labelledby="pinLabel">${dots}</div>
-    <div class="login-error ${state.pinError==='session'?'info':''}" role="alert" style="visibility:${msg?'visible':'hidden'};">${esc(msg) || '&nbsp;'}</div>
-    <div class="keypad">
-      ${keys.map((k,i)=>`<button class="key" data-key="${k}" style="--k:${i}">${k}</button>`).join('')}
-      <button class="key clear" data-key="clear" style="--k:9">${t('clear')}</button>
-      <button class="key" data-key="0" style="--k:10">0</button>
-      <button class="key backspace" data-key="back" style="--k:11" aria-label="${esc(t('deleteDigit'))}">${ICON_BACKSPACE}</button>
-    </div>
-    <div class="login-lang">
-      <div class="login-lang-menu" id="loginLangMenu" role="menu" hidden>
-        <button type="button" role="menuitem" class="login-lang-option ${state.lang==='en'?'active':''}" data-login-lang="en"><span>English</span>${state.lang==='en'?'<i>✓</i>':''}</button>
-        <button type="button" role="menuitem" class="login-lang-option ku ${state.lang==='ku'?'active':''}" data-login-lang="ku"><span>کوردی</span>${state.lang==='ku'?'<i>✓</i>':''}</button>
+      <div class="login-heading">
+        <div class="login-eyebrow">${esc(t('welcomeBack'))}</div>
+        <h1 class="login-title">${esc(t('signIn'))}</h1>
+        <p class="login-sub">${esc(t('signInSub'))}</p>
       </div>
-      <button type="button" class="lang-pill" id="loginLangToggle" aria-haspopup="menu" aria-expanded="false">${ICON_GLOBE}<span class="lang-short">${state.lang==='en'?'EN':'KU'}</span><span class="lang-long">${state.lang==='en'?'English':'کوردی'}</span>${ICON_CHEVRON}</button>
-    </div>
+      <div class="pin-label" id="pinLabel">${esc(t('enterPin'))}</div>
+      <div class="pin-dots ${bad?'err':''} ${state.pinBusy?'busy':''}" role="group" aria-labelledby="pinLabel">${dots}</div>
+      <div class="login-error ${state.pinError==='session'?'info':''}" role="alert" style="visibility:${msg?'visible':'hidden'};">${esc(msg) || '&nbsp;'}</div>
+      <div class="keypad">
+        ${keys.map((k,i)=>`<button class="key" data-key="${k}" style="--k:${i}">${k}</button>`).join('')}
+        <button class="key clear" data-key="clear" style="--k:9">${esc(t('clear'))}</button>
+        <button class="key" data-key="0" style="--k:10">0</button>
+        <button class="key backspace" data-key="back" style="--k:11" aria-label="${esc(t('deleteDigit'))}">${ICON_BACKSPACE}</button>
+      </div>
     </div></div>
   </div>`;
 }
 function updateLoginFeedback(){
-  const dots=document.querySelector('.pin-dots');
+  const dots = document.querySelector('.pin-dots');
   if(!dots) return;
-  dots.classList.toggle('err',['wrong','locked','network'].includes(state.pinError));
-  dots.classList.toggle('busy',state.pinBusy);
+  dots.classList.toggle('err', ['wrong','locked','network'].includes(state.pinError));
+  dots.classList.toggle('busy', state.pinBusy);
   // Class changes alone drive the pop / next-box glow (see .pin-dot in style.css).
   dots.querySelectorAll('.pin-dot').forEach((dot,index)=>{ dot.className = pinDotClass(index); });
-  const message=document.querySelector('.login-error');
-  message.textContent=loginMessage()||'\u00a0';
-  message.style.visibility=loginMessage()?'visible':'hidden';
-  message.classList.toggle('info',state.pinError==='session');
-  document.querySelectorAll('[data-key]').forEach(button=>button.disabled=state.pinBusy);
+  const message = document.querySelector('.login-error');
+  message.textContent = loginMessage() || ' ';
+  message.style.visibility = loginMessage() ? 'visible' : 'hidden';
+  message.classList.toggle('info', state.pinError === 'session');
+  document.querySelectorAll('[data-key]').forEach(button=>button.disabled = state.pinBusy);
 }
 async function pressKey(k){
   if(state.pinBusy) return;
   if(state.pinError && state.pinError !== 'session') state.pinError = '';
-  state.pinPop = false;
   if(k==='clear'){ state.pinBuffer=''; updateLoginFeedback(); return; }
   if(k==='back'){ state.pinBuffer = state.pinBuffer.slice(0,-1); updateLoginFeedback(); return; }
-  if(state.pinBuffer.length>=MAX_PIN_LEN) return;
-  state.pinBuffer += k; state.pinPop = true;
+  if(state.pinBuffer.length >= MAX_PIN_LEN) return;
+  state.pinBuffer += k;
   if(state.pinBuffer.length < MAX_PIN_LEN){ updateLoginFeedback(); return; }
 
   state.pinBusy = true; state.pinError = ''; updateLoginFeedback();
   const res = await apiLogin(state.pinBuffer);
   state.pinBusy = false;
+  if(res.recovery){ state.pinBuffer = ''; updateLoginFeedback(); startRecovery(res.ticket); return; }
   if(res.error){
     state.pinError = res.error; updateLoginFeedback();
-    setTimeout(()=>{ state.pinBuffer=''; if(!state.role) updateLoginFeedback(); }, 650);
+    setTimeout(()=>{ state.pinBuffer=''; if(!state.account) updateLoginFeedback(); }, 650);
     return;
   }
-  // Signed in: "Welcome back" covers the workspace while it loads, then lifts.
+  // Signed in: "Welcome back, Yunis" covers the workspace while it loads, then lifts.
   state.pinBuffer = ''; state.pinError = ''; state.view = 'order';
-  showWelcome();
-  state.role = res.role;
+  showWelcome(accountLabel(res.account));
+  applyAccount(res);
   const ok = await loadData();
   if(!ok){ hideWelcome(0); signOut(); state.pinError = 'network'; render(); return; }
   restoreCartDraft();
@@ -877,47 +985,65 @@ async function pressKey(k){
   hideWelcome();
   heartbeat();
   if(pushStatus.subscribed) resyncPush();
-  afterLogin();
   maybeOpenRicoProviderSetup();
 }
-function attachLoginEvents(){
-  const toggle = document.getElementById('loginLangToggle');
-  const menu = document.getElementById('loginLangMenu');
-  if(toggle && menu){
-    const closeMenu = ()=>{ menu.hidden=true; toggle.setAttribute('aria-expanded','false'); };
-    toggle.onclick = e=>{
-      e.stopPropagation();
-      const opening = menu.hidden;
-      menu.hidden = !opening;
-      toggle.setAttribute('aria-expanded', String(opening));
-      if(opening) setTimeout(()=>document.addEventListener('click', closeMenu, {once:true}),0);
-    };
-    toggle.onkeydown = e=>{ if(e.key==='Escape'){ closeMenu(); toggle.focus(); } };
-    menu.onclick = e=>e.stopPropagation();
-    menu.querySelectorAll('[data-login-lang]').forEach(option=>option.onclick=()=>setLang(option.dataset.loginLang));
-  }
-  document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=> pressKey(b.dataset.key));
+/* The secret code, typed on the keypad instead of a PIN: "Who are you?"
+   (only "rozha" goes on; anything else just closes), then Rozha's PIN, then
+   new PINs and/or a new secret code. Saving signs every phone out. */
+async function startRecovery(ticket){
+  const name = await showPrompt(esc(t('whoAreYou')), {plain:true, okLabel:t('continue'), cancelLabel:t('cancel')});
+  if(name === null) return;
+  const step1 = await api('recovery/name', {method:'POST', body:{ticket, name}});
+  if(!step1.ok){ if(step1.status === 429){ state.pinError = 'locked'; updateLoginFeedback(); } return; }
+  const pin = await showPrompt(esc(t('recoveryRozhaPin')), {password:true, maxLength:6, okLabel:t('continue'), cancelLabel:t('cancel')});
+  if(pin === null) return;
+  const step2 = await api('recovery/verify', {method:'POST', body:{ticket, pin}});
+  if(!step2.ok){ state.pinError = step2.status === 429 ? 'locked' : 'wrong'; updateLoginFeedback(); return; }
+  const field = (id, label)=>`<div class="field"><label for="${id}">${esc(label)}</label><input id="${id}" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" data-clear="1"></div>`;
+  await showFormModal({
+    title: t('recoveryTitle'),
+    bodyHtml: `<div class="notif-sub">${esc(t('recoveryHint'))}</div>${field('recRozha', t('recoveryNewRozha'))}${field('recYunis', t('recoveryNewYunis'))}${field('recCode', t('recoveryNewCode'))}`,
+    okLabel: t('save'),
+    onSubmit: async ()=>{
+      const v = id=>document.getElementById(id).value.trim();
+      const rozhaPin = v('recRozha'), yunisPin = v('recYunis'), secretCode = v('recCode');
+      const given = [rozhaPin, yunisPin, secretCode].filter(Boolean);
+      if(!given.length) return {error:t('recoveryNothing')};
+      if(given.some(x=>!/^\d{6}$/.test(x))) return {error:t('pinsInvalidLength')};
+      if(new Set(given).size !== given.length) return {error:t('pinsDuplicate')};
+      const r = await api('recovery/save', {method:'POST', body:{ticket, rozhaPin, yunisPin, secretCode}});
+      if(r.ok){ setTimeout(()=>showAlert(esc(t('recoverySaved'))), 260); return {}; }
+      const code = r.data && r.data.error;
+      if(code === 'weak_pin') return {error:t('pinsWeak')};
+      if(code === 'duplicate_pin') return {error:t('pinsDuplicate')};
+      if(r.status === 401) return {error:t('recoveryExpired')};
+      return {error:t('saveFailed')};
+    }
+  });
 }
-/* Physical keyboards (desktop / tablets with a keyboard) can type the PIN. */
+function attachLoginEvents(){
+  const lang = document.getElementById('loginLangBtn');
+  if(lang) lang.onclick = e=>{ e.stopPropagation(); openLangMenu(lang); };
+  document.querySelectorAll('[data-key]').forEach(b=>b.onclick = ()=>pressKey(b.dataset.key));
+}
+/* Physical keyboards (computers / tablets with a keyboard) can type the PIN. */
 document.addEventListener('keydown', e=>{
-  if(state.role || e.ctrlKey || e.metaKey || e.altKey) return;
-  if(document.querySelector('#modalRoot .modal-overlay')) return;
+  if(state.account || e.ctrlKey || e.metaKey || e.altKey) return;
+  if(document.querySelector('#modalRoot .modal-overlay') || document.getElementById('langLayer')) return;
   if(/^[0-9]$/.test(e.key)) pressKey(e.key);
   else if(e.key === 'Backspace') pressKey('back');
   else if(e.key === 'Escape') pressKey('clear');
 });
 
 /* ============ Order screen ============ */
-function unitLabel(unitId){
-  const u = state.units.find(x=>x.id===unitId);
-  if(!u) return '';
-  return state.lang==='ku' ? (u.ku||u.en) : u.en;
-}
+/* A unit's name in the current language (English when it has none). */
+function unitName(u){ return !u ? '' : state.lang === 'ku' ? (u.ku || u.en) : state.lang === 'ar' ? (u.ar || u.en) : u.en; }
+function unitLabel(unitId){ return unitName(state.units.find(x=>x.id===unitId)); }
 function supplierName(id){
   const s = state.suppliers.find(x=>x.id===id);
   return s ? s.name : t('noSupplier');
 }
-function nameCollator(){ return new Intl.Collator(state.lang==='ku' ? 'ku' : 'en', {sensitivity:'base', numeric:true}); }
+function nameCollator(){ return new Intl.Collator(({en:'en', ku:'ckb', ar:'ar'})[state.lang], {sensitivity:'base', numeric:true}); }
 function sortedByName(rows){ return [...rows].sort((a,b)=>nameCollator().compare(a.name||'', b.name||'')); }
 function sortedSupplierItems(rows){
   const custom = rows.some(i=>Number.isInteger(i.sortOrder));
@@ -973,7 +1099,7 @@ function supplierMono(name){
   return `<span class="supplier-mono" aria-hidden="true">${esc(ch.toLocaleUpperCase())}</span>`;
 }
 function renderOrderArrangeControl(){
-  return state.role==='admin' && state.orderTab!=='all' && state.orderTab!=='__none'
+  return canOpen('itemsAdmin') && state.orderTab!=='all' && state.orderTab!=='__none'
     ? `<button class="item-sort-trigger" data-sort-supplier="${esc(state.orderTab)}">${t('sortSupplierItems')}</button>` : '';
 }
 function orderTabs(){
@@ -986,7 +1112,7 @@ function orderTabs(){
 }
 function renderOrder(){
   if(!state.items.length){
-    return emptyState(state.role==='admin'?t('noItemsYet'):t('noItemsUser'));
+    return emptyState(t('noItemsYet'));
   }
   const tabs = orderTabs();
   if(!tabs.some(tb=>tb.id===state.orderTab)) state.orderTab = 'all';
@@ -1050,7 +1176,7 @@ function renderOrderResults(){
         </div>
       </div>`;
     }).join('');
-    const arrangeButton = state.role==='admin' && key!=='__none'
+    const arrangeButton = canOpen('itemsAdmin') && key!=='__none'
       ? `<button class="item-sort-trigger" data-sort-supplier="${esc(key)}">${t('sortSupplierItems')}</button>` : '';
     return state.orderTab==='all' ? `<div class="supplier-group">
       <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}<span class="supplier-item-count">${groups[key].length}</span></span>${arrangeButton}</div>
@@ -1134,7 +1260,6 @@ function attachOrderEvents(){
   document.querySelectorAll('[data-ordertab]').forEach(b=>b.onclick=()=>{
     if(state.orderTab===b.dataset.ordertab) return;
     state.orderTab = b.dataset.ordertab;
-    lastAnimKey='order:'+state.orderTab;
     document.querySelectorAll('[data-ordertab]').forEach(tab=>{
       const active=tab.dataset.ordertab===state.orderTab;
       tab.classList.toggle('active',active);tab.setAttribute('aria-pressed',String(active));
@@ -1315,7 +1440,7 @@ function openItemMenu(row){
   const menuH = actions.length*48 + 8, below = rect.bottom + 12 + menuH < window.innerHeight - 90;
   layer.innerHTML = `<div class="ctx-scrim"></div>
     <div class="ctx-preview" style="top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px"></div>
-    <div class="ctx-menu ${below?'':'up'}" role="menu" style="${below?`top:${rect.bottom+12}px`:`top:${Math.max(12, rect.top-12-menuH)}px`};${state.lang==='ku'?`left:${Math.max(12,rect.left)}px`:`right:${Math.max(12, window.innerWidth-rect.right)}px`}">
+    <div class="ctx-menu ${below?'':'up'}" role="menu" style="${below?`top:${rect.bottom+12}px`:`top:${Math.max(12, rect.top-12-menuH)}px`};${isRtl()?`left:${Math.max(12,rect.left)}px`:`right:${Math.max(12, window.innerWidth-rect.right)}px`}">
       ${actions.map(([a,label,icon])=>`<button type="button" role="menuitem" class="${a==='remove'?'danger':''} ${a==='type'?'sep':''}" data-ctx="${a}"><span>${esc(label)}</span>${icon}</button>`).join('')}
     </div>`;
   const clone = row.cloneNode(true);
@@ -1364,7 +1489,7 @@ function renderRicoSuggestion(){
   const text = sg.due && sg.reminder ? t('ricoSuggestDue')(iso(name), formatStoredIraqTime(sg.reminder)) : t('ricoSuggestUsual')(iso(name), day);
   const preview = sg.lines.slice(0,3).map(l=>esc(l.name)).join(' · ') + (sg.lines.length>3 ? ` +${sg.lines.length-3}` : '');
   return `<div class="rico-suggest glass ${sg.due?'due':''}">
-    <span class="rico-suggest-mark">${ricoSparkSvg('#214F3D')}</span>
+    ${ricoFace(sg.due ? 'worried' : 'happy', 'rico-xs')}
     <div class="rico-suggest-text"><b>${esc(t('ricoSuggestsLabel'))}</b><span>${esc(text)}</span><small dir="auto">${preview}</small></div>
     <button type="button" class="btn btn-primary rico-suggest-add" id="ricoSuggestAdd">${esc(t('ricoSuggestAdd')(sg.lines.length))}</button>
     <button type="button" class="rico-suggest-x" id="ricoSuggestHide" aria-label="${esc(t('ricoSuggestDismiss'))}">×</button>
@@ -1401,7 +1526,7 @@ async function loadRicoSuggestion(){
 /* ============ Send queue ============ */
 function buildMessage(entry){
   const lines = sortedSupplierItems(entry.items).map(i=>`• ${i.name} — ${i.qty} ${unitLabel(i.unit)}`);
-  const header = state.lang==='ku' ? 'داواکارییەکی نوێ لە چێشتخانەی ریکۆتا:' : 'New order from Ricotta:';
+  const header = ({en:'New order from Ricotta:', ku:'داواکارییەکی نوێ لە چێشتخانەی ریکۆتا:', ar:'طلب جديد من مطبخ ريكوتا:'})[state.lang];
   return header + '\n' + lines.join('\n');
 }
 function waLink(phone, text){
@@ -1464,13 +1589,19 @@ function attachQueueEvents(){
   // was never saved to History.
   document.querySelectorAll('[data-marksent]').forEach(b=>b.onclick=()=>markQueueSent(parseInt(b.dataset.marksent)));
 }
+/* A printable order sheet for one supplier, in the app's language. */
+const SHEET_WORDS = {
+  en:{title:'Purchase order', none:'No supplier', items:'items', item:'Item', unit:'Unit', qty:'Qty', foot:'Please prepare this order with the quantities listed above. Thank you.'},
+  ku:{title:'داواکارییەکی نوێ', none:'بێ دابینکەر', items:'کاڵا', item:'کاڵا', unit:'یەکە', qty:'بڕ', foot:'تکایە داواکارییەکە بەپێی ئەم بڕانە ئامادە بکەن. سوپاس.'},
+  ar:{title:'طلب شراء', none:'بدون مورّد', items:'مواد', item:'المادة', unit:'الوحدة', qty:'الكمية', foot:'يرجى تجهيز هذا الطلب بالكميات المذكورة أعلاه. شكرًا لكم.'}
+};
 function printOrderSheet(entry, supplier){
-  const ku=state.lang==='ku', title=ku?'داواکارییەکی نوێ':'Purchase order';
-  const supplierLabel=supplier?.name||(ku?'بێ دابینکەر':'No supplier');
-  const rows=sortedSupplierItems(entry.items).map((item,n)=>`<tr><td>${n+1}</td><td>${esc(item.name)}</td><td>${esc(unitLabel(item.unit))}</td><td class="qty">${item.qty}</td></tr>`).join('');
-  const w=window.open('', '_blank'); if(!w) return;
-  const printedAt=formatIraqDateTime(new Date(),{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-  w.document.write(`<!doctype html><html dir="${ku?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${title} — Ricotta</title><style>body{font-family:Arial,'Noto Sans Arabic',sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${esc(printedAt)}<br>${entry.items.length} ${ku?'کاڵا':'items'}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${ku?'کاڵا':'Item'}</th><th>${ku?'یەکە':'Unit'}</th><th>${ku?'بڕ':'Qty'}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${ku?'تکایە داواکارییەکە بەپێی ئەم بڕانە ئامادە بکەن. سوپاس.':'Please prepare this order with the quantities listed above. Thank you.'}</div></body></html>`);
+  const w0 = SHEET_WORDS[state.lang] || SHEET_WORDS.en;
+  const supplierLabel = supplier?.name || w0.none;
+  const rows = sortedSupplierItems(entry.items).map((item,n)=>`<tr><td>${n+1}</td><td>${esc(item.name)}</td><td>${esc(unitLabel(item.unit))}</td><td class="qty">${item.qty}</td></tr>`).join('');
+  const w = window.open('', '_blank'); if(!w) return;
+  const printedAt = formatIraqDateTime(new Date(),{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  w.document.write(`<!doctype html><html dir="${isRtl()?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${w0.title} — Ricotta</title><style>body{font-family:Arial,'Noto Kufi Arabic','Noto Sans Arabic',sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${w0.title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${esc(printedAt)}<br>${entry.items.length} ${w0.items}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${w0.item}</th><th>${w0.unit}</th><th>${w0.qty}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${w0.foot}</div></body></html>`);
   w.document.close(); w.focus(); setTimeout(()=>w.print(),250);
 }
 let finishingQueue = false;
@@ -1478,7 +1609,7 @@ async function maybeFinishQueue(){
   if(finishingQueue || !state.queue || !state.queue.every(e=>e.sent)) return;
   finishingQueue = true;
   const record = {
-    id: 'o'+Date.now(), date: new Date().toISOString(),
+    id: 'o'+Date.now(), date: new Date().toISOString(), by: state.account,
     entries: state.queue.map(e=>({
       supplierId: e.supplierId,
       supplierName: (state.suppliers.find(s=>s.id===e.supplierId)||{}).name || '',
@@ -1494,7 +1625,7 @@ async function maybeFinishQueue(){
   await new Promise(r=>setTimeout(r, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1300));
   state.queue = null;
   finishingQueue = false;
-  if(state.view === 'queue'){ state.view = 'order'; render(); window.scrollTo({top:0}); }
+  if(state.view === 'queue') goView('order');
   toast(result === 'saved' ? t('orderSavedToHistory') : result === 'queued' ? t('orderSavedOffline') : t('saveFailed'), result === 'saved' ? 'ok' : 'warn');
 }
 
@@ -1524,15 +1655,15 @@ function renderHistory(){
     }).join('');
     return `${heading}<div class="hist-card">
       <div class="hist-top">
-        <div class="hist-date">${esc(time)}</div>
+        <div class="hist-date">${esc(time)}${accountLabel(rec.by) ? ` \u00b7 ${esc(t('sentBy')(accountLabel(rec.by)))}` : ''}</div>
         <div class="row-actions">
           <button class="icon-btn" data-reorderhist="${esc(rec.id)}" aria-label="${esc(t('orderAgain'))}" title="${esc(t('orderAgain'))}">${ICON_REPEAT}</button>
-          ${state.role==='admin' ? `<button class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
+          ${isRozha() ? `<button class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
         </div>
       </div>
       ${supplierLines}
     </div>`;
-  }).join('') + (state.historyHasMore ? `<button class="btn btn-ghost" id="loadMoreHistoryBtn" style="margin-top:14px;width:100%">${t('loadMoreHistory')}</button>` : '');
+  }).join('') + (state.historyHasMore ? `<button class="btn btn-ghost load-more" id="loadMoreHistoryBtn">${esc(t('loadMoreHistory'))}</button>` : '');
 }
 function attachHistoryEvents(){
   const more = document.getElementById('loadMoreHistoryBtn');
@@ -1548,9 +1679,7 @@ function attachHistoryEvents(){
     }));
     state.cart = cart;
     persistCartDraft();
-    state.view = 'order';
-    render();
-    window.scrollTo({top:0});
+    goView('order');
     toast(t('reorderReady')(cartCount()));
   });
   document.querySelectorAll('[data-delhist]').forEach(b=>b.onclick=async()=>{
@@ -1574,8 +1703,8 @@ function logActivity(entry){
   const rec = {
     id: 'a'+Date.now()+Math.random().toString(36).slice(2,6),
     ts: new Date().toISOString(),
-    by: (myDevice() || {}).personName || (myDevice() || {}).nickname || lget('deviceNickname') || '',
-    role: state.role,
+    by: state.name,
+    actor: state.account,
     ...entry
   };
   state.activity = [rec, ...state.activity].slice(0, ACTIVITY_MAX);
@@ -1600,7 +1729,7 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), reminder:t('reminderShort')})[k] || k;
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort')})[k] || k;
 }
 function recordValue(k, v){
   if(k === 'reminder') return reminderText(reminderFromCode(v));
@@ -1608,7 +1737,7 @@ function recordValue(k, v){
   if(!v) return '\u2014';
   if(k === 'unit'){
     const u = state.units.find(x=>x.en === v);
-    return u ? (state.lang==='ku' ? (u.ku||u.en) : u.en) : v;
+    return u ? unitName(u) : v;
   }
   return v;
 }
@@ -1628,7 +1757,8 @@ function renderRecord(){
     const typeLabel = ({supplier:t('typeSupplier'), item:t('typeItem'), unit:t('typeUnit')})[a.type] || a.type;
     const actLabel = ({add:t('actionAdded'), edit:t('actionEdited'), delete:t('actionDeleted')})[a.action] || a.action;
     const dt = formatIraqDateTime(a.ts,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-    const who = (a.by ? esc(a.by) : t('unnamedDevice')) + ' \u00b7 ' + (a.role==='admin' ? t('deviceRoleAdmin') : t('deviceRoleStaff'));
+    // Older entries (before the two accounts) may only have a device name, or nothing.
+    const who = esc(accountLabel(a.actor) || a.by || t('unnamedDevice'));
     const lines = (a.fields||[]).map(f=>{
       const label = esc(recordFieldLabel(f.k));
       if(a.action === 'edit'){
@@ -1647,8 +1777,8 @@ function renderRecord(){
   }).join('');
   return `
     <div class="action-row">
-      <div class="section-title" style="flex:1;margin:0;">${t('record')} (${rows.length})</div>
-      <button class="btn btn-ghost" id="recRefreshBtn">${ICON_REFRESH} ${t('refresh')}</button>
+      <div class="section-title grow">${esc(t('record'))} (${rows.length})</div>
+      <button class="btn btn-ghost" id="recRefreshBtn">${ICON_REFRESH} ${esc(t('refresh'))}</button>
     </div>
     ${filterHtml}
     ${cards || emptyState(t('recordEmpty'))}`;
@@ -1661,7 +1791,7 @@ function attachRecordEvents(){
   if(r) r.onclick = ()=> refreshActivity();
 }
 
-/* ============ Admin: shared popup pieces ============ */
+/* ============ Shared popup pieces ============ */
 /* The banner at the top of an edit popup: says what's being edited and
    shows how it looks right now, so it's always clear what you're changing. */
 function editingBanner(name, meta){
@@ -1734,7 +1864,7 @@ function resetReminderFields(){
   box.querySelectorAll('.day-chip').forEach(b=>b.classList.add('on'));
 }
 
-/* ============ Admin: saving one record ============ */
+/* ============ Saving one record ============ */
 async function saveRecord(table, rec){
   return (await api(`${table}/${encodeURIComponent(rec.id)}`, {method:'PUT', body:rec})).ok;
 }
@@ -1742,7 +1872,7 @@ async function deleteRecord(table, id){
   return (await api(`${table}/${encodeURIComponent(id)}`, {method:'DELETE'})).ok;
 }
 
-/* ============ Admin: Suppliers ============ */
+/* ============ Suppliers ============ */
 function renderSuppliers(){
   const list = state.suppliers.length ? sortedByName(state.suppliers).map(s=>`
     <div class="list-row tappable" data-editsup="${esc(s.id)}">
@@ -1844,7 +1974,7 @@ function attachSupplierEvents(){
   });
 }
 
-/* ============ Admin: Items ============ */
+/* ============ Items ============ */
 function renderItemsAdmin(){
   const groups = {};
   state.items.forEach(i=>{ const key=i.supplierId||'__none'; (groups[key] ||= []).push(i); });
@@ -1980,7 +2110,7 @@ function openSupplierItemOrder(supplierId){
 function openItemModal(id){
   const existing = id ? state.items.find(i=>i.id===id) : null;
   if(id && !existing) return;
-  const unitOptions = state.units.map(u=>`<option value="${esc(u.id)}" ${existing?.unit===u.id?'selected':''}>${esc(state.lang==='ku'?(u.ku||u.en):u.en)}</option>`).join('');
+  const unitOptions = state.units.map(u=>`<option value="${esc(u.id)}" ${existing?.unit===u.id?'selected':''}>${esc(unitName(u))}</option>`).join('');
   // While adding a fresh item, the last supplier picked stays selected so
   // bulk-adding items for one supplier doesn't need reselecting each time.
   const currentSupplierId = existing ? existing.supplierId : state.itemFormSupplierId;
@@ -2001,11 +2131,11 @@ function openItemModal(id){
         <select id="mfSupplier">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
-      <div class="field" style="border-top:1px solid var(--line,#e5e5e5);padding-top:12px;margin-top:4px;">
-        <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="mfTrackStock" ${par?'checked':''}> ${t('trackStock')}</label>
+      <div class="field stock-box">
+        <label class="check-row"><input type="checkbox" id="mfTrackStock" ${par?'checked':''}> ${t('trackStock')}</label>
         <div class="field-hint">${t('trackStockHint')}</div>
       </div>
-      <div id="mfParFields" style="display:${par?'block':'none'}">
+      <div id="mfParFields" ${par?'':'hidden'}>
         <div class="field"><label>${t('parQty')}</label><input id="mfParQty" type="number" min="1" step="1" value="${par?par.parQty:''}"></div>
         <div class="field"><label>${t('parBusyBoost')}</label><input id="mfParBoost" type="number" min="0" step="5" value="${par?par.busyBoostPct:50}"></div>
         ${par ? `<div class="field-hint">${t('parCurrentEstimate')(par.estQty, unitLabel(existing.unit))}</div>` : ''}
@@ -2021,7 +2151,7 @@ function openItemModal(id){
       };
       const track = box.querySelector('#mfTrackStock');
       const parFields = box.querySelector('#mfParFields');
-      if(track && parFields) track.onchange = ()=>{ parFields.style.display = track.checked ? 'block' : 'none'; };
+      if(track && parFields) track.onchange = ()=>{ parFields.hidden = !track.checked; };
     },
     onSubmit: async (again)=>{
       const name = document.getElementById('mfName').value.trim();
@@ -2103,75 +2233,86 @@ function attachItemEvents(){
   });
 }
 
-/* ============ Admin: Units ============ */
+/* ============ Units ============ */
+/* Each unit has an English name (required) and optional Kurdish and Arabic
+   names; every screen shows the one for the current language. */
+function unitFieldsHtml(prefix, u){
+  return `<div class="field"><label for="${prefix}En">${esc(t('englishLabel'))}</label><input id="${prefix}En" maxlength="80" data-clear="1" value="${esc(u?.en||'')}" placeholder="${esc(t('unitNamePlaceholder'))}"></div>
+    <div class="field"><label for="${prefix}Ku">${esc(t('kurdishLabel'))}</label><input id="${prefix}Ku" dir="rtl" maxlength="80" data-clear="1" value="${esc(u?.ku||'')}"></div>
+    <div class="field"><label for="${prefix}Ar">${esc(t('arabicLabel'))}</label><input id="${prefix}Ar" dir="rtl" maxlength="80" data-clear="1" value="${esc(u?.ar||'')}"></div>`;
+}
+function readUnitFields(prefix){
+  const v = id=>document.getElementById(prefix+id).value.trim();
+  return {en:v('En'), ku:v('Ku'), ar:v('Ar')};
+}
 function renderUnits(){
-  const chips = state.units.map(u=>`
-    <span class="unit-chip"><span class="unit-names"><strong>${esc(state.lang==='ku'?(u.ku||u.en):u.en)}</strong><small>${esc(state.lang==='ku'?u.en:(u.ku||u.en))}</small></span>
-      <button data-editunit="${esc(u.id)}" aria-label="${t('editUnit')}">${ICON_EDIT}</button>
-      <button data-delunit="${esc(u.id)}" aria-label="${t('delete')}">✕</button>
-    </span>`).join('');
+  const chips = state.units.map(u=>{
+    const others = [u.en, u.ku, u.ar].filter(x=>x && x !== unitName(u));
+    return `<span class="unit-chip"><span class="unit-names"><strong>${esc(unitName(u))}</strong>${others.length ? `<small>${esc([...new Set(others)].join(' · '))}</small>` : ''}</span>
+      <button data-editunit="${esc(u.id)}" aria-label="${esc(t('editUnit'))}">${ICON_EDIT}</button>
+      <button class="danger" data-delunit="${esc(u.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>
+    </span>`;
+  }).join('');
   return `
-    <div class="section-title">${t('units')}</div>
-    ${chips ? `<div class="unit-grid">${chips}</div>` : emptyState(t('noUnitsYet'))}
-    <div class="section-title">${t('addUnit')}</div>
-    <div class="form-card">
-      <div class="field"><label>${t('englishLabel')}</label><input id="unitEn" placeholder="${t('unitNamePlaceholder')}"></div>
-      <div class="field"><label>${t('kurdishLabel')}</label><input id="unitKu" placeholder="${t('unitNameKuPlaceholder')}"></div>
-      <div class="form-actions"><button class="btn btn-primary" id="unitAddBtn">${t('add')}</button></div>
-    </div>`;
+    <div class="action-row">
+      <button class="btn btn-primary add-btn" id="unitAddBtn">${ICON_PLUS} ${esc(t('addUnit'))}</button>
+      <button class="btn btn-ghost" data-gorecord="unit">${NAV_ICONS.record} ${esc(t('record'))}</button>
+    </div>
+    <div class="section-title">${esc(t('units'))} (${state.units.length})</div>
+    ${chips ? `<div class="unit-grid">${chips}</div>` : emptyState(t('noUnitsYet'))}`;
+}
+function openUnitModal(unit){
+  showFormModal({
+    title: unit ? t('editUnit') : t('addUnit'),
+    banner: unit ? editingBanner(unitName(unit), [unit.en, unit.ku, unit.ar].filter(Boolean).join(' · ')) : '',
+    bodyHtml: unitFieldsHtml('mfUnit', unit),
+    okLabel: t('save'),
+    againLabel: unit ? null : t('saveAndAddAnother'),
+    onSubmit: async (again)=>{
+      const {en, ku, ar} = readUnitFields('mfUnit');
+      if(!en) return {error:t('nameRequired')};
+      if(unit){
+        const fields = diffFields([['name',unit.en,en],['nameKu',unit.ku||'',ku],['nameAr',unit.ar||'',ar]]);
+        if(!fields.length) return {};
+        if(!(await saveRecord('units',{id:unit.id,en,ku,ar}))) return {error:t('saveFailed')};
+        Object.assign(unit,{en,ku,ar});
+        logActivity({action:'edit',type:'unit',name:en,fields});
+      }else{
+        const next = {id:'u'+Date.now(), en, ku, ar};
+        if(!(await saveRecord('units', next))) return {error:t('saveFailed')};
+        state.units.push(next);
+        logActivity({action:'add', type:'unit', name:en,
+          fields:[{k:'name', to:en}].concat(ku ? [{k:'nameKu', to:ku}] : [], ar ? [{k:'nameAr', to:ar}] : [])});
+      }
+      render();
+      if(again) return {keepOpen:true, message:t('savedMsg')(en)};
+      toast(t('savedMsg')(en));
+      return {};
+    }
+  });
 }
 function attachUnitEvents(){
-  document.querySelectorAll('[data-editunit]').forEach(button=>button.onclick=()=>{
-    const unit=state.units.find(u=>u.id===button.dataset.editunit);
-    if(!unit) return;
-    showFormModal({
-      title:t('editUnit'),
-      bodyHtml:`<div class="field"><label>${t('englishLabel')}</label><input id="mfUnitEn" value="${esc(unit.en)}" maxlength="80"></div><div class="field"><label>${t('kurdishLabel')}</label><input id="mfUnitKu" value="${esc(unit.ku||'')}" maxlength="80"></div>`,
-      okLabel:t('save'),
-      onSubmit:async()=>{
-        const en=document.getElementById('mfUnitEn').value.trim();
-        const ku=document.getElementById('mfUnitKu').value.trim();
-        if(!en) return {error:t('nameRequired')};
-        const fields=diffFields([['name',unit.en,en],['nameKu',unit.ku||'',ku]]);
-        if(!fields.length) return {};
-        if(!(await saveRecord('units',{id:unit.id,en,ku}))) return {error:t('saveFailed')};
-        Object.assign(unit,{en,ku});
-        logActivity({action:'edit',type:'unit',name:en,fields});
-        render();
-        toast(t('savedMsg')(en));
-        return {};
-      }
-    });
+  document.getElementById('unitAddBtn').onclick = ()=>openUnitModal(null);
+  document.querySelectorAll('[data-editunit]').forEach(b=>b.onclick = ()=>{
+    const unit = state.units.find(u=>u.id===b.dataset.editunit);
+    if(unit) openUnitModal(unit);
   });
-  document.getElementById('unitAddBtn').onclick = async ()=>{
-    const en = document.getElementById('unitEn').value.trim();
-    const ku = document.getElementById('unitKu').value.trim();
-    if(!en){ document.getElementById('unitEn').focus(); return; }
-    const next = {id:'u'+Date.now(), en, ku};
-    if(!(await saveRecord('units', next))){ await showAlert(t('saveFailed')); return; }
-    state.units.push(next);
-    logActivity({action:'add', type:'unit', name:en,
-      fields:[{k:'name', to:en}].concat(ku ? [{k:'nameKu', to:ku}] : [])});
-    render();
-    toast(t('savedMsg')(en));
-  };
-  document.querySelectorAll('[data-delunit]').forEach(b=>b.onclick=async()=>{
-    const id = b.dataset.delunit;
-    const unit = state.units.find(u=>u.id===id);
+  document.querySelectorAll('[data-delunit]').forEach(b=>b.onclick = async()=>{
+    const unit = state.units.find(u=>u.id===b.dataset.delunit);
     if(!unit) return;
-    if(!(await showConfirm(`<b>${esc(unit.en)}</b><br>${t('confirmDeleteUnit')}`))) return;
-    if(!(await deleteRecord('units', id))){ await showAlert(t('saveFailed')); return; }
-    state.units = state.units.filter(u=>u.id!==id);
-    state.items.forEach(i=>{ if(i.unit===id) i.unit=null; });
+    if(!(await showConfirm(`<b>${esc(unitName(unit))}</b><br>${esc(t('confirmDeleteUnit'))}`))) return;
+    if(!(await deleteRecord('units', unit.id))){ await showAlert(esc(t('saveFailed'))); return; }
+    state.units = state.units.filter(u=>u.id!==unit.id);
+    state.items.forEach(i=>{ if(i.unit===unit.id) i.unit=null; });
     logActivity({action:'delete', type:'unit', name:unit.en,
-      fields:[{k:'name', from:unit.en}].concat(unit.ku ? [{k:'nameKu', from:unit.ku}] : [])});
+      fields:[{k:'name', from:unit.en}].concat(unit.ku ? [{k:'nameKu', from:unit.ku}] : [], unit.ar ? [{k:'nameAr', from:unit.ar}] : [])});
     render();
   });
 }
 
-/* ============ Admin: Devices ============ */
-/* Its own admin tab: which devices are logged in right now, when each one
-   last logged in, and when it was last seen using the app. */
+/* ============ Devices (Rozha) ============ */
+/* Which phones are signed in right now, to which account, when each one
+   last signed in, and when it was last seen using the app. */
 /* Logged in = signed in, no log-out waiting for it, and seen within one
    session length (a sign-in expires after 18 hours even if nobody logs out). */
 const SESSION_MS = 18*60*60*1000;
@@ -2201,10 +2342,9 @@ function renderDevices(){
   const visible = state.devices.filter(isLoggedIn);
   const head = `
     <div class="action-row">
-      <div class="section-title" style="flex:1;margin:0;">${t('devicesTitle')} (${visible.length})</div>
+      <div class="section-title grow">${esc(t('devicesTitle'))} (${visible.length})</div>
       <button class="btn btn-ghost" id="devRefreshBtn">${ICON_REFRESH} ${t('refresh')}</button>
     </div>`;
-  if(!visible.length) return `${head}${emptyState(t('noDevicesYet'))}`;
 
   const rank = {active:0, idle:1, out:2};
   const sorted = [...visible].sort((a,b)=>
@@ -2213,7 +2353,7 @@ function renderDevices(){
   const loggedInCount = visible.length;
   const activeCount = visible.filter(d=>deviceStatus(d)==='active').length;
 
-  const hero = `<div class="hero-card"><span class="sheen" aria-hidden="true"></span>
+  const hero = `<div class="hero-card">
     <div class="hero-eyebrow">${t('devicesLoggedInEyebrow')}</div>
     <div class="hero-stat">${t('devicesLoggedInStat')(loggedInCount)}</div>
     <div class="hero-sub">${t('devicesActiveSub')(activeCount)}</div>
@@ -2229,14 +2369,14 @@ function renderDevices(){
   const cards = sorted.map(d=>{
     const st = deviceStatus(d);
     const isThis = d.id === state.deviceId;
-    const roleLabel = d.role === 'admin' ? t('deviceRoleAdmin') : t('deviceRoleStaff');
+    const who = accountLabel(d.account);
     const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
     return `<div class="dev-card">
       <div class="dev-top">
-        <div class="dev-name">${d.personName ? `${esc(d.personName)} \u00b7 ` : ''}${esc(d.nickname) || t('unnamedDevice')}${isThis ? ` <span class="dev-this">\u00b7 ${t('thisDevice')}</span>` : ''}</div>
-        <div class="row-actions"><button class="icon-btn" data-editdevice="${esc(d.id)}">${ICON_EDIT}</button></div>
+        <div class="dev-name">${esc(d.nickname) || esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
+        <div class="row-actions"><button class="icon-btn" data-editdevice="${esc(d.id)}" aria-label="${esc(t('renameDevice'))}">${ICON_EDIT}</button></div>
       </div>
-      <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span><span class="dev-role">${roleLabel}</span></div>
+      <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span>${who ? `<span class="dev-role">${esc(who)}</span>` : ''}</div>
       <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
       ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
       ${commandIsPending(d) ? `<div class="dev-pending">${d.command.type==='logout'?t('cmdLogoutPending'):t('cmdRefreshPending')} \u00b7 ${timeAgo(d.command.ts)}</div>` : ''}
@@ -2247,14 +2387,14 @@ function renderDevices(){
     </div>`;
   }).join('');
 
-  return `${head}${hero}${bulk}${cards}<div class="dev-hint">${t('devicesHint')}</div>`;
+  return `${head}${hero}${bulk}${cards || emptyState(t('noDevicesYet'))}<div class="dev-hint">${t('devicesHint')}</div>`;
 }
 function openDeviceModal(id){
   const d = state.devices.find(x=>x.id===id);
   if(!d) return;
   showFormModal({
     title: t('renameDevice'),
-    banner: editingBanner(d.nickname || t('unnamedDevice'), d.role === 'admin' ? t('deviceRoleAdmin') : t('deviceRoleStaff')),
+    banner: editingBanner(d.nickname || t('unnamedDevice'), accountLabel(d.account)),
     bodyHtml: `<div class="field"><label>${t('renameDevice')}</label><input id="mfNickname" autocomplete="off" placeholder="${esc(t('deviceNamePlaceholder'))}" value="${esc(d.nickname||'')}"></div>`,
     okLabel: t('save'),
     onSubmit: async ()=>{
@@ -2302,20 +2442,12 @@ function attachDeviceEvents(){
   };
 }
 
-/* ============ Admin: Settings ============ */
-/* PINs are stored only as bcrypt hashes on the server, so they are never
-   shown -- the admin just types the new ones. */
+/* ============ Settings (Rozha) ============ */
+/* PINs can't be changed here: only through the secret code on the sign-in
+   keypad (see startRecovery). */
 function renderSettings(){
-  const pinsCard = `
-    <div class="section-title">${t('changePins')}</div>
-    <div class="form-card">
-      <div class="field-hint" style="margin-bottom:12px;">${t('pinsChangeHint')}</div>
-      <div class="field"><label for="adminPinInput">${t('adminPin')}</label><input id="adminPinInput" type="password" maxlength="6" inputmode="numeric" autocomplete="new-password"></div>
-      <div class="field"><label for="userPinInput">${t('userPin')}</label><input id="userPinInput" type="password" maxlength="6" inputmode="numeric" autocomplete="new-password"></div>
-      <div class="form-actions"><button class="btn btn-primary" id="pinsSaveBtn">${t('savePins')}</button></div>
-    </div>`;
-  const connectionCard = `<div class="section-title">${t('cloudSetup')}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote')}</b></div></div></div>`;
-  return `${pinsCard}${connectionCard}${renderNotifSettings()}${renderRicoSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
+  const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
+  return `${connectionCard}${renderNotifSettings()}${renderRicoSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
 }
 /* ---- Settings: Notifications card (this device + daily reminder) ---- */
 function renderNotifSettings(){
@@ -2339,13 +2471,13 @@ function renderNotifSettings(){
         <button class="btn btn-ghost" id="reminderTestBtn">${ICON_BELL} ${t('reminderSendNow')}</button>
       </div>`;
   return `<div class="section-title">${t('notifSettingsTitle')}</div>
-    <div class="form-card">${device}<hr class="notif-divider"><div class="section-title" style="margin-top:0;">${t('reminderTitle')}</div>${reminder}</div>`;
+    <div class="form-card">${device}<hr class="notif-divider"><div class="section-title flush">${t('reminderTitle')}</div>${reminder}</div>`;
 }
 /* ---- Settings: Rico connection is managed server-side, never from a device. ---- */
 function renderRicoSettings(){
   return `<div class="section-title">${t('ricoSettingsTitle')}</div>
     <div class="form-card rico-status-card">
-      <div class="rico-set-head">${ricoAvatar('rico-av-lg')}<div><b>${t('ricoName')}</b><div class="notif-sub" id="ricoProviderState">${t('ricoPoweredBy')}</div></div></div>
+      <div class="rico-set-head">${ricoFace('calm','rico-md')}<div><b>${t('ricoName')}</b><div class="notif-sub" id="ricoProviderState">${t('ricoPoweredBy')}</div></div></div>
       <div class="rico-connection" id="ricoKeyState" aria-live="polite">${t('ricoChecking')}</div>
     </div>`;
 }
@@ -2363,14 +2495,14 @@ async function loadRicoStatus(){
   else if(provider) provider.textContent = t('ricoPoweredByGemini');
 }
 
-/* The provider setup is intentionally not a Settings control. An admin can
+/* The provider setup is intentionally not a Settings control. Rozha can
    open the one-time route after signing in; the API accepts only a new Groq
    key and never exposes or deletes an existing provider key. */
 function ricoSetupRequested(){ return location.hash === '#rico-provider-setup'; }
 function closeRicoSetupRoute(){ history.replaceState(null, '', location.pathname + location.search); }
 async function maybeOpenRicoProviderSetup(){
   if(!ricoSetupRequested()) return;
-  if(state.role !== 'admin'){ closeRicoSetupRoute(); return; }
+  if(!isRozha()){ closeRicoSetupRoute(); return; }
   const status = await api('assistant/setup-status');
   if(!status.ok || status.data?.groqConfigured){ closeRicoSetupRoute(); return; }
   const key = await showPrompt(t('ricoGroqSetupPrompt'), {placeholder:'gsk_…', secret:true, okLabel:t('ricoGroqSave')});
@@ -2407,18 +2539,6 @@ function attachSettingsEvents(){
   if(test) test.onclick = ()=> withBusy(test, async ()=> reportSendResult(await callSendPush('reminder-now')));
 
   loadRicoStatus();
-  const pinsBtn = document.getElementById('pinsSaveBtn');
-  pinsBtn.onclick = ()=> withBusy(pinsBtn, async ()=>{
-    const ap = document.getElementById('adminPinInput').value.trim();
-    const up = document.getElementById('userPinInput').value.trim();
-    if(!/^\d{6}$/.test(ap) || !/^\d{6}$/.test(up)){ await showAlert(t('pinsInvalidLength')); return; }
-    if(ap===up){ await showAlert(t('pinsPrefixConflict')); return; }
-    const r = await api('admin/pins', {method:'POST', body:{adminPin:ap, staffPin:up}});
-    if(!r.ok){ await showAlert(r.data && r.data.error==='weak_pin' ? t('pinsWeak') : t('pinsSaveFailed')); return; }
-    await showAlert(t('pinsSaved'));
-    // The server signs every device out after a PIN change, this one included.
-    signOut();
-  });
 }
 
 boot();

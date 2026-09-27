@@ -52,7 +52,7 @@ globalThis.fetch = async (input, options = {}) => {
       ? { candidates: [{ content: { role: 'model', parts: [] }, finishReason: 'MAX_TOKENS' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2048 } }
       : geminiTurn++ === 0
       ? { candidates: [{ content: { role: 'model', parts: [{ functionCall: { id: 'call-1', name: 'open_screen', args: { screen: 'order' } }, thoughtSignature: 'keep-this' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 3 } }
-      : { candidates: [{ content: { role: 'model', parts: [{ text: 'All set.' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 4 } };
+      : { candidates: [{ content: { role: 'model', parts: [{ text: '[[mood:happy]] All set.' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 4 } };
     const encoded = new TextEncoder().encode(`data: ${JSON.stringify(payload)}\r\n\r\n`);
     const split = encoded.length - 3; // Split the CRLF pair across network chunks.
     const body = new ReadableStream({ start(controller) { controller.enqueue(encoded.slice(0, split)); controller.enqueue(encoded.slice(split)); controller.close(); } });
@@ -62,14 +62,15 @@ globalThis.fetch = async (input, options = {}) => {
     if (groqUnavailable) return new Response('{"error":{"message":"busy"}}', { status: 503 });
     const payload = groqTurn++ === 0
       ? { choices: [{ delta: { tool_calls: [{ index: 0, id: 'groq-call-1', type: 'function', function: { name: 'open_screen', arguments: '{"screen":"order"}' } }] } }], usage: { prompt_tokens: 10, completion_tokens: 3 } }
-      : { choices: [{ delta: { content: 'Groq is ready.' } }], usage: { prompt_tokens: 20, completion_tokens: 4 } };
-    const body = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(payload)}\n\ndata: [DONE]\n\n`)); controller.close(); } });
+      : [{ choices: [{ delta: { content: '[[mood:exc' } }] }, { choices: [{ delta: { content: 'ited]] Groq is ready.' } }], usage: { prompt_tokens: 20, completion_tokens: 4 } }];
+    const events = (Array.isArray(payload) ? payload : [payload]).map(p => `data: ${JSON.stringify(p)}\n\n`).join('');
+    const body = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(`${events}data: [DONE]\n\n`)); controller.close(); } });
     return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
   }
   throw new Error(`Unexpected upstream: ${url}`);
 };
 
-const session = { id: 'test-session', role: 'admin', deviceId: null };
+const session = { id: 'test-session', account: 'rozha', deviceId: null };
 const chat = async () => {
   const response = await handleChat(db, session, { messages: [{ role: 'user', content: 'Hello' }], lang: 'en' }, {}, new AbortController().signal);
   return (await response.text()).trim().split('\n').map(JSON.parse);
@@ -77,21 +78,24 @@ const chat = async () => {
 
 assert.deepEqual(await assistantStatus(db), { configured: true, model: 'gemini-3.5-flash-lite', provider: 'gemini', fallback: false });
 const geminiEvents = await chat();
-assert.deepEqual(geminiEvents.map(e => e.type), ['status', 'proposal', 'text', 'text', 'done']);
+assert.deepEqual(geminiEvents.map(e => e.type), ['status', 'proposal', 'text', 'mood', 'text', 'done']);
+assert.equal(geminiEvents[3].mood, 'happy');
+assert.equal(geminiEvents.filter(e => e.type === 'text').map(e => e.text).join(''), '\n\nAll set.', 'the mood tag never reaches the text');
 assert.equal(geminiEvents[1].proposal.kind, 'open');
 assert.equal(requests[0].body.tools[0].functionDeclarations.some(t => t.name === 'open_screen'), true);
 assert.equal(requests[0].body.generationConfig.thinkingConfig.thinkingLevel, 'minimal');
 assert.match(requests[0].body.systemInstruction.parts[0].text, /You are Rico/);
+assert.match(requests[0].body.systemInstruction.parts[0].text, /Talking to: Rozha/);
 assert.equal(requests[1].body.contents[1].parts[0].thoughtSignature, 'keep-this');
 assert.equal(requests[1].body.contents[2].role, 'user');
 assert.equal(requests[1].body.contents[2].parts[0].functionResponse.id, 'call-1');
 assert.equal(usage[0].model, 'gemini-3.5-flash-lite');
 const beforeQuick = requests.length;
 const quick = await handleChat(db, session, { messages: [{role:'user',content:'What did we order last time?'}], lang:'en', quickAction:'last_order' }, {}, new AbortController().signal);
-assert.deepEqual((await quick.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['text','done']);
-for(const quickAction of ['prepare_order','busy_days','add_item','recent_items','late_orders','check_order','week_insights']){
+assert.deepEqual((await quick.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['mood','text','done']);
+for(const quickAction of ['prepare_order','add_item','late_orders','check_order','week_insights']){
   const response = await handleChat(db, session, { messages: [{role:'user',content:'Shortcut'}], lang:'en', quickAction }, {}, new AbortController().signal);
-  assert.deepEqual((await response.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['text','done'], quickAction);
+  assert.deepEqual((await response.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['mood','text','done'], quickAction);
 }
 assert.equal(requests.length, beforeQuick, 'quick suggestions do not call Gemini');
 emptyReply = true;
@@ -102,7 +106,9 @@ assert.deepEqual(await assistantSetupStatus(db), { groqConfigured: true });
 assert.deepEqual(await assistantStatus(db), { configured: true, model: 'openai/gpt-oss-120b', provider: 'groq', fallback: true });
 const beforeGroq = requests.length;
 const groqEvents = await chat();
-assert.deepEqual(groqEvents.map(e => e.type), ['status', 'proposal', 'text', 'done']);
+assert.deepEqual(groqEvents.map(e => e.type), ['status', 'proposal', 'mood', 'text', 'done'], 'a mood tag split across chunks is still found');
+assert.equal(groqEvents[2].mood, 'excited');
+assert.equal(groqEvents[3].text, 'Groq is ready.');
 assert.equal(requests[beforeGroq].url.includes('api.groq.com'), true);
 assert.equal(requests[beforeGroq].body.model, 'openai/gpt-oss-120b');
 assert.equal(requests[beforeGroq].body.reasoning_effort, 'low');
@@ -115,4 +121,4 @@ const fallbackEvents = await chat();
 assert.equal(fallbackEvents.at(-1).type, 'done');
 assert.equal(requests.at(-1).url.includes('streamGenerateContent'), true, 'Gemini is used after Groq rejects a request');
 
-console.log('Rico provider smoke: PASS (Gemini, Groq tool calls, Groq-to-Gemini fallback, quick answers, draft check, insights, voice, empty response)');
+console.log('Rico provider smoke: PASS (Gemini, Groq tool calls, Groq-to-Gemini fallback, moods, quick answers, draft check, insights, empty response)');

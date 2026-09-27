@@ -1,5 +1,5 @@
-/* Web Push: registers the service worker, subscribes this device, and
-   (admins) sends update notifications / test reminders.
+/* Web Push: registers the service worker, subscribes this device, and sends
+   update notifications (Rozha) and test reminders.
 
    Works on iOS 16.4+ only when the app is opened from the Home Screen icon.
    Depends on: VAPID_PUBLIC_KEY (config.js), state, t, esc, render, toast
@@ -7,7 +7,6 @@
    openUpdatePopup (update-check.js). All are only used at runtime, so load
    order relative to those files doesn't matter. */
 
-/* Bell icon for the notification buttons (kept here so icons.js is unchanged). */
 const ICON_BELL = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`;
 
 const PUSH_SW_URL = 'sw.js';
@@ -163,14 +162,13 @@ async function showPushEnableResult(res){
   else await showAlert(t('notifFailedMsg'));
 }
 
-/* ---------- Admin: sending ----------
-   The server checks that this session belongs to an admin, so no PIN is
-   needed here. */
+/* ---------- Sending ----------
+   The server checks what this account may send, so no PIN is needed here. */
 async function callSendPush(type, extra){
   const r = await api('push/send', {method:'POST', body:{type, ...(extra || {})}});
   return r.ok ? { ok:true, ...(r.data || {}) } : { ok:false, reason: r.status === 0 ? 'network' : 'error' };
 }
-/* Tells the admin what happened to a test / update send. */
+/* Says what happened to a test / update send. */
 async function reportSendResult(res){
   if(!res.ok) await showAlert(t('notifSendFailed'));
   else if(res.sent && res.failed) await showAlert(t('notifPartialMsg')(res.sent, res.failed));
@@ -179,32 +177,24 @@ async function reportSendResult(res){
   else if(res.skipped) await showAlert(t('notifNoDevicesLoggedOut'));
   else await showAlert(t('notifNoDevices'));
 }
-/* "New update" notification to every device that has notifications on. The
-   admin writes the What's new text in each language separately, and the
-   send-push Edge Function gives every device ONLY the message matching its
-   own language (a Kurdish-language phone gets the Kurdish text, an
-   English-language phone gets the English text -- never both, and never
-   the wrong one). If only one of the two boxes is filled in, everyone gets
-   that one. At least one box is required. */
+/* "New update" notification to every phone that has notifications on.
+   Rozha writes the message in each language; the send-push
+   function gives every phone ONLY the message in its own language (English,
+   Kurdish or Arabic). A language left empty gets the first message that was
+   written. The app adds no words of its own. */
 async function sendUpdateNotification(){
+  const box = (id, label, dir)=>`<div class="field"><label for="${id}">${esc(label)}</label><textarea id="${id}" rows="3" dir="${dir}" data-clear="1" maxlength="300"></textarea></div>`;
   await showFormModal({
     title: t('sendUpdateNotif'),
-    bodyHtml: `<div class="field">
-        <label>${t('updateMessageEnLabel')}</label>
-        <textarea id="mfUpdateMsgEn" rows="3" data-clear="1" placeholder="${esc(t('updateMessagePlaceholder'))}"></textarea>
-      </div>
-      <div class="field">
-        <label>${t('updateMessageKuLabel')}</label>
-        <textarea id="mfUpdateMsgKu" rows="3" dir="rtl" data-clear="1" placeholder="${esc(t('updateMessagePlaceholder'))}"></textarea>
-      </div>
-      <div class="field-hint">${t('updateMessageHint')}</div>`,
+    bodyHtml: `${box('mfUpdateMsgEn', t('updateMessageEnLabel'), 'ltr')}${box('mfUpdateMsgKu', t('updateMessageKuLabel'), 'rtl')}${box('mfUpdateMsgAr', t('updateMessageArLabel'), 'rtl')}
+      <div class="field-hint">${esc(t('updateMessageHint'))}</div>`,
     okLabel: t('notifSend'),
     onOpen: (box)=>{ const ta = box.querySelector('#mfUpdateMsgEn'); if(ta) ta.focus(); },
     onSubmit: async ()=>{
-      const bodyEn = document.getElementById('mfUpdateMsgEn').value.trim();
-      const bodyKu = document.getElementById('mfUpdateMsgKu').value.trim();
-      if(!bodyEn && !bodyKu) return { error: t('updateMessageRequired') };
-      const res = await callSendPush('update', { title:'Ricotta Orders \u2014 update', bodyEn, bodyKu });
+      const v = id=>document.getElementById(id).value.trim();
+      const bodyEn = v('mfUpdateMsgEn'), bodyKu = v('mfUpdateMsgKu'), bodyAr = v('mfUpdateMsgAr');
+      if(!bodyEn && !bodyKu && !bodyAr) return { error: t('updateMessageRequired') };
+      const res = await callSendPush('update', { bodyEn, bodyKu, bodyAr });
       await reportSendResult(res);
       return {};
     }
@@ -218,29 +208,28 @@ async function saveReminder(enabled, time){
 }
 
 /* ---------- Notification taps ---------- */
-/* kind: 'update' (opens What's new), 'reminder' (daily reminder -> Order screen),
-   'supplier' (a supplier's own reminder -> Order screen on that supplier's tab). */
-function handlePushIntent(kind, supplierId){
-  if(kind === 'update') openUpdatePopup();
-  /* Rico's messages and late-order alerts open Rico (its late-order card offers to prepare the order). */
-  else if((kind === 'assistant' || kind === 'overdue') && state.role){ state.view = 'assistant'; render(); window.scrollTo({top:0}); }
-  else if((kind === 'reminder' || kind === 'supplier') && state.role){
-    state.view = 'order';
+/* kind: 'update' (the message Rozha wrote, with an Update button),
+   'reminder' (daily reminder -> Order), 'supplier' (a supplier's reminder ->
+   Order on that supplier's tab), 'assistant' / 'overdue' (Rico). */
+function handlePushIntent(kind, supplierId, message){
+  if(kind === 'update') openUpdatePopup(message || '');
+  else if((kind === 'assistant' || kind === 'overdue') && state.account){ ricoRefreshInbox(); goView('assistant'); }
+  else if((kind === 'reminder' || kind === 'supplier') && state.account){
     if(kind === 'supplier' && supplierId && state.suppliers.some(s => s.id === supplierId)) state.orderTab = supplierId;
-    render();
+    if(state.view === 'order') render(); else goView('order');
   }
 }
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.addEventListener('message', e => handlePushIntent(e.data && e.data.kind, e.data && e.data.supplierId));
+  navigator.serviceWorker.addEventListener('message', e => handlePushIntent(e.data && e.data.kind, e.data && e.data.supplierId, e.data && e.data.body));
 }
-/* App launched by tapping a notification while it was closed: sw.js opens /?n=<kind>&s=<supplierId>. */
+/* App launched by tapping a notification while it was closed: sw.js opens
+   ./?n=<kind>&s=<supplierId>&m=<message>. */
 function handleLaunchIntent(){
   try{
     const p = new URLSearchParams(location.search);
     const kind = p.get('n');
     if(!kind) return;
-    const supplierId = p.get('s');
     history.replaceState(null, '', location.pathname);
-    handlePushIntent(kind, supplierId);
+    handlePushIntent(kind, p.get('s'), p.get('m'));
   }catch(e){}
 }

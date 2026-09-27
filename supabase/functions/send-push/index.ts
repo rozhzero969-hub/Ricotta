@@ -5,19 +5,20 @@
 //
 // Only two callers exist, and both send the x-cron-secret header:
 //   - pg_cron, every minute:  {type:"reminder-tick"}
-//   - the api function, for an admin who is signed in:
-//       {type:"update", title, bodyEn, bodyKu}   "new update" push to every device
-//       {type:"reminder-now"}                    test of the daily reminder
-//       {type:"supplier-test", supplierId}       test of one supplier's reminder
-//       {type:"assistant", title, bodyEn, bodyKu} a message an admin sent through Rico
+//   - the api function, for a signed-in person:
+//       {type:"update", bodyEn, bodyKu, bodyAr}   "new update" push, written by Rozha
+//       {type:"reminder-now"}                     test of the daily reminder
+//       {type:"supplier-test", supplierId}        test of one supplier's reminder
+//       {type:"assistant", title, bodyEn, bodyKu, bodyAr}  a message sent through Rico
 //
-// Every tick also runs Rico's late-order check: an hour after a supplier's
-// reminder time (or the daily reminder), if nothing was sent to that supplier
-// today, every signed-in device gets one alert (once per supplier per day).
+// Every tick also runs Rico's own messages: a cheer at 09:00 Erbil time, and
+// an hour after a supplier's reminder time (or the daily reminder) with
+// nothing sent, a telling-off -- each once per day, in the app (Rico's
+// inbox) and as a notification.
 //
-// Every push is split by the recipient device's own language, so Kurdish
-// devices get Kurdish only and English devices get English only.
-// Reminders only go to devices that are signed in.
+// Every push is sent in the recipient phone's own language (English, Kurdish
+// or Arabic), and addresses the person signed in there by name when known.
+// Reminders only go to phones that are signed in.
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -34,26 +35,37 @@ const ERBIL_OFFSET = "+03:00";
 const WINDOW_MS = 3 * 60 * 60 * 1000;   // a missed reminder is still sent up to 3h late, never later
 const EDIT_GRACE_MS = 60 * 1000;
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const CHEER_AT_MIN = 9 * 60;            // Rico's morning message, 09:00 Erbil
+const CHEER_WINDOW_MIN = 2 * 60;        // still sent if the tick was missed, until 11:00
+const ACCOUNTS = ["rozha", "yunis"];
+/* Each name in the script of each language. */
+const NAMES: Record<string, Record<"en" | "ku" | "ar", string>> = {
+  rozha: { en: "Rozha", ku: "ڕۆژا", ar: "روژا" },
+  yunis: { en: "Yunis", ku: "یونس", ar: "يونس" },
+};
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 
-type Sub = { endpoint: string; p256dh: string; auth: string; device_id: string | null; lang: string | null };
-type Lang = "en" | "ku";
-type Payload = (lang: Lang) => Record<string, unknown>;
-const asLang = (l: string | null | undefined): Lang => (l === "ku" ? "ku" : "en");
+type Sub = { endpoint: string; p256dh: string; auth: string; device_id: string | null; lang: string | null; account: string | null };
+type Lang = "en" | "ku" | "ar";
+/* A payload for one phone: its language and the name of whoever is signed in there. */
+type Payload = (lang: Lang, name: string | null) => Record<string, unknown>;
+const asLang = (l: string | null | undefined): Lang => (l === "ku" || l === "ar" ? l : "en");
+const L = (lang: Lang, en: string, ku: string, ar: string) => (lang === "ku" ? ku : lang === "ar" ? ar : en);
+const RICO: Record<Lang, string> = { en: "Rico", ku: "ریکۆ", ar: "ريكو" };
 
 const dailyPayload: Payload = (lang) => ({
   title: "Ricotta Orders",
-  body: lang === "ku" ? "کاتی ناردنی داواکارییەکانی ئەمڕۆیە." : "Time to place today's orders.",
+  body: L(lang, "Time to place today's orders.", "کاتی ناردنی داواکارییەکانی ئەمڕۆیە.", "حان وقت إرسال طلبات اليوم."),
   kind: "reminder",
   tag: "ricotta-reminder",
 });
 function supplierPayload(s: any, test = false): Payload {
   const name = String(s?.name ?? "").slice(0, 60);
   return (lang) => ({
-    title: test ? "Ricotta Orders (test)" : "Ricotta Orders",
-    body: lang === "ku" ? `کاتی داواکردنە لە ${name}.` : `Time to order from ${name}.`,
+    title: test ? L(lang, "Ricotta Orders (test)", "Ricotta Orders (تاقیکاری)", "Ricotta Orders (تجربة)") : "Ricotta Orders",
+    body: L(lang, `Time to order from ${name}.`, `کاتی داواکردنە لە ${name}.`, `حان وقت الطلب من ${name}.`),
     kind: "supplier",
     supplierId: String(s?.id ?? ""),
     tag: `ricotta-supplier-${s?.id}`,
@@ -69,14 +81,15 @@ function erbilNow() {
   return { date, minutes: Number(get("hour")) * 60 + Number(get("minute")), weekday: new Date(`${date}T12:00:00Z`).getUTCDay() };
 }
 
-/* Signed-in devices only. Subscriptions without a device id (very old app
-   versions) are kept until that phone updates. */
+/* Every subscription, with the account signed in on its phone. With
+   onlyLoggedIn, phones that are signed out are left out. Subscriptions
+   without a device id (very old app versions) are kept. */
 async function loadSubs(onlyLoggedIn: boolean): Promise<{ subs: Sub[]; skipped: number }> {
   const { data } = await sb.from("app_push_subscriptions").select("endpoint,p256dh,auth,device_id,lang");
-  const all = (data ?? []) as Sub[];
-  if (!onlyLoggedIn) return { subs: all, skipped: 0 };
-  const { data: devices } = await sb.from("app_devices").select("id,logged_in,command,handled_command");
+  const { data: devices } = await sb.from("app_devices").select("id,account,logged_in,command,handled_command");
   const byId = new Map((devices ?? []).map((d: any) => [d.id, d]));
+  const all = ((data ?? []) as any[]).map((s) => ({ ...s, account: byId.get(s.device_id)?.account ?? null })) as Sub[];
+  if (!onlyLoggedIn) return { subs: all, skipped: 0 };
   const subs = all.filter((s) => {
     if (!s.device_id) return true;
     const d = byId.get(s.device_id);
@@ -86,16 +99,18 @@ async function loadSubs(onlyLoggedIn: boolean): Promise<{ subs: Sub[]; skipped: 
   return { subs, skipped: all.length - subs.length };
 }
 
-async function sendTo(subs: Sub[], payload: Record<string, unknown>, ttl: number, urgency: "high" | "normal") {
+async function send(subs: Sub[], payloadFor: Payload, ttl: number, urgency: "high" | "normal") {
   let sent = 0, failed = 0;
   const dead: string[] = [];
   await Promise.all(subs.map(async (s) => {
+    const lang = asLang(s.lang);
+    const payload = payloadFor(lang, s.account ? NAMES[s.account]?.[lang] ?? null : null);
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: ttl, urgency });
       sent++;
     } catch (e: any) {
       failed++;
-      // 404/410 = the device unsubscribed or the app was removed; forget it.
+      // 404/410 = the phone unsubscribed or the app was removed; forget it.
       if (e?.statusCode === 404 || e?.statusCode === 410) dead.push(s.endpoint);
       else console.error("push failed", e?.statusCode, e?.body);
     }
@@ -104,24 +119,9 @@ async function sendTo(subs: Sub[], payload: Record<string, unknown>, ttl: number
   return { sent, failed, removed: dead.length };
 }
 
-/* Sends each language group its own payload. */
-async function sendGrouped(subs: Sub[], payloadFor: Payload, ttl: number, urgency: "high" | "normal") {
-  const groups = new Map<Lang, Sub[]>();
-  for (const s of subs) {
-    const l = asLang(s.lang);
-    groups.set(l, [...(groups.get(l) ?? []), s]);
-  }
-  const total = { sent: 0, failed: 0, removed: 0 };
-  for (const [lang, group] of groups) {
-    const r = await sendTo(group, payloadFor(lang), ttl, urgency);
-    total.sent += r.sent; total.failed += r.failed; total.removed += r.removed;
-  }
-  return total;
-}
-
 async function sendReminder(payloadFor: Payload) {
   const { subs, skipped } = await loadSubs(true);
-  return { ...(await sendGrouped(subs, payloadFor, 2 * 3600, "high")), skipped };
+  return { ...(await send(subs, payloadFor, 2 * 3600, "high")), skipped };
 }
 
 /* ---- Daily reminder (one for the whole restaurant) ---- */
@@ -140,10 +140,9 @@ async function dailyTick() {
   return await sendReminder(dailyPayload);
 }
 
-/* ---- Rico: late-order alerts ----
-   An hour after the reminder time, up to LATE_WINDOW_MS later, if nothing
-   was sent today (to that supplier, or at all for the daily reminder).
-   app_assistant_alerts makes each alert fire only once. */
+/* ---- Rico's own messages ----
+   app_assistant_alerts makes each one happen only once. The same words go
+   to both accounts' inboxes (with their own name) and to signed-in phones. */
 const LATE_AFTER_MIN = 60;
 const LATE_WINDOW_MIN = 4 * 60;
 const STOCK_DECAY_LOOKBACK_DAYS = 60;   // the window used to learn each item's daily usage rate
@@ -151,6 +150,23 @@ async function claimAlert(id: string, kind: string, supplierId: string | null) {
   const { error } = await sb.from("app_assistant_alerts").insert({ id, kind, supplier_id: supplierId });
   return !error;   // a duplicate key means this alert was already sent
 }
+type Words = { mood: string; en: (n: string) => string; ku: (n: string) => string; ar: (n: string) => string };
+async function ricoSays(kind: string, key: string, words: Words, extra: Record<string, unknown> = {}) {
+  await sb.from("app_rico_inbox").insert(ACCOUNTS.map((a) => ({
+    account: a, kind, mood: words.mood, body_en: words.en(NAMES[a].en), body_ku: words.ku(NAMES[a].ku), body_ar: words.ar(NAMES[a].ar),
+    dedupe_key: `${key}|${a}`,
+  })));
+  return await sendReminder((lang, name) => ({
+    title: RICO[lang],
+    body: lang === "ku" ? words.ku(name ?? "") : lang === "ar" ? words.ar(name ?? "") : words.en(name ?? ""),
+    kind: "assistant", tag: `ricotta-rico-${key}`, ...extra,
+  }));
+}
+/* "Hey Rozha!" when the name is known, "Hey!" when it isn't. */
+const hi = (word: string, n: string, sep = " ") => (n ? `${word}${sep}${n}` : word);
+/* Arabic "يا" needs a name after it; without one, a plain "Hey" (مرحبًا). */
+const ya = (n: string) => (n ? `يا ${n}` : "مرحبًا");
+
 type Day = { date: string; weekday: number };
 /* Today and yesterday (Erbil), so a late reminder near midnight (e.g. 23:00)
    still gets its alert after the date changes. */
@@ -204,21 +220,51 @@ async function overdueTick() {
     if (sentSince(s.date, s.id)) continue;
     if (!(await claimAlert(`overdue|${s.id}|${s.date}`, "overdue", s.id))) continue;
     const name = String(s.name).slice(0, 60), time = s.reminder.time;
-    out.push({ supplier: name, ...(await sendReminder((lang) => ({
-      title: lang === "ku" ? "ریکۆ · داواکاری دواکەوت" : "Rico · Order is late",
-      body: lang === "ku" ? `داواکاریی ${name} لە کاتژمێر ${time} بوو و هێشتا نەنێردراوە. با ئێستا ئامادەی بکەین؟` : `The ${name} order was due at ${time} and hasn't been sent yet. Want me to prepare it?`,
-      kind: "overdue", supplierId: String(s.id), tag: `ricotta-overdue-${s.id}`,
-    }))) });
+    out.push({ supplier: name, ...(await ricoSays("overdue", `overdue|${s.id}|${s.date}`, {
+      mood: "angry",
+      en: (n) => `${hi("Hey", n)}! 😠 ${name} was due at ${time} and still isn't sent. Tomatoes don't order themselves! Want me to prepare it?`,
+      ku: (n) => `${hi("هەی", n)}! 😠 داواکاریی ${name} کاتژمێر ${time} بوو و هێشتا نەنێردراوە. تەماتە خۆی داوا ناکات! با ئێستا ئامادەی بکەم؟`,
+      ar: (n) => `${ya(n)}! 😠 طلب ${name} كان موعده ${time} ولم يُرسل بعد. الطماطم لا تطلب نفسها! هل أجهّزه لك الآن؟`,
+    }, { supplierId: String(s.id) })) });
   }
   if (dailyHit && !sentSince(dailyHit.date) && await claimAlert(`overdue|daily|${dailyHit.date}`, "overdue-daily", null)) {
     const time = String(daily!.remind_time).slice(0, 5);
-    out.push({ daily: true, ...(await sendReminder((lang) => ({
-      title: lang === "ku" ? "ریکۆ · هیچ داواکارییەک نەنێردراوە" : "Rico · No orders sent yet",
-      body: lang === "ku" ? `کاتژمێر ${time} تێپەڕی و ئەمڕۆ هیچ داواکارییەک نەنێردراوە.` : `It's past ${time} and no orders have been sent today.`,
-      kind: "overdue", tag: "ricotta-overdue-daily",
-    }))) });
+    out.push({ daily: true, ...(await ricoSays("overdue", `overdue|daily|${dailyHit.date}`, {
+      mood: "angry",
+      en: (n) => `${hi("Hey", n)}! 😠 It's past ${time} and not a single order has gone out today. Let's go!`,
+      ku: (n) => `${hi("هەی", n)}! 😠 کاتژمێر ${time} تێپەڕی و ئەمڕۆ هیچ داواکارییەک نەنێردراوە. با دەست پێ بکەین!`,
+      ar: (n) => `${ya(n)}! 😠 تجاوزت الساعة ${time} ولم يُرسل أي طلب اليوم. هيا بنا!`,
+    })) });
   }
   return out;
+}
+
+/* Rico's good-morning message: which suppliers are due today. */
+async function cheerTick() {
+  const now = erbilNow();
+  if (now.minutes < CHEER_AT_MIN || now.minutes >= CHEER_AT_MIN + CHEER_WINDOW_MIN) return { skipped: "outside window" };
+  if (!(await claimAlert(`cheer|${now.date}`, "cheer", null))) return { skipped: "already sent today" };
+  const { data: sups } = await sb.from("app_suppliers").select("name,reminder").not("reminder", "is", null);
+  const dueToday = (sups ?? []).filter((s: any) => {
+    const r = s.reminder;
+    if (!r?.enabled) return false;
+    const days = Array.isArray(r.days) && r.days.length ? r.days.map(Number) : ALL_DAYS;
+    return days.includes(now.weekday);
+  }).map((s: any) => String(s.name).slice(0, 40));
+  const list = dueToday.slice(0, 6).join("، ");
+  const listEn = dueToday.slice(0, 6).join(", ");
+  const k = dueToday.length;
+  return await ricoSays("cheer", `cheer|${now.date}`, k ? {
+    mood: "excited",
+    en: (n) => `${hi("Good morning", n, ", ")}! ☀️ ${k} supplier${k === 1 ? " is" : "s are"} due today: ${listEn}. Let's get the orders out on time!`,
+    ku: (n) => `${hi("بەیانیت باش", n)}! ☀️ ئەمڕۆ کاتی داواکاریی ${k} دابینکەرە: ${list}. با بە کاتی خۆی بینێرین!`,
+    ar: (n) => `${hi("صباح الخير", n, " يا ")}! ☀️ اليوم موعد ${k} من المورّدين: ${list}. لنرسل الطلبات في وقتها!`,
+  } : {
+    mood: "happy",
+    en: (n) => `${hi("Good morning", n, ", ")}! ☀️ No supplier is scheduled today. Have a great shift!`,
+    ku: (n) => `${hi("بەیانیت باش", n)}! ☀️ ئەمڕۆ هیچ دابینکەرێک کاتی داواکاریی نییە. ڕۆژێکی خۆش!`,
+    ar: (n) => `${hi("صباح الخير", n, " يا ")}! ☀️ لا يوجد مورّد مجدول اليوم. يومًا موفقًا!`,
+  });
 }
 
 /* ---- Per-supplier reminders ----
@@ -249,12 +295,11 @@ async function supplierTick() {
 /* ---- Par-level stock: once-a-day decay ----
    Ricotta has no consumption/receiving system of its own, so "how much is
    left" can only ever be an estimate here. Each tracked item's est_qty goes
-   UP when an order is sent (handled directly in the api function's saveOrder
-   -- see supabase/functions/api/index.ts), and goes DOWN once a day, here,
-   by a rate learned from that item's own order history: how much of it gets
-   ordered per day on average over the last STOCK_DECAY_LOOKBACK_DAYS days.
-   Never below zero. last_decay_date makes each row decay at most once per
-   Erbil calendar day, however often this tick runs. */
+   UP when an order is sent (the api function's saveOrder), and goes DOWN once
+   a day, here, by a rate learned from that item's own order history: how much
+   of it gets ordered per day on average over the last
+   STOCK_DECAY_LOOKBACK_DAYS days. Never below zero. last_decay_date makes each
+   row decay at most once per Erbil calendar day, however often this runs. */
 async function stockDecayTick() {
   const today = erbilNow().date;
   const { data: pars } = await sb.from("app_item_pars").select("item_id,est_qty,last_decay_date")
@@ -281,6 +326,14 @@ async function stockDecayTick() {
   return { updated, of: pars.length };
 }
 
+/* The three language versions of a message written by a person: a phone
+   gets its own language, or the first one that was written. */
+function written(body: any) {
+  const en = String(body.bodyEn ?? "").slice(0, 300), ku = String(body.bodyKu ?? "").slice(0, 300), ar = String(body.bodyAr ?? "").slice(0, 300);
+  const any = en || ku || ar;
+  return { any, pick: (lang: Lang) => (lang === "ku" ? ku : lang === "ar" ? ar : en) || any };
+}
+
 Deno.serve(async (req) => {
   if (!vapidReady) return json({ error: "VAPID keys are not set on this function" }, 500);
   if (!CRON_SECRET || req.headers.get("x-cron-secret") !== CRON_SECRET) return json({ error: "forbidden" }, 403);
@@ -292,30 +345,27 @@ Deno.serve(async (req) => {
         try { result.daily = await dailyTick(); } catch (e) { console.error("daily tick failed", e); result.daily = { error: true }; }
         try { result.suppliers = await supplierTick(); } catch (e) { console.error("supplier tick failed", e); result.suppliers = { error: true }; }
         try { result.late = await overdueTick(); } catch (e) { console.error("late-order tick failed", e); result.late = { error: true }; }
+        try { result.cheer = await cheerTick(); } catch (e) { console.error("cheer tick failed", e); result.cheer = { error: true }; }
         try { result.stockDecay = await stockDecayTick(); } catch (e) { console.error("stock decay tick failed", e); result.stockDecay = { error: true }; }
         return json(result);
       }
       case "update": {
+        // Only the words Rozha wrote: each phone gets its own language.
+        const w = written(body);
+        if (!w.any) return json({ error: "empty message" }, 400);
         const { subs } = await loadSubs(false);
-        const title = String(body.title || "Ricotta Orders").slice(0, 80);
-        const bodyEn = String(body.bodyEn ?? "").slice(0, 300);
-        const bodyKu = String(body.bodyKu ?? "").slice(0, 300);
-        if (!bodyEn && !bodyKu) return json({ error: "empty message" }, 400);
-        return json(await sendGrouped(subs, (lang) => ({
-          title, body: lang === "ku" ? (bodyKu || bodyEn) : (bodyEn || bodyKu), kind: "update", tag: "ricotta-update",
-        }), 86400, "normal"));
+        return json(await send(subs, (lang) => ({ title: "Ricotta", body: w.pick(lang), kind: "update", tag: "ricotta-update" }), 86400, "normal"));
       }
       case "assistant": {
-        const bodyEn = String(body.bodyEn ?? "").slice(0, 300);
-        const bodyKu = String(body.bodyKu ?? "").slice(0, 300);
-        if (!bodyEn && !bodyKu) return json({ error: "empty message" }, 400);
-        const title = String(body.title || "Rico").slice(0, 80);
+        const w = written(body);
+        if (!w.any) return json({ error: "empty message" }, 400);
+        const title = String(body.title || "").slice(0, 80);
         return json(await sendReminder((lang) => ({
-          title, body: lang === "ku" ? (bodyKu || bodyEn) : (bodyEn || bodyKu), kind: "assistant", tag: `ricotta-assistant-${Date.now()}`,
+          title: title || RICO[lang], body: w.pick(lang), kind: "assistant", tag: `ricotta-assistant-${Date.now()}`,
         })));
       }
       case "reminder-now":
-        return json(await sendReminder((lang) => ({ ...dailyPayload(lang), title: "Ricotta Orders (test)" })));
+        return json(await sendReminder((lang, name) => ({ ...dailyPayload(lang, name), title: L(lang, "Ricotta Orders (test)", "Ricotta Orders (تاقیکاری)", "Ricotta Orders (تجربة)") })));
       case "supplier-test": {
         const { data: s } = await sb.from("app_suppliers").select("id,name").eq("id", String(body.supplierId ?? "")).maybeSingle();
         if (!s) return json({ error: "supplier not found" }, 404);

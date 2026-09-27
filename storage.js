@@ -29,7 +29,7 @@ function apiSession(){
 function clearApiSession(){ lset('apiSession', null); }
 
 /* Returns {ok, status, data}. Never throws. A 401 on a signed-in device means
-   the session was revoked (PIN change, remote log out) or expired. */
+   the session was revoked (new PINs, remote log out) or expired. */
 async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
   const controller = new AbortController();
   const timer = setTimeout(()=>controller.abort(), timeout);
@@ -43,7 +43,7 @@ async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
     });
     setApiHealth(true);
     const data = await res.json().catch(()=>null);
-    if(res.status === 401 && s && path !== 'login'){ clearApiSession(); onSessionExpired(); }
+    if(res.status === 401 && s && path !== 'login' && !path.startsWith('recovery/')){ clearApiSession(); onSessionExpired(); }
     return {ok:res.ok, status:res.status, data};
   }catch(e){
     setApiHealth(false);
@@ -91,12 +91,15 @@ async function apiStream(path, body, onEvent, signal){
   }
 }
 
-/* Returns {role:'admin'|'user'} on success, or {error:'wrong'|'locked'|'network'}. */
+/* Returns {account, name, tabs} on success, {recovery:true, ticket} when the
+   secret code was typed, or {error:'wrong'|'locked'|'network'}. */
 async function apiLogin(pin){
   const r = await api('login', {method:'POST', body:{pin}});
+  if(r.ok && r.data && r.data.recovery && r.data.ticket) return {recovery:true, ticket:r.data.ticket};
   if(r.ok && r.data && r.data.token){
-    lset('apiSession', {token:r.data.token, expiresAt:r.data.expiresAt, role:r.data.role});
-    return {role: r.data.role === 'staff' ? 'user' : r.data.role};
+    const d = r.data;
+    lset('apiSession', {token:d.token, expiresAt:d.expiresAt, account:d.account, name:d.name, tabs:d.tabs});
+    return {account:d.account, name:d.name, tabs:d.tabs};
   }
   if(r.status === 429) return {error:'locked'};
   if(r.status === 0) return {error:'network'};

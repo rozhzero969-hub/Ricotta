@@ -15,7 +15,7 @@ self.addEventListener('push', event => {
   try { data = event.data ? event.data.json() : {}; }
   catch (e) { data = { body: event.data ? event.data.text() : '' }; }
 
-  const kind = data.kind || 'general';   /* 'update' | 'reminder' | 'supplier' | 'general' */
+  const kind = data.kind || 'general';   /* 'update' | 'reminder' | 'supplier' | 'assistant' | 'overdue' | 'general' */
   const title = data.title || 'Ricotta Orders';
   const supplierId = data.supplierId || '';
 
@@ -26,37 +26,39 @@ self.addEventListener('push', event => {
         tag: data.tag || ('ricotta-' + kind),   /* one notification per supplier, not one shared pile */
         renotify: true,                          /* a newer one with the same tag still alerts */
         icon: 'icon-192.png',
-        data: { kind, supplierId }
+        data: { kind, supplierId, body: data.body || '' }
       });
     } catch (e) {
-      await self.registration.showNotification(title, { body: data.body || '', data: { kind, supplierId } });
+      await self.registration.showNotification(title, { body: data.body || '', data: { kind, supplierId, body: data.body || '' } });
     }
-    /* If the app is open right now, show the What's new popup straight away. */
+    /* If the app is open right now, show the update message straight away. */
     if (kind === 'update') {
       const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      wins.forEach(w => w.postMessage({ kind }));
+      wins.forEach(w => w.postMessage({ kind, body: data.body || '' }));
     }
   })());
 });
 
 /* Tapping a notification: focus the app if it's open, otherwise launch it.
-   Either way the app is told what the notification was about (and, for a
-   supplier reminder, which supplier). */
+   Either way the app is told what the notification was about (for a
+   supplier reminder, which supplier; for an update, its message). */
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const d = event.notification.data || {};
   const kind = d.kind || 'general';
   const supplierId = d.supplierId || '';
+  const body = kind === 'update' ? String(d.body || '').slice(0, 300) : '';
   event.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     if (wins.length) {
       const w = wins.find(x => x.visibilityState === 'visible') || wins[0];
       try { await w.focus(); } catch (e) {}
-      w.postMessage({ kind, supplierId });
+      w.postMessage({ kind, supplierId, body });
       return;
     }
     let url = self.registration.scope + '?n=' + encodeURIComponent(kind);
     if (supplierId) url += '&s=' + encodeURIComponent(supplierId);
+    if (body) url += '&m=' + encodeURIComponent(body);
     await self.clients.openWindow(url);
   })());
 });

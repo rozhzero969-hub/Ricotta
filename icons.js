@@ -9,13 +9,10 @@ const ICON_SEARCH = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"
 const ICON_REPEAT = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
 const ICON_PLUS = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>`;
 const ICON_REFRESH = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>`;
-/* Open-crate icon used above the "nothing here yet" message in empty
-   lists (Suppliers, Items, History, Record, Devices, Units, search). */
 const ICON_MORE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="2"/></svg>`;
 const ICON_MIC = `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>`;
-const ICON_MINUS_SM = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg>`;
-/* Rico's mark: twelve tapered rays around a small centre, in the restaurant
-   green (or the current text colour when it sits in the tab bar). */
+/* Rico's spark: twelve tapered rays around a small centre (the Rico tab's
+   icon, in the current text colour). */
 function ricoSparkSvg(color){
   let d='';
   for(let k=0;k<12;k++){
@@ -24,6 +21,8 @@ function ricoSparkSvg(color){
   }
   return `<svg class="rico-spark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="${color}" stroke="${color}" stroke-width=".7" stroke-linejoin="round"/><circle cx="12" cy="12" r="1.9" fill="${color}"/></svg>`;
 }
+/* Open-crate icon used above the "nothing here yet" message in empty
+   lists (Suppliers, Items, History, Record, Devices, Units, search). */
 const ICON_EMPTY = `<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l2.2-4.4A2 2 0 0 1 7 3.5h10a2 2 0 0 1 1.8 1.1L21 9"/><path d="M3 9v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9"/><path d="M3 9h18"/><path d="M9 13a3 3 0 0 0 6 0"/></svg>`;
 const NAV_ICONS = {
   order: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9h14l-1.4 9.3a2 2 0 0 1-2 1.7H8.4a2 2 0 0 1-2-1.7L5 9Z"/><path d="M9 9V7a3 3 0 0 1 6 0v2"/></svg>`,
