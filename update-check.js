@@ -3,26 +3,24 @@
    often and comparing its APP_VERSION against the one this page was
    loaded with.
 
-   If there's nothing in progress to lose (empty cart, no send queue
-   open), the update is applied automatically -- the page just reloads
-   itself, no tap needed. If there IS something in progress, it asks
-   first (with a "what's new" summary in both languages) so an
-   in-progress order is never wiped out from under someone. Once
-   dismissed with "Later" for a given version, it won't ask again for
-   that same version -- only a version newer than the one already
-   declined will prompt again.
+   If there's nothing in progress to lose (empty cart, no send queue open,
+   no Rico chat, nothing being typed), the update is applied automatically --
+   the page just reloads itself, no tap needed. If there IS something in
+   progress, it asks first, so an in-progress order is never wiped out from
+   under someone. Once dismissed with "Later" for a given version, it won't
+   ask again for that same version.
 
    It also never acts while any popup is open (for example the add/edit
    supplier or item form), so a half-filled form is never wiped or covered
    -- it simply tries again on the next check.
 
-   hardReload() is also what an admin's "Refresh" command uses (see
-   app.js, Remote commands): it re-downloads every app file first, so the
-   reload really does pick up the newest version instead of a cached one.
+   hardReload() is also what Rozha's "Refresh" command uses (see app.js,
+   Remote commands): it re-downloads every app file first, so the reload
+   really does pick up the newest version instead of a cached one.
 
-   openUpdatePopup() is what an "update" push notification opens (see
-   push.js): always shows the What's new popup, with an Update button at
-   the bottom that reloads the page.
+   openUpdatePopup(message) is what an "update" notification opens (see
+   push.js): it shows exactly the words Rozha wrote for this phone's
+   language, with an Update button when a newer version is waiting.
 
    Depends on: APP_VERSION (config.js), t() and state (app.js),
    showConfirm, showUpdatePopup (modals.js), lset (storage.js). */
@@ -71,30 +69,14 @@ function escUpdateText(s){
   return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function buildUpdateMessage(changelogEn, changelogKu, intro){
-  const enBlock = changelogEn
-    ? `<div style="margin-bottom:12px;"><div style="font-weight:800;margin-bottom:4px;">What's new</div><div>${escUpdateText(changelogEn)}</div></div>`
-    : '';
-  const kuBlock = changelogKu
-    ? `<div style="direction:rtl;text-align:right;"><div style="font-weight:800;margin-bottom:4px;">نوێکارییەکان</div><div>${escUpdateText(changelogKu)}</div></div>`
-    : '';
-  return `<div style="text-align:left;">
-    <div style="margin-bottom:10px;">${intro || 'A new update is available. Reload to get it.'}</div>
-    ${enBlock}${kuBlock}
-  </div>`;
-}
-
 /* Reads the live config.js from the server (as text -- it's never run) and
-   returns {version, en, ku}, or null if offline / blocked. */
-async function fetchLiveInfo(){
+   returns its APP_VERSION, or null if offline / blocked. */
+async function fetchLiveVersion(){
   try{
     const res = await fetch(`config.js?_=${Date.now()}`, { cache: 'no-store' });
     if(!res.ok) return null;
-    const text = await res.text();
-    const ver = text.match(/APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
-    const en = text.match(/CHANGELOG_EN\s*=\s*['"]([^'"]*)['"]/);
-    const ku = text.match(/CHANGELOG_KU\s*=\s*['"]([^'"]*)['"]/);
-    return { version: ver && ver[1], en: en ? en[1] : '', ku: ku ? ku[1] : '' };
+    const ver = (await res.text()).match(/APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
+    return ver ? ver[1] : null;
   }catch(e){ return null; }
 }
 
@@ -102,47 +84,33 @@ async function checkForUpdate(){
   if(updateCheckBusy || updatePromptOpen || modalIsOpen()) return;   /* never interrupt a half-filled form */
   updateCheckBusy = true;
   try{
-    const live = await fetchLiveInfo();
-    if(!live || !live.version || live.version === APP_VERSION || modalIsOpen()) return;
+    const live = await fetchLiveVersion();
+    if(!live || live === APP_VERSION || modalIsOpen()) return;
     if(cartIsEmpty()){ hardReload(); return; }
-    if(live.version === snoozedVersion) return;
+    if(live === snoozedVersion) return;
     updatePromptOpen = true;
-    const ok = await showConfirm(buildUpdateMessage(live.en, live.ku), {
+    const ok = await showConfirm(escUpdateText(t('updateReadyMsg')), {
       okLabel: t('updateNow'), cancelLabel: t('later'), okClass: 'btn-primary'
     });
     updatePromptOpen = false;
     if(ok){ hardReload(); return; }
-    snoozedVersion = live.version;
+    snoozedVersion = live;
   }finally{ updateCheckBusy = false; }
 }
 
 /* Opened by an "update" notification (tapped, or received while the app is
-   open). Unlike checkForUpdate() it always shows the What's new popup --
-   even with an empty cart -- and the person reads it, then taps Update at the
-   bottom to reload. If they're already on the newest version it says so and
-   shows the same What's new text with a plain OK. */
-async function openUpdatePopup(){
+   open). Shows only the message Rozha wrote. When a newer version is
+   waiting, Update reloads the app; otherwise the message closes with OK. */
+async function openUpdatePopup(message){
   if(updatePromptOpen) return;
   updatePromptOpen = true;
   try{
-    const live = await fetchLiveInfo();
-    const hasUpdate = !!(live && live.version && live.version !== APP_VERSION);
-    const en = hasUpdate ? live.en : (live && live.en) || CHANGELOG_EN;
-    const ku = hasUpdate ? live.ku : (live && live.ku) || CHANGELOG_KU;
-    if(hasUpdate){
-      const ok = await showUpdatePopup(
-        t('updateAvailableTitle'),
-        buildUpdateMessage(en, ku, 'A new update is available. Tap Update to get it.<br>نوێکارییەکی نوێ ئامادەیە. دوگمەی نوێکردنەوە بگوشە.'),
-        t('updateNow'), t('later')
-      );
-      if(ok){ hardReload(); return; }   /* page reloads; flag stays set until then */
-    } else {
-      await showUpdatePopup(
-        t('updateAvailableTitle'),
-        buildUpdateMessage(en, ku, 'You already have the latest version.<br>وەشانی نوێترینت هەیە.'),
-        'OK', null
-      );
-    }
+    const live = await fetchLiveVersion();
+    const hasUpdate = !!(live && live !== APP_VERSION);
+    const words = String(message || '').trim();
+    const body = `<div class="update-words" dir="auto">${escUpdateText(words || t('updateReadyMsg'))}</div>`;
+    const ok = await showUpdatePopup(body, hasUpdate ? t('updateNow') : t('ok'), hasUpdate ? t('later') : null);
+    if(ok && hasUpdate){ hardReload(); return; }   /* page reloads; flag stays set until then */
   }catch(e){ console.error('update popup failed', e); }
   updatePromptOpen = false;
 }

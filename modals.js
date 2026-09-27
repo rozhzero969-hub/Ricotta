@@ -71,7 +71,7 @@ function showAlert(message) {
         <div class="modal-box">
           <div class="modal-msg">${message}</div>
           <div class="modal-actions">
-            <button class="btn btn-primary" id="modalAlertOkBtn">OK</button>
+            <button class="btn btn-primary" id="modalAlertOkBtn">${t('ok')}</button>
           </div>
         </div>
       </div>`;
@@ -84,17 +84,20 @@ function showAlert(message) {
 }
 
 /* Small text input dialog. Resolves with the trimmed string the user typed,
-or null if they dismissed/skipped it. Used for the "name this device"
-prompt, but generic enough to reuse anywhere a single line of text is
-needed. Pass {password:true} for a masked numeric PIN field. */
+or null if they dismissed it. Options: {password:true} for a masked numeric
+PIN field (maxLength limits it), {secret:true} for a masked text field,
+{plain:true} for text the keyboard must not capitalise or correct (the
+"Who are you?" step of the secret code). */
 function showPrompt(message, opts) {
-  const okLabel = (opts && opts.okLabel) || t('save');
-  const cancelLabel = (opts && opts.cancelLabel) || t('cancel');
-  const placeholder = (opts && opts.placeholder) || '';
-  const initialValue = (opts && opts.value) || '';
-  const inputAttrs = (opts && (opts.password || opts.secret))
+  opts = opts || {};
+  const okLabel = opts.okLabel || t('save');
+  const cancelLabel = opts.cancelLabel || t('cancel');
+  const placeholder = opts.placeholder || '';
+  const initialValue = opts.value || '';
+  const inputAttrs = (opts.password || opts.secret)
     ? `type="password" ${opts.password ? 'inputmode="numeric"' : ''} autocomplete="off"`
-    : '';
+    : opts.plain ? 'type="text" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false"' : '';
+  const max = opts.maxLength ? `maxlength="${Number(opts.maxLength)}"` : '';
   
   return new Promise(resolve => {
     const root = ensureModalRoot();
@@ -103,7 +106,7 @@ function showPrompt(message, opts) {
         <div class="modal-box">
           <div class="modal-msg">${message}</div>
           <div class="field">
-            <input id="modalPromptInput" ${inputAttrs} placeholder="${esc(placeholder)}" value="${esc(initialValue)}" />
+            <input id="modalPromptInput" ${inputAttrs} ${max} placeholder="${esc(placeholder)}" value="${esc(initialValue)}" />
           </div>
           <div class="modal-actions">
             <button class="btn btn-ghost" id="modalPromptCancelBtn">${cancelLabel}</button>
@@ -130,7 +133,7 @@ function showPrompt(message, opts) {
   });
 }
 
-/* Forced "refresh now" popup, sent by an admin from the Devices tab.
+/* Forced "refresh now" popup, sent by Rozha from the Devices tab.
 There is deliberately no cancel / close / tap-outside: the only way
 forward is the Refresh button. It lives in its own root (#forceRoot),
 above every other popup, so it never wipes a half-filled form - it just
@@ -168,18 +171,17 @@ function showForcedRefresh(title, message, okLabel) {
   });
 }
 
-/* "What's new" popup opened from an update notification (or the update
-checker). Uses #forceRoot like the forced refresh, so it sits on top of any
-open form without wiping it. The primary button is at the bottom; tapping it
-resolves true (the caller reloads). If laterLabel is given, a second button
-is shown that resolves false and just closes the popup. */
-function showUpdatePopup(title, message, okLabel, laterLabel) {
+/* The update message opened from an update notification. Uses #forceRoot
+like the forced refresh, so it sits on top of any open form without wiping
+it. It shows only the message (no title of its own). The primary button is
+at the bottom; tapping it resolves true (the caller reloads). If laterLabel
+is given, a second button is shown that resolves false and just closes it. */
+function showUpdatePopup(message, okLabel, laterLabel) {
   return new Promise(resolve => {
     const root = ensureForceRoot();
     root.innerHTML = `
       <div class="modal-overlay">
         <div class="modal-box">
-          <div class="force-title">${title}</div>
           <div class="modal-msg">${message}</div>
           <div class="modal-actions">
             ${laterLabel ? `<button class="btn btn-ghost" id="updLaterBtn">${laterLabel}</button>` : ''}
