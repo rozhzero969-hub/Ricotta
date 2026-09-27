@@ -79,7 +79,7 @@ const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "https://rozhzero969-hu
 const cors = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Vary": "Origin",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-device-id, x-session-token",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-device-id, x-device-label, x-session-token",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   // Let browsers reuse the pre-flight answer for a day instead of sending an
   // extra OPTIONS request before every single call.
@@ -94,6 +94,8 @@ const fail = (error: string, status = 400) => json({ error }, status);
 const app = (table: string) => db.from(`app_${table}`);
 const text = (v: unknown, max = 160) => String(v ?? "").trim().slice(0, max);
 const newId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
+/* What the device says it is ("iPhone 16/17 Pro Max|App"), for the Devices screen. */
+const deviceLabel = (req: Request) => text(req.headers.get("x-device-label"), 80).replace(/[^\x20-\x7E]/g, "") || null;
 const nowIso = () => new Date().toISOString();
 const langOf = (v: unknown) => (LANGS.includes(String(v)) ? String(v) : "en");
 const randomToken = () => crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
@@ -232,7 +234,7 @@ async function recordCatalogChange(s: Session, table: string, before: any, after
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder });
 const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order });
 const toDevice = (d: any) => ({
-  id: d.id, account: d.account ?? null, loggedIn: d.logged_in,
+  id: d.id, account: d.account ?? null, label: d.label ?? null, loggedIn: d.logged_in,
   lastLogin: d.last_login, lastSeen: d.last_seen, command: d.command, handledCommand: d.handled_command,
 });
 const toActivity = (a: any) => ({
@@ -266,7 +268,7 @@ function groupHistory(orders: any[], lines: any[]) {
 }
 
 async function listDevices(s: Session) {
-  let q = app("devices").select("id,account,logged_in,last_login,last_seen,command,handled_command");
+  let q = app("devices").select("id,account,label,logged_in,last_login,last_seen,command,handled_command");
   if (!isRozha(s)) q = q.eq("id", s.deviceId ?? "");
   const { data } = await q;
   return (data ?? []).map(toDevice);
@@ -428,7 +430,7 @@ async function login(req: Request) {
     // old "log out" can't kick the person out right after signing in.
     const { data: prev } = await app("devices").select("command").eq("id", deviceId).maybeSingle();
     await app("devices").upsert({
-      id: deviceId, account, logged_in: true, last_login: nowIso(), last_seen: nowIso(), updated_at: nowIso(),
+      id: deviceId, account, label: deviceLabel(req), logged_in: true, last_login: nowIso(), last_seen: nowIso(), updated_at: nowIso(),
       ...(prev?.command?.id ? { handled_command: String(prev.command.id) } : {}),
     });
   }
@@ -577,12 +579,12 @@ async function bumpStockOnSend(lines: { item_id: string; qty: number }[]) {
 }
 
 /* ---------- Devices ---------- */
-async function heartbeat(s: Session) {
+async function heartbeat(s: Session, label: string | null) {
   if (!s.deviceId) return ok();
   const { data: d } = await app("devices").select("command,handled_command").eq("id", s.deviceId).maybeSingle();
   const pendingLogout = d?.command?.type === "logout" && d.command.id !== d.handled_command;
   if (pendingLogout) return json({ ok: true, device: null });   // don't flip it back to "logged in"
-  await app("devices").upsert({ id: s.deviceId, account: s.account, logged_in: true, last_seen: nowIso(), updated_at: nowIso() });
+  await app("devices").upsert({ id: s.deviceId, account: s.account, ...(label ? { label } : {}), logged_in: true, last_seen: nowIso(), updated_at: nowIso() });
   return ok();
 }
 
@@ -734,7 +736,7 @@ Deno.serve(async (req) => {
 
     // Devices
     if (M === "GET" && path === "devices") return json(await listDevices(s));
-    if (M === "POST" && path === "devices/me") return await heartbeat(s);
+    if (M === "POST" && path === "devices/me") return await heartbeat(s, deviceLabel(req));
     if (M === "POST" && path === "devices/me/ack") {
       if (s.deviceId) await app("devices").update({ handled_command: text(b.commandId, 120) || null }).eq("id", s.deviceId);
       return ok();

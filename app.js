@@ -33,7 +33,7 @@ const state = {
   queue: null,           // array of {supplierId, items, sent} while sending
   activity: [],          // the Record: [{id, ts, action, type, name, fields, by, role}]
   recordFilter: 'all',   // 'all' | 'supplier' | 'item' | 'unit'
-  devices: [],           // [{id, account, lastLogin, lastSeen, loggedIn, command, handledCommand}]
+  devices: [],           // [{id, account, label, lastLogin, lastSeen, loggedIn, command, handledCommand}]
   deviceId: null,        // this device's own id, generated once and kept locally
   reminder: null,        // daily reminder settings {enabled,time}
   apiOnline: navigator.onLine
@@ -115,6 +115,12 @@ function ensureDeviceId(){
   return id;
 }
 function myDevice(){ return state.devices.find(d=>d.id===state.deviceId); }
+/* "iPhone 16/17 Pro Max" and "App" / "Chrome" from the label the device sends. */
+function deviceParts(d){
+  const [kind, how] = String(d.label || '').split('|');
+  return {kind: kind || t('unnamedDevice'), how: how === 'App' ? t('deviceApp') : (how || '')};
+}
+function deviceTitle(d){ const p = deviceParts(d); return `${accountLabel(d.account) || t('unnamedDevice')} \u00b7 ${p.kind}`; }
 function otherDevices(){ return state.devices.filter(d=>d.id !== state.deviceId); }
 function commandIsPending(d){ return !!(d.command && d.command.id !== d.handledCommand); }
 
@@ -612,18 +618,47 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ setMoreOpen(fals
 function haptic(ms=8){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(_){} }
 
 /* ---------- Page transitions ----------
-   A short, soft fade: the new page eases in from a little to the side (the
-   direction of the tab), with no copy of the old page moving around. Used
-   for every screen, from taps, the lens and swipes, on phones and computers. */
-const PAGE_MS = 340;
+   One animation per screen change, never on a redraw of the same screen
+   (a redraw used to replay an entrance animation, so pages seemed to load
+   twice). PAGE_TRANSITION picks the style and its length:
+     soft   fade in with a small sideways drift   fade   crossfade
+     rise   fade in lifting up                     slide  full-width slide
+     push   slide over, old page drifts and dims   zoom   grow in slightly
+     blur   come into focus                        none   instant */
+const PAGE_TRANSITION = {style:'soft', ms:340};
 const PAGE_EASE = 'cubic-bezier(.25,.8,.25,1)';
-const PAGE_SHIFT = 22;                       // px the new page travels
 let glide = null;
 function endGlide(){
   if(!glide) return;
-  glide.anim.cancel();
+  glide.anims.forEach(a=>a.cancel());
+  glide.ghost?.remove();
   glide.content.classList.remove('gliding');
   glide = null;
+}
+function transitionFrames(dir, w){
+  switch(PAGE_TRANSITION.style){
+    case 'soft':  return {inn:[{transform:`translate3d(${dir*22}px,0,0)`, opacity:0}, {transform:'none', opacity:1}]};
+    case 'fade':  return {inn:[{opacity:0}, {opacity:1}], out:[{opacity:1}, {opacity:0}]};
+    case 'rise':  return {inn:[{transform:'translate3d(0,16px,0)', opacity:0}, {transform:'none', opacity:1}]};
+    case 'slide': return {inn:[{transform:`translate3d(${dir*w}px,0,0)`}, {transform:'none'}], out:[{transform:'none'}, {transform:`translate3d(${-dir*w}px,0,0)`}]};
+    case 'push':  return {inn:[{transform:`translate3d(${dir*w}px,0,0)`}, {transform:'none'}], out:[{transform:'none', opacity:1}, {transform:`translate3d(${-dir*w*.3}px,0,0)`, opacity:.35}]};
+    case 'zoom':  return {inn:[{transform:'scale(.955)', opacity:0}, {transform:'none', opacity:1}]};
+    case 'blur':  return {inn:[{filter:'blur(8px)', opacity:0}, {filter:'none', opacity:1}]};
+    default: return null;
+  }
+}
+/* A still copy of the page that is leaving, laid exactly over it. */
+function pageGhost(content){
+  const r = content.getBoundingClientRect();
+  const layer = document.createElement('div');
+  layer.className = 'page-ghost'; layer.setAttribute('aria-hidden','true');
+  Object.assign(layer.style, {left:r.left+'px', width:r.width+'px'});
+  const copy = content.cloneNode(true);
+  copy.removeAttribute('id'); copy.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+  Object.assign(copy.style, {top:r.top+'px', width:r.width+'px', transform:content.style.transform || ''});
+  layer.appendChild(copy);
+  document.body.appendChild(layer);
+  return {layer, copy};
 }
 function goView(view, {fromOffset=0, keepLens=false} = {}){
   setMoreOpen(false); closeLangMenu();
@@ -631,6 +666,10 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   if(!view || view === state.view || !canOpen(view)) return;
   endGlide();
   const dir = (Math.sign(viewIndex(view) - viewIndex(state.view)) || 1) * (isRtl() ? -1 : 1);
+  const old = document.querySelector('.content');
+  const width = old ? old.getBoundingClientRect().width : window.innerWidth;
+  const frames = old && old.animate && !reducedMotion() ? transitionFrames(dir, width) : null;
+  const ghost = frames?.out ? pageGhost(old) : null;
   state.view = view;
   if(view === 'record') state.recordFilter = 'all';
   render();
@@ -639,14 +678,21 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   if(view === 'devices') refreshDevices();
   if(!keepLens) placeNavIndicator();
   const content = document.querySelector('.content');
-  if(!content || reducedMotion() || !content.animate) return;
-  // After a swipe the page starts where the finger left it, only closer.
-  const from = fromOffset ? Math.max(-60, Math.min(60, fromOffset * .25)) + dir*PAGE_SHIFT*.5 : dir*PAGE_SHIFT;
+  if(!frames || !content){ ghost?.layer.remove(); if(content) content.style.transform = ''; return; }
+  // After a swipe, pages start from where the finger left them.
+  if(fromOffset){
+    const moves = PAGE_TRANSITION.style === 'slide' || PAGE_TRANSITION.style === 'push';
+    frames.inn[0] = {...frames.inn[0], transform:`translate3d(${moves ? dir*width + fromOffset : fromOffset*.25}px,0,0)`};
+    if(frames.out) frames.out[0] = {...frames.out[0], transform:`translate3d(${fromOffset}px,0,0)`};
+  }
+  const opts = {duration:PAGE_TRANSITION.ms, easing:PAGE_EASE};
+  content.style.transform = '';
   content.classList.add('gliding');
-  const anim = content.animate([{transform:`translate3d(${from}px,0,0)`, opacity:0}, {transform:'none', opacity:1}], {duration:PAGE_MS, easing:PAGE_EASE});
-  glide = {anim, content};
+  const anims = [content.animate(frames.inn, opts)];
+  if(ghost) anims.push(ghost.copy.animate(frames.out, opts));
+  glide = {anims, ghost:ghost?.layer, content};
   const mine = glide;
-  anim.finished.then(()=>{ if(glide === mine) endGlide(); }, ()=>{});
+  anims[0].finished.then(()=>{ if(glide === mine) endGlide(); }, ()=>{});
 }
 
 /* Swipe the page sideways to move between the three tabs (phones). The page
@@ -2342,11 +2388,13 @@ function renderDevices(){
     const st = deviceStatus(d);
     const isThis = d.id === state.deviceId;
     const who = accountLabel(d.account);
+    const parts = deviceParts(d);
     const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
     return `<div class="dev-card">
       <div class="dev-top">
         <div class="dev-name">${esc(who || t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
       </div>
+      <div class="dev-kind">${/iPhone|Android|iPad/.test(parts.kind) ? NAV_ICONS.devices : ICON_COMPUTER} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
       <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span></div>
       <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
       ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
@@ -2367,14 +2415,14 @@ function attachDeviceEvents(){
   document.querySelectorAll('[data-devlogout]').forEach(b=>b.onclick=async()=>{
     const d = state.devices.find(x=>x.id===b.dataset.devlogout);
     if(!d) return;
-    const name = esc(accountLabel(d.account) || t('unnamedDevice'));
+    const name = esc(deviceTitle(d));
     if(!(await showConfirm(`<b>${name}</b><br>${t('confirmLogoutDevice')}`, {okLabel:t('logoutDevice')}))) return;
     await sendDeviceCommand('logout', [d.id]);
   });
   document.querySelectorAll('[data-devrefresh]').forEach(b=>b.onclick=async()=>{
     const d = state.devices.find(x=>x.id===b.dataset.devrefresh);
     if(!d) return;
-    const name = esc(accountLabel(d.account) || t('unnamedDevice'));
+    const name = esc(deviceTitle(d));
     if(!(await showConfirm(`<b>${name}</b><br>${t('confirmRefreshDevice')}`, {okLabel:t('refreshDevice'), okClass:'btn-primary'}))) return;
     await sendDeviceCommand('refresh', [d.id]);
   });
