@@ -44,6 +44,7 @@ let groqTurn = 0;
 let groqUnavailable = false;
 let groqReply = null;
 let strongModelMissing = false;
+let strongModelSlow = false;
 globalThis.fetch = async (input, options = {}) => {
   const url = String(input);
   requests.push({ url, body: typeof options.body === 'string' ? JSON.parse(options.body) : options.body });
@@ -51,6 +52,7 @@ globalThis.fetch = async (input, options = {}) => {
   if (url.includes('audio/transcriptions')) return new Response(JSON.stringify({ text: 'five boxes of tomatoes' }), { headers: { 'content-type': 'application/json' } });
   if (url.includes('streamGenerateContent')) {
     if (strongModelMissing && url.includes('/gemini-3.5-flash:')) return new Response('{"error":{"code":404}}', { status: 404 });
+    if (strongModelSlow && url.includes('/gemini-3.5-flash:')) return new Promise((_, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
     const payload = emptyReply
       ? { candidates: [{ content: { role: 'model', parts: [] }, finishReason: 'MAX_TOKENS' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2048 } }
       : geminiTurn++ === 0
@@ -135,6 +137,13 @@ strongModelMissing = false; geminiTurn = 1;
 const beforeKu = requests.length;
 await chat('hello', 'ku');
 assert.equal(requests[beforeKu].url.includes('/gemini-3.5-flash:'), true, 'the Kurdish app language also uses the stronger Gemini model');
+strongModelSlow = true; geminiTurn = 1;
+const slowStart = Date.now();
+const slowEvents = await chat('سڵاو', 'ku');
+assert.equal(slowEvents.find(e => e.type === 'mood')?.mood, 'happy', 'a busy stronger model hands over to flash-lite');
+assert.ok(Date.now() - slowStart < 15000);
+assert.equal(requests.at(-1).url.includes('gemini-3.5-flash-lite'), true);
+strongModelSlow = false;
 groqUnavailable = true; geminiTurn = 0;
 const fallbackEvents = await chat();
 assert.equal(fallbackEvents.at(-1).type, 'done');

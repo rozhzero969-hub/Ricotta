@@ -21,6 +21,7 @@
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const KURDISH_GEMINI_MODEL = "gemini-3.5-flash";   // writes much better Sorani; falls back to flash-lite
+const KURDISH_MODEL_WAIT_MS = 10_000;  // if it hasn't started answering by then (busy), flash-lite answers instead
 const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
 const MAX_TURNS = 4;               // cap slow tool round-trips per reply
 const MAX_OUTPUT_TOKENS = 2048;
@@ -849,10 +850,11 @@ async function execTool(db: any, w: World, name: string, args: any, emit: Emit, 
 }
 
 /* Returns true once it has answered (or shown an error), or the error code
-   when the very first request failed, so the caller can try another model. */
+   when the very first request failed (or took longer than firstWaitMs to
+   start), so the caller can try another model. */
 async function streamGemini(db: any, w: World, cfg: Awaited<ReturnType<typeof config>>,
   messages: any[], system: { text: string }[], emit: Emit, auto: boolean, signal: AbortSignal,
-  usage: { input: number; output: number }): Promise<true | string> {
+  usage: { input: number; output: number }, firstWaitMs = 0): Promise<true | string> {
   const contents: any[] = messages.map((m) => ({
     role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }],
   }));
@@ -860,16 +862,21 @@ async function streamGemini(db: any, w: World, cfg: Awaited<ReturnType<typeof co
   const declarations = TOOLS.map((tool) => ({
     name: tool.name, description: tool.description, parameters: tool.input_schema,
   }));
+  const call = new AbortController();
+  signal.addEventListener("abort", () => call.abort());
   for (let turn = 0; turn < MAX_TURNS; turn++) {
+    const slow = turn === 0 && firstWaitMs ? setTimeout(() => call.abort(), firstWaitMs) : 0;
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:streamGenerateContent?alt=sse`, {
-      method: "POST", signal,
+      method: "POST", signal: call.signal,
       headers: { "x-goog-api-key": cfg.key, "content-type": "application/json" },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: instruction }] }, contents,
         tools: [{ functionDeclarations: declarations }],
         generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "minimal" } },
       }),
-    });
+    }).catch((e) => { if (turn === 0 && call.signal.aborted && !signal.aborted) return null; throw e; })
+      .finally(() => clearTimeout(slow));
+    if (!res) { console.error("gemini", cfg.model, "slow"); return "busy"; }
     if (!res.ok) {
       console.error("gemini", cfg.model, res.status);
       const code = res.status === 401 || res.status === 403 ? "key_rejected"
@@ -1151,9 +1158,9 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
       const moods = moodFilter(send);
       const emit = moods.emit;
       try {
-        const gemini = (model: string) => {
+        const gemini = (model: string, firstWaitMs = 0) => {
           modelUsed = model;
-          return streamGemini(db, w, { provider: "gemini", key: cfg.geminiKey, model, geminiKey: cfg.geminiKey }, messages, system, emit, auto, upstream.signal, usage);
+          return streamGemini(db, w, { provider: "gemini", key: cfg.geminiKey, model, geminiKey: cfg.geminiKey }, messages, system, emit, auto, upstream.signal, usage, firstWaitMs);
         };
         const groq = cfg.provider === "groq" ? () => { modelUsed = cfg.model; return streamGroq(db, w, cfg, messages, system, emit, auto, upstream.signal, usage); } : null;
         // Kurdish or Arabic (the app language, or Arabic-script letters in the
@@ -1161,7 +1168,7 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
         const rtl = body.lang === "ku" || body.lang === "ar" || /[\u0600-\u06FF]/.test(messages[messages.length - 1].content);
         let failed: string | null = null;
         if (rtl && cfg.geminiKey) {
-          let r = await gemini(KURDISH_GEMINI_MODEL);
+          let r = await gemini(KURDISH_GEMINI_MODEL, KURDISH_MODEL_WAIT_MS);
           if (r !== true) r = await gemini(DEFAULT_GEMINI_MODEL);
           if (r !== true) failed = groq && await groq() ? null : r;
         } else if (groq) {
