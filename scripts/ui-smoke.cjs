@@ -130,7 +130,7 @@ const server=http.createServer((req,res)=>{
     await page.evaluate(()=>{ setSoundOn('qty',false); __tones=[]; lastTick=0; }); await inc.click();
     assert.deepEqual(await page.evaluate(()=>__tones),[],'no sound when that sound is turned off');
     await page.evaluate(()=>{ setSoundOn('qty',true); __tones=[]; playSwipe(true); playSwipe(false); });
-    assert.deepEqual(await page.evaluate(()=>__tones),[294,441,262,392],'swiping plays the quiet chord, higher going forward');
+    assert.deepEqual(await page.evaluate(()=>__tones),[587,881,523,785],'swiping plays the quiet chord (in the range phone speakers play), higher going forward');
     await page.evaluate(()=>{ __tones=[]; playOrdersSent(); });
     assert.deepEqual(await page.evaluate(()=>__tones.filter((f,i)=>i%2===0)),[523,659,784,1047],'orders sent plays the rising chime');
     assert.match(await page.evaluate(()=>maybeFinishQueue.toString()),/playOrdersSent\(\)/,'the chime belongs to finishing the order');
@@ -231,6 +231,14 @@ const server=http.createServer((req,res)=>{
     assert.match(await page.locator('.rico-hello').textContent(),/Rozha/,'Rico greets the account by name');
     assert.equal(await page.locator('#ricoNameForm').count(),0,'Rico never asks for a name');
     assert.ok(calls.some(c=>c.endpoint==='assistant/inbox/read'),'opening Rico reads his messages');
+    // Voice message: starting and stopping a recording runs cleanly (with a stand-in microphone).
+    assert.equal(await page.evaluate(async()=>{
+      const stream={getTracks:()=>[{stop(){}}]};
+      Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:async()=>stream},configurable:true});
+      window.MediaRecorder=class{ constructor(){ this.mimeType='audio/webm'; } static isTypeSupported(){ return true; } start(){} stop(){ this.onstop?.(); } };
+      window.ricoFinishVoice=()=>{};
+      await ricoToggleVoice(); const on=ricoRecorder.active; ricoResetVoice(); return on;
+    }),true,'a voice message starts recording without errors');
     await settle(page);
     assert.deepEqual(await page.evaluate(()=>{ render(); return [...document.querySelectorAll('.content, .content *')].flatMap(el=>el.getAnimations().filter(x=>x.playState==='running' && x.effect.getComputedTiming().iterations!==Infinity).map(x=>String(el.className.baseVal??el.className)+':'+(x.animationName||'js'))); }),[],'redrawing the same screen never replays an entrance animation');
     await page.locator('[data-rico-action="late_orders"]').click();
@@ -298,7 +306,8 @@ const server=http.createServer((req,res)=>{
     await page.locator('.toast-undo').click();
     assert.equal(await page.evaluate(()=>state.cart.i8),5,'clearing the order can be undone');
     await page.evaluate(()=>window.scrollTo(0,0));
-    // A finger swipe to the left moves from Order to Rico, with the page sliding.
+    // A finger swipe to the left moves from Order to Rico, with the page sliding (and the quiet chord).
+    await page.evaluate(()=>{ window.__tones=[]; window.soundTone=f=>__tones.push(Math.round(f)); });
     await page.evaluate(()=>{
       const el=document.querySelector('.content .page-heading'), r=el.getBoundingClientRect(), y=r.top+r.height/2;
       const fire=(type,x)=>document.dispatchEvent(Object.assign(new PointerEvent(type,{bubbles:true,pointerId:7,pointerType:'touch',clientX:x,clientY:y})));
@@ -308,6 +317,7 @@ const server=http.createServer((req,res)=>{
     });
     assert.equal(await page.evaluate(()=>state.view),'assistant','swiping the page moves to the next tab');
     assert.equal(await page.locator('.content.gliding').count(),1,'the swipe moves to the next page');
+    assert.deepEqual(await page.evaluate(()=>__tones),[587,881],'a real swipe forward plays the quiet chord');
     assert.ok(await page.evaluate(()=>document.querySelector('.content.gliding').getAnimations()[0].effect.getTiming().duration<PAGE_TRANSITION.ms),'a swipe finishes quicker than a tap');
     assert.ok(await page.evaluate(()=>{
       const out=document.querySelector('.page-ghost > .content').getAnimations()[0].effect.getKeyframes();
@@ -379,21 +389,15 @@ const server=http.createServer((req,res)=>{
     assert.equal(await y.page.locator('[data-delunit]').count(),1,'Yunis can delete units');
     await y.page.evaluate(()=>goView('settings'));
     assert.notEqual(await y.page.evaluate(()=>state.view),'settings','Settings cannot be opened by Yunis');
-    // Sounds & haptics: in More for Yunis too, one switch per sound plus haptics, never one of the 3 tabs.
+    // Sounds: in More for Yunis too, one switch per sound, never one of the 3 tabs.
     await y.page.evaluate(()=>goView('sounds')); await settle(y.page);
-    assert.equal(await y.page.evaluate(()=>state.view),'sounds','Yunis can open Sounds & haptics');
+    assert.equal(await y.page.evaluate(()=>state.view),'sounds','Yunis can open Sounds');
     await snapshot(y.page,'phone-sounds.png');
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['sound-qty:true','sound-sent:true','sound-swipe:true','hapticsToggle:true'],'every sound and haptics has its own switch, all on to start');
-    assert.equal(await y.page.locator('.bottomnav .nav-more [data-view="sounds"]').count(),1,'Sounds & haptics is in More');
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['sound-qty:true','sound-sent:true','sound-swipe:true'],'every sound has its own switch, all on to start');
+    assert.equal(await y.page.locator('.bottomnav .nav-more [data-view="sounds"]').count(),1,'Sounds is in More');
     await y.page.locator('label:has(#sound-swipe)').click();
     assert.deepEqual(await y.page.evaluate(()=>[soundOn('swipe'),soundOn('qty')]),[false,true],'turning one sound off leaves the others on');
-    await y.page.evaluate(()=>{ Object.defineProperty(Navigator.prototype,'vibrate',{value:undefined,configurable:true}); document.getElementById('sound-qty').focus(); haptic(); });
-    assert.deepEqual(await y.page.evaluate(()=>[!!document.querySelector('label[aria-hidden] input[switch]'), document.activeElement.id]),[true,'sound-qty'],'iPhone haptics use a hidden switch and keep focus where it was');
-    await y.page.locator('label:has(#hapticsToggle)').click();
-    assert.equal(await y.page.evaluate(()=>hapticsOn()),false,'haptics can be turned off');
-    await y.page.evaluate(()=>{ window.__h=0; hapticSwitch.addEventListener('click',()=>__h++); haptic(); });
-    assert.equal(await y.page.evaluate(()=>__h),0,'no haptics once turned off');
-    assert.equal(await y.page.evaluate(()=>tabChoices().includes('sounds')),false,'Sounds & haptics cannot be picked as a main tab');
+    assert.equal(await y.page.evaluate(()=>tabChoices().includes('sounds')),false,'Sounds cannot be picked as a main tab');
     await snapshot(y.page,'phone-yunis.png');
     await y.ctx.close();
 
@@ -459,6 +463,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await reduced.page.locator('.content.gliding').count(),0,'reduced motion skips the page transition');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, sounds and haptics, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, sounds, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

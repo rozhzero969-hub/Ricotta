@@ -383,7 +383,6 @@ async function ricoToggleVoice(){
   rec.onstop = ()=>ricoFinishVoice(rec.mimeType || mime || 'audio/webm');
   rec.start(250);
   ricoRecorder.timer = setTimeout(()=>{ if(ricoRecorder.active) try{ rec.stop(); }catch(e){} }, 60000);
-  haptic(10);
   ricoRefreshComposer();
 }
 function ricoResetVoice(){
