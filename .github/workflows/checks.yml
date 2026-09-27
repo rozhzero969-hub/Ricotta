@@ -2,7 +2,7 @@ name: Checks
 
 # Runs the repo's two local smoke tests on every push and PR to main. Neither
 # test calls the live Supabase project or any real API key -- both mock
-# everything (see scripts/README.md and the header comment in each script).
+# everything (see the header comment in each script).
 # This is the one thing standing between "someone pushes a change" and "Rico
 # or the app breaks in production with nobody noticing until a kitchen shift
 # hits it" -- there was no CI here before.
