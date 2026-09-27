@@ -641,7 +641,9 @@ function transitionFrames(dir, w){
     case 'fade':  return {inn:[{opacity:0}, {opacity:1}], out:[{opacity:1}, {opacity:0}]};
     case 'rise':  return {inn:[{transform:'translate3d(0,16px,0)', opacity:0}, {transform:'none', opacity:1}]};
     case 'slide': return {inn:[{transform:`translate3d(${dir*w}px,0,0)`}, {transform:'none'}], out:[{transform:'none'}, {transform:`translate3d(${-dir*w}px,0,0)`}]};
-    case 'push':  return {inn:[{transform:`translate3d(${dir*w}px,0,0)`}, {transform:'none'}], out:[{transform:'none', opacity:1}, {transform:`translate3d(${-dir*w*.3}px,0,0)`, opacity:.35}]};
+    // The old page is fully faded by half-way: the glass is clear, so any of it
+    // still showing would read through the new page sliding over it.
+    case 'push':  return {inn:[{transform:`translate3d(${dir*w}px,0,0)`}, {transform:'none'}], out:[{transform:'none', opacity:1}, {opacity:0, offset:.45}, {transform:`translate3d(${-dir*w*.3}px,0,0)`, opacity:0}]};
     case 'zoom':  return {inn:[{transform:'scale(.955)', opacity:0}, {transform:'none', opacity:1}]};
     case 'blur':  return {inn:[{filter:'blur(8px)', opacity:0}, {filter:'none', opacity:1}]};
     default: return null;
