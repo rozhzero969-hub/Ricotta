@@ -626,8 +626,8 @@ function haptic(ms=8){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(_
      push   slide over, old page drifts and dims   zoom   grow in slightly
      blur   come into focus                        none   instant */
 const PAGE_TRANSITION = {style:'push', ms:950};   // chosen by Rozha
-// A swipe finishes quicker: the finger already did part of the move.
-const SWIPE_MS = 440;
+// A swipe is a little quicker: the finger already did part of the move.
+const SWIPE_MS = 620;
 // A tap: eases in, glides, and settles softly (the motion is spread over the
 // whole time instead of jumping in the first moment).
 const PAGE_EASE = 'cubic-bezier(.45,.05,.2,1)';
@@ -655,6 +655,12 @@ function transitionFrames(dir, w){
     default: return null;
   }
 }
+/* After a swipe both pages travel together, edge to edge: the old one slides
+   all the way off to the other side while the new one pushes in beside it.
+   Nothing fades and nothing overlaps, so no page ever shows through another. */
+function swipeFrames(dir, w){
+  return {inn:[{transform:`translate3d(${dir*w}px,0,0)`}, {transform:'none'}], out:[{transform:'none'}, {transform:`translate3d(${-dir*w}px,0,0)`}]};
+}
 /* The page that is leaving, laid exactly where it was. Its parts are moved
    (not copied) into a fixed layer, so even the 179-item Order page costs
    nothing to set up; the fresh page is then drawn into the emptied .content. */
@@ -680,7 +686,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   const dir = (Math.sign(viewIndex(view) - viewIndex(state.view)) || 1) * (isRtl() ? -1 : 1);
   const old = document.querySelector('.content');
   const width = old ? old.getBoundingClientRect().width : window.innerWidth;
-  const frames = old && old.animate && !reducedMotion() ? transitionFrames(dir, width) : null;
+  const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : transitionFrames(dir, width)) : null;
   const ghost = frames?.out ? pageGhost(old) : null;
   state.view = view;
   if(view === 'record') state.recordFilter = 'all';
@@ -693,9 +699,8 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   if(!frames || !content){ ghost?.layer.remove(); if(content) content.style.transform = ''; return; }
   // After a swipe, pages start from where the finger left them.
   if(fromOffset){
-    const moves = PAGE_TRANSITION.style === 'slide' || PAGE_TRANSITION.style === 'push';
-    frames.inn[0] = {...frames.inn[0], transform:`translate3d(${moves ? dir*width + fromOffset : fromOffset*.25}px,0,0)`};
-    if(frames.out) frames.out[0] = {...frames.out[0], transform:`translate3d(${fromOffset}px,0,0)`};
+    frames.inn[0] = {transform:`translate3d(${dir*width + fromOffset}px,0,0)`};
+    frames.out[0] = {transform:`translate3d(${fromOffset}px,0,0)`};
   }
   const opts = fromOffset ? {duration:SWIPE_MS, easing:SWIPE_EASE} : {duration:PAGE_TRANSITION.ms, easing:PAGE_EASE};
   content.style.transform = '';
@@ -1018,8 +1023,9 @@ async function pressKey(k){
   maybeOpenRicoProviderSetup();
 }
 /* The secret code, typed on the keypad instead of a PIN: "Who are you?"
-   (only "rozha" goes on; anything else just closes), then Rozha's PIN, then
-   new PINs and/or a new secret code. Saving signs every phone out. */
+   (only the saved answer, written exactly, goes on; anything else just
+   closes), then Rozha's PIN, then new PINs, a new secret code and/or a new
+   answer. Saving a PIN or the code signs every phone out. */
 async function startRecovery(ticket){
   const name = await showPrompt(esc(t('whoAreYou')), {plain:true, okLabel:t('continue'), cancelLabel:t('cancel')});
   if(name === null) return;
@@ -1032,16 +1038,17 @@ async function startRecovery(ticket){
   const field = (id, label)=>`<div class="field"><label for="${id}">${esc(label)}</label><input id="${id}" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" data-clear="1"></div>`;
   await showFormModal({
     title: t('recoveryTitle'),
-    bodyHtml: `<div class="notif-sub">${esc(t('recoveryHint'))}</div>${field('recRozha', t('recoveryNewRozha'))}${field('recYunis', t('recoveryNewYunis'))}${field('recCode', t('recoveryNewCode'))}`,
+    bodyHtml: `<div class="notif-sub">${esc(t('recoveryHint'))}</div>${field('recRozha', t('recoveryNewRozha'))}${field('recYunis', t('recoveryNewYunis'))}${field('recCode', t('recoveryNewCode'))}`
+      + `<div class="field"><label for="recAnswer">${esc(t('recoveryNewAnswer'))}</label><input id="recAnswer" type="text" maxlength="40" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false"><div class="field-hint">${esc(t('recoveryAnswerHint'))}</div></div>`,
     okLabel: t('save'),
     onSubmit: async ()=>{
       const v = id=>document.getElementById(id).value.trim();
-      const rozhaPin = v('recRozha'), yunisPin = v('recYunis'), secretCode = v('recCode');
+      const rozhaPin = v('recRozha'), yunisPin = v('recYunis'), secretCode = v('recCode'), answer = v('recAnswer');
       const given = [rozhaPin, yunisPin, secretCode].filter(Boolean);
-      if(!given.length) return {error:t('recoveryNothing')};
+      if(!given.length && !answer) return {error:t('recoveryNothing')};
       if(given.some(x=>!/^\d{6}$/.test(x))) return {error:t('pinsInvalidLength')};
       if(new Set(given).size !== given.length) return {error:t('pinsDuplicate')};
-      const r = await api('recovery/save', {method:'POST', body:{ticket, rozhaPin, yunisPin, secretCode}});
+      const r = await api('recovery/save', {method:'POST', body:{ticket, rozhaPin, yunisPin, secretCode, answer}});
       if(r.ok){ setTimeout(()=>showAlert(esc(t('recoverySaved'))), 260); return {}; }
       const code = r.data && r.data.error;
       if(code === 'weak_pin') return {error:t('pinsWeak')};
