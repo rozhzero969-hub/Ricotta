@@ -115,10 +115,10 @@ function ensureDeviceId(){
   return id;
 }
 function myDevice(){ return state.devices.find(d=>d.id===state.deviceId); }
-/* "iPhone 16/17 Pro Max" and "App" / "Chrome" from the label the device sends. */
+/* "iPhone 16/17 Pro Max" and "App" / "Website" from the label the device sends. */
 function deviceParts(d){
   const [kind, how] = String(d.label || '').split('|');
-  return {kind: kind || t('deviceNotReported'), how: how === 'App' ? t('deviceApp') : how ? `${t('deviceWebsite')} \u00b7 ${how}` : ''};
+  return {kind: kind || t('deviceNotReported'), how: how === 'App' ? t('deviceApp') : how ? t('deviceWebsite') : ''};
 }
 function deviceTitle(d){ const p = deviceParts(d); return `${accountLabel(d.account) || t('unnamedDevice')} \u00b7 ${p.kind}`; }
 function otherDevices(){ return state.devices.filter(d=>d.id !== state.deviceId); }
@@ -769,6 +769,38 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   document.addEventListener('pointercancel', end);
 })();
 window.addEventListener('resize', ()=>requestAnimationFrame(placeNavIndicator));
+
+/* Typing on a phone. iOS slides the whole screen up to show a field the
+   keyboard would cover, which drags the top bar away and leaves the tab bar
+   floating on the keyboard. Instead: a tapped field in the lower half is
+   first brought up under the top bar (so the keyboard never covers it and
+   nothing else has to move), the tab bar steps aside while typing, and
+   popups stay centred in the part of the screen that is still visible. */
+const TEXT_ENTRY = 'input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button]),textarea,select';
+(function initTyping(){
+  let start = null;
+  document.addEventListener('touchstart', e=>{ start = e.touches[0] ? e.touches[0].clientY : null; }, {passive:true});
+  document.addEventListener('touchend', e=>{
+    const field = e.target.closest && e.target.closest(TEXT_ENTRY);
+    const moved = start === null || !e.changedTouches[0] || Math.abs(e.changedTouches[0].clientY - start) > 10;
+    if(!field || moved || field === document.activeElement || !isPhoneLayout() || !field.closest('.content')) return;
+    const r = field.getBoundingClientRect();
+    if(r.bottom < window.innerHeight * .42) return;
+    const top = (document.querySelector('.topbar')?.getBoundingClientRect().bottom || 0) + 14;
+    window.scrollBy({top:r.top - top, behavior:'instant'});
+  }, {passive:true});
+  const typing = on=>document.body.classList.toggle('typing', on);
+  document.addEventListener('focusin', e=>typing(!!e.target.matches?.(TEXT_ENTRY)));
+  document.addEventListener('focusout', ()=>setTimeout(()=>typing(!!document.activeElement?.matches?.(TEXT_ENTRY)), 60));
+  const vv = window.visualViewport;
+  if(!vv) return;
+  const fit = ()=>{
+    const root = document.documentElement.style;
+    root.setProperty('--vv-top', vv.offsetTop + 'px');
+    root.setProperty('--vv-height', vv.height + 'px');
+  };
+  vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
+})();
 
 /* The top bar gains depth once the page scrolls under it, and (like an iOS
    large title) the ricotta mark gives way to the screen's name. */

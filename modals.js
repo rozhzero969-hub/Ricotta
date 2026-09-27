@@ -307,7 +307,9 @@ function showFormModal(opts) {
     
     if (opts.onOpen) opts.onOpen(box);
     
+    // A computer starts in the first field. A phone waits for a tap, so the
+    // keyboard only opens for the field that is actually being changed.
     const first = box.querySelector('input, select');
-    if (first) first.focus();
+    if (first && matchMedia('(pointer: fine)').matches) first.focus();
   });
 }

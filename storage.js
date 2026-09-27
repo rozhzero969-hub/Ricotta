@@ -59,10 +59,8 @@ function deviceLabel(){
   else if(/Linux/.test(ua)) kind = 'Linux PC';
   else kind = 'Device';
   const app = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
-  const browser = /EdgiOS|Edg\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /CriOS|Chrome\//.test(ua) ? 'Chrome'
-    : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
-  // "kind|how", e.g. "Windows PC|Chrome" (the app shows the two parts separately).
-  deviceLabelCache = `${kind}|${app ? 'App' : browser}`.replace(/[^\x20-\x7E]/g, '').slice(0, 80);
+  // "kind|how", e.g. "Windows PC|Website" (the app shows the two parts separately).
+  deviceLabelCache = `${kind}|${app ? 'App' : 'Website'}`.replace(/[^\x20-\x7E]/g, '').slice(0, 80);
   return deviceLabelCache;
 }
 /* Chrome on Android hides the model in the user agent; ask for it once. */
