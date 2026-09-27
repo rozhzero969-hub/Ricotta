@@ -357,6 +357,7 @@ const server=http.createServer((req,res)=>{
     const saved=login.calls.find(c=>c.endpoint==='recovery/save');
     assert.deepEqual([saved.body.ticket,saved.body.yunisPin,saved.body.rozhaPin,saved.body.secretCode],['fixture-ticket','111111','',''],'only the filled-in code is sent');
     await login.page.locator('#modalAlertOkBtn').click();
+    await login.page.waitForFunction(()=>!document.querySelector('#modalRoot .modal-overlay'));
     // Yunis signs in: welcome back, by name.
     await login.page.keyboard.type('200666');
     await login.page.waitForSelector('#welcome');

@@ -177,7 +177,7 @@ begin
     update public.app_accounts set pin_hash = extensions.crypt(p_yunis, extensions.gen_salt('bf', 12)), updated_at = now() where id = 'yunis';
   end if;
   if p_code is not null then
-    update public.app_secrets set value = extensions.crypt(p_code, extensions.gen_salt('bf', 12)), updated_at = now() where key = 'recovery_code_hash';
+    update public.app_secrets set value = extensions.crypt(p_code, extensions.gen_salt('bf', 12)) where key = 'recovery_code_hash';
   end if;
   update public.app_sessions set revoked_at = now() where revoked_at is null;
   delete from public.app_recovery_tickets;
