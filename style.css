@@ -84,6 +84,11 @@ html:not(.rtl) .page-heading h1{letter-spacing:-.04em}
 /* Page transition (see goView): a still copy of the old page, when the style moves it. */
 .page-ghost{position:fixed;top:0;bottom:0;z-index:20;overflow:hidden;pointer-events:none}
 .page-ghost>.content{position:absolute;left:0;margin:0}
+/* While pages move, the glass blur pauses (the page behind it is plain, so it
+   looks the same): recomputing a 35px blur under every moving card each frame
+   is what made transitions lag on phones. */
+.content.gliding,.page-ghost>.content{will-change:transform,opacity}
+.content.gliding *,.page-ghost *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 body.page-swiping *{transition:none!important}
 
 /* ---------- Top bar: the page's own colour, glass chips on top ---------- */

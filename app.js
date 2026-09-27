@@ -625,8 +625,8 @@ function haptic(ms=8){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(_
      rise   fade in lifting up                     slide  full-width slide
      push   slide over, old page drifts and dims   zoom   grow in slightly
      blur   come into focus                        none   instant */
-const PAGE_TRANSITION = {style:'soft', ms:340};
-const PAGE_EASE = 'cubic-bezier(.25,.8,.25,1)';
+const PAGE_TRANSITION = {style:'push', ms:900};   // chosen by Rozha
+const PAGE_EASE = 'cubic-bezier(.22,1,.36,1)';     // quick start, long soft landing
 let glide = null;
 function endGlide(){
   if(!glide) return;
@@ -647,14 +647,18 @@ function transitionFrames(dir, w){
     default: return null;
   }
 }
-/* A still copy of the page that is leaving, laid exactly over it. */
+/* The page that is leaving, laid exactly where it was. Its parts are moved
+   (not copied) into a fixed layer, so even the 179-item Order page costs
+   nothing to set up; the fresh page is then drawn into the emptied .content. */
 function pageGhost(content){
   const r = content.getBoundingClientRect();
   const layer = document.createElement('div');
   layer.className = 'page-ghost'; layer.setAttribute('aria-hidden','true');
   Object.assign(layer.style, {left:r.left+'px', width:r.width+'px'});
-  const copy = content.cloneNode(true);
-  copy.removeAttribute('id'); copy.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+  const copy = content.cloneNode(false);
+  copy.removeAttribute('id');
+  while(content.firstChild) copy.appendChild(content.firstChild);
+  copy.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
   Object.assign(copy.style, {top:r.top+'px', width:r.width+'px', transform:content.style.transform || ''});
   layer.appendChild(copy);
   document.body.appendChild(layer);
