@@ -118,7 +118,7 @@ function myDevice(){ return state.devices.find(d=>d.id===state.deviceId); }
 /* "iPhone 16/17 Pro Max" and "App" / "Chrome" from the label the device sends. */
 function deviceParts(d){
   const [kind, how] = String(d.label || '').split('|');
-  return {kind: kind || t('unnamedDevice'), how: how === 'App' ? t('deviceApp') : (how || '')};
+  return {kind: kind || t('deviceNotReported'), how: how === 'App' ? t('deviceApp') : how ? `${t('deviceWebsite')} \u00b7 ${how}` : ''};
 }
 function deviceTitle(d){ const p = deviceParts(d); return `${accountLabel(d.account) || t('unnamedDevice')} \u00b7 ${p.kind}`; }
 function otherDevices(){ return state.devices.filter(d=>d.id !== state.deviceId); }
@@ -625,8 +625,12 @@ function haptic(ms=8){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(_
      rise   fade in lifting up                     slide  full-width slide
      push   slide over, old page drifts and dims   zoom   grow in slightly
      blur   come into focus                        none   instant */
-const PAGE_TRANSITION = {style:'push', ms:900};   // chosen by Rozha
-const PAGE_EASE = 'cubic-bezier(.22,1,.36,1)';     // quick start, long soft landing
+const PAGE_TRANSITION = {style:'push', ms:950};   // chosen by Rozha
+// A tap: eases in, glides, and settles softly (the motion is spread over the
+// whole time instead of jumping in the first moment).
+const PAGE_EASE = 'cubic-bezier(.45,.05,.2,1)';
+// After a swipe the page is already moving with the finger, so it keeps going.
+const SWIPE_EASE = 'cubic-bezier(.2,.55,.25,1)';
 let glide = null;
 function endGlide(){
   if(!glide) return;
@@ -691,7 +695,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
     frames.inn[0] = {...frames.inn[0], transform:`translate3d(${moves ? dir*width + fromOffset : fromOffset*.25}px,0,0)`};
     if(frames.out) frames.out[0] = {...frames.out[0], transform:`translate3d(${fromOffset}px,0,0)`};
   }
-  const opts = {duration:PAGE_TRANSITION.ms, easing:PAGE_EASE};
+  const opts = {duration:PAGE_TRANSITION.ms, easing:fromOffset ? SWIPE_EASE : PAGE_EASE};
   content.style.transform = '';
   content.classList.add('gliding');
   const anims = [content.animate(frames.inn, opts)];
@@ -2400,7 +2404,7 @@ function renderDevices(){
       <div class="dev-top">
         <div class="dev-name">${esc(who || t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
       </div>
-      <div class="dev-kind">${/iPhone|Android|iPad/.test(parts.kind) ? NAV_ICONS.devices : ICON_COMPUTER} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
+      <div class="dev-kind">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : NAV_ICONS.devices} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
       <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span></div>
       <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
       ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
