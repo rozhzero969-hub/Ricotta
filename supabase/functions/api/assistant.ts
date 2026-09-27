@@ -27,7 +27,6 @@ const DB_TIMEOUT_MS = 12_000;      // a single stuck database call can no longer
 const REPLIES_PER_HOUR = 60;       // per device (or per session, if the device has no id -- never skipped)
 const REPLIES_PER_HOUR_TOTAL = 400; // whole restaurant, all devices combined
 const HISTORY_DAYS = 180;          // how far back Rico looks at orders
-const STOCK_DECAY_LOOKBACK_DAYS = 60; // how far back the par-level usage-rate estimate looks
 const TZ = "Asia/Baghdad";         // Erbil
 const MOODS = ["happy", "excited", "grateful", "calm", "thinking", "worried", "sad", "angry"];
 const NAMES: Record<string, string> = { rozha: "Rozha", yunis: "Yunis" };
@@ -587,7 +586,7 @@ function proposeNewSupplier(w: World, a: any, emit: Emit) {
   return { shown: true, what_happens: "The person confirms on a card. They can add a reminder later in Suppliers." };
 }
 
-function proposeNotification(w: World, a: any, emit: Emit) {
+function proposeNotification(a: any, emit: Emit) {
   const en = text(a.message_en, 300), ku = text(a.message_ku, 300), ar = text(a.message_ar, 300);
   if (!en || !ku || !ar) return { error: "Write the message in all three languages: English, Kurdish (Sorani) and Arabic." };
   emit({ type: "proposal", proposal: { id: pid(), kind: "notify", title: text(a.title, 60) || "Rico", en, ku, ar } });
@@ -824,9 +823,9 @@ export async function saveGroqKey(db: any, key: unknown) {
    streamGroq before this; the actual request/response wire format still
    differs enough per provider (Gemini's functionCall/functionResponse parts
    vs. Groq's OpenAI-style tool_calls) that only this inner piece is shared. */
-async function execTool(db: any, w: World, s: Session, name: string, args: any, emit: Emit, auto: boolean): Promise<{ value: unknown; text: string }> {
+async function execTool(db: any, w: World, name: string, args: any, emit: Emit, auto: boolean): Promise<{ value: unknown; text: string }> {
   let out: unknown;
-  try { out = await runTool(db, w, s, name, args, emit, auto); }
+  try { out = await runTool(db, w, name, args, emit, auto); }
   catch (e) { console.error("tool", name, e); out = { error: "The tool failed. Try another way or tell the person." }; }
   const json = JSON.stringify(out) ?? "null";
   const truncated = json.length > 60000;
@@ -835,7 +834,7 @@ async function execTool(db: any, w: World, s: Session, name: string, args: any, 
   return { value: truncated ? json.slice(0, 60000) : out, text: truncated ? json.slice(0, 60000) : json };
 }
 
-async function streamGemini(db: any, w: World, s: Session, cfg: Awaited<ReturnType<typeof config>>,
+async function streamGemini(db: any, w: World, cfg: Awaited<ReturnType<typeof config>>,
   messages: any[], system: { text: string }[], emit: Emit, auto: boolean, signal: AbortSignal,
   usage: { input: number; output: number }) {
   const contents: any[] = messages.map((m) => ({
@@ -893,7 +892,7 @@ async function streamGemini(db: any, w: World, s: Session, cfg: Awaited<ReturnTy
     contents.push({ role: "model", parts });
     const results: any[] = [];
     for (const call of calls) {
-      const { value } = await execTool(db, w, s, call.name, call.args ?? {}, emit, auto);
+      const { value } = await execTool(db, w, call.name, call.args ?? {}, emit, auto);
       results.push({ functionResponse: {
         name: call.name, ...(call.id ? { id: call.id } : {}),
         response: { result: value },
@@ -907,7 +906,7 @@ async function streamGemini(db: any, w: World, s: Session, cfg: Awaited<ReturnTy
 
 /* Groq's chat API is OpenAI-compatible. GPT-OSS does not support parallel
    local tool calls, so each tool round trip is deliberately sequential. */
-async function streamGroq(db: any, w: World, s: Session, cfg: Awaited<ReturnType<typeof config>>,
+async function streamGroq(db: any, w: World, cfg: Awaited<ReturnType<typeof config>>,
   messages: any[], system: { text: string }[], emit: Emit, auto: boolean, signal: AbortSignal,
   usage: { input: number; output: number }): Promise<boolean> {
   const conversation: any[] = [
@@ -961,7 +960,7 @@ async function streamGroq(db: any, w: World, s: Session, cfg: Awaited<ReturnType
       let args: any = {};
       try { args = JSON.parse(call.function.arguments || "{}"); } catch { args = {}; }
       emit({ type: "status", tool: call.function.name });
-      const { text: result } = await execTool(db, w, s, call.function.name, args, emit, auto);
+      const { text: result } = await execTool(db, w, call.function.name, args, emit, auto);
       conversation.push({ role: "tool", tool_call_id: call.id, content: result });
     }
   }
@@ -1134,14 +1133,14 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
       const emit = moods.emit;
       try {
         if (cfg.provider === "groq") {
-          const groqAnswered = await streamGroq(db, w, s, cfg, messages, system, emit, auto, upstream.signal, usage);
+          const groqAnswered = await streamGroq(db, w, cfg, messages, system, emit, auto, upstream.signal, usage);
           if (!groqAnswered) {
             if (cfg.geminiKey) {
               modelUsed = DEFAULT_GEMINI_MODEL;
-              await streamGemini(db, w, s, { provider: "gemini", key: cfg.geminiKey, model: DEFAULT_GEMINI_MODEL, geminiKey: cfg.geminiKey }, messages, system, emit, auto, upstream.signal, usage);
+              await streamGemini(db, w, { provider: "gemini", key: cfg.geminiKey, model: DEFAULT_GEMINI_MODEL, geminiKey: cfg.geminiKey }, messages, system, emit, auto, upstream.signal, usage);
             } else emit({ type: "error", code: "failed" });
           }
-        } else await streamGemini(db, w, s, cfg, messages, system, emit, auto, upstream.signal, usage);
+        } else await streamGemini(db, w, cfg, messages, system, emit, auto, upstream.signal, usage);
         moods.flush();
         emit({ type: "done" });
       } catch (e) {
@@ -1234,7 +1233,7 @@ export async function handleTranscribe(db: any, s: Session, body: any, cors: Rec
   return out({ text: text.trim().slice(0, 2000) });
 }
 
-async function runTool(db: any, w: World, s: Session, name: string, a: any, emit: Emit, auto: boolean): Promise<unknown> {
+async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto: boolean): Promise<unknown> {
   if (!STATUS_TOOLS.has(name)) return { error: "Unknown tool." };
   switch (name) {
     case "find_items": return toolFindItems(w, a);
@@ -1251,7 +1250,7 @@ async function runTool(db: any, w: World, s: Session, name: string, a: any, emit
     case "propose_new_item": return proposeNewItem(w, a, emit);
     case "propose_edit_item": return proposeEditItem(w, a, emit);
     case "propose_new_supplier": return proposeNewSupplier(w, a, emit);
-    case "propose_notification": return proposeNotification(w, a, emit);
+    case "propose_notification": return proposeNotification(a, emit);
     case "open_screen": return proposeOpen(a, emit);
   }
   return { error: "Unknown tool." };

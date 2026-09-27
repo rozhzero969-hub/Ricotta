@@ -12,7 +12,7 @@
    The server decides which screens an account may open (bootstrap.views) and
    enforces the same rules on every request. */
 /* ============ State ============ */
-let state = {
+const state = {
   lang: 'en',
   account: null,        // 'rozha' | 'yunis' | null (signed out)
   name: '',             // "Rozha" / "Yunis"
@@ -320,7 +320,7 @@ function signOut(reason){
   closeLangMenu();
   render();
 }
-async function doLogout(){
+function doLogout(){
   api('logout', {method:'POST'});      // fire-and-forget; the token is dropped locally either way
   signOut();
 }
@@ -840,7 +840,7 @@ function setLang(lang){
    so every phone signed in to that account gets the same tabs). */
 function openTabEditor(){
   setMoreOpen(false);
-  let picked = state.tabs.slice();
+  const picked = state.tabs.slice();
   showFormModal({
     title: t('editTabs'),
     bodyHtml: `<div class="notif-sub">${esc(t('editTabsHint'))}</div><div class="tab-pick" id="tabPick"></div>`,
@@ -1468,7 +1468,7 @@ function openItemMenu(row){
 /* "Rico suggests": today's most due supplier with its usual items, worked
    out on the server from order history (no AI call). Loaded quietly after
    the Order screen appears and cached for a few minutes. */
-let ricoSuggestion = {data:null, at:0, busy:false};
+const ricoSuggestion = {data:null, at:0, busy:false};
 const RICO_SUGGEST_TTL = 4*60*1000;
 function ricoSuggestionKey(sg){ return sg ? erbilNow().date+'|'+sg.supplierId : ''; }
 function currentRicoSuggestion(){
@@ -1721,7 +1721,7 @@ async function refreshActivity(){
 /* [[key, oldValue, newValue], ...] -> only the ones that actually changed. */
 function diffFields(list){
   return list
-    .filter(([k, from, to]) => String(from||'') !== String(to||''))
+    .filter(([, from, to]) => String(from||'') !== String(to||''))
     .map(([k, from, to]) => ({k, from: from||'', to: to||''}));
 }
 function unitEn(unitId){

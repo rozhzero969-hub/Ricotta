@@ -23,7 +23,7 @@ const ICON_SEND_UP = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none
 const ICON_STOP = `<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"/></svg>`;
 const ICON_NEW_CHAT = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
 
-let rico = {
+const rico = {
   messages: [],
   streaming: false,
   abort: null,
@@ -282,7 +282,7 @@ function ricoFormat(src){
 /* ---------- Proposal cards ---------- */
 function renderRicoProposal(p, mi){
   const done = p.status === 'applied', gone = p.status === 'dismissed' || p.status === 'undone';
-  const actions = (primary, primaryLabel)=> gone
+  const actions = primaryLabel=> gone
       ? `<div class="rico-card-state">${p.status==='undone'?t('ricoUndone'):t('ricoDismissed')}</div>`
       : done
         ? `<div class="rico-card-state ok">✓ ${esc(p.doneLabel || t('ricoDone'))}${p.kind==='order' ? ` <button class="rico-link" data-rico-open="order">${t('ricoOpenOrder')}</button>${p.undo?` <button class="rico-link" data-rico-undo="${mi}|${esc(p.id)}">${t('ricoUndo')}</button>`:''}` : ''}</div>`
@@ -298,28 +298,28 @@ function renderRicoProposal(p, mi){
       + (p.note ? `<div class="rico-card-note">${esc(p.note)}</div>` : '')
       + (p.mode==='add' ? `<div class="rico-card-note">${t('ricoAddsToDraft')}</div>` : '')
       + (p.mode==='set' ? `<div class="rico-card-note">${t('ricoSetsDraft')}</div>` : '');
-    return ricoCard(icon, title, body, actions('order', p.mode==='set' ? t('ricoApplyChanges') : t('ricoPutInOrder')), p);
+    return ricoCard(icon, title, body, actions(p.mode==='set' ? t('ricoApplyChanges') : t('ricoPutInOrder')), p);
   }
   if(p.kind === 'new_item'){
     icon = ICON_PLUS; title = t('ricoCardNewItem');
     body = ricoFields([[t('name'), p.name], [t('unit'), unitLabel(p.unitId) || p.unit], [t('supplier'), p.supplier || t('noSupplier')]]);
-    return ricoCard(icon, title, body, actions('new_item', t('addItem')), p);
+    return ricoCard(icon, title, body, actions(t('addItem')), p);
   }
   if(p.kind === 'edit_item'){
     icon = ICON_EDIT; title = t('ricoCardEditItem');
     const row = (label, a, b)=> a===b ? [label, b] : [label, `<s>${esc(a)}</s> → ${esc(b)}`, true];
     body = ricoFields([row(t('name'), p.before.name, p.name), row(t('unit'), p.before.unit, p.unit), row(t('supplier'), p.before.supplier, p.supplier || t('noSupplier'))]);
-    return ricoCard(icon, title, body, actions('edit_item', t('save')), p);
+    return ricoCard(icon, title, body, actions(t('save')), p);
   }
   if(p.kind === 'new_supplier'){
     icon = NAV_ICONS.suppliers; title = t('ricoCardNewSupplier');
     body = ricoFields([[t('name'), p.name], [t('phone'), p.phone || '—']]);
-    return ricoCard(icon, title, body, actions('new_supplier', t('addSupplier')), p);
+    return ricoCard(icon, title, body, actions(t('addSupplier')), p);
   }
   if(p.kind === 'notify'){
     icon = ICON_BELL; title = t('ricoCardNotify');
     body = `<div class="rico-card-note"><b>${esc(p.title)}</b></div><div class="rico-card-msg" dir="ltr">${esc(p.en)}</div><div class="rico-card-msg" dir="rtl" lang="ckb">${esc(p.ku)}</div><div class="rico-card-msg" dir="rtl" lang="ar">${esc(p.ar || '')}</div>`;
-    return ricoCard(icon, title, body, actions('notify', t('notifSend')), p);
+    return ricoCard(icon, title, body, actions(t('notifSend')), p);
   }
   if(p.kind === 'open'){
     if(p.screen !== 'send' && !canOpen(p.screen)) return '';
@@ -353,7 +353,7 @@ function ricoComposerHint(){
    Tap the microphone, speak (Kurdish or English), tap again: the clip goes
    to the server, comes back as text, and is sent to Rico like a typed
    message. Recording stops by itself after a minute. Nothing is stored. */
-let ricoRecorder = {active:false, busy:false, rec:null, stream:null, chunks:[], timer:0};
+const ricoRecorder = {active:false, busy:false, rec:null, stream:null, chunks:[], timer:0};
 function ricoVoiceSupported(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder); }
 function blobToBase64(blob){
   return new Promise((resolve, reject)=>{ const r = new FileReader(); r.onload = ()=>resolve(String(r.result).split(',')[1] || ''); r.onerror = reject; r.readAsDataURL(blob); });
