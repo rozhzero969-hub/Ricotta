@@ -809,6 +809,17 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   input,select,textarea{font-size:16px!important}
   .content{touch-action:pan-y}
   body.rico-typing .bottomnav,body.typing .bottomnav,body.typing .bottom-bar{display:none}
+  /* The app frame (Home Screen app on a touch screen): like a native app, the
+     page never scrolls or bounces; the frame always fills exactly the part of
+     the screen that is visible (it shrinks above the keyboard), the top bar
+     stays put, and only the screen's content scrolls. */
+  html.app-shell,html.app-shell body{height:100%;overflow:hidden;overscroll-behavior:none}
+  html.app-shell body{position:fixed;inset:0;-webkit-touch-callout:none}
+  html.app-shell #app{position:fixed;left:0;right:0;top:var(--vv-top,0px);height:var(--vv-height,100dvh);min-height:0;overflow:hidden}
+  html.app-shell #app[data-screen="login"]{overflow-y:auto;overscroll-behavior:contain}
+  html.app-shell .topbar{flex:none}
+  html.app-shell .content{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  html.app-shell .bottom-stack{position:absolute}
   body.rico-typing #app[data-screen="assistant"] .content{padding-bottom:120px}
   .nav-edit{display:flex}
 }

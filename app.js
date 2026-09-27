@@ -501,6 +501,10 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
 const VIEW_LABEL_KEYS = {order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
+/* What scrolls: the screen's content inside the app frame (Home Screen app
+   on a phone, see boot.js), otherwise the page itself. */
+function inAppFrame(){ return document.documentElement.classList.contains('app-shell') && isPhoneLayout(); }
+function scrollBox(){ return (inAppFrame() && document.querySelector('.content')) || document.scrollingElement; }
 /* Every screen in tab-bar order: the three tabs first, then the rest. */
 function navOrder(){ return [...state.tabs, ...state.views.filter(v=>!state.tabs.includes(v))]; }
 function moreViews(){ return state.views.filter(v=>!state.tabs.includes(v)); }
@@ -666,6 +670,7 @@ function swipeFrames(dir, w){
    nothing to set up; the fresh page is then drawn into the emptied .content. */
 function pageGhost(content){
   const r = content.getBoundingClientRect();
+  const scrolled = inAppFrame() ? content.scrollTop : 0;
   const layer = document.createElement('div');
   layer.className = 'page-ghost'; layer.setAttribute('aria-hidden','true');
   Object.assign(layer.style, {left:r.left+'px', width:r.width+'px'});
@@ -673,9 +678,10 @@ function pageGhost(content){
   copy.removeAttribute('id');
   while(content.firstChild) copy.appendChild(content.firstChild);
   copy.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
-  Object.assign(copy.style, {top:r.top+'px', width:r.width+'px', transform:content.style.transform || ''});
+  Object.assign(copy.style, {top:r.top+'px', width:r.width+'px', height:r.height+'px', transform:content.style.transform || ''});
   layer.appendChild(copy);
   document.body.appendChild(layer);
+  copy.scrollTop = scrolled;
   return {layer, copy};
 }
 function goView(view, {fromOffset=0, keepLens=false} = {}){
@@ -691,7 +697,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   state.view = view;
   if(view === 'record') state.recordFilter = 'all';
   render();
-  window.scrollTo({top:0});
+  scrollBox().scrollTo({top:0});
   if(view === 'record') refreshActivity();
   if(view === 'devices') refreshDevices();
   if(!keepLens) placeNavIndicator();
@@ -783,7 +789,8 @@ const TEXT_ENTRY = 'input:not([type=checkbox]):not([type=radio]):not([type=range
   document.addEventListener('touchend', e=>{
     const field = e.target.closest && e.target.closest(TEXT_ENTRY);
     const moved = start === null || !e.changedTouches[0] || Math.abs(e.changedTouches[0].clientY - start) > 10;
-    if(!field || moved || field === document.activeElement || !isPhoneLayout() || !field.closest('.content')) return;
+    // (The app frame needs none of this: it shrinks above the keyboard instead.)
+    if(!field || moved || field === document.activeElement || !isPhoneLayout() || inAppFrame() || !field.closest('.content')) return;
     const r = field.getBoundingClientRect();
     if(r.bottom < window.innerHeight * .42) return;
     const top = (document.querySelector('.topbar')?.getBoundingClientRect().bottom || 0) + 14;
@@ -798,6 +805,9 @@ const TEXT_ENTRY = 'input:not([type=checkbox]):not([type=radio]):not([type=range
     const root = document.documentElement.style;
     root.setProperty('--vv-top', vv.offsetTop + 'px');
     root.setProperty('--vv-height', vv.height + 'px');
+    // In the app frame the field being typed in stays in sight as it shrinks.
+    const field = document.activeElement;
+    if(inAppFrame() && field?.matches?.(TEXT_ENTRY) && field.closest('.content')) requestAnimationFrame(()=>field.scrollIntoView({block:'nearest'}));
   };
   vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
 })();
@@ -807,12 +817,14 @@ const TEXT_ENTRY = 'input:not([type=checkbox]):not([type=radio]):not([type=range
 function updateTopbar(){
   const bar = document.querySelector('.topbar');
   if(!bar) return;
-  bar.classList.toggle('scrolled', window.scrollY > 6);
+  const y = scrollBox().scrollTop;
+  bar.classList.toggle('scrolled', y > 6);
   const title = bar.querySelector('.topbar-title');
   if(title){ const label = viewLabel(state.view); if(title.textContent !== label) title.textContent = label; }
-  bar.classList.toggle('titled', window.scrollY > 64);
+  bar.classList.toggle('titled', y > 64);
 }
-window.addEventListener('scroll', updateTopbar, {passive:true});
+// Capturing: in the app frame it is the content, not the page, that scrolls.
+document.addEventListener('scroll', updateTopbar, {passive:true, capture:true});
 /* Restarts a CSS "bump" animation on an element (used for changing numbers). */
 function bump(el){
   if(!el) return;

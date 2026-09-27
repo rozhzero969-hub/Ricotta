@@ -623,9 +623,9 @@ function ricoRefreshComposer(){
   btn.innerHTML = rico.streaming ? ICON_STOP : ICON_SEND_UP;
   btn.setAttribute('aria-label', rico.streaming ? t('ricoStop') : t('ricoSend'));
 }
-function ricoNearBottom(){ return window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 220; }
+function ricoNearBottom(){ const box = scrollBox(); return box.scrollTop + box.clientHeight >= box.scrollHeight - 220; }
 function ricoScroll(smooth){
-  requestAnimationFrame(()=>window.scrollTo({top:document.documentElement.scrollHeight, behavior: smooth && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto'}));
+  requestAnimationFrame(()=>scrollBox().scrollTo({top:scrollBox().scrollHeight, behavior: smooth && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto'}));
 }
 
 /* ---------- Carrying out a confirmed proposal ---------- */
