@@ -409,6 +409,8 @@ html.rtl .field select{background-position:left 14px center}
 /* iOS-style switches for every checkbox */
 .check-row{display:flex;align-items:center;gap:12px;font-size:14px;font-weight:700;margin:4px 0 16px;cursor:pointer}
 .check-row svg{color:var(--mint-ink);flex-shrink:0}
+.sound-row span{display:flex;flex-direction:column;gap:2px}
+.sound-row small{font-size:12.5px;font-weight:500;color:var(--ink-soft);line-height:1.4}
 .check-row input[type=checkbox]{appearance:none;-webkit-appearance:none;flex-shrink:0;width:52px;height:32px;margin:0;border-radius:16px;background:rgba(20,56,44,.18);position:relative;cursor:pointer;transition:background-color 260ms ease;order:2;margin-inline-start:auto}
 .check-row input[type=checkbox]::after{content:'';position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.2);transition:transform 340ms var(--spring-soft)}
 .check-row input[type=checkbox]:checked{background:var(--accent)}
