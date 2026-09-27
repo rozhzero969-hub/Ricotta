@@ -80,14 +80,12 @@ html:not(.rtl) .page-heading h1{letter-spacing:-.04em}
 /* A new screen's parts rise in turn (never on quantity or search updates). */
 .content>*{animation:rise 520ms var(--ease-out) both}
 .content>*:nth-child(2){animation-delay:30ms}.content>*:nth-child(3){animation-delay:60ms}.content>*:nth-child(4){animation-delay:90ms}.content>*:nth-child(n+5){animation-delay:120ms}
-#app.static-update .content>*,.content.gliding>*,.ghost-copy>*{animation:none}
+#app.static-update .content>*,.content.gliding>*{animation:none}
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes fadeOut{to{opacity:0}}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* Page transition: a still copy of the old page slides away with the new one. */
-.page-ghost{position:fixed;top:0;bottom:0;z-index:20;overflow:hidden;pointer-events:none}
-.ghost-copy{position:absolute;left:0;margin:0}
 body.page-swiping *{transition:none!important}
 
 /* ---------- Top bar: the page's own colour, glass chips on top ---------- */
@@ -255,7 +253,7 @@ html:not(.rtl) .welcome-title{letter-spacing:-.03em}
 
 /* ---------- Order summary card ---------- */
 .hero-card{position:relative;overflow:hidden;isolation:isolate;border-radius:28px;padding:20px 20px 16px;margin-bottom:16px;color:#fff;background:var(--hero);border:1px solid rgba(255,255,255,.14);box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 22px 44px -16px rgba(13,40,31,.55)}
-.hero-card::before{content:'';position:absolute;width:260px;height:260px;right:-90px;top:-120px;border-radius:50%;border:1px solid rgba(151,224,178,.16);box-shadow:0 0 0 38px rgba(151,224,178,.035),0 0 0 76px rgba(151,224,178,.02);z-index:-1;opacity:.6}
+.hero-card::before{content:'';position:absolute;width:260px;height:260px;inset-inline-end:-90px;top:-120px;border-radius:50%;border:1px solid rgba(151,224,178,.16);box-shadow:0 0 0 38px rgba(151,224,178,.035),0 0 0 76px rgba(151,224,178,.02);z-index:-1;opacity:.6}
 .order-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px}
 .hero-eyebrow{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#A9D4BC;margin-bottom:8px}
 html.rtl .hero-eyebrow{letter-spacing:0;font-size:11px}
@@ -502,7 +500,6 @@ html.rtl .queue-back svg{transform:scaleX(-1)}
 .dev-active::before{animation:livePulse 2.2s ease-out infinite}
 .dev-idle{background:rgba(255,255,255,.6);color:var(--deep);border:1px solid var(--line-strong)}
 .dev-out{background:rgba(20,56,44,.06);color:var(--ink-soft)}
-.dev-role{font-size:12px;font-weight:700;color:var(--deep)}
 .dev-ago{color:var(--ink-soft);font-weight:500}
 .dev-hint{font-size:12px;color:var(--ink-soft);line-height:1.55;margin:8px 6px 0;font-weight:500}
 .dev-bulk{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
@@ -843,7 +840,8 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .bottom-bar{grid-column:2;grid-row:2;position:sticky;bottom:22px;align-self:end;justify-self:center;max-width:520px;margin-bottom:22px;z-index:20}
   .rico-composer{grid-column:2;grid-row:2;position:sticky;bottom:22px;align-self:end;justify-self:center;max-width:760px;margin-bottom:22px;z-index:20}
   .page-heading h1{font-size:38px}
-  .order-hero{padding:26px 30px 20px}
+  .order-hero{padding:26px 30px 20px;grid-template-columns:auto auto minmax(0,1fr);column-gap:28px}
+  .order-hero .hero-copy{padding-inline-end:28px;border-inline-end:1px solid rgba(255,255,255,.12)}
   .hero-count{font-size:54px}
   .order-tabs-shell{margin:0 0 6px;grid-template-columns:40px minmax(0,1fr) 40px;gap:8px}
   .order-tabs{padding:4px 2px 10px}

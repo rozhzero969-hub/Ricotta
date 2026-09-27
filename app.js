@@ -33,7 +33,7 @@ const state = {
   queue: null,           // array of {supplierId, items, sent} while sending
   activity: [],          // the Record: [{id, ts, action, type, name, fields, by, role}]
   recordFilter: 'all',   // 'all' | 'supplier' | 'item' | 'unit'
-  devices: [],           // [{id, nickname, role, lastLogin, lastSeen, loggedIn, command, handledCommand}]
+  devices: [],           // [{id, account, lastLogin, lastSeen, loggedIn, command, handledCommand}]
   deviceId: null,        // this device's own id, generated once and kept locally
   reminder: null,        // daily reminder settings {enabled,time}
   apiOnline: navigator.onLine
@@ -135,15 +135,6 @@ function restoreCartDraft(){
   const available=new Set(state.items.map(item=>item.id));
   state.cart=Object.fromEntries(Object.entries(saved).filter(([id,qty])=>available.has(id) && Number.isFinite(Number(qty)) && Number(qty)>0).map(([id,qty])=>[id,Math.floor(Number(qty))]));
   persistCartDraft();
-}
-async function setDeviceNickname(id, name){
-  const r = await api(`devices/${encodeURIComponent(id)}/nickname`, {method:'PUT', body:{nickname:name}});
-  if(r.ok){
-    const d = state.devices.find(x=>x.id===id);
-    if(d) d.nickname = name;
-    if(state.view === 'devices') render();
-  }
-  return r.ok;
 }
 
 /* Rozha's Devices screen: tell other devices to log out or refresh. */
@@ -621,32 +612,18 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ setMoreOpen(fals
 function haptic(ms=8){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(_){} }
 
 /* ---------- Page transitions ----------
-   "Glide": the whole page slides sideways like an iPhone app, the old page
-   and the new one moving together (so clear glass never overlaps). Used for
-   every screen, from taps, the lens and swipes, on phones and computers. */
-const GLIDE_MS = 780;                        // Glide at the chosen speed (0.6 s × 130%)
-const GLIDE_EASE = 'cubic-bezier(.22,1,.36,1)';
+   A short, soft fade: the new page eases in from a little to the side (the
+   direction of the tab), with no copy of the old page moving around. Used
+   for every screen, from taps, the lens and swipes, on phones and computers. */
+const PAGE_MS = 340;
+const PAGE_EASE = 'cubic-bezier(.25,.8,.25,1)';
+const PAGE_SHIFT = 22;                       // px the new page travels
 let glide = null;
 function endGlide(){
   if(!glide) return;
-  glide.anims.forEach(a=>a.cancel());
-  glide.ghost.remove();
-  document.querySelector('.content')?.classList.remove('gliding');
+  glide.anim.cancel();
+  glide.content.classList.remove('gliding');
   glide = null;
-}
-/* A still copy of the page that is leaving, laid exactly over it. */
-function pageGhost(content){
-  const r = content.getBoundingClientRect();
-  const layer = document.createElement('div');
-  layer.className = 'page-ghost'; layer.setAttribute('aria-hidden','true');
-  Object.assign(layer.style, {left:r.left+'px', width:r.width+'px'});
-  const copy = content.cloneNode(true);
-  copy.removeAttribute('id'); copy.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
-  copy.classList.add('ghost-copy');
-  Object.assign(copy.style, {top:r.top+'px', width:r.width+'px', transform:content.style.transform || '', opacity:'1'});
-  layer.appendChild(copy);
-  document.body.appendChild(layer);
-  return {layer, copy, width:r.width};
 }
 function goView(view, {fromOffset=0, keepLens=false} = {}){
   setMoreOpen(false); closeLangMenu();
@@ -654,8 +631,6 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   if(!view || view === state.view || !canOpen(view)) return;
   endGlide();
   const dir = (Math.sign(viewIndex(view) - viewIndex(state.view)) || 1) * (isRtl() ? -1 : 1);
-  const old = document.querySelector('.content');
-  const ghost = old && !reducedMotion() && old.animate ? pageGhost(old) : null;
   state.view = view;
   if(view === 'record') state.recordFilter = 'all';
   render();
@@ -664,17 +639,14 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   if(view === 'devices') refreshDevices();
   if(!keepLens) placeNavIndicator();
   const content = document.querySelector('.content');
-  if(!ghost || !content) return;
-  const w = ghost.width;
+  if(!content || reducedMotion() || !content.animate) return;
+  // After a swipe the page starts where the finger left it, only closer.
+  const from = fromOffset ? Math.max(-60, Math.min(60, fromOffset * .25)) + dir*PAGE_SHIFT*.5 : dir*PAGE_SHIFT;
   content.classList.add('gliding');
-  const opts = {duration:GLIDE_MS, easing:GLIDE_EASE};
-  const anims = [
-    ghost.copy.animate([{transform:`translate3d(${fromOffset}px,0,0)`, opacity:1},{transform:`translate3d(${-dir*w}px,0,0)`, opacity:.4}], opts),
-    content.animate([{transform:`translate3d(${dir*w + fromOffset}px,0,0)`},{transform:'none'}], opts),
-  ];
-  glide = {ghost:ghost.layer, anims};
+  const anim = content.animate([{transform:`translate3d(${from}px,0,0)`, opacity:0}, {transform:'none', opacity:1}], {duration:PAGE_MS, easing:PAGE_EASE});
+  glide = {anim, content};
   const mine = glide;
-  anims[1].finished.then(()=>{ if(glide === mine) endGlide(); }, ()=>{});
+  anim.finished.then(()=>{ if(glide === mine) endGlide(); }, ()=>{});
 }
 
 /* Swipe the page sideways to move between the three tabs (phones). The page
@@ -1083,7 +1055,7 @@ function ringOffset(){ const c=supplierCoverage(); return c.total ? RING_C*(1-c.
 function renderOrderHero(itemCount=state.items.length, supplierCount=new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size){
   const selCount = cartCount();
   const cov = supplierCoverage();
-  return `<div class="hero-card order-hero"><span class="sheen" aria-hidden="true"></span>
+  return `<div class="hero-card order-hero">
     <div class="hero-copy"><div class="hero-eyebrow">${t('heroEyebrow')}</div>
     <div class="hero-stat" aria-live="polite" aria-label="${esc(t('heroStat')(selCount))}"><span class="hero-count">${selCount}</span><span class="hero-word">${t('heroStatWord')(selCount)}</span></div>
     <div class="hero-sub">${t('heroSub')(itemCount, supplierCount)}</div></div>
@@ -2373,10 +2345,9 @@ function renderDevices(){
     const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
     return `<div class="dev-card">
       <div class="dev-top">
-        <div class="dev-name">${esc(d.nickname) || esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
-        <div class="row-actions"><button class="icon-btn" data-editdevice="${esc(d.id)}" aria-label="${esc(t('renameDevice'))}">${ICON_EDIT}</button></div>
+        <div class="dev-name">${esc(who || t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
       </div>
-      <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span>${who ? `<span class="dev-role">${esc(who)}</span>` : ''}</div>
+      <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span></div>
       <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
       ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
       ${commandIsPending(d) ? `<div class="dev-pending">${d.command.type==='logout'?t('cmdLogoutPending'):t('cmdRefreshPending')} \u00b7 ${timeAgo(d.command.ts)}</div>` : ''}
@@ -2389,38 +2360,21 @@ function renderDevices(){
 
   return `${head}${hero}${bulk}${cards || emptyState(t('noDevicesYet'))}<div class="dev-hint">${t('devicesHint')}</div>`;
 }
-function openDeviceModal(id){
-  const d = state.devices.find(x=>x.id===id);
-  if(!d) return;
-  showFormModal({
-    title: t('renameDevice'),
-    banner: editingBanner(d.nickname || t('unnamedDevice'), accountLabel(d.account)),
-    bodyHtml: `<div class="field"><label>${t('renameDevice')}</label><input id="mfNickname" autocomplete="off" placeholder="${esc(t('deviceNamePlaceholder'))}" value="${esc(d.nickname||'')}"></div>`,
-    okLabel: t('save'),
-    onSubmit: async ()=>{
-      const val = document.getElementById('mfNickname').value.trim();
-      if(val === (d.nickname || '')) return {};   // unchanged
-      if(!(await setDeviceNickname(id, val))) return {error: t('saveFailed')};
-      return {};
-    }
-  });
-}
 function attachDeviceEvents(){
-  document.querySelectorAll('[data-editdevice]').forEach(b=>b.onclick=()=> openDeviceModal(b.dataset.editdevice));
   const r = document.getElementById('devRefreshBtn');
   if(r) r.onclick = ()=> refreshDevices();
 
   document.querySelectorAll('[data-devlogout]').forEach(b=>b.onclick=async()=>{
     const d = state.devices.find(x=>x.id===b.dataset.devlogout);
     if(!d) return;
-    const name = esc(d.nickname) || t('unnamedDevice');
+    const name = esc(accountLabel(d.account) || t('unnamedDevice'));
     if(!(await showConfirm(`<b>${name}</b><br>${t('confirmLogoutDevice')}`, {okLabel:t('logoutDevice')}))) return;
     await sendDeviceCommand('logout', [d.id]);
   });
   document.querySelectorAll('[data-devrefresh]').forEach(b=>b.onclick=async()=>{
     const d = state.devices.find(x=>x.id===b.dataset.devrefresh);
     if(!d) return;
-    const name = esc(d.nickname) || t('unnamedDevice');
+    const name = esc(accountLabel(d.account) || t('unnamedDevice'));
     if(!(await showConfirm(`<b>${name}</b><br>${t('confirmRefreshDevice')}`, {okLabel:t('refreshDevice'), okClass:'btn-primary'}))) return;
     await sendDeviceCommand('refresh', [d.id]);
   });
