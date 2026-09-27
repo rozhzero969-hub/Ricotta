@@ -11,9 +11,9 @@
 // Routes (all JSON):
 //   POST   login                      {pin}                     -> {token, account, name, tabs, expiresAt}
 //                                                                  or {recovery:true, ticket} for the secret code
-//   POST   recovery/name              {ticket, name}            step 2 of the secret code: must be "rozha"
+//   POST   recovery/name              {ticket, name}            step 2 of the secret code: the saved answer, exactly
 //   POST   recovery/verify            {ticket, pin}             step 3: Rozha's current PIN
-//   POST   recovery/save              {ticket, rozhaPin?, yunisPin?, secretCode?}
+//   POST   recovery/save              {ticket, rozhaPin?, yunisPin?, secretCode?, answer?}
 //   GET    health
 //   --- session required ---
 //   GET    bootstrap                                            -> everything the app needs to start
@@ -439,9 +439,10 @@ async function login(req: Request) {
 }
 
 /* ---------- The secret code ----------
-   code on the keypad -> "Who are you?" (only "rozha") -> Rozha's current PIN
-   -> new PINs and/or a new secret code. A wrong answer at any step ends it
-   and counts as a failed sign-in. */
+   code on the keypad -> "Who are you?" (the saved answer, exactly as saved,
+   capitals included) -> Rozha's current PIN -> new PINs, a new secret code
+   and/or a new answer. A wrong answer at any step ends it and counts as a
+   failed sign-in. */
 async function takeTicket(raw: unknown, stage: string) {
   const token = text(raw, 100);
   if (!token) return null;
@@ -470,8 +471,9 @@ async function recovery(req: Request, step: string) {
     .update({ stage: next, expires_at: new Date(Date.now() + RECOVERY_TICKET_MS).toISOString() }).eq("token_hash", key);
 
   if (step === "name") {
-    // Only the exact lowercase name counts (a trailing space from the keyboard is ignored).
-    if (String(b.name ?? "").trim() !== "rozha") return await refuse();
+    // Case-sensitive; only a stray space before or after is ignored.
+    const { data: right } = await db.rpc("app_internal_check_recovery_name", { p_name: text(b.name, 40) });
+    if (right !== true) return await refuse();
     await advance("name");
     return ok();
   }
@@ -484,16 +486,23 @@ async function recovery(req: Request, step: string) {
   }
   // save
   const val = (v: unknown) => { const x = String(v ?? "").trim(); return x ? x : null; };
-  const rozhaPin = val(b.rozhaPin), yunisPin = val(b.yunisPin), secretCode = val(b.secretCode);
-  if (!rozhaPin && !yunisPin && !secretCode) return fail("nothing_to_change");
+  const rozhaPin = val(b.rozhaPin), yunisPin = val(b.yunisPin), secretCode = val(b.secretCode), answer = val(b.answer);
+  if (!rozhaPin && !yunisPin && !secretCode && !answer) return fail("nothing_to_change");
   for (const v of [rozhaPin, yunisPin, secretCode]) if (v && !/^\d{6}$/.test(v)) return fail("invalid_pin");
   if ((rozhaPin && isWeakPin(rozhaPin)) || (yunisPin && isWeakPin(yunisPin))) return fail("weak_pin");
-  const { data: result, error } = await db.rpc("app_internal_set_credentials", { p_rozha: rozhaPin, p_yunis: yunisPin, p_code: secretCode });
-  if (error) return fail("save_failed", 500);
-  if (result === "duplicate") return fail("duplicate_pin");
-  if (result !== "ok") return fail("invalid_pin");
+  if (answer && answer.length > 40) return fail("invalid_answer");
+  if (rozhaPin || yunisPin || secretCode) {
+    const { data: result, error } = await db.rpc("app_internal_set_credentials", { p_rozha: rozhaPin, p_yunis: yunisPin, p_code: secretCode });
+    if (error) return fail("save_failed", 500);
+    if (result === "duplicate") return fail("duplicate_pin");
+    if (result !== "ok") return fail("invalid_pin");
+  }
+  if (answer) {
+    const { data: result, error } = await db.rpc("app_internal_set_recovery_name", { p_name: answer });
+    if (error || result !== "ok") return fail("save_failed", 500);
+  }
   await app("audit_events").insert({ id: newId("audit"), actor: "rozha", device_id: text(req.headers.get("x-device-id"), 120) || null, action: "change_codes",
-    payload: { rozhaPin: !!rozhaPin, yunisPin: !!yunisPin, secretCode: !!secretCode } });
+    payload: { rozhaPin: !!rozhaPin, yunisPin: !!yunisPin, secretCode: !!secretCode, answer: !!answer } });
   return ok();
 }
 

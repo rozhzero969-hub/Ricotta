@@ -626,6 +626,8 @@ function haptic(ms=8){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(_
      push   slide over, old page drifts and dims   zoom   grow in slightly
      blur   come into focus                        none   instant */
 const PAGE_TRANSITION = {style:'push', ms:950};   // chosen by Rozha
+// A swipe is a little quicker: the finger already did part of the move.
+const SWIPE_MS = 620;
 // A tap: eases in, glides, and settles softly (the motion is spread over the
 // whole time instead of jumping in the first moment).
 const PAGE_EASE = 'cubic-bezier(.45,.05,.2,1)';
@@ -653,6 +655,12 @@ function transitionFrames(dir, w){
     default: return null;
   }
 }
+/* After a swipe both pages travel together, edge to edge: the old one slides
+   all the way off to the other side while the new one pushes in beside it.
+   Nothing fades and nothing overlaps, so no page ever shows through another. */
+function swipeFrames(dir, w){
+  return {inn:[{transform:`translate3d(${dir*w}px,0,0)`}, {transform:'none'}], out:[{transform:'none'}, {transform:`translate3d(${-dir*w}px,0,0)`}]};
+}
 /* The page that is leaving, laid exactly where it was. Its parts are moved
    (not copied) into a fixed layer, so even the 179-item Order page costs
    nothing to set up; the fresh page is then drawn into the emptied .content. */
@@ -678,7 +686,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   const dir = (Math.sign(viewIndex(view) - viewIndex(state.view)) || 1) * (isRtl() ? -1 : 1);
   const old = document.querySelector('.content');
   const width = old ? old.getBoundingClientRect().width : window.innerWidth;
-  const frames = old && old.animate && !reducedMotion() ? transitionFrames(dir, width) : null;
+  const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : transitionFrames(dir, width)) : null;
   const ghost = frames?.out ? pageGhost(old) : null;
   state.view = view;
   if(view === 'record') state.recordFilter = 'all';
@@ -691,11 +699,10 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   if(!frames || !content){ ghost?.layer.remove(); if(content) content.style.transform = ''; return; }
   // After a swipe, pages start from where the finger left them.
   if(fromOffset){
-    const moves = PAGE_TRANSITION.style === 'slide' || PAGE_TRANSITION.style === 'push';
-    frames.inn[0] = {...frames.inn[0], transform:`translate3d(${moves ? dir*width + fromOffset : fromOffset*.25}px,0,0)`};
-    if(frames.out) frames.out[0] = {...frames.out[0], transform:`translate3d(${fromOffset}px,0,0)`};
+    frames.inn[0] = {transform:`translate3d(${dir*width + fromOffset}px,0,0)`};
+    frames.out[0] = {transform:`translate3d(${fromOffset}px,0,0)`};
   }
-  const opts = {duration:PAGE_TRANSITION.ms, easing:fromOffset ? SWIPE_EASE : PAGE_EASE};
+  const opts = fromOffset ? {duration:SWIPE_MS, easing:SWIPE_EASE} : {duration:PAGE_TRANSITION.ms, easing:PAGE_EASE};
   content.style.transform = '';
   content.classList.add('gliding');
   const anims = [content.animate(frames.inn, opts)];
@@ -1016,8 +1023,9 @@ async function pressKey(k){
   maybeOpenRicoProviderSetup();
 }
 /* The secret code, typed on the keypad instead of a PIN: "Who are you?"
-   (only "rozha" goes on; anything else just closes), then Rozha's PIN, then
-   new PINs and/or a new secret code. Saving signs every phone out. */
+   (only the saved answer, written exactly, goes on; anything else just
+   closes), then Rozha's PIN, then new PINs, a new secret code and/or a new
+   answer. Saving a PIN or the code signs every phone out. */
 async function startRecovery(ticket){
   const name = await showPrompt(esc(t('whoAreYou')), {plain:true, okLabel:t('continue'), cancelLabel:t('cancel')});
   if(name === null) return;
@@ -1030,16 +1038,17 @@ async function startRecovery(ticket){
   const field = (id, label)=>`<div class="field"><label for="${id}">${esc(label)}</label><input id="${id}" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" data-clear="1"></div>`;
   await showFormModal({
     title: t('recoveryTitle'),
-    bodyHtml: `<div class="notif-sub">${esc(t('recoveryHint'))}</div>${field('recRozha', t('recoveryNewRozha'))}${field('recYunis', t('recoveryNewYunis'))}${field('recCode', t('recoveryNewCode'))}`,
+    bodyHtml: `<div class="notif-sub">${esc(t('recoveryHint'))}</div>${field('recRozha', t('recoveryNewRozha'))}${field('recYunis', t('recoveryNewYunis'))}${field('recCode', t('recoveryNewCode'))}`
+      + `<div class="field"><label for="recAnswer">${esc(t('recoveryNewAnswer'))}</label><input id="recAnswer" type="text" maxlength="40" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false"><div class="field-hint">${esc(t('recoveryAnswerHint'))}</div></div>`,
     okLabel: t('save'),
     onSubmit: async ()=>{
       const v = id=>document.getElementById(id).value.trim();
-      const rozhaPin = v('recRozha'), yunisPin = v('recYunis'), secretCode = v('recCode');
+      const rozhaPin = v('recRozha'), yunisPin = v('recYunis'), secretCode = v('recCode'), answer = v('recAnswer');
       const given = [rozhaPin, yunisPin, secretCode].filter(Boolean);
-      if(!given.length) return {error:t('recoveryNothing')};
+      if(!given.length && !answer) return {error:t('recoveryNothing')};
       if(given.some(x=>!/^\d{6}$/.test(x))) return {error:t('pinsInvalidLength')};
       if(new Set(given).size !== given.length) return {error:t('pinsDuplicate')};
-      const r = await api('recovery/save', {method:'POST', body:{ticket, rozhaPin, yunisPin, secretCode}});
+      const r = await api('recovery/save', {method:'POST', body:{ticket, rozhaPin, yunisPin, secretCode, answer}});
       if(r.ok){ setTimeout(()=>showAlert(esc(t('recoverySaved'))), 260); return {}; }
       const code = r.data && r.data.error;
       if(code === 'weak_pin') return {error:t('pinsWeak')};
@@ -1623,14 +1632,20 @@ const SHEET_WORDS = {
   ku:{title:'داواکارییەکی نوێ', none:'بێ دابینکەر', items:'کاڵا', item:'کاڵا', unit:'یەکە', qty:'بڕ', foot:'تکایە داواکارییەکە بەپێی ئەم بڕانە ئامادە بکەن. سوپاس.'},
   ar:{title:'طلب شراء', none:'بدون مورّد', items:'مواد', item:'المادة', unit:'الوحدة', qty:'الكمية', foot:'يرجى تجهيز هذا الطلب بالكميات المذكورة أعلاه. شكرًا لكم.'}
 };
+// The same fonts as the app: Sora, with Noto Kufi Arabic for every Kurdish or Arabic letter.
+const SHEET_FONTS = 'https://fonts.googleapis.com/css2?family=Sora:wght@400;700;800&family=Noto+Kufi+Arabic:wght@400;700;800&display=swap';
 function printOrderSheet(entry, supplier){
   const w0 = SHEET_WORDS[state.lang] || SHEET_WORDS.en;
   const supplierLabel = supplier?.name || w0.none;
   const rows = sortedSupplierItems(entry.items).map((item,n)=>`<tr><td>${n+1}</td><td>${esc(item.name)}</td><td>${esc(unitLabel(item.unit))}</td><td class="qty">${item.qty}</td></tr>`).join('');
   const w = window.open('', '_blank'); if(!w) return;
   const printedAt = formatIraqDateTime(new Date(),{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-  w.document.write(`<!doctype html><html dir="${isRtl()?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${w0.title} — Ricotta</title><style>body{font-family:Arial,'Noto Kufi Arabic','Noto Sans Arabic',sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${w0.title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${esc(printedAt)}<br>${entry.items.length} ${w0.items}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${w0.item}</th><th>${w0.unit}</th><th>${w0.qty}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${w0.foot}</div></body></html>`);
-  w.document.close(); w.focus(); setTimeout(()=>w.print(),250);
+  w.document.write(`<!doctype html><html dir="${isRtl()?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${w0.title} — Ricotta</title><link rel="stylesheet" href="${SHEET_FONTS}"><style>body{font-family:'Sora','Noto Kufi Arabic',Arial,sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${w0.title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${esc(printedAt)}<br>${entry.items.length} ${w0.items}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${w0.item}</th><th>${w0.unit}</th><th>${w0.qty}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${w0.foot}</div></body></html>`);
+  w.document.close(); w.focus();
+  // Print once the fonts are in, so Kurdish and Arabic names use Noto Kufi.
+  const link = w.document.querySelector('link');
+  const fontsIn = new Promise(r=>{ link.onload = link.onerror = r; }).then(()=>{ w.document.body.offsetWidth; return w.document.fonts.ready; });
+  Promise.race([fontsIn, new Promise(r=>setTimeout(r,2000))]).then(()=>w.print());
 }
 let finishingQueue = false;
 async function maybeFinishQueue(){
