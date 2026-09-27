@@ -30,7 +30,6 @@
 //   GET    devices                    rozha: all, yunis: own row
 //   POST   devices/me                                           heartbeat ("still here")
 //   POST   devices/me/ack             {commandId}               a remote command was carried out
-//   PUT    devices/:id/nickname       {nickname} (rozha or self)
 //   POST   devices/command            {ids, type} (rozha)       remote log out / refresh
 //   PUT    push/subscription          {endpoint,p256dh,auth,lang}
 //   DELETE push/subscription          {endpoint}
@@ -233,7 +232,7 @@ async function recordCatalogChange(s: Session, table: string, before: any, after
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder });
 const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order });
 const toDevice = (d: any) => ({
-  id: d.id, nickname: d.nickname, account: d.account ?? null, loggedIn: d.logged_in,
+  id: d.id, account: d.account ?? null, loggedIn: d.logged_in,
   lastLogin: d.last_login, lastSeen: d.last_seen, command: d.command, handledCommand: d.handled_command,
 });
 const toActivity = (a: any) => ({
@@ -267,7 +266,7 @@ function groupHistory(orders: any[], lines: any[]) {
 }
 
 async function listDevices(s: Session) {
-  let q = app("devices").select("id,nickname,account,logged_in,last_login,last_seen,command,handled_command");
+  let q = app("devices").select("id,account,logged_in,last_login,last_seen,command,handled_command");
   if (!isRozha(s)) q = q.eq("id", s.deviceId ?? "");
   const { data } = await q;
   return (data ?? []).map(toDevice);
@@ -741,12 +740,6 @@ Deno.serve(async (req) => {
       return ok();
     }
     if (M === "POST" && path === "devices/command") return rozha ? await sendCommand(b) : fail("forbidden", 403);
-    if (M === "PUT" && (m = path.match(/^devices\/([^/]{1,120})\/nickname$/))) {
-      const id = decodeURIComponent(m[1]);
-      if (!rozha && id !== s.deviceId) return fail("forbidden", 403);
-      await app("devices").update({ nickname: text(b.nickname, 120) || null, updated_at: nowIso() }).eq("id", id);
-      return ok();
-    }
 
     // Rico, the assistant
     if (M === "POST" && path === "assistant/chat") return await handleChat(db, s, b, cors, req.signal);

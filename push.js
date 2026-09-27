@@ -11,7 +11,7 @@ const ICON_BELL = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" s
 
 const PUSH_SW_URL = 'sw.js';
 const PUSH_BANNER_SNOOZE_MS = 3*24*60*60*1000;  /* "Not now" hides the banner for 3 days */
-let pushStatus = { ready:false, supported:false, ios:false, standalone:false, permission:'default', subscribed:false };
+const pushStatus = { ready:false, supported:false, ios:false, standalone:false, permission:'default', subscribed:false };
 
 function isIOS(){
   return /iphone|ipad|ipod/i.test(navigator.userAgent) ||

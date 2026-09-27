@@ -93,7 +93,7 @@ const server=http.createServer((req,res)=>{
     await page.goto(url);await page.waitForSelector(loggedIn?'#orderResults':'.keypad');await page.waitForSelector('#splash',{state:'detached'});
     return {ctx,page,calls};
   }
-  const settle=page=>page.waitForFunction(()=>!document.querySelector('.page-ghost'),null,{timeout:4000});
+  const settle=page=>page.waitForFunction(()=>!document.querySelector('.content.gliding'),null,{timeout:4000});
   async function openView(page,view){
     const tab=page.locator('.bottomnav [data-view="'+view+'"]');
     const inMore=await tab.evaluate(el=>!!el.closest('.nav-more')&&innerWidth<960&&!el.closest('.bottomnav').classList.contains('more-open'));
@@ -164,7 +164,7 @@ const server=http.createServer((req,res)=>{
     await openView(page,'order');
     for(const view of ALL_VIEWS.slice(1)){
       await page.locator('.bottomnav [data-view="'+view+'"]').click();
-      assert.equal(await page.locator('.page-ghost').count(),1,view+' slides in');
+      assert.equal(await page.locator('.content.gliding').count(),1,view+' fades in');
       await settle(page);
       const place=await page.evaluate(v=>{const b=document.querySelector('.bottomnav [data-view="'+v+'"]'),i=document.querySelector('.nav-indicator');return {top:b.offsetTop,h:b.offsetHeight,iy:parseFloat(i.style.getPropertyValue('--iy')),ih:parseFloat(i.style.getPropertyValue('--ih')),color:getComputedStyle(b).color};},view);
       assert.equal(place.iy,place.top,view+' highlight sits on its row');
@@ -221,6 +221,7 @@ const server=http.createServer((req,res)=>{
     await page.waitForFunction(()=>!rico.streaming);
     assert.equal(await page.locator('.rico-msg.bot .rico-bot').last().evaluate(el=>el.classList.contains('mood-angry')),true,'Rico\u2019s face shows his mood');
     assert.equal(await page.locator('.rico-head .rico-bot').evaluate(el=>el.classList.contains('mood-angry')),true,'the header face follows');
+    assert.equal(await page.evaluate(()=>ricoFormat('[[data:Mam Fakhir]] has <<DATA>>9<</DATA>> items')),'<p>Mam Fakhir has 9 items</p>','data markers the AI copies are never shown');
     await page.locator('[data-rico-action]').count();
     await page.evaluate(()=>{ rico.messages=[]; render(); });
     await page.locator('[data-rico-action="prepare_order"]').click();
@@ -289,7 +290,7 @@ const server=http.createServer((req,res)=>{
       fire('pointerup',120);
     });
     assert.equal(await page.evaluate(()=>state.view),'assistant','swiping the page moves to the next tab');
-    assert.equal(await page.locator('.page-ghost').count(),1,'the swipe slides the pages');
+    assert.equal(await page.locator('.content.gliding').count(),1,'the swipe moves to the next page');
     await settle(page);
     await page.evaluate(()=>setLang('ku'));await openView(page,'order');
     assert.ok(parseFloat(await page.locator('#itemSearch').evaluate(el=>getComputedStyle(el).fontSize))>=16,'mobile search avoids focus zoom');
@@ -370,7 +371,7 @@ const server=http.createServer((req,res)=>{
     const reduced=await context({reducedMotion:'reduce'});await reduced.page.locator('[data-inc="i1"]').click();
     assert.equal(await reduced.page.locator('[data-qty="i1"]').evaluate(el=>el.getAnimations().length),0,'reduced motion skips JS feedback');
     await reduced.page.evaluate(()=>goView('history'));
-    assert.equal(await reduced.page.locator('.page-ghost').count(),0,'reduced motion skips the page slide');
+    assert.equal(await reduced.page.locator('.content.gliding').count(),0,'reduced motion skips the page transition');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
     console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, undo, security policy, desktop install, reduced motion`,artifacts},null,2));
