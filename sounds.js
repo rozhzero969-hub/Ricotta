@@ -1,13 +1,11 @@
 /* Sounds, made by the app itself (nothing is downloaded).
      + and -        a soft tap (+ a touch higher than -)
      orders sent    a rising C-E-G-C chime
-     swiping        a quiet, airy chord when swiping between the 3 main tabs
-                    (a little higher going forward, lower going back)
    Each one can be turned on or off per device on the Sounds screen. On
    iPhone they follow the silent switch like any app. Browsers only allow
    sound once the person has touched the page, so the audio is (re)started
    on every touch until it is running. */
-const SOUND_KEYS = {qty:'sound.qty', sent:'sound.sent', swipe:'sound.swipe'};
+const SOUND_KEYS = {qty:'sound.qty', sent:'sound.sent'};
 let soundCtx = null, soundOut = null, lastTick = 0;
 
 // Everything starts on until it is turned off on this device.
@@ -34,14 +32,14 @@ function soundContext(){
   if(soundCtx?.state !== 'running' && Object.keys(SOUND_KEYS).some(soundOn)) soundContext();
 }, {passive:true, capture:true}));
 
-function soundTone(f, dur, gain, at = 0, attack = .005){
+function soundTone(f, dur, gain, at = 0){
   const c = soundContext();
   if(!c) return;
   const t = c.currentTime + at + .005;
   const o = c.createOscillator(), g = c.createGain();
   o.frequency.setValueAtTime(f, t);
   g.gain.setValueAtTime(.0001, t);
-  g.gain.linearRampToValueAtTime(gain, t + attack);
+  g.gain.linearRampToValueAtTime(gain, t + .005);
   g.gain.exponentialRampToValueAtTime(.0001, t + dur);
   o.connect(g); g.connect(soundOut);
   o.start(t); o.stop(t + dur + .02);
@@ -64,14 +62,4 @@ function playOrdersSent(){
     soundTone(f, .6, .16, i * .085);
     soundTone(f * 2.01, .36, .04, i * .085);
   });
-}
-
-/* Swiping between the 3 main tabs: a quiet chord (a note and its fifth) that
-   swells in and fades, D going forward and C going back. It sits in the
-   middle of the range (C5/D5): phone speakers barely play anything lower. */
-function playSwipe(forward){
-  if(!soundOn('swipe')) return;
-  const f = forward ? 587.3 : 523.25;
-  soundTone(f, .42, .1, 0, .09);
-  soundTone(f * 1.5, .42, .06, 0, .09);
 }

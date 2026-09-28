@@ -765,7 +765,6 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
     const go = Math.abs(s.dx) > window.innerWidth*.26 || Math.abs(v) > .45;
     const next = i - Math.sign(s.dx)*rtl;
     if(go && next >= 0 && next < state.tabs.length){
-      playSwipe(next > i);
       // The new page arrives from where the finger left the old one.
       goView(state.tabs[next], {fromOffset:s.dx});
       return;
@@ -2552,7 +2551,6 @@ function renderNotifSettings(){
 const SOUND_ROWS = [
   {id:'qty',   label:'soundQtyLabel',   hint:'soundQtyHint',   play:()=>playQtyTick(true)},
   {id:'sent',  label:'soundSentLabel',  hint:'soundSentHint',  play:()=>playOrdersSent()},
-  {id:'swipe', label:'soundSwipeLabel', hint:'soundSwipeHint', play:()=>playSwipe(true)},
 ];
 function renderSoundsView(){
   const row = (id, on, label, hint)=>`<label class="check-row sound-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;

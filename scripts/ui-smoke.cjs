@@ -129,9 +129,7 @@ const server=http.createServer((req,res)=>{
     assert.deepEqual(await page.evaluate(()=>__tones),[1150,900],'+ and - each play a soft tap, + a touch higher');
     await page.evaluate(()=>{ setSoundOn('qty',false); __tones=[]; lastTick=0; }); await inc.click();
     assert.deepEqual(await page.evaluate(()=>__tones),[],'no sound when that sound is turned off');
-    await page.evaluate(()=>{ setSoundOn('qty',true); __tones=[]; playSwipe(true); playSwipe(false); });
-    assert.deepEqual(await page.evaluate(()=>__tones),[587,881,523,785],'swiping plays the quiet chord (in the range phone speakers play), higher going forward');
-    await page.evaluate(()=>{ __tones=[]; playOrdersSent(); });
+    await page.evaluate(()=>{ setSoundOn('qty',true); __tones=[]; playOrdersSent(); });
     assert.deepEqual(await page.evaluate(()=>__tones.filter((f,i)=>i%2===0)),[523,659,784,1047],'orders sent plays the rising chime');
     assert.match(await page.evaluate(()=>maybeFinishQueue.toString()),/playOrdersSent\(\)/,'the chime belongs to finishing the order');
     await page.locator('[data-qty="i1"]').fill('24');
@@ -306,7 +304,7 @@ const server=http.createServer((req,res)=>{
     await page.locator('.toast-undo').click();
     assert.equal(await page.evaluate(()=>state.cart.i8),5,'clearing the order can be undone');
     await page.evaluate(()=>window.scrollTo(0,0));
-    // A finger swipe to the left moves from Order to Rico, with the page sliding (and the quiet chord).
+    // A finger swipe to the left moves from Order to Rico, with the page sliding (silently).
     await page.evaluate(()=>{ window.__tones=[]; window.soundTone=f=>__tones.push(Math.round(f)); });
     await page.evaluate(()=>{
       const el=document.querySelector('.content .page-heading'), r=el.getBoundingClientRect(), y=r.top+r.height/2;
@@ -317,7 +315,7 @@ const server=http.createServer((req,res)=>{
     });
     assert.equal(await page.evaluate(()=>state.view),'assistant','swiping the page moves to the next tab');
     assert.equal(await page.locator('.content.gliding').count(),1,'the swipe moves to the next page');
-    assert.deepEqual(await page.evaluate(()=>__tones),[587,881],'a real swipe forward plays the quiet chord');
+    assert.deepEqual(await page.evaluate(()=>__tones),[],'swiping between tabs makes no sound');
     assert.ok(await page.evaluate(()=>document.querySelector('.content.gliding').getAnimations()[0].effect.getTiming().duration<PAGE_TRANSITION.ms),'a swipe finishes quicker than a tap');
     assert.ok(await page.evaluate(()=>{
       const out=document.querySelector('.page-ghost > .content').getAnimations()[0].effect.getKeyframes();
@@ -393,10 +391,10 @@ const server=http.createServer((req,res)=>{
     await y.page.evaluate(()=>goView('sounds')); await settle(y.page);
     assert.equal(await y.page.evaluate(()=>state.view),'sounds','Yunis can open Sounds');
     await snapshot(y.page,'phone-sounds.png');
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['sound-qty:true','sound-sent:true','sound-swipe:true'],'every sound has its own switch, all on to start');
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['sound-qty:true','sound-sent:true'],'every sound has its own switch, all on to start');
     assert.equal(await y.page.locator('.bottomnav .nav-more [data-view="sounds"]').count(),1,'Sounds is in More');
-    await y.page.locator('label:has(#sound-swipe)').click();
-    assert.deepEqual(await y.page.evaluate(()=>[soundOn('swipe'),soundOn('qty')]),[false,true],'turning one sound off leaves the others on');
+    await y.page.locator('label:has(#sound-sent)').click();
+    assert.deepEqual(await y.page.evaluate(()=>[soundOn('sent'),soundOn('qty')]),[false,true],'turning one sound off leaves the other on');
     assert.equal(await y.page.evaluate(()=>tabChoices().includes('sounds')),false,'Sounds cannot be picked as a main tab');
     await snapshot(y.page,'phone-yunis.png');
     await y.ctx.close();
