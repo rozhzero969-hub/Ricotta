@@ -2580,7 +2580,8 @@ function attachNotifEvents(){
   const change = document.getElementById('reminderChangeBtn');
   if(change) change.onclick = ()=>{ reminderDraft = {time:r().time}; render(); };
   const time = document.getElementById('reminderTime');
-  if(time) time.oninput = ()=>{ reminderDraft.time = time.value; };
+  // iPhone's time wheel reports on "change", others on "input": keep both.
+  if(time) time.oninput = time.onchange = ()=>{ reminderDraft.time = time.value; };
   const cancel = document.getElementById('reminderCancelBtn');
   if(cancel) cancel.onclick = ()=>{ reminderDraft = null; render(); };
   const save = document.getElementById('reminderSaveBtn');
