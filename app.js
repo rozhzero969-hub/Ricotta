@@ -692,6 +692,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   setMoreOpen(false); closeLangMenu();
   if(view !== 'assistant' && ricoRecorder.active) ricoResetVoice();   // leaving Rico drops an unsent recording
   if(!view || view === state.view || !canOpen(view)) return;
+  reminderDraft = null;   // a reminder that wasn't saved stays off
   endGlide();
   const dir = (Math.sign(viewIndex(view) - viewIndex(state.view)) || 1) * (isRtl() ? -1 : 1);
   const old = document.querySelector('.content');
@@ -2521,9 +2522,17 @@ function attachDeviceEvents(){
    keypad (see startRecovery). */
 function renderSettings(){
   const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `${connectionCard}${renderNotifSettings()}${renderRicoSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
+  return `${connectionCard}${renderRicoSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
 }
-/* ---- Settings: Notifications card (this device + daily reminder) ---- */
+/* ============ Sounds & notifications (every account) ============ */
+/* The daily reminder starts as one switch. Turning it on opens the time,
+   a test button and Save; only Save turns it on for real (leaving without
+   saving keeps it off). Turning it off saves "off" straight away. */
+let reminderDraft = null;   // {time} while the reminder is being set up or changed
+function reminderTimeLabel(time){
+  const [h, m] = String(time || '09:00').split(':').map(Number);
+  return new Intl.DateTimeFormat(intlLocale(), {hour:'numeric', minute:'2-digit'}).format(new Date(2000, 0, 1, h, m));
+}
 function renderNotifSettings(){
   let device;
   if(!pushConfigured()){
@@ -2536,28 +2545,69 @@ function renderNotifSettings(){
     device = `<div class="notif-status off">${ICON_BELL} ${t('notifThisDevice')}: ${t('notifOff')}<button class="btn btn-primary" id="pushToggleBtn">${t('notifEnable')}</button></div>`;
   }
   const r = state.reminder || {enabled:false, time:'09:00'};
-  const reminder = `
-      <div class="notif-sub">${t('supplierRemindersHint')}</div>
-      <label class="check-row"><input type="checkbox" id="reminderEnabled" ${r.enabled?'checked':''}> ${t('reminderEnabledLabel')}</label>
-      <div class="field"><label for="reminderTime">${t('reminderTimeLabel')}</label><input id="reminderTime" type="time" value="${esc(r.time)}"></div>
+  const hint = reminderDraft ? t('supplierRemindersHint') : r.enabled ? t('reminderEveryDayAt')(reminderTimeLabel(r.time)) : t('supplierRemindersHint');
+  const editor = !reminderDraft ? (r.enabled ? `<button class="btn btn-ghost reminder-change" id="reminderChangeBtn">${esc(t('reminderChangeTime'))}</button>` : '') : `
+      <div class="field"><label for="reminderTime">${t('reminderTimeLabel')}</label><input id="reminderTime" type="time" value="${esc(reminderDraft.time)}"></div>
       <div class="form-actions">
         <button class="btn btn-primary" id="reminderSaveBtn">${t('reminderSave')}</button>
         <button class="btn btn-ghost" id="reminderTestBtn">${ICON_BELL} ${t('reminderSendNow')}</button>
+        <button class="btn btn-ghost" id="reminderCancelBtn">${esc(t('cancel'))}</button>
       </div>`;
   return `<div class="section-title">${t('notifSettingsTitle')}</div>
-    <div class="form-card">${device}<hr class="notif-divider"><div class="section-title flush">${t('reminderTitle')}</div>${reminder}</div>`;
+    <div class="form-card">${device}<hr class="notif-divider">
+      <label class="check-row sound-row"><input type="checkbox" id="reminderEnabled" ${r.enabled || reminderDraft ? 'checked' : ''}><span>${esc(t('reminderTitle'))}<small>${esc(hint)}</small></span></label>${editor}</div>`;
 }
-/* ============ Sounds (this device only, every account) ============ */
+function attachNotifEvents(){
+  const tog = document.getElementById('pushToggleBtn');
+  if(tog) tog.onclick = async ()=>{
+    if(pushStatus.subscribed){ await disablePush(); render(); return; }
+    const res = await enablePush();
+    render();
+    await showPushEnableResult(res);
+  };
+  const r = ()=>state.reminder || {enabled:false, time:'09:00'};
+  const box = document.getElementById('reminderEnabled');
+  if(box) box.onchange = async ()=>{
+    if(box.checked){ reminderDraft = {time:r().time}; render(); return; }
+    reminderDraft = null;
+    if(r().enabled){
+      if(!(await saveReminder(false, r().time))){ box.checked = true; await showAlert(t('reminderSaveFailed')); return; }
+      state.reminder = {...r(), enabled:false};
+      toast(t('reminderTurnedOff'));
+    }
+    render();
+  };
+  const change = document.getElementById('reminderChangeBtn');
+  if(change) change.onclick = ()=>{ reminderDraft = {time:r().time}; render(); };
+  const time = document.getElementById('reminderTime');
+  if(time) time.oninput = ()=>{ reminderDraft.time = time.value; };
+  const cancel = document.getElementById('reminderCancelBtn');
+  if(cancel) cancel.onclick = ()=>{ reminderDraft = null; render(); };
+  const save = document.getElementById('reminderSaveBtn');
+  if(save) save.onclick = ()=> withBusy(save, async ()=>{
+    const value = time.value;
+    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)){ await showAlert(t('reminderTimeInvalid')); return; }
+    if(!(await saveReminder(true, value))){ await showAlert(t('reminderSaveFailed')); return; }
+    state.reminder = {enabled:true, time:value};
+    reminderDraft = null;
+    render();
+    toast(t('reminderSaved'));
+  });
+  const test = document.getElementById('reminderTestBtn');
+  if(test) test.onclick = ()=> withBusy(test, async ()=> reportSendResult(await callSendPush('reminder-now')));
+}
+
 const SOUND_ROWS = [
   {id:'qty',   label:'soundQtyLabel',   hint:'soundQtyHint',   play:()=>playQtyTick(true)},
   {id:'sent',  label:'soundSentLabel',  hint:'soundSentHint',  play:()=>playOrdersSent()},
 ];
 function renderSoundsView(){
   const row = (id, on, label, hint)=>`<label class="check-row sound-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;
-  return `<div class="form-card"><div class="notif-sub">${esc(t('soundsHint'))}</div>
+  return `${renderNotifSettings()}<div class="section-title">${esc(t('soundsSection'))}</div><div class="form-card"><div class="notif-sub">${esc(t('soundsHint'))}</div>
       ${SOUND_ROWS.map(r=>row('sound-'+r.id, soundOn(r.id), r.label, r.hint)).join('')}</div>`;
 }
 function attachSoundsEvents(){
+  attachNotifEvents();
   SOUND_ROWS.forEach(r=>{
     const box = document.getElementById('sound-'+r.id);
     if(box) box.onchange = ()=>{ setSoundOn(r.id, box.checked); if(box.checked) r.play(); };
@@ -2609,25 +2659,6 @@ async function withBusy(btn, fn){
   try{ await fn(); } finally { btn.disabled = false; btn.classList.remove('is-busy'); }
 }
 function attachSettingsEvents(){
-  const tog = document.getElementById('pushToggleBtn');
-  if(tog) tog.onclick = async ()=>{
-    if(pushStatus.subscribed){ await disablePush(); render(); return; }
-    const res = await enablePush();
-    render();
-    await showPushEnableResult(res);
-  };
-  const save = document.getElementById('reminderSaveBtn');
-  if(save) save.onclick = ()=> withBusy(save, async ()=>{
-    const enabled = document.getElementById('reminderEnabled').checked;
-    const time = document.getElementById('reminderTime').value;
-    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){ await showAlert(t('reminderTimeInvalid')); return; }
-    if(!(await saveReminder(enabled, time))){ await showAlert(t('reminderSaveFailed')); return; }
-    state.reminder = { enabled, time };
-    toast(t('reminderSaved'));
-  });
-  const test = document.getElementById('reminderTestBtn');
-  if(test) test.onclick = ()=> withBusy(test, async ()=> reportSendResult(await callSendPush('reminder-now')));
-
   loadRicoStatus();
 }
 

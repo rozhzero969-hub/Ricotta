@@ -34,7 +34,7 @@
 //   PUT    push/subscription          {endpoint,p256dh,auth,lang}
 //   DELETE push/subscription          {endpoint}
 //   PUT    push/lang                  {endpoint, lang}
-//   PUT    reminder                   {enabled, time} (rozha)   daily reminder settings
+//   PUT    reminder                   {enabled, time}           daily reminder settings
 //   POST   push/send                  {type, ...}               forwarded to send-push
 //   POST   assistant/chat             {messages, lang, ...}     Rico's reply, streamed (see assistant.ts)
 //   POST   assistant/transcribe       {audio, mime, lang}       a voice message to Rico, as text
@@ -613,12 +613,13 @@ async function sendCommand(b: any) {
 }
 
 /* ---------- Push ----------
-   Rozha may send anything. Yunis may test a supplier's reminder (Suppliers)
-   and send what Rico wrote (Rico has no limits). */
+   Rozha may send anything. Yunis may test the daily reminder (Sounds &
+   notifications) or a supplier's reminder (Suppliers), and send what Rico
+   wrote (Rico has no limits). */
 async function forwardPush(s: Session, b: any) {
   if (!CRON_SECRET) return fail("push_not_configured", 500);
   const type = text(b.type, 30);
-  const allowed = isRozha(s) ? ["update", "reminder-now", "supplier-test", "assistant"] : ["supplier-test", "assistant"];
+  const allowed = isRozha(s) ? ["update", "reminder-now", "supplier-test", "assistant"] : ["reminder-now", "supplier-test", "assistant"];
   if (!allowed.includes(type)) return fail(isRozha(s) ? "invalid_type" : "forbidden", isRozha(s) ? 400 : 403);
   const res = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
     method: "POST",
@@ -797,7 +798,6 @@ Deno.serve(async (req) => {
     }
     if (M === "POST" && path === "push/send") return await forwardPush(s, b);
     if (M === "PUT" && path === "reminder") {
-      if (!rozha) return fail("forbidden", 403);
       const time = text(b.time, 5);
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return fail("invalid_time");
       // A time still ahead today can fire today; one that already passed waits for tomorrow.

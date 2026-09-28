@@ -199,6 +199,7 @@ const server=http.createServer((req,res)=>{
     assert.match(await page.locator('.hist-date').textContent(),/Yunis/,'history says who sent it');
     assert.equal(await page.locator('[data-delhist]').count(),1,'Rozha can delete history');
     await openView(page,'settings');
+    assert.equal(await page.locator('#reminderEnabled, #pushToggleBtn').count(),0,'notifications moved out of Settings');
     assert.equal(await page.locator('#adminPinInput').count(),0,'PINs cannot be changed in Settings');
     await page.waitForFunction(()=>document.querySelector('#ricoKeyState')?.textContent!=='Checking…',null,{timeout:5000});
     assert.equal(await page.locator('#ricoKeyState').textContent(),'Connected');
@@ -391,11 +392,31 @@ const server=http.createServer((req,res)=>{
     await y.page.evaluate(()=>goView('sounds')); await settle(y.page);
     assert.equal(await y.page.evaluate(()=>state.view),'sounds','Yunis can open Sounds');
     await snapshot(y.page,'phone-sounds.png');
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['sound-qty:true','sound-sent:true'],'every sound has its own switch, all on to start');
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['reminderEnabled:false','sound-qty:true','sound-sent:true'],'the daily reminder and every sound have their own switch');
     assert.equal(await y.page.locator('.bottomnav .nav-more [data-view="sounds"]').count(),1,'Sounds is in More');
     await y.page.locator('label:has(#sound-sent)').click();
     assert.deepEqual(await y.page.evaluate(()=>[soundOn('sent'),soundOn('qty')]),[false,true],'turning one sound off leaves the other on');
     assert.equal(await y.page.evaluate(()=>tabChoices().includes('sounds')),false,'Sounds cannot be picked as a main tab');
+    // Daily reminder, for Yunis too: the switch opens the time, Save and a test; only Save turns it on.
+    assert.equal(await y.page.locator('#reminderTime').count(),0,'the daily reminder starts as just a switch');
+    await y.page.locator('label:has(#reminderEnabled)').click();
+    assert.equal(await y.page.locator('#reminderTime, #reminderSaveBtn, #reminderTestBtn').count(),3,'turning it on shows the time, Save and a test button');
+    await y.page.evaluate(()=>goView('order')); await settle(y.page); await y.page.evaluate(()=>goView('sounds')); await settle(y.page);
+    assert.deepEqual(await y.page.evaluate(()=>[document.getElementById('reminderEnabled').checked, !!document.getElementById('reminderTime')]),[false,false],'leaving without saving keeps it off');
+    assert.equal(y.calls.filter(c=>c.endpoint==='reminder').length,0,'nothing was saved');
+    await y.page.locator('label:has(#reminderEnabled)').click();
+    await y.page.locator('#reminderTime').fill('21:30');
+    await y.page.locator('#reminderTestBtn').click();
+    assert.ok(y.calls.some(c=>c.endpoint==='push/send' && c.body.type==='reminder-now'),'Yunis can send a test reminder');
+    await y.page.locator('#modalAlertOkBtn').click(); await y.page.waitForFunction(()=>!document.querySelector('#modalRoot .modal-overlay'));
+    await y.page.locator('#reminderSaveBtn').click();
+    await y.page.waitForFunction(()=>!document.getElementById('reminderTime'));
+    assert.deepEqual(y.calls.filter(c=>c.endpoint==='reminder').map(c=>c.body),[{enabled:true,time:'21:30'}],'Save turns it on at the chosen time');
+    assert.match(await y.page.locator('label:has(#reminderEnabled) small').textContent(),/9:30/,'once saved it shows when it rings, and the time and buttons tuck away');
+    assert.equal(await y.page.locator('#reminderChangeBtn').count(),1,'the time can still be changed');
+    await y.page.locator('label:has(#reminderEnabled)').click();
+    await y.page.waitForFunction(()=>!document.getElementById('reminderEnabled').checked);
+    assert.deepEqual(y.calls.filter(c=>c.endpoint==='reminder').at(-1).body,{enabled:false,time:'21:30'},'turning it off saves straight away');
     await snapshot(y.page,'phone-yunis.png');
     await y.ctx.close();
 

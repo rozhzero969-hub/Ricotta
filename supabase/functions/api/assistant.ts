@@ -596,7 +596,7 @@ function proposeNotification(a: any, emit: Emit) {
 
 function proposeOpen(a: any, emit: Emit) {
   // "send" opens Send to suppliers with the current draft (the person still taps each WhatsApp send).
-  const screens = ["order", "send", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
+  const screens = ["order", "send", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings", "sounds"];
   const screen = screens.includes(a.screen) ? a.screen : "order";
   emit({ type: "proposal", proposal: { id: pid(), kind: "open", screen, supplierId: text(a.supplier_id, 120) || null, label: text(a.label, 60) } });
   return { shown: true };
@@ -634,7 +634,7 @@ const TOOLS = [
     input_schema: { type: "object", properties: { name: { type: "string" }, phone: { type: "string" } }, required: ["name"] } },
   { name: "propose_notification", description: "Show a card to send a push notification to every signed-in phone. Always write the message in English, Kurdish (Sorani) and Arabic; each phone gets its own language.",
     input_schema: { type: "object", properties: { title: { type: "string" }, message_en: { type: "string" }, message_ku: { type: "string" }, message_ar: { type: "string" } }, required: ["message_en", "message_ku", "message_ar"] } },
-  { name: "open_screen", description: "Show a button that opens a screen of the app (order, send, history, suppliers, itemsAdmin, units, record, devices, settings). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
+  { name: "open_screen", description: "Show a button that opens a screen of the app (order, send, history, suppliers, itemsAdmin, units, record, devices, settings, sounds). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
     input_schema: { type: "object", properties: { screen: { type: "string" }, supplier_id: { type: "string" }, label: { type: "string" } }, required: ["screen"] } },
 ];
 const STATUS_TOOLS = new Set(TOOLS.map((t) => t.name));
@@ -703,7 +703,8 @@ THE APP (so you can explain it)
 - Units: names in English, Kurdish and Arabic.
 - Record: every add/edit/delete of suppliers, items and units, with who did it.
 - Devices (Rozha): signed-in phones, remote Refresh or Log out, and "Notify about update" (Rozha writes the message in each language).
-- Settings (Rozha): notifications on this device, the daily order reminder, and Rico's connection.
+- Sounds & notifications (both, in More, screen "sounds"): notifications on this device, the daily order reminder (a switch; turning it on shows the time, a test button and Save, and it only turns on once saved), and each sound on or off (the + / - tap and the order sent chime).
+- Settings (Rozha): the connection and Rico's connection.
 - Notifications: on iPhone the app must be added to the Home Screen (Share -> Add to Home Screen) and opened from that icon before notifications can be turned on.
 - If something fails with "check the connection", the change is kept and retried automatically when the internet is back (orders never get lost).`;
 
