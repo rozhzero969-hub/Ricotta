@@ -28,6 +28,14 @@ for(const lang of ['ku','ar']){
   assert.ok(!/[\u0660-\u0669\u06F0-\u06F9]/.test(fs.readFileSync(path.join(root,'i18n.js'),'utf8')),'numbers are written 1 2 3');
 }
 
+/* Every script and style the page loads is on the updater's refresh list, so a hard refresh never leaves one stale. */
+{
+  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  const loaded=[...html.matchAll(/<script[^>]*\ssrc="([^"]+\.js)"/g)].map(m=>m[1]).concat('style.css','sw.js');
+  const listed=[...fs.readFileSync(path.join(root,'update-check.js'),'utf8').match(/const APP_FILES = \[([^\]]*)\]/)[1].matchAll(/'([^']+)'/g)].map(m=>m[1]);
+  for(const file of loaded) assert.ok(listed.includes(file),file+' is in APP_FILES (update-check.js)');
+}
+
 const ALL_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings','sounds'];
 const YUNIS_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record','sounds'];
 const supplierNames=['Corner Cake','Golden Bread Bakery','Fresh produce','Daily essentials','Kitchen supplies','Beverages','Dairy','Meat supplier','دابینکەری سەوزە','دابینکەری بەرهەمەکان'];
