@@ -30,7 +30,7 @@ let updatePromptOpen = false;
 let snoozedVersion = null;
 
 /* Every file the page loads. If you add a new .js/.css file, add it here. */
-const APP_FILES = ['boot.js','config.js','icons.js','i18n.js','storage.js','modals.js','push.js','assistant.js','app.js','update-check.js','sw.js','style.css'];
+const APP_FILES = ['boot.js','config.js','icons.js','i18n.js','storage.js','sounds.js','modals.js','push.js','assistant.js','app.js','update-check.js','sw.js','style.css'];
 
 /* Reloads the page and makes sure the newest files are used. Browsers (and
    GitHub Pages) can keep serving cached copies of the scripts for a few
