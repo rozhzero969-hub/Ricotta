@@ -230,6 +230,11 @@ const server=http.createServer((req,res)=>{
     assert.match(await page.locator('.rico-hello').textContent(),/Rozha/,'Rico greets the account by name');
     assert.equal(await page.locator('#ricoNameForm').count(),0,'Rico never asks for a name');
     assert.ok(calls.some(c=>c.endpoint==='assistant/inbox/read'),'opening Rico reads his messages');
+    // Clicking into Rico's message box must not resize the page (the body once picked up the typing-bubble style).
+    const widthBefore=await page.evaluate(()=>document.body.getBoundingClientRect().width);
+    await page.locator('#ricoInput').click();
+    assert.equal(await page.evaluate(()=>document.body.getBoundingClientRect().width),widthBefore,'typing to Rico keeps the page full width');
+    await page.locator('#ricoInput').blur();
     // Voice message: starting and stopping a recording runs cleanly (with a stand-in microphone).
     assert.equal(await page.evaluate(async()=>{
       const stream={getTracks:()=>[{stop(){}}]};

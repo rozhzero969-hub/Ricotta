@@ -810,7 +810,7 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 @media (max-width:959px){
   input,select,textarea{font-size:16px!important}
   .content{touch-action:pan-y}
-  body.rico-typing .bottomnav,body.typing .bottomnav,body.typing .bottom-bar{display:none}
+  body.rico-composing .bottomnav,body.typing .bottomnav,body.typing .bottom-bar{display:none}
   /* The app frame (Home Screen app on a touch screen): like a native app, the
      page never scrolls or bounces; the frame always fills exactly the part of
      the screen that is visible (it shrinks above the keyboard), the top bar
@@ -822,7 +822,7 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   html.app-shell .topbar{flex:none}
   html.app-shell .content{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
   html.app-shell .bottom-stack{position:absolute}
-  body.rico-typing #app[data-screen="assistant"] .content{padding-bottom:120px}
+  body.rico-composing #app[data-screen="assistant"] .content{padding-bottom:120px}
   .nav-edit{display:flex}
 }
 @media (min-width:600px) and (max-width:959px){

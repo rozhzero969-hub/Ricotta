@@ -423,8 +423,8 @@ function attachAssistantEvents(){
     input.addEventListener('keydown', e=>{
       if(e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); form.requestSubmit(); }
     });
-    input.addEventListener('focus', ()=>document.body.classList.add('rico-typing'));
-    input.addEventListener('blur', ()=>setTimeout(()=>document.body.classList.remove('rico-typing'), 120));
+    input.addEventListener('focus', ()=>document.body.classList.add('rico-composing'));
+    input.addEventListener('blur', ()=>setTimeout(()=>document.body.classList.remove('rico-composing'), 120));
     const draft = lget('ricoDraft'); if(draft && !input.value){ input.value = draft; grow(); }
     input.addEventListener('input', ()=>lset('ricoDraft', input.value || null));
   }

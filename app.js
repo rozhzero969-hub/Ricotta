@@ -478,7 +478,7 @@ function render(){
   app.dataset.shell = shellKey; app.dataset.screen = state.view;
   attachContentEvents();
   attach();
-  if(state.view !== 'assistant') document.body.classList.remove('rico-typing');
+  if(state.view !== 'assistant') document.body.classList.remove('rico-composing');
   updateRicoBadge();
   placeNavIndicator();
   updateTopbar();
