@@ -173,7 +173,7 @@ function workerBarHtml(){
   const on = c.workerOnline;
   const waiting = !on && c.startRequestedAt && Date.now() - Date.parse(c.startRequestedAt) < 3 * 60 * 1000 && (!c.startHandledAt || c.startHandledAt < c.startRequestedAt || Date.now() - Date.parse(c.startHandledAt) < 3 * 60 * 1000);
   const label = on ? t('wkOn') : waiting ? t('wkStarting') : t('wkOff');
-  const hint = on ? '' : c.launcherOnline ? t('wkHintOff') : t('wkHintNoHelper');
+  const hint = on || c.launcherOnline ? '' : t('wkHintNoHelper');
   return `<div class="tr-worker glass ${on ? 'on' : 'off'}"><div class="tr-worker-txt"><span class="tr-worker-dot" aria-hidden="true"></span><div><b>${esc(t('wkTitle'))}: ${esc(label)}</b>${hint ? `<small>${esc(hint)}</small>` : ''}</div></div>${on ? '' : `<button type="button" class="btn btn-primary" id="wkStart" ${(!c.launcherOnline || waiting) ? 'disabled' : ''}>${esc(t('wkTurnOn'))}</button>`}</div>`;
 }
 function wkPaint(){
@@ -199,33 +199,55 @@ function renderTransfers(){
   if(!stockState.loaded) return stLoadingHtml();
   return `${stAttentionHtml()}
   <div id="wkBar"></div>
-  <section class="tr-card glass">
-    <div class="tr-step"><div class="tr-step-h"><span class="tr-num">1</span>${esc(t('trStepStorages'))}<button type="button" class="tr-swap" id="trSwap" aria-label="${esc(t('trSwap'))}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v15m0 0-3-3m3 3 3-3M17 20V5m0 0-3 3m3-3 3 3"/></svg><span>${esc(t('trSwapShort'))}</span></button></div>
-      <div class="tr-lab">${esc(t('trFrom'))}</div><div class="picks" id="trFromChips" role="radiogroup" aria-label="${esc(t('trFrom'))}"></div>
-      <div class="tr-lab">${esc(t('trTo'))}</div><div class="picks" id="trToChips" role="radiogroup" aria-label="${esc(t('trTo'))}"></div>
-    </div>
-    <div class="tr-step"><div class="tr-step-h"><span class="tr-num">2</span>${esc(t('trStepItem'))}</div>
+  <section class="tr-card">
+    <div class="tr-crumbs" id="trCrumbs"></div>
+    <div class="tr-step" id="trStFrom"><div class="tr-step-h"><span class="tr-num">1</span>${esc(t('trStepFrom'))}</div><div id="trFromList" class="tr-results"></div></div>
+    <div class="tr-step" id="trStTo" hidden><div class="tr-step-h"><span class="tr-num">2</span>${esc(t('trStepTo'))}</div><div id="trToList" class="tr-results"></div></div>
+    <div class="tr-step" id="trStItem" hidden><div class="tr-step-h"><span class="tr-num">3</span>${esc(t('trStepItem'))}</div>
       <div id="trPicker"><div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="trSearch" autocomplete="off" aria-label="${esc(t('searchPlaceholder'))}" value="${esc(trState.search)}"></div><div id="trResults" class="tr-results" aria-live="polite"></div></div>
-      <div id="trChosen" class="tr-chosen glass" hidden></div>
     </div>
-    <div class="tr-step" id="trAmount" hidden><div class="tr-step-h"><span class="tr-num">3</span>${esc(t('trStepAmount'))}</div>
+    <div id="trChosen" class="tr-chosen" hidden></div>
+    <div class="tr-step" id="trAmount" hidden><div class="tr-step-h"><span class="tr-num">4</span>${esc(t('trStepAmount'))}</div>
       <div class="tr-units" id="trUnits" role="group" hidden></div>
       <div class="tr-qty"><button type="button" class="step-btn tr-step-btn" id="trLess" aria-label="${esc(t('trLess'))}">−</button><input id="trQty" type="number" inputmode="decimal" min="0" step="any" placeholder="0" aria-label="${esc(t('trQty'))}" value="${esc(trState.qty)}"><span class="tr-unit" id="trUnit"></span><button type="button" class="step-btn tr-step-btn" data-inc id="trMore" aria-label="${esc(t('trMore'))}">+</button></div>
       <button type="button" class="tr-link" id="trAll">${esc(t('trUseAll'))}</button>
     </div>
-    <label class="check-row tr-yesterday"><span>${esc(t('trYesterday'))}<small>${esc(t('trYesterdayHint'))}</small></span><input type="checkbox" id="trYesterday" ${trState.yesterday ? 'checked' : ''}></label>
-    <p class="tr-hint" id="trHint"></p>
-    <button type="button" class="btn btn-primary tr-wide" id="trReview">${esc(t('trReview'))}</button>
-    <div class="field-hint tr-note">${esc(t('trOneItemHint'))}</div>
+    <div id="trFinish" hidden>
+      <label class="check-row tr-yesterday"><span>${esc(t('trYesterday'))}<small>${esc(t('trYesterdayHint'))}</small></span><input type="checkbox" id="trYesterday" ${trState.yesterday ? 'checked' : ''}></label>
+      <p class="tr-hint" id="trHint"></p>
+      <button type="button" class="btn btn-primary tr-wide" id="trReview">${esc(t('trReview'))}</button>
+      <div class="field-hint tr-note">${esc(t('trOneItemHint'))}</div>
+    </div>
   </section>
   <section class="tr-review hero-card" id="trReviewCard" hidden></section>
   <div id="trActive"></div>`;
 }
+/* One question at a time: from, to, item, then the amount. */
+const trStage = () => !trState.from ? 'from' : !trState.to ? 'to' : !(stItem(trState.itemId) && stReady(stItem(trState.itemId))) ? 'item' : 'amount';
+function trStorageRow(x, meta){
+  return `<button type="button" class="list-row tappable tr-result" data-trsto="${esc(x)}"><div><div class="name" dir="auto">${esc(x)}</div>${meta ? `<div class="meta">${esc(meta)}</div>` : ''}</div><span class="tr-go" aria-hidden="true">›</span></button>`;
+}
 function trPaintStorages(){
-  for(const [id, key, other] of [['trFromChips', 'from', 'to'], ['trToChips', 'to', 'from']]){
-    const box = document.getElementById(id); if(!box) continue;
-    box.innerHTML = stockState.storages.map(x => `<button type="button" role="radio" class="pick${trState[key] === x ? ' on' : ''}" aria-checked="${trState[key] === x}" data-trsto="${esc(x)}" ${trState[other] === x ? 'disabled' : ''}>${esc(x)}</button>`).join('');
+  const stage = trStage();
+  const show = (id, on) => { const el = document.getElementById(id); if(el) el.hidden = !on; };
+  show('trStFrom', stage === 'from'); show('trStTo', stage === 'to'); show('trStItem', stage === 'item');
+  show('trChosen', stage === 'amount'); show('trAmount', stage === 'amount'); show('trFinish', stage === 'amount');
+  const fromBox = document.getElementById('trFromList'), toBox = document.getElementById('trToList');
+  if(fromBox && stage === 'from'){
+    fromBox.innerHTML = stockState.storages.map(x => trStorageRow(x, t('trStorageCount')(stReadyItems().filter(i => stQty(i.id, x) > 0).length))).join('');
+    fxOnce(fromBox);
   }
+  if(toBox && stage === 'to'){
+    toBox.innerHTML = stockState.storages.filter(x => x !== trState.from).map(x => trStorageRow(x, '')).join('');
+    fxOnce(toBox);
+  }
+  const crumbs = document.getElementById('trCrumbs'); if(!crumbs) return;
+  const item = stItem(trState.itemId), parts = [];
+  if(trState.from) parts.push(['from', t('trFrom'), trState.from]);
+  if(trState.to) parts.push(['to', t('trTo'), trState.to]);
+  if(stage === 'amount' && item) parts.push(['item', t('trStepItemShort'), item.name]);
+  crumbs.innerHTML = parts.map(([k, label, v]) => `<button type="button" class="crumb" data-crumb="${k}"><small>${esc(label)}</small><b dir="auto">${esc(v)}</b><span aria-hidden="true">✎</span></button>`).join('');
+  crumbs.hidden = !parts.length;
 }
 function trPaintResults(){
   const box = document.getElementById('trResults'); if(!box) return;
@@ -249,8 +271,7 @@ function trPaintResults(){
 function trPaintChosen(){
   const item = stItem(trState.itemId), picker = document.getElementById('trPicker'), chosen = document.getElementById('trChosen'), amount = document.getElementById('trAmount');
   if(!picker) return;
-  const on = !!(item && stReady(item));
-  picker.hidden = on; chosen.hidden = !on; amount.hidden = !on;
+  const on = trStage() === 'amount';
   if(on){
     const from = trState.from, f = stFactor(item.id), free = stFree(item.id, from) / f, res = stReserved(item.id, from) / f, unit = stEnteredName(item.id);
     chosen.innerHTML = `<div><div class="name" dir="auto">${esc(item.name)}</div><div class="meta">${esc(t('trAvailable')(fmtQty(free), iso(unit), iso(from)))}${res > 1e-8 ? '<br>' + esc(t('trReserved')(fmtQty(res), iso(unit))) : ''}</div></div><button type="button" class="btn btn-ghost" id="trChange">${esc(t('trChangeItem'))}</button>`;
@@ -410,29 +431,33 @@ function bindRequestButtons(root){
 }
 function attachTransfersEvents(){
   attachStockCommon();
-  if(!document.getElementById('trFromChips')) return;
+  if(!document.getElementById('trFromList')) return;
   wkPaint();
   const qty = document.getElementById('trQty');
-  const pickStorage = (key, value) => {
-    if(trState[key] === value) return;
-    trState[key] = value;
-    if(key === 'from'){ trState.itemId = ''; trState.qty = ''; trState.search = ''; document.getElementById('trSearch').value = ''; }
+  const goBack = key => {           // change an earlier answer: it and everything after it are cleared
+    if(key === 'from'){ trState.from = ''; trState.to = ''; }
+    if(key === 'to') trState.to = '';
+    trState.itemId = ''; trState.qty = ''; trState.unit = 'counting'; trState.search = '';
+    const box = document.getElementById('trSearch'); if(box) box.value = '';
     trInvalidate(); trPaintAll(); trPaintHint();
   };
-  document.getElementById('trFromChips').onclick = e => { const b = e.target.closest('[data-trsto]'); if(b && !b.disabled) pickStorage('from', b.dataset.trsto); };
-  document.getElementById('trToChips').onclick = e => { const b = e.target.closest('[data-trsto]'); if(b && !b.disabled) pickStorage('to', b.dataset.trsto); };
-  document.getElementById('trSwap').onclick = () => {
-    [trState.from, trState.to] = [trState.to, trState.from];
-    trState.itemId = ''; trState.qty = ''; trState.search = ''; trInvalidate();
-    document.getElementById('trSearch').value = ''; trPaintAll();
+  document.getElementById('trCrumbs').onclick = e => { const b = e.target.closest('[data-crumb]'); if(b) goBack(b.dataset.crumb); };
+  document.getElementById('trFromList').onclick = e => {
+    const b = e.target.closest('[data-trsto]'); if(!b) return;
+    trState.from = b.dataset.trsto; if(trState.to === trState.from) trState.to = '';
+    trState.itemId = ''; trState.qty = ''; trState.search = ''; document.getElementById('trSearch').value = '';
+    trInvalidate(); trPaintAll(); trPaintHint();
+  };
+  document.getElementById('trToList').onclick = e => {
+    const b = e.target.closest('[data-trsto]'); if(!b) return;
+    trState.to = b.dataset.trsto; trInvalidate(); trPaintAll(); trPaintHint();
   };
   document.getElementById('trSearch').oninput = e => { trState.search = e.target.value; trPaintResults(); };
   document.getElementById('trResults').onclick = e => {
     const b = e.target.closest('[data-trpick]'); if(!b) return;
     const item = stItem(b.dataset.trpick); if(!item) return;
     if(!stReady(item)){ openItemModal(item.id); return; }     // not set up yet: set it up here, then come back
-    if(!trState.from){ toast(t('trHintFrom'), 'error'); return; }
-    if(stFree(item.id, trState.from) <= 1e-8){ toast(t('trNoneHere')(iso(trState.from)), 'error'); return; }
+        if(stFree(item.id, trState.from) <= 1e-8){ toast(t('trNoneHere')(iso(trState.from)), 'error'); return; }
     trState.itemId = item.id; trState.qty = ''; trState.unit = 'counting'; trState.search = ''; trInvalidate(); qty.value = ''; trPaintAll(); qty.focus();
   };
   const setQty = v => { trState.qty = v > 0 ? String(v) : ''; qty.value = trState.qty; trInvalidate(); trPaintHint(); };

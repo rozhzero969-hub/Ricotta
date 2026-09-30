@@ -90,9 +90,12 @@ const server=http.createServer((rq,res)=>{
     let {ctx,page,calls,apiCalls}=await open();
     await go(page,'transfers');
     if(process.env.SHOT){await page.screenshot({path:process.env.SHOT+'/tr1.png',fullPage:false});}
-    assert.equal(await page.locator('#trSearch').isDisabled(),false,'item search always works');
+    assert.equal(await page.locator('#trFromList .list-row').count(),3,'step 1 lists the storages');
+    assert.equal(await page.locator('#trStItem').isVisible(),false,'items come after both storages are chosen');
     // Every item is searchable; the one that is not set up says so, and ones with no stock in the source cannot be picked.
-    await page.locator('#trFromChips [data-trsto="Main Storage"]').click();await page.locator('#trToChips [data-trsto="Minibar"]').click();
+    await page.locator('#trFromList [data-trsto="Main Storage"]').click();
+    assert.equal(await page.locator('#trToList [data-trsto="Main Storage"]').count(),0,'the source is not offered as the destination');
+    await page.locator('#trToList [data-trsto="Minibar"]').click();
     const names=await page.locator('#trResults .name').allTextContents();
     assert.deepEqual(names.sort(),['Coca Cola','Flour','Milk','Tomato'],'all items are searchable');
     assert.equal(await page.locator('#trResults .tr-result.todo').count(),1,'the item that is not set up is marked');
@@ -106,9 +109,9 @@ const server=http.createServer((rq,res)=>{
     await page.locator('#trAll').click();assert.equal(await page.locator('#trQty').inputValue(),'3','use-all respects reserved stock');
     await page.fill('#trQty','9');assert.match(await page.locator('#trHint').innerText(),/more than is available/i);
     await page.fill('#trQty','2');assert.match(await page.locator('#trHint').innerText(),/Ready/);
-    await page.locator('#trSwap').click();assert.equal(await page.locator('#trFromChips .pick.on').innerText(),'Minibar');assert.equal(await page.locator('#trChosen').isVisible(),false,'changing the source clears the item');
-    await page.locator('#trSwap').click();
-    await page.locator('[data-trpick="i1"]').click();await page.fill('#trQty','2');await page.locator('#trYesterday').check();
+    await page.locator('[data-crumb="from"]').click();assert.equal(await page.locator('#trFromList').isVisible(),true,'the source can be changed');assert.equal(await page.locator('#trChosen').isVisible(),false,'changing the source clears the item');
+    await page.locator('#trFromList [data-trsto="Main Storage"]').click();await page.locator('#trToList [data-trsto="Minibar"]').click();
+    await page.locator('[data-trpick="i1"]').click();await page.fill('#trQty','2');await page.locator('#trYesterday').evaluate(el=>el.scrollIntoView({block:'center'}));await page.locator('#trYesterday').check();
     await page.locator('#trReview').click();
     if(process.env.SHOT){await page.waitForTimeout(500);await page.screenshot({path:process.env.SHOT+'/tr2.png',fullPage:true});}
     assert.match(await page.locator('#trReviewCard').innerText(),/Main Storage[\s\S]*Minibar[\s\S]*Coca Cola[\s\S]*2[\s\S]*yesterday/i);
@@ -140,7 +143,7 @@ const server=http.createServer((rq,res)=>{
     assert.ok(calls.some(c=>c.ep==='start-worker'&&c.method==='POST'),'Turn on asks the server to start the worker');
 
     /* ---------- Transfer in the buying format: 1 box = 12 piece, 20 piece in Main Storage ---------- */
-    await page.locator('#trFromChips [data-trsto="Main Storage"]').click();await page.locator('#trToChips [data-trsto="Minibar"]').click();await page.locator('[data-trpick="i2"]').click();
+    await page.locator('#trFromList [data-trsto="Main Storage"]').click();await page.locator('#trToList [data-trsto="Minibar"]').click();await page.locator('[data-trpick="i2"]').click();
     assert.equal(await page.locator('#trUnits').isVisible(),true,'unit choice appears when the formats differ');
     assert.equal(await page.locator('#trUnit').innerText(),'piece','counting unit is the default');
     await page.locator('[data-trunit="buying"]').click();

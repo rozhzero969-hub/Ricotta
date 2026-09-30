@@ -1101,3 +1101,18 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
 .tab-pill.active{animation:pillPop 260ms var(--ease-out)}
 @keyframes pillPop{from{transform:scale(.94)}to{transform:none}}
 @media (prefers-reduced-motion:reduce){.fx-rise>*,.tr-chosen,#trAmount,#trReviewCard,.tr-worker,.tab-pill.active{animation:none!important}}
+
+/* Transfer as steps: one question at a time */
+.tr-crumbs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.crumb{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:6px 14px;border-radius:999px;border:1px solid var(--surface-line);background:var(--surface);box-shadow:var(--surface-shadow);font:inherit;color:var(--ink);text-align:start;max-width:100%}
+.crumb small{font-size:11px;font-weight:700;color:var(--ink-soft)}
+.crumb b{font-size:14px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46vw}
+.crumb span{font-size:12px;color:var(--ink-soft)}
+.crumb:active{transform:scale(.96)}
+.tr-go{font-size:26px;line-height:1;color:var(--ink-soft);flex:none}
+html.rtl .tr-go{transform:scaleX(-1)}
+.tr-step[hidden],#trFinish[hidden]{display:none}
+.tr-step{animation:softRise 300ms var(--ease-out) both}
+.tr-worker{flex-wrap:nowrap;padding:10px 12px 10px 16px}
+.tr-worker .btn{min-height:38px;padding:0 14px;font-size:13px;flex:none}
+.tr-worker-txt{flex:1}
