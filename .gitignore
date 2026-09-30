@@ -8,3 +8,8 @@ coverage/
 
 # Local database backups (may contain business data)
 backups/
+
+# Office PC worker: private token lives in worker/.env (already ignored above)
+worker/browser-profile/
+worker/screenshots/
+worker/worker.lock

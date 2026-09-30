@@ -68,6 +68,8 @@ const server=http.createServer((req,res)=>{
     if(homeScreen) await ctx.addInitScript(()=>Object.defineProperty(Navigator.prototype,'standalone',{get:()=>true}));
     const calls=[];
     let signedIn=account;
+    // Stock and transfers have their own server (covered by scripts/stock-ui-smoke.cjs); here it is simply unavailable, so ordering must keep working without it.
+    await ctx.route('**/functions/v1/stock-api/**',route=>route.fulfill({status:503,contentType:'application/json',body:'{"error":"unavailable in this test"}',headers:{'access-control-allow-origin':'*'}}));
     await ctx.route('**/functions/v1/api/**',async route=>{
       const req=route.request();
       const endpoint=new URL(req.url()).pathname.split('/api/')[1];
@@ -390,7 +392,8 @@ const server=http.createServer((req,res)=>{
 
     /* ---------- Yunis ---------- */
     const y=await context({account:'yunis'});
-    assert.deepEqual(await y.page.evaluate(()=>state.views),YUNIS_VIEWS,'Yunis gets the right screens');
+    // The app adds Transfer and Stock for both accounts after the server's own list.
+    assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS.filter(v=>v!=='sounds'),'transfers','stock','sounds'],'Yunis gets the right screens');
     await y.page.setViewportSize({width:390,height:844});
     assert.equal(await y.page.locator('.bottomnav [data-view="devices"], .bottomnav [data-view="settings"]').count(),0,'no Devices or Settings for Yunis');
     await openView(y.page,'history');

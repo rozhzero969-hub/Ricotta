@@ -30,7 +30,18 @@ jobs:
           deno-version: v2.x
 
       - name: Type-check Edge Functions
-        run: deno check supabase/functions/api/index.ts supabase/functions/send-push/index.ts
+        run: deno check supabase/functions/api/index.ts supabase/functions/send-push/index.ts supabase/functions/stock-api/index.ts
+
+      - name: Stock database smoke test (real Postgres, rolled back)
+        run: |
+          docker run -d --name pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
+          for i in $(seq 1 30); do PGPASSWORD=postgres psql -h localhost -U postgres -c 'select 1' >/dev/null 2>&1 && break; sleep 1; done
+          export PGPASSWORD=postgres PGHOST=localhost PGUSER=postgres
+          psql -v ON_ERROR_STOP=1 -q -c "create role anon; create role authenticated; create role service_role;"
+          psql -v ON_ERROR_STOP=1 -q -c "create table app_units(id text primary key, en text not null); create table app_items(id text primary key, name text not null, unit_id text references app_units(id) on delete set null); create table app_accounts(id text primary key);"
+          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930150000_stock_and_transfers.sql
+          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930151000_stock_tabs.sql
+          psql -v ON_ERROR_STOP=1 -q -f scripts/stock-db-smoke.sql
 
       - name: Rico provider smoke test (Gemini + Groq, mocked)
         run: node --experimental-strip-types scripts/rico-provider-smoke.mjs
@@ -42,6 +53,9 @@ jobs:
 
       - name: UI smoke test (mocked API, six widths, EN + KU + AR)
         run: node scripts/ui-smoke.cjs
+
+      - name: Stock and transfer UI smoke test (mocked API, EN + KU + AR)
+        run: node scripts/stock-ui-smoke.cjs
 
       - name: Upload UI smoke screenshots
         if: always()
