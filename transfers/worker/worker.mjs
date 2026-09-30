@@ -32,6 +32,9 @@ async function inspect(page,r){
   if(page.url()!==PAGE)fail('Workplace browser is not on the approved transfer page');
   await page.keyboard.press('Control+0'); // browser zoom = 100%
   await one(page.getByRole('heading',{name:/Move stock between storages/i}),'transfer page heading');
+  const textSize=await one(page.getByRole('button',{name:'Reset text size'}),'text size');
+  if((await textSize.innerText()).replace(/\s/g,'')!=='100%')await textSize.click();
+  if((await textSize.innerText()).replace(/\s/g,'')!=='100%')fail('Page text size is not 100%');
   if(!r.from_storage||!r.to_storage||r.from_storage===r.to_storage)fail('Invalid storages');
   const lines=r.lines||[];if(!lines.length||lines.length>20)fail('Invalid line count');
   // A fresh navigation clears any form left from a prior preview or error.
@@ -78,6 +81,9 @@ async function inspect(page,r){
   }
   if(await rowsOnPage(page)!==lines.length)fail('Unexpected number of form rows');
   if(page.url()!==PAGE)fail('Workplace page changed before submission');
+  if((await page.getByRole('button',{name:'From storage',exact:true}).innerText()).trim()!==r.from_storage ||
+    (await page.getByRole('button',{name:'To storage',exact:true}).innerText()).trim()!==r.to_storage)
+    fail('Storage selection changed before submission');
   if((await yesterday.getAttribute('aria-pressed'))!==(r.record_yesterday?'true':'false'))fail('Yesterday setting changed before submission');
   const move=await one(page.getByRole('button',{name:'Move it',exact:true}),'submit button');
   if(!await move.isEnabled())fail('Submit button is disabled');
