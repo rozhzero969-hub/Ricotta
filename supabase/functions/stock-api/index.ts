@@ -1,0 +1,275 @@
+// Ricotta stock and transfers API. Stock counts, storage-to-storage transfers and the
+// office PC worker's queue. Separate from the `api` function so a problem here can
+// never affect ordering. It uses the same PIN sessions as `api` (app_sessions) and,
+// for the PC, a separate worker token (stock_workers).
+//
+// Routes (JSON):
+//   --- signed-in person (Rozha or Yunis) ---
+//   GET    bootstrap                     storages, item settings, balances, requests, counts
+//   GET    requests                      the light refresh: requests + balances
+//   GET    shots?id=                     the PC's screenshots for one request (kept 3 days)
+//   PUT    tabs                          {tabs:[3 screens]}  this person's tab bar (may include Transfer and Stock)
+//   PUT    settings/:itemId              {countingUnit, perBuying, lowStock}
+//   POST   requests                      {clientKey, from, to, yesterday, itemId, quantity, expectedName, expectedUnit}
+//   POST   cancel                        {id}
+//   POST   final-approve                 {id}
+//   POST   counts                        {itemId, storage, quantity, countedAt, note, pin}   (asks for the PIN again)
+//   POST   resolve                       {id, status, note, recordedDate}
+//   --- office PC (x-worker-token) ---
+//   GET    worker/preview                oldest waiting request that needs a PC check
+//   POST   worker/preview-report         {id, ok, message, image}
+//   POST   worker/claim                  the next final-approved request
+//   POST   worker/report                 {id, status, message, image}
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "https://rozhzero969-hub.github.io";
+const cors = {
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN, "Vary": "Origin",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-device-id, x-device-label, x-session-token, x-worker-token",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS", "Access-Control-Max-Age": "86400",
+};
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+});
+const fail = (error: string, status = 400) => json({ error }, status);
+const str = (v: unknown, max = 240) => String(v ?? "").trim().slice(0, max);
+const sha256 = async (v: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)))]
+  .map((x) => x.toString(16).padStart(2, "0")).join("");
+const uuid = (v: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v));
+const decimal = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0) || (typeof v === "string" && /^\d+(?:\.\d{1,6})?$/.test(v));
+// Every screen an account may put in its tab bar (Rozha also has Devices and Settings).
+const SCREENS = ["order", "assistant", "history", "transfers", "stock", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
+const MAX_BODY = 64 * 1024;
+const MAX_WORKER_BODY = 900 * 1024;   // a PC report carries a screenshot
+const IMAGE_MAX_CHARS = 600_000;
+
+async function readBody(req: Request, max = MAX_BODY): Promise<any> {
+  if (Number(req.headers.get("content-length") || 0) > max) throw new Error("Request too large");
+  const raw = await req.text();
+  if (raw.length > max) throw new Error("Request too large");
+  try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error("Invalid JSON"); }
+}
+type Account = "rozha" | "yunis";
+async function person(req: Request): Promise<Account | null> {
+  const token = req.headers.get("x-session-token"); if (!token) return null;
+  const { data, error } = await db.from("app_sessions").select("account,expires_at,revoked_at").eq("token_hash", await sha256(token)).maybeSingle();
+  if (error || !data || data.revoked_at || new Date(data.expires_at).getTime() <= Date.now()) return null;
+  return data.account === "rozha" || data.account === "yunis" ? data.account : null;
+}
+async function worker(req: Request): Promise<string | null> {
+  const token = req.headers.get("x-worker-token"); if (!token || token.length < 32) return null;
+  const { data, error } = await db.from("stock_workers").select("id").eq("token_hash", await sha256(token)).eq("enabled", true).maybeSingle();
+  return error ? null : data?.id ?? null;
+}
+/* Re-asking for the PIN shares the sign-in's wrong-guess limits, so this route can't be used to guess a PIN. */
+const PIN_WINDOW_MS = 10 * 60_000, MAX_FAILED = 8, MAX_GLOBAL_FAILED = 40;
+async function pinPrints(req: Request) {
+  const ip = req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip")
+    || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  return [await sha256(`ip|${ip}`), await sha256("global-login-lock")];
+}
+async function pinLocked(prints: string[]) {
+  const since = new Date(Date.now() - PIN_WINDOW_MS).toISOString();
+  const [a, b] = await Promise.all(prints.map((p) => db.from("app_login_attempts").select("id", { count: "exact", head: true })
+    .eq("fingerprint_hash", p).eq("succeeded", false).gte("attempted_at", since)));
+  return (a.count ?? 0) >= MAX_FAILED || (b.count ?? 0) >= MAX_GLOBAL_FAILED;
+}
+const noteAttempt = (prints: string[], succeeded: boolean) =>
+  db.from("app_login_attempts").insert(prints.map((p) => ({ fingerprint_hash: p, succeeded })));
+
+/* ---------- shapes the app uses ---------- */
+const toRequest = (r: any, shots: Set<string>) => ({
+  id: r.id, itemId: r.item_id, itemName: r.item_name, unitLabel: r.unit_label, quantity: Number(r.quantity),
+  from: r.from_storage, to: r.to_storage, yesterday: r.record_yesterday, status: r.status,
+  approvedBy: r.approved_by, approvedAt: r.approved_at,
+  previewStatus: r.preview_status, previewMessage: r.preview_message, previewedAt: r.previewed_at,
+  finalApprovedBy: r.final_approved_by, finalApprovedAt: r.final_approved_at,
+  finishedAt: r.finished_at, resultMessage: r.result_message, recordedDate: r.recorded_date,
+  hasCheckShot: shots.has(r.id),
+});
+const toCount = (c: any) => ({
+  id: c.id, itemId: c.item_id, itemName: c.item_name, storage: c.storage_name, unitLabel: c.unit_label,
+  quantity: Number(c.quantity), prior: Number(c.prior_quantity), by: c.entered_by, countedAt: c.counted_at, enteredAt: c.entered_at, note: c.note,
+});
+async function readAll(build: () => any): Promise<any[]> {
+  const rows: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await build().range(from, from + 999);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) return rows;
+  }
+}
+async function requestsAndBalances() {
+  const [reqs, balances] = await Promise.all([
+    db.from("stock_requests").select("*").order("approved_at", { ascending: false }).limit(150),
+    readAll(() => db.from("stock_balances").select("item_id,storage_name,quantity").gt("quantity", 0).order("item_id")),
+  ]);
+  if (reqs.error) throw reqs.error;
+  const ids = (reqs.data ?? []).map((r: any) => r.id);
+  const shots = new Set<string>();
+  if (ids.length) {
+    const { data, error } = await db.from("stock_shots").select("request_id").eq("kind", "check").in("request_id", ids);
+    if (error) throw error;
+    for (const s of data ?? []) shots.add(s.request_id);
+  }
+  return {
+    requests: (reqs.data ?? []).map((r: any) => toRequest(r, shots)),
+    balances: balances.map((b: any) => ({ itemId: b.item_id, storage: b.storage_name, quantity: Number(b.quantity) })),
+  };
+}
+/* What the PC needs: the request as approved, plus the app's own stock of it in the source storage. */
+async function workerRequest(id: string) {
+  const { data: r, error } = await db.from("stock_requests").select("*").eq("id", id).single();
+  if (error) throw error;
+  let appQuantity = 0;
+  if (r.item_id) {
+    const { data: b } = await db.from("stock_balances").select("quantity").eq("item_id", r.item_id).eq("storage_name", r.from_storage).maybeSingle();
+    appQuantity = Number(b?.quantity ?? 0);
+  }
+  return { id: r.id, itemId: r.item_id, itemName: r.item_name, unitLabel: r.unit_label, quantity: Number(r.quantity),
+    from: r.from_storage, to: r.to_storage, yesterday: r.record_yesterday, appQuantity };
+}
+function cleanImage(v: unknown): string | null {
+  if (v === undefined || v === null || v === "") return null;
+  const s = String(v);
+  if (s.length > IMAGE_MAX_CHARS || !/^[A-Za-z0-9+/=]+$/.test(s)) throw new Error("Invalid image");
+  return "data:image/jpeg;base64," + s;
+}
+const errorText = (e: any): string => String(e?.message || "Operation failed").slice(0, 400);
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  const segments = new URL(req.url).pathname.split("/").filter(Boolean);
+  const at = segments.lastIndexOf("stock-api");
+  const path = at >= 0 ? segments.slice(at + 1) : segments;
+  try {
+    // ---------- the office PC ----------
+    if (path[0] === "worker") {
+      const who = await worker(req); if (!who) return fail("Worker authentication required", 401);
+      if (req.method === "GET" && path[1] === "preview") {
+        const stale = new Date(Date.now() - 10 * 60_000).toISOString();
+        const { data, error } = await db.from("stock_requests").select("id").eq("status", "waiting").is("final_approved_at", null)
+          .or(`previewed_at.is.null,previewed_at.lt.${stale}`).order("approved_at").limit(1).maybeSingle();
+        if (error) throw error;
+        return json({ request: data ? await workerRequest(data.id) : null });
+      }
+      if (req.method === "POST" && path[1] === "preview-report") {
+        const b = await readBody(req, MAX_WORKER_BODY);
+        if (!uuid(b.id) || typeof b.ok !== "boolean") return fail("Invalid report");
+        const { error } = await db.rpc("stock_preview_report", { p_id: b.id, p_worker: who, p_ok: b.ok, p_message: str(b.message, 500), p_image: cleanImage(b.image) });
+        if (error) throw error;
+        return json({ ok: true });
+      }
+      if (req.method === "POST" && path[1] === "claim") {
+        const { data, error } = await db.rpc("stock_claim", { p_worker: who });
+        if (error) throw error;
+        return json({ request: data ? await workerRequest(data) : null });
+      }
+      if (req.method === "POST" && path[1] === "report") {
+        const b = await readBody(req, MAX_WORKER_BODY);
+        if (!uuid(b.id) || !["completed", "failed", "needs_checking"].includes(b.status)) return fail("Invalid report");
+        const { error } = await db.rpc("stock_finish", { p_id: b.id, p_worker: who, p_status: b.status, p_message: str(b.message, 1000), p_image: cleanImage(b.image) });
+        if (error) throw error;
+        return json({ ok: true });
+      }
+      return fail("Unknown worker route", 404);
+    }
+
+    // ---------- Rozha or Yunis ----------
+    const actor = await person(req); if (!actor) return fail("Sign in first", 401);
+
+    if (req.method === "GET" && path[0] === "bootstrap") {
+      const [storages, settings, counts, live, myTabs] = await Promise.all([
+        db.from("stock_storages").select("name").order("sort_order"),
+        db.from("stock_item_settings").select("item_id,counting_unit,per_buying,low_stock"),
+        db.from("stock_counts").select("*").order("entered_at", { ascending: false }).limit(150),
+        requestsAndBalances(),
+        db.from("stock_tabs").select("tabs").eq("account", actor).maybeSingle(),
+      ]);
+      for (const r of [storages, settings, counts]) if (r.error) throw r.error;
+      return json({
+        storages: (storages.data ?? []).map((s: any) => s.name),
+        settings: (settings.data ?? []).map((s: any) => ({ itemId: s.item_id, countingUnit: s.counting_unit, perBuying: s.per_buying === null ? null : Number(s.per_buying), lowStock: s.low_stock === null ? null : Number(s.low_stock) })),
+        counts: (counts.data ?? []).map(toCount),
+        tabs: Array.isArray(myTabs.data?.tabs) ? myTabs.data.tabs : null,
+        ...live,
+      });
+    }
+    if (req.method === "GET" && path[0] === "requests") return json(await requestsAndBalances());
+    if (req.method === "GET" && path[0] === "shots") {
+      const id = new URL(req.url).searchParams.get("id");
+      if (!uuid(id)) return fail("Invalid request");
+      const { data, error } = await db.from("stock_shots").select("kind,image,taken_at").eq("request_id", id).order("taken_at", { ascending: false });
+      if (error) throw error;
+      return json({ shots: (data ?? []).map((s: any) => ({ kind: s.kind, image: s.image, takenAt: s.taken_at })) });
+    }
+    if (req.method === "PUT" && path[0] === "tabs") {
+      const b = await readBody(req);
+      const allowed = actor === "rozha" ? SCREENS : SCREENS.filter((v) => v !== "devices" && v !== "settings");
+      const tabs: string[] = Array.isArray(b.tabs) ? [...new Set<string>(b.tabs.map((v: unknown) => String(v)))] : [];
+      if (tabs.length !== 3 || tabs.some((v) => !allowed.includes(v))) return fail("Choose three screens");
+      const { error } = await db.from("stock_tabs").upsert({ account: actor, tabs, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+    if (req.method === "PUT" && path[0] === "settings" && path[1]) {
+      const b = await readBody(req);
+      const low = b.lowStock === "" || b.lowStock === null || b.lowStock === undefined ? null : b.lowStock;
+      const per = b.perBuying === "" || b.perBuying === null || b.perBuying === undefined ? null : b.perBuying;
+      if ((low !== null && !decimal(low)) || (per !== null && !decimal(per))) return fail("Invalid number");
+      const { error } = await db.rpc("stock_save_settings", { p_item: str(path[1], 80), p_actor: actor, p_counting: str(b.countingUnit, 80),
+        p_per: per === null ? null : Number(per), p_low: low === null ? null : Number(low) });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+    if (req.method === "POST" && path[0] === "requests") {
+      const b = await readBody(req);
+      if (!uuid(b.clientKey) || !str(b.itemId, 80) || !decimal(b.quantity) || Number(b.quantity) <= 0) return fail("Invalid transfer request");
+      const { data, error } = await db.rpc("stock_submit", { p_key: b.clientKey, p_from: str(b.from, 80), p_to: str(b.to, 80),
+        p_yesterday: b.yesterday === true, p_actor: actor, p_item: str(b.itemId, 80), p_qty: Number(b.quantity),
+        p_expected_name: str(b.expectedName, 240), p_expected_unit: str(b.expectedUnit, 80) });
+      if (error) throw error;
+      return json({ id: data }, 201);
+    }
+    if (req.method === "POST" && path[0] === "cancel") {
+      const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid request");
+      const { error } = await db.rpc("stock_cancel", { p_id: b.id, p_actor: actor });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+    if (req.method === "POST" && path[0] === "final-approve") {
+      const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid request");
+      const { error } = await db.rpc("stock_final_approve", { p_id: b.id, p_actor: actor });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+    if (req.method === "POST" && path[0] === "counts") {
+      const b = await readBody(req);
+      if (!str(b.itemId, 80) || !decimal(b.quantity) || !b.countedAt || isNaN(Date.parse(b.countedAt))) return fail("Invalid count");
+      const prints = await pinPrints(req);
+      if (await pinLocked(prints)) return fail("too_many_attempts", 429);
+      const { data: good } = await db.rpc("app_internal_check_account_pin", { p_account: actor, p_pin: String(b.pin ?? "") });
+      await noteAttempt(prints, good === true);
+      if (good !== true) return fail("wrong_pin", 403);   // 403, not 401: a wrong PIN must not look like an expired sign-in
+      const { data, error } = await db.rpc("stock_recount", { p_item: str(b.itemId, 80), p_storage: str(b.storage, 80), p_qty: Number(b.quantity),
+        p_counted_at: new Date(b.countedAt).toISOString(), p_actor: actor, p_note: str(b.note, 500) });
+      if (error) throw error;
+      return json({ id: data }, 201);
+    }
+    if (req.method === "POST" && path[0] === "resolve") {
+      const b = await readBody(req);
+      if (!uuid(b.id) || !["completed", "failed"].includes(b.status) || str(b.note, 900).length < 10) return fail("Check the workplace history and write a note of at least 10 characters");
+      if (b.status === "completed" && !/^\d{4}-\d{2}-\d{2}$/.test(String(b.recordedDate || ""))) return fail("Enter the verified workplace recorded date");
+      const { error } = await db.rpc("stock_resolve", { p_id: b.id, p_actor: actor, p_status: b.status, p_note: str(b.note, 900), p_recorded_date: b.status === "completed" ? b.recordedDate : null });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+    return fail("Unknown route", 404);
+  } catch (e: any) {
+    // Messages raised on purpose by our own database functions (SQLSTATE P0001) are safe to show; anything else is not.
+    console.error("stock-api", errorText(e));
+    return fail(e?.code === "P0001" ? errorText(e) : "Operation failed; try again", 400);
+  }
+});
