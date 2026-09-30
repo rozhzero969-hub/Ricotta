@@ -1116,3 +1116,16 @@ html.rtl .tr-go{transform:scaleX(-1)}
 .tr-worker{flex-wrap:nowrap;padding:10px 12px 10px 16px}
 .tr-worker .btn{min-height:38px;padding:0 14px;font-size:13px;flex:none}
 .tr-worker-txt{flex:1}
+
+/* ===== filter rows with a glass lens ===== */
+.record-filters.seg{position:relative}
+.seg-lens{position:absolute;top:5px;bottom:5px;left:0;border-radius:999px;background:var(--deep);width:var(--lw,0);transform:translateX(var(--lx,0));pointer-events:none;z-index:0;box-shadow:0 8px 16px -10px rgba(16,48,36,.6)}
+.seg.seg-ready .seg-lens{transition:transform 460ms var(--spring-soft),width 460ms var(--spring-soft),scale 420ms var(--spring),background 220ms ease,box-shadow 220ms ease}
+.record-filters.seg .tab-pill{position:relative;z-index:1}
+.record-filters.seg .tab-pill.active{background:transparent;color:#fff;animation:none}
+.seg.held .seg-lens{scale:1.06 1.3;transition:transform 70ms linear,width 70ms linear,scale 420ms var(--spring);
+  background:linear-gradient(160deg,rgba(255,255,255,.78),rgba(194,237,215,.5));box-shadow:inset 0 1.5px 0 #fff,inset 0 0 0 1.5px rgba(255,255,255,.9),0 16px 30px -10px rgba(20,40,30,.4)}
+.seg.held{-webkit-user-select:none;user-select:none}
+.seg.held .tab-pill,.seg.held .tab-pill.active{color:var(--deep)}
+.seg.held .tab-pill.lens-over{transform:scale(1.08)}
+@media (prefers-reduced-motion:reduce){.seg-lens,.seg.seg-ready .seg-lens{transition:none!important}}

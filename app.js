@@ -495,6 +495,7 @@ function render(){
   updateRicoBadge();
   updateStockBadges();
   placeNavIndicator();
+  enhanceSegments();
   updateTopbar();
   syncInstallPrompt();
 }
@@ -629,6 +630,68 @@ function initTabBarLens(nav){
   nav.addEventListener('pointerup', end);
   nav.addEventListener('pointercancel', end);
 }
+/* ============ Filter rows with a glass lens ============
+   Every row of filter pills (History, Record, Stock, Items, Suppliers | Zones)
+   gets the same lens as the tab bar: it glides to the chosen pill, and if you
+   hold the row and slide, it grows into glass and follows your finger; the
+   pill it is over when you let go is the one that opens. */
+function enhanceSegments(){
+  document.querySelectorAll('.record-filters:not([data-lens])').forEach(seg=>{
+    seg.dataset.lens = '1'; seg.classList.add('seg');
+    const lens = document.createElement('span'); lens.className = 'seg-lens'; lens.setAttribute('aria-hidden', 'true');
+    seg.prepend(lens);
+    const pills = ()=>[...seg.querySelectorAll('.tab-pill')];
+    const place = ()=>{
+      const on = seg.querySelector('.tab-pill.active');
+      if(!on || !on.offsetWidth){ lens.style.opacity = '0'; return; }
+      lens.style.opacity = '1';
+      lens.style.setProperty('--lx', on.offsetLeft+'px'); lens.style.setProperty('--lw', on.offsetWidth+'px');
+      if(!seg.classList.contains('seg-ready')) seg.classList.add('seg-ready');
+    };
+    const lensTo = pos=>{
+      const b = pills(); if(!b.length) return;
+      const p = Math.max(0, Math.min(b.length-1, pos)), i = Math.floor(p), f = p-i, a = b[i], n = b[Math.min(b.length-1, i+1)];
+      lens.style.setProperty('--lx', (a.offsetLeft+(n.offsetLeft-a.offsetLeft)*f)+'px');
+      lens.style.setProperty('--lw', (a.offsetWidth+(n.offsetWidth-a.offsetWidth)*f)+'px');
+      b.forEach((x,k)=>x.classList.toggle('lens-over', k===Math.round(p)));
+    };
+    const slot = x=>{
+      const b = pills(), c = b.map(el=>{ const r = el.getBoundingClientRect(); return r.left+r.width/2; });
+      const order = c.map((v,k)=>[v,k]).sort((m,n)=>m[0]-n[0]);
+      let pos = order[order.length-1][1], best = 0;
+      c.forEach((v,k)=>{ if(Math.abs(v-x) < Math.abs(c[best]-x)) best = k; });
+      if(x <= order[0][0]) pos = order[0][1];
+      else for(let k=0;k<order.length-1;k++){ const [c1,i1]=order[k],[c2,i2]=order[k+1]; if(x<=c2){ pos = i1+(i2-i1)*((x-c1)/(c2-c1)); break; } }
+      return {el:b[best], pos};
+    };
+    let down = null;
+    seg.addEventListener('pointerdown', e=>{ if(e.button>0) return; down = {x:e.clientX, id:e.pointerId, moved:false}; });
+    seg.addEventListener('pointermove', e=>{
+      if(!down || e.pointerId!==down.id) return;
+      if(!down.moved && Math.abs(e.clientX-down.x) < 8) return;
+      if(!down.moved){ down.moved = true; seg.classList.add('held'); try{ seg.setPointerCapture(e.pointerId); }catch(_){} }
+      lensTo(slot(e.clientX).pos);
+    });
+    const end = e=>{
+      if(!down || e.pointerId!==down.id) return;
+      const moved = down.moved; down = null;
+      seg.classList.remove('held'); pills().forEach(x=>x.classList.remove('lens-over'));
+      if(!moved) return;
+      const target = slot(e.clientX).el;
+      if(target && !target.classList.contains('active')) target.click(); else place();
+      // The browser's own click after a drag must not also press whatever is under the finger.
+      const swallow = ev=>{ ev.stopPropagation(); ev.preventDefault(); };
+      seg.addEventListener('click', swallow, {capture:true, once:true});
+      setTimeout(()=>seg.removeEventListener('click', swallow, {capture:true}), 300);
+    };
+    seg.addEventListener('pointerup', end);
+    seg.addEventListener('pointercancel', end);
+    new MutationObserver(place).observe(seg, {subtree:true, attributes:true, attributeFilter:['class']});
+    if(seg.scrollWidth <= seg.clientWidth+1) seg.style.touchAction = 'pan-y';
+    place();
+  });
+}
+window.addEventListener('resize', ()=>{ document.querySelectorAll('.seg').forEach(seg=>{ const on = seg.querySelector('.tab-pill.active'), lens = seg.querySelector('.seg-lens'); if(on && lens && on.offsetWidth){ lens.style.setProperty('--lx', on.offsetLeft+'px'); lens.style.setProperty('--lw', on.offsetWidth+'px'); } }); });
 function setMoreOpen(open){
   const nav = document.querySelector('.bottomnav'), btn = document.getElementById('navMoreBtn');
   if(!nav || !btn) return;
