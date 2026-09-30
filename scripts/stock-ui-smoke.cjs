@@ -266,6 +266,7 @@ const server=http.createServer((rq,res)=>{
     const bx=await page.locator('[data-histfilter="all"]').boundingBox(), tx=await page.locator('[data-histfilter="transfers"]').boundingBox();
     await page.mouse.move(bx.x+bx.width/2,bx.y+bx.height/2);await page.mouse.down();await page.mouse.move(tx.x+tx.width/2,tx.y+tx.height/2,{steps:8});
     assert.equal(await page.locator('.record-filters.held').count(),1,'holding and sliding lifts the lens');
+    assert.equal(await page.locator('[data-histfilter="transfers"].active').count(),1,'pages open while the lens slides, before the finger lifts');
     if(process.env.SHOT)await page.screenshot({path:process.env.SHOT+'/lens.png'});
     await page.mouse.up();await page.waitForTimeout(300);
     assert.equal(await page.locator('[data-histfilter="transfers"].active').count(),1,'the pill under the finger opens');
