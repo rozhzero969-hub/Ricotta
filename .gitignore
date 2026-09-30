@@ -13,3 +13,4 @@ backups/
 worker/browser-profile/
 worker/screenshots/
 worker/worker.lock
+.lint-all.js

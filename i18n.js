@@ -341,7 +341,16 @@ const T = {
     trStepFrom:'Where is it coming from?',
     trStepTo:'Where is it going?',
     trStepItemShort:'Item',
-    trStorageCount:n=>n+' items in stock'
+    trStorageCount:n=>n+' items in stock',
+    zones:'Zones',
+    zAdd:'Add zone',
+    zEdit:'Rename zone',
+    zName:'Zone name',
+    zDelete:'Delete zone',
+    zHint:'A zone’s name must match its name in the workplace system, because the PC selects it by name.',
+    zDeleteConfirm:'Remove this zone? It can only be removed when it has no stock and no pending transfers.',
+    zSaved:n=>'Saved zone '+n,
+    zDeleted:n=>'Removed zone '+n
 
   },
   ku:{
@@ -684,7 +693,16 @@ const T = {
     trStepFrom:'لە کوێوە دەگوازرێتەوە؟',
     trStepTo:'بۆ کوێ دەگوازرێتەوە؟',
     trStepItemShort:'کاڵا',
-    trStorageCount:n=>n+' کاڵا لە ستۆکدایە'
+    trStorageCount:n=>n+' کاڵا لە ستۆکدایە',
+    zones:'کۆگاکان',
+    zAdd:'زیادکردنی کۆگا',
+    zEdit:'گۆڕینی ناوی کۆگا',
+    zName:'ناوی کۆگا',
+    zDelete:'سڕینەوەی کۆگا',
+    zHint:'ناوی کۆگا دەبێت وەک ناوەکەی لە سیستەمی شوێنی کار بێت، چونکە کۆمپیوتەر بە ناو هەڵیدەبژێرێت.',
+    zDeleteConfirm:'ئەم کۆگایە لاببرێت؟ تەنها کاتێک دەتوانرێت لاببرێت کە ستۆکی نەبێت و گواستنەوەی چاوەڕوانی نەبێت.',
+    zSaved:n=>'کۆگای '+n+' پاشەکەوت کرا',
+    zDeleted:n=>'کۆگای '+n+' لابرا'
 
   },
   ar:{
@@ -1027,7 +1045,16 @@ const T = {
     trStepFrom:'من أين سيُنقل؟',
     trStepTo:'إلى أين سيُنقل؟',
     trStepItemShort:'المادة',
-    trStorageCount:n=>n+' مادة في المخزون'
+    trStorageCount:n=>n+' مادة في المخزون',
+    zones:'المناطق',
+    zAdd:'إضافة منطقة',
+    zEdit:'إعادة تسمية المنطقة',
+    zName:'اسم المنطقة',
+    zDelete:'حذف المنطقة',
+    zHint:'يجب أن يطابق اسم المنطقة اسمها في نظام العمل، لأن الحاسوب يختارها بالاسم.',
+    zDeleteConfirm:'إزالة هذه المنطقة؟ يمكن إزالتها فقط عندما لا يوجد بها مخزون ولا نقل قيد الانتظار.',
+    zSaved:n=>'تم حفظ المنطقة '+n,
+    zDeleted:n=>'تمت إزالة المنطقة '+n
 
   }
 };

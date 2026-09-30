@@ -15,6 +15,7 @@ const trState = {from: '', to: '', itemId: '', qty: '', unit: 'counting', yester
 const stView = {storage: 'all', filter: 'all', search: ''};
 const histView = {filter: 'all'};
 const itemsView = {filter: 'all', search: ''};
+const supView = {tab: 'suppliers'};
 
 /* ============ API + data ============ */
 async function stockApi(path, {method = 'GET', body, timeout = 20000} = {}){
@@ -784,4 +785,58 @@ function attachHistoryStockEvents(){
     showAlert(html);
   });
   attachStockCommon();
+}
+
+/* ============ Zones (inside the Suppliers screen) ============ */
+function zonesSwitchHtml(){
+  return `<div class="record-filters glass" role="group">${[['suppliers', t('suppliers')], ['zones', t('zones')]].map(([id, label]) =>
+    `<button type="button" class="tab-pill ${supView.tab === id ? 'active' : ''}" aria-pressed="${supView.tab === id}" data-supview="${id}">${esc(label)}</button>`).join('')}</div>`;
+}
+function renderZonesPanel(){
+  if(!stockState.loaded) return stLoadingHtml();
+  const rows = stockState.storages.map(x => {
+    const n = stReadyItems().filter(i => stQty(i.id, x) > 0).length;
+    return `<div class="list-row tappable" data-zedit="${esc(x)}"><div><div class="name" dir="auto">${esc(x)}</div><div class="meta">${esc(t('trStorageCount')(n))}</div></div>
+      <div class="row-actions"><span class="icon-btn">${ICON_EDIT}</span><button type="button" class="icon-btn danger" data-zdel="${esc(x)}" aria-label="${esc(t('zDelete'))}">${ICON_DELETE}</button></div></div>`;
+  }).join('');
+  return `<div class="action-row"><button type="button" class="btn btn-primary add-btn" id="zoneAddBtn">${ICON_PLUS} ${esc(t('zAdd'))}</button></div>
+    <div class="field-hint z-hint">${esc(t('zHint'))}</div>
+    <div class="section-title">${esc(t('zones'))} (${stockState.storages.length})</div>${rows}`;
+}
+/* After a zone is renamed or removed, anything that still points at the old name is cleared. */
+function zoneForget(name){
+  if(trState.from === name || trState.to === name) trReset();
+  if(stView.storage === name) stView.storage = 'all';
+}
+function openZoneModal(name){
+  showFormModal({
+    title: esc(name ? t('zEdit') : t('zAdd')),
+    banner: name ? editingBanner(name, '') : '',
+    bodyHtml: `<div class="field"><label>${esc(t('zName'))}</label><input id="zName" data-clear="1" maxlength="60" autocomplete="off" value="${esc(name || '')}"><div class="field-hint">${esc(t('zHint'))}</div></div>`,
+    okLabel: t('save'),
+    againLabel: name ? null : t('saveAndAddAnother'),
+    onOpen: box => box.querySelector('#zName').focus(),
+    onSubmit: async again => {
+      const v = document.getElementById('zName').value.trim();
+      if(!v) return {error: t('nameRequired')};
+      const r = name ? await stockApi('zones/rename', {method: 'POST', body: {from: name, to: v}}) : await stockApi('zones/add', {method: 'POST', body: {name: v}});
+      if(!r.ok) return {error: r.data?.error || t('saveFailed')};
+      if(name && name !== v) zoneForget(name);
+      await loadStock(); render();
+      if(again) return {keepOpen: true, message: t('zSaved')(v)};
+      toast(t('zSaved')(v)); return {};
+    }
+  });
+}
+function attachZonesEvents(){
+  document.getElementById('zoneAddBtn')?.addEventListener('click', () => openZoneModal(null));
+  document.querySelectorAll('[data-zedit]').forEach(row => row.onclick = () => openZoneModal(row.dataset.zedit));
+  document.querySelectorAll('[data-zdel]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const name = b.dataset.zdel;
+    if(!(await showConfirm(`<b>${esc(name)}</b><br>${esc(t('zDeleteConfirm'))}`))) return;
+    const r = await stockApi('zones/delete', {method: 'POST', body: {name}});
+    if(!r.ok){ await showAlert(esc(r.data?.error || t('saveFailed'))); return; }
+    zoneForget(name); await loadStock(); render(); toast(t('zDeleted')(name));
+  });
 }
