@@ -682,7 +682,6 @@ function enhanceSegments(){
     const lens = document.createElement('span'); lens.className = 'seg-lens'; lens.setAttribute('aria-hidden', 'true');
     seg.prepend(lens);
     new MutationObserver(()=>segPlace(seg)).observe(seg, {subtree:true, attributes:true, attributeFilter:['class']});
-    if(seg.scrollWidth <= seg.clientWidth+1) seg.style.touchAction = 'pan-y';
     segPlace(seg);
     if(segDrag && segDrag.moved && segs().indexOf(seg) === segDrag.index) segAdopt(seg);
   });
@@ -695,27 +694,38 @@ document.addEventListener('pointerdown', e=>{
 document.addEventListener('pointermove', e=>{
   if(!segDrag || e.pointerId!==segDrag.id) return;
   segDrag.x = e.clientX;
-  if(!segDrag.moved && Math.abs(e.clientX-segDrag.x0) < 8) return;
+  if(!segDrag.moved && Math.abs(e.clientX-segDrag.x0) < 4) return;
   let seg = segs()[segDrag.index]; if(!seg) return;
   if(!segDrag.moved){
     segDrag.moved = true; segDrag.last = segPills(seg).findIndex(p=>p.classList.contains('active'));
     seg.classList.add('held'); try{ seg.setPointerCapture(e.pointerId); }catch(_){}
   }
   const s = segSlot(seg, e.clientX);
-  segLensTo(seg, s.pos);
+  segLensTo(seg, s.pos);                              // the glass follows the finger immediately
   if(s.index !== segDrag.last){
     segDrag.last = s.index;
-    if(!s.el.classList.contains('active')){
-      s.el.click();                                  // opens that filter (a full redraw replaces the row)
-      seg = segs()[segDrag.index];
-      if(seg && !seg.classList.contains('held')) segAdopt(seg);
-      if(seg) segLensTo(seg, segSlot(seg, e.clientX).pos);
-    }
+    // The screen changes a moment after the lens settles on a pill, so redrawing never makes the glass stutter.
+    clearTimeout(segDrag.timer);
+    const index = s.index;
+    segDrag.timer = setTimeout(()=>{
+      const cur = segs()[segDrag?.index]; if(!cur || !segDrag) return;
+      const pill = segPills(cur)[index];
+      if(pill && !pill.classList.contains('active')){
+        pill.click();                                 // opens that filter (a full redraw replaces the row)
+        const n = segs()[segDrag.index];
+        if(n && !n.classList.contains('held')) segAdopt(n);
+        if(n) segLensTo(n, segSlot(n, segDrag.x).pos);
+      }
+    }, 70);
   }
 });
 const segEnd = e=>{
   if(!segDrag || e.pointerId!==segDrag.id) return;
-  const d = segDrag; segDrag = null;
+  const d = segDrag; segDrag = null; clearTimeout(d.timer);
+  if(d.moved && d.last !== null){                      // let go: the pill under the finger is the one that opens
+    const cur = segs()[d.index], pill = cur && segPills(cur)[d.last];
+    if(pill && !pill.classList.contains('active')) pill.click();
+  }
   const seg = segs()[d.index];
   if(seg){ seg.classList.remove('held'); segPills(seg).forEach(x=>x.classList.remove('lens-over')); segPlace(seg); }
   if(!d.moved) return;

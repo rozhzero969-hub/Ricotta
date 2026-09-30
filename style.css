@@ -1129,3 +1129,5 @@ html.rtl .tr-go{transform:scaleX(-1)}
 .seg.held .tab-pill,.seg.held .tab-pill.active{color:var(--deep)}
 .seg.held .tab-pill.lens-over{transform:scale(1.08)}
 @media (prefers-reduced-motion:reduce){.seg-lens,.seg.seg-ready .seg-lens{transition:none!important}}
+/* filter rows: the finger owns the gesture from the first touch, like the tab bar */
+.record-filters.seg{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}

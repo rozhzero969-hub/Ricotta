@@ -423,6 +423,7 @@ const server=http.createServer((req,res)=>{
     await y.page.locator('label:has(#reminderEnabled)').click();
     await y.page.locator('#reminderTime').fill('21:30');
     await y.page.locator('#reminderTestBtn').click();
+    await y.page.waitForFunction(()=>!!document.querySelector('#modalAlertOkBtn'),null,{timeout:5000}).catch(()=>{});
     assert.ok(y.calls.some(c=>c.endpoint==='push/send' && c.body.type==='reminder-now'),'Yunis can send a test reminder');
     await y.page.locator('#modalAlertOkBtn').click(); await y.page.waitForFunction(()=>!document.querySelector('#modalRoot .modal-overlay'));
     await y.page.locator('#reminderSaveBtn').click();

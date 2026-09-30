@@ -266,11 +266,18 @@ const server=http.createServer((rq,res)=>{
     const bx=await page.locator('[data-histfilter="all"]').boundingBox(), tx=await page.locator('[data-histfilter="transfers"]').boundingBox();
     await page.mouse.move(bx.x+bx.width/2,bx.y+bx.height/2);await page.mouse.down();await page.mouse.move(tx.x+tx.width/2,tx.y+tx.height/2,{steps:8});
     assert.equal(await page.locator('.record-filters.held').count(),1,'holding and sliding lifts the lens');
+    await page.waitForTimeout(250);
     assert.equal(await page.locator('[data-histfilter="transfers"].active').count(),1,'pages open while the lens slides, before the finger lifts');
     if(process.env.SHOT)await page.screenshot({path:process.env.SHOT+'/lens.png'});
     await page.mouse.up();await page.waitForTimeout(300);
     assert.equal(await page.locator('[data-histfilter="transfers"].active').count(),1,'the pill under the finger opens');
     assert.equal(await page.locator('.record-filters.held').count(),0);
+    await page.locator('[data-histfilter="all"]').click();
+    // A quick flick that lifts before the screen has changed still lands on the pill it ended over.
+    assert.equal(await page.locator('.record-filters').evaluate(el=>getComputedStyle(el).touchAction),'none','the finger owns the gesture from the first touch');
+    const fx=await page.locator('[data-histfilter="all"]').boundingBox(), fy=await page.locator('[data-histfilter="counts"]').boundingBox();
+    await page.mouse.move(fx.x+fx.width/2,fx.y+fx.height/2);await page.mouse.down();await page.mouse.move(fy.x+fy.width/2,fy.y+fy.height/2);await page.mouse.up();await page.waitForTimeout(200);
+    assert.equal(await page.locator('[data-histfilter="counts"].active').count(),1,'a quick flick opens the pill it ends on');
     await page.locator('[data-histfilter="all"]').click();
     await page.locator('[data-histfilter="orders"]').click();
     assert.equal(await page.locator('.st-hist').count(),0,'orders filter hides transfers and counts');
