@@ -13,5 +13,11 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
   -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero)
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+# The launcher lets the phone app start the worker: it only asks the server "was Turn on pressed?".
+$launcherName = 'Ricotta Worker Launcher'
+$launcherCmd = Join-Path $PSScriptRoot 'start-launcher.cmd'
+$launcherAction = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"`"$launcherCmd`"`"" -WorkingDirectory $PSScriptRoot
+Register-ScheduledTask -TaskName $launcherName -Action $launcherAction -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+Write-Host "Registered '$launcherName' (lets the app start the worker). To start it now: Start-ScheduledTask -TaskName '$launcherName'"
 Write-Host "Registered '$name'. It starts at your next sign-in. To start it now: Start-ScheduledTask -TaskName '$name'"
 Write-Host "It uses ALLOW_SUBMIT from worker\.env. Registering this task does not enable live submission."

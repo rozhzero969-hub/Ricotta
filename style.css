@@ -1022,3 +1022,30 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 .tr-units .tab-pill{height:40px}
 .tr-eq,.tr-rv-eq{font-weight:600;color:var(--ink-soft);font-size:.92em}
 .tr-rv-eq{color:#BDD3C6;font-size:14px}
+.tr-result.todo{border-style:dashed;opacity:.85}
+.st-row .it-chip,.tr-result .it-chip{margin:0;flex:none}
+/* count many items, transfer summary */
+.st-actions{margin:0 0 12px}
+.st-actions .btn{min-height:46px}
+.bc-search{margin:0 0 8px}
+.bc-count{font-size:12.5px;font-weight:700;color:var(--mint-ink);margin:0 2px 8px}
+.bc-list{max-height:min(46vh,420px);overflow-y:auto;margin:0 0 14px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.45)}
+.bc-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.bc-row:last-child{border-bottom:0}
+.bc-name{min-width:0;font-size:14px;font-weight:700;overflow-wrap:anywhere}
+.bc-name small{display:block;font-size:11.5px;font-weight:500;color:var(--ink-soft);margin-top:2px}
+.bc-in{display:flex;align-items:center;gap:6px;flex:none}
+.bc-in input{width:92px;min-height:42px;text-align:center;direction:ltr}
+.tr-sum-title{margin:12px 0 6px;font-size:12px;font-weight:800;letter-spacing:.04em;color:var(--ink-soft)}
+.tr-sum{display:grid;gap:0;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.5);overflow:hidden}
+.tr-sum-row{display:flex;justify-content:space-between;gap:12px;padding:9px 14px;border-bottom:1px solid var(--line);font-size:14px}
+.tr-sum-row:last-child{border-bottom:0}
+.tr-sum-row span{color:var(--ink-soft);font-weight:600}
+.tr-sum-row b{font-weight:800;text-align:end;overflow-wrap:anywhere}
+.tr-worker{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px;border-radius:20px;margin:0 0 14px}
+.tr-worker-txt{display:flex;align-items:center;gap:10px;min-width:0}
+.tr-worker-txt b{display:block;font-size:14px;font-weight:800}
+.tr-worker-txt small{display:block;font-size:12px;font-weight:500;color:var(--ink-soft);margin-top:2px;line-height:1.4}
+.tr-worker-dot{width:11px;height:11px;border-radius:50%;background:#B9C2BD;flex:none}
+.tr-worker.on .tr-worker-dot{background:#2F9461;box-shadow:0 0 0 4px rgba(47,148,97,.2)}
+.tr-worker .btn{min-height:42px}

@@ -42,6 +42,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930150000_stock_and_transfers.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930151000_stock_tabs.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930160000_stock_transfer_units.sql
+          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930170000_stock_worker_control.sql
+          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930180000_stock_fk_indexes.sql
           psql -v ON_ERROR_STOP=1 -q -f scripts/stock-db-smoke.sql
 
       - name: Rico provider smoke test (Gemini + Groq, mocked)

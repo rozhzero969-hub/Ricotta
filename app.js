@@ -2228,7 +2228,7 @@ function openItemModal(id){
   // While adding a fresh item, the last supplier picked stays selected so
   // bulk-adding items for one supplier doesn't need reselecting each time.
   const currentSupplierId = existing ? existing.supplierId : state.itemFormSupplierId;
-  const supOptions = `<option value="">${t('noSupplier')}</option>` + state.suppliers.map(s=>`<option value="${esc(s.id)}" ${currentSupplierId===s.id?'selected':''}>${esc(s.name)}</option>`).join('');
+  const supOptions = `<option value="">${existing ? t('noSupplier') : t('chooseSupplier')}</option>` + state.suppliers.map(s=>`<option value="${esc(s.id)}" ${currentSupplierId===s.id?'selected':''}>${esc(s.name)}</option>`).join('');
   const lockedSupplier = !existing && state.itemFormSupplierId ? state.suppliers.find(s=>s.id===state.itemFormSupplierId) : null;
   const banner = existing
     ? editingBanner(existing.name, `${unitLabel(existing.unit)} \u00b7 ${existing.supplierId ? supplierName(existing.supplierId) : t('noSupplier')}`)
@@ -2274,6 +2274,7 @@ function openItemModal(id){
       const unit = document.getElementById('mfUnit').value;
       const supplierId = document.getElementById('mfSupplier').value || null;
       if(!name) return {error: t('nameRequired')};
+      if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
       const trackStock = document.getElementById('mfTrackStock').checked;
       const parQty = parseFloat(document.getElementById('mfParQty').value);
       const parBoost = parseFloat(document.getElementById('mfParBoost').value);
@@ -2330,6 +2331,7 @@ function openItemModal(id){
         state.pars = (state.pars||[]).filter(p=>p.itemId!==itemId);
       }
       render();
+      if(stockOn) stAfterItemSaved(itemId);
       if(again) return {keepOpen:true, message:t('savedMsg')(name)};
       toast(t('savedMsg')(name));
       return {};
