@@ -90,8 +90,12 @@ async function inspect(page,r){
   const match=availableText.trim().match(/^([\d,]+(?:\.\d+)?)\s+(.+?)\s+available in\s+/i);
   if(!match||match[2].trim()!==r.unitLabel)fail('Workplace stock unit could not be checked');
   const workplace=Number(match[1].replaceAll(',',''));
+  // The app's stock is already converted into the unit being moved (2 boxes, not 24 pieces). The page shows
+  // a rounded number (19.81), so compare at the precision it displays; a whole number must match exactly.
   const app=Number(r.appQuantity);
-  if(!Number.isFinite(workplace)||Math.abs(workplace-app)>0.000001)fail(`Stock mismatch for ${r.itemName}: workplace ${workplace}, app ${app} ${r.unitLabel}. Recount it in Stock.`);
+  const shown=(match[1].split('.')[1]||'').length;
+  const tolerance=shown>0?0.5*Math.pow(10,-shown)+1e-9:1e-6;
+  if(!Number.isFinite(workplace)||Math.abs(workplace-app)>tolerance)fail(`Stock mismatch for ${r.itemName}: workplace ${workplace}, app ${Math.round(app*1e6)/1e6} ${r.unitLabel}. Recount it in Stock, and check the unit conversion matches the workplace system.`);
   if(workplace<Number(r.quantity))fail(`Insufficient workplace stock for ${r.itemName}`);
   if(await rowsOnPage(page)!==1)fail('Unexpected number of form rows');
   if(page.url()!==PAGE)fail('Workplace page changed before submission');

@@ -10,7 +10,8 @@
 //   GET    shots?id=                     the PC's screenshots for one request (kept 3 days)
 //   PUT    tabs                          {tabs:[3 screens]}  this person's tab bar (may include Transfer and Stock)
 //   PUT    settings/:itemId              {countingUnit, perBuying, lowStock}
-//   POST   requests                      {clientKey, from, to, yesterday, itemId, quantity, expectedName, expectedUnit}
+//   POST   requests                      {clientKey, from, to, yesterday, itemId, quantity, unitId, expectedName, expectedUnit}
+//                                        (unitId: the item's buying or counting unit; quantity is in that unit)
 //   POST   cancel                        {id}
 //   POST   final-approve                 {id}
 //   POST   counts                        {itemId, storage, quantity, countedAt, note, pin}   (asks for the PIN again)
@@ -81,6 +82,7 @@ const noteAttempt = (prints: string[], succeeded: boolean) =>
 /* ---------- shapes the app uses ---------- */
 const toRequest = (r: any, shots: Set<string>) => ({
   id: r.id, itemId: r.item_id, itemName: r.item_name, unitLabel: r.unit_label, quantity: Number(r.quantity),
+  enteredQuantity: r.entered_quantity === null ? null : Number(r.entered_quantity), enteredUnitLabel: r.entered_unit_label ?? null,
   from: r.from_storage, to: r.to_storage, yesterday: r.record_yesterday, status: r.status,
   approvedBy: r.approved_by, approvedAt: r.approved_at,
   previewStatus: r.preview_status, previewMessage: r.preview_message, previewedAt: r.previewed_at,
@@ -123,12 +125,17 @@ async function requestsAndBalances() {
 async function workerRequest(id: string) {
   const { data: r, error } = await db.from("stock_requests").select("*").eq("id", id).single();
   if (error) throw error;
-  let appQuantity = 0;
+  let ledgerStock = 0;
   if (r.item_id) {
     const { data: b } = await db.from("stock_balances").select("quantity").eq("item_id", r.item_id).eq("storage_name", r.from_storage).maybeSingle();
-    appQuantity = Number(b?.quantity ?? 0);
+    ledgerStock = Number(b?.quantity ?? 0);
   }
-  return { id: r.id, itemId: r.item_id, itemName: r.item_name, unitLabel: r.unit_label, quantity: Number(r.quantity),
+  // The PC works in the unit that was entered (2 boxes, not 24 pieces). The ledger is in counting units,
+  // so the app's stock is converted with the same factor as the request: ledger = entered x factor.
+  const ledgerQty = Number(r.quantity);
+  const enteredQty = r.entered_quantity === null ? ledgerQty : Number(r.entered_quantity);
+  const appQuantity = ledgerStock * (enteredQty / ledgerQty);
+  return { id: r.id, itemId: r.item_id, itemName: r.item_name, unitLabel: r.entered_unit_label ?? r.unit_label, quantity: enteredQty,
     from: r.from_storage, to: r.to_storage, yesterday: r.record_yesterday, appQuantity };
 }
 function cleanImage(v: unknown): string | null {
@@ -229,7 +236,8 @@ Deno.serve(async (req: Request) => {
       if (!uuid(b.clientKey) || !str(b.itemId, 80) || !decimal(b.quantity) || Number(b.quantity) <= 0) return fail("Invalid transfer request");
       const { data, error } = await db.rpc("stock_submit", { p_key: b.clientKey, p_from: str(b.from, 80), p_to: str(b.to, 80),
         p_yesterday: b.yesterday === true, p_actor: actor, p_item: str(b.itemId, 80), p_qty: Number(b.quantity),
-        p_expected_name: str(b.expectedName, 240), p_expected_unit: str(b.expectedUnit, 80) });
+        p_expected_name: str(b.expectedName, 240), p_expected_unit: str(b.expectedUnit, 80),
+        p_unit: b.unitId ? str(b.unitId, 80) : null });
       if (error) throw error;
       return json({ id: data }, 201);
     }

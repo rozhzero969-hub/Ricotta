@@ -11,7 +11,7 @@
 const STOCK_API_URL = `${SUPABASE_URL}/functions/v1/stock-api`;
 const ST_ACTIVE = ['waiting', 'running', 'needs_checking'];
 const stockState = {tabs: null, loaded: false, failed: false, storages: [], settings: new Map(), balances: new Map(), requests: [], counts: [], sig: '', shots: {}, lastLight: 0};
-const trState = {from: '', to: '', itemId: '', qty: '', yesterday: false, search: '', reviewKey: null};
+const trState = {from: '', to: '', itemId: '', qty: '', unit: 'counting', yesterday: false, search: '', reviewKey: null};
 const stView = {storage: 'all', filter: 'all', search: ''};
 const histView = {filter: 'all'};
 const itemsView = {filter: 'all', search: ''};
@@ -85,6 +85,20 @@ const fmtQty = n => Number(n || 0).toLocaleString('en-US', {maximumFractionDigit
 const stUnitObj = id => state.units.find(u => u.id === id);
 const stCountUnitName = id => { const u = stUnitObj(stSetting(id)?.countingUnit); return u ? unitName(u) : ''; };
 const stCountUnitEn = id => stUnitObj(stSetting(id)?.countingUnit)?.en || '';
+/* An amount can be entered in the item's counting format, or in its buying format when the two differ (1 box = 12 piece). */
+const stHasBoth = id => { const s = stSetting(id), item = stItem(id); return !!(s && item && item.unit && item.unit !== s.countingUnit && s.perBuying > 0); };
+const stMode = id => (trState.unit === 'buying' && stHasBoth(id)) ? 'buying' : 'counting';
+const stFactor = id => stMode(id) === 'buying' ? stSetting(id).perBuying : 1;          // counting units in one entered unit
+const stEnteredUnit = id => stMode(id) === 'buying' ? stUnitObj(stItem(id).unit) : stUnitObj(stSetting(id)?.countingUnit);
+const stEnteredName = id => { const u = stEnteredUnit(id); return u ? unitName(u) : ''; };
+const stEnteredId = id => stEnteredUnit(id)?.id;
+const stEnteredEn = id => stEnteredUnit(id)?.en || '';
+/* How a request's amount reads: what was typed, plus the counting-unit amount when they differ. */
+function reqAmountHtml(r){
+  const q = r.enteredQuantity ?? r.quantity, u = r.enteredUnitLabel ?? r.unitLabel;
+  const extra = u !== r.unitLabel ? ` <span class="tr-eq">= ${esc(fmtQty(r.quantity))} ${esc(r.unitLabel)}</span>` : '';
+  return `${esc(fmtQty(q))} ${esc(u)}${extra}`;
+}
 const stIsLow = item => { const s = stSetting(item.id); return !!s && s.lowStock != null && stTotal(item.id) <= s.lowStock; };
 const stLowCount = () => state.items.filter(i => stReady(i) && stIsLow(i)).length;
 const stReadyItems = () => state.items.filter(stReady);
@@ -158,6 +172,7 @@ function renderTransfers(){
       <div id="trChosen" class="tr-chosen glass" hidden></div>
     </div>
     <div class="tr-step" id="trAmount" hidden><div class="tr-step-h"><span class="tr-num">3</span>${esc(t('trStepAmount'))}</div>
+      <div class="tr-units" id="trUnits" role="group" hidden></div>
       <div class="tr-qty"><button type="button" class="step-btn tr-step-btn" id="trLess" aria-label="${esc(t('trLess'))}">−</button><input id="trQty" type="number" inputmode="decimal" min="0" step="any" placeholder="0" aria-label="${esc(t('trQty'))}" value="${esc(trState.qty)}"><span class="tr-unit" id="trUnit"></span><button type="button" class="step-btn tr-step-btn" data-inc id="trMore" aria-label="${esc(t('trMore'))}">+</button></div>
       <button type="button" class="tr-link" id="trAll">${esc(t('trUseAll'))}</button>
     </div>
@@ -191,10 +206,20 @@ function trPaintChosen(){
   const on = !!(item && stReady(item));
   picker.hidden = on; chosen.hidden = !on; amount.hidden = !on;
   if(on){
-    const from = trState.from, free = stFree(item.id, from), res = stReserved(item.id, from), unit = stCountUnitName(item.id);
+    const from = trState.from, f = stFactor(item.id), free = stFree(item.id, from) / f, res = stReserved(item.id, from) / f, unit = stEnteredName(item.id);
     chosen.innerHTML = `<div><div class="name" dir="auto">${esc(item.name)}</div><div class="meta">${esc(t('trAvailable')(fmtQty(free), iso(unit), iso(from)))}${res > 1e-8 ? '<br>' + esc(t('trReserved')(fmtQty(res), iso(unit))) : ''}</div></div><button type="button" class="btn btn-ghost" id="trChange">${esc(t('trChangeItem'))}</button>`;
     document.getElementById('trUnit').textContent = unit;
-    document.getElementById('trChange').onclick = () => { trState.itemId = ''; trState.qty = ''; trState.search = ''; trState.reviewKey = null; trPaintAll(); document.getElementById('trSearch')?.focus(); };
+    const chips = document.getElementById('trUnits');
+    chips.hidden = !stHasBoth(item.id);
+    if(!chips.hidden){
+      chips.innerHTML = [['counting', stCountUnitName(item.id)], ['buying', unitName(stUnitObj(item.unit))]].map(([m, label]) =>
+        `<button type="button" class="tab-pill${stMode(item.id) === m ? ' active' : ''}" aria-pressed="${stMode(item.id) === m}" data-trunit="${m}">${esc(label)}</button>`).join('');
+      chips.querySelectorAll('[data-trunit]').forEach(b => b.onclick = () => {
+        if(trState.unit === b.dataset.trunit) return;
+        trState.unit = b.dataset.trunit; trState.qty = ''; document.getElementById('trQty').value = ''; trInvalidate(); trPaintChosen();
+      });
+    }
+    document.getElementById('trChange').onclick = () => { trState.itemId = ''; trState.qty = ''; trState.unit = 'counting'; trState.search = ''; trState.reviewKey = null; trPaintAll(); document.getElementById('trSearch')?.focus(); };
   }
   trPaintHint();
 }
@@ -205,7 +230,7 @@ function trValid(){
   if(trState.from === trState.to) return 'trHintDiff';
   if(!item || !stReady(item)) return 'trHintItem';
   if(!(qty > 0)) return 'trHintQty';
-  if(qty > stFree(item.id, trState.from) + 1e-8) return 'trHintOver';
+  if(qty * stFactor(item.id) > stFree(item.id, trState.from) + 1e-8) return 'trHintOver';
   return '';
 }
 function trPaintHint(){
@@ -216,18 +241,18 @@ function trPaintHint(){
 }
 function trPaintAll(){ trPaintResults(); trPaintChosen(); const c = document.getElementById('trReviewCard'); if(c && !trState.reviewKey) c.hidden = true; }
 function trInvalidate(){ trState.reviewKey = null; const c = document.getElementById('trReviewCard'); if(c) c.hidden = true; }
-function trReset(){ Object.assign(trState, {from: '', to: '', itemId: '', qty: '', yesterday: false, search: '', reviewKey: null}); }
+function trReset(){ Object.assign(trState, {from: '', to: '', itemId: '', qty: '', unit: 'counting', yesterday: false, search: '', reviewKey: null}); }
 function trReview(){
   const problem = trValid();
   if(problem){ toast(t(problem), 'error'); return; }
-  const item = stItem(trState.itemId), qty = Number(trState.qty), free = stFree(item.id, trState.from);
-  if(qty > free + 1e-8){ toast(t('trAvailable')(fmtQty(free), iso(stCountUnitName(item.id)), iso(trState.from)), 'error'); return; }
+  const item = stItem(trState.itemId), qty = Number(trState.qty), f = stFactor(item.id), free = stFree(item.id, trState.from) / f;
+  if(qty > free + 1e-8){ toast(t('trAvailable')(fmtQty(free), iso(stEnteredName(item.id)), iso(trState.from)), 'error'); return; }
   trState.reviewKey = trState.reviewKey || crypto.randomUUID();
   const card = document.getElementById('trReviewCard');
   card.innerHTML = `<div class="hero-eyebrow">${esc(t('trReviewTitle'))}</div>
     <div class="tr-rv-route">${esc(trState.from)} <span aria-hidden="true">→</span> ${esc(trState.to)}</div>
     <div class="tr-rv-item" dir="auto">${esc(item.name)}</div>
-    <div class="tr-rv-qty"><b>${esc(fmtQty(qty))}</b> ${esc(stCountUnitName(item.id))}</div>
+    <div class="tr-rv-qty"><b>${esc(fmtQty(qty))}</b> ${esc(stEnteredName(item.id))}${f !== 1 ? ` <span class="tr-rv-eq">= ${esc(fmtQty(Math.round(qty * f * 1e8) / 1e8))} ${esc(stCountUnitName(item.id))}</span>` : ''}</div>
     <div class="hero-sub">${esc(trState.yesterday ? t('trWhenYesterday') : t('trWhenToday'))}</div>
     <div class="tr-rv-actions"><button type="button" class="btn btn-primary" id="trApprove">${esc(t('trApprove'))}</button><button type="button" class="btn tr-rv-edit" id="trEdit">${esc(t('trEditRequest'))}</button></div>`;
   card.hidden = false;
@@ -240,7 +265,7 @@ async function trApprove(){
   const item = stItem(trState.itemId);
   try{
     const r = await stockApi('requests', {method: 'POST', body: {clientKey: trState.reviewKey, from: trState.from, to: trState.to, yesterday: trState.yesterday,
-      itemId: item.id, quantity: trState.qty, expectedName: item.name, expectedUnit: stCountUnitEn(item.id)}});
+      itemId: item.id, quantity: trState.qty, unitId: stEnteredId(item.id), expectedName: item.name, expectedUnit: stEnteredEn(item.id)}});
     if(!r.ok){
       const msg = r.data?.error || t('saveFailed');
       if(/Catalog changed/i.test(msg)){ trInvalidate(); await loadData().catch(()=>{}); await loadStock(); render(); }
@@ -277,7 +302,7 @@ function trRequestCard(r){
     buttons = `<button type="button" class="btn btn-primary tr-wide" data-trresolve="${esc(r.id)}">${esc(t('trCheckResult'))}</button>`;
   }
   return `<article class="tr-req glass s-${esc(r.status)}" data-trreq="${esc(r.id)}">
-    <div class="tr-req-top"><div><div class="tr-req-name" dir="auto">${esc(r.itemName)}</div><div class="tr-req-amt">${esc(fmtQty(r.quantity))} ${esc(r.unitLabel)}</div></div><span class="tr-chip ${esc(st.cls)}">${esc(st.label)}</span></div>
+    <div class="tr-req-top"><div><div class="tr-req-name" dir="auto">${esc(r.itemName)}</div><div class="tr-req-amt">${reqAmountHtml(r)}</div></div><span class="tr-chip ${esc(st.cls)}">${esc(st.label)}</span></div>
     <div class="tr-req-route">${esc(r.from)} <span aria-hidden="true">→</span> ${esc(r.to)}${r.yesterday ? ' · ' + esc(t('trYesterday')) : ''}</div>
     ${pc}${buttons}</article>`;
 }
@@ -324,7 +349,7 @@ function bindRequestButtons(root){
     if(!(await showConfirm(esc(t('trChangeConfirm')), {okLabel: t('trChangeReq')}))) return;
     const r = await stockApi('cancel', {method: 'POST', body: {id: req.id}});
     if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
-    Object.assign(trState, {from: req.from, to: req.to, itemId: req.itemId || '', qty: String(req.quantity), yesterday: !!req.yesterday, search: '', reviewKey: null});
+    Object.assign(trState, {from: req.from, to: req.to, itemId: req.itemId || '', qty: String(req.enteredQuantity ?? req.quantity), unit: (req.enteredUnitLabel && req.enteredUnitLabel !== req.unitLabel) ? 'buying' : 'counting', yesterday: !!req.yesterday, search: '', reviewKey: null});
     await loadStock(); render(); toast(t('trChangeDone'));
   });
   root.querySelectorAll('[data-trresolve]').forEach(b => b.onclick = () => openResolve(b.dataset.trresolve));
@@ -347,13 +372,13 @@ function attachTransfersEvents(){
     const b = e.target.closest('[data-trpick]'); if(!b) return;
     const item = stItem(b.dataset.trpick);
     if(!item || stFree(item.id, trState.from) <= 1e-8){ toast(t('trNoneHere')(iso(trState.from)), 'error'); return; }
-    trState.itemId = item.id; trState.qty = ''; trState.search = ''; trInvalidate(); qty.value = ''; trPaintAll(); qty.focus();
+    trState.itemId = item.id; trState.qty = ''; trState.unit = 'counting'; trState.search = ''; trInvalidate(); qty.value = ''; trPaintAll(); qty.focus();
   };
   const setQty = v => { trState.qty = v > 0 ? String(v) : ''; qty.value = trState.qty; trInvalidate(); trPaintHint(); };
   qty.oninput = () => { trState.qty = qty.value; trInvalidate(); trPaintHint(); };
   document.getElementById('trMore').onclick = () => setQty(Math.round(((Number(qty.value) || 0) + 1) * 1e6) / 1e6);
   document.getElementById('trLess').onclick = () => setQty(Math.round(((Number(qty.value) || 0) - 1) * 1e6) / 1e6);
-  document.getElementById('trAll').onclick = () => { if(trState.itemId) setQty(Math.floor(stFree(trState.itemId, trState.from) * 1e6) / 1e6); };
+  document.getElementById('trAll').onclick = () => { if(trState.itemId) setQty(Math.floor(stFree(trState.itemId, trState.from) / stFactor(trState.itemId) * 1e6) / 1e6); };
   document.getElementById('trYesterday').onchange = e => { trState.yesterday = e.target.checked; trInvalidate(); };
   document.getElementById('trReview').onclick = trReview;
   trPaintAll(); trPaintActive();
@@ -365,7 +390,7 @@ function openResolve(id){
   const r = stockState.requests.find(x => x.id === id); if(!r) return;
   showFormModal({
     title: esc(t('trResolveTitle')),
-    banner: editingBanner(r.itemName, `${fmtQty(r.quantity)} ${r.unitLabel} · ${r.from} → ${r.to}`),
+    banner: editingBanner(r.itemName, `${fmtQty(r.enteredQuantity ?? r.quantity)} ${r.enteredUnitLabel ?? r.unitLabel} · ${r.from} → ${r.to}`),
     bodyHtml: `<div class="notif-sub">${esc(t('trResolveIntro'))}</div>
       <div class="field"><select id="rsStatus"><option value="">${esc(t('trResolveChoose'))}</option><option value="completed">${esc(t('trResolveOk'))}</option><option value="failed">${esc(t('trResolveNo'))}</option></select></div>
       <div class="field" id="rsDateBox" hidden><label>${esc(t('trResolveDate'))}</label><input id="rsDate" type="date"></div>
@@ -563,7 +588,7 @@ function stTransferHistoryCard(r){
   const shotBtn = (r.hasCheckShot || r.status === 'completed') ? `<button class="btn btn-ghost st-shot-btn" data-histshots="${esc(r.id)}">${esc(t('trShotLabel'))}</button>` : '';
   return `<div class="hist-card st-hist"><div class="hist-top"><div class="hist-date">${esc(time)} · ${esc(t('hcApprovedBy')(accountLabel(r.approvedBy)))}</div><span class="tr-chip ${esc(st.cls)}">${esc(st.label)}</span></div>
     <div class="hist-entry"><div class="hist-supplier"><span class="supplier-mono st-mono" aria-hidden="true">⇄</span>${esc(t('hcTransfer'))} · ${esc(r.from)} → ${esc(r.to)}</div>
-    <div class="hist-items st-hist-name" dir="auto">${esc(r.itemName)}</div><div class="hist-items"><b>${esc(fmtQty(r.quantity))}</b> ${esc(r.unitLabel)}</div>
+    <div class="hist-items st-hist-name" dir="auto">${esc(r.itemName)}</div><div class="hist-items"><b>${reqAmountHtml(r)}</b></div>
     ${r.recordedDate ? `<div class="hist-items">${esc(t('hcRecordedFor')(r.recordedDate))}</div>` : (r.yesterday ? `<div class="hist-items">${esc(t('trYesterday'))}</div>` : '')}
     ${r.resultMessage ? `<div class="hist-items">${esc(r.resultMessage)}</div>` : ''}
     ${r.status === 'needs_checking' ? `<button class="btn btn-primary tr-wide" data-trresolve="${esc(r.id)}">${esc(t('trCheckResult'))}</button>` : ''}${shotBtn}</div></div>`;

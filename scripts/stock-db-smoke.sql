@@ -2,7 +2,7 @@
 -- stand-ins for app_items/app_units (see the CI step). Everything rolls back.
 begin;
 do $$
-declare rid uuid; rid2 uuid; rid3 uuid; claimed uuid; v numeric; rejected boolean; k uuid:=gen_random_uuid();
+declare rid uuid; rid_box uuid; rid2 uuid; rid3 uuid; claimed uuid; v numeric; rejected boolean; k uuid:=gen_random_uuid();
 begin
   insert into app_units(id,en) values ('box','box'),('pc','piece'),('kg','kg');
   insert into app_items(id,name,unit_id) values ('i1','Flour','box'),('i2','No buying unit',null);
@@ -42,6 +42,19 @@ begin
   if not rejected then raise exception 'Reserved stock over-committed'; end if;
   rejected:=false; begin perform stock_recount('i1','Pizza',1,now(),'rozha',null); exception when others then rejected:=true; end;
   if not rejected then raise exception 'Recount allowed during a pending transfer'; end if;
+
+  -- Entering the amount in the buying format (1 box = 12 piece)
+  rejected:=false; begin perform stock_submit(gen_random_uuid(),'Main Storage','Pizza',false,'rozha','i1',1,'Flour','kg','kg'); exception when others then rejected:=true; end;
+  if not rejected then raise exception 'A unit that is neither buying nor counting was accepted'; end if;
+  rejected:=false; begin perform stock_submit(gen_random_uuid(),'Main Storage','Pizza',false,'rozha','i1',2,'Flour','box','box'); exception when others then rejected:=true; end;
+  if not rejected then raise exception '2 boxes (24 piece) accepted with only 7 piece free'; end if;
+  rid_box:=stock_submit(gen_random_uuid(),'Main Storage','Pizza',false,'rozha','i1',0.5,'Flour','box','box');
+  if not exists(select 1 from stock_requests where id=rid_box and quantity=6 and unit_label='piece' and entered_quantity=0.5 and entered_unit_label='box') then
+    raise exception 'Buying-unit request was not converted to counting units'; end if;
+  if stock_reserved('i1','Main Storage')<>9 then raise exception 'Reservation is not in counting units'; end if;
+  rejected:=false; begin perform stock_submit(gen_random_uuid(),'Main Storage','Pizza',false,'rozha','i1',0.5,'Flour','piece','box'); exception when others then rejected:=true; end;
+  if not rejected then raise exception 'Label for the wrong unit accepted'; end if;
+  perform stock_cancel(rid_box,'rozha');
 
   -- Gating: check -> screenshot -> final approve -> claim
   if stock_claim('office-pc') is not null then raise exception 'Unapproved request claimed'; end if;
