@@ -7,7 +7,7 @@
    live copy on the server and reloads (or asks, when an order is in
    progress) when they differ. Any unique value works -- date-based is
    easiest to keep straight. */
-const APP_VERSION = '2026-09-30.5';
+const APP_VERSION = '2026-09-30.6';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN

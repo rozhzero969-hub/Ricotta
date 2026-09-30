@@ -57,6 +57,9 @@ const server=http.createServer((rq,res)=>{
         else if(ep.startsWith('shots')) data={shots:[{kind:'check',image:PIXEL,takenAt:iso(1)}]};
         else if((ep==='counts'||ep==='counts-bulk')&&body.pin!=='123456'){status=403;data={error:'wrong_pin'};}
         else if(ep==='counts-bulk'){status=201;data={saved:body.lines.map(l=>l.itemId),failed:[]};}
+        else if(ep==='zones/add'){fx.stock.storages.push(body.name);}
+        else if(ep==='zones/rename'){fx.stock.storages=fx.stock.storages.map(x=>x===body.from?body.to:x);}
+        else if(ep==='zones/delete'){fx.stock.storages=fx.stock.storages.filter(x=>x!==body.name);}
         else if(ep==='requests') {status=201;data={id:'new'};}
       }else{
         apiCalls.push({ep,method:rq.method(),body});
@@ -176,6 +179,38 @@ const server=http.createServer((rq,res)=>{
     await page.waitForFunction(()=>!document.querySelector('#rcQty'));
     const count=calls.filter(c=>c.ep==='counts').pop();
     assert.equal(count.body.pin,'123456');assert.equal(count.body.quantity,'7');assert.equal(count.body.storage,'Main Storage');
+
+    /* ---------- Suppliers: the add form opens and saves; Zones live inside the same screen ---------- */
+    await go(page,'suppliers');
+    assert.match(await page.locator('.page-heading h1').innerText(),/Suppliers/,'the Suppliers tab keeps its name');
+    await page.locator('#supAddBtn').click();
+    await page.waitForSelector('#mfName');
+    await page.fill('#mfName','New Supplier');await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>!document.querySelector('#mfName'));
+    assert.equal(await page.evaluate(()=>state.suppliers.some(s=>s.name==='New Supplier')),true,'supplier saved');
+    await page.locator('[data-supview="zones"]').click();
+    assert.equal(await page.locator('[data-zedit]').count(),3,'zones are listed');
+    await page.locator('#zoneAddBtn').click();await page.fill('#zName','Bakery');await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>document.querySelectorAll('[data-zedit]').length===4);
+    assert.equal(calls.filter(c=>c.ep==='zones/add').pop().body.name,'Bakery');
+    await page.locator('[data-zedit="Pizza"]').click();await page.fill('#zName','Pizza Oven');await page.locator('#modalFormOk').click();
+    await page.waitForSelector('[data-zedit="Pizza Oven"]');
+    assert.deepEqual(calls.filter(c=>c.ep==='zones/rename').pop().body,{from:'Pizza',to:'Pizza Oven'});
+    await page.locator('[data-zdel="Minibar"]').click();await page.locator('#modalOkBtn').click();
+    await page.waitForFunction(()=>document.querySelectorAll('[data-zedit]').length===3);
+    assert.equal(calls.filter(c=>c.ep==='zones/delete').pop().body.name,'Minibar');
+    await page.locator('[data-supview="suppliers"]').click();
+    assert.ok(await page.locator('#supAddBtn').isVisible(),'back to suppliers');
+
+    /* ---------- Every Add button opens its form (a broken one would throw) ---------- */
+    for(const v of ['suppliers','units','itemsAdmin']){
+      await go(page,v);
+      if(v==='suppliers'&&await page.locator('[data-supview="suppliers"].active').count()===0) await page.locator('[data-supview="suppliers"]').click();
+      await page.locator('.add-btn').first().click();
+      await page.waitForSelector('#modalFormCancel',{timeout:4000});
+      await page.locator('#modalFormCancel').click();
+      await page.waitForFunction(()=>!document.querySelector('#modalFormCancel'));
+    }
 
     /* ---------- Count many items with one PIN ---------- */
     await go(page,'stock');

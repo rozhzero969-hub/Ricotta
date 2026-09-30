@@ -1999,6 +1999,8 @@ async function deleteRecord(table, id){
 
 /* ============ Suppliers ============ */
 function renderSuppliers(){
+  const zonesOn = state.views.includes('stock');
+  if(zonesOn && supView.tab === 'zones') return zonesSwitchHtml() + renderZonesPanel();
   const list = state.suppliers.length ? sortedByName(state.suppliers).map(s=>`
     <div class="list-row tappable" data-editsup="${esc(s.id)}">
       <div><div class="name">${esc(s.name)}</div><div class="meta">${esc(s.phone||'')}</div>
@@ -2009,7 +2011,7 @@ function renderSuppliers(){
         <button class="icon-btn danger" data-delsup="${esc(s.id)}">${ICON_DELETE}</button>
       </div>
     </div>`).join('') : emptyState(t('noSuppliersYet'));
-  return `
+  return `${zonesOn ? zonesSwitchHtml() : ''}
     <div class="action-row">
       <button class="btn btn-primary add-btn" id="supAddBtn">${ICON_PLUS} ${t('addSupplier')}</button>
       <button class="btn btn-ghost" data-gorecord="supplier">${NAV_ICONS.record} ${t('record')}</button>
@@ -2023,7 +2025,7 @@ function openSupplierModal(id){
     title: existing ? t('editSupplier') : t('addSupplier'),
     banner: existing ? editingBanner(existing.name, existing.phone) : '',
     bodyHtml: `
-      <div class="field"><label>${stockOn ? t('itAppName') : t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
+      <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
       <div class="field"><label>${t('phone')}</label><input id="mfPhone" data-clear="1" inputmode="tel" placeholder="07xxxxxxxxx" value="${esc(existing?.phone||'')}"></div>
       ${reminderFieldsHtml(existing?.reminder)}`,
     okLabel: t('save'),
@@ -2072,6 +2074,8 @@ function openSupplierModal(id){
   });
 }
 function attachSupplierEvents(){
+  document.querySelectorAll('[data-supview]').forEach(b=>b.onclick=()=>{ supView.tab=b.dataset.supview; render(); });
+  if(state.views.includes('stock') && supView.tab==='zones'){ attachZonesEvents(); return; }
   document.getElementById('supAddBtn').onclick = ()=> openSupplierModal(null);
   document.querySelectorAll('[data-editsup]').forEach(row=>row.onclick=()=> openSupplierModal(row.dataset.editsup));
   document.querySelectorAll('[data-testsup]').forEach(b=>b.onclick=async(e)=>{
@@ -2238,7 +2242,7 @@ function openItemModal(id){
     title: existing ? t('editItem') : t('addItem'),
     banner,
     bodyHtml: `
-      <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
+      <div class="field"><label>${stockOn ? t('itAppName') : t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
       <div class="field"><label>${stockOn ? t('itBuying') : t('unit')}</label><select id="mfUnit">${unitOptions}</select>${stockOn ? `<div class="field-hint">${t('itBuyingHint')}</div>` : ''}</div>
       ${stockOn ? itemStockFieldsHtml(existing) : ''}
       <div class="field">

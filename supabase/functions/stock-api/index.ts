@@ -14,6 +14,7 @@
 //                                        (unitId: the item's buying or counting unit; quantity is in that unit)
 //   POST   cancel                        {id}
 //   POST   final-approve                 {id}
+//   POST   zones/add|rename|delete       {name} | {from, to} | {name}   manage storages (zones)
 //   POST   start-worker                  ask the office PC helper to start the worker
 //   POST   counts-bulk                   {storage, countedAt, note, pin, lines:[{itemId, quantity}]}   (one PIN for many items)
 //   POST   counts                        {itemId, storage, quantity, countedAt, note, pin}   (asks for the PIN again)
@@ -215,7 +216,7 @@ Deno.serve(async (req: Request) => {
 
     if (req.method === "GET" && path[0] === "bootstrap") {
       const [storages, settings, counts, live, myTabs] = await Promise.all([
-        db.from("stock_storages").select("name").order("sort_order"),
+        db.from("stock_storages").select("name").eq("archived", false).order("sort_order"),
         db.from("stock_item_settings").select("item_id,counting_unit,per_buying,low_stock,workplace_name"),
         db.from("stock_counts").select("*").order("entered_at", { ascending: false }).limit(150),
         requestsAndBalances(),
@@ -320,6 +321,17 @@ Deno.serve(async (req: Request) => {
         else saved.push(itemId);
       }
       return json({ saved, failed }, 201);
+    }
+    if (req.method === "POST" && path[0] === "zones") {
+      // Add, rename or remove a zone. The zone's name must match its name in the workplace system.
+      const b = await readBody(req);
+      let error;
+      if (path[1] === "add") ({ error } = await db.rpc("stock_storage_add", { p_name: str(b.name, 60), p_actor: actor }));
+      else if (path[1] === "rename") ({ error } = await db.rpc("stock_storage_rename", { p_old: str(b.from, 60), p_new: str(b.to, 60), p_actor: actor }));
+      else if (path[1] === "delete") ({ error } = await db.rpc("stock_storage_delete", { p_name: str(b.name, 60), p_actor: actor }));
+      else return fail("Unknown route", 404);
+      if (error) throw error;
+      return json({ ok: true });
     }
     if (req.method === "POST" && path[0] === "resolve") {
       const b = await readBody(req);

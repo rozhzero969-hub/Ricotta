@@ -92,6 +92,22 @@ begin
   if not exists(select 1 from stock_requests where id=rid3 and item_name='Workplace Flour' and app_name='Flour') then raise exception 'Names not stored'; end if;
   perform stock_cancel(rid3,'rozha');
 
+  -- Zones: add, rename (carries through to stock), remove only when empty, always keep two
+  perform stock_storage_add('Test Zone','rozha');
+  rejected:=false; begin perform stock_storage_add('test zone','rozha'); exception when others then rejected:=true; end;
+  if not rejected then raise exception 'Duplicate zone accepted'; end if;
+  perform stock_recount('i1','Test Zone',4,now(),'rozha',null);
+  perform stock_storage_rename('Test Zone','Renamed Zone','yunis');
+  select quantity into v from stock_balances where item_id='i1' and storage_name='Renamed Zone'; if v is distinct from 4 then raise exception 'Rename lost the stock'; end if;
+  if not exists(select 1 from stock_counts where storage_name='Renamed Zone') then raise exception 'Rename lost the count history'; end if;
+  rejected:=false; begin perform stock_storage_delete('Renamed Zone','rozha'); exception when others then rejected:=true; end;
+  if not rejected then raise exception 'Zone with stock removed'; end if;
+  perform stock_recount('i1','Renamed Zone',0,now(),'rozha',null);
+  perform stock_storage_delete('Renamed Zone','rozha');
+  if not exists(select 1 from stock_storages where name='Renamed Zone' and archived) then raise exception 'Zone not hidden'; end if;
+  perform stock_storage_add('Renamed Zone','rozha');
+  if exists(select 1 from stock_storages where name='Renamed Zone' and archived) then raise exception 'Zone not restored'; end if;
+
   -- Screenshots older than 3 days are removed
   update stock_shots set taken_at=now()-interval '4 days' where request_id=rid;
   perform stock_cleanup();
