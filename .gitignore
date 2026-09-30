@@ -8,3 +8,9 @@ coverage/
 
 # Local database backups (may contain business data)
 backups/
+
+# Transfer import previews and worker credentials (business data and secrets)
+tmp/
+transfers/worker/.env
+transfers/worker/browser-profile/
+transfers/worker/screenshots/

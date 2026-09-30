@@ -3,6 +3,10 @@ project_id = "pxufdcyqjtmtklmrjodg"
 [functions.api]
 verify_jwt = false
 
+[functions.transfer-api]
+# Uses the existing opaque PIN session or the separately provisioned PC worker token.
+verify_jwt = false
+
 [functions.send-push]
 verify_jwt = true
 

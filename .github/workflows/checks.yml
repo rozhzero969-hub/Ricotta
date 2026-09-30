@@ -1,6 +1,6 @@
 name: Checks
 
-# Runs the repo's two local smoke tests on every push and PR to main. Neither
+# Runs the repo's local smoke tests on every push and PR to main. None of the
 # test calls the live Supabase project or any real API key -- both mock
 # everything (see the header comment in each script).
 # This is the one thing standing between "someone pushes a change" and "Rico
@@ -30,7 +30,7 @@ jobs:
           deno-version: v2.x
 
       - name: Type-check Edge Functions
-        run: deno check supabase/functions/api/index.ts supabase/functions/send-push/index.ts
+        run: deno check supabase/functions/api/index.ts supabase/functions/send-push/index.ts supabase/functions/transfer-api/index.ts
 
       - name: Rico provider smoke test (Gemini + Groq, mocked)
         run: node --experimental-strip-types scripts/rico-provider-smoke.mjs
@@ -42,6 +42,9 @@ jobs:
 
       - name: UI smoke test (mocked API, six widths, EN + KU + AR)
         run: node scripts/ui-smoke.cjs
+
+      - name: Transfer phone smoke test (mocked API, mobile)
+        run: node transfers/tools/ui-smoke.mjs
 
       - name: Upload UI smoke screenshots
         if: always()
