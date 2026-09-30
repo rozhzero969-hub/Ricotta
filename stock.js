@@ -73,6 +73,12 @@ setInterval(()=>{
 }, 5000);
 
 /* ============ Helpers ============ */
+/* A list glides in the first time it appears, not on every keystroke while searching. */
+function fxOnce(box){
+  if(box.dataset.fx) return;
+  box.dataset.fx = '1'; box.classList.add('fx-rise');
+  setTimeout(() => box.classList.remove('fx-rise'), 700);
+}
 const stItem = id => state.items.find(i => i.id === id);
 const stSetting = id => stockState.settings.get(id);
 const stReady = item => !!(item && item.unit && stSetting(item.id));
@@ -83,6 +89,19 @@ const stFree = (id, storage) => Math.max(0, stQty(id, storage) - stReserved(id, 
 /* Wraps a name so Kurdish or Arabic words inside an English sentence (or the reverse) don't reorder the numbers around them. */
 const iso = x => '\u2068' + x + '\u2069';
 const fmtQty = n => Number(n || 0).toLocaleString('en-US', {maximumFractionDigits: 6});
+/* A row of tappable choices that stands in for a dropdown. The chosen value lives in a hidden input with the given id. */
+function chipPickHtml(id, options, selected){
+  return `<div class="picks" data-chipfor="${esc(id)}" role="radiogroup">${options.map(x => `<button type="button" role="radio" class="pick${x === selected ? ' on' : ''}" aria-checked="${x === selected}" data-val="${esc(x)}">${esc(x)}</button>`).join('')}</div><input type="hidden" id="${esc(id)}" value="${esc(selected)}">`;
+}
+function chipPickWire(box, id, onChange){
+  const input = box.querySelector('#' + id), row = box.querySelector(`[data-chipfor="${id}"]`);
+  row.onclick = e => {
+    const b = e.target.closest('[data-val]'); if(!b) return;
+    input.value = b.dataset.val;
+    row.querySelectorAll(".pick").forEach(c => { const on = c === b; c.classList.toggle("on", on); c.setAttribute('aria-checked', on); });
+    if(onChange) onChange(input.value);
+  };
+}
 const stUnitObj = id => state.units.find(u => u.id === id);
 const stCountUnitName = id => { const u = stUnitObj(stSetting(id)?.countingUnit); return u ? unitName(u) : ''; };
 const stCountUnitEn = id => stUnitObj(stSetting(id)?.countingUnit)?.en || '';
@@ -104,7 +123,9 @@ const stIsLow = item => { const s = stSetting(item.id); return !!s && s.lowStock
 const stLowCount = () => state.items.filter(i => stReady(i) && stIsLow(i)).length;
 const stReadyItems = () => state.items.filter(stReady);
 const stTokens = q => String(q || '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-const stMatches = (item, tokens) => { const n = item.name.toLocaleLowerCase(); return tokens.every(x => n.includes(x)); };
+/* The name inside the workplace system (what the PC searches for); the same as the app name unless one was set. */
+const stWorkName = id => stSetting(id)?.workplaceName || stItem(id)?.name || '';
+const stMatches = (item, tokens) => { const n = (item.name + ' ' + (stSetting(item.id)?.workplaceName || '')).toLocaleLowerCase(); return tokens.every(x => n.includes(x)); };
 const stNeedsChecking = () => stockState.requests.filter(r => r.status === 'needs_checking').length;
 /* The state of a request as shown to people. */
 function reqState(r){
@@ -174,20 +195,14 @@ function stRepaint(){
 }
 
 /* ============ Transfer screen ============ */
-function storageOptions(selected, blank){
-  return `<option value="">${esc(blank)}</option>` + stockState.storages.map(s => `<option value="${esc(s)}" ${s === selected ? 'selected' : ''}>${esc(s)}</option>`).join('');
-}
 function renderTransfers(){
   if(!stockState.loaded) return stLoadingHtml();
   return `${stAttentionHtml()}
   <div id="wkBar"></div>
   <section class="tr-card glass">
-    <div class="tr-step"><div class="tr-step-h"><span class="tr-num">1</span>${esc(t('trStepStorages'))}</div>
-      <div class="tr-route">
-        <div class="field"><label for="trFrom">${esc(t('trFrom'))}</label><select id="trFrom">${storageOptions(trState.from, t('trChooseStorage'))}</select></div>
-        <button type="button" class="icon-btn tr-swap" id="trSwap" aria-label="${esc(t('trSwap'))}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v15m0 0-3-3m3 3 3-3M17 20V5m0 0-3 3m3-3 3 3"/></svg></button>
-        <div class="field"><label for="trTo">${esc(t('trTo'))}</label><select id="trTo">${storageOptions(trState.to, t('trChooseStorage'))}</select></div>
-      </div>
+    <div class="tr-step"><div class="tr-step-h"><span class="tr-num">1</span>${esc(t('trStepStorages'))}<button type="button" class="tr-swap" id="trSwap" aria-label="${esc(t('trSwap'))}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v15m0 0-3-3m3 3 3-3M17 20V5m0 0-3 3m3-3 3 3"/></svg><span>${esc(t('trSwapShort'))}</span></button></div>
+      <div class="tr-lab">${esc(t('trFrom'))}</div><div class="picks" id="trFromChips" role="radiogroup" aria-label="${esc(t('trFrom'))}"></div>
+      <div class="tr-lab">${esc(t('trTo'))}</div><div class="picks" id="trToChips" role="radiogroup" aria-label="${esc(t('trTo'))}"></div>
     </div>
     <div class="tr-step"><div class="tr-step-h"><span class="tr-num">2</span>${esc(t('trStepItem'))}</div>
       <div id="trPicker"><div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="trSearch" autocomplete="off" aria-label="${esc(t('searchPlaceholder'))}" value="${esc(trState.search)}"></div><div id="trResults" class="tr-results" aria-live="polite"></div></div>
@@ -206,6 +221,12 @@ function renderTransfers(){
   <section class="tr-review hero-card" id="trReviewCard" hidden></section>
   <div id="trActive"></div>`;
 }
+function trPaintStorages(){
+  for(const [id, key, other] of [['trFromChips', 'from', 'to'], ['trToChips', 'to', 'from']]){
+    const box = document.getElementById(id); if(!box) continue;
+    box.innerHTML = stockState.storages.map(x => `<button type="button" role="radio" class="pick${trState[key] === x ? ' on' : ''}" aria-checked="${trState[key] === x}" data-trsto="${esc(x)}" ${trState[other] === x ? 'disabled' : ''}>${esc(x)}</button>`).join('');
+  }
+}
 function trPaintResults(){
   const box = document.getElementById('trResults'); if(!box) return;
   const search = document.getElementById('trSearch');
@@ -223,6 +244,7 @@ function trPaintResults(){
   }).join('') + (hits.length > shown.length ? `<div class="field-hint">${esc(t('trShowing')(shown.length, hits.length))}</div>` : '') || `<div class="field-hint">${esc(t('trNoMatch'))}</div>`;
   if(box.dataset.sig === html) return;
   box.dataset.sig = html; box.innerHTML = html;
+  fxOnce(box);
 }
 function trPaintChosen(){
   const item = stItem(trState.itemId), picker = document.getElementById('trPicker'), chosen = document.getElementById('trChosen'), amount = document.getElementById('trAmount');
@@ -263,7 +285,7 @@ function trPaintHint(){
   hint.textContent = t(problem || 'trHintReady');
   hint.classList.toggle('ready', !problem);
 }
-function trPaintAll(){ trPaintResults(); trPaintChosen(); const c = document.getElementById('trReviewCard'); if(c && !trState.reviewKey) c.hidden = true; }
+function trPaintAll(){ trPaintStorages(); trPaintResults(); trPaintChosen(); const c = document.getElementById('trReviewCard'); if(c && !trState.reviewKey) c.hidden = true; }
 function trInvalidate(){ trState.reviewKey = null; const c = document.getElementById('trReviewCard'); if(c) c.hidden = true; }
 function trReset(){ Object.assign(trState, {from: '', to: '', itemId: '', qty: '', unit: 'counting', yesterday: false, search: '', reviewKey: null}); }
 function trReview(){
@@ -275,7 +297,7 @@ function trReview(){
   const card = document.getElementById('trReviewCard');
   card.innerHTML = `<div class="hero-eyebrow">${esc(t('trReviewTitle'))}</div>
     <div class="tr-rv-route">${esc(trState.from)} <span aria-hidden="true">→</span> ${esc(trState.to)}</div>
-    <div class="tr-rv-item" dir="auto">${esc(item.name)}</div>
+    <div class="tr-rv-item" dir="auto">${esc(item.name)}</div>${stWorkName(item.id) !== item.name ? `<div class="tr-rv-work" dir="auto">${esc(t('trWorkAs'))}: ${esc(stWorkName(item.id))}</div>` : ''}
     <div class="tr-rv-qty"><b>${esc(fmtQty(qty))}</b> ${esc(stEnteredName(item.id))}${f !== 1 ? ` <span class="tr-rv-eq">= ${esc(fmtQty(Math.round(qty * f * 1e8) / 1e8))} ${esc(stCountUnitName(item.id))}</span>` : ''}</div>
     <div class="hero-sub">${esc(trState.yesterday ? t('trWhenYesterday') : t('trWhenToday'))}</div>
     <div class="tr-rv-actions"><button type="button" class="btn btn-primary" id="trApprove">${esc(t('trApprove'))}</button><button type="button" class="btn tr-rv-edit" id="trEdit">${esc(t('trEditRequest'))}</button></div>`;
@@ -289,7 +311,7 @@ async function trApprove(){
   const item = stItem(trState.itemId);
   try{
     const r = await stockApi('requests', {method: 'POST', body: {clientKey: trState.reviewKey, from: trState.from, to: trState.to, yesterday: trState.yesterday,
-      itemId: item.id, quantity: trState.qty, unitId: stEnteredId(item.id), expectedName: item.name, expectedUnit: stEnteredEn(item.id)}});
+      itemId: item.id, quantity: trState.qty, unitId: stEnteredId(item.id), expectedName: stWorkName(item.id), expectedUnit: stEnteredEn(item.id)}});
     if(!r.ok){
       const msg = r.data?.error || t('saveFailed');
       if(/Catalog changed/i.test(msg)){ trInvalidate(); await loadData().catch(()=>{}); await loadStock(); render(); }
@@ -309,7 +331,7 @@ function trShownRequests(){
 /* A plain list of exactly what will move, shown on the card and again in the final confirmation. */
 function trSummaryHtml(r){
   const row = (k, v) => `<div class="tr-sum-row"><span>${esc(t(k))}</span><b dir="auto">${v}</b></div>`;
-  return `<div class="tr-sum">${row('trSumItem', esc(r.itemName))}${row('trSumAmount', reqAmountHtml(r))}${row('trSumFrom', esc(r.from))}${row('trSumTo', esc(r.to))}${row('trSumDay', esc(r.yesterday ? t('trYesterday') : t('trSumToday')))}</div>`;
+  return `<div class="tr-sum">${row('trSumItem', esc(r.itemName))}${r.workplaceName && r.workplaceName !== r.itemName ? row('trSumWork', esc(r.workplaceName)) : ''}${row('trSumAmount', reqAmountHtml(r))}${row('trSumFrom', esc(r.from))}${row('trSumTo', esc(r.to))}${row('trSumDay', esc(r.yesterday ? t('trYesterday') : t('trSumToday')))}</div>`;
 }
 function trRequestCard(r){
   const st = reqState(r), shot = stockState.shots[r.id];
@@ -331,7 +353,7 @@ function trRequestCard(r){
     buttons = `<button type="button" class="btn btn-primary tr-wide" data-trresolve="${esc(r.id)}">${esc(t('trCheckResult'))}</button>`;
   }
   return `<article class="tr-req glass s-${esc(r.status)}" data-trreq="${esc(r.id)}">
-    <div class="tr-req-top"><div><div class="tr-req-name" dir="auto">${esc(r.itemName)}</div><div class="tr-req-amt">${reqAmountHtml(r)}</div></div><span class="tr-chip ${esc(st.cls)}">${esc(st.label)}</span></div>
+    <div class="tr-req-top"><div><div class="tr-req-name" dir="auto">${esc(r.itemName)}</div>${r.workplaceName && r.workplaceName !== r.itemName ? `<div class="tr-req-work" dir="auto">${esc(t('trWorkAs'))}: ${esc(r.workplaceName)}</div>` : ''}<div class="tr-req-amt">${reqAmountHtml(r)}</div></div><span class="tr-chip ${esc(st.cls)}">${esc(st.label)}</span></div>
     <div class="tr-req-route">${esc(r.from)} <span aria-hidden="true">→</span> ${esc(r.to)}${r.yesterday ? ' · ' + esc(t('trYesterday')) : ''}</div>
     ${r.status === 'waiting' && !r.finalApprovedAt ? `<div class="tr-sum-title">${esc(t('trSumTitle'))}</div>${trSummaryHtml(r)}` : ''}
     ${pc}${buttons}</article>`;
@@ -388,15 +410,21 @@ function bindRequestButtons(root){
 }
 function attachTransfersEvents(){
   attachStockCommon();
-  if(!document.getElementById('trFrom')) return;
+  if(!document.getElementById('trFromChips')) return;
   wkPaint();
-  const from = document.getElementById('trFrom'), to = document.getElementById('trTo'), qty = document.getElementById('trQty');
-  from.onchange = () => { trState.from = from.value; trState.itemId = ''; trState.qty = ''; trState.search = ''; trInvalidate(); document.getElementById('trSearch').value = ''; trPaintAll(); };
-  to.onchange = () => { trState.to = to.value; trInvalidate(); trPaintHint(); };
+  const qty = document.getElementById('trQty');
+  const pickStorage = (key, value) => {
+    if(trState[key] === value) return;
+    trState[key] = value;
+    if(key === 'from'){ trState.itemId = ''; trState.qty = ''; trState.search = ''; document.getElementById('trSearch').value = ''; }
+    trInvalidate(); trPaintAll(); trPaintHint();
+  };
+  document.getElementById('trFromChips').onclick = e => { const b = e.target.closest('[data-trsto]'); if(b && !b.disabled) pickStorage('from', b.dataset.trsto); };
+  document.getElementById('trToChips').onclick = e => { const b = e.target.closest('[data-trsto]'); if(b && !b.disabled) pickStorage('to', b.dataset.trsto); };
   document.getElementById('trSwap').onclick = () => {
     [trState.from, trState.to] = [trState.to, trState.from];
     trState.itemId = ''; trState.qty = ''; trState.search = ''; trInvalidate();
-    from.value = trState.from; to.value = trState.to; document.getElementById('trSearch').value = ''; trPaintAll();
+    document.getElementById('trSearch').value = ''; trPaintAll();
   };
   document.getElementById('trSearch').oninput = e => { trState.search = e.target.value; trPaintResults(); };
   document.getElementById('trResults').onclick = e => {
@@ -493,6 +521,7 @@ function stPaintList(){
   const box = document.getElementById('stList'); if(!box) return;
   const rows = stRowsData();
   box.innerHTML = rows.length ? rows.map(stRowHtml).join('') : emptyState(esc(t('stEmpty')));
+  fxOnce(box);
   const inStorage = stView.storage === 'all' ? stReadyItems().filter(i => stTotal(i.id) > 0).length : stReadyItems().filter(i => stQty(i.id, stView.storage) > 0).length;
   document.getElementById('stHeroName').textContent = stView.storage === 'all' ? t('stAllStorages') : stView.storage;
   document.getElementById('stHeroCount').textContent = inStorage;
@@ -535,7 +564,7 @@ function openRecount(itemId, storage){
     title: esc(t('stRecountTitle')),
     banner: editingBanner(item.name, unit),
     bodyHtml: `<div class="notif-sub">${esc(t('stRecountHint'))}</div>
-      <div class="field"><label>${esc(t('stStorage'))}</label><select id="rcStorage">${stockState.storages.map(s => `<option value="${esc(s)}" ${s === pick ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select><div class="field-hint" id="rcNow"></div></div>
+      <div class="field"><label>${esc(t('stStorage'))}</label>${chipPickHtml('rcStorage', stockState.storages, pick)}<div class="field-hint" id="rcNow"></div></div>
       <div class="field"><label>${esc(t('stCounted'))} (${esc(unit)})</label><input id="rcQty" type="number" inputmode="decimal" min="0" step="any" autocomplete="off"></div>
       <div class="field"><label>${esc(t('stCountedAt'))}</label><input id="rcAt" type="datetime-local" value="${local}"></div>
       <div class="field"><label>${esc(t('stNote'))}</label><input id="rcNote" maxlength="500" autocomplete="off"></div>
@@ -544,7 +573,7 @@ function openRecount(itemId, storage){
     onOpen: box => {
       const sel = box.querySelector('#rcStorage'), now = box.querySelector('#rcNow');
       const paint = () => { now.textContent = t('stNow')(fmtQty(stQty(itemId, sel.value)), iso(unit)); };
-      sel.onchange = paint; paint();
+      chipPickWire(box, 'rcStorage', paint); paint();
       box.querySelector('#rcPin').oninput = e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); };
       box.querySelector('#rcQty').focus();
     },
@@ -572,7 +601,7 @@ function openBulkCount(){
   showFormModal({
     title: esc(t('bcTitle')),
     bodyHtml: `<div class="notif-sub">${esc(t('bcHint'))}</div>
-      <div class="field"><label>${esc(t('stStorage'))}</label><select id="bcStorage">${stockState.storages.map(x => `<option value="${esc(x)}" ${x === pick ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
+      <div class="field"><label>${esc(t('stStorage'))}</label>${chipPickHtml('bcStorage', stockState.storages, pick)}</div>
       <div class="search-wrap bc-search">${ICON_SEARCH}<input class="search-input" id="bcSearch" placeholder="${esc(t('searchPlaceholder'))}" autocomplete="off"></div>
       <div class="bc-count" id="bcCount"></div>
       <div class="bc-list" id="bcList"></div>
@@ -590,7 +619,7 @@ function openBulkCount(){
         list.querySelectorAll('[data-bcitem]').forEach(inp => inp.oninput = () => { if(inp.value === '') values.delete(inp.dataset.bcitem); else values.set(inp.dataset.bcitem, inp.value); paintCount(); });
         paintCount();
       };
-      sel.onchange = paint; search.oninput = paint; paint();
+      chipPickWire(box, 'bcStorage', paint); search.oninput = paint; paint();
       box.querySelector('#bcPin').oninput = e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); };
     },
     onSubmit: async () => {
@@ -618,7 +647,8 @@ function itemStockFieldsHtml(existing){
   const s = existing ? stSetting(existing.id) : null;
   const locked = !!(s && itemHasStock(existing.id));
   const unitOptions = `<option value="">${esc(t('itChooseFormat'))}</option>` + state.units.map(u => `<option value="${esc(u.id)}" ${s?.countingUnit === u.id ? 'selected' : ''}>${esc(unitName(u))}</option>`).join('');
-  return `<div class="field"><label>${esc(t('itCounting'))}</label><select id="mfCounting" ${locked ? 'disabled' : ''}>${unitOptions}</select><div class="field-hint">${esc(locked ? t('itLocked') : t('itCountingHint'))}</div></div>
+  return `<div class="field"><label>${esc(t('itWorkName'))}</label><input id="mfWork" data-clear="1" autocomplete="off" maxlength="240" value="${esc(s?.workplaceName || '')}" placeholder="${esc(existing?.name || '')}"><div class="field-hint">${esc(t('itWorkNameHint'))}</div></div>
+    <div class="field"><label>${esc(t('itCounting'))}</label><select id="mfCounting" ${locked ? 'disabled' : ''}>${unitOptions}</select><div class="field-hint">${esc(locked ? t('itLocked') : t('itCountingHint'))}</div></div>
     <div class="field" id="mfPerBox" hidden><label id="mfPerLabel"></label><input id="mfPer" data-clear="1" type="number" inputmode="decimal" min="0" step="any" value="${s?.perBuying != null ? esc(s.perBuying) : ''}"><div class="field-hint" id="mfPerSummary"></div></div>
     <div class="field"><label>${esc(t('itWarn'))}</label><div class="st-warn"><input id="mfLow" data-clear="1" type="number" inputmode="decimal" min="0" step="any" value="${s?.lowStock != null ? esc(s.lowStock) : ''}"><span class="st-unit-chip" id="mfLowUnit"></span></div><div class="field-hint">${esc(t('itWarnHint'))}</div></div>`;
 }
@@ -638,8 +668,8 @@ function itemStockOnOpen(box){
 }
 /* Checks the counting fields before anything is saved. Returns {} or {error}. */
 function itemStockValidate(box, buyingId){
-  const counting = box.querySelector('#mfCounting').value, per = box.querySelector('#mfPer').value, low = box.querySelector('#mfLow').value;
-  if(!counting){ return low !== '' ? {error: t('itChooseFormat')} : {}; }
+  const counting = box.querySelector('#mfCounting').value, per = box.querySelector('#mfPer').value, low = box.querySelector('#mfLow').value, work = box.querySelector('#mfWork').value.trim();
+  if(!counting){ return (low !== '' || work !== '') ? {error: t('itChooseFormat')} : {}; }
   if(!buyingId) return {error: t('itNeedFormats')};
   if(counting !== buyingId && !(Number(per) > 0)) return {error: t('itNeedPer')};
   if(low !== '' && !(Number(low) >= 0)) return {error: t('itWarn')};
@@ -649,10 +679,10 @@ function itemStockValidate(box, buyingId){
 async function itemStockSave(itemId, box, buyingId){
   const counting = box.querySelector('#mfCounting').value;
   if(!counting) return {};
-  const per = box.querySelector('#mfPer').value, low = box.querySelector('#mfLow').value;
-  const r = await stockApi('settings/' + encodeURIComponent(itemId), {method: 'PUT', body: {countingUnit: counting, perBuying: counting === buyingId ? null : per, lowStock: low === '' ? null : low}});
+  const per = box.querySelector('#mfPer').value, low = box.querySelector('#mfLow').value, work = box.querySelector('#mfWork').value.trim();
+  const r = await stockApi('settings/' + encodeURIComponent(itemId), {method: 'PUT', body: {countingUnit: counting, perBuying: counting === buyingId ? null : per, lowStock: low === '' ? null : low, workplaceName: work}});
   if(!r.ok) return {error: r.data?.error || t('saveFailed')};
-  stockState.settings.set(itemId, {itemId, countingUnit: counting, perBuying: counting === buyingId ? null : Number(per), lowStock: low === '' ? null : Number(low)});
+  stockState.settings.set(itemId, {itemId, countingUnit: counting, perBuying: counting === buyingId ? null : Number(per), lowStock: low === '' ? null : Number(low), workplaceName: work || null});
   return {};
 }
 

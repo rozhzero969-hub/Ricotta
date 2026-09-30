@@ -9,7 +9,7 @@
 //   GET    requests                      the light refresh: requests + balances
 //   GET    shots?id=                     the PC's screenshots for one request (kept 3 days)
 //   PUT    tabs                          {tabs:[3 screens]}  this person's tab bar (may include Transfer and Stock)
-//   PUT    settings/:itemId              {countingUnit, perBuying, lowStock}
+//   PUT    settings/:itemId              {countingUnit, perBuying, lowStock, workplaceName}
 //   POST   requests                      {clientKey, from, to, yesterday, itemId, quantity, unitId, expectedName, expectedUnit}
 //                                        (unitId: the item's buying or counting unit; quantity is in that unit)
 //   POST   cancel                        {id}
@@ -83,7 +83,7 @@ const noteAttempt = (prints: string[], succeeded: boolean) =>
 
 /* ---------- shapes the app uses ---------- */
 const toRequest = (r: any, shots: Set<string>) => ({
-  id: r.id, itemId: r.item_id, itemName: r.item_name, unitLabel: r.unit_label, quantity: Number(r.quantity),
+  id: r.id, itemId: r.item_id, itemName: r.app_name ?? r.item_name, workplaceName: r.item_name, unitLabel: r.unit_label, quantity: Number(r.quantity),
   enteredQuantity: r.entered_quantity === null ? null : Number(r.entered_quantity), enteredUnitLabel: r.entered_unit_label ?? null,
   from: r.from_storage, to: r.to_storage, yesterday: r.record_yesterday, status: r.status,
   approvedBy: r.approved_by, approvedAt: r.approved_at,
@@ -216,7 +216,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "GET" && path[0] === "bootstrap") {
       const [storages, settings, counts, live, myTabs] = await Promise.all([
         db.from("stock_storages").select("name").order("sort_order"),
-        db.from("stock_item_settings").select("item_id,counting_unit,per_buying,low_stock"),
+        db.from("stock_item_settings").select("item_id,counting_unit,per_buying,low_stock,workplace_name"),
         db.from("stock_counts").select("*").order("entered_at", { ascending: false }).limit(150),
         requestsAndBalances(),
         db.from("stock_tabs").select("tabs").eq("account", actor).maybeSingle(),
@@ -224,7 +224,7 @@ Deno.serve(async (req: Request) => {
       for (const r of [storages, settings, counts]) if (r.error) throw r.error;
       return json({
         storages: (storages.data ?? []).map((s: any) => s.name),
-        settings: (settings.data ?? []).map((s: any) => ({ itemId: s.item_id, countingUnit: s.counting_unit, perBuying: s.per_buying === null ? null : Number(s.per_buying), lowStock: s.low_stock === null ? null : Number(s.low_stock) })),
+        settings: (settings.data ?? []).map((s: any) => ({ itemId: s.item_id, countingUnit: s.counting_unit, perBuying: s.per_buying === null ? null : Number(s.per_buying), lowStock: s.low_stock === null ? null : Number(s.low_stock), workplaceName: s.workplace_name ?? null })),
         counts: (counts.data ?? []).map(toCount),
         tabs: Array.isArray(myTabs.data?.tabs) ? myTabs.data.tabs : null,
         ...live,
@@ -261,7 +261,7 @@ Deno.serve(async (req: Request) => {
       const per = b.perBuying === "" || b.perBuying === null || b.perBuying === undefined ? null : b.perBuying;
       if ((low !== null && !decimal(low)) || (per !== null && !decimal(per))) return fail("Invalid number");
       const { error } = await db.rpc("stock_save_settings", { p_item: str(path[1], 80), p_actor: actor, p_counting: str(b.countingUnit, 80),
-        p_per: per === null ? null : Number(per), p_low: low === null ? null : Number(low) });
+        p_per: per === null ? null : Number(per), p_low: low === null ? null : Number(low), p_workplace: str(b.workplaceName, 240) || null });
       if (error) throw error;
       return json({ ok: true });
     }

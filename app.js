@@ -2023,7 +2023,7 @@ function openSupplierModal(id){
     title: existing ? t('editSupplier') : t('addSupplier'),
     banner: existing ? editingBanner(existing.name, existing.phone) : '',
     bodyHtml: `
-      <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
+      <div class="field"><label>${stockOn ? t('itAppName') : t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
       <div class="field"><label>${t('phone')}</label><input id="mfPhone" data-clear="1" inputmode="tel" placeholder="07xxxxxxxxx" value="${esc(existing?.phone||'')}"></div>
       ${reminderFieldsHtml(existing?.reminder)}`,
     okLabel: t('save'),
