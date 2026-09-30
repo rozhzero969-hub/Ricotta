@@ -187,9 +187,6 @@ const T = {
     navStock:'Stock',
     trFrom:'From',
     trTo:'To',
-    trSwap:'Swap the two storages',
-    trChooseStorage:'Choose storage',
-    trStepStorages:'Which storages?',
     trStepItem:'Which item?',
     trStepAmount:'How much?',
     trNoneHere:s=>'None in '+s,
@@ -335,14 +332,16 @@ const T = {
     wkStarting:'Starting…',
     wkTurnOn:'Turn on the worker',
     wkAsked:'Asked the office PC to start. Give it a minute.',
-    wkHintOff:'Transfers wait until the worker is on.',
     wkHintNoHelper:'The office PC helper is not running. Start it once on the PC.',
-    trSwapShort:'Swap',
     trWorkAs:'In the workplace',
     trSumWork:'Workplace name',
     itAppName:'Name in this app',
     itWorkName:'Name in the workplace system',
-    itWorkNameHint:'Leave empty if it is spelled the same. When stock moves, the PC searches for exactly this name.'
+    itWorkNameHint:'Leave empty if it is spelled the same. When stock moves, the PC searches for exactly this name.',
+    trStepFrom:'Where is it coming from?',
+    trStepTo:'Where is it going?',
+    trStepItemShort:'Item',
+    trStorageCount:n=>n+' items in stock'
 
   },
   ku:{
@@ -531,9 +530,6 @@ const T = {
     navStock:'ستۆک',
     trFrom:'لە',
     trTo:'بۆ',
-    trSwap:'شوێنی دوو کۆگاکە بگۆڕە',
-    trChooseStorage:'کۆگا هەڵبژێرە',
-    trStepStorages:'کام کۆگاکان؟',
     trStepItem:'کام کاڵا؟',
     trStepAmount:'چەند؟',
     trNoneHere:s=>'هیچی نییە لە '+s,
@@ -679,14 +675,16 @@ const T = {
     wkStarting:'دەستپێدەکات…',
     wkTurnOn:'کارکەرەکە بکەرەوە',
     wkAsked:'داواکرا کۆمپیوتەری ئۆفیس دەستپێبکات. خولەکێک چاوەڕێ بکە.',
-    wkHintOff:'گواستنەوەکان چاوەڕێ دەکەن تا کارکەرەکە بکرێتەوە.',
     wkHintNoHelper:'یاریدەدەری کۆمپیوتەری ئۆفیس کار ناکات. جارێک لەسەر کۆمپیوتەرەکە دەستپێی بکە.',
-    trSwapShort:'گۆڕین',
     trWorkAs:'لە شوێنی کار',
     trSumWork:'ناو لە شوێنی کار',
     itAppName:'ناو لەم ئەپەدا',
     itWorkName:'ناو لە سیستەمی شوێنی کار',
-    itWorkNameHint:'بەتاڵی بهێڵەرەوە ئەگەر هەمان ناوە. کاتێک ستۆک دەگوازرێتەوە، کۆمپیوتەر بە دەقی ئەم ناوە دەگەڕێت.'
+    itWorkNameHint:'بەتاڵی بهێڵەرەوە ئەگەر هەمان ناوە. کاتێک ستۆک دەگوازرێتەوە، کۆمپیوتەر بە دەقی ئەم ناوە دەگەڕێت.',
+    trStepFrom:'لە کوێوە دەگوازرێتەوە؟',
+    trStepTo:'بۆ کوێ دەگوازرێتەوە؟',
+    trStepItemShort:'کاڵا',
+    trStorageCount:n=>n+' کاڵا لە ستۆکدایە'
 
   },
   ar:{
@@ -875,9 +873,6 @@ const T = {
     navStock:'المخزون',
     trFrom:'من',
     trTo:'إلى',
-    trSwap:'تبديل المخزنين',
-    trChooseStorage:'اختر المخزن',
-    trStepStorages:'أي مخازن؟',
     trStepItem:'أي مادة؟',
     trStepAmount:'كم الكمية؟',
     trNoneHere:s=>'لا يوجد في '+s,
@@ -1023,14 +1018,16 @@ const T = {
     wkStarting:'جارٍ التشغيل…',
     wkTurnOn:'تشغيل العامل',
     wkAsked:'تم طلب التشغيل من حاسوب المكتب. انتظر دقيقة.',
-    wkHintOff:'تنتظر عمليات النقل حتى يعمل العامل.',
     wkHintNoHelper:'مساعد حاسوب المكتب لا يعمل. شغّله مرة واحدة على الحاسوب.',
-    trSwapShort:'تبديل',
     trWorkAs:'في نظام العمل',
     trSumWork:'الاسم في نظام العمل',
     itAppName:'الاسم في هذا التطبيق',
     itWorkName:'الاسم في نظام العمل',
-    itWorkNameHint:'اتركه فارغاً إذا كان مكتوباً بنفس الطريقة. عند نقل المخزون يبحث الحاسوب عن هذا الاسم بالضبط.'
+    itWorkNameHint:'اتركه فارغاً إذا كان مكتوباً بنفس الطريقة. عند نقل المخزون يبحث الحاسوب عن هذا الاسم بالضبط.',
+    trStepFrom:'من أين سيُنقل؟',
+    trStepTo:'إلى أين سيُنقل؟',
+    trStepItemShort:'المادة',
+    trStorageCount:n=>n+' مادة في المخزون'
 
   }
 };
