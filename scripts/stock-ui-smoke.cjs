@@ -109,8 +109,9 @@ const server=http.createServer((rq,res)=>{
     await page.waitForFunction(()=>true);await page.waitForTimeout(400);
     const post=calls.find(c=>c.ep==='requests'&&c.method==='POST');
     assert.ok(post,'approve posts to stock-api');
-    assert.deepEqual({from:post.body.from,to:post.body.to,y:post.body.yesterday,item:post.body.itemId,q:post.body.quantity,n:post.body.expectedName,u:post.body.expectedUnit},
-      {from:'Main Storage',to:'Minibar',y:true,item:'i1',q:'2',n:'Coca Cola',u:'carton'});
+    assert.deepEqual({from:post.body.from,to:post.body.to,y:post.body.yesterday,item:post.body.itemId,q:post.body.quantity,n:post.body.expectedName,u:post.body.expectedUnit,unit:post.body.unitId},
+      {from:'Main Storage',to:'Minibar',y:true,item:'i1',q:'2',n:'Coca Cola',u:'carton',unit:'ctn'});
+    assert.equal(await page.locator('#trUnits').isVisible().catch(()=>false),false,'no unit choice when buying and counting formats are the same');
     // Requests on the PC: final approve only for the checked request that has a screenshot.
     await page.waitForSelector('[data-trreq]');
     await page.waitForFunction(()=>document.querySelector('[data-trreq] img.tr-shot img, [data-trreq] .tr-shot img'));
@@ -123,6 +124,22 @@ const server=http.createServer((rq,res)=>{
     await page.locator(`[data-trcancel="${ID.un}"]`).click();await page.locator('#modalOkBtn').click();await page.waitForTimeout(300);
     assert.equal(calls.find(c=>c.ep==='cancel')?.body.id,ID.un);
     assert.ok(await page.locator('.st-alert').isVisible(),'needs-checking alert is shown');
+
+    /* ---------- Transfer in the buying format: 1 box = 12 piece, 20 piece in Main Storage ---------- */
+    await page.locator('[data-trpick="i2"]').click().catch(async()=>{ await page.selectOption('#trFrom','Main Storage'); await page.selectOption('#trTo','Minibar'); await page.locator('[data-trpick="i2"]').click(); });
+    assert.equal(await page.locator('#trUnits').isVisible(),true,'unit choice appears when the formats differ');
+    assert.equal(await page.locator('#trUnit').innerText(),'piece','counting unit is the default');
+    await page.locator('[data-trunit="buying"]').click();
+    assert.equal(await page.locator('#trUnit').innerText(),'box');
+    assert.match(await page.locator('#trChosen').innerText(),/1\.666667 \u2068box\u2069 available/,'availability is shown in the unit being entered');
+    await page.locator('#trAll').click();assert.equal(await page.locator('#trQty').inputValue(),'1.666666');
+    await page.fill('#trQty','2');assert.match(await page.locator('#trHint').innerText(),/more than is available/i,'2 boxes (24 piece) exceeds 20 piece');
+    await page.fill('#trQty','1.5');
+    await page.locator('#trReview').click();
+    assert.match(await page.locator('#trReviewCard').innerText(),/1\.5[\s\S]*box[\s\S]*= 18 piece/);
+    await page.locator('#trApprove').click();await page.waitForTimeout(400);
+    const boxPost=calls.filter(c=>c.ep==='requests'&&c.method==='POST').pop();
+    assert.deepEqual({q:boxPost.body.quantity,unit:boxPost.body.unitId,label:boxPost.body.expectedUnit,item:boxPost.body.itemId},{q:'1.5',unit:'box',label:'box',item:'i2'});
 
     /* ---------- Stock and recount ---------- */
     await go(page,'stock');

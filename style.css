@@ -1018,3 +1018,7 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 .tr-swap{background:rgba(255,255,255,.55);border:1px solid var(--line-strong);color:var(--deep)}
 .tr-pc-label{display:block;font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:3px}
 .st-hist-name{font-weight:700;color:var(--ink)}
+.tr-units{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.tr-units .tab-pill{height:40px}
+.tr-eq,.tr-rv-eq{font-weight:600;color:var(--ink-soft);font-size:.92em}
+.tr-rv-eq{color:#BDD3C6;font-size:14px}
