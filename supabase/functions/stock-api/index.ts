@@ -14,6 +14,8 @@
 //                                        (unitId: the item's buying or counting unit; quantity is in that unit)
 //   POST   cancel                        {id}
 //   POST   final-approve                 {id}
+//   POST   start-worker                  ask the office PC helper to start the worker
+//   POST   counts-bulk                   {storage, countedAt, note, pin, lines:[{itemId, quantity}]}   (one PIN for many items)
 //   POST   counts                        {itemId, storage, quantity, countedAt, note, pin}   (asks for the PIN again)
 //   POST   resolve                       {id, status, note, recordedDate}
 //   --- office PC (x-worker-token) ---
@@ -103,6 +105,19 @@ async function readAll(build: () => any): Promise<any[]> {
     if (!data || data.length < 1000) return rows;
   }
 }
+// Is the PC worker running, and is the launcher (which can start it from the phone) alive?
+const seenLast: Record<string, number> = {};
+async function touchControl(col: "worker_seen_at" | "launcher_seen_at") {
+  if (Date.now() - (seenLast[col] ?? 0) < 20_000) return;   // one small write per 20 seconds at most
+  seenLast[col] = Date.now();
+  await db.from("stock_worker_control").upsert({ id: 1, [col]: new Date().toISOString() });
+}
+async function controlStatus() {
+  const { data } = await db.from("stock_worker_control").select("*").eq("id", 1).maybeSingle();
+  const fresh = (v: string | null | undefined) => !!v && Date.now() - Date.parse(v) < 120_000;
+  return { workerOnline: fresh(data?.worker_seen_at), launcherOnline: fresh(data?.launcher_seen_at),
+    startRequestedAt: data?.start_requested_at ?? null, startHandledAt: data?.start_handled_at ?? null };
+}
 async function requestsAndBalances() {
   const [reqs, balances] = await Promise.all([
     db.from("stock_requests").select("*").order("approved_at", { ascending: false }).limit(150),
@@ -118,6 +133,7 @@ async function requestsAndBalances() {
   }
   return {
     requests: (reqs.data ?? []).map((r: any) => toRequest(r, shots)),
+    control: await controlStatus(),
     balances: balances.map((b: any) => ({ itemId: b.item_id, storage: b.storage_name, quantity: Number(b.quantity) })),
   };
 }
@@ -155,7 +171,17 @@ Deno.serve(async (req: Request) => {
     // ---------- the office PC ----------
     if (path[0] === "worker") {
       const who = await worker(req); if (!who) return fail("Worker authentication required", 401);
+      if (req.method === "GET" && path[1] === "control") {
+        // The launcher on the office PC asks this every few seconds.
+        await touchControl("launcher_seen_at");
+        return json(await controlStatus());
+      }
+      if (req.method === "POST" && path[1] === "control-handled") {
+        await db.from("stock_worker_control").upsert({ id: 1, start_handled_at: new Date().toISOString() });
+        return json({ ok: true });
+      }
       if (req.method === "GET" && path[1] === "preview") {
+        await touchControl("worker_seen_at");
         const stale = new Date(Date.now() - 10 * 60_000).toISOString();
         const { data, error } = await db.from("stock_requests").select("id").eq("status", "waiting").is("final_approved_at", null)
           .or(`previewed_at.is.null,previewed_at.lt.${stale}`).order("approved_at").limit(1).maybeSingle();
@@ -203,6 +229,14 @@ Deno.serve(async (req: Request) => {
         tabs: Array.isArray(myTabs.data?.tabs) ? myTabs.data.tabs : null,
         ...live,
       });
+    }
+    if (req.method === "POST" && path[0] === "start-worker") {
+      const c = await controlStatus();
+      if (c.workerOnline) return json({ ok: true, alreadyOn: true });
+      if (!c.launcherOnline) return fail("The office PC helper is not running. Someone has to start it on the PC once.");
+      const { error } = await db.from("stock_worker_control").upsert({ id: 1, start_requested_at: new Date().toISOString(), start_requested_by: actor });
+      if (error) throw error;
+      return json({ ok: true });
     }
     if (req.method === "GET" && path[0] === "requests") return json(await requestsAndBalances());
     if (req.method === "GET" && path[0] === "shots") {
@@ -265,6 +299,27 @@ Deno.serve(async (req: Request) => {
         p_counted_at: new Date(b.countedAt).toISOString(), p_actor: actor, p_note: str(b.note, 500) });
       if (error) throw error;
       return json({ id: data }, 201);
+    }
+    if (req.method === "POST" && path[0] === "counts-bulk") {
+      // Count many items in one go: one PIN check, then one recount per line. Lines are independent; failures are reported per line.
+      const b = await readBody(req);
+      const lines = Array.isArray(b.lines) ? b.lines : [];
+      if (!str(b.storage, 80) || !b.countedAt || isNaN(Date.parse(b.countedAt)) || lines.length < 1 || lines.length > 400) return fail("Invalid count");
+      const prints = await pinPrints(req);
+      if (await pinLocked(prints)) return fail("too_many_attempts", 429);
+      const { data: good } = await db.rpc("app_internal_check_account_pin", { p_account: actor, p_pin: String(b.pin ?? "") });
+      await noteAttempt(prints, good === true);
+      if (good !== true) return fail("wrong_pin", 403);
+      const saved: string[] = [], failed: { itemId: string; error: string }[] = [];
+      for (const l of lines) {
+        const itemId = str(l?.itemId, 80);
+        if (!itemId || !decimal(l?.quantity)) { failed.push({ itemId, error: "Invalid count" }); continue; }
+        const { error } = await db.rpc("stock_recount", { p_item: itemId, p_storage: str(b.storage, 80), p_qty: Number(l.quantity),
+          p_counted_at: new Date(b.countedAt).toISOString(), p_actor: actor, p_note: str(b.note, 500) });
+        if (error) { console.error("stock-api bulk", errorText(error)); failed.push({ itemId, error: error.code === "P0001" ? errorText(error) : "Not saved" }); }
+        else saved.push(itemId);
+      }
+      return json({ saved, failed }, 201);
     }
     if (req.method === "POST" && path[0] === "resolve") {
       const b = await readBody(req);

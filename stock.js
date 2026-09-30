@@ -10,7 +10,7 @@
 
 const STOCK_API_URL = `${SUPABASE_URL}/functions/v1/stock-api`;
 const ST_ACTIVE = ['waiting', 'running', 'needs_checking'];
-const stockState = {tabs: null, loaded: false, failed: false, storages: [], settings: new Map(), balances: new Map(), requests: [], counts: [], sig: '', shots: {}, lastLight: 0};
+const stockState = {tabs: null, loaded: false, failed: false, storages: [], settings: new Map(), balances: new Map(), requests: [], counts: [], control: null, sig: '', shots: {}, lastLight: 0};
 const trState = {from: '', to: '', itemId: '', qty: '', unit: 'counting', yesterday: false, search: '', reviewKey: null};
 const stView = {storage: 'all', filter: 'all', search: ''};
 const histView = {filter: 'all'};
@@ -33,10 +33,11 @@ async function stockApi(path, {method = 'GET', body, timeout = 20000} = {}){
 }
 function stApplyLive(d){
   stockState.requests = d.requests || [];
+  stockState.control = d.control || null;
   const b = new Map();
   for(const x of d.balances || []) b.set(x.itemId + '|' + x.storage, x.quantity);
   stockState.balances = b;
-  stockState.sig = JSON.stringify([stockState.requests, [...b]]);
+  stockState.sig = JSON.stringify([stockState.requests, [...b], stockState.control && [stockState.control.workerOnline, stockState.control.launcherOnline]]);
 }
 async function loadStock(){
   const r = await stockApi('bootstrap');
@@ -145,8 +146,29 @@ function updateStockBadges(){
   }
 }
 /* Repaint after a background refresh without disturbing what someone is typing. */
+/* The PC worker: on/off, and a button that asks the office PC to start it. */
+function workerBarHtml(){
+  const c = stockState.control; if(!c) return '';
+  const on = c.workerOnline;
+  const waiting = !on && c.startRequestedAt && Date.now() - Date.parse(c.startRequestedAt) < 3 * 60 * 1000 && (!c.startHandledAt || c.startHandledAt < c.startRequestedAt || Date.now() - Date.parse(c.startHandledAt) < 3 * 60 * 1000);
+  const label = on ? t('wkOn') : waiting ? t('wkStarting') : t('wkOff');
+  const hint = on ? '' : c.launcherOnline ? t('wkHintOff') : t('wkHintNoHelper');
+  return `<div class="tr-worker glass ${on ? 'on' : 'off'}"><div class="tr-worker-txt"><span class="tr-worker-dot" aria-hidden="true"></span><div><b>${esc(t('wkTitle'))}: ${esc(label)}</b>${hint ? `<small>${esc(hint)}</small>` : ''}</div></div>${on ? '' : `<button type="button" class="btn btn-primary" id="wkStart" ${(!c.launcherOnline || waiting) ? 'disabled' : ''}>${esc(t('wkTurnOn'))}</button>`}</div>`;
+}
+function wkPaint(){
+  const box = document.getElementById('wkBar'); if(!box) return;
+  const html = workerBarHtml(); if(box.dataset.sig === html) return;
+  box.dataset.sig = html; box.innerHTML = html;
+  const b = document.getElementById('wkStart');
+  if(b) b.onclick = async () => {
+    b.disabled = true;
+    const r = await stockApi('start-worker', {method: 'POST'});
+    if(!r.ok) toast(r.data?.error || t('saveFailed'), 'error'); else toast(t('wkAsked'));
+    await refreshStockLight(); wkPaint();
+  };
+}
 function stRepaint(){
-  if(state.view === 'transfers'){ trPaintActive(); trPaintResults(); trPaintChosen(); }
+  if(state.view === 'transfers'){ wkPaint(); trPaintActive(); trPaintResults(); trPaintChosen(); }
   else if(state.view === 'stock') stPaintList();
   else if(state.view === 'history') render();
 }
@@ -157,8 +179,8 @@ function storageOptions(selected, blank){
 }
 function renderTransfers(){
   if(!stockState.loaded) return stLoadingHtml();
-  if(!stReadyItems().length) return `${stAttentionHtml()}${emptyState(esc(t('trNoSetup')))}<div class="action-row"><button class="btn btn-primary add-btn" data-stgoitems>${esc(t('stSetUpNow'))}</button></div>`;
   return `${stAttentionHtml()}
+  <div id="wkBar"></div>
   <section class="tr-card glass">
     <div class="tr-step"><div class="tr-step-h"><span class="tr-num">1</span>${esc(t('trStepStorages'))}</div>
       <div class="tr-route">
@@ -187,15 +209,17 @@ function renderTransfers(){
 function trPaintResults(){
   const box = document.getElementById('trResults'); if(!box) return;
   const search = document.getElementById('trSearch');
-  if(search){ search.disabled = !trState.from; search.placeholder = trState.from ? t('searchPlaceholder') : t('trSearchLocked'); }
-  if(!trState.from){ box.innerHTML = ''; box.dataset.sig = ''; return; }
+  if(search) search.placeholder = t('searchPlaceholder');
   const tokens = stTokens(trState.search), from = trState.from;
-  const hits = stReadyItems().filter(i => stMatches(i, tokens))
-    .sort((a, b) => ((stFree(b.id, from) > 1e-8) - (stFree(a.id, from) > 1e-8)) || nameCollator().compare(a.name, b.name));
+  // Every item can be found. Ones with stock here come first, then set-up ones with none, then ones still needing setup.
+  const rank = i => !stReady(i) ? 2 : (from && stFree(i.id, from) > 1e-8) ? 0 : 1;
+  const hits = state.items.filter(i => stMatches(i, tokens))
+    .sort((a, b) => (rank(a) - rank(b)) || nameCollator().compare(a.name, b.name));
   const shown = hits.slice(0, 30);
   const html = shown.map(i => {
-    const free = stFree(i.id, from), has = free > 1e-8;
-    return `<button type="button" class="list-row tappable tr-result${has ? '' : ' none'}" data-trpick="${esc(i.id)}"><div><div class="name" dir="auto">${esc(i.name)}</div><div class="meta">${has ? esc(stCountUnitName(i.id)) : esc(t('trNoneHere')(iso(from)))}</div></div><div class="tr-have"><b>${fmtQty(free)}</b><small>${esc(stCountUnitName(i.id))}</small></div></button>`;
+    if(!stReady(i)) return `<button type="button" class="list-row tappable tr-result todo" data-trpick="${esc(i.id)}"><div><div class="name" dir="auto">${esc(i.name)}</div><div class="meta">${esc(t('trTapToSetUp'))}</div></div><span class="it-chip todo">${esc(t('itBadgeTodo'))}</span></button>`;
+    const free = from ? stFree(i.id, from) : 0, has = free > 1e-8;
+    return `<button type="button" class="list-row tappable tr-result${has ? '' : ' none'}" data-trpick="${esc(i.id)}"><div><div class="name" dir="auto">${esc(i.name)}</div><div class="meta">${has ? esc(stCountUnitName(i.id)) : esc(from ? t('trNoneHere')(iso(from)) : t('trHintFrom'))}</div></div><div class="tr-have"><b>${fmtQty(free)}</b><small>${esc(stCountUnitName(i.id))}</small></div></button>`;
   }).join('') + (hits.length > shown.length ? `<div class="field-hint">${esc(t('trShowing')(shown.length, hits.length))}</div>` : '') || `<div class="field-hint">${esc(t('trNoMatch'))}</div>`;
   if(box.dataset.sig === html) return;
   box.dataset.sig = html; box.innerHTML = html;
@@ -282,6 +306,11 @@ function trShownRequests(){
   return stockState.requests.filter(r => ST_ACTIVE.includes(r.status) || (r.finishedAt && new Date(r.finishedAt).getTime() > cutoff))
     .sort((a, b) => new Date(b.approvedAt) - new Date(a.approvedAt));
 }
+/* A plain list of exactly what will move, shown on the card and again in the final confirmation. */
+function trSummaryHtml(r){
+  const row = (k, v) => `<div class="tr-sum-row"><span>${esc(t(k))}</span><b dir="auto">${v}</b></div>`;
+  return `<div class="tr-sum">${row('trSumItem', esc(r.itemName))}${row('trSumAmount', reqAmountHtml(r))}${row('trSumFrom', esc(r.from))}${row('trSumTo', esc(r.to))}${row('trSumDay', esc(r.yesterday ? t('trYesterday') : t('trSumToday')))}</div>`;
+}
 function trRequestCard(r){
   const st = reqState(r), shot = stockState.shots[r.id];
   const shotHtml = (img, label) => `<figure class="tr-shot"><img src="${esc(img)}" alt="${esc(label)}" data-trzoom="${esc(r.id)}"><figcaption>${esc(label)} · ${esc(t('trShotZoom'))}</figcaption></figure>`;
@@ -304,6 +333,7 @@ function trRequestCard(r){
   return `<article class="tr-req glass s-${esc(r.status)}" data-trreq="${esc(r.id)}">
     <div class="tr-req-top"><div><div class="tr-req-name" dir="auto">${esc(r.itemName)}</div><div class="tr-req-amt">${reqAmountHtml(r)}</div></div><span class="tr-chip ${esc(st.cls)}">${esc(st.label)}</span></div>
     <div class="tr-req-route">${esc(r.from)} <span aria-hidden="true">→</span> ${esc(r.to)}${r.yesterday ? ' · ' + esc(t('trYesterday')) : ''}</div>
+    ${r.status === 'waiting' && !r.finalApprovedAt ? `<div class="tr-sum-title">${esc(t('trSumTitle'))}</div>${trSummaryHtml(r)}` : ''}
     ${pc}${buttons}</article>`;
 }
 function trPaintActive(){
@@ -331,7 +361,8 @@ async function stEnsureShots(r){
 }
 function bindRequestButtons(root){
   root.querySelectorAll('[data-trfinal]').forEach(b => b.onclick = async () => {
-    if(!(await showConfirm(esc(t('trFinalConfirm')), {okLabel: t('trFinalApprove'), okClass: 'btn-primary'}))) return;
+    const req = stockState.requests.find(x => x.id === b.dataset.trfinal);
+    if(!(await showConfirm((req ? trSummaryHtml(req) : '') + '<p>' + esc(t('trFinalConfirm')) + '</p>', {okLabel: t('trFinalApprove'), okClass: 'btn-primary'}))) return;
     b.disabled = true;
     const r = await stockApi('final-approve', {method: 'POST', body: {id: b.dataset.trfinal}});
     if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); await refreshStockLight(); return; }
@@ -357,8 +388,8 @@ function bindRequestButtons(root){
 }
 function attachTransfersEvents(){
   attachStockCommon();
-  document.querySelectorAll('[data-stgoitems]').forEach(b => b.onclick = () => goView('itemsAdmin'));
   if(!document.getElementById('trFrom')) return;
+  wkPaint();
   const from = document.getElementById('trFrom'), to = document.getElementById('trTo'), qty = document.getElementById('trQty');
   from.onchange = () => { trState.from = from.value; trState.itemId = ''; trState.qty = ''; trState.search = ''; trInvalidate(); document.getElementById('trSearch').value = ''; trPaintAll(); };
   to.onchange = () => { trState.to = to.value; trInvalidate(); trPaintHint(); };
@@ -370,8 +401,10 @@ function attachTransfersEvents(){
   document.getElementById('trSearch').oninput = e => { trState.search = e.target.value; trPaintResults(); };
   document.getElementById('trResults').onclick = e => {
     const b = e.target.closest('[data-trpick]'); if(!b) return;
-    const item = stItem(b.dataset.trpick);
-    if(!item || stFree(item.id, trState.from) <= 1e-8){ toast(t('trNoneHere')(iso(trState.from)), 'error'); return; }
+    const item = stItem(b.dataset.trpick); if(!item) return;
+    if(!stReady(item)){ openItemModal(item.id); return; }     // not set up yet: set it up here, then come back
+    if(!trState.from){ toast(t('trHintFrom'), 'error'); return; }
+    if(stFree(item.id, trState.from) <= 1e-8){ toast(t('trNoneHere')(iso(trState.from)), 'error'); return; }
     trState.itemId = item.id; trState.qty = ''; trState.unit = 'counting'; trState.search = ''; trInvalidate(); qty.value = ''; trPaintAll(); qty.focus();
   };
   const setQty = v => { trState.qty = v > 0 ? String(v) : ''; qty.value = trState.qty; trInvalidate(); trPaintHint(); };
@@ -418,27 +451,43 @@ function stStoragePills(){
 }
 function stRowsData(){
   const tokens = stTokens(stView.search), sto = stView.storage;
-  return stReadyItems().filter(i => stMatches(i, tokens)).map(i => ({item: i, qty: sto === 'all' ? stTotal(i.id) : stQty(i.id, sto), low: stIsLow(i)}))
-    .filter(r => stView.filter === 'all' || (stView.filter === 'in' ? r.qty > 0 : r.low))
-    .sort((a, b) => nameCollator().compare(a.item.name, b.item.name));
+  return state.items.filter(i => stMatches(i, tokens)).map(i => {
+    const ready = stReady(i);
+    return {item: i, ready, qty: ready ? (sto === 'all' ? stTotal(i.id) : stQty(i.id, sto)) : 0, low: ready && stIsLow(i)};
+  }).filter(r => stView.filter === 'all' ? true : stView.filter === 'setup' ? !r.ready : stView.filter === 'in' ? r.ready && r.qty > 0 : r.low)
+    .sort((a, b) => (a.ready === b.ready ? 0 : a.ready ? -1 : 1) || nameCollator().compare(a.item.name, b.item.name));
 }
 function stRowHtml(r){
+  if(!r.ready){
+    return `<div class="list-row tappable st-row" data-stsetup="${esc(r.item.id)}"><div><div class="name" dir="auto">${esc(r.item.name)}</div><div class="meta">${esc(unitLabel(r.item.unit))} · ${esc(t('trTapToSetUp'))}</div></div><span class="it-chip todo">${esc(t('itBadgeTodo'))}</span></div>`;
+  }
   const s = stSetting(r.item.id), unit = stCountUnitName(r.item.id);
   const conv = s.perBuying ? ` · ${t('itPerSummary')(iso(unitLabel(r.item.unit)), fmtQty(s.perBuying), iso(unit))}` : '';
   return `<div class="list-row tappable st-row" data-stcount="${esc(r.item.id)}"><div><div class="name" dir="auto">${esc(r.item.name)}</div><div class="meta">${esc(unit)}${esc(conv)}</div></div>
     <div class="st-qty${r.low ? ' low' : ''}"><b>${esc(fmtQty(r.qty))}</b><small>${esc(unit)}</small>${r.low ? `<span class="st-low">${esc(t('stLowBadge'))}</span>` : ''}</div></div>`;
 }
+/* Set an item up (its counting format) from the Stock screen, then go straight to counting it. */
+const stPending = {id: null, storage: '', at: 0};
+function stSetupThenCount(id){
+  Object.assign(stPending, {id, storage: stView.storage === 'all' ? '' : stView.storage, at: Date.now()});
+  openItemModal(id);
+}
+/* Called by the item form after an item is saved. */
+function stAfterItemSaved(itemId){
+  const pending = stPending.id === itemId && Date.now() - stPending.at < 10 * 60 * 1000 ? {...stPending} : null;
+  stPending.id = null;
+  if(pending && stReady(stItem(itemId)) && state.view === 'stock') setTimeout(() => openRecount(itemId, pending.storage), 450);
+}
 function renderStock(){
   if(!stockState.loaded) return stLoadingHtml();
-  const ready = stReadyItems(), notReady = state.items.length - ready.length;
-  const filters = [{id: 'all', label: t('stAll')}, {id: 'in', label: t('stInStock')}, {id: 'low', label: t('stLow')}];
+  const filters = [{id: 'all', label: t('stAll')}, {id: 'in', label: t('stInStock')}, {id: 'low', label: t('stLow')}, {id: 'setup', label: t('itFilterTodo')}];
   return `${stAttentionHtml()}
     <div class="hero-card st-hero"><div class="hero-eyebrow" id="stHeroName"></div><div class="hero-stat"><span class="hero-count" id="stHeroCount">0</span><span class="hero-word" id="stHeroWord"></span></div><div class="hero-sub" id="stHeroSub"></div></div>
-    <div class="order-tabs-shell"><div class="order-tabs" id="stTabs">${stStoragePills()}</div></div>
+    <div class="order-tabs-shell"><button type="button" class="tab-scroll tab-scroll-prev" id="stTabsPrev" aria-label="${esc(t('previousZones'))}">‹</button><div class="order-tabs" id="stTabs">${stStoragePills()}</div><button type="button" class="tab-scroll tab-scroll-next" id="stTabsNext" aria-label="${esc(t('nextZones'))}">›</button></div>
+    <div class="st-actions"><button type="button" class="btn btn-primary" id="stCountAll">${esc(t('bcButton'))}</button></div>
     <div class="record-filters glass" role="group">${filters.map(f => `<button class="tab-pill ${stView.filter === f.id ? 'active' : ''}" aria-pressed="${stView.filter === f.id}" data-stfilter="${f.id}">${esc(f.label)}</button>`).join('')}</div>
     <div class="search-row"><div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="stSearch" aria-label="${esc(t('searchPlaceholder'))}" placeholder="${esc(t('searchPlaceholder'))}" value="${esc(stView.search)}"></div></div>
-    <div id="stList"></div>
-    ${notReady > 0 ? `<div class="st-setup-note glass"><span>${esc(t('stNotSetUp')(notReady))}</span><button class="btn btn-ghost" data-stgoitems>${esc(t('stSetUpNow'))}</button></div>` : ''}`;
+    <div id="stList"></div>`;
 }
 function stPaintList(){
   const box = document.getElementById('stList'); if(!box) return;
@@ -448,18 +497,30 @@ function stPaintList(){
   document.getElementById('stHeroName').textContent = stView.storage === 'all' ? t('stAllStorages') : stView.storage;
   document.getElementById('stHeroCount').textContent = inStorage;
   document.getElementById('stHeroWord').textContent = t('stInStock');
-  document.getElementById('stHeroSub').textContent = t('stSummary')(stReadyItems().length, stLowCount());
+  document.getElementById('stHeroSub').textContent = t('itSetupProgress')(stReadyItems().length, state.items.length) + (stLowCount() ? ' · ' + t('stLowBadge') + ': ' + stLowCount() : '');
   box.querySelectorAll('[data-stcount]').forEach(row => row.onclick = () => openRecount(row.dataset.stcount, stView.storage === 'all' ? '' : stView.storage));
+  box.querySelectorAll('[data-stsetup]').forEach(row => row.onclick = () => stSetupThenCount(row.dataset.stsetup));
   document.getElementById('stTabs').innerHTML = stStoragePills();
   bindStorageTabs();
 }
 function bindStorageTabs(){ document.querySelectorAll('[data-ststorage]').forEach(b => b.onclick = () => { stView.storage = b.dataset.ststorage; stPaintList(); }); }
 function attachStockEvents(){
   attachStockCommon();
-  document.querySelectorAll('[data-stgoitems]').forEach(b => b.onclick = () => goView('itemsAdmin'));
   if(!document.getElementById('stList')) return;
   document.querySelectorAll('[data-stfilter]').forEach(b => b.onclick = () => { stView.filter = b.dataset.stfilter; document.querySelectorAll('[data-stfilter]').forEach(x => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on); }); stPaintList(); });
   document.getElementById('stSearch').oninput = e => { stView.search = e.target.value; stPaintList(); };
+  const tabs = document.getElementById('stTabs');
+  const go = step => {
+    const pills = [...tabs.querySelectorAll('.tab-pill')]; if(!pills.length) return;
+    const center = tabs.getBoundingClientRect().left + tabs.clientWidth / 2;
+    let index = 0, dist = Infinity;
+    pills.forEach((pill, i) => { const r = pill.getBoundingClientRect(), d = Math.abs(r.left + r.width / 2 - center); if(d < dist){ dist = d; index = i; } });
+    pills[Math.max(0, Math.min(pills.length - 1, index + step))].scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'});
+  };
+  document.getElementById('stTabsPrev').onclick = () => go(-1);
+  document.getElementById('stTabsNext').onclick = () => go(1);
+  tabs.addEventListener('wheel', e => { if(Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; e.preventDefault(); tabs.scrollBy({left: e.deltaY, behavior: 'auto'}); }, {passive: false});
+  document.getElementById('stCountAll').onclick = () => openBulkCount();
   stPaintList();
   stRefreshIfStale();
 }
@@ -497,6 +558,56 @@ function openRecount(itemId, storage){
         return {error: r.data?.error || t('saveFailed')};
       }
       await loadStock(); render(); toast(t('stCountSaved')(item.name)); return {};
+    }
+  });
+}
+
+/* ============ Count many items at once (one PIN) ============ */
+function openBulkCount(){
+  const ready = stReadyItems().slice().sort((a, b) => nameCollator().compare(a.name, b.name));
+  if(!ready.length){ toast(t('bcNone'), 'error'); return; }
+  const now = new Date(); const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  let pick = stView.storage !== 'all' ? stView.storage : (stockState.storages.includes('Main Storage') ? 'Main Storage' : stockState.storages[0]);
+  const values = new Map();   // itemId -> typed text; survives searching
+  showFormModal({
+    title: esc(t('bcTitle')),
+    bodyHtml: `<div class="notif-sub">${esc(t('bcHint'))}</div>
+      <div class="field"><label>${esc(t('stStorage'))}</label><select id="bcStorage">${stockState.storages.map(x => `<option value="${esc(x)}" ${x === pick ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
+      <div class="search-wrap bc-search">${ICON_SEARCH}<input class="search-input" id="bcSearch" placeholder="${esc(t('searchPlaceholder'))}" autocomplete="off"></div>
+      <div class="bc-count" id="bcCount"></div>
+      <div class="bc-list" id="bcList"></div>
+      <div class="field"><label>${esc(t('stCountedAt'))}</label><input id="bcAt" type="datetime-local" value="${local}"></div>
+      <div class="field"><label>${esc(t('stNote'))}</label><input id="bcNote" maxlength="500" autocomplete="off"></div>
+      <div class="field"><label>${esc(t('stPin'))}</label><input id="bcPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="••••••"><div class="field-hint">${esc(t('stPinHint'))}</div></div>`,
+    okLabel: t('save'),
+    onOpen: box => {
+      const list = box.querySelector('#bcList'), sel = box.querySelector('#bcStorage'), search = box.querySelector('#bcSearch'), count = box.querySelector('#bcCount');
+      const paintCount = () => { count.textContent = t('bcEntered')(values.size, ready.length); };
+      const paint = () => {
+        const tokens = stTokens(search.value);
+        const rows = ready.filter(i => stMatches(i, tokens));
+        list.innerHTML = rows.length ? rows.map(i => `<label class="bc-row"><span class="bc-name" dir="auto">${esc(i.name)}<small>${esc(t('stNow')(fmtQty(stQty(i.id, sel.value)), iso(stCountUnitName(i.id))))}</small></span><span class="bc-in"><input type="number" inputmode="decimal" min="0" step="any" data-bcitem="${esc(i.id)}" value="${esc(values.get(i.id) ?? '')}" autocomplete="off"><span class="st-unit-chip">${esc(stCountUnitName(i.id))}</span></span></label>`).join('') : `<div class="empty">${esc(t('trNoMatch'))}</div>`;
+        list.querySelectorAll('[data-bcitem]').forEach(inp => inp.oninput = () => { if(inp.value === '') values.delete(inp.dataset.bcitem); else values.set(inp.dataset.bcitem, inp.value); paintCount(); });
+        paintCount();
+      };
+      sel.onchange = paint; search.oninput = paint; paint();
+      box.querySelector('#bcPin').oninput = e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); };
+    },
+    onSubmit: async () => {
+      const pin = document.getElementById('bcPin').value, at = document.getElementById('bcAt').value;
+      const lines = [...values].filter(([, v]) => v !== '').map(([itemId, quantity]) => ({itemId, quantity}));
+      if(!lines.length) return {error: t('bcNothing')};
+      if(lines.some(l => !(Number(l.quantity) >= 0)) || !/^\d{6}$/.test(pin) || !at) return {error: t('stNeedNumber')};
+      const r = await stockApi('counts-bulk', {method: 'POST', timeout: 60000, body: {storage: document.getElementById('bcStorage').value, countedAt: new Date(at).toISOString(), note: document.getElementById('bcNote').value.trim(), pin, lines}});
+      if(!r.ok){
+        if(r.status === 403) return {error: t('stPinWrong')};
+        if(r.status === 429) return {error: t('tooManyAttempts')};
+        return {error: r.data?.error || t('saveFailed')};
+      }
+      await loadStock(); render();
+      const bad = r.data?.failed?.length || 0;
+      toast(bad ? t('bcPartial')(r.data.saved.length, bad) : t('bcSaved')(r.data.saved.length), bad ? 'error' : 'ok');
+      return {};
     }
   });
 }

@@ -21,6 +21,7 @@ function fixture(){
     suppliers:[{id:'s0',name:'Supplier',phone:''}],items,units,history:[{id:'h1',date:iso(60*30),by:'yunis',entries:[{supplierId:'s0',items:[{itemId:'i0',name:'Tomato',qty:2,unit:'box'}]}]}],
     devices:[],activity:[],reminder:{enabled:false,time:'09:00'},pars:[],inbox:[]});
   const stock={
+    control:{workerOnline:false,launcherOnline:true,startRequestedAt:null,startHandledAt:null},
     storages:['Main Storage','Minibar','Pizza'],
     settings:[{itemId:'i1',countingUnit:'ctn',perBuying:null,lowStock:2},{itemId:'i2',countingUnit:'pc',perBuying:12,lowStock:100},{itemId:'i3',countingUnit:'ctn',perBuying:null,lowStock:null}],
     balances:[{itemId:'i1',storage:'Main Storage',quantity:5},{itemId:'i2',storage:'Main Storage',quantity:20}],
@@ -51,10 +52,11 @@ const server=http.createServer((rq,res)=>{
       let status=200,data={ok:true};
       if(fn==='stock-api'){
         calls.push({ep,method:rq.method(),body});
-        if(ep==='bootstrap') data={storages:fx.stock.storages,settings:fx.stock.settings,counts:fx.stock.counts,requests:fx.stock.requests,balances:fx.stock.balances};
-        else if(ep==='requests'&&rq.method()==='GET') data={requests:fx.stock.requests,balances:fx.stock.balances};
+        if(ep==='bootstrap') data={storages:fx.stock.storages,settings:fx.stock.settings,counts:fx.stock.counts,requests:fx.stock.requests,balances:fx.stock.balances,control:fx.stock.control};
+        else if(ep==='requests'&&rq.method()==='GET') data={requests:fx.stock.requests,balances:fx.stock.balances,control:fx.stock.control};
         else if(ep.startsWith('shots')) data={shots:[{kind:'check',image:PIXEL,takenAt:iso(1)}]};
-        else if(ep==='counts'&&body.pin!=='123456'){status=403;data={error:'wrong_pin'};}
+        else if((ep==='counts'||ep==='counts-bulk')&&body.pin!=='123456'){status=403;data={error:'wrong_pin'};}
+        else if(ep==='counts-bulk'){status=201;data={saved:body.lines.map(l=>l.itemId),failed:[]};}
         else if(ep==='requests') {status=201;data={id:'new'};}
       }else{
         apiCalls.push({ep,method:rq.method(),body});
@@ -87,11 +89,14 @@ const server=http.createServer((rq,res)=>{
     /* ---------- Rozha, English ---------- */
     let {ctx,page,calls,apiCalls}=await open();
     await go(page,'transfers');
-    assert.equal(await page.locator('#trSearch').isDisabled(),true,'item search waits for a source storage');
-    // Only items that are set up appear; ones with no stock in the source cannot be picked.
+    assert.equal(await page.locator('#trSearch').isDisabled(),false,'item search always works');
+    // Every item is searchable; the one that is not set up says so, and ones with no stock in the source cannot be picked.
     await page.selectOption('#trFrom','Main Storage');await page.selectOption('#trTo','Minibar');
     const names=await page.locator('#trResults .name').allTextContents();
-    assert.deepEqual(names.sort(),['Coca Cola','Flour','Milk'],'only set-up items are offered');
+    assert.deepEqual(names.sort(),['Coca Cola','Flour','Milk','Tomato'],'all items are searchable');
+    assert.equal(await page.locator('#trResults .tr-result.todo').count(),1,'the item that is not set up is marked');
+    await page.fill('#trSearch','tom');assert.deepEqual(await page.locator('#trResults .name').allTextContents(),['Tomato'],'search finds items');
+    await page.fill('#trSearch','');
     await page.locator('[data-trpick="i3"]').click();
     assert.equal(await page.locator('#trChosen').isVisible(),false,'an item with no stock in the source is not selectable');
     await page.locator('[data-trpick="i1"]').click();
@@ -119,14 +124,21 @@ const server=http.createServer((rq,res)=>{
     assert.equal(await finals.count(),2);
     assert.equal(await page.locator(`[data-trfinal="${ID.ok}"]`).isEnabled(),true,'checked request can be approved');
     assert.equal(await page.locator(`[data-trfinal="${ID.un}"]`).isEnabled(),false,'unchecked request cannot be approved');
-    await page.locator(`[data-trfinal="${ID.ok}"]`).click();await page.locator('#modalOkBtn').click();await page.waitForTimeout(300);
+    await page.locator(`[data-trfinal="${ID.ok}"]`).click();
+    assert.match(await page.locator('.modal-box').innerText(),/Coca Cola[\s\S]*Main Storage[\s\S]*Minibar/,'final confirmation lists what will move');
+    await page.locator('#modalOkBtn').click();await page.waitForTimeout(300);
     assert.equal(calls.find(c=>c.ep==='final-approve')?.body.id,ID.ok);
     await page.locator(`[data-trcancel="${ID.un}"]`).click();await page.locator('#modalOkBtn').click();await page.waitForTimeout(300);
     assert.equal(calls.find(c=>c.ep==='cancel')?.body.id,ID.un);
     assert.ok(await page.locator('.st-alert').isVisible(),'needs-checking alert is shown');
 
+    /* ---------- Start the PC worker from the app ---------- */
+    assert.match(await page.locator('#wkBar').innerText(),/Off/i,'worker status shows off');
+    await page.locator('#wkStart').click();await page.waitForTimeout(400);
+    assert.ok(calls.some(c=>c.ep==='start-worker'&&c.method==='POST'),'Turn on asks the server to start the worker');
+
     /* ---------- Transfer in the buying format: 1 box = 12 piece, 20 piece in Main Storage ---------- */
-    await page.locator('[data-trpick="i2"]').click().catch(async()=>{ await page.selectOption('#trFrom','Main Storage'); await page.selectOption('#trTo','Minibar'); await page.locator('[data-trpick="i2"]').click(); });
+    await page.selectOption('#trFrom','Main Storage');await page.selectOption('#trTo','Minibar');await page.locator('[data-trpick="i2"]').click();
     assert.equal(await page.locator('#trUnits').isVisible(),true,'unit choice appears when the formats differ');
     assert.equal(await page.locator('#trUnit').innerText(),'piece','counting unit is the default');
     await page.locator('[data-trunit="buying"]').click();
@@ -144,7 +156,10 @@ const server=http.createServer((rq,res)=>{
     /* ---------- Stock and recount ---------- */
     await go(page,'stock');
     await page.waitForSelector('[data-stcount]');
-    assert.deepEqual((await page.locator('#stList .name').allTextContents()).sort(),['Coca Cola','Flour','Milk']);
+    assert.deepEqual((await page.locator('#stList .name').allTextContents()).sort(),['Coca Cola','Flour','Milk','Tomato']);
+    await page.locator('[data-stfilter="setup"]').click();
+    assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Tomato'],'not-set-up filter');
+    await page.locator('[data-stfilter="all"]').click();
     await page.locator('[data-stfilter="low"]').click();
     assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Flour','Milk'].slice(0,1),'low stock filter (total 20 <= 100; milk has no warning level)');
     await page.locator('[data-stfilter="all"]').click();
@@ -155,6 +170,31 @@ const server=http.createServer((rq,res)=>{
     await page.waitForFunction(()=>!document.querySelector('#rcQty'));
     const count=calls.filter(c=>c.ep==='counts').pop();
     assert.equal(count.body.pin,'123456');assert.equal(count.body.quantity,'7');assert.equal(count.body.storage,'Main Storage');
+
+    /* ---------- Count many items with one PIN ---------- */
+    await go(page,'stock');
+    await page.locator('#stCountAll').click();
+    await page.waitForSelector('[data-bcitem]');
+    assert.equal(await page.locator('[data-bcitem]').count(),3,'every set-up item is listed');
+    await page.fill('[data-bcitem="i1"]','4');await page.fill('[data-bcitem="i2"]','30');
+    await page.fill('#bcSearch','milk');await page.fill('[data-bcitem="i3"]','9');await page.fill('#bcSearch','');
+    assert.equal(await page.locator('[data-bcitem="i1"]').inputValue(),'4','typed amounts survive searching');
+    await page.fill('#bcPin','000000');await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>/PIN/i.test(document.querySelector('#modalFormStatus').textContent));
+    await page.fill('#bcPin','123456');await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>!document.querySelector('#bcList'));
+    const bulk=calls.filter(c=>c.ep==='counts-bulk').pop();
+    assert.equal(bulk.body.pin,'123456');assert.deepEqual(bulk.body.lines.map(l=>l.itemId+':'+l.quantity).sort(),['i1:4','i2:30','i3:9']);
+
+    /* ---------- Item form: a supplier is required for a new item ---------- */
+    await go(page,'itemsAdmin');
+    await page.locator('#itemAddBtn').click();
+    await page.fill('#mfName','Test item');
+    await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>document.querySelector('#modalFormStatus').textContent.trim().length>0);
+    assert.equal(await page.evaluate(()=>state.items.some(i=>i.name==='Test item')),false,'not saved without a supplier');
+    await page.locator('#modalFormCancel').click();
+    await page.waitForFunction(()=>!document.querySelector('#mfName'));
 
     /* ---------- Item form ---------- */
     await go(page,'itemsAdmin');
@@ -193,6 +233,14 @@ const server=http.createServer((rq,res)=>{
     assert.deepEqual(calls.filter(c=>c.ep==='tabs').pop()?.body.tabs,['history','transfers','stock']);
     assert.equal(apiCalls.some(c=>c.ep==='me/tabs'),false,'the older server is not asked to store screens it does not know');
     assert.deepEqual(await page.evaluate(()=>state.tabs),['history','transfers','stock']);
+    await ctx.close();
+
+    /* ---------- PC width: every storage is visible and the arrows scroll them ---------- */
+    ({ctx,page}=await open({width:1400}));
+    await go(page,'stock');
+    const pills=await page.locator('#stTabs .tab-pill').evaluateAll(els=>els.map(e=>Math.round(e.getBoundingClientRect().width)));
+    assert.equal(pills.length,4);assert.ok(pills.every(w=>w>60),'storage tabs are readable on a PC '+pills);
+    assert.equal(await page.locator('#stTabsNext').isVisible(),true,'scroll arrows exist on a PC');
     await ctx.close();
 
     /* ---------- Yunis has the same screens ---------- */
