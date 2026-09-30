@@ -1049,3 +1049,55 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 .tr-worker-dot{width:11px;height:11px;border-radius:50%;background:#B9C2BD;flex:none}
 .tr-worker.on .tr-worker-dot{background:#2F9461;box-shadow:0 0 0 4px rgba(47,148,97,.2)}
 .tr-worker .btn{min-height:42px}
+
+/* ===== calmer surfaces, quieter focus, gentle motion ===== */
+:root{--surface:rgba(255,255,255,.8);--surface-line:rgba(255,255,255,.95);--surface-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 8px 18px -12px rgba(20,44,34,.32)}
+/* lists: every row is its own light card, so it never melts into the background */
+.list-row,.item-row,.hist-card,.rec-card,.dev-card,.queue-card{background:var(--surface);border:1px solid var(--surface-line);box-shadow:var(--surface-shadow)}
+.list-row{min-height:66px;margin-bottom:8px;-webkit-backdrop-filter:none;backdrop-filter:none}
+.list-row .name{font-size:15.5px;font-weight:700;line-height:1.35}
+.list-row .meta{font-size:12.5px}
+.list-row.tappable:active,.item-row:active{transform:scale(.985);background:#fff}
+/* the search box: a plain white field, no glow, no outline */
+.search-input{background:rgba(255,255,255,.9);border:1px solid rgba(20,56,44,.12);box-shadow:none}
+.search-input:focus,.search-input:focus-visible{background:#fff;border-color:rgba(20,56,44,.4);box-shadow:none;outline:none}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
+.field input:focus,.field select:focus,.field textarea:focus,#trQty:focus,.qty-input:focus{border-color:rgba(20,56,44,.4);box-shadow:none}
+.qty-input:focus{box-shadow:inset 0 0 0 1px rgba(20,56,44,.4)}
+.rico-composer:focus-within{box-shadow:0 22px 50px -18px rgba(16,48,36,.38)}
+/* 16px fields: phones do not zoom in when one is tapped */
+.search-input,.field input,.field select,.field textarea,#trQty,.bc-in input{font-size:16px}
+.search-wrap{scroll-margin-top:96px}
+
+/* Transfer: flat and light */
+.tr-card{background:none;border:0;box-shadow:none;padding:4px 0 0;-webkit-backdrop-filter:none;backdrop-filter:none}
+.tr-step{margin-bottom:26px}
+.tr-step-h{font-size:17px;letter-spacing:-.01em}
+.tr-step-h .tr-swap{margin-inline-start:auto;display:inline-flex;align-items:center;gap:6px;width:auto;height:36px;padding:0 13px;border-radius:999px;border:1px solid var(--surface-line);background:var(--surface);font-size:13px;font-weight:700;color:var(--ink-soft);grid-column:auto;grid-row:auto}
+.tr-step-h .tr-swap:active{transform:scale(.95)}
+.tr-lab{font-size:12px;font-weight:700;color:var(--ink-soft);margin:0 2px 8px}
+.picks{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.pick{min-height:42px;padding:0 16px;border-radius:999px;border:1px solid rgba(20,56,44,.12);background:var(--surface);font:inherit;font-size:14px;font-weight:700;color:var(--ink);box-shadow:0 4px 10px -8px rgba(20,44,34,.35)}
+.pick:active{transform:scale(.95)}
+.pick.on{background:var(--deep);border-color:transparent;color:#fff;box-shadow:0 8px 16px -10px rgba(16,48,36,.6)}
+.pick:disabled{opacity:.35;box-shadow:none}
+.tr-result{margin:0}
+.tr-results{gap:8px}
+.tr-result.none{opacity:.6}
+.tr-chosen,.tr-req{background:var(--surface);border:1px solid var(--surface-line);box-shadow:var(--surface-shadow);-webkit-backdrop-filter:none;backdrop-filter:none}
+.tr-req-work,.tr-rv-work{font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-top:2px}
+.tr-rv-work{color:#BFD9CA}
+.tr-yesterday{background:var(--surface);border:1px solid var(--surface-line)}
+.tr-worker{background:var(--surface);border:1px solid var(--surface-line);box-shadow:var(--surface-shadow);-webkit-backdrop-filter:none;backdrop-filter:none}
+
+/* motion: short, soft, and never on every keystroke */
+@keyframes softRise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.fx-rise>*{animation:softRise 320ms var(--ease-out) both}
+.fx-rise>*:nth-child(2){animation-delay:35ms}.fx-rise>*:nth-child(3){animation-delay:70ms}.fx-rise>*:nth-child(4){animation-delay:105ms}
+.fx-rise>*:nth-child(5){animation-delay:140ms}.fx-rise>*:nth-child(6){animation-delay:175ms}.fx-rise>*:nth-child(n+7){animation-delay:210ms}
+.tr-chosen:not([hidden]),#trAmount:not([hidden]),#trReviewCard:not([hidden]),.tr-worker{animation:softRise 340ms var(--ease-out) both}
+.tab-pill,.pick,.btn,.list-row,.item-row{transition:transform 160ms var(--ease),background-color 200ms ease,color 200ms ease,border-color 200ms ease,box-shadow 240ms ease,opacity 200ms ease}
+.btn:active{transform:scale(.98)}
+.tab-pill.active{animation:pillPop 260ms var(--ease-out)}
+@keyframes pillPop{from{transform:scale(.94)}to{transform:none}}
+@media (prefers-reduced-motion:reduce){.fx-rise>*,.tr-chosen,#trAmount,#trReviewCard,.tr-worker,.tab-pill.active{animation:none!important}}

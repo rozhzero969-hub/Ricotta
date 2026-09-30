@@ -336,7 +336,13 @@ const T = {
     wkTurnOn:'Turn on the worker',
     wkAsked:'Asked the office PC to start. Give it a minute.',
     wkHintOff:'Transfers wait until the worker is on.',
-    wkHintNoHelper:'The office PC helper is not running. Start it once on the PC.'
+    wkHintNoHelper:'The office PC helper is not running. Start it once on the PC.',
+    trSwapShort:'Swap',
+    trWorkAs:'In the workplace',
+    trSumWork:'Workplace name',
+    itAppName:'Name in this app',
+    itWorkName:'Name in the workplace system',
+    itWorkNameHint:'Leave empty if it is spelled the same. When stock moves, the PC searches for exactly this name.'
 
   },
   ku:{
@@ -674,7 +680,13 @@ const T = {
     wkTurnOn:'کارکەرەکە بکەرەوە',
     wkAsked:'داواکرا کۆمپیوتەری ئۆفیس دەستپێبکات. خولەکێک چاوەڕێ بکە.',
     wkHintOff:'گواستنەوەکان چاوەڕێ دەکەن تا کارکەرەکە بکرێتەوە.',
-    wkHintNoHelper:'یاریدەدەری کۆمپیوتەری ئۆفیس کار ناکات. جارێک لەسەر کۆمپیوتەرەکە دەستپێی بکە.'
+    wkHintNoHelper:'یاریدەدەری کۆمپیوتەری ئۆفیس کار ناکات. جارێک لەسەر کۆمپیوتەرەکە دەستپێی بکە.',
+    trSwapShort:'گۆڕین',
+    trWorkAs:'لە شوێنی کار',
+    trSumWork:'ناو لە شوێنی کار',
+    itAppName:'ناو لەم ئەپەدا',
+    itWorkName:'ناو لە سیستەمی شوێنی کار',
+    itWorkNameHint:'بەتاڵی بهێڵەرەوە ئەگەر هەمان ناوە. کاتێک ستۆک دەگوازرێتەوە، کۆمپیوتەر بە دەقی ئەم ناوە دەگەڕێت.'
 
   },
   ar:{
@@ -1012,7 +1024,13 @@ const T = {
     wkTurnOn:'تشغيل العامل',
     wkAsked:'تم طلب التشغيل من حاسوب المكتب. انتظر دقيقة.',
     wkHintOff:'تنتظر عمليات النقل حتى يعمل العامل.',
-    wkHintNoHelper:'مساعد حاسوب المكتب لا يعمل. شغّله مرة واحدة على الحاسوب.'
+    wkHintNoHelper:'مساعد حاسوب المكتب لا يعمل. شغّله مرة واحدة على الحاسوب.',
+    trSwapShort:'تبديل',
+    trWorkAs:'في نظام العمل',
+    trSumWork:'الاسم في نظام العمل',
+    itAppName:'الاسم في هذا التطبيق',
+    itWorkName:'الاسم في نظام العمل',
+    itWorkNameHint:'اتركه فارغاً إذا كان مكتوباً بنفس الطريقة. عند نقل المخزون يبحث الحاسوب عن هذا الاسم بالضبط.'
 
   }
 };

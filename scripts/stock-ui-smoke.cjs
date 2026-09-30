@@ -23,7 +23,7 @@ function fixture(){
   const stock={
     control:{workerOnline:false,launcherOnline:true,startRequestedAt:null,startHandledAt:null},
     storages:['Main Storage','Minibar','Pizza'],
-    settings:[{itemId:'i1',countingUnit:'ctn',perBuying:null,lowStock:2},{itemId:'i2',countingUnit:'pc',perBuying:12,lowStock:100},{itemId:'i3',countingUnit:'ctn',perBuying:null,lowStock:null}],
+    settings:[{itemId:'i1',countingUnit:'ctn',perBuying:null,lowStock:2,workplaceName:'Coca-Cola 330'},{itemId:'i2',countingUnit:'pc',perBuying:12,lowStock:100},{itemId:'i3',countingUnit:'ctn',perBuying:null,lowStock:null}],
     balances:[{itemId:'i1',storage:'Main Storage',quantity:5},{itemId:'i2',storage:'Main Storage',quantity:20}],
     counts:[{id:'c1',itemId:'i1',itemName:'Coca Cola',storage:'Main Storage',unitLabel:'carton',quantity:5,prior:0,by:'rozha',countedAt:iso(600),enteredAt:iso(600),note:null}],
     requests:[
@@ -89,9 +89,10 @@ const server=http.createServer((rq,res)=>{
     /* ---------- Rozha, English ---------- */
     let {ctx,page,calls,apiCalls}=await open();
     await go(page,'transfers');
+    if(process.env.SHOT){await page.screenshot({path:process.env.SHOT+'/tr1.png',fullPage:false});}
     assert.equal(await page.locator('#trSearch').isDisabled(),false,'item search always works');
     // Every item is searchable; the one that is not set up says so, and ones with no stock in the source cannot be picked.
-    await page.selectOption('#trFrom','Main Storage');await page.selectOption('#trTo','Minibar');
+    await page.locator('#trFromChips [data-trsto="Main Storage"]').click();await page.locator('#trToChips [data-trsto="Minibar"]').click();
     const names=await page.locator('#trResults .name').allTextContents();
     assert.deepEqual(names.sort(),['Coca Cola','Flour','Milk','Tomato'],'all items are searchable');
     assert.equal(await page.locator('#trResults .tr-result.todo').count(),1,'the item that is not set up is marked');
@@ -105,17 +106,18 @@ const server=http.createServer((rq,res)=>{
     await page.locator('#trAll').click();assert.equal(await page.locator('#trQty').inputValue(),'3','use-all respects reserved stock');
     await page.fill('#trQty','9');assert.match(await page.locator('#trHint').innerText(),/more than is available/i);
     await page.fill('#trQty','2');assert.match(await page.locator('#trHint').innerText(),/Ready/);
-    await page.locator('#trSwap').click();assert.equal(await page.inputValue('#trFrom'),'Minibar');assert.equal(await page.locator('#trChosen').isVisible(),false,'changing the source clears the item');
+    await page.locator('#trSwap').click();assert.equal(await page.locator('#trFromChips .pick.on').innerText(),'Minibar');assert.equal(await page.locator('#trChosen').isVisible(),false,'changing the source clears the item');
     await page.locator('#trSwap').click();
     await page.locator('[data-trpick="i1"]').click();await page.fill('#trQty','2');await page.locator('#trYesterday').check();
     await page.locator('#trReview').click();
+    if(process.env.SHOT){await page.waitForTimeout(500);await page.screenshot({path:process.env.SHOT+'/tr2.png',fullPage:true});}
     assert.match(await page.locator('#trReviewCard').innerText(),/Main Storage[\s\S]*Minibar[\s\S]*Coca Cola[\s\S]*2[\s\S]*yesterday/i);
     await page.locator('#trApprove').click();
     await page.waitForFunction(()=>true);await page.waitForTimeout(400);
     const post=calls.find(c=>c.ep==='requests'&&c.method==='POST');
     assert.ok(post,'approve posts to stock-api');
     assert.deepEqual({from:post.body.from,to:post.body.to,y:post.body.yesterday,item:post.body.itemId,q:post.body.quantity,n:post.body.expectedName,u:post.body.expectedUnit,unit:post.body.unitId},
-      {from:'Main Storage',to:'Minibar',y:true,item:'i1',q:'2',n:'Coca Cola',u:'carton',unit:'ctn'});
+      {from:'Main Storage',to:'Minibar',y:true,item:'i1',q:'2',n:'Coca-Cola 330',u:'carton',unit:'ctn'});
     assert.equal(await page.locator('#trUnits').isVisible().catch(()=>false),false,'no unit choice when buying and counting formats are the same');
     // Requests on the PC: final approve only for the checked request that has a screenshot.
     await page.waitForSelector('[data-trreq]');
@@ -138,7 +140,7 @@ const server=http.createServer((rq,res)=>{
     assert.ok(calls.some(c=>c.ep==='start-worker'&&c.method==='POST'),'Turn on asks the server to start the worker');
 
     /* ---------- Transfer in the buying format: 1 box = 12 piece, 20 piece in Main Storage ---------- */
-    await page.selectOption('#trFrom','Main Storage');await page.selectOption('#trTo','Minibar');await page.locator('[data-trpick="i2"]').click();
+    await page.locator('#trFromChips [data-trsto="Main Storage"]').click();await page.locator('#trToChips [data-trsto="Minibar"]').click();await page.locator('[data-trpick="i2"]').click();
     assert.equal(await page.locator('#trUnits').isVisible(),true,'unit choice appears when the formats differ');
     assert.equal(await page.locator('#trUnit').innerText(),'piece','counting unit is the default');
     await page.locator('[data-trunit="buying"]').click();
@@ -156,6 +158,7 @@ const server=http.createServer((rq,res)=>{
     /* ---------- Stock and recount ---------- */
     await go(page,'stock');
     await page.waitForSelector('[data-stcount]');
+    if(process.env.SHOT){await page.waitForTimeout(500);await page.screenshot({path:process.env.SHOT+'/st1.png'});}
     assert.deepEqual((await page.locator('#stList .name').allTextContents()).sort(),['Coca Cola','Flour','Milk','Tomato']);
     await page.locator('[data-stfilter="setup"]').click();
     assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Tomato'],'not-set-up filter');
@@ -207,7 +210,7 @@ const server=http.createServer((rq,res)=>{
     assert.equal(await page.locator('#mfPerBox').isVisible(),true,'conversion appears when the formats differ');
     await page.locator('#modalFormOk').click();
     await page.waitForFunction(()=>document.querySelector('#modalFormStatus').textContent.trim().length>0);
-    await page.fill('#mfPer','6');await page.fill('#mfLow','3');
+    await page.fill('#mfPer','6');await page.fill('#mfLow','3');await page.fill('#mfWork','Tomato WP');
     assert.match(await page.locator('#mfPerSummary').innerText(),/1 .* = 6 /);
     await page.selectOption('#mfCounting','box');
     assert.equal(await page.locator('#mfPerBox').isVisible(),false,'same unit hides the conversion again');
@@ -215,7 +218,7 @@ const server=http.createServer((rq,res)=>{
     await page.locator('#modalFormOk').click();
     await page.waitForFunction(()=>!document.querySelector('#mfName'));
     const settings=calls.filter(c=>c.ep.startsWith('settings/')).pop();
-    assert.deepEqual({ep:settings.ep,c:settings.body.countingUnit,p:settings.body.perBuying,l:settings.body.lowStock},{ep:'settings/i0',c:'pc',p:'6',l:'3'});
+    assert.deepEqual({ep:settings.ep,c:settings.body.countingUnit,p:settings.body.perBuying,l:settings.body.lowStock,w:settings.body.workplaceName},{ep:'settings/i0',c:'pc',p:'6',l:'3',w:'Tomato WP'});
 
     /* ---------- History filters ---------- */
     await go(page,'history');

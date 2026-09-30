@@ -84,6 +84,14 @@ begin
   perform stock_resolve(rid3,'rozha','failed','Checked history: nothing moved',null);
   if not exists(select 1 from stock_requests where id=rid3 and status='failed') then raise exception 'Resolve failed'; end if;
 
+  -- Two names: the app name is shown to people, the workplace name is what the PC searches for
+  perform stock_save_settings('i1','yunis','pc',12,2,'Workplace Flour');
+  rejected:=false; begin perform stock_submit(gen_random_uuid(),'Main Storage','Kebab',false,'rozha','i1',1,'Flour','piece'); exception when others then rejected:=true; end;
+  if not rejected then raise exception 'App name accepted where the workplace name is required'; end if;
+  rid3:=stock_submit(gen_random_uuid(),'Main Storage','Kebab',false,'rozha','i1',1,'Workplace Flour','piece');
+  if not exists(select 1 from stock_requests where id=rid3 and item_name='Workplace Flour' and app_name='Flour') then raise exception 'Names not stored'; end if;
+  perform stock_cancel(rid3,'rozha');
+
   -- Screenshots older than 3 days are removed
   update stock_shots set taken_at=now()-interval '4 days' where request_id=rid;
   perform stock_cleanup();
