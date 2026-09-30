@@ -633,65 +633,101 @@ function initTabBarLens(nav){
 /* ============ Filter rows with a glass lens ============
    Every row of filter pills (History, Record, Stock, Items, Suppliers | Zones)
    gets the same lens as the tab bar: it glides to the chosen pill, and if you
-   hold the row and slide, it grows into glass and follows your finger; the
-   pill it is over when you let go is the one that opens. */
+   hold the row and slide, it turns to glass and follows your finger while each
+   pill it reaches opens, exactly like the tab bar. Some filters redraw the
+   whole screen when they change, so the drag is followed at document level and
+   handed to the freshly drawn row. */
+const segPills = seg=>[...seg.querySelectorAll('.tab-pill')];
+const segs = ()=>[...document.querySelectorAll('.record-filters.seg')];
+function segSlot(seg, x){
+  const b = segPills(seg), c = b.map(el=>{ const r = el.getBoundingClientRect(); return r.left+r.width/2; });
+  const order = c.map((v,k)=>[v,k]).sort((m,n)=>m[0]-n[0]);
+  let pos = order[order.length-1][1], best = 0;
+  c.forEach((v,k)=>{ if(Math.abs(v-x) < Math.abs(c[best]-x)) best = k; });
+  if(x <= order[0][0]) pos = order[0][1];
+  else for(let k=0;k<order.length-1;k++){ const [c1,i1]=order[k],[c2,i2]=order[k+1]; if(x<=c2){ pos = i1+(i2-i1)*((x-c1)/(c2-c1)); break; } }
+  return {el:b[best], index:best, pos};
+}
+function segLensTo(seg, pos){
+  const lens = seg.querySelector('.seg-lens'), b = segPills(seg); if(!lens || !b.length) return;
+  const p = Math.max(0, Math.min(b.length-1, pos)), i = Math.floor(p), f = p-i, a = b[i], n = b[Math.min(b.length-1, i+1)];
+  lens.style.opacity = '1';
+  lens.style.setProperty('--lx', (a.offsetLeft+(n.offsetLeft-a.offsetLeft)*f)+'px');
+  lens.style.setProperty('--lw', (a.offsetWidth+(n.offsetWidth-a.offsetWidth)*f)+'px');
+  const near = Math.round(p);
+  b.forEach((x,k)=>{ const on = k===near; if(x.classList.contains('lens-over') !== on) x.classList.toggle('lens-over', on); });
+}
+function segPlace(seg){
+  if(seg.classList.contains('held')) return;       // while a finger is on it, the finger decides
+  const lens = seg.querySelector('.seg-lens'), on = seg.querySelector('.tab-pill.active');
+  if(!lens) return;
+  if(!on || !on.offsetWidth){ lens.style.opacity = '0'; return; }
+  lens.style.opacity = '1';
+  lens.style.setProperty('--lx', on.offsetLeft+'px'); lens.style.setProperty('--lw', on.offsetWidth+'px');
+  if(!seg.classList.contains('seg-ready')) seg.classList.add('seg-ready');
+}
+let segDrag = null;   // {id, x0, x, moved, index (which row), last (pill index)}
+/* A row redrawn in the middle of a drag continues it: held, with the lens already under the finger. */
+function segAdopt(seg){
+  if(!segDrag || !segDrag.moved) return;
+  const lens = seg.querySelector('.seg-lens');
+  seg.classList.add('held', 'seg-ready');
+  if(lens){ lens.style.transition = 'none'; }
+  segLensTo(seg, segSlot(seg, segDrag.x).pos);
+  if(lens) requestAnimationFrame(()=>requestAnimationFrame(()=>{ lens.style.transition = ''; }));
+}
 function enhanceSegments(){
   document.querySelectorAll('.record-filters:not([data-lens])').forEach(seg=>{
     seg.dataset.lens = '1'; seg.classList.add('seg');
     const lens = document.createElement('span'); lens.className = 'seg-lens'; lens.setAttribute('aria-hidden', 'true');
     seg.prepend(lens);
-    const pills = ()=>[...seg.querySelectorAll('.tab-pill')];
-    const place = ()=>{
-      const on = seg.querySelector('.tab-pill.active');
-      if(!on || !on.offsetWidth){ lens.style.opacity = '0'; return; }
-      lens.style.opacity = '1';
-      lens.style.setProperty('--lx', on.offsetLeft+'px'); lens.style.setProperty('--lw', on.offsetWidth+'px');
-      if(!seg.classList.contains('seg-ready')) seg.classList.add('seg-ready');
-    };
-    const lensTo = pos=>{
-      const b = pills(); if(!b.length) return;
-      const p = Math.max(0, Math.min(b.length-1, pos)), i = Math.floor(p), f = p-i, a = b[i], n = b[Math.min(b.length-1, i+1)];
-      lens.style.setProperty('--lx', (a.offsetLeft+(n.offsetLeft-a.offsetLeft)*f)+'px');
-      lens.style.setProperty('--lw', (a.offsetWidth+(n.offsetWidth-a.offsetWidth)*f)+'px');
-      b.forEach((x,k)=>x.classList.toggle('lens-over', k===Math.round(p)));
-    };
-    const slot = x=>{
-      const b = pills(), c = b.map(el=>{ const r = el.getBoundingClientRect(); return r.left+r.width/2; });
-      const order = c.map((v,k)=>[v,k]).sort((m,n)=>m[0]-n[0]);
-      let pos = order[order.length-1][1], best = 0;
-      c.forEach((v,k)=>{ if(Math.abs(v-x) < Math.abs(c[best]-x)) best = k; });
-      if(x <= order[0][0]) pos = order[0][1];
-      else for(let k=0;k<order.length-1;k++){ const [c1,i1]=order[k],[c2,i2]=order[k+1]; if(x<=c2){ pos = i1+(i2-i1)*((x-c1)/(c2-c1)); break; } }
-      return {el:b[best], pos};
-    };
-    let down = null;
-    seg.addEventListener('pointerdown', e=>{ if(e.button>0) return; down = {x:e.clientX, id:e.pointerId, moved:false}; });
-    seg.addEventListener('pointermove', e=>{
-      if(!down || e.pointerId!==down.id) return;
-      if(!down.moved && Math.abs(e.clientX-down.x) < 8) return;
-      if(!down.moved){ down.moved = true; seg.classList.add('held'); try{ seg.setPointerCapture(e.pointerId); }catch(_){} }
-      lensTo(slot(e.clientX).pos);
-    });
-    const end = e=>{
-      if(!down || e.pointerId!==down.id) return;
-      const moved = down.moved; down = null;
-      seg.classList.remove('held'); pills().forEach(x=>x.classList.remove('lens-over'));
-      if(!moved) return;
-      const target = slot(e.clientX).el;
-      if(target && !target.classList.contains('active')) target.click(); else place();
-      // The browser's own click after a drag must not also press whatever is under the finger.
-      const swallow = ev=>{ ev.stopPropagation(); ev.preventDefault(); };
-      seg.addEventListener('click', swallow, {capture:true, once:true});
-      setTimeout(()=>seg.removeEventListener('click', swallow, {capture:true}), 300);
-    };
-    seg.addEventListener('pointerup', end);
-    seg.addEventListener('pointercancel', end);
-    new MutationObserver(place).observe(seg, {subtree:true, attributes:true, attributeFilter:['class']});
+    new MutationObserver(()=>segPlace(seg)).observe(seg, {subtree:true, attributes:true, attributeFilter:['class']});
     if(seg.scrollWidth <= seg.clientWidth+1) seg.style.touchAction = 'pan-y';
-    place();
+    segPlace(seg);
+    if(segDrag && segDrag.moved && segs().indexOf(seg) === segDrag.index) segAdopt(seg);
   });
 }
-window.addEventListener('resize', ()=>{ document.querySelectorAll('.seg').forEach(seg=>{ const on = seg.querySelector('.tab-pill.active'), lens = seg.querySelector('.seg-lens'); if(on && lens && on.offsetWidth){ lens.style.setProperty('--lx', on.offsetLeft+'px'); lens.style.setProperty('--lw', on.offsetWidth+'px'); } }); });
+document.addEventListener('pointerdown', e=>{
+  const seg = e.target.closest?.('.record-filters.seg');
+  if(!seg || e.button>0) return;
+  segDrag = {id:e.pointerId, x0:e.clientX, x:e.clientX, moved:false, index:segs().indexOf(seg), last:null};
+});
+document.addEventListener('pointermove', e=>{
+  if(!segDrag || e.pointerId!==segDrag.id) return;
+  segDrag.x = e.clientX;
+  if(!segDrag.moved && Math.abs(e.clientX-segDrag.x0) < 8) return;
+  let seg = segs()[segDrag.index]; if(!seg) return;
+  if(!segDrag.moved){
+    segDrag.moved = true; segDrag.last = segPills(seg).findIndex(p=>p.classList.contains('active'));
+    seg.classList.add('held'); try{ seg.setPointerCapture(e.pointerId); }catch(_){}
+  }
+  const s = segSlot(seg, e.clientX);
+  segLensTo(seg, s.pos);
+  if(s.index !== segDrag.last){
+    segDrag.last = s.index;
+    if(!s.el.classList.contains('active')){
+      s.el.click();                                  // opens that filter (a full redraw replaces the row)
+      seg = segs()[segDrag.index];
+      if(seg && !seg.classList.contains('held')) segAdopt(seg);
+      if(seg) segLensTo(seg, segSlot(seg, e.clientX).pos);
+    }
+  }
+});
+const segEnd = e=>{
+  if(!segDrag || e.pointerId!==segDrag.id) return;
+  const d = segDrag; segDrag = null;
+  const seg = segs()[d.index];
+  if(seg){ seg.classList.remove('held'); segPills(seg).forEach(x=>x.classList.remove('lens-over')); segPlace(seg); }
+  if(!d.moved) return;
+  // The browser's own click after a drag must not also press whatever is under the finger.
+  const swallow = ev=>{ ev.stopPropagation(); ev.preventDefault(); };
+  document.addEventListener('click', swallow, {capture:true, once:true});
+  setTimeout(()=>document.removeEventListener('click', swallow, {capture:true}), 300);
+};
+document.addEventListener('pointerup', segEnd);
+document.addEventListener('pointercancel', segEnd);
+window.addEventListener('resize', ()=>segs().forEach(segPlace));
+
 function setMoreOpen(open){
   const nav = document.querySelector('.bottomnav'), btn = document.getElementById('navMoreBtn');
   if(!nav || !btn) return;
