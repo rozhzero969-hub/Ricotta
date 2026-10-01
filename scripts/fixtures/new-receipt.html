@@ -9,7 +9,7 @@
 <div><div>Items received</div><div id="rows"></div><button type="button" id="add">Add item</button></div>
 <div>Total: <b id="total">$ 0</b></div><button type="button" id="cancel">Cancel</button><button type="button" id="receive">Receive &amp; send to finance</button>
 <script>
-window.submitted=false;
+window.submitted=0;
 const SUPPLIERS=['Ali Market','Fresh Foods','Fresh Foods Co'];
 const ITEMS={'Tomato - تەماتە':['غرام','کیلۆ (×1000)'],'Cherry Tomatoes - تەماتە کرزی':['غرام','کیلۆ (×1000)'],'Blueberry Ice Cream - ئایس کریمی بلوبێری':['غرام','پاکەت (×3000)','پاکەت (×3000)','+ Add a different unit...'],'Odd Item':['دانە (×1)','دانە (×6)']};
 let currency='IQD';
@@ -27,7 +27,7 @@ function popup(anchor,list,withSearch,onPick){
 document.getElementById('sup').onclick=e=>popup(e.target,SUPPLIERS,true,x=>e.target.textContent=x);
 document.getElementById('usd').onclick=()=>{currency='USD';document.getElementById('rateBox').innerHTML="<div>Today's rate (1 USD → IQD)</div><input placeholder='1500'>";calc()};
 document.getElementById('del').onclick=e=>{e.target.textContent='Delivery: On';document.getElementById('delBox').innerHTML='<div>How much was the delivery?</div><input placeholder="10,000">'};
-document.getElementById('receive').onclick=()=>{window.submitted=true};
+document.getElementById('receive').onclick=()=>{window.submitted=(window.submitted||0)+1;const ok=document.createElement('div');ok.textContent='Receipt received';document.body.append(ok)};
 const fmt=n=>(currency==='USD'?'$ ':'IQD ')+n.toLocaleString('en-US');
 function calc(){let t=0;document.querySelectorAll('.row').forEach(r=>{const [q,c]=r.querySelectorAll('input');const v=(Number(q.value)||0)*(Number(String(c.value).replace(/,/g,''))||0);r.querySelector('.tot').textContent=v?fmt(v):'—';t+=v});document.getElementById('total').textContent=fmt(t)}
 function addRow(){

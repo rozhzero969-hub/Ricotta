@@ -93,8 +93,62 @@ export async function prepareReceipt(page,r){
     const amounts=(norm(await row.innerText()).match(/\d[\d,]*(?:\.\d+)?/g)||[]).map(num);
     if(!amounts.some(a=>Math.abs(a-expected)<0.01))fail(`Line ${i+1}: total does not show ${expected}`);
   }
-  // Leave it ready for a person: scroll to the totals so the screenshot shows them.
+  // Read everything back once more, then leave it ready: scroll to the totals so the screenshot shows them.
+  await checkReceipt(page,r);
   await page.getByRole('button',{name:/Receive & send to finance/i}).scrollIntoViewIfNeeded().catch(()=>{});
+}
+
+// Reads the whole form back and compares it with the receipt. Used after filling and again right
+// before the final press, so a form changed by anyone in between is never submitted.
+export async function checkReceipt(page,r){
+  if(!page.url().startsWith(RECEIPT_PAGE))fail('The receipt tab is no longer on the receipt page');
+  await one(page.getByRole('heading',{name:/New purchase receipt/i}),'receipt page heading');
+  const sup=await one(fieldAfter(page,'normalize-space(text())="Supplier"','*[self::button or self::select or @role="combobox"]'),'supplier picker');
+  const supShown=await sup.evaluate(e=>e.tagName==='SELECT'?e.options[e.selectedIndex]?.text:e.innerText);
+  if(norm(supShown)!==norm(r.supplierName))fail(`Supplier shows "${norm(supShown)}", expected "${r.supplierName}"`);
+  const zone=await one(fieldAfter(page,'normalize-space(text())="Zone"','*[self::button or self::select or @role="combobox"]'),'zone picker');
+  const zoneShown=await zone.evaluate(e=>e.tagName==='SELECT'?e.options[e.selectedIndex]?.text:e.innerText);
+  if(norm(zoneShown)!=='Main Storage')fail(`Zone shows "${norm(zoneShown)}", expected "Main Storage"`);
+  const inv=await one(fieldAfter(page,'normalize-space(text())="Invoice number"','input'),'invoice number');
+  if(norm(await inv.inputValue())!==norm(r.invoice))fail('Invoice number changed');
+  const rateBox=fieldAfter(page,'starts-with(normalize-space(text()),"Today")','input');
+  if(r.currency==='USD'){
+    if(Math.abs(num(await (await one(rateBox,'dollar rate')).inputValue())-Number(r.rate))>1e-6)fail('Dollar rate changed');
+  }else if(await page.getByText(/^Today.s rate/).count())fail('The receipt is set to dollars, expected IQD');
+  if(r.delivery>0){
+    await one(page.getByRole('button',{name:'Delivery: On',exact:true}),'delivery switched on');
+    const d=await one(fieldAfter(page,'normalize-space(text())="How much was the delivery?"','input'),'delivery amount');
+    if(Math.abs(num(await d.inputValue())-Number(r.delivery))>1e-6)fail('Delivery amount changed');
+  }else await one(page.getByRole('button',{name:'No delivery',exact:true}),'no delivery');
+  const rows=page.locator(`xpath=//*[${up('ITEM')}]/ancestor::div[.//*[${up('QTY')}]][1]`);
+  if(await rows.count()!==r.lines.length)fail(`The form has ${await rows.count()} item lines, expected ${r.lines.length}`);
+  for(let i=0;i<r.lines.length;i++){
+    const l=r.lines[i], row=rows.nth(i), buttons=row.locator('button:visible, [role="combobox"]:visible'), u=norm(l.unitLabel);
+    if(norm(await buttons.nth(0).innerText())!==norm(l.workplaceName))fail(`Line ${i+1} item changed`);
+    const unitShown=norm(await buttons.nth(1).innerText());
+    if(!(unitShown===u||unitShown.startsWith(u+' (×')||unitShown.startsWith(u+' (x')))fail(`Line ${i+1} unit changed`);
+    const inputs=row.locator('input:visible');
+    if(await inputs.count()!==2)fail(`Line ${i+1}: expected a quantity and a cost box`);
+    if(Math.abs(num(await inputs.nth(0).inputValue())-l.qty)>1e-6)fail(`Line ${i+1} quantity changed`);
+    if(Math.abs(num(await inputs.nth(1).inputValue())-l.cost)>1e-6)fail(`Line ${i+1} cost changed`);
+    const expected=Math.round(l.qty*l.cost*100)/100;
+    const amounts=(norm(await row.innerText()).match(/\d[\d,]*(?:\.\d+)?/g)||[]).map(num);
+    if(!amounts.some(a=>Math.abs(a-expected)<0.01))fail(`Line ${i+1}: total does not show ${expected}`);
+  }
+}
+
+// After a final approval on the phone: check everything again, press the button once, and accept
+// only the exact success message configured on this PC. Returns normally only on confirmed success.
+// `onPressed` is called the moment the button has been pressed (after that nothing is retried).
+export async function submitReceipt(page,r,successText,onPressed){
+  if(!successText)fail('No receipt success message is configured on this PC');
+  await checkReceipt(page,r);
+  const button=await one(page.getByRole('button',{name:'Receive & send to finance',exact:true}),'Receive & send to finance button');
+  if(!await button.isEnabled())fail('Receive & send to finance is disabled');
+  if(await page.getByText(successText,{exact:true}).count())fail('The success message was already on the page before pressing');
+  await button.click();
+  onPressed();
+  await page.getByText(successText,{exact:true}).first().waitFor({state:'visible',timeout:15000});
 }
 async function fillTextChecked(input,value){
   await input.fill(String(value));

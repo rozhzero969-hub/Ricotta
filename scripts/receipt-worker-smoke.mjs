@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {prepareReceipt, RECEIPT_PAGE} from '../worker/receipt.mjs';
+import {prepareReceipt, submitReceipt, RECEIPT_PAGE} from '../worker/receipt.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const html=readFileSync(path.join(here,'fixtures/new-receipt.html'),'utf8');
 const browser=await chromium.launch({headless:true,executablePath:process.env.EDGE_PATH||undefined});
@@ -26,12 +26,30 @@ try{
     submitted:window.submitted}));
   assert.deepEqual(v,{sup:'Fresh Foods',inv:'INV-1024',rate:'1500',del:'5000',rows:[
     ['Tomato - تەماتە','کیلۆ (×1000)','10','10','$ 100'],
-    ['Blueberry Ice Cream - ئایس کریمی بلوبێری','پاکەت (×3000)','5','2000','$ 10,000']],submitted:false});
+    ['Blueberry Ice Cream - ئایس کریمی بلوبێری','پاکەت (×3000)','5','2000','$ 10,000']],submitted:0});
   // 2. Stops on anything unclear, and never submits.
-  const stops=async(r,re,why)=>{await assert.rejects(prepareReceipt(page,{...base,...r}),re,why);assert.equal(await page.evaluate(()=>window.submitted),false)};
+  const stops=async(r,re,why)=>{await assert.rejects(prepareReceipt(page,{...base,...r}),re,why);assert.equal(await page.evaluate(()=>window.submitted),0)};
   await stops({lines:[{workplaceName:'Tomatoes',unitLabel:'کیلۆ',qty:1,cost:1}]},/no choice matches/,'an item that is not on the list');
   await stops({lines:[{workplaceName:'Odd Item',unitLabel:'دانە',qty:1,cost:1}]},/more than one possible choice/,'a unit with two different sizes');
   await stops({supplierName:'Nobody',lines:[{workplaceName:'Tomato - تەماتە',unitLabel:'کیلۆ',qty:1,cost:1}]},/Supplier: no choice/,'an unknown supplier');
   await stops({lines:[{workplaceName:'Tomato - تەماتە',unitLabel:'سندوق',qty:1,cost:1}]},/Unit "سندوق"/,'a unit the item does not have');
-  console.log(JSON.stringify({result:'PASS',checks:'fills supplier, invoice, dollar rate, delivery and item lines; checks line totals; stops on unknown item, supplier or unit and on an ambiguous unit; never submits'}));
+  // 3. Saving after the final approval: a form changed in between is never submitted.
+  const good={...base,lines:[{workplaceName:'Tomato - تەماتە',unitLabel:'کیلۆ',qty:10,cost:1000}]};
+  await prepareReceipt(page,good);
+  await page.locator('.row input').first().fill('11');
+  let pressed=false;
+  await assert.rejects(submitReceipt(page,good,'Receipt received',()=>{pressed=true}),/quantity changed/,'an edited quantity stops it');
+  assert.equal(pressed,false);assert.equal(await page.evaluate(()=>window.submitted),0,'nothing pressed when the form changed');
+  // No success message configured: never pressed.
+  await prepareReceipt(page,good);
+  await assert.rejects(submitReceipt(page,good,'',()=>{pressed=true}),/No receipt success message/);
+  assert.equal(await page.evaluate(()=>window.submitted),0);
+  // The right form and the exact success message: pressed exactly once.
+  await submitReceipt(page,good,'Receipt received',()=>{pressed=true});
+  assert.equal(pressed,true);assert.equal(await page.evaluate(()=>window.submitted),1,'pressed once');
+  // Pressed but the success message never appears: reported as an error after the press (needs checking).
+  await prepareReceipt(page,good);pressed=false;
+  await assert.rejects(submitReceipt(page,good,'Saved!',()=>{pressed=true}),/Timeout|waiting/i);
+  assert.equal(pressed,true,'the press is known, so it is sent for checking, never retried');
+  console.log(JSON.stringify({result:'PASS',checks:'fills supplier, invoice, dollar rate, delivery and item lines; checks line totals; stops on unknown item, supplier or unit and on an ambiguous unit; never submits on its own; saving re-checks the whole form, presses once and needs the exact success message'}));
 }finally{await browser.close()}

@@ -18,7 +18,9 @@
 //   GET    receipts                      recent purchase receipts (no screenshots)
 //   GET    receipts/shot?id=             the PC's screenshot of a prepared receipt (kept 3 days)
 //   POST   receipts                      {clientKey, supplierId, invoice, currency, rate, delivery, lines:[{itemId, unitId, qty, cost}]}
-//   POST   receipts/cancel               {id}   (only before the PC has prepared it)
+//   POST   receipts/cancel               {id}   (before the final approval)
+//   POST   receipts/final-approve        {id}   the PC may now press "Receive & send to finance" once
+//   POST   receipts/resolve              {id, saved, note}   after checking the workplace, for a receipt that needs checking
 //   POST   start-worker                  ask the office PC helper to start the worker
 //   POST   counts-bulk                   {storage, countedAt, note, pin, lines:[{itemId, quantity}]}   (one PIN for many items)
 //   POST   counts                        {itemId, storage, quantity, countedAt, note, pin}   (asks for the PIN again)
@@ -30,6 +32,9 @@
 //   POST   worker/heartbeat              {live, pageReady, note}   every ~30 s
 //   POST   worker/receipt-claim          the next receipt to prepare (the PC never submits it)
 //   POST   worker/receipt-report         {id, status: prepared|failed|closed, message, image}
+//   POST   worker/receipt-held           {id}   status of the receipt the PC is holding open
+//   POST   worker/receipt-submit-claim   {id}   take a final-approved receipt to press the button once
+//   POST   worker/receipt-finish         {id, status: completed|needs_checking|failed, message, image}
 //   POST   worker/report                 {id, status, message, image}
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -124,7 +129,7 @@ async function controlStatus() {
   const { data } = await db.from("stock_worker_control").select("*").eq("id", 1).maybeSingle();
   const fresh = (v: string | null | undefined) => !!v && Date.now() - Date.parse(v) < 120_000;
   return { workerOnline: fresh(data?.worker_seen_at), launcherOnline: fresh(data?.launcher_seen_at),
-    workerSeenAt: data?.worker_seen_at ?? null, workerLive: data?.worker_live ?? null, workerPageReady: data?.worker_page_ready ?? null,
+    workerSeenAt: data?.worker_seen_at ?? null, workerLive: data?.worker_live ?? null, workerReceiptsLive: data?.worker_receipts_live ?? null, workerPageReady: data?.worker_page_ready ?? null,
     workerNote: data?.worker_note ?? null,
     startRequestedAt: data?.start_requested_at ?? null, startHandledAt: data?.start_handled_at ?? null };
 }
@@ -174,8 +179,9 @@ const toReceipt = (r: any) => ({
   id: r.id, supplierName: r.supplier_name, invoice: r.invoice, currency: r.currency, rate: r.rate === null ? null : Number(r.rate),
   delivery: r.delivery === null ? null : Number(r.delivery), lines: r.lines, status: r.status, message: r.message,
   createdBy: r.created_by, createdAt: r.created_at, preparedAt: r.prepared_at, finishedAt: r.finished_at, hasShot: !!r.has_shot,
+  finalApprovedAt: r.final_approved_at, finalApprovedBy: r.final_approved_by, stockAddedAt: r.stock_added_at, resolvedNote: r.resolved_note,
 });
-const RECEIPT_COLS = "id,supplier_name,invoice,currency,rate,delivery,lines,status,message,created_by,created_at,prepared_at,finished_at";
+const RECEIPT_COLS = "id,supplier_name,invoice,currency,rate,delivery,lines,status,message,created_by,created_at,prepared_at,finished_at,final_approved_at,final_approved_by,stock_added_at,resolved_note";
 const errorText = (e: any): string => String(e?.message || "Operation failed").slice(0, 400);
 
 Deno.serve(async (req: Request) => {
@@ -197,7 +203,7 @@ Deno.serve(async (req: Request) => {
         const b = await readBody(req);
         seenLast.worker_seen_at = Date.now();
         await db.from("stock_worker_control").upsert({ id: 1, worker_seen_at: new Date().toISOString(),
-          worker_live: b.live === true, worker_page_ready: b.pageReady === true, worker_note: str(b.note, 300) || null });
+          worker_live: b.live === true, worker_receipts_live: b.receiptsLive === true, worker_page_ready: b.pageReady === true, worker_note: str(b.note, 300) || null });
         return json({ ok: true });
       }
       if (req.method === "POST" && path[1] === "receipt-claim") {
@@ -218,10 +224,30 @@ Deno.serve(async (req: Request) => {
         if (!uuid(b.id) || !["prepared", "failed", "closed"].includes(b.status)) return fail("Invalid report");
         const now = new Date().toISOString();
         const from = b.status === "closed" ? ["prepared"] : ["preparing"];
-        const patch: Record<string, unknown> = { status: b.status, message: str(b.message, 1000) || null };
+        // A receipt finished on the PC by hand (or left) is checked by a person before any stock is added.
+        const patch: Record<string, unknown> = { status: b.status === "closed" ? "needs_checking" : b.status, message: str(b.message, 1000) || null };
         if (b.status === "prepared") patch.prepared_at = now; else patch.finished_at = now;
         const img = cleanImage(b.image); if (img) patch.shot = img;
         const { error } = await db.from("stock_receipts").update(patch).eq("id", b.id).in("status", from);
+        if (error) throw error;
+        return json({ ok: true });
+      }
+      if (req.method === "POST" && path[1] === "receipt-held") {
+        const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid receipt");
+        const { data, error } = await db.from("stock_receipts").select("status,final_approved_at").eq("id", b.id).maybeSingle();
+        if (error) throw error;
+        return json({ status: data?.status ?? null, finalApproved: !!data?.final_approved_at });
+      }
+      if (req.method === "POST" && path[1] === "receipt-submit-claim") {
+        const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid receipt");
+        const { data, error } = await db.rpc("stock_receipt_claim_submit", { p_id: b.id });
+        if (error) throw error;
+        return json({ ok: data === true });
+      }
+      if (req.method === "POST" && path[1] === "receipt-finish") {
+        const b = await readBody(req, MAX_WORKER_BODY);
+        if (!uuid(b.id) || !["completed", "needs_checking", "failed"].includes(b.status)) return fail("Invalid report");
+        const { error } = await db.rpc("stock_receipt_finish", { p_id: b.id, p_status: b.status, p_message: str(b.message, 1000), p_image: cleanImage(b.image) });
         if (error) throw error;
         return json({ ok: true });
       }
@@ -316,7 +342,7 @@ Deno.serve(async (req: Request) => {
       const ids = [...new Set(raw.map((l: any) => str(l?.itemId, 80)))];
       const [items, settings, units] = await Promise.all([
         db.from("app_items").select("id,name,unit_id").in("id", ids),
-        db.from("stock_item_settings").select("item_id,counting_unit,workplace_name").in("item_id", ids),
+        db.from("stock_item_settings").select("item_id,counting_unit,per_buying,workplace_name").in("item_id", ids),
         db.from("app_units").select("id,en"),
       ]);
       for (const r of [items, settings, units]) if (r.error) throw r.error;
@@ -327,12 +353,19 @@ Deno.serve(async (req: Request) => {
       for (const l of raw) {
         const it: any = itemMap.get(str(l?.itemId, 80)); if (!it) return fail("An item on this receipt no longer exists");
         const st: any = setMap.get(it.id);
+        // Stock is kept in counting units, so every item on a receipt must have its counting format set up.
+        if (!st) return fail(`Set up ${it.name} for stock first (its counting format)`);
         const unitId = str(l?.unitId, 80);
-        if (unitId !== it.unit_id && unitId !== st?.counting_unit) return fail(`Choose a unit for ${it.name}`);
+        if (unitId !== it.unit_id && unitId !== st.counting_unit) return fail(`Choose a unit for ${it.name}`);
         const qty = num(l?.qty), cost = num(l?.cost);
         if (!(qty > 0 && qty < 1e7) || !(cost > 0 && cost < 1e12)) return fail(`Enter the quantity and cost for ${it.name}`);
-        lines.push({ itemId: it.id, appName: it.name, workplaceName: (st?.workplace_name || "").trim() || it.name,
-          unitId, unitLabel: unitMap.get(unitId) ?? "", qty, cost });
+        let ledgerQty = qty;                                              // in counting units
+        if (unitId !== st.counting_unit) {
+          if (!(Number(st.per_buying) > 0)) return fail(`Set how many ${unitMap.get(st.counting_unit) ?? ""} are in one ${unitMap.get(unitId) ?? ""} for ${it.name}`);
+          ledgerQty = Math.round(qty * Number(st.per_buying) * 1e6) / 1e6;
+        }
+        lines.push({ itemId: it.id, appName: it.name, workplaceName: (st.workplace_name || "").trim() || it.name,
+          unitId, unitLabel: unitMap.get(unitId) ?? "", qty, cost, ledgerQty, countingLabel: unitMap.get(st.counting_unit) ?? "" });
       }
       const { data, error } = await db.from("stock_receipts").insert({ client_key: b.clientKey, supplier_id: sup.id, supplier_name: sup.name,
         invoice, currency, rate, delivery, lines, created_by: actor }).select("id").single();
@@ -342,9 +375,25 @@ Deno.serve(async (req: Request) => {
     if (req.method === "POST" && path[0] === "receipts" && path[1] === "cancel") {
       const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid receipt");
       const { data, error } = await db.from("stock_receipts").update({ status: "cancelled", finished_at: new Date().toISOString() })
-        .eq("id", b.id).in("status", ["waiting", "failed"]).select("id");
+        // A final approval the PC never acted on expires after 30 minutes (it can no longer press), so it can be cancelled then.
+        .eq("id", b.id).or(`status.in.(waiting,failed),and(status.eq.prepared,final_approved_at.is.null),and(status.eq.prepared,final_approved_at.lt.${new Date(Date.now() - 30 * 60_000).toISOString()})`).select("id");
       if (error) throw error;
-      if (!data?.length) return fail("This receipt is already on the PC; cancel it there");
+      if (!data?.length) return fail("This receipt can no longer be cancelled");
+      return json({ ok: true });
+    }
+    if (req.method === "POST" && path[0] === "receipts" && path[1] === "final-approve") {
+      const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid receipt");
+      const c = await controlStatus();
+      if (!c.workerOnline || c.workerReceiptsLive !== true || c.workerPageReady === false) return fail("The PC worker is not set up to save receipts yet (test mode), so it cannot press the button");
+      const { error } = await db.rpc("stock_receipt_final_approve", { p_id: b.id, p_actor: actor });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+    if (req.method === "POST" && path[0] === "receipts" && path[1] === "resolve") {
+      const b = await readBody(req);
+      if (!uuid(b.id) || typeof b.saved !== "boolean") return fail("Invalid receipt");
+      const { error } = await db.rpc("stock_receipt_resolve", { p_id: b.id, p_actor: actor, p_saved: b.saved, p_note: str(b.note, 900) });
+      if (error) throw error;
       return json({ ok: true });
     }
     if (req.method === "POST" && path[0] === "start-worker") {

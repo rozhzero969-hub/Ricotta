@@ -108,6 +108,32 @@ begin
   perform stock_storage_add('Renamed Zone','rozha');
   if exists(select 1 from stock_storages where name='Renamed Zone' and archived) then raise exception 'Zone not restored'; end if;
 
+  -- Receipts: stock is added once, only when the workplace confirmed (or a person confirms it was saved)
+  declare rc uuid; before numeric; after numeric; begin
+    select coalesce((select quantity from stock_balances where item_id='i1' and storage_name='Main Storage'),0) into before;
+    insert into stock_receipts(client_key,supplier_name,invoice,currency,lines,created_by,status,prepared_at,shot)
+      values(gen_random_uuid(),'Sup','INV-1','IQD','[{"itemId":"i1","qty":2,"cost":1000,"ledgerQty":24}]','rozha','prepared',now(),'data:image/jpeg;base64,AAAA') returning id into rc;
+    rejected:=false; begin perform stock_receipt_finish(rc,'completed','x',null); exception when others then rejected:=true; end;
+    if not rejected then raise exception 'Receipt finished without a final approval'; end if;
+    perform stock_receipt_final_approve(rc,'yunis');
+    if not stock_receipt_claim_submit(rc) then raise exception 'Final-approved receipt not claimable'; end if;
+    if stock_receipt_claim_submit(rc) then raise exception 'Receipt claimed twice'; end if;
+    perform stock_receipt_finish(rc,'completed','Saved',null);
+    select quantity into after from stock_balances where item_id='i1' and storage_name='Main Storage';
+    if after <> before + 24 then raise exception 'Receipt stock not added (% -> %)', before, after; end if;
+    perform stock_receipt_add_stock(rc,'rozha');
+    select quantity into after from stock_balances where item_id='i1' and storage_name='Main Storage';
+    if after <> before + 24 then raise exception 'Receipt stock added twice'; end if;
+    -- needs checking: "not saved" adds nothing
+    insert into stock_receipts(client_key,supplier_name,invoice,currency,lines,created_by,status)
+      values(gen_random_uuid(),'Sup','INV-2','IQD','[{"itemId":"i1","qty":1,"cost":1,"ledgerQty":5}]','rozha','needs_checking') returning id into rc;
+    rejected:=false; begin perform stock_receipt_resolve(rc,'rozha',false,'short'); exception when others then rejected:=true; end;
+    if not rejected then raise exception 'Resolve without a proper note accepted'; end if;
+    perform stock_receipt_resolve(rc,'rozha',false,'Checked the workplace: not saved');
+    select quantity into after from stock_balances where item_id='i1' and storage_name='Main Storage';
+    if after <> before + 24 then raise exception 'Unsaved receipt added stock'; end if;
+  end;
+
   -- Screenshots older than 3 days are removed
   update stock_shots set taken_at=now()-interval '4 days' where request_id=rid;
   perform stock_cleanup();

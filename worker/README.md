@@ -15,6 +15,13 @@ does it click **Move it**.
 
 Item and unit names must match the workplace page **exactly**; the PC stops and says so when they do not.
 
-## Receipts (prepared only)
+## Receipts
 
-Receipts are entered in the app (Receipts screen). The worker opens the workplace **New purchase receipt** page (`receipt.mjs`) in a second Edge tab and fills in the supplier, invoice number, dollar rate (if USD), delivery (if any) and each item line (item, unit, quantity, cost of each), checking every field and each line total. It then **stops**: it never presses **Receive & send to finance**. A person at the PC checks the filled form and accepts it there. While that tab is still open on the receipt page, the next receipt waits. If anything doesn't match exactly (an unknown item, supplier or unit, or a unit with two different sizes), it stops, sends a screenshot to the app and resets the tab to an empty form. `scripts/receipt-worker-smoke.mjs` tests this against a local copy of the page.
+Receipts are entered in the app (Receipts screen). Every item on a receipt must be set up for stock (its counting format), so the amount can be added to stock in counting units.
+
+1. The worker opens the workplace **New purchase receipt** page (`receipt.mjs`) in a second Edge tab and fills in the supplier, invoice number, dollar rate (if USD), delivery (if any) and each item line (item, unit, quantity, cost of each). It checks every field and each line total, then sends a screenshot to the app and stops.
+2. Someone checks the screenshot in the app and gives the **final approval** (within 20 minutes).
+3. The worker reads the whole form back again, and only if every field still matches does it press **Receive & send to finance**, once. It never retries after pressing.
+4. Only when the workplace shows the exact `RECEIPT_SUCCESS_TEXT` is the receipt marked saved and the stock added to **Main Storage** in the app. Anything else after the press becomes **Needs checking**: a person looks in the workplace receipts and says in the app whether it was saved; only "saved" adds stock.
+
+Receipts are only saved with `ALLOW_SUBMIT=1` **and** `RECEIPT_SUCCESS_TEXT` set in `.env` (learned in a supervised first run). Until then the app shows the worker as test mode for receipts and the final approval stays off. If someone finishes or leaves a filled receipt on the PC by hand, it becomes Needs checking. If anything doesn't match exactly (an unknown item, supplier or unit, a unit with two different sizes, or a field changed after filling), it stops and clears the form. `scripts/receipt-worker-smoke.mjs` tests all of this against a local copy of the page.
