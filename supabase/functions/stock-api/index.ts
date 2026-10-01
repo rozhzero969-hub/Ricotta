@@ -636,14 +636,18 @@ Deno.serve(async (req: Request) => {
       // Item groups (Stock screen filters). save = create (no id) or replace name + items; delete removes the group only.
       const b = await readBody(req);
       const ids = (v: unknown) => Array.isArray(v) ? v.slice(0, 1000).map((x) => str(x, 80)).filter(Boolean) : [];
+      if ((b.id || path[1] === "delete") && !uuid(b.id)) return fail("Invalid group");
       if (path[1] === "save") {
-        const { data, error } = await db.rpc("stock_group_save", { p_id: b.id ? str(b.id, 60) : null, p_name: str(b.name, 60), p_items: ids(b.itemIds), p_actor: actor });
+        const { data, error } = await db.rpc("stock_group_save", { p_id: b.id ? String(b.id) : null, p_name: str(b.name, 60), p_items: ids(b.itemIds), p_actor: actor });
         if (error) throw error;
         return json({ ok: true, id: data });
       }
       if (path[1] === "delete") {
-        const { error } = await db.rpc("stock_group_delete", { p_id: str(b.id, 60), p_actor: actor });
+        // Only the group goes; items and stock are untouched.
+        const { data, error } = await db.from("stock_groups").delete().eq("id", String(b.id)).select("id,name");
         if (error) throw error;
+        if (!data?.length) return fail("Group not found", 404);
+        await db.from("stock_events").insert({ actor, action: "group_deleted", details: { group_id: data[0].id, name: data[0].name } });
         return json({ ok: true });
       }
       return fail("Unknown route", 404);

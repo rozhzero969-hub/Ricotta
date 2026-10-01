@@ -1,5 +1,6 @@
 -- Item groups: named lists of items ("Veggies", "Desserts") shown as filters on the Stock screen.
 -- People make them in the app, or Rico proposes one and the person confirms it.
+-- Removing a group is done by stock-api (it deletes the row and logs a group_deleted event).
 create table public.stock_groups (
   id uuid primary key default gen_random_uuid(),
   name text not null check (length(trim(name)) between 1 and 40),
@@ -39,19 +40,7 @@ begin
   return g_id;
 end $$;
 
-create function public.stock_group_delete(p_id uuid, p_actor text)
-returns void language plpgsql security invoker set search_path=public as $$
-declare nm text;
-begin
-  perform pg_advisory_xact_lock(729291);
-  if p_actor not in ('rozha','yunis') then raise exception 'Invalid actor'; end if;
-  delete from public.stock_groups where id = p_id returning name into nm;
-  if nm is null then raise exception 'Group not found'; end if;
-  insert into public.stock_events(actor,action,details) values(p_actor,'group_deleted',jsonb_build_object('group_id',p_id,'name',nm));
-end $$;
 
 revoke all on function public.stock_group_save(uuid,text,text[],text) from public,anon,authenticated;
 grant execute on function public.stock_group_save(uuid,text,text[],text) to service_role;
-revoke all on function public.stock_group_delete(uuid,text) from public,anon,authenticated;
-grant execute on function public.stock_group_delete(uuid,text) to service_role;
 grant select, insert, update, delete on public.stock_groups to service_role;

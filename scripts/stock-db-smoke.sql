@@ -152,7 +152,7 @@ begin
     if nm is distinct from 'Flour WP' then raise exception 'Confirmed name not stored'; end if;
   end;
 
-  -- Item groups: unknown items dropped, duplicate names refused, delete keeps the items
+  -- Item groups: unknown items dropped, duplicate names refused, rename kept
   declare g uuid; ids text[]; begin
     g := stock_group_save(null,'Veggies',array['i1','nope','i1'],'rozha');
     select item_ids into ids from stock_groups where id=g;
@@ -163,8 +163,6 @@ begin
     if not rejected then raise exception 'Unknown actor accepted for a group'; end if;
     perform stock_group_save(g,'Vegetables',array[]::text[],'yunis');
     if (select name from stock_groups where id=g) <> 'Vegetables' then raise exception 'Group rename lost'; end if;
-    perform stock_group_delete(g,'rozha');
-    if exists(select 1 from stock_groups where id=g) or not exists(select 1 from app_items where id='i1') then raise exception 'Group delete wrong'; end if;
   end;
 
   -- Screenshots older than 3 days are removed

@@ -94,12 +94,12 @@ async function loadWorld(db: any, s: Session) {
   ]), DB_TIMEOUT_MS, "load_world");
   // The real counted stock (Stock screen): settings, balances per zone, zones and item groups.
   // A failure here must not break Rico for ordering, so each read falls back to empty.
-  const [stSet, stBal, stSto, stGrp] = await withTimeout(Promise.all([
+  const [stSet, stBal, stSto, stGrp] = await withTimeout((async () => await Promise.all([
     db.from("stock_item_settings").select("item_id,counting_unit,per_buying,low_stock,workplace_name"),
     db.from("stock_balances").select("item_id,storage_name,quantity").neq("quantity", 0),
     db.from("stock_storages").select("name").eq("archived", false).order("sort_order"),
     db.from("stock_groups").select("id,name,item_ids").order("name"),
-  ]), DB_TIMEOUT_MS, "load_stock").catch(() => [{ data: [] }, { data: [] }, { data: [] }, { data: [] }] as any[]);
+  ]))(), DB_TIMEOUT_MS, "load_stock").catch(() => [{ data: [] }, { data: [] }, { data: [] }, { data: [] }] as any[]);
   const orderRows = (orders.data ?? []).reverse();
   const lines: any[] = [];
   for (let i = 0; i < orderRows.length; i += 60) {
@@ -675,16 +675,17 @@ function proposeStockSettings(w: World, a: any, emit: Emit) {
   const st = w.stock.settings.get(it.id);
   if (!st) return { error: `"${it.name}" is not set up for stock yet (no counting format). Offer open_stock so they can set it up on the Stock screen.` };
   const change: any = {};
-  if (a.low_stock !== undefined) {
-    const n = a.low_stock === null || a.low_stock === "" ? null : Number(a.low_stock);
-    if (n !== null && !(n >= 0 && n <= 1e8)) return { error: "The low stock level must be 0 or more (or empty to turn the warning off)." };
-    change.lowStock = n === null ? null : qty6(n);
+  if (a.turn_off_warning === true) change.lowStock = null;
+  else if (a.low_stock !== undefined && a.low_stock !== null && a.low_stock !== "") {
+    const n = Number(a.low_stock);
+    if (!(n >= 0 && n <= 1e8)) return { error: "The low stock level must be 0 or more (use turn_off_warning to remove it)." };
+    change.lowStock = qty6(n);
   }
   if (a.workplace_name !== undefined) {
     const wn = text(a.workplace_name, 240);
     change.workplaceName = wn && wn !== it.name ? wn : null;
   }
-  if (!Object.keys(change).length) return { error: "Nothing to change. You can set low_stock and/or workplace_name." };
+  if (!Object.keys(change).length) return { error: "Nothing to change. You can set low_stock (or turn_off_warning) and/or workplace_name." };
   emit({ type: "proposal", proposal: {
     id: pid(), kind: "stock_settings", itemId: it.id, name: it.name, unit: unitName(w, st.counting_unit),
     before: { lowStock: st.low_stock === null ? null : Number(st.low_stock), workplaceName: st.workplace_name ?? null }, ...change,
@@ -753,8 +754,8 @@ const TOOLS = [
     input_schema: { type: "object", properties: {} } },
   { name: "propose_stock_group", description: "Show a card to create, change or delete an item group (a filter on the Stock screen). action: create (name + item_ids), add / remove (group + item_ids), replace (group + the full new item_ids), rename (group + new name), delete (group). Items can be in several groups. Deleting a group never deletes items.",
     input_schema: { type: "object", properties: { action: { type: "string", enum: ["create", "add", "remove", "replace", "rename", "delete"] }, group: { type: "string", description: "Existing group name or id" }, name: { type: "string", description: "Name for create or rename (max 40 letters)" }, item_ids: { type: "array", items: { type: "string" } } }, required: ["action"] } },
-  { name: "propose_stock_settings", description: "Show a card to change an item's low-stock warning level (in its counting unit; null turns it off) and/or its name in the workplace system. Only for items already set up for stock. Changes only the app.",
-    input_schema: { type: "object", properties: { item_id: { type: "string" }, low_stock: { type: ["number", "null"] }, workplace_name: { type: "string" } }, required: ["item_id"] } },
+  { name: "propose_stock_settings", description: "Show a card to change an item's low-stock warning level (in its counting unit) or turn the warning off, and/or its name in the workplace system. Only for items already set up for stock. Changes only the app.",
+    input_schema: { type: "object", properties: { item_id: { type: "string" }, low_stock: { type: "number" }, turn_off_warning: { type: "boolean" }, workplace_name: { type: "string" } }, required: ["item_id"] } },
   { name: "open_stock", description: "Show a button that opens the Stock screen already filtered: search text, zone (storage), group, and only:'in_stock'|'low'|'not_set_up'. Use it whenever the person asks you to find or show items on the Stock screen.",
     input_schema: { type: "object", properties: { search: { type: "string" }, storage: { type: "string" }, group: { type: "string" }, only: { type: "string", enum: ["in_stock", "low", "not_set_up"] }, label: { type: "string" } } } },
   { name: "propose_order_draft", description: "Show the person a card to change today's order draft on this device (it does NOT send anything to suppliers). mode 'replace' starts a fresh draft; 'add' adds quantities to the current one; 'set' sets exact quantities for the listed items and keeps everything else (qty 0 removes an item).",
