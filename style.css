@@ -1141,3 +1141,21 @@ html.rtl .tr-go{transform:scaleX(-1)}
 .tr-worker.test .tr-worker-dot,.tr-worker.warn .tr-worker-dot{background:#D9A72C;box-shadow:0 0 0 4px rgba(217,167,44,.22)}
 .tr-worker.warn{border-color:rgba(217,167,44,.5)}
 .tr-rv-warn{font-size:13px;font-weight:700;color:#FFE3A3;line-height:1.45}
+/* receipts */
+.rc-line{border-radius:20px;padding:14px;margin-bottom:10px;background:var(--surface);border:1px solid var(--surface-line);box-shadow:var(--surface-shadow);-webkit-backdrop-filter:none;backdrop-filter:none}
+.rc-line-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px}
+.rc-line-top .name{font-size:15.5px;font-weight:800;overflow-wrap:anywhere}
+.rc-line-acts{display:flex;gap:6px;align-items:center;flex:none}
+.rc-line-acts .btn{min-height:38px;padding:0 12px}
+.rc-units{margin-bottom:6px}
+.rc-nums{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rc-nums .field{margin:0}
+.rc-line-total{text-align:end;font-weight:800;font-size:15px;margin-top:8px;color:var(--accent-strong)}
+.rc-add{width:100%;min-height:46px}
+.rc-total{display:flex;justify-content:space-between;align-items:baseline;margin:6px 4px 14px;font-size:15px;font-weight:700;color:var(--ink-soft)}
+.rc-total b{font-size:22px;color:var(--ink);font-weight:800}
+.rc-card-lines{font-size:13px;line-height:1.6;margin:8px 0;color:#3E5449}
+.rc-card-total{font-size:13px;color:var(--ink-soft);margin-bottom:6px}
+.rc-card-total b{color:var(--ink)}
+.tr-chip.done{background:rgba(20,56,44,.1);color:var(--deep)}
+.rc-card .meta{font-size:12.5px;color:var(--ink-soft);font-weight:500;margin-top:3px}

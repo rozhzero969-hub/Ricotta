@@ -198,6 +198,7 @@ function wkPaint(){
 function stRepaint(){
   if(state.view === 'transfers'){ wkPaint(); trPaintActive(); trPaintResults(); trPaintChosen(); }
   else if(state.view === 'stock') stPaintList();
+  else if(state.view === 'receipts') wkPaint();
   else if(state.view === 'history') render();
 }
 
@@ -846,4 +847,193 @@ function attachZonesEvents(){
     if(!r.ok){ await showAlert(esc(r.data?.error || t('saveFailed'))); return; }
     zoneForget(name); await loadStock(); render(); toast(t('zDeleted')(name));
   });
+}
+
+/* ============ Receipts: entered here, prepared by the PC, accepted by a person at the PC ============ */
+const rcNewLine = () => ({itemId: '', unit: 'buying', qty: '', cost: '', search: ''});
+const rcState = {supplierId: '', invoice: '', currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null};
+const rcData = {list: [], loaded: false, at: 0, shots: {}};
+const RC_ACTIVE = ['waiting', 'preparing', 'prepared'];
+const rcNum = v => Number(String(v ?? '').replace(/,/g, ''));
+const rcMoney = (n, cur) => (cur === 'USD' ? '$ ' : 'IQD ') + Number(n || 0).toLocaleString('en-US', {maximumFractionDigits: 2});
+/* The units a receipt line can use: the item's buying format, and its counting format when that differs. */
+function rcUnits(item){
+  const out = [];
+  if(item.unit) out.push({id: item.unit, mode: 'buying', label: unitLabel(item.unit)});
+  const s = stSetting(item.id);
+  if(s && s.countingUnit && s.countingUnit !== item.unit) out.push({id: s.countingUnit, mode: 'counting', label: unitName(stUnitObj(s.countingUnit))});
+  return out;
+}
+const rcLineUnit = (l, item) => rcUnits(item).find(u => u.mode === l.unit) || rcUnits(item)[0];
+async function rcLoad(){
+  const r = await stockApi('receipts');
+  if(!r.ok) return;
+  rcData.list = r.data.receipts || []; rcData.loaded = true; rcData.at = Date.now();
+  if(state.view === 'receipts') rcPaintList();
+}
+setInterval(() => {
+  if(!state.account || document.hidden || state.view !== 'receipts') return;
+  const busy = rcData.list.some(x => RC_ACTIVE.includes(x.status));
+  if(Date.now() - rcData.at > (busy ? 8000 : 30000)) rcLoad();
+}, 4000);
+
+function renderReceipts(){
+  if(!stockState.loaded) return stLoadingHtml();
+  const sups = sortedByName(state.suppliers);
+  return `<div id="wkBar"></div>
+  <section class="tr-card rc-form">
+    <div class="tr-step"><div class="tr-step-h"><span class="tr-num">1</span>${esc(t('rcDetails'))}</div>
+      <div class="field"><label for="rcSup">${esc(t('supplier'))}</label><select id="rcSup"><option value="">${esc(t('chooseSupplier'))}</option>${sups.map(s => `<option value="${esc(s.id)}" ${rcState.supplierId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
+      <div class="field"><label for="rcInv">${esc(t('rcInvoice'))}</label><input id="rcInv" autocomplete="off" maxlength="60" placeholder="1024" value="${esc(rcState.invoice)}"></div>
+      <div class="field"><label>${esc(t('rcCurrency'))}</label>${chipPickHtml('rcCur', ['IQD', 'USD $'], rcState.currency === 'USD' ? 'USD $' : 'IQD')}</div>
+      <div class="field" id="rcRateBox" ${rcState.currency === 'USD' ? '' : 'hidden'}><label for="rcRate">${esc(t('rcRate'))}</label><input id="rcRate" type="number" inputmode="decimal" min="0" step="any" placeholder="1500" value="${esc(rcState.rate)}"></div>
+      <label class="check-row tr-yesterday"><span>${esc(t('rcDelivery'))}<small>${esc(t('rcDeliveryHint'))}</small></span><input type="checkbox" id="rcDel" ${rcState.delivery ? 'checked' : ''}></label>
+      <div class="field" id="rcDelBox" ${rcState.delivery ? '' : 'hidden'}><label for="rcDelAmt">${esc(t('rcDeliveryAmt'))}</label><input id="rcDelAmt" type="number" inputmode="decimal" min="0" step="any" placeholder="10000" value="${esc(rcState.deliveryAmt)}"></div>
+    </div>
+    <div class="tr-step"><div class="tr-step-h"><span class="tr-num">2</span>${esc(t('rcItems'))}</div>
+      <div id="rcLines"></div>
+      <button type="button" class="btn btn-ghost rc-add" id="rcAddLine">${ICON_PLUS} ${esc(t('rcAddItem'))}</button>
+    </div>
+    <div class="rc-total"><span>${esc(t('rcTotal'))}</span><b id="rcTotal"></b></div>
+    <button type="button" class="btn btn-primary tr-wide" id="rcSend">${esc(t('rcSend'))}</button>
+    <div class="field-hint tr-note">${esc(t('rcSendHint'))}</div>
+  </section>
+  <div id="rcList"></div>`;
+}
+function rcLineHtml(l, i){
+  const item = stItem(l.itemId);
+  const remove = rcState.lines.length > 1 ? `<button type="button" class="icon-btn danger rc-remove" data-rcremove="${i}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>` : '';
+  if(!item){
+    return `<div class="rc-line glass" data-rcline="${i}"><div class="rc-line-top"><b>${esc(t('rcItemN')(i + 1))}</b>${remove}</div>
+      <div class="search-wrap">${ICON_SEARCH}<input class="search-input rc-search" data-rcsearch="${i}" autocomplete="off" placeholder="${esc(t('searchPlaceholder'))}" value="${esc(l.search)}"></div>
+      <div class="tr-results rc-results" data-rcresults="${i}"></div></div>`;
+  }
+  const units = rcUnits(item), u = rcLineUnit(l, item), wn = stWorkName(item.id);
+  const total = rcNum(l.qty) * rcNum(l.cost);
+  return `<div class="rc-line glass" data-rcline="${i}"><div class="rc-line-top"><div><div class="name" dir="auto">${esc(item.name)}</div>${wn !== item.name ? `<div class="meta" dir="auto">${esc(t('trWorkAs'))}: ${esc(wn)}</div>` : ''}</div>
+      <div class="rc-line-acts"><button type="button" class="btn btn-ghost" data-rcchange="${i}">${esc(t('trChangeItem'))}</button>${remove}</div></div>
+    ${units.length > 1 ? `<div class="picks rc-units">${units.map(x => `<button type="button" class="pick${x.mode === u.mode ? ' on' : ''}" data-rcunit="${i}" data-mode="${x.mode}">${esc(x.label)}</button>`).join('')}</div>` : ''}
+    <div class="rc-nums">
+      <div class="field"><label>${esc(t('rcQty'))} (${esc(u ? u.label : '')})</label><input type="number" inputmode="decimal" min="0" step="any" placeholder="0" data-rcqty="${i}" value="${esc(l.qty)}"></div>
+      <div class="field"><label>${esc(t('rcCost'))}</label><input type="number" inputmode="decimal" min="0" step="any" placeholder="0" data-rccost="${i}" value="${esc(l.cost)}"></div>
+    </div>
+    <div class="rc-line-total" data-rctotal="${i}">${total > 0 ? esc(rcMoney(total, rcState.currency)) : '—'}</div></div>`;
+}
+function rcPaintResults(i){
+  const box = document.querySelector(`[data-rcresults="${i}"]`); if(!box) return;
+  const l = rcState.lines[i], tokens = stTokens(l.search);
+  if(!tokens.length){ box.innerHTML = ''; return; }
+  const hits = state.items.filter(it => stMatches(it, tokens)).sort((a, b) => nameCollator().compare(a.name, b.name)).slice(0, 8);
+  box.innerHTML = hits.length ? hits.map(it => `<button type="button" class="list-row tappable tr-result" data-rcpick="${i}" data-id="${esc(it.id)}"><div><div class="name" dir="auto">${esc(it.name)}</div><div class="meta">${esc(unitLabel(it.unit))}</div></div></button>`).join('') : `<div class="field-hint">${esc(t('trNoMatch'))}</div>`;
+}
+function rcPaintLines(){
+  const box = document.getElementById('rcLines'); if(!box) return;
+  box.innerHTML = rcState.lines.map(rcLineHtml).join('');
+  rcState.lines.forEach((l, i) => { if(!l.itemId) rcPaintResults(i); });
+  rcPaintTotal();
+}
+function rcTotal(){ return rcState.lines.reduce((n, l) => n + (l.itemId ? rcNum(l.qty) * rcNum(l.cost) : 0), 0); }
+function rcPaintTotal(){
+  const el = document.getElementById('rcTotal'); if(el) el.textContent = rcMoney(rcTotal(), rcState.currency);
+  rcState.lines.forEach((l, i) => { const c = document.querySelector(`[data-rctotal="${i}"]`); if(c){ const v = rcNum(l.qty) * rcNum(l.cost); c.textContent = v > 0 ? rcMoney(v, rcState.currency) : '—'; } });
+}
+function rcProblem(){
+  if(!rcState.supplierId) return t('rcNeedSupplier');
+  if(!rcState.invoice.trim()) return t('rcNeedInvoice');
+  if(rcState.currency === 'USD' && !(rcNum(rcState.rate) > 0)) return t('rcNeedRate');
+  if(rcState.delivery && !(rcNum(rcState.deliveryAmt) > 0)) return t('rcNeedDelivery');
+  const lines = rcState.lines.filter(l => l.itemId);
+  if(!lines.length) return t('rcNeedItem');
+  if(rcState.lines.some(l => !l.itemId)) return t('rcEmptyLine');
+  if(lines.some(l => !(rcNum(l.qty) > 0) || !(rcNum(l.cost) > 0))) return t('rcNeedNumbers');
+  return '';
+}
+function rcSummaryHtml(){
+  const sup = state.suppliers.find(s => s.id === rcState.supplierId);
+  const row = (k, v) => `<div class="tr-sum-row"><span>${esc(k)}</span><b dir="auto">${esc(v)}</b></div>`;
+  return `<div class="tr-sum">${row(t('supplier'), sup?.name || '')}${row(t('rcInvoice'), rcState.invoice.trim())}
+    ${rcState.currency === 'USD' ? row(t('rcRate'), rcState.rate) : ''}${rcState.delivery ? row(t('rcDelivery'), rcMoney(rcNum(rcState.deliveryAmt), rcState.currency)) : ''}
+    ${rcState.lines.map(l => { const it = stItem(l.itemId), u = rcLineUnit(l, it); return row(it.name, `${fmtQty(rcNum(l.qty))} ${u.label} × ${rcMoney(rcNum(l.cost), rcState.currency)}`); }).join('')}
+    ${row(t('rcTotal'), rcMoney(rcTotal(), rcState.currency))}</div>`;
+}
+async function rcSend(){
+  const problem = rcProblem(); if(problem){ toast(problem, 'error'); return; }
+  if(!(await showConfirm(rcSummaryHtml() + `<p>${esc(t('rcConfirm'))}</p>`, {okLabel: t('rcSend'), okClass: 'btn-primary'}))) return;
+  rcState.key = rcState.key || crypto.randomUUID();
+  const body = {clientKey: rcState.key, supplierId: rcState.supplierId, invoice: rcState.invoice.trim(), currency: rcState.currency,
+    rate: rcState.currency === 'USD' ? rcState.rate : null, delivery: rcState.delivery ? rcState.deliveryAmt : null,
+    lines: rcState.lines.map(l => { const it = stItem(l.itemId); return {itemId: it.id, unitId: rcLineUnit(l, it).id, qty: l.qty, cost: l.cost}; })};
+  const btn = document.getElementById('rcSend'); if(btn) btn.disabled = true;
+  const r = await stockApi('receipts', {method: 'POST', body});
+  if(btn) btn.disabled = false;
+  if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
+  Object.assign(rcState, {supplierId: '', invoice: '', currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null});
+  toast(t('rcSent')); render(); rcLoad();
+}
+function rcStatus(x){
+  return {waiting: [t('rcStWaiting'), 'wait'], preparing: [t('rcStPreparing'), 'run'], prepared: [t('rcStPrepared'), 'ok'], closed: [t('rcStClosed'), 'done'],
+    failed: [t('rcStFailed'), 'bad'], cancelled: [t('rcStCancelled'), 'off']}[x.status] || [x.status, 'off'];
+}
+function rcCardHtml(x){
+  const [label, cls] = rcStatus(x);
+  const total = (x.lines || []).reduce((n, l) => n + l.qty * l.cost, 0);
+  const shot = rcData.shots[x.id];
+  return `<article class="tr-req glass rc-card s-${esc(x.status)}"><div class="tr-req-top"><div><div class="tr-req-name" dir="auto">${esc(x.supplierName)}</div><div class="meta">${esc(t('rcInvoice'))}: ${esc(x.invoice)} · ${esc(fmtDateTime(x.createdAt))}</div></div><span class="tr-chip ${cls}">${esc(label)}</span></div>
+    <div class="rc-card-lines">${(x.lines || []).map(l => `<div dir="auto">${esc(l.appName)} — ${esc(fmtQty(l.qty))} ${esc(l.unitLabel)} × ${esc(rcMoney(l.cost, x.currency))}</div>`).join('')}</div>
+    <div class="rc-card-total">${esc(t('rcTotal'))}: <b>${esc(rcMoney(total, x.currency))}</b>${x.delivery ? ` · ${esc(t('rcDelivery'))} ${esc(rcMoney(x.delivery, x.currency))}` : ''}${x.currency === 'USD' ? ` · 1 USD = ${esc(fmtQty(x.rate))} IQD` : ''}</div>
+    ${x.status === 'prepared' ? `<div class="tr-pc"><b>${esc(t('rcPcNow'))}</b></div>` : ''}
+    ${x.message && x.status !== 'prepared' ? `<div class="tr-pc">${esc(x.message)}</div>` : ''}
+    ${shot ? `<figure class="tr-shot"><img src="${esc(shot)}" alt="${esc(t('trShotLabel'))}"></figure>` : x.hasShot ? `<button type="button" class="btn btn-ghost" data-rcshot="${esc(x.id)}">${esc(t('rcShowShot'))}</button>` : ''}
+    ${['waiting', 'failed'].includes(x.status) ? `<div class="tr-btn-row"><button type="button" class="btn btn-danger" data-rccancel="${esc(x.id)}">${esc(t('rcCancel'))}</button></div>` : ''}</article>`;
+}
+function rcPaintList(){
+  const box = document.getElementById('rcList'); if(!box) return;
+  const list = rcData.list.slice(0, 30);
+  const html = list.length ? `<div class="section-title">${esc(t('rcRecent'))} (${list.length})</div>${list.map(rcCardHtml).join('')}` : (rcData.loaded ? '' : stLoadingHtml());
+  if(box.dataset.sig === html) return;
+  box.dataset.sig = html; box.innerHTML = html;
+  box.querySelectorAll('[data-rcshot]').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    const r = await stockApi('receipts/shot?id=' + encodeURIComponent(b.dataset.rcshot));
+    if(r.ok && r.data.image){ rcData.shots[b.dataset.rcshot] = r.data.image; rcPaintList(); } else { b.disabled = false; toast(t('saveFailed'), 'error'); }
+  });
+  box.querySelectorAll('[data-rccancel]').forEach(b => b.onclick = async () => {
+    if(!(await showConfirm(esc(t('rcCancelConfirm')), {okLabel: t('rcCancel')}))) return;
+    const r = await stockApi('receipts/cancel', {method: 'POST', body: {id: b.dataset.rccancel}});
+    if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
+    rcLoad();
+  });
+}
+function attachReceiptsEvents(){
+  attachStockCommon();
+  if(!document.getElementById('rcLines')) return;
+  wkPaint();
+  document.getElementById('rcSup').onchange = e => { rcState.supplierId = e.target.value; };
+  document.getElementById('rcInv').oninput = e => { rcState.invoice = e.target.value; };
+  const form = document.querySelector('.rc-form');
+  chipPickWire(form, 'rcCur', v => { rcState.currency = v === 'USD $' ? 'USD' : 'IQD'; document.getElementById('rcRateBox').hidden = rcState.currency !== 'USD'; rcPaintTotal(); });
+  document.getElementById('rcRate').oninput = e => { rcState.rate = e.target.value; };
+  document.getElementById('rcDel').onchange = e => { rcState.delivery = e.target.checked; document.getElementById('rcDelBox').hidden = !rcState.delivery; };
+  document.getElementById('rcDelAmt').oninput = e => { rcState.deliveryAmt = e.target.value; };
+  const lines = document.getElementById('rcLines');
+  lines.addEventListener('input', e => {
+    const s = e.target.dataset;
+    if(s.rcsearch !== undefined){ rcState.lines[+s.rcsearch].search = e.target.value; rcPaintResults(+s.rcsearch); }
+    else if(s.rcqty !== undefined){ rcState.lines[+s.rcqty].qty = e.target.value; rcPaintTotal(); }
+    else if(s.rccost !== undefined){ rcState.lines[+s.rccost].cost = e.target.value; rcPaintTotal(); }
+  });
+  // Picking a search result must not blur the search box first (that moves the page under the finger).
+  lines.addEventListener('pointerdown', e => { if(e.target.closest('[data-rcpick]')) e.preventDefault(); });
+  lines.addEventListener('click', e => {
+    const pick = e.target.closest('[data-rcpick]'), unit = e.target.closest('[data-rcunit]'), change = e.target.closest('[data-rcchange]'), rm = e.target.closest('[data-rcremove]');
+    if(pick){ const l = rcState.lines[+pick.dataset.rcpick]; Object.assign(l, {itemId: pick.dataset.id, unit: 'buying', search: ''}); rcPaintLines(); document.querySelector(`[data-rcqty="${pick.dataset.rcpick}"]`)?.focus(); }
+    else if(unit){ rcState.lines[+unit.dataset.rcunit].unit = unit.dataset.mode; rcPaintLines(); }
+    else if(change){ Object.assign(rcState.lines[+change.dataset.rcchange], rcNewLine()); rcPaintLines(); document.querySelector(`[data-rcsearch="${change.dataset.rcchange}"]`)?.focus(); }
+    else if(rm){ rcState.lines.splice(+rm.dataset.rcremove, 1); rcPaintLines(); }
+  });
+  document.getElementById('rcAddLine').onclick = () => { rcState.lines.push(rcNewLine()); rcPaintLines(); document.querySelector(`[data-rcsearch="${rcState.lines.length - 1}"]`)?.focus(); };
+  document.getElementById('rcSend').onclick = rcSend;
+  rcPaintLines(); rcPaintList();
+  if(Date.now() - rcData.at > 3000) rcLoad();
+  stRefreshIfStale();
 }

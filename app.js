@@ -217,7 +217,7 @@ const ACCOUNT_VIEWS = {
   yunis: ['order','assistant','history','transfers','stock','suppliers','itemsAdmin','units','record']
 };
 const DEFAULT_TABS = ['order','assistant','history'];
-const STOCK_VIEWS = ['transfers','stock'];
+const STOCK_VIEWS = ['transfers','stock','receipts'];
 /* Screens that only hold this device's own preferences: every account has
    them, the server never needs to know, and they can't be one of the 3 tabs. */
 const DEVICE_VIEWS = ['sounds'];
@@ -455,7 +455,7 @@ const RENDERERS = {
   history:[()=>renderHistory(),()=>attachHistoryEvents()], suppliers:[()=>renderSuppliers(),()=>attachSupplierEvents()],
   itemsAdmin:[()=>renderItemsAdmin(),()=>attachItemEvents()], units:[()=>renderUnits(),()=>attachUnitEvents()],
   record:[()=>renderRecord(),()=>attachRecordEvents()], devices:[()=>renderDevices(),()=>attachDeviceEvents()],
-  transfers:[()=>renderTransfers(),()=>attachTransfersEvents()], stock:[()=>renderStock(),()=>attachStockEvents()],
+  transfers:[()=>renderTransfers(),()=>attachTransfersEvents()], stock:[()=>renderStock(),()=>attachStockEvents()], receipts:[()=>renderReceipts(),()=>attachReceiptsEvents()],
   settings:[()=>renderSettings(),()=>attachSettingsEvents()], sounds:[()=>renderSoundsView(),()=>attachSoundsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
 };
 function render(){
@@ -518,7 +518,7 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
    screens and "Edit tabs"). Computers: a sidebar with every screen. A glass
    lens glides to the current tab; on phones it can be held and slid, and
    the page itself can be swiped between the three tabs. */
-const VIEW_LABEL_KEYS = {transfers:'navTransfer', stock:'navStock', order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', sounds:'soundsNav', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {transfers:'navTransfer', stock:'navStock', receipts:'navReceipts', order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', sounds:'soundsNav', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app

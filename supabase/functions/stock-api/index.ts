@@ -15,6 +15,10 @@
 //   POST   cancel                        {id}
 //   POST   final-approve                 {id}
 //   POST   zones/add|rename|delete       {name} | {from, to} | {name}   manage storages (zones)
+//   GET    receipts                      recent purchase receipts (no screenshots)
+//   GET    receipts/shot?id=             the PC's screenshot of a prepared receipt (kept 3 days)
+//   POST   receipts                      {clientKey, supplierId, invoice, currency, rate, delivery, lines:[{itemId, unitId, qty, cost}]}
+//   POST   receipts/cancel               {id}   (only before the PC has prepared it)
 //   POST   start-worker                  ask the office PC helper to start the worker
 //   POST   counts-bulk                   {storage, countedAt, note, pin, lines:[{itemId, quantity}]}   (one PIN for many items)
 //   POST   counts                        {itemId, storage, quantity, countedAt, note, pin}   (asks for the PIN again)
@@ -24,6 +28,8 @@
 //   POST   worker/preview-report         {id, ok, message, image}
 //   POST   worker/claim                  the next final-approved request
 //   POST   worker/heartbeat              {live, pageReady, note}   every ~30 s
+//   POST   worker/receipt-claim          the next receipt to prepare (the PC never submits it)
+//   POST   worker/receipt-report         {id, status: prepared|failed|closed, message, image}
 //   POST   worker/report                 {id, status, message, image}
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -44,7 +50,7 @@ const sha256 = async (v: string) => [...new Uint8Array(await crypto.subtle.diges
 const uuid = (v: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v));
 const decimal = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0) || (typeof v === "string" && /^\d+(?:\.\d{1,6})?$/.test(v));
 // Every screen an account may put in its tab bar (Rozha also has Devices and Settings).
-const SCREENS = ["order", "assistant", "history", "transfers", "stock", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
+const SCREENS = ["order", "assistant", "history", "transfers", "stock", "receipts", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
 const MAX_BODY = 64 * 1024;
 const MAX_WORKER_BODY = 900 * 1024;   // a PC report carries a screenshot
 const IMAGE_MAX_CHARS = 600_000;
@@ -164,6 +170,12 @@ function cleanImage(v: unknown): string | null {
   if (s.length > IMAGE_MAX_CHARS || !/^[A-Za-z0-9+/=]+$/.test(s)) throw new Error("Invalid image");
   return "data:image/jpeg;base64," + s;
 }
+const toReceipt = (r: any) => ({
+  id: r.id, supplierName: r.supplier_name, invoice: r.invoice, currency: r.currency, rate: r.rate === null ? null : Number(r.rate),
+  delivery: r.delivery === null ? null : Number(r.delivery), lines: r.lines, status: r.status, message: r.message,
+  createdBy: r.created_by, createdAt: r.created_at, preparedAt: r.prepared_at, finishedAt: r.finished_at, hasShot: !!r.has_shot,
+});
+const RECEIPT_COLS = "id,supplier_name,invoice,currency,rate,delivery,lines,status,message,created_by,created_at,prepared_at,finished_at";
 const errorText = (e: any): string => String(e?.message || "Operation failed").slice(0, 400);
 
 Deno.serve(async (req: Request) => {
@@ -186,6 +198,31 @@ Deno.serve(async (req: Request) => {
         seenLast.worker_seen_at = Date.now();
         await db.from("stock_worker_control").upsert({ id: 1, worker_seen_at: new Date().toISOString(),
           worker_live: b.live === true, worker_page_ready: b.pageReady === true, worker_note: str(b.note, 300) || null });
+        return json({ ok: true });
+      }
+      if (req.method === "POST" && path[1] === "receipt-claim") {
+        // Oldest waiting receipt, or one left half-filled by a worker that stopped more than 10 minutes ago.
+        const stale = new Date(Date.now() - 10 * 60_000).toISOString();
+        const { data: next, error } = await db.from("stock_receipts").select("id").or(`status.eq.waiting,and(status.eq.preparing,claimed_at.lt.${stale})`)
+          .order("created_at").limit(1).maybeSingle();
+        if (error) throw error;
+        if (!next) return json({ receipt: null });
+        const { data: got, error: e2 } = await db.from("stock_receipts").update({ status: "preparing", claimed_at: new Date().toISOString() })
+          .eq("id", next.id).in("status", ["waiting", "preparing"]).select("*").maybeSingle();
+        if (e2) throw e2;
+        return json({ receipt: got ? { id: got.id, supplierName: got.supplier_name, invoice: got.invoice, currency: got.currency,
+          rate: got.rate === null ? null : Number(got.rate), delivery: got.delivery === null ? null : Number(got.delivery), lines: got.lines } : null });
+      }
+      if (req.method === "POST" && path[1] === "receipt-report") {
+        const b = await readBody(req, MAX_WORKER_BODY);
+        if (!uuid(b.id) || !["prepared", "failed", "closed"].includes(b.status)) return fail("Invalid report");
+        const now = new Date().toISOString();
+        const from = b.status === "closed" ? ["prepared"] : ["preparing"];
+        const patch: Record<string, unknown> = { status: b.status, message: str(b.message, 1000) || null };
+        if (b.status === "prepared") patch.prepared_at = now; else patch.finished_at = now;
+        const img = cleanImage(b.image); if (img) patch.shot = img;
+        const { error } = await db.from("stock_receipts").update(patch).eq("id", b.id).in("status", from);
+        if (error) throw error;
         return json({ ok: true });
       }
       if (req.method === "POST" && path[1] === "control-handled") {
@@ -241,6 +278,74 @@ Deno.serve(async (req: Request) => {
         tabs: Array.isArray(myTabs.data?.tabs) ? myTabs.data.tabs : null,
         ...live,
       });
+    }
+    if (req.method === "GET" && path[0] === "receipts" && !path[1]) {
+      // Screenshots are only kept for 3 days.
+      await db.from("stock_receipts").update({ shot: null }).not("shot", "is", null).lt("created_at", new Date(Date.now() - 3 * 86400_000).toISOString());
+      const [{ data, error }, shots] = await Promise.all([
+        db.from("stock_receipts").select(RECEIPT_COLS).order("created_at", { ascending: false }).limit(60),
+        db.from("stock_receipts").select("id").not("shot", "is", null).order("created_at", { ascending: false }).limit(60),
+      ]);
+      if (error) throw error;
+      const withShot = new Set((shots.data ?? []).map((r: any) => r.id));
+      return json({ receipts: (data ?? []).map((r: any) => toReceipt({ ...r, has_shot: withShot.has(r.id) })) });
+    }
+    if (req.method === "GET" && path[0] === "receipts" && path[1] === "shot") {
+      const id = new URL(req.url).searchParams.get("id");
+      if (!uuid(id)) return fail("Invalid receipt");
+      const { data, error } = await db.from("stock_receipts").select("shot").eq("id", id).maybeSingle();
+      if (error) throw error;
+      return json({ image: data?.shot ?? null });
+    }
+    if (req.method === "POST" && path[0] === "receipts" && !path[1]) {
+      const b = await readBody(req);
+      if (!uuid(b.clientKey)) return fail("Invalid receipt");
+      const { data: same } = await db.from("stock_receipts").select("id").eq("client_key", b.clientKey).maybeSingle();
+      if (same) return json({ id: same.id }, 201);                       // the same receipt sent twice
+      const { data: sup } = await db.from("app_suppliers").select("id,name").eq("id", str(b.supplierId, 80)).maybeSingle();
+      if (!sup) return fail("Choose the supplier");
+      const invoice = str(b.invoice, 60); if (!invoice) return fail("Enter the invoice number");
+      const currency = b.currency === "USD" ? "USD" : "IQD";
+      const num = (v: unknown) => typeof v === "number" ? v : Number(String(v ?? "").replace(/,/g, ""));
+      const rate = currency === "USD" ? num(b.rate) : null;
+      if (currency === "USD" && !(rate! > 0 && rate! < 1_000_000)) return fail("Enter today's dollar rate");
+      const delivery = b.delivery === null || b.delivery === undefined || b.delivery === "" ? null : num(b.delivery);
+      if (delivery !== null && !(delivery >= 0 && delivery < 1e12)) return fail("Invalid delivery amount");
+      const raw = Array.isArray(b.lines) ? b.lines : [];
+      if (raw.length < 1 || raw.length > 40) return fail("Add at least one item");
+      const ids = [...new Set(raw.map((l: any) => str(l?.itemId, 80)))];
+      const [items, settings, units] = await Promise.all([
+        db.from("app_items").select("id,name,unit_id").in("id", ids),
+        db.from("stock_item_settings").select("item_id,counting_unit,workplace_name").in("item_id", ids),
+        db.from("app_units").select("id,en"),
+      ]);
+      for (const r of [items, settings, units]) if (r.error) throw r.error;
+      const itemMap = new Map((items.data ?? []).map((i: any) => [i.id, i]));
+      const setMap = new Map((settings.data ?? []).map((x: any) => [x.item_id, x]));
+      const unitMap = new Map((units.data ?? []).map((u: any) => [u.id, u.en]));
+      const lines = [];
+      for (const l of raw) {
+        const it: any = itemMap.get(str(l?.itemId, 80)); if (!it) return fail("An item on this receipt no longer exists");
+        const st: any = setMap.get(it.id);
+        const unitId = str(l?.unitId, 80);
+        if (unitId !== it.unit_id && unitId !== st?.counting_unit) return fail(`Choose a unit for ${it.name}`);
+        const qty = num(l?.qty), cost = num(l?.cost);
+        if (!(qty > 0 && qty < 1e7) || !(cost > 0 && cost < 1e12)) return fail(`Enter the quantity and cost for ${it.name}`);
+        lines.push({ itemId: it.id, appName: it.name, workplaceName: (st?.workplace_name || "").trim() || it.name,
+          unitId, unitLabel: unitMap.get(unitId) ?? "", qty, cost });
+      }
+      const { data, error } = await db.from("stock_receipts").insert({ client_key: b.clientKey, supplier_id: sup.id, supplier_name: sup.name,
+        invoice, currency, rate, delivery, lines, created_by: actor }).select("id").single();
+      if (error) throw error;
+      return json({ id: data.id }, 201);
+    }
+    if (req.method === "POST" && path[0] === "receipts" && path[1] === "cancel") {
+      const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid receipt");
+      const { data, error } = await db.from("stock_receipts").update({ status: "cancelled", finished_at: new Date().toISOString() })
+        .eq("id", b.id).in("status", ["waiting", "failed"]).select("id");
+      if (error) throw error;
+      if (!data?.length) return fail("This receipt is already on the PC; cancel it there");
+      return json({ ok: true });
     }
     if (req.method === "POST" && path[0] === "start-worker") {
       const c = await controlStatus();

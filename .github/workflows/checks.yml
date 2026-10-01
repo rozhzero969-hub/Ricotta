@@ -47,6 +47,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930200000_stock_workplace_name.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930210000_stock_zones.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261001100000_stock_worker_health.sql
+          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261001120000_stock_receipts.sql
           psql -v ON_ERROR_STOP=1 -q -f scripts/stock-db-smoke.sql
 
       - name: No undefined names in the app scripts
@@ -67,6 +68,9 @@ jobs:
 
       - name: Stock and transfer UI smoke test (mocked API, EN + KU + AR)
         run: node scripts/stock-ui-smoke.cjs
+
+      - name: PC worker receipt filler (local copy of the workplace page)
+        run: node scripts/receipt-worker-smoke.mjs
 
       - name: Upload UI smoke screenshots
         if: always()

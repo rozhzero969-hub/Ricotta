@@ -6,6 +6,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { prepareReceipt, RECEIPT_PAGE } from './receipt.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const PAGE='https://pos.shaydattendance.com/inventory/transfer';
@@ -163,6 +164,42 @@ async function preview(r){
     try{await api('worker/preview-report','POST',{id:r.id,ok:false,message:e.message,image:await jpeg()})}catch(reportError){console.error('Could not report check result:',reportError.message)}
   }
 }
+// Receipts get their own tab, so transfers keep working in the first one. The worker fills the
+// receipt and leaves the tab for a person; it never presses "Receive & send to finance".
+let rPage=null, heldReceipt=null;
+async function receiptShot(){
+  if(!rPage||rPage.isClosed())return undefined;
+  for(const quality of [50,30]){try{const b=(await rPage.screenshot({type:'jpeg',quality,fullPage:true})).toString('base64');if(b.length<=560000)return b}catch{return undefined}}
+  return undefined;
+}
+async function receiptTurn(){
+  // A prepared receipt stays open until a person submits it or leaves the page; only then is the next one filled.
+  if(heldReceipt){
+    const gone=!rPage||rPage.isClosed()||!rPage.url().startsWith(RECEIPT_PAGE);
+    if(!gone)return;
+    const id=heldReceipt; heldReceipt=null;
+    await api('worker/receipt-report','POST',{id,status:'closed',message:'The receipt tab on the PC was submitted or left. Check it in the workplace system.',image:await receiptShot()}).catch(e=>console.error('Could not report receipt:',e.message));
+    console.log('Receipt finished on the PC:',id);
+    return;
+  }
+  const r=(await api('worker/receipt-claim','POST',{})).receipt;
+  if(!r)return;
+  console.log('Preparing receipt:',r.id,r.supplierName,r.invoice);
+  try{
+    if(!rPage||rPage.isClosed())rPage=await context.newPage();
+    await prepareReceipt(rPage,r);
+    await rPage.bringToFront().catch(()=>{});
+    await api('worker/receipt-report','POST',{id:r.id,status:'prepared',message:'Filled in on the PC. A person must check it there and press "Receive & send to finance".',image:await receiptShot()});
+    heldReceipt=r.id;
+    console.log('Receipt ready on the PC for a person to check and accept:',r.id);
+  }catch(e){
+    console.error('Receipt stopped:',r.id,e.message);
+    const image=await receiptShot();
+    // Leave nothing half-filled behind: go back to an empty receipt form.
+    if(rPage&&!rPage.isClosed())await rPage.goto(RECEIPT_PAGE,{waitUntil:'domcontentloaded'}).catch(()=>{});
+    await api('worker/receipt-report','POST',{id:r.id,status:'failed',message:e.message,image}).catch(err=>console.error('Could not report receipt:',err.message));
+  }
+}
 while(true){
   try{
     const pageReady=page.url()===PAGE && await page.getByRole('heading',{name:/Move stock between storages/i}).isVisible().catch(()=>false);
@@ -177,7 +214,7 @@ while(true){
     else if(pageReady){
       const claimed=LIVE?(await api('worker/claim','POST',{})).request:null;
       if(claimed)await execute(claimed);
-      else{const next=(await api('worker/preview')).request;if(next)await preview(next)}
+      else{const next=(await api('worker/preview')).request;if(next)await preview(next);else await receiptTurn()}
     }
   }catch(e){console.error('Queue unavailable; no transfer will run:',e.message)}
   await sleep(POLL);
