@@ -144,6 +144,13 @@ const server=http.createServer((rq,res)=>{
     assert.match(await page.locator('#wkBar').innerText(),/Off/i,'worker status shows off');
     await page.locator('#wkStart').click();await page.waitForTimeout(400);
     assert.ok(calls.some(c=>c.ep==='start-worker'&&c.method==='POST'),'Turn on asks the server to start the worker');
+    // Health: running but the workplace page is not signed in, then test mode, then ready.
+    const health=async(c)=>{await page.evaluate(c=>{stockState.control={...stockState.control,workerOnline:true,...c};wkPaint();},c);return page.locator('#wkBar').innerText();};
+    assert.match(await health({workerPageReady:false,workerLive:true}),/Needs attention[\s\S]*Sign in/,'shows when the workplace page needs a sign-in');
+    assert.match(await health({workerPageReady:true,workerLive:false}),/Test mode/,'shows test mode');
+    assert.match(await health({workerPageReady:true,workerLive:true}),/Running and ready/,'shows ready');
+    assert.equal(await page.locator('#wkStart').count(),0,'no Turn on button while it runs');
+    await page.evaluate(()=>{stockState.control={...stockState.control,workerOnline:false};wkPaint();});
 
     /* ---------- Transfer in the buying format: 1 box = 12 piece, 20 piece in Main Storage ---------- */
     await page.locator('#trFromList [data-trsto="Main Storage"]').click();await page.locator('#trToList [data-trsto="Minibar"]').click();await page.locator('[data-trpick="i2"]').click();

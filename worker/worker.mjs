@@ -119,7 +119,12 @@ let page=context.pages()[0]||await context.newPage();
 await page.goto(PAGE,{waitUntil:'domcontentloaded'});
 console.log(`Ricotta worker opened ${PAGE}. Sign in to the workplace site in this Edge window if needed.`);
 console.log(LIVE?'LIVE SUBMISSION ENABLED — only final-approved requests are submitted; only the exact configured success text counts as completed.':'DRY RUN — checks are reported to the phone, but no Move it click.');
-let lastPageReady=null, lastRecovery=0;
+let lastPageReady=null, lastRecovery=0, lastBeat=0;
+// Health for the app: running, live or checks only, and whether the workplace transfer page is ready.
+async function heartbeat(pageReady){
+  if(Date.now()-lastBeat<30000)return; lastBeat=Date.now();
+  try{await api('worker/heartbeat','POST',{live:LIVE,pageReady,note:pageReady?'':'Workplace transfer page is not open or not signed in'})}catch{}
+}
 // A small JPEG of what the PC sees, sent to the phone so a person can confirm what was selected.
 async function jpeg(){
   for(const quality of [55,35]){
@@ -163,8 +168,9 @@ while(true){
     const pageReady=page.url()===PAGE && await page.getByRole('heading',{name:/Move stock between storages/i}).isVisible().catch(()=>false);
     if(pageReady!==lastPageReady){
       console.log(pageReady?'Workplace transfer form is visible.':'Workplace transfer form is not visible; sign in or return to the transfer page.');
-      lastPageReady=pageReady;
+      lastPageReady=pageReady; lastBeat=0;   // tell the app straight away
     }
+    await heartbeat(pageReady);
     // Without a visible transfer form nothing is claimed or checked; requests keep waiting.
     // Try to return to the page at most once a minute (for example after a sign-in redirect).
     if(!pageReady&&Date.now()-lastRecovery>60000){lastRecovery=Date.now();await page.goto(PAGE,{waitUntil:'domcontentloaded'}).catch(()=>{})}

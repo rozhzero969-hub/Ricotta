@@ -1137,3 +1137,7 @@ html.rtl .tr-go{transform:scaleX(-1)}
 .seg-lens{will-change:transform,width}
 .seg.held .tab-pill,.seg.held .tab-pill.active{color:var(--deep)!important;transition:transform 160ms var(--ease)!important}
 .list-row,.hist-card{content-visibility:auto;contain-intrinsic-size:auto 76px}
+/* worker health */
+.tr-worker.test .tr-worker-dot,.tr-worker.warn .tr-worker-dot{background:#D9A72C;box-shadow:0 0 0 4px rgba(217,167,44,.22)}
+.tr-worker.warn{border-color:rgba(217,167,44,.5)}
+.tr-rv-warn{font-size:13px;font-weight:700;color:#FFE3A3;line-height:1.45}
