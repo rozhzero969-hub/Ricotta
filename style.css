@@ -1123,7 +1123,7 @@ html.rtl .tr-go{transform:scaleX(-1)}
 .seg.seg-ready .seg-lens{transition:transform 460ms var(--spring-soft),width 460ms var(--spring-soft),scale 420ms var(--spring),background 220ms ease,box-shadow 220ms ease}
 .record-filters.seg .tab-pill{position:relative;z-index:1}
 .record-filters.seg .tab-pill.active{background:transparent;color:#fff;animation:none}
-.seg.held .seg-lens{scale:1.06 1.3;transition:transform 60ms linear,scale 420ms var(--spring);
+.seg.held .seg-lens{scale:1.1 1.28;transition:transform 70ms linear,width 70ms linear,scale 420ms var(--spring);
   background:linear-gradient(160deg,rgba(255,255,255,.78),rgba(194,237,215,.5));box-shadow:inset 0 1.5px 0 #fff,inset 0 0 0 1.5px rgba(255,255,255,.9),0 16px 30px -10px rgba(20,40,30,.4)}
 .seg.held{-webkit-user-select:none;user-select:none}
 .seg.held .tab-pill,.seg.held .tab-pill.active{color:var(--deep)}
@@ -1134,6 +1134,6 @@ html.rtl .tr-go{transform:scaleX(-1)}
 
 /* smoother glass on phones: the lens gets its own layer, nothing under it fades while held,
    and long lists skip drawing rows that are off screen (so changing a filter is cheap) */
-.seg-lens{will-change:transform}
+.seg-lens{will-change:transform,width}
 .seg.held .tab-pill,.seg.held .tab-pill.active{color:var(--deep)!important;transition:transform 160ms var(--ease)!important}
 .list-row,.hist-card{content-visibility:auto;contain-intrinsic-size:auto 76px}
