@@ -273,7 +273,18 @@ const server=http.createServer((rq,res)=>{
     assert.equal(await page.getAttribute('#rcInv','inputmode'),'numeric','the invoice opens the number pad');
     await page.locator('#rcInvKb').click();
     assert.equal(await page.getAttribute('#rcInv','inputmode'),'text','ABC switches the invoice to letters');
-    await page.selectOption('#rcSup','s0');await page.fill('#rcInv','INV-55');
+    // Our own list instead of the phone's built-in picker
+    await page.locator('#rcSupBtn').click();
+    await page.waitForSelector('.sel-sheet .sel-opt[data-v="s0"]');
+    if(process.env.SHOT){await page.waitForTimeout(400);await page.screenshot({path:process.env.SHOT+'/sel-sheet.png'});}
+    await page.locator('.sel-sheet .sel-opt[data-v="s0"]').click();
+    await page.waitForFunction(()=>!document.querySelector('.sel-sheet'));
+    assert.equal(await page.inputValue('#rcSup'),'s0','choosing from our list sets the supplier');
+    assert.equal(await page.locator('#rcSupBtn span').innerText(),'Supplier','the button shows the choice');
+    // Redrawing the screen keeps your place instead of jumping to the top
+    const kept=await page.evaluate(async()=>{const b=scrollBox();b.scrollTop=300;const before=b.scrollTop;render();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return [before,scrollBox().scrollTop];});
+    assert.ok(kept[0]>0&&Math.abs(kept[0]-kept[1])<2,'redraw keeps the scroll position '+kept);
+    await page.fill('#rcInv','INV-55');
     await page.locator('[data-chipfor="rcCur"] [data-val="USD $"]').click();await page.fill('#rcRate','1,500');
     assert.equal(await page.getAttribute('#rcRate','inputmode'),'decimal','the dollar rate opens the number pad');
     await page.locator('[data-chipfor="rcDelPick"] [data-val="Delivery"]').click();await page.fill('#rcDelAmt','٥');

@@ -1226,3 +1226,28 @@ html.rtl .tr-go{transform:scaleX(-1)}
 .rc-results.open .tr-result{padding:10px 12px;min-height:0;border-radius:10px;box-shadow:none;background:transparent}
 .rc-results.open .tr-result:active{background:rgba(20,56,44,.07)}
 .rc-results.open .name{font-size:15px}
+/* Our own dropdown: a button that looks like the field, and a sheet that slides up with the choices */
+select.sel-native{position:absolute!important;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;border:0!important;opacity:0;pointer-events:none;overflow:hidden}
+.sel-btn{width:100%;min-height:50px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 14px;border-radius:15px;border:1px solid var(--line-strong);background:rgba(255,255,255,.6);font:inherit;font-size:16px;font-weight:600;color:var(--ink);text-align:start;cursor:pointer}
+.sel-btn span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sel-btn.placeholder span{color:var(--ink-soft);font-weight:500}
+.sel-btn i{flex:none;width:8px;height:8px;border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);transform:translateY(-2px) rotate(45deg)}
+.sel-btn:disabled{opacity:.55}
+.rc-grid .sel-btn{font-weight:700;padding:0 12px}
+.sel-sheet{position:fixed;inset:0;z-index:300;display:flex;align-items:flex-end;justify-content:center}
+.sel-scrim{position:absolute;inset:0;background:rgba(9,30,21,.28);animation:fadeIn 200ms ease both}
+.sel-panel{position:relative;width:100%;max-width:520px;max-height:72vh;display:flex;flex-direction:column;background:rgba(250,252,251,.94);border-radius:26px 26px 0 0;padding:8px 12px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -18px 40px -20px rgba(9,30,21,.45);animation:selUp 320ms cubic-bezier(.2,.9,.25,1) both;-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%)}
+.sel-grab{width:40px;height:5px;border-radius:3px;background:rgba(20,56,44,.18);margin:4px auto 10px}
+.sel-title{font-size:15px;font-weight:800;padding:0 6px 10px}
+.sel-search{margin:0 0 8px}
+.sel-list{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;display:grid;gap:2px;padding-bottom:4px}
+.sel-opt{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:50px;padding:0 14px;border:0;border-radius:14px;background:transparent;font:inherit;font-size:16px;font-weight:600;color:var(--ink);text-align:start;cursor:pointer}
+.sel-opt:active{background:rgba(20,56,44,.07)}
+.sel-opt.on{background:rgba(52,194,122,.12);color:var(--accent-strong);font-weight:800}
+.sel-opt.none{color:var(--ink-soft);font-weight:500}
+.sel-opt b{flex:none}
+.sel-sheet.out .sel-panel{transform:translateY(100%);transition:transform 200ms ease-in}
+.sel-sheet.out .sel-scrim{opacity:0;transition:opacity 200ms ease}
+@keyframes selUp{from{transform:translateY(100%)}to{transform:none}}
+@media (min-width:700px){.sel-sheet{align-items:center}.sel-panel{border-radius:24px;max-height:70vh;animation:fadeIn 180ms ease both}}
+@media (prefers-reduced-motion:reduce){.sel-panel{animation:none}}
