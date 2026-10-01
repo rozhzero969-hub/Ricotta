@@ -10,9 +10,9 @@
 
 const STOCK_API_URL = `${SUPABASE_URL}/functions/v1/stock-api`;
 const ST_ACTIVE = ['waiting', 'running', 'needs_checking'];
-const stockState = {tabs: null, loaded: false, failed: false, storages: [], settings: new Map(), balances: new Map(), requests: [], counts: [], control: null, sig: '', shots: {}, lastLight: 0};
+const stockState = {groups: [], tabs: null, loaded: false, failed: false, storages: [], settings: new Map(), balances: new Map(), requests: [], counts: [], control: null, sig: '', shots: {}, lastLight: 0};
 const trState = {from: '', to: '', itemId: '', qty: '', unit: 'counting', yesterday: false, search: '', reviewKey: null};
-const stView = {storage: 'all', filter: 'all', search: ''};
+const stView = {storage: 'all', filter: 'all', search: '', group: ''};
 const histView = {filter: 'all'};
 const itemsView = {filter: 'all', search: ''};
 const supView = {tab: 'suppliers'};
@@ -48,6 +48,8 @@ async function loadStock(){
   stockState.settings = new Map((d.settings || []).map(s => [s.itemId, s]));
   stockState.counts = d.counts || [];
   stockState.tabs = Array.isArray(d.tabs) ? d.tabs : null;
+  stockState.groups = Array.isArray(d.groups) ? d.groups : [];
+  if(stView.group && !stockState.groups.some(g => g.id === stView.group)) stView.group = '';
   stApplyLive(d);
   stockState.loaded = true; stockState.failed = false;
   stockState.lastLight = Date.now();
@@ -514,7 +516,8 @@ function stStoragePills(){
 }
 function stRowsData(){
   const tokens = stTokens(stView.search), sto = stView.storage;
-  return state.items.filter(i => stMatches(i, tokens)).map(i => {
+  const grp = stView.group ? new Set(stockState.groups.find(g => g.id === stView.group)?.itemIds || []) : null;
+  return state.items.filter(i => stMatches(i, tokens) && (!grp || grp.has(i.id))).map(i => {
     const ready = stReady(i);
     return {item: i, ready, qty: ready ? (sto === 'all' ? stTotal(i.id) : stQty(i.id, sto)) : 0, low: ready && stIsLow(i)};
   }).filter(r => stView.filter === 'all' ? true : stView.filter === 'setup' ? !r.ready : stView.filter === 'in' ? r.ready && r.qty > 0 : r.low)
@@ -547,8 +550,9 @@ function renderStock(){
   return `${stAttentionHtml()}
     <div class="hero-card st-hero"><div class="hero-eyebrow" id="stHeroName"></div><div class="hero-stat"><span class="hero-count" id="stHeroCount">0</span><span class="hero-word" id="stHeroWord"></span></div><div class="hero-sub" id="stHeroSub"></div></div>
     <div class="order-tabs-shell"><button type="button" class="tab-scroll tab-scroll-prev" id="stTabsPrev" aria-label="${esc(t('previousZones'))}">‹</button><div class="order-tabs" id="stTabs">${stStoragePills()}</div><button type="button" class="tab-scroll tab-scroll-next" id="stTabsNext" aria-label="${esc(t('nextZones'))}">›</button></div>
-    <div class="st-actions"><button type="button" class="btn btn-primary" id="stCountAll">${esc(t('bcButton'))}</button></div>
+    <div class="st-actions"><button type="button" class="btn btn-primary" id="stCountAll">${esc(t('bcButton'))}</button>${canOpen('assistant') ? `<button type="button" class="btn btn-ghost st-ask" id="stAskRico">${esc(t('stAskRico'))}</button>` : ''}</div>
     <div class="record-filters glass" role="group">${filters.map(f => `<button class="tab-pill ${stView.filter === f.id ? 'active' : ''}" aria-pressed="${stView.filter === f.id}" data-stfilter="${f.id}">${esc(f.label)}</button>`).join('')}</div>
+    <div class="st-groups" id="stGroups">${stGroupPills()}</div>
     <div class="search-row"><div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="stSearch" aria-label="${esc(t('searchPlaceholder'))}" placeholder="${esc(t('searchPlaceholder'))}" value="${esc(stView.search)}"></div></div>
     <div id="stList"></div>`;
 }
@@ -566,6 +570,106 @@ function stPaintList(){
   box.querySelectorAll('[data-stsetup]').forEach(row => row.onclick = () => stSetupThenCount(row.dataset.stsetup));
   document.getElementById('stTabs').innerHTML = stStoragePills();
   bindStorageTabs();
+}
+/* Item groups ("Veggies", "Desserts"...): a second filter row. Made here or by Rico. */
+function stGroupPills(){
+  const g = stockState.groups;
+  const pill = (id, label, n) => `<button type="button" class="st-group-pill ${stView.group === id ? 'active' : ''}" aria-pressed="${stView.group === id}" data-stgroup="${esc(id)}"><span dir="auto">${esc(label)}</span>${n === null ? '' : `<small>${n}</small>`}</button>`;
+  const live = new Set(state.items.map(i => i.id));
+  return (g.length ? pill('', t('stAllGroups'), null) + g.map(x => pill(x.id, x.name, x.itemIds.filter(id => live.has(id)).length)).join('') : '')
+    + `<button type="button" class="st-group-pill st-group-manage" id="stGroupsManage">${esc(g.length ? t('stGroupsManage') : t('stGroupsNew'))}</button>`;
+}
+function bindGroupPills(){
+  document.querySelectorAll('[data-stgroup]').forEach(b => b.onclick = () => { stView.group = b.dataset.stgroup; document.getElementById('stGroups').innerHTML = stGroupPills(); bindGroupPills(); stPaintList(); });
+  const m = document.getElementById('stGroupsManage'); if(m) m.onclick = () => openGroupsManager();
+}
+async function stGroupSave(id, name, itemIds){
+  const r = await stockApi('groups/save', {method: 'POST', body: {id: id || null, name, itemIds}});
+  if(!r.ok) return {error: r.data?.error || t('saveFailed')};
+  await loadStock();
+  return {id: r.data?.id};
+}
+async function stGroupDelete(id){
+  const r = await stockApi('groups/delete', {method: 'POST', body: {id}});
+  if(!r.ok) return {error: r.data?.error || t('saveFailed')};
+  if(stView.group === id) stView.group = '';
+  await loadStock();
+  return {};
+}
+function openGroupsManager(){
+  const rows = stockState.groups.map(g => `<button type="button" class="list-row tappable st-gm-row" data-gmedit="${esc(g.id)}"><div><div class="name" dir="auto">${esc(g.name)}</div><div class="meta">${esc(t('stGroupCount')(g.itemIds.length))}</div></div><span aria-hidden="true">›</span></button>`).join('');
+  showFormModal({
+    title: esc(t('stGroupsTitle')),
+    bodyHtml: `<p class="field-hint">${esc(t('stGroupsHint'))}</p>${rows || `<p class="field-hint">${esc(t('stGroupsNone'))}</p>`}`,
+    okLabel: esc(t('stGroupsNew')),
+    onSubmit: async () => { setTimeout(() => openGroupEditor(null), 260); return {}; }
+  });
+  setTimeout(() => document.querySelectorAll('[data-gmedit]').forEach(b => b.onclick = () => { const id = b.dataset.gmedit; document.getElementById('modalFormCancel')?.click(); setTimeout(() => openGroupEditor(id), 260); }), 0);
+}
+function openGroupEditor(id){
+  const g = id ? stockState.groups.find(x => x.id === id) : null;
+  const picked = new Set(g ? g.itemIds : []);
+  const items = [...state.items].sort((a, b) => nameCollator().compare(a.name, b.name));
+  const list = () => {
+    const tokens = stTokens(document.getElementById('gmSearch')?.value || '');
+    const onlyPicked = document.getElementById('gmOnly')?.checked;
+    return items.filter(i => stMatches(i, tokens) && (!onlyPicked || picked.has(i.id))).slice(0, 300).map(i => `<label class="st-gm-item"><input type="checkbox" value="${esc(i.id)}" ${picked.has(i.id) ? 'checked' : ''}><span dir="auto">${esc(i.name)}</span></label>`).join('') || `<p class="field-hint">${esc(t('stEmpty'))}</p>`;
+  };
+  showFormModal({
+    title: esc(g ? t('stGroupEdit') : t('stGroupsNew')),
+    bodyHtml: `<div class="field"><label for="gmName">${esc(t('stGroupName'))}</label><input id="gmName" maxlength="40" dir="auto" value="${esc(g ? g.name : '')}" placeholder="${esc(t('stGroupNameHint'))}"></div>
+      <div class="search-wrap st-gm-search">${ICON_SEARCH}<input class="search-input" id="gmSearch" placeholder="${esc(t('searchPlaceholder'))}"></div>
+      <label class="st-gm-only"><input type="checkbox" id="gmOnly"> <span id="gmCount">${esc(t('stGroupPicked')(picked.size))}</span></label>
+      <div class="st-gm-list" id="gmList"></div>
+      ${g ? `<button type="button" class="btn btn-ghost st-gm-delete" id="gmDelete">${esc(t('stGroupDelete'))}</button>` : ''}`,
+    onSubmit: async () => {
+      const name = document.getElementById('gmName').value.trim();
+      if(!name) return {error: t('stGroupNeedName')};
+      if(!picked.size) return {error: t('stGroupNeedItems')};
+      const res = await stGroupSave(g?.id, name, [...picked]);
+      if(res.error) return res;
+      if(res.id) stView.group = res.id;
+      render(); toast(t('stGroupSaved')(name));
+      return {};
+    }
+  });
+  setTimeout(() => {
+    const box = document.getElementById('gmList'); if(!box) return;
+    const paint = () => { box.innerHTML = list(); document.getElementById('gmCount').textContent = t('stGroupPicked')(picked.size); };
+    box.onchange = e => { const c = e.target; if(c.type !== 'checkbox') return; c.checked ? picked.add(c.value) : picked.delete(c.value); document.getElementById('gmCount').textContent = t('stGroupPicked')(picked.size); };
+    document.getElementById('gmSearch').oninput = paint;
+    document.getElementById('gmOnly').onchange = paint;
+    const del = document.getElementById('gmDelete');
+    if(del) del.onclick = async () => {
+      if(!(await showConfirm(t('stGroupDeleteConfirm')(esc(g.name))))) return;
+      const res = await stGroupDelete(g.id);
+      if(res.error){ await showAlert(esc(res.error)); return; }
+      render(); toast(t('stGroupDeleted'));
+    };
+    paint();
+  }, 0);
+}
+/* Rico's "open the Stock screen filtered" button. */
+function stOpenFiltered({search = '', storage = null, groupId = null, only = null} = {}){
+  stView.search = search || '';
+  stView.storage = storage && stockState.storages.includes(storage) ? storage : (storage ? stView.storage : 'all');
+  stView.group = groupId || '';
+  stView.filter = only === 'in_stock' ? 'in' : only === 'low' ? 'low' : only === 'not_set_up' ? 'setup' : 'all';
+  goView('stock');
+}
+/* Rico's confirmed change of an item's low-stock level or workplace name (app only). */
+async function stApplySettings(itemId, change){
+  const cur = stockState.loaded ? stockState.settings.get(itemId) : null;
+  if(!cur){ await loadStock(); }
+  const s = stockState.settings.get(itemId);
+  if(!s) return {error: t('saveFailed')};
+  const item = stItem(itemId); if(!item) return {error: t('saveFailed')};
+  const lowStock = 'lowStock' in change ? change.lowStock : s.lowStock;
+  const workplaceName = 'workplaceName' in change ? change.workplaceName : s.workplaceName;
+  const r = await stockApi('settings/' + encodeURIComponent(itemId), {method: 'PUT', body: {countingUnit: s.countingUnit, perBuying: s.countingUnit === item.unit ? null : s.perBuying, lowStock, workplaceName: workplaceName || ''}});
+  if(!r.ok) return {error: r.data?.error || t('saveFailed')};
+  stockState.settings.set(itemId, {...s, lowStock: lowStock === null ? null : Number(lowStock), workplaceName: workplaceName || null});
+  return {};
 }
 function bindStorageTabs(){ document.querySelectorAll('[data-ststorage]').forEach(b => b.onclick = () => { stView.storage = b.dataset.ststorage; stPaintList(); }); }
 function attachStockEvents(){
@@ -585,6 +689,8 @@ function attachStockEvents(){
   document.getElementById('stTabsNext').onclick = () => go(1);
   tabs.addEventListener('wheel', e => { if(Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; e.preventDefault(); tabs.scrollBy({left: e.deltaY, behavior: 'auto'}); }, {passive: false});
   document.getElementById('stCountAll').onclick = () => openBulkCount();
+  const ask = document.getElementById('stAskRico'); if(ask) ask.onclick = () => goView('assistant');
+  bindGroupPills();
   stPaintList();
   stRefreshIfStale();
 }

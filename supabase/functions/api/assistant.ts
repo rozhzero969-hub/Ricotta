@@ -92,6 +92,14 @@ async function loadWorld(db: any, s: Session) {
       .order("occurred_at", { ascending: false }).limit(40),
     app("item_pars").select("item_id,par_qty,busy_boost_pct,est_qty,est_updated_at"),
   ]), DB_TIMEOUT_MS, "load_world");
+  // The real counted stock (Stock screen): settings, balances per zone, zones and item groups.
+  // A failure here must not break Rico for ordering, so each read falls back to empty.
+  const [stSet, stBal, stSto, stGrp] = await withTimeout((async () => await Promise.all([
+    db.from("stock_item_settings").select("item_id,counting_unit,per_buying,low_stock,workplace_name"),
+    db.from("stock_balances").select("item_id,storage_name,quantity").neq("quantity", 0),
+    db.from("stock_storages").select("name").eq("archived", false).order("sort_order"),
+    db.from("stock_groups").select("id,name,item_ids").order("name"),
+  ]))(), DB_TIMEOUT_MS, "load_stock").catch(() => [{ data: [] }, { data: [] }, { data: [] }, { data: [] }] as any[]);
   const orderRows = (orders.data ?? []).reverse();
   const lines: any[] = [];
   for (let i = 0; i < orderRows.length; i += 60) {
@@ -128,6 +136,12 @@ async function loadWorld(db: any, s: Session) {
     devices: (devices.data ?? []) as any[],
     activity: (activity.data ?? []) as any[],
     pars: (pars.data ?? []) as any[],
+    stock: {
+      settings: new Map<string, any>((stSet.data ?? []).map((x: any) => [x.item_id, x])),
+      balances: (stBal.data ?? []) as any[],
+      storages: (stSto.data ?? []).map((x: any) => x.name) as string[],
+      groups: (stGrp.data ?? []).map((g: any) => ({ id: g.id, name: g.name, itemIds: g.item_ids ?? [] })) as { id: string; name: string; itemIds: string[] }[],
+    },
     cart: {} as Record<string, number>,   // this device's draft, filled in by handleChat
   };
 }
@@ -524,6 +538,52 @@ function toolRecentChanges(w: World, a: any) {
   };
 }
 
+/* ---------------- real stock (Stock screen) ---------------- */
+const qty6 = (n: number) => Math.round(n * 1e6) / 1e6;
+function findGroup(w: World, q: unknown) {
+  const v = text(q, 60);
+  return w.stock.groups.find((g) => g.id === v) ?? w.stock.groups.find((g) => norm(g.name) === norm(v)) ?? null;
+}
+function toolStockLevels(w: World, a: any) {
+  const q = norm(a.query);
+  const zone = a.storage ? w.stock.storages.find((z) => norm(z) === norm(a.storage)) : null;
+  if (a.storage && !zone) return { error: `No zone matches "${a.storage}".`, zones: w.stock.storages };
+  const grp = a.group ? findGroup(w, a.group) : null;
+  if (a.group && !grp) return { error: `No group matches "${a.group}".`, groups: w.stock.groups.map((g) => g.name) };
+  const inGroup = grp ? new Set(grp.itemIds) : null;
+  const byItem = new Map<string, Record<string, number>>();
+  for (const b of w.stock.balances) (byItem.get(b.item_id) ?? byItem.set(b.item_id, {}).get(b.item_id)!)[b.storage_name] = Number(b.quantity);
+  const groupsOf = (id: string) => w.stock.groups.filter((g) => g.itemIds.includes(id)).map((g) => g.name);
+  let rows = w.items.filter((i) => (!q || norm(i.name).includes(q) || norm(w.stock.settings.get(i.id)?.workplace_name).includes(q)) && (!inGroup || inGroup.has(i.id))).map((i) => {
+    const st = w.stock.settings.get(i.id);
+    const per = byItem.get(i.id) ?? {};
+    const total = qty6(Object.values(per).reduce((n, v) => n + v, 0));
+    const here = zone ? qty6(per[zone] ?? 0) : total;
+    const low = !!st && st.low_stock !== null && total <= Number(st.low_stock);
+    return { item_id: i.id, name: i.name, supplier: supplierName(w, i.supplier_id), set_up: !!st,
+      unit: st ? unitName(w, st.counting_unit) : null, qty: st ? here : null, by_zone: st && !zone ? per : undefined,
+      low_stock_level: st && st.low_stock !== null ? Number(st.low_stock) : null, low, workplace_name: st?.workplace_name || undefined, groups: groupsOf(i.id) };
+  });
+  if (a.only === "in_stock") rows = rows.filter((r) => (r.qty ?? 0) > 0);
+  else if (a.only === "low") rows = rows.filter((r) => r.low);
+  else if (a.only === "not_set_up") rows = rows.filter((r) => !r.set_up);
+  const limit = Math.min(Number(a.limit) || 60, 400);
+  return {
+    zone: zone ?? "all zones", group: grp?.name, total: rows.length, zones: w.stock.storages,
+    note: "Real counted stock in counting units (not the par estimate). Items not set up have no stock yet.",
+    items: rows.slice(0, limit),
+  };
+}
+/* Every item, as compact as possible, so Rico can sort the whole catalog into groups (veggies, desserts...). */
+function toolCatalogNames(w: World) {
+  return { total: w.items.length, items: w.items.slice(0, 1500).map((i) => [i.id, i.name, supplierName(w, i.supplier_id)]),
+    format: "[item_id, name, supplier]", groups: w.stock.groups.map((g) => ({ group_id: g.id, name: g.name, items: g.itemIds.length })) };
+}
+function toolListGroups(w: World) {
+  const nameOf = new Map(w.items.map((i) => [i.id, i.name]));
+  return { groups: w.stock.groups.map((g) => ({ group_id: g.id, name: g.name, items: g.itemIds.filter((id) => nameOf.has(id)).map((id) => ({ item_id: id, name: nameOf.get(id) })) })) };
+}
+
 /* ---------------- proposal tools (the app asks the person to confirm) ---------------- */
 let seq = 0;
 const pid = () => `p${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -579,6 +639,68 @@ function proposeEditItem(w: World, a: any, emit: Emit) {
   return { shown: true, what_happens: "The person confirms the change on a card." };
 }
 
+function proposeStockGroup(w: World, a: any, emit: Emit) {
+  const action = ["create", "add", "remove", "rename", "delete", "replace"].includes(a.action) ? a.action : "create";
+  const live = new Map(w.items.map((i) => [i.id, i]));
+  const asked = Array.isArray(a.item_ids) ? a.item_ids.slice(0, 1000).map((x: unknown) => text(x, 120)) : [];
+  const unknown = asked.filter((id: string) => !live.has(id));
+  const ids = [...new Set(asked.filter((id: string) => live.has(id)))] as string[];
+  const g = action === "create" ? null : findGroup(w, a.group);
+  if (action !== "create" && !g) return { error: `No group matches "${a.group}". Use list_stock_groups.`, groups: w.stock.groups.map((x) => x.name) };
+  const name = action === "create" ? text(a.name, 40) : action === "rename" ? text(a.name, 40) : g!.name;
+  if (!name) return { error: "Give the group a short name (up to 40 letters). Ask the person if they didn't say one." };
+  if ((action === "create" || action === "rename") && w.stock.groups.some((x) => norm(x.name) === norm(name) && x.id !== g?.id))
+    return { error: `A group called "${name}" already exists. Use action "add" to put items in it.` };
+  if (action === "create" && w.stock.groups.length >= 40) return { error: "There are already 40 groups; delete one first." };
+  let after: string[];
+  if (action === "create" || action === "replace") after = ids;
+  else if (action === "add") after = [...new Set([...g!.itemIds, ...ids])];
+  else if (action === "remove") after = g!.itemIds.filter((id) => !ids.includes(id));
+  else after = g!.itemIds;
+  if ((action === "create" || action === "add" || action === "remove" || action === "replace") && !ids.length)
+    return { error: "No valid item_ids. Use catalog_names or find_items to get them.", invalid: unknown.slice(0, 20) };
+  const names = (list: string[]) => list.filter((id) => live.has(id)).map((id) => ({ itemId: id, name: live.get(id)!.name }));
+  const before = g ? new Set(g.itemIds) : new Set<string>();
+  emit({ type: "proposal", proposal: {
+    id: pid(), kind: "stock_group", action, groupId: g?.id ?? null, name, oldName: g && action === "rename" ? g.name : null,
+    itemIds: after, added: names(after.filter((id) => !before.has(id))), removed: names([...before].filter((id) => !after.includes(id))), total: after.length,
+  } });
+  return { shown: true, items_in_group_after: after.length, invalid: unknown.length ? unknown.slice(0, 20) : undefined,
+    what_happens: action === "delete" ? "The person confirms on a card. Only the group is removed; the items and their stock stay." : "The person confirms on a card; the group then shows as a filter on the Stock screen." };
+}
+
+function proposeStockSettings(w: World, a: any, emit: Emit) {
+  const it = w.items.find((i) => i.id === text(a.item_id, 120));
+  if (!it) return { error: "Unknown item_id. Use find_items or stock_levels first." };
+  const st = w.stock.settings.get(it.id);
+  if (!st) return { error: `"${it.name}" is not set up for stock yet (no counting format). Offer open_stock so they can set it up on the Stock screen.` };
+  const change: any = {};
+  if (a.turn_off_warning === true) change.lowStock = null;
+  else if (a.low_stock !== undefined && a.low_stock !== null && a.low_stock !== "") {
+    const n = Number(a.low_stock);
+    if (!(n >= 0 && n <= 1e8)) return { error: "The low stock level must be 0 or more (use turn_off_warning to remove it)." };
+    change.lowStock = qty6(n);
+  }
+  if (a.workplace_name !== undefined) {
+    const wn = text(a.workplace_name, 240);
+    change.workplaceName = wn && wn !== it.name ? wn : null;
+  }
+  if (!Object.keys(change).length) return { error: "Nothing to change. You can set low_stock (or turn_off_warning) and/or workplace_name." };
+  emit({ type: "proposal", proposal: {
+    id: pid(), kind: "stock_settings", itemId: it.id, name: it.name, unit: unitName(w, st.counting_unit),
+    before: { lowStock: st.low_stock === null ? null : Number(st.low_stock), workplaceName: st.workplace_name ?? null }, ...change,
+  } });
+  return { shown: true, what_happens: "The person confirms on a card. This only changes the app; the workplace system is not touched." };
+}
+
+function proposeOpenStock(w: World, a: any, emit: Emit) {
+  const zone = a.storage ? w.stock.storages.find((z) => norm(z) === norm(a.storage)) ?? null : null;
+  const grp = a.group ? findGroup(w, a.group) : null;
+  const only = ["in_stock", "low", "not_set_up"].includes(a.only) ? a.only : null;
+  emit({ type: "proposal", proposal: { id: pid(), kind: "open_stock", search: text(a.search, 60), storage: zone, groupId: grp?.id ?? null, group: grp?.name ?? null, only, label: text(a.label, 60) } });
+  return { shown: true, applied_filters: { search: text(a.search, 60) || null, zone, group: grp?.name ?? null, only } };
+}
+
 function proposeNewSupplier(w: World, a: any, emit: Emit) {
   const name = text(a.name, 160);
   if (!name) return { error: "Ask for the supplier's name." };
@@ -596,7 +718,7 @@ function proposeNotification(a: any, emit: Emit) {
 
 function proposeOpen(a: any, emit: Emit) {
   // "send" opens Send to suppliers with the current draft (the person still taps each WhatsApp send).
-  const screens = ["order", "send", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings", "sounds"];
+  const screens = ["order", "send", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings", "sounds", "transfers", "stock", "receipts"];
   const screen = screens.includes(a.screen) ? a.screen : "order";
   emit({ type: "proposal", proposal: { id: pid(), kind: "open", screen, supplierId: text(a.supplier_id, 120) || null, label: text(a.label, 60) } });
   return { shown: true };
@@ -624,6 +746,18 @@ const TOOLS = [
     input_schema: { type: "object", properties: {} } },
   { name: "set_stock_count", description: "Correct a tracked item's stock estimate to a real count the person just told you (e.g. 'we have 3 boxes of tomatoes left'). Use find_items first if you don't already have the item_id.",
     input_schema: { type: "object", properties: { item_id: { type: "string" }, item_name: { type: "string" }, qty: { type: "number" } }, required: ["qty"] } },
+  { name: "stock_levels", description: "REAL counted stock from the Stock screen (in each item's counting unit), per zone, with low-stock warnings and the item's groups. Filter by part of a name (query), zone (storage), group, or only:'in_stock'|'low'|'not_set_up'. Use this (not stock_status) for 'how much X do we have', 'what is low', 'what is in the freezer'.",
+    input_schema: { type: "object", properties: { query: { type: "string" }, storage: { type: "string", description: "Zone name" }, group: { type: "string", description: "Group name or id" }, only: { type: "string", enum: ["in_stock", "low", "not_set_up"] }, limit: { type: "integer" } } } },
+  { name: "catalog_names", description: "Every item as [item_id, name, supplier], compact, plus the existing groups. Use it to sort the whole catalog by meaning (e.g. all vegetables, all dessert things) before propose_stock_group.",
+    input_schema: { type: "object", properties: {} } },
+  { name: "list_stock_groups", description: "The item groups (Stock screen filters such as Veggies or Desserts) with their items.",
+    input_schema: { type: "object", properties: {} } },
+  { name: "propose_stock_group", description: "Show a card to create, change or delete an item group (a filter on the Stock screen). action: create (name + item_ids), add / remove (group + item_ids), replace (group + the full new item_ids), rename (group + new name), delete (group). Items can be in several groups. Deleting a group never deletes items.",
+    input_schema: { type: "object", properties: { action: { type: "string", enum: ["create", "add", "remove", "replace", "rename", "delete"] }, group: { type: "string", description: "Existing group name or id" }, name: { type: "string", description: "Name for create or rename (max 40 letters)" }, item_ids: { type: "array", items: { type: "string" } } }, required: ["action"] } },
+  { name: "propose_stock_settings", description: "Show a card to change an item's low-stock warning level (in its counting unit) or turn the warning off, and/or its name in the workplace system. Only for items already set up for stock. Changes only the app.",
+    input_schema: { type: "object", properties: { item_id: { type: "string" }, low_stock: { type: "number" }, turn_off_warning: { type: "boolean" }, workplace_name: { type: "string" } }, required: ["item_id"] } },
+  { name: "open_stock", description: "Show a button that opens the Stock screen already filtered: search text, zone (storage), group, and only:'in_stock'|'low'|'not_set_up'. Use it whenever the person asks you to find or show items on the Stock screen.",
+    input_schema: { type: "object", properties: { search: { type: "string" }, storage: { type: "string" }, group: { type: "string" }, only: { type: "string", enum: ["in_stock", "low", "not_set_up"] }, label: { type: "string" } } } },
   { name: "propose_order_draft", description: "Show the person a card to change today's order draft on this device (it does NOT send anything to suppliers). mode 'replace' starts a fresh draft; 'add' adds quantities to the current one; 'set' sets exact quantities for the listed items and keeps everything else (qty 0 removes an item).",
     input_schema: { type: "object", properties: { lines: { type: "array", items: { type: "object", properties: { item_id: { type: "string" }, qty: { type: "number" } }, required: ["item_id", "qty"] } }, mode: { type: "string", enum: ["replace", "add", "set"] }, note: { type: "string" } }, required: ["lines"] } },
   { name: "propose_new_item", description: "Show a card to add a new catalog item. You must know the name, the unit and the supplier (or 'none') -- ask for anything missing first, one short question at a time.",
@@ -634,7 +768,7 @@ const TOOLS = [
     input_schema: { type: "object", properties: { name: { type: "string" }, phone: { type: "string" } }, required: ["name"] } },
   { name: "propose_notification", description: "Show a card to send a push notification to every signed-in phone. Always write the message in English, Kurdish (Sorani) and Arabic; each phone gets its own language.",
     input_schema: { type: "object", properties: { title: { type: "string" }, message_en: { type: "string" }, message_ku: { type: "string" }, message_ar: { type: "string" } }, required: ["message_en", "message_ku", "message_ar"] } },
-  { name: "open_screen", description: "Show a button that opens a screen of the app (order, send, history, suppliers, itemsAdmin, units, record, devices, settings, sounds). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
+  { name: "open_screen", description: "Show a button that opens a screen of the app (order, send, history, suppliers, itemsAdmin, units, record, devices, settings, sounds, transfers, stock, receipts). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
     input_schema: { type: "object", properties: { screen: { type: "string" }, supplier_id: { type: "string" }, label: { type: "string" } }, required: ["screen"] } },
 ];
 const STATUS_TOOLS = new Set(TOOLS.map((t) => t.name));
@@ -680,6 +814,9 @@ WHAT YOU CAN DO (the same for Rozha and Yunis)
 - If someone asks for today's order without naming suppliers, ask whether they want one supplier, several, or all before building a draft. Never silently choose the scope.
 - Add or change catalog data: propose_new_item needs name, unit AND supplier -- if any is missing, ask for it (offer the likely choices from the data, e.g. "kg, box or piece?"). propose_edit_item and propose_new_supplier likewise.
 - Notifications: propose_notification with English, Kurdish and Arabic text, e.g. to remind the team about a late order.
+- The Stock screen (real counted stock): use stock_levels for amounts, what is low, what is in a zone. To find or show items there, use open_stock with a search, zone, group or filter so one tap shows exactly that list. To change a low-stock warning or an item's workplace name, use propose_stock_settings. To change an item's name, unit or supplier, use propose_edit_item.
+- Groups (filters on the Stock screen): when asked to "make a filter / group for all veggies (desserts, drinks, cleaning...)", call catalog_names, choose the matching items by meaning from their names (any language), and show ONE propose_stock_group card with all of them. Name the group what the person said (or a short clear name in their language if they didn't). In your reply list a few of the chosen items and say how many; mention any you were unsure about instead of guessing silently. Use add / remove to change an existing group. A group only filters the list; it never changes stock or the workplace system.
+- Rico never moves stock, counts stock, makes transfers or receipts, and never touches the workplace system. For those, point people to the Transfers, Stock or Receipts screen (open_screen with transfers, stock or receipts).
 - Guide people through the app and use open_screen for a one-tap shortcut. Yunis's account has no Devices or Settings screen, so never offer those to Yunis.
 - A proposal only shows a card; the person must tap to confirm. After proposing, say in one sentence what the card does. Never claim something was saved, added or sent until the conversation shows it was confirmed ("[card ... : applied]").
 - Nothing is ever sent to a supplier automatically: sending always happens from Send to suppliers via WhatsApp, and the person taps it.
@@ -735,6 +872,8 @@ function contextBlock(w: World, s: Session, body: any) {
   const stockLine = low.length
     ? `${low.length} tracked item(s) at or below par (estimate): ${low.slice(0, 8).map((r) => `${r.name} (est ${r.est_qty}/${r.effective_par} ${r.unit}${r.busy_today ? ", busy day boost on" : ""})`).join("; ")}.`
     : w.pars.length ? "none at or below par right now." : null;
+  const stockReady = w.stock.settings.size;
+  const stockCtx = `\n- Stock screen: ${stockReady} of ${w.items.length} items set up for stock; zones: <<DATA>>${w.stock.storages.join(", ") || "none"}<</DATA>>; groups: <<DATA>>${w.stock.groups.map((g) => `${g.name} (${g.itemIds.length})`).join(", ") || "none yet"}<</DATA>>.`;
   return `CONTEXT (live data, ${w.now.date} ${w.now.time} Erbil, ${WEEKDAYS[w.now.weekday]})
 - Talking to: ${person} (${w.full ? "full access" : "Order, Rico, History without deleting, Suppliers, Items, Record, Units"}). App language: ${lang}. Screen they came from: ${text(body.screen, 30) || "order"}.
 - Rico may fill the order draft automatically on this device: ${body.autoOrder ? "YES" : "no (cards need a tap)"}.
@@ -744,7 +883,7 @@ function contextBlock(w: World, s: Session, body: any) {
 - Latest orders: <<DATA>>${recent.join(" | ") || "none yet"}<</DATA>>.
 - Today's supplier reminders: <<DATA>>${due.join("; ") || "none today"}<</DATA>>.
 - Daily order reminder: ${w.dailyReminder?.enabled ? `on at ${w.dailyReminder.time}` : "off"}; orders sent today: ${w.history.filter((o) => o.date === w.now.date).length}.
-- Current order draft on this device: <<DATA>>${draft.length ? draft.join("; ") : "empty"}<</DATA>>.${phones.length ? `\n- Phones (Rozha's Devices view): <<DATA>>${phones.join("; ")}<</DATA>>.` : ""}${stockLine ? `\n- Par-level stock (estimate): ${stockLine}` : ""}`;
+- Current order draft on this device: <<DATA>>${draft.length ? draft.join("; ") : "empty"}<</DATA>>.${phones.length ? `\n- Phones (Rozha's Devices view): <<DATA>>${phones.join("; ")}<</DATA>>.` : ""}${stockLine ? `\n- Par-level stock (estimate): ${stockLine}` : ""}${stockCtx}`;
 }
 
 /* Rico starts every reply with a [[mood:...]] tag. This takes the tags out
@@ -1287,6 +1426,12 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
     case "recent_changes": return toolRecentChanges(w, a);
     case "stock_status": return toolStockStatus(w);
     case "set_stock_count": return await toolSetStockCount(db, w, a);
+    case "stock_levels": return toolStockLevels(w, a);
+    case "catalog_names": return toolCatalogNames(w);
+    case "list_stock_groups": return toolListGroups(w);
+    case "propose_stock_group": return proposeStockGroup(w, a, emit);
+    case "propose_stock_settings": return proposeStockSettings(w, a, emit);
+    case "open_stock": return proposeOpenStock(w, a, emit);
     case "propose_order_draft": return proposeOrder(w, a, emit, auto);
     case "propose_new_item": return proposeNewItem(w, a, emit);
     case "propose_edit_item": return proposeEditItem(w, a, emit);
@@ -1298,4 +1443,4 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
 }
 
 /* For local tests only (not used by the app). */
-export const _internals = { loadWorld, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, erbilParts };
+export const _internals = { toolStockLevels, toolCatalogNames, proposeStockGroup, proposeStockSettings, proposeOpenStock, loadWorld, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, erbilParts };

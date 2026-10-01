@@ -293,7 +293,7 @@ function renderRicoProposal(p, mi){
   const actions = primaryLabel=> gone
       ? `<div class="rico-card-state">${p.status==='undone'?t('ricoUndone'):t('ricoDismissed')}</div>`
       : done
-        ? `<div class="rico-card-state ok">✓ ${esc(p.doneLabel || t('ricoDone'))}${p.kind==='order' ? ` <button class="rico-link" data-rico-open="order">${t('ricoOpenOrder')}</button>${p.undo?` <button class="rico-link" data-rico-undo="${mi}|${esc(p.id)}">${t('ricoUndo')}</button>`:''}` : ''}</div>`
+        ? `<div class="rico-card-state ok">✓ ${esc(p.doneLabel || t('ricoDone'))}${p.kind==='stock_group' && p.action!=='delete' && p.groupId && canOpen('stock') ? ` <button class="rico-link" data-rico-stock="${mi}|${esc(p.id)}">${t('ricoOpenStock')}</button>` : ''}${p.kind==='order' ? ` <button class="rico-link" data-rico-open="order">${t('ricoOpenOrder')}</button>${p.undo?` <button class="rico-link" data-rico-undo="${mi}|${esc(p.id)}">${t('ricoUndo')}</button>`:''}` : ''}</div>`
         : `<div class="rico-card-actions"><button class="btn btn-primary" data-rico-apply="${mi}|${esc(p.id)}">${primaryLabel}</button><button class="btn btn-ghost" data-rico-dismiss="${mi}|${esc(p.id)}">${t('ricoNotNow')}</button></div>`;
   let body = '', title = '', icon = '';
   if(p.kind === 'order'){
@@ -328,6 +328,33 @@ function renderRicoProposal(p, mi){
     icon = ICON_BELL; title = t('ricoCardNotify');
     body = `<div class="rico-card-note"><b>${esc(p.title)}</b></div><div class="rico-card-msg" dir="ltr">${esc(p.en)}</div><div class="rico-card-msg" dir="rtl" lang="ckb">${esc(p.ku)}</div><div class="rico-card-msg" dir="rtl" lang="ar">${esc(p.ar || '')}</div>`;
     return ricoCard(icon, title, body, actions(t('notifSend')), p);
+  }
+  if(p.kind === 'stock_group'){
+    icon = NAV_ICONS.stock || ICON_EDIT;
+    title = {create: t('ricoGroupCreate'), add: t('ricoGroupAdd'), remove: t('ricoGroupRemove'), replace: t('ricoGroupReplace'), rename: t('ricoGroupRename'), delete: t('ricoGroupDelete')}[p.action] || t('ricoGroupCreate');
+    const names = (list, cls) => list.length ? `<div class="rico-card-group">${list.slice(0, 60).map(x => `<div class="rico-card-line ${cls}"><span dir="auto">${esc(x.name)}</span></div>`).join('')}${list.length > 60 ? `<div class="rico-card-note">+${list.length - 60}</div>` : ''}</div>` : '';
+    const fields = [[t('stGroupName'), p.oldName ? `<s>${esc(p.oldName)}</s> → ${esc(p.name)}` : esc(p.name), true]];
+    if(p.action !== 'delete') fields.push([t('ricoGroupItems'), String(p.total)]);
+    body = ricoFields(fields)
+      + (p.added?.length ? `<div class="rico-card-note">${esc(t('ricoGroupAdded')(p.added.length))}</div>${names(p.added, '')}` : '')
+      + (p.removed?.length && p.action !== 'delete' ? `<div class="rico-card-note">${esc(t('ricoGroupRemoved')(p.removed.length))}</div>${names(p.removed, 'rico-line-out')}` : '')
+      + (p.action === 'delete' ? `<div class="rico-card-note">${esc(t('ricoGroupDeleteNote'))}</div>` : '');
+    return ricoCard(icon, title, body, actions(p.action === 'delete' ? t('delete') : t('save')), p);
+  }
+  if(p.kind === 'stock_settings'){
+    icon = NAV_ICONS.stock || ICON_EDIT; title = t('ricoCardStockSettings');
+    const show = v => v === null || v === undefined || v === '' ? '—' : String(v);
+    const row = (label, a, b) => String(a ?? '') === String(b ?? '') ? [label, show(b)] : [label, `<s>${esc(show(a))}</s> → ${esc(show(b))}`, true];
+    const rows = [[t('name'), p.name]];
+    if('lowStock' in p) rows.push(row(`${t('itWarn')} (${p.unit})`, p.before.lowStock, p.lowStock));
+    if('workplaceName' in p) rows.push(row(t('ricoWorkplaceName'), p.before.workplaceName || p.name, p.workplaceName || p.name));
+    body = ricoFields(rows) + `<div class="rico-card-note">${esc(t('ricoAppOnly'))}</div>`;
+    return ricoCard(icon, title, body, actions(t('save')), p);
+  }
+  if(p.kind === 'open_stock'){
+    if(!canOpen('stock')) return '';
+    const bits = [p.search && `“${p.search}”`, p.group, p.storage, p.only && {in_stock: t('stInStock'), low: t('stLow'), not_set_up: t('itFilterTodo')}[p.only]].filter(Boolean).join(' · ');
+    return `<button class="rico-open" data-rico-stock="${mi}|${esc(p.id)}">${NAV_ICONS.stock || NAV_ICONS.order}<span>${esc(p.label || t('ricoOpenStock'))}${bits ? ` <small dir="auto">${esc(bits)}</small>` : ''}</span></button>`;
   }
   if(p.kind === 'open'){
     if(p.screen !== 'send' && !canOpen(p.screen)) return '';
@@ -480,6 +507,10 @@ function attachRicoThreadEvents(root){
     if(screen === 'order' && sup && state.suppliers.some(s=>s.id===sup)) state.orderTab = sup;
     goView(screen);
   });
+  root.querySelectorAll('[data-rico-stock]').forEach(b=>b.onclick=()=>{
+    const [mi,id]=b.dataset.ricoStock.split('|'); const p = ricoFind(+mi, id);
+    if(p && canOpen('stock')) stOpenFiltered({search:p.search, storage:p.storage, groupId:p.groupId, only:p.only});
+  });
   root.querySelectorAll('[data-rico-settings]').forEach(b=>b.onclick=()=>{ goView('settings'); requestAnimationFrame(()=>document.querySelector('.rico-status-card')?.scrollIntoView({block:'center'})); });
   root.querySelectorAll('[data-rico-retry]').forEach(b=>b.onclick=()=>{
     const i = +b.dataset.ricoRetry;
@@ -510,7 +541,7 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`}[p.kind] || p.kind;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, open_stock:'open Stock screen', stock_group:`${p.action} group "${p.name}"`, stock_settings:`stock settings for "${p.name}"`}[p.kind] || p.kind;
       content += `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};
@@ -682,6 +713,25 @@ async function ricoApply(mi, id, btn){
       if(!(await saveRecord('suppliers', next))){ await showAlert(t('saveFailed')); return false; }
       state.suppliers.push(next);
       logActivity({action:'add', type:'supplier', name:p.name, fields:[{k:'name',to:p.name}].concat(p.phone?[{k:'phone',to:p.phone}]:[])});
+      p.doneLabel = t('savedMsg')(p.name).replace(/^\u2713\s*/, '');
+      return true;
+    }
+    if(p.kind === 'stock_group'){
+      if(!stockState.loaded) await loadStock();
+      const live = new Set(state.items.map(i=>i.id));
+      const ids = (p.itemIds||[]).filter(id=>live.has(id));
+      const res = p.action === 'delete' ? await stGroupDelete(p.groupId) : await stGroupSave(p.groupId, p.name, ids);
+      if(res.error){ await showAlert(esc(res.error)); return false; }
+      p.doneLabel = p.action === 'delete' ? t('stGroupDeleted') : t('stGroupSaved')(p.name);
+      if(p.action !== 'delete' && res.id) p.groupId = res.id;
+      return true;
+    }
+    if(p.kind === 'stock_settings'){
+      const change = {};
+      if('lowStock' in p) change.lowStock = p.lowStock;
+      if('workplaceName' in p) change.workplaceName = p.workplaceName;
+      const res = await stApplySettings(p.itemId, change);
+      if(res.error){ await showAlert(esc(res.error)); return false; }
       p.doneLabel = t('savedMsg')(p.name).replace(/^\u2713\s*/, '');
       return true;
     }

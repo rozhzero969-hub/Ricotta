@@ -5,7 +5,8 @@
 //
 // Routes (JSON):
 //   --- signed-in person (Rozha or Yunis) ---
-//   GET    bootstrap                     storages, item settings, balances, requests, counts
+//   GET    bootstrap                     storages, item settings, balances, requests, counts, groups
+//   POST   groups/save | groups/delete   {id?, name, itemIds} | {id}   (Stock screen item groups)
 //   GET    requests                      the light refresh: requests + balances
 //   GET    shots?id=                     the PC's screenshots for one request (kept 3 days)
 //   PUT    tabs                          {tabs:[3 screens]}  this person's tab bar (may include Transfer and Stock)
@@ -335,14 +336,15 @@ Deno.serve(async (req: Request) => {
     const actor = await person(req); if (!actor) return fail("Sign in first", 401);
 
     if (req.method === "GET" && path[0] === "bootstrap") {
-      const [storages, settings, counts, live, myTabs] = await Promise.all([
+      const [storages, settings, counts, live, myTabs, groups] = await Promise.all([
         db.from("stock_storages").select("name").eq("archived", false).order("sort_order"),
         db.from("stock_item_settings").select("item_id,counting_unit,per_buying,low_stock,workplace_name,usage_unit,per_counting_usage,workplace_confirmed_name,workplace_created_at"),
         db.from("stock_counts").select("*").order("entered_at", { ascending: false }).limit(150),
         requestsAndBalances(),
         db.from("stock_tabs").select("tabs").eq("account", actor).maybeSingle(),
+        db.from("stock_groups").select("id,name,item_ids").order("name"),
       ]);
-      for (const r of [storages, settings, counts]) if (r.error) throw r.error;
+      for (const r of [storages, settings, counts, groups]) if (r.error) throw r.error;
       return json({
         storages: (storages.data ?? []).map((s: any) => s.name),
         settings: (settings.data ?? []).map((s: any) => ({ itemId: s.item_id, countingUnit: s.counting_unit, perBuying: s.per_buying === null ? null : Number(s.per_buying), lowStock: s.low_stock === null ? null : Number(s.low_stock), workplaceName: s.workplace_name ?? null,
@@ -350,6 +352,7 @@ Deno.serve(async (req: Request) => {
           workplaceConfirmedName: s.workplace_confirmed_name ?? null, workplaceCreatedAt: s.workplace_created_at ?? null })),
         counts: (counts.data ?? []).map(toCount),
         tabs: Array.isArray(myTabs.data?.tabs) ? myTabs.data.tabs : null,
+        groups: (groups.data ?? []).map((g: any) => ({ id: g.id, name: g.name, itemIds: g.item_ids ?? [] })),
         ...live,
       });
     }
@@ -628,6 +631,26 @@ Deno.serve(async (req: Request) => {
       else return fail("Unknown route", 404);
       if (error) throw error;
       return json({ ok: true });
+    }
+    if (req.method === "POST" && path[0] === "groups") {
+      // Item groups (Stock screen filters). save = create (no id) or replace name + items; delete removes the group only.
+      const b = await readBody(req);
+      const ids = (v: unknown) => Array.isArray(v) ? v.slice(0, 1000).map((x) => str(x, 80)).filter(Boolean) : [];
+      if ((b.id || path[1] === "delete") && !uuid(b.id)) return fail("Invalid group");
+      if (path[1] === "save") {
+        const { data, error } = await db.rpc("stock_group_save", { p_id: b.id ? String(b.id) : null, p_name: str(b.name, 60), p_items: ids(b.itemIds), p_actor: actor });
+        if (error) throw error;
+        return json({ ok: true, id: data });
+      }
+      if (path[1] === "delete") {
+        // Only the group goes; items and stock are untouched.
+        const { data, error } = await db.from("stock_groups").delete().eq("id", String(b.id)).select("id,name");
+        if (error) throw error;
+        if (!data?.length) return fail("Group not found", 404);
+        await db.from("stock_events").insert({ actor, action: "group_deleted", details: { group_id: data[0].id, name: data[0].name } });
+        return json({ ok: true });
+      }
+      return fail("Unknown route", 404);
     }
     if (req.method === "POST" && path[0] === "resolve") {
       const b = await readBody(req);

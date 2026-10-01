@@ -1159,3 +1159,22 @@ html.rtl .tr-go{transform:scaleX(-1)}
 .rc-card-total b{color:var(--ink)}
 .tr-chip.done{background:rgba(20,56,44,.1);color:var(--deep)}
 .rc-card .meta{font-size:12.5px;color:var(--ink-soft);font-weight:500;margin-top:3px}
+/* Stock: item groups row (Veggies, Desserts...) and the groups editor */
+.st-actions{display:flex;gap:8px}
+.st-actions .btn-primary{flex:1}
+.st-actions .st-ask{flex:0 0 auto;padding:0 16px}
+.st-groups{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:-2px 0 12px;padding:2px 1px}
+.st-groups::-webkit-scrollbar{display:none}
+.st-group-pill{flex:0 0 auto;height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:inherit;font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:background-color 220ms ease,color 220ms ease,border-color 220ms ease}
+.st-group-pill small{opacity:.6;font-weight:700}
+.st-group-pill.active{background:var(--deep);border-color:var(--deep);color:#fff}
+.st-group-manage{border-style:dashed;opacity:.85}
+.st-gm-row{width:100%;text-align:start;background:none;border:0;color:inherit;font:inherit}
+.st-gm-search{margin:4px 0 8px}
+.st-gm-only{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:0 0 6px}
+.st-gm-list{max-height:min(46vh,380px);overflow:auto;border:1px solid var(--line);border-radius:14px;padding:4px}
+.st-gm-item{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:10px;font-size:14px}
+.st-gm-item input{width:18px;height:18px;flex:0 0 auto;accent-color:var(--accent)}
+.st-gm-delete{margin-top:10px;width:100%;color:#C2413B}
+.rico-card-line.rico-line-out span{text-decoration:line-through;opacity:.6}
+.rico-open small{opacity:.7;font-weight:600;margin-inline-start:4px}
