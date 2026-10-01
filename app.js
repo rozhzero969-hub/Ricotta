@@ -2219,6 +2219,7 @@ function renderItemsAdmin(){
       <button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
       <button class="btn btn-ghost" data-gorecord="item">${NAV_ICONS.record} ${t('record')}</button>
     </div>
+    ${state.views.includes('stock') ? '<div id="ijList"></div>' : ''}
     ${state.views.includes('stock') && state.items.length ? itemsAdminHeaderHtml() : ''}
     <div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${itemsAdminListHtml()}</div>`;
 }
@@ -2475,6 +2476,7 @@ function bindItemRows(root){
 }
 function attachItemEvents(){
   document.getElementById('itemAddBtn').onclick = ()=> openItemModal(null);
+  if(state.views.includes('stock')) ijMount();
   const list = document.getElementById('itemsAdminList');
   bindItemRows(list);
   // Filter chips and search only replace the list, so typing never loses focus.

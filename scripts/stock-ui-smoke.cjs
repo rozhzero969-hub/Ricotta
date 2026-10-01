@@ -23,7 +23,7 @@ function fixture(){
   const stock={
     control:{workerOnline:false,launcherOnline:true,startRequestedAt:null,startHandledAt:null},
     storages:['Main Storage','Minibar','Pizza'],
-    settings:[{itemId:'i1',countingUnit:'ctn',perBuying:null,lowStock:2,workplaceName:'Coca-Cola 330'},{itemId:'i2',countingUnit:'pc',perBuying:12,lowStock:100},{itemId:'i3',countingUnit:'ctn',perBuying:null,lowStock:null}],
+    settings:[{itemId:'i1',countingUnit:'ctn',perBuying:null,lowStock:2,workplaceName:'Coca-Cola 330'},{itemId:'i2',countingUnit:'pc',perBuying:12,lowStock:100,usageUnit:'pc'},{itemId:'i3',countingUnit:'ctn',perBuying:null,lowStock:null}],
     balances:[{itemId:'i1',storage:'Main Storage',quantity:5},{itemId:'i2',storage:'Main Storage',quantity:20}],
     counts:[{id:'c1',itemId:'i1',itemName:'Coca Cola',storage:'Main Storage',unitLabel:'carton',quantity:5,prior:0,by:'rozha',countedAt:iso(600),enteredAt:iso(600),note:null}],
     requests:[
@@ -64,6 +64,9 @@ const server=http.createServer((rq,res)=>{
         else if(ep.startsWith('receipts/shot')) data={image:PIXEL};
         else if(ep==='receipts'&&rq.method()==='POST'){status=201;data={id:'r3'};}
         else if(ep==='receipts/final-approve'||ep==='receipts/resolve') data={ok:true};
+        else if(ep==='itemjobs'&&rq.method()==='GET') data={jobs:[{id:'j1',itemId:'i2',itemName:'Flour',kind:'edit',payload:{name:'Flour WP',fromName:'Flour',usage:'piece',buying:'box',counting:'piece'},status:'prepared',createdBy:'rozha',createdAt:iso(3),preparedAt:iso(2),hasShot:true}]};
+        else if(ep.startsWith('itemjobs/shot')) data={image:PIXEL};
+        else if(ep==='itemjobs'&&rq.method()==='POST'){status=201;data={id:'j2'};}
         else if(ep==='zones/add'){fx.stock.storages.push(body.name);}
         else if(ep==='zones/rename'){fx.stock.storages=fx.stock.storages.map(x=>x===body.from?body.to:x);}
         else if(ep==='zones/delete'){fx.stock.storages=fx.stock.storages.filter(x=>x!==body.name);}
@@ -308,6 +311,7 @@ const server=http.createServer((rq,res)=>{
     await page.locator('#modalFormOk').click();
     await page.waitForFunction(()=>document.querySelector('#modalFormStatus').textContent.trim().length>0);
     await page.fill('#mfPer','6');await page.fill('#mfLow','3');await page.fill('#mfWork','Tomato WP');
+    await page.selectOption('#mfUsage','box');assert.equal(await page.locator('#mfPerUsageBox').isVisible(),true,'recipe unit different from counting asks how many');await page.fill('#mfPerUsage','0.5');
     assert.match(await page.locator('#mfPerSummary').innerText(),/1 .* = 6 /);
     await page.selectOption('#mfCounting','box');
     assert.equal(await page.locator('#mfPerBox').isVisible(),false,'same unit hides the conversion again');
@@ -315,7 +319,18 @@ const server=http.createServer((rq,res)=>{
     await page.locator('#modalFormOk').click();
     await page.waitForFunction(()=>!document.querySelector('#mfName'));
     const settings=calls.filter(c=>c.ep.startsWith('settings/')).pop();
-    assert.deepEqual({ep:settings.ep,c:settings.body.countingUnit,p:settings.body.perBuying,l:settings.body.lowStock,w:settings.body.workplaceName},{ep:'settings/i0',c:'pc',p:'6',l:'3',w:'Tomato WP'});
+    assert.deepEqual({ep:settings.ep,c:settings.body.countingUnit,p:settings.body.perBuying,l:settings.body.lowStock,w:settings.body.workplaceName,u:settings.body.usageUnit,pu:settings.body.perCountingUsage},{ep:'settings/i0',c:'pc',p:'6',l:'3',w:'Tomato WP',u:'box',pu:'0.5'});
+    // Items screen: the PC's task list, and creating an item in the workplace from its saved setup.
+    await page.waitForSelector('#ijList .rc-card');
+    assert.match(await page.locator('#ijList').innerText(),/Tasks on the PC[\s\S]*Flour WP[\s\S]*Update in the workplace/,'item tasks are listed');
+    await page.waitForSelector('#ijList .tr-shot img');
+    assert.equal(await page.locator('[data-ijfinal="j1"]').isDisabled(),true,'no final approval while the PC is in test mode for items');
+    await page.locator('[data-itfilter="all"]').click();await page.locator('[data-edititem="i2"]').click();
+    await page.locator('[data-wpjob="create"]').click();
+    assert.match(await page.locator('.modal-box').last().innerText(),/Flour[\s\S]*piece[\s\S]*box/,'the confirmation shows what the PC will fill in');
+    await page.locator('#modalOkBtn').click();await page.waitForTimeout(300);
+    assert.deepEqual((({itemId,kind})=>({itemId,kind}))(calls.filter(c=>c.ep==='itemjobs'&&c.method==='POST').pop().body),{itemId:'i2',kind:'create'});
+    await page.locator('#modalFormCancel').click().catch(()=>{});await page.waitForFunction(()=>!document.querySelector('#mfName'));
 
     /* ---------- History filters ---------- */
     await go(page,'history');

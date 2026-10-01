@@ -25,3 +25,14 @@ Receipts are entered in the app (Receipts screen). Every item on a receipt must 
 4. Only when the workplace shows the exact `RECEIPT_SUCCESS_TEXT` is the receipt marked saved and the stock added to **Main Storage** in the app. Anything else after the press becomes **Needs checking**: a person looks in the workplace receipts and says in the app whether it was saved; only "saved" adds stock.
 
 Receipts are only saved with `ALLOW_SUBMIT=1` **and** `RECEIPT_SUCCESS_TEXT` set in `.env` (learned in a supervised first run). Until then the app shows the worker as test mode for receipts and the final approval stays off. If someone finishes or leaves a filled receipt on the PC by hand, it becomes Needs checking. If anything doesn't match exactly (an unknown item, supplier or unit, a unit with two different sizes, or a field changed after filling), it stops and clears the form. `scripts/receipt-worker-smoke.mjs` tests all of this against a local copy of the page.
+
+## Ingredients (add or edit in the workplace)
+
+In the app, open an item (Items screen) and fill in its stock fields, including the **recipe (usage) unit** and how many usage units are in one counting unit. Then press **Create in workplace** (new ingredient) or **Update in workplace** (an ingredient already there).
+
+1. The worker opens the workplace **Stock** page (`items.mjs`) in its own Edge tab. To add, it first makes sure no ingredient with that name exists. To edit, it finds the row by its exact workplace name and opens the pen.
+2. It fills in the name, usage unit (new ingredients only, because the workplace locks it once there is stock), buying and counting formats, the conversion boxes and the warning level. It reads everything back, sends a screenshot to the app and stops.
+3. Someone checks the screenshot and gives the **final approval** (within 20 minutes). The worker checks the whole form again and presses **Add ingredient** or **Save** once. It never retries.
+4. Only the exact `ITEM_ADD_SUCCESS_TEXT` or `ITEM_EDIT_SUCCESS_TEXT` counts as saved. Anything else becomes **Needs checking**, and a person confirms in the app whether it was saved.
+
+On an edit, the worker never changes the usage unit. If the app's usage unit differs from the workplace's, it stops. Ingredients are only saved with `ALLOW_SUBMIT=1` and both success texts set in `.env`. `scripts/items-worker-smoke.mjs` tests this against a local copy of the page.
