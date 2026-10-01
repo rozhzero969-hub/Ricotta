@@ -107,6 +107,11 @@ async function inspect(page,r){
   if(!Number.isFinite(workplace)||Math.abs(workplace-app)>tolerance)fail(`Stock mismatch for ${r.itemName}: workplace ${workplace}, app ${Math.round(app*1e6)/1e6} ${r.unitLabel}. Recount it in Stock, and check the unit conversion matches the workplace system.`);
   if(workplace<Number(r.quantity))fail(`Insufficient workplace stock for ${r.itemName}`);
   if(await rowsOnPage(page)!==1)fail('Unexpected number of form rows');
+  // The workplace now focuses the amount box as soon as an item is picked. Read the whole row back once more
+  // right before the button, so nothing typed or changed by that focus can slip through.
+  if(await row.getByRole('button',{name:r.itemName,exact:true}).count()!==1)fail('Selected item changed before submission');
+  if((await unitButton.innerText()).trim()!==r.unitLabel)fail('Selected unit changed before submission');
+  if(await row.getByRole('textbox',{name:'amount'}).count()!==1||Number(await amount.inputValue())!==Number(r.quantity))fail('Amount changed before submission');
   if(page.url()!==PAGE)fail('Workplace page changed before submission');
   if((await page.getByRole('button',{name:'From storage',exact:true}).innerText()).trim()!==r.from ||
     (await page.getByRole('button',{name:'To storage',exact:true}).innerText()).trim()!==r.to)
