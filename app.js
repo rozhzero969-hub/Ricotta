@@ -474,6 +474,11 @@ function render(){
   // and the language stay the same.
   const shellKey = [state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
   const keepShell = app.dataset.shell === shellKey && app.querySelector('.content');
+  // Redrawing the same screen keeps your place: lists refill a moment later, and without this the page
+  // would shrink for that moment and snap to the top (very visible on a phone with the keyboard up).
+  const sameView = keepShell && app.dataset.screen === state.view;
+  const box0 = scrollBox(), keepTop = sameView ? box0.scrollTop : null;
+  if(sameView) app.querySelector('.content').style.minHeight = app.querySelector('.content').scrollHeight + 'px';
   if(keepShell){
     app.querySelector('.content').innerHTML = content;
     const stack = app.querySelector('.bottom-stack');
@@ -496,6 +501,11 @@ function render(){
   updateStockBadges();
   placeNavIndicator();
   enhanceSegments();
+  enhanceSelects();
+  if(keepTop !== null){
+    const box = scrollBox(); box.scrollTop = keepTop;
+    requestAnimationFrame(()=>{ app.querySelector('.content')?.style.removeProperty('min-height'); box.scrollTop = keepTop; });
+  }
   updateTopbar();
   syncInstallPrompt();
 }
@@ -928,16 +938,85 @@ const TEXT_ENTRY = 'input:not([type=checkbox]):not([type=radio]):not([type=range
   document.addEventListener('focusout', ()=>setTimeout(()=>typing(!!document.activeElement?.matches?.(TEXT_ENTRY)), 60));
   const vv = window.visualViewport;
   if(!vv) return;
+  // The keyboard opening fires a burst of viewport events. Following each one made the whole app shake,
+  // so the frame is resized once the burst settles, and the field is brought into sight only if it is hidden.
+  let fitTimer = 0, lastH = 0;
   const fit = ()=>{
     const root = document.documentElement.style;
     root.setProperty('--vv-top', vv.offsetTop + 'px');
     root.setProperty('--vv-height', vv.height + 'px');
-    // In the app frame the field being typed in stays in sight as it shrinks.
+    const resized = Math.abs(vv.height - lastH) > 40; lastH = vv.height;
     const field = document.activeElement;
-    if(inAppFrame() && field?.matches?.(TEXT_ENTRY) && field.closest('.content')) requestAnimationFrame(()=>field.scrollIntoView({block:'nearest'}));
+    if(!resized || !inAppFrame() || !field?.matches?.(TEXT_ENTRY) || !field.closest('.content')) return;
+    requestAnimationFrame(()=>{
+      const r = field.getBoundingClientRect(), box = scrollBox().getBoundingClientRect();
+      if(r.top < box.top + 8 || r.bottom > box.bottom - 8) field.scrollIntoView({block:'center'});
+    });
   };
-  vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
+  const settle = ()=>{ clearTimeout(fitTimer); fitTimer = setTimeout(fit, 90); };
+  vv.addEventListener('resize', settle); vv.addEventListener('scroll', settle); fit();
 })();
+
+/* Our own list for every dropdown: the select stays (it holds the value and fires 'change', so forms and
+   tests work as before) but is hidden under a button that opens a sheet from the bottom, with search when long.
+   A select can opt out with data-native. */
+function selLabel(sel){ const o = sel.options[sel.selectedIndex]; return o ? o.textContent : ''; }
+function selSync(sel){ const b = sel._selBtn; if(!b) return; b.querySelector('span').textContent = selLabel(sel); b.classList.toggle('placeholder', !sel.value); b.disabled = sel.disabled; }
+function enhanceSelects(root = document){
+  root.querySelectorAll('select:not([data-native]):not(.sel-native)').forEach(sel=>{
+    sel.classList.add('sel-native'); sel.tabIndex = -1; sel.setAttribute('aria-hidden', 'true');
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'sel-btn';
+    btn.innerHTML = '<span dir="auto"></span><i aria-hidden="true"></i>';
+    if(sel.id){ btn.id = sel.id + 'Btn'; document.querySelector(`label[for="${CSS.escape(sel.id)}"]`)?.setAttribute('for', btn.id); }
+    if(sel.getAttribute('aria-label')) btn.setAttribute('aria-label', sel.getAttribute('aria-label'));
+    sel._selBtn = btn; sel.after(btn);
+    btn.addEventListener('pointerdown', e=>{ if(document.activeElement?.matches?.('input,textarea')) e.preventDefault(); });
+    btn.onclick = ()=>openSelSheet(sel);
+    sel.addEventListener('change', ()=>selSync(sel));
+    new MutationObserver(()=>selSync(sel)).observe(sel, {childList:true, subtree:true, attributes:true, attributeFilter:['disabled']});
+    selSync(sel);
+  });
+}
+function selTitle(sel){
+  const lab = sel._selBtn?.id && document.querySelector(`label[for="${CSS.escape(sel._selBtn.id)}"]`);
+  return (lab?.textContent || sel.closest('.field')?.querySelector('label')?.textContent || sel.getAttribute('aria-label') || '').trim();
+}
+function openSelSheet(sel){
+  document.getElementById('selSheet')?.remove();
+  document.activeElement?.blur?.();   // close the keyboard first, so the sheet has the screen
+  const opts = [...sel.options].filter(o=>!o.disabled || o.selected).map(o=>({value:o.value, label:o.textContent, on:o.selected}));
+  const long = opts.length > 9;
+  const wrap = document.createElement('div');
+  wrap.id = 'selSheet'; wrap.className = 'sel-sheet';
+  wrap.innerHTML = `<div class="sel-scrim"></div><div class="sel-panel" role="dialog" aria-modal="true" aria-label="${esc(selTitle(sel))}">
+    <div class="sel-grab"></div><div class="sel-title">${esc(selTitle(sel))}</div>
+    ${long ? `<div class="search-wrap sel-search">${ICON_SEARCH}<input class="search-input" type="search" autocomplete="off" placeholder="${esc(t('searchPlaceholder'))}"></div>` : ''}
+    <div class="sel-list" role="listbox"></div></div>`;
+  document.body.appendChild(wrap);
+  const list = wrap.querySelector('.sel-list');
+  const paint = q=>{
+    const tokens = String(q || '').toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    const shown = opts.filter(o=>tokens.every(x=>o.label.toLocaleLowerCase().includes(x)));
+    list.innerHTML = shown.length ? shown.map(o=>`<button type="button" class="sel-opt${o.on ? ' on' : ''}${o.value === '' ? ' none' : ''}" role="option" aria-selected="${o.on}" data-v="${esc(o.value)}"><span dir="auto">${esc(o.label)}</span>${o.on ? '<b aria-hidden="true">✓</b>' : ''}</button>`).join('')
+      : `<div class="field-hint">${esc(t('trNoMatch'))}</div>`;
+  };
+  paint('');
+  const close = ()=>{ wrap.classList.add('out'); setTimeout(()=>wrap.remove(), 220); document.removeEventListener('keydown', onKey); sel._selBtn?.focus({preventScroll:true}); };
+  const onKey = e=>{ if(e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  wrap.querySelector('.sel-scrim').onclick = close;
+  wrap.querySelector('.sel-search input')?.addEventListener('input', e=>paint(e.target.value));
+  list.onclick = e=>{
+    const b = e.target.closest('[data-v]'); if(!b) return;
+    if(sel.value !== b.dataset.v){ sel.value = b.dataset.v; sel.dispatchEvent(new Event('input', {bubbles:true})); sel.dispatchEvent(new Event('change', {bubbles:true})); }
+    selSync(sel); close();
+  };
+  requestAnimationFrame(()=>list.querySelector('.on')?.scrollIntoView({block:'center'}));
+}
+// Dropdowns drawn after the page (modals, lines added to a receipt) get the same list.
+new MutationObserver(muts=>{ if(muts.some(m=>[...m.addedNodes].some(n=>n.nodeType === 1 && (n.matches('select') || n.querySelector('select'))))) enhanceSelects(); })
+  .observe(document.documentElement, {childList:true, subtree:true});
 
 /* The top bar gains depth once the page scrolls under it, and (like an iOS
    large title) the ricotta mark gives way to the screen's name. */
