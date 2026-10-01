@@ -14,3 +14,5 @@ worker/browser-profile/
 worker/screenshots/
 worker/worker.lock
 .lint-all.js
+worker/launcher.lock
+worker/launcher.log
