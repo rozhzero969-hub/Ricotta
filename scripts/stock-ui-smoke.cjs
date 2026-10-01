@@ -58,10 +58,12 @@ const server=http.createServer((rq,res)=>{
         else if((ep==='counts'||ep==='counts-bulk')&&body.pin!=='123456'){status=403;data={error:'wrong_pin'};}
         else if(ep==='counts-bulk'){status=201;data={saved:body.lines.map(l=>l.itemId),failed:[]};}
         else if(ep==='receipts'&&rq.method()==='GET') data={receipts:[
-          {id:'r1',supplierName:'Supplier',invoice:'777',currency:'IQD',rate:null,delivery:null,lines:[{appName:'Coca Cola',unitLabel:'carton',qty:2,cost:5000}],status:'prepared',message:null,createdBy:'rozha',createdAt:iso(5),hasShot:true},
-          {id:'r2',supplierName:'Supplier',invoice:'778',currency:'USD',rate:1500,delivery:5,lines:[{appName:'Milk',unitLabel:'carton',qty:1,cost:3}],status:'waiting',message:null,createdBy:'yunis',createdAt:iso(2),hasShot:false}]};
+          {id:'r1',supplierName:'Supplier',invoice:'777',currency:'IQD',rate:null,delivery:null,lines:[{appName:'Coca Cola',unitLabel:'carton',qty:2,cost:5000}],status:'prepared',message:null,createdBy:'rozha',createdAt:iso(5),preparedAt:iso(2),hasShot:true},
+          {id:'r2',supplierName:'Supplier',invoice:'778',currency:'USD',rate:1500,delivery:5,lines:[{appName:'Milk',unitLabel:'carton',qty:1,cost:3}],status:'waiting',message:null,createdBy:'yunis',createdAt:iso(2),hasShot:false},
+          {id:'r4',supplierName:'Supplier',invoice:'779',currency:'IQD',rate:null,delivery:null,lines:[{appName:'Flour',unitLabel:'box',qty:1,cost:9000}],status:'needs_checking',message:'Pressed, but the success message did not appear',createdBy:'rozha',createdAt:iso(9),hasShot:false}]};
         else if(ep.startsWith('receipts/shot')) data={image:PIXEL};
         else if(ep==='receipts'&&rq.method()==='POST'){status=201;data={id:'r3'};}
+        else if(ep==='receipts/final-approve'||ep==='receipts/resolve') data={ok:true};
         else if(ep==='zones/add'){fx.stock.storages.push(body.name);}
         else if(ep==='zones/rename'){fx.stock.storages=fx.stock.storages.map(x=>x===body.from?body.to:x);}
         else if(ep==='zones/delete'){fx.stock.storages=fx.stock.storages.filter(x=>x!==body.name);}
@@ -227,11 +229,26 @@ const server=http.createServer((rq,res)=>{
     /* ---------- Receipts: entered on the phone, filled in by the PC, accepted at the PC ---------- */
     await go(page,'receipts');
     await page.waitForSelector('.rc-card');
-    assert.equal(await page.locator('.rc-card').count(),2,'recent receipts are listed');
-    assert.match(await page.locator('.rc-card').first().innerText(),/Ready on the PC[\s\S]*Receive & send to finance/,'a prepared receipt says it waits for a person at the PC');
+    assert.equal(await page.locator('.rc-card').count(),3,'recent receipts are listed');
+    assert.match(await page.locator('.rc-card').first().innerText(),/Ready on the PC[\s\S]*final approval/,'a filled-in receipt waits for the final approval');
     assert.equal(await page.locator('[data-rccancel="r2"]').count(),1,'a waiting receipt can be cancelled');
-    assert.equal(await page.locator('[data-rccancel="r1"]').count(),0,'a receipt already on the PC cannot be cancelled from the phone');
-    await page.locator('[data-rcshot="r1"]').click();await page.waitForSelector('.rc-card .tr-shot img');
+    assert.equal(await page.locator('[data-rccancel="r1"]').count(),1,'a filled-in receipt can be cancelled before the final approval');
+    await page.waitForSelector('.rc-card .tr-shot img');   // its screenshot loads by itself
+    assert.equal(await page.locator('[data-rcfinal="r1"]').isDisabled(),true,'no final approval while the PC is in test mode for receipts');
+    assert.match(await page.locator('.rc-card').first().innerText(),/test mode/i);
+    await page.evaluate(()=>{stockState.control={...stockState.control,workerOnline:true,workerLive:true,workerReceiptsLive:true,workerPageReady:true};document.getElementById('rcList').dataset.sig='';rcPaintList();});
+    assert.equal(await page.locator('[data-rcfinal="r1"]').isEnabled(),true,'final approval once the PC can save receipts');
+    await page.locator('[data-rcfinal="r1"]').click();
+    assert.match(await page.locator('.modal-box').innerText(),/777[\s\S]*Coca Cola[\s\S]*IQD 10,000[\s\S]*presses Receive & send to finance once/,'the final confirmation lists the receipt');
+    await page.locator('#modalOkBtn').click();await page.waitForTimeout(300);
+    assert.equal(calls.filter(c=>c.ep==='receipts/final-approve').pop()?.body.id,'r1');
+    // A receipt that needs checking: a person says whether it was saved, with a note.
+    await page.locator('[data-rcresolve="r4"]').click();
+    await page.selectOption('#rcsSaved','no');await page.fill('#rcsNote','short');await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>document.querySelector('#modalFormStatus').textContent.trim().length>0);
+    await page.fill('#rcsNote','Checked the workplace list: invoice 779 is not there');await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>!document.querySelector('#rcsNote'));
+    assert.deepEqual(calls.filter(c=>c.ep==='receipts/resolve').pop()?.body,{id:'r4',saved:false,note:'Checked the workplace list: invoice 779 is not there'});
     await page.locator('#rcSend').click();
     assert.equal(await page.locator('.modal-box').count(),0,'an incomplete receipt is not sent');
     await page.selectOption('#rcSup','s0');await page.fill('#rcInv','INV-55');

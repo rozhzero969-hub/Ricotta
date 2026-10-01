@@ -6,7 +6,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prepareReceipt, RECEIPT_PAGE } from './receipt.mjs';
+import { prepareReceipt, submitReceipt, RECEIPT_PAGE } from './receipt.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const PAGE='https://pos.shaydattendance.com/inventory/transfer';
@@ -14,6 +14,10 @@ const API='https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/stock-api';
 const TOKEN=process.env.WORKER_TOKEN||'';
 const LIVE=process.env.ALLOW_SUBMIT==='1';
 const SUCCESS=(process.env.CONFIRMED_SUCCESS_TEXT||'').trim();
+// Receipts are saved only with ALLOW_SUBMIT=1 and the exact success message the workplace shows after
+// "Receive & send to finance", learned during a supervised first run.
+const RECEIPT_SUCCESS=(process.env.RECEIPT_SUCCESS_TEXT||'').trim();
+const RECEIPTS_LIVE=LIVE&&!!RECEIPT_SUCCESS;
 const POLL=Math.max(5,Number(process.env.POLL_SECONDS)||5)*1000;
 if(TOKEN.length<32)throw new Error('Set WORKER_TOKEN in worker/.env');
 if(LIVE&&!SUCCESS)throw new Error('Live submission requires CONFIRMED_SUCCESS_TEXT');
@@ -124,7 +128,7 @@ let lastPageReady=null, lastRecovery=0, lastBeat=0;
 // Health for the app: running, live or checks only, and whether the workplace transfer page is ready.
 async function heartbeat(pageReady){
   if(Date.now()-lastBeat<30000)return; lastBeat=Date.now();
-  try{await api('worker/heartbeat','POST',{live:LIVE,pageReady,note:pageReady?'':'Workplace transfer page is not open or not signed in'})}catch{}
+  try{await api('worker/heartbeat','POST',{live:LIVE,receiptsLive:RECEIPTS_LIVE,pageReady,note:pageReady?'':'Workplace transfer page is not open or not signed in'})}catch{}
 }
 // A small JPEG of what the PC sees, sent to the phone so a person can confirm what was selected.
 async function jpeg(){
@@ -166,20 +170,38 @@ async function preview(r){
 }
 // Receipts get their own tab, so transfers keep working in the first one. The worker fills the
 // receipt and leaves the tab for a person; it never presses "Receive & send to finance".
-let rPage=null, heldReceipt=null;
+let rPage=null, held=null;   // held: the receipt filled in and left open on the PC
 async function receiptShot(){
   if(!rPage||rPage.isClosed())return undefined;
   for(const quality of [50,30]){try{const b=(await rPage.screenshot({type:'jpeg',quality,fullPage:true})).toString('base64');if(b.length<=560000)return b}catch{return undefined}}
   return undefined;
 }
+async function resetReceiptTab(){if(rPage&&!rPage.isClosed())await rPage.goto(RECEIPT_PAGE,{waitUntil:'domcontentloaded'}).catch(()=>{})}
 async function receiptTurn(){
-  // A prepared receipt stays open until a person submits it or leaves the page; only then is the next one filled.
-  if(heldReceipt){
-    const gone=!rPage||rPage.isClosed()||!rPage.url().startsWith(RECEIPT_PAGE);
-    if(!gone)return;
-    const id=heldReceipt; heldReceipt=null;
-    await api('worker/receipt-report','POST',{id,status:'closed',message:'The receipt tab on the PC was submitted or left. Check it in the workplace system.',image:await receiptShot()}).catch(e=>console.error('Could not report receipt:',e.message));
-    console.log('Receipt finished on the PC:',id);
+  if(held){
+    const r=held, st=await api('worker/receipt-held','POST',{id:r.id});
+    if(st.status==='cancelled'){held=null;await resetReceiptTab();console.log('Receipt cancelled from the app; form cleared:',r.id);return}
+    // Finished or left on the PC by a person: a person confirms in the app whether it was saved.
+    const open=rPage&&!rPage.isClosed()&&rPage.url().startsWith(RECEIPT_PAGE)&&await rPage.getByRole('button',{name:'Receive & send to finance',exact:true}).isVisible().catch(()=>false);
+    if(!open){
+      held=null;
+      await api('worker/receipt-report','POST',{id:r.id,status:'closed',message:'The receipt was finished or left on the PC without the app. Check the workplace receipts and confirm in the app.',image:await receiptShot()}).catch(e=>console.error('Could not report receipt:',e.message));
+      return;
+    }
+    if(st.status!=='prepared'||!st.finalApproved||!RECEIPTS_LIVE)return;
+    if(!(await api('worker/receipt-submit-claim','POST',{id:r.id})).ok)return;
+    held=null; let pressed=false;
+    try{
+      await rPage.bringToFront().catch(()=>{});
+      await submitReceipt(rPage,r,RECEIPT_SUCCESS,()=>{pressed=true});
+      await api('worker/receipt-finish','POST',{id:r.id,status:'completed',message:'Confirmed workplace success: '+RECEIPT_SUCCESS,image:await receiptShot()});
+      console.log('Receipt saved in the workplace:',r.id);
+    }catch(e){
+      console.error('Receipt stopped:',r.id,e.message);
+      // After the press nothing is retried: a person checks the workplace and confirms in the app.
+      await api('worker/receipt-finish','POST',{id:r.id,status:pressed?'needs_checking':'failed',message:e.message,image:await receiptShot()}).catch(err=>console.error('Could not report receipt; it will need checking:',err.message));
+    }
+    if(!pressed)await resetReceiptTab();
     return;
   }
   const r=(await api('worker/receipt-claim','POST',{})).receipt;
@@ -189,14 +211,14 @@ async function receiptTurn(){
     if(!rPage||rPage.isClosed())rPage=await context.newPage();
     await prepareReceipt(rPage,r);
     await rPage.bringToFront().catch(()=>{});
-    await api('worker/receipt-report','POST',{id:r.id,status:'prepared',message:'Filled in on the PC. A person must check it there and press "Receive & send to finance".',image:await receiptShot()});
-    heldReceipt=r.id;
-    console.log('Receipt ready on the PC for a person to check and accept:',r.id);
+    held=r;
+    await api('worker/receipt-report','POST',{id:r.id,status:'prepared',message:'Filled in on the PC and checked. Waiting for the final approval in the app.',image:await receiptShot()});
+    console.log('Receipt filled in and waiting for the final approval:',r.id);
   }catch(e){
+    held=null;
     console.error('Receipt stopped:',r.id,e.message);
     const image=await receiptShot();
-    // Leave nothing half-filled behind: go back to an empty receipt form.
-    if(rPage&&!rPage.isClosed())await rPage.goto(RECEIPT_PAGE,{waitUntil:'domcontentloaded'}).catch(()=>{});
+    await resetReceiptTab();
     await api('worker/receipt-report','POST',{id:r.id,status:'failed',message:e.message,image}).catch(err=>console.error('Could not report receipt:',err.message));
   }
 }

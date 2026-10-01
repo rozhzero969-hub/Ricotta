@@ -924,7 +924,9 @@ function rcPaintResults(i){
   const l = rcState.lines[i], tokens = stTokens(l.search);
   if(!tokens.length){ box.innerHTML = ''; return; }
   const hits = state.items.filter(it => stMatches(it, tokens)).sort((a, b) => nameCollator().compare(a.name, b.name)).slice(0, 8);
-  box.innerHTML = hits.length ? hits.map(it => `<button type="button" class="list-row tappable tr-result" data-rcpick="${i}" data-id="${esc(it.id)}"><div><div class="name" dir="auto">${esc(it.name)}</div><div class="meta">${esc(unitLabel(it.unit))}</div></div></button>`).join('') : `<div class="field-hint">${esc(t('trNoMatch'))}</div>`;
+  box.innerHTML = hits.length ? hits.map(it => stReady(it)
+    ? `<button type="button" class="list-row tappable tr-result" data-rcpick="${i}" data-id="${esc(it.id)}"><div><div class="name" dir="auto">${esc(it.name)}</div><div class="meta">${esc(unitLabel(it.unit))}</div></div></button>`
+    : `<button type="button" class="list-row tappable tr-result todo" data-rcsetup="${esc(it.id)}"><div><div class="name" dir="auto">${esc(it.name)}</div><div class="meta">${esc(t('trTapToSetUp'))}</div></div><span class="it-chip todo">${esc(t('itBadgeTodo'))}</span></button>`).join('') : `<div class="field-hint">${esc(t('trNoMatch'))}</div>`;
 }
 function rcPaintLines(){
   const box = document.getElementById('rcLines'); if(!box) return;
@@ -971,8 +973,19 @@ async function rcSend(){
   toast(t('rcSent')); render(); rcLoad();
 }
 function rcStatus(x){
-  return {waiting: [t('rcStWaiting'), 'wait'], preparing: [t('rcStPreparing'), 'run'], prepared: [t('rcStPrepared'), 'ok'], closed: [t('rcStClosed'), 'done'],
-    failed: [t('rcStFailed'), 'bad'], cancelled: [t('rcStCancelled'), 'off']}[x.status] || [x.status, 'off'];
+  if(x.status === 'prepared' && x.finalApprovedAt) return [t('rcStApproved'), 'ready'];
+  return {waiting: [t('rcStWaiting'), 'wait'], preparing: [t('rcStPreparing'), 'run'], prepared: [t('rcStPrepared'), 'wait'], submitting: [t('rcStSubmitting'), 'run'],
+    completed: [t('rcStCompleted'), 'ok'], needs_checking: [t('rcStNeeds'), 'bad'], closed: [t('rcStNeeds'), 'bad'],
+    failed: [t('rcStFailed'), 'off'], cancelled: [t('rcStCancelled'), 'off']}[x.status] || [x.status, 'off'];
+}
+/* Final approval: only for a filled-in receipt whose screenshot you have seen, within 20 minutes, with the PC set up to save receipts. */
+function rcFinalButtonHtml(x, shot){
+  if(x.status !== 'prepared' || x.finalApprovedAt) return '';
+  const c = stockState.control || {};
+  const live = c.workerOnline && c.workerReceiptsLive === true && c.workerPageReady !== false;
+  const fresh = x.preparedAt && Date.now() - Date.parse(x.preparedAt) < 20 * 60 * 1000;
+  const why = !shot ? t('rcFinalNeedShot') : !fresh ? t('rcFinalStale') : !live ? t('rcFinalNotLive') : '';
+  return `<button type="button" class="btn btn-primary tr-wide" data-rcfinal="${esc(x.id)}" ${why ? 'disabled' : ''}>${esc(t('rcFinal'))}</button>${why ? `<div class="field-hint">${esc(why)}</div>` : ''}`;
 }
 function rcCardHtml(x){
   const [label, cls] = rcStatus(x);
@@ -981,10 +994,14 @@ function rcCardHtml(x){
   return `<article class="tr-req glass rc-card s-${esc(x.status)}"><div class="tr-req-top"><div><div class="tr-req-name" dir="auto">${esc(x.supplierName)}</div><div class="meta">${esc(t('rcInvoice'))}: ${esc(x.invoice)} · ${esc(fmtDateTime(x.createdAt))}</div></div><span class="tr-chip ${cls}">${esc(label)}</span></div>
     <div class="rc-card-lines">${(x.lines || []).map(l => `<div dir="auto">${esc(l.appName)} — ${esc(fmtQty(l.qty))} ${esc(l.unitLabel)} × ${esc(rcMoney(l.cost, x.currency))}</div>`).join('')}</div>
     <div class="rc-card-total">${esc(t('rcTotal'))}: <b>${esc(rcMoney(total, x.currency))}</b>${x.delivery ? ` · ${esc(t('rcDelivery'))} ${esc(rcMoney(x.delivery, x.currency))}` : ''}${x.currency === 'USD' ? ` · 1 USD = ${esc(fmtQty(x.rate))} IQD` : ''}</div>
-    ${x.status === 'prepared' ? `<div class="tr-pc"><b>${esc(t('rcPcNow'))}</b></div>` : ''}
-    ${x.message && x.status !== 'prepared' ? `<div class="tr-pc">${esc(x.message)}</div>` : ''}
+    ${x.status === 'prepared' && !x.finalApprovedAt ? `<div class="tr-pc"><b>${esc(t('rcPcNow'))}</b></div>` : ''}
+    ${x.status === 'completed' ? `<div class="tr-pc"><b>${esc(x.stockAddedAt ? t('rcStockAdded') : t('rcStCompleted'))}</b></div>` : ''}
+    ${x.message && !['prepared', 'completed'].includes(x.status) ? `<div class="tr-pc">${esc(x.message)}</div>` : ''}
+    ${x.resolvedNote ? `<div class="tr-pc">${esc(x.resolvedNote)}</div>` : ''}
     ${shot ? `<figure class="tr-shot"><img src="${esc(shot)}" alt="${esc(t('trShotLabel'))}"></figure>` : x.hasShot ? `<button type="button" class="btn btn-ghost" data-rcshot="${esc(x.id)}">${esc(t('rcShowShot'))}</button>` : ''}
-    ${['waiting', 'failed'].includes(x.status) ? `<div class="tr-btn-row"><button type="button" class="btn btn-danger" data-rccancel="${esc(x.id)}">${esc(t('rcCancel'))}</button></div>` : ''}</article>`;
+    ${rcFinalButtonHtml(x, shot)}
+    ${['needs_checking', 'closed'].includes(x.status) ? `<button type="button" class="btn btn-primary tr-wide" data-rcresolve="${esc(x.id)}">${esc(t('trCheckResult'))}</button>` : ''}
+    ${['waiting', 'failed'].includes(x.status) || (x.status === 'prepared' && (!x.finalApprovedAt || Date.now() - Date.parse(x.finalApprovedAt) > 30 * 60 * 1000)) ? `<div class="tr-btn-row"><button type="button" class="btn btn-danger" data-rccancel="${esc(x.id)}">${esc(t('rcCancel'))}</button></div>` : ''}</article>`;
 }
 function rcPaintList(){
   const box = document.getElementById('rcList'); if(!box) return;
@@ -997,6 +1014,25 @@ function rcPaintList(){
     const r = await stockApi('receipts/shot?id=' + encodeURIComponent(b.dataset.rcshot));
     if(r.ok && r.data.image){ rcData.shots[b.dataset.rcshot] = r.data.image; rcPaintList(); } else { b.disabled = false; toast(t('saveFailed'), 'error'); }
   });
+  // A filled-in receipt shows its screenshot straight away, so it can be checked before the final approval.
+  list.filter(x => x.status === 'prepared' && x.hasShot && !rcData.shots[x.id] && !rcData.loadingShot?.[x.id]).forEach(async x => {
+    rcData.loadingShot = rcData.loadingShot || {}; rcData.loadingShot[x.id] = true;
+    const r = await stockApi('receipts/shot?id=' + encodeURIComponent(x.id));
+    rcData.loadingShot[x.id] = false;
+    if(r.ok && r.data.image){ rcData.shots[x.id] = r.data.image; rcPaintList(); }
+  });
+  box.querySelectorAll('[data-rcfinal]').forEach(b => b.onclick = async () => {
+    const x = rcData.list.find(y => y.id === b.dataset.rcfinal); if(!x) return;
+    const total = (x.lines || []).reduce((n, l) => n + l.qty * l.cost, 0);
+    const row = (k, v) => `<div class="tr-sum-row"><span>${esc(k)}</span><b dir="auto">${esc(v)}</b></div>`;
+    const html = `<div class="tr-sum">${row(t('supplier'), x.supplierName)}${row(t('rcInvoice'), x.invoice)}${(x.lines || []).map(l => row(l.appName, `${fmtQty(l.qty)} ${l.unitLabel} × ${rcMoney(l.cost, x.currency)}`)).join('')}${row(t('rcTotal'), rcMoney(total, x.currency))}</div><p>${esc(t('rcFinalConfirm'))}</p>`;
+    if(!(await showConfirm(html, {okLabel: t('rcFinal'), okClass: 'btn-primary'}))) return;
+    b.disabled = true;
+    const r = await stockApi('receipts/final-approve', {method: 'POST', body: {id: x.id}});
+    if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); b.disabled = false; return; }
+    toast(t('rcFinalDone')); rcLoad();
+  });
+  box.querySelectorAll('[data-rcresolve]').forEach(b => b.onclick = () => rcResolve(b.dataset.rcresolve));
   box.querySelectorAll('[data-rccancel]').forEach(b => b.onclick = async () => {
     if(!(await showConfirm(esc(t('rcCancelConfirm')), {okLabel: t('rcCancel')}))) return;
     const r = await stockApi('receipts/cancel', {method: 'POST', body: {id: b.dataset.rccancel}});
@@ -1023,9 +1059,11 @@ function attachReceiptsEvents(){
     else if(s.rccost !== undefined){ rcState.lines[+s.rccost].cost = e.target.value; rcPaintTotal(); }
   });
   // Picking a search result must not blur the search box first (that moves the page under the finger).
-  lines.addEventListener('pointerdown', e => { if(e.target.closest('[data-rcpick]')) e.preventDefault(); });
+  lines.addEventListener('pointerdown', e => { if(e.target.closest('[data-rcpick],[data-rcsetup]')) e.preventDefault(); });
   lines.addEventListener('click', e => {
     const pick = e.target.closest('[data-rcpick]'), unit = e.target.closest('[data-rcunit]'), change = e.target.closest('[data-rcchange]'), rm = e.target.closest('[data-rcremove]');
+    const setup = e.target.closest('[data-rcsetup]');
+    if(setup){ openItemModal(setup.dataset.rcsetup); return; }
     if(pick){ const l = rcState.lines[+pick.dataset.rcpick]; Object.assign(l, {itemId: pick.dataset.id, unit: 'buying', search: ''}); rcPaintLines(); document.querySelector(`[data-rcqty="${pick.dataset.rcpick}"]`)?.focus(); }
     else if(unit){ rcState.lines[+unit.dataset.rcunit].unit = unit.dataset.mode; rcPaintLines(); }
     else if(change){ Object.assign(rcState.lines[+change.dataset.rcchange], rcNewLine()); rcPaintLines(); document.querySelector(`[data-rcsearch="${change.dataset.rcchange}"]`)?.focus(); }
@@ -1036,4 +1074,24 @@ function attachReceiptsEvents(){
   rcPaintLines(); rcPaintList();
   if(Date.now() - rcData.at > 3000) rcLoad();
   stRefreshIfStale();
+}
+
+/* A receipt that needs checking: look in the workplace receipts, then say whether it was saved. Only "saved" adds stock. */
+function rcResolve(id){
+  const x = rcData.list.find(y => y.id === id); if(!x) return;
+  showFormModal({
+    title: esc(t('rcResolveTitle')),
+    banner: editingBanner(x.supplierName, `${t('rcInvoice')}: ${x.invoice}`),
+    bodyHtml: `<div class="notif-sub">${esc(t('rcResolveIntro'))}</div>
+      <div class="field"><select id="rcsSaved"><option value="">${esc(t('trResolveChoose'))}</option><option value="yes">${esc(t('rcResolveYes'))}</option><option value="no">${esc(t('rcResolveNo'))}</option></select></div>
+      <div class="field"><label>${esc(t('stNote'))}</label><input id="rcsNote" maxlength="900" autocomplete="off" placeholder="${esc(t('rcResolveNoteHint'))}"></div>`,
+    okLabel: t('save'),
+    onSubmit: async () => {
+      const v = document.getElementById('rcsSaved').value, note = document.getElementById('rcsNote').value.trim();
+      if(!v || note.length < 10) return {error: t('trResolveNeed')};
+      const r = await stockApi('receipts/resolve', {method: 'POST', body: {id, saved: v === 'yes', note}});
+      if(!r.ok) return {error: r.data?.error || t('saveFailed')};
+      await loadStock(); rcLoad(); render(); return {};
+    }
+  });
 }
