@@ -152,6 +152,21 @@ begin
     if nm is distinct from 'Flour WP' then raise exception 'Confirmed name not stored'; end if;
   end;
 
+  -- Item groups: unknown items dropped, duplicate names refused, delete keeps the items
+  declare g uuid; ids text[]; begin
+    g := stock_group_save(null,'Veggies',array['i1','nope','i1'],'rozha');
+    select item_ids into ids from stock_groups where id=g;
+    if ids <> array['i1'] then raise exception 'Group items not cleaned: %', ids; end if;
+    rejected:=false; begin perform stock_group_save(null,' veggies ',array['i1'],'yunis'); exception when others then rejected:=true; end;
+    if not rejected then raise exception 'Duplicate group name accepted'; end if;
+    rejected:=false; begin perform stock_group_save(null,'X',array['i1'],'nobody'); exception when others then rejected:=true; end;
+    if not rejected then raise exception 'Unknown actor accepted for a group'; end if;
+    perform stock_group_save(g,'Vegetables',array[]::text[],'yunis');
+    if (select name from stock_groups where id=g) <> 'Vegetables' then raise exception 'Group rename lost'; end if;
+    perform stock_group_delete(g,'rozha');
+    if exists(select 1 from stock_groups where id=g) or not exists(select 1 from app_items where id='i1') then raise exception 'Group delete wrong'; end if;
+  end;
+
   -- Screenshots older than 3 days are removed
   update stock_shots set taken_at=now()-interval '4 days' where request_id=rid;
   perform stock_cleanup();

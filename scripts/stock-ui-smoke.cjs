@@ -24,6 +24,7 @@ function fixture(){
     control:{workerOnline:false,launcherOnline:true,startRequestedAt:null,startHandledAt:null},
     storages:['Main Storage','Minibar','Pizza'],
     settings:[{itemId:'i1',countingUnit:'ctn',perBuying:null,lowStock:2,workplaceName:'Coca-Cola 330'},{itemId:'i2',countingUnit:'pc',perBuying:12,lowStock:100,usageUnit:'pc'},{itemId:'i3',countingUnit:'ctn',perBuying:null,lowStock:null}],
+    groups:[{id:'g1',name:'Drinks',itemIds:['i1','i3']}],
     balances:[{itemId:'i1',storage:'Main Storage',quantity:5},{itemId:'i2',storage:'Main Storage',quantity:20}],
     counts:[{id:'c1',itemId:'i1',itemName:'Coca Cola',storage:'Main Storage',unitLabel:'carton',quantity:5,prior:0,by:'rozha',countedAt:iso(600),enteredAt:iso(600),note:null}],
     requests:[
@@ -52,7 +53,7 @@ const server=http.createServer((rq,res)=>{
       let status=200,data={ok:true};
       if(fn==='stock-api'){
         calls.push({ep,method:rq.method(),body});
-        if(ep==='bootstrap') data={storages:fx.stock.storages,settings:fx.stock.settings,counts:fx.stock.counts,requests:fx.stock.requests,balances:fx.stock.balances,control:fx.stock.control};
+        if(ep==='bootstrap') data={groups:fx.stock.groups,storages:fx.stock.storages,settings:fx.stock.settings,counts:fx.stock.counts,requests:fx.stock.requests,balances:fx.stock.balances,control:fx.stock.control};
         else if(ep==='requests'&&rq.method()==='GET') data={requests:fx.stock.requests,balances:fx.stock.balances,control:fx.stock.control};
         else if(ep.startsWith('shots')) data={shots:[{kind:'check',image:PIXEL,takenAt:iso(1)}]};
         else if((ep==='counts'||ep==='counts-bulk')&&body.pin!=='123456'){status=403;data={error:'wrong_pin'};}
@@ -67,12 +68,27 @@ const server=http.createServer((rq,res)=>{
         else if(ep==='itemjobs'&&rq.method()==='GET') data={jobs:[{id:'j1',itemId:'i2',itemName:'Flour',kind:'edit',payload:{name:'Flour WP',fromName:'Flour',usage:'piece',buying:'box',counting:'piece'},status:'prepared',createdBy:'rozha',createdAt:iso(3),preparedAt:iso(2),hasShot:true}]};
         else if(ep.startsWith('itemjobs/shot')) data={image:PIXEL};
         else if(ep==='itemjobs'&&rq.method()==='POST'){status=201;data={id:'j2'};}
+        else if(ep==='groups/save'){
+          const g=body.id?fx.stock.groups.find(x=>x.id===body.id):null;
+          if(g) Object.assign(g,{name:body.name,itemIds:body.itemIds}); else fx.stock.groups.push({id:'g'+(fx.stock.groups.length+1),name:body.name,itemIds:body.itemIds});
+          data={ok:true,id:g?g.id:'g'+fx.stock.groups.length};
+        }
+        else if(ep==='groups/delete'){fx.stock.groups=fx.stock.groups.filter(x=>x.id!==body.id);}
+        else if(ep.startsWith('settings/')){const st=fx.stock.settings.find(x=>x.itemId===ep.split('/')[1]);if(st) Object.assign(st,{lowStock:body.lowStock===null?null:Number(body.lowStock),workplaceName:body.workplaceName||null});}
         else if(ep==='zones/add'){fx.stock.storages.push(body.name);}
         else if(ep==='zones/rename'){fx.stock.storages=fx.stock.storages.map(x=>x===body.from?body.to:x);}
         else if(ep==='zones/delete'){fx.stock.storages=fx.stock.storages.filter(x=>x!==body.name);}
         else if(ep==='requests') {status=201;data={id:'new'};}
       }else{
         apiCalls.push({ep,method:rq.method(),body});
+        if(ep==='assistant/chat'){
+          const events=[{type:'mood',mood:'happy'},{type:'text',text:'Here are the veggies.'},
+            {type:'proposal',proposal:{id:'p1',kind:'stock_group',action:'create',groupId:null,name:'Veggies',oldName:null,itemIds:['i0'],added:[{itemId:'i0',name:'Tomato'}],removed:[],total:1}},
+            {type:'proposal',proposal:{id:'p2',kind:'stock_settings',itemId:'i1',name:'Coca Cola',unit:'carton',before:{lowStock:2,workplaceName:'Coca-Cola 330'},lowStock:4}},
+            {type:'proposal',proposal:{id:'p3',kind:'open_stock',search:'cola',storage:'Main Storage',groupId:null,group:null,only:null,label:''}},
+            {type:'done'}];
+          return route.fulfill({status:200,contentType:'application/x-ndjson',body:events.map(e=>JSON.stringify(e)).join('\n')+'\n',headers:{'access-control-allow-origin':'*'}});
+        }
         if(ep==='bootstrap') data=fx.api(account);
         else if(ep==='devices') data=[];
         else if(ep==='assistant/inbox') data=[];
@@ -376,6 +392,54 @@ const server=http.createServer((rq,res)=>{
     assert.equal(await page.locator('#stTabsNext').isVisible(),true,'scroll arrows exist on a PC');
     await ctx.close();
 
+    /* ---------- Item groups on the Stock screen ---------- */
+    ({ctx,page,calls}=await open());
+    await go(page,'stock');
+    await page.locator('[data-stgroup="g1"]').click();
+    assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Coca Cola','Milk'],'a group filters the list');
+    await page.locator('[data-stgroup=""]').click();
+    assert.equal(await page.locator('#stList .name').count(),4,'All items shows everything again');
+    await page.locator('#stGroupsManage').click();
+    await page.locator('#modalFormOk').click();
+    await page.waitForSelector('#gmName');
+    await page.locator('#gmName').fill('Baking');
+    await page.locator('#gmList input[value="i2"]').check();
+    await page.locator('#gmSearch').fill('mil');
+    await page.locator('#gmList input[value="i3"]').check();
+    await page.locator('#gmSearch').fill('');
+    assert.equal(await page.locator('#gmList input[value="i2"]').isChecked(),true,'choices survive a search');
+    await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>!document.getElementById('gmName'));
+    assert.deepEqual(calls.filter(c=>c.ep==='groups/save').pop().body,{id:null,name:'Baking',itemIds:['i2','i3']});
+    assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Flour','Milk'],'the new group is selected');
+    // Delete it again from the editor
+    await page.locator('#stGroupsManage').click();
+    await page.locator('[data-gmedit="g2"]').click();
+    await page.waitForSelector('#gmDelete');
+    await page.locator('#gmDelete').click();
+    await page.locator('#modalOkBtn').click();
+    await page.waitForFunction(()=>!document.querySelector('[data-stgroup="g2"]'));
+    assert.equal(calls.filter(c=>c.ep==='groups/delete').pop().body.id,'g2');
+    /* Rico's stock cards: a group, a low-stock change and an "open filtered" button */
+    await page.locator('#stAskRico').click();
+    await page.waitForSelector('#ricoInput');
+    await page.locator('#ricoInput').fill('make a veggies filter');
+    await page.locator('#ricoSendBtn').click();
+    await page.waitForSelector('[data-rico-apply="1|p1"]');
+    if(process.env.SHOT){await page.screenshot({path:process.env.SHOT+'/rico-stock.png'});}
+    await page.locator('[data-rico-apply="1|p1"]').click();
+    await page.waitForFunction(()=>document.querySelector('[data-card="p1"]')?.classList.contains('applied'));
+    assert.deepEqual(calls.filter(c=>c.ep==='groups/save').pop().body,{id:null,name:'Veggies',itemIds:['i0']});
+    await page.locator('[data-rico-apply="1|p2"]').click();
+    await page.waitForFunction(()=>document.querySelector('[data-card="p2"]')?.classList.contains('applied'));
+    assert.deepEqual(calls.filter(c=>c.ep==='settings/i1').pop().body,{countingUnit:'ctn',perBuying:null,lowStock:4,workplaceName:'Coca-Cola 330'},'only the low stock level changes');
+    await page.locator('[data-rico-stock="1|p3"]').click();
+    await page.waitForSelector('#stList');
+    assert.equal(await page.locator('#stSearch').inputValue(),'cola');
+    assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Coca Cola'],'Rico opens the Stock screen filtered');
+    assert.equal(await page.locator('#stTabs .tab-pill.active').textContent().then(x=>x.startsWith('Main Storage')),true);
+    await ctx.close();
+
     /* ---------- Yunis has the same screens ---------- */
     ({ctx,page}=await open({account:'yunis'}));
     for(const v of ['transfers','stock']) assert.ok(await page.locator('.bottomnav [data-view="'+v+'"]').count(),'Yunis has '+v);
@@ -393,6 +457,6 @@ const server=http.createServer((rq,res)=>{
       await ctx.close();
     }
     assert.deepEqual(errors.filter(e=>!/pushManager/.test(e)),[],'no page errors');
-    console.log(JSON.stringify({result:'PASS',checks:'transfer flow and approval, final-approve gating, cancel, needs-checking alert, stock filters, recount PIN, item formats and conversion, history filters, both accounts, 3 languages at 3 widths'}));
+    console.log(JSON.stringify({result:'PASS',checks:'transfer flow and approval, final-approve gating, cancel, needs-checking alert, stock filters, item groups, Rico stock cards, recount PIN, item formats and conversion, history filters, both accounts, 3 languages at 3 widths'}));
   }finally{await browser.close();server.close();}
 })().catch(e=>{console.error(e);process.exit(1);});
