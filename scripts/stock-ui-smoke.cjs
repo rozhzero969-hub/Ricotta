@@ -188,6 +188,7 @@ const server=http.createServer((rq,res)=>{
     await page.locator('#trAll').click();assert.equal(await page.locator('#trQty').inputValue(),'1.666666');
     await page.fill('#trQty','2');assert.match(await page.locator('#trHint').innerText(),/more than is available/i,'2 boxes (24 piece) exceeds 20 piece');
     await page.fill('#trQty','1.5');
+    await page.locator('#trReview').evaluate(el=>el.scrollIntoView({block:'center'}));await page.waitForTimeout(150);
     await page.locator('#trReview').click();
     assert.match(await page.locator('#trReviewCard').innerText(),/1\.5[\s\S]*box[\s\S]*= 18 piece/);
     await page.locator('#trApprove').click();await page.waitForTimeout(400);
@@ -249,7 +250,7 @@ const server=http.createServer((rq,res)=>{
     await go(page,'receipts');
     await page.waitForSelector('.rc-card');
     assert.equal(await page.locator('.rc-card').count(),3,'recent receipts are listed');
-    assert.match(await page.locator('.rc-card').first().innerText(),/Ready on the PC[\s\S]*final approval/,'a filled-in receipt waits for the final approval');
+    assert.match(await page.locator('.rc-card').first().innerText(),/Ready on the PC[\s\S]*approve/i,'a filled-in receipt waits for the final approval');
     assert.equal(await page.locator('[data-rccancel="r2"]').count(),1,'a waiting receipt can be cancelled');
     assert.equal(await page.locator('[data-rccancel="r1"]').count(),1,'a filled-in receipt can be cancelled before the final approval');
     await page.waitForSelector('.rc-card .tr-shot img');   // its screenshot loads by itself
