@@ -467,7 +467,12 @@ const T = {
     ricoCardStockSettings:'Change stock settings',
     ricoWorkplaceName:'Name in the workplace',
     ricoAppOnly:'Changes this app only. The workplace system is not touched.',
-    ricoOpenStock:'Show on the Stock screen'
+    ricoOpenStock:'Show on the Stock screen',
+    rcKbHint:'Switch between the number pad and letters',
+    rcNoDelivery:'No delivery',
+    rcHasDelivery:'Delivery',
+    rcSearchItem:'Search item…',
+    rcLineTotal:'Total'
 
   },
   ku:{
@@ -936,7 +941,12 @@ const T = {
     ricoCardStockSettings:'گۆڕینی ڕێکخستنی ستۆک',
     ricoWorkplaceName:'ناو لە شوێنی کار',
     ricoAppOnly:'تەنها ئەم ئەپە دەگۆڕێت. دەست لە سیستەمی شوێنی کار نادرێت.',
-    ricoOpenStock:'لە شاشەی ستۆک پیشانی بدە'
+    ricoOpenStock:'لە شاشەی ستۆک پیشانی بدە',
+    rcKbHint:'گۆڕین لە نێوان ژمارە و پیتەکان',
+    rcNoDelivery:'بێ گەیاندن',
+    rcHasDelivery:'گەیاندن',
+    rcSearchItem:'گەڕان بۆ کاڵا…',
+    rcLineTotal:'کۆ'
 
   },
   ar:{
@@ -1405,7 +1415,12 @@ const T = {
     ricoCardStockSettings:'تغيير إعدادات المخزون',
     ricoWorkplaceName:'الاسم في نظام العمل',
     ricoAppOnly:'يغيّر هذا التطبيق فقط. لا يُمس نظام العمل.',
-    ricoOpenStock:'اعرض في شاشة المخزون'
+    ricoOpenStock:'اعرض في شاشة المخزون',
+    rcKbHint:'التبديل بين لوحة الأرقام والحروف',
+    rcNoDelivery:'بدون توصيل',
+    rcHasDelivery:'توصيل',
+    rcSearchItem:'ابحث عن مادة…',
+    rcLineTotal:'المجموع'
 
   }
 };
