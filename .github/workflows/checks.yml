@@ -46,6 +46,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930180000_stock_fk_indexes.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930200000_stock_workplace_name.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930210000_stock_zones.sql
+          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261001100000_stock_worker_health.sql
           psql -v ON_ERROR_STOP=1 -q -f scripts/stock-db-smoke.sql
 
       - name: No undefined names in the app scripts

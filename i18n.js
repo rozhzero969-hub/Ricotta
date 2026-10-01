@@ -350,7 +350,15 @@ const T = {
     zHint:'A zone’s name must match its name in the workplace system, because the PC selects it by name.',
     zDeleteConfirm:'Remove this zone? It can only be removed when it has no stock and no pending transfers.',
     zSaved:n=>'Saved zone '+n,
-    zDeleted:n=>'Removed zone '+n
+    zDeleted:n=>'Removed zone '+n,
+    wkReady:'Running and ready',
+    wkHintReady:'It can move stock in the workplace system now.',
+    wkTest:'Test mode',
+    wkHintTest:'It checks transfers and sends screenshots, but does not move stock.',
+    wkAttention:'Needs attention',
+    wkHintSignIn:'Sign in to the workplace site in the Edge window on the office PC.',
+    wkHintOff:'Tap Turn on. Transfers wait until it is running.',
+    wkReviewWarn:s=>'PC worker: '+s+'. This transfer will wait until the worker is running and ready.'
 
   },
   ku:{
@@ -702,7 +710,15 @@ const T = {
     zHint:'ناوی کۆگا دەبێت وەک ناوەکەی لە سیستەمی شوێنی کار بێت، چونکە کۆمپیوتەر بە ناو هەڵیدەبژێرێت.',
     zDeleteConfirm:'ئەم کۆگایە لاببرێت؟ تەنها کاتێک دەتوانرێت لاببرێت کە ستۆکی نەبێت و گواستنەوەی چاوەڕوانی نەبێت.',
     zSaved:n=>'کۆگای '+n+' پاشەکەوت کرا',
-    zDeleted:n=>'کۆگای '+n+' لابرا'
+    zDeleted:n=>'کۆگای '+n+' لابرا',
+    wkReady:'کار دەکات و ئامادەیە',
+    wkHintReady:'ئێستا دەتوانێت ستۆک لە سیستەمی شوێنی کار بگوازێتەوە.',
+    wkTest:'دۆخی تاقیکردنەوە',
+    wkHintTest:'گواستنەوەکان دەپشکنێت و وێنە دەنێرێت، بەڵام ستۆک ناگوازێتەوە.',
+    wkAttention:'پێویستی بە سەرنجە',
+    wkHintSignIn:'لە پەنجەرەی Edge لەسەر کۆمپیوتەری ئۆفیس بچۆ ژوورەوە بۆ ماڵپەڕی شوێنی کار.',
+    wkHintOff:'دوگمەی کردنەوە دابگرە. گواستنەوەکان چاوەڕێ دەکەن تا کار بکات.',
+    wkReviewWarn:s=>'کارکەری کۆمپیوتەر: '+s+'. ئەم گواستنەوەیە چاوەڕێ دەکات تا کارکەرەکە ئامادە دەبێت.'
 
   },
   ar:{
@@ -1054,7 +1070,15 @@ const T = {
     zHint:'يجب أن يطابق اسم المنطقة اسمها في نظام العمل، لأن الحاسوب يختارها بالاسم.',
     zDeleteConfirm:'إزالة هذه المنطقة؟ يمكن إزالتها فقط عندما لا يوجد بها مخزون ولا نقل قيد الانتظار.',
     zSaved:n=>'تم حفظ المنطقة '+n,
-    zDeleted:n=>'تمت إزالة المنطقة '+n
+    zDeleted:n=>'تمت إزالة المنطقة '+n,
+    wkReady:'يعمل وجاهز',
+    wkHintReady:'يمكنه نقل المخزون في نظام العمل الآن.',
+    wkTest:'وضع الاختبار',
+    wkHintTest:'يتحقق من عمليات النقل ويرسل لقطات، لكنه لا ينقل المخزون.',
+    wkAttention:'يحتاج إلى انتباه',
+    wkHintSignIn:'سجّل الدخول إلى موقع العمل في نافذة Edge على حاسوب المكتب.',
+    wkHintOff:'اضغط تشغيل. تنتظر عمليات النقل حتى يعمل.',
+    wkReviewWarn:s=>'عامل الحاسوب: '+s+'. سينتظر هذا النقل حتى يصبح العامل جاهزاً.'
 
   }
 };

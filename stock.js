@@ -169,13 +169,19 @@ function updateStockBadges(){
 }
 /* Repaint after a background refresh without disturbing what someone is typing. */
 /* The PC worker: on/off, and a button that asks the office PC to start it. */
-function workerBarHtml(){
-  const c = stockState.control; if(!c) return '';
+/* The PC worker's health: off, starting, running and ready, running in test mode, or needing attention. */
+function workerState(){
+  const c = stockState.control; if(!c) return null;
   const on = c.workerOnline;
-  const waiting = !on && c.startRequestedAt && Date.now() - Date.parse(c.startRequestedAt) < 3 * 60 * 1000 && (!c.startHandledAt || c.startHandledAt < c.startRequestedAt || Date.now() - Date.parse(c.startHandledAt) < 3 * 60 * 1000);
-  const label = on ? t('wkOn') : waiting ? t('wkStarting') : t('wkOff');
-  const hint = on || c.launcherOnline ? '' : t('wkHintNoHelper');
-  return `<div class="tr-worker glass ${on ? 'on' : 'off'}"><div class="tr-worker-txt"><span class="tr-worker-dot" aria-hidden="true"></span><div><b>${esc(t('wkTitle'))}: ${esc(label)}</b>${hint ? `<small>${esc(hint)}</small>` : ''}</div></div>${on ? '' : `<button type="button" class="btn btn-primary" id="wkStart" ${(!c.launcherOnline || waiting) ? 'disabled' : ''}>${esc(t('wkTurnOn'))}</button>`}</div>`;
+  const waiting = !on && c.startRequestedAt && Date.now() - Date.parse(c.startRequestedAt) < 3 * 60 * 1000;
+  if(!on) return {cls: 'off', label: waiting ? t('wkStarting') : t('wkOff'), hint: c.launcherOnline ? (waiting ? '' : t('wkHintOff')) : t('wkHintNoHelper'), button: true, canStart: c.launcherOnline && !waiting};
+  if(c.workerPageReady === false) return {cls: 'warn', label: t('wkAttention'), hint: t('wkHintSignIn')};
+  if(c.workerLive === false) return {cls: 'test', label: t('wkTest'), hint: t('wkHintTest')};
+  return {cls: 'on', label: c.workerLive ? t('wkReady') : t('wkOn'), hint: c.workerLive ? t('wkHintReady') : ''};
+}
+function workerBarHtml(){
+  const w = workerState(); if(!w) return '';
+  return `<div class="tr-worker glass ${w.cls}"><div class="tr-worker-txt"><span class="tr-worker-dot" aria-hidden="true"></span><div><b>${esc(t('wkTitle'))}: ${esc(w.label)}</b>${w.hint ? `<small>${esc(w.hint)}</small>` : ''}</div></div>${w.button ? `<button type="button" class="btn btn-primary" id="wkStart" ${w.canStart ? '' : 'disabled'}>${esc(t('wkTurnOn'))}</button>` : ''}</div>`;
 }
 function wkPaint(){
   const box = document.getElementById('wkBar'); if(!box) return;
@@ -322,6 +328,7 @@ function trReview(){
     <div class="tr-rv-item" dir="auto">${esc(item.name)}</div>${stWorkName(item.id) !== item.name ? `<div class="tr-rv-work" dir="auto">${esc(t('trWorkAs'))}: ${esc(stWorkName(item.id))}</div>` : ''}
     <div class="tr-rv-qty"><b>${esc(fmtQty(qty))}</b> ${esc(stEnteredName(item.id))}${f !== 1 ? ` <span class="tr-rv-eq">= ${esc(fmtQty(Math.round(qty * f * 1e8) / 1e8))} ${esc(stCountUnitName(item.id))}</span>` : ''}</div>
     <div class="hero-sub">${esc(trState.yesterday ? t('trWhenYesterday') : t('trWhenToday'))}</div>
+    ${(()=>{ const w = workerState(); return w && w.cls !== 'on' ? `<div class="tr-rv-warn">${esc(t('wkReviewWarn')(w.label))}</div>` : ''; })()}
     <div class="tr-rv-actions"><button type="button" class="btn btn-primary" id="trApprove">${esc(t('trApprove'))}</button><button type="button" class="btn tr-rv-edit" id="trEdit">${esc(t('trEditRequest'))}</button></div>`;
   card.hidden = false;
   card.scrollIntoView({behavior: 'smooth', block: 'nearest'});

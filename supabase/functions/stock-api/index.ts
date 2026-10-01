@@ -23,6 +23,7 @@
 //   GET    worker/preview                oldest waiting request that needs a PC check
 //   POST   worker/preview-report         {id, ok, message, image}
 //   POST   worker/claim                  the next final-approved request
+//   POST   worker/heartbeat              {live, pageReady, note}   every ~30 s
 //   POST   worker/report                 {id, status, message, image}
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -117,6 +118,8 @@ async function controlStatus() {
   const { data } = await db.from("stock_worker_control").select("*").eq("id", 1).maybeSingle();
   const fresh = (v: string | null | undefined) => !!v && Date.now() - Date.parse(v) < 120_000;
   return { workerOnline: fresh(data?.worker_seen_at), launcherOnline: fresh(data?.launcher_seen_at),
+    workerSeenAt: data?.worker_seen_at ?? null, workerLive: data?.worker_live ?? null, workerPageReady: data?.worker_page_ready ?? null,
+    workerNote: data?.worker_note ?? null,
     startRequestedAt: data?.start_requested_at ?? null, startHandledAt: data?.start_handled_at ?? null };
 }
 async function requestsAndBalances() {
@@ -176,6 +179,14 @@ Deno.serve(async (req: Request) => {
         // The launcher on the office PC asks this every few seconds.
         await touchControl("launcher_seen_at");
         return json(await controlStatus());
+      }
+      if (req.method === "POST" && path[1] === "heartbeat") {
+        // The worker's health: running, live or checks only, and whether the workplace page is ready.
+        const b = await readBody(req);
+        seenLast.worker_seen_at = Date.now();
+        await db.from("stock_worker_control").upsert({ id: 1, worker_seen_at: new Date().toISOString(),
+          worker_live: b.live === true, worker_page_ready: b.pageReady === true, worker_note: str(b.note, 300) || null });
+        return json({ ok: true });
       }
       if (req.method === "POST" && path[1] === "control-handled") {
         await db.from("stock_worker_control").upsert({ id: 1, start_handled_at: new Date().toISOString() });
