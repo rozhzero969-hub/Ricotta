@@ -176,7 +176,7 @@ function workerState(){
   const c = stockState.control; if(!c) return null;
   const on = c.workerOnline;
   const waiting = !on && c.startRequestedAt && Date.now() - Date.parse(c.startRequestedAt) < 3 * 60 * 1000;
-  if(!on) return {cls: 'off', label: waiting ? t('wkStarting') : t('wkOff'), hint: c.launcherOnline ? (waiting ? '' : t('wkHintOff')) : t('wkHintNoHelper'), button: true, canStart: c.launcherOnline && !waiting};
+  if(!on) return {cls: 'off', label: waiting ? t('wkStarting') : t('wkOff'), hint: c.launcherOnline ? '' : t('wkHintNoHelper'), button: true, canStart: c.launcherOnline && !waiting};
   if(c.workerPageReady === false) return {cls: 'warn', label: t('wkAttention'), hint: t('wkHintSignIn')};
   if(c.workerLive === false) return {cls: 'test', label: t('wkTest'), hint: t('wkHintTest')};
   return {cls: 'on', label: c.workerLive ? t('wkReady') : t('wkOn'), hint: c.workerLive ? t('wkHintReady') : ''};
@@ -381,14 +381,13 @@ function trRequestCard(r){
   let buttons = '';
   if(r.status === 'waiting'){
     buttons = (r.finalApprovedAt ? '' : `<button type="button" class="btn btn-primary tr-wide" data-trfinal="${esc(r.id)}" ${st.canApprove ? '' : 'disabled'}>${esc(t('trFinalApprove'))}</button>`)
-      + `<div class="tr-btn-row"><button type="button" class="btn btn-ghost" data-trchange="${esc(r.id)}">${esc(t('trChangeReq'))}</button><button type="button" class="btn btn-danger" data-trcancel="${esc(r.id)}">${esc(t('trCancelReq'))}</button></div>`;
+      + `<div class="tr-links"><button type="button" class="tr-textbtn" data-trchange="${esc(r.id)}">${esc(t('trChangeReq'))}</button><button type="button" class="tr-textbtn danger" data-trcancel="${esc(r.id)}">${esc(t('trCancelReq'))}</button></div>`;
   }else if(r.status === 'needs_checking'){
     buttons = `<button type="button" class="btn btn-primary tr-wide" data-trresolve="${esc(r.id)}">${esc(t('trCheckResult'))}</button>`;
   }
   return `<article class="tr-req glass s-${esc(r.status)}" data-trreq="${esc(r.id)}">
     <div class="tr-req-top"><div><div class="tr-req-name" dir="auto">${esc(r.itemName)}</div>${r.workplaceName && r.workplaceName !== r.itemName ? `<div class="tr-req-work" dir="auto">${esc(t('trWorkAs'))}: ${esc(r.workplaceName)}</div>` : ''}<div class="tr-req-amt">${reqAmountHtml(r)}</div></div><span class="tr-chip ${esc(st.cls)}">${esc(st.label)}</span></div>
     <div class="tr-req-route">${esc(r.from)} <span aria-hidden="true">→</span> ${esc(r.to)}${r.yesterday ? ' · ' + esc(t('trYesterday')) : ''}</div>
-    ${r.status === 'waiting' && !r.finalApprovedAt ? `<div class="tr-sum-title">${esc(t('trSumTitle'))}</div>${trSummaryHtml(r)}` : ''}
     ${pc}${buttons}</article>`;
 }
 function trPaintActive(){
@@ -1144,7 +1143,7 @@ function rcCardHtml(x){
     ${shot ? `<figure class="tr-shot"><img src="${esc(shot)}" alt="${esc(t('trShotLabel'))}"></figure>` : x.hasShot ? `<button type="button" class="btn btn-ghost" data-rcshot="${esc(x.id)}">${esc(t('rcShowShot'))}</button>` : ''}
     ${rcFinalButtonHtml(x, shot)}
     ${['needs_checking', 'closed'].includes(x.status) ? `<button type="button" class="btn btn-primary tr-wide" data-rcresolve="${esc(x.id)}">${esc(t('trCheckResult'))}</button>` : ''}
-    ${['waiting', 'failed'].includes(x.status) || (x.status === 'prepared' && (!x.finalApprovedAt || Date.now() - Date.parse(x.finalApprovedAt) > 30 * 60 * 1000)) ? `<div class="tr-btn-row"><button type="button" class="btn btn-danger" data-rccancel="${esc(x.id)}">${esc(t('rcCancel'))}</button></div>` : ''}</article>`;
+    ${['waiting', 'failed'].includes(x.status) || (x.status === 'prepared' && (!x.finalApprovedAt || Date.now() - Date.parse(x.finalApprovedAt) > 30 * 60 * 1000)) ? `<div class="tr-links"><button type="button" class="tr-textbtn danger" data-rccancel="${esc(x.id)}">${esc(t('rcCancel'))}</button></div>` : ''}</article>`;
 }
 function rcPaintList(){
   const box = document.getElementById('rcList'); if(!box) return;
@@ -1305,7 +1304,7 @@ function ijCardHtml(x){
     ${shot ? `<figure class="tr-shot"><img src="${esc(shot)}" alt="${esc(t('trShotLabel'))}"></figure>` : x.hasShot ? `<button type="button" class="btn btn-ghost" data-ijshot="${esc(x.id)}">${esc(t('rcShowShot'))}</button>` : ''}
     ${x.status === 'prepared' && !x.finalApprovedAt ? `<button type="button" class="btn btn-primary tr-wide" data-ijfinal="${esc(x.id)}" ${why ? 'disabled' : ''}>${esc(t('wpFinal'))}</button>${why ? `<div class="field-hint">${esc(why)}</div>` : ''}` : ''}
     ${x.status === 'needs_checking' ? `<button type="button" class="btn btn-primary tr-wide" data-ijresolve="${esc(x.id)}">${esc(t('trCheckResult'))}</button>` : ''}
-    ${canCancel ? `<div class="tr-btn-row"><button type="button" class="btn btn-danger" data-ijcancel="${esc(x.id)}">${esc(t('wpCancel'))}</button></div>` : ''}</article>`;
+    ${canCancel ? `<div class="tr-links"><button type="button" class="tr-textbtn danger" data-ijcancel="${esc(x.id)}">${esc(t('wpCancel'))}</button></div>` : ''}</article>`;
 }
 function ijPaintList(){
   const box = document.getElementById('ijList'); if(!box) return;
@@ -1361,3 +1360,8 @@ function ijResolve(id){
 }
 /* Called when the Items screen opens. */
 function ijMount(){ ijPaintList(); if(Date.now() - ijData.at > 3000) ijLoad(); }
+/* Receipt and item-task screenshots are shown small; tapping one opens it full size. */
+document.addEventListener('click', e => {
+  const img = e.target.closest?.('.rc-card .tr-shot img'); if(!img) return;
+  showAlert(`<img class="tr-shot-big" src="${esc(img.getAttribute('src'))}" alt="">`);
+});

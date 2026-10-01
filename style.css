@@ -1251,3 +1251,29 @@ select.sel-native{position:absolute!important;width:1px!important;height:1px!imp
 @keyframes selUp{from{transform:translateY(100%)}to{transform:none}}
 @media (min-width:700px){.sel-sheet{align-items:center}.sel-panel{border-radius:24px;max-height:70vh;animation:fadeIn 180ms ease both}}
 @media (prefers-reduced-motion:reduce){.sel-panel{animation:none}}
+/* Simpler stock screens: slimmer banners, compact cards, small screenshot previews, quiet secondary actions */
+.st-alert{padding:10px 12px 10px 14px;border-radius:16px;gap:8px;flex-wrap:nowrap;font-size:13px;line-height:1.4}
+.st-alert span{flex:1;min-width:0}
+.st-alert .btn{min-height:34px;padding:0 12px;font-size:12.5px;flex:none}
+.tr-worker{padding:8px 8px 8px 14px;border-radius:999px;min-height:52px}
+.tr-worker-txt b{font-size:13.5px}
+.tr-worker-txt small{font-size:11.5px}
+.tr-worker .btn{border-radius:999px}
+.tr-req{padding:14px 14px 10px;border-radius:22px}
+.tr-req-route{margin:4px 0 8px}
+.tr-pc{font-size:12.5px;color:var(--ink-soft);margin-bottom:8px}
+.tr-pc b{color:var(--ink)}
+.tr-pc-label{display:inline;margin:0 6px 0 0;font-size:10px}
+.tr-shot{margin:0 0 10px;position:relative}
+.tr-shot img{max-height:150px;object-fit:cover;object-position:top;border-radius:14px}
+.tr-shot figcaption{font-size:11px;margin-top:4px}
+.tr-shot-loading{padding:14px 10px}
+.tr-links{display:flex;justify-content:center;gap:22px;margin-top:4px}
+.tr-textbtn{border:0;background:none;padding:8px 4px;font:inherit;font-size:13.5px;font-weight:700;color:var(--ink-soft);cursor:pointer}
+.tr-textbtn.danger{color:#C2413B}
+.tr-req .btn.tr-wide,.rc-card .btn.tr-wide{min-height:48px}
+.st-hero{padding:16px 18px;border-radius:22px}
+.st-hero .hero-count{font-size:40px}
+.st-hero .hero-sub{margin-top:2px}
+.tr-note,.rc-foot .tr-note{font-size:11.5px;line-height:1.45}
+.section-title{margin-top:18px}
