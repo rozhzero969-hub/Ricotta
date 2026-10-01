@@ -1178,3 +1178,42 @@ html.rtl .tr-go{transform:scaleX(-1)}
 .st-gm-delete{margin-top:10px;width:100%;color:#C2413B}
 .rico-card-line.rico-line-out span{text-decoration:line-through;opacity:.6}
 .rico-open small{opacity:.7;font-weight:600;margin-inline-start:4px}
+/* Receipts, phone-first (like the workplace receipt screen): two cards with a marked header, compact rows */
+.rc-form{margin-bottom:18px}
+.rc-sec{background:var(--surface);border:1px solid var(--surface-line);box-shadow:var(--surface-shadow);border-radius:20px;margin-bottom:14px;overflow:hidden}
+.rc-sec-h{display:flex;align-items:center;gap:10px;padding:13px 16px;font-size:15px;font-weight:800;border-bottom:1px solid var(--line);background:rgba(20,56,44,.03)}
+.rc-sec-h::before{content:'';width:4px;height:20px;border-radius:2px;background:#E8913A;flex:none}
+.rc-sec-b{padding:14px 14px 6px}
+.rc-sec-b .field{margin-bottom:12px}
+.rc-sec-b .field>label{font-size:13px}
+.rc-two{display:block}
+.rc-two .picks{flex-wrap:nowrap}
+.rc-two .pick{flex:1;min-width:0}
+.rc-inv{display:flex;gap:8px}
+.rc-inv input{flex:1;min-width:0;font-size:17px;font-weight:700;letter-spacing:.3px}
+.rc-kb{flex:none;min-width:56px;border-radius:14px;border:1px solid var(--line);background:transparent;color:inherit;font-size:12.5px;font-weight:800}
+.rc-kb[aria-pressed="true"]{background:var(--deep);border-color:var(--deep);color:#fff}
+.rc-affix{display:flex;align-items:center;gap:8px}
+.rc-affix input{flex:1;min-width:0;font-size:17px;font-weight:700}
+.rc-affix span{flex:none;font-size:13px;font-weight:800;color:var(--ink-soft)}
+.rc-line{border:1px solid var(--line);border-radius:18px;padding:10px 12px 4px;margin-bottom:10px;background:transparent;box-shadow:none}
+.rc-lbl{font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--ink-soft);margin:2px 2px 6px}
+.rc-line-search{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.rc-line-search .search-wrap{flex:1;margin:0}
+.rc-item{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:start;padding:11px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(20,56,44,.04);color:inherit;font:inherit;margin-bottom:10px;cursor:pointer}
+.rc-item .name{display:block;font-size:15.5px;font-weight:800;overflow-wrap:anywhere}
+.rc-item .meta{display:block;font-size:12px;color:var(--ink-soft);margin-top:2px}
+.rc-item small{flex:none;font-size:12px;font-weight:800;color:var(--accent-strong)}
+.rc-grid{display:grid;grid-template-columns:1.25fr 1fr;gap:4px 10px}
+.rc-grid .field{margin-bottom:8px}
+.rc-grid .field>label{font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--ink-soft)}
+.rc-grid input,.rc-grid select{font-size:16px;font-weight:700}
+.rc-static{min-height:46px;display:flex;align-items:center;padding:0 12px;border-radius:14px;background:rgba(20,56,44,.05);font-weight:700}
+.rc-tot-cell{position:relative}
+.rc-tot-cell .rc-line-total{min-height:46px;display:flex;align-items:center;margin:0;font-size:16px;text-align:start;padding-inline-end:40px}
+.rc-tot-cell .rc-remove{position:absolute;inset-inline-end:0;bottom:10px}
+.rc-add{width:100%;min-height:48px;margin:2px 0 12px;border-radius:14px;border:1px solid rgba(52,194,122,.45);background:rgba(52,194,122,.08);color:var(--accent-strong);font:inherit;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
+.rc-add svg{width:18px;height:18px}
+.rc-foot{padding:4px 2px 0}
+.rc-total{justify-content:flex-start;gap:8px;margin:4px 2px 12px}
+@media (max-width:360px){.rc-grid{grid-template-columns:1fr 1fr}}

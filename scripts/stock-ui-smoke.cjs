@@ -270,14 +270,21 @@ const server=http.createServer((rq,res)=>{
     assert.deepEqual(calls.filter(c=>c.ep==='receipts/resolve').pop()?.body,{id:'r4',saved:false,note:'Checked the workplace list: invoice 779 is not there'});
     await page.locator('#rcSend').click();
     assert.equal(await page.locator('.modal-box').count(),0,'an incomplete receipt is not sent');
+    assert.equal(await page.getAttribute('#rcInv','inputmode'),'numeric','the invoice opens the number pad');
+    await page.locator('#rcInvKb').click();
+    assert.equal(await page.getAttribute('#rcInv','inputmode'),'text','ABC switches the invoice to letters');
     await page.selectOption('#rcSup','s0');await page.fill('#rcInv','INV-55');
-    await page.locator('[data-chipfor="rcCur"] [data-val="USD $"]').click();await page.fill('#rcRate','1500');
-    await page.locator('#rcDel').check();await page.fill('#rcDelAmt','5');
+    await page.locator('[data-chipfor="rcCur"] [data-val="USD $"]').click();await page.fill('#rcRate','1,500');
+    assert.equal(await page.getAttribute('#rcRate','inputmode'),'decimal','the dollar rate opens the number pad');
+    await page.locator('[data-chipfor="rcDelPick"] [data-val="Delivery"]').click();await page.fill('#rcDelAmt','٥');
+    assert.equal(await page.getAttribute('#rcDelAmt','inputmode'),'decimal','delivery opens the number pad');
+    if(process.env.SHOT){await page.waitForTimeout(700);await page.locator('.rc-sec').first().scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SHOT+'/rc-top.png'});}
     await page.fill('[data-rcsearch="0"]','coca');await page.locator('[data-rcpick="0"][data-id="i1"]').click();
     await page.fill('[data-rcqty="0"]','10');await page.fill('[data-rccost="0"]','10');
     await page.locator('#rcAddLine').click();
     await page.fill('[data-rcsearch="1"]','flour');await page.locator('[data-rcpick="1"][data-id="i2"]').click();
-    await page.locator('[data-rcunit="1"][data-mode="counting"]').click();
+    await page.selectOption('[data-rcunitsel="1"]','counting');
+    assert.equal(await page.getAttribute('[data-rcqty="1"]','inputmode'),'decimal','quantities open the number pad');
     await page.fill('[data-rcqty="1"]','24');await page.fill('[data-rccost="1"]','0.5');
     assert.equal(await page.locator('#rcTotal').innerText(),'$ 112','the total adds up the lines');
     if(process.env.SHOT){await page.locator('.rc-total').scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SHOT+'/rc0.png'});}
@@ -286,7 +293,7 @@ const server=http.createServer((rq,res)=>{
     await page.locator('#modalOkBtn').click();await page.waitForTimeout(400);
     const rec=calls.filter(c=>c.ep==='receipts'&&c.method==='POST').pop();
     assert.deepEqual({s:rec.body.supplierId,i:rec.body.invoice,c:rec.body.currency,r:rec.body.rate,d:rec.body.delivery,l:rec.body.lines.map(l=>[l.itemId,l.unitId,l.qty,l.cost])},
-      {s:'s0',i:'INV-55',c:'USD',r:'1500',d:'5',l:[['i1','ctn','10','10'],['i2','pc','24','0.5']]});
+      {s:'s0',i:'INV-55',c:'USD',r:1500,d:5,l:[['i1','ctn',10,10],['i2','pc',24,0.5]]});
     if(process.env.SHOT){await page.screenshot({path:process.env.SHOT+'/rc.png'});}
     assert.equal(await page.inputValue('#rcInv'),'','the form clears after sending');
 

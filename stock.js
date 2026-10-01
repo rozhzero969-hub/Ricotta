@@ -978,10 +978,13 @@ function attachZonesEvents(){
 
 /* ============ Receipts: entered here, prepared by the PC, accepted by a person at the PC ============ */
 const rcNewLine = () => ({itemId: '', unit: 'buying', qty: '', cost: '', search: ''});
-const rcState = {supplierId: '', invoice: '', currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null};
+const rcState = {supplierId: '', invoice: '', invoiceText: false, currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null};
 const rcData = {list: [], loaded: false, at: 0, shots: {}};
 const RC_ACTIVE = ['waiting', 'preparing', 'prepared'];
-const rcNum = v => Number(String(v ?? '').replace(/,/g, ''));
+// Phones in Kurdish or Arabic may type ٠-٩ / ۰-۹ digits and ٫ as the decimal point.
+const rcNum = v => Number(String(v ?? '').replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0).replace(/٫/g, '.').replace(/[,٬\s]/g, ''));
+/* A number box that opens the phone's number pad (no spin arrows, commas allowed). */
+const rcNumInput = (attrs, value, placeholder = '0') => `<input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" ${attrs} placeholder="${esc(placeholder)}" value="${esc(value)}">`;
 const rcMoney = (n, cur) => (cur === 'USD' ? '$ ' : 'IQD ') + Number(n || 0).toLocaleString('en-US', {maximumFractionDigits: 2});
 /* The units a receipt line can use: the item's buying format, and its counting format when that differs. */
 function rcUnits(item){
@@ -1007,23 +1010,28 @@ setInterval(() => {
 function renderReceipts(){
   if(!stockState.loaded) return stLoadingHtml();
   const sups = sortedByName(state.suppliers);
+  const usd = rcState.currency === 'USD';
   return `<div id="wkBar"></div>
-  <section class="tr-card rc-form">
-    <div class="tr-step"><div class="tr-step-h"><span class="tr-num">1</span>${esc(t('rcDetails'))}</div>
+  <section class="rc-form">
+    <div class="rc-sec"><div class="rc-sec-h">${esc(t('rcDetails'))}</div><div class="rc-sec-b">
       <div class="field"><label for="rcSup">${esc(t('supplier'))}</label><select id="rcSup"><option value="">${esc(t('chooseSupplier'))}</option>${sups.map(s => `<option value="${esc(s.id)}" ${rcState.supplierId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
-      <div class="field"><label for="rcInv">${esc(t('rcInvoice'))}</label><input id="rcInv" autocomplete="off" maxlength="60" placeholder="1024" value="${esc(rcState.invoice)}"></div>
-      <div class="field"><label>${esc(t('rcCurrency'))}</label>${chipPickHtml('rcCur', ['IQD', 'USD $'], rcState.currency === 'USD' ? 'USD $' : 'IQD')}</div>
-      <div class="field" id="rcRateBox" ${rcState.currency === 'USD' ? '' : 'hidden'}><label for="rcRate">${esc(t('rcRate'))}</label><input id="rcRate" type="number" inputmode="decimal" min="0" step="any" placeholder="1500" value="${esc(rcState.rate)}"></div>
-      <label class="check-row tr-yesterday"><span>${esc(t('rcDelivery'))}<small>${esc(t('rcDeliveryHint'))}</small></span><input type="checkbox" id="rcDel" ${rcState.delivery ? 'checked' : ''}></label>
-      <div class="field" id="rcDelBox" ${rcState.delivery ? '' : 'hidden'}><label for="rcDelAmt">${esc(t('rcDeliveryAmt'))}</label><input id="rcDelAmt" type="number" inputmode="decimal" min="0" step="any" placeholder="10000" value="${esc(rcState.deliveryAmt)}"></div>
-    </div>
-    <div class="tr-step"><div class="tr-step-h"><span class="tr-num">2</span>${esc(t('rcItems'))}</div>
+      <div class="field"><label for="rcInv">${esc(t('rcInvoice'))}</label><div class="rc-inv"><input id="rcInv" autocomplete="off" maxlength="60" enterkeyhint="next" inputmode="${rcState.invoiceText ? 'text' : 'numeric'}" placeholder="1024" value="${esc(rcState.invoice)}"><button type="button" class="rc-kb" id="rcInvKb" aria-pressed="${rcState.invoiceText}" title="${esc(t('rcKbHint'))}">${rcState.invoiceText ? '123' : 'ABC'}</button></div></div>
+      <div class="rc-two">
+        <div class="field"><label>${esc(t('rcCurrency'))}</label>${chipPickHtml('rcCur', ['IQD', 'USD $'], usd ? 'USD $' : 'IQD')}</div>
+        <div class="field"><label>${esc(t('rcDelivery'))}</label>${chipPickHtml('rcDelPick', [t('rcNoDelivery'), t('rcHasDelivery')], rcState.delivery ? t('rcHasDelivery') : t('rcNoDelivery'))}</div>
+      </div>
+      <div class="field" id="rcRateBox" ${usd ? '' : 'hidden'}><label for="rcRate">${esc(t('rcRate'))}</label><div class="rc-affix"><span>1 $ =</span>${rcNumInput('id="rcRate"', rcState.rate, '1500')}<span>IQD</span></div></div>
+      <div class="field" id="rcDelBox" ${rcState.delivery ? '' : 'hidden'}><label for="rcDelAmt">${esc(t('rcDeliveryAmt'))}</label><div class="rc-affix">${rcNumInput('id="rcDelAmt"', rcState.deliveryAmt, '10000')}<span id="rcDelCur">${usd ? '$' : 'IQD'}</span></div></div>
+    </div></div>
+    <div class="rc-sec"><div class="rc-sec-h">${esc(t('rcItems'))}</div><div class="rc-sec-b">
       <div id="rcLines"></div>
-      <button type="button" class="btn btn-ghost rc-add" id="rcAddLine">${ICON_PLUS} ${esc(t('rcAddItem'))}</button>
+      <button type="button" class="rc-add" id="rcAddLine">${ICON_PLUS} ${esc(t('rcAddItem'))}</button>
+    </div></div>
+    <div class="rc-foot">
+      <div class="rc-total"><span>${esc(t('rcTotal'))}:</span><b id="rcTotal"></b></div>
+      <button type="button" class="btn btn-primary tr-wide" id="rcSend">${esc(t('rcSend'))}</button>
+      <div class="field-hint tr-note">${esc(t('rcSendHint'))}</div>
     </div>
-    <div class="rc-total"><span>${esc(t('rcTotal'))}</span><b id="rcTotal"></b></div>
-    <button type="button" class="btn btn-primary tr-wide" id="rcSend">${esc(t('rcSend'))}</button>
-    <div class="field-hint tr-note">${esc(t('rcSendHint'))}</div>
   </section>
   <div id="rcList"></div>`;
 }
@@ -1031,20 +1039,23 @@ function rcLineHtml(l, i){
   const item = stItem(l.itemId);
   const remove = rcState.lines.length > 1 ? `<button type="button" class="icon-btn danger rc-remove" data-rcremove="${i}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>` : '';
   if(!item){
-    return `<div class="rc-line glass" data-rcline="${i}"><div class="rc-line-top"><b>${esc(t('rcItemN')(i + 1))}</b>${remove}</div>
-      <div class="search-wrap">${ICON_SEARCH}<input class="search-input rc-search" data-rcsearch="${i}" autocomplete="off" placeholder="${esc(t('searchPlaceholder'))}" value="${esc(l.search)}"></div>
+    return `<div class="rc-line" data-rcline="${i}"><div class="rc-lbl">${esc(t('rcItemN')(i + 1))}</div>
+      <div class="rc-line-top rc-line-search"><div class="search-wrap">${ICON_SEARCH}<input class="search-input rc-search" data-rcsearch="${i}" autocomplete="off" enterkeyhint="search" placeholder="${esc(t('rcSearchItem'))}" value="${esc(l.search)}"></div>${remove}</div>
       <div class="tr-results rc-results" data-rcresults="${i}"></div></div>`;
   }
   const units = rcUnits(item), u = rcLineUnit(l, item), wn = stWorkName(item.id);
   const total = rcNum(l.qty) * rcNum(l.cost);
-  return `<div class="rc-line glass" data-rcline="${i}"><div class="rc-line-top"><div><div class="name" dir="auto">${esc(item.name)}</div>${wn !== item.name ? `<div class="meta" dir="auto">${esc(t('trWorkAs'))}: ${esc(wn)}</div>` : ''}</div>
-      <div class="rc-line-acts"><button type="button" class="btn btn-ghost" data-rcchange="${i}">${esc(t('trChangeItem'))}</button>${remove}</div></div>
-    ${units.length > 1 ? `<div class="picks rc-units">${units.map(x => `<button type="button" class="pick${x.mode === u.mode ? ' on' : ''}" data-rcunit="${i}" data-mode="${x.mode}">${esc(x.label)}</button>`).join('')}</div>` : ''}
-    <div class="rc-nums">
-      <div class="field"><label>${esc(t('rcQty'))} (${esc(u ? u.label : '')})</label><input type="number" inputmode="decimal" min="0" step="any" placeholder="0" data-rcqty="${i}" value="${esc(l.qty)}"></div>
-      <div class="field"><label>${esc(t('rcCost'))}</label><input type="number" inputmode="decimal" min="0" step="any" placeholder="0" data-rccost="${i}" value="${esc(l.cost)}"></div>
-    </div>
-    <div class="rc-line-total" data-rctotal="${i}">${total > 0 ? esc(rcMoney(total, rcState.currency)) : '—'}</div></div>`;
+  const unitBox = units.length > 1
+    ? `<select data-rcunitsel="${i}" aria-label="${esc(t('unit'))}">${units.map(x => `<option value="${x.mode}" ${x.mode === u.mode ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select>`
+    : `<div class="rc-static">${esc(u ? u.label : '')}</div>`;
+  return `<div class="rc-line" data-rcline="${i}"><div class="rc-lbl">${esc(t('rcItemN')(i + 1))}</div>
+    <button type="button" class="rc-item" data-rcchange="${i}"><span><span class="name" dir="auto">${esc(item.name)}</span>${wn !== item.name ? `<span class="meta" dir="auto">${esc(t('trWorkAs'))}: ${esc(wn)}</span>` : ''}</span><small>${esc(t('trChangeItem'))}</small></button>
+    <div class="rc-grid">
+      <div class="field"><label>${esc(t('unit'))}</label>${unitBox}</div>
+      <div class="field"><label>${esc(t('rcQty'))}</label>${rcNumInput(`data-rcqty="${i}"`, l.qty)}</div>
+      <div class="field"><label>${esc(t('rcCost'))}</label>${rcNumInput(`data-rccost="${i}"`, l.cost)}</div>
+      <div class="field rc-tot-cell"><label>${esc(t('rcLineTotal'))}</label><div class="rc-line-total" data-rctotal="${i}">${total > 0 ? esc(rcMoney(total, rcState.currency)) : '—'}</div>${remove}</div>
+    </div></div>`;
 }
 function rcPaintResults(i){
   const box = document.querySelector(`[data-rcresults="${i}"]`); if(!box) return;
@@ -1089,9 +1100,9 @@ async function rcSend(){
   const problem = rcProblem(); if(problem){ toast(problem, 'error'); return; }
   if(!(await showConfirm(rcSummaryHtml() + `<p>${esc(t('rcConfirm'))}</p>`, {okLabel: t('rcSend'), okClass: 'btn-primary'}))) return;
   rcState.key = rcState.key || crypto.randomUUID();
-  const body = {clientKey: rcState.key, supplierId: rcState.supplierId, invoice: rcState.invoice.trim(), currency: rcState.currency,
-    rate: rcState.currency === 'USD' ? rcState.rate : null, delivery: rcState.delivery ? rcState.deliveryAmt : null,
-    lines: rcState.lines.map(l => { const it = stItem(l.itemId); return {itemId: it.id, unitId: rcLineUnit(l, it).id, qty: l.qty, cost: l.cost}; })};
+  const body = {clientKey: rcState.key, supplierId: rcState.supplierId, invoice: rcState.invoice.trim().replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0), currency: rcState.currency,
+    rate: rcState.currency === 'USD' ? rcNum(rcState.rate) : null, delivery: rcState.delivery ? rcNum(rcState.deliveryAmt) : null,
+    lines: rcState.lines.map(l => { const it = stItem(l.itemId); return {itemId: it.id, unitId: rcLineUnit(l, it).id, qty: rcNum(l.qty), cost: rcNum(l.cost)}; })};
   const btn = document.getElementById('rcSend'); if(btn) btn.disabled = true;
   const r = await stockApi('receipts', {method: 'POST', body});
   if(btn) btn.disabled = false;
@@ -1174,9 +1185,13 @@ function attachReceiptsEvents(){
   document.getElementById('rcSup').onchange = e => { rcState.supplierId = e.target.value; };
   document.getElementById('rcInv').oninput = e => { rcState.invoice = e.target.value; };
   const form = document.querySelector('.rc-form');
-  chipPickWire(form, 'rcCur', v => { rcState.currency = v === 'USD $' ? 'USD' : 'IQD'; document.getElementById('rcRateBox').hidden = rcState.currency !== 'USD'; rcPaintTotal(); });
+  chipPickWire(form, 'rcCur', v => { rcState.currency = v === 'USD $' ? 'USD' : 'IQD'; document.getElementById('rcRateBox').hidden = rcState.currency !== 'USD'; document.getElementById('rcDelCur').textContent = rcState.currency === 'USD' ? '$' : 'IQD'; rcPaintTotal(); if(rcState.currency === 'USD' && !rcState.rate) document.getElementById('rcRate').focus(); });
   document.getElementById('rcRate').oninput = e => { rcState.rate = e.target.value; };
-  document.getElementById('rcDel').onchange = e => { rcState.delivery = e.target.checked; document.getElementById('rcDelBox').hidden = !rcState.delivery; };
+  chipPickWire(form, 'rcDelPick', v => { rcState.delivery = v === t('rcHasDelivery'); document.getElementById('rcDelBox').hidden = !rcState.delivery; if(rcState.delivery && !rcState.deliveryAmt) document.getElementById('rcDelAmt').focus(); });
+  // Invoices are usually numbers (number pad); ABC switches to the full keyboard for invoices with letters.
+  const kb = document.getElementById('rcInvKb');
+  kb.addEventListener('pointerdown', e => e.preventDefault());
+  kb.onclick = () => { rcState.invoiceText = !rcState.invoiceText; const inv = document.getElementById('rcInv'); inv.inputMode = rcState.invoiceText ? 'text' : 'numeric'; kb.textContent = rcState.invoiceText ? '123' : 'ABC'; kb.setAttribute('aria-pressed', rcState.invoiceText); inv.blur(); inv.focus(); };
   document.getElementById('rcDelAmt').oninput = e => { rcState.deliveryAmt = e.target.value; };
   const lines = document.getElementById('rcLines');
   lines.addEventListener('input', e => {
@@ -1187,6 +1202,7 @@ function attachReceiptsEvents(){
   });
   // Picking a search result must not blur the search box first (that moves the page under the finger).
   lines.addEventListener('pointerdown', e => { if(e.target.closest('[data-rcpick],[data-rcsetup]')) e.preventDefault(); });
+  lines.addEventListener('change', e => { const s = e.target.dataset; if(s.rcunitsel !== undefined){ rcState.lines[+s.rcunitsel].unit = e.target.value; rcPaintLines(); } });
   lines.addEventListener('click', e => {
     const pick = e.target.closest('[data-rcpick]'), unit = e.target.closest('[data-rcunit]'), change = e.target.closest('[data-rcchange]'), rm = e.target.closest('[data-rcremove]');
     const setup = e.target.closest('[data-rcsetup]');
