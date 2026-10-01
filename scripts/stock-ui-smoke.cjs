@@ -279,6 +279,12 @@ const server=http.createServer((rq,res)=>{
     await page.locator('[data-chipfor="rcDelPick"] [data-val="Delivery"]').click();await page.fill('#rcDelAmt','٥');
     assert.equal(await page.getAttribute('#rcDelAmt','inputmode'),'decimal','delivery opens the number pad');
     if(process.env.SHOT){await page.waitForTimeout(700);await page.locator('.rc-sec').first().scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SHOT+'/rc-top.png'});}
+    await page.locator('[data-rcsearch="0"]').click();
+    // Tapping the item box lists every item (and the list stays open while the box has focus).
+    await page.waitForFunction(()=>{const t=document.querySelector('[data-rcresults="0"]')?.textContent||'';return ['Coca Cola','Flour','Milk','Tomato'].every(n=>t.includes(n));},null,{timeout:5000});
+    await page.waitForTimeout(400);
+    assert.equal(await page.locator('[data-rcresults="0"] [data-rcpick],[data-rcresults="0"] [data-rcsetup]').count(),4,'the item list stays open');
+    if(process.env.SHOT){await page.locator('[data-rcresults="0"]').scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SHOT+'/rc-list.png'});}
     await page.fill('[data-rcsearch="0"]','coca');await page.locator('[data-rcpick="0"][data-id="i1"]').click();
     await page.fill('[data-rcqty="0"]','10');await page.fill('[data-rccost="0"]','10');
     await page.locator('#rcAddLine').click();

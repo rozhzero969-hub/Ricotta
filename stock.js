@@ -1060,10 +1060,15 @@ function rcLineHtml(l, i){
 function rcPaintResults(i){
   const box = document.querySelector(`[data-rcresults="${i}"]`); if(!box) return;
   const l = rcState.lines[i], tokens = stTokens(l.search);
-  if(!tokens.length){ box.innerHTML = ''; return; }
-  const hits = state.items.filter(it => stMatches(it, tokens)).sort((a, b) => nameCollator().compare(a.name, b.name)).slice(0, 8);
+  // Like the workplace: tapping the box opens the whole list straight away; typing narrows it.
+  // The chosen supplier's items come first.
+  if(!tokens.length && !l.open){ box.innerHTML = ''; box.classList.remove('open'); return; }
+  const sup = rcState.supplierId;
+  const hits = state.items.filter(it => !tokens.length || stMatches(it, tokens))
+    .sort((a, b) => (sup ? (a.supplierId === sup ? 0 : 1) - (b.supplierId === sup ? 0 : 1) : 0) || nameCollator().compare(a.name, b.name)).slice(0, 150);
+  box.classList.add('open');
   box.innerHTML = hits.length ? hits.map(it => stReady(it)
-    ? `<button type="button" class="list-row tappable tr-result" data-rcpick="${i}" data-id="${esc(it.id)}"><div><div class="name" dir="auto">${esc(it.name)}</div><div class="meta">${esc(unitLabel(it.unit))}</div></div></button>`
+    ? `<button type="button" class="list-row tappable tr-result" data-rcpick="${i}" data-id="${esc(it.id)}"><div><div class="name" dir="auto">${esc(it.name)}</div><div class="meta" dir="auto">${esc([unitLabel(it.unit), state.suppliers.find(x => x.id === it.supplierId)?.name].filter(Boolean).join(' · '))}</div></div></button>`
     : `<button type="button" class="list-row tappable tr-result todo" data-rcsetup="${esc(it.id)}"><div><div class="name" dir="auto">${esc(it.name)}</div><div class="meta">${esc(t('trTapToSetUp'))}</div></div><span class="it-chip todo">${esc(t('itBadgeTodo'))}</span></button>`).join('') : `<div class="field-hint">${esc(t('trNoMatch'))}</div>`;
 }
 function rcPaintLines(){
@@ -1196,18 +1201,23 @@ function attachReceiptsEvents(){
   const lines = document.getElementById('rcLines');
   lines.addEventListener('input', e => {
     const s = e.target.dataset;
-    if(s.rcsearch !== undefined){ rcState.lines[+s.rcsearch].search = e.target.value; rcPaintResults(+s.rcsearch); }
+    if(s.rcsearch !== undefined){ rcState.lines[+s.rcsearch].search = e.target.value; rcState.lines[+s.rcsearch].open = true; rcPaintResults(+s.rcsearch); }
     else if(s.rcqty !== undefined){ rcState.lines[+s.rcqty].qty = e.target.value; rcPaintTotal(); }
     else if(s.rccost !== undefined){ rcState.lines[+s.rccost].cost = e.target.value; rcPaintTotal(); }
   });
   // Picking a search result must not blur the search box first (that moves the page under the finger).
   lines.addEventListener('pointerdown', e => { if(e.target.closest('[data-rcpick],[data-rcsetup]')) e.preventDefault(); });
+  lines.addEventListener('focusin', e => { const i = e.target.dataset?.rcsearch; if(i !== undefined && rcState.lines[+i]){ rcState.lines[+i].open = true; rcPaintResults(+i); } });
+  lines.addEventListener('focusout', e => {
+    const i = e.target.dataset?.rcsearch; if(i === undefined) return;
+    setTimeout(() => { const l = rcState.lines[+i]; if(l && !l.itemId && document.activeElement !== e.target){ l.open = false; rcPaintResults(+i); } }, 200);
+  });
   lines.addEventListener('change', e => { const s = e.target.dataset; if(s.rcunitsel !== undefined){ rcState.lines[+s.rcunitsel].unit = e.target.value; rcPaintLines(); } });
   lines.addEventListener('click', e => {
     const pick = e.target.closest('[data-rcpick]'), unit = e.target.closest('[data-rcunit]'), change = e.target.closest('[data-rcchange]'), rm = e.target.closest('[data-rcremove]');
     const setup = e.target.closest('[data-rcsetup]');
     if(setup){ openItemModal(setup.dataset.rcsetup); return; }
-    if(pick){ const l = rcState.lines[+pick.dataset.rcpick]; Object.assign(l, {itemId: pick.dataset.id, unit: 'buying', search: ''}); rcPaintLines(); document.querySelector(`[data-rcqty="${pick.dataset.rcpick}"]`)?.focus(); }
+    if(pick){ const l = rcState.lines[+pick.dataset.rcpick]; Object.assign(l, {itemId: pick.dataset.id, unit: 'buying', search: '', open: false}); rcPaintLines(); document.querySelector(`[data-rcqty="${pick.dataset.rcpick}"]`)?.focus(); }
     else if(unit){ rcState.lines[+unit.dataset.rcunit].unit = unit.dataset.mode; rcPaintLines(); }
     else if(change){ Object.assign(rcState.lines[+change.dataset.rcchange], rcNewLine()); rcPaintLines(); document.querySelector(`[data-rcsearch="${change.dataset.rcchange}"]`)?.focus(); }
     else if(rm){ rcState.lines.splice(+rm.dataset.rcremove, 1); rcPaintLines(); }
