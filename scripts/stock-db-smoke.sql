@@ -134,6 +134,24 @@ begin
     if after <> before + 24 then raise exception 'Unsaved receipt added stock'; end if;
   end;
 
+  -- Item jobs: the confirmed workplace name changes only when the workplace confirmed the save
+  declare jb uuid; nm text; begin
+    perform stock_save_workplace_units('i1','rozha','kg',2.5);
+    rejected:=false; begin perform stock_save_workplace_units('i1','rozha','kg',null); exception when others then rejected:=true; end;
+    if not rejected then raise exception 'Recipe unit without a conversion accepted'; end if;
+    insert into stock_item_jobs(client_key,item_id,item_name,kind,payload,created_by,status,prepared_at,shot)
+      values(gen_random_uuid(),'i1','Flour','edit','{"name":"Flour WP","fromName":"Flour"}','rozha','prepared',now(),'data:image/jpeg;base64,AAAA') returning id into jb;
+    if stock_item_job_claim_submit(jb) then raise exception 'Item job claimed without a final approval'; end if;
+    perform stock_item_job_final_approve(jb,'rozha');
+    if not stock_item_job_claim_submit(jb) then raise exception 'Item job not claimable'; end if;
+    perform stock_item_job_finish(jb,'needs_checking','unclear',null);
+    select workplace_confirmed_name into nm from stock_item_settings where item_id='i1';
+    if nm is not null then raise exception 'Name confirmed before anyone checked'; end if;
+    perform stock_item_job_resolve(jb,'rozha',true,'Checked the workplace: renamed');
+    select workplace_confirmed_name into nm from stock_item_settings where item_id='i1';
+    if nm is distinct from 'Flour WP' then raise exception 'Confirmed name not stored'; end if;
+  end;
+
   -- Screenshots older than 3 days are removed
   update stock_shots set taken_at=now()-interval '4 days' where request_id=rid;
   perform stock_cleanup();

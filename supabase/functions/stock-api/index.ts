@@ -21,6 +21,10 @@
 //   POST   receipts/cancel               {id}   (before the final approval)
 //   POST   receipts/final-approve        {id}   the PC may now press "Receive & send to finance" once
 //   POST   receipts/resolve              {id, saved, note}   after checking the workplace, for a receipt that needs checking
+//   GET    itemjobs                      recent create/edit-in-workplace tasks (no screenshots)
+//   GET    itemjobs/shot?id=             the PC's screenshot of a task
+//   POST   itemjobs                      {clientKey, itemId, kind: create|edit}   (the details are taken from the item's saved setup)
+//   POST   itemjobs/cancel|final-approve|resolve   same rules as receipts
 //   POST   start-worker                  ask the office PC helper to start the worker
 //   POST   counts-bulk                   {storage, countedAt, note, pin, lines:[{itemId, quantity}]}   (one PIN for many items)
 //   POST   counts                        {itemId, storage, quantity, countedAt, note, pin}   (asks for the PIN again)
@@ -35,6 +39,7 @@
 //   POST   worker/receipt-held           {id}   status of the receipt the PC is holding open
 //   POST   worker/receipt-submit-claim   {id}   take a final-approved receipt to press the button once
 //   POST   worker/receipt-finish         {id, status: completed|needs_checking|failed, message, image}
+//   POST   worker/itemjob-claim|itemjob-report|itemjob-held|itemjob-submit-claim|itemjob-finish   same as the receipt routes
 //   POST   worker/report                 {id, status, message, image}
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -129,7 +134,7 @@ async function controlStatus() {
   const { data } = await db.from("stock_worker_control").select("*").eq("id", 1).maybeSingle();
   const fresh = (v: string | null | undefined) => !!v && Date.now() - Date.parse(v) < 120_000;
   return { workerOnline: fresh(data?.worker_seen_at), launcherOnline: fresh(data?.launcher_seen_at),
-    workerSeenAt: data?.worker_seen_at ?? null, workerLive: data?.worker_live ?? null, workerReceiptsLive: data?.worker_receipts_live ?? null, workerPageReady: data?.worker_page_ready ?? null,
+    workerSeenAt: data?.worker_seen_at ?? null, workerLive: data?.worker_live ?? null, workerReceiptsLive: data?.worker_receipts_live ?? null, workerItemsLive: data?.worker_items_live ?? null, workerPageReady: data?.worker_page_ready ?? null,
     workerNote: data?.worker_note ?? null,
     startRequestedAt: data?.start_requested_at ?? null, startHandledAt: data?.start_handled_at ?? null };
 }
@@ -203,7 +208,7 @@ Deno.serve(async (req: Request) => {
         const b = await readBody(req);
         seenLast.worker_seen_at = Date.now();
         await db.from("stock_worker_control").upsert({ id: 1, worker_seen_at: new Date().toISOString(),
-          worker_live: b.live === true, worker_receipts_live: b.receiptsLive === true, worker_page_ready: b.pageReady === true, worker_note: str(b.note, 300) || null });
+          worker_live: b.live === true, worker_receipts_live: b.receiptsLive === true, worker_items_live: b.itemsLive === true, worker_page_ready: b.pageReady === true, worker_note: str(b.note, 300) || null });
         return json({ ok: true });
       }
       if (req.method === "POST" && path[1] === "receipt-claim") {
@@ -251,6 +256,47 @@ Deno.serve(async (req: Request) => {
         if (error) throw error;
         return json({ ok: true });
       }
+      if (req.method === "POST" && path[1] === "itemjob-claim") {
+        const stale = new Date(Date.now() - 10 * 60_000).toISOString();
+        const { data: next, error } = await db.from("stock_item_jobs").select("id").or(`status.eq.waiting,and(status.eq.preparing,claimed_at.lt.${stale})`)
+          .order("created_at").limit(1).maybeSingle();
+        if (error) throw error;
+        if (!next) return json({ job: null });
+        const { data: got, error: e2 } = await db.from("stock_item_jobs").update({ status: "preparing", claimed_at: new Date().toISOString() })
+          .eq("id", next.id).in("status", ["waiting", "preparing"]).select("id,kind,payload").maybeSingle();
+        if (e2) throw e2;
+        return json({ job: got ? { id: got.id, kind: got.kind, ...got.payload } : null });
+      }
+      if (req.method === "POST" && path[1] === "itemjob-report") {
+        const b = await readBody(req, MAX_WORKER_BODY);
+        if (!uuid(b.id) || !["prepared", "failed", "closed"].includes(b.status)) return fail("Invalid report");
+        const now = new Date().toISOString();
+        const patch: Record<string, unknown> = { status: b.status === "closed" ? "needs_checking" : b.status, message: str(b.message, 1000) || null };
+        if (b.status === "prepared") patch.prepared_at = now; else patch.finished_at = now;
+        const img = cleanImage(b.image); if (img) patch.shot = img;
+        const { error } = await db.from("stock_item_jobs").update(patch).eq("id", b.id).in("status", b.status === "closed" ? ["prepared"] : ["preparing"]);
+        if (error) throw error;
+        return json({ ok: true });
+      }
+      if (req.method === "POST" && path[1] === "itemjob-held") {
+        const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid task");
+        const { data, error } = await db.from("stock_item_jobs").select("status,final_approved_at").eq("id", b.id).maybeSingle();
+        if (error) throw error;
+        return json({ status: data?.status ?? null, finalApproved: !!data?.final_approved_at });
+      }
+      if (req.method === "POST" && path[1] === "itemjob-submit-claim") {
+        const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid task");
+        const { data, error } = await db.rpc("stock_item_job_claim_submit", { p_id: b.id });
+        if (error) throw error;
+        return json({ ok: data === true });
+      }
+      if (req.method === "POST" && path[1] === "itemjob-finish") {
+        const b = await readBody(req, MAX_WORKER_BODY);
+        if (!uuid(b.id) || !["completed", "needs_checking", "failed"].includes(b.status)) return fail("Invalid report");
+        const { error } = await db.rpc("stock_item_job_finish", { p_id: b.id, p_status: b.status, p_message: str(b.message, 1000), p_image: cleanImage(b.image) });
+        if (error) throw error;
+        return json({ ok: true });
+      }
       if (req.method === "POST" && path[1] === "control-handled") {
         await db.from("stock_worker_control").upsert({ id: 1, start_handled_at: new Date().toISOString() });
         return json({ ok: true });
@@ -291,7 +337,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "GET" && path[0] === "bootstrap") {
       const [storages, settings, counts, live, myTabs] = await Promise.all([
         db.from("stock_storages").select("name").eq("archived", false).order("sort_order"),
-        db.from("stock_item_settings").select("item_id,counting_unit,per_buying,low_stock,workplace_name"),
+        db.from("stock_item_settings").select("item_id,counting_unit,per_buying,low_stock,workplace_name,usage_unit,per_counting_usage,workplace_confirmed_name,workplace_created_at"),
         db.from("stock_counts").select("*").order("entered_at", { ascending: false }).limit(150),
         requestsAndBalances(),
         db.from("stock_tabs").select("tabs").eq("account", actor).maybeSingle(),
@@ -299,7 +345,9 @@ Deno.serve(async (req: Request) => {
       for (const r of [storages, settings, counts]) if (r.error) throw r.error;
       return json({
         storages: (storages.data ?? []).map((s: any) => s.name),
-        settings: (settings.data ?? []).map((s: any) => ({ itemId: s.item_id, countingUnit: s.counting_unit, perBuying: s.per_buying === null ? null : Number(s.per_buying), lowStock: s.low_stock === null ? null : Number(s.low_stock), workplaceName: s.workplace_name ?? null })),
+        settings: (settings.data ?? []).map((s: any) => ({ itemId: s.item_id, countingUnit: s.counting_unit, perBuying: s.per_buying === null ? null : Number(s.per_buying), lowStock: s.low_stock === null ? null : Number(s.low_stock), workplaceName: s.workplace_name ?? null,
+          usageUnit: s.usage_unit ?? null, perCountingUsage: s.per_counting_usage === null ? null : Number(s.per_counting_usage),
+          workplaceConfirmedName: s.workplace_confirmed_name ?? null, workplaceCreatedAt: s.workplace_created_at ?? null })),
         counts: (counts.data ?? []).map(toCount),
         tabs: Array.isArray(myTabs.data?.tabs) ? myTabs.data.tabs : null,
         ...live,
@@ -396,6 +444,82 @@ Deno.serve(async (req: Request) => {
       if (error) throw error;
       return json({ ok: true });
     }
+    if (req.method === "GET" && path[0] === "itemjobs" && !path[1]) {
+      await db.from("stock_item_jobs").update({ shot: null }).not("shot", "is", null).lt("created_at", new Date(Date.now() - 3 * 86400_000).toISOString());
+      const [{ data, error }, shots] = await Promise.all([
+        db.from("stock_item_jobs").select("id,item_id,item_name,kind,payload,status,message,created_by,created_at,prepared_at,final_approved_at,finished_at,resolved_note")
+          .order("created_at", { ascending: false }).limit(60),
+        db.from("stock_item_jobs").select("id").not("shot", "is", null).order("created_at", { ascending: false }).limit(60),
+      ]);
+      if (error) throw error;
+      const withShot = new Set((shots.data ?? []).map((r: any) => r.id));
+      return json({ jobs: (data ?? []).map((j: any) => ({ id: j.id, itemId: j.item_id, itemName: j.item_name, kind: j.kind, payload: j.payload, status: j.status,
+        message: j.message, createdBy: j.created_by, createdAt: j.created_at, preparedAt: j.prepared_at, finalApprovedAt: j.final_approved_at,
+        finishedAt: j.finished_at, resolvedNote: j.resolved_note, hasShot: withShot.has(j.id) })) });
+    }
+    if (req.method === "GET" && path[0] === "itemjobs" && path[1] === "shot") {
+      const id = new URL(req.url).searchParams.get("id");
+      if (!uuid(id)) return fail("Invalid task");
+      const { data, error } = await db.from("stock_item_jobs").select("shot").eq("id", id).maybeSingle();
+      if (error) throw error;
+      return json({ image: data?.shot ?? null });
+    }
+    if (req.method === "POST" && path[0] === "itemjobs" && !path[1]) {
+      // The details are built here from the item's saved setup, so the PC fills exactly what the app holds.
+      const b = await readBody(req);
+      if (!uuid(b.clientKey) || !["create", "edit"].includes(b.kind)) return fail("Invalid task");
+      const { data: same } = await db.from("stock_item_jobs").select("id").eq("client_key", b.clientKey).maybeSingle();
+      if (same) return json({ id: same.id }, 201);
+      const itemId = str(b.itemId, 80);
+      const [{ data: it }, { data: st }, units, open] = await Promise.all([
+        db.from("app_items").select("id,name,unit_id").eq("id", itemId).maybeSingle(),
+        db.from("stock_item_settings").select("*").eq("item_id", itemId).maybeSingle(),
+        db.from("app_units").select("id,en"),
+        db.from("stock_item_jobs").select("id").eq("item_id", itemId).in("status", ["waiting", "preparing", "prepared", "submitting", "needs_checking"]).limit(1),
+      ]);
+      if (!it) return fail("Item not found");
+      if (open.data?.length) return fail("This item already has a task on the PC. Finish or cancel it first");
+      if (!st || !st.usage_unit) return fail("Set the item's counting format and recipe unit first");
+      const unitName = new Map((units.data ?? []).map((u: any) => [u.id, u.en]));
+      if (st.counting_unit !== st.usage_unit && !(Number(st.per_counting_usage) > 0)) return fail("Set how many recipe units are in one counting unit");
+      if (it.unit_id !== st.counting_unit && !(Number(st.per_buying) > 0)) return fail("Set how many counting units are in one buying unit");
+      const name = (st.workplace_name || "").trim() || it.name;
+      const payload = {
+        name, fromName: b.kind === "edit" ? ((st.workplace_confirmed_name || "").trim() || name) : null,
+        usage: unitName.get(st.usage_unit), buying: unitName.get(it.unit_id), counting: unitName.get(st.counting_unit),
+        countingInUsage: st.counting_unit === st.usage_unit ? null : Number(st.per_counting_usage),
+        buyingInCounting: it.unit_id === st.counting_unit ? null : Number(st.per_buying),
+        low: st.low_stock === null ? null : Number(st.low_stock),
+      };
+      if (!payload.usage || !payload.buying || !payload.counting) return fail("A unit of this item no longer exists");
+      const { data, error } = await db.from("stock_item_jobs").insert({ client_key: b.clientKey, item_id: it.id, item_name: it.name, kind: b.kind,
+        payload, created_by: actor }).select("id").single();
+      if (error) throw error;
+      return json({ id: data.id }, 201);
+    }
+    if (req.method === "POST" && path[0] === "itemjobs" && path[1] === "cancel") {
+      const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid task");
+      const { data, error } = await db.from("stock_item_jobs").update({ status: "cancelled", finished_at: new Date().toISOString() })
+        .eq("id", b.id).or(`status.in.(waiting,failed),and(status.eq.prepared,final_approved_at.is.null),and(status.eq.prepared,final_approved_at.lt.${new Date(Date.now() - 30 * 60_000).toISOString()})`).select("id");
+      if (error) throw error;
+      if (!data?.length) return fail("This task can no longer be cancelled");
+      return json({ ok: true });
+    }
+    if (req.method === "POST" && path[0] === "itemjobs" && path[1] === "final-approve") {
+      const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid task");
+      const c = await controlStatus();
+      if (!c.workerOnline || c.workerItemsLive !== true || c.workerPageReady === false) return fail("The PC worker is not set up to save items yet (test mode), so it cannot press Save");
+      const { error } = await db.rpc("stock_item_job_final_approve", { p_id: b.id, p_actor: actor });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+    if (req.method === "POST" && path[0] === "itemjobs" && path[1] === "resolve") {
+      const b = await readBody(req);
+      if (!uuid(b.id) || typeof b.saved !== "boolean") return fail("Invalid task");
+      const { error } = await db.rpc("stock_item_job_resolve", { p_id: b.id, p_actor: actor, p_saved: b.saved, p_note: str(b.note, 900) });
+      if (error) throw error;
+      return json({ ok: true });
+    }
     if (req.method === "POST" && path[0] === "start-worker") {
       const c = await controlStatus();
       if (c.workerOnline) return json({ ok: true, alreadyOn: true });
@@ -429,6 +553,13 @@ Deno.serve(async (req: Request) => {
       const { error } = await db.rpc("stock_save_settings", { p_item: str(path[1], 80), p_actor: actor, p_counting: str(b.countingUnit, 80),
         p_per: per === null ? null : Number(per), p_low: low === null ? null : Number(low), p_workplace: str(b.workplaceName, 240) || null });
       if (error) throw error;
+      if ("usageUnit" in b) {
+        const pu = b.perCountingUsage === "" || b.perCountingUsage === null || b.perCountingUsage === undefined ? null : b.perCountingUsage;
+        if (pu !== null && !decimal(pu)) return fail("Invalid number");
+        const { error: e2 } = await db.rpc("stock_save_workplace_units", { p_item: str(path[1], 80), p_actor: actor,
+          p_usage: str(b.usageUnit, 80) || null, p_per_usage: pu === null ? null : Number(pu) });
+        if (e2) throw e2;
+      }
       return json({ ok: true });
     }
     if (req.method === "POST" && path[0] === "requests") {

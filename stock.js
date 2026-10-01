@@ -199,6 +199,7 @@ function stRepaint(){
   if(state.view === 'transfers'){ wkPaint(); trPaintActive(); trPaintResults(); trPaintChosen(); }
   else if(state.view === 'stock') stPaintList();
   else if(state.view === 'receipts') wkPaint();
+  else if(state.view === 'itemsAdmin') ijPaintList();
   else if(state.view === 'history') render();
 }
 
@@ -684,7 +685,11 @@ function itemStockFieldsHtml(existing){
   return `<div class="field"><label>${esc(t('itWorkName'))}</label><input id="mfWork" data-clear="1" autocomplete="off" maxlength="240" value="${esc(s?.workplaceName || '')}" placeholder="${esc(existing?.name || '')}"><div class="field-hint">${esc(t('itWorkNameHint'))}</div></div>
     <div class="field"><label>${esc(t('itCounting'))}</label><select id="mfCounting" ${locked ? 'disabled' : ''}>${unitOptions}</select><div class="field-hint">${esc(locked ? t('itLocked') : t('itCountingHint'))}</div></div>
     <div class="field" id="mfPerBox" hidden><label id="mfPerLabel"></label><input id="mfPer" data-clear="1" type="number" inputmode="decimal" min="0" step="any" value="${s?.perBuying != null ? esc(s.perBuying) : ''}"><div class="field-hint" id="mfPerSummary"></div></div>
-    <div class="field"><label>${esc(t('itWarn'))}</label><div class="st-warn"><input id="mfLow" data-clear="1" type="number" inputmode="decimal" min="0" step="any" value="${s?.lowStock != null ? esc(s.lowStock) : ''}"><span class="st-unit-chip" id="mfLowUnit"></span></div><div class="field-hint">${esc(t('itWarnHint'))}</div></div>`;
+    <div class="field"><label>${esc(t('itWarn'))}</label><div class="st-warn"><input id="mfLow" data-clear="1" type="number" inputmode="decimal" min="0" step="any" value="${s?.lowStock != null ? esc(s.lowStock) : ''}"><span class="st-unit-chip" id="mfLowUnit"></span></div><div class="field-hint">${esc(t('itWarnHint'))}</div></div>
+    <div class="field"><label>${esc(t('itUsage'))}</label><select id="mfUsage"><option value="">${esc(t('itUsageNone'))}</option>${state.units.map(u => `<option value="${esc(u.id)}" ${s?.usageUnit === u.id ? 'selected' : ''}>${esc(unitName(u))}</option>`).join('')}</select><div class="field-hint">${esc(t('itUsageHint'))}</div></div>
+    <div class="field" id="mfPerUsageBox" hidden><label id="mfPerUsageLabel"></label><input id="mfPerUsage" data-clear="1" type="number" inputmode="decimal" min="0" step="any" value="${s?.perCountingUsage != null ? esc(s.perCountingUsage) : ''}"></div>
+    ${existing && s ? `<div class="field wp-box" data-wpitem="${esc(existing.id)}"><label>${esc(t('wpTitle'))}</label><div class="field-hint">${esc(s.workplaceCreatedAt ? t('wpCreated') : t('wpHint'))}</div>
+      <div class="tr-btn-row"><button type="button" class="btn btn-ghost" data-wpjob="create">${esc(t('wpCreate'))}</button><button type="button" class="btn btn-ghost" data-wpjob="edit">${esc(t('wpEdit'))}</button></div></div>` : ''}`;
 }
 function itemStockOnOpen(box){
   const buy = box.querySelector('#mfUnit'), count = box.querySelector('#mfCounting'), per = box.querySelector('#mfPer');
@@ -698,7 +703,16 @@ function itemStockOnOpen(box){
       box.querySelector('#mfPerSummary').textContent = Number(per.value) > 0 ? t('itPerSummary')(iso(unitName(b)), fmtQty(Number(per.value)), iso(unitName(c))) : '';
     }
   };
+  const usage = box.querySelector('#mfUsage');
+  const paintUsage = () => {
+    const c = state.units.find(u => u.id === count.value), us = state.units.find(u => u.id === usage.value);
+    const need = !!(c && us && c.id !== us.id);
+    box.querySelector('#mfPerUsageBox').hidden = !need;
+    if(need) box.querySelector('#mfPerUsageLabel').textContent = t('itPer')(iso(unitName(c)), iso(unitName(us)));
+  };
   buy.addEventListener('change', paint); count.addEventListener('change', paint); per.addEventListener('input', paint); paint();
+  count.addEventListener('change', paintUsage); usage.addEventListener('change', paintUsage); paintUsage();
+  box.querySelectorAll('[data-wpjob]').forEach(b => b.onclick = () => wpSend(b.closest('[data-wpitem]').dataset.wpitem, b.dataset.wpjob));
 }
 /* Checks the counting fields before anything is saved. Returns {} or {error}. */
 function itemStockValidate(box, buyingId){
@@ -707,6 +721,8 @@ function itemStockValidate(box, buyingId){
   if(!buyingId) return {error: t('itNeedFormats')};
   if(counting !== buyingId && !(Number(per) > 0)) return {error: t('itNeedPer')};
   if(low !== '' && !(Number(low) >= 0)) return {error: t('itWarn')};
+  const usage = box.querySelector('#mfUsage').value, perUsage = box.querySelector('#mfPerUsage').value;
+  if(usage && usage !== counting && !(Number(perUsage) > 0)) return {error: t('itNeedPerUsage')};
   return {};
 }
 /* Saves the counting setup for an item that has already been saved. Returns {} or {error}. */
@@ -714,9 +730,14 @@ async function itemStockSave(itemId, box, buyingId){
   const counting = box.querySelector('#mfCounting').value;
   if(!counting) return {};
   const per = box.querySelector('#mfPer').value, low = box.querySelector('#mfLow').value, work = box.querySelector('#mfWork').value.trim();
-  const r = await stockApi('settings/' + encodeURIComponent(itemId), {method: 'PUT', body: {countingUnit: counting, perBuying: counting === buyingId ? null : per, lowStock: low === '' ? null : low, workplaceName: work}});
+  const usage = box.querySelector('#mfUsage').value, perUsage = box.querySelector('#mfPerUsage').value;
+  const perU = usage && usage !== counting ? perUsage : null;
+  const r = await stockApi('settings/' + encodeURIComponent(itemId), {method: 'PUT', body: {countingUnit: counting, perBuying: counting === buyingId ? null : per, lowStock: low === '' ? null : low, workplaceName: work,
+    usageUnit: usage, perCountingUsage: perU}});
   if(!r.ok) return {error: r.data?.error || t('saveFailed')};
-  stockState.settings.set(itemId, {itemId, countingUnit: counting, perBuying: counting === buyingId ? null : Number(per), lowStock: low === '' ? null : Number(low), workplaceName: work || null});
+  const before = stockState.settings.get(itemId) || {};
+  stockState.settings.set(itemId, {...before, itemId, countingUnit: counting, perBuying: counting === buyingId ? null : Number(per), lowStock: low === '' ? null : Number(low), workplaceName: work || null,
+    usageUnit: usage || null, perCountingUsage: perU === null ? null : Number(perU)});
   return {};
 }
 
@@ -1071,6 +1092,8 @@ function attachReceiptsEvents(){
   });
   document.getElementById('rcAddLine').onclick = () => { rcState.lines.push(rcNewLine()); rcPaintLines(); document.querySelector(`[data-rcsearch="${rcState.lines.length - 1}"]`)?.focus(); };
   document.getElementById('rcSend').onclick = rcSend;
+  // Tapping these while typing in a box must not first close the keyboard and move the button away.
+  ['rcSend', 'rcAddLine'].forEach(id => document.getElementById(id).addEventListener('pointerdown', e => e.preventDefault()));
   rcPaintLines(); rcPaintList();
   if(Date.now() - rcData.at > 3000) rcLoad();
   stRefreshIfStale();
@@ -1095,3 +1118,114 @@ function rcResolve(id){
     }
   });
 }
+
+/* ============ Create or update an ingredient in the workplace (a task for the PC) ============ */
+const ijData = {list: [], loaded: false, at: 0, shots: {}, loadingShot: {}};
+const IJ_ACTIVE = ['waiting', 'preparing', 'prepared', 'submitting'];
+async function ijLoad(){
+  const r = await stockApi('itemjobs');
+  if(!r.ok) return;
+  ijData.list = r.data.jobs || []; ijData.loaded = true; ijData.at = Date.now();
+  if(state.view === 'itemsAdmin') ijPaintList();
+}
+setInterval(() => {
+  if(!state.account || document.hidden || state.view !== 'itemsAdmin' || !state.views.includes('stock')) return;
+  const busy = ijData.list.some(x => IJ_ACTIVE.includes(x.status));
+  if(Date.now() - ijData.at > (busy ? 8000 : 45000)) ijLoad();
+}, 4000);
+/* What the PC will put in the workplace form, from the item's saved setup. */
+function wpPreviewRows(itemId, kind){
+  const item = stItem(itemId), s = stSetting(itemId); if(!item || !s) return '';
+  const u = id => unitName(stUnitObj(id)) || '';
+  const name = (s.workplaceName || '').trim() || item.name;
+  const row = (k, v) => `<div class="tr-sum-row"><span>${esc(k)}</span><b dir="auto">${esc(v)}</b></div>`;
+  return `<div class="tr-sum">${kind === 'edit' && s.workplaceConfirmedName && s.workplaceConfirmedName !== name ? row(t('wpFrom'), s.workplaceConfirmedName) : ''}${row(t('itWorkName'), name)}
+    ${row(t('itUsage'), u(s.usageUnit) || '—')}${row(t('itBuying'), u(item.unit))}${row(t('itCounting'), u(s.countingUnit))}
+    ${s.usageUnit && s.countingUnit !== s.usageUnit ? row(`1 ${u(s.countingUnit)} =`, `${fmtQty(s.perCountingUsage)} ${u(s.usageUnit)}`) : ''}
+    ${item.unit !== s.countingUnit ? row(`1 ${u(item.unit)} =`, `${fmtQty(s.perBuying)} ${u(s.countingUnit)}`) : ''}
+    ${row(t('itWarn'), s.lowStock != null ? `${fmtQty(s.lowStock)} ${u(s.countingUnit)}` : '—')}</div>`;
+}
+async function wpSend(itemId, kind){
+  const s = stSetting(itemId);
+  if(!s || !s.usageUnit){ toast(t('wpNeedUsage'), 'error'); return; }
+  if(!(await showConfirm(wpPreviewRows(itemId, kind) + `<p>${esc(t(kind === 'create' ? 'wpConfirmCreate' : 'wpConfirmEdit'))}</p>`, {okLabel: t(kind === 'create' ? 'wpCreate' : 'wpEdit'), okClass: 'btn-primary'}))) return;
+  const r = await stockApi('itemjobs', {method: 'POST', body: {clientKey: crypto.randomUUID(), itemId, kind}});
+  if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
+  toast(t('wpSent')); ijLoad();
+}
+function ijStatus(x){
+  if(x.status === 'prepared' && x.finalApprovedAt) return [t('rcStApproved'), 'ready'];
+  return {waiting: [t('rcStWaiting'), 'wait'], preparing: [t('rcStPreparing'), 'run'], prepared: [t('rcStPrepared'), 'wait'], submitting: [t('rcStSubmitting'), 'run'],
+    completed: [t('rcStCompleted'), 'ok'], needs_checking: [t('rcStNeeds'), 'bad'], failed: [t('rcStFailed'), 'off'], cancelled: [t('rcStCancelled'), 'off']}[x.status] || [x.status, 'off'];
+}
+function ijCardHtml(x){
+  const [label, cls] = ijStatus(x), shot = ijData.shots[x.id], p = x.payload || {};
+  const c = stockState.control || {};
+  const live = c.workerOnline && c.workerItemsLive === true && c.workerPageReady !== false;
+  const fresh = x.preparedAt && Date.now() - Date.parse(x.preparedAt) < 20 * 60 * 1000;
+  const why = !shot ? t('rcFinalNeedShot') : !fresh ? t('rcFinalStale') : !live ? t('wpNotLive') : '';
+  const canCancel = ['waiting', 'failed'].includes(x.status) || (x.status === 'prepared' && (!x.finalApprovedAt || Date.now() - Date.parse(x.finalApprovedAt) > 30 * 60 * 1000));
+  return `<article class="tr-req glass rc-card s-${esc(x.status)}"><div class="tr-req-top"><div><div class="tr-req-name" dir="auto">${esc(p.name || x.itemName)}</div><div class="meta">${esc(t(x.kind === 'create' ? 'wpKindCreate' : 'wpKindEdit'))} · ${esc(fmtDateTime(x.createdAt))}</div></div><span class="tr-chip ${cls}">${esc(label)}</span></div>
+    <div class="rc-card-lines" dir="auto">${esc([p.fromName && p.fromName !== p.name ? `${t('wpFrom')}: ${p.fromName}` : '', `${t('itUsage')}: ${p.usage}`, `${t('itBuying')}: ${p.buying}`, `${t('itCounting')}: ${p.counting}`].filter(Boolean).join(' · '))}</div>
+    ${x.status === 'prepared' && !x.finalApprovedAt ? `<div class="tr-pc"><b>${esc(t('rcPcNow'))}</b></div>` : ''}
+    ${x.message && !['prepared', 'completed'].includes(x.status) ? `<div class="tr-pc">${esc(x.message)}</div>` : ''}
+    ${x.resolvedNote ? `<div class="tr-pc">${esc(x.resolvedNote)}</div>` : ''}
+    ${shot ? `<figure class="tr-shot"><img src="${esc(shot)}" alt="${esc(t('trShotLabel'))}"></figure>` : x.hasShot ? `<button type="button" class="btn btn-ghost" data-ijshot="${esc(x.id)}">${esc(t('rcShowShot'))}</button>` : ''}
+    ${x.status === 'prepared' && !x.finalApprovedAt ? `<button type="button" class="btn btn-primary tr-wide" data-ijfinal="${esc(x.id)}" ${why ? 'disabled' : ''}>${esc(t('wpFinal'))}</button>${why ? `<div class="field-hint">${esc(why)}</div>` : ''}` : ''}
+    ${x.status === 'needs_checking' ? `<button type="button" class="btn btn-primary tr-wide" data-ijresolve="${esc(x.id)}">${esc(t('trCheckResult'))}</button>` : ''}
+    ${canCancel ? `<div class="tr-btn-row"><button type="button" class="btn btn-danger" data-ijcancel="${esc(x.id)}">${esc(t('wpCancel'))}</button></div>` : ''}</article>`;
+}
+function ijPaintList(){
+  const box = document.getElementById('ijList'); if(!box) return;
+  // Only tasks that still need someone, plus anything from the last day.
+  const list = ijData.list.filter(x => !['completed', 'failed', 'cancelled'].includes(x.status) || Date.now() - Date.parse(x.createdAt) < 86400000).slice(0, 20);
+  const html = list.length ? `<div class="section-title">${esc(t('wpTasks'))} (${list.length})</div>${list.map(ijCardHtml).join('')}` : '';
+  if(box.dataset.sig === html) return;
+  box.dataset.sig = html; box.innerHTML = html;
+  list.filter(x => x.status === 'prepared' && x.hasShot && !ijData.shots[x.id] && !ijData.loadingShot[x.id]).forEach(async x => {
+    ijData.loadingShot[x.id] = true;
+    const r = await stockApi('itemjobs/shot?id=' + encodeURIComponent(x.id));
+    ijData.loadingShot[x.id] = false;
+    if(r.ok && r.data.image){ ijData.shots[x.id] = r.data.image; ijPaintList(); }
+  });
+  box.querySelectorAll('[data-ijshot]').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    const r = await stockApi('itemjobs/shot?id=' + encodeURIComponent(b.dataset.ijshot));
+    if(r.ok && r.data.image){ ijData.shots[b.dataset.ijshot] = r.data.image; ijPaintList(); } else b.disabled = false;
+  });
+  box.querySelectorAll('[data-ijfinal]').forEach(b => b.onclick = async () => {
+    const x = ijData.list.find(y => y.id === b.dataset.ijfinal); if(!x) return;
+    if(!(await showConfirm(`<p dir="auto"><b>${esc(x.payload?.name || x.itemName)}</b></p><p>${esc(t('wpFinalConfirm'))}</p>`, {okLabel: t('wpFinal'), okClass: 'btn-primary'}))) return;
+    b.disabled = true;
+    const r = await stockApi('itemjobs/final-approve', {method: 'POST', body: {id: x.id}});
+    if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); b.disabled = false; return; }
+    toast(t('rcFinalDone')); ijLoad();
+  });
+  box.querySelectorAll('[data-ijresolve]').forEach(b => b.onclick = () => ijResolve(b.dataset.ijresolve));
+  box.querySelectorAll('[data-ijcancel]').forEach(b => b.onclick = async () => {
+    if(!(await showConfirm(esc(t('wpCancelConfirm')), {okLabel: t('wpCancel')}))) return;
+    const r = await stockApi('itemjobs/cancel', {method: 'POST', body: {id: b.dataset.ijcancel}});
+    if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
+    ijLoad();
+  });
+}
+function ijResolve(id){
+  const x = ijData.list.find(y => y.id === id); if(!x) return;
+  showFormModal({
+    title: esc(t('wpResolveTitle')),
+    banner: editingBanner(x.payload?.name || x.itemName, t(x.kind === 'create' ? 'wpKindCreate' : 'wpKindEdit')),
+    bodyHtml: `<div class="notif-sub">${esc(t('wpResolveIntro'))}</div>
+      <div class="field"><select id="ijsSaved"><option value="">${esc(t('trResolveChoose'))}</option><option value="yes">${esc(t('wpResolveYes'))}</option><option value="no">${esc(t('wpResolveNo'))}</option></select></div>
+      <div class="field"><label>${esc(t('stNote'))}</label><input id="ijsNote" maxlength="900" autocomplete="off"></div>`,
+    okLabel: t('save'),
+    onSubmit: async () => {
+      const v = document.getElementById('ijsSaved').value, note = document.getElementById('ijsNote').value.trim();
+      if(!v || note.length < 10) return {error: t('trResolveNeed')};
+      const r = await stockApi('itemjobs/resolve', {method: 'POST', body: {id, saved: v === 'yes', note}});
+      if(!r.ok) return {error: r.data?.error || t('saveFailed')};
+      await loadStock(); ijLoad(); render(); return {};
+    }
+  });
+}
+/* Called when the Items screen opens. */
+function ijMount(){ ijPaintList(); if(Date.now() - ijData.at > 3000) ijLoad(); }

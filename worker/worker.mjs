@@ -7,6 +7,7 @@ import { rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prepareReceipt, submitReceipt, RECEIPT_PAGE } from './receipt.mjs';
+import { prepareItem, submitItem, formOpen, STOCK_PAGE } from './items.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const PAGE='https://pos.shaydattendance.com/inventory/transfer';
@@ -18,6 +19,9 @@ const SUCCESS=(process.env.CONFIRMED_SUCCESS_TEXT||'').trim();
 // "Receive & send to finance", learned during a supervised first run.
 const RECEIPT_SUCCESS=(process.env.RECEIPT_SUCCESS_TEXT||'').trim();
 const RECEIPTS_LIVE=LIVE&&!!RECEIPT_SUCCESS;
+// Ingredients are saved only with ALLOW_SUBMIT=1 and both exact success messages (after "Add ingredient" and after "Save").
+const ITEM_SUCCESS={create:(process.env.ITEM_ADD_SUCCESS_TEXT||'').trim(),edit:(process.env.ITEM_EDIT_SUCCESS_TEXT||'').trim()};
+const ITEMS_LIVE=LIVE&&!!ITEM_SUCCESS.create&&!!ITEM_SUCCESS.edit;
 const POLL=Math.max(5,Number(process.env.POLL_SECONDS)||5)*1000;
 if(TOKEN.length<32)throw new Error('Set WORKER_TOKEN in worker/.env');
 if(LIVE&&!SUCCESS)throw new Error('Live submission requires CONFIRMED_SUCCESS_TEXT');
@@ -128,7 +132,7 @@ let lastPageReady=null, lastRecovery=0, lastBeat=0;
 // Health for the app: running, live or checks only, and whether the workplace transfer page is ready.
 async function heartbeat(pageReady){
   if(Date.now()-lastBeat<30000)return; lastBeat=Date.now();
-  try{await api('worker/heartbeat','POST',{live:LIVE,receiptsLive:RECEIPTS_LIVE,pageReady,note:pageReady?'':'Workplace transfer page is not open or not signed in'})}catch{}
+  try{await api('worker/heartbeat','POST',{live:LIVE,receiptsLive:RECEIPTS_LIVE,itemsLive:ITEMS_LIVE,pageReady,note:pageReady?'':'Workplace transfer page is not open or not signed in'})}catch{}
 }
 // A small JPEG of what the PC sees, sent to the phone so a person can confirm what was selected.
 async function jpeg(){
@@ -222,6 +226,56 @@ async function receiptTurn(){
     await api('worker/receipt-report','POST',{id:r.id,status:'failed',message:e.message,image}).catch(err=>console.error('Could not report receipt:',err.message));
   }
 }
+// Ingredient tasks (create / edit in the workplace) get a third tab and follow the same rules as receipts.
+let iPage=null, heldItem=null;
+async function itemShot(){
+  if(!iPage||iPage.isClosed())return undefined;
+  for(const quality of [50,30]){try{const b=(await iPage.screenshot({type:'jpeg',quality,fullPage:true})).toString('base64');if(b.length<=560000)return b}catch{return undefined}}
+  return undefined;
+}
+async function resetItemTab(){if(iPage&&!iPage.isClosed())await iPage.goto(STOCK_PAGE,{waitUntil:'domcontentloaded'}).catch(()=>{})}
+async function itemTurn(){
+  if(heldItem){
+    const j=heldItem, st=await api('worker/itemjob-held','POST',{id:j.id});
+    if(st.status==='cancelled'){heldItem=null;await resetItemTab();console.log('Item task cancelled from the app; form closed:',j.id);return}
+    const open=iPage&&!iPage.isClosed()&&iPage.url().startsWith(STOCK_PAGE)&&await formOpen(iPage,j).catch(()=>false);
+    if(!open){
+      heldItem=null;
+      await api('worker/itemjob-report','POST',{id:j.id,status:'closed',message:'The form was saved or closed on the PC without the app. Check the workplace and confirm in the app.',image:await itemShot()}).catch(e=>console.error('Could not report item task:',e.message));
+      return;
+    }
+    if(st.status!=='prepared'||!st.finalApproved||!ITEMS_LIVE)return;
+    if(!(await api('worker/itemjob-submit-claim','POST',{id:j.id})).ok)return;
+    heldItem=null; let pressed=false;
+    try{
+      await iPage.bringToFront().catch(()=>{});
+      await submitItem(iPage,j,ITEM_SUCCESS[j.kind],()=>{pressed=true});
+      await api('worker/itemjob-finish','POST',{id:j.id,status:'completed',message:'Confirmed workplace success: '+ITEM_SUCCESS[j.kind],image:await itemShot()});
+      console.log('Item saved in the workplace:',j.id);
+    }catch(e){
+      console.error('Item task stopped:',j.id,e.message);
+      await api('worker/itemjob-finish','POST',{id:j.id,status:pressed?'needs_checking':'failed',message:e.message,image:await itemShot()}).catch(err=>console.error('Could not report item task; it will need checking:',err.message));
+    }
+    if(!pressed)await resetItemTab();
+    return;
+  }
+  const j=(await api('worker/itemjob-claim','POST',{})).job;
+  if(!j)return;
+  console.log('Preparing item task:',j.id,j.kind,j.name);
+  try{
+    if(!iPage||iPage.isClosed())iPage=await context.newPage();
+    await prepareItem(iPage,j);
+    await iPage.bringToFront().catch(()=>{});
+    heldItem=j;
+    await api('worker/itemjob-report','POST',{id:j.id,status:'prepared',message:'Filled in on the PC and checked. Waiting for the final approval in the app.',image:await itemShot()});
+  }catch(e){
+    heldItem=null;
+    console.error('Item task stopped:',j.id,e.message);
+    const image=await itemShot();
+    await resetItemTab();
+    await api('worker/itemjob-report','POST',{id:j.id,status:'failed',message:e.message,image}).catch(err=>console.error('Could not report item task:',err.message));
+  }
+}
 while(true){
   try{
     const pageReady=page.url()===PAGE && await page.getByRole('heading',{name:/Move stock between storages/i}).isVisible().catch(()=>false);
@@ -236,7 +290,7 @@ while(true){
     else if(pageReady){
       const claimed=LIVE?(await api('worker/claim','POST',{})).request:null;
       if(claimed)await execute(claimed);
-      else{const next=(await api('worker/preview')).request;if(next)await preview(next);else await receiptTurn()}
+      else{const next=(await api('worker/preview')).request;if(next)await preview(next);else{await receiptTurn();await itemTurn()}}
     }
   }catch(e){console.error('Queue unavailable; no transfer will run:',e.message)}
   await sleep(POLL);
