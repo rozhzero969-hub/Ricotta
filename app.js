@@ -701,11 +701,7 @@ document.addEventListener('pointermove', e=>{
     seg.classList.add('held'); try{ seg.setPointerCapture(e.pointerId); }catch(_){}
   }
   const s = segSlot(seg, e.clientX);
-  // The glass follows the finger once per frame (several touch events can arrive per frame).
-  if(!segDrag.raf) segDrag.raf = requestAnimationFrame(()=>{
-    if(!segDrag) return; segDrag.raf = 0;
-    const cur = segs()[segDrag.index]; if(cur) segLensTo(cur, segSlot(cur, segDrag.x).pos);
-  });
+  segLensTo(seg, s.pos);                              // the glass follows the finger, like the tab bar's lens
   if(s.index !== segDrag.last){
     segDrag.last = s.index;
     // The screen changes a moment after the lens settles on a pill, so redrawing never makes the glass stutter.
@@ -720,12 +716,12 @@ document.addEventListener('pointermove', e=>{
         if(n && !n.classList.contains('held')) segAdopt(n);
         if(n) segLensTo(n, segSlot(n, segDrag.x).pos);
       }
-    }, 110);
+    }, 90);
   }
 });
 const segEnd = e=>{
   if(!segDrag || e.pointerId!==segDrag.id) return;
-  const d = segDrag; segDrag = null; clearTimeout(d.timer); cancelAnimationFrame(d.raf);
+  const d = segDrag; segDrag = null; clearTimeout(d.timer);
   if(d.moved && d.last !== null){                      // let go: the pill under the finger is the one that opens
     const cur = segs()[d.index], pill = cur && segPills(cur)[d.last];
     if(pill && !pill.classList.contains('active')) pill.click();
