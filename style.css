@@ -1217,3 +1217,12 @@ html.rtl .tr-go{transform:scaleX(-1)}
 .rc-foot{padding:4px 2px 0}
 .rc-total{justify-content:flex-start;gap:8px;margin:4px 2px 12px}
 @media (max-width:360px){.rc-grid{grid-template-columns:1fr 1fr}}
+/* Receipt item picker: opens as a scrollable list on tap, like the workplace dropdown */
+.rc-line-search .search-wrap{position:relative}
+.rc-line-search .search-wrap::after{content:'';position:absolute;inset-inline-end:16px;top:50%;width:8px;height:8px;border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);transform:translateY(-70%) rotate(45deg);pointer-events:none}
+.rc-line-search .rc-search{padding-inline-end:40px}
+.rc-results{margin-top:0}
+.rc-results.open{max-height:min(46vh,340px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:14px;padding:6px;gap:4px;margin-bottom:10px;background:var(--surface)}
+.rc-results.open .tr-result{padding:10px 12px;min-height:0;border-radius:10px;box-shadow:none;background:transparent}
+.rc-results.open .tr-result:active{background:rgba(20,56,44,.07)}
+.rc-results.open .name{font-size:15px}
