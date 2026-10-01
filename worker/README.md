@@ -14,3 +14,7 @@ does it click **Move it**.
 - Screenshots are kept in the app for 3 days and then deleted automatically.
 
 Item and unit names must match the workplace page **exactly**; the PC stops and says so when they do not.
+
+## Receipts (prepared only)
+
+Receipts are entered in the app (Receipts screen). The worker opens the workplace **New purchase receipt** page (`receipt.mjs`) in a second Edge tab and fills in the supplier, invoice number, dollar rate (if USD), delivery (if any) and each item line (item, unit, quantity, cost of each), checking every field and each line total. It then **stops**: it never presses **Receive & send to finance**. A person at the PC checks the filled form and accepts it there. While that tab is still open on the receipt page, the next receipt waits. If anything doesn't match exactly (an unknown item, supplier or unit, or a unit with two different sizes), it stops, sends a screenshot to the app and resets the tab to an empty form. `scripts/receipt-worker-smoke.mjs` tests this against a local copy of the page.

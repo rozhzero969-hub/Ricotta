@@ -393,7 +393,7 @@ const server=http.createServer((req,res)=>{
     /* ---------- Yunis ---------- */
     const y=await context({account:'yunis'});
     // The app adds Transfer and Stock for both accounts after the server's own list.
-    assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS.filter(v=>v!=='sounds'),'transfers','stock','sounds'],'Yunis gets the right screens');
+    assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS.filter(v=>v!=='sounds'),'transfers','stock','receipts','sounds'],'Yunis gets the right screens');
     await y.page.setViewportSize({width:390,height:844});
     assert.equal(await y.page.locator('.bottomnav [data-view="devices"], .bottomnav [data-view="settings"]').count(),0,'no Devices or Settings for Yunis');
     await openView(y.page,'history');

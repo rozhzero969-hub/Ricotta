@@ -57,6 +57,11 @@ const server=http.createServer((rq,res)=>{
         else if(ep.startsWith('shots')) data={shots:[{kind:'check',image:PIXEL,takenAt:iso(1)}]};
         else if((ep==='counts'||ep==='counts-bulk')&&body.pin!=='123456'){status=403;data={error:'wrong_pin'};}
         else if(ep==='counts-bulk'){status=201;data={saved:body.lines.map(l=>l.itemId),failed:[]};}
+        else if(ep==='receipts'&&rq.method()==='GET') data={receipts:[
+          {id:'r1',supplierName:'Supplier',invoice:'777',currency:'IQD',rate:null,delivery:null,lines:[{appName:'Coca Cola',unitLabel:'carton',qty:2,cost:5000}],status:'prepared',message:null,createdBy:'rozha',createdAt:iso(5),hasShot:true},
+          {id:'r2',supplierName:'Supplier',invoice:'778',currency:'USD',rate:1500,delivery:5,lines:[{appName:'Milk',unitLabel:'carton',qty:1,cost:3}],status:'waiting',message:null,createdBy:'yunis',createdAt:iso(2),hasShot:false}]};
+        else if(ep.startsWith('receipts/shot')) data={image:PIXEL};
+        else if(ep==='receipts'&&rq.method()==='POST'){status=201;data={id:'r3'};}
         else if(ep==='zones/add'){fx.stock.storages.push(body.name);}
         else if(ep==='zones/rename'){fx.stock.storages=fx.stock.storages.map(x=>x===body.from?body.to:x);}
         else if(ep==='zones/delete'){fx.stock.storages=fx.stock.storages.filter(x=>x!==body.name);}
@@ -219,6 +224,36 @@ const server=http.createServer((rq,res)=>{
       await page.waitForFunction(()=>!document.querySelector('#modalFormCancel'));
     }
 
+    /* ---------- Receipts: entered on the phone, filled in by the PC, accepted at the PC ---------- */
+    await go(page,'receipts');
+    await page.waitForSelector('.rc-card');
+    assert.equal(await page.locator('.rc-card').count(),2,'recent receipts are listed');
+    assert.match(await page.locator('.rc-card').first().innerText(),/Ready on the PC[\s\S]*Receive & send to finance/,'a prepared receipt says it waits for a person at the PC');
+    assert.equal(await page.locator('[data-rccancel="r2"]').count(),1,'a waiting receipt can be cancelled');
+    assert.equal(await page.locator('[data-rccancel="r1"]').count(),0,'a receipt already on the PC cannot be cancelled from the phone');
+    await page.locator('[data-rcshot="r1"]').click();await page.waitForSelector('.rc-card .tr-shot img');
+    await page.locator('#rcSend').click();
+    assert.equal(await page.locator('.modal-box').count(),0,'an incomplete receipt is not sent');
+    await page.selectOption('#rcSup','s0');await page.fill('#rcInv','INV-55');
+    await page.locator('[data-chipfor="rcCur"] [data-val="USD $"]').click();await page.fill('#rcRate','1500');
+    await page.locator('#rcDel').check();await page.fill('#rcDelAmt','5');
+    await page.fill('[data-rcsearch="0"]','coca');await page.locator('[data-rcpick="0"][data-id="i1"]').click();
+    await page.fill('[data-rcqty="0"]','10');await page.fill('[data-rccost="0"]','10');
+    await page.locator('#rcAddLine').click();
+    await page.fill('[data-rcsearch="1"]','flour');await page.locator('[data-rcpick="1"][data-id="i2"]').click();
+    await page.locator('[data-rcunit="1"][data-mode="counting"]').click();
+    await page.fill('[data-rcqty="1"]','24');await page.fill('[data-rccost="1"]','0.5');
+    assert.equal(await page.locator('#rcTotal').innerText(),'$ 112','the total adds up the lines');
+    if(process.env.SHOT){await page.locator('.rc-total').scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SHOT+'/rc0.png'});}
+    await page.locator('#rcSend').click();
+    assert.match(await page.locator('.modal-box').innerText(),/INV-55[\s\S]*Coca Cola[\s\S]*Flour[\s\S]*\$ 112/,'the confirmation lists the whole receipt');
+    await page.locator('#modalOkBtn').click();await page.waitForTimeout(400);
+    const rec=calls.filter(c=>c.ep==='receipts'&&c.method==='POST').pop();
+    assert.deepEqual({s:rec.body.supplierId,i:rec.body.invoice,c:rec.body.currency,r:rec.body.rate,d:rec.body.delivery,l:rec.body.lines.map(l=>[l.itemId,l.unitId,l.qty,l.cost])},
+      {s:'s0',i:'INV-55',c:'USD',r:'1500',d:'5',l:[['i1','ctn','10','10'],['i2','pc','24','0.5']]});
+    if(process.env.SHOT){await page.screenshot({path:process.env.SHOT+'/rc.png'});}
+    assert.equal(await page.inputValue('#rcInv'),'','the form clears after sending');
+
     /* ---------- Count many items with one PIN ---------- */
     await go(page,'stock');
     await page.locator('#stCountAll').click();
@@ -317,7 +352,7 @@ const server=http.createServer((rq,res)=>{
     /* ---------- 3 languages, 3 widths: every new screen renders, nothing overflows ---------- */
     for(const lang of ['en','ku','ar']) for(const width of [360,390,1024]){
       ({ctx,page}=await open({lang,width}));
-      for(const view of ['transfers','stock','itemsAdmin','history']){
+      for(const view of ['transfers','stock','receipts','itemsAdmin','history']){
         await go(page,view);
         const sizes=await page.evaluate(()=>({v:innerWidth,d:document.documentElement.scrollWidth}));
         assert.ok(sizes.d<=sizes.v+1,`${lang} ${width} ${view} overflows ${JSON.stringify(sizes)}`);
