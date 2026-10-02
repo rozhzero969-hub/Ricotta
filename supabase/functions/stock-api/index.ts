@@ -141,11 +141,13 @@ async function readAll(build: () => any): Promise<any[]> {
 const seenLast: Record<string, number> = {};
 async function touchControl(col: "worker_seen_at" | "launcher_seen_at") {
   if (Date.now() - (seenLast[col] ?? 0) < 20_000) return;   // one small write per 20 seconds at most
+  const { error } = await db.from("stock_worker_control").upsert({ id: 1, [col]: new Date().toISOString() });
+  if (error) throw error;
   seenLast[col] = Date.now();
-  await db.from("stock_worker_control").upsert({ id: 1, [col]: new Date().toISOString() });
 }
 async function controlStatus() {
-  const { data } = await db.from("stock_worker_control").select("*").eq("id", 1).maybeSingle();
+  const { data, error } = await db.from("stock_worker_control").select("*").eq("id", 1).maybeSingle();
+  if (error) throw error;
   const fresh = (v: string | null | undefined) => !!v && Date.now() - Date.parse(v) < 120_000;
   return { workerOnline: fresh(data?.worker_seen_at), launcherOnline: fresh(data?.launcher_seen_at),
     workerSeenAt: data?.worker_seen_at ?? null, workerLive: data?.worker_live ?? null, workerReceiptsLive: data?.worker_receipts_live ?? null, workerItemsLive: data?.worker_items_live ?? null, workerPageReady: data?.worker_page_ready ?? null,
@@ -390,8 +392,18 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true });
       }
       if (req.method === "POST" && path[1] === "control-handled") {
-        await db.from("stock_worker_control").upsert({ id: 1, start_handled_at: new Date().toISOString() });
-        return json({ ok: true });
+        const b = await readBody(req);
+        const { data: c, error: readError } = await db.from("stock_worker_control").select("start_requested_at").eq("id", 1).maybeSingle();
+        if (readError) throw readError;
+        // Older launchers send no timestamp. New ones acknowledge only the
+        // request they actually saw, so a newer start cannot be swallowed.
+        const requestedAt = b.requestedAt ?? c?.start_requested_at;
+        if (!requestedAt) return json({ ok: true, handled: false });
+        if (!claimToken(requestedAt)) return fail("Invalid start request");
+        const { data, error } = await db.from("stock_worker_control").update({ start_handled_at: requestedAt })
+          .eq("id", 1).eq("start_requested_at", requestedAt).select("id");
+        if (error) throw error;
+        return json({ ok: true, handled: !!data?.length });
       }
       if (req.method === "GET" && path[1] === "preview") {
         await touchControl("worker_seen_at");

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from '../supabase/functions/_shared/security.ts';
 
-let tables, queryError = '', rpcCalls, rowPages;
+let tables, queryError = '', rpcCalls, rowPages, recoveryCalls;
 function reset() {
   const active = new Date(Date.now() + 60000).toISOString(), expired = new Date(Date.now() - 60000).toISOString();
   tables = {
@@ -31,18 +31,29 @@ function reset() {
     app_order_lines: Array.from({ length: 1001 }, (_, i) => ({ id: i, order_id: 'order', item_id: 'tomato', qty: 60 })),
     app_suppliers: [], app_reminder_settings: [], app_assistant_alerts: [], app_rico_inbox: [],
   };
-  rpcCalls = []; rowPages = []; queryError = '';
+  rpcCalls = []; rowPages = []; queryError = ''; recoveryCalls = 0;
 }
 const db = {
-  rpc(name, args) { assert.equal(name, 'app_internal_decay_stock'); rpcCalls.push(args); return Promise.resolve({ data: true, error: null }); },
+  rpc(name, args) {
+    if(name === 'stock_recover_submissions'){ recoveryCalls++; return Promise.resolve({data:null,error:null}); }
+    assert.equal(name, 'app_internal_decay_stock'); rpcCalls.push(args); return Promise.resolve({ data: true, error: null });
+  },
   from(table) {
-    let action = 'read', change, range;
+    let action = 'read', change, range, conflict;
     const filters = [];
     const run = () => {
       if (table === queryError) return { data: null, error: { message: 'offline' } };
       let rows = (tables[table] ?? []).filter(row => filters.every(filter => filter(row)));
       if (range) { rowPages.push({ table, range }); rows = rows.slice(range[0], range[1] + 1); }
       if (action === 'insert') tables[table] = [...(tables[table] ?? []), ...(Array.isArray(change) ? change : [change])];
+      if (action === 'upsert') {
+        assert.equal(conflict.ignoreDuplicates,true);
+        const all = tables[table] ?? (tables[table] = []);
+        rows = [];
+        for(const row of Array.isArray(change) ? change : [change]){
+          if(!all.some(existing=>existing[conflict.onConflict] === row[conflict.onConflict])){ all.push(row); rows.push(row); }
+        }
+      }
       return { data: rows, error: null };
     };
     const q = {
@@ -54,6 +65,7 @@ const db = {
       gte(field, value) { filters.push(row => row[field] >= value); return q; },
       in(field, values) { filters.push(row => values.includes(row[field])); return q; },
       insert(row) { action = 'insert'; change = row; return q; },
+      upsert(row, options) { action = 'upsert'; change = row; conflict = options; return q; },
       maybeSingle() { const result = run(); return Promise.resolve({ ...result, data: result.data?.[0] ?? null }); },
       then(resolve, reject) { return Promise.resolve(run()).then(resolve, reject); },
     };
@@ -64,9 +76,20 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', CRON_SECRET: 'test-cron-secret' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/send-push/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { loadSubs, stockDecayTick } = new Function('createClient', 'Deno', 'webpush', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', stripTypeScriptTypes(source) + '\nreturn { loadSubs, stockDecayTick };')(
+const { loadSubs, stockDecayTick, claimAlert, ricoSays } = new Function('createClient', 'Deno', 'webpush', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', stripTypeScriptTypes(source) + '\nreturn { loadSubs, stockDecayTick, claimAlert, ricoSays };')(
   () => db, deno, { setVapidDetails() {}, sendNotification() { assert.fail('push must stay disabled without VAPID'); } }, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody,
 );
+reset();
+assert.deepEqual(await Promise.all([claimAlert('fixture-alert','cheer',null),claimAlert('fixture-alert','cheer',null)]),[true,false],'one alert claim wins concurrent retries');
+assert.equal(tables.app_assistant_alerts.length,1);
+queryError = 'app_assistant_alerts';
+await assert.rejects(claimAlert('another-alert','cheer',null),'database errors are not mistaken for previously sent alerts');
+queryError = '';
+const words = {mood:'happy',en:()=> 'Hello',ku:()=> 'Hello',ar:()=> 'Hello'};
+await ricoSays('cheer','fixture-inbox',words); await ricoSays('cheer','fixture-inbox',words);
+assert.equal(tables.app_rico_inbox.length,2,'retries leave one inbox message per account');
+queryError = 'app_rico_inbox';
+await assert.rejects(ricoSays('cheer','other-inbox',words));
 reset();
 const reminder = await loadSubs(true);
 assert.deepEqual(reminder.subs.map(s => s.device_id), ['active']);
@@ -89,4 +112,5 @@ assert.equal((await handler(req('null'))).status, 400);
 const tick = await handler(req({ type: 'reminder-tick' }));
 assert.equal(tick.status, 200);
 assert.equal((await tick.json()).stockDecay.updated, 1, 'cron still maintains stock when Web Push is unconfigured');
+assert.equal(recoveryCalls,1,'existing cron recovers interrupted submissions even when the PC is offline');
 console.log('Backend push smoke: PASS (valid-session reminders, legacy SSRF defense, complete decay history, atomic decay RPC, no-VAPID maintenance)');

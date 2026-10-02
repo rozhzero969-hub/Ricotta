@@ -165,15 +165,18 @@ const LATE_AFTER_MIN = 60;
 const LATE_WINDOW_MIN = 4 * 60;
 const STOCK_DECAY_LOOKBACK_DAYS = 60;   // the window used to learn each item's daily usage rate
 async function claimAlert(id: string, kind: string, supplierId: string | null) {
-  const { error } = await sb.from("app_assistant_alerts").insert({ id, kind, supplier_id: supplierId });
-  return !error;   // a duplicate key means this alert was already sent
+  const { data, error } = await sb.from("app_assistant_alerts")
+    .upsert({ id, kind, supplier_id: supplierId }, { onConflict: "id", ignoreDuplicates: true }).select("id");
+  if (error) throw error;
+  return !!data?.length;
 }
 type Words = { mood: string; en: (n: string) => string; ku: (n: string) => string; ar: (n: string) => string };
 async function ricoSays(kind: string, key: string, words: Words, extra: Record<string, unknown> = {}) {
-  await sb.from("app_rico_inbox").insert(ACCOUNTS.map((a) => ({
+  const { error } = await sb.from("app_rico_inbox").upsert(ACCOUNTS.map((a) => ({
     account: a, kind, mood: words.mood, body_en: words.en(NAMES[a].en), body_ku: words.ku(NAMES[a].ku), body_ar: words.ar(NAMES[a].ar),
     dedupe_key: `${key}|${a}`,
-  })));
+  })), { onConflict: "dedupe_key", ignoreDuplicates: true });
+  if (error) throw error;
   return await sendReminder((lang, name) => ({
     title: RICO[lang],
     body: lang === "ku" ? words.ku(name ?? "") : lang === "ar" ? words.ar(name ?? "") : words.en(name ?? ""),
@@ -362,6 +365,11 @@ Deno.serve(async (req) => {
     switch (body.type) {
       case "reminder-tick": {
         const result: Record<string, unknown> = {};
+        try {
+          const { error } = await sb.rpc("stock_recover_submissions");
+          if (error) throw error;
+          result.submissionRecovery = { ok: true };
+        } catch (e) { console.error("submission recovery failed", e); result.submissionRecovery = { error: true }; }
         try { result.daily = await dailyTick(); } catch (e) { console.error("daily tick failed", e); result.daily = { error: true }; }
         try { result.suppliers = await supplierTick(); } catch (e) { console.error("supplier tick failed", e); result.suppliers = { error: true }; }
         try { result.late = await overdueTick(); } catch (e) { console.error("late-order tick failed", e); result.late = { error: true }; }

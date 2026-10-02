@@ -20,7 +20,7 @@ setInterval(()=>{try{launcherLock.heartbeat()}catch(error){console.error(error.m
 process.on('exit',()=>{try{launcherLock.release()}catch{}});
 for(const sig of ['SIGINT','SIGTERM','SIGHUP'])process.on(sig,()=>process.exit(0));
 
-let handled=0, openedAt=0;
+let handled=0, openedAt=0, openedRequest=0;
 const call=async(route,method='GET',body,timeout=15000)=>{const r=await fetch(API+'/worker/'+route,{method,headers:{'x-worker-token':TOKEN,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(timeout)});if(!r.ok)throw new Error('server '+r.status);return r.json()};
 console.log('Ricotta launcher is running.');
 for(;;){
@@ -31,14 +31,15 @@ for(;;){
     const asked=c.startRequestedAt?Date.parse(c.startRequestedAt):0;
     if(c.work)pause=5000;   // a start was answered; never ask again in a tight loop if it is still marked pending
     if(asked>handled&&asked>Date.parse(c.startHandledAt||0)){
-      handled=asked;
-      if(!c.workerOnline){
+      if(!c.workerOnline && asked!==openedRequest){
         console.log(new Date().toLocaleString()+' Start requested from the app: opening the worker.');
         // One verbatim command line, so cmd sees the window title in quotes exactly as written.
         spawn('cmd.exe',['/c','start "Ricotta worker" cmd /c start-worker.cmd scheduled'],{cwd:here,detached:true,stdio:'ignore',windowsVerbatimArguments:true}).unref();
         openedAt=Date.now();
+        openedRequest=asked;
       }
-      await call('control-handled','POST');
+      await call('control-handled','POST',{requestedAt:c.startRequestedAt});
+      handled=asked;   // retry a failed acknowledgement without opening another worker window
     }
     // The worker window was opened but the worker never reported in, and did not say why itself.
     if(openedAt&&Date.now()-openedAt>180000){

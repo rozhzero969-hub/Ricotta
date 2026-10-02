@@ -18,6 +18,7 @@ const itemsView = {filter: 'all', search: ''};
 const supView = {tab: 'suppliers'};
 /* Account data and unfinished workplace actions never carry into another sign-in. */
 function resetStockUi(){
+  stockReadGeneration++; stockReads.clear();
   Object.assign(stockState, {groups: [], tabs: null, loaded: false, failed: false, storages: [], settings: new Map(), balances: new Map(), requests: [], counts: [], control: null, sig: '', shots: {}, lastLight: 0});
   trReset();
   Object.assign(stView, {storage: 'all', filter: 'all', search: '', group: ''});
@@ -30,6 +31,7 @@ function resetStockUi(){
 
 /* ============ API + data ============ */
 const stockReads = new Map();
+let stockReadGeneration = 0;
 function stockApi(path, options = {}){
   const session = apiSession();
   if(!apiAccountMatchesUi(session)) return Promise.resolve(staleApiReply());
@@ -38,28 +40,33 @@ function stockApi(path, options = {}){
     // A refresh after a write must make a new request, even if an earlier
     // read is still waiting on the network.
     stockReads.clear();
-    return stockApiRequest(path, options).finally(()=>stockReads.clear());
+    stockReadGeneration++;
+    return stockApiRequest(path, options).finally(()=>{ stockReadGeneration++; stockReads.clear(); });
   }
   if(stockReads.has(key)) return stockReads.get(key);
-  const pending = stockApiRequest(path, options).finally(()=>{
+  const generation = stockReadGeneration;
+  const pending = stockApiRequest(path, options).then(r=>generation === stockReadGeneration ? r : staleApiReply()).finally(()=>{
     if(stockReads.get(key) === pending) stockReads.delete(key);
   });
   stockReads.set(key, pending);
   return pending;
 }
 async function stockApiRequest(path, {method = 'GET', body, timeout = 20000} = {}){
+  const s = apiSession();
+  if(!apiAccountMatchesUi(s)) return staleApiReply();
+  const sessionCurrent = ()=>apiSessionMatches(s) && apiAccountMatchesUi(s);
   const controller = new AbortController();
   const timer = setTimeout(()=>controller.abort(), timeout);
-  const s = apiSession();
   const headers = {'Content-Type': 'application/json'};
   if(s) headers['x-session-token'] = s.token;
   try{
     const res = await fetch(`${STOCK_API_URL}/${path}`, {method, headers, signal: controller.signal, body: body === undefined ? undefined : JSON.stringify(body)});
+    if(!sessionCurrent()) return staleApiReply();
     const data = await res.json().catch(()=>null);
-    if(!apiSessionMatches(s)) return {ok: false, status: 0, data: null, stale: true};
+    if(!sessionCurrent()) return staleApiReply();
     if(res.status === 401 && s){ clearApiSession(); onSessionExpired(); }
     return {ok: res.ok, status: res.status, data};
-  }catch(e){ return {ok: false, status: 0, data: null, ...(!apiSessionMatches(s) ? {stale: true} : {})}; }
+  }catch(e){ return !sessionCurrent() ? staleApiReply() : {ok: false, status: 0, data: null}; }
   finally{ clearTimeout(timer); }
 }
 function stApplyLive(d){
@@ -140,7 +147,6 @@ function chipPickWire(box, id, onChange){
 }
 const stUnitObj = id => state.units.find(u => u.id === id);
 const stCountUnitName = id => { const u = stUnitObj(stSetting(id)?.countingUnit); return u ? unitName(u) : ''; };
-const stCountUnitEn = id => stUnitObj(stSetting(id)?.countingUnit)?.en || '';
 /* An amount can be entered in the item's counting format, or in its buying format when the two differ (1 box = 12 piece). */
 const stHasBoth = id => { const s = stSetting(id), item = stItem(id); return !!(s && item && item.unit && item.unit !== s.countingUnit && s.perBuying > 0); };
 const stMode = id => (trState.unit === 'buying' && stHasBoth(id)) ? 'buying' : 'counting';
@@ -349,7 +355,7 @@ function trPaintResults(){
   fxOnce(box);
 }
 function trPaintChosen(){
-  const item = stItem(trState.itemId), picker = document.getElementById('trPicker'), chosen = document.getElementById('trChosen'), amount = document.getElementById('trAmount');
+  const item = stItem(trState.itemId), picker = document.getElementById('trPicker'), chosen = document.getElementById('trChosen');
   if(!picker) return;
   const on = trStage() === 'amount';
   if(on){

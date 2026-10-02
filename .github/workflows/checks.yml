@@ -43,7 +43,7 @@ jobs:
 
       - name: Session and outbox regressions
         run: |
-          node --test scripts/storage-regression.cjs scripts/update-check-regression.cjs
+          node --test scripts/storage-regression.cjs scripts/update-check-regression.cjs scripts/stock-read-regression.cjs
           node scripts/app-session-smoke.cjs
 
       - name: Stock API regressions (mocked database)
@@ -53,6 +53,7 @@ jobs:
         run: |
           node scripts/worker-lock-smoke.mjs
           node scripts/worker-polling-smoke.mjs
+          node scripts/launcher-control-smoke.mjs
 
       - name: Backend API and security regressions
         run: |
