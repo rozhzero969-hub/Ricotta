@@ -2,6 +2,12 @@
 // Heartbeats describe health; only a confirmed dead PID permits automatic recovery.
 import {randomUUID} from 'node:crypto';
 import {linkSync, mkdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync} from 'node:fs';
+import {uptime} from 'node:os';
+
+// When this computer last started. A lock written before that cannot belong to a running
+// process, even if Windows has since given its process number to something else.
+const bootAt=()=>Date.now()-uptime()*1000;
+const BOOT_SLACK_MS=120000;
 
 function processAlive(pid){
   try{process.kill(pid,0);return true}catch(error){
@@ -17,6 +23,7 @@ export function inspectLock(file){
   }
   if(!held||!Number.isSafeInteger(held.pid)||held.pid<=0)return {state:'unknown',held,age:null};
   const age=Number.isFinite(held.at)?Math.max(0,Math.round((Date.now()-held.at)/1000)):null;
+  if(Number.isFinite(held.boot)&&Math.abs(held.boot-bootAt())>BOOT_SLACK_MS)return {state:'dead',held,age};
   return {state:processAlive(held.pid)?'alive':'dead',held,age};
 }
 
@@ -34,7 +41,8 @@ function publish(file,body,replace=false){
 
 export function acquireLock(file){
   const token=randomUUID();
-  const body=()=>({pid:process.pid,token,at:Date.now()});
+  const boot=Math.round(bootAt());
+  const body=()=>({pid:process.pid,token,at:Date.now(),boot});
   const denied=(inspection,reason)=>({acquired:false,...inspection,reason});
   const heldResult=()=>({
     acquired:true,

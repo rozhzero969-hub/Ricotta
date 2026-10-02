@@ -13,6 +13,19 @@ const ID={ok:'11111111-1111-4111-8111-111111111111',bad:'22222222-2222-4222-8222
 const iso=m=>new Date(Date.now()-m*60000).toISOString();
 const req=(id,extra)=>({id,itemId:'i1',itemName:'Coca Cola',unitLabel:'carton',quantity:1,from:'Main Storage',to:'Minibar',yesterday:false,status:'waiting',approvedBy:'rozha',approvedAt:iso(3),previewStatus:null,previewMessage:null,previewedAt:null,finalApprovedBy:null,finalApprovedAt:null,finishedAt:null,resultMessage:null,recordedDate:null,hasCheckShot:false,...extra});
 
+/* Types a number on the app's own pad (phones), or into the box (computers). Ends with Done, like a person. */
+async function pad(page,sel,v){
+  const box=page.locator(sel);
+  if(!(await box.evaluate(el=>el.readOnly)))return box.fill(v);
+  await box.evaluate(el=>el.parentElement.click());
+  await page.waitForSelector('.pad-sheet .pad-key');
+  assert.ok(await box.evaluate(el=>el.classList.contains('pad-on')),'the box being typed into is highlighted');
+  for(const _ of await box.inputValue())await page.locator('.pad-sheet [data-pk="del"]').click();
+  for(const c of v)await page.locator(`.pad-sheet [data-pk="${c}"]`).click();
+  if(process.env.SHOT&&sel==='#rcDelAmt'){await page.waitForTimeout(500);await page.screenshot({path:process.env.SHOT+'/pad.png'});}
+  await page.locator('.pad-sheet .pad-done').click();
+  await page.waitForFunction(()=>!document.querySelector('.pad-sheet'));
+}
 function fixture(){
   const units=[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'},{id:'pc',en:'piece',ku:'دانە',ar:'قطعة'},{id:'ctn',en:'carton',ku:'کارتۆن',ar:'كرتون'}];
   const items=[{id:'i0',name:'Tomato',unit:'box',supplierId:'s0',sortOrder:0},{id:'i1',name:'Coca Cola',unit:'ctn',supplierId:'s0',sortOrder:1},{id:'i2',name:'Flour',unit:'box',supplierId:'s0',sortOrder:2},{id:'i3',name:'Milk',unit:'ctn',supplierId:'s0',sortOrder:3}];
@@ -142,11 +155,11 @@ const server=http.createServer((rq,res)=>{
     assert.match(await page.locator('#trChosen').innerText(),/Coca Cola/);
     // 5 in stock, 1 reserved by the waiting request and 1 by the needs-checking one => 3 free.
     await page.locator('#trAll').click();assert.equal(await page.locator('#trQty').inputValue(),'3','use-all respects reserved stock');
-    await page.fill('#trQty','9');assert.match(await page.locator('#trHint').innerText(),/more than is available/i);
-    await page.fill('#trQty','2');assert.match(await page.locator('#trHint').innerText(),/Ready/);
+    await pad(page,'#trQty','9');assert.match(await page.locator('#trHint').innerText(),/more than is available/i);
+    await pad(page,'#trQty','2');assert.match(await page.locator('#trHint').innerText(),/Ready/);
     await page.locator('[data-crumb="from"]').click();assert.equal(await page.locator('#trFromList').isVisible(),true,'the source can be changed');assert.equal(await page.locator('#trChosen').isVisible(),false,'changing the source clears the item');
     await page.locator('#trFromList [data-trsto="Main Storage"]').click();await page.locator('#trToList [data-trsto="Minibar"]').click();
-    await page.locator('[data-trpick="i1"]').click();await page.fill('#trQty','2');await page.locator('#trYesterday').evaluate(el=>el.scrollIntoView({block:'center'}));await page.locator('#trYesterday').check();
+    await page.locator('[data-trpick="i1"]').click();await pad(page,'#trQty','2');await page.locator('#trYesterday').evaluate(el=>el.scrollIntoView({block:'center'}));await page.locator('#trYesterday').check();
     await page.locator('#trReview').click();
     if(process.env.SHOT){await page.waitForTimeout(500);await page.screenshot({path:process.env.SHOT+'/tr2.png',fullPage:true});}
     assert.match(await page.locator('#trReviewCard').innerText(),/Main Storage[\s\S]*Minibar[\s\S]*Coca Cola[\s\S]*2[\s\S]*yesterday/i);
@@ -200,8 +213,8 @@ const server=http.createServer((rq,res)=>{
     assert.equal(await page.locator('#trUnit').innerText(),'box');
     assert.match(await page.locator('#trChosen').innerText(),/1\.666667 \u2068box\u2069 available/,'availability is shown in the unit being entered');
     await page.locator('#trAll').click();assert.equal(await page.locator('#trQty').inputValue(),'1.666666');
-    await page.fill('#trQty','2');assert.match(await page.locator('#trHint').innerText(),/more than is available/i,'2 boxes (24 piece) exceeds 20 piece');
-    await page.fill('#trQty','1.5');
+    await pad(page,'#trQty','2');assert.match(await page.locator('#trHint').innerText(),/more than is available/i,'2 boxes (24 piece) exceeds 20 piece');
+    await pad(page,'#trQty','1.5');
     await page.locator('#trReview').evaluate(el=>el.scrollIntoView({block:'center'}));await page.waitForTimeout(150);
     await page.locator('#trReview').click();
     assert.match(await page.locator('#trReviewCard').innerText(),/1\.5[\s\S]*box[\s\S]*= 18 piece/);
@@ -263,6 +276,7 @@ const server=http.createServer((rq,res)=>{
     /* ---------- Receipts: entered on the phone, filled in by the PC, accepted at the PC ---------- */
     await go(page,'receipts');
     await page.waitForSelector('.rc-card');
+    assert.match(await page.locator('.tr-signin').innerText(),/turn on the worker/i,'the sign-in row stays visible while the worker is off');
     assert.equal(await page.locator('.rc-card').count(),3,'recent receipts are listed');
     assert.match(await page.locator('.rc-card').first().innerText(),/Ready on the PC[\s\S]*approve/i,'a filled-in receipt waits for the final approval');
     assert.equal(await page.locator('[data-rccancel="r2"]').count(),1,'a waiting receipt can be cancelled');
@@ -285,9 +299,13 @@ const server=http.createServer((rq,res)=>{
     assert.deepEqual(calls.filter(c=>c.ep==='receipts/resolve').pop()?.body,{id:'r4',saved:false,note:'Checked the workplace list: invoice 779 is not there'});
     await page.locator('#rcSend').click();
     assert.equal(await page.locator('.modal-box').count(),0,'an incomplete receipt is not sent');
-    assert.equal(await page.getAttribute('#rcInv','inputmode'),'numeric','the invoice opens the number pad');
-    await page.locator('#rcInvKb').click();
-    assert.equal(await page.getAttribute('#rcInv','inputmode'),'text','ABC switches the invoice to letters');
+    assert.equal(await page.locator('#rcInvKb').count(),0,'receipts use numbers only: no ABC switch');
+    assert.equal(await page.locator('#rcInv').evaluate(el=>el.readOnly&&el.inputMode==='none'),true,'the invoice never opens the phone keyboard');
+    await page.locator('#rcInv').evaluate(el=>el.parentElement.click());
+    await page.waitForSelector('.pad-sheet .pad-key');
+    assert.equal(await page.locator('.pad-sheet [data-pk="."]').isDisabled(),true,'invoice numbers have no decimal point');
+    assert.match(await page.locator('.pad-sheet .pad-label').innerText(),/Invoice/i,'the pad says which box it types into');
+    await page.locator('.pad-sheet .pad-done').click();await page.waitForFunction(()=>!document.querySelector('.pad-sheet'));
     // Our own list instead of the phone's built-in picker
     await page.locator('#rcSupBtn').click();
     await page.waitForSelector('.sel-sheet .sel-opt[data-v="s0"]');
@@ -299,11 +317,14 @@ const server=http.createServer((rq,res)=>{
     // Redrawing the screen keeps your place instead of jumping to the top
     const kept=await page.evaluate(async()=>{const b=scrollBox();b.scrollTop=300;const before=b.scrollTop;render();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return [before,scrollBox().scrollTop];});
     assert.ok(kept[0]>0&&Math.abs(kept[0]-kept[1])<2,'redraw keeps the scroll position '+kept);
-    await page.fill('#rcInv','INV-55');
-    await page.locator('[data-chipfor="rcCur"] [data-val="USD $"]').click();await page.fill('#rcRate','1,500');
-    assert.equal(await page.getAttribute('#rcRate','inputmode'),'decimal','the dollar rate opens the number pad');
-    await page.locator('[data-chipfor="rcDelPick"] [data-val="Delivery"]').click();await page.fill('#rcDelAmt','٥');
-    assert.equal(await page.getAttribute('#rcDelAmt','inputmode'),'decimal','delivery opens the number pad');
+    await pad(page,'#rcInv','55');
+    await page.locator('[data-chipfor="rcCur"] [data-val="USD $"]').click();
+    assert.equal(await page.locator('.pad-sheet').count(),0,'choosing dollars shows the rate box without starting to type');
+    await pad(page,'#rcRate','1500');
+    await page.locator('[data-chipfor="rcDelPick"] [data-val="Delivery"]').click();
+    assert.equal(await page.locator('.pad-sheet').count(),0,'choosing delivery shows the box without starting to type');
+    assert.equal(await page.locator('#rcDelBox').isVisible(),true,'the delivery box appears');
+    await pad(page,'#rcDelAmt','5');
     if(process.env.SHOT){await page.waitForTimeout(700);await page.locator('.rc-sec').first().scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SHOT+'/rc-top.png'});}
     await page.locator('[data-rcsearch="0"]').click();
     // Tapping the item box lists every item (and the list stays open while the box has focus).
@@ -312,21 +333,22 @@ const server=http.createServer((rq,res)=>{
     assert.equal(await page.locator('[data-rcresults="0"] [data-rcpick],[data-rcresults="0"] [data-rcsetup]').count(),4,'the item list stays open');
     if(process.env.SHOT){await page.locator('[data-rcresults="0"]').scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SHOT+'/rc-list.png'});}
     await page.fill('[data-rcsearch="0"]','coca');await page.locator('[data-rcpick="0"][data-id="i1"]').click();
-    await page.fill('[data-rcqty="0"]','10');await page.fill('[data-rccost="0"]','10');
+    await pad(page,'[data-rcqty="0"]','10');await pad(page,'[data-rccost="0"]','10');
     await page.locator('#rcAddLine').click();
     await page.fill('[data-rcsearch="1"]','flour');await page.locator('[data-rcpick="1"][data-id="i2"]').click();
     await page.selectOption('[data-rcunitsel="1"]','counting');
-    assert.equal(await page.getAttribute('[data-rcqty="1"]','inputmode'),'decimal','quantities open the number pad');
-    await page.fill('[data-rcqty="1"]','24');await page.fill('[data-rccost="1"]','0.5');
+    assert.equal(await page.locator('[data-rcqty="1"]').evaluate(el=>el.readOnly),true,'quantities use our number pad');
+    await pad(page,'[data-rcqty="1"]','24');await pad(page,'[data-rccost="1"]','0.5');
     assert.equal(await page.locator('#rcTotal').innerText(),'$ 112','the total adds up the lines');
     if(process.env.SHOT){await page.locator('.rc-total').scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SHOT+'/rc0.png'});}
     await page.locator('#rcSend').click();
-    assert.match(await page.locator('.modal-box').innerText(),/INV-55[\s\S]*Coca Cola[\s\S]*Flour[\s\S]*\$ 112/,'the confirmation lists the whole receipt');
+    assert.match(await page.locator('.modal-box').innerText(),/55[\s\S]*Coca Cola[\s\S]*Flour[\s\S]*\$ 112/,'the confirmation lists the whole receipt');
     await page.locator('#modalOkBtn').click();await page.waitForTimeout(400);
     const rec=calls.filter(c=>c.ep==='receipts'&&c.method==='POST').pop();
     assert.deepEqual({s:rec.body.supplierId,i:rec.body.invoice,c:rec.body.currency,r:rec.body.rate,d:rec.body.delivery,l:rec.body.lines.map(l=>[l.itemId,l.unitId,l.qty,l.cost])},
-      {s:'s0',i:'INV-55',c:'USD',r:1500,d:5,l:[['i1','ctn',10,10],['i2','pc',24,0.5]]});
+      {s:'s0',i:'55',c:'USD',r:1500,d:5,l:[['i1','ctn',10,10],['i2','pc',24,0.5]]});
     if(process.env.SHOT){await page.screenshot({path:process.env.SHOT+'/rc.png'});}
+    if(process.env.SHOT){await page.locator('#navMoreBtn').click();await page.waitForTimeout(600);await page.screenshot({path:process.env.SHOT+'/more.png'});await page.locator('#navMoreBtn').click();await page.waitForTimeout(400);}
     assert.equal(await page.inputValue('#rcInv'),'','the form clears after sending');
 
     /* ---------- Count many items with one PIN ---------- */
@@ -396,7 +418,8 @@ const server=http.createServer((rq,res)=>{
     await page.mouse.move(bx.x+bx.width/2,bx.y+bx.height/2);await page.mouse.down();await page.mouse.move(tx.x+tx.width/2,tx.y+tx.height/2,{steps:8});
     assert.equal(await page.locator('.record-filters.held').count(),1,'holding and sliding lifts the lens');
     await page.waitForTimeout(250);
-    assert.equal(await page.locator('[data-histfilter="transfers"].active').count(),1,'pages open while the lens slides, before the finger lifts');
+    assert.equal(await page.locator('[data-histfilter="all"].active').count(),1,'while sliding only the lens moves; the list is not redrawn under the finger');
+    assert.equal(await page.locator('[data-histfilter="transfers"].lens-over').count(),1,'the pill under the lens is shown as the one that will open');
     if(process.env.SHOT)await page.screenshot({path:process.env.SHOT+'/lens.png'});
     await page.mouse.up();await page.waitForTimeout(300);
     assert.equal(await page.locator('[data-histfilter="transfers"].active').count(),1,'the pill under the finger opens');

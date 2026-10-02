@@ -22,7 +22,7 @@ function resetStockUi(){
   trReset();
   Object.assign(stView, {storage: 'all', filter: 'all', search: '', group: ''});
   histView.filter = 'all'; Object.assign(itemsView, {filter: 'all', search: ''}); supView.tab = 'suppliers';
-  Object.assign(rcState, {supplierId: '', invoice: '', invoiceText: false, currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null, keyBody: null});
+  Object.assign(rcState, {supplierId: '', invoice: '', currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null, keyBody: null});
   Object.assign(rcData, {list: [], loaded: false, at: 0, shots: {}, loadingShot: {}});
   Object.assign(ijData, {list: [], loaded: false, at: 0, shots: {}, loadingShot: {}});
   wpSendKeys.clear();
@@ -68,7 +68,7 @@ function stApplyLive(d){
   const b = new Map();
   for(const x of d.balances || []) b.set(x.itemId + '|' + x.storage, x.quantity);
   stockState.balances = b;
-  stockState.sig = JSON.stringify([stockState.requests, [...b], stockState.control && [stockState.control.workerOnline, stockState.control.launcherOnline, stockState.control.signinCheckedAt, stockState.control.signinRequestedAt]]);
+  stockState.sig = JSON.stringify([stockState.requests, [...b], stockState.control && [stockState.control.workerOnline, stockState.control.launcherOnline, stockState.control.signinCheckedAt, stockState.control.signinRequestedAt, stockState.control.workerProblem]]);
 }
 async function loadStock(){
   const r = await stockApi('bootstrap');
@@ -209,7 +209,9 @@ function workerState(){
   const c = stockState.control; if(!c) return null;
   const on = c.workerOnline;
   const waiting = !on && c.startRequestedAt && Date.now() - Date.parse(c.startRequestedAt) < 3 * 60 * 1000;
-  if(!on) return {cls: 'off', label: waiting ? t('wkStarting') : t('wkOff'), hint: c.launcherOnline ? '' : t('wkHintNoHelper'), button: true, canStart: c.launcherOnline && !waiting};
+  // The PC explains a failed start; that beats "Starting…" or silence.
+  const problem = !waiting && c.workerProblem ? t('wkHintProblem') + c.workerProblem : '';
+  if(!on) return {cls: problem ? 'warn' : 'off', label: waiting ? t('wkStarting') : t('wkOff'), hint: problem || (c.launcherOnline ? '' : t('wkHintNoHelper')), button: true, canStart: c.launcherOnline && !waiting};
   if(c.workerPageReady === false) return {cls: 'warn', label: t('wkAttention'), hint: t('wkHintSignIn')};
   if(c.workerLive === false) return {cls: 'test', label: t('wkTest'), hint: t('wkHintTest')};
   return {cls: 'on', label: c.workerLive ? t('wkReady') : t('wkOn'), hint: c.workerLive ? t('wkHintReady') : ''};
@@ -220,7 +222,9 @@ function workerBarHtml(){
 }
 /* The workplace sign-in, as last checked by the PC (it signs in by itself with its own PIN when the site signs out). */
 function signinRowHtml(){
-  const c = stockState.control; if(!c || !c.workerOnline) return '';
+  const c = stockState.control; if(!c) return '';
+  // While the worker is off the PC cannot check, but the row stays so the feature is never hidden.
+  if(!c.workerOnline) return `<div class="tr-signin"><span class="tr-signin-txt">${esc(t('wkSigninNeedsWorker'))}</span></div>`;
   const asked = c.signinRequestedAt && (!c.signinCheckedAt || Date.parse(c.signinCheckedAt) < Date.parse(c.signinRequestedAt));
   const fresh = asked && Date.now() - Date.parse(c.signinRequestedAt) < 3 * 60 * 1000;
   let label, cls;
@@ -281,7 +285,7 @@ function renderTransfers(){
     <div id="trChosen" class="tr-chosen" hidden></div>
     <div class="tr-step" id="trAmount" hidden><div class="tr-step-h"><span class="tr-num">4</span>${esc(t('trStepAmount'))}</div>
       <div class="tr-units" id="trUnits" role="group" hidden></div>
-      <div class="tr-qty"><button type="button" class="step-btn tr-step-btn" id="trLess" aria-label="${esc(t('trLess'))}">−</button><input id="trQty" type="number" inputmode="decimal" min="0" step="any" placeholder="0" aria-label="${esc(t('trQty'))}" value="${esc(trState.qty)}"><span class="tr-unit" id="trUnit"></span><button type="button" class="step-btn tr-step-btn" data-inc id="trMore" aria-label="${esc(t('trMore'))}">+</button></div>
+      <div class="tr-qty"><button type="button" class="step-btn tr-step-btn" id="trLess" aria-label="${esc(t('trLess'))}">−</button><input id="trQty" type="text" inputmode="decimal" data-pad="dec" autocomplete="off" placeholder="0" aria-label="${esc(t('trQty'))}" value="${esc(trState.qty)}"><span class="tr-unit" id="trUnit"></span><button type="button" class="step-btn tr-step-btn" data-inc id="trMore" aria-label="${esc(t('trMore'))}">+</button></div>
       <button type="button" class="tr-link" id="trAll">${esc(t('trUseAll'))}</button>
     </div>
     <div id="trFinish" hidden>
@@ -533,7 +537,8 @@ function attachTransfersEvents(){
     const item = stItem(b.dataset.trpick); if(!item) return;
     if(!stReady(item)){ openItemModal(item.id); return; }     // not set up yet: set it up here, then come back
         if(stFree(item.id, trState.from) <= 1e-8){ toast(t('trNoneHere')(iso(trState.from)), 'error'); return; }
-    trState.itemId = item.id; trState.qty = ''; trState.unit = 'counting'; trState.search = ''; trInvalidate(); qty.value = ''; trPaintAll(); qty.focus();
+    trState.itemId = item.id; trState.qty = ''; trState.unit = 'counting'; trState.search = ''; trInvalidate(); qty.value = ''; trPaintAll();
+    if(!PAD_TOUCH.matches) qty.focus();   // computers type straight away; phones tap the box for the number pad
   };
   const setQty = v => { trState.qty = v > 0 ? String(v) : ''; qty.value = trState.qty; trInvalidate(); trPaintHint(); };
   qty.oninput = () => { trState.qty = qty.value; trInvalidate(); trPaintHint(); };
@@ -1043,7 +1048,7 @@ function attachZonesEvents(){
 
 /* ============ Receipts: entered here, prepared by the PC, accepted by a person at the PC ============ */
 const rcNewLine = () => ({itemId: '', unit: 'buying', qty: '', cost: '', search: ''});
-const rcState = {supplierId: '', invoice: '', invoiceText: false, currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null, keyBody: null};
+const rcState = {supplierId: '', invoice: '', currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null, keyBody: null};
 const rcData = {list: [], loaded: false, at: 0, shots: {}};
 const RC_ACTIVE = ['waiting', 'preparing', 'prepared'];
 function stPruneShots(data, list){
@@ -1073,7 +1078,7 @@ async function stLoadShot(data, x, endpoint, paint){
 // Phones in Kurdish or Arabic may type ٠-٩ / ۰-۹ digits and ٫ as the decimal point.
 const rcNum = v => Number(String(v ?? '').replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0).replace(/٫/g, '.').replace(/[,٬\s]/g, ''));
 /* A number box that opens the phone's number pad (no spin arrows, commas allowed). */
-const rcNumInput = (attrs, value, placeholder = '0') => `<input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" ${attrs} placeholder="${esc(placeholder)}" value="${esc(value)}">`;
+const rcNumInput = (attrs, value, placeholder = '0') => `<input type="text" inputmode="decimal" data-pad="dec" autocomplete="off" enterkeyhint="next" ${attrs} placeholder="${esc(placeholder)}" value="${esc(value)}">`;
 const rcMoney = (n, cur) => (cur === 'USD' ? '$ ' : 'IQD ') + Number(n || 0).toLocaleString('en-US', {maximumFractionDigits: 2});
 /* The units a receipt line can use: the item's buying format, and its counting format when that differs. */
 function rcUnits(item){
@@ -1106,7 +1111,7 @@ function renderReceipts(){
   <section class="rc-form">
     <div class="rc-sec"><div class="rc-sec-h">${esc(t('rcDetails'))}</div><div class="rc-sec-b">
       <div class="field"><label for="rcSup">${esc(t('supplier'))}</label><select id="rcSup"><option value="">${esc(t('chooseSupplier'))}</option>${sups.map(s => `<option value="${esc(s.id)}" ${rcState.supplierId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
-      <div class="field"><label for="rcInv">${esc(t('rcInvoice'))}</label><div class="rc-inv"><input id="rcInv" autocomplete="off" maxlength="60" enterkeyhint="next" inputmode="${rcState.invoiceText ? 'text' : 'numeric'}" placeholder="1024" value="${esc(rcState.invoice)}"><button type="button" class="rc-kb" id="rcInvKb" aria-pressed="${rcState.invoiceText}" title="${esc(t('rcKbHint'))}">${rcState.invoiceText ? '123' : 'ABC'}</button></div></div>
+      <div class="field"><label for="rcInv">${esc(t('rcInvoice'))}</label><input id="rcInv" class="rc-inv" type="text" inputmode="numeric" data-pad="int" autocomplete="off" maxlength="30" enterkeyhint="next" placeholder="1024" value="${esc(rcState.invoice)}"></div>
       <div class="rc-two">
         <div class="field"><label>${esc(t('rcCurrency'))}</label>${chipPickHtml('rcCur', ['IQD', 'USD $'], usd ? 'USD $' : 'IQD')}</div>
         <div class="field"><label>${esc(t('rcDelivery'))}</label>${chipPickHtml('rcDelPick', [t('rcNoDelivery'), t('rcHasDelivery')], rcState.delivery ? t('rcHasDelivery') : t('rcNoDelivery'))}</div>
@@ -1276,15 +1281,12 @@ function attachReceiptsEvents(){
   if(!document.getElementById('rcLines')) return;
   wkPaint();
   document.getElementById('rcSup').onchange = e => { rcState.supplierId = e.target.value; };
-  document.getElementById('rcInv').oninput = e => { rcState.invoice = e.target.value; };
+  // Receipts in the workplace use invoice numbers only.
+  document.getElementById('rcInv').oninput = e => { const v = e.target.value.replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0).replace(/\D/g, ''); if(v !== e.target.value) e.target.value = v; rcState.invoice = v; };
   const form = document.querySelector('.rc-form');
-  chipPickWire(form, 'rcCur', v => { rcState.currency = v === 'USD $' ? 'USD' : 'IQD'; document.getElementById('rcRateBox').hidden = rcState.currency !== 'USD'; document.getElementById('rcDelCur').textContent = rcState.currency === 'USD' ? '$' : 'IQD'; rcPaintTotal(); if(rcState.currency === 'USD' && !rcState.rate) document.getElementById('rcRate').focus(); });
+  chipPickWire(form, 'rcCur', v => { rcState.currency = v === 'USD $' ? 'USD' : 'IQD'; document.getElementById('rcRateBox').hidden = rcState.currency !== 'USD'; document.getElementById('rcDelCur').textContent = rcState.currency === 'USD' ? '$' : 'IQD'; rcPaintTotal(); });
   document.getElementById('rcRate').oninput = e => { rcState.rate = e.target.value; };
-  chipPickWire(form, 'rcDelPick', v => { rcState.delivery = v === t('rcHasDelivery'); document.getElementById('rcDelBox').hidden = !rcState.delivery; if(rcState.delivery && !rcState.deliveryAmt) document.getElementById('rcDelAmt').focus(); });
-  // Invoices are usually numbers (number pad); ABC switches to the full keyboard for invoices with letters.
-  const kb = document.getElementById('rcInvKb');
-  kb.addEventListener('pointerdown', e => e.preventDefault());
-  kb.onclick = () => { rcState.invoiceText = !rcState.invoiceText; const inv = document.getElementById('rcInv'); inv.inputMode = rcState.invoiceText ? 'text' : 'numeric'; kb.textContent = rcState.invoiceText ? '123' : 'ABC'; kb.setAttribute('aria-pressed', rcState.invoiceText); inv.blur(); inv.focus(); };
+  chipPickWire(form, 'rcDelPick', v => { rcState.delivery = v === t('rcHasDelivery'); document.getElementById('rcDelBox').hidden = !rcState.delivery; });
   document.getElementById('rcDelAmt').oninput = e => { rcState.deliveryAmt = e.target.value; };
   const lines = document.getElementById('rcLines');
   lines.addEventListener('input', e => {
@@ -1305,15 +1307,14 @@ function attachReceiptsEvents(){
     const pick = e.target.closest('[data-rcpick]'), change = e.target.closest('[data-rcchange]'), rm = e.target.closest('[data-rcremove]');
     const setup = e.target.closest('[data-rcsetup]');
     if(setup){ openItemModal(setup.dataset.rcsetup); return; }
-    if(pick){ const l = rcState.lines[+pick.dataset.rcpick]; Object.assign(l, {itemId: pick.dataset.id, unit: 'buying', search: '', open: false}); rcPaintLines(); document.querySelector(`[data-rcqty="${pick.dataset.rcpick}"]`)?.focus(); }
-    else if(change){ Object.assign(rcState.lines[+change.dataset.rcchange], rcNewLine()); rcPaintLines(); document.querySelector(`[data-rcsearch="${change.dataset.rcchange}"]`)?.focus(); }
+    if(pick){ const l = rcState.lines[+pick.dataset.rcpick]; Object.assign(l, {itemId: pick.dataset.id, unit: 'buying', search: '', open: false}); rcPaintLines(); if(!PAD_TOUCH.matches) document.querySelector(`[data-rcqty="${pick.dataset.rcpick}"]`)?.focus(); }
+    else if(change){ Object.assign(rcState.lines[+change.dataset.rcchange], rcNewLine()); rcPaintLines(); }
     else if(rm){ rcState.lines.splice(+rm.dataset.rcremove, 1); rcPaintLines(); }
   });
   document.getElementById('rcAddLine').onclick = () => {
     rcState.lines.push(rcNewLine()); rcPaintLines();
     const row = document.querySelector(`[data-rcline="${rcState.lines.length - 1}"]`);
     animateUi(row, [{opacity: 0, transform: 'translateY(10px)'}, {opacity: 1, transform: 'none'}]);
-    row?.querySelector('[data-rcsearch]')?.focus();
   };
   document.getElementById('rcSend').onclick = rcSend;
   // Tapping these while typing in a box must not first close the keyboard and move the button away.

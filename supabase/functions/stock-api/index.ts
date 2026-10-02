@@ -37,6 +37,7 @@
 //   POST   worker/preview-report         {id, ok, message, image}
 //   POST   worker/claim                  the next final-approved request
 //   POST   worker/heartbeat              {live, pageReady, note}   every ~30 s -> {checkSignin}
+//   POST   worker/problem                {message}   the worker could not start; shown in the app while it is off
 //   POST   worker/signin-report          {ok, auto, message, image}   a sign-in check, or the PC signing in by itself
 //   POST   worker/receipt-claim          the next receipt to prepare (the PC never submits it)
 //   POST   worker/receipt-report         {id, claimToken, status: prepared|failed|closed, message, image}
@@ -147,6 +148,9 @@ async function controlStatus() {
   return { workerOnline: fresh(data?.worker_seen_at), launcherOnline: fresh(data?.launcher_seen_at),
     workerSeenAt: data?.worker_seen_at ?? null, workerLive: data?.worker_live ?? null, workerReceiptsLive: data?.worker_receipts_live ?? null, workerItemsLive: data?.worker_items_live ?? null, workerPageReady: data?.worker_page_ready ?? null,
     workerNote: data?.worker_note ?? null,
+    // A start-up problem counts only if it came after the worker was last seen running.
+    workerProblem: data?.worker_problem_at && (!data?.worker_seen_at || Date.parse(data.worker_problem_at) > Date.parse(data.worker_seen_at)) ? data.worker_problem ?? null : null,
+    workerProblemAt: data?.worker_problem_at ?? null,
     startRequestedAt: data?.start_requested_at ?? null, startHandledAt: data?.start_handled_at ?? null,
     signinRequestedAt: data?.signin_requested_at ?? null, signinCheckedAt: data?.signin_checked_at ?? null, signinOk: data?.signin_ok ?? null,
     signinAuto: data?.signin_auto ?? null, signinMessage: data?.signin_message ?? null, signinHasShot: !!data?.signin_shot };
@@ -254,6 +258,15 @@ Deno.serve(async (req: Request) => {
         const { data: c } = await db.from("stock_worker_control").select("signin_requested_at,signin_checked_at").eq("id", 1).maybeSingle();
         const checkSignin = !!c?.signin_requested_at && (!c.signin_checked_at || Date.parse(c.signin_checked_at) < Date.parse(c.signin_requested_at));
         return json({ ok: true, checkSignin });
+      }
+      if (req.method === "POST" && path[1] === "problem") {
+        // {message}: the worker could not start (or the launcher saw it never report in). Shown in the app.
+        const b = await readBody(req);
+        const message = str(b.message, 400);
+        if (!message) return fail("Invalid report");
+        const { error } = await db.from("stock_worker_control").upsert({ id: 1, worker_problem: message, worker_problem_at: new Date().toISOString() });
+        if (error) throw error;
+        return json({ ok: true });
       }
       if (req.method === "POST" && path[1] === "signin-report") {
         // {ok, auto, message, image}: the result of a sign-in check, or of the PC signing in by itself.
