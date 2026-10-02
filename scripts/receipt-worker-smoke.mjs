@@ -8,6 +8,7 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {prepareReceipt, submitReceipt, RECEIPT_PAGE} from '../worker/receipt.mjs';
+import {loseClickResponse} from './worker-test-helpers.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const html=readFileSync(path.join(here,'fixtures/new-receipt.html'),'utf8');
 const browser=await chromium.launch({headless:true,executablePath:process.env.EDGE_PATH||undefined});
@@ -40,6 +41,13 @@ try{
   let pressed=false;
   await assert.rejects(submitReceipt(page,good,'Receipt received',()=>{pressed=true}),/quantity changed/,'an edited quantity stops it');
   assert.equal(pressed,false);assert.equal(await page.evaluate(()=>window.submitted),0,'nothing pressed when the form changed');
+  // A negative/malformed readback cannot become positive just by dropping characters.
+  for(const changed of ['-10','10oops','1,0','']){
+    await prepareReceipt(page,good);pressed=false;
+    await page.locator('.row input').first().fill(changed);
+    await assert.rejects(submitReceipt(page,good,'Receipt received',()=>{pressed=true}),/quantity changed/);
+    assert.equal(pressed,false);assert.equal(await page.evaluate(()=>window.submitted),0);
+  }
   // No success message configured: never pressed.
   await prepareReceipt(page,good);
   await assert.rejects(submitReceipt(page,good,'',()=>{pressed=true}),/No receipt success message/);
@@ -51,5 +59,10 @@ try{
   await prepareReceipt(page,good);pressed=false;
   await assert.rejects(submitReceipt(page,good,'Saved!',()=>{pressed=true}),/Timeout|waiting/i);
   assert.equal(pressed,true,'the press is known, so it is sent for checking, never retried');
+  // A click can save successfully before Playwright reports an error. That must still need checking.
+  await prepareReceipt(page,good);pressed=false;
+  await assert.rejects(submitReceipt(loseClickResponse(page,'Receive & send to finance'),good,'Receipt received',()=>{pressed=true}),/acknowledgement lost/);
+  assert.equal(pressed,true,'an attempted click is treated as uncertain when its response is lost');
+  assert.equal(await page.evaluate(()=>window.submitted),1,'the browser actually submitted exactly once');
   console.log(JSON.stringify({result:'PASS',checks:'fills supplier, invoice, dollar rate, delivery and item lines; checks line totals; stops on unknown item, supplier or unit and on an ambiguous unit; never submits on its own; saving re-checks the whole form, presses once and needs the exact success message'}));
 }finally{await browser.close()}

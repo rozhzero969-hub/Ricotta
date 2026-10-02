@@ -41,6 +41,7 @@
 html,body{margin:0;padding:0}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%;background:var(--bg);touch-action:manipulation}
 body{background:transparent;color:var(--ink);font-family:var(--font);font-weight:500;min-height:100dvh;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overflow-x:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+body.modal-open{overflow:hidden;overscroll-behavior:none}
 body.lang-ku,body.lang-ar{font-family:var(--font-rtl);line-height:1.6}
 html.rtl{direction:rtl}
 button,input,select,textarea{font-family:inherit;color:inherit}
@@ -376,8 +377,8 @@ html.rtl .ctx-menu{transform-origin:top left}
 .icon-btn.danger{color:var(--clay)}
 .form-card,.hist-card,.rec-card,.dev-card,.queue-card{padding:18px;margin-bottom:12px}
 .field{margin-bottom:16px}
-.field label{display:block;font-size:12px;font-weight:700;color:#4F6358;margin-bottom:7px}
-.field input,.field select,.field textarea{width:100%;min-height:50px;padding:0 14px;border-radius:15px;border:1px solid var(--line-strong);background:rgba(255,255,255,.6);font-size:16px;font-weight:500;color:var(--ink);outline:none;transition:border-color 200ms ease,box-shadow 200ms ease}
+.field label:not(.check-row){display:block;font-size:12px;font-weight:700;color:#4F6358;margin-bottom:7px}
+.field input:where(:not([type=checkbox]):not([type=radio])),.field select,.field textarea{width:100%;min-height:50px;padding:0 14px;border-radius:15px;border:1px solid var(--line-strong);background:rgba(255,255,255,.6);font-size:16px;font-weight:500;color:var(--ink);outline:none;transition:border-color 200ms ease,box-shadow 200ms ease}
 .field textarea{padding:12px 14px;min-height:88px;resize:vertical;line-height:1.5}
 .field select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2356695F' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-inline-end:36px}
 html.rtl .field select{background-position:left 14px center}
@@ -393,10 +394,11 @@ html.rtl .field select{background-position:left 14px center}
 .btn-primary{background:var(--accent-strong);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 10px 22px -10px rgba(20,56,44,.7)}
 .btn-danger{background:rgba(239,111,108,.14);color:var(--clay-ink);border:1px solid rgba(214,72,63,.25)}
 .btn-ghost{color:var(--ink)}
-.btn.is-busy{color:transparent!important;pointer-events:none}
-.btn.is-busy svg{opacity:0}
-.btn.is-busy::before{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;border:2.4px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .7s linear infinite}
-.btn-ghost.is-busy::before,.btn-danger.is-busy::before{border-color:rgba(20,56,44,.2);border-top-color:var(--deep)}
+.btn.is-busy,.tr-textbtn.is-busy{position:relative;color:transparent!important;pointer-events:none}
+.btn.is-busy:disabled,.tr-textbtn.is-busy:disabled{opacity:.8}
+.btn.is-busy svg,.tr-textbtn.is-busy svg{opacity:0}
+.btn.is-busy::before,.tr-textbtn.is-busy::before{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;border:2.4px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .7s linear infinite}
+.btn-ghost.is-busy::before,.btn-danger.is-busy::before,.tr-textbtn.is-busy::before{border-color:rgba(20,56,44,.2);border-top-color:var(--deep)}
 .load-more{margin-top:14px;width:100%}
 .action-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px}
 .action-row .add-btn{flex:1 1 auto;min-height:52px;font-size:14.5px}
@@ -528,10 +530,10 @@ html.rtl .queue-back svg{transform:scaleX(-1)}
 .modal-overlay{position:fixed;inset:auto 0;top:var(--vv-top,0px);height:var(--vv-height,100dvh);z-index:100;display:flex;align-items:center;justify-content:center;padding:12px 10px calc(10px + var(--safe-bottom));background:rgba(9,30,21,.22);-webkit-backdrop-filter:blur(8px) saturate(140%);backdrop-filter:blur(8px) saturate(140%);animation:fadeIn 220ms ease both}
 .modal-box{position:relative;width:100%;max-width:440px;max-height:calc(var(--vv-height,100dvh) - 40px);overflow-y:auto;border-radius:30px;padding:24px 20px 20px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);border:1px solid rgba(255,255,255,.7);box-shadow:var(--float-shadow);animation:sheetIn 460ms var(--ease-out) both;overscroll-behavior:contain;-webkit-user-select:text;user-select:text}
 @keyframes sheetIn{from{transform:translateY(60px) scale(.98);opacity:0}to{transform:none;opacity:1}}
-.modal-overlay.closing{animation:fadeOut 200ms ease forwards}
+.modal-overlay.closing{pointer-events:none;animation:fadeOut 200ms ease forwards}
 .modal-overlay.closing .modal-box{animation:sheetOut 220ms var(--ease) forwards}
 @keyframes sheetOut{to{transform:translateY(40px) scale(.98);opacity:0}}
-.modal-msg{font-size:15px;font-weight:500;color:var(--ink);line-height:1.65;margin-bottom:18px}
+.modal-msg{font-size:15px;font-weight:500;color:var(--ink);line-height:1.65;margin-bottom:18px;overflow-wrap:anywhere}
 .modal-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;padding-top:6px}
 .modal-actions .btn{flex:1 1 120px}
 .modal-title{font-size:20px;font-weight:800;margin-bottom:18px;line-height:1.3}
@@ -543,10 +545,13 @@ html.rtl .modal-banner-label{letter-spacing:0}
 .modal-banner-meta{font-size:12.5px;font-weight:500;color:var(--ink-soft);margin-top:2px}
 .modal-status{font-size:13px;font-weight:700;margin-bottom:10px;line-height:1.45}
 .modal-status:empty{display:none}
+.modal-status:not(:empty){animation:statusIn 220ms var(--ease-out) both}
 .modal-status.error{color:var(--clay-ink)}
 .modal-status.ok{color:var(--mint-ink)}
+.modal-status.pending{color:var(--ink-soft)}
+@keyframes statusIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .force-title{font-size:20px;font-weight:800;margin-bottom:8px}
-#forceRoot .modal-overlay{z-index:300;background:rgba(9,30,21,.4)}
+#forceRoot .modal-overlay{z-index:400;background:rgba(9,30,21,.4)}
 .update-words{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15.5px;line-height:1.7}
 .item-sort-hint{margin-bottom:12px;color:var(--ink-soft);font-size:13px;line-height:1.5;font-weight:500}
 .item-sort-list{display:grid;gap:8px;max-height:min(56vh,540px);overflow-y:auto;overscroll-behavior:contain;padding:2px 3px 4px}
@@ -927,6 +932,7 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  .btn.is-busy::before,.tr-textbtn.is-busy::before,.modal-status:not(:empty){animation:none!important}
 }
 
 /* ---------- Stock, Transfer and Item setup (same glass, greens and type as the rest) ---------- */

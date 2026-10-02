@@ -9,8 +9,14 @@ globalThis.Deno = { env: { get: (key) => environment.get(key) ?? '' } };
 const { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, saveGroqKey, _internals } = await import('../supabase/functions/api/assistant.ts');
 
 const db = {
+  rpc(name, args) {
+    assert.equal(name, 'app_internal_reserve_assistant');
+    const id = usage.length + 1;
+    usage.push({ id, device_id: args.p_device_id, account: args.p_account, model: args.p_model, input_tokens: 0, output_tokens: 0 });
+    return Promise.resolve({ data: id, error: null });
+  },
   from(table) {
-    let action = 'read', filters = [];
+    let action = 'read', filters = [], change;
     const query = {
       select() { return query; },
       in(field, values) { filters.push([field, values]); return query; },
@@ -19,9 +25,20 @@ const db = {
       limit() { return query; }, range() { return query; },
       maybeSingle() { return Promise.resolve({ data: null }); },
       delete() { action = 'delete'; return query; },
+      update(row) { action = 'update'; change = row; return query; },
       upsert(row) { secrets.set(row.key, row.value); return Promise.resolve({ error: null }); },
-      insert(row) { usage.push(row); return Promise.resolve({ error: null }); },
+      insert(row) {
+        if (table === 'app_secrets') {
+          if (secrets.has(row.key)) return Promise.resolve({ error: { code: '23505' } });
+          secrets.set(row.key, row.value);
+        } else usage.push(row);
+        return Promise.resolve({ error: null });
+      },
       then(resolve) {
+        if (action === 'update' && table === 'app_assistant_usage') {
+          const id = filters.find(([field]) => field === 'id')?.[1]?.[0];
+          Object.assign(usage.find(row => row.id === id), change);
+        }
         if (action === 'delete') {
           const keys = filters.find(([field]) => field === 'key')?.[1] ?? [];
           for (const key of keys) secrets.delete(key);
@@ -122,6 +139,8 @@ assert.equal(requests[beforeGroq].body.parallel_tool_calls, false);
 assert.equal(requests[beforeGroq + 1].body.messages.at(-1).role, 'tool');
 assert.equal(requests[beforeGroq + 1].body.messages.at(-1).tool_call_id, 'groq-call-1');
 assert.equal(usage.at(-1).model, 'openai/gpt-oss-120b');
+assert.equal(usage.at(-1).input_tokens, 30, 'token use includes both Groq tool rounds');
+assert.equal(usage.at(-1).output_tokens, 7);
 groqReply = ['[hap', 'py] Hi ', '[[calm]] there, [1] box'];
 const strayEvents = await chat();
 assert.deepEqual(strayEvents.filter(e => e.type === 'mood').map(e => e.mood), ['happy', 'calm'], 'moods in other shapes are still read');

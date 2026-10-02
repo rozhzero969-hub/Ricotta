@@ -16,9 +16,38 @@ const stView = {storage: 'all', filter: 'all', search: '', group: ''};
 const histView = {filter: 'all'};
 const itemsView = {filter: 'all', search: ''};
 const supView = {tab: 'suppliers'};
+/* Account data and unfinished workplace actions never carry into another sign-in. */
+function resetStockUi(){
+  Object.assign(stockState, {groups: [], tabs: null, loaded: false, failed: false, storages: [], settings: new Map(), balances: new Map(), requests: [], counts: [], control: null, sig: '', shots: {}, lastLight: 0});
+  trReset();
+  Object.assign(stView, {storage: 'all', filter: 'all', search: '', group: ''});
+  histView.filter = 'all'; Object.assign(itemsView, {filter: 'all', search: ''}); supView.tab = 'suppliers';
+  Object.assign(rcState, {supplierId: '', invoice: '', invoiceText: false, currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null, keyBody: null});
+  Object.assign(rcData, {list: [], loaded: false, at: 0, shots: {}, loadingShot: {}});
+  Object.assign(ijData, {list: [], loaded: false, at: 0, shots: {}, loadingShot: {}});
+  wpSendKeys.clear();
+}
 
 /* ============ API + data ============ */
-async function stockApi(path, {method = 'GET', body, timeout = 20000} = {}){
+const stockReads = new Map();
+function stockApi(path, options = {}){
+  const session = apiSession();
+  if(!apiAccountMatchesUi(session)) return Promise.resolve(staleApiReply());
+  const key = `${session?.token || ''}|${path}`;
+  if((options.method || 'GET') !== 'GET'){
+    // A refresh after a write must make a new request, even if an earlier
+    // read is still waiting on the network.
+    stockReads.clear();
+    return stockApiRequest(path, options).finally(()=>stockReads.clear());
+  }
+  if(stockReads.has(key)) return stockReads.get(key);
+  const pending = stockApiRequest(path, options).finally(()=>{
+    if(stockReads.get(key) === pending) stockReads.delete(key);
+  });
+  stockReads.set(key, pending);
+  return pending;
+}
+async function stockApiRequest(path, {method = 'GET', body, timeout = 20000} = {}){
   const controller = new AbortController();
   const timer = setTimeout(()=>controller.abort(), timeout);
   const s = apiSession();
@@ -27,9 +56,10 @@ async function stockApi(path, {method = 'GET', body, timeout = 20000} = {}){
   try{
     const res = await fetch(`${STOCK_API_URL}/${path}`, {method, headers, signal: controller.signal, body: body === undefined ? undefined : JSON.stringify(body)});
     const data = await res.json().catch(()=>null);
+    if(!apiSessionMatches(s)) return {ok: false, status: 0, data: null, stale: true};
     if(res.status === 401 && s){ clearApiSession(); onSessionExpired(); }
     return {ok: res.ok, status: res.status, data};
-  }catch(e){ return {ok: false, status: 0, data: null}; }
+  }catch(e){ return {ok: false, status: 0, data: null, ...(!apiSessionMatches(s) ? {stale: true} : {})}; }
   finally{ clearTimeout(timer); }
 }
 function stApplyLive(d){
@@ -42,6 +72,7 @@ function stApplyLive(d){
 }
 async function loadStock(){
   const r = await stockApi('bootstrap');
+  if(r.stale) return false;
   if(!r.ok || !r.data){ stockState.failed = true; return false; }
   const d = r.data;
   stockState.storages = d.storages || [];
@@ -63,6 +94,7 @@ async function refreshStockLight(){
   if(!r.ok || !r.data) return false;
   stApplyLive(r.data);
   if(stockState.sig !== before) stRepaint();
+  else if(state.view === 'transfers') trPaintActive();
   updateStockBadges();
   return true;
 }
@@ -92,6 +124,7 @@ const stFree = (id, storage) => Math.max(0, stQty(id, storage) - stReserved(id, 
 /* Wraps a name so Kurdish or Arabic words inside an English sentence (or the reverse) don't reorder the numbers around them. */
 const iso = x => '\u2068' + x + '\u2069';
 const fmtQty = n => Number(n || 0).toLocaleString('en-US', {maximumFractionDigits: 6});
+const stScrollBehavior = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 /* A row of tappable choices that stands in for a dropdown. The chosen value lives in a hidden input with the given id. */
 function chipPickHtml(id, options, selected){
   return `<div class="picks" data-chipfor="${esc(id)}" role="radiogroup">${options.map(x => `<button type="button" role="radio" class="pick${x === selected ? ' on' : ''}" aria-checked="${x === selected}" data-val="${esc(x)}">${esc(x)}</button>`).join('')}</div><input type="hidden" id="${esc(id)}" value="${esc(selected)}">`;
@@ -335,14 +368,16 @@ function trReview(){
     ${(()=>{ const w = workerState(); return w && w.cls !== 'on' ? `<div class="tr-rv-warn">${esc(t('wkReviewWarn')(w.label))}</div>` : ''; })()}
     <div class="tr-rv-actions"><button type="button" class="btn btn-primary" id="trApprove">${esc(t('trApprove'))}</button><button type="button" class="btn tr-rv-edit" id="trEdit">${esc(t('trEditRequest'))}</button></div>`;
   card.hidden = false;
-  card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  animateUi(card, [{opacity: 0, transform: 'translateY(8px)'}, {opacity: 1, transform: 'none'}]);
+  card.scrollIntoView({behavior: stScrollBehavior(), block: 'nearest'});
   document.getElementById('trEdit').onclick = trInvalidate;
   document.getElementById('trApprove').onclick = trApprove;
 }
 async function trApprove(){
-  const btn = document.getElementById('trApprove'); btn.disabled = true;
+  const btn = document.getElementById('trApprove');
+  return withBusy(btn, async () => {
   const item = stItem(trState.itemId);
-  try{
+  if(!item || !trState.reviewKey) return;
     const r = await stockApi('requests', {method: 'POST', body: {clientKey: trState.reviewKey, from: trState.from, to: trState.to, yesterday: trState.yesterday,
       itemId: item.id, quantity: trState.qty, unitId: stEnteredId(item.id), expectedName: stWorkName(item.id), expectedUnit: stEnteredEn(item.id)}});
     if(!r.ok){
@@ -352,8 +387,8 @@ async function trApprove(){
     }
     trReset(); toast(t('trQueued'));
     await loadStock(); render();
-    document.getElementById('trActive')?.scrollIntoView({behavior: 'smooth', block: 'start'});
-  }finally{ if(btn.isConnected) btn.disabled = false; }
+    document.getElementById('trActive')?.scrollIntoView({behavior: stScrollBehavior(), block: 'start'});
+  });
 }
 /* People and requests that are still on the PC, plus anything finished in the last half hour. */
 function trShownRequests(){
@@ -373,7 +408,7 @@ function trRequestCard(r){
   if(r.status === 'waiting' || r.status === 'running' || r.status === 'needs_checking'){
     pc = `<div class="tr-pc"><span class="tr-pc-label">${esc(t('trPcCheck'))}</span>${r.previewMessage ? esc(r.previewMessage) : esc(t('trNoCheckYet'))}</div>`;
     if(shot && shot.check) pc += shotHtml(shot.check, t('trShotLabel'));
-    else if(r.hasCheckShot) pc += `<div class="tr-shot-loading">${esc(t('trShotLoading'))}</div>`;
+    else if(r.hasCheckShot) pc += `<div class="tr-shot-loading">${esc(t(shot?.missing ? 'trShotGone' : 'trShotLoading'))}</div>`;
   }else if(r.resultMessage){
     pc = `<div class="tr-pc">${esc(r.resultMessage)}</div>`;
     if(shot && shot.result) pc += shotHtml(shot.result, t('trShotResult'));
@@ -393,11 +428,12 @@ function trRequestCard(r){
 function trPaintActive(){
   const box = document.getElementById('trActive'); if(!box) return;
   const list = trShownRequests();
+  // Invalidate an older preview before drawing its approval button.
+  list.forEach(stEnsureShots);
   const html = list.length ? `<div class="section-title">${esc(t('trOnPc'))} (${list.length})</div>${list.map(trRequestCard).join('')}` : '';
   if(box.dataset.sig === html) return;
   box.dataset.sig = html; box.innerHTML = html;
   bindRequestButtons(box);
-  list.forEach(stEnsureShots);
 }
 /* The PC's screenshots are loaded on demand and kept until the request changes. */
 async function stEnsureShots(r){
@@ -405,38 +441,38 @@ async function stEnsureShots(r){
   if(!need) return;
   const key = r.id + '|' + (r.previewedAt || '') + '|' + r.status;
   const have = stockState.shots[r.id];
-  if(have && have.key === key) return;
-  stockState.shots[r.id] = {key, check: have?.check, result: have?.result, loading: true};
+  if(have && have.key === key && (!have.retryAt || Date.now() < have.retryAt)) return;
+  stockState.shots[r.id] = {key, loading: true};
   const res = await stockApi('shots?id=' + encodeURIComponent(r.id));
-  const entry = {key};
+  if(res.stale || stockState.shots[r.id]?.key !== key) return;
+  const entry = {key, missing: res.ok && !(res.data?.shots || []).length, ...(!res.ok ? {retryAt: Date.now() + 15000} : {})};
   for(const s of res.data?.shots || []) if(!entry[s.kind]) entry[s.kind] = s.image;
   stockState.shots[r.id] = entry;
   if(state.view === 'transfers') trPaintActive();
 }
 function bindRequestButtons(root){
-  root.querySelectorAll('[data-trfinal]').forEach(b => b.onclick = async () => {
+  root.querySelectorAll('[data-trfinal]').forEach(b => b.onclick = () => withBusy(b, async () => {
     const req = stockState.requests.find(x => x.id === b.dataset.trfinal);
     if(!(await showConfirm((req ? trSummaryHtml(req) : '') + '<p>' + esc(t('trFinalConfirm')) + '</p>', {okLabel: t('trFinalApprove'), okClass: 'btn-primary'}))) return;
-    b.disabled = true;
     const r = await stockApi('final-approve', {method: 'POST', body: {id: b.dataset.trfinal}});
     if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); await refreshStockLight(); return; }
     toast(t('trFinalDone')); await refreshStockLight(); trPaintActive();
-  });
-  root.querySelectorAll('[data-trcancel]').forEach(b => b.onclick = async () => {
+  }));
+  root.querySelectorAll('[data-trcancel]').forEach(b => b.onclick = () => withBusy(b, async () => {
     if(!(await showConfirm(esc(t('trCancelConfirm')), {okLabel: t('trCancelReq')}))) return;
     const r = await stockApi('cancel', {method: 'POST', body: {id: b.dataset.trcancel}});
     if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
     toast(t('trCancelled')); await loadStock(); render();
-  });
+  }));
   // Change = cancel this waiting request and reopen the form with its details filled in.
-  root.querySelectorAll('[data-trchange]').forEach(b => b.onclick = async () => {
+  root.querySelectorAll('[data-trchange]').forEach(b => b.onclick = () => withBusy(b, async () => {
     const req = stockState.requests.find(x => x.id === b.dataset.trchange); if(!req) return;
     if(!(await showConfirm(esc(t('trChangeConfirm')), {okLabel: t('trChangeReq')}))) return;
     const r = await stockApi('cancel', {method: 'POST', body: {id: req.id}});
     if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
     Object.assign(trState, {from: req.from, to: req.to, itemId: req.itemId || '', qty: String(req.enteredQuantity ?? req.quantity), unit: (req.enteredUnitLabel && req.enteredUnitLabel !== req.unitLabel) ? 'buying' : 'counting', yesterday: !!req.yesterday, search: '', reviewKey: null});
     await loadStock(); render(); toast(t('trChangeDone'));
-  });
+  }));
   root.querySelectorAll('[data-trresolve]').forEach(b => b.onclick = () => openResolve(b.dataset.trresolve));
   root.querySelectorAll('[data-trzoom]').forEach(img => img.onclick = () => showAlert(`<img class="tr-shot-big" src="${esc(img.getAttribute('src'))}" alt="">`));
 }
@@ -639,12 +675,14 @@ function openGroupEditor(id){
     document.getElementById('gmSearch').oninput = paint;
     document.getElementById('gmOnly').onchange = paint;
     const del = document.getElementById('gmDelete');
-    if(del) del.onclick = async () => {
+    if(del) del.onclick = () => withBusy(del, async () => {
+      const editor = box.closest('.modal-overlay');
       if(!(await showConfirm(t('stGroupDeleteConfirm')(esc(g.name))))) return;
       const res = await stGroupDelete(g.id);
       if(res.error){ await showAlert(esc(res.error)); return; }
+      await closeModal(editor);
       render(); toast(t('stGroupDeleted'));
-    };
+    });
     paint();
   }, 0);
 }
@@ -682,7 +720,7 @@ function attachStockEvents(){
     const center = tabs.getBoundingClientRect().left + tabs.clientWidth / 2;
     let index = 0, dist = Infinity;
     pills.forEach((pill, i) => { const r = pill.getBoundingClientRect(), d = Math.abs(r.left + r.width / 2 - center); if(d < dist){ dist = d; index = i; } });
-    pills[Math.max(0, Math.min(pills.length - 1, index + step))].scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'});
+    pills[Math.max(0, Math.min(pills.length - 1, index + step))].scrollIntoView({behavior: stScrollBehavior(), block: 'nearest', inline: 'center'});
   };
   document.getElementById('stTabsPrev').onclick = () => go(-1);
   document.getElementById('stTabsNext').onclick = () => go(1);
@@ -817,7 +855,7 @@ function itemStockOnOpen(box){
   };
   buy.addEventListener('change', paint); count.addEventListener('change', paint); per.addEventListener('input', paint); paint();
   count.addEventListener('change', paintUsage); usage.addEventListener('change', paintUsage); paintUsage();
-  box.querySelectorAll('[data-wpjob]').forEach(b => b.onclick = () => wpSend(b.closest('[data-wpitem]').dataset.wpitem, b.dataset.wpjob));
+  box.querySelectorAll('[data-wpjob]').forEach(b => b.onclick = () => wpSend(b.closest('[data-wpitem]').dataset.wpitem, b.dataset.wpjob, b));
 }
 /* Checks the counting fields before anything is saved. Returns {} or {error}. */
 function itemStockValidate(box, buyingId){
@@ -977,9 +1015,33 @@ function attachZonesEvents(){
 
 /* ============ Receipts: entered here, prepared by the PC, accepted by a person at the PC ============ */
 const rcNewLine = () => ({itemId: '', unit: 'buying', qty: '', cost: '', search: ''});
-const rcState = {supplierId: '', invoice: '', invoiceText: false, currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null};
+const rcState = {supplierId: '', invoice: '', invoiceText: false, currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null, keyBody: null};
 const rcData = {list: [], loaded: false, at: 0, shots: {}};
 const RC_ACTIVE = ['waiting', 'preparing', 'prepared'];
+function stPruneShots(data, list){
+  const versions = new Map(list.map(x => [x.id, x.preparedAt]));
+  for(const old of data.list){
+    if(!versions.has(old.id) || versions.get(old.id) !== old.preparedAt){
+      delete data.shots[old.id];
+      if(data.loadingShot) delete data.loadingShot[old.id];
+    }
+  }
+}
+async function stLoadShot(data, x, endpoint, paint){
+  data.loadingShot = data.loadingShot || {};
+  if(data.loadingShot[x.id]) return;
+  const marker = {}, shots = data.shots;
+  data.loadingShot[x.id] = marker;
+  try{
+    const r = await stockApi(endpoint + '/shot?id=' + encodeURIComponent(x.id));
+    const current = data.list.find(y => y.id === x.id);
+    if(r.stale || shots !== data.shots || !current || current.preparedAt !== x.preparedAt) return;
+    if(r.ok && r.data?.image){ data.shots[x.id] = r.data.image; paint(); }
+    else toast(t('saveFailed'), 'error');
+  }finally{
+    if(data.loadingShot[x.id] === marker) delete data.loadingShot[x.id];
+  }
+}
 // Phones in Kurdish or Arabic may type ٠-٩ / ۰-۹ digits and ٫ as the decimal point.
 const rcNum = v => Number(String(v ?? '').replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0).replace(/٫/g, '.').replace(/[,٬\s]/g, ''));
 /* A number box that opens the phone's number pad (no spin arrows, commas allowed). */
@@ -996,8 +1058,10 @@ function rcUnits(item){
 const rcLineUnit = (l, item) => rcUnits(item).find(u => u.mode === l.unit) || rcUnits(item)[0];
 async function rcLoad(){
   const r = await stockApi('receipts');
-  if(!r.ok) return;
-  rcData.list = r.data.receipts || []; rcData.loaded = true; rcData.at = Date.now();
+  if(!r.ok || !r.data) return;
+  const list = r.data.receipts || [];
+  stPruneShots(rcData, list);
+  rcData.list = list; rcData.loaded = true; rcData.at = Date.now();
   if(state.view === 'receipts') rcPaintList();
 }
 setInterval(() => {
@@ -1084,12 +1148,13 @@ function rcPaintTotal(){
 function rcProblem(){
   if(!rcState.supplierId) return t('rcNeedSupplier');
   if(!rcState.invoice.trim()) return t('rcNeedInvoice');
-  if(rcState.currency === 'USD' && !(rcNum(rcState.rate) > 0)) return t('rcNeedRate');
-  if(rcState.delivery && !(rcNum(rcState.deliveryAmt) > 0)) return t('rcNeedDelivery');
+  const positive = v => Number.isFinite(rcNum(v)) && rcNum(v) > 0;
+  if(rcState.currency === 'USD' && !positive(rcState.rate)) return t('rcNeedRate');
+  if(rcState.delivery && !positive(rcState.deliveryAmt)) return t('rcNeedDelivery');
   const lines = rcState.lines.filter(l => l.itemId);
   if(!lines.length) return t('rcNeedItem');
   if(rcState.lines.some(l => !l.itemId)) return t('rcEmptyLine');
-  if(lines.some(l => !(rcNum(l.qty) > 0) || !(rcNum(l.cost) > 0))) return t('rcNeedNumbers');
+  if(lines.some(l => !stReady(stItem(l.itemId)) || !positive(l.qty) || !positive(l.cost) || !Number.isFinite(rcNum(l.qty) * rcNum(l.cost))) || !Number.isFinite(rcTotal())) return t('rcNeedNumbers');
   return '';
 }
 function rcSummaryHtml(){
@@ -1101,18 +1166,21 @@ function rcSummaryHtml(){
     ${row(t('rcTotal'), rcMoney(rcTotal(), rcState.currency))}</div>`;
 }
 async function rcSend(){
+  return withBusy(document.getElementById('rcSend'), async () => {
   const problem = rcProblem(); if(problem){ toast(problem, 'error'); return; }
   if(!(await showConfirm(rcSummaryHtml() + `<p>${esc(t('rcConfirm'))}</p>`, {okLabel: t('rcSend'), okClass: 'btn-primary'}))) return;
-  rcState.key = rcState.key || crypto.randomUUID();
-  const body = {clientKey: rcState.key, supplierId: rcState.supplierId, invoice: rcState.invoice.trim().replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0), currency: rcState.currency,
+  const body = {supplierId: rcState.supplierId, invoice: rcState.invoice.trim().replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0), currency: rcState.currency,
     rate: rcState.currency === 'USD' ? rcNum(rcState.rate) : null, delivery: rcState.delivery ? rcNum(rcState.deliveryAmt) : null,
     lines: rcState.lines.map(l => { const it = stItem(l.itemId); return {itemId: it.id, unitId: rcLineUnit(l, it).id, qty: rcNum(l.qty), cost: rcNum(l.cost)}; })};
-  const btn = document.getElementById('rcSend'); if(btn) btn.disabled = true;
+  const keyBody = JSON.stringify(body);
+  if(!rcState.key || rcState.keyBody !== keyBody){ rcState.key = crypto.randomUUID(); rcState.keyBody = keyBody; }
+  body.clientKey = rcState.key;
   const r = await stockApi('receipts', {method: 'POST', body});
-  if(btn) btn.disabled = false;
+  if(r.stale) return;
   if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
-  Object.assign(rcState, {supplierId: '', invoice: '', currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null});
+  Object.assign(rcState, {supplierId: '', invoice: '', currency: 'IQD', rate: '', delivery: false, deliveryAmt: '', lines: [rcNewLine()], key: null, keyBody: null});
   toast(t('rcSent')); render(); rcLoad();
+  });
 }
 function rcStatus(x){
   if(x.status === 'prepared' && x.finalApprovedAt) return [t('rcStApproved'), 'ready'];
@@ -1151,36 +1219,29 @@ function rcPaintList(){
   const html = list.length ? `<div class="section-title">${esc(t('rcRecent'))} (${list.length})</div>${list.map(rcCardHtml).join('')}` : (rcData.loaded ? '' : stLoadingHtml());
   if(box.dataset.sig === html) return;
   box.dataset.sig = html; box.innerHTML = html;
-  box.querySelectorAll('[data-rcshot]').forEach(b => b.onclick = async () => {
-    b.disabled = true;
-    const r = await stockApi('receipts/shot?id=' + encodeURIComponent(b.dataset.rcshot));
-    if(r.ok && r.data.image){ rcData.shots[b.dataset.rcshot] = r.data.image; rcPaintList(); } else { b.disabled = false; toast(t('saveFailed'), 'error'); }
-  });
+  box.querySelectorAll('[data-rcshot]').forEach(b => b.onclick = () => withBusy(b, async () => {
+    const x = rcData.list.find(y => y.id === b.dataset.rcshot);
+    if(x) await stLoadShot(rcData, x, 'receipts', rcPaintList);
+  }));
   // A filled-in receipt shows its screenshot straight away, so it can be checked before the final approval.
-  list.filter(x => x.status === 'prepared' && x.hasShot && !rcData.shots[x.id] && !rcData.loadingShot?.[x.id]).forEach(async x => {
-    rcData.loadingShot = rcData.loadingShot || {}; rcData.loadingShot[x.id] = true;
-    const r = await stockApi('receipts/shot?id=' + encodeURIComponent(x.id));
-    rcData.loadingShot[x.id] = false;
-    if(r.ok && r.data.image){ rcData.shots[x.id] = r.data.image; rcPaintList(); }
-  });
-  box.querySelectorAll('[data-rcfinal]').forEach(b => b.onclick = async () => {
+  list.filter(x => x.status === 'prepared' && x.hasShot && !rcData.shots[x.id]).forEach(x => stLoadShot(rcData, x, 'receipts', rcPaintList));
+  box.querySelectorAll('[data-rcfinal]').forEach(b => b.onclick = () => withBusy(b, async () => {
     const x = rcData.list.find(y => y.id === b.dataset.rcfinal); if(!x) return;
     const total = (x.lines || []).reduce((n, l) => n + l.qty * l.cost, 0);
     const row = (k, v) => `<div class="tr-sum-row"><span>${esc(k)}</span><b dir="auto">${esc(v)}</b></div>`;
     const html = `<div class="tr-sum">${row(t('supplier'), x.supplierName)}${row(t('rcInvoice'), x.invoice)}${(x.lines || []).map(l => row(l.appName, `${fmtQty(l.qty)} ${l.unitLabel} × ${rcMoney(l.cost, x.currency)}`)).join('')}${row(t('rcTotal'), rcMoney(total, x.currency))}</div><p>${esc(t('rcFinalConfirm'))}</p>`;
     if(!(await showConfirm(html, {okLabel: t('rcFinal'), okClass: 'btn-primary'}))) return;
-    b.disabled = true;
     const r = await stockApi('receipts/final-approve', {method: 'POST', body: {id: x.id}});
-    if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); b.disabled = false; return; }
+    if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
     toast(t('rcFinalDone')); rcLoad();
-  });
+  }));
   box.querySelectorAll('[data-rcresolve]').forEach(b => b.onclick = () => rcResolve(b.dataset.rcresolve));
-  box.querySelectorAll('[data-rccancel]').forEach(b => b.onclick = async () => {
+  box.querySelectorAll('[data-rccancel]').forEach(b => b.onclick = () => withBusy(b, async () => {
     if(!(await showConfirm(esc(t('rcCancelConfirm')), {okLabel: t('rcCancel')}))) return;
     const r = await stockApi('receipts/cancel', {method: 'POST', body: {id: b.dataset.rccancel}});
     if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
     rcLoad();
-  });
+  }));
 }
 function attachReceiptsEvents(){
   attachStockCommon();
@@ -1213,15 +1274,19 @@ function attachReceiptsEvents(){
   });
   lines.addEventListener('change', e => { const s = e.target.dataset; if(s.rcunitsel !== undefined){ rcState.lines[+s.rcunitsel].unit = e.target.value; rcPaintLines(); } });
   lines.addEventListener('click', e => {
-    const pick = e.target.closest('[data-rcpick]'), unit = e.target.closest('[data-rcunit]'), change = e.target.closest('[data-rcchange]'), rm = e.target.closest('[data-rcremove]');
+    const pick = e.target.closest('[data-rcpick]'), change = e.target.closest('[data-rcchange]'), rm = e.target.closest('[data-rcremove]');
     const setup = e.target.closest('[data-rcsetup]');
     if(setup){ openItemModal(setup.dataset.rcsetup); return; }
     if(pick){ const l = rcState.lines[+pick.dataset.rcpick]; Object.assign(l, {itemId: pick.dataset.id, unit: 'buying', search: '', open: false}); rcPaintLines(); document.querySelector(`[data-rcqty="${pick.dataset.rcpick}"]`)?.focus(); }
-    else if(unit){ rcState.lines[+unit.dataset.rcunit].unit = unit.dataset.mode; rcPaintLines(); }
     else if(change){ Object.assign(rcState.lines[+change.dataset.rcchange], rcNewLine()); rcPaintLines(); document.querySelector(`[data-rcsearch="${change.dataset.rcchange}"]`)?.focus(); }
     else if(rm){ rcState.lines.splice(+rm.dataset.rcremove, 1); rcPaintLines(); }
   });
-  document.getElementById('rcAddLine').onclick = () => { rcState.lines.push(rcNewLine()); rcPaintLines(); document.querySelector(`[data-rcsearch="${rcState.lines.length - 1}"]`)?.focus(); };
+  document.getElementById('rcAddLine').onclick = () => {
+    rcState.lines.push(rcNewLine()); rcPaintLines();
+    const row = document.querySelector(`[data-rcline="${rcState.lines.length - 1}"]`);
+    animateUi(row, [{opacity: 0, transform: 'translateY(10px)'}, {opacity: 1, transform: 'none'}]);
+    row?.querySelector('[data-rcsearch]')?.focus();
+  };
   document.getElementById('rcSend').onclick = rcSend;
   // Tapping these while typing in a box must not first close the keyboard and move the button away.
   ['rcSend', 'rcAddLine'].forEach(id => document.getElementById(id).addEventListener('pointerdown', e => e.preventDefault()));
@@ -1252,11 +1317,14 @@ function rcResolve(id){
 
 /* ============ Create or update an ingredient in the workplace (a task for the PC) ============ */
 const ijData = {list: [], loaded: false, at: 0, shots: {}, loadingShot: {}};
+const wpSendKeys = new Map();
 const IJ_ACTIVE = ['waiting', 'preparing', 'prepared', 'submitting'];
 async function ijLoad(){
   const r = await stockApi('itemjobs');
-  if(!r.ok) return;
-  ijData.list = r.data.jobs || []; ijData.loaded = true; ijData.at = Date.now();
+  if(!r.ok || !r.data) return;
+  const list = r.data.jobs || [];
+  stPruneShots(ijData, list);
+  ijData.list = list; ijData.loaded = true; ijData.at = Date.now();
   if(state.view === 'itemsAdmin') ijPaintList();
 }
 setInterval(() => {
@@ -1276,13 +1344,19 @@ function wpPreviewRows(itemId, kind){
     ${item.unit !== s.countingUnit ? row(`1 ${u(item.unit)} =`, `${fmtQty(s.perBuying)} ${u(s.countingUnit)}`) : ''}
     ${row(t('itWarn'), s.lowStock != null ? `${fmtQty(s.lowStock)} ${u(s.countingUnit)}` : '—')}</div>`;
 }
-async function wpSend(itemId, kind){
+async function wpSend(itemId, kind, btn){
+  return withBusy(btn, async () => {
   const s = stSetting(itemId);
   if(!s || !s.usageUnit){ toast(t('wpNeedUsage'), 'error'); return; }
   if(!(await showConfirm(wpPreviewRows(itemId, kind) + `<p>${esc(t(kind === 'create' ? 'wpConfirmCreate' : 'wpConfirmEdit'))}</p>`, {okLabel: t(kind === 'create' ? 'wpCreate' : 'wpEdit'), okClass: 'btn-primary'}))) return;
-  const r = await stockApi('itemjobs', {method: 'POST', body: {clientKey: crypto.randomUUID(), itemId, kind}});
+  const fingerprint = JSON.stringify([itemId, kind, stItem(itemId)?.unit, s]);
+  if(!wpSendKeys.has(fingerprint)) wpSendKeys.set(fingerprint, crypto.randomUUID());
+  const r = await stockApi('itemjobs', {method: 'POST', body: {clientKey: wpSendKeys.get(fingerprint), itemId, kind}});
+  if(r.stale) return;
   if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
   toast(t('wpSent')); ijLoad();
+  wpSendKeys.delete(fingerprint);
+  });
 }
 function ijStatus(x){
   if(x.status === 'prepared' && x.finalApprovedAt) return [t('rcStApproved'), 'ready'];
@@ -1313,32 +1387,25 @@ function ijPaintList(){
   const html = list.length ? `<div class="section-title">${esc(t('wpTasks'))} (${list.length})</div>${list.map(ijCardHtml).join('')}` : '';
   if(box.dataset.sig === html) return;
   box.dataset.sig = html; box.innerHTML = html;
-  list.filter(x => x.status === 'prepared' && x.hasShot && !ijData.shots[x.id] && !ijData.loadingShot[x.id]).forEach(async x => {
-    ijData.loadingShot[x.id] = true;
-    const r = await stockApi('itemjobs/shot?id=' + encodeURIComponent(x.id));
-    ijData.loadingShot[x.id] = false;
-    if(r.ok && r.data.image){ ijData.shots[x.id] = r.data.image; ijPaintList(); }
-  });
-  box.querySelectorAll('[data-ijshot]').forEach(b => b.onclick = async () => {
-    b.disabled = true;
-    const r = await stockApi('itemjobs/shot?id=' + encodeURIComponent(b.dataset.ijshot));
-    if(r.ok && r.data.image){ ijData.shots[b.dataset.ijshot] = r.data.image; ijPaintList(); } else b.disabled = false;
-  });
-  box.querySelectorAll('[data-ijfinal]').forEach(b => b.onclick = async () => {
+  list.filter(x => x.status === 'prepared' && x.hasShot && !ijData.shots[x.id]).forEach(x => stLoadShot(ijData, x, 'itemjobs', ijPaintList));
+  box.querySelectorAll('[data-ijshot]').forEach(b => b.onclick = () => withBusy(b, async () => {
+    const x = ijData.list.find(y => y.id === b.dataset.ijshot);
+    if(x) await stLoadShot(ijData, x, 'itemjobs', ijPaintList);
+  }));
+  box.querySelectorAll('[data-ijfinal]').forEach(b => b.onclick = () => withBusy(b, async () => {
     const x = ijData.list.find(y => y.id === b.dataset.ijfinal); if(!x) return;
     if(!(await showConfirm(`<p dir="auto"><b>${esc(x.payload?.name || x.itemName)}</b></p><p>${esc(t('wpFinalConfirm'))}</p>`, {okLabel: t('wpFinal'), okClass: 'btn-primary'}))) return;
-    b.disabled = true;
     const r = await stockApi('itemjobs/final-approve', {method: 'POST', body: {id: x.id}});
-    if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); b.disabled = false; return; }
+    if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
     toast(t('rcFinalDone')); ijLoad();
-  });
+  }));
   box.querySelectorAll('[data-ijresolve]').forEach(b => b.onclick = () => ijResolve(b.dataset.ijresolve));
-  box.querySelectorAll('[data-ijcancel]').forEach(b => b.onclick = async () => {
+  box.querySelectorAll('[data-ijcancel]').forEach(b => b.onclick = () => withBusy(b, async () => {
     if(!(await showConfirm(esc(t('wpCancelConfirm')), {okLabel: t('wpCancel')}))) return;
     const r = await stockApi('itemjobs/cancel', {method: 'POST', body: {id: b.dataset.ijcancel}});
     if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
     ijLoad();
-  });
+  }));
 }
 function ijResolve(id){
   const x = ijData.list.find(y => y.id === id); if(!x) return;
