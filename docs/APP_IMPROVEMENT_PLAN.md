@@ -92,16 +92,21 @@ was enabled by this work.
 
 ## Coordinated rollout
 
-1. Finish or reconcile pending workplace actions, then stop the office worker
-   and launcher. Preserve `worker/.env` and the browser profile.
+1. Finish or reconcile pending workplace actions. Temporarily disable both Windows
+   scheduled tasks, `Ricotta Transfer Worker` and `Ricotta Worker Launcher`, then
+   stop their worker/launcher process trees, including the CMD restart wrappers.
+   Preserve `worker/.env` and the browser profile. Record the current `ALLOW_SUBMIT`
+   value and temporarily set it to `0` for the first supervised preparation.
 2. Confirm the applied migration appears in `supabase migration list`. Do not
    reapply a migration already recorded on the live project.
 3. Copy the updated worker files to the PC. Deploy matching `api`, `stock-api`
    and `send-push` sources, including `_shared/security.ts`. Keep the existing
    JWT settings: custom authentication for `api`/`stock-api`, JWT verification
    for `send-push`. Publish the frontend together with its confirmation UI.
-4. Restart the worker. Run a supervised preparation and screenshot check before
-   enabling any workplace submission. Existing final approval remains mandatory.
+4. Re-enable the two scheduled tasks and restart the worker. Run a supervised
+   preparation and screenshot check before enabling any workplace submission.
+   Restore the previous `ALLOW_SUBMIT` value only after those checks pass. Existing
+   final approval remains mandatory.
 5. Verify login, queued order retry, item-settings save, stock proposal confirmation,
    reminders and worker health. The offline tests do not submit real workplace forms.
 
@@ -116,7 +121,7 @@ was enabled by this work.
 | Soon | Routine encrypted local exports and a restore drill | An export can restore catalog/history in a disposable database. Avoid depending on paid backup features. |
 | Soon | GitHub CodeQL and native secret scanning | Public-repository scanning runs with read-only source permissions and detects deliberately seeded test issues. Check existing/default scanning setup first. |
 | Soon | Supabase Postgres maintenance upgrade | Review the current 17.6 project against Supabase's 17.11 guidance, export first, and choose a restart window. [Upgrade notes](https://supabase.com/changelog/postgres-15-19-17-11-breaking-changes). |
-| Later | Stronger per-person authentication | Replace shared six-digit credentials with individual access while preserving the kitchen's quick sign-in flow. |
+| Later | Separate accounts for any additional staff | If staff share either existing PIN, give each person their own sign-in while preserving quick kitchen access; Rozha and Yunis keep their current full finance rights. |
 
 No additional plugin is required to ship these fixes. **Codex Security** is an
 optional plugin for deeper repository vulnerability reviews; its availability

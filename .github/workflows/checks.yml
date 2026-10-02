@@ -14,10 +14,11 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    env:
-      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Use runner temporary directory
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Set up Node
         uses: actions/setup-node@v4
