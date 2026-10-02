@@ -16,8 +16,9 @@ had already been removed. The active-item job uniqueness constraint is installed
 The `20261002050525_restaurant_expenses` migration is also applied. It adds a
 paid-expense ledger and immutable audit events, exact IQD/USD amounts, service-only
 atomic writes, revision conflicts and separate filtered currency totals. Both
-Rozha and Yunis have full access, as requested. Live checks rolled back their
-fixtures; no sample financial records remain. See [the expense guide](RESTAURANT_EXPENSES.md).
+Rozha and Yunis have full access, as requested. Each already has their own sign-in
+and private PIN; individual access is an existing feature. Live checks rolled back
+their fixtures; no sample financial records remain. See [the expense guide](RESTAURANT_EXPENSES.md).
 
 Frontend, Edge Function and office-worker changes are staged in the accompanying
 GitHub pull request. They require a coordinated release. Existing deployed Edge
@@ -142,7 +143,6 @@ was enabled by this work.
 | Soon | Routine encrypted local exports and a restore drill | An export can restore catalog/history in a disposable database. Avoid depending on paid backup features. |
 | Soon | GitHub CodeQL and native secret scanning | Public-repository scanning runs with read-only source permissions and detects deliberately seeded test issues. Check existing/default scanning setup first. |
 | Soon | Supabase Postgres maintenance upgrade | Review the current 17.6 project against Supabase's 17.11 guidance, export first, and choose a restart window. [Upgrade notes](https://supabase.com/changelog/postgres-15-19-17-11-breaking-changes). |
-| Later | Separate accounts for any additional staff | If staff share either existing PIN, give each person their own sign-in while preserving quick kitchen access; Rozha and Yunis keep their current full finance rights. |
 
 No additional plugin is required to ship these fixes. **Codex Security** is an
 optional plugin for deeper repository vulnerability reviews; its availability

@@ -2,8 +2,7 @@
 
 Rozha and Yunis both have full access to the Expenses screen: add, view, edit,
 void and export. Each saved change records the authenticated account and time.
-If each person keeps their own account PIN private, those are already individual
-sign-ins. Separate accounts for additional staff can be added in a future change.
+Rozha and Yunis already use separate sign-ins, each with their own private PIN.
 
 ## Recording spending
 
