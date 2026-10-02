@@ -1,1 +1,1 @@
-{"name":"ricotta-transfer-worker","private":true,"version":"0.1.0","type":"module","scripts":{"start":"node worker.mjs"},"dependencies":{"playwright":"1.55.1","dotenv":"16.6.1"},"engines":{"node":">=20"}}
+{"name":"ricotta-transfer-worker","private":true,"version":"0.1.0","type":"module","scripts":{"start":"node worker.mjs"},"dependencies":{"playwright":"1.55.1","dotenv":"18.0.4"},"engines":{"node":">=20"}}
