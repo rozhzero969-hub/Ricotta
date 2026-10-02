@@ -85,6 +85,9 @@ jobs:
       - name: PC worker ingredient create/edit (local copy of the workplace stock page)
         run: node scripts/items-worker-smoke.mjs
 
+      - name: PC worker workplace sign-in (local copy of the sign-in page)
+        run: node scripts/signin-worker-smoke.mjs
+
       - name: Upload UI smoke screenshots
         if: always()
         uses: actions/upload-artifact@v4
