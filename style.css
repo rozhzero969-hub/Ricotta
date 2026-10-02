@@ -162,14 +162,12 @@ html.rtl .lang-title{letter-spacing:0;font-size:11.5px}
 .nav-more-btn.has-badge::after{content:'';position:absolute;top:8px;inset-inline-end:calc(50% - 16px);width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px #fff}
 /* More: the other screens and "Edit tabs", in a glass panel above the bar */
 .nav-more{position:absolute;bottom:calc(100% + 10px);inset-inline-end:0;width:min(340px,100%);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:10px;border-radius:28px;
-  background:rgba(255,255,255,.62);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);border:1px solid rgba(255,255,255,.7);box-shadow:var(--float-shadow);
+  /* Frosted white rather than clear: browsers ignore a blur nested inside the tab bar's glass, so the
+     panel's own tint is what keeps the page behind it from showing through the labels. */
+  background-color:#F6FAF8;border:1px solid rgba(255,255,255,.9);box-shadow:var(--float-shadow);
   transform-origin:bottom right;transform:translateY(12px) scale(.9);opacity:0;visibility:hidden;pointer-events:none;transition:transform .45s var(--spring-soft),opacity .2s ease,visibility 0s linear .45s}
 html.rtl .nav-more{transform-origin:bottom left}
-/* Behind the More panel: the page is frosted and dimmed so the labels read clearly. (iPhone Safari skips a
-   glass blur nested inside the glass tab bar, so the frosting lives on its own layer behind the bar.) */
-.more-scrim{position:fixed;inset:0;z-index:39;background:rgba(236,243,239,.42);-webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);
-  opacity:0;visibility:hidden;transition:opacity .25s ease,visibility 0s linear .25s}
-html.more-open .more-scrim{opacity:1;visibility:visible;transition:opacity .25s ease}
+
 .bottomnav.more-open .nav-more{transform:none;opacity:1;visibility:visible;pointer-events:auto;transition:transform .45s var(--spring-soft),opacity .2s ease}
 .nav-more .navbtn{height:66px;border-radius:18px;font-size:11px;padding:0 4px}
 .nav-more .navbtn span{white-space:normal;text-align:center;line-height:1.25}
@@ -854,7 +852,6 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
     -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--glass-rim);box-shadow:var(--glass-shadow);animation:rise 600ms var(--ease-out) both}
   .nav-more-btn{display:none}
   .nav-more{display:contents;visibility:visible;opacity:1;pointer-events:auto}
-  .more-scrim{display:none}
   .nav-indicator{top:0;left:12px;right:12px;bottom:auto;width:auto!important;height:var(--ih,0);transform:translateY(var(--iy,0));transition:transform 520ms var(--spring-soft),height 520ms var(--spring-soft);background:var(--accent-strong);border-radius:15px;box-shadow:0 10px 22px -10px rgba(20,56,44,.7)}
   .navbtn{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:12px;height:48px;min-width:0;padding:0 14px;border-radius:15px;font-size:13.5px;color:var(--ink)}
   .navbtn span{max-width:none}
