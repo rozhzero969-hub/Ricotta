@@ -8,7 +8,7 @@ import {BodyTooLarge,InvalidBody,readJsonBody} from '../supabase/functions/_shar
 const workerToken='offline-worker-token-'.repeat(3), sessionToken='offline-session';
 const hash=async text=>Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))).toString('hex');
 const workerHash=await hash(workerToken), sessionHash=await hash(sessionToken);
-let tables, rpcCalls, failRead, failInsert, failUpdate, failRpc, pinLocked, rejectSettings;
+let hasWork=true, tables, rpcCalls, failRead, failInsert, failUpdate, failRpc, pinLocked, rejectSettings;
 function reset(){
   tables={stock_workers:[{id:'offline-pc',token_hash:workerHash,enabled:true}],
     app_sessions:[{account:'rozha',token_hash:sessionHash,expires_at:new Date(Date.now()+3600000).toISOString(),revoked_at:null}],
@@ -71,6 +71,7 @@ const db={
     if(name===failRpc)return {data:null,error:{message:'offline RPC error'}};
     if(name==='app_internal_reserve_login')return {data:pinLocked?null:[1,2],error:null};
     if(name==='app_internal_check_account_pin')return {data:true,error:null};
+    if(name==='stock_worker_has_work'||name==='stock_launcher_has_work')return {data:hasWork,error:null};
     if(name==='stock_save_item_settings'&&rejectSettings)return {data:null,error:{code:'P0001',message:'Unknown recipe unit'}};
     return {data:crypto.randomUUID(),error:null};
   },
@@ -171,4 +172,20 @@ const collisions=await Promise.all([request('itemjobs',{...job,clientKey:crypto.
 assert.deepEqual(collisions.map(response=>response.status).sort(),[201,400],'the pending-item constraint permits only one task');
 assert.match((await collisions.find(response=>response.status===400).json()).error,/already has a task/);
 assert.equal(tables.stock_item_jobs.length,1);
-console.log('Stock API smoke: PASS (authentication, bounded JSON, claim races and stale reports, transactional settings, PIN failure handling, receipt retry and precision)');
+// Instant pickup: the held-open question answers at once when there is work, says whether the PC is live,
+// and needs the worker token. A question whose caller has gone away is not held open.
+assert.equal((await request('worker/wait',undefined,'none','GET')).status,401,'waiting needs the worker token');
+rpcCalls=[];hasWork=true;
+let waited=await request('worker/wait?live=1',undefined,'worker','GET');
+assert.deepEqual(await waited.json(),{work:true},'new work is announced straight away');
+assert.deepEqual(rpcCalls.find(c=>c.name==='stock_worker_has_work')?.parameters,{p_live:true},'a live PC counts approved transfers as work');
+rpcCalls=[];await request('worker/wait?live=0',undefined,'worker','GET');
+assert.deepEqual(rpcCalls.find(c=>c.name==='stock_worker_has_work')?.parameters,{p_live:false},'a PC in test mode does not');
+waited=await request('worker/wait?for=launcher',undefined,'worker','GET');
+const launcherAnswer=await waited.json();
+assert.equal(launcherAnswer.work,true);assert.ok('workerOnline' in launcherAnswer,'the launcher also gets the control status');
+hasWork=false;const started=Date.now();
+waited=await handler(new Request('https://offline.test/stock-api/worker/wait',{headers:{'x-worker-token':workerToken},signal:AbortSignal.abort()}));
+assert.deepEqual(await waited.json(),{work:false});assert.ok(Date.now()-started<1500,'a cancelled question is not held open');
+hasWork=true;
+console.log('Stock API smoke: PASS (authentication, bounded JSON, claim races and stale reports, transactional settings, PIN failure handling, receipt retry and precision, instant pickup)');

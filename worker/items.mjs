@@ -24,8 +24,10 @@ async function form(page,heading){
 async function choose(page,trigger,label,want){
   if(await trigger.evaluate(e=>e.tagName)==='SELECT'){await trigger.selectOption({label:want});return}
   await trigger.click();
-  const focused=page.locator('input:focus'); if(await focused.count()&&want!==SAME){await focused.fill(want);await page.waitForTimeout(300)}
-  await page.waitForTimeout(200);
+  const focused=page.locator('input:focus'); if(await focused.count()&&want!==SAME){await focused.fill(want);await page.waitForTimeout(120)}
+  // Wait until the list stops changing instead of a fixed pause: fast on a quick page, still safe on a slow one.
+  const any=page.locator('[role="option"]:visible, [role="listbox"] :is(button,li,div):visible');
+  for(let last=-1,end=Date.now()+2000;;){const n=await any.count();if((n===last&&n>0)||Date.now()>end)break;last=n;await page.waitForTimeout(60)}
   let opts=page.locator('[role="option"]:visible'); if(!await opts.count())opts=page.locator('[role="listbox"] :is(button,li,div):visible');
   const n=await opts.count(), hits=[];
   for(let i=0;i<n;i++)if(norm(await opts.nth(i).innerText().catch(()=>''))===want)hits.push(i);
@@ -87,8 +89,11 @@ export async function prepareItem(page,j){
   if(j.kind==='create')await choose(page,await one(picker(root,'Usage Format (recipe unit)'),'recipe unit picker'),'Recipe unit',j.usage);
   await choose(page,await one(picker(root,'Buying Format'),'buying format picker'),'Buying format',unitShown(j,j.buying));
   await choose(page,await one(picker(root,'Inventory (counting) Format'),'counting format picker'),'Counting format',unitShown(j,j.counting));
-  await page.waitForTimeout(250);
-  const want=expectedConversions(j), boxes=await conversions(root);
+  // The conversion boxes appear once the formats are chosen: wait for them (at most 3 s) rather than a fixed pause.
+  const want=expectedConversions(j);
+  let boxes=await conversions(root);
+  const ready=()=>want.every(w=>boxes.some(x=>x.from===w.from&&x.to===w.to));
+  for(const end=Date.now()+3000;!ready()&&Date.now()<end;boxes=await conversions(root))await page.waitForTimeout(60);
   for(const w of want){
     const b=boxes.filter(x=>x.from===w.from&&x.to===w.to); if(b.length!==1)fail(`Could not find the "1 ${w.from} = ? ${w.to}" box`);
     await b[0].input.fill(String(w.value));

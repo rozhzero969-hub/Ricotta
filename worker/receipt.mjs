@@ -13,9 +13,21 @@ async function one(locator,label){
   if(!await locator.isVisible())fail(`${label}: hidden`);
   return locator;
 }
+// Waits until a list stops changing (same number of entries twice in a row), instead of a fixed pause:
+// fast when the page is quick, and still waits when it is slow. Never longer than `max` ms.
+async function settle(page,locator,max=2000){
+  const end=Date.now()+max;let last=-1;
+  for(;;){const n=await locator.count();if(n===last&&n>0)return;last=n;if(Date.now()>end)return;await page.waitForTimeout(60)}
+}
+// Polls until `test` is true (or `max` ms pass); returns the last result.
+async function until(page,test,max=3000){
+  const end=Date.now()+max;
+  for(;;){const ok=await test();if(ok||Date.now()>end)return ok;await page.waitForTimeout(60)}
+}
 // The choices a dropdown shows once it is open (role=option first, then plain list entries).
 async function openChoices(page){
-  await page.waitForTimeout(250);
+  const any=page.locator('[role="option"]:visible, [role="listbox"] :is(button,li,div):visible, [cmdk-item]:visible');
+  await settle(page,any);
   const opts=page.locator('[role="option"]:visible');
   if(await opts.count())return opts;
   return page.locator('[role="listbox"] :is(button,li,div):visible, [cmdk-item]:visible');
@@ -25,7 +37,7 @@ async function choose(page,trigger,label,match,typed){
   await trigger.click();
   if(typed){
     const focused=page.locator('input:focus');
-    if(await focused.count()){await focused.fill(typed);await page.waitForTimeout(400)}
+    if(await focused.count()){await focused.fill(typed);await page.waitForTimeout(120)}
   }
   const opts=await openChoices(page), n=await opts.count(), hits=[];
   for(let i=0;i<n;i++){const t=norm(await opts.nth(i).innerText().catch(()=>''));if(match(t))hits.push({i,t})}
@@ -76,8 +88,7 @@ export async function prepareReceipt(page,r){
     const l=r.lines[i];
     if(i>0){
       await (await one(page.getByRole('button',{name:'Add item',exact:true}),'Add item button')).click();
-      await page.waitForTimeout(300);
-      if(await rows.count()!==i+1)fail('A new item line did not appear');
+      if(!await until(page,async()=>await rows.count()===i+1))fail('A new item line did not appear');
     }
     const row=rows.nth(i), buttons=row.locator('button:visible, [role="combobox"]:visible');
     const itemBtn=buttons.nth(0);
@@ -93,10 +104,9 @@ export async function prepareReceipt(page,r){
     if(await inputs.count()!==2)fail(`Line ${i+1}: expected a quantity and a cost box`);
     await fillChecked(inputs.nth(0),l.qty,`Line ${i+1} quantity`);
     await fillChecked(inputs.nth(1),l.cost,`Line ${i+1} unit cost`);
-    await page.waitForTimeout(250);
     const expected=Math.round(l.qty*l.cost*100)/100;
-    const amounts=(norm(await row.innerText()).match(/\d[\d,]*(?:\.\d+)?/g)||[]).map(num);
-    if(!amounts.some(a=>Math.abs(a-expected)<0.01))fail(`Line ${i+1}: total does not show ${expected}`);
+    const showsTotal=async()=>((norm(await row.innerText()).match(/\d[\d,]*(?:\.\d+)?/g)||[]).map(num)).some(a=>Math.abs(a-expected)<0.01);
+    if(!await until(page,showsTotal,2000))fail(`Line ${i+1}: total does not show ${expected}`);
   }
   // Read everything back once more, then leave it ready: scroll to the totals so the screenshot shows them.
   await checkReceipt(page,r);
