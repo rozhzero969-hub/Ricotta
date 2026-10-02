@@ -75,6 +75,8 @@ const server=http.createServer((rq,res)=>{
         }
         else if(ep==='groups/delete'){fx.stock.groups=fx.stock.groups.filter(x=>x.id!==body.id);}
         else if(ep.startsWith('settings/')){const st=fx.stock.settings.find(x=>x.itemId===ep.split('/')[1]);if(st) Object.assign(st,{lowStock:body.lowStock===null?null:Number(body.lowStock),workplaceName:body.workplaceName||null});}
+        else if(ep==='signin-check'){fx.stock.control.signinRequestedAt=new Date().toISOString();}
+        else if(ep==='signin-shot'){data={image:PIXEL};}
         else if(ep==='zones/add'){fx.stock.storages.push(body.name);}
         else if(ep==='zones/rename'){fx.stock.storages=fx.stock.storages.map(x=>x===body.from?body.to:x);}
         else if(ep==='zones/delete'){fx.stock.storages=fx.stock.storages.filter(x=>x!==body.name);}
@@ -497,6 +499,20 @@ const server=http.createServer((rq,res)=>{
       return {cleared,yunisDraft,rozhaDraft:{...state.cart}};
     });
     assert.deepEqual(isolation,{cleared:true,yunisDraft:{},rozhaDraft:{i1:4}},'logout clears account data, rejects old responses, and isolates saved drafts');
+    await ctx.close();
+
+    /* ---------- Workplace sign-in: shown under the worker bar, checked on request ---------- */
+    ({ctx,page,calls}=await open());
+    await page.evaluate(()=>{});
+    await go(page,'transfers');
+    await page.evaluate(()=>{stockState.control={...stockState.control,workerOnline:true,workerLive:false,workerPageReady:true,signinCheckedAt:new Date().toISOString(),signinOk:true,signinAuto:true,signinHasShot:true};wkPaint();});
+    assert.match(await page.locator('.tr-signin').innerText(),/the PC signed in/i,'the last sign-in is shown');
+    await page.locator('#wkSigninShot').click();
+    await page.waitForSelector('.modal-box img.tr-shot-big');
+    await page.locator('#modalAlertOkBtn').click();
+    await page.locator('#wkSignin').click();
+    await page.waitForTimeout(300);
+    assert.ok(calls.some(c=>c.ep==='signin-check'&&c.method==='POST'),'Check sign-in asks the PC');
     await ctx.close();
 
     /* ---------- Yunis has the same screens ---------- */

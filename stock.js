@@ -68,7 +68,7 @@ function stApplyLive(d){
   const b = new Map();
   for(const x of d.balances || []) b.set(x.itemId + '|' + x.storage, x.quantity);
   stockState.balances = b;
-  stockState.sig = JSON.stringify([stockState.requests, [...b], stockState.control && [stockState.control.workerOnline, stockState.control.launcherOnline]]);
+  stockState.sig = JSON.stringify([stockState.requests, [...b], stockState.control && [stockState.control.workerOnline, stockState.control.launcherOnline, stockState.control.signinCheckedAt, stockState.control.signinRequestedAt]]);
 }
 async function loadStock(){
   const r = await stockApi('bootstrap');
@@ -216,7 +216,21 @@ function workerState(){
 }
 function workerBarHtml(){
   const w = workerState(); if(!w) return '';
-  return `<div class="tr-worker glass ${w.cls}"><div class="tr-worker-txt"><span class="tr-worker-dot" aria-hidden="true"></span><div><b>${esc(t('wkTitle'))}: ${esc(w.label)}</b>${w.hint ? `<small>${esc(w.hint)}</small>` : ''}</div></div>${w.button ? `<button type="button" class="btn btn-primary" id="wkStart" ${w.canStart ? '' : 'disabled'}>${esc(t('wkTurnOn'))}</button>` : ''}</div>`;
+  return `<div class="tr-worker glass ${w.cls}"><div class="tr-worker-txt"><span class="tr-worker-dot" aria-hidden="true"></span><div><b>${esc(t('wkTitle'))}: ${esc(w.label)}</b>${w.hint ? `<small>${esc(w.hint)}</small>` : ''}</div></div>${w.button ? `<button type="button" class="btn btn-primary" id="wkStart" ${w.canStart ? '' : 'disabled'}>${esc(t('wkTurnOn'))}</button>` : ''}</div>${signinRowHtml()}`;
+}
+/* The workplace sign-in, as last checked by the PC (it signs in by itself with its own PIN when the site signs out). */
+function signinRowHtml(){
+  const c = stockState.control; if(!c || !c.workerOnline) return '';
+  const asked = c.signinRequestedAt && (!c.signinCheckedAt || Date.parse(c.signinCheckedAt) < Date.parse(c.signinRequestedAt));
+  const fresh = asked && Date.now() - Date.parse(c.signinRequestedAt) < 3 * 60 * 1000;
+  let label, cls;
+  if(fresh){ label = t('wkSigninChecking'); cls = 'wait'; }
+  else if(!c.signinCheckedAt){ label = t('wkSigninUnknown'); cls = ''; }
+  else if(c.signinOk){ label = (c.signinAuto ? t('wkSigninAuto') : t('wkSigninOk')) + ' · ' + fmtDateTime(c.signinCheckedAt); cls = 'ok'; }
+  else { label = t('wkSigninBad') + ' · ' + fmtDateTime(c.signinCheckedAt); cls = 'bad'; }
+  return `<div class="tr-signin ${cls}"><span class="tr-signin-txt">${esc(label)}</span>
+    ${c.signinHasShot && !fresh ? `<button type="button" class="tr-textbtn" id="wkSigninShot">${esc(t('wkSigninShot'))}</button>` : ''}
+    <button type="button" class="tr-textbtn strong" id="wkSignin" ${fresh ? 'disabled' : ''}>${esc(t('wkSigninCheck'))}</button></div>`;
 }
 function wkPaint(){
   const box = document.getElementById('wkBar'); if(!box) return;
@@ -228,6 +242,20 @@ function wkPaint(){
     const r = await stockApi('start-worker', {method: 'POST'});
     if(!r.ok) toast(r.data?.error || t('saveFailed'), 'error'); else toast(t('wkAsked'));
     await refreshStockLight(); wkPaint();
+  };
+  const sc = document.getElementById('wkSignin');
+  if(sc) sc.onclick = async () => {
+    sc.disabled = true;
+    const r = await stockApi('signin-check', {method: 'POST'});
+    if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); sc.disabled = false; return; }
+    toast(t('wkSigninAsked')); await refreshStockLight(); wkPaint();
+  };
+  const ss = document.getElementById('wkSigninShot');
+  if(ss) ss.onclick = async () => {
+    ss.disabled = true;
+    const r = await stockApi('signin-shot');
+    ss.disabled = false;
+    if(r.ok && r.data?.image) showAlert(`<img class="tr-shot-big" src="${esc(r.data.image)}" alt="">`); else toast(t('trShotGone'), 'error');
   };
 }
 function stRepaint(){

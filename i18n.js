@@ -474,7 +474,15 @@ const T = {
     rcNoDelivery:'No delivery',
     rcHasDelivery:'Delivery',
     rcSearchItem:'Search item…',
-    rcLineTotal:'Total'
+    rcLineTotal:'Total',
+    wkSigninCheck:'Check sign-in',
+    wkSigninShot:'Screenshot',
+    wkSigninChecking:'Workplace: checking the sign-in…',
+    wkSigninUnknown:'Workplace sign-in: not checked yet',
+    wkSigninOk:'Workplace: signed in',
+    wkSigninAuto:'Workplace: the PC signed in',
+    wkSigninBad:'Workplace: could not sign in',
+    wkSigninAsked:'Asked the PC to check the sign-in. The screenshot comes in about a minute.'
 
   },
   ku:{
@@ -950,7 +958,15 @@ const T = {
     rcNoDelivery:'بێ گەیاندن',
     rcHasDelivery:'گەیاندن',
     rcSearchItem:'گەڕان بۆ کاڵا…',
-    rcLineTotal:'کۆ'
+    rcLineTotal:'کۆ',
+    wkSigninCheck:'پشکنینی چوونەژوورەوە',
+    wkSigninShot:'وێنە',
+    wkSigninChecking:'شوێنی کار: پشکنینی چوونەژوورەوە…',
+    wkSigninUnknown:'چوونەژوورەوەی شوێنی کار: هێشتا نەپشکنراوە',
+    wkSigninOk:'شوێنی کار: چووەتە ژوورەوە',
+    wkSigninAuto:'شوێنی کار: کۆمپیوتەر چووە ژوورەوە',
+    wkSigninBad:'شوێنی کار: نەیتوانی بچێتە ژوورەوە',
+    wkSigninAsked:'داوا لە کۆمپیوتەر کرا چوونەژوورەوە بپشکنێت. وێنەکە نزیکەی یەک خولەکی تر دێت.'
 
   },
   ar:{
@@ -1426,7 +1442,15 @@ const T = {
     rcNoDelivery:'بدون توصيل',
     rcHasDelivery:'توصيل',
     rcSearchItem:'ابحث عن مادة…',
-    rcLineTotal:'المجموع'
+    rcLineTotal:'المجموع',
+    wkSigninCheck:'فحص تسجيل الدخول',
+    wkSigninShot:'لقطة',
+    wkSigninChecking:'نظام العمل: جارٍ فحص تسجيل الدخول…',
+    wkSigninUnknown:'تسجيل الدخول لنظام العمل: لم يُفحص بعد',
+    wkSigninOk:'نظام العمل: تم تسجيل الدخول',
+    wkSigninAuto:'نظام العمل: سجّل الحاسوب الدخول',
+    wkSigninBad:'نظام العمل: تعذّر تسجيل الدخول',
+    wkSigninAsked:'طُلب من الحاسوب فحص تسجيل الدخول. تصل اللقطة خلال دقيقة تقريباً.'
 
   }
 };

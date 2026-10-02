@@ -9,6 +9,7 @@ import { prepareReceipt, submitReceipt, RECEIPT_PAGE } from './receipt.mjs';
 import { prepareItem, submitItem, formOpen, STOCK_PAGE } from './items.mjs';
 import {nextPollDelay} from './polling.mjs';
 import { acquireLock } from './lock.mjs';
+import { onLoginPage, signIn } from './signin.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const PAGE='https://pos.shaydattendance.com/inventory/transfer';
@@ -24,6 +25,8 @@ const RECEIPTS_LIVE=LIVE&&!!RECEIPT_SUCCESS;
 const ITEM_SUCCESS={create:(process.env.ITEM_ADD_SUCCESS_TEXT||'').trim(),edit:(process.env.ITEM_EDIT_SUCCESS_TEXT||'').trim()};
 const ITEMS_LIVE=LIVE&&!!ITEM_SUCCESS.create&&!!ITEM_SUCCESS.edit;
 const POLL=Math.min(60,Math.max(5,Number(process.env.POLL_SECONDS)||5))*1000;
+// The workplace PIN, only for signing in by itself when the site shows its sign-in page. Never logged or sent.
+const WORKPLACE_PIN=(process.env.WORKPLACE_PIN||'').trim();
 if(TOKEN.length<32)throw new Error('Set WORKER_TOKEN in worker/.env');
 if(LIVE&&!SUCCESS)throw new Error('Live submission requires CONFIRMED_SUCCESS_TEXT');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -129,7 +132,46 @@ let lastPageReady=null, lastRecovery=0, lastBeat=0;
 // Health for the app: running, live or checks only, and whether the workplace transfer page is ready.
 async function heartbeat(pageReady){
   if(Date.now()-lastBeat<30000)return; lastBeat=Date.now();
-  try{await api('worker/heartbeat','POST',{live:LIVE,receiptsLive:RECEIPTS_LIVE,itemsLive:ITEMS_LIVE,pageReady,note:pageReady?'':'Workplace transfer page is not open or not signed in'})}catch{}
+  try{
+    const r=await api('worker/heartbeat','POST',{live:LIVE,receiptsLive:RECEIPTS_LIVE,itemsLive:ITEMS_LIVE,pageReady,note:pageReady?'':(signinState.fails>=3?'Could not sign in to the workplace 3 times; sign in on the PC':'Workplace transfer page is not open or not signed in')});
+    if(r?.checkSignin)signinState.requested=true;
+  }catch{}
+}
+// Signing in to the workplace by itself. To protect the account it tries at most once every 10 minutes and
+// stops after 3 failed tries (until a person presses "Check sign-in" in the app or restarts the worker).
+const signinState={last:0,fails:0,requested:false};
+async function signinReport(ok,auto,message){
+  try{await api('worker/signin-report','POST',{ok,auto,message,image:await jpeg()})}catch(e){console.error('Could not report sign-in:',e.message)}
+}
+async function signinTurn(){
+  const asked=signinState.requested; signinState.requested=false;
+  const atLogin=await onLoginPage(page);
+  if(!atLogin){
+    if(!asked)return;
+    // Asked by a person and already signed in: show the transfer page as proof.
+    if(page.url()!==PAGE)await page.goto(PAGE,{waitUntil:'domcontentloaded'}).catch(()=>{});
+    if(await onLoginPage(page)){signinState.requested=true;return signinTurn();}
+    const ok=await page.getByRole('heading',{name:/Move stock between storages/i}).isVisible({timeout:8000}).catch(()=>false);
+    await signinReport(ok,false,ok?'Already signed in. The transfer page is open.':'Signed in, but the transfer page did not open.');
+    return;
+  }
+  if(!asked&&(signinState.fails>=3||Date.now()-signinState.last<10*60_000))return;
+  if(asked)signinState.fails=Math.min(signinState.fails,2);   // a person asking allows one more try
+  signinState.last=Date.now();
+  try{
+    console.log('Workplace sign-in page is showing; signing in with the PIN keypad.');
+    await signIn(page,WORKPLACE_PIN);
+    signinState.fails=0;
+    await page.goto(PAGE,{waitUntil:'domcontentloaded'}).catch(()=>{});
+    await page.getByRole('heading',{name:/Move stock between storages/i}).waitFor({state:'visible',timeout:15000}).catch(()=>{});
+    console.log('Signed in to the workplace.');
+    lastBeat=0;
+    await signinReport(true,true,'The PC signed in to the workplace by itself.');
+  }catch(e){
+    signinState.fails++;
+    console.error('Workplace sign-in failed:',e.message);
+    await signinReport(false,true,`Could not sign in (${signinState.fails}/3): ${e.message}`);
+  }
 }
 // A small JPEG of what the PC sees, sent to the phone so a person can confirm what was selected.
 async function jpeg(){
@@ -283,6 +325,8 @@ while(true){
       lastPageReady=pageReady; lastBeat=0;   // tell the app straight away
     }
     await heartbeat(pageReady);
+    // Signed out (or a person asked for a check): sign in first, so every command runs on a signed-in site.
+    if(!pageReady||signinState.requested)await signinTurn();
     // Without a visible transfer form nothing is claimed or checked; requests keep waiting.
     // Try to return to the page at most once a minute (for example after a sign-in redirect).
     if(!pageReady&&Date.now()-lastRecovery>60000){lastRecovery=Date.now();await page.goto(PAGE,{waitUntil:'domcontentloaded'}).catch(()=>{})}

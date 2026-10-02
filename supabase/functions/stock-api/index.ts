@@ -27,6 +27,8 @@
 //   POST   itemjobs                      {clientKey, itemId, kind: create|edit}   (the details are taken from the item's saved setup)
 //   POST   itemjobs/cancel|final-approve|resolve   same rules as receipts
 //   POST   start-worker                  ask the office PC helper to start the worker
+//   POST   signin-check                  ask the PC to check the workplace sign-in (it signs in with its own PIN if needed)
+//   GET    signin-shot                   the screenshot from the last sign-in check
 //   POST   counts-bulk                   {storage, countedAt, note, pin, lines:[{itemId, quantity}]}   (one PIN for many items)
 //   POST   counts                        {itemId, storage, quantity, countedAt, note, pin}   (asks for the PIN again)
 //   POST   resolve                       {id, status, note, recordedDate}
@@ -34,7 +36,8 @@
 //   GET    worker/preview                oldest waiting request that needs a PC check
 //   POST   worker/preview-report         {id, ok, message, image}
 //   POST   worker/claim                  the next final-approved request
-//   POST   worker/heartbeat              {live, pageReady, note}   every ~30 s
+//   POST   worker/heartbeat              {live, pageReady, note}   every ~30 s -> {checkSignin}
+//   POST   worker/signin-report          {ok, auto, message, image}   a sign-in check, or the PC signing in by itself
 //   POST   worker/receipt-claim          the next receipt to prepare (the PC never submits it)
 //   POST   worker/receipt-report         {id, claimToken, status: prepared|failed|closed, message, image}
 //   POST   worker/receipt-held           {id}   status of the receipt the PC is holding open
@@ -144,7 +147,22 @@ async function controlStatus() {
   return { workerOnline: fresh(data?.worker_seen_at), launcherOnline: fresh(data?.launcher_seen_at),
     workerSeenAt: data?.worker_seen_at ?? null, workerLive: data?.worker_live ?? null, workerReceiptsLive: data?.worker_receipts_live ?? null, workerItemsLive: data?.worker_items_live ?? null, workerPageReady: data?.worker_page_ready ?? null,
     workerNote: data?.worker_note ?? null,
-    startRequestedAt: data?.start_requested_at ?? null, startHandledAt: data?.start_handled_at ?? null };
+    startRequestedAt: data?.start_requested_at ?? null, startHandledAt: data?.start_handled_at ?? null,
+    signinRequestedAt: data?.signin_requested_at ?? null, signinCheckedAt: data?.signin_checked_at ?? null, signinOk: data?.signin_ok ?? null,
+    signinAuto: data?.signin_auto ?? null, signinMessage: data?.signin_message ?? null, signinHasShot: !!data?.signin_shot };
+}
+/* A short push to every phone when the PC signs in to the workplace by itself, or cannot. */
+async function pushSignin(ok: boolean) {
+  const secret = Deno.env.get("CRON_SECRET") ?? "", anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  if (!secret) return;
+  const msg = ok
+    ? { bodyEn: "The office PC signed in to the workplace system. Open Transfers to see the screenshot.", bodyKu: "کۆمپیوتەری ئۆفیس چووە ناو سیستەمی شوێنی کار. بۆ بینینی وێنەکە گواستنەوە بکەرەوە.", bodyAr: "سجّل حاسوب المكتب الدخول إلى نظام العمل. افتح النقل لرؤية اللقطة." }
+    : { bodyEn: "The office PC could not sign in to the workplace system. Check the PC.", bodyKu: "کۆمپیوتەری ئۆفیس نەیتوانی بچێتە ناو سیستەمی شوێنی کار. کۆمپیوتەرەکە بپشکنە.", bodyAr: "لم يتمكن حاسوب المكتب من تسجيل الدخول إلى نظام العمل. تحقق من الحاسوب." };
+  await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-push`, {
+    method: "POST", signal: AbortSignal.timeout(10_000),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, apikey: anon, "x-cron-secret": secret },
+    body: JSON.stringify({ type: "assistant", title: "Ricotta PC", ...msg }),
+  }).catch((e) => console.error("signin push", errorText(e)));
 }
 async function requestsAndBalances() {
   const [reqs, balances] = await Promise.all([
@@ -232,6 +250,19 @@ Deno.serve(async (req: Request) => {
         const { error } = await db.from("stock_worker_control").upsert({ id: 1, worker_seen_at: new Date().toISOString(),
           worker_live: b.live === true, worker_receipts_live: b.receiptsLive === true, worker_items_live: b.itemsLive === true, worker_page_ready: b.pageReady === true, worker_note: str(b.note, 300) || null });
         if (error) throw error;
+        // A person asked the PC to check the workplace sign-in and the PC has not answered since.
+        const { data: c } = await db.from("stock_worker_control").select("signin_requested_at,signin_checked_at").eq("id", 1).maybeSingle();
+        const checkSignin = !!c?.signin_requested_at && (!c.signin_checked_at || Date.parse(c.signin_checked_at) < Date.parse(c.signin_requested_at));
+        return json({ ok: true, checkSignin });
+      }
+      if (req.method === "POST" && path[1] === "signin-report") {
+        // {ok, auto, message, image}: the result of a sign-in check, or of the PC signing in by itself.
+        const b = await readBody(req, MAX_WORKER_BODY);
+        if (typeof b.ok !== "boolean") return fail("Invalid report");
+        const { error } = await db.from("stock_worker_control").upsert({ id: 1, signin_checked_at: new Date().toISOString(), signin_ok: b.ok,
+          signin_auto: b.auto === true, signin_message: str(b.message, 400) || null, signin_shot: cleanImage(b.image) });
+        if (error) throw error;
+        if (b.auto === true || b.ok === false) await pushSignin(b.ok);
         return json({ ok: true });
       }
       if (req.method === "POST" && path[1] === "receipt-claim") {
@@ -560,6 +591,19 @@ Deno.serve(async (req: Request) => {
       const { error } = await db.rpc("stock_item_job_resolve", { p_id: b.id, p_actor: actor, p_saved: b.saved, p_note: str(b.note, 900) });
       if (error) throw error;
       return json({ ok: true });
+    }
+    if (req.method === "POST" && path[0] === "signin-check") {
+      // Ask the PC to check that the workplace site is signed in (it signs in by itself if needed) and send a screenshot.
+      const c = await controlStatus();
+      if (!c.workerOnline) return fail("The PC worker is not running. Turn it on first.");
+      const { error } = await db.from("stock_worker_control").upsert({ id: 1, signin_requested_at: new Date().toISOString(), signin_requested_by: actor });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+    if (req.method === "GET" && path[0] === "signin-shot") {
+      const { data, error } = await db.from("stock_worker_control").select("signin_shot").eq("id", 1).maybeSingle();
+      if (error) throw error;
+      return json({ image: data?.signin_shot ?? null });
     }
     if (req.method === "POST" && path[0] === "start-worker") {
       const c = await controlStatus();

@@ -1283,3 +1283,15 @@ select.sel-native{position:absolute!important;width:1px!important;height:1px!imp
 .st-hero .hero-sub{margin-top:2px}
 .tr-note,.rc-foot .tr-note{font-size:11.5px;line-height:1.45}
 .section-title{margin-top:18px}
+/* Workplace sign-in line under the PC worker bar */
+.tr-signin{display:flex;align-items:center;gap:6px 14px;flex-wrap:wrap;margin:-6px 6px 14px;padding:0 8px;font-size:12.5px;font-weight:700;color:var(--ink-soft)}
+.tr-signin-txt{flex:1;min-width:0;display:flex;align-items:center;gap:7px}
+.tr-signin-txt::before{content:'';width:8px;height:8px;border-radius:50%;background:#B9C2BD;flex:none}
+.tr-signin.ok .tr-signin-txt::before{background:#2F9461}
+.tr-signin.bad{color:#C2413B}.tr-signin.bad .tr-signin-txt::before{background:#C2413B}
+.tr-signin.wait .tr-signin-txt::before{background:#D9A72C;animation:pulseDot 1.2s ease-in-out infinite}
+.tr-signin .tr-textbtn{padding:6px 2px;font-size:12.5px}
+.tr-textbtn.strong{color:var(--accent-strong)}
+.tr-textbtn:disabled{opacity:.5}
+@keyframes pulseDot{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.tr-signin.wait .tr-signin-txt::before{animation:none}}
