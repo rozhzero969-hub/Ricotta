@@ -779,13 +779,8 @@ window.addEventListener('resize', ()=>segs().forEach(segPlace));
 
 function setMoreOpen(open){
   const nav = document.querySelector('.bottomnav'), btn = document.getElementById('navMoreBtn');
-  document.documentElement.classList.toggle('more-open', !!(open && nav && btn));
   if(!nav || !btn) return;
   nav.classList.toggle('more-open', open);
-  if(open && !document.querySelector('.more-scrim')){
-    const scrim = document.createElement('div'); scrim.className = 'more-scrim'; scrim.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(scrim);
-  }
   btn.setAttribute('aria-expanded', String(open));
 }
 /* A tap anywhere else, or Escape, closes the More panel. */
