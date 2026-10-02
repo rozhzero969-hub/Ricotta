@@ -47,6 +47,10 @@ On an edit, the worker never changes the usage unit. If the app's usage unit dif
 
 ## Updating the worker and API together
 
+The launcher now acknowledges the exact start request it saw. If that acknowledgement fails, it retries without opening another worker window. Copy the updated `launcher.mjs` to the office PC and restart the launcher to enable this fix; the API remains compatible with older launchers.
+
+If a worker stops during a receipt or ingredient submission, the existing minute maintenance tick moves the task to **Needs checking** after 15 minutes without a result. A final-approved form that was never submitted becomes reconcilable after its 30-minute approval expires. Check the workplace and use the existing confirmation screen; recovery never submits a form or adds stock automatically.
+
 The updated receipt and ingredient preparation protocol returns a `claimToken` and requires it on preparation reports. This prevents an old preparation attempt from overwriting a task reclaimed by another worker. Temporarily disable both Windows scheduled tasks, `Ricotta Transfer Worker` and `Ricotta Worker Launcher`, then stop their worker/launcher process trees, including the CMD restart wrappers. Preserve `.env` and the browser profile, copy the updated `worker/` files to the PC, and deploy the matching `stock-api` and frontend. Re-enable the two tasks and restart the worker only after those updates are complete. Do not deploy this API version while an older office worker is still running. Existing final approvals still gate every workplace submission.
 
 Before restarting for the first supervised preparation, record the current `ALLOW_SUBMIT` value and temporarily set it to `0`. Run the preparation and screenshot check, then restore the previous value only after those checks pass and restart the worker to load it.

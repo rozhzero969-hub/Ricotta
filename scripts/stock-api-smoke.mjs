@@ -48,7 +48,7 @@ const db={
     async function run(single){
       if(action==='read'&&failRead===table)return {data:null,error:{message:'offline read error'},count:null};
       if(action==='insert'&&failInsert===table)return {data:null,error:{message:'offline insert error'}};
-      if(action==='update'&&failUpdate===table)return {data:null,error:{message:'offline update error'}};
+      if((action==='update'||action==='upsert')&&failUpdate===table)return {data:null,error:{message:'offline update error'}};
       const rows=tables[table]??(tables[table]=[]);
       let result=rows.filter(row=>filters.every(match=>match(row))).slice(0,limit);
       if(action==='insert'){
@@ -188,4 +188,19 @@ hasWork=false;const started=Date.now();
 waited=await handler(new Request('https://offline.test/stock-api/worker/wait',{headers:{'x-worker-token':workerToken},signal:AbortSignal.abort()}));
 assert.deepEqual(await waited.json(),{work:false});assert.ok(Date.now()-started<1500,'a cancelled question is not held open');
 hasWork=true;
+// A late acknowledgement must leave a newer start request pending.
+reset();
+const oldStart='2026-10-02T09:00:00.000Z', newStart='2026-10-02T09:01:00.000Z';
+tables.stock_worker_control=[{id:1,start_requested_at:newStart,start_handled_at:null}];
+let ack=await request('worker/control-handled',{requestedAt:oldStart},'worker');
+assert.equal(ack.status,200);assert.equal((await ack.json()).handled,false);
+assert.equal(tables.stock_worker_control[0].start_handled_at,null,'newer start remains pending');
+ack=await request('worker/control-handled',{requestedAt:newStart},'worker');
+assert.equal((await ack.json()).handled,true);assert.equal(tables.stock_worker_control[0].start_handled_at,newStart);
+tables.stock_worker_control[0].start_handled_at=null;failUpdate='stock_worker_control';
+assert.notEqual((await request('worker/control-handled',{requestedAt:newStart},'worker')).status,200,'failed writes cannot claim the start was handled');
+failUpdate=null;failRead='stock_worker_control';
+assert.notEqual((await request('start-worker',{})).status,200,'broken health reads cannot invent an offline worker');
+failRead=null;
+assert.equal((await request('worker/control-handled',undefined,'worker')).status,200,'already installed launchers remain compatible');
 console.log('Stock API smoke: PASS (authentication, bounded JSON, claim races and stale reports, transactional settings, PIN failure handling, receipt retry and precision, instant pickup)');
