@@ -105,8 +105,8 @@ was enabled by this work.
    for `send-push`. Publish the frontend together with its confirmation UI.
 4. Re-enable the two scheduled tasks and restart the worker. Run a supervised
    preparation and screenshot check before enabling any workplace submission.
-   Restore the previous `ALLOW_SUBMIT` value only after those checks pass. Existing
-   final approval remains mandatory.
+   Restore the previous `ALLOW_SUBMIT` value only after those checks pass, then
+   restart the worker to load it. Existing final approval remains mandatory.
 5. Verify login, queued order retry, item-settings save, stock proposal confirmation,
    reminders and worker health. The offline tests do not submit real workplace forms.
 
