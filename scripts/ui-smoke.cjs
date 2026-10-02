@@ -92,12 +92,12 @@ const server=http.createServer((req,res)=>{
       else if(endpoint==='assistant/status') data={configured:true,provider:'gemini',model:'gemini-3.5-flash-lite'};
       else if(endpoint==='login'){
         if(body.pin==='000000') data={recovery:true,ticket:'fixture-ticket'};
-        else if(body.pin==='200666'){ signedIn='yunis'; data={...session('yunis')}; }
-        else if(body.pin==='069690'){ signedIn='rozha'; data={...session('rozha')}; }
+        else if(body.pin==='358214'){ signedIn='yunis'; data={...session('yunis')}; }
+        else if(body.pin==='471906'){ signedIn='rozha'; data={...session('rozha')}; }
         else { status=401; data={error:'invalid_credentials'}; }
       }
       else if(endpoint==='recovery/name'){ if(body.name!=='rozha'){ status=401; data={error:'invalid_credentials'}; } else data={ok:true}; }
-      else if(endpoint==='recovery/verify'){ if(body.pin!=='069690'){ status=401; data={error:'invalid_credentials'}; } else data={ok:true}; }
+      else if(endpoint==='recovery/verify'){ if(body.pin!=='471906'){ status=401; data={error:'invalid_credentials'}; } else data={ok:true}; }
       else data={ok:true};
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
@@ -488,7 +488,7 @@ const server=http.createServer((req,res)=>{
     await login.page.locator('#modalPromptInput').fill('rozha');
     await login.page.locator('#modalPromptOkBtn').click();
     await login.page.waitForFunction(()=>document.querySelector('#modalPromptInput')?.type==='password');
-    await login.page.locator('#modalPromptInput').fill('069690');
+    await login.page.locator('#modalPromptInput').fill('471906');
     await login.page.locator('#modalPromptOkBtn').click();
     await login.page.locator('#recYunis').waitFor();
     await login.page.locator('#recYunis').fill('111111');
@@ -506,7 +506,7 @@ const server=http.createServer((req,res)=>{
     await login.page.locator('#modalAlertOkBtn').click();
     await login.page.waitForFunction(()=>!document.querySelector('#modalRoot .modal-overlay'));
     // Yunis signs in: welcome back, by name.
-    await login.page.keyboard.type('200666');
+    await login.page.keyboard.type('358214');
     await login.page.waitForSelector('#welcome');
     assert.match(await login.page.locator('.welcome-title').textContent(),/Welcome back, Yunis/,'welcome back says the name');
     await login.page.waitForSelector('#orderResults');
