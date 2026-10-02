@@ -486,6 +486,9 @@ html.rtl .queue-back svg{transform:scaleX(-1)}
 .record-filters{display:flex;gap:6px;padding:5px;border-radius:18px;margin-bottom:14px;position:relative;overflow-x:auto;scrollbar-width:none}
 .record-filters .tab-pill{background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;height:38px;flex:1 0 auto;justify-content:center}
 .record-filters .tab-pill.active{background:var(--deep);color:#fff}
+/* Repeated cards use the existing soft surface without allocating a blur
+   layer for every audit entry. Glass remains on the header and controls. */
+.rec-card{-webkit-backdrop-filter:none;backdrop-filter:none}
 .rec-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .rec-badge,.dev-badge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;font-size:11px;font-weight:700}
 .rec-add{background:rgba(194,237,215,.8);color:var(--mint-ink)}

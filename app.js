@@ -33,6 +33,7 @@ const state = {
   queue: null,           // array of {supplierId, items, sent} while sending
   activity: [],          // the Record: [{id, ts, action, type, name, fields, by, role}]
   recordFilter: 'all',   // 'all' | 'supplier' | 'item' | 'unit'
+  recordLimit: 30,      // render older entries only when requested
   devices: [],           // [{id, account, label, lastLogin, lastSeen, loggedIn, command, handledCommand}]
   deviceId: null,        // this device's own id, generated once and kept locally
   reminder: null,        // daily reminder settings {enabled,time}
@@ -49,10 +50,22 @@ const canOpen = view=> state.views.includes(view) || view === 'queue';
 /* Dates and times always use the digits 1 2 3, in every language. */
 function intlLocale(){ return ({en:'en-US', ku:'ckb-IQ', ar:'ar-IQ'})[state.lang] + '-u-nu-latn'; }
 const IRAQ_TIME_ZONE = 'Asia/Baghdad';
+// Intl formatters hold native resources. Reuse them across long lists, with a
+// small bound so different language/format combinations cannot accumulate.
+const dateFormatters = new Map();
+function dateFormatter(options){
+  const locale = intlLocale(), key = JSON.stringify([locale, options]);
+  if(!dateFormatters.has(key)){
+    const formatter = new Intl.DateTimeFormat(locale, options);
+    if(dateFormatters.size >= 12) dateFormatters.delete(dateFormatters.keys().next().value);
+    dateFormatters.set(key, formatter);
+  }
+  return dateFormatters.get(key);
+}
 function formatIraqDateTime(value, options={}){
   const date = value instanceof Date ? value : new Date(value);
   if(Number.isNaN(date.getTime())) return '\u2014';
-  return new Intl.DateTimeFormat(intlLocale(), {
+  return dateFormatter({
     timeZone: IRAQ_TIME_ZONE, hour12:true, ...options
   }).format(date);
 }
@@ -62,7 +75,7 @@ function formatStoredIraqTime(value){
   const match=String(value||'').match(/^(\d{1,2}):(\d{2})$/);
   if(!match) return value || '\u2014';
   const date=new Date(Date.UTC(2000,0,1,Number(match[1]),Number(match[2])));
-  return new Intl.DateTimeFormat(intlLocale(), {
+  return dateFormatter({
     timeZone:'UTC', hour:'numeric', minute:'2-digit', hour12:true
   }).format(date);
 }
@@ -862,7 +875,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : transitionFrames(dir, width)) : null;
   const ghost = frames?.out ? pageGhost(old) : null;
   state.view = view;
-  if(view === 'record') state.recordFilter = 'all';
+  if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
   render();
   scrollBox().scrollTo({top:0});
   if(view === 'record') refreshActivity();
@@ -2189,6 +2202,8 @@ function attachHistoryEvents(){
    faked). This only shows it on this phone right away; opening the Record
    screen reloads the server's copy, which replaces it. */
 const ACTIVITY_MAX = 500;
+const RECORD_PAGE_SIZE = 30;
+let activityRefreshId = 0;
 function logActivity(entry){
   const rec = {
     id: 'a'+Date.now()+Math.random().toString(36).slice(2,6),
@@ -2202,8 +2217,9 @@ function logActivity(entry){
 }
 /* Pulls the newest shared Record (so entries made on other phones show up). */
 async function refreshActivity(){
+  const requestId = ++activityRefreshId;
   const r = await api('activity');
-  if(r.ok && Array.isArray(r.data)){
+  if(requestId === activityRefreshId && r.ok && Array.isArray(r.data)){
     state.activity = r.data;
     if(state.view === 'record') render();
   }
@@ -2243,7 +2259,7 @@ function renderRecord(){
   const rows = state.activity
     .filter(a => state.recordFilter==='all' || a.type===state.recordFilter)
     .sort((a,b)=> new Date(b.ts) - new Date(a.ts));
-  const cards = rows.map(a=>{
+  const cards = rows.slice(0, state.recordLimit).map(a=>{
     const typeLabel = ({supplier:t('typeSupplier'), item:t('typeItem'), unit:t('typeUnit')})[a.type] || a.type;
     const actLabel = ({add:t('actionAdded'), edit:t('actionEdited'), delete:t('actionDeleted')})[a.action] || a.action;
     const dt = formatIraqDateTime(a.ts,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
@@ -2271,12 +2287,15 @@ function renderRecord(){
       <button class="btn btn-ghost" id="recRefreshBtn">${ICON_REFRESH} ${esc(t('refresh'))}</button>
     </div>
     ${filterHtml}
-    ${cards || emptyState(t('recordEmpty'))}`;
+    ${cards || emptyState(t('recordEmpty'))}
+    ${rows.length > state.recordLimit ? `<button class="btn btn-ghost" id="recMoreBtn">${esc(t('loadMoreRecord'))}</button>` : ''}`;
 }
 function attachRecordEvents(){
   document.querySelectorAll('[data-recfilter]').forEach(b=>b.onclick=()=>{
-    state.recordFilter = b.dataset.recfilter; render();
+    state.recordFilter = b.dataset.recfilter; state.recordLimit = RECORD_PAGE_SIZE; render();
   });
+  const more = document.getElementById('recMoreBtn');
+  if(more) more.onclick = ()=>{ state.recordLimit += RECORD_PAGE_SIZE; render(); };
   const r = document.getElementById('recRefreshBtn');
   if(r) r.onclick = ()=> refreshActivity();
 }
@@ -2953,7 +2972,7 @@ function renderSettings(){
 let reminderDraft = null;   // {time} while the reminder is being set up or changed
 function reminderTimeLabel(time){
   const [h, m] = String(time || '09:00').split(':').map(Number);
-  return new Intl.DateTimeFormat(intlLocale(), {hour:'numeric', minute:'2-digit'}).format(new Date(2000, 0, 1, h, m));
+  return dateFormatter({hour:'numeric', minute:'2-digit'}).format(new Date(2000, 0, 1, h, m));
 }
 function renderNotifSettings(){
   let device;

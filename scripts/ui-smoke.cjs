@@ -41,11 +41,18 @@ const YUNIS_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units
 const supplierNames=['Corner Cake','Golden Bread Bakery','Fresh produce','Daily essentials','Kitchen supplies','Beverages','Dairy','Meat supplier','دابینکەری سەوزە','دابینکەری بەرهەمەکان'];
 const suppliers=supplierNames.map((name,i)=>({id:'s'+i,name,phone:''}));
 const items=Array.from({length:181},(_,i)=>({id:'i'+i,name:i%3===0?'تەماتە '+i:'Kitchen item '+String(i).padStart(3,'0'),unit:'box',supplierId:'s'+(i%10)}));
+// Record can return up to 500 audit entries, including formatted reminders.
+const recordActivity=Array.from({length:500},(_,i)=>({
+  id:'audit'+i,ts:new Date(Date.UTC(2026,8,24,8,0,-i)).toISOString(),
+  actor:i%2?'yunis':'rozha',action:['add','edit','delete'][i%3],
+  type:['item','supplier','unit'][i%3],name:'Audit entry '+i,
+  fields:[{k:'name',from:'Before',to:'After'},{k:'reminder',from:'off',to:'09:00|6,0,1'}],
+}));
 const fixtureFor=account=>({
   account, name:account==='rozha'?'Rozha':'Yunis', tabs:['order','assistant','history'], views:account==='rozha'?ALL_VIEWS:YUNIS_VIEWS,
   suppliers, items, units:[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'}],
   history:[{id:'h1',date:'2026-09-23T08:00:00Z',by:'yunis',entries:[{supplierId:'s1',items:[{itemId:'i1',name:items[1].name,qty:2,unit:'box'}]}]}],
-  devices:[], activity:[{id:'a1',ts:'2026-09-24T08:00:00Z',actor:'yunis',by:'Yunis',action:'add',type:'item',name:'Tomatoes',fields:[{k:'name',to:'Tomatoes'}]}],
+  devices:[], activity:recordActivity,
   reminder:{enabled:false,time:'09:00'}, pars:[],
   inbox:[{id:1,kind:'cheer',mood:'excited',en:'Good morning, Rozha! 3 suppliers are due today.',ku:'بەیانیت باش ڕۆژا!',ar:'صباح الخير يا روژا!',at:'2026-09-27T06:00:00Z',read:false}],
 });
@@ -88,6 +95,7 @@ const server=http.createServer((req,res)=>{
       let status=200, data={};
       if(endpoint==='bootstrap') data=fixtureFor(signedIn);
       else if(endpoint==='devices') data=[];
+      else if(endpoint==='activity') data=recordActivity;
       else if(endpoint==='assistant/inbox') data=fixtureFor(signedIn).inbox;
       else if(endpoint==='assistant/status') data={configured:true,provider:'gemini',model:'gemini-3.5-flash-lite'};
       else if(endpoint==='login'){
@@ -129,6 +137,50 @@ const server=http.createServer((req,res)=>{
     await page.screenshot({path:path.join(artifacts,name),animations:'disabled'});
   }
   try{
+    /* Record: a full history must stay usable on phones, in every language. */
+    for(const lang of LANGS){
+      const {ctx,page}=await context({account:lang==='ar'?'yunis':'rozha',touch:true});
+      await page.evaluate(lang=>{state.lang=lang;render();},lang);
+      await openView(page,'record');
+      assert.equal(await page.locator('.rec-card').count(),30,'Record initially paints one batch');
+      assert.ok((await page.locator('.action-row .section-title').textContent()).includes('500'),'total includes older records');
+      assert.equal(await page.locator('.rec-card').first().locator('.rec-name').textContent(),'Audit entry 0','newest entry first');
+      const allocations=await page.evaluate(()=>{
+        dateFormatters.clear();
+        const original=Intl.DateTimeFormat;let count=0;
+        Intl.DateTimeFormat=function(...args){count++;return new original(...args);};
+        try{render();return count;}finally{Intl.DateTimeFormat=original;}
+      });
+      assert.ok(allocations<=5,'date formatters are shared across the whole list: '+allocations);
+      assert.equal(await page.locator('.rec-card').first().evaluate(el=>getComputedStyle(el).backdropFilter),'none','audit cards do not each allocate a blur layer');
+      await page.locator('#recMoreBtn').click();
+      assert.equal(await page.locator('.rec-card').count(),60,'older entries remain accessible');
+      await page.locator('[data-recfilter="supplier"]').click();
+      assert.equal(await page.locator('.rec-card').count(),30,'changing filters resets the batch');
+      assert.equal(await page.locator('.rec-card').first().locator('.rec-name').textContent(),'Audit entry 1','filter uses the entire history');
+      await page.locator('[data-recfilter="all"]').click();
+      while(await page.locator('#recMoreBtn').count()) await page.locator('#recMoreBtn').click();
+      assert.equal(await page.locator('.rec-card').count(),500,'no audit entries are dropped');
+      await openView(page,'order');await openView(page,'record');
+      assert.equal(await page.locator('.rec-card').count(),30,'reopening Record resets its rendering budget');
+      // The older of two overlapping refreshes must not overwrite the newer one.
+      const pending=[];
+      await ctx.route('**/functions/v1/api/activity',route=>{pending.push(route);});
+      await page.evaluate(()=>{void refreshActivity();void refreshActivity();});
+      for(let attempt=0;pending.length<2&&attempt<100;attempt++) await page.waitForTimeout(20);
+      assert.equal(pending.length,2);
+      await pending[1].fulfill({contentType:'application/json',body:JSON.stringify([{...recordActivity[0],name:'Newest response'}])});
+      await page.waitForFunction(()=>document.querySelector('.rec-name')?.textContent==='Newest response');
+      await pending[0].fulfill({contentType:'application/json',body:JSON.stringify([{...recordActivity[0],name:'Stale response'}])});
+      await page.waitForFunction(()=>performance.getEntriesByType('resource').filter(r=>r.name.endsWith('/api/activity')).length>=4);
+      assert.equal(await page.locator('.rec-name').textContent(),'Newest response','late refresh cannot replace newer records');
+      await ctx.unroute('**/functions/v1/api/activity');
+      await ctx.route('**/functions/v1/api/activity',route=>route.fulfill({status:503,contentType:'application/json',body:'{}'}));
+      await page.evaluate(()=>refreshActivity());
+      assert.equal(await page.locator('.rec-name').textContent(),'Newest response','failed refresh keeps the visible history');
+      await ctx.close();
+    }
+
     /* ---------- Rozha ---------- */
     const {ctx,page,calls}=await context();
     assert.doesNotMatch(await page.locator('meta[name="viewport"]').getAttribute('content'),/user-scalable=no|maximum-scale=1(?:,|$)/,'browser zoom remains available for accessibility');
