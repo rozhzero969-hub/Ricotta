@@ -10,7 +10,7 @@ does it click **Move it**.
   final-approved click. `CONFIRMED_SUCCESS_TEXT=Moved!` is the workplace success message.
 - Start with `start-worker.cmd` (restarts after a crash). `node status.mjs` says whether it is running.
 - `install-startup-task.ps1` starts it at Windows sign-in, together with the launcher.
-- The launcher (`launcher.mjs`) runs with no window, so it cannot be closed with the X. `install-startup-task.ps1` starts it at sign-in and again every 5 minutes if it has stopped. When someone presses **Turn on the worker** in the app (Transfer screen), it opens `start-worker.cmd`. So if the worker window is closed, the app can always open it again. Leave the PC on and signed in to Windows. The launcher writes to `launcher.log` in this folder.
+- The launcher (`launcher.mjs`) runs with no window, so it cannot be closed with the X. `install-startup-task.ps1` starts it at sign-in and again every minute if it has stopped (and when the PC is unlocked). When someone presses **Turn on the worker** in the app (Transfer screen), it opens `start-worker.cmd`. So if the worker window is closed, the app can always open it again. Leave the PC on and signed in to Windows (the setup script turns off sleep while plugged in). If the PC is off, asleep or signed out, **Turn on the worker** is kept and the worker starts as soon as the PC is back. The launcher writes to `launcher.log` in this folder.
 - Screenshots are kept in the app for 3 days and then deleted automatically.
 
 Item and unit names must match the workplace page **exactly**; the PC stops and says so when they do not.

@@ -26,7 +26,7 @@
 //   GET    itemjobs/shot?id=             the PC's screenshot of a task
 //   POST   itemjobs                      {clientKey, itemId, kind: create|edit}   (the details are taken from the item's saved setup)
 //   POST   itemjobs/cancel|final-approve|resolve   same rules as receipts
-//   POST   start-worker                  ask the office PC helper to start the worker
+//   POST   start-worker                  ask the office PC helper to start the worker (kept until the PC is back: {queued})
 //   POST   signin-check                  ask the PC to check the workplace sign-in (it signs in with its own PIN if needed)
 //   GET    signin-shot                   the screenshot from the last sign-in check
 //   POST   counts-bulk                   {storage, countedAt, note, pin, lines:[{itemId, quantity}]}   (one PIN for many items)
@@ -154,6 +154,8 @@ async function controlStatus() {
     workerProblem: data?.worker_problem_at && (!data?.worker_seen_at || Date.parse(data.worker_problem_at) > Date.parse(data.worker_seen_at)) ? data.worker_problem ?? null : null,
     workerProblemAt: data?.worker_problem_at ?? null,
     startRequestedAt: data?.start_requested_at ?? null, startHandledAt: data?.start_handled_at ?? null,
+    // A start was asked for and the office PC helper has not picked it up yet (it will once the PC is back).
+    startPending: !!data?.start_requested_at && (!data?.start_handled_at || Date.parse(data.start_handled_at) < Date.parse(data.start_requested_at)),
     signinRequestedAt: data?.signin_requested_at ?? null, signinCheckedAt: data?.signin_checked_at ?? null, signinOk: data?.signin_ok ?? null,
     signinAuto: data?.signin_auto ?? null, signinMessage: data?.signin_message ?? null, signinHasShot: !!data?.signin_shot };
 }
@@ -639,10 +641,10 @@ Deno.serve(async (req: Request) => {
     if (req.method === "POST" && path[0] === "start-worker") {
       const c = await controlStatus();
       if (c.workerOnline) return json({ ok: true, alreadyOn: true });
-      if (!c.launcherOnline) return fail("The office PC helper is not running. Someone has to start it on the PC once.");
+      // Always kept: if the office PC helper is away (PC off, asleep or signed out), it starts the worker as soon as it is back.
       const { error } = await db.from("stock_worker_control").upsert({ id: 1, start_requested_at: new Date().toISOString(), start_requested_by: actor });
       if (error) throw error;
-      return json({ ok: true });
+      return json({ ok: true, queued: !c.launcherOnline });
     }
     if (req.method === "GET" && path[0] === "requests") return json(await requestsAndBalances());
     if (req.method === "GET" && path[0] === "shots") {
