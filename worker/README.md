@@ -41,7 +41,7 @@ On an edit, the worker never changes the usage unit. If the app's usage unit dif
 
 The updated receipt and ingredient preparation protocol returns a `claimToken` and requires it on preparation reports. This prevents an old preparation attempt from overwriting a task reclaimed by another worker. Temporarily disable both Windows scheduled tasks, `Ricotta Transfer Worker` and `Ricotta Worker Launcher`, then stop their worker/launcher process trees, including the CMD restart wrappers. Preserve `.env` and the browser profile, copy the updated `worker/` files to the PC, and deploy the matching `stock-api` and frontend. Re-enable the two tasks and restart the worker only after those updates are complete. Do not deploy this API version while an older office worker is still running. Existing final approvals still gate every workplace submission.
 
-Record the current `ALLOW_SUBMIT` value and temporarily set it to `0` for the first supervised preparation and screenshot check. Restore the previous value only after those checks pass.
+Before restarting for the first supervised preparation, record the current `ALLOW_SUBMIT` value and temporarily set it to `0`. Run the preparation and screenshot check, then restore the previous value only after those checks pass and restart the worker to load it.
 
 The stock settings API also requires the `stock_save_item_settings` database migration before the new function is deployed. Counting and recipe settings then save in one transaction.
 
