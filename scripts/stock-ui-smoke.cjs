@@ -19,7 +19,7 @@ function fixture(){
   const api=account=>({account,name:account==='rozha'?'Rozha':'Yunis',tabs:['order','assistant','history'],
     views:['order','assistant','history','transfers','stock','suppliers','itemsAdmin','units','record'].concat(account==='rozha'?['devices','settings']:[]),
     suppliers:[{id:'s0',name:'Supplier',phone:''}],items,units,history:[{id:'h1',date:iso(60*30),by:'yunis',entries:[{supplierId:'s0',items:[{itemId:'i0',name:'Tomato',qty:2,unit:'box'}]}]}],
-    devices:[],activity:[],reminder:{enabled:false,time:'09:00'},pars:[],inbox:[]});
+    devices:[],activity:[],reminder:{enabled:false,time:'09:00'},pars:[{itemId:'i1',parQty:10,busyBoostPct:50,estQty:5}],inbox:[]});
   const stock={
     control:{workerOnline:false,launcherOnline:true,startRequestedAt:null,startHandledAt:null},
     storages:['Main Storage','Minibar','Pizza'],
@@ -75,6 +75,8 @@ const server=http.createServer((rq,res)=>{
         }
         else if(ep==='groups/delete'){fx.stock.groups=fx.stock.groups.filter(x=>x.id!==body.id);}
         else if(ep.startsWith('settings/')){const st=fx.stock.settings.find(x=>x.itemId===ep.split('/')[1]);if(st) Object.assign(st,{lowStock:body.lowStock===null?null:Number(body.lowStock),workplaceName:body.workplaceName||null});}
+        else if(ep==='signin-check'){fx.stock.control.signinRequestedAt=new Date().toISOString();}
+        else if(ep==='signin-shot'){data={image:PIXEL};}
         else if(ep==='zones/add'){fx.stock.storages.push(body.name);}
         else if(ep==='zones/rename'){fx.stock.storages=fx.stock.storages.map(x=>x===body.from?body.to:x);}
         else if(ep==='zones/delete'){fx.stock.storages=fx.stock.storages.filter(x=>x!==body.name);}
@@ -86,6 +88,7 @@ const server=http.createServer((rq,res)=>{
             {type:'proposal',proposal:{id:'p1',kind:'stock_group',action:'create',groupId:null,name:'Veggies',oldName:null,itemIds:['i0'],added:[{itemId:'i0',name:'Tomato'}],removed:[],total:1}},
             {type:'proposal',proposal:{id:'p2',kind:'stock_settings',itemId:'i1',name:'Coca Cola',unit:'carton',before:{lowStock:2,workplaceName:'Coca-Cola 330'},lowStock:4}},
             {type:'proposal',proposal:{id:'p3',kind:'open_stock',search:'cola',storage:'Main Storage',groupId:null,group:null,only:null,label:''}},
+            {type:'proposal',proposal:{id:'p4',kind:'stock_count',itemId:'i1',name:'Coca Cola',qty:7,parQty:10,busyBoostPct:50,beforeQty:5}},
             {type:'done'}];
           return route.fulfill({status:200,contentType:'application/x-ndjson',body:events.map(e=>JSON.stringify(e)).join('\n')+'\n',headers:{'access-control-allow-origin':'*'}});
         }
@@ -117,6 +120,9 @@ const server=http.createServer((rq,res)=>{
   try{
     /* ---------- Rozha, English ---------- */
     let {ctx,page,calls,apiCalls}=await open();
+    const readsBefore = calls.filter(c=>c.ep==='requests'&&c.method==='GET').length;
+    await page.evaluate(()=>Promise.all([stockApi('requests'),stockApi('requests')]));
+    assert.equal(calls.filter(c=>c.ep==='requests'&&c.method==='GET').length-readsBefore,1,'overlapping stock reads share one request');
     await go(page,'transfers');
     if(process.env.SHOT){await page.screenshot({path:process.env.SHOT+'/tr1.png',fullPage:false});}
     assert.equal(await page.locator('#trFromList .list-row').count(),3,'step 1 lists the storages');
@@ -158,6 +164,14 @@ const server=http.createServer((rq,res)=>{
     assert.equal(await finals.count(),2);
     assert.equal(await page.locator(`[data-trfinal="${ID.ok}"]`).isEnabled(),true,'checked request can be approved');
     assert.equal(await page.locator(`[data-trfinal="${ID.un}"]`).isEnabled(),false,'unchecked request cannot be approved');
+    const previewReset = await page.evaluate(id=>{
+      const request = stockState.requests.find(r=>r.id===id);
+      request.previewedAt = new Date().toISOString();
+      trPaintActive();
+      return {oldShotCleared:!stockState.shots[id].check,approvalDisabled:document.querySelector(`[data-trfinal="${id}"]`).disabled};
+    },ID.ok);
+    assert.deepEqual(previewReset,{oldShotCleared:true,approvalDisabled:true},'a changed preview must load its own screenshot before approval');
+    await page.waitForFunction(id=>!document.querySelector(`[data-trfinal="${id}"]`).disabled,ID.ok);
     await page.locator(`[data-trfinal="${ID.ok}"]`).click();
     assert.match(await page.locator('.modal-box').innerText(),/Coca Cola[\s\S]*Main Storage[\s\S]*Minibar/,'final confirmation lists what will move');
     await page.locator('#modalOkBtn').click();await page.waitForTimeout(300);
@@ -418,7 +432,7 @@ const server=http.createServer((rq,res)=>{
     await ctx.close();
 
     /* ---------- Item groups on the Stock screen ---------- */
-    ({ctx,page,calls}=await open());
+    ({ctx,page,calls,apiCalls}=await open());
     await go(page,'stock');
     await page.locator('[data-stgroup="g1"]').click();
     assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Coca Cola','Milk'],'a group filters the list');
@@ -445,6 +459,7 @@ const server=http.createServer((rq,res)=>{
     await page.locator('#modalOkBtn').click();
     await page.waitForFunction(()=>!document.querySelector('[data-stgroup="g2"]'));
     assert.equal(calls.filter(c=>c.ep==='groups/delete').pop().body.id,'g2');
+    await page.waitForFunction(()=>!document.getElementById('gmName'));
     /* Rico's stock cards: a group, a low-stock change and an "open filtered" button */
     await page.locator('#stAskRico').click();
     await page.waitForSelector('#ricoInput');
@@ -458,11 +473,46 @@ const server=http.createServer((rq,res)=>{
     await page.locator('[data-rico-apply="1|p2"]').click();
     await page.waitForFunction(()=>document.querySelector('[data-card="p2"]')?.classList.contains('applied'));
     assert.deepEqual(calls.filter(c=>c.ep==='settings/i1').pop().body,{countingUnit:'ctn',perBuying:null,lowStock:4,workplaceName:'Coca-Cola 330'},'only the low stock level changes');
+    assert.equal(apiCalls.some(c=>c.ep==='items/i1/stock'),false,'Rico proposes a stock estimate without writing it');
+    await page.evaluate(()=>Promise.all([ricoApply(1,'p4',document.querySelector('[data-rico-apply="1|p4"]')),ricoApply(1,'p4',document.querySelector('[data-rico-apply="1|p4"]'))]));
+    assert.equal(apiCalls.filter(c=>c.ep==='items/i1/stock').length,1,'a proposal can only save once while pending');
+    assert.deepEqual(apiCalls.find(c=>c.ep==='items/i1/stock').body,{track:true,parQty:10,busyBoostPct:50,estQty:7});
+    assert.equal(await page.evaluate(()=>state.pars.find(p=>p.itemId==='i1').estQty),7,'confirmed stock estimate updates the local UI');
     await page.locator('[data-rico-stock="1|p3"]').click();
     await page.waitForSelector('#stList');
     assert.equal(await page.locator('#stSearch').inputValue(),'cola');
     assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Coca Cola'],'Rico opens the Stock screen filtered');
     assert.equal(await page.locator('#stTabs .tab-pill.active').textContent().then(x=>x.startsWith('Main Storage')),true);
+    // A slow response from the old session must not restore its data after logout.
+    await page.route('**/functions/v1/stock-api/bootstrap', async route=>{
+      await new Promise(resolve=>setTimeout(resolve,100));
+      await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({storages:['Old session storage'],requests:[],balances:[],settings:[]})});
+    });
+    const isolation = await page.evaluate(async()=>{
+      state.cart = {i1:4}; persistCartDraft();
+      rcState.invoice = 'private draft'; rcData.shots.private = 'old screenshot';
+      const late = loadStock(); signOut(); await late;
+      const cleared = !state.account && !state.items.length && !state.history.length && !stockState.loaded && !stockState.storages.length && !Object.keys(rcData.shots).length && !rcState.invoice && !Object.keys(state.cart).length;
+      state.items = [{id:'i1'},{id:'i2'}]; state.account = 'yunis'; restoreCartDraft();
+      const yunisDraft = {...state.cart};
+      state.account = 'rozha'; restoreCartDraft();
+      return {cleared,yunisDraft,rozhaDraft:{...state.cart}};
+    });
+    assert.deepEqual(isolation,{cleared:true,yunisDraft:{},rozhaDraft:{i1:4}},'logout clears account data, rejects old responses, and isolates saved drafts');
+    await ctx.close();
+
+    /* ---------- Workplace sign-in: shown under the worker bar, checked on request ---------- */
+    ({ctx,page,calls}=await open());
+    await page.evaluate(()=>{});
+    await go(page,'transfers');
+    await page.evaluate(()=>{stockState.control={...stockState.control,workerOnline:true,workerLive:false,workerPageReady:true,signinCheckedAt:new Date().toISOString(),signinOk:true,signinAuto:true,signinHasShot:true};wkPaint();});
+    assert.match(await page.locator('.tr-signin').innerText(),/the PC signed in/i,'the last sign-in is shown');
+    await page.locator('#wkSigninShot').click();
+    await page.waitForSelector('.modal-box img.tr-shot-big');
+    await page.locator('#modalAlertOkBtn').click();
+    await page.locator('#wkSignin').click();
+    await page.waitForTimeout(300);
+    assert.ok(calls.some(c=>c.ep==='signin-check'&&c.method==='POST'),'Check sign-in asks the PC');
     await ctx.close();
 
     /* ---------- Yunis has the same screens ---------- */

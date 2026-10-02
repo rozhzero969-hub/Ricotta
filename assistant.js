@@ -289,12 +289,12 @@ function ricoFormat(src){
 
 /* ---------- Proposal cards ---------- */
 function renderRicoProposal(p, mi){
-  const done = p.status === 'applied', gone = p.status === 'dismissed' || p.status === 'undone';
+  const done = p.status === 'applied', gone = p.status === 'dismissed' || p.status === 'undone', saving = p.status === 'saving';
   const actions = primaryLabel=> gone
       ? `<div class="rico-card-state">${p.status==='undone'?t('ricoUndone'):t('ricoDismissed')}</div>`
       : done
         ? `<div class="rico-card-state ok">✓ ${esc(p.doneLabel || t('ricoDone'))}${p.kind==='stock_group' && p.action!=='delete' && p.groupId && canOpen('stock') ? ` <button class="rico-link" data-rico-stock="${mi}|${esc(p.id)}">${t('ricoOpenStock')}</button>` : ''}${p.kind==='order' ? ` <button class="rico-link" data-rico-open="order">${t('ricoOpenOrder')}</button>${p.undo?` <button class="rico-link" data-rico-undo="${mi}|${esc(p.id)}">${t('ricoUndo')}</button>`:''}` : ''}</div>`
-        : `<div class="rico-card-actions"><button class="btn btn-primary" data-rico-apply="${mi}|${esc(p.id)}">${primaryLabel}</button><button class="btn btn-ghost" data-rico-dismiss="${mi}|${esc(p.id)}">${t('ricoNotNow')}</button></div>`;
+        : `<div class="rico-card-actions"><button class="btn btn-primary${saving?' is-busy':''}" data-rico-apply="${mi}|${esc(p.id)}" ${saving?'disabled aria-busy="true"':''}>${primaryLabel}</button><button class="btn btn-ghost" data-rico-dismiss="${mi}|${esc(p.id)}" ${saving?'disabled':''}>${t('ricoNotNow')}</button></div>`;
   let body = '', title = '', icon = '';
   if(p.kind === 'order'){
     const groups = {};
@@ -349,6 +349,13 @@ function renderRicoProposal(p, mi){
     if('lowStock' in p) rows.push(row(`${t('itWarn')} (${p.unit})`, p.before.lowStock, p.lowStock));
     if('workplaceName' in p) rows.push(row(t('ricoWorkplaceName'), p.before.workplaceName || p.name, p.workplaceName || p.name));
     body = ricoFields(rows) + `<div class="rico-card-note">${esc(t('ricoAppOnly'))}</div>`;
+    return ricoCard(icon, title, body, actions(t('save')), p);
+  }
+  if(p.kind === 'stock_count'){
+    const item = state.items.find(i=>i.id===p.itemId);
+    icon = NAV_ICONS.stock || ICON_EDIT; title = t('ricoCardStockCount');
+    body = ricoFields([[t('name'), p.name], [t('ricoStockEstimate'), `<s>${esc(fmtQty(p.beforeQty))}</s> → ${esc(fmtQty(p.qty))} ${esc(unitLabel(item?.unit))}`, true]])
+      + `<div class="rico-card-note">${esc(t('ricoStockCountNote'))}</div>`;
     return ricoCard(icon, title, body, actions(t('save')), p);
   }
   if(p.kind === 'open_stock'){
@@ -541,7 +548,7 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, open_stock:'open Stock screen', stock_group:`${p.action} group "${p.name}"`, stock_settings:`stock settings for "${p.name}"`}[p.kind] || p.kind;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, open_stock:'open Stock screen', stock_group:`${p.action} group "${p.name}"`, stock_settings:`stock settings for "${p.name}"`, stock_count:`stock estimate for "${p.name}" (${p.qty})`}[p.kind] || p.kind;
       content += `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};
@@ -689,7 +696,7 @@ async function ricoApply(mi, id, btn){
     if(p.kind === 'new_item'){
       const supplierId = p.supplierId && state.suppliers.some(s=>s.id===p.supplierId) ? p.supplierId : null;
       const maxSort = state.items.filter(i=>i.supplierId===supplierId).reduce((mx,i)=>Number.isInteger(i.sortOrder)?Math.max(mx,i.sortOrder):mx,-1);
-      const next = {id:'i'+Date.now(), name:p.name, unit:p.unitId, supplierId, sortOrder:maxSort>=0?maxSort+1:null};
+      const next = {id:'i'+outboxJobId(), name:p.name, unit:p.unitId, supplierId, sortOrder:maxSort>=0?maxSort+1:null};
       if(!(await saveRecord('items', next))){ await showAlert(t('saveFailed')); return false; }
       state.items.push(next);
       logActivity({action:'add', type:'item', name:p.name, fields:[{k:'name',to:p.name},{k:'unit',to:unitEn(p.unitId)},{k:'supplier',to:supplierId?supplierName(supplierId):''}]});
@@ -709,7 +716,7 @@ async function ricoApply(mi, id, btn){
       return true;
     }
     if(p.kind === 'new_supplier'){
-      const next = {id:'s'+Date.now(), name:p.name, phone:p.phone||'', reminder:null};
+      const next = {id:'s'+outboxJobId(), name:p.name, phone:p.phone||'', reminder:null};
       if(!(await saveRecord('suppliers', next))){ await showAlert(t('saveFailed')); return false; }
       state.suppliers.push(next);
       logActivity({action:'add', type:'supplier', name:p.name, fields:[{k:'name',to:p.name}].concat(p.phone?[{k:'phone',to:p.phone}]:[])});
@@ -735,6 +742,16 @@ async function ricoApply(mi, id, btn){
       p.doneLabel = t('savedMsg')(p.name).replace(/^\u2713\s*/, '');
       return true;
     }
+    if(p.kind === 'stock_count'){
+      const par = (state.pars || []).find(x=>x.itemId===p.itemId);
+      if(!par || !state.items.some(x=>x.id===p.itemId) || !Number.isFinite(p.qty) || p.qty < 0){ await showAlert(t('saveFailed')); return false; }
+      const r = await api(`items/${encodeURIComponent(p.itemId)}/stock`, {method:'PUT', body:{track:true, parQty:par.parQty, busyBoostPct:par.busyBoostPct, estQty:p.qty}});
+      if(!r.ok){ if(!r.stale) await showAlert(t('saveFailed')); return false; }
+      Object.assign(par, {estQty:p.qty, estUpdatedAt:new Date().toISOString()});
+      ricoSuggestion.at = 0;
+      p.doneLabel = t('savedMsg')(p.name).replace(/^\u2713\s*/, '');
+      return true;
+    }
     if(p.kind === 'notify'){
       const res = await callSendPush('assistant', {title:p.title, bodyEn:p.en, bodyKu:p.ku, bodyAr:p.ar});
       await reportSendResult(res);
@@ -744,9 +761,11 @@ async function ricoApply(mi, id, btn){
     }
     return false;
   };
-  if(btn){ btn.disabled = true; btn.classList.add('is-busy'); }
+  p.status = 'saving';
+  if(btn){ btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy','true'); }
+  if(state.view === 'assistant') ricoPaintMessage(mi);
   const ok = await run().catch(()=>false);
-  if(ok){ p.status = 'applied'; }
+  p.status = ok ? 'applied' : 'pending';
   if(state.view === 'assistant') ricoPaintMessage(mi);
 }
 function ricoUndo(mi, id){

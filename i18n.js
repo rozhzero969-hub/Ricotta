@@ -115,6 +115,7 @@ const T = {
     markSentHint:'Send it your usual way, then mark it', backToOrder:'Back to the order',
     sentProgress:(a,b)=>a+' of '+b+' sent', allSentTitle:'All orders sent', allSentSub:'Saved to History · your draft is cleared',
     orderSavedToHistory:'Order saved to History', today:'Today', yesterday:'Yesterday',
+    orderRetrySaveHint:'The suppliers were sent their orders, but History could not be saved. Try again to save it without sending the orders again.',
     reorderReady:n=>n+' item'+(n===1?'':'s')+' added — review and send',
     confirmDoubleOrder:names=>'An order was already sent to '+names+' today. Send another one?',
     loadMoreHistory:'Load earlier history', loading:'Loading…',
@@ -122,6 +123,7 @@ const T = {
     trackStockHint:'Rico keeps an ESTIMATE of how much is on hand and suggests a top-up order when it drops to or below the par level. Correct it any time by telling Rico the real count.',
     parQty:'Par level (normal target)', parBusyBoost:'Busy-day boost (%)',
     parCurrentEstimate:(qty,unit)=>'Current estimate: '+qty+' '+unit,
+    ricoCardStockCount:'Update stock estimate', ricoStockEstimate:'Estimated quantity', ricoStockCountNote:'Save this count to update Rico’s estimate. The par level stays the same.',
     parQtyRequired:'Enter a par level greater than 0.',
     more:'More', moreTitle:'More', undo:'Undo', orderCleared:'Order cleared', itemRemoved:'Removed from the order',
     cmAdd:n=>'Add '+n, cmType:'Type a quantity', cmRemove:'Remove from order',
@@ -472,7 +474,15 @@ const T = {
     rcNoDelivery:'No delivery',
     rcHasDelivery:'Delivery',
     rcSearchItem:'Search item…',
-    rcLineTotal:'Total'
+    rcLineTotal:'Total',
+    wkSigninCheck:'Check sign-in',
+    wkSigninShot:'Screenshot',
+    wkSigninChecking:'Workplace: checking the sign-in…',
+    wkSigninUnknown:'Workplace sign-in: not checked yet',
+    wkSigninOk:'Workplace: signed in',
+    wkSigninAuto:'Workplace: the PC signed in',
+    wkSigninBad:'Workplace: could not sign in',
+    wkSigninAsked:'Asked the PC to check the sign-in. The screenshot comes in about a minute.'
 
   },
   ku:{
@@ -589,6 +599,7 @@ const T = {
     markSentHint:'بە ڕێگای ئاسایی خۆت بینێرە، پاشان دیاری بکە', backToOrder:'گەڕانەوە بۆ داواکاری',
     sentProgress:(a,b)=>a+' لە '+b+' نێردراوە', allSentTitle:'هەموو داواکارییەکان نێردران', allSentSub:'لە مێژوودا پاشەکەوت کرا · ڕەشنووسەکەت پاککرایەوە',
     orderSavedToHistory:'داواکارییەکە لە مێژوودا پاشەکەوت کرا', today:'ئەمڕۆ', yesterday:'دوێنێ',
+    orderRetrySaveHint:'داواکارییەکان بۆ دابینکەرەکان نێردران، بەڵام مێژوو پاشەکەوت نەکرا. دووبارە هەوڵ بدە بۆ پاشەکەوتکردنی بەبێ ناردنەوەی داواکارییەکان.',
     reorderReady:n=>n+' کاڵا زیادکرا — بیپشکنە و بینێرە',
     confirmDoubleOrder:names=>'ئەمڕۆ پێشتر داواکارییەک بۆ '+names+' نێردراوە. یەکێکی تر بنێردرێت؟',
     loadMoreHistory:'بینینی مێژووی کۆنتر', loading:'بارکردن…',
@@ -596,6 +607,7 @@ const T = {
     trackStockHint:'ریکۆ خەمڵاندنێک دەپارێزێت لەوەی چەند ماوە و کاتێک بگاتە ئاستی par یان کەمتر، پێشنیاری داواکاریی زیادکردن دەکات. هەر کاتێک بتەوێت ژمارەی ڕاستەقینە بە ریکۆ بڵێ.',
     parQty:'ئاستی par (ئامانجی ئاسایی)', parBusyBoost:'زیادکردن بۆ ڕۆژی قەرەباڵغ (%)',
     parCurrentEstimate:(qty,unit)=>'خەمڵاندنی ئێستا: '+qty+' '+unit,
+    ricoCardStockCount:'نوێکردنەوەی خەمڵاندنی کۆگا', ricoStockEstimate:'بڕی خەمڵێنراو', ricoStockCountNote:'ئەم ژمارەیە پاشەکەوت بکە بۆ نوێکردنەوەی خەمڵاندنی ریکۆ. ئاستی ئامانج هەر وەک خۆی دەمێنێتەوە.',
     parQtyRequired:'ئاستی parـێک بنووسە کە لە 0 زیاتر بێت.',
     more:'زیاتر', moreTitle:'زیاتر', undo:'گەڕاندنەوە', orderCleared:'داواکاری پاککرایەوە', itemRemoved:'لە داواکاری لابرا',
     cmAdd:n=>n+' زیاد بکە', cmType:'بڕێک بنووسە', cmRemove:'لابردن لە داواکاری',
@@ -946,7 +958,15 @@ const T = {
     rcNoDelivery:'بێ گەیاندن',
     rcHasDelivery:'گەیاندن',
     rcSearchItem:'گەڕان بۆ کاڵا…',
-    rcLineTotal:'کۆ'
+    rcLineTotal:'کۆ',
+    wkSigninCheck:'پشکنینی چوونەژوورەوە',
+    wkSigninShot:'وێنە',
+    wkSigninChecking:'شوێنی کار: پشکنینی چوونەژوورەوە…',
+    wkSigninUnknown:'چوونەژوورەوەی شوێنی کار: هێشتا نەپشکنراوە',
+    wkSigninOk:'شوێنی کار: چووەتە ژوورەوە',
+    wkSigninAuto:'شوێنی کار: کۆمپیوتەر چووە ژوورەوە',
+    wkSigninBad:'شوێنی کار: نەیتوانی بچێتە ژوورەوە',
+    wkSigninAsked:'داوا لە کۆمپیوتەر کرا چوونەژوورەوە بپشکنێت. وێنەکە نزیکەی یەک خولەکی تر دێت.'
 
   },
   ar:{
@@ -1063,6 +1083,7 @@ const T = {
     markSentHint:'أرسله بطريقتك المعتادة ثم علّمه', backToOrder:'العودة إلى الطلب',
     sentProgress:(a,b)=>a+' من '+b+' أُرسلت', allSentTitle:'أُرسلت كل الطلبات', allSentSub:'حُفظت في السجل · مُسحت مسودتك',
     orderSavedToHistory:'حُفظ الطلب في السجل', today:'اليوم', yesterday:'أمس',
+    orderRetrySaveHint:'أُرسلت الطلبات إلى الموردين، لكن تعذّر حفظ السجل. حاول مجددًا لحفظه دون إرسال الطلبات مرة أخرى.',
     reorderReady:n=>'أُضيفت '+n+' مادة — راجعها وأرسلها',
     confirmDoubleOrder:names=>'أُرسل طلب إلى '+names+' اليوم مسبقًا. هل ترسل طلبًا آخر؟',
     loadMoreHistory:'عرض السجل الأقدم', loading:'جارٍ التحميل…',
@@ -1070,6 +1091,7 @@ const T = {
     trackStockHint:'يحتفظ ريكو بتقدير لما هو متوفر ويقترح طلب تعبئة عندما يصل إلى الحد الأدنى أو أقل. صحّحه في أي وقت بإخبار ريكو بالعدد الحقيقي.',
     parQty:'الحد الأدنى (الهدف المعتاد)', parBusyBoost:'زيادة أيام الازدحام (%)',
     parCurrentEstimate:(qty,unit)=>'التقدير الحالي: '+qty+' '+unit,
+    ricoCardStockCount:'تحديث تقدير المخزون', ricoStockEstimate:'الكمية المقدّرة', ricoStockCountNote:'احفظ هذا العدد لتحديث تقدير ريكو. يبقى المستوى المستهدف كما هو.',
     parQtyRequired:'أدخل حدًا أدنى أكبر من 0.',
     more:'المزيد', moreTitle:'المزيد', undo:'تراجع', orderCleared:'مُسح الطلب', itemRemoved:'أُزيلت من الطلب',
     cmAdd:n=>'أضف '+n, cmType:'اكتب الكمية', cmRemove:'إزالة من الطلب',
@@ -1420,7 +1442,15 @@ const T = {
     rcNoDelivery:'بدون توصيل',
     rcHasDelivery:'توصيل',
     rcSearchItem:'ابحث عن مادة…',
-    rcLineTotal:'المجموع'
+    rcLineTotal:'المجموع',
+    wkSigninCheck:'فحص تسجيل الدخول',
+    wkSigninShot:'لقطة',
+    wkSigninChecking:'نظام العمل: جارٍ فحص تسجيل الدخول…',
+    wkSigninUnknown:'تسجيل الدخول لنظام العمل: لم يُفحص بعد',
+    wkSigninOk:'نظام العمل: تم تسجيل الدخول',
+    wkSigninAuto:'نظام العمل: سجّل الحاسوب الدخول',
+    wkSigninBad:'نظام العمل: تعذّر تسجيل الدخول',
+    wkSigninAsked:'طُلب من الحاسوب فحص تسجيل الدخول. تصل اللقطة خلال دقيقة تقريباً.'
 
   }
 };

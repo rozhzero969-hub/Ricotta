@@ -9,6 +9,7 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {prepareItem, submitItem, STOCK_PAGE} from '../worker/items.mjs';
+import {loseClickResponse} from './worker-test-helpers.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const html=readFileSync(path.join(here,'fixtures/stock-page.html'),'utf8');
 const browser=await chromium.launch({headless:true,executablePath:process.env.EDGE_PATH||undefined});
@@ -43,8 +44,18 @@ try{
   let pressed=false;
   await assert.rejects(submitItem(page,tomato,'Changes saved',()=>{pressed=true}),/shows 11, expected 12/);
   assert.equal(pressed,false);
+  for(const changed of ['-12','12oops','1,2','']){
+    await prepareItem(page,tomato);pressed=false;
+    await page.locator('[data-k="کارتۆن>کیلۆ"]').fill(changed);
+    await assert.rejects(submitItem(page,tomato,'Changes saved',()=>{pressed=true}),/expected 12/);
+    assert.equal(pressed,false);assert.equal((await saved())[0],0);
+  }
   await prepareItem(page,tomato);
   await assert.rejects(submitItem(page,tomato,'',()=>{pressed=true}),/No success message/);
   assert.equal(pressed,false);assert.equal((await saved())[0],0,'nothing saved');
+  await prepareItem(page,tomato);pressed=false;
+  await assert.rejects(submitItem(loseClickResponse(page,'Save'),tomato,'Changes saved',()=>{pressed=true}),/acknowledgement lost/);
+  assert.equal(pressed,true,'a click error after dispatch goes for checking');
+  assert.equal((await saved())[0],1,'one save reached the browser');
   console.log(JSON.stringify({result:'PASS',checks:'create and edit fill and check every field (name, recipe unit, buying and counting formats, conversions, warning level); never creates a duplicate; stops on an unexpected recipe unit, a missing ingredient or unit; presses once only with the exact success message; a changed form is never saved'}));
 }finally{await browser.close()}

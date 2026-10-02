@@ -1,11 +1,6 @@
 name: Checks
 
-# Runs the repo's two local smoke tests on every push and PR to main. Neither
-# test calls the live Supabase project or any real API key -- both mock
-# everything (see the header comment in each script).
-# This is the one thing standing between "someone pushes a change" and "Rico
-# or the app breaks in production with nobody noticing until a kitchen shift
-# hits it" -- there was no CI here before.
+# All API/browser checks use mocks; SQL checks use disposable Postgres.
 
 on:
   push:
@@ -13,11 +8,17 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Use runner temporary directory
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -30,30 +31,34 @@ jobs:
           deno-version: v2.x
 
       - name: Type-check Edge Functions
-        run: deno check supabase/functions/api/index.ts supabase/functions/send-push/index.ts supabase/functions/stock-api/index.ts
+        run: deno check --lock=deno.lock --frozen-lockfile supabase/functions/api/index.ts supabase/functions/send-push/index.ts supabase/functions/stock-api/index.ts
 
-      - name: Stock database smoke test (real Postgres, rolled back)
+      - name: Stock and atomic-write database regressions (real Postgres)
         run: |
-          docker run -d --name pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
+          docker run -d --name pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:17
           for i in $(seq 1 30); do PGPASSWORD=postgres psql -h localhost -U postgres -c 'select 1' >/dev/null 2>&1 && break; sleep 1; done
           export PGPASSWORD=postgres PGHOST=localhost PGUSER=postgres
-          psql -v ON_ERROR_STOP=1 -q -c "create role anon; create role authenticated; create role service_role;"
-          psql -v ON_ERROR_STOP=1 -q -c "create table app_units(id text primary key, en text not null); create table app_items(id text primary key, name text not null, unit_id text references app_units(id) on delete set null); create table app_accounts(id text primary key);"
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930150000_stock_and_transfers.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930151000_stock_tabs.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930160000_stock_transfer_units.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930170000_stock_worker_control.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930180000_stock_fk_indexes.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930200000_stock_workplace_name.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260930210000_stock_zones.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261001100000_stock_worker_health.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261001120000_stock_receipts.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261001150000_stock_receipt_final.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261001160000_stock_worker_receipts_live.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261001180000_stock_item_jobs.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261001181000_stock_worker_items_live.sql
-          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261001200000_stock_groups.sql
-          psql -v ON_ERROR_STOP=1 -q -f scripts/stock-db-smoke.sql
+          bash scripts/db-smoke.sh
+          node scripts/db-concurrency-smoke.mjs
+
+      - name: Session and outbox regressions
+        run: |
+          node --test scripts/storage-regression.cjs scripts/update-check-regression.cjs
+          node scripts/app-session-smoke.cjs
+
+      - name: Stock API regressions (mocked database)
+        run: node scripts/stock-api-smoke.mjs
+
+      - name: Single-worker process lock regressions
+        run: |
+          node scripts/worker-lock-smoke.mjs
+          node scripts/worker-polling-smoke.mjs
+
+      - name: Backend API and security regressions
+        run: |
+          node scripts/backend-api-smoke.mjs
+          node scripts/backend-security-smoke.mjs
+          node scripts/backend-push-smoke.mjs
 
       - name: No undefined names in the app scripts
         run: |
@@ -79,6 +84,9 @@ jobs:
 
       - name: PC worker ingredient create/edit (local copy of the workplace stock page)
         run: node scripts/items-worker-smoke.mjs
+
+      - name: PC worker workplace sign-in (local copy of the sign-in page)
+        run: node scripts/signin-worker-smoke.mjs
 
       - name: Upload UI smoke screenshots
         if: always()

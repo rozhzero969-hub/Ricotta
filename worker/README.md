@@ -36,3 +36,17 @@ In the app, open an item (Items screen) and fill in its stock fields, including 
 4. Only the exact `ITEM_ADD_SUCCESS_TEXT` or `ITEM_EDIT_SUCCESS_TEXT` counts as saved. Anything else becomes **Needs checking**, and a person confirms in the app whether it was saved.
 
 On an edit, the worker never changes the usage unit. If the app's usage unit differs from the workplace's, it stops. Ingredients are only saved with `ALLOW_SUBMIT=1` and both success texts set in `.env`. `scripts/items-worker-smoke.mjs` tests this against a local copy of the page.
+
+## Updating the worker and API together
+
+The updated receipt and ingredient preparation protocol returns a `claimToken` and requires it on preparation reports. This prevents an old preparation attempt from overwriting a task reclaimed by another worker. Temporarily disable both Windows scheduled tasks, `Ricotta Transfer Worker` and `Ricotta Worker Launcher`, then stop their worker/launcher process trees, including the CMD restart wrappers. Preserve `.env` and the browser profile, copy the updated `worker/` files to the PC, and deploy the matching `stock-api` and frontend. Re-enable the two tasks and restart the worker only after those updates are complete. Do not deploy this API version while an older office worker is still running. Existing final approvals still gate every workplace submission.
+
+Before restarting for the first supervised preparation, record the current `ALLOW_SUBMIT` value and temporarily set it to `0`. Run the preparation and screenshot check, then restore the previous value only after those checks pass and restart the worker to load it.
+
+The stock settings API also requires the `stock_save_item_settings` database migration before the new function is deployed. Counting and recipe settings then save in one transaction.
+
+If a click returns an error after it may have reached the browser, the task now requires a workplace check. A person confirms whether it was saved before any further action.
+
+The worker and launcher use atomic lock files. A running process keeps its lock even if its heartbeat is delayed. If a crash interrupts lock recovery, the diagnostic identifies a `.lock.recovery` directory; stop all workers before removing that directory and restarting. `scripts/worker-lock-smoke.mjs` tests competing starts without opening the workplace site.
+
+Empty queues gradually back off to a 60-second poll to reduce free-plan Edge Function usage. A new task can take up to about one minute to be picked up; a prepared receipt or ingredient still uses `POLL_SECONDS` (5 seconds by default) while waiting for approval. The launcher checks start requests every 30 seconds. A continuously idle PC uses roughly 300,000 Edge calls per 30-day month, including the launcher and heartbeat; active tasks and phone refreshes add usage. `scripts/worker-polling-smoke.mjs` verifies the timing without real waits.

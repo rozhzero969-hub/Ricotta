@@ -20,7 +20,8 @@
 // or Arabic), and addresses the person signed in there by name when known.
 // Reminders only go to phones that are signed in.
 import webpush from "npm:web-push@3.6.7";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from "../_shared/security.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const VAPID_PUBLIC = Deno.env.get("VAPID_PUBLIC_KEY");
@@ -81,17 +82,33 @@ function erbilNow() {
   return { date, minutes: Number(get("hour")) * 60 + Number(get("minute")), weekday: new Date(`${date}T12:00:00Z`).getUTCDay() };
 }
 
-/* Every subscription, with the account signed in on its phone. With
-   onlyLoggedIn, phones that are signed out are left out. Subscriptions
-   without a device id (very old app versions) are kept. */
+async function readAll(build: () => any): Promise<any[]> {
+  const rows: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await build().range(from, from + 999);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) return rows;
+  }
+}
+
+/* A reminder requires both a signed-in device and a session that is still
+   valid. A stale logged_in flag alone outlives an expired PIN session. */
 async function loadSubs(onlyLoggedIn: boolean): Promise<{ subs: Sub[]; skipped: number }> {
-  const { data } = await sb.from("app_push_subscriptions").select("endpoint,p256dh,auth,device_id,lang");
-  const { data: devices } = await sb.from("app_devices").select("id,account,logged_in,command,handled_command");
+  const [data, devices, sessions] = await Promise.all([
+    readAll(() => sb.from("app_push_subscriptions").select("endpoint,p256dh,auth,device_id,lang").order("endpoint")),
+    readAll(() => sb.from("app_devices").select("id,account,logged_in,command,handled_command").order("id")),
+    onlyLoggedIn ? readAll(() => sb.from("app_sessions").select("id,device_id,account")
+      .is("revoked_at", null).gt("expires_at", new Date().toISOString()).order("id")) : Promise.resolve([]),
+  ]);
   const byId = new Map((devices ?? []).map((d: any) => [d.id, d]));
+  const active = new Set(sessions.map((s) => `${s.device_id}|${s.account}`));
   const all = ((data ?? []) as any[]).map((s) => ({ ...s, account: byId.get(s.device_id)?.account ?? null })) as Sub[];
-  if (!onlyLoggedIn) return { subs: all, skipped: 0 };
   const subs = all.filter((s) => {
-    if (!s.device_id) return true;
+    // Defense in depth for legacy or manually inserted subscriptions too.
+    if (!isPushEndpoint(s.endpoint)) return false;
+    if (!onlyLoggedIn) return true;
+    if (!s.device_id || !active.has(`${s.device_id}|${s.account}`)) return false;
     const d = byId.get(s.device_id);
     if (!d || d.logged_in === false) return false;
     return !(d.command?.type === "logout" && d.command.id !== d.handled_command);
@@ -100,13 +117,14 @@ async function loadSubs(onlyLoggedIn: boolean): Promise<{ subs: Sub[]; skipped: 
 }
 
 async function send(subs: Sub[], payloadFor: Payload, ttl: number, urgency: "high" | "normal") {
+  if (!vapidReady) return { sent: 0, failed: 0, removed: 0, disabled: true };
   let sent = 0, failed = 0;
   const dead: string[] = [];
   await Promise.all(subs.map(async (s) => {
     const lang = asLang(s.lang);
     const payload = payloadFor(lang, s.account ? NAMES[s.account]?.[lang] ?? null : null);
     try {
-      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: ttl, urgency });
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: ttl, urgency, timeout: 10_000 });
       sent++;
     } catch (e: any) {
       failed++;
@@ -302,26 +320,26 @@ async function supplierTick() {
    row decay at most once per Erbil calendar day, however often this runs. */
 async function stockDecayTick() {
   const today = erbilNow().date;
-  const { data: pars } = await sb.from("app_item_pars").select("item_id,est_qty,last_decay_date")
-    .or(`last_decay_date.is.null,last_decay_date.neq.${today}`);
+  const pars = await readAll(() => sb.from("app_item_pars").select("item_id,last_decay_date")
+    .or(`last_decay_date.is.null,last_decay_date.neq.${today}`).order("item_id"));
   if (!pars?.length) return { skipped: "nothing due" };
-  const itemIds = pars.map((p: any) => p.item_id);
   const since = new Date(Date.now() - STOCK_DECAY_LOOKBACK_DAYS * 86400_000).toISOString();
-  const { data: orders } = await sb.from("app_orders").select("id").eq("status", "sent").gte("sent_at", since);
+  const orders = await readAll(() => sb.from("app_orders").select("id").eq("status", "sent").gte("sent_at", since).order("id"));
   const orderIds = (orders ?? []).map((o: any) => o.id);
-  const { data: lines } = orderIds.length
-    ? await sb.from("app_order_lines").select("order_id,item_id,qty").in("item_id", itemIds).in("order_id", orderIds)
-    : { data: [] as any[] };
+  const lines: any[] = [];
+  // Keep URL filters small, and page past PostgREST's 1000-row limit.
+  for (let from = 0; from < orderIds.length; from += 60) {
+    lines.push(...await readAll(() => sb.from("app_order_lines").select("order_id,item_id,qty")
+      .in("order_id", orderIds.slice(from, from + 60)).order("id")));
+  }
   const totals = new Map<string, number>();
   for (const l of lines ?? []) totals.set(l.item_id, (totals.get(l.item_id) ?? 0) + Number(l.qty));
   let updated = 0;
   for (const p of pars) {
     const rate = (totals.get(p.item_id) ?? 0) / STOCK_DECAY_LOOKBACK_DAYS;   // usual amount ordered per day
-    const next = Math.max(0, Number(p.est_qty) - rate);
-    const { error } = await sb.from("app_item_pars")
-      .update({ est_qty: Math.round(next * 100) / 100, last_decay_date: today })
-      .eq("item_id", p.item_id).or(`last_decay_date.is.null,last_decay_date.neq.${today}`);   // still idempotent under overlap
-    if (!error) updated++;
+    const { data: decayed, error } = await sb.rpc("app_internal_decay_stock", { p_item: p.item_id, p_decay: rate, p_date: today });
+    if (error) throw error;
+    if (decayed === true) updated++;
   }
   return { updated, of: pars.length };
 }
@@ -335,10 +353,12 @@ function written(body: any) {
 }
 
 Deno.serve(async (req) => {
-  if (!vapidReady) return json({ error: "VAPID keys are not set on this function" }, 500);
   if (!CRON_SECRET || req.headers.get("x-cron-secret") !== CRON_SECRET) return json({ error: "forbidden" }, 403);
+  if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   try {
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody(req, 16 * 1024);
+    // Stock maintenance and Rico's in-app inbox still work without Web Push.
+    if (!vapidReady && body.type !== "reminder-tick") return json({ error: "VAPID keys are not set on this function" }, 500);
     switch (body.type) {
       case "reminder-tick": {
         const result: Record<string, unknown> = {};
@@ -375,6 +395,8 @@ Deno.serve(async (req) => {
         return json({ error: "unknown type" }, 400);
     }
   } catch (e) {
+    if (e instanceof BodyTooLarge) return json({ error: "too large" }, 413);
+    if (e instanceof InvalidBody) return json({ error: "invalid body" }, 400);
     console.error(e);
     return json({ error: "server error" }, 500);
   }

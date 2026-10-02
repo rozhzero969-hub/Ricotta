@@ -14,7 +14,8 @@ function lset(key, value){
   try{
     if(value === null || value === undefined) localStorage.removeItem(LS_PREFIX+key);
     else localStorage.setItem(LS_PREFIX+key, JSON.stringify(value));
-  }catch(e){ /* private mode / storage full -- the app still works for this visit */ }
+    return true;
+  }catch(e){ return false; /* private mode / storage full -- the app still works for this visit */ }
 }
 
 /* ============ API client ============ */
@@ -27,6 +28,19 @@ function apiSession(){
   return null;
 }
 function clearApiSession(){ lset('apiSession', null); }
+/* A request may finish after a log out or another sign-in. Never let that
+   reply update the next account's screen or clear its session. Compare the
+   stored token so an ordinary expiry still follows the 401 handling below. */
+function apiSessionMatches(session){
+  return (session?.token || null) === (lget('apiSession')?.token || null);
+}
+/* Another tab can change the shared session before this tab receives its
+   storage event. Its old screen must not send an action as the new account. */
+function apiAccountMatchesUi(session){
+  return typeof state === 'undefined' || !state?.account || !session || session.account === state.account;
+}
+function apiPathIsPublic(path){ return path === 'login' || path === 'health' || path.startsWith('recovery/'); }
+function staleApiReply(){ return {ok:false, status:0, data:null, stale:true}; }
 
 /* What this device is, for the Devices screen: "iPhone 16/17 Pro Max|App",
    "Windows PC|Chrome"... iPhones don't reveal their exact model to web
@@ -73,9 +87,11 @@ try{
 /* Returns {ok, status, data}. Never throws. A 401 on a signed-in device means
    the session was revoked (new PINs, remote log out) or expired. */
 async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
+  const s = apiSession();
+  if(!apiPathIsPublic(path) && !apiAccountMatchesUi(s)) return staleApiReply();
   const controller = new AbortController();
   const timer = setTimeout(()=>controller.abort(), timeout);
-  const s = apiSession();
+  const sessionCurrent = ()=>apiPathIsPublic(path) || (apiSessionMatches(s) && apiAccountMatchesUi(s));
   const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel()};
   if(s) headers['x-session-token'] = s.token;
   try{
@@ -83,11 +99,14 @@ async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
       method, headers, signal:controller.signal,
       body: body === undefined ? undefined : JSON.stringify(body)
     });
-    setApiHealth(true);
+    if(!sessionCurrent()) return staleApiReply();
     const data = await res.json().catch(()=>null);
-    if(res.status === 401 && s && path !== 'login' && !path.startsWith('recovery/')){ clearApiSession(); onSessionExpired(); }
+    if(!sessionCurrent()) return staleApiReply();
+    setApiHealth(true);
+    if(res.status === 401 && s && !apiPathIsPublic(path)){ clearApiSession(); onSessionExpired(); }
     return {ok:res.ok, status:res.status, data};
   }catch(e){
+    if(!sessionCurrent()) return staleApiReply();
     setApiHealth(false);
     return {ok:false, status:0, data:null};
   }finally{ clearTimeout(timer); }
@@ -97,6 +116,8 @@ async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
    as it arrives. Never throws; network trouble arrives as {type:'error',code:'offline'}. */
 async function apiStream(path, body, onEvent, signal){
   const s = apiSession();
+  if(!apiPathIsPublic(path) && !apiAccountMatchesUi(s)) return staleApiReply();
+  const sessionCurrent = ()=>apiPathIsPublic(path) || (apiSessionMatches(s) && apiAccountMatchesUi(s));
   const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel()};
   if(s) headers['x-session-token'] = s.token;
   const streamController = new AbortController();
@@ -107,23 +128,36 @@ async function apiStream(path, body, onEvent, signal){
   const timer = setTimeout(()=>{ timedOut = true; stop(); }, 55000);
   try{
     const res = await fetch(`${API_URL}/${path}`, {method:'POST', headers, body:JSON.stringify(body), signal:streamController.signal});
+    if(!sessionCurrent()){ stop(); return; }
     setApiHealth(true);
-    if(res.status === 401 && s){ clearApiSession(); onSessionExpired(); return; }
+    if(res.status === 401 && s && !apiPathIsPublic(path)){ clearApiSession(); onSessionExpired(); return; }
     if(!res.ok){ onEvent({type:'error', code:res.status===429?'busy':'failed'}); return; }
-    const handle = line=>{ line = line.trim(); if(!line) return; try{ onEvent(JSON.parse(line)); }catch(e){ /* partial or non-JSON line */ } };
-    if(!res.body || !res.body.getReader){ (await res.text()).split('\n').forEach(handle); return; }
+    const handle = line=>{
+      if(!sessionCurrent()){ stop(); return false; }
+      line = line.trim();
+      if(line){ try{ onEvent(JSON.parse(line)); }catch(e){ /* partial or non-JSON line */ } }
+      return sessionCurrent();
+    };
+    if(!res.body || !res.body.getReader){
+      for(const line of (await res.text()).split('\n')) if(!handle(line)) break;
+      return;
+    }
     const reader = res.body.getReader(), dec = new TextDecoder();
     let buf = '';
     for(;;){
       const {value, done} = await reader.read();
+      if(!sessionCurrent()){ stop(); return; }
       if(done) break;
       buf += dec.decode(value, {stream:true});
       let i;
-      while((i = buf.indexOf('\n')) >= 0){ handle(buf.slice(0, i)); buf = buf.slice(i + 1); }
+      while((i = buf.indexOf('\n')) >= 0){
+        if(!handle(buf.slice(0, i))){ stop(); return; }
+        buf = buf.slice(i + 1);
+      }
     }
     handle(buf);
   }catch(e){
-    if(!signal?.aborted){
+    if(!signal?.aborted && sessionCurrent()){
       if(timedOut) onEvent({type:'error', code:'busy'});
       else { setApiHealth(false); onEvent({type:'error', code:'offline'}); }
     }
@@ -149,38 +183,88 @@ async function apiLogin(pin){
 }
 
 /* ============ Outbox ============
-   Orders and Record entries must never be lost to a flaky restaurant Wi-Fi:
+   Orders must never be lost to a flaky restaurant Wi-Fi:
    if a write fails it is kept on this device and retried later (on the next
    heartbeat, when the connection comes back, or at the next start-up). */
-function outbox(){ return lget('outbox') || []; }
+function outbox(){ const jobs = lget('outbox'); return Array.isArray(jobs) ? jobs : []; }
+function outboxJobId(){ return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+function retryableApiReply(r){ return r.status === 0 || r.status === 401 || r.status === 408 || r.status === 425 || r.status === 429 || r.status >= 500; }
+function outboxJobAccount(job){ return job.account || (typeof job.body?.by === 'string' ? job.body.by : null) || null; }
+function queueOutboxJob(path, method, body){
+  const jobs = outbox();
+  const activeAccount = typeof state === 'undefined' ? null : state?.account;
+  const account = (typeof body?.by === 'string' ? body.by : null) || activeAccount || apiSession()?.account || null;
+  // Orders have a stable server id: repeat failures of the same order need
+  // one retry job, with the original payload preserved.
+  const prior = path === 'orders' && method === 'POST' && body?.id && jobs.find(job=>job.path === path && job.method === method && job.body?.id === body.id && (!outboxJobAccount(job) || outboxJobAccount(job) === account));
+  if(prior){
+    if(!prior.id) prior.id = outboxJobId();
+    if(!prior.account && account) prior.account = account;
+    const persisted = lset('outbox', jobs) || outbox().some(saved=>saved.id === prior.id);
+    return {...prior, persisted};
+  }
+  const job = {id:outboxJobId(), account, path, method, body};
+  const persisted = lset('outbox', [...jobs, job]) || outbox().some(saved=>saved.id === job.id);
+  return {...job, persisted};
+}
+function removeOutboxJob(id){
+  const left = outbox().filter(job=>job.id !== id);
+  lset('outbox', left.length ? left : null);
+}
+const outboxRequests = new Map();
+async function sendOutboxJob(job){
+  const session = apiSession();
+  if(job.account && session && job.account !== session.account) return staleApiReply();
+  if(outboxRequests.has(job.id)) return outboxRequests.get(job.id);
+  const request = api(job.path, {method:job.method, body:job.body});
+  outboxRequests.set(job.id, request);
+  try{ return await request; }
+  finally{ if(outboxRequests.get(job.id) === request) outboxRequests.delete(job.id); }
+}
 /* Returns 'saved', 'queued' (kept here and retried later) or 'failed'. A
    401 is queued too: the sign-in ran out, and the job is sent after the next
-   sign-in instead of being thrown away. */
+   sign-in to the original account instead of being thrown away. */
 async function sendOrQueue(path, method, body){
-  const r = await api(path, {method, body});
-  if(r.ok) return 'saved';
-  if(r.status === 0 || r.status === 401 || r.status >= 500){
-    lset('outbox', [...outbox(), {path, method, body}]);
-    return 'queued';
-  }
+  // Persist first: closing the tab while the request is in flight must not
+  // discard an order. The stable order id makes retrying an ambiguous
+  // response safe, and active sends share one request with the heartbeat.
+  const job = queueOutboxJob(path, method, body);
+  const r = await sendOutboxJob(job);
+  if(r.ok){ removeOutboxJob(job.id); return 'saved'; }
+  // An unavailable/full device store cannot promise an offline retry. The
+  // caller still has the original record and can show the save-failed state.
+  if(retryableApiReply(r)) return job.persisted ? 'queued' : 'failed';
+  removeOutboxJob(job.id);
   return 'failed';
 }
 let outboxBusy = false;
 async function flushOutbox(){
-  if(outboxBusy || !apiSession()) return;
+  const session = apiSession();
+  if(outboxBusy || !session) return;
   const pending = outbox();
   if(!pending.length) return;
   outboxBusy = true;
-  const left = [];
-  for(let i = 0; i < pending.length; i++){
-    const job = pending[i];
-    const r = await api(job.path, {method:job.method, body:job.body});
-    // Keep it for later when offline, on a server error, or when the session
-    // just expired (401); any other 4xx will never work, so it is dropped.
-    if(!r.ok && (r.status === 0 || r.status === 401 || r.status >= 500)) left.push(job);
-    // Signed out: stop here and keep everything that wasn't tried yet.
-    if(r.status === 401){ left.push(...pending.slice(i + 1)); break; }
+  try{
+    // Upgrade old queued writes before the first await. IDs let us remove
+    // exactly the completed job from the latest queue, including any writes
+    // added while this request was in flight.
+    const seen = new Set();
+    for(const job of pending){
+      if(!job.id || seen.has(job.id)) job.id = outboxJobId();
+      if(!job.account && outboxJobAccount(job)) job.account = outboxJobAccount(job);
+      seen.add(job.id);
+    }
+    lset('outbox', pending);
+    for(const job of pending){
+      if(!apiSessionMatches(session)) break;
+      if(job.account && job.account !== session.account) continue;
+      const r = await sendOutboxJob(job);
+      // Keep transient failures and the untouched jobs for the next retry.
+      // Stopping here also avoids hammering an offline/rate-limited server.
+      if(!r.ok && retryableApiReply(r)) break;
+      removeOutboxJob(job.id);
+    }
+  }finally{
+    outboxBusy = false;
   }
-  lset('outbox', left.length ? left : null);
-  outboxBusy = false;
 }

@@ -132,11 +132,19 @@ function heartbeat(){
 /* Keep the unfinished order on this device so closing or refreshing the app
    does not discard the quantities the user has selected. */
 function persistCartDraft(){
+  if(!state.account) return;
   const draft=Object.fromEntries(Object.entries(state.cart).filter(([,qty])=>Number.isFinite(Number(qty)) && Number(qty)>0));
-  lset('pendingCart',Object.keys(draft).length?draft:null);
+  lset('pendingCart:'+state.account,Object.keys(draft).length?draft:null);
 }
 function restoreCartDraft(){
-  const saved=lget('pendingCart');
+  if(!state.account) return;
+  let saved=lget('pendingCart:'+state.account);
+  // Move drafts from older releases into the account opening them once.
+  const legacy=lget('pendingCart');
+  if(!saved && legacy){
+    saved=legacy;
+    if(lset('pendingCart:'+state.account,legacy)) lset('pendingCart',null);
+  } else if(legacy && saved) lset('pendingCart',null);
   if(!saved || typeof saved!=='object' || Array.isArray(saved)) return;
   const available=new Set(state.items.map(item=>item.id));
   state.cart=Object.fromEntries(Object.entries(saved).filter(([id,qty])=>available.has(id) && Number.isFinite(Number(qty)) && Number(qty)>0).map(([id,qty])=>[id,Math.floor(Number(qty))]));
@@ -168,15 +176,20 @@ async function checkCommands(){
   }finally{ commandCheckBusy = false; }
 }
 async function runCommand(cmd){
+  const session = apiSession();
+  if(!session || !state.account) return;
   lset('handledCommand', cmd.id);
   if(cmd.type === 'logout'){
     await api('devices/me/ack', {method:'POST', body:{commandId:cmd.id}});
+    if(!apiSessionMatches(session)) return;
     signOut(t('forcedLogoutMsg'));
   } else if(cmd.type === 'refresh'){
     if(forcedRefreshOpen) return;
     forcedRefreshOpen = true;
-    await showForcedRefresh(t('refreshRequiredTitle'), t('refreshRequiredMsg'), t('refreshNow'));
+    const accepted = await showForcedRefresh(t('refreshRequiredTitle'), t('refreshRequiredMsg'), t('refreshNow'));
+    if(!accepted || !apiSessionMatches(session)) return;
     await api('devices/me/ack', {method:'POST', body:{commandId:cmd.id}});
+    if(!apiSessionMatches(session)) return;
     await hardReload();
   }
 }
@@ -321,19 +334,42 @@ async function loadMoreHistory(){
   } finally { loadingMoreHistory = false; }
 }
 /* Clears this device's sign-in and returns to the PIN pad. */
-function signOut(reason){
+function signOut(reason, {preserveSession = false} = {}){
   ricoReset();
-  clearApiSession();
+  if(!preserveSession) clearApiSession();
+  forcedRefreshOpen = false;
   state.account = null; state.name = ''; state.views = []; state.tabs = DEFAULT_TABS.slice();
-  stockState.loaded = false; stockState.failed = false; stockState.shots = {};
+  state.suppliers = []; state.items = []; state.units = []; state.history = [];
+  state.activity = []; state.devices = []; state.pars = []; state.reminder = null;
+  state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
+  state.historyHasMore = false; state.historyOldestLoaded = null;
+  ricoSuggestion.data = null; ricoSuggestion.at = 0;
+  reminderDraft = null;
+  resetStockUi();
+  stopStepHold(); rowPress?.cancel();
   state.pinBuffer = ''; state.view = 'order'; state.queue = null;
+  finishingQueue = null;
   state.pinError = reason ? 'session' : '';
   state.sessionMsg = reason || '';
-  const root = document.getElementById('modalRoot');
-  if(root) root.innerHTML = '';
+  dismissAllModals();
+  closeSelSheet(); closeContextMenu();
+  document.getElementById('toast')?.remove(); clearTimeout(toastTimer);
+  document.getElementById('welcome')?.remove();
   closeLangMenu();
   render();
 }
+/* A second tab can sign in or out while this tab still has the old account
+   mounted. Clear that workspace without removing the second tab's session. */
+function handleSessionStorage(event){
+  if(!state.account || (event.key !== LS_PREFIX+'apiSession' && event.key !== null)) return;
+  let before = null, after = null;
+  try{ before = JSON.parse(event.oldValue || 'null')?.token || null; }catch(_){}
+  try{ after = JSON.parse(event.newValue || 'null')?.token || null; }catch(_){}
+  if(event.key !== null && before === after) return;
+  persistCartDraft();
+  signOut(t('sessionEnded'), {preserveSession: true});
+}
+window.addEventListener('storage', handleSessionStorage);
 function doLogout(){
   api('logout', {method:'POST'});      // fire-and-forget; the token is dropped locally either way
   signOut();
@@ -982,8 +1018,10 @@ function selTitle(sel){
   const lab = sel._selBtn?.id && document.querySelector(`label[for="${CSS.escape(sel._selBtn.id)}"]`);
   return (lab?.textContent || sel.closest('.field')?.querySelector('label')?.textContent || sel.getAttribute('aria-label') || '').trim();
 }
+let activeSelSheet = null;
+function closeSelSheet(){ activeSelSheet?.(); }
 function openSelSheet(sel){
-  document.getElementById('selSheet')?.remove();
+  closeSelSheet();
   document.activeElement?.blur?.();   // close the keyboard first, so the sheet has the screen
   const opts = [...sel.options].filter(o=>!o.disabled || o.selected).map(o=>({value:o.value, label:o.textContent, on:o.selected}));
   const long = opts.length > 9;
@@ -1002,9 +1040,26 @@ function openSelSheet(sel){
       : `<div class="field-hint">${esc(t('trNoMatch'))}</div>`;
   };
   paint('');
-  const close = ()=>{ wrap.classList.add('out'); setTimeout(()=>wrap.remove(), 220); document.removeEventListener('keydown', onKey); sel._selBtn?.focus({preventScroll:true}); };
-  const onKey = e=>{ if(e.key === 'Escape') close(); };
-  document.addEventListener('keydown', onKey);
+  let closed = false;
+  const close = ()=>{
+    if(closed) return; closed = true;
+    if(activeSelSheet === close) activeSelSheet = null;
+    wrap.classList.add('out'); wrap.inert = true;
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches) wrap.remove();
+    else setTimeout(()=>wrap.remove(), 220);
+    document.removeEventListener('keydown', onKey, true);
+    if(sel._selBtn?.isConnected) sel._selBtn.focus({preventScroll:true});
+  };
+  activeSelSheet = close;
+  const onKey = e=>{
+    if(e.key === 'Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); return; }
+    if(e.key !== 'Tab') return;
+    const buttons = [...wrap.querySelectorAll('input,button')].filter(el=>!el.disabled);
+    const first = buttons[0], last = buttons[buttons.length - 1];
+    if(e.shiftKey && (document.activeElement === first || !wrap.contains(document.activeElement))){ e.preventDefault(); last?.focus(); }
+    else if(!e.shiftKey && (document.activeElement === last || !wrap.contains(document.activeElement))){ e.preventDefault(); first?.focus(); }
+  };
+  document.addEventListener('keydown', onKey, true);
   wrap.querySelector('.sel-scrim').onclick = close;
   wrap.querySelector('.sel-search input')?.addEventListener('input', e=>paint(e.target.value));
   list.onclick = e=>{
@@ -1012,7 +1067,12 @@ function openSelSheet(sel){
     if(sel.value !== b.dataset.v){ sel.value = b.dataset.v; sel.dispatchEvent(new Event('input', {bubbles:true})); sel.dispatchEvent(new Event('change', {bubbles:true})); }
     selSync(sel); close();
   };
-  requestAnimationFrame(()=>list.querySelector('.on')?.scrollIntoView({block:'center'}));
+  requestAnimationFrame(()=>{
+    if(closed) return;
+    const chosen = list.querySelector('.on');
+    chosen?.scrollIntoView({block:'center'});
+    (wrap.querySelector('.sel-search input') || chosen || list.querySelector('button'))?.focus({preventScroll:true});
+  });
 }
 // Dropdowns drawn after the page (modals, lines added to a receipt) get the same list.
 new MutationObserver(muts=>{ if(muts.some(m=>[...m.addedNodes].some(n=>n.nodeType === 1 && (n.matches('select') || n.querySelector('select'))))) enhanceSelects(); })
@@ -1607,6 +1667,7 @@ function attachOrderEvents(){
 /* Opens Send to suppliers with the current draft (the Send button, and
    Rico's "open send" shortcut). Returns false when there is nothing to send. */
 async function startSendQueue(){
+  if(state.queue?.saveState === 'failed'){ goView('queue'); return true; }
   const bySupplier = {};
   Object.keys(state.cart).forEach(id=>{
     const qty = state.cart[id]; if(!qty) return;
@@ -1852,7 +1913,7 @@ function renderQueue(){
       <button class="queue-back" id="queueBackBtn" aria-label="${esc(t('backToOrder'))}">${ICON_BACK}</button>
       <div class="queue-progress"><div class="queue-progress-label">${t('sentProgress')(done,total)}</div><div class="queue-bar"><i style="--p:${Math.round(done/total*100)}%"></i></div></div>
     </div>
-    ${done===total ? `<div class="queue-done"><span class="tick"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span><b>${t('allSentTitle')}</b><small>${t('allSentSub')}</small></span></div>` : ''}
+    ${done===total ? `<div class="queue-done" role="status"><span class="tick"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span><b>${t('allSentTitle')}</b><small>${state.queue.saveState === 'failed' ? esc(t('orderRetrySaveHint')) : state.queue.saveState === 'saving' ? esc(t('loading')) : t('allSentSub')}</small></span>${state.queue.saveState === 'failed' ? `<button type="button" class="btn btn-primary" id="queueRetrySave">${esc(t('retry'))}</button>` : ''}</div>` : ''}
     ${cards}`;
 }
 function markQueueSent(idx){
@@ -1863,6 +1924,8 @@ function markQueueSent(idx){
   maybeFinishQueue();
 }
 function attachQueueEvents(){
+  const retry = document.getElementById('queueRetrySave');
+  if(retry) retry.onclick = ()=>withBusy(retry, maybeFinishQueue);
   const back = document.getElementById('queueBackBtn');
   if(back) back.onclick = ()=>goView('order');
   document.querySelectorAll('[data-pdf]').forEach(b=>b.onclick=()=>{
@@ -1874,7 +1937,7 @@ function attachQueueEvents(){
     const entry = state.queue[idx];
     const sup = state.suppliers.find(s=>s.id===entry.supplierId);
     if(!sup || !sup.phone) return; // button only renders when this is safe, but guard anyway
-    window.open(waLink(sup.phone, buildMessage(entry)), '_blank');
+    window.open(waLink(sup.phone, buildMessage(entry)), '_blank', 'noopener,noreferrer');
     markQueueSent(idx);
   });
   // Suppliers without a WhatsApp number (or items with no supplier) are sent
@@ -1895,6 +1958,7 @@ function printOrderSheet(entry, supplier){
   const supplierLabel = supplier?.name || w0.none;
   const rows = sortedSupplierItems(entry.items).map((item,n)=>`<tr><td>${n+1}</td><td>${esc(item.name)}</td><td>${esc(unitLabel(item.unit))}</td><td class="qty">${item.qty}</td></tr>`).join('');
   const w = window.open('', '_blank'); if(!w) return;
+  w.opener = null;
   const printedAt = formatIraqDateTime(new Date(),{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
   w.document.write(`<!doctype html><html dir="${isRtl()?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${w0.title} — Ricotta</title><link rel="stylesheet" href="${SHEET_FONTS}"><style>body{font-family:'Sora','Noto Kufi Arabic',Arial,sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${w0.title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${esc(printedAt)}<br>${entry.items.length} ${w0.items}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${w0.item}</th><th>${w0.unit}</th><th>${w0.qty}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${w0.foot}</div></body></html>`);
   w.document.close(); w.focus();
@@ -1903,28 +1967,46 @@ function printOrderSheet(entry, supplier){
   const fontsIn = new Promise(r=>{ link.onload = link.onerror = r; }).then(()=>{ w.document.body.offsetWidth; return w.document.fonts.ready; });
   Promise.race([fontsIn, new Promise(r=>setTimeout(r,2000))]).then(()=>w.print());
 }
-let finishingQueue = false;
+let finishingQueue = null;
 async function maybeFinishQueue(){
   if(finishingQueue || !state.queue || !state.queue.every(e=>e.sent)) return;
-  finishingQueue = true;
-  playOrdersSent();
-  const record = {
-    id: 'o'+Date.now(), date: new Date().toISOString(), by: state.account,
+  const queue = state.queue, session = apiSession();
+  finishingQueue = queue;
+  if(!queue.record) playOrdersSent();
+  const record = queue.record || {
+    id: 'o'+outboxJobId(), date: new Date().toISOString(), by: state.account,
     entries: state.queue.map(e=>({
       supplierId: e.supplierId,
       supplierName: (state.suppliers.find(s=>s.id===e.supplierId)||{}).name || '',
       items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
     }))
   };
-  state.history.push(record);
-  ricoSuggestion.at = 0;   // what's due has changed
-  state.cart = {};
-  persistCartDraft();
+  queue.record = record;
+  queue.saveState = 'saving';
+  if(state.view === 'queue') render();
   const result = await sendOrQueue('orders', 'POST', record);
+  if(!apiSessionMatches(session) || state.queue !== queue){
+    if(finishingQueue === queue) finishingQueue = null;
+    return;
+  }
+  if(result === 'failed'){
+    queue.saveState = 'failed'; finishingQueue = null;
+    if(state.view === 'queue') render();
+    toast(t('saveFailed'), 'error');
+    return;
+  }
+  queue.saveState = 'saved';
+  if(!state.history.some(h=>h.id===record.id)) state.history.push(record);
+  ricoSuggestion.at = 0;
+  // Preserve any quantities edited while the save was waiting on the network.
+  queue.forEach(entry=>entry.items.forEach(item=>{ if(state.cart[item.itemId] === item.qty) delete state.cart[item.itemId]; }));
+  persistCartDraft();
+  if(state.view === 'queue') render();
   // Let the "All orders sent" card land before returning to the Order screen.
   await new Promise(r=>setTimeout(r, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1300));
+  if(finishingQueue === queue) finishingQueue = null;
+  if(!apiSessionMatches(session) || state.queue !== queue) return;
   state.queue = null;
-  finishingQueue = false;
   if(state.view === 'queue') goView('order');
   toast(result === 'saved' ? t('orderSavedToHistory') : result === 'queued' ? t('orderSavedOffline') : t('saveFailed'), result === 'saved' ? 'ok' : 'warn');
 }
@@ -2247,7 +2329,7 @@ function openSupplierModal(id){
         Object.assign(s, next);
         logActivity({action:'edit', type:'supplier', name, fields});
       } else {
-        const next = {id:'s'+Date.now(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null};
+        const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null};
         if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
         state.suppliers.push(next);
         logActivity({action:'add', type:'supplier', name,
@@ -2494,8 +2576,8 @@ function openItemModal(id){
         }
       } else {
         const supplierItems=state.items.filter(i=>i.supplierId===supplierId);
-        const maxSort=supplierItems.reduce((max,i)=>Number.isInteger(i.sortOrder)?Math.max(max,i.sortOrder):-1,-1);
-        const next = {id:'i'+Date.now(), name, unit, supplierId, sortOrder:maxSort>=0?maxSort+1:null};
+        const maxSort=supplierItems.reduce((max,i)=>Number.isInteger(i.sortOrder)?Math.max(max,i.sortOrder):max,-1);
+        const next = {id:'i'+outboxJobId(), name, unit, supplierId, sortOrder:maxSort>=0?maxSort+1:null};
         if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
         itemId = next.id;
         createdId = next.id;
@@ -2614,7 +2696,7 @@ function openUnitModal(unit){
         Object.assign(unit,{en,ku,ar});
         logActivity({action:'edit',type:'unit',name:en,fields});
       }else{
-        const next = {id:'u'+Date.now(), en, ku, ar};
+        const next = {id:'u'+outboxJobId(), en, ku, ar};
         if(!(await saveRecord('units', next))) return {error:t('saveFailed')};
         state.units.push(next);
         logActivity({action:'add', type:'unit', name:en,
@@ -2901,8 +2983,8 @@ async function maybeOpenRicoProviderSetup(){
 /* Disables a button while its action runs, so a double tap can't send twice. */
 async function withBusy(btn, fn){
   if(!btn || btn.disabled) return;
-  btn.disabled = true; btn.classList.add('is-busy');
-  try{ await fn(); } finally { btn.disabled = false; btn.classList.remove('is-busy'); }
+  btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy','true');
+  try{ return await fn(); } finally { btn.disabled = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy'); }
 }
 function attachSettingsEvents(){
   loadRicoStatus();

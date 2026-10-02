@@ -1,315 +1,402 @@
-/* Custom confirm/alert/prompt dialogs (native confirm()/alert()/prompt()
-are blocked inside sandboxed iframe previews). Depends on t() and esc()
-from app.js. */
+/* Custom, non-blocking dialogs. Messages, banners and form bodies are trusted
+   HTML supplied by the app; dynamic values in that HTML must be escaped by
+   the caller. Button labels and input attributes are escaped here. */
 
-/* ============ Confirm / alert / prompt (custom, non-blocking) ============ */
-/* Native confirm()/alert()/prompt() are silently blocked in sandboxed
-iframe previews (they just return false/null immediately), which made
-confirmations always cancel themselves. These render a small in-page
-dialog instead, so they work in any environment. */
+const modalDialogs = [];
+let modalSequence = 0;
+let modalAppState = null;
+let modalObserver = null;
 
 function ensureModalRoot() {
-  let el = document.getElementById('modalRoot');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'modalRoot';
-    document.body.appendChild(el);
+  let root = document.getElementById('modalRoot');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'modalRoot';
+    document.body.appendChild(root);
   }
-  return el;
+  return root;
 }
 
-/* Lets a dialog slide away before it is removed (instant with reduced motion).
-   Returns a promise that resolves once the root is empty again. */
-function closeModal(root) {
-  const overlay = root && root.querySelector('.modal-overlay');
-  if (!overlay || matchMedia('(prefers-reduced-motion: reduce)').matches) { if (root) root.innerHTML = ''; return Promise.resolve(); }
-  overlay.classList.add('closing');
-  return new Promise(res => setTimeout(() => {
-    if (overlay.isConnected) root.innerHTML = '';
-    res();
-  }, 210));
-}
-/* Remembers what had focus so closing a dialog returns keyboard users there. */
-function rememberFocus() {
-  const el = document.activeElement;
-  return () => { if (el && el.isConnected && typeof el.focus === 'function') el.focus({ preventScroll: true }); };
+/* Update notifications sit above a form without discarding its draft. */
+function ensureForceRoot() {
+  let root = document.getElementById('forceRoot');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'forceRoot';
+    document.body.appendChild(root);
+  }
+  return root;
 }
 
-function showConfirm(message, opts) {
-  const okLabel = (opts && opts.okLabel) || t('delete');
-  const cancelLabel = (opts && opts.cancelLabel) || t('cancel');
-  const okClass = (opts && opts.okClass) || 'btn-danger';
-  
-  return new Promise(resolve => {
-    const root = ensureModalRoot();
-    root.innerHTML = `
-      <div class="modal-overlay">
-        <div class="modal-box">
-          <div class="modal-msg">${message}</div>
-          <div class="modal-actions">
-            <button class="btn btn-ghost" id="modalCancelBtn">${cancelLabel}</button>
-            <button class="btn ${okClass}" id="modalOkBtn">${okLabel}</button>
-          </div>
-        </div>
-      </div>`;
-      
-    const restore = rememberFocus();
-    const done = (v) => { closeModal(root).then(restore); resolve(v); };
-    const ok = document.getElementById('modalOkBtn');
-    ok.onclick = () => done(true);
-    document.getElementById('modalCancelBtn').onclick = () => done(false);
-    root.querySelector('.modal-box').addEventListener('keydown', e => { if (e.key === 'Escape') done(false); });
-    ok.focus();
+function topModalDialog() {
+  const connected = modalDialogs.filter(d => d.overlay.isConnected);
+  return connected.filter(d => d.root.id === 'forceRoot').pop() || connected.pop();
+}
+
+function modalFocusable(box) {
+  return Array.from(box.querySelectorAll('button, input, select, textarea, a[href], [tabindex]'))
+    .filter(el => !el.disabled && el.tabIndex >= 0 && !el.closest('[inert]') && el.getClientRects().length);
+}
+
+/* The app's searchable select sheet lives outside the form's overlay. Its
+   own keyboard handler takes over until it closes; forced updates stay above it. */
+function modalSelectSheetOpen(dialog) {
+  return dialog.root.id !== 'forceRoot' && !!document.querySelector('.sel-sheet:not(.out)');
+}
+
+function handleModalKey(event) {
+  const dialog = topModalDialog();
+  if (!dialog || modalSelectSheetOpen(dialog) || event.isComposing) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    if (dialog.onCancel) dialog.onCancel();
+  } else if (event.key === 'Tab') {
+    const fields = modalFocusable(dialog.box);
+    const first = fields[0], last = fields[fields.length - 1];
+    const active = document.activeElement;
+    if (!fields.length) {
+      event.preventDefault();
+      dialog.box.focus({preventScroll: true});
+    } else if (!fields.includes(active) || (event.shiftKey ? active === first : active === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus({preventScroll: true});
+    }
+  }
+}
+
+function handleModalFocus(event) {
+  const dialog = topModalDialog();
+  if (!dialog || modalSelectSheetOpen(dialog) || dialog.box.contains(event.target)) return;
+  (modalFocusable(dialog.box)[0] || dialog.box).focus({preventScroll: true});
+}
+
+function syncModalLayers() {
+  const top = topModalDialog();
+  modalDialogs.forEach(dialog => {
+    dialog.overlay.inert = dialog !== top;
+    dialog.overlay.setAttribute('aria-hidden', String(dialog !== top));
+    dialog.box.setAttribute('aria-modal', String(dialog === top));
   });
+  if (top && !modalAppState) {
+    const app = document.getElementById('app');
+    modalAppState = {app, inert: app ? app.inert : false};
+    if (app) app.inert = true;
+    document.body.classList.add('modal-open');
+    document.addEventListener('keydown', handleModalKey, true);
+    document.addEventListener('focusin', handleModalFocus);
+    /* Also release pending dialogs when sign-out removes their DOM. */
+    modalObserver = new MutationObserver(() => {
+      modalDialogs.slice().filter(d => !d.overlay.isConnected).forEach(d => releaseModalDialog(d, false));
+    });
+    modalObserver.observe(document.body, {childList: true, subtree: true});
+  } else if (!top && modalAppState) {
+    if (modalAppState.app) modalAppState.app.inert = modalAppState.inert;
+    modalAppState = null;
+    document.body.classList.remove('modal-open');
+    document.removeEventListener('keydown', handleModalKey, true);
+    document.removeEventListener('focusin', handleModalFocus);
+    modalObserver.disconnect();
+    modalObserver = null;
+  }
+}
+
+function releaseModalDialog(dialog, restore = true) {
+  const index = modalDialogs.indexOf(dialog);
+  if (index < 0) return;
+  /* A lower dialog finishing must not take focus from the one above it. */
+  const higher = topModalDialog();
+  modalDialogs.splice(index, 1);
+  syncModalLayers();
+  if (restore && (!higher || higher === dialog)) {
+    const original = dialog.previousFocus;
+    const previous = original && original.isConnected ? original : original && original.id ? document.getElementById(original.id) : null;
+    if (previous && previous !== document.body && previous !== document.documentElement && previous.isConnected && !previous.disabled && !previous.closest('[inert]')) previous.focus({preventScroll: true});
+    else {
+      const top = topModalDialog();
+      if (top) top.box.focus({preventScroll: true});
+    }
+  }
+  dialog.onRemoved();
+}
+
+/* Close the specific overlay, never a newer dialog sharing the same root.
+   Awaiting callers continue after focus has returned and the exit has finished. */
+function closeModal(target) {
+  const overlay = target && (target.matches('.modal-overlay') ? target : target.querySelector('.modal-overlay:last-child'));
+  if (!overlay) return Promise.resolve();
+  if (overlay._closePromise) return overlay._closePromise;
+  overlay._closePromise = new Promise(resolve => {
+    const finish = () => {
+      clearTimeout(timer);
+      overlay.removeEventListener('animationend', onEnd);
+      const dialog = modalDialogs.find(d => d.overlay === overlay);
+      /* Release before removal so the active-dialog check can restore focus. */
+      if (dialog) releaseModalDialog(dialog);
+      overlay.remove();
+      resolve();
+    };
+    const onEnd = event => { if (event.target.matches('.modal-box') && event.animationName === 'sheetOut') finish(); };
+    let timer;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) finish();
+    else {
+      overlay.classList.add('closing');
+      overlay.addEventListener('animationend', onEnd);
+      timer = setTimeout(finish, 260);
+    }
+  });
+  return overlay._closePromise;
+}
+
+/* Called on sign-out, including when a session expires during a save. */
+function dismissAllModals() {
+  modalDialogs.slice().reverse().forEach(dialog => {
+    dialog.overlay.remove();
+    releaseModalDialog(dialog, false);
+  });
+}
+
+function createModal(root, html, {role = 'dialog', cancelValue, onCancel} = {}) {
+  if (root.id === 'forceRoot' && typeof closeSelSheet === 'function') closeSelSheet();
+  const previousFocus = document.activeElement;
+  const holder = document.createElement('div');
+  holder.innerHTML = html;
+  const overlay = holder.firstElementChild;
+  const box = overlay.querySelector('.modal-box');
+  box.setAttribute('role', role);
+  box.tabIndex = -1;
+  const title = box.querySelector('.modal-title, .force-title');
+  const message = box.querySelector('.modal-msg');
+  const label = title || message;
+  const prefix = 'dialog' + (++modalSequence);
+  if (label && label.textContent.trim()) {
+    label.id = prefix + 'Label';
+    box.setAttribute('aria-labelledby', label.id);
+  } else box.setAttribute('aria-label', t('ok'));
+  if (title && message) {
+    message.id = prefix + 'Description';
+    box.setAttribute('aria-describedby', message.id);
+  }
+
+  let settled = false;
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  const dialog = {root, overlay, box, previousFocus, onCancel, onRemoved: () => {
+    if (!settled) { settled = true; resolve(cancelValue); }
+  }};
+  dialog.finish = async (value, keepVisible = false) => {
+    if (settled) return;
+    settled = true;
+    if (!keepVisible) await closeModal(overlay);
+    resolve(value);
+  };
+  dialog.promise = promise;
+  root.appendChild(overlay);
+  modalDialogs.push(dialog);
+  syncModalLayers();
+  /* Only the top popup can receive focus (a forced refresh may already be up). */
+  dialog.focus = target => { if (topModalDialog() === dialog) (target || box).focus({preventScroll: true}); };
+  dialog.focus();
+  return dialog;
+}
+
+function showConfirm(message, opts = {}) {
+  opts = opts || {};
+  const okLabel = opts.okLabel || t('delete');
+  const cancelLabel = opts.cancelLabel || t('cancel');
+  const okClass = ['btn-danger', 'btn-primary', 'btn-ghost'].includes(opts.okClass) ? opts.okClass : 'btn-danger';
+  const dialog = createModal(ensureModalRoot(), `
+    <div class="modal-overlay"><div class="modal-box">
+      <div class="modal-msg">${message}</div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="modalCancelBtn">${esc(cancelLabel)}</button>
+        <button type="button" class="btn ${okClass}" id="modalOkBtn">${esc(okLabel)}</button>
+      </div>
+    </div></div>`, {role: 'alertdialog', cancelValue: false});
+  dialog.onCancel = () => dialog.finish(false);
+  dialog.box.querySelector('#modalOkBtn').onclick = () => dialog.finish(true);
+  const cancel = dialog.box.querySelector('#modalCancelBtn');
+  cancel.onclick = dialog.onCancel;
+  dialog.focus(cancel);
+  return dialog.promise;
 }
 
 function showAlert(message) {
-  return new Promise(resolve => {
-    const root = ensureModalRoot();
-    root.innerHTML = `
-      <div class="modal-overlay">
-        <div class="modal-box">
-          <div class="modal-msg">${message}</div>
-          <div class="modal-actions">
-            <button class="btn btn-primary" id="modalAlertOkBtn">${t('ok')}</button>
-          </div>
-        </div>
-      </div>`;
-      
-    const restore = rememberFocus();
-    const ok = document.getElementById('modalAlertOkBtn');
-    ok.onclick = () => { closeModal(root).then(restore); resolve(); };
-    ok.focus();
-  });
+  const dialog = createModal(ensureModalRoot(), `
+    <div class="modal-overlay"><div class="modal-box">
+      <div class="modal-msg">${message}</div>
+      <div class="modal-actions"><button type="button" class="btn btn-primary" id="modalAlertOkBtn">${esc(t('ok'))}</button></div>
+    </div></div>`);
+  const ok = dialog.box.querySelector('#modalAlertOkBtn');
+  ok.onclick = dialog.onCancel = () => dialog.finish();
+  dialog.focus(ok);
+  return dialog.promise;
 }
 
-/* Small text input dialog. Resolves with the trimmed string the user typed,
-or null if they dismissed it. Options: {password:true} for a masked numeric
-PIN field (maxLength limits it), {secret:true} for a masked text field,
-{plain:true} for text the keyboard must not capitalise or correct (the
-"Who are you?" step of the secret code). */
-function showPrompt(message, opts) {
+/* {password:true}: masked numeric PIN; {secret:true}: masked text;
+   {plain:true}: no capitalisation, corrections or spellcheck. */
+function showPrompt(message, opts = {}) {
   opts = opts || {};
-  const okLabel = opts.okLabel || t('save');
-  const cancelLabel = opts.cancelLabel || t('cancel');
-  const placeholder = opts.placeholder || '';
-  const initialValue = opts.value || '';
-  const inputAttrs = (opts.password || opts.secret)
+  const attrs = opts.password || opts.secret
     ? `type="password" ${opts.password ? 'inputmode="numeric"' : ''} autocomplete="off"`
-    : opts.plain ? 'type="text" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false"' : '';
-  const max = opts.maxLength ? `maxlength="${Number(opts.maxLength)}"` : '';
-  
-  return new Promise(resolve => {
-    const root = ensureModalRoot();
-    root.innerHTML = `
-      <div class="modal-overlay">
-        <div class="modal-box">
-          <div class="modal-msg">${message}</div>
-          <div class="field">
-            <input id="modalPromptInput" ${inputAttrs} ${max} placeholder="${esc(placeholder)}" value="${esc(initialValue)}" />
-          </div>
-          <div class="modal-actions">
-            <button class="btn btn-ghost" id="modalPromptCancelBtn">${cancelLabel}</button>
-            <button class="btn btn-primary" id="modalPromptOkBtn">${okLabel}</button>
-          </div>
-        </div>
-      </div>`;
-      
-    const input = document.getElementById('modalPromptInput');
-    input.focus();
-    
-    const finish = (val) => { 
-      closeModal(root);
-      resolve(val); 
-    };
-    
-    document.getElementById('modalPromptOkBtn').onclick = () => finish(input.value.trim());
-    document.getElementById('modalPromptCancelBtn').onclick = () => finish(null);
-    
-    input.addEventListener('keydown', e => { 
-      if (e.key === 'Enter') finish(input.value.trim());
-      if (e.key === 'Escape') finish(null);
-    });
+    : opts.plain ? 'type="text" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false"' : 'type="text"';
+  const length = Number(opts.maxLength);
+  const max = Number.isSafeInteger(length) && length > 0 ? `maxlength="${length}"` : '';
+  const dialog = createModal(ensureModalRoot(), `
+    <div class="modal-overlay"><div class="modal-box">
+      <div class="modal-msg">${message}</div>
+      <div class="field"><input id="modalPromptInput" ${attrs} ${max} placeholder="${esc(opts.placeholder || '')}" value="${esc(opts.value || '')}"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="modalPromptCancelBtn">${esc(opts.cancelLabel || t('cancel'))}</button>
+        <button type="button" class="btn btn-primary" id="modalPromptOkBtn">${esc(opts.okLabel || t('save'))}</button>
+      </div>
+    </div></div>`, {cancelValue: null});
+  const input = dialog.box.querySelector('#modalPromptInput');
+  input.setAttribute('aria-labelledby', dialog.box.querySelector('.modal-msg').id);
+  dialog.onCancel = () => dialog.finish(null);
+  dialog.box.querySelector('#modalPromptOkBtn').onclick = () => dialog.finish(input.value.trim());
+  dialog.box.querySelector('#modalPromptCancelBtn').onclick = dialog.onCancel;
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.isComposing && !event.repeat) {
+      event.preventDefault();
+      dialog.finish(input.value.trim());
+    }
   });
+  dialog.focus(input);
+  return dialog.promise;
 }
 
-/* Forced "refresh now" popup, sent by Rozha from the Devices tab.
-There is deliberately no cancel / close / tap-outside: the only way
-forward is the Refresh button. It lives in its own root (#forceRoot),
-above every other popup, so it never wipes a half-filled form - it just
-sits on top of it until the person taps Refresh. Resolves when tapped
-(the caller then reloads the page). */
-function ensureForceRoot() {
-  let el = document.getElementById('forceRoot');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'forceRoot';
-    document.body.appendChild(el);
-  }
-  return el;
-}
-
+/* No cancel or outside dismissal: it remains until the caller reloads. */
 function showForcedRefresh(title, message, okLabel) {
-  return new Promise(resolve => {
-    const root = ensureForceRoot();
-    root.innerHTML = `
-      <div class="modal-overlay">
-        <div class="modal-box">
-          <div class="force-title">${title}</div>
-          <div class="modal-msg">${message}</div>
-          <div class="modal-actions">
-            <button class="btn btn-primary" id="forceRefreshBtn">${okLabel}</button>
-          </div>
-        </div>
-      </div>`;
-      
-    const btn = document.getElementById('forceRefreshBtn');
-    btn.onclick = () => { 
-      btn.disabled = true; 
-      resolve(); 
-    }; /* popup stays up until the caller reloads the page */
-  });
+  const dialog = createModal(ensureForceRoot(), `
+    <div class="modal-overlay"><div class="modal-box">
+      <div class="force-title">${esc(title)}</div><div class="modal-msg">${message}</div>
+      <div class="modal-actions"><button type="button" class="btn btn-primary" id="forceRefreshBtn">${esc(okLabel)}</button></div>
+    </div></div>`, {role: 'alertdialog'});
+  const button = dialog.box.querySelector('#forceRefreshBtn');
+  button.onclick = () => {
+    button.disabled = true;
+    button.classList.add('is-busy');
+    button.setAttribute('aria-busy', 'true');
+    dialog.finish(true, true);
+  };
+  dialog.focus(button);
+  return dialog.promise;
 }
 
-/* The update message opened from an update notification. Uses #forceRoot
-like the forced refresh, so it sits on top of any open form without wiping
-it. It shows only the message (no title of its own). The primary button is
-at the bottom; tapping it resolves true (the caller reloads). If laterLabel
-is given, a second button is shown that resolves false and just closes it. */
 function showUpdatePopup(message, okLabel, laterLabel) {
-  return new Promise(resolve => {
-    const root = ensureForceRoot();
-    root.innerHTML = `
-      <div class="modal-overlay">
-        <div class="modal-box">
-          <div class="modal-msg">${message}</div>
-          <div class="modal-actions">
-            ${laterLabel ? `<button class="btn btn-ghost" id="updLaterBtn">${laterLabel}</button>` : ''}
-            <button class="btn btn-primary" id="updOkBtn">${okLabel}</button>
-          </div>
-        </div>
-      </div>`;
-      
-    const ok = document.getElementById('updOkBtn');
-    ok.onclick = () => {
-      if (laterLabel) ok.disabled = true;   /* stays up while the page reloads */
-      else closeModal(root);
-      resolve(true);
-    };
-    
-    const later = document.getElementById('updLaterBtn');
-    if (later) later.onclick = () => { 
-      closeModal(root);
-      resolve(false); 
-    };
-  });
+  const dialog = createModal(ensureForceRoot(), `
+    <div class="modal-overlay"><div class="modal-box">
+      <div class="modal-msg">${message}</div><div class="modal-actions">
+        ${laterLabel ? `<button type="button" class="btn btn-ghost" id="updLaterBtn">${esc(laterLabel)}</button>` : ''}
+        <button type="button" class="btn btn-primary" id="updOkBtn">${esc(okLabel)}</button>
+      </div>
+    </div></div>`, {cancelValue: false});
+  const ok = dialog.box.querySelector('#updOkBtn');
+  ok.onclick = () => {
+    if (laterLabel) {
+      dialog.box.querySelectorAll('button').forEach(button => { button.disabled = true; });
+      ok.classList.add('is-busy');
+      ok.setAttribute('aria-busy', 'true');
+    }
+    dialog.finish(true, !!laterLabel);
+  };
+  const later = dialog.box.querySelector('#updLaterBtn');
+  dialog.onCancel = () => dialog.finish(false);
+  if (later) later.onclick = dialog.onCancel;
+  dialog.focus(later || ok);
+  return dialog.promise;
 }
 
-/* Popup form used for adding / editing suppliers and items.
-opts:
-  title           heading text (already translated)
-  banner          optional HTML shown under the title (what's being edited)
-  bodyHtml        the form fields
-  okLabel / cancelLabel
-  againLabel      optional; adds a "Save & add another" button
-  onOpen (box)    optional; called once the popup is on screen
-  onSubmit (again)-- async; runs when Save is tapped. Return:
-    {error:'text'}          -> shows the error, popup stays open
-    {keepOpen: true, msg}   -> shows message, clears the fields that
-                               have data-clear, popup stays open
-    anything else           -> popup closes
-The popup only closes via Save or Cancel (tapping outside does nothing),
-so a half-typed form is never lost by accident. Resolves when it closes. */
+/* Popup form. onSubmit(again) returns {error}, {keepOpen:true, message},
+   or a success value. Only explicit Save or Cancel dismisses a draft. */
 function showFormModal(opts) {
-  const okLabel = opts.okLabel || t('save');
-  const cancelLabel = opts.cancelLabel || t('cancel');
-  
-  return new Promise(resolve => {
-    const root = ensureModalRoot();
-    root.innerHTML = `
-      <div class="modal-overlay modal-overlay-top">
-        <div class="modal-box modal-form">
-          <div class="modal-title">${opts.title}</div>
-          ${opts.banner ? `<div class="modal-banner">${opts.banner}</div>` : ''}
-          <div class="modal-body">${opts.bodyHtml}</div>
-          <div class="modal-status" id="modalFormStatus"></div>
-          <div class="modal-actions modal-actions-wrap">
-            <button class="btn btn-ghost" id="modalFormCancel">${cancelLabel}</button>
-            ${opts.againLabel ? `<button class="btn btn-ghost" id="modalFormAgain">${opts.againLabel}</button>` : ''}
-            <button class="btn btn-primary" id="modalFormOk">${okLabel}</button>
-          </div>
-        </div>
-      </div>`;
-      
-    const box = root.querySelector('.modal-box');
-    const status = document.getElementById('modalFormStatus');
-    const buttons = Array.from(box.querySelectorAll('.modal-actions .btn'));
-    
-    const setStatus = (msg, kind) => {
-      status.textContent = msg || '';
-      status.className = 'modal-status' + (msg ? ' ' + kind : '');
-    };
-    
-    const close = () => { 
-      closeModal(root);
-      resolve(); 
-    };
-    
-    let busy = false;
-    const submit = async (again) => {
-      if (busy) return;
-      busy = true;
-      buttons.forEach(b => b.disabled = true);
-      setStatus('');
-      
-      let res;
-      try { 
-        res = await opts.onSubmit(!!again); 
-      } catch(e) { 
-        console.error('form submit failed', e); 
-      res = { error: t('saveFailed') };
-      }
-      
-      busy = false;
-      buttons.forEach(b => b.disabled = false);
-      res = res || {};
-      
-      if (res.error) { 
-        setStatus(res.error, 'error'); 
-        return; 
-      }
-      
-      if (res.keepOpen) {
-        box.querySelectorAll('[data-clear]').forEach(el => { el.value = ''; });
-        const firstField = box.querySelector('[data-clear]');
-        if (firstField) firstField.focus();
-        setStatus(res.message, 'ok');
-        return;
-      }
-      
-      close();
-    };
-    
-    document.getElementById('modalFormOk').onclick = () => submit(false);
-    
-    const againBtn = document.getElementById('modalFormAgain');
-    if (againBtn) againBtn.onclick = () => submit(true);
-    
-    document.getElementById('modalFormCancel').onclick = close;
-    
-    box.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && e.target.tagName === 'INPUT') { 
-        e.preventDefault(); 
-        submit(false); 
-      }
-      if (e.key === 'Escape') close();
-    });
-    
-    if (opts.onOpen) opts.onOpen(box);
-    
-    // A computer starts in the first field. A phone waits for a tap, so the
-    // keyboard only opens for the field that is actually being changed.
-    const first = box.querySelector('input, select');
-    if (first && matchMedia('(pointer: fine)').matches) first.focus();
+  const dialog = createModal(ensureModalRoot(), `
+    <div class="modal-overlay modal-overlay-top"><div class="modal-box modal-form">
+      <div class="modal-title">${opts.title}</div>
+      ${opts.banner ? `<div class="modal-banner">${opts.banner}</div>` : ''}
+      <div class="modal-body">${opts.bodyHtml}</div>
+      <div class="modal-status" id="modalFormStatus" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></div>
+      <div class="modal-actions modal-actions-wrap">
+        <button type="button" class="btn btn-ghost" id="modalFormCancel">${esc(opts.cancelLabel || t('cancel'))}</button>
+        ${opts.againLabel ? `<button type="button" class="btn btn-ghost" id="modalFormAgain">${esc(opts.againLabel)}</button>` : ''}
+        <button type="button" class="btn btn-primary" id="modalFormOk">${esc(opts.okLabel || t('save'))}</button>
+      </div>
+    </div></div>`);
+  const box = dialog.box;
+  const status = box.querySelector('#modalFormStatus');
+  const ok = box.querySelector('#modalFormOk');
+  const againButton = box.querySelector('#modalFormAgain');
+  let busy = false;
+  const setStatus = (message, kind = '') => {
+    status.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
+    status.textContent = message || '';
+    status.className = 'modal-status' + (message ? ' ' + kind : '');
+  };
+  const close = () => { if (!busy) dialog.finish(); };
+  dialog.onCancel = close;
+
+  const submit = async again => {
+    if (busy || !dialog.overlay.isConnected || dialog.overlay.classList.contains('closing')) return;
+    const action = again && againButton ? againButton : ok;
+    if (action.disabled) return;
+    busy = true;
+    const controls = Array.from(box.querySelectorAll('button, input, select, textarea'));
+    const disabled = controls.map(control => control.disabled);
+    controls.forEach(control => { control.disabled = true; });
+    action.classList.add('is-busy');
+    action.setAttribute('aria-busy', 'true');
+    box.querySelector('.modal-body').setAttribute('aria-busy', 'true');
+    setStatus(t('loading'), 'pending');
+    let result;
+    try { result = await opts.onSubmit(!!again); }
+    catch (error) {
+      console.error('form submit failed', error);
+      result = {error: t('saveFailed')};
+    }
+    /* Session expiry can remove the form while its request is in flight. */
+    if (!dialog.overlay.isConnected) return;
+    busy = false;
+    controls.forEach((control, index) => { control.disabled = disabled[index]; });
+    action.classList.remove('is-busy');
+    action.removeAttribute('aria-busy');
+    box.querySelector('.modal-body').removeAttribute('aria-busy');
+    result = result || {};
+    if (result.error) {
+      setStatus(result.error, 'error');
+      dialog.focus(status);
+      return;
+    }
+    if (result.keepOpen) {
+      box.querySelectorAll('[data-clear]').forEach(control => { control.value = ''; });
+      setStatus(result.message || result.msg, 'ok');
+      dialog.focus(box.querySelector('[data-clear]') || ok);
+      return;
+    }
+    close();
+  };
+
+  ok.onclick = () => submit(false);
+  if (againButton) againButton.onclick = () => submit(true);
+  box.querySelector('#modalFormCancel').onclick = close;
+  box.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && event.target.tagName === 'INPUT' && !event.isComposing && !event.repeat) {
+      event.preventDefault();
+      submit(false);
+    }
   });
+  /* Many existing fields use a separate label without a for attribute. */
+  box.querySelectorAll('.field > label:not([for])').forEach(label => {
+    const control = label.parentElement.querySelector('input, select, textarea');
+    if (control && !label.contains(control)) {
+      if (!control.id) control.id = 'dialogField' + (++modalSequence);
+      label.htmlFor = control.id;
+    }
+  });
+  if (opts.onOpen) opts.onOpen(box);
+  /* Phones wait for a tap, avoiding an unexpected keyboard on opening. */
+  if (matchMedia('(pointer: fine)').matches && document.activeElement === box) {
+    dialog.focus(modalFocusable(box).find(control => control.matches('input, select, textarea, .sel-btn')));
+  }
+  return dialog.promise;
 }

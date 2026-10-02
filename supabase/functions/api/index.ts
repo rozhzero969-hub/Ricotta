@@ -44,8 +44,9 @@
 //   GET    assistant/status                                     is Rico connected?
 //   GET    assistant/setup-status     (rozha)                   Groq one-time setup state
 //   PUT    assistant/groq-key         {key} (rozha)             add-only
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, saveGroqKey } from "./assistant.ts";
+import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from "../_shared/security.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -108,15 +109,7 @@ const hash = async (value: string) => {
    huge upload can't tie up the function. */
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_AUDIO_BODY_BYTES = 3 * 1024 * 1024;
-class BodyTooLarge extends Error {}
-const readBody = async (req: Request, max = MAX_BODY_BYTES): Promise<any> => {
-  const declared = Number(req.headers.get("content-length") || 0);
-  if (declared > max) throw new BodyTooLarge();
-  let raw = "";
-  try { raw = await req.text(); } catch { return {}; }
-  if (raw.length > max) throw new BodyTooLarge();
-  try { return raw ? JSON.parse(raw) : {}; } catch { return {}; }
-};
+const readBody = (req: Request, max = MAX_BODY_BYTES) => readJsonBody(req, max);
 /* A supplier reminder is stored as JSON; only these fields in these shapes
    are kept, so a client can't park arbitrary data in the database. */
 function cleanReminder(r: any) {
@@ -149,7 +142,7 @@ async function authenticate(req: Request): Promise<Session | null> {
   const { data } = await app("sessions")
     .select("id,account,device_id,expires_at,revoked_at,last_seen_at")
     .eq("token_hash", await hash(raw)).maybeSingle();
-  if (!data || data.revoked_at || new Date(data.expires_at).getTime() <= Date.now()) return null;
+  if (!data || data.revoked_at || !Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()) return null;
   if (data.account !== "rozha" && data.account !== "yunis") return null;
   if (Date.now() - new Date(data.last_seen_at).getTime() > SEEN_WRITE_EVERY_MS) {
     await app("sessions").update({ last_seen_at: nowIso() }).eq("id", data.id);
@@ -259,8 +252,11 @@ function groupHistory(orders: any[], lines: any[]) {
   return orders.map((o) => {
     const entries: any[] = [];
     for (const l of byOrder.get(o.id) ?? []) {
-      let e = entries.find((x) => x.supplierId === l.supplier_id);
-      if (!e) { e = { supplierId: l.supplier_id, supplierName: l.supplier_name ?? null, items: [] }; entries.push(e); }
+      const supplierId = l.supplier_id ?? null, supplierName = l.supplier_name ?? null;
+      // Deleted suppliers all have a null id. Their saved names still keep
+      // separate supplier sections in History instead of merging their lines.
+      let e = entries.find((x) => x.supplierId === supplierId && (supplierId !== null || x.supplierName === supplierName));
+      if (!e) { e = { supplierId, supplierName, items: [] }; entries.push(e); }
       e.items.push({ itemId: l.item_id, name: l.item_name, unit: l.unit_id, qty: Number(l.qty) });
     }
     return { id: o.id, date: o.sent_at ?? o.created_at, by: o.sent_by ?? null, entries };
@@ -270,27 +266,32 @@ function groupHistory(orders: any[], lines: any[]) {
 async function listDevices(s: Session) {
   let q = app("devices").select("id,account,label,logged_in,last_login,last_seen,command,handled_command");
   if (!isRozha(s)) q = q.eq("id", s.deviceId ?? "");
-  const { data } = await q;
+  const { data, error } = await q;
+  if (error) throw error;
   return (data ?? []).map(toDevice);
 }
 async function listActivity() {
-  const { data } = await app("audit_events")
+  const { data, error } = await app("audit_events")
     .select("id,occurred_at,actor,device_id,action,entity_type,entity_name,payload")
     .in("action", RECORD_ACTIONS).in("entity_type", RECORD_TYPES)
     .order("occurred_at", { ascending: false }).limit(ACTIVITY_LIMIT);
+  if (error) throw error;
   return (data ?? []).map(toActivity);
 }
 async function listInbox(s: Session) {
-  const { data } = await app("rico_inbox").select("id,kind,mood,body_en,body_ku,body_ar,created_at,read_at")
+  const { data, error } = await app("rico_inbox").select("id,kind,mood,body_en,body_ku,body_ar,created_at,read_at")
     .eq("account", s.account).order("created_at", { ascending: false }).limit(20);
+  if (error) throw error;
   return (data ?? []).reverse().map(toInbox);
 }
 async function readReminder() {
-  const { data } = await app("reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle();
+  const { data, error } = await app("reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle();
+  if (error) throw error;
   return data ? { enabled: data.enabled, time: String(data.remind_time).slice(0, 5) } : null;
 }
 async function readAccount(id: string) {
-  const { data } = await app("accounts").select("id,name,tabs").eq("id", id).maybeSingle();
+  const { data, error } = await app("accounts").select("id,name,tabs").eq("id", id).maybeSingle();
+  if (error) throw error;
   return data ? { account: data.id, name: data.name, tabs: cleanTabs(data.id, data.tabs) } : null;
 }
 /* Three different screens this account may open, in the order chosen. */
@@ -329,6 +330,7 @@ async function bootstrap(s: Session) {
     app("item_pars").select("item_id,par_qty,busy_boost_pct,est_qty,est_updated_at"),
     listInbox(s),
   ]);
+  for (const result of [suppliers, items, units, orders, pars]) if (result.error) throw result.error;
   const orderRows = (orders.data ?? []).reverse();
   const lines = await orderLinesFor(orderRows);
   const oldestLoaded = orderRows[0]?.sent_at ?? orderRows[0]?.created_at ?? null;
@@ -337,8 +339,9 @@ async function bootstrap(s: Session) {
   // rows. If the window is empty, advance by the window boundary so sparse
   // older history can still be reached on the next click.
   const historyCursor = oldestLoaded ?? since;
-  const { count: olderCount } = await app("orders").select("id", { count: "exact", head: true })
+  const { count: olderCount, error: historyError } = await app("orders").select("id", { count: "exact", head: true })
     .eq("status", "sent").lt("sent_at", historyCursor);
+  if (historyError) throw historyError;
   return {
     account: s.account, name: me?.name ?? accountName(s.account), tabs: me?.tabs ?? cleanTabs(s.account, null),
     views: ACCOUNT_VIEWS[s.account],
@@ -361,14 +364,16 @@ async function bootstrap(s: Session) {
 async function moreHistory(before: string) {
   if (!before || isNaN(Date.parse(before))) return fail("invalid_before");
   const since = new Date(Date.parse(before) - HISTORY_PAGE_DAYS * 86400_000).toISOString();
-  const { data } = await app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent")
+  const { data, error } = await app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent")
     .lt("sent_at", before).gte("sent_at", since).order("sent_at", { ascending: false }).limit(HISTORY_LIMIT);
+  if (error) throw error;
   const orderRows = (data ?? []).reverse();
   const lines = await orderLinesFor(orderRows);
   const oldestLoaded = orderRows[0]?.sent_at ?? orderRows[0]?.created_at ?? null;
   const historyCursor = oldestLoaded ?? since;
-  const { count: olderCount } = await app("orders").select("id", { count: "exact", head: true })
+  const { count: olderCount, error: historyError } = await app("orders").select("id", { count: "exact", head: true })
     .eq("status", "sent").lt("sent_at", historyCursor);
+  if (historyError) throw historyError;
   return json({
     history: groupHistory(orderRows, lines),
     hasMore: (olderCount ?? 0) > 0,
@@ -389,15 +394,21 @@ async function loginFingerprints(req: Request) {
     || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   return [await hash(`ip|${ip}`), await hash("global-login-lock")];
 }
-async function loginLocked(prints: string[]) {
-  const since = new Date(Date.now() - LOGIN_WINDOW_MS).toISOString();
-  const [{ count }, { count: globalCount }] = await Promise.all(prints.map((p) =>
-    app("login_attempts").select("id", { count: "exact", head: true })
-      .eq("fingerprint_hash", p).eq("succeeded", false).gte("attempted_at", since)));
-  return (count ?? 0) >= MAX_FAILED_LOGINS || (globalCount ?? 0) >= MAX_GLOBAL_FAILED_LOGINS;
+async function reserveLogin(prints: string[]): Promise<number[] | null> {
+  // The database locks, checks, and reserves the attempt before bcrypt runs.
+  // Parallel guesses count as failed until they are proven successful.
+  const { data, error } = await db.rpc("app_internal_reserve_login", {
+    p_fingerprints: prints, p_window_seconds: LOGIN_WINDOW_MS / 1000,
+    p_ip_limit: MAX_FAILED_LOGINS, p_global_limit: MAX_GLOBAL_FAILED_LOGINS,
+  });
+  if (error) throw new Error("login_limit_unavailable");
+  if (data === null) return null;
+  if (!Array.isArray(data) || data.length !== 2) throw new Error("login_limit_unavailable");
+  return data;
 }
-async function noteAttempt(prints: string[], succeeded: boolean) {
-  await app("login_attempts").insert(prints.map((p) => ({ fingerprint_hash: p, succeeded })));
+async function completeAttempt(ids: number[]) {
+  const { error } = await app("login_attempts").update({ succeeded: true }).in("id", ids);
+  if (error) throw new Error("login_attempt_unavailable");
 }
 
 async function login(req: Request) {
@@ -406,25 +417,29 @@ async function login(req: Request) {
   // valid PIN followed by extra characters could be accepted.
   if (!/^\d{6}$/.test(String(pin ?? ""))) return fail("invalid_credentials", 401);
   const prints = await loginFingerprints(req);
-  if (await loginLocked(prints)) return fail("too_many_attempts", 429);
+  const attempt = await reserveLogin(prints);
+  if (!attempt) return fail("too_many_attempts", 429);
 
-  const { data: match } = await db.rpc("app_internal_match_code", { p_code: String(pin) });
+  const { data: match, error: matchError } = await db.rpc("app_internal_match_code", { p_code: String(pin) });
+  if (matchError) throw new Error("credential_check_unavailable");
   if (match === "recovery") {
     // The secret code: the next step asks who is there. Not a sign-in yet.
-    await noteAttempt(prints, true);
+    await completeAttempt(attempt);
     const ticket = randomToken();
-    await app("recovery_tickets").insert({ token_hash: await hash(ticket), stage: "code", expires_at: new Date(Date.now() + RECOVERY_TICKET_MS).toISOString() });
+    const { error } = await app("recovery_tickets").insert({ token_hash: await hash(ticket), stage: "code", expires_at: new Date(Date.now() + RECOVERY_TICKET_MS).toISOString() });
+    if (error) return fail("login_failed", 503);
     return json({ recovery: true, ticket });
   }
   const success = match === "rozha" || match === "yunis";
-  await noteAttempt(prints, success);
   if (!success) return fail("invalid_credentials", 401);
+  await completeAttempt(attempt);
 
   const account = match as Account;
   const token = randomToken();
   const deviceId = text(req.headers.get("x-device-id"), 120) || null;
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 3600_000).toISOString();
-  await app("sessions").insert({ token_hash: await hash(token), account, device_id: deviceId, expires_at: expiresAt });
+  const { error: sessionError } = await app("sessions").insert({ token_hash: await hash(token), account, device_id: deviceId, expires_at: expiresAt });
+  if (sessionError) return fail("login_failed", 503);
   if (deviceId) {
     // A command sent before this sign-in is old news: mark it handled so an
     // old "log out" can't kick the person out right after signing in.
@@ -447,41 +462,54 @@ async function takeTicket(raw: unknown, stage: string) {
   const token = text(raw, 100);
   if (!token) return null;
   const key = await hash(token);
-  const { data } = await app("recovery_tickets").select("token_hash,stage,expires_at").eq("token_hash", key).maybeSingle();
+  const { data, error } = await app("recovery_tickets").select("token_hash,stage,expires_at").eq("token_hash", key).maybeSingle();
+  if (error) throw new Error("recovery_ticket_unavailable");
   if (!data) return null;
-  if (data.stage !== stage || Date.parse(data.expires_at) <= Date.now()) {
+  if (!Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()) {
     await app("recovery_tickets").delete().eq("token_hash", key);
     return null;
   }
-  return key;
+  if (data.stage !== stage) return null;
+  return { key, expiresAt: data.expires_at };
 }
 async function recovery(req: Request, step: string) {
   const b = await readBody(req);
   const prints = await loginFingerprints(req);
-  if (await loginLocked(prints)) return fail("too_many_attempts", 429);
+  const attempt = await reserveLogin(prints);
+  if (!attempt) return fail("too_many_attempts", 429);
   const stage = step === "name" ? "code" : step === "verify" ? "name" : "verified";
-  const key = await takeTicket(b.ticket, stage);
-  if (!key) { await noteAttempt(prints, false); return fail("invalid_credentials", 401); }
+  const ticket = await takeTicket(b.ticket, stage);
+  if (!ticket) return fail("invalid_credentials", 401);
+  const { key } = ticket;
   const refuse = async () => {
     await app("recovery_tickets").delete().eq("token_hash", key);
-    await noteAttempt(prints, false);
     return fail("invalid_credentials", 401);
   };
-  const advance = (next: string) => app("recovery_tickets")
-    .update({ stage: next, expires_at: new Date(Date.now() + RECOVERY_TICKET_MS).toISOString() }).eq("token_hash", key);
+  const advance = async (next: string) => {
+    const { data, error } = await app("recovery_tickets")
+      .update({ stage: next, expires_at: new Date(Date.now() + RECOVERY_TICKET_MS).toISOString() })
+      .eq("token_hash", key).eq("stage", stage).gt("expires_at", nowIso()).select("token_hash");
+    if (error) throw new Error("recovery_ticket_unavailable");
+    return !!data?.length;
+  };
 
   if (step === "name") {
     // Case-sensitive; only a stray space before or after is ignored.
-    const { data: right } = await db.rpc("app_internal_check_recovery_name", { p_name: text(b.name, 40) });
+    const name = String(b.name ?? "").trim();
+    if (!name || name.length > 40) return await refuse();
+    const { data: right, error } = await db.rpc("app_internal_check_recovery_name", { p_name: name });
+    if (error) throw new Error("credential_check_unavailable");
     if (right !== true) return await refuse();
-    await advance("name");
+    if (!await advance("name")) return fail("invalid_credentials", 401);
+    await completeAttempt(attempt);
     return ok();
   }
   if (step === "verify") {
-    const { data: good } = await db.rpc("app_internal_check_account_pin", { p_account: "rozha", p_pin: String(b.pin ?? "") });
+    const { data: good, error } = await db.rpc("app_internal_check_account_pin", { p_account: "rozha", p_pin: String(b.pin ?? "") });
+    if (error) throw new Error("credential_check_unavailable");
     if (good !== true) return await refuse();
-    await noteAttempt(prints, true);
-    await advance("verified");
+    if (!await advance("verified")) return fail("invalid_credentials", 401);
+    await completeAttempt(attempt);
     return ok();
   }
   // save
@@ -491,11 +519,23 @@ async function recovery(req: Request, step: string) {
   for (const v of [rozhaPin, yunisPin, secretCode]) if (v && !/^\d{6}$/.test(v)) return fail("invalid_pin");
   if ((rozhaPin && isWeakPin(rozhaPin)) || (yunisPin && isWeakPin(yunisPin))) return fail("weak_pin");
   if (answer && answer.length > 40) return fail("invalid_answer");
+  // Atomically consume the verified capability before changing credentials.
+  // Two simultaneous saves with the same ticket must never both succeed.
+  const { data: consumed, error: consumeError } = await app("recovery_tickets").delete()
+    .eq("token_hash", key).eq("stage", "verified").gt("expires_at", nowIso()).select("token_hash");
+  if (consumeError) throw new Error("recovery_ticket_unavailable");
+  if (!consumed?.length) return fail("invalid_credentials", 401);
   if (rozhaPin || yunisPin || secretCode) {
     const { data: result, error } = await db.rpc("app_internal_set_credentials", { p_rozha: rozhaPin, p_yunis: yunisPin, p_code: secretCode });
     if (error) return fail("save_failed", 500);
-    if (result === "duplicate") return fail("duplicate_pin");
-    if (result !== "ok") return fail("invalid_pin");
+    if (result === "duplicate" || result === "invalid") {
+      // Validation did not change anything. Keep the original expiry and let
+      // the person correct the form without repeating the recovery steps.
+      const { error: restoreError } = await app("recovery_tickets").insert({ token_hash: key, stage: "verified", expires_at: ticket.expiresAt });
+      if (restoreError) return fail("save_failed", 500);
+      return fail(result === "duplicate" ? "duplicate_pin" : "invalid_pin");
+    }
+    if (result !== "ok") return fail("save_failed", 500);
   }
   if (answer) {
     const { data: result, error } = await db.rpc("app_internal_set_recovery_name", { p_name: answer });
@@ -503,6 +543,7 @@ async function recovery(req: Request, step: string) {
   }
   await app("audit_events").insert({ id: newId("audit"), actor: "rozha", device_id: text(req.headers.get("x-device-id"), 120) || null, action: "change_codes",
     payload: { rozhaPin: !!rozhaPin, yunisPin: !!yunisPin, secretCode: !!secretCode, answer: !!answer } });
+  await completeAttempt(attempt);
   return ok();
 }
 
@@ -538,53 +579,35 @@ async function cheerAfterOrder(s: Session) {
 
 async function saveOrder(s: Session, b: any) {
   const id = text(b.id, 160);
-  if (!id || !Array.isArray(b.entries)) return fail("invalid_order");
+  if (!id || !Array.isArray(b.entries) || !b.entries.length) return fail("invalid_order");
   // A real order is at most a few dozen suppliers and a few hundred lines;
   // anything far beyond that is refused instead of written line by line.
   const lineCount = b.entries.reduce((n: number, e: any) => n + (Array.isArray(e?.items) ? e.items.length : 0), 0);
-  if (b.entries.length > 80 || lineCount > 800) return fail("invalid_order");
-  const { data: existing } = await app("orders").select("id").eq("id", id).maybeSingle();
-  if (existing) return ok();   // already saved (a retry) -- never duplicate its lines
-  const date = b.date && !isNaN(Date.parse(b.date)) ? b.date : nowIso();
-  const { error } = await app("orders").insert({ id, status: "sent", created_at: date, sent_at: date, created_by: s.account, sent_by: s.account });
-  if (error) return fail("save_failed", 500);
+  if (b.entries.length > 80 || !lineCount || lineCount > 800 || b.entries.some((e: any) => !e || !Array.isArray(e.items)
+    || e.items.some((i: any) => !i || !Number.isFinite(Number(i.qty)) || Number(i.qty) <= 0 || Number(i.qty) > 99999))) return fail("invalid_order");
+  if (b.date && !Number.isFinite(Date.parse(b.date))) return fail("invalid_order");
+  const date = b.date ? new Date(b.date).toISOString() : nowIso();
   // Keep each supplier's name with the order, so History still shows it after
   // the supplier is renamed or deleted (supplier_id is then set to null).
   const supplierIds = [...new Set(b.entries.map((e: any) => text(e.supplierId, 120)).filter(Boolean))];
-  const { data: sups } = supplierIds.length ? await app("suppliers").select("id,name").in("id", supplierIds) : { data: [] as any[] };
+  const { data: sups, error: supplierError } = supplierIds.length ? await app("suppliers").select("id,name").in("id", supplierIds) : { data: [] as any[], error: null };
+  if (supplierError) return fail("save_failed", 500);
   const supplierNames = new Map((sups ?? []).map((x: any) => [x.id, x.name]));
   const lines = b.entries.flatMap((e: any) => (Array.isArray(e.items) ? e.items : []).map((i: any) => ({
-    order_id: id, supplier_id: supplierNames.has(text(e.supplierId, 120)) ? text(e.supplierId, 120) : null,
+    supplier_id: supplierNames.has(text(e.supplierId, 120)) ? text(e.supplierId, 120) : null,
     supplier_name: supplierNames.get(text(e.supplierId, 120)) ?? (text(e.supplierName, 160) || null),
     item_id: text(i.itemId, 120) || "legacy",
     item_name: text(i.name) || text(i.itemId) || "Item", unit_id: text(i.unit, 120) || null,
-    qty: Math.min(Math.max(Number(i.qty) || 0, 0.0001), 99999),
+    qty: Number(i.qty),
   })));
-  if (lines.length) {
-    const { error: e2 } = await app("order_lines").insert(lines);
-    if (e2) { await app("orders").delete().eq("id", id); return fail("save_failed", 500); }
-  }
-  // Await the best-effort updates so the Edge Function cannot be frozen after
-  // returning the response before they have actually happened.
-  await bumpStockOnSend(lines).catch((e) => console.error("stock bump failed", e));
-  await cheerAfterOrder(s).catch(() => {});
+  // Header, lines, and stock increments commit together. Retrying an existing
+  // order never observes half an order or increments stock a second time.
+  const { data: saved, error } = await db.rpc("app_internal_save_order", {
+    p_id: id, p_date: date, p_account: s.account, p_lines: lines,
+  });
+  if (error || (saved !== true && saved !== false)) return fail("save_failed", 500);
+  if (saved) await cheerAfterOrder(s).catch(() => {});
   return ok();
-}
-
-/* Par-level stock estimate, "up" side: every item this order sent that has
-   tracking turned on gets its estimate increased by the ordered quantity
-   (assumes same-day delivery -- there is no receiving step in this app by
-   design). The "down" side is a daily decay run by send-push's cron tick. */
-async function bumpStockOnSend(lines: { item_id: string; qty: number }[]) {
-  const byItem = new Map<string, number>();
-  for (const l of lines) byItem.set(l.item_id, (byItem.get(l.item_id) ?? 0) + Number(l.qty));
-  if (!byItem.size) return;
-  const { data: tracked } = await app("item_pars").select("item_id,est_qty").in("item_id", [...byItem.keys()]);
-  for (const row of tracked ?? []) {
-    const add = byItem.get(row.item_id) ?? 0;
-    if (!add) continue;
-    await app("item_pars").update({ est_qty: Math.round((Number(row.est_qty) + add) * 100) / 100, est_updated_at: nowIso() }).eq("item_id", row.item_id);
-  }
 }
 
 /* ---------- Devices ---------- */
@@ -623,6 +646,7 @@ async function forwardPush(s: Session, b: any) {
   if (!allowed.includes(type)) return fail(isRozha(s) ? "invalid_type" : "forbidden", isRozha(s) ? 400 : 403);
   const res = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
     method: "POST",
+    signal: AbortSignal.timeout(20_000),
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}`, apikey: ANON_KEY, "x-cron-secret": CRON_SECRET },
     body: JSON.stringify({
       type, title: text(b.title, 80), bodyEn: text(b.bodyEn, 300), bodyKu: text(b.bodyKu, 300), bodyAr: text(b.bodyAr, 300),
@@ -696,7 +720,8 @@ Deno.serve(async (req) => {
       const boost = Number(b.busyBoostPct);
       const { data: existing } = await app("item_pars").select("est_qty").eq("item_id", itemId).maybeSingle();
       const estQty = b.estQty !== undefined && b.estQty !== null && b.estQty !== ""
-        ? Math.max(0, Number(b.estQty) || 0) : (existing ? Number(existing.est_qty) : parQty);
+        ? Number(b.estQty) : (existing ? Number(existing.est_qty) : parQty);
+      if (!Number.isFinite(estQty) || estQty < 0 || estQty > 99999) return fail("invalid_stock");
       const { error } = await app("item_pars").upsert({
         item_id: itemId, par_qty: parQty, busy_boost_pct: Number.isFinite(boost) && boost >= 0 ? Math.min(boost, 500) : 50,
         est_qty: estQty, est_updated_at: nowIso(),
@@ -772,18 +797,22 @@ Deno.serve(async (req) => {
 
     // Push notifications
     if (path === "push/subscription") {
-      const endpoint = text(b.endpoint, 1000);
-      if (!/^https:\/\//.test(endpoint)) return fail("invalid_endpoint");
+      const endpoint = b.endpoint;
+      if (!isPushEndpoint(endpoint)) return fail("invalid_endpoint");
       // A device may only remove its own subscription (Rozha may remove any).
       if (M === "DELETE") {
         let q = app("push_subscriptions").delete().eq("endpoint", endpoint);
         if (!rozha) q = s.deviceId ? q.eq("device_id", s.deviceId) : q.is("device_id", null);
-        await q;
-        return ok();
+        const { error } = await q;
+        return error ? fail("delete_failed", 500) : ok();
       }
       if (M === "PUT") {
+        if (!s.deviceId) return fail("device_required");
+        const { data: existing, error: readError } = await app("push_subscriptions").select("device_id").eq("endpoint", endpoint).maybeSingle();
+        if (readError) return fail("save_failed", 500);
+        if (existing?.device_id && existing.device_id !== s.deviceId) return fail("forbidden", 403);
         const p256dh = text(b.p256dh, 200), auth = text(b.auth, 100);
-        if (!p256dh || !auth) return fail("invalid_keys");
+        if (!/^[A-Za-z0-9_-]{87}=?$/.test(p256dh) || !/^[A-Za-z0-9_-]{22}(?:==)?$/.test(auth)) return fail("invalid_keys");
         const { error } = await app("push_subscriptions").upsert({
           endpoint, p256dh, auth, device_id: s.deviceId, lang: langOf(b.lang), updated_at: nowIso(),
         });
@@ -791,14 +820,15 @@ Deno.serve(async (req) => {
       }
     }
     if (M === "PUT" && path === "push/lang") {
+      if (!isPushEndpoint(b.endpoint)) return fail("invalid_endpoint");
       let q = app("push_subscriptions").update({ lang: langOf(b.lang), updated_at: nowIso() }).eq("endpoint", text(b.endpoint, 1000));
       if (!rozha) q = s.deviceId ? q.eq("device_id", s.deviceId) : q.is("device_id", null);
-      await q;
-      return ok();
+      const { error } = await q;
+      return error ? fail("save_failed", 500) : ok();
     }
     if (M === "POST" && path === "push/send") return await forwardPush(s, b);
     if (M === "PUT" && path === "reminder") {
-      const time = text(b.time, 5);
+      const time = String(b.time ?? "").trim();
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return fail("invalid_time");
       // A time still ahead today can fire today; one that already passed waits for tomorrow.
       const erbil = new Date(Date.now() + 3 * 3600_000);
@@ -814,6 +844,7 @@ Deno.serve(async (req) => {
     return fail("not_found", 404);
   } catch (e) {
     if (e instanceof BodyTooLarge) return fail("too_large", 413);
+    if (e instanceof InvalidBody) return fail("invalid_input", 400);
     console.error(path, e);
     return fail("server_error", 500);
   }
