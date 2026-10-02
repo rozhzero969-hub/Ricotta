@@ -63,6 +63,10 @@ focus and reduced motion. Stock/transfer checks passed both accounts and all thr
 languages at three widths, including explicit stock-count confirmation, duplicate
 save prevention and rejection of stale session responses.
 
+Receipt and ingredient-worker browser fixtures passed. They fill and re-check
+every submitted field, reject missing or ambiguous matches, and require an exact
+success message after a single click. These tests submit only local fixture forms.
+
 ## Database and budget findings
 
 At inspection the database used about **31 MB**, with **48 orders**, **393 order
