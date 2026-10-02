@@ -197,6 +197,13 @@ const server=http.createServer((rq,res)=>{
     assert.match(await page.locator('#wkBar').innerText(),/Off/i,'worker status shows off');
     await page.locator('#wkStart').click();await page.waitForTimeout(400);
     assert.ok(calls.some(c=>c.ep==='start-worker'&&c.method==='POST'),'Turn on asks the server to start the worker');
+    // The office PC is away (off, asleep or signed out): the button still works and the start waits for the PC.
+    await page.evaluate(()=>{stockState.control={...stockState.control,workerOnline:false,launcherOnline:false,startPending:false,startRequestedAt:null};wkPaint();});
+    assert.match(await page.locator('#wkBar').innerText(),/off, asleep or signed out/i,'says why the PC cannot answer');
+    assert.equal(await page.locator('#wkStart').isEnabled(),true,'Turn on can still be pressed while the PC is away');
+    await page.evaluate(()=>{stockState.control={...stockState.control,startPending:true};wkPaint();});
+    assert.match(await page.locator('#wkBar').innerText(),/Waiting for the office PC[\s\S]*starts by itself/i,'a kept start waits for the PC');
+    await page.evaluate(()=>{stockState.control={...stockState.control,launcherOnline:true,startPending:false};wkPaint();});
     // Health: running but the workplace page is not signed in, then test mode, then ready.
     const health=async(c)=>{await page.evaluate(c=>{stockState.control={...stockState.control,workerOnline:true,...c};wkPaint();},c);return page.locator('#wkBar').innerText();};
     assert.match(await health({workerPageReady:false,workerLive:true}),/Needs attention[\s\S]*Sign in/,'shows when the workplace page needs a sign-in');

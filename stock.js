@@ -68,7 +68,7 @@ function stApplyLive(d){
   const b = new Map();
   for(const x of d.balances || []) b.set(x.itemId + '|' + x.storage, x.quantity);
   stockState.balances = b;
-  stockState.sig = JSON.stringify([stockState.requests, [...b], stockState.control && [stockState.control.workerOnline, stockState.control.launcherOnline, stockState.control.signinCheckedAt, stockState.control.signinRequestedAt, stockState.control.workerProblem]]);
+  stockState.sig = JSON.stringify([stockState.requests, [...b], stockState.control && [stockState.control.workerOnline, stockState.control.launcherOnline, stockState.control.signinCheckedAt, stockState.control.signinRequestedAt, stockState.control.workerProblem, stockState.control.startPending]]);
 }
 async function loadStock(){
   const r = await stockApi('bootstrap');
@@ -209,9 +209,13 @@ function workerState(){
   const c = stockState.control; if(!c) return null;
   const on = c.workerOnline;
   const waiting = !on && c.startRequestedAt && Date.now() - Date.parse(c.startRequestedAt) < 3 * 60 * 1000;
+  // The button always works: with the office PC away, the start is kept and happens as soon as the PC is back.
+  if(!on && !c.launcherOnline) return c.startPending
+    ? {cls: 'off', label: t('wkWaitingPc'), hint: t('wkHintWillStart'), button: true, canStart: false}
+    : {cls: 'off', label: t('wkOff'), hint: t('wkHintPcAway'), button: true, canStart: true};
   // The PC explains a failed start; that beats "Starting…" or silence.
   const problem = !waiting && c.workerProblem ? t('wkHintProblem') + c.workerProblem : '';
-  if(!on) return {cls: problem ? 'warn' : 'off', label: waiting ? t('wkStarting') : t('wkOff'), hint: problem || (c.launcherOnline ? '' : t('wkHintNoHelper')), button: true, canStart: c.launcherOnline && !waiting};
+  if(!on) return {cls: problem ? 'warn' : 'off', label: waiting ? t('wkStarting') : t('wkOff'), hint: problem, button: true, canStart: !waiting};
   if(c.workerPageReady === false) return {cls: 'warn', label: t('wkAttention'), hint: t('wkHintSignIn')};
   if(c.workerLive === false) return {cls: 'test', label: t('wkTest'), hint: t('wkHintTest')};
   return {cls: 'on', label: c.workerLive ? t('wkReady') : t('wkOn'), hint: c.workerLive ? t('wkHintReady') : ''};
@@ -244,7 +248,7 @@ function wkPaint(){
   if(b) b.onclick = async () => {
     b.disabled = true;
     const r = await stockApi('start-worker', {method: 'POST'});
-    if(!r.ok) toast(r.data?.error || t('saveFailed'), 'error'); else toast(t('wkAsked'));
+    if(!r.ok) toast(r.data?.error || t('saveFailed'), 'error'); else toast(r.data?.queued ? t('wkAskedLater') : t('wkAsked'));
     await refreshStockLight(); wkPaint();
   };
   const sc = document.getElementById('wkSignin');
