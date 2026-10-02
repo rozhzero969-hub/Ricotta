@@ -2,12 +2,13 @@
 // no coordinate clicks, no automatic retry after a click, and dry-run by default.
 import 'dotenv/config';
 import { chromium } from 'playwright';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { rmSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prepareReceipt, submitReceipt, RECEIPT_PAGE } from './receipt.mjs';
 import { prepareItem, submitItem, formOpen, STOCK_PAGE } from './items.mjs';
+import {nextPollDelay} from './polling.mjs';
+import { acquireLock } from './lock.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const PAGE='https://pos.shaydattendance.com/inventory/transfer';
@@ -22,27 +23,18 @@ const RECEIPTS_LIVE=LIVE&&!!RECEIPT_SUCCESS;
 // Ingredients are saved only with ALLOW_SUBMIT=1 and both exact success messages (after "Add ingredient" and after "Save").
 const ITEM_SUCCESS={create:(process.env.ITEM_ADD_SUCCESS_TEXT||'').trim(),edit:(process.env.ITEM_EDIT_SUCCESS_TEXT||'').trim()};
 const ITEMS_LIVE=LIVE&&!!ITEM_SUCCESS.create&&!!ITEM_SUCCESS.edit;
-const POLL=Math.max(5,Number(process.env.POLL_SECONDS)||5)*1000;
+const POLL=Math.min(60,Math.max(5,Number(process.env.POLL_SECONDS)||5))*1000;
 if(TOKEN.length<32)throw new Error('Set WORKER_TOKEN in worker/.env');
 if(LIVE&&!SUCCESS)throw new Error('Live submission requires CONFIRMED_SUCCESS_TEXT');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-// Only one worker may drive the workplace page. The lock file carries a heartbeat,
-// so a lock left by a crash or reboot goes stale and cannot block startup forever.
+// Only one worker may drive the workplace page. A lock is recovered only after
+// its process has exited; an old heartbeat alone never permits another driver.
 const LOCK=path.join(here,'worker.lock');
-const lockBody=()=>JSON.stringify({pid:process.pid,at:Date.now()});
-async function takeLock(){
-  try{await writeFile(LOCK,lockBody(),{flag:'wx'});return}catch(e){if(e.code!=='EEXIST')throw e}
-  const held=JSON.parse(await readFile(LOCK,'utf8').catch(()=>'{}')||'{}');
-  let alive=false;
-  if(held.pid>0&&held.pid!==process.pid&&Date.now()-Number(held.at)<90000){try{process.kill(held.pid,0);alive=true}catch(e){alive=e.code==='EPERM'}}
-  if(alive){console.error(`Another Ricotta worker is already running (process ${held.pid}). Exiting so only one instance drives the workplace page.`);process.exit(0)}
-  await writeFile(LOCK,lockBody());
-}
-function releaseLock(){try{rmSync(LOCK,{force:true})}catch{}}
-await takeLock();
-process.on('exit',releaseLock);
+const workerLock=acquireLock(LOCK);
+if(!workerLock.acquired){console.error(`${workerLock.reason}${workerLock.held?.pid?` (process ${workerLock.held.pid})`:''}`);process.exit(0)}
+process.on('exit',()=>{try{workerLock.release()}catch{}});
 for(const sig of ['SIGINT','SIGTERM','SIGHUP'])process.on(sig,()=>process.exit(0));
-setInterval(()=>writeFile(LOCK,lockBody()).catch(()=>{}),30000).unref();
+setInterval(()=>{try{workerLock.heartbeat()}catch(error){console.error(error.message);process.exit(1)}},30000).unref();
 async function api(route,method='GET',value){
   const r=await fetch(API+'/'+route,{method,headers:{'Content-Type':'application/json','x-worker-token':TOKEN},body:value===undefined?undefined:JSON.stringify(value),signal:AbortSignal.timeout(20000)});
   const b=await r.json().catch(()=>({error:'No server response'}));if(!r.ok)throw new Error(b.error||'Queue error');return b;
@@ -64,7 +56,7 @@ async function inspect(page,r){
   if((await textSize.innerText()).replace(/\s/g,'')!=='100%')await textSize.click();
   if((await textSize.innerText()).replace(/\s/g,'')!=='100%')fail('Page text size is not 100%');
   if(!r.from||!r.to||r.from===r.to)fail('Invalid storages');
-  if(!r.itemName||!r.unitLabel||!(Number(r.quantity)>0))fail('The request is missing its item, unit or quantity');
+  if(!r.itemName||!r.unitLabel||!(Number.isFinite(r.quantity)&&r.quantity>0))fail('The request is missing its item, unit or quantity');
   // A fresh navigation clears any form left from a prior preview or error.
   await page.goto(PAGE,{waitUntil:'domcontentloaded'});
   await one(page.getByRole('heading',{name:/Move stock between storages/i}),'transfer page heading');
@@ -104,7 +96,7 @@ async function inspect(page,r){
   const app=Number(r.appQuantity);
   const shown=(match[1].split('.')[1]||'').length;
   const tolerance=shown>0?0.5*Math.pow(10,-shown)+1e-9:1e-6;
-  if(!Number.isFinite(workplace)||Math.abs(workplace-app)>tolerance)fail(`Stock mismatch for ${r.itemName}: workplace ${workplace}, app ${Math.round(app*1e6)/1e6} ${r.unitLabel}. Recount it in Stock, and check the unit conversion matches the workplace system.`);
+  if(!Number.isFinite(workplace)||!Number.isFinite(app)||Math.abs(workplace-app)>tolerance)fail(`Stock mismatch for ${r.itemName}: workplace ${workplace}, app ${Math.round(app*1e6)/1e6} ${r.unitLabel}. Recount it in Stock, and check the unit conversion matches the workplace system.`);
   if(workplace<Number(r.quantity))fail(`Insufficient workplace stock for ${r.itemName}`);
   if(await rowsOnPage(page)!==1)fail('Unexpected number of form rows');
   // The workplace now focuses the amount box as soon as an item is picked. Read the whole row back once more
@@ -194,7 +186,7 @@ async function receiptTurn(){
     const open=rPage&&!rPage.isClosed()&&rPage.url().startsWith(RECEIPT_PAGE)&&await rPage.getByRole('button',{name:'Receive & send to finance',exact:true}).isVisible().catch(()=>false);
     if(!open){
       held=null;
-      await api('worker/receipt-report','POST',{id:r.id,status:'closed',message:'The receipt was finished or left on the PC without the app. Check the workplace receipts and confirm in the app.',image:await receiptShot()}).catch(e=>console.error('Could not report receipt:',e.message));
+      await api('worker/receipt-report','POST',{id:r.id,claimToken:r.claimToken,status:'closed',message:'The receipt was finished or left on the PC without the app. Check the workplace receipts and confirm in the app.',image:await receiptShot()}).catch(e=>console.error('Could not report receipt:',e.message));
       return;
     }
     if(st.status!=='prepared'||!st.finalApproved||!RECEIPTS_LIVE)return;
@@ -221,14 +213,14 @@ async function receiptTurn(){
     await prepareReceipt(rPage,r);
     await rPage.bringToFront().catch(()=>{});
     held=r;
-    await api('worker/receipt-report','POST',{id:r.id,status:'prepared',message:'Filled in on the PC and checked. Waiting for the final approval in the app.',image:await receiptShot()});
+    await api('worker/receipt-report','POST',{id:r.id,claimToken:r.claimToken,status:'prepared',message:'Filled in on the PC and checked. Waiting for the final approval in the app.',image:await receiptShot()});
     console.log('Receipt filled in and waiting for the final approval:',r.id);
   }catch(e){
     held=null;
     console.error('Receipt stopped:',r.id,e.message);
     const image=await receiptShot();
     await resetReceiptTab();
-    await api('worker/receipt-report','POST',{id:r.id,status:'failed',message:e.message,image}).catch(err=>console.error('Could not report receipt:',err.message));
+    await api('worker/receipt-report','POST',{id:r.id,claimToken:r.claimToken,status:'failed',message:e.message,image}).catch(err=>console.error('Could not report receipt:',err.message));
   }
 }
 // Ingredient tasks (create / edit in the workplace) get a third tab and follow the same rules as receipts.
@@ -246,7 +238,7 @@ async function itemTurn(){
     const open=iPage&&!iPage.isClosed()&&iPage.url().startsWith(STOCK_PAGE)&&await formOpen(iPage,j).catch(()=>false);
     if(!open){
       heldItem=null;
-      await api('worker/itemjob-report','POST',{id:j.id,status:'closed',message:'The form was saved or closed on the PC without the app. Check the workplace and confirm in the app.',image:await itemShot()}).catch(e=>console.error('Could not report item task:',e.message));
+      await api('worker/itemjob-report','POST',{id:j.id,claimToken:j.claimToken,status:'closed',message:'The form was saved or closed on the PC without the app. Check the workplace and confirm in the app.',image:await itemShot()}).catch(e=>console.error('Could not report item task:',e.message));
       return;
     }
     if(st.status!=='prepared'||!st.finalApproved||!ITEMS_LIVE)return;
@@ -272,16 +264,18 @@ async function itemTurn(){
     await prepareItem(iPage,j);
     await iPage.bringToFront().catch(()=>{});
     heldItem=j;
-    await api('worker/itemjob-report','POST',{id:j.id,status:'prepared',message:'Filled in on the PC and checked. Waiting for the final approval in the app.',image:await itemShot()});
+    await api('worker/itemjob-report','POST',{id:j.id,claimToken:j.claimToken,status:'prepared',message:'Filled in on the PC and checked. Waiting for the final approval in the app.',image:await itemShot()});
   }catch(e){
     heldItem=null;
     console.error('Item task stopped:',j.id,e.message);
     const image=await itemShot();
     await resetItemTab();
-    await api('worker/itemjob-report','POST',{id:j.id,status:'failed',message:e.message,image}).catch(err=>console.error('Could not report item task:',err.message));
+    await api('worker/itemjob-report','POST',{id:j.id,claimToken:j.claimToken,status:'failed',message:e.message,image}).catch(err=>console.error('Could not report item task:',err.message));
   }
 }
+let pollDelay=POLL;
 while(true){
+  let busy=false;
   try{
     const pageReady=page.url()===PAGE && await page.getByRole('heading',{name:/Move stock between storages/i}).isVisible().catch(()=>false);
     if(pageReady!==lastPageReady){
@@ -294,9 +288,10 @@ while(true){
     if(!pageReady&&Date.now()-lastRecovery>60000){lastRecovery=Date.now();await page.goto(PAGE,{waitUntil:'domcontentloaded'}).catch(()=>{})}
     else if(pageReady){
       const claimed=LIVE?(await api('worker/claim','POST',{})).request:null;
-      if(claimed)await execute(claimed);
-      else{const next=(await api('worker/preview')).request;if(next)await preview(next);else{await receiptTurn();await itemTurn()}}
+      if(claimed){busy=true;await execute(claimed)}
+      else{const next=(await api('worker/preview')).request;if(next){busy=true;await preview(next)}else{await receiptTurn();await itemTurn();busy=!!held||!!heldItem}}
     }
   }catch(e){console.error('Queue unavailable; no transfer will run:',e.message)}
-  await sleep(POLL);
+  pollDelay=nextPollDelay(pollDelay,busy,POLL);
+  await sleep(pollDelay);
 }

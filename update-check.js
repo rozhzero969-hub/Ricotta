@@ -37,8 +37,8 @@ const APP_FILES = ['boot.js','config.js','icons.js','i18n.js','storage.js','soun
    minutes, so a plain reload can come back on the old version. Fetching each
    file with cache:'reload' overwrites the cached copy first. The current
    order selection is saved so a forced refresh doesn't lose it. */
-async function hardReload(){
-  try{ if(state && state.cart && Object.keys(state.cart).length) lset('pendingCart', state.cart); }catch(e){}
+async function hardReload({onlyIfIdle=false}={}){
+  try{ if(state && state.cart) persistCartDraft(); }catch(e){}
   try{
     const page = location.pathname;
     const urls = [page].concat(APP_FILES);
@@ -47,7 +47,10 @@ async function hardReload(){
       new Promise(r=>setTimeout(r, 5000))   /* never hang on a slow connection */
     ]);
   }catch(e){ /* fall through and reload anyway */ }
+  // Prefetch can take seconds. Keep any new work started during that time.
+  if(onlyIfIdle && (!cartIsEmpty() || modalIsOpen())) return false;
   location.reload();
+  return true;
 }
 
 function cartIsEmpty(){
@@ -56,13 +59,15 @@ function cartIsEmpty(){
     // A Rico chat (it lives only in memory) or text being typed also counts.
     const typing = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.value;
     const chatting = typeof rico !== 'undefined' && (rico.streaming || rico.messages.length || ricoRecorder.active);
-    return !state.queue && !state.pinBuffer && !state.pinBusy && !Object.values(state.cart).some(q=>q>0) && !typing && !chatting;
+    const receiptDraft = typeof rcState !== 'undefined' && (rcState.supplierId || rcState.invoice || rcState.rate || rcState.deliveryAmt || rcState.lines.some(line=>line.itemId || line.qty || line.cost || line.search));
+    const transferDraft = typeof trState !== 'undefined' && (trState.itemId || trState.qty || trState.search);
+    return !state.queue && !state.pinBuffer && !state.pinBusy && !Object.values(state.cart).some(q=>q>0) && !typing && !chatting && !receiptDraft && !transferDraft;
   }
   catch(e){ return false; } /* if state isn't ready yet, be conservative and ask */
 }
 
 function modalIsOpen(){
-  return !!document.querySelector('#modalRoot .modal-overlay');
+  return !!document.querySelector('#modalRoot .modal-overlay, #forceRoot .modal-overlay, .sel-sheet:not(.out)');
 }
 
 function escUpdateText(s){
@@ -86,7 +91,7 @@ async function checkForUpdate(){
   try{
     const live = await fetchLiveVersion();
     if(!live || live === APP_VERSION || modalIsOpen()) return;
-    if(cartIsEmpty()){ hardReload(); return; }
+    if(cartIsEmpty()){ await hardReload({onlyIfIdle:true}); return; }
     if(live === snoozedVersion) return;
     updatePromptOpen = true;
     const ok = await showConfirm(escUpdateText(t('updateReadyMsg')), {

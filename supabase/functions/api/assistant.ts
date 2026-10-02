@@ -92,6 +92,9 @@ async function loadWorld(db: any, s: Session) {
       .order("occurred_at", { ascending: false }).limit(40),
     app("item_pars").select("item_id,par_qty,busy_boost_pct,est_qty,est_updated_at"),
   ]), DB_TIMEOUT_MS, "load_world");
+  for (const result of [sup, items, units, orders, reminder, devices, activity, pars]) {
+    if (result.error) throw new Error("kitchen_data_unavailable");
+  }
   // The real counted stock (Stock screen): settings, balances per zone, zones and item groups.
   // A failure here must not break Rico for ordering, so each read falls back to empty.
   const [stSet, stBal, stSto, stGrp] = await withTimeout((async () => await Promise.all([
@@ -105,8 +108,9 @@ async function loadWorld(db: any, s: Session) {
   for (let i = 0; i < orderRows.length; i += 60) {
     const ids = orderRows.slice(i, i + 60).map((o: any) => o.id);
     for (let from = 0; ; from += 1000) {
-      const { data } = await withTimeout<any>(app("order_lines").select("order_id,supplier_id,supplier_name,item_id,item_name,unit_id,qty")
+      const { data, error } = await withTimeout<any>(app("order_lines").select("order_id,supplier_id,supplier_name,item_id,item_name,unit_id,qty")
         .in("order_id", ids).order("id").range(from, from + 999), DB_TIMEOUT_MS, "order_lines");
+      if (error) throw new Error("order_history_unavailable");
       lines.push(...(data ?? []));
       if (!data || data.length < 1000) break;
     }
@@ -515,17 +519,16 @@ function toolStockStatus(w: World) {
       : "No items have stock tracking turned on yet (set it up on the item's edit screen).",
   };
 }
-async function toolSetStockCount(db: any, w: World, a: any) {
+function proposeStockCount(w: World, a: any, emit: Emit) {
   const it = w.items.find((i) => i.id === text(a.item_id, 120)) ?? w.items.find((i) => norm(i.name) === norm(a.item_name));
   if (!it) return { error: "Unknown item. Use find_items first to get its item_id." };
   const qty = Number(a.qty);
   if (!(qty >= 0) || qty > 99999) return { error: "Give a real, non-negative quantity." };
-  const app = (t: string) => db.from(`app_${t}`);
-  const { data: existing } = await withTimeout<any>(app("item_pars").select("item_id,par_qty").eq("item_id", it.id).maybeSingle(), DB_TIMEOUT_MS, "pars_read");
+  const existing = w.pars.find((p) => p.item_id === it.id);
   if (!existing) return { error: `Stock tracking isn't turned on for "${it.name}" yet. It can be turned on with a par level on the item's edit screen (Items).` };
-  const { error } = await withTimeout<any>(app("item_pars").update({ est_qty: qty, est_updated_at: new Date().toISOString() }).eq("item_id", it.id), DB_TIMEOUT_MS, "pars_write");
-  if (error) return { error: "Could not save that. Try again." };
-  return { saved: true, item: it.name, est_qty: qty, par_qty: Number(existing.par_qty) };
+  emit({ type: "proposal", proposal: { id: pid(), kind: "stock_count", itemId: it.id, name: it.name,
+    qty, parQty: Number(existing.par_qty), busyBoostPct: Number(existing.busy_boost_pct), beforeQty: Number(existing.est_qty) } });
+  return { shown: true, item: it.name, est_qty: qty, what_happens: "The person confirms the stock count on the card before it is saved." };
 }
 
 function toolRecentChanges(w: World, a: any) {
@@ -744,7 +747,7 @@ const TOOLS = [
     input_schema: { type: "object", properties: { limit: { type: "integer" } } } },
   { name: "stock_status", description: "Par-level stock ESTIMATES for items that have tracking turned on: current estimated on-hand, par level (boosted automatically on that item's busiest ordering days), and which are at or below par. This is an estimate learned from order history, not an exact count -- say so if asked.",
     input_schema: { type: "object", properties: {} } },
-  { name: "set_stock_count", description: "Correct a tracked item's stock estimate to a real count the person just told you (e.g. 'we have 3 boxes of tomatoes left'). Use find_items first if you don't already have the item_id.",
+  { name: "set_stock_count", description: "Show a confirmation card to correct a tracked item's stock estimate to a real count the person just told you (e.g. 'we have 3 boxes of tomatoes left'). Nothing is saved until they confirm. Use find_items first if you don't already have the item_id.",
     input_schema: { type: "object", properties: { item_id: { type: "string" }, item_name: { type: "string" }, qty: { type: "number" } }, required: ["qty"] } },
   { name: "stock_levels", description: "REAL counted stock from the Stock screen (in each item's counting unit), per zone, with low-stock warnings and the item's groups. Filter by part of a name (query), zone (storage), group, or only:'in_stock'|'low'|'not_set_up'. Use this (not stock_status) for 'how much X do we have', 'what is low', 'what is in the freezer'.",
     input_schema: { type: "object", properties: { query: { type: "string" }, storage: { type: "string", description: "Zone name" }, group: { type: "string", description: "Group name or id" }, only: { type: "string", enum: ["in_stock", "low", "not_set_up"] }, limit: { type: "integer" } } } },
@@ -941,8 +944,9 @@ async function* readSSE(res: Response) {
 }
 
 async function config(db: any) {
-  const { data } = await db.from("app_secrets").select("key,value")
-    .in("key", ["gemini_api_key", "groq_api_key"]);
+  const { data, error } = await withTimeout<any>(db.from("app_secrets").select("key,value")
+    .in("key", ["gemini_api_key", "groq_api_key"]), DB_TIMEOUT_MS, "assistant_config");
+  if (error) throw new Error("assistant_config_unavailable");
   const saved = Object.fromEntries((data ?? []).map((r: any) => [r.key, r.value]));
   const geminiSecret = Deno.env.get("GEMINI_API_KEY") ?? "";
   const groqSecret = Deno.env.get("GROQ_API_KEY") ?? "";
@@ -968,8 +972,9 @@ export async function saveGroqKey(db: any, key: unknown) {
   if (!/^gsk_[A-Za-z0-9_-]{20,}$/.test(value)) return { ok: false, error: "invalid_key" };
   const c = await config(db);
   if (c.provider === "groq") return { ok: false, error: "already_configured" };
-  const { error } = await db.from("app_secrets").upsert({ key: "groq_api_key", value }, { onConflict: "key" });
-  return error ? { ok: false, error: "save_failed" } : { ok: true };
+  // INSERT preserves add-only setup even when two requests arrive together.
+  const { error } = await db.from("app_secrets").insert({ key: "groq_api_key", value });
+  return error ? { ok: false, error: error.code === "23505" ? "already_configured" : "save_failed" } : { ok: true };
 }
 
 /* Shared by both providers: run one tool call, catch its errors the same
@@ -1003,7 +1008,8 @@ async function streamGemini(db: any, w: World, cfg: Awaited<ReturnType<typeof co
     name: tool.name, description: tool.description, parameters: tool.input_schema,
   }));
   const call = new AbortController();
-  signal.addEventListener("abort", () => call.abort());
+  if (signal.aborted) call.abort();
+  else signal.addEventListener("abort", () => call.abort(), { once: true });
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const slow = turn === 0 && firstWaitMs ? setTimeout(() => call.abort(), firstWaitMs) : 0;
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:streamGenerateContent?alt=sse`, {
@@ -1099,11 +1105,12 @@ async function streamGroq(db: any, w: World, cfg: Awaited<ReturnType<typeof conf
     }
     const calls = new Map<number, any>();
     let sawText = false;
+    let inputTokens = 0, outputTokens = 0;
     for await (const chunk of readSSE(res)) {
       const choice = chunk.choices?.[0];
       const delta = choice?.delta ?? {};
-      usage.input = Math.max(usage.input, Number(chunk.usage?.prompt_tokens) || 0);
-      usage.output = Math.max(usage.output, Number(chunk.usage?.completion_tokens) || 0);
+      inputTokens = Math.max(inputTokens, Number(chunk.usage?.prompt_tokens) || 0);
+      outputTokens = Math.max(outputTokens, Number(chunk.usage?.completion_tokens) || 0);
       if (typeof delta.content === "string" && delta.content) {
         emit({ type: "text", text: delta.content }); sawText = true; used = true;
       }
@@ -1116,6 +1123,8 @@ async function streamGroq(db: any, w: World, cfg: Awaited<ReturnType<typeof conf
         calls.set(index, call); used = true;
       }
     }
+    usage.input += inputTokens;
+    usage.output += outputTokens;
     const toolCalls = [...calls.values()].filter((call) => call.id && call.function.name);
     if (!toolCalls.length) {
       if (!sawText && used) emit({ type: "error", code: "failed" });
@@ -1227,11 +1236,29 @@ function quickReply(w: World, body: any, emit: Emit): boolean {
   }
 }
 
+async function reserveUsage(db: any, s: Session, kind: "chat" | "transcribe"): Promise<number | null> {
+  const { data, error } = await withTimeout<any>(db.rpc("app_internal_reserve_assistant", {
+    p_device_id: s.deviceId || `__session:${s.id}`, p_account: s.account, p_model: `pending:${kind}`,
+    p_device_limit: REPLIES_PER_HOUR, p_total_limit: REPLIES_PER_HOUR_TOTAL,
+  }), DB_TIMEOUT_MS, "assistant_quota");
+  if (error) throw new Error("assistant_quota_unavailable");
+  if (data === null) return null;
+  const id = Number(data);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error("assistant_quota_unavailable");
+  return id;
+}
+
+async function finishUsage(db: any, id: number, model: string, input = 0, output = 0) {
+  try {
+    const { error } = await withTimeout<any>(db.from("app_assistant_usage")
+      .update({ model, input_tokens: input, output_tokens: output }).eq("id", id), DB_TIMEOUT_MS, "assistant_usage");
+    if (error) console.error("assistant usage update failed");
+  } catch { console.error("assistant usage update failed"); }
+}
+
 export async function handleChat(db: any, s: Session, body: any, cors: Record<string, string>, signal: AbortSignal) {
-  const cfg = await config(db);
   const nd = (o: unknown) => JSON.stringify(o) + "\n";
   const errorStream = (code: string, status = 200) => new Response(nd({ type: "error", code }), { status, headers: { ...cors, "Content-Type": "application/x-ndjson", "Cache-Control": "no-store" } });
-  if (!cfg.key) return errorStream("not_configured");
 
   // Conversation from the app: plain text turns, newest last.
   const raw = Array.isArray(body.messages) ? body.messages.slice(-30) : [];
@@ -1246,38 +1273,36 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   while (messages.length && messages[0].role !== "user") messages.shift();
   if (!messages.length || messages[messages.length - 1].role !== "user") return errorStream("bad_request", 400);
 
-  // Rate limits always run, never skipped: a device with no id is limited by
-  // session id instead of being let through unlimited (the old code only
-  // checked this when s.deviceId was truthy, so a client that omitted its
-  // device id entirely bypassed the per-device cap completely). A
-  // restaurant-wide cap also protects against many devices each staying
-  // just under their own limit.
-  const sinceHour = new Date(Date.now() - 3600_000).toISOString();
-  const perKeyQuery = s.deviceId
-    ? db.from("app_assistant_usage").select("id", { count: "exact", head: true }).eq("device_id", s.deviceId).gte("created_at", sinceHour)
-    : db.from("app_assistant_usage").select("id", { count: "exact", head: true }).eq("device_id", `__session:${s.id}`).gte("created_at", sinceHour);
-  const [{ count }, { count: totalCount }] = await Promise.all([
-    perKeyQuery,
-    db.from("app_assistant_usage").select("id", { count: "exact", head: true }).gte("created_at", sinceHour),
-  ]);
-  if ((count ?? 0) >= REPLIES_PER_HOUR) return errorStream("rate_limited");
-  if ((totalCount ?? 0) >= REPLIES_PER_HOUR_TOTAL) return errorStream("rate_limited");
-
-  const w = await loadWorld(db, s);
-  if (body.cart && typeof body.cart === "object" && !Array.isArray(body.cart)) {
-    for (const [id, q] of Object.entries(body.cart).slice(0, 400)) {
-      const n = Number(q);
-      if (n > 0 && n <= 99999) w.cart[text(id, 120)] = n;
+  const load = async () => {
+    const world = await loadWorld(db, s);
+    if (body.cart && typeof body.cart === "object" && !Array.isArray(body.cart)) {
+      for (const [id, q] of Object.entries(body.cart).slice(0, 400)) {
+        const n = Number(q);
+        if (n > 0 && n <= 99999) world.cart[text(id, 120)] = n;
+      }
     }
-  }
+    return world;
+  };
+  let world: World | undefined;
   if (body.quickAction) {
+    world = await load();
     const events: any[] = [];
-    if (quickReply(w, body, (event) => events.push(event))) {
+    if (quickReply(world, body, (event) => events.push(event))) {
       return new Response(events.concat({ type: "done" }).map(nd).join(""), {
         headers: { ...cors, "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },
       });
     }
   }
+  // Quick actions use local tools and need neither a provider key nor an AI
+  // quota slot. Every provider request reserves its slot before calling AI,
+  // so simultaneous replies and transcription share the same hard limits.
+  const cfg = await config(db);
+  if (!cfg.key) return errorStream("not_configured");
+  let usageId: number | null;
+  try { usageId = await reserveUsage(db, s, "chat"); }
+  catch { return errorStream("failed", 503); }
+  if (usageId === null) return errorStream("rate_limited", 429);
+  const w = world ?? await load();
   const system = [
     { type: "text", text: MANUAL, cache_control: { type: "ephemeral" } },
     { type: "text", text: contextBlock(w, s, body) },
@@ -1286,7 +1311,8 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   const usage = { input: 0, output: 0 };
   let modelUsed = cfg.model;
   const upstream = new AbortController();
-  signal.addEventListener("abort", () => upstream.abort());
+  if (signal.aborted) upstream.abort();
+  else signal.addEventListener("abort", () => upstream.abort(), { once: true });
   let timedOut = false;
   const deadline = setTimeout(() => { timedOut = true; upstream.abort(); }, REPLY_TIMEOUT_MS);
 
@@ -1331,7 +1357,7 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
         clearTimeout(deadline);
         open = false;
         try { controller.close(); } catch { /* already closed */ }
-        await db.from("app_assistant_usage").insert({ device_id: s.deviceId || `__session:${s.id}`, account: s.account, model: modelUsed, input_tokens: usage.input, output_tokens: usage.output }).then(() => {}, () => {});
+        await finishUsage(db, usageId!, modelUsed, usage.input, usage.output);
       }
     },
     cancel() { upstream.abort(); },
@@ -1386,16 +1412,13 @@ export async function handleTranscribe(db: any, s: Session, body: any, cors: Rec
   const groqKey = cfg.provider === "groq" ? cfg.key : "";
   const geminiKey = cfg.geminiKey;
   if (!groqKey && !geminiKey) return out({ error: "not_configured" }, 503);
-  const sinceHour = new Date(Date.now() - 3600_000).toISOString();
-  const key = s.deviceId || `__session:${s.id}`;
-  const [{ count }, { count: total }] = await Promise.all([
-    db.from("app_assistant_usage").select("id", { count: "exact", head: true }).eq("device_id", key).gte("created_at", sinceHour),
-    db.from("app_assistant_usage").select("id", { count: "exact", head: true }).gte("created_at", sinceHour),
-  ]);
-  if ((count ?? 0) >= REPLIES_PER_HOUR || (total ?? 0) >= REPLIES_PER_HOUR_TOTAL) return out({ error: "rate_limited" }, 429);
   let bytes: Uint8Array<ArrayBuffer>;
   try { bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); } catch { return out({ error: "invalid_audio" }, 400); }
   if (bytes.length < 800) return out({ text: "" });   // a tap, not a message
+  let usageId: number | null;
+  try { usageId = await reserveUsage(db, s, "transcribe"); }
+  catch { return out({ error: "failed" }, 503); }
+  if (usageId === null) return out({ error: "rate_limited" }, 429);
   const lang = body.lang === "ku" || body.lang === "ar" ? body.lang : "en";
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30_000);
@@ -1408,7 +1431,7 @@ export async function handleTranscribe(db: any, s: Session, body: any, cors: Rec
       if (p === "gemini" && geminiKey && !text) { text = await transcribeGemini(geminiKey, b64, mime, ctrl.signal).catch(() => null); model = DEFAULT_GEMINI_MODEL; }
     }
   } finally { clearTimeout(timer); }
-  await db.from("app_assistant_usage").insert({ device_id: key, account: s.account, model: `transcribe:${model || "none"}`, input_tokens: 0, output_tokens: 0 }).then(() => {}, () => {});
+  await finishUsage(db, usageId, `transcribe:${model || "none"}`);
   if (text === null) return out({ error: ctrl.signal.aborted ? "busy" : "failed" }, 502);
   return out({ text: text.trim().slice(0, 2000) });
 }
@@ -1425,7 +1448,7 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
     case "insights": return toolInsights(w, a);
     case "recent_changes": return toolRecentChanges(w, a);
     case "stock_status": return toolStockStatus(w);
-    case "set_stock_count": return await toolSetStockCount(db, w, a);
+    case "set_stock_count": return proposeStockCount(w, a, emit);
     case "stock_levels": return toolStockLevels(w, a);
     case "catalog_names": return toolCatalogNames(w);
     case "list_stock_groups": return toolListGroups(w);
@@ -1443,4 +1466,4 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
 }
 
 /* For local tests only (not used by the app). */
-export const _internals = { toolStockLevels, toolCatalogNames, proposeStockGroup, proposeStockSettings, proposeOpenStock, loadWorld, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, erbilParts };
+export const _internals = { toolStockLevels, toolCatalogNames, proposeStockCount, proposeStockGroup, proposeStockSettings, proposeOpenStock, loadWorld, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, erbilParts };

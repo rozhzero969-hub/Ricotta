@@ -3,12 +3,13 @@
 // it presses Save / Add ingredient only after a final approval, once, and only the exact success
 // message counts. The recipe unit of an existing ingredient is never changed.
 export const STOCK_PAGE='https://pos.shaydattendance.com/inventory/stock';
+import {sameNumber} from './numbers.mjs';
 const norm=s=>String(s??'').replace(/[‎‏⁦-⁩]/g,'').replace(/\s+/g,' ').trim();
-const num=s=>Number(String(s??'').replace(/[^\d.]/g,''));
 function fail(m){throw new Error(m)}
 async function one(locator,label){
   await locator.first().waitFor({state:'visible',timeout:10000}).catch(()=>{});
   const n=await locator.count(); if(n!==1)fail(`${label}: expected one match, found ${n}`);
+  if(!await locator.isVisible())fail(`${label}: hidden`);
   return locator;
 }
 const SAME='— same as usage —';
@@ -77,6 +78,8 @@ async function checkUsage(root,j){
 }
 export async function prepareItem(page,j){
   if(!j||!['create','edit'].includes(j.kind)||!j.name||!j.usage||!j.buying||!j.counting)fail('The task is missing its name or units');
+  if(expectedConversions(j).some(w=>!(Number.isFinite(w.value)&&w.value>0))||
+    (j.low!==null&&j.low!==undefined&&!(Number.isFinite(j.low)&&j.low>=0)))fail('The task has an invalid conversion or warning level');
   const root=await openForm(page,j);
   if(j.kind==='edit')await checkUsage(root,j);
   const nameBox=await one(fieldAfter(root,'Ingredient name','input'),'ingredient name');
@@ -97,6 +100,7 @@ export async function prepareItem(page,j){
 
 // Reads the whole form back and compares it with the task (after filling, and again right before Save).
 export async function checkItem(page,j){
+  if(page.url()!==STOCK_PAGE)fail('The ingredient tab is no longer on the stock page');
   const root=await form(page,j.kind==='create'?'Add a new ingredient':'Edit ingredient');
   if(norm(await (await one(fieldAfter(root,'Ingredient name','input'),'ingredient name')).inputValue())!==norm(j.name))fail('Ingredient name changed');
   await checkUsage(root,j);
@@ -106,10 +110,10 @@ export async function checkItem(page,j){
   if(boxes.length!==want.length)fail(`The form asks for ${boxes.length} conversions, the app expects ${want.length}`);
   for(const w of want){
     const b=boxes.find(x=>x.from===w.from&&x.to===w.to); if(!b)fail(`"1 ${w.from} = ? ${w.to}" is missing`);
-    if(Math.abs(num(await b.input.inputValue())-Number(w.value))>1e-6)fail(`"1 ${w.from} = ? ${w.to}" shows ${await b.input.inputValue()}, expected ${w.value}`);
+    if(!sameNumber(await b.input.inputValue(),w.value))fail(`"1 ${w.from} = ? ${w.to}" shows ${await b.input.inputValue()}, expected ${w.value}`);
   }
   const warn=norm(await (await one(fieldAfter(root,'Warn me when stock drops to','input'),'warning level')).inputValue());
-  if(j.low===null||j.low===undefined?warn!=='':Math.abs(num(warn)-Number(j.low))>1e-6)fail('Warning level changed');
+  if(j.low===null||j.low===undefined?warn!=='':!sameNumber(warn,j.low))fail('Warning level changed');
 }
 
 export const formOpen=async(page,j)=>(await page.getByText(j.kind==='create'?'Add a new ingredient':'Edit ingredient',{exact:true}).count())===1;
@@ -123,7 +127,8 @@ export async function submitItem(page,j,successText,onPressed){
   const button=await one(root.getByRole('button',{name:label,exact:true}),`${label} button`);
   if(!await button.isEnabled())fail(`${label} is disabled`);
   if(await page.getByText(successText,{exact:true}).count())fail('The success message was already on the page before pressing');
-  await button.click();
+  // A rejected click may already have reached the browser; always send that case for checking.
   onPressed();
+  await button.click();
   await page.getByText(successText,{exact:true}).first().waitFor({state:'visible',timeout:15000});
 }

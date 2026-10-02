@@ -69,7 +69,11 @@ const server=http.createServer((req,res)=>{
     const calls=[];
     let signedIn=account;
     // Stock and transfers have their own server (covered by scripts/stock-ui-smoke.cjs); here it is simply unavailable, so ordering must keep working without it.
-    await ctx.route('**/functions/v1/stock-api/**',route=>route.fulfill({status:503,contentType:'application/json',body:'{"error":"unavailable in this test"}',headers:{'access-control-allow-origin':'*'}}));
+    await ctx.route('**/functions/v1/stock-api/**',route=>{
+      const req=route.request(), endpoint=new URL(req.url()).pathname.split('/stock-api/')[1];
+      calls.push({endpoint:'stock/'+endpoint,method:req.method(),body:req.postDataJSON?.()||null});
+      return route.fulfill({status:503,contentType:'application/json',body:'{"error":"unavailable in this test"}',headers:{'access-control-allow-origin':'*'}});
+    });
     await ctx.route('**/functions/v1/api/**',async route=>{
       const req=route.request();
       const endpoint=new URL(req.url()).pathname.split('/api/')[1];
@@ -110,7 +114,11 @@ const server=http.createServer((req,res)=>{
     const tab=page.locator('.bottomnav [data-view="'+view+'"]');
     const inMore=await tab.evaluate(el=>!!el.closest('.nav-more')&&innerWidth<960&&!el.closest('.bottomnav').classList.contains('more-open'));
     if(inMore){ await page.locator('#navMoreBtn').click(); await page.waitForFunction(v=>{const el=document.querySelector('.nav-more [data-view="'+v+'"]');return el&&getComputedStyle(el.closest('.nav-more')).opacity==='1';},view); }
-    await tab.click();
+    try { await tab.click(); }
+    catch (error) {
+      console.error('Navigation blocked:',view,await page.locator('.modal-overlay').allTextContents());
+      throw error;
+    }
     await settle(page);
   }
   async function noOverflow(page,label){
@@ -123,7 +131,7 @@ const server=http.createServer((req,res)=>{
   try{
     /* ---------- Rozha ---------- */
     const {ctx,page,calls}=await context();
-    assert.match(await page.locator('meta[name="viewport"]').getAttribute('content'),/user-scalable=no/,'viewport disables pinch/double-tap zoom');
+    assert.doesNotMatch(await page.locator('meta[name="viewport"]').getAttribute('content'),/user-scalable=no|maximum-scale=1(?:,|$)/,'browser zoom remains available for accessibility');
     assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).userSelect),'none','app chrome cannot be accidentally selected');
     assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).fontFamily.includes('Sora')),true,'English uses Sora');
     assert.match(await page.locator('body').evaluate(el=>getComputedStyle(el).fontFamily),/^"?Sora"?, "?Noto Kufi Arabic"?/,'Kurdish or Arabic names inside English text use Noto Kufi Arabic');
@@ -143,7 +151,7 @@ const server=http.createServer((req,res)=>{
     assert.deepEqual(await page.evaluate(()=>__tones.filter((f,i)=>i%2===0)),[523,659,784,1047],'orders sent plays the rising chime');
     assert.match(await page.evaluate(()=>maybeFinishQueue.toString()),/playOrdersSent\(\)/,'the chime belongs to finishing the order');
     await page.locator('[data-qty="i1"]').fill('24');
-    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('ricottaOrders:pendingCart')).i1),24,'draft saves before blur');
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('ricottaOrders:pendingCart:rozha')).i1),24,'draft saves to the signed-in account before blur');
     await page.reload();await page.waitForSelector('#splash',{state:'detached'});
     assert.equal(await page.locator('[data-qty="i1"]').inputValue(),'24','draft restores after reload');
     await page.evaluate(()=>{window.originalInput=document.querySelector('#itemSearch');window.originalTop=document.querySelector('.topbar');window.originalNav=document.querySelector('.bottomnav');});
@@ -154,7 +162,7 @@ const server=http.createServer((req,res)=>{
     assert.ok((await page.locator('.hero-sub').textContent()).includes('18'),'supplier count follows tab');
     await page.locator('#itemSearch').fill('no such item');assert.equal(await page.locator('#orderResults .item-row').count(),0);
     await page.locator('#itemSearch').fill('');await page.locator('#clearOrderBtn').click();
-    assert.equal(await page.evaluate(()=>localStorage.getItem('ricottaOrders:pendingCart')),null);
+    assert.equal(await page.evaluate(()=>localStorage.getItem('ricottaOrders:pendingCart:rozha')),null);
     await page.locator('#sameAsLast').click();assert.equal(await page.locator('[data-qty="i1"]').inputValue(),'2');
 
     // The language menu: nothing changes until Apply.
@@ -225,6 +233,9 @@ const server=http.createServer((req,res)=>{
     await page.locator('#mfUpdateMsgAr').fill('تحديث جديد');
     await page.locator('#mfUpdateMsgEn').fill('New ordering screen');
     await page.locator('#modalFormOk').click();
+    await page.locator('#modalAlertOkBtn').waitFor();
+    assert.equal(await page.locator('.modal-form').count(),1,'the delivery result preserves the sending form until it is acknowledged');
+    await page.locator('#modalAlertOkBtn').click();
     await page.waitForFunction(()=>!document.querySelector('.modal-form'));
     const sent=calls.find(c=>c.endpoint==='push/send');
     assert.deepEqual([sent.body.type,sent.body.bodyEn,sent.body.bodyKu,sent.body.bodyAr],['update','New ordering screen','','تحديث جديد'],'update message goes out as written');
@@ -275,7 +286,10 @@ const server=http.createServer((req,res)=>{
     await openView(page,'assistant');
     assert.equal(await page.locator('.rico-msg.bot').count(),0,'chat resets when the app reloads');
     await openView(page,'itemsAdmin');await snapshot(page,'desktop-catalog.png');
-    await page.locator('#itemAddBtn').click();await snapshot(page,'desktop-dialog.png');await page.locator('#modalFormCancel').click();
+    await page.locator('#itemAddBtn').click();
+    assert.equal(await page.locator('.stock-box .check-row').evaluate(el=>getComputedStyle(el).display),'flex','stock switch and label stay aligned inside a form field');
+    assert.ok(await page.locator('#mfTrackStock').evaluate(el=>el.getBoundingClientRect().height)<=34,'stock switch retains its 32px height');
+    await snapshot(page,'desktop-dialog.png');await page.locator('#modalFormCancel').click();
     await openView(page,'units');
     await page.locator('#unitAddBtn').click();
     assert.equal(await page.locator('#mfUnitAr').count(),1,'units have an Arabic name');
@@ -296,7 +310,14 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#modalFormOk').isDisabled(),true,'three tabs are needed');
     await page.locator('[data-tab="suppliers"]').click();
     await page.locator('#modalFormOk').click();
-    await page.waitForFunction(()=>state.tabs.join()==='order,history,suppliers');
+    try { await page.waitForFunction(()=>state.tabs.join()==='order,history,suppliers'); }
+    catch (error) {
+      console.error('Tab editor save failed:',await page.evaluate(()=>({tabs:state.tabs,account:state.account,sessionAccount:apiSession()?.account,
+        status:document.querySelector('#modalFormStatus')?.textContent,busy:document.querySelector('#modalFormOk')?.getAttribute('aria-busy'),
+        selected:[...document.querySelectorAll('.tab-pick-row.on')].map(el=>el.dataset.tab),dialogs:[...document.querySelectorAll('.modal-overlay')].map(el=>el.textContent.trim())
+      })),calls.filter(call=>call.endpoint==='me/tabs'||call.endpoint==='stock/tabs'));
+      throw error;
+    }
     assert.deepEqual(calls.filter(c=>c.endpoint==='me/tabs').pop().body.tabs,['order','history','suppliers'],'tabs are saved for the account');
     assert.deepEqual(await page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','suppliers'],'the tab bar follows');
     await page.evaluate(async()=>{ state.tabs=['order','assistant','history']; render(); });
@@ -497,6 +518,66 @@ const server=http.createServer((req,res)=>{
     assert.equal(await reduced.page.locator('[data-qty="i1"]').evaluate(el=>el.getAnimations().length),0,'reduced motion skips JS feedback');
     await reduced.page.evaluate(()=>goView('history'));
     assert.equal(await reduced.page.locator('.content.gliding').count(),0,'reduced motion skips the page transition');
+
+    /* Dialogs preserve drafts, contain keyboard focus, and cannot be dismissed
+       or submitted twice while a save is pending. APIs remain fully mocked. */
+    const mp=reduced.page;
+    await mp.locator('#logoutBtn').focus();
+    await mp.evaluate(()=>{window.modalPromptResult='pending';showPrompt('Regression prompt').then(value=>{modalPromptResult=value;});});
+    assert.equal(await mp.locator('#modalPromptInput').getAttribute('aria-labelledby')!==null,true,'prompt has an accessible label');
+    assert.equal(await mp.locator('#app').evaluate(el=>el.inert),true,'background is inert while a dialog is open');
+    await mp.locator('#modalPromptOkBtn').focus();
+    await mp.keyboard.press('Tab');
+    assert.equal(await mp.evaluate(()=>document.activeElement.id),'modalPromptInput','Tab wraps within the dialog');
+    await mp.keyboard.press('Shift+Tab');
+    assert.equal(await mp.evaluate(()=>document.activeElement.id),'modalPromptOkBtn','Shift+Tab wraps within the dialog');
+    await mp.keyboard.press('Escape');
+    await mp.waitForFunction(()=>modalPromptResult===null);
+    assert.equal(await mp.evaluate(()=>document.activeElement.id),'logoutBtn','closing returns focus to the opener');
+    assert.equal(await mp.locator('#app').evaluate(el=>el.inert),false,'closing releases the background');
+    assert.equal(await mp.locator('.modal-overlay').count(),0,'reduced-motion dialogs close immediately');
+
+    await mp.evaluate(()=>{
+      window.modalSubmits=0;window.modalClosed=false;
+      showFormModal({title:'Regression form',bodyHtml:'<div class="field"><label>Draft</label><input id="regressionDraft" data-clear="1" value="Keep this draft"></div>',
+        againLabel:'Save another',onSubmit:()=>{modalSubmits++;return new Promise(resolve=>{window.finishModalSave=resolve;});}
+      }).then(()=>{modalClosed=true;});
+    });
+    assert.equal(await mp.locator('label[for="regressionDraft"]').count(),1,'form labels point to their fields');
+    await mp.locator('#modalFormOk').click();
+    assert.equal(await mp.locator('#modalFormOk').getAttribute('aria-busy'),'true','saving is announced on the action');
+    assert.equal(await mp.locator('#modalFormOk').evaluate(el=>getComputedStyle(el,'::before').animationName),'none','reduced motion shows a static loading indicator');
+    assert.equal(await mp.locator('#regressionDraft').isDisabled(),true,'saving locks the submitted values');
+    await mp.keyboard.press('Escape');
+    await mp.evaluate(()=>document.querySelector('#modalFormOk').click());
+    assert.equal(await mp.evaluate(()=>modalClosed),false,'Escape preserves a pending save');
+    assert.equal(await mp.evaluate(()=>modalSubmits),1,'a pending save cannot be submitted twice');
+    await mp.evaluate(()=>{window.nestedAlertClosed=false;showAlert('Delivery result').then(()=>{nestedAlertClosed=true;});});
+    assert.equal(await mp.locator('.modal-form').count(),1,'a nested alert keeps the draft form');
+    assert.equal(await mp.locator('.modal-form').evaluate(el=>el.closest('.modal-overlay').inert),true,'only the top dialog is interactive');
+    await mp.locator('#modalAlertOkBtn').click();
+    await mp.waitForFunction(()=>nestedAlertClosed);
+    assert.equal(await mp.locator('#regressionDraft').inputValue(),'Keep this draft','a nested alert preserves the entered values');
+    await mp.evaluate(()=>finishModalSave({error:'Try again'}));
+    await mp.waitForFunction(()=>document.querySelector('#modalFormStatus')?.textContent==='Try again');
+    assert.equal(await mp.locator('#regressionDraft').isDisabled(),false,'an unsuccessful save unlocks the fields');
+    assert.equal(await mp.locator('#modalFormStatus').getAttribute('aria-live'),'assertive','save errors are announced');
+    await mp.locator('#modalFormAgain').click();
+    await mp.evaluate(()=>finishModalSave({keepOpen:true,message:'Saved'}));
+    await mp.waitForFunction(()=>document.querySelector('#modalFormStatus')?.textContent==='Saved');
+    assert.equal(await mp.locator('#regressionDraft').inputValue(),'','Save and add another clears only opted-in fields');
+    await mp.locator('#modalFormCancel').click();
+    await mp.waitForFunction(()=>modalClosed);
+
+    await mp.evaluate(()=>{
+      window.interruptedPrompt='pending';window.interruptedUpdate='pending';
+      showPrompt('Interrupted prompt').then(value=>{interruptedPrompt=value;});
+      showUpdatePopup('Interrupted update','Update','Later').then(value=>{interruptedUpdate=value;});
+      dismissAllModals();
+    });
+    await mp.waitForFunction(()=>interruptedPrompt===null&&interruptedUpdate===false);
+    assert.equal(await mp.locator('.modal-overlay').count(),0,'sign-out cleanup removes ordinary and update dialogs');
+    assert.equal(await mp.locator('#app').evaluate(el=>el.inert),false,'sign-out cleanup releases the background');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
     console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, sounds, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));

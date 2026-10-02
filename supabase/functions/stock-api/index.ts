@@ -36,13 +36,14 @@
 //   POST   worker/claim                  the next final-approved request
 //   POST   worker/heartbeat              {live, pageReady, note}   every ~30 s
 //   POST   worker/receipt-claim          the next receipt to prepare (the PC never submits it)
-//   POST   worker/receipt-report         {id, status: prepared|failed|closed, message, image}
+//   POST   worker/receipt-report         {id, claimToken, status: prepared|failed|closed, message, image}
 //   POST   worker/receipt-held           {id}   status of the receipt the PC is holding open
 //   POST   worker/receipt-submit-claim   {id}   take a final-approved receipt to press the button once
 //   POST   worker/receipt-finish         {id, status: completed|needs_checking|failed, message, image}
 //   POST   worker/itemjob-claim|itemjob-report|itemjob-held|itemjob-submit-claim|itemjob-finish   same as the receipt routes
 //   POST   worker/report                 {id, status, message, image}
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { BodyTooLarge, InvalidBody, readJsonBody } from "../_shared/security.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "https://rozhzero969-hub.github.io";
@@ -59,7 +60,8 @@ const str = (v: unknown, max = 240) => String(v ?? "").trim().slice(0, max);
 const sha256 = async (v: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)))]
   .map((x) => x.toString(16).padStart(2, "0")).join("");
 const uuid = (v: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v));
-const decimal = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0) || (typeof v === "string" && /^\d+(?:\.\d{1,6})?$/.test(v));
+const decimal = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0) ||
+  (typeof v === "string" && /^\d+(?:\.\d{1,6})?$/.test(v) && Number.isFinite(Number(v)));
 // Every screen an account may put in its tab bar (Rozha also has Devices and Settings).
 const SCREENS = ["order", "assistant", "history", "transfers", "stock", "receipts", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
 const MAX_BODY = 64 * 1024;
@@ -67,16 +69,14 @@ const MAX_WORKER_BODY = 900 * 1024;   // a PC report carries a screenshot
 const IMAGE_MAX_CHARS = 600_000;
 
 async function readBody(req: Request, max = MAX_BODY): Promise<any> {
-  if (Number(req.headers.get("content-length") || 0) > max) throw new Error("Request too large");
-  const raw = await req.text();
-  if (raw.length > max) throw new Error("Request too large");
-  try { return raw ? JSON.parse(raw) : {}; } catch { throw new Error("Invalid JSON"); }
+  return readJsonBody(req, max);
 }
 type Account = "rozha" | "yunis";
 async function person(req: Request): Promise<Account | null> {
   const token = req.headers.get("x-session-token"); if (!token) return null;
   const { data, error } = await db.from("app_sessions").select("account,expires_at,revoked_at").eq("token_hash", await sha256(token)).maybeSingle();
-  if (error || !data || data.revoked_at || new Date(data.expires_at).getTime() <= Date.now()) return null;
+  const expires = Date.parse(data?.expires_at ?? "");
+  if (error || !data || data.revoked_at || !Number.isFinite(expires) || expires <= Date.now()) return null;
   return data.account === "rozha" || data.account === "yunis" ? data.account : null;
 }
 async function worker(req: Request): Promise<string | null> {
@@ -85,20 +85,27 @@ async function worker(req: Request): Promise<string | null> {
   return error ? null : data?.id ?? null;
 }
 /* Re-asking for the PIN shares the sign-in's wrong-guess limits, so this route can't be used to guess a PIN. */
-const PIN_WINDOW_MS = 10 * 60_000, MAX_FAILED = 8, MAX_GLOBAL_FAILED = 40;
+const PIN_WINDOW_SECONDS = 600, MAX_FAILED = 8, MAX_GLOBAL_FAILED = 40;
 async function pinPrints(req: Request) {
   const ip = req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip")
     || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   return [await sha256(`ip|${ip}`), await sha256("global-login-lock")];
 }
-async function pinLocked(prints: string[]) {
-  const since = new Date(Date.now() - PIN_WINDOW_MS).toISOString();
-  const [a, b] = await Promise.all(prints.map((p) => db.from("app_login_attempts").select("id", { count: "exact", head: true })
-    .eq("fingerprint_hash", p).eq("succeeded", false).gte("attempted_at", since)));
-  return (a.count ?? 0) >= MAX_FAILED || (b.count ?? 0) >= MAX_GLOBAL_FAILED;
+async function reservePinAttempt(req: Request): Promise<number[] | null> {
+  const { data, error } = await db.rpc("app_internal_reserve_login", {
+    p_fingerprints: await pinPrints(req), p_window_seconds: PIN_WINDOW_SECONDS,
+    p_ip_limit: MAX_FAILED, p_global_limit: MAX_GLOBAL_FAILED,
+  });
+  if (error) throw error;
+  if (data !== null && (!Array.isArray(data) || data.length !== 2 || !data.every((id: unknown) => Number.isSafeInteger(id) && Number(id) > 0))) {
+    throw new Error("Invalid PIN attempt reservation");
+  }
+  return data;
 }
-const noteAttempt = (prints: string[], succeeded: boolean) =>
-  db.from("app_login_attempts").insert(prints.map((p) => ({ fingerprint_hash: p, succeeded })));
+async function completePinAttempt(ids: number[]) {
+  const { error } = await db.from("app_login_attempts").update({ succeeded: true }).in("id", ids);
+  if (error) throw error;
+}
 
 /* ---------- shapes the app uses ---------- */
 const toRequest = (r: any, shots: Set<string>) => ({
@@ -164,7 +171,8 @@ async function workerRequest(id: string) {
   if (error) throw error;
   let ledgerStock = 0;
   if (r.item_id) {
-    const { data: b } = await db.from("stock_balances").select("quantity").eq("item_id", r.item_id).eq("storage_name", r.from_storage).maybeSingle();
+    const { data: b, error: stockError } = await db.from("stock_balances").select("quantity").eq("item_id", r.item_id).eq("storage_name", r.from_storage).maybeSingle();
+    if (stockError) throw stockError;
     ledgerStock = Number(b?.quantity ?? 0);
   }
   // The PC works in the unit that was entered (2 boxes, not 24 pieces). The ledger is in counting units,
@@ -189,6 +197,19 @@ const toReceipt = (r: any) => ({
 });
 const RECEIPT_COLS = "id,supplier_name,invoice,currency,rate,delivery,lines,status,message,created_by,created_at,prepared_at,finished_at,final_approved_at,final_approved_by,stock_added_at,resolved_note";
 const errorText = (e: any): string => String(e?.message || "Operation failed").slice(0, 400);
+const claimToken = (v: unknown) => typeof v === "string" && v.length <= 40 && Number.isFinite(Date.parse(v));
+// Concurrent retries can both miss the first SELECT. The unique client key is the authority.
+async function insertOnce(table: "stock_receipts" | "stock_item_jobs", row: any): Promise<string> {
+  const { data, error } = await db.from(table).insert(row).select("id").single();
+  if (!error) return data.id;
+  if (error.code === "23505") {
+    const { data: same, error: lookupError } = await db.from(table).select("id").eq("client_key", row.client_key).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (same) return same.id;
+    if (table === "stock_item_jobs") throw { code: "P0001", message: "This item already has a task on the PC. Finish or cancel it first" };
+  }
+  throw error;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
@@ -208,34 +229,37 @@ Deno.serve(async (req: Request) => {
         // The worker's health: running, live or checks only, and whether the workplace page is ready.
         const b = await readBody(req);
         seenLast.worker_seen_at = Date.now();
-        await db.from("stock_worker_control").upsert({ id: 1, worker_seen_at: new Date().toISOString(),
+        const { error } = await db.from("stock_worker_control").upsert({ id: 1, worker_seen_at: new Date().toISOString(),
           worker_live: b.live === true, worker_receipts_live: b.receiptsLive === true, worker_items_live: b.itemsLive === true, worker_page_ready: b.pageReady === true, worker_note: str(b.note, 300) || null });
+        if (error) throw error;
         return json({ ok: true });
       }
       if (req.method === "POST" && path[1] === "receipt-claim") {
         // Oldest waiting receipt, or one left half-filled by a worker that stopped more than 10 minutes ago.
         const stale = new Date(Date.now() - 10 * 60_000).toISOString();
-        const { data: next, error } = await db.from("stock_receipts").select("id").or(`status.eq.waiting,and(status.eq.preparing,claimed_at.lt.${stale})`)
+        const eligible = `status.eq.waiting,and(status.eq.preparing,claimed_at.lt.${stale})`;
+        const { data: next, error } = await db.from("stock_receipts").select("id").or(eligible)
           .order("created_at").limit(1).maybeSingle();
         if (error) throw error;
         if (!next) return json({ receipt: null });
         const { data: got, error: e2 } = await db.from("stock_receipts").update({ status: "preparing", claimed_at: new Date().toISOString() })
-          .eq("id", next.id).in("status", ["waiting", "preparing"]).select("*").maybeSingle();
+          .eq("id", next.id).or(eligible).select("*").maybeSingle();
         if (e2) throw e2;
-        return json({ receipt: got ? { id: got.id, supplierName: got.supplier_name, invoice: got.invoice, currency: got.currency,
+        return json({ receipt: got ? { id: got.id, claimToken: got.claimed_at, supplierName: got.supplier_name, invoice: got.invoice, currency: got.currency,
           rate: got.rate === null ? null : Number(got.rate), delivery: got.delivery === null ? null : Number(got.delivery), lines: got.lines } : null });
       }
       if (req.method === "POST" && path[1] === "receipt-report") {
         const b = await readBody(req, MAX_WORKER_BODY);
-        if (!uuid(b.id) || !["prepared", "failed", "closed"].includes(b.status)) return fail("Invalid report");
+        if (!uuid(b.id) || !claimToken(b.claimToken) || !["prepared", "failed", "closed"].includes(b.status)) return fail("Invalid report");
         const now = new Date().toISOString();
         const from = b.status === "closed" ? ["prepared"] : ["preparing"];
         // A receipt finished on the PC by hand (or left) is checked by a person before any stock is added.
         const patch: Record<string, unknown> = { status: b.status === "closed" ? "needs_checking" : b.status, message: str(b.message, 1000) || null };
         if (b.status === "prepared") patch.prepared_at = now; else patch.finished_at = now;
         const img = cleanImage(b.image); if (img) patch.shot = img;
-        const { error } = await db.from("stock_receipts").update(patch).eq("id", b.id).in("status", from);
+        const { data, error } = await db.from("stock_receipts").update(patch).eq("id", b.id).eq("claimed_at", b.claimToken).in("status", from).select("id");
         if (error) throw error;
+        if (!data?.length) return fail("This receipt is no longer held by this worker", 409);
         return json({ ok: true });
       }
       if (req.method === "POST" && path[1] === "receipt-held") {
@@ -259,24 +283,27 @@ Deno.serve(async (req: Request) => {
       }
       if (req.method === "POST" && path[1] === "itemjob-claim") {
         const stale = new Date(Date.now() - 10 * 60_000).toISOString();
-        const { data: next, error } = await db.from("stock_item_jobs").select("id").or(`status.eq.waiting,and(status.eq.preparing,claimed_at.lt.${stale})`)
+        const eligible = `status.eq.waiting,and(status.eq.preparing,claimed_at.lt.${stale})`;
+        const { data: next, error } = await db.from("stock_item_jobs").select("id").or(eligible)
           .order("created_at").limit(1).maybeSingle();
         if (error) throw error;
         if (!next) return json({ job: null });
         const { data: got, error: e2 } = await db.from("stock_item_jobs").update({ status: "preparing", claimed_at: new Date().toISOString() })
-          .eq("id", next.id).in("status", ["waiting", "preparing"]).select("id,kind,payload").maybeSingle();
+          .eq("id", next.id).or(eligible).select("id,kind,payload,claimed_at").maybeSingle();
         if (e2) throw e2;
-        return json({ job: got ? { id: got.id, kind: got.kind, ...got.payload } : null });
+        return json({ job: got ? { ...got.payload, id: got.id, kind: got.kind, claimToken: got.claimed_at } : null });
       }
       if (req.method === "POST" && path[1] === "itemjob-report") {
         const b = await readBody(req, MAX_WORKER_BODY);
-        if (!uuid(b.id) || !["prepared", "failed", "closed"].includes(b.status)) return fail("Invalid report");
+        if (!uuid(b.id) || !claimToken(b.claimToken) || !["prepared", "failed", "closed"].includes(b.status)) return fail("Invalid report");
         const now = new Date().toISOString();
         const patch: Record<string, unknown> = { status: b.status === "closed" ? "needs_checking" : b.status, message: str(b.message, 1000) || null };
         if (b.status === "prepared") patch.prepared_at = now; else patch.finished_at = now;
         const img = cleanImage(b.image); if (img) patch.shot = img;
-        const { error } = await db.from("stock_item_jobs").update(patch).eq("id", b.id).in("status", b.status === "closed" ? ["prepared"] : ["preparing"]);
+        const { data, error } = await db.from("stock_item_jobs").update(patch).eq("id", b.id).eq("claimed_at", b.claimToken)
+          .in("status", b.status === "closed" ? ["prepared"] : ["preparing"]).select("id");
         if (error) throw error;
+        if (!data?.length) return fail("This task is no longer held by this worker", 409);
         return json({ ok: true });
       }
       if (req.method === "POST" && path[1] === "itemjob-held") {
@@ -377,17 +404,25 @@ Deno.serve(async (req: Request) => {
     if (req.method === "POST" && path[0] === "receipts" && !path[1]) {
       const b = await readBody(req);
       if (!uuid(b.clientKey)) return fail("Invalid receipt");
-      const { data: same } = await db.from("stock_receipts").select("id").eq("client_key", b.clientKey).maybeSingle();
+      const { data: same, error: sameError } = await db.from("stock_receipts").select("id").eq("client_key", b.clientKey).maybeSingle();
+      if (sameError) throw sameError;
       if (same) return json({ id: same.id }, 201);                       // the same receipt sent twice
-      const { data: sup } = await db.from("app_suppliers").select("id,name").eq("id", str(b.supplierId, 80)).maybeSingle();
+      const { data: sup, error: supplierError } = await db.from("app_suppliers").select("id,name").eq("id", str(b.supplierId, 80)).maybeSingle();
+      if (supplierError) throw supplierError;
       if (!sup) return fail("Choose the supplier");
       const invoice = str(b.invoice, 60); if (!invoice) return fail("Enter the invoice number");
-      const currency = b.currency === "USD" ? "USD" : "IQD";
-      const num = (v: unknown) => typeof v === "number" ? v : Number(String(v ?? "").replace(/,/g, ""));
+      if (!["USD", "IQD"].includes(b.currency)) return fail("Choose the receipt currency");
+      const currency = b.currency;
+      const num = (v: unknown) => {
+        if (typeof v === "number") return Number.isFinite(v) ? v : NaN;
+        if (typeof v !== "string" || !/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,6})?$/.test(v.trim())) return NaN;
+        return Number(v.trim().replace(/,/g, ""));
+      };
+      const precision = (n: number, places: number) => Number(n.toFixed(places)) === n;
       const rate = currency === "USD" ? num(b.rate) : null;
-      if (currency === "USD" && !(rate! > 0 && rate! < 1_000_000)) return fail("Enter today's dollar rate");
+      if (currency === "USD" && !(rate! > 0 && rate! < 1_000_000 && precision(rate!, 4))) return fail("Enter today's dollar rate (up to four decimals)");
       const delivery = b.delivery === null || b.delivery === undefined || b.delivery === "" ? null : num(b.delivery);
-      if (delivery !== null && !(delivery >= 0 && delivery < 1e12)) return fail("Invalid delivery amount");
+      if (delivery !== null && !(delivery >= 0 && delivery < 1e12 && precision(delivery, 2))) return fail("Invalid delivery amount (up to two decimals)");
       const raw = Array.isArray(b.lines) ? b.lines : [];
       if (raw.length < 1 || raw.length > 40) return fail("Add at least one item");
       const ids = [...new Set(raw.map((l: any) => str(l?.itemId, 80)))];
@@ -409,19 +444,20 @@ Deno.serve(async (req: Request) => {
         const unitId = str(l?.unitId, 80);
         if (unitId !== it.unit_id && unitId !== st.counting_unit) return fail(`Choose a unit for ${it.name}`);
         const qty = num(l?.qty), cost = num(l?.cost);
-        if (!(qty > 0 && qty < 1e7) || !(cost > 0 && cost < 1e12)) return fail(`Enter the quantity and cost for ${it.name}`);
+        if (!(qty > 0 && qty < 1e7 && precision(qty, 6)) || !(cost > 0 && cost < 1e12 && precision(cost, 6))) return fail(`Enter the quantity and cost for ${it.name} (up to six decimals)`);
         let ledgerQty = qty;                                              // in counting units
         if (unitId !== st.counting_unit) {
           if (!(Number(st.per_buying) > 0)) return fail(`Set how many ${unitMap.get(st.counting_unit) ?? ""} are in one ${unitMap.get(unitId) ?? ""} for ${it.name}`);
           ledgerQty = Math.round(qty * Number(st.per_buying) * 1e6) / 1e6;
         }
+        if (!(ledgerQty > 0 && ledgerQty <= 1e8)) return fail(`The stock amount for ${it.name} is outside the supported range`);
+        if (!unitMap.get(unitId) || !unitMap.get(st.counting_unit)) return fail(`A unit for ${it.name} no longer exists`);
         lines.push({ itemId: it.id, appName: it.name, workplaceName: (st.workplace_name || "").trim() || it.name,
           unitId, unitLabel: unitMap.get(unitId) ?? "", qty, cost, ledgerQty, countingLabel: unitMap.get(st.counting_unit) ?? "" });
       }
-      const { data, error } = await db.from("stock_receipts").insert({ client_key: b.clientKey, supplier_id: sup.id, supplier_name: sup.name,
-        invoice, currency, rate, delivery, lines, created_by: actor }).select("id").single();
-      if (error) throw error;
-      return json({ id: data.id }, 201);
+      const id = await insertOnce("stock_receipts", { client_key: b.clientKey, supplier_id: sup.id, supplier_name: sup.name,
+        invoice, currency, rate, delivery, lines, created_by: actor });
+      return json({ id }, 201);
     }
     if (req.method === "POST" && path[0] === "receipts" && path[1] === "cancel") {
       const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid receipt");
@@ -435,7 +471,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "POST" && path[0] === "receipts" && path[1] === "final-approve") {
       const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid receipt");
       const c = await controlStatus();
-      if (!c.workerOnline || c.workerReceiptsLive !== true || c.workerPageReady === false) return fail("The PC worker is not set up to save receipts yet (test mode), so it cannot press the button");
+      if (!c.workerOnline || c.workerReceiptsLive !== true || c.workerPageReady !== true) return fail("The PC worker is not set up to save receipts yet (test mode), so it cannot press the button");
       const { error } = await db.rpc("stock_receipt_final_approve", { p_id: b.id, p_actor: actor });
       if (error) throw error;
       return json({ ok: true });
@@ -471,15 +507,18 @@ Deno.serve(async (req: Request) => {
       // The details are built here from the item's saved setup, so the PC fills exactly what the app holds.
       const b = await readBody(req);
       if (!uuid(b.clientKey) || !["create", "edit"].includes(b.kind)) return fail("Invalid task");
-      const { data: same } = await db.from("stock_item_jobs").select("id").eq("client_key", b.clientKey).maybeSingle();
+      const { data: same, error: sameError } = await db.from("stock_item_jobs").select("id").eq("client_key", b.clientKey).maybeSingle();
+      if (sameError) throw sameError;
       if (same) return json({ id: same.id }, 201);
       const itemId = str(b.itemId, 80);
-      const [{ data: it }, { data: st }, units, open] = await Promise.all([
+      const [itemResult, settingsResult, units, open] = await Promise.all([
         db.from("app_items").select("id,name,unit_id").eq("id", itemId).maybeSingle(),
         db.from("stock_item_settings").select("*").eq("item_id", itemId).maybeSingle(),
         db.from("app_units").select("id,en"),
         db.from("stock_item_jobs").select("id").eq("item_id", itemId).in("status", ["waiting", "preparing", "prepared", "submitting", "needs_checking"]).limit(1),
       ]);
+      for (const r of [itemResult, settingsResult, units, open]) if (r.error) throw r.error;
+      const it = itemResult.data, st = settingsResult.data;
       if (!it) return fail("Item not found");
       if (open.data?.length) return fail("This item already has a task on the PC. Finish or cancel it first");
       if (!st || !st.usage_unit) return fail("Set the item's counting format and recipe unit first");
@@ -495,10 +534,9 @@ Deno.serve(async (req: Request) => {
         low: st.low_stock === null ? null : Number(st.low_stock),
       };
       if (!payload.usage || !payload.buying || !payload.counting) return fail("A unit of this item no longer exists");
-      const { data, error } = await db.from("stock_item_jobs").insert({ client_key: b.clientKey, item_id: it.id, item_name: it.name, kind: b.kind,
-        payload, created_by: actor }).select("id").single();
-      if (error) throw error;
-      return json({ id: data.id }, 201);
+      const id = await insertOnce("stock_item_jobs", { client_key: b.clientKey, item_id: it.id, item_name: it.name, kind: b.kind,
+        payload, created_by: actor });
+      return json({ id }, 201);
     }
     if (req.method === "POST" && path[0] === "itemjobs" && path[1] === "cancel") {
       const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid task");
@@ -511,7 +549,7 @@ Deno.serve(async (req: Request) => {
     if (req.method === "POST" && path[0] === "itemjobs" && path[1] === "final-approve") {
       const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid task");
       const c = await controlStatus();
-      if (!c.workerOnline || c.workerItemsLive !== true || c.workerPageReady === false) return fail("The PC worker is not set up to save items yet (test mode), so it cannot press Save");
+      if (!c.workerOnline || c.workerItemsLive !== true || c.workerPageReady !== true) return fail("The PC worker is not set up to save items yet (test mode), so it cannot press Save");
       const { error } = await db.rpc("stock_item_job_final_approve", { p_id: b.id, p_actor: actor });
       if (error) throw error;
       return json({ ok: true });
@@ -552,17 +590,12 @@ Deno.serve(async (req: Request) => {
       const b = await readBody(req);
       const low = b.lowStock === "" || b.lowStock === null || b.lowStock === undefined ? null : b.lowStock;
       const per = b.perBuying === "" || b.perBuying === null || b.perBuying === undefined ? null : b.perBuying;
-      if ((low !== null && !decimal(low)) || (per !== null && !decimal(per))) return fail("Invalid number");
-      const { error } = await db.rpc("stock_save_settings", { p_item: str(path[1], 80), p_actor: actor, p_counting: str(b.countingUnit, 80),
-        p_per: per === null ? null : Number(per), p_low: low === null ? null : Number(low), p_workplace: str(b.workplaceName, 240) || null });
+      const pu = b.perCountingUsage === "" || b.perCountingUsage === null || b.perCountingUsage === undefined ? null : b.perCountingUsage;
+      if ((low !== null && !decimal(low)) || (per !== null && !decimal(per)) || ("usageUnit" in b && pu !== null && !decimal(pu))) return fail("Invalid number");
+      const { error } = await db.rpc("stock_save_item_settings", { p_item: str(path[1], 80), p_actor: actor, p_counting: str(b.countingUnit, 80),
+        p_per: per === null ? null : Number(per), p_low: low === null ? null : Number(low), p_workplace: str(b.workplaceName, 240) || null,
+        p_usage: str(b.usageUnit, 80) || null, p_per_usage: pu === null ? null : Number(pu), p_save_usage: "usageUnit" in b });
       if (error) throw error;
-      if ("usageUnit" in b) {
-        const pu = b.perCountingUsage === "" || b.perCountingUsage === null || b.perCountingUsage === undefined ? null : b.perCountingUsage;
-        if (pu !== null && !decimal(pu)) return fail("Invalid number");
-        const { error: e2 } = await db.rpc("stock_save_workplace_units", { p_item: str(path[1], 80), p_actor: actor,
-          p_usage: str(b.usageUnit, 80) || null, p_per_usage: pu === null ? null : Number(pu) });
-        if (e2) throw e2;
-      }
       return json({ ok: true });
     }
     if (req.method === "POST" && path[0] === "requests") {
@@ -590,11 +623,12 @@ Deno.serve(async (req: Request) => {
     if (req.method === "POST" && path[0] === "counts") {
       const b = await readBody(req);
       if (!str(b.itemId, 80) || !decimal(b.quantity) || !b.countedAt || isNaN(Date.parse(b.countedAt))) return fail("Invalid count");
-      const prints = await pinPrints(req);
-      if (await pinLocked(prints)) return fail("too_many_attempts", 429);
-      const { data: good } = await db.rpc("app_internal_check_account_pin", { p_account: actor, p_pin: String(b.pin ?? "") });
-      await noteAttempt(prints, good === true);
+      const attempts = await reservePinAttempt(req);
+      if (attempts === null) return fail("too_many_attempts", 429);
+      const { data: good, error: pinError } = await db.rpc("app_internal_check_account_pin", { p_account: actor, p_pin: String(b.pin ?? "") });
+      if (pinError) throw pinError;
       if (good !== true) return fail("wrong_pin", 403);   // 403, not 401: a wrong PIN must not look like an expired sign-in
+      await completePinAttempt(attempts);
       const { data, error } = await db.rpc("stock_recount", { p_item: str(b.itemId, 80), p_storage: str(b.storage, 80), p_qty: Number(b.quantity),
         p_counted_at: new Date(b.countedAt).toISOString(), p_actor: actor, p_note: str(b.note, 500) });
       if (error) throw error;
@@ -605,11 +639,12 @@ Deno.serve(async (req: Request) => {
       const b = await readBody(req);
       const lines = Array.isArray(b.lines) ? b.lines : [];
       if (!str(b.storage, 80) || !b.countedAt || isNaN(Date.parse(b.countedAt)) || lines.length < 1 || lines.length > 400) return fail("Invalid count");
-      const prints = await pinPrints(req);
-      if (await pinLocked(prints)) return fail("too_many_attempts", 429);
-      const { data: good } = await db.rpc("app_internal_check_account_pin", { p_account: actor, p_pin: String(b.pin ?? "") });
-      await noteAttempt(prints, good === true);
+      const attempts = await reservePinAttempt(req);
+      if (attempts === null) return fail("too_many_attempts", 429);
+      const { data: good, error: pinError } = await db.rpc("app_internal_check_account_pin", { p_account: actor, p_pin: String(b.pin ?? "") });
+      if (pinError) throw pinError;
       if (good !== true) return fail("wrong_pin", 403);
+      await completePinAttempt(attempts);
       const saved: string[] = [], failed: { itemId: string; error: string }[] = [];
       for (const l of lines) {
         const itemId = str(l?.itemId, 80);
@@ -662,6 +697,8 @@ Deno.serve(async (req: Request) => {
     }
     return fail("Unknown route", 404);
   } catch (e: any) {
+    if (e instanceof BodyTooLarge) return fail("Request too large", 413);
+    if (e instanceof InvalidBody) return fail("Invalid JSON object", 400);
     // Messages raised on purpose by our own database functions (SQLSTATE P0001) are safe to show; anything else is not.
     console.error("stock-api", errorText(e));
     return fail(e?.code === "P0001" ? errorText(e) : "Operation failed; try again", 400);
