@@ -28,7 +28,6 @@ const POLL=Math.min(60,Math.max(5,Number(process.env.POLL_SECONDS)||5))*1000;
 // The workplace PIN, only for signing in by itself when the site shows its sign-in page. Never logged or sent.
 const WORKPLACE_PIN=(process.env.WORKPLACE_PIN||'').trim();
 if(TOKEN.length<32)throw new Error('Set WORKER_TOKEN in worker/.env');
-if(LIVE&&!SUCCESS)throw new Error('Live submission requires CONFIRMED_SUCCESS_TEXT');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 // Only one worker may drive the workplace page. A lock is recovered only after
 // its process has exited; an old heartbeat alone never permits another driver.
@@ -42,6 +41,12 @@ async function api(route,method='GET',value){
   const r=await fetch(API+'/'+route,{method,headers:{'Content-Type':'application/json','x-worker-token':TOKEN},body:value===undefined?undefined:JSON.stringify(value),signal:AbortSignal.timeout(20000)});
   const b=await r.json().catch(()=>({error:'No server response'}));if(!r.ok)throw new Error(b.error||'Queue error');return b;
 }
+// Tells the app why the worker could not start, so the phone shows it instead of "Starting…" forever.
+async function problem(message){
+  console.error(message);
+  await api('worker/problem','POST',{message:String(message).slice(0,400)}).catch(e=>console.error('Could not tell the app:',e.message));
+}
+if(LIVE&&!SUCCESS){await problem('Live mode is on (ALLOW_SUBMIT=1) but CONFIRMED_SUCCESS_TEXT is empty in worker\\.env.');process.exit(1)}
 // The workplace site draws its page after loading, so wait for the control to appear before counting matches.
 async function one(locator,label){await locator.first().waitFor({state:'visible',timeout:10000}).catch(()=>{});const count=await locator.count();if(count!==1)throw new Error(`${label}: expected one visible match, found ${count}`);if(!await locator.isVisible())throw new Error(`${label}: hidden`);return locator}
 function fail(message){throw new Error(message)}
@@ -121,11 +126,23 @@ async function inspect(page,r){
 const itemRows=page=>page.locator('div.rounded-xl.border.p-3').filter({has:page.getByRole('button',{name:/Choose an ingredient/i}).or(page.getByRole('textbox',{name:'amount'}))});
 async function rowsOnPage(page){return itemRows(page).count()}
 await mkdir(path.join(here,'browser-profile'),{recursive:true});
-const context=await chromium.launchPersistentContext(path.join(here,'browser-profile'),{channel:'msedge',headless:false,viewport:{width:1280,height:850},args:['--start-maximized']});
+let context;
+try{
+  context=await chromium.launchPersistentContext(path.join(here,'browser-profile'),{channel:'msedge',headless:false,viewport:{width:1280,height:850},args:['--start-maximized']});
+}catch(e){
+  const m=String(e.message||e);
+  await problem(/user data directory is already in use|ProcessSingleton|lock/i.test(m)
+    ? 'The worker\'s Edge window is still open from before. Close every Edge window on the PC, then press Turn on the worker again.'
+    : /executable doesn't exist|msedge|not found/i.test(m)
+      ? 'Microsoft Edge could not be opened on the PC. Check that Edge is installed, then press Turn on the worker again.'
+      : 'The worker could not open its browser: '+m.split('\n')[0]);
+  process.exit(1);
+}
 // If the browser window is closed, stop. The startup task restarts the worker; nothing is claimed meanwhile.
 context.on('close',()=>{console.error('Browser closed; worker stopping.');process.exit(1)});
 let page=context.pages()[0]||await context.newPage();
-await page.goto(PAGE,{waitUntil:'domcontentloaded'});
+// A slow or unreachable workplace site must not stop the worker; the loop below opens the page again.
+await page.goto(PAGE,{waitUntil:'domcontentloaded'}).catch(e=>console.error('Could not open the workplace page yet:',e.message));
 console.log(`Ricotta worker opened ${PAGE}. Sign in to the workplace site in this Edge window if needed.`);
 console.log(LIVE?'LIVE SUBMISSION ENABLED — only final-approved requests are submitted; only the exact configured success text counts as completed.':'DRY RUN — checks are reported to the phone, but no Move it click.');
 let lastPageReady=null, lastRecovery=0, lastBeat=0;

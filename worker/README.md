@@ -15,6 +15,14 @@ does it click **Move it**.
 
 Item and unit names must match the workplace page **exactly**; the PC stops and says so when they do not.
 
+## Signing in to the workplace by itself
+
+If the workplace site shows its sign-in page, the worker signs in with the PIN keypad (`signin.mjs`) and sends a screenshot to the phones. Put the workplace PIN in `worker/.env` as `WORKPLACE_PIN=` (only there: never in the app, GitHub or a message). It tries at most once every 10 minutes and stops after 3 failed tries until someone presses **Check sign-in** in the app (under the PC worker bar on Transfers and Receipts).
+
+## When the worker does not start
+
+If the worker cannot start (its Edge window is still open from before, Edge cannot open, or a setting is missing), it tells the app why, and the PC worker bar shows **The PC says: …**. If the worker window opens but the worker never reports in, the launcher says so after 3 minutes. A lock file left from before the PC restarted no longer stops the worker.
+
 ## Receipts
 
 Receipts are entered in the app (Receipts screen). Every item on a receipt must be set up for stock (its counting format), so the amount can be added to stock in counting units.

@@ -20,8 +20,8 @@ setInterval(()=>{try{launcherLock.heartbeat()}catch(error){console.error(error.m
 process.on('exit',()=>{try{launcherLock.release()}catch{}});
 for(const sig of ['SIGINT','SIGTERM','SIGHUP'])process.on(sig,()=>process.exit(0));
 
-let handled=0;
-const call=async(route,method='GET')=>{const r=await fetch(API+'/worker/'+route,{method,headers:{'x-worker-token':TOKEN},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error('server '+r.status);return r.json()};
+let handled=0, openedAt=0;
+const call=async(route,method='GET',body)=>{const r=await fetch(API+'/worker/'+route,{method,headers:{'x-worker-token':TOKEN,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error('server '+r.status);return r.json()};
 console.log('Ricotta launcher is running.');
 for(;;){
   try{
@@ -33,8 +33,15 @@ for(;;){
         console.log(new Date().toLocaleString()+' Start requested from the app: opening the worker.');
         // One verbatim command line, so cmd sees the window title in quotes exactly as written.
         spawn('cmd.exe',['/c','start "Ricotta worker" cmd /c start-worker.cmd scheduled'],{cwd:here,detached:true,stdio:'ignore',windowsVerbatimArguments:true}).unref();
+        openedAt=Date.now();
       }
       await call('control-handled','POST');
+    }
+    // The worker window was opened but the worker never reported in, and did not say why itself.
+    if(openedAt&&Date.now()-openedAt>180000){
+      if(!c.workerOnline&&!(Date.parse(c.workerProblemAt||0)>openedAt))
+        await call('problem','POST',{message:'The worker window opened on the PC but the worker did not start. Look at the "Ricotta worker" window on the PC for the reason.'});
+      openedAt=0;
     }
   }catch(e){console.error(new Date().toLocaleString()+' '+e.message)}
   await new Promise(r=>setTimeout(r,30000));

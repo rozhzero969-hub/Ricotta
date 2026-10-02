@@ -67,6 +67,13 @@ if(process.argv[2]==='--contender'){
     assert.equal(readFileSync(file,'utf8'),liveBody);
     rmSync(file);
 
+    // A lock from before the computer last started is dead, even if its process number is in use again.
+    fixture({pid:process.pid,at:Date.now()-3600000,boot:Date.now()-30*86400000});
+    assert.equal(inspectLock(file).state,'dead');
+    const afterReboot=acquireLock(file);
+    assert.equal(afterReboot.acquired,true,'a lock left over from before a restart is replaced');
+    assert.equal(afterReboot.release(),true);
+
     const held=acquireLock(file);
     assert.equal(held.acquired,true);
     const token=decoded().token;
@@ -109,7 +116,7 @@ if(process.argv[2]==='--contender'){
     assert.match(status.stdout,/RUNNING:.*Heartbeat delayed/);
     fixture({pid:deadPid,at:Date.now()});
     assert.equal(spawnSync(process.execPath,[path.join(dir,'status.mjs')]).status,1,'dead process is not running');
-    console.log(JSON.stringify({result:'PASS',checks:'exclusive startup; serialized crash recovery; delayed live heartbeat preserved; ownership-safe heartbeat and cleanup; invalid owners fail closed; status agrees with process liveness'}));
+    console.log(JSON.stringify({result:'PASS',checks:'exclusive startup; serialized crash recovery; delayed live heartbeat preserved; locks from before a restart replaced; ownership-safe heartbeat and cleanup; invalid owners fail closed; status agrees with process liveness'}));
   }finally{
     for(const child of children)child.kill();
     rmSync(dir,{recursive:true,force:true});

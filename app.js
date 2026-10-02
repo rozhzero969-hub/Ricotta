@@ -679,10 +679,9 @@ function initTabBarLens(nav){
 /* ============ Filter rows with a glass lens ============
    Every row of filter pills (History, Record, Stock, Items, Suppliers | Zones)
    gets the same lens as the tab bar: it glides to the chosen pill, and if you
-   hold the row and slide, it turns to glass and follows your finger while each
-   pill it reaches opens, exactly like the tab bar. Some filters redraw the
-   whole screen when they change, so the drag is followed at document level and
-   handed to the freshly drawn row. */
+   hold the row and slide, it turns to glass and follows your finger; the pill
+   under the finger opens when you let go, exactly like the tab bar. The drag is
+   followed at document level, so a row redrawn meanwhile still continues it. */
 const segPills = seg=>[...seg.querySelectorAll('.tab-pill')];
 const segs = ()=>[...document.querySelectorAll('.record-filters.seg')];
 function segSlot(seg, x){
@@ -746,28 +745,22 @@ document.addEventListener('pointermove', e=>{
     segDrag.moved = true; segDrag.last = segPills(seg).findIndex(p=>p.classList.contains('active'));
     seg.classList.add('held'); try{ seg.setPointerCapture(e.pointerId); }catch(_){}
   }
-  const s = segSlot(seg, e.clientX);
-  segLensTo(seg, s.pos);                              // the glass follows the finger, like the tab bar's lens
-  if(s.index !== segDrag.last){
+  // The glass follows the finger (once per frame); the screen changes only when the finger lets go,
+  // so long lists (Stock) are drawn once instead of for every pill passed on the way.
+  if(segDrag.frame) return;
+  segDrag.frame = requestAnimationFrame(()=>{
+    if(!segDrag) return;
+    segDrag.frame = 0;
+    const cur = segs()[segDrag.index]; if(!cur) return;
+    const s = segSlot(cur, segDrag.x);
+    segLensTo(cur, s.pos);
     segDrag.last = s.index;
-    // The screen changes a moment after the lens settles on a pill, so redrawing never makes the glass stutter.
-    clearTimeout(segDrag.timer);
-    const index = s.index;
-    segDrag.timer = setTimeout(()=>{
-      const cur = segs()[segDrag?.index]; if(!cur || !segDrag) return;
-      const pill = segPills(cur)[index];
-      if(pill && !pill.classList.contains('active')){
-        pill.click();                                 // opens that filter (a full redraw replaces the row)
-        const n = segs()[segDrag.index];
-        if(n && !n.classList.contains('held')) segAdopt(n);
-        if(n) segLensTo(n, segSlot(n, segDrag.x).pos);
-      }
-    }, 90);
-  }
+  });
 });
 const segEnd = e=>{
   if(!segDrag || e.pointerId!==segDrag.id) return;
-  const d = segDrag; segDrag = null; clearTimeout(d.timer);
+  const d = segDrag; segDrag = null; cancelAnimationFrame(d.frame);
+  if(d.moved){ const cur = segs()[d.index]; if(cur) d.last = segSlot(cur, e.clientX || d.x).index; }
   if(d.moved && d.last !== null){                      // let go: the pill under the finger is the one that opens
     const cur = segs()[d.index], pill = cur && segPills(cur)[d.last];
     if(pill && !pill.classList.contains('active')) pill.click();
@@ -786,8 +779,13 @@ window.addEventListener('resize', ()=>segs().forEach(segPlace));
 
 function setMoreOpen(open){
   const nav = document.querySelector('.bottomnav'), btn = document.getElementById('navMoreBtn');
+  document.documentElement.classList.toggle('more-open', !!(open && nav && btn));
   if(!nav || !btn) return;
   nav.classList.toggle('more-open', open);
+  if(open && !document.querySelector('.more-scrim')){
+    const scrim = document.createElement('div'); scrim.className = 'more-scrim'; scrim.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(scrim);
+  }
   btn.setAttribute('aria-expanded', String(open));
 }
 /* A tap anywhere else, or Escape, closes the More panel. */
@@ -1023,13 +1021,15 @@ function closeSelSheet(){ activeSelSheet?.(); }
 function openSelSheet(sel){
   closeSelSheet();
   document.activeElement?.blur?.();   // close the keyboard first, so the sheet has the screen
-  const opts = [...sel.options].filter(o=>!o.disabled || o.selected).map(o=>({value:o.value, label:o.textContent, on:o.selected}));
+  // "Choose a supplier" and similar are prompts, not choices: they stay on the button but not in the list.
+  const prompts = [t('chooseSupplier'), t('trResolveChoose'), t('itChooseFormat')];
+  const opts = [...sel.options].filter(o=>(!o.disabled || o.selected) && !(o.value === '' && prompts.includes(o.textContent))).map(o=>({value:o.value, label:o.textContent, on:o.selected}));
   const long = opts.length > 9;
   const wrap = document.createElement('div');
   wrap.id = 'selSheet'; wrap.className = 'sel-sheet';
   wrap.innerHTML = `<div class="sel-scrim"></div><div class="sel-panel" role="dialog" aria-modal="true" aria-label="${esc(selTitle(sel))}">
     <div class="sel-grab"></div><div class="sel-title">${esc(selTitle(sel))}</div>
-    ${long ? `<div class="search-wrap sel-search">${ICON_SEARCH}<input class="search-input" type="search" autocomplete="off" placeholder="${esc(t('searchPlaceholder'))}"></div>` : ''}
+    ${long ? `<div class="search-wrap sel-search">${ICON_SEARCH}<input class="search-input" type="search" autocomplete="off" placeholder="${esc(t('selSearch'))}"></div>` : ''}
     <div class="sel-list" role="listbox"></div></div>`;
   document.body.appendChild(wrap);
   const list = wrap.querySelector('.sel-list');
@@ -1071,11 +1071,111 @@ function openSelSheet(sel){
     if(closed) return;
     const chosen = list.querySelector('.on');
     chosen?.scrollIntoView({block:'center'});
-    (wrap.querySelector('.sel-search input') || chosen || list.querySelector('button'))?.focus({preventScroll:true});
+    // On a phone the keyboard opens only when the person taps the search box.
+    const touch = matchMedia('(pointer: coarse)').matches;
+    ((!touch && wrap.querySelector('.sel-search input')) || chosen || list.querySelector('button'))?.focus({preventScroll:true});
   });
 }
 // Dropdowns drawn after the page (modals, lines added to a receipt) get the same list.
 new MutationObserver(muts=>{ if(muts.some(m=>[...m.addedNodes].some(n=>n.nodeType === 1 && (n.matches('select') || n.querySelector('select'))))) enhanceSelects(); })
+  .observe(document.documentElement, {childList:true, subtree:true});
+
+/* Our own number pad (phones). A box marked data-pad="int" or "dec" never opens the iPhone keyboard: the box
+   itself is not focusable on touch screens (so the page cannot jump), and a tap on it slides this pad up from the
+   bottom. Each key writes into the box and fires 'input', so the screen's own handlers work as with typing.
+   On a computer the boxes stay normal and are typed into. */
+const PAD_TOUCH = matchMedia('(pointer: coarse)');
+function enhancePads(root = document){
+  if(!PAD_TOUCH.matches) return;
+  root.querySelectorAll('input[data-pad]:not(.pad-input)').forEach(inp=>{
+    inp.classList.add('pad-input'); inp.readOnly = true; inp.inputMode = 'none'; inp.tabIndex = -1;
+    inp.parentElement.dataset.padhost = '';
+  });
+}
+let padState = null;
+function padClose(){
+  if(!padState) return;
+  const {el, input} = padState; padState = null;
+  input?.classList.remove('pad-on');
+  document.documentElement.classList.remove('pad-open');
+  document.body.style.paddingBottom = '';
+  el.classList.add('out');
+  setTimeout(()=>el.remove(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220);
+}
+function padFieldLabel(input){
+  return (input.getAttribute('aria-label') || input.closest('.field')?.querySelector('label')?.textContent || '').trim();
+}
+function padVisible(input){
+  // Brings the box above the pad with one gentle scroll, only when the pad would cover it.
+  const panel = padState?.el.querySelector('.pad-panel'); if(!panel) return;
+  const r = input.getBoundingClientRect(), bottom = window.innerHeight - panel.offsetHeight - 16, top = 90;
+  if(r.bottom > bottom) window.scrollBy({top: r.bottom - bottom, behavior: 'smooth'});
+  else if(r.top < top) window.scrollBy({top: r.top - top, behavior: 'smooth'});
+}
+function padOpen(input){
+  if(padState?.input === input) return;
+  padState?.input?.classList.remove('pad-on');
+  closeSelSheet();
+  document.activeElement?.blur?.();
+  if(!padState){
+    const el = document.createElement('div');
+    el.className = 'pad-sheet';
+    el.innerHTML = `<div class="pad-panel" role="group">
+      <div class="pad-head"><span class="pad-label" dir="auto"></span><button type="button" class="pad-done" data-pk="done">${esc(t('padDone'))}</button></div>
+      <div class="pad-keys">${['1','2','3','4','5','6','7','8','9','.','0','del'].map(k=>`<button type="button" class="pad-key${k === 'del' ? ' pad-del' : ''}" data-pk="${k}" aria-label="${k === 'del' ? esc(t('delete')) : k}">${k === 'del' ? '<svg width="26" height="20" viewBox="0 0 26 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M8 1h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8L1 10z"/><path d="M12 6l8 8M20 6l-8 8" stroke-linecap="round"/></svg>' : k}</button>`).join('')}</div></div>`;
+    document.body.appendChild(el);
+    padState = {el};
+    el.addEventListener('pointerdown', e=>e.preventDefault());
+    el.addEventListener('click', e=>{
+      const k = e.target.closest('[data-pk]')?.dataset.pk; if(!k || !padState) return;
+      if(k === 'done'){ padClose(); return; }
+      padKey(k);
+    });
+    // Holding delete clears the box.
+    let hold = 0;
+    const del = el.querySelector('.pad-del');
+    del.addEventListener('pointerdown', ()=>{ hold = setTimeout(()=>{ if(padState?.input){ padSet(''); hold = -1; } }, 550); });
+    ['pointerup','pointerleave','pointercancel'].forEach(ev=>del.addEventListener(ev, ()=>{ if(hold > 0) clearTimeout(hold); }));
+    del.addEventListener('click', e=>{ if(hold === -1){ e.stopImmediatePropagation(); hold = 0; } }, true);
+  }
+  padState.input = input;
+  input.classList.add('pad-on');
+  const dec = input.dataset.pad === 'dec';
+  padState.el.querySelector('[data-pk="."]').disabled = !dec;
+  padState.el.querySelector('.pad-label').textContent = padFieldLabel(input);
+  document.documentElement.classList.add('pad-open');
+  requestAnimationFrame(()=>{
+    if(!padState) return;
+    document.body.style.paddingBottom = padState.el.querySelector('.pad-panel').offsetHeight + 'px';
+    padVisible(input);
+  });
+}
+function padSet(v){
+  const input = padState?.input; if(!input) return;
+  input.value = v;
+  input.dispatchEvent(new Event('input', {bubbles: true}));
+}
+function padKey(k){
+  const input = padState?.input; if(!input || !input.isConnected){ padClose(); return; }
+  let v = input.value;
+  const max = Number(input.getAttribute('maxlength')) || 14;
+  if(k === 'del') v = v.slice(0, -1);
+  else if(k === '.'){ if(input.dataset.pad !== 'dec' || v.includes('.')) return; v = (v || '0') + '.'; }
+  else { if(v.length >= max) return; v = input.dataset.pad === 'dec' && v === '0' ? k : v + k; }
+  padSet(v);
+}
+document.addEventListener('click', e=>{
+  if(!padState && !PAD_TOUCH.matches) return;
+  if(e.target.closest('.pad-sheet')) return;
+  const host = e.target.closest('[data-padhost]');
+  // The − / + beside an amount work as they are and leave the pad as it was.
+  if(host && e.target.closest('button,a,select')) return;
+  const input = host?.querySelector('input.pad-input');
+  if(input && !input.disabled && !input.closest('[hidden]')){ padOpen(input); return; }
+  if(padState) padClose();
+});
+// Boxes drawn later (receipt lines, the transfer amount) get the pad too.
+new MutationObserver(muts=>{ if(PAD_TOUCH.matches && muts.some(m=>[...m.addedNodes].some(n=>n.nodeType === 1 && (n.matches('input[data-pad]') || n.querySelector('input[data-pad]'))))) enhancePads(); })
   .observe(document.documentElement, {childList:true, subtree:true});
 
 /* The top bar gains depth once the page scrolls under it, and (like an iOS
