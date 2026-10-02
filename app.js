@@ -226,8 +226,8 @@ function accountLabel(a){ return a === 'rozha' || a === 'yunis' ? t('accountName
    start (bootstrap.views) and checks every request; this copy only covers
    an offline start before that answer arrives. */
 const ACCOUNT_VIEWS = {
-  rozha: ['order','assistant','history','transfers','stock','suppliers','itemsAdmin','units','record','devices','settings'],
-  yunis: ['order','assistant','history','transfers','stock','suppliers','itemsAdmin','units','record']
+  rozha: ['order','assistant','history','transfers','stock','expenses','suppliers','itemsAdmin','units','record','devices','settings'],
+  yunis: ['order','assistant','history','transfers','stock','expenses','suppliers','itemsAdmin','units','record']
 };
 const DEFAULT_TABS = ['order','assistant','history'];
 const STOCK_VIEWS = ['transfers','stock','receipts'];
@@ -346,6 +346,7 @@ function signOut(reason, {preserveSession = false} = {}){
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
   reminderDraft = null;
   resetStockUi();
+  resetFinanceState();
   stopStepHold(); rowPress?.cancel();
   state.pinBuffer = ''; state.view = 'order'; state.queue = null;
   finishingQueue = null;
@@ -492,6 +493,7 @@ const RENDERERS = {
   itemsAdmin:[()=>renderItemsAdmin(),()=>attachItemEvents()], units:[()=>renderUnits(),()=>attachUnitEvents()],
   record:[()=>renderRecord(),()=>attachRecordEvents()], devices:[()=>renderDevices(),()=>attachDeviceEvents()],
   transfers:[()=>renderTransfers(),()=>attachTransfersEvents()], stock:[()=>renderStock(),()=>attachStockEvents()], receipts:[()=>renderReceipts(),()=>attachReceiptsEvents()],
+  expenses:[()=>renderFinance(),()=>wireFinance()],
   settings:[()=>renderSettings(),()=>attachSettingsEvents()], sounds:[()=>renderSoundsView(),()=>attachSoundsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
 };
 function render(){
@@ -505,7 +507,7 @@ function render(){
   }
   if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
   const [draw, attach] = RENDERERS[state.view] || RENDERERS.order;
-  const content = `${state.view === 'assistant' ? '' : renderPageHeading()}${state.view === 'order' ? renderPushBanner() : ''}${draw()}`;
+  const content = `${['assistant','expenses'].includes(state.view) ? '' : renderPageHeading()}${state.view === 'order' ? renderPushBanner() : ''}${draw()}`;
   // The shell (top bar and tab bar) stays mounted while the account, its tabs
   // and the language stay the same.
   const shellKey = [state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
@@ -564,7 +566,7 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
    screens and "Edit tabs"). Computers: a sidebar with every screen. A glass
    lens glides to the current tab; on phones it can be held and slid, and
    the page itself can be swiped between the three tabs. */
-const VIEW_LABEL_KEYS = {transfers:'navTransfer', stock:'navStock', receipts:'navReceipts', order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', sounds:'soundsNav', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {transfers:'navTransfer', stock:'navStock', receipts:'navReceipts', expenses:'financeNav', order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', sounds:'soundsNav', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app

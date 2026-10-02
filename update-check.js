@@ -30,7 +30,7 @@ let updatePromptOpen = false;
 let snoozedVersion = null;
 
 /* Every file the page loads. If you add a new .js/.css file, add it here. */
-const APP_FILES = ['boot.js','config.js','icons.js','i18n.js','storage.js','sounds.js','modals.js','push.js','assistant.js','stock.js','app.js','update-check.js','sw.js','style.css'];
+const APP_FILES = ['boot.js','config.js','icons.js','i18n.js','storage.js','sounds.js','modals.js','push.js','assistant.js','stock.js','finance.js','app.js','update-check.js','sw.js','style.css','finance.css'];
 
 /* Reloads the page and makes sure the newest files are used. Browsers (and
    GitHub Pages) can keep serving cached copies of the scripts for a few
@@ -61,7 +61,8 @@ function cartIsEmpty(){
     const chatting = typeof rico !== 'undefined' && (rico.streaming || rico.messages.length || ricoRecorder.active);
     const receiptDraft = typeof rcState !== 'undefined' && (rcState.supplierId || rcState.invoice || rcState.rate || rcState.deliveryAmt || rcState.lines.some(line=>line.itemId || line.qty || line.cost || line.search));
     const transferDraft = typeof trState !== 'undefined' && (trState.itemId || trState.qty || trState.search);
-    return !state.queue && !state.pinBuffer && !state.pinBusy && !Object.values(state.cart).some(q=>q>0) && !typing && !chatting && !receiptDraft && !transferDraft;
+    const expensePending = typeof financeHasPending === 'function' && financeHasPending();
+    return !state.queue && !state.pinBuffer && !state.pinBusy && !Object.values(state.cart).some(q=>q>0) && !typing && !chatting && !receiptDraft && !transferDraft && !expensePending;
   }
   catch(e){ return false; } /* if state isn't ready yet, be conservative and ask */
 }

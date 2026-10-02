@@ -63,7 +63,7 @@ const uuid = (v: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0
 const decimal = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0) ||
   (typeof v === "string" && /^\d+(?:\.\d{1,6})?$/.test(v) && Number.isFinite(Number(v)));
 // Every screen an account may put in its tab bar (Rozha also has Devices and Settings).
-const SCREENS = ["order", "assistant", "history", "transfers", "stock", "receipts", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
+const SCREENS = ["order", "assistant", "history", "transfers", "stock", "receipts", "expenses", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
 const MAX_BODY = 64 * 1024;
 const MAX_WORKER_BODY = 900 * 1024;   // a PC report carries a screenshot
 const IMAGE_MAX_CHARS = 600_000;

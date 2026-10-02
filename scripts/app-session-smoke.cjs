@@ -72,9 +72,10 @@ const json = value=>JSON.parse(JSON.stringify(value));
   Object.assign(crossTab, {
     LS_PREFIX:'ricottaOrders:', DEFAULT_TABS:['order','assistant','history'],
     rowPress:null, toastTimer:null, reminderDraft:{time:'09:00'},
-    drafts:{}, listeners:{}, modalResets:0, streamResets:0, stockResets:0, sessionClears:0,
+    drafts:{}, listeners:{}, modalResets:0, streamResets:0, stockResets:0, financeResets:0, sessionClears:0,
     document:{getElementById:()=>null}, clearTimeout:()=>{},
     ricoReset:()=>crossTab.streamResets++, resetStockUi:()=>crossTab.stockResets++,
+    resetFinanceState:()=>crossTab.financeResets++,
     stopStepHold:()=>{}, dismissAllModals:()=>crossTab.modalResets++,
     closeSelSheet:()=>{}, closeContextMenu:()=>{}, closeLangMenu:()=>{},
     window:{addEventListener:(name,handler)=>{crossTab.listeners[name]=handler;}},
@@ -102,6 +103,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
   assert.equal(crossTab.state.queue,null);
   assert.equal(crossTab.state.pinError,'session');
   assert.equal(crossTab.modalResets,1); assert.equal(crossTab.streamResets,1); assert.equal(crossTab.stockResets,1);
+  assert.equal(crossTab.financeResets,1,'account changes clear the expense workspace');
   crossTab.state.account='yunis'; crossTab.state.cart={i2:3}; crossTab.session=null;
   crossTab.listeners.storage({key:'ricottaOrders:apiSession',oldValue:JSON.stringify(nextSession),newValue:null});
   assert.equal(crossTab.state.account,null,'logout in another tab clears this workspace');

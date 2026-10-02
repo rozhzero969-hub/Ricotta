@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from '../supabase/functions/_shared/security.ts';
+import { handleFinance } from '../supabase/functions/api/finance.ts';
 
 const digest = async value => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
 const token = 'test-session-token', tokenHash = await digest(token);
@@ -69,7 +70,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody );
+const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'handleFinance', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, handleFinance );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -77,6 +78,14 @@ const call = (path, body, method = 'POST', auth = true) => handler(new Request(`
 const mute = console.error;
 console.error = () => {};
 try {
+  assert.equal((await call('finance', null, 'GET', false)).status, 401,'financial records require an authenticated session');
+  for (const account of ['rozha','yunis']) {
+    reset(); tables.app_sessions[0].account = account;
+    if(account === 'yunis') tables.app_accounts.push({id:'yunis',name:'Yunis',tabs:['order','assistant','history']});
+    assert.equal((await call('me/tabs', {tabs:['expenses','history','order']}, 'PUT')).status, 200,`${account} can pin Expenses`);
+    assert.deepEqual(tables.app_accounts.find(row=>row.id===account).tabs,['expenses','history','order']);
+  }
+  reset();
   const history = groupHistory([{ id: 'archived', sent_at: '2026-10-01T12:00:00Z' }], [
     { order_id: 'archived', supplier_id: null, supplier_name: 'Former supplier A', item_id: 'a', item_name: 'Tomatoes', qty: 2 },
     { order_id: 'archived', supplier_id: null, supplier_name: 'Former supplier B', item_id: 'b', item_name: 'Apples', qty: 3 },

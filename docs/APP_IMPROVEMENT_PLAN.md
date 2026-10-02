@@ -13,6 +13,12 @@ paths, and passed a live transaction test whose fixture data was rolled back.
 The obsolete seven-argument `transfer_recount` function was removed; its tables
 had already been removed. The active-item job uniqueness constraint is installed.
 
+The `20261002050525_restaurant_expenses` migration is also applied. It adds a
+paid-expense ledger and immutable audit events, exact IQD/USD amounts, service-only
+atomic writes, revision conflicts and separate filtered currency totals. Both
+Rozha and Yunis have full access, as requested. Live checks rolled back their
+fixtures; no sample financial records remain. See [the expense guide](RESTAURANT_EXPENSES.md).
+
 Frontend, Edge Function and office-worker changes are staged in the accompanying
 GitHub pull request. They require a coordinated release. Existing deployed Edge
 Function sources matched the repository's starting commit, and were not replaced
@@ -50,12 +56,24 @@ during this review.
 
 ## Validation
 
-Frozen Deno type checking, undefined-name lint, 36 storage/update regressions,
+Frozen Deno type checking, undefined-name lint, 37 storage/update regressions,
 account/save-recovery checks, mocked API/security/push/provider checks, stock API
 checks, process-lock checks and polling checks passed. Disposable Postgres tests
 verified rollback behavior and 12 competing requests for order retries, stock
 increments, daily decay and quota reservations. The live RPC test rolled back
 its fixture data and verified browser-role denial and service-role access.
+
+Expense API and SQL checks passed, including immutable audit permissions, supplier
+snapshots, failed-audit rollback, aggregate totals above JavaScript's safe integer
+range, and 12 competing create/edit/void requests. Expense tables follow the same
+server-only access model; the post-migration security advisor has no warning/error
+findings and 34 informational RLS-without-policy notices.
+
+The expense browser suite passed exact IQD/USD formatting, create/edit/void,
+inspectable changes, durable retry after reload, storage-full and rate-limit
+handling, account isolation, snapshot-consistent CSV and EN/KU/AR layouts. Final
+integration checks also passed the 54-layout/6-sign-in UI subset and the complete
+stock/transfer suite. Desktop English and phone Arabic previews were inspected.
 
 The full browser suite passed 162 workspace layouts and 18 sign-in layouts across
 six widths in English, Kurdish and Arabic, including nested dialogs, keyboard
@@ -96,6 +114,7 @@ was enabled by this work.
    and launcher. Preserve `worker/.env` and the browser profile.
 2. Confirm the applied migration appears in `supabase migration list`. Do not
    reapply a migration already recorded on the live project.
+   Both `atomic_app_writes` and `restaurant_expenses` are already recorded.
 3. Copy the updated worker files to the PC. Deploy matching `api`, `stock-api`
    and `send-push` sources, including `_shared/security.ts`. Keep the existing
    JWT settings: custom authentication for `api`/`stock-api`, JWT verification
@@ -103,7 +122,9 @@ was enabled by this work.
 4. Restart the worker. Run a supervised preparation and screenshot check before
    enabling any workplace submission. Existing final approval remains mandatory.
 5. Verify login, queued order retry, item-settings save, stock proposal confirmation,
-   reminders and worker health. The offline tests do not submit real workplace forms.
+   reminders and worker health. Verify Expenses for both accounts, IQD/USD totals,
+   edit history, void exclusion, unconfirmed-save recovery and CSV export. The
+   offline tests do not submit real workplace forms.
 
 ## Next work, using free capabilities
 

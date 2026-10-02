@@ -1,0 +1,28 @@
+/* Expenses reuse the app's glass surfaces, buttons and reduced-motion rules. */
+.fin-intro,.fin-note{font-size:12px;color:var(--ink-soft);line-height:1.8;margin:0 2px 14px}
+.fin-summaries{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.fin-summary{border-radius:20px;padding:18px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.fin-summary span,.fin-summary small{color:var(--ink-soft);font-size:11px}
+.fin-summary strong{font-size:clamp(16px,2.2vw,23px);font-weight:800;overflow-wrap:anywhere;text-align:start}
+.fin-note{margin:8px 2px 18px}
+.fin-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;border-radius:20px;padding:16px}
+.fin-filters .field{margin:0;min-width:0}
+.fin-filters input,.fin-filters select{min-width:0;width:100%}
+.fin-tools{display:flex;justify-content:space-between;gap:10px;margin:14px 0}
+.fin-list-count{font-size:11px;color:var(--ink-soft);margin:12px 3px}
+.fin-entry{border-radius:20px;padding:18px;margin-bottom:12px;animation:rise 280ms var(--ease-out)}
+.fin-entry-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px}
+.fin-entry-top>div{min-width:0}.fin-entry h2{font-size:15px;margin:0 0 6px;overflow-wrap:anywhere}
+.fin-amount{font-size:15px;white-space:nowrap;flex-shrink:0}
+.fin-meta{color:var(--ink-soft);font-size:11px;line-height:1.9;overflow-wrap:anywhere}
+.fin-entry-notes{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 0 0}
+.fin-entry-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}.fin-entry-actions .btn{padding:9px 14px;font-size:11px;min-height:42px}
+.fin-void{border-color:var(--line-strong)}.fin-void .fin-amount{text-decoration:line-through;color:var(--ink-soft)}
+.fin-void-reason,.fin-error{color:var(--clay-ink);font-size:12px;line-height:1.8;overflow-wrap:anywhere}
+.fin-more{width:100%;margin:8px 0}.fin-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px;min-width:0}
+.fin-form-grid .field{min-width:0}.fin-form-grid input,.fin-form-grid select{width:100%;min-width:0}.fin-form-grid small{display:block;margin-top:6px;font-size:10px;color:var(--ink-soft);line-height:1.7}
+#financeScreen .page-heading{align-items:center}#financeScreen .page-heading h1{font-size:28px}#financeScreen .page-heading .btn{flex-shrink:0;font-size:12px}
+@media(min-width:760px){.fin-filters{grid-template-columns:repeat(5,minmax(0,1fr))}.fin-summaries{max-width:760px}.fin-entry{padding:20px}.fin-summary strong{font-size:23px}}
+@media(max-width:380px){.fin-entry-top{flex-direction:column}.fin-form-grid{grid-template-columns:1fr}.fin-summary{padding:14px 10px}#financeScreen .page-heading{align-items:flex-start;flex-direction:column}}
+@media(prefers-reduced-motion:reduce){.fin-entry{animation:none}}
+.fin-pending{border-radius:20px;padding:16px;margin-bottom:16px;border-color:var(--clay-ink)}.fin-pending h2{font-size:15px;margin:0 0 8px}.fin-pending p{font-size:12px;color:var(--ink-soft);line-height:1.8;margin:0 0 10px}.fin-pending-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;font-size:12px;overflow-wrap:anywhere}.fin-pending-row>div{min-width:0}.fin-pending-row .btn{flex-shrink:0;font-size:11px}.fin-pending-row small{display:block;color:var(--clay-ink);font-size:11px}.fin-change{padding:14px;border-radius:16px;margin-bottom:10px}.fin-change-field{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:11px;margin-top:8px;overflow-wrap:anywhere;white-space:pre-wrap}.fin-change-field b{width:100%;color:var(--ink-soft)}

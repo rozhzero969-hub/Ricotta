@@ -39,6 +39,7 @@ jobs:
           export PGPASSWORD=postgres PGHOST=localhost PGUSER=postgres
           bash scripts/db-smoke.sh
           node scripts/db-concurrency-smoke.mjs
+          node scripts/finance-db-concurrency-smoke.mjs
 
       - name: Session and outbox regressions
         run: |
@@ -58,10 +59,11 @@ jobs:
           node scripts/backend-api-smoke.mjs
           node scripts/backend-security-smoke.mjs
           node scripts/backend-push-smoke.mjs
+          node scripts/finance-api-smoke.mjs
 
       - name: No undefined names in the app scripts
         run: |
-          cat config.js icons.js i18n.js storage.js sounds.js modals.js push.js assistant.js stock.js app.js update-check.js > .lint-all.js
+          cat config.js icons.js i18n.js storage.js sounds.js modals.js push.js assistant.js stock.js finance.js app.js update-check.js > .lint-all.js
           npx --yes eslint@9 --config scripts/eslint.undef.config.cjs .lint-all.js
 
       - name: Rico provider smoke test (Gemini + Groq, mocked)
@@ -77,6 +79,9 @@ jobs:
 
       - name: Stock and transfer UI smoke test (mocked API, EN + KU + AR)
         run: node scripts/stock-ui-smoke.cjs
+
+      - name: Expense ledger UI smoke test (mocked API, IQD + USD)
+        run: node scripts/finance-ui-smoke.cjs
 
       - name: PC worker receipt filler (local copy of the workplace page)
         run: node scripts/receipt-worker-smoke.mjs

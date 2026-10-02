@@ -46,6 +46,7 @@
 //   PUT    assistant/groq-key         {key} (rozha)             add-only
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, saveGroqKey } from "./assistant.ts";
+import { handleFinance } from "./finance.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from "../_shared/security.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -68,10 +69,10 @@ const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
 const LANGS = ["en", "ku", "ar"];
 // Every screen of the app, and the ones each account may open.
-const VIEWS = ["order", "assistant", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
+const VIEWS = ["order", "assistant", "history", "expenses", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
 const ACCOUNT_VIEWS: Record<string, string[]> = {
   rozha: VIEWS,
-  yunis: ["order", "assistant", "history", "suppliers", "itemsAdmin", "units", "record"],
+  yunis: ["order", "assistant", "history", "expenses", "suppliers", "itemsAdmin", "units", "record"],
 };
 // Allowed browser origin for this app. Set ALLOWED_ORIGIN if the production
 // site ever moves to another origin.
@@ -675,6 +676,9 @@ Deno.serve(async (req) => {
 
     const s = await authenticate(req);
     if (!s) return fail("unauthorized", 401);
+    if (path === "finance" || path.startsWith("finance/")) {
+      return await handleFinance({ db, session: s, req, routeSegments: path.split("/"), url: new URL(req.url), json, fail, bodyReader: readBody }) ?? fail("not_found", 404);
+    }
     const rozha = isRozha(s);
     const b = M === "GET" ? {} : await readBody(req, path === "assistant/transcribe" ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES);
     let m: RegExpMatchArray | null;
