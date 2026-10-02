@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prepareReceipt, submitReceipt, RECEIPT_PAGE } from './receipt.mjs';
 import { prepareItem, submitItem, formOpen, STOCK_PAGE } from './items.mjs';
-import {nextPollDelay} from './polling.mjs';
+import {HEARTBEAT_MS,WAIT_TIMEOUT_MS,waitForWork} from './polling.mjs';
 import { acquireLock } from './lock.mjs';
 import { onLoginPage, signIn } from './signin.mjs';
 
@@ -37,8 +37,8 @@ if(!workerLock.acquired){console.error(`${workerLock.reason}${workerLock.held?.p
 process.on('exit',()=>{try{workerLock.release()}catch{}});
 for(const sig of ['SIGINT','SIGTERM','SIGHUP'])process.on(sig,()=>process.exit(0));
 setInterval(()=>{try{workerLock.heartbeat()}catch(error){console.error(error.message);process.exit(1)}},30000).unref();
-async function api(route,method='GET',value){
-  const r=await fetch(API+'/'+route,{method,headers:{'Content-Type':'application/json','x-worker-token':TOKEN},body:value===undefined?undefined:JSON.stringify(value),signal:AbortSignal.timeout(20000)});
+async function api(route,method='GET',value,timeoutMs=20000){
+  const r=await fetch(API+'/'+route,{method,headers:{'Content-Type':'application/json','x-worker-token':TOKEN},body:value===undefined?undefined:JSON.stringify(value),signal:AbortSignal.timeout(timeoutMs)});
   const b=await r.json().catch(()=>({error:'No server response'}));if(!r.ok)throw new Error(b.error||'Queue error');return b;
 }
 // Tells the app why the worker could not start, so the phone shows it instead of "Starting…" forever.
@@ -148,7 +148,7 @@ console.log(LIVE?'LIVE SUBMISSION ENABLED — only final-approved requests are s
 let lastPageReady=null, lastRecovery=0, lastBeat=0;
 // Health for the app: running, live or checks only, and whether the workplace transfer page is ready.
 async function heartbeat(pageReady){
-  if(Date.now()-lastBeat<30000)return; lastBeat=Date.now();
+  if(Date.now()-lastBeat<HEARTBEAT_MS)return; lastBeat=Date.now();
   try{
     const r=await api('worker/heartbeat','POST',{live:LIVE,receiptsLive:RECEIPTS_LIVE,itemsLive:ITEMS_LIVE,pageReady,note:pageReady?'':(signinState.fails>=3?'Could not sign in to the workplace 3 times; sign in on the PC':'Workplace transfer page is not open or not signed in')});
     if(r?.checkSignin)signinState.requested=true;
@@ -332,7 +332,8 @@ async function itemTurn(){
     await api('worker/itemjob-report','POST',{id:j.id,claimToken:j.claimToken,status:'failed',message:e.message,image}).catch(err=>console.error('Could not report item task:',err.message));
   }
 }
-let pollDelay=POLL;
+// checkQueue: look for work this turn. It is off after a quiet wait, so a quiet PC makes one call per wait.
+let checkQueue=true;
 while(true){
   let busy=false;
   try{
@@ -347,12 +348,17 @@ while(true){
     // Without a visible transfer form nothing is claimed or checked; requests keep waiting.
     // Try to return to the page at most once a minute (for example after a sign-in redirect).
     if(!pageReady&&Date.now()-lastRecovery>60000){lastRecovery=Date.now();await page.goto(PAGE,{waitUntil:'domcontentloaded'}).catch(()=>{})}
-    else if(pageReady){
+    else if(pageReady&&(checkQueue||held||heldItem)){
       const claimed=LIVE?(await api('worker/claim','POST',{})).request:null;
       if(claimed){busy=true;await execute(claimed)}
       else{const next=(await api('worker/preview')).request;if(next){busy=true;await preview(next)}else{await receiptTurn();await itemTurn();busy=!!held||!!heldItem}}
     }
   }catch(e){console.error('Queue unavailable; no transfer will run:',e.message)}
-  pollDelay=nextPollDelay(pollDelay,busy,POLL);
-  await sleep(pollDelay);
+  if(busy||!lastPageReady){await sleep(POLL);checkQueue=true;continue}
+  // Woken, but nothing could be picked up (for example an approved transfer while the PC is in test mode):
+  // pause like before, so the question is never asked in a tight loop.
+  if(checkQueue)await sleep(POLL);
+  // Nothing to do: wait for the server to say there is (answered within a second of new work).
+  checkQueue=await waitForWork(()=>api('worker/wait?live='+(LIVE?1:0),'GET',undefined,WAIT_TIMEOUT_MS),sleep);
+  if(checkQueue)lastBeat=0;   // a sign-in check may have been asked for: the heartbeat answers it straight away
 }

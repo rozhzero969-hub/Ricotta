@@ -33,6 +33,7 @@
 //   POST   counts                        {itemId, storage, quantity, countedAt, note, pin}   (asks for the PIN again)
 //   POST   resolve                       {id, status, note, recordedDate}
 //   --- office PC (x-worker-token) ---
+//   GET    worker/wait?for=worker|launcher&live=0|1   held open until there is work (or ~25 s): {work} (+ control status for the launcher)
 //   GET    worker/preview                oldest waiting request that needs a PC check
 //   POST   worker/preview-report         {id, ok, message, image}
 //   POST   worker/claim                  the next final-approved request
@@ -71,6 +72,7 @@ const SCREENS = ["order", "assistant", "history", "transfers", "stock", "receipt
 const MAX_BODY = 64 * 1024;
 const MAX_WORKER_BODY = 900 * 1024;   // a PC report carries a screenshot
 const IMAGE_MAX_CHARS = 600_000;
+const WAIT_MS = 25_000, WAIT_STEP_MS = 1_000;   // worker/wait: how long one question is held open, and how often it looks
 
 async function readBody(req: Request, max = MAX_BODY): Promise<any> {
   return readJsonBody(req, max);
@@ -246,6 +248,22 @@ Deno.serve(async (req: Request) => {
         // The launcher on the office PC asks this every few seconds.
         await touchControl("launcher_seen_at");
         return json(await controlStatus());
+      }
+      if (req.method === "GET" && path[1] === "wait") {
+        // Instead of the PC asking every minute, the question is held open here and answered the moment
+        // there is something to do, so new work starts within about a second and far fewer calls are made.
+        const q = new URL(req.url).searchParams, launcher = q.get("for") === "launcher";
+        const until = Date.now() + WAIT_MS;
+        let work = false;
+        for (;;) {
+          await touchControl(launcher ? "launcher_seen_at" : "worker_seen_at");
+          const { data, error } = launcher ? await db.rpc("stock_launcher_has_work") : await db.rpc("stock_worker_has_work", { p_live: q.get("live") === "1" });
+          if (error) throw error;
+          if (data === true) { work = true; break; }
+          if (Date.now() >= until || req.signal.aborted) break;
+          await new Promise((r) => setTimeout(r, WAIT_STEP_MS));
+        }
+        return json(launcher ? { work, ...(await controlStatus()) } : { work });
       }
       if (req.method === "POST" && path[1] === "heartbeat") {
         // The worker's health: running, live or checks only, and whether the workplace page is ready.
