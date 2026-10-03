@@ -32,6 +32,15 @@ try{
   // whole name finds nothing there, so the worker types "Golden Bread Bakery" and matches the full name.
   await prepareReceipt(page,{...base,supplierName:'Golden Bread Bakery / صمون گۆلدن برید',lines:[{workplaceName:'Tomato - تەماتە',unitLabel:'کیلۆ',qty:2,cost:500}]});
   assert.equal(await page.evaluate(()=>document.getElementById('sup').textContent),'Golden Bread Bakery / صمون گۆلدن بريد');
+  // 1c. A freshly opened tab: the lists arrive 2.5 seconds late and "No suppliers found" shows until then.
+  // The worker waits for the real choices instead of giving up.
+  const lateCtx=await browser.newContext({viewport:{width:1280,height:850}});
+  await lateCtx.addInitScript(()=>{window.__listsDelay=2500});
+  await lateCtx.route(RECEIPT_PAGE,route=>route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:html}));
+  const latePage=await lateCtx.newPage();
+  await prepareReceipt(latePage,{...base,lines:[{workplaceName:'Tomato - تەماتە',unitLabel:'کیلۆ',qty:2,cost:500}]});
+  assert.equal(await latePage.evaluate(()=>document.getElementById('sup').textContent),'Fresh Foods','supplier picked after the list loaded late');
+  await lateCtx.close();
   // 2. Stops on anything unclear, and never submits.
   const stops=async(r,re,why)=>{await assert.rejects(prepareReceipt(page,{...base,...r}),re,why);assert.equal(await page.evaluate(()=>window.submitted),0)};
   await stops({lines:[{workplaceName:'Tomatoes',unitLabel:'کیلۆ',qty:1,cost:1}]},/no choice matches/,'an item that is not on the list');
@@ -68,5 +77,5 @@ try{
   await assert.rejects(submitReceipt(loseClickResponse(page,'Receive & send to finance'),good,'Receipt received',()=>{pressed=true}),/acknowledgement lost/);
   assert.equal(pressed,true,'an attempted click is treated as uncertain when its response is lost');
   assert.equal(await page.evaluate(()=>window.submitted),1,'the browser actually submitted exactly once');
-  console.log(JSON.stringify({result:'PASS',checks:'fills supplier, invoice, dollar rate, delivery and item lines; checks line totals; stops on unknown item, supplier or unit and on an ambiguous unit; never submits on its own; saving re-checks the whole form, presses once and needs the exact success message'}));
+  console.log(JSON.stringify({result:'PASS',checks:'waits for lists that load late on a new tab; fills supplier, invoice, dollar rate, delivery and item lines; checks line totals; stops on unknown item, supplier or unit and on an ambiguous unit; never submits on its own; saving re-checks the whole form, presses once and needs the exact success message'}));
 }finally{await browser.close()}

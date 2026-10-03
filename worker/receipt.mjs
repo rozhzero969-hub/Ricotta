@@ -33,10 +33,29 @@ async function openChoices(page){
   if(await opts.count())return opts;
   return page.locator('[role="listbox"] :is(button,li,div):visible, [cmdk-item]:visible');
 }
+// A tab that has only just opened can show "No suppliers found" for a moment, before the workplace page has
+// loaded its lists. Those messages are not choices. Waits (up to `max` ms) until the open dropdown shows a
+// real choice, closing and reopening it now and then in case it was opened before the data arrived.
+const EMPTY=/^(no\b.*\b(found|results?|matches|options|items|suppliers)\b|loading\b|searching\b|please wait)/i;
+async function waitForChoices(page,trigger,max=15000){
+  const any=page.locator('[role="option"]:visible, [role="listbox"] :is(button,li,div):visible, [cmdk-item]:visible');
+  const real=async()=>{
+    const n=await any.count();
+    for(let i=0;i<n;i++){const s=norm(await any.nth(i).innerText().catch(()=>''));if(s&&!EMPTY.test(s))return true}
+    return false;
+  };
+  const end=Date.now()+max;let reopened=Date.now();
+  while(!await real()){
+    if(Date.now()>end)return;
+    if(Date.now()-reopened>4000){await page.keyboard.press('Escape');await page.waitForTimeout(150);await trigger.click();reopened=Date.now()}
+    await page.waitForTimeout(100);
+  }
+}
 // Pick the one choice whose text matches. `match` decides; several identical texts count as one choice.
 // With `typed`, the search box is filled with a short part of the name first (see searchTerms).
 async function choose(page,trigger,label,match,typed){
   await trigger.click();
+  await waitForChoices(page,trigger);
   const box=typed?await page.locator('input:focus').first().elementHandle({timeout:500}).catch(()=>null):null;
   let opts,hits=[],seen=[];
   for(const term of box?searchTerms(typed):[null]){
