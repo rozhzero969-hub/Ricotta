@@ -9,3 +9,4 @@ done
 psql -X -v ON_ERROR_STOP=1 -q -f scripts/stock-db-smoke.sql
 psql -X -v ON_ERROR_STOP=1 -q -f scripts/atomic-db-smoke.sql
 psql -X -v ON_ERROR_STOP=1 -q -f scripts/submission-recovery-smoke.sql
+psql -X -v ON_ERROR_STOP=1 -q -f scripts/batch-db-smoke.sql
