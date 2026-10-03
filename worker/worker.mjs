@@ -147,7 +147,7 @@ async function preview(r){
   try{
     await inspectTransfer(page,r,SUCCESS);
     console.log('Check passed:',r.id);
-    await api('worker/preview-report','POST',{id:r.id,ok:true,message:'All match: storages, item, unit, amount and workplace stock.',image:await jpeg()});
+    await api('worker/preview-report','POST',{id:r.id,ok:true,message:(r.lines&&r.lines.length>1?`All ${r.lines.length} items match`:'All match')+': storages, item, unit, amount and workplace stock.',image:await jpeg()});
   }catch(e){
     console.error('Check failed:',r.id,e.message);await shot(r.id);
     try{await api('worker/preview-report','POST',{id:r.id,ok:false,message:e.message,image:await jpeg()})}catch(reportError){console.error('Could not report check result:',reportError.message)}
@@ -274,9 +274,9 @@ while(true){
     // Try to return to the page at most once a minute (for example after a sign-in redirect).
     if(!pageReady&&Date.now()-lastRecovery>60000){lastRecovery=Date.now();await page.goto(PAGE,{waitUntil:'domcontentloaded'}).catch(()=>{})}
     else if(pageReady&&(checkQueue||held||heldItem)){
-      const claimed=LIVE?(await api('worker/claim','POST',{})).request:null;
+      const claimed=LIVE?(await api('worker/claim?multi=1','POST',{})).request:null;
       if(claimed){busy=true;await execute(claimed)}
-      else{const next=(await api('worker/preview')).request;if(next){busy=true;await preview(next)}else{await receiptTurn();await itemTurn();busy=!!held||!!heldItem}}
+      else{const next=(await api('worker/preview?multi=1')).request;if(next){busy=true;await preview(next)}else{await receiptTurn();await itemTurn();busy=!!held||!!heldItem}}
     }
   }catch(e){console.error('Queue unavailable; no transfer will run:',e.message)}
   if(busy||!lastPageReady){await sleep(POLL);checkQueue=true;continue}
@@ -284,6 +284,6 @@ while(true){
   // pause like before, so the question is never asked in a tight loop.
   if(checkQueue)await sleep(POLL);
   // Nothing to do: wait for the server to say there is (answered within a second of new work).
-  checkQueue=await waitForWork(()=>api('worker/wait?live='+(LIVE?1:0),'GET',undefined,WAIT_TIMEOUT_MS),sleep);
+  checkQueue=await waitForWork(()=>api('worker/wait?multi=1&live='+(LIVE?1:0),'GET',undefined,WAIT_TIMEOUT_MS),sleep);
   if(checkQueue)lastBeat=0;   // a sign-in check may have been asked for: the heartbeat answers it straight away
 }

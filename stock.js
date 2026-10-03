@@ -11,7 +11,7 @@
 const STOCK_API_URL = `${SUPABASE_URL}/functions/v1/stock-api`;
 const ST_ACTIVE = ['waiting', 'running', 'needs_checking'];
 const stockState = {groups: [], tabs: null, loaded: false, failed: false, storages: [], settings: new Map(), balances: new Map(), requests: [], counts: [], control: null, sig: '', shots: {}, lastLight: 0};
-const trState = {from: '', to: '', itemId: '', qty: '', unit: 'counting', yesterday: false, search: '', reviewKey: null};
+const trState = {from: '', to: '', itemId: '', qty: '', unit: 'counting', yesterday: false, search: '', reviewKey: null, lines: [], lineKeys: {}};
 const stView = {storage: 'all', filter: 'all', search: '', group: ''};
 const histView = {filter: 'all'};
 const itemsView = {filter: 'all', search: ''};
@@ -159,13 +159,13 @@ function stUnitChoices(id){
   return out;
 }
 const stHasBoth = id => stUnitChoices(id).length > 1;
-const stChoice = id => { const c = stUnitChoices(id); return c.find(x => x.mode === trState.unit) || c[0]; };
-const stMode = id => stChoice(id)?.mode || 'counting';
-const stFactor = id => stChoice(id)?.factor || 1;          // counting units in one entered unit
-const stEnteredUnit = id => stUnitObj(stChoice(id)?.unitId);
-const stEnteredName = id => { const u = stEnteredUnit(id); return u ? unitName(u) : ''; };
-const stEnteredId = id => stEnteredUnit(id)?.id;
-const stEnteredEn = id => stEnteredUnit(id)?.en || '';
+const stChoice = (id, mode = trState.unit) => { const c = stUnitChoices(id); return c.find(x => x.mode === mode) || c[0]; };
+const stMode = (id, mode) => stChoice(id, mode)?.mode || 'counting';
+const stFactor = (id, mode) => stChoice(id, mode)?.factor || 1;          // counting units in one entered unit
+const stEnteredUnit = (id, mode) => stUnitObj(stChoice(id, mode)?.unitId);
+const stEnteredName = (id, mode) => { const u = stEnteredUnit(id, mode); return u ? unitName(u) : ''; };
+const stEnteredId = (id, mode) => stEnteredUnit(id, mode)?.id;
+const stEnteredEn = (id, mode) => stEnteredUnit(id, mode)?.en || '';
 /* How a request's amount reads: what was typed, plus the counting-unit amount when they differ. */
 function reqAmountHtml(r){
   const q = r.enteredQuantity ?? r.quantity, u = r.enteredUnitLabel ?? r.unitLabel;
@@ -179,7 +179,7 @@ const stTokens = q => foldText(String(q || '').trim()).split(/\s+/).filter(Boole
 /* The name inside the workplace system (what the PC searches for); the same as the app name unless one was set. */
 const stWorkName = id => stSetting(id)?.workplaceName || stItem(id)?.name || '';
 const stMatches = (item, tokens) => { const n = foldText(item.name + ' ' + (stSetting(item.id)?.workplaceName || '')); return tokens.every(x => n.includes(x)); };
-const stNeedsChecking = () => stockState.requests.filter(r => r.status === 'needs_checking').length;
+const stNeedsChecking = () => new Set(stockState.requests.filter(r => r.status === 'needs_checking').map(r => r.batchId || r.id)).size;
 /* The state of a request as shown to people. */
 function reqState(r){
   const fresh = r.previewedAt && Date.now() - new Date(r.previewedAt).getTime() < 20 * 60 * 1000;
@@ -298,10 +298,12 @@ function renderTransfers(){
   <div id="wkBar"></div>
   <section class="tr-card">
     <div class="tr-crumbs" id="trCrumbs"></div>
+    <div class="tr-cart" id="trCart" hidden></div>
     <div class="tr-step" id="trStFrom"><div class="tr-step-h"><span class="tr-num">1</span>${esc(t('trStepFrom'))}</div><div id="trFromList" class="tr-results"></div></div>
     <div class="tr-step" id="trStTo" hidden><div class="tr-step-h"><span class="tr-num">2</span>${esc(t('trStepTo'))}</div><div id="trToList" class="tr-results"></div></div>
     <div class="tr-step" id="trStItem" hidden><div class="tr-step-h"><span class="tr-num">3</span>${esc(t('trStepItem'))}</div>
       <div id="trPicker"><div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="trSearch" autocomplete="off" aria-label="${esc(t('searchPlaceholder'))}" value="${esc(trState.search)}"></div><div id="trResults" class="tr-results" aria-live="polite"></div></div>
+      <button type="button" class="btn btn-primary tr-wide" id="trReviewCart" hidden></button>
     </div>
     <div id="trChosen" class="tr-chosen" hidden></div>
     <div class="tr-step" id="trAmount" hidden><div class="tr-step-h"><span class="tr-num">4</span>${esc(t('trStepAmount'))}</div>
@@ -312,6 +314,7 @@ function renderTransfers(){
     <div id="trFinish" hidden>
       <label class="check-row tr-yesterday"><span>${esc(t('trYesterday'))}<small>${esc(t('trYesterdayHint'))}</small></span><input type="checkbox" id="trYesterday" ${trState.yesterday ? 'checked' : ''}></label>
       <p class="tr-hint" id="trHint"></p>
+      <button type="button" class="btn tr-wide tr-add-more" id="trAddMore">${ICON_PLUS} ${esc(t('trAddMore'))}</button>
       <button type="button" class="btn btn-primary tr-wide" id="trReview">${esc(t('trReview'))}</button>
       <div class="field-hint tr-note">${esc(t('trOneItemHint'))}</div>
     </div>
@@ -329,6 +332,8 @@ function trPaintStorages(){
   const show = (id, on) => { const el = document.getElementById(id); if(el) el.hidden = !on; };
   show('trStFrom', stage === 'from'); show('trStTo', stage === 'to'); show('trStItem', stage === 'item');
   show('trChosen', stage === 'amount'); show('trAmount', stage === 'amount'); show('trFinish', stage === 'amount');
+  show('trReviewCart', stage === 'item' && trState.lines.length > 0);
+  trPaintCart();
   const fromBox = document.getElementById('trFromList'), toBox = document.getElementById('trToList');
   if(fromBox && stage === 'from'){
     fromBox.innerHTML = stockState.storages.map(x => trStorageRow(x, t('trStorageCount')(stReadyItems().filter(i => stQty(i.id, x) > 0).length))).join('');
@@ -345,6 +350,44 @@ function trPaintStorages(){
   if(stage === 'amount' && item) parts.push(['item', t('trStepItemShort'), item.name]);
   crumbs.innerHTML = parts.map(([k, label, v]) => `<button type="button" class="crumb" data-crumb="${k}"><small>${esc(label)}</small><b dir="auto">${esc(v)}</b><span aria-hidden="true">✎</span></button>`).join('');
   crumbs.hidden = !parts.length;
+}
+/* The items already added to this transfer. */
+function trPaintCart(){
+  const box = document.getElementById('trCart'); if(!box) return;
+  const lines = trState.lines;
+  box.hidden = !lines.length;
+  const review = document.getElementById('trReviewCart');
+  if(review) review.textContent = t('trReviewMany')(lines.length);
+  if(!lines.length){ box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="tr-cart-h">${esc(t('trCartTitle'))} · ${esc(t('trItemsN')(lines.length))}</div>` + lines.map((l, i) => {
+    const item = stItem(l.itemId);
+    return `<div class="tr-cart-row"><div><div class="name" dir="auto">${esc(item ? item.name : '')}</div><div class="meta">${esc(fmtQty(Number(l.qty)))} ${esc(stEnteredName(l.itemId, l.mode))}</div></div><button type="button" class="tr-textbtn danger" data-trrm="${i}">${esc(t('trRemoveLine'))}</button></div>`;
+  }).join('');
+}
+/* Puts the item being typed into the transfer and goes back to the list for the next one. */
+function trAddLine(){
+  const problem = trValid();
+  if(problem){ toast(t(problem), 'error'); return; }
+  const item = stItem(trState.itemId);
+  trState.lines.push({itemId: item.id, qty: trState.qty, mode: stMode(item.id)});
+  Object.assign(trState, {itemId: '', qty: '', unit: 'counting', search: ''});
+  const search = document.getElementById('trSearch'); if(search) search.value = '';
+  const qty = document.getElementById('trQty'); if(qty) qty.value = '';
+  trInvalidate(); trPaintAll();
+  if(!PAD_TOUCH.matches) search?.focus();
+}
+/* Everything this transfer will move: the items added so far, plus the one being typed if it is complete. */
+function trCollect(){
+  if(!trState.from) return {problem: 'trHintFrom'};
+  if(!trState.to) return {problem: 'trHintTo'};
+  if(trState.from === trState.to) return {problem: 'trHintDiff'};
+  const lines = trState.lines.map(l => ({...l}));
+  if(trStage() === 'amount'){
+    const problem = trValid(); if(problem) return {problem};
+    const item = stItem(trState.itemId);
+    lines.push({itemId: item.id, qty: trState.qty, mode: stMode(item.id)});
+  }
+  return lines.length ? {lines} : {problem: 'trHintItem'};
 }
 function trPaintResults(){
   const box = document.getElementById('trResults'); if(!box) return;
@@ -404,19 +447,27 @@ function trPaintHint(){
   hint.classList.toggle('ready', !problem);
 }
 function trPaintAll(){ trPaintStorages(); trPaintResults(); trPaintChosen(); const c = document.getElementById('trReviewCard'); if(c && !trState.reviewKey) c.hidden = true; }
-function trInvalidate(){ trState.reviewKey = null; const c = document.getElementById('trReviewCard'); if(c) c.hidden = true; }
-function trReset(){ Object.assign(trState, {from: '', to: '', itemId: '', qty: '', unit: 'counting', yesterday: false, search: '', reviewKey: null}); }
+function trInvalidate(){ trState.reviewKey = null; trState.lineKeys = {}; const c = document.getElementById('trReviewCard'); if(c) c.hidden = true; }
+function trReset(){ Object.assign(trState, {from: '', to: '', itemId: '', qty: '', unit: 'counting', yesterday: false, search: '', reviewKey: null, lines: [], lineKeys: {}}); }
 function trReview(){
-  const problem = trValid();
-  if(problem){ toast(t(problem), 'error'); return; }
-  const item = stItem(trState.itemId), qty = Number(trState.qty), f = stFactor(item.id), free = stFree(item.id, trState.from) / f;
-  if(qty > free + 1e-8){ toast(t('trAvailable')(fmtQty(free), iso(stEnteredName(item.id)), iso(trState.from)), 'error'); return; }
+  const got = trCollect();
+  if(got.problem){ toast(t(got.problem), 'error'); return; }
+  const lines = got.lines;
+  for(const l of lines){
+    const item = stItem(l.itemId), f = stFactor(l.itemId, l.mode), free = stFree(item.id, trState.from) / f;
+    if(Number(l.qty) > free + 1e-8){ toast(t('trAvailable')(fmtQty(free), iso(stEnteredName(item.id, l.mode)), iso(trState.from)), 'error'); return; }
+  }
   trState.reviewKey = trState.reviewKey || crypto.randomUUID();
+  for(const l of lines) trState.lineKeys[l.itemId] = trState.lineKeys[l.itemId] || crypto.randomUUID();
   const card = document.getElementById('trReviewCard');
-  card.innerHTML = `<div class="hero-eyebrow">${esc(t('trReviewTitle'))}</div>
+  const lineHtml = l => {
+    const item = stItem(l.itemId), qty = Number(l.qty), f = stFactor(l.itemId, l.mode);
+    return `<div class="tr-rv-line"><div class="tr-rv-item" dir="auto">${esc(item.name)}</div>${stWorkName(item.id) !== item.name ? `<div class="tr-rv-work" dir="auto">${esc(t('trWorkAs'))}: ${esc(stWorkName(item.id))}</div>` : ''}
+    <div class="tr-rv-qty"><b>${esc(fmtQty(qty))}</b> ${esc(stEnteredName(item.id, l.mode))}${f !== 1 ? ` <span class="tr-rv-eq">= ${esc(fmtQty(Math.round(qty * f * 1e6) / 1e6))} ${esc(stCountUnitName(item.id))}</span>` : ''}</div></div>`;
+  };
+  card.innerHTML = `<div class="hero-eyebrow">${esc(t('trReviewTitle'))}${lines.length > 1 ? ' · ' + esc(t('trItemsN')(lines.length)) : ''}</div>
     <div class="tr-rv-route">${esc(trState.from)} <span aria-hidden="true">→</span> ${esc(trState.to)}</div>
-    <div class="tr-rv-item" dir="auto">${esc(item.name)}</div>${stWorkName(item.id) !== item.name ? `<div class="tr-rv-work" dir="auto">${esc(t('trWorkAs'))}: ${esc(stWorkName(item.id))}</div>` : ''}
-    <div class="tr-rv-qty"><b>${esc(fmtQty(qty))}</b> ${esc(stEnteredName(item.id))}${f !== 1 ? ` <span class="tr-rv-eq">= ${esc(fmtQty(Math.round(qty * f * 1e6) / 1e6))} ${esc(stCountUnitName(item.id))}</span>` : ''}</div>
+    ${lines.map(lineHtml).join('')}
     <div class="hero-sub">${esc(trState.yesterday ? t('trWhenYesterday') : t('trWhenToday'))}</div>
     ${(()=>{ const w = workerState(); return w && w.cls !== 'on' ? `<div class="tr-rv-warn">${esc(t('wkReviewWarn')(w.label))}</div>` : ''; })()}
     <div class="tr-rv-actions"><button type="button" class="btn btn-primary" id="trApprove">${esc(t('trApprove'))}</button><button type="button" class="btn tr-rv-edit" id="trEdit">${esc(t('trEditRequest'))}</button></div>`;
@@ -429,10 +480,11 @@ function trReview(){
 async function trApprove(){
   const btn = document.getElementById('trApprove');
   return withBusy(btn, async () => {
-  const item = stItem(trState.itemId);
-  if(!item || !trState.reviewKey) return;
-    const r = await stockApi('requests', {method: 'POST', body: {clientKey: trState.reviewKey, from: trState.from, to: trState.to, yesterday: trState.yesterday,
-      itemId: item.id, quantity: trState.qty, unitId: stEnteredId(item.id), expectedName: stWorkName(item.id), expectedUnit: stEnteredEn(item.id)}});
+  const got = trCollect();
+  if(got.problem || !trState.reviewKey) return;
+    const r = await stockApi('requests', {method: 'POST', body: {from: trState.from, to: trState.to, yesterday: trState.yesterday,
+      lines: got.lines.map(l => ({clientKey: trState.lineKeys[l.itemId], itemId: l.itemId, quantity: l.qty, unitId: stEnteredId(l.itemId, l.mode),
+        expectedName: stWorkName(l.itemId), expectedUnit: stEnteredEn(l.itemId, l.mode)}))}});
     if(!r.ok){
       const msg = r.data?.error || t('saveFailed');
       if(/Catalog changed/i.test(msg)){ trInvalidate(); await loadData().catch(()=>{}); await loadStock(); render(); }
@@ -446,13 +498,27 @@ async function trApprove(){
 /* People and requests that are still on the PC, plus anything finished in the last half hour. */
 function trShownRequests(){
   const cutoff = Date.now() - 30 * 60 * 1000;
-  return stockState.requests.filter(r => ST_ACTIVE.includes(r.status) || (r.finishedAt && new Date(r.finishedAt).getTime() > cutoff))
+  const rows = stockState.requests.filter(r => ST_ACTIVE.includes(r.status) || (r.finishedAt && new Date(r.finishedAt).getTime() > cutoff));
+  // The rows of one transfer share a batch; the card is the lead row, with the whole list under `group`.
+  const batches = new Map();
+  for(const r of rows){ const k = r.batchId || r.id; if(!batches.has(k)) batches.set(k, []); batches.get(k).push(r); }
+  return [...batches.values()].map(g => { g.sort((a, b) => (a.batchPos || 0) - (b.batchPos || 0)); return {...g[0], group: g}; })
     .sort((a, b) => new Date(b.approvedAt) - new Date(a.approvedAt));
+}
+/* The whole transfer a row belongs to, whichever of its rows is given. */
+function trFindGroup(id){
+  const row = stockState.requests.find(x => x.id === id); if(!row) return null;
+  const group = stockState.requests.filter(x => (x.batchId || x.id) === (row.batchId || row.id)).sort((a, b) => (a.batchPos || 0) - (b.batchPos || 0));
+  return {...group[0], group};
 }
 /* A plain list of exactly what will move, shown on the card and again in the final confirmation. */
 function trSummaryHtml(r){
   const row = (k, v) => `<div class="tr-sum-row"><span>${esc(t(k))}</span><b dir="auto">${v}</b></div>`;
-  return `<div class="tr-sum">${row('trSumItem', esc(r.itemName))}${r.workplaceName && r.workplaceName !== r.itemName ? row('trSumWork', esc(r.workplaceName)) : ''}${row('trSumAmount', reqAmountHtml(r))}${row('trSumFrom', esc(r.from))}${row('trSumTo', esc(r.to))}${row('trSumDay', esc(r.yesterday ? t('trYesterday') : t('trSumToday')))}</div>`;
+  const many = r.group && r.group.length > 1;
+  const what = many
+    ? row('trSumItems', r.group.map(x => `<div>${esc(x.itemName)} · ${reqAmountHtml(x)}</div>`).join(''))
+    : row('trSumItem', esc(r.itemName)) + (r.workplaceName && r.workplaceName !== r.itemName ? row('trSumWork', esc(r.workplaceName)) : '') + row('trSumAmount', reqAmountHtml(r));
+  return `<div class="tr-sum">${what}${row('trSumFrom', esc(r.from))}${row('trSumTo', esc(r.to))}${row('trSumDay', esc(r.yesterday ? t('trYesterday') : t('trSumToday')))}</div>`;
 }
 function trRequestCard(r){
   const st = reqState(r), shot = stockState.shots[r.id];
@@ -474,7 +540,9 @@ function trRequestCard(r){
     buttons = `<button type="button" class="btn btn-primary tr-wide" data-trresolve="${esc(r.id)}">${esc(t('trCheckResult'))}</button>`;
   }
   return `<article class="tr-req glass s-${esc(r.status)}" data-trreq="${esc(r.id)}">
-    <div class="tr-req-top"><div><div class="tr-req-name" dir="auto">${esc(r.itemName)}</div>${r.workplaceName && r.workplaceName !== r.itemName ? `<div class="tr-req-work" dir="auto">${esc(t('trWorkAs'))}: ${esc(r.workplaceName)}</div>` : ''}<div class="tr-req-amt">${reqAmountHtml(r)}</div></div><span class="tr-chip ${esc(st.cls)}">${esc(st.label)}</span></div>
+    <div class="tr-req-top"><div>${r.group && r.group.length > 1
+      ? `<div class="tr-req-name">${esc(t('trItemsN')(r.group.length))}</div><ul class="tr-req-items">${r.group.map(x => `<li><span dir="auto">${esc(x.itemName)}</span> <b>${reqAmountHtml(x)}</b></li>`).join('')}</ul>`
+      : `<div class="tr-req-name" dir="auto">${esc(r.itemName)}</div>${r.workplaceName && r.workplaceName !== r.itemName ? `<div class="tr-req-work" dir="auto">${esc(t('trWorkAs'))}: ${esc(r.workplaceName)}</div>` : ''}<div class="tr-req-amt">${reqAmountHtml(r)}</div>`}</div><span class="tr-chip ${esc(st.cls)}">${esc(st.label)}</span></div>
     <div class="tr-req-route">${esc(r.from)} <span aria-hidden="true">→</span> ${esc(r.to)}${r.yesterday ? ' · ' + esc(t('trYesterday')) : ''}</div>
     ${pc}${buttons}</article>`;
 }
@@ -505,7 +573,7 @@ async function stEnsureShots(r){
 }
 function bindRequestButtons(root){
   root.querySelectorAll('[data-trfinal]').forEach(b => b.onclick = () => withBusy(b, async () => {
-    const req = stockState.requests.find(x => x.id === b.dataset.trfinal);
+    const req = trFindGroup(b.dataset.trfinal);
     if(!(await showConfirm((req ? trSummaryHtml(req) : '') + '<p>' + esc(t('trFinalConfirm')) + '</p>', {okLabel: t('trFinalApprove'), okClass: 'btn-primary'}))) return;
     const r = await stockApi('final-approve', {method: 'POST', body: {id: b.dataset.trfinal}});
     if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); await refreshStockLight(); return; }
@@ -519,11 +587,14 @@ function bindRequestButtons(root){
   }));
   // Change = cancel this waiting request and reopen the form with its details filled in.
   root.querySelectorAll('[data-trchange]').forEach(b => b.onclick = () => withBusy(b, async () => {
-    const req = stockState.requests.find(x => x.id === b.dataset.trchange); if(!req) return;
+    const req = trFindGroup(b.dataset.trchange); if(!req) return;
     if(!(await showConfirm(esc(t('trChangeConfirm')), {okLabel: t('trChangeReq')}))) return;
     const r = await stockApi('cancel', {method: 'POST', body: {id: req.id}});
     if(!r.ok){ toast(r.data?.error || t('saveFailed'), 'error'); return; }
-    Object.assign(trState, {from: req.from, to: req.to, itemId: req.itemId || '', qty: String(req.enteredQuantity ?? req.quantity), unit: (req.enteredUnitLabel && req.enteredUnitLabel !== req.unitLabel) ? 'buying' : 'counting', yesterday: !!req.yesterday, search: '', reviewKey: null});
+    // Every item goes back into the transfer, in the unit it was entered in.
+    const lines = req.group.filter(x => x.itemId && stReady(stItem(x.itemId))).map(x => ({itemId: x.itemId, qty: String(x.enteredQuantity ?? x.quantity),
+      mode: stUnitChoices(x.itemId).find(c => c.en === x.enteredUnitLabel)?.mode || 'counting'}));
+    Object.assign(trState, {from: req.from, to: req.to, itemId: '', qty: '', unit: 'counting', yesterday: !!req.yesterday, search: '', reviewKey: null, lineKeys: {}, lines});
     await loadStock(); render(); toast(t('trChangeDone'));
   }));
   root.querySelectorAll('[data-trresolve]').forEach(b => b.onclick = () => openResolve(b.dataset.trresolve));
@@ -535,7 +606,7 @@ function attachTransfersEvents(){
   wkPaint();
   const qty = document.getElementById('trQty');
   const goBack = key => {           // change an earlier answer: it and everything after it are cleared
-    if(key === 'from'){ trState.from = ''; trState.to = ''; }
+    if(key === 'from'){ trState.from = ''; trState.to = ''; trState.lines = []; }
     if(key === 'to') trState.to = '';
     trState.itemId = ''; trState.qty = ''; trState.unit = 'counting'; trState.search = '';
     const box = document.getElementById('trSearch'); if(box) box.value = '';
@@ -544,6 +615,7 @@ function attachTransfersEvents(){
   document.getElementById('trCrumbs').onclick = e => { const b = e.target.closest('[data-crumb]'); if(b) goBack(b.dataset.crumb); };
   document.getElementById('trFromList').onclick = e => {
     const b = e.target.closest('[data-trsto]'); if(!b) return;
+    if(trState.from !== b.dataset.trsto) trState.lines = [];          // another source storage: the items added so far no longer apply
     trState.from = b.dataset.trsto; if(trState.to === trState.from) trState.to = '';
     trState.itemId = ''; trState.qty = ''; trState.search = ''; document.getElementById('trSearch').value = '';
     trInvalidate(); trPaintAll(); trPaintHint();
@@ -557,6 +629,7 @@ function attachTransfersEvents(){
     const b = e.target.closest('[data-trpick]'); if(!b) return;
     const item = stItem(b.dataset.trpick); if(!item) return;
     if(!stReady(item)){ openItemModal(item.id); return; }     // not set up yet: set it up here, then come back
+    if(trState.lines.some(l => l.itemId === item.id)){ toast(t('trAlreadyAdded'), 'error'); return; }
         if(stFree(item.id, trState.from) <= 1e-8){ toast(t('trNoneHere')(iso(trState.from)), 'error'); return; }
     trState.itemId = item.id; trState.qty = ''; trState.unit = 'counting'; trState.search = ''; trInvalidate(); qty.value = ''; trPaintAll();
     if(!PAD_TOUCH.matches) qty.focus();   // computers type straight away; phones tap the box for the number pad
@@ -568,16 +641,23 @@ function attachTransfersEvents(){
   document.getElementById('trAll').onclick = () => { if(trState.itemId) setQty(Math.floor(stFree(trState.itemId, trState.from) / stFactor(trState.itemId) * 1e6) / 1e6); };
   document.getElementById('trYesterday').onchange = e => { trState.yesterday = e.target.checked; trInvalidate(); };
   document.getElementById('trReview').onclick = trReview;
+  document.getElementById('trAddMore').onclick = trAddLine;
+  document.getElementById('trReviewCart').onclick = trReview;
+  document.getElementById('trCart').onclick = e => {
+    const b = e.target.closest('[data-trrm]'); if(!b) return;
+    trState.lines.splice(Number(b.dataset.trrm), 1); trInvalidate(); trPaintAll(); trPaintHint();
+  };
   trPaintAll(); trPaintActive();
   stRefreshIfStale();
 }
 
 /* ============ Check a "Needs checking" request by hand ============ */
 function openResolve(id){
-  const r = stockState.requests.find(x => x.id === id); if(!r) return;
+  const r = trFindGroup(id); if(!r) return;
+  const many = r.group.length > 1;
   showFormModal({
     title: esc(t('trResolveTitle')),
-    banner: editingBanner(r.itemName, `${fmtQty(r.enteredQuantity ?? r.quantity)} ${r.enteredUnitLabel ?? r.unitLabel} · ${r.from} → ${r.to}`),
+    banner: editingBanner(many ? t('trItemsN')(r.group.length) : r.itemName, `${many ? r.group.map(x => x.itemName).join(', ') : `${fmtQty(r.enteredQuantity ?? r.quantity)} ${r.enteredUnitLabel ?? r.unitLabel}`} · ${r.from} → ${r.to}`),
     bodyHtml: `<div class="notif-sub">${esc(t('trResolveIntro'))}</div>
       <div class="field"><select id="rsStatus"><option value="">${esc(t('trResolveChoose'))}</option><option value="completed">${esc(t('trResolveOk'))}</option><option value="failed">${esc(t('trResolveNo'))}</option></select></div>
       <div class="field" id="rsDateBox" hidden><label>${esc(t('trResolveDate'))}</label><input id="rsDate" type="date"></div>

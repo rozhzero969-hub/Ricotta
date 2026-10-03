@@ -167,7 +167,8 @@ const server=http.createServer((rq,res)=>{
     await page.waitForFunction(()=>true);await page.waitForTimeout(400);
     const post=calls.find(c=>c.ep==='requests'&&c.method==='POST');
     assert.ok(post,'approve posts to stock-api');
-    assert.deepEqual({from:post.body.from,to:post.body.to,y:post.body.yesterday,item:post.body.itemId,q:post.body.quantity,n:post.body.expectedName,u:post.body.expectedUnit,unit:post.body.unitId},
+    assert.equal(post.body.lines.length,1,'one item is a transfer of one line');
+    assert.deepEqual({from:post.body.from,to:post.body.to,y:post.body.yesterday,item:post.body.lines[0].itemId,q:post.body.lines[0].quantity,n:post.body.lines[0].expectedName,u:post.body.lines[0].expectedUnit,unit:post.body.lines[0].unitId},
       {from:'Main Storage',to:'Minibar',y:true,item:'i1',q:'2',n:'Coca-Cola 330',u:'carton',unit:'ctn'});
     assert.equal(await page.locator('#trUnits').isVisible().catch(()=>false),false,'no unit choice when buying and counting formats are the same');
     // Requests on the PC: final approve only for the checked request that has a screenshot.
@@ -227,7 +228,7 @@ const server=http.createServer((rq,res)=>{
     assert.match(await page.locator('#trReviewCard').innerText(),/1\.5[\s\S]*box[\s\S]*= 18 piece/);
     await page.locator('#trApprove').click();await page.waitForTimeout(400);
     const boxPost=calls.filter(c=>c.ep==='requests'&&c.method==='POST').pop();
-    assert.deepEqual({q:boxPost.body.quantity,unit:boxPost.body.unitId,label:boxPost.body.expectedUnit,item:boxPost.body.itemId},{q:'1.5',unit:'box',label:'box',item:'i2'});
+    assert.deepEqual({q:boxPost.body.lines[0].quantity,unit:boxPost.body.lines[0].unitId,label:boxPost.body.lines[0].expectedUnit,item:boxPost.body.lines[0].itemId},{q:'1.5',unit:'box',label:'box',item:'i2'});
     /* ---------- Transfer in the recipe unit: 1 piece = 100 gram ---------- */
     await page.evaluate(()=>{trReset();trPaintAll();});
     await page.locator('#trFromList [data-trsto="Main Storage"]').click();await page.locator('#trToList [data-trsto="Minibar"]').click();await page.locator('[data-trpick="i2"]').click();
@@ -240,7 +241,47 @@ const server=http.createServer((rq,res)=>{
     assert.match(await page.locator('#trReviewCard').innerText(),/250[\s\S]*gram[\s\S]*= 2\.5 piece/,'250 gram is 2.5 piece');
     await page.locator('#trApprove').click();await page.waitForTimeout(400);
     const gPost=calls.filter(c=>c.ep==='requests'&&c.method==='POST').pop();
-    assert.deepEqual({q:gPost.body.quantity,unit:gPost.body.unitId,label:gPost.body.expectedUnit},{q:'250',unit:'g',label:'gram'});
+    assert.deepEqual({q:gPost.body.lines[0].quantity,unit:gPost.body.lines[0].unitId,label:gPost.body.lines[0].expectedUnit},{q:'250',unit:'g',label:'gram'});
+
+    /* ---------- Several items in one transfer ---------- */
+    const scrollTo=sel=>page.locator(sel).evaluate(el=>el.scrollIntoView({block:'center'}));
+    await page.evaluate(()=>{trReset();trPaintAll();});
+    await page.locator('#trFromList [data-trsto="Main Storage"]').click();await page.locator('#trToList [data-trsto="Minibar"]').click();
+    await page.locator('[data-trpick="i1"]').click();await pad(page,'#trQty','1');
+    await scrollTo('#trAddMore');await page.locator('#trAddMore').click();
+    assert.equal(await page.locator('#trCart .tr-cart-row').count(),1,'the first item is in the transfer');
+    assert.equal(await page.locator('#trStItem').isVisible(),true,'back to the list for the next item');
+    assert.equal(await page.locator('#trReviewCart').isVisible(),true,'the transfer can be reviewed from the list');
+    await page.locator('[data-trpick="i1"]').click();
+    assert.equal(await page.locator('#trChosen').isVisible(),false,'the same item cannot be added twice');
+    await page.locator('[data-trpick="i2"]').click();await pad(page,'#trQty','2');
+    await scrollTo('#trAddMore');await page.locator('#trAddMore').click();
+    assert.equal(await page.locator('#trCart .tr-cart-row').count(),2,'two items are in the transfer');
+    await page.locator('[data-trrm="1"]').click();
+    assert.equal(await page.locator('#trCart .tr-cart-row').count(),1,'an item can be taken out again');
+    await page.locator('[data-trpick="i2"]').click();await pad(page,'#trQty','2');   // typed but not added: review still includes it
+    await scrollTo('#trReview');await page.locator('#trReview').click();
+    const reviewText=await page.locator('#trReviewCard').innerText();
+    assert.match(reviewText,/2 items/i);assert.match(reviewText,/Coca Cola[\s\S]*Flour/,'the review lists every item');
+    await page.locator('#trApprove').click();await page.waitForTimeout(400);
+    const multiPost=calls.filter(c=>c.ep==='requests'&&c.method==='POST').pop();
+    assert.deepEqual(multiPost.body.lines.map(l=>[l.itemId,l.quantity]),[['i1','1'],['i2','2']],'every item is sent, in order');
+    assert.equal(new Set(multiPost.body.lines.map(l=>l.clientKey)).size,2,'each item has its own retry key');
+    assert.equal(await page.evaluate(()=>trState.lines.length),0,'the form is empty after approval');
+    // The rows of one transfer are one card on the PC list; the whole transfer is cancelled, changed and approved together.
+    const grouped=await page.evaluate(()=>{
+      const at=new Date().toISOString(), base={batchId:'batch-x',batchSize:2,unitLabel:'piece',from:'Main Storage',to:'Minibar',yesterday:false,status:'waiting',approvedAt:at,previewStatus:null,finalApprovedAt:null};
+      stockState.requests.unshift({...base,id:'b1',batchPos:0,itemId:'i1',itemName:'Coca Cola',quantity:1,enteredQuantity:1,enteredUnitLabel:'piece'},
+        {...base,id:'b2',batchPos:1,itemId:'i2',itemName:'Flour',quantity:2,enteredQuantity:2,enteredUnitLabel:'piece'});
+      trPaintActive();
+      const card=document.querySelector('[data-trreq="b1"]');
+      return {cards:document.querySelectorAll('[data-trreq="b1"],[data-trreq="b2"]').length,text:card&&card.innerText,cancelTarget:card&&card.querySelector('[data-trcancel]')?.dataset.trcancel,
+        group:trFindGroup('b2').group.map(r=>r.id)};
+    });
+    assert.equal(grouped.cards,1,'two rows of one transfer make one card');
+    assert.match(grouped.text,/2 items[\s\S]*Coca Cola[\s\S]*Flour/i);assert.equal(grouped.cancelTarget,'b1');
+    assert.deepEqual(grouped.group,['b1','b2'],'any row finds the whole transfer');
+    await page.evaluate(()=>{stockState.requests=stockState.requests.filter(r=>r.batchId!=='batch-x');trPaintActive();});
 
     assert.equal(await page.evaluate(()=>foldText('تةمـاتة')===foldText('تەماتە')&&foldText('كيلو')===foldText('کیلۆ')),true,'search reads Kurdish written with Arabic letters');
     /* ---------- Stock and recount ---------- */

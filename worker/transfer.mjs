@@ -35,6 +35,44 @@ async function chooseUnit(page,unitButton,want){
   if(!sameUnit(await unitButton.innerText(),want))fail('Selected unit did not match request');
 }
 
+// Fills one ingredient row of the workplace form and checks it: the item, its unit, the amount, and the stock the
+// workplace shows against the app's own count (which must be equal). Returns what it needs to read the row back later.
+async function fillLine(page,row,from,line){
+  if(!line||!line.itemName||!line.unitLabel||!(Number.isFinite(line.quantity)&&line.quantity>0))fail('The request is missing its item, unit or quantity');
+  const itemButton=row.getByRole('button',{name:/Choose an ingredient/i});
+  await (await one(itemButton,'ingredient picker')).click();
+  const searches=page.getByRole('textbox',{name:/Search items/i});
+  // The workplace's own spelling of the name, used for every check below.
+  const itemName=await pickNamed(page,await searches.count()===1?searches:null,line.itemName,'Item');
+  await one(row.getByRole('button',{name:itemName,exact:true}),'selected item name');
+  const amount=await one(row.getByRole('textbox',{name:'amount'}),'amount');
+  const unitButton=await unitButtonOf(row,itemName);
+  await chooseUnit(page,unitButton,line.unitLabel);
+  await amount.fill(String(line.quantity));
+  if(Number(await amount.inputValue())!==Number(line.quantity))fail('Amount did not remain exact');
+  // A stock check is intentionally mandatory: the app's own count in the source storage
+  // (already in the unit being moved) must equal what the workplace page shows.
+  const availableText=(await row.innerText()).split('\n').find(s=>s.includes('available in '+from));
+  if(!availableText)fail('Workplace available stock was not visible');
+  const match=availableText.trim().match(/^([\d,]+(?:\.\d+)?)\s+(.+?)\s+available in\s+/i);
+  if(!match||!sameUnit(match[2],line.unitLabel))fail('Workplace stock unit could not be checked');
+  const workplace=Number(match[1].replaceAll(',',''));
+  // The page shows a rounded number (19.81), so compare at the precision it displays; a whole number must match exactly.
+  const app=Number(line.appQuantity);
+  const shown=(match[1].split('.')[1]||'').length;
+  const tolerance=shown>0?0.5*Math.pow(10,-shown)+1e-9:1e-6;
+  if(!Number.isFinite(workplace)||!Number.isFinite(app)||Math.abs(workplace-app)>tolerance)fail(`Stock mismatch for ${line.itemName}: workplace ${workplace}, app ${Math.round(app*1e6)/1e6} ${line.unitLabel}. Recount it in Stock, and check the unit conversion matches the workplace system.`);
+  if(workplace<Number(line.quantity))fail(`Insufficient workplace stock for ${line.itemName}`);
+  return {row,itemName,unitButton,amount,line};
+}
+// Reads a filled row back; used right before the button, so nothing typed or changed in between slips through.
+async function checkLine(f){
+  const {row,itemName,unitButton,amount,line}=f;
+  if(await row.getByRole('button',{name:itemName,exact:true}).count()!==1)fail('Selected item changed before submission');
+  if(!sameUnit(await unitButton.innerText(),line.unitLabel))fail('Selected unit changed before submission');
+  if(await row.getByRole('textbox',{name:'amount'}).count()!==1||Number(await amount.inputValue())!==Number(line.quantity))fail('Amount changed before submission');
+}
+
 export async function inspectTransfer(page,r,success){
   if(page.url()!==TRANSFER_PAGE)fail('Workplace browser is not on the approved transfer page');
   await page.keyboard.press('Control+0'); // browser zoom = 100%
@@ -43,7 +81,11 @@ export async function inspectTransfer(page,r,success){
   if((await textSize.innerText()).replace(/\s/g,'')!=='100%')await textSize.click();
   if((await textSize.innerText()).replace(/\s/g,'')!=='100%')fail('Page text size is not 100%');
   if(!r.from||!r.to||r.from===r.to)fail('Invalid storages');
-  if(!r.itemName||!r.unitLabel||!(Number.isFinite(r.quantity)&&r.quantity>0))fail('The request is missing its item, unit or quantity');
+  // One or more items. An older request carries just the one item at the top.
+  const lines=Array.isArray(r.lines)&&r.lines.length?r.lines:[{itemName:r.itemName,unitLabel:r.unitLabel,quantity:r.quantity,appQuantity:r.appQuantity}];
+  if(lines.length>30)fail('A transfer can hold 1 to 30 items');
+  if(new Set(lines.map(l=>l&&l.itemName)).size!==lines.length)fail('The same item is twice in one transfer');
+  for(const l of lines)if(!l||!l.itemName||!l.unitLabel||!(Number.isFinite(l.quantity)&&l.quantity>0))fail('The request is missing its item, unit or quantity');
   // A fresh navigation clears any form left from a prior preview or error.
   await page.goto(TRANSFER_PAGE,{waitUntil:'domcontentloaded'});
   await one(page.getByRole('heading',{name:/Move stock between storages/i}),'transfer page heading');
@@ -54,37 +96,27 @@ export async function inspectTransfer(page,r,success){
   if((await yesterday.getAttribute('aria-pressed'))!==(r.yesterday?'true':'false'))fail('Yesterday setting did not stay selected');
   const rows=itemRows(page);
   if(await rows.count()!==1)fail(`Expected 1 ingredient row; saw ${await rows.count()}`);
-  const row=rows.nth(0);
-  const itemButton=row.getByRole('button',{name:/Choose an ingredient/i});
-  await (await one(itemButton,'ingredient picker')).click();
-  const searches=page.getByRole('textbox',{name:/Search items/i});
-  // The workplace's own spelling of the name, used for every check below.
-  const itemName=await pickNamed(page,await searches.count()===1?searches:null,r.itemName,'Item');
-  await one(row.getByRole('button',{name:itemName,exact:true}),'selected item name');
-  const amount=await one(row.getByRole('textbox',{name:'amount'}),'amount');
-  const unitButton=await unitButtonOf(row,itemName);
-  await chooseUnit(page,unitButton,r.unitLabel);
-  await amount.fill(String(r.quantity));
-  if(Number(await amount.inputValue())!==Number(r.quantity))fail('Amount did not remain exact');
-  // A stock check is intentionally mandatory: the app's own count in the source storage
-  // (already in the unit being moved) must equal what the workplace page shows.
-  const availableText=(await row.innerText()).split('\n').find(s=>s.includes('available in '+r.from));
-  if(!availableText)fail('Workplace available stock was not visible');
-  const match=availableText.trim().match(/^([\d,]+(?:\.\d+)?)\s+(.+?)\s+available in\s+/i);
-  if(!match||!sameUnit(match[2],r.unitLabel))fail('Workplace stock unit could not be checked');
-  const workplace=Number(match[1].replaceAll(',',''));
-  // The page shows a rounded number (19.81), so compare at the precision it displays; a whole number must match exactly.
-  const app=Number(r.appQuantity);
-  const shown=(match[1].split('.')[1]||'').length;
-  const tolerance=shown>0?0.5*Math.pow(10,-shown)+1e-9:1e-6;
-  if(!Number.isFinite(workplace)||!Number.isFinite(app)||Math.abs(workplace-app)>tolerance)fail(`Stock mismatch for ${r.itemName}: workplace ${workplace}, app ${Math.round(app*1e6)/1e6} ${r.unitLabel}. Recount it in Stock, and check the unit conversion matches the workplace system.`);
-  if(workplace<Number(r.quantity))fail(`Insufficient workplace stock for ${r.itemName}`);
-  if(await itemRows(page).count()!==1)fail('Unexpected number of form rows');
-  // The workplace focuses the amount box as soon as an item is picked. Read the whole row back once more
+  const filled=[];
+  for(let i=0;i<lines.length;i++){
+    try{
+      if(i>0){
+        await (await one(page.getByRole('button',{name:/Add another item/i}),'Add another item button')).click();
+        const end=Date.now()+4000;
+        while(await rows.count()!==i+1&&Date.now()<end)await page.waitForTimeout(60);
+        if(await rows.count()!==i+1)fail(`A new ingredient row did not appear (saw ${await rows.count()}, expected ${i+1})`);
+      }
+      filled.push(await fillLine(page,rows.nth(i),r.from,lines[i]));
+    }catch(e){
+      if(lines.length>1)e.message=`Item ${i+1} of ${lines.length} (${lines[i].itemName}): ${e.message}`;
+      throw e;
+    }
+  }
+  if(await itemRows(page).count()!==lines.length)fail('Unexpected number of form rows');
+  // The workplace focuses the amount box as soon as an item is picked. Read every row back once more
   // right before the button, so nothing typed or changed by that focus can slip through.
-  if(await row.getByRole('button',{name:itemName,exact:true}).count()!==1)fail('Selected item changed before submission');
-  if(!sameUnit(await unitButton.innerText(),r.unitLabel))fail('Selected unit changed before submission');
-  if(await row.getByRole('textbox',{name:'amount'}).count()!==1||Number(await amount.inputValue())!==Number(r.quantity))fail('Amount changed before submission');
+  for(let i=0;i<filled.length;i++){
+    try{await checkLine(filled[i])}catch(e){if(lines.length>1)e.message=`Item ${i+1} of ${lines.length} (${lines[i].itemName}): ${e.message}`;throw e}
+  }
   if(page.url()!==TRANSFER_PAGE)fail('Workplace page changed before submission');
   if((await page.getByRole('button',{name:'From storage',exact:true}).innerText()).trim()!==r.from ||
     (await page.getByRole('button',{name:'To storage',exact:true}).innerText()).trim()!==r.to)
