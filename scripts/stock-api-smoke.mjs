@@ -13,8 +13,8 @@ function reset(){
   tables={stock_workers:[{id:'offline-pc',token_hash:workerHash,enabled:true}],
     app_sessions:[{account:'rozha',token_hash:sessionHash,expires_at:new Date(Date.now()+3600000).toISOString(),revoked_at:null}],
     app_login_attempts:[],stock_receipts:[],stock_item_jobs:[],
-    app_suppliers:[{id:'supplier',name:'Fresh Foods'}],app_items:[{id:'item',name:'Tomato',unit_id:'box'}],
-    app_units:[{id:'box',en:'box'},{id:'kg',en:'kg'}],
+    app_suppliers:[{id:'supplier',name:'Fresh Foods'}],app_items:[{id:'item',name:'Tomato',unit_id:'box',supplier_id:'supplier'}],
+    app_units:[{id:'box',en:'box'},{id:'kg',en:'kg'},{id:'g',en:'gram'}],
     stock_item_settings:[{item_id:'item',counting_unit:'kg',per_buying:12,workplace_name:null}]};
   rpcCalls=[];failRead=null;failInsert=null;failUpdate=null;failRpc=null;pinLocked=false;rejectSettings=false;
 }
@@ -159,6 +159,16 @@ for(const changed of [{currency:'other'},{currency:'USD',rate:1500.00005},{deliv
 }
 tables.stock_item_settings[0].per_buying=0.00000001;
 assert.equal((await request('receipts',{...receipt,clientKey:crypto.randomUUID(),lines:[{itemId:'item',unitId:'box',qty:0.000001,cost:10}]})).status,400,'a conversion rounded to zero cannot reach workplace submission');
+assert.equal(tables.stock_receipts.length,0);
+// The recipe unit: 1 kg = 1000 gram, so 2500 gram on a receipt adds 2.5 kg of stock.
+reset();tables.stock_item_settings[0].usage_unit='g';tables.stock_item_settings[0].per_counting_usage=1000;
+assert.equal((await request('receipts',{...receipt,clientKey:crypto.randomUUID(),lines:[{itemId:'item',unitId:'g',qty:2500,cost:10}]})).status,201);
+assert.deepEqual([tables.stock_receipts[0].lines[0].unitLabel,tables.stock_receipts[0].lines[0].ledgerQty],['gram',2.5]);
+tables.stock_item_settings[0].per_counting_usage=null;
+assert.equal((await request('receipts',{...receipt,clientKey:crypto.randomUUID(),lines:[{itemId:'item',unitId:'g',qty:1,cost:10}]})).status,400,'a recipe unit without its size is refused');
+// Only the chosen supplier's items.
+reset();tables.app_items[0].supplier_id='other';
+assert.equal((await request('receipts',{...receipt,clientKey:crypto.randomUUID()})).status,400,'an item from another supplier is refused');
 assert.equal(tables.stock_receipts.length,0);
 reset();
 tables.stock_item_settings[0].usage_unit='kg';tables.stock_item_settings[0].low_stock=null;

@@ -147,11 +147,22 @@ function chipPickWire(box, id, onChange){
 }
 const stUnitObj = id => state.units.find(u => u.id === id);
 const stCountUnitName = id => { const u = stUnitObj(stSetting(id)?.countingUnit); return u ? unitName(u) : ''; };
-/* An amount can be entered in the item's counting format, or in its buying format when the two differ (1 box = 12 piece). */
-const stHasBoth = id => { const s = stSetting(id), item = stItem(id); return !!(s && item && item.unit && item.unit !== s.countingUnit && s.perBuying > 0); };
-const stMode = id => (trState.unit === 'buying' && stHasBoth(id)) ? 'buying' : 'counting';
-const stFactor = id => stMode(id) === 'buying' ? stSetting(id).perBuying : 1;          // counting units in one entered unit
-const stEnteredUnit = id => stMode(id) === 'buying' ? stUnitObj(stItem(id).unit) : stUnitObj(stSetting(id)?.countingUnit);
+/* The units an amount can be entered in: the counting format, the buying format (1 box = 12 piece) and the
+   recipe unit (1 kilo = 1000 gram), each once. `factor` is how many counting units one entered unit is. */
+function stUnitChoices(id){
+  const s = stSetting(id), item = stItem(id); if(!s || !item) return [];
+  const out = [], seen = new Set();
+  const add = (mode, unitId, factor) => { const u = stUnitObj(unitId); if(u && !seen.has(unitId) && factor > 0 && Number.isFinite(factor)){ seen.add(unitId); out.push({mode, unitId, factor, label: unitName(u), en: u.en || ''}); } };
+  add('counting', s.countingUnit, 1);
+  if(item.unit) add('buying', item.unit, Number(s.perBuying));
+  if(s.usageUnit) add('usage', s.usageUnit, 1 / Number(s.perCountingUsage));
+  return out;
+}
+const stHasBoth = id => stUnitChoices(id).length > 1;
+const stChoice = id => { const c = stUnitChoices(id); return c.find(x => x.mode === trState.unit) || c[0]; };
+const stMode = id => stChoice(id)?.mode || 'counting';
+const stFactor = id => stChoice(id)?.factor || 1;          // counting units in one entered unit
+const stEnteredUnit = id => stUnitObj(stChoice(id)?.unitId);
 const stEnteredName = id => { const u = stEnteredUnit(id); return u ? unitName(u) : ''; };
 const stEnteredId = id => stEnteredUnit(id)?.id;
 const stEnteredEn = id => stEnteredUnit(id)?.en || '';
@@ -164,10 +175,10 @@ function reqAmountHtml(r){
 const stIsLow = item => { const s = stSetting(item.id); return !!s && s.lowStock != null && stTotal(item.id) <= s.lowStock; };
 const stLowCount = () => state.items.filter(i => stReady(i) && stIsLow(i)).length;
 const stReadyItems = () => state.items.filter(stReady);
-const stTokens = q => String(q || '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+const stTokens = q => foldText(String(q || '').trim()).split(/\s+/).filter(Boolean);
 /* The name inside the workplace system (what the PC searches for); the same as the app name unless one was set. */
 const stWorkName = id => stSetting(id)?.workplaceName || stItem(id)?.name || '';
-const stMatches = (item, tokens) => { const n = (item.name + ' ' + (stSetting(item.id)?.workplaceName || '')).toLocaleLowerCase(); return tokens.every(x => n.includes(x)); };
+const stMatches = (item, tokens) => { const n = foldText(item.name + ' ' + (stSetting(item.id)?.workplaceName || '')); return tokens.every(x => n.includes(x)); };
 const stNeedsChecking = () => stockState.requests.filter(r => r.status === 'needs_checking').length;
 /* The state of a request as shown to people. */
 function reqState(r){
@@ -365,7 +376,7 @@ function trPaintChosen(){
     const chips = document.getElementById('trUnits');
     chips.hidden = !stHasBoth(item.id);
     if(!chips.hidden){
-      chips.innerHTML = [['counting', stCountUnitName(item.id)], ['buying', unitName(stUnitObj(item.unit))]].map(([m, label]) =>
+      chips.innerHTML = stUnitChoices(item.id).map(({mode: m, label}) =>
         `<button type="button" class="tab-pill${stMode(item.id) === m ? ' active' : ''}" aria-pressed="${stMode(item.id) === m}" data-trunit="${m}">${esc(label)}</button>`).join('');
       chips.querySelectorAll('[data-trunit]').forEach(b => b.onclick = () => {
         if(trState.unit === b.dataset.trunit) return;
@@ -405,7 +416,7 @@ function trReview(){
   card.innerHTML = `<div class="hero-eyebrow">${esc(t('trReviewTitle'))}</div>
     <div class="tr-rv-route">${esc(trState.from)} <span aria-hidden="true">→</span> ${esc(trState.to)}</div>
     <div class="tr-rv-item" dir="auto">${esc(item.name)}</div>${stWorkName(item.id) !== item.name ? `<div class="tr-rv-work" dir="auto">${esc(t('trWorkAs'))}: ${esc(stWorkName(item.id))}</div>` : ''}
-    <div class="tr-rv-qty"><b>${esc(fmtQty(qty))}</b> ${esc(stEnteredName(item.id))}${f !== 1 ? ` <span class="tr-rv-eq">= ${esc(fmtQty(Math.round(qty * f * 1e8) / 1e8))} ${esc(stCountUnitName(item.id))}</span>` : ''}</div>
+    <div class="tr-rv-qty"><b>${esc(fmtQty(qty))}</b> ${esc(stEnteredName(item.id))}${f !== 1 ? ` <span class="tr-rv-eq">= ${esc(fmtQty(Math.round(qty * f * 1e6) / 1e6))} ${esc(stCountUnitName(item.id))}</span>` : ''}</div>
     <div class="hero-sub">${esc(trState.yesterday ? t('trWhenYesterday') : t('trWhenToday'))}</div>
     ${(()=>{ const w = workerState(); return w && w.cls !== 'on' ? `<div class="tr-rv-warn">${esc(t('wkReviewWarn')(w.label))}</div>` : ''; })()}
     <div class="tr-rv-actions"><button type="button" class="btn btn-primary" id="trApprove">${esc(t('trApprove'))}</button><button type="button" class="btn tr-rv-edit" id="trEdit">${esc(t('trEditRequest'))}</button></div>`;
@@ -1090,13 +1101,10 @@ const rcNum = v => Number(String(v ?? '').replace(/[٠-٩]/g, d => d.charCodeAt(
 /* A number box that opens the phone's number pad (no spin arrows, commas allowed). */
 const rcNumInput = (attrs, value, placeholder = '0') => `<input type="text" inputmode="decimal" data-pad="dec" autocomplete="off" enterkeyhint="next" ${attrs} placeholder="${esc(placeholder)}" value="${esc(value)}">`;
 const rcMoney = (n, cur) => (cur === 'USD' ? '$ ' : 'IQD ') + Number(n || 0).toLocaleString('en-US', {maximumFractionDigits: 2});
-/* The units a receipt line can use: the item's buying format, and its counting format when that differs. */
+/* The units a receipt line can use: the buying format first, then the counting format and the recipe unit. */
 function rcUnits(item){
-  const out = [];
-  if(item.unit) out.push({id: item.unit, mode: 'buying', label: unitLabel(item.unit)});
-  const s = stSetting(item.id);
-  if(s && s.countingUnit && s.countingUnit !== item.unit) out.push({id: s.countingUnit, mode: 'counting', label: unitName(stUnitObj(s.countingUnit))});
-  return out;
+  const c = stUnitChoices(item.id), buy = c.find(x => x.mode === 'buying');
+  return (buy ? [buy, ...c.filter(x => x !== buy)] : c).map(x => ({id: x.unitId, mode: x.mode, label: x.label}));
 }
 const rcLineUnit = (l, item) => rcUnits(item).find(u => u.mode === l.unit) || rcUnits(item)[0];
 async function rcLoad(){
@@ -1169,13 +1177,14 @@ function rcPaintResults(i){
   // Like the workplace: tapping the box opens the whole list straight away; typing narrows it.
   // The chosen supplier's items come first.
   if(!tokens.length && !l.open){ box.innerHTML = ''; box.classList.remove('open'); return; }
+  // Once a supplier is chosen, only that supplier's items are listed.
   const sup = rcState.supplierId;
-  const hits = state.items.filter(it => !tokens.length || stMatches(it, tokens))
-    .sort((a, b) => (sup ? (a.supplierId === sup ? 0 : 1) - (b.supplierId === sup ? 0 : 1) : 0) || nameCollator().compare(a.name, b.name)).slice(0, 150);
+  const hits = state.items.filter(it => (!sup || it.supplierId === sup) && (!tokens.length || stMatches(it, tokens)))
+    .sort((a, b) => nameCollator().compare(a.name, b.name)).slice(0, 150);
   box.classList.add('open');
   box.innerHTML = hits.length ? hits.map(it => stReady(it)
     ? `<button type="button" class="list-row tappable tr-result" data-rcpick="${i}" data-id="${esc(it.id)}"><div><div class="name" dir="auto">${esc(it.name)}</div><div class="meta" dir="auto">${esc([unitLabel(it.unit), state.suppliers.find(x => x.id === it.supplierId)?.name].filter(Boolean).join(' · '))}</div></div></button>`
-    : `<button type="button" class="list-row tappable tr-result todo" data-rcsetup="${esc(it.id)}"><div><div class="name" dir="auto">${esc(it.name)}</div><div class="meta">${esc(t('trTapToSetUp'))}</div></div><span class="it-chip todo">${esc(t('itBadgeTodo'))}</span></button>`).join('') : `<div class="field-hint">${esc(t('trNoMatch'))}</div>`;
+    : `<button type="button" class="list-row tappable tr-result todo" data-rcsetup="${esc(it.id)}"><div><div class="name" dir="auto">${esc(it.name)}</div><div class="meta">${esc(t('trTapToSetUp'))}</div></div><span class="it-chip todo">${esc(t('itBadgeTodo'))}</span></button>`).join('') : `<div class="field-hint">${esc(sup && !tokens.length ? t('rcNoSupItems') : t('trNoMatch'))}</div>`;
 }
 function rcPaintLines(){
   const box = document.getElementById('rcLines'); if(!box) return;
@@ -1197,6 +1206,7 @@ function rcProblem(){
   const lines = rcState.lines.filter(l => l.itemId);
   if(!lines.length) return t('rcNeedItem');
   if(rcState.lines.some(l => !l.itemId)) return t('rcEmptyLine');
+  if(lines.some(l => stItem(l.itemId)?.supplierId !== rcState.supplierId)) return t('rcOtherSupplier');
   if(lines.some(l => !stReady(stItem(l.itemId)) || !positive(l.qty) || !positive(l.cost) || !Number.isFinite(rcNum(l.qty) * rcNum(l.cost))) || !Number.isFinite(rcTotal())) return t('rcNeedNumbers');
   return '';
 }
@@ -1290,7 +1300,15 @@ function attachReceiptsEvents(){
   attachStockCommon();
   if(!document.getElementById('rcLines')) return;
   wkPaint();
-  document.getElementById('rcSup').onchange = e => { rcState.supplierId = e.target.value; };
+  // A new supplier: lines with another supplier's item are taken off (their search box stays).
+  document.getElementById('rcSup').onchange = e => {
+    rcState.supplierId = e.target.value;
+    let removed = 0;
+    rcState.lines.forEach((l, i) => { if(l.itemId && rcState.supplierId && stItem(l.itemId)?.supplierId !== rcState.supplierId){ rcState.lines[i] = rcNewLine(); removed++; } });
+    rcState.lines = rcState.lines.filter((l, i, all) => l.itemId || all.findIndex(x => !x.itemId) === i);
+    rcPaintLines();
+    if(removed) toast(t('rcOtherSupRemoved')(removed));
+  };
   // Receipts in the workplace use invoice numbers only.
   document.getElementById('rcInv').oninput = e => { const v = e.target.value.replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0).replace(/\D/g, ''); if(v !== e.target.value) e.target.value = v; rcState.invoice = v; };
   const form = document.querySelector('.rc-form');

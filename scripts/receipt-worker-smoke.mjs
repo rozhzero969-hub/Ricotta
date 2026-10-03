@@ -28,6 +28,10 @@ try{
   assert.deepEqual(v,{sup:'Fresh Foods',inv:'INV-1024',rate:'1500',del:'5000',rows:[
     ['Tomato - تەماتە','کیلۆ (×1000)','10','10','$ 100'],
     ['Blueberry Ice Cream - ئایس کریمی بلوبێری','پاکەت (×3000)','5','2000','$ 10,000']],submitted:0});
+  // 1b. A two-language supplier name whose Kurdish half uses a look-alike letter in the workplace: typing the
+  // whole name finds nothing there, so the worker types "Golden Bread Bakery" and matches the full name.
+  await prepareReceipt(page,{...base,supplierName:'Golden Bread Bakery / صمون گۆلدن برید',lines:[{workplaceName:'Tomato - تەماتە',unitLabel:'کیلۆ',qty:2,cost:500}]});
+  assert.equal(await page.evaluate(()=>document.getElementById('sup').textContent),'Golden Bread Bakery / صمون گۆلدن بريد');
   // 2. Stops on anything unclear, and never submits.
   const stops=async(r,re,why)=>{await assert.rejects(prepareReceipt(page,{...base,...r}),re,why);assert.equal(await page.evaluate(()=>window.submitted),0)};
   await stops({lines:[{workplaceName:'Tomatoes',unitLabel:'کیلۆ',qty:1,cost:1}]},/no choice matches/,'an item that is not on the list');

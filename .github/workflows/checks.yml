@@ -80,6 +80,12 @@ jobs:
       - name: Stock and transfer UI smoke test (mocked API, EN + KU + AR)
         run: node scripts/stock-ui-smoke.cjs
 
+      - name: PC worker name matching (look-alike letters, two-language names)
+        run: node scripts/match-smoke.mjs
+
+      - name: PC worker transfer filler (local copy of the workplace page)
+        run: node scripts/transfer-worker-smoke.mjs
+
       - name: PC worker receipt filler (local copy of the workplace page)
         run: node scripts/receipt-worker-smoke.mjs
 

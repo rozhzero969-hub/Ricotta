@@ -4,6 +4,7 @@
 // unclear stops the worker with a message, and the half-filled tab is simply never submitted.
 export const RECEIPT_PAGE='https://pos.shaydattendance.com/inventory/new-receipt';
 import {readNumber as num,sameNumber} from './numbers.mjs';
+import {same,sameUnit as unitIs,searchTerms} from './match.mjs';
 const norm=s=>String(s??'').replace(/\s+/g,' ').trim();
 const up=t=>`translate(normalize-space(text()),'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ')="${t}"`;
 function fail(m){throw new Error(m)}
@@ -33,15 +34,19 @@ async function openChoices(page){
   return page.locator('[role="listbox"] :is(button,li,div):visible, [cmdk-item]:visible');
 }
 // Pick the one choice whose text matches. `match` decides; several identical texts count as one choice.
+// With `typed`, the search box is filled with a short part of the name first (see searchTerms).
 async function choose(page,trigger,label,match,typed){
   await trigger.click();
-  if(typed){
-    const focused=page.locator('input:focus');
-    if(await focused.count()){await focused.fill(typed);await page.waitForTimeout(120)}
+  const box=typed?await page.locator('input:focus').first().elementHandle({timeout:500}).catch(()=>null):null;
+  let opts,hits=[],seen=[];
+  for(const term of box?searchTerms(typed):[null]){
+    if(term!==null){await box.fill(term);await page.waitForTimeout(120)}
+    opts=await openChoices(page);hits=[];seen=[];
+    const n=await opts.count();
+    for(let i=0;i<n;i++){const t=norm(await opts.nth(i).innerText().catch(()=>''));seen.push(t);if(match(t))hits.push({i,t})}
+    if(hits.length)break;
   }
-  const opts=await openChoices(page), n=await opts.count(), hits=[];
-  for(let i=0;i<n;i++){const t=norm(await opts.nth(i).innerText().catch(()=>''));if(match(t))hits.push({i,t})}
-  if(!hits.length){await page.keyboard.press('Escape');fail(`${label}: no choice matches`)}
+  if(!hits.length){await page.keyboard.press('Escape');fail(`${label}: no choice matches${seen.length?` (the list shows: ${seen.slice(0,5).join(' | ')})`:''}`)}
   if(new Set(hits.map(h=>h.t)).size>1){await page.keyboard.press('Escape');fail(`${label}: more than one possible choice (${hits.map(h=>h.t).join(' | ')})`)}
   await opts.nth(hits[0].i).click();
   return hits[0].t;
@@ -66,10 +71,13 @@ export async function prepareReceipt(page,r){
 
   // Supplier (the zone, date, notes and photo are left as they are)
   const sup=await one(fieldAfter(page,'normalize-space(text())="Supplier"','*[self::button or self::select or @role="combobox"]'),'supplier picker');
-  if(await sup.evaluate(e=>e.tagName)==='SELECT')await sup.selectOption({label:r.supplierName});
-  else await choose(page,sup,'Supplier',t=>t===norm(r.supplierName),r.supplierName);
+  if(await sup.evaluate(e=>e.tagName)==='SELECT'){
+    const labels=(await sup.evaluate(e=>[...e.options].map(o=>o.text))).filter(t=>same(t)===same(r.supplierName));
+    if(new Set(labels).size!==1)fail(labels.length?'Supplier: more than one possible choice':'Supplier: no choice matches');
+    await sup.selectOption({label:labels[0]});
+  }else await choose(page,sup,'Supplier',t=>same(t)===same(r.supplierName),r.supplierName);
   const supShown=await sup.evaluate(e=>e.tagName==='SELECT'?e.options[e.selectedIndex]?.text:e.innerText);
-  if(norm(supShown)!==norm(r.supplierName))fail(`Supplier shows "${norm(supShown)}", expected "${r.supplierName}"`);
+  if(same(supShown)!==same(r.supplierName))fail(`Supplier shows "${norm(supShown)}", expected "${r.supplierName}"`);
 
   await fillTextChecked(await one(fieldAfter(page,'normalize-space(text())="Invoice number"','input'),'invoice number'),r.invoice);
 
@@ -93,12 +101,11 @@ export async function prepareReceipt(page,r){
     const row=rows.nth(i), buttons=row.locator('button:visible, [role="combobox"]:visible');
     const itemBtn=buttons.nth(0);
     if(!/search item/i.test(norm(await itemBtn.innerText())))fail(`Line ${i+1} is not empty`);
-    await choose(page,itemBtn,`Item "${l.workplaceName}"`,t=>t===norm(l.workplaceName),l.workplaceName);
-    if(norm(await itemBtn.innerText())!==norm(l.workplaceName))fail(`Line ${i+1} shows "${norm(await itemBtn.innerText())}", expected "${l.workplaceName}"`);
+    await choose(page,itemBtn,`Item "${l.workplaceName}"`,t=>same(t)===same(l.workplaceName),l.workplaceName);
+    if(same(await itemBtn.innerText())!==same(l.workplaceName))fail(`Line ${i+1} shows "${norm(await itemBtn.innerText())}", expected "${l.workplaceName}"`);
     // Units read like "کیلۆ (×1000)"; ours is the name. Two identical entries are the same unit.
     const unitBtn=buttons.nth(1), u=norm(l.unitLabel);
-    const unitOk=t=>t===u||t.startsWith(u+' (×')||t.startsWith(u+' (x');
-    const picked=await choose(page,unitBtn,`Unit "${u}" for ${l.workplaceName}`,unitOk);
+    const picked=await choose(page,unitBtn,`Unit "${u}" for ${l.workplaceName}`,t=>unitIs(t,u));
     if(norm(await unitBtn.innerText())!==picked)fail(`Line ${i+1}: unit did not stay selected`);
     const inputs=row.locator('input:visible');
     if(await inputs.count()!==2)fail(`Line ${i+1}: expected a quantity and a cost box`);
@@ -120,7 +127,7 @@ export async function checkReceipt(page,r){
   await one(page.getByRole('heading',{name:/New purchase receipt/i}),'receipt page heading');
   const sup=await one(fieldAfter(page,'normalize-space(text())="Supplier"','*[self::button or self::select or @role="combobox"]'),'supplier picker');
   const supShown=await sup.evaluate(e=>e.tagName==='SELECT'?e.options[e.selectedIndex]?.text:e.innerText);
-  if(norm(supShown)!==norm(r.supplierName))fail(`Supplier shows "${norm(supShown)}", expected "${r.supplierName}"`);
+  if(same(supShown)!==same(r.supplierName))fail(`Supplier shows "${norm(supShown)}", expected "${r.supplierName}"`);
   const zone=await one(fieldAfter(page,'normalize-space(text())="Zone"','*[self::button or self::select or @role="combobox"]'),'zone picker');
   const zoneShown=await zone.evaluate(e=>e.tagName==='SELECT'?e.options[e.selectedIndex]?.text:e.innerText);
   if(norm(zoneShown)!=='Main Storage')fail(`Zone shows "${norm(zoneShown)}", expected "Main Storage"`);
@@ -139,9 +146,9 @@ export async function checkReceipt(page,r){
   if(await rows.count()!==r.lines.length)fail(`The form has ${await rows.count()} item lines, expected ${r.lines.length}`);
   for(let i=0;i<r.lines.length;i++){
     const l=r.lines[i], row=rows.nth(i), buttons=row.locator('button:visible, [role="combobox"]:visible'), u=norm(l.unitLabel);
-    if(norm(await buttons.nth(0).innerText())!==norm(l.workplaceName))fail(`Line ${i+1} item changed`);
+    if(same(await buttons.nth(0).innerText())!==same(l.workplaceName))fail(`Line ${i+1} item changed`);
     const unitShown=norm(await buttons.nth(1).innerText());
-    if(!(unitShown===u||unitShown.startsWith(u+' (×')||unitShown.startsWith(u+' (x')))fail(`Line ${i+1} unit changed`);
+    if(!unitIs(unitShown,u))fail(`Line ${i+1} unit changed`);
     const inputs=row.locator('input:visible');
     if(await inputs.count()!==2)fail(`Line ${i+1}: expected a quantity and a cost box`);
     if(!sameNumber(await inputs.nth(0).inputValue(),l.qty))fail(`Line ${i+1} quantity changed`);

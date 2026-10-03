@@ -2,9 +2,9 @@
 -- stand-ins for app_items/app_units (see the CI step). Everything rolls back.
 begin;
 do $$
-declare rid uuid; rid_box uuid; rid2 uuid; rid3 uuid; claimed uuid; v numeric; rejected boolean; k uuid:=gen_random_uuid();
+declare rid uuid; rid_box uuid; rid_g uuid; rid2 uuid; rid3 uuid; claimed uuid; v numeric; rejected boolean; k uuid:=gen_random_uuid();
 begin
-  insert into app_units(id,en) values ('box','box'),('pc','piece'),('kg','kg');
+  insert into app_units(id,en) values ('box','box'),('pc','piece'),('kg','kg'),('g','gram');
   insert into app_items(id,name,unit_id) values ('i1','Flour','box'),('i2','No buying unit',null);
   insert into stock_workers(id,token_hash) values ('office-pc','smoke') on conflict do nothing;
 
@@ -55,6 +55,18 @@ begin
   rejected:=false; begin perform stock_submit(gen_random_uuid(),'Main Storage','Pizza',false,'rozha','i1',0.5,'Flour','piece','box'); exception when others then rejected:=true; end;
   if not rejected then raise exception 'Label for the wrong unit accepted'; end if;
   perform stock_cancel(rid_box,'rozha');
+
+  -- Entering the amount in the recipe unit (1 piece = 100 gram)
+  update stock_item_settings set usage_unit='g', per_counting_usage=100 where item_id='i1';
+  rid_g:=stock_submit(gen_random_uuid(),'Main Storage','Pizza',false,'rozha','i1',150,'Flour','gram','g');
+  if not exists(select 1 from stock_requests where id=rid_g and quantity=1.5 and unit_label='piece' and entered_quantity=150 and entered_unit_label='gram') then
+    raise exception 'Recipe-unit request was not converted to counting units'; end if;
+  rejected:=false; begin perform stock_submit(gen_random_uuid(),'Main Storage','Pizza',false,'rozha','i1',0.000001,'Flour','gram','g'); exception when others then rejected:=true; end;
+  if not rejected then raise exception 'A recipe amount that rounds to nothing was accepted'; end if;
+  rejected:=false; begin perform stock_submit(gen_random_uuid(),'Main Storage','Pizza',false,'rozha','i1',600,'Flour','gram','g'); exception when others then rejected:=true; end;
+  if not rejected then raise exception '600 gram (6 piece) accepted with only 5.5 piece free'; end if;
+  perform stock_cancel(rid_g,'rozha');
+  update stock_item_settings set usage_unit=null, per_counting_usage=null where item_id='i1';
 
   -- Gating: check -> screenshot -> final approve -> claim
   if stock_claim('office-pc') is not null then raise exception 'Unapproved request claimed'; end if;

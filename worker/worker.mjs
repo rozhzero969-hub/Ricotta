@@ -5,6 +5,7 @@ import { chromium } from 'playwright';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inspectTransfer, TRANSFER_PAGE } from './transfer.mjs';
 import { prepareReceipt, submitReceipt, RECEIPT_PAGE } from './receipt.mjs';
 import { prepareItem, submitItem, formOpen, STOCK_PAGE } from './items.mjs';
 import {HEARTBEAT_MS,WAIT_TIMEOUT_MS,waitForWork} from './polling.mjs';
@@ -12,7 +13,7 @@ import { acquireLock } from './lock.mjs';
 import { onLoginPage, signIn } from './signin.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
-const PAGE='https://pos.shaydattendance.com/inventory/transfer';
+const PAGE=TRANSFER_PAGE;
 const API='https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/stock-api';
 const TOKEN=process.env.WORKER_TOKEN||'';
 const LIVE=process.env.ALLOW_SUBMIT==='1';
@@ -48,83 +49,7 @@ async function problem(message){
 }
 if(LIVE&&!SUCCESS){await problem('Live mode is on (ALLOW_SUBMIT=1) but CONFIRMED_SUCCESS_TEXT is empty in worker\\.env.');process.exit(1)}
 // The workplace site draws its page after loading, so wait for the control to appear before counting matches.
-async function one(locator,label){await locator.first().waitFor({state:'visible',timeout:10000}).catch(()=>{});const count=await locator.count();if(count!==1)throw new Error(`${label}: expected one visible match, found ${count}`);if(!await locator.isVisible())throw new Error(`${label}: hidden`);return locator}
 function fail(message){throw new Error(message)}
-async function pickByText(page,button,choice,label){
-  await (await one(button,label+' picker')).click();
-  const option=page.getByRole('option',{name:choice,exact:true});
-  await (await one(option,label+' option '+choice)).click();
-  if((await button.innerText()).trim()!==choice)fail(`${label} did not stay selected`);
-}
-async function inspect(page,r){
-  if(page.url()!==PAGE)fail('Workplace browser is not on the approved transfer page');
-  await page.keyboard.press('Control+0'); // browser zoom = 100%
-  await one(page.getByRole('heading',{name:/Move stock between storages/i}),'transfer page heading');
-  const textSize=await one(page.getByRole('button',{name:'Reset text size'}),'text size');
-  if((await textSize.innerText()).replace(/\s/g,'')!=='100%')await textSize.click();
-  if((await textSize.innerText()).replace(/\s/g,'')!=='100%')fail('Page text size is not 100%');
-  if(!r.from||!r.to||r.from===r.to)fail('Invalid storages');
-  if(!r.itemName||!r.unitLabel||!(Number.isFinite(r.quantity)&&r.quantity>0))fail('The request is missing its item, unit or quantity');
-  // A fresh navigation clears any form left from a prior preview or error.
-  await page.goto(PAGE,{waitUntil:'domcontentloaded'});
-  await one(page.getByRole('heading',{name:/Move stock between storages/i}),'transfer page heading');
-  await pickByText(page,page.getByRole('button',{name:'From storage',exact:true}),r.from,'source');
-  await pickByText(page,page.getByRole('button',{name:'To storage',exact:true}),r.to,'destination');
-  const yesterday=await one(page.getByRole('button',{name:/Record for yesterday/i}),'yesterday toggle');
-  if((await yesterday.getAttribute('aria-pressed'))!==(r.yesterday?'true':'false'))await yesterday.click();
-  if((await yesterday.getAttribute('aria-pressed'))!==(r.yesterday?'true':'false'))fail('Yesterday setting did not stay selected');
-  const rows=itemRows(page);
-  if(await rows.count()!==1)fail(`Expected 1 ingredient row; saw ${await rows.count()}`);
-  const row=rows.nth(0);
-  const itemButton=row.getByRole('button',{name:/Choose an ingredient/i});
-  await (await one(itemButton,'ingredient picker')).click();
-  const searches=page.getByRole('textbox',{name:/Search items/i});
-  if(await searches.count()===1)await searches.fill(r.itemName);
-  const candidates=page.getByRole('option').filter({has:page.getByText(r.itemName,{exact:true})});
-  const n=await candidates.count();
-  if(n!==1)fail(`Item ${r.itemName} is ambiguous or absent on the workplace page (${n} matches). Its name in Ricotta must match exactly.`);
-  await candidates.click();
-  await one(row.getByRole('button',{name:r.itemName,exact:true}),'selected item name');
-  const unitButton=row.getByRole('button',{name:'Unit',exact:true});
-  await (await one(unitButton,'unit picker')).click();
-  await (await one(page.getByRole('option',{name:r.unitLabel,exact:true}),'unit option '+r.unitLabel)).click();
-  if((await unitButton.innerText()).trim()!==r.unitLabel)fail('Selected unit did not match request');
-  const amount=await one(row.getByRole('textbox',{name:'amount'}),'amount');
-  await amount.fill(String(r.quantity));
-  if(Number(await amount.inputValue())!==Number(r.quantity))fail('Amount did not remain exact');
-  // A stock check is intentionally mandatory: the app's own count in the source storage
-  // (already in the counting unit) must equal what the workplace page shows.
-  const availableText=(await row.innerText()).split('\n').find(s=>s.includes('available in '+r.from));
-  if(!availableText)fail('Workplace available stock was not visible');
-  const match=availableText.trim().match(/^([\d,]+(?:\.\d+)?)\s+(.+?)\s+available in\s+/i);
-  if(!match||match[2].trim()!==r.unitLabel)fail('Workplace stock unit could not be checked');
-  const workplace=Number(match[1].replaceAll(',',''));
-  // The app's stock is already converted into the unit being moved (2 boxes, not 24 pieces). The page shows
-  // a rounded number (19.81), so compare at the precision it displays; a whole number must match exactly.
-  const app=Number(r.appQuantity);
-  const shown=(match[1].split('.')[1]||'').length;
-  const tolerance=shown>0?0.5*Math.pow(10,-shown)+1e-9:1e-6;
-  if(!Number.isFinite(workplace)||!Number.isFinite(app)||Math.abs(workplace-app)>tolerance)fail(`Stock mismatch for ${r.itemName}: workplace ${workplace}, app ${Math.round(app*1e6)/1e6} ${r.unitLabel}. Recount it in Stock, and check the unit conversion matches the workplace system.`);
-  if(workplace<Number(r.quantity))fail(`Insufficient workplace stock for ${r.itemName}`);
-  if(await rowsOnPage(page)!==1)fail('Unexpected number of form rows');
-  // The workplace now focuses the amount box as soon as an item is picked. Read the whole row back once more
-  // right before the button, so nothing typed or changed by that focus can slip through.
-  if(await row.getByRole('button',{name:r.itemName,exact:true}).count()!==1)fail('Selected item changed before submission');
-  if((await unitButton.innerText()).trim()!==r.unitLabel)fail('Selected unit changed before submission');
-  if(await row.getByRole('textbox',{name:'amount'}).count()!==1||Number(await amount.inputValue())!==Number(r.quantity))fail('Amount changed before submission');
-  if(page.url()!==PAGE)fail('Workplace page changed before submission');
-  if((await page.getByRole('button',{name:'From storage',exact:true}).innerText()).trim()!==r.from ||
-    (await page.getByRole('button',{name:'To storage',exact:true}).innerText()).trim()!==r.to)
-    fail('Storage selection changed before submission');
-  if((await yesterday.getAttribute('aria-pressed'))!==(r.yesterday?'true':'false'))fail('Yesterday setting changed before submission');
-  const move=await one(page.getByRole('button',{name:'Move it',exact:true}),'submit button');
-  if(!await move.isEnabled())fail('Submit button is disabled');
-  if(SUCCESS&&await page.getByText(SUCCESS,{exact:true}).count())fail('Success text was already present before submission');
-  return move;
-}
-// An item row shows only "Choose an ingredient" until an item is picked; the amount box appears afterwards.
-const itemRows=page=>page.locator('div.rounded-xl.border.p-3').filter({has:page.getByRole('button',{name:/Choose an ingredient/i}).or(page.getByRole('textbox',{name:'amount'}))});
-async function rowsOnPage(page){return itemRows(page).count()}
 await mkdir(path.join(here,'browser-profile'),{recursive:true});
 let context;
 try{
@@ -202,7 +127,7 @@ async function shot(id){try{const dir=path.join(here,'screenshots');await mkdir(
 // Stage 2: only a request with a final approval on the phone is ever claimed and submitted.
 async function execute(r){let clicked=false;
   try{
-    const move=await inspect(page,r);
+    const move=await inspectTransfer(page,r,SUCCESS);
     clicked=true;await move.click();
     await page.getByText(SUCCESS,{exact:true}).waitFor({state:'visible',timeout:12000});
     await page.getByRole('button',{name:'Move something else',exact:true}).waitFor({state:'visible',timeout:12000});
@@ -220,7 +145,7 @@ async function execute(r){let clicked=false;
 // Stage 1: fill the form without clicking "Move it" and tell the phone whether everything matches.
 async function preview(r){
   try{
-    await inspect(page,r);
+    await inspectTransfer(page,r,SUCCESS);
     console.log('Check passed:',r.id);
     await api('worker/preview-report','POST',{id:r.id,ok:true,message:'All match: storages, item, unit, amount and workplace stock.',image:await jpeg()});
   }catch(e){
