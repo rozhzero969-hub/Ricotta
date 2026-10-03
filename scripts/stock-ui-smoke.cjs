@@ -27,16 +27,16 @@ async function pad(page,sel,v){
   await page.waitForFunction(()=>!document.querySelector('.pad-sheet'));
 }
 function fixture(){
-  const units=[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'},{id:'pc',en:'piece',ku:'دانە',ar:'قطعة'},{id:'ctn',en:'carton',ku:'کارتۆن',ar:'كرتون'}];
-  const items=[{id:'i0',name:'Tomato',unit:'box',supplierId:'s0',sortOrder:0},{id:'i1',name:'Coca Cola',unit:'ctn',supplierId:'s0',sortOrder:1},{id:'i2',name:'Flour',unit:'box',supplierId:'s0',sortOrder:2},{id:'i3',name:'Milk',unit:'ctn',supplierId:'s0',sortOrder:3}];
+  const units=[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'},{id:'pc',en:'piece',ku:'دانە',ar:'قطعة'},{id:'ctn',en:'carton',ku:'کارتۆن',ar:'كرتون'},{id:'g',en:'gram',ku:'گرام',ar:'غرام'}];
+  const items=[{id:'i0',name:'Tomato',unit:'box',supplierId:'s0',sortOrder:0},{id:'i1',name:'Coca Cola',unit:'ctn',supplierId:'s0',sortOrder:1},{id:'i2',name:'Flour',unit:'box',supplierId:'s0',sortOrder:2},{id:'i3',name:'Milk',unit:'ctn',supplierId:'s0',sortOrder:3},{id:'i4',name:'Sugar',unit:'ctn',supplierId:'s1',sortOrder:4}];
   const api=account=>({account,name:account==='rozha'?'Rozha':'Yunis',tabs:['order','assistant','history'],
     views:['order','assistant','history','transfers','stock','suppliers','itemsAdmin','units','record'].concat(account==='rozha'?['devices','settings']:[]),
-    suppliers:[{id:'s0',name:'Supplier',phone:''}],items,units,history:[{id:'h1',date:iso(60*30),by:'yunis',entries:[{supplierId:'s0',items:[{itemId:'i0',name:'Tomato',qty:2,unit:'box'}]}]}],
+    suppliers:[{id:'s0',name:'Supplier',phone:''},{id:'s1',name:'Other Supplier',phone:''}],items,units,history:[{id:'h1',date:iso(60*30),by:'yunis',entries:[{supplierId:'s0',items:[{itemId:'i0',name:'Tomato',qty:2,unit:'box'}]}]}],
     devices:[],activity:[],reminder:{enabled:false,time:'09:00'},pars:[{itemId:'i1',parQty:10,busyBoostPct:50,estQty:5}],inbox:[]});
   const stock={
     control:{workerOnline:false,launcherOnline:true,startRequestedAt:null,startHandledAt:null},
     storages:['Main Storage','Minibar','Pizza'],
-    settings:[{itemId:'i1',countingUnit:'ctn',perBuying:null,lowStock:2,workplaceName:'Coca-Cola 330'},{itemId:'i2',countingUnit:'pc',perBuying:12,lowStock:100,usageUnit:'pc'},{itemId:'i3',countingUnit:'ctn',perBuying:null,lowStock:null}],
+    settings:[{itemId:'i1',countingUnit:'ctn',perBuying:null,lowStock:2,workplaceName:'Coca-Cola 330'},{itemId:'i2',countingUnit:'pc',perBuying:12,lowStock:100,usageUnit:'g',perCountingUsage:100},{itemId:'i3',countingUnit:'ctn',perBuying:null,lowStock:null},{itemId:'i4',countingUnit:'ctn',perBuying:null,lowStock:null}],
     groups:[{id:'g1',name:'Drinks',itemIds:['i1','i3']}],
     balances:[{itemId:'i1',storage:'Main Storage',quantity:5},{itemId:'i2',storage:'Main Storage',quantity:20}],
     counts:[{id:'c1',itemId:'i1',itemName:'Coca Cola',storage:'Main Storage',unitLabel:'carton',quantity:5,prior:0,by:'rozha',countedAt:iso(600),enteredAt:iso(600),note:null}],
@@ -145,7 +145,7 @@ const server=http.createServer((rq,res)=>{
     assert.equal(await page.locator('#trToList [data-trsto="Main Storage"]').count(),0,'the source is not offered as the destination');
     await page.locator('#trToList [data-trsto="Minibar"]').click();
     const names=await page.locator('#trResults .name').allTextContents();
-    assert.deepEqual(names.sort(),['Coca Cola','Flour','Milk','Tomato'],'all items are searchable');
+    assert.deepEqual(names.sort(),['Coca Cola','Flour','Milk','Sugar','Tomato'],'all items are searchable');
     assert.equal(await page.locator('#trResults .tr-result.todo').count(),1,'the item that is not set up is marked');
     await page.fill('#trSearch','tom');assert.deepEqual(await page.locator('#trResults .name').allTextContents(),['Tomato'],'search finds items');
     await page.fill('#trSearch','');
@@ -228,12 +228,26 @@ const server=http.createServer((rq,res)=>{
     await page.locator('#trApprove').click();await page.waitForTimeout(400);
     const boxPost=calls.filter(c=>c.ep==='requests'&&c.method==='POST').pop();
     assert.deepEqual({q:boxPost.body.quantity,unit:boxPost.body.unitId,label:boxPost.body.expectedUnit,item:boxPost.body.itemId},{q:'1.5',unit:'box',label:'box',item:'i2'});
+    /* ---------- Transfer in the recipe unit: 1 piece = 100 gram ---------- */
+    await page.evaluate(()=>{trReset();trPaintAll();});
+    await page.locator('#trFromList [data-trsto="Main Storage"]').click();await page.locator('#trToList [data-trsto="Minibar"]').click();await page.locator('[data-trpick="i2"]').click();
+    assert.deepEqual(await page.locator('[data-trunit]').evaluateAll(b=>b.map(x=>x.dataset.trunit)),['counting','buying','usage'],'counting, buying and recipe units');
+    await page.locator('[data-trunit="usage"]').click();
+    assert.equal(await page.locator('#trUnit').innerText(),'gram');
+    await pad(page,'#trQty','250');
+    await page.locator('#trReview').evaluate(el=>el.scrollIntoView({block:'center'}));await page.waitForTimeout(150);
+    await page.locator('#trReview').click();
+    assert.match(await page.locator('#trReviewCard').innerText(),/250[\s\S]*gram[\s\S]*= 2\.5 piece/,'250 gram is 2.5 piece');
+    await page.locator('#trApprove').click();await page.waitForTimeout(400);
+    const gPost=calls.filter(c=>c.ep==='requests'&&c.method==='POST').pop();
+    assert.deepEqual({q:gPost.body.quantity,unit:gPost.body.unitId,label:gPost.body.expectedUnit},{q:'250',unit:'g',label:'gram'});
 
+    assert.equal(await page.evaluate(()=>foldText('تةمـاتة')===foldText('تەماتە')&&foldText('كيلو')===foldText('کیلۆ')),true,'search reads Kurdish written with Arabic letters');
     /* ---------- Stock and recount ---------- */
     await go(page,'stock');
     await page.waitForSelector('[data-stcount]');
     if(process.env.SHOT){await page.waitForTimeout(500);await page.screenshot({path:process.env.SHOT+'/st1.png'});}
-    assert.deepEqual((await page.locator('#stList .name').allTextContents()).sort(),['Coca Cola','Flour','Milk','Tomato']);
+    assert.deepEqual((await page.locator('#stList .name').allTextContents()).sort(),['Coca Cola','Flour','Milk','Sugar','Tomato']);
     await page.locator('[data-stfilter="setup"]').click();
     assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Tomato'],'not-set-up filter');
     await page.locator('[data-stfilter="all"]').click();
@@ -337,12 +351,14 @@ const server=http.createServer((rq,res)=>{
     // Tapping the item box lists every item (and the list stays open while the box has focus).
     await page.waitForFunction(()=>{const t=document.querySelector('[data-rcresults="0"]')?.textContent||'';return ['Coca Cola','Flour','Milk','Tomato'].every(n=>t.includes(n));},null,{timeout:5000});
     await page.waitForTimeout(400);
-    assert.equal(await page.locator('[data-rcresults="0"] [data-rcpick],[data-rcresults="0"] [data-rcsetup]').count(),4,'the item list stays open');
+    assert.equal(await page.locator('[data-rcresults="0"] [data-rcpick],[data-rcresults="0"] [data-rcsetup]').count(),4,'the item list stays open, with only this supplier\'s items');
+    assert.doesNotMatch(await page.locator('[data-rcresults="0"]').innerText(),/Sugar/,'another supplier\'s item is not listed');
     if(process.env.SHOT){await page.locator('[data-rcresults="0"]').scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SHOT+'/rc-list.png'});}
     await page.fill('[data-rcsearch="0"]','coca');await page.locator('[data-rcpick="0"][data-id="i1"]').click();
     await pad(page,'[data-rcqty="0"]','10');await pad(page,'[data-rccost="0"]','10');
     await page.locator('#rcAddLine').click();
     await page.fill('[data-rcsearch="1"]','flour');await page.locator('[data-rcpick="1"][data-id="i2"]').click();
+    assert.deepEqual(await page.locator('[data-rcunitsel="1"] option').evaluateAll(o=>o.map(x=>x.value)),['buying','counting','usage'],'buying, counting and recipe units');
     await page.selectOption('[data-rcunitsel="1"]','counting');
     assert.equal(await page.locator('[data-rcqty="1"]').evaluate(el=>el.readOnly),true,'quantities use our number pad');
     await pad(page,'[data-rcqty="1"]','24');await pad(page,'[data-rccost="1"]','0.5');
@@ -357,12 +373,22 @@ const server=http.createServer((rq,res)=>{
     if(process.env.SHOT){await page.screenshot({path:process.env.SHOT+'/rc.png'});}
     if(process.env.SHOT){await page.locator('#navMoreBtn').click();await page.waitForTimeout(600);await page.screenshot({path:process.env.SHOT+'/more.png'});await page.locator('#navMoreBtn').click();await page.waitForTimeout(400);}
     assert.equal(await page.inputValue('#rcInv'),'','the form clears after sending');
+    // Changing the supplier takes off items that belong to another supplier.
+    await page.evaluate(()=>{const s=document.getElementById('rcSup');s.value='s0';s.dispatchEvent(new Event('change'));});
+    await page.fill('[data-rcsearch="0"]','coca');await page.locator('[data-rcpick="0"][data-id="i1"]').click();
+    await page.evaluate(()=>{const s=document.getElementById('rcSup');s.value='s1';s.dispatchEvent(new Event('change'));});
+    assert.equal(await page.locator('[data-rcchange]').count(),0,'the other supplier\'s item was taken off');
+    assert.match(await page.locator('.toast').last().innerText(),/1 item from another supplier/);
+    await page.locator('[data-rcsearch="0"]').click();
+    await page.waitForFunction(()=>/Sugar/.test(document.querySelector('[data-rcresults="0"]')?.textContent||''));
+    assert.doesNotMatch(await page.locator('[data-rcresults="0"]').innerText(),/Coca Cola|Flour|Milk|Tomato/,'only the new supplier\'s items');
+    await page.evaluate(()=>document.activeElement?.blur());await page.waitForTimeout(300);
 
     /* ---------- Count many items with one PIN ---------- */
     await go(page,'stock');
     await page.locator('#stCountAll').click();
     await page.waitForSelector('[data-bcitem]');
-    assert.equal(await page.locator('[data-bcitem]').count(),3,'every set-up item is listed');
+    assert.equal(await page.locator('[data-bcitem]').count(),4,'every set-up item is listed');
     await page.fill('[data-bcitem="i1"]','4');await page.fill('[data-bcitem="i2"]','30');
     await page.fill('#bcSearch','milk');await page.fill('[data-bcitem="i3"]','9');await page.fill('#bcSearch','');
     assert.equal(await page.locator('[data-bcitem="i1"]').inputValue(),'4','typed amounts survive searching');
@@ -385,7 +411,7 @@ const server=http.createServer((rq,res)=>{
 
     /* ---------- Item form ---------- */
     await go(page,'itemsAdmin');
-    assert.match(await page.locator('.it-progress').innerText(),/3 of 4/);
+    assert.match(await page.locator('.it-progress').innerText(),/4 of 5/);
     await page.locator('[data-itfilter="todo"]').click();
     assert.deepEqual(await page.locator('#itemsAdminList .name').allTextContents(),['Tomato']);
     await page.locator('[data-edititem="i0"]').click();
@@ -467,7 +493,7 @@ const server=http.createServer((rq,res)=>{
     await page.locator('[data-stgroup="g1"]').click();
     assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Coca Cola','Milk'],'a group filters the list');
     await page.locator('[data-stgroup=""]').click();
-    assert.equal(await page.locator('#stList .name').count(),4,'All items shows everything again');
+    assert.equal(await page.locator('#stList .name').count(),5,'All items shows everything again');
     await page.locator('#stGroupsManage').click();
     await page.locator('#modalFormOk').click();
     await page.waitForSelector('#gmName');

@@ -4,6 +4,7 @@
 // message counts. The recipe unit of an existing ingredient is never changed.
 export const STOCK_PAGE='https://pos.shaydattendance.com/inventory/stock';
 import {sameNumber} from './numbers.mjs';
+import {sameUnit,unitKey} from './match.mjs';
 const norm=s=>String(s??'').replace(/[‎‏⁦-⁩]/g,'').replace(/\s+/g,' ').trim();
 function fail(m){throw new Error(m)}
 async function one(locator,label){
@@ -13,6 +14,8 @@ async function one(locator,label){
   return locator;
 }
 const SAME='— same as usage —';
+// Workplace units are Kurdish and may be spelled a little differently from ours ("سیت" / "سێت").
+const isUnit=(shown,want)=>shown===SAME||want===SAME?shown===want:sameUnit(shown,want);
 const fieldAfter=(root,label,what)=>root.locator(`xpath=(.//*[normalize-space(text())="${label}"]/following::${what})[1]`);
 const picker=(root,label)=>fieldAfter(root,label,'*[self::button or self::select or @role="combobox"]');
 async function shown(el){return norm(await el.evaluate(e=>e.tagName==='SELECT'?e.options[e.selectedIndex]?.text:(e.tagName==='INPUT'?e.value:e.innerText)))}
@@ -22,7 +25,11 @@ async function form(page,heading){
   const d=page.getByRole('dialog'); return (await d.count())===1?d:page.locator('body');
 }
 async function choose(page,trigger,label,want){
-  if(await trigger.evaluate(e=>e.tagName)==='SELECT'){await trigger.selectOption({label:want});return}
+  if(await trigger.evaluate(e=>e.tagName)==='SELECT'){
+    const labels=(await trigger.evaluate(e=>[...e.options].map(o=>o.text))).filter(t=>isUnit(norm(t),want));
+    if(labels.length!==1)fail(`${label}: expected one "${want}" choice, found ${labels.length}`);
+    await trigger.selectOption({label:labels[0]});return;
+  }
   await trigger.click();
   const focused=page.locator('input:focus'); if(await focused.count()&&want!==SAME){await focused.fill(want);await page.waitForTimeout(120)}
   // Wait until the list stops changing instead of a fixed pause: fast on a quick page, still safe on a slow one.
@@ -30,7 +37,7 @@ async function choose(page,trigger,label,want){
   for(let last=-1,end=Date.now()+2000;;){const n=await any.count();if((n===last&&n>0)||Date.now()>end)break;last=n;await page.waitForTimeout(60)}
   let opts=page.locator('[role="option"]:visible'); if(!await opts.count())opts=page.locator('[role="listbox"] :is(button,li,div):visible');
   const n=await opts.count(), hits=[];
-  for(let i=0;i<n;i++)if(norm(await opts.nth(i).innerText().catch(()=>''))===want)hits.push(i);
+  for(let i=0;i<n;i++)if(isUnit(norm(await opts.nth(i).innerText().catch(()=>'')),want))hits.push(i);
   if(hits.length!==1){await page.keyboard.press('Escape');fail(`${label}: expected one "${want}" choice, found ${hits.length}`)}
   await opts.nth(hits[0]).click();
 }
@@ -76,7 +83,7 @@ async function openForm(page,j){
 async function checkUsage(root,j){
   const usageEl=root.locator('xpath=(.//*[normalize-space(text())="Usage Format (recipe unit)"]/following::*[normalize-space(text())!=""])[1]');
   const usageShown=norm(await (await one(usageEl,'recipe unit')).innerText());
-  if(!(usageShown===j.usage||usageShown.startsWith(j.usage+' ')))fail(`Recipe unit shows "${usageShown}", the app expects "${j.usage}"`);
+  if(!(sameUnit(usageShown,j.usage)||unitKey(usageShown.split(' ')[0])===unitKey(j.usage)))fail(`Recipe unit shows "${usageShown}", the app expects "${j.usage}"`);
 }
 export async function prepareItem(page,j){
   if(!j||!['create','edit'].includes(j.kind)||!j.name||!j.usage||!j.buying||!j.counting)fail('The task is missing its name or units');
@@ -92,10 +99,10 @@ export async function prepareItem(page,j){
   // The conversion boxes appear once the formats are chosen: wait for them (at most 3 s) rather than a fixed pause.
   const want=expectedConversions(j);
   let boxes=await conversions(root);
-  const ready=()=>want.every(w=>boxes.some(x=>x.from===w.from&&x.to===w.to));
+  const ready=()=>want.every(w=>boxes.some(x=>isUnit(x.from,w.from)&&isUnit(x.to,w.to)));
   for(const end=Date.now()+3000;!ready()&&Date.now()<end;boxes=await conversions(root))await page.waitForTimeout(60);
   for(const w of want){
-    const b=boxes.filter(x=>x.from===w.from&&x.to===w.to); if(b.length!==1)fail(`Could not find the "1 ${w.from} = ? ${w.to}" box`);
+    const b=boxes.filter(x=>isUnit(x.from,w.from)&&isUnit(x.to,w.to)); if(b.length!==1)fail(`Could not find the "1 ${w.from} = ? ${w.to}" box`);
     await b[0].input.fill(String(w.value));
   }
   const warn=await one(fieldAfter(root,'Warn me when stock drops to','input'),'warning level');
@@ -109,12 +116,12 @@ export async function checkItem(page,j){
   const root=await form(page,j.kind==='create'?'Add a new ingredient':'Edit ingredient');
   if(norm(await (await one(fieldAfter(root,'Ingredient name','input'),'ingredient name')).inputValue())!==norm(j.name))fail('Ingredient name changed');
   await checkUsage(root,j);
-  if(await shown(await one(picker(root,'Buying Format'),'buying format'))!==unitShown(j,j.buying))fail('Buying format changed');
-  if(await shown(await one(picker(root,'Inventory (counting) Format'),'counting format'))!==unitShown(j,j.counting))fail('Counting format changed');
+  if(!isUnit(await shown(await one(picker(root,'Buying Format'),'buying format')),unitShown(j,j.buying)))fail('Buying format changed');
+  if(!isUnit(await shown(await one(picker(root,'Inventory (counting) Format'),'counting format')),unitShown(j,j.counting)))fail('Counting format changed');
   const want=expectedConversions(j), boxes=await conversions(root);
   if(boxes.length!==want.length)fail(`The form asks for ${boxes.length} conversions, the app expects ${want.length}`);
   for(const w of want){
-    const b=boxes.find(x=>x.from===w.from&&x.to===w.to); if(!b)fail(`"1 ${w.from} = ? ${w.to}" is missing`);
+    const b=boxes.find(x=>isUnit(x.from,w.from)&&isUnit(x.to,w.to)); if(!b)fail(`"1 ${w.from} = ? ${w.to}" is missing`);
     if(!sameNumber(await b.input.inputValue(),w.value))fail(`"1 ${w.from} = ? ${w.to}" shows ${await b.input.inputValue()}, expected ${w.value}`);
   }
   const warn=norm(await (await one(fieldAfter(root,'Warn me when stock drops to','input'),'warning level')).inputValue());

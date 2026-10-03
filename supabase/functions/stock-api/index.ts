@@ -12,7 +12,7 @@
 //   PUT    tabs                          {tabs:[3 screens]}  this person's tab bar (may include Transfer and Stock)
 //   PUT    settings/:itemId              {countingUnit, perBuying, lowStock, workplaceName}
 //   POST   requests                      {clientKey, from, to, yesterday, itemId, quantity, unitId, expectedName, expectedUnit}
-//                                        (unitId: the item's buying or counting unit; quantity is in that unit)
+//                                        (unitId: the item's buying, counting or recipe unit; quantity is in that unit)
 //   POST   cancel                        {id}
 //   POST   final-approve                 {id}
 //   POST   zones/add|rename|delete       {name} | {from, to} | {name}   manage storages (zones)
@@ -503,8 +503,8 @@ Deno.serve(async (req: Request) => {
       if (raw.length < 1 || raw.length > 40) return fail("Add at least one item");
       const ids = [...new Set(raw.map((l: any) => str(l?.itemId, 80)))];
       const [items, settings, units] = await Promise.all([
-        db.from("app_items").select("id,name,unit_id").in("id", ids),
-        db.from("stock_item_settings").select("item_id,counting_unit,per_buying,workplace_name").in("item_id", ids),
+        db.from("app_items").select("id,name,unit_id,supplier_id").in("id", ids),
+        db.from("stock_item_settings").select("item_id,counting_unit,per_buying,workplace_name,usage_unit,per_counting_usage").in("item_id", ids),
         db.from("app_units").select("id,en"),
       ]);
       for (const r of [items, settings, units]) if (r.error) throw r.error;
@@ -514,17 +514,23 @@ Deno.serve(async (req: Request) => {
       const lines = [];
       for (const l of raw) {
         const it: any = itemMap.get(str(l?.itemId, 80)); if (!it) return fail("An item on this receipt no longer exists");
+        if (it.supplier_id !== sup.id) return fail(`${it.name} is not paired with ${sup.name}`);
         const st: any = setMap.get(it.id);
         // Stock is kept in counting units, so every item on a receipt must have its counting format set up.
         if (!st) return fail(`Set up ${it.name} for stock first (its counting format)`);
         const unitId = str(l?.unitId, 80);
-        if (unitId !== it.unit_id && unitId !== st.counting_unit) return fail(`Choose a unit for ${it.name}`);
+        // The buying format, the counting format or the recipe unit (checked in that order when two are the same unit).
+        if (unitId !== it.unit_id && unitId !== st.counting_unit && unitId !== st.usage_unit) return fail(`Choose a unit for ${it.name}`);
         const qty = num(l?.qty), cost = num(l?.cost);
         if (!(qty > 0 && qty < 1e7 && precision(qty, 6)) || !(cost > 0 && cost < 1e12 && precision(cost, 6))) return fail(`Enter the quantity and cost for ${it.name} (up to six decimals)`);
         let ledgerQty = qty;                                              // in counting units
-        if (unitId !== st.counting_unit) {
+        if (unitId === st.counting_unit) ledgerQty = qty;
+        else if (unitId === it.unit_id) {
           if (!(Number(st.per_buying) > 0)) return fail(`Set how many ${unitMap.get(st.counting_unit) ?? ""} are in one ${unitMap.get(unitId) ?? ""} for ${it.name}`);
           ledgerQty = Math.round(qty * Number(st.per_buying) * 1e6) / 1e6;
+        } else {
+          if (!(Number(st.per_counting_usage) > 0)) return fail(`Set how many ${unitMap.get(unitId) ?? ""} are in one ${unitMap.get(st.counting_unit) ?? ""} for ${it.name}`);
+          ledgerQty = Math.round(qty / Number(st.per_counting_usage) * 1e6) / 1e6;
         }
         if (!(ledgerQty > 0 && ledgerQty <= 1e8)) return fail(`The stock amount for ${it.name} is outside the supported range`);
         if (!unitMap.get(unitId) || !unitMap.get(st.counting_unit)) return fail(`A unit for ${it.name} no longer exists`);

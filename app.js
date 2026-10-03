@@ -1042,8 +1042,8 @@ function openSelSheet(sel){
   document.body.appendChild(wrap);
   const list = wrap.querySelector('.sel-list');
   const paint = q=>{
-    const tokens = String(q || '').toLocaleLowerCase().split(/\s+/).filter(Boolean);
-    const shown = opts.filter(o=>tokens.every(x=>o.label.toLocaleLowerCase().includes(x)));
+    const tokens = foldText(q).split(/\s+/).filter(Boolean);
+    const shown = opts.filter(o=>tokens.every(x=>foldText(o.label).includes(x)));
     list.innerHTML = shown.length ? shown.map(o=>`<button type="button" class="sel-opt${o.on ? ' on' : ''}${o.value === '' ? ' none' : ''}" role="option" aria-selected="${o.on}" data-v="${esc(o.value)}"><span dir="auto">${esc(o.label)}</span>${o.on ? '<b aria-hidden="true">✓</b>' : ''}</button>`).join('')
       : `<div class="field-hint">${esc(t('trNoMatch'))}</div>`;
   };
@@ -1499,6 +1499,13 @@ document.addEventListener('keydown', e=>{
 
 /* ============ Order screen ============ */
 /* A unit's name in the current language (English when it has none). */
+/* Search text the way a person reads it: Kurdish written with Arabic letters still matches (تةمـاتة finds تەماتە).
+   The same letter folding as the PC worker (worker/match.mjs). */
+const FOLD_TEXT = [[/[ً-ٰٟـ​-‏‪-‮⁦-⁩﻿]/g, ''], [/[أإآٱ]/g, 'ا'],
+  [/[يىێ]/g, 'ی'], [/[كگ]/g, 'ک'], [/[ةەھہ]/g, 'ه'], [/[ۆۇۊؤ]/g, 'و'],
+  [/ڵ/g, 'ل'], [/ڕ/g, 'ر'], [/پ/g, 'ب'], [/چ/g, 'ج'], [/ژ/g, 'ز'], [/ڤ/g, 'ف'],
+  [/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x660)], [/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x6F0)]];
+function foldText(s){ return FOLD_TEXT.reduce((t, [re, to]) => t.replace(re, to), String(s ?? '').normalize('NFKC')).toLocaleLowerCase(); }
 function unitName(u){ return !u ? '' : state.lang === 'ku' ? (u.ku || u.en) : state.lang === 'ar' ? (u.ar || u.en) : u.en; }
 function unitLabel(unitId){ return unitName(state.units.find(x=>x.id===unitId)); }
 function supplierName(id){
@@ -1610,11 +1617,11 @@ function renderOrder(){
 /* Search only replaces this result region; rebuilding #app on each keystroke
    was the cause of the apparent page refresh on phones. */
 function renderOrderResults(){
-  const q = state.search.trim().toLowerCase();
+  const q = foldText(state.search.trim());
   const tabFiltered = state.orderTab==='all'
     ? state.items
     : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab);
-  const visibleItems = tabFiltered.filter(i => !q || i.name.toLowerCase().includes(q));
+  const visibleItems = tabFiltered.filter(i => !q || foldText(i.name).includes(q));
 
   const groups = {};
   visibleItems.forEach(i=>{
