@@ -10,6 +10,8 @@
 <div>Total: <b id="total">$ 0</b></div><button type="button" id="cancel">Cancel</button><button type="button" id="receive">Receive &amp; send to finance</button>
 <script>
 window.submitted=0;
+// The test can make the lists arrive late (like a freshly opened tab): until then a list shows "No ... found".
+const READY=Date.now()+(window.__listsDelay||0);
 const SUPPLIERS=['Ali Market','Fresh Foods','Fresh Foods Co','Golden Bread Bakery / صمون گۆلدن بريد'];
 const ITEMS={'Tomato - تەماتە':['غرام','کیلۆ (×1000)'],'Cherry Tomatoes - تەماتە کرزی':['غرام','کیلۆ (×1000)'],'Blueberry Ice Cream - ئایس کریمی بلوبێری':['غرام','پاکەت (×3000)','پاکەت (×3000)','+ Add a different unit...'],'Odd Item':['دانە (×1)','دانە (×6)']};
 let currency='IQD';
@@ -20,8 +22,9 @@ function popup(anchor,list,withSearch,onPick){
   let input=null;
   if(withSearch){input=document.createElement('input');input.placeholder='Search';pop.append(input);}
   const box=document.createElement('div');pop.append(box);
-  const paint=q=>{box.innerHTML='';list.filter(x=>!q||x.toLowerCase().includes(q.toLowerCase())).forEach(x=>{const o=document.createElement('div');o.setAttribute('role','option');o.textContent=x;o.onclick=()=>{pop.remove();onPick(x)};box.append(o)})};
+  const paint=q=>{box.innerHTML='';if(Date.now()<READY){const e=document.createElement('div');e.textContent='No suppliers found';box.append(e);return}list.filter(x=>!q||x.toLowerCase().includes(q.toLowerCase())).forEach(x=>{const o=document.createElement('div');o.setAttribute('role','option');o.textContent=x;o.onclick=()=>{pop.remove();onPick(x)};box.append(o)})};
   paint('');document.body.append(pop);
+  if(Date.now()<READY){const tick=setInterval(()=>{if(!pop.isConnected||Date.now()>=READY){clearInterval(tick);if(pop.isConnected)paint(input?input.value:'')}},100)}
   if(input){input.oninput=()=>paint(input.value);input.focus();}
 }
 document.getElementById('sup').onclick=e=>popup(e.target,SUPPLIERS,true,x=>e.target.textContent=x);
