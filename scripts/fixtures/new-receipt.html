@@ -43,4 +43,23 @@ function addRow(){
   document.getElementById('rows').append(r);
 }
 document.getElementById('add').onclick=addRow;addRow();
+// Number-pad mode (the real page): every box except the searches is read-only and opens a pad with 1-9, Clear, 0,
+// delete and Enter (and a decimal point only when window.__padDecimal is set).
+if(window.__pads){
+  const mark=()=>document.querySelectorAll('input:not(.pad)').forEach(i=>{if(i.closest('.pop'))return;i.classList.add('pad');i.readOnly=true;i.setAttribute('inputmode','none')});
+  new MutationObserver(mark).observe(document.body,{childList:true,subtree:true});mark();
+  document.addEventListener('click',e=>{
+    const i=e.target;if(!(i instanceof HTMLInputElement)||!i.classList.contains('pad'))return;
+    document.getElementById('padpop')?.remove();
+    const pop=document.createElement('div');pop.id='padpop';pop.className='pop';
+    const r=i.getBoundingClientRect();pop.style.left=r.left+'px';pop.style.top=(r.bottom+window.scrollY)+'px';
+    let buf=i.value.replace(/,/g,'');
+    const key=(label,fn,aria)=>{const b=document.createElement('button');b.type='button';b.textContent=label;if(aria)b.setAttribute('aria-label',aria);b.onclick=fn;pop.append(b)};
+    ['1','2','3','4','5','6','7','8','9'].forEach(d=>key(d,()=>{buf+=d}));
+    key('Clear',()=>{buf=''});key('0',()=>{buf+='0'});key('\u232b',()=>{buf=buf.slice(0,-1)},'Delete');
+    if(window.__padDecimal)key('.',()=>{buf+='.'});
+    key('Enter',()=>{i.value=buf;i.dispatchEvent(new Event('input',{bubbles:true}));pop.remove()});
+    document.body.append(pop);
+  });
+}
 </script>

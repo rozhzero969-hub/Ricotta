@@ -25,6 +25,8 @@ If the worker cannot start (its Edge window is still open from before, Edge cann
 
 ## Receipts
 
+The workplace’s invoice number, dollar rate and delivery boxes are read-only and open the page’s own number pad (1–9, Clear, 0, delete, Enter, no decimal point). The worker presses those keys and Enter, then reads each box back. An invoice number with letters, or a decimal in a box whose pad has no decimal point, stops the worker with a clear message instead of being typed wrongly.
+
 Receipts are entered in the app (Receipts screen). Every item on a receipt must be set up for stock (its counting format), so the amount can be added to stock in counting units.
 
 1. The worker opens the workplace **New purchase receipt** page (`receipt.mjs`) in a second Edge tab and fills in the supplier, invoice number, dollar rate (if USD), delivery (if any) and each item line (item, unit, quantity, cost of each). It checks every field and each line total, then sends a screenshot to the app and stops.
