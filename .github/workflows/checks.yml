@@ -15,7 +15,7 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Use runner temporary directory
         run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
