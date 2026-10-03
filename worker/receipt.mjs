@@ -71,9 +71,32 @@ async function choose(page,trigger,label,match,typed){
   return hits[0].t;
 }
 const fieldAfter=(page,labelXpath,what)=>page.locator(`xpath=(//*[${labelXpath}]/following::${what})[1]`);
-async function fillChecked(input,value,label){
-  await input.fill(String(value));
-  const text=await input.inputValue(); if(!sameNumber(text,value))fail(`${label} shows ${text}, expected ${value}`);
+// Number boxes. Some are ordinary boxes and are typed into. Others (the invoice number, the dollar rate and the
+// delivery amount) are read-only and open the page's own number pad (1-9, Clear, 0, delete, Enter), so the keys are
+// pressed one by one and then Enter. Either way the box is read back and must show exactly what was meant.
+async function enterNumber(page,input,value,label,{text=false}={}){
+  const want=String(value);
+  if(await input.isEditable().catch(()=>false))await input.fill(want);
+  else{
+    if(!/^\d+(\.\d+)?$/.test(want))fail(`${label}: "${want}" cannot be entered on the workplace number pad`);
+    await input.scrollIntoViewIfNeeded().catch(()=>{});
+    await input.click();
+    const enter=page.getByRole('button',{name:'Enter',exact:true});
+    if(!await until(page,async()=>await enter.count()===1&&await enter.isVisible(),5000))fail(`${label}: the number pad did not open`);
+    const clear=page.getByRole('button',{name:'Clear',exact:true});
+    const pad=page.locator('div').filter({has:enter}).filter({has:clear}).last();
+    if(await input.inputValue())await pad.getByRole('button',{name:'Clear',exact:true}).click();
+    for(const ch of want){
+      const key=pad.getByRole('button',{name:ch,exact:true});
+      if(await key.count()!==1)fail(`${label}: the number pad has no "${ch}" key`);
+      await key.click();
+    }
+    await enter.click();
+    if(!await until(page,async()=>await enter.count()===0,3000))await page.keyboard.press('Escape');
+  }
+  const shown=await input.inputValue();
+  const ok=text?norm(shown).replace(/[,\s]/g,'')===want:sameNumber(shown,value);
+  if(!ok)fail(`${label} shows ${shown}, expected ${want}`);
 }
 
 export async function prepareReceipt(page,r){
@@ -98,16 +121,16 @@ export async function prepareReceipt(page,r){
   const supShown=await sup.evaluate(e=>e.tagName==='SELECT'?e.options[e.selectedIndex]?.text:e.innerText);
   if(same(supShown)!==same(r.supplierName))fail(`Supplier shows "${norm(supShown)}", expected "${r.supplierName}"`);
 
-  await fillTextChecked(await one(fieldAfter(page,'normalize-space(text())="Invoice number"','input'),'invoice number'),r.invoice);
+  await enterNumber(page,await one(fieldAfter(page,'normalize-space(text())="Invoice number"','input'),'invoice number'),r.invoice,'Invoice number',{text:true});
 
   if(r.currency==='USD'){
     await (await one(page.getByRole('button',{name:'USD $',exact:true}),'USD button')).click();
-    await fillChecked(await one(fieldAfter(page,'starts-with(normalize-space(text()),"Today")','input'),'dollar rate'),r.rate,'Dollar rate');
+    await enterNumber(page,await one(fieldAfter(page,'starts-with(normalize-space(text()),"Today")','input'),'dollar rate'),r.rate,'Dollar rate');
   }
   if(r.delivery>0){
     await (await one(page.getByRole('button',{name:'No delivery',exact:true}),'delivery button')).click();
     await one(page.getByRole('button',{name:'Delivery: On',exact:true}),'delivery switched on');
-    await fillChecked(await one(fieldAfter(page,'normalize-space(text())="How much was the delivery?"','input'),'delivery amount'),r.delivery,'Delivery');
+    await enterNumber(page,await one(fieldAfter(page,'normalize-space(text())="How much was the delivery?"','input'),'delivery amount'),r.delivery,'Delivery');
   }
 
   // Items: search, unit, quantity, cost per unit; the line total is checked against quantity x cost.
@@ -128,8 +151,8 @@ export async function prepareReceipt(page,r){
     if(norm(await unitBtn.innerText())!==picked)fail(`Line ${i+1}: unit did not stay selected`);
     const inputs=row.locator('input:visible');
     if(await inputs.count()!==2)fail(`Line ${i+1}: expected a quantity and a cost box`);
-    await fillChecked(inputs.nth(0),l.qty,`Line ${i+1} quantity`);
-    await fillChecked(inputs.nth(1),l.cost,`Line ${i+1} unit cost`);
+    await enterNumber(page,inputs.nth(0),l.qty,`Line ${i+1} quantity`);
+    await enterNumber(page,inputs.nth(1),l.cost,`Line ${i+1} unit cost`);
     const expected=Math.round(l.qty*l.cost*100)/100;
     const showsTotal=async()=>((norm(await row.innerText()).match(/\d[\d,]*(?:\.\d+)?/g)||[]).map(num)).some(a=>Math.abs(a-expected)<0.01);
     if(!await until(page,showsTotal,2000))fail(`Line ${i+1}: total does not show ${expected}`);
@@ -190,8 +213,4 @@ export async function submitReceipt(page,r,successText,onPressed){
   onPressed();
   await button.click();
   await page.getByText(successText,{exact:true}).first().waitFor({state:'visible',timeout:15000});
-}
-async function fillTextChecked(input,value){
-  await input.fill(String(value));
-  if(norm(await input.inputValue())!==norm(value))fail('Invoice number did not stay as typed');
 }

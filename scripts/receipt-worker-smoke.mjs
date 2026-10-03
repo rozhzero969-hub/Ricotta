@@ -41,6 +41,37 @@ try{
   await prepareReceipt(latePage,{...base,lines:[{workplaceName:'Tomato - تەماتە',unitLabel:'کیلۆ',qty:2,cost:500}]});
   assert.equal(await latePage.evaluate(()=>document.getElementById('sup').textContent),'Fresh Foods','supplier picked after the list loaded late');
   await lateCtx.close();
+  // 1d. The real page: the invoice number, dollar rate, delivery, quantity and cost are read-only boxes that open the
+  // page's own number pad (no decimal point). The worker presses the keys and Enter, and reads every box back.
+  const padPage=async(decimal=false)=>{
+    const c=await browser.newContext({viewport:{width:1280,height:850}});
+    await c.addInitScript(d=>{window.__pads=true;window.__padDecimal=d},decimal);
+    await c.route(RECEIPT_PAGE,route=>route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:html}));
+    return {c,p:await c.newPage()};
+  };
+  {
+    const {c,p}=await padPage();
+    await prepareReceipt(p,{...base,invoice:'2546',currency:'USD',rate:1500,delivery:5000,lines:[
+      {workplaceName:'Tomato - تەماتە',unitLabel:'کیلۆ',qty:10,cost:10},
+      {workplaceName:'Blueberry Ice Cream - ئایس کریمی بلوبێری',unitLabel:'پاکەت',qty:5,cost:2000}]});
+    const pv=await p.evaluate(()=>({inv:document.getElementById('inv').value,rate:document.querySelector('#rateBox input')?.value,del:document.querySelector('#delBox input')?.value,
+      rows:[...document.querySelectorAll('.row')].map(r=>[...r.querySelectorAll('input')].map(i=>i.value)),readonly:document.getElementById('inv').readOnly,submitted:window.submitted}));
+    assert.deepEqual(pv,{inv:'2546',rate:'1500',del:'5000',rows:[['10','10'],['5','2000']],readonly:true,submitted:0},'number-pad boxes filled by pressing the keys');
+    // Entering a box that already has a number clears it first (a second receipt on the same page).
+    await prepareReceipt(p,{...base,invoice:'77',lines:[{workplaceName:'Tomato - تەماتە',unitLabel:'کیلۆ',qty:3,cost:500}]});
+    assert.equal(await p.evaluate(()=>document.getElementById('inv').value),'77');
+    // Things the pad cannot type are refused clearly, not typed wrongly.
+    await assert.rejects(prepareReceipt(p,{...base,invoice:'INV-9',lines:[{workplaceName:'Tomato - تەماتە',unitLabel:'کیلۆ',qty:1,cost:1}]}),/Invoice number: "INV-9" cannot be entered/);
+    await assert.rejects(prepareReceipt(p,{...base,invoice:'1024',lines:[{workplaceName:'Tomato - تەماتە',unitLabel:'کیلۆ',qty:1.5,cost:1}]}),/number pad has no "\."/);
+    assert.equal(await p.evaluate(()=>window.submitted),0);
+    await c.close();
+  }
+  {
+    const {c,p}=await padPage(true);
+    await prepareReceipt(p,{...base,invoice:'8',lines:[{workplaceName:'Tomato - تەماتە',unitLabel:'کیلۆ',qty:1.5,cost:1000}]});
+    assert.deepEqual(await p.evaluate(()=>[...document.querySelector('.row').querySelectorAll('input')].map(i=>i.value)),['1.5','1000'],'a pad with a decimal point types decimals');
+    await c.close();
+  }
   // 2. Stops on anything unclear, and never submits.
   const stops=async(r,re,why)=>{await assert.rejects(prepareReceipt(page,{...base,...r}),re,why);assert.equal(await page.evaluate(()=>window.submitted),0)};
   await stops({lines:[{workplaceName:'Tomatoes',unitLabel:'کیلۆ',qty:1,cost:1}]},/no choice matches/,'an item that is not on the list');
@@ -77,5 +108,5 @@ try{
   await assert.rejects(submitReceipt(loseClickResponse(page,'Receive & send to finance'),good,'Receipt received',()=>{pressed=true}),/acknowledgement lost/);
   assert.equal(pressed,true,'an attempted click is treated as uncertain when its response is lost');
   assert.equal(await page.evaluate(()=>window.submitted),1,'the browser actually submitted exactly once');
-  console.log(JSON.stringify({result:'PASS',checks:'waits for lists that load late on a new tab; fills supplier, invoice, dollar rate, delivery and item lines; checks line totals; stops on unknown item, supplier or unit and on an ambiguous unit; never submits on its own; saving re-checks the whole form, presses once and needs the exact success message'}));
+  console.log(JSON.stringify({result:'PASS',checks:'waits for lists that load late on a new tab; presses the keys of the page\u2019s number pad (invoice, rate, delivery, quantity, cost) and refuses what it cannot type; fills supplier, invoice, dollar rate, delivery and item lines; checks line totals; stops on unknown item, supplier or unit and on an ambiguous unit; never submits on its own; saving re-checks the whole form, presses once and needs the exact success message'}));
 }finally{await browser.close()}
