@@ -47,6 +47,12 @@ In the app, open an item (Items screen) and fill in its stock fields, including 
 
 On an edit, the worker never changes the usage unit. If the app's usage unit differs from the workplace's, it stops. Ingredients are only saved with `ALLOW_SUBMIT=1` and both success texts set in `.env`. `scripts/items-worker-smoke.mjs` tests this against a local copy of the page.
 
+## Transfers with several items
+
+One transfer can move several items between the same two storages (1 to 30). In the database each item is a row sharing a `batch_id`; the first (`batch_pos` 0) is the lead, and the PC is handed the whole transfer through it. The worker fills one row of the workplace form per item (pressing **Add another item** between them), checks every row against the app's own stock, and presses **Move it** once. A wrong line stops the whole transfer and the message names it ("Item 2 of 3 (Salt): Stock mismatch ..."). The stock of every item moves only when the workplace success message is confirmed; cancelling, the PC check, final approval and reconciling by hand all act on the whole transfer.
+
+A PC only receives a transfer of more than one item if it asks for them (`?multi=1`, which this version of `worker.mjs` does). An older worker is never handed one, so it can never press **Move it** for half a transfer; copy `worker.mjs` and `transfer.mjs` to the PC and restart the worker to use them. `scripts/batch-db-smoke.sql` tests this against a real Postgres.
+
 ## Updating the worker and API together
 
 The launcher now acknowledges the exact start request it saw. If that acknowledgement fails, it retries without opening another worker window. Copy the updated `launcher.mjs` to the office PC and restart the launcher to enable this fix; the API remains compatible with older launchers.
