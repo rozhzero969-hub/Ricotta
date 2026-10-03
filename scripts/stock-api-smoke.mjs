@@ -8,7 +8,7 @@ import {BodyTooLarge,InvalidBody,readJsonBody} from '../supabase/functions/_shar
 const workerToken='offline-worker-token-'.repeat(3), sessionToken='offline-session';
 const hash=async text=>Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))).toString('hex');
 const workerHash=await hash(workerToken), sessionHash=await hash(sessionToken);
-let hasWork=true, tables, rpcCalls, failRead, failInsert, failUpdate, failRpc, pinLocked, rejectSettings;
+let claimId=null, hasWork=true, tables, rpcCalls, failRead, failInsert, failUpdate, failRpc, pinLocked, rejectSettings;
 function reset(){
   tables={stock_workers:[{id:'offline-pc',token_hash:workerHash,enabled:true}],
     app_sessions:[{account:'rozha',token_hash:sessionHash,expires_at:new Date(Date.now()+3600000).toISOString(),revoked_at:null}],
@@ -21,6 +21,10 @@ function reset(){
 reset();
 const clone=value=>value===undefined?undefined:structuredClone(value);
 function eligibility(expression,row){
+  if(expression.startsWith('previewed_at.is.null')){
+    const old=expression.match(/previewed_at\.lt\.(.*)$/)?.[1];
+    return row.previewed_at==null||Date.parse(row.previewed_at)<Date.parse(old);
+  }
   const stale=expression.match(/claimed_at\.lt\.([^)]*)/)?.[1];
   if(!stale)throw new Error(`Unexpected OR filter: ${expression}`);
   return row.status==='waiting'||(row.status==='preparing'&&Date.parse(row.claimed_at)<Date.parse(stale));
@@ -72,6 +76,8 @@ const db={
     if(name==='app_internal_reserve_login')return {data:pinLocked?null:[1,2],error:null};
     if(name==='app_internal_check_account_pin')return {data:true,error:null};
     if(name==='stock_worker_has_work'||name==='stock_launcher_has_work')return {data:hasWork,error:null};
+    if(name==='stock_submit_batch')return {data:parameters.p_lines.map(()=>crypto.randomUUID()),error:null};
+    if(name==='stock_claim')return {data:claimId,error:null};
     if(name==='stock_save_item_settings'&&rejectSettings)return {data:null,error:{code:'P0001',message:'Unknown recipe unit'}};
     return {data:crypto.randomUUID(),error:null};
   },
@@ -188,9 +194,9 @@ assert.equal((await request('worker/wait',undefined,'none','GET')).status,401,'w
 rpcCalls=[];hasWork=true;
 let waited=await request('worker/wait?live=1',undefined,'worker','GET');
 assert.deepEqual(await waited.json(),{work:true},'new work is announced straight away');
-assert.deepEqual(rpcCalls.find(c=>c.name==='stock_worker_has_work')?.parameters,{p_live:true},'a live PC counts approved transfers as work');
+assert.deepEqual(rpcCalls.find(c=>c.name==='stock_worker_has_work')?.parameters,{p_live:true,p_multi:false},'a live PC counts approved transfers as work');
 rpcCalls=[];await request('worker/wait?live=0',undefined,'worker','GET');
-assert.deepEqual(rpcCalls.find(c=>c.name==='stock_worker_has_work')?.parameters,{p_live:false},'a PC in test mode does not');
+assert.deepEqual(rpcCalls.find(c=>c.name==='stock_worker_has_work')?.parameters,{p_live:false,p_multi:false},'a PC in test mode does not');
 waited=await request('worker/wait?for=launcher',undefined,'worker','GET');
 const launcherAnswer=await waited.json();
 assert.equal(launcherAnswer.work,true);assert.ok('workerOnline' in launcherAnswer,'the launcher also gets the control status');
@@ -213,4 +219,56 @@ failUpdate=null;failRead='stock_worker_control';
 assert.notEqual((await request('start-worker',{})).status,200,'broken health reads cannot invent an offline worker');
 failRead=null;
 assert.equal((await request('worker/control-handled',undefined,'worker')).status,200,'already installed launchers remain compatible');
-console.log('Stock API smoke: PASS (authentication, bounded JSON, claim races and stale reports, transactional settings, PIN failure handling, receipt retry and precision, instant pickup)');
+// Multi-item transfers. One request holds 1 to 30 items between the same two storages; the older single-item
+// shape still works; bad input is refused before it reaches the database.
+reset();
+const lineOf=(over={})=>({clientKey:crypto.randomUUID(),itemId:'item',quantity:2,unitId:'kg',expectedName:'Tomato',expectedUnit:'kg',...over});
+rpcCalls=[];
+let made=await request('requests',{from:'Main Storage',to:'Pizza',yesterday:false,lines:[lineOf(),lineOf({itemId:'item2',quantity:1.5})]});
+assert.equal(made.status,201);
+let madeBody=await made.json();
+assert.equal(madeBody.ids.length,2);assert.equal(madeBody.id,madeBody.ids[0],'the lead id is the first line');
+let batchCall=rpcCalls.find(c=>c.name==='stock_submit_batch');
+assert.equal(batchCall.parameters.p_lines.length,2);assert.equal(batchCall.parameters.p_actor,'rozha');
+assert.deepEqual(Object.keys(batchCall.parameters.p_lines[0]).sort(),['item','key','name','qty','unit','unitId'],'each line carries what the database checks');
+rpcCalls=[];
+made=await request('requests',{...lineOf(),from:'Main Storage',to:'Pizza'});
+assert.equal(made.status,201);assert.equal(rpcCalls.find(c=>c.name==='stock_submit_batch').parameters.p_lines.length,1,'the older one-item shape is a batch of one');
+for(const [body,why] of [
+  [{from:'a',to:'b',lines:[]},'an empty transfer'],
+  [{from:'a',to:'b',lines:Array.from({length:31},()=>lineOf())},'31 items'],
+  [{from:'a',to:'b',lines:[lineOf({clientKey:'nope'})]},'a bad line key'],
+  [{from:'a',to:'b',lines:[lineOf({quantity:0})]},'a zero amount'],
+  [{from:'a',to:'b',lines:[null]},'a null line'],
+]){
+  rpcCalls=[];
+  assert.equal((await request('requests',body)).status,400,why+' is refused');
+  assert.equal(rpcCalls.filter(c=>c.name==='stock_submit_batch').length,0,why+' never reaches the database');
+}
+// The PC is handed the whole transfer, but only a PC that says it can run several items (?multi=1) is handed one.
+reset();
+const batchId=crypto.randomUUID(), leadId=crypto.randomUUID(), secondId=crypto.randomUUID();
+const row=(id,pos,item,name,qty)=>({id,batch_id:batchId,batch_pos:pos,batch_size:2,item_id:item,item_name:name,unit_label:'kg',quantity:String(qty),
+  entered_quantity:String(qty),entered_unit_label:'kg',from_storage:'Main Storage',to_storage:'Pizza',record_yesterday:false,status:'waiting',
+  final_approved_at:null,previewed_at:null});
+tables.stock_requests=[row(leadId,0,'item','Tomato',2),row(secondId,1,'item2','Onion',1.5)];
+tables.stock_balances=[{item_id:'item',storage_name:'Main Storage',quantity:'10'},{item_id:'item2',storage_name:'Main Storage',quantity:'4'}];
+let preview=await (await request('worker/preview',undefined,'worker','GET')).json();
+assert.equal(preview.request,null,'an older PC is never handed a multi-item transfer');
+preview=await (await request('worker/preview?multi=1',undefined,'worker','GET')).json();
+assert.equal(preview.request.id,leadId,'a batch-aware PC gets the lead');
+assert.deepEqual(preview.request.lines.map(l=>[l.itemName,l.quantity,l.appQuantity]),[['Tomato',2,10],['Onion',1.5,4]],'every line comes with the app stock');
+assert.equal(preview.request.itemName,'Tomato','the first line is repeated at the top for an older PC');
+claimId=leadId;rpcCalls=[];
+await request('worker/claim',undefined,'worker');
+assert.equal(rpcCalls.find(c=>c.name==='stock_claim').parameters.p_multi,false);
+rpcCalls=[];
+let claimed=await (await request('worker/claim?multi=1',undefined,'worker')).json();
+assert.equal(rpcCalls.find(c=>c.name==='stock_claim').parameters.p_multi,true);
+assert.equal(claimed.request.lines.length,2);
+rpcCalls=[];await request('worker/wait?live=1&multi=1',undefined,'worker','GET');
+assert.deepEqual(rpcCalls.find(c=>c.name==='stock_worker_has_work')?.parameters,{p_live:true,p_multi:true},'a batch-aware PC is woken for a batch');
+// The app sees which requests belong together.
+const listed=await (await request('requests',undefined,'person','GET')).json();
+assert.deepEqual(listed.requests.map(r=>[r.batchId,r.batchPos,r.batchSize]).sort((a,b)=>a[1]-b[1]),[[batchId,0,2],[batchId,1,2]]);
+console.log('Stock API smoke: PASS (authentication, bounded JSON, claim races and stale reports, transactional settings, PIN failure handling, receipt retry and precision, instant pickup, multi-item transfers)');
