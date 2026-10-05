@@ -38,6 +38,10 @@
 //   POST   push/send                  {type, ...}               forwarded to send-push
 //   POST   assistant/chat             {messages, lang, ...}     Rico's reply, streamed (see assistant.ts)
 //   POST   assistant/transcribe       {audio, mime, lang}       a voice message to Rico, as text
+//   GET    assistant/chats                                      this account's saved Rico chats (newest first)
+//   GET    assistant/chats/:id                                  one saved chat
+//   PUT    assistant/chats/:id        {title, messages}         save a chat (kept 90 days, newest 60)
+//   DELETE assistant/chats/:id | assistant/chats               delete one chat | all of this account's chats
 //   GET    assistant/suggestion                                 today's "Rico suggests" card (no AI call)
 //   GET    assistant/inbox                                      messages Rico sent first
 //   POST   assistant/inbox/read                                 mark them read
@@ -657,6 +661,63 @@ async function forwardPush(s: Session, b: any) {
   return json(data, res.status);
 }
 
+/* ---------- Rico's chat history (each account sees only its own) ---------- */
+const CHAT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CHAT_MAX_MESSAGES = 200, CHAT_MAX_CHARS = 200_000;
+// Only what the app needs to show a chat again is kept; everything else in a message is dropped.
+function cleanChatMessages(v: unknown): any[] | null {
+  if (!Array.isArray(v) || v.length > CHAT_MAX_MESSAGES) return null;
+  const out = [];
+  for (const m of v) {
+    if (!m || typeof m !== "object" || !["user", "assistant"].includes((m as any).role)) return null;
+    const x: any = m;
+    out.push({
+      role: x.role, text: String(x.text ?? "").slice(0, 8000),
+      ...(typeof x.ts === "number" && Number.isFinite(x.ts) ? { ts: x.ts } : {}),
+      ...(typeof x.mood === "string" ? { mood: x.mood.slice(0, 20) } : {}),
+      ...(typeof x.error === "string" ? { error: x.error.slice(0, 40) } : {}),
+      ...(Array.isArray(x.steps) ? { steps: x.steps.slice(0, 20).map((k: unknown) => String(k).slice(0, 40)) } : {}),
+      ...(Array.isArray(x.proposals) ? { proposals: x.proposals.slice(0, 20).filter((p: unknown) => p && typeof p === "object") } : {}),
+    });
+  }
+  return JSON.stringify(out).length <= CHAT_MAX_CHARS ? out : null;
+}
+async function ricoChats(s: Session, M: string, id: string | null, b: any): Promise<Response> {
+  if (id !== null && !CHAT_ID.test(id)) return fail("not_found", 404);
+  if (M === "GET" && id === null) {
+    const { data, error } = await app("rico_chats").select("id,title,created_at,updated_at").eq("account", s.account)
+      .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString()).order("updated_at", { ascending: false }).limit(60);
+    if (error) throw error;
+    return json({ chats: (data ?? []).map((c: any) => ({ id: c.id, title: c.title, createdAt: c.created_at, updatedAt: c.updated_at })) });
+  }
+  if (M === "GET") {
+    const { data, error } = await app("rico_chats").select("id,title,messages,created_at,updated_at").eq("id", id).eq("account", s.account).maybeSingle();
+    if (error) throw error;
+    return data ? json({ id: data.id, title: data.title, messages: data.messages, createdAt: data.created_at, updatedAt: data.updated_at }) : fail("not_found", 404);
+  }
+  if (M === "PUT" && id !== null) {
+    const messages = cleanChatMessages(b.messages);
+    if (!messages || !messages.length) return fail("invalid_chat");
+    // A chat id belongs to the account that first saved it.
+    const { data: owner, error: ownerError } = await app("rico_chats").select("account").eq("id", id).maybeSingle();
+    if (ownerError) throw ownerError;
+    if (owner && owner.account !== s.account) return fail("not_found", 404);
+    const { error } = await app("rico_chats").upsert({ id, account: s.account, title: text(b.title, 120), messages, updated_at: nowIso() });
+    if (error) throw error;
+    const { error: pruneError } = await db.rpc("app_rico_chats_prune", { p_account: s.account });
+    if (pruneError) console.error("rico chats prune", pruneError.message);
+    return ok();
+  }
+  if (M === "DELETE") {
+    let q = app("rico_chats").delete().eq("account", s.account);
+    if (id !== null) q = q.eq("id", id);
+    const { error } = await q;
+    if (error) throw error;
+    return ok();
+  }
+  return fail("not_found", 404);
+}
+
 /* ---------- Router ---------- */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -787,6 +848,8 @@ Deno.serve(async (req) => {
       await app("rico_inbox").update({ read_at: nowIso() }).eq("account", s.account).is("read_at", null);
       return ok();
     }
+    if (path === "assistant/chats") return await ricoChats(s, M, null, b);
+    if ((m = path.match(/^assistant\/chats\/([^/]+)$/))) return await ricoChats(s, M, decodeURIComponent(m[1]), b);
     if (M === "GET" && path === "assistant/status") return json(await assistantStatus(db));
     if (M === "GET" && path === "assistant/setup-status") return rozha ? json(await assistantSetupStatus(db)) : fail("forbidden", 403);
     if (M === "PUT" && path === "assistant/groq-key") {

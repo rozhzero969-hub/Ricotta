@@ -47,7 +47,7 @@ function fixture(){
       req(ID.bad,{status:'needs_checking',itemName:'Old',approvedAt:iso(60),finishedAt:iso(50),resultMessage:'Worker stopped'}),
     ],
   };
-  return {api,stock,extraHistory};
+  return {api,stock,extraHistory,chats:[]};
 }
 const server=http.createServer((rq,res)=>{
   const p=decodeURIComponent(new URL(rq.url,'http://x').pathname);const f=path.resolve(root,'.'+(p==='/'?'/index.html':p));
@@ -107,6 +107,14 @@ const server=http.createServer((rq,res)=>{
           return route.fulfill({status:200,contentType:'application/x-ndjson',body:events.map(e=>JSON.stringify(e)).join('\n')+'\n',headers:{'access-control-allow-origin':'*'}});
         }
         if(ep==='bootstrap') data=fx.api(account);
+        else if(ep==='assistant/chats'&&rq.method()==='GET') data={chats:fx.chats.map(({messages,...c})=>c)};
+        else if(ep==='assistant/chats'&&rq.method()==='DELETE') fx.chats.length=0;
+        else if(ep.startsWith('assistant/chats/')){
+          const id=ep.split('/')[2], i=fx.chats.findIndex(c=>c.id===id);
+          if(rq.method()==='PUT'){const c={id,title:body.title,messages:body.messages,updatedAt:new Date().toISOString()};if(i<0)fx.chats.unshift(c);else fx.chats[i]=c;}
+          else if(rq.method()==='DELETE'){if(i>=0)fx.chats.splice(i,1);}
+          else if(i<0){status=404;data={error:'not_found'};} else data=fx.chats[i];
+        }
         else if(ep==='devices') data=[];
         else if(ep==='assistant/inbox') data=[];
         else if(ep==='assistant/status') data={configured:true};
@@ -494,7 +502,7 @@ const server=http.createServer((rq,res)=>{
     await ctx.close();
 
     /* ---------- Item groups on the Stock screen ---------- */
-    ({ctx,page,calls,apiCalls}=await open());
+    ({ctx,page,calls,apiCalls,fx:fxMain}=await open());
     await go(page,'stock');
     await page.locator('[data-stgroup="g1"]').click();
     assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Coca Cola','Milk'],'a group filters the list');
@@ -545,6 +553,37 @@ const server=http.createServer((rq,res)=>{
     assert.equal(await page.locator('#stSearch').inputValue(),'cola');
     assert.deepEqual(await page.locator('#stList .name').allTextContents(),['Coca Cola'],'Rico opens the Stock screen filtered');
     assert.equal(await page.locator('#stTabs .tab-pill.active').textContent().then(x=>x.startsWith('Main Storage')),true);
+    /* ---------- Rico's chat history ---------- */
+    await page.waitForFunction(()=>true);await page.waitForTimeout(900);   // the chat saves shortly after a card changes
+    const savedChat=apiCalls.filter(c=>c.method==='PUT'&&c.ep.startsWith('assistant/chats/')).pop();
+    assert.ok(savedChat,'the chat is saved to the account');
+    assert.match(savedChat.ep,/^assistant\/chats\/[0-9a-f-]{36}$/);
+    assert.equal(savedChat.body.title,'make a veggies filter','the first question names the chat');
+    assert.deepEqual(savedChat.body.messages[1].proposals.filter(p=>['p1','p2'].includes(p.id)).map(p=>p.status),['applied','applied'],'card results are saved');
+    await go(page,'assistant');
+    await page.locator('#ricoNewBtn').click();
+    assert.equal(await page.locator('.rico-msg').count(),0,'a new chat starts empty, without asking');
+    await page.waitForSelector('.rico-recent-row');
+    assert.match(await page.locator('.rico-recent-row').first().innerText(),/make a veggies filter/,'recent chats show under the suggestions');
+    // A card nobody pressed before the chat was saved.
+    fxMain.chats[0].messages[1].proposals.push({id:'p5',kind:'stock_settings',itemId:'i1',name:'Coca Cola',unit:'carton',before:{lowStock:4,workplaceName:'Coca-Cola 330'},lowStock:6,status:'pending'});
+    await page.locator('#ricoHistBtn').click();
+    await page.waitForSelector('#ricoHistSheet [data-hist-open]');
+    assert.equal(await page.locator('#ricoHistSheet [data-hist-open]').count(),1);
+    await page.locator('#ricoHistSheet [data-hist-open]').click();
+    await page.waitForFunction(()=>!document.getElementById('ricoHistSheet'));
+    assert.equal(await page.locator('.rico-msg.me').first().innerText(),'make a veggies filter','the chat opens again');
+    assert.equal(await page.locator('[data-card="p1"]').evaluate(el=>el.classList.contains('applied')),true,'done cards stay done');
+    assert.equal(await page.locator('[data-rico-apply]').count(),0,'cards from an earlier chat can no longer be pressed');
+    assert.match(await page.locator('.rico-msg.bot').first().innerText(),/From an earlier chat/);
+    assert.equal(await page.locator('.rico-time').count()>=1,true,'the chat shows when it happened');
+    await page.locator('#ricoHistBtn').click();
+    await page.locator('#ricoHistSheet [data-hist-del]').click();
+    await page.locator('#ricoHistSheet [data-hist-yes]').click();
+    await page.waitForFunction(()=>/No saved chats yet/.test(document.querySelector('#ricoHistSheet')?.textContent||''));
+    assert.equal(apiCalls.filter(c=>c.method==='DELETE'&&c.ep.startsWith('assistant/chats/')).length,1,'deleting asks once more, then deletes');
+    assert.equal(await page.locator('.rico-msg').count(),0,'the open chat goes when it is deleted');
+    await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.getElementById('ricoHistSheet'));
     // A slow response from the old session must not restore its data after logout.
     await page.route('**/functions/v1/stock-api/bootstrap', async route=>{
       await new Promise(resolve=>setTimeout(resolve,100));
