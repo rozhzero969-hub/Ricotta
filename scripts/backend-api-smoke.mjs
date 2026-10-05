@@ -12,7 +12,7 @@ function reset() {
     app_sessions: [{ id: 'session', token_hash: tokenHash, account: 'rozha', device_id: 'device-1', expires_at: new Date(Date.now() + 60000).toISOString(), last_seen_at: new Date().toISOString(), revoked_at: null }],
     app_accounts: [{ id: 'rozha', name: 'Rozha', tabs: ['order', 'assistant', 'history'] }],
     app_items: [{ id: 'tomato', name: 'Tomatoes' }], app_suppliers: [{ id: 'supplier', name: 'Supplier' }],
-    app_item_pars: [{ item_id: 'tomato', est_qty: 2 }], app_recovery_tickets: [], app_push_subscriptions: [], app_login_attempts: [], app_devices: [], app_rico_inbox: [], app_audit_events: [], app_rico_chats: [],
+    app_item_pars: [{ item_id: 'tomato', est_qty: 2 }], app_recovery_tickets: [], app_push_subscriptions: [], app_login_attempts: [], app_devices: [], app_rico_inbox: [], app_audit_events: [],
   };
   errors = new Map(); calls = []; reservation = [1, 2]; match = 'rozha'; saved = true;
 }
@@ -27,7 +27,6 @@ const db = {
     if (name === 'app_internal_match_code') return { data: match, error: null };
     if (name === 'app_internal_set_credentials') return { data: 'ok', error: null };
     if (name === 'app_internal_save_order') return { data: saved, error: null };
-    if (name === 'app_rico_chats_prune') return { data: null, error: null };
     throw new Error(`Unexpected RPC ${name}`);
   },
   from(table) {
@@ -133,26 +132,5 @@ try {
   reset();
   tables.app_recovery_tickets.push({ token_hash: await digest(ticket), stage: 'code', expires_at: new Date(Date.now() + 60000).toISOString() });
   assert.equal((await call('recovery/name', { ticket, name: 'a'.repeat(40) + 'suffix' }, 'POST', false)).status, 401, 'valid answers cannot be accepted by truncating extra characters');
-
-  // Rico's chat history: saved per account, unknown fields dropped, never readable or writable by the other account.
-  reset();
-  const chatId = '11111111-1111-4111-8111-111111111111', theirs = '22222222-2222-4222-8222-222222222222';
-  tables.app_rico_chats.push({ id: theirs, account: 'yunis', title: 'Yunis chat', messages: [{ role: 'user', text: 'hi' }], updated_at: new Date().toISOString() });
-  const chat = { title: 'Order for Monday', messages: [{ role: 'user', text: 'Prepare Monday', ts: 1, secret: 'x' }, { role: 'assistant', text: 'Here it is', mood: 'happy', proposals: [{ id: 'p1', kind: 'order', status: 'applied' }] }] };
-  assert.equal((await call(`assistant/chats/${chatId}`, chat, 'PUT')).status, 200);
-  const row = tables.app_rico_chats.find(c => c.id === chatId);
-  assert.equal(row.account, 'rozha');
-  assert.equal(row.messages[0].secret, undefined, 'only the fields a chat needs are stored');
-  assert.ok(calls.some(c => c.name === 'app_rico_chats_prune'), 'old chats are pruned on save');
-  const list = await (await call('assistant/chats', null, 'GET')).json();
-  assert.deepEqual(list.chats.map(c => c.id), [chatId], 'the list holds only this account\'s chats');
-  assert.equal((await (await call(`assistant/chats/${chatId}`, null, 'GET')).json()).messages[1].proposals[0].status, 'applied');
-  assert.equal((await call(`assistant/chats/${theirs}`, null, 'GET')).status, 404, 'another account\'s chat cannot be read');
-  assert.equal((await call(`assistant/chats/${theirs}`, chat, 'PUT')).status, 404, 'or overwritten');
-  assert.equal(tables.app_rico_chats.find(c => c.id === theirs).title, 'Yunis chat');
-  assert.equal((await call('assistant/chats/not-a-uuid', chat, 'PUT')).status, 404);
-  for (const bad of [{ messages: [] }, { messages: [{ role: 'system', text: 'x' }] }, { messages: 'nope' }]) assert.equal((await call(`assistant/chats/${chatId}`, bad, 'PUT')).status, 400);
-  assert.equal((await call('assistant/chats', {}, 'DELETE')).status, 200);
-  assert.deepEqual(tables.app_rico_chats.map(c => c.id), [theirs], 'deleting all removes only this account\'s chats');
 } finally { console.error = mute; }
-console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, one-use recovery, private Rico chat history)');
+console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, one-use recovery)');

@@ -823,7 +823,7 @@ async function ricoSave(){
   if(!messages.some(m=>m.role === 'user')) return;
   if(!rico.chatId) rico.chatId = crypto.randomUUID();
   const id = rico.chatId, account = state.account, title = ricoChatTitle();
-  const r = await api('assistant/chats/' + id, {method:'PUT', body:{title, messages}});
+  const r = await stockApi('rico-chats/' + id, {method:'PUT', body:{title, messages}});
   if(!r.ok || state.account !== account || !rico.chats) return;
   rico.chats = [{id, title, updatedAt:new Date().toISOString()}, ...rico.chats.filter(c=>c.id !== id)].slice(0, 60);
 }
@@ -832,7 +832,8 @@ async function ricoLoadChats(){
   rico.chatsBusy = true;
   const account = state.account;
   try{
-    const r = await api('assistant/chats');
+    let r = await stockApi('rico-chats');
+    if(r.stale && state.account === account) r = await stockApi('rico-chats');   // a save happened at the same moment
     if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats;
   }finally{ rico.chatsBusy = false; }
 }
@@ -845,7 +846,8 @@ function ricoNewChat(){
 }
 async function ricoOpenChat(id){
   if(rico.streaming) return false;
-  const r = await api('assistant/chats/' + encodeURIComponent(id));
+  let r = await stockApi('rico-chats/' + encodeURIComponent(id));
+  if(r.stale) r = await stockApi('rico-chats/' + encodeURIComponent(id));   // a save happened at the same moment
   if(!r.ok || !Array.isArray(r.data?.messages)){ toast(t('ricoChatLoadFailed'), 'error'); return false; }
   if(rico.chatId !== id && rico.messages.length) ricoSave();
   clearTimeout(ricoSaveTimer);
@@ -906,7 +908,7 @@ function ricoOpenHistory(){
     if(!yes && !all) return;
     const id = yes ? yes.dataset.histYes : null;
     clearTimeout(ricoSaveTimer);
-    const r = await api(id ? 'assistant/chats/' + id : 'assistant/chats', {method:'DELETE'});
+    const r = await stockApi(id ? 'rico-chats/' + id : 'rico-chats', {method:'DELETE'});
     if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
     rico.chats = id ? rico.chats.filter(c=>c.id !== id) : [];
     if(!id || rico.chatId === id){ rico.chatId = null; if(rico.messages.length && !rico.streaming){ rico.messages = []; } }
