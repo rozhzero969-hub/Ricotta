@@ -27,11 +27,12 @@ async function pad(page,sel,v){
   await page.waitForFunction(()=>!document.querySelector('.pad-sheet'));
 }
 function fixture(){
+  const extraHistory=[];   // orders "sent from the other phone" while this one is open
   const units=[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'},{id:'pc',en:'piece',ku:'دانە',ar:'قطعة'},{id:'ctn',en:'carton',ku:'کارتۆن',ar:'كرتون'},{id:'g',en:'gram',ku:'گرام',ar:'غرام'}];
   const items=[{id:'i0',name:'Tomato',unit:'box',supplierId:'s0',sortOrder:0},{id:'i1',name:'Coca Cola',unit:'ctn',supplierId:'s0',sortOrder:1},{id:'i2',name:'Flour',unit:'box',supplierId:'s0',sortOrder:2},{id:'i3',name:'Milk',unit:'ctn',supplierId:'s0',sortOrder:3},{id:'i4',name:'Sugar',unit:'ctn',supplierId:'s1',sortOrder:4}];
   const api=account=>({account,name:account==='rozha'?'Rozha':'Yunis',tabs:['order','assistant','history'],
     views:['order','assistant','history','transfers','stock','suppliers','itemsAdmin','units','record'].concat(account==='rozha'?['devices','settings']:[]),
-    suppliers:[{id:'s0',name:'Supplier',phone:''},{id:'s1',name:'Other Supplier',phone:''}],items,units,history:[{id:'h1',date:iso(60*30),by:'yunis',entries:[{supplierId:'s0',items:[{itemId:'i0',name:'Tomato',qty:2,unit:'box'}]}]}],
+    suppliers:[{id:'s0',name:'Supplier',phone:''},{id:'s1',name:'Other Supplier',phone:''}],items,units,history:[...extraHistory,{id:'h1',date:iso(60*30),by:'yunis',entries:[{supplierId:'s0',items:[{itemId:'i0',name:'Tomato',qty:2,unit:'box'}]}]}],
     devices:[],activity:[],reminder:{enabled:false,time:'09:00'},pars:[{itemId:'i1',parQty:10,busyBoostPct:50,estQty:5}],inbox:[]});
   const stock={
     control:{workerOnline:false,launcherOnline:true,startRequestedAt:null,startHandledAt:null},
@@ -46,7 +47,7 @@ function fixture(){
       req(ID.bad,{status:'needs_checking',itemName:'Old',approvedAt:iso(60),finishedAt:iso(50),resultMessage:'Worker stopped'}),
     ],
   };
-  return {api,stock};
+  return {api,stock,extraHistory};
 }
 const server=http.createServer((rq,res)=>{
   const p=decodeURIComponent(new URL(rq.url,'http://x').pathname);const f=path.resolve(root,'.'+(p==='/'?'/index.html':p));
@@ -132,7 +133,7 @@ const server=http.createServer((rq,res)=>{
   }
   try{
     /* ---------- Rozha, English ---------- */
-    let {ctx,page,calls,apiCalls}=await open();
+    let {ctx,page,calls,apiCalls,fx:fxMain}=await open();
     const readsBefore = calls.filter(c=>c.ep==='requests'&&c.method==='GET').length;
     await page.evaluate(()=>Promise.all([stockApi('requests'),stockApi('requests')]));
     assert.equal(calls.filter(c=>c.ep==='requests'&&c.method==='GET').length-readsBefore,1,'overlapping stock reads share one request');
@@ -444,6 +445,11 @@ const server=http.createServer((rq,res)=>{
 
     /* ---------- History filters ---------- */
     await go(page,'history');
+    // An order sent from the other phone shows up when the app comes back on screen, without restarting it.
+    const histBefore=await page.locator('.hist-card').count();
+    fxMain.extraHistory.push({id:'h9',date:iso(1),by:'yunis',entries:[{supplierId:'s0',items:[{itemId:'i3',name:'Milk',qty:3,unit:'ctn'}]}]});
+    await page.evaluate(()=>{lastLoadAt=0;document.dispatchEvent(new Event('visibilitychange'));});
+    await page.waitForFunction(n=>document.querySelectorAll('.hist-card').length===n+1,histBefore,{timeout:5000});
     assert.equal(await page.locator('.hist-card').count()>=4,true,'orders, transfers and counts are listed together');
     // Filter rows have the glass lens: hold and slide, and the pill under the finger opens on release.
     await page.waitForSelector('.seg-lens');
