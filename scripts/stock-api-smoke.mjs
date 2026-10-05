@@ -213,4 +213,28 @@ failUpdate=null;failRead='stock_worker_control';
 assert.notEqual((await request('start-worker',{})).status,200,'broken health reads cannot invent an offline worker');
 failRead=null;
 assert.equal((await request('worker/control-handled',undefined,'worker')).status,200,'already installed launchers remain compatible');
-console.log('Stock API smoke: PASS (authentication, bounded JSON, claim races and stale reports, transactional settings, PIN failure handling, receipt retry and precision, instant pickup)');
+// Rico's chat history: saved per account, unknown fields dropped, never readable or writable by the other account.
+reset();
+{
+  const mine='11111111-1111-4111-8111-111111111111', theirs='22222222-2222-4222-8222-222222222222';
+  tables.app_rico_chats=[{id:theirs,account:'yunis',title:'Yunis chat',messages:[{role:'user',text:'hi'}],updated_at:new Date().toISOString()}];
+  const chat={title:'Order for Monday',messages:[{role:'user',text:'Prepare Monday',ts:1,secret:'x'},{role:'assistant',text:'Here it is',mood:'happy',proposals:[{id:'p1',kind:'order',status:'applied'}]}]};
+  assert.equal((await request(`rico-chats/${mine}`,chat,'person','PUT')).status,200);
+  const row=tables.app_rico_chats.find(c=>c.id===mine);
+  assert.equal(row.account,'rozha');
+  assert.equal(row.messages[0].secret,undefined,'only the fields a chat needs are stored');
+  assert.ok(rpcCalls.some(c=>c.name==='app_rico_chats_prune'),'old chats are pruned on save');
+  const list=await (await request('rico-chats',null,'person','GET')).json();
+  assert.deepEqual(list.chats.map(c=>c.id),[mine],'the list holds only this account\'s chats');
+  assert.equal((await (await request(`rico-chats/${mine}`,null,'person','GET')).json()).messages[1].proposals[0].status,'applied');
+  assert.equal((await request(`rico-chats/${theirs}`,null,'person','GET')).status,404,'another account\'s chat cannot be read');
+  assert.equal((await request(`rico-chats/${theirs}`,chat,'person','PUT')).status,404,'or overwritten');
+  assert.equal(tables.app_rico_chats.find(c=>c.id===theirs).title,'Yunis chat');
+  assert.equal((await request('rico-chats/not-a-uuid',chat,'person','PUT')).status,404);
+  assert.equal((await request('rico-chats',null,'none','GET')).status,401,'signed out: no chats');
+  for(const bad of [{messages:[]},{messages:[{role:'system',text:'x'}]},{messages:'nope'}])assert.equal((await request(`rico-chats/${mine}`,bad,'person','PUT')).status,400);
+  assert.equal((await request(`rico-chats/${mine}`,{title:'big',messages:[{role:'user',text:'x'.repeat(7000)}]},'person','PUT')).status,200,'a long chat fits (bigger body limit than other routes)');
+  assert.equal((await request('rico-chats',{},'person','DELETE')).status,200);
+  assert.deepEqual(tables.app_rico_chats.map(c=>c.id),[theirs],'deleting all removes only this account\'s chats');
+}
+console.log('Stock API smoke: PASS (authentication, bounded JSON, claim races and stale reports, transactional settings, PIN failure handling, receipt retry and precision, instant pickup, private Rico chat history)');

@@ -713,10 +713,8 @@ html:not(.rtl) .rico-name{letter-spacing:-.03em}
 .rico-hello{margin:6px 0 0;font-size:28px;font-weight:800;line-height:1.25;text-wrap:balance}
 html:not(.rtl) .rico-hello{letter-spacing:-.035em}
 .rico-intro-text{margin:0;max-width:460px;color:var(--ink-soft);font-size:14px;font-weight:500;line-height:1.65}
-.rico-chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:14px;width:100%}
-.rico-chip{padding:13px 15px;border-radius:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:700;color:var(--ink);text-align:start}
-.rico-chip::after{content:'\203A';font-size:19px;line-height:1;color:var(--ink-soft)}
-html.rtl .rico-chip::after{content:'\2039'}
+.rico-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;width:100%}
+.rico-chip{padding:10px 15px;border-radius:999px;display:inline-flex;align-items:center;font-size:13px;font-weight:700;color:var(--ink);text-align:start;min-height:40px}
 .rico-chip:nth-child(2){animation-delay:50ms}.rico-chip:nth-child(3){animation-delay:100ms}.rico-chip:nth-child(4){animation-delay:150ms}.rico-chip:nth-child(5){animation-delay:200ms}.rico-chip:nth-child(6){animation-delay:250ms}
 .rico-msg{display:flex;gap:10px;align-items:flex-start}
 .rico-msg:not(.painted){animation:msgIn 420ms var(--ease-out) both}
@@ -782,14 +780,14 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 .rico-fields dt{color:var(--ink-soft);font-weight:600}
 .rico-fields dd{margin:0;font-weight:800;text-align:end;overflow-wrap:anywhere}
 .rico-fields s{color:var(--clay-ink);font-weight:500}
-.rico-card-actions{display:flex;gap:8px;margin-top:12px}
-.rico-card-actions .btn{flex:1;min-height:44px}
+.rico-card-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.rico-card-actions .btn{flex:1 1 auto;min-height:44px;white-space:nowrap}
 .rico-card-state{margin-top:12px;font-size:13px;font-weight:700;color:var(--ink-soft);display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .rico-card-state.ok{color:var(--mint-ink)}
 .rico-open{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0 14px;border-radius:14px;font-size:13px;font-weight:700;color:var(--deep);animation:cardIn 460ms var(--spring-soft) both}
 .rico-open svg{width:16px;height:16px}
 .rico-composer{max-width:560px;width:100%;margin:0 auto;display:flex;align-items:center;gap:8px;padding:7px;padding-inline:16px 7px;border-radius:28px;
-  background:rgba(255,255,255,.35);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);border:1px solid rgba(255,255,255,.7);box-shadow:var(--float-shadow);animation:navIn 600ms var(--ease-out) both;transition:box-shadow .25s ease}
+  background:rgba(246,250,248,.96);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);border:1px solid rgba(255,255,255,.9);box-shadow:var(--float-shadow);animation:navIn 600ms var(--ease-out) both;transition:box-shadow .25s ease}
 .rico-composer:focus-within{box-shadow:0 0 0 4px rgba(52,194,122,.25),0 22px 50px -18px rgba(16,48,36,.38)}
 .rico-composer textarea{flex:1;min-width:0;border:0;background:transparent;resize:none;outline:none;font-size:16px;font-weight:500;line-height:1.45;padding:10px 0;max-height:140px;color:var(--ink)}
 .rico-composer textarea::placeholder{color:#6F8278}
@@ -808,6 +806,33 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 .rico-composer.recording textarea::placeholder{color:var(--clay-ink);font-weight:700}
 .rico-composer.transcribing .rico-mic::after{content:'';position:absolute;width:18px;height:18px;border-radius:50%;border:2.4px solid rgba(33,79,61,.2);border-top-color:var(--accent-strong);animation:spin .8s linear infinite}
 #app[data-screen="assistant"] .content{padding-bottom:calc(200px + var(--safe-bottom))}
+/* Chat history: time lines in the chat, recent chats under the suggestions, and the history sheet */
+.rico-time{display:flex;justify-content:center;margin:4px 0 -4px}
+.rico-time span{font-size:11.5px;font-weight:700;color:var(--ink-soft);padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.55)}
+.rico-recent{width:100%;margin-top:22px}
+.rico-recent-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:6px}
+.rico-recent-h .rico-link{text-transform:none;letter-spacing:0}
+.rico-recent-row{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:0 12px;border:0;border-radius:14px;background:transparent;font:inherit;font-size:14px;font-weight:600;color:var(--ink);text-align:start;cursor:pointer}
+.rico-recent-row:active{background:rgba(20,56,44,.06)}
+.rico-recent-row svg{flex:none;width:16px;height:16px;color:var(--accent-strong)}
+.rico-recent-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rico-recent-row small,.rico-hist-open small{flex:none;font-size:12px;font-weight:600;color:var(--ink-soft)}
+.rico-hist-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.rico-hist-top .sel-title{margin:0}
+.rico-hist-top .btn{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px}
+.rico-hist-top .btn svg{width:15px;height:15px}
+.rico-hist-list{margin-top:8px;grid-template-columns:minmax(0,1fr)}
+.rico-hist-row,.rico-hist-day{min-width:0}
+.rico-hist-day{font-size:12px;font-weight:800;color:var(--ink-soft);padding:12px 6px 4px}
+.rico-hist-row{display:flex;align-items:center;gap:6px;border-radius:14px}
+.rico-hist-row.on{background:rgba(52,194,122,.12)}
+.rico-hist-row.asking{background:rgba(239,111,108,.08)}
+.rico-hist-open{flex:1;min-width:0;display:flex;align-items:center;gap:10px;min-height:52px;padding:0 10px;border:0;background:transparent;font:inherit;font-size:15px;font-weight:600;color:var(--ink);text-align:start;cursor:pointer}
+.rico-hist-open span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rico-hist-yes{min-height:38px;padding:0 14px;margin-inline-end:6px}
+.rico-hist-all{margin:14px auto 4px;display:block;justify-self:center;border:0;background:transparent;font:inherit;font-size:13px;font-weight:700;color:var(--clay-ink);padding:10px;cursor:pointer}
+.rico-hist-all.asking{background:rgba(239,111,108,.14);border-radius:12px}
+.rico-hist-empty{padding:18px 8px;text-align:center}
 .rico-set-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .rico-set-head b{font-size:15px}
 .rico-set-head .notif-sub{margin:2px 0 0}
