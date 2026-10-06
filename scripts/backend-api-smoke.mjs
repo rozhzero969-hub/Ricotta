@@ -53,6 +53,7 @@ const db = {
       in(field, values) { filters.push(row => values.includes(row[field])); return q; },
       is(field, value) { filters.push(row => row[field] === value); return q; },
       gt(field, value) { filters.push(row => row[field] > value); return q; },
+      lt(field, value) { filters.push(row => row[field] < value); return q; },
       gte(field, value) { filters.push(row => row[field] >= value); return q; },
       order() { return q; }, limit() { return q; },
       insert(row) { action = 'insert'; change = row; return q; },
@@ -122,6 +123,15 @@ try {
   assert.equal((await call('push/subscription', { endpoint: 'https://127.0.0.1/internal' }, 'PUT')).status, 400);
   tables.app_push_subscriptions.push({ endpoint: 'https://fcm.googleapis.com/fcm/send/peer', device_id: 'device-2' });
   assert.equal((await call('push/subscription', { endpoint: 'https://fcm.googleapis.com/fcm/send/peer', p256dh: 'A'.repeat(87), auth: 'B'.repeat(22) }, 'PUT')).status, 403, 'another device cannot overwrite a subscription');
+
+  reset();
+  assert.equal((await call('me/theme', { theme: 'neon' }, 'PUT')).status, 400, 'unknown themes are refused');
+  assert.equal((await call('me/theme', { theme: 'berry' }, 'PUT')).status, 200);
+  assert.equal(tables.app_accounts[0].theme, 'berry', 'the chosen theme is saved on the account');
+  tables.app_accounts.push({ id: 'yunis', name: 'Yunis', tabs: ['order', 'assistant', 'history'], theme: 'ocean' });
+  Object.assign(tables, { app_units: [], app_orders: [], app_order_lines: [], app_reminder_settings: [] });
+  const bootRes = await call('bootstrap', undefined, 'GET'); const boot = await bootRes.json(); assert.equal(bootRes.status, 200);
+  assert.deepEqual([boot.theme, boot.themes], ['berry', { rozha: 'berry', yunis: 'ocean' }], 'bootstrap carries every account\'s theme');
 
   reset();
   const ticket = 'verified-ticket';

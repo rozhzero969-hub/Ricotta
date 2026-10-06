@@ -488,6 +488,14 @@ const server=http.createServer((req,res)=>{
     await y.page.evaluate(()=>{goView('order')}); await settle(y.page);
     assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),'ocean','the theme stays on other screens');
     assert.match(await y.page.locator('.brand-word, .brand').first().textContent(),/Ricotta/,'top bar says Ricotta');
+    assert.equal(await y.page.locator('.conn-chip span').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(52, 194, 122)','the online dot stays green on Ocean blue');
+    assert.equal(y.calls.filter(c=>c.endpoint==='me/theme').pop()?.body.theme,'ocean','the chosen theme is saved on the server');
+    await y.page.evaluate(()=>{ state.themes.yunis='berry'; goView('history'); }); await settle(y.page);
+    assert.ok(await y.page.locator('.who-badge[data-theme-of="berry"]').count()>=1,'History shows who sent it in that person\'s theme');
+    await y.page.evaluate(()=>goView('order')); await settle(y.page);
+    await y.page.evaluate(()=>setApiHealth(false)); await settle(y.page);
+    assert.equal(await y.page.locator('.conn-chip span').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(214, 72, 63)','offline is red on every theme');
+    await y.page.evaluate(()=>setApiHealth(true));
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await y.page.locator('.theme-btn').nth(0).click(); await settle(y.page);
     assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),null,'Ricotta brings the default back');

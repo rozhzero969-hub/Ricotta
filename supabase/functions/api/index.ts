@@ -20,6 +20,7 @@
 //   GET    history/more?before=ISO                              older orders, one page
 //   POST   logout
 //   PUT    me/tabs                    {tabs:[3 views]}          this account's tab bar
+//   PUT    me/theme                   {theme}                   this account's colour theme (everyone sees it)
 //   PUT    suppliers/:id | items/:id | units/:id                upsert one record (+ its Record entry)
 //   DELETE suppliers/:id | items/:id | units/:id                delete one record (+ its Record entry)
 //   PUT    supplier-order/:supplierId {itemIds}                 item order for one supplier
@@ -68,6 +69,8 @@ const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
 const LANGS = ["en", "ku", "ar"];
 // Every screen of the app, and the ones each account may open.
+const THEMES = ["ricotta", "graphite", "ocean", "saffron", "berry"];
+const cleanTheme = (v: unknown) => THEMES.includes(String(v)) ? String(v) : "ricotta";
 const VIEWS = ["order", "assistant", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
 const ACCOUNT_VIEWS: Record<string, string[]> = {
   rozha: VIEWS,
@@ -290,9 +293,15 @@ async function readReminder() {
   return data ? { enabled: data.enabled, time: String(data.remind_time).slice(0, 5) } : null;
 }
 async function readAccount(id: string) {
-  const { data, error } = await app("accounts").select("id,name,tabs").eq("id", id).maybeSingle();
+  const { data, error } = await app("accounts").select("id,name,tabs,theme").eq("id", id).maybeSingle();
   if (error) throw error;
-  return data ? { account: data.id, name: data.name, tabs: cleanTabs(data.id, data.tabs) } : null;
+  return data ? { account: data.id, name: data.name, tabs: cleanTabs(data.id, data.tabs), theme: cleanTheme(data.theme) } : null;
+}
+/* Both accounts' themes, so a person is shown in their own colours on every phone. */
+async function readThemes(): Promise<Record<string, string>> {
+  const { data, error } = await app("accounts").select("id,theme");
+  if (error) throw error;
+  return Object.fromEntries((data ?? []).map((a: any) => [a.id, cleanTheme(a.theme)]));
 }
 /* Three different screens this account may open, in the order chosen. */
 function cleanTabs(account: string, tabs: unknown): string[] {
@@ -315,8 +324,9 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
 
 async function bootstrap(s: Session) {
   const since = new Date(Date.now() - HISTORY_DEFAULT_DAYS * 86400_000).toISOString();
-  const [me, suppliers, items, units, orders, reminder, devices, activity, pars, inbox] = await Promise.all([
+  const [me, themes, suppliers, items, units, orders, reminder, devices, activity, pars, inbox] = await Promise.all([
     readAccount(s.account),
+    readThemes(),
     app("suppliers").select("id,name,phone,reminder").order("name"),
     app("items").select("id,name,unit_id,supplier_id,sort_order").order("name"),
     app("units").select("id,en,ku,ar"),
@@ -344,7 +354,7 @@ async function bootstrap(s: Session) {
   if (historyError) throw historyError;
   return {
     account: s.account, name: me?.name ?? accountName(s.account), tabs: me?.tabs ?? cleanTabs(s.account, null),
-    views: ACCOUNT_VIEWS[s.account],
+    views: ACCOUNT_VIEWS[s.account], theme: me?.theme ?? "ricotta", themes,
     suppliers: (suppliers.data ?? []).map(toSupplier),
     items: (items.data ?? []).map(toItem),
     units: units.data ?? [],
@@ -450,7 +460,7 @@ async function login(req: Request) {
     });
   }
   const me = await readAccount(account);
-  return json({ token, account, name: me?.name ?? accountName(account), tabs: me?.tabs ?? cleanTabs(account, null), expiresAt });
+  return json({ token, account, name: me?.name ?? accountName(account), tabs: me?.tabs ?? cleanTabs(account, null), theme: me?.theme ?? "ricotta", expiresAt });
 }
 
 /* ---------- The secret code ----------
@@ -694,6 +704,13 @@ Deno.serve(async (req) => {
       const tabs = Array.isArray(b.tabs) ? b.tabs.map((t: unknown) => text(t, 20)) : [];
       if (tabs.length !== 3 || new Set(tabs).size !== 3 || tabs.some((t: string) => !allowed.includes(t))) return fail("invalid_tabs");
       const { error } = await app("accounts").update({ tabs, updated_at: nowIso() }).eq("id", s.account);
+      return error ? fail("save_failed", 500) : ok();
+    }
+
+    if (M === "PUT" && path === "me/theme") {
+      const theme = text(b.theme, 20);
+      if (!THEMES.includes(theme)) return fail("invalid_theme");
+      const { error } = await app("accounts").update({ theme, updated_at: nowIso() }).eq("id", s.account);
       return error ? fail("save_failed", 500) : ok();
     }
 

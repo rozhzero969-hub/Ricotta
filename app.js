@@ -37,7 +37,8 @@ const state = {
   devices: [],           // [{id, account, label, lastLogin, lastSeen, loggedIn, command, handledCommand}]
   deviceId: null,        // this device's own id, generated once and kept locally
   reminder: null,        // daily reminder settings {enabled,time}
-  apiOnline: navigator.onLine
+  apiOnline: navigator.onLine,
+  themes: {}   // every account's chosen theme, from the server
 };
 
 const LANGS = ['en','ku','ar'];
@@ -275,6 +276,7 @@ async function loadData(withStock = true){
   lastLoadAt = Date.now();
   const d = r.data;
   applyAccount(d);
+  syncThemes(d);
   saveSessionAccount();
   state.suppliers = d.suppliers || [];
   state.items = d.items || [];
@@ -1260,21 +1262,49 @@ const THEME_LOOK = {   // swatch (dark card, accent, page) and the colour of the
   saffron:  {swatch:['#4A2F08','#F2A93B','#F4F0E8'], bar:'#F4F0E8'},
   berry:    {swatch:['#4D1330','#E0568F','#F5EEF2'], bar:'#F5EEF2'}
 };
-function currentTheme(){
-  if(!state.account) return DEFAULT_THEME;
-  const v = lget('theme:' + state.account);
+/* The theme an account chose. The server keeps it for both accounts so each person
+   shows in their own colours everywhere; this device's copy covers an older server
+   and an offline start. */
+function themeOf(account){
+  const v = state.themes[account] || (account === state.account ? lget('theme:' + account) : null);
   return THEMES.includes(v) ? v : DEFAULT_THEME;
 }
+function currentTheme(){ return state.account ? themeOf(state.account) : DEFAULT_THEME; }
 function applyTheme(){
   const th = currentTheme(), root = document.documentElement;
   if(th === DEFAULT_THEME) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', th);
   const meta = document.querySelector('meta[name="theme-color"]');
   if(meta) meta.content = THEME_LOOK[th].bar;
 }
+function saveThemeToServer(id){ return api('me/theme', {method:'PUT', body:{theme:id}}); }
+/* Takes the server's themes after sign-in. A theme picked on this device before the server kept
+   it is sent up once; after that the server's answer wins, so every phone agrees. */
+function syncThemes(d){
+  if(d && d.themes && typeof d.themes === 'object') state.themes = Object.fromEntries(Object.entries(d.themes).filter(([,v])=>THEMES.includes(v)));
+  if(!state.account || !d || !d.themes) return;   // an older server that doesn't know themes
+  const key = 'themeSynced:' + state.account, local = lget('theme:' + state.account);
+  if(!lget(key)){
+    lset(key, true);
+    if(THEMES.includes(local) && local !== DEFAULT_THEME && themeOf(state.account) === DEFAULT_THEME){
+      state.themes[state.account] = local;
+      saveThemeToServer(local);
+      return;
+    }
+  }
+  lset('theme:' + state.account, themeOf(state.account) === DEFAULT_THEME ? null : themeOf(state.account));
+}
 function setTheme(id){
   if(!state.account || !THEMES.includes(id)) return;
+  state.themes[state.account] = id;
   lset('theme:' + state.account, id === DEFAULT_THEME ? null : id);
   applyTheme();
+  saveThemeToServer(id);
+}
+/* A small badge for a person, in the colours of the theme they use. */
+function whoBadge(account){
+  const name = accountLabel(account);
+  if(!name) return '';
+  return `<span class="who-badge" data-theme-of="${esc(themeOf(account))}"><s aria-hidden="true">${esc(name.trim().charAt(0).toUpperCase())}</s>${esc(name)}</span>`;
 }
 /* Two display choices for the Order screen, kept per device (both start off). */
 const prefOn = key => lget(key) === true;
@@ -2297,7 +2327,7 @@ function orderHistoryCard(rec){
   }).join('');
   return `<div class="hist-card">
     <div class="hist-top">
-      <div class="hist-date">${esc(time)}${accountLabel(rec.by) ? ` \u00b7 ${esc(t('sentBy')(accountLabel(rec.by)))}` : ''}</div>
+      <div class="hist-date">${esc(time)}${accountLabel(rec.by) ? ` \u00b7 ${esc(t('sentBy')(''))}${whoBadge(rec.by)}` : ''}</div>
       <div class="row-actions">
         <button class="icon-btn" data-reorderhist="${esc(rec.id)}" aria-label="${esc(t('orderAgain'))}" title="${esc(t('orderAgain'))}">${ICON_REPEAT}</button>
         ${isRozha() ? `<button class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
@@ -2422,7 +2452,7 @@ function renderRecord(){
     const actLabel = ({add:t('actionAdded'), edit:t('actionEdited'), delete:t('actionDeleted')})[a.action] || a.action;
     const dt = formatIraqDateTime(a.ts,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
     // Older entries (before the two accounts) may only have a device name, or nothing.
-    const who = esc(accountLabel(a.actor) || a.by || t('unnamedDevice'));
+    const who = accountLabel(a.actor) ? whoBadge(a.actor) : esc(a.by || t('unnamedDevice'));
     const lines = (a.fields||[]).map(f=>{
       const label = esc(recordFieldLabel(f.k));
       if(a.action === 'edit'){
@@ -3064,7 +3094,7 @@ function renderDevices(){
     const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
     return `<div class="dev-card">
       <div class="dev-top">
-        <div class="dev-name">${esc(who || t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
+        <div class="dev-name">${who ? whoBadge(d.account) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
       </div>
       <div class="dev-kind">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : NAV_ICONS.devices} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
       <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span></div>

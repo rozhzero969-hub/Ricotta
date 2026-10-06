@@ -31,6 +31,9 @@
   --amb-rgb:60,110,90;
   --ambient:radial-gradient(90% 55% at 0% 30%,rgba(255,255,255,.62),rgba(255,255,255,0) 70%),radial-gradient(80% 50% at 100% 70%,rgba(var(--amb-rgb),.14),rgba(var(--amb-rgb),0) 70%),linear-gradient(180deg,#F0F3F1 0%,#DDE3E0 35%,#CBD3CF 72%,#B8C2BD 100%);
   --red:#EF6F6C;                    /* log out */
+  --ok:#34C27A;                     /* online: green on every theme */
+  --ok-ink:#1F7A4D;
+  --ok-rgb:52,194,122;
   --clay:#D6483F;
   --clay-ink:#A13E35;
   --line:rgba(var(--deep-rgb),.1);
@@ -157,11 +160,11 @@ body.page-swiping *{transition:none!important}
 .chip{height:34px;padding:0 12px;border-radius:999px;display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;white-space:nowrap;
   background:rgba(255,255,255,.6);color:var(--deep);border:1px solid rgba(255,255,255,.95);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:0 4px 12px -8px rgba(var(--shade-rgb),.35)}
 .chip svg{width:14px;height:14px;flex:none}
-.conn-chip span{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:livePulse 2.2s ease-out infinite}
+.conn-chip span{width:7px;height:7px;border-radius:50%;background:var(--ok);animation:livePulse 2.2s ease-out infinite}
 .conn-chip em{font-style:normal}
 .conn-chip.offline{color:var(--clay-ink)}
 .conn-chip.offline span{background:var(--clay);animation:none}
-@keyframes livePulse{0%{box-shadow:0 0 0 0 rgba(var(--accent-rgb),.55)}80%,100%{box-shadow:0 0 0 7px rgba(var(--accent-rgb),0)}}
+@keyframes livePulse{0%{box-shadow:0 0 0 0 rgba(var(--ok-rgb),.55)}80%,100%{box-shadow:0 0 0 7px rgba(var(--ok-rgb),0)}}
 .lang-chip .lang-code{display:none;font-family:var(--font)}
 .lang-chip svg:last-child{width:11px;height:11px;opacity:.7}
 .logout-btn{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;flex:none;padding:0;
@@ -481,8 +484,8 @@ html.rtl .check-row input[type=checkbox]:checked::after{transform:translateX(-20
 .day-chips{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
 .day-chip{min-width:0;height:40px;padding:0 2px;border-radius:13px;color:var(--tab-ink2);font-size:12px;font-weight:700}
 .day-chip.on{background:var(--accent-strong);border-color:var(--accent-strong);color:#fff;box-shadow:0 6px 14px -8px rgba(var(--deep-rgb),.8)}
-.cloud-state{display:flex;gap:12px;align-items:center;color:var(--mint-ink);font-size:13.5px}
-.cloud-state>span{width:10px;height:10px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:livePulse 2.2s ease-out infinite}
+.cloud-state{display:flex;gap:12px;align-items:center;color:var(--ok-ink);font-size:13.5px}
+.cloud-state>span{width:10px;height:10px;border-radius:50%;background:var(--ok);flex-shrink:0;animation:livePulse 2.2s ease-out infinite}
 .cloud-state.offline{color:var(--clay-ink)}.cloud-state.offline>span{background:var(--clay);animation:none}
 .app-version{margin:26px 0 8px;text-align:center;font-size:11px;font-weight:600;color:var(--ink-soft)}
 
@@ -564,7 +567,7 @@ a.wa-btn:active{transform:scale(.95)}
 .dev-this{color:var(--mint-ink);font-weight:700;font-size:11.5px}
 .dev-status{display:flex;align-items:center;gap:8px;margin:6px 0 10px}
 .dev-badge::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
-.dev-active{background:rgba(var(--soft-rgb),.8);color:var(--mint-ink)}
+.dev-active{background:rgba(var(--ok-rgb),.16);color:var(--ok-ink)}
 .dev-active::before{animation:livePulse 2.2s ease-out infinite}
 .dev-idle{background:rgba(255,255,255,.6);color:var(--deep);border:1px solid var(--line-strong)}
 .dev-out{background:rgba(var(--deep-rgb),.06);color:var(--ink-soft)}
@@ -738,7 +741,7 @@ html.rtl .install-prompt{right:auto;left:22px}
 .rico-head-text{flex:1;min-width:0}
 .rico-name{display:flex;align-items:center;gap:8px;font-size:20px;font-weight:800;line-height:1.2}
 html:not(.rtl) .rico-name{letter-spacing:-.03em}
-.rico-online{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:livePulse 2.2s ease-out infinite}
+.rico-online{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:livePulse 2.2s ease-out infinite}
 .rico-who{margin-top:3px;color:var(--ink-soft);font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rico-head-actions{display:flex;gap:2px;flex-shrink:0}
 .rico-auto{position:relative}
@@ -1428,3 +1431,12 @@ html.rtl .theme-tag{letter-spacing:0;font-size:11px}
 html.compact-rows .supplier-items-grid{gap:5px}
 html.compact-rows .item-row{min-height:56px;padding-block:5px}
 html.compact-rows .supplier-group{padding:8px}
+
+/* A person's badge: the colours of the theme they use. */
+.who-badge{--wa:#34C27A;--wo:#fff;--ws:#C2EDD7;--wi:#1F7A4D;display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:2px 10px 2px 2px;border-radius:999px;background:var(--ws);color:var(--wi);font-size:12px;font-weight:700;vertical-align:middle}
+.who-badge s{text-decoration:none;flex:none;width:20px;height:20px;border-radius:50%;background:var(--wa);color:var(--wo);display:grid;place-items:center;font-size:10px;font-weight:800}
+.who-badge[data-theme-of="graphite"]{--wa:#2C2C2C;--ws:#D8D8D8;--wi:#2B2B2B}
+.who-badge[data-theme-of="ocean"]{--wa:#3FA7EA;--ws:#CFE6F7;--wi:#2A78B8}
+.who-badge[data-theme-of="saffron"]{--wa:#F2A93B;--wo:#4A2F08;--ws:#FBE3B8;--wi:#B8770F}
+.who-badge[data-theme-of="berry"]{--wa:#E0568F;--ws:#F6CFE0;--wi:#B33A70}
+.dev-name .who-badge{font-size:14px}
