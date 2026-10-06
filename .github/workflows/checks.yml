@@ -80,6 +80,9 @@ jobs:
       - name: Stock and transfer UI smoke test (mocked API, EN + KU + AR)
         run: node scripts/stock-ui-smoke.cjs
 
+      - name: Send to suppliers (progress kept across an app restart, order saved once)
+        run: node scripts/order-queue-smoke.cjs
+
       - name: PC worker name matching (look-alike letters, two-language names)
         run: node scripts/match-smoke.mjs
 

@@ -217,7 +217,8 @@ const isVisible = ()=> document.visibilityState === 'visible';
 setInterval(()=>{ if(isVisible()) checkCommands(); }, COMMAND_POLL_MS);
 setInterval(()=>{ if(isVisible()) heartbeat(); }, HEARTBEAT_MS);
 document.addEventListener('visibilitychange', ()=>{
-  if(isVisible() && state.account){ checkCommands(); heartbeat(); }
+  // Back from WhatsApp: an order whose suppliers are all sent is saved now if it wasn't yet.
+  if(isVisible() && state.account){ checkCommands(); heartbeat(); maybeFinishQueue(); }
 });
 
 /* ============ Connection status ============ */
@@ -428,7 +429,7 @@ function retryLoad(){
   const timer = setInterval(async ()=>{
     if(!state.account){ clearInterval(timer); return; }
     if(!isVisible() || !navigator.onLine) return;
-    if(await loadData()){ clearInterval(timer); loadedOk = true; restoreCartDraft(); render(); }
+    if(await loadData()){ clearInterval(timer); loadedOk = true; restoreCartDraft(); restoreQueue(); render(); maybeFinishQueue(); }
   }, 10000);
 }
 async function boot(){
@@ -442,13 +443,13 @@ async function boot(){
     if(!loadedOk && !apiSession()) state.account = null;   // the session was rejected
     // Load the saved local draft only after the catalog is available, keeping
     // it intact if the app starts while offline and needs to retry loading.
-    if(loadedOk) restoreCartDraft();
+    if(loadedOk){ restoreCartDraft(); restoreQueue(); }
   } else if(session){
     clearApiSession();   // a sign-in from before the two accounts: sign in again
   }
   render();
   hideSplash(1450);   // long enough for the ricotta intro to finish playing
-  if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); }
+  if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); maybeFinishQueue(); }
   if(state.account && !loadedOk) retryLoad();
   // Notifications: register the service worker, read this device's status, and
   // handle being launched from a notification tap.
@@ -1468,8 +1469,9 @@ async function pressKey(k){
   applyAccount(res);
   const ok = await loadData();
   if(!ok){ hideWelcome(0); signOut(); state.pinError = 'network'; render(); return; }
-  restoreCartDraft();
+  restoreCartDraft(); restoreQueue();
   render();
+  maybeFinishQueue();
   hideWelcome();
   heartbeat();
   if(pushStatus.subscribed) resyncPush();
@@ -1800,8 +1802,9 @@ function attachOrderEvents(){
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.onclick=()=>{
     const before={...state.cart};
-    state.cart={};persistCartDraft();refreshOrderView();
-    toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before; persistCartDraft(); refreshOrderView(); }});
+    const queue=state.queue?.record?null:state.queue;   // a cleared order starts over (one being saved is kept)
+    state.cart={};persistCartDraft();if(queue){state.queue=null;persistQueue();}refreshOrderView();
+    toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before; persistCartDraft(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
   };
   const send = document.getElementById('sendOrdersBtn');
   if(send) send.onclick = ()=>startSendQueue();
@@ -1810,7 +1813,8 @@ function attachOrderEvents(){
 /* Opens Send to suppliers with the current draft (the Send button, and
    Rico's "open send" shortcut). Returns false when there is nothing to send. */
 async function startSendQueue(){
-  if(state.queue?.saveState === 'failed'){ goView('queue'); return true; }
+  // An order that is already being saved (or failed to save) is finished first.
+  if(state.queue?.record){ goView('queue'); return true; }
   const bySupplier = {};
   Object.keys(state.cart).forEach(id=>{
     const qty = state.cart[id]; if(!qty) return;
@@ -1826,10 +1830,47 @@ async function startSendQueue(){
     if(!(await showConfirm(t('confirmDoubleOrder')(names)))) return false;
   }
   if(!Object.keys(bySupplier).length) return false;
-  state.queue = Object.keys(bySupplier).map(sid=>({
-    supplierId: sid, items: bySupplier[sid], sent:false
-  }));
+  // Going back to Order and pressing Send again keeps the suppliers already sent (same items, same amounts):
+  // starting over made the order look unsent, and it never reached History.
+  const before = state.queue && Date.now() - state.queue.at < QUEUE_KEEP_MS ? state.queue : [];
+  state.queue = Object.keys(bySupplier).map(sid=>{
+    const old = before.find(e=>e.supplierId===sid);
+    return {supplierId: sid, items: bySupplier[sid], sent: !!(old && old.sent && sameQueueItems(old.items, bySupplier[sid]))};
+  });
+  state.queue.at = Date.now();
+  persistQueue();
   goView('queue');
+  if(state.queue.every(e=>e.sent)) maybeFinishQueue();
+  return true;
+}
+const sameQueueItems = (a, b)=>{
+  const key = list=>list.map(i=>i.itemId+'='+i.qty).sort().join();
+  return key(a) === key(b);
+};
+/* The send queue is kept on this phone (per account) until the order is saved. An iPhone can close the app
+   while WhatsApp is open; without this the suppliers already sent were forgotten and the order never
+   reached History. A queue left unfinished for 3 hours is dropped (the order itself stays as a draft). */
+const QUEUE_KEEP_MS = 3*60*60*1000;
+function persistQueue(){
+  if(!state.account) return;
+  const q = state.queue;
+  lset('sendQueue:'+state.account, q ? {
+    at: q.at || Date.now(), record: q.record || null, saveState: q.saveState === 'failed' ? 'failed' : null,
+    entries: q.map(e=>({supplierId:e.supplierId, items:e.items, sent:!!e.sent}))
+  } : null);
+}
+function restoreQueue(){
+  if(!state.account || state.queue) return false;
+  const saved = lget('sendQueue:'+state.account);
+  if(!saved) return false;
+  const entries = Array.isArray(saved.entries) ? saved.entries.filter(e=>e && typeof e.supplierId === 'string' && Array.isArray(e.items) && e.items.length) : [];
+  const done = saved.record && state.history.some(h=>h.id===saved.record.id);
+  if(!entries.length || done || !(Date.now() - Number(saved.at) < QUEUE_KEEP_MS)){ lset('sendQueue:'+state.account, null); return false; }
+  const queue = entries.map(e=>({supplierId:e.supplierId, items:e.items, sent:!!e.sent}));
+  queue.at = Number(saved.at);
+  if(saved.record && typeof saved.record.id === 'string'){ queue.record = saved.record; queue.saveState = 'failed'; }
+  state.queue = queue;
+  state.view = 'queue';
   return true;
 }
 function attachOrderResultEvents(root){
@@ -2063,6 +2104,8 @@ function markQueueSent(idx){
   const entry = state.queue && state.queue[idx];
   if(!entry) return;
   entry.sent = true;
+  state.queue.at = Date.now();
+  persistQueue();
   render();
   maybeFinishQueue();
 }
@@ -2080,8 +2123,11 @@ function attachQueueEvents(){
     const entry = state.queue[idx];
     const sup = state.suppliers.find(s=>s.id===entry.supplierId);
     if(!sup || !sup.phone) return; // button only renders when this is safe, but guard anyway
-    window.open(waLink(sup.phone, buildMessage(entry)), '_blank', 'noopener,noreferrer');
+    const link = waLink(sup.phone, buildMessage(entry));
+    // Marked (and saved on this phone) before WhatsApp opens: the iPhone may pause or close the app right after.
     markQueueSent(idx);
+    try{ window.open(link, '_blank', 'noopener,noreferrer'); }
+    catch(_){ location.href = link; }
   });
   // Suppliers without a WhatsApp number (or items with no supplier) are sent
   // some other way; without this the queue could never finish and the order
@@ -2115,43 +2161,54 @@ async function maybeFinishQueue(){
   if(finishingQueue || !state.queue || !state.queue.every(e=>e.sent)) return;
   const queue = state.queue, session = apiSession();
   finishingQueue = queue;
-  if(!queue.record) playOrdersSent();
-  const record = queue.record || {
-    id: 'o'+outboxJobId(), date: new Date().toISOString(), by: state.account,
-    entries: state.queue.map(e=>({
-      supplierId: e.supplierId,
-      supplierName: (state.suppliers.find(s=>s.id===e.supplierId)||{}).name || '',
-      items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
-    }))
-  };
-  queue.record = record;
-  queue.saveState = 'saving';
-  if(state.view === 'queue') render();
-  const result = await sendOrQueue('orders', 'POST', record);
-  if(!apiSessionMatches(session) || state.queue !== queue){
-    if(finishingQueue === queue) finishingQueue = null;
-    return;
-  }
-  if(result === 'failed'){
-    queue.saveState = 'failed'; finishingQueue = null;
+  try{
+    if(!queue.record){ try{ playOrdersSent(); }catch(_){ /* a sound must never stop the order from saving */ } }
+    const record = queue.record || {
+      id: 'o'+outboxJobId(), date: new Date().toISOString(), by: state.account,
+      entries: state.queue.map(e=>({
+        supplierId: e.supplierId,
+        supplierName: (state.suppliers.find(s=>s.id===e.supplierId)||{}).name || '',
+        items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
+      }))
+    };
+    queue.record = record;
+    queue.saveState = 'saving';
+    persistQueue();   // the same order id after a restart, so it is never saved twice
     if(state.view === 'queue') render();
-    toast(t('saveFailed'), 'error');
-    return;
+    const result = await sendOrQueue('orders', 'POST', record);
+    if(!apiSessionMatches(session) || state.queue !== queue) return;
+    if(result === 'failed'){
+      queue.saveState = 'failed';
+      persistQueue();
+      if(state.view === 'queue') render();
+      toast(t('saveFailed'), 'error');
+      return;
+    }
+    queue.saveState = 'saved';
+    lset('sendQueue:'+state.account, null);   // saved (or waiting in the outbox): nothing left to resume
+    if(!state.history.some(h=>h.id===record.id)) state.history.push(record);
+    ricoSuggestion.at = 0;
+    // Preserve any quantities edited while the save was waiting on the network.
+    queue.forEach(entry=>entry.items.forEach(item=>{ if(state.cart[item.itemId] === item.qty) delete state.cart[item.itemId]; }));
+    persistCartDraft();
+    if(state.view === 'queue') render();
+    // Let the "All orders sent" card land before returning to the Order screen.
+    await new Promise(r=>setTimeout(r, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1300));
+    if(!apiSessionMatches(session) || state.queue !== queue) return;
+    state.queue = null;
+    if(state.view === 'queue') goView('order');
+    toast(result === 'saved' ? t('orderSavedToHistory') : result === 'queued' ? t('orderSavedOffline') : t('saveFailed'), result === 'saved' ? 'ok' : 'warn');
+  }catch(error){
+    // Never leave the order stuck on "saving": offer Retry instead.
+    console.error('Saving the order failed', error);
+    if(state.queue === queue && queue.saveState !== 'saved'){
+      queue.saveState = 'failed';
+      persistQueue();
+      if(state.view === 'queue') render();
+    }
+  }finally{
+    if(finishingQueue === queue) finishingQueue = null;
   }
-  queue.saveState = 'saved';
-  if(!state.history.some(h=>h.id===record.id)) state.history.push(record);
-  ricoSuggestion.at = 0;
-  // Preserve any quantities edited while the save was waiting on the network.
-  queue.forEach(entry=>entry.items.forEach(item=>{ if(state.cart[item.itemId] === item.qty) delete state.cart[item.itemId]; }));
-  persistCartDraft();
-  if(state.view === 'queue') render();
-  // Let the "All orders sent" card land before returning to the Order screen.
-  await new Promise(r=>setTimeout(r, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1300));
-  if(finishingQueue === queue) finishingQueue = null;
-  if(!apiSessionMatches(session) || state.queue !== queue) return;
-  state.queue = null;
-  if(state.view === 'queue') goView('order');
-  toast(result === 'saved' ? t('orderSavedToHistory') : result === 'queued' ? t('orderSavedOffline') : t('saveFailed'), result === 'saved' ? 'ok' : 'warn');
 }
 
 /* ============ History ============ */
