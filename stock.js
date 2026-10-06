@@ -482,9 +482,11 @@ async function trApprove(){
   return withBusy(btn, async () => {
   const got = trCollect();
   if(got.problem || !trState.reviewKey) return;
-    const r = await stockApi('requests', {method: 'POST', body: {from: trState.from, to: trState.to, yesterday: trState.yesterday,
-      lines: got.lines.map(l => ({clientKey: trState.lineKeys[l.itemId], itemId: l.itemId, quantity: l.qty, unitId: stEnteredId(l.itemId, l.mode),
-        expectedName: stWorkName(l.itemId), expectedUnit: stEnteredEn(l.itemId, l.mode)}))}});
+    const lines = got.lines.map(l => ({clientKey: trState.lineKeys[l.itemId], itemId: l.itemId, quantity: l.qty, unitId: stEnteredId(l.itemId, l.mode),
+      expectedName: stWorkName(l.itemId), expectedUnit: stEnteredEn(l.itemId, l.mode)}));
+    // One item is also sent in the older one-item shape, so it works on a server that doesn't know `lines` yet
+    // (several items are refused there with an error, never half-sent).
+    const r = await stockApi('requests', {method: 'POST', body: {...(lines.length === 1 ? lines[0] : {}), from: trState.from, to: trState.to, yesterday: trState.yesterday, lines}});
     if(!r.ok){
       const msg = r.data?.error || t('saveFailed');
       if(/Catalog changed/i.test(msg)){ trInvalidate(); await loadData().catch(()=>{}); await loadStock(); render(); }

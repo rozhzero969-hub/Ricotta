@@ -177,6 +177,7 @@ const server=http.createServer((rq,res)=>{
     const post=calls.find(c=>c.ep==='requests'&&c.method==='POST');
     assert.ok(post,'approve posts to stock-api');
     assert.equal(post.body.lines.length,1,'one item is a transfer of one line');
+    assert.deepEqual([post.body.clientKey,post.body.itemId,post.body.quantity],[post.body.lines[0].clientKey,post.body.lines[0].itemId,post.body.lines[0].quantity],'one item also goes in the older one-item shape');
     assert.deepEqual({from:post.body.from,to:post.body.to,y:post.body.yesterday,item:post.body.lines[0].itemId,q:post.body.lines[0].quantity,n:post.body.lines[0].expectedName,u:post.body.lines[0].expectedUnit,unit:post.body.lines[0].unitId},
       {from:'Main Storage',to:'Minibar',y:true,item:'i1',q:'2',n:'Coca-Cola 330',u:'carton',unit:'ctn'});
     assert.equal(await page.locator('#trUnits').isVisible().catch(()=>false),false,'no unit choice when buying and counting formats are the same');
@@ -276,6 +277,7 @@ const server=http.createServer((rq,res)=>{
     const multiPost=calls.filter(c=>c.ep==='requests'&&c.method==='POST').pop();
     assert.deepEqual(multiPost.body.lines.map(l=>[l.itemId,l.quantity]),[['i1','1'],['i2','2']],'every item is sent, in order');
     assert.equal(new Set(multiPost.body.lines.map(l=>l.clientKey)).size,2,'each item has its own retry key');
+    assert.equal(multiPost.body.itemId,undefined,'several items are never sent in the one-item shape');
     assert.equal(await page.evaluate(()=>trState.lines.length),0,'the form is empty after approval');
     // The rows of one transfer are one card on the PC list; the whole transfer is cancelled, changed and approved together.
     const grouped=await page.evaluate(()=>{
