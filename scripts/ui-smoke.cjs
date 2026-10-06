@@ -36,8 +36,8 @@ for(const lang of ['ku','ar']){
   for(const file of loaded) assert.ok(listed.includes(file),file+' is in APP_FILES (update-check.js)');
 }
 
-const ALL_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings','sounds'];
-const YUNIS_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record','sounds'];
+const ALL_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings'];
+const YUNIS_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record'];
 const supplierNames=['Corner Cake','Golden Bread Bakery','Fresh produce','Daily essentials','Kitchen supplies','Beverages','Dairy','Meat supplier','دابینکەری سەوزە','دابینکەری بەرهەمەکان'];
 const suppliers=supplierNames.map((name,i)=>({id:'s'+i,name,phone:''}));
 const items=Array.from({length:181},(_,i)=>({id:'i'+i,name:i%3===0?'تەماتە '+i:'Kitchen item '+String(i).padStart(3,'0'),unit:'box',supplierId:'s'+(i%10)}));
@@ -269,7 +269,7 @@ const server=http.createServer((req,res)=>{
     assert.match(await page.locator('.hist-date').textContent(),/Yunis/,'history says who sent it');
     assert.equal(await page.locator('[data-delhist]').count(),1,'Rozha can delete history');
     await openView(page,'settings');
-    assert.equal(await page.locator('#reminderEnabled, #pushToggleBtn').count(),0,'notifications moved out of Settings');
+    assert.equal(await page.locator('#reminderEnabled').count(),1,'notifications live in Settings');
     assert.equal(await page.locator('#adminPinInput').count(),0,'PINs cannot be changed in Settings');
     await page.waitForFunction(()=>document.querySelector('#ricoKeyState')?.textContent!=='Checking…',null,{timeout:5000});
     assert.equal(await page.locator('#ricoKeyState').textContent(),'Connected');
@@ -466,31 +466,50 @@ const server=http.createServer((req,res)=>{
     /* ---------- Yunis ---------- */
     const y=await context({account:'yunis'});
     // The app adds Transfer and Stock for both accounts after the server's own list.
-    assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS.filter(v=>v!=='sounds'),'transfers','stock','receipts','sounds'],'Yunis gets the right screens');
+    assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS,'transfers','stock','receipts','settings'],'Yunis gets the right screens');
     await y.page.setViewportSize({width:390,height:844});
-    assert.equal(await y.page.locator('.bottomnav [data-view="devices"], .bottomnav [data-view="settings"]').count(),0,'no Devices or Settings for Yunis');
+    assert.equal(await y.page.locator('.bottomnav [data-view="devices"]').count(),0,'no Devices for Yunis');
     await openView(y.page,'history');
     assert.equal(await y.page.locator('[data-delhist]').count(),0,'Yunis cannot delete history');
     await openView(y.page,'suppliers');
     assert.equal(await y.page.locator('#supAddBtn').count(),1,'Yunis can edit suppliers');
     await openView(y.page,'units');
     assert.equal(await y.page.locator('[data-delunit]').count(),1,'Yunis can delete units');
-    await y.page.evaluate(()=>goView('settings'));
-    assert.notEqual(await y.page.evaluate(()=>state.view),'settings','Settings cannot be opened by Yunis');
     // Sounds: in More for Yunis too, one switch per sound, never one of the 3 tabs.
-    await y.page.evaluate(()=>goView('sounds')); await settle(y.page);
-    assert.equal(await y.page.evaluate(()=>state.view),'sounds','Yunis can open Sounds');
+    await y.page.evaluate(()=>goView('settings')); await settle(y.page);
+    assert.equal(await y.page.evaluate(()=>state.view),'settings','Yunis can open Settings');
     await snapshot(y.page,'phone-sounds.png');
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['reminderEnabled:false','sound-qty:true','sound-sent:true'],'the daily reminder and every sound have their own switch');
-    assert.equal(await y.page.locator('.bottomnav .nav-more [data-view="sounds"]').count(),1,'Sounds is in More');
+    // Themes: Ricotta is the default, each theme sticks per account, Compact rows and Last quantity are Settings switches.
+    assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),null,'Ricotta is the default theme');
+    assert.equal(await y.page.locator('.theme-btn').count(),5,'five themes');
+    assert.equal(await y.page.locator('.theme-btn[aria-pressed="true"], .theme-btn.on').count()>=1,true,'one theme is marked');
+    await y.page.locator('.theme-btn').nth(2).click(); await settle(y.page);
+    assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),'ocean','picking Ocean blue applies it');
+    await y.page.evaluate(()=>{goView('order')}); await settle(y.page);
+    assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),'ocean','the theme stays on other screens');
+    assert.match(await y.page.locator('.brand-word, .brand').first().textContent(),/Ricotta/,'top bar says Ricotta');
+    await y.page.evaluate(()=>goView('settings')); await settle(y.page);
+    await y.page.locator('.theme-btn').nth(0).click(); await settle(y.page);
+    assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),null,'Ricotta brings the default back');
+    await y.page.locator('label:has(#pref-compactRows)').click();
+    assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('compact-rows')),true,'Compact rows switch works');
+    await y.page.locator('label:has(#pref-compactRows)').click();
+    assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('compact-rows')),false,'Compact rows switch turns off');
+    await y.page.locator('label:has(#pref-showLastQty)').click();
+    await y.page.evaluate(()=>goView('order')); await settle(y.page);
+    assert.ok(await y.page.locator('.item-last').count()>=1,'Last quantity shows on rows when switched on');
+    await y.page.evaluate(()=>goView('settings')); await settle(y.page);
+    await y.page.locator('label:has(#pref-showLastQty)').click();
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','reminderEnabled:false','sound-qty:true','sound-sent:true'],'the daily reminder and every sound have their own switch');
+    assert.equal(await y.page.locator('.bottomnav .nav-more [data-view="settings"]').count(),1,'Settings is in More');
     await y.page.locator('label:has(#sound-sent)').click();
     assert.deepEqual(await y.page.evaluate(()=>[soundOn('sent'),soundOn('qty')]),[false,true],'turning one sound off leaves the other on');
-    assert.equal(await y.page.evaluate(()=>tabChoices().includes('sounds')),false,'Sounds cannot be picked as a main tab');
+    assert.equal(await y.page.evaluate(()=>tabChoices().includes('settings')),false,'Settings cannot be picked as a main tab');
     // Daily reminder, for Yunis too: the switch opens the time, Save and a test; only Save turns it on.
     assert.equal(await y.page.locator('#reminderTime').count(),0,'the daily reminder starts as just a switch');
     await y.page.locator('label:has(#reminderEnabled)').click();
     assert.equal(await y.page.locator('#reminderTime, #reminderSaveBtn, #reminderTestBtn').count(),3,'turning it on shows the time, Save and a test button');
-    await y.page.evaluate(()=>goView('order')); await settle(y.page); await y.page.evaluate(()=>goView('sounds')); await settle(y.page);
+    await y.page.evaluate(()=>goView('order')); await settle(y.page); await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     assert.deepEqual(await y.page.evaluate(()=>[document.getElementById('reminderEnabled').checked, !!document.getElementById('reminderTime')]),[false,false],'leaving without saving keeps it off');
     assert.equal(y.calls.filter(c=>c.endpoint==='reminder').length,0,'nothing was saved');
     await y.page.locator('label:has(#reminderEnabled)').click();

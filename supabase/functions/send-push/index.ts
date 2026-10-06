@@ -55,6 +55,9 @@ type Payload = (lang: Lang, name: string | null) => Record<string, unknown>;
 const asLang = (l: string | null | undefined): Lang => (l === "ku" || l === "ar" ? l : "en");
 const L = (lang: Lang, en: string, ku: string, ar: string) => (lang === "ku" ? ku : lang === "ar" ? ar : en);
 const RICO: Record<Lang, string> = { en: "Rico", ku: "ریکۆ", ar: "ريكو" };
+/* Rico's feelings. His notifications carry the mood so the phone shows his face for it (rico-<mood>.png). */
+const RICO_MOODS = ["happy", "excited", "grateful", "calm", "thinking", "worried", "sad", "angry"];
+const moodOf = (m: unknown) => (RICO_MOODS.includes(String(m)) ? String(m) : "happy");
 
 const dailyPayload: Payload = (lang) => ({
   title: "Ricotta Orders",
@@ -180,7 +183,7 @@ async function ricoSays(kind: string, key: string, words: Words, extra: Record<s
   return await sendReminder((lang, name) => ({
     title: RICO[lang],
     body: lang === "ku" ? words.ku(name ?? "") : lang === "ar" ? words.ar(name ?? "") : words.en(name ?? ""),
-    kind: "assistant", tag: `ricotta-rico-${key}`, ...extra,
+    kind: "assistant", mood: moodOf(words.mood), tag: `ricotta-rico-${key}`, ...extra,
   }));
 }
 /* "Hey Rozha!" when the name is known, "Hey!" when it isn't. */
@@ -389,7 +392,7 @@ Deno.serve(async (req) => {
         if (!w.any) return json({ error: "empty message" }, 400);
         const title = String(body.title || "").slice(0, 80);
         return json(await sendReminder((lang) => ({
-          title: title || RICO[lang], body: w.pick(lang), kind: "assistant", tag: `ricotta-assistant-${Date.now()}`,
+          title: title || RICO[lang], body: w.pick(lang), kind: "assistant", mood: moodOf(body.mood), tag: `ricotta-assistant-${Date.now()}`,
         })));
       }
       case "reminder-now":

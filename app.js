@@ -245,10 +245,13 @@ const ACCOUNT_VIEWS = {
 };
 const DEFAULT_TABS = ['order','assistant','history'];
 const STOCK_VIEWS = ['transfers','stock','receipts'];
-/* Screens that only hold this device's own preferences: every account has
-   them, the server never needs to know, and they can't be one of the 3 tabs. */
-const DEVICE_VIEWS = ['sounds'];
-const tabChoices = ()=>state.views.filter(v=>!DEVICE_VIEWS.includes(v));
+/* Settings is for every account. The server lists it only for Rozha (it
+   also shows the Rico connection to her), so for Yunis it is added here: it
+   holds this device's own preferences, which the server never needs to know.
+   Where the server doesn't list it, it can't be one of the 3 tabs. */
+const DEVICE_VIEWS = ['settings'];
+let serverViews = [];
+const tabChoices = ()=>state.views.filter(v=>!DEVICE_VIEWS.includes(v) || serverViews.includes(v));
 function validTabs(tabs){
   const list = Array.isArray(tabs) ? [...new Set(tabs)].filter(v=>tabChoices().includes(v)) : [];
   return list.length === 3 ? list : DEFAULT_TABS.filter(v=>state.views.includes(v));
@@ -258,6 +261,7 @@ function applyAccount(a){
   state.account = a.account === 'rozha' || a.account === 'yunis' ? a.account : null;
   state.name = a.name || ({rozha:'Rozha', yunis:'Yunis'})[state.account] || '';
   const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
+  serverViews = views;
   // Transfer and Stock are added here (both accounts have them); the older server list doesn't know them.
   const withStock = state.account ? [...views, ...STOCK_VIEWS.filter(v=>!views.includes(v))] : views;
   state.views = state.account ? [...withStock.filter(v=>!DEVICE_VIEWS.includes(v)), ...DEVICE_VIEWS] : [];
@@ -534,11 +538,12 @@ const RENDERERS = {
   itemsAdmin:[()=>renderItemsAdmin(),()=>attachItemEvents()], units:[()=>renderUnits(),()=>attachUnitEvents()],
   record:[()=>renderRecord(),()=>attachRecordEvents()], devices:[()=>renderDevices(),()=>attachDeviceEvents()],
   transfers:[()=>renderTransfers(),()=>attachTransfersEvents()], stock:[()=>renderStock(),()=>attachStockEvents()], receipts:[()=>renderReceipts(),()=>attachReceiptsEvents()],
-  settings:[()=>renderSettings(),()=>attachSettingsEvents()], sounds:[()=>renderSoundsView(),()=>attachSoundsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
+  settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
 };
 function render(){
   applyLangClasses();
-  setThemeColor();
+  applyTheme();
+  applyPrefs();
   const app = document.getElementById('app');
   if(!state.account){
     app.classList.toggle('static-update', app.dataset.screen === 'login');
@@ -594,6 +599,13 @@ function updateRicoBadge(){
   const dot = document.querySelector('.navbtn[data-view="assistant"] .nav-badge');
   if(!dot) return;
   const late = ricoLateOrders().length, unread = ricoUnread();
+  // While something is waiting, his tab shows how he feels instead of the spark.
+  const btn = dot.parentElement, mood = unread ? ricoUnreadMood() : late ? 'angry' : '';
+  if((btn.dataset.ricoFace || '') !== mood){
+    btn.dataset.ricoFace = mood;
+    const icon = btn.querySelector('.rico-spark, .rico-bot');
+    if(icon) icon.outerHTML = mood ? ricoFace(mood, 'rico-tab') : NAV_ICONS.assistant;
+  }
   dot.hidden = !(late || unread);
   dot.parentElement.setAttribute('aria-label', late ? t('ricoNavLate')(late) : unread ? t('ricoNavUnread') : t('ricoName'));
   const more = document.getElementById('navMoreBtn');
@@ -606,7 +618,7 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
    screens and "Edit tabs"). Computers: a sidebar with every screen. A glass
    lens glides to the current tab; on phones it can be held and slid, and
    the page itself can be swiped between the three tabs. */
-const VIEW_LABEL_KEYS = {transfers:'navTransfer', stock:'navStock', receipts:'navReceipts', order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', sounds:'soundsNav', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {transfers:'navTransfer', stock:'navStock', receipts:'navReceipts', order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
@@ -1234,9 +1246,55 @@ function bump(el){
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
 }
 /* The phone's status bar takes the same colour as the top bar. */
-function setThemeColor(){
+/* ============ Themes ============
+   Settings > Appearance. Each theme is a block of colours in style.css
+   (html[data-theme]); Ricotta, the green the app has always had, is the
+   default and is on whenever nothing else was chosen. The choice is kept
+   per account on this device, and the sign-in screen is always Ricotta. */
+const THEMES = ['ricotta','graphite','ocean','saffron','berry'];
+const DEFAULT_THEME = 'ricotta';
+const THEME_LOOK = {   // swatch (dark card, accent, page) and the colour of the phone's top bar
+  ricotta:  {swatch:['#14382C','#34C27A','#EEF1EF'], bar:'#EEF1EF'},
+  graphite: {swatch:['#161616','#2C2C2C','#EEEEED'], bar:'#EEEEED'},
+  ocean:    {swatch:['#12304D','#3FA7EA','#EDF1F5'], bar:'#EDF1F5'},
+  saffron:  {swatch:['#4A2F08','#F2A93B','#F4F0E8'], bar:'#F4F0E8'},
+  berry:    {swatch:['#4D1330','#E0568F','#F5EEF2'], bar:'#F5EEF2'}
+};
+function currentTheme(){
+  if(!state.account) return DEFAULT_THEME;
+  const v = lget('theme:' + state.account);
+  return THEMES.includes(v) ? v : DEFAULT_THEME;
+}
+function applyTheme(){
+  const th = currentTheme(), root = document.documentElement;
+  if(th === DEFAULT_THEME) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', th);
   const meta = document.querySelector('meta[name="theme-color"]');
-  if(meta) meta.content = '#EEF1EF';
+  if(meta) meta.content = THEME_LOOK[th].bar;
+}
+function setTheme(id){
+  if(!state.account || !THEMES.includes(id)) return;
+  lset('theme:' + state.account, id === DEFAULT_THEME ? null : id);
+  applyTheme();
+}
+/* Two display choices for the Order screen, kept per device (both start off). */
+const prefOn = key => lget(key) === true;
+function applyPrefs(){ document.documentElement.classList.toggle('compact-rows', prefOn('compactRows')); }
+/* What each item was last ordered at (newest order that had it), for "Show last quantity". */
+let lastQtyCache = {key:'', map:{}};
+function lastQtyMap(){
+  const last = state.history[state.history.length-1];
+  const key = state.history.length + '|' + (last ? last.id : '');
+  if(lastQtyCache.key !== key){
+    const map = {}, at = {};
+    state.history.forEach(h=>{
+      const when = Date.parse(h.date) || 0;
+      (h.entries||[]).forEach(e=>(e.items||[]).forEach(it=>{
+        if(!(it.itemId in at) || when >= at[it.itemId]){ at[it.itemId] = when; map[it.itemId] = it.qty; }
+      }));
+    });
+    lastQtyCache = {key, map};
+  }
+  return lastQtyCache.map;
 }
 
 function renderPageHeading(){
@@ -1269,7 +1327,7 @@ function langButton(id){
 function renderTopbar(){
   return `
   <header class="topbar">
-    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="topbar-title" aria-hidden="true"></span></div>
+    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">Ricotta</span><span class="dot"></span></div><span class="topbar-title" aria-hidden="true"></span></div>
     <div class="topbar-actions">
       <div class="chip conn-chip ${state.apiOnline?'':'offline'}" id="connectionStatus"><span></span><em>${esc(state.apiOnline?t('online'):t('offline'))}</em></div>
       ${langButton('langBtn')}
@@ -1647,6 +1705,7 @@ function renderOrder(){
 /* Search only replaces this result region; rebuilding #app on each keystroke
    was the cause of the apparent page refresh on phones. */
 function renderOrderResults(){
+  const lastQty = prefOn('showLastQty') ? lastQtyMap() : null;
   const q = foldText(state.search.trim());
   const tabFiltered = state.orderTab==='all'
     ? state.items
@@ -1666,7 +1725,7 @@ function renderOrderResults(){
       <div class="item-row ${qty>0?'has-qty':''}" data-item-id="${esc(i.id)}">
         <div class="item-info">
           <div class="item-name">${esc(i.name)}</div>
-          <div class="item-unit">${esc(unitLabel(i.unit))}</div>
+          <div class="item-unit">${esc(unitLabel(i.unit))}${lastQty && lastQty[i.id] ? ` · <span class="item-last">${esc(t('lastQty')(lastQty[i.id]))}</span>` : ''}</div>
         </div>
         <div class="stepper">
           <button class="step-btn" data-dec="${esc(i.id)}" aria-label="${esc(t('decreaseQty')(i.name))}" ${qty>0?'':'disabled'}>−</button>
@@ -3057,14 +3116,33 @@ function attachDeviceEvents(){
   };
 }
 
-/* ============ Settings (Rozha) ============ */
-/* PINs can't be changed here: only through the secret code on the sign-in
-   keypad (see startRecovery). */
+/* ============ Settings (every account) ============
+   Appearance, the Order screen's display choices, notifications and sounds
+   are on this device for everyone; the connection and Rico's provider are
+   shown to Rozha only. PINs can't be changed here: only through the secret
+   code on the sign-in keypad (see startRecovery). */
+const ICON_CHECK_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+function renderThemePicker(){
+  const names = t('themeNames'), cur = currentTheme();
+  return `<div class="section-title">${esc(t('settingsAppearance'))}</div>
+    <div class="form-card"><div class="notif-sub">${esc(t('themeHint'))}</div>
+      <div class="theme-grid" role="group" aria-label="${esc(t('settingsAppearance'))}">${THEMES.map(id=>`
+        <button type="button" class="theme-btn" data-theme-pick="${id}" aria-pressed="${id===cur}">
+          <span class="theme-swatch" aria-hidden="true">${THEME_LOOK[id].swatch.map((c,i)=>`<i style="flex:${[2,1,3][i]};background:${c}"></i>`).join('')}</span>
+          <span class="theme-name"><span>${esc(names[id])}</span>${id===cur ? `<span class="theme-check">${ICON_CHECK_SM}</span>` : id===DEFAULT_THEME ? `<span class="theme-tag">${esc(t('themeDefault'))}</span>` : ''}</span>
+        </button>`).join('')}</div></div>`;
+}
+function renderDisplaySettings(){
+  const row = (id, on, label, hint)=>`<label class="check-row sound-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;
+  return `<div class="section-title">${esc(t('settingsOrderScreen'))}</div><div class="form-card">
+    ${row('pref-compactRows', prefOn('compactRows'), 'compactRowsLabel', 'compactRowsHint')}
+    ${row('pref-showLastQty', prefOn('showLastQty'), 'lastQtyLabel', 'lastQtyHint')}</div>`;
+}
 function renderSettings(){
   const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `${connectionCard}${renderRicoSettings()}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
+  return `${renderThemePicker()}${renderDisplaySettings()}${renderSoundsView()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
 }
-/* ============ Sounds & notifications (every account) ============ */
+/* ============ Notifications and sounds (shown in Settings) ============ */
 /* The daily reminder starts as one switch. Turning it on opens the time,
    a test button and Save; only Save turns it on for real (leaving without
    saving keeps it off). Turning it off saves "off" straight away. */
@@ -3199,8 +3277,25 @@ async function withBusy(btn, fn){
   btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy','true');
   try{ return await fn(); } finally { btn.disabled = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy'); }
 }
+/* Repaints just the theme picker (the page stays where it is) and wires it again. */
+function bindThemePicker(){
+  document.querySelectorAll('[data-theme-pick]').forEach(b=>b.onclick=()=>{
+    setTheme(b.dataset.themePick);
+    const card = b.closest('.form-card'), title = card.previousElementSibling;
+    const tmp = document.createElement('div'); tmp.innerHTML = renderThemePicker();
+    title.replaceWith(tmp.children[0]); card.replaceWith(tmp.children[0]);
+    bindThemePicker();
+    document.querySelector('[data-theme-pick][aria-pressed="true"]')?.focus({preventScroll:true});
+  });
+}
 function attachSettingsEvents(){
-  loadRicoStatus();
+  bindThemePicker();
+  [['pref-compactRows','compactRows'],['pref-showLastQty','showLastQty']].forEach(([id,key])=>{
+    const box = document.getElementById(id);
+    if(box) box.onchange = ()=>{ lset(key, box.checked ? true : null); applyPrefs(); };
+  });
+  attachSoundsEvents();
+  if(isRozha()) loadRicoStatus();
 }
 
 boot();

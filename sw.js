@@ -16,6 +16,9 @@ self.addEventListener('push', event => {
   catch (e) { data = { body: event.data ? event.data.text() : '' }; }
 
   const kind = data.kind || 'general';   /* 'update' | 'reminder' | 'supplier' | 'assistant' | 'overdue' | 'general' */
+  /* Rico's own messages carry his mood and show his face for it, not the app icon. */
+  const RICO_MOODS = ['happy', 'excited', 'grateful', 'calm', 'thinking', 'worried', 'sad', 'angry'];
+  const icon = kind === 'assistant' ? 'rico-' + (RICO_MOODS.includes(data.mood) ? data.mood : 'happy') + '.png' : 'icon-192.png';
   const title = data.title || 'Ricotta Orders';
   const supplierId = data.supplierId || '';
 
@@ -25,7 +28,7 @@ self.addEventListener('push', event => {
         body: data.body || '',
         tag: data.tag || ('ricotta-' + kind),   /* one notification per supplier, not one shared pile */
         renotify: true,                          /* a newer one with the same tag still alerts */
-        icon: 'icon-192.png',
+        icon,
         data: { kind, supplierId, body: data.body || '' }
       });
     } catch (e) {
