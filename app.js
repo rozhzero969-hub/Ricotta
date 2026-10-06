@@ -1865,6 +1865,11 @@ function restoreQueue(){
   if(!saved) return false;
   const entries = Array.isArray(saved.entries) ? saved.entries.filter(e=>e && typeof e.supplierId === 'string' && Array.isArray(e.items) && e.items.length) : [];
   const done = saved.record && state.history.some(h=>h.id===saved.record.id);
+  if(done){
+    // Saved before the app closed: the draft it came from is finished too.
+    entries.forEach(e=>e.items.forEach(item=>{ if(state.cart[item.itemId] === item.qty) delete state.cart[item.itemId]; }));
+    persistCartDraft();
+  }
   if(!entries.length || done || !(Date.now() - Number(saved.at) < QUEUE_KEEP_MS)){ lset('sendQueue:'+state.account, null); return false; }
   const queue = entries.map(e=>({supplierId:e.supplierId, items:e.items, sent:!!e.sent}));
   queue.at = Number(saved.at);

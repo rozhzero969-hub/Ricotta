@@ -45,6 +45,7 @@ const server=http.createServer((req,res)=>{
         saved.push(body);
         if(server.orders==='broken'){ status=400; data={error:'Bad order'}; }
         else if(!history.some(h=>h.id===body.id)) history.push(body);
+        if(server.orders==='slow'){ await new Promise(r=>setTimeout(r,4000)); try{ await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)}); }catch(_){} return; }
       }
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
@@ -54,10 +55,17 @@ const server=http.createServer((req,res)=>{
       // WhatsApp: remember what would have opened.
       window.__opened=[]; window.open=(link)=>{ window.__opened.push(String(link)); return null; };
     },{s:session,lang});
-    const page=await ctx.newPage(); page.on('pageerror',error=>errors.push(String(error)));
+    let page=await ctx.newPage(); page.on('pageerror',error=>errors.push(String(error)));
     const start=async()=>{ await page.waitForSelector('#app[data-screen]'); await page.waitForSelector('#splash',{state:'detached'}); };
     await page.goto(url); await start();
-    return {ctx,page,saved,history,server,start};
+    // The iPhone closing the app: no page code runs on the way out, unlike a reload.
+    const relaunch=async()=>{
+      await page.close({runBeforeUnload:false});
+      page=await ctx.newPage(); page.on('pageerror',error=>errors.push(String(error)));
+      await page.goto(url); await start();
+      return page;
+    };
+    return {ctx,page,saved,history,server,start,relaunch};
   }
   const card=(page,name)=>page.locator('.queue-card',{hasText:name});
   // Names of the suppliers whose card shows as sent, in screen order.
@@ -65,7 +73,7 @@ const server=http.createServer((req,res)=>{
   const stored=page=>page.evaluate(()=>JSON.parse(localStorage.getItem('ricottaOrders:sendQueue:yunis')||'null'));
   try{
     for(const lang of ['en','ku']){
-      const {ctx,page,saved,history,start}=await phone({lang});
+      let {ctx,page,saved,history,start,relaunch}=await phone({lang});
       await page.waitForSelector('#orderResults');
       for(const id of ['i0','i1','i2']) await page.locator(`[data-inc="${id}"]`).click();
       await page.locator('[data-inc="i1"]').click();
@@ -80,7 +88,7 @@ const server=http.createServer((req,res)=>{
       assert.deepEqual((await stored(page)).entries.map(e=>e.sent),[true,false,false],lang+': progress is saved on the phone');
 
       // The iPhone closes the app while WhatsApp is open; opening it again comes back to the same progress.
-      await page.reload(); await start();
+      page=await relaunch();
       assert.equal(await page.evaluate(()=>state.view),'queue',lang+': the app reopens on Send to suppliers');
       assert.deepEqual(await sentNames(page),['Golden Bread Bakery'],lang+': the supplier already sent stays sent after a restart');
 
@@ -121,7 +129,7 @@ const server=http.createServer((req,res)=>{
 
     // The last supplier is sent while the save fails; the app is closed; reopening saves the same order (same id) once.
     {
-      const {ctx,page,saved,history,server,start}=await phone();
+      let {ctx,page,saved,history,server,relaunch}=await phone();
       await page.waitForSelector('#orderResults');
       await page.locator('[data-inc="i0"]').click();
       server.orders='broken';
@@ -131,11 +139,31 @@ const server=http.createServer((req,res)=>{
       const firstId=saved[0].id;
       assert.equal((await stored(page)).record.id,firstId,'the order id is kept on the phone');
       server.orders='ok';
-      await page.reload(); await start();
+      page=await relaunch();
       await page.waitForFunction(()=>state.queue===null);
       assert.deepEqual(saved.map(o=>o.id),[firstId,firstId],'reopening retries the same order');
       assert.equal(history.length,1,'and it is in History once');
       assert.equal(await stored(page),null);
+      await ctx.close();
+    }
+
+    // Saved on the server, but the app closed before the answer came back: reopening finishes it (draft cleared, no second copy).
+    {
+      let {ctx,page,saved,history,server,relaunch}=await phone();
+      await page.waitForSelector('#orderResults');
+      await page.locator('[data-inc="i0"]').click();
+      server.orders='slow';
+      await page.locator('#sendOrdersBtn').click();
+      await card(page,'Golden Bread Bakery').locator('[data-send]').click();
+      await page.waitForFunction(()=>state.queue?.saveState==='saving');
+      server.orders='ok';
+      page=await relaunch();
+      await page.waitForSelector('#orderResults');
+      assert.equal(await page.evaluate(()=>state.queue),null,'a saved order does not reopen');
+      assert.equal(await page.evaluate(()=>localStorage.getItem('ricottaOrders:pendingCart:yunis')),null,'its draft is cleared');
+      assert.equal(await stored(page),null);
+      assert.equal(history.length,1,'saved once');
+      assert.ok(saved.every(o=>o.id===saved[0].id),'only ever the same order');
       await ctx.close();
     }
 
@@ -171,7 +199,7 @@ const server=http.createServer((req,res)=>{
       await ctx.close();
     }
     assert.deepEqual(errors,[],'no page errors');
-    console.log('Order queue smoke: PASS (progress kept across an app restart, Send again keeps sent suppliers, saved once to History, interrupted save resumes with the same id, return from WhatsApp saves, cleared order starts over; EN + KU)');
+    console.log('Order queue smoke: PASS (progress kept across an app restart, Send again keeps sent suppliers, saved once to History, interrupted save resumes with the same id, saved-but-unanswered order finishes on reopen, return from WhatsApp saves, cleared order starts over; EN + KU)');
   }finally{
     await browser.close(); server.close();
   }
