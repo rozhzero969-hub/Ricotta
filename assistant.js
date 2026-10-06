@@ -94,6 +94,12 @@ function ricoReset(){
 /* ---------- Rico's inbox ---------- */
 function ricoSetInbox(list){ rico.inbox = Array.isArray(list) ? list : []; }
 function ricoUnread(){ return rico.inbox.filter(m=>!m.read).length; }
+/* The mood of his newest unread message (his tab shows it as his face). */
+function ricoUnreadMood(){
+  const unread = rico.inbox.filter(m=>!m.read);
+  const m = unread.length ? unread[unread.length - 1].mood : '';
+  return RICO_MOODS.includes(m) ? m : 'happy';
+}
 function ricoInboxText(m){ return (state.lang === 'ku' ? m.ku : state.lang === 'ar' ? m.ar : m.en) || m.en; }
 /* Opening Rico reads his messages. */
 function ricoMarkInboxRead(){

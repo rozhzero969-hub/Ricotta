@@ -38,7 +38,7 @@ const server=http.createServer((req,res)=>{
     await ctx.route('**/functions/v1/api/**',async route=>{
       const req=route.request(), endpoint=new URL(req.url()).pathname.split('/api/')[1], body=req.postDataJSON?.()||null;
       let status=200, data={ok:true};
-      if(endpoint==='bootstrap') data={account:'yunis',name:'Yunis',tabs:session.tabs,views:['order','assistant','history','suppliers','itemsAdmin','units','record','sounds'],
+      if(endpoint==='bootstrap') data={account:'yunis',name:'Yunis',tabs:session.tabs,views:['order','assistant','history','suppliers','itemsAdmin','units','record'],
         suppliers,items,units:[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'}],history,devices:[],activity:[],reminder:{enabled:false,time:'09:00'},pars:[],inbox:[]};
       else if(endpoint==='devices') data=[];
       else if(endpoint==='assistant/inbox') data=[];
