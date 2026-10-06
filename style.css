@@ -465,6 +465,8 @@ html.rtl .queue-back svg{transform:scaleX(-1)}
 .queue-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .wa-btn{flex:1 1 180px;min-height:50px;border-radius:16px;border:0;display:inline-flex;align-items:center;justify-content:center;gap:9px;font-size:14px;font-weight:700;background:var(--accent-strong);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 10px 22px -10px rgba(20,56,44,.75)}
 .wa-btn svg{width:18px;height:18px}
+a.wa-btn{text-decoration:none;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;transition:transform 150ms var(--ease)}
+a.wa-btn:active{transform:scale(.95)}
 .wa-btn.done{background:rgba(255,255,255,.5);color:var(--mint-ink);box-shadow:none;border:1px solid rgba(47,138,91,.4)}
 .queue-done{display:flex;align-items:center;gap:14px;padding:18px;border-radius:24px;margin-bottom:14px;color:#fff;background:var(--hero);box-shadow:0 18px 40px -16px rgba(13,40,31,.6)}
 .queue-done .tick{width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--deep-dark);display:grid;place-items:center;flex-shrink:0;animation:tickIn 520ms var(--spring) both}

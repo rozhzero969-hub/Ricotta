@@ -30,8 +30,10 @@ const server=http.createServer((req,res)=>{
   async function phone({lang='en'}={}){
     const ctx=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true,reducedMotion:'reduce',serviceWorkers:'block'});
     await ctx.addInitScript(()=>Object.defineProperty(Navigator.prototype,'standalone',{get:()=>true}));   // opened from the Home Screen
-    const saved=[], history=[];
+    const saved=[], history=[], opened=[];
     const server={orders:'ok'};
+    // WhatsApp: the link opens in a new tab here; remember where it went.
+    await ctx.route('https://wa.me/**',route=>{ opened.push(route.request().url()); return route.fulfill({status:200,contentType:'text/html',body:'<p>WhatsApp</p>'}); });
     await ctx.route('**/functions/v1/stock-api/**',route=>route.fulfill({status:503,contentType:'application/json',body:'{"error":"unavailable in this test"}',headers:{'access-control-allow-origin':'*'}}));
     await ctx.route('**/functions/v1/api/**',async route=>{
       const req=route.request(), endpoint=new URL(req.url()).pathname.split('/api/')[1], body=req.postDataJSON?.()||null;
@@ -52,8 +54,6 @@ const server=http.createServer((req,res)=>{
     await ctx.addInitScript(({s,lang})=>{
       localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',JSON.stringify(Date.now()));
       if(!sessionStorage.getItem('seeded')){ localStorage.setItem('ricottaOrders:apiSession',JSON.stringify(s)); localStorage.setItem('ricottaOrders:lang',JSON.stringify(lang)); sessionStorage.setItem('seeded','1'); }
-      // WhatsApp: remember what would have opened.
-      window.__opened=[]; window.open=(link)=>{ window.__opened.push(String(link)); return null; };
     },{s:session,lang});
     let page=await ctx.newPage(); page.on('pageerror',error=>errors.push(String(error)));
     const start=async()=>{ await page.waitForSelector('#app[data-screen]'); await page.waitForSelector('#splash',{state:'detached'}); };
@@ -65,7 +65,16 @@ const server=http.createServer((req,res)=>{
       await page.goto(url); await start();
       return page;
     };
-    return {ctx,page,saved,history,server,start,relaunch};
+    // Tap a supplier's WhatsApp link: WhatsApp really opens (not cancelled by the redraw) and the card shows sent.
+    const sendTo=async(p,name)=>{
+      const before=opened.length;
+      await p.locator('.queue-card',{hasText:name}).locator('[data-send]').click();
+      await p.waitForFunction(n=>[...document.querySelectorAll('.queue-card.sent')].some(c=>c.textContent.includes(n)),name);
+      for(let i=0;i<50&&opened.length===before;i++) await new Promise(r=>setTimeout(r,100));
+      assert.equal(opened.length,before+1,'WhatsApp opens for '+name);
+      return opened[opened.length-1];
+    };
+    return {ctx,page,saved,history,server,start,relaunch,sendTo,opened};
   }
   const card=(page,name)=>page.locator('.queue-card',{hasText:name});
   // Names of the suppliers whose card shows as sent, in screen order.
@@ -73,7 +82,7 @@ const server=http.createServer((req,res)=>{
   const stored=page=>page.evaluate(()=>JSON.parse(localStorage.getItem('ricottaOrders:sendQueue:yunis')||'null'));
   try{
     for(const lang of ['en','ku']){
-      let {ctx,page,saved,history,start,relaunch}=await phone({lang});
+      let {ctx,page,saved,history,start,relaunch,sendTo}=await phone({lang});
       await page.waitForSelector('#orderResults');
       for(const id of ['i0','i1','i2']) await page.locator(`[data-inc="${id}"]`).click();
       await page.locator('[data-inc="i1"]').click();
@@ -82,8 +91,8 @@ const server=http.createServer((req,res)=>{
       assert.equal(await page.locator('.queue-card').count(),3,lang+': one card per supplier');
 
       // First supplier: WhatsApp opens, and the card is sent (and kept on the phone) at once.
-      await card(page,'Golden Bread Bakery').locator('[data-send]').click();
-      assert.match((await page.evaluate(()=>__opened))[0],/^https:\/\/wa\.me\/9647501112222\?text=/,lang+': WhatsApp opens for the supplier');
+      assert.equal(await card(page,'Golden Bread Bakery').locator('[data-send]').evaluate(a=>a.tagName),'A','the WhatsApp button is a real link');
+      assert.match(await sendTo(page,'Golden Bread Bakery'),/^https:\/\/wa\.me\/9647501112222\?text=/,lang+': WhatsApp opens for the supplier');
       assert.deepEqual(await sentNames(page),['Golden Bread Bakery']);
       assert.deepEqual((await stored(page)).entries.map(e=>e.sent),[true,false,false],lang+': progress is saved on the phone');
 
@@ -105,8 +114,8 @@ const server=http.createServer((req,res)=>{
       await page.locator('#sendOrdersBtn').click();
       await page.waitForSelector('.queue-card');
       assert.deepEqual(await sentNames(page),[],lang+': a changed amount is not marked sent');
-      await card(page,'Golden Bread Bakery').locator('[data-send]').click();
-      await card(page,'Fresh produce').locator('[data-send]').click();
+      await sendTo(page,'Golden Bread Bakery');
+      await sendTo(page,'Fresh produce');
       assert.equal(saved.length,0,'nothing is saved before every supplier is sent');
       await card(page,'Corner Cake').locator('[data-marksent]').click();
 
@@ -129,12 +138,12 @@ const server=http.createServer((req,res)=>{
 
     // The last supplier is sent while the save fails; the app is closed; reopening saves the same order (same id) once.
     {
-      let {ctx,page,saved,history,server,relaunch}=await phone();
+      let {ctx,page,saved,history,server,relaunch,sendTo}=await phone();
       await page.waitForSelector('#orderResults');
       await page.locator('[data-inc="i0"]').click();
       server.orders='broken';
       await page.locator('#sendOrdersBtn').click();
-      await card(page,'Golden Bread Bakery').locator('[data-send]').click();
+      await sendTo(page,'Golden Bread Bakery');
       await page.waitForSelector('#queueRetrySave');
       const firstId=saved[0].id;
       assert.equal((await stored(page)).record.id,firstId,'the order id is kept on the phone');
@@ -149,12 +158,12 @@ const server=http.createServer((req,res)=>{
 
     // Saved on the server, but the app closed before the answer came back: reopening finishes it (draft cleared, no second copy).
     {
-      let {ctx,page,saved,history,server,relaunch}=await phone();
+      let {ctx,page,saved,history,server,relaunch,sendTo}=await phone();
       await page.waitForSelector('#orderResults');
       await page.locator('[data-inc="i0"]').click();
       server.orders='slow';
       await page.locator('#sendOrdersBtn').click();
-      await card(page,'Golden Bread Bakery').locator('[data-send]').click();
+      await sendTo(page,'Golden Bread Bakery');
       await page.waitForFunction(()=>state.queue?.saveState==='saving');
       server.orders='ok';
       page=await relaunch();
@@ -169,7 +178,7 @@ const server=http.createServer((req,res)=>{
 
     // Coming back from WhatsApp saves an order whose last send was interrupted before it saved.
     {
-      const {ctx,page,saved}=await phone();
+      const {ctx,page,saved,sendTo}=await phone();
       await page.waitForSelector('#orderResults');
       await page.locator('[data-inc="i0"]').click();
       await page.locator('#sendOrdersBtn').click();
@@ -183,12 +192,12 @@ const server=http.createServer((req,res)=>{
 
     // Clearing the order drops an unfinished queue, so a new order the same day starts unsent.
     {
-      const {ctx,page}=await phone();
+      const {ctx,page,sendTo}=await phone();
       await page.waitForSelector('#orderResults');
       await page.locator('[data-inc="i0"]').click();
       await page.locator('[data-inc="i1"]').click();
       await page.locator('#sendOrdersBtn').click();
-      await card(page,'Golden Bread Bakery').locator('[data-send]').click();
+      await sendTo(page,'Golden Bread Bakery');
       await page.locator('#queueBackBtn').click();
       await page.locator('#clearOrderBtn').click();
       assert.equal(await stored(page),null,'a cleared order leaves nothing to resume');

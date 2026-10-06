@@ -2089,7 +2089,9 @@ function renderQueue(){
     const itemsLine = sortedSupplierItems(e.items).map(i=>`${esc(i.name)} × ${i.qty} ${esc(unitLabel(i.unit))}`).join(' · ');
     const canWhatsApp = !!(sup && sup.phone);
     const sendBtn = canWhatsApp
-      ? `<button class="wa-btn ${e.sent?'done':''}" data-send="${idx}">${ICON_CHAT}${e.sent?t('sentSendAgain'):t('sendVia')}</button>`
+      // A plain link, not window.open: the iPhone always hands a tapped wa.me link to WhatsApp, while
+      // opening it from script could fail on one iPhone and work on another.
+      ? `<a class="wa-btn ${e.sent?'done':''}" data-send="${idx}" href="${esc(waLink(sup.phone, buildMessage(e)))}" target="_blank" rel="noopener noreferrer">${ICON_CHAT}${e.sent?t('sentSendAgain'):t('sendVia')}</a>`
       : `<button class="wa-btn ${e.sent?'done':''}" data-marksent="${idx}" ${e.sent?'disabled':''}>${e.sent?t('sent'):t('markSent')}</button>`;
     return `<div class="queue-card ${e.sent?'sent':''}">
       <div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
@@ -2123,16 +2125,16 @@ function attachQueueEvents(){
     const entry = state.queue[parseInt(b.dataset.pdf)]; const supplier = state.suppliers.find(s=>s.id===entry?.supplierId);
     if(entry) printOrderSheet(entry, supplier);
   });
+  // The link opens WhatsApp by itself. The supplier is marked sent (and saved on this phone) right away, since
+  // the iPhone may pause or close the app as WhatsApp opens; the screen is redrawn a moment later, because
+  // removing the link while it is being followed would cancel opening WhatsApp.
   document.querySelectorAll('[data-send]').forEach(b=>b.onclick=()=>{
-    const idx = parseInt(b.dataset.send);
-    const entry = state.queue[idx];
-    const sup = state.suppliers.find(s=>s.id===entry.supplierId);
-    if(!sup || !sup.phone) return; // button only renders when this is safe, but guard anyway
-    const link = waLink(sup.phone, buildMessage(entry));
-    // Marked (and saved on this phone) before WhatsApp opens: the iPhone may pause or close the app right after.
-    markQueueSent(idx);
-    try{ window.open(link, '_blank', 'noopener,noreferrer'); }
-    catch(_){ location.href = link; }
+    const entry = state.queue && state.queue[parseInt(b.dataset.send)];
+    if(!entry) return;
+    entry.sent = true;
+    state.queue.at = Date.now();
+    persistQueue();
+    setTimeout(()=>{ if(state.view === 'queue') render(); maybeFinishQueue(); }, 0);
   });
   // Suppliers without a WhatsApp number (or items with no supplier) are sent
   // some other way; without this the queue could never finish and the order
