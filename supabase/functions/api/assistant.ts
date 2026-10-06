@@ -721,7 +721,7 @@ function proposeNotification(a: any, emit: Emit) {
 
 function proposeOpen(a: any, emit: Emit) {
   // "send" opens Send to suppliers with the current draft (the person still taps each WhatsApp send).
-  const screens = ["order", "send", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings", "sounds", "transfers", "stock", "receipts"];
+  const screens = ["order", "send", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings", "transfers", "stock", "receipts"];
   const screen = screens.includes(a.screen) ? a.screen : "order";
   emit({ type: "proposal", proposal: { id: pid(), kind: "open", screen, supplierId: text(a.supplier_id, 120) || null, label: text(a.label, 60) } });
   return { shown: true };
@@ -771,7 +771,7 @@ const TOOLS = [
     input_schema: { type: "object", properties: { name: { type: "string" }, phone: { type: "string" } }, required: ["name"] } },
   { name: "propose_notification", description: "Show a card to send a push notification to every signed-in phone. Always write the message in English, Kurdish (Sorani) and Arabic; each phone gets its own language.",
     input_schema: { type: "object", properties: { title: { type: "string" }, message_en: { type: "string" }, message_ku: { type: "string" }, message_ar: { type: "string" } }, required: ["message_en", "message_ku", "message_ar"] } },
-  { name: "open_screen", description: "Show a button that opens a screen of the app (order, send, history, suppliers, itemsAdmin, units, record, devices, settings, sounds, transfers, stock, receipts). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
+  { name: "open_screen", description: "Show a button that opens a screen of the app (order, send, history, suppliers, itemsAdmin, units, record, devices, settings, transfers, stock, receipts). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
     input_schema: { type: "object", properties: { screen: { type: "string" }, supplier_id: { type: "string" }, label: { type: "string" } }, required: ["screen"] } },
 ];
 const STATUS_TOOLS = new Set(TOOLS.map((t) => t.name));
@@ -820,7 +820,7 @@ WHAT YOU CAN DO (the same for Rozha and Yunis)
 - The Stock screen (real counted stock): use stock_levels for amounts, what is low, what is in a zone. To find or show items there, use open_stock with a search, zone, group or filter so one tap shows exactly that list. To change a low-stock warning or an item's workplace name, use propose_stock_settings. To change an item's name, unit or supplier, use propose_edit_item.
 - Groups (filters on the Stock screen): when asked to "make a filter / group for all veggies (desserts, drinks, cleaning...)", call catalog_names, choose the matching items by meaning from their names (any language), and show ONE propose_stock_group card with all of them. Name the group what the person said (or a short clear name in their language if they didn't). In your reply list a few of the chosen items and say how many; mention any you were unsure about instead of guessing silently. Use add / remove to change an existing group. A group only filters the list; it never changes stock or the workplace system.
 - Rico never moves stock, counts stock, makes transfers or receipts, and never touches the workplace system. For those, point people to the Transfers, Stock or Receipts screen (open_screen with transfers, stock or receipts).
-- Guide people through the app and use open_screen for a one-tap shortcut. Yunis's account has no Devices or Settings screen, so never offer those to Yunis.
+- Guide people through the app and use open_screen for a one-tap shortcut. Yunis's account has no Devices screen, so never offer it to Yunis.
 - A proposal only shows a card; the person must tap to confirm. After proposing, say in one sentence what the card does. Never claim something was saved, added or sent until the conversation shows it was confirmed ("[card ... : applied]").
 - Nothing is ever sent to a supplier automatically: sending always happens from Send to suppliers via WhatsApp, and the person taps it.
 - Late orders: if CONTEXT shows a supplier whose reminder time passed more than an hour ago with no order sent today, bring it up early (angry, playful) and offer to prepare it. The server also sends a notification for this automatically (once per supplier per day).
@@ -843,8 +843,8 @@ THE APP (so you can explain it)
 - Units: names in English, Kurdish and Arabic.
 - Record: every add/edit/delete of suppliers, items and units, with who did it.
 - Devices (Rozha): signed-in phones, remote Refresh or Log out, and "Notify about update" (Rozha writes the message in each language).
-- Sounds & notifications (both, in More, screen "sounds"): notifications on this device, the daily order reminder (a switch; turning it on shows the time, a test button and Save, and it only turns on once saved), and each sound on or off (the + / - tap and the order sent chime).
-- Settings (Rozha): the connection and Rico's connection.
+- Settings (both accounts, in More): Appearance with five colour themes (Ricotta is the default, then Graphite black, Ocean blue, Saffron and Berry; each person's theme is saved to their account), two Order screen switches (Compact rows and Show last quantity), then notifications on this device, the daily order reminder (a switch; turning it on shows the time, a test button and Save, and it only turns on once saved), and each sound on or off (the + / - tap and the order sent chime).
+- Rozha's Settings also shows the connection and Rico's connection.
 - Notifications: on iPhone the app must be added to the Home Screen (Share -> Add to Home Screen) and opened from that icon before notifications can be turned on.
 - If something fails with "check the connection", the change is kept and retried automatically when the internet is back (orders never get lost).`;
 
