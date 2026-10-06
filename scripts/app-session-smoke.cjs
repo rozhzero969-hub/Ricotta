@@ -13,7 +13,7 @@ function fixture(overrides = {}) {
     state: {account:'rozha', view:'queue', suppliers:[], history:[], cart:{i1:2}, queue:[{supplierId:'s1', sent:true, items:[{itemId:'i1', name:'Item', qty:2, unit:'box'}]}]},
     session: {token:'old', account:'rozha'}, ricoSuggestion:{at:1}, forcedRefreshOpen:false,
     writes:[], notices:[], chimes:0, logouts:0, reloads:0, renders:0,
-    outboxJobId:()=> 'stable-id', t:key=>key, lset:()=>true,
+    outboxJobId:()=> 'stable-id', t:key=>key, lset:()=>true, persistQueue:()=>sandbox.persists++, persists:0, console:{error:()=>{}},
     render:()=>sandbox.renders++, persistCartDraft:()=>{}, playOrdersSent:()=>sandbox.chimes++,
     toast:(message)=>sandbox.notices.push(message), goView:view=>{sandbox.state.view=view;},
     apiSession:()=>sandbox.session, apiSessionMatches:s=>s?.token===sandbox.session?.token,
@@ -44,6 +44,25 @@ const json = value=>JSON.parse(JSON.stringify(value));
   assert.equal(recovery.state.history.length,1);
   assert.equal(recovery.state.queue,null);
   assert.deepEqual(json(recovery.state.cart),{});
+
+  // A sound that throws (an iPhone audio quirk) never stops the order from saving.
+  const noSound = fixture({playOrdersSent:()=>{ throw new Error('audio unavailable'); }});
+  await vm.runInContext('maybeFinishQueue()', noSound);
+  assert.equal(noSound.writes.length,1,'the order is saved even when the chime fails');
+  assert.equal(noSound.state.queue,null);
+  assert.ok(noSound.persists>0,'the queue state is kept on the phone while saving');
+
+  // An unexpected error while saving shows Retry instead of leaving the order stuck on "saving".
+  const broken = fixture({sendOrQueue:async()=>{ throw new Error('boom'); }});
+  const brokenQueue = broken.state.queue;
+  await vm.runInContext('maybeFinishQueue()', broken);
+  assert.equal(broken.state.queue,brokenQueue);
+  assert.equal(brokenQueue.saveState,'failed','a broken save offers Retry');
+  assert.equal(vm.runInContext('finishingQueue', broken),null,'a broken save never blocks the next try');
+  broken.sendOrQueue = async(_path,_method,record)=>{broken.writes.push(record);return 'saved';};
+  await vm.runInContext('maybeFinishQueue()', broken);
+  assert.equal(broken.writes.length,1,'Retry saves the order');
+  assert.equal(broken.state.queue,null);
 
   let finishSave;
   const staleSave = fixture({sendOrQueue:()=>new Promise(resolve=>{finishSave=resolve;})});
@@ -106,5 +125,5 @@ const json = value=>JSON.parse(JSON.stringify(value));
   crossTab.listeners.storage({key:'ricottaOrders:apiSession',oldValue:JSON.stringify(nextSession),newValue:null});
   assert.equal(crossTab.state.account,null,'logout in another tab clears this workspace');
   assert.deepEqual(crossTab.drafts['pendingCart:yunis'],{i2:3});
-  console.log(JSON.stringify({result:'PASS',checks:'recoverable failed order save, stable retry, stale completion and commands, cross-tab reset preserving session and account draft'}));
+  console.log(JSON.stringify({result:'PASS',checks:'recoverable failed order save, stable retry, a failing chime or save never sticks, stale completion and commands, cross-tab reset preserving session and account draft'}));
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -126,6 +126,7 @@ const toRequest = (r: any, shots: Set<string>) => ({
   previewStatus: r.preview_status, previewMessage: r.preview_message, previewedAt: r.previewed_at,
   finalApprovedBy: r.final_approved_by, finalApprovedAt: r.final_approved_at,
   finishedAt: r.finished_at, resultMessage: r.result_message, recordedDate: r.recorded_date,
+  batchId: r.batch_id, batchSize: Number(r.batch_size ?? 1), batchPos: Number(r.batch_pos ?? 0),
   hasCheckShot: shots.has(r.id),
 });
 const toCount = (c: any) => ({
@@ -197,23 +198,30 @@ async function requestsAndBalances() {
     balances: balances.map((b: any) => ({ itemId: b.item_id, storage: b.storage_name, quantity: Number(b.quantity) })),
   };
 }
-/* What the PC needs: the request as approved, plus the app's own stock of it in the source storage. */
+/* What the PC needs: the transfer as approved (every item of the batch, in order), plus the app's own stock of each
+   item in the source storage. The top-level item fields repeat the first line for an older PC. */
 async function workerRequest(id: string) {
   const { data: r, error } = await db.from("stock_requests").select("*").eq("id", id).single();
   if (error) throw error;
-  let ledgerStock = 0;
-  if (r.item_id) {
-    const { data: b, error: stockError } = await db.from("stock_balances").select("quantity").eq("item_id", r.item_id).eq("storage_name", r.from_storage).maybeSingle();
+  const { data: rows, error: rowsError } = await db.from("stock_requests").select("*").eq("batch_id", r.batch_id).order("batch_pos");
+  if (rowsError) throw rowsError;
+  const ids = (rows ?? []).map((x: any) => x.item_id).filter(Boolean);
+  const stock = new Map<string, number>();
+  if (ids.length) {
+    const { data: bs, error: stockError } = await db.from("stock_balances").select("item_id,quantity").in("item_id", ids).eq("storage_name", r.from_storage);
     if (stockError) throw stockError;
-    ledgerStock = Number(b?.quantity ?? 0);
+    for (const b of bs ?? []) stock.set(b.item_id, Number(b.quantity));
   }
   // The PC works in the unit that was entered (2 boxes, not 24 pieces). The ledger is in counting units,
   // so the app's stock is converted with the same factor as the request: ledger = entered x factor.
-  const ledgerQty = Number(r.quantity);
-  const enteredQty = r.entered_quantity === null ? ledgerQty : Number(r.entered_quantity);
-  const appQuantity = ledgerStock * (enteredQty / ledgerQty);
-  return { id: r.id, itemId: r.item_id, itemName: r.item_name, unitLabel: r.entered_unit_label ?? r.unit_label, quantity: enteredQty,
-    from: r.from_storage, to: r.to_storage, yesterday: r.record_yesterday, appQuantity };
+  const lines = (rows ?? []).map((x: any) => {
+    const ledgerQty = Number(x.quantity);
+    const enteredQty = x.entered_quantity === null ? ledgerQty : Number(x.entered_quantity);
+    const ledgerStock = x.item_id ? (stock.get(x.item_id) ?? 0) : 0;
+    return { itemId: x.item_id, itemName: x.item_name, unitLabel: x.entered_unit_label ?? x.unit_label, quantity: enteredQty,
+      appQuantity: ledgerStock * (enteredQty / ledgerQty) };
+  });
+  return { id: r.id, batchId: r.batch_id, from: r.from_storage, to: r.to_storage, yesterday: r.record_yesterday, lines, ...lines[0] };
 }
 function cleanImage(v: unknown): string | null {
   if (v === undefined || v === null || v === "") return null;
@@ -320,7 +328,7 @@ Deno.serve(async (req: Request) => {
         let work = false;
         for (;;) {
           await touchControl(launcher ? "launcher_seen_at" : "worker_seen_at");
-          const { data, error } = launcher ? await db.rpc("stock_launcher_has_work") : await db.rpc("stock_worker_has_work", { p_live: q.get("live") === "1" });
+          const { data, error } = launcher ? await db.rpc("stock_launcher_has_work") : await db.rpc("stock_worker_has_work", { p_live: q.get("live") === "1", p_multi: q.get("multi") === "1" });
           if (error) throw error;
           if (data === true) { work = true; break; }
           if (Date.now() >= until || req.signal.aborted) break;
@@ -467,8 +475,11 @@ Deno.serve(async (req: Request) => {
       if (req.method === "GET" && path[1] === "preview") {
         await touchControl("worker_seen_at");
         const stale = new Date(Date.now() - 10 * 60_000).toISOString();
-        const { data, error } = await db.from("stock_requests").select("id").eq("status", "waiting").is("final_approved_at", null)
-          .or(`previewed_at.is.null,previewed_at.lt.${stale}`).order("approved_at").limit(1).maybeSingle();
+        // Only the lead row of a transfer is handed out. A PC that cannot run multi-item transfers (no ?multi=1) never gets one.
+        let pending = db.from("stock_requests").select("id").eq("status", "waiting").eq("batch_pos", 0).is("final_approved_at", null)
+          .or(`previewed_at.is.null,previewed_at.lt.${stale}`);
+        if (new URL(req.url).searchParams.get("multi") !== "1") pending = pending.eq("batch_size", 1);
+        const { data, error } = await pending.order("approved_at").order("id").limit(1).maybeSingle();
         if (error) throw error;
         return json({ request: data ? await workerRequest(data.id) : null });
       }
@@ -480,7 +491,7 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true });
       }
       if (req.method === "POST" && path[1] === "claim") {
-        const { data, error } = await db.rpc("stock_claim", { p_worker: who });
+        const { data, error } = await db.rpc("stock_claim", { p_worker: who, p_multi: new URL(req.url).searchParams.get("multi") === "1" });
         if (error) throw error;
         return json({ request: data ? await workerRequest(data) : null });
       }
@@ -754,14 +765,20 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
     if (req.method === "POST" && path[0] === "requests") {
+      // One transfer holds 1 to 30 items between the same two storages. The older single-item shape still works.
       const b = await readBody(req);
-      if (!uuid(b.clientKey) || !str(b.itemId, 80) || !decimal(b.quantity) || Number(b.quantity) <= 0) return fail("Invalid transfer request");
-      const { data, error } = await db.rpc("stock_submit", { p_key: b.clientKey, p_from: str(b.from, 80), p_to: str(b.to, 80),
-        p_yesterday: b.yesterday === true, p_actor: actor, p_item: str(b.itemId, 80), p_qty: Number(b.quantity),
-        p_expected_name: str(b.expectedName, 240), p_expected_unit: str(b.expectedUnit, 80),
-        p_unit: b.unitId ? str(b.unitId, 80) : null });
+      const raw = Array.isArray(b.lines) ? b.lines : [b];
+      if (raw.length < 1 || raw.length > 30) return fail("A transfer can hold 1 to 30 items");
+      const lines: any[] = [];
+      for (const l of raw) {
+        if (!l || typeof l !== "object" || !uuid(l.clientKey) || !str(l.itemId, 80) || !decimal(l.quantity) || Number(l.quantity) <= 0) return fail("Invalid transfer request");
+        lines.push({ key: l.clientKey, item: str(l.itemId, 80), qty: Number(l.quantity), name: str(l.expectedName, 240),
+          unit: str(l.expectedUnit, 80), unitId: l.unitId ? str(l.unitId, 80) : "" });
+      }
+      const { data, error } = await db.rpc("stock_submit_batch", { p_batch: crypto.randomUUID(), p_from: str(b.from, 80), p_to: str(b.to, 80),
+        p_yesterday: b.yesterday === true, p_actor: actor, p_lines: lines });
       if (error) throw error;
-      return json({ id: data }, 201);
+      return json({ id: data[0], ids: data }, 201);
     }
     if (req.method === "POST" && path[0] === "cancel") {
       const b = await readBody(req); if (!uuid(b.id)) return fail("Invalid request");
