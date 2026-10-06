@@ -264,9 +264,10 @@ function applyAccount(a){
   if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
 }
 /* Loads everything this account needs from the server in one request. */
-async function loadData(){
+async function loadData(withStock = true){
   const r = await api('bootstrap');
   if(!r.ok || !r.data || !r.data.account) return false;
+  lastLoadAt = Date.now();
   const d = r.data;
   applyAccount(d);
   saveSessionAccount();
@@ -282,7 +283,7 @@ async function loadData(){
   state.pars = d.pars || [];
   ricoSetInbox(d.inbox || []);
   // Stock and transfers load in the background; ordering never waits for them.
-  if(state.views.includes('stock')) loadStock().then(ok=>{
+  if(withStock && state.views.includes('stock')) loadStock().then(ok=>{
     if(!ok) return;
     const mine = stockState.tabs && validTabs(stockState.tabs);
     if(mine && mine.join() !== state.tabs.join()){ state.tabs = mine; saveSessionAccount(); render(); }
@@ -393,7 +394,34 @@ function onSessionExpired(){
 }
 
 /* ============ Boot ============ */
-let loadedOk = false;
+let loadedOk = false, lastLoadAt = 0, refreshBusy = false, refreshWaiting = false;
+/* Orders, items and suppliers saved on the other phone show up here too. A phone keeps the app open in
+   the background for days, so the data is reloaded when the app comes back on screen and every minute
+   while it is open. A popup, a picker or typing is never interrupted: the screen is redrawn after it. */
+const REFRESH_MS = 60000;
+const refreshBlocked = () => !!document.querySelector('#modalRoot .modal-overlay, .sel-sheet, .pad-sheet, .ctx-layer') || document.getElementById('langLayer')
+  || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+async function refreshData(force){
+  if(refreshBusy || !state.account || !loadedOk || !isVisible() || !navigator.onLine) return;
+  if(Date.now() - lastLoadAt < (force ? 15000 : REFRESH_MS)) return;
+  refreshBusy = true;
+  try{
+    const shown = () => JSON.stringify([state.history, state.items, state.suppliers, state.units, state.historyHasMore]);
+    const before = shown();
+    if(await loadData(false) && shown() !== before) refreshWaiting = true;
+  }finally{ refreshBusy = false; }
+  repaintAfterRefresh();
+}
+let repaintTimer = 0;
+function repaintAfterRefresh(){
+  clearTimeout(repaintTimer);
+  if(!refreshWaiting || !state.account) return;
+  if(refreshBlocked()){ repaintTimer = setTimeout(repaintAfterRefresh, 3000); return; }
+  refreshWaiting = false;
+  render();
+}
+setInterval(()=>refreshData(false), 15000);
+document.addEventListener('visibilitychange', ()=>refreshData(true));
 /* Offline at start-up: show what we can, say so, and keep trying quietly. */
 function retryLoad(){
   toast(t('loadFailed'), 'warn');
