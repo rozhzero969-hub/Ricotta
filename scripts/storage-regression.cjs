@@ -23,6 +23,7 @@ function browser(saved = new Map()){
   const context = vm.createContext({
     SUPABASE_URL:'https://mock.example',
     localStorage:{
+      get length(){return saved.size;}, key:i=>[...saved.keys()][i],
       getItem:key=>saved.get(key) ?? null,
       setItem:(key, value)=>saved.set(key, String(value)),
       removeItem:key=>saved.delete(key),
@@ -103,7 +104,7 @@ test('transient failures retain the current and all later writes without extra r
   }
 });
 
-test('permanent validation failures drop only the invalid job and continue', async()=>{
+test('permanent validation failures preserve the invalid job for export and continue', async()=>{
   const {context:c, session} = browser(); session();
   c.lset('outbox', [job('invalid'), job('valid')]);
   const sent = [];
@@ -113,7 +114,7 @@ test('permanent validation failures drop only the invalid job and continue', asy
   };
   await c.flushOutbox();
   assert.deepEqual(sent, ['invalid', 'valid']);
-  assert.deepEqual(plain(c.outbox()), []);
+  assert.deepEqual(plain(c.outbox()).map(j=>[j.body.id,j.lastError]), [['invalid','400']]);
 });
 
 test('an order has one retry job even after repeated failures', async()=>{
@@ -393,4 +394,13 @@ test('changing the active UI account discards a response even when the stored to
   c.state.account = 'yunis'; pending.resolve(response());
   assert.equal((await request).stale, true);
   assert.deepEqual(health, []);
+});
+
+test('two tabs independently queue jobs without overwriting each other',async()=>{
+ const a=browser();a.session('rozha');const b=browser(a.saved);
+ a.context.queueOutboxJob('orders','POST',{id:'a',by:'rozha'});
+ b.context.queueOutboxJob('orders','POST',{id:'b',by:'rozha'});
+ assert.deepEqual(plain(a.context.outbox()).map(j=>j.body.id),['a','b']);
+ a.context.removeOutboxJob(a.context.outbox()[0].id);
+ assert.deepEqual(plain(b.context.outbox()).map(j=>j.body.id),['b']);
 });

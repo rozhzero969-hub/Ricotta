@@ -53,7 +53,7 @@ const fixtureFor=account=>({
   suppliers, items, units:[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'}],
   history:[{id:'h1',date:'2026-09-23T08:00:00Z',by:'yunis',entries:[{supplierId:'s1',items:[{itemId:'i1',name:items[1].name,qty:2,unit:'box'}]}]}],
   devices:[], activity:recordActivity,
-  reminder:{enabled:false,time:'09:00'}, pars:[],
+  reminder:{enabled:false,time:'09:00'},
   inbox:[{id:1,kind:'cheer',mood:'excited',en:'Good morning, Rozha! 3 suppliers are due today.',ku:'بەیانیت باش ڕۆژا!',ar:'صباح الخير يا روژا!',at:'2026-09-27T06:00:00Z',read:false}],
 });
 const session=account=>({token:'fixture-'+account,expiresAt:'2099-01-01T00:00:00Z',account,name:account==='rozha'?'Rozha':'Yunis',tabs:['order','assistant','history']});
@@ -75,12 +75,6 @@ const server=http.createServer((req,res)=>{
     if(homeScreen) await ctx.addInitScript(()=>Object.defineProperty(Navigator.prototype,'standalone',{get:()=>true}));
     const calls=[];
     let signedIn=account;
-    // Stock and transfers have their own server (covered by scripts/stock-ui-smoke.cjs); here it is simply unavailable, so ordering must keep working without it.
-    await ctx.route('**/functions/v1/stock-api/**',route=>{
-      const req=route.request(), endpoint=new URL(req.url()).pathname.split('/stock-api/')[1];
-      calls.push({endpoint:'stock/'+endpoint,method:req.method(),body:req.postDataJSON?.()||null});
-      return route.fulfill({status:503,contentType:'application/json',body:'{"error":"unavailable in this test"}',headers:{'access-control-allow-origin':'*'}});
-    });
     await ctx.route('**/functions/v1/api/**',async route=>{
       const req=route.request();
       const endpoint=new URL(req.url()).pathname.split('/api/')[1];
@@ -339,8 +333,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('.rico-msg.bot').count(),0,'chat resets when the app reloads');
     await openView(page,'itemsAdmin');await snapshot(page,'desktop-catalog.png');
     await page.locator('#itemAddBtn').click();
-    assert.equal(await page.locator('.stock-box .check-row').evaluate(el=>getComputedStyle(el).display),'flex','stock switch and label stay aligned inside a form field');
-    assert.ok(await page.locator('#mfTrackStock').evaluate(el=>el.getBoundingClientRect().height)<=34,'stock switch retains its 32px height');
     await snapshot(page,'desktop-dialog.png');await page.locator('#modalFormCancel').click();
     await openView(page,'units');
     await page.locator('#unitAddBtn').click();
@@ -367,7 +359,7 @@ const server=http.createServer((req,res)=>{
       console.error('Tab editor save failed:',await page.evaluate(()=>({tabs:state.tabs,account:state.account,sessionAccount:apiSession()?.account,
         status:document.querySelector('#modalFormStatus')?.textContent,busy:document.querySelector('#modalFormOk')?.getAttribute('aria-busy'),
         selected:[...document.querySelectorAll('.tab-pick-row.on')].map(el=>el.dataset.tab),dialogs:[...document.querySelectorAll('.modal-overlay')].map(el=>el.textContent.trim())
-      })),calls.filter(call=>call.endpoint==='me/tabs'||call.endpoint==='stock/tabs'));
+      })),calls.filter(call=>call.endpoint==='me/tabs'));
       throw error;
     }
     assert.deepEqual(calls.filter(c=>c.endpoint==='me/tabs').pop().body.tabs,['order','history','suppliers'],'tabs are saved for the account');
@@ -465,8 +457,7 @@ const server=http.createServer((req,res)=>{
 
     /* ---------- Yunis ---------- */
     const y=await context({account:'yunis'});
-    // The app adds Transfer and Stock for both accounts after the server's own list.
-    assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS,'transfers','stock','receipts','settings'],'Yunis gets the right screens');
+    assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS,'settings'],'Yunis gets the right screens');
     await y.page.setViewportSize({width:390,height:844});
     assert.equal(await y.page.locator('.bottomnav [data-view="devices"]').count(),0,'no Devices for Yunis');
     await openView(y.page,'history');

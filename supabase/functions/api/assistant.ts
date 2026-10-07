@@ -1,3 +1,4 @@
+import { monthStart } from "../_shared/month.ts";
 // Rico -- the Ricotta Orders AI assistant (server side).
 //
 // POST /api/assistant/chat streams one reply as NDJSON lines:
@@ -29,7 +30,7 @@ const REPLY_TIMEOUT_MS = 45_000;
 const DB_TIMEOUT_MS = 12_000;      // a single stuck database call can no longer hang the whole reply
 const REPLIES_PER_HOUR = 60;       // per device (or per session, if the device has no id -- never skipped)
 const REPLIES_PER_HOUR_TOTAL = 400; // whole restaurant, all devices combined
-const HISTORY_DAYS = 180;          // how far back Rico looks at orders
+
 const TZ = "Asia/Baghdad";         // Erbil
 const MOODS = ["happy", "excited", "grateful", "calm", "thinking", "worried", "sad", "angry"];
 const NAMES: Record<string, string> = { rozha: "Rozha", yunis: "Yunis" };
@@ -76,11 +77,11 @@ type World = Awaited<ReturnType<typeof loadWorld>>;
 
 async function loadWorld(db: any, s: Session) {
   const app = (t: string) => db.from(`app_${t}`);
-  const since = new Date(Date.now() - HISTORY_DAYS * 86400_000).toISOString();
+  const since = monthStart();
   // Rozha also sees which phones are signed in (the Devices tab); everything
   // else is the same for both accounts.
   const full = s.account === "rozha";
-  const [sup, items, units, orders, reminder, devices, activity, pars] = await withTimeout(Promise.all([
+  const [sup, items, units, orders, reminder, devices, activity] = await withTimeout(Promise.all([
     app("suppliers").select("id,name,phone,reminder,created_at"),
     app("items").select("id,name,unit_id,supplier_id,created_at,sort_order"),
     app("units").select("id,en,ku,ar"),
@@ -88,21 +89,12 @@ async function loadWorld(db: any, s: Session) {
     app("reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle(),
     full ? app("devices").select("account,label,logged_in,last_seen").order("last_seen", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
     app("audit_events").select("occurred_at,actor,action,entity_type,entity_name,payload")
-      .in("action", ["add", "edit", "delete"]).in("entity_type", ["supplier", "item", "unit"])
+      .in("action", ["add", "edit", "delete"]).in("entity_type", ["supplier", "item", "unit"]).gte("occurred_at", since)
       .order("occurred_at", { ascending: false }).limit(40),
-    app("item_pars").select("item_id,par_qty,busy_boost_pct,est_qty,est_updated_at"),
   ]), DB_TIMEOUT_MS, "load_world");
-  for (const result of [sup, items, units, orders, reminder, devices, activity, pars]) {
+  for (const result of [sup, items, units, orders, reminder, devices, activity]) {
     if (result.error) throw new Error("kitchen_data_unavailable");
   }
-  // The real counted stock (Stock screen): settings, balances per zone, zones and item groups.
-  // A failure here must not break Rico for ordering, so each read falls back to empty.
-  const [stSet, stBal, stSto, stGrp] = await withTimeout((async () => await Promise.all([
-    db.from("stock_item_settings").select("item_id,counting_unit,per_buying,low_stock,workplace_name"),
-    db.from("stock_balances").select("item_id,storage_name,quantity").neq("quantity", 0),
-    db.from("stock_storages").select("name").eq("archived", false).order("sort_order"),
-    db.from("stock_groups").select("id,name,item_ids").order("name"),
-  ]))(), DB_TIMEOUT_MS, "load_stock").catch(() => [{ data: [] }, { data: [] }, { data: [] }, { data: [] }] as any[]);
   const orderRows = (orders.data ?? []).reverse();
   const lines: any[] = [];
   for (let i = 0; i < orderRows.length; i += 60) {
@@ -139,13 +131,6 @@ async function loadWorld(db: any, s: Session) {
     dailyReminder: reminder.data ? { enabled: !!reminder.data.enabled, time: String(reminder.data.remind_time).slice(0, 5) } : null,
     devices: (devices.data ?? []) as any[],
     activity: (activity.data ?? []) as any[],
-    pars: (pars.data ?? []) as any[],
-    stock: {
-      settings: new Map<string, any>((stSet.data ?? []).map((x: any) => [x.item_id, x])),
-      balances: (stBal.data ?? []) as any[],
-      storages: (stSto.data ?? []).map((x: any) => x.name) as string[],
-      groups: (stGrp.data ?? []).map((g: any) => ({ id: g.id, name: g.name, itemIds: g.item_ids ?? [] })) as { id: string; name: string; itemIds: string[] }[],
-    },
     cart: {} as Record<string, number>,   // this device's draft, filled in by handleChat
   };
 }
@@ -215,7 +200,7 @@ function toolListSuppliers(w: World) {
         supplier_id: s.id, name: s.name, has_whatsapp_number: !!s.phone,
         items: w.items.filter((i) => i.supplier_id === s.id).length,
         reminder: r ? { time: r.time, days: (Array.isArray(r.days) && r.days.length ? r.days : [0, 1, 2, 3, 4, 5, 6]).map((d: number) => WEEKDAYS[d]) } : null,
-        orders_last_180_days: orders.length,
+        orders_this_month: orders.length,
         last_order: orders.length ? `${orders[orders.length - 1].date} ${orders[orders.length - 1].time}` : null,
         usual_days: wd.map((n, d) => ({ day: WEEKDAYS[d], orders: n })).filter((x) => x.orders).sort((a, b) => b.orders - a.orders).map((x) => `${x.day} (${x.orders})`),
         average_days_between_orders: gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length * 10) / 10 : null,
@@ -472,65 +457,6 @@ export async function orderSuggestion(db: any, s: Session) {
   };
 }
 
-/* ---------------- par-level stock estimates ----------------
-   Ricotta has no receiving/consumption system of its own (a separate app
-   handles that for the kitchen), so "how much is left" is never a fact here
-   -- only an estimate, built from two things this app DOES know reliably:
-   how much was ordered (est_qty goes up when an order is sent, in saveOrder)
-   and how often it's usually ordered (est_qty decays once a day, by a rate
-   learned from this item's own order history -- see send-push's dailyTick).
-   The person can always correct the estimate with one sentence to Rico. */
-function busiestWeekdaysFor(w: World, supplierId: string | null): Set<number> {
-  const counts = new Array(7).fill(0);
-  for (const o of w.history) {
-    const lines = o.lines.filter((l) => l.supplierId === supplierId);
-    if (lines.length) counts[o.weekday] += lines.length;
-  }
-  const ranked = counts.map((n, d) => ({ d, n })).filter((x) => x.n > 0).sort((a, b) => b.n - a.n);
-  return new Set(ranked.slice(0, 2).map((x) => x.d));
-}
-function stockRows(w: World) {
-  const liveItems = new Map(w.items.map((i) => [i.id, i]));
-  return (w.pars as any[]).map((p) => {
-    const it = liveItems.get(p.item_id);
-    if (!it) return null;
-    const busyToday = busiestWeekdaysFor(w, it.supplier_id ?? null).has(w.now.weekday);
-    const boost = Number(p.busy_boost_pct) || 0;
-    const effectivePar = Math.round(Number(p.par_qty) * (busyToday ? 1 + boost / 100 : 1) * 100) / 100;
-    const estQty = Number(p.est_qty);
-    const low = estQty <= effectivePar;
-    return {
-      item_id: it.id, name: it.name, unit: unitName(w, it.unit_id), supplier: supplierName(w, it.supplier_id),
-      supplier_id: it.supplier_id, est_qty: Math.round(estQty * 100) / 100, par_qty: Number(p.par_qty),
-      effective_par: effectivePar, busy_today: busyToday, low,
-      suggested_top_up: low ? roundQty(effectivePar - estQty) : 0,
-      est_updated_at: p.est_updated_at,
-    };
-  }).filter(Boolean) as any[];
-}
-function toolStockStatus(w: World) {
-  const rows = stockRows(w);
-  return {
-    tracked: rows.length,
-    low: rows.filter((r) => r.low),
-    ok: rows.filter((r) => !r.low).length,
-    note: rows.length
-      ? "est_qty is an estimate (ordered-in minus a learned daily usage rate), not an exact count. If it looks wrong, ask the person for the real count and use set_stock_count."
-      : "No items have stock tracking turned on yet (set it up on the item's edit screen).",
-  };
-}
-function proposeStockCount(w: World, a: any, emit: Emit) {
-  const it = w.items.find((i) => i.id === text(a.item_id, 120)) ?? w.items.find((i) => norm(i.name) === norm(a.item_name));
-  if (!it) return { error: "Unknown item. Use find_items first to get its item_id." };
-  const qty = Number(a.qty);
-  if (!(qty >= 0) || qty > 99999) return { error: "Give a real, non-negative quantity." };
-  const existing = w.pars.find((p) => p.item_id === it.id);
-  if (!existing) return { error: `Stock tracking isn't turned on for "${it.name}" yet. It can be turned on with a par level on the item's edit screen (Items).` };
-  emit({ type: "proposal", proposal: { id: pid(), kind: "stock_count", itemId: it.id, name: it.name,
-    qty, parQty: Number(existing.par_qty), busyBoostPct: Number(existing.busy_boost_pct), beforeQty: Number(existing.est_qty) } });
-  return { shown: true, item: it.name, est_qty: qty, what_happens: "The person confirms the stock count on the card before it is saved." };
-}
-
 function toolRecentChanges(w: World, a: any) {
   return {
     changes: w.activity.slice(0, Math.min(Number(a.limit) || 15, 40)).map((e: any) => ({
@@ -539,52 +465,6 @@ function toolRecentChanges(w: World, a: any) {
       fields: (e.payload?.fields ?? []).slice(0, 6),
     })),
   };
-}
-
-/* ---------------- real stock (Stock screen) ---------------- */
-const qty6 = (n: number) => Math.round(n * 1e6) / 1e6;
-function findGroup(w: World, q: unknown) {
-  const v = text(q, 60);
-  return w.stock.groups.find((g) => g.id === v) ?? w.stock.groups.find((g) => norm(g.name) === norm(v)) ?? null;
-}
-function toolStockLevels(w: World, a: any) {
-  const q = norm(a.query);
-  const zone = a.storage ? w.stock.storages.find((z) => norm(z) === norm(a.storage)) : null;
-  if (a.storage && !zone) return { error: `No zone matches "${a.storage}".`, zones: w.stock.storages };
-  const grp = a.group ? findGroup(w, a.group) : null;
-  if (a.group && !grp) return { error: `No group matches "${a.group}".`, groups: w.stock.groups.map((g) => g.name) };
-  const inGroup = grp ? new Set(grp.itemIds) : null;
-  const byItem = new Map<string, Record<string, number>>();
-  for (const b of w.stock.balances) (byItem.get(b.item_id) ?? byItem.set(b.item_id, {}).get(b.item_id)!)[b.storage_name] = Number(b.quantity);
-  const groupsOf = (id: string) => w.stock.groups.filter((g) => g.itemIds.includes(id)).map((g) => g.name);
-  let rows = w.items.filter((i) => (!q || norm(i.name).includes(q) || norm(w.stock.settings.get(i.id)?.workplace_name).includes(q)) && (!inGroup || inGroup.has(i.id))).map((i) => {
-    const st = w.stock.settings.get(i.id);
-    const per = byItem.get(i.id) ?? {};
-    const total = qty6(Object.values(per).reduce((n, v) => n + v, 0));
-    const here = zone ? qty6(per[zone] ?? 0) : total;
-    const low = !!st && st.low_stock !== null && total <= Number(st.low_stock);
-    return { item_id: i.id, name: i.name, supplier: supplierName(w, i.supplier_id), set_up: !!st,
-      unit: st ? unitName(w, st.counting_unit) : null, qty: st ? here : null, by_zone: st && !zone ? per : undefined,
-      low_stock_level: st && st.low_stock !== null ? Number(st.low_stock) : null, low, workplace_name: st?.workplace_name || undefined, groups: groupsOf(i.id) };
-  });
-  if (a.only === "in_stock") rows = rows.filter((r) => (r.qty ?? 0) > 0);
-  else if (a.only === "low") rows = rows.filter((r) => r.low);
-  else if (a.only === "not_set_up") rows = rows.filter((r) => !r.set_up);
-  const limit = Math.min(Number(a.limit) || 60, 400);
-  return {
-    zone: zone ?? "all zones", group: grp?.name, total: rows.length, zones: w.stock.storages,
-    note: "Real counted stock in counting units (not the par estimate). Items not set up have no stock yet.",
-    items: rows.slice(0, limit),
-  };
-}
-/* Every item, as compact as possible, so Rico can sort the whole catalog into groups (veggies, desserts...). */
-function toolCatalogNames(w: World) {
-  return { total: w.items.length, items: w.items.slice(0, 1500).map((i) => [i.id, i.name, supplierName(w, i.supplier_id)]),
-    format: "[item_id, name, supplier]", groups: w.stock.groups.map((g) => ({ group_id: g.id, name: g.name, items: g.itemIds.length })) };
-}
-function toolListGroups(w: World) {
-  const nameOf = new Map(w.items.map((i) => [i.id, i.name]));
-  return { groups: w.stock.groups.map((g) => ({ group_id: g.id, name: g.name, items: g.itemIds.filter((id) => nameOf.has(id)).map((id) => ({ item_id: id, name: nameOf.get(id) })) })) };
 }
 
 /* ---------------- proposal tools (the app asks the person to confirm) ---------------- */
@@ -642,68 +522,6 @@ function proposeEditItem(w: World, a: any, emit: Emit) {
   return { shown: true, what_happens: "The person confirms the change on a card." };
 }
 
-function proposeStockGroup(w: World, a: any, emit: Emit) {
-  const action = ["create", "add", "remove", "rename", "delete", "replace"].includes(a.action) ? a.action : "create";
-  const live = new Map(w.items.map((i) => [i.id, i]));
-  const asked = Array.isArray(a.item_ids) ? a.item_ids.slice(0, 1000).map((x: unknown) => text(x, 120)) : [];
-  const unknown = asked.filter((id: string) => !live.has(id));
-  const ids = [...new Set(asked.filter((id: string) => live.has(id)))] as string[];
-  const g = action === "create" ? null : findGroup(w, a.group);
-  if (action !== "create" && !g) return { error: `No group matches "${a.group}". Use list_stock_groups.`, groups: w.stock.groups.map((x) => x.name) };
-  const name = action === "create" ? text(a.name, 40) : action === "rename" ? text(a.name, 40) : g!.name;
-  if (!name) return { error: "Give the group a short name (up to 40 letters). Ask the person if they didn't say one." };
-  if ((action === "create" || action === "rename") && w.stock.groups.some((x) => norm(x.name) === norm(name) && x.id !== g?.id))
-    return { error: `A group called "${name}" already exists. Use action "add" to put items in it.` };
-  if (action === "create" && w.stock.groups.length >= 40) return { error: "There are already 40 groups; delete one first." };
-  let after: string[];
-  if (action === "create" || action === "replace") after = ids;
-  else if (action === "add") after = [...new Set([...g!.itemIds, ...ids])];
-  else if (action === "remove") after = g!.itemIds.filter((id) => !ids.includes(id));
-  else after = g!.itemIds;
-  if ((action === "create" || action === "add" || action === "remove" || action === "replace") && !ids.length)
-    return { error: "No valid item_ids. Use catalog_names or find_items to get them.", invalid: unknown.slice(0, 20) };
-  const names = (list: string[]) => list.filter((id) => live.has(id)).map((id) => ({ itemId: id, name: live.get(id)!.name }));
-  const before = g ? new Set(g.itemIds) : new Set<string>();
-  emit({ type: "proposal", proposal: {
-    id: pid(), kind: "stock_group", action, groupId: g?.id ?? null, name, oldName: g && action === "rename" ? g.name : null,
-    itemIds: after, added: names(after.filter((id) => !before.has(id))), removed: names([...before].filter((id) => !after.includes(id))), total: after.length,
-  } });
-  return { shown: true, items_in_group_after: after.length, invalid: unknown.length ? unknown.slice(0, 20) : undefined,
-    what_happens: action === "delete" ? "The person confirms on a card. Only the group is removed; the items and their stock stay." : "The person confirms on a card; the group then shows as a filter on the Stock screen." };
-}
-
-function proposeStockSettings(w: World, a: any, emit: Emit) {
-  const it = w.items.find((i) => i.id === text(a.item_id, 120));
-  if (!it) return { error: "Unknown item_id. Use find_items or stock_levels first." };
-  const st = w.stock.settings.get(it.id);
-  if (!st) return { error: `"${it.name}" is not set up for stock yet (no counting format). Offer open_stock so they can set it up on the Stock screen.` };
-  const change: any = {};
-  if (a.turn_off_warning === true) change.lowStock = null;
-  else if (a.low_stock !== undefined && a.low_stock !== null && a.low_stock !== "") {
-    const n = Number(a.low_stock);
-    if (!(n >= 0 && n <= 1e8)) return { error: "The low stock level must be 0 or more (use turn_off_warning to remove it)." };
-    change.lowStock = qty6(n);
-  }
-  if (a.workplace_name !== undefined) {
-    const wn = text(a.workplace_name, 240);
-    change.workplaceName = wn && wn !== it.name ? wn : null;
-  }
-  if (!Object.keys(change).length) return { error: "Nothing to change. You can set low_stock (or turn_off_warning) and/or workplace_name." };
-  emit({ type: "proposal", proposal: {
-    id: pid(), kind: "stock_settings", itemId: it.id, name: it.name, unit: unitName(w, st.counting_unit),
-    before: { lowStock: st.low_stock === null ? null : Number(st.low_stock), workplaceName: st.workplace_name ?? null }, ...change,
-  } });
-  return { shown: true, what_happens: "The person confirms on a card. This only changes the app; the workplace system is not touched." };
-}
-
-function proposeOpenStock(w: World, a: any, emit: Emit) {
-  const zone = a.storage ? w.stock.storages.find((z) => norm(z) === norm(a.storage)) ?? null : null;
-  const grp = a.group ? findGroup(w, a.group) : null;
-  const only = ["in_stock", "low", "not_set_up"].includes(a.only) ? a.only : null;
-  emit({ type: "proposal", proposal: { id: pid(), kind: "open_stock", search: text(a.search, 60), storage: zone, groupId: grp?.id ?? null, group: grp?.name ?? null, only, label: text(a.label, 60) } });
-  return { shown: true, applied_filters: { search: text(a.search, 60) || null, zone, group: grp?.name ?? null, only } };
-}
-
 function proposeNewSupplier(w: World, a: any, emit: Emit) {
   const name = text(a.name, 160);
   if (!name) return { error: "Ask for the supplier's name." };
@@ -721,7 +539,7 @@ function proposeNotification(a: any, emit: Emit) {
 
 function proposeOpen(a: any, emit: Emit) {
   // "send" opens Send to suppliers with the current draft (the person still taps each WhatsApp send).
-  const screens = ["order", "send", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings", "transfers", "stock", "receipts"];
+  const screens = ["order", "send", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
   const screen = screens.includes(a.screen) ? a.screen : "order";
   emit({ type: "proposal", proposal: { id: pid(), kind: "open", screen, supplierId: text(a.supplier_id, 120) || null, label: text(a.label, 60) } });
   return { shown: true };
@@ -745,22 +563,6 @@ const TOOLS = [
     input_schema: { type: "object", properties: { days: { type: "integer", description: "3-31, default 7" } } } },
   { name: "recent_changes", description: "The change log: who added, edited or deleted suppliers, items and units, newest first.",
     input_schema: { type: "object", properties: { limit: { type: "integer" } } } },
-  { name: "stock_status", description: "Par-level stock ESTIMATES for items that have tracking turned on: current estimated on-hand, par level (boosted automatically on that item's busiest ordering days), and which are at or below par. This is an estimate learned from order history, not an exact count -- say so if asked.",
-    input_schema: { type: "object", properties: {} } },
-  { name: "set_stock_count", description: "Show a confirmation card to correct a tracked item's stock estimate to a real count the person just told you (e.g. 'we have 3 boxes of tomatoes left'). Nothing is saved until they confirm. Use find_items first if you don't already have the item_id.",
-    input_schema: { type: "object", properties: { item_id: { type: "string" }, item_name: { type: "string" }, qty: { type: "number" } }, required: ["qty"] } },
-  { name: "stock_levels", description: "REAL counted stock from the Stock screen (in each item's counting unit), per zone, with low-stock warnings and the item's groups. Filter by part of a name (query), zone (storage), group, or only:'in_stock'|'low'|'not_set_up'. Use this (not stock_status) for 'how much X do we have', 'what is low', 'what is in the freezer'.",
-    input_schema: { type: "object", properties: { query: { type: "string" }, storage: { type: "string", description: "Zone name" }, group: { type: "string", description: "Group name or id" }, only: { type: "string", enum: ["in_stock", "low", "not_set_up"] }, limit: { type: "integer" } } } },
-  { name: "catalog_names", description: "Every item as [item_id, name, supplier], compact, plus the existing groups. Use it to sort the whole catalog by meaning (e.g. all vegetables, all dessert things) before propose_stock_group.",
-    input_schema: { type: "object", properties: {} } },
-  { name: "list_stock_groups", description: "The item groups (Stock screen filters such as Veggies or Desserts) with their items.",
-    input_schema: { type: "object", properties: {} } },
-  { name: "propose_stock_group", description: "Show a card to create, change or delete an item group (a filter on the Stock screen). action: create (name + item_ids), add / remove (group + item_ids), replace (group + the full new item_ids), rename (group + new name), delete (group). Items can be in several groups. Deleting a group never deletes items.",
-    input_schema: { type: "object", properties: { action: { type: "string", enum: ["create", "add", "remove", "replace", "rename", "delete"] }, group: { type: "string", description: "Existing group name or id" }, name: { type: "string", description: "Name for create or rename (max 40 letters)" }, item_ids: { type: "array", items: { type: "string" } } }, required: ["action"] } },
-  { name: "propose_stock_settings", description: "Show a card to change an item's low-stock warning level (in its counting unit) or turn the warning off, and/or its name in the workplace system. Only for items already set up for stock. Changes only the app.",
-    input_schema: { type: "object", properties: { item_id: { type: "string" }, low_stock: { type: "number" }, turn_off_warning: { type: "boolean" }, workplace_name: { type: "string" } }, required: ["item_id"] } },
-  { name: "open_stock", description: "Show a button that opens the Stock screen already filtered: search text, zone (storage), group, and only:'in_stock'|'low'|'not_set_up'. Use it whenever the person asks you to find or show items on the Stock screen.",
-    input_schema: { type: "object", properties: { search: { type: "string" }, storage: { type: "string" }, group: { type: "string" }, only: { type: "string", enum: ["in_stock", "low", "not_set_up"] }, label: { type: "string" } } } },
   { name: "propose_order_draft", description: "Show the person a card to change today's order draft on this device (it does NOT send anything to suppliers). mode 'replace' starts a fresh draft; 'add' adds quantities to the current one; 'set' sets exact quantities for the listed items and keeps everything else (qty 0 removes an item).",
     input_schema: { type: "object", properties: { lines: { type: "array", items: { type: "object", properties: { item_id: { type: "string" }, qty: { type: "number" } }, required: ["item_id", "qty"] } }, mode: { type: "string", enum: ["replace", "add", "set"] }, note: { type: "string" } }, required: ["lines"] } },
   { name: "propose_new_item", description: "Show a card to add a new catalog item. You must know the name, the unit and the supplier (or 'none') -- ask for anything missing first, one short question at a time.",
@@ -771,7 +573,7 @@ const TOOLS = [
     input_schema: { type: "object", properties: { name: { type: "string" }, phone: { type: "string" } }, required: ["name"] } },
   { name: "propose_notification", description: "Show a card to send a push notification to every signed-in phone. Always write the message in English, Kurdish (Sorani) and Arabic; each phone gets its own language.",
     input_schema: { type: "object", properties: { title: { type: "string" }, message_en: { type: "string" }, message_ku: { type: "string" }, message_ar: { type: "string" } }, required: ["message_en", "message_ku", "message_ar"] } },
-  { name: "open_screen", description: "Show a button that opens a screen of the app (order, send, history, suppliers, itemsAdmin, units, record, devices, settings, transfers, stock, receipts). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
+  { name: "open_screen", description: "Show a button that opens a screen of the app (order, send, history, suppliers, itemsAdmin, units, record, devices, settings). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
     input_schema: { type: "object", properties: { screen: { type: "string" }, supplier_id: { type: "string" }, label: { type: "string" } }, required: ["screen"] } },
 ];
 const STATUS_TOOLS = new Set(TOOLS.map((t) => t.name));
@@ -782,7 +584,7 @@ const MANUAL = `You are Rico (Kurdish: ریکۆ, Arabic: ريكو), the assistan
 FEELINGS (always)
 - Begin EVERY reply with exactly one mood tag, before any other text, written exactly like [[mood:happy]] (two square brackets, the word mood, a colon, the name). The app hides the tag and shows the feeling on your face. Never write a feeling word in brackets anywhere else ([happy], [[happy]] and similar show up as ugly text). NAME is one of:
   happy (normal friendly help), excited (good news: orders done, a great week, a smart order), grateful (they thanked you or finished their work),
-  calm (plain information), thinking (working through something complicated), worried (something looks off: a usual item missing, an odd quantity, low stock, a supplier sent twice),
+  calm (plain information), thinking (working through something complicated), worried (something looks off: a usual item missing, an odd quantity, a supplier sent twice),
   sad (you can't do something, something failed, you are apologising), angry (see below).
 - angry is playful-strict, never rude or insulting: use it when a supplier's order is late or forgotten, when the person skips something important, or when they keep sending meaningless or off-topic messages instead of working. Tell them off briefly with a wink ("Hey! Tomatoes don't order themselves..."), then point them straight back to the work.
 - Let the feeling show in your words too, not only in the tag. Praise real work (orders sent on time, a checked draft) warmly and by name.
@@ -817,14 +619,10 @@ WHAT YOU CAN DO (the same for Rozha and Yunis)
 - If someone asks for today's order without naming suppliers, ask whether they want one supplier, several, or all before building a draft. Never silently choose the scope.
 - Add or change catalog data: propose_new_item needs name, unit AND supplier -- if any is missing, ask for it (offer the likely choices from the data, e.g. "kg, box or piece?"). propose_edit_item and propose_new_supplier likewise.
 - Notifications: propose_notification with English, Kurdish and Arabic text, e.g. to remind the team about a late order.
-- The Stock screen (real counted stock): use stock_levels for amounts, what is low, what is in a zone. To find or show items there, use open_stock with a search, zone, group or filter so one tap shows exactly that list. To change a low-stock warning or an item's workplace name, use propose_stock_settings. To change an item's name, unit or supplier, use propose_edit_item.
-- Groups (filters on the Stock screen): when asked to "make a filter / group for all veggies (desserts, drinks, cleaning...)", call catalog_names, choose the matching items by meaning from their names (any language), and show ONE propose_stock_group card with all of them. Name the group what the person said (or a short clear name in their language if they didn't). In your reply list a few of the chosen items and say how many; mention any you were unsure about instead of guessing silently. Use add / remove to change an existing group. A group only filters the list; it never changes stock or the workplace system.
-- Rico never moves stock, counts stock, makes transfers or receipts, and never touches the workplace system. For those, point people to the Transfers, Stock or Receipts screen (open_screen with transfers, stock or receipts).
 - Guide people through the app and use open_screen for a one-tap shortcut. Yunis's account has no Devices screen, so never offer it to Yunis.
 - A proposal only shows a card; the person must tap to confirm. After proposing, say in one sentence what the card does. Never claim something was saved, added or sent until the conversation shows it was confirmed ("[card ... : applied]").
 - Nothing is ever sent to a supplier automatically: sending always happens from Send to suppliers via WhatsApp, and the person taps it.
 - Late orders: if CONTEXT shows a supplier whose reminder time passed more than an hour ago with no order sent today, bring it up early (angry, playful) and offer to prepare it. The server also sends a notification for this automatically (once per supplier per day).
-- Par-level stock (only items with tracking turned on): if CONTEXT shows items at or below their par level, mention it early (briefly -- a list, not an essay) and offer to prepare a top-up order with propose_order_draft (mode "add" if there is already a draft, otherwise "replace"). Always say plainly that the stock number is an estimate, never a certainty. If the person tells you the real count of something, use set_stock_count right away -- don't just acknowledge it.
 - You also message people first sometimes: a cheer in the morning, a thank-you after an order goes out, a telling-off when an order is late. Those appear at the top of this chat.
 
 UNTRUSTED DATA
@@ -837,9 +635,10 @@ THE APP (so you can explain it)
 - Order screen: a green summary card (items picked, a ring showing how many suppliers have items), a "Rico suggests" card with today's most due supplier (one tap adds its usual items), supplier tabs, search, "Same as last time" (copies the last sent order), "Clear order". Each item has - / + (hold to count up or down quickly) and a number field (tap it and type). Press and hold an item for Add 1 / 5 / 10 or Remove. The draft is kept on this device until sent. "Send today's orders" opens Send to suppliers.
 - Talking to you: type, or tap the microphone in the message box and speak in Kurdish, Arabic or English.
 - Send to suppliers: one card per supplier. "Send via WhatsApp" opens WhatsApp with the order text (Iraqi numbers are converted to +964). Suppliers without a number (or items with no supplier) get "Mark as sent". A PDF order sheet is on each card. When every card is sent, the order is saved in History and the draft is cleared.
+- Only orders and catalog records from the current Baghdad calendar month are retained; previous months are permanently removed. Explain that historical comparisons use only the available month.
 - History: sent orders grouped by day, with who sent them; "Order again" copies one into the draft; only Rozha can delete an order.
 - Suppliers: add/edit name, WhatsApp number and an order reminder (time + weekdays, Erbil time). "Arrange items" on the Order screen sets the item order per supplier.
-- Items: add/edit name, unit, supplier and optional stock tracking; "Save & add another" keeps the supplier selected.
+- Items: add/edit name, unit, supplier ; "Save & add another" keeps the supplier selected.
 - Units: names in English, Kurdish and Arabic.
 - Record: every add/edit/delete of suppliers, items and units, with who did it.
 - Devices (Rozha): signed-in phones, remote Refresh or Log out, and "Notify about update" (Rozha writes the message in each language).
@@ -871,22 +670,17 @@ function contextBlock(w: World, s: Session, body: any) {
     .filter(Boolean) : [];
   const phones = w.full ? w.devices.slice(0, 12)
     .map((d) => `${NAMES[d.account] ?? "nobody"} on ${String(d.label ?? "a device").replace("|", ", ")}${d.logged_in ? " (signed in)" : " (signed out)"}`) : [];
-  const low = stockRows(w).filter((r) => r.low);
-  const stockLine = low.length
-    ? `${low.length} tracked item(s) at or below par (estimate): ${low.slice(0, 8).map((r) => `${r.name} (est ${r.est_qty}/${r.effective_par} ${r.unit}${r.busy_today ? ", busy day boost on" : ""})`).join("; ")}.`
-    : w.pars.length ? "none at or below par right now." : null;
-  const stockReady = w.stock.settings.size;
-  const stockCtx = `\n- Stock screen: ${stockReady} of ${w.items.length} items set up for stock; zones: <<DATA>>${w.stock.storages.join(", ") || "none"}<</DATA>>; groups: <<DATA>>${w.stock.groups.map((g) => `${g.name} (${g.itemIds.length})`).join(", ") || "none yet"}<</DATA>>.`;
   return `CONTEXT (live data, ${w.now.date} ${w.now.time} Erbil, ${WEEKDAYS[w.now.weekday]})
 - Talking to: ${person} (${w.full ? "full access" : "Order, Rico, History without deleting, Suppliers, Items, Record, Units"}). App language: ${lang}. Screen they came from: ${text(body.screen, 30) || "order"}.
 - Rico may fill the order draft automatically on this device: ${body.autoOrder ? "YES" : "no (cards need a tap)"}.
 - Catalog: ${w.suppliers.length} suppliers, ${w.items.length} items (${w.items.filter((i) => !i.supplier_id).length} without supplier), ${w.units.length} units.
 - Newest items: <<DATA>>${lastItems.join("; ") || "none"}<</DATA>>.
-- Sent orders in the last ${HISTORY_DAYS} days: ${w.history.length}; last 7 days: ${w.history.filter((o) => Date.parse(o.at) > Date.now() - 7 * 86400_000).length}.
+- History is limited to the current Baghdad calendar month. Older months were deleted; do not infer their totals.
+- Sent orders this calendar month: ${w.history.length}; last 7 days: ${w.history.filter((o) => Date.parse(o.at) > Date.now() - 7 * 86400_000).length}.
 - Latest orders: <<DATA>>${recent.join(" | ") || "none yet"}<</DATA>>.
 - Today's supplier reminders: <<DATA>>${due.join("; ") || "none today"}<</DATA>>.
 - Daily order reminder: ${w.dailyReminder?.enabled ? `on at ${w.dailyReminder.time}` : "off"}; orders sent today: ${w.history.filter((o) => o.date === w.now.date).length}.
-- Current order draft on this device: <<DATA>>${draft.length ? draft.join("; ") : "empty"}<</DATA>>.${phones.length ? `\n- Phones (Rozha's Devices view): <<DATA>>${phones.join("; ")}<</DATA>>.` : ""}${stockLine ? `\n- Par-level stock (estimate): ${stockLine}` : ""}${stockCtx}`;
+- Current order draft on this device: <<DATA>>${draft.length ? draft.join("; ") : "empty"}<</DATA>>.${phones.length ? `\n- Phones (Rozha's Devices view): <<DATA>>${phones.join("; ")}<</DATA>>.` : ""}`;
 }
 
 /* Rico starts every reply with a [[mood:...]] tag. This takes the tags out
@@ -1447,14 +1241,6 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
     case "review_draft": return toolReviewDraft(w, w.cart);
     case "insights": return toolInsights(w, a);
     case "recent_changes": return toolRecentChanges(w, a);
-    case "stock_status": return toolStockStatus(w);
-    case "set_stock_count": return proposeStockCount(w, a, emit);
-    case "stock_levels": return toolStockLevels(w, a);
-    case "catalog_names": return toolCatalogNames(w);
-    case "list_stock_groups": return toolListGroups(w);
-    case "propose_stock_group": return proposeStockGroup(w, a, emit);
-    case "propose_stock_settings": return proposeStockSettings(w, a, emit);
-    case "open_stock": return proposeOpenStock(w, a, emit);
     case "propose_order_draft": return proposeOrder(w, a, emit, auto);
     case "propose_new_item": return proposeNewItem(w, a, emit);
     case "propose_edit_item": return proposeEditItem(w, a, emit);
@@ -1466,4 +1252,4 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
 }
 
 /* For local tests only (not used by the app). */
-export const _internals = { toolStockLevels, toolCatalogNames, proposeStockCount, proposeStockGroup, proposeStockSettings, proposeOpenStock, loadWorld, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, erbilParts };
+export const _internals = { loadWorld, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, erbilParts };

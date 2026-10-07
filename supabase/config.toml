@@ -3,10 +3,6 @@ project_id = "pxufdcyqjtmtklmrjodg"
 [functions.api]
 verify_jwt = false
 
-[functions.stock-api]
-# Same PIN sessions as `api`, plus the office PC's separate worker token; stock and transfers only.
-verify_jwt = false
-
 [functions.send-push]
 verify_jwt = true
 

@@ -186,31 +186,45 @@ async function apiLogin(pin){
    Orders must never be lost to a flaky restaurant Wi-Fi:
    if a write fails it is kept on this device and retried later (on the next
    heartbeat, when the connection comes back, or at the next start-up). */
-function outbox(){ const jobs = lget('outbox'); return Array.isArray(jobs) ? jobs : []; }
+const OUTBOX_PREFIX = 'outboxJob:';
+function outbox(){
+  // Import the old array once; separate keys prevent tabs overwriting each other's jobs.
+  const legacy=lget('outbox');
+  if(Array.isArray(legacy)){
+    let migrated=true;
+    for(const [index,job] of legacy.entries()){
+      job.account=outboxJobAccount(job);
+      job.id=job.body?.id ? 'legacy-'+job.body.id : (job.id||'legacy')+'-'+index;
+      if(!lget(OUTBOX_PREFIX+job.id) && !lset(OUTBOX_PREFIX+job.id,job)) migrated=false;
+    }
+    if(migrated) lset('outbox',null);
+  }
+  const jobs=[];
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const key=localStorage.key(i);
+      if(key?.startsWith(LS_PREFIX+OUTBOX_PREFIX)){
+        const job=lget(key.slice(LS_PREFIX.length));
+        if(job?.id) jobs.push(job);
+      }
+    }
+  }catch(_){}
+  return jobs.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+}
 function outboxJobId(){ return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 function retryableApiReply(r){ return r.status === 0 || r.status === 401 || r.status === 408 || r.status === 425 || r.status === 429 || r.status >= 500; }
 function outboxJobAccount(job){ return job.account || (typeof job.body?.by === 'string' ? job.body.by : null) || null; }
 function queueOutboxJob(path, method, body){
-  const jobs = outbox();
+  outbox();
   const activeAccount = typeof state === 'undefined' ? null : state?.account;
   const account = (typeof body?.by === 'string' ? body.by : null) || activeAccount || apiSession()?.account || null;
-  // Orders have a stable server id: repeat failures of the same order need
-  // one retry job, with the original payload preserved.
-  const prior = path === 'orders' && method === 'POST' && body?.id && jobs.find(job=>job.path === path && job.method === method && job.body?.id === body.id && (!outboxJobAccount(job) || outboxJobAccount(job) === account));
-  if(prior){
-    if(!prior.id) prior.id = outboxJobId();
-    if(!prior.account && account) prior.account = account;
-    const persisted = lset('outbox', jobs) || outbox().some(saved=>saved.id === prior.id);
-    return {...prior, persisted};
-  }
-  const job = {id:outboxJobId(), account, path, method, body};
-  const persisted = lset('outbox', [...jobs, job]) || outbox().some(saved=>saved.id === job.id);
-  return {...job, persisted};
+  const id=path==='orders' && method==='POST' && body?.id ? `order-${account}-${body.id}` : outboxJobId();
+  const prior=lget(OUTBOX_PREFIX+id);
+  const job=prior || {id,account,path,method,body,createdAt:Date.now()};
+  const persisted=!!prior || lset(OUTBOX_PREFIX+id,job);
+  return {...job,persisted};
 }
-function removeOutboxJob(id){
-  const left = outbox().filter(job=>job.id !== id);
-  lset('outbox', left.length ? left : null);
-}
+function removeOutboxJob(id){ lset(OUTBOX_PREFIX+id,null); }
 const outboxRequests = new Map();
 async function sendOutboxJob(job){
   const session = apiSession();
@@ -239,32 +253,21 @@ async function sendOrQueue(path, method, body){
 }
 let outboxBusy = false;
 async function flushOutbox(){
-  const session = apiSession();
+  const session=apiSession();
   if(outboxBusy || !session) return;
-  const pending = outbox();
-  if(!pending.length) return;
-  outboxBusy = true;
-  try{
-    // Upgrade old queued writes before the first await. IDs let us remove
-    // exactly the completed job from the latest queue, including any writes
-    // added while this request was in flight.
-    const seen = new Set();
-    for(const job of pending){
-      if(!job.id || seen.has(job.id)) job.id = outboxJobId();
-      if(!job.account && outboxJobAccount(job)) job.account = outboxJobAccount(job);
-      seen.add(job.id);
-    }
-    lset('outbox', pending);
-    for(const job of pending){
+  outboxBusy=true;
+  const flush=async()=>{
+    for(const job of outbox()){
       if(!apiSessionMatches(session)) break;
-      if(job.account && job.account !== session.account) continue;
-      const r = await sendOutboxJob(job);
-      // Keep transient failures and the untouched jobs for the next retry.
-      // Stopping here also avoids hammering an offline/rate-limited server.
-      if(!r.ok && retryableApiReply(r)) break;
-      removeOutboxJob(job.id);
+      if(outboxJobAccount(job) && outboxJobAccount(job)!==session.account) continue;
+      const r=await sendOutboxJob(job);
+      if(r.ok) removeOutboxJob(job.id);
+      else if(retryableApiReply(r)) break;
+      else lset(OUTBOX_PREFIX+job.id,{...job,lastError:r.data?.error || String(r.status)});
     }
-  }finally{
-    outboxBusy = false;
-  }
+  };
+  try{
+    if(navigator.locks?.request) await navigator.locks.request('ricotta-outbox',flush);
+    else await flush();
+  }finally{ outboxBusy=false; }
 }

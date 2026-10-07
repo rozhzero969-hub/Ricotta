@@ -1,4 +1,4 @@
-// Node 24+: push delivery, reminder eligibility, and decay use local mocks.
+// Node 24+: push delivery, reminder eligibility, use local mocks.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
@@ -26,7 +26,6 @@ function reset() {
       { id: '3', device_id: 'logout', account: 'rozha', revoked_at: null, expires_at: active },
       { id: '4', device_id: 'unsafe', account: 'yunis', revoked_at: null, expires_at: active },
     ],
-    app_item_pars: [{ item_id: 'tomato', last_decay_date: null }],
     app_orders: [{ id: 'order', status: 'sent', sent_at: new Date().toISOString() }],
     app_order_lines: Array.from({ length: 1001 }, (_, i) => ({ id: i, order_id: 'order', item_id: 'tomato', qty: 60 })),
     app_suppliers: [], app_reminder_settings: [], app_assistant_alerts: [], app_rico_inbox: [],
@@ -35,8 +34,6 @@ function reset() {
 }
 const db = {
   rpc(name, args) {
-    if(name === 'stock_recover_submissions'){ recoveryCalls++; return Promise.resolve({data:null,error:null}); }
-    assert.equal(name, 'app_internal_decay_stock'); rpcCalls.push(args); return Promise.resolve({ data: true, error: null });
   },
   from(table) {
     let action = 'read', change, range, conflict;
@@ -76,7 +73,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', CRON_SECRET: 'test-cron-secret' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/send-push/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { loadSubs, stockDecayTick, claimAlert, ricoSays } = new Function('createClient', 'Deno', 'webpush', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', stripTypeScriptTypes(source) + '\nreturn { loadSubs, stockDecayTick, claimAlert, ricoSays };')(
+const { loadSubs, claimAlert, ricoSays } = new Function('createClient', 'Deno', 'webpush', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', stripTypeScriptTypes(source) + '\nreturn { loadSubs, claimAlert, ricoSays };')(
   () => db, deno, { setVapidDetails() {}, sendNotification() { assert.fail('push must stay disabled without VAPID'); } }, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody,
 );
 reset();
@@ -96,12 +93,6 @@ assert.deepEqual(reminder.subs.map(s => s.device_id), ['active']);
 assert.equal(reminder.subs[0].account, 'yunis');
 assert.equal(reminder.skipped, 4, 'expired sessions, pending logouts, unsafe endpoints and unbound legacy subscriptions are excluded');
 assert.equal((await loadSubs(false)).subs.length, 4, 'updates also exclude unsafe endpoints');
-assert.deepEqual(await stockDecayTick(), { updated: 1, of: 1 });
-assert.equal(rpcCalls[0].p_decay, 1001, 'all order lines beyond PostgREST\'s first 1000 rows contribute to decay');
-assert.equal(rowPages.some(page => page.table === 'app_order_lines' && page.range[0] === 1000), true);
-reset(); queryError = 'app_orders';
-await assert.rejects(stockDecayTick());
-assert.equal(rpcCalls.length, 0, 'failed history reads cannot overwrite stock estimates');
 reset();
 const req = (body, secret = true, method = 'POST') => new Request('https://example.supabase.co/functions/v1/send-push', {
   method, headers: secret ? { 'x-cron-secret': environment.CRON_SECRET } : {}, ...(method === 'POST' ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}),
@@ -111,6 +102,5 @@ assert.equal((await handler(req({}, true, 'GET'))).status, 405);
 assert.equal((await handler(req('null'))).status, 400);
 const tick = await handler(req({ type: 'reminder-tick' }));
 assert.equal(tick.status, 200);
-assert.equal((await tick.json()).stockDecay.updated, 1, 'cron still maintains stock when Web Push is unconfigured');
-assert.equal(recoveryCalls,1,'existing cron recovers interrupted submissions even when the PC is offline');
-console.log('Backend push smoke: PASS (valid-session reminders, legacy SSRF defense, complete decay history, atomic decay RPC, no-VAPID maintenance)');
+
+console.log('Backend push smoke: PASS');

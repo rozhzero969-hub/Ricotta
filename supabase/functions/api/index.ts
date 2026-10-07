@@ -1,3 +1,4 @@
+import { monthStart, monthKey } from "../_shared/month.ts";
 // Ricotta Orders API -- the only door between the browser and the database.
 //
 // The browser never talks to Postgres directly: every request carries an
@@ -17,14 +18,12 @@
 //   GET    health
 //   --- session required ---
 //   GET    bootstrap                                            -> everything the app needs to start
-//   GET    history/more?before=ISO                              older orders, one page
 //   POST   logout
 //   PUT    me/tabs                    {tabs:[3 views]}          this account's tab bar
 //   PUT    me/theme                   {theme}                   this account's colour theme (everyone sees it)
 //   PUT    suppliers/:id | items/:id | units/:id                upsert one record (+ its Record entry)
 //   DELETE suppliers/:id | items/:id | units/:id                delete one record (+ its Record entry)
 //   PUT    supplier-order/:supplierId {itemIds}                 item order for one supplier
-//   PUT    items/:id/stock            {track, parQty, ...}      par-level stock tracking
 //   POST   orders                     {id, date, entries}       save a sent order
 //   DELETE orders/:id                 (rozha)                   delete one order from history
 //   GET    activity                                             the Record
@@ -60,10 +59,10 @@ const MAX_FAILED_LOGINS = 8;              // per network address, per window (sp
 const MAX_GLOBAL_FAILED_LOGINS = 40;      // per window, across ALL claimed IPs -- not spoofable via headers
 const RECOVERY_TICKET_MS = 5 * 60_000;    // each secret-code step must be finished within this time
 const SEEN_WRITE_EVERY_MS = 5 * 60_000;   // throttle session last_seen_at writes
-const ACTIVITY_LIMIT = 500;
-const HISTORY_LIMIT = 300;                // newest sent orders the app loads at start
-const HISTORY_DEFAULT_DAYS = 120;         // bootstrap only sends recent history by default (see "history/more")
-const HISTORY_PAGE_DAYS = 120;            // "load more" fetches this many additional days per request
+
+
+
+
 const PAGE = 1000;                        // PostgREST returns at most 1000 rows per request
 const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
@@ -152,79 +151,12 @@ async function authenticate(req: Request): Promise<Session | null> {
   }
   return { id: data.id, account: data.account, deviceId: data.device_id };
 }
-
-/* Security-relevant events that are not part of the Record screen (order
-   deletes). Record entries use writeRecord below. */
-async function audit(s: Session, action: string, type?: string, name?: string, payload: Record<string, unknown> = {}) {
-  await app("audit_events").insert({
-    id: newId("audit"), actor: s.account, device_id: s.deviceId, action,
-    entity_type: type ?? null, entity_name: name ?? null, payload,
-  });
-}
 const accountName = (a: string) => (a === "rozha" ? "Rozha" : a === "yunis" ? "Yunis" : a);
 /* Each name in the script of each language, for Rico's messages. */
 const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
   rozha: { en: "Rozha", ku: "ڕۆژا", ar: "روژا" },
   yunis: { en: "Yunis", ku: "یونس", ar: "يونس" },
 };
-
-/* ---------- The Record, written by the server ----------
-   Every add / edit / delete of a supplier, item or unit is recorded here, in
-   the same request as the change itself, with "who" taken from the session. */
-const DAY_ORDER = [6, 0, 1, 2, 3, 4, 5];   // Saturday first, same as the app
-const str = (v: unknown) => (v === null || v === undefined ? "" : String(v));
-function reminderCode(r: any): string {
-  if (!r || !r.enabled) return "off";
-  const days: number[] = Array.isArray(r.days) && r.days.length ? r.days.map(Number) : [0, 1, 2, 3, 4, 5, 6];
-  return `${r.time}|${DAY_ORDER.filter((d) => days.includes(d)).join(",")}`;
-}
-const RECORD_SELECT: Record<string, string> = { suppliers: "id,name,phone,reminder", items: "id,name,unit_id,supplier_id", units: "id,en,ku,ar" };
-const RECORD_TYPE: Record<string, string> = { suppliers: "supplier", items: "item", units: "unit" };
-async function unitEnOf(id: unknown) {
-  if (!id) return "";
-  const { data } = await app("units").select("en").eq("id", String(id)).maybeSingle();
-  return str(data?.en);
-}
-async function supplierNameOf(id: unknown) {
-  if (!id) return "";
-  const { data } = await app("suppliers").select("name").eq("id", String(id)).maybeSingle();
-  return str(data?.name);
-}
-/* The fields the Record shows for one row, in the same order and format the
-   app uses (unit and supplier by name, reminder as "HH:MM|days" or "off"). */
-async function recordSnapshot(table: string, row: any): Promise<[string, string][]> {
-  if (table === "suppliers") return [["name", str(row.name)], ["phone", str(row.phone)], ["reminder", reminderCode(row.reminder)]];
-  if (table === "items") return [["name", str(row.name)], ["unit", await unitEnOf(row.unit_id)], ["supplier", await supplierNameOf(row.supplier_id)]];
-  return [["name", str(row.en)], ["nameKu", str(row.ku)], ["nameAr", str(row.ar)]];
-}
-async function writeRecord(s: Session, table: string, action: string, name: string, fields: unknown[], extra: Record<string, unknown> = {}) {
-  const { error } = await app("audit_events").insert({
-    id: newId("a"), occurred_at: nowIso(), actor: s.account, device_id: s.deviceId,
-    action, entity_type: RECORD_TYPE[table], entity_name: name,
-    payload: { by: accountName(s.account), fields, ...extra, source: "server" },
-  });
-  if (error) console.error("record write failed", table, action, error.message);
-}
-/* Called after a successful catalog write. `before` is the row as it was
-   (null for a new one); `after` is the row as written (null for a delete). */
-async function recordCatalogChange(s: Session, table: string, before: any, after: any, extra: Record<string, unknown> = {}) {
-  if (!before && !after) return;
-  if (!after) {
-    // Delete: what it was. (Suppliers leave out the reminder.)
-    const snap = (await recordSnapshot(table, before)).filter(([k, v]) => k !== "reminder" && (k === "name" || table === "items" || v));
-    return writeRecord(s, table, "delete", snap[0][1], snap.map(([k, v]) => ({ k, from: v })), extra);
-  }
-  const next = await recordSnapshot(table, after);
-  if (!before) {
-    // Add: name always; items list unit + supplier even when empty; others only what was filled in.
-    const snap = next.filter(([k, v]) => k === "name" || table === "items" || (v && v !== "off"));
-    return writeRecord(s, table, "add", next[0][1], snap.map(([k, v]) => ({ k, to: v })), extra);
-  }
-  // Edit: only the fields that actually changed; nothing changed means nothing to record.
-  const prev = new Map(await recordSnapshot(table, before));
-  const fields = next.filter(([k, v]) => (prev.get(k) ?? "") !== v).map(([k, v]) => ({ k, from: prev.get(k) ?? "", to: v }));
-  if (fields.length) await writeRecord(s, table, "edit", next[0][1], fields, extra);
-}
 
 /* ---------- Shapes the browser uses ---------- */
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder });
@@ -274,12 +206,11 @@ async function listDevices(s: Session) {
   return (data ?? []).map(toDevice);
 }
 async function listActivity() {
-  const { data, error } = await app("audit_events")
+  const rows = await readAll(() => app("audit_events")
     .select("id,occurred_at,actor,device_id,action,entity_type,entity_name,payload")
-    .in("action", RECORD_ACTIONS).in("entity_type", RECORD_TYPES)
-    .order("occurred_at", { ascending: false }).limit(ACTIVITY_LIMIT);
-  if (error) throw error;
-  return (data ?? []).map(toActivity);
+    .gte("occurred_at",monthStart()).in("action",RECORD_ACTIONS).in("entity_type",RECORD_TYPES)
+    .order("occurred_at",{ascending:false}).order("id"));
+  return rows.map(toActivity);
 }
 async function listInbox(s: Session) {
   const { data, error } = await app("rico_inbox").select("id,kind,mood,body_en,body_ku,body_ar,created_at,read_at")
@@ -323,35 +254,22 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
 }
 
 async function bootstrap(s: Session) {
-  const since = new Date(Date.now() - HISTORY_DEFAULT_DAYS * 86400_000).toISOString();
-  const [me, themes, suppliers, items, units, orders, reminder, devices, activity, pars, inbox] = await Promise.all([
+  const since = monthStart();
+  const [me, themes, suppliers, items, units, orders, reminder, devices, activity, inbox] = await Promise.all([
     readAccount(s.account),
     readThemes(),
     app("suppliers").select("id,name,phone,reminder").order("name"),
     app("items").select("id,name,unit_id,supplier_id,sort_order").order("name"),
     app("units").select("id,en,ku,ar"),
-    // Newest orders first, capped to the last HISTORY_DEFAULT_DAYS days by
-    // default; older history is loaded on demand from GET history/more.
-    app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").gte("sent_at", since)
-      .order("sent_at", { ascending: false }).limit(HISTORY_LIMIT),
+    readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
     readReminder(),
     listDevices(s),
     listActivity(),
-    app("item_pars").select("item_id,par_qty,busy_boost_pct,est_qty,est_updated_at"),
     listInbox(s),
   ]);
-  for (const result of [suppliers, items, units, orders, pars]) if (result.error) throw result.error;
-  const orderRows = (orders.data ?? []).reverse();
+  for (const result of [suppliers, items, units]) if (result.error) throw result.error;
+  const orderRows = orders;
   const lines = await orderLinesFor(orderRows);
-  const oldestLoaded = orderRows[0]?.sent_at ?? orderRows[0]?.created_at ?? null;
-  // Use the oldest row we actually returned as the cursor. If the 300-row
-  // cap was hit inside the 120-day window, this still exposes the remaining
-  // rows. If the window is empty, advance by the window boundary so sparse
-  // older history can still be reached on the next click.
-  const historyCursor = oldestLoaded ?? since;
-  const { count: olderCount, error: historyError } = await app("orders").select("id", { count: "exact", head: true })
-    .eq("status", "sent").lt("sent_at", historyCursor);
-  if (historyError) throw historyError;
   return {
     account: s.account, name: me?.name ?? accountName(s.account), tabs: me?.tabs ?? cleanTabs(s.account, null),
     views: ACCOUNT_VIEWS[s.account], theme: me?.theme ?? "ricotta", themes,
@@ -359,36 +277,9 @@ async function bootstrap(s: Session) {
     items: (items.data ?? []).map(toItem),
     units: units.data ?? [],
     history: groupHistory(orderRows, lines),
-    historyHasMore: (olderCount ?? 0) > 0,
-    historyOldestLoaded: (olderCount ?? 0) > 0 ? historyCursor : oldestLoaded,
+    historyMonth: monthKey(),
     reminder, devices, activity, inbox,
-    pars: (pars.data ?? []).map((p: any) => ({
-      itemId: p.item_id, parQty: Number(p.par_qty), busyBoostPct: Number(p.busy_boost_pct),
-      estQty: Number(p.est_qty), estUpdatedAt: p.est_updated_at,
-    })),
   };
-}
-
-/* "Load more" history: one page of orders older than `before` (an ISO
-   timestamp), same shape as bootstrap's history array. */
-async function moreHistory(before: string) {
-  if (!before || isNaN(Date.parse(before))) return fail("invalid_before");
-  const since = new Date(Date.parse(before) - HISTORY_PAGE_DAYS * 86400_000).toISOString();
-  const { data, error } = await app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent")
-    .lt("sent_at", before).gte("sent_at", since).order("sent_at", { ascending: false }).limit(HISTORY_LIMIT);
-  if (error) throw error;
-  const orderRows = (data ?? []).reverse();
-  const lines = await orderLinesFor(orderRows);
-  const oldestLoaded = orderRows[0]?.sent_at ?? orderRows[0]?.created_at ?? null;
-  const historyCursor = oldestLoaded ?? since;
-  const { count: olderCount, error: historyError } = await app("orders").select("id", { count: "exact", head: true })
-    .eq("status", "sent").lt("sent_at", historyCursor);
-  if (historyError) throw historyError;
-  return json({
-    history: groupHistory(orderRows, lines),
-    hasMore: (olderCount ?? 0) > 0,
-    oldestLoaded: (olderCount ?? 0) > 0 ? historyCursor : oldestLoaded,
-  });
 }
 
 /* ---------- Sign-in, and wrong-guess limits ----------
@@ -453,11 +344,15 @@ async function login(req: Request) {
   if (deviceId) {
     // A command sent before this sign-in is old news: mark it handled so an
     // old "log out" can't kick the person out right after signing in.
-    const { data: prev } = await app("devices").select("command").eq("id", deviceId).maybeSingle();
-    await app("devices").upsert({
+    const { data: prev, error: deviceReadError } = await app("devices").select("command").eq("id", deviceId).maybeSingle();
+    const {error:deviceWriteError}=await app("devices").upsert({
       id: deviceId, account, label: deviceLabel(req), logged_in: true, last_login: nowIso(), last_seen: nowIso(), updated_at: nowIso(),
       ...(prev?.command?.id ? { handled_command: String(prev.command.id) } : {}),
     });
+    if(deviceReadError || deviceWriteError){
+      await app("sessions").delete().eq("token_hash",await hash(token));
+      return fail("login_failed",503);
+    }
   }
   const me = await readAccount(account);
   return json({ token, account, name: me?.name ?? accountName(account), tabs: me?.tabs ?? cleanTabs(account, null), theme: me?.theme ?? "ricotta", expiresAt });
@@ -584,7 +479,8 @@ async function cheerAfterOrder(s: Session) {
   const c = CHEERS[Math.floor(Math.random() * CHEERS.length)];
   const n = LOCAL_NAMES[s.account];
   // dedupe_key is unique: the second order of the day adds nothing.
-  await app("rico_inbox").insert({ account: s.account, kind: "cheer", mood: c.mood, body_en: c.en(n.en), body_ku: c.ku(n.ku), body_ar: c.ar(n.ar), dedupe_key: `sent|${s.account}|${date}` });
+  const { error } = await app("rico_inbox").upsert({ account: s.account, kind: "cheer", mood: c.mood, body_en: c.en(n.en), body_ku: c.ku(n.ku), body_ar: c.ar(n.ar), dedupe_key: `sent|${s.account}|${date}` }, { onConflict: "dedupe_key", ignoreDuplicates: true });
+  if (error) throw error;
 }
 
 async function saveOrder(s: Session, b: any) {
@@ -597,6 +493,7 @@ async function saveOrder(s: Session, b: any) {
     || e.items.some((i: any) => !i || !Number.isFinite(Number(i.qty)) || Number(i.qty) <= 0 || Number(i.qty) > 99999))) return fail("invalid_order");
   if (b.date && !Number.isFinite(Date.parse(b.date))) return fail("invalid_order");
   const date = b.date ? new Date(b.date).toISOString() : nowIso();
+  if (date < monthStart() || Date.parse(date) > Date.now() + 60_000) return fail("order_outside_current_month", 409);
   // Keep each supplier's name with the order, so History still shows it after
   // the supplier is renamed or deleted (supplier_id is then set to null).
   const supplierIds = [...new Set(b.entries.map((e: any) => text(e.supplierId, 120)).filter(Boolean))];
@@ -610,8 +507,8 @@ async function saveOrder(s: Session, b: any) {
     item_name: text(i.name) || text(i.itemId) || "Item", unit_id: text(i.unit, 120) || null,
     qty: Number(i.qty),
   })));
-  // Header, lines, and stock increments commit together. Retrying an existing
-  // order never observes half an order or increments stock a second time.
+  // Header and lines commit together. Retrying an existing
+  // order never observes half an order.
   const { data: saved, error } = await db.rpc("app_internal_save_order", {
     p_id: id, p_date: date, p_account: s.account, p_lines: lines,
   });
@@ -623,10 +520,12 @@ async function saveOrder(s: Session, b: any) {
 /* ---------- Devices ---------- */
 async function heartbeat(s: Session, label: string | null) {
   if (!s.deviceId) return ok();
-  const { data: d } = await app("devices").select("command,handled_command").eq("id", s.deviceId).maybeSingle();
+  const { data: d, error: readError } = await app("devices").select("command,handled_command").eq("id", s.deviceId).maybeSingle();
+  if (readError) throw readError;
   const pendingLogout = d?.command?.type === "logout" && d.command.id !== d.handled_command;
   if (pendingLogout) return json({ ok: true, device: null });   // don't flip it back to "logged in"
-  await app("devices").upsert({ id: s.deviceId, account: s.account, ...(label ? { label } : {}), logged_in: true, last_seen: nowIso(), updated_at: nowIso() });
+  const { error } = await app("devices").upsert({ id: s.deviceId, account: s.account, ...(label ? { label } : {}), logged_in: true, last_seen: nowIso(), updated_at: nowIso() });
+  if (error) throw error;
   return ok();
 }
 
@@ -634,15 +533,8 @@ async function sendCommand(b: any) {
   const type = b.type === "logout" ? "logout" : b.type === "refresh" ? "refresh" : "";
   const ids: string[] = Array.isArray(b.ids) ? b.ids.map((x: unknown) => text(x, 120)).filter(Boolean).slice(0, 50) : [];
   if (!type || !ids.length) return fail("invalid_command");
-  const ts = nowIso();
-  await Promise.all(ids.map((id) => app("devices").update({
-    command: { id: "c" + crypto.randomUUID().slice(0, 12), type, ts },
-    ...(type === "logout" ? { logged_in: false } : {}), updated_at: ts,
-  }).eq("id", id)));
-  if (type === "logout") {
-    await app("sessions").update({ revoked_at: ts }).in("device_id", ids).is("revoked_at", null);
-  }
-  return ok();
+  const { error } = await db.rpc("app_internal_device_command", { p_ids: ids, p_type: type });
+  return error ? fail("command_failed", 503) : ok();
 }
 
 /* ---------- Push ----------
@@ -665,6 +557,59 @@ async function forwardPush(s: Session, b: any) {
   });
   const data = await res.json().catch(() => ({}));
   return json(data, res.status);
+}
+
+/* Rico's chat history. Each account sees only its own chats; only what the app needs to show a chat again is kept. */
+const CHAT_MAX_MESSAGES = 200, CHAT_MAX_CHARS = 200_000;
+const uuid = (v: unknown) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+function cleanChatMessages(v: unknown): any[] | null {
+  if (!Array.isArray(v) || v.length > CHAT_MAX_MESSAGES) return null;
+  const out = [];
+  for (const x of v as any[]) {
+    if (!x || typeof x !== "object" || !["user", "assistant"].includes(x.role)) return null;
+    out.push({
+      role: x.role, text: String(x.text ?? "").slice(0, 8000),
+      ...(typeof x.ts === "number" && Number.isFinite(x.ts) ? { ts: x.ts } : {}),
+      ...(typeof x.mood === "string" ? { mood: x.mood.slice(0, 20) } : {}),
+      ...(typeof x.error === "string" ? { error: x.error.slice(0, 40) } : {}),
+      ...(Array.isArray(x.steps) ? { steps: x.steps.slice(0, 20).map((k: unknown) => String(k).slice(0, 40)) } : {}),
+      ...(Array.isArray(x.proposals) ? { proposals: x.proposals.slice(0, 20).filter((p: unknown) => p && typeof p === "object") } : {}),
+    });
+  }
+  return JSON.stringify(out).length <= CHAT_MAX_CHARS ? out : null;
+}
+async function ricoChats(req: Request, actor: Account, id: string | null, body: any = {}): Promise<Response> {
+  if (id !== null && !uuid(id)) return fail("Chat not found", 404);
+  if (req.method === "GET" && id === null) {
+    const { data, error } = await db.from("app_rico_chats").select("id,title,created_at,updated_at").eq("account", actor)
+      .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString()).order("updated_at", { ascending: false }).limit(60);
+    if (error) throw error;
+    return json({ chats: (data ?? []).map((c: any) => ({ id: c.id, title: c.title, createdAt: c.created_at, updatedAt: c.updated_at })) });
+  }
+  if (req.method === "GET") {
+    const { data, error } = await db.from("app_rico_chats").select("id,title,messages,created_at,updated_at").eq("id", id).eq("account", actor).maybeSingle();
+    if (error) throw error;
+    return data ? json({ id: data.id, title: data.title, messages: data.messages, createdAt: data.created_at, updatedAt: data.updated_at }) : fail("Chat not found", 404);
+  }
+  if (req.method === "PUT" && id !== null) {
+    const b = body;
+    const messages = cleanChatMessages(b.messages);
+    if (!messages || !messages.length) return fail("Invalid chat");
+    const {data:saved,error}=await db.rpc("app_internal_save_chat",{p_id:id,p_account:actor,p_title:text(b.title,120),p_messages:messages});
+    if(error) return fail("Save failed",500);
+    if(!saved) return fail("Chat not found",404);
+    const { error: pruneError } = await db.rpc("app_rico_chats_prune", { p_account: actor });
+    if (pruneError) console.error("rico chats prune", String(pruneError?.message ?? "Operation failed"));
+    return json({ ok: true });
+  }
+  if (req.method === "DELETE") {
+    let q = db.from("app_rico_chats").delete().eq("account", actor);
+    if (id !== null) q = q.eq("id", id);
+    const { error } = await q;
+    if (error) throw error;
+    return json({ ok: true });
+  }
+  return fail("Unknown route", 404);
 }
 
 /* ---------- Router ---------- */
@@ -690,14 +635,9 @@ Deno.serve(async (req) => {
     let m: RegExpMatchArray | null;
 
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
-    if (M === "GET" && path === "history/more") {
-      const before = new URL(req.url).searchParams.get("before") || "";
-      return await moreHistory(before);
-    }
     if (M === "POST" && path === "logout") {
-      await app("sessions").update({ revoked_at: nowIso() }).eq("id", s.id);
-      if (s.deviceId) await app("devices").update({ logged_in: false, last_seen: nowIso() }).eq("id", s.deviceId);
-      return ok();
+      const { error } = await db.rpc("app_internal_logout", { p_session: s.id, p_device: s.deviceId });
+      return error ? fail("logout_failed", 503) : ok();
     }
     if (M === "PUT" && path === "me/tabs") {
       const allowed = ACCOUNT_VIEWS[s.account];
@@ -723,51 +663,13 @@ Deno.serve(async (req) => {
       if (error || data !== true) return fail("invalid_order");
       return ok();
     }
-    // A "Track stock" par level for one item (see app_item_pars).
-    if (M === "PUT" && (m = path.match(/^items\/([^/]{1,120})\/stock$/))) {
-      const itemId = decodeURIComponent(m[1]);
-      const { data: item } = await app("items").select("id").eq("id", itemId).maybeSingle();
-      if (!item) return fail("not_found", 404);
-      if (b.track === false) {
-        const { error } = await app("item_pars").delete().eq("item_id", itemId);
-        return error ? fail("save_failed", 500) : ok();
-      }
-      const parQty = Number(b.parQty);
-      if (!(parQty > 0) || parQty > 99999) return fail("invalid_par");
-      const boost = Number(b.busyBoostPct);
-      const { data: existing } = await app("item_pars").select("est_qty").eq("item_id", itemId).maybeSingle();
-      const estQty = b.estQty !== undefined && b.estQty !== null && b.estQty !== ""
-        ? Number(b.estQty) : (existing ? Number(existing.est_qty) : parQty);
-      if (!Number.isFinite(estQty) || estQty < 0 || estQty > 99999) return fail("invalid_stock");
-      const { error } = await app("item_pars").upsert({
-        item_id: itemId, par_qty: parQty, busy_boost_pct: Number.isFinite(boost) && boost >= 0 ? Math.min(boost, 500) : 50,
-        est_qty: estQty, est_updated_at: nowIso(),
-      });
-      return error ? fail("save_failed", 500) : ok();
-    }
     if ((m = path.match(/^(suppliers|items|units)\/([^/]{1,120})$/))) {
       const table = m[1], id = decodeURIComponent(m[2]);
-      // The row as it was, so the Record can say what changed.
-      const { data: before } = await app(table).select(RECORD_SELECT[table]).eq("id", id).maybeSingle();
-      if (M === "DELETE") {
-        // Deleting a supplier unassigns its items (done by the database); count them first.
-        let extra: Record<string, unknown> = {};
-        if (table === "suppliers" && before) {
-          const { count } = await app("items").select("id", { count: "exact", head: true }).eq("supplier_id", id);
-          if (count) extra = { unassigned: count };
-        }
-        const { error } = await app(table).delete().eq("id", id);
-        if (error) return fail("delete_failed", 500);
-        await recordCatalogChange(s, table, before, null, extra).catch((e) => console.error("record", e));
-        return ok();
-      }
-      if (M === "PUT") {
-        const row = CATALOG[table](id, b);
-        if (!row) return fail("invalid_input");
-        const { error } = await app(table).upsert(row);
-        if (error) return fail("save_failed", 500);
-        await recordCatalogChange(s, table, before, row).catch((e) => console.error("record", e));
-        return ok();
+      if (M === "PUT" || M === "DELETE") {
+        const row = M === "PUT" ? CATALOG[table](id, b) : null;
+        if (M === "PUT" && !row) return fail("invalid_input");
+        const { error } = await db.rpc("app_internal_catalog_change", { p_table: table, p_id: id, p_row: row, p_actor: s.account, p_device: s.deviceId });
+        return error ? fail(M === "DELETE" ? "delete_failed" : "save_failed", 500) : ok();
       }
     }
 
@@ -777,10 +679,8 @@ Deno.serve(async (req) => {
       // Sent orders are the kitchen's paper trail: only Rozha may remove one.
       if (!rozha) return fail("forbidden", 403);
       const id = decodeURIComponent(m[1]);
-      const { error } = await app("orders").delete().eq("id", id);
-      if (error) return fail("delete_failed", 500);
-      await audit(s, "delete", "order", id);
-      return ok();
+      const { error } = await db.rpc("app_internal_delete_order", { p_id: id, p_actor: s.account, p_device: s.deviceId });
+      return error ? fail("delete_failed", 500) : ok();
     }
 
     // Record
@@ -790,10 +690,15 @@ Deno.serve(async (req) => {
     if (M === "GET" && path === "devices") return json(await listDevices(s));
     if (M === "POST" && path === "devices/me") return await heartbeat(s, deviceLabel(req));
     if (M === "POST" && path === "devices/me/ack") {
-      if (s.deviceId) await app("devices").update({ handled_command: text(b.commandId, 120) || null }).eq("id", s.deviceId);
+      if (s.deviceId) {
+        const { error } = await app("devices").update({ handled_command: text(b.commandId, 120) || null }).eq("id", s.deviceId);
+        if (error) return fail("ack_failed", 503);
+      }
       return ok();
     }
     if (M === "POST" && path === "devices/command") return rozha ? await sendCommand(b) : fail("forbidden", 403);
+
+    if (/^rico-chats(?:\/[^/]+)?$/.test(path)) return await ricoChats(req, s.account, path.split("/")[1] ?? null, b);
 
     // Rico, the assistant
     if (M === "POST" && path === "assistant/chat") return await handleChat(db, s, b, cors, req.signal);

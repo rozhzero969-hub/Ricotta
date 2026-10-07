@@ -1,108 +1,36 @@
 name: Checks
-
-# All API/browser checks use mocks; SQL checks use disposable Postgres.
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 permissions:
   contents: read
-
 jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Use runner temporary directory
-        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
-
-      - name: Set up Deno
-        uses: denoland/setup-deno@v2
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-
-      - name: Type-check Edge Functions
-        run: deno check --lock=deno.lock --frozen-lockfile supabase/functions/api/index.ts supabase/functions/send-push/index.ts supabase/functions/stock-api/index.ts
-
-      - name: Stock and atomic-write database regressions (real Postgres)
-        run: |
-          docker run -d --name pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:17
-          for i in $(seq 1 30); do PGPASSWORD=postgres psql -h localhost -U postgres -c 'select 1' >/dev/null 2>&1 && break; sleep 1; done
-          export PGPASSWORD=postgres PGHOST=localhost PGUSER=postgres
-          bash scripts/db-smoke.sh
-          node scripts/db-concurrency-smoke.mjs
-
-      - name: Session and outbox regressions
-        run: |
-          node --test scripts/storage-regression.cjs scripts/update-check-regression.cjs scripts/stock-read-regression.cjs
-          node scripts/app-session-smoke.cjs
-
-      - name: Stock API regressions (mocked database)
-        run: node scripts/stock-api-smoke.mjs
-
-      - name: Single-worker process lock regressions
-        run: |
-          node scripts/worker-lock-smoke.mjs
-          node scripts/worker-polling-smoke.mjs
-          node scripts/launcher-control-smoke.mjs
-
-      - name: Backend API and security regressions
-        run: |
-          node scripts/backend-api-smoke.mjs
-          node scripts/backend-security-smoke.mjs
-          node scripts/backend-push-smoke.mjs
-
-      - name: No undefined names in the app scripts
-        run: |
-          cat config.js icons.js i18n.js storage.js sounds.js modals.js push.js assistant.js stock.js app.js update-check.js > .lint-all.js
-          npx --yes eslint@9 --config scripts/eslint.undef.config.cjs .lint-all.js
-
-      - name: Rico provider smoke test (Gemini + Groq, mocked)
-        run: node --experimental-strip-types scripts/rico-provider-smoke.mjs
-
-      - name: Install Playwright and Chromium
-        run: |
-          npm install --no-save playwright@1.55.1
-          npx playwright install --with-deps chromium
-
-      - name: UI smoke test (mocked API, six widths, EN + KU + AR)
-        run: node scripts/ui-smoke.cjs
-
-      - name: Stock and transfer UI smoke test (mocked API, EN + KU + AR)
-        run: node scripts/stock-ui-smoke.cjs
-
-      - name: Send to suppliers (progress kept across an app restart, order saved once)
-        run: node scripts/order-queue-smoke.cjs
-
-      - name: PC worker name matching (look-alike letters, two-language names)
-        run: node scripts/match-smoke.mjs
-
-      - name: PC worker transfer filler (local copy of the workplace page)
-        run: node scripts/transfer-worker-smoke.mjs
-
-      - name: PC worker receipt filler (local copy of the workplace page)
-        run: node scripts/receipt-worker-smoke.mjs
-
-      - name: PC worker ingredient create/edit (local copy of the workplace stock page)
-        run: node scripts/items-worker-smoke.mjs
-
-      - name: PC worker workplace sign-in (local copy of the sign-in page)
-        run: node scripts/signin-worker-smoke.mjs
-
-      - name: Upload UI smoke screenshots
+      - run: deno check --node-modules-dir=none --lock=deno.lock --frozen-lockfile supabase/functions/api/index.ts supabase/functions/send-push/index.ts
+      - run: pnpm run lint
+      - run: pnpm test
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run test:ui
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: ui-smoke-screenshots
-          path: ${{ runner.temp }}/ricotta-ui-*/**
+          path: /tmp/ricotta-ui-*/**
           if-no-files-found: ignore
           retention-days: 14

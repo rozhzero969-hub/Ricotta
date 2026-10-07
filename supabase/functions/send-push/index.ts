@@ -166,7 +166,6 @@ async function dailyTick() {
    to both accounts' inboxes (with their own name) and to signed-in phones. */
 const LATE_AFTER_MIN = 60;
 const LATE_WINDOW_MIN = 4 * 60;
-const STOCK_DECAY_LOOKBACK_DAYS = 60;   // the window used to learn each item's daily usage rate
 async function claimAlert(id: string, kind: string, supplierId: string | null) {
   const { data, error } = await sb.from("app_assistant_alerts")
     .upsert({ id, kind, supplier_id: supplierId }, { onConflict: "id", ignoreDuplicates: true }).select("id");
@@ -316,39 +315,7 @@ async function supplierTick() {
   return out;
 }
 
-/* ---- Par-level stock: once-a-day decay ----
-   Ricotta has no consumption/receiving system of its own, so "how much is
-   left" can only ever be an estimate here. Each tracked item's est_qty goes
-   UP when an order is sent (the api function's saveOrder), and goes DOWN once
-   a day, here, by a rate learned from that item's own order history: how much
-   of it gets ordered per day on average over the last
-   STOCK_DECAY_LOOKBACK_DAYS days. Never below zero. last_decay_date makes each
-   row decay at most once per Erbil calendar day, however often this runs. */
-async function stockDecayTick() {
-  const today = erbilNow().date;
-  const pars = await readAll(() => sb.from("app_item_pars").select("item_id,last_decay_date")
-    .or(`last_decay_date.is.null,last_decay_date.neq.${today}`).order("item_id"));
-  if (!pars?.length) return { skipped: "nothing due" };
-  const since = new Date(Date.now() - STOCK_DECAY_LOOKBACK_DAYS * 86400_000).toISOString();
-  const orders = await readAll(() => sb.from("app_orders").select("id").eq("status", "sent").gte("sent_at", since).order("id"));
-  const orderIds = (orders ?? []).map((o: any) => o.id);
-  const lines: any[] = [];
-  // Keep URL filters small, and page past PostgREST's 1000-row limit.
-  for (let from = 0; from < orderIds.length; from += 60) {
-    lines.push(...await readAll(() => sb.from("app_order_lines").select("order_id,item_id,qty")
-      .in("order_id", orderIds.slice(from, from + 60)).order("id")));
-  }
-  const totals = new Map<string, number>();
-  for (const l of lines ?? []) totals.set(l.item_id, (totals.get(l.item_id) ?? 0) + Number(l.qty));
-  let updated = 0;
-  for (const p of pars) {
-    const rate = (totals.get(p.item_id) ?? 0) / STOCK_DECAY_LOOKBACK_DAYS;   // usual amount ordered per day
-    const { data: decayed, error } = await sb.rpc("app_internal_decay_stock", { p_item: p.item_id, p_decay: rate, p_date: today });
-    if (error) throw error;
-    if (decayed === true) updated++;
-  }
-  return { updated, of: pars.length };
-}
+
 
 /* The three language versions of a message written by a person: a phone
    gets its own language, or the first one that was written. */
@@ -368,16 +335,10 @@ Deno.serve(async (req) => {
     switch (body.type) {
       case "reminder-tick": {
         const result: Record<string, unknown> = {};
-        try {
-          const { error } = await sb.rpc("stock_recover_submissions");
-          if (error) throw error;
-          result.submissionRecovery = { ok: true };
-        } catch (e) { console.error("submission recovery failed", e); result.submissionRecovery = { error: true }; }
         try { result.daily = await dailyTick(); } catch (e) { console.error("daily tick failed", e); result.daily = { error: true }; }
         try { result.suppliers = await supplierTick(); } catch (e) { console.error("supplier tick failed", e); result.suppliers = { error: true }; }
         try { result.late = await overdueTick(); } catch (e) { console.error("late-order tick failed", e); result.late = { error: true }; }
         try { result.cheer = await cheerTick(); } catch (e) { console.error("cheer tick failed", e); result.cheer = { error: true }; }
-        try { result.stockDecay = await stockDecayTick(); } catch (e) { console.error("stock decay tick failed", e); result.stockDecay = { error: true }; }
         return json(result);
       }
       case "update": {
