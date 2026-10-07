@@ -79,10 +79,4 @@ assert.equal(reservations.length, beforeQuick, 'free local quick actions need no
 dataError = true;
 await assert.rejects(handleChat(db, session, { ...body, quickAction: 'last_order' }, {}, new AbortController().signal), /kitchen_data_unavailable/, 'database errors never masquerade as an empty kitchen');
 
-const proposals = [];
-const world = { items: [{ id: 'tomato', name: 'Tomatoes' }], pars: [{ item_id: 'tomato', par_qty: 10, busy_boost_pct: 50, est_qty: 2 }] };
-const result = _internals.proposeStockCount(world, { item_id: 'tomato', qty: 5 }, event => proposals.push(event));
-assert.equal(result.shown, true);
-assert.deepEqual({ ...proposals[0].proposal, id: undefined }, { id: undefined, kind: 'stock_count', itemId: 'tomato', name: 'Tomatoes', qty: 5, parQty: 10, busyBoostPct: 50, beforeQty: 2 });
-assert.match(_internals.proposeStockCount(world, { item_id: 'tomato', qty: Infinity }, () => assert.fail()).error, /quantity/);
-console.log('Backend security smoke: PASS (bounded UTF-8 bodies, push SSRF checks, fail-closed AI quotas, free quick actions, stock confirmation)');
+console.log('Backend security smoke: PASS (bounded UTF-8 bodies, push SSRF checks, fail-closed AI quotas, free quick actions)');

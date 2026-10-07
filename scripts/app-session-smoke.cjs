@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const commands = source.slice(source.indexOf('async function runCommand('), source.indexOf('async function refreshDevices('));
 const queueCode = source.slice(source.indexOf('let finishingQueue ='), source.indexOf('/* ============ History ============'));
-const logoutCode = source.slice(source.indexOf('function signOut('), source.indexOf('function doLogout('));
+const logoutCode = source.slice(source.indexOf('function signOut('), source.indexOf('async function doLogout('));
 const draftCode = source.slice(source.indexOf('function persistCartDraft('), source.indexOf('function restoreCartDraft('));
 function fixture(overrides = {}) {
   const sandbox = {
@@ -91,9 +91,9 @@ const json = value=>JSON.parse(JSON.stringify(value));
   Object.assign(crossTab, {
     LS_PREFIX:'ricottaOrders:', DEFAULT_TABS:['order','assistant','history'],
     rowPress:null, toastTimer:null, reminderDraft:{time:'09:00'},
-    drafts:{}, listeners:{}, modalResets:0, streamResets:0, stockResets:0, sessionClears:0,
+    drafts:{}, listeners:{}, modalResets:0, streamResets:0, sessionClears:0,
     document:{getElementById:()=>null}, clearTimeout:()=>{},
-    ricoReset:()=>crossTab.streamResets++, resetStockUi:()=>crossTab.stockResets++,
+    ricoReset:()=>crossTab.streamResets++,
     stopStepHold:()=>{}, dismissAllModals:()=>crossTab.modalResets++,
     closeSelSheet:()=>{}, closeContextMenu:()=>{}, closeLangMenu:()=>{},
     window:{addEventListener:(name,handler)=>{crossTab.listeners[name]=handler;}},
@@ -120,7 +120,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
   assert.deepEqual(json(crossTab.state.cart),{});
   assert.equal(crossTab.state.queue,null);
   assert.equal(crossTab.state.pinError,'session');
-  assert.equal(crossTab.modalResets,1); assert.equal(crossTab.streamResets,1); assert.equal(crossTab.stockResets,1);
+  assert.equal(crossTab.modalResets,1); assert.equal(crossTab.streamResets,1);
   crossTab.state.account='yunis'; crossTab.state.cart={i2:3}; crossTab.session=null;
   crossTab.listeners.storage({key:'ricottaOrders:apiSession',oldValue:JSON.stringify(nextSession),newValue:null});
   assert.equal(crossTab.state.account,null,'logout in another tab clears this workspace');

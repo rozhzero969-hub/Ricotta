@@ -34,12 +34,11 @@ const server=http.createServer((req,res)=>{
     const server={orders:'ok'};
     // WhatsApp: the link opens in a new tab here; remember where it went.
     await ctx.route('https://wa.me/**',route=>{ opened.push(route.request().url()); return route.fulfill({status:200,contentType:'text/html',body:'<p>WhatsApp</p>'}); });
-    await ctx.route('**/functions/v1/stock-api/**',route=>route.fulfill({status:503,contentType:'application/json',body:'{"error":"unavailable in this test"}',headers:{'access-control-allow-origin':'*'}}));
     await ctx.route('**/functions/v1/api/**',async route=>{
       const req=route.request(), endpoint=new URL(req.url()).pathname.split('/api/')[1], body=req.postDataJSON?.()||null;
       let status=200, data={ok:true};
       if(endpoint==='bootstrap') data={account:'yunis',name:'Yunis',tabs:session.tabs,views:['order','assistant','history','suppliers','itemsAdmin','units','record'],
-        suppliers,items,units:[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'}],history,devices:[],activity:[],reminder:{enabled:false,time:'09:00'},pars:[],inbox:[]};
+        suppliers,items,units:[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'}],history,devices:[],activity:[],reminder:{enabled:false,time:'09:00'},inbox:[]};
       else if(endpoint==='devices') data=[];
       else if(endpoint==='assistant/inbox') data=[];
       else if(endpoint==='assistant/status') data={configured:true,provider:'gemini',model:'gemini-3.5-flash-lite'};

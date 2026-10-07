@@ -314,7 +314,7 @@ function renderRicoProposal(p, mi){
   const actions = primaryLabel=> gone
       ? `<div class="rico-card-state">${p.status==='undone'?t('ricoUndone'):p.status==='expired'?t('ricoCardOld'):t('ricoDismissed')}</div>`
       : done
-        ? `<div class="rico-card-state ok">✓ ${esc(p.doneLabel || t('ricoDone'))}${p.kind==='stock_group' && p.action!=='delete' && p.groupId && canOpen('stock') ? ` <button class="rico-link" data-rico-stock="${mi}|${esc(p.id)}">${t('ricoOpenStock')}</button>` : ''}${p.kind==='order' ? ` <button class="rico-link" data-rico-open="order">${t('ricoOpenOrder')}</button>${p.undo?` <button class="rico-link" data-rico-undo="${mi}|${esc(p.id)}">${t('ricoUndo')}</button>`:''}` : ''}</div>`
+        ? `<div class="rico-card-state ok">✓ ${esc(p.doneLabel || t('ricoDone'))}${p.kind==='order' ? ` <button class="rico-link" data-rico-open="order">${t('ricoOpenOrder')}</button>${p.undo?` <button class="rico-link" data-rico-undo="${mi}|${esc(p.id)}">${t('ricoUndo')}</button>`:''}` : ''}</div>`
         : `<div class="rico-card-actions"><button class="btn btn-primary${saving?' is-busy':''}" data-rico-apply="${mi}|${esc(p.id)}" ${saving?'disabled aria-busy="true"':''}>${primaryLabel}</button><button class="btn btn-ghost" data-rico-dismiss="${mi}|${esc(p.id)}" ${saving?'disabled':''}>${t('ricoNotNow')}</button></div>`;
   let body = '', title = '', icon = '';
   if(p.kind === 'order'){
@@ -349,40 +349,6 @@ function renderRicoProposal(p, mi){
     icon = ICON_BELL; title = t('ricoCardNotify');
     body = `<div class="rico-card-note"><b>${esc(p.title)}</b></div><div class="rico-card-msg" dir="ltr">${esc(p.en)}</div><div class="rico-card-msg" dir="rtl" lang="ckb">${esc(p.ku)}</div><div class="rico-card-msg" dir="rtl" lang="ar">${esc(p.ar || '')}</div>`;
     return ricoCard(icon, title, body, actions(t('notifSend')), p);
-  }
-  if(p.kind === 'stock_group'){
-    icon = NAV_ICONS.stock || ICON_EDIT;
-    title = {create: t('ricoGroupCreate'), add: t('ricoGroupAdd'), remove: t('ricoGroupRemove'), replace: t('ricoGroupReplace'), rename: t('ricoGroupRename'), delete: t('ricoGroupDelete')}[p.action] || t('ricoGroupCreate');
-    const names = (list, cls) => list.length ? `<div class="rico-card-group">${list.slice(0, 60).map(x => `<div class="rico-card-line ${cls}"><span dir="auto">${esc(x.name)}</span></div>`).join('')}${list.length > 60 ? `<div class="rico-card-note">+${list.length - 60}</div>` : ''}</div>` : '';
-    const fields = [[t('stGroupName'), p.oldName ? `<s>${esc(p.oldName)}</s> → ${esc(p.name)}` : esc(p.name), true]];
-    if(p.action !== 'delete') fields.push([t('ricoGroupItems'), String(p.total)]);
-    body = ricoFields(fields)
-      + (p.added?.length ? `<div class="rico-card-note">${esc(t('ricoGroupAdded')(p.added.length))}</div>${names(p.added, '')}` : '')
-      + (p.removed?.length && p.action !== 'delete' ? `<div class="rico-card-note">${esc(t('ricoGroupRemoved')(p.removed.length))}</div>${names(p.removed, 'rico-line-out')}` : '')
-      + (p.action === 'delete' ? `<div class="rico-card-note">${esc(t('ricoGroupDeleteNote'))}</div>` : '');
-    return ricoCard(icon, title, body, actions(p.action === 'delete' ? t('delete') : t('save')), p);
-  }
-  if(p.kind === 'stock_settings'){
-    icon = NAV_ICONS.stock || ICON_EDIT; title = t('ricoCardStockSettings');
-    const show = v => v === null || v === undefined || v === '' ? '—' : String(v);
-    const row = (label, a, b) => String(a ?? '') === String(b ?? '') ? [label, show(b)] : [label, `<s>${esc(show(a))}</s> → ${esc(show(b))}`, true];
-    const rows = [[t('name'), p.name]];
-    if('lowStock' in p) rows.push(row(`${t('itWarn')} (${p.unit})`, p.before.lowStock, p.lowStock));
-    if('workplaceName' in p) rows.push(row(t('ricoWorkplaceName'), p.before.workplaceName || p.name, p.workplaceName || p.name));
-    body = ricoFields(rows) + `<div class="rico-card-note">${esc(t('ricoAppOnly'))}</div>`;
-    return ricoCard(icon, title, body, actions(t('save')), p);
-  }
-  if(p.kind === 'stock_count'){
-    const item = state.items.find(i=>i.id===p.itemId);
-    icon = NAV_ICONS.stock || ICON_EDIT; title = t('ricoCardStockCount');
-    body = ricoFields([[t('name'), p.name], [t('ricoStockEstimate'), `<s>${esc(fmtQty(p.beforeQty))}</s> → ${esc(fmtQty(p.qty))} ${esc(unitLabel(item?.unit))}`, true]])
-      + `<div class="rico-card-note">${esc(t('ricoStockCountNote'))}</div>`;
-    return ricoCard(icon, title, body, actions(t('save')), p);
-  }
-  if(p.kind === 'open_stock'){
-    if(!canOpen('stock')) return '';
-    const bits = [p.search && `“${p.search}”`, p.group, p.storage, p.only && {in_stock: t('stInStock'), low: t('stLow'), not_set_up: t('itFilterTodo')}[p.only]].filter(Boolean).join(' · ');
-    return `<button class="rico-open" data-rico-stock="${mi}|${esc(p.id)}">${NAV_ICONS.stock || NAV_ICONS.order}<span>${esc(p.label || t('ricoOpenStock'))}${bits ? ` <small dir="auto">${esc(bits)}</small>` : ''}</span></button>`;
   }
   if(p.kind === 'open'){
     if(p.screen !== 'send' && !canOpen(p.screen)) return '';
@@ -536,10 +502,6 @@ function attachRicoThreadEvents(root){
     if(screen === 'order' && sup && state.suppliers.some(s=>s.id===sup)) state.orderTab = sup;
     goView(screen);
   });
-  root.querySelectorAll('[data-rico-stock]').forEach(b=>b.onclick=()=>{
-    const [mi,id]=b.dataset.ricoStock.split('|'); const p = ricoFind(+mi, id);
-    if(p && canOpen('stock')) stOpenFiltered({search:p.search, storage:p.storage, groupId:p.groupId, only:p.only});
-  });
   root.querySelectorAll('[data-rico-settings]').forEach(b=>b.onclick=()=>{ goView('settings'); requestAnimationFrame(()=>document.querySelector('.rico-status-card')?.scrollIntoView({block:'center'})); });
   root.querySelectorAll('[data-rico-retry]').forEach(b=>b.onclick=()=>{
     const i = +b.dataset.ricoRetry;
@@ -570,7 +532,7 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, open_stock:'open Stock screen', stock_group:`${p.action} group "${p.name}"`, stock_settings:`stock settings for "${p.name}"`, stock_count:`stock estimate for "${p.name}" (${p.qty})`}[p.kind] || p.kind;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`}[p.kind] || p.kind;
       content += `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};
@@ -747,35 +709,6 @@ async function ricoApply(mi, id, btn){
       p.doneLabel = t('savedMsg')(p.name).replace(/^\u2713\s*/, '');
       return true;
     }
-    if(p.kind === 'stock_group'){
-      if(!stockState.loaded) await loadStock();
-      const live = new Set(state.items.map(i=>i.id));
-      const ids = (p.itemIds||[]).filter(id=>live.has(id));
-      const res = p.action === 'delete' ? await stGroupDelete(p.groupId) : await stGroupSave(p.groupId, p.name, ids);
-      if(res.error){ await showAlert(esc(res.error)); return false; }
-      p.doneLabel = p.action === 'delete' ? t('stGroupDeleted') : t('stGroupSaved')(p.name);
-      if(p.action !== 'delete' && res.id) p.groupId = res.id;
-      return true;
-    }
-    if(p.kind === 'stock_settings'){
-      const change = {};
-      if('lowStock' in p) change.lowStock = p.lowStock;
-      if('workplaceName' in p) change.workplaceName = p.workplaceName;
-      const res = await stApplySettings(p.itemId, change);
-      if(res.error){ await showAlert(esc(res.error)); return false; }
-      p.doneLabel = t('savedMsg')(p.name).replace(/^\u2713\s*/, '');
-      return true;
-    }
-    if(p.kind === 'stock_count'){
-      const par = (state.pars || []).find(x=>x.itemId===p.itemId);
-      if(!par || !state.items.some(x=>x.id===p.itemId) || !Number.isFinite(p.qty) || p.qty < 0){ await showAlert(t('saveFailed')); return false; }
-      const r = await api(`items/${encodeURIComponent(p.itemId)}/stock`, {method:'PUT', body:{track:true, parQty:par.parQty, busyBoostPct:par.busyBoostPct, estQty:p.qty}});
-      if(!r.ok){ if(!r.stale) await showAlert(t('saveFailed')); return false; }
-      Object.assign(par, {estQty:p.qty, estUpdatedAt:new Date().toISOString()});
-      ricoSuggestion.at = 0;
-      p.doneLabel = t('savedMsg')(p.name).replace(/^\u2713\s*/, '');
-      return true;
-    }
     if(p.kind === 'notify'){
       const res = await callSendPush('assistant', {title:p.title, bodyEn:p.en, bodyKu:p.ku, bodyAr:p.ar});
       await reportSendResult(res);
@@ -829,7 +762,7 @@ async function ricoSave(){
   if(!messages.some(m=>m.role === 'user')) return;
   if(!rico.chatId) rico.chatId = crypto.randomUUID();
   const id = rico.chatId, account = state.account, title = ricoChatTitle();
-  const r = await stockApi('rico-chats/' + id, {method:'PUT', body:{title, messages}});
+  const r = await api('rico-chats/' + id, {method:'PUT', body:{title, messages}});
   if(!r.ok || state.account !== account || !rico.chats) return;
   rico.chats = [{id, title, updatedAt:new Date().toISOString()}, ...rico.chats.filter(c=>c.id !== id)].slice(0, 60);
 }
@@ -838,8 +771,8 @@ async function ricoLoadChats(){
   rico.chatsBusy = true;
   const account = state.account;
   try{
-    let r = await stockApi('rico-chats');
-    if(r.stale && state.account === account) r = await stockApi('rico-chats');   // a save happened at the same moment
+    let r = await api('rico-chats');
+    if(r.stale && state.account === account) r = await api('rico-chats');   // a save happened at the same moment
     if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats;
   }finally{ rico.chatsBusy = false; }
 }
@@ -852,8 +785,8 @@ function ricoNewChat(){
 }
 async function ricoOpenChat(id){
   if(rico.streaming) return false;
-  let r = await stockApi('rico-chats/' + encodeURIComponent(id));
-  if(r.stale) r = await stockApi('rico-chats/' + encodeURIComponent(id));   // a save happened at the same moment
+  let r = await api('rico-chats/' + encodeURIComponent(id));
+  if(r.stale) r = await api('rico-chats/' + encodeURIComponent(id));   // a save happened at the same moment
   if(!r.ok || !Array.isArray(r.data?.messages)){ toast(t('ricoChatLoadFailed'), 'error'); return false; }
   if(rico.chatId !== id && rico.messages.length) ricoSave();
   clearTimeout(ricoSaveTimer);
@@ -914,7 +847,7 @@ function ricoOpenHistory(){
     if(!yes && !all) return;
     const id = yes ? yes.dataset.histYes : null;
     clearTimeout(ricoSaveTimer);
-    const r = await stockApi(id ? 'rico-chats/' + id : 'rico-chats', {method:'DELETE'});
+    const r = await api(id ? 'rico-chats/' + id : 'rico-chats', {method:'DELETE'});
     if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
     rico.chats = id ? rico.chats.filter(c=>c.id !== id) : [];
     if(!id || rico.chatId === id){ rico.chatId = null; if(rico.messages.length && !rico.streaming){ rico.messages = []; } }

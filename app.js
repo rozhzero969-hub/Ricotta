@@ -116,7 +116,7 @@ function toast(msg, kind='ok', {undo} = {}){
    Devices screen (log out / refresh). */
 const HEARTBEAT_MS = 2*60*1000;       /* how often an open app reports "still here" */
 const ACTIVE_WINDOW_MS = 5*60*1000;   /* seen within this long ago = "active now" */
-const COMMAND_POLL_MS = 15*1000;
+const COMMAND_POLL_MS = 60*1000;
 
 /* A random id for this device, created once and remembered. Not a secret --
    just a way to recognise "this same phone" across sign-ins. */
@@ -241,11 +241,10 @@ function accountLabel(a){ return a === 'rozha' || a === 'yunis' ? t('accountName
    start (bootstrap.views) and checks every request; this copy only covers
    an offline start before that answer arrives. */
 const ACCOUNT_VIEWS = {
-  rozha: ['order','assistant','history','transfers','stock','suppliers','itemsAdmin','units','record','devices','settings'],
-  yunis: ['order','assistant','history','transfers','stock','suppliers','itemsAdmin','units','record']
+  rozha: ['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings'],
+  yunis: ['order','assistant','history','suppliers','itemsAdmin','units','record']
 };
 const DEFAULT_TABS = ['order','assistant','history'];
-const STOCK_VIEWS = ['transfers','stock','receipts'];
 /* Settings is for every account. The server lists it only for Rozha (it
    also shows the Rico connection to her), so for Yunis it is added here: it
    holds this device's own preferences, which the server never needs to know.
@@ -263,14 +262,12 @@ function applyAccount(a){
   state.name = a.name || ({rozha:'Rozha', yunis:'Yunis'})[state.account] || '';
   const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
   serverViews = views;
-  // Transfer and Stock are added here (both accounts have them); the older server list doesn't know them.
-  const withStock = state.account ? [...views, ...STOCK_VIEWS.filter(v=>!views.includes(v))] : views;
-  state.views = state.account ? [...withStock.filter(v=>!DEVICE_VIEWS.includes(v)), ...DEVICE_VIEWS] : [];
+  state.views = state.account ? [...views.filter(v=>!DEVICE_VIEWS.includes(v)), ...DEVICE_VIEWS] : [];
   state.tabs = validTabs(a.tabs);
   if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
 }
 /* Loads everything this account needs from the server in one request. */
-async function loadData(withStock = true){
+async function loadData(){
   const r = await api('bootstrap');
   if(!r.ok || !r.data || !r.data.account) return false;
   lastLoadAt = Date.now();
@@ -282,21 +279,10 @@ async function loadData(withStock = true){
   state.items = d.items || [];
   state.units = (d.units && d.units.length) ? d.units : DEFAULT_UNITS;
   state.history = d.history || [];
-  state.historyHasMore = !!d.historyHasMore;
-  state.historyOldestLoaded = d.historyOldestLoaded || null;
   state.devices = d.devices || [];
   state.activity = d.activity || [];
   state.reminder = d.reminder || {enabled:false, time:'09:00'};
-  state.pars = d.pars || [];
   ricoSetInbox(d.inbox || []);
-  // Stock and transfers load in the background; ordering never waits for them.
-  if(withStock && state.views.includes('stock')) loadStock().then(ok=>{
-    if(!ok) return;
-    const mine = stockState.tabs && validTabs(stockState.tabs);
-    if(mine && mine.join() !== state.tabs.join()){ state.tabs = mine; saveSessionAccount(); render(); }
-    else if(['transfers','stock','history','itemsAdmin'].includes(state.view)) render();
-    else updateStockBadges();
-  });
   return true;
 }
 /* Keeps the saved session's name and tabs current, so an offline start
@@ -338,22 +324,6 @@ window.addEventListener('appinstalled',()=>{
   deferredInstallPrompt=null; installPromptDismissed=true; removeInstallPrompt(); toast(t('installComplete'));
 });
 document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
-/* History only loads the last ~120 days at first (bootstrap); this fetches
-   one further page of older orders, on request, for the History screen. */
-let loadingMoreHistory = false;
-async function loadMoreHistory(){
-  if(loadingMoreHistory || !state.historyOldestLoaded) return;
-  loadingMoreHistory = true;
-  try{
-    const r = await api('history/more?before='+encodeURIComponent(state.historyOldestLoaded));
-    if(r.ok && r.data){
-      state.history = [...(r.data.history||[]), ...state.history];
-      state.historyHasMore = !!r.data.hasMore;
-      state.historyOldestLoaded = r.data.oldestLoaded || null;
-      render();
-    }
-  } finally { loadingMoreHistory = false; }
-}
 /* Clears this device's sign-in and returns to the PIN pad. */
 function signOut(reason, {preserveSession = false} = {}){
   ricoReset();
@@ -361,12 +331,10 @@ function signOut(reason, {preserveSession = false} = {}){
   forcedRefreshOpen = false;
   state.account = null; state.name = ''; state.views = []; state.tabs = DEFAULT_TABS.slice();
   state.suppliers = []; state.items = []; state.units = []; state.history = [];
-  state.activity = []; state.devices = []; state.pars = []; state.reminder = null;
+  state.activity = []; state.devices = []; state.reminder = null;
   state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
-  state.historyHasMore = false; state.historyOldestLoaded = null;
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
   reminderDraft = null;
-  resetStockUi();
   stopStepHold(); rowPress?.cancel();
   state.pinBuffer = ''; state.view = 'order'; state.queue = null;
   finishingQueue = null;
@@ -391,9 +359,10 @@ function handleSessionStorage(event){
   signOut(t('sessionEnded'), {preserveSession: true});
 }
 window.addEventListener('storage', handleSessionStorage);
-function doLogout(){
-  api('logout', {method:'POST'});      // fire-and-forget; the token is dropped locally either way
-  signOut();
+async function doLogout(){
+  const reply=await api('logout',{method:'POST'});
+  if(reply.ok || reply.status===401) signOut();
+  else toast(t('saveFailed'));
 }
 /* Called by storage.js when the server rejects this device's session. */
 function onSessionExpired(){
@@ -413,7 +382,7 @@ async function refreshData(force){
   if(Date.now() - lastLoadAt < (force ? 15000 : REFRESH_MS)) return;
   refreshBusy = true;
   try{
-    const shown = () => JSON.stringify([state.history, state.items, state.suppliers, state.units, state.historyHasMore]);
+    const shown = () => JSON.stringify([state.history, state.items, state.suppliers, state.units, state.account]);
     const before = shown();
     if(await loadData(false) && shown() !== before) refreshWaiting = true;
   }finally{ refreshBusy = false; }
@@ -539,7 +508,6 @@ const RENDERERS = {
   history:[()=>renderHistory(),()=>attachHistoryEvents()], suppliers:[()=>renderSuppliers(),()=>attachSupplierEvents()],
   itemsAdmin:[()=>renderItemsAdmin(),()=>attachItemEvents()], units:[()=>renderUnits(),()=>attachUnitEvents()],
   record:[()=>renderRecord(),()=>attachRecordEvents()], devices:[()=>renderDevices(),()=>attachDeviceEvents()],
-  transfers:[()=>renderTransfers(),()=>attachTransfersEvents()], stock:[()=>renderStock(),()=>attachStockEvents()], receipts:[()=>renderReceipts(),()=>attachReceiptsEvents()],
   settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
 };
 function render(){
@@ -583,7 +551,6 @@ function render(){
   attach();
   if(state.view !== 'assistant') document.body.classList.remove('rico-composing');
   updateRicoBadge();
-  updateStockBadges();
   placeNavIndicator();
   enhanceSegments();
   enhanceSelects();
@@ -620,7 +587,7 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
    screens and "Edit tabs"). Computers: a sidebar with every screen. A glass
    lens glides to the current tab; on phones it can be held and slid, and
    the page itself can be swiped between the three tabs. */
-const VIEW_LABEL_KEYS = {transfers:'navTransfer', stock:'navStock', receipts:'navReceipts', order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
@@ -636,7 +603,7 @@ const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matche
 function renderBottomNav(){
   const btn = id=>`
       <button class="navbtn" data-view="${id}">
-        ${NAV_ICONS[id]}<span>${esc(viewLabel(id))}</span>${['assistant','transfers','stock'].includes(id)?'<i class="nav-badge" hidden></i>':''}
+        ${NAV_ICONS[id]}<span>${esc(viewLabel(id))}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}
       </button>`;
   return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><span class="nav-indicator" aria-hidden="true"></span>
     ${state.tabs.map(btn).join('')}
@@ -733,7 +700,7 @@ function initTabBarLens(nav){
   nav.addEventListener('pointercancel', end);
 }
 /* ============ Filter rows with a glass lens ============
-   Every row of filter pills (History, Record, Stock, Items, Suppliers | Zones)
+   Every row of filter pills
    gets the same lens as the tab bar: it glides to the chosen pill, and if you
    hold the row and slide, it turns to glass and follows your finger; the pill
    under the finger opens when you let go, exactly like the tab bar. The drag is
@@ -802,7 +769,7 @@ document.addEventListener('pointermove', e=>{
     seg.classList.add('held'); try{ seg.setPointerCapture(e.pointerId); }catch(_){}
   }
   // The glass follows the finger (once per frame); the screen changes only when the finger lets go,
-  // so long lists (Stock) are drawn once instead of for every pill passed on the way.
+  // so long lists are drawn once instead of for every pill passed on the way.
   if(segDrag.frame) return;
   segDrag.frame = requestAnimationFrame(()=>{
     if(!segDrag) return;
@@ -1073,7 +1040,7 @@ function openSelSheet(sel){
   closeSelSheet();
   document.activeElement?.blur?.();   // close the keyboard first, so the sheet has the screen
   // "Choose a supplier" and similar are prompts, not choices: they stay on the button but not in the list.
-  const prompts = [t('chooseSupplier'), t('trResolveChoose'), t('itChooseFormat')];
+  const prompts = [t('chooseSupplier')];
   const opts = [...sel.options].filter(o=>(!o.disabled || o.selected) && !(o.value === '' && prompts.includes(o.textContent))).map(o=>({value:o.value, label:o.textContent, on:o.selected}));
   const long = opts.length > 9;
   const wrap = document.createElement('div');
@@ -1088,7 +1055,7 @@ function openSelSheet(sel){
     const tokens = foldText(q).split(/\s+/).filter(Boolean);
     const shown = opts.filter(o=>tokens.every(x=>foldText(o.label).includes(x)));
     list.innerHTML = shown.length ? shown.map(o=>`<button type="button" class="sel-opt${o.on ? ' on' : ''}${o.value === '' ? ' none' : ''}" role="option" aria-selected="${o.on}" data-v="${esc(o.value)}"><span dir="auto">${esc(o.label)}</span>${o.on ? '<b aria-hidden="true">✓</b>' : ''}</button>`).join('')
-      : `<div class="field-hint">${esc(t('trNoMatch'))}</div>`;
+      : `<div class="field-hint">${esc(t('noSearchResults'))}</div>`;
   };
   paint('');
   let closed = false;
@@ -1127,7 +1094,7 @@ function openSelSheet(sel){
     ((!touch && wrap.querySelector('.sel-search input')) || chosen || list.querySelector('button'))?.focus({preventScroll:true});
   });
 }
-// Dropdowns drawn after the page (modals, lines added to a receipt) get the same list.
+// Dropdowns drawn after the page (modals) get the same list.
 new MutationObserver(muts=>{ if(muts.some(m=>[...m.addedNodes].some(n=>n.nodeType === 1 && (n.matches('select') || n.querySelector('select'))))) enhanceSelects(); })
   .observe(document.documentElement, {childList:true, subtree:true});
 
@@ -1225,7 +1192,7 @@ document.addEventListener('click', e=>{
   if(input && !input.disabled && !input.closest('[hidden]')){ padOpen(input); return; }
   if(padState) padClose();
 });
-// Boxes drawn later (receipt lines, the transfer amount) get the pad too.
+// Boxes drawn later (dialogs) get the pad too.
 new MutationObserver(muts=>{ if(PAD_TOUCH.matches && muts.some(m=>[...m.addedNodes].some(n=>n.nodeType === 1 && (n.matches('input[data-pad]') || n.querySelector('input[data-pad]'))))) enhancePads(); })
   .observe(document.documentElement, {childList:true, subtree:true});
 
@@ -1430,15 +1397,8 @@ function openTabEditor(){
     },
     onSubmit: async ()=>{
       if(picked.length !== 3) return {error:t('editTabsNeedThree')};
-      // The older server only knows the older screens; a tab bar that uses Transfer or Stock is kept by the stock server.
-      const usesStock = picked.some(v=>STOCK_VIEWS.includes(v));
-      const mine = await stockApi('tabs', {method:'PUT', body:{tabs:picked}});
-      if(usesStock ? !mine.ok : false) return {error:t('saveFailed')};
-      if(!usesStock){
-        const r = await api('me/tabs', {method:'PUT', body:{tabs:picked}});
-        if(!r.ok) return {error:t('saveFailed')};
-      }
-      stockState.tabs = picked.slice();
+      const r = await api('me/tabs', {method:'PUT', body:{tabs:picked}});
+      if(!r.ok) return {error:t('saveFailed')};
       state.tabs = picked.slice();
       saveSessionAccount();
       render();
@@ -1618,7 +1578,7 @@ document.addEventListener('keydown', e=>{
 /* ============ Order screen ============ */
 /* A unit's name in the current language (English when it has none). */
 /* Search text the way a person reads it: Kurdish written with Arabic letters still matches (تةمـاتة finds تەماتە).
-   The same letter folding as the PC worker (worker/match.mjs). */
+   Fold look-alike letters so names can be found consistently. */
 const FOLD_TEXT = [[/[ً-ٰٟـ​-‏‪-‮⁦-⁩﻿]/g, ''], [/[أإآٱ]/g, 'ا'],
   [/[يىێ]/g, 'ی'], [/[كگ]/g, 'ک'], [/[ةەھہ]/g, 'ه'], [/[ۆۇۊؤ]/g, 'و'],
   [/ڵ/g, 'ل'], [/ڕ/g, 'ر'], [/پ/g, 'ب'], [/چ/g, 'ج'], [/ژ/g, 'ز'], [/ڤ/g, 'ف'],
@@ -2336,15 +2296,10 @@ function orderHistoryCard(rec){
     ${supplierLines}
   </div>`;
 }
-/* Orders, transfers and stock counts in one list, newest first, with filter chips. */
+/* Orders for the current Baghdad calendar month, newest first. */
 function renderHistory(){
-  const showOrders = histView.filter === 'all' || histView.filter === 'orders';
-  const entries = [];
-  if(showOrders) state.history.forEach(rec=>entries.push({ts:new Date(rec.date).getTime(), day:rec.date, html:orderHistoryCard(rec)}));
-  if(state.views.includes('stock')) entries.push(...stHistoryEntries());
-  entries.sort((a,b)=>b.ts-a.ts);
-  const filters = state.views.includes('stock') ? stHistoryFilters() : '';
-  if(!entries.length) return stAttentionHtml()+filters+emptyState(histView.filter==='transfers'||histView.filter==='counts' ? esc(t('hcNoTransfers')) : t('noHistory'));
+  const entries = state.history.map(rec=>({ts:Date.parse(rec.date), day:rec.date, html:orderHistoryCard(rec)})).sort((a,b)=>b.ts-a.ts);
+  if(!entries.length) return emptyState(t('noHistory'));
   let lastDay = '';
   const cards = entries.map(e=>{
     const day = dayLabel(e.day);
@@ -2352,13 +2307,9 @@ function renderHistory(){
     lastDay = day;
     return heading + e.html;
   }).join('');
-  return stAttentionHtml() + filters + cards + (showOrders && state.historyHasMore ? `<button class="btn btn-ghost load-more" id="loadMoreHistoryBtn">${esc(t('loadMoreHistory'))}</button>` : '');
+  return cards;
 }
 function attachHistoryEvents(){
-  attachHistoryStockEvents();
-  if(state.views.includes('stock')) stRefreshIfStale();
-  const more = document.getElementById('loadMoreHistoryBtn');
-  if(more) more.onclick = ()=>{ more.textContent = t('loading'); loadMoreHistory(); };
   document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
     const rec = state.history.find(r=>r.id===b.dataset.reorderhist);
     if(!rec) return;
@@ -2571,8 +2522,6 @@ async function deleteRecord(table, id){
 
 /* ============ Suppliers ============ */
 function renderSuppliers(){
-  const zonesOn = state.views.includes('stock');
-  if(zonesOn && supView.tab === 'zones') return zonesSwitchHtml() + renderZonesPanel();
   const list = state.suppliers.length ? sortedByName(state.suppliers).map(s=>`
     <div class="list-row tappable" data-editsup="${esc(s.id)}">
       <div><div class="name">${esc(s.name)}</div><div class="meta">${esc(s.phone||'')}</div>
@@ -2583,7 +2532,7 @@ function renderSuppliers(){
         <button class="icon-btn danger" data-delsup="${esc(s.id)}">${ICON_DELETE}</button>
       </div>
     </div>`).join('') : emptyState(t('noSuppliersYet'));
-  return `${zonesOn ? zonesSwitchHtml() : ''}
+  return `
     <div class="action-row">
       <button class="btn btn-primary add-btn" id="supAddBtn">${ICON_PLUS} ${t('addSupplier')}</button>
       <button class="btn btn-ghost" data-gorecord="supplier">${NAV_ICONS.record} ${t('record')}</button>
@@ -2646,8 +2595,6 @@ function openSupplierModal(id){
   });
 }
 function attachSupplierEvents(){
-  document.querySelectorAll('[data-supview]').forEach(b=>b.onclick=()=>{ supView.tab=b.dataset.supview; render(); });
-  if(state.views.includes('stock') && supView.tab==='zones'){ attachZonesEvents(); return; }
   document.getElementById('supAddBtn').onclick = ()=> openSupplierModal(null);
   document.querySelectorAll('[data-editsup]').forEach(row=>row.onclick=()=> openSupplierModal(row.dataset.editsup));
   document.querySelectorAll('[data-testsup]').forEach(b=>b.onclick=async(e)=>{
@@ -2676,14 +2623,15 @@ function attachSupplierEvents(){
 }
 
 /* ============ Items ============ */
+function itemsAdminListHtml(){
+  return sortedByName(state.items).map(i=>`<div class="list-row tappable" data-edititem="${esc(i.id)}"><div><div class="name">${esc(i.name)}</div><div class="meta">${esc(unitLabel(i.unit))} · ${esc(supplierName(i.supplierId))}</div></div><div class="row-actions"><span class="icon-btn">${ICON_EDIT}</span><button class="icon-btn danger" data-delitem="${esc(i.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button></div></div>`).join('') || emptyState(t('noItemsYet'));
+}
 function renderItemsAdmin(){
   return `
     <div class="action-row">
       <button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
       <button class="btn btn-ghost" data-gorecord="item">${NAV_ICONS.record} ${t('record')}</button>
     </div>
-    ${state.views.includes('stock') ? '<div id="ijList"></div>' : ''}
-    ${state.views.includes('stock') && state.items.length ? itemsAdminHeaderHtml() : ''}
     <div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${itemsAdminListHtml()}</div>`;
 }
 function openSupplierItemOrder(supplierId){
@@ -2799,8 +2747,6 @@ function openSupplierItemOrder(supplierId){
 function openItemModal(id){
   const existing = id ? state.items.find(i=>i.id===id) : null;
   if(id && !existing) return;
-  const stockOn = state.views.includes('stock') && stockState.loaded;
-  let createdId = null;   // set once a new item is saved, so a retry after a stock-setup error edits it instead of adding a second one
   const unitOptions = state.units.map(u=>`<option value="${esc(u.id)}" ${existing?.unit===u.id?'selected':''}>${esc(unitName(u))}</option>`).join('');
   // While adding a fresh item, the last supplier picked stays selected so
   // bulk-adding items for one supplier doesn't need reselecting each time.
@@ -2810,41 +2756,27 @@ function openItemModal(id){
   const banner = existing
     ? editingBanner(existing.name, `${unitLabel(existing.unit)} \u00b7 ${existing.supplierId ? supplierName(existing.supplierId) : t('noSupplier')}`)
     : '';
-  const par = existing ? (state.pars||[]).find(p=>p.itemId===existing.id) : null;
   showFormModal({
     title: existing ? t('editItem') : t('addItem'),
     banner,
     bodyHtml: `
-      <div class="field"><label>${stockOn ? t('itAppName') : t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
-      <div class="field"><label>${stockOn ? t('itBuying') : t('unit')}</label><select id="mfUnit">${unitOptions}</select>${stockOn ? `<div class="field-hint">${t('itBuyingHint')}</div>` : ''}</div>
-      ${stockOn ? itemStockFieldsHtml(existing) : ''}
+      <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
+      <div class="field"><label>${t('unit')}</label><select id="mfUnit">${unitOptions}</select></div>
       <div class="field">
         <label>${t('supplier')}</label>
         <select id="mfSupplier">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
-      <div class="field stock-box">
-        <label class="check-row"><input type="checkbox" id="mfTrackStock" ${par?'checked':''}> ${t('trackStock')}</label>
-        <div class="field-hint">${t('trackStockHint')}</div>
-      </div>
-      <div id="mfParFields" ${par?'':'hidden'}>
-        <div class="field"><label>${t('parQty')}</label><input id="mfParQty" type="number" min="1" step="1" value="${par?par.parQty:''}"></div>
-        <div class="field"><label>${t('parBusyBoost')}</label><input id="mfParBoost" type="number" min="0" step="5" value="${par?par.busyBoostPct:50}"></div>
-        ${par ? `<div class="field-hint">${t('parCurrentEstimate')(par.estQty, unitLabel(existing.unit))}</div>` : ''}
-      </div>`,
+      `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
     onOpen: (box)=>{
-      if(stockOn) itemStockOnOpen(box);
       const sel = box.querySelector('#mfSupplier');
       const hint = box.querySelector('#mfSupHint');
       if(sel && hint) sel.onchange = ()=>{
         const s = state.suppliers.find(x=>x.id===sel.value);
         hint.textContent = s ? t('supplierStaysSelected')(s.name) : '';
       };
-      const track = box.querySelector('#mfTrackStock');
-      const parFields = box.querySelector('#mfParFields');
-      if(track && parFields) track.onchange = ()=>{ parFields.hidden = !track.checked; };
     },
     onSubmit: async (again)=>{
       const name = document.getElementById('mfName').value.trim();
@@ -2852,18 +2784,11 @@ function openItemModal(id){
       const supplierId = document.getElementById('mfSupplier').value || null;
       if(!name) return {error: t('nameRequired')};
       if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
-      const trackStock = document.getElementById('mfTrackStock').checked;
-      const parQty = parseFloat(document.getElementById('mfParQty').value);
-      const parBoost = parseFloat(document.getElementById('mfParBoost').value);
-      if(trackStock && !(parQty > 0)) return {error: t('parQtyRequired')};
-      if(stockOn){ const chk = itemStockValidate(document, unit); if(chk.error) return chk; }
       const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
-      let itemId;
-      const editing = existing || (createdId ? state.items.find(x=>x.id===createdId) : null);
+      const editing = existing;
       if(editing){
         const i = state.items.find(x=>x.id===editing.id);
         if(!i) return {};
-        itemId = i.id;
         const oldSupName = i.supplierId ? (state.suppliers.find(s=>s.id===i.supplierId)?.name || '') : '';
         const fields = diffFields([
           ['name', i.name, name],
@@ -2881,34 +2806,13 @@ function openItemModal(id){
         const maxSort=supplierItems.reduce((max,i)=>Number.isInteger(i.sortOrder)?Math.max(max,i.sortOrder):max,-1);
         const next = {id:'i'+outboxJobId(), name, unit, supplierId, sortOrder:maxSort>=0?maxSort+1:null};
         if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
-        itemId = next.id;
-        createdId = next.id;
         state.items.push(next);
         state.itemFormSupplierId = supplierId; // keep it locked in for the next item
         logActivity({action:'add', type:'item', name, fields:[
           {k:'name', to:name}, {k:'unit', to:unitEn(unit)}, {k:'supplier', to:newSupName}
         ]});
       }
-      // The counting format is its own server call, after the item itself is safely saved.
-      if(stockOn){
-        const st = await itemStockSave(itemId, document, unit);
-        if(st.error){ render(); return {error: t('itSetupFailed') + ' ' + st.error}; }
-      }
-      // Stock tracking is its own small server call -- it never blocks the
-      // item save above, and a failure here is quiet (non-critical).
-      const wasTracked = !!par;
-      if(trackStock){
-        const r = await api(`items/${encodeURIComponent(itemId)}/stock`, {method:'PUT', body:{parQty, busyBoostPct: Number.isFinite(parBoost)?parBoost:50}});
-        if(r.ok){
-          state.pars = (state.pars||[]).filter(p=>p.itemId!==itemId);
-          state.pars.push({itemId, parQty, busyBoostPct: Number.isFinite(parBoost)?parBoost:50, estQty: par?par.estQty:parQty, estUpdatedAt:new Date().toISOString()});
-        }
-      } else if(wasTracked){
-        await api(`items/${encodeURIComponent(itemId)}/stock`, {method:'PUT', body:{track:false}});
-        state.pars = (state.pars||[]).filter(p=>p.itemId!==itemId);
-      }
       render();
-      if(stockOn) stAfterItemSaved(itemId);
       if(again) return {keepOpen:true, message:t('savedMsg')(name)};
       toast(t('savedMsg')(name));
       return {};
@@ -2922,35 +2826,23 @@ function bindItemRows(root){
     const id = b.dataset.delitem;
     const item = state.items.find(i=>i.id===id);
     if(!item) return;
-    const stockWarn = stockState.loaded && stTotal(id) > 0 ? `<br><b>${esc(t('itDeleteHasStock'))}</b>` : '';
-    if(!(await showConfirm(`<b>${esc(item.name)}</b><br>${t('confirmDeleteItem')}${stockWarn}`))) return;
+    if(!(await showConfirm(`<b>${esc(item.name)}</b><br>${t('confirmDeleteItem')}`))) return;
     if(!(await deleteRecord('items', id))){ await showAlert(t('saveFailed')); return; }
     const supName = item.supplierId ? (state.suppliers.find(s=>s.id===item.supplierId)?.name || '') : '';
     state.items = state.items.filter(i=>i.id!==id);
     delete state.cart[id];
     persistCartDraft();
-    stockState.settings.delete(id);
     logActivity({action:'delete', type:'item', name:item.name, fields:[
       {k:'name', from:item.name}, {k:'unit', from:unitEn(item.unit)}, {k:'supplier', from:supName}
     ]});
-    if(stockState.loaded) loadStock();
     render();
   });
 }
 function attachItemEvents(){
   document.getElementById('itemAddBtn').onclick = ()=> openItemModal(null);
-  if(state.views.includes('stock')) ijMount();
   const list = document.getElementById('itemsAdminList');
   bindItemRows(list);
-  // Filter chips and search only replace the list, so typing never loses focus.
-  const repaint = ()=>{ list.innerHTML = itemsAdminListHtml(); bindItemRows(list); };
-  document.querySelectorAll('[data-itfilter]').forEach(b=>b.onclick=()=>{
-    itemsView.filter = b.dataset.itfilter;
-    document.querySelectorAll('[data-itfilter]').forEach(x=>{ const on = x===b; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on); });
-    repaint();
-  });
-  const search = document.getElementById('itSearch');
-  if(search) search.oninput = ()=>{ itemsView.search = search.value; repaint(); };
+
 }
 
 /* ============ Units ============ */
@@ -3168,9 +3060,15 @@ function renderDisplaySettings(){
     ${row('pref-compactRows', prefOn('compactRows'), 'compactRowsLabel', 'compactRowsHint')}
     ${row('pref-showLastQty', prefOn('showLastQty'), 'lastQtyLabel', 'lastQtyHint')}</div>`;
 }
+function currentOutbox(){ return outbox().filter(j=>outboxJobAccount(j)===state.account); }
+function renderPendingSync(){
+ const jobs=currentOutbox();
+ if(!jobs.length) return '';
+ return `<div class="section-title">${esc(t('pendingSync'))}: ${jobs.length}</div><div class="form-card"><p>${esc(t('pendingSyncHint'))}</p><div class="form-actions"><button class="btn btn-primary" id="syncRetryBtn">${esc(t('syncRetry'))}</button><button class="btn btn-ghost" id="syncExportBtn">${esc(t('syncExport'))}</button></div></div>`;
+}
 function renderSettings(){
   const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `${renderThemePicker()}${renderDisplaySettings()}${renderSoundsView()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
+  return `${renderPendingSync()}${renderThemePicker()}${renderDisplaySettings()}${renderSoundsView()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
 }
 /* ============ Notifications and sounds (shown in Settings) ============ */
 /* The daily reminder starts as one switch. Turning it on opens the time,
@@ -3319,6 +3217,10 @@ function bindThemePicker(){
   });
 }
 function attachSettingsEvents(){
+ const retry=document.getElementById('syncRetryBtn');
+ if(retry) retry.onclick=async()=>{retry.disabled=true;await flushOutbox();await loadData();render();};
+ const exp=document.getElementById('syncExportBtn');
+ if(exp) exp.onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(currentOutbox(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ricotta-pending-orders.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   bindThemePicker();
   [['pref-compactRows','compactRows'],['pref-showLastQty','showLastQty']].forEach(([id,key])=>{
     const box = document.getElementById(id);

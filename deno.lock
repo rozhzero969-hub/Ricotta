@@ -140,5 +140,14 @@
       ],
       "bin": true
     }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@electric-sql/pglite@0.5.8",
+        "npm:eslint@9.39.5",
+        "npm:playwright@1.55.1"
+      ]
+    }
   }
 }

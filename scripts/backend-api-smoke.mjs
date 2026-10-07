@@ -1,5 +1,6 @@
 // Node 24+: execute the API handler with an in-memory database and no network.
 import assert from 'node:assert/strict';
+import {monthKey,monthStart} from '../supabase/functions/_shared/month.ts';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from '../supabase/functions/_shared/security.ts';
@@ -12,7 +13,7 @@ function reset() {
     app_sessions: [{ id: 'session', token_hash: tokenHash, account: 'rozha', device_id: 'device-1', expires_at: new Date(Date.now() + 60000).toISOString(), last_seen_at: new Date().toISOString(), revoked_at: null }],
     app_accounts: [{ id: 'rozha', name: 'Rozha', tabs: ['order', 'assistant', 'history'] }],
     app_items: [{ id: 'tomato', name: 'Tomatoes' }], app_suppliers: [{ id: 'supplier', name: 'Supplier' }],
-    app_item_pars: [{ item_id: 'tomato', est_qty: 2 }], app_recovery_tickets: [], app_push_subscriptions: [], app_login_attempts: [], app_devices: [], app_rico_inbox: [], app_audit_events: [],
+    app_recovery_tickets: [], app_push_subscriptions: [], app_login_attempts: [], app_devices: [], app_rico_inbox: [], app_audit_events: [],
   };
   errors = new Map(); calls = []; reservation = [1, 2]; match = 'rozha'; saved = true;
 }
@@ -26,6 +27,7 @@ const db = {
     }
     if (name === 'app_internal_match_code') return { data: match, error: null };
     if (name === 'app_internal_set_credentials') return { data: 'ok', error: null };
+    if (['app_internal_logout','app_internal_catalog_change','app_internal_device_command','app_internal_delete_order'].includes(name)) return {data:null,error:null};
     if (name === 'app_internal_save_order') return { data: saved, error: null };
     throw new Error(`Unexpected RPC ${name}`);
   },
@@ -55,7 +57,7 @@ const db = {
       gt(field, value) { filters.push(row => row[field] > value); return q; },
       lt(field, value) { filters.push(row => row[field] < value); return q; },
       gte(field, value) { filters.push(row => row[field] >= value); return q; },
-      order() { return q; }, limit() { return q; },
+      range() { return q; }, order() { return q; }, limit() { return q; },
       insert(row) { action = 'insert'; change = row; return q; },
       update(row) { action = 'update'; change = row; return q; },
       upsert(row) { action = 'upsert'; change = row; return q; },
@@ -70,7 +72,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody );
+const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'monthKey', 'monthStart', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, monthKey, monthStart );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -89,6 +91,12 @@ try {
   tables.app_sessions[0].expires_at = 'invalid-date';
   assert.equal((await call('orders', {})).status, 401, 'invalid session dates fail closed');
 
+  reset();errors.set('app_internal_logout',true);
+  assert.equal((await call('logout',{})).status,503,'failed revocation is never reported as success');
+  reset();errors.set('app_internal_device_command',true);
+  assert.equal((await call('devices/command',{ids:['device-1'],type:'logout'})).status,503,'failed device command is never reported as success');
+  reset();errors.set('app_internal_catalog_change',true);
+  assert.equal((await call('items/tomato',{name:'Tomatoes'},'PUT')).status,500);
   reset(); reservation = null;
   assert.equal((await call('login', { pin: '432198' }, 'POST', false)).status, 429);
   assert.equal(calls.some(c => c.name === 'app_internal_match_code'), false, 'quota is reserved before expensive PIN verification');
@@ -104,7 +112,7 @@ try {
   assert.equal(tables.app_login_attempts.every(row => row.succeeded), true);
 
   reset();
-  const validOrder = { id: 'order-1', date: '2026-10-01T12:00:00Z', entries: [{ supplierId: 'supplier', items: [{ itemId: 'tomato', name: 'Tomatoes', unit: 'kg', qty: 5 }] }] };
+  const validOrder = { id: 'order-1', date: new Date().toISOString(), entries: [{ supplierId: 'supplier', items: [{ itemId: 'tomato', name: 'Tomatoes', unit: 'kg', qty: 5 }] }] };
   assert.equal((await call('orders', validOrder)).status, 200);
   const save = calls.find(c => c.name === 'app_internal_save_order');
   assert.deepEqual(save.args.p_lines, [{ supplier_id: 'supplier', supplier_name: 'Supplier', item_id: 'tomato', item_name: 'Tomatoes', unit_id: 'kg', qty: 5 }]);
@@ -119,7 +127,6 @@ try {
     assert.equal(calls.some(c => c.name === 'app_internal_save_order'), false);
   }
   reset();
-  assert.equal((await call('items/tomato/stock', { track: true, parQty: 10, estQty: 'Infinity' }, 'PUT')).status, 400);
   assert.equal((await call('push/subscription', { endpoint: 'https://127.0.0.1/internal' }, 'PUT')).status, 400);
   tables.app_push_subscriptions.push({ endpoint: 'https://fcm.googleapis.com/fcm/send/peer', device_id: 'device-2' });
   assert.equal((await call('push/subscription', { endpoint: 'https://fcm.googleapis.com/fcm/send/peer', p256dh: 'A'.repeat(87), auth: 'B'.repeat(22) }, 'PUT')).status, 403, 'another device cannot overwrite a subscription');

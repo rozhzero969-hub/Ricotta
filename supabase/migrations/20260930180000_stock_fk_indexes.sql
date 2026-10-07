@@ -1,9 +1,0 @@
-create index if not exists stock_balances_storage_idx on public.stock_balances(storage_name);
-create index if not exists stock_counts_item_idx on public.stock_counts(item_id);
-create index if not exists stock_counts_storage_idx on public.stock_counts(storage_name);
-create index if not exists stock_events_request_idx on public.stock_events(request_id);
-create index if not exists stock_item_settings_counting_idx on public.stock_item_settings(counting_unit);
-create index if not exists stock_requests_claimed_by_idx on public.stock_requests(claimed_by);
-create index if not exists stock_requests_from_idx on public.stock_requests(from_storage);
-create index if not exists stock_requests_to_idx on public.stock_requests(to_storage);
-create index if not exists stock_requests_item_idx on public.stock_requests(item_id);
