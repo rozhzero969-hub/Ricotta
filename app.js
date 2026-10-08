@@ -1876,7 +1876,7 @@ async function startSendQueue(){
   const already = Object.keys(bySupplier).filter(sid=>sid!=='__none' && sentToSupplierToday(sid));
   if(already.length){
     const names = already.map(sid=>(state.suppliers.find(s=>s.id===sid)||{}).name).filter(Boolean).join(', ');
-    if(!(await showConfirm(t('confirmDoubleOrder')(names)))) return false;
+    if(!(await showConfirm(t('confirmDoubleOrder')(names), {okLabel: t('sendAnother'), okClass: 'btn-primary'}))) return false;
   }
   if(!Object.keys(bySupplier).length) return false;
   // Going back to Order and pressing Send again keeps the suppliers already sent (same items, same amounts):
