@@ -10,11 +10,15 @@
 //       {type:"reminder-now"}                     test of the daily reminder
 //       {type:"supplier-test", supplierId}        test of one supplier's reminder
 //       {type:"assistant", title, bodyEn, bodyKu, bodyAr}  a message sent through Rico
+//       {type:"note", account, body}              Rozha left a kitchen note (only that account's phones)
 //
-// Every tick also runs Rico's own messages: a cheer at 09:00 Erbil time, and
-// an hour after a supplier's reminder time (or the daily reminder) with
-// nothing sent, a telling-off -- each once per day, in the app (Rico's
-// inbox) and as a notification.
+// Every tick also runs Rico's own messages: a cheer at 09:00 Erbil time (with
+// the day's weather), an hour after a supplier's reminder time (or the daily
+// reminder) with nothing sent, a telling-off, at 20:00 a warning when the
+// kitchen streak would end at midnight, on the last day of the month a
+// reminder to save the month's report card, and a nudge for Yunis when
+// Rozha's note has waited two hours unread -- each once, in the app (Rico's
+// inbox) and as a notification. Erbil's weather is refreshed every hour.
 //
 // Every push is sent in the recipient phone's own language (English, Kurdish
 // or Arabic), and addresses the person signed in there by name when known.
@@ -140,9 +144,10 @@ async function send(subs: Sub[], payloadFor: Payload, ttl: number, urgency: "hig
   return { sent, failed, removed: dead.length };
 }
 
-async function sendReminder(payloadFor: Payload) {
+async function sendReminder(payloadFor: Payload, account?: string) {
   const { subs, skipped } = await loadSubs(true);
-  return { ...(await send(subs, payloadFor, 2 * 3600, "high")), skipped };
+  const mine = account ? subs.filter((s) => s.account === account) : subs;
+  return { ...(await send(mine, payloadFor, 2 * 3600, "high")), skipped: skipped + subs.length - mine.length };
 }
 
 /* ---- Daily reminder (one for the whole restaurant) ---- */
@@ -173,8 +178,9 @@ async function claimAlert(id: string, kind: string, supplierId: string | null) {
   return !!data?.length;
 }
 type Words = { mood: string; en: (n: string) => string; ku: (n: string) => string; ar: (n: string) => string };
-async function ricoSays(kind: string, key: string, words: Words, extra: Record<string, unknown> = {}) {
-  const { error } = await sb.from("app_rico_inbox").upsert(ACCOUNTS.map((a) => ({
+async function ricoSays(kind: string, key: string, words: Words, extra: Record<string, unknown> = {}, only?: string) {
+  const to = only ? ACCOUNTS.filter((a) => a === only) : ACCOUNTS;
+  const { error } = await sb.from("app_rico_inbox").upsert(to.map((a) => ({
     account: a, kind, mood: words.mood, body_en: words.en(NAMES[a].en), body_ku: words.ku(NAMES[a].ku), body_ar: words.ar(NAMES[a].ar),
     dedupe_key: `${key}|${a}`,
   })), { onConflict: "dedupe_key", ignoreDuplicates: true });
@@ -183,7 +189,7 @@ async function ricoSays(kind: string, key: string, words: Words, extra: Record<s
     title: RICO[lang],
     body: lang === "ku" ? words.ku(name ?? "") : lang === "ar" ? words.ar(name ?? "") : words.en(name ?? ""),
     kind: "assistant", mood: moodOf(words.mood), tag: `ricotta-rico-${key}`, ...extra,
-  }));
+  }), only);
 }
 /* "Hey Rozha!" when the name is known, "Hey!" when it isn't. */
 const hi = (word: string, n: string, sep = " ") => (n ? `${word}${sep}${n}` : word);
@@ -262,6 +268,97 @@ async function overdueTick() {
   return out;
 }
 
+/* ---- Erbil weather (Open-Meteo, no key), kept in app_weather for the app and Rico ---- */
+const RAIN_CODES = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
+const SNOW_CODES = [71, 73, 75, 77, 85, 86];
+async function weatherTick() {
+  const { data: row } = await sb.from("app_weather").select("updated_at").eq("id", true).maybeSingle();
+  if (row?.updated_at && Date.now() - Date.parse(row.updated_at) < 50 * 60_000) return { skipped: "fresh" };
+  const url = "https://api.open-meteo.com/v1/forecast?latitude=36.19&longitude=44.01&current=temperature_2m,weather_code,precipitation"
+    + "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=Asia%2FBaghdad&forecast_days=1";
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) return { error: res.status };
+  const w = await res.json();
+  const code = Number(w?.current?.weather_code ?? -1), dayCode = Number(w?.daily?.weather_code?.[0] ?? -1);
+  const data = {
+    temp: Math.round(Number(w?.current?.temperature_2m ?? 0)), code,
+    rain: RAIN_CODES.includes(code) || Number(w?.current?.precipitation ?? 0) > 0.1,
+    snow: SNOW_CODES.includes(code),
+    max: Math.round(Number(w?.daily?.temperature_2m_max?.[0] ?? 0)), min: Math.round(Number(w?.daily?.temperature_2m_min?.[0] ?? 0)),
+    rainChance: Number(w?.daily?.precipitation_probability_max?.[0] ?? 0), dayCode,
+  };
+  await sb.from("app_weather").upsert({ id: true, data, updated_at: new Date().toISOString() });
+  return data;
+}
+/* One sentence about today's weather for the morning message, in each language. */
+async function weatherWords() {
+  const { data: row } = await sb.from("app_weather").select("data,updated_at").eq("id", true).maybeSingle();
+  const w: any = row?.data;
+  if (!w || !row?.updated_at || Date.now() - Date.parse(row.updated_at) > 6 * 3600_000) return { en: "", ku: "", ar: "" };
+  const wet = RAIN_CODES.includes(Number(w.dayCode)) || Number(w.rainChance) >= 60;
+  const tip = wet ? { en: " Rain is likely, so send orders early in case deliveries are slow.", ku: " ئەگەری باران هەیە، بۆیە داواکارییەکان زوو بنێرە نەوەک گەیاندن دوابکەوێت.", ar: " المطر محتمل، فأرسل الطلبات مبكرًا تحسبًا لتأخر التوصيل." }
+    : w.max >= 38 ? { en: " A hot one: think extra lemons and keep the cheese cold.", ku: " ڕۆژێکی گەرمە: لیمۆی زیاتر و پەنیرەکە سارد ڕابگرە.", ar: " يوم حار: فكّر بليمون إضافي وأبقِ الجبن باردًا." }
+    : w.max <= 10 ? { en: " A cold day, good for soup.", ku: " ڕۆژێکی ساردە، باشە بۆ شۆربا.", ar: " يوم بارد، مناسب للشوربة." } : { en: "", ku: "", ar: "" };
+  return {
+    en: ` Erbil today: ${w.max}°, low ${w.min}°.${tip.en}`,
+    ku: ` هەولێر ئەمڕۆ: ${w.max}°، کەمترین ${w.min}°.${tip.ku}`,
+    ar: ` أربيل اليوم: ${w.max}°، الصغرى ${w.min}°.${tip.ar}`,
+  };
+}
+
+/* ---- The kitchen streak: a warning at 20:00 when today has no order yet ---- */
+const STREAK_WARN_MIN = 20 * 60, STREAK_WARN_WINDOW_MIN = 2 * 60;
+async function streakTick() {
+  const now = erbilNow();
+  if (now.minutes < STREAK_WARN_MIN || now.minutes >= STREAK_WARN_MIN + STREAK_WARN_WINDOW_MIN) return { skipped: "outside window" };
+  const { data: st } = await sb.from("app_streak").select("count,last_day").eq("id", true).maybeSingle();
+  const y = new Date(`${now.date}T12:00:00Z`); y.setUTCDate(y.getUTCDate() - 1);
+  if (!st || Number(st.count) < 2 || String(st.last_day) !== y.toISOString().slice(0, 10)) return { skipped: "nothing at risk" };
+  if (!(await claimAlert(`streak-risk|${now.date}`, "streak-risk", null))) return { skipped: "already sent today" };
+  const k = Number(st.count);
+  return await ricoSays("streak", `streak-risk|${now.date}`, {
+    mood: "worried",
+    en: (n) => `${hi("Hey", n)}! 🔥 Our ${k}-day streak goes out at midnight. One order today keeps the fire burning!`,
+    ku: (n) => `${hi("هەی", n)}! 🔥 زنجیرەی ${k} ڕۆژەمان نیوەشەو دەکوژێتەوە. تەنها یەک داواکاری ئەمڕۆ ئاگرەکە هەڵدەگیرسێنێتەوە!`,
+    ar: (n) => `${ya(n)}! 🔥 سلسلة الـ${k} يومًا ستنطفئ عند منتصف الليل. طلب واحد اليوم يبقي النار مشتعلة!`,
+  });
+}
+
+/* ---- Last day of the month: save the report card before History is cleared ---- */
+async function reportTick() {
+  const now = erbilNow();
+  const t = new Date(`${now.date}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + 1);
+  if (t.getUTCDate() !== 1 || now.minutes < 17 * 60 || now.minutes >= 21 * 60) return { skipped: "not the time" };
+  const month = now.date.slice(0, 7);
+  if (!(await claimAlert(`report|${month}`, "report", null))) return { skipped: "already sent" };
+  return await ricoSays("report", `report|${month}`, {
+    mood: "excited",
+    en: (n) => `${hi("Hey", n)}! 📊 This month's report card is ready in History. Save the month there before it's cleared at midnight.`,
+    ku: (n) => `${hi("هەی", n)}! 📊 کارتی ڕاپۆرتی ئەم مانگە لە مێژوودا ئامادەیە. پێش ئەوەی نیوەشەو بسڕدرێتەوە مانگەکە پاشەکەوت بکە.`,
+    ar: (n) => `${ya(n)}! 📊 بطاقة تقرير هذا الشهر جاهزة في السجل. احفظ الشهر هناك قبل أن يُمسح عند منتصف الليل.`,
+  }, { view: "history" });
+}
+
+/* ---- Rozha's notes: if one waits two hours unread, Rico reminds Yunis (once per note) ---- */
+async function notesTick() {
+  const now = erbilNow();
+  if (now.minutes < 8 * 60 || now.minutes >= 22 * 60) return { skipped: "night" };
+  const { data: waiting } = await sb.from("app_notes").select("id,body")
+    .is("read_at", null).is("reminded_at", null).lt("created_at", new Date(Date.now() - 2 * 3600_000).toISOString())
+    .order("created_at").limit(5);
+  if (!waiting?.length) return { skipped: "nothing unread" };
+  const { data: claimed } = await sb.from("app_notes").update({ reminded_at: new Date().toISOString() })
+    .in("id", waiting.map((n: any) => n.id)).is("reminded_at", null).select("id");
+  if (!claimed?.length) return { skipped: "claimed elsewhere" };
+  const k = claimed.length;
+  return await ricoSays("note", `note-remind|${claimed.map((n: any) => n.id).join(",")}`, {
+    mood: "thinking",
+    en: (n) => `${hi("Psst", n, ", ")}! 📝 Rozha left you ${k === 1 ? "a note" : `${k} notes`} and ${k === 1 ? "it's" : "they're"} still unread. Tap the bell at the top to read ${k === 1 ? "it" : "them"}.`,
+    ku: (n) => `${hi("هێی", n)}! 📝 ڕۆژا ${k === 1 ? "تێبینییەکی" : `${k} تێبینی`} بۆ بەجێهێشتوویت و هێشتا نەتخوێندۆتەوە. زەنگەکەی سەرەوە دابگرە بۆ خوێندنەوە.`,
+    ar: (n) => `${ya(n)}! 📝 تركت لك روژا ${k === 1 ? "ملاحظة" : `${k} ملاحظات`} لم تُقرأ بعد. اضغط الجرس في الأعلى لقراءتها.`,
+  }, { view: "notes" }, "yunis");
+}
+
 /* Rico's good-morning message: which suppliers are due today. */
 async function cheerTick() {
   const now = erbilNow();
@@ -277,16 +374,17 @@ async function cheerTick() {
   const list = dueToday.slice(0, 6).join("، ");
   const listEn = dueToday.slice(0, 6).join(", ");
   const k = dueToday.length;
+  const wx = await weatherWords().catch(() => ({ en: "", ku: "", ar: "" }));
   return await ricoSays("cheer", `cheer|${now.date}`, k ? {
     mood: "excited",
-    en: (n) => `${hi("Good morning", n, ", ")}! ☀️ ${k} supplier${k === 1 ? " is" : "s are"} due today: ${listEn}. Let's get the orders out on time!`,
-    ku: (n) => `${hi("بەیانیت باش", n)}! ☀️ ئەمڕۆ کاتی داواکاریی ${k} دابینکەرە: ${list}. با بە کاتی خۆی بینێرین!`,
-    ar: (n) => `${hi("صباح الخير", n, " يا ")}! ☀️ اليوم موعد ${k} من المورّدين: ${list}. لنرسل الطلبات في وقتها!`,
+    en: (n) => `${hi("Good morning", n, ", ")}! ☀️ ${k} supplier${k === 1 ? " is" : "s are"} due today: ${listEn}.${wx.en} Let's get the orders out on time!`,
+    ku: (n) => `${hi("بەیانیت باش", n)}! ☀️ ئەمڕۆ کاتی داواکاریی ${k} دابینکەرە: ${list}.${wx.ku} با بە کاتی خۆی بینێرین!`,
+    ar: (n) => `${hi("صباح الخير", n, " يا ")}! ☀️ اليوم موعد ${k} من المورّدين: ${list}.${wx.ar} لنرسل الطلبات في وقتها!`,
   } : {
     mood: "happy",
-    en: (n) => `${hi("Good morning", n, ", ")}! ☀️ No supplier is scheduled today. Have a great shift!`,
-    ku: (n) => `${hi("بەیانیت باش", n)}! ☀️ ئەمڕۆ هیچ دابینکەرێک کاتی داواکاریی نییە. ڕۆژێکی خۆش!`,
-    ar: (n) => `${hi("صباح الخير", n, " يا ")}! ☀️ لا يوجد مورّد مجدول اليوم. يومًا موفقًا!`,
+    en: (n) => `${hi("Good morning", n, ", ")}! ☀️ No supplier is scheduled today.${wx.en} Have a great shift!`,
+    ku: (n) => `${hi("بەیانیت باش", n)}! ☀️ ئەمڕۆ هیچ دابینکەرێک کاتی داواکاریی نییە.${wx.ku} ڕۆژێکی خۆش!`,
+    ar: (n) => `${hi("صباح الخير", n, " يا ")}! ☀️ لا يوجد مورّد مجدول اليوم.${wx.ar} يومًا موفقًا!`,
   });
 }
 
@@ -330,7 +428,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   try {
     const body = await readJsonBody(req, 16 * 1024);
-    // Stock maintenance and Rico's in-app inbox still work without Web Push.
+    // Rico's in-app inbox and the weather still work without Web Push.
     if (!vapidReady && body.type !== "reminder-tick") return json({ error: "VAPID keys are not set on this function" }, 500);
     switch (body.type) {
       case "reminder-tick": {
@@ -338,7 +436,11 @@ Deno.serve(async (req) => {
         try { result.daily = await dailyTick(); } catch (e) { console.error("daily tick failed", e); result.daily = { error: true }; }
         try { result.suppliers = await supplierTick(); } catch (e) { console.error("supplier tick failed", e); result.suppliers = { error: true }; }
         try { result.late = await overdueTick(); } catch (e) { console.error("late-order tick failed", e); result.late = { error: true }; }
+        try { result.weather = await weatherTick(); } catch (e) { console.error("weather tick failed", e); result.weather = { error: true }; }
         try { result.cheer = await cheerTick(); } catch (e) { console.error("cheer tick failed", e); result.cheer = { error: true }; }
+        try { result.streak = await streakTick(); } catch (e) { console.error("streak tick failed", e); result.streak = { error: true }; }
+        try { result.report = await reportTick(); } catch (e) { console.error("report tick failed", e); result.report = { error: true }; }
+        try { result.notes = await notesTick(); } catch (e) { console.error("notes tick failed", e); result.notes = { error: true }; }
         return json(result);
       }
       case "update": {
@@ -355,6 +457,16 @@ Deno.serve(async (req) => {
         return json(await sendReminder((lang) => ({
           title: title || RICO[lang], body: w.pick(lang), kind: "assistant", mood: moodOf(body.mood), tag: `ricotta-assistant-${Date.now()}`,
         })));
+      }
+      case "note": {
+        // A kitchen note: only the phones of the account it is for, in each phone's language.
+        const account = String(body.account ?? "");
+        const note = String(body.body ?? "").slice(0, 300);
+        if (!ACCOUNTS.includes(account) || !note) return json({ error: "invalid note" }, 400);
+        return json(await sendReminder((lang) => ({
+          title: L(lang, "📝 Note from Rozha", "📝 تێبینی لە ڕۆژاوە", "📝 ملاحظة من روژا"),
+          body: note, kind: "note", view: "notes", tag: `ricotta-note-${Date.now()}`,
+        }), account));
       }
       case "reminder-now":
         return json(await sendReminder((lang, name) => ({ ...dailyPayload(lang, name), title: L(lang, "Ricotta Orders (test)", "Ricotta Orders (تاقیکاری)", "Ricotta Orders (تجربة)") })));

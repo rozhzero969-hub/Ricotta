@@ -20,12 +20,20 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   GET    bootstrap                                            -> everything the app needs to start
 //   POST   logout
 //   PUT    me/tabs                    {tabs:[3 views]}          this account's tab bar
-//   PUT    me/theme                   {theme}                   this account's colour theme (everyone sees it)
+//   PUT    me/theme                   {theme?, auto?}           this account's theme, and whether holiday themes switch on by themselves
+//   PUT    me/pins                    {itemIds}                 items pinned to the top of this account's Order screen
 //   PUT    suppliers/:id | items/:id | units/:id                upsert one record (+ its Record entry)
 //   DELETE suppliers/:id | items/:id | units/:id                delete one record (+ its Record entry)
 //   PUT    supplier-order/:supplierId {itemIds}                 item order for one supplier
 //   POST   orders                     {id, date, entries}       save a sent order
-//   DELETE orders/:id                 (rozha)                   delete one order from history
+//   DELETE orders/:id                 rozha: any; the sender: undo within 15 minutes
+//   GET    streak                                               the kitchen streak
+//   POST   streak/recover                                       Rico brings a broken kitchen streak back
+//   GET    notes                                                kitchen notes (Rozha writes, Yunis reads)
+//   POST   notes                      {body} (rozha)            leave a note for Yunis (he gets a notification)
+//   DELETE notes/:id                  (rozha)                   remove a note
+//   POST   notes/:id/read | notes/:id/done (yunis)              seen / done
+//   GET    rico-chats[?account=]                                both accounts' Rico chats (each can read and delete the other's)
 //   GET    activity                                             the Record
 //   GET    devices                    rozha: all, yunis: own row
 //   POST   devices/me                                           heartbeat ("still here")
@@ -68,7 +76,8 @@ const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
 const LANGS = ["en", "ku", "ar"];
 // Every screen of the app, and the ones each account may open.
-const THEMES = ["ricotta", "graphite", "ocean", "saffron", "berry"];
+const THEMES = ["ricotta", "graphite", "ocean", "saffron", "berry",
+  "halloween", "winter", "newroz", "ramadan", "summer", "eid", "christmas", "flagday", "spring", "autumn", "match"];
 const cleanTheme = (v: unknown) => THEMES.includes(String(v)) ? String(v) : "ricotta";
 const VIEWS = ["order", "assistant", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
 const ACCOUNT_VIEWS: Record<string, string[]> = {
@@ -97,6 +106,9 @@ const fail = (error: string, status = 400) => json({ error }, status);
 const app = (table: string) => db.from(`app_${table}`);
 const text = (v: unknown, max = 160) => String(v ?? "").trim().slice(0, max);
 const newId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
+/* A Baghdad calendar day as YYYY-MM-DD, and whole days between two of them. */
+const baghdadDay = (d: Date | string = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baghdad", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(d));
+const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400_000);
 /* What the device says it is ("iPhone 16/17 Pro Max|App"), for the Devices screen. */
 const deviceLabel = (req: Request) => text(req.headers.get("x-device-label"), 80).replace(/[^\x20-\x7E]/g, "") || null;
 const nowIso = () => new Date().toISOString();
@@ -160,7 +172,34 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 
 /* ---------- Shapes the browser uses ---------- */
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder });
-const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order });
+const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "" });
+const toNote = (n: any) => ({ id: n.id, body: n.body, at: n.created_at, readAt: n.read_at, doneAt: n.done_at });
+/* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
+   had one; recoverable: how many days Rico can bring back after it broke. */
+function streakView(r: any) {
+  const today = baghdadDay();
+  const count = Number(r?.count ?? 0), last = r?.last_day ? String(r.last_day) : null;
+  const gap = last ? dayDiff(today, last) : 99;
+  const alive = count > 0 && gap <= 1;
+  const lostDay = r?.lost_day ? String(r.lost_day) : null;
+  const recoverable = !alive && count > 0 && gap <= 8 ? count
+    : Number(r?.lost_count ?? 0) > 0 && lostDay && dayDiff(today, lostDay) <= 7 ? Number(r.lost_count) : 0;
+  return { count: alive ? count : 0, best: Number(r?.best ?? 0), lit: alive && gap === 0, alive, recoverable, lastDay: last };
+}
+async function readStreak() {
+  const { data, error } = await app("streak").select("count,best,last_day,lost_count,lost_day").eq("id", true).maybeSingle();
+  if (error) throw error;
+  return streakView(data);
+}
+async function listNotes() {
+  const { data, error } = await app("notes").select("id,body,created_at,read_at,done_at").order("created_at", { ascending: false }).limit(40);
+  if (error) throw error;
+  return (data ?? []).map(toNote);
+}
+async function readWeather() {
+  const { data } = await app("weather").select("data,updated_at").eq("id", true).maybeSingle();
+  return data?.updated_at ? { ...(data.data ?? {}), updatedAt: data.updated_at } : null;
+}
 const toDevice = (d: any) => ({
   id: d.id, account: d.account ?? null, label: d.label ?? null, loggedIn: d.logged_in,
   lastLogin: d.last_login, lastSeen: d.last_seen, command: d.command, handledCommand: d.handled_command,
@@ -224,15 +263,18 @@ async function readReminder() {
   return data ? { enabled: data.enabled, time: String(data.remind_time).slice(0, 5) } : null;
 }
 async function readAccount(id: string) {
-  const { data, error } = await app("accounts").select("id,name,tabs,theme").eq("id", id).maybeSingle();
+  const { data, error } = await app("accounts").select("id,name,tabs,theme,auto_theme,pins").eq("id", id).maybeSingle();
   if (error) throw error;
-  return data ? { account: data.id, name: data.name, tabs: cleanTabs(data.id, data.tabs), theme: cleanTheme(data.theme) } : null;
+  return data ? { account: data.id, name: data.name, tabs: cleanTabs(data.id, data.tabs), theme: cleanTheme(data.theme), autoTheme: data.auto_theme !== false, pins: Array.isArray(data.pins) ? data.pins : [] } : null;
 }
 /* Both accounts' themes, so a person is shown in their own colours on every phone. */
-async function readThemes(): Promise<Record<string, string>> {
-  const { data, error } = await app("accounts").select("id,theme");
+async function readThemes(): Promise<{ themes: Record<string, string>; autoThemes: Record<string, boolean> }> {
+  const { data, error } = await app("accounts").select("id,theme,auto_theme");
   if (error) throw error;
-  return Object.fromEntries((data ?? []).map((a: any) => [a.id, cleanTheme(a.theme)]));
+  return {
+    themes: Object.fromEntries((data ?? []).map((a: any) => [a.id, cleanTheme(a.theme)])),
+    autoThemes: Object.fromEntries((data ?? []).map((a: any) => [a.id, a.auto_theme !== false])),
+  };
 }
 /* Three different screens this account may open, in the order chosen. */
 function cleanTabs(account: string, tabs: unknown): string[] {
@@ -255,24 +297,28 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
 
 async function bootstrap(s: Session) {
   const since = monthStart();
-  const [me, themes, suppliers, items, units, orders, reminder, devices, activity, inbox] = await Promise.all([
+  const [me, looks, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, notes, weather] = await Promise.all([
     readAccount(s.account),
     readThemes(),
     app("suppliers").select("id,name,phone,reminder").order("name"),
-    app("items").select("id,name,unit_id,supplier_id,sort_order").order("name"),
+    app("items").select("id,name,unit_id,supplier_id,sort_order,note").order("name"),
     app("units").select("id,en,ku,ar"),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
     readReminder(),
     listDevices(s),
     listActivity(),
     listInbox(s),
+    readStreak(),
+    listNotes(),
+    readWeather().catch(() => null),
   ]);
   for (const result of [suppliers, items, units]) if (result.error) throw result.error;
   const orderRows = orders;
   const lines = await orderLinesFor(orderRows);
   return {
     account: s.account, name: me?.name ?? accountName(s.account), tabs: me?.tabs ?? cleanTabs(s.account, null),
-    views: ACCOUNT_VIEWS[s.account], theme: me?.theme ?? "ricotta", themes,
+    views: ACCOUNT_VIEWS[s.account], theme: me?.theme ?? "ricotta", themes: looks.themes, autoThemes: looks.autoThemes,
+    autoTheme: me?.autoTheme ?? true, pins: me?.pins ?? [], streak, notes, weather,
     suppliers: (suppliers.data ?? []).map(toSupplier),
     items: (items.data ?? []).map(toItem),
     units: units.data ?? [],
@@ -355,7 +401,7 @@ async function login(req: Request) {
     }
   }
   const me = await readAccount(account);
-  return json({ token, account, name: me?.name ?? accountName(account), tabs: me?.tabs ?? cleanTabs(account, null), theme: me?.theme ?? "ricotta", expiresAt });
+  return json({ token, account, name: me?.name ?? accountName(account), tabs: me?.tabs ?? cleanTabs(account, null), theme: me?.theme ?? "ricotta", autoTheme: me?.autoTheme ?? true, expiresAt });
 }
 
 /* ---------- The secret code ----------
@@ -461,6 +507,7 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
   items: (id, b) => text(b.name) ? {
     id, name: text(b.name), unit_id: text(b.unit, 120) || null,
     supplier_id: text(b.supplierId, 120) || null,
+    ...(Object.hasOwn(b, "note") ? { note: text(b.note, 120) } : {}),
     ...(Object.hasOwn(b, "sortOrder") ? { sort_order: Number.isInteger(b.sortOrder) && b.sortOrder >= 0 ? b.sortOrder : null } : {}),
     updated_at: nowIso(),
   } : null,
@@ -481,6 +528,31 @@ async function cheerAfterOrder(s: Session) {
   // dedupe_key is unique: the second order of the day adds nothing.
   const { error } = await app("rico_inbox").upsert({ account: s.account, kind: "cheer", mood: c.mood, body_en: c.en(n.en), body_ku: c.ku(n.ku), body_ar: c.ar(n.ar), dedupe_key: `sent|${s.account}|${date}` }, { onConflict: "dedupe_key", ignoreDuplicates: true });
   if (error) throw error;
+}
+
+/* Rico's congratulations when the kitchen streak reaches 7, 14, 30, 60, 100... days (both accounts). */
+async function streakMilestone(count: number) {
+  const day = baghdadDay();
+  const rows = (["rozha", "yunis"] as const).map((a) => {
+    const n = LOCAL_NAMES[a];
+    return {
+      account: a, kind: "streak", mood: "excited", dedupe_key: `streak|${count}|${day}|${a}`,
+      body_en: `🔥 ${count} days in a row! The kitchen hasn't missed a single day. Keep the fire going, ${n.en}!`,
+      body_ku: `🔥 ${count} ڕۆژ لەسەر یەک! چێشتخانەکە تەنانەت یەک ڕۆژیشی لەدەست نەداوە. ئاگرەکە بە گڕ ڕابگرە، ${n.ku}!`,
+      body_ar: `🔥 ${count} يومًا متتاليًا! لم يفوّت المطبخ يومًا واحدًا. حافظ على اشتعال النار يا ${n.ar}!`,
+    };
+  });
+  const { error } = await app("rico_inbox").upsert(rows, { onConflict: "dedupe_key", ignoreDuplicates: true });
+  if (error) throw error;
+}
+/* A notification for one account's signed-in phones, sent by send-push. */
+async function pushTo(account: Account, payload: Record<string, unknown>) {
+  if (!CRON_SECRET) return;
+  await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+    method: "POST", signal: AbortSignal.timeout(15_000),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}`, apikey: ANON_KEY, "x-cron-secret": CRON_SECRET },
+    body: JSON.stringify({ ...payload, account }),
+  }).then((r) => r.body?.cancel()).catch(() => {});
 }
 
 async function saveOrder(s: Session, b: any) {
@@ -513,8 +585,12 @@ async function saveOrder(s: Session, b: any) {
     p_id: id, p_date: date, p_account: s.account, p_lines: lines,
   });
   if (error || (saved !== true && saved !== false)) return fail("save_failed", 500);
-  if (saved) await cheerAfterOrder(s).catch(() => {});
-  return ok();
+  if (saved) {
+    await cheerAfterOrder(s).catch(() => {});
+    const { data: hit, error: hitError } = await db.rpc("app_internal_streak_hit", { p_day: baghdadDay(date) });
+    if (!hitError && hit?.milestone) await streakMilestone(Number(hit.count)).catch(() => {});
+  }
+  return json({ ok: true, streak: await readStreak().catch(() => null) });
 }
 
 /* ---------- Devices ---------- */
@@ -559,7 +635,8 @@ async function forwardPush(s: Session, b: any) {
   return json(data, res.status);
 }
 
-/* Rico's chat history. Each account sees only its own chats; only what the app needs to show a chat again is kept. */
+/* Rico's chat history. Rozha and Yunis can read and delete each other's chats too (the app shows
+   whose each one is); each person only ever writes their own. */
 const CHAT_MAX_MESSAGES = 200, CHAT_MAX_CHARS = 200_000;
 const uuid = (v: unknown) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 function cleanChatMessages(v: unknown): any[] | null {
@@ -580,16 +657,17 @@ function cleanChatMessages(v: unknown): any[] | null {
 }
 async function ricoChats(req: Request, actor: Account, id: string | null, body: any = {}): Promise<Response> {
   if (id !== null && !uuid(id)) return fail("Chat not found", 404);
+  const whose = new URL(req.url).searchParams.get("account");
   if (req.method === "GET" && id === null) {
-    const { data, error } = await db.from("app_rico_chats").select("id,title,created_at,updated_at").eq("account", actor)
-      .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString()).order("updated_at", { ascending: false }).limit(60);
+    const { data, error } = await db.from("app_rico_chats").select("id,account,title,created_at,updated_at")
+      .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString()).order("updated_at", { ascending: false }).limit(120);
     if (error) throw error;
-    return json({ chats: (data ?? []).map((c: any) => ({ id: c.id, title: c.title, createdAt: c.created_at, updatedAt: c.updated_at })) });
+    return json({ chats: (data ?? []).map((c: any) => ({ id: c.id, account: c.account, title: c.title, createdAt: c.created_at, updatedAt: c.updated_at })) });
   }
   if (req.method === "GET") {
-    const { data, error } = await db.from("app_rico_chats").select("id,title,messages,created_at,updated_at").eq("id", id).eq("account", actor).maybeSingle();
+    const { data, error } = await db.from("app_rico_chats").select("id,account,title,messages,created_at,updated_at").eq("id", id).maybeSingle();
     if (error) throw error;
-    return data ? json({ id: data.id, title: data.title, messages: data.messages, createdAt: data.created_at, updatedAt: data.updated_at }) : fail("Chat not found", 404);
+    return data ? json({ id: data.id, account: data.account, title: data.title, messages: data.messages, createdAt: data.created_at, updatedAt: data.updated_at }) : fail("Chat not found", 404);
   }
   if (req.method === "PUT" && id !== null) {
     const b = body;
@@ -603,8 +681,9 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
     return json({ ok: true });
   }
   if (req.method === "DELETE") {
-    let q = db.from("app_rico_chats").delete().eq("account", actor);
+    let q = db.from("app_rico_chats").delete();
     if (id !== null) q = q.eq("id", id);
+    else q = q.eq("account", whose === "rozha" || whose === "yunis" ? whose : actor);
     const { error } = await q;
     if (error) throw error;
     return json({ ok: true });
@@ -648,9 +727,21 @@ Deno.serve(async (req) => {
     }
 
     if (M === "PUT" && path === "me/theme") {
-      const theme = text(b.theme, 20);
-      if (!THEMES.includes(theme)) return fail("invalid_theme");
-      const { error } = await app("accounts").update({ theme, updated_at: nowIso() }).eq("id", s.account);
+      const patch: Record<string, unknown> = { updated_at: nowIso() };
+      if (b.theme !== undefined) {
+        const theme = text(b.theme, 20);
+        if (!THEMES.includes(theme)) return fail("invalid_theme");
+        patch.theme = theme;
+      }
+      if (typeof b.auto === "boolean") patch.auto_theme = b.auto;
+      if (Object.keys(patch).length < 2) return fail("invalid_theme");
+      const { error } = await app("accounts").update(patch).eq("id", s.account);
+      return error ? fail("save_failed", 500) : ok();
+    }
+    if (M === "PUT" && path === "me/pins") {
+      const ids = Array.isArray(b.itemIds) ? [...new Set(b.itemIds.map((id: unknown) => text(id, 120)).filter(Boolean))] : null;
+      if (!ids || ids.length > 60) return fail("invalid_pins");
+      const { error } = await app("accounts").update({ pins: ids, updated_at: nowIso() }).eq("id", s.account);
       return error ? fail("save_failed", 500) : ok();
     }
 
@@ -676,11 +767,50 @@ Deno.serve(async (req) => {
     // Orders
     if (M === "POST" && path === "orders") return await saveOrder(s, b);
     if (M === "DELETE" && (m = path.match(/^orders\/([^/]{1,160})$/))) {
-      // Sent orders are the kitchen's paper trail: only Rozha may remove one.
-      if (!rozha) return fail("forbidden", 403);
+      // Sent orders are the kitchen's paper trail: Rozha may remove any; whoever sent one
+      // may undo it within 15 minutes (the database checks both).
       const id = decodeURIComponent(m[1]);
       const { error } = await db.rpc("app_internal_delete_order", { p_id: id, p_actor: s.account, p_device: s.deviceId });
-      return error ? fail("delete_failed", 500) : ok();
+      if (error) return /forbidden/i.test(String(error.message)) ? fail("forbidden", 403) : fail("delete_failed", 500);
+      return json({ ok: true, streak: await readStreak().catch(() => null) });
+    }
+
+    // The kitchen streak
+    if (M === "GET" && path === "streak") return json(await readStreak());
+    if (M === "POST" && path === "streak/recover") {
+      const { data, error } = await db.rpc("app_internal_streak_recover", { p_today: baghdadDay() });
+      if (error) return fail("save_failed", 500);
+      if (!data?.ok) return fail(String(data?.reason || "nothing_to_recover"), 409);
+      return json({ ok: true, streak: await readStreak() });
+    }
+
+    // Kitchen notes: Rozha leaves them, Yunis reads them
+    if (M === "GET" && path === "notes") return json(await listNotes());
+    if (M === "POST" && path === "notes") {
+      if (!rozha) return fail("forbidden", 403);
+      const body = text(b.body, 500);
+      if (!body) return fail("empty_note");
+      const { data, error } = await app("notes").insert({ body, created_by: "rozha" }).select("id,body,created_at,read_at,done_at").single();
+      if (error) return fail("save_failed", 500);
+      await pushTo("yunis", { type: "note", body });
+      return json(toNote(data));
+    }
+    if ((m = path.match(/^notes\/(\d{1,15})(?:\/(read|done))?$/))) {
+      const id = Number(m[1]), act = m[2];
+      if (M === "DELETE" && !act) {
+        if (!rozha) return fail("forbidden", 403);
+        const { error } = await app("notes").delete().eq("id", id);
+        return error ? fail("delete_failed", 500) : ok();
+      }
+      if (M === "POST" && act) {
+        if (rozha) return fail("forbidden", 403);
+        const now = nowIso();
+        const patch = act === "read" ? { read_at: now } : { done_at: b.done === false ? null : now, read_at: now };
+        let q = app("notes").update(patch).eq("id", id);
+        if (act === "read") q = q.is("read_at", null);
+        const { error } = await q;
+        return error ? fail("save_failed", 500) : ok();
+      }
     }
 
     // Record

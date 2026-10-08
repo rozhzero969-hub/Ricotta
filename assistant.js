@@ -41,7 +41,12 @@ const rico = {
    pastel colour. The gradient needs an id, so each drawing gets its own. */
 const RICO_MOODS = ['happy','excited','grateful','calm','thinking','worried','sad','angry'];
 let ricoBotSeq = 0;
+/* Rico as drawn, plus whatever he wears today (a holiday costume or an umbrella, see seasons.js). */
 function ricoFace(mood = 'happy', cls = ''){
+  const svg = ricoFaceBase(mood, cls);
+  return typeof dressRico === 'function' ? dressRico(svg, ricoOutfit()) : svg;
+}
+function ricoFaceBase(mood = 'happy', cls = ''){
   const m = RICO_MOODS.includes(mood) ? mood : 'happy';
   const g = 'rbg' + (++ricoBotSeq);
   let spark = '';
