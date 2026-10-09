@@ -1,0 +1,18 @@
+/* Ricotta Lab panel (test tools; not part of the app). */
+.lab-fab{position:fixed;z-index:470;inset-inline-end:0;top:50%;transform:translateY(-50%);border:0;cursor:pointer;background:#14382C;color:#fff;font:800 11px/1 Sora,sans-serif;letter-spacing:.12em;padding:12px 7px;border-radius:12px 0 0 12px;writing-mode:vertical-rl;display:flex;align-items:center;gap:6px;box-shadow:0 10px 24px -10px rgba(0,0,0,.6)}
+[dir=rtl] .lab-fab{border-radius:0 12px 12px 0}
+.lab-fab i{width:7px;height:7px;border-radius:50%;background:#34C27A}
+.lab-scrim{position:fixed;inset:0;z-index:480;background:rgba(0,0,0,.28)}
+.lab-panel{position:fixed;z-index:481;top:0;bottom:0;inset-inline-end:0;width:min(380px,100vw);background:#F3F5F4;color:#10291F;font-family:Sora,sans-serif;box-shadow:-20px 0 50px -20px rgba(0,0,0,.5);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.lab-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid rgba(0,0,0,.08)}
+.lab-head b{font:800 22px Manrope,Sora,sans-serif;letter-spacing:-.04em;display:flex;align-items:flex-end;color:#14382C}
+.lab-head b i{width:.24em;height:.24em;border-radius:50%;background:#34C27A;margin:0 0 .12em .07em}
+.lab-head b span{font-size:13px;font-weight:700;letter-spacing:0;color:#56695F;margin-inline-start:8px;margin-bottom:2px}
+.lab-x{border:0;background:rgba(0,0,0,.06);width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer}
+.lab-body{flex:1;overflow-y:auto;padding:16px 18px 28px;display:flex;flex-direction:column;gap:20px}
+.lab-sec{display:flex;flex-direction:column;gap:8px}
+.lab-sec h3{margin:0;font-size:15px}
+.lab-sec p{margin:0;font-size:13px;color:#56695F;line-height:1.5}
+.lab-acts{display:flex;flex-wrap:wrap;gap:6px}
+.lab-btn{border:1px solid rgba(0,0,0,.14);background:#fff;color:#10291F;border-radius:10px;padding:7px 11px;font:700 12px Sora,sans-serif;cursor:pointer}
+.lab-btn[aria-pressed="true"]{background:#14382C;color:#fff;border-color:#14382C}

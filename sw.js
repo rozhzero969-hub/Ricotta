@@ -15,7 +15,7 @@ self.addEventListener('push', event => {
   try { data = event.data ? event.data.json() : {}; }
   catch (e) { data = { body: event.data ? event.data.text() : '' }; }
 
-  const kind = data.kind || 'general';   /* 'update' | 'reminder' | 'supplier' | 'assistant' | 'overdue' | 'general' */
+  const kind = data.kind || 'general';   /* 'update' | 'reminder' | 'supplier' | 'assistant' | 'overdue' | 'note' | 'general' */
   /* Rico's own messages carry his mood and show his face for it, not the app icon. */
   const RICO_MOODS = ['happy', 'excited', 'grateful', 'calm', 'thinking', 'worried', 'sad', 'angry'];
   const icon = kind === 'assistant' ? 'rico-' + (RICO_MOODS.includes(data.mood) ? data.mood : 'happy') + '.png' : 'icon-192.png';

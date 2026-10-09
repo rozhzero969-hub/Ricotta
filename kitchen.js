@@ -74,13 +74,14 @@ function openStreakSheet(){
     ${!n && s.recoverable ? `<button type="button" class="btn btn-primary streak-rico" data-streak-rico>${ricoFace('worried', 'rico-xs')}<span>${esc(t('streakAskRico'))}</span></button>` : ''}
     <p class="streak-how">${esc(t('streakHow'))}</p>
     ${fact ? `<div class="fun-fact">${ricoFace('excited', 'rico-sm')}<div><b>${esc(t('funFactTitle'))}</b><span dir="auto">${esc(fact)}</span></div></div>` : ''}`, t('streakTitle'));
-  el.querySelector('[data-streak-rico]')?.addEventListener('click', ()=>{ close(); ricoAsk(t('streakAskRico')); });
+  el.querySelector('[data-streak-rico]')?.addEventListener('click', ()=>{ close(); ricoAsk(t('streakAskPrompt')); });
 }
 /* After an order is saved (or undone): take the server's streak, and celebrate a new day or a milestone. */
-async function refreshStreak({celebrate = false} = {}){
+async function refreshStreak({celebrate = false, before = null} = {}){
   const r = await api('streak');
-  if(!r.ok || !r.data) return;
-  const before = streakNow();
+  if(!r.ok || !r.data || typeof r.data.count !== 'number') return;
+  // "before" is the streak when sending began (a background refresh may already have the new count).
+  before = before || streakNow();
   state.streak = r.data;
   paintStreakChip(celebrate && r.data.lit && !before.lit);
   if(celebrate && r.data.count > before.count && STREAK_GOALS.includes(r.data.count)) streakMilestone(r.data.count);
@@ -189,8 +190,9 @@ async function setNoteDone(id, done){
 }
 function noteRow(n){
   const rozha = isRozha();
+  // Rozha sees whether Yunis has read it; Yunis only sees what he marked done.
   const seen = n.doneAt ? `<span class="note-state done">${ICON_CHECK_SM} ${esc(t('notesDone'))} · ${esc(timeAgo(n.doneAt))}</span>`
-    : n.readAt ? `<span class="note-state seen">${esc(t('notesSeen')(timeAgo(n.readAt)))}</span>` : `<span class="note-state">${esc(t('notesNotSeen'))}</span>`;
+    : !rozha ? '' : n.readAt ? `<span class="note-state seen">${esc(t('notesSeen')(timeAgo(n.readAt)))}</span>` : `<span class="note-state">${esc(t('notesNotSeen'))}</span>`;
   return `<div class="note-row${n.doneAt ? ' is-done' : ''}">
     <div class="note-row-body"><div class="note-text" dir="auto">${esc(n.body)}</div><div class="note-meta"><span>${esc(timeAgo(n.at))}</span>${seen}</div></div>
     ${rozha ? `<button type="button" class="icon-btn danger" data-note-del="${n.id}" aria-label="${esc(t('notesDelete'))}">${ICON_DELETE}</button>`

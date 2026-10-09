@@ -10,11 +10,12 @@
   const VIEWS = ['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings'];
   const ACCOUNT_VIEWS = {rozha:VIEWS, yunis:['order','assistant','history','suppliers','itemsAdmin','units','record']};
   const NAMES = {rozha:{en:'Rozha',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}};
-  window.LAB_SPECIAL = ['halloween','winter','newroz','ramadan','summer'];
-  const ALL_THEMES = ['ricotta','graphite','ocean','saffron','berry', ...window.LAB_SPECIAL];
+  const ALL_THEMES = ['ricotta','graphite','ocean','saffron','berry','halloween','winter','newroz','ramadan','summer','eid','christmas','flagday','spring','autumn','match'];
 
   const lsGet = k => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(_){ return null; } };
   const lsSet = (k, v) => { try{ localStorage.setItem(k, JSON.stringify(v)); }catch(_){} };
+  /* The Lab can pretend a date, so the holiday themes can be seen any day (seasons.js reads it). */
+  { const f = lsGet('ricottaLab:today'); if(typeof f === 'string') window.RICOTTA_TODAY = f; }
 
   /* ---- Baghdad calendar helpers (the app keeps the current Baghdad month) ---- */
   const bag = d => {
@@ -92,10 +93,22 @@
        ku:'بەیانیت باش ڕۆژا! ☀️ ئەمڕۆ کاتی داواکاریی ٣ دابینکەرە: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. با بە کاتی خۆی بینێرین!',
        ar:'صباح الخير يا روژا! ☀️ اليوم موعد 3 من المورّدين: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. لنرسل الطلبات في وقتها!'}
     ];
-    return {v:2, units, suppliers, items, history, activity, inbox, chats:[], themes:{rozha:'ricotta', yunis:'ocean'}, reminder:{enabled:true, time:'09:00'}, tabs:{}, seq:100, said:{}};
+    items.find(i=>i.id==='it-tom').note = 'Ripe, not soft';
+    const today = bag(new Date());
+    const iso = (y, m, d) => new Date(Date.UTC(y, m-1, d)).toISOString().slice(0,10);
+    const lastDay = history.length && history[history.length-1].date.slice(0,10) === new Date().toISOString().slice(0,10) ? iso(today.y, today.m, today.d) : iso(today.y, today.m, today.d - 1);
+    const streak = {count:12, best:18, last_day:lastDay, lost_count:0, lost_day:null, prev:null};
+    const notes = [
+      {id:1, body:'Please check the fridge temperature before closing tonight.', at:new Date(Date.now()-26*3600000).toISOString(), readAt:new Date(Date.now()-25*3600000).toISOString(), doneAt:new Date(Date.now()-24*3600000).toISOString()},
+      {id:2, body:'Order extra basil for the weekend, we have a big group on Friday.', at:new Date(Date.now()-50*60000).toISOString(), readAt:null, doneAt:null}
+    ];
+    const weather = {temp:24, code:3, rain:false, snow:false, max:27, min:14, rainChance:10, dayCode:3, updatedAt:new Date().toISOString()};
+    const chats = [{id:'0b7c4a9e-1f2d-4c3b-9a8e-7d6c5b4a3f21', account:'yunis', title:'How much mozzarella last week?', createdAt:new Date(Date.now()-5*3600000).toISOString(), updatedAt:new Date(Date.now()-5*3600000).toISOString(),
+      messages:[{role:'user', text:'How much mozzarella did we order last week?', ts:Date.now()-5*3600000}, {role:'assistant', mood:'calm', text:'About **13 kg** over 3 orders, Yunis. Thursday was the biggest at 5 kg.', ts:Date.now()-5*3600000+4000}]}];
+    return {v:4, units, suppliers, items, history, activity, inbox, chats, themes:{rozha:'ricotta', yunis:'ocean'}, autoThemes:{rozha:true, yunis:true}, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, notes, weather, reminder:{enabled:true, time:'09:00'}, tabs:{}, seq:100, said:{}};
   }
   let db = lsGet(DB_KEY);
-  if(!db || db.v !== 2) db = seed();
+  if(!db || db.v !== 4) db = seed();
   const save = () => lsSet(DB_KEY, db);
   save();
   window.labResetData = () => { db = seed(); save(); };
@@ -162,7 +175,13 @@
     const events = [];
     const say = (mood, en, ku, ar) => { events.push({type:'mood', mood}); events.push({type:'text', text:(special ? special.reply[L] : '') + ({en, ku, ar})[L]}); };
     const wantsOrder = /order|prepar|suggest|usual|داواکاری|ئامادە|طلب|جهز|veg|tomato/.test(q) || body.quickAction;
-    if(wantsOrder){
+    if(/streak|زنجیرە|سلسلة/.test(q)){
+      const st = streakView();
+      if(st.recoverable){
+        say('excited', `Of course! Tap the card and your ${st.recoverable}-day streak is back. It's free.`, `بێگومان! کارتەکە دابگرە و زنجیرەی ${st.recoverable} ڕۆژەکەت دەگەڕێتەوە. بەخۆڕاییە.`, `بالتأكيد! اضغط البطاقة وتعود سلسلة الـ${st.recoverable} يومًا. مجانًا.`);
+        events.push({type:'proposal', proposal:{id:'p'+Date.now().toString(36), kind:'streak', days:st.recoverable}});
+      } else say('happy', `Your streak is alive: ${st.count} days. Keep it going!`, `زنجیرەکەت زیندووە: ${st.count} ڕۆژ. بەردەوام بە!`, `سلسلتك حية: ${st.count} يومًا. استمر!`);
+    } else if(wantsOrder){
       const lines = ['it-tom','it-basil','it-onion','it-lemon'].map((id, i)=>{ const it = db.items.find(x=>x.id===id); return it && {itemId:it.id, name:it.name, unitId:it.unit, supplierId:it.supplierId, supplier:'Erbil Veg Market', qty:[12,6,1,3][i]}; }).filter(Boolean);
       say('excited',
         `Here is what I’d order from Erbil Veg Market today, ${name}, based on your usual orders. Tap the card to put it in today’s order. Nothing is sent until you press Send.`,
@@ -199,7 +218,45 @@
     return new Response(stream, {status:200, headers:{'Content-Type':'application/x-ndjson'}});
   }
 
+  /* ---- The kitchen streak, with the same rules as the database functions ---- */
+  const dayOf = d => { const b = bag(new Date(d)); return new Date(Date.UTC(b.y, b.m-1, b.d)).toISOString().slice(0,10); };
+  const todayKey = () => window.RICOTTA_TODAY || dayOf(new Date());
+  const diff = (a, b) => Math.round((Date.parse(a+'T00:00:00Z') - Date.parse(b+'T00:00:00Z')) / 86400000);
+  const addDays = (a, n) => new Date(Date.parse(a+'T00:00:00Z') + n*86400000).toISOString().slice(0,10);
+  function streakView(){
+    const r = db.streak, today = todayKey(), last = r.last_day, gap = last ? diff(today, last) : 99;
+    const alive = r.count > 0 && gap <= 1;
+    const recoverable = !alive && r.count > 0 && gap <= 8 ? r.count : r.lost_count > 0 && r.lost_day && diff(today, r.lost_day) <= 7 ? r.lost_count : 0;
+    return {count:alive ? r.count : 0, best:r.best, lit:alive && gap === 0, alive, recoverable, lastDay:last};
+  }
+  function streakHit(day){
+    const r = db.streak;
+    if(r.last_day && day <= r.last_day) return {changed:false};
+    r.prev = {day, count:r.count, best:r.best, last_day:r.last_day, lost_count:r.lost_count, lost_day:r.lost_day};
+    if(r.last_day && day === addDays(r.last_day, 1)) r.count++;
+    else { if(r.count > 0 && r.last_day){ r.lost_count = r.count; r.lost_day = addDays(r.last_day, 1); } r.count = 1; }
+    r.best = Math.max(r.best, r.count); r.last_day = day;
+    return {changed:true, milestone:[7,14,30,60,100,150,200,300,365,500,1000].includes(r.count), count:r.count};
+  }
+  function streakUnhit(day){
+    if(db.history.some(o=>dayOf(o.date) === day)) return;
+    const r = db.streak;
+    if(!r.prev || r.last_day !== day || r.prev.day !== day) return;
+    Object.assign(r, {count:r.prev.count, best:r.prev.best, last_day:r.prev.last_day, lost_count:r.prev.lost_count, lost_day:r.prev.lost_day, prev:null});
+  }
+  function streakRecover(){
+    const r = db.streak, today = todayKey();
+    if(r.count > 0 && r.last_day && r.last_day < addDays(today, -1)){ if(r.last_day < addDays(today, -8)) return false; r.last_day = addDays(today, -1); }
+    else if(r.lost_count > 0 && r.lost_day && r.lost_day >= addDays(today, -7)) r.count = r.lost_count + r.count;
+    else return false;
+    r.best = Math.max(r.best, r.count); r.lost_count = 0; r.lost_day = null; r.prev = null;
+    return true;
+  }
+  window.labStreakBreak = () => { db.streak.last_day = addDays(todayKey(), -3); save(); };
+  window.labStreakSet = (count, lit) => { db.streak.count = count; db.streak.best = Math.max(db.streak.best, count); db.streak.last_day = lit ? todayKey() : addDays(todayKey(), -1); db.streak.prev = null; save(); };
+
   /* ---- the router ---- */
+  let query = new URLSearchParams();
   async function handle(path, method, headers, body){
     await new Promise(r=>setTimeout(r, 120 + Math.random()*180));   // a little network time
     if(method === 'POST' && path === 'login'){
@@ -220,12 +277,31 @@
         account:me, name:NAMES[me].en, tabs:db.tabs[me] || ['order','assistant','history'], views:ACCOUNT_VIEWS[me],
         theme:db.themes[me], themes:{...db.themes}, suppliers:db.suppliers, items:db.items, units:db.units,
         history:history(), historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
-        activity:db.activity.filter(a=>a.ts >= monthStartIso()), inbox:db.inbox.slice(-20)
+        activity:db.activity.filter(a=>a.ts >= monthStartIso()), inbox:db.inbox.slice(-20),
+        autoTheme:db.autoThemes[me] !== false, autoThemes:{...db.autoThemes}, pins:db.pins[me] || [], streak:streakView(), notes:db.notes, weather:db.weather
       });
     }
     if(method === 'POST' && path === 'logout'){ db.signedOut = true; save(); return ok(); }
     if(method === 'PUT' && path === 'me/tabs'){ db.tabs[account] = body.tabs; save(); return ok(); }
+    if(method === 'PUT' && path === 'me/pins'){ db.pins[account] = (body.itemIds || []).slice(0, 60); save(); return ok(); }
+    if(method === 'GET' && path === 'streak') return json(streakView());
+    if(method === 'POST' && path === 'streak/recover'){ if(!streakRecover()) return fail('nothing_to_recover', 409); save(); return json({ok:true, streak:streakView()}); }
+    if(method === 'GET' && path === 'notes') return json(db.notes);
+    if(method === 'POST' && path === 'notes'){
+      if(account !== 'rozha') return fail('forbidden', 403);
+      const n = {id:++db.seq, body:String(body.body||'').slice(0,500), at:new Date().toISOString(), readAt:null, doneAt:null};
+      db.notes.unshift(n); save(); return json(n);
+    }
+    if((m = path.match(/^notes\/(\d+)(?:\/(read|done))?$/))){
+      const n = db.notes.find(x=>x.id === Number(m[1]));
+      if(method === 'DELETE'){ if(account !== 'rozha') return fail('forbidden', 403); db.notes = db.notes.filter(x=>x !== n); save(); return ok(); }
+      if(!n || account === 'rozha') return fail('forbidden', 403);
+      if(m[2] === 'read'){ n.readAt = n.readAt || new Date().toISOString(); }
+      else { n.doneAt = body.done === false ? null : new Date().toISOString(); n.readAt = n.readAt || n.doneAt; }
+      save(); return ok();
+    }
     if(method === 'PUT' && path === 'me/theme'){
+      if(typeof body.auto === 'boolean'){ db.autoThemes[account] = body.auto; save(); if(body.theme === undefined) return ok(); }
       if(!ALL_THEMES.includes(body.theme)) return fail('invalid_theme');
       db.themes[account] = body.theme; save();
       const r = window.LAB_RICO[body.theme];
@@ -253,7 +329,7 @@
       } else {
         let row;
         if(table === 'suppliers') row = {id, name:String(body.name||'').slice(0,160), phone:body.phone || null, reminder:body.reminder || null};
-        else if(table === 'items') row = {id, name:String(body.name||'').slice(0,160), unit:body.unit || null, supplierId:body.supplierId || null, sortOrder:'sortOrder' in body ? body.sortOrder : (prev ? prev.sortOrder : null)};
+        else if(table === 'items') row = {id, name:String(body.name||'').slice(0,160), unit:body.unit || null, supplierId:body.supplierId || null, note:'note' in body ? String(body.note||'').slice(0,120) : (prev ? prev.note || '' : ''), sortOrder:'sortOrder' in body ? body.sortOrder : (prev ? prev.sortOrder : null)};
         else row = {id, en:String(body.en||'').slice(0,80), ku:body.ku || null, ar:body.ar || null};
         if(idx >= 0) list[idx] = row; else list.push(row);
         db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:prev ? 'edit' : 'add', type, name:row.name || row.en, fields:prev ? [] : [{k:'name', to:row.name || row.en}]});
@@ -268,30 +344,36 @@
         const n = NAMES[account], th = window.LAB_RICO[db.themes[account]];
         const words = th ? {en:th.peek2.en, ku:th.peek2.ku, ar:th.peek2.ar} : {en:`Nice one, ${n.en}! The order is out.`, ku:`دەستت خۆش بێت ${n.ku}! داواکارییەکە نێردرا.`, ar:`أحسنت يا ${n.ar}! تم إرسال الطلب.`};
         window.labInboxSay('cheer', th ? th.mood : 'happy', words, `sent|${account}|${new Date().toISOString().slice(0,10)}`);
+        const hit = streakHit(window.RICOTTA_TODAY || dayOf(body.date || new Date()));
+        if(hit.milestone) window.labInboxSay('streak', 'excited', {en:`🔥 ${hit.count} days in a row! Keep the fire going!`, ku:`🔥 ${hit.count} ڕۆژ لەسەر یەک! ئاگرەکە بە گڕ ڕابگرە!`, ar:`🔥 ${hit.count} يومًا متتاليًا! حافظ على النار!`}, 'streak|'+hit.count);
         save();
       }
-      return ok();
+      return json({ok:true, streak:streakView()});
     }
     if(method === 'DELETE' && (m = path.match(/^orders\/(.+)$/))){
-      if(account !== 'rozha') return fail('forbidden', 403);
-      db.history = db.history.filter(o=>o.id !== decodeURIComponent(m[1])); save(); return ok();
+      const o = db.history.find(x=>x.id === decodeURIComponent(m[1]));
+      if(!o) return json({ok:true, streak:streakView()});
+      if(account !== 'rozha' && (o.by !== account || Date.now() - Date.parse(o.date) > 15*60000)) return fail('forbidden', 403);
+      db.history = db.history.filter(x=>x !== o);
+      streakUnhit(window.RICOTTA_TODAY || dayOf(o.date));
+      save(); return json({ok:true, streak:streakView()});
     }
     if(method === 'GET' && path === 'activity') return json(db.activity.filter(a=>a.ts >= monthStartIso()));
     if(method === 'GET' && path === 'devices') return json(devices(account));
     if(path === 'devices/me' || path === 'devices/me/ack' || path === 'devices/command') return ok();
     if((m = path.match(/^rico-chats(?:\/(.+))?$/))){
       const id = m[1] ? decodeURIComponent(m[1]) : null;
-      const mine = db.chats.filter(c=>c.account===account);
-      if(method === 'GET' && !id) return json({chats:mine.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).map(c=>({id:c.id, title:c.title, createdAt:c.createdAt, updatedAt:c.updatedAt}))});
-      if(method === 'GET'){ const c = mine.find(x=>x.id===id); return c ? json(c) : fail('Chat not found', 404); }
+      if(method === 'GET' && !id) return json({chats:[...db.chats].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).map(c=>({id:c.id, account:c.account, title:c.title, createdAt:c.createdAt, updatedAt:c.updatedAt}))});
+      if(method === 'GET'){ const c = db.chats.find(x=>x.id===id); return c ? json(c) : fail('Chat not found', 404); }
       if(method === 'PUT'){
         const now = new Date().toISOString();
         const c = db.chats.find(x=>x.id===id);
+        if(c && c.account !== account) return fail('Chat not found', 404);
         if(c){ c.title = body.title || c.title; c.messages = body.messages; c.updatedAt = now; }
         else db.chats.push({id, account, title:String(body.title||''), messages:body.messages, createdAt:now, updatedAt:now});
         db.chats = db.chats.slice(-30); save(); return ok();
       }
-      if(method === 'DELETE'){ db.chats = db.chats.filter(c=>c.account!==account || (id && c.id!==id)); save(); return ok(); }
+      if(method === 'DELETE'){ const whose = query.get('account') || account; db.chats = db.chats.filter(c=>id ? c.id !== id : c.account !== whose); save(); return ok(); }
     }
     if(method === 'POST' && path === 'assistant/chat') return ricoReply(account, body);
     if(method === 'POST' && path === 'assistant/transcribe') return fail('transcribe_unavailable', 503);
@@ -316,7 +398,8 @@
     const url = typeof input === 'string' ? input : (input && input.url) || '';
     const at = url.indexOf('/functions/v1/api/');
     if(at < 0) return realFetch(input, init);
-    const path = url.slice(at + '/functions/v1/api/'.length).split('?')[0];
+    const rest = url.slice(at + '/functions/v1/api/'.length), path = rest.split('?')[0];
+    query = new URLSearchParams(rest.split('?')[1] || '');
     const method = (init.method || 'GET').toUpperCase();
     const headers = {};
     const h = init.headers || {};

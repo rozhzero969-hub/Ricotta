@@ -1,7 +1,7 @@
 <title>Ricotta Lab</title>
 <meta name="theme-color" content="#EEF1EF">
-<!-- Ricotta Lab: the real Ricotta Orders app (same HTML, CSS and JavaScript as the repository),
-     answered by a pretend server (lab-mock.js) and dressed up by lab-themes.js. -->
+<!-- Ricotta Lab: the real Ricotta Orders app (index.html, same scripts and styles), answered by a
+     pretend server (lab-mock.js), with test tools (lab-panel.js). Built by lab/build.sh. -->
 <style>
   @font-face{font-family:'RicottaMark';font-weight:800;font-display:block;
     src:url(data:font/woff2;base64,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) format('woff2');}
@@ -41,11 +41,28 @@
   @keyframes ringOut{0%{transform:scale(.35);opacity:0}25%{opacity:1}100%{transform:scale(1.25);opacity:0}}
   @keyframes innerOut{to{transform:translateY(-6px);opacity:0}}
   @keyframes curtain{to{opacity:0;transform:translateY(-8px)}}
+  /* The loading screen in the theme this phone showed last (boot.js sets html[data-theme]). */
+  html[data-theme=graphite] .splash{background:linear-gradient(180deg,#EEEEED,#EEEEED 40%,color-mix(in srgb,#EEEEED 78%,#161616));color:#161616}html[data-theme=graphite] .splash-word .splash-dot{background:#2C2C2C}html[data-theme=graphite] .splash-sub{color:#5C5C5C}
+  html[data-theme=ocean] .splash{background:linear-gradient(180deg,#EDF1F5,#EDF1F5 40%,color-mix(in srgb,#EDF1F5 78%,#12304D));color:#12304D}html[data-theme=ocean] .splash-word .splash-dot{background:#3FA7EA}html[data-theme=ocean] .splash-sub{color:#546A7E}
+  html[data-theme=saffron] .splash{background:linear-gradient(180deg,#F4F0E8,#F4F0E8 40%,color-mix(in srgb,#F4F0E8 78%,#4A2F08));color:#4A2F08}html[data-theme=saffron] .splash-word .splash-dot{background:#F2A93B}html[data-theme=saffron] .splash-sub{color:#6F6050}
+  html[data-theme=berry] .splash{background:linear-gradient(180deg,#F5EEF2,#F5EEF2 40%,color-mix(in srgb,#F5EEF2 78%,#4D1330));color:#4D1330}html[data-theme=berry] .splash-word .splash-dot{background:#E0568F}html[data-theme=berry] .splash-sub{color:#6F5A65}
+  html[data-theme=halloween] .splash{background:linear-gradient(180deg,#F0ECF2,#F0ECF2 40%,color-mix(in srgb,#F0ECF2 78%,#2B1B3D));color:#2B1B3D}html[data-theme=halloween] .splash-word .splash-dot{background:#F28C28}html[data-theme=halloween] .splash-sub{color:#655A6F}
+  html[data-theme=winter] .splash{background:linear-gradient(180deg,#EEF3F7,#EEF3F7 40%,color-mix(in srgb,#EEF3F7 78%,#1D3A57));color:#1D3A57}html[data-theme=winter] .splash-word .splash-dot{background:#6CB8EA}html[data-theme=winter] .splash-sub{color:#566B80}
+  html[data-theme=christmas] .splash{background:linear-gradient(180deg,#F4EFEC,#F4EFEC 40%,color-mix(in srgb,#F4EFEC 78%,#6B1E22));color:#6B1E22}html[data-theme=christmas] .splash-word .splash-dot{background:#E0B04C}html[data-theme=christmas] .splash-sub{color:#6E5A57}
+  html[data-theme=flagday] .splash{background:linear-gradient(180deg,#F5F3EC,#F5F3EC 40%,color-mix(in srgb,#F5F3EC 78%,#1B5E34));color:#1B5E34}html[data-theme=flagday] .splash-word .splash-dot{background:#FEBD11}html[data-theme=flagday] .splash-sub{color:#56685B}
+  html[data-theme=ramadan] .splash{background:linear-gradient(180deg,#F2F0EB,#F2F0EB 40%,color-mix(in srgb,#F2F0EB 78%,#1B2447));color:#1B2447}html[data-theme=ramadan] .splash-word .splash-dot{background:#E2B04A}html[data-theme=ramadan] .splash-sub{color:#5C6178}
+  html[data-theme=eid] .splash{background:linear-gradient(180deg,#F1F3EE,#F1F3EE 40%,color-mix(in srgb,#F1F3EE 78%,#134E4A));color:#134E4A}html[data-theme=eid] .splash-word .splash-dot{background:#E9B949}html[data-theme=eid] .splash-sub{color:#55686A}
+  html[data-theme=newroz] .splash{background:linear-gradient(180deg,#F4F2EA,#F4F2EA 40%,color-mix(in srgb,#F4F2EA 78%,#1E5A33));color:#1E5A33}html[data-theme=newroz] .splash-word .splash-dot{background:#FEBD11}html[data-theme=newroz] .splash-sub{color:#56685B}
+  html[data-theme=spring] .splash{background:linear-gradient(180deg,#F0F5EE,#F0F5EE 40%,color-mix(in srgb,#F0F5EE 78%,#2D5A3D));color:#2D5A3D}html[data-theme=spring] .splash-word .splash-dot{background:#F28FB0}html[data-theme=spring] .splash-sub{color:#57695C}
+  html[data-theme=autumn] .splash{background:linear-gradient(180deg,#F5F0EA,#F5F0EA 40%,color-mix(in srgb,#F5F0EA 78%,#5A2E1E));color:#5A2E1E}html[data-theme=autumn] .splash-word .splash-dot{background:#C8452F}html[data-theme=autumn] .splash-sub{color:#6E5D55}
+  html[data-theme=summer] .splash{background:linear-gradient(180deg,#F4F3EC,#F4F3EC 40%,color-mix(in srgb,#F4F3EC 78%,#0F5257));color:#0F5257}html[data-theme=summer] .splash-word .splash-dot{background:#FF8A4C}html[data-theme=summer] .splash-sub{color:#526A6A}
+  html[data-theme=match] .splash{background:linear-gradient(180deg,#EEF3EE,#EEF3EE 40%,color-mix(in srgb,#EEF3EE 78%,#14532D));color:#14532D}html[data-theme=match] .splash-word .splash-dot{background:#FACC15}html[data-theme=match] .splash-sub{color:#526A5A}
+  html.dark .splash{background:#0E1512;color:#E6EEEA}html.dark .splash-sub{color:#9DB0A6}html.dark.booting,html.dark.booting body{background:#0E1512}
   @media (prefers-reduced-motion:reduce){
     .splash *,.splash{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important}
   }
 </style>
-<link rel="stylesheet" href="lab-themes.css">
+<link rel="stylesheet" href="lab-panel.css">
 <script src="lab-mock.js"></script>
 <script src="boot.js"></script>
 <div id="splash" class="splash" aria-hidden="true">
@@ -69,6 +86,8 @@
 <script defer src="modals.js"></script>
 <script defer src="push.js"></script>
 <script defer src="assistant.js"></script>
+<script defer src="seasons.js"></script>
+<script defer src="kitchen.js"></script>
 <script defer src="app.js"></script>
-<script defer src="lab-themes.js"></script>
+<script defer src="lab-panel.js"></script>
 <script defer src="update-check.js"></script>

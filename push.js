@@ -214,6 +214,7 @@ async function saveReminder(enabled, time){
 function handlePushIntent(kind, supplierId, message){
   if(kind === 'update') openUpdatePopup(message || '');
   else if((kind === 'assistant' || kind === 'overdue') && state.account){ ricoRefreshInbox(); goView('assistant'); }
+  else if(kind === 'note' && state.account){ refreshData(true); openNotesSheet(); }
   else if((kind === 'reminder' || kind === 'supplier') && state.account){
     if(kind === 'supplier' && supplierId && state.suppliers.some(s => s.id === supplierId)) state.orderTab = supplierId;
     if(state.view === 'order') render(); else goView('order');
