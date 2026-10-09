@@ -147,8 +147,8 @@
   const devices = account => {
     const now = new Date().toISOString(), earlier = new Date(Date.now()-2*3600000).toISOString();
     const list = [
-      {id:deviceId() || 'this-device', account, label:'Mac|Website', loggedIn:true, lastLogin:earlier, lastSeen:now, command:null, handledCommand:null},
-      {id:'lab-phone-yunis', account:'yunis', label:'iPhone 16 Pro|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-6*60000).toISOString(), command:null, handledCommand:null},
+      {id:deviceId() || 'this-device', account, label:'Mac|Website', loggedIn:true, lastLogin:earlier, lastSeen:now, command:null, handledCommand:null, appVersion:APP_VERSION},
+      {id:'lab-phone-yunis', account:'yunis', label:'iPhone 16 Pro|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-6*60000).toISOString(), command:null, handledCommand:null, appVersion:'2026-10-09.1'},
       {id:'lab-phone-rozha', account:'rozha', label:'iPhone 16/17 Pro Max|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-40*60000).toISOString(), command:null, handledCommand:null}
     ];
     return account === 'rozha' ? list : list.slice(0,1);

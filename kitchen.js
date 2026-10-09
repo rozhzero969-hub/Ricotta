@@ -77,14 +77,23 @@ function openStreakSheet(){
   el.querySelector('[data-streak-rico]')?.addEventListener('click', ()=>{ close(); ricoAsk(t('streakAskPrompt')); });
 }
 /* After an order is saved (or undone): take the server's streak, and celebrate a new day or a milestone. */
+/* The streak belongs to the whole kitchen: whoever sends the day's first order, both phones light up.
+   Each new count is celebrated once per phone, however it arrives (own order, background check, reload). */
+let streakSeen = '';
+function streakArrived(next, before = state.streak){
+  if(!next || typeof next.count !== 'number') return;
+  state.streak = next;
+  const key = next.count + '|' + (next.lastDay || '');
+  const fresh = !!before && key !== streakSeen;
+  streakSeen = key;
+  paintStreakChip(fresh && next.lit && !before.lit);
+  if(fresh && next.count > (before.count || 0) && STREAK_GOALS.includes(next.count)) streakMilestone(next.count);
+}
 async function refreshStreak({celebrate = false, before = null} = {}){
   const r = await api('streak');
   if(!r.ok || !r.data || typeof r.data.count !== 'number') return;
   // "before" is the streak when sending began (a background refresh may already have the new count).
-  before = before || streakNow();
-  state.streak = r.data;
-  paintStreakChip(celebrate && r.data.lit && !before.lit);
-  if(celebrate && r.data.count > before.count && STREAK_GOALS.includes(r.data.count)) streakMilestone(r.data.count);
+  streakArrived(r.data, celebrate ? before || state.streak : null);
 }
 function streakMilestone(n){
   document.getElementById('streakBoom')?.remove();
@@ -260,16 +269,24 @@ function syncNotes(list){
   if(fresh.length) noteArrived(fresh[0]);
   paintNotesBell();
 }
-/* Notes come quicker than the full refresh: check every 45 seconds while Yunis has the app open. */
-setInterval(async ()=>{
-  if(state.account !== 'yunis' || document.visibilityState !== 'visible') return;
+/* The streak and notes come quicker than the full refresh: checked every 45 seconds while the app is
+   open and whenever it comes back to the screen, so an order from the other phone lights the fire here too. */
+let kitchenCheckedAt = 0;
+async function kitchenCheck(){
+  if(!state.account || document.visibilityState !== 'visible' || Date.now() - kitchenCheckedAt < 15000) return;
+  kitchenCheckedAt = Date.now();
+  const st = await api('streak');
+  if(st.ok && st.data && typeof st.data.count === 'number') streakArrived(st.data);
+  if(state.account !== 'yunis') return;
   const r = await api('notes');
   if(r.ok && Array.isArray(r.data)){
     const before = notesNow().map(n=>n.id + ':' + !!n.readAt + ':' + !!n.doneAt).join();
     syncNotes(r.data);
     if(state.view === 'order' && before !== notesNow().map(n=>n.id + ':' + !!n.readAt + ':' + !!n.doneAt).join() && !refreshBlocked()) render();
   }
-}, 45000);
+}
+setInterval(kitchenCheck, 45000);
+document.addEventListener('visibilitychange', kitchenCheck);
 
 /* ---------- Rico's monthly report card ---------- */
 function monthName(){ return formatIraqDateTime(new Date(), {month:'long'}); }
@@ -362,7 +379,7 @@ async function undoOrder(id){
   state.history = state.history.filter(h=>h.id !== id);
   (rec.entries||[]).forEach(e=>(e.items||[]).forEach(it=>{ if(state.items.some(i=>i.id === it.itemId)) state.cart[it.itemId] = Math.max(state.cart[it.itemId] || 0, it.qty); }));
   persistCartDraft();
-  if(r.data && r.data.streak){ state.streak = r.data.streak; paintStreakChip(false); }
+  if(r.data && r.data.streak) streakArrived(r.data.streak, null);
   toast(t('orderUndone'));
   if(state.view === 'history' || state.view === 'order') render();
 }
