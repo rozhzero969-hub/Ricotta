@@ -44,9 +44,11 @@ const EID_DAYS = {
   2029:[['02-14','02-16'],['04-23','04-26']], 2030:[['02-04','02-06'],['04-13','04-16']]
 };
 /* Today in Baghdad as {y, md} (md = month*100+day). The Lab can pretend a date. */
+/* One shared formatter: every render asks for today's date, and creating formatters is slow on phones. */
+const BAGHDAD_DAY = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Baghdad', year:'numeric', month:'2-digit', day:'2-digit'});
 function seasonToday(){
   const d = window.RICOTTA_TODAY ? new Date(window.RICOTTA_TODAY + 'T12:00:00Z') : new Date();
-  const p = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Baghdad', year:'numeric', month:'2-digit', day:'2-digit'}).formatToParts(d);
+  const p = BAGHDAD_DAY.formatToParts(d);
   const g = k => +p.find(x=>x.type===k).value;
   return {y:g('year'), md:g('month')*100 + g('day')};
 }

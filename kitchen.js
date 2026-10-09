@@ -274,7 +274,7 @@ setInterval(async ()=>{
 /* ---------- Rico's monthly report card ---------- */
 function monthName(){ return formatIraqDateTime(new Date(), {month:'long'}); }
 function daysLeftInMonth(){
-  const p = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Baghdad', year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date()).split('-').map(Number);
+  const p = BAGHDAD_DAY.format(new Date()).split('-').map(Number);
   const last = new Date(Date.UTC(p[0], p[1], 0)).getUTCDate();
   return {day:p[2], last, left:last - p[2]};
 }
