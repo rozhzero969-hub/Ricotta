@@ -9,7 +9,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
     "eslint": "9.39.5",
-    "playwright": "1.55.1"
+    "playwright": "1.63.0"
   },
   "type": "module"
 }
