@@ -149,7 +149,7 @@ body.page-swiping *{transition:none!important}
 .topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px;
   padding:calc(8px + var(--safe-top)) 12px 8px 18px;padding-inline:18px 12px;background:var(--bg);box-shadow:0 1px 0 rgba(var(--deep-rgb),.08);transition:box-shadow .3s ease}
 .topbar.scrolled{box-shadow:0 1px 0 rgba(var(--deep-rgb),.08),0 12px 26px -18px rgba(var(--shade-rgb),.35)}
-.brand-slot{position:relative;min-width:0;display:flex;align-items:center;height:40px}
+.brand-slot{position:relative;flex:1 1 auto;min-width:0;overflow:hidden;display:flex;align-items:center;height:40px}
 .brand{display:flex;align-items:flex-end;font-family:'Manrope',var(--font);font-weight:800;font-size:23px;letter-spacing:-.055em;line-height:1;color:var(--deep);direction:ltr;white-space:nowrap;transition:opacity .28s var(--ease),transform .45s var(--spring-soft)}
 .brand .dot{width:.24em;height:.24em;border-radius:50%;background:var(--accent);margin:0 0 .1em .07em;flex-shrink:0;animation:dotPulse 2.8s ease-in-out infinite}
 @keyframes dotPulse{0%,100%{box-shadow:0 0 0 0 rgba(var(--accent-rgb),.55)}50%{box-shadow:0 0 0 .2em rgba(var(--accent-rgb),0)}}
@@ -342,6 +342,13 @@ html.rtl .hero-ring svg{transform:rotate(-90deg) scaleY(-1)}
 .search-input::placeholder{color:var(--ink-faint);font-weight:500}
 .search-input:focus{background:rgba(255,255,255,.55);border-color:rgba(var(--deep-rgb),.3);box-shadow:0 0 0 4px rgba(var(--accent-rgb),.2)}
 .order-quick-actions{display:flex;gap:8px;flex-wrap:wrap}
+/* Phones: Same as last time, Say your order and Clear order share one row as equal tiles. */
+@media (max-width:700px){
+  .order-quick-actions{flex:1 1 100%;flex-wrap:nowrap}
+  .order-quick-actions .quick-btn{flex:1 1 0;min-width:0;min-height:62px;padding:8px 6px;flex-direction:column;justify-content:center;gap:5px;
+    white-space:normal;text-align:center;line-height:1.2;font-size:11.5px}
+  .order-quick-actions .quick-btn span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+}
 .quick-btn{min-height:50px;padding:0 16px;border-radius:17px;font-size:12.5px;font-weight:700;color:var(--deep);display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
 .quick-btn svg{width:16px;height:16px}
 .quick-btn.clear-order-btn:not(:disabled){color:var(--clay-ink)}
@@ -977,8 +984,9 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .key:hover{background:rgba(255,255,255,.55);transform:translateY(-1px)}
 }
 @media (min-width:1600px){.supplier-items-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-/* Small phones */
-@media (max-width:430px){
+/* Phones (every iPhone, Pro Max included): the top bar holds the streak, notes, connection,
+   language and log out, so the connection shows only its dot and the language its code. */
+@media (max-width:540px){
   .lang-chip .lang-name{display:none}
   .lang-chip .lang-code{display:inline}
   .lang-chip{padding:0 10px}
@@ -1139,12 +1147,8 @@ html.compact-rows .item-row{min-height:56px;padding-block:5px}
 html.compact-rows .supplier-group{padding:8px}
 
 /* A person's badge: the colours of the theme they use. */
-.who-badge{--wa:#34C27A;--wo:#fff;--ws:#C2EDD7;--wi:#1F7A4D;display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:2px 10px 2px 2px;border-radius:999px;background:var(--ws);color:var(--wi);font-size:12px;font-weight:700;vertical-align:middle}
+.who-badge{--wa:#4B5551;--wo:#fff;--ws:rgba(0,0,0,.06);--wi:var(--ink);display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:2px 10px 2px 2px;border-radius:999px;background:var(--ws);color:var(--wi);font-size:12px;font-weight:700;vertical-align:middle}
 .who-badge s{text-decoration:none;flex:none;width:20px;height:20px;border-radius:50%;background:var(--wa);color:var(--wo);display:grid;place-items:center;font-size:10px;font-weight:800}
-.who-badge[data-theme-of="graphite"]{--wa:#2C2C2C;--ws:#D8D8D8;--wi:#2B2B2B}
-.who-badge[data-theme-of="ocean"]{--wa:#3FA7EA;--ws:#CFE6F7;--wi:#2A78B8}
-.who-badge[data-theme-of="saffron"]{--wa:#F2A93B;--wo:#4A2F08;--ws:#FBE3B8;--wi:#B8770F}
-.who-badge[data-theme-of="berry"]{--wa:#E0568F;--ws:#F6CFE0;--wi:#B33A70}
 .dev-name .who-badge{font-size:14px}
 
 /* =====================================================================
@@ -1238,16 +1242,6 @@ html[data-theme="match"]{
   --glow-rgb:253,230,138;--t-eyebrow:#BBE5C8;--t-word:#ECFAF0;--t-sub:#C9E2D1;--t-foot:#CCE4D4;--t-bright:#FDE68A;--t-mono:#FDE68A;--tab-ink:#3D5546;--tab-ink2:#4E6657;
   --amb-rgb:21,128,61;--ambient:radial-gradient(90% 55% at 0% 30%,rgba(255,255,255,.62),rgba(255,255,255,0) 70%),radial-gradient(80% 50% at 100% 70%,rgba(var(--amb-rgb),.14),rgba(var(--amb-rgb),0) 70%),linear-gradient(180deg,#F2F7F2 0%,#DFE9E0 35%,#CDDBCE 72%,#BBCDBD 100%);
 }
-.who-badge[data-theme-of="halloween"]{--wa:#F28C28;--wo:#2B1B3D;--ws:#FCDDBF;--wi:#C2620E}
-.who-badge[data-theme-of="winter"]{--wa:#6CB8EA;--ws:#D7ECFA;--wi:#2F78AA}
-.who-badge[data-theme-of="christmas"]{--wa:#C62828;--ws:#F6E2C6;--wi:#8E2A30}
-.who-badge[data-theme-of="flagday"],.who-badge[data-theme-of="newroz"]{--wa:#FEBD11;--wo:#1E5A33;--ws:#FDEBB5;--wi:#1F7A3D}
-.who-badge[data-theme-of="ramadan"]{--wa:#E2B04A;--wo:#1B2447;--ws:#F6E6C2;--wi:#9A6E1C}
-.who-badge[data-theme-of="eid"]{--wa:#E9B949;--wo:#134E4A;--ws:#F8E9BE;--wi:#0F6B63}
-.who-badge[data-theme-of="spring"]{--wa:#F28FB0;--ws:#FBDDE6;--wi:#C24F78}
-.who-badge[data-theme-of="autumn"]{--wa:#C8452F;--ws:#F4D3C8;--wi:#9C3324}
-.who-badge[data-theme-of="summer"]{--wa:#FF8A4C;--ws:#FFE0CC;--wi:#C2561C}
-.who-badge[data-theme-of="match"]{--wa:#FACC15;--wo:#14532D;--ws:#DCFCE7;--wi:#15803D}
 
 /* ---------- Holiday backgrounds: quiet, behind everything (#seasonDecor) ---------- */
 #seasonDecor{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;color:var(--deep)}
@@ -1410,7 +1404,8 @@ html.reduce-fx #seasonDecor *{animation:none!important}
 .notes-bell.has-new{color:var(--accent-strong);animation:bellRing 2.4s ease-in-out infinite}
 .notes-bell b{position:absolute;top:-4px;inset-inline-end:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#E04848;color:#fff;font-size:10.5px;font-weight:800;display:grid;place-items:center;box-shadow:0 0 0 2px var(--bg)}
 @keyframes bellRing{0%,82%,100%{transform:rotate(0)}85%{transform:rotate(12deg)}90%{transform:rotate(-10deg)}95%{transform:rotate(6deg)}}
-@media (max-width:420px){.conn-chip em{display:none}.conn-chip{padding:0 11px}.topbar-actions{gap:5px}}
+@media (max-width:540px){.conn-chip em{display:none}.conn-chip{padding:0 11px}.topbar-actions{gap:5px}}
+@media (max-width:370px){.lang-chip svg:last-child{display:none}.lang-chip{padding:0 9px}.streak-chip,.notes-bell{padding:0 8px}}
 
 /* ---------- Bottom sheets for the streak, notes and the report card ---------- */
 .kitchen-sheet .sel-panel{max-height:86vh;overflow-y:auto;padding-inline:16px}
@@ -1545,6 +1540,12 @@ html.reduce-fx #seasonDecor *{animation:none!important}
 .dev-card.themed .btn-ghost{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.22)}
 .dev-card.themed .dev-pending{background:rgba(255,255,255,.12);color:#fff}
 .dev-card.themed .dev-top{padding-inline-end:56px}
+.dev-ver{display:inline-flex;margin-inline-start:6px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:800;vertical-align:1px}
+.dev-ver.ok{background:rgba(52,194,122,.25);color:#C8F5DC}
+.dev-ver.old{background:rgba(255,190,80,.28);color:#FFE3B3}
+.dev-latest{margin-top:4px;opacity:.85}
+/* Inside a themed card the name stays plain white: the card itself shows the theme. */
+.dev-card.themed .who-badge{--wa:#fff;--wo:var(--d1);--ws:rgba(255,255,255,.16);--wi:#fff}
 
 /* ---------- Rico: reading the other person's chat ---------- */
 .rico-viewing{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 12px;padding:12px 14px;border-radius:18px;background:rgba(var(--accent-rgb),.14);border:1px solid rgba(var(--accent-rgb),.3);font-size:13px;font-weight:700}
@@ -1579,6 +1580,11 @@ html.dark .chip,html.dark .key,html.dark .theme-btn,html.dark .tab-pick-row,html
 html.dark .search-input,html.dark .field input:where(:not([type=checkbox]):not([type=radio])),html.dark .field select,html.dark .field textarea,html.dark .search-input:focus{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12);color:var(--ink)}
 html.dark .sel-panel{background:rgba(20,28,24,.97)}
 html.dark .bottomnav{border-color:rgba(255,255,255,.1);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 20px 40px -18px rgba(0,0,0,.7)}
+/* The More panel is solid white in light mode; in dark mode it needs its own dark glass. */
+html.dark .nav-more{background-color:#1C2420;border-color:rgba(255,255,255,.1);box-shadow:0 24px 48px -16px rgba(0,0,0,.75)}
+html.dark .nav-more .navbtn{color:#C9D6CF}
+html.dark .nav-edit{background:rgba(255,255,255,.07);color:#E6EEEA}
+html.dark .nav-badge,html.dark .nav-more-btn.has-badge::after{box-shadow:0 0 0 2px #1C2420}
 html.dark .key{box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 6px 16px -8px rgba(0,0,0,.5)}
 html.dark .rico-bubble,html.dark .rico-typing,html.dark .rico-composer{border-color:rgba(255,255,255,.1)}
 html.dark .season-bubble{background:#1B2520;color:var(--ink)}
@@ -1589,7 +1595,7 @@ html.dark .note-sticky-top{color:#E9CF6B}
 html.dark .note-actions .btn-ghost{background:rgba(255,255,255,.08);color:#FFF3C2}
 html.dark .topbar{box-shadow:0 1px 0 rgba(255,255,255,.06)}
 html.dark .streak-chip:not(.lit){--f1:#5C6A62;--f2:#7D8B83;--f3:#A8B4AD}
-html.dark .who-badge{--ws:rgba(255,255,255,.1);--wi:#E6EEEA}
+html.dark .who-badge{--wa:#DDE5E1;--wo:#18201C;--ws:rgba(255,255,255,.1);--wi:#E6EEEA}
 html.dark .login-brand-panel{color:#fff}
 html.dark .report-stats > div,html.dark .report-save,html.dark .report-chips span,html.dark .streak-bar,html.dark .report-bar i,html.dark .report-who{background:rgba(255,255,255,.06)}
 

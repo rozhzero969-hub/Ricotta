@@ -92,7 +92,7 @@ async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
   const controller = new AbortController();
   const timer = setTimeout(()=>controller.abort(), timeout);
   const sessionCurrent = ()=>apiPathIsPublic(path) || (apiSessionMatches(s) && apiAccountMatchesUi(s));
-  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel()};
+  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel(), 'x-app-version':APP_VERSION};
   if(s) headers['x-session-token'] = s.token;
   try{
     const res = await fetch(`${API_URL}/${path}`, {
@@ -118,7 +118,7 @@ async function apiStream(path, body, onEvent, signal){
   const s = apiSession();
   if(!apiPathIsPublic(path) && !apiAccountMatchesUi(s)) return staleApiReply();
   const sessionCurrent = ()=>apiPathIsPublic(path) || (apiSessionMatches(s) && apiAccountMatchesUi(s));
-  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel()};
+  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel(), 'x-app-version':APP_VERSION};
   if(s) headers['x-session-token'] = s.token;
   const streamController = new AbortController();
   const stop = ()=>streamController.abort();

@@ -288,7 +288,7 @@ async function loadData(){
   state.devices = d.devices || [];
   state.activity = d.activity || [];
   state.reminder = d.reminder || {enabled:false, time:'09:00'};
-  if(d.streak) state.streak = d.streak;
+  if(d.streak) streakArrived(d.streak);
   state.weather = d.weather || null;
   state.pins = Array.isArray(d.pins) ? d.pins : [];
   syncNotes(d.notes);
@@ -1317,10 +1317,10 @@ function setAutoTheme(on){
   api('me/theme', {method:'PUT', body:{auto:on}});
 }
 /* A small badge for a person. Only the Devices screen shows each person in their own theme. */
-function whoBadge(account, themed = false){
+function whoBadge(account){
   const name = accountLabel(account);
   if(!name) return '';
-  return `<span class="who-badge"${themed ? ` data-theme-of="${esc(shownThemeOf(account))}"` : ''}><s aria-hidden="true">${esc(name.trim().charAt(0).toUpperCase())}</s>${esc(name)}</span>`;
+  return `<span class="who-badge"><s aria-hidden="true">${esc(name.trim().charAt(0).toUpperCase())}</s>${esc(name)}</span>`;
 }
 /* Two display choices for the Order screen, kept per device (both start off). */
 const prefOn = key => lget(key) === true;
@@ -1746,9 +1746,9 @@ function renderOrder(){
     <div class="search-row">
       <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" aria-label="${t('searchPlaceholder')}" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
       <div class="order-quick-actions">
-        ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}${t('sameAsLastTime')}</button>` : ''}
-        ${ricoVoiceSupported() ? `<button class="quick-btn voice-btn${ricoRecorder.active && ricoRecorder.voiceOrder ? ' listening' : ''}" id="voiceOrderBtn">${ICON_MIC}<span>${esc(ricoRecorder.active && ricoRecorder.voiceOrder ? t('ricoListening') : t('voiceOrder'))}</span></button>` : ''}
-        <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${t('clearOrder')}</button>
+        ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}<span>${t('sameAsLastTime')}</span></button>` : ''}
+        ${ricoVoiceSupported() ? `<button class="quick-btn voice-btn" id="voiceOrderBtn">${ICON_MIC}<span>${esc(t('voiceOrder'))}</span></button>` : ''}
+        <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${ICON_DELETE}<span>${t('clearOrder')}</span></button>
       </div>
     </div>
     <div id="orderResults" aria-live="polite">${groupHtml || emptyState(t('noSearchResults'))}</div>
@@ -1874,17 +1874,27 @@ function renderOrderBottomBar(){
     </button>
   </div>`;
 }
+/* The Order screen's voice button: listening (tap to finish), then working it out, then back. */
+function paintVoiceOrderBtn(){
+  const b = document.getElementById('voiceOrderBtn');
+  if(!b) return;
+  const mine = ricoRecorder.voiceOrder, on = ricoRecorder.active && mine, busy = ricoRecorder.busy && mine;
+  b.classList.toggle('listening', on);
+  b.classList.toggle('working', busy);
+  b.disabled = busy;
+  b.querySelector('span').textContent = on ? t('voiceOrderStop') : busy ? t('ricoTranscribing') : t('voiceOrder');
+}
 function attachOrderEvents(){
   attachNoteSticky();
+  paintVoiceOrderBtn();
   const voice = document.getElementById('voiceOrderBtn');
   if(voice) voice.onclick = async ()=>{
-    // "Say your order": Rico listens, then fills today’s order from what was said.
+    // "Say your order": tap, speak, tap again; Rico then fills today’s order from what was said.
+    if(ricoRecorder.active){ await ricoToggleVoice(); paintVoiceOrderBtn(); return; }   // finishing keeps "fill my order"
     ricoRecorder.voiceOrder = true;
     await ricoToggleVoice();
-    const on = ricoRecorder.active;
-    voice.classList.toggle('listening', on);
-    voice.querySelector('span').textContent = on ? t('ricoListening') : t('voiceOrder');
-    if(!on && !ricoRecorder.busy) ricoRecorder.voiceOrder = false;
+    if(!ricoRecorder.active) ricoRecorder.voiceOrder = false;
+    paintVoiceOrderBtn();
   };
   document.querySelectorAll('[data-ordertab]').forEach(b=>b.onclick=()=>{
     if(state.orderTab===b.dataset.ordertab) return;
@@ -3084,10 +3094,12 @@ function renderDevices(){
   const loggedInCount = visible.length;
   const activeCount = visible.filter(d=>deviceStatus(d)==='active').length;
 
+  const latest = latestVersion();
   const hero = `<div class="hero-card">
     <div class="hero-eyebrow">${t('devicesLoggedInEyebrow')}</div>
     <div class="hero-stat">${t('devicesLoggedInStat')(loggedInCount)}</div>
     <div class="hero-sub">${t('devicesActiveSub')(activeCount)}</div>
+    <div class="hero-sub dev-latest">${esc(t('latestVersion')(latest))}</div>
   </div>`;
 
   const others = otherDevices().filter(isLoggedIn);
@@ -3109,13 +3121,14 @@ function renderDevices(){
       <div class="dev-scene" aria-hidden="true">${themeScene(th)}</div>
       <span class="dev-rico" aria-hidden="true">${dressRico(ricoFaceBase(isHolidayTheme(th) ? SEASON_WORDS[th].mood : 'happy', 'rico-md'), isHolidayTheme(th) ? th : null)}</span>
       <div class="dev-top">
-        <div class="dev-name">${who ? whoBadge(d.account, true) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
+        <div class="dev-name">${who ? whoBadge(d.account) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
       </div>
       ${d.account ? `<div class="dev-theme">${esc(t('devTheme')(t('themeNames')[th] || th))}</div>` : ''}
       <div class="dev-kind">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : NAV_ICONS.devices} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
       <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span></div>
       <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
       ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
+      <div class="rec-line"><span class="rec-k">${t('versionLabel')}</span> ${d.appVersion ? `${esc(d.appVersion)} <span class="dev-ver ${versionCmp(d.appVersion, latest) >= 0 ? 'ok' : 'old'}">${esc(t(versionCmp(d.appVersion, latest) >= 0 ? 'versionCurrent' : 'versionOld'))}</span>` : esc(t('versionUnknown'))}</div>
       ${commandIsPending(d) ? `<div class="dev-pending">${d.command.type==='logout'?t('cmdLogoutPending'):t('cmdRefreshPending')} \u00b7 ${timeAgo(d.command.ts)}</div>` : ''}
       ${isThis ? '' : `<div class="dev-actions">
         <button class="btn btn-ghost" data-devrefresh="${esc(d.id)}">${ICON_REFRESH} ${t('refreshDevice')}</button>
@@ -3208,9 +3221,19 @@ function renderPendingSync(){
  if(!jobs.length) return '';
  return `<div class="section-title">${esc(t('pendingSync'))}: ${jobs.length}</div><div class="form-card"><p>${esc(t('pendingSyncHint'))}</p><div class="form-actions"><button class="btn btn-primary" id="syncRetryBtn">${esc(t('syncRetry'))}</button><button class="btn btn-ghost" id="syncExportBtn">${esc(t('syncExport'))}</button></div></div>`;
 }
+/* App versions look like 2026-10-09.2: compared number by number, so .10 comes after .9. */
+function versionCmp(a, b){
+  const pa = String(a || '').match(/\d+/g) || [], pb = String(b || '').match(/\d+/g) || [];
+  for(let i = 0; i < Math.max(pa.length, pb.length); i++){ const d = (+pa[i] || 0) - (+pb[i] || 0); if(d) return d; }
+  return 0;
+}
+/* The newest version any phone runs (this one included). */
+function latestVersion(){
+  return (state.devices || []).map(d=>d.appVersion).filter(Boolean).reduce((m, v)=>versionCmp(v, m) > 0 ? v : m, APP_VERSION);
+}
 function renderSettings(){
   const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `${renderPendingSync()}${renderThemePicker()}${renderDisplaySettings()}${renderSoundsView()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">Ricotta Orders · ${esc(APP_VERSION)}</div>`;
+  return `${renderPendingSync()}${renderThemePicker()}${renderDisplaySettings()}${renderSoundsView()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
 /* ============ Notifications and sounds (shown in Settings) ============ */
 /* The daily reminder starts as one switch. Turning it on opens the time,

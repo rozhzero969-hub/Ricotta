@@ -405,17 +405,31 @@ async function ricoToggleVoice(){
   if(ricoRecorder.active){ try{ ricoRecorder.rec.stop(); }catch(e){ ricoResetVoice(); } return; }
   if(rico.streaming) return;
   if(!ricoVoiceSupported()){ toast(t('ricoMicUnsupported'), 'warn'); return; }
+  const denied = e=>e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+  const failed = e=>toast(denied(e) ? t('ricoMicDenied') : t('ricoMicNoStart') + (e && e.name ? ` (${e.name})` : ''), 'warn');
   let stream;
   try{ stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true}}); }
-  catch(e){ toast(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError') ? t('ricoMicDenied') : t('ricoMicFailed'), 'warn'); return; }
-  const mime = ['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus'].find(m=>window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+  catch(e){
+    // Some phones refuse the extra settings: ask again for a plain microphone.
+    if(denied(e)){ failed(e); return; }
+    try{ stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+    catch(e2){ failed(e2); return; }
+  }
+  // iPhones record most reliably in their own format (mp4), in one piece; others prefer webm/opus.
+  const supports = m=>window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m);
+  const apple = /iPhone|iPad|Macintosh/.test(navigator.userAgent) && supports('audio/mp4');
+  const mime = (apple ? ['audio/mp4'] : ['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus']).find(supports) || '';
   let rec;
   try{ rec = new MediaRecorder(stream, mime ? {mimeType:mime, audioBitsPerSecond:32000} : undefined); }
-  catch(e){ stream.getTracks().forEach(tr=>tr.stop()); toast(t('ricoMicFailed'), 'warn'); return; }
+  catch(e){
+    try{ rec = new MediaRecorder(stream); }
+    catch(e2){ stream.getTracks().forEach(tr=>tr.stop()); failed(e2); return; }
+  }
   Object.assign(ricoRecorder, {active:true, rec, stream, chunks:[]});
   rec.ondataavailable = e=>{ if(e.data && e.data.size) ricoRecorder.chunks.push(e.data); };
   rec.onstop = ()=>ricoFinishVoice(rec.mimeType || mime || 'audio/webm');
-  rec.start(250);
+  rec.onerror = e=>{ ricoResetVoice(); ricoRecorder.voiceOrder = false; ricoRefreshComposer(); failed(e && e.error); };
+  if(apple) rec.start(); else rec.start(250);
   ricoRecorder.timer = setTimeout(()=>{ if(ricoRecorder.active) try{ rec.stop(); }catch(e){} }, 60000);
   ricoRefreshComposer();
 }
@@ -431,8 +445,9 @@ async function ricoFinishVoice(mime){
   ricoResetVoice();
   ricoRecorder.busy = true;
   ricoRefreshComposer();
+  paintVoiceOrderBtn();
   try{
-    if(blob.size < 1200) return;   // just a tap
+    if(blob.size < 1200){ toast(t('ricoMicTooShort'), 'warn'); return; }   // just a tap
     const audio = await blobToBase64(blob);
     const r = await api('assistant/transcribe', {method:'POST', body:{audio, mime:mime.split(';')[0], lang:state.lang}, timeout:45000});
     const text = r.ok && r.data && typeof r.data.text === 'string' ? r.data.text.trim() : '';
@@ -445,8 +460,8 @@ async function ricoFinishVoice(mime){
     // From the Order screen's "Say your order": Rico fills the order straight away.
     if(ricoRecorder.voiceOrder){ ricoRecorder.voiceOrder = false; ricoAsk(text + '\n\n' + t('voiceOrderPrompt'), {voiceOrder:true}); }
     else ricoAsk(text);
-  }catch(e){ toast(t('ricoMicFailed'), 'warn'); }
-  finally{ ricoRecorder.busy = false; ricoRecorder.voiceOrder = false; ricoRefreshComposer(); }
+  }catch(e){ console.error('Voice message failed', e); toast(t('ricoMicFailed') + (e && e.name ? ` (${e.name})` : ''), 'warn'); }
+  finally{ ricoRecorder.busy = false; ricoRecorder.voiceOrder = false; ricoRefreshComposer(); paintVoiceOrderBtn(); }
 }
 
 /* ---------- Events ---------- */

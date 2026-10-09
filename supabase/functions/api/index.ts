@@ -91,7 +91,7 @@ const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "https://rozhzero969-hu
 const cors = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Vary": "Origin",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-device-id, x-device-label, x-session-token",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-device-id, x-device-label, x-app-version, x-session-token",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   // Let browsers reuse the pre-flight answer for a day instead of sending an
   // extra OPTIONS request before every single call.
@@ -111,6 +111,8 @@ const baghdadDay = (d: Date | string = new Date()) => new Intl.DateTimeFormat("e
 const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400_000);
 /* What the device says it is ("iPhone 16/17 Pro Max|App"), for the Devices screen. */
 const deviceLabel = (req: Request) => text(req.headers.get("x-device-label"), 80).replace(/[^\x20-\x7E]/g, "") || null;
+/* Which version of the app the device runs (APP_VERSION in config.js), for the Devices screen. */
+const appVersion = (req: Request) => { const v = text(req.headers.get("x-app-version"), 40); return /^[A-Za-z0-9._-]{1,40}$/.test(v) ? v : null; };
 const nowIso = () => new Date().toISOString();
 const langOf = (v: unknown) => (LANGS.includes(String(v)) ? String(v) : "en");
 const randomToken = () => crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
@@ -203,6 +205,7 @@ async function readWeather() {
 const toDevice = (d: any) => ({
   id: d.id, account: d.account ?? null, label: d.label ?? null, loggedIn: d.logged_in,
   lastLogin: d.last_login, lastSeen: d.last_seen, command: d.command, handledCommand: d.handled_command,
+  appVersion: d.app_version ?? null,
 });
 const toActivity = (a: any) => ({
   ...(a.payload ?? {}), id: a.id, ts: a.occurred_at, actor: a.actor, deviceId: a.device_id,
@@ -238,7 +241,7 @@ function groupHistory(orders: any[], lines: any[]) {
 }
 
 async function listDevices(s: Session) {
-  let q = app("devices").select("id,account,label,logged_in,last_login,last_seen,command,handled_command");
+  let q = app("devices").select("id,account,label,logged_in,last_login,last_seen,command,handled_command,app_version");
   if (!isRozha(s)) q = q.eq("id", s.deviceId ?? "");
   const { data, error } = await q;
   if (error) throw error;
@@ -393,6 +396,7 @@ async function login(req: Request) {
     const { data: prev, error: deviceReadError } = await app("devices").select("command").eq("id", deviceId).maybeSingle();
     const {error:deviceWriteError}=await app("devices").upsert({
       id: deviceId, account, label: deviceLabel(req), logged_in: true, last_login: nowIso(), last_seen: nowIso(), updated_at: nowIso(),
+      ...(appVersion(req) ? { app_version: appVersion(req) } : {}),
       ...(prev?.command?.id ? { handled_command: String(prev.command.id) } : {}),
     });
     if(deviceReadError || deviceWriteError){
@@ -594,13 +598,13 @@ async function saveOrder(s: Session, b: any) {
 }
 
 /* ---------- Devices ---------- */
-async function heartbeat(s: Session, label: string | null) {
+async function heartbeat(s: Session, label: string | null, version: string | null) {
   if (!s.deviceId) return ok();
   const { data: d, error: readError } = await app("devices").select("command,handled_command").eq("id", s.deviceId).maybeSingle();
   if (readError) throw readError;
   const pendingLogout = d?.command?.type === "logout" && d.command.id !== d.handled_command;
   if (pendingLogout) return json({ ok: true, device: null });   // don't flip it back to "logged in"
-  const { error } = await app("devices").upsert({ id: s.deviceId, account: s.account, ...(label ? { label } : {}), logged_in: true, last_seen: nowIso(), updated_at: nowIso() });
+  const { error } = await app("devices").upsert({ id: s.deviceId, account: s.account, ...(label ? { label } : {}), ...(version ? { app_version: version } : {}), logged_in: true, last_seen: nowIso(), updated_at: nowIso() });
   if (error) throw error;
   return ok();
 }
@@ -818,7 +822,7 @@ Deno.serve(async (req) => {
 
     // Devices
     if (M === "GET" && path === "devices") return json(await listDevices(s));
-    if (M === "POST" && path === "devices/me") return await heartbeat(s, deviceLabel(req));
+    if (M === "POST" && path === "devices/me") return await heartbeat(s, deviceLabel(req), appVersion(req));
     if (M === "POST" && path === "devices/me/ack") {
       if (s.deviceId) {
         const { error } = await app("devices").update({ handled_command: text(b.commandId, 120) || null }).eq("id", s.deviceId);
