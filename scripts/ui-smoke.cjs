@@ -500,7 +500,7 @@ const server=http.createServer((req,res)=>{
     assert.ok(await y.page.locator('.item-last').count()>=1,'Last quantity shows on rows when switched on');
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await y.page.locator('label:has(#pref-showLastQty)').click();
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','reminderEnabled:false','sound-qty:true','sound-sent:true'],'the daily reminder and every sound have their own switch');
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-autoTheme:true','pref-surprises:true','pref-weatherFx:true','pref-compactRows:false','pref-showLastQty:false','reminderEnabled:false','sound-qty:true','sound-sent:true'],'holiday themes, surprises, weather, the daily reminder and every sound have their own switch');
     assert.equal(await y.page.locator('.bottomnav .nav-more [data-view="settings"]').count(),1,'Settings is in More');
     await y.page.locator('label:has(#sound-sent)').click();
     assert.deepEqual(await y.page.evaluate(()=>[soundOn('sent'),soundOn('qty')]),[false,true],'turning one sound off leaves the other on');
