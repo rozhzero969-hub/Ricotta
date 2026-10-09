@@ -29,6 +29,7 @@ const db = {
     if (name === 'app_internal_set_credentials') return { data: 'ok', error: null };
     if (['app_internal_logout','app_internal_catalog_change','app_internal_device_command','app_internal_delete_order'].includes(name)) return {data:null,error:null};
     if (name === 'app_internal_save_order') return { data: saved, error: null };
+    if (name === 'app_internal_streak_hit') return { data: { count: 1, best: 1, changed: true, milestone: false }, error: null };
     throw new Error(`Unexpected RPC ${name}`);
   },
   from(table) {
@@ -117,9 +118,11 @@ try {
   const save = calls.find(c => c.name === 'app_internal_save_order');
   assert.deepEqual(save.args.p_lines, [{ supplier_id: 'supplier', supplier_name: 'Supplier', item_id: 'tomato', item_name: 'Tomatoes', unit_id: 'kg', qty: 5 }]);
   assert.equal(calls.some(c => c.table === 'app_orders' || c.table === 'app_order_lines'), false, 'the API delegates all order writes to one transaction');
+  assert.match(calls.find(c => c.name === 'app_internal_streak_hit')?.args.p_day ?? '', /^\d{4}-\d{2}-\d{2}$/, 'a saved order counts toward the kitchen streak on its Baghdad day');
   reset(); saved = false;
   assert.equal((await call('orders', validOrder)).status, 200);
   assert.equal(tables.app_rico_inbox.length, 0, 'idempotent retries do not emit another cheer');
+  assert.equal(calls.some(c => c.name === 'app_internal_streak_hit'), false, 'idempotent retries do not count the day twice');
   for (const qty of [0, -1, 'NaN', 'Infinity', 100000]) {
     reset();
     const invalid = structuredClone(validOrder); invalid.entries[0].items[0].qty = qty;

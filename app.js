@@ -2323,7 +2323,7 @@ function printOrderSheet(entry, supplier){
 let finishingQueue = null;
 async function maybeFinishQueue(){
   if(finishingQueue || !state.queue || !state.queue.every(e=>e.sent)) return;
-  const queue = state.queue, session = apiSession(), streakBefore = {...streakNow()};
+  const queue = state.queue, session = apiSession(), streakBefore = {count:0, lit:false, ...state.streak};
   finishingQueue = queue;
   try{
     if(!queue.record){ try{ playOrdersSent(); }catch(_){ /* a sound must never stop the order from saving */ } }
@@ -2364,8 +2364,8 @@ async function maybeFinishQueue(){
     if(result === 'saved'){
       // Undo for 15 minutes (also from History), the streak may light up, and a holiday theme celebrates.
       toast(t('orderSavedToHistory'), 'ok', {undo:()=>undoOrder(record.id)});
-      seasonCelebrate();
-      refreshStreak({celebrate:true, before:streakBefore});
+      try{ seasonCelebrate(); refreshStreak({celebrate:true, before:streakBefore}); }
+      catch(error){ console.error('After-order extras failed', error); }   // the order is already saved
     } else toast(result === 'queued' ? t('orderSavedOffline') : t('saveFailed'), 'warn');
   }catch(error){
     // Never leave the order stuck on "saving": offer Retry instead.
