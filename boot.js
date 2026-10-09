@@ -11,6 +11,16 @@ window.__splashStart = performance.now();
   var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
   if(standalone && window.matchMedia && matchMedia('(pointer: coarse)').matches) document.documentElement.classList.add('app-shell');
 })();
+/* The loading screen wears the theme this phone showed last (style.css and
+   the splash colours in index.html read html[data-theme]). */
+(function(){
+  try{
+    var last = JSON.parse(localStorage.getItem('ricottaOrders:lastTheme') || 'null');
+    if(typeof last === 'string' && /^[a-z]{3,12}$/.test(last) && last !== 'ricotta') document.documentElement.setAttribute('data-theme', last);
+    var mode = JSON.parse(localStorage.getItem('ricottaOrders:darkMode') || 'null');
+    if(mode === 'on' || (mode === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark');
+  }catch(e){}
+})();
 (function(){
   function sheet(href, media, onload){
     var link = document.createElement('link');

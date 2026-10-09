@@ -4,5 +4,6 @@ project_id = "pxufdcyqjtmtklmrjodg"
 verify_jwt = false
 
 [functions.send-push]
-verify_jwt = true
+# The function checks its own x-cron-secret (pg_cron and the api function send it).
+verify_jwt = false
 

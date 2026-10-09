@@ -30,6 +30,7 @@ const server=http.createServer((req,res)=>{
   async function phone({lang='en'}={}){
     const ctx=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true,reducedMotion:'reduce',serviceWorkers:'block'});
     await ctx.addInitScript(()=>Object.defineProperty(Navigator.prototype,'standalone',{get:()=>true}));   // opened from the Home Screen
+    await ctx.addInitScript(()=>{ window.RICOTTA_TODAY='2026-06-10'; });   // no holiday theme
     const saved=[], history=[], opened=[];
     const server={orders:'ok'};
     // WhatsApp: the link opens in a new tab here; remember where it went.

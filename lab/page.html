@@ -1,29 +1,7 @@
-<!doctype html>
-<html lang="en" class="booting">
-<head>
-<meta charset="UTF-8">
-<!-- Security policy: scripts only from this site (no inline scripts, no
-     eval), the API only on this app's Supabase project, fonts only from
-     Google Fonts. It limits what any injected text could ever do. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://pxufdcyqjtmtklmrjodg.supabase.co; media-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<meta name="referrer" content="no-referrer">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ricotta Lab</title>
 <meta name="theme-color" content="#EEF1EF">
-<meta name="description" content="Ricotta Orders — daily supplier ordering for the Ricotta kitchen.">
-<title>Ricotta Orders</title>
-<!-- Home Screen install + notifications: iOS only allows push for sites
-     that have a manifest and are opened from the Home Screen icon. -->
-<link rel="manifest" href="manifest.json">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Ricotta">
-
-<!-- Splash screen. Everything it needs is inline (including a 2 KB subset of
-     the Manrope wordmark font), so it paints on the very first frame instead
-     of a blank white page, while the app's own files load behind it. -->
+<!-- Ricotta Lab: the real Ricotta Orders app (index.html, same scripts and styles), answered by a
+     pretend server (lab-mock.js), with test tools (lab-panel.js). Built by lab/build.sh. -->
 <style>
   @font-face{font-family:'RicottaMark';font-weight:800;font-display:block;
     src:url(data:font/woff2;base64,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) format('woff2');}
@@ -84,16 +62,9 @@
     .splash *,.splash{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important}
   }
 </style>
-
-<!-- Stylesheets load without blocking the first paint (the splash covers the
-     app until they're in; app.js waits for them before revealing it). -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="preload" href="style.css" as="style">
+<link rel="stylesheet" href="lab-panel.css">
+<script src="lab-mock.js"></script>
 <script src="boot.js"></script>
-<noscript><link rel="stylesheet" href="style.css"></noscript>
-</head>
-<body>
 <div id="splash" class="splash" aria-hidden="true">
   <div class="splash-rings"><i></i><i></i></div>
   <div class="splash-inner">
@@ -104,7 +75,6 @@
 </div>
 <div class="ambient" aria-hidden="true"><i></i></div>
 <div id="app"></div>
-<noscript><p style="padding:24px;font-family:sans-serif">Ricotta Orders needs JavaScript turned on.</p></noscript>
 <!-- Load order matters: config.js first (constants), app.js last but one
      (it calls boot()). `defer` downloads them in parallel and runs them in
      this order once the page is parsed. -->
@@ -119,6 +89,5 @@
 <script defer src="seasons.js"></script>
 <script defer src="kitchen.js"></script>
 <script defer src="app.js"></script>
+<script defer src="lab-panel.js"></script>
 <script defer src="update-check.js"></script>
-</body>
-</html>

@@ -104,6 +104,7 @@ const server=http.createServer((req,res)=>{
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
     await ctx.addInitScript(({loggedIn,s})=>{
+      window.RICOTTA_TODAY='2026-06-10';   // a day without a holiday theme, so the colour themes are tested
       localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',JSON.stringify(Date.now()));
       if(loggedIn && !sessionStorage.getItem('seeded')){ localStorage.setItem('ricottaOrders:apiSession',JSON.stringify(s)); sessionStorage.setItem('seeded','1'); }
     },{loggedIn,s:session(account)});
@@ -472,7 +473,7 @@ const server=http.createServer((req,res)=>{
     await snapshot(y.page,'phone-sounds.png');
     // Themes: Ricotta is the default, each theme sticks per account, Compact rows and Last quantity are Settings switches.
     assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),null,'Ricotta is the default theme');
-    assert.equal(await y.page.locator('.theme-btn').count(),5,'five themes');
+    assert.equal(await y.page.locator('.theme-btn').count(),16,'five colour themes and eleven holiday themes');
     assert.equal(await y.page.locator('.theme-btn[aria-pressed="true"], .theme-btn.on').count()>=1,true,'one theme is marked');
     await y.page.locator('.theme-btn').nth(2).click(); await settle(y.page);
     assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),'ocean','picking Ocean blue applies it');
@@ -482,7 +483,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await y.page.locator('.conn-chip span').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(52, 194, 122)','the online dot stays green on Ocean blue');
     assert.equal(y.calls.filter(c=>c.endpoint==='me/theme').pop()?.body.theme,'ocean','the chosen theme is saved on the server');
     await y.page.evaluate(()=>{ state.themes.yunis='berry'; goView('history'); }); await settle(y.page);
-    assert.ok(await y.page.locator('.who-badge[data-theme-of="berry"]').count()>=1,'History shows who sent it in that person\'s theme');
+    assert.equal(await y.page.locator('.who-badge[data-theme-of]').count(),0,'History shows who sent it in the normal colours (themes only show on Devices)');
     await y.page.evaluate(()=>goView('order')); await settle(y.page);
     await y.page.evaluate(()=>setApiHealth(false)); await settle(y.page);
     assert.equal(await y.page.locator('.conn-chip span').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(214, 72, 63)','offline is red on every theme');
@@ -499,7 +500,7 @@ const server=http.createServer((req,res)=>{
     assert.ok(await y.page.locator('.item-last').count()>=1,'Last quantity shows on rows when switched on');
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await y.page.locator('label:has(#pref-showLastQty)').click();
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','reminderEnabled:false','sound-qty:true','sound-sent:true'],'the daily reminder and every sound have their own switch');
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-autoTheme:true','pref-surprises:true','pref-weatherFx:true','pref-compactRows:false','pref-showLastQty:false','reminderEnabled:false','sound-qty:true','sound-sent:true'],'holiday themes, surprises, weather, the daily reminder and every sound have their own switch');
     assert.equal(await y.page.locator('.bottomnav .nav-more [data-view="settings"]').count(),1,'Settings is in More');
     await y.page.locator('label:has(#sound-sent)').click();
     assert.deepEqual(await y.page.evaluate(()=>[soundOn('sent'),soundOn('qty')]),[false,true],'turning one sound off leaves the other on');

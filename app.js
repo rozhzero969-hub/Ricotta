@@ -2,7 +2,8 @@
    Depends on: DEFAULT_UNITS, PIN consts (config.js), T (i18n.js), icon strings
    (icons.js), lget/lset/api/apiLogin/apiSession/sendOrQueue/flushOutbox
    (storage.js), showConfirm/showAlert/showPrompt/showFormModal/showForcedRefresh
-   (modals.js), push helpers (push.js), Rico (assistant.js), hardReload
+   (modals.js), push helpers (push.js), Rico (assistant.js), holiday themes
+   (seasons.js), the streak, notes and report card (kitchen.js), hardReload
    (update-check.js). Load this file after all of those; it calls boot() at
    the end.
 
@@ -38,7 +39,12 @@ const state = {
   deviceId: null,        // this device's own id, generated once and kept locally
   reminder: null,        // daily reminder settings {enabled,time}
   apiOnline: navigator.onLine,
-  themes: {}   // every account's chosen theme, from the server
+  themes: {},            // every account's chosen theme, from the server
+  autoThemes: {},        // whether each account lets holiday themes switch on by themselves
+  streak: null,          // the kitchen streak {count, best, lit, alive, recoverable}
+  notes: [],             // Rozha's notes for Yunis [{id, body, at, readAt, doneAt}]
+  weather: null,         // Erbil now {temp, rain, snow, max, min, updatedAt}
+  pins: []               // this account's pinned item ids (top of the Order screen)
 };
 
 const LANGS = ['en','ku','ar'];
@@ -282,7 +288,12 @@ async function loadData(){
   state.devices = d.devices || [];
   state.activity = d.activity || [];
   state.reminder = d.reminder || {enabled:false, time:'09:00'};
+  if(d.streak) state.streak = d.streak;
+  state.weather = d.weather || null;
+  state.pins = Array.isArray(d.pins) ? d.pins : [];
+  syncNotes(d.notes);
   ricoSetInbox(d.inbox || []);
+  paintStreakChip(false);
   return true;
 }
 /* Keeps the saved session's name and tabs current, so an offline start
@@ -332,6 +343,7 @@ function signOut(reason, {preserveSession = false} = {}){
   state.account = null; state.name = ''; state.views = []; state.tabs = DEFAULT_TABS.slice();
   state.suppliers = []; state.items = []; state.units = []; state.history = [];
   state.activity = []; state.devices = []; state.reminder = null;
+  state.streak = null; state.notes = []; state.pins = []; state.weather = null;
   state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
   reminderDraft = null;
@@ -424,6 +436,7 @@ async function boot(){
   }
   render();
   hideSplash(1450);   // long enough for the ricotta intro to finish playing
+  if(state.account) seasonGreeting();
   if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); maybeFinishQueue(); }
   if(state.account && !loadedOk) retryLoad();
   // Notifications: register the service worker, read this device's status, and
@@ -559,6 +572,8 @@ function render(){
     requestAnimationFrame(()=>{ app.querySelector('.content')?.style.removeProperty('min-height'); box.scrollTop = keepTop; });
   }
   updateTopbar();
+  paintStreakChip(false);
+  paintNotesBell();
   syncInstallPrompt();
 }
 
@@ -1216,38 +1231,58 @@ function bump(el){
 }
 /* The phone's status bar takes the same colour as the top bar. */
 /* ============ Themes ============
-   Settings > Appearance. Each theme is a block of colours in style.css
-   (html[data-theme]); Ricotta, the green the app has always had, is the
-   default and is on whenever nothing else was chosen. The choice is kept
-   per account on this device, and the sign-in screen is always Ricotta. */
-const THEMES = ['ricotta','graphite','ocean','saffron','berry'];
+   Settings > Appearance. Five colour themes (style.css, html[data-theme];
+   Ricotta Green is the default) and the holiday themes of seasons.js. Each
+   account's own theme and its "holiday themes switch on by themselves"
+   choice are kept on the server, so both of that person's phones agree. The
+   sign-in screen wears the theme this phone showed last. */
+const THEMES = [...COLOR_THEMES, ...HOLIDAY_THEMES];
 const DEFAULT_THEME = 'ricotta';
 const THEME_LOOK = {   // swatch (dark card, accent, page) and the colour of the phone's top bar
   ricotta:  {swatch:['#14382C','#34C27A','#EEF1EF'], bar:'#EEF1EF'},
   graphite: {swatch:['#161616','#2C2C2C','#EEEEED'], bar:'#EEEEED'},
   ocean:    {swatch:['#12304D','#3FA7EA','#EDF1F5'], bar:'#EDF1F5'},
   saffron:  {swatch:['#4A2F08','#F2A93B','#F4F0E8'], bar:'#F4F0E8'},
-  berry:    {swatch:['#4D1330','#E0568F','#F5EEF2'], bar:'#F5EEF2'}
+  berry:    {swatch:['#4D1330','#E0568F','#F5EEF2'], bar:'#F5EEF2'},
+  ...HOLIDAY_LOOK
 };
-/* The theme an account chose. The server keeps it for both accounts so each person
-   shows in their own colours everywhere; this device's copy covers an older server
-   and an offline start. */
+/* The theme an account chose (its own pick, before any holiday). */
 function themeOf(account){
   const v = state.themes[account] || (account === state.account ? lget('theme:' + account) : null);
   return THEMES.includes(v) ? v : DEFAULT_THEME;
 }
-function currentTheme(){ return state.account ? themeOf(state.account) : DEFAULT_THEME; }
+function autoThemeOn(account){
+  const v = state.autoThemes[account];
+  return typeof v === 'boolean' ? v : (account === state.account ? lget('autoTheme:' + account) !== false : true);
+}
+/* What an account sees today: the holiday theme while one is on (unless switched off), else its own. */
+function shownThemeOf(account){
+  const own = themeOf(account), h = holidayTheme();
+  if(h && autoThemeOn(account) && own !== 'match' && !(account === state.account && holidayDismissed(account, h))) return h;
+  return own;
+}
+function currentTheme(){
+  if(state.account) return shownThemeOf(state.account);
+  const last = lget('lastTheme'), h = holidayTheme();
+  if(h && lget('lastAuto') !== false) return h;
+  return THEMES.includes(last) ? last : DEFAULT_THEME;
+}
+let shownTheme = null;
 function applyTheme(){
   const th = currentTheme(), root = document.documentElement;
   if(th === DEFAULT_THEME) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', th);
   const meta = document.querySelector('meta[name="theme-color"]');
-  if(meta) meta.content = THEME_LOOK[th].bar;
+  if(meta) meta.content = document.documentElement.classList.contains('dark') ? '#101613' : THEME_LOOK[th].bar;
+  if(state.account){ lset('lastTheme', themeOf(state.account)); lset('lastAuto', autoThemeOn(state.account) ? null : false); }
+  if(th !== shownTheme){ shownTheme = th; paintDecor(); }
 }
 function saveThemeToServer(id){ return api('me/theme', {method:'PUT', body:{theme:id}}); }
 /* Takes the server's themes after sign-in. A theme picked on this device before the server kept
    it is sent up once; after that the server's answer wins, so every phone agrees. */
 function syncThemes(d){
   if(d && d.themes && typeof d.themes === 'object') state.themes = Object.fromEntries(Object.entries(d.themes).filter(([,v])=>THEMES.includes(v)));
+  if(d && d.autoThemes && typeof d.autoThemes === 'object') state.autoThemes = {...d.autoThemes};
+  if(state.account && d && typeof d.autoTheme === 'boolean'){ state.autoThemes[state.account] = d.autoTheme; lset('autoTheme:' + state.account, d.autoTheme ? null : false); }
   if(!state.account || !d || !d.themes) return;   // an older server that doesn't know themes
   const key = 'themeSynced:' + state.account, local = lget('theme:' + state.account);
   if(!lget(key)){
@@ -1262,20 +1297,42 @@ function syncThemes(d){
 }
 function setTheme(id){
   if(!state.account || !THEMES.includes(id)) return;
-  state.themes[state.account] = id;
-  lset('theme:' + state.account, id === DEFAULT_THEME ? null : id);
+  const h = holidayTheme(), account = state.account;
+  if(h && autoThemeOn(account)){
+    // During a holiday, picking another theme keeps that pick until the holiday ends; picking the holiday brings it back.
+    setHolidayDismissed(account, h, id !== h);
+    if(id === h){ applyTheme(); seasonMoment(h); return; }
+  }
+  state.themes[account] = id;
+  lset('theme:' + account, id === DEFAULT_THEME ? null : id);
   applyTheme();
   saveThemeToServer(id);
+  if(isHolidayTheme(id)) setTimeout(()=>seasonMoment(id), 500);
 }
-/* A small badge for a person, in the colours of the theme they use. */
-function whoBadge(account){
+function setAutoTheme(on){
+  if(!state.account) return;
+  state.autoThemes[state.account] = on;
+  lset('autoTheme:' + state.account, on ? null : false);
+  applyTheme();
+  api('me/theme', {method:'PUT', body:{auto:on}});
+}
+/* A small badge for a person. Only the Devices screen shows each person in their own theme. */
+function whoBadge(account, themed = false){
   const name = accountLabel(account);
   if(!name) return '';
-  return `<span class="who-badge" data-theme-of="${esc(themeOf(account))}"><s aria-hidden="true">${esc(name.trim().charAt(0).toUpperCase())}</s>${esc(name)}</span>`;
+  return `<span class="who-badge"${themed ? ` data-theme-of="${esc(shownThemeOf(account))}"` : ''}><s aria-hidden="true">${esc(name.trim().charAt(0).toUpperCase())}</s>${esc(name)}</span>`;
 }
 /* Two display choices for the Order screen, kept per device (both start off). */
 const prefOn = key => lget(key) === true;
-function applyPrefs(){ document.documentElement.classList.toggle('compact-rows', prefOn('compactRows')); }
+/* Dark mode: 'off', 'on' or 'auto' (like the phone), kept per device. */
+const darkMode = () => ['on','auto'].includes(lget('darkMode')) ? lget('darkMode') : 'off';
+const DARK_QUERY = matchMedia('(prefers-color-scheme: dark)');
+function applyPrefs(){
+  document.documentElement.classList.toggle('compact-rows', prefOn('compactRows'));
+  const m = darkMode();
+  document.documentElement.classList.toggle('dark', m === 'on' || (m === 'auto' && DARK_QUERY.matches));
+}
+DARK_QUERY.addEventListener?.('change', ()=>{ if(darkMode() === 'auto'){ applyPrefs(); applyTheme(); } });
 /* What each item was last ordered at (newest order that had it), for "Show last quantity". */
 let lastQtyCache = {key:'', map:{}};
 function lastQtyMap(){
@@ -1326,6 +1383,7 @@ function renderTopbar(){
   <header class="topbar">
     <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">Ricotta</span><span class="dot"></span></div><span class="topbar-title" aria-hidden="true"></span></div>
     <div class="topbar-actions">
+      ${renderStreakChip()}${renderNotesBell()}
       <div class="chip conn-chip ${state.apiOnline?'':'offline'}" id="connectionStatus"><span></span><em>${esc(state.apiOnline?t('online'):t('offline'))}</em></div>
       ${langButton('langBtn')}
       <button type="button" class="logout-btn" id="logoutBtn" aria-label="${esc(t('logout'))}" title="${esc(t('logout'))}">${ICON_LOGOUT}</button>
@@ -1416,6 +1474,8 @@ function attachShellEvents(){
   document.getElementById('navEditTabs').onclick = e=>{ e.stopPropagation(); openTabEditor(); };
   document.getElementById('langBtn').onclick = e=>{ e.stopPropagation(); openLangMenu(e.currentTarget); };
   document.getElementById('logoutBtn').onclick = ()=>doLogout();
+  document.getElementById('streakChip').onclick = openStreakSheet;
+  document.getElementById('notesBell').onclick = openNotesSheet;
   initTabBarLens(nav);
 }
 /* Events inside the page that more than one screen uses. */
@@ -1678,6 +1738,7 @@ function renderOrder(){
 
   const lastMap = lastOrderMap();
   return `
+    ${renderNoteSticky()}
     ${renderOrderHero(selectedCount, selectedSupplierCount)}
     <div id="ricoSuggest">${renderRicoSuggestion()}</div>
     ${tabsHtml}
@@ -1686,6 +1747,7 @@ function renderOrder(){
       <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" aria-label="${t('searchPlaceholder')}" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
       <div class="order-quick-actions">
         ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}${t('sameAsLastTime')}</button>` : ''}
+        ${ricoVoiceSupported() ? `<button class="quick-btn voice-btn${ricoRecorder.active && ricoRecorder.voiceOrder ? ' listening' : ''}" id="voiceOrderBtn">${ICON_MIC}<span>${esc(ricoRecorder.active && ricoRecorder.voiceOrder ? t('ricoListening') : t('voiceOrder'))}</span></button>` : ''}
         <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${t('clearOrder')}</button>
       </div>
     </div>
@@ -1701,6 +1763,7 @@ function renderOrderResults(){
     ? state.items
     : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab);
   const visibleItems = tabFiltered.filter(i => !q || foldText(i.name).includes(q));
+  const pinned = state.orderTab==='all' && !q ? state.pins.map(id=>state.items.find(i=>i.id===id)).filter(Boolean) : [];
 
   const groups = {};
   visibleItems.forEach(i=>{
@@ -1709,21 +1772,7 @@ function renderOrderResults(){
   });
   const groupHtml = Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
     const label = key==='__none' ? t('noSupplier') : supplierName(key);
-    const rows = sortedSupplierItems(groups[key]).map(i=>{
-      const qty = state.cart[i.id] || 0;
-      return `
-      <div class="item-row ${qty>0?'has-qty':''}" data-item-id="${esc(i.id)}">
-        <div class="item-info">
-          <div class="item-name">${esc(i.name)}</div>
-          <div class="item-unit">${esc(unitLabel(i.unit))}${lastQty && lastQty[i.id] ? ` · <span class="item-last">${esc(t('lastQty')(lastQty[i.id]))}</span>` : ''}</div>
-        </div>
-        <div class="stepper">
-          <button class="step-btn" data-dec="${esc(i.id)}" aria-label="${esc(t('decreaseQty')(i.name))}" ${qty>0?'':'disabled'}>−</button>
-          <input class="qty-input" type="number" inputmode="numeric" min="0" value="${qty}" aria-label="${esc(t('quantityFor')(i.name))}" data-qty="${esc(i.id)}">
-          <button class="step-btn" data-inc="${esc(i.id)}" aria-label="${esc(t('increaseQty')(i.name))}">+</button>
-        </div>
-      </div>`;
-    }).join('');
+    const rows = sortedSupplierItems(groups[key]).map(i=>itemRowHtml(i, lastQty)).join('');
     const arrangeButton = canOpen('itemsAdmin') && key!=='__none'
       ? `<button class="item-sort-trigger" data-sort-supplier="${esc(key)}">${t('sortSupplierItems')}</button>` : '';
     return state.orderTab==='all' ? `<div class="supplier-group">
@@ -1732,7 +1781,28 @@ function renderOrderResults(){
     </div>` : `<div class="supplier-items-grid standalone">${rows}</div>`;
   }).join('');
 
-  return groupHtml;
+  const pinnedHtml = pinned.length ? `<div class="supplier-group pinned-group">
+      <div class="supplier-head"><span class="supplier-heading-name"><span class="supplier-mono pin-mono" aria-hidden="true">${ICON_PIN}</span>${esc(t('pinnedTitle'))}<span class="supplier-item-count">${pinned.length}</span></span></div>
+      <div class="supplier-items-grid">${pinned.map(i=>itemRowHtml(i, lastQty)).join('')}</div>
+    </div>` : '';
+  return groupHtml ? pinnedHtml + groupHtml : groupHtml;
+}
+/* One item on the Order screen: name, unit, its note, and - / quantity / +. A pinned item shows twice
+   (Pinned and its supplier); both rows share the same quantity. */
+function itemRowHtml(i, lastQty){
+  const qty = state.cart[i.id] || 0;
+  return `
+      <div class="item-row ${qty>0?'has-qty':''}" data-item-id="${esc(i.id)}">
+        <div class="item-info">
+          <div class="item-name">${state.pins.includes(i.id) ? `<span class="item-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(i.name)}</div>
+          <div class="item-unit">${esc(unitLabel(i.unit))}${lastQty && lastQty[i.id] ? ` · <span class="item-last">${esc(t('lastQty')(lastQty[i.id]))}</span>` : ''}${i.note ? ` · <span class="item-note" dir="auto">“${esc(i.note)}”</span>` : ''}</div>
+        </div>
+        <div class="stepper">
+          <button class="step-btn" data-dec="${esc(i.id)}" aria-label="${esc(t('decreaseQty')(i.name))}" ${qty>0?'':'disabled'}>−</button>
+          <input class="qty-input" type="number" inputmode="numeric" min="0" value="${qty}" aria-label="${esc(t('quantityFor')(i.name))}" data-qty="${esc(i.id)}">
+          <button class="step-btn" data-inc="${esc(i.id)}" aria-label="${esc(t('increaseQty')(i.name))}">+</button>
+        </div>
+      </div>`;
 }
 function refreshOrderResults(){
   const results = document.getElementById('orderResults');
@@ -1805,6 +1875,17 @@ function renderOrderBottomBar(){
   </div>`;
 }
 function attachOrderEvents(){
+  attachNoteSticky();
+  const voice = document.getElementById('voiceOrderBtn');
+  if(voice) voice.onclick = async ()=>{
+    // "Say your order": Rico listens, then fills today’s order from what was said.
+    ricoRecorder.voiceOrder = true;
+    await ricoToggleVoice();
+    const on = ricoRecorder.active;
+    voice.classList.toggle('listening', on);
+    voice.querySelector('span').textContent = on ? t('ricoListening') : t('voiceOrder');
+    if(!on && !ricoRecorder.busy) ricoRecorder.voiceOrder = false;
+  };
   document.querySelectorAll('[data-ordertab]').forEach(b=>b.onclick=()=>{
     if(state.orderTab===b.dataset.ordertab) return;
     state.orderTab = b.dataset.ordertab;
@@ -1876,7 +1957,7 @@ async function startSendQueue(){
   const already = Object.keys(bySupplier).filter(sid=>sid!=='__none' && sentToSupplierToday(sid));
   if(already.length){
     const names = already.map(sid=>(state.suppliers.find(s=>s.id===sid)||{}).name).filter(Boolean).join(', ');
-    if(!(await showConfirm(t('confirmDoubleOrder')(names)))) return false;
+    if(!(await showConfirm(t('confirmDoubleOrder')(names), {okLabel: t('sendAnother'), okClass: 'btn-primary'}))) return false;
   }
   if(!Object.keys(bySupplier).length) return false;
   // Going back to Order and pressing Send again keeps the suppliers already sent (same items, same amounts):
@@ -2027,7 +2108,8 @@ function openItemMenu(row){
   const rect = row.getBoundingClientRect();
   const layer = document.createElement('div');
   layer.id = 'ctxLayer'; layer.className = 'ctx-layer';
-  const actions = [[1,t('cmAdd')(1),ICON_PLUS],[5,t('cmAdd')(5),ICON_PLUS],[10,t('cmAdd')(10),ICON_PLUS],['type',t('cmType'),ICON_EDIT]];
+  const actions = [[1,t('cmAdd')(1),ICON_PLUS],[5,t('cmAdd')(5),ICON_PLUS],[10,t('cmAdd')(10),ICON_PLUS],['type',t('cmType'),ICON_EDIT],
+    ['pin', state.pins.includes(id) ? t('unpinItem') : t('pinItem'), ICON_PIN], ['note', t('itemNoteEdit'), ICON_NOTE]];
   if(qty) actions.push(['remove',t('cmRemove'),ICON_DELETE]);
   const menuH = actions.length*48 + 8, below = rect.bottom + 12 + menuH < window.innerHeight - 90;
   layer.innerHTML = `<div class="ctx-scrim"></div>
@@ -2048,6 +2130,8 @@ function openItemMenu(row){
     const a = b.dataset.ctx, before = state.cart[id] || 0;
     closeContextMenu();
     if(a === 'type'){ setTimeout(()=>document.querySelector(`#orderResults [data-qty="${CSS.escape(id)}"]`)?.focus(), 240); return; }
+    if(a === 'pin'){ togglePin(id); return; }
+    if(a === 'note'){ editItemNote(id); return; }
     if(a === 'remove'){
       state.cart[id] = 0; refreshOrderView(id);
       toast(t('itemRemoved'), 'ok', {undo:()=>{ state.cart[id] = before; refreshOrderView(id); }});
@@ -2055,6 +2139,29 @@ function openItemMenu(row){
     }
     state.cart[id] = before + Number(a); refreshOrderView(id);
   });
+}
+
+/* Pinned items sit at the top of the Order screen (kept per account on the server). */
+async function togglePin(id){
+  const before = state.pins.slice();
+  state.pins = before.includes(id) ? before.filter(x=>x !== id) : [id, ...before].slice(0, 60);
+  refreshOrderResults();
+  const r = await api('me/pins', {method:'PUT', body:{itemIds:state.pins}});
+  if(!r.ok){ state.pins = before; refreshOrderResults(); toast(t('saveFailed'), 'error'); }
+}
+/* A short note on an item, sent with it in the WhatsApp message. */
+async function editItemNote(id){
+  const i = state.items.find(x=>x.id === id);
+  if(!i) return;
+  const note = await showPrompt(`<b>${esc(i.name)}</b><br>${esc(t('itemNoteHint'))}`, {value:i.note || '', placeholder:t('itemNoteLabel'), okLabel:t('save'), maxLength:120});
+  if(note === null) return;
+  const next = {...i, note:String(note).trim().slice(0, 120)};
+  if(next.note === (i.note || '')) return;
+  if(!(await saveRecord('items', next))){ await showAlert(t('saveFailed')); return; }
+  Object.assign(i, next);
+  logActivity({action:'edit', type:'item', name:i.name, fields:[{k:'note', from:'', to:next.note}]});
+  refreshOrderResults();
+  toast(t('savedMsg')(i.name));
 }
 
 /* "Rico suggests": today's most due supplier with its usual items, worked
@@ -2117,7 +2224,8 @@ async function loadRicoSuggestion(){
 
 /* ============ Send queue ============ */
 function buildMessage(entry){
-  const lines = sortedSupplierItems(entry.items).map(i=>`• ${i.name} — ${i.qty} ${unitLabel(i.unit)}`);
+  const noteOf = i => (state.items.find(x=>x.id === i.itemId) || {}).note;
+  const lines = sortedSupplierItems(entry.items).map(i=>`• ${i.name} — ${i.qty} ${unitLabel(i.unit)}${noteOf(i) ? ` (${noteOf(i)})` : ''}`);
   const header = ({en:'New order from Ricotta:', ku:'داواکارییەکی نوێ لە چێشتخانەی ریکۆتا:', ar:'طلب جديد من مطبخ ريكوتا:'})[state.lang];
   return header + '\n' + lines.join('\n');
 }
@@ -2201,7 +2309,7 @@ const SHEET_FONTS = 'https://fonts.googleapis.com/css2?family=Sora:wght@400;700;
 function printOrderSheet(entry, supplier){
   const w0 = SHEET_WORDS[state.lang] || SHEET_WORDS.en;
   const supplierLabel = supplier?.name || w0.none;
-  const rows = sortedSupplierItems(entry.items).map((item,n)=>`<tr><td>${n+1}</td><td>${esc(item.name)}</td><td>${esc(unitLabel(item.unit))}</td><td class="qty">${item.qty}</td></tr>`).join('');
+  const rows = sortedSupplierItems(entry.items).map((item,n)=>`<tr><td>${n+1}</td><td>${esc(item.name)}${(state.items.find(x=>x.id === item.itemId) || {}).note ? `<div style="font-size:12px;color:#5c6c63">${esc(state.items.find(x=>x.id === item.itemId).note)}</div>` : ''}</td><td>${esc(unitLabel(item.unit))}</td><td class="qty">${item.qty}</td></tr>`).join('');
   const w = window.open('', '_blank'); if(!w) return;
   w.opener = null;
   const printedAt = formatIraqDateTime(new Date(),{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
@@ -2215,7 +2323,7 @@ function printOrderSheet(entry, supplier){
 let finishingQueue = null;
 async function maybeFinishQueue(){
   if(finishingQueue || !state.queue || !state.queue.every(e=>e.sent)) return;
-  const queue = state.queue, session = apiSession();
+  const queue = state.queue, session = apiSession(), streakBefore = {count:0, lit:false, ...state.streak};
   finishingQueue = queue;
   try{
     if(!queue.record){ try{ playOrdersSent(); }catch(_){ /* a sound must never stop the order from saving */ } }
@@ -2253,7 +2361,12 @@ async function maybeFinishQueue(){
     if(!apiSessionMatches(session) || state.queue !== queue) return;
     state.queue = null;
     if(state.view === 'queue') goView('order');
-    toast(result === 'saved' ? t('orderSavedToHistory') : result === 'queued' ? t('orderSavedOffline') : t('saveFailed'), result === 'saved' ? 'ok' : 'warn');
+    if(result === 'saved'){
+      // Undo for 15 minutes (also from History), the streak may light up, and a holiday theme celebrates.
+      toast(t('orderSavedToHistory'), 'ok', {undo:()=>undoOrder(record.id)});
+      try{ seasonCelebrate(); refreshStreak({celebrate:true, before:streakBefore}); }
+      catch(error){ console.error('After-order extras failed', error); }   // the order is already saved
+    } else toast(result === 'queued' ? t('orderSavedOffline') : t('saveFailed'), 'warn');
   }catch(error){
     // Never leave the order stuck on "saving": offer Retry instead.
     console.error('Saving the order failed', error);
@@ -2289,7 +2402,8 @@ function orderHistoryCard(rec){
     <div class="hist-top">
       <div class="hist-date">${esc(time)}${accountLabel(rec.by) ? ` \u00b7 ${esc(t('sentBy')(''))}${whoBadge(rec.by)}` : ''}</div>
       <div class="row-actions">
-        <button class="icon-btn" data-reorderhist="${esc(rec.id)}" aria-label="${esc(t('orderAgain'))}" title="${esc(t('orderAgain'))}">${ICON_REPEAT}</button>
+        ${canUndoOrder(rec) ? `<button class="btn btn-ghost hist-undo" data-undohist="${esc(rec.id)}">${esc(t('undo'))}</button>` : ''}
+        <button class="btn btn-ghost hist-again" data-reorderhist="${esc(rec.id)}">${ICON_REPEAT}<span>${esc(t('orderAgain'))}</span></button>
         ${isRozha() ? `<button class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
       </div>
     </div>
@@ -2300,16 +2414,18 @@ function orderHistoryCard(rec){
 function renderHistory(){
   const entries = state.history.map(rec=>({ts:Date.parse(rec.date), day:rec.date, html:orderHistoryCard(rec)})).sort((a,b)=>b.ts-a.ts);
   if(!entries.length) return emptyState(t('noHistory'));
-  let lastDay = '';
+  let lastDay = '', cards0 = renderReportCard();
   const cards = entries.map(e=>{
     const day = dayLabel(e.day);
     const heading = day !== lastDay ? `<div class="hist-day">${esc(day)}</div>` : '';
     lastDay = day;
     return heading + e.html;
   }).join('');
-  return cards;
+  return cards0 + cards;
 }
 function attachHistoryEvents(){
+  document.getElementById('reportOpen')?.addEventListener('click', openReportSheet);
+  document.querySelectorAll('[data-undohist]').forEach(b=>b.onclick=()=>withBusy(b, ()=>undoOrder(b.dataset.undohist)));
   document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
     const rec = state.history.find(r=>r.id===b.dataset.reorderhist);
     if(!rec) return;
@@ -2374,7 +2490,7 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort')})[k] || k;
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote')})[k] || k;
 }
 function recordValue(k, v){
   if(k === 'reminder') return reminderText(reminderFromCode(v));
@@ -2767,6 +2883,7 @@ function openItemModal(id){
         <select id="mfSupplier">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
+      <div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
       `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
@@ -2782,6 +2899,7 @@ function openItemModal(id){
       const name = document.getElementById('mfName').value.trim();
       const unit = document.getElementById('mfUnit').value;
       const supplierId = document.getElementById('mfSupplier').value || null;
+      const note = document.getElementById('mfNote').value.trim().slice(0, 120);
       if(!name) return {error: t('nameRequired')};
       if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
       const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
@@ -2793,10 +2911,11 @@ function openItemModal(id){
         const fields = diffFields([
           ['name', i.name, name],
           ['unit', unitEn(i.unit), unitEn(unit)],
-          ['supplier', oldSupName, newSupName]
+          ['supplier', oldSupName, newSupName],
+          ['note', i.note || '', note]
         ]);
         if(fields.length){
-          const next = {...i, name, unit, supplierId, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
+          const next = {...i, name, unit, supplierId, note, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
           if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
           Object.assign(i, next);
           logActivity({action:'edit', type:'item', name, fields});
@@ -2804,7 +2923,7 @@ function openItemModal(id){
       } else {
         const supplierItems=state.items.filter(i=>i.supplierId===supplierId);
         const maxSort=supplierItems.reduce((max,i)=>Number.isInteger(i.sortOrder)?Math.max(max,i.sortOrder):max,-1);
-        const next = {id:'i'+outboxJobId(), name, unit, supplierId, sortOrder:maxSort>=0?maxSort+1:null};
+        const next = {id:'i'+outboxJobId(), name, unit, supplierId, note, sortOrder:maxSort>=0?maxSort+1:null};
         if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
         state.items.push(next);
         state.itemFormSupplierId = supplierId; // keep it locked in for the next item
@@ -2984,10 +3103,15 @@ function renderDevices(){
     const who = accountLabel(d.account);
     const parts = deviceParts(d);
     const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
-    return `<div class="dev-card">
+    // Each card wears the theme that person sees today (only Rozha has this screen).
+    const th = d.account ? shownThemeOf(d.account) : DEFAULT_THEME, [deep, accent] = THEME_LOOK[th].swatch;
+    return `<div class="dev-card themed" data-theme-of="${esc(th)}" style="--d1:${deep};--d2:${accent}">
+      <div class="dev-scene" aria-hidden="true">${themeScene(th)}</div>
+      <span class="dev-rico" aria-hidden="true">${dressRico(ricoFaceBase(isHolidayTheme(th) ? SEASON_WORDS[th].mood : 'happy', 'rico-md'), isHolidayTheme(th) ? th : null)}</span>
       <div class="dev-top">
-        <div class="dev-name">${who ? whoBadge(d.account) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
+        <div class="dev-name">${who ? whoBadge(d.account, true) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
       </div>
+      ${d.account ? `<div class="dev-theme">${esc(t('devTheme')(t('themeNames')[th] || th))}</div>` : ''}
       <div class="dev-kind">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : NAV_ICONS.devices} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
       <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span></div>
       <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
@@ -3045,14 +3169,32 @@ function attachDeviceEvents(){
    code on the sign-in keypad (see startRecovery). */
 const ICON_CHECK_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
 function renderThemePicker(){
-  const names = t('themeNames'), cur = currentTheme();
+  const names = t('themeNames'), cur = currentTheme(), today = holidayTheme(), auto = autoThemeOn(state.account);
+  const card = id=>{
+    const [deep, accent, bg] = THEME_LOOK[id].swatch, on = id === cur;
+    const tag = on ? `<span class="theme-check">${ICON_CHECK_SM}</span>` : auto && id === today ? `<span class="theme-tag">${esc(t('themeOnNow'))}</span>` : id === DEFAULT_THEME ? `<span class="theme-tag">${esc(t('themeDefault'))}</span>` : '';
+    const rico = dressRico(ricoFaceBase(isHolidayTheme(id) ? SEASON_WORDS[id].mood : 'happy', 'rico-xs'), isHolidayTheme(id) ? id : null);
+    return `<button type="button" class="theme-btn" data-theme-pick="${id}" aria-pressed="${on}">
+      <span class="theme-mini" aria-hidden="true" style="--mb:${bg};--md:${deep};--ma:${accent}">${themeScene(id)}<span class="theme-mini-hero"><i></i><b></b><b></b></span><span class="theme-mini-rows"><i></i><i></i></span><span class="theme-mini-rico">${rico}</span></span>
+      <span class="theme-name"><span>${esc(names[id])}</span>${tag}</span>
+      ${isHolidayTheme(id) ? `<span class="theme-when">${esc(id === 'match' ? t('themeAnyDay') : t('themeDates')[id])}</span>` : ''}
+    </button>`;
+  };
+  const sw = (id, on, label, hint)=>`<label class="check-row sound-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;
+  const dm = darkMode();
   return `<div class="section-title">${esc(t('settingsAppearance'))}</div>
-    <div class="form-card"><div class="notif-sub">${esc(t('themeHint'))}</div>
-      <div class="theme-grid" role="group" aria-label="${esc(t('settingsAppearance'))}">${THEMES.map(id=>`
-        <button type="button" class="theme-btn" data-theme-pick="${id}" aria-pressed="${id===cur}">
-          <span class="theme-swatch" aria-hidden="true">${THEME_LOOK[id].swatch.map((c,i)=>`<i style="flex:${[2,1,3][i]};background:${c}"></i>`).join('')}</span>
-          <span class="theme-name"><span>${esc(names[id])}</span>${id===cur ? `<span class="theme-check">${ICON_CHECK_SM}</span>` : id===DEFAULT_THEME ? `<span class="theme-tag">${esc(t('themeDefault'))}</span>` : ''}</span>
-        </button>`).join('')}</div></div>`;
+    <div class="form-card theme-card"><div class="notif-sub">${esc(t('themeHint'))}</div>
+      <div class="theme-group-title">${esc(t('themeYours'))}</div>
+      <div class="theme-grid" role="group" aria-label="${esc(t('themeYours'))}">${COLOR_THEMES.map(card).join('')}</div>
+      <div class="theme-group-title">${esc(t('themeHolidays'))}</div>
+      <div class="theme-grid" role="group" aria-label="${esc(t('themeHolidays'))}">${HOLIDAY_THEMES.map(card).join('')}</div>
+      <hr class="notif-divider">
+      ${sw('pref-autoTheme', auto, 'themeAutoLabel', 'themeAutoHint')}
+      ${sw('pref-surprises', surprisesOn(), 'themeFunLabel', 'themeFunHint')}
+      ${sw('pref-weatherFx', weatherFxOn(), 'weatherFxLabel', 'weatherFxHint')}
+      <div class="dark-row"><span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span>
+        <div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>
+    </div>`;
 }
 function renderDisplaySettings(){
   const row = (id, on, label, hint)=>`<label class="check-row sound-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;
@@ -3207,13 +3349,23 @@ async function withBusy(btn, fn){
 }
 /* Repaints just the theme picker (the page stays where it is) and wires it again. */
 function bindThemePicker(){
-  document.querySelectorAll('[data-theme-pick]').forEach(b=>b.onclick=()=>{
-    setTheme(b.dataset.themePick);
-    const card = b.closest('.form-card'), title = card.previousElementSibling;
+  const repaint = focus=>{
+    const card = document.querySelector('.theme-card'), title = card.previousElementSibling;
     const tmp = document.createElement('div'); tmp.innerHTML = renderThemePicker();
     title.replaceWith(tmp.children[0]); card.replaceWith(tmp.children[0]);
     bindThemePicker();
-    document.querySelector('[data-theme-pick][aria-pressed="true"]')?.focus({preventScroll:true});
+    document.querySelector(focus)?.focus({preventScroll:true});
+  };
+  document.querySelectorAll('[data-theme-pick]').forEach(b=>b.onclick=()=>{ setTheme(b.dataset.themePick); repaint('[data-theme-pick][aria-pressed="true"]'); });
+  const auto = document.getElementById('pref-autoTheme');
+  if(auto) auto.onchange = ()=>{ setAutoTheme(auto.checked); repaint('#pref-autoTheme'); };
+  const fun = document.getElementById('pref-surprises');
+  if(fun) fun.onchange = ()=>{ lset('themeSurprises', fun.checked ? null : false); };
+  const wx = document.getElementById('pref-weatherFx');
+  if(wx) wx.onchange = ()=>{ lset('weatherFx', wx.checked ? null : false); paintDecor(); };
+  document.querySelectorAll('[data-dark]').forEach(b=>b.onclick=()=>{
+    lset('darkMode', b.dataset.dark === 'off' ? null : b.dataset.dark);
+    applyPrefs(); applyTheme(); repaint(`[data-dark="${b.dataset.dark}"]`);
   });
 }
 function attachSettingsEvents(){

@@ -10,6 +10,18 @@ Order History and Records retain the current **Asia/Baghdad calendar month**. Ol
 
 Orders retry with stable IDs. Each pending order has its own local storage entry so tabs cannot overwrite one shared queue. Settings shows the pending count, Retry sync and Export copy. Export a previous month's unsynced order before clearing browser storage: it cannot be written into a later month's history.
 
+## Seasons and the kitchen
+
+- **Themes** (`seasons.js`, Settings › Appearance): five colour themes and eleven holiday themes. A holiday theme turns on by itself during its Baghdad dates (Halloween, Winter Citadel, Christmas in Ankawa, Kurdistan Flag Day, Ramadan, Eid, Newroz, Spring, Halabja Autumn, Shaqlawa Summer) unless the account switches that off; Match Night is picked by hand. Ramadan and Eid dates are estimates kept in `seasons.js` until 2030. Each holiday brings quiet background decorations, a costume for Rico, themed sounds and optional surprises. The theme and the automatic switch are saved per account (`app_accounts.theme`, `auto_theme`); dark mode, surprises and weather effects are per device. Only the Devices screen shows people in their own theme.
+- **Kitchen streak** (`kitchen.js`, `app_streak`): every Baghdad day with a sent order adds a day for the whole kitchen. Rico can bring a broken streak back within 7 days (`recover_streak`). Undoing the day's only order takes the day back.
+- **Kitchen notes** (`app_notes`): Rozha writes, Yunis gets a notification, a sticky note on Order and a banner; unread notes get a reminder from Rico after two hours.
+- **Report card**: at the top of History, computed from this month's orders, with an Excel (CSV) file and a printable report before the monthly cleanup.
+- **Weather**: the reminder tick keeps Erbil's weather from Open-Meteo in `app_weather` for Rico's morning message and the rain or snow effect.
+- Pinned items (`app_accounts.pins`), item notes (`app_items.note`, sent in the WhatsApp message) and Undo for 15 minutes after an order is saved.
+- Rozha and Yunis can read and delete each other's Rico chats; each only continues their own.
+
+The Lab (`lab/`, see its README) runs the real app on sample data for trying these without touching the kitchen.
+
 ## Development and checks
 
 Use Node 24, pnpm 10 and Deno 2. Serve the repository with a static HTTP server; do not open `index.html` as a file.

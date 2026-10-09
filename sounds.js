@@ -1,6 +1,7 @@
 /* Sounds, made by the app itself (nothing is downloaded).
      + and -        a soft tap (+ a touch higher than -)
      orders sent    a rising C-E-G-C chime
+   A holiday theme swaps both for its own (seasons.js).
    Each one can be turned on or off per device on the Sounds screen. On
    iPhone they follow the silent switch like any app. Browsers only allow
    sound once the person has touched the page, so the audio is (re)started
@@ -32,11 +33,12 @@ function soundContext(){
   if(soundCtx?.state !== 'running' && Object.keys(SOUND_KEYS).some(soundOn)) soundContext();
 }, {passive:true, capture:true}));
 
-function soundTone(f, dur, gain, at = 0){
+function soundTone(f, dur, gain, at = 0, type = 'sine'){
   const c = soundContext();
   if(!c) return;
   const t = c.currentTime + at + .005;
   const o = c.createOscillator(), g = c.createGain();
+  o.type = type;
   o.frequency.setValueAtTime(f, t);
   g.gain.setValueAtTime(.0001, t);
   g.gain.linearRampToValueAtTime(gain, t + .005);
@@ -52,12 +54,17 @@ function playQtyTick(up){
   const now = performance.now();
   if(now - lastTick < 45) return;
   lastTick = now;
+  // A holiday theme has its own taps (seasons.js): a daf drum for Newroz, sleigh bells in winter...
+  const season = typeof themeSounds === 'function' ? themeSounds() : null;
+  if(season){ soundTone(up ? season.up : season.down, .06, season.gain || .2, 0, season.type); return; }
   soundTone(up ? 1150 : 900, .045, .22);
 }
 
 /* All orders sent: C, E, G, C rising, each with a quiet bell overtone. */
 function playOrdersSent(){
   if(!soundOn('sent')) return;
+  const season = typeof themeSounds === 'function' ? themeSounds() : null;
+  if(season){ playSeasonTones(season.sent, season.gain || .14, season.type); return; }
   [523.25, 659.25, 783.99, 1046.5].forEach((f, i)=>{
     soundTone(f, .6, .16, i * .085);
     soundTone(f * 2.01, .36, .04, i * .085);

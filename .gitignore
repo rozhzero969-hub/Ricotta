@@ -12,3 +12,6 @@ backups/
 .lint-all.js
 supabase/.temp/
 node_modules
+
+# Ricotta Lab build output (see lab/README.md)
+lab/dist/
