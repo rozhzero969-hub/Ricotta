@@ -84,6 +84,9 @@ try{
   }, ()=>{});
 }catch(_){}
 
+/* Which version of the app this is (config.js), so the Devices screen can show who is up to date. */
+const appVersionHeader = () => typeof APP_VERSION === 'string' ? {'x-app-version':APP_VERSION} : {};
+
 /* Returns {ok, status, data}. Never throws. A 401 on a signed-in device means
    the session was revoked (new PINs, remote log out) or expired. */
 async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
@@ -92,7 +95,7 @@ async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
   const controller = new AbortController();
   const timer = setTimeout(()=>controller.abort(), timeout);
   const sessionCurrent = ()=>apiPathIsPublic(path) || (apiSessionMatches(s) && apiAccountMatchesUi(s));
-  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel(), 'x-app-version':APP_VERSION};
+  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel(), ...appVersionHeader()};
   if(s) headers['x-session-token'] = s.token;
   try{
     const res = await fetch(`${API_URL}/${path}`, {
@@ -118,7 +121,7 @@ async function apiStream(path, body, onEvent, signal){
   const s = apiSession();
   if(!apiPathIsPublic(path) && !apiAccountMatchesUi(s)) return staleApiReply();
   const sessionCurrent = ()=>apiPathIsPublic(path) || (apiSessionMatches(s) && apiAccountMatchesUi(s));
-  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel(), 'x-app-version':APP_VERSION};
+  const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel(), ...appVersionHeader()};
   if(s) headers['x-session-token'] = s.token;
   const streamController = new AbortController();
   const stop = ()=>streamController.abort();
