@@ -2247,9 +2247,10 @@ function buildMessage(entry){
 }
 /* WhatsApp wants the full international number without + or 00. Iraqi numbers
    written the local way (0750 123 4567 or 750 123 4567) get +964; a number
-   that is already international (+964…, 00964…, or another country) is kept. */
+   that is already international (+964…, 00964…, or another country) is kept.
+   Digits typed on a Kurdish or Arabic keyboard (٠٧٥٠…, ۰۷۵۰…) count as 0750…. */
 function waLink(phone, text){
-  const raw = String(phone || '').trim();
+  const raw = String(phone || '').trim().replace(/[٠-٩]/g, d=>d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d=>d.charCodeAt(0) - 0x6F0);
   let p = raw.replace(/[^0-9]/g,'');
   if(p.startsWith('00')) p = p.slice(2);
   else if(raw.startsWith('+') || p.startsWith('964')){ /* already international */ }

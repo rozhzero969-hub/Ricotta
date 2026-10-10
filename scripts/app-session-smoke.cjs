@@ -129,7 +129,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
   // WhatsApp links: Iraqi numbers in every usual form, and numbers that are already international.
   const wa = vm.createContext({});
   vm.runInContext(source.slice(source.indexOf('function waLink('), source.indexOf('const ICON_CHAT')), wa);
-  for(const [phone, number] of [['0750 123 4567','9647501234567'],['750 123 4567','9647501234567'],['+964 750 123 4567','9647501234567'],['00964 750 123 4567','9647501234567'],['+90 555 123 4567','905551234567']]){
+  for(const [phone, number] of [['0750 123 4567','9647501234567'],['750 123 4567','9647501234567'],['+964 750 123 4567','9647501234567'],['00964 750 123 4567','9647501234567'],['+90 555 123 4567','905551234567'],['٠٧٥٠ ١٢٣ ٤٥٦٧','9647501234567'],['۰۷۵۰۱۲۳۴۵۶۷','9647501234567']]){
     assert.equal(vm.runInContext(`waLink(${JSON.stringify(phone)}, 'Hi')`, wa), `https://wa.me/${number}?text=Hi`, phone);
   }
 
