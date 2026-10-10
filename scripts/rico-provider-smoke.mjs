@@ -60,6 +60,8 @@ let emptyReply = false;
 let groqTurn = 0;
 let groqUnavailable = false;
 let groqReply = null;
+let groqTool = 'open_screen';
+let groqSecondTurnDown = false;
 let strongModelMissing = false;
 let strongModelSlow = false;
 globalThis.fetch = async (input, options = {}) => {
@@ -82,9 +84,10 @@ globalThis.fetch = async (input, options = {}) => {
   }
   if (url.includes('api.groq.com/openai/v1/chat/completions')) {
     if (groqUnavailable) return new Response('{"error":{"message":"busy"}}', { status: 503 });
+    if (groqSecondTurnDown && groqTurn === 1) { groqTurn++; return new Response('{"error":{"message":"busy"}}', { status: 503 }); }
     const payload = groqReply ? groqReply.map(content => ({ choices: [{ delta: { content } }] }))
       : groqTurn++ === 0
-      ? { choices: [{ delta: { tool_calls: [{ index: 0, id: 'groq-call-1', type: 'function', function: { name: 'open_screen', arguments: '{"screen":"order"}' } }] } }], usage: { prompt_tokens: 10, completion_tokens: 3 } }
+      ? { choices: [{ delta: { tool_calls: [{ index: 0, id: 'groq-call-1', type: 'function', function: { name: groqTool, arguments: '{"screen":"order"}' } }] } }], usage: { prompt_tokens: 10, completion_tokens: 3 } }
       : [{ choices: [{ delta: { content: '[[mood:exc' } }] }, { choices: [{ delta: { content: 'ited]] Groq is ready.' } }], usage: { prompt_tokens: 20, completion_tokens: 4 } }];
     const events = (Array.isArray(payload) ? payload : [payload]).map(p => `data: ${JSON.stringify(p)}\n\n`).join('');
     const body = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(`${events}data: [DONE]\n\n`)); controller.close(); } });
@@ -167,5 +170,16 @@ groqUnavailable = true; geminiTurn = 0;
 const fallbackEvents = await chat();
 assert.equal(fallbackEvents.at(-1).type, 'done');
 assert.equal(requests.at(-1).url.includes('streamGenerateContent'), true, 'Gemini is used after Groq rejects a request');
+groqUnavailable = false; groqSecondTurnDown = true;
+groqTurn = 0; const beforeHalfway = requests.length;
+const halfwayEvents = await chat();
+assert.deepEqual(halfwayEvents.map(e => e.type), ['status', 'proposal', 'error', 'done'], 'a card already shown is never repeated by another model');
+assert.equal(halfwayEvents[2].code, 'busy');
+assert.equal(requests.slice(beforeHalfway).some(r => r.url.includes('streamGenerateContent')), false, 'no second model starts the reply again');
+groqTurn = 0; groqTool = 'list_suppliers'; geminiTurn = 1; const beforeLookup = requests.length;
+const lookupEvents = await chat();
+assert.deepEqual(lookupEvents.map(e => e.type), ['status', 'mood', 'text', 'done'], 'after a lookup with nothing on screen, Gemini still answers');
+assert.equal(requests.slice(beforeLookup).some(r => r.url.includes('streamGenerateContent')), true);
+groqSecondTurnDown = false; groqTool = 'open_screen';
 
-console.log('Rico provider smoke: PASS (Gemini, Groq tool calls, Groq-to-Gemini fallback, moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');
+console.log('Rico provider smoke: PASS (Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');

@@ -210,27 +210,33 @@ async function saveReminder(enabled, time){
 /* ---------- Notification taps ---------- */
 /* kind: 'update' (the message Rozha wrote, with an Update button),
    'reminder' (daily reminder -> Order), 'supplier' (a supplier's reminder ->
-   Order on that supplier's tab), 'assistant' / 'overdue' (Rico). */
-function handlePushIntent(kind, supplierId, message){
-  if(kind === 'update') openUpdatePopup(message || '');
-  else if((kind === 'assistant' || kind === 'overdue') && state.account){ ricoRefreshInbox(); goView('assistant'); }
-  else if(kind === 'note' && state.account){ refreshData(true); openNotesSheet(); }
-  else if((kind === 'reminder' || kind === 'supplier') && state.account){
+   Order on that supplier's tab), 'note' (Rozha's note -> the notes) and
+   'assistant' (Rico; his month-end message opens History and his reminder
+   about an unread note opens the notes). */
+function handlePushIntent(kind, supplierId, message, view){
+  if(kind === 'update'){ openUpdatePopup(message || ''); return; }
+  if(!state.account) return;
+  if(kind === 'note' || (kind === 'assistant' && view === 'notes')){
+    refreshData(true); openNotesSheet();
+    if(kind === 'assistant') ricoRefreshInbox();
+  }
+  else if(kind === 'assistant'){ ricoRefreshInbox(); goView(view === 'history' && canOpen('history') ? 'history' : 'assistant'); }
+  else if(kind === 'reminder' || kind === 'supplier'){
     if(kind === 'supplier' && supplierId && state.suppliers.some(s => s.id === supplierId)) state.orderTab = supplierId;
     if(state.view === 'order') render(); else goView('order');
   }
 }
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.addEventListener('message', e => handlePushIntent(e.data && e.data.kind, e.data && e.data.supplierId, e.data && e.data.body));
+  navigator.serviceWorker.addEventListener('message', e => handlePushIntent(e.data && e.data.kind, e.data && e.data.supplierId, e.data && e.data.body, e.data && e.data.view));
 }
 /* App launched by tapping a notification while it was closed: sw.js opens
-   ./?n=<kind>&s=<supplierId>&m=<message>. */
+   ./?n=<kind>&s=<supplierId>&v=<view>&m=<message>. */
 function handleLaunchIntent(){
   try{
     const p = new URLSearchParams(location.search);
     const kind = p.get('n');
     if(!kind) return;
     history.replaceState(null, '', location.pathname);
-    handlePushIntent(kind, p.get('s'), p.get('m'));
+    handlePushIntent(kind, p.get('s'), p.get('m'), p.get('v'));
   }catch(e){}
 }

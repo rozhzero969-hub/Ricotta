@@ -5,13 +5,12 @@ node_modules/
 coverage/
 .DS_Store
 
-
 # Local database backups (may contain business data)
 backups/
 
+# Written by `pnpm run lint`
 .lint-all.js
 supabase/.temp/
-node_modules
 
 # Ricotta Lab build output (see lab/README.md)
 lab/dist/

@@ -443,12 +443,13 @@ function seasonCelebrate(){
   setTimeout(()=>seasonMoment(th, {title:SEASON_WORDS[th].sent, sub:null, scare:false, mood:'excited'}), 300);
   return true;
 }
-/* Once a day per holiday theme, a little after the app opens, Rico says hello in costume. */
+/* Once a day per holiday theme, a little after the app opens, Rico says hello in costume.
+   One saved value ("theme|Baghdad day") remembers the last hello, so nothing piles up on the phone. */
 function seasonGreeting(){
   const th = currentTheme();
   if(!isHolidayTheme(th) || !state.account) return;
-  const key = 'seasonHello:' + th + ':' + new Date().toISOString().slice(0,10);
-  if(lget(key)) return;
-  lset(key, true);
+  const {y, md} = seasonToday(), seen = th + '|' + y + '-' + md;
+  if(lget('seasonHello') === seen) return;
+  lset('seasonHello', seen);
   setTimeout(()=>{ if(currentTheme() === th && !document.querySelector('.modal-overlay')) seasonMoment(th); }, 2600);
 }

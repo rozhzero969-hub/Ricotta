@@ -130,6 +130,17 @@ try {
     assert.equal(calls.some(c => c.name === 'app_internal_save_order'), false);
   }
   reset();
+  const fastClock = structuredClone(validOrder); fastClock.date = new Date(Date.now() + 10 * 60000).toISOString();
+  assert.equal((await call('orders', fastClock)).status, 200, 'a phone whose clock runs fast can still save its order');
+  assert.ok(Date.parse(calls.find(c => c.name === 'app_internal_save_order').args.p_date) <= Date.now(), 'a time in the future is saved as now');
+  reset();
+  const lastMonth = structuredClone(validOrder); lastMonth.date = new Date(Date.parse(monthStart()) - 60000).toISOString();
+  assert.equal((await call('orders', lastMonth)).status, 409, 'an order from last month is still refused');
+  reset();
+  const noItemId = structuredClone(validOrder); delete noItemId.entries[0].items[0].itemId;
+  assert.equal((await call('orders', noItemId)).status, 200);
+  assert.equal(calls.find(c => c.name === 'app_internal_save_order').args.p_lines[0].item_id, null, 'a line without an item id is saved without one');
+  reset();
   assert.equal((await call('push/subscription', { endpoint: 'https://127.0.0.1/internal' }, 'PUT')).status, 400);
   tables.app_push_subscriptions.push({ endpoint: 'https://fcm.googleapis.com/fcm/send/peer', device_id: 'device-2' });
   assert.equal((await call('push/subscription', { endpoint: 'https://fcm.googleapis.com/fcm/send/peer', p256dh: 'A'.repeat(87), auth: 'B'.repeat(22) }, 'PUT')).status, 403, 'another device cannot overwrite a subscription');

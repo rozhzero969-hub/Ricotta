@@ -67,10 +67,6 @@ const MAX_FAILED_LOGINS = 8;              // per network address, per window (sp
 const MAX_GLOBAL_FAILED_LOGINS = 40;      // per window, across ALL claimed IPs -- not spoofable via headers
 const RECOVERY_TICKET_MS = 5 * 60_000;    // each secret-code step must be finished within this time
 const SEEN_WRITE_EVERY_MS = 5 * 60_000;   // throttle session last_seen_at writes
-
-
-
-
 const PAGE = 1000;                        // PostgREST returns at most 1000 rows per request
 const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
@@ -526,7 +522,7 @@ const CHEERS = [
   { mood: "grateful", en: (n: string) => `Thanks, ${n}. Today's order is done. One less thing to worry about.`, ku: (n: string) => `سوپاس ${n}. داواکاریی ئەمڕۆ تەواو بوو. شتێکی کەمتر بۆ خەمخواردن.`, ar: (n: string) => `شكرًا يا ${n}. طلب اليوم جاهز، هم أقل.` },
 ];
 async function cheerAfterOrder(s: Session) {
-  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baghdad", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const date = baghdadDay();
   const c = CHEERS[Math.floor(Math.random() * CHEERS.length)];
   const n = LOCAL_NAMES[s.account];
   // dedupe_key is unique: the second order of the day adds nothing.
@@ -568,8 +564,10 @@ async function saveOrder(s: Session, b: any) {
   if (b.entries.length > 80 || !lineCount || lineCount > 800 || b.entries.some((e: any) => !e || !Array.isArray(e.items)
     || e.items.some((i: any) => !i || !Number.isFinite(Number(i.qty)) || Number(i.qty) <= 0 || Number(i.qty) > 99999))) return fail("invalid_order");
   if (b.date && !Number.isFinite(Date.parse(b.date))) return fail("invalid_order");
-  const date = b.date ? new Date(b.date).toISOString() : nowIso();
-  if (date < monthStart() || Date.parse(date) > Date.now() + 60_000) return fail("order_outside_current_month", 409);
+  // A phone whose clock runs fast still saves: a time in the future is taken as now. (Refusing it made
+  // every order from that phone fail, and the failed order could not be retried or cleared.)
+  const date = b.date && Date.parse(b.date) <= Date.now() ? new Date(b.date).toISOString() : nowIso();
+  if (date < monthStart()) return fail("order_outside_current_month", 409);
   // Keep each supplier's name with the order, so History still shows it after
   // the supplier is renamed or deleted (supplier_id is then set to null).
   const supplierIds = [...new Set(b.entries.map((e: any) => text(e.supplierId, 120)).filter(Boolean))];
@@ -579,7 +577,7 @@ async function saveOrder(s: Session, b: any) {
   const lines = b.entries.flatMap((e: any) => (Array.isArray(e.items) ? e.items : []).map((i: any) => ({
     supplier_id: supplierNames.has(text(e.supplierId, 120)) ? text(e.supplierId, 120) : null,
     supplier_name: supplierNames.get(text(e.supplierId, 120)) ?? (text(e.supplierName, 160) || null),
-    item_id: text(i.itemId, 120) || "legacy",
+    item_id: text(i.itemId, 120) || null,
     item_name: text(i.name) || text(i.itemId) || "Item", unit_id: text(i.unit, 120) || null,
     qty: Number(i.qty),
   })));

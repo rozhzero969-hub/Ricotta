@@ -15,12 +15,14 @@ self.addEventListener('push', event => {
   try { data = event.data ? event.data.json() : {}; }
   catch (e) { data = { body: event.data ? event.data.text() : '' }; }
 
-  const kind = data.kind || 'general';   /* 'update' | 'reminder' | 'supplier' | 'assistant' | 'overdue' | 'note' | 'general' */
+  const kind = data.kind || 'general';   /* 'update' | 'reminder' | 'supplier' | 'assistant' | 'note' | 'general' */
   /* Rico's own messages carry his mood and show his face for it, not the app icon. */
   const RICO_MOODS = ['happy', 'excited', 'grateful', 'calm', 'thinking', 'worried', 'sad', 'angry'];
   const icon = kind === 'assistant' ? 'rico-' + (RICO_MOODS.includes(data.mood) ? data.mood : 'happy') + '.png' : 'icon-192.png';
   const title = data.title || 'Ricotta Orders';
   const supplierId = data.supplierId || '';
+  /* Some of Rico's messages belong to a screen: 'history' (save the month) or 'notes' (an unread note). */
+  const view = data.view === 'history' || data.view === 'notes' ? data.view : '';
 
   event.waitUntil((async () => {
     try {
@@ -29,10 +31,10 @@ self.addEventListener('push', event => {
         tag: data.tag || ('ricotta-' + kind),   /* one notification per supplier, not one shared pile */
         renotify: true,                          /* a newer one with the same tag still alerts */
         icon,
-        data: { kind, supplierId, body: data.body || '' }
+        data: { kind, supplierId, view, body: data.body || '' }
       });
     } catch (e) {
-      await self.registration.showNotification(title, { body: data.body || '', data: { kind, supplierId, body: data.body || '' } });
+      await self.registration.showNotification(title, { body: data.body || '', data: { kind, supplierId, view, body: data.body || '' } });
     }
     /* If the app is open right now, show the update message straight away. */
     if (kind === 'update') {
@@ -44,23 +46,26 @@ self.addEventListener('push', event => {
 
 /* Tapping a notification: focus the app if it's open, otherwise launch it.
    Either way the app is told what the notification was about (for a
-   supplier reminder, which supplier; for an update, its message). */
+   supplier reminder, which supplier; for an update, its message; for some
+   of Rico's messages, which screen). */
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const d = event.notification.data || {};
   const kind = d.kind || 'general';
   const supplierId = d.supplierId || '';
+  const view = d.view || '';
   const body = kind === 'update' ? String(d.body || '').slice(0, 300) : '';
   event.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     if (wins.length) {
       const w = wins.find(x => x.visibilityState === 'visible') || wins[0];
       try { await w.focus(); } catch (e) {}
-      w.postMessage({ kind, supplierId, body });
+      w.postMessage({ kind, supplierId, view, body });
       return;
     }
     let url = self.registration.scope + '?n=' + encodeURIComponent(kind);
     if (supplierId) url += '&s=' + encodeURIComponent(supplierId);
+    if (view) url += '&v=' + encodeURIComponent(view);
     if (body) url += '&m=' + encodeURIComponent(body);
     await self.clients.openWindow(url);
   })());
