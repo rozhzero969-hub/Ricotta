@@ -207,8 +207,31 @@ const server=http.createServer((req,res)=>{
       assert.deepEqual(await sentNames(page),[],'a new order starts unsent');
       await ctx.close();
     }
+
+    // A save the server keeps refusing does not trap the phone: Clear order drops it, and Undo brings it back.
+    {
+      const {ctx,page,server,sendTo}=await phone();
+      await page.waitForSelector('#orderResults');
+      await page.locator('[data-inc="i0"]').click();
+      server.orders='broken';
+      await page.locator('#sendOrdersBtn').click();
+      await sendTo(page,'Golden Bread Bakery');
+      await page.waitForSelector('#queueRetrySave');
+      await page.locator('#queueBackBtn').click();
+      await page.locator('#clearOrderBtn').click();
+      assert.equal(await stored(page),null,'a refused save is cleared with the order');
+      await page.locator('#toast .toast-undo').click();
+      assert.equal((await stored(page))?.saveState,'failed','Undo brings the refused save back');
+      await page.locator('#clearOrderBtn').click();
+      server.orders='ok';
+      await page.locator('[data-inc="i0"]').click();
+      await page.locator('#sendOrdersBtn').click();
+      await page.waitForSelector('.queue-card');
+      assert.deepEqual(await sentNames(page),[],'the next order starts fresh');
+      await ctx.close();
+    }
     assert.deepEqual(errors,[],'no page errors');
-    console.log('Order queue smoke: PASS (progress kept across an app restart, Send again keeps sent suppliers, saved once to History, interrupted save resumes with the same id, saved-but-unanswered order finishes on reopen, return from WhatsApp saves, cleared order starts over; EN + KU)');
+    console.log('Order queue smoke: PASS (progress kept across an app restart, Send again keeps sent suppliers, saved once to History, interrupted save resumes with the same id, saved-but-unanswered order finishes on reopen, return from WhatsApp saves, cleared order starts over, a refused save can be cleared; EN + KU)');
   }finally{
     await browser.close(); server.close();
   }

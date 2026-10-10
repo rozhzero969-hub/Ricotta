@@ -213,7 +213,7 @@ function paintNotesList(){
   if(!list) return;
   const notes = notesNow();
   list.innerHTML = notes.length ? notes.map(noteRow).join('') : `<div class="field-hint notes-empty">${esc(isRozha() ? t('notesEmptyRozha') : t('notesEmptyYunis'))}</div>`;
-  list.querySelectorAll('[data-note-toggle]').forEach(b=>b.onclick=()=>{ const n = notesNow().find(x=>x.id === Number(b.dataset.noteToggle)); withBusy(b, ()=>setNoteDone(n.id, !n.doneAt)); });
+  list.querySelectorAll('[data-note-toggle]').forEach(b=>b.onclick=()=>{ const n = notesNow().find(x=>x.id === Number(b.dataset.noteToggle)); if(n) withBusy(b, ()=>setNoteDone(n.id, !n.doneAt)); });
   list.querySelectorAll('[data-note-del]').forEach(b=>b.onclick=async()=>{
     if(!(await showConfirm(t('notesDelete') + '?'))) return;
     const id = Number(b.dataset.noteDel);

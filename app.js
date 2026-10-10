@@ -167,7 +167,7 @@ function restoreCartDraft(){
   } else if(legacy && saved) lset('pendingCart',null);
   if(!saved || typeof saved!=='object' || Array.isArray(saved)) return;
   const available=new Set(state.items.map(item=>item.id));
-  state.cart=Object.fromEntries(Object.entries(saved).filter(([id,qty])=>available.has(id) && Number.isFinite(Number(qty)) && Number(qty)>0).map(([id,qty])=>[id,Math.floor(Number(qty))]));
+  state.cart=Object.fromEntries(Object.entries(saved).filter(([id,qty])=>available.has(id) && Number.isFinite(Number(qty)) && Number(qty)>0).map(([id,qty])=>[id,Math.min(MAX_QTY, Math.floor(Number(qty)))]));
   persistCartDraft();
 }
 
@@ -396,7 +396,7 @@ async function refreshData(force){
   try{
     const shown = () => JSON.stringify([state.history, state.items, state.suppliers, state.units, state.account]);
     const before = shown();
-    if(await loadData(false) && shown() !== before) refreshWaiting = true;
+    if(await loadData() && shown() !== before) refreshWaiting = true;
   }finally{ refreshBusy = false; }
   repaintAfterRefresh();
 }
@@ -1229,7 +1229,6 @@ function bump(el){
   if(!el) return;
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
 }
-/* The phone's status bar takes the same colour as the top bar. */
 /* ============ Themes ============
    Settings > Appearance. Five colour themes (style.css, html[data-theme];
    Ricotta Green is the default) and the holiday themes of seasons.js. Each
@@ -1352,8 +1351,8 @@ function lastQtyMap(){
 }
 
 function renderPageHeading(){
-  const date = new Intl.DateTimeFormat(intlLocale(), {weekday:'short', day:'numeric', month:'short'}).format(new Date());
-  return `<header class="page-heading"><div><div class="page-kicker">${esc(t('workspaceLabel'))}</div><h1>${esc(viewLabel(state.view))}</h1></div><time class="page-date" datetime="${new Date().toISOString().slice(0,10)}">${esc(date)}</time></header>`;
+  const now = new Date(), date = formatIraqDateTime(now, {weekday:'short', day:'numeric', month:'short'});
+  return `<header class="page-heading"><div><div class="page-kicker">${esc(t('workspaceLabel'))}</div><h1>${esc(viewLabel(state.view))}</h1></div><time class="page-date" datetime="${erbilDate(now)}">${esc(date)}</time></header>`;
 }
 
 /* ============ Notifications: banner ============ */
@@ -1636,7 +1635,6 @@ document.addEventListener('keydown', e=>{
 });
 
 /* ============ Order screen ============ */
-/* A unit's name in the current language (English when it has none). */
 /* Search text the way a person reads it: Kurdish written with Arabic letters still matches (تةمـاتة finds تەماتە).
    Fold look-alike letters so names can be found consistently. */
 const FOLD_TEXT = [[/[ً-ٰٟـ​-‏‪-‮⁦-⁩﻿]/g, ''], [/[أإآٱ]/g, 'ا'],
@@ -1644,6 +1642,7 @@ const FOLD_TEXT = [[/[ً-ٰٟـ​-‏‪-‮⁦-⁩﻿]/g, ''], [/[أإآٱ]/g,
   [/ڵ/g, 'ل'], [/ڕ/g, 'ر'], [/پ/g, 'ب'], [/چ/g, 'ج'], [/ژ/g, 'ز'], [/ڤ/g, 'ف'],
   [/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x660)], [/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x6F0)]];
 function foldText(s){ return FOLD_TEXT.reduce((t, [re, to]) => t.replace(re, to), String(s ?? '').normalize('NFKC')).toLocaleLowerCase(); }
+/* A unit's name in the current language (English when it has none). */
 function unitName(u){ return !u ? '' : state.lang === 'ku' ? (u.ku || u.en) : state.lang === 'ar' ? (u.ar || u.en) : u.en; }
 function unitLabel(unitId){ return unitName(state.units.find(x=>x.id===unitId)); }
 function supplierName(id){
@@ -1799,7 +1798,7 @@ function itemRowHtml(i, lastQty){
         </div>
         <div class="stepper">
           <button class="step-btn" data-dec="${esc(i.id)}" aria-label="${esc(t('decreaseQty')(i.name))}" ${qty>0?'':'disabled'}>−</button>
-          <input class="qty-input" type="number" inputmode="numeric" min="0" value="${qty}" aria-label="${esc(t('quantityFor')(i.name))}" data-qty="${esc(i.id)}">
+          <input class="qty-input" type="number" inputmode="numeric" min="0" max="${MAX_QTY}" value="${qty}" aria-label="${esc(t('quantityFor')(i.name))}" data-qty="${esc(i.id)}">
           <button class="step-btn" data-inc="${esc(i.id)}" aria-label="${esc(t('increaseQty')(i.name))}">+</button>
         </div>
       </div>`;
@@ -1859,6 +1858,8 @@ function refreshCartSummary(){
   if(draft) draft.textContent=c?t('draftLocal'):t('selectToStart');
   paintRicoSuggestion();
 }
+/* The most of one item a single order can hold (the server refuses more). */
+const MAX_QTY = 99999;
 function cartCount(){ return Object.values(state.cart).filter(q=>q>0).length; }
 function sendMeta(){
   const c = cartCount();
@@ -1942,7 +1943,9 @@ function attachOrderEvents(){
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.onclick=()=>{
     const before={...state.cart};
-    const queue=state.queue?.record?null:state.queue;   // a cleared order starts over (one being saved is kept)
+    // A cleared order starts over. An order being saved right now is kept; one whose save failed can be
+    // cleared too (a save the server refuses would otherwise reopen on every Send), and Undo brings it back.
+    const queue=state.queue?.record && state.queue.saveState!=='failed' ? null : state.queue;
     state.cart={};persistCartDraft();if(queue){state.queue=null;persistQueue();}refreshOrderView();
     toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before; persistCartDraft(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
   };
@@ -2035,10 +2038,10 @@ function attachOrderResultEvents(root){
   });
   root.querySelectorAll('.item-row').forEach(row=>{ row.onpointerdown=e=>startRowPress(row,e); });
   root.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
-    const id=inp.dataset.qty; const v=Math.max(0, parseInt(inp.value)||0); state.cart[id]=v; refreshOrderView(id);
+    const id=inp.dataset.qty; const v=Math.min(MAX_QTY, Math.max(0, parseInt(inp.value)||0)); state.cart[id]=v; refreshOrderView(id);
   });
   root.querySelectorAll('[data-qty]').forEach(inp=>inp.oninput=()=>{
-    const id=inp.dataset.qty; state.cart[id]=inp.value===''?0:Math.max(0,parseInt(inp.value)||0);
+    const id=inp.dataset.qty; state.cart[id]=inp.value===''?0:Math.min(MAX_QTY, Math.max(0,parseInt(inp.value)||0));
     persistCartDraft();
     inp.closest('.item-row').classList.toggle('has-qty',state.cart[id]>0);
     inp.closest('.item-row').querySelector('[data-dec]').disabled=state.cart[id]===0;
@@ -2051,7 +2054,7 @@ function attachOrderResultEvents(root){
 function stepQty(btn){
   const id = btn.dataset.inc || btn.dataset.dec;
   if(!id) return;
-  const next = btn.dataset.inc ? (state.cart[id]||0)+1 : Math.max(0,(state.cart[id]||0)-1);
+  const next = btn.dataset.inc ? Math.min(MAX_QTY, (state.cart[id]||0)+1) : Math.max(0,(state.cart[id]||0)-1);
   if(next === (state.cart[id]||0)) return;
   state.cart[id] = next;
   refreshOrderView(id);
@@ -2147,14 +2150,16 @@ function openItemMenu(row){
       toast(t('itemRemoved'), 'ok', {undo:()=>{ state.cart[id] = before; refreshOrderView(id); }});
       return;
     }
-    state.cart[id] = before + Number(a); refreshOrderView(id);
+    state.cart[id] = Math.min(MAX_QTY, before + Number(a)); refreshOrderView(id);
   });
 }
 
 /* Pinned items sit at the top of the Order screen (kept per account on the server). */
 async function togglePin(id){
   const before = state.pins.slice();
-  state.pins = before.includes(id) ? before.filter(x=>x !== id) : [id, ...before].slice(0, 60);
+  // Items deleted since they were pinned are dropped, so they don't keep using up the 60 places.
+  const kept = before.filter(x=>x !== id && state.items.some(i=>i.id === x));
+  state.pins = before.includes(id) ? kept : [id, ...kept].slice(0, 60);
   refreshOrderResults();
   const r = await api('me/pins', {method:'PUT', body:{itemIds:state.pins}});
   if(!r.ok){ state.pins = before; refreshOrderResults(); toast(t('saveFailed'), 'error'); }
@@ -2165,11 +2170,12 @@ async function editItemNote(id){
   if(!i) return;
   const note = await showPrompt(`<b>${esc(i.name)}</b><br>${esc(t('itemNoteHint'))}`, {value:i.note || '', placeholder:t('itemNoteLabel'), okLabel:t('save'), maxLength:120});
   if(note === null) return;
+  const before = i.note || '';
   const next = {...i, note:String(note).trim().slice(0, 120)};
-  if(next.note === (i.note || '')) return;
+  if(next.note === before) return;
   if(!(await saveRecord('items', next))){ await showAlert(t('saveFailed')); return; }
   Object.assign(i, next);
-  logActivity({action:'edit', type:'item', name:i.name, fields:[{k:'note', from:'', to:next.note}]});
+  logActivity({action:'edit', type:'item', name:i.name, fields:[{k:'note', from:before, to:next.note}]});
   refreshOrderResults();
   toast(t('savedMsg')(i.name));
 }
@@ -2239,10 +2245,16 @@ function buildMessage(entry){
   const header = ({en:'New order from Ricotta:', ku:'داواکارییەکی نوێ لە چێشتخانەی ریکۆتا:', ar:'طلب جديد من مطبخ ريكوتا:'})[state.lang];
   return header + '\n' + lines.join('\n');
 }
+/* WhatsApp wants the full international number without + or 00. Iraqi numbers
+   written the local way (0750 123 4567 or 750 123 4567) get +964; a number
+   that is already international (+964…, 00964…, or another country) is kept. */
 function waLink(phone, text){
-  let p = (phone||'').replace(/[^0-9]/g,'');
-  if(p.startsWith('0')) p = '964' + p.slice(1);
-  else if(!p.startsWith('964')) p = '964' + p;
+  const raw = String(phone || '').trim();
+  let p = raw.replace(/[^0-9]/g,'');
+  if(p.startsWith('00')) p = p.slice(2);
+  else if(raw.startsWith('+') || p.startsWith('964')){ /* already international */ }
+  else if(p.startsWith('0')) p = '964' + p.slice(1);
+  else p = '964' + p;
   return `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
 }
 const ICON_CHAT = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.5A8.4 8.4 0 1 1 21 11.5Z"/></svg>`;
@@ -2393,10 +2405,9 @@ async function maybeFinishQueue(){
 /* ============ History ============ */
 function dayLabel(date){
   const d = new Date(date), today = new Date();
-  const key = x=>new Intl.DateTimeFormat('en-CA',{timeZone:IRAQ_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit'}).format(x);
   const yesterday = new Date(today.getTime()-86400000);
-  if(key(d)===key(today)) return t('today');
-  if(key(d)===key(yesterday)) return t('yesterday');
+  if(erbilDate(d)===erbilDate(today)) return t('today');
+  if(erbilDate(d)===erbilDate(yesterday)) return t('yesterday');
   return formatIraqDateTime(d,{weekday:'long',day:'numeric',month:'long'});
 }
 function orderHistoryCard(rec){
@@ -2455,7 +2466,9 @@ function attachHistoryEvents(){
     const id = b.dataset.delhist;
     const r = await api(`orders/${encodeURIComponent(id)}`, {method:'DELETE'});
     if(!r.ok){ await showAlert(t('saveFailed')); return; }
-    state.history = state.history.filter(r=>r.id!==id);
+    state.history = state.history.filter(h=>h.id!==id);
+    // Deleting the day's only order takes that day off the kitchen streak.
+    if(r.data && r.data.streak) streakArrived(r.data.streak, null);
     render();
   });
 }
@@ -2573,7 +2586,6 @@ function editingBanner(name, meta){
     <div class="modal-banner-name">${esc(name)}</div>
     ${meta ? `<div class="modal-banner-meta">${esc(meta)}</div>` : ''}`;
 }
-
 
 /* ============ Supplier reminders ============ */
 /* Each supplier can have its own order reminder:
@@ -2971,7 +2983,6 @@ function attachItemEvents(){
   document.getElementById('itemAddBtn').onclick = ()=> openItemModal(null);
   const list = document.getElementById('itemsAdminList');
   bindItemRows(list);
-
 }
 
 /* ============ Units ============ */
@@ -3106,7 +3117,7 @@ function renderDevices(){
   const bulk = `<div class="dev-bulk">
       <button class="btn btn-primary" id="devNotifyBtn">${ICON_BELL} ${t('sendUpdateNotif')}</button>
       ${others.length ? `<button class="btn btn-primary" id="devRefreshAllBtn">${ICON_REFRESH} ${t('refreshAllDevices')}</button>
-      <button class="btn btn-danger" id="devLogoutAllBtn" ${others.some(isLoggedIn)?'':'disabled'}>${t('logoutAllOthers')}</button>` : ''}
+      <button class="btn btn-danger" id="devLogoutAllBtn">${t('logoutAllOthers')}</button>` : ''}
     </div>`;
 
   const cards = sorted.map(d=>{
@@ -3142,7 +3153,6 @@ function renderDevices(){
 function attachDeviceEvents(){
   const r = document.getElementById('devRefreshBtn');
   if(r) r.onclick = ()=> refreshDevices();
-
   document.querySelectorAll('[data-devlogout]').forEach(b=>b.onclick=async()=>{
     const d = state.devices.find(x=>x.id===b.dataset.devlogout);
     if(!d) return;

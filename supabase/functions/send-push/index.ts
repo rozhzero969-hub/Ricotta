@@ -413,8 +413,6 @@ async function supplierTick() {
   return out;
 }
 
-
-
 /* The three language versions of a message written by a person: a phone
    gets its own language, or the first one that was written. */
 function written(body: any) {

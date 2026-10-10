@@ -912,7 +912,9 @@ async function streamGroq(db: any, w: World, cfg: Awaited<ReturnType<typeof conf
   const tools = TOOLS.map((tool) => ({ type: "function", function: {
     name: tool.name, description: tool.description, parameters: tool.input_schema,
   } }));
-  let used = false;
+  let used = false, shown = false;
+  // What the person can already see (text, or a card from a proposal tool).
+  const show: Emit = (e) => { if (e.type === "text" || e.type === "proposal") shown = true; emit(e); };
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST", signal,
@@ -925,7 +927,12 @@ async function streamGroq(db: any, w: World, cfg: Awaited<ReturnType<typeof conf
     });
     if (!res.ok) {
       console.error("groq", res.status);
-      return false;
+      // Nothing shown yet: the caller can still ask Gemini. Once this reply has text or cards on screen,
+      // starting again with another model would show them twice (and fill an auto-filled order twice),
+      // so it ends here with an error and the person can retry.
+      if (!shown) return false;
+      emit({ type: "error", code: res.status === 401 || res.status === 403 ? "key_rejected" : res.status === 429 || res.status === 503 ? "busy" : "failed" });
+      return true;
     }
     const calls = new Map<number, any>();
     let sawText = false;
@@ -936,7 +943,7 @@ async function streamGroq(db: any, w: World, cfg: Awaited<ReturnType<typeof conf
       inputTokens = Math.max(inputTokens, Number(chunk.usage?.prompt_tokens) || 0);
       outputTokens = Math.max(outputTokens, Number(chunk.usage?.completion_tokens) || 0);
       if (typeof delta.content === "string" && delta.content) {
-        emit({ type: "text", text: delta.content }); sawText = true; used = true;
+        show({ type: "text", text: delta.content }); sawText = true; used = true;
       }
       for (const fragment of delta.tool_calls ?? []) {
         const index = Number(fragment.index) || 0;
@@ -959,7 +966,7 @@ async function streamGroq(db: any, w: World, cfg: Awaited<ReturnType<typeof conf
       let args: any = {};
       try { args = JSON.parse(call.function.arguments || "{}"); } catch { args = {}; }
       emit({ type: "status", tool: call.function.name });
-      const { text: result } = await execTool(db, w, call.function.name, args, emit, auto);
+      const { text: result } = await execTool(db, w, call.function.name, args, show, auto);
       conversation.push({ role: "tool", tool_call_id: call.id, content: result });
     }
   }
@@ -1127,10 +1134,7 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   catch { return errorStream("failed", 503); }
   if (usageId === null) return errorStream("rate_limited", 429);
   const w = world ?? await load();
-  const system = [
-    { type: "text", text: MANUAL, cache_control: { type: "ephemeral" } },
-    { type: "text", text: contextBlock(w, s, body) },
-  ];
+  const system = [{ text: MANUAL }, { text: contextBlock(w, s, body) }];
   const auto = !!body.autoOrder;
   const usage = { input: 0, output: 0 };
   let modelUsed = cfg.model;

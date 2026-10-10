@@ -147,9 +147,9 @@ function erbilNow(){
   const date = `${g('year')}-${g('month')}-${g('day')}`;
   return {date, minutes:+g('hour')*60 + +g('minute'), weekday:new Date(date+'T12:00:00Z').getUTCDay()};
 }
-function erbilDate(iso){
-  return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(iso));
-}
+/* The Baghdad calendar day of a time, as YYYY-MM-DD. It runs for every order on several screens, so it
+   uses the one shared formatter (BAGHDAD_DAY, seasons.js): creating formatters is slow on phones. */
+function erbilDate(iso){ return BAGHDAD_DAY.format(new Date(iso)); }
 function ricoLateOrders(){
   if(!state.account) return [];
   const now = erbilNow();
@@ -213,8 +213,7 @@ function renderAssistant(){
 /* A small date and time line where a chat starts, a new day begins, or after a half-hour pause. */
 function ricoTimeDivider(prev, m){
   if(!m.ts) return '';
-  const day = x=>new Intl.DateTimeFormat('en-CA',{timeZone:IRAQ_TIME_ZONE}).format(new Date(x));
-  if(prev && prev.ts && day(prev.ts) === day(m.ts) && m.ts - prev.ts < 30*60000) return '';
+  if(prev && prev.ts && erbilDate(prev.ts) === erbilDate(m.ts) && m.ts - prev.ts < 30*60000) return '';
   return `<div class="rico-time"><span>${esc(dayLabel(m.ts))} · ${esc(formatIraqDateTime(m.ts,{hour:'numeric',minute:'2-digit'}))}</span></div>`;
 }
 /* The newest few messages Rico wrote first, above the chat. */
@@ -699,7 +698,7 @@ function ricoApplyOrder(p, auto){
     // 'set' may take an item out (qty 0); every other line is at least one.
     if(p.mode === 'set' && !(Number(l.qty) > 0)){ delete state.cart[l.itemId]; n++; return; }
     const q = Math.max(1, Math.round(Number(l.qty) || 1));
-    state.cart[l.itemId] = p.mode === 'add' ? (state.cart[l.itemId]||0) + q : q;
+    state.cart[l.itemId] = Math.min(MAX_QTY, p.mode === 'add' ? (state.cart[l.itemId]||0) + q : q);
     n++;
   });
   persistCartDraft();

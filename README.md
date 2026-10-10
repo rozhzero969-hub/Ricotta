@@ -6,9 +6,11 @@ Restaurant orders, suppliers, items, units, Records, device controls and Rico ch
 
 Two named accounts use server-verified PINs. Browser requests use revocable session tokens. Database tables and internal helpers are restricted to `service_role`; never put that key in the browser or commit it.
 
-Order History and Records retain the current **Asia/Baghdad calendar month**. Older orders, their lines and Records are permanently deleted at Baghdad midnight by `ricotta-monthly-history`; the daily cleanup catches up after downtime. The API also filters reads by month. The October 2026 rollout keeps October 1–7, removes earlier months and clears all saved sessions/devices/push registrations once. People must sign in and re-enable notifications afterward. PINs, the catalog and reminder settings are kept.
+Order History and Records retain the current **Asia/Baghdad calendar month**. Older orders, their lines and Records are permanently deleted at Baghdad midnight by `ricotta-monthly-history`; the daily cleanup catches up after downtime. The API also filters reads by month. PINs, the catalog and reminder settings are kept.
 
-Orders retry with stable IDs. Each pending order has its own local storage entry so tabs cannot overwrite one shared queue. Settings shows the pending count, Retry sync and Export copy. Export a previous month's unsynced order before clearing browser storage: it cannot be written into a later month's history.
+Orders retry with stable IDs. Each pending order has its own local storage entry so tabs cannot overwrite one shared queue. Settings shows the pending count, Retry sync and Export copy. Export a previous month's unsynced order before clearing browser storage: it cannot be written into a later month's history. An order whose save the server refuses can be dropped with Clear order (Undo brings it back). A phone whose clock runs ahead still saves: the server uses its own time for an order dated in the future.
+
+Scheduled jobs (pg_cron): `ricotta-reminder-tick` every minute (reminders, Rico's messages, weather), `ricotta-daily-cleanup` (expired sessions, old attempts, alerts, inbox, notes), `ricotta-monthly-history` (the monthly cut) and `ricotta-cron-history` (keeps a week of pg_cron run history).
 
 ## Seasons and the kitchen
 
@@ -35,7 +37,9 @@ pnpm run test:ui
 deno check --node-modules-dir=none --lock=deno.lock --frozen-lockfile supabase/functions/api/index.ts supabase/functions/send-push/index.ts
 ```
 
-Tests use mocked network requests and disposable PGlite/PostgreSQL databases. They do not access restaurant data. Database tests cover monthly cutoffs, cascading order-line deletion, audit rollback, session revocation, chat ownership, idempotent saves and restricted helper permissions.
+`EDGE_PATH` points the UI tests at an already installed Chromium or Edge instead of Playwright's own download.
+
+Tests use mocked network requests and disposable PGlite/PostgreSQL databases. They do not access restaurant data or the internet. Database tests apply the baseline and every migration, then cover monthly cutoffs, cascading order-line deletion, audit rollback, session revocation, chat ownership, idempotent saves, the kitchen streak, the 15-minute undo and restricted helper permissions.
 
 ## Database bootstrap and deployment
 
@@ -43,7 +47,7 @@ Tests use mocked network requests and disposable PGlite/PostgreSQL databases. Th
 
 The earlier migration chain mixed removed features with missing live migrations. It has been replaced in the repository by this baseline. Existing production migration history remains intact. Do not replay the baseline on production or repair its applied history merely to match filenames. Future migrations extend this baseline.
 
-On the existing project, apply only the new migration. It deliberately drops the retired feature objects and performs the one-time session/device reset. Deploy both Edge Functions with JWT verification disabled because they verify their own PIN sessions or cron secret. `send-push` requires `x-cron-secret`; the existing minute tick remains configured. Update `APP_VERSION` whenever deploying browser changes.
+On the existing project, apply only the migrations that are not yet in its history (the first one, `simplify_orders_monthly_retention`, dropped the retired feature objects and reset sessions and devices once). Deploy both Edge Functions with JWT verification disabled because they verify their own PIN sessions or cron secret. `send-push` requires `x-cron-secret`; the existing minute tick remains configured. Update `APP_VERSION` whenever deploying browser changes.
 
 ## Backups and recovery
 
