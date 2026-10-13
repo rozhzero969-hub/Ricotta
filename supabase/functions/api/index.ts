@@ -312,7 +312,7 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
 
 async function bootstrap(s: Session) {
   const since = monthStart();
-  const [me, looks, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, notes, weather, repeats, months] = await Promise.all([
+  const [me, looks, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, notes, weather, repeats, months, draft] = await Promise.all([
     readAccount(s.account),
     readThemes(),
     app("suppliers").select("id,name,phone,reminder,cutoff").order("name"),
@@ -328,6 +328,7 @@ async function bootstrap(s: Session) {
     readWeather().catch(() => null),
     listRepeats(),
     listMonths(12),
+    readDraft(s.account),
   ]);
   for (const result of [suppliers, items, units]) if (result.error) throw result.error;
   const orderRows = orders;
@@ -341,8 +342,13 @@ async function bootstrap(s: Session) {
     units: units.data ?? [],
     history: groupHistory(orderRows, lines),
     historyMonth: monthKey(),
-    reminder, devices, activity, inbox, repeats, months,
+    reminder, devices, activity, inbox, repeats, months, draft,
   };
+}
+async function readDraft(account: Account) {
+  const { data, error } = await app("order_drafts").select("cart,revision").eq("account", account).maybeSingle();
+  if (error) throw error;
+  return { cart: data?.cart ?? {}, revision: data?.revision ?? 0, conflicts: [] };
 }
 async function listRepeats() {
   const { data, error } = await app("repeat_orders").select("id,name,days,entries,created_by,created_at").order("created_at");
@@ -817,8 +823,8 @@ async function passkeyRegister(s: Session, b: any) {
   if (!fromB64u(id, 1024) || id.length < 16 || ![-7, -257].includes(alg) || !spki) return fail("invalid_passkey");
   try { await crypto.subtle.importKey("spki", spki, keyParams(alg), false, ["verify"]); } catch { return fail("invalid_passkey"); }
   if (!(await checkCeremony("webauthn.create", "register", b, s.account))) return fail("invalid_passkey", 401);
-  const { error } = await app("passkeys").upsert({ id, account: s.account, public_key: b64u(spki), alg, sign_count: 0, device_id: s.deviceId, created_at: nowIso() });
-  return error ? fail("save_failed", 500) : ok();
+  const { data, error } = await db.rpc("app_internal_register_passkey", { p_id: id, p_account: s.account, p_public_key: b64u(spki), p_alg: alg, p_device: s.deviceId });
+  return error ? fail("save_failed", 500) : data ? ok() : fail("passkey_conflict", 409);
 }
 async function passkeyLogin(req: Request) {
   const b = await readBody(req);
@@ -842,7 +848,8 @@ async function passkeyLogin(req: Request) {
   if (!valid) return fail("invalid_credentials", 401);
   // A counter that goes backwards means a copied key: refuse it (phones that keep 0 are fine).
   if (done.signCount && Number(key.sign_count) && done.signCount <= Number(key.sign_count)) return fail("invalid_credentials", 401);
-  await app("passkeys").update({ sign_count: done.signCount, last_used_at: nowIso() }).eq("id", id);
+  const { data: updated, error: updateError } = await app("passkeys").update({ sign_count: done.signCount, last_used_at: nowIso() }).eq("id", id).eq("sign_count", key.sign_count).select("id");
+  if (updateError || !updated?.length) return fail("passkey_update_failed", 503);
   await completeAttempt(attempt);
   return await startSession(req, key.account as Account);
 }
@@ -872,6 +879,14 @@ Deno.serve(async (req) => {
     let m: RegExpMatchArray | null;
 
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
+    if (M === "GET" && path === "draft") return json(await readDraft(s.account));
+    if (M === "PUT" && path === "draft") {
+      const changes = b.changes;
+      if (!Array.isArray(changes) || changes.length > 2000 || new Set(changes.map((c: any) => c?.itemId)).size !== changes.length || changes.some((c: any) =>
+        !c || typeof c.itemId !== "string" || !c.itemId.length || c.itemId.length > 200 || !Number.isInteger(c.before) || !Number.isInteger(c.after) || c.before < 0 || c.after < 0 || c.before > 99999 || c.after > 99999)) return fail("invalid_draft");
+      const { data, error } = await db.rpc("app_internal_patch_draft", { p_account: s.account, p_changes: changes });
+      return error ? fail("draft_save_failed", 503) : json(data, data?.conflicts?.length ? 409 : 200);
+    }
     if (M === "POST" && path === "logout") {
       const { error } = await db.rpc("app_internal_logout", { p_session: s.id, p_device: s.deviceId });
       return error ? fail("logout_failed", 503) : ok();

@@ -148,13 +148,120 @@ function heartbeat(){
   if(!state.account) return;
   api('devices/me', {method:'POST', body:{}});
   flushOutbox();
+  syncSharedDraft();
 }
+/* Shared drafts keep local edits durable while merging other devices' changes.
+   The base quantities are persisted too: reconnecting never blindly replaces
+   a newer server draft with an old offline copy. */
+let sharedDraft = {account:null, enabled:false, base:{}, revision:0, remote:null, conflicts:[], busy:false, timer:null, epoch:0};
+function cleanDraftCart(cart){
+  return Object.fromEntries(Object.entries(cart || {}).filter(([,q])=>Number.isInteger(q) && q>0 && q<=99999));
+}
+function draftChanges(base, cart){
+  return [...new Set([...Object.keys(base),...Object.keys(cart)])].filter(id=>(base[id]||0)!==(cart[id]||0))
+    .map(itemId=>({itemId,before:base[itemId]||0,after:cart[itemId]||0}));
+}
+function mergeDraftCarts(base, local, remote){
+  const cart={...remote}, conflicts=[];
+  for(const c of draftChanges(base,local)){
+    if((remote[c.itemId]||0)!==c.before && (remote[c.itemId]||0)!==c.after) conflicts.push(c.itemId);
+    if(c.after) cart[c.itemId]=c.after; else delete cart[c.itemId];
+  }
+  return {cart,conflicts};
+}
+function resetSharedDraft(){
+  clearTimeout(sharedDraft.timer);
+  sharedDraft={account:null,enabled:false,base:{},revision:0,remote:null,conflicts:[],busy:false,timer:null,epoch:sharedDraft.epoch+1};
+}
+function saveDraftMeta(){
+  if(!sharedDraft.enabled || sharedDraft.account!==state.account) return;
+  lset('draftMeta:'+state.account,{base:sharedDraft.base,revision:sharedDraft.revision});
+}
+function draftStatusHtml(){
+  if(!sharedDraft.enabled) return '';
+  if(sharedDraft.conflicts.length){
+    const names=sharedDraft.conflicts.map(id=>state.items.find(i=>i.id===id)?.name||id).join(', ');
+    return `<div class="form-card"><p role="alert">${esc(t('draftConflict'))} <b dir="auto">${esc(names)}</b></p><div class="form-actions"><button type="button" class="btn btn-ghost" data-draft-choice="remote">${esc(t('draftUseOther'))}</button><button type="button" class="btn btn-primary" data-draft-choice="local">${esc(t('draftKeepMine'))}</button></div></div>`;
+  }
+  return '';
+}
+function draftProgressLabel(){
+  if(!sharedDraft.enabled) return t('draftLocal');
+  return draftChanges(sharedDraft.base,state.cart).length ? t('draftWaiting') : t('draftSynced');
+}
+function paintDraftStatus(){
+  const el=document.getElementById('sharedDraftStatus');
+  if(!el) return;
+  el.innerHTML=draftStatusHtml();
+  const caption=document.querySelector('.draft-state');
+  if(caption) caption.textContent=cartCount()?draftProgressLabel():t('selectToStart');
+  el.querySelectorAll('[data-draft-choice]').forEach(b=>b.onclick=()=>resolveDraftConflict(b.dataset.draftChoice));
+}
+function receiveSharedDraft(data, base=sharedDraft.base){
+  if(!data || !data.cart || Number(data.revision)<sharedDraft.revision) return;
+  const available=new Set(state.items.map(i=>i.id));
+  const remote=Object.fromEntries(Object.entries(cleanDraftCart(data.cart)).filter(([id])=>available.has(id)));
+  const merged=mergeDraftCarts(base,state.cart,remote);
+  sharedDraft.remote=remote; sharedDraft.revision=Number(data.revision)||0; sharedDraft.conflicts=merged.conflicts;
+  if(!merged.conflicts.length) sharedDraft.base=remote;
+  const changed=JSON.stringify(state.cart)!==JSON.stringify(merged.cart);
+  state.cart=merged.cart;
+  lset('pendingCart:'+state.account,Object.keys(state.cart).length?state.cart:null);
+  saveDraftMeta(); paintDraftStatus();
+  if(changed && state.view==='order') refreshOrderView();
+}
+function startSharedDraft(data){
+  if(!data?.cart) return; // Older servers and offline starts keep local drafts.
+  if(sharedDraft.account!==state.account){
+    resetSharedDraft(); sharedDraft.account=state.account; sharedDraft.enabled=true;
+    const meta=lget('draftMeta:'+state.account);
+    sharedDraft.base=cleanDraftCart(meta?.base); sharedDraft.revision=0;
+  }
+  receiveSharedDraft(data);
+  scheduleDraftSync();
+}
+function scheduleDraftSync(){
+  if(!sharedDraft.enabled || sharedDraft.account!==state.account) return;
+  saveDraftMeta(); paintDraftStatus();
+  clearTimeout(sharedDraft.timer);
+  sharedDraft.timer=setTimeout(()=>syncSharedDraft(),650);
+}
+async function syncSharedDraft(){
+  if(!sharedDraft.enabled || sharedDraft.busy || !state.account || sharedDraft.account!==state.account) return;
+  const epoch=sharedDraft.epoch, account=state.account;
+  sharedDraft.busy=true;
+  try{
+    const changes=draftChanges(sharedDraft.base,state.cart);
+    const sent={...state.cart};
+    const writing=changes.length && !sharedDraft.conflicts.length;
+    const r=await api('draft',writing?{method:'PUT',body:{changes}}:{});
+    if(epoch!==sharedDraft.epoch || state.account!==account || r.stale) return;
+    if(r.ok || r.status===409) receiveSharedDraft(r.data,writing && r.ok ? sent : sharedDraft.base);
+  }finally{
+    if(epoch===sharedDraft.epoch){ sharedDraft.busy=false; paintDraftStatus(); }
+  }
+}
+async function resolveDraftConflict(choice){
+  if(sharedDraft.busy) return;
+  const epoch=sharedDraft.epoch;
+  await syncSharedDraft();
+  if(epoch!==sharedDraft.epoch) return;
+  if(!sharedDraft.remote || !sharedDraft.conflicts.length) return;
+  if(choice==='remote') for(const id of sharedDraft.conflicts){
+    if(sharedDraft.remote[id]) state.cart[id]=sharedDraft.remote[id]; else delete state.cart[id];
+  }
+  sharedDraft.base={...sharedDraft.remote}; sharedDraft.conflicts=[];
+  persistCartDraft(); if(state.view==='order') refreshOrderView();
+  await syncSharedDraft();
+}
+setInterval(()=>{if(document.visibilityState==='visible') syncSharedDraft();},8000);
 /* Keep the unfinished order on this device so closing or refreshing the app
    does not discard the quantities the user has selected. */
 function persistCartDraft(){
   if(!state.account) return;
   const draft=Object.fromEntries(Object.entries(state.cart).filter(([,qty])=>Number.isFinite(Number(qty)) && Number(qty)>0));
   lset('pendingCart:'+state.account,Object.keys(draft).length?draft:null);
+  scheduleDraftSync();
 }
 function restoreCartDraft(){
   if(!state.account) return;
@@ -165,9 +272,11 @@ function restoreCartDraft(){
     saved=legacy;
     if(lset('pendingCart:'+state.account,legacy)) lset('pendingCart',null);
   } else if(legacy && saved) lset('pendingCart',null);
-  if(!saved || typeof saved!=='object' || Array.isArray(saved)) return;
-  const available=new Set(state.items.map(item=>item.id));
-  state.cart=Object.fromEntries(Object.entries(saved).filter(([id,qty])=>available.has(id) && Number.isFinite(Number(qty)) && Number(qty)>0).map(([id,qty])=>[id,Math.min(MAX_QTY, Math.floor(Number(qty)))]));
+  if(saved && typeof saved==='object' && !Array.isArray(saved)){
+    const available=new Set(state.items.map(item=>item.id));
+    state.cart=Object.fromEntries(Object.entries(saved).filter(([id,qty])=>available.has(id) && Number.isFinite(Number(qty)) && Number(qty)>0).map(([id,qty])=>[id,Math.min(MAX_QTY, Math.floor(Number(qty)))]));
+  }
+  startSharedDraft(state.sharedDraft);
   persistCartDraft();
 }
 
@@ -293,6 +402,7 @@ async function loadData(){
   state.pins = Array.isArray(d.pins) ? d.pins : [];
   state.repeats = Array.isArray(d.repeats) ? d.repeats : [];
   state.months = Array.isArray(d.months) ? d.months : [];
+  state.sharedDraft = d.draft || null;
   syncNotes(d.notes);
   ricoSetInbox(d.inbox || []);
   paintStreakChip(false);
@@ -339,6 +449,7 @@ window.addEventListener('appinstalled',()=>{
 document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
 /* Clears this device's sign-in and returns to the PIN pad. */
 function signOut(reason, {preserveSession = false} = {}){
+  resetSharedDraft(); state.sharedDraft=null;
   ricoReset();
   if(!preserveSession) clearApiSession();
   forcedRefreshOpen = false;
@@ -1712,7 +1823,7 @@ function renderOrderHero(itemCount=state.items.length, supplierCount=new Set(sta
     <div class="hero-ring" role="img" aria-label="${esc(t('suppliersCovered')(cov.picked, cov.total))}">
       <svg viewBox="0 0 68 68" aria-hidden="true"><circle cx="34" cy="34" r="26" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="7"/><circle class="arc" cx="34" cy="34" r="26" fill="none" stroke="#6FCF9A" stroke-width="7" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${ringOffset().toFixed(2)}"/></svg>
       <b>${cov.picked}/${cov.total}</b></div>
-    <div class="hero-footer"><span class="draft-state">${selCount?t('draftLocal'):t('selectToStart')}</span><span class="hero-signature" aria-hidden="true">ricotta.</span></div>
+    <div class="hero-footer"><span class="draft-state">${selCount?draftProgressLabel():t('selectToStart')}</span><span class="hero-signature" aria-hidden="true">ricotta.</span></div>
   </div>`;
 }
 /* A small monogram tile for a supplier (first letter, deep green). */
@@ -1754,6 +1865,7 @@ function renderOrder(){
   const lastMap = lastOrderMap();
   return `
     ${renderNoteSticky()}
+    <div id="sharedDraftStatus">${draftStatusHtml()}</div>
     ${renderOrderHero(selectedCount, selectedSupplierCount)}
     <div id="repeatCards">${renderRepeatCards()}</div>
     <div id="ricoSuggest">${renderRicoSuggestion()}</div>
@@ -1873,7 +1985,7 @@ function refreshCartSummary(){
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.disabled=c===0;
   const draft=document.querySelector('.draft-state');
-  if(draft) draft.textContent=c?t('draftLocal'):t('selectToStart');
+  if(draft) draft.textContent=c?draftProgressLabel():t('selectToStart');
   paintRicoSuggestion();
 }
 /* The most of one item a single order can hold (the server refuses more). */
@@ -1904,6 +2016,7 @@ function paintVoiceOrderBtn(){
   b.querySelector('span').textContent = on ? t('voiceOrderStop') : busy ? t('ricoTranscribing') : t('voiceOrder');
 }
 function attachOrderEvents(){
+  paintDraftStatus();
   attachNoteSticky();
   attachRepeatCards();
   paintVoiceOrderBtn();
@@ -1975,6 +2088,7 @@ function attachOrderEvents(){
 /* Opens Send to suppliers with the current draft (the Send button, and
    Rico's "open send" shortcut). Returns false when there is nothing to send. */
 async function startSendQueue(){
+  if(sharedDraft.conflicts.length){ toast(t('draftConflict')); return false; }
   // An order that is already being saved (or failed to save) is finished first.
   if(state.queue?.record){ goView('queue'); return true; }
   const bySupplier = {};

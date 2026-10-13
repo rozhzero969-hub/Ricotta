@@ -2,7 +2,7 @@
   "name": "ricotta-orders",
   "private": true,
   "scripts": {
-    "test": "node --test scripts/storage-regression.cjs scripts/update-check-regression.cjs && node scripts/app-session-smoke.cjs && node scripts/backend-api-smoke.mjs && node scripts/backend-security-smoke.mjs && node scripts/backend-push-smoke.mjs && node scripts/rico-provider-smoke.mjs && node scripts/monthly-db-smoke.cjs",
+    "test": "node --test scripts/storage-regression.cjs scripts/update-check-regression.cjs && node scripts/app-session-smoke.cjs && node scripts/backend-api-smoke.mjs && node scripts/backend-security-smoke.mjs && node scripts/backend-push-smoke.mjs && node scripts/rico-provider-smoke.mjs && node scripts/monthly-db-smoke.cjs && node scripts/draft-sync-smoke.cjs",
     "test:ui": "node scripts/ui-smoke.cjs && node scripts/order-queue-smoke.cjs",
     "lint": "node scripts/lint.cjs"
   },

@@ -2,6 +2,7 @@
    (scripts/ui-smoke.cjs checks that). Numbers are always written 1 2 3. */
 const T = {
   en:{
+    draftSynced:'Draft synced across your devices', draftWaiting:'Draft saved here · waiting to sync', draftConflict:'This item changed on another device. Choose which quantity to keep.', draftUseOther:'Use other device’s quantities', draftKeepMine:'Keep my quantities',
     pendingSync:'Orders waiting to sync', pendingSyncHint:'These orders are saved on this device. Retry syncing or export a copy. Orders from a previous month need to be exported.', syncRetry:'Retry sync', syncExport:'Export copy',
     accountName:a=>({rozha:'Rozha', yunis:'Yunis'})[a] || a,
     workspaceLabel:'Your kitchen, organised', welcomeBack:'WELCOME BACK', welcomeName:n=>'Welcome back, '+n,
@@ -198,6 +199,7 @@ const T = {
 
   },
   ku:{
+    draftSynced:'ڕەشنووسەکە لە نێوان ئامێرەکانت هاوکات کرا', draftWaiting:'ڕەشنووسەکە لێرە پاشەکەوت کرا · چاوەڕێی هاوکاتکردنە', draftConflict:'ئەم کاڵایە لە ئامێرێکی تر گۆڕدراوە. بڕێک هەڵبژێرە بۆ هێشتنەوە.', draftUseOther:'بڕەکانی ئامێری تر بەکاربهێنە', draftKeepMine:'بڕەکانی من بهێڵەوە',
     pendingSync:'داواکارییە چاوەڕوانەکان', pendingSyncHint:'ئەم داواکارییانە لەم ئامێرە پاشەکەوت کراون. دووبارە هەوڵ بدە یان کۆپی هەناردە بکە. داواکاری مانگی پێشوو هەناردە بکە.', syncRetry:'دووبارە هەوڵدان', syncExport:'هەناردەی کۆپی',
     accountName:a=>({rozha:'ڕۆژا', yunis:'یونس'})[a] || a,
     workspaceLabel:'چێشتخانەکەت بە ڕێکوپێکی', welcomeBack:'بەخێربێیتەوە', welcomeName:n=>'بەخێربێیتەوە، '+n,
@@ -394,6 +396,7 @@ const T = {
 
   },
   ar:{
+    draftSynced:'تمت مزامنة المسودة بين أجهزتك', draftWaiting:'المسودة محفوظة هنا · بانتظار المزامنة', draftConflict:'تغيّر هذا الصنف على جهاز آخر. اختر الكمية التي تريد الاحتفاظ بها.', draftUseOther:'استخدام كميات الجهاز الآخر', draftKeepMine:'الاحتفاظ بكمياتي',
     pendingSync:'طلبات بانتظار المزامنة', pendingSyncHint:'هذه الطلبات محفوظة على هذا الجهاز. أعد المزامنة أو صدّر نسخة. يجب تصدير طلبات الشهر السابق.', syncRetry:'إعادة المزامنة', syncExport:'تصدير نسخة',
     accountName:a=>({rozha:'روژا', yunis:'يونس'})[a] || a,
     workspaceLabel:'مطبخك، منظّم', welcomeBack:'أهلًا بعودتك', welcomeName:n=>'أهلًا بعودتك يا '+n,

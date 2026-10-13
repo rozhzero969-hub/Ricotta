@@ -12,7 +12,7 @@ function fixture(overrides = {}) {
   const sandbox = {
     state: {account:'rozha', view:'queue', suppliers:[], history:[], cart:{i1:2}, queue:[{supplierId:'s1', sent:true, items:[{itemId:'i1', name:'Item', qty:2, unit:'box'}]}]},
     session: {token:'old', account:'rozha'}, ricoSuggestion:{at:1}, forcedRefreshOpen:false,
-    writes:[], notices:[], chimes:0, logouts:0, reloads:0, renders:0,
+    writes:[], notices:[], chimes:0, logouts:0, reloads:0, renders:0, resetSharedDraft:()=>{}, scheduleDraftSync:()=>{},
     outboxJobId:()=> 'stable-id', t:key=>key, lset:()=>true, persistQueue:()=>sandbox.persists++, persists:0, console:{error:()=>{}},
     render:()=>sandbox.renders++, persistCartDraft:()=>{}, playOrdersSent:()=>sandbox.chimes++,
     toast:(message)=>sandbox.notices.push(message), goView:view=>{sandbox.state.view=view;},
