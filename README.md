@@ -21,6 +21,14 @@ Scheduled jobs (pg_cron): `ricotta-reminder-tick` every minute (reminders, Rico'
 - **Weather**: the reminder tick keeps Erbil's weather from Open-Meteo in `app_weather` for Rico's morning message and the rain or snow effect.
 - Pinned items (`app_accounts.pins`), item notes (`app_items.note`, sent in the WhatsApp message) and Undo for 15 minutes after an order is saved.
 - Rozha and Yunis can read and delete each other's Rico chats; each only continues their own.
+- **Order cut-offs** (`app_suppliers.cutoff`, HH:MM Erbil): on the supplier's order days (its reminder days, or every day) Order, Send and Suppliers show a countdown; Rico warns 30 minutes before when nothing has gone to that supplier.
+- **Repeat orders** (`app_repeat_orders`): "Repeat" on a History order saves it for chosen weekdays; on those days the Order screen offers it with one tap. Nothing is sent by itself.
+- **Note replies**: Yunis answers a note (quick replies or a few words); Rozha gets a notification and a count on the bell.
+- **Face ID / fingerprint** (`app_passkeys`, WebAuthn): the phone keeps the private key; the server stores the public key and checks a single-use challenge, the site, user verification, the signature and the counter. The PIN keeps working; new PINs remove every passkey.
+- **App icon badge**: unread notes, unseen replies and late suppliers (Home Screen app; on iPhone with notifications on).
+- **Month archive** (`app_month_summaries`): before a month is cleared, `app_internal_monthly_cleanup` keeps its summary (orders, days, top items, suppliers, who sent). History › Past months.
+- **Friday summary**: Rico's short weekly recap on Friday evening.
+- On phones the WhatsApp buttons open the WhatsApp app directly (`whatsapp://send`); computers use `wa.me`.
 
 The Lab (`lab/`, see its README) runs the real app on sample data for trying these without touching the kitchen.
 
