@@ -52,6 +52,19 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   GET    assistant/status                                     is Rico connected?
 //   GET    assistant/setup-status     (rozha)                   Groq one-time setup state
 //   PUT    assistant/groq-key         {key} (rozha)             add-only
+//   POST   notes/:id/reply            {body} (yunis)            answer one of Rozha's notes (she gets a notification)
+//   POST   notes/replies-seen         (rozha)                   Rozha has read Yunis's answers
+//   GET    repeat-orders                                        orders that come back on chosen weekdays
+//   POST   repeat-orders              {name, days, entries}     save one (both accounts)
+//   PUT    repeat-orders/:id          {name?, days?}            change its name or days
+//   DELETE repeat-orders/:id
+//   GET    months                                               the archive: one summary per finished month
+//   POST   passkey/register-options                             Face ID: a challenge to create this phone's passkey
+//   POST   passkey/register           {id, clientDataJSON, authenticatorData, publicKey, alg}
+//   DELETE passkey                    {id}                      turn Face ID off on this phone
+//   POST   passkey/login-options      (public)                  Face ID: a challenge to sign in
+//   POST   passkey/login              (public) {id, clientDataJSON, authenticatorData, signature}
+//                                                                -> the same reply as login
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, saveGroqKey } from "./assistant.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from "../_shared/security.ts";
@@ -169,9 +182,12 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 };
 
 /* ---------- Shapes the browser uses ---------- */
-const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder });
+const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, cutoff: s.cutoff ?? null });
 const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "" });
-const toNote = (n: any) => ({ id: n.id, body: n.body, at: n.created_at, readAt: n.read_at, doneAt: n.done_at });
+const toNote = (n: any) => ({ id: n.id, body: n.body, at: n.created_at, readAt: n.read_at, doneAt: n.done_at,
+  reply: n.reply ?? null, repliedAt: n.replied_at ?? null, replySeenAt: n.reply_seen_at ?? null });
+const toRepeat = (r: any) => ({ id: r.id, name: r.name, days: r.days, entries: r.entries, by: r.created_by, createdAt: r.created_at });
+const NOTE_COLUMNS = "id,body,created_at,read_at,done_at,reply,replied_at,reply_seen_at";
 /* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
    had one; recoverable: how many days Rico can bring back after it broke. */
 function streakView(r: any) {
@@ -190,7 +206,7 @@ async function readStreak() {
   return streakView(data);
 }
 async function listNotes() {
-  const { data, error } = await app("notes").select("id,body,created_at,read_at,done_at").order("created_at", { ascending: false }).limit(40);
+  const { data, error } = await app("notes").select(NOTE_COLUMNS).order("created_at", { ascending: false }).limit(40);
   if (error) throw error;
   return (data ?? []).map(toNote);
 }
@@ -296,10 +312,10 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
 
 async function bootstrap(s: Session) {
   const since = monthStart();
-  const [me, looks, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, notes, weather] = await Promise.all([
+  const [me, looks, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, notes, weather, repeats, months] = await Promise.all([
     readAccount(s.account),
     readThemes(),
-    app("suppliers").select("id,name,phone,reminder").order("name"),
+    app("suppliers").select("id,name,phone,reminder,cutoff").order("name"),
     app("items").select("id,name,unit_id,supplier_id,sort_order,note").order("name"),
     app("units").select("id,en,ku,ar"),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
@@ -310,6 +326,8 @@ async function bootstrap(s: Session) {
     readStreak(),
     listNotes(),
     readWeather().catch(() => null),
+    listRepeats(),
+    listMonths(12),
   ]);
   for (const result of [suppliers, items, units]) if (result.error) throw result.error;
   const orderRows = orders;
@@ -323,8 +341,40 @@ async function bootstrap(s: Session) {
     units: units.data ?? [],
     history: groupHistory(orderRows, lines),
     historyMonth: monthKey(),
-    reminder, devices, activity, inbox,
+    reminder, devices, activity, inbox, repeats, months,
   };
+}
+async function listRepeats() {
+  const { data, error } = await app("repeat_orders").select("id,name,days,entries,created_by,created_at").order("created_at");
+  if (error) throw error;
+  return (data ?? []).map(toRepeat);
+}
+/* The archive: one summary per finished month, newest first. */
+async function listMonths(limit = 24) {
+  const { data, error } = await app("month_summaries").select("month,data").order("month", { ascending: false }).limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((m: any) => ({ month: m.month, ...m.data }));
+}
+
+/* ---------- Repeat orders ----------
+   A saved order (one or more suppliers) that comes back on chosen weekdays: the Order screen
+   offers it on those days with one tap. Both accounts can make, change and remove them. */
+const MAX_REPEATS = 30;
+function cleanRepeatDays(v: unknown): number[] | null {
+  if (!Array.isArray(v)) return null;
+  const days = [...new Set(v.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
+  return days.length ? days : null;
+}
+function cleanRepeatEntries(v: unknown): any[] | null {
+  if (!Array.isArray(v) || !v.length || v.length > 40) return null;
+  const out: any[] = [];
+  for (const e of v as any[]) {
+    const items = Array.isArray(e?.items) ? e.items.slice(0, 200).map((i: any) => ({ itemId: text(i?.itemId, 120), qty: Number(i?.qty) }))
+      .filter((i: any) => i.itemId && Number.isFinite(i.qty) && i.qty > 0 && i.qty <= 99999) : [];
+    if (!items.length) continue;
+    out.push({ supplierId: text(e?.supplierId, 120) || null, items });
+  }
+  return out.length ? out : null;
 }
 
 /* ---------- Sign-in, and wrong-guess limits ----------
@@ -379,8 +429,11 @@ async function login(req: Request) {
   const success = match === "rozha" || match === "yunis";
   if (!success) return fail("invalid_credentials", 401);
   await completeAttempt(attempt);
+  return await startSession(req, match as Account);
+}
 
-  const account = match as Account;
+/* A new session for this device: the PIN and Face ID sign-ins both end here. */
+async function startSession(req: Request, account: Account) {
   const token = randomToken();
   const deviceId = text(req.headers.get("x-device-id"), 120) || null;
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 3600_000).toISOString();
@@ -487,6 +540,8 @@ async function recovery(req: Request, step: string) {
       return fail(result === "duplicate" ? "duplicate_pin" : "invalid_pin");
     }
     if (result !== "ok") return fail("save_failed", 500);
+    // New codes end every session; Face ID sign-ins go too, so each phone must sign in with the new PIN.
+    await app("passkeys").delete().neq("id", "");
   }
   if (answer) {
     const { data: result, error } = await db.rpc("app_internal_set_recovery_name", { p_name: answer });
@@ -503,6 +558,7 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
   suppliers: (id, b) => text(b.name) ? {
     id, name: text(b.name), phone: text(b.phone, 40) || null,
     reminder: cleanReminder(b.reminder), updated_at: nowIso(),
+    ...(Object.hasOwn(b, "cutoff") ? { cutoff: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.cutoff ?? "")) ? String(b.cutoff) : null } : {}),
   } : null,
   items: (id, b) => text(b.name) ? {
     id, name: text(b.name), unit_id: text(b.unit, 120) || null,
@@ -693,6 +749,104 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
   return fail("Unknown route", 404);
 }
 
+/* ---------- Face ID / fingerprint sign-in (WebAuthn passkeys) ----------
+   The phone makes a key pair that only unlocks with the person's face or finger; the private key
+   never leaves it. Here we keep the public key, and every sign-in proves the phone signed a fresh,
+   single-use challenge for this site. The PIN keeps working; changing the codes removes all passkeys. */
+const RP_ID = new URL(ALLOWED_ORIGIN).hostname;
+const PASSKEY_CHALLENGE_MS = 5 * 60_000;
+const b64u = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+type Bytes = Uint8Array<ArrayBuffer>;
+function fromB64u(v: unknown, max = 4096): Bytes | null {
+  const str = typeof v === "string" ? v : "";
+  if (!str || str.length > max || !/^[A-Za-z0-9_-]+={0,2}$/.test(str)) return null;
+  try {
+    const bin = atob(str.replace(/=+$/, "").replaceAll("-", "+").replaceAll("_", "/") + "===".slice((str.replace(/=+$/, "").length + 3) % 4));
+    return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  } catch { return null; }
+}
+const sha256 = async (bytes: Bytes) => new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
+async function newPasskeyChallenge(purpose: "register" | "login", account: Account | null) {
+  // Anyone can ask for a sign-in challenge, so only a limited number may wait at once.
+  const { count } = await app("passkey_challenges").select("token_hash", { count: "exact", head: true }).gt("expires_at", nowIso());
+  if ((count ?? 0) >= 200) throw new Error("passkey_busy");
+  const challenge = b64u(crypto.getRandomValues(new Uint8Array(32)));
+  const { error } = await app("passkey_challenges").insert({ token_hash: await hash(challenge), challenge, purpose, account,
+    expires_at: new Date(Date.now() + PASSKEY_CHALLENGE_MS).toISOString() });
+  if (error) throw new Error("passkey_challenge_unavailable");
+  return challenge;
+}
+/* Checks clientDataJSON (type, this site, a challenge we issued, used once) and the authenticator
+   data (this site, the person was present and verified with face/finger). Returns the parts, or null. */
+async function checkCeremony(type: "webauthn.create" | "webauthn.get", purpose: "register" | "login", b: any, account: Account | null) {
+  const clientData = fromB64u(b.clientDataJSON, 8192), authData = fromB64u(b.authenticatorData, 4096);
+  if (!clientData || !authData || authData.length < 37) return null;
+  let c: any;
+  try { c = JSON.parse(new TextDecoder().decode(clientData)); } catch { return null; }
+  if (c?.type !== type || c?.origin !== ALLOWED_ORIGIN || typeof c?.challenge !== "string") return null;
+  // Single use: the challenge row is taken out as it is checked.
+  const { data: rows, error } = await app("passkey_challenges").delete().eq("token_hash", await hash(c.challenge))
+    .eq("purpose", purpose).gt("expires_at", nowIso()).select("challenge,account");
+  if (error || !rows?.length || rows[0].challenge !== c.challenge) return null;
+  if (account && rows[0].account !== account) return null;
+  if (!sameBytes(authData.slice(0, 32), await sha256(new TextEncoder().encode(RP_ID)))) return null;
+  const flags = authData[32];
+  if (!(flags & 0x01) || !(flags & 0x04)) return null;   // user present + user verified (Face ID / fingerprint / passcode)
+  const signCount = new DataView(authData.buffer, authData.byteOffset + 33, 4).getUint32(0);
+  return { clientData, authData, signCount };
+}
+const keyParams = (alg: number) => alg === -7 ? { name: "ECDSA", namedCurve: "P-256" } : { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" };
+/* WebAuthn ECDSA signatures are DER; WebCrypto wants the raw 64-byte r||s. */
+function derToRaw(der: Bytes): Bytes | null {
+  if (der[0] !== 0x30) return null;
+  let i = 2;
+  const part = () => {
+    if (der[i++] !== 0x02) return null;
+    const len = der[i++]; let v = der.slice(i, i + len); i += len;
+    while (v.length > 32 && v[0] === 0) v = v.slice(1);
+    if (v.length > 32) return null;
+    const out = new Uint8Array(32); out.set(v, 32 - v.length); return out;
+  };
+  const r = part(), sg = part();
+  if (!r || !sg) return null;
+  const raw = new Uint8Array(64); raw.set(r); raw.set(sg, 32); return raw;
+}
+async function passkeyRegister(s: Session, b: any) {
+  const id = text(b.id, 1024), alg = Number(b.alg), spki = fromB64u(b.publicKey, 2048);
+  if (!fromB64u(id, 1024) || id.length < 16 || ![-7, -257].includes(alg) || !spki) return fail("invalid_passkey");
+  try { await crypto.subtle.importKey("spki", spki, keyParams(alg), false, ["verify"]); } catch { return fail("invalid_passkey"); }
+  if (!(await checkCeremony("webauthn.create", "register", b, s.account))) return fail("invalid_passkey", 401);
+  const { error } = await app("passkeys").upsert({ id, account: s.account, public_key: b64u(spki), alg, sign_count: 0, device_id: s.deviceId, created_at: nowIso() });
+  return error ? fail("save_failed", 500) : ok();
+}
+async function passkeyLogin(req: Request) {
+  const b = await readBody(req);
+  const attempt = await reserveLogin(await loginFingerprints(req));
+  if (!attempt) return fail("too_many_attempts", 429);
+  const id = text(b.id, 1024), signature = fromB64u(b.signature, 1024);
+  if (!id || !signature) return fail("invalid_credentials", 401);
+  const { data: key, error } = await app("passkeys").select("id,account,public_key,alg,sign_count").eq("id", id).maybeSingle();
+  if (error) throw new Error("passkey_unavailable");
+  if (!key) return fail("invalid_credentials", 401);
+  const done = await checkCeremony("webauthn.get", "login", b, null);
+  if (!done) return fail("invalid_credentials", 401);
+  const signed = new Uint8Array(done.authData.length + 32);
+  signed.set(done.authData); signed.set(await sha256(done.clientData), done.authData.length);
+  const sig = key.alg === -7 ? derToRaw(signature) : signature;
+  let valid = false;
+  try {
+    const pub = await crypto.subtle.importKey("spki", fromB64u(key.public_key, 2048)!, keyParams(key.alg), false, ["verify"]);
+    valid = !!sig && await crypto.subtle.verify(key.alg === -7 ? { name: "ECDSA", hash: "SHA-256" } : { name: "RSASSA-PKCS1-v1_5" }, pub, sig, signed);
+  } catch { valid = false; }
+  if (!valid) return fail("invalid_credentials", 401);
+  // A counter that goes backwards means a copied key: refuse it (phones that keep 0 are fine).
+  if (done.signCount && Number(key.sign_count) && done.signCount <= Number(key.sign_count)) return fail("invalid_credentials", 401);
+  await app("passkeys").update({ sign_count: done.signCount, last_used_at: nowIso() }).eq("id", id);
+  await completeAttempt(attempt);
+  return await startSession(req, key.account as Account);
+}
+
 /* ---------- Router ---------- */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -703,6 +857,8 @@ Deno.serve(async (req) => {
 
   try {
     if (M === "POST" && path === "login") return await login(req);
+    if (M === "POST" && path === "passkey/login-options") return json({ challenge: await newPasskeyChallenge("login", null), rpId: RP_ID });
+    if (M === "POST" && path === "passkey/login") return await passkeyLogin(req);
     if (M === "POST" && ["recovery/name", "recovery/verify", "recovery/save"].includes(path)) return await recovery(req, path.slice(9));
     if (M === "GET" && path === "health") {
       const { error } = await app("accounts").select("id", { head: true }).limit(1);
@@ -788,6 +944,24 @@ Deno.serve(async (req) => {
 
     // Kitchen notes: Rozha leaves them, Yunis reads them
     if (M === "GET" && path === "notes") return json(await listNotes());
+    if (M === "POST" && path === "notes/replies-seen") {
+      if (!rozha) return fail("forbidden", 403);
+      const { error } = await app("notes").update({ reply_seen_at: nowIso() }).not("reply", "is", null).is("reply_seen_at", null);
+      return error ? fail("save_failed", 500) : ok();
+    }
+    if (M === "POST" && (m = path.match(/^notes\/(\d{1,15})\/reply$/))) {
+      // Yunis answers one of Rozha's notes; she gets a notification with the answer.
+      if (rozha) return fail("forbidden", 403);
+      const reply = text(b.body, 300);
+      if (!reply) return fail("empty_note");
+      const now = nowIso();
+      const { data, error } = await app("notes").update({ reply, replied_at: now, reply_seen_at: null, read_at: now })
+        .eq("id", Number(m[1])).select(NOTE_COLUMNS).maybeSingle();
+      if (error) return fail("save_failed", 500);
+      if (!data) return fail("not_found", 404);
+      await pushTo("rozha", { type: "reply", body: reply });
+      return json(toNote(data));
+    }
     if (M === "POST" && path === "notes") {
       if (!rozha) return fail("forbidden", 403);
       const body = text(b.body, 500);
@@ -813,6 +987,49 @@ Deno.serve(async (req) => {
         const { error } = await q;
         return error ? fail("save_failed", 500) : ok();
       }
+    }
+
+    // Repeat orders
+    if (M === "GET" && path === "repeat-orders") return json(await listRepeats());
+    if (M === "POST" && path === "repeat-orders") {
+      const days = cleanRepeatDays(b.days), entries = cleanRepeatEntries(b.entries), name = text(b.name, 120);
+      if (!days || !entries || !name) return fail("invalid_repeat");
+      const { count } = await app("repeat_orders").select("id", { count: "exact", head: true });
+      if ((count ?? 0) >= MAX_REPEATS) return fail("too_many_repeats", 409);
+      const { data, error } = await app("repeat_orders").insert({ name, days, entries, created_by: s.account })
+        .select("id,name,days,entries,created_by,created_at").single();
+      return error ? fail("save_failed", 500) : json(toRepeat(data));
+    }
+    if ((m = path.match(/^repeat-orders\/([0-9a-f-]{36})$/i))) {
+      if (M === "DELETE") {
+        const { error } = await app("repeat_orders").delete().eq("id", m[1]);
+        return error ? fail("delete_failed", 500) : ok();
+      }
+      if (M === "PUT") {
+        const patch: Record<string, unknown> = { updated_at: nowIso() };
+        if (b.days !== undefined) { const days = cleanRepeatDays(b.days); if (!days) return fail("invalid_repeat"); patch.days = days; }
+        if (b.name !== undefined) { const name = text(b.name, 120); if (!name) return fail("invalid_repeat"); patch.name = name; }
+        const { data, error } = await app("repeat_orders").update(patch).eq("id", m[1]).select("id,name,days,entries,created_by,created_at").maybeSingle();
+        if (error) return fail("save_failed", 500);
+        return data ? json(toRepeat(data)) : fail("not_found", 404);
+      }
+    }
+
+    // The month archive
+    if (M === "GET" && path === "months") return json(await listMonths());
+
+    // Face ID on this phone
+    if (M === "POST" && path === "passkey/register-options") {
+      const { data: mine } = await app("passkeys").select("id").eq("account", s.account);
+      return json({ challenge: await newPasskeyChallenge("register", s.account), rpId: RP_ID, userId: b64u(new TextEncoder().encode(s.account)),
+        userName: accountName(s.account), exclude: (mine ?? []).map((k: any) => k.id) });
+    }
+    if (M === "POST" && path === "passkey/register") return await passkeyRegister(s, b);
+    if (M === "DELETE" && path === "passkey") {
+      const id = text(b.id, 1024);
+      if (!id) return fail("invalid_passkey");
+      const { error } = await app("passkeys").delete().eq("id", id).eq("account", s.account);
+      return error ? fail("delete_failed", 500) : ok();
     }
 
     // Record
@@ -899,6 +1116,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     if (e instanceof BodyTooLarge) return fail("too_large", 413);
     if (e instanceof InvalidBody) return fail("invalid_input", 400);
+    if (e instanceof Error && e.message === "passkey_busy") return fail("too_many_attempts", 429);
     console.error(path, e);
     return fail("server_error", 500);
   }

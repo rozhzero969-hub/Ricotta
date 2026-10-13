@@ -291,6 +291,8 @@ async function loadData(){
   if(d.streak) streakArrived(d.streak);
   state.weather = d.weather || null;
   state.pins = Array.isArray(d.pins) ? d.pins : [];
+  state.repeats = Array.isArray(d.repeats) ? d.repeats : [];
+  state.months = Array.isArray(d.months) ? d.months : [];
   syncNotes(d.notes);
   ricoSetInbox(d.inbox || []);
   paintStreakChip(false);
@@ -343,7 +345,8 @@ function signOut(reason, {preserveSession = false} = {}){
   state.account = null; state.name = ''; state.views = []; state.tabs = DEFAULT_TABS.slice();
   state.suppliers = []; state.items = []; state.units = []; state.history = [];
   state.activity = []; state.devices = []; state.reminder = null;
-  state.streak = null; state.notes = []; state.pins = []; state.weather = null;
+  state.streak = null; state.notes = []; state.pins = []; state.weather = null; state.repeats = []; state.months = [];
+  try{ updateAppBadge(); }catch(_){}
   state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
   reminderDraft = null;
@@ -1497,7 +1500,7 @@ function attachContentEvents(){
 /* ============ Login (PIN pad) ============ */
 function loginMessage(){
   if(state.pinBusy) return t('signingIn');
-  return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), session:state.sessionMsg})[state.pinError] || '';
+  return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), faceid:t('faceIdFailed'), session:state.sessionMsg})[state.pinError] || '';
 }
 function pinDotClass(i){
   const filled = i < state.pinBuffer.length;
@@ -1536,13 +1539,14 @@ function renderLogin(){
         <button class="key" data-key="0" style="--k:10">0</button>
         <button class="key backspace" data-key="back" style="--k:11" aria-label="${esc(t('deleteDigit'))}">${ICON_BACKSPACE}</button>
       </div>
+      ${passkeySupported() && Object.keys(faceIdKeys()).length ? `<button type="button" class="faceid-btn" id="faceIdBtn">${ICON_FACEID}<span>${esc(t('faceIdSignIn')(faceIdName()))}</span></button>` : ''}
     </div></div>
   </div>`;
 }
 function updateLoginFeedback(){
   const dots = document.querySelector('.pin-dots');
   if(!dots) return;
-  dots.classList.toggle('err', ['wrong','locked','network'].includes(state.pinError));
+  dots.classList.toggle('err', ['wrong','locked','network','faceid'].includes(state.pinError));
   dots.classList.toggle('busy', state.pinBusy);
   // Class changes alone drive the pop / next-box glow (see .pin-dot in style.css).
   dots.querySelectorAll('.pin-dot').forEach((dot,index)=>{ dot.className = pinDotClass(index); });
@@ -1570,7 +1574,10 @@ async function pressKey(k){
     setTimeout(()=>{ state.pinBuffer=''; if(!state.account) updateLoginFeedback(); }, 650);
     return;
   }
-  // Signed in: "Welcome back, Yunis" covers the workspace while it loads, then lifts.
+  await completeSignIn(res);
+}
+/* After the PIN or Face ID: "Welcome back, Yunis" covers the workspace while it loads, then lifts. */
+async function completeSignIn(res){
   state.pinBuffer = ''; state.pinError = ''; state.view = 'order';
   showWelcome(accountLabel(res.account));
   applyAccount(res);
@@ -1624,6 +1631,15 @@ function attachLoginEvents(){
   const lang = document.getElementById('loginLangBtn');
   if(lang) lang.onclick = e=>{ e.stopPropagation(); openLangMenu(lang); };
   document.querySelectorAll('[data-key]').forEach(b=>b.onclick = ()=>pressKey(b.dataset.key));
+  const face = document.getElementById('faceIdBtn');
+  if(face) face.onclick = async ()=>{
+    if(state.pinBusy) return;
+    state.pinBusy = true; state.pinError = ''; updateLoginFeedback(); face.disabled = true;
+    const res = await apiPasskeyLogin();
+    state.pinBusy = false; face.disabled = false;
+    if(res.error){ state.pinError = res.error === 'cancelled' ? '' : res.error; updateLoginFeedback(); return; }
+    await completeSignIn(res);
+  };
 }
 /* Physical keyboards (computers / tablets with a keyboard) can type the PIN. */
 document.addEventListener('keydown', e=>{
@@ -1739,6 +1755,7 @@ function renderOrder(){
   return `
     ${renderNoteSticky()}
     ${renderOrderHero(selectedCount, selectedSupplierCount)}
+    <div id="repeatCards">${renderRepeatCards()}</div>
     <div id="ricoSuggest">${renderRicoSuggestion()}</div>
     ${tabsHtml}
     <div class="order-arrange-row" id="orderArrangeRow">${renderOrderArrangeControl()}</div>
@@ -1776,8 +1793,9 @@ function renderOrderResults(){
       ? `<button class="item-sort-trigger" data-sort-supplier="${esc(key)}">${t('sortSupplierItems')}</button>` : '';
     return state.orderTab==='all' ? `<div class="supplier-group">
       <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}<span class="supplier-item-count">${groups[key].length}</span></span>${arrangeButton}</div>
+      ${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}
       <div class="supplier-items-grid">${rows}</div>
-    </div>` : `<div class="supplier-items-grid standalone">${rows}</div>`;
+    </div>` : `${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}<div class="supplier-items-grid standalone">${rows}</div>`;
   }).join('');
 
   const pinnedHtml = pinned.length ? `<div class="supplier-group pinned-group">
@@ -1887,6 +1905,7 @@ function paintVoiceOrderBtn(){
 }
 function attachOrderEvents(){
   attachNoteSticky();
+  attachRepeatCards();
   paintVoiceOrderBtn();
   const voice = document.getElementById('voiceOrderBtn');
   if(voice) voice.onclick = async ()=>{
@@ -2256,8 +2275,11 @@ function waLink(phone, text){
   else if(raw.startsWith('+') || p.startsWith('964')){ /* already international */ }
   else if(p.startsWith('0')) p = '964' + p.slice(1);
   else p = '964' + p;
-  return `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
+  // Phones open the WhatsApp app itself (wa.me first shows a "Continue to chat" web page);
+  // a computer keeps the web link, since the WhatsApp app may not be installed there.
+  return waOpensApp() ? `whatsapp://send?phone=${p}&text=${encodeURIComponent(text)}` : `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
 }
+function waOpensApp(){ return isIOS() || /Android/i.test(navigator.userAgent); }
 const ICON_CHAT = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.5A8.4 8.4 0 1 1 21 11.5Z"/></svg>`;
 const ICON_BACK = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>`;
 function renderQueue(){
@@ -2271,10 +2293,10 @@ function renderQueue(){
     const sendBtn = canWhatsApp
       // A plain link, not window.open: the iPhone always hands a tapped wa.me link to WhatsApp, while
       // opening it from script could fail on one iPhone and work on another.
-      ? `<a class="wa-btn ${e.sent?'done':''}" data-send="${idx}" href="${esc(waLink(sup.phone, buildMessage(e)))}" target="_blank" rel="noopener noreferrer">${ICON_CHAT}${e.sent?t('sentSendAgain'):t('sendVia')}</a>`
+      ? `<a class="wa-btn ${e.sent?'done':''}" data-send="${idx}" href="${esc(waLink(sup.phone, buildMessage(e)))}"${waOpensApp() ? '' : ' target="_blank" rel="noopener noreferrer"'}>${ICON_CHAT}${e.sent?t('sentSendAgain'):t('sendVia')}</a>`
       : `<button class="wa-btn ${e.sent?'done':''}" data-marksent="${idx}" ${e.sent?'disabled':''}>${e.sent?t('sent'):t('markSent')}</button>`;
     return `<div class="queue-card ${e.sent?'sent':''}">
-      <div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
+      <div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}${e.sent ? '' : cutoffChip(e.supplierId)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
       <div class="queue-items">${itemsLine}</div>
       ${canWhatsApp ? '' : `<div class="queue-note">${esc(!sup ? t('noSupplier') : t('noPhoneOnFile'))} · ${esc(t('markSentHint'))}</div>`}
       <div class="queue-actions">${sendBtn}<button class="pdf-btn" data-pdf="${idx}" aria-label="${esc(t('orderSheet'))}">${NAV_ICONS.record}<span>PDF</span></button></div>
@@ -2426,6 +2448,7 @@ function orderHistoryCard(rec){
       <div class="row-actions">
         ${canUndoOrder(rec) ? `<button class="btn btn-ghost hist-undo" data-undohist="${esc(rec.id)}">${esc(t('undo'))}</button>` : ''}
         <button class="btn btn-ghost hist-again" data-reorderhist="${esc(rec.id)}">${ICON_REPEAT}<span>${esc(t('orderAgain'))}</span></button>
+        <button class="icon-btn hist-repeat" data-repeathist="${esc(rec.id)}" aria-label="${esc(t('repeatTitle'))}" title="${esc(t('repeatTitle'))}">${ICON_CALENDAR}</button>
         ${isRozha() ? `<button class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
       </div>
     </div>
@@ -2436,7 +2459,10 @@ function orderHistoryCard(rec){
 function renderHistory(){
   const entries = state.history.map(rec=>({ts:Date.parse(rec.date), day:rec.date, html:orderHistoryCard(rec)})).sort((a,b)=>b.ts-a.ts);
   if(!entries.length) return emptyState(t('noHistory'));
-  let lastDay = '', cards0 = renderReportCard();
+  let lastDay = '', cards0 = renderReportCard() + `<div class="hist-tools">
+    <button type="button" class="btn btn-ghost" id="repeatListBtn">${ICON_REPEAT}<span>${esc(t('repeatListTitle'))}${(state.repeats || []).length ? ` (${state.repeats.length})` : ''}</span></button>
+    <button type="button" class="btn btn-ghost" id="monthsBtn">${ICON_CALENDAR}<span>${esc(t('monthsTitle'))}</span></button>
+  </div>`;
   const cards = entries.map(e=>{
     const day = dayLabel(e.day);
     const heading = day !== lastDay ? `<div class="hist-day">${esc(day)}</div>` : '';
@@ -2447,6 +2473,9 @@ function renderHistory(){
 }
 function attachHistoryEvents(){
   document.getElementById('reportOpen')?.addEventListener('click', openReportSheet);
+  document.getElementById('repeatListBtn')?.addEventListener('click', openRepeatList);
+  document.getElementById('monthsBtn')?.addEventListener('click', openMonthsSheet);
+  document.querySelectorAll('[data-repeathist]').forEach(b=>b.onclick=()=>{ const rec = state.history.find(r=>r.id === b.dataset.repeathist); if(rec) openRepeatForm(rec); });
   document.querySelectorAll('[data-undohist]').forEach(b=>b.onclick=()=>withBusy(b, ()=>undoOrder(b.dataset.undohist)));
   document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
     const rec = state.history.find(r=>r.id===b.dataset.reorderhist);
@@ -2514,10 +2543,11 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote')})[k] || k;
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), cutoff:t('cutoffShort')})[k] || k;
 }
 function recordValue(k, v){
   if(k === 'reminder') return reminderText(reminderFromCode(v));
+  if(k === 'cutoff' && v) return reminderTimeLabel(v);
   if(k === 'supplier' && !v) return t('noSupplier');
   if(!v) return '\u2014';
   if(k === 'unit'){
@@ -2664,7 +2694,8 @@ function renderSuppliers(){
   const list = state.suppliers.length ? sortedByName(state.suppliers).map(s=>`
     <div class="list-row tappable" data-editsup="${esc(s.id)}">
       <div><div class="name">${esc(s.name)}</div><div class="meta">${esc(s.phone||'')}</div>
-        ${s.reminder && s.reminder.enabled ? `<div class="meta rem-line">${ICON_BELL} ${esc(reminderText(s.reminder))}</div>` : ''}</div>
+        ${s.reminder && s.reminder.enabled ? `<div class="meta rem-line">${ICON_BELL} ${esc(reminderText(s.reminder))}</div>` : ''}
+        ${s.cutoff ? `<div class="meta rem-line">⏰ ${esc(t('cutoffShort'))}: ${esc(reminderTimeLabel(s.cutoff))}</div>` : ''}</div>
       <div class="row-actions">
         ${s.reminder && s.reminder.enabled ? `<button class="icon-btn" data-testsup="${esc(s.id)}" aria-label="${esc(t('testSupplierReminder'))}">${ICON_BELL}</button>` : ''}
         <span class="icon-btn">${ICON_EDIT}</span>
@@ -2687,14 +2718,17 @@ function openSupplierModal(id){
     bodyHtml: `
       <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
       <div class="field"><label>${t('phone')}</label><input id="mfPhone" data-clear="1" inputmode="tel" placeholder="07xxxxxxxxx" value="${esc(existing?.phone||'')}"></div>
-      ${reminderFieldsHtml(existing?.reminder)}`,
+      ${reminderFieldsHtml(existing?.reminder)}
+      <div class="field"><label for="mfCutoff">${t('cutoffLabel')}</label><input id="mfCutoff" type="time" value="${esc(existing?.cutoff||'')}"><small class="field-hint">${esc(t('cutoffHint'))}</small></div>`,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
     onOpen: (box)=> attachReminderFields(box),
     onSubmit: async (again)=>{
       const name = document.getElementById('mfName').value.trim();
       const phone = document.getElementById('mfPhone').value.trim();
+      const cutoff = document.getElementById('mfCutoff').value.trim().slice(0, 5);
       if(!name) return {error: t('nameRequired')};
+      if(cutoff && !/^([01]\d|2[0-3]):[0-5]\d$/.test(cutoff)) return {error: t('reminderTimeInvalid')};
       const rem = readReminderFields();
       if(rem.on){
         if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(rem.time)) return {error: t('reminderTimeInvalid')};
@@ -2708,23 +2742,23 @@ function openSupplierModal(id){
         const s = state.suppliers.find(x=>x.id===existing.id);
         if(!s) return {};
         const oldCode = reminderCode(s.reminder);
-        const fields = diffFields([['name', s.name, name], ['phone', s.phone, phone], ['reminder', oldCode, newCode]]);
+        const fields = diffFields([['name', s.name, name], ['phone', s.phone, phone], ['reminder', oldCode, newCode], ['cutoff', s.cutoff || '', cutoff]]);
         if(!fields.length) return {};   // nothing changed -- nothing to save or record
         // updatedAt tells the server when the reminder was last changed, so a time that
         // has already passed today starts tomorrow instead of firing the moment you save.
         const reminder = oldCode === newCode ? s.reminder
           : rem.on ? {...newRem, updatedAt: now} : {...(s.reminder||{}), enabled:false, updatedAt: now};
-        const next = {...s, name, phone, reminder};
+        const next = {...s, name, phone, reminder, cutoff: cutoff || null};
         if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
         Object.assign(s, next);
         logActivity({action:'edit', type:'supplier', name, fields});
       } else {
-        const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null};
+        const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null, cutoff: cutoff || null};
         if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
         state.suppliers.push(next);
         logActivity({action:'add', type:'supplier', name,
           fields:[{k:'name', to:name}].concat(phone ? [{k:'phone', to:phone}] : [])
-                 .concat(rem.on ? [{k:'reminder', to:newCode}] : [])});
+                 .concat(rem.on ? [{k:'reminder', to:newCode}] : []).concat(cutoff ? [{k:'cutoff', to:cutoff}] : [])});
       }
       render();
       if(again){ resetReminderFields(); return {keepOpen:true, message:t('savedMsg')(name)}; }
@@ -3242,9 +3276,55 @@ function versionCmp(a, b){
 function latestVersion(){
   return (state.devices || []).map(d=>d.appVersion).filter(Boolean).reduce((m, v)=>versionCmp(v, m) > 0 ? v : m, APP_VERSION);
 }
+/* ---------- Face ID on this phone ---------- */
+const faceIdName = ()=>isIOS() ? 'Face ID' : t('faceIdOther');
+function renderFaceIdSettings(){
+  if(!passkeySupported()) return '';
+  const on = !!faceIdKeys()[state.account];
+  return `<div class="section-title">${esc(t('faceIdSection'))}</div><div class="form-card faceid-card">
+    <div class="faceid-row"><span class="faceid-ico">${ICON_FACEID}</span><div><b>${esc(t('faceIdTitle')(faceIdName()))}</b><div class="notif-sub">${esc(on ? t('faceIdOnHint') : t('faceIdOffHint')(faceIdName()))}</div></div>
+    <button type="button" class="btn ${on ? 'btn-ghost' : 'btn-primary'}" id="faceIdToggle">${esc(on ? t('faceIdTurnOff') : t('faceIdTurnOn'))}</button></div>
+  </div>`;
+}
+async function enableFaceId(){
+  const o = await api('passkey/register-options', {method:'POST'});
+  if(!o.ok || !o.data || !o.data.challenge){ toast(t('saveFailed'), 'error'); return; }
+  let cred;
+  try{
+    cred = await navigator.credentials.create({publicKey:{
+      challenge:b64uDecode(o.data.challenge), rp:{name:'Ricotta Orders', id:o.data.rpId},
+      user:{id:b64uDecode(o.data.userId), name:o.data.userName, displayName:o.data.userName},
+      pubKeyCredParams:[{type:'public-key', alg:-7}, {type:'public-key', alg:-257}],
+      authenticatorSelection:{authenticatorAttachment:'platform', residentKey:'required', requireResidentKey:true, userVerification:'required'},
+      attestation:'none', timeout:60000, excludeCredentials:(o.data.exclude || []).map(id=>({type:'public-key', id:b64uDecode(id)}))}});
+  }catch(e){
+    // Already set up on this phone (it is in the exclude list), or the person backed out.
+    if(e && e.name === 'InvalidStateError') toast(t('faceIdAlready')(faceIdName()));
+    return;
+  }
+  const res = cred && cred.response;
+  if(!res || !res.getPublicKey || !res.getAuthenticatorData || !res.getPublicKey()){ await showAlert(esc(t('faceIdUnsupported'))); return; }
+  const r = await api('passkey/register', {method:'POST', body:{id:cred.id, clientDataJSON:b64uEncode(res.clientDataJSON),
+    authenticatorData:b64uEncode(res.getAuthenticatorData()), publicKey:b64uEncode(res.getPublicKey()), alg:res.getPublicKeyAlgorithm()}});
+  if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
+  lset('faceIdKeys', {...faceIdKeys(), [state.account]:cred.id});
+  toast(t('faceIdOnToast')(faceIdName()), 'ok');
+}
+async function disableFaceId(){
+  const id = faceIdKeys()[state.account];
+  if(!id) return;
+  const r = await api('passkey', {method:'DELETE', body:{id}});
+  if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
+  const keys = faceIdKeys(); delete keys[state.account]; lset('faceIdKeys', keys);
+  toast(t('faceIdOffToast')(faceIdName()));
+}
+function attachFaceIdSettings(){
+  const b = document.getElementById('faceIdToggle');
+  if(b) b.onclick = ()=>withBusy(b, async ()=>{ await (faceIdKeys()[state.account] ? disableFaceId() : enableFaceId()); if(state.view === 'settings') render(); });
+}
 function renderSettings(){
   const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `${renderPendingSync()}${renderThemePicker()}${renderDisplaySettings()}${renderSoundsView()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderThemePicker()}${renderDisplaySettings()}${renderFaceIdSettings()}${renderSoundsView()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
 /* ============ Notifications and sounds (shown in Settings) ============ */
 /* The daily reminder starts as one switch. Turning it on opens the time,
@@ -3403,6 +3483,7 @@ function bindThemePicker(){
   });
 }
 function attachSettingsEvents(){
+  attachFaceIdSettings();
  const retry=document.getElementById('syncRetryBtn');
  if(retry) retry.onclick=async()=>{retry.disabled=true;await flushOutbox();await loadData();render();};
  const exp=document.getElementById('syncExportBtn');

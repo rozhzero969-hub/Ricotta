@@ -53,6 +53,8 @@ const db = {
     const q = {
       select() { selected = true; return q; },
       eq(field, value) { filters.push(row => row[field] === value); return q; },
+      neq(field, value) { filters.push(row => row[field] !== value); return q; },
+      not(field, op, value) { filters.push(row => !(op === 'is' ? (row[field] ?? null) === value : row[field] === value)); return q; },
       in(field, values) { filters.push(row => values.includes(row[field])); return q; },
       is(field, value) { filters.push(row => row[field] === value); return q; },
       gt(field, value) { filters.push(row => row[field] > value); return q; },
@@ -163,5 +165,57 @@ try {
   reset();
   tables.app_recovery_tickets.push({ token_hash: await digest(ticket), stage: 'code', expires_at: new Date(Date.now() + 60000).toISOString() });
   assert.equal((await call('recovery/name', { ticket, name: 'a'.repeat(40) + 'suffix' }, 'POST', false)).status, 401, 'valid answers cannot be accepted by truncating extra characters');
+
+  /* Face ID (passkeys): a real P-256 key signs a real challenge; replays, other sites, other keys and
+     tampered signatures are refused, and new PINs remove every passkey. */
+  reset();
+  Object.assign(tables, { app_passkeys: [], app_passkey_challenges: [] });
+  const b64u = bytes => Buffer.from(bytes).toString('base64url');
+  const sha = async bytes => new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  const ORIGIN = 'https://rozhzero969-hub.github.io';
+  const authData = async (counter, flags = 0x05) => {
+    const out = new Uint8Array(37); out.set(await sha(new TextEncoder().encode('rozhzero969-hub.github.io'))); out[32] = flags;
+    new DataView(out.buffer).setUint32(33, counter); return out;
+  };
+  const der = raw => {   // WebCrypto's raw r||s -> the DER form authenticators send
+    const int = part => { let v = [...part]; while (v.length > 1 && v[0] === 0) v.shift(); if (v[0] & 0x80) v.unshift(0); return [0x02, v.length, ...v]; };
+    const body = [...int(raw.slice(0, 32)), ...int(raw.slice(32))]; return new Uint8Array([0x30, body.length, ...body]);
+  };
+  const keys = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  const spki = new Uint8Array(await crypto.subtle.exportKey('spki', keys.publicKey));
+  const credId = b64u(crypto.getRandomValues(new Uint8Array(20)));
+  const regOptions = await (await call('passkey/register-options', {})).json();
+  assert.equal(regOptions.rpId, 'rozhzero969-hub.github.io');
+  const regClient = new TextEncoder().encode(JSON.stringify({ type: 'webauthn.create', challenge: regOptions.challenge, origin: ORIGIN }));
+  const register = body => call('passkey/register', { id: credId, clientDataJSON: b64u(regClient), authenticatorData: b64u(body.auth), publicKey: b64u(spki), alg: -7 });
+  assert.equal((await register({ auth: await authData(0, 0x01) })).status, 401, 'registering needs Face ID / fingerprint (user verified), not just a tap');
+  const regOptions2 = await (await call('passkey/register-options', {})).json();
+  const regClient2 = new TextEncoder().encode(JSON.stringify({ type: 'webauthn.create', challenge: regOptions2.challenge, origin: ORIGIN }));
+  assert.equal((await call('passkey/register', { id: credId, clientDataJSON: b64u(regClient2), authenticatorData: b64u(await authData(0)), publicKey: b64u(spki), alg: -7 })).status, 200);
+  assert.deepEqual(tables.app_passkeys.map(k => [k.id, k.account]), [[credId, 'rozha']], 'only the public key is stored, for the signed-in account');
+  const signIn = async ({ origin = ORIGIN, counter = 1, key = keys.privateKey, tamper = false, challenge } = {}) => {
+    const c = challenge ?? (await (await call('passkey/login-options', {}, 'POST', false)).json()).challenge;
+    const client = new TextEncoder().encode(JSON.stringify({ type: 'webauthn.get', challenge: c, origin }));
+    const ad = await authData(counter);
+    const signed = new Uint8Array([...ad, ...(await sha(client))]);
+    const sig = der(new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, signed)));
+    if (tamper) ad[36] ^= 1;
+    return { challenge: c, response: await call('passkey/login', { id: credId, clientDataJSON: b64u(client), authenticatorData: b64u(ad), signature: b64u(sig) }, 'POST', false) };
+  };
+  const good = await signIn();
+  assert.equal(good.response.status, 200, 'a real Face ID signature signs in');
+  const session = await good.response.json();
+  assert.equal(session.account, 'rozha'); assert.ok(session.token, 'and gets a session like the PIN');
+  assert.equal((await signIn({ challenge: good.challenge, counter: 2 })).response.status, 401, 'a used challenge cannot be replayed');
+  assert.equal((await signIn({ origin: 'https://evil.example' , counter: 3 })).response.status, 401, 'another website cannot use the passkey');
+  assert.equal((await signIn({ counter: 4, tamper: true })).response.status, 401, 'a changed authenticator message breaks the signature');
+  const other = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  assert.equal((await signIn({ counter: 5, key: other.privateKey })).response.status, 401, 'another key cannot sign in as this passkey');
+  assert.equal((await signIn({ counter: 1 })).response.status, 401, 'a signature counter that goes backwards (a copied key) is refused');
+  assert.equal((await signIn({ counter: 6 })).response.status, 200, 'the real key keeps working');
+  // New PINs through the secret code end every Face ID sign-in too.
+  tables.app_recovery_tickets.push({ token_hash: await digest('pk-ticket'), stage: 'verified', expires_at: new Date(Date.now() + 60000).toISOString() });
+  assert.equal((await call('recovery/save', { ticket: 'pk-ticket', rozhaPin: '432198' }, 'POST', false)).status, 200);
+  assert.equal(tables.app_passkeys.length, 0, 'changing the PINs removes every passkey');
 } finally { console.error = mute; }
-console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, one-use recovery)');
+console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, one-use recovery, Face ID passkeys)');

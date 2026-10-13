@@ -36,6 +36,16 @@ self.addEventListener('push', event => {
     } catch (e) {
       await self.registration.showNotification(title, { body: data.body || '', data: { kind, supplierId, view, body: data.body || '' } });
     }
+    /* The red number on the app icon: a note, an answer, or one of Rico's warnings adds one while the
+       app is closed. The app sets the exact number again whenever it is opened. */
+    if ((kind === 'note' || kind === 'assistant') && self.navigator && self.navigator.setAppBadge) {
+      try {
+        const cache = await caches.open('ricotta-badge');
+        const prev = Number(await (await cache.match('/badge'))?.text() || 0);
+        await cache.put('/badge', new Response(String(prev + 1)));
+        await self.navigator.setAppBadge(prev + 1);
+      } catch (e) { /* the badge is a nice-to-have */ }
+    }
     /* If the app is open right now, show the update message straight away. */
     if (kind === 'update') {
       const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });

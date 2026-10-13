@@ -151,8 +151,10 @@ function funFact(){
 /* ---------- Kitchen notes ---------- */
 const notesNow = () => Array.isArray(state.notes) ? state.notes : [];
 const unreadNotes = () => isRozha() ? [] : notesNow().filter(n=>!n.readAt);
+/* Rozha: answers from Yunis she hasn't opened yet. */
+const unseenReplies = () => isRozha() ? notesNow().filter(n=>n.reply && !n.replySeenAt) : [];
 function renderNotesBell(){
-  const unread = unreadNotes().length;
+  const unread = unreadNotes().length + unseenReplies().length;
   return `<button type="button" class="chip notes-bell${unread ? ' has-new' : ''}" id="notesBell" aria-label="${esc(t('notesTitle'))}${unread ? ' · ' + esc(t('notesUnread')(unread)) : ''}">${ICON_NOTE}${unread ? `<b>${unread}</b>` : ''}</button>`;
 }
 function paintNotesBell(){
@@ -160,6 +162,7 @@ function paintNotesBell(){
   if(!old) return;
   old.outerHTML = renderNotesBell();
   document.getElementById('notesBell').onclick = openNotesSheet;
+  updateAppBadge();
 }
 /* Yunis: a sticky note at the top of the Order screen while a note is unread. */
 function renderNoteSticky(){
@@ -202,8 +205,10 @@ function noteRow(n){
   // Rozha sees whether Yunis has read it; Yunis only sees what he marked done.
   const seen = n.doneAt ? `<span class="note-state done">${ICON_CHECK_SM} ${esc(t('notesDone'))} · ${esc(timeAgo(n.doneAt))}</span>`
     : !rozha ? '' : n.readAt ? `<span class="note-state seen">${esc(t('notesSeen')(timeAgo(n.readAt)))}</span>` : `<span class="note-state">${esc(t('notesNotSeen'))}</span>`;
+  const reply = n.reply ? `<div class="note-reply${rozha && !n.replySeenAt ? ' new' : ''}"><b>${esc(accountLabel('yunis'))}</b><span dir="auto">${esc(n.reply)}</span><small>${esc(timeAgo(n.repliedAt))}</small></div>`
+    : rozha ? '' : `<div class="note-quick">${NOTE_QUICK_REPLIES.map(k=>`<button type="button" class="chip" data-note-quick="${n.id}" data-text="${esc(t(k))}">${esc(t(k))}</button>`).join('')}<button type="button" class="chip" data-note-reply="${n.id}">${ICON_SEND} ${esc(t('notesReply'))}</button></div>`;
   return `<div class="note-row${n.doneAt ? ' is-done' : ''}">
-    <div class="note-row-body"><div class="note-text" dir="auto">${esc(n.body)}</div><div class="note-meta"><span>${esc(timeAgo(n.at))}</span>${seen}</div></div>
+    <div class="note-row-body"><div class="note-text" dir="auto">${esc(n.body)}</div><div class="note-meta"><span>${esc(timeAgo(n.at))}</span>${seen}</div>${reply}</div>
     ${rozha ? `<button type="button" class="icon-btn danger" data-note-del="${n.id}" aria-label="${esc(t('notesDelete'))}">${ICON_DELETE}</button>`
       : `<button type="button" class="btn ${n.doneAt ? 'btn-ghost' : 'btn-primary'} note-done-btn" data-note-toggle="${n.id}">${n.doneAt ? esc(t('notesNotDone')) : esc(t('notesMarkDone'))}</button>`}
   </div>`;
@@ -213,6 +218,11 @@ function paintNotesList(){
   if(!list) return;
   const notes = notesNow();
   list.innerHTML = notes.length ? notes.map(noteRow).join('') : `<div class="field-hint notes-empty">${esc(isRozha() ? t('notesEmptyRozha') : t('notesEmptyYunis'))}</div>`;
+  list.querySelectorAll('[data-note-quick]').forEach(b=>b.onclick=()=>withBusy(b, ()=>replyToNote(Number(b.dataset.noteQuick), b.dataset.text)));
+  list.querySelectorAll('[data-note-reply]').forEach(b=>b.onclick=async()=>{
+    const text = await showPrompt(esc(t('notesReplyPrompt')), {maxLength:300, okLabel:t('notesSend')});
+    if(text && text.trim()) withBusy(b, ()=>replyToNote(Number(b.dataset.noteReply), text.trim()));
+  });
   list.querySelectorAll('[data-note-toggle]').forEach(b=>b.onclick=()=>{ const n = notesNow().find(x=>x.id === Number(b.dataset.noteToggle)); if(n) withBusy(b, ()=>setNoteDone(n.id, !n.doneAt)); });
   list.querySelectorAll('[data-note-del]').forEach(b=>b.onclick=async()=>{
     if(!(await showConfirm(t('notesDelete') + '?'))) return;
@@ -223,6 +233,25 @@ function paintNotesList(){
     paintNotesList();
   });
 }
+/* Yunis answers a note: a quick "Got it" or a few words. Rozha gets a notification. */
+const NOTE_QUICK_REPLIES = ['notesQuickOk', 'notesQuickDone', 'notesQuickCall'];
+async function replyToNote(id, text){
+  const r = await api(`notes/${id}/reply`, {method:'POST', body:{body:text}});
+  if(!r.ok || !r.data){ toast(t('saveFailed'), 'error'); return; }
+  state.notes = notesNow().map(n=>n.id === id ? r.data : n);
+  paintNotesList(); paintNotesBell();
+  toast(t('notesReplied'));
+  if(state.view === 'order' && !refreshBlocked()) render();
+}
+/* Rozha opened the notes: Yunis's answers count as seen. */
+async function markRepliesSeen(){
+  const unseen = unseenReplies();
+  if(!unseen.length) return;
+  const now = new Date().toISOString();
+  unseen.forEach(n=>{ n.replySeenAt = now; });
+  paintNotesBell();
+  await api('notes/replies-seen', {method:'POST'});
+}
 function openNotesSheet(){
   const rozha = isRozha();
   const {el} = openKitchenSheet('notes-sheet', `
@@ -230,7 +259,7 @@ function openNotesSheet(){
     ${rozha ? `<form class="notes-compose" id="notesCompose"><textarea id="noteInput" rows="2" maxlength="500" placeholder="${esc(t('notesPlaceholder'))}" dir="auto"></textarea><button type="submit" class="btn btn-primary" id="noteSend">${ICON_SEND} ${esc(t('notesSend'))}</button></form>` : ''}
     <div class="sel-list notes-list"></div>`, t('notesTitle'));
   paintNotesList();
-  if(!rozha) markNotesRead();
+  if(!rozha) markNotesRead(); else setTimeout(markRepliesSeen, 1500);
   const form = el.querySelector('#notesCompose');
   if(form) form.onsubmit = e=>{
     e.preventDefault();
@@ -247,11 +276,11 @@ function openNotesSheet(){
   };
 }
 /* A note arrived while the app is open: a banner slides down (Yunis only). */
-function noteArrived(n){
+function noteArrived(n, title = t('notesNew')){
   document.getElementById('noteBanner')?.remove();
   const el = document.createElement('button');
   el.type = 'button'; el.id = 'noteBanner'; el.className = 'note-banner';
-  el.innerHTML = `<span class="note-banner-icon">${ICON_NOTE}</span><span class="note-banner-text"><b>${esc(t('notesNew'))}</b><span dir="auto">${esc(n.body)}</span></span>`;
+  el.innerHTML = `<span class="note-banner-icon">${ICON_NOTE}</span><span class="note-banner-text"><b>${esc(title)}</b><span dir="auto">${esc(n.body)}</span></span>`;
   document.body.appendChild(el);
   try{ if(soundOn('sent')) playSeasonTones([[880,0,.18],[1175,.12,.3]], .1); }catch(_){}
   const close = ()=>{ el.classList.add('out'); setTimeout(()=>el.remove(), 300); };
@@ -263,10 +292,14 @@ let notesLoadedFor = null;   // the account whose notes are already on screen (n
 function syncNotes(list){
   if(!Array.isArray(list)) return;
   const known = new Set(notesNow().map(n=>n.id));
-  const fresh = state.account === 'yunis' && notesLoadedFor === state.account ? list.filter(n=>!known.has(n.id) && !n.readAt) : [];
+  const loaded = notesLoadedFor === state.account;
+  const fresh = state.account === 'yunis' && loaded ? list.filter(n=>!known.has(n.id) && !n.readAt) : [];
+  const repliedBefore = new Set(notesNow().filter(n=>n.reply).map(n=>n.id));
+  const replies = state.account === 'rozha' && loaded ? list.filter(n=>n.reply && !n.replySeenAt && !repliedBefore.has(n.id)) : [];
   notesLoadedFor = state.account;
   state.notes = list;
   if(fresh.length) noteArrived(fresh[0]);
+  else if(replies.length) noteArrived({body:replies[0].reply}, t('notesReplyNew'));
   paintNotesBell();
 }
 /* The streak and notes come quicker than the full refresh: checked every 45 seconds while the app is
@@ -277,13 +310,16 @@ async function kitchenCheck(){
   kitchenCheckedAt = Date.now();
   const st = await api('streak');
   if(st.ok && st.data && typeof st.data.count === 'number') streakArrived(st.data);
-  if(state.account !== 'yunis') return;
+  // Yunis gets Rozha's new notes; Rozha gets Yunis's answers.
   const r = await api('notes');
   if(r.ok && Array.isArray(r.data)){
-    const before = notesNow().map(n=>n.id + ':' + !!n.readAt + ':' + !!n.doneAt).join();
+    const sig = ()=>notesNow().map(n=>n.id + ':' + !!n.readAt + ':' + !!n.doneAt + ':' + !!n.reply).join();
+    const before = sig();
     syncNotes(r.data);
-    if(state.view === 'order' && before !== notesNow().map(n=>n.id + ':' + !!n.readAt + ':' + !!n.doneAt).join() && !refreshBlocked()) render();
+    if(before !== sig() && document.querySelector('.notes-sheet')) paintNotesList();
+    if(state.view === 'order' && before !== sig() && !refreshBlocked()) render();
   }
+  updateAppBadge();
 }
 setInterval(kitchenCheck, 45000);
 document.addEventListener('visibilitychange', kitchenCheck);
@@ -314,7 +350,7 @@ function renderReportCard(){
   const warn = left <= 3;
   return `<button type="button" class="report-card${warn ? ' warn' : ''}" id="reportOpen">
     <span class="report-grade grade-${esc(d.grade.replace('+','p'))}">${esc(d.grade)}</span>
-    <span class="report-card-text"><b>${esc(t('reportTitle')(monthName()))}</b><span>${esc(t('reportGradeHint')(d.days, d.elapsed))} · ${d.orders} ${esc(t('reportOrders').toLowerCase())}</span>${warn ? `<em>${esc(t('reportClearsIn')(left))}</em>` : ''}</span>
+    <span class="report-card-text"><b>${esc(t('reportTitle')(monthName()))}</b><span>${esc(t('reportGradeHint')(d.days, d.elapsed))} · ${d.orders} ${esc(t('reportOrders').toLowerCase())}</span>${lastMonthLine() ? `<small>${esc(lastMonthLine())}</small>` : ''}${warn ? `<em>${esc(t('reportClearsIn')(left))}</em>` : ''}</span>
     ${ricoFace(warn ? 'worried' : 'happy', 'rico-sm')}
   </button>`;
 }
@@ -383,3 +419,186 @@ async function undoOrder(id){
   toast(t('orderUndone'));
   if(state.view === 'history' || state.view === 'order') render();
 }
+
+/* ---------- Order cut-offs ----------
+   A supplier can stop taking orders at a set time (Erbil). On its order days (its reminder days, or every
+   day without them) the Order screen counts down to it; after it, "Closed today". Hidden once sent today. */
+const BAGHDAD_HM = new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Baghdad', hour:'2-digit', minute:'2-digit', hourCycle:'h23'});
+function erbilClock(){
+  const date = erbilDate(new Date().toISOString());
+  const [h, m] = BAGHDAD_HM.format(new Date()).split(':').map(Number);
+  return {date, minutes:h * 60 + m, weekday:new Date(date + 'T12:00:00Z').getUTCDay()};
+}
+const sentTodayTo = (supplierId, today)=>state.history.some(h=>erbilDate(h.date) === today && (h.entries || []).some(e=>e.supplierId === supplierId));
+function cutoffState(sup){
+  if(!sup || !/^([01]\d|2[0-3]):[0-5]\d$/.test(sup.cutoff || '')) return null;
+  const now = erbilClock(), r = sup.reminder;
+  const days = r && r.enabled && Array.isArray(r.days) && r.days.length ? r.days.map(Number) : [0,1,2,3,4,5,6];
+  if(!days.includes(now.weekday)) return null;
+  const [h, m] = sup.cutoff.split(':').map(Number);
+  return {time:sup.cutoff, left:h * 60 + m - now.minutes, sent:sentTodayTo(sup.id, now.date)};
+}
+function cutoffChipInner(c){
+  if(c.left <= 0) return `${esc(t('cutoffClosed'))}`;
+  const left = c.left >= 60 ? t('cutoffHoursLeft')(Math.floor(c.left / 60), c.left % 60) : t('cutoffMinLeft')(c.left);
+  return `⏰ ${esc(c.left <= 60 ? left : t('cutoffUntil')(reminderTimeLabel(c.time)))}`;
+}
+function cutoffChip(supplierId){
+  const c = cutoffState(state.suppliers.find(s=>s.id === supplierId));
+  if(!c || c.sent) return '';
+  return `<span class="cut-chip${c.left <= 0 ? ' closed' : c.left <= 60 ? ' soon' : ''}" data-cutoff="${esc(supplierId)}" title="${esc(t('cutoffLabel'))} ${esc(reminderTimeLabel(c.time))}">${cutoffChipInner(c)}</span>`;
+}
+/* The countdown moves every minute without redrawing the screen. */
+function paintCutoffs(){
+  document.querySelectorAll('[data-cutoff]').forEach(el=>{
+    const c = cutoffState(state.suppliers.find(s=>s.id === el.dataset.cutoff));
+    if(!c || c.sent){ el.remove(); return; }
+    el.className = 'cut-chip' + (c.left <= 0 ? ' closed' : c.left <= 60 ? ' soon' : '');
+    el.innerHTML = cutoffChipInner(c);
+  });
+}
+setInterval(()=>{ if(document.visibilityState === 'visible') paintCutoffs(); }, 30000);
+
+/* ---------- Repeat orders ----------
+   A sent order saved to come back on chosen weekdays. On those days the Order screen offers it with one
+   tap ("Add to order"); nothing is sent by itself. Shared by both accounts. */
+const repeatDaysText = days=>days.length === 7 ? t('everyDay') : DAY_ORDER.filter(d=>days.includes(d)).map(d=>t('daysShort')[d]).join(', ');
+const repeatItemCount = r=>(r.entries || []).reduce((n, e)=>n + (e.items || []).filter(i=>state.items.some(x=>x.id === i.itemId)).length, 0);
+function repeatHiddenToday(){ const v = lget('repeatHidden'); return v && v.date === erbilClock().date ? v.ids : []; }
+function repeatsToday(){
+  const now = erbilClock(), hidden = repeatHiddenToday();
+  return (state.repeats || []).filter(r=>(r.days || []).includes(now.weekday) && !hidden.includes(r.id) && repeatItemCount(r)
+    && !(r.entries || []).every(e=>e.supplierId && sentTodayTo(e.supplierId, now.date)));
+}
+function renderRepeatCards(){
+  return repeatsToday().slice(0, 3).map(r=>{
+    const names = [...new Set((r.entries || []).map(e=>supplierName(e.supplierId)))];
+    return `<div class="repeat-card glass">
+      <span class="repeat-ico" aria-hidden="true">${ICON_REPEAT}</span>
+      <div class="repeat-text"><b>${esc(t('repeatToday'))}</b><span dir="auto">${esc(r.name)}</span><small dir="auto">${esc(t('itemCount')(repeatItemCount(r)))} · ${esc(names.join(', '))}</small></div>
+      <button type="button" class="btn btn-primary" data-repeat-add="${esc(r.id)}">${esc(t('repeatAdd'))}</button>
+      <button type="button" class="rico-suggest-x" data-repeat-hide="${esc(r.id)}" aria-label="${esc(t('ricoSuggestDismiss'))}">×</button>
+    </div>`;
+  }).join('');
+}
+function hideRepeatToday(id){
+  const date = erbilClock().date;
+  lset('repeatHidden', {date, ids:[...repeatHiddenToday(), id]});
+}
+function attachRepeatCards(){
+  document.querySelectorAll('[data-repeat-add]').forEach(b=>b.onclick=()=>{
+    const r = (state.repeats || []).find(x=>x.id === b.dataset.repeatAdd);
+    if(!r) return;
+    const before = {...state.cart};
+    let n = 0;
+    (r.entries || []).forEach(e=>(e.items || []).forEach(i=>{
+      if(!state.items.some(x=>x.id === i.itemId)) return;   // deleted from the catalog since
+      state.cart[i.itemId] = Math.max(state.cart[i.itemId] || 0, i.qty); n++;
+    }));
+    hideRepeatToday(r.id);
+    persistCartDraft(); render();
+    toast(t('repeatAdded')(n, r.name), 'ok', {undo:()=>{ state.cart = before; persistCartDraft(); render(); }});
+  });
+  document.querySelectorAll('[data-repeat-hide]').forEach(b=>b.onclick=()=>{ hideRepeatToday(b.dataset.repeatHide); render(); });
+}
+/* From History: save this order to come back on chosen weekdays. */
+function openRepeatForm(rec){
+  const entries = (rec.entries || []).map(e=>({supplierId:e.supplierId || null, items:(e.items || []).filter(i=>i.itemId).map(i=>({itemId:i.itemId, qty:i.qty}))})).filter(e=>e.items.length);
+  if(!entries.length) return;
+  const names = [...new Set(rec.entries.map(e=>supplierName(e.supplierId)))].join(', ');
+  const today = erbilClock().weekday;
+  showFormModal({
+    title: t('repeatTitle'),
+    bodyHtml: `<div class="field"><label for="rpName">${esc(t('name'))}</label><input id="rpName" maxlength="120" value="${esc(names.slice(0, 120))}"></div>
+      <div class="field"><label>${esc(t('repeatDaysLabel'))}</label>
+        <div class="day-chips">${DAY_ORDER.map(d=>`<button type="button" class="day-chip ${d === today ? 'on' : ''}" data-day="${d}">${t('daysShort')[d]}</button>`).join('')}</div></div>
+      <div class="notif-sub">${esc(t('repeatHint'))}</div>`,
+    okLabel: t('save'),
+    onOpen: box=>box.querySelectorAll('.day-chip').forEach(c=>c.onclick=()=>c.classList.toggle('on')),
+    onSubmit: async ()=>{
+      const name = document.getElementById('rpName').value.trim();
+      const days = [...document.querySelectorAll('.modal-form .day-chip.on, #modalRoot .day-chip.on')].map(c=>Number(c.dataset.day));
+      if(!name) return {error:t('nameRequired')};
+      if(!days.length) return {error:t('reminderDaysRequired')};
+      const r = await api('repeat-orders', {method:'POST', body:{name, days, entries}});
+      if(!r.ok || !r.data || !r.data.id) return {error:t(r.status === 409 ? 'repeatTooMany' : 'saveFailed')};
+      state.repeats = [...(state.repeats || []), r.data];
+      toast(t('repeatSaved')(name, repeatDaysText(days)));
+      if(state.view === 'history' || state.view === 'order') render();
+      return {};
+    }
+  });
+}
+/* History -> Repeat orders: every saved one, with its days; remove any. */
+function openRepeatList(){
+  const rows = ()=>(state.repeats || []).map(r=>`<div class="repeat-row"><div><b dir="auto">${esc(r.name)}</b><small>${esc(repeatDaysText(r.days || []))} · ${esc(t('itemCount')(repeatItemCount(r)))}</small></div>
+    <button type="button" class="icon-btn danger" data-repeat-del="${esc(r.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button></div>`).join('') || `<div class="notif-sub">${esc(t('repeatNone'))}</div>`;
+  const {el} = openKitchenSheet('repeat-sheet', `<div class="sel-title">${esc(t('repeatListTitle'))}</div>
+    <div class="notif-sub">${esc(t('repeatListHint'))}</div><div class="repeat-list">${rows()}</div>`, t('repeatListTitle'));
+  const bind = ()=>el.querySelectorAll('[data-repeat-del]').forEach(b=>b.onclick=async()=>{
+    const r = (state.repeats || []).find(x=>x.id === b.dataset.repeatDel);
+    if(!r || !(await showConfirm(`<b>${esc(r.name)}</b><br>${esc(t('repeatConfirmDelete'))}`))) return;
+    const res = await api(`repeat-orders/${encodeURIComponent(r.id)}`, {method:'DELETE'});
+    if(!res.ok){ await showAlert(t('saveFailed')); return; }
+    state.repeats = state.repeats.filter(x=>x.id !== r.id);
+    el.querySelector('.repeat-list').innerHTML = rows(); bind();
+    if(state.view === 'history') render();
+  });
+  bind();
+}
+
+/* ---------- The month archive ----------
+   History is cleared at the start of each month; the server keeps a summary of every finished month. */
+const monthKeyOf = d=>d.toISOString().slice(0, 7);
+function prevMonthKey(){ const [y, m] = erbilClock().date.split('-').map(Number); return monthKeyOf(new Date(Date.UTC(y, m - 2, 15))); }
+function monthLabel(key){ const [y, m] = key.split('-').map(Number); return formatIraqDateTime(new Date(Date.UTC(y, m - 1, 15, 9)).toISOString(), {month:'long', year:'numeric'}); }
+function lastMonthLine(){
+  const m = (state.months || []).find(x=>x.month === prevMonthKey());
+  return m ? t('monthsLastLine')(m.orders || 0, m.activeDays || 0) : '';
+}
+function openMonthsSheet(){
+  const list = state.months || [];
+  const card = (m, i)=>{
+    const before = list[i + 1], delta = before ? (m.orders || 0) - (before.orders || 0) : null;
+    const top = (m.topItems || []).slice(0, 5).map(x=>`<li><span dir="auto">${esc(x.name)}</span><b>${esc(t('monthsTimes')(x.times))} · ${Number(x.qty)} ${esc(unitLabel(x.unit))}</b></li>`).join('');
+    const sups = (m.suppliers || []).slice(0, 4).map(x=>`<li><span dir="auto">${esc(x.name === '-' ? t('noSupplier') : x.name)}</span><b>${esc(t('monthsOrders')(x.orders))}</b></li>`).join('');
+    const who = Object.entries(m.byPerson || {}).filter(([k])=>accountLabel(k)).map(([k, n])=>`${accountLabel(k)} ${n}`).join(' · ');
+    return `<details class="month-card"${i === 0 ? ' open' : ''}>
+      <summary><b>${esc(monthLabel(m.month))}</b><span>${esc(t('monthsOrders')(m.orders || 0))} · ${esc(t('reportGradeHint')(m.activeDays || 0, new Date(Date.UTC(+m.month.slice(0, 4), +m.month.slice(5, 7), 0)).getUTCDate()))}${delta === null ? '' : ` · <em class="${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : ''}${delta}</em>`}</span></summary>
+      ${top ? `<div class="month-sub">${esc(t('reportTop'))}</div><ul class="month-list">${top}</ul>` : ''}
+      ${sups ? `<div class="month-sub">${esc(t('reportSuppliers'))}</div><ul class="month-list">${sups}</ul>` : ''}
+      ${who ? `<div class="month-sub">${esc(t('reportWho'))}</div><div class="notif-sub">${esc(who)}</div>` : ''}
+    </details>`;
+  };
+  openKitchenSheet('months-sheet', `<div class="sel-title">${esc(t('monthsTitle'))}</div>
+    <div class="notif-sub">${esc(t('monthsHint'))}</div>
+    <div class="months-list">${list.length ? list.map(card).join('') : `<div class="empty-mini">${esc(t('monthsNone'))}</div>`}</div>`, t('monthsTitle'));
+}
+
+/* ---------- The red number on the app icon ----------
+   Unread notes (Yunis), unseen answers (Rozha) and suppliers whose order is late (an hour past the
+   reminder, nothing sent today). Phones show it on the Home Screen icon (iPhone: notifications on). */
+function lateSupplierCount(){
+  const now = erbilClock();
+  return state.suppliers.filter(s=>{
+    const r = s.reminder;
+    if(!r || !r.enabled || !/^\d\d:\d\d$/.test(r.time || '')) return false;
+    const days = Array.isArray(r.days) && r.days.length ? r.days.map(Number) : [0,1,2,3,4,5,6];
+    if(!days.includes(now.weekday)) return false;
+    const [h, m] = r.time.split(':').map(Number);
+    return now.minutes >= h * 60 + m + 60 && !sentTodayTo(s.id, now.date);
+  }).length;
+}
+function appBadgeCount(){
+  return state.account ? unreadNotes().length + unseenReplies().length + lateSupplierCount() : 0;
+}
+function updateAppBadge(){
+  const n = appBadgeCount();
+  try{
+    if(n && navigator.setAppBadge) navigator.setAppBadge(n).catch(()=>{});
+    else if(navigator.clearAppBadge) navigator.clearAppBadge().catch(()=>{});
+    // The service worker adds to this number while the app is closed.
+    if(window.caches) caches.open('ricotta-badge').then(c=>c.put('/badge', new Response(String(n)))).catch(()=>{});
+  }catch(_){ /* the badge is a nice-to-have */ }
+}
+setInterval(()=>{ if(document.visibilityState === 'visible') updateAppBadge(); }, 60000);

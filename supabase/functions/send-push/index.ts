@@ -11,14 +11,17 @@
 //       {type:"supplier-test", supplierId}        test of one supplier's reminder
 //       {type:"assistant", title, bodyEn, bodyKu, bodyAr}  a message sent through Rico
 //       {type:"note", account, body}              Rozha left a kitchen note (only that account's phones)
+//       {type:"reply", account, body}             Yunis answered one of Rozha's notes (only Rozha's phones)
 //
 // Every tick also runs Rico's own messages: a cheer at 09:00 Erbil time (with
 // the day's weather), an hour after a supplier's reminder time (or the daily
 // reminder) with nothing sent, a telling-off, at 20:00 a warning when the
 // kitchen streak would end at midnight, on the last day of the month a
 // reminder to save the month's report card, and a nudge for Yunis when
-// Rozha's note has waited two hours unread -- each once, in the app (Rico's
-// inbox) and as a notification. Erbil's weather is refreshed every hour.
+// Rozha's note has waited two hours unread, 30 minutes before a supplier's
+// order cut-off when nothing has gone to it yet, and a weekly summary on
+// Friday evening -- each once, in the app (Rico's inbox) and as a
+// notification. Erbil's weather is refreshed every hour.
 //
 // Every push is sent in the recipient phone's own language (English, Kurdish
 // or Arabic), and addresses the person signed in there by name when known.
@@ -359,6 +362,68 @@ async function notesTick() {
   }, { view: "notes" }, "yunis");
 }
 
+/* ---- Order cut-offs: 30 minutes before a supplier stops taking orders, if nothing went to it today ---- */
+const CUTOFF_WARN_MIN = 30;
+async function cutoffTick() {
+  const now = erbilNow();
+  const { data: sups } = await sb.from("app_suppliers").select("id,name,reminder,cutoff").not("cutoff", "is", null);
+  const soon = (sups ?? []).filter((s: any) => {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(s.cutoff))) return false;
+    const r = s.reminder;
+    const days = r?.enabled && Array.isArray(r.days) && r.days.length ? r.days.map(Number) : ALL_DAYS;
+    if (!days.includes(now.weekday)) return false;
+    const [h, m] = String(s.cutoff).split(":").map(Number);
+    const left = h * 60 + m - now.minutes;
+    return left > 0 && left <= CUTOFF_WARN_MIN;
+  });
+  if (!soon.length) return { skipped: "nothing closing" };
+  const { data: orders } = await sb.from("app_orders").select("id").eq("status", "sent").gte("sent_at", `${now.date}T00:00:00${ERBIL_OFFSET}`);
+  const ids = (orders ?? []).map((o: any) => o.id);
+  const { data: lines } = ids.length ? await sb.from("app_order_lines").select("supplier_id").in("order_id", ids) : { data: [] as any[] };
+  const sent = new Set((lines ?? []).map((l: any) => l.supplier_id));
+  const out: unknown[] = [];
+  for (const s of soon) {
+    if (sent.has(s.id)) continue;
+    if (!(await claimAlert(`cutoff|${s.id}|${now.date}`, "cutoff", s.id))) continue;
+    const name = String(s.name).slice(0, 60), time = String(s.cutoff);
+    out.push({ supplier: name, ...(await ricoSays("cutoff", `cutoff|${s.id}|${now.date}`, {
+      mood: "worried",
+      en: (n) => `${hi("Quick", n, ", ")}! ⏰ ${name} stops taking orders at ${time} and nothing has gone to them today. Want me to prepare it?`,
+      ku: (n) => `${hi("زوو", n)}! ⏰ ${name} کاتژمێر ${time} داواکاری وەرناگرێت و ئەمڕۆ هیچیان بۆ نەنێردراوە. با ئێستا ئامادەی بکەم؟`,
+      ar: (n) => `${ya(n)}! ⏰ ${name} يتوقف عن استلام الطلبات الساعة ${time} ولم يُرسل له شيء اليوم. هل أجهّزه لك؟`,
+    }, { supplierId: String(s.id) })) });
+  }
+  return out;
+}
+
+/* ---- Friday evening: the week in a few lines (orders vs last week, the streak, the top item) ---- */
+async function weeklyTick() {
+  const now = erbilNow();
+  if (now.weekday !== 5 || now.minutes < 17 * 60 || now.minutes >= 21 * 60) return { skipped: "not the time" };
+  if (!(await claimAlert(`weekly|${now.date}`, "weekly", null))) return { skipped: "already sent" };
+  const dayMs = 86400_000, end = Date.now(), start = end - 7 * dayMs;
+  const { data: orders } = await sb.from("app_orders").select("id,sent_at").eq("status", "sent").gte("sent_at", new Date(start - 7 * dayMs).toISOString());
+  const thisWeek = (orders ?? []).filter((o: any) => Date.parse(o.sent_at) >= start), lastWeek = (orders ?? []).filter((o: any) => Date.parse(o.sent_at) < start);
+  const ids = thisWeek.map((o: any) => o.id);
+  const { data: lines } = ids.length ? await sb.from("app_order_lines").select("item_name").in("order_id", ids) : { data: [] as any[] };
+  const tally = new Map<string, number>();
+  for (const l of lines ?? []) tally.set(l.item_name, (tally.get(l.item_name) ?? 0) + 1);
+  const top = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+  const { data: st } = await sb.from("app_streak").select("count,last_day").eq("id", true).maybeSingle();
+  const y = new Date(`${now.date}T12:00:00Z`); y.setUTCDate(y.getUTCDate() - 1);
+  const streak = st && (String(st.last_day) === now.date || String(st.last_day) === y.toISOString().slice(0, 10)) ? Number(st.count) : 0;
+  const k = thisWeek.length, p = lastWeek.length;
+  const trend = { en: k > p ? `up from ${p} last week` : k < p ? `down from ${p} last week` : "the same as last week",
+    ku: k > p ? `زیاتر لە ${p}ی هەفتەی پێشوو` : k < p ? `کەمتر لە ${p}ی هەفتەی پێشوو` : "وەک هەفتەی پێشوو",
+    ar: k > p ? `أكثر من ${p} في الأسبوع الماضي` : k < p ? `أقل من ${p} في الأسبوع الماضي` : "مثل الأسبوع الماضي" };
+  return await ricoSays("weekly", `weekly|${now.date}`, {
+    mood: k >= p && k > 0 ? "excited" : "calm",
+    en: (n) => `${hi("Happy Friday", n, ", ")}! 📊 This week: ${k} order${k === 1 ? "" : "s"}, ${trend.en}.${top ? ` Most ordered: ${top}.` : ""}${streak ? ` Streak: ${streak} 🔥.` : ""} Have a good weekend!`,
+    ku: (n) => `${hi("هەینیت باش", n)}! 📊 ئەم هەفتەیە: ${k} داواکاری، ${trend.ku}.${top ? ` زۆرترین داواکراو: ${top}.` : ""}${streak ? ` زنجیرە: ${streak} 🔥.` : ""} پشووی خۆش!`,
+    ar: (n) => `${hi("جمعة مباركة", n, " يا ")}! 📊 هذا الأسبوع: ${k} طلب، ${trend.ar}.${top ? ` الأكثر طلبًا: ${top}.` : ""}${streak ? ` السلسلة: ${streak} 🔥.` : ""} عطلة سعيدة!`,
+  }, { view: "history" });
+}
+
 /* Rico's good-morning message: which suppliers are due today. */
 async function cheerTick() {
   const now = erbilNow();
@@ -375,6 +440,14 @@ async function cheerTick() {
   const listEn = dueToday.slice(0, 6).join(", ");
   const k = dueToday.length;
   const wx = await weatherWords().catch(() => ({ en: "", ku: "", ar: "" }));
+  // Repeat orders due today are mentioned too (the Order screen offers them with one tap).
+  const { data: reps } = await sb.from("app_repeat_orders").select("name,days");
+  const due = (reps ?? []).filter((r: any) => (r.days ?? []).map(Number).includes(now.weekday)).map((r: any) => String(r.name).slice(0, 40)).slice(0, 4);
+  if (due.length) {
+    wx.en += ` Repeat order${due.length === 1 ? "" : "s"} today: ${due.join(", ")}.`;
+    wx.ku += ` داواکاریی دووبارە ئەمڕۆ: ${due.join("، ")}.`;
+    wx.ar += ` الطلبات المتكررة اليوم: ${due.join("، ")}.`;
+  }
   return await ricoSays("cheer", `cheer|${now.date}`, k ? {
     mood: "excited",
     en: (n) => `${hi("Good morning", n, ", ")}! ☀️ ${k} supplier${k === 1 ? " is" : "s are"} due today: ${listEn}.${wx.en} Let's get the orders out on time!`,
@@ -439,6 +512,8 @@ Deno.serve(async (req) => {
         try { result.streak = await streakTick(); } catch (e) { console.error("streak tick failed", e); result.streak = { error: true }; }
         try { result.report = await reportTick(); } catch (e) { console.error("report tick failed", e); result.report = { error: true }; }
         try { result.notes = await notesTick(); } catch (e) { console.error("notes tick failed", e); result.notes = { error: true }; }
+        try { result.cutoff = await cutoffTick(); } catch (e) { console.error("cutoff tick failed", e); result.cutoff = { error: true }; }
+        try { result.weekly = await weeklyTick(); } catch (e) { console.error("weekly tick failed", e); result.weekly = { error: true }; }
         return json(result);
       }
       case "update": {
@@ -465,6 +540,15 @@ Deno.serve(async (req) => {
           title: L(lang, "📝 Note from Rozha", "📝 تێبینی لە ڕۆژاوە", "📝 ملاحظة من روژا"),
           body: note, kind: "note", view: "notes", tag: `ricotta-note-${Date.now()}`,
         }), account));
+      }
+      case "reply": {
+        // Yunis answered one of Rozha's notes: only Rozha's phones.
+        const reply = String(body.body ?? "").slice(0, 300);
+        if (!reply) return json({ error: "invalid reply" }, 400);
+        return json(await sendReminder((lang) => ({
+          title: L(lang, "💬 Yunis replied", "💬 یونس وەڵامی دایەوە", "💬 ردّ يونس"),
+          body: reply, kind: "note", view: "notes", tag: `ricotta-reply-${Date.now()}`,
+        }), "rozha"));
       }
       case "reminder-now":
         return json(await sendReminder((lang, name) => ({ ...dailyPayload(lang, name), title: L(lang, "Ricotta Orders (test)", "Ricotta Orders (تاقیکاری)", "Ricotta Orders (تجربة)") })));

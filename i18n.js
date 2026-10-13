@@ -718,3 +718,65 @@ Object.assign(T.ar, {
   ricoDeleteAllOf:n=>'حذف كل محادثات '+n, ricoHistoryEmptyOf:n=>'لا توجد محادثات لـ'+n+' مع ريكو.',
   devTheme:n=>'الثيم: '+n, orderAgain:'أرسل مجددًا', reportDate:'التاريخ'
 });
+
+/* Order cut-offs, repeat orders, the month archive, replies to notes and Face ID. */
+Object.assign(T.en, {
+  cutoffLabel:'Stops taking orders at', cutoffHint:'Optional. On this supplier’s order days the Order screen counts down to it, and Rico warns you 30 minutes before.',
+  cutoffShort:'Cut-off', cutoffClosed:'Closed for today', cutoffMinLeft:n=>n+' min left', cutoffHoursLeft:(h,m)=>h+' h '+m+' min left', cutoffUntil:x=>'Order by '+x,
+  repeatToday:'Repeat order for today', repeatAdd:'Add to order', repeatAdded:(n,name)=>n+(n===1?' item':' items')+' from “'+name+'” '+(n===1?'is':'are')+' in your order.',
+  repeatTitle:'Repeat this order', repeatShort:'Repeat', repeatDaysLabel:'On these days',
+  repeatHint:'On these days the Order screen offers this order with one tap. Nothing is sent by itself.',
+  repeatSaved:(name,days)=>'“'+name+'” will come back on '+days+'.', repeatTooMany:'There are already 30 repeat orders. Remove one first.',
+  repeatListTitle:'Repeat orders', repeatListHint:'Orders that come back on chosen days. Make one with “Repeat” on any order in History.',
+  repeatNone:'No repeat orders yet.', repeatConfirmDelete:'Stop repeating this order?',
+  monthsTitle:'Past months', monthsHint:'History is cleared every month; a summary of each finished month stays here.',
+  monthsNone:'Nothing here yet. The first summary is saved when this month ends.', monthsLastLine:(o,d)=>'Last month: '+o+' orders on '+d+' days',
+  monthsTimes:n=>n+'×', monthsOrders:n=>n+(n===1?' order':' orders'),
+  notesReply:'Reply', notesReplyPrompt:'Your answer to Rozha', notesQuickOk:'👍 Got it', notesQuickDone:'✅ Done', notesQuickCall:'📞 Call me',
+  notesReplied:'Sent to Rozha.', notesReplyNew:'Yunis replied',
+  faceIdSignIn:n=>'Sign in with '+n, faceIdFailed:'That didn’t work. Use your PIN, then turn it on again in Settings.', faceIdOther:'fingerprint',
+  faceIdSection:'Sign-in', faceIdTitle:n=>'Sign in with '+n, faceIdOnHint:'On for this phone. Your PIN still works.',
+  faceIdOffHint:n=>'Skip the PIN on this phone: sign in with '+n+'.', faceIdTurnOn:'Turn on', faceIdTurnOff:'Turn off',
+  faceIdAlready:n=>n+' is already set up on this phone.', faceIdUnsupported:'This phone can’t do it yet. Update it to the latest version and try again.',
+  faceIdOnToast:n=>n+' is on. Next time, tap “Sign in with '+n+'”.', faceIdOffToast:n=>n+' is off for this phone.'
+});
+Object.assign(T.ku, {
+  cutoffLabel:'کاتی کۆتایی وەرگرتنی داواکاری', cutoffHint:'ئارەزوومەندانەیە. لە ڕۆژانی داواکاریی ئەم دابینکەرە، پەڕەی داواکاری کاتەکە دەژمێرێت و ریکۆ 30 خولەک پێشتر ئاگادارت دەکاتەوە.',
+  cutoffShort:'کاتی کۆتایی', cutoffClosed:'بۆ ئەمڕۆ داخراوە', cutoffMinLeft:n=>n+' خولەک ماوە', cutoffHoursLeft:(h,m)=>h+' کاتژمێر و '+m+' خولەک ماوە', cutoffUntil:x=>'تا '+x+' داوا بکە',
+  repeatToday:'داواکاریی دووبارەی ئەمڕۆ', repeatAdd:'زیادکردن بۆ داواکاری', repeatAdded:(n,name)=>n+' کاڵا لە «'+name+'» خرانە داواکارییەکەت.',
+  repeatTitle:'دووبارەکردنەوەی ئەم داواکارییە', repeatShort:'دووبارە', repeatDaysLabel:'لەم ڕۆژانەدا',
+  repeatHint:'لەم ڕۆژانەدا پەڕەی داواکاری ئەم داواکارییە بە یەک دەستلێدان پێشنیار دەکات. هیچ شتێک خۆی نانێردرێت.',
+  repeatSaved:(name,days)=>'«'+name+'» لە '+days+' دەگەڕێتەوە.', repeatTooMany:'30 داواکاریی دووبارە هەیە. سەرەتا یەکێک بسڕەوە.',
+  repeatListTitle:'داواکارییە دووبارەکان', repeatListHint:'ئەو داواکارییانەی لە ڕۆژانی دیاریکراو دەگەڕێنەوە. بە «دووبارە» لە هەر داواکارییەکی مێژوو یەکێک دروست بکە.',
+  repeatNone:'هێشتا هیچ داواکارییەکی دووبارە نییە.', repeatConfirmDelete:'دووبارەکردنەوەی ئەم داواکارییە ڕابگیرێت؟',
+  monthsTitle:'مانگەکانی پێشوو', monthsHint:'مێژوو هەموو مانگێک دەسڕدرێتەوە؛ کورتەی هەر مانگێکی تەواوبوو لێرە دەمێنێتەوە.',
+  monthsNone:'هێشتا هیچ شتێک لێرە نییە. یەکەم کورتە کاتێک ئەم مانگە تەواو دەبێت پاشەکەوت دەکرێت.', monthsLastLine:(o,d)=>'مانگی پێشوو: '+o+' داواکاری لە '+d+' ڕۆژدا',
+  monthsTimes:n=>n+'×', monthsOrders:n=>n+' داواکاری',
+  notesReply:'وەڵام', notesReplyPrompt:'وەڵامەکەت بۆ ڕۆژا', notesQuickOk:'👍 تێگەیشتم', notesQuickDone:'✅ کرا', notesQuickCall:'📞 پەیوەندیم پێوە بکە',
+  notesReplied:'بۆ ڕۆژا نێردرا.', notesReplyNew:'یونس وەڵامی دایەوە',
+  faceIdSignIn:n=>'چوونەژوورەوە بە '+n, faceIdFailed:'سەرکەوتوو نەبوو. بە PIN بچۆ ژوورەوە، پاشان لە ڕێکخستنەکان دووبارە چالاکی بکەرەوە.', faceIdOther:'پەنجەمۆر',
+  faceIdSection:'چوونەژوورەوە', faceIdTitle:n=>'چوونەژوورەوە بە '+n, faceIdOnHint:'بۆ ئەم مۆبایلە چالاکە. PINەکەت هێشتا کار دەکات.',
+  faceIdOffHint:n=>'لەم مۆبایلەدا PIN مەنووسە: بە '+n+' بچۆ ژوورەوە.', faceIdTurnOn:'چالاککردن', faceIdTurnOff:'ناچالاککردن',
+  faceIdAlready:n=>n+' پێشتر لەم مۆبایلەدا ڕێکخراوە.', faceIdUnsupported:'ئەم مۆبایلە هێشتا ناتوانێت. بۆ دوایین وەشان نوێی بکەرەوە و دووبارە هەوڵ بدەرەوە.',
+  faceIdOnToast:n=>n+' چالاک کرا. جاری داهاتوو «چوونەژوورەوە بە '+n+'» دابگرە.', faceIdOffToast:n=>n+' بۆ ئەم مۆبایلە ناچالاک کرا.'
+});
+Object.assign(T.ar, {
+  cutoffLabel:'يتوقف عن استلام الطلبات الساعة', cutoffHint:'اختياري. في أيام طلب هذا المورّد تعدّ صفحة الطلب تنازليًا حتى هذا الوقت، ويُنبّهك ريكو قبله بـ30 دقيقة.',
+  cutoffShort:'آخر موعد', cutoffClosed:'مغلق لليوم', cutoffMinLeft:n=>'باقي '+n+' دقيقة', cutoffHoursLeft:(h,m)=>'باقي '+h+' س و'+m+' د', cutoffUntil:x=>'اطلب قبل '+x,
+  repeatToday:'طلب متكرر لليوم', repeatAdd:'أضف إلى الطلب', repeatAdded:(n,name)=>'أُضيفت '+n+' مواد من «'+name+'» إلى طلبك.',
+  repeatTitle:'كرّر هذا الطلب', repeatShort:'تكرار', repeatDaysLabel:'في هذه الأيام',
+  repeatHint:'في هذه الأيام تعرض صفحة الطلب هذا الطلب بضغطة واحدة. لا يُرسل شيء تلقائيًا.',
+  repeatSaved:(name,days)=>'سيعود «'+name+'» في '+days+'.', repeatTooMany:'هناك 30 طلبًا متكررًا بالفعل. احذف واحدًا أولًا.',
+  repeatListTitle:'الطلبات المتكررة', repeatListHint:'طلبات تعود في أيام تختارها. أنشئ واحدًا بزر «تكرار» على أي طلب في السجل.',
+  repeatNone:'لا توجد طلبات متكررة بعد.', repeatConfirmDelete:'إيقاف تكرار هذا الطلب؟',
+  monthsTitle:'الأشهر السابقة', monthsHint:'يُمسح السجل كل شهر، ويبقى هنا ملخص كل شهر منتهٍ.',
+  monthsNone:'لا شيء هنا بعد. يُحفظ أول ملخص عند انتهاء هذا الشهر.', monthsLastLine:(o,d)=>'الشهر الماضي: '+o+' طلب في '+d+' يوم',
+  monthsTimes:n=>n+'×', monthsOrders:n=>n+' طلب',
+  notesReply:'رد', notesReplyPrompt:'ردّك على روژا', notesQuickOk:'👍 فهمت', notesQuickDone:'✅ تم', notesQuickCall:'📞 اتصلي بي',
+  notesReplied:'أُرسل إلى روژا.', notesReplyNew:'ردّ يونس',
+  faceIdSignIn:n=>'الدخول بـ'+n, faceIdFailed:'لم ينجح ذلك. ادخل بالرمز ثم فعّله من جديد في الإعدادات.', faceIdOther:'البصمة',
+  faceIdSection:'تسجيل الدخول', faceIdTitle:n=>'الدخول بـ'+n, faceIdOnHint:'مفعّل لهذا الهاتف. رمزك ما زال يعمل.',
+  faceIdOffHint:n=>'دون رمز على هذا الهاتف: ادخل بـ'+n+'.', faceIdTurnOn:'تفعيل', faceIdTurnOff:'إيقاف',
+  faceIdAlready:n=>n+' مُعدّ مسبقًا على هذا الهاتف.', faceIdUnsupported:'هذا الهاتف لا يدعمه بعد. حدّثه إلى آخر إصدار وحاول مرة أخرى.',
+  faceIdOnToast:n=>'تم تفعيل '+n+'. في المرة القادمة اضغط «الدخول بـ'+n+'».', faceIdOffToast:n=>'تم إيقاف '+n+' لهذا الهاتف.'
+});
