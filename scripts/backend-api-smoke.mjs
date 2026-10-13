@@ -21,6 +21,13 @@ const db = {
   async rpc(name, args) {
     calls.push({ name, args });
     if (errors.has(name)) return { data: null, error: { message: 'offline' } };
+    if (name === 'app_internal_register_passkey') {
+      const old=tables.app_passkeys.find(k=>k.id===args.p_id);
+      if(old && (old.account!==args.p_account || old.public_key!==args.p_public_key || old.alg!==args.p_alg)) return {data:false,error:null};
+      if(old) old.device_id=args.p_device;
+      else tables.app_passkeys.push({id:args.p_id,account:args.p_account,public_key:args.p_public_key,alg:args.p_alg,sign_count:0,device_id:args.p_device});
+      return {data:true,error:null};
+    }
     if (name === 'app_internal_reserve_login') {
       if (reservation) tables.app_login_attempts.push(...reservation.map(id => ({ id, succeeded: false })));
       return { data: reservation, error: null };
@@ -213,6 +220,9 @@ try {
   assert.equal((await signIn({ counter: 5, key: other.privateKey })).response.status, 401, 'another key cannot sign in as this passkey');
   assert.equal((await signIn({ counter: 1 })).response.status, 401, 'a signature counter that goes backwards (a copied key) is refused');
   assert.equal((await signIn({ counter: 6 })).response.status, 200, 'the real key keeps working');
+  errors.set('app_passkeys:update',true);
+  assert.equal((await signIn({ counter: 7 })).response.status, 503, 'a failed signature-counter save cannot issue a session');
+  errors.delete('app_passkeys:update');
   // New PINs through the secret code end every Face ID sign-in too.
   tables.app_recovery_tickets.push({ token_hash: await digest('pk-ticket'), stage: 'verified', expires_at: new Date(Date.now() + 60000).toISOString() });
   assert.equal((await call('recovery/save', { ticket: 'pk-ticket', rozhaPin: '432198' }, 'POST', false)).status, 200);

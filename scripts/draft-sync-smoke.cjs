@@ -1,0 +1,58 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const {PGlite}=require('@electric-sql/pglite');
+const {pgcrypto}=require('@electric-sql/pglite/contrib/pgcrypto');
+const source=fs.readFileSync('app.js','utf8');
+const code=source.slice(source.indexOf('let sharedDraft ='),source.indexOf('/* Rozha\'s Devices screen:'));
+const clone=x=>JSON.parse(JSON.stringify(x));
+(async()=>{
+ const db=new PGlite({extensions:{pgcrypto}});
+ await db.exec('create role anon;create role authenticated;create role service_role;');
+ await db.exec(fs.readFileSync('supabase/baseline.sql','utf8'));
+ for(const f of fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sql')).sort()) await db.exec(fs.readFileSync('supabase/migrations/'+f,'utf8'));
+ await db.exec("insert into app_accounts(id,name,pin_hash) values('rozha','Rozha','test'),('yunis','Yunis','test');insert into app_units(id,en) values('kg','kg');insert into app_items(id,name,unit_id) values('tomato','Tomatoes','kg'),('onion','Onions','kg');");
+ const patch=async(account,changes)=>(await db.query('select app_internal_patch_draft($1,$2::jsonb) as d',[account,JSON.stringify(changes)])).rows[0].d;
+ const read=async account=>(await db.query('select cart,revision from app_order_drafts where account=$1',[account])).rows[0]||{cart:{},revision:0};
+ function device(account='rozha',store=new Map()){
+  const d={state:{account,items:[{id:'tomato',name:'Tomatoes'},{id:'onion',name:'Onions'}],cart:{},view:'queue'},document:{visibilityState:'visible',getElementById:()=>null},MAX_QTY:99999,setInterval:()=>{},setTimeout:()=>1,clearTimeout:()=>{},lget:k=>clone(store.get(k)||null),lset:(k,v)=>{store.set(k,clone(v));return true;},esc:x=>x,t:x=>x,refreshOrderView:()=>{},offline:false};
+  d.api=async(_path,options={})=>{if(d.offline)return {ok:false,status:0};const data=options.method==='PUT'?await patch(d.state.account,options.body.changes):await read(d.state.account);return {ok:!data.conflicts?.length,status:data.conflicts?.length?409:200,data};};
+  vm.createContext(d);vm.runInContext(code,d);d.inspect=()=>clone(vm.runInContext('sharedDraft',d));return d;
+ }
+ const a=device(),b=device();a.startSharedDraft(await read('rozha'));b.startSharedDraft(await read('rozha'));
+ a.state.cart.tomato=2;a.persistCartDraft();await a.syncSharedDraft();
+ b.state.cart.onion=3;b.persistCartDraft();await b.syncSharedDraft();
+ assert.deepEqual(clone(b.state.cart),{tomato:2,onion:3},'independent edits merge');
+ await a.syncSharedDraft();assert.deepEqual(clone(a.state.cart),{tomato:2,onion:3},'other device receives changes');
+ a.state.cart.tomato=4;a.persistCartDraft();b.state.cart.tomato=5;b.persistCartDraft();await a.syncSharedDraft();await b.syncSharedDraft();
+ assert.deepEqual(b.inspect().conflicts,['tomato']);assert.equal(b.state.cart.tomato,5,'conflicting local quantity survives');assert.equal((await read('rozha')).cart.tomato,4,'conflict does not overwrite server');
+ await b.resolveDraftConflict('local');assert.equal((await read('rozha')).cart.tomato,5,'explicit choice uses current server base');
+ await a.syncSharedDraft();assert.equal(a.state.cart.tomato,5);
+ // A stale deletion must not erase a newer quantity; the remote choice only replaces conflicting items.
+ a.state.cart={};a.persistCartDraft();b.state.cart.tomato=6;b.persistCartDraft();await b.syncSharedDraft();await a.syncSharedDraft();assert.deepEqual(a.inspect().conflicts,['tomato']);
+ await a.resolveDraftConflict('remote');assert.deepEqual(clone(a.state.cart),{tomato:6});await a.syncSharedDraft();assert.deepEqual(clone((await read('rozha')).cart),{tomato:6});
+ const store=new Map(),off=device('rozha',store);off.startSharedDraft(await read('rozha'));off.offline=true;off.state.cart.onion=8;off.persistCartDraft();await off.syncSharedDraft();
+ const reloaded=device('rozha',store);reloaded.state.sharedDraft=await read('rozha');reloaded.restoreCartDraft();assert.equal(reloaded.state.cart.onion,8,'offline edits survive restart');await reloaded.syncSharedDraft();assert.equal((await read('rozha')).cart.onion,8);
+ const y=device('yunis');y.startSharedDraft(await read('yunis'));assert.deepEqual(clone(y.state.cart),{},'accounts have separate drafts');
+ // Changes typed while a successful request is in flight stay pending.
+ const late=device();late.startSharedDraft(await read('rozha'));late.state.cart.tomato=7;late.persistCartDraft();let release;late.api=()=>new Promise(resolve=>{release=resolve;});const running=late.syncSharedDraft();late.state.cart.tomato=9;late.persistCartDraft();release({ok:true,status:200,data:{cart:{tomato:7,onion:8},revision:100}});await running;assert.equal(late.state.cart.tomato,9);assert.equal(late.inspect().base.tomato,7);
+ late.state.cart.tomato=10;const switched=late.syncSharedDraft();late.resetSharedDraft();late.state.account='yunis';late.state.cart={onion:1};release({ok:true,status:200,data:{cart:{tomato:10},revision:101}});await switched;assert.deepEqual(clone(late.state.cart),{onion:1},'stale replies cannot affect next account');
+ assert.equal((await db.query("select has_table_privilege('anon','app_order_drafts','SELECT') as allowed")).rows[0].allowed,false);
+ assert.equal((await db.query("select has_function_privilege('authenticated','app_internal_patch_draft(text,jsonb)','EXECUTE') as allowed")).rows[0].allowed,false);
+ await assert.rejects(patch('yunis',[{itemId:'tomato',before:0,after:1.5}]),/Invalid quantity/);
+ await assert.rejects(patch('yunis',[{itemId:'missing',before:0,after:1}]),/Unknown item/);
+ const register=async(account,key='k'.repeat(80))=>(await db.query("select app_internal_register_passkey('credential1234567890',$1,$2,-7,'device') as ok",[account,key])).rows[0].ok;
+ assert.equal(await register('rozha'),true);
+ await db.exec("update app_passkeys set sign_count=7 where id='credential1234567890';");
+ assert.equal(await register('yunis'),false,'credential ownership cannot change');
+ assert.equal(await register('rozha','a'.repeat(80)),false,'a credential cannot be replaced by a different key');
+ assert.equal(await register('rozha'),true);
+ assert.equal((await db.query("select sign_count from app_passkeys where id='credential1234567890'")).rows[0].sign_count,7,'registration retry preserves the signature counter');
+ assert.equal((await db.query("select has_function_privilege('anon','app_internal_register_passkey(text,text,text,integer,text)','EXECUTE') as allowed")).rows[0].allowed,false);
+ const replay=[{itemId:'tomato',before:0,after:2}];await patch('yunis',replay);const first=await read('yunis');await patch('yunis',replay);assert.deepEqual(await read('yunis'),first,'retry is idempotent');
+ await db.close();console.log('Draft sync: PASS (independent devices, conflicts, stale clears, offline recovery, in-flight edits, account isolation, permissions, validation, idempotent retries)');
+ const kitchen=fs.readFileSync('kitchen.js','utf8'),csvCode=kitchen.slice(kitchen.indexOf('function safeCsvCell('),kitchen.indexOf('function exportMonthCsv('));
+ const csv={};vm.createContext(csv);vm.runInContext(csvCode,csv);
+ assert.equal(csv.safeCsvCell('=HYPERLINK("https://example.com")'),'"\'=HYPERLINK(""https://example.com"")"');
+ assert.equal(csv.safeCsvCell('  +SUM(1,2)'), '"\'  +SUM(1,2)"');
+ assert.equal(csv.safeCsvCell('ڕیکۆتا'),'"ڕیکۆتا"');assert.equal(csv.safeCsvCell('A, "B"'),'"A, ""B"""');assert.equal(csv.safeCsvCell(12),'"12"');
+ console.log('CSV export: PASS (formula prefixes neutralized; quoting, numbers and Kurdish preserved)');
+})().catch(e=>{console.error(e);process.exitCode=1;});

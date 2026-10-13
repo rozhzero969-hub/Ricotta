@@ -288,8 +288,19 @@
         history:history(), historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
         activity:db.activity.filter(a=>a.ts >= monthStartIso()), inbox:db.inbox.slice(-20),
         autoTheme:db.autoThemes[me] !== false, autoThemes:{...db.autoThemes}, pins:db.pins[me] || [], streak:streakView(), notes:db.notes, weather:db.weather,
-        repeats:db.repeats || [], months:LAB_MONTHS
+        repeats:db.repeats || [], months:LAB_MONTHS, draft:db.drafts?.[account] || {cart:{},revision:0}
       });
+    }
+    if(path === 'draft' && (method === 'GET' || method === 'PUT')){
+      db.drafts ||= {};
+      const draft=db.drafts[account] ||= {cart:{},revision:0};
+      if(method === 'PUT'){
+        const conflicts=(body.changes || []).filter(c=>(draft.cart[c.itemId]||0)!==c.before && (draft.cart[c.itemId]||0)!==c.after).map(c=>c.itemId);
+        if(conflicts.length) return json({...draft,conflicts},409);
+        for(const c of body.changes || []){if(c.after) draft.cart[c.itemId]=c.after; else delete draft.cart[c.itemId];}
+        draft.revision++; save();
+      }
+      return json({...draft,conflicts:[]});
     }
     if(method === 'POST' && path === 'logout'){ db.signedOut = true; save(); return ok(); }
     if(method === 'PUT' && path === 'me/tabs'){ db.tabs[account] = body.tabs; save(); return ok(); }

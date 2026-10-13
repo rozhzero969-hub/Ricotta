@@ -14,6 +14,8 @@ Scheduled jobs (pg_cron): `ricotta-reminder-tick` every minute (reminders, Rico'
 
 ## Seasons and the kitchen
 
+Unfinished orders sync between devices signed in to the same account. Quantities are saved locally before syncing. Edits to different items merge; two different edits to the same item require choosing which quantity to keep. Rozha and Yunis have separate drafts. Visible devices check about every eight seconds and on returning to the app. The WhatsApp send queue stays on the device where it was started.
+
 - **Themes** (`seasons.js`, Settings › Appearance): five colour themes and eleven holiday themes. A holiday theme turns on by itself during its Baghdad dates (Halloween, Winter Citadel, Christmas in Ankawa, Kurdistan Flag Day, Ramadan, Eid, Newroz, Spring, Halabja Autumn, Shaqlawa Summer) unless the account switches that off; Match Night is picked by hand. Ramadan and Eid dates are estimates kept in `seasons.js` until 2030. Each holiday brings quiet background decorations, a costume for Rico, themed sounds and optional surprises. The theme and the automatic switch are saved per account (`app_accounts.theme`, `auto_theme`); dark mode, surprises and weather effects are per device. Only the Devices screen shows people in their own theme.
 - **Kitchen streak** (`kitchen.js`, `app_streak`): every Baghdad day with a sent order adds a day for the whole kitchen. Rico can bring a broken streak back within 7 days (`recover_streak`). Undoing the day's only order takes the day back.
 - **Kitchen notes** (`app_notes`): Rozha writes, Yunis gets a notification, a sticky note on Order and a banner; unread notes get a reminder from Rico after two hours.

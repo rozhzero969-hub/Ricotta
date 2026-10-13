@@ -379,13 +379,19 @@ function openReportSheet(){
   el.querySelector('[data-report-print]').onclick = printMonthReport;
 }
 /* Every line of every order this month, as a file Excel opens (UTF-8, so Kurdish and Arabic stay readable). */
+function safeCsvCell(value){
+  let text=String(value ?? '');
+  // Spreadsheet programs treat these leading characters as formulas even
+  // inside quoted CSV fields. Export names and notes as literal text.
+  if(/^[=+\-@\t\r\n]/.test(text.trimStart()) || /^[\t\r\n]/.test(text)) text="'"+text;
+  return `"${text.replace(/"/g,'""')}"`;
+}
 function exportMonthCsv(){
-  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const rows = [['Date','Time','Sent by','Supplier','Item','Quantity','Unit']];
   [...state.history].sort((a, b)=>Date.parse(a.date) - Date.parse(b.date)).forEach(h=>(h.entries||[]).forEach(e=>(e.items||[]).forEach(it=>rows.push([
     erbilDate(h.date), formatIraqDateTime(h.date, {hour:'2-digit', minute:'2-digit', hour12:false}), accountLabel(h.by) || '',
     e.supplierId ? supplierName(e.supplierId) : (e.supplierName || ''), it.name, it.qty, unitLabel(it.unit)]))));
-  const csv = '﻿' + rows.map(r=>r.map(q).join(',')).join('\r\n');
+  const csv = '﻿' + rows.map(r=>r.map(safeCsvCell).join(',')).join('\r\n');
   const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
   const a = document.createElement('a');
   a.href = url; a.download = `ricotta-orders-${erbilDate(new Date().toISOString()).slice(0, 7)}.csv`;
