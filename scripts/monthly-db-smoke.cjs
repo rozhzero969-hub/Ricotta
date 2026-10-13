@@ -26,6 +26,10 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  insert into app_audit_events(id,occurred_at,action) values('old','2026-09-30T20:59:59Z','add'),('kept','2026-09-30T21:00:00Z','add');
  select app_internal_monthly_cleanup('2026-10-07T12:00:00Z');`);
  assert.deepEqual((await q('select id from app_orders order by id')).map(r=>r.id),['october-7','october-start']);
+ const archived=await q("select month, data from app_month_summaries");
+ assert.deepEqual(archived.map(r=>[r.month,r.data.orders,r.data.lines,r.data.topItems[0].name]),[['2026-09',1,1,'Old']],'a month is summarised into the archive before it is cleared');
+ await db.exec("select app_internal_monthly_cleanup('2026-10-08T12:00:00Z');");
+ assert.equal((await q('select count(*)::int as n from app_month_summaries'))[0].n,1,'the archive keeps one summary per month');
  assert.equal((await q('select count(*)::int as n from app_order_lines'))[0].n,1);
  assert.deepEqual((await q('select id from app_audit_events')).map(r=>r.id),['kept']);
  await db.exec("select app_internal_monthly_cleanup('2026-10-31T20:59:59Z');");

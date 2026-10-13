@@ -107,6 +107,15 @@
       messages:[{role:'user', text:'How much mozzarella did we order last week?', ts:Date.now()-5*3600000}, {role:'assistant', mood:'calm', text:'About **13 kg** over 3 orders, Yunis. Thursday was the biggest at 5 kg.', ts:Date.now()-5*3600000+4000}]}];
     return {v:4, units, suppliers, items, history, activity, inbox, chats, themes:{rozha:'ricotta', yunis:'ocean'}, autoThemes:{rozha:true, yunis:true}, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, notes, weather, reminder:{enabled:true, time:'09:00'}, tabs:{}, seq:100, said:{}};
   }
+  /* Two finished months for the archive (History itself only keeps this month). */
+  const LAB_MONTHS = [
+    {month:'2026-09', orders:41, activeDays:22, lines:388, byPerson:{rozha:12, yunis:29}, byWeekday:[5,7,6,5,8,6,4],
+      suppliers:[{name:'Zakho Dairy', orders:18, lines:96}, {name:'Erbil Veg Market', orders:15, lines:120}, {name:'Ankawa Bakery', orders:12, lines:40}],
+      topItems:[{name:'Tomatoes', unit:'kg', times:15, qty:96}, {name:'Mozzarella', unit:'kg', times:14, qty:61}, {name:'Bread', unit:'pc', times:12, qty:540}]},
+    {month:'2026-08', orders:36, activeDays:20, lines:330, byPerson:{rozha:16, yunis:20}, byWeekday:[4,6,5,6,7,5,3],
+      suppliers:[{name:'Zakho Dairy', orders:16, lines:84}, {name:'Erbil Veg Market', orders:13, lines:101}],
+      topItems:[{name:'Tomatoes', unit:'kg', times:13, qty:80}, {name:'Mozzarella', unit:'kg', times:12, qty:52}]}
+  ];
   let db = lsGet(DB_KEY);
   if(!db || db.v !== 4) db = seed();
   const save = () => lsSet(DB_KEY, db);
@@ -278,7 +287,8 @@
         theme:db.themes[me], themes:{...db.themes}, suppliers:db.suppliers, items:db.items, units:db.units,
         history:history(), historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
         activity:db.activity.filter(a=>a.ts >= monthStartIso()), inbox:db.inbox.slice(-20),
-        autoTheme:db.autoThemes[me] !== false, autoThemes:{...db.autoThemes}, pins:db.pins[me] || [], streak:streakView(), notes:db.notes, weather:db.weather
+        autoTheme:db.autoThemes[me] !== false, autoThemes:{...db.autoThemes}, pins:db.pins[me] || [], streak:streakView(), notes:db.notes, weather:db.weather,
+        repeats:db.repeats || [], months:LAB_MONTHS
       });
     }
     if(method === 'POST' && path === 'logout'){ db.signedOut = true; save(); return ok(); }
@@ -287,6 +297,21 @@
     if(method === 'GET' && path === 'streak') return json(streakView());
     if(method === 'POST' && path === 'streak/recover'){ if(!streakRecover()) return fail('nothing_to_recover', 409); save(); return json({ok:true, streak:streakView()}); }
     if(method === 'GET' && path === 'notes') return json(db.notes);
+    if(method === 'POST' && path === 'notes/replies-seen'){ db.notes.forEach(n=>{ if(n.reply && !n.replySeenAt) n.replySeenAt = new Date().toISOString(); }); save(); return ok(); }
+    if(method === 'POST' && (m = path.match(/^notes\/(\d+)\/reply$/))){
+      const n = db.notes.find(x=>x.id === Number(m[1]));
+      if(!n || account === 'rozha') return fail('forbidden', 403);
+      Object.assign(n, {reply:String(body.body||'').slice(0,300), repliedAt:new Date().toISOString(), replySeenAt:null, readAt:n.readAt || new Date().toISOString()});
+      save(); return json(n);
+    }
+    // Repeat orders and the month archive
+    if(method === 'GET' && path === 'repeat-orders') return json(db.repeats || []);
+    if(method === 'POST' && path === 'repeat-orders'){
+      const r = {id:crypto.randomUUID(), name:String(body.name||'').slice(0,120), days:body.days||[], entries:body.entries||[], by:account, createdAt:new Date().toISOString()};
+      db.repeats = [...(db.repeats || []), r]; save(); return json(r);
+    }
+    if(method === 'DELETE' && (m = path.match(/^repeat-orders\/(.+)$/))){ db.repeats = (db.repeats || []).filter(r=>r.id !== m[1]); save(); return ok(); }
+    if(method === 'GET' && path === 'months') return json(LAB_MONTHS);
     if(method === 'POST' && path === 'notes'){
       if(account !== 'rozha') return fail('forbidden', 403);
       const n = {id:++db.seq, body:String(body.body||'').slice(0,500), at:new Date().toISOString(), readAt:null, doneAt:null};

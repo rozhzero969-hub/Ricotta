@@ -127,11 +127,16 @@ const json = value=>JSON.parse(JSON.stringify(value));
   assert.deepEqual(crossTab.drafts['pendingCart:yunis'],{i2:3});
 
   // WhatsApp links: Iraqi numbers in every usual form, and numbers that are already international.
-  const wa = vm.createContext({});
+  // A computer uses the wa.me web link; a phone opens the WhatsApp app directly (no "Continue to chat" page).
+  const wa = vm.createContext({isIOS:()=>false, navigator:{userAgent:'Macintosh'}});
   vm.runInContext(source.slice(source.indexOf('function waLink('), source.indexOf('const ICON_CHAT')), wa);
   for(const [phone, number] of [['0750 123 4567','9647501234567'],['750 123 4567','9647501234567'],['+964 750 123 4567','9647501234567'],['00964 750 123 4567','9647501234567'],['+90 555 123 4567','905551234567'],['٠٧٥٠ ١٢٣ ٤٥٦٧','9647501234567'],['۰۷۵۰۱۲۳۴۵۶۷','9647501234567']]){
     assert.equal(vm.runInContext(`waLink(${JSON.stringify(phone)}, 'Hi')`, wa), `https://wa.me/${number}?text=Hi`, phone);
   }
+  wa.isIOS = ()=>true;
+  assert.equal(vm.runInContext(`waLink('0750 123 4567', 'Hi there')`, wa), 'whatsapp://send?phone=9647501234567&text=Hi%20there', 'an iPhone opens WhatsApp directly');
+  wa.isIOS = ()=>false; wa.navigator = {userAgent:'Mozilla/5.0 (Linux; Android 15)'};
+  assert.equal(vm.runInContext(`waLink('0750 123 4567', 'Hi')`, wa), 'whatsapp://send?phone=9647501234567&text=Hi', 'an Android phone opens WhatsApp directly');
 
   // Tapping a notification opens the screen it is about.
   const pushSource = fs.readFileSync(path.join(__dirname, '..', 'push.js'), 'utf8');
