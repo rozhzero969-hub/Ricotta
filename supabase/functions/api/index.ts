@@ -937,6 +937,13 @@ Deno.serve(async (req) => {
       if (error || data !== true) return fail("invalid_order");
       return ok();
     }
+    if (M === "PUT" && path === "items/aliases") {
+      const entries=b.entries;
+      if(!Array.isArray(entries) || !entries.length || entries.length>200 || new Set(entries.map((r:any)=>r?.itemId)).size!==entries.length || entries.some((r:any)=>!r || typeof r.itemId!=="string" || !r.itemId || r.itemId.length>120 || [r.before,r.aliases].some(v=>!Array.isArray(v) || v.length>12 || v.some((a:unknown)=>typeof a!=="string" || !a.trim() || a.length>120)))) return fail("invalid_input");
+      const {data,error}=await db.rpc("app_internal_set_aliases",{p_entries:entries,p_actor:s.account,p_device:s.deviceId});
+      if(error)return fail("save_failed",500);
+      return data?.conflicts?.length ? json(data,409) : json(data);
+    }
     if ((m = path.match(/^(suppliers|items|units)\/([^/]{1,120})$/))) {
       const table = m[1], id = decodeURIComponent(m[2]);
       if (M === "PUT" || M === "DELETE") {

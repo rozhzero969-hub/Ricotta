@@ -356,6 +356,11 @@
       (body.itemIds||[]).forEach((id, i)=>{ const it = db.items.find(x=>x.id===id && x.supplierId===sid); if(it) it.sortOrder = i; });
       save(); return ok();
     }
+    if(path==='items/aliases' && method==='PUT'){
+      const entries=body.entries||[], conflicts=entries.filter(e=>{const i=db.items.find(i=>i.id===e.itemId);return !i || (JSON.stringify(i.aliases||[])!==JSON.stringify(e.before) && JSON.stringify(i.aliases||[])!==JSON.stringify(e.aliases));}).map(e=>e.itemId);
+      if(conflicts.length)return json({conflicts},409);
+      entries.forEach(e=>{db.items.find(i=>i.id===e.itemId).aliases=e.aliases;});save();return json({conflicts:[],changed:entries.length});
+    }
     if((m = path.match(/^(suppliers|items|units)\/(.+)$/)) && (method === 'PUT' || method === 'DELETE')){
       const table = m[1], id = decodeURIComponent(m[2]);
       const list = db[table], idx = list.findIndex(x=>x.id===id), prev = idx >= 0 ? list[idx] : null;

@@ -11,6 +11,8 @@ mkdir -p dist
 for f in style.css config.js icons.js i18n.js storage.js sounds.js modals.js push.js assistant.js seasons.js kitchen.js ordering-tools.js app.js update-check.js boot.js icon-192.png apple-touch-icon.png rico-happy.png; do
   cp "../$f" dist/
 done
+mkdir -p dist/supabase/functions/_shared
+cp ../supabase/functions/_shared/search.js dist/supabase/functions/_shared/
 mkdir -p dist/vendor
 cp ../vendor/xlsx-0.20.3.min.js dist/vendor/
 cp lab-mock.js lab-panel.js lab-panel.css page.html dist/
