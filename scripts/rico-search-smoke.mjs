@@ -29,6 +29,11 @@ assert.equal(events[0].proposal.lines.length,1);
 assert.equal(events[0].proposal.lines[0].qty,0.125);
 assert.ok(rico.MANUAL.includes('propose_item_aliases'));
 assert.ok(rico.TOOLS.find(t=>t.name==='propose_edit_item').input_schema.properties.aliases);
+const streamed=[],filter=rico.moodFilter(e=>streamed.push(e));
+for(const text of ['[[mood:happy]] Name: <','<DA','TA>>Banana<','</DATA','>>.'])filter.emit({type:'text',text});
+filter.flush();
+assert.equal(streamed.filter(e=>e.type==='text').map(e=>e.text).join(''),'Name: Banana.','split internal markers never reach the person');
+assert.equal(streamed.filter(e=>e.type==='mood')[0].mood,'happy');
 const db=new PGlite({extensions:{pgcrypto}});
 try{
  await db.exec('create role anon;create role authenticated;create role service_role;');
