@@ -694,10 +694,10 @@ function ricoApplyOrder(p, auto){
   if(p.mode !== 'add' && p.mode !== 'set') state.cart = {};
   let n = 0;
   p.lines.forEach(l=>{
-    if(!state.items.some(i=>i.id===l.itemId)) return;
+    if(!state.items.some(i=>i.id===l.itemId && i.available!==false)) return;
     // 'set' may take an item out (qty 0); every other line is at least one.
     if(p.mode === 'set' && !(Number(l.qty) > 0)){ delete state.cart[l.itemId]; n++; return; }
-    const q = Math.max(1, Math.round(Number(l.qty) || 1));
+    const q = Math.max(0.001, roundQuantity(Number(l.qty) || 1));
     state.cart[l.itemId] = Math.min(MAX_QTY, p.mode === 'add' ? (state.cart[l.itemId]||0) + q : q);
     n++;
   });

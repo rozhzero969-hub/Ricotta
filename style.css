@@ -1,4 +1,4 @@
-/* Ricotta Orders -- final theme (2026-09-27), chosen in the theme studio:
+/* Ricotta Orders -- theme foundation:
    Graphite background, glass 100% clear with a 35px blur and a soft rim,
    accent green #34C27A, a coral red for signing out, Sora for English and
    Noto Kufi Arabic for Kurdish and Arabic, and the "Glide" page transition.
@@ -1659,3 +1659,40 @@ html.dark .faceid-btn{background:rgba(255,255,255,.07);color:#E6EEEA;border-colo
 .hist-top{flex-wrap:wrap}
 .hist-top .row-actions{flex-wrap:wrap;justify-content:flex-end;min-width:0;margin-inline-start:auto}
 .hist-repeat svg{width:17px;height:17px}
+
+/* Clearer workspace hierarchy and controls across all tabs. */
+.page-heading{align-items:flex-start;gap:16px;margin-bottom:20px}
+.page-heading>div{min-width:0;flex:1}
+.page-guide{font-size:13px;line-height:1.6;color:var(--ink-soft);margin:8px 0 0;max-width:56ch;font-weight:400}
+.page-date{flex-shrink:0;padding-top:4px}
+.action-row{gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.btn,.icon-btn,.tab-pill{min-height:44px}
+.btn:focus-visible,.icon-btn:focus-visible,summary:focus-visible,a:focus-visible{outline:3px solid var(--accent-strong);outline-offset:3px}
+.list-row{padding:16px;border-radius:16px;margin-bottom:10px;border:1px solid var(--line);gap:12px}
+.list-row .name{line-height:1.45;overflow-wrap:anywhere}
+.list-row .meta{line-height:1.5;margin-top:4px}
+[data-editsup]{flex-wrap:wrap}
+[data-editsup]>div:first-child{flex:1 1 100%}
+[data-editsup] .row-actions{width:100%;justify-content:flex-start;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--line)}
+.supplier-contact{font-size:12px;text-decoration:none;display:inline-flex;gap:7px;align-items:center}
+.order-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}
+.order-tools details{position:relative}
+.order-tools summary{cursor:pointer;min-height:44px;display:flex;align-items:center;padding:8px 14px;border:1px solid var(--line);border-radius:12px;font-size:12px;color:var(--ink)}
+.order-tools details[open]{flex-basis:100%;padding-bottom:8px}
+.order-tools details .form-actions{margin-top:8px}
+.order-note-preview{padding:14px 16px;border-inline-start:3px solid var(--accent-strong);border-radius:10px;background:var(--glass);color:var(--ink);font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+.settings-group{padding:18px;margin-bottom:18px;border:1px solid var(--line);border-radius:16px;background:var(--glass)}
+.settings-group>summary{min-height:44px;cursor:pointer;font-weight:700;color:var(--ink);display:flex;align-items:center;justify-content:space-between}
+.settings-group>summary:after{content:'+';font-size:20px}
+.settings-group[open]>summary:after{content:'−'}
+.settings-group .field{margin-top:14px}
+.field textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:88px;padding:12px;border:1px solid var(--line-strong);border-radius:12px;font:inherit;font-size:14px;color:var(--ink);background:var(--glass)}
+.catalog-search{margin-bottom:16px}
+.catalog-search input{width:100%;box-sizing:border-box;min-height:46px;padding:12px 14px;font:inherit;font-size:14px;border-radius:12px;border:1px solid var(--line-strong);background:var(--glass);color:var(--ink)}
+.availability-badge{display:inline-block;font-size:10px;font-weight:600;border:1px solid var(--line-strong);color:var(--ink-soft);padding:3px 7px;border-radius:6px;vertical-align:middle}
+.import-preview{max-height:320px;overflow:auto;margin-top:14px}
+.import-row{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;padding:12px;border-bottom:1px solid var(--line)}
+.import-row small{grid-column:2;color:var(--ink-soft);overflow-wrap:anywhere}
+.import-row.invalid{border-inline-start:3px solid var(--clay);background:rgba(214,72,63,.06)}
+[hidden]{display:none!important}
+@media(max-width:600px){.page-heading{flex-wrap:wrap;gap:8px}.page-date{font-size:11px}.page-guide{font-size:12px}.row-actions{flex-wrap:wrap}.action-row>.btn{flex:1 1 auto}.settings-group{padding:14px}.page-kicker{font-size:10px}}

@@ -419,7 +419,7 @@ async function undoOrder(id){
   const r = await api(`orders/${encodeURIComponent(id)}`, {method:'DELETE'});
   if(!r.ok){ await showAlert(r.status === 403 ? t('undoFailed') : t('saveFailed')); return; }
   state.history = state.history.filter(h=>h.id !== id);
-  (rec.entries||[]).forEach(e=>(e.items||[]).forEach(it=>{ if(state.items.some(i=>i.id === it.itemId)) state.cart[it.itemId] = Math.max(state.cart[it.itemId] || 0, it.qty); }));
+  (rec.entries||[]).forEach(e=>(e.items||[]).forEach(it=>{ if(state.items.some(i=>i.id === it.itemId && i.available!==false)) state.cart[it.itemId] = Math.max(state.cart[it.itemId] || 0, it.qty); }));
   persistCartDraft();
   if(r.data && r.data.streak) streakArrived(r.data.streak, null);
   toast(t('orderUndone'));
@@ -469,7 +469,7 @@ setInterval(()=>{ if(document.visibilityState === 'visible') paintCutoffs(); }, 
    A sent order saved to come back on chosen weekdays. On those days the Order screen offers it with one
    tap ("Add to order"); nothing is sent by itself. Shared by both accounts. */
 const repeatDaysText = days=>days.length === 7 ? t('everyDay') : DAY_ORDER.filter(d=>days.includes(d)).map(d=>t('daysShort')[d]).join(', ');
-const repeatItemCount = r=>(r.entries || []).reduce((n, e)=>n + (e.items || []).filter(i=>state.items.some(x=>x.id === i.itemId)).length, 0);
+const repeatItemCount = r=>(r.entries || []).reduce((n, e)=>n + (e.items || []).filter(i=>state.items.some(x=>x.id === i.itemId && x.available!==false)).length, 0);
 function repeatHiddenToday(){ const v = lget('repeatHidden'); return v && v.date === erbilClock().date ? v.ids : []; }
 function repeatsToday(){
   const now = erbilClock(), hidden = repeatHiddenToday();
@@ -498,7 +498,7 @@ function attachRepeatCards(){
     const before = {...state.cart};
     let n = 0;
     (r.entries || []).forEach(e=>(e.items || []).forEach(i=>{
-      if(!state.items.some(x=>x.id === i.itemId)) return;   // deleted from the catalog since
+      if(!state.items.some(x=>x.id === i.itemId && x.available!==false)) return;   // deleted from the catalog since
       state.cart[i.itemId] = Math.max(state.cart[i.itemId] || 0, i.qty); n++;
     }));
     hideRepeatToday(r.id);

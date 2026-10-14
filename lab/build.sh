@@ -8,9 +8,11 @@ set -e
 cd "$(dirname "$0")"
 rm -rf dist
 mkdir -p dist
-for f in style.css config.js icons.js i18n.js storage.js sounds.js modals.js push.js assistant.js seasons.js kitchen.js app.js update-check.js boot.js icon-192.png apple-touch-icon.png rico-happy.png; do
+for f in style.css config.js icons.js i18n.js storage.js sounds.js modals.js push.js assistant.js seasons.js kitchen.js ordering-tools.js app.js update-check.js boot.js icon-192.png apple-touch-icon.png rico-happy.png; do
   cp "../$f" dist/
 done
+mkdir -p dist/vendor
+cp ../vendor/xlsx-0.20.3.min.js dist/vendor/
 cp lab-mock.js lab-panel.js lab-panel.css page.html dist/
 {
   printf '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>'

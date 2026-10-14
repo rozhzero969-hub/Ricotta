@@ -183,7 +183,7 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 
 /* ---------- Shapes the browser uses ---------- */
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, cutoff: s.cutoff ?? null });
-const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "" });
+const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false });
 const toNote = (n: any) => ({ id: n.id, body: n.body, at: n.created_at, readAt: n.read_at, doneAt: n.done_at,
   reply: n.reply ?? null, repliedAt: n.replied_at ?? null, replySeenAt: n.reply_seen_at ?? null });
 const toRepeat = (r: any) => ({ id: r.id, name: r.name, days: r.days, entries: r.entries, by: r.created_by, createdAt: r.created_at });
@@ -248,7 +248,7 @@ function groupHistory(orders: any[], lines: any[]) {
       if (!e) { e = { supplierId, supplierName, items: [] }; entries.push(e); }
       e.items.push({ itemId: l.item_id, name: l.item_name, unit: l.unit_id, qty: Number(l.qty) });
     }
-    return { id: o.id, date: o.sent_at ?? o.created_at, by: o.sent_by ?? null, entries };
+    return { id: o.id, date: o.sent_at ?? o.created_at, by: o.sent_by ?? null, note: o.note ?? "", entries };
   });
 }
 
@@ -278,9 +278,9 @@ async function readReminder() {
   return data ? { enabled: data.enabled, time: String(data.remind_time).slice(0, 5) } : null;
 }
 async function readAccount(id: string) {
-  const { data, error } = await app("accounts").select("id,name,tabs,theme,auto_theme,pins").eq("id", id).maybeSingle();
+  const { data, error } = await app("accounts").select("id,name,tabs,theme,auto_theme,pins,message_format").eq("id", id).maybeSingle();
   if (error) throw error;
-  return data ? { account: data.id, name: data.name, tabs: cleanTabs(data.id, data.tabs), theme: cleanTheme(data.theme), autoTheme: data.auto_theme !== false, pins: Array.isArray(data.pins) ? data.pins : [] } : null;
+  return data ? { account: data.id, name: data.name, tabs: cleanTabs(data.id, data.tabs), theme: cleanTheme(data.theme), autoTheme: data.auto_theme !== false, pins: Array.isArray(data.pins) ? data.pins : [], messageFormat: data.message_format ?? {} } : null;
 }
 /* Both accounts' themes, so a person is shown in their own colours on every phone. */
 async function readThemes(): Promise<{ themes: Record<string, string>; autoThemes: Record<string, boolean> }> {
@@ -316,9 +316,9 @@ async function bootstrap(s: Session) {
     readAccount(s.account),
     readThemes(),
     app("suppliers").select("id,name,phone,reminder,cutoff").order("name"),
-    app("items").select("id,name,unit_id,supplier_id,sort_order,note").order("name"),
+    app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available").order("name"),
     app("units").select("id,en,ku,ar"),
-    readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
+    readAll(() => app("orders").select("id,created_at,sent_at,sent_by,note").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
     readReminder(),
     listDevices(s),
     listActivity(),
@@ -336,7 +336,7 @@ async function bootstrap(s: Session) {
   return {
     account: s.account, name: me?.name ?? accountName(s.account), tabs: me?.tabs ?? cleanTabs(s.account, null),
     views: ACCOUNT_VIEWS[s.account], theme: me?.theme ?? "ricotta", themes: looks.themes, autoThemes: looks.autoThemes,
-    autoTheme: me?.autoTheme ?? true, pins: me?.pins ?? [], streak, notes, weather,
+    autoTheme: me?.autoTheme ?? true, pins: me?.pins ?? [], messageFormat: me?.messageFormat ?? {}, streak, notes, weather,
     suppliers: (suppliers.data ?? []).map(toSupplier),
     items: (items.data ?? []).map(toItem),
     units: units.data ?? [],
@@ -346,9 +346,9 @@ async function bootstrap(s: Session) {
   };
 }
 async function readDraft(account: Account) {
-  const { data, error } = await app("order_drafts").select("cart,revision").eq("account", account).maybeSingle();
+  const { data, error } = await app("order_drafts").select("cart,revision,note").eq("account", account).maybeSingle();
   if (error) throw error;
-  return { cart: data?.cart ?? {}, revision: data?.revision ?? 0, conflicts: [] };
+  return { cart: data?.cart ?? {}, revision: data?.revision ?? 0, note: data?.note ?? "", conflicts: [] };
 }
 async function listRepeats() {
   const { data, error } = await app("repeat_orders").select("id,name,days,entries,created_by,created_at").order("created_at");
@@ -559,6 +559,8 @@ async function recovery(req: Request, step: string) {
   return ok();
 }
 
+function validQuantity(q: number,zero=false){return Number.isFinite(q) && q>=(zero?0:0.001) && q<=99999 && Math.abs(q*1000-Math.round(q*1000))<0.00001;}
+
 /* ---------- Catalog (one record at a time) ---------- */
 const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | null> = {
   suppliers: (id, b) => text(b.name) ? {
@@ -569,6 +571,8 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
   items: (id, b) => text(b.name) ? {
     id, name: text(b.name), unit_id: text(b.unit, 120) || null,
     supplier_id: text(b.supplierId, 120) || null,
+    ...(Object.hasOwn(b,"aliases") ? {aliases:Array.isArray(b.aliases) ? [...new Set(b.aliases.map((a: unknown)=>text(a,120)).filter(Boolean))].slice(0,12) : []} : {}),
+    ...(Object.hasOwn(b,"available") ? {available:b.available!==false} : {}),
     ...(Object.hasOwn(b, "note") ? { note: text(b.note, 120) } : {}),
     ...(Object.hasOwn(b, "sortOrder") ? { sort_order: Number.isInteger(b.sortOrder) && b.sortOrder >= 0 ? b.sortOrder : null } : {}),
     updated_at: nowIso(),
@@ -624,7 +628,7 @@ async function saveOrder(s: Session, b: any) {
   // anything far beyond that is refused instead of written line by line.
   const lineCount = b.entries.reduce((n: number, e: any) => n + (Array.isArray(e?.items) ? e.items.length : 0), 0);
   if (b.entries.length > 80 || !lineCount || lineCount > 800 || b.entries.some((e: any) => !e || !Array.isArray(e.items)
-    || e.items.some((i: any) => !i || !Number.isFinite(Number(i.qty)) || Number(i.qty) <= 0 || Number(i.qty) > 99999))) return fail("invalid_order");
+    || e.items.some((i: any) => !i || !validQuantity(Number(i.qty))))) return fail("invalid_order");
   if (b.date && !Number.isFinite(Date.parse(b.date))) return fail("invalid_order");
   // A phone whose clock runs fast still saves: a time in the future is taken as now. (Refusing it made
   // every order from that phone fail, and the failed order could not be retried or cleared.)
@@ -645,8 +649,8 @@ async function saveOrder(s: Session, b: any) {
   })));
   // Header and lines commit together. Retrying an existing
   // order never observes half an order.
-  const { data: saved, error } = await db.rpc("app_internal_save_order", {
-    p_id: id, p_date: date, p_account: s.account, p_lines: lines,
+  const { data: saved, error } = await db.rpc("app_internal_save_order_note", {
+    p_id: id, p_date: date, p_account: s.account, p_lines: lines, p_note: text(b.note,300),
   });
   if (error || (saved !== true && saved !== false)) return fail("save_failed", 500);
   if (saved) {
@@ -883,13 +887,19 @@ Deno.serve(async (req) => {
     if (M === "PUT" && path === "draft") {
       const changes = b.changes;
       if (!Array.isArray(changes) || changes.length > 2000 || new Set(changes.map((c: any) => c?.itemId)).size !== changes.length || changes.some((c: any) =>
-        !c || typeof c.itemId !== "string" || !c.itemId.length || c.itemId.length > 200 || !Number.isInteger(c.before) || !Number.isInteger(c.after) || c.before < 0 || c.after < 0 || c.before > 99999 || c.after > 99999)) return fail("invalid_draft");
-      const { data, error } = await db.rpc("app_internal_patch_draft", { p_account: s.account, p_changes: changes });
+        !c || typeof c.itemId !== "string" || !c.itemId.length || c.itemId.length > 200 || !validQuantity(c.before,true) || !validQuantity(c.after,true) || c.before < 0 || c.after < 0 || c.before > 99999 || c.after > 99999)) return fail("invalid_draft");
+      if ((b.noteAfter != null && (typeof b.noteAfter!=="string" || b.noteAfter.length>300)) || (b.noteBefore != null && typeof b.noteBefore!=="string")) return fail("invalid_draft");
+      const { data, error } = await db.rpc("app_internal_patch_draft_note", { p_account: s.account, p_changes: changes, p_before: b.noteBefore ?? null, p_after: b.noteAfter ?? null });
       return error ? fail("draft_save_failed", 503) : json(data, data?.conflicts?.length ? 409 : 200);
     }
     if (M === "POST" && path === "logout") {
       const { error } = await db.rpc("app_internal_logout", { p_session: s.id, p_device: s.deviceId });
       return error ? fail("logout_failed", 503) : ok();
+    }
+    if (M === "PUT" && path === "me/message-format") {
+      const message_format={restaurant:text(b.restaurant,80),greeting:text(b.greeting,200),closing:text(b.closing,200)};
+      const {error}=await app("accounts").update({message_format,updated_at:nowIso()}).eq("id",s.account);
+      return error ? fail("save_failed",503) : json(message_format);
     }
     if (M === "PUT" && path === "me/tabs") {
       const allowed = ACCOUNT_VIEWS[s.account];

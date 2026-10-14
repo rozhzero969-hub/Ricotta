@@ -153,9 +153,9 @@ function heartbeat(){
 /* Shared drafts keep local edits durable while merging other devices' changes.
    The base quantities are persisted too: reconnecting never blindly replaces
    a newer server draft with an old offline copy. */
-let sharedDraft = {account:null, enabled:false, base:{}, revision:0, remote:null, conflicts:[], busy:false, timer:null, epoch:0};
+let sharedDraft = {account:null, enabled:false, base:{}, noteBase:'', revision:0, remote:null, conflicts:[], busy:false, timer:null, epoch:0};
 function cleanDraftCart(cart){
-  return Object.fromEntries(Object.entries(cart || {}).filter(([,q])=>Number.isInteger(q) && q>0 && q<=99999));
+  return Object.fromEntries(Object.entries(cart || {}).filter(([,q])=>validOrderQuantity(q) && q>0));
 }
 function draftChanges(base, cart){
   return [...new Set([...Object.keys(base),...Object.keys(cart)])].filter(id=>(base[id]||0)!==(cart[id]||0))
@@ -171,25 +171,26 @@ function mergeDraftCarts(base, local, remote){
 }
 function resetSharedDraft(){
   clearTimeout(sharedDraft.timer);
-  sharedDraft={account:null,enabled:false,base:{},revision:0,remote:null,conflicts:[],busy:false,timer:null,epoch:sharedDraft.epoch+1};
+  sharedDraft={account:null,enabled:false,base:{},noteBase:'',revision:0,remote:null,conflicts:[],busy:false,timer:null,epoch:sharedDraft.epoch+1};
 }
 function saveDraftMeta(){
   if(!sharedDraft.enabled || sharedDraft.account!==state.account) return;
-  lset('draftMeta:'+state.account,{base:sharedDraft.base,revision:sharedDraft.revision});
+  lset('draftMeta:'+state.account,{base:sharedDraft.base,revision:sharedDraft.revision,noteBase:sharedDraft.noteBase});
 }
 function draftStatusHtml(){
   if(!sharedDraft.enabled) return '';
   if(sharedDraft.conflicts.length){
-    const names=sharedDraft.conflicts.map(id=>state.items.find(i=>i.id===id)?.name||id).join(', ');
+    const names=sharedDraft.conflicts.map(id=>id==='__note'?t('orderNote'):state.items.find(i=>i.id===id)?.name||id).join(', ');
     return `<div class="form-card"><p role="alert">${esc(t('draftConflict'))} <b dir="auto">${esc(names)}</b></p><div class="form-actions"><button type="button" class="btn btn-ghost" data-draft-choice="remote">${esc(t('draftUseOther'))}</button><button type="button" class="btn btn-primary" data-draft-choice="local">${esc(t('draftKeepMine'))}</button></div></div>`;
   }
   return '';
 }
 function draftProgressLabel(){
   if(!sharedDraft.enabled) return t('draftLocal');
-  return draftChanges(sharedDraft.base,state.cart).length ? t('draftWaiting') : t('draftSynced');
+  return draftChanges(sharedDraft.base,state.cart).length || (state.orderNote||'') !== (sharedDraft.noteBase||'') ? t('draftWaiting') : t('draftSynced');
 }
 function paintDraftStatus(){
+  const preview=document.getElementById('orderNotePreview');if(preview){preview.textContent=state.orderNote||'';preview.hidden=!state.orderNote;}
   const el=document.getElementById('sharedDraftStatus');
   if(!el) return;
   el.innerHTML=draftStatusHtml();
@@ -197,11 +198,16 @@ function paintDraftStatus(){
   if(caption) caption.textContent=cartCount()?draftProgressLabel():t('selectToStart');
   el.querySelectorAll('[data-draft-choice]').forEach(b=>b.onclick=()=>resolveDraftConflict(b.dataset.draftChoice));
 }
-function receiveSharedDraft(data, base=sharedDraft.base){
+function receiveSharedDraft(data, base=sharedDraft.base, noteBase=sharedDraft.noteBase){
   if(!data || !data.cart || Number(data.revision)<sharedDraft.revision) return;
   const available=new Set(state.items.map(i=>i.id));
   const remote=Object.fromEntries(Object.entries(cleanDraftCart(data.cart)).filter(([id])=>available.has(id)));
   const merged=mergeDraftCarts(base,state.cart,remote);
+  for(const item of state.items.filter(i=>i.available===false)){delete merged.cart[item.id];merged.conflicts=merged.conflicts.filter(id=>id!==item.id);}
+  const remoteNote=String(data.note||'');
+  if((state.orderNote||'')!==noteBase && remoteNote!==noteBase && remoteNote!==(state.orderNote||'')) merged.conflicts.push('__note');
+  else {if((state.orderNote||'')===noteBase) state.orderNote=remoteNote;sharedDraft.noteBase=remoteNote;}
+  sharedDraft.remoteNote=remoteNote; lset('orderNote:'+state.account,state.orderNote||'');
   sharedDraft.remote=remote; sharedDraft.revision=Number(data.revision)||0; sharedDraft.conflicts=merged.conflicts;
   if(!merged.conflicts.length) sharedDraft.base=remote;
   const changed=JSON.stringify(state.cart)!==JSON.stringify(merged.cart);
@@ -215,7 +221,7 @@ function startSharedDraft(data){
   if(sharedDraft.account!==state.account){
     resetSharedDraft(); sharedDraft.account=state.account; sharedDraft.enabled=true;
     const meta=lget('draftMeta:'+state.account);
-    sharedDraft.base=cleanDraftCart(meta?.base); sharedDraft.revision=0;
+    sharedDraft.base=cleanDraftCart(meta?.base);sharedDraft.noteBase=meta?.noteBase||'';state.orderNote=lget('orderNote:'+state.account)||''; sharedDraft.revision=0;
   }
   receiveSharedDraft(data);
   scheduleDraftSync();
@@ -232,11 +238,11 @@ async function syncSharedDraft(){
   sharedDraft.busy=true;
   try{
     const changes=draftChanges(sharedDraft.base,state.cart);
-    const sent={...state.cart};
-    const writing=changes.length && !sharedDraft.conflicts.length;
-    const r=await api('draft',writing?{method:'PUT',body:{changes}}:{});
+    const sent={...state.cart}, sentNote=state.orderNote||'';
+    const writing=(changes.length || sentNote!==sharedDraft.noteBase) && !sharedDraft.conflicts.length;
+    const r=await api('draft',writing?{method:'PUT',body:{changes,noteBefore:sharedDraft.noteBase,noteAfter:sentNote}}:{});
     if(epoch!==sharedDraft.epoch || state.account!==account || r.stale) return;
-    if(r.ok || r.status===409) receiveSharedDraft(r.data,writing && r.ok ? sent : sharedDraft.base);
+    if(r.ok || r.status===409) receiveSharedDraft(r.data,writing && r.ok ? sent : sharedDraft.base,writing && r.ok?sentNote:sharedDraft.noteBase);
   }finally{
     if(epoch===sharedDraft.epoch){ sharedDraft.busy=false; paintDraftStatus(); }
   }
@@ -248,9 +254,10 @@ async function resolveDraftConflict(choice){
   if(epoch!==sharedDraft.epoch) return;
   if(!sharedDraft.remote || !sharedDraft.conflicts.length) return;
   if(choice==='remote') for(const id of sharedDraft.conflicts){
+    if(id==='__note'){state.orderNote=sharedDraft.remoteNote;continue;}
     if(sharedDraft.remote[id]) state.cart[id]=sharedDraft.remote[id]; else delete state.cart[id];
   }
-  sharedDraft.base={...sharedDraft.remote}; sharedDraft.conflicts=[];
+  sharedDraft.base={...sharedDraft.remote};sharedDraft.noteBase=sharedDraft.remoteNote||'';lset('orderNote:'+state.account,state.orderNote||''); sharedDraft.conflicts=[];
   persistCartDraft(); if(state.view==='order') refreshOrderView();
   await syncSharedDraft();
 }
@@ -260,7 +267,7 @@ setInterval(()=>{if(document.visibilityState==='visible') syncSharedDraft();},80
 function persistCartDraft(){
   if(!state.account) return;
   const draft=Object.fromEntries(Object.entries(state.cart).filter(([,qty])=>Number.isFinite(Number(qty)) && Number(qty)>0));
-  lset('pendingCart:'+state.account,Object.keys(draft).length?draft:null);
+  lset('pendingCart:'+state.account,Object.keys(draft).length?draft:null);lset('orderNote:'+state.account,state.orderNote||'');
   scheduleDraftSync();
 }
 function restoreCartDraft(){
@@ -273,8 +280,8 @@ function restoreCartDraft(){
     if(lset('pendingCart:'+state.account,legacy)) lset('pendingCart',null);
   } else if(legacy && saved) lset('pendingCart',null);
   if(saved && typeof saved==='object' && !Array.isArray(saved)){
-    const available=new Set(state.items.map(item=>item.id));
-    state.cart=Object.fromEntries(Object.entries(saved).filter(([id,qty])=>available.has(id) && Number.isFinite(Number(qty)) && Number(qty)>0).map(([id,qty])=>[id,Math.min(MAX_QTY, Math.floor(Number(qty)))]));
+    const available=new Set(state.items.filter(item=>item.available!==false).map(item=>item.id));
+    state.cart=Object.fromEntries(Object.entries(saved).filter(([id,qty])=>available.has(id) && Number.isFinite(Number(qty)) && Number(qty)>0).map(([id,qty])=>[id,Math.min(MAX_QTY, roundQuantity(Number(qty)))]));
   }
   startSharedDraft(state.sharedDraft);
   persistCartDraft();
@@ -400,6 +407,7 @@ async function loadData(){
   if(d.streak) streakArrived(d.streak);
   state.weather = d.weather || null;
   state.pins = Array.isArray(d.pins) ? d.pins : [];
+  state.messageFormat=d.messageFormat || {};
   state.repeats = Array.isArray(d.repeats) ? d.repeats : [];
   state.months = Array.isArray(d.months) ? d.months : [];
   state.sharedDraft = d.draft || null;
@@ -458,7 +466,7 @@ function signOut(reason, {preserveSession = false} = {}){
   state.activity = []; state.devices = []; state.reminder = null;
   state.streak = null; state.notes = []; state.pins = []; state.weather = null; state.repeats = []; state.months = [];
   try{ updateAppBadge(); }catch(_){}
-  state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
+  state.orderNote='';state.messageFormat={};state.catalogQuery='';state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
   reminderDraft = null;
   stopStepHold(); rowPress?.cancel();
@@ -1013,7 +1021,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   const width = old ? old.getBoundingClientRect().width : window.innerWidth;
   const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : transitionFrames(dir, width)) : null;
   const ghost = frames?.out ? pageGhost(old) : null;
-  state.view = view;
+  state.catalogQuery='';state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
   render();
   scrollBox().scrollTo({top:0});
@@ -1466,7 +1474,7 @@ function lastQtyMap(){
 
 function renderPageHeading(){
   const now = new Date(), date = formatIraqDateTime(now, {weekday:'short', day:'numeric', month:'short'});
-  return `<header class="page-heading"><div><div class="page-kicker">${esc(t('workspaceLabel'))}</div><h1>${esc(viewLabel(state.view))}</h1></div><time class="page-date" datetime="${erbilDate(now)}">${esc(date)}</time></header>`;
+  return `<header class="page-heading"><div><div class="page-kicker">${esc(t('workspaceLabel'))}</div><h1>${esc(viewLabel(state.view))}</h1><p class="page-guide">${esc(viewGuide(state.view))}</p></div><time class="page-date" datetime="${erbilDate(now)}">${esc(date)}</time></header>`;
 }
 
 /* ============ Notifications: banner ============ */
@@ -1593,6 +1601,7 @@ function attachShellEvents(){
 }
 /* Events inside the page that more than one screen uses. */
 function attachContentEvents(){
+  attachMessageSettings(); attachCatalogSearch();
   const pushOn = document.getElementById('pushEnableBtn');
   if(pushOn) pushOn.onclick = async ()=>{
     const res = await enablePush();   // straight from the tap: iOS needs that for the permission prompt
@@ -1867,6 +1876,7 @@ function renderOrder(){
     ${renderNoteSticky()}
     <div id="sharedDraftStatus">${draftStatusHtml()}</div>
     ${renderOrderHero(selectedCount, selectedSupplierCount)}
+    ${renderOrderTools()}
     <div id="repeatCards">${renderRepeatCards()}</div>
     <div id="ricoSuggest">${renderRicoSuggestion()}</div>
     ${tabsHtml}
@@ -1890,8 +1900,8 @@ function renderOrderResults(){
   const tabFiltered = state.orderTab==='all'
     ? state.items
     : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab);
-  const visibleItems = tabFiltered.filter(i => !q || foldText(i.name).includes(q));
-  const pinned = state.orderTab==='all' && !q ? state.pins.map(id=>state.items.find(i=>i.id===id)).filter(Boolean) : [];
+  const visibleItems = tabFiltered.filter(i => i.available!==false && (!q || foldText([i.name,...(i.aliases||[])].join(' ')).includes(q)));
+  const pinned = state.orderTab==='all' && !q ? state.pins.map(id=>state.items.find(i=>i.id===id)).filter(i=>i && i.available!==false) : [];
 
   const groups = {};
   visibleItems.forEach(i=>{
@@ -1928,7 +1938,7 @@ function itemRowHtml(i, lastQty){
         </div>
         <div class="stepper">
           <button class="step-btn" data-dec="${esc(i.id)}" aria-label="${esc(t('decreaseQty')(i.name))}" ${qty>0?'':'disabled'}>−</button>
-          <input class="qty-input" type="number" inputmode="numeric" min="0" max="${MAX_QTY}" value="${qty}" aria-label="${esc(t('quantityFor')(i.name))}" data-qty="${esc(i.id)}">
+          <input class="qty-input" type="number" inputmode="decimal" step="0.001" min="0" max="${MAX_QTY}" value="${qty}" aria-label="${esc(t('quantityFor')(i.name))}" data-qty="${esc(i.id)}">
           <button class="step-btn" data-inc="${esc(i.id)}" aria-label="${esc(t('increaseQty')(i.name))}">+</button>
         </div>
       </div>`;
@@ -2016,6 +2026,7 @@ function paintVoiceOrderBtn(){
   b.querySelector('span').textContent = on ? t('voiceOrderStop') : busy ? t('ricoTranscribing') : t('voiceOrder');
 }
 function attachOrderEvents(){
+  attachOrderTools();
   paintDraftStatus();
   attachNoteSticky();
   attachRepeatCards();
@@ -2071,7 +2082,7 @@ function attachOrderEvents(){
   }
   attachOrderResultEvents(document.getElementById('orderArrangeRow'));
   const same = document.getElementById('sameAsLast');
-  if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id) && qty>0)); refreshOrderView(); };
+  if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id && i.available!==false) && qty>0)); refreshOrderView(); };
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.onclick=()=>{
     const before={...state.cart};
@@ -2094,7 +2105,7 @@ async function startSendQueue(){
   const bySupplier = {};
   Object.keys(state.cart).forEach(id=>{
     const qty = state.cart[id]; if(!qty) return;
-    const item = state.items.find(i=>i.id===id); if(!item) return;
+    const item = state.items.find(i=>i.id===id); if(!item || item.available===false) return;
     const sid = item.supplierId || '__none';
     (bySupplier[sid] = bySupplier[sid]||[]).push({itemId:id, name:item.name, qty, unit:item.unit, sortOrder:item.sortOrder});
   });
@@ -2111,9 +2122,9 @@ async function startSendQueue(){
   const before = state.queue && Date.now() - state.queue.at < QUEUE_KEEP_MS ? state.queue : [];
   state.queue = Object.keys(bySupplier).map(sid=>{
     const old = before.find(e=>e.supplierId===sid);
-    return {supplierId: sid, items: bySupplier[sid], sent: !!(old && old.sent && sameQueueItems(old.items, bySupplier[sid]))};
+    return {supplierId: sid, items: bySupplier[sid], sent: !!(old && old.sent && (before.orderNote||'')===(state.orderNote||'') && sameQueueItems(old.items, bySupplier[sid]))};
   });
-  state.queue.at = Date.now();
+  state.queue.at = Date.now();state.queue.orderNote=state.orderNote||'';
   persistQueue();
   goView('queue');
   if(state.queue.every(e=>e.sent)) maybeFinishQueue();
@@ -2131,7 +2142,7 @@ function persistQueue(){
   if(!state.account) return;
   const q = state.queue;
   lset('sendQueue:'+state.account, q ? {
-    at: q.at || Date.now(), record: q.record || null, saveState: q.saveState === 'failed' ? 'failed' : null,
+    at: q.at || Date.now(), orderNote:q.orderNote||'', record: q.record || null, saveState: q.saveState === 'failed' ? 'failed' : null,
     entries: q.map(e=>({supplierId:e.supplierId, items:e.items, sent:!!e.sent}))
   } : null);
 }
@@ -2150,7 +2161,7 @@ function restoreQueue(){
   const queue = entries.map(e=>({supplierId:e.supplierId, items:e.items, sent:!!e.sent}));
   queue.at = Number(saved.at);
   if(saved.record && typeof saved.record.id === 'string'){ queue.record = saved.record; queue.saveState = 'failed'; }
-  state.queue = queue;
+  queue.orderNote=saved.orderNote||''; state.queue = queue;
   state.view = 'queue';
   return true;
 }
@@ -2171,10 +2182,10 @@ function attachOrderResultEvents(root){
   });
   root.querySelectorAll('.item-row').forEach(row=>{ row.onpointerdown=e=>startRowPress(row,e); });
   root.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
-    const id=inp.dataset.qty; const v=Math.min(MAX_QTY, Math.max(0, parseInt(inp.value)||0)); state.cart[id]=v; refreshOrderView(id);
+    const id=inp.dataset.qty; const v=Math.min(MAX_QTY, Math.max(0, readQuantity(inp.value))); state.cart[id]=v; refreshOrderView(id);
   });
   root.querySelectorAll('[data-qty]').forEach(inp=>inp.oninput=()=>{
-    const id=inp.dataset.qty; state.cart[id]=inp.value===''?0:Math.min(MAX_QTY, Math.max(0,parseInt(inp.value)||0));
+    const id=inp.dataset.qty; state.cart[id]=inp.value===''?0:Math.min(MAX_QTY, Math.max(0,readQuantity(inp.value)));
     persistCartDraft();
     inp.closest('.item-row').classList.toggle('has-qty',state.cart[id]>0);
     inp.closest('.item-row').querySelector('[data-dec]').disabled=state.cart[id]===0;
@@ -2352,7 +2363,7 @@ function paintRicoSuggestion(){
   if(add) add.onclick = ()=>{
     const sg = currentRicoSuggestion(); if(!sg) return;
     const before = {...state.cart};
-    sg.lines.forEach(l=>{ state.cart[l.itemId] = Math.max(state.cart[l.itemId]||0, Math.max(1, Math.round(Number(l.qty)||1))); });
+    sg.lines.forEach(l=>{ state.cart[l.itemId] = Math.max(state.cart[l.itemId]||0, Math.max(1, roundQuantity(Number(l.qty)||1))); });
     persistCartDraft(); refreshOrderView();
     const name = (state.suppliers.find(s=>s.id===sg.supplierId)||{}).name || sg.supplier;
     toast(t('ricoSuggestAdded')(sg.lines.length, '\u2068'+name+'\u2069'), 'ok', {undo:()=>{ state.cart = before; persistCartDraft(); refreshOrderView(); }});
@@ -2376,7 +2387,8 @@ function buildMessage(entry){
   const noteOf = i => (state.items.find(x=>x.id === i.itemId) || {}).note;
   const lines = sortedSupplierItems(entry.items).map(i=>`• ${i.name} — ${i.qty} ${unitLabel(i.unit)}${noteOf(i) ? ` (${noteOf(i)})` : ''}`);
   const header = ({en:'New order from Ricotta:', ku:'داواکارییەکی نوێ لە چێشتخانەی ریکۆتا:', ar:'طلب جديد من مطبخ ريكوتا:'})[state.lang];
-  return header + '\n' + lines.join('\n');
+  const format=state.messageFormat||{}, note=entry.orderNote ?? state.queue?.orderNote ?? state.orderNote ?? '';
+  return [format.greeting,format.restaurant ? header.replace(/Ricotta|ريكوتا|ریکۆتا/g,()=>format.restaurant) : header,note,lines.join('\n'),format.closing].filter(Boolean).join('\n');
 }
 /* WhatsApp wants the full international number without + or 00. Iraqi numbers
    written the local way (0750 123 4567 or 750 123 4567) get +964; a number
@@ -2427,7 +2439,7 @@ function markQueueSent(idx){
   const entry = state.queue && state.queue[idx];
   if(!entry) return;
   entry.sent = true;
-  state.queue.at = Date.now();
+  state.queue.at = Date.now();state.queue.orderNote=state.orderNote||'';
   persistQueue();
   render();
   maybeFinishQueue();
@@ -2487,7 +2499,7 @@ async function maybeFinishQueue(){
   try{
     if(!queue.record){ try{ playOrdersSent(); }catch(_){ /* a sound must never stop the order from saving */ } }
     const record = queue.record || {
-      id: 'o'+outboxJobId(), date: new Date().toISOString(), by: state.account,
+      id: 'o'+outboxJobId(), date: new Date().toISOString(), by: state.account, note:queue.orderNote ?? state.orderNote ?? '',
       entries: state.queue.map(e=>({
         supplierId: e.supplierId,
         supplierName: (state.suppliers.find(s=>s.id===e.supplierId)||{}).name || '',
@@ -2513,6 +2525,7 @@ async function maybeFinishQueue(){
     ricoSuggestion.at = 0;
     // Preserve any quantities edited while the save was waiting on the network.
     queue.forEach(entry=>entry.items.forEach(item=>{ if(state.cart[item.itemId] === item.qty) delete state.cart[item.itemId]; }));
+    if((state.orderNote||'')===(queue.orderNote||'')){state.orderNote='';lset('orderNote:'+state.account,'');}
     persistCartDraft();
     if(state.view === 'queue') render();
     // Let the "All orders sent" card land before returning to the Order screen.
@@ -2566,13 +2579,13 @@ function orderHistoryCard(rec){
         ${isRozha() ? `<button class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
       </div>
     </div>
-    ${supplierLines}
+    ${rec.note?`<p class="order-note-preview" dir="auto">${esc(rec.note)}</p>`:''}${supplierLines}
   </div>`;
 }
 /* Orders for the current Baghdad calendar month, newest first. */
 function renderHistory(){
   const entries = state.history.map(rec=>({ts:Date.parse(rec.date), day:rec.date, html:orderHistoryCard(rec)})).sort((a,b)=>b.ts-a.ts);
-  if(!entries.length) return emptyState(t('noHistory'));
+  if(!entries.length) return renderReportCard()+`<div class="hist-tools"><button type="button" class="btn btn-ghost" id="monthsBtn">${esc(t('monthsTitle'))}</button><button type="button" class="btn btn-ghost" id="repeatListBtn">${esc(t('repeatListTitle'))}</button></div>`+emptyState(t('noHistory'));
   let lastDay = '', cards0 = renderReportCard() + `<div class="hist-tools">
     <button type="button" class="btn btn-ghost" id="repeatListBtn">${ICON_REPEAT}<span>${esc(t('repeatListTitle'))}${(state.repeats || []).length ? ` (${state.repeats.length})` : ''}</span></button>
     <button type="button" class="btn btn-ghost" id="monthsBtn">${ICON_CALENDAR}<span>${esc(t('monthsTitle'))}</span></button>
@@ -2598,9 +2611,9 @@ function attachHistoryEvents(){
     rec.entries.forEach(e=>e.items.forEach(it=>{
       // Skip items that were since deleted from the catalog -- they no
       // longer have anywhere to show up on the order screen.
-      if(state.items.some(i=>i.id===it.itemId)) cart[it.itemId] = it.qty;
+      if(state.items.some(i=>i.id===it.itemId && i.available!==false)) cart[it.itemId] = it.qty;
     }));
-    state.cart = cart;
+    state.cart = cart;state.orderNote=rec.note||'';
     persistCartDraft();
     goView('order');
     toast(t('reorderReady')(cartCount()));
@@ -2657,9 +2670,10 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), cutoff:t('cutoffShort')})[k] || k;
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'),available:t('availableToOrder'), cutoff:t('cutoffShort')})[k] || k;
 }
 function recordValue(k, v){
+  if(k==='available')return t(v==='false'?'unavailable':'availableToOrder');
   if(k === 'reminder') return reminderText(reminderFromCode(v));
   if(k === 'cutoff' && v) return reminderTimeLabel(v);
   if(k === 'supplier' && !v) return t('noSupplier');
@@ -2805,14 +2819,15 @@ async function deleteRecord(table, id){
 
 /* ============ Suppliers ============ */
 function renderSuppliers(){
-  const list = state.suppliers.length ? sortedByName(state.suppliers).map(s=>`
+  const list = state.suppliers.length ? sortedByName(state.suppliers.filter(s=>catalogMatches(s.name))).map(s=>`
     <div class="list-row tappable" data-editsup="${esc(s.id)}">
-      <div><div class="name">${esc(s.name)}</div><div class="meta">${esc(s.phone||'')}</div>
+      <div><div class="name">${esc(s.name)}</div><div class="meta">${esc(s.phone||t('noPhoneOnFile'))}</div>
         ${s.reminder && s.reminder.enabled ? `<div class="meta rem-line">${ICON_BELL} ${esc(reminderText(s.reminder))}</div>` : ''}
         ${s.cutoff ? `<div class="meta rem-line">⏰ ${esc(t('cutoffShort'))}: ${esc(reminderTimeLabel(s.cutoff))}</div>` : ''}</div>
       <div class="row-actions">
+        ${supplierContactLinks(s)}
         ${s.reminder && s.reminder.enabled ? `<button class="icon-btn" data-testsup="${esc(s.id)}" aria-label="${esc(t('testSupplierReminder'))}">${ICON_BELL}</button>` : ''}
-        <span class="icon-btn">${ICON_EDIT}</span>
+        <span class="icon-btn" aria-hidden="true">${ICON_EDIT}</span>
         <button class="icon-btn danger" data-delsup="${esc(s.id)}">${ICON_DELETE}</button>
       </div>
     </div>`).join('') : emptyState(t('noSuppliersYet'));
@@ -2821,7 +2836,7 @@ function renderSuppliers(){
       <button class="btn btn-primary add-btn" id="supAddBtn">${ICON_PLUS} ${t('addSupplier')}</button>
       <button class="btn btn-ghost" data-gorecord="supplier">${NAV_ICONS.record} ${t('record')}</button>
     </div>
-    <div class="section-title">${t('suppliers')} (${state.suppliers.length})</div>${list}`;
+    ${renderCatalogSearch()}<div class="section-title">${t('suppliers')} (${state.suppliers.length})</div>${list}`;
 }
 function openSupplierModal(id){
   const existing = id ? state.suppliers.find(s=>s.id===id) : null;
@@ -2883,6 +2898,7 @@ function openSupplierModal(id){
 }
 function attachSupplierEvents(){
   document.getElementById('supAddBtn').onclick = ()=> openSupplierModal(null);
+  document.querySelectorAll('[data-contact]').forEach(a=>a.onclick=e=>e.stopPropagation());
   document.querySelectorAll('[data-editsup]').forEach(row=>row.onclick=()=> openSupplierModal(row.dataset.editsup));
   document.querySelectorAll('[data-testsup]').forEach(b=>b.onclick=async(e)=>{
     e.stopPropagation();   // don't also open the edit popup
@@ -2911,15 +2927,15 @@ function attachSupplierEvents(){
 
 /* ============ Items ============ */
 function itemsAdminListHtml(){
-  return sortedByName(state.items).map(i=>`<div class="list-row tappable" data-edititem="${esc(i.id)}"><div><div class="name">${esc(i.name)}</div><div class="meta">${esc(unitLabel(i.unit))} · ${esc(supplierName(i.supplierId))}</div></div><div class="row-actions"><span class="icon-btn">${ICON_EDIT}</span><button class="icon-btn danger" data-delitem="${esc(i.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button></div></div>`).join('') || emptyState(t('noItemsYet'));
+  return sortedByName(state.items.filter(i=>catalogMatches([i.name,supplierName(i.supplierId),...(i.aliases||[])].join(' ')))).map(i=>`<div class="list-row tappable" data-edititem="${esc(i.id)}"><div><div class="name">${esc(i.name)}${i.available===false?` <span class="availability-badge">${esc(t('unavailable'))}</span>`:''}</div><div class="meta">${esc(unitLabel(i.unit))} · ${esc(supplierName(i.supplierId))}</div></div><div class="row-actions"><span class="icon-btn" aria-hidden="true">${ICON_EDIT}</span><button class="icon-btn danger" data-delitem="${esc(i.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button></div></div>`).join('') || emptyState(t('noItemsYet'));
 }
 function renderItemsAdmin(){
   return `
     <div class="action-row">
       <button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
-      <button class="btn btn-ghost" data-gorecord="item">${NAV_ICONS.record} ${t('record')}</button>
+      <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button><button class="btn btn-ghost" data-gorecord="item">${NAV_ICONS.record} ${t('record')}</button>
     </div>
-    <div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${itemsAdminListHtml()}</div>`;
+    ${renderCatalogSearch()}<div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${itemsAdminListHtml()}</div>`;
 }
 function openSupplierItemOrder(supplierId){
   const supplier=state.suppliers.find(s=>s.id===supplierId);
@@ -3054,7 +3070,7 @@ function openItemModal(id){
         <select id="mfSupplier">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
-      <div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
+      <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
       `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
@@ -3070,7 +3086,7 @@ function openItemModal(id){
       const name = document.getElementById('mfName').value.trim();
       const unit = document.getElementById('mfUnit').value;
       const supplierId = document.getElementById('mfSupplier').value || null;
-      const note = document.getElementById('mfNote').value.trim().slice(0, 120);
+      const note = document.getElementById('mfNote').value.trim().slice(0, 120), aliases=parseAliases(document.getElementById('mfAliases').value), available=document.getElementById('mfAvailable').checked;
       if(!name) return {error: t('nameRequired')};
       if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
       const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
@@ -3083,18 +3099,18 @@ function openItemModal(id){
           ['name', i.name, name],
           ['unit', unitEn(i.unit), unitEn(unit)],
           ['supplier', oldSupName, newSupName],
-          ['note', i.note || '', note]
+          ['note', i.note || '', note],['aliases',(i.aliases||[]).join(', '),aliases.join(', ')],['available',String(i.available!==false),String(available)]
         ]);
         if(fields.length){
-          const next = {...i, name, unit, supplierId, note, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
+          const next = {...i, name, unit, supplierId, note, aliases, available, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
           if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
-          Object.assign(i, next);
+          Object.assign(i, next);if(!available){delete state.cart[i.id];persistCartDraft();}
           logActivity({action:'edit', type:'item', name, fields});
         }
       } else {
         const supplierItems=state.items.filter(i=>i.supplierId===supplierId);
         const maxSort=supplierItems.reduce((max,i)=>Number.isInteger(i.sortOrder)?Math.max(max,i.sortOrder):max,-1);
-        const next = {id:'i'+outboxJobId(), name, unit, supplierId, note, sortOrder:maxSort>=0?maxSort+1:null};
+        const next = {id:'i'+outboxJobId(), name, unit, supplierId, note, aliases, available, sortOrder:maxSort>=0?maxSort+1:null};
         if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
         state.items.push(next);
         state.itemFormSupplierId = supplierId; // keep it locked in for the next item
@@ -3438,7 +3454,7 @@ function attachFaceIdSettings(){
 }
 function renderSettings(){
   const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `${renderPendingSync()}${renderThemePicker()}${renderDisplaySettings()}${renderFaceIdSettings()}${renderSoundsView()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderMessageSettings()}${renderThemePicker()}${renderDisplaySettings()}${renderFaceIdSettings()}${renderSoundsView()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
 /* ============ Notifications and sounds (shown in Settings) ============ */
 /* The daily reminder starts as one switch. Turning it on opens the time,
