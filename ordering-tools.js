@@ -2,6 +2,11 @@
    access the signed-in account and workspace when a screen is opened. */
 const ORDERING_TEXT = {
   en: {
+    aliasChanges: "Update search names",
+    aliasConflict: "These names changed on another device. Ask Rico for a fresh preview.",
+    searchHint: "Search names, English aliases or details. Small typos are okay.",
+    clearSearch: "Clear search",
+    searchMatches: "Matches",
     quantityLimit:
       "Use quantities between 0.001 and 99999, with up to 3 decimal places.",
     adjustQuantities: "Adjust quantities",
@@ -50,6 +55,11 @@ const ORDERING_TEXT = {
     guideSettings: "Adjust messages, appearance, notifications and sign-in.",
   },
   ku: {
+    aliasChanges: "نوێکردنەوەی ناوەکانی گەڕان",
+    aliasConflict: "ئەم ناوانە لە ئامێرێکی تر گۆڕاون. لە ریکۆ داوای پێشبینینێکی نوێ بکە.",
+    searchHint: "بە ناو، ناوی ئینگلیزی یان وردەکاری بگەڕێ. هەڵەی بچووک لە نووسین ئاساییە.",
+    clearSearch: "پاککردنەوەی گەڕان",
+    searchMatches: "ئەنجامەکان",
     quantityLimit:
       "بڕەکان لە نێوان 0.001 و 99999 بن، بە زۆرترین 3 ژمارە دوای خاڵ.",
     adjustQuantities: "ڕێکخستنی بڕەکان",
@@ -99,6 +109,11 @@ const ORDERING_TEXT = {
     guideSettings: "پەیام، ڕووکار، ئاگادارکردنەوە و چوونەژوورەوە ڕێکبخە.",
   },
   ar: {
+    aliasChanges: "تحديث أسماء البحث",
+    aliasConflict: "تغيّرت هذه الأسماء على جهاز آخر. اطلب معاينة جديدة من ريكو.",
+    searchHint: "ابحث بالاسم أو الأسماء الإنجليزية أو التفاصيل. الأخطاء البسيطة مقبولة.",
+    clearSearch: "مسح البحث",
+    searchMatches: "النتائج",
     quantityLimit: "استخدم كميات بين 0.001 و99999، حتى 3 منازل عشرية.",
     adjustQuantities: "تعديل الكميات",
     orderNote: "ملاحظة الطلب",
@@ -143,8 +158,10 @@ const ORDERING_TEXT = {
     guideSettings: "اضبط الرسائل والمظهر والإشعارات وتسجيل الدخول.",
   },
 };
-for (const lang of ["en", "ku", "ar"])
+for (const lang of ["en", "ku", "ar"]) {
   Object.assign(T[lang], ORDERING_TEXT[lang]);
+  if(T[lang].ricoStatus)T[lang].ricoStatus.propose_item_aliases=ORDERING_TEXT[lang].aliasChanges;
+}
 function roundQuantity(q) {
   return Math.round(Math.min(99999, Math.max(0, Number(q) || 0)) * 1000) / 1000;
 }
@@ -270,34 +287,44 @@ function supplierContactLinks(s) {
   return `<a class="btn btn-ghost supplier-contact" data-contact href="${esc(chat)}"${waOpensApp() ? "" : ' target="_blank" rel="noopener noreferrer"'} aria-label="${esc(t("contactSupplier") + " · " + s.name)}">${ICON_CHAT}<span>${esc(t("contactSupplier"))}</span></a><a class="btn btn-ghost supplier-contact" data-contact href="tel:+${phone}" aria-label="${esc(t("callSupplier") + " · " + s.name)}"><span>${esc(t("callSupplier"))}</span></a>`;
 }
 function catalogMatches(text) {
-  return (
-    !state.catalogQuery || foldText(text).includes(foldText(state.catalogQuery))
-  );
+  return Number.isFinite(globalThis.RicottaSearch.score(state.catalogQuery,text));
+}
+function itemSearchFields(item) {
+  return [item.name,...(item.aliases||[]),supplierName(item.supplierId),unitLabel(item.unit),item.note||''];
+}
+function recordSearchFields(a) {
+  return [a.name,a.by,a.actor,a.action,a.type,({add:t('actionAdded'),edit:t('actionEdited'),delete:t('actionDeleted')})[a.action],({supplier:t('typeSupplier'),item:t('typeItem'),unit:t('typeUnit')})[a.type],formatIraqDateTime(a.ts,{year:'numeric',month:'short',day:'numeric'}),...(a.fields||[]).flatMap(f=>[recordFieldLabel(f.k),f.from,f.to]),...state.items.filter(i=>i.name===a.name).flatMap(i=>i.aliases||[])].join(' ');
 }
 function renderCatalogSearch() {
-  return `<div class="search-wrap catalog-search"><input id="catalogSearch" type="search" aria-label="${esc(t("catalogSearch"))}" placeholder="${esc(t("catalogSearch"))}" value="${esc(state.catalogQuery || "")}"></div>`;
+  return `<div class="list-search"><div class="search-wrap catalog-search">${ICON_SEARCH}<input id="catalogSearch" type="search" aria-label="${esc(t('catalogSearch'))}" placeholder="${esc(t('catalogSearch'))}" value="${esc(state.catalogQuery||'')}"><button type="button" class="search-clear" id="catalogSearchClear" aria-label="${esc(t('clearSearch'))}">&times;</button></div><p class="field-hint">${esc(t('searchHint'))}</p><div id="catalogSearchCount" class="search-count" role="status" aria-live="polite"></div></div>`;
 }
 function attachCatalogSearch() {
-  const search = document.getElementById("catalogSearch");
-  if (search)
-    search.oninput = () => {
-      state.catalogQuery = search.value;
-      document.querySelectorAll(".list-row").forEach((row) => {
-        const id = row.dataset.edititem,
-          item = id && state.items.find((i) => i.id === id);
-        row.hidden = !catalogMatches(
-          item
-            ? [
-                item.name,
-                supplierName(item.supplierId),
-                ...(item.aliases || []),
-              ].join(" ")
-            : row.textContent,
-        );
+  const search=document.getElementById('catalogSearch');
+  if(search){
+    const apply=()=>{
+      state.catalogQuery=search.value;
+      const rows=[...document.querySelectorAll('.list-row,.unit-chip,[data-search-row]')];
+      let shown=0;
+      const scored=rows.map((row,index)=>{
+        const item=state.items.find(i=>i.id===row.dataset.edititem);
+        const fields=item?itemSearchFields(item):row.dataset.searchText||row.textContent;
+        const score=globalThis.RicottaSearch.score(search.value,fields);
+        row.hidden=!Number.isFinite(score);if(!row.hidden)shown++;
+        if(!row.dataset.searchOrder)row.dataset.searchOrder=String(index+1);
+        return {row,index:Number(row.dataset.searchOrder),score};
       });
+      if(['suppliers','itemsAdmin'].includes(state.view))scored.sort((a,b)=>a.score-b.score||a.index-b.index).forEach(x=>x.row.parentNode.appendChild(x.row));
+      document.getElementById('catalogSearchCount').textContent=search.value.trim()?`${t('searchMatches')}: ${shown} / ${rows.length}`:'';
+      let empty=document.getElementById('catalogSearchEmpty');
+      if(!empty){empty=document.createElement('div');empty.id='catalogSearchEmpty';search.closest('.list-search').after(empty);}
+      empty.innerHTML=emptyState(t('noSearchResults'));empty.hidden=shown>0 || !search.value.trim();
+      document.getElementById('catalogSearchClear').hidden=!search.value;
+      if(state.view==='history')document.querySelectorAll('.hist-day').forEach(h=>h.hidden=!!search.value.trim());
     };
-  const button = document.getElementById("itemImportBtn");
-  if (button) button.onclick = openItemImport;
+    search.oninput=apply;apply();
+    document.getElementById('catalogSearchClear').onclick=()=>{search.value='';if(state.view==='record'){state.catalogQuery='';state.recordLimit=RECORD_PAGE_SIZE;refreshRecordResults();search.focus();}else{apply();search.focus();}};
+  }
+  const button=document.getElementById('itemImportBtn');if(button)button.onclick=openItemImport;
 }
 let spreadsheetLoad;
 function loadSpreadsheetReader() {

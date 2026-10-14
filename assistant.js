@@ -337,14 +337,18 @@ function renderRicoProposal(p, mi){
   }
   if(p.kind === 'new_item'){
     icon = ICON_PLUS; title = t('ricoCardNewItem');
-    body = ricoFields([[t('name'), p.name], [t('unit'), unitLabel(p.unitId) || p.unit], [t('supplier'), p.supplier || t('noSupplier')]]);
+    body = ricoFields([[t('name'), p.name], [t('unit'), unitLabel(p.unitId) || p.unit], [t('supplier'), p.supplier || t('noSupplier')],...(p.aliases?.length?[[t('searchAliases'),p.aliases.join(', ')]]:[]),...(p.note?[[t('itemNoteLabel'),p.note]]:[])]);
     return ricoCard(icon, title, body, actions(t('addItem')), p);
   }
   if(p.kind === 'edit_item'){
     icon = ICON_EDIT; title = t('ricoCardEditItem');
     const row = (label, a, b)=> a===b ? [label, b] : [label, `<s>${esc(a)}</s> → ${esc(b)}`, true];
-    body = ricoFields([row(t('name'), p.before.name, p.name), row(t('unit'), p.before.unit, p.unit), row(t('supplier'), p.before.supplier, p.supplier || t('noSupplier'))]);
+    body = ricoFields([row(t('name'), p.before.name, p.name), row(t('unit'), p.before.unit, p.unit), row(t('supplier'), p.before.supplier, p.supplier || t('noSupplier')), ...(p.aliases!==undefined?[row(t('searchAliases'),(p.before.aliases||[]).join(', '),p.aliases.join(', '))]:[]),...(p.available!==undefined?[row(t('availableToOrder'),String(p.before.available),String(p.available))]:[]),...(p.note!==undefined?[row(t('itemNoteLabel'),p.before.note||'',p.note)]:[])]);
     return ricoCard(icon, title, body, actions(t('save')), p);
+  }
+  if(p.kind === 'item_aliases'){
+    body=(p.entries||[]).map(e=>`<div class="rico-card-line"><span dir="auto">${esc(e.name)}</span><span dir="auto">${esc(e.aliases.join(', ')||'—')}</span></div>`).join('');
+    return ricoCard(ICON_EDIT,`${esc(t('aliasChanges'))} (${p.entries.length})`,body,actions(t('save')),p);
   }
   if(p.kind === 'new_supplier'){
     icon = NAV_ICONS.suppliers; title = t('ricoCardNewSupplier');
@@ -562,7 +566,7 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
       content += `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};
@@ -697,8 +701,9 @@ function ricoApplyOrder(p, auto){
     if(!state.items.some(i=>i.id===l.itemId && i.available!==false)) return;
     // 'set' may take an item out (qty 0); every other line is at least one.
     if(p.mode === 'set' && !(Number(l.qty) > 0)){ delete state.cart[l.itemId]; n++; return; }
-    const q = Math.max(0.001, roundQuantity(Number(l.qty) || 1));
-    state.cart[l.itemId] = Math.min(MAX_QTY, p.mode === 'add' ? (state.cart[l.itemId]||0) + q : q);
+    if(!validOrderQuantity(Number(l.qty)) || Number(l.qty)<=0)return;
+    const q = roundQuantity(Number(l.qty));
+    state.cart[l.itemId] = roundQuantity(p.mode === 'add' ? (state.cart[l.itemId]||0) + q : q);
     n++;
   });
   persistCartDraft();
@@ -710,10 +715,16 @@ async function ricoApply(mi, id, btn){
   if(!p || p.status !== 'pending') return;
   const run = async ()=>{
     if(p.kind === 'order'){ ricoApplyOrder(p, false); return true; }
+    if(p.kind === 'item_aliases'){
+      const r=await api('items/aliases',{method:'PUT',body:{entries:p.entries.map(e=>({itemId:e.itemId,name:e.name,before:e.before,aliases:e.aliases}))}});
+      if(!r.ok){await showAlert(t(r.status===409?'aliasConflict':'saveFailed'));return false;}
+      for(const e of p.entries){const item=state.items.find(i=>i.id===e.itemId);if(item)item.aliases=e.aliases;}
+      p.doneLabel=t('savedMsg')(t('aliasChanges'));return true;
+    }
     if(p.kind === 'new_item'){
       const supplierId = p.supplierId && state.suppliers.some(s=>s.id===p.supplierId) ? p.supplierId : null;
       const maxSort = state.items.filter(i=>i.supplierId===supplierId).reduce((mx,i)=>Number.isInteger(i.sortOrder)?Math.max(mx,i.sortOrder):mx,-1);
-      const next = {id:'i'+outboxJobId(), name:p.name, unit:p.unitId, supplierId, sortOrder:maxSort>=0?maxSort+1:null};
+      const next = {id:'i'+outboxJobId(), name:p.name, unit:p.unitId, supplierId, aliases:p.aliases||[],available:p.available!==false,note:p.note||'',sortOrder:maxSort>=0?maxSort+1:null};
       if(!(await saveRecord('items', next))){ await showAlert(t('saveFailed')); return false; }
       state.items.push(next);
       logActivity({action:'add', type:'item', name:p.name, fields:[{k:'name',to:p.name},{k:'unit',to:unitEn(p.unitId)},{k:'supplier',to:supplierId?supplierName(supplierId):''}]});
@@ -725,9 +736,10 @@ async function ricoApply(mi, id, btn){
       if(!i){ await showAlert(t('saveFailed')); return false; }
       const supplierId = p.supplierId && state.suppliers.some(s=>s.id===p.supplierId) ? p.supplierId : null;
       const fields = diffFields([['name', i.name, p.name], ['unit', unitEn(i.unit), unitEn(p.unitId)], ['supplier', i.supplierId?supplierName(i.supplierId):'', supplierId?supplierName(supplierId):'']]);
-      const next = {...i, name:p.name, unit:p.unitId, supplierId, sortOrder: supplierId===i.supplierId ? i.sortOrder : null};
+      const next = {...i, name:p.name, unit:p.unitId, supplierId, ...(p.aliases!==undefined?{aliases:p.aliases}:{}),...(p.available!==undefined?{available:p.available}:{}),...(p.note!==undefined?{note:p.note}:{}), sortOrder: supplierId===i.supplierId ? i.sortOrder : null};
+      if(p.changes){Object.assign(next,i,p.changes);if(next.supplierId!==i.supplierId)next.sortOrder=null;}
       if(!(await saveRecord('items', next))){ await showAlert(t('saveFailed')); return false; }
-      Object.assign(i, next);
+      Object.assign(i, next);if(i.available===false){delete state.cart[i.id];persistCartDraft();}
       if(fields.length) logActivity({action:'edit', type:'item', name:p.name, fields});
       p.doneLabel = t('savedMsg')(p.name).replace(/^\u2713\s*/, '');
       return true;

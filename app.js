@@ -1189,8 +1189,7 @@ function openSelSheet(sel){
   document.body.appendChild(wrap);
   const list = wrap.querySelector('.sel-list');
   const paint = q=>{
-    const tokens = foldText(q).split(/\s+/).filter(Boolean);
-    const shown = opts.filter(o=>tokens.every(x=>foldText(o.label).includes(x)));
+    const shown = globalThis.RicottaSearch.rank(opts,q,o=>o.label);
     list.innerHTML = shown.length ? shown.map(o=>`<button type="button" class="sel-opt${o.on ? ' on' : ''}${o.value === '' ? ' none' : ''}" role="option" aria-selected="${o.on}" data-v="${esc(o.value)}"><span dir="auto">${esc(o.label)}</span>${o.on ? '<b aria-hidden="true">✓</b>' : ''}</button>`).join('')
       : `<div class="field-hint">${esc(t('noSearchResults'))}</div>`;
   };
@@ -1882,7 +1881,7 @@ function renderOrder(){
     ${tabsHtml}
     <div class="order-arrange-row" id="orderArrangeRow">${renderOrderArrangeControl()}</div>
     <div class="search-row">
-      <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" aria-label="${t('searchPlaceholder')}" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"></div>
+      <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" aria-label="${t('searchPlaceholder')}" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"><button type="button" class="search-clear" id="itemSearchClear" aria-label="${esc(t('clearSearch'))}" ${state.search?'':'hidden'}>&times;</button></div>
       <div class="order-quick-actions">
         ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}<span>${t('sameAsLastTime')}</span></button>` : ''}
         ${ricoVoiceSupported() ? `<button class="quick-btn voice-btn" id="voiceOrderBtn">${ICON_MIC}<span>${esc(t('voiceOrder'))}</span></button>` : ''}
@@ -1900,7 +1899,7 @@ function renderOrderResults(){
   const tabFiltered = state.orderTab==='all'
     ? state.items
     : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab);
-  const visibleItems = tabFiltered.filter(i => i.available!==false && (!q || foldText([i.name,...(i.aliases||[])].join(' ')).includes(q)));
+  const visibleItems = globalThis.RicottaSearch.rank(tabFiltered.filter(i=>i.available!==false),state.search,itemSearchFields);
   const pinned = state.orderTab==='all' && !q ? state.pins.map(id=>state.items.find(i=>i.id===id)).filter(i=>i && i.available!==false) : [];
 
   const groups = {};
@@ -1910,7 +1909,7 @@ function renderOrderResults(){
   });
   const groupHtml = Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
     const label = key==='__none' ? t('noSupplier') : supplierName(key);
-    const rows = sortedSupplierItems(groups[key]).map(i=>itemRowHtml(i, lastQty)).join('');
+    const rows = (q?groups[key]:sortedSupplierItems(groups[key])).map(i=>itemRowHtml(i, lastQty)).join('');
     const arrangeButton = canOpen('itemsAdmin') && key!=='__none'
       ? `<button class="item-sort-trigger" data-sort-supplier="${esc(key)}">${t('sortSupplierItems')}</button>` : '';
     return state.orderTab==='all' ? `<div class="supplier-group">
@@ -1934,6 +1933,7 @@ function itemRowHtml(i, lastQty){
       <div class="item-row ${qty>0?'has-qty':''}" data-item-id="${esc(i.id)}">
         <div class="item-info">
           <div class="item-name">${state.pins.includes(i.id) ? `<span class="item-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(i.name)}</div>
+          ${i.aliases?.length ? `<div class="item-alias" dir="auto">${esc(i.aliases.slice(0,2).join(' · '))}</div>` : ''}
           <div class="item-unit">${esc(unitLabel(i.unit))}${lastQty && lastQty[i.id] ? ` · <span class="item-last">${esc(t('lastQty')(lastQty[i.id]))}</span>` : ''}${i.note ? ` · <span class="item-note" dir="auto">“${esc(i.note)}”</span>` : ''}</div>
         </div>
         <div class="stepper">
@@ -2054,8 +2054,9 @@ function attachOrderEvents(){
     animateUi(document.getElementById('orderResults'),[{opacity:.4,transform:'translateY(6px)'},{opacity:1,transform:'none'}]);
   });
   const search = document.getElementById('itemSearch');
+  document.getElementById('itemSearchClear')?.addEventListener('click',()=>{state.search='';search.value='';document.getElementById('itemSearchClear').hidden=true;refreshOrderResults();search.focus();});
   if(search) search.oninput = (e)=>{
-    state.search = e.target.value;
+    state.search = e.target.value;document.getElementById('itemSearchClear').hidden=!state.search;
     refreshOrderResults();
   };
   attachOrderResultEvents(document.getElementById('orderResults'));
@@ -2569,7 +2570,7 @@ function orderHistoryCard(rec){
     const itemsLine = e.items.map(i=>`${esc(i.name)} × ${i.qty} ${esc(unitLabel(i.unit))}`).join(' · ');
     return `<div class="hist-entry"><div class="hist-supplier">${supplierMono(name)}${esc(name)}</div><div class="hist-items">${itemsLine}</div></div>`;
   }).join('');
-  return `<div class="hist-card">
+  return `<div class="hist-card" data-search-row data-search-text="${esc([rec.note,rec.date,...rec.entries.flatMap(e=>[supplierName(e.supplierId)||e.supplierName,...e.items.flatMap(l=>[l.name,...(state.items.find(i=>i.id===l.itemId)?.aliases||[])])])].join(' '))}">
     <div class="hist-top">
       <div class="hist-date">${esc(time)}${accountLabel(rec.by) ? ` \u00b7 ${esc(t('sentBy')(''))}${whoBadge(rec.by)}` : ''}</div>
       <div class="row-actions">
@@ -2596,7 +2597,7 @@ function renderHistory(){
     lastDay = day;
     return heading + e.html;
   }).join('');
-  return cards0 + cards;
+  return cards0 + renderCatalogSearch() + cards;
 }
 function attachHistoryEvents(){
   document.getElementById('reportOpen')?.addEventListener('click', openReportSheet);
@@ -2673,6 +2674,7 @@ function recordFieldLabel(k){
   return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'),available:t('availableToOrder'), cutoff:t('cutoffShort')})[k] || k;
 }
 function recordValue(k, v){
+  if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||'\u2014';}catch(_){} }
   if(k==='available')return t(v==='false'?'unavailable':'availableToOrder');
   if(k === 'reminder') return reminderText(reminderFromCode(v));
   if(k === 'cutoff' && v) return reminderTimeLabel(v);
@@ -2694,7 +2696,7 @@ function renderRecord(){
   const filterHtml = `<div class="record-filters glass" role="group">${filters.map(f=>`
     <button class="tab-pill ${state.recordFilter===f.id?'active':''}" aria-pressed="${state.recordFilter===f.id}" data-recfilter="${f.id}">${f.label}</button>`).join('')}</div>`;
   const rows = state.activity
-    .filter(a => state.recordFilter==='all' || a.type===state.recordFilter)
+    .filter(a => (state.recordFilter==='all' || a.type===state.recordFilter) && catalogMatches(recordSearchFields(a)))
     .sort((a,b)=> new Date(b.ts) - new Date(a.ts));
   const cards = rows.slice(0, state.recordLimit).map(a=>{
     const typeLabel = ({supplier:t('typeSupplier'), item:t('typeItem'), unit:t('typeUnit')})[a.type] || a.type;
@@ -2711,7 +2713,7 @@ function renderRecord(){
       return `<div class="rec-line"><span class="rec-k">${label}</span> ${esc(recordValue(f.k, v))}</div>`;
     }).join('');
     const extra = a.unassigned ? `<div class="rec-line">${t('itemsUnassigned')(a.unassigned)}</div>` : '';
-    return `<div class="rec-card">
+    return `<div class="rec-card" data-search-row data-search-text="${esc(recordSearchFields(a))}">
       <div class="rec-top"><span class="rec-badge rec-${esc(a.action)}">${actLabel}</span><span class="rec-type">${typeLabel}</span></div>
       <div class="rec-name">${esc(a.name)}</div>
       ${lines}${extra}
@@ -2720,14 +2722,21 @@ function renderRecord(){
   }).join('');
   return `
     <div class="action-row">
-      <div class="section-title grow">${esc(t('record'))} (${rows.length})</div>
+      <div class="section-title grow" id="recordCount">${esc(t('record'))} (${rows.length})</div>
       <button class="btn btn-ghost" id="recRefreshBtn">${ICON_REFRESH} ${esc(t('refresh'))}</button>
     </div>
-    ${filterHtml}
-    ${cards || emptyState(t('recordEmpty'))}
-    ${rows.length > state.recordLimit ? `<button class="btn btn-ghost" id="recMoreBtn">${esc(t('loadMoreRecord'))}</button>` : ''}`;
+    ${filterHtml}${renderCatalogSearch()}
+    <div id="recordResults">${cards || emptyState(t('recordEmpty'))}
+    ${rows.length > state.recordLimit ? `<button class="btn btn-ghost" id="recMoreBtn">${esc(t('loadMoreRecord'))}</button>` : ''}</div>`;
+}
+function refreshRecordResults(){
+  const wrapper=document.createElement('div');wrapper.innerHTML=renderRecord();
+  document.getElementById('recordResults').innerHTML=wrapper.querySelector('#recordResults').innerHTML;
+  document.getElementById('recordCount').textContent=wrapper.querySelector('#recordCount').textContent;
+  attachCatalogSearch();attachRecordEvents();
 }
 function attachRecordEvents(){
+  const search=document.getElementById('catalogSearch');if(search)search.oninput=()=>{state.catalogQuery=search.value;state.recordLimit=RECORD_PAGE_SIZE;refreshRecordResults();};
   document.querySelectorAll('[data-recfilter]').forEach(b=>b.onclick=()=>{
     state.recordFilter = b.dataset.recfilter; state.recordLimit = RECORD_PAGE_SIZE; render();
   });
@@ -2819,7 +2828,7 @@ async function deleteRecord(table, id){
 
 /* ============ Suppliers ============ */
 function renderSuppliers(){
-  const list = state.suppliers.length ? sortedByName(state.suppliers.filter(s=>catalogMatches(s.name))).map(s=>`
+  const list = state.suppliers.length ? sortedByName(state.suppliers).map(s=>`
     <div class="list-row tappable" data-editsup="${esc(s.id)}">
       <div><div class="name">${esc(s.name)}</div><div class="meta">${esc(s.phone||t('noPhoneOnFile'))}</div>
         ${s.reminder && s.reminder.enabled ? `<div class="meta rem-line">${ICON_BELL} ${esc(reminderText(s.reminder))}</div>` : ''}
@@ -2927,7 +2936,7 @@ function attachSupplierEvents(){
 
 /* ============ Items ============ */
 function itemsAdminListHtml(){
-  return sortedByName(state.items.filter(i=>catalogMatches([i.name,supplierName(i.supplierId),...(i.aliases||[])].join(' ')))).map(i=>`<div class="list-row tappable" data-edititem="${esc(i.id)}"><div><div class="name">${esc(i.name)}${i.available===false?` <span class="availability-badge">${esc(t('unavailable'))}</span>`:''}</div><div class="meta">${esc(unitLabel(i.unit))} · ${esc(supplierName(i.supplierId))}</div></div><div class="row-actions"><span class="icon-btn" aria-hidden="true">${ICON_EDIT}</span><button class="icon-btn danger" data-delitem="${esc(i.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button></div></div>`).join('') || emptyState(t('noItemsYet'));
+  return sortedByName(state.items).map(i=>`<div class="list-row tappable" data-edititem="${esc(i.id)}"><div><div class="name">${esc(i.name)}${i.available===false?` <span class="availability-badge">${esc(t('unavailable'))}</span>`:''}</div>${i.aliases?.length?`<div class="item-alias" dir="auto">${esc(i.aliases.join(', '))}</div>`:''}<div class="meta">${esc(unitLabel(i.unit))} · ${esc(supplierName(i.supplierId))}</div></div><div class="row-actions"><span class="icon-btn" aria-hidden="true">${ICON_EDIT}</span><button class="icon-btn danger" data-delitem="${esc(i.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button></div></div>`).join('') || emptyState(t('noItemsYet'));
 }
 function renderItemsAdmin(){
   return `
@@ -3165,7 +3174,7 @@ function readUnitFields(prefix){
 function renderUnits(){
   const chips = state.units.map(u=>{
     const others = [u.en, u.ku, u.ar].filter(x=>x && x !== unitName(u));
-    return `<span class="unit-chip"><span class="unit-names"><strong>${esc(unitName(u))}</strong>${others.length ? `<small>${esc([...new Set(others)].join(' · '))}</small>` : ''}</span>
+    return `<span class="unit-chip" data-search-row><span class="unit-names"><strong>${esc(unitName(u))}</strong>${others.length ? `<small>${esc([...new Set(others)].join(' · '))}</small>` : ''}</span>
       <button data-editunit="${esc(u.id)}" aria-label="${esc(t('editUnit'))}">${ICON_EDIT}</button>
       <button class="danger" data-delunit="${esc(u.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>
     </span>`;
@@ -3175,7 +3184,7 @@ function renderUnits(){
       <button class="btn btn-primary add-btn" id="unitAddBtn">${ICON_PLUS} ${esc(t('addUnit'))}</button>
       <button class="btn btn-ghost" data-gorecord="unit">${NAV_ICONS.record} ${esc(t('record'))}</button>
     </div>
-    <div class="section-title">${esc(t('units'))} (${state.units.length})</div>
+    ${renderCatalogSearch()}<div class="section-title">${esc(t('units'))} (${state.units.length})</div>
     ${chips ? `<div class="unit-grid">${chips}</div>` : emptyState(t('noUnitsYet'))}`;
 }
 function openUnitModal(unit){

@@ -1,3 +1,5 @@
+import "../_shared/search.js";
+const search = (globalThis as any).RicottaSearch;
 import { monthStart } from "../_shared/month.ts";
 // Rico -- the Ricotta Orders AI assistant (server side).
 //
@@ -25,7 +27,7 @@ const KURDISH_GEMINI_MODEL = "gemini-3.5-flash";   // writes much better Sorani;
 const KURDISH_MODEL_WAIT_MS = 10_000;  // if it hasn't started answering by then (busy), flash-lite answers instead
 const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
 const MAX_TURNS = 4;               // cap slow tool round-trips per reply
-const MAX_OUTPUT_TOKENS = 2048;
+const MAX_OUTPUT_TOKENS = 8192; // enough space for a reviewed catalog-wide alias proposal
 const REPLY_TIMEOUT_MS = 45_000;
 const DB_TIMEOUT_MS = 12_000;      // a single stuck database call can no longer hang the whole reply
 const REPLIES_PER_HOUR = 60;       // per device (or per session, if the device has no id -- never skipped)
@@ -50,7 +52,7 @@ const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b), m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
-const roundQty = (q: number) => Math.max(1, Math.round(q));   // the app orders whole units
+const roundQty = (q: number) => Math.max(0.001, Math.round(q * 1000) / 1000);
 /* A single stuck database call used to be able to hang the whole reply
    forever (loadWorld and the write tools had no time limit of their own,
    only the overall AI-call timeout did). This gives any individual DB
@@ -83,7 +85,7 @@ async function loadWorld(db: any, s: Session) {
   const full = s.account === "rozha";
   const [sup, items, units, orders, reminder, devices, activity, streak, notes, repeats, months] = await withTimeout(Promise.all([
     app("suppliers").select("id,name,phone,reminder,cutoff,created_at"),
-    app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note"),
+    app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available"),
     app("units").select("id,en,ku,ar"),
     app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at", { ascending: false }).limit(600),
     app("reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle(),
@@ -152,14 +154,18 @@ function findSupplier(w: World, q: unknown) {
   const v = text(q, 160);
   if (!v) return null;
   if (/^(none|no supplier|__none)$/i.test(v)) return { id: null, name: "No supplier" } as any;
-  return w.suppliers.find((s) => s.id === v) ?? w.suppliers.find((s) => norm(s.name) === norm(v))
-    ?? w.suppliers.find((s) => norm(s.name).includes(norm(v)) || norm(v).includes(norm(s.name))) ?? null;
+  const id=w.suppliers.find(s=>s.id===v);if(id)return id;
+  const exact=w.suppliers.filter(s=>norm(s.name)===norm(v));if(exact.length)return exact.length===1?exact[0]:null;
+  const partial=w.suppliers.filter(s=>norm(s.name).includes(norm(v)) || norm(v).includes(norm(s.name)));
+  return partial.length===1?partial[0]:null;
 }
 function findUnit(w: World, q: unknown) {
   const v = norm(q);
   if (!v) return null;
-  return w.units.find((u) => norm(u.id) === v) ?? w.units.find((u) => norm(u.en) === v || norm(u.ku) === v || norm(u.ar) === v)
-    ?? w.units.find((u) => norm(u.en).startsWith(v) || v.startsWith(norm(u.en))) ?? null;
+  const id=w.units.find(u=>norm(u.id)===v);if(id)return id;
+  const exact=w.units.filter(u=>[u.en,u.ku,u.ar].some(n=>n && norm(n)===v));if(exact.length)return exact.length===1?exact[0]:null;
+  const partial=w.units.filter(u=>u.en && (norm(u.en).startsWith(v) || v.startsWith(norm(u.en))));
+  return partial.length===1?partial[0]:null;
 }
 function reminderToday(w: World, s: any) {
   const r = s.reminder;
@@ -179,16 +185,17 @@ function itemStats(w: World, itemId: string) {
 }
 
 function toolFindItems(w: World, a: any) {
-  const q = norm(a.query);
+  const q = text(a.query,200);
   const sup = a.supplier ? findSupplier(w, a.supplier) : null;
   if (a.supplier && !sup) return { error: `No supplier matches "${a.supplier}".`, suppliers: w.suppliers.map((s) => s.name) };
-  let list = w.items.filter((i) => (!q || norm(i.name).includes(q)) && (!sup || i.supplier_id === sup.id));
+  let list = search.rank(w.items.filter((i) => !sup || i.supplier_id === sup.id), q, (i: any) => [i.name,...(i.aliases||[]),supplierName(w,i.supplier_id),unitName(w,i.unit_id)]);
   if (a.newest) list = [...list].sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)));
-  const limit = Math.min(Number(a.limit) || 30, 80);
+  const limit = Math.max(1, Math.min(Math.floor(Number(a.limit) || 30), 200));
+  const offset = Math.max(0, Math.floor(Number(a.offset)||0));
   return {
-    total: list.length,
-    items: list.slice(0, limit).map((i) => ({
-      item_id: i.id, name: i.name, unit_id: i.unit_id, unit: unitName(w, i.unit_id), unit_ku: unitName(w, i.unit_id, "ku"), unit_ar: unitName(w, i.unit_id, "ar"),
+    total: list.length, next_offset: offset+limit<list.length ? offset+limit : null,
+    items: list.slice(offset, offset+limit).map((i: any) => ({
+      item_id: i.id, name: i.name, aliases: i.aliases||[], available: i.available!==false, unit_id: i.unit_id, unit: unitName(w, i.unit_id), unit_ku: unitName(w, i.unit_id, "ku"), unit_ar: unitName(w, i.unit_id, "ar"),
       supplier_id: i.supplier_id, supplier: supplierName(w, i.supplier_id),
       added: i.created_at ? String(i.created_at).slice(0, 10) : null, ...itemStats(w, i.id),
     })),
@@ -222,7 +229,7 @@ function toolListSuppliers(w: World) {
 function toolOrderHistory(w: World, a: any) {
   const sup = a.supplier ? findSupplier(w, a.supplier) : null;
   if (a.supplier && !sup) return { error: `No supplier matches "${a.supplier}".` };
-  const item = a.item ? norm(a.item) : "";
+  const item = a.item ? text(a.item,200) : "";
   const wd = a.weekday != null && a.weekday !== "" ? WEEKDAYS.findIndex((d) => d.toLowerCase().startsWith(String(a.weekday).toLowerCase().slice(0, 3))) : -1;
   const out = [];
   for (const o of [...w.history].reverse()) {
@@ -231,7 +238,7 @@ function toolOrderHistory(w: World, a: any) {
     if (wd >= 0 && o.weekday !== wd) continue;
     let lines = o.lines;
     if (sup) lines = lines.filter((l) => l.supplierId === sup.id);
-    if (item) lines = lines.filter((l) => norm(l.name).includes(item));
+    if (item) lines = lines.filter((l) => Number.isFinite(search.score(item,[l.name,...(w.items.find(i=>i.id===l.itemId)?.aliases||[])])));
     if (!lines.length) continue;
     const bySup = new Map<string, string[]>();
     for (const l of lines) {
@@ -292,7 +299,7 @@ function toolSuggestOrder(w: World, a: any) {
   const sameDays = [...Array(lookback)].map((_, k) => new Date(target - (k + 1) * 7 * 86400_000).toISOString().slice(0, 10));
   const firstDate = w.history[0]?.date ?? date;
   const countable = sameDays.filter((d) => d >= firstDate).length || 1;
-  const liveItems = new Map(w.items.map((i) => [i.id, i]));
+  const liveItems = new Map(w.items.filter(i=>i.available!==false).map((i) => [i.id, i]));
   const candidates = wanted.length ? wanted : w.suppliers;
   const reminderOn = (sp: any) => {
     const r = sp?.reminder;
@@ -482,13 +489,15 @@ const pid = () => `p${Date.now().toString(36)}${(seq++).toString(36)}`;
 function proposeOrder(w: World, a: any, emit: Emit, auto: boolean) {
   const lines: any[] = [];
   const bad: string[] = [];
+  const seen=new Set();
   const mode = a.mode === "add" ? "add" : a.mode === "set" ? "set" : "replace";
   for (const l of Array.isArray(a.lines) ? a.lines.slice(0, 120) : []) {
     const it = w.items.find((i) => i.id === text(l.item_id, 120));
     const qty = Number(l.qty);
-    if (!it) { bad.push(String(l.item_id)); continue; }
+    if (!it || it.available===false || seen.has(it.id)) { bad.push(String(l.item_id)); continue; }
+    seen.add(it.id);
     // "set" may use 0 to take an item out of the draft; the other modes need a real quantity.
-    if (!(qty > 0 || (mode === "set" && qty === 0)) || qty > 9999) { bad.push(`${it.name} (quantity ${l.qty})`); continue; }
+    if (!Number.isFinite(qty) || Math.abs(qty*1000-Math.round(qty*1000))>0.000001 || !(qty > 0 || (mode === "set" && qty === 0)) || qty > 99999) { bad.push(`${it.name} (quantity ${l.qty})`); continue; }
     lines.push({ itemId: it.id, name: it.name, unitId: it.unit_id, supplierId: it.supplier_id, supplier: supplierName(w, it.supplier_id), qty: Math.round(qty * 1000) / 1000 });
   }
   if (!lines.length) return { error: "No valid lines. Use item_id values from find_items or suggest_order.", invalid: bad };
@@ -502,6 +511,8 @@ function proposeOrder(w: World, a: any, emit: Emit, auto: boolean) {
 }
 
 function proposeNewItem(w: World, a: any, emit: Emit) {
+  const aliases=a.aliases===undefined?[]:cleanAliases(a.aliases);
+  if(aliases===null || (a.available!==undefined && typeof a.available!=="boolean") || (a.note!==undefined && (typeof a.note!=="string" || a.note.length>120)))return {error:"Invalid aliases, availability or note."};
   const name = text(a.name, 160);
   if (!name) return { error: "Ask the person for the item name first." };
   const unit = findUnit(w, a.unit);
@@ -510,13 +521,31 @@ function proposeNewItem(w: World, a: any, emit: Emit) {
   if (a.supplier && !sup) return { error: `No supplier matches "${a.supplier}". Ask which supplier.`, suppliers: w.suppliers.map((s) => s.name) };
   const dup = w.items.find((i) => norm(i.name) === norm(name) && (i.supplier_id ?? null) === (sup?.id ?? null));
   if (dup) return { error: `"${dup.name}" already exists for ${supplierName(w, dup.supplier_id)} (item_id ${dup.id}). Ask if they meant something else.` };
-  emit({ type: "proposal", proposal: { id: pid(), kind: "new_item", name, unitId: unit.id, unit: unit.en, unitKu: unit.ku, supplierId: sup?.id ?? null, supplier: sup?.name ?? null } });
+  emit({ type: "proposal", proposal: { id: pid(), kind: "new_item", name, aliases,available:a.available??true,note:text(a.note,120),unitId: unit.id, unit: unit.en, unitKu: unit.ku, supplierId: sup?.id ?? null, supplier: sup?.name ?? null } });
   return { shown: true, what_happens: "The person sees a card and taps Add item to save it (or cancels)." };
 }
 
+function cleanAliases(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length>12 || value.some(v=>typeof v!=="string" || !v.trim() || v.trim().length>120)) return null;
+  return [...new Set(value.map(v=>v.trim()))];
+}
+function proposeItemAliases(w: World, a: any, emit: Emit) {
+  if (!Array.isArray(a.items) || !a.items.length || a.items.length>200) return {error:"Provide 1–200 item_id/aliases entries."};
+  const entries:any[]=[], ids=new Set();
+  for(const row of a.items) {
+    const it=w.items.find(i=>i.id===row?.item_id), aliases=cleanAliases(row?.aliases);
+    if(!it || !aliases || ids.has(it.id)) return {error:"Invalid or duplicate item. Use find_items and up to 12 aliases of 120 characters per item."};
+    ids.add(it.id);
+    entries.push({itemId:it.id,name:it.name,before:it.aliases||[],aliases});
+  }
+  emit({type:"proposal",proposal:{id:pid(),kind:"item_aliases",entries}});
+  return {shown:true,items:entries.length,what_happens:"A preview card lists every item and its aliases. The person must confirm before anything is saved. Primary names stay unchanged."};
+}
 function proposeEditItem(w: World, a: any, emit: Emit) {
   const it = w.items.find((i) => i.id === text(a.item_id, 120));
   if (!it) return { error: "Unknown item_id. Use find_items first." };
+  const aliases=a.aliases===undefined ? undefined : cleanAliases(a.aliases);
+  if(aliases===null || (a.available!==undefined && typeof a.available!=="boolean") || (a.note!==undefined && (typeof a.note!=="string" || a.note.length>120))) return {error:"Invalid aliases, availability or note."};
   const name = a.name ? text(a.name, 160) : it.name;
   const unit = a.unit ? findUnit(w, a.unit) : w.units.find((u) => u.id === it.unit_id) ?? { id: it.unit_id, en: it.unit_id };
   if (a.unit && !unit) return { error: "Unknown unit.", units: w.units.map((u) => u.en) };
@@ -524,7 +553,9 @@ function proposeEditItem(w: World, a: any, emit: Emit) {
   if (a.supplier !== undefined && !sup) return { error: `No supplier matches "${a.supplier}".` };
   emit({ type: "proposal", proposal: {
     id: pid(), kind: "edit_item", itemId: it.id,
-    before: { name: it.name, unit: unitName(w, it.unit_id), supplier: supplierName(w, it.supplier_id) },
+    changes:{...(a.name?{name}:{}),...(a.unit?{unit:unit!.id}:{}),...(a.supplier!==undefined?{supplierId:sup!.id??null}:{}),...(aliases!==undefined?{aliases}:{}),...(a.available!==undefined?{available:a.available}:{}),...(a.note!==undefined?{note:a.note.trim()}:{} )},
+    before: { name: it.name, unit: unitName(w, it.unit_id), supplier: supplierName(w, it.supplier_id), aliases:it.aliases||[],available:it.available!==false,note:it.note||"" },
+    ...(aliases!==undefined?{aliases}:{}),...(a.available!==undefined?{available:a.available}:{}),...(a.note!==undefined?{note:a.note.trim()}:{}),
     name, unitId: unit!.id, unit: unit!.en, supplierId: sup!.id ?? null, supplier: sup!.name ?? null,
   } });
   return { shown: true, what_happens: "The person confirms the change on a card." };
@@ -574,7 +605,7 @@ function proposeOpen(a: any, emit: Emit) {
 /* ---------------- tool definitions ---------------- */
 const TOOLS = [
   { name: "find_items", description: "Search the item catalog. Returns item_id, name, unit, supplier, when it was added, how often it was ordered, usual quantity. Use newest:true to list the most recently added items. Leave query empty to list all (capped by limit).",
-    input_schema: { type: "object", properties: { query: { type: "string", description: "Part of the item name, any language" }, supplier: { type: "string", description: "Supplier name or id" }, newest: { type: "boolean" }, limit: { type: "integer" } } } },
+    input_schema: { type: "object", properties: { query: { type: "string", description: "Item name or alias, any language; words can be in any order and minor typos are supported" }, supplier: { type: "string", description: "Supplier name or id" }, newest: { type: "boolean" }, limit: { type: "integer" }, offset: { type: "integer" } } } },
   { name: "list_suppliers", description: "All suppliers with item counts, reminder schedule, usual order days, days between orders, last order and whether they were sent today.",
     input_schema: { type: "object", properties: {} } },
   { name: "order_history", description: "Sent orders (newest first), optionally filtered by supplier, item name, date range (YYYY-MM-DD, Erbil) or weekday.",
@@ -592,9 +623,11 @@ const TOOLS = [
   { name: "propose_order_draft", description: "Show the person a card to change today's order draft on this device (it does NOT send anything to suppliers). mode 'replace' starts a fresh draft; 'add' adds quantities to the current one; 'set' sets exact quantities for the listed items and keeps everything else (qty 0 removes an item).",
     input_schema: { type: "object", properties: { lines: { type: "array", items: { type: "object", properties: { item_id: { type: "string" }, qty: { type: "number" } }, required: ["item_id", "qty"] } }, mode: { type: "string", enum: ["replace", "add", "set"] }, note: { type: "string" } }, required: ["lines"] } },
   { name: "propose_new_item", description: "Show a card to add a new catalog item. You must know the name, the unit and the supplier (or 'none') -- ask for anything missing first, one short question at a time.",
-    input_schema: { type: "object", properties: { name: { type: "string" }, unit: { type: "string", description: "Unit id or name, e.g. kg, box" }, supplier: { type: "string", description: "Supplier name/id, or 'none'" } }, required: ["name", "unit"] } },
-  { name: "propose_edit_item", description: "Show a card to rename an item or change its unit or supplier.",
-    input_schema: { type: "object", properties: { item_id: { type: "string" }, name: { type: "string" }, unit: { type: "string" }, supplier: { type: "string" } }, required: ["item_id"] } },
+    input_schema: { type: "object", properties: { name: { type: "string" }, unit: { type: "string", description: "Unit id or name, e.g. kg, box" }, supplier: { type: "string", description: "Supplier name/id, or 'none'" },aliases:{type:"array",items:{type:"string"}},available:{type:"boolean"},note:{type:"string"} }, required: ["name", "unit"] } },
+  { name: "propose_edit_item", description: "Show a card to edit an item name, unit, supplier, aliases, availability or note. Omitted fields stay unchanged.",
+    input_schema: { type: "object", properties: { item_id: { type: "string" }, name: { type: "string" }, unit: { type: "string" }, supplier: { type: "string" }, aliases: { type: "array", items: { type: "string" } }, available: { type: "boolean" }, note: { type: "string" } }, required: ["item_id"] } },
+  { name: "propose_item_aliases", description: "Show one review card to update aliases for many existing items, up to 200. Keep primary Kurdish names unchanged. Include existing aliases plus additions unless the person asked to replace/remove aliases. Ask about uncertain translations. Nothing is saved until the person confirms.",
+    input_schema:{type:"object",properties:{items:{type:"array",items:{type:"object",properties:{item_id:{type:"string"},aliases:{type:"array",items:{type:"string"}}},required:["item_id","aliases"]}}},required:["items"]} },
   { name: "propose_new_supplier", description: "Show a card to add a supplier (name and optional WhatsApp number).",
     input_schema: { type: "object", properties: { name: { type: "string" }, phone: { type: "string" } }, required: ["name"] } },
   { name: "propose_notification", description: "Show a card to send a push notification to every signed-in phone. Always write the message in English, Kurdish (Sorani) and Arabic; each phone gets its own language.",
@@ -668,9 +701,11 @@ THE APP (so you can explain it)
 - Two accounts, each with its own 6-digit PIN typed on the sign-in keypad: Rozha (everything) and Yunis (Order, Rico, History, Suppliers, Items, Record, Units; cannot delete History). PINs can't be changed inside the app; if one is forgotten, Rozha knows the recovery steps -- never explain or hint at them. Sessions last 18 hours.
 - Languages: English, Kurdish and Arabic. The language button is in the top corner of the sign-in screen and in the top bar; pick a language and tap Apply.
 - Tab bar at the bottom: each person's own three tabs plus More for the rest. In More, "Edit tabs" chooses the three tabs. Tap a tab, press and slide along the bar, or swipe the page sideways between the three tabs. On a computer every screen is in the sidebar.
-- Order screen: the streak fire at the top, Rozha's notes for Yunis, a summary card (items picked, a ring showing how many suppliers have items), pinned items (press and hold an item, then Pin), a "Rico suggests" card with today's most due supplier (one tap adds its usual items), supplier tabs, search, "Same as last time" (copies the last sent order), "Clear order". Each item has - / + (hold to count up or down quickly) and a number field (tap it and type). Press and hold an item for Add 1 / 5 / 10, Remove, Pin or a note on the item (the note goes into the WhatsApp message, e.g. "ripe, not soft"). The microphone on the Order screen lets them say the order and you fill it in. The draft is kept on this device until sent. "Send today's orders" opens Send to suppliers.
+- Order screen: the streak fire at the top, Rozha's notes for Yunis, a summary card (items picked, a ring showing how many suppliers have items), pinned items (press and hold an item, then Pin), a "Rico suggests" card with today's most due supplier (one tap adds its usual items), supplier tabs, search, "Same as last time" (copies the last sent order), "Clear order". Each item has - / + (hold to count up or down quickly) and a number field (tap it and type). Press and hold an item for Add 1 / 5 / 10, Remove, Pin or a note on the item (the note goes into the WhatsApp message, e.g. "ripe, not soft"). The microphone on the Order screen lets them say the order and you fill it in. Unsent quantities and the whole-order note sync across devices signed into the same account, with conflict choices when both change the same value. "Send today's orders" opens Send to suppliers.
 - Talking to you: type, or tap the microphone in the message box and speak in Kurdish, Arabic or English.
 - Send to suppliers: one card per supplier. "Send via WhatsApp" opens WhatsApp with the order text (Iraqi numbers are converted to +964). Suppliers without a number (or items with no supplier) get "Mark as sent". A PDF order sheet is on each card. When every card is sent, the order is saved in History and the draft is cleared.
+- Items have aliases (alternate search names, including English translations) and an Available switch. Aliases never replace the primary Kurdish name or the supplier message name. find_items returns aliases and availability and supports typo-tolerant, multi-word search. Use propose_edit_item to edit aliases, availability or the item note, and propose_item_aliases for a reviewed bulk change. Preserve existing aliases unless asked to remove them; ask about uncertain translations. For all items use find_items with limit:200 and continue with next_offset if present. Never claim a proposal has already been saved: the person must confirm its card.
+- Order quantities support up to three decimal places. Unavailable items stay in the catalog but must not be suggested for ordering. Whole-order notes appear in WhatsApp and History. Adjust quantities doubles or halves a draft with Undo. Settings → WhatsApp message customizes the restaurant name, greeting and closing. Supplier cards have WhatsApp and Call. Items → Import Excel supports a previewed Excel/CSV import.
 - Only orders and catalog records from the current Baghdad calendar month are retained; previous months are permanently removed. Explain that historical comparisons use only the available month.
 - History: sent orders grouped by day, with who sent them; "Send again" copies one into the draft; only Rozha can delete an order. Right after an order is saved, the person who sent it can tap Undo for 15 minutes (the order leaves History and the draft comes back). At the top of History is your monthly report card (orders, active days, streak, top items, busiest day, who sent most) with "Save this month" (an Excel file and a printable report). History is cleared at the start of each month, so near the end of the month remind people to save it.
 - Suppliers: add/edit name, WhatsApp number and an order reminder (time + weekdays, Erbil time). "Arrange items" on the Order screen sets the item order per supplier.
@@ -1306,6 +1341,7 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
     case "propose_order_draft": return proposeOrder(w, a, emit, auto);
     case "propose_new_item": return proposeNewItem(w, a, emit);
     case "propose_edit_item": return proposeEditItem(w, a, emit);
+    case "propose_item_aliases": return proposeItemAliases(w,a,emit);
     case "propose_new_supplier": return proposeNewSupplier(w, a, emit);
     case "propose_notification": return proposeNotification(a, emit);
     case "open_screen": return proposeOpen(a, emit);
@@ -1315,4 +1351,4 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
 }
 
 /* For local tests only (not used by the app). */
-export const _internals = { loadWorld, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, erbilParts };
+export const _internals = { loadWorld, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, proposeEditItem, proposeItemAliases, MANUAL, TOOLS, erbilParts };

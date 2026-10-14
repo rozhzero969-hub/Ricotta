@@ -70,3 +70,9 @@ Supplier cards include WhatsApp and phone links. Orders support a shared whole-o
 Items can be marked unavailable without deletion and given alternate search names. Items → Import Excel previews a first-sheet `.xlsx` or `.csv` file before saving, with at most 500 rows and a 2 MB file limit. Required column headings are `Name`, `Unit`, and `Supplier`; unit and supplier values must match one existing entry by name or ID. Optional headings are `ID`, `Aliases`, `Available`, and `Note`. Existing items match by ID or a unique name and supplier; omitted optional fields are preserved. Ambiguous or invalid rows must be corrected before importing.
 
 The spreadsheet reader is the official SheetJS Community Edition 0.20.3 standalone build, stored locally in `vendor/` with its Apache 2.0 license. It loads only when importing a spreadsheet and does not execute spreadsheet formulas.
+
+## Smart search and Rico aliases
+
+Order, Items, Suppliers, Units, History, Records and long dropdowns use the shared matcher in `supabase/functions/_shared/search.js`. It matches Kurdish/Arabic letter variants, English aliases, plural forms, unordered words and bounded spelling mistakes. Exact matches rank first; numeric values and short food names are not fuzzy matched. English aliases appear beneath the primary Kurdish item name, which remains the name sent to suppliers. Searches have clear buttons and result feedback. Record search searches beyond the first visible page without rebuilding the input.
+
+Rico reads aliases, availability and item notes and can propose changes to these fields. `propose_item_aliases` previews up to 200 alias changes together. Confirmation calls an authenticated, atomic alias-only RPC that preserves all other catalog fields, writes audit events and refuses stale aliases or renamed/deleted items. Repeated confirmation is idempotent. Rico suggestions preserve fractional quantities and skip unavailable items.

@@ -1696,3 +1696,9 @@ html.dark .faceid-btn{background:rgba(255,255,255,.07);color:#E6EEEA;border-colo
 .import-row.invalid{border-inline-start:3px solid var(--clay);background:rgba(214,72,63,.06)}
 [hidden]{display:none!important}
 @media(max-width:600px){.page-heading{flex-wrap:wrap;gap:8px}.page-date{font-size:11px}.page-guide{font-size:12px}.row-actions{flex-wrap:wrap}.action-row>.btn{flex:1 1 auto}.settings-group{padding:14px}.page-kicker{font-size:10px}}
+
+/* Search and bilingual catalog lists */
+.item-alias{font-size:.78rem;color:var(--ink-soft,var(--ink));opacity:.76;line-height:1.45;margin-top:4px;overflow-wrap:anywhere}
+.item-info{min-width:0}.item-name,.list-row .name{overflow-wrap:anywhere}.list-search{margin:12px 0 18px}.list-search .field-hint{margin:6px 4px}.search-count{font-size:.8rem;min-height:1em;color:var(--ink);opacity:.75}.search-clear{border:0;background:none;color:var(--ink);font-size:1.5rem;min-width:44px;min-height:44px;cursor:pointer}.catalog-search{display:flex;align-items:center}.catalog-search input{min-width:0;flex:1}.catalog-search>svg{width:18px;flex-shrink:0;margin-inline:12px}.rico-card-line>span{min-width:0;overflow-wrap:anywhere}.rico-card-line>span+span{font-size:.85rem;text-align:end;max-width:58%}.unit-chip{min-width:0}
+
+.search-wrap:has(#itemSearch){display:flex;align-items:center}.search-wrap:has(#itemSearch) .search-input{min-width:0;flex:1}
