@@ -35,7 +35,7 @@ const db = {
     if (name === 'app_internal_match_code') return { data: match, error: null };
     if (name === 'app_internal_set_credentials') return { data: 'ok', error: null };
     if (['app_internal_logout','app_internal_catalog_change','app_internal_device_command','app_internal_delete_order'].includes(name)) return {data:null,error:null};
-    if (name === 'app_internal_save_order') return { data: saved, error: null };
+    if (name === 'app_internal_save_order_note') return { data: saved, error: null };
     if (name === 'app_internal_streak_hit') return { data: { count: 1, best: 1, changed: true, milestone: false }, error: null };
     throw new Error(`Unexpected RPC ${name}`);
   },
@@ -124,7 +124,7 @@ try {
   reset();
   const validOrder = { id: 'order-1', date: new Date().toISOString(), entries: [{ supplierId: 'supplier', items: [{ itemId: 'tomato', name: 'Tomatoes', unit: 'kg', qty: 5 }] }] };
   assert.equal((await call('orders', validOrder)).status, 200);
-  const save = calls.find(c => c.name === 'app_internal_save_order');
+  const save = calls.find(c => c.name === 'app_internal_save_order_note');
   assert.deepEqual(save.args.p_lines, [{ supplier_id: 'supplier', supplier_name: 'Supplier', item_id: 'tomato', item_name: 'Tomatoes', unit_id: 'kg', qty: 5 }]);
   assert.equal(calls.some(c => c.table === 'app_orders' || c.table === 'app_order_lines'), false, 'the API delegates all order writes to one transaction');
   assert.match(calls.find(c => c.name === 'app_internal_streak_hit')?.args.p_day ?? '', /^\d{4}-\d{2}-\d{2}$/, 'a saved order counts toward the kitchen streak on its Baghdad day');
@@ -136,19 +136,19 @@ try {
     reset();
     const invalid = structuredClone(validOrder); invalid.entries[0].items[0].qty = qty;
     assert.equal((await call('orders', invalid)).status, 400, `reject quantity ${qty}`);
-    assert.equal(calls.some(c => c.name === 'app_internal_save_order'), false);
+    assert.equal(calls.some(c => c.name === 'app_internal_save_order_note'), false);
   }
   reset();
   const fastClock = structuredClone(validOrder); fastClock.date = new Date(Date.now() + 10 * 60000).toISOString();
   assert.equal((await call('orders', fastClock)).status, 200, 'a phone whose clock runs fast can still save its order');
-  assert.ok(Date.parse(calls.find(c => c.name === 'app_internal_save_order').args.p_date) <= Date.now(), 'a time in the future is saved as now');
+  assert.ok(Date.parse(calls.find(c => c.name === 'app_internal_save_order_note').args.p_date) <= Date.now(), 'a time in the future is saved as now');
   reset();
   const lastMonth = structuredClone(validOrder); lastMonth.date = new Date(Date.parse(monthStart()) - 60000).toISOString();
   assert.equal((await call('orders', lastMonth)).status, 409, 'an order from last month is still refused');
   reset();
   const noItemId = structuredClone(validOrder); delete noItemId.entries[0].items[0].itemId;
   assert.equal((await call('orders', noItemId)).status, 200);
-  assert.equal(calls.find(c => c.name === 'app_internal_save_order').args.p_lines[0].item_id, null, 'a line without an item id is saved without one');
+  assert.equal(calls.find(c => c.name === 'app_internal_save_order_note').args.p_lines[0].item_id, null, 'a line without an item id is saved without one');
   reset();
   assert.equal((await call('push/subscription', { endpoint: 'https://127.0.0.1/internal' }, 'PUT')).status, 400);
   tables.app_push_subscriptions.push({ endpoint: 'https://fcm.googleapis.com/fcm/send/peer', device_id: 'device-2' });

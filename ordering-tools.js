@@ -1,0 +1,457 @@
+/* Ordering conveniences. These helpers are loaded before app.js; they only
+   access the signed-in account and workspace when a screen is opened. */
+const ORDERING_TEXT = {
+  en: {
+    quantityLimit:
+      "Use quantities between 0.001 and 99999, with up to 3 decimal places.",
+    adjustQuantities: "Adjust quantities",
+    orderNote: "Order note",
+    orderNoteHint:
+      "This message is included with every supplier in this order.",
+    doubleQty: "Double quantities",
+    halfQty: "Halve quantities",
+    availableToOrder: "Available to order",
+    unavailable: "Unavailable",
+    searchAliases: "Other names for search",
+    aliasesHint:
+      "Separate names or spellings with commas. These names are not sent to suppliers.",
+    importItems: "Import Excel / CSV",
+    importHint:
+      "Columns: Name, Unit, Supplier. Optional: ID, Aliases, Available, Note. Maximum 500 rows, 2 MB. Review before saving.",
+    chooseFile: "Choose a spreadsheet",
+    importPreview: "Review items",
+    importInvalid: "Check the highlighted rows before importing.",
+    importSaved: "Items imported",
+    messageFormat: "WhatsApp message",
+    restaurantName: "Restaurant name",
+    greeting: "Opening message",
+    closing: "Closing message",
+    messageHint:
+      "Optional text included with each supplier order. Leave blank to use the usual Ricotta message.",
+    callSupplier: "Call",
+    contactSupplier: "WhatsApp",
+    catalogSearch: "Search this list…",
+    quantityChanged: "Quantities updated",
+    importRow: "Row",
+    importError: "Name, unit or supplier is missing or unknown.",
+    importDuplicate: "Duplicate item; use an ID or a unique name and supplier.",
+    importFailure: "Import paused. Saved rows are kept. Retry to continue.",
+    guideOrder:
+      "Choose your items and quantities, then send the order through WhatsApp.",
+    guideAssistant: "Ask Rico for help with your order or your kitchen.",
+    guideHistory:
+      "Find this month’s orders, repeat an order, or save a report.",
+    guideQueue: "Open each supplier’s WhatsApp message to send your order.",
+    guideSuppliers: "Manage supplier details, contact them, and set reminders.",
+    guideItems: "Manage the items you order, their units and availability.",
+    guideUnits: "Set the units used for quantities, such as kg, box or litre.",
+    guideRecord: "See who added, changed or removed items and suppliers.",
+    guideDevices: "See signed-in devices and control their access.",
+    guideSettings: "Adjust messages, appearance, notifications and sign-in.",
+  },
+  ku: {
+    quantityLimit:
+      "بڕەکان لە نێوان 0.001 و 99999 بن، بە زۆرترین 3 ژمارە دوای خاڵ.",
+    adjustQuantities: "ڕێکخستنی بڕەکان",
+    orderNote: "تێبینی داواکاری",
+    orderNoteHint: "ئەم پەیامە لەگەڵ داواکاریی هەموو دابینکەرەکان دەنێردرێت.",
+    doubleQty: "دوو هێندەکردنی بڕەکان",
+    halfQty: "نیوەکردنی بڕەکان",
+    availableToOrder: "بەردەستە بۆ داواکردن",
+    unavailable: "بەردەست نییە",
+    searchAliases: "ناوی تر بۆ گەڕان",
+    aliasesHint:
+      "ناوەکان بە کۆما جیا بکەرەوە. ئەم ناوانە بۆ دابینکەر نانێردرێن.",
+    importItems: "هاوردەی Excel / CSV",
+    importHint:
+      "ستوونەکان: Name, Unit, Supplier. ئارەزوومەندانە: ID, Aliases, Available, Note. زۆرترین 500 ڕیز و 2 MB. پێش پاشەکەوتکردن بپشکنە.",
+    chooseFile: "فایلێکی خشتە هەڵبژێرە",
+    importPreview: "پشکنینی کاڵاکان",
+    importInvalid: "پێش هاوردەکردن ڕیزە دیاریکراوەکان بپشکنە.",
+    importSaved: "کاڵاکان هاوردە کران",
+    messageFormat: "پەیامی واتساپ",
+    restaurantName: "ناوی چێشتخانە",
+    greeting: "پەیامی سەرەتا",
+    closing: "پەیامی کۆتایی",
+    messageHint:
+      "دەقی ئارەزوومەندانە بۆ هەر داواکارییەک. بۆ پەیامی ئاسایی ریکۆتا بە بەتاڵی بهێڵەوە.",
+    callSupplier: "پەیوەندی",
+    contactSupplier: "واتساپ",
+    catalogSearch: "لە لیستەکە بگەڕێ…",
+    quantityChanged: "بڕەکان نوێ کرانەوە",
+    importRow: "ڕیز",
+    importError: "ناو، یەکە یان دابینکەر نەنووسراوە یان نەناسراوە.",
+    importDuplicate:
+      "کاڵای دووبارە؛ ID یان ناو و دابینکەرێکی تایبەت بەکاربهێنە.",
+    importFailure:
+      "هاوردە ڕاگیرا. ڕیزە پاشەکەوتکراوەکان دەمێننەوە. دووبارە هەوڵبدەرەوە.",
+    guideOrder: "کاڵا و بڕەکان هەڵبژێرە، پاشان بە واتساپ داواکاری بنێرە.",
+    guideAssistant: "بۆ داواکاری یان چێشتخانەکەت داوای یارمەتی لە ڕیکۆ بکە.",
+    guideHistory:
+      "داواکارییەکانی ئەم مانگە ببینە، دووبارەیان بکەرەوە یان ڕاپۆرت پاشەکەوت بکە.",
+    guideQueue: "پەیامی واتساپی هەر دابینکەرێک بکەرەوە بۆ ناردنی داواکاری.",
+    guideSuppliers:
+      "زانیاریی دابینکەرەکان و بیرخەرەوەکان بەڕێوەببە و پەیوەندییان پێوە بکە.",
+    guideItems: "کاڵاکان، یەکەکان و بەردەستییان بەڕێوەببە.",
+    guideUnits: "یەکەی بڕەکان دیاری بکە، وەک کیلۆ، سندوق یان لیتر.",
+    guideRecord: "ببینە کێ کاڵا و دابینکەری زیاد، گۆڕیو یان سڕیوەتەوە.",
+    guideDevices: "ئامێرە چووەژوورەوەکان ببینە و دەستگەیشتنیان بەڕێوەببە.",
+    guideSettings: "پەیام، ڕووکار، ئاگادارکردنەوە و چوونەژوورەوە ڕێکبخە.",
+  },
+  ar: {
+    quantityLimit: "استخدم كميات بين 0.001 و99999، حتى 3 منازل عشرية.",
+    adjustQuantities: "تعديل الكميات",
+    orderNote: "ملاحظة الطلب",
+    orderNoteHint: "تُضاف هذه الرسالة إلى طلب كل مورد.",
+    doubleQty: "مضاعفة الكميات",
+    halfQty: "تنصيف الكميات",
+    availableToOrder: "متاح للطلب",
+    unavailable: "غير متاح",
+    searchAliases: "أسماء أخرى للبحث",
+    aliasesHint: "افصل الأسماء بفواصل. لا تُرسل هذه الأسماء إلى الموردين.",
+    importItems: "استيراد Excel / CSV",
+    importHint:
+      "الأعمدة: Name, Unit, Supplier. اختياري: ID, Aliases, Available, Note. حتى 500 صف و2 MB. راجع قبل الحفظ.",
+    chooseFile: "اختيار جدول",
+    importPreview: "مراجعة الأصناف",
+    importInvalid: "راجع الصفوف المحددة قبل الاستيراد.",
+    importSaved: "تم استيراد الأصناف",
+    messageFormat: "رسالة واتساب",
+    restaurantName: "اسم المطعم",
+    greeting: "رسالة البداية",
+    closing: "رسالة الختام",
+    messageHint:
+      "نص اختياري لكل طلب مورد. اتركه فارغاً لاستخدام رسالة ريكوتا المعتادة.",
+    callSupplier: "اتصال",
+    contactSupplier: "واتساب",
+    catalogSearch: "ابحث في هذه القائمة…",
+    quantityChanged: "تم تحديث الكميات",
+    importRow: "صف",
+    importError: "الاسم أو الوحدة أو المورد مفقود أو غير معروف.",
+    importDuplicate: "صنف مكرر؛ استخدم ID أو اسماً ومورداً فريدين.",
+    importFailure:
+      "توقف الاستيراد. الصفوف المحفوظة باقية. أعد المحاولة للمتابعة.",
+    guideOrder: "اختر الأصناف والكميات، ثم أرسل الطلب عبر واتساب.",
+    guideAssistant: "اطلب مساعدة ريكو في طلبك أو مطبخك.",
+    guideHistory: "راجع طلبات هذا الشهر أو كرر طلباً أو احفظ تقريراً.",
+    guideQueue: "افتح رسالة واتساب لكل مورد لإرسال طلبك.",
+    guideSuppliers: "أدر بيانات الموردين وتواصل معهم واضبط التذكيرات.",
+    guideItems: "أدر الأصناف ووحداتها ومدى توفرها للطلب.",
+    guideUnits: "حدد وحدات الكميات مثل كغ أو صندوق أو لتر.",
+    guideRecord: "اعرف من أضاف أو عدل أو حذف الأصناف والموردين.",
+    guideDevices: "راجع الأجهزة المسجلة وتحكم في وصولها.",
+    guideSettings: "اضبط الرسائل والمظهر والإشعارات وتسجيل الدخول.",
+  },
+};
+for (const lang of ["en", "ku", "ar"])
+  Object.assign(T[lang], ORDERING_TEXT[lang]);
+function roundQuantity(q) {
+  return Math.round(Math.min(99999, Math.max(0, Number(q) || 0)) * 1000) / 1000;
+}
+function readQuantity(value) {
+  return roundQuantity(foldText(String(value)).replace(/[٫,]/g, "."));
+}
+function validOrderQuantity(q) {
+  return (
+    Number.isFinite(q) &&
+    q >= 0 &&
+    q <= 99999 &&
+    Math.abs(q * 1000 - Math.round(q * 1000)) < 0.00001
+  );
+}
+function parseAliases(text) {
+  return [
+    ...new Set(
+      String(text || "")
+        .split(/[,،\n]/)
+        .map((x) => x.trim().slice(0, 120))
+        .filter(Boolean),
+    ),
+  ].slice(0, 12);
+}
+function viewGuide(view) {
+  return t(
+    "guide" +
+      ({
+        order: "Order",
+        assistant: "Assistant",
+        history: "History",
+        queue: "Queue",
+        suppliers: "Suppliers",
+        items: "Items",
+        units: "Units",
+        record: "Record",
+        devices: "Devices",
+        settings: "Settings",
+      }[view] || "Order"),
+  );
+}
+function renderOrderTools() {
+  return `<div class="order-tools"><button type="button" class="btn btn-ghost" id="orderNoteBtn">${esc(t("orderNote"))}${state.orderNote ? " •" : ""}</button><details><summary>${esc(t("adjustQuantities"))}</summary><div class="form-actions"><button type="button" class="btn btn-ghost" data-scale-order="2">${esc(t("doubleQty"))}</button><button type="button" class="btn btn-ghost" data-scale-order="0.5">${esc(t("halfQty"))}</button></div></details></div><p id="orderNotePreview" class="order-note-preview" dir="auto" ${state.orderNote ? "" : "hidden"}>${esc(state.orderNote || "")}</p>`;
+}
+function attachOrderTools() {
+  const note = document.getElementById("orderNoteBtn");
+  if (note)
+    note.onclick = () =>
+      showFormModal({
+        title: t("orderNote"),
+        bodyHtml: `<div class="field"><label for="wholeOrderNote">${esc(t("orderNoteHint"))}</label><textarea id="wholeOrderNote" maxlength="300" rows="3" dir="auto">${esc(state.orderNote || "")}</textarea></div>`,
+        onSubmit: async () => {
+          state.orderNote = document
+            .getElementById("wholeOrderNote")
+            .value.trim();
+          lset("orderNote:" + state.account, state.orderNote);
+          persistCartDraft();
+          render();
+          return {};
+        },
+      });
+  document.querySelectorAll("[data-scale-order]").forEach(
+    (b) =>
+      (b.onclick = async () => {
+        if (!cartCount()) return;
+        const factor = Number(b.dataset.scaleOrder);
+        if (
+          Object.values(state.cart).some(
+            (q) => q > 0 && !validOrderQuantity(q * factor),
+          )
+        ) {
+          await showAlert(t("quantityLimit"));
+          return;
+        }
+        if (
+          !(await showConfirm(t(factor === 2 ? "doubleQty" : "halfQty") + "?"))
+        )
+          return;
+        const before = { ...state.cart };
+        state.cart = Object.fromEntries(
+          Object.entries(state.cart)
+            .map(([id, q]) => [id, roundQuantity(q * factor)])
+            .filter(([, q]) => q > 0),
+        );
+        refreshOrderView();
+        toast(t("quantityChanged"), "ok", {
+          undo: () => {
+            state.cart = before;
+            refreshOrderView();
+          },
+        });
+      }),
+  );
+}
+function renderMessageSettings() {
+  const f = state.messageFormat || {};
+  return `<details class="settings-group"><summary>${esc(t("messageFormat"))}</summary><p class="field-hint">${esc(t("messageHint"))}</p><div class="field"><label for="messageRestaurant">${esc(t("restaurantName"))}</label><input id="messageRestaurant" maxlength="80" dir="auto" value="${esc(f.restaurant || "")}"></div><div class="field"><label for="messageGreeting">${esc(t("greeting"))}</label><textarea id="messageGreeting" rows="2" maxlength="200" dir="auto">${esc(f.greeting || "")}</textarea></div><div class="field"><label for="messageClosing">${esc(t("closing"))}</label><textarea id="messageClosing" rows="2" maxlength="200" dir="auto">${esc(f.closing || "")}</textarea></div><button type="button" class="btn btn-primary" id="messageFormatSave">${esc(t("save"))}</button></details>`;
+}
+function attachMessageSettings() {
+  const b = document.getElementById("messageFormatSave");
+  if (b)
+    b.onclick = () =>
+      withBusy(b, async () => {
+        const body = {
+          restaurant: document.getElementById("messageRestaurant").value.trim(),
+          greeting: document.getElementById("messageGreeting").value.trim(),
+          closing: document.getElementById("messageClosing").value.trim(),
+        };
+        const r = await api("me/message-format", { method: "PUT", body });
+        if (!r.ok) {
+          await showAlert(t("saveFailed"));
+          return;
+        }
+        state.messageFormat = body;
+        toast(t("savedMsg")(t("messageFormat")));
+      });
+}
+function supplierContactLinks(s) {
+  if (!foldText(String(s.phone || "")).replace(/\D/g, "")) return "";
+  const chat = waLink(s.phone, ""),
+    phone = chat.match(/(?:phone=|wa\.me\/)(\d+)/)?.[1];
+  if (!phone || phone.length < 7) return "";
+  return `<a class="btn btn-ghost supplier-contact" data-contact href="${esc(chat)}"${waOpensApp() ? "" : ' target="_blank" rel="noopener noreferrer"'} aria-label="${esc(t("contactSupplier") + " · " + s.name)}">${ICON_CHAT}<span>${esc(t("contactSupplier"))}</span></a><a class="btn btn-ghost supplier-contact" data-contact href="tel:+${phone}" aria-label="${esc(t("callSupplier") + " · " + s.name)}"><span>${esc(t("callSupplier"))}</span></a>`;
+}
+function catalogMatches(text) {
+  return (
+    !state.catalogQuery || foldText(text).includes(foldText(state.catalogQuery))
+  );
+}
+function renderCatalogSearch() {
+  return `<div class="search-wrap catalog-search"><input id="catalogSearch" type="search" aria-label="${esc(t("catalogSearch"))}" placeholder="${esc(t("catalogSearch"))}" value="${esc(state.catalogQuery || "")}"></div>`;
+}
+function attachCatalogSearch() {
+  const search = document.getElementById("catalogSearch");
+  if (search)
+    search.oninput = () => {
+      state.catalogQuery = search.value;
+      document.querySelectorAll(".list-row").forEach((row) => {
+        const id = row.dataset.edititem,
+          item = id && state.items.find((i) => i.id === id);
+        row.hidden = !catalogMatches(
+          item
+            ? [
+                item.name,
+                supplierName(item.supplierId),
+                ...(item.aliases || []),
+              ].join(" ")
+            : row.textContent,
+        );
+      });
+    };
+  const button = document.getElementById("itemImportBtn");
+  if (button) button.onclick = openItemImport;
+}
+let spreadsheetLoad;
+function loadSpreadsheetReader() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!spreadsheetLoad)
+    spreadsheetLoad = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "vendor/xlsx-0.20.3.min.js";
+      script.onload = () => resolve(window.XLSX);
+      script.onerror = () => {
+        spreadsheetLoad = null;
+        reject(new Error("Spreadsheet reader unavailable"));
+      };
+      document.head.appendChild(script);
+    });
+  return spreadsheetLoad;
+}
+function previewImportRows(rows) {
+  const seen = new Set();
+  return rows.map((row, index) => {
+    const values = Object.fromEntries(
+        Object.entries(row).map(([k, v]) => [
+          String(k).trim().toLowerCase(),
+          String(v ?? "").trim(),
+        ]),
+      ),
+      name = values.name || "",
+      units = state.units.filter((u) =>
+        [u.id, u.en, u.ku, u.ar].some(
+          (v) => v && foldText(v) === foldText(values.unit),
+        ),
+      ),
+      suppliers = state.suppliers.filter((s) =>
+        [s.id, s.name].some((v) => foldText(v) === foldText(values.supplier)),
+      ),
+      unit = units.length === 1 ? units[0] : null,
+      supplier = suppliers.length === 1 ? suppliers[0] : null,
+      matches = state.items.filter(
+        (i) =>
+          foldText(i.name) === foldText(name) && i.supplierId === supplier?.id,
+      ),
+      existing = values.id
+        ? state.items.find((i) => i.id === values.id)
+        : matches.length === 1
+          ? matches[0]
+          : null,
+      key = values.id || foldText(name) + "|" + supplier?.id;
+    let error =
+      !name || name.length > 160 || !unit || !supplier
+        ? t("importError")
+        : seen.has(key) ||
+            (matches.length > 1 && !values.id) ||
+            (values.id && !existing)
+          ? t("importDuplicate")
+          : "";
+    seen.add(key);
+    const rawAvailable = (values.available || "").toLowerCase();
+    if (
+      rawAvailable &&
+      !["true", "false", "yes", "no", "1", "0"].includes(rawAvailable)
+    )
+      error = t("importError");
+    return {
+      row: index + 2,
+      error,
+      item: {
+        ...(existing || {}),
+        id: existing?.id || "i" + outboxJobId(),
+        name,
+        unit: unit?.id,
+        supplierId: supplier?.id,
+        aliases: Object.hasOwn(values, "aliases")
+          ? parseAliases(values.aliases)
+          : existing?.aliases || [],
+        available: rawAvailable
+          ? !["false", "no", "0"].includes(rawAvailable)
+          : existing?.available !== false,
+        note: Object.hasOwn(values, "note")
+          ? values.note.slice(0, 120)
+          : existing?.note || "",
+      },
+    };
+  });
+}
+function openItemImport() {
+  let preview = [],
+    saved = new Set(),
+    selection = 0;
+  const session = apiSession(),
+    account = state.account;
+  showFormModal({
+    title: t("importItems"),
+    bodyHtml: `<p class="field-hint">${esc(t("importHint"))}</p><div class="field"><label for="itemImportFile">${esc(t("chooseFile"))}</label><input id="itemImportFile" type="file" accept=".xlsx,.csv"></div><div id="importPreview" class="import-preview" aria-live="polite"></div>`,
+    okLabel: t("importItems"),
+    onOpen: (box) => {
+      box.querySelector("#modalFormOk").disabled = true;
+      box.querySelector("#itemImportFile").onchange = async (e) => {
+        const generation = ++selection;
+        preview = [];
+        saved = new Set();
+        const output = box.querySelector("#importPreview"),
+          ok = box.querySelector("#modalFormOk");
+        ok.disabled = true;
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          if (file.size > 2 * 1024 * 1024) throw new Error(t("importHint"));
+          const reader = await loadSpreadsheetReader(),
+            book = reader.read(await file.arrayBuffer(), {
+              type: "array",
+              sheetRows: 502,
+              cellFormula: false,
+            }),
+            rows = reader.utils.sheet_to_json(book.Sheets[book.SheetNames[0]], {
+              defval: "",
+            });
+          if (!rows.length || rows.length > 500)
+            throw new Error(t("importHint"));
+          if (generation !== selection || !box.isConnected) return;
+          preview = previewImportRows(rows);
+          output.innerHTML =
+            `<h3>${esc(t("importPreview"))} (${preview.length})</h3>` +
+            preview
+              .map(
+                (p) =>
+                  `<div class="import-row${p.error ? " invalid" : ""}"><span>${esc(t("importRow"))} ${p.row}</span><b dir="auto">${esc(p.item.name)}</b><small>${esc(p.error || supplierName(p.item.supplierId) + " · " + unitLabel(p.item.unit))}</small></div>`,
+              )
+              .join("");
+          ok.disabled = preview.some((p) => p.error);
+        } catch (error) {
+          if (generation !== selection || !box.isConnected) return;
+          output.textContent = error.message || t("importInvalid");
+        }
+      };
+    },
+    onSubmit: async () => {
+      if (!preview.length || preview.some((p) => p.error))
+        return { error: t("importInvalid") };
+      for (const p of preview) {
+        if (state.account !== account || !apiSessionMatches(session))
+          return { error: t("sessionEnded") };
+        if (saved.has(p.item.id)) continue;
+        if (!(await saveRecord("items", p.item)))
+          return { error: t("importFailure") };
+        if (state.account !== account || !apiSessionMatches(session))
+          return { error: t("sessionEnded") };
+        saved.add(p.item.id);
+        const old = state.items.find((i) => i.id === p.item.id);
+        if (old) Object.assign(old, p.item);
+        else state.items.push(p.item);
+      }
+      render();
+      toast(t("importSaved"));
+      return {};
+    },
+  });
+}

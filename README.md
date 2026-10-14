@@ -62,3 +62,11 @@ On the existing project, apply only the migrations that are not yet in its histo
 ## Backups and recovery
 
 Keep encrypted database backups outside the repository and browser. Supabase's backup availability depends on the project's plan; check the dashboard and use an external backup if necessary. Review the retention policy before restoring: normal cleanup immediately removes data from previous months. Restore business backups to a separate project first, verify catalog and current-month order counts, then redeploy functions and revoke restored sessions before switching traffic. `pnpm test` verifies that the schema baseline restores into an empty database; it is not a production-data recovery drill.
+
+## Ordering tools
+
+Supplier cards include WhatsApp and phone links. Orders support a shared whole-order note and quantities with up to three decimal places. Adjust quantities doubles or halves the selected items with confirmation and Undo. Settings → WhatsApp message lets each account customize the restaurant name, greeting and closing.
+
+Items can be marked unavailable without deletion and given alternate search names. Items → Import Excel previews a first-sheet `.xlsx` or `.csv` file before saving, with at most 500 rows and a 2 MB file limit. Required column headings are `Name`, `Unit`, and `Supplier`; unit and supplier values must match one existing entry by name or ID. Optional headings are `ID`, `Aliases`, `Available`, and `Note`. Existing items match by ID or a unique name and supplier; omitted optional fields are preserved. Ambiguous or invalid rows must be corrected before importing.
+
+The spreadsheet reader is the official SheetJS Community Edition 0.20.3 standalone build, stored locally in `vendor/` with its Apache 2.0 license. It loads only when importing a spreadsheet and does not execute spreadsheet formulas.

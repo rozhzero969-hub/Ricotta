@@ -489,7 +489,7 @@ function proposeOrder(w: World, a: any, emit: Emit, auto: boolean) {
     if (!it) { bad.push(String(l.item_id)); continue; }
     // "set" may use 0 to take an item out of the draft; the other modes need a real quantity.
     if (!(qty > 0 || (mode === "set" && qty === 0)) || qty > 9999) { bad.push(`${it.name} (quantity ${l.qty})`); continue; }
-    lines.push({ itemId: it.id, name: it.name, unitId: it.unit_id, supplierId: it.supplier_id, supplier: supplierName(w, it.supplier_id), qty: Math.round(qty * 100) / 100 });
+    lines.push({ itemId: it.id, name: it.name, unitId: it.unit_id, supplierId: it.supplier_id, supplier: supplierName(w, it.supplier_id), qty: Math.round(qty * 1000) / 1000 });
   }
   if (!lines.length) return { error: "No valid lines. Use item_id values from find_items or suggest_order.", invalid: bad };
   emit({ type: "proposal", proposal: { id: pid(), kind: "order", mode, note: text(a.note, 200), lines } });
