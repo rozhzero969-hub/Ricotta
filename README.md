@@ -59,6 +59,12 @@ The earlier migration chain mixed removed features with missing live migrations.
 
 On the existing project, apply only the migrations that are not yet in its history (the first one, `simplify_orders_monthly_retention`, dropped the retired feature objects and reset sessions and devices once). Deploy both Edge Functions with JWT verification disabled because they verify their own PIN sessions or cron secret. `send-push` requires `x-cron-secret`; the existing minute tick remains configured. Update `APP_VERSION` whenever deploying browser changes.
 
+## Optional Cloudflare sign-in protection
+
+Turnstile can protect PIN and passkey sign-in on the existing GitHub Pages hostname, without buying a domain or moving hosting. It remains disabled until configured. Create a free **Managed** widget for `rozhzero969-hub.github.io`, then set these Supabase Edge Function secrets privately: `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, and `TURNSTILE_HOSTNAME=rozhzero969-hub.github.io`. Never commit the secret key. Configure both keys together and redeploy the API; partial configuration blocks sign-in safely.
+
+The app requests Cloudflare's script only when enabled. The API verifies each token with Cloudflare and checks its hostname and `ricotta_auth` action before checking credentials or issuing a passkey challenge. Tokens expire and cannot be reused. `GET /auth/security` exposes only whether protection is required and its public site key. Existing signed-in sessions keep working. This adds bot protection to sign-in; it does not put a Cloudflare firewall in front of Supabase. Test PIN, cancelled checks and Face ID on the live hostname after activation. Remove both key secrets and redeploy to disable it if recovery is needed.
+
 ## Backups and recovery
 
 Keep encrypted database backups outside the repository and browser. Supabase's backup availability depends on the project's plan; check the dashboard and use an external backup if necessary. Review the retention policy before restoring: normal cleanup immediately removes data from previous months. Restore business backups to a separate project first, verify catalog and current-month order counts, then redeploy functions and revoke restored sessions before switching traffic. `pnpm test` verifies that the schema baseline restores into an empty database; it is not a production-data recovery drill.

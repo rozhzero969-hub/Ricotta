@@ -73,7 +73,7 @@
     <div class="splash-bar"><i></i></div>
   </div>
 </div>
-<div class="ambient" aria-hidden="true"><i></i></div>
+
 <div id="app"></div>
 <!-- Load order matters: config.js first (constants), app.js last but one
      (it calls boot()). `defer` downloads them in parallel and runs them in
@@ -84,6 +84,7 @@
 <script defer src="storage.js"></script>
 <script defer src="sounds.js"></script>
 <script defer src="modals.js"></script>
+<script defer src="bot-check.js"></script>
 <script defer src="push.js"></script>
 <script defer src="assistant.js"></script>
 <script defer src="seasons.js"></script>

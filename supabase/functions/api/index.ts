@@ -1,3 +1,4 @@
+import { turnstileConfig, verifyTurnstile } from "../_shared/turnstile.ts";
 import { monthStart, monthKey } from "../_shared/month.ts";
 // Ricotta Orders API -- the only door between the browser and the database.
 //
@@ -96,6 +97,8 @@ const ACCOUNT_VIEWS: Record<string, string[]> = {
 // Allowed browser origin for this app. Set ALLOWED_ORIGIN if the production
 // site ever moves to another origin.
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "https://rozhzero969-hub.github.io";
+
+const botConfig=turnstileConfig(key=>Deno.env.get(key),ALLOWED_ORIGIN);
 
 const cors = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
@@ -373,14 +376,15 @@ function cleanRepeatDays(v: unknown): number[] | null {
 }
 function cleanRepeatEntries(v: unknown): any[] | null {
   if (!Array.isArray(v) || !v.length || v.length > 40) return null;
-  const out: any[] = [];
-  for (const e of v as any[]) {
-    const items = Array.isArray(e?.items) ? e.items.slice(0, 200).map((i: any) => ({ itemId: text(i?.itemId, 120), qty: Number(i?.qty) }))
-      .filter((i: any) => i.itemId && Number.isFinite(i.qty) && i.qty > 0 && i.qty <= 99999) : [];
-    if (!items.length) continue;
-    out.push({ supplierId: text(e?.supplierId, 120) || null, items });
+  const ids=new Set<string>();
+  for(const e of v){
+    if(!e || !Array.isArray(e.items) || !e.items.length || e.items.length>200 || (e.supplierId!=null && (typeof e.supplierId!=="string" || e.supplierId.length>120)))return null;
+    for(const i of e.items){
+      if(!i || typeof i.itemId!=="string" || !i.itemId || i.itemId.length>120 || !validQuantity(i.qty) || ids.has(i.itemId))return null;
+      ids.add(i.itemId);
+    }
   }
-  return out.length ? out : null;
+  return v.map(e=>({supplierId:e.supplierId||null,items:e.items.map((i:any)=>({itemId:i.itemId,qty:i.qty}))}));
 }
 
 /* ---------- Sign-in, and wrong-guess limits ----------
@@ -414,7 +418,8 @@ async function completeAttempt(ids: number[]) {
 }
 
 async function login(req: Request) {
-  const { pin } = await readBody(req);
+  const { pin, turnstileToken } = await readBody(req);
+  if(!(await verifyTurnstile(botConfig,turnstileToken)))return fail("verification_failed",403);
   // Do not truncate an untrusted value before verifying it: otherwise a
   // valid PIN followed by extra characters could be accepted.
   if (!/^\d{6}$/.test(String(pin ?? ""))) return fail("invalid_credentials", 401);
@@ -778,13 +783,9 @@ function fromB64u(v: unknown, max = 4096): Bytes | null {
 const sha256 = async (bytes: Bytes) => new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
 const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
 async function newPasskeyChallenge(purpose: "register" | "login", account: Account | null) {
-  // Anyone can ask for a sign-in challenge, so only a limited number may wait at once.
-  const { count } = await app("passkey_challenges").select("token_hash", { count: "exact", head: true }).gt("expires_at", nowIso());
-  if ((count ?? 0) >= 200) throw new Error("passkey_busy");
   const challenge = b64u(crypto.getRandomValues(new Uint8Array(32)));
-  const { error } = await app("passkey_challenges").insert({ token_hash: await hash(challenge), challenge, purpose, account,
-    expires_at: new Date(Date.now() + PASSKEY_CHALLENGE_MS).toISOString() });
-  if (error) throw new Error("passkey_challenge_unavailable");
+  const {data,error}=await db.rpc("app_internal_reserve_passkey_challenge",{p_token_hash:await hash(challenge),p_challenge:challenge,p_purpose:purpose,p_account:account,p_expires_at:new Date(Date.now()+PASSKEY_CHALLENGE_MS).toISOString()});
+  if(error || data!==true)throw new Error("passkey_challenge_unavailable");
   return challenge;
 }
 /* Checks clientDataJSON (type, this site, a challenge we issued, used once) and the authenticator
@@ -832,8 +833,6 @@ async function passkeyRegister(s: Session, b: any) {
 }
 async function passkeyLogin(req: Request) {
   const b = await readBody(req);
-  const attempt = await reserveLogin(await loginFingerprints(req));
-  if (!attempt) return fail("too_many_attempts", 429);
   const id = text(b.id, 1024), signature = fromB64u(b.signature, 1024);
   if (!id || !signature) return fail("invalid_credentials", 401);
   const { data: key, error } = await app("passkeys").select("id,account,public_key,alg,sign_count").eq("id", id).maybeSingle();
@@ -850,6 +849,9 @@ async function passkeyLogin(req: Request) {
     valid = !!sig && await crypto.subtle.verify(key.alg === -7 ? { name: "ECDSA", hash: "SHA-256" } : { name: "RSASSA-PKCS1-v1_5" }, pub, sig, signed);
   } catch { valid = false; }
   if (!valid) return fail("invalid_credentials", 401);
+  // Only a proven key may consume the shared PIN attempt budget.
+  const attempt=await reserveLogin(await loginFingerprints(req));
+  if(!attempt)return fail("too_many_attempts",429);
   // A counter that goes backwards means a copied key: refuse it (phones that keep 0 are fine).
   if (done.signCount && Number(key.sign_count) && done.signCount <= Number(key.sign_count)) return fail("invalid_credentials", 401);
   const { data: updated, error: updateError } = await app("passkeys").update({ sign_count: done.signCount, last_used_at: nowIso() }).eq("id", id).eq("sign_count", key.sign_count).select("id");
@@ -868,7 +870,12 @@ Deno.serve(async (req) => {
 
   try {
     if (M === "POST" && path === "login") return await login(req);
-    if (M === "POST" && path === "passkey/login-options") return json({ challenge: await newPasskeyChallenge("login", null), rpId: RP_ID });
+    if (M === "GET" && path === "auth/security")return json({required:botConfig.required,siteKey:botConfig.required&&botConfig.ready?botConfig.siteKey:null});
+    if (M === "POST" && path === "passkey/login-options") {
+      const body=await readBody(req);
+      if(!(await verifyTurnstile(botConfig,body.turnstileToken)))return fail("verification_failed",403);
+      return json({challenge:await newPasskeyChallenge("login",null),rpId:RP_ID});
+    }
     if (M === "POST" && path === "passkey/login") return await passkeyLogin(req);
     if (M === "POST" && ["recovery/name", "recovery/verify", "recovery/save"].includes(path)) return await recovery(req, path.slice(9));
     if (M === "GET" && path === "health") {
