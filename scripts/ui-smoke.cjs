@@ -88,6 +88,7 @@ const server=http.createServer((req,res)=>{
       }
       let status=200, data={};
       if(endpoint==='bootstrap') data=fixtureFor(signedIn);
+      else if(endpoint==='auth/security')data={required:false,siteKey:null};
       else if(endpoint==='devices') data=[];
       else if(endpoint==='activity') data=recordActivity;
       else if(endpoint==='assistant/inbox') data=fixtureFor(signedIn).inbox;
@@ -382,8 +383,11 @@ const server=http.createServer((req,res)=>{
     await page.mouse.move(rb.x+10,rb.y+rb.height/2);await page.mouse.down();await page.waitForTimeout(700);await page.mouse.up();
     await page.locator('#ctxLayer [data-ctx="5"]').click();
     assert.equal(await page.evaluate(()=>state.cart.i8),5,'press-and-hold menu adds 5');
+    await page.evaluate(()=>{state.orderNote='Keep chilled';persistCartDraft();});
     await page.locator('#clearOrderBtn').click();
+    assert.equal(await page.evaluate(()=>state.orderNote),'','clear also removes the order note');
     await page.locator('.toast-undo').click();
+    assert.equal(await page.evaluate(()=>state.orderNote),'Keep chilled','undo restores the order note');
     assert.equal(await page.evaluate(()=>state.cart.i8),5,'clearing the order can be undone');
     await page.evaluate(()=>window.scrollTo(0,0));
     // A finger swipe to the left moves from Order to Rico, with the page sliding (silently).

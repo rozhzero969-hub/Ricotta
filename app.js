@@ -557,7 +557,7 @@ async function boot(){
     clearApiSession();   // a sign-in from before the two accounts: sign in again
   }
   render();
-  hideSplash(1450);   // long enough for the ricotta intro to finish playing
+  hideSplash(500);   // reveal the workspace promptly once it is ready
   if(state.account) seasonGreeting();
   if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); maybeFinishQueue(); }
   if(state.account && !loadedOk) retryLoad();
@@ -948,18 +948,10 @@ document.addEventListener('click', e=>{ if(!e.target.closest('.bottomnav')) setM
 document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ setMoreOpen(false); closeLangMenu(); } });
 
 /* ---------- Page transitions ----------
-   One animation per screen change, never on a redraw of the same screen
-   (a redraw used to replay an entrance animation, so pages seemed to load
-   twice). PAGE_TRANSITION picks the style and its length:
-     soft   fade in with a small sideways drift   fade   crossfade
-     rise   fade in lifting up                     slide  full-width slide
-     push   slide over, old page drifts and dims   zoom   grow in slightly
-     blur   come into focus                        none   instant */
-const PAGE_TRANSITION = {style:'push', ms:950};   // chosen by Rozha
-// A swipe is a little quicker: the finger already did part of the move.
-const SWIPE_MS = 620;
-// A tap: eases in, glides, and settles softly (the motion is spread over the
-// whole time instead of jumping in the first moment).
+   A short push transition preserves direction without holding up navigation.
+   Redrawing the same screen never plays an entrance animation. */
+const PAGE_TRANSITION = {ms:240};
+const SWIPE_MS = 180;
 const PAGE_EASE = 'cubic-bezier(.45,.05,.2,1)';
 // After a swipe the page is already moving with the finger, so it keeps going.
 const SWIPE_EASE = 'cubic-bezier(.2,.55,.25,1)';
@@ -971,19 +963,8 @@ function endGlide(){
   glide.content.classList.remove('gliding');
   glide = null;
 }
-function transitionFrames(dir, w){
-  switch(PAGE_TRANSITION.style){
-    case 'soft':  return {inn:[{transform:`translate3d(${dir*22}px,0,0)`, opacity:0}, {transform:'none', opacity:1}]};
-    case 'fade':  return {inn:[{opacity:0}, {opacity:1}], out:[{opacity:1}, {opacity:0}]};
-    case 'rise':  return {inn:[{transform:'translate3d(0,16px,0)', opacity:0}, {transform:'none', opacity:1}]};
-    case 'slide': return {inn:[{transform:`translate3d(${dir*w}px,0,0)`}, {transform:'none'}], out:[{transform:'none'}, {transform:`translate3d(${-dir*w}px,0,0)`}]};
-    // The old page is fully faded by half-way: the glass is clear, so any of it
-    // still showing would read through the new page sliding over it.
-    case 'push':  return {inn:[{transform:`translate3d(${dir*w}px,0,0)`}, {transform:'none'}], out:[{transform:'none', opacity:1}, {opacity:0, offset:.45}, {transform:`translate3d(${-dir*w*.3}px,0,0)`, opacity:0}]};
-    case 'zoom':  return {inn:[{transform:'scale(.955)', opacity:0}, {transform:'none', opacity:1}]};
-    case 'blur':  return {inn:[{filter:'blur(8px)', opacity:0}, {filter:'none', opacity:1}]};
-    default: return null;
-  }
+function transitionFrames(dir,w){
+  return {inn:[{transform:`translate3d(${dir*w}px,0,0)`},{transform:'none'}],out:[{transform:'none',opacity:1},{opacity:0,offset:.45},{transform:`translate3d(${-dir*w*.3}px,0,0)`,opacity:0}]};
 }
 /* After a swipe both pages travel together, edge to edge: the old one slides
    all the way off to the other side while the new one pushes in beside it.
@@ -1080,8 +1061,12 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
     document.body.classList.remove('page-swiping');
     if(s.mode !== 'x') return;
     // A sideways swipe that started on a button must not also press it.
-    const swallow = ev=>{ ev.stopPropagation(); ev.preventDefault(); };
-    document.addEventListener('click', swallow, {capture:true, once:true});
+    const swallow = ev=>{
+      if(!s.content.contains(ev.target)) return;
+      ev.stopPropagation(); ev.preventDefault();
+      document.removeEventListener('click', swallow, {capture:true});
+    };
+    document.addEventListener('click', swallow, {capture:true});
     setTimeout(()=>document.removeEventListener('click', swallow, {capture:true}), 350);
     const rtl = isRtl() ? -1 : 1, i = state.tabs.indexOf(state.view);
     const v = s.dx/Math.max(1, performance.now()-s.t);
@@ -1473,7 +1458,7 @@ function lastQtyMap(){
 
 function renderPageHeading(){
   const now = new Date(), date = formatIraqDateTime(now, {weekday:'short', day:'numeric', month:'short'});
-  return `<header class="page-heading"><div><div class="page-kicker">${esc(t('workspaceLabel'))}</div><h1>${esc(viewLabel(state.view))}</h1><p class="page-guide">${esc(viewGuide(state.view))}</p></div><time class="page-date" datetime="${erbilDate(now)}">${esc(date)}</time></header>`;
+  return `<header class="page-heading"><div><h1>${esc(viewLabel(state.view))}</h1><p class="page-guide">${esc(viewGuide(state.view))}</p></div><time class="page-date" datetime="${erbilDate(now)}">${esc(date)}</time></header>`;
 }
 
 /* ============ Notifications: banner ============ */
@@ -1619,7 +1604,7 @@ function attachContentEvents(){
 /* ============ Login (PIN pad) ============ */
 function loginMessage(){
   if(state.pinBusy) return t('signingIn');
-  return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), faceid:t('faceIdFailed'), session:state.sessionMsg})[state.pinError] || '';
+  return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), faceid:t('faceIdFailed'), verification:t('securityCheckFailed'), session:state.sessionMsg})[state.pinError] || '';
 }
 function pinDotClass(i){
   const filled = i < state.pinBuffer.length;
@@ -1689,7 +1674,7 @@ async function pressKey(k){
   state.pinBusy = false;
   if(res.recovery){ state.pinBuffer = ''; updateLoginFeedback(); startRecovery(res.ticket); return; }
   if(res.error){
-    state.pinError = res.error; updateLoginFeedback();
+    state.pinError = res.error==='cancelled'?'':res.error; updateLoginFeedback();
     setTimeout(()=>{ state.pinBuffer=''; if(!state.account) updateLoginFeedback(); }, 650);
     return;
   }
@@ -1831,7 +1816,7 @@ function renderOrderHero(itemCount=state.items.length, supplierCount=new Set(sta
     <div class="hero-ring" role="img" aria-label="${esc(t('suppliersCovered')(cov.picked, cov.total))}">
       <svg viewBox="0 0 68 68" aria-hidden="true"><circle cx="34" cy="34" r="26" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="7"/><circle class="arc" cx="34" cy="34" r="26" fill="none" stroke="#6FCF9A" stroke-width="7" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${ringOffset().toFixed(2)}"/></svg>
       <b>${cov.picked}/${cov.total}</b></div>
-    <div class="hero-footer"><span class="draft-state">${selCount?draftProgressLabel():t('selectToStart')}</span><span class="hero-signature" aria-hidden="true">ricotta.</span></div>
+    <div class="hero-footer"><span class="draft-state">${selCount?draftProgressLabel():t('selectToStart')}</span></div>
   </div>`;
 }
 /* A small monogram tile for a supplier (first letter, deep green). */
@@ -2086,12 +2071,12 @@ function attachOrderEvents(){
   if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id && i.available!==false) && qty>0)); refreshOrderView(); };
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.onclick=()=>{
-    const before={...state.cart};
+    const before={...state.cart},beforeNote=state.orderNote||'';
     // A cleared order starts over. An order being saved right now is kept; one whose save failed can be
     // cleared too (a save the server refuses would otherwise reopen on every Send), and Undo brings it back.
     const queue=state.queue?.record && state.queue.saveState!=='failed' ? null : state.queue;
-    state.cart={};persistCartDraft();if(queue){state.queue=null;persistQueue();}refreshOrderView();
-    toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before; persistCartDraft(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
+    state.cart={};state.orderNote='';persistCartDraft();if(queue){state.queue=null;persistQueue();}refreshOrderView();paintDraftStatus();
+    toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before;state.orderNote=beforeNote;persistCartDraft();paintDraftStatus(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
   };
   const send = document.getElementById('sendOrdersBtn');
   if(send) send.onclick = ()=>startSendQueue();
@@ -2726,7 +2711,7 @@ function renderRecord(){
       <button class="btn btn-ghost" id="recRefreshBtn">${ICON_REFRESH} ${esc(t('refresh'))}</button>
     </div>
     ${filterHtml}${renderCatalogSearch()}
-    <div id="recordResults">${cards || emptyState(t('recordEmpty'))}
+    <div id="recordResults">${cards || emptyState(t(state.catalogQuery?.trim()?'catalogNoResults':'recordEmpty'))}
     ${rows.length > state.recordLimit ? `<button class="btn btn-ghost" id="recMoreBtn">${esc(t('loadMoreRecord'))}</button>` : ''}</div>`;
 }
 function refreshRecordResults(){

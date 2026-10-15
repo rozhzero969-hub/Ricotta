@@ -1,7 +1,11 @@
 /* The browser and Rico use the same matcher. No network calls or guessed translations. */
 (function () {
+  const normalized=new Map(),documents=new Map();
+  function remember(cache,key,value,limit){if(cache.size>=limit)cache.delete(cache.keys().next().value);cache.set(key,value);return value;}
+
   function normalize(value) {
-    return String(value ?? '').normalize('NFKD').toLowerCase()
+    const raw=String(value??'');if(normalized.has(raw))return normalized.get(raw);
+    const result=raw.normalize('NFKD').toLowerCase()
       .replace(/[\u0300-\u036f\u064b-\u065f\u0670\u0640\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '')
       .replace(/[أإآٱ]/g, 'ا').replace(/[يىێ]/g, 'ی').replace(/[كگ]/g, 'ک')
       .replace(/[ةەھہ]/g, 'ه').replace(/[ۆۇۊؤ]/g, 'و').replace(/ڵ/g, 'ل').replace(/ڕ/g, 'ر')
@@ -9,6 +13,7 @@
       .replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x660))
       .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x6f0))
       .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+    return remember(normalized,raw,result,2000);
   }
   function stem(word) {
     if (!/^[a-z]{4,}$/.test(word)) return word;
@@ -29,11 +34,14 @@
   function score(query, fields, fuzzy=true) {
     const q=normalize(String(query).slice(0,200));
     if(!q) return 0;
-    const text=(Array.isArray(fields)?fields:[fields]).map(normalize).filter(Boolean);
+    const raw=Array.isArray(fields)?fields:[fields],key=JSON.stringify(raw);
+    let doc=documents.get(key);
+    if(!doc){const text=raw.map(normalize).filter(Boolean);doc=remember(documents,key,{text,words:text.join(' ').split(' ').map(stem)},600);}
+    const text=doc.text;
     let best=Infinity;
     text.forEach((s,i)=>{if(s===q)best=Math.min(best,i?2:0);else if(s.startsWith(q))best=Math.min(best,4+i);else if(s.includes(q))best=Math.min(best,8+i);});
     if(Number.isFinite(best))return best;
-    const words=text.join(' ').split(' ').map(stem), tokens=q.split(' ').map(stem);
+    const words=doc.words, tokens=q.split(' ').map(stem);
     let cost=12;
     for(const token of tokens) {
       if(words.includes(token))continue;

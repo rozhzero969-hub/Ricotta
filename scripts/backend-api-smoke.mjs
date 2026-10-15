@@ -1,3 +1,4 @@
+import {turnstileConfig,verifyTurnstile} from '../supabase/functions/_shared/turnstile.ts';
 // Node 24+: execute the API handler with an in-memory database and no network.
 import assert from 'node:assert/strict';
 import {monthKey,monthStart} from '../supabase/functions/_shared/month.ts';
@@ -27,6 +28,10 @@ const db = {
       if(old) old.device_id=args.p_device;
       else tables.app_passkeys.push({id:args.p_id,account:args.p_account,public_key:args.p_public_key,alg:args.p_alg,sign_count:0,device_id:args.p_device});
       return {data:true,error:null};
+    }
+    if(name==='app_internal_reserve_passkey_challenge'){
+      tables.app_passkey_challenges??=[];if(tables.app_passkey_challenges.length>=200)return {data:false,error:null};
+      tables.app_passkey_challenges.push({token_hash:args.p_token_hash,challenge:args.p_challenge,purpose:args.p_purpose,account:args.p_account,expires_at:args.p_expires_at});return {data:true,error:null};
     }
     if (name === 'app_internal_reserve_login') {
       if (reservation) tables.app_login_attempts.push(...reservation.map(id => ({ id, succeeded: false })));
@@ -82,7 +87,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'monthKey', 'monthStart', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, monthKey, monthStart );
+const { groupHistory,cleanRepeatEntries } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', stripTypeScriptTypes(source) + '\nreturn { groupHistory,cleanRepeatEntries };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, monthKey, monthStart,turnstileConfig,verifyTurnstile );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -177,6 +182,8 @@ try {
      tampered signatures are refused, and new PINs remove every passkey. */
   reset();
   Object.assign(tables, { app_passkeys: [], app_passkey_challenges: [] });
+  errors.set('app_internal_reserve_passkey_challenge',true);assert.equal((await call('passkey/login-options',{},'POST',false)).status,500);errors.delete('app_internal_reserve_passkey_challenge');
+  const beforeBad=calls.filter(c=>c.name==='app_internal_reserve_login').length;assert.equal((await call('passkey/login',{},'POST',false)).status,401);assert.equal(calls.filter(c=>c.name==='app_internal_reserve_login').length,beforeBad);
   const b64u = bytes => Buffer.from(bytes).toString('base64url');
   const sha = async bytes => new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
   const ORIGIN = 'https://rozhzero969-hub.github.io';
@@ -228,4 +235,8 @@ try {
   assert.equal((await call('recovery/save', { ticket: 'pk-ticket', rozhaPin: '432198' }, 'POST', false)).status, 200);
   assert.equal(tables.app_passkeys.length, 0, 'changing the PINs removes every passkey');
 } finally { console.error = mute; }
+assert.ok(cleanRepeatEntries([{supplierId:'s',items:[{itemId:'a',qty:0.125}]}]));
+assert.equal(cleanRepeatEntries([{items:[{itemId:'a',qty:0.0001}]}]),null);
+assert.equal(cleanRepeatEntries([{items:[{itemId:'a',qty:'2'}]}]),null);
+assert.equal(cleanRepeatEntries([{items:[{itemId:'a',qty:1},{itemId:'a',qty:2}]}]),null);
 console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, one-use recovery, Face ID passkeys)');

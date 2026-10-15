@@ -25,6 +25,9 @@ const server=http.createServer((req,res)=>{
   await page.waitForFunction(()=>document.querySelectorAll('#orderResults .item-row').length>10);
   assert.ok(await page.locator('#orderResults .item-row').count()>10);
   await nav('itemsAdmin');
+  assert.match(await page.locator('.page-guide').textContent(),/Manage the items/,'Items has the correct guide');
+  assert.equal(await page.locator('.catalog-search > svg').evaluate(el=>getComputedStyle(el).position),'static','search icon cannot overlap the input');
+  assert.equal(await page.locator('.list-row').first().evaluate(el=>getComputedStyle(el).backdropFilter),'none','static list rows avoid expensive blur');
   await page.locator('#catalogSearch').fill('tomtao');
   assert.equal(await page.locator('[data-edititem="it-tom"]').isVisible(),true);
   assert.ok(await page.locator('.list-row:visible').count()<5);
@@ -40,6 +43,9 @@ const server=http.createServer((req,res)=>{
   await page.waitForFunction(()=>document.getElementById('app').dataset.screen==='record');
   await page.locator('#catalogSearch').fill('Special');
   assert.equal(await page.locator('.rec-card:visible').count(),1,'records beyond first page can be found');
+  await page.locator('#catalogSearch').fill('zzzxxxx');
+  assert.equal(await page.locator('#catalogSearchEmpty').isVisible(),false,'Record uses one empty state');
+  assert.match(await page.locator('#recordResults').textContent(),/No matches/i);
   await page.locator('#catalogSearchClear').click();
   assert.ok(await page.locator('.rec-card:visible').count()>1);
   await nav('units');
@@ -56,6 +62,27 @@ const server=http.createServer((req,res)=>{
   await page.locator('[data-rico-apply$="alias-test"]').click();
   await page.waitForFunction(()=>state.items.find(i=>i.id==='it-mozz').aliases?.includes('Mozzarella cheese'));
   assert.deepEqual(await page.evaluate(()=>labDb().items.find(i=>i.id==='it-mozz').aliases),['Mozzarella cheese']);
+  // Exercise the real verification dialog using a local provider stub.
+  await page.evaluate(()=>{
+    authSecurityConfig=async()=>({ok:true,data:{required:true,siteKey:'local-test'}});
+    window.turnstile={render:(el,opts)=>{window.proofOptions=opts;el.textContent='Local verification';return 'local-widget';},remove:()=>{window.proofRemoved=true;}};
+    window.proofResult=authBotProof();
+  });
+  await page.locator('#authChallenge').waitFor({state:'attached'});
+  assert.equal(await page.locator('#modalFormOk').isEnabled(),false,'verification requires a token');
+  await page.evaluate(()=>proofOptions.callback('verified-token'));
+  assert.equal(await page.locator('#modalFormOk').isEnabled(),true);
+  await page.evaluate(()=>proofOptions['expired-callback']());
+  assert.equal(await page.locator('#modalFormOk').isEnabled(),false,'expired proof cannot be submitted');
+  await page.evaluate(()=>proofOptions.callback('fresh-token'));
+  await page.locator('#modalFormOk').click();
+  assert.deepEqual(await page.evaluate(()=>proofResult),{token:'fresh-token'});
+  assert.equal(await page.evaluate(()=>proofRemoved),true,'widget is cleaned up');
+  await page.evaluate(()=>{window.turnstile.render=()=>{throw Error('provider failed');};window.proofResult=authBotProof();});
+  await page.locator('#authChallenge').waitFor({state:'attached'});
+  assert.match(await page.locator('#modalFormStatus').textContent(),/could not finish/);
+  await page.locator('#modalFormCancel').click();
+  assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'},'provider failure remains cancellable');
   assert.deepEqual(errors,[]);
   console.log('Search UI PASS: typo/alias order, clear buttons, list matches/empty/reset, history aliases, records beyond first page, units and Rico bulk alias preview/save');
  }finally{await browser.close();server.close();}

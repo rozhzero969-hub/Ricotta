@@ -2,6 +2,11 @@
    access the signed-in account and workspace when a screen is opened. */
 const ORDERING_TEXT = {
   en: {
+    catalogNoResults: "No matches found",
+    securityCheck: "Quick security check",
+    securityCheckHint: "Verify this sign-in to continue.",
+    securityCheckFailed: "The security check could not finish. Please try again.",
+    securityContinue: "Continue",
     aliasChanges: "Update search names",
     aliasConflict: "These names changed on another device. Ask Rico for a fresh preview.",
     searchHint: "Search names, English aliases or details. Small typos are okay.",
@@ -55,6 +60,11 @@ const ORDERING_TEXT = {
     guideSettings: "Adjust messages, appearance, notifications and sign-in.",
   },
   ku: {
+    catalogNoResults: "هیچ ئەنجامێک نەدۆزرایەوە",
+    securityCheck: "پشکنینی خێرای ئاسایش",
+    securityCheckHint: "بۆ بەردەوامبوون، ئەم چوونەژوورەوەیە پشتڕاست بکەرەوە.",
+    securityCheckFailed: "پشکنینی ئاسایش تەواو نەبوو. تکایە دووبارە هەوڵ بدەرەوە.",
+    securityContinue: "بەردەوامبوون",
     aliasChanges: "نوێکردنەوەی ناوەکانی گەڕان",
     aliasConflict: "ئەم ناوانە لە ئامێرێکی تر گۆڕاون. لە ریکۆ داوای پێشبینینێکی نوێ بکە.",
     searchHint: "بە ناو، ناوی ئینگلیزی یان وردەکاری بگەڕێ. هەڵەی بچووک لە نووسین ئاساییە.",
@@ -109,6 +119,11 @@ const ORDERING_TEXT = {
     guideSettings: "پەیام، ڕووکار، ئاگادارکردنەوە و چوونەژوورەوە ڕێکبخە.",
   },
   ar: {
+    catalogNoResults: "لم يتم العثور على نتائج",
+    securityCheck: "تحقق أمني سريع",
+    securityCheckHint: "تحقق من تسجيل الدخول للمتابعة.",
+    securityCheckFailed: "تعذّر إكمال التحقق الأمني. حاول مرة أخرى.",
+    securityContinue: "متابعة",
     aliasChanges: "تحديث أسماء البحث",
     aliasConflict: "تغيّرت هذه الأسماء على جهاز آخر. اطلب معاينة جديدة من ريكو.",
     searchHint: "ابحث بالاسم أو الأسماء الإنجليزية أو التفاصيل. الأخطاء البسيطة مقبولة.",
@@ -195,7 +210,7 @@ function viewGuide(view) {
         history: "History",
         queue: "Queue",
         suppliers: "Suppliers",
-        items: "Items",
+        itemsAdmin: "Items",
         units: "Units",
         record: "Record",
         devices: "Devices",
@@ -317,7 +332,7 @@ function attachCatalogSearch() {
       document.getElementById('catalogSearchCount').textContent=search.value.trim()?`${t('searchMatches')}: ${shown} / ${rows.length}`:'';
       let empty=document.getElementById('catalogSearchEmpty');
       if(!empty){empty=document.createElement('div');empty.id='catalogSearchEmpty';search.closest('.list-search').after(empty);}
-      empty.innerHTML=emptyState(t('noSearchResults'));empty.hidden=shown>0 || !search.value.trim();
+      empty.innerHTML=emptyState(t('catalogNoResults'));empty.hidden=state.view==='record' || shown>0 || !search.value.trim();
       document.getElementById('catalogSearchClear').hidden=!search.value;
       if(state.view==='history')document.querySelectorAll('.hist-day').forEach(h=>h.hidden=!!search.value.trim());
     };

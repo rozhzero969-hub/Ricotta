@@ -356,6 +356,7 @@
       (body.itemIds||[]).forEach((id, i)=>{ const it = db.items.find(x=>x.id===id && x.supplierId===sid); if(it) it.sortOrder = i; });
       save(); return ok();
     }
+    if(path==='auth/security')return json({required:false,siteKey:null});
     if(path==='items/aliases' && method==='PUT'){
       const entries=body.entries||[], conflicts=entries.filter(e=>{const i=db.items.find(i=>i.id===e.itemId);return !i || (JSON.stringify(i.aliases||[])!==JSON.stringify(e.before) && JSON.stringify(i.aliases||[])!==JSON.stringify(e.aliases));}).map(e=>e.itemId);
       if(conflicts.length)return json({conflicts},409);

@@ -39,7 +39,7 @@ function apiSessionMatches(session){
 function apiAccountMatchesUi(session){
   return typeof state === 'undefined' || !state?.account || !session || session.account === state.account;
 }
-function apiPathIsPublic(path){ return path === 'login' || path === 'health' || path.startsWith('recovery/') || path === 'passkey/login' || path === 'passkey/login-options'; }
+function apiPathIsPublic(path){ return path === 'login' || path === 'auth/security' || path === 'health' || path.startsWith('recovery/') || path === 'passkey/login' || path === 'passkey/login-options'; }
 function staleApiReply(){ return {ok:false, status:0, data:null, stale:true}; }
 
 /* What this device is, for the Devices screen: "iPhone 16/17 Pro Max|App",
@@ -173,7 +173,9 @@ async function apiStream(path, body, onEvent, signal){
 /* Returns {account, name, tabs} on success, {recovery:true, ticket} when the
    secret code was typed, or {error:'wrong'|'locked'|'network'}. */
 async function apiLogin(pin){
-  const r = await api('login', {method:'POST', body:{pin}});
+  const proof=await authBotProof();if(proof.error)return {error:proof.error};
+  const r = await api('login', {method:'POST', body:{pin,turnstileToken:proof.token}});
+  if(r.status===403 && r.data?.error==='verification_failed'){resetAuthSecurityConfig();return {error:'verification'};}
   if(r.ok && r.data && r.data.recovery && r.data.ticket) return {recovery:true, ticket:r.data.ticket};
   if(r.ok && r.data && r.data.token){
     const d = r.data;
@@ -194,8 +196,10 @@ const faceIdKeys = ()=>{ const v = lget('faceIdKeys'); return v && typeof v === 
 const passkeySupported = ()=>!!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
 /* Sign in with Face ID. Same answer shape as apiLogin, plus {error:'cancelled'} when the person backs out. */
 async function apiPasskeyLogin(){
-  const o = await api('passkey/login-options', {method:'POST'});
-  if(!o.ok || !o.data || !o.data.challenge) return {error: o.status === 429 ? 'locked' : o.status === 0 ? 'network' : 'wrong'};
+  const proof=await authBotProof();if(proof.error)return {error:proof.error};
+  const o = await api('passkey/login-options', {method:'POST',body:{turnstileToken:proof.token}});
+  if(o.status===403 && o.data?.error==='verification_failed'){resetAuthSecurityConfig();return {error:'verification'};}
+  if(!o.ok || !o.data || !o.data.challenge) return {error: o.status === 429 ? 'locked' : o.status === 0 ? 'network' : 'faceid'};
   let cred;
   try{
     cred = await navigator.credentials.get({publicKey:{challenge:b64uDecode(o.data.challenge), rpId:o.data.rpId, userVerification:'required', timeout:60000,
