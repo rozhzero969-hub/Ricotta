@@ -126,7 +126,10 @@ const server=http.createServer((req,res)=>{
       assert.equal(saved[0].by,'yunis');
       assert.equal(await stored(page),null,lang+': nothing is left to resume');
       assert.equal(await page.evaluate(()=>localStorage.getItem('ricottaOrders:pendingCart:yunis')),null,lang+': the draft is cleared');
-      await page.locator('.bottomnav [data-view="history"]').click();
+      await page.locator('.bottomnav [data-view="manage"]').click();
+      await page.waitForFunction(()=>!document.querySelector('.content.gliding'));
+      await page.locator('.manage-menu>summary').click();
+      await page.locator('[data-manage-view="history"]').click();
       await page.waitForFunction(()=>state.view==='history');
       assert.ok(await page.locator('.content').filter({hasText:'Tomato'}).count(),lang+': the order shows in History');
       // A restart afterwards shows the order screen, not the finished queue.
@@ -199,6 +202,7 @@ const server=http.createServer((req,res)=>{
       await page.locator('#sendOrdersBtn').click();
       await sendTo(page,'Golden Bread Bakery');
       await page.locator('#queueBackBtn').click();
+      if(await page.locator('.order-options').getAttribute('open')===null)await page.locator('.order-options>summary').click();
       await page.locator('#clearOrderBtn').click();
       assert.equal(await stored(page),null,'a cleared order leaves nothing to resume');
       await page.locator('[data-inc="i0"]').click();
@@ -218,10 +222,12 @@ const server=http.createServer((req,res)=>{
       await sendTo(page,'Golden Bread Bakery');
       await page.waitForSelector('#queueRetrySave');
       await page.locator('#queueBackBtn').click();
+      if(await page.locator('.order-options').getAttribute('open')===null)await page.locator('.order-options>summary').click();
       await page.locator('#clearOrderBtn').click();
       assert.equal(await stored(page),null,'a refused save is cleared with the order');
       await page.locator('#toast .toast-undo').click();
       assert.equal((await stored(page))?.saveState,'failed','Undo brings the refused save back');
+      if(await page.locator('.order-options').getAttribute('open')===null)await page.locator('.order-options>summary').click();
       await page.locator('#clearOrderBtn').click();
       server.orders='ok';
       await page.locator('[data-inc="i0"]').click();

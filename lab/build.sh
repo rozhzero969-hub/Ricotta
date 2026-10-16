@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds Ricotta Lab into lab/dist: the app's own files from the repository
-# root, plus the Lab's pretend server (lab-mock.js) and special themes.
+# root, plus the Lab's pretend server (lab-mock.js).
 #   dist/page.html   the page body, for publishing as a claude.ai Artifact
 #   dist/index.html  the same page as a full document, for a local preview:
 #                    python3 -m http.server 8765 --directory lab/dist
@@ -8,7 +8,7 @@ set -e
 cd "$(dirname "$0")"
 rm -rf dist
 mkdir -p dist
-for f in style.css config.js icons.js i18n.js storage.js sounds.js modals.js bot-check.js push.js assistant.js seasons.js kitchen.js ordering-tools.js app.js update-check.js boot.js icon-192.png apple-touch-icon.png rico-happy.png; do
+for f in style.css config.js icons.js i18n.js storage.js modals.js bot-check.js push.js assistant.js kitchen.js ordering-tools.js app.js update-check.js boot.js icon-192.png apple-touch-icon.png rico-happy.png; do
   cp "../$f" dist/
 done
 mkdir -p dist/supabase/functions/_shared

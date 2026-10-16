@@ -2,6 +2,12 @@
    access the signed-in account and workspace when a screen is opened. */
 const ORDERING_TEXT = {
   en: {
+    manage: "Manage",
+    catalog: "Catalog",
+    workspaceTools: "History & settings",
+    orderOptions: "Order options",
+    moreTools: "More tools",
+    guideManage: "Your items, suppliers and units in one place.",
     catalogNoResults: "No matches found",
     securityCheck: "Quick security check",
     securityCheckHint: "Verify this sign-in to continue.",
@@ -60,6 +66,12 @@ const ORDERING_TEXT = {
     guideSettings: "Adjust messages, appearance, notifications and sign-in.",
   },
   ku: {
+    manage: "بەڕێوەبردن",
+    catalog: "کاڵاکان",
+    workspaceTools: "مێژوو و ڕێکخستنەکان",
+    orderOptions: "هەڵبژاردەکانی داواکاری",
+    moreTools: "ئامرازی زیاتر",
+    guideManage: "کاڵا، دابینکەر و یەکەکانت لە یەک شوێن.",
     catalogNoResults: "هیچ ئەنجامێک نەدۆزرایەوە",
     securityCheck: "پشکنینی خێرای ئاسایش",
     securityCheckHint: "بۆ بەردەوامبوون، ئەم چوونەژوورەوەیە پشتڕاست بکەرەوە.",
@@ -119,6 +131,12 @@ const ORDERING_TEXT = {
     guideSettings: "پەیام، ڕووکار، ئاگادارکردنەوە و چوونەژوورەوە ڕێکبخە.",
   },
   ar: {
+    manage: "إدارة",
+    catalog: "الكتالوج",
+    workspaceTools: "السجل والإعدادات",
+    orderOptions: "خيارات الطلب",
+    moreTools: "أدوات إضافية",
+    guideManage: "الأصناف والموردون والوحدات في مكان واحد.",
     catalogNoResults: "لم يتم العثور على نتائج",
     securityCheck: "تحقق أمني سريع",
     securityCheckHint: "تحقق من تسجيل الدخول للمتابعة.",
@@ -206,6 +224,7 @@ function viewGuide(view) {
     "guide" +
       ({
         order: "Order",
+        manage: "Manage",
         assistant: "Assistant",
         history: "History",
         queue: "Queue",
@@ -311,7 +330,7 @@ function recordSearchFields(a) {
   return [a.name,a.by,a.actor,a.action,a.type,({add:t('actionAdded'),edit:t('actionEdited'),delete:t('actionDeleted')})[a.action],({supplier:t('typeSupplier'),item:t('typeItem'),unit:t('typeUnit')})[a.type],formatIraqDateTime(a.ts,{year:'numeric',month:'short',day:'numeric'}),...(a.fields||[]).flatMap(f=>[recordFieldLabel(f.k),f.from,f.to]),...state.items.filter(i=>i.name===a.name).flatMap(i=>i.aliases||[])].join(' ');
 }
 function renderCatalogSearch() {
-  return `<div class="list-search"><div class="search-wrap catalog-search">${ICON_SEARCH}<input id="catalogSearch" type="search" aria-label="${esc(t('catalogSearch'))}" placeholder="${esc(t('catalogSearch'))}" value="${esc(state.catalogQuery||'')}"><button type="button" class="search-clear" id="catalogSearchClear" aria-label="${esc(t('clearSearch'))}">&times;</button></div><p class="field-hint">${esc(t('searchHint'))}</p><div id="catalogSearchCount" class="search-count" role="status" aria-live="polite"></div></div>`;
+  return `<div class="list-search"><div class="search-wrap catalog-search">${ICON_SEARCH}<input id="catalogSearch" type="search" aria-label="${esc(t('catalogSearch'))}" placeholder="${esc(t('catalogSearch'))}" value="${esc(state.catalogQuery||'')}"><button type="button" class="search-clear" id="catalogSearchClear" aria-label="${esc(t('clearSearch'))}">&times;</button></div><div id="catalogSearchCount" class="search-count" role="status" aria-live="polite"></div></div>`;
 }
 function attachCatalogSearch() {
   const search=document.getElementById('catalogSearch');
@@ -328,7 +347,7 @@ function attachCatalogSearch() {
         if(!row.dataset.searchOrder)row.dataset.searchOrder=String(index+1);
         return {row,index:Number(row.dataset.searchOrder),score};
       });
-      if(['suppliers','itemsAdmin'].includes(state.view))scored.sort((a,b)=>a.score-b.score||a.index-b.index).forEach(x=>x.row.parentNode.appendChild(x.row));
+      if(['manage','suppliers','itemsAdmin'].includes(state.view))scored.sort((a,b)=>a.score-b.score||a.index-b.index).forEach(x=>x.row.parentNode.appendChild(x.row));
       document.getElementById('catalogSearchCount').textContent=search.value.trim()?`${t('searchMatches')}: ${shown} / ${rows.length}`:'';
       let empty=document.getElementById('catalogSearchEmpty');
       if(!empty){empty=document.createElement('div');empty.id='catalogSearchEmpty';search.closest('.list-search').after(empty);}

@@ -2,8 +2,7 @@
    Depends on: DEFAULT_UNITS, PIN consts (config.js), T (i18n.js), icon strings
    (icons.js), lget/lset/api/apiLogin/apiSession/sendOrQueue/flushOutbox
    (storage.js), showConfirm/showAlert/showPrompt/showFormModal/showForcedRefresh
-   (modals.js), push helpers (push.js), Rico (assistant.js), holiday themes
-   (seasons.js), the streak, notes and report card (kitchen.js), hardReload
+   (modals.js), push helpers (push.js), Rico (assistant.js), the streak, notes and report card (kitchen.js), hardReload
    (update-check.js). Load this file after all of those; it calls boot() at
    the end.
 
@@ -17,7 +16,7 @@ const state = {
   lang: 'en',
   account: null,        // 'rozha' | 'yunis' | null (signed out)
   name: '',             // "Rozha" / "Yunis"
-  tabs: ['order','assistant','history'],   // this account's three tab-bar screens
+  tabs: ['order','assistant','manage'],   // this account's three tab-bar screens
   views: [],            // every screen this account may open
   view: 'order',
   pinBuffer: '',
@@ -39,11 +38,8 @@ const state = {
   deviceId: null,        // this device's own id, generated once and kept locally
   reminder: null,        // daily reminder settings {enabled,time}
   apiOnline: navigator.onLine,
-  themes: {},            // every account's chosen theme, from the server
-  autoThemes: {},        // whether each account lets holiday themes switch on by themselves
   streak: null,          // the kitchen streak {count, best, lit, alive, recoverable}
   notes: [],             // Rozha's notes for Yunis [{id, body, at, readAt, doneAt}]
-  weather: null,         // Erbil now {temp, rain, snow, max, min, updatedAt}
   pins: []               // this account's pinned item ids (top of the Order screen)
 };
 
@@ -366,24 +362,14 @@ const ACCOUNT_VIEWS = {
   rozha: ['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings'],
   yunis: ['order','assistant','history','suppliers','itemsAdmin','units','record']
 };
-const DEFAULT_TABS = ['order','assistant','history'];
-/* Settings is for every account. The server lists it only for Rozha (it
-   also shows the Rico connection to her), so for Yunis it is added here: it
-   holds this device's own preferences, which the server never needs to know.
-   Where the server doesn't list it, it can't be one of the 3 tabs. */
-const DEVICE_VIEWS = ['settings'];
-let serverViews = [];
-const tabChoices = ()=>state.views.filter(v=>!DEVICE_VIEWS.includes(v) || serverViews.includes(v));
-function validTabs(tabs){
-  const list = Array.isArray(tabs) ? [...new Set(tabs)].filter(v=>tabChoices().includes(v)) : [];
-  return list.length === 3 ? list : DEFAULT_TABS.filter(v=>state.views.includes(v));
-}
+const DEFAULT_TABS = ['order','assistant','manage'];
+const DEVICE_VIEWS = ['settings','manage'];
+function validTabs(){ return DEFAULT_TABS.slice(); }
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
 function applyAccount(a){
   state.account = a.account === 'rozha' || a.account === 'yunis' ? a.account : null;
   state.name = a.name || ({rozha:'Rozha', yunis:'Yunis'})[state.account] || '';
   const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
-  serverViews = views;
   state.views = state.account ? [...views.filter(v=>!DEVICE_VIEWS.includes(v)), ...DEVICE_VIEWS] : [];
   state.tabs = validTabs(a.tabs);
   if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
@@ -395,7 +381,6 @@ async function loadData(){
   lastLoadAt = Date.now();
   const d = r.data;
   applyAccount(d);
-  syncThemes(d);
   saveSessionAccount();
   state.suppliers = d.suppliers || [];
   state.items = d.items || [];
@@ -405,7 +390,6 @@ async function loadData(){
   state.activity = d.activity || [];
   state.reminder = d.reminder || {enabled:false, time:'09:00'};
   if(d.streak) streakArrived(d.streak);
-  state.weather = d.weather || null;
   state.pins = Array.isArray(d.pins) ? d.pins : [];
   state.messageFormat=d.messageFormat || {};
   state.repeats = Array.isArray(d.repeats) ? d.repeats : [];
@@ -543,6 +527,7 @@ function retryLoad(){
 }
 async function boot(){
   state.deviceId = ensureDeviceId();
+  lset('faceIdKeys',null);
   const savedLang = lget('lang');
   state.lang = LANGS.includes(savedLang) ? savedLang : 'en';
   const session = apiSession();
@@ -558,7 +543,6 @@ async function boot(){
   }
   render();
   hideSplash(500);   // reveal the workspace promptly once it is ready
-  if(state.account) seasonGreeting();
   if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); maybeFinishQueue(); }
   if(state.account && !loadedOk) retryLoad();
   // Notifications: register the service worker, read this device's status, and
@@ -643,12 +627,13 @@ const RENDERERS = {
   history:[()=>renderHistory(),()=>attachHistoryEvents()], suppliers:[()=>renderSuppliers(),()=>attachSupplierEvents()],
   itemsAdmin:[()=>renderItemsAdmin(),()=>attachItemEvents()], units:[()=>renderUnits(),()=>attachUnitEvents()],
   record:[()=>renderRecord(),()=>attachRecordEvents()], devices:[()=>renderDevices(),()=>attachDeviceEvents()],
+  manage:[()=>renderItemsAdmin(),()=>attachItemEvents()],
   settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
 };
 function render(){
   applyLangClasses();
-  applyTheme();
   applyPrefs();
+  syncAppearance();
   const app = document.getElementById('app');
   if(!state.account){
     app.classList.toggle('static-update', app.dataset.screen === 'login');
@@ -657,7 +642,7 @@ function render(){
   }
   if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
   const [draw, attach] = RENDERERS[state.view] || RENDERERS.order;
-  const content = `${state.view === 'assistant' ? '' : renderPageHeading()}${state.view === 'order' ? renderPushBanner() : ''}${draw()}`;
+  const content = `${state.view === 'assistant' ? '' : renderPageHeading()}${state.view === 'order' ? renderPushBanner() : ''}${managedView(state.view)?renderManageNav():''}${draw()}`;
   // The shell (top bar and tab bar) stays mounted while the account, its tabs
   // and the language stay the same.
   const shellKey = [state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
@@ -714,8 +699,7 @@ function updateRicoBadge(){
   }
   dot.hidden = !(late || unread);
   dot.parentElement.setAttribute('aria-label', late ? t('ricoNavLate')(late) : unread ? t('ricoNavUnread') : t('ricoName'));
-  const more = document.getElementById('navMoreBtn');
-  if(more) more.classList.toggle('has-badge', !state.tabs.includes('assistant') && !!(late || unread));
+
 }
 setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
 
@@ -724,7 +708,7 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
    screens and "Edit tabs"). Computers: a sidebar with every screen. A glass
    lens glides to the current tab; on phones it can be held and slid, and
    the page itself can be swiped between the three tabs. */
-const VIEW_LABEL_KEYS = {order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
@@ -733,30 +717,25 @@ function inAppFrame(){ return document.documentElement.classList.contains('app-s
 function scrollBox(){ return (inAppFrame() && document.querySelector('.content')) || document.scrollingElement; }
 /* Every screen in tab-bar order: the three tabs first, then the rest. */
 function navOrder(){ return [...state.tabs, ...state.views.filter(v=>!state.tabs.includes(v))]; }
-function moreViews(){ return state.views.filter(v=>!state.tabs.includes(v)); }
+const managedView=v=>!['order','assistant','queue'].includes(v);
+const mainView=v=>managedView(v)?'manage':v;
 function viewIndex(v){ const i = navOrder().indexOf(v); return i >= 0 ? i : navOrder().length; }
 const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function renderBottomNav(){
-  const btn = id=>`
-      <button class="navbtn" data-view="${id}">
-        ${NAV_ICONS[id]}<span>${esc(viewLabel(id))}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}
-      </button>`;
-  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><span class="nav-indicator" aria-hidden="true"></span>
-    ${state.tabs.map(btn).join('')}
-    <button class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button>
-    <div class="nav-more" id="navMore" role="group" aria-label="${esc(t('moreTitle'))}">${moreViews().map(btn).join('')}
-      <button class="nav-edit" id="navEditTabs">${ICON_EDIT}<span>${esc(t('editTabs'))}</span></button>
-    </div>
-  </nav>`;
+  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><span class="nav-indicator" aria-hidden="true"></span>${DEFAULT_TABS.map(id=>`<button class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}</button>`).join('')}</nav>`;
+}
+function renderManageNav(){
+  const catalog=['manage','itemsAdmin','suppliers','units'].includes(state.view);
+  const sections=[['manage','items'],['suppliers','suppliers'],['units','units']];
+  return `<div class="manage-nav">${catalog?`<nav class="manage-sections" aria-label="${esc(t('catalog'))}">${sections.filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav>`:`<button type="button" class="btn btn-ghost manage-back" data-manage-view="manage">${ICON_BACK} ${esc(t('manage'))}</button>`}<details class="manage-menu"><summary>${esc(t('workspaceTools'))}</summary><nav aria-label="${esc(t('workspaceTools'))}">${['history','record','devices','settings'].filter(canOpen).map(v=>`<button type="button" data-manage-view="${v}" aria-current="${state.view===v?'page':'false'}">${NAV_ICONS[v]}${esc(viewLabel(v))}</button>`).join('')}</nav></details></div>`;
 }
 function markActiveNav(){
   document.querySelectorAll('.bottomnav [data-view]').forEach(b=>{
-    const on = b.dataset.view === state.view;
+    const on = b.dataset.view === mainView(state.view);
     b.classList.toggle('active', on);
     if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
   });
-  document.getElementById('navMoreBtn')?.classList.toggle('active', moreViews().includes(state.view));
 }
 function barButtons(nav){ return [...nav.querySelectorAll(':scope > .navbtn')]; }
 function placeNavIndicator(){
@@ -766,8 +745,8 @@ function placeNavIndicator(){
   const phone = isPhoneLayout();
   // On a computer the More button is hidden, so the lens goes to the screen's own row.
   const active = phone
-    ? (moreViews().includes(state.view) ? nav.querySelector('#navMoreBtn') : nav.querySelector(`:scope > .navbtn[data-view="${state.view}"]`))
-    : nav.querySelector(`.navbtn[data-view="${state.view}"]`);
+    ? nav.querySelector(`:scope > .navbtn[data-view="${mainView(state.view)}"]`)
+    : nav.querySelector(`.navbtn[data-view="${mainView(state.view)}"]`);
   if(!active || !active.offsetWidth){ ind.style.opacity = '0'; return; }
   ind.style.opacity = '1';
   nav.classList.add('has-indicator');
@@ -791,50 +770,6 @@ function setLensPosition(pos){
   ind.style.setProperty('--ix', (a.offsetLeft + (b.offsetLeft-a.offsetLeft)*f)+'px');
   ind.style.setProperty('--iw', (a.offsetWidth + (b.offsetWidth-a.offsetWidth)*f)+'px');
   btns.forEach((x,k)=>x.classList.toggle('lens-over', k===Math.round(p)));
-}
-/* Hold the tab bar and slide: the lens follows the finger and each tab it
-   passes opens (with the page transition). Letting go on More opens More. */
-function initTabBarLens(nav){
-  let down = null;
-  const slotAt = x=>{
-    const btns = barButtons(nav), c = btns.map(b=>{ const r = b.getBoundingClientRect(); return r.left + r.width/2; });
-    let best = 0;
-    c.forEach((v,k)=>{ if(Math.abs(v-x) < Math.abs(c[best]-x)) best = k; });
-    const order = c.map((v,k)=>[v,k]).sort((m,n)=>m[0]-n[0]);
-    let pos = order[order.length-1][1];
-    if(x <= order[0][0]) pos = order[0][1];
-    else for(let k=0;k<order.length-1;k++){ const [c1,i1]=order[k],[c2,i2]=order[k+1]; if(x<=c2){ pos = i1+(i2-i1)*((x-c1)/(c2-c1)); break; } }
-    return {btn:btns[best], pos};
-  };
-  nav.addEventListener('pointerdown', e=>{
-    if(!isPhoneLayout() || e.button>0 || e.target.closest('.nav-more')) return;
-    down = {x:e.clientX, id:e.pointerId, moved:false, last:null};
-  });
-  nav.addEventListener('pointermove', e=>{
-    if(!down || e.pointerId!==down.id) return;
-    if(!down.moved && Math.abs(e.clientX-down.x) < 8) return;
-    if(!down.moved){ down.moved = true; nav.classList.add('held'); try{ nav.setPointerCapture(e.pointerId); }catch(_){} setMoreOpen(false); }
-    const s = slotAt(e.clientX);
-    setLensPosition(s.pos);
-    const view = s.btn?.dataset.view;
-    if(view && view !== down.last){ down.last = view; if(view !== state.view){ goView(view, {keepLens:true}); setLensPosition(s.pos); } }
-  });
-  const end = e=>{
-    if(!down || e.pointerId!==down.id) return;
-    const wasDrag = down.moved; down = null;
-    nav.classList.remove('held');
-    barButtons(nav).forEach(b=>b.classList.remove('lens-over'));
-    if(wasDrag){
-      // The drag must not also count as a tap on the tab under the finger.
-      const swallow = ev=>{ ev.stopPropagation(); ev.preventDefault(); };
-      nav.addEventListener('click', swallow, {capture:true, once:true});
-      setTimeout(()=>nav.removeEventListener('click', swallow, {capture:true}), 300);
-      if(slotAt(e.clientX).btn?.id === 'navMoreBtn') setMoreOpen(true);
-      placeNavIndicator();
-    }
-  };
-  nav.addEventListener('pointerup', end);
-  nav.addEventListener('pointercancel', end);
 }
 /* ============ Filter rows with a glass lens ============
    Every row of filter pills
@@ -929,23 +864,19 @@ const segEnd = e=>{
   if(seg){ seg.classList.remove('held'); segPills(seg).forEach(x=>x.classList.remove('lens-over')); segPlace(seg); }
   if(!d.moved) return;
   // The browser's own click after a drag must not also press whatever is under the finger.
-  const swallow = ev=>{ ev.stopPropagation(); ev.preventDefault(); };
-  document.addEventListener('click', swallow, {capture:true, once:true});
+  const swallow = ev=>{
+    if(!seg?.contains(ev.target)) return;
+    ev.stopPropagation(); ev.preventDefault();
+    document.removeEventListener('click',swallow,{capture:true});
+  };
+  document.addEventListener('click', swallow, {capture:true});
   setTimeout(()=>document.removeEventListener('click', swallow, {capture:true}), 300);
 };
 document.addEventListener('pointerup', segEnd);
 document.addEventListener('pointercancel', segEnd);
 window.addEventListener('resize', ()=>segs().forEach(segPlace));
 
-function setMoreOpen(open){
-  const nav = document.querySelector('.bottomnav'), btn = document.getElementById('navMoreBtn');
-  if(!nav || !btn) return;
-  nav.classList.toggle('more-open', open);
-  btn.setAttribute('aria-expanded', String(open));
-}
-/* A tap anywhere else, or Escape, closes the More panel. */
-document.addEventListener('click', e=>{ if(!e.target.closest('.bottomnav')) setMoreOpen(false); });
-document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ setMoreOpen(false); closeLangMenu(); } });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLangMenu(); });
 
 /* ---------- Page transitions ----------
    A short push transition preserves direction without holding up navigation.
@@ -992,7 +923,7 @@ function pageGhost(content){
   return {layer, copy};
 }
 function goView(view, {fromOffset=0, keepLens=false} = {}){
-  setMoreOpen(false); closeLangMenu();
+  closeLangMenu();
   if(view !== 'assistant' && ricoRecorder.active) ricoResetVoice();   // leaving Rico drops an unsent recording
   if(!view || view === state.view || !canOpen(view)) return;
   reminderDraft = null;   // a reminder that wasn't saved stays off
@@ -1000,7 +931,8 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   const dir = (Math.sign(viewIndex(view) - viewIndex(state.view)) || 1) * (isRtl() ? -1 : 1);
   const old = document.querySelector('.content');
   const width = old ? old.getBoundingClientRect().width : window.innerWidth;
-  const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : transitionFrames(dir, width)) : null;
+  const withinManage=managedView(state.view)&&managedView(view);
+  const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : withinManage?{inn:[{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'none'}],out:[{opacity:1},{opacity:0}]}:transitionFrames(dir, width)) : null;
   const ghost = frames?.out ? pageGhost(old) : null;
   state.catalogQuery='';state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
@@ -1016,7 +948,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
     frames.inn[0] = {transform:`translate3d(${dir*width + fromOffset}px,0,0)`};
     frames.out[0] = {transform:`translate3d(${fromOffset}px,0,0)`};
   }
-  const opts = fromOffset ? {duration:SWIPE_MS, easing:SWIPE_EASE} : {duration:PAGE_TRANSITION.ms, easing:PAGE_EASE};
+  const opts = fromOffset ? {duration:SWIPE_MS, easing:SWIPE_EASE} : {duration:withinManage?180:PAGE_TRANSITION.ms, easing:PAGE_EASE};
   content.style.transform = '';
   content.classList.add('gliding');
   const anims = [content.animate(frames.inn, opts)];
@@ -1036,7 +968,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   document.addEventListener('pointerdown', e=>{
     if(!isPhoneLayout() || e.pointerType==='mouse' || !state.account) return;
     const content = e.target.closest('.content');
-    if(!content || blocked(e.target) || !state.tabs.includes(state.view)) return;
+    if(!content || blocked(e.target) || !state.tabs.includes(mainView(state.view))) return;
     g = {x:e.clientX, y:e.clientY, t:performance.now(), id:e.pointerId, content, dx:0, mode:null};
   }, {passive:true});
   document.addEventListener('pointermove', e=>{
@@ -1048,7 +980,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
       if(g.mode === 'x'){ endGlide(); document.body.classList.add('page-swiping'); }
     }
     if(g.mode !== 'x') return;
-    const rtl = isRtl() ? -1 : 1, i = state.tabs.indexOf(state.view);
+    const rtl = isRtl() ? -1 : 1, i = state.tabs.indexOf(mainView(state.view));
     const next = i - Math.sign(dx)*rtl;
     const edge = next < 0 || next >= state.tabs.length;
     g.dx = edge ? dx*.28 : dx;
@@ -1068,7 +1000,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
     };
     document.addEventListener('click', swallow, {capture:true});
     setTimeout(()=>document.removeEventListener('click', swallow, {capture:true}), 350);
-    const rtl = isRtl() ? -1 : 1, i = state.tabs.indexOf(state.view);
+    const rtl = isRtl() ? -1 : 1, i = state.tabs.indexOf(mainView(state.view));
     const v = s.dx/Math.max(1, performance.now()-s.t);
     const go = Math.abs(s.dx) > window.innerWidth*.26 || Math.abs(v) > .45;
     const next = i - Math.sign(s.dx)*rtl;
@@ -1335,93 +1267,13 @@ function bump(el){
   if(!el) return;
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
 }
-/* ============ Themes ============
-   Settings > Appearance. Five colour themes (style.css, html[data-theme];
-   Ricotta Green is the default) and the holiday themes of seasons.js. Each
-   account's own theme and its "holiday themes switch on by themselves"
-   choice are kept on the server, so both of that person's phones agree. The
-   sign-in screen wears the theme this phone showed last. */
-const THEMES = [...COLOR_THEMES, ...HOLIDAY_THEMES];
-const DEFAULT_THEME = 'ricotta';
-const THEME_LOOK = {   // swatch (dark card, accent, page) and the colour of the phone's top bar
-  ricotta:  {swatch:['#14382C','#34C27A','#EEF1EF'], bar:'#EEF1EF'},
-  graphite: {swatch:['#161616','#2C2C2C','#EEEEED'], bar:'#EEEEED'},
-  ocean:    {swatch:['#12304D','#3FA7EA','#EDF1F5'], bar:'#EDF1F5'},
-  saffron:  {swatch:['#4A2F08','#F2A93B','#F4F0E8'], bar:'#F4F0E8'},
-  berry:    {swatch:['#4D1330','#E0568F','#F5EEF2'], bar:'#F5EEF2'},
-  ...HOLIDAY_LOOK
-};
-/* The theme an account chose (its own pick, before any holiday). */
-function themeOf(account){
-  const v = state.themes[account] || (account === state.account ? lget('theme:' + account) : null);
-  return THEMES.includes(v) ? v : DEFAULT_THEME;
+/* One Ricotta palette, with optional dark mode. */
+function syncAppearance(){
+  document.documentElement.removeAttribute('data-theme');
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta)meta.content=document.documentElement.classList.contains('dark')?'#101613':'#EEF1EF';
 }
-function autoThemeOn(account){
-  const v = state.autoThemes[account];
-  return typeof v === 'boolean' ? v : (account === state.account ? lget('autoTheme:' + account) !== false : true);
-}
-/* What an account sees today: the holiday theme while one is on (unless switched off), else its own. */
-function shownThemeOf(account){
-  const own = themeOf(account), h = holidayTheme();
-  if(h && autoThemeOn(account) && own !== 'match' && !(account === state.account && holidayDismissed(account, h))) return h;
-  return own;
-}
-function currentTheme(){
-  if(state.account) return shownThemeOf(state.account);
-  const last = lget('lastTheme'), h = holidayTheme();
-  if(h && lget('lastAuto') !== false) return h;
-  return THEMES.includes(last) ? last : DEFAULT_THEME;
-}
-let shownTheme = null;
-function applyTheme(){
-  const th = currentTheme(), root = document.documentElement;
-  if(th === DEFAULT_THEME) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', th);
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if(meta) meta.content = document.documentElement.classList.contains('dark') ? '#101613' : THEME_LOOK[th].bar;
-  if(state.account){ lset('lastTheme', themeOf(state.account)); lset('lastAuto', autoThemeOn(state.account) ? null : false); }
-  if(th !== shownTheme){ shownTheme = th; paintDecor(); }
-}
-function saveThemeToServer(id){ return api('me/theme', {method:'PUT', body:{theme:id}}); }
-/* Takes the server's themes after sign-in. A theme picked on this device before the server kept
-   it is sent up once; after that the server's answer wins, so every phone agrees. */
-function syncThemes(d){
-  if(d && d.themes && typeof d.themes === 'object') state.themes = Object.fromEntries(Object.entries(d.themes).filter(([,v])=>THEMES.includes(v)));
-  if(d && d.autoThemes && typeof d.autoThemes === 'object') state.autoThemes = {...d.autoThemes};
-  if(state.account && d && typeof d.autoTheme === 'boolean'){ state.autoThemes[state.account] = d.autoTheme; lset('autoTheme:' + state.account, d.autoTheme ? null : false); }
-  if(!state.account || !d || !d.themes) return;   // an older server that doesn't know themes
-  const key = 'themeSynced:' + state.account, local = lget('theme:' + state.account);
-  if(!lget(key)){
-    lset(key, true);
-    if(THEMES.includes(local) && local !== DEFAULT_THEME && themeOf(state.account) === DEFAULT_THEME){
-      state.themes[state.account] = local;
-      saveThemeToServer(local);
-      return;
-    }
-  }
-  lset('theme:' + state.account, themeOf(state.account) === DEFAULT_THEME ? null : themeOf(state.account));
-}
-function setTheme(id){
-  if(!state.account || !THEMES.includes(id)) return;
-  const h = holidayTheme(), account = state.account;
-  if(h && autoThemeOn(account)){
-    // During a holiday, picking another theme keeps that pick until the holiday ends; picking the holiday brings it back.
-    setHolidayDismissed(account, h, id !== h);
-    if(id === h){ applyTheme(); seasonMoment(h); return; }
-  }
-  state.themes[account] = id;
-  lset('theme:' + account, id === DEFAULT_THEME ? null : id);
-  applyTheme();
-  saveThemeToServer(id);
-  if(isHolidayTheme(id)) setTimeout(()=>seasonMoment(id), 500);
-}
-function setAutoTheme(on){
-  if(!state.account) return;
-  state.autoThemes[state.account] = on;
-  lset('autoTheme:' + state.account, on ? null : false);
-  applyTheme();
-  api('me/theme', {method:'PUT', body:{auto:on}});
-}
-/* A small badge for a person. Only the Devices screen shows each person in their own theme. */
+/* A small badge identifying who made a change. */
 function whoBadge(account){
   const name = accountLabel(account);
   if(!name) return '';
@@ -1437,7 +1289,7 @@ function applyPrefs(){
   const m = darkMode();
   document.documentElement.classList.toggle('dark', m === 'on' || (m === 'auto' && DARK_QUERY.matches));
 }
-DARK_QUERY.addEventListener?.('change', ()=>{ if(darkMode() === 'auto'){ applyPrefs(); applyTheme(); } });
+DARK_QUERY.addEventListener?.('change', ()=>{ if(darkMode() === 'auto'){ applyPrefs(); syncAppearance(); } });
 /* What each item was last ordered at (newest order that had it), for "Show last quantity". */
 let lastQtyCache = {key:'', map:{}};
 function lastQtyMap(){
@@ -1535,57 +1387,19 @@ function setLang(lang){
   updatePushLang(lang);   // so future notifications switch language immediately too
 }
 
-/* ---------- Edit tabs ----------
-   Each account picks the three screens in its tab bar (saved on the server,
-   so every phone signed in to that account gets the same tabs). */
-function openTabEditor(){
-  setMoreOpen(false);
-  const picked = state.tabs.slice();
-  showFormModal({
-    title: t('editTabs'),
-    bodyHtml: `<div class="notif-sub">${esc(t('editTabsHint'))}</div><div class="tab-pick" id="tabPick"></div>`,
-    okLabel: t('save'),
-    onOpen: box=>{
-      const list = box.querySelector('#tabPick');
-      const paint = ()=>{
-        list.innerHTML = tabChoices().map(v=>{ const n = picked.indexOf(v); return `<button type="button" class="tab-pick-row ${n>=0?'on':''}" data-tab="${v}" aria-pressed="${n>=0}">${NAV_ICONS[v]}<span>${esc(viewLabel(v))}</span><b>${n>=0?n+1:''}</b></button>`; }).join('');
-        list.querySelectorAll('[data-tab]').forEach(b=>b.onclick = ()=>{
-          const v = b.dataset.tab, n = picked.indexOf(v);
-          if(n >= 0) picked.splice(n, 1); else if(picked.length < 3) picked.push(v); else { picked.shift(); picked.push(v); }
-          paint();
-        });
-        box.querySelector('#modalFormOk').disabled = picked.length !== 3;
-      };
-      paint();
-    },
-    onSubmit: async ()=>{
-      if(picked.length !== 3) return {error:t('editTabsNeedThree')};
-      const r = await api('me/tabs', {method:'PUT', body:{tabs:picked}});
-      if(!r.ok) return {error:t('saveFailed')};
-      state.tabs = picked.slice();
-      saveSessionAccount();
-      render();
-      toast(t('tabsSaved'));
-      return {};
-    }
-  });
-}
-
 /* Events on the top bar and tab bar (bound once, when they are built). */
 function attachShellEvents(){
   const nav = document.querySelector('.bottomnav');
   nav.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>goView(b.dataset.view));
-  document.getElementById('navMoreBtn').onclick = e=>{ e.stopPropagation(); setMoreOpen(!nav.classList.contains('more-open')); };
-  document.getElementById('navEditTabs').onclick = e=>{ e.stopPropagation(); openTabEditor(); };
   document.getElementById('langBtn').onclick = e=>{ e.stopPropagation(); openLangMenu(e.currentTarget); };
   document.getElementById('logoutBtn').onclick = ()=>doLogout();
   document.getElementById('streakChip').onclick = openStreakSheet;
   document.getElementById('notesBell').onclick = openNotesSheet;
-  initTabBarLens(nav);
 }
 /* Events inside the page that more than one screen uses. */
 function attachContentEvents(){
   attachMessageSettings(); attachCatalogSearch();
+  document.querySelectorAll('[data-manage-view]').forEach(b=>b.onclick=()=>goView(b.dataset.manageView));
   const pushOn = document.getElementById('pushEnableBtn');
   if(pushOn) pushOn.onclick = async ()=>{
     const res = await enablePush();   // straight from the tap: iOS needs that for the permission prompt
@@ -1604,7 +1418,7 @@ function attachContentEvents(){
 /* ============ Login (PIN pad) ============ */
 function loginMessage(){
   if(state.pinBusy) return t('signingIn');
-  return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), faceid:t('faceIdFailed'), verification:t('securityCheckFailed'), session:state.sessionMsg})[state.pinError] || '';
+  return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), verification:t('securityCheckFailed'), session:state.sessionMsg})[state.pinError] || '';
 }
 function pinDotClass(i){
   const filled = i < state.pinBuffer.length;
@@ -1643,7 +1457,6 @@ function renderLogin(){
         <button class="key" data-key="0" style="--k:10">0</button>
         <button class="key backspace" data-key="back" style="--k:11" aria-label="${esc(t('deleteDigit'))}">${ICON_BACKSPACE}</button>
       </div>
-      ${passkeySupported() && Object.keys(faceIdKeys()).length ? `<button type="button" class="faceid-btn" id="faceIdBtn">${ICON_FACEID}<span>${esc(t('faceIdSignIn')(faceIdName()))}</span></button>` : ''}
     </div></div>
   </div>`;
 }
@@ -1680,7 +1493,7 @@ async function pressKey(k){
   }
   await completeSignIn(res);
 }
-/* After the PIN or Face ID: "Welcome back, Yunis" covers the workspace while it loads, then lifts. */
+/* After the PIN: "Welcome back, Yunis" covers the workspace while it loads, then lifts. */
 async function completeSignIn(res){
   state.pinBuffer = ''; state.pinError = ''; state.view = 'order';
   showWelcome(accountLabel(res.account));
@@ -1735,15 +1548,6 @@ function attachLoginEvents(){
   const lang = document.getElementById('loginLangBtn');
   if(lang) lang.onclick = e=>{ e.stopPropagation(); openLangMenu(lang); };
   document.querySelectorAll('[data-key]').forEach(b=>b.onclick = ()=>pressKey(b.dataset.key));
-  const face = document.getElementById('faceIdBtn');
-  if(face) face.onclick = async ()=>{
-    if(state.pinBusy) return;
-    state.pinBusy = true; state.pinError = ''; updateLoginFeedback(); face.disabled = true;
-    const res = await apiPasskeyLogin();
-    state.pinBusy = false; face.disabled = false;
-    if(res.error){ state.pinError = res.error === 'cancelled' ? '' : res.error; updateLoginFeedback(); return; }
-    await completeSignIn(res);
-  };
 }
 /* Physical keyboards (computers / tablets with a keyboard) can type the PIN. */
 document.addEventListener('keydown', e=>{
@@ -1860,18 +1664,14 @@ function renderOrder(){
     ${renderNoteSticky()}
     <div id="sharedDraftStatus">${draftStatusHtml()}</div>
     ${renderOrderHero(selectedCount, selectedSupplierCount)}
-    ${renderOrderTools()}
-    <div id="repeatCards">${renderRepeatCards()}</div>
-    <div id="ricoSuggest">${renderRicoSuggestion()}</div>
     ${tabsHtml}
-    <div class="order-arrange-row" id="orderArrangeRow">${renderOrderArrangeControl()}</div>
     <div class="search-row">
       <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" aria-label="${t('searchPlaceholder')}" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"><button type="button" class="search-clear" id="itemSearchClear" aria-label="${esc(t('clearSearch'))}" ${state.search?'':'hidden'}>&times;</button></div>
-      <div class="order-quick-actions">
+      <details class="order-options"><summary>${esc(t('orderOptions'))}</summary><div class="order-options-body"><div class="order-arrange-row" id="orderArrangeRow">${renderOrderArrangeControl()}</div>${renderOrderTools()}<div id="repeatCards">${renderRepeatCards()}</div><div id="ricoSuggest">${renderRicoSuggestion()}</div><div class="order-quick-actions">
         ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}<span>${t('sameAsLastTime')}</span></button>` : ''}
         ${ricoVoiceSupported() ? `<button class="quick-btn voice-btn" id="voiceOrderBtn">${ICON_MIC}<span>${esc(t('voiceOrder'))}</span></button>` : ''}
-        <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${ICON_DELETE}<span>${t('clearOrder')}</span></button>
-      </div>
+        <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0&&!state.orderNote?'disabled':''}>${ICON_DELETE}<span>${t('clearOrder')}</span></button>
+      </div></div></details>
     </div>
     <div id="orderResults" aria-live="polite">${groupHtml || emptyState(t('noSearchResults'))}</div>
   `;
@@ -1895,10 +1695,8 @@ function renderOrderResults(){
   const groupHtml = Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
     const label = key==='__none' ? t('noSupplier') : supplierName(key);
     const rows = (q?groups[key]:sortedSupplierItems(groups[key])).map(i=>itemRowHtml(i, lastQty)).join('');
-    const arrangeButton = canOpen('itemsAdmin') && key!=='__none'
-      ? `<button class="item-sort-trigger" data-sort-supplier="${esc(key)}">${t('sortSupplierItems')}</button>` : '';
     return state.orderTab==='all' ? `<div class="supplier-group">
-      <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}<span class="supplier-item-count">${groups[key].length}</span></span>${arrangeButton}</div>
+      <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}<span class="supplier-item-count">${groups[key].length}</span></span></div>
       ${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}
       <div class="supplier-items-grid">${rows}</div>
     </div>` : `${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}<div class="supplier-items-grid standalone">${rows}</div>`;
@@ -1918,7 +1716,7 @@ function itemRowHtml(i, lastQty){
       <div class="item-row ${qty>0?'has-qty':''}" data-item-id="${esc(i.id)}">
         <div class="item-info">
           <div class="item-name">${state.pins.includes(i.id) ? `<span class="item-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(i.name)}</div>
-          ${i.aliases?.length ? `<div class="item-alias" dir="auto">${esc(i.aliases.slice(0,2).join(' · '))}</div>` : ''}
+
           <div class="item-unit">${esc(unitLabel(i.unit))}${lastQty && lastQty[i.id] ? ` · <span class="item-last">${esc(t('lastQty')(lastQty[i.id]))}</span>` : ''}${i.note ? ` · <span class="item-note" dir="auto">“${esc(i.note)}”</span>` : ''}</div>
         </div>
         <div class="stepper">
@@ -1938,6 +1736,10 @@ function refreshOrderResults(){
    focus and pointer targets. Filtering is the only path rebuilding results. */
 function refreshOrderView(pulseItemId=null){
   persistCartDraft();
+  const note=document.getElementById('orderNotePreview');
+  if(note){note.textContent=state.orderNote||'';note.hidden=!state.orderNote;}
+  const noteButton=document.getElementById('orderNoteBtn');
+  if(noteButton)noteButton.textContent=t('orderNote')+(state.orderNote?' •':'');
   document.querySelectorAll('#orderResults [data-qty]').forEach(input=>{
     if(pulseItemId && input.dataset.qty!==pulseItemId) return;
     const qty=state.cart[input.dataset.qty]||0, row=input.closest('.item-row');
@@ -1978,7 +1780,7 @@ function refreshCartSummary(){
     send.querySelector('.send-meta').textContent = sendMeta();
   }
   const clear=document.getElementById('clearOrderBtn');
-  if(clear) clear.disabled=c===0;
+  if(clear) clear.disabled=c===0&&!state.orderNote;
   const draft=document.querySelector('.draft-state');
   if(draft) draft.textContent=c?draftProgressLabel():t('selectToStart');
   paintRicoSuggestion();
@@ -2188,7 +1990,6 @@ function stepQty(btn){
   if(next === (state.cart[id]||0)) return;
   state.cart[id] = next;
   refreshOrderView(id);
-  playQtyTick(!!btn.dataset.inc);
 }
 /* Hold + or − and the number keeps going, faster the longer it's held. */
 let stepHold = null;
@@ -2483,7 +2284,6 @@ async function maybeFinishQueue(){
   const queue = state.queue, session = apiSession(), streakBefore = {count:0, lit:false, ...state.streak};
   finishingQueue = queue;
   try{
-    if(!queue.record){ try{ playOrdersSent(); }catch(_){ /* a sound must never stop the order from saving */ } }
     const record = queue.record || {
       id: 'o'+outboxJobId(), date: new Date().toISOString(), by: state.account, note:queue.orderNote ?? state.orderNote ?? '',
       entries: state.queue.map(e=>({
@@ -2520,9 +2320,9 @@ async function maybeFinishQueue(){
     state.queue = null;
     if(state.view === 'queue') goView('order');
     if(result === 'saved'){
-      // Undo for 15 minutes (also from History), the streak may light up, and a holiday theme celebrates.
+      // Undo for 15 minutes (also from History), the streak may light up.
       toast(t('orderSavedToHistory'), 'ok', {undo:()=>undoOrder(record.id)});
-      try{ seasonCelebrate(); refreshStreak({celebrate:true, before:streakBefore}); }
+      try{ refreshStreak({celebrate:true, before:streakBefore}); }
       catch(error){ console.error('After-order extras failed', error); }   // the order is already saved
     } else toast(result === 'queued' ? t('orderSavedOffline') : t('saveFailed'), 'warn');
   }catch(error){
@@ -2921,13 +2721,13 @@ function attachSupplierEvents(){
 
 /* ============ Items ============ */
 function itemsAdminListHtml(){
-  return sortedByName(state.items).map(i=>`<div class="list-row tappable" data-edititem="${esc(i.id)}"><div><div class="name">${esc(i.name)}${i.available===false?` <span class="availability-badge">${esc(t('unavailable'))}</span>`:''}</div>${i.aliases?.length?`<div class="item-alias" dir="auto">${esc(i.aliases.join(', '))}</div>`:''}<div class="meta">${esc(unitLabel(i.unit))} · ${esc(supplierName(i.supplierId))}</div></div><div class="row-actions"><span class="icon-btn" aria-hidden="true">${ICON_EDIT}</span><button class="icon-btn danger" data-delitem="${esc(i.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button></div></div>`).join('') || emptyState(t('noItemsYet'));
+  return sortedByName(state.items).map(i=>`<div class="list-row tappable" data-edititem="${esc(i.id)}"><div><div class="name">${esc(i.name)}${i.available===false?` <span class="availability-badge">${esc(t('unavailable'))}</span>`:''}</div><div class="meta">${esc(unitLabel(i.unit))} · ${esc(supplierName(i.supplierId))}</div></div><div class="row-actions"><span class="icon-btn" aria-hidden="true">${ICON_EDIT}</span><button class="icon-btn danger" data-delitem="${esc(i.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button></div></div>`).join('') || emptyState(t('noItemsYet'));
 }
 function renderItemsAdmin(){
   return `
     <div class="action-row">
       <button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
-      <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button><button class="btn btn-ghost" data-gorecord="item">${NAV_ICONS.record} ${t('record')}</button>
+      <details class="list-options"><summary>${esc(t('moreTools'))}</summary><div><button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button></div></details>
     </div>
     ${renderCatalogSearch()}<div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${itemsAdminListHtml()}</div>`;
 }
@@ -3285,15 +3085,10 @@ function renderDevices(){
     const who = accountLabel(d.account);
     const parts = deviceParts(d);
     const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
-    // Each card wears the theme that person sees today (only Rozha has this screen).
-    const th = d.account ? shownThemeOf(d.account) : DEFAULT_THEME, [deep, accent] = THEME_LOOK[th].swatch;
-    return `<div class="dev-card themed" data-theme-of="${esc(th)}" style="--d1:${deep};--d2:${accent}">
-      <div class="dev-scene" aria-hidden="true">${themeScene(th)}</div>
-      <span class="dev-rico" aria-hidden="true">${dressRico(ricoFaceBase(isHolidayTheme(th) ? SEASON_WORDS[th].mood : 'happy', 'rico-md'), isHolidayTheme(th) ? th : null)}</span>
+    return `<div class="dev-card">
       <div class="dev-top">
         <div class="dev-name">${who ? whoBadge(d.account) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
       </div>
-      ${d.account ? `<div class="dev-theme">${esc(t('devTheme')(t('themeNames')[th] || th))}</div>` : ''}
       <div class="dev-kind">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : NAV_ICONS.devices} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
       <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span></div>
       <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
@@ -3345,41 +3140,16 @@ function attachDeviceEvents(){
 }
 
 /* ============ Settings (every account) ============
-   Appearance, the Order screen's display choices, notifications and sounds
+   Appearance, the Order screen's display choices and notifications
    are on this device for everyone; the connection and Rico's provider are
    shown to Rozha only. PINs can't be changed here: only through the secret
    code on the sign-in keypad (see startRecovery). */
-const ICON_CHECK_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
-function renderThemePicker(){
-  const names = t('themeNames'), cur = currentTheme(), today = holidayTheme(), auto = autoThemeOn(state.account);
-  const card = id=>{
-    const [deep, accent, bg] = THEME_LOOK[id].swatch, on = id === cur;
-    const tag = on ? `<span class="theme-check">${ICON_CHECK_SM}</span>` : auto && id === today ? `<span class="theme-tag">${esc(t('themeOnNow'))}</span>` : id === DEFAULT_THEME ? `<span class="theme-tag">${esc(t('themeDefault'))}</span>` : '';
-    const rico = dressRico(ricoFaceBase(isHolidayTheme(id) ? SEASON_WORDS[id].mood : 'happy', 'rico-xs'), isHolidayTheme(id) ? id : null);
-    return `<button type="button" class="theme-btn" data-theme-pick="${id}" aria-pressed="${on}">
-      <span class="theme-mini" aria-hidden="true" style="--mb:${bg};--md:${deep};--ma:${accent}">${themeScene(id)}<span class="theme-mini-hero"><i></i><b></b><b></b></span><span class="theme-mini-rows"><i></i><i></i></span><span class="theme-mini-rico">${rico}</span></span>
-      <span class="theme-name"><span>${esc(names[id])}</span>${tag}</span>
-      ${isHolidayTheme(id) ? `<span class="theme-when">${esc(id === 'match' ? t('themeAnyDay') : t('themeDates')[id])}</span>` : ''}
-    </button>`;
-  };
-  const sw = (id, on, label, hint)=>`<label class="check-row sound-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;
-  const dm = darkMode();
-  return `<div class="section-title">${esc(t('settingsAppearance'))}</div>
-    <div class="form-card theme-card"><div class="notif-sub">${esc(t('themeHint'))}</div>
-      <div class="theme-group-title">${esc(t('themeYours'))}</div>
-      <div class="theme-grid" role="group" aria-label="${esc(t('themeYours'))}">${COLOR_THEMES.map(card).join('')}</div>
-      <div class="theme-group-title">${esc(t('themeHolidays'))}</div>
-      <div class="theme-grid" role="group" aria-label="${esc(t('themeHolidays'))}">${HOLIDAY_THEMES.map(card).join('')}</div>
-      <hr class="notif-divider">
-      ${sw('pref-autoTheme', auto, 'themeAutoLabel', 'themeAutoHint')}
-      ${sw('pref-surprises', surprisesOn(), 'themeFunLabel', 'themeFunHint')}
-      ${sw('pref-weatherFx', weatherFxOn(), 'weatherFxLabel', 'weatherFxHint')}
-      <div class="dark-row"><span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span>
-        <div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>
-    </div>`;
+function renderAppearance(){
+  const dm=darkMode();
+  return `<div class="section-title">${esc(t('settingsAppearance'))}</div><div class="form-card"><div class="dark-row"><span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div></div>`;
 }
 function renderDisplaySettings(){
-  const row = (id, on, label, hint)=>`<label class="check-row sound-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;
+  const row = (id, on, label, hint)=>`<label class="check-row preference-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;
   return `<div class="section-title">${esc(t('settingsOrderScreen'))}</div><div class="form-card">
     ${row('pref-compactRows', prefOn('compactRows'), 'compactRowsLabel', 'compactRowsHint')}
     ${row('pref-showLastQty', prefOn('showLastQty'), 'lastQtyLabel', 'lastQtyHint')}</div>`;
@@ -3400,57 +3170,11 @@ function versionCmp(a, b){
 function latestVersion(){
   return (state.devices || []).map(d=>d.appVersion).filter(Boolean).reduce((m, v)=>versionCmp(v, m) > 0 ? v : m, APP_VERSION);
 }
-/* ---------- Face ID on this phone ---------- */
-const faceIdName = ()=>isIOS() ? 'Face ID' : t('faceIdOther');
-function renderFaceIdSettings(){
-  if(!passkeySupported()) return '';
-  const on = !!faceIdKeys()[state.account];
-  return `<div class="section-title">${esc(t('faceIdSection'))}</div><div class="form-card faceid-card">
-    <div class="faceid-row"><span class="faceid-ico">${ICON_FACEID}</span><div><b>${esc(t('faceIdTitle')(faceIdName()))}</b><div class="notif-sub">${esc(on ? t('faceIdOnHint') : t('faceIdOffHint')(faceIdName()))}</div></div>
-    <button type="button" class="btn ${on ? 'btn-ghost' : 'btn-primary'}" id="faceIdToggle">${esc(on ? t('faceIdTurnOff') : t('faceIdTurnOn'))}</button></div>
-  </div>`;
-}
-async function enableFaceId(){
-  const o = await api('passkey/register-options', {method:'POST'});
-  if(!o.ok || !o.data || !o.data.challenge){ toast(t('saveFailed'), 'error'); return; }
-  let cred;
-  try{
-    cred = await navigator.credentials.create({publicKey:{
-      challenge:b64uDecode(o.data.challenge), rp:{name:'Ricotta Orders', id:o.data.rpId},
-      user:{id:b64uDecode(o.data.userId), name:o.data.userName, displayName:o.data.userName},
-      pubKeyCredParams:[{type:'public-key', alg:-7}, {type:'public-key', alg:-257}],
-      authenticatorSelection:{authenticatorAttachment:'platform', residentKey:'required', requireResidentKey:true, userVerification:'required'},
-      attestation:'none', timeout:60000, excludeCredentials:(o.data.exclude || []).map(id=>({type:'public-key', id:b64uDecode(id)}))}});
-  }catch(e){
-    // Already set up on this phone (it is in the exclude list), or the person backed out.
-    if(e && e.name === 'InvalidStateError') toast(t('faceIdAlready')(faceIdName()));
-    return;
-  }
-  const res = cred && cred.response;
-  if(!res || !res.getPublicKey || !res.getAuthenticatorData || !res.getPublicKey()){ await showAlert(esc(t('faceIdUnsupported'))); return; }
-  const r = await api('passkey/register', {method:'POST', body:{id:cred.id, clientDataJSON:b64uEncode(res.clientDataJSON),
-    authenticatorData:b64uEncode(res.getAuthenticatorData()), publicKey:b64uEncode(res.getPublicKey()), alg:res.getPublicKeyAlgorithm()}});
-  if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
-  lset('faceIdKeys', {...faceIdKeys(), [state.account]:cred.id});
-  toast(t('faceIdOnToast')(faceIdName()), 'ok');
-}
-async function disableFaceId(){
-  const id = faceIdKeys()[state.account];
-  if(!id) return;
-  const r = await api('passkey', {method:'DELETE', body:{id}});
-  if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
-  const keys = faceIdKeys(); delete keys[state.account]; lset('faceIdKeys', keys);
-  toast(t('faceIdOffToast')(faceIdName()));
-}
-function attachFaceIdSettings(){
-  const b = document.getElementById('faceIdToggle');
-  if(b) b.onclick = ()=>withBusy(b, async ()=>{ await (faceIdKeys()[state.account] ? disableFaceId() : enableFaceId()); if(state.view === 'settings') render(); });
-}
 function renderSettings(){
   const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `${renderPendingSync()}${renderMessageSettings()}${renderThemePicker()}${renderDisplaySettings()}${renderFaceIdSettings()}${renderSoundsView()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderMessageSettings()}${renderAppearance()}${renderDisplaySettings()}${renderNotifSettings()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
-/* ============ Notifications and sounds (shown in Settings) ============ */
+/* ============ Notifications (shown in Settings) ============ */
 /* The daily reminder starts as one switch. Turning it on opens the time,
    a test button and Save; only Save turns it on for real (leaving without
    saving keeps it off). Turning it off saves "off" straight away. */
@@ -3481,7 +3205,7 @@ function renderNotifSettings(){
       </div>`;
   return `<div class="section-title">${t('notifSettingsTitle')}</div>
     <div class="form-card">${device}<hr class="notif-divider">
-      <label class="check-row sound-row"><input type="checkbox" id="reminderEnabled" ${r.enabled || reminderDraft ? 'checked' : ''}><span>${esc(t('reminderTitle'))}<small>${esc(hint)}</small></span></label>${editor}</div>`;
+      <label class="check-row preference-row"><input type="checkbox" id="reminderEnabled" ${r.enabled || reminderDraft ? 'checked' : ''}><span>${esc(t('reminderTitle'))}<small>${esc(hint)}</small></span></label>${editor}</div>`;
 }
 function attachNotifEvents(){
   const tog = document.getElementById('pushToggleBtn');
@@ -3524,22 +3248,6 @@ function attachNotifEvents(){
   if(test) test.onclick = ()=> withBusy(test, async ()=> reportSendResult(await callSendPush('reminder-now')));
 }
 
-const SOUND_ROWS = [
-  {id:'qty',   label:'soundQtyLabel',   hint:'soundQtyHint',   play:()=>playQtyTick(true)},
-  {id:'sent',  label:'soundSentLabel',  hint:'soundSentHint',  play:()=>playOrdersSent()},
-];
-function renderSoundsView(){
-  const row = (id, on, label, hint)=>`<label class="check-row sound-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;
-  return `${renderNotifSettings()}<div class="section-title">${esc(t('soundsSection'))}</div><div class="form-card"><div class="notif-sub">${esc(t('soundsHint'))}</div>
-      ${SOUND_ROWS.map(r=>row('sound-'+r.id, soundOn(r.id), r.label, r.hint)).join('')}</div>`;
-}
-function attachSoundsEvents(){
-  attachNotifEvents();
-  SOUND_ROWS.forEach(r=>{
-    const box = document.getElementById('sound-'+r.id);
-    if(box) box.onchange = ()=>{ setSoundOn(r.id, box.checked); if(box.checked) r.play(); };
-  });
-}
 /* ---- Settings: Rico connection is managed server-side, never from a device. ---- */
 function renderRicoSettings(){
   return `<div class="section-title">${t('ricoSettingsTitle')}</div>
@@ -3585,39 +3293,24 @@ async function withBusy(btn, fn){
   btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy','true');
   try{ return await fn(); } finally { btn.disabled = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy'); }
 }
-/* Repaints just the theme picker (the page stays where it is) and wires it again. */
-function bindThemePicker(){
-  const repaint = focus=>{
-    const card = document.querySelector('.theme-card'), title = card.previousElementSibling;
-    const tmp = document.createElement('div'); tmp.innerHTML = renderThemePicker();
-    title.replaceWith(tmp.children[0]); card.replaceWith(tmp.children[0]);
-    bindThemePicker();
-    document.querySelector(focus)?.focus({preventScroll:true});
-  };
-  document.querySelectorAll('[data-theme-pick]').forEach(b=>b.onclick=()=>{ setTheme(b.dataset.themePick); repaint('[data-theme-pick][aria-pressed="true"]'); });
-  const auto = document.getElementById('pref-autoTheme');
-  if(auto) auto.onchange = ()=>{ setAutoTheme(auto.checked); repaint('#pref-autoTheme'); };
-  const fun = document.getElementById('pref-surprises');
-  if(fun) fun.onchange = ()=>{ lset('themeSurprises', fun.checked ? null : false); };
-  const wx = document.getElementById('pref-weatherFx');
-  if(wx) wx.onchange = ()=>{ lset('weatherFx', wx.checked ? null : false); paintDecor(); };
+/* Appearance changes update in place, preserving scroll position. */
+function bindAppearance(){
   document.querySelectorAll('[data-dark]').forEach(b=>b.onclick=()=>{
-    lset('darkMode', b.dataset.dark === 'off' ? null : b.dataset.dark);
-    applyPrefs(); applyTheme(); repaint(`[data-dark="${b.dataset.dark}"]`);
+    lset('darkMode',b.dataset.dark==='off'?null:b.dataset.dark);applyPrefs();syncAppearance();
+    document.querySelectorAll('[data-dark]').forEach(x=>x.setAttribute('aria-checked',String(x.dataset.dark===darkMode())));
   });
 }
 function attachSettingsEvents(){
-  attachFaceIdSettings();
  const retry=document.getElementById('syncRetryBtn');
  if(retry) retry.onclick=async()=>{retry.disabled=true;await flushOutbox();await loadData();render();};
  const exp=document.getElementById('syncExportBtn');
  if(exp) exp.onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(currentOutbox(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ricotta-pending-orders.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-  bindThemePicker();
+  bindAppearance();
   [['pref-compactRows','compactRows'],['pref-showLastQty','showLastQty']].forEach(([id,key])=>{
     const box = document.getElementById(id);
     if(box) box.onchange = ()=>{ lset(key, box.checked ? true : null); applyPrefs(); };
   });
-  attachSoundsEvents();
+  attachNotifEvents();
   if(isRozha()) loadRicoStatus();
 }
 

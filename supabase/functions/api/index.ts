@@ -20,8 +20,6 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   --- session required ---
 //   GET    bootstrap                                            -> everything the app needs to start
 //   POST   logout
-//   PUT    me/tabs                    {tabs:[3 views]}          this account's tab bar
-//   PUT    me/theme                   {theme?, auto?}           this account's theme, and whether holiday themes switch on by themselves
 //   PUT    me/pins                    {itemIds}                 items pinned to the top of this account's Order screen
 //   PUT    suppliers/:id | items/:id | units/:id                upsert one record (+ its Record entry)
 //   DELETE suppliers/:id | items/:id | units/:id                delete one record (+ its Record entry)
@@ -60,11 +58,6 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   PUT    repeat-orders/:id          {name?, days?}            change its name or days
 //   DELETE repeat-orders/:id
 //   GET    months                                               the archive: one summary per finished month
-//   POST   passkey/register-options                             Face ID: a challenge to create this phone's passkey
-//   POST   passkey/register           {id, clientDataJSON, authenticatorData, publicKey, alg}
-//   DELETE passkey                    {id}                      turn Face ID off on this phone
-//   POST   passkey/login-options      (public)                  Face ID: a challenge to sign in
-//   POST   passkey/login              (public) {id, clientDataJSON, authenticatorData, signature}
 //                                                                -> the same reply as login
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, saveGroqKey } from "./assistant.ts";
@@ -86,13 +79,10 @@ const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
 const LANGS = ["en", "ku", "ar"];
 // Every screen of the app, and the ones each account may open.
-const THEMES = ["ricotta", "graphite", "ocean", "saffron", "berry",
-  "halloween", "winter", "newroz", "ramadan", "summer", "eid", "christmas", "flagday", "spring", "autumn", "match"];
-const cleanTheme = (v: unknown) => THEMES.includes(String(v)) ? String(v) : "ricotta";
-const VIEWS = ["order", "assistant", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
+const VIEWS = ["order", "assistant", "manage", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
 const ACCOUNT_VIEWS: Record<string, string[]> = {
   rozha: VIEWS,
-  yunis: ["order", "assistant", "history", "suppliers", "itemsAdmin", "units", "record"],
+  yunis: ["order", "assistant", "manage", "history", "suppliers", "itemsAdmin", "units", "record"],
 };
 // Allowed browser origin for this app. Set ALLOWED_ORIGIN if the production
 // site ever moves to another origin.
@@ -213,10 +203,7 @@ async function listNotes() {
   if (error) throw error;
   return (data ?? []).map(toNote);
 }
-async function readWeather() {
-  const { data } = await app("weather").select("data,updated_at").eq("id", true).maybeSingle();
-  return data?.updated_at ? { ...(data.data ?? {}), updatedAt: data.updated_at } : null;
-}
+
 const toDevice = (d: any) => ({
   id: d.id, account: d.account ?? null, label: d.label ?? null, loggedIn: d.logged_in,
   lastLogin: d.last_login, lastSeen: d.last_seen, command: d.command, handledCommand: d.handled_command,
@@ -281,26 +268,10 @@ async function readReminder() {
   return data ? { enabled: data.enabled, time: String(data.remind_time).slice(0, 5) } : null;
 }
 async function readAccount(id: string) {
-  const { data, error } = await app("accounts").select("id,name,tabs,theme,auto_theme,pins,message_format").eq("id", id).maybeSingle();
+  const { data, error } = await app("accounts").select("id,name,pins,message_format").eq("id", id).maybeSingle();
   if (error) throw error;
-  return data ? { account: data.id, name: data.name, tabs: cleanTabs(data.id, data.tabs), theme: cleanTheme(data.theme), autoTheme: data.auto_theme !== false, pins: Array.isArray(data.pins) ? data.pins : [], messageFormat: data.message_format ?? {} } : null;
+  return data ? { account: data.id, name: data.name, pins: Array.isArray(data.pins) ? data.pins : [], messageFormat: data.message_format ?? {} } : null;
 }
-/* Both accounts' themes, so a person is shown in their own colours on every phone. */
-async function readThemes(): Promise<{ themes: Record<string, string>; autoThemes: Record<string, boolean> }> {
-  const { data, error } = await app("accounts").select("id,theme,auto_theme");
-  if (error) throw error;
-  return {
-    themes: Object.fromEntries((data ?? []).map((a: any) => [a.id, cleanTheme(a.theme)])),
-    autoThemes: Object.fromEntries((data ?? []).map((a: any) => [a.id, a.auto_theme !== false])),
-  };
-}
-/* Three different screens this account may open, in the order chosen. */
-function cleanTabs(account: string, tabs: unknown): string[] {
-  const allowed = ACCOUNT_VIEWS[account] ?? [];
-  const list = Array.isArray(tabs) ? [...new Set(tabs.map((t) => String(t)))].filter((t) => allowed.includes(t)) : [];
-  return list.length === 3 ? list : ["order", "assistant", "history"];
-}
-
 async function orderLinesFor(orderRows: any[]): Promise<any[]> {
   // Lines are read in small batches of orders: a long id list in one request
   // can exceed the URL length limit, and each batch is paged past 1000 rows.
@@ -315,9 +286,8 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
 
 async function bootstrap(s: Session) {
   const since = monthStart();
-  const [me, looks, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, notes, weather, repeats, months, draft] = await Promise.all([
+  const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, notes, repeats, months, draft] = await Promise.all([
     readAccount(s.account),
-    readThemes(),
     app("suppliers").select("id,name,phone,reminder,cutoff").order("name"),
     app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available").order("name"),
     app("units").select("id,en,ku,ar"),
@@ -328,7 +298,6 @@ async function bootstrap(s: Session) {
     listInbox(s),
     readStreak(),
     listNotes(),
-    readWeather().catch(() => null),
     listRepeats(),
     listMonths(12),
     readDraft(s.account),
@@ -337,9 +306,9 @@ async function bootstrap(s: Session) {
   const orderRows = orders;
   const lines = await orderLinesFor(orderRows);
   return {
-    account: s.account, name: me?.name ?? accountName(s.account), tabs: me?.tabs ?? cleanTabs(s.account, null),
-    views: ACCOUNT_VIEWS[s.account], theme: me?.theme ?? "ricotta", themes: looks.themes, autoThemes: looks.autoThemes,
-    autoTheme: me?.autoTheme ?? true, pins: me?.pins ?? [], messageFormat: me?.messageFormat ?? {}, streak, notes, weather,
+    account: s.account, name: me?.name ?? accountName(s.account), tabs: ["order","assistant","manage"],
+    views: ACCOUNT_VIEWS[s.account],
+    pins: me?.pins ?? [], messageFormat: me?.messageFormat ?? {}, streak, notes,
     suppliers: (suppliers.data ?? []).map(toSupplier),
     items: (items.data ?? []).map(toItem),
     units: units.data ?? [],
@@ -443,7 +412,7 @@ async function login(req: Request) {
   return await startSession(req, match as Account);
 }
 
-/* A new session for this device: the PIN and Face ID sign-ins both end here. */
+/* Issue a new session after a verified PIN sign-in. */
 async function startSession(req: Request, account: Account) {
   const token = randomToken();
   const deviceId = text(req.headers.get("x-device-id"), 120) || null;
@@ -465,7 +434,7 @@ async function startSession(req: Request, account: Account) {
     }
   }
   const me = await readAccount(account);
-  return json({ token, account, name: me?.name ?? accountName(account), tabs: me?.tabs ?? cleanTabs(account, null), theme: me?.theme ?? "ricotta", autoTheme: me?.autoTheme ?? true, expiresAt });
+  return json({ token, account, name: me?.name ?? accountName(account), tabs: ["order","assistant","manage"], expiresAt });
 }
 
 /* ---------- The secret code ----------
@@ -551,8 +520,7 @@ async function recovery(req: Request, step: string) {
       return fail(result === "duplicate" ? "duplicate_pin" : "invalid_pin");
     }
     if (result !== "ok") return fail("save_failed", 500);
-    // New codes end every session; Face ID sign-ins go too, so each phone must sign in with the new PIN.
-    await app("passkeys").delete().neq("id", "");
+    // New codes end every session, so each phone must sign in with the new PIN.
   }
   if (answer) {
     const { data: result, error } = await db.rpc("app_internal_set_recovery_name", { p_name: answer });
@@ -764,102 +732,6 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
   return fail("Unknown route", 404);
 }
 
-/* ---------- Face ID / fingerprint sign-in (WebAuthn passkeys) ----------
-   The phone makes a key pair that only unlocks with the person's face or finger; the private key
-   never leaves it. Here we keep the public key, and every sign-in proves the phone signed a fresh,
-   single-use challenge for this site. The PIN keeps working; changing the codes removes all passkeys. */
-const RP_ID = new URL(ALLOWED_ORIGIN).hostname;
-const PASSKEY_CHALLENGE_MS = 5 * 60_000;
-const b64u = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-type Bytes = Uint8Array<ArrayBuffer>;
-function fromB64u(v: unknown, max = 4096): Bytes | null {
-  const str = typeof v === "string" ? v : "";
-  if (!str || str.length > max || !/^[A-Za-z0-9_-]+={0,2}$/.test(str)) return null;
-  try {
-    const bin = atob(str.replace(/=+$/, "").replaceAll("-", "+").replaceAll("_", "/") + "===".slice((str.replace(/=+$/, "").length + 3) % 4));
-    return Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  } catch { return null; }
-}
-const sha256 = async (bytes: Bytes) => new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
-async function newPasskeyChallenge(purpose: "register" | "login", account: Account | null) {
-  const challenge = b64u(crypto.getRandomValues(new Uint8Array(32)));
-  const {data,error}=await db.rpc("app_internal_reserve_passkey_challenge",{p_token_hash:await hash(challenge),p_challenge:challenge,p_purpose:purpose,p_account:account,p_expires_at:new Date(Date.now()+PASSKEY_CHALLENGE_MS).toISOString()});
-  if(error || data!==true)throw new Error("passkey_challenge_unavailable");
-  return challenge;
-}
-/* Checks clientDataJSON (type, this site, a challenge we issued, used once) and the authenticator
-   data (this site, the person was present and verified with face/finger). Returns the parts, or null. */
-async function checkCeremony(type: "webauthn.create" | "webauthn.get", purpose: "register" | "login", b: any, account: Account | null) {
-  const clientData = fromB64u(b.clientDataJSON, 8192), authData = fromB64u(b.authenticatorData, 4096);
-  if (!clientData || !authData || authData.length < 37) return null;
-  let c: any;
-  try { c = JSON.parse(new TextDecoder().decode(clientData)); } catch { return null; }
-  if (c?.type !== type || c?.origin !== ALLOWED_ORIGIN || typeof c?.challenge !== "string") return null;
-  // Single use: the challenge row is taken out as it is checked.
-  const { data: rows, error } = await app("passkey_challenges").delete().eq("token_hash", await hash(c.challenge))
-    .eq("purpose", purpose).gt("expires_at", nowIso()).select("challenge,account");
-  if (error || !rows?.length || rows[0].challenge !== c.challenge) return null;
-  if (account && rows[0].account !== account) return null;
-  if (!sameBytes(authData.slice(0, 32), await sha256(new TextEncoder().encode(RP_ID)))) return null;
-  const flags = authData[32];
-  if (!(flags & 0x01) || !(flags & 0x04)) return null;   // user present + user verified (Face ID / fingerprint / passcode)
-  const signCount = new DataView(authData.buffer, authData.byteOffset + 33, 4).getUint32(0);
-  return { clientData, authData, signCount };
-}
-const keyParams = (alg: number) => alg === -7 ? { name: "ECDSA", namedCurve: "P-256" } : { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" };
-/* WebAuthn ECDSA signatures are DER; WebCrypto wants the raw 64-byte r||s. */
-function derToRaw(der: Bytes): Bytes | null {
-  if (der[0] !== 0x30) return null;
-  let i = 2;
-  const part = () => {
-    if (der[i++] !== 0x02) return null;
-    const len = der[i++]; let v = der.slice(i, i + len); i += len;
-    while (v.length > 32 && v[0] === 0) v = v.slice(1);
-    if (v.length > 32) return null;
-    const out = new Uint8Array(32); out.set(v, 32 - v.length); return out;
-  };
-  const r = part(), sg = part();
-  if (!r || !sg) return null;
-  const raw = new Uint8Array(64); raw.set(r); raw.set(sg, 32); return raw;
-}
-async function passkeyRegister(s: Session, b: any) {
-  const id = text(b.id, 1024), alg = Number(b.alg), spki = fromB64u(b.publicKey, 2048);
-  if (!fromB64u(id, 1024) || id.length < 16 || ![-7, -257].includes(alg) || !spki) return fail("invalid_passkey");
-  try { await crypto.subtle.importKey("spki", spki, keyParams(alg), false, ["verify"]); } catch { return fail("invalid_passkey"); }
-  if (!(await checkCeremony("webauthn.create", "register", b, s.account))) return fail("invalid_passkey", 401);
-  const { data, error } = await db.rpc("app_internal_register_passkey", { p_id: id, p_account: s.account, p_public_key: b64u(spki), p_alg: alg, p_device: s.deviceId });
-  return error ? fail("save_failed", 500) : data ? ok() : fail("passkey_conflict", 409);
-}
-async function passkeyLogin(req: Request) {
-  const b = await readBody(req);
-  const id = text(b.id, 1024), signature = fromB64u(b.signature, 1024);
-  if (!id || !signature) return fail("invalid_credentials", 401);
-  const { data: key, error } = await app("passkeys").select("id,account,public_key,alg,sign_count").eq("id", id).maybeSingle();
-  if (error) throw new Error("passkey_unavailable");
-  if (!key) return fail("invalid_credentials", 401);
-  const done = await checkCeremony("webauthn.get", "login", b, null);
-  if (!done) return fail("invalid_credentials", 401);
-  const signed = new Uint8Array(done.authData.length + 32);
-  signed.set(done.authData); signed.set(await sha256(done.clientData), done.authData.length);
-  const sig = key.alg === -7 ? derToRaw(signature) : signature;
-  let valid = false;
-  try {
-    const pub = await crypto.subtle.importKey("spki", fromB64u(key.public_key, 2048)!, keyParams(key.alg), false, ["verify"]);
-    valid = !!sig && await crypto.subtle.verify(key.alg === -7 ? { name: "ECDSA", hash: "SHA-256" } : { name: "RSASSA-PKCS1-v1_5" }, pub, sig, signed);
-  } catch { valid = false; }
-  if (!valid) return fail("invalid_credentials", 401);
-  // Only a proven key may consume the shared PIN attempt budget.
-  const attempt=await reserveLogin(await loginFingerprints(req));
-  if(!attempt)return fail("too_many_attempts",429);
-  // A counter that goes backwards means a copied key: refuse it (phones that keep 0 are fine).
-  if (done.signCount && Number(key.sign_count) && done.signCount <= Number(key.sign_count)) return fail("invalid_credentials", 401);
-  const { data: updated, error: updateError } = await app("passkeys").update({ sign_count: done.signCount, last_used_at: nowIso() }).eq("id", id).eq("sign_count", key.sign_count).select("id");
-  if (updateError || !updated?.length) return fail("passkey_update_failed", 503);
-  await completeAttempt(attempt);
-  return await startSession(req, key.account as Account);
-}
-
 /* ---------- Router ---------- */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -871,12 +743,6 @@ Deno.serve(async (req) => {
   try {
     if (M === "POST" && path === "login") return await login(req);
     if (M === "GET" && path === "auth/security")return json({required:botConfig.required,siteKey:botConfig.required&&botConfig.ready?botConfig.siteKey:null});
-    if (M === "POST" && path === "passkey/login-options") {
-      const body=await readBody(req);
-      if(!(await verifyTurnstile(botConfig,body.turnstileToken)))return fail("verification_failed",403);
-      return json({challenge:await newPasskeyChallenge("login",null),rpId:RP_ID});
-    }
-    if (M === "POST" && path === "passkey/login") return await passkeyLogin(req);
     if (M === "POST" && ["recovery/name", "recovery/verify", "recovery/save"].includes(path)) return await recovery(req, path.slice(9));
     if (M === "GET" && path === "health") {
       const { error } = await app("accounts").select("id", { head: true }).limit(1);
@@ -907,26 +773,6 @@ Deno.serve(async (req) => {
       const message_format={restaurant:text(b.restaurant,80),greeting:text(b.greeting,200),closing:text(b.closing,200)};
       const {error}=await app("accounts").update({message_format,updated_at:nowIso()}).eq("id",s.account);
       return error ? fail("save_failed",503) : json(message_format);
-    }
-    if (M === "PUT" && path === "me/tabs") {
-      const allowed = ACCOUNT_VIEWS[s.account];
-      const tabs = Array.isArray(b.tabs) ? b.tabs.map((t: unknown) => text(t, 20)) : [];
-      if (tabs.length !== 3 || new Set(tabs).size !== 3 || tabs.some((t: string) => !allowed.includes(t))) return fail("invalid_tabs");
-      const { error } = await app("accounts").update({ tabs, updated_at: nowIso() }).eq("id", s.account);
-      return error ? fail("save_failed", 500) : ok();
-    }
-
-    if (M === "PUT" && path === "me/theme") {
-      const patch: Record<string, unknown> = { updated_at: nowIso() };
-      if (b.theme !== undefined) {
-        const theme = text(b.theme, 20);
-        if (!THEMES.includes(theme)) return fail("invalid_theme");
-        patch.theme = theme;
-      }
-      if (typeof b.auto === "boolean") patch.auto_theme = b.auto;
-      if (Object.keys(patch).length < 2) return fail("invalid_theme");
-      const { error } = await app("accounts").update(patch).eq("id", s.account);
-      return error ? fail("save_failed", 500) : ok();
     }
     if (M === "PUT" && path === "me/pins") {
       const ids = Array.isArray(b.itemIds) ? [...new Set(b.itemIds.map((id: unknown) => text(id, 120)).filter(Boolean))] : null;
@@ -1057,20 +903,6 @@ Deno.serve(async (req) => {
     // The month archive
     if (M === "GET" && path === "months") return json(await listMonths());
 
-    // Face ID on this phone
-    if (M === "POST" && path === "passkey/register-options") {
-      const { data: mine } = await app("passkeys").select("id").eq("account", s.account);
-      return json({ challenge: await newPasskeyChallenge("register", s.account), rpId: RP_ID, userId: b64u(new TextEncoder().encode(s.account)),
-        userName: accountName(s.account), exclude: (mine ?? []).map((k: any) => k.id) });
-    }
-    if (M === "POST" && path === "passkey/register") return await passkeyRegister(s, b);
-    if (M === "DELETE" && path === "passkey") {
-      const id = text(b.id, 1024);
-      if (!id) return fail("invalid_passkey");
-      const { error } = await app("passkeys").delete().eq("id", id).eq("account", s.account);
-      return error ? fail("delete_failed", 500) : ok();
-    }
-
     // Record
     if (M === "GET" && path === "activity") return json(await listActivity());
 
@@ -1155,7 +987,6 @@ Deno.serve(async (req) => {
   } catch (e) {
     if (e instanceof BodyTooLarge) return fail("too_large", 413);
     if (e instanceof InvalidBody) return fail("invalid_input", 400);
-    if (e instanceof Error && e.message === "passkey_busy") return fail("too_many_attempts", 429);
     console.error(path, e);
     return fail("server_error", 500);
   }

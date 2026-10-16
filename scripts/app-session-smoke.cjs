@@ -40,15 +40,14 @@ const json = value=>JSON.parse(JSON.stringify(value));
   assert.equal(recovery.state.history.length,0,'failed saves do not claim History was saved');
   await vm.runInContext('maybeFinishQueue()', recovery);
   assert.equal(recovery.writes[0],recovery.writes[1],'retry saves the same record and id');
-  assert.equal(recovery.chimes,1,'retry does not repeat supplier-send feedback');
+  assert.equal(recovery.chimes,0,'orders no longer play decorative sounds');
   assert.equal(recovery.state.history.length,1);
   assert.equal(recovery.state.queue,null);
   assert.deepEqual(json(recovery.state.cart),{});
 
-  // A sound that throws (an iPhone audio quirk) never stops the order from saving.
-  const noSound = fixture({playOrdersSent:()=>{ throw new Error('audio unavailable'); }});
+  const noSound = fixture();
   await vm.runInContext('maybeFinishQueue()', noSound);
-  assert.equal(noSound.writes.length,1,'the order is saved even when the chime fails');
+  assert.equal(noSound.writes.length,1);
   assert.equal(noSound.state.queue,null);
   assert.ok(noSound.persists>0,'the queue state is kept on the phone while saving');
 

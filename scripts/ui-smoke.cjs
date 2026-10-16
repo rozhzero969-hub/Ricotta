@@ -36,7 +36,7 @@ for(const lang of ['ku','ar']){
   for(const file of loaded) assert.ok(listed.includes(file),file+' is in APP_FILES (update-check.js)');
 }
 
-const ALL_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings'];
+const ALL_VIEWS=['order','assistant','manage','history','suppliers','itemsAdmin','units','record','devices','settings'];
 const YUNIS_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record'];
 const supplierNames=['Corner Cake','Golden Bread Bakery','Fresh produce','Daily essentials','Kitchen supplies','Beverages','Dairy','Meat supplier','دابینکەری سەوزە','دابینکەری بەرهەمەکان'];
 const suppliers=supplierNames.map((name,i)=>({id:'s'+i,name,phone:''}));
@@ -111,20 +111,22 @@ const server=http.createServer((req,res)=>{
     },{loggedIn,s:session(account)});
     const page=await ctx.newPage();page.on('pageerror',error=>errors.push(String(error)));
     await page.goto(url);await page.waitForSelector(loggedIn?'#orderResults':'.keypad');await page.waitForSelector('#splash',{state:'detached'});
+    if(loggedIn)await page.locator('.order-options>summary').click();
     return {ctx,page,calls};
   }
   const settle=page=>page.waitForFunction(()=>!document.querySelector('.content.gliding'),null,{timeout:4000});
   async function openView(page,view){
-    const tab=page.locator('.bottomnav [data-view="'+view+'"]');
-    const inMore=await tab.evaluate(el=>!!el.closest('.nav-more')&&innerWidth<960&&!el.closest('.bottomnav').classList.contains('more-open'));
-    if(inMore){ await page.locator('#navMoreBtn').click(); await page.waitForFunction(v=>{const el=document.querySelector('.nav-more [data-view="'+v+'"]');return el&&getComputedStyle(el.closest('.nav-more')).opacity==='1';},view); }
-    try { await tab.click(); }
-    catch (error) {
-      console.error('Navigation blocked:',view,await page.locator('.modal-overlay').allTextContents());
-      throw error;
+    const destination=view==='itemsAdmin'?'manage':view;
+    if(['order','assistant','manage'].includes(destination))await page.locator(`.bottomnav [data-view="${destination}"]`).click();
+    else{
+      await page.locator('.bottomnav [data-view="manage"]').click();await settle(page);
+      if(!['suppliers','units'].includes(destination))await page.locator('.manage-menu>summary').click();
+      await page.locator(`[data-manage-view="${destination}"]`).click();
     }
     await settle(page);
+    if(destination==='order' && !(await page.locator('.order-options').getAttribute('open')!==null))await page.locator('.order-options>summary').click();
   }
+  async function ensureOrderOptions(page){if(await page.locator('.order-options').count() && await page.locator('.order-options').getAttribute('open')===null)await page.locator('.order-options>summary').click();}
   async function noOverflow(page,label){
     const sizes=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));
     assert.ok(sizes.document<=sizes.viewport+1,label+' horizontal overflow '+JSON.stringify(sizes));
@@ -189,15 +191,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('[data-qty="i1"]').inputValue(),'12');
     assert.equal(await page.evaluate(()=>originalRow===document.querySelector('[data-item-id="i1"]')),true,'quantity preserves the actual row');
     assert.equal(await inc.evaluate(el=>el===document.activeElement),true,'repeated taps retain focus');
-    // Sounds: a soft tap on + (higher) and - (lower), none when turned off, and the chime when the order is done.
-    await page.evaluate(()=>{ window.__tones=[]; window.soundTone=f=>__tones.push(Math.round(f)); lastTick=0; });
-    await inc.click(); await page.waitForTimeout(60); await page.locator('[data-dec="i1"]').click();
-    assert.deepEqual(await page.evaluate(()=>__tones),[1150,900],'+ and - each play a soft tap, + a touch higher');
-    await page.evaluate(()=>{ setSoundOn('qty',false); __tones=[]; lastTick=0; }); await inc.click();
-    assert.deepEqual(await page.evaluate(()=>__tones),[],'no sound when that sound is turned off');
-    await page.evaluate(()=>{ setSoundOn('qty',true); __tones=[]; playOrdersSent(); });
-    assert.deepEqual(await page.evaluate(()=>__tones.filter((f,i)=>i%2===0)),[523,659,784,1047],'orders sent plays the rising chime');
-    assert.match(await page.evaluate(()=>maybeFinishQueue.toString()),/playOrdersSent\(\)/,'the chime belongs to finishing the order');
+    assert.equal(await page.evaluate(()=>typeof window.AudioContext==='function' && typeof playQtyTick==='function'),false,'no decorative sound implementation remains');
     await page.locator('[data-qty="i1"]').fill('24');
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('ricottaOrders:pendingCart:rozha')).i1),24,'draft saves to the signed-in account before blur');
     await page.reload();await page.waitForSelector('#splash',{state:'detached'});
@@ -209,7 +203,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.evaluate(()=>originalInput===document.querySelector('#itemSearch')&&originalTop===document.querySelector('.topbar')&&originalNav===document.querySelector('.bottomnav')),true,'supplier switch preserves shell and search');
     assert.ok((await page.locator('.hero-sub').textContent()).includes('18'),'supplier count follows tab');
     await page.locator('#itemSearch').fill('no such item');assert.equal(await page.locator('#orderResults .item-row').count(),0);
-    await page.locator('#itemSearch').fill('');await page.locator('#clearOrderBtn').click();
+    await page.locator('#itemSearch').fill('');await ensureOrderOptions(page);await page.locator('#clearOrderBtn').click();
     assert.equal(await page.evaluate(()=>localStorage.getItem('ricottaOrders:pendingCart:rozha')),null);
     await page.locator('#sameAsLast').click();assert.equal(await page.locator('[data-qty="i1"]').inputValue(),'2');
 
@@ -237,17 +231,11 @@ const server=http.createServer((req,res)=>{
         }
       }
     }
-    // Computer sidebar: every screen gets the green highlight, and every change slides.
+    // All nested screens highlight Manage; the two daily screens keep their own destinations.
     await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>setLang('en'));
-    await openView(page,'order');
-    for(const view of ALL_VIEWS.slice(1)){
-      await page.locator('.bottomnav [data-view="'+view+'"]').click();
-      assert.equal(await page.locator('.content.gliding').count(),1,view+' fades in');
-      await settle(page);
-      const place=await page.evaluate(v=>{const b=document.querySelector('.bottomnav [data-view="'+v+'"]'),i=document.querySelector('.nav-indicator');return {top:b.offsetTop,h:b.offsetHeight,iy:parseFloat(i.style.getPropertyValue('--iy')),ih:parseFloat(i.style.getPropertyValue('--ih')),color:getComputedStyle(b).color};},view);
-      assert.equal(place.iy,place.top,view+' highlight sits on its row');
-      assert.equal(place.ih,place.h,view+' highlight has the row height');
-      assert.equal(place.color,'rgb(255, 255, 255)',view+' label stays readable on the highlight');
+    for(const view of ALL_VIEWS){
+      await openView(page,view);
+      assert.equal(await page.locator('.bottomnav [aria-current="page"]').getAttribute('data-view'),['order','assistant'].includes(view)?view:'manage');
     }
     await openView(page,'order');await page.locator('[data-ordertab="all"]').click();await snapshot(page,'desktop-order.png');
     await page.evaluate(()=>{
@@ -340,34 +328,10 @@ const server=http.createServer((req,res)=>{
     await page.locator('#unitAddBtn').click();
     assert.equal(await page.locator('#mfUnitAr').count(),1,'units have an Arabic name');
     await page.locator('#modalFormCancel').click();
-    // Phone: three tabs + More, Edit tabs, swipe.
+    // Fixed main destinations: Order, Rico and Manage.
     await page.setViewportSize({width:390,height:844});await openView(page,'order');
-    assert.match(await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content'),/script-src 'self'/,'page ships a script security policy');
-    assert.equal(await page.locator('.bottomnav > .navbtn').count(),4,'phone tab bar shows three tabs and More');
-    await page.locator('#navMoreBtn').click();
-    await page.locator('.nav-more [data-view="settings"]').waitFor({state:'visible'});
-    await page.locator('.nav-more [data-view="settings"]').click();await settle(page);
-    assert.equal(await page.evaluate(()=>state.view),'settings','More opens the other screens');
-    assert.equal(await page.locator('#navMoreBtn').evaluate(el=>el.classList.contains('active')),true,'More stays lit on one of its screens');
-    await page.locator('#navMoreBtn').click();
-    await page.locator('#navEditTabs').waitFor({state:'visible'});
-    await page.locator('#navEditTabs').click();
-    await page.locator('[data-tab="assistant"]').click();   // take Rico out
-    assert.equal(await page.locator('#modalFormOk').isDisabled(),true,'three tabs are needed');
-    await page.locator('[data-tab="suppliers"]').click();
-    await page.locator('#modalFormOk').click();
-    try { await page.waitForFunction(()=>state.tabs.join()==='order,history,suppliers'); }
-    catch (error) {
-      console.error('Tab editor save failed:',await page.evaluate(()=>({tabs:state.tabs,account:state.account,sessionAccount:apiSession()?.account,
-        status:document.querySelector('#modalFormStatus')?.textContent,busy:document.querySelector('#modalFormOk')?.getAttribute('aria-busy'),
-        selected:[...document.querySelectorAll('.tab-pick-row.on')].map(el=>el.dataset.tab),dialogs:[...document.querySelectorAll('.modal-overlay')].map(el=>el.textContent.trim())
-      })),calls.filter(call=>call.endpoint==='me/tabs'));
-      throw error;
-    }
-    assert.deepEqual(calls.filter(c=>c.endpoint==='me/tabs').pop().body.tabs,['order','history','suppliers'],'tabs are saved for the account');
-    assert.deepEqual(await page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','suppliers'],'the tab bar follows');
-    await page.evaluate(async()=>{ state.tabs=['order','assistant','history']; render(); });
-    await openView(page,'order');
+    assert.deepEqual(await page.locator('.bottomnav > .navbtn').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','manage']);
+    assert.equal(await page.locator('#navMoreBtn,#navEditTabs').count(),0);
     await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
     const q5=page.locator('[data-qty="i5"]');
     await q5.focus();
@@ -384,14 +348,14 @@ const server=http.createServer((req,res)=>{
     await page.locator('#ctxLayer [data-ctx="5"]').click();
     assert.equal(await page.evaluate(()=>state.cart.i8),5,'press-and-hold menu adds 5');
     await page.evaluate(()=>{state.orderNote='Keep chilled';persistCartDraft();});
-    await page.locator('#clearOrderBtn').click();
+    await ensureOrderOptions(page);await page.locator('#clearOrderBtn').click();
     assert.equal(await page.evaluate(()=>state.orderNote),'','clear also removes the order note');
     await page.locator('.toast-undo').click();
     assert.equal(await page.evaluate(()=>state.orderNote),'Keep chilled','undo restores the order note');
     assert.equal(await page.evaluate(()=>state.cart.i8),5,'clearing the order can be undone');
     await page.evaluate(()=>window.scrollTo(0,0));
     // A finger swipe to the left moves from Order to Rico, with the page sliding (silently).
-    await page.evaluate(()=>{ window.__tones=[]; window.soundTone=f=>__tones.push(Math.round(f)); });
+    await page.evaluate(()=>{ window.__tones=[]; });
     await page.evaluate(()=>{
       const el=document.querySelector('.content .page-heading'), r=el.getBoundingClientRect(), y=r.top+r.height/2;
       const fire=(type,x)=>document.dispatchEvent(Object.assign(new PointerEvent(type,{bubbles:true,pointerId:7,pointerType:'touch',clientX:x,clientY:y})));
@@ -462,7 +426,7 @@ const server=http.createServer((req,res)=>{
 
     /* ---------- Yunis ---------- */
     const y=await context({account:'yunis'});
-    assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS,'settings'],'Yunis gets the right screens');
+    assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS,'settings','manage'],'Yunis gets the right screens');
     await y.page.setViewportSize({width:390,height:844});
     assert.equal(await y.page.locator('.bottomnav [data-view="devices"]').count(),0,'no Devices for Yunis');
     await openView(y.page,'history');
@@ -471,30 +435,15 @@ const server=http.createServer((req,res)=>{
     assert.equal(await y.page.locator('#supAddBtn').count(),1,'Yunis can edit suppliers');
     await openView(y.page,'units');
     assert.equal(await y.page.locator('[data-delunit]').count(),1,'Yunis can delete units');
-    // Sounds: in More for Yunis too, one switch per sound, never one of the 3 tabs.
+    // Settings stays available under Manage for Yunis too.
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     assert.equal(await y.page.evaluate(()=>state.view),'settings','Yunis can open Settings');
-    await snapshot(y.page,'phone-sounds.png');
-    // Themes: Ricotta is the default, each theme sticks per account, Compact rows and Last quantity are Settings switches.
-    assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),null,'Ricotta is the default theme');
-    assert.equal(await y.page.locator('.theme-btn').count(),16,'five colour themes and eleven holiday themes');
-    assert.equal(await y.page.locator('.theme-btn[aria-pressed="true"], .theme-btn.on').count()>=1,true,'one theme is marked');
-    await y.page.locator('.theme-btn').nth(2).click(); await settle(y.page);
-    assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),'ocean','picking Ocean blue applies it');
-    await y.page.evaluate(()=>{goView('order')}); await settle(y.page);
-    assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),'ocean','the theme stays on other screens');
-    assert.match(await y.page.locator('.brand-word, .brand').first().textContent(),/Ricotta/,'top bar says Ricotta');
-    assert.equal(await y.page.locator('.conn-chip span').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(52, 194, 122)','the online dot stays green on Ocean blue');
-    assert.equal(y.calls.filter(c=>c.endpoint==='me/theme').pop()?.body.theme,'ocean','the chosen theme is saved on the server');
-    await y.page.evaluate(()=>{ state.themes.yunis='berry'; goView('history'); }); await settle(y.page);
-    assert.equal(await y.page.locator('.who-badge[data-theme-of]').count(),0,'History shows who sent it in the normal colours (themes only show on Devices)');
-    await y.page.evaluate(()=>goView('order')); await settle(y.page);
-    await y.page.evaluate(()=>setApiHealth(false)); await settle(y.page);
-    assert.equal(await y.page.locator('.conn-chip span').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(214, 72, 63)','offline is red on every theme');
-    await y.page.evaluate(()=>setApiHealth(true));
-    await y.page.evaluate(()=>goView('settings')); await settle(y.page);
-    await y.page.locator('.theme-btn').nth(0).click(); await settle(y.page);
-    assert.equal(await y.page.evaluate(()=>document.documentElement.getAttribute('data-theme')),null,'Ricotta brings the default back');
+    await snapshot(y.page,'phone-settings.png');
+    assert.equal(await y.page.locator('.theme-btn,#faceIdToggle,#pref-surprises,#pref-weatherFx').count(),0,'retired features have no controls');
+    await y.page.locator('[data-dark="on"]').click();
+    assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('dark')),true);
+    await y.page.locator('[data-dark="off"]').click();
+    assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('dark')),false);
     await y.page.locator('label:has(#pref-compactRows)').click();
     assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('compact-rows')),true,'Compact rows switch works');
     await y.page.locator('label:has(#pref-compactRows)').click();
@@ -504,11 +453,7 @@ const server=http.createServer((req,res)=>{
     assert.ok(await y.page.locator('.item-last').count()>=1,'Last quantity shows on rows when switched on');
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await y.page.locator('label:has(#pref-showLastQty)').click();
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-autoTheme:true','pref-surprises:true','pref-weatherFx:true','pref-compactRows:false','pref-showLastQty:false','reminderEnabled:false','sound-qty:true','sound-sent:true'],'holiday themes, surprises, weather, the daily reminder and every sound have their own switch');
-    assert.equal(await y.page.locator('.bottomnav .nav-more [data-view="settings"]').count(),1,'Settings is in More');
-    await y.page.locator('label:has(#sound-sent)').click();
-    assert.deepEqual(await y.page.evaluate(()=>[soundOn('sent'),soundOn('qty')]),[false,true],'turning one sound off leaves the other on');
-    assert.equal(await y.page.evaluate(()=>tabChoices().includes('settings')),false,'Settings cannot be picked as a main tab');
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','reminderEnabled:false']);
     // Daily reminder, for Yunis too: the switch opens the time, Save and a test; only Save turns it on.
     assert.equal(await y.page.locator('#reminderTime').count(),0,'the daily reminder starts as just a switch');
     await y.page.locator('label:has(#reminderEnabled)').click();
@@ -655,6 +600,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await mp.locator('#app').evaluate(el=>el.inert),false,'sign-out cleanup releases the background');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*9} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, edit tabs, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, sounds, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*10} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, fixed Manage navigation, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, dark mode, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});
