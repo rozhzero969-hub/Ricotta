@@ -39,7 +39,7 @@ function apiSessionMatches(session){
 function apiAccountMatchesUi(session){
   return typeof state === 'undefined' || !state?.account || !session || session.account === state.account;
 }
-function apiPathIsPublic(path){ return path === 'login' || path === 'auth/security' || path === 'health' || path.startsWith('recovery/') || path === 'passkey/login' || path === 'passkey/login-options'; }
+function apiPathIsPublic(path){ return path === 'login' || path === 'auth/security' || path === 'health' || path.startsWith('recovery/'); }
 function staleApiReply(){ return {ok:false, status:0, data:null, stale:true}; }
 
 /* What this device is, for the Devices screen: "iPhone 16/17 Pro Max|App",
@@ -185,40 +185,6 @@ async function apiLogin(pin){
   if(r.status === 429) return {error:'locked'};
   if(r.status === 0) return {error:'network'};
   return {error:'wrong'};
-}
-
-/* ============ Face ID (passkeys) ============
-   WebAuthn wants bytes; the server talks base64url. */
-const b64uEncode = buf=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-const b64uDecode = str=>Uint8Array.from(atob(String(str).replace(/-/g,'+').replace(/_/g,'/') + '==='.slice((String(str).length + 3) % 4)), c=>c.charCodeAt(0));
-/* The passkeys made on this phone, per account ({rozha:id, yunis:id}), so the sign-in screen can offer Face ID. */
-const faceIdKeys = ()=>{ const v = lget('faceIdKeys'); return v && typeof v === 'object' ? v : {}; };
-const passkeySupported = ()=>!!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
-/* Sign in with Face ID. Same answer shape as apiLogin, plus {error:'cancelled'} when the person backs out. */
-async function apiPasskeyLogin(){
-  const proof=await authBotProof();if(proof.error)return {error:proof.error};
-  const o = await api('passkey/login-options', {method:'POST',body:{turnstileToken:proof.token}});
-  if(o.status===403 && o.data?.error==='verification_failed'){resetAuthSecurityConfig();return {error:'verification'};}
-  if(!o.ok || !o.data || !o.data.challenge) return {error: o.status === 429 ? 'locked' : o.status === 0 ? 'network' : 'faceid'};
-  let cred;
-  try{
-    cred = await navigator.credentials.get({publicKey:{challenge:b64uDecode(o.data.challenge), rpId:o.data.rpId, userVerification:'required', timeout:60000,
-      allowCredentials:Object.values(faceIdKeys()).map(id=>({type:'public-key', id:b64uDecode(id)}))}});
-  }catch(_){ return {error:'cancelled'}; }
-  if(!cred) return {error:'cancelled'};
-  const res = cred.response;
-  const r = await api('passkey/login', {method:'POST', body:{id:cred.id, clientDataJSON:b64uEncode(res.clientDataJSON),
-    authenticatorData:b64uEncode(res.authenticatorData), signature:b64uEncode(res.signature)}});
-  if(r.ok && r.data && r.data.token){
-    const d = r.data;
-    lset('apiSession', {token:d.token, expiresAt:d.expiresAt, account:d.account, name:d.name, tabs:d.tabs});
-    return {account:d.account, name:d.name, tabs:d.tabs};
-  }
-  if(r.status === 401){
-    // This passkey is no longer known (codes were changed, or Face ID was turned off elsewhere).
-    const keys = faceIdKeys(); Object.keys(keys).forEach(k=>{ if(keys[k] === cred.id) delete keys[k]; }); lset('faceIdKeys', keys);
-  }
-  return {error: r.status === 429 ? 'locked' : r.status === 0 ? 'network' : 'faceid'};
 }
 
 /* ============ Outbox ============

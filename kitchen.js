@@ -14,7 +14,7 @@
    The server keeps all of it (streak, notes); this file only shows it.
    Depends on (runtime only): state, t, esc, api, render, goView, toast,
    showConfirm, showAlert, ricoFace, ricoAsk, formatIraqDateTime, timeAgo,
-   accountLabel, unitLabel, supplierName, isRozha, seasonSparkle, playSeasonTones. */
+   accountLabel, unitLabel, supplierName, isRozha. */
 
 /* ---------- The streak ---------- */
 const STREAK_GOALS = [7,14,30,60,100,150,200,300,365,500,1000];
@@ -101,15 +101,10 @@ function streakMilestone(n){
   el.id = 'streakBoom'; el.className = 'streak-boom tier-' + streakTier(n); el.setAttribute('role', 'status');
   el.innerHTML = `<div class="streak-boom-card"><div class="streak-big">${FLAME_SVG}</div><div class="streak-boom-title">${esc(t('streakMilestone')(n))}</div><div class="streak-boom-sub">${ricoFace('excited', 'rico-sm')}<span>${esc(t('streakMilestoneSub'))}</span></div></div>`;
   document.body.appendChild(el);
-  try{ if(soundOn('sent')) playSeasonTones([[523,0,.25],[659,.12,.25],[784,.24,.25],[1046,.36,.35],[1318,.5,.7]], .13); }catch(_){}
-  if(typeof seasonSparkle === 'function') for(let i = 0; i < 5; i++) setTimeout(()=>seasonSparkle(currentThemeForFx(), innerWidth/2 + (Math.random()-.5)*160, innerHeight*.42, 10, 150), i*140);
   const close = ()=>{ el.classList.add('out'); setTimeout(()=>el.remove(), 400); };
   el.onclick = close;
   setTimeout(close, 4200);
 }
-/* Sparkles need a theme that has them; outside a holiday the gold stars of Eid look right. */
-function currentThemeForFx(){ const th = currentTheme(); return typeof SEASON_BITS !== 'undefined' && SEASON_BITS[th] ? th : 'eid'; }
-
 /* ---------- Rico's fun facts (this month's orders) ---------- */
 function monthLines(){
   const lines = [];
@@ -282,7 +277,6 @@ function noteArrived(n, title = t('notesNew')){
   el.type = 'button'; el.id = 'noteBanner'; el.className = 'note-banner';
   el.innerHTML = `<span class="note-banner-icon">${ICON_NOTE}</span><span class="note-banner-text"><b>${esc(title)}</b><span dir="auto">${esc(n.body)}</span></span>`;
   document.body.appendChild(el);
-  try{ if(soundOn('sent')) playSeasonTones([[880,0,.18],[1175,.12,.3]], .1); }catch(_){}
   const close = ()=>{ el.classList.add('out'); setTimeout(()=>el.remove(), 300); };
   el.onclick = ()=>{ close(); openNotesSheet(); };
   setTimeout(close, 7000);

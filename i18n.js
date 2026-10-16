@@ -82,8 +82,8 @@ const T = {
     notifDeniedMsg:'Notifications are blocked. Turn them on for Ricotta Orders in your phone Settings, under Notifications.',
     notifFailedMsg:'Could not turn on notifications. Please try again.',
     notifSettingsTitle:'Notifications', notifThisDevice:'This device',
-    settingsAppearance:'Appearance', themeHint:'Choose the colours of the app. The choice stays on this device for your account.',
-    themeNames:{ricotta:'Ricotta', graphite:'Graphite Black', ocean:'Ocean Blue', saffron:'Saffron', berry:'Berry'}, themeDefault:'Default',
+    settingsAppearance:'Appearance',
+
     settingsOrderScreen:'Order screen',
     compactRowsLabel:'Compact rows', compactRowsHint:'Fits more items on the screen when you place a long order.',
     lastQtyLabel:'Show last quantity', lastQtyHint:'Shows what you ordered last time under each item.', lastQty:n=>'Last: '+n,
@@ -131,11 +131,11 @@ const T = {
     more:'More', moreTitle:'More', undo:'Undo', orderCleared:'Order cleared', itemRemoved:'Removed from the order',
     cmAdd:n=>'Add '+n, cmType:'Type a quantity', cmRemove:'Remove from order',
     weekdays:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
-    editTabs:'Edit tabs', editTabsHint:'Pick the three screens for your tab bar. The numbers show their order; everything else stays in More.',
-    editTabsNeedThree:'Pick exactly three screens.', tabsSaved:'Tabs saved',
+
+
     whoAreYou:'Who are you?', recoveryRozhaPin:'Enter Rozha’s current PIN', recoveryTitle:'Change PINs',
     recoveryHint:'Fill in only what you want to change. A new PIN or secret code signs every device out.',
-    recoveryNewRozha:'New PIN for Rozha (6 digits)', recoveryNewYunis:'New PIN for Yunis (6 digits)', recoveryNewCode:'New secret code (6 digits)', recoveryNewAnswer:'New answer to “Who are you?”', soundsSection:'Sounds', reminderEveryDayAt:time=>'On — every day at '+time+' (Erbil time).', reminderChangeTime:'Change time', reminderTurnedOff:'Daily reminder turned off.', soundsHint:'Each sound can be on or off on this device. In silent mode the phone stays quiet.', soundQtyLabel:'Tap on + and −', soundQtyHint:'A soft tap each time you change a quantity.', soundSentLabel:'Order sent chime', soundSentHint:'A rising chime when today’s orders are all sent.', recoveryAnswerHint:'Capitals count: it must be typed exactly like this.',
+    recoveryNewRozha:'New PIN for Rozha (6 digits)', recoveryNewYunis:'New PIN for Yunis (6 digits)', recoveryNewCode:'New secret code (6 digits)', recoveryNewAnswer:'New answer to “Who are you?”',  reminderEveryDayAt:time=>'On — every day at '+time+' (Erbil time).', reminderChangeTime:'Change time', reminderTurnedOff:'Daily reminder turned off.',      recoveryAnswerHint:'Capitals count: it must be typed exactly like this.',
     recoveryNothing:'Enter at least one new code.', recoverySaved:'Saved. Every device was signed out; sign in with the new PIN.',
     recoveryExpired:'That took too long. Start again from the keypad.',
     pinsInvalidLength:'Each code must be 6 digits.', pinsDuplicate:'The two PINs and the secret code must all be different.',
@@ -279,8 +279,8 @@ const T = {
     notifDeniedMsg:'ئاگادارکردنەوەکان بلۆک کراون. لە ڕێکخستنەکانی مۆبایلەکەت، بەشی Notifications، بۆ Ricotta Orders چالاکیان بکە.',
     notifFailedMsg:'نەتوانرا ئاگادارکردنەوەکان چالاک بکرێن. تکایە دووبارە هەوڵبدەرەوە.',
     notifSettingsTitle:'ئاگادارکردنەوەکان', notifThisDevice:'ئەم ئامێرە',
-    settingsAppearance:'ڕووکار', themeHint:'ڕەنگەکانی ئەپەکە هەڵبژێرە. هەڵبژاردنەکە بۆ هەژمارەکەت لەسەر ئەم ئامێرە دەمێنێتەوە.',
-    themeNames:{ricotta:'ریکۆتا', graphite:'ڕەشی گرافایت', ocean:'شینی ئۆقیانوس', saffron:'زەعفەران', berry:'توتی'}, themeDefault:'بنەڕەتی',
+    settingsAppearance:'ڕووکار',
+
     settingsOrderScreen:'شاشەی داواکاری',
     compactRowsLabel:'ڕیزی پچووک', compactRowsHint:'کاتێک داواکارییەکی درێژ دەکەیت کاڵای زیاتر لە شاشەکەدا دەبینیت.',
     lastQtyLabel:'نیشاندانی دوایین بڕ', lastQtyHint:'ئەوەی جاری پێشوو داوات کردووە لەژێر هەر کاڵایەک پیشان دەدات.', lastQty:n=>'دوایین: '+n,
@@ -328,11 +328,11 @@ const T = {
     more:'زیاتر', moreTitle:'زیاتر', undo:'گەڕاندنەوە', orderCleared:'داواکاری پاککرایەوە', itemRemoved:'لە داواکاری لابرا',
     cmAdd:n=>n+' زیاد بکە', cmType:'بڕێک بنووسە', cmRemove:'لابردن لە داواکاری',
     weekdays:['یەکشەممە','دووشەممە','سێشەممە','چوارشەممە','پێنجشەممە','هەینی','شەممە'],
-    editTabs:'دەستکاریکردنی تابەکان', editTabsHint:'سێ شاشە بۆ شریتی خوارەوە هەڵبژێرە. ژمارەکان ڕیزبەندییان پیشان دەدەن؛ ئەوانی تر لە «زیاتر» دەمێننەوە.',
-    editTabsNeedThree:'تەواو سێ شاشە هەڵبژێرە.', tabsSaved:'تابەکان پاشەکەوت کران',
+
+
     whoAreYou:'تۆ کێیت؟', recoveryRozhaPin:'کۆدی ئێستای ڕۆژا بنووسە', recoveryTitle:'گۆڕینی کۆدەکان',
     recoveryHint:'تەنها ئەوەی دەتەوێت بیگۆڕیت پڕ بکەرەوە. کۆدی نوێ هەموو ئامێرەکان دەباتە دەرەوە.',
-    recoveryNewRozha:'کۆدی نوێی ڕۆژا (6 ژمارە)', recoveryNewYunis:'کۆدی نوێی یونس (6 ژمارە)', recoveryNewCode:'کۆدی نهێنیی نوێ (6 ژمارە)', recoveryNewAnswer:'وەڵامی نوێ بۆ «تۆ کێیت؟»', soundsSection:'دەنگەکان', reminderEveryDayAt:time=>'چالاکە — هەموو ڕۆژێک کاتژمێر '+time+' (کاتی هەولێر).', reminderChangeTime:'گۆڕینی کات', reminderTurnedOff:'بیرخەرەوەی ڕۆژانە ناچالاک کرا.', soundsHint:'هەر دەنگێک دەتوانیت لەسەر ئەم ئامێرە چالاک یان ناچالاک بکەیت. لە دۆخی بێدەنگدا مۆبایلەکە بێدەنگ دەمێنێتەوە.', soundQtyLabel:'دەنگ لەسەر + و −', soundQtyHint:'دەنگێکی نەرم هەر جارێک بڕێک دەگۆڕیت.', soundSentLabel:'زەنگی ناردنی داواکاری', soundSentHint:'زەنگێکی بەرزبووەوە کاتێک هەموو داواکارییەکانی ئەمڕۆ نێردران.', recoveryAnswerHint:'پیتی گەورە و بچووک جیاوازن: دەبێت ڕێک بەم شێوەیە بنووسرێت.',
+    recoveryNewRozha:'کۆدی نوێی ڕۆژا (6 ژمارە)', recoveryNewYunis:'کۆدی نوێی یونس (6 ژمارە)', recoveryNewCode:'کۆدی نهێنیی نوێ (6 ژمارە)', recoveryNewAnswer:'وەڵامی نوێ بۆ «تۆ کێیت؟»',  reminderEveryDayAt:time=>'چالاکە — هەموو ڕۆژێک کاتژمێر '+time+' (کاتی هەولێر).', reminderChangeTime:'گۆڕینی کات', reminderTurnedOff:'بیرخەرەوەی ڕۆژانە ناچالاک کرا.',      recoveryAnswerHint:'پیتی گەورە و بچووک جیاوازن: دەبێت ڕێک بەم شێوەیە بنووسرێت.',
     recoveryNothing:'لانیکەم یەک کۆدی نوێ بنووسە.', recoverySaved:'پاشەکەوت کرا. هەموو ئامێرەکان چوونە دەرەوە؛ بە کۆدە نوێیەکە بچۆرە ژوورەوە.',
     recoveryExpired:'کاتەکە زۆری خایاند. دووبارە لە تەختەی ژمارەکانەوە دەست پێبکەوە.',
     pinsInvalidLength:'هەر کۆدێک دەبێت 6 ژمارە بێت.', pinsDuplicate:'دوو کۆدەکە و کۆدی نهێنی دەبێت هەموویان جیاواز بن.',
@@ -476,8 +476,8 @@ const T = {
     notifDeniedMsg:'الإشعارات محظورة. فعّلها لـ Ricotta Orders من إعدادات الهاتف، ضمن الإشعارات.',
     notifFailedMsg:'تعذّر تفعيل الإشعارات. حاول مرة أخرى.',
     notifSettingsTitle:'الإشعارات', notifThisDevice:'هذا الجهاز',
-    settingsAppearance:'المظهر', themeHint:'اختر ألوان التطبيق. يبقى الاختيار على هذا الجهاز لحسابك.',
-    themeNames:{ricotta:'ريكوتا', graphite:'أسود جرافيت', ocean:'أزرق المحيط', saffron:'زعفران', berry:'توتي'}, themeDefault:'الافتراضي',
+    settingsAppearance:'المظهر',
+
     settingsOrderScreen:'شاشة الطلب',
     compactRowsLabel:'صفوف مضغوطة', compactRowsHint:'تتسع الشاشة لمواد أكثر عند تقديم طلب طويل.',
     lastQtyLabel:'إظهار آخر كمية', lastQtyHint:'يعرض ما طلبته آخر مرة تحت كل مادة.', lastQty:n=>'آخر مرة: '+n,
@@ -525,11 +525,11 @@ const T = {
     more:'المزيد', moreTitle:'المزيد', undo:'تراجع', orderCleared:'مُسح الطلب', itemRemoved:'أُزيلت من الطلب',
     cmAdd:n=>'أضف '+n, cmType:'اكتب الكمية', cmRemove:'إزالة من الطلب',
     weekdays:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],
-    editTabs:'تعديل الأشرطة', editTabsHint:'اختر ثلاث شاشات لشريطك السفلي. الأرقام تُظهر ترتيبها، والباقي يبقى في «المزيد».',
-    editTabsNeedThree:'اختر ثلاث شاشات بالضبط.', tabsSaved:'تم حفظ الأشرطة',
+
+
     whoAreYou:'من أنت؟', recoveryRozhaPin:'أدخل رمز روژا الحالي', recoveryTitle:'تغيير الرموز',
     recoveryHint:'املأ فقط ما تريد تغييره. أي رمز جديد يُخرج كل الأجهزة من الجلسة.',
-    recoveryNewRozha:'رمز جديد لروژا (6 أرقام)', recoveryNewYunis:'رمز جديد ليونس (6 أرقام)', recoveryNewCode:'رمز سري جديد (6 أرقام)', recoveryNewAnswer:'إجابة جديدة لسؤال «من أنت؟»', soundsSection:'الأصوات', reminderEveryDayAt:time=>'مفعّل — كل يوم الساعة '+time+' (توقيت أربيل).', reminderChangeTime:'تغيير الوقت', reminderTurnedOff:'تم إيقاف التذكير اليومي.', soundsHint:'يمكن تشغيل كل صوت أو إيقافه على هذا الجهاز. في الوضع الصامت يبقى الهاتف صامتًا.', soundQtyLabel:'نقرة على + و −', soundQtyHint:'نقرة ناعمة كلما غيّرت كمية.', soundSentLabel:'رنّة إرسال الطلب', soundSentHint:'رنّة صاعدة عند إرسال كل طلبات اليوم.', recoveryAnswerHint:'الأحرف الكبيرة والصغيرة مختلفة: يجب كتابتها هكذا تمامًا.',
+    recoveryNewRozha:'رمز جديد لروژا (6 أرقام)', recoveryNewYunis:'رمز جديد ليونس (6 أرقام)', recoveryNewCode:'رمز سري جديد (6 أرقام)', recoveryNewAnswer:'إجابة جديدة لسؤال «من أنت؟»',  reminderEveryDayAt:time=>'مفعّل — كل يوم الساعة '+time+' (توقيت أربيل).', reminderChangeTime:'تغيير الوقت', reminderTurnedOff:'تم إيقاف التذكير اليومي.',      recoveryAnswerHint:'الأحرف الكبيرة والصغيرة مختلفة: يجب كتابتها هكذا تمامًا.',
     recoveryNothing:'أدخل رمزًا جديدًا واحدًا على الأقل.', recoverySaved:'تم الحفظ. خرجت كل الأجهزة؛ سجّل الدخول بالرمز الجديد.',
     recoveryExpired:'استغرق الأمر وقتًا طويلًا. ابدأ من جديد من لوحة الأرقام.',
     pinsInvalidLength:'يجب أن يتكون كل رمز من 6 أرقام.', pinsDuplicate:'يجب أن يكون الرمزان والرمز السري مختلفة كلها.',
@@ -599,17 +599,9 @@ const T = {
    Rico chats. Same rule as above: every language has every key. */
 const AR_DAYS = n => n + (n === 1 ? ' يوم' : n === 2 ? ' يومان' : n <= 10 ? ' أيام' : ' يومًا');
 Object.assign(T.en, {
-  themeNames:{ricotta:'Ricotta Green', graphite:'Midnight Espresso', ocean:'Dukan Lake', saffron:'Mountain Honey', berry:'Pomegranate',
-    halloween:'Halloween', winter:'Winter Citadel', christmas:'Christmas in Ankawa', flagday:'Kurdistan Flag Day', ramadan:'Ramadan Nights', eid:'Eid',
-    newroz:'Newroz', spring:'Spring at Gali Ali Beg', autumn:'Halabja Autumn', summer:'Shaqlawa Summer', match:'Match Night'},
-  themeHint:'Choose the look of the app. It is saved to your account, so your other phone matches.',
-  themeYours:'Your theme', themeHolidays:'Holiday themes', themeOnNow:'On now', themeAnyDay:'Pick it on match days',
-  themeAutoLabel:'Holiday themes switch on by themselves', themeAutoHint:'Each holiday theme turns on during its dates, then your own theme comes back.',
-  themeFunLabel:'Theme surprises', themeFunHint:'Sparkles when you tap +, and sometimes Rico jumps out. Holiday themes only.',
-  themeDates:{halloween:'24 Oct – 1 Nov', winter:'10 Dec – 20 Feb', christmas:'20 Dec – 2 Jan', flagday:'17 Dec', ramadan:'The month of Ramadan', eid:'Eid al-Fitr and Eid al-Adha',
-    newroz:'18 – 24 Mar', spring:'April', autumn:'November', summer:'July and August'},
+
   darkLabel:'Dark mode', darkHint:'Easier on the eyes at night.', darkOff:'Off', darkOn:'On', darkAuto:'Like the phone',
-  weatherFxLabel:'Weather on screen', weatherFxHint:'Raindrops when it rains in Erbil, snow when it snows.',
+
   streakTitle:'Kitchen streak', streakDays:n=>n+' day'+(n===1?'':'s'), streakChip:n=>'Kitchen streak: '+n+' day'+(n===1?'':'s'),
   streakLit:'Today’s order is in. The fire is lit!', streakNotYet:'Send one order today to light the fire.',
   streakBroken:n=>'The '+n+'-day streak went out.', streakNone:'Send an order today to start a streak.',
@@ -637,20 +629,12 @@ Object.assign(T.en, {
   voiceOrder:'Say your order', voiceOrderStop:'Listening… tap to finish', voiceOrderPrompt:'Fill today’s order from what I just said.',
   ricoHistoryMine:'My chats', ricoHistoryOf:n=>n+'’s chats', ricoReadOnly:n=>n+'’s chat with Rico · read only', ricoBackToMine:'Back to my chat',
   ricoDeleteAllOf:n=>'Delete all of '+n+'’s chats', ricoHistoryEmptyOf:n=>n+' has no chats with Rico.',
-  devTheme:n=>'Theme: '+n, orderAgain:'Send again', reportDate:'Date'
+   orderAgain:'Send again', reportDate:'Date'
 });
 Object.assign(T.ku, {
-  themeNames:{ricotta:'سەوزی ریکۆتا', graphite:'قاوەی نیوەشەو', ocean:'دەریاچەی دوکان', saffron:'هەنگوینی چیا', berry:'هەنار',
-    halloween:'هالۆوین', winter:'زستانی قەڵا', christmas:'کریسمس لە عەنکاوە', flagday:'ڕۆژی ئاڵای کوردستان', ramadan:'شەوانی ڕەمەزان', eid:'جەژن',
-    newroz:'نەورۆز', spring:'بەهاری گەلی عەلی بەگ', autumn:'پاییزی هەڵەبجە', summer:'هاوینی شەقڵاوە', match:'شەوی یاری'},
-  themeHint:'شێوەی ئەپەکە هەڵبژێرە. لەسەر هەژمارەکەت پاشەکەوت دەکرێت، بۆیە مۆبایلەکەی ترت هەمان شێوە دەبێت.',
-  themeYours:'ڕووکاری تۆ', themeHolidays:'ڕووکاری بۆنەکان', themeOnNow:'ئێستا', themeAnyDay:'لە ڕۆژانی یاریدا هەڵیبژێرە',
-  themeAutoLabel:'ڕووکاری بۆنەکان خۆیان دەکرێنەوە', themeAutoHint:'هەر ڕووکارێکی بۆنە لە کاتی خۆیدا دەکرێتەوە، دواتر ڕووکارەکەی خۆت دەگەڕێتەوە.',
-  themeFunLabel:'سەرسوڕمانی ڕووکار', themeFunHint:'درەوشانەوە کاتێک + دادەگریت، و هەندێک جار ریکۆ دەردەپەڕێت. تەنها لە ڕووکاری بۆنەکاندا.',
-  themeDates:{halloween:'24 تشرینی یەکەم – 1 تشرینی دووەم', winter:'10 کانوونی یەکەم – 20 شوبات', christmas:'20 کانوونی یەکەم – 2 کانوونی دووەم', flagday:'17 کانوونی یەکەم', ramadan:'مانگی ڕەمەزان', eid:'جەژنی ڕەمەزان و جەژنی قوربان',
-    newroz:'18 – 24 ئازار', spring:'نیسان', autumn:'تشرینی دووەم', summer:'تەمموز و ئاب'},
+
   darkLabel:'دۆخی تاریک', darkHint:'شەوان چاوەکانت ئاسوودەتر دەبن.', darkOff:'کوژاوە', darkOn:'هەڵکراو', darkAuto:'وەک مۆبایلەکە',
-  weatherFxLabel:'کەشوهەوا لەسەر شاشە', weatherFxHint:'دڵۆپی باران کاتێک لە هەولێر باران دەبارێت، بەفر کاتێک بەفر دەبارێت.',
+
   streakTitle:'زنجیرەی چێشتخانە', streakDays:n=>n+' ڕۆژ', streakChip:n=>'زنجیرەی چێشتخانە: '+n+' ڕۆژ',
   streakLit:'داواکاریی ئەمڕۆ نێردرا. ئاگرەکە هەڵگیرساوە!', streakNotYet:'ئەمڕۆ یەک داواکاری بنێرە بۆ هەڵگیرساندنی ئاگرەکە.',
   streakBroken:n=>'زنجیرەی '+n+' ڕۆژە کوژایەوە.', streakNone:'ئەمڕۆ داواکارییەک بنێرە بۆ دەستپێکردنی زنجیرە.',
@@ -678,20 +662,12 @@ Object.assign(T.ku, {
   voiceOrder:'داواکارییەکەت بڵێ', voiceOrderStop:'گوێ دەگرم… دابگرە بۆ تەواوکردن', voiceOrderPrompt:'داواکاریی ئەمڕۆ لەوەی ئێستا وتم پڕ بکەرەوە.',
   ricoHistoryMine:'گفتوگۆکانی من', ricoHistoryOf:n=>'گفتوگۆکانی '+n, ricoReadOnly:n=>'گفتوگۆی '+n+' لەگەڵ ریکۆ · تەنها خوێندنەوە', ricoBackToMine:'گەڕانەوە بۆ گفتوگۆکەی خۆم',
   ricoDeleteAllOf:n=>'سڕینەوەی هەموو گفتوگۆکانی '+n, ricoHistoryEmptyOf:n=>n+' هیچ گفتوگۆیەکی لەگەڵ ریکۆ نییە.',
-  devTheme:n=>'ڕووکار: '+n, orderAgain:'دیسان بنێرە', reportDate:'بەروار'
+   orderAgain:'دیسان بنێرە', reportDate:'بەروار'
 });
 Object.assign(T.ar, {
-  themeNames:{ricotta:'أخضر ريكوتا', graphite:'إسبريسو منتصف الليل', ocean:'بحيرة دوكان', saffron:'عسل الجبل', berry:'رمّان',
-    halloween:'الهالوين', winter:'شتاء القلعة', christmas:'الميلاد في عنكاوا', flagday:'يوم علم كوردستان', ramadan:'ليالي رمضان', eid:'العيد',
-    newroz:'نوروز', spring:'ربيع كلي علي بك', autumn:'خريف حلبجة', summer:'صيف شقلاوة', match:'ليلة المباراة'},
-  themeHint:'اختر مظهر التطبيق. يُحفظ في حسابك، فيتطابق هاتفك الآخر.',
-  themeYours:'ثيمك', themeHolidays:'ثيمات المناسبات', themeOnNow:'الآن', themeAnyDay:'اختره في أيام المباريات',
-  themeAutoLabel:'ثيمات المناسبات تعمل تلقائيًا', themeAutoHint:'يعمل كل ثيم مناسبة في مواعيده، ثم يعود ثيمك.',
-  themeFunLabel:'مفاجآت الثيم', themeFunHint:'لمعات عند الضغط على +، وأحيانًا يقفز ريكو. في ثيمات المناسبات فقط.',
-  themeDates:{halloween:'24 تشرين الأول – 1 تشرين الثاني', winter:'10 كانون الأول – 20 شباط', christmas:'20 كانون الأول – 2 كانون الثاني', flagday:'17 كانون الأول', ramadan:'شهر رمضان', eid:'عيد الفطر وعيد الأضحى',
-    newroz:'18 – 24 آذار', spring:'نيسان', autumn:'تشرين الثاني', summer:'تموز وآب'},
+
   darkLabel:'الوضع الداكن', darkHint:'أريح للعين ليلًا.', darkOff:'متوقف', darkOn:'مفعّل', darkAuto:'مثل الهاتف',
-  weatherFxLabel:'الطقس على الشاشة', weatherFxHint:'قطرات مطر عندما تمطر في أربيل، وثلج عندما تثلج.',
+
   streakTitle:'سلسلة المطبخ', streakDays:n=>AR_DAYS(n), streakChip:n=>'سلسلة المطبخ: '+AR_DAYS(n),
   streakLit:'طلب اليوم أُرسل. النار مشتعلة!', streakNotYet:'أرسل طلبًا واحدًا اليوم لإشعال النار.',
   streakBroken:n=>'انطفأت سلسلة الـ'+n+' يومًا.', streakNone:'أرسل طلبًا اليوم لبدء سلسلة.',
@@ -719,7 +695,7 @@ Object.assign(T.ar, {
   voiceOrder:'قل طلبك', voiceOrderStop:'أستمع… اضغط للإنهاء', voiceOrderPrompt:'املأ طلب اليوم مما قلته الآن.',
   ricoHistoryMine:'محادثاتي', ricoHistoryOf:n=>'محادثات '+n, ricoReadOnly:n=>'محادثة '+n+' مع ريكو · للقراءة فقط', ricoBackToMine:'العودة إلى محادثتي',
   ricoDeleteAllOf:n=>'حذف كل محادثات '+n, ricoHistoryEmptyOf:n=>'لا توجد محادثات لـ'+n+' مع ريكو.',
-  devTheme:n=>'الثيم: '+n, orderAgain:'أرسل مجددًا', reportDate:'التاريخ'
+   orderAgain:'أرسل مجددًا', reportDate:'التاريخ'
 });
 
 /* Order cut-offs, repeat orders, the month archive, replies to notes and Face ID. */
@@ -737,12 +713,8 @@ Object.assign(T.en, {
   monthsTimes:n=>n+'×', monthsOrders:n=>n+(n===1?' order':' orders'),
   notesReply:'Reply', notesReplyPrompt:'Your answer to Rozha', notesQuickOk:'👍 Got it', notesQuickDone:'✅ Done', notesQuickCall:'📞 Call me',
   notesReplied:'Sent to Rozha.', notesReplyNew:'Yunis replied',
-  faceIdSignIn:n=>'Sign in with '+n, faceIdFailed:'That didn’t work. Use your PIN, then turn it on again in Settings.', faceIdOther:'fingerprint',
-  faceIdSection:'Sign-in', faceIdTitle:n=>'Sign in with '+n, faceIdOnHint:'On for this phone. Your PIN still works.',
-  faceIdOffHint:n=>'Skip the PIN on this phone: sign in with '+n+'.', faceIdTurnOn:'Turn on', faceIdTurnOff:'Turn off',
-  faceIdAlready:n=>n+' is already set up on this phone.', faceIdUnsupported:'This phone can’t do it yet. Update it to the latest version and try again.',
-  faceIdOnToast:n=>n+' is on. Next time, tap “Sign in with '+n+'”.', faceIdOffToast:n=>n+' is off for this phone.'
-});
+
+  });
 Object.assign(T.ku, {
   cutoffLabel:'کاتی کۆتایی وەرگرتنی داواکاری', cutoffHint:'ئارەزوومەندانەیە. لە ڕۆژانی داواکاریی ئەم دابینکەرە، پەڕەی داواکاری کاتەکە دەژمێرێت و ریکۆ 30 خولەک پێشتر ئاگادارت دەکاتەوە.',
   cutoffShort:'کاتی کۆتایی', cutoffClosed:'بۆ ئەمڕۆ داخراوە', cutoffMinLeft:n=>n+' خولەک ماوە', cutoffHoursLeft:(h,m)=>h+' کاتژمێر و '+m+' خولەک ماوە', cutoffUntil:x=>'تا '+x+' داوا بکە',
@@ -757,12 +729,8 @@ Object.assign(T.ku, {
   monthsTimes:n=>n+'×', monthsOrders:n=>n+' داواکاری',
   notesReply:'وەڵام', notesReplyPrompt:'وەڵامەکەت بۆ ڕۆژا', notesQuickOk:'👍 تێگەیشتم', notesQuickDone:'✅ کرا', notesQuickCall:'📞 پەیوەندیم پێوە بکە',
   notesReplied:'بۆ ڕۆژا نێردرا.', notesReplyNew:'یونس وەڵامی دایەوە',
-  faceIdSignIn:n=>'چوونەژوورەوە بە '+n, faceIdFailed:'سەرکەوتوو نەبوو. بە PIN بچۆ ژوورەوە، پاشان لە ڕێکخستنەکان دووبارە چالاکی بکەرەوە.', faceIdOther:'پەنجەمۆر',
-  faceIdSection:'چوونەژوورەوە', faceIdTitle:n=>'چوونەژوورەوە بە '+n, faceIdOnHint:'بۆ ئەم مۆبایلە چالاکە. PINەکەت هێشتا کار دەکات.',
-  faceIdOffHint:n=>'لەم مۆبایلەدا PIN مەنووسە: بە '+n+' بچۆ ژوورەوە.', faceIdTurnOn:'چالاککردن', faceIdTurnOff:'ناچالاککردن',
-  faceIdAlready:n=>n+' پێشتر لەم مۆبایلەدا ڕێکخراوە.', faceIdUnsupported:'ئەم مۆبایلە هێشتا ناتوانێت. بۆ دوایین وەشان نوێی بکەرەوە و دووبارە هەوڵ بدەرەوە.',
-  faceIdOnToast:n=>n+' چالاک کرا. جاری داهاتوو «چوونەژوورەوە بە '+n+'» دابگرە.', faceIdOffToast:n=>n+' بۆ ئەم مۆبایلە ناچالاک کرا.'
-});
+
+  });
 Object.assign(T.ar, {
   cutoffLabel:'يتوقف عن استلام الطلبات الساعة', cutoffHint:'اختياري. في أيام طلب هذا المورّد تعدّ صفحة الطلب تنازليًا حتى هذا الوقت، ويُنبّهك ريكو قبله بـ30 دقيقة.',
   cutoffShort:'آخر موعد', cutoffClosed:'مغلق لليوم', cutoffMinLeft:n=>'باقي '+n+' دقيقة', cutoffHoursLeft:(h,m)=>'باقي '+h+' س و'+m+' د', cutoffUntil:x=>'اطلب قبل '+x,
@@ -777,9 +745,5 @@ Object.assign(T.ar, {
   monthsTimes:n=>n+'×', monthsOrders:n=>n+' طلب',
   notesReply:'رد', notesReplyPrompt:'ردّك على روژا', notesQuickOk:'👍 فهمت', notesQuickDone:'✅ تم', notesQuickCall:'📞 اتصلي بي',
   notesReplied:'أُرسل إلى روژا.', notesReplyNew:'ردّ يونس',
-  faceIdSignIn:n=>'الدخول بـ'+n, faceIdFailed:'لم ينجح ذلك. ادخل بالرمز ثم فعّله من جديد في الإعدادات.', faceIdOther:'البصمة',
-  faceIdSection:'تسجيل الدخول', faceIdTitle:n=>'الدخول بـ'+n, faceIdOnHint:'مفعّل لهذا الهاتف. رمزك ما زال يعمل.',
-  faceIdOffHint:n=>'دون رمز على هذا الهاتف: ادخل بـ'+n+'.', faceIdTurnOn:'تفعيل', faceIdTurnOff:'إيقاف',
-  faceIdAlready:n=>n+' مُعدّ مسبقًا على هذا الهاتف.', faceIdUnsupported:'هذا الهاتف لا يدعمه بعد. حدّثه إلى آخر إصدار وحاول مرة أخرى.',
-  faceIdOnToast:n=>'تم تفعيل '+n+'. في المرة القادمة اضغط «الدخول بـ'+n+'».', faceIdOffToast:n=>'تم إيقاف '+n+' لهذا الهاتف.'
-});
+
+  });

@@ -12,27 +12,29 @@ Orders retry with stable IDs. Each pending order has its own local storage entry
 
 Scheduled jobs (pg_cron): `ricotta-reminder-tick` every minute (reminders, Rico's messages, weather), `ricotta-daily-cleanup` (expired sessions, old attempts, alerts, inbox, notes), `ricotta-monthly-history` (the monthly cut) and `ricotta-cron-history` (keeps a week of pg_cron run history).
 
-## Seasons and the kitchen
+## The kitchen
 
 Unfinished orders sync between devices signed in to the same account. Quantities are saved locally before syncing. Edits to different items merge; two different edits to the same item require choosing which quantity to keep. Rozha and Yunis have separate drafts. Visible devices check about every eight seconds and on returning to the app. The WhatsApp send queue stays on the device where it was started.
 
-- **Themes** (`seasons.js`, Settings › Appearance): five colour themes and eleven holiday themes. A holiday theme turns on by itself during its Baghdad dates (Halloween, Winter Citadel, Christmas in Ankawa, Kurdistan Flag Day, Ramadan, Eid, Newroz, Spring, Halabja Autumn, Shaqlawa Summer) unless the account switches that off; Match Night is picked by hand. Ramadan and Eid dates are estimates kept in `seasons.js` until 2030. Each holiday brings quiet background decorations, a costume for Rico, themed sounds and optional surprises. The theme and the automatic switch are saved per account (`app_accounts.theme`, `auto_theme`); dark mode, surprises and weather effects are per device. Only the Devices screen shows people in their own theme.
 - **Kitchen streak** (`kitchen.js`, `app_streak`): every Baghdad day with a sent order adds a day for the whole kitchen. Rico can bring a broken streak back within 7 days (`recover_streak`). Undoing the day's only order takes the day back.
 - **Kitchen notes** (`app_notes`): Rozha writes, Yunis gets a notification, a sticky note on Order and a banner; unread notes get a reminder from Rico after two hours.
 - **Report card**: at the top of History, computed from this month's orders, with an Excel (CSV) file and a printable report before the monthly cleanup.
-- **Weather**: the reminder tick keeps Erbil's weather from Open-Meteo in `app_weather` for Rico's morning message and the rain or snow effect.
+- **Weather**: the reminder tick keeps Erbil's weather from Open-Meteo in `app_weather` for Rico's morning messages.
 - Pinned items (`app_accounts.pins`), item notes (`app_items.note`, sent in the WhatsApp message) and Undo for 15 minutes after an order is saved.
 - Rozha and Yunis can read and delete each other's Rico chats; each only continues their own.
 - **Order cut-offs** (`app_suppliers.cutoff`, HH:MM Erbil): on the supplier's order days (its reminder days, or every day) Order, Send and Suppliers show a countdown; Rico warns 30 minutes before when nothing has gone to that supplier.
 - **Repeat orders** (`app_repeat_orders`): "Repeat" on a History order saves it for chosen weekdays; on those days the Order screen offers it with one tap. Nothing is sent by itself.
 - **Note replies**: Yunis answers a note (quick replies or a few words); Rozha gets a notification and a count on the bell.
-- **Face ID / fingerprint** (`app_passkeys`, WebAuthn): the phone keeps the private key; the server stores the public key and checks a single-use challenge, the site, user verification, the signature and the counter. The PIN keeps working; new PINs remove every passkey.
 - **App icon badge**: unread notes, unseen replies and late suppliers (Home Screen app; on iPhone with notifications on).
 - **Month archive** (`app_month_summaries`): before a month is cleared, `app_internal_monthly_cleanup` keeps its summary (orders, days, top items, suppliers, who sent). History › Past months.
 - **Friday summary**: Rico's short weekly recap on Friday evening.
 - On phones the WhatsApp buttons open the WhatsApp app directly (`whatsapp://send`); computers use `wa.me`.
 
 The Lab (`lab/`, see its README) runs the real app on sample data for trying these without touching the kitchen.
+
+## Simple workspace
+
+The three main tabs are Order, Rico and Manage. Manage groups Items, Suppliers and Units, with History, Records, Devices (Rozha only) and Settings under History & settings. Order keeps its large summary; Order options holds notes, quantity scaling, repeat orders, voice and clearing. Imports are in Manage > More tools. English aliases remain searchable and editable without adding lines to item lists. The app uses one palette with light, dark or system appearance. Themes, weather effects, seasonal surprises, decorative sounds and Face ID have been removed; PIN sign-in stays protected by Cloudflare.
 
 ## Development and checks
 
@@ -61,9 +63,9 @@ On the existing project, apply only the migrations that are not yet in its histo
 
 ## Optional Cloudflare sign-in protection
 
-Turnstile can protect PIN and passkey sign-in on the existing GitHub Pages hostname, without buying a domain or moving hosting. It remains disabled until configured. Create a free **Managed** widget for `rozhzero969-hub.github.io`, then set these Supabase Edge Function secrets privately: `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, and `TURNSTILE_HOSTNAME=rozhzero969-hub.github.io`. Never commit the secret key. Configure both keys together and redeploy the API; partial configuration blocks sign-in safely.
+Turnstile can protect PIN sign-in on the existing GitHub Pages hostname, without buying a domain or moving hosting. It remains disabled until configured. Create a free **Managed** widget for `rozhzero969-hub.github.io`, then set these Supabase Edge Function secrets privately: `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, and `TURNSTILE_HOSTNAME=rozhzero969-hub.github.io`. Never commit the secret key. Configure both keys together and redeploy the API; partial configuration blocks sign-in safely.
 
-The app requests Cloudflare's script only when enabled. The API verifies each token with Cloudflare and checks its hostname and `ricotta_auth` action before checking credentials or issuing a passkey challenge. Tokens expire and cannot be reused. `GET /auth/security` exposes only whether protection is required and its public site key. Existing signed-in sessions keep working. This adds bot protection to sign-in; it does not put a Cloudflare firewall in front of Supabase. Test PIN, cancelled checks and Face ID on the live hostname after activation. Remove both key secrets and redeploy to disable it if recovery is needed.
+The app requests Cloudflare's script only when enabled. The API verifies each token with Cloudflare and checks its hostname and `ricotta_auth` action before checking credentials. Tokens expire and cannot be reused. `GET /auth/security` exposes only whether protection is required and its public site key. Existing signed-in sessions keep working. This adds bot protection to sign-in; it does not put a Cloudflare firewall in front of Supabase. Test PIN and cancelled checks on the live hostname after activation. Remove both key secrets and redeploy to disable it if recovery is needed.
 
 ## Backups and recovery
 

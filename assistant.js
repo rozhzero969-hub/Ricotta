@@ -42,10 +42,10 @@ const rico = {
    pastel colour. The gradient needs an id, so each drawing gets its own. */
 const RICO_MOODS = ['happy','excited','grateful','calm','thinking','worried','sad','angry'];
 let ricoBotSeq = 0;
-/* Rico as drawn, plus whatever he wears today (a holiday costume or an umbrella, see seasons.js). */
+/* Rico keeps his expressive moods across the app. */
 function ricoFace(mood = 'happy', cls = ''){
   const svg = ricoFaceBase(mood, cls);
-  return typeof dressRico === 'function' ? dressRico(svg, ricoOutfit()) : svg;
+  return svg;
 }
 function ricoFaceBase(mood = 'happy', cls = ''){
   const m = RICO_MOODS.includes(mood) ? mood : 'happy';
@@ -148,7 +148,8 @@ function erbilNow(){
   return {date, minutes:+g('hour')*60 + +g('minute'), weekday:new Date(date+'T12:00:00Z').getUTCDay()};
 }
 /* The Baghdad calendar day of a time, as YYYY-MM-DD. It runs for every order on several screens, so it
-   uses the one shared formatter (BAGHDAD_DAY, seasons.js): creating formatters is slow on phones. */
+   uses the one shared formatter (BAGHDAD_DAY): creating formatters is slow on phones. */
+const BAGHDAD_DAY = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'});
 function erbilDate(iso){ return BAGHDAD_DAY.format(new Date(iso)); }
 function ricoLateOrders(){
   if(!state.account) return [];

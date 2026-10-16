@@ -1,4 +1,4 @@
-/* Ricotta Orders -- theme foundation:
+/* Ricotta Orders -- visual foundation:
    Quiet surfaces, clear borders and restrained depth,
    accent green #34C27A, a coral red for signing out, Sora for English and
    Noto Kufi Arabic for Kurdish and Arabic, and the "Glide" page transition.
@@ -6,8 +6,7 @@
    a stronger blur so text stays readable. Everything animated collapses
    under prefers-reduced-motion. */
 :root{
-  /* Theme colours. These are the default theme, Ricotta (the green the app has always had);
-     the other themes in Settings replace them with the html[data-theme] blocks below. */
+  /* Ricotta colours. Dark mode changes surfaces below. */
   --bg:#EEF1EF;
   --ink:#10291F;
   --ink-soft:#56695F;
@@ -53,43 +52,6 @@
   --font-rtl:'Noto Kufi Arabic','Sora',system-ui,sans-serif;
   --safe-top:env(safe-area-inset-top,0px);
   --safe-bottom:env(safe-area-inset-bottom,0px);
-}
-/* ---------- Themes (Settings > Appearance). Ricotta is the default and needs no block. ---------- */
-/* Graphite Black */
-html[data-theme="graphite"]{
-  --bg:#EEEEED;--ink:#121212;--ink-soft:#5C5C5C;--ink-faint:#7A7A7A;
-  --deep:#161616;--deep-dark:#000000;--deep-rgb:22,22,22;--deepd-rgb:0,0,0;--shade-rgb:0,0,0;
-  --accent:#2C2C2C;--accent-rgb:44,44,44;--on-dark:#EDEDED;--accent-strong:#161616;--accent-soft:#D8D8D8;--soft-rgb:216,216,216;--mint-ink:#2B2B2B;
-  --hero:linear-gradient(150deg,#323232,#1A1A1A 55%,#050505);
-  --t-eyebrow:#BDBDBD;--t-word:#E6E6E6;--t-sub:#C9C9C9;--t-foot:#CFCFCF;--t-bright:#FFFFFF;--t-mono:#FFFFFF;--tab-ink:#444444;--tab-ink2:#555555;
-
-}
-/* Ocean Blue */
-html[data-theme="ocean"]{
-  --bg:#EDF1F5;--ink:#0F2438;--ink-soft:#546A7E;--ink-faint:#72879A;
-  --deep:#12304D;--deep-dark:#0A2036;--deep-rgb:18,48,77;--deepd-rgb:10,32,54;--shade-rgb:10,32,54;
-  --accent:#3FA7EA;--accent-rgb:63,167,234;--on-dark:#6FB9EE;--accent-strong:#1F5F99;--accent-soft:#CFE6F7;--soft-rgb:207,230,247;--mint-ink:#2A78B8;
-  --hero:linear-gradient(150deg,#1C4A74,#12304D 55%,#0A2036);
-  --t-eyebrow:#A9C9E4;--t-word:#D5E7F5;--t-sub:#BDD0E0;--t-foot:#BFD3E4;--t-bright:#9BD3FA;--t-mono:#9BD3FA;--tab-ink:#3D5266;--tab-ink2:#4E6378;
-
-}
-/* Saffron */
-html[data-theme="saffron"]{
-  --bg:#F4F0E8;--ink:#2A1D0B;--ink-soft:#6F6050;--ink-faint:#8A7B69;
-  --deep:#4A2F08;--deep-dark:#2E1C04;--deep-rgb:74,47,8;--deepd-rgb:46,28,4;--shade-rgb:46,28,4;
-  --accent:#F2A93B;--accent-rgb:242,169,59;--on-dark:#F5BD5C;--accent-strong:#A86300;--accent-soft:#FBE3B8;--soft-rgb:251,227,184;--mint-ink:#B8770F;
-  --hero:linear-gradient(150deg,#7A4A0C,#4A2F08 55%,#2E1C04);
-  --t-eyebrow:#E4C896;--t-word:#F5E5C4;--t-sub:#DCC8A2;--t-foot:#E0CBA4;--t-bright:#FFD58A;--t-mono:#FFD58A;--tab-ink:#574530;--tab-ink2:#6A5640;
-
-}
-/* Berry */
-html[data-theme="berry"]{
-  --bg:#F5EEF2;--ink:#2A1420;--ink-soft:#6F5A65;--ink-faint:#8C7580;
-  --deep:#4D1330;--deep-dark:#2E0A1C;--deep-rgb:77,19,48;--deepd-rgb:46,10,28;--shade-rgb:46,10,28;
-  --accent:#E0568F;--accent-rgb:224,86,143;--on-dark:#F27DAE;--accent-strong:#9B2C5B;--accent-soft:#F6CFE0;--soft-rgb:246,207,224;--mint-ink:#B33A70;
-  --hero:linear-gradient(150deg,#7A2150,#4D1330 55%,#2E0A1C);
-  --t-eyebrow:#E4B0CA;--t-word:#F5D5E5;--t-sub:#DBB9CC;--t-foot:#DFBCCF;--t-bright:#FFA8CD;--t-mono:#FFA8CD;--tab-ink:#5A3A4B;--tab-ink2:#6B4A5C;
-
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -205,30 +167,6 @@ html.rtl .lang-title{letter-spacing:0;font-size:11.5px}
 .navbtn.active svg{transform:translateY(-1px) scale(1.08)}
 .navbtn.lens-over svg{transform:scale(1.2)}
 .nav-badge{position:absolute;top:8px;inset-inline-end:calc(50% - 16px);width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px #fff;animation:alertPulse 1.8s ease-out infinite}
-.nav-more-btn.has-badge::after{content:'';position:absolute;top:8px;inset-inline-end:calc(50% - 16px);width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px #fff}
-/* More: the other screens and "Edit tabs", in a glass panel above the bar */
-.nav-more{position:absolute;bottom:calc(100% + 10px);inset-inline-end:0;width:min(340px,100%);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:10px;border-radius:28px;
-  /* Frosted white rather than clear: browsers ignore a blur nested inside the tab bar's glass, so the
-     panel's own tint is what keeps the page behind it from showing through the labels. */
-  background-color:#F6FAF8;border:1px solid rgba(255,255,255,.9);box-shadow:var(--float-shadow);
-  transform-origin:bottom right;transform:translateY(12px) scale(.9);opacity:0;visibility:hidden;pointer-events:none;transition:transform .45s var(--spring-soft),opacity .2s ease,visibility 0s linear .45s}
-html.rtl .nav-more{transform-origin:bottom left}
-
-.bottomnav.more-open .nav-more{transform:none;opacity:1;visibility:visible;pointer-events:auto;transition:transform .45s var(--spring-soft),opacity .2s ease}
-.nav-more .navbtn{height:66px;border-radius:18px;font-size:11px;padding:0 4px}
-.nav-more .navbtn span{white-space:normal;text-align:center;line-height:1.25}
-.nav-more .navbtn.active{background:var(--accent-strong);color:#fff;box-shadow:0 8px 18px -10px rgba(var(--deep-rgb),.8)}
-.nav-edit{grid-column:1/-1;height:42px;border:0;border-radius:14px;background:rgba(var(--deep-rgb),.07);display:flex;align-items:center;justify-content:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--deep)}
-.nav-edit svg{width:15px;height:15px}
-.nav-more-btn.active{color:var(--deep)}
-/* Edit tabs */
-.tab-pick{display:grid;gap:8px;margin-top:12px}
-.tab-pick-row{display:flex;align-items:center;gap:12px;min-height:50px;padding:0 14px;border-radius:15px;border:1px solid var(--line-strong);background:rgba(255,255,255,.55);font-size:14px;font-weight:700;text-align:start}
-.tab-pick-row svg{width:18px;height:18px;color:var(--ink-soft)}
-.tab-pick-row b{margin-inline-start:auto;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;border:1.5px solid var(--line-strong)}
-.tab-pick-row.on{border-color:var(--accent-strong);background:rgba(var(--soft-rgb),.55)}
-.tab-pick-row.on b{background:var(--accent-strong);border-color:var(--accent-strong);color:#fff}
-
 /* ---------- Send bar (springs in when something is picked) ---------- */
 .bottom-bar{max-width:560px;width:100%;margin:0 auto;transform:translateY(150%) scale(.94);opacity:0;pointer-events:none;transition:transform 560ms var(--spring-soft),opacity 260ms ease}
 .bottom-bar.show{transform:none;opacity:1;pointer-events:auto}
@@ -331,7 +269,7 @@ html.rtl .hero-ring svg{transform:rotate(-90deg) scaleY(-1)}
 .search-row{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;align-items:center}
 .search-wrap{position:relative;flex:1 1 250px;min-width:0;display:flex;align-items:center}
 .search-wrap svg{position:absolute;inset-inline-start:15px;color:var(--ink-soft);pointer-events:none;z-index:1}
-.search-wrap.catalog-search>svg{position:static}
+.search-wrap.catalog-search>svg{position:absolute;margin:0;inset-inline-start:15px}
 .search-input{width:100%;min-height:50px;padding:0 16px;padding-inline-start:42px;border-radius:17px;font-size:16px;font-weight:500;color:var(--ink);outline:none;transition:box-shadow 220ms ease,background-color 220ms ease,border-color 220ms ease}
 .search-input::placeholder{color:var(--ink-faint);font-weight:500}
 .search-input:focus{background:rgba(255,255,255,.55);border-color:rgba(var(--deep-rgb),.3);box-shadow:0 0 0 4px rgba(var(--accent-rgb),.2)}
@@ -465,8 +403,8 @@ html.rtl .field select{background-position:left 14px center}
 /* iOS-style switches for every checkbox */
 .check-row{display:flex;align-items:center;gap:12px;font-size:14px;font-weight:700;margin:4px 0 16px;cursor:pointer}
 .check-row svg{color:var(--mint-ink);flex-shrink:0}
-.sound-row span{display:flex;flex-direction:column;gap:2px}
-.sound-row small{font-size:12.5px;font-weight:500;color:var(--ink-soft);line-height:1.4}
+.preference-row span{display:flex;flex-direction:column;gap:2px}
+.preference-row small{font-size:12.5px;font-weight:500;color:var(--ink-soft);line-height:1.4}
 .check-row input[type=checkbox]{appearance:none;-webkit-appearance:none;flex-shrink:0;width:52px;height:32px;margin:0;border-radius:16px;background:rgba(var(--deep-rgb),.18);position:relative;cursor:pointer;transition:background-color 260ms ease;order:2;margin-inline-start:auto}
 .check-row input[type=checkbox]::after{content:'';position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.2);transition:transform 340ms var(--spring-soft)}
 .check-row input[type=checkbox]:checked{background:var(--accent)}
@@ -912,7 +850,6 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   html.app-shell .content{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
   html.app-shell .bottom-stack{position:absolute}
   body.rico-composing #app[data-screen="assistant"] .content{padding-bottom:120px}
-  .nav-edit{display:flex}
 }
 @media (min-width:600px) and (max-width:959px){
   .content{padding-inline:26px}
@@ -931,17 +868,11 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .bottom-stack{display:contents}
   .bottomnav{grid-column:1;grid-row:2;position:sticky;top:84px;align-self:start;flex-direction:column;margin:18px 0 18px 18px;margin-inline:18px 0;padding:12px;border-radius:26px;max-width:none;height:auto;touch-action:auto;
     -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--glass-rim);box-shadow:var(--glass-shadow);animation:rise 600ms var(--ease-out) both}
-  .nav-more-btn{display:none}
-  .nav-more{display:contents;visibility:visible;opacity:1;pointer-events:auto}
   .nav-indicator{top:0;left:12px;right:12px;bottom:auto;width:auto!important;height:var(--ih,0);transform:translateY(var(--iy,0));transition:transform 520ms var(--spring-soft),height 520ms var(--spring-soft);background:var(--accent-strong);border-radius:15px;box-shadow:0 10px 22px -10px rgba(var(--deep-rgb),.7)}
   .navbtn{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:12px;height:48px;min-width:0;padding:0 14px;border-radius:15px;font-size:13.5px;color:var(--ink)}
   .navbtn span{max-width:none}
   .navbtn.active{color:#fff}
   .navbtn:not(.active):hover{background:rgba(255,255,255,.45)}
-  .nav-more .navbtn{height:48px;font-size:13.5px;padding:0 14px;border-radius:15px}
-  .nav-more .navbtn span{white-space:nowrap;text-align:start}
-  .nav-more .navbtn.active{background:transparent;box-shadow:none}
-  .nav-edit{margin-top:8px;height:40px;background:transparent;border:1px dashed var(--line-strong);color:var(--ink-soft);font-size:12px}
   .nav-badge{top:12px;inset-inline-end:auto;inset-inline-start:30px}
   .lang-chip .lang-code{display:none}
   .bottom-bar{grid-column:2;grid-row:2;position:sticky;bottom:22px;align-self:end;justify-self:center;max-width:520px;margin-bottom:22px;z-index:20}
@@ -1119,15 +1050,6 @@ html.pad-open .bottom-stack{opacity:0;transition:opacity .15s ease}
 html.pad-open .bottom-stack>*{pointer-events:none}
 @media (prefers-reduced-motion:reduce){.pad-panel{animation:none}}
 
-/* ---------- Settings > Appearance: theme picker ---------- */
-.theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:10px;margin-top:12px}
-.theme-btn{position:relative;display:flex;flex-direction:column;gap:9px;padding:10px;border-radius:18px;text-align:start;color:var(--ink);border:1.5px solid var(--line-strong);background:rgba(255,255,255,.5);min-width:0}
-.theme-btn[aria-pressed="true"]{border-color:var(--accent-strong);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.25)}
-.theme-name{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:13px;font-weight:700;line-height:1.3}
-.theme-tag{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;background:rgba(var(--deep-rgb),.08);color:var(--tab-ink);flex-shrink:0}
-html.rtl .theme-tag{letter-spacing:0;font-size:11px}
-.theme-check{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--accent-strong);color:#fff;flex-shrink:0}
-.theme-check svg{width:12px;height:12px}
 /* ---------- Rico's face on his tab while a message is unread ---------- */
 .navbtn .rico-bot{--size:25px;margin-top:-2px}
 /* ---------- Settings: show last quantity, compact rows ---------- */
@@ -1141,230 +1063,6 @@ html.compact-rows .supplier-group{padding:8px}
 .who-badge s{text-decoration:none;flex:none;width:20px;height:20px;border-radius:50%;background:var(--wa);color:var(--wo);display:grid;place-items:center;font-size:10px;font-weight:800}
 .dev-name .who-badge{font-size:14px}
 
-/* =====================================================================
-   Holiday themes (seasons.js). Same tokens as the colour themes above.
-   ===================================================================== */
-html[data-theme="halloween"]{
-  --bg:#F0ECF2;--ink:#221A2B;--ink-soft:#655A6F;--ink-faint:#83788D;
-  --deep:#2B1B3D;--deep-dark:#170E22;--deep-rgb:43,27,61;--deepd-rgb:23,14,34;--shade-rgb:23,14,34;
-  --accent:#F28C28;--accent-rgb:242,140,40;--on-dark:#FFA94D;--accent-strong:#B5560A;--accent-soft:#FCDDBF;--soft-rgb:252,221,191;--mint-ink:#C2620E;
-  --hero:linear-gradient(150deg,#4A2C66,#2B1B3D 55%,#170E22);
-  --t-eyebrow:#D8C2EC;--t-word:#F1E6FA;--t-sub:#CDBBDD;--t-foot:#D3C1E2;--t-bright:#FFB866;--t-mono:#FFB866;--tab-ink:#4C3F57;--tab-ink2:#5D5068;
-
-}
-html[data-theme="winter"]{
-  --bg:#EEF3F7;--ink:#12263A;--ink-soft:#566B80;--ink-faint:#74889B;
-  --deep:#1D3A57;--deep-dark:#0F2236;--deep-rgb:29,58,87;--deepd-rgb:15,34,54;--shade-rgb:15,34,54;
-  --accent:#6CB8EA;--accent-rgb:108,184,234;--on-dark:#A9DAF8;--accent-strong:#2B6E9E;--accent-soft:#D7ECFA;--soft-rgb:215,236,250;--mint-ink:#2F78AA;
-  --hero:linear-gradient(150deg,#335C82,#1D3A57 55%,#0F2236);
-  --t-eyebrow:#B5D3EA;--t-word:#E3F1FB;--t-sub:#C2D6E6;--t-foot:#C6DAEA;--t-bright:#BFE6FF;--t-mono:#BFE6FF;--tab-ink:#3D5266;--tab-ink2:#4E6378;
-
-}
-html[data-theme="christmas"]{
-  --bg:#F4EFEC;--ink:#2A1517;--ink-soft:#6E5A57;--ink-faint:#8A7673;
-  --deep:#6B1E22;--deep-dark:#3F1013;--deep-rgb:107,30,34;--deepd-rgb:63,16,19;--shade-rgb:63,16,19;
-  --accent:#E0B04C;--accent-rgb:224,176,76;--on-dark:#F2C76B;--accent-strong:#2E7D4F;--accent-soft:#F6E2C6;--soft-rgb:246,226,198;--mint-ink:#2E7D4F;
-  --hero:linear-gradient(150deg,#8E2A30,#6B1E22 55%,#3F1013);
-  --t-eyebrow:#EBC3BF;--t-word:#FBEAE6;--t-sub:#E3C7C3;--t-foot:#E6CBC7;--t-bright:#F7D27A;--t-mono:#F7D27A;--tab-ink:#5A3E3C;--tab-ink2:#6B4F4C;
-
-}
-html[data-theme="flagday"]{
-  --bg:#F5F3EC;--ink:#14261B;--ink-soft:#56685B;--ink-faint:#748478;
-  --deep:#1B5E34;--deep-dark:#0F3B20;--deep-rgb:27,94,52;--deepd-rgb:15,59,32;--shade-rgb:15,59,32;
-  --accent:#FEBD11;--accent-rgb:254,189,17;--on-dark:#FFCB3D;--accent-strong:#C8262C;--accent-soft:#FDEBB5;--soft-rgb:253,235,181;--mint-ink:#1F7A3D;
-  --hero:linear-gradient(150deg,#C8262C 0%,#C8262C 30%,#1B5E34 31%,#0F3B20 100%);
-  --t-eyebrow:#F3D0C9;--t-word:#FFF6E6;--t-sub:#E9E1CF;--t-foot:#E9E1CF;--t-bright:#FFD34D;--t-mono:#FFD34D;--tab-ink:#3E5446;--tab-ink2:#4F6457;
-
-}
-html[data-theme="ramadan"]{
-  --bg:#F2F0EB;--ink:#1A1F33;--ink-soft:#5C6178;--ink-faint:#7A7F94;
-  --deep:#1B2447;--deep-dark:#0E1430;--deep-rgb:27,36,71;--deepd-rgb:14,20,48;--shade-rgb:14,20,48;
-  --accent:#E2B04A;--accent-rgb:226,176,74;--on-dark:#F2C96A;--accent-strong:#8C6418;--accent-soft:#F6E6C2;--soft-rgb:246,230,194;--mint-ink:#9A6E1C;
-  --hero:linear-gradient(150deg,#2D3A6E,#1B2447 55%,#0E1430);
-  --t-eyebrow:#C6CBE6;--t-word:#EEF0FA;--t-sub:#C4C8DD;--t-foot:#C9CCE0;--t-bright:#F7D27A;--t-mono:#F7D27A;--tab-ink:#40465E;--tab-ink2:#51576F;
-
-}
-html[data-theme="eid"]{
-  --bg:#F1F3EE;--ink:#14282A;--ink-soft:#55686A;--ink-faint:#738587;
-  --deep:#134E4A;--deep-dark:#0B302D;--deep-rgb:19,78,74;--deepd-rgb:11,48,45;--shade-rgb:11,48,45;
-  --accent:#E9B949;--accent-rgb:233,185,73;--on-dark:#F3CF6B;--accent-strong:#0F6B63;--accent-soft:#F8E9BE;--soft-rgb:248,233,190;--mint-ink:#0F6B63;
-  --hero:linear-gradient(150deg,#1E6B64,#134E4A 55%,#0B302D);
-  --t-eyebrow:#BFDDD8;--t-word:#EAF6F4;--t-sub:#C5DCD8;--t-foot:#C9DFDB;--t-bright:#F7D27A;--t-mono:#F7D27A;--tab-ink:#3D5452;--tab-ink2:#4E6563;
-
-}
-html[data-theme="newroz"]{
-  --bg:#F4F2EA;--ink:#14261B;--ink-soft:#56685B;--ink-faint:#748478;
-  --deep:#1E5A33;--deep-dark:#113A20;--deep-rgb:30,90,51;--deepd-rgb:17,58,32;--shade-rgb:17,58,32;
-  --accent:#FEBD11;--accent-rgb:254,189,17;--on-dark:#FFCB3D;--accent-strong:#1F7A3D;--accent-soft:#FDEBB5;--soft-rgb:253,235,181;--mint-ink:#1F7A3D;
-  --hero:linear-gradient(150deg,#2E7D46,#1E5A33 55%,#113A20);
-  --t-eyebrow:#BFE0C6;--t-word:#EAF6EC;--t-sub:#C8DDCC;--t-foot:#CCE2D0;--t-bright:#FFD34D;--t-mono:#FFD34D;--tab-ink:#3E5446;--tab-ink2:#4F6457;
-
-}
-html[data-theme="spring"]{
-  --bg:#F0F5EE;--ink:#17281D;--ink-soft:#57695C;--ink-faint:#75867A;
-  --deep:#2D5A3D;--deep-dark:#1A3B26;--deep-rgb:45,90,61;--deepd-rgb:26,59,38;--shade-rgb:26,59,38;
-  --accent:#F28FB0;--accent-rgb:242,143,176;--on-dark:#F7B3C8;--accent-strong:#2F7A4D;--accent-soft:#FBDDE6;--soft-rgb:251,221,230;--mint-ink:#C24F78;
-  --hero:linear-gradient(150deg,#3E7A52,#2D5A3D 55%,#1A3B26);
-  --t-eyebrow:#C5E2CD;--t-word:#EEF8F1;--t-sub:#CDE1D3;--t-foot:#D0E3D6;--t-bright:#FFC2D6;--t-mono:#FFC2D6;--tab-ink:#3F5546;--tab-ink2:#506657;
-
-}
-html[data-theme="autumn"]{
-  --bg:#F5F0EA;--ink:#2A1A12;--ink-soft:#6E5D55;--ink-faint:#8A7970;
-  --deep:#5A2E1E;--deep-dark:#381B11;--deep-rgb:90,46,30;--deepd-rgb:56,27,17;--shade-rgb:56,27,17;
-  --accent:#C8452F;--accent-rgb:200,69,47;--on-dark:#E8735C;--accent-strong:#9C3324;--accent-soft:#F4D3C8;--soft-rgb:244,211,200;--mint-ink:#A8452A;
-  --hero:linear-gradient(150deg,#7A3E26,#5A2E1E 55%,#381B11);
-  --t-eyebrow:#E5C5B5;--t-word:#FAEDE6;--t-sub:#E0CABF;--t-foot:#E3CEC4;--t-bright:#FFB48C;--t-mono:#FFB48C;--tab-ink:#5A443A;--tab-ink2:#6B554B;
-
-}
-html[data-theme="summer"]{
-  --bg:#F4F3EC;--ink:#10292A;--ink-soft:#526A6A;--ink-faint:#708686;
-  --deep:#0F5257;--deep-dark:#083538;--deep-rgb:15,82,87;--deepd-rgb:8,53,56;--shade-rgb:8,53,56;
-  --accent:#FF8A4C;--accent-rgb:255,138,76;--on-dark:#FFB07A;--accent-strong:#0F7279;--accent-soft:#FFE0CC;--soft-rgb:255,224,204;--mint-ink:#C2561C;
-  --hero:linear-gradient(150deg,#1A7A7E,#0F5257 55%,#083538);
-  --t-eyebrow:#B4DCDC;--t-word:#E6F6F5;--t-sub:#C2DDDB;--t-foot:#C6E0DE;--t-bright:#FFC49A;--t-mono:#FFC49A;--tab-ink:#3D5555;--tab-ink2:#4E6666;
-
-}
-html[data-theme="match"]{
-  --bg:#EEF3EE;--ink:#10241A;--ink-soft:#526A5A;--ink-faint:#708677;
-  --deep:#14532D;--deep-dark:#0B3A1E;--deep-rgb:20,83,45;--deepd-rgb:11,58,30;--shade-rgb:11,58,30;
-  --accent:#FACC15;--accent-rgb:250,204,21;--on-dark:#FDE68A;--accent-strong:#15803D;--accent-soft:#DCFCE7;--soft-rgb:220,252,231;--mint-ink:#15803D;
-  --hero:linear-gradient(150deg,#166534,#14532D 55%,#0B3A1E);
-  --t-eyebrow:#BBE5C8;--t-word:#ECFAF0;--t-sub:#C9E2D1;--t-foot:#CCE4D4;--t-bright:#FDE68A;--t-mono:#FDE68A;--tab-ink:#3D5546;--tab-ink2:#4E6657;
-
-}
-
-/* ---------- Holiday backgrounds: quiet, behind everything (#seasonDecor) ---------- */
-#seasonDecor{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;color:var(--deep)}
-#seasonDecor > *{position:absolute}
-#seasonDecor svg{display:block;overflow:visible}
-.sd-strip{left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,#ED2024 0 33.3%,#FFFFFF 33.3% 66.6%,#278E43 66.6%);opacity:.9;z-index:1}
-.sd-corner{bottom:calc(96px + var(--safe-bottom));opacity:.85}
-.sd-left{left:10px}.sd-right{right:12px}
-[dir=rtl] .sd-left{left:auto;right:10px}[dir=rtl] .sd-right{right:auto;left:12px}
-.sd-ghost{width:46px;opacity:.38;animation:sdGhost 26s linear infinite}
-.sd-ghost svg{animation:sdBob 3.2s ease-in-out infinite}
-@keyframes sdGhost{from{transform:translateX(-80px)}to{transform:translateX(calc(100vw + 80px))}}
-@keyframes sdBob{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-12px) rotate(4deg)}}
-.sd-bat{width:34px;opacity:.5;animation:sdBat 19s linear infinite}
-.sd-bat svg{animation:sdFlap .35s ease-in-out infinite alternate;transform-origin:50% 50%}
-@keyframes sdBat{0%{transform:translate(calc(100vw + 40px),0)}50%{transform:translate(50vw,-30px)}100%{transform:translate(-60px,10px)}}
-@keyframes sdFlap{from{transform:scaleY(1)}to{transform:scaleY(.45)}}
-#seasonDecor .face{animation:sdFlicker 2.6s steps(2,end) infinite}
-@keyframes sdFlicker{0%,100%{opacity:1}45%{opacity:.55}55%{opacity:.9}}
-.sd-web{width:120px;top:0;left:0;opacity:.16}
-.sd-moon{width:84px;top:calc(70px + var(--safe-top));right:6%;opacity:.35}
-.sd-fall{top:-24px;width:14px;animation:sdFall linear infinite;transform:scale(var(--s,1))}
-.sd-flake{width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px rgba(90,140,185,.28),0 0 8px rgba(120,170,215,.7);opacity:.85}
-.sd-petal{color:#F28FB0;opacity:.75}.sd-leaf{color:#D9792B;opacity:.7}
-.sd-leaf:nth-child(3n){color:#B8601E}.sd-leaf:nth-child(4n){color:#E0A030}
-@keyframes sdFall{to{transform:translate(var(--dx,20px),110vh) rotate(var(--r,0deg)) scale(var(--s,1))}}
-.sd-skyline{left:0;right:0;bottom:0;width:100%;height:min(34vh,260px);opacity:.3}
-.sd-skyline svg{width:100%;height:100%}
-.sd-hills{height:min(26vh,200px);opacity:.18}
-.sd-lights{left:0;right:0;top:0;opacity:.75}
-.sd-bulb{animation:sdTwinkle 1.6s ease-in-out infinite}
-.sd-firework{width:6px;height:6px;border-radius:50%;box-shadow:0 -40px #E04848,28px -28px #E0B04C,40px 0 #4FA3E0,28px 28px #3FBF6F,0 40px #E04848,-28px 28px #E0B04C,-40px 0 #4FA3E0,-28px -28px #3FBF6F;animation:sdBurst 2.7s ease-out infinite;opacity:0}
-@keyframes sdBurst{0%{transform:scale(.1);opacity:0}15%{opacity:.9}70%{transform:scale(1.2);opacity:.6}100%{transform:scale(1.4);opacity:0}}
-.sd-sun{width:min(46vw,340px);top:calc(-60px + var(--safe-top));right:-60px;opacity:.22;animation:sdSpin 120s linear infinite}
-.sd-sun-mid{top:28%;right:auto;left:50%;margin-left:min(-23vw,-170px);opacity:.08}
-@keyframes sdSpin{to{transform:rotate(360deg)}}
-.sd-flag{width:58px;top:46%;right:14px;opacity:.7}
-.sd-flagbig{width:min(52vw,320px);top:calc(64px + var(--safe-top));right:-8px;opacity:.16}
-#seasonDecor .cloth{animation:sdWave 2.4s ease-in-out infinite;transform-origin:0 50%}
-@keyframes sdWave{0%,100%{transform:skewY(0) scaleX(1)}50%{transform:skewY(4deg) scaleX(.96)}}
-.sd-flower{width:40px;bottom:calc(92px + var(--safe-bottom));opacity:.8;transform-origin:50% 100%;animation:sdSway 4s ease-in-out infinite}
-@keyframes sdSway{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
-.sd-crescent{width:72px;top:calc(68px + var(--safe-top));right:8%;opacity:.55}
-.sd-star{width:12px;opacity:.6;animation:sdTwinkle 3s ease-in-out infinite}
-@keyframes sdTwinkle{0%,100%{opacity:.15;transform:scale(.7)}50%{opacity:.8;transform:scale(1)}}
-.sd-lantern{top:0;width:30px;transform-origin:50% 0;animation:sdSwing 4.5s ease-in-out infinite;opacity:.8}
-#seasonDecor .glow{animation:sdGlow 2.2s ease-in-out infinite}
-@keyframes sdSwing{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
-@keyframes sdGlow{0%,100%{opacity:.75}50%{opacity:1}}
-.sd-waterfall{top:0;bottom:0;right:0;width:26px;opacity:.35;overflow:hidden;background:linear-gradient(90deg,rgba(159,211,240,0),rgba(159,211,240,.7),rgba(159,211,240,0))}
-.sd-waterfall i{position:absolute;left:30%;width:3px;height:60px;border-radius:3px;background:#fff;animation:sdWater 1.4s linear infinite}
-.sd-waterfall i:nth-child(2){left:60%;animation-delay:-.5s}.sd-waterfall i:nth-child(3){left:45%;animation-delay:-1s}
-@keyframes sdWater{from{transform:translateY(-70px)}to{transform:translateY(110vh)}}
-[dir=rtl] .sd-waterfall{right:auto;left:0}
-.sd-bigsun{width:150px;top:calc(40px + var(--safe-top));right:-36px;opacity:.42;animation:sdPulse 6s ease-in-out infinite}
-@keyframes sdPulse{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.06) rotate(8deg)}}
-.sd-cloud{width:110px;opacity:.5;animation:sdCloud 70s linear infinite}
-@keyframes sdCloud{from{transform:translateX(-140px)}to{transform:translateX(calc(100vw + 140px))}}
-.sd-pitch{inset:12% 6% 18% 6%;border:2px solid rgba(255,255,255,.55);border-radius:14px;opacity:.5}
-.sd-pitch-line{position:absolute;left:50%;top:0;bottom:0;border-left:2px solid rgba(255,255,255,.55)}
-.sd-pitch-circle{position:absolute;left:50%;top:50%;width:110px;height:110px;margin:-55px 0 0 -55px;border:2px solid rgba(255,255,255,.55);border-radius:50%}
-.sd-rollball{width:26px;bottom:calc(110px + var(--safe-bottom));animation:sdRoll 14s linear infinite}
-.sd-rollball svg{animation:sdSpin 1.2s linear infinite}
-@keyframes sdRoll{0%{transform:translateX(-40px)}100%{transform:translateX(calc(100vw + 40px))}}
-.sd-drop{position:absolute;top:-30px;width:2px;height:22px;border-radius:2px;background:linear-gradient(180deg,rgba(120,160,200,0),rgba(90,140,190,.9));animation:sdRain linear infinite}
-@keyframes sdRain{to{transform:translate(-30px,110vh)}}
-
-/* ---------- Rico's costumes ---------- */
-.rico-bot .lc{pointer-events:none}
-.season-c-winter .rb-all{animation:rbShiver 1.8s ease-in-out infinite}
-.season-c-winter .lc-breath circle{fill:#fff;opacity:0;animation:lcBreath 3s ease-out infinite}
-.season-c-winter .lc-breath circle:nth-child(2){animation-delay:.25s}
-.season-c-winter .lc-breath circle:nth-child(3){animation-delay:.5s}
-@keyframes lcBreath{0%{opacity:0;transform:translate(0,0)}20%{opacity:.85}100%{opacity:0;transform:translate(6px,-6px)}}
-.season-c-halloween .rb-all{animation:lcHover 3s ease-in-out infinite}
-@keyframes lcHover{0%,100%{transform:translateY(0)}50%{transform:translateY(-5%)}}
-.rico-bot .lc-cape{transform-box:fill-box;transform-origin:50% 0;animation:lcCape 2.4s ease-in-out infinite}
-@keyframes lcCape{0%,100%{transform:skewX(0)}50%{transform:skewX(-5deg)}}
-.season-c-newroz .rb-all,.season-c-flagday .rb-all{animation:lcDance 1.4s ease-in-out infinite;transform-origin:50% 100%}
-@keyframes lcDance{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg) translateY(-2%)}}
-.season-c-newroz .lc-flagcloth{transform-box:fill-box;transform-origin:0 50%;animation:sdWave 1.6s ease-in-out infinite}
-.season-c-ramadan .lc-glow{animation:sdGlow 2s ease-in-out infinite}
-.season-c-ramadan .lc-lantern{transform-box:fill-box;transform-origin:50% 0;animation:sdSwing 3.4s ease-in-out infinite}
-.season-c-summer .rb-drop{animation:rbDrop 2.6s ease-in infinite}
-.season-c-match .lc-ball{transform-box:fill-box;transform-origin:50% 50%;animation:lcKick 1.8s ease-in-out infinite}
-@keyframes lcKick{0%,60%,100%{transform:none}70%{transform:translate(5px,-6px) rotate(90deg)}85%{transform:translate(2px,-2px) rotate(160deg)}}
-.season-c-christmas .rb-all,.season-c-eid .rb-all{animation:rbBob 2.8s ease-in-out infinite}
-.season-c-rain .rb-all{animation:rbBob 3.4s ease-in-out infinite}
-
-/* ---------- Rico's moments, sparkles and the Halloween shake ---------- */
-.season-peek{position:fixed;z-index:420;inset-inline-end:14px;bottom:calc(104px + var(--safe-bottom));display:flex;align-items:flex-end;gap:8px;flex-direction:row-reverse;max-width:min(330px,calc(100vw - 28px));
-  animation:peekIn .55s cubic-bezier(.34,1.56,.64,1) both;cursor:pointer}
-.season-peek.out{animation:peekOut .35s ease-in forwards}
-.season-peek .rico-bot{--size:96px;filter:drop-shadow(0 12px 18px rgba(var(--shade-rgb),.3))}
-.season-peek.short .rico-bot{--size:84px}
-.season-peek-rico{position:relative;flex:none}
-.season-bubble{background:#fff;color:var(--ink);border-radius:18px 18px 4px 18px;padding:11px 14px;font-size:14px;font-weight:700;line-height:1.4;box-shadow:0 18px 40px -18px rgba(var(--shade-rgb),.55);margin-bottom:46px;min-width:0}
-[dir=rtl] .season-bubble{border-radius:18px 18px 18px 4px}
-.season-bubble small{display:block;font-weight:500;color:var(--ink-soft);margin-top:4px;font-size:12.5px}
-@keyframes peekIn{from{transform:translateY(140%) rotate(8deg);opacity:0}to{transform:none;opacity:1}}
-@keyframes peekOut{to{transform:translateY(140%);opacity:0}}
-.season-sheet{position:absolute;inset:-14px -12px -4px;z-index:2;animation:sheetOff .7s cubic-bezier(.5,0,.4,1) 1.5s forwards}
-.season-sheet svg{width:100%;height:100%;filter:drop-shadow(0 10px 16px rgba(0,0,0,.25))}
-@keyframes sheetOff{0%{transform:none;opacity:1}40%{transform:translateY(-30%) rotate(-8deg)}100%{transform:translateY(-140%) rotate(-25deg);opacity:0}}
-.season-peek.scare{animation:peekScare .5s cubic-bezier(.34,1.8,.5,1) both}
-@keyframes peekScare{0%{transform:translateY(140%) scale(.6)}70%{transform:translateY(-6%) scale(1.15)}100%{transform:none}}
-.season-peek.at-top{top:calc(58px + var(--safe-top));bottom:auto!important;align-items:flex-start}
-.season-peek.at-top .season-bubble{margin:34px 0 0;border-radius:4px 18px 18px 18px}
-.season-peek.at-top .rico-bot{--size:76px}
-.season-bit{position:fixed;z-index:430;pointer-events:none;margin:-6px 0 0 -6px;line-height:0;animation:seasonBit .95s cubic-bezier(.2,.8,.3,1) forwards}
-.season-bit svg{width:100%;height:auto;display:block}
-@keyframes seasonBit{0%{transform:translate(0,0) scale(.3) rotate(0);opacity:1}70%{opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(var(--s)) rotate(var(--r));opacity:0}}
-.season-shake{animation:seasonShake .42s cubic-bezier(.36,.07,.19,.97)}
-@keyframes seasonShake{10%,90%{transform:translateX(-1px)}20%,80%{transform:translateX(3px)}30%,50%,70%{transform:translateX(-5px)}40%,60%{transform:translateX(5px)}}
-
-/* ---------- Settings: the theme screen ---------- */
-.theme-card .theme-grid{margin-top:8px}
-.theme-group-title{margin:16px 2px 0;font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-soft)}
-[dir=rtl] .theme-group-title{letter-spacing:0}
-.theme-btn{gap:7px}
-.theme-mini{position:relative;display:block;height:78px;border-radius:12px;overflow:hidden;background:var(--mb);border:1px solid rgba(0,0,0,.07)}
-.theme-scene{position:absolute;inset:0;width:100%;height:100%}
-.theme-mini-hero{position:absolute;left:8px;right:30px;top:12px;height:26px;border-radius:8px;background:var(--md);display:flex;align-items:center;gap:5px;padding:0 7px}
-.theme-mini-hero i{width:7px;height:7px;border-radius:50%;background:var(--ma);flex:none}
-.theme-mini-hero b{height:4px;border-radius:2px;background:rgba(255,255,255,.55);flex:1}
-.theme-mini-hero b+b{flex:.6;opacity:.6}
-.theme-mini-rows{position:absolute;left:8px;right:30px;top:44px;display:flex;flex-direction:column;gap:4px}
-.theme-mini-rows i{height:9px;border-radius:4px;background:rgba(255,255,255,.75);border:1px solid rgba(0,0,0,.05)}
-.theme-mini-rico{position:absolute;right:2px;bottom:2px;line-height:0}
-.theme-mini-rico .rico-bot{--size:30px}
-[dir=rtl] .theme-mini-hero,[dir=rtl] .theme-mini-rows{left:30px;right:8px}
-[dir=rtl] .theme-mini-rico{right:auto;left:2px}
-.theme-when{font-size:11px;font-weight:600;color:var(--ink-soft);line-height:1.3;margin-top:-3px}
 .dark-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 2px 4px}
 .dark-row > span{display:flex;flex-direction:column;font-size:14px;font-weight:700}
 .dark-row small{font-size:12px;font-weight:500;color:var(--ink-soft);margin-top:2px}
@@ -1514,28 +1212,7 @@ html[data-theme="match"]{
 .hist-again svg{width:14px;height:14px}
 .hist-undo{color:var(--clay-ink)}
 
-/* ---------- Devices: each card in that person's theme ---------- */
-.dev-card.themed{position:relative;overflow:hidden;isolation:isolate;color:#fff;
-  background:linear-gradient(150deg,color-mix(in srgb,var(--d1) 80%,var(--d2)),var(--d1) 60%,color-mix(in srgb,var(--d1) 70%,#000));border-color:rgba(255,255,255,.14);
-  --ink:#fff;--ink-soft:rgba(255,255,255,.74);--deep:#fff;--deep-rgb:255,255,255;--line:rgba(255,255,255,.16);--line-strong:rgba(255,255,255,.26);--mint-ink:var(--d2);--glass-rim:rgba(255,255,255,.2)}
-.dev-scene{position:absolute;inset:0;z-index:-1;opacity:.45;pointer-events:none}
-.dev-scene .theme-scene{width:100%;height:100%}
-.dev-rico{position:absolute;top:10px;inset-inline-end:12px;line-height:0;filter:drop-shadow(0 8px 14px rgba(0,0,0,.3))}
-.dev-theme{display:inline-flex;margin:2px 0 10px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.14);font-size:11.5px;font-weight:700;color:#fff}
-.dev-card.themed .dev-how{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.2);color:#fff}
-.dev-card.themed .dev-idle{background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.24)}
-.dev-card.themed .dev-out{background:rgba(255,255,255,.1);color:rgba(255,255,255,.8)}
-.dev-card.themed .dev-active{background:rgba(52,194,122,.25);color:#C8F5DC}
-.dev-card.themed .btn-ghost{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.22)}
-.dev-card.themed .dev-pending{background:rgba(255,255,255,.12);color:#fff}
-.dev-card.themed .dev-top{padding-inline-end:56px}
-.dev-ver{display:inline-flex;margin-inline-start:6px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:800;vertical-align:1px}
-.dev-ver.ok{background:rgba(52,194,122,.25);color:#C8F5DC}
-.dev-ver.old{background:rgba(255,190,80,.28);color:#FFE3B3}
-.dev-latest{margin-top:4px;opacity:.85}
-/* Inside a themed card the name stays plain white: the card itself shows the theme. */
-.dev-card.themed .who-badge{--wa:#fff;--wo:var(--d1);--ws:rgba(255,255,255,.16);--wi:#fff}
-
+.dev-ver{font-size:11px;margin-inline-start:6px}.dev-ver.ok{color:var(--accent-strong)}.dev-ver.old{color:var(--red)}.dev-latest{margin-top:4px}
 /* ---------- Rico: reading the other person's chat ---------- */
 .rico-viewing{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 12px;padding:12px 14px;border-radius:18px;background:rgba(var(--accent-rgb),.14);border:1px solid rgba(var(--accent-rgb),.3);font-size:13px;font-weight:700}
 .rico-viewing .btn{min-height:38px;font-size:12.5px}
@@ -1544,7 +1221,7 @@ html[data-theme="match"]{
 .rico-hist-tabs{display:flex;margin:4px 0 10px}
 .rico-hist-tabs .pill-seg-btn{flex:1}
 
-/* ---------- Dark mode (Settings; any theme keeps its colours, the page goes dark) ---------- */
+/* ---------- Dark mode ---------- */
 html.dark{
   --bg:#0E1512;--ink:#E6EEEA;--ink-soft:#A3B5AB;--ink-faint:#7F9288;
   --deep:#E3ECE7;--deep-rgb:227,236,231;--shade-rgb:0,0,0;
@@ -1564,19 +1241,13 @@ html.dark .qty-input:focus,html.dark .list-row.tappable:active,html.dark .item-r
 html.dark .ctx-preview .item-row{background:#1A241F}
 html.dark .tab-pill.active,html.dark .record-filters .tab-pill.active,html.dark .pick.on,html.dark .item-sort-rank,html.dark .pin-dot.filled .core,html.dark .seg-lens{background:color-mix(in srgb,var(--accent-strong) 70%,#0E1512)}
 html.dark .supplier-mono{background:rgba(255,255,255,.1)}
-html.dark .chip,html.dark .key,html.dark .theme-btn,html.dark .tab-pick-row,html.dark .rico-suggest-x,html.dark .modal-banner,html.dark .item-sort-row,html.dark .dev-how,html.dark .dev-idle,html.dark .rec-edit,html.dark .sel-btn,html.dark .pad-key,html.dark .wa-btn.done,html.dark .rico-time span,html.dark .notes-compose textarea{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1)}
+html.dark .chip,html.dark .key,html.dark .rico-suggest-x,html.dark .modal-banner,html.dark .item-sort-row,html.dark .dev-how,html.dark .dev-idle,html.dark .rec-edit,html.dark .sel-btn,html.dark .pad-key,html.dark .wa-btn.done,html.dark .rico-time span,html.dark .notes-compose textarea{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1)}
 html.dark .search-input,html.dark .field input:where(:not([type=checkbox]):not([type=radio])),html.dark .field select,html.dark .field textarea,html.dark .search-input:focus{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12);color:var(--ink)}
 html.dark .sel-panel{background:rgba(20,28,24,.97)}
 html.dark .bottomnav{border-color:rgba(255,255,255,.1);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 20px 40px -18px rgba(0,0,0,.7)}
-/* The More panel is solid white in light mode; in dark mode it needs its own dark glass. */
-html.dark .nav-more{background-color:#1C2420;border-color:rgba(255,255,255,.1);box-shadow:0 24px 48px -16px rgba(0,0,0,.75)}
-html.dark .nav-more .navbtn{color:#C9D6CF}
-html.dark .nav-edit{background:rgba(255,255,255,.07);color:#E6EEEA}
-html.dark .nav-badge,html.dark .nav-more-btn.has-badge::after{box-shadow:0 0 0 2px #1C2420}
+
 html.dark .key{box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 6px 16px -8px rgba(0,0,0,.5)}
 html.dark .rico-bubble,html.dark .rico-typing,html.dark .rico-composer{border-color:rgba(255,255,255,.1)}
-html.dark .season-bubble{background:#1B2520;color:var(--ink)}
-html.dark .theme-mini{border-color:rgba(255,255,255,.1)}
 html.dark .note-row:not(.is-done){background:#3A3214;border-color:#5C4E1C;color:#FFF3C2}
 html.dark .note-sticky{background:linear-gradient(170deg,#4A3F17,#3A3112);color:#FFF3C2}
 html.dark .note-sticky-top{color:#E9CF6B}
@@ -1588,8 +1259,7 @@ html.dark .login-brand-panel{color:#fff}
 html.dark .report-stats > div,html.dark .report-save,html.dark .report-chips span,html.dark .streak-bar,html.dark .report-bar i,html.dark .report-who{background:rgba(255,255,255,.06)}
 
 @media (prefers-reduced-motion:reduce){
-  #seasonDecor *,.season-peek,.season-peek *,.season-bit,.streak-chip .flame,.streak-hero .flame,.streak-boom *,.note-sticky,.note-banner,.notes-bell,.rico-bot .lc,.voice-btn{animation:none!important}
-  .season-bit{display:none}
+  .streak-chip .flame,.streak-hero .flame,.streak-boom *,.note-sticky,.note-banner,.notes-bell,.rico-bot .lc,.voice-btn{animation:none!important}
 }
 /* Order cut-off countdown */
 .cut-chip{display:inline-flex;align-items:center;gap:4px;margin-inline-start:8px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;
@@ -1639,21 +1309,6 @@ html.dark .cut-chip.soon{background:rgba(245,166,35,.22);color:#FFD58A}
 .note-quick .chip{height:30px;padding:0 10px;font-size:12px;cursor:pointer}
 .note-quick .chip svg{width:13px;height:13px}
 html.dark .note-reply{background:rgba(255,255,255,.08)}
-/* Face ID */
-.faceid-row{display:flex;align-items:center;gap:12px}
-.faceid-row>div{flex:1;min-width:0}
-.faceid-ico{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:rgba(var(--accent-rgb),.16);color:var(--deep)}
-.faceid-ico svg{width:22px;height:22px}
-.faceid-row .btn{flex:none}
-.faceid-btn{margin:14px auto 0;display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border-radius:16px;border:1px solid rgba(var(--deep-rgb),.16);
-  background:rgba(255,255,255,.55);color:var(--deep);font-weight:800;font-size:14px;cursor:pointer}
-.faceid-btn svg{width:22px;height:22px}
-.faceid-btn:disabled{opacity:.5}
-html.dark .faceid-btn{background:rgba(255,255,255,.07);color:#E6EEEA;border-color:rgba(255,255,255,.14)}
-.hist-top{flex-wrap:wrap}
-.hist-top .row-actions{flex-wrap:wrap;justify-content:flex-end;min-width:0;margin-inline-start:auto}
-.hist-repeat svg{width:17px;height:17px}
-
 /* Clearer workspace hierarchy and controls across all tabs. */
 .page-heading{align-items:flex-start;gap:16px;margin-bottom:20px}
 .page-heading>div{min-width:0;flex:1}
@@ -1696,3 +1351,27 @@ html.dark .faceid-btn{background:rgba(255,255,255,.07);color:#E6EEEA;border-colo
 .item-info{min-width:0}.item-name,.list-row .name{overflow-wrap:anywhere}.list-search{margin:12px 0 18px}.list-search .field-hint{margin:6px 4px}.search-count{font-size:.8rem;min-height:1em;color:var(--ink);opacity:.75}.search-clear{border:0;background:none;color:var(--ink);font-size:1.5rem;min-width:44px;min-height:44px;cursor:pointer}.catalog-search{display:flex;align-items:center}.catalog-search input{min-width:0;flex:1}.catalog-search>svg{width:18px;flex-shrink:0;margin-inline:12px}.rico-card-line>span{min-width:0;overflow-wrap:anywhere}.rico-card-line>span+span{font-size:.85rem;text-align:end;max-width:58%}.unit-chip{min-width:0}
 
 .search-wrap:has(#itemSearch){display:flex;align-items:center}.search-wrap:has(#itemSearch) .search-input{min-width:0;flex:1}
+
+/* Three clear destinations; catalog work stays together in Manage. */
+.manage-nav{margin:0 0 20px;display:grid;gap:12px}
+.manage-sections{display:flex;padding:4px;border:1px solid var(--line);border-radius:14px;background:var(--glass)}
+.manage-section{flex:1;border:0;background:transparent;color:var(--ink-soft);padding:12px 8px;border-radius:10px;font:600 13px var(--font);min-height:44px}
+.manage-section.active{background:var(--accent-soft);color:var(--deep)}
+.manage-menu,.list-options,.order-options{border:1px solid var(--line);border-radius:12px;background:var(--glass)}
+.manage-menu summary,.list-options summary,.order-options summary{cursor:pointer;padding:12px 14px;font-size:13px;font-weight:600;min-height:44px}
+.manage-menu nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:4px 10px 10px;gap:6px}
+.manage-menu button{display:flex;align-items:center;gap:8px;min-height:44px;padding:10px;border:0;border-radius:9px;background:transparent;text-align:start;font:500 13px var(--font)}
+.manage-menu button:hover,.manage-menu button[aria-current=page]{background:var(--accent-soft);color:var(--deep)}
+.manage-back{justify-self:start}
+.order-options{flex:1 1 100%}
+.order-options-body{padding:0 12px 12px}
+.order-options .order-tools{margin-bottom:12px}
+.order-options .order-quick-actions{display:flex;flex-wrap:wrap}
+.list-options>div{padding:0 10px 10px}
+.manage-menu[open] nav,.order-options[open] .order-options-body,.list-options[open]>div{animation:optionsIn 180ms var(--ease-out)}
+@keyframes optionsIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.manage-menu[open] nav,.order-options[open] .order-options-body,.list-options[open]>div{animation:none}}
+
+.catalog-search input{padding-inline-start:42px;font-size:16px}
+#catalogSearchCount:empty{display:none}
+html.dark .manage-section.active,html.dark .manage-menu button:hover{background:rgba(52,194,122,.16);color:var(--ink)}
