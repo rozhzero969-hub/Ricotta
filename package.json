@@ -7,7 +7,7 @@
     "lint": "node scripts/lint.cjs"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite": "0.5.9",
     "eslint": "9.39.5",
     "playwright": "1.55.1"
   },
