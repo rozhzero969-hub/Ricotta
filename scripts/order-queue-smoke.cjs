@@ -202,6 +202,7 @@ const server=http.createServer((req,res)=>{
       await page.locator('#sendOrdersBtn').click();
       await sendTo(page,'Golden Bread Bakery');
       await page.locator('#queueBackBtn').click();
+      if(await page.locator('.order-options').getAttribute('open')===null)await page.locator('.order-options>summary').click();
       await page.locator('#clearOrderBtn').click();
       assert.equal(await stored(page),null,'a cleared order leaves nothing to resume');
       await page.locator('[data-inc="i0"]').click();
@@ -221,10 +222,12 @@ const server=http.createServer((req,res)=>{
       await sendTo(page,'Golden Bread Bakery');
       await page.waitForSelector('#queueRetrySave');
       await page.locator('#queueBackBtn').click();
+      if(await page.locator('.order-options').getAttribute('open')===null)await page.locator('.order-options>summary').click();
       await page.locator('#clearOrderBtn').click();
       assert.equal(await stored(page),null,'a refused save is cleared with the order');
       await page.locator('#toast .toast-undo').click();
       assert.equal((await stored(page))?.saveState,'failed','Undo brings the refused save back');
+      if(await page.locator('.order-options').getAttribute('open')===null)await page.locator('.order-options>summary').click();
       await page.locator('#clearOrderBtn').click();
       server.orders='ok';
       await page.locator('[data-inc="i0"]').click();
