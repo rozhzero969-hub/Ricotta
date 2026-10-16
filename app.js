@@ -717,20 +717,28 @@ function inAppFrame(){ return document.documentElement.classList.contains('app-s
 function scrollBox(){ return (inAppFrame() && document.querySelector('.content')) || document.scrollingElement; }
 /* Every screen in tab-bar order: the three tabs first, then the rest. */
 function navOrder(){ return [...state.tabs, ...state.views.filter(v=>!state.tabs.includes(v))]; }
-const managedView=v=>!['order','assistant','queue'].includes(v);
+const managedView=v=>['manage','itemsAdmin','suppliers','units'].includes(v);
+const moreViews=()=>['history','record','devices','settings'].filter(canOpen);
 const mainView=v=>managedView(v)?'manage':v;
 function viewIndex(v){ const i = navOrder().indexOf(v); return i >= 0 ? i : navOrder().length; }
 const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function renderBottomNav(){
-  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><span class="nav-indicator" aria-hidden="true"></span>${DEFAULT_TABS.map(id=>`<button class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}</button>`).join('')}</nav>`;
+  const button=id=>`<button type="button" class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}</button>`;
+  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><span class="nav-indicator" aria-hidden="true"></span>${DEFAULT_TABS.map(button).join('')}<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${moreViews().map(button).join('')}</div></nav>`;
 }
 function renderManageNav(){
-  const catalog=['manage','itemsAdmin','suppliers','units'].includes(state.view);
-  const sections=[['manage','items'],['suppliers','suppliers'],['units','units']];
-  return `<div class="manage-nav">${catalog?`<nav class="manage-sections" aria-label="${esc(t('catalog'))}">${sections.filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav>`:`<button type="button" class="btn btn-ghost manage-back" data-manage-view="manage">${ICON_BACK} ${esc(t('manage'))}</button>`}<details class="manage-menu"><summary>${esc(t('workspaceTools'))}</summary><nav aria-label="${esc(t('workspaceTools'))}">${['history','record','devices','settings'].filter(canOpen).map(v=>`<button type="button" data-manage-view="${v}" aria-current="${state.view===v?'page':'false'}">${NAV_ICONS[v]}${esc(viewLabel(v))}</button>`).join('')}</nav></details></div>`;
+  return `<div class="manage-nav"><nav class="manage-sections" aria-label="${esc(t('catalog'))}">${[['manage','items'],['suppliers','suppliers'],['units','units']].filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav></div>`;
 }
+function setMoreOpen(open){
+  const nav=document.querySelector('.bottomnav'),button=document.getElementById('navMoreBtn');
+  if(!nav||!button)return;
+  nav.classList.toggle('more-open',open);button.setAttribute('aria-expanded',String(open));
+}
+document.addEventListener('click',event=>{if(!event.target.closest('.bottomnav'))setMoreOpen(false);});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')setMoreOpen(false);});
 function markActiveNav(){
+  document.getElementById('navMoreBtn')?.classList.toggle('active',moreViews().includes(state.view));
   document.querySelectorAll('.bottomnav [data-view]').forEach(b=>{
     const on = b.dataset.view === mainView(state.view);
     b.classList.toggle('active', on);
@@ -745,7 +753,7 @@ function placeNavIndicator(){
   const phone = isPhoneLayout();
   // On a computer the More button is hidden, so the lens goes to the screen's own row.
   const active = phone
-    ? nav.querySelector(`:scope > .navbtn[data-view="${mainView(state.view)}"]`)
+    ? (moreViews().includes(state.view)?nav.querySelector('#navMoreBtn'):nav.querySelector(`:scope > .navbtn[data-view="${mainView(state.view)}"]`))
     : nav.querySelector(`.navbtn[data-view="${mainView(state.view)}"]`);
   if(!active || !active.offsetWidth){ ind.style.opacity = '0'; return; }
   ind.style.opacity = '1';
@@ -923,7 +931,7 @@ function pageGhost(content){
   return {layer, copy};
 }
 function goView(view, {fromOffset=0, keepLens=false} = {}){
-  closeLangMenu();
+  closeLangMenu();setMoreOpen(false);
   if(view !== 'assistant' && ricoRecorder.active) ricoResetVoice();   // leaving Rico drops an unsent recording
   if(!view || view === state.view || !canOpen(view)) return;
   reminderDraft = null;   // a reminder that wasn't saved stays off
@@ -1391,6 +1399,7 @@ function setLang(lang){
 function attachShellEvents(){
   const nav = document.querySelector('.bottomnav');
   nav.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>goView(b.dataset.view));
+  document.getElementById('navMoreBtn').onclick=()=>setMoreOpen(!nav.classList.contains('more-open'));
   document.getElementById('langBtn').onclick = e=>{ e.stopPropagation(); openLangMenu(e.currentTarget); };
   document.getElementById('logoutBtn').onclick = ()=>doLogout();
   document.getElementById('streakChip').onclick = openStreakSheet;
@@ -1984,6 +1993,7 @@ function attachOrderResultEvents(root){
 /* ============ Order: steppers, press-and-hold menu, Rico suggests ============ */
 /* One step up or down, from a tap, a held button or the keyboard. */
 function stepQty(btn){
+  playQtyTick(!!btn.dataset.inc);
   const id = btn.dataset.inc || btn.dataset.dec;
   if(!id) return;
   const next = btn.dataset.inc ? Math.min(MAX_QTY, (state.cart[id]||0)+1) : Math.max(0,(state.cart[id]||0)-1);
@@ -2292,6 +2302,7 @@ async function maybeFinishQueue(){
         items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
       }))
     };
+    if(!queue.record){try{playOrdersSent();}catch(_){/* Audio must never interrupt saving. */}}
     queue.record = record;
     queue.saveState = 'saving';
     persistQueue();   // the same order id after a restart, so it is never saved twice
@@ -3172,7 +3183,7 @@ function latestVersion(){
 }
 function renderSettings(){
   const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `${renderPendingSync()}${renderMessageSettings()}${renderAppearance()}${renderDisplaySettings()}${renderNotifSettings()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderMessageSettings()}${renderAppearance()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
 /* ============ Notifications (shown in Settings) ============ */
 /* The daily reminder starts as one switch. Turning it on opens the time,
@@ -3306,6 +3317,7 @@ function attachSettingsEvents(){
  const exp=document.getElementById('syncExportBtn');
  if(exp) exp.onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(currentOutbox(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ricotta-pending-orders.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   bindAppearance();
+  document.querySelectorAll('[data-sound]').forEach(box=>box.onchange=()=>{setSoundOn(box.dataset.sound,box.checked);});
   [['pref-compactRows','compactRows'],['pref-showLastQty','showLastQty']].forEach(([id,key])=>{
     const box = document.getElementById(id);
     if(box) box.onchange = ()=>{ lset(key, box.checked ? true : null); applyPrefs(); };
@@ -3315,3 +3327,7 @@ function attachSettingsEvents(){
 }
 
 boot();
+
+function renderOrderSounds(){
+  return `<details class="order-sound-settings"><summary>${esc(t('orderSounds'))}</summary><div class="form-card">${[['qty','quantitySound'],['sent','sentSound']].map(([id,key])=>`<label class="check-row preference-row"><input type="checkbox" id="sound-${id}" data-sound="${id}" ${soundOn(id)?'checked':''}><span>${esc(t(key))}</span></label>`).join('')}</div></details>`;
+}

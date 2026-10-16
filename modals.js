@@ -393,7 +393,7 @@ function showFormModal(opts) {
       label.htmlFor = control.id;
     }
   });
-  if (opts.onOpen) opts.onOpen(box);
+  if (opts.onOpen) opts.onOpen(box, {submit: () => submit(false)});
   /* Phones wait for a tap, avoiding an unexpected keyboard on opening. */
   if (matchMedia('(pointer: fine)').matches && document.activeElement === box) {
     dialog.focus(modalFocusable(box).find(control => control.matches('input, select, textarea, .sel-btn')));

@@ -126,10 +126,8 @@ const server=http.createServer((req,res)=>{
       assert.equal(saved[0].by,'yunis');
       assert.equal(await stored(page),null,lang+': nothing is left to resume');
       assert.equal(await page.evaluate(()=>localStorage.getItem('ricottaOrders:pendingCart:yunis')),null,lang+': the draft is cleared');
-      await page.locator('.bottomnav [data-view="manage"]').click();
-      await page.waitForFunction(()=>!document.querySelector('.content.gliding'));
-      await page.locator('.manage-menu>summary').click();
-      await page.locator('[data-manage-view="history"]').click();
+      await page.locator('#navMoreBtn').click();
+      await page.locator('.nav-more [data-view="history"]').click();
       await page.waitForFunction(()=>state.view==='history');
       assert.ok(await page.locator('.content').filter({hasText:'Tomato'}).count(),lang+': the order shows in History');
       // A restart afterwards shows the order screen, not the finished queue.

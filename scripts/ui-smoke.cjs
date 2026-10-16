@@ -117,14 +117,17 @@ const server=http.createServer((req,res)=>{
   const settle=page=>page.waitForFunction(()=>!document.querySelector('.content.gliding'),null,{timeout:4000});
   async function openView(page,view){
     const destination=view==='itemsAdmin'?'manage':view;
-    if(['order','assistant','manage'].includes(destination))await page.locator(`.bottomnav [data-view="${destination}"]`).click();
-    else{
+    if(['suppliers','units'].includes(destination)){
       await page.locator('.bottomnav [data-view="manage"]').click();await settle(page);
-      if(!['suppliers','units'].includes(destination))await page.locator('.manage-menu>summary').click();
       await page.locator(`[data-manage-view="${destination}"]`).click();
+    }else{
+      if(!['order','assistant','manage'].includes(destination) && await page.evaluate(()=>innerWidth<960)){
+        if(await page.locator('#navMoreBtn').getAttribute('aria-expanded')!=='true')await page.locator('#navMoreBtn').click();
+      }
+      await page.locator(`.bottomnav [data-view="${destination}"]`).click();
     }
     await settle(page);
-    if(destination==='order' && !(await page.locator('.order-options').getAttribute('open')!==null))await page.locator('.order-options>summary').click();
+    if(destination==='order' && await page.locator('.order-options').getAttribute('open')===null)await page.locator('.order-options>summary').click();
   }
   async function ensureOrderOptions(page){if(await page.locator('.order-options').count() && await page.locator('.order-options').getAttribute('open')===null)await page.locator('.order-options>summary').click();}
   async function noOverflow(page,label){
@@ -191,7 +194,13 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('[data-qty="i1"]').inputValue(),'12');
     assert.equal(await page.evaluate(()=>originalRow===document.querySelector('[data-item-id="i1"]')),true,'quantity preserves the actual row');
     assert.equal(await inc.evaluate(el=>el===document.activeElement),true,'repeated taps retain focus');
-    assert.equal(await page.evaluate(()=>typeof window.AudioContext==='function' && typeof playQtyTick==='function'),false,'no decorative sound implementation remains');
+    await page.evaluate(()=>{window.__tones=[];window.soundTone=f=>__tones.push(Math.round(f));lastTick=0;});
+    await inc.click();await page.waitForTimeout(60);await page.locator('[data-dec="i1"]').click();
+    assert.deepEqual(await page.evaluate(()=>__tones),[1150,900],'quantity changes play the familiar two pitches');
+    await page.evaluate(()=>{setSoundOn('qty',false);__tones=[];lastTick=0;});await inc.click();
+    assert.deepEqual(await page.evaluate(()=>__tones),[],'quantity sounds can be switched off');
+    await page.evaluate(()=>{setSoundOn('qty',true);__tones=[];playOrdersSent();});
+    assert.deepEqual(await page.evaluate(()=>__tones.filter((f,i)=>i%2===0)),[523,659,784,1047],'sent chime restored without seasonal audio');
     await page.locator('[data-qty="i1"]').fill('24');
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('ricottaOrders:pendingCart:rozha')).i1),24,'draft saves to the signed-in account before blur');
     await page.reload();await page.waitForSelector('#splash',{state:'detached'});
@@ -235,7 +244,7 @@ const server=http.createServer((req,res)=>{
     await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>setLang('en'));
     for(const view of ALL_VIEWS){
       await openView(page,view);
-      assert.equal(await page.locator('.bottomnav [aria-current="page"]').getAttribute('data-view'),['order','assistant'].includes(view)?view:'manage');
+      assert.equal(await page.locator('.bottomnav [aria-current="page"]').getAttribute('data-view'),['manage','itemsAdmin','suppliers','units'].includes(view)?'manage':view);
     }
     await openView(page,'order');await page.locator('[data-ordertab="all"]').click();await snapshot(page,'desktop-order.png');
     await page.evaluate(()=>{
@@ -330,8 +339,9 @@ const server=http.createServer((req,res)=>{
     await page.locator('#modalFormCancel').click();
     // Fixed main destinations: Order, Rico and Manage.
     await page.setViewportSize({width:390,height:844});await openView(page,'order');
-    assert.deepEqual(await page.locator('.bottomnav > .navbtn').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','manage']);
-    assert.equal(await page.locator('#navMoreBtn,#navEditTabs').count(),0);
+    assert.deepEqual(await page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','manage']);
+    assert.equal(await page.locator('#navMoreBtn').count(),1);
+    assert.equal(await page.locator('#navEditTabs').count(),0);
     await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
     const q5=page.locator('[data-qty="i5"]');
     await q5.focus();
@@ -453,7 +463,7 @@ const server=http.createServer((req,res)=>{
     assert.ok(await y.page.locator('.item-last').count()>=1,'Last quantity shows on rows when switched on');
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await y.page.locator('label:has(#pref-showLastQty)').click();
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','reminderEnabled:false']);
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','sound-qty:true','sound-sent:true','reminderEnabled:false']);
     // Daily reminder, for Yunis too: the switch opens the time, Save and a test; only Save turns it on.
     assert.equal(await y.page.locator('#reminderTime').count(),0,'the daily reminder starts as just a switch');
     await y.page.locator('label:has(#reminderEnabled)').click();

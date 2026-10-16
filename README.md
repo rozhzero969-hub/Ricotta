@@ -34,7 +34,7 @@ The Lab (`lab/`, see its README) runs the real app on sample data for trying the
 
 ## Simple workspace
 
-The three main tabs are Order, Rico and Manage. Manage groups Items, Suppliers and Units, with History, Records, Devices (Rozha only) and Settings under History & settings. Order keeps its large summary; Order options holds notes, quantity scaling, repeat orders, voice and clearing. Imports are in Manage > More tools. English aliases remain searchable and editable without adding lines to item lists. The app uses one palette with light, dark or system appearance. Themes, weather effects, seasonal surprises, decorative sounds and Face ID have been removed; PIN sign-in stays protected by Cloudflare.
+The three main tabs are Order, Rico and Manage. Manage groups Items, Suppliers and Units, History, Records, Devices (Rozha only) and Settings keep separate tabs: in More on phones and directly in the desktop sidebar. Order keeps its large summary; Order options holds notes, quantity scaling, repeat orders, voice and clearing. Imports are in Manage > More tools. English aliases remain searchable and editable without adding lines to item lists. The app uses one palette with light, dark or system appearance. Quantity taps and the order-sent chime have switches in Settings > Order sounds. Themes, weather effects, seasonal surprises and Face ID have been removed; PIN sign-in stays protected by Cloudflare.
 
 ## Development and checks
 
@@ -84,3 +84,5 @@ The spreadsheet reader is the official SheetJS Community Edition 0.20.3 standalo
 Order, Items, Suppliers, Units, History, Records and long dropdowns use the shared matcher in `supabase/functions/_shared/search.js`. It matches Kurdish/Arabic letter variants, English aliases, plural forms, unordered words and bounded spelling mistakes. Exact matches rank first; numeric values and short food names are not fuzzy matched. English aliases appear beneath the primary Kurdish item name, which remains the name sent to suppliers. Searches have clear buttons and result feedback. Record search searches beyond the first visible page without rebuilding the input.
 
 Rico reads aliases, availability and item notes and can propose changes to these fields. `propose_item_aliases` previews up to 200 alias changes together. Confirmation calls an authenticated, atomic alias-only RPC that preserves all other catalog fields, writes audit events and refuses stale aliases or renamed/deleted items. Repeated confirmation is idempotent. Rico suggestions preserve fractional quantities and skip unavailable items.
+
+The sign-in security check centres the Cloudflare widget and continues automatically after successful verification. PIN validation still happens on the server.
