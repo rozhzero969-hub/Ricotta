@@ -864,8 +864,12 @@ const segEnd = e=>{
   if(seg){ seg.classList.remove('held'); segPills(seg).forEach(x=>x.classList.remove('lens-over')); segPlace(seg); }
   if(!d.moved) return;
   // The browser's own click after a drag must not also press whatever is under the finger.
-  const swallow = ev=>{ ev.stopPropagation(); ev.preventDefault(); };
-  document.addEventListener('click', swallow, {capture:true, once:true});
+  const swallow = ev=>{
+    if(!seg?.contains(ev.target)) return;
+    ev.stopPropagation(); ev.preventDefault();
+    document.removeEventListener('click',swallow,{capture:true});
+  };
+  document.addEventListener('click', swallow, {capture:true});
   setTimeout(()=>document.removeEventListener('click', swallow, {capture:true}), 300);
 };
 document.addEventListener('pointerup', segEnd);

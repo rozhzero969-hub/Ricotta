@@ -70,6 +70,16 @@ const server=http.createServer((req,res)=>{
   assert.match(await page.locator('#recordResults').textContent(),/No matches/i);
   await page.locator('#catalogSearchClear').click();
   assert.ok(await page.locator('.rec-card:visible').count()>1);
+  assert.equal(await page.evaluate(()=>{
+    const seg=document.querySelector('.record-filters.seg'),buttons=seg.querySelectorAll('.tab-pill');
+    const start=buttons[0].getBoundingClientRect(),end=buttons[1].getBoundingClientRect();
+    const x=start.left+start.width/2,y=start.top+start.height/2,to=end.left+end.width/2;
+    buttons[0].dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:21,pointerType:'touch',clientX:x,clientY:y}));
+    document.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:21,pointerType:'touch',clientX:to,clientY:y}));
+    document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerId:21,pointerType:'touch',clientX:to,clientY:y}));
+    document.querySelector('.bottomnav [data-view="manage"]').click();
+    return state.view;
+  }),'manage','a filter drag does not swallow the next navigation tap');
   await nav('units');
   await page.locator('#catalogSearch').fill('kilogram');
   await page.locator('#catalogSearchClear').click();
