@@ -8,7 +8,7 @@ set -e
 cd "$(dirname "$0")"
 rm -rf dist
 mkdir -p dist
-for f in style.css config.js icons.js i18n.js storage.js modals.js bot-check.js push.js assistant.js kitchen.js ordering-tools.js app.js update-check.js boot.js icon-192.png apple-touch-icon.png rico-happy.png; do
+for f in style.css config.js icons.js i18n.js storage.js sounds.js modals.js bot-check.js push.js assistant.js kitchen.js ordering-tools.js app.js update-check.js boot.js icon-192.png apple-touch-icon.png rico-happy.png; do
   cp "../$f" dist/
 done
 mkdir -p dist/supabase/functions/_shared

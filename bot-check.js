@@ -29,11 +29,11 @@ async function authBotProof(){
   try{client=await loadTurnstile();}catch{return {error:'verification'};}
   try{
     await showFormModal({title:esc(t('securityCheck')),bodyHtml:`<p>${esc(t('securityCheckHint'))}</p><div id="authChallenge"></div>`,okLabel:t('securityContinue'),
-      onOpen:box=>{
-        const ok=box.querySelector('#modalFormOk');ok.disabled=true;
+      onOpen:(box,{submit})=>{
+        const ok=box.querySelector('#modalFormOk');ok.hidden=true;ok.disabled=true;
         const reset=()=>{token='';ok.disabled=true;};
         try{widget=client.render(box.querySelector('#authChallenge'),{sitekey:r.data.siteKey,action:'ricotta_auth',theme:document.documentElement.classList.contains('dark')?'dark':'light',size:'compact',
-          callback:value=>{if(!box.isConnected)return;token=value;ok.disabled=false;},'expired-callback':reset,'error-callback':()=>{reset();box.querySelector('#modalFormStatus').textContent=t('securityCheckFailed');}});
+          callback:value=>{if(!box.isConnected || confirmed || !value)return;token=value;ok.disabled=false;submit();},'expired-callback':reset,'error-callback':()=>{reset();box.querySelector('#modalFormStatus').textContent=t('securityCheckFailed');}});
         }catch{box.querySelector('#modalFormStatus').textContent=t('securityCheckFailed');}
       },
       onSubmit:async()=>{if(!token)return {error:t('securityCheckFailed')};confirmed=true;return {};},

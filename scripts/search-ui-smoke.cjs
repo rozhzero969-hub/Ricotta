@@ -17,7 +17,7 @@ const server=http.createServer((req,res)=>{
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.locator('#itemSearch').waitFor();
   await page.waitForFunction(()=>state.items.length>10);
-  assert.deepEqual(await page.locator('.bottomnav [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','manage']);
+  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','manage']);
   assert.equal(await page.locator('.hero-card,.streak-chip').count(),2,'summary board and kitchen streak remain');
   assert.equal(await page.locator('.order-options').getAttribute('open'),null,'occasional tools start collapsed');
   assert.equal(await page.locator('#clearOrderBtn').isVisible(),false);
@@ -30,11 +30,12 @@ const server=http.createServer((req,res)=>{
   assert.equal(await page.locator('.bottomnav [data-view="manage"]').getAttribute('aria-current'),'page');
   await page.locator('[data-manage-view="units"]').click();
   await page.locator('.unit-chip').first().waitFor();
-  await page.locator('.manage-menu>summary').click();
-  await page.locator('[data-manage-view="settings"]').click();
+  assert.equal(await page.locator('[data-manage-view="settings"]').count(),0,'Settings is not inside Manage');
+  await page.locator('#navMoreBtn').click();
+  await page.locator('.nav-more [data-view="settings"]').click();
   await page.locator('[data-dark="on"]').click();
   assert.equal(await page.evaluate(()=>document.documentElement.classList.contains('dark')),true);
-  assert.equal(await page.locator('.theme-btn,.faceid-btn,#faceIdToggle,[id^="sound-"],#pref-weatherFx').count(),0,'retired features have no UI');
+  assert.equal(await page.locator('.theme-btn,.faceid-btn,#faceIdToggle,#pref-weatherFx').count(),0,'retired features have no UI');
   await page.locator('[data-dark="off"]').click();
   await page.locator('.bottomnav [data-view="order"]').click();
   await page.waitForFunction(()=>!document.querySelector('.content.gliding'));
@@ -97,19 +98,25 @@ const server=http.createServer((req,res)=>{
   // Exercise the real verification dialog using a local provider stub.
   await page.evaluate(()=>{
     authSecurityConfig=async()=>({ok:true,data:{required:true,siteKey:'local-test'}});
-    window.turnstile={render:(el,opts)=>{window.proofOptions=opts;el.textContent='Local verification';return 'local-widget';},remove:()=>{window.proofRemoved=true;}};
+    window.turnstile={render:(el,opts)=>{window.proofOptions=opts;el.innerHTML='<div style="width:150px;height:140px">Local verification</div>';return 'local-widget';},remove:()=>{window.proofRemoved=true;}};
     window.proofResult=authBotProof();
   });
   await page.locator('#authChallenge').waitFor({state:'attached'});
   assert.equal(await page.locator('#modalFormOk').isEnabled(),false,'verification requires a token');
-  await page.evaluate(()=>proofOptions.callback('verified-token'));
-  assert.equal(await page.locator('#modalFormOk').isEnabled(),true);
+  assert.equal(await page.locator('#modalFormOk').isVisible(),false,'no manual Continue step');
+  const alignment=await page.locator('#authChallenge').evaluate(el=>{const frame=el.firstElementChild.getBoundingClientRect(),body=el.getBoundingClientRect();return Math.abs((frame.left+frame.right)-(body.left+body.right));});
+  assert.ok(alignment<2,'verification widget is centred');
   await page.evaluate(()=>proofOptions['expired-callback']());
   assert.equal(await page.locator('#modalFormOk').isEnabled(),false,'expired proof cannot be submitted');
-  await page.evaluate(()=>proofOptions.callback('fresh-token'));
-  await page.locator('#modalFormOk').click();
-  assert.deepEqual(await page.evaluate(()=>proofResult),{token:'fresh-token'});
+  await page.evaluate(()=>{proofOptions.callback('fresh-token');proofOptions.callback('duplicate-token');});
+  assert.deepEqual(await page.evaluate(()=>proofResult),{token:'fresh-token'},'success continues automatically exactly once');
   assert.equal(await page.evaluate(()=>proofRemoved),true,'widget is cleaned up');
+  await page.evaluate(()=>{window.proofResult=authBotProof();});
+  await page.locator('#authChallenge').waitFor({state:'attached'});
+  await page.locator('#modalFormCancel').click();
+  assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'});
+  await page.evaluate(()=>proofOptions.callback('late-token'));
+  assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'},'late success cannot undo cancellation');
   await page.evaluate(()=>{window.turnstile.render=()=>{throw Error('provider failed');};window.proofResult=authBotProof();});
   await page.locator('#authChallenge').waitFor({state:'attached'});
   assert.match(await page.locator('#modalFormStatus').textContent(),/could not finish/);

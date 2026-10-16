@@ -2,6 +2,9 @@
    access the signed-in account and workspace when a screen is opened. */
 const ORDERING_TEXT = {
   en: {
+    orderSounds: "Order sounds",
+    quantitySound: "Quantity + / − taps",
+    sentSound: "Order sent chime",
     manage: "Manage",
     catalog: "Catalog",
     workspaceTools: "History & settings",
@@ -66,6 +69,9 @@ const ORDERING_TEXT = {
     guideSettings: "Adjust messages, appearance, notifications and sign-in.",
   },
   ku: {
+    orderSounds: "دەنگەکانی داواکاری",
+    quantitySound: "دەنگی زیاد و کەمکردنی بڕ",
+    sentSound: "دەنگی ناردنی داواکاری",
     manage: "بەڕێوەبردن",
     catalog: "کاڵاکان",
     workspaceTools: "مێژوو و ڕێکخستنەکان",
@@ -131,6 +137,9 @@ const ORDERING_TEXT = {
     guideSettings: "پەیام، ڕووکار، ئاگادارکردنەوە و چوونەژوورەوە ڕێکبخە.",
   },
   ar: {
+    orderSounds: "أصوات الطلب",
+    quantitySound: "نقرات زيادة وتقليل الكمية",
+    sentSound: "نغمة إرسال الطلب",
     manage: "إدارة",
     catalog: "الكتالوج",
     workspaceTools: "السجل والإعدادات",
