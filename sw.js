@@ -5,17 +5,24 @@ const STATIC_FILES = [];
 const assetUrls = new Set(STATIC_FILES.map(file=>new URL(file,self.registration.scope).href));
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil((async()=>{
-  for(const key of await caches.keys()) if(key.startsWith('ricotta-static-') && key !== STATIC_CACHE) await caches.delete(key);
+  try{
+    for(const key of await caches.keys()) if(key.startsWith('ricotta-static-') && key !== STATIC_CACHE) await caches.delete(key);
+  }catch(_){ /* unavailable/full cache storage cannot prevent worker activation */ }
   await self.clients.claim();
 })()));
 self.addEventListener('fetch', event => {
   const request=event.request;
   if(request.method !== 'GET' || !assetUrls.has(request.url)) return;
   event.respondWith((async()=>{
-    const cache=await caches.open(STATIC_CACHE), hit=await cache.match(request);
-    if(hit) return hit;
+    let cache;
+    try{
+      cache=await caches.open(STATIC_CACHE);
+      const hit=await cache.match(request);
+      if(hit) return hit;
+    }catch(_){cache=null;}
+    // Private browsing/storage failures are a network-only visit, never a broken script.
     const response=await fetch(request);
-    if(response.ok && response.type === 'basic') {
+    if(cache && response.ok && response.type === 'basic') {
       // Best effort: full/private storage must never turn a valid response into a failure.
       event.waitUntil(cache.put(request,response.clone()).catch(()=>{}));
     }
