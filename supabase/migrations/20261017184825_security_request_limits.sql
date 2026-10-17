@@ -4,6 +4,7 @@ create table public.app_request_limits (
   hits integer not null check (hits > 0),
   reset_at timestamptz not null
 );
+create index app_request_limits_reset_at_idx on public.app_request_limits(reset_at);
 alter table public.app_request_limits enable row level security;
 revoke all on public.app_request_limits from public, anon, authenticated;
 grant all on public.app_request_limits to service_role;
