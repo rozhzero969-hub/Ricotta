@@ -217,16 +217,16 @@ const unitsFor = item => item && item.units && item.units.length ? item.units : 
 function findStock(q){
   const items = stockList.items || [];
   if(!q.trim()) return items;
-  const found = RicottaSearch.rank(items, q, stockFields);
+  const found = globalThis.RicottaSearch.rank(items, q, stockFields);
   if(found.length) return found;
-  return [...new Set(q.split(/\s+/).filter(w=>w.length > 1).flatMap(w=>RicottaSearch.rank(items, w, stockFields)))];
+  return [...new Set(q.split(/\s+/).filter(w=>w.length > 1).flatMap(w=>globalThis.RicottaSearch.rank(items, w, stockFields)))];
 }
 /* Finds the item on this phone (when Rico can't help, and for the search box). Sure only when one
    item's name or remembered spelling is exactly what was written. */
 function matchStockLocally(said){
   const items = stockList.items || [];
   if(!said || !items.length) return {itemId:null, sure:false, suggestions:[]};
-  const scored = items.map(i=>({i, s:RicottaSearch.score(said, stockFields(i))})).filter(x=>Number.isFinite(x.s)).sort((a, b)=>a.s - b.s);
+  const scored = items.map(i=>({i, s:globalThis.RicottaSearch.score(said, stockFields(i))})).filter(x=>Number.isFinite(x.s)).sort((a, b)=>a.s - b.s);
   const best = scored[0], next = scored[1];
   const sure = !!best && best.s <= 2 && (!next || next.s > 2);
   return {itemId: best ? best.i.id : null, sure, suggestions: (scored.length ? scored.map(x=>x.i) : findStock(said)).slice(0, 4).map(i=>i.id)};
@@ -238,7 +238,7 @@ function parseTransferText(text){
     const num = foldText(line).replace(/(\d)[٫,.](\d)/g, '$1.$2').match(/\d+(?:\.\d+)?/);
     // Each word without its digits ("2kg" -> "kg"); the unit is kept as written.
     const words = line.split(/\s+/).filter(Boolean).map(w=>({w, bare:w.replace(/[0-9٠-٩۰-۹.,٫]+/g, '')}));
-    const unitWord = words.find(x=>x.bare && RicottaSearch.isUnit(x.bare, known));
+    const unitWord = words.find(x=>x.bare && globalThis.RicottaSearch.isUnit(x.bare, known));
     const said = words.filter(x=>x !== unitWord && !/\d/.test(foldText(x.w))).map(x=>x.w).join(' ').replace(/^[-–:×*·•.]+|[-–:×*·•.]+$/g, '').trim();
     return {said: said || line, amount: num ? Number(num[0]) : null, unit: unitWord ? unitWord.bare : null};
   });
@@ -272,7 +272,7 @@ const issueText = (row, issue) => issue === 'unit' ? t(row.unit ? 'trUnitWrong' 
 function addTransferRows(rows){
   for(const r of rows){
     const item = stockItem(r.itemId);
-    const unit = item ? (RicottaSearch.unit(unitsFor(item), r.unit || '') || (r.unit && !item.units.length ? r.unit : null)) : (r.unit || null);
+    const unit = item ? (globalThis.RicottaSearch.unit(unitsFor(item), r.unit || '') || (r.unit && !item.units.length ? r.unit : null)) : (r.unit || null);
     const row = {id:newRowId(), said:String(r.said || item?.name || '').slice(0, 160), itemId:item ? item.id : null, sure:!!(item && r.sure), amount:validAmount(r.amount) ? Math.round(r.amount * 1000) / 1000 : null, unit, suggestions:(r.suggestions || []).filter(id=>stockItem(id)).slice(0, 4)};
     const same = row.itemId && transfer.rows.find(x=>x.itemId === row.itemId && x.unit === row.unit && x.sure && row.sure);
     if(same && validAmount(same.amount) && row.amount) same.amount = Math.round((same.amount + row.amount) * 1000) / 1000;
@@ -319,7 +319,7 @@ function renderTransferRow(row){
   const unitOptions = `<option value="" disabled ${row.unit ? '' : 'selected'}>${esc(t('trChooseUnit'))}</option>` + [...new Set([...units, ...(row.unit && !units.includes(row.unit) && !(item && item.units.length) ? [row.unit] : [])])]
     .map(u=>`<option value="${esc(u)}" ${u === row.unit ? 'selected' : ''}>${esc(u)}</option>`).join('');
   // "You wrote" only when the spelling was not one of the item's own names (its full name, either half, a remembered spelling).
-  const differs = item && row.said && RicottaSearch.score(row.said, stockFields(item), false) > 2;
+  const differs = item && row.said && globalThis.RicottaSearch.score(row.said, stockFields(item), false) > 2;
   const message = issueText(row, issue);
   const suggestions = issue === 'item' || issue === 'check' ? row.suggestions.filter(id=>id !== row.itemId).map(stockItem).filter(Boolean).slice(0, 3) : [];
   return `<div class="tr-row glass${issue ? ' bad' : ''}${issue === 'check' ? ' check' : ''}" data-row="${esc(row.id)}">
@@ -452,9 +452,9 @@ async function chooseStockItem(row, itemId, remember){
   if(!item) return;
   const said = row.said;
   row.itemId = item.id; row.sure = true;
-  row.unit = RicottaSearch.unit(unitsFor(item), row.unit || '') || (item.units.length === 1 ? item.units[0] : null);
+  row.unit = globalThis.RicottaSearch.unit(unitsFor(item), row.unit || '') || (item.units.length === 1 ? item.units[0] : null);
   saveTransfer(); paintTransfers();
-  if(remember && said && RicottaSearch.score(said, stockFields(item), false) > 2){
+  if(remember && said && globalThis.RicottaSearch.score(said, stockFields(item), false) > 2){
     const r = await api(`stock-items/${encodeURIComponent(item.id)}/alias`, {method:'POST', body:{alias:said}});
     if(r.ok) item.aliases = [...(item.aliases || []), said].slice(-30);
   }
