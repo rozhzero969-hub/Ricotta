@@ -7,8 +7,8 @@
   document.documentElement.classList.add('booting');
   const LS = 'ricottaOrders:';
   const DB_KEY = 'ricottaLab:db';
-  const VIEWS = ['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings'];
-  const ACCOUNT_VIEWS = {rozha:VIEWS, yunis:['order','assistant','history','suppliers','itemsAdmin','units','record']};
+  const VIEWS = ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record','devices','settings'];
+  const ACCOUNT_VIEWS = {rozha:VIEWS, yunis:['order','assistant','transfers','history','suppliers','itemsAdmin','units','record']};
   const NAMES = {rozha:{en:'Rozha',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}};
 
   const lsGet = k => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(_){ return null; } };
@@ -112,11 +112,22 @@
       suppliers:[{name:'Zakho Dairy', orders:16, lines:84}, {name:'Erbil Veg Market', orders:13, lines:101}],
       topItems:[{name:'Tomatoes', unit:'kg', times:13, qty:80}, {name:'Mozzarella', unit:'kg', times:12, qty:52}]}
   ];
+  /* The workplace stock system's item list (Transfers), in its "English - کوردی" naming. */
+  const STOCK_SEED = [
+    ['Al Hadbaa Flour - ئاردی حەدبا', ['فەردە','کیلۆ']], ['Almonds - بادەم', ['کیلۆ']], ['Al Mudhish Milk - شیری مودهش', ['دانە','کارتۆن']],
+    ['Bato Fries - پەتاتەی باتۆ', ['کارتۆن']], ['Aleppo Pepper - بیبەری حەلەب', ['کیلۆ']], ['Apple Cider Vinegar - سرکەی سێو', ['دانە']],
+    ['Banoleya Bread - نانی بانۆلیا', ['سێت','دانە']], ['Barbecue Sauce - سۆسی باربیکیو', ['دانە','کارتۆن']], ['Beans - فاسۆلیا', ['فەردە','کیلۆ']],
+    ['Tomatoes - تەماتە', ['کیلۆ','سندوق']], ['Onions - پیاز', ['فەردە','کیلۆ']], ['Mozzarella - مۆزارێلا', ['کیلۆ']],
+    ['Eggs - هێلکە', ['کارتۆن','دانە']], ['Cucumber - خەیار', ['کیلۆ']], ['Lemons - لیمۆ', ['کیلۆ']], ['Sunflower Oil - ڕۆنی گوڵەبەڕۆژە', ['تەنەکە','دانە']],
+    ['Black Tea - چای ڕەش', ['پاکەت','کارتۆن']], ['Sugar - شەکر', ['فەردە','کیلۆ']], ['Kebab Meat - گۆشتی کەباب', ['کیلۆ']], ['Chicken Breast - سنگی مریشک', ['کیلۆ','کارتۆن']],
+    ['Pizza Cheese - پەنیری پیتزا', ['کیلۆ','کارتۆن']], ['Dish Soap - سابوونی قاپ', ['دانە','کارتۆن']], ['Mini Water - ئاوی بچووک', ['کارتۆن']], ['Pepsi Can - پیپسی قوتوو', ['کارتۆن','دانە']]
+  ].map(([name, units], i)=>({id:'st-'+(i+1), name, units, aliases:[]}));
   let db = lsGet(DB_KEY);
   if(!db || db.v !== 4) db = seed();
+  if(!Array.isArray(db.stock)) db.stock = STOCK_SEED.map(i=>({...i, units:[...i.units]}));
   const save = () => lsSet(DB_KEY, db);
   save();
-  window.labResetData = () => { db = seed(); save(); };
+  window.labResetData = () => { db = seed(); db.stock = STOCK_SEED.map(i=>({...i, units:[...i.units]})); save(); };
   window.labDb = () => db;
 
   /* Signed in as Rozha when the Lab opens, so the real Order screen shows first. */
@@ -124,7 +135,7 @@
   const sess = lsGet(LS+'apiSession');
   if(!db.signedOut && (!sess || String(sess.token||'').startsWith('lab-'))){
     const account = sess?.account === 'yunis' ? 'yunis' : 'rozha';
-    lsSet(LS+'apiSession', {token:'lab-'+account, account, name:NAMES[account].en, tabs:['order','assistant','manage'], expiresAt:new Date(Date.now()+18*3600000).toISOString()});
+    lsSet(LS+'apiSession', {token:'lab-'+account, account, name:NAMES[account].en, tabs:['order','assistant','transfers','manage'], expiresAt:new Date(Date.now()+18*3600000).toISOString()});
   }
 
   /* ---- helpers ---- */
@@ -252,7 +263,7 @@
       if(!/^\d{6}$/.test(pin)) return fail('invalid_credentials', 401);
       const account = pin === '222222' ? 'yunis' : 'rozha';
       db.signedOut = false; save();
-      return json({token:'lab-'+account, account, name:NAMES[account].en, tabs:['order','assistant','manage'], expiresAt:new Date(Date.now()+18*3600000).toISOString()});
+      return json({token:'lab-'+account, account, name:NAMES[account].en, tabs:['order','assistant','transfers','manage'], expiresAt:new Date(Date.now()+18*3600000).toISOString()});
     }
     if(path.startsWith('recovery/')) return fail('invalid_credentials', 401);
     if(method === 'GET' && path === 'health') return ok();
@@ -262,7 +273,7 @@
     if(method === 'GET' && path === 'bootstrap'){
       const me = account;
       return json({
-        account:me, name:NAMES[me].en, tabs:['order','assistant','manage'], views:ACCOUNT_VIEWS[me],
+        account:me, name:NAMES[me].en, tabs:['order','assistant','transfers','manage'], views:ACCOUNT_VIEWS[me],
         suppliers:db.suppliers, items:db.items, units:db.units,
         history:history(), historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
         activity:db.activity.filter(a=>a.ts >= monthStartIso()), inbox:db.inbox.slice(-20),
@@ -303,6 +314,36 @@
     }
     if(method === 'DELETE' && (m = path.match(/^repeat-orders\/(.+)$/))){ db.repeats = (db.repeats || []).filter(r=>r.id !== m[1]); save(); return ok(); }
     if(method === 'GET' && path === 'months') return json(LAB_MONTHS);
+    if(method === 'GET' && path === 'stock-items') return json(db.stock);
+    if(method === 'PUT' && path === 'stock-items'){
+      const items = Array.isArray(body.items) ? body.items : null;
+      if(!items || items.length > 5000 || items.some(i=>!String(i?.name||'').trim())) return fail('invalid_input');
+      const old = new Map(db.stock.map(i=>[i.name.toLowerCase(), i])), seen = new Set();
+      db.stock = items.filter(i=>{ const k = String(i.name).trim().toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; })
+        .map((i, n)=>{ const name = String(i.name).trim().slice(0,200), prev = old.get(name.toLowerCase()); return {id:prev ? prev.id : 'st-'+(++db.seq), name, units:[...new Set((i.units||[]).map(u=>String(u).trim()).filter(Boolean))].slice(0,20), aliases:prev ? prev.aliases : []}; });
+      save(); return json({ok:true, count:db.stock.length});
+    }
+    if(method === 'POST' && (m = path.match(/^stock-items\/([^/]{1,80})\/alias$/))){
+      const item = db.stock.find(i=>i.id === decodeURIComponent(m[1])), alias = String(body.alias||'').trim();
+      if(!alias || alias.length > 120) return fail('invalid_input');
+      if(!item) return fail('not_found', 404);
+      if(alias.toLowerCase() !== item.name.toLowerCase()) item.aliases = [...item.aliases.filter(a=>a.toLowerCase() !== alias.toLowerCase()), alias].slice(-30);
+      save(); return ok();
+    }
+    /* No Gemini in the Lab: the list is read with the app's own matching, the way the server checks Rico's answer.
+       A photo always reads as the same handwritten sample list. */
+    if(method === 'POST' && path === 'stock/read'){
+      const text = body.image ? 'ئاردی حەدبا 2 فەردە\nbadam 1.5 kilo\nmudhish 6 دانە\nbbq sauce 3\nsomething else 1' : String(body.text||'').slice(0,4000);
+      if(!text.trim()) return fail('empty');
+      await new Promise(r=>setTimeout(r, 700));
+      const rows = window.parseTransferText(text).map(p=>{
+        const found = window.matchStockLocally(p.said), item = db.stock.find(i=>i.id === found.itemId);
+        const unit = item ? window.RicottaSearch.unit(item.units, p.unit || '') : p.unit;
+        const sure = !!item && found.sure && (!item.units.length || !!unit);
+        return {said:p.said, amount:p.amount, unit:unit || null, itemId:item ? item.id : null, sure, suggestions:sure ? [] : found.suggestions};
+      });
+      return json({rows});
+    }
     if(method === 'POST' && path === 'notes'){
       if(account !== 'rozha') return fail('forbidden', 403);
       const n = {id:++db.seq, body:String(body.body||'').slice(0,500), at:new Date().toISOString(), readAt:null, doneAt:null};
@@ -338,7 +379,7 @@
       } else {
         let row;
         if(table === 'suppliers') row = {id, name:String(body.name||'').slice(0,160), phone:body.phone || null, reminder:body.reminder || null, cutoff:'cutoff' in body ? body.cutoff || null : (prev ? prev.cutoff || null : null)};
-        else if(table === 'items') row = {id, name:String(body.name||'').slice(0,160), unit:body.unit || null, supplierId:body.supplierId || null, note:'note' in body ? String(body.note||'').slice(0,120) : (prev ? prev.note || '' : ''), sortOrder:'sortOrder' in body ? body.sortOrder : (prev ? prev.sortOrder : null), aliases:'aliases' in body ? body.aliases : (prev ? prev.aliases || [] : []), available:'available' in body ? body.available !== false : (prev ? prev.available !== false : true), stockName:'stockName' in body ? String(body.stockName||'').slice(0,160) : (prev ? prev.stockName || '' : ''), stockUnit:'stockUnit' in body ? body.stockUnit || null : (prev ? prev.stockUnit || null : null), stockFactor:'stockFactor' in body ? body.stockFactor ?? null : (prev ? prev.stockFactor ?? null : null)};
+        else if(table === 'items') row = {id, name:String(body.name||'').slice(0,160), unit:body.unit || null, supplierId:body.supplierId || null, note:'note' in body ? String(body.note||'').slice(0,120) : (prev ? prev.note || '' : ''), sortOrder:'sortOrder' in body ? body.sortOrder : (prev ? prev.sortOrder : null), aliases:'aliases' in body ? body.aliases : (prev ? prev.aliases || [] : []), available:'available' in body ? body.available !== false : (prev ? prev.available !== false : true)};
         else row = {id, en:String(body.en||'').slice(0,80), ku:body.ku || null, ar:body.ar || null};
         if(idx >= 0) list[idx] = row; else list.push(row);
         db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:prev ? 'edit' : 'add', type, name:row.name || row.en, fields:prev ? [] : [{k:'name', to:row.name || row.en}]});

@@ -105,7 +105,8 @@ try {
   requestAllowed=true;reset();errors.set('app_internal_reserve_requests',true);
   assert.equal((await call('orders',{})).status,503,'request limits fail closed');
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';
-  for(const [path,method,body] of [['devices/command','POST',{ids:['peer'],type:'logout'}],['assistant/setup-status','GET',null],['assistant/groq-key','PUT',{key:'fake'}],['notes','POST',{body:'note'}],['reminder','PUT',{enabled:true,time:'09:00'}],['push/send','POST',{type:'update'}]])assert.equal((await call(path,body,method)).status,403,`staff cannot use ${path}`);
+  for(const [path,method,body] of [['devices/command','POST',{ids:['peer'],type:'logout'}],['assistant/setup-status','GET',null],['assistant/groq-key','PUT',{key:'fake'}],['notes','POST',{body:'note'}],['push/send','POST',{type:'update'}]])assert.equal((await call(path,body,method)).status,403,`staff cannot use ${path}`);
+  assert.equal((await call('reminder',{enabled:true,time:'09:00'},'PUT')).status,200,'staff can set the daily reminder offered on their Settings screen');
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';tables.app_sessions[0].device_id=null;
   for(const [path,method] of [['push/subscription','DELETE'],['push/lang','PUT']])assert.equal((await call(path,{endpoint:'https://fcm.googleapis.com/fcm/send/orphan',lang:'en'},method)).status,403,'device-less staff sessions cannot modify orphan subscriptions');
   reset();requestAllowed=false;
@@ -182,7 +183,7 @@ try {
   reset();
   Object.assign(tables, { app_units: [], app_orders: [], app_order_lines: [], app_reminder_settings: [] });
   const bootRes = await call('bootstrap', undefined, 'GET'); const boot = await bootRes.json(); assert.equal(bootRes.status, 200);
-  assert.deepEqual(boot.tabs,['order','assistant','manage']);
+  assert.deepEqual(boot.tabs,['order','assistant','transfers','manage']);
   assert.equal(boot.theme,undefined);
 
   reset();

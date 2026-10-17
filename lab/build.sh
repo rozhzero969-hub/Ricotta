@@ -8,7 +8,8 @@ set -e
 cd "$(dirname "$0")"
 rm -rf dist
 mkdir -p dist
-for f in style.css config.js icons.js i18n.js storage.js sounds.js modals.js bot-check.js push.js assistant.js kitchen.js ordering-tools.js app.js update-check.js boot.js icon-192.png apple-touch-icon.png rico-happy.png; do
+# The app's own scripts exactly as page.html loads them (a new script is never left out), plus its files.
+for f in $(sed -n 's/.*<script[^>]* src="\([^"/]*\.js\)".*/\1/p' page.html | grep -v '^lab-') style.css icon-192.png apple-touch-icon.png rico-happy.png rico-thinking.png; do
   cp "../$f" dist/
 done
 mkdir -p dist/supabase/functions/_shared

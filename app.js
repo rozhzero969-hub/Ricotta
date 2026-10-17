@@ -16,7 +16,7 @@ const state = {
   lang: 'en',
   account: null,        // 'rozha' | 'yunis' | null (signed out)
   name: '',             // "Rozha" / "Yunis"
-  tabs: ['order','assistant','manage'],   // the three tab-bar screens (the same for both accounts)
+  tabs: ['order','assistant','transfers','manage'],   // the four tab-bar screens (the same for both accounts)
   views: [],            // every screen this account may open
   view: 'order',
   pinBuffer: '',
@@ -359,10 +359,10 @@ function accountLabel(a){ return a === 'rozha' || a === 'yunis' ? t('accountName
    start (bootstrap.views) and checks every request; this copy only covers
    an offline start before that answer arrives. */
 const ACCOUNT_VIEWS = {
-  rozha: ['order','assistant','history','suppliers','itemsAdmin','units','record','devices','settings'],
-  yunis: ['order','assistant','history','suppliers','itemsAdmin','units','record']
+  rozha: ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record','devices','settings'],
+  yunis: ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record']
 };
-const DEFAULT_TABS = ['order','assistant','manage'];
+const DEFAULT_TABS = ['order','assistant','transfers','manage'];
 const DEVICE_VIEWS = ['settings','manage'];
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
 function applyAccount(a){
@@ -637,7 +637,8 @@ const RENDERERS = {
   itemsAdmin:[()=>renderItemsAdmin(),()=>attachItemEvents()], units:[()=>renderUnits(),()=>attachUnitEvents()],
   record:[()=>renderRecord(),()=>attachRecordEvents()], devices:[()=>renderDevices(),()=>attachDeviceEvents()],
   manage:[()=>renderItemsAdmin(),()=>attachItemEvents()],
-  settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
+  settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()],
+  transfers:[()=>renderTransfers(),()=>attachTransferEvents()]
 };
 function render(){
   applyLangClasses();
@@ -668,10 +669,11 @@ function render(){
     stack.querySelector('.rico-composer')?.remove();
     if(state.view === 'order') stack.insertAdjacentHTML('afterbegin', renderOrderBottomBar());
     if(state.view === 'assistant') stack.insertAdjacentHTML('afterbegin', renderRicoComposer());
+    if(state.view === 'transfers') stack.insertAdjacentHTML('afterbegin', renderTransferBar());
     markActiveNav();
   }else{
     app.innerHTML = `${renderTopbar()}<main class="content" id="mainContent">${content}</main>
-      <div class="bottom-stack">${state.view==='order'?renderOrderBottomBar():''}${state.view==='assistant'?renderRicoComposer():''}${renderBottomNav()}</div>`;
+      <div class="bottom-stack">${state.view==='order'?renderOrderBottomBar():''}${state.view==='assistant'?renderRicoComposer():''}${state.view==='transfers'?renderTransferBar():''}${renderBottomNav()}</div>`;
     attachShellEvents();
   }
   app.classList.remove('static-update');
@@ -713,17 +715,17 @@ function updateRicoBadge(){
 setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
 
 /* ============ Navigation ============
-   Phones: Order, Rico and Manage plus More (History, Record, Devices,
-   Settings). Computers: a sidebar with every screen. A lens glides to the
-   current tab, and on phones the page can be swiped between the three tabs. */
-const VIEW_LABEL_KEYS = {manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
+   Phones: Order, Rico, Transfers and Manage plus More (History, Record,
+   Devices, Settings). Computers: a sidebar with every screen. A lens glides to
+   the current tab, and on phones the page can be swiped between the tabs. */
+const VIEW_LABEL_KEYS = {manage:'manage',order:'order', assistant:'ricoName', transfers:'transfers', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
    on a phone, see boot.js), otherwise the page itself. */
 function inAppFrame(){ return document.documentElement.classList.contains('app-shell') && isPhoneLayout(); }
 function scrollBox(){ return (inAppFrame() && document.querySelector('.content')) || document.scrollingElement; }
-/* Every screen in tab-bar order: the three tabs first, then the rest. */
+/* Every screen in tab-bar order: the four tabs first, then the rest. */
 function navOrder(){ return [...state.tabs, ...state.views.filter(v=>!state.tabs.includes(v))]; }
 const managedView=v=>['manage','itemsAdmin','suppliers','units'].includes(v);
 const moreViews=()=>['history','record','devices','settings'].filter(canOpen);
@@ -732,7 +734,7 @@ function viewIndex(v){ const i = navOrder().indexOf(v); return i >= 0 ? i : navO
 const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function renderBottomNav(){
-  const button=id=>`<button type="button" class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}</button>`;
+  const button=id=>`<button type="button" class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}${id==='transfers'?transferNavBadge():''}</button>`;
   return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><span class="nav-indicator" aria-hidden="true"></span>${DEFAULT_TABS.map(button).join('')}<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${moreViews().map(button).join('')}</div></nav>`;
 }
 function renderManageNav(){
@@ -974,7 +976,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   anims[0].finished.then(()=>{ if(glide === mine) endGlide(); }, ()=>{});
 }
 
-/* Swipe the page sideways to move between the three tabs (phones). The page
+/* Swipe the page sideways to move between the four tabs (phones). The page
    follows the finger, the lens follows the page, and a short fling is
    enough. Anything that scrolls sideways on its own, inputs, steppers and
    open dialogs are left alone. */
@@ -1110,7 +1112,7 @@ function openSelSheet(sel){
   closeSelSheet();
   document.activeElement?.blur?.();   // close the keyboard first, so the sheet has the screen
   // "Choose a supplier" and similar are prompts, not choices: they stay on the button but not in the list.
-  const prompts = [t('chooseSupplier')];
+  const prompts = [t('chooseSupplier'), t('trChooseUnit')];
   const opts = [...sel.options].filter(o=>(!o.disabled || o.selected) && !(o.value === '' && prompts.includes(o.textContent))).map(o=>({value:o.value, label:o.textContent, on:o.selected}));
   const long = opts.length > 9;
   const wrap = document.createElement('div');
@@ -1517,7 +1519,8 @@ async function completeSignIn(res){
   showWelcome(accountLabel(res.account));
   applyAccount(res);
   const ok = await loadData();
-  if(!ok){ hideWelcome(0); signOut(); state.pinError = 'network'; render(); return; }
+  // A start that fails half-way also ends the sign-in on the server, so it never stays behind on this browser.
+  if(!ok){ hideWelcome(0); api('logout', {method:'POST'}); signOut(); state.pinError = 'network'; render(); return; }
   restoreCartDraft(); restoreQueue();
   render();
   maybeFinishQueue();
@@ -2383,7 +2386,6 @@ function orderHistoryCard(rec){
       <div class="row-actions">
         ${canUndoOrder(rec) ? `<button class="btn btn-ghost hist-undo" data-undohist="${esc(rec.id)}">${esc(t('undo'))}</button>` : ''}
         <button class="btn btn-ghost hist-again" data-reorderhist="${esc(rec.id)}">${ICON_REPEAT}<span>${esc(t('orderAgain'))}</span></button>
-        <button class="btn btn-ghost hist-excel" data-stockxlsx="${esc(rec.id)}" aria-label="${esc(t('stockExcel'))}" title="${esc(t('stockExcel'))}">${ICON_SHEET}<span>Excel</span></button>
         <button class="icon-btn hist-repeat" data-repeathist="${esc(rec.id)}" aria-label="${esc(t('repeatTitle'))}" title="${esc(t('repeatTitle'))}">${ICON_CALENDAR}</button>
         ${isRozha() ? `<button class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
       </div>
@@ -2414,7 +2416,6 @@ function attachHistoryEvents(){
   document.getElementById('monthsBtn')?.addEventListener('click', openMonthsSheet);
   document.querySelectorAll('[data-repeathist]').forEach(b=>b.onclick=()=>{ const rec = state.history.find(r=>r.id === b.dataset.repeathist); if(rec) openRepeatForm(rec); });
   document.querySelectorAll('[data-undohist]').forEach(b=>b.onclick=()=>withBusy(b, ()=>undoOrder(b.dataset.undohist)));
-  document.querySelectorAll('[data-stockxlsx]').forEach(b=>b.onclick=()=>withBusy(b, ()=>downloadStockExcel(state.history.find(r=>r.id === b.dataset.stockxlsx))));
   document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
     const rec = state.history.find(r=>r.id===b.dataset.reorderhist);
     if(!rec) return;
@@ -2481,8 +2482,7 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), cutoff:t('cutoffShort'),
-    stockName:t('stockName'), stockUnit:t('stockUnit'), stockFactor:t('stockFactor')})[k] || k;
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), cutoff:t('cutoffShort')})[k] || k;
 }
 function recordValue(k, v){
   if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||'\u2014';}catch(_){} }
@@ -2491,7 +2491,7 @@ function recordValue(k, v){
   if(k === 'cutoff' && v) return reminderTimeLabel(v);
   if(k === 'supplier' && !v) return t('noSupplier');
   if(!v) return '\u2014';
-  if(k === 'unit' || k === 'stockUnit'){
+  if(k === 'unit'){
     const u = state.units.find(x=>x.en === v);
     return u ? unitName(u) : v;
   }
@@ -2891,12 +2891,10 @@ function openItemModal(id){
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
       <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
-      ${renderStockFields(existing)}
       `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
     onOpen: (box)=>{
-      attachStockFields(box);
       const sel = box.querySelector('#mfSupplier');
       const hint = box.querySelector('#mfSupHint');
       if(sel && hint) sel.onchange = ()=>{
@@ -2911,8 +2909,6 @@ function openItemModal(id){
       const note = document.getElementById('mfNote').value.trim().slice(0, 120), aliases=parseAliases(document.getElementById('mfAliases').value), available=document.getElementById('mfAvailable').checked;
       if(!name) return {error: t('nameRequired')};
       if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
-      const stock = readStockFields(unit);
-      if(stock.error) return {error: stock.error};
       const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
       const editing = existing;
       if(editing){
@@ -2923,11 +2919,10 @@ function openItemModal(id){
           ['name', i.name, name],
           ['unit', unitEn(i.unit), unitEn(unit)],
           ['supplier', oldSupName, newSupName],
-          ['note', i.note || '', note],['aliases',(i.aliases||[]).join(', '),aliases.join(', ')],['available',String(i.available!==false),String(available)],
-          ['stockName', i.stockName || '', stock.stockName], ['stockUnit', unitEn(i.stockUnit), unitEn(stock.stockUnit)], ['stockFactor', String(i.stockFactor ?? ''), String(stock.stockFactor ?? '')]
+          ['note', i.note || '', note],['aliases',(i.aliases||[]).join(', '),aliases.join(', ')],['available',String(i.available!==false),String(available)]
         ]);
         if(fields.length){
-          const next = {...i, name, unit, supplierId, note, aliases, available, ...stock, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
+          const next = {...i, name, unit, supplierId, note, aliases, available, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
           if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
           Object.assign(i, next);if(!available){delete state.cart[i.id];persistCartDraft();}
           logActivity({action:'edit', type:'item', name, fields});
@@ -2935,7 +2930,7 @@ function openItemModal(id){
       } else {
         const supplierItems=state.items.filter(i=>i.supplierId===supplierId);
         const maxSort=supplierItems.reduce((max,i)=>Number.isInteger(i.sortOrder)?Math.max(max,i.sortOrder):max,-1);
-        const next = {id:'i'+outboxJobId(), name, unit, supplierId, note, aliases, available, ...stock, sortOrder:maxSort>=0?maxSort+1:null};
+        const next = {id:'i'+outboxJobId(), name, unit, supplierId, note, aliases, available, sortOrder:maxSort>=0?maxSort+1:null};
         if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
         state.items.push(next);
         state.itemFormSupplierId = supplierId; // keep it locked in for the next item

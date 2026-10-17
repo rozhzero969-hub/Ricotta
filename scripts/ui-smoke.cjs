@@ -35,10 +35,13 @@ for(const lang of ['ku','ar']){
   const loaded=[...html.matchAll(/<script[^>]*\ssrc="([^"]+\.js)"/g)].map(m=>m[1]).concat('style.css','sw.js');
   const listed=[...fs.readFileSync(path.join(root,'update-check.js'),'utf8').match(/const APP_FILES = \[([^\]]*)\]/)[1].matchAll(/'([^']+)'/g)].map(m=>m[1]);
   for(const file of loaded) assert.ok(listed.includes(file),file+' is in APP_FILES (update-check.js)');
+  // The Lab runs the same app scripts, in the same order, as the real page.
+  const deferred=page=>[...page.matchAll(/<script defer src="([^"]+\.js)"><\/script>/g)].map(m=>m[1]);
+  assert.deepEqual(deferred(fs.readFileSync(path.join(root,'lab','page.html'),'utf8')).filter(f=>!f.startsWith('lab-')),deferred(html),'lab/page.html loads the same app scripts as index.html');
 }
 
-const ALL_VIEWS=['order','assistant','manage','history','suppliers','itemsAdmin','units','record','devices','settings'];
-const YUNIS_VIEWS=['order','assistant','history','suppliers','itemsAdmin','units','record'];
+const ALL_VIEWS=['order','assistant','transfers','manage','history','suppliers','itemsAdmin','units','record','devices','settings'];
+const YUNIS_VIEWS=['order','assistant','transfers','history','suppliers','itemsAdmin','units','record'];
 const supplierNames=['Corner Cake','Golden Bread Bakery','Fresh produce','Daily essentials','Kitchen supplies','Beverages','Dairy','Meat supplier','دابینکەری سەوزە','دابینکەری بەرهەمەکان'];
 const suppliers=supplierNames.map((name,i)=>({id:'s'+i,name,phone:''}));
 const items=Array.from({length:181},(_,i)=>({id:'i'+i,name:i%3===0?'تەماتە '+i:'Kitchen item '+String(i).padStart(3,'0'),unit:'box',supplierId:'s'+(i%10)}));
@@ -122,7 +125,7 @@ const server=http.createServer((req,res)=>{
       await page.locator('.bottomnav [data-view="manage"]').click();await settle(page);
       await page.locator(`[data-manage-view="${destination}"]`).click();
     }else{
-      if(!['order','assistant','manage'].includes(destination) && await page.evaluate(()=>innerWidth<960)){
+      if(!['order','assistant','transfers','manage'].includes(destination) && await page.evaluate(()=>innerWidth<960)){
         if(await page.locator('#navMoreBtn').getAttribute('aria-expanded')!=='true')await page.locator('#navMoreBtn').click();
       }
       await page.locator(`.bottomnav [data-view="${destination}"]`).click();
@@ -340,7 +343,7 @@ const server=http.createServer((req,res)=>{
     await page.locator('#modalFormCancel').click();
     // Fixed main destinations: Order, Rico and Manage.
     await page.setViewportSize({width:390,height:844});await openView(page,'order');
-    assert.deepEqual(await page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','manage']);
+    assert.deepEqual(await page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','transfers','manage']);
     assert.equal(await page.locator('#navMoreBtn').count(),1);
     assert.equal(await page.locator('#navEditTabs').count(),0);
     await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
@@ -611,6 +614,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await mp.locator('#app').evaluate(el=>el.inert),false,'sign-out cleanup releases the background');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*10} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, fixed Manage navigation, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, dark mode, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*ALL_VIEWS.length} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, fixed Manage navigation, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, dark mode, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

@@ -20,7 +20,7 @@ const server=http.createServer((req,res)=>{
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.locator('#itemSearch').waitFor();
   await page.waitForFunction(()=>state.items.length>10);
-  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','manage']);
+  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','transfers','manage']);
   assert.equal(await page.locator('.hero-card,.streak-chip').count(),2,'summary board and kitchen streak remain');
   assert.equal(await page.locator('.order-options').getAttribute('open'),null,'occasional tools start collapsed');
   assert.equal(await page.locator('#clearOrderBtn').isVisible(),false);

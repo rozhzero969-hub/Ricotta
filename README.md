@@ -34,7 +34,7 @@ The Lab (`lab/`, see its README) runs the real app on sample data for trying the
 
 ## Simple workspace
 
-The three main tabs are Order, Rico and Manage. Manage groups Items, Suppliers and Units, History, Records, Devices (Rozha only) and Settings keep separate tabs: in More on phones and directly in the desktop sidebar. Order keeps its large summary; Order options holds notes, quantity scaling, repeat orders, voice and clearing. Imports are in Manage > More tools. English aliases remain searchable and editable without adding lines to item lists. The app uses one palette with light, dark or system appearance. Quantity taps and the order-sent chime have switches in Settings > Order sounds. Themes, weather effects, seasonal surprises and Face ID have been removed; PIN sign-in stays protected by Cloudflare.
+The four main tabs are Order, Rico, Transfers and Manage. Manage groups Items, Suppliers and Units, History, Records, Devices (Rozha only) and Settings keep separate tabs: in More on phones and directly in the desktop sidebar. Order keeps its large summary; Order options holds notes, quantity scaling, repeat orders, voice and clearing. Imports are in Manage > More tools. English aliases remain searchable and editable without adding lines to item lists. The app uses one palette with light, dark or system appearance. Quantity taps and the order-sent chime have switches in Settings > Order sounds. Themes, weather effects, seasonal surprises and Face ID have been removed; PIN sign-in stays protected by Cloudflare.
 
 ## Development and checks
 
@@ -79,11 +79,13 @@ Items can be marked unavailable without deletion and given alternate search name
 
 The spreadsheet reader is the official SheetJS Community Edition 0.20.3 standalone build, stored locally in `vendor/` with its Apache 2.0 license. It loads only when importing a spreadsheet or making a stock file, and does not execute spreadsheet formulas.
 
-## Excel for the workplace stock system
+## Transfers
 
-History → **Excel** on any sent order makes the file for the workplace stock system's *Upload Excel* button (Move stock between storages): one sheet named `Transfer` with the columns `Item name`, `Amount` and `Unit`, one row per item, the same item twice combined into one row. Units are written by their Kurdish name (کیلۆ, کارتۆن, دانە…). On a phone the file opens the share sheet (Save to Files, WhatsApp…); on a computer it downloads.
+Transfers is its own tab (both accounts) and has nothing to do with ordering. It makes the Excel file for the workplace stock system's *Upload Excel* button on **Move between storages**; the From and To storages are still chosen there. Until that button exists the tab shows a "Still in development" note; set `TRANSFERS_READY` in `transfers.js` to `true` to remove it.
 
-Each item can say how the stock system writes it (Manage → item → *Stock system (Excel)*): its name there, its unit there, and how many of those units are in one order unit (1 box = 20 kg → 20, so 3 boxes are written as 60 kg). Empty fields use the item's own name, unit and amount. The stock system matches names itself and marks anything it does not know, so nothing moves by guess.
+- **Workplace item list.** Upload any Excel or CSV with an item name column once (the stock system's own template works: its *Item list* and *Units* sheets are read). A unit column is optional; several units are separated by commas. A new upload replaces the list; items that stay keep their id and remembered spellings. Stored in `app_stock_items`, reachable only through the API.
+- **Adding items.** Type or paste a list, say it (the microphone), take a photo of a paper list, or search an item. Rico (Gemini) reads the list and picks each item from the workplace list; the server accepts only ids from that list and units the item has. Without Rico the phone matches the names itself. A name is taken as sure only when it is exactly the item's name, one half of "English - کوردی", or a remembered spelling; anything else is marked for the person to confirm or pick, and *Remember* in the picker saves the spelling for next time.
+- **The file.** *Make Excel* stays off until every row has an item, an amount and one of that item's units. The file has the template's sheets (`Transfer`, `Item list`, `Units`, `How to fill`); `Transfer` keeps the first row exactly `Item name`, `Amount`, `Unit`, with a green heading row, banded rows, a frozen heading and dropdowns of the workplace items and units. On a phone it opens the share sheet; on a computer it downloads as `transfer-YYYY-MM-DD-HHMM.xlsx`.
 
 ## Smart search and Rico aliases
 

@@ -172,7 +172,7 @@ async function apiStream(path, body, onEvent, signal){
 
 /* Returns {account, name, tabs} on success, {recovery:true, ticket} when the
    secret code was typed, or {error:'wrong'|'locked'|'network'}. */
-async function apiLogin(pin){
+async function apiLogin(pin, freshDevice = false){
   const proof=await authBotProof();if(proof.error)return {error:proof.error};
   const r = await api('login', {method:'POST', body:{pin,turnstileToken:proof.token}});
   if(r.status===403 && r.data?.error==='verification_failed'){resetAuthSecurityConfig();return {error:'verification'};}
@@ -182,7 +182,16 @@ async function apiLogin(pin){
     lset('apiSession', {token:d.token, expiresAt:d.expiresAt, account:d.account, name:d.name, tabs:d.tabs});
     return {account:d.account, name:d.name, tabs:d.tabs};
   }
-  if(r.status===409 && r.data?.error==='device_in_use')return {error:'device'};
+  // The other account's sign-in on this browser was lost without signing out (a start that failed
+  // half-way, cleared site data...). Nothing here can sign it out, so this browser carries on as a new
+  // device and the lost sign-in simply expires. The server still never lets one account take over
+  // another account's device.
+  if(r.status===409 && r.data?.error==='device_in_use'){
+    if(freshDevice) return {error:'device'};
+    lset('deviceId', crypto.randomUUID ? crypto.randomUUID() : 'd'+Date.now()+Math.random().toString(36).slice(2));
+    if(typeof state === 'object' && state) state.deviceId = lget('deviceId');
+    return apiLogin(pin, true);
+  }
   if(r.status === 429) return {error:'locked'};
   if(r.status === 0) return {error:'network'};
   return {error:'wrong'};
