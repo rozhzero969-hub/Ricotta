@@ -1029,8 +1029,8 @@ Deno.serve(async (req) => {
       return error ? fail("save_failed", 500) : ok();
     }
     if (M === "POST" && path === "push/send") return await forwardPush(s, b);
+    // Both accounts can set the kitchen's daily reminder (it is on both Settings screens).
     if (M === "PUT" && path === "reminder") {
-      if(!rozha)return fail("forbidden",403);
       const time = String(b.time ?? "").trim();
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return fail("invalid_time");
       // A time still ahead today can fire today; one that already passed waits for tomorrow.

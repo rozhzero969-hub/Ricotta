@@ -1,3 +1,5 @@
 const fs=require('fs');const cp=require('child_process');
-fs.writeFileSync('.lint-all.js',['config.js','icons.js','i18n.js','storage.js','sounds.js','modals.js','bot-check.js','push.js','assistant.js','kitchen.js','supabase/functions/_shared/search.js','ordering-tools.js','transfers.js','app.js','update-check.js'].map(p=>fs.readFileSync(p,'utf8')).join('\n'));
+// Every script the page loads, in its own order (read from index.html, so a new file is never skipped).
+const files=[...fs.readFileSync('index.html','utf8').matchAll(/<script defer src="([^"]+\.js)"><\/script>/g)].map(m=>m[1]);
+fs.writeFileSync('.lint-all.js',files.map(p=>fs.readFileSync(p,'utf8')).join('\n'));
 cp.execFileSync(process.execPath,['node_modules/eslint/bin/eslint.js','--config','scripts/eslint.undef.config.cjs','.lint-all.js'],{stdio:'inherit'});

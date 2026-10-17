@@ -1519,7 +1519,8 @@ async function completeSignIn(res){
   showWelcome(accountLabel(res.account));
   applyAccount(res);
   const ok = await loadData();
-  if(!ok){ hideWelcome(0); signOut(); state.pinError = 'network'; render(); return; }
+  // A start that fails half-way also ends the sign-in on the server, so it never stays behind on this browser.
+  if(!ok){ hideWelcome(0); api('logout', {method:'POST'}); signOut(); state.pinError = 'network'; render(); return; }
   restoreCartDraft(); restoreQueue();
   render();
   maybeFinishQueue();

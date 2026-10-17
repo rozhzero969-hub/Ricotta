@@ -15,9 +15,9 @@ const source=fs.readFileSync('transfers.js','utf8');
 vm.runInContext(source,ctx);
 const run=code=>vm.runInContext(code,ctx), plain=v=>JSON.parse(JSON.stringify(v));
 
-// Every language has every text, and numbers are written 1 2 3.
+// Every language has every text, and the texts write numbers 1 2 3.
 for(const lang of ['ku','ar']) assert.deepEqual(Object.keys(ctx.T[lang]).sort(),Object.keys(ctx.T.en).sort(),lang+' has every Transfers text');
-assert.ok(!/[٠-٩۰-۹]/.test(source),'numbers are written 1 2 3');
+assert.ok(!/[٠-٩۰-۹]/.test(source.slice(source.indexOf('const TRANSFER_TEXT'),source.indexOf('for (const lang'))),'texts write numbers 1 2 3 (the reader itself understands Arabic digits)');
 
 // Units: کیلۆ, kg and كيلو are one unit; an item with one unit uses it when none was written.
 const S=ctx.RicottaSearch;

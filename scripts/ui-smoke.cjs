@@ -35,6 +35,9 @@ for(const lang of ['ku','ar']){
   const loaded=[...html.matchAll(/<script[^>]*\ssrc="([^"]+\.js)"/g)].map(m=>m[1]).concat('style.css','sw.js');
   const listed=[...fs.readFileSync(path.join(root,'update-check.js'),'utf8').match(/const APP_FILES = \[([^\]]*)\]/)[1].matchAll(/'([^']+)'/g)].map(m=>m[1]);
   for(const file of loaded) assert.ok(listed.includes(file),file+' is in APP_FILES (update-check.js)');
+  // The Lab runs the same app scripts, in the same order, as the real page.
+  const deferred=page=>[...page.matchAll(/<script defer src="([^"]+\.js)"><\/script>/g)].map(m=>m[1]);
+  assert.deepEqual(deferred(fs.readFileSync(path.join(root,'lab','page.html'),'utf8')).filter(f=>!f.startsWith('lab-')),deferred(html),'lab/page.html loads the same app scripts as index.html');
 }
 
 const ALL_VIEWS=['order','assistant','transfers','manage','history','suppliers','itemsAdmin','units','record','devices','settings'];

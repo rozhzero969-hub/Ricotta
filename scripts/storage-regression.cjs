@@ -404,3 +404,23 @@ test('two tabs independently queue jobs without overwriting each other',async()=
  a.context.removeOutboxJob(a.context.outbox()[0].id);
  assert.deepEqual(plain(b.context.outbox()).map(j=>j.body.id),['b']);
 });
+
+test('a sign-in lost on this browser never locks the other account out', async()=>{
+  const {context:c} = browser();
+  c.lset('deviceId', 'old-device');
+  c.authBotProof = async()=>({token:'proof'});
+  const devices = [];
+  c.fetch = async(url, options)=>{
+    devices.push(options.headers['x-device-id']);
+    return options.headers['x-device-id'] === 'old-device'
+      ? response(409, {error:'device_in_use'})
+      : response(200, {token:'new', expiresAt:'2099-01-01T00:00:00Z', account:'yunis', name:'Yunis', tabs:[]});
+  };
+  assert.equal(plain(await c.apiLogin('123456')).account, 'yunis');
+  assert.equal(devices.length, 2);
+  assert.notEqual(devices[1], 'old-device', 'the second try is a new device, never the other account\'s');
+  assert.equal(c.lget('deviceId'), devices[1], 'this browser carries on as that new device');
+  // A refusal for the new device too is reported, not retried again.
+  c.fetch = async()=>response(409, {error:'device_in_use'});
+  assert.deepEqual(plain(await c.apiLogin('123456')), {error:'device'});
+});

@@ -2,7 +2,10 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {createHash}=require('node:crypto'),{transformSync}=require('esbuild');
 const root=path.resolve(__dirname,'..'),out=path.join(root,'dist');
-const scripts=['icons.js','i18n.js','storage.js','sounds.js','modals.js','bot-check.js','push.js','assistant.js','kitchen.js','supabase/functions/_shared/search.js','ordering-tools.js','transfers.js','app.js','update-check.js'];
+// The app's scripts in the page's own order, read from index.html: a new <script defer src> is bundled
+// without editing this file. config.js stays separate (the updater reads it); boot.js is built below.
+const scripts=[...fs.readFileSync(path.join(root,'index.html'),'utf8').matchAll(/<script defer src="([^"]+\.js)"><\/script>/g)].map(m=>m[1]).filter(f=>f!=='config.js'&&f!=='boot.js');
+assert.ok(scripts.length>5&&scripts.at(-1)==='update-check.js'&&scripts.includes('app.js'),'the app scripts are read from index.html');
 const copied=['manifest.json','config.js','icon-192.png','icon-512.png','apple-touch-icon.png','install-icon.webp','vendor/SHEETJS-LICENSE',...['happy','excited','grateful','calm','thinking','worried','sad','angry'].map(m=>'rico-'+m+'.png'),...['Sora','Manrope','NotoKufiArabic'].map(m=>'fonts/'+m+'-OFL.txt')];
 fs.rmSync(out,{recursive:true,force:true});fs.mkdirSync(out);
 function read(file){const source=path.join(root,file);assert.ok(fs.lstatSync(source).isFile(),file+' must be a real file');return fs.readFileSync(source);}
