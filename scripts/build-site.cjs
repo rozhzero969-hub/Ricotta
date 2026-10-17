@@ -12,6 +12,8 @@ function asset(name,ext,bytes){const hash=createHash('sha256').update(bytes).dig
 const minjs=s=>transformSync(s,{loader:'js',minify:true,target:'es2022',legalComments:'none'}).code;
 const mincss=s=>transformSync(s,{loader:'css',minify:true,target:'es2022',legalComments:'none'}).code;
 for(const file of copied)write(file,read(file));
+// Load a matching version marker with this document; keep root config.js live for update probes.
+const config=asset('config','js',minjs(read('config.js').toString()));
 let fonts=read('fonts/fonts.css').toString();
 for(const name of ['sora-latin','manrope-latin','noto-kufi-arabic']){
  const file=asset(name,'woff2',read('fonts/'+name+'.woff2'));
@@ -28,6 +30,7 @@ let code=scripts.map(file=>read(file).toString()).join('\n;\n').replace('vendor/
 code=code.replace(/const APP_FILES = \[[^\]]*\];/,`const APP_FILES = ${JSON.stringify(['config.js','sw.js',css,fontCss,boot])};`);
 const app=asset('app','js',minjs(code));
 let html=read('index.html').toString();
+html=html.replace('src="config.js"',`src="${config}"`);
 html=html.replace('href="style.css"',`href="${css}"`).replace('href="style.css"',`href="${css}"`).replace('src="boot.js"',`src="${boot}"`);
 html=html.replace(/<script defer src="([^\"]+)"><\/script>/g,(tag,file)=>scripts.includes(file)?(file==='app.js'?`<script defer src="${app}"></script>`:''):tag);
 write('index.html',html);

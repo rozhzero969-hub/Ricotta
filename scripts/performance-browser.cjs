@@ -26,7 +26,7 @@ const server=http.createServer((req,res)=>{
  const reports=[];
  try{
   for(const loggedIn of [false,true]){
-   const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block'}),errors=[];
+   const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block',ignoreHTTPSErrors:true}),errors=[];
    await ctx.route('**/functions/v1/api/**',async route=>{
     const endpoint=new URL(route.request().url()).pathname.split('/api/')[1];
     let data=endpoint==='bootstrap'?fixture:endpoint==='auth/security'?{required:false,siteKey:null}:endpoint==='devices'||endpoint==='notes'||endpoint==='assistant/inbox'?[]:endpoint==='assistant/status'?{configured:true,provider:'gemini'}:{ok:true};
@@ -42,10 +42,12 @@ const server=http.createServer((req,res)=>{
     new PerformanceObserver(list=>list.getEntries().forEach(e=>window.measure.events.push({name:e.name,duration:e.duration,interactionId:e.interactionId}))).observe({type:'event',buffered:true,durationThreshold:16});
    },{loggedIn,session});
    const page=await ctx.newPage();page.on('pageerror',e=>errors.push(String(e)));
+   const failedRequests=[];page.on('requestfailed',r=>failedRequests.push({url:r.url(),error:r.failure()?.errorText}));
    const cdp=await ctx.newCDPSession(page);
    await cdp.send('Network.enable');await cdp.send('Network.setCacheDisabled',{cacheDisabled:true});
    await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:150,downloadThroughput:1600000/8,uploadThroughput:750000/8});
    await cdp.send('Emulation.setCPUThrottlingRate',{rate:4});
+   let transferred=0;cdp.on('Network.loadingFinished',event=>{transferred+=event.encodedDataLength;});
    const started=Date.now();await page.goto(url,{waitUntil:'domcontentloaded'});
    await page.waitForSelector(loggedIn?'#orderResults':'.keypad');
    await page.waitForSelector('#splash',{state:'detached'});
@@ -61,7 +63,7 @@ const server=http.createServer((req,res)=>{
    await page.waitForTimeout(250);
    const metrics=await page.evaluate(()=>({...window.measure,bytes:performance.getEntriesByType('resource').reduce((s,x)=>s+x.transferSize,0),requests:performance.getEntriesByType('resource').length,resources:performance.getEntriesByType('resource').map(x=>({name:x.name,bytes:x.transferSize})),fonts:document.fonts.status}));
    assert.deepEqual(errors,[],'No browser errors');
-   reports.push({mode,readyMs,...metrics});await ctx.close();
+   reports.push({mode,readyMs,transferred,failedRequests,...metrics});await ctx.close();
   }
   fs.writeFileSync(prefix+'.json',JSON.stringify({conditions:'Slow 4G 1.6Mbps/150ms latency, 4x CPU; 179 items; mocked API 300ms; cold cache',reports},null,2));
   console.log(JSON.stringify(reports.map(({resources,events,tasks,...r})=>({...r,maxEventMs:Math.max(0,...events.map(e=>e.duration)),blockingMs:tasks.reduce((s,d)=>s+Math.max(0,d-50),0)})),null,2));
