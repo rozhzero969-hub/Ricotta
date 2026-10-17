@@ -69,7 +69,7 @@ ctx.addTransferRows([
 ]);
 const rows=run('transfer.rows');
 assert.deepEqual(plain(rows.map(r=>[r.itemId,r.amount,r.unit])),[['flour',3.5,'فەردە'],['tom',1,'کیلۆ'],['milk',6,null],['bbq',null,'دانە'],[null,1,null],['flour',1,null]]);
-assert.deepEqual(rows.map(ctx.rowIssue),['','check','unit','amount','item','unit'],'every problem is named');
+assert.deepEqual(plain(rows.map(ctx.rowIssue)),['','check','unit','amount','item','unit'],'every problem is named');
 assert.equal(run("issueText(transfer.rows[5],'unit')"),ctx.T.en.trUnitMissing,'a unit the item lacks is dropped, so the person chooses one');
 rows[5].unit='کارتۆن';assert.equal(ctx.rowIssue(rows[5]),'unit');assert.equal(run("issueText(transfer.rows[5],'unit')"),ctx.T.en.trUnitWrong);
 assert.ok(stored.get('transfer:rozha').rows.length===6,'the list is kept on this phone');
@@ -96,7 +96,7 @@ assert.deepEqual([...parts.keys()],['[Content_Types].xml','_rels/.rels','docProp
 const end=Buffer.from(data.subarray(data.length-22));assert.equal(end.readUInt32LE(0),0x06054b50);assert.equal(end.readUInt16LE(10),parts.size);
 // The library runs in its own sandbox: hand it bytes made there.
 const book=XLSX.read(vm.runInContext('Uint8Array',sheetLib).from(data),{type:'array',cellStyles:true});
-assert.deepEqual(book.SheetNames,['Transfer','Item list','Units','How to fill'],'the sheets of the stock system template');
+assert.deepEqual(plain(book.SheetNames),['Transfer','Item list','Units','How to fill'],'the sheets of the stock system template');
 const sheet=book.Sheets.Transfer;
 assert.deepEqual(plain(XLSX.utils.sheet_to_json(sheet,{header:1})),[['Item name','Amount','Unit'],['Al Hadbaa Flour - ئاردی حەدبا',3.5,'فەردە'],['=HYPERLINK("http://x")',1,'دانە'],['Ice & "Snow" <cold>',0.125,'کیلۆ']],'row 1 is exactly Item name, Amount, Unit');
 assert.equal(sheet.B2.t,'n','amounts are numbers');
