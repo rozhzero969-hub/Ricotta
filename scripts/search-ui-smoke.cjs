@@ -4,6 +4,7 @@ const repo=path.resolve(__dirname,'..'),root=path.join(repo,'lab/dist');
 cp.execFileSync('sh',['lab/build.sh'],{cwd:repo});
 const siteRoot=process.env.UI_SITE_DIR?path.resolve(process.env.UI_SITE_DIR):root;
 const server=http.createServer((req,res)=>{
+ if(req.url==='/__frame-parent.html'){res.setHeader('Content-Type','text/html');return res.end('<!doctype html><html><body></body></html>');}
  if(process.env.UI_SITE_DIR && req.url==='/__fixture.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(repo,'lab/lab-mock.js')));}
  const file=path.resolve(siteRoot,'.'+(new URL(req.url,'http://localhost').pathname==='/'?'/index.html':new URL(req.url,'http://localhost').pathname));
  if(!file.startsWith(siteRoot+path.sep)){res.writeHead(403);return res.end();}
@@ -137,7 +138,7 @@ const server=http.createServer((req,res)=>{
   await page.locator('#modalFormCancel').click();
   assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'},'provider failure remains cancellable');
   const framed=await browser.newPage();
-  await framed.goto('about:blank');
+  await framed.goto('http://127.0.0.1:'+server.address().port+'/__frame-parent.html');
   await framed.setContent('<iframe src="http://127.0.0.1:'+server.address().port+'/"></iframe>');
   const embedded=framed.frameLocator('iframe');
   await embedded.locator('#app').getByText('Open Ricotta directly to sign in.').waitFor();
