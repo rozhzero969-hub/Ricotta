@@ -1,7 +1,7 @@
 .env
 .env.*
 !.env.example
-node_modules
+node_modules*
 coverage/
 .DS_Store
 
@@ -14,3 +14,10 @@ supabase/.temp/
 
 # Ricotta Lab build output (see lab/README.md)
 lab/dist/
+
+# Generated browser-only publishing artifact and private local exports
+dist/
+private-backups/
+*.log
+*.pem
+*.key

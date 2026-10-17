@@ -95,6 +95,18 @@ const server=http.createServer((req,res)=>{
   await page.locator('[data-rico-apply$="alias-test"]').click();
   await page.waitForFunction(()=>state.items.find(i=>i.id==='it-mozz').aliases?.includes('Mozzarella cheese'));
   assert.deepEqual(await page.evaluate(()=>labDb().items.find(i=>i.id==='it-mozz').aliases),['Mozzarella cheese']);
+  // Stored chat data is another user's input, including its HTML attributes.
+  const hostile=await page.evaluate(()=>{
+    const payload='"><img src=x onerror="window.injected=true">';
+    const holder=document.createElement('div');
+    holder.innerHTML=renderRicoMessage({role:'assistant',text:payload,mood:payload,proposals:[{id:'test',kind:'notify',status:payload,title:payload,en:payload,ku:payload}]},0);
+    const order=renderRicoProposal({kind:'order',id:'proto',lines:[{supplier:'__proto__',name:payload,qty:1,unitId:'kg'}]},0);
+    return {injected:holder.querySelectorAll('img,[onerror]').length,text:holder.textContent,orderSafe:order.includes('&lt;img'),malformed:renderRicoProposal({kind:'order',lines:null},0)};
+  });
+  assert.equal(hostile.injected,0,'saved moods/card status/text cannot inject HTML');
+  assert.ok(hostile.text.includes('<img'),'untrusted markup is displayed as text');
+  assert.equal(hostile.orderSafe,true,'a supplier named __proto__ cannot crash grouping');
+  assert.equal(hostile.malformed,'','malformed saved cards cannot break the chat screen');
   // Exercise the real verification dialog using a local provider stub.
   await page.evaluate(()=>{
     authSecurityConfig=async()=>({ok:true,data:{required:true,siteKey:'local-test'}});
@@ -122,6 +134,13 @@ const server=http.createServer((req,res)=>{
   assert.match(await page.locator('#modalFormStatus').textContent(),/could not finish/);
   await page.locator('#modalFormCancel').click();
   assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'},'provider failure remains cancellable');
+  const framed=await browser.newPage();
+  await framed.goto('http://127.0.0.1:'+server.address().port);
+  await framed.setContent('<iframe src="http://127.0.0.1:'+server.address().port+'/"></iframe>');
+  const embedded=framed.frameLocator('iframe');
+  await embedded.locator('#app').getByText('Open Ricotta directly to sign in.').waitFor();
+  assert.equal(await embedded.locator('.keypad,.content').count(),0,'embedded app exposes neither sign-in nor authenticated workspace');
+  await framed.close();
   assert.deepEqual(errors,[]);
   console.log('Search UI PASS: typo/alias order, clear buttons, list matches/empty/reset, history aliases, records beyond first page, units and Rico bulk alias preview/save');
  }finally{await browser.close();server.close();}

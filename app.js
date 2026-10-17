@@ -525,6 +525,11 @@ function retryLoad(){
   }, 10000);
 }
 async function boot(){
+  // GitHub Pages cannot set frame-ancestors headers. Refuse to expose the sign-in UI in a frame.
+  if(window.top!==window.self){
+    document.getElementById('app').textContent='Open Ricotta directly to sign in.';
+    hideSplash(0);return;
+  }
   state.deviceId = ensureDeviceId();
   lset('faceIdKeys',null);
   const savedLang = lget('lang');
@@ -1425,7 +1430,7 @@ function attachContentEvents(){
 /* ============ Login (PIN pad) ============ */
 function loginMessage(){
   if(state.pinBusy) return t('signingIn');
-  return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), verification:t('securityCheckFailed'), session:state.sessionMsg})[state.pinError] || '';
+  return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), verification:t('securityCheckFailed'), device:t('deviceInUse'), session:state.sessionMsg})[state.pinError] || '';
 }
 const LOGIN_ERRORS = ['wrong','locked','network','verification'];
 function pinDotClass(i){
@@ -1695,7 +1700,7 @@ function renderOrderResults(){
   const visibleItems = globalThis.RicottaSearch.rank(tabFiltered.filter(i=>i.available!==false),state.search,itemSearchFields);
   const pinned = state.orderTab==='all' && !q ? state.pins.map(id=>state.items.find(i=>i.id===id)).filter(i=>i && i.available!==false) : [];
 
-  const groups = {};
+  const groups = Object.create(null);
   visibleItems.forEach(i=>{
     const key = i.supplierId || '__none';
     (groups[key] = groups[key]||[]).push(i);
@@ -1898,7 +1903,7 @@ async function startSendQueue(){
   if(sharedDraft.conflicts.length){ toast(t('draftConflict')); return false; }
   // An order that is already being saved (or failed to save) is finished first.
   if(state.queue?.record){ goView('queue'); return true; }
-  const bySupplier = {};
+  const bySupplier = Object.create(null);
   Object.keys(state.cart).forEach(id=>{
     const qty = state.cart[id]; if(!qty) return;
     const item = state.items.find(i=>i.id===id); if(!item || item.available===false) return;

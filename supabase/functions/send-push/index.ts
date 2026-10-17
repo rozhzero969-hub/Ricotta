@@ -27,8 +27,8 @@
 // or Arabic), and addresses the person signed in there by name when known.
 // Reminders only go to phones that are signed in.
 import webpush from "npm:web-push@3.6.7";
-import { createClient } from "npm:@supabase/supabase-js@2.117.2";
-import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from "../_shared/security.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
+import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders } from "../_shared/security.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const VAPID_PUBLIC = Deno.env.get("VAPID_PUBLIC_KEY");
@@ -53,7 +53,7 @@ const NAMES: Record<string, Record<"en" | "ku" | "ar", string>> = {
 };
 
 const json = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
+  new Response(JSON.stringify(data), { status, headers: { ...securityHeaders, "Content-Type": "application/json" } });
 
 type Sub = { endpoint: string; p256dh: string; auth: string; device_id: string | null; lang: string | null; account: string | null };
 type Lang = "en" | "ku" | "ar";

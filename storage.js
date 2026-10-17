@@ -182,6 +182,7 @@ async function apiLogin(pin){
     lset('apiSession', {token:d.token, expiresAt:d.expiresAt, account:d.account, name:d.name, tabs:d.tabs});
     return {account:d.account, name:d.name, tabs:d.tabs};
   }
+  if(r.status===409 && r.data?.error==='device_in_use')return {error:'device'};
   if(r.status === 429) return {error:'locked'};
   if(r.status === 0) return {error:'network'};
   return {error:'wrong'};

@@ -135,7 +135,7 @@ const groqEvents = await chat();
 assert.deepEqual(groqEvents.map(e => e.type), ['status', 'proposal', 'mood', 'text', 'done'], 'a mood tag split across chunks is still found');
 assert.equal(groqEvents[2].mood, 'excited');
 assert.equal(groqEvents[3].text, 'Groq is ready.');
-assert.equal(requests[beforeGroq].url.includes('api.groq.com'), true);
+assert.equal(new URL(requests[beforeGroq].url).hostname, 'api.groq.com');
 assert.equal(requests[beforeGroq].body.model, 'openai/gpt-oss-120b');
 assert.equal(requests[beforeGroq].body.reasoning_effort, 'low');
 assert.equal(requests[beforeGroq].body.parallel_tool_calls, false);

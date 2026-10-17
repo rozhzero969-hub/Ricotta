@@ -134,7 +134,7 @@ function ricoCurrentMood(){
     if(m.role !== 'assistant') continue;
     if(m.streaming && !m.mood) return 'thinking';
     if(m.error) return 'sad';
-    if(m.mood) return m.mood;
+    if(RICO_MOODS.includes(m.mood)) return m.mood;
   }
   const last = rico.inbox[rico.inbox.length - 1];
   return last && !last.read ? last.mood : 'happy';
@@ -258,7 +258,7 @@ function renderRicoMessage(m, i){
   const status = m.streaming && m.text && m.statusKey && m.stepsDone ? `<div class="rico-status-line"><i></i>${esc(ricoStatusLabel(m.statusKey))}</div>` : '';
   const cards = (m.proposals||[]).map(p=>renderRicoProposal(p, i)).join('');
   const picker = m.picker ? renderRicoSupplierPicker(m.picker, i) : '';
-  const mood = m.error ? 'sad' : m.mood || (m.streaming ? 'thinking' : 'happy');
+  const mood = m.error ? 'sad' : RICO_MOODS.includes(m.mood) ? m.mood : (m.streaming ? 'thinking' : 'happy');
   return `<div class="rico-msg bot${m.streaming?' streaming':''}" id="rico-m-${i}">
     ${ricoFace(mood, 'rico-sm')}
     <div class="rico-col">
@@ -317,6 +317,10 @@ function ricoFormat(src){
 
 /* ---------- Proposal cards ---------- */
 function renderRicoProposal(p, mi){
+  if(!p || typeof p!=='object' || Array.isArray(p))return '';
+  try{return renderRicoProposalCard(p,mi);}catch(_){return '';}
+}
+function renderRicoProposalCard(p, mi){
   const done = p.status === 'applied', gone = ['dismissed','undone','expired'].includes(p.status), saving = p.status === 'saving';
   const actions = primaryLabel=> gone
       ? `<div class="rico-card-state">${p.status==='undone'?t('ricoUndone'):p.status==='expired'?t('ricoCardOld'):t('ricoDismissed')}</div>`
@@ -325,7 +329,7 @@ function renderRicoProposal(p, mi){
         : `<div class="rico-card-actions"><button class="btn btn-primary${saving?' is-busy':''}" data-rico-apply="${mi}|${esc(p.id)}" ${saving?'disabled aria-busy="true"':''}>${primaryLabel}</button><button class="btn btn-ghost" data-rico-dismiss="${mi}|${esc(p.id)}" ${saving?'disabled':''}>${t('ricoNotNow')}</button></div>`;
   let body = '', title = '', icon = '';
   if(p.kind === 'order'){
-    const groups = {};
+    const groups = Object.create(null);
     p.lines.forEach(l=>{ (groups[l.supplier||t('noSupplier')] ||= []).push(l); });
     icon = NAV_ICONS.order;
     title = p.mode==='set' ? t('ricoCardSet')(p.lines.length) : t('ricoCardOrder')(p.lines.length);
@@ -377,7 +381,7 @@ function ricoFields(rows){
   return `<dl class="rico-fields">${rows.map(([k,v,raw])=>`<div><dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd></div>`).join('')}</dl>`;
 }
 function ricoCard(icon, title, body, actions, p){
-  return `<div class="rico-card ${p.status||'pending'}" data-card="${esc(p.id)}"><div class="rico-card-head"><span class="rico-card-icon">${icon}</span><span>${esc(title)}</span>${p.auto?`<span class="rico-card-tag">${t('ricoAutoTag')}</span>`:''}</div>${body}${actions}</div>`;
+  return `<div class="rico-card ${esc(['pending','saving','applied','dismissed','undone','expired'].includes(p.status)?p.status:'expired')}" data-card="${esc(p.id)}"><div class="rico-card-head"><span class="rico-card-icon">${icon}</span><span>${esc(title)}</span>${p.auto?`<span class="rico-card-tag">${t('ricoAutoTag')}</span>`:''}</div>${body}${actions}</div>`;
 }
 
 /* ---------- Composer (lives in the bottom stack above the tab bar) ---------- */
