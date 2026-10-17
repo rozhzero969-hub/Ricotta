@@ -8,7 +8,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //
 // There are two accounts, each with its own PIN:
 //   rozha  full access
-//   yunis  Order, Rico, Manage (items, suppliers, units), History (cannot delete), Record
+//   yunis  Order, Rico, Transfers, Manage (items, suppliers, units), History (cannot delete), Record
 //
 // Routes (all JSON):
 //   POST   login                      {pin}                     -> {token, account, name, tabs, expiresAt}
@@ -62,9 +62,14 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   PUT    me/message-format          {restaurant, greeting, closing}   the WhatsApp message around each order
 //   PUT    items/aliases              {entries}                 Rico's search-name changes, applied together
 //   GET    auth/security              (public)                  whether sign-in needs the bot check, and its site key
+//   GET    stock-items                                          Transfers: the workplace stock system's item list
+//   PUT    stock-items                {items:[{name, units}]}   replace that list (spellings people taught it are kept)
+//   POST   stock-items/:id/alias      {alias}                   remember a spelling for one item
+//   POST   stock/read                 {text?, image?, mime?}    Rico reads a transfer list into rows (see stock.ts)
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, saveGroqKey } from "./assistant.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
+import { cleanStockList, listStockItems, readTransferList } from "./stock.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -82,11 +87,12 @@ const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
 const LANGS = ["en", "ku", "ar"];
 // Every screen of the app, and the ones each account may open.
-const VIEWS = ["order", "assistant", "manage", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
+const VIEWS = ["order", "assistant", "transfers", "manage", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
 const ACCOUNT_VIEWS: Record<string, string[]> = {
   rozha: VIEWS,
-  yunis: ["order", "assistant", "manage", "history", "suppliers", "itemsAdmin", "units", "record"],
+  yunis: ["order", "assistant", "transfers", "manage", "history", "suppliers", "itemsAdmin", "units", "record"],
 };
+const TABS = ["order", "assistant", "transfers", "manage"];
 // Allowed browser origin for this app. Set ALLOWED_ORIGIN if the production
 // site ever moves to another origin.
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "https://rozhzero969-hub.github.io";
@@ -184,8 +190,7 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 
 /* ---------- Shapes the browser uses ---------- */
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, cutoff: s.cutoff ?? null });
-const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false,
-  stockName: i.stock_name ?? "", stockUnit: i.stock_unit ?? null, stockFactor: i.stock_factor == null ? null : Number(i.stock_factor) });
+const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false });
 const toNote = (n: any) => ({ id: n.id, body: n.body, at: n.created_at, readAt: n.read_at, doneAt: n.done_at,
   reply: n.reply ?? null, repliedAt: n.replied_at ?? null, replySeenAt: n.reply_seen_at ?? null });
 const toRepeat = (r: any) => ({ id: r.id, name: r.name, days: r.days, entries: r.entries, by: r.created_by, createdAt: r.created_at });
@@ -298,7 +303,7 @@ async function bootstrap(s: Session) {
   const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, notes, repeats, months, draft] = await Promise.all([
     readAccount(s.account),
     app("suppliers").select("id,name,phone,reminder,cutoff").order("name"),
-    app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,stock_name,stock_unit,stock_factor").order("name"),
+    app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available").order("name"),
     app("units").select("id,en,ku,ar"),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by,note").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
     readReminder(),
@@ -315,7 +320,7 @@ async function bootstrap(s: Session) {
   const orderRows = orders;
   const lines = await orderLinesFor(orderRows);
   return {
-    account: s.account, name: me?.name ?? accountName(s.account), tabs: ["order","assistant","manage"],
+    account: s.account, name: me?.name ?? accountName(s.account), tabs: TABS,
     views: ACCOUNT_VIEWS[s.account],
     pins: me?.pins ?? [], messageFormat: me?.messageFormat ?? {}, streak, notes,
     suppliers: (suppliers.data ?? []).map(toSupplier),
@@ -460,7 +465,7 @@ async function startSession(req: Request, account: Account) {
     }
   }
   const me = await readAccount(account);
-  return json({ token, account, name: me?.name ?? accountName(account), tabs: ["order","assistant","manage"], expiresAt });
+  return json({ token, account, name: me?.name ?? accountName(account), tabs: TABS, expiresAt });
 }
 
 /* ---------- The secret code ----------
@@ -560,12 +565,6 @@ async function recovery(req: Request, step: string) {
 
 function validQuantity(q: number,zero=false){return Number.isFinite(q) && q>=(zero?0:0.001) && q<=99999 && Math.abs(q*1000-Math.round(q*1000))<0.00001;}
 
-/* Stock units in one order unit: a positive number with up to 4 decimals, or none. */
-function stockFactor(v: unknown): number | null {
-  const n = Number(v);
-  return v == null || v === "" || !Number.isFinite(n) || n <= 0 || n > 100000 ? null : Math.round(n * 10000) / 10000;
-}
-
 /* ---------- Catalog (one record at a time) ---------- */
 const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | null> = {
   suppliers: (id, b) => text(b.name) ? {
@@ -580,10 +579,6 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
     ...(Object.hasOwn(b,"available") ? {available:b.available!==false} : {}),
     ...(Object.hasOwn(b, "note") ? { note: text(b.note, 120) } : {}),
     ...(Object.hasOwn(b, "sortOrder") ? { sort_order: Number.isInteger(b.sortOrder) && b.sortOrder >= 0 ? b.sortOrder : null } : {}),
-    // How the item is written in the workplace stock system (the "Excel for stock" file).
-    ...(Object.hasOwn(b, "stockName") ? { stock_name: text(b.stockName) || null } : {}),
-    ...(Object.hasOwn(b, "stockUnit") ? { stock_unit: text(b.stockUnit, 120) || null } : {}),
-    ...(Object.hasOwn(b, "stockFactor") ? { stock_factor: stockFactor(b.stockFactor) } : {}),
     updated_at: nowIso(),
   } : null,
   units: (id, b) => text(b.en, 80) ? { id, en: text(b.en, 80), ku: text(b.ku, 80) || null, ar: text(b.ar, 80) || null } : null,
@@ -796,8 +791,9 @@ Deno.serve(async (req) => {
     const keys=[`account:${s.account}:${M==="GET"?"read":"write"}`],limits=[M==="GET"?240:600];
     if(path==="push/send"){keys.push(`account:${s.account}:push`);limits.push(6);}
     if(path.startsWith("rico-chats") && M!=="GET"){keys.push(`account:${s.account}:chats`);limits.push(40);}
+    if(path==="stock/read" || (path==="stock-items" && M==="PUT")){keys.push(`account:${s.account}:stock`);limits.push(20);}
     const limited=path==="logout"?null:await requestLimit(keys,limits);if(limited)return limited;
-    const b = M === "GET" ? {} : await readBody(req, path === "assistant/transcribe" ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES);
+    const b = M === "GET" ? {} : await readBody(req, ["assistant/transcribe", "stock/read", "stock-items"].includes(path) ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES);
     let m: RegExpMatchArray | null;
 
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
@@ -947,6 +943,23 @@ Deno.serve(async (req) => {
 
     // The month archive
     if (M === "GET" && path === "months") return json(await listMonths());
+
+    // Transfers: the workplace item list, and reading a list to move between storages
+    if (M === "GET" && path === "stock-items") return json(await listStockItems(db));
+    if (M === "PUT" && path === "stock-items") {
+      const items = cleanStockList(b.items);
+      if (!items) return fail("invalid_input");
+      const { data, error } = await db.rpc("app_internal_replace_stock_items", { p_items: items });
+      return error ? fail("save_failed", 500) : json({ ok: true, count: data });
+    }
+    if (M === "POST" && (m = path.match(/^stock-items\/([^/]{1,80})\/alias$/))) {
+      const alias = text(b.alias, 120);
+      if (!alias) return fail("invalid_input");
+      const { data, error } = await db.rpc("app_internal_stock_alias", { p_id: decodeURIComponent(m[1]), p_alias: alias });
+      if (error) return fail("save_failed", 500);
+      return data ? ok() : fail("not_found", 404);
+    }
+    if (M === "POST" && path === "stock/read") { const r = await readTransferList(db, s, b); return json(r.body, r.status); }
 
     // Record
     if (M === "GET" && path === "activity") return json(await listActivity());

@@ -53,17 +53,33 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.equal((await q("select en from app_units where id='box'"))[0].en,'box');
  await db.exec("insert into app_accounts(id,name,pin_hash) values('rozha','Rozha','test-only'),('yunis','Yunis','test-only');");
  await db.exec("drop trigger fail_record on app_audit_events; insert into app_devices(id,logged_in) values('device',true); insert into app_sessions(token_hash,device_id,expires_at,account) values('hash','device',now()+interval '1 day','rozha');");
- // An item's stock-system name, unit and amount are saved, kept when an older app leaves them out, and recorded.
+ // Transfers: the workplace item list is replaced in one go. Names are unique whatever their capitals,
+ // units keep their first order without repeats, and items that stay keep their id and remembered spellings.
+ await db.exec(`select app_internal_replace_stock_items('[{"name":"Tomatoes - تەماتە","units":["کیلۆ","سندوق","کیلۆ"]},{"name":"Onions - پیاز"},{"name":" tomatoes - تەماتە ","units":["کیلۆ"]}]');`);
+ const stock=await q("select id,name,units,position from app_stock_items order by position");
+ assert.deepEqual(stock.map(r=>[r.name,r.units,r.position]),[['Tomatoes - تەماتە',['کیلۆ','سندوق'],0],['Onions - پیاز',[],1]],'one row per name, units without repeats');
+ const tom=stock[0].id,aliases=async()=>(await q(`select aliases from app_stock_items where id='${tom}'`))[0].aliases;
+ assert.equal((await q(`select app_internal_stock_alias('${tom}','tomatos') as ok`))[0].ok,true);
+ await db.exec(`select app_internal_stock_alias('${tom}','TOMATOS'); select app_internal_stock_alias('${tom}','tomatoes - تەماتە');`);
+ assert.deepEqual(await aliases(),['TOMATOS'],'a spelling is kept once (the newest way it was written), never the item name itself');
+ assert.equal((await q("select app_internal_stock_alias('missing','x') as ok"))[0].ok,false);
+ await assert.rejects(db.exec(`select app_internal_stock_alias('${tom}','  ');`),/Invalid alias/);
+ for(let n=0;n<35;n++) await db.exec(`select app_internal_stock_alias('${tom}','spelling ${n}');`);
+ assert.equal((await aliases()).length,30,'the newest 30 spellings are kept');
+ assert.equal((await aliases()).at(-1),'spelling 34');
+ assert.equal((await q(`select app_internal_replace_stock_items('[{"name":"TOMATOES - تەماتە","units":["کیلۆ"]},{"name":"Cucumber - خەیار","units":["کیلۆ"]}]') as n`))[0].n,2);
+ const renamed=await q("select id,name,units,cardinality(aliases) as kept from app_stock_items order by position");
+ assert.deepEqual(renamed.map(r=>[r.id===tom,r.name,r.units,r.kept]),[[true,'TOMATOES - تەماتە',['کیلۆ'],30],[false,'Cucumber - خەیار',['کیلۆ'],0]],'a new list keeps ids and spellings, removes items no longer in it');
+ for(const bad of ['{}','[{"name":""}]','[{"name":"x","units":"kg"}]',JSON.stringify([{name:'x',units:Array.from({length:21},(_,i)=>'u'+i)}])])
+  await assert.rejects(db.exec(`select app_internal_replace_stock_items('${bad}');`),/Invalid stock/,'rejects '+bad);
+ assert.equal((await q("select count(*)::int as n from app_stock_items"))[0].n,2,'a rejected list changes nothing');
+ assert.deepEqual((await q("select has_table_privilege('anon','app_stock_items','SELECT') as a, has_function_privilege('authenticated','app_internal_replace_stock_items(jsonb)','EXECUTE') as b, has_function_privilege('anon','app_internal_stock_alias(text,text)','EXECUTE') as c"))[0],{a:false,b:false,c:false},'the browser roles cannot reach the list');
+ // The per-item stock fields from the earlier Excel attempt are gone; items still save and record as before.
+ assert.equal((await q("select count(*)::int as n from information_schema.columns where table_name='app_items' and column_name like 'stock%'"))[0].n,0);
  await db.exec(`select app_internal_catalog_change('units','kg','{"en":"kg","ku":"کیلۆ"}','rozha','device');
-  select app_internal_catalog_change('items','tom','{"name":"Tomato","unit_id":"box","stock_name":"Tomato - تەماتە","stock_unit":"kg","stock_factor":20}','rozha','device');
-  select app_internal_catalog_change('items','tom','{"name":"Tomatoes","unit_id":"box"}','yunis','device');`);
- assert.deepEqual((await q("select name,stock_name,stock_unit,stock_factor::float as f from app_items where id='tom'"))[0],{name:'Tomatoes',stock_name:'Tomato - تەماتە',stock_unit:'kg',f:20},'stock fields survive a save without them');
- const added=(await q("select payload from app_audit_events where entity_type='item' and action='add'"))[0].payload.fields.map(f=>f.k);
- assert.ok(added.includes('stockName') && added.includes('stockFactor'),'the Record shows the stock fields that were set');
- await assert.rejects(db.exec(`select app_internal_catalog_change('items','tom','{"name":"Tomatoes","unit_id":"box","stock_factor":0}','rozha','device');`),/stock_factor/,'the stock amount must be above zero');
- await db.exec(`select app_internal_catalog_change('items','basil','{"name":"Basil","unit_id":"kg"}','rozha','device');`);
- assert.deepEqual((await q("select payload from app_audit_events where entity_name='Basil'"))[0].payload.fields.map(f=>f.k).filter(k=>k.startsWith('stock')),[],'empty stock fields stay out of the Record');
- await db.exec("delete from app_items where id in ('tom','basil'); delete from app_units where id='kg';");
+  select app_internal_catalog_change('items','basil','{"name":"Basil","unit_id":"kg","note":"fresh"}','rozha','device');`);
+ assert.deepEqual((await q("select payload from app_audit_events where entity_name='Basil'"))[0].payload.fields.map(f=>f.k).sort(),['aliases','available','name','note','supplier','unit'],'an item records the same fields as before');
+ await db.exec("delete from app_items where id='basil'; delete from app_units where id='kg';");
  await db.exec("select app_internal_device_command(array['device'],'logout');");
  assert.equal((await q('select revoked_at is not null as revoked from app_sessions'))[0].revoked,true);
  assert.equal((await q('select logged_in from app_devices'))[0].logged_in,false);
@@ -94,5 +110,5 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.equal((await q("select count(*)::int as n from app_orders where id in ('fresh','older')"))[0].n,0);
  // Exercise schema-only restore to another empty database, without business data.
  const restored=new PGlite({extensions:{pgcrypto}});await restored.exec('create role anon;create role authenticated;create role service_role;');await restored.exec(fs.readFileSync('supabase/baseline.sql','utf8'));for(const sql of migrations) await restored.exec(sql);await restored.close();
- await db.close();console.log('Database smoke: PASS (every migration, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, schema restore)');
+ await db.close();console.log('Database smoke: PASS (every migration, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, schema restore)');
 })().catch(e=>{console.error(e);process.exitCode=1});

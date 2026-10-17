@@ -55,5 +55,31 @@
   function rank(rows, query, fields) {
     return rows.map((row,index)=>({row,index,score:score(query,fields(row))})).filter(x=>Number.isFinite(x.score)).sort((a,b)=>a.score-b.score || a.index-b.index).map(x=>x.row);
   }
-  globalThis.RicottaSearch=Object.freeze({normalize,score,rank});
+  // Units the way people write or say them in Kurdish, Arabic and English; each group is one unit.
+  const UNIT_GROUPS=[
+    ['کیلۆ','کیلو','كيلو','kg','kgs','kilo','kilos','kilogram','کیلۆگرام','كغ','كيلوغرام'],
+    ['دانە','قطعة','حبة','عدد','piece','pieces','pcs','pc'],
+    ['کارتۆن','كارتون','carton','cartons','ctn'],
+    ['فەردە','فردة','کیسە','كيس','sack','sacks','bag','bags'],
+    ['سێت','سيت','set','sets'],
+    ['سندوق','صندوق','box','boxes','case'],
+    ['لتر','لیتر','litre','liter','litres','liters'],
+    ['غرام','گرام','gram','grams','gr'],
+    ['پاکەت','باكيت','pack','packet','packs'],
+    ['تەنەکە','تنكة','tin','tins'],
+  ];
+  const unitGroup=value=>{const v=normalize(value);return v?UNIT_GROUPS.find(g=>g.some(w=>normalize(w)===v))||null:null;};
+  /* The item's own unit for what was written (کیلۆ, kg and كيلو are one unit); null when none fits.
+     With nothing written, an item that has only one unit uses it. */
+  function unit(units, said) {
+    const s=normalize(said);
+    if(!s)return units.length===1?units[0]:null;
+    const same=units.find(u=>normalize(u)===s);
+    if(same)return same;
+    const group=unitGroup(said);
+    return group?units.find(u=>group.some(w=>normalize(w)===normalize(u)))||null:null;
+  }
+  /* Is this word a unit (one of the known spellings, or one of the given units)? */
+  function isUnit(word, units=[]) { const s=normalize(word); return !!s && (!!unitGroup(word) || units.some(u=>normalize(u)===s)); }
+  globalThis.RicottaSearch=Object.freeze({normalize,score,rank,unit,isUnit});
 })();

@@ -182,7 +182,7 @@ try {
   reset();
   Object.assign(tables, { app_units: [], app_orders: [], app_order_lines: [], app_reminder_settings: [] });
   const bootRes = await call('bootstrap', undefined, 'GET'); const boot = await bootRes.json(); assert.equal(bootRes.status, 200);
-  assert.deepEqual(boot.tabs,['order','assistant','manage']);
+  assert.deepEqual(boot.tabs,['order','assistant','transfers','manage']);
   assert.equal(boot.theme,undefined);
 
   reset();

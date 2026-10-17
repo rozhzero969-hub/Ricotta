@@ -436,7 +436,7 @@ async function ricoToggleVoice(){
   Object.assign(ricoRecorder, {active:true, rec, stream, chunks:[]});
   rec.ondataavailable = e=>{ if(e.data && e.data.size) ricoRecorder.chunks.push(e.data); };
   rec.onstop = ()=>ricoFinishVoice(rec.mimeType || mime || 'audio/webm');
-  rec.onerror = e=>{ ricoResetVoice(); ricoRecorder.voiceOrder = false; ricoRefreshComposer(); failed(e && e.error); };
+  rec.onerror = e=>{ ricoResetVoice(); ricoRecorder.voiceOrder = false; ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintTransferMic(); failed(e && e.error); };
   if(apple) rec.start(); else rec.start(250);
   ricoRecorder.timer = setTimeout(()=>{ if(ricoRecorder.active) try{ rec.stop(); }catch(e){} }, 60000);
   ricoRefreshComposer();
@@ -454,6 +454,7 @@ async function ricoFinishVoice(mime){
   ricoRecorder.busy = true;
   ricoRefreshComposer();
   paintVoiceOrderBtn();
+  paintTransferMic();
   try{
     if(blob.size < 1200){ toast(t('ricoMicTooShort'), 'warn'); return; }   // just a tap
     const audio = await blobToBase64(blob);
@@ -465,11 +466,13 @@ async function ricoFinishVoice(mime){
       return;
     }
     ricoRecorder.busy = false;
+    // From the Transfers screen: the spoken list is read into transfer rows, not sent to Rico's chat.
+    if(ricoRecorder.voiceTransfer){ ricoRecorder.voiceTransfer = false; transferVoiceText(text); }
     // From the Order screen's "Say your order": Rico fills the order straight away.
-    if(ricoRecorder.voiceOrder){ ricoRecorder.voiceOrder = false; ricoAsk(text + '\n\n' + t('voiceOrderPrompt'), {voiceOrder:true}); }
+    else if(ricoRecorder.voiceOrder){ ricoRecorder.voiceOrder = false; ricoAsk(text + '\n\n' + t('voiceOrderPrompt'), {voiceOrder:true}); }
     else ricoAsk(text);
   }catch(e){ console.error('Voice message failed', e); toast(t('ricoMicFailed') + (e && e.name ? ` (${e.name})` : ''), 'warn'); }
-  finally{ ricoRecorder.busy = false; ricoRecorder.voiceOrder = false; ricoRefreshComposer(); paintVoiceOrderBtn(); }
+  finally{ ricoRecorder.busy = false; ricoRecorder.voiceOrder = false; ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintVoiceOrderBtn(); paintTransferMic(); }
 }
 
 /* ---------- Events ---------- */
