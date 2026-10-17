@@ -52,3 +52,16 @@ export function isPushEndpoint(value: unknown): value is string {
     return false;
   }
 }
+
+// API responses never contain executable documents or cacheable account data.
+export const securityHeaders = {
+  "Cache-Control": "no-store",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "no-referrer",
+  "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+};
+export function acceptsJson(req: Request): boolean {
+  return req.headers.get("content-type")?.split(";",1)[0].trim().toLowerCase() === "application/json";
+}

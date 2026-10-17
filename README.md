@@ -92,3 +92,7 @@ Order, Items, Suppliers, Units, History, Records and long dropdowns use the shar
 Rico reads aliases, availability and item notes and can propose changes to these fields. `propose_item_aliases` previews up to 200 alias changes together. Confirmation calls an authenticated, atomic alias-only RPC that preserves all other catalog fields, writes audit events and refuses stale aliases or renamed/deleted items. Repeated confirmation is idempotent. Rico suggestions preserve fractional quantities and skip unavailable items.
 
 The sign-in security check centres the Cloudflare widget and continues automatically after successful verification. PIN validation still happens on the server.
+
+## Security checks and publishing
+
+See [SECURITY.md](SECURITY.md) for the authentication model, permission boundaries, rate limits and hosting limitations. Build the browser-only publishing artifact with `node scripts/build-site.cjs`; configure GitHub Pages to use GitHub Actions. Do not publish the repository root. Security CI audits the Node and Deno dependency locks and scans Git history without logging secret values.

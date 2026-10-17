@@ -1,0 +1,32 @@
+# Reviewed historical JWTs: decoded role is anon (public browser keys), never service_role.
+# Exact fingerprints only; new keys and changes are not ignored.
+5cde19d4334d109ddf1f1ccfd20518f5c3d3d21f:config.js:jwt:31
+0f00cc420fe0c9b0aeb686075f108b761fd19679:config.js:jwt:31
+41c39c29a0ce1f17b043e06ded7a52e45ef500bc:config.js:jwt:31
+d5ef17e3f067680816d1eb3b4f2adab048fb424e:config.js:jwt:31
+30edf93838e764373735390f63f548e150e46d52:config.js:jwt:31
+444bfe0c0235169e22f935add87254a1d328d0c3:config.js:jwt:31
+a5448394fd7a82b94af6016d4a483e5aae27696d:config.js:jwt:31
+160b25d645b70c21c470d154f344110c16fb4158:config.js:jwt:31
+7336e27487cf6fe2372bdfb33feca74134a08056:config.js:jwt:31
+76b281a21ed3a923708f0f821ea4498105f5918d:config.js:jwt:31
+f39afee9f2d7a1fd1d0f2207e19645b089d3ee40:config.js:jwt:31
+e14a59a32c0d32f5aeec1f30ab4645c3223335ca:config.js:jwt:31
+fb67e43b1dedd01955e6cd1c72f80544d9abe780:config.js:jwt:31
+519f43aa12207e0740cebf54ff6c86ac941b2fa0:config.js:jwt:31
+f583e75257eac2f64710378e2dcaffcadff8cae1:config.js:jwt:31
+840738e34d692672f3062e35546a59f172275df7:config.js:jwt:34
+05933585f3335f8ef51bc5591219a2906c0cb08a:config.js:jwt:34
+dc674d59d15ea4d0efea552032e90fb65b1b41c3:config.js:jwt:31
+7b1035e0d80f8e787fee4e921d07d8db93d99c95:config.js:jwt:27
+
+# Retired config defaults; none match any current account or recovery hash (verified 2026-10-17).
+05933585f3335f8ef51bc5591219a2906c0cb08a:config.js:hardcoded-staff-credential:32
+05933585f3335f8ef51bc5591219a2906c0cb08a:config.js:hardcoded-staff-credential:32
+05933585f3335f8ef51bc5591219a2906c0cb08a:config.js:hardcoded-staff-credential:32
+840738e34d692672f3062e35546a59f172275df7:config.js:hardcoded-staff-credential:32
+840738e34d692672f3062e35546a59f172275df7:config.js:hardcoded-staff-credential:32
+840738e34d692672f3062e35546a59f172275df7:config.js:hardcoded-staff-credential:32
+7b1035e0d80f8e787fee4e921d07d8db93d99c95:config.js:hardcoded-staff-credential:25
+7b1035e0d80f8e787fee4e921d07d8db93d99c95:config.js:hardcoded-staff-credential:25
+7b1035e0d80f8e787fee4e921d07d8db93d99c95:config.js:hardcoded-staff-credential:25

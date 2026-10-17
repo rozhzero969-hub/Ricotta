@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {monthKey,monthStart} from '../supabase/functions/_shared/month.ts';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
-import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from '../supabase/functions/_shared/security.ts';
+import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from '../supabase/functions/_shared/security.ts';
 
 const digest = async value => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
 const token = 'test-session-token', tokenHash = await digest(token);
@@ -18,10 +18,12 @@ function reset() {
   };
   errors = new Map(); calls = []; reservation = [1, 2]; match = 'rozha'; saved = true;
 }
+let requestAllowed=true;
 const db = {
   async rpc(name, args) {
     calls.push({ name, args });
     if (errors.has(name)) return { data: null, error: { message: 'offline' } };
+    if (name === 'app_internal_reserve_requests') return {data: requestAllowed, error: errors.has(name)?{message:'offline'}:null};
     if (name === 'app_internal_reserve_login') {
       if (reservation) tables.app_login_attempts.push(...reservation.map(id => ({ id, succeeded: false })));
       return { data: reservation, error: null };
@@ -76,7 +78,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory,cleanRepeatEntries } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', stripTypeScriptTypes(source) + '\nreturn { groupHistory,cleanRepeatEntries };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, monthKey, monthStart,turnstileConfig,verifyTurnstile );
+const { groupHistory,cleanRepeatEntries } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', stripTypeScriptTypes(source) + '\nreturn { groupHistory,cleanRepeatEntries };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -89,6 +91,28 @@ try {
     { order_id: 'archived', supplier_id: null, supplier_name: 'Former supplier B', item_id: 'b', item_name: 'Apples', qty: 3 },
   ]);
   assert.equal(history[0].entries.length, 2, 'deleting suppliers preserves their separate historical order sections');
+  reset();
+  const foreign = await handler(new Request('https://example.supabase.co/functions/v1/api/orders',{method:'POST',headers:{Origin:'https://evil.example','Content-Type':'application/json','x-session-token':token},body:'{}'}));
+  assert.equal(foreign.status,403);assert.equal(calls.length,0,'foreign origins cannot touch the database');
+  assert.equal((await handler(new Request('https://example.supabase.co/functions/v1/api/login',{method:'POST',headers:{'Content-Type':'text/plain'},body:'{}'}))).status,415);
+  const preflight=await handler(new Request('https://example.supabase.co/functions/v1/api/orders',{method:'OPTIONS',headers:{Origin:'https://rozhzero969-hub.github.io'}}));
+  assert.equal(preflight.status,204);assert.equal(preflight.headers.get('Access-Control-Allow-Origin'),'https://rozhzero969-hub.github.io');
+  assert.equal(preflight.headers.get('Access-Control-Allow-Credentials'),null);
+  const locked=await call('devices/command',{ids:['peer'],type:'logout'},'POST',false);assert.equal(locked.status,401);
+  reset();requestAllowed=false;
+  const throttled=await call('orders',{});assert.equal(throttled.status,429);assert.equal(throttled.headers.get('Retry-After'),'60');
+  assert.equal(calls.some(c=>c.name==='app_internal_save_order_note'),false);
+  requestAllowed=true;reset();errors.set('app_internal_reserve_requests',true);
+  assert.equal((await call('orders',{})).status,503,'request limits fail closed');
+  reset();tables.app_sessions[0].account='yunis';
+  for(const [path,method,body] of [['devices/command','POST',{ids:['peer'],type:'logout'}],['assistant/setup-status','GET',null],['assistant/groq-key','PUT',{key:'fake'}],['notes','POST',{body:'note'}],['reminder','PUT',{enabled:true,time:'09:00'}],['push/send','POST',{type:'update'}]])assert.equal((await call(path,body,method)).status,403,`staff cannot use ${path}`);
+  reset();tables.app_sessions[0].account='yunis';tables.app_sessions[0].device_id=null;
+  for(const [path,method] of [['push/subscription','DELETE'],['push/lang','PUT']])assert.equal((await call(path,{endpoint:'https://fcm.googleapis.com/fcm/send/orphan',lang:'en'},method)).status,403,'device-less staff sessions cannot modify orphan subscriptions');
+  reset();requestAllowed=false;
+  assert.equal((await call('logout',{})).status,200,'logout remains available even when the request budget is exhausted');requestAllowed=true;
+  reset();
+  const secured=await call('streak',null,'GET');
+  for(const [name,value] of [['Cache-Control','no-store'],['X-Content-Type-Options','nosniff'],['X-Frame-Options','DENY']])assert.equal(secured.headers.get(name),value);
   reset();
   for (const malformed of ['null', '[]', '{broken']) assert.equal((await call('orders', malformed)).status, 400);
   assert.equal((await call('orders', { payload: 'ڕ'.repeat(140000) })).status, 413);

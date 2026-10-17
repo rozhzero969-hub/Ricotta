@@ -12,6 +12,15 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await db.exec("create table stock_receipts(id text); create table stock_groups(id text); insert into stock_receipts values('old'); create schema app_private; insert into app_secrets values('vapid_private','old'),('cron_secret','old'),('gemini_api_key','kept');");
  for(const sql of migrations) await db.exec(sql);
  const q=async(sql)=> (await db.query(sql)).rows;
+ // Request quotas persist across sessions and cannot be called through browser database roles.
+ assert.equal((await q("select has_table_privilege('anon','app_request_limits','select') as allowed"))[0].allowed,false);
+ assert.equal((await q("select has_function_privilege('authenticated','app_internal_reserve_requests(text[],integer[],integer)','execute') as allowed"))[0].allowed,false);
+ for(let i=0;i<3;i++)assert.equal((await q("select app_internal_reserve_requests(array['account:yunis:write'],array[3],60) as allowed"))[0].allowed,true);
+ assert.equal((await q("select app_internal_reserve_requests(array['account:yunis:write'],array[3],60) as allowed"))[0].allowed,false);
+ await db.exec("update app_request_limits set reset_at=now()-interval '1 second';");
+ assert.equal((await q("select app_internal_reserve_requests(array['account:yunis:write'],array[3],60) as allowed"))[0].allowed,true);
+ assert.equal((await q("select app_internal_reserve_requests(array['account:rozha:write'],array[3],60) as allowed"))[0].allowed,true,'accounts have independent quotas');
+ await db.exec("delete from app_request_limits;");
  assert.equal((await q("select to_regclass('stock_receipts') as t"))[0].t,null);
  assert.equal((await q("select count(*)::int as n from pg_namespace where nspname='app_private'"))[0].n,0,'the empty leftover schema is gone');
  assert.deepEqual((await q('select key from app_secrets order by key')).map(r=>r.key),['gemini_api_key'],'unused secrets are removed, the rest stay');

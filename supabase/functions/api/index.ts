@@ -62,9 +62,9 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   PUT    me/message-format          {restaurant, greeting, closing}   the WhatsApp message around each order
 //   PUT    items/aliases              {entries}                 Rico's search-name changes, applied together
 //   GET    auth/security              (public)                  whether sign-in needs the bot check, and its site key
-import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, saveGroqKey } from "./assistant.ts";
-import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from "../_shared/security.ts";
+import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -94,6 +94,7 @@ const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "https://rozhzero969-hu
 const botConfig=turnstileConfig(key=>Deno.env.get(key),ALLOWED_ORIGIN);
 
 const cors = {
+  ...securityHeaders,
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Vary": "Origin",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-device-id, x-device-label, x-app-version, x-session-token",
@@ -159,7 +160,7 @@ const isRozha = (s: Session) => s.account === "rozha";
 
 async function authenticate(req: Request): Promise<Session | null> {
   const raw = req.headers.get("x-session-token") || req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
-  if (!raw) return null;
+  if (!raw || raw.length > 256) return null;
   const { data } = await app("sessions")
     .select("id,account,device_id,expires_at,revoked_at,last_seen_at")
     .eq("token_hash", await hash(raw)).maybeSingle();
@@ -390,13 +391,23 @@ async function completeAttempt(ids: number[]) {
   if (error) throw new Error("login_attempt_unavailable");
 }
 
+async function requestLimit(keys: string[], limits: number[]): Promise<Response | null> {
+  const {data,error}=await db.rpc("app_internal_reserve_requests",{p_keys:keys,p_limits:limits,p_seconds:60});
+  if(error || typeof data!=="boolean")return fail("rate_limit_unavailable",503);
+  return data ? null : new Response(JSON.stringify({error:"too_many_requests"}),{
+    status:429,headers:{...cors,"Content-Type":"application/json","Retry-After":"60"},
+  });
+}
+
 async function login(req: Request) {
   const { pin, turnstileToken } = await readBody(req);
+  const prints = await loginFingerprints(req);
+  const limited=await requestLimit(["public:login",`login:${prints[0]}`],[300,60]);
+  if(limited)return limited;
   if(!(await verifyTurnstile(botConfig,turnstileToken)))return fail("verification_failed",403);
   // Do not truncate an untrusted value before verifying it: otherwise a
   // valid PIN followed by extra characters could be accepted.
   if (!/^\d{6}$/.test(String(pin ?? ""))) return fail("invalid_credentials", 401);
-  const prints = await loginFingerprints(req);
   const attempt = await reserveLogin(prints);
   if (!attempt) return fail("too_many_attempts", 429);
 
@@ -673,10 +684,10 @@ async function sendCommand(b: any) {
    notifications) or a supplier's reminder (Suppliers), and send what Rico
    wrote (Rico has no limits). */
 async function forwardPush(s: Session, b: any) {
-  if (!CRON_SECRET) return fail("push_not_configured", 500);
   const type = text(b.type, 30);
   const allowed = isRozha(s) ? ["update", "reminder-now", "supplier-test", "assistant"] : ["reminder-now", "supplier-test", "assistant"];
   if (!allowed.includes(type)) return fail(isRozha(s) ? "invalid_type" : "forbidden", isRozha(s) ? 400 : 403);
+  if (!CRON_SECRET) return fail("push_not_configured", 500);
   const res = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
     method: "POST",
     signal: AbortSignal.timeout(20_000),
@@ -702,10 +713,10 @@ function cleanChatMessages(v: unknown): any[] | null {
     out.push({
       role: x.role, text: String(x.text ?? "").slice(0, 8000),
       ...(typeof x.ts === "number" && Number.isFinite(x.ts) ? { ts: x.ts } : {}),
-      ...(typeof x.mood === "string" ? { mood: x.mood.slice(0, 20) } : {}),
+      ...(["happy","excited","grateful","calm","thinking","worried","sad","angry"].includes(x.mood) ? { mood: x.mood } : {}),
       ...(typeof x.error === "string" ? { error: x.error.slice(0, 40) } : {}),
       ...(Array.isArray(x.steps) ? { steps: x.steps.slice(0, 20).map((k: unknown) => String(k).slice(0, 40)) } : {}),
-      ...(Array.isArray(x.proposals) ? { proposals: x.proposals.slice(0, 20).filter((p: unknown) => p && typeof p === "object") } : {}),
+      ...(Array.isArray(x.proposals) ? { proposals: x.proposals.slice(0, 20).filter((p: any) => p && typeof p === "object" && !Array.isArray(p)).map((p: any)=>({...p,status:["pending","saving","applied","dismissed","undone","expired"].includes(p.status)?p.status:"expired"})) } : {}),
     });
   }
   return JSON.stringify(out).length <= CHAT_MAX_CHARS ? out : null;
@@ -748,7 +759,12 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
 
 /* ---------- Router ---------- */
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+  // CORS is not authentication. Reject a supplied foreign Origin before any database access.
+  const origin=req.headers.get("Origin");
+  if(origin && origin!==ALLOWED_ORIGIN)return fail("forbidden_origin",403);
+  if (req.method === "OPTIONS") return new Response(null, { status:204, headers: cors });
+  if(!["GET","POST","PUT","DELETE"].includes(req.method))return fail("method_not_allowed",405);
+  if(req.method!=="GET" && !acceptsJson(req))return fail("unsupported_media_type",415);
   const segments = new URL(req.url).pathname.split("/").filter(Boolean);
   const at = segments.lastIndexOf("api");
   const path = (at >= 0 ? segments.slice(at + 1) : segments).join("/");
@@ -766,6 +782,10 @@ Deno.serve(async (req) => {
     const s = await authenticate(req);
     if (!s) return fail("unauthorized", 401);
     const rozha = isRozha(s);
+    const keys=[`account:${s.account}:${M==="GET"?"read":"write"}`],limits=[M==="GET"?240:600];
+    if(path==="push/send"){keys.push(`account:${s.account}:push`);limits.push(6);}
+    if(path.startsWith("rico-chats") && M!=="GET"){keys.push(`account:${s.account}:chats`);limits.push(40);}
+    const limited=path==="logout"?null:await requestLimit(keys,limits);if(limited)return limited;
     const b = M === "GET" ? {} : await readBody(req, path === "assistant/transcribe" ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES);
     let m: RegExpMatchArray | null;
 
@@ -957,6 +977,7 @@ Deno.serve(async (req) => {
       if (!isPushEndpoint(endpoint)) return fail("invalid_endpoint");
       // A device may only remove its own subscription (Rozha may remove any).
       if (M === "DELETE") {
+        if(!rozha && !s.deviceId)return fail("device_required",403);
         let q = app("push_subscriptions").delete().eq("endpoint", endpoint);
         if (!rozha) q = s.deviceId ? q.eq("device_id", s.deviceId) : q.is("device_id", null);
         const { error } = await q;
@@ -976,6 +997,7 @@ Deno.serve(async (req) => {
       }
     }
     if (M === "PUT" && path === "push/lang") {
+      if(!rozha && !s.deviceId)return fail("device_required",403);
       if (!isPushEndpoint(b.endpoint)) return fail("invalid_endpoint");
       let q = app("push_subscriptions").update({ lang: langOf(b.lang), updated_at: nowIso() }).eq("endpoint", text(b.endpoint, 1000));
       if (!rozha) q = s.deviceId ? q.eq("device_id", s.deviceId) : q.is("device_id", null);
@@ -984,6 +1006,7 @@ Deno.serve(async (req) => {
     }
     if (M === "POST" && path === "push/send") return await forwardPush(s, b);
     if (M === "PUT" && path === "reminder") {
+      if(!rozha)return fail("forbidden",403);
       const time = String(b.time ?? "").trim();
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return fail("invalid_time");
       // A time still ahead today can fire today; one that already passed waits for tomorrow.
@@ -1001,7 +1024,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     if (e instanceof BodyTooLarge) return fail("too_large", 413);
     if (e instanceof InvalidBody) return fail("invalid_input", 400);
-    console.error(path, e);
+    console.error("api_request_failed", M, path.slice(0,160));
     return fail("server_error", 500);
   }
 });
