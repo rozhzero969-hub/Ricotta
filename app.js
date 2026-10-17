@@ -1430,7 +1430,7 @@ function attachContentEvents(){
 /* ============ Login (PIN pad) ============ */
 function loginMessage(){
   if(state.pinBusy) return t('signingIn');
-  return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), verification:t('securityCheckFailed'), session:state.sessionMsg})[state.pinError] || '';
+  return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), verification:t('securityCheckFailed'), device:t('deviceInUse'), session:state.sessionMsg})[state.pinError] || '';
 }
 const LOGIN_ERRORS = ['wrong','locked','network','verification'];
 function pinDotClass(i){

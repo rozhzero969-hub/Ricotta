@@ -2,6 +2,7 @@
    access the signed-in account and workspace when a screen is opened. */
 const ORDERING_TEXT = {
   en: {
+    deviceInUse: "This browser is still signed in to another account. Sign out there first.",
     orderSounds: "Order sounds",
     quantitySound: "Quantity + / − taps",
     sentSound: "Order sent chime",
@@ -69,6 +70,7 @@ const ORDERING_TEXT = {
     guideSettings: "Adjust the WhatsApp message, appearance, sounds and notifications.",
   },
   ku: {
+    deviceInUse: "ئەم وێبگەڕە هێشتا بە هەژمارێکی تر چووەتە ژوورەوە. سەرەتا لەوێ بچۆ دەرەوە.",
     orderSounds: "دەنگەکانی داواکاری",
     quantitySound: "دەنگی زیاد و کەمکردنی بڕ",
     sentSound: "دەنگی ناردنی داواکاری",
@@ -137,6 +139,7 @@ const ORDERING_TEXT = {
     guideSettings: "پەیامی واتساپ، ڕووکار، دەنگ و ئاگادارکردنەوەکان ڕێکبخە.",
   },
   ar: {
+    deviceInUse: "هذا المتصفح مسجل الدخول بحساب آخر. سجّل الخروج منه أولاً.",
     orderSounds: "أصوات الطلب",
     quantitySound: "نقرات زيادة وتقليل الكمية",
     sentSound: "نغمة إرسال الطلب",

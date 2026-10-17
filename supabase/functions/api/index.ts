@@ -169,6 +169,10 @@ async function authenticate(req: Request): Promise<Session | null> {
   if (Date.now() - new Date(data.last_seen_at).getTime() > SEEN_WRITE_EVERY_MS) {
     await app("sessions").update({ last_seen_at: nowIso() }).eq("id", data.id);
   }
+  if(data.device_id){
+    const {data:device,error}=await app("devices").select("account").eq("id",data.device_id).maybeSingle();
+    if(error || device?.account!==data.account)return null;
+  }
   return { id: data.id, account: data.account, deviceId: data.device_id };
 }
 const accountName = (a: string) => (a === "rozha" ? "Rozha" : a === "yunis" ? "Yunis" : a);
@@ -215,7 +219,7 @@ const toDevice = (d: any) => ({
   appVersion: d.app_version ?? null,
 });
 const toActivity = (a: any) => ({
-  ...(a.payload ?? {}), id: a.id, ts: a.occurred_at, actor: a.actor, deviceId: a.device_id,
+  ...(a.payload ?? {}), id: a.id, ts: a.occurred_at, actor: a.actor,
   action: a.action, type: a.entity_type, name: a.entity_name,
 });
 const toInbox = (m: any) => ({ id: m.id, kind: m.kind, mood: m.mood, en: m.body_en, ku: m.body_ku, ar: m.body_ar, at: m.created_at, read: !!m.read_at });
@@ -249,7 +253,7 @@ function groupHistory(orders: any[], lines: any[]) {
 
 async function listDevices(s: Session) {
   let q = app("devices").select("id,account,label,logged_in,last_login,last_seen,command,handled_command,app_version");
-  if (!isRozha(s)) q = q.eq("id", s.deviceId ?? "");
+  if (!isRozha(s)) q = q.eq("id", s.deviceId ?? "").eq("account",s.account);
   const { data, error } = await q;
   if (error) throw error;
   return (data ?? []).map(toDevice);
@@ -432,6 +436,13 @@ async function startSession(req: Request, account: Account) {
   const token = randomToken();
   const deviceId = text(req.headers.get("x-device-id"), 120) || null;
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 3600_000).toISOString();
+  // A client-supplied device ID is an identifier, never proof of device ownership.
+  if(deviceId){
+    const {data:active,error}=await app("sessions").select("id").eq("device_id",deviceId)
+      .neq("account",account).is("revoked_at",null).gt("expires_at",nowIso()).limit(1);
+    if(error)return fail("login_failed",503);
+    if(active?.length)return fail("device_in_use",409);
+  }
   const { error: sessionError } = await app("sessions").insert({ token_hash: await hash(token), account, device_id: deviceId, expires_at: expiresAt });
   if (sessionError) return fail("login_failed", 503);
   if (deviceId) {
@@ -662,11 +673,11 @@ async function saveOrder(s: Session, b: any) {
 /* ---------- Devices ---------- */
 async function heartbeat(s: Session, label: string | null, version: string | null) {
   if (!s.deviceId) return ok();
-  const { data: d, error: readError } = await app("devices").select("command,handled_command").eq("id", s.deviceId).maybeSingle();
+  const { data: d, error: readError } = await app("devices").select("command,handled_command").eq("id", s.deviceId).eq("account",s.account).maybeSingle();
   if (readError) throw readError;
   const pendingLogout = d?.command?.type === "logout" && d.command.id !== d.handled_command;
   if (pendingLogout) return json({ ok: true, device: null });   // don't flip it back to "logged in"
-  const { error } = await app("devices").upsert({ id: s.deviceId, account: s.account, ...(label ? { label } : {}), ...(version ? { app_version: version } : {}), logged_in: true, last_seen: nowIso(), updated_at: nowIso() });
+  const { error } = await app("devices").update({ ...(label ? { label } : {}), ...(version ? { app_version: version } : {}), logged_in: true, last_seen: nowIso(), updated_at: nowIso() }).eq("id",s.deviceId).eq("account",s.account);
   if (error) throw error;
   return ok();
 }
@@ -945,7 +956,7 @@ Deno.serve(async (req) => {
     if (M === "POST" && path === "devices/me") return await heartbeat(s, deviceLabel(req), appVersion(req));
     if (M === "POST" && path === "devices/me/ack") {
       if (s.deviceId) {
-        const { error } = await app("devices").update({ handled_command: text(b.commandId, 120) || null }).eq("id", s.deviceId);
+        const { error } = await app("devices").update({ handled_command: text(b.commandId, 120) || null }).eq("id", s.deviceId).eq("account",s.account);
         if (error) return fail("ack_failed", 503);
       }
       return ok();

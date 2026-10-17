@@ -8,7 +8,9 @@ The public browser app talks only to the `api` Edge Function. PIN checks, accoun
 
 PINs and recovery answers are salted bcrypt hashes with cost 12. Sessions use random bearer tokens; only SHA-256 token hashes are stored in the database, and every request checks expiry/revocation. Cloudflare tokens are verified on the server for hostname, action and single use. The functions intentionally use `verify_jwt=false`: the API verifies its own sessions, and the push function requires the private cron secret.
 
-All app tables have RLS enabled and no grants to public/anon/authenticated. The lack of browser RLS policies is intentional: the browser has no direct table/RPC access. Only server roles may call internal database functions. Do not add permissive policies to silence the informational advisor message.
+All app tables have RLS enabled and no grants to public/anon/authenticated. Device IDs are not credentials: sessions must match the device account, heartbeats cannot change ownership, and sign-in cannot claim a device with an active session from another account. Internal device IDs are excluded from shared activity responses.
+
+The lack of browser RLS policies is intentional: the browser has no direct table/RPC access. Only server roles may call internal database functions. Do not add permissive policies to silence the informational advisor message.
 
 ## Secrets and browser storage
 

@@ -14,7 +14,7 @@ function reset() {
     app_sessions: [{ id: 'session', token_hash: tokenHash, account: 'rozha', device_id: 'device-1', expires_at: new Date(Date.now() + 60000).toISOString(), last_seen_at: new Date().toISOString(), revoked_at: null }],
     app_accounts: [{ id: 'rozha', name: 'Rozha', tabs: ['order', 'assistant', 'history'] }],
     app_items: [{ id: 'tomato', name: 'Tomatoes' }], app_suppliers: [{ id: 'supplier', name: 'Supplier' }],
-    app_recovery_tickets: [], app_push_subscriptions: [], app_login_attempts: [], app_devices: [], app_rico_inbox: [], app_audit_events: [],
+    app_recovery_tickets: [], app_push_subscriptions: [], app_login_attempts: [], app_devices: [{id:"device-1",account:"rozha"}], app_rico_inbox: [], app_audit_events: [],
   };
   errors = new Map(); calls = []; reservation = [1, 2]; match = 'rozha'; saved = true;
 }
@@ -104,9 +104,9 @@ try {
   assert.equal(calls.some(c=>c.name==='app_internal_save_order_note'),false);
   requestAllowed=true;reset();errors.set('app_internal_reserve_requests',true);
   assert.equal((await call('orders',{})).status,503,'request limits fail closed');
-  reset();tables.app_sessions[0].account='yunis';
+  reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';
   for(const [path,method,body] of [['devices/command','POST',{ids:['peer'],type:'logout'}],['assistant/setup-status','GET',null],['assistant/groq-key','PUT',{key:'fake'}],['notes','POST',{body:'note'}],['reminder','PUT',{enabled:true,time:'09:00'}],['push/send','POST',{type:'update'}]])assert.equal((await call(path,body,method)).status,403,`staff cannot use ${path}`);
-  reset();tables.app_sessions[0].account='yunis';tables.app_sessions[0].device_id=null;
+  reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';tables.app_sessions[0].device_id=null;
   for(const [path,method] of [['push/subscription','DELETE'],['push/lang','PUT']])assert.equal((await call(path,{endpoint:'https://fcm.googleapis.com/fcm/send/orphan',lang:'en'},method)).status,403,'device-less staff sessions cannot modify orphan subscriptions');
   reset();requestAllowed=false;
   assert.equal((await call('logout',{})).status,200,'logout remains available even when the request budget is exhausted');requestAllowed=true;
@@ -139,6 +139,13 @@ try {
   assert.equal((await call('login', { pin: '432198' }, 'POST', false)).status, 200);
   assert.equal(tables.app_login_attempts.every(row => row.succeeded), true);
 
+  reset();tables.app_devices[0].account='yunis';
+  assert.equal((await call('devices',null,'GET')).status,401,'a session cannot control a device currently bound to another account');
+  reset();match='yunis';
+  const takeover=await handler(new Request('https://example.supabase.co/functions/v1/api/login',{method:'POST',headers:{'content-type':'application/json','x-device-id':'device-1'},body:JSON.stringify({pin:'739152'})}));
+  assert.equal(takeover.status,409,'a valid staff PIN cannot take over an active admin device ID');
+  assert.equal(tables.app_devices[0].account,'rozha');
+  assert.equal(calls.some(c=>c.table==='app_sessions' && c.action==='insert'),false,'conflicting device login issues no new token');
   reset();
   const validOrder = { id: 'order-1', date: new Date().toISOString(), entries: [{ supplierId: 'supplier', items: [{ itemId: 'tomato', name: 'Tomatoes', unit: 'kg', qty: 5 }] }] };
   assert.equal((await call('orders', validOrder)).status, 200);
