@@ -84,7 +84,7 @@ async function fetchLiveVersion(){
 }
 
 async function checkForUpdate(){
-  if(updateCheckBusy || updatePromptOpen || modalIsOpen()) return;   /* never interrupt a half-filled form */
+  if(document.visibilityState === 'hidden' || updateCheckBusy || updatePromptOpen || modalIsOpen()) return;   /* never interrupt a half-filled form */
   updateCheckBusy = true;
   try{
     const live = await fetchLiveVersion();

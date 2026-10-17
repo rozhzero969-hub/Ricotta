@@ -13,6 +13,8 @@ for f in style.css config.js icons.js i18n.js storage.js sounds.js modals.js bot
 done
 mkdir -p dist/supabase/functions/_shared
 cp ../supabase/functions/_shared/search.js dist/supabase/functions/_shared/
+cp -R ../fonts dist/fonts
+cp ../install-icon.webp dist/
 mkdir -p dist/vendor
 cp ../vendor/xlsx-0.20.3.min.js dist/vendor/
 cp lab-mock.js lab-panel.js lab-panel.css page.html dist/

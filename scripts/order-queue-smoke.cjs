@@ -9,6 +9,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const http=require('node:http');
 const root=path.resolve(__dirname,'..');
+const siteRoot=process.env.UI_SITE_DIR?path.resolve(process.env.UI_SITE_DIR):root;
 
 const suppliers=[{id:'s0',name:'Golden Bread Bakery',phone:'0750 111 2222'},{id:'s1',name:'Fresh produce',phone:'07701234567'},{id:'s2',name:'Corner Cake',phone:''}];
 const items=[{id:'i0',name:'Bread',unit:'box',supplierId:'s0'},{id:'i1',name:'Tomato',unit:'box',supplierId:'s1'},{id:'i2',name:'Cake',unit:'box',supplierId:'s2'}];
@@ -16,9 +17,9 @@ const session={token:'fixture-yunis',expiresAt:'2099-01-01T00:00:00Z',account:'y
 
 const server=http.createServer((req,res)=>{
   const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
-  const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));
-  if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}
-  fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);return res.end();}res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png'})[path.extname(file)]||'application/octet-stream');res.end(data);});
+  const file=path.resolve(siteRoot,'.'+(pathname==='/'?'/index.html':pathname));
+  if(!file.startsWith(siteRoot+path.sep)){res.writeHead(403);return res.end();}
+  fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);return res.end();}res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.webp':'image/webp','.woff2':'font/woff2'})[path.extname(file)]||'application/octet-stream');res.end(data);});
 });
 
 (async()=>{

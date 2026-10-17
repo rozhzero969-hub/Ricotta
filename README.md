@@ -96,3 +96,11 @@ The sign-in security check centres the Cloudflare widget and continues automatic
 ## Security checks and publishing
 
 See [SECURITY.md](SECURITY.md) for the authentication model, permission boundaries, rate limits and hosting limitations. Build the browser-only publishing artifact with `node scripts/build-site.cjs`; configure GitHub Pages to use GitHub Actions. Do not publish the repository root. Security CI audits the Node and Deno dependency locks and scans Git history without logging secret values.
+
+## Loading and performance
+
+`pnpm install --frozen-lockfile` then `node scripts/build-site.cjs` builds minified JavaScript/CSS with content-hashed filenames. Fonts are self-hosted WOFF2 (licenses in `fonts/`); `font-display: optional` avoids late swaps moving controls. Spreadsheet parsing/export and Cloudflare's widget load only when needed. The install icon uses a sized, lazy WebP; notification/PWA icons remain losslessly compressed PNGs.
+
+The service worker caches only exact, immutable files from the current build. It never caches HTML, the live version marker, API replies, sessions or business data. New builds discard obsolete static caches and preserve notification badges. GitHub Pages still controls HTTP cache headers; its short TTL may remain a Lighthouse warning on cold visits.
+
+For repeatable local phone measurements, run `node scripts/performance-browser.cjs dist /tmp/ricotta-performance`. This uses 179 sample items, a mocked API, Slow 4G and 4x CPU throttling; it does not measure production database speed. Run Lighthouse against the published URL for public sign-in metrics. `UI_SITE_DIR=dist` exercises the actual optimized artifact with the UI, order-queue and search smoke scripts.

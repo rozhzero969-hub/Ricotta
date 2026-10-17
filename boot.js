@@ -11,12 +11,9 @@ window.__splashStart = performance.now();
   var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
   if(standalone && window.matchMedia && matchMedia('(pointer: coarse)').matches) document.documentElement.classList.add('app-shell');
 })();
-/* The loading screen wears the theme this phone showed last (style.css and
-   the splash colours in index.html read html[data-theme]). */
+/* Match the saved dark preference before revealing the first screen. */
 (function(){
   try{
-    var last = JSON.parse(localStorage.getItem('ricottaOrders:lastTheme') || 'null');
-    if(typeof last === 'string' && /^[a-z]{3,12}$/.test(last) && last !== 'ricotta') document.documentElement.setAttribute('data-theme', last);
     var mode = JSON.parse(localStorage.getItem('ricottaOrders:darkMode') || 'null');
     if(mode === 'on' || (mode === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark');
   }catch(e){}
@@ -31,5 +28,5 @@ window.__splashStart = performance.now();
     return link;
   }
   sheet('style.css', null, function(){ window.__cssReady = true; document.dispatchEvent(new Event('cssready')); });
-  var fonts = sheet('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Noto+Kufi+Arabic:wght@400;500;600;700;800&family=Manrope:wght@800&display=swap', 'print', function(){ fonts.media = 'all'; });
+  sheet('fonts/fonts.css');
 })();
