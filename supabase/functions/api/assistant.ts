@@ -743,7 +743,7 @@ function contextBlock(w: World, s: Session, body: any) {
     .map(([id, q]) => { const it = w.items.find((i) => i.id === id); return it ? `${it.name} × ${q} ${unitName(w, it.unit_id)} (${supplierName(w, it.supplier_id)})` : null; })
     .filter(Boolean) : [];
   const phones = w.full ? w.devices.slice(0, 12)
-    .map((d) => `${NAMES[d.account] ?? "nobody"} on ${String(d.label ?? "a device").replace("|", ", ")}${d.logged_in ? " (signed in)" : " (signed out)"}`) : [];
+    .map((d) => `${NAMES[d.account] ?? "nobody"} on ${String(d.label ?? "a device").replaceAll("|", ", ")}${d.logged_in ? " (signed in)" : " (signed out)"}`) : [];
   return `CONTEXT (live data, ${w.now.date} ${w.now.time} Erbil, ${WEEKDAYS[w.now.weekday]})
 - Talking to: ${person} (${w.full ? "full access" : "Order, Rico, History without deleting, Suppliers, Items, Record, Units"}). App language: ${lang}. Screen they came from: ${text(body.screen, 30) || "order"}.
 - Rico may fill the order draft automatically on this device: ${body.autoOrder ? "YES" : "no (cards need a tap)"}.
