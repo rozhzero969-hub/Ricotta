@@ -60,8 +60,9 @@ async function initPush(){
     pushStatus.supported = ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
     pushStatus.permission = ('Notification' in window) ? Notification.permission : 'denied';
     pushStatus.subscribed = false;
-    if(pushStatus.supported && pushConfigured()){
-      const reg = await navigator.serviceWorker.register(PUSH_SW_URL);
+    // Static caching also benefits browsers that cannot receive notifications.
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.register(PUSH_SW_URL) : null;
+    if(reg && pushStatus.supported && pushConfigured()){
       let sub = await reg.pushManager.getSubscription();
       if(!sub && Notification.permission === 'granted'){
         try{

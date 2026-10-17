@@ -2,10 +2,12 @@ const {chromium}=require('playwright');
 const assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
 const repo=path.resolve(__dirname,'..'),root=path.join(repo,'lab/dist');
 cp.execFileSync('sh',['lab/build.sh'],{cwd:repo});
+const siteRoot=process.env.UI_SITE_DIR?path.resolve(process.env.UI_SITE_DIR):root;
 const server=http.createServer((req,res)=>{
- const file=path.resolve(root,'.'+(new URL(req.url,'http://localhost').pathname==='/'?'/index.html':new URL(req.url,'http://localhost').pathname));
- if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}
- fs.readFile(file,(error,data)=>{if(error){res.writeHead(404);return res.end();}res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png'})[path.extname(file)]||'application/octet-stream');res.end(data);});
+ if(process.env.UI_SITE_DIR && req.url==='/__fixture.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(repo,'lab/lab-mock.js')));}
+ const file=path.resolve(siteRoot,'.'+(new URL(req.url,'http://localhost').pathname==='/'?'/index.html':new URL(req.url,'http://localhost').pathname));
+ if(!file.startsWith(siteRoot+path.sep)){res.writeHead(403);return res.end();}
+ fs.readFile(file,(error,data)=>{if(error){res.writeHead(404);return res.end();}if(process.env.UI_SITE_DIR && file.endsWith('/index.html'))data=Buffer.from(data.toString().replace('<head>','<head><script src="/__fixture.js"></script>'));res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.webp':'image/webp','.woff2':'font/woff2'})[path.extname(file)]||'application/octet-stream');res.end(data);});
 });
 (async()=>{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
@@ -135,7 +137,7 @@ const server=http.createServer((req,res)=>{
   await page.locator('#modalFormCancel').click();
   assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'},'provider failure remains cancellable');
   const framed=await browser.newPage();
-  await framed.goto('http://127.0.0.1:'+server.address().port);
+  await framed.goto('about:blank');
   await framed.setContent('<iframe src="http://127.0.0.1:'+server.address().port+'/"></iframe>');
   const embedded=framed.frameLocator('iframe');
   await embedded.locator('#app').getByText('Open Ricotta directly to sign in.').waitFor();

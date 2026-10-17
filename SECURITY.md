@@ -26,7 +26,7 @@ Foreign browser origins and non-JSON writes are rejected before routing; a missi
 
 ## Publishing and continuous checks
 
-`node scripts/build-site.cjs` creates an allowlisted `dist/` artifact. GitHub Pages must use **GitHub Actions** as its source. Backend TypeScript, SQL migrations, tests, lab pages, dependency files and local/private exports are excluded. The shared browser search helper is intentionally included. The repository itself is public: hiding files from the published site does not make repository source private.
+`node scripts/build-site.cjs` creates an allowlisted `dist/` artifact. GitHub Pages must use **GitHub Actions** as its source. Backend TypeScript, SQL migrations, tests, lab pages, dependency files and local/private exports are excluded. The shared browser search helper is included in the minified browser bundle. Content-hashed assets are cached by the service worker; HTML, config.js, API replies and user data are excluded from that cache. The repository itself is public: hiding files from the published site does not make repository source private.
 
 GitHub Pages supplies HTTPS/HSTS but does not support arbitrary response headers. The frontend CSP/referrer policy are supplied as meta tags; an embedded app refuses to render its sign-in/workspace as defense in depth. A true frame-ancestors header, Permissions-Policy and frontend nosniff header require a host/proxy that supports headers. Do not claim that a `_headers` file works on GitHub Pages. A hosting move must also update CORS, Turnstile hostnames, installed-app behavior and deployment settings.
 

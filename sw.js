@@ -1,10 +1,27 @@
-/* Ricotta Orders -- service worker. PUSH ONLY.
-   It deliberately has no fetch handler and caches nothing, so it can never
-   serve an old copy of the app and the update checker / hardReload() in
-   update-check.js keep working exactly as before. */
-
+/* Cache only this build's immutable public assets. HTML, config, credentials,
+   API requests and business data always use the network. Push remains active. */
+const STATIC_CACHE = 'ricotta-static-dev';
+const STATIC_FILES = [];
+const assetUrls = new Set(STATIC_FILES.map(file=>new URL(file,self.registration.scope).href));
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('activate', event => event.waitUntil((async()=>{
+  for(const key of await caches.keys()) if(key.startsWith('ricotta-static-') && key !== STATIC_CACHE) await caches.delete(key);
+  await self.clients.claim();
+})()));
+self.addEventListener('fetch', event => {
+  const request=event.request;
+  if(request.method !== 'GET' || !assetUrls.has(request.url)) return;
+  event.respondWith((async()=>{
+    const cache=await caches.open(STATIC_CACHE), hit=await cache.match(request);
+    if(hit) return hit;
+    const response=await fetch(request);
+    if(response.ok && response.type === 'basic') {
+      // Best effort: full/private storage must never turn a valid response into a failure.
+      event.waitUntil(cache.put(request,response.clone()).catch(()=>{}));
+    }
+    return response;
+  })());
+});
 
 /* iOS requires every push to show a visible notification, so we always
    show one -- even if the app happens to be open, and even if something is

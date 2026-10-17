@@ -14,6 +14,7 @@ const os=require('node:os');
 const http=require('node:http');
 const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
+const siteRoot=process.env.UI_SITE_DIR?path.resolve(process.env.UI_SITE_DIR):root;
 const artifacts=fs.mkdtempSync(path.join(os.tmpdir(),'ricotta-ui-'));
 const fast=process.env.UI_SMOKE_FAST==='1';
 const viewportWidths=fast?[390,1440]:[360,390,768,1024,1440,1920];
@@ -59,9 +60,9 @@ const fixtureFor=account=>({
 const session=account=>({token:'fixture-'+account,expiresAt:'2099-01-01T00:00:00Z',account,name:account==='rozha'?'Rozha':'Yunis',tabs:['order','assistant','history']});
 const server=http.createServer((req,res)=>{
   const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
-  const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));
-  if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}
-  fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);return res.end();}res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png'})[path.extname(file)]||'application/octet-stream');res.end(data);});
+  const file=path.resolve(siteRoot,'.'+(pathname==='/'?'/index.html':pathname));
+  if(!file.startsWith(siteRoot+path.sep)){res.writeHead(403);return res.end();}
+  fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);return res.end();}res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.webp':'image/webp','.woff2':'font/woff2'})[path.extname(file)]||'application/octet-stream');res.end(data);});
 });
 (async()=>{
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));

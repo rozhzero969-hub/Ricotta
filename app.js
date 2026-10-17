@@ -418,7 +418,7 @@ function syncInstallPrompt(){
   if(!deferredInstallPrompt || installPromptDismissed || isStandaloneApp() || !matchMedia('(min-width:960px) and (pointer:fine)').matches) return;
   const card=document.createElement('aside');
   card.id='installPrompt'; card.className='install-prompt'; card.setAttribute('aria-label',t('installTitle'));
-  card.innerHTML=`<img class="install-prompt-icon" src="icon-192.png" alt=""><div class="install-prompt-copy"><div class="install-prompt-title">${esc(t('installTitle'))}</div><div class="install-prompt-sub">${esc(t('installSub'))}</div><div class="install-prompt-actions"><button type="button" class="btn btn-ghost" id="installLaterBtn">${esc(t('installLater'))}</button><button type="button" class="btn btn-primary" id="installAppBtn">${esc(t('installAction'))}</button></div></div>`;
+  card.innerHTML=`<img class="install-prompt-icon" src="install-icon.webp" width="48" height="48" loading="lazy" decoding="async" alt=""><div class="install-prompt-copy"><div class="install-prompt-title">${esc(t('installTitle'))}</div><div class="install-prompt-sub">${esc(t('installSub'))}</div><div class="install-prompt-actions"><button type="button" class="btn btn-ghost" id="installLaterBtn">${esc(t('installLater'))}</button><button type="button" class="btn btn-primary" id="installAppBtn">${esc(t('installAction'))}</button></div></div>`;
   document.body.appendChild(card);
   document.getElementById('installLaterBtn').onclick=()=>{ installPromptDismissed=true; removeInstallPrompt(); };
   document.getElementById('installAppBtn').onclick=async()=>{
@@ -546,12 +546,17 @@ async function boot(){
     clearApiSession();   // a sign-in from before the two accounts: sign in again
   }
   render();
-  hideSplash(500);   // reveal the workspace promptly once it is ready
+  hideSplash(0);   // keep the gentle exit; never add an artificial startup delay
   if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); maybeFinishQueue(); }
   if(state.account && !loadedOk) retryLoad();
   // Notifications: register the service worker, read this device's status, and
   // handle being launched from a notification tap.
-  initPush().then(()=>{ if(state.account) render(); handleLaunchIntent(); });
+  initPush().then(()=>{
+    // Subscription discovery must not rebuild a 179-item order list (or reset a PIN being typed).
+    const banner=document.querySelector('.push-banner');
+    if(state.account && (pushBannerMode() || banner)) render();
+    handleLaunchIntent();
+  });
 }
 /* The branded loading screen lives in index.html so it shows instantly.
    It lifts away once the first real screen is on the page and style.css is
@@ -1697,7 +1702,8 @@ function renderOrderResults(){
   const tabFiltered = state.orderTab==='all'
     ? state.items
     : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab);
-  const visibleItems = globalThis.RicottaSearch.rank(tabFiltered.filter(i=>i.available!==false),state.search,itemSearchFields);
+  const availableItems = tabFiltered.filter(i=>i.available!==false);
+  const visibleItems = q ? globalThis.RicottaSearch.rank(availableItems,state.search,itemSearchFields) : availableItems;
   const pinned = state.orderTab==='all' && !q ? state.pins.map(id=>state.items.find(i=>i.id===id)).filter(i=>i && i.available!==false) : [];
 
   const groups = Object.create(null);
@@ -1753,8 +1759,8 @@ function refreshOrderView(pulseItemId=null){
   if(note){note.textContent=state.orderNote||'';note.hidden=!state.orderNote;}
   const noteButton=document.getElementById('orderNoteBtn');
   if(noteButton)noteButton.textContent=t('orderNote')+(state.orderNote?' •':'');
-  document.querySelectorAll('#orderResults [data-qty]').forEach(input=>{
-    if(pulseItemId && input.dataset.qty!==pulseItemId) return;
+  const quantitySelector = pulseItemId ? `#orderResults [data-qty="${CSS.escape(pulseItemId)}"]` : '#orderResults [data-qty]';
+  document.querySelectorAll(quantitySelector).forEach(input=>{
     const qty=state.cart[input.dataset.qty]||0, row=input.closest('.item-row');
     input.value=qty;
     row.classList.toggle('has-qty',qty>0);
@@ -1895,7 +1901,8 @@ function attachOrderEvents(){
   };
   const send = document.getElementById('sendOrdersBtn');
   if(send) send.onclick = ()=>startSendQueue();
-  loadRicoSuggestion();
+  const options=document.querySelector('.order-options');
+  options?.addEventListener('toggle',()=>{if(options.open)loadRicoSuggestion();});
 }
 /* Opens Send to suppliers with the current draft (the Send button, and
    Rico's "open send" shortcut). Returns false when there is nothing to send. */
@@ -2277,7 +2284,7 @@ const SHEET_WORDS = {
   ar:{title:'طلب شراء', none:'بدون مورّد', items:'مواد', item:'المادة', unit:'الوحدة', qty:'الكمية', foot:'يرجى تجهيز هذا الطلب بالكميات المذكورة أعلاه. شكرًا لكم.'}
 };
 // The same fonts as the app: Sora, with Noto Kufi Arabic for every Kurdish or Arabic letter.
-const SHEET_FONTS = 'https://fonts.googleapis.com/css2?family=Sora:wght@400;700;800&family=Noto+Kufi+Arabic:wght@400;700;800&display=swap';
+const SHEET_FONTS = new URL('fonts/fonts.css', location.href).href;
 function printOrderSheet(entry, supplier){
   const w0 = SHEET_WORDS[state.lang] || SHEET_WORDS.en;
   const supplierLabel = supplier?.name || w0.none;
