@@ -66,7 +66,7 @@ const ORDERING_TEXT = {
     guideUnits: "Set the units used for quantities, such as kg, box or litre.",
     guideRecord: "See who added, changed or removed items and suppliers.",
     guideDevices: "See signed-in devices and control their access.",
-    guideSettings: "Adjust messages, appearance, notifications and sign-in.",
+    guideSettings: "Adjust the WhatsApp message, appearance, sounds and notifications.",
   },
   ku: {
     orderSounds: "دەنگەکانی داواکاری",
@@ -134,7 +134,7 @@ const ORDERING_TEXT = {
     guideUnits: "یەکەی بڕەکان دیاری بکە، وەک کیلۆ، سندوق یان لیتر.",
     guideRecord: "ببینە کێ کاڵا و دابینکەری زیاد، گۆڕیو یان سڕیوەتەوە.",
     guideDevices: "ئامێرە چووەژوورەوەکان ببینە و دەستگەیشتنیان بەڕێوەببە.",
-    guideSettings: "پەیام، ڕووکار، ئاگادارکردنەوە و چوونەژوورەوە ڕێکبخە.",
+    guideSettings: "پەیامی واتساپ، ڕووکار، دەنگ و ئاگادارکردنەوەکان ڕێکبخە.",
   },
   ar: {
     orderSounds: "أصوات الطلب",
@@ -197,7 +197,7 @@ const ORDERING_TEXT = {
     guideUnits: "حدد وحدات الكميات مثل كغ أو صندوق أو لتر.",
     guideRecord: "اعرف من أضاف أو عدل أو حذف الأصناف والموردين.",
     guideDevices: "راجع الأجهزة المسجلة وتحكم في وصولها.",
-    guideSettings: "اضبط الرسائل والمظهر والإشعارات وتسجيل الدخول.",
+    guideSettings: "اضبط رسالة واتساب والمظهر والأصوات والإشعارات.",
   },
 };
 for (const lang of ["en", "ku", "ar"]) {
@@ -327,7 +327,7 @@ function supplierContactLinks(s) {
   const chat = waLink(s.phone, ""),
     phone = chat.match(/(?:phone=|wa\.me\/)(\d+)/)?.[1];
   if (!phone || phone.length < 7) return "";
-  return `<a class="btn btn-ghost supplier-contact" data-contact href="${esc(chat)}"${waOpensApp() ? "" : ' target="_blank" rel="noopener noreferrer"'} aria-label="${esc(t("contactSupplier") + " · " + s.name)}">${ICON_CHAT}<span>${esc(t("contactSupplier"))}</span></a><a class="btn btn-ghost supplier-contact" data-contact href="tel:+${phone}" aria-label="${esc(t("callSupplier") + " · " + s.name)}"><span>${esc(t("callSupplier"))}</span></a>`;
+  return `<a class="btn btn-ghost supplier-contact" data-contact href="${esc(chat)}"${waOpensApp() ? "" : ' target="_blank" rel="noopener noreferrer"'} aria-label="${esc(t("contactSupplier") + " · " + s.name)}">${ICON_CHAT}<span>${esc(t("contactSupplier"))}</span></a><a class="btn btn-ghost supplier-contact" data-contact href="tel:+${phone}" aria-label="${esc(t("callSupplier") + " · " + s.name)}">${ICON_PHONE}<span>${esc(t("callSupplier"))}</span></a>`;
 }
 function catalogMatches(text) {
   return Number.isFinite(globalThis.RicottaSearch.score(state.catalogQuery,text));
@@ -524,4 +524,169 @@ function openItemImport() {
       return {};
     },
   });
+}
+
+/* ---------- Excel for the workplace stock system ----------
+   The stock system's "Upload Excel" (Move stock between storages) reads one
+   sheet named "Transfer" with exactly three columns: Item name, Amount, Unit.
+   Each item can say how it is written there (Manage → item → Stock system);
+   otherwise its own name, unit and amount are used. The stock system matches
+   names itself and marks anything it does not know, so nothing moves by guess. */
+const STOCK_TEXT = {
+  en: {
+    stockExcel: "Excel for stock",
+    stockExcelReady: "Excel file ready",
+    stockExcelFailed: "The Excel file could not be made. Please try again.",
+    stockSection: "Stock system (Excel)",
+    stockSectionHint: "How this item is written in the workplace stock system. Leave empty to use the item's own name and unit.",
+    stockName: "Name in the stock system",
+    stockUnit: "Unit in the stock system",
+    stockUnitSame: "Same as the order unit",
+    stockFactor: "Stock units in one order unit",
+    stockFactorHint: "For example 1 box = 20 kg: write 20.",
+    stockFactorInvalid: "Write how many stock units are in one order unit (a number above 0).",
+  },
+  ku: {
+    stockExcel: "Excel بۆ کۆگا",
+    stockExcelReady: "فایلی Excel ئامادەیە",
+    stockExcelFailed: "فایلی Excel دروست نەکرا. تکایە دووبارە هەوڵ بدەرەوە.",
+    stockSection: "سیستەمی کۆگا (Excel)",
+    stockSectionHint: "ئەم کاڵایە لە سیستەمی کۆگای شوێنی کار چۆن نووسراوە. بە بەتاڵی بهێڵەوە بۆ بەکارهێنانی ناو و یەکەی خۆی.",
+    stockName: "ناو لە سیستەمی کۆگا",
+    stockUnit: "یەکە لە سیستەمی کۆگا",
+    stockUnitSame: "هەمان یەکەی داواکاری",
+    stockFactor: "چەند یەکەی کۆگا لە یەک یەکەی داواکاریدا",
+    stockFactorHint: "بۆ نموونە 1 سندوق = 20 کیلۆ: 20 بنووسە.",
+    stockFactorInvalid: "بنووسە چەند یەکەی کۆگا لە یەک یەکەی داواکاریدا هەیە (ژمارەیەک لە 0 زیاتر).",
+  },
+  ar: {
+    stockExcel: "Excel للمخزن",
+    stockExcelReady: "ملف Excel جاهز",
+    stockExcelFailed: "تعذّر إنشاء ملف Excel. حاول مرة أخرى.",
+    stockSection: "نظام المخزن (Excel)",
+    stockSectionHint: "كيف تُكتب هذه المادة في نظام مخزن العمل. اتركه فارغاً لاستخدام اسمها ووحدتها.",
+    stockName: "الاسم في نظام المخزن",
+    stockUnit: "الوحدة في نظام المخزن",
+    stockUnitSame: "نفس وحدة الطلب",
+    stockFactor: "وحدات المخزن في وحدة طلب واحدة",
+    stockFactorHint: "مثلاً 1 صندوق = 20 كيلو: اكتب 20.",
+    stockFactorInvalid: "اكتب عدد وحدات المخزن في وحدة الطلب الواحدة (رقم أكبر من 0).",
+  },
+};
+for (const lang of ["en", "ku", "ar"]) Object.assign(T[lang], STOCK_TEXT[lang]);
+
+/* A unit as the stock system writes it: the Kurdish name (کیلۆ, کارتۆن, دانە…). */
+function stockUnitName(unitId) {
+  const u = state.units.find((x) => x.id === unitId);
+  return u ? u.ku || u.en : "";
+}
+/* One order line as a stock-system row. Lines from older orders keep the
+   name and unit saved with the order when the item no longer exists. */
+function stockRow(line) {
+  const item = state.items.find((i) => i.id === line.itemId);
+  const qty = Number(line.qty) || 0;
+  if (item?.stockUnit && item.stockUnit !== line.unit)
+    return {
+      name: item.stockName || item.name,
+      amount: Math.round(qty * (Number(item.stockFactor) || 1) * 1000) / 1000,
+      unit: stockUnitName(item.stockUnit),
+    };
+  return {
+    name: item?.stockName || item?.name || line.name,
+    amount: Math.round(qty * 1000) / 1000,
+    unit: stockUnitName(line.unit),
+  };
+}
+/* Every line of an order as stock rows; the same item twice becomes one row. */
+function stockTransferRows(entries) {
+  const rows = new Map();
+  for (const entry of entries || [])
+    for (const line of entry.items || []) {
+      const row = stockRow(line);
+      if (!row.name || !(row.amount > 0)) continue;
+      const key = foldText(row.name) + "|" + row.unit;
+      const same = rows.get(key);
+      if (same) same.amount = Math.round((same.amount + row.amount) * 1000) / 1000;
+      else rows.set(key, row);
+    }
+  return [...rows.values()];
+}
+const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+/* Hands a file to the person: the share sheet on a phone (Save to Files,
+   WhatsApp…), a normal download on a computer. */
+async function deliverFile(blob, name) {
+  const file = typeof File === "function" ? new File([blob], name, { type: blob.type }) : null;
+  if (file && matchMedia("(pointer: coarse)").matches && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: name });
+      return true;
+    } catch (error) {
+      if (error?.name === "AbortError") return false;
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  return true;
+}
+/* The "Excel for stock" file for one sent order (History). */
+async function downloadStockExcel(rec) {
+  const rows = stockTransferRows(rec?.entries);
+  if (!rows.length) return;
+  try {
+    const XLSX = await loadSpreadsheetReader();
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ["Item name", "Amount", "Unit"],
+      ...rows.map((r) => [r.name, r.amount, r.unit]),
+    ]);
+    sheet["!cols"] = [{ wch: 42 }, { wch: 10 }, { wch: 12 }];
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, "Transfer");
+    const data = XLSX.write(book, { bookType: "xlsx", type: "array", compression: true });
+    const day = erbilDate(rec.date || new Date().toISOString());
+    const time = formatIraqDateTime(rec.date, { hour: "2-digit", minute: "2-digit", hour12: false }).replace(/\D/g, "");
+    if (await deliverFile(new Blob([data], { type: XLSX_TYPE }), `ricotta-transfer-${day}-${time}.xlsx`))
+      toast(t("stockExcelReady"));
+  } catch (error) {
+    console.error("Excel for stock", error);
+    await showAlert(esc(t("stockExcelFailed")));
+  }
+}
+/* Manage → item: how the item is written in the stock system. */
+function renderStockFields(item) {
+  const unitOptions = state.units
+    .map((u) => `<option value="${esc(u.id)}" ${item?.stockUnit === u.id ? "selected" : ""}>${esc(unitName(u))}</option>`)
+    .join("");
+  const open = !!(item?.stockName || item?.stockUnit);
+  return `<details class="settings-group stock-fields" ${open ? "open" : ""}><summary>${esc(t("stockSection"))}</summary>
+    <p class="field-hint">${esc(t("stockSectionHint"))}</p>
+    <div class="field"><label for="mfStockName">${esc(t("stockName"))}</label><input id="mfStockName" maxlength="160" autocomplete="off" dir="auto" value="${esc(item?.stockName || "")}"></div>
+    <div class="field"><label for="mfStockUnit">${esc(t("stockUnit"))}</label><select id="mfStockUnit"><option value="">${esc(t("stockUnitSame"))}</option>${unitOptions}</select></div>
+    <div class="field" id="mfStockFactorField"><label for="mfStockFactor">${esc(t("stockFactor"))}</label><input id="mfStockFactor" inputmode="decimal" data-pad="dec" maxlength="10" autocomplete="off" value="${esc(item?.stockFactor ?? "")}"><small class="field-hint">${esc(t("stockFactorHint"))}</small></div>
+  </details>`;
+}
+/* The factor only matters when the stock unit differs from the order unit. */
+function attachStockFields(box) {
+  const unit = box.querySelector("#mfUnit"), stock = box.querySelector("#mfStockUnit"), field = box.querySelector("#mfStockFactorField");
+  if (!unit || !stock || !field) return;
+  const sync = () => { field.hidden = !stock.value || stock.value === unit.value; };
+  unit.addEventListener("change", sync);
+  stock.addEventListener("change", sync);
+  sync();
+}
+/* {stockName, stockUnit, stockFactor} for saving, or {error}. */
+function readStockFields(orderUnit) {
+  const name = document.getElementById("mfStockName").value.trim().slice(0, 160);
+  let unit = document.getElementById("mfStockUnit").value || null;
+  if (unit === orderUnit) unit = null;
+  if (!unit) return { stockName: name, stockUnit: null, stockFactor: null };
+  const raw = foldText(document.getElementById("mfStockFactor").value.trim()).replace(/[٫,]/g, ".");
+  const factor = Number(raw);
+  if (!raw || !Number.isFinite(factor) || factor <= 0 || factor > 100000) return { error: t("stockFactorInvalid") };
+  return { stockName: name, stockUnit: unit, stockFactor: Math.round(factor * 10000) / 10000 };
 }

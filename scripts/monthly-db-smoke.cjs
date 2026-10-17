@@ -44,6 +44,17 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.equal((await q("select en from app_units where id='box'"))[0].en,'box');
  await db.exec("insert into app_accounts(id,name,pin_hash) values('rozha','Rozha','test-only'),('yunis','Yunis','test-only');");
  await db.exec("drop trigger fail_record on app_audit_events; insert into app_devices(id,logged_in) values('device',true); insert into app_sessions(token_hash,device_id,expires_at,account) values('hash','device',now()+interval '1 day','rozha');");
+ // An item's stock-system name, unit and amount are saved, kept when an older app leaves them out, and recorded.
+ await db.exec(`select app_internal_catalog_change('units','kg','{"en":"kg","ku":"کیلۆ"}','rozha','device');
+  select app_internal_catalog_change('items','tom','{"name":"Tomato","unit_id":"box","stock_name":"Tomato - تەماتە","stock_unit":"kg","stock_factor":20}','rozha','device');
+  select app_internal_catalog_change('items','tom','{"name":"Tomatoes","unit_id":"box"}','yunis','device');`);
+ assert.deepEqual((await q("select name,stock_name,stock_unit,stock_factor::float as f from app_items where id='tom'"))[0],{name:'Tomatoes',stock_name:'Tomato - تەماتە',stock_unit:'kg',f:20},'stock fields survive a save without them');
+ const added=(await q("select payload from app_audit_events where entity_type='item' and action='add'"))[0].payload.fields.map(f=>f.k);
+ assert.ok(added.includes('stockName') && added.includes('stockFactor'),'the Record shows the stock fields that were set');
+ await assert.rejects(db.exec(`select app_internal_catalog_change('items','tom','{"name":"Tomatoes","unit_id":"box","stock_factor":0}','rozha','device');`),/stock_factor/,'the stock amount must be above zero');
+ await db.exec(`select app_internal_catalog_change('items','basil','{"name":"Basil","unit_id":"kg"}','rozha','device');`);
+ assert.deepEqual((await q("select payload from app_audit_events where entity_name='Basil'"))[0].payload.fields.map(f=>f.k).filter(k=>k.startsWith('stock')),[],'empty stock fields stay out of the Record');
+ await db.exec("delete from app_items where id in ('tom','basil'); delete from app_units where id='kg';");
  await db.exec("select app_internal_device_command(array['device'],'logout');");
  assert.equal((await q('select revoked_at is not null as revoked from app_sessions'))[0].revoked,true);
  assert.equal((await q('select logged_in from app_devices'))[0].logged_in,false);

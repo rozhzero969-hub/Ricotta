@@ -8,7 +8,7 @@
 
    Two accounts sign in with their own PIN:
      rozha  every screen
-     yunis  Order, Rico, History (cannot delete), Suppliers, Items, Record, Units
+     yunis  Order, Rico, Manage (items, suppliers, units), History (cannot delete), Record
    The server decides which screens an account may open (bootstrap.views) and
    enforces the same rules on every request. */
 /* ============ State ============ */
@@ -16,7 +16,7 @@ const state = {
   lang: 'en',
   account: null,        // 'rozha' | 'yunis' | null (signed out)
   name: '',             // "Rozha" / "Yunis"
-  tabs: ['order','assistant','manage'],   // this account's three tab-bar screens
+  tabs: ['order','assistant','manage'],   // the three tab-bar screens (the same for both accounts)
   views: [],            // every screen this account may open
   view: 'order',
   pinBuffer: '',
@@ -364,14 +364,13 @@ const ACCOUNT_VIEWS = {
 };
 const DEFAULT_TABS = ['order','assistant','manage'];
 const DEVICE_VIEWS = ['settings','manage'];
-function validTabs(){ return DEFAULT_TABS.slice(); }
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
 function applyAccount(a){
   state.account = a.account === 'rozha' || a.account === 'yunis' ? a.account : null;
   state.name = a.name || ({rozha:'Rozha', yunis:'Yunis'})[state.account] || '';
   const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
   state.views = state.account ? [...views.filter(v=>!DEVICE_VIEWS.includes(v)), ...DEVICE_VIEWS] : [];
-  state.tabs = validTabs(a.tabs);
+  state.tabs = DEFAULT_TABS.slice();
   if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
 }
 /* Loads everything this account needs from the server in one request. */
@@ -704,10 +703,9 @@ function updateRicoBadge(){
 setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
 
 /* ============ Navigation ============
-   Phones: the account's three tabs plus More (a glass panel with the other
-   screens and "Edit tabs"). Computers: a sidebar with every screen. A glass
-   lens glides to the current tab; on phones it can be held and slid, and
-   the page itself can be swiped between the three tabs. */
+   Phones: Order, Rico and Manage plus More (History, Record, Devices,
+   Settings). Computers: a sidebar with every screen. A lens glides to the
+   current tab, and on phones the page can be swiped between the three tabs. */
 const VIEW_LABEL_KEYS = {manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
@@ -1429,6 +1427,7 @@ function loginMessage(){
   if(state.pinBusy) return t('signingIn');
   return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), verification:t('securityCheckFailed'), session:state.sessionMsg})[state.pinError] || '';
 }
+const LOGIN_ERRORS = ['wrong','locked','network','verification'];
 function pinDotClass(i){
   const filled = i < state.pinBuffer.length;
   const next = i === state.pinBuffer.length && !state.pinBusy && !state.pinError;
@@ -1437,7 +1436,7 @@ function pinDotClass(i){
 function renderLogin(){
   const dots = Array.from({length:MAX_PIN_LEN}).map((_,i)=>`<span class="${pinDotClass(i)}"><span class="core"></span></span>`).join('');
   const keys = ['1','2','3','4','5','6','7','8','9'];
-  const bad = ['wrong','locked','network'].includes(state.pinError);
+  const bad = LOGIN_ERRORS.includes(state.pinError);
   const msg = loginMessage();
   const word = 'ricotta'.split('').map((c,i)=>`<b style="--i:${i}">${c}</b>`).join('');
   return `
@@ -1472,7 +1471,7 @@ function renderLogin(){
 function updateLoginFeedback(){
   const dots = document.querySelector('.pin-dots');
   if(!dots) return;
-  dots.classList.toggle('err', ['wrong','locked','network','faceid'].includes(state.pinError));
+  dots.classList.toggle('err', LOGIN_ERRORS.includes(state.pinError));
   dots.classList.toggle('busy', state.pinBusy);
   // Class changes alone drive the pop / next-box glow (see .pin-dot in style.css).
   dots.querySelectorAll('.pin-dot').forEach((dot,index)=>{ dot.className = pinDotClass(index); });
@@ -2366,12 +2365,13 @@ function orderHistoryCard(rec){
     const itemsLine = e.items.map(i=>`${esc(i.name)} × ${i.qty} ${esc(unitLabel(i.unit))}`).join(' · ');
     return `<div class="hist-entry"><div class="hist-supplier">${supplierMono(name)}${esc(name)}</div><div class="hist-items">${itemsLine}</div></div>`;
   }).join('');
-  return `<div class="hist-card" data-search-row data-search-text="${esc([rec.note,rec.date,...rec.entries.flatMap(e=>[supplierName(e.supplierId)||e.supplierName,...e.items.flatMap(l=>[l.name,...(state.items.find(i=>i.id===l.itemId)?.aliases||[])])])].join(' '))}">
+  return `<div class="hist-card" data-search-row data-search-text="${esc([rec.note,rec.date,...rec.entries.flatMap(e=>[state.suppliers.find(s=>s.id===e.supplierId)?.name||e.supplierName||'',...e.items.flatMap(l=>[l.name,...(state.items.find(i=>i.id===l.itemId)?.aliases||[])])])].join(' '))}">
     <div class="hist-top">
       <div class="hist-date">${esc(time)}${accountLabel(rec.by) ? ` \u00b7 ${esc(t('sentBy')(''))}${whoBadge(rec.by)}` : ''}</div>
       <div class="row-actions">
         ${canUndoOrder(rec) ? `<button class="btn btn-ghost hist-undo" data-undohist="${esc(rec.id)}">${esc(t('undo'))}</button>` : ''}
         <button class="btn btn-ghost hist-again" data-reorderhist="${esc(rec.id)}">${ICON_REPEAT}<span>${esc(t('orderAgain'))}</span></button>
+        <button class="btn btn-ghost hist-excel" data-stockxlsx="${esc(rec.id)}" aria-label="${esc(t('stockExcel'))}" title="${esc(t('stockExcel'))}">${ICON_SHEET}<span>Excel</span></button>
         <button class="icon-btn hist-repeat" data-repeathist="${esc(rec.id)}" aria-label="${esc(t('repeatTitle'))}" title="${esc(t('repeatTitle'))}">${ICON_CALENDAR}</button>
         ${isRozha() ? `<button class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
       </div>
@@ -2382,18 +2382,19 @@ function orderHistoryCard(rec){
 /* Orders for the current Baghdad calendar month, newest first. */
 function renderHistory(){
   const entries = state.history.map(rec=>({ts:Date.parse(rec.date), day:rec.date, html:orderHistoryCard(rec)})).sort((a,b)=>b.ts-a.ts);
-  if(!entries.length) return renderReportCard()+`<div class="hist-tools"><button type="button" class="btn btn-ghost" id="monthsBtn">${esc(t('monthsTitle'))}</button><button type="button" class="btn btn-ghost" id="repeatListBtn">${esc(t('repeatListTitle'))}</button></div>`+emptyState(t('noHistory'));
-  let lastDay = '', cards0 = renderReportCard() + `<div class="hist-tools">
+  const tools = renderReportCard() + `<div class="hist-tools">
     <button type="button" class="btn btn-ghost" id="repeatListBtn">${ICON_REPEAT}<span>${esc(t('repeatListTitle'))}${(state.repeats || []).length ? ` (${state.repeats.length})` : ''}</span></button>
     <button type="button" class="btn btn-ghost" id="monthsBtn">${ICON_CALENDAR}<span>${esc(t('monthsTitle'))}</span></button>
   </div>`;
+  if(!entries.length) return tools + emptyState(t('noHistory'));
+  let lastDay = '';
   const cards = entries.map(e=>{
     const day = dayLabel(e.day);
     const heading = day !== lastDay ? `<div class="hist-day">${esc(day)}</div>` : '';
     lastDay = day;
     return heading + e.html;
   }).join('');
-  return cards0 + renderCatalogSearch() + cards;
+  return tools + renderCatalogSearch() + cards;
 }
 function attachHistoryEvents(){
   document.getElementById('reportOpen')?.addEventListener('click', openReportSheet);
@@ -2401,6 +2402,7 @@ function attachHistoryEvents(){
   document.getElementById('monthsBtn')?.addEventListener('click', openMonthsSheet);
   document.querySelectorAll('[data-repeathist]').forEach(b=>b.onclick=()=>{ const rec = state.history.find(r=>r.id === b.dataset.repeathist); if(rec) openRepeatForm(rec); });
   document.querySelectorAll('[data-undohist]').forEach(b=>b.onclick=()=>withBusy(b, ()=>undoOrder(b.dataset.undohist)));
+  document.querySelectorAll('[data-stockxlsx]').forEach(b=>b.onclick=()=>withBusy(b, ()=>downloadStockExcel(state.history.find(r=>r.id === b.dataset.stockxlsx))));
   document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
     const rec = state.history.find(r=>r.id===b.dataset.reorderhist);
     if(!rec) return;
@@ -2467,7 +2469,8 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'),available:t('availableToOrder'), cutoff:t('cutoffShort')})[k] || k;
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), cutoff:t('cutoffShort'),
+    stockName:t('stockName'), stockUnit:t('stockUnit'), stockFactor:t('stockFactor')})[k] || k;
 }
 function recordValue(k, v){
   if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||'\u2014';}catch(_){} }
@@ -2476,7 +2479,7 @@ function recordValue(k, v){
   if(k === 'cutoff' && v) return reminderTimeLabel(v);
   if(k === 'supplier' && !v) return t('noSupplier');
   if(!v) return '\u2014';
-  if(k === 'unit'){
+  if(k === 'unit' || k === 'stockUnit'){
     const u = state.units.find(x=>x.en === v);
     return u ? unitName(u) : v;
   }
@@ -2628,12 +2631,12 @@ function renderSuppliers(){
     <div class="list-row tappable" data-editsup="${esc(s.id)}">
       <div><div class="name">${esc(s.name)}</div><div class="meta">${esc(s.phone||t('noPhoneOnFile'))}</div>
         ${s.reminder && s.reminder.enabled ? `<div class="meta rem-line">${ICON_BELL} ${esc(reminderText(s.reminder))}</div>` : ''}
-        ${s.cutoff ? `<div class="meta rem-line">⏰ ${esc(t('cutoffShort'))}: ${esc(reminderTimeLabel(s.cutoff))}</div>` : ''}</div>
+        ${s.cutoff ? `<div class="meta rem-line">${ICON_CLOCK} ${esc(t('cutoffShort'))}: ${esc(reminderTimeLabel(s.cutoff))}</div>` : ''}</div>
       <div class="row-actions">
         ${supplierContactLinks(s)}
         ${s.reminder && s.reminder.enabled ? `<button class="icon-btn" data-testsup="${esc(s.id)}" aria-label="${esc(t('testSupplierReminder'))}">${ICON_BELL}</button>` : ''}
         <span class="icon-btn" aria-hidden="true">${ICON_EDIT}</span>
-        <button class="icon-btn danger" data-delsup="${esc(s.id)}">${ICON_DELETE}</button>
+        <button class="icon-btn danger" data-delsup="${esc(s.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>
       </div>
     </div>`).join('') : emptyState(t('noSuppliersYet'));
   return `
@@ -2876,10 +2879,12 @@ function openItemModal(id){
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
       <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
+      ${renderStockFields(existing)}
       `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
     onOpen: (box)=>{
+      attachStockFields(box);
       const sel = box.querySelector('#mfSupplier');
       const hint = box.querySelector('#mfSupHint');
       if(sel && hint) sel.onchange = ()=>{
@@ -2894,6 +2899,8 @@ function openItemModal(id){
       const note = document.getElementById('mfNote').value.trim().slice(0, 120), aliases=parseAliases(document.getElementById('mfAliases').value), available=document.getElementById('mfAvailable').checked;
       if(!name) return {error: t('nameRequired')};
       if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
+      const stock = readStockFields(unit);
+      if(stock.error) return {error: stock.error};
       const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
       const editing = existing;
       if(editing){
@@ -2904,10 +2911,11 @@ function openItemModal(id){
           ['name', i.name, name],
           ['unit', unitEn(i.unit), unitEn(unit)],
           ['supplier', oldSupName, newSupName],
-          ['note', i.note || '', note],['aliases',(i.aliases||[]).join(', '),aliases.join(', ')],['available',String(i.available!==false),String(available)]
+          ['note', i.note || '', note],['aliases',(i.aliases||[]).join(', '),aliases.join(', ')],['available',String(i.available!==false),String(available)],
+          ['stockName', i.stockName || '', stock.stockName], ['stockUnit', unitEn(i.stockUnit), unitEn(stock.stockUnit)], ['stockFactor', String(i.stockFactor ?? ''), String(stock.stockFactor ?? '')]
         ]);
         if(fields.length){
-          const next = {...i, name, unit, supplierId, note, aliases, available, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
+          const next = {...i, name, unit, supplierId, note, aliases, available, ...stock, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
           if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
           Object.assign(i, next);if(!available){delete state.cart[i.id];persistCartDraft();}
           logActivity({action:'edit', type:'item', name, fields});
@@ -2915,7 +2923,7 @@ function openItemModal(id){
       } else {
         const supplierItems=state.items.filter(i=>i.supplierId===supplierId);
         const maxSort=supplierItems.reduce((max,i)=>Number.isInteger(i.sortOrder)?Math.max(max,i.sortOrder):max,-1);
-        const next = {id:'i'+outboxJobId(), name, unit, supplierId, note, aliases, available, sortOrder:maxSort>=0?maxSort+1:null};
+        const next = {id:'i'+outboxJobId(), name, unit, supplierId, note, aliases, available, ...stock, sortOrder:maxSort>=0?maxSort+1:null};
         if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
         state.items.push(next);
         state.itemFormSupplierId = supplierId; // keep it locked in for the next item
@@ -3329,5 +3337,5 @@ function attachSettingsEvents(){
 boot();
 
 function renderOrderSounds(){
-  return `<details class="order-sound-settings"><summary>${esc(t('orderSounds'))}</summary><div class="form-card">${[['qty','quantitySound'],['sent','sentSound']].map(([id,key])=>`<label class="check-row preference-row"><input type="checkbox" id="sound-${id}" data-sound="${id}" ${soundOn(id)?'checked':''}><span>${esc(t(key))}</span></label>`).join('')}</div></details>`;
+  return `<details class="settings-group order-sound-settings"><summary>${esc(t('orderSounds'))}</summary><div>${[['qty','quantitySound'],['sent','sentSound']].map(([id,key])=>`<label class="check-row preference-row"><input type="checkbox" id="sound-${id}" data-sound="${id}" ${soundOn(id)?'checked':''}><span>${esc(t(key))}</span></label>`).join('')}</div></details>`;
 }

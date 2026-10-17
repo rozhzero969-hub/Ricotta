@@ -441,7 +441,7 @@ function cutoffState(sup){
 function cutoffChipInner(c){
   if(c.left <= 0) return `${esc(t('cutoffClosed'))}`;
   const left = c.left >= 60 ? t('cutoffHoursLeft')(Math.floor(c.left / 60), c.left % 60) : t('cutoffMinLeft')(c.left);
-  return `⏰ ${esc(c.left <= 60 ? left : t('cutoffUntil')(reminderTimeLabel(c.time)))}`;
+  return `${ICON_CLOCK} ${esc(c.left <= 60 ? left : t('cutoffUntil')(reminderTimeLabel(c.time)))}`;
 }
 function cutoffChip(supplierId){
   const c = cutoffState(state.suppliers.find(s=>s.id === supplierId));

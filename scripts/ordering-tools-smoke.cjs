@@ -112,6 +112,26 @@ assert.equal(
   "تماتە",
   "real Excel files preserve Kurdish",
 );
+// Excel for the workplace stock system: its names, units and amounts; the same item twice is one row.
+state.units.push({ id: "box", en: "box", ku: "سندوق" });
+state.items.push(
+  { id: "i2", name: "تەماتە", unit: "box", supplierId: "s1", stockName: "Tomato - تەماتە", stockUnit: "kg", stockFactor: 20 },
+  { id: "i3", name: "Basil", unit: "kg", supplierId: "s1" },
+);
+const transfer = ctx.stockTransferRows([
+  { supplierId: "s1", items: [
+    { itemId: "i2", name: "تەماتە", unit: "box", qty: 2 },
+    { itemId: "i3", name: "Basil", unit: "kg", qty: 1.5 },
+    { itemId: "gone", name: "Old item", unit: "kg", qty: 1 },
+  ] },
+  { supplierId: "s1", items: [{ itemId: "i2", name: "تەماتە", unit: "box", qty: 0.5 }] },
+]);
+assert.deepEqual(JSON.parse(JSON.stringify(transfer)), [
+  { name: "Tomato - تەماتە", amount: 50, unit: "کیلۆ" },
+  { name: "Basil", amount: 1.5, unit: "کیلۆ" },
+  { name: "Old item", amount: 1, unit: "کیلۆ" },
+], "stock rows use the stock system's name, unit and amount and combine repeats");
+assert.equal(ctx.stockTransferRows([{ items: [{ itemId: "i3", name: "Basil", unit: "kg", qty: 0 }] }]).length, 0, "empty lines are left out");
 console.log(
-  "Ordering tools: PASS (fractional/localized quantities, aliases, import validation, omitted values, duplicate rows, translations and real XLSX roundtrip)",
+  "Ordering tools: PASS (fractional/localized quantities, aliases, import validation, omitted values, duplicate rows, translations, stock Excel rows and real XLSX roundtrip)",
 );

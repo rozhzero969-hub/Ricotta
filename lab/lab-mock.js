@@ -337,8 +337,8 @@
         db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:'delete', type, name:prev ? (prev.name || prev.en) : id, fields:[]});
       } else {
         let row;
-        if(table === 'suppliers') row = {id, name:String(body.name||'').slice(0,160), phone:body.phone || null, reminder:body.reminder || null};
-        else if(table === 'items') row = {id, name:String(body.name||'').slice(0,160), unit:body.unit || null, supplierId:body.supplierId || null, note:'note' in body ? String(body.note||'').slice(0,120) : (prev ? prev.note || '' : ''), sortOrder:'sortOrder' in body ? body.sortOrder : (prev ? prev.sortOrder : null)};
+        if(table === 'suppliers') row = {id, name:String(body.name||'').slice(0,160), phone:body.phone || null, reminder:body.reminder || null, cutoff:'cutoff' in body ? body.cutoff || null : (prev ? prev.cutoff || null : null)};
+        else if(table === 'items') row = {id, name:String(body.name||'').slice(0,160), unit:body.unit || null, supplierId:body.supplierId || null, note:'note' in body ? String(body.note||'').slice(0,120) : (prev ? prev.note || '' : ''), sortOrder:'sortOrder' in body ? body.sortOrder : (prev ? prev.sortOrder : null), aliases:'aliases' in body ? body.aliases : (prev ? prev.aliases || [] : []), available:'available' in body ? body.available !== false : (prev ? prev.available !== false : true), stockName:'stockName' in body ? String(body.stockName||'').slice(0,160) : (prev ? prev.stockName || '' : ''), stockUnit:'stockUnit' in body ? body.stockUnit || null : (prev ? prev.stockUnit || null : null), stockFactor:'stockFactor' in body ? body.stockFactor ?? null : (prev ? prev.stockFactor ?? null : null)};
         else row = {id, en:String(body.en||'').slice(0,80), ku:body.ku || null, ar:body.ar || null};
         if(idx >= 0) list[idx] = row; else list.push(row);
         db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:prev ? 'edit' : 'add', type, name:row.name || row.en, fields:prev ? [] : [{k:'name', to:row.name || row.en}]});

@@ -77,7 +77,13 @@ Supplier cards include WhatsApp and phone links. Orders support a shared whole-o
 
 Items can be marked unavailable without deletion and given alternate search names. Items → Import Excel previews a first-sheet `.xlsx` or `.csv` file before saving, with at most 500 rows and a 2 MB file limit. Required column headings are `Name`, `Unit`, and `Supplier`; unit and supplier values must match one existing entry by name or ID. Optional headings are `ID`, `Aliases`, `Available`, and `Note`. Existing items match by ID or a unique name and supplier; omitted optional fields are preserved. Ambiguous or invalid rows must be corrected before importing.
 
-The spreadsheet reader is the official SheetJS Community Edition 0.20.3 standalone build, stored locally in `vendor/` with its Apache 2.0 license. It loads only when importing a spreadsheet and does not execute spreadsheet formulas.
+The spreadsheet reader is the official SheetJS Community Edition 0.20.3 standalone build, stored locally in `vendor/` with its Apache 2.0 license. It loads only when importing a spreadsheet or making a stock file, and does not execute spreadsheet formulas.
+
+## Excel for the workplace stock system
+
+History → **Excel** on any sent order makes the file for the workplace stock system's *Upload Excel* button (Move stock between storages): one sheet named `Transfer` with the columns `Item name`, `Amount` and `Unit`, one row per item, the same item twice combined into one row. Units are written by their Kurdish name (کیلۆ, کارتۆن, دانە…). On a phone the file opens the share sheet (Save to Files, WhatsApp…); on a computer it downloads.
+
+Each item can say how the stock system writes it (Manage → item → *Stock system (Excel)*): its name there, its unit there, and how many of those units are in one order unit (1 box = 20 kg → 20, so 3 boxes are written as 60 kg). Empty fields use the item's own name, unit and amount. The stock system matches names itself and marks anything it does not know, so nothing moves by guess.
 
 ## Smart search and Rico aliases
 
