@@ -8,7 +8,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //
 // There are two accounts, each with its own PIN:
 //   rozha  full access
-//   yunis  Order, Rico, History (cannot delete), Suppliers, Items, Record, Units
+//   yunis  Order, Rico, Manage (items, suppliers, units), History (cannot delete), Record
 //
 // Routes (all JSON):
 //   POST   login                      {pin}                     -> {token, account, name, tabs, expiresAt}
@@ -58,7 +58,10 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   PUT    repeat-orders/:id          {name?, days?}            change its name or days
 //   DELETE repeat-orders/:id
 //   GET    months                                               the archive: one summary per finished month
-//                                                                -> the same reply as login
+//   GET    draft | PUT draft          {changes, noteBefore, noteAfter}  this account's unsent order, shared between its devices
+//   PUT    me/message-format          {restaurant, greeting, closing}   the WhatsApp message around each order
+//   PUT    items/aliases              {entries}                 Rico's search-name changes, applied together
+//   GET    auth/security              (public)                  whether sign-in needs the bot check, and its site key
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, saveGroqKey } from "./assistant.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from "../_shared/security.ts";
@@ -176,7 +179,8 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 
 /* ---------- Shapes the browser uses ---------- */
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, cutoff: s.cutoff ?? null });
-const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false });
+const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false,
+  stockName: i.stock_name ?? "", stockUnit: i.stock_unit ?? null, stockFactor: i.stock_factor == null ? null : Number(i.stock_factor) });
 const toNote = (n: any) => ({ id: n.id, body: n.body, at: n.created_at, readAt: n.read_at, doneAt: n.done_at,
   reply: n.reply ?? null, repliedAt: n.replied_at ?? null, replySeenAt: n.reply_seen_at ?? null });
 const toRepeat = (r: any) => ({ id: r.id, name: r.name, days: r.days, entries: r.entries, by: r.created_by, createdAt: r.created_at });
@@ -289,7 +293,7 @@ async function bootstrap(s: Session) {
   const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, notes, repeats, months, draft] = await Promise.all([
     readAccount(s.account),
     app("suppliers").select("id,name,phone,reminder,cutoff").order("name"),
-    app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available").order("name"),
+    app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,stock_name,stock_unit,stock_factor").order("name"),
     app("units").select("id,en,ku,ar"),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by,note").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
     readReminder(),
@@ -534,6 +538,12 @@ async function recovery(req: Request, step: string) {
 
 function validQuantity(q: number,zero=false){return Number.isFinite(q) && q>=(zero?0:0.001) && q<=99999 && Math.abs(q*1000-Math.round(q*1000))<0.00001;}
 
+/* Stock units in one order unit: a positive number with up to 4 decimals, or none. */
+function stockFactor(v: unknown): number | null {
+  const n = Number(v);
+  return v == null || v === "" || !Number.isFinite(n) || n <= 0 || n > 100000 ? null : Math.round(n * 10000) / 10000;
+}
+
 /* ---------- Catalog (one record at a time) ---------- */
 const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | null> = {
   suppliers: (id, b) => text(b.name) ? {
@@ -548,6 +558,10 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
     ...(Object.hasOwn(b,"available") ? {available:b.available!==false} : {}),
     ...(Object.hasOwn(b, "note") ? { note: text(b.note, 120) } : {}),
     ...(Object.hasOwn(b, "sortOrder") ? { sort_order: Number.isInteger(b.sortOrder) && b.sortOrder >= 0 ? b.sortOrder : null } : {}),
+    // How the item is written in the workplace stock system (the "Excel for stock" file).
+    ...(Object.hasOwn(b, "stockName") ? { stock_name: text(b.stockName) || null } : {}),
+    ...(Object.hasOwn(b, "stockUnit") ? { stock_unit: text(b.stockUnit, 120) || null } : {}),
+    ...(Object.hasOwn(b, "stockFactor") ? { stock_factor: stockFactor(b.stockFactor) } : {}),
     updated_at: nowIso(),
   } : null,
   units: (id, b) => text(b.en, 80) ? { id, en: text(b.en, 80), ku: text(b.ku, 80) || null, ar: text(b.ar, 80) || null } : null,

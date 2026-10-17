@@ -128,7 +128,7 @@ const T = {
 
     sendAnother:'Send again',
     loadMoreRecord:'Load earlier records', loading:'Loading…',
-    more:'More', moreTitle:'More', undo:'Undo', orderCleared:'Order cleared', itemRemoved:'Removed from the order',
+    more:'More', undo:'Undo', orderCleared:'Order cleared', itemRemoved:'Removed from the order',
     cmAdd:n=>'Add '+n, cmType:'Type a quantity', cmRemove:'Remove from order',
     weekdays:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
 
@@ -325,7 +325,7 @@ const T = {
 
     sendAnother:'دیسان بنێرە',
     loadMoreRecord:'بینینی تۆمارە کۆنترەکان', loading:'بارکردن…',
-    more:'زیاتر', moreTitle:'زیاتر', undo:'گەڕاندنەوە', orderCleared:'داواکاری پاککرایەوە', itemRemoved:'لە داواکاری لابرا',
+    more:'زیاتر', undo:'گەڕاندنەوە', orderCleared:'داواکاری پاککرایەوە', itemRemoved:'لە داواکاری لابرا',
     cmAdd:n=>n+' زیاد بکە', cmType:'بڕێک بنووسە', cmRemove:'لابردن لە داواکاری',
     weekdays:['یەکشەممە','دووشەممە','سێشەممە','چوارشەممە','پێنجشەممە','هەینی','شەممە'],
 
@@ -522,7 +522,7 @@ const T = {
 
     sendAnother:'أرسل مرة أخرى',
     loadMoreRecord:'عرض التسجيلات الأقدم', loading:'جارٍ التحميل…',
-    more:'المزيد', moreTitle:'المزيد', undo:'تراجع', orderCleared:'مُسح الطلب', itemRemoved:'أُزيلت من الطلب',
+    more:'المزيد', undo:'تراجع', orderCleared:'مُسح الطلب', itemRemoved:'أُزيلت من الطلب',
     cmAdd:n=>'أضف '+n, cmType:'اكتب الكمية', cmRemove:'إزالة من الطلب',
     weekdays:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],
 
@@ -594,9 +594,9 @@ const T = {
   }
 };
 
-/* Seasons and the kitchen: holiday themes, the streak, kitchen notes, the
-   monthly report card, pinned items, item notes, undo, dark mode and shared
-   Rico chats. Same rule as above: every language has every key. */
+/* The kitchen: the streak, kitchen notes, the monthly report card, pinned
+   items, item notes, undo, dark mode and shared Rico chats. Same rule as
+   above: every language has every key. */
 const AR_DAYS = n => n + (n === 1 ? ' يوم' : n === 2 ? ' يومان' : n <= 10 ? ' أيام' : ' يومًا');
 Object.assign(T.en, {
 
@@ -703,7 +703,7 @@ Object.assign(T.en, {
   cutoffLabel:'Stops taking orders at', cutoffHint:'Optional. On this supplier’s order days the Order screen counts down to it, and Rico warns you 30 minutes before.',
   cutoffShort:'Cut-off', cutoffClosed:'Closed for today', cutoffMinLeft:n=>n+' min left', cutoffHoursLeft:(h,m)=>h+' h '+m+' min left', cutoffUntil:x=>'Order by '+x,
   repeatToday:'Repeat order for today', repeatAdd:'Add to order', repeatAdded:(n,name)=>n+(n===1?' item':' items')+' from “'+name+'” '+(n===1?'is':'are')+' in your order.',
-  repeatTitle:'Repeat this order', repeatShort:'Repeat', repeatDaysLabel:'On these days',
+  repeatTitle:'Repeat this order', repeatDaysLabel:'On these days',
   repeatHint:'On these days the Order screen offers this order with one tap. Nothing is sent by itself.',
   repeatSaved:(name,days)=>'“'+name+'” will come back on '+days+'.', repeatTooMany:'There are already 30 repeat orders. Remove one first.',
   repeatListTitle:'Repeat orders', repeatListHint:'Orders that come back on chosen days. Make one with “Repeat” on any order in History.',
@@ -719,7 +719,7 @@ Object.assign(T.ku, {
   cutoffLabel:'کاتی کۆتایی وەرگرتنی داواکاری', cutoffHint:'ئارەزوومەندانەیە. لە ڕۆژانی داواکاریی ئەم دابینکەرە، پەڕەی داواکاری کاتەکە دەژمێرێت و ریکۆ 30 خولەک پێشتر ئاگادارت دەکاتەوە.',
   cutoffShort:'کاتی کۆتایی', cutoffClosed:'بۆ ئەمڕۆ داخراوە', cutoffMinLeft:n=>n+' خولەک ماوە', cutoffHoursLeft:(h,m)=>h+' کاتژمێر و '+m+' خولەک ماوە', cutoffUntil:x=>'تا '+x+' داوا بکە',
   repeatToday:'داواکاریی دووبارەی ئەمڕۆ', repeatAdd:'زیادکردن بۆ داواکاری', repeatAdded:(n,name)=>n+' کاڵا لە «'+name+'» خرانە داواکارییەکەت.',
-  repeatTitle:'دووبارەکردنەوەی ئەم داواکارییە', repeatShort:'دووبارە', repeatDaysLabel:'لەم ڕۆژانەدا',
+  repeatTitle:'دووبارەکردنەوەی ئەم داواکارییە', repeatDaysLabel:'لەم ڕۆژانەدا',
   repeatHint:'لەم ڕۆژانەدا پەڕەی داواکاری ئەم داواکارییە بە یەک دەستلێدان پێشنیار دەکات. هیچ شتێک خۆی نانێردرێت.',
   repeatSaved:(name,days)=>'«'+name+'» لە '+days+' دەگەڕێتەوە.', repeatTooMany:'30 داواکاریی دووبارە هەیە. سەرەتا یەکێک بسڕەوە.',
   repeatListTitle:'داواکارییە دووبارەکان', repeatListHint:'ئەو داواکارییانەی لە ڕۆژانی دیاریکراو دەگەڕێنەوە. بە «دووبارە» لە هەر داواکارییەکی مێژوو یەکێک دروست بکە.',
@@ -735,7 +735,7 @@ Object.assign(T.ar, {
   cutoffLabel:'يتوقف عن استلام الطلبات الساعة', cutoffHint:'اختياري. في أيام طلب هذا المورّد تعدّ صفحة الطلب تنازليًا حتى هذا الوقت، ويُنبّهك ريكو قبله بـ30 دقيقة.',
   cutoffShort:'آخر موعد', cutoffClosed:'مغلق لليوم', cutoffMinLeft:n=>'باقي '+n+' دقيقة', cutoffHoursLeft:(h,m)=>'باقي '+h+' س و'+m+' د', cutoffUntil:x=>'اطلب قبل '+x,
   repeatToday:'طلب متكرر لليوم', repeatAdd:'أضف إلى الطلب', repeatAdded:(n,name)=>'أُضيفت '+n+' مواد من «'+name+'» إلى طلبك.',
-  repeatTitle:'كرّر هذا الطلب', repeatShort:'تكرار', repeatDaysLabel:'في هذه الأيام',
+  repeatTitle:'كرّر هذا الطلب', repeatDaysLabel:'في هذه الأيام',
   repeatHint:'في هذه الأيام تعرض صفحة الطلب هذا الطلب بضغطة واحدة. لا يُرسل شيء تلقائيًا.',
   repeatSaved:(name,days)=>'سيعود «'+name+'» في '+days+'.', repeatTooMany:'هناك 30 طلبًا متكررًا بالفعل. احذف واحدًا أولًا.',
   repeatListTitle:'الطلبات المتكررة', repeatListHint:'طلبات تعود في أيام تختارها. أنشئ واحدًا بزر «تكرار» على أي طلب في السجل.',

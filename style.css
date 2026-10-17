@@ -1208,8 +1208,8 @@ html.compact-rows .supplier-group{padding:8px}
 @keyframes voicePulse{0%,100%{box-shadow:0 0 0 0 rgba(var(--accent-rgb),.5)}50%{box-shadow:0 0 0 10px rgba(var(--accent-rgb),0)}}
 
 /* ---------- History: send again, undo ---------- */
-.hist-again,.hist-undo{min-height:36px;padding:0 12px;font-size:12.5px;border-radius:12px}
-.hist-again svg{width:14px;height:14px}
+.hist-again,.hist-undo,.hist-excel{min-height:36px;padding:0 12px;font-size:12.5px;border-radius:12px}
+.hist-again svg,.hist-excel svg{width:14px;height:14px}
 .hist-undo{color:var(--clay-ink)}
 
 .dev-ver{font-size:11px;margin-inline-start:6px}.dev-ver.ok{color:var(--accent-strong)}.dev-ver.old{color:var(--red)}.dev-latest{margin-top:4px}
@@ -1259,7 +1259,7 @@ html.dark .login-brand-panel{color:#fff}
 html.dark .report-stats > div,html.dark .report-save,html.dark .report-chips span,html.dark .streak-bar,html.dark .report-bar i,html.dark .report-who{background:rgba(255,255,255,.06)}
 
 @media (prefers-reduced-motion:reduce){
-  .streak-chip .flame,.streak-hero .flame,.streak-boom *,.note-sticky,.note-banner,.notes-bell,.rico-bot .lc,.voice-btn{animation:none!important}
+  .streak-chip .flame,.streak-hero .flame,.streak-boom *,.note-sticky,.note-banner,.notes-bell,.voice-btn{animation:none!important}
 }
 /* Order cut-off countdown */
 .cut-chip{display:inline-flex;align-items:center;gap:4px;margin-inline-start:8px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;
@@ -1331,9 +1331,11 @@ html.dark .note-reply{background:rgba(255,255,255,.08)}
 .order-tools details .form-actions{margin-top:8px}
 .order-note-preview{padding:14px 16px;border-inline-start:3px solid var(--accent-strong);border-radius:10px;background:var(--glass);color:var(--ink);font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
 .settings-group{padding:18px;margin-bottom:18px;border:1px solid var(--line);border-radius:16px;background:var(--glass)}
-.settings-group>summary{min-height:44px;cursor:pointer;font-weight:700;color:var(--ink);display:flex;align-items:center;justify-content:space-between}
-.settings-group>summary:after{content:'+';font-size:20px}
-.settings-group[open]>summary:after{content:'−'}
+/* Every fold-out section (Settings, Order options, More tools) opens the same way: a title and a chevron that turns. */
+.settings-group>summary,.order-options>summary,.list-options>summary{list-style:none;min-height:44px;cursor:pointer;font-weight:700;color:var(--ink);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.settings-group>summary::-webkit-details-marker,.order-options>summary::-webkit-details-marker,.list-options>summary::-webkit-details-marker{display:none}
+.settings-group>summary:after,.order-options>summary:after,.list-options>summary:after{content:'';width:8px;height:8px;flex:none;margin-inline-end:4px;border:solid var(--ink-soft);border-width:0 2px 2px 0;transform:rotate(45deg) translateY(-2px);transition:transform .2s var(--ease)}
+.settings-group[open]>summary:after,.order-options[open]>summary:after,.list-options[open]>summary:after{transform:rotate(-135deg) translate(-2px,0)}
 .settings-group .field{margin-top:14px}
 .field textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:88px;padding:12px;border:1px solid var(--line-strong);border-radius:12px;font:inherit;font-size:14px;color:var(--ink);background:var(--glass)}
 .catalog-search{margin-bottom:16px}
@@ -1347,7 +1349,6 @@ html.dark .note-reply{background:rgba(255,255,255,.08)}
 @media(max-width:600px){.page-heading{flex-wrap:wrap;gap:8px}.page-date{font-size:11px}.page-guide{font-size:12px}.row-actions{flex-wrap:wrap}.action-row>.btn{flex:1 1 auto}.settings-group{padding:14px}}
 
 /* Search and bilingual catalog lists */
-.item-alias{font-size:.8rem;color:var(--ink-soft,var(--ink));opacity:.76;line-height:1.45;margin-top:4px;overflow-wrap:anywhere}
 .item-info{min-width:0}.item-name,.list-row .name{overflow-wrap:anywhere}.list-search{margin:12px 0 18px}.list-search .field-hint{margin:6px 4px}.search-count{font-size:.8rem;min-height:1em;color:var(--ink);opacity:.75}.search-clear{border:0;background:none;color:var(--ink);font-size:1.5rem;min-width:44px;min-height:44px;cursor:pointer}.catalog-search{display:flex;align-items:center}.catalog-search input{min-width:0;flex:1}.catalog-search>svg{width:18px;flex-shrink:0;margin-inline:12px}.rico-card-line>span{min-width:0;overflow-wrap:anywhere}.rico-card-line>span+span{font-size:.85rem;text-align:end;max-width:58%}.unit-chip{min-width:0}
 
 .search-wrap:has(#itemSearch){display:flex;align-items:center}.search-wrap:has(#itemSearch) .search-input{min-width:0;flex:1}
@@ -1357,24 +1358,20 @@ html.dark .note-reply{background:rgba(255,255,255,.08)}
 .manage-sections{display:flex;padding:4px;border:1px solid var(--line);border-radius:14px;background:var(--glass)}
 .manage-section{flex:1;border:0;background:transparent;color:var(--ink-soft);padding:12px 8px;border-radius:10px;font:600 13px var(--font);min-height:44px}
 .manage-section.active{background:var(--accent-soft);color:var(--deep)}
-.manage-menu,.list-options,.order-options{border:1px solid var(--line);border-radius:12px;background:var(--glass)}
-.manage-menu summary,.list-options summary,.order-options summary{cursor:pointer;padding:12px 14px;font-size:13px;font-weight:600;min-height:44px}
-.manage-menu nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:4px 10px 10px;gap:6px}
-.manage-menu button{display:flex;align-items:center;gap:8px;min-height:44px;padding:10px;border:0;border-radius:9px;background:transparent;text-align:start;font:500 13px var(--font)}
-.manage-menu button:hover,.manage-menu button[aria-current=page]{background:var(--accent-soft);color:var(--deep)}
-.manage-back{justify-self:start}
+.list-options,.order-options{border:1px solid var(--line);border-radius:12px;background:var(--glass)}
+.list-options>summary,.order-options>summary{padding:12px 14px;font-size:13px;font-weight:600}
 .order-options{flex:1 1 100%}
 .order-options-body{padding:0 12px 12px}
 .order-options .order-tools{margin-bottom:12px}
 .order-options .order-quick-actions{display:flex;flex-wrap:wrap}
 .list-options>div{padding:0 10px 10px}
-.manage-menu[open] nav,.order-options[open] .order-options-body,.list-options[open]>div{animation:optionsIn 180ms var(--ease-out)}
+.order-options[open] .order-options-body,.list-options[open]>div{animation:optionsIn 180ms var(--ease-out)}
 @keyframes optionsIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
-@media(prefers-reduced-motion:reduce){.manage-menu[open] nav,.order-options[open] .order-options-body,.list-options[open]>div{animation:none}}
+@media(prefers-reduced-motion:reduce){.order-options[open] .order-options-body,.list-options[open]>div{animation:none}}
 
 .catalog-search input{padding-inline-start:42px;font-size:16px}
 #catalogSearchCount:empty{display:none}
-html.dark .manage-section.active,html.dark .manage-menu button:hover{background:rgba(52,194,122,.16);color:var(--ink)}
+html.dark .manage-section.active{background:rgba(52,194,122,.16);color:var(--ink)}
 
 /* Other screens keep their own tabs, outside the catalog workspace. */
 .nav-more{position:absolute;bottom:calc(100% + 10px);inset-inline-end:0;width:min(340px,100%);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:10px;border-radius:18px;background:var(--glass);border:1px solid var(--line);box-shadow:var(--float-shadow);visibility:hidden;opacity:0;pointer-events:none;transform:translateY(6px);transition:opacity 160ms ease,transform 160ms var(--ease-out),visibility 160ms}
@@ -1382,7 +1379,6 @@ html.dark .manage-section.active,html.dark .manage-menu button:hover{background:
 .nav-more .navbtn{height:66px;border-radius:12px;white-space:normal;text-align:center}
 .nav-more .navbtn.active{background:var(--accent-soft);color:var(--deep)}
 .order-sound-settings{margin-top:18px}
-.order-sound-settings>summary{min-height:44px;padding:12px 2px;cursor:pointer;font-size:14px;font-weight:600}
 @media(min-width:960px){
   .nav-more-btn{display:none}
   .nav-more{display:contents;visibility:visible;opacity:1;pointer-events:auto;transform:none}
@@ -1393,3 +1389,13 @@ html.dark .manage-section.active,html.dark .manage-menu button:hover{background:
 
 /* Keep the provider widget centred without scaling its interactive frame. */
 #authChallenge{display:flex;justify-content:center;margin:18px auto;}
+/* Manage → item: the stock-system fields sit in a quiet fold under the item's own details. */
+.modal-box .stock-fields{padding:4px 14px 12px;margin:14px 0 0;border-radius:14px}
+.modal-box .stock-fields>summary{font-size:14px}
+.stock-fields .field-hint{margin:2px 0 12px}
+.cut-chip svg,.list-row .meta.rem-line svg{flex-shrink:0}
+/* A History card: who sent it on the first line, its buttons on their own row (they no longer squeeze the time). */
+.hist-top{flex-wrap:wrap;align-items:center}
+.hist-top .hist-date{padding-top:0;flex:1 1 100%;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.hist-top .row-actions{flex:1 1 100%;flex-wrap:wrap;gap:6px;align-items:center}
+.hist-top .row-actions .icon-btn.danger{margin-inline-start:auto}
