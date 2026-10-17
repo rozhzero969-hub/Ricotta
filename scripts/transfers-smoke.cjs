@@ -8,6 +8,7 @@ const stored=new Map();
 const state={lang:'en',account:'rozha',view:'transfers',units:[{id:'kg',en:'kg',ku:'کیلۆ'}]};
 const ctx={T:{en:{},ku:{},ar:{}},state,console,TextEncoder,TextDecoder,Intl,
  lget:k=>stored.get(k)??null,lset:(k,v)=>{stored.set(k,v);return true;},esc:v=>String(v),
+ formatIraqDateTime:(value,options={})=>new Intl.DateTimeFormat('en-US-u-nu-latn',{timeZone:'Asia/Baghdad',hour12:true,...options}).format(new Date(value)),
  t:k=>ctx.T[state.lang][k]??k};
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync('supabase/functions/_shared/search.js','utf8')+'\n'+fold,ctx);
