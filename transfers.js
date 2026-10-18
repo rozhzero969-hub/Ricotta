@@ -38,6 +38,8 @@ const TRANSFER_TEXT = {
     trAmountMissing: 'Write the amount',
     trUnitMissing: 'Choose the unit',
     trUnitWrong: 'This item does not come in that unit',
+    trWroteUnit: u => 'This item does not come in "' + u + '". Choose one of its units.',
+    trIsSame: 'is the same as',
     trRemember: s => `Remember “${s}” for this item`,
     trRemove: 'Remove',
     trMake: 'Make Excel',
@@ -90,6 +92,8 @@ const TRANSFER_TEXT = {
     trAmountMissing: 'بڕەکە بنووسە',
     trUnitMissing: 'یەکەکە هەڵبژێرە',
     trUnitWrong: 'ئەم کاڵایە بەم یەکەیە نییە',
+    trWroteUnit: u => 'ئەم کاڵایە بە «' + u + '» نییە. یەکێک لە یەکەکانی هەڵبژێرە.',
+    trIsSame: 'یەکسانە بە',
     trRemember: s => `«${s}» بۆ ئەم کاڵایە هەڵبگرە`,
     trRemove: 'لابردن',
     trMake: 'دروستکردنی Excel',
@@ -142,6 +146,8 @@ const TRANSFER_TEXT = {
     trAmountMissing: 'اكتب الكمية',
     trUnitMissing: 'اختر الوحدة',
     trUnitWrong: 'هذه المادة لا تأتي بهذه الوحدة',
+    trWroteUnit: u => 'هذه المادة ليست بوحدة «' + u + '». اختر إحدى وحداتها.',
+    trIsSame: 'يساوي',
     trRemember: s => `تذكّر «${s}» لهذه المادة`,
     trRemove: 'إزالة',
     trMake: 'إنشاء Excel',
@@ -204,8 +210,9 @@ function loadStockItems(force = false){
   return stockList.busy;
 }
 const stockItem = id => stockList.byId.get(id) || null;
-/* What the stock system may call an item: its full name, each half of "English - کوردی", and remembered spellings. */
-const stockFields = i => [i.name, ...i.name.split(/\s+[-–]\s+/).filter(p=>p !== i.name), ...(i.aliases || [])];
+/* What the stock system may call an item: its full name, each half of "English - کوردی" or "کوردی (English)", and
+   remembered spellings. */
+const stockFields = i => [i.name, ...i.name.split(/\s*[-–]\s+|\s+[-–]\s*|\s*[()]\s*/).filter(p=>p && p !== i.name), ...(i.aliases || [])];
 /* Every unit the list uses (the unit choices for an item that has none of its own). */
 function stockUnits(){
   const units = [...new Set((stockList.items || []).flatMap(i=>i.units || []))];
@@ -231,16 +238,128 @@ function matchStockLocally(said){
   const sure = !!best && best.s <= 2 && (!next || next.s > 2);
   return {itemId: best ? best.i.id : null, sure, suggestions: (scored.length ? scored.map(x=>x.i) : findStock(said)).slice(0, 4).map(i=>i.id)};
 }
-/* "tomatoes 2 kg, onions 1 sack" -> [{said, amount, unit}], one per line or comma (a comma before a digit is a decimal). */
+/* ---------- Reading a typed or spoken list on this phone (when Rico can't) ---------- */
+/* Amounts said as words. They count only on a line with no digits, so a name like "Seven Up 2" keeps its word. */
+const AMOUNT_WORDS = {
+  half:0.5, quarter:0.25, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10, eleven:11, twelve:12, fifteen:15, twenty:20,
+  'نیو':0.5, 'یەک':1, 'دوو':2, 'سێ':3, 'چوار':4, 'پێنج':5, 'شەش':6, 'حەوت':7, 'هەشت':8, 'نۆ':9, 'دە':10, 'دوازدە':12, 'پازدە':15, 'بیست':20,
+  'نص':0.5, 'نصف':0.5, 'ربع':0.25, 'واحد':1, 'واحدة':1, 'اثنين':2, 'اثنان':2, 'ثنين':2, 'ثلاثة':3, 'ثلاث':3, 'اربعة':4, 'اربع':4,
+  'خمسة':5, 'خمس':5, 'ستة':6, 'سبعة':7, 'ثمانية':8, 'تسعة':9, 'عشرة':10, 'عشر':10, 'عشرين':20,
+};
+// Words around an amount that are not part of the item ("2 kg of tomatoes", "x3", "و").
+const AMOUNT_FILLERS = ['of', 'and', 'x', 'plus', 'و', 'وە', 'من'];
+let amountWords = null, amountFillers = null;
+const amountWord = w => (amountWords ||= new Map(Object.entries(AMOUNT_WORDS).map(([k, n])=>[globalThis.RicottaSearch.normalize(k), n]))).get(globalThis.RicottaSearch.normalize(w));
+const isFiller = w => (amountFillers ||= new Set(AMOUNT_FILLERS.map(globalThis.RicottaSearch.normalize))).has(globalThis.RicottaSearch.normalize(w));
+/* One written word: a number (2, ٢, 1,5, 1/2, ½, x3), a number joined to its unit (2kg, ٢کیلۆ), or a word.
+   A size inside a name (20*225, 24*380) is a word. */
+function readAmountToken(raw, known){
+  if(!/[\p{L}\p{N}]/u.test(raw)) return null;
+  const half = {'½':0.5, '¼':0.25, '¾':0.75}[raw];
+  if(half) return {raw, n:half, digits:true};
+  const f = foldText(raw).replace(/(\d)[٫,.](\d)/g, '$1.$2');
+  if(/\d\s*[*x×]\s*\d/.test(f)) return {raw};
+  let m = f.match(/^[x×*]?(\d+(?:\.\d+)?)[x×]?$/);
+  if(m) return {raw, n:Number(m[1]), digits:true};
+  if((m = f.match(/^(\d+)\/(\d+)$/)) && Number(m[2])) return {raw, n:Number(m[1]) / Number(m[2]), digits:true};
+  if(/^\d+(?:\.\d+)?\D+$/.test(f)){
+    const unit = raw.replace(/^[0-9٠-٩۰-۹]+(?:[.,٫][0-9٠-٩۰-۹]+)?/, '');
+    if(globalThis.RicottaSearch.isUnit(unit, known)) return {raw, n:Number(f.match(/^\d+(?:\.\d+)?/)[0]), unit, digits:true};
+  }
+  return {raw};
+}
+/* On a line with no digits: "two", "دوو", "نیو"; "a kilo"; Kurdish "کیلۆیەک" (a kilo) and Arabic "كيلوين" (two kilos). */
+function spokenAmount(tok, next, known){
+  const S = globalThis.RicottaSearch, word = amountWord(tok.raw);
+  if(word) return {n:word};
+  if(/^an?$/i.test(tok.raw) && next && S.isUnit(next.raw, known)) return {n:1};
+  for(const [end, n, add] of [[/(یەک|ێک|يەك|يك|یک)$/, 1, ''], [/تين$/, 2, 'ة'], [/ين$/, 2, '']]){
+    const unit = tok.raw.replace(end, '') + add;
+    if(end.test(tok.raw) && unit !== add && S.isUnit(unit, known)) return {n, unit};
+  }
+  return null;
+}
+const trimFillers = words => { let a = 0, b = words.length; while(a < b && isFiller(words[a])) a++; while(b > a && isFiller(words[b - 1])) b--; return words.slice(a, b); };
+/* One item of a line: which number is the amount, its unit as written, and the item as written. A size in
+   the item's name (1L Kiwi, Cooking Oil 18L, Milk Alfajer 24*380) is not the amount: with the workplace list the
+   reading whose other words best match an item wins, and otherwise the last number. */
+function readAmountPart(tokens, known, best){
+  const S = globalThis.RicottaSearch;
+  const text = (a, b) => tokens.slice(a, b + 1).map(t=>t.raw).join(' ');
+  const unitAt = (a, b) => a >= 0 && b < tokens.length && tokens.slice(a, b + 1).every(t=>t.n == null) && S.isUnit(text(a, b), known);
+  const plainWord = i => !!tokens[i] && tokens[i].n == null && !/\d/.test(foldText(tokens[i].raw));
+  const options = [], add = (i, n, unit, used, kind) => options.push({i, n, unit, used, kind});
+  tokens.forEach((tok, i)=>{
+    if(tok.n == null) return;
+    if(tok.unit){ add(i, tok.n, tok.unit, [i], 0); return; }
+    if(unitAt(i + 1, i + 2)) add(i, tok.n, text(i + 1, i + 2), [i, i + 1, i + 2], 0);
+    if(unitAt(i + 1, i + 1)) add(i, tok.n, tokens[i + 1].raw, [i, i + 1], 0);
+    if(unitAt(i - 2, i - 1)) add(i, tok.n, text(i - 2, i - 1), [i - 2, i - 1, i], 0);
+    if(unitAt(i - 1, i - 1)) add(i, tok.n, tokens[i - 1].raw, [i - 1, i], 0);
+    add(i, tok.n, null, [i], 1);
+    // A unit word this app does not know ("3 crates"): a word without digits, next to the amount.
+    if(plainWord(i + 1)) add(i, tok.n, tokens[i + 1].raw, [i, i + 1], 2);
+    if(plainWord(i - 1)) add(i, tok.n, tokens[i - 1].raw, [i - 1, i], 2);
+  });
+  // No amount at all: maybe still a unit ("tomatoes kg").
+  if(!options.length) tokens.forEach((tok, i)=>{ if(unitAt(i, i)) add(i, null, tok.raw, [i], 0); });
+  const said = used => trimFillers(tokens.filter((t, j)=>!used.includes(j)).map(t=>t.raw)).join(' ');
+  // Best match first; when the name fits just as well with a word left in it, the word is part of the name
+  // ("Bawadi Chicken 1.200 Kilo 10"); then the last number, then a known unit.
+  const better = (o, p) => o.score !== p.score ? o.score < p.score
+    : Number.isFinite(o.score) && o.used.length !== p.used.length ? o.used.length < p.used.length
+    : o.i !== p.i ? o.i > p.i : o.kind < p.kind;
+  for(const o of options){ o.said = said(o.used); o.score = o.said ? best(o.said) : Infinity; }
+  // An unknown word is taken as the unit only when the line names no item with it left in ("Ice Creem 2" keeps its word).
+  const named = new Set(options.filter(o=>o.kind === 1 && Number.isFinite(o.score)).map(o=>o.i));
+  let pick = null;
+  for(const o of options) if(!(o.kind === 2 && named.has(o.i)) && (!pick || better(o, pick))) pick = o;
+  const whole = said([]), wholeScore = best(whole);
+  // The whole line is a name better than any reading of an amount in it ("1L Kiwi"): no amount was written.
+  if(!pick || !pick.said || wholeScore < pick.score) return {said:whole, amount:null, unit:null, score:wholeScore, named:!!whole, known:false};
+  return {said:pick.said, amount:pick.n, unit:pick.unit, score:pick.score, named:true, known:pick.kind === 0};
+}
+/* A line can hold several items when it is spoken ("tomatoes 2 kg onions 1 sack"). It is split only when every
+   part is an item with its own amount: one the list knows, or, with no list yet, an amount with a known unit. */
+function readAmountLine(tokens, known, best, listed){
+  const whole = readAmountPart(tokens, known, best);
+  const at = tokens.map((t, i)=>t.n != null ? i : -1).filter(i=>i >= 0);
+  if(at.length < 2) return [whole];
+  const S = globalThis.RicottaSearch, isUnitWord = i => tokens[i] && tokens[i].n == null && S.isUnit(tokens[i].raw, known);
+  const unitAfter = i => tokens[i].unit ? 0 : tokens[i + 2] && tokens[i + 1].n == null && tokens[i + 2].n == null && S.isUnit(tokens[i + 1].raw + ' ' + tokens[i + 2].raw, known) ? 2 : isUnitWord(i + 1) ? 1 : 0;
+  const cut = ends => ends.map((end, k)=>tokens.slice(k ? ends[k - 1] + 1 : 0, k === ends.length - 1 ? tokens.length : end + 1));
+  // Name then amount ("tomatoes 2 kg, onions 1 sack"), or amount then name ("2 kg tomatoes, 1 sack onions").
+  const layouts = [cut(at.map(i=>i + unitAfter(i))), cut([...at.slice(1).map(i=>i - 1), tokens.length - 1])];
+  let pick = null;
+  for(const parts of layouts){
+    const read = parts.map(p=>readAmountPart(p, known, best));
+    if(read.some(r=>!r.named || r.amount == null || (listed ? !Number.isFinite(r.score) : !r.known))) continue;
+    const worst = Math.max(...read.map(r=>r.score));
+    if(listed && Number.isFinite(whole.score) && worst >= whole.score) continue;
+    if(!pick || worst < pick.worst) pick = {read, worst};
+  }
+  return pick ? pick.read : [whole];
+}
+/* "tomatoes 2 kg, onions 1 sack" -> [{said, amount, unit}], one per line or comma (a comma before a digit is a
+   decimal). The unit is kept as written; it becomes the item's own unit when the row is added. */
 function parseTransferText(text){
-  const known = stockUnits();
-  return String(text || '').split(/\n|[،;؛]+|,(?!\d)/).map(s=>s.trim()).filter(Boolean).map(line=>{
-    const num = foldText(line).replace(/(\d)[٫,.](\d)/g, '$1.$2').match(/\d+(?:\.\d+)?/);
-    // Each word without its digits ("2kg" -> "kg"); the unit is kept as written.
-    const words = line.split(/\s+/).filter(Boolean).map(w=>({w, bare:w.replace(/[0-9٠-٩۰-۹.,٫]+/g, '')}));
-    const unitWord = words.find(x=>x.bare && globalThis.RicottaSearch.isUnit(x.bare, known));
-    const said = words.filter(x=>x !== unitWord && !/\d/.test(foldText(x.w))).map(x=>x.w).join(' ').replace(/^[-–:×*·•.]+|[-–:×*·•.]+$/g, '').trim();
-    return {said: said || line, amount: num ? Number(num[0]) : null, unit: unitWord ? unitWord.bare : null};
+  const S = globalThis.RicottaSearch, known = stockUnits(), items = stockList.items || [], scores = new Map(), words = new Map();
+  // How well the rest of a line names an item. A number left in it must be a whole number of the name, so
+  // "milk alfajer 2" is not the start of "Milk Alfajer 24*380" (the search box still finds it that way).
+  const wordsOf = i => words.get(i.id) || words.set(i.id, new Set(stockFields(i).flatMap(f=>S.normalize(f).split(' ')))).get(i.id);
+  const best = said => {
+    if(!items.length) return Infinity;
+    if(!scores.has(said)){
+      const nums = S.normalize(said).split(' ').filter(w=>/\d/.test(w));
+      scores.set(said, items.reduce((m, i)=>nums.every(n=>wordsOf(i).has(n)) ? Math.min(m, S.score(said, stockFields(i))) : m, Infinity));
+    }
+    return scores.get(said);
+  };
+  return String(text || '').split(/\n|[،;؛]+|,(?!\d)/).map(s=>s.trim()).filter(Boolean).flatMap(line=>{
+    const tokens = line.split(/\s+/).map(w=>readAmountToken(w, known)).filter(Boolean);
+    if(!tokens.length) return [];
+    if(!tokens.some(t=>t.digits)) tokens.forEach((t, i)=>{ const s = spokenAmount(t, tokens[i + 1], known); if(s) Object.assign(t, s); });
+    return readAmountLine(tokens, known, best, items.length > 0).map(r=>({said:r.said || line, amount:r.amount, unit:r.unit}));
   });
 }
 
@@ -267,15 +386,25 @@ function rowIssue(row){
   if(!row.unit || (item && item.units.length && !item.units.includes(row.unit))) return 'unit';
   return '';
 }
-const issueText = (row, issue) => issue === 'unit' ? t(row.unit ? 'trUnitWrong' : 'trUnitMissing') : ({item:t('trNotFound'), amount:t('trAmountMissing')})[issue] || '';
+const issueText = (row, issue) => issue === 'unit' ? (row.unit ? t('trUnitWrong') : row.wrote?.unit ? t('trWroteUnit')(row.wrote.unit) : t('trUnitMissing')) : ({item:t('trNotFound'), amount:t('trAmountMissing')})[issue] || '';
+/* The row's amount in one of its item's own units, from what was written: kg becomes کیلۆ, and 2 kg becomes
+   2000 غرام for an item counted in غرام. What was written is kept when it had to change or did not fit. */
+function fitTransferRow(row, item){
+  const from = row.wrote || {amount:row.amount, unit:row.unit};
+  const fitted = globalThis.RicottaSearch.fit(unitsFor(item), from.unit || '', from.amount);
+  row.wrote = (fitted ? fitted.amount !== from.amount : !!from.unit && item.units.length > 0) ? {amount:from.amount, unit:from.unit} : null;
+  row.amount = fitted ? fitted.amount : from.amount;
+  row.unit = fitted ? fitted.unit : (from.unit && !item.units.length ? from.unit : null);
+}
+const cleanWrote = w => w && typeof w.unit === 'string' && w.unit ? {amount:validAmount(w.amount) ? w.amount : null, unit:w.unit.slice(0, 40)} : null;
 /* New rows join the list; the same item and unit twice become one row. */
 function addTransferRows(rows){
   for(const r of rows){
     const item = stockItem(r.itemId);
-    const unit = item ? (globalThis.RicottaSearch.unit(unitsFor(item), r.unit || '') || (r.unit && !item.units.length ? r.unit : null)) : (r.unit || null);
-    const row = {id:newRowId(), said:String(r.said || item?.name || '').slice(0, 160), itemId:item ? item.id : null, sure:!!(item && r.sure), amount:validAmount(r.amount) ? Math.round(r.amount * 1000) / 1000 : null, unit, suggestions:(r.suggestions || []).filter(id=>stockItem(id)).slice(0, 4)};
+    const row = {id:newRowId(), said:String(r.said || item?.name || '').slice(0, 160), itemId:item ? item.id : null, sure:!!(item && r.sure), amount:validAmount(r.amount) ? Math.round(r.amount * 1000) / 1000 : null, unit:r.unit || null, wrote:cleanWrote(r.wrote), suggestions:(r.suggestions || []).filter(id=>stockItem(id)).slice(0, 4)};
+    if(item) fitTransferRow(row, item);
     const same = row.itemId && transfer.rows.find(x=>x.itemId === row.itemId && x.unit === row.unit && x.sure && row.sure);
-    if(same && validAmount(same.amount) && row.amount) same.amount = Math.round((same.amount + row.amount) * 1000) / 1000;
+    if(same && validAmount(same.amount) && row.amount){ same.amount = Math.round((same.amount + row.amount) * 1000) / 1000; same.wrote = null; }
     else transfer.rows.push(row);
   }
   saveTransfer();
@@ -321,6 +450,7 @@ function renderTransferRow(row){
   // "You wrote" only when the spelling was not one of the item's own names (its full name, either half, a remembered spelling).
   const differs = item && row.said && globalThis.RicottaSearch.score(row.said, stockFields(item), false) > 2;
   const message = issueText(row, issue);
+  const converted = renderTransferConverted(row);
   const suggestions = issue === 'item' || issue === 'check' ? row.suggestions.filter(id=>id !== row.itemId).map(stockItem).filter(Boolean).slice(0, 3) : [];
   return `<div class="tr-row glass${issue ? ' bad' : ''}${issue === 'check' ? ' check' : ''}" data-row="${esc(row.id)}">
     <div class="tr-main">
@@ -333,8 +463,15 @@ function renderTransferRow(row){
       <div class="field"><label for="trAmount-${esc(row.id)}">${esc(t('trAmount'))}</label><input id="trAmount-${esc(row.id)}" data-amount="${esc(row.id)}" inputmode="decimal" data-pad="dec" maxlength="9" autocomplete="off" value="${row.amount ?? ''}"></div>
       <div class="field"><label for="trUnit-${esc(row.id)}">${esc(t('trUnit'))}</label><select id="trUnit-${esc(row.id)}" data-unit="${esc(row.id)}">${unitOptions}</select></div>
     </div>
-    <div class="tr-msg" role="status">${esc(message)}</div>
+    ${converted}<div class="tr-msg" role="status">${esc(message)}</div>
   </div>`;
+}
+/* "2 kg = 2000 غرام" under a row whose amount was worked out in the item's own unit. */
+function renderTransferConverted(row){
+  if(!row.wrote || !row.unit || row.wrote.amount === row.amount || row.wrote.amount == null) return '';
+  // Each number and unit is kept apart so a Kurdish unit never moves its number to the other side.
+  const part = (n, u) => `<bdi>${esc(String(n))}</bdi> <bdi>${esc(u)}</bdi>`;
+  return `<div class="tr-from" dir="ltr"><span>${part(row.wrote.amount, row.wrote.unit)}</span><span aria-hidden="true">=</span><span class="sr-only">${esc(t('trIsSame'))}</span><b>${part(row.amount, row.unit)}</b></div>`;
 }
 function renderTransferBar(){
   transferState();
@@ -431,10 +568,10 @@ function attachTransferRowEvents(root){
   root.querySelectorAll('[data-amount]').forEach(input=>input.oninput = ()=>{
     const r = rowOf(input.dataset.amount); if(!r) return;
     const v = readQuantity(input.value);
-    r.amount = input.value.trim() && validAmount(v) ? v : null;
+    r.amount = input.value.trim() && validAmount(v) ? v : null; r.wrote = null;
     saveTransfer(); paintTransferRowState(r);
   });
-  root.querySelectorAll('[data-unit]').forEach(sel=>sel.onchange = ()=>{ const r = rowOf(sel.dataset.unit); if(!r) return; r.unit = sel.value || null; saveTransfer(); paintTransferRowState(r); });
+  root.querySelectorAll('[data-unit]').forEach(sel=>sel.onchange = ()=>{ const r = rowOf(sel.dataset.unit); if(!r) return; r.unit = sel.value || null; r.wrote = null; saveTransfer(); paintTransferRowState(r); });
 }
 /* Just the row's colour and message, so typing an amount never rebuilds the row under the finger. */
 function paintTransferRowState(row){
@@ -444,15 +581,16 @@ function paintTransferRowState(row){
   el.classList.toggle('bad', !!issue); el.classList.toggle('check', issue === 'check');
   const msg = el.querySelector('.tr-msg');
   if(msg) msg.textContent = issueText(row, issue);
+  if(!row.wrote) el.querySelector('.tr-from')?.remove();
   paintTransferBar();
 }
-/* A row gets its item: the unit is kept when the item has it, and the spelling can be remembered. */
+/* A row gets its item: the amount moves into the item's own unit when it can, and the spelling can be remembered. */
 async function chooseStockItem(row, itemId, remember){
   const item = stockItem(itemId);
   if(!item) return;
   const said = row.said;
   row.itemId = item.id; row.sure = true;
-  row.unit = globalThis.RicottaSearch.unit(unitsFor(item), row.unit || '') || (item.units.length === 1 ? item.units[0] : null);
+  fitTransferRow(row, item);
   saveTransfer(); paintTransfers();
   if(remember && said && globalThis.RicottaSearch.score(said, stockFields(item), false) > 2){
     const r = await api(`stock-items/${encodeURIComponent(item.id)}/alias`, {method:'POST', body:{alias:said}});
