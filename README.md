@@ -104,6 +104,10 @@ See [SECURITY.md](SECURITY.md) for the authentication model, permission boundari
 
 `pnpm install --frozen-lockfile` then `node scripts/build-site.cjs` builds minified JavaScript/CSS with content-hashed filenames. Fonts are self-hosted WOFF2 (licenses in `fonts/`); `font-display: optional` avoids late swaps moving controls. Spreadsheet parsing/export and Cloudflare's widget load only when needed. The install icon uses a sized, lazy WebP; notification/PWA icons remain losslessly compressed PNGs.
 
+The loading screen is inline in `index.html`, so it paints on the first frame: solid dark green, a green bar paints the word in, then the dot, "ORDERS" and a filling bar. On a fast start it stays only until the word is painted (about a second), never longer; with reduced motion it lifts at once.
+
+The sign-in page is dark green with one white PIN sheet on phones (title, one line, six PIN circles and the keypad on one centre line) and two halves on computers: the green "A calmer kitchen" side and a plain white PIN side. The green side stays green in dark mode; the browser bar is green while the sign-in page shows.
+
 The service worker caches only exact, immutable files from the current build. It never caches HTML, the live version marker, API replies, sessions or business data. New builds discard obsolete static caches and preserve notification badges. GitHub Pages still controls HTTP cache headers; its short TTL may remain a Lighthouse warning on cold visits.
 
 For repeatable local phone measurements, run `node scripts/performance-browser.cjs dist /tmp/ricotta-performance`. This uses 179 sample items, a mocked API, Slow 4G and 4x CPU throttling; it does not measure production database speed. Run Lighthouse against the published URL for public sign-in metrics. `UI_SITE_DIR=dist` exercises the actual optimized artifact with the UI, order-queue and search smoke scripts.
