@@ -178,53 +178,53 @@ html.rtl .send-go svg{transform:scaleX(-1)}
 .send-btn:not(:disabled):hover .send-go{transform:translateX(3px)}
 
 /* ---------- Sign in ---------- */
-.login-wrap{position:relative;isolation:isolate;min-height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+/* Phone: the green brand side on top, the PIN on one white sheet below it. Computer: the two
+   side by side (see the 960px query). The green side stays green in dark mode. */
+html:has(.login-wrap){background:#14382C}
+.login-wrap{position:relative;isolation:isolate;min-height:100dvh;display:flex;flex-direction:column;background:var(--hero)}
 .login-corner{position:absolute;top:calc(12px + var(--safe-top));inset-inline-end:14px;z-index:5}
-.login-brand-panel{display:none}
-.login-mobile-brand{position:relative;z-index:1;height:clamp(190px,32vh,270px);flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--deep);padding-top:calc(24px + var(--safe-top))}
-.login-word{display:flex;align-items:flex-end;font-family:'Manrope',var(--font);font-size:48px;font-weight:800;letter-spacing:-.055em;line-height:1;direction:ltr}
-.login-word b{font-weight:800;display:inline-block;animation:letterUp 700ms cubic-bezier(.2,.9,.25,1) both;animation-delay:calc(var(--i)*40ms + 60ms)}
-.login-word i{display:inline-block;width:.2em;height:.2em;border-radius:50%;background:var(--accent);margin:0 0 .09em .07em;animation:dotPop 600ms var(--spring) 420ms both,dotPulse 2.8s ease-in-out 1.2s infinite}
-@keyframes letterUp{from{opacity:0;transform:translateY(60%)}to{opacity:1;transform:none}}
-@keyframes dotPop{from{transform:scale(0)}to{transform:scale(1)}}
-.login-orders{font-size:10px;font-weight:800;letter-spacing:.42em;text-indent:.42em;color:var(--ink-soft);direction:ltr;animation:fadeIn 800ms ease 460ms both}
-.login-card{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;align-items:center;width:auto;margin:0 10px calc(10px + var(--safe-bottom));padding:26px 20px 20px;border-radius:32px;
-  background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--glass-rim);box-shadow:var(--glass-shadow);animation:sheetUp 240ms var(--ease-out) both}
-#app.static-update .login-card,#app.static-update .login-word b,#app.static-update .login-word i,#app.static-update .login-orders,#app.static-update .key{animation:none}
+.login-corner .lang-chip{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.18);color:#fff;box-shadow:none}
+.login-brand{flex:1 0 auto;min-height:150px;display:flex;align-items:center;justify-content:center;padding:calc(56px + var(--safe-top)) 24px 32px;color:#fff}
+.login-pitch,.brand-footer{display:none}
+.login-word{display:flex;align-items:flex-end;font-family:'Manrope',var(--font);font-size:clamp(44px,14vw,58px);font-weight:800;letter-spacing:-.055em;line-height:1;direction:ltr;color:#fff}
+.login-word b{font-weight:800;display:inline-block;animation:loginLetter 760ms var(--spring) both;animation-delay:calc(var(--i)*45ms + 80ms)}
+.login-word i{display:inline-block;width:.2em;height:.2em;border-radius:50%;background:var(--accent);margin:0 0 .09em .07em;animation:loginDotIn 520ms var(--spring) 480ms both,loginDotBounce 2.4s cubic-bezier(.3,0,.3,1) 1.6s infinite}
+@keyframes loginLetter{from{opacity:0;transform:translateY(-45%) scale(.7)}to{opacity:1;transform:none}}
+@keyframes loginDotIn{from{transform:scale(0)}to{transform:scale(1)}}
+@keyframes loginDotBounce{0%,55%,100%{transform:none}18%{transform:translateY(-.4em) scale(.92,1.08)}36%{transform:scale(1.14,.86)}}
+.login-panel{position:relative;z-index:2;flex:0 0 auto;display:flex;justify-content:center;padding:28px 22px calc(20px + var(--safe-bottom));
+  background:var(--glass);border-radius:30px 30px 0 0;box-shadow:0 -18px 40px -24px rgba(0,0,0,.45);animation:sheetUp 320ms var(--ease-out) both}
+#app.static-update .login-panel,#app.static-update .login-word b,#app.static-update .login-word i,#app.static-update .key{animation:none}
 @keyframes sheetUp{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
-.login-inner{width:100%;max-width:380px;display:flex;flex-direction:column;align-items:center}
-.login-heading{text-align:center;width:100%}
-.login-eyebrow{font-size:10px;font-weight:700;letter-spacing:.2em;color:var(--ink-soft)}
-html.rtl .login-eyebrow{letter-spacing:0;font-size:11.5px}
-.login-title{margin:8px 0 6px;font-size:30px;line-height:1.15;font-weight:800}
-html:not(.rtl) .login-title{letter-spacing:-.03em}
-.login-sub{margin:0 0 20px;font-size:13.5px;color:var(--ink-soft);font-weight:500;line-height:1.5}
-.pin-label{font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:10px}
-.pin-dots{display:flex;gap:8px;direction:ltr;margin-bottom:10px}
-.pin-dot{width:42px;height:46px;border-radius:15px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.35);border:1.5px solid rgba(255,255,255,.6);transition:border-color 200ms ease,background-color 200ms ease,box-shadow 200ms ease}
-.pin-dot .core{width:9px;height:9px;border-radius:50%;border:1.5px solid #9DB0A5;transition:all 200ms ease}
-.pin-dot.next{border-color:var(--accent);box-shadow:0 0 0 4px rgba(var(--accent-rgb),.18)}
-.pin-dot.filled{border-color:var(--deep);background:rgba(255,255,255,.7);animation:pinPop 420ms var(--spring)}
-.pin-dot.filled .core{background:var(--deep);border-color:var(--deep);transform:scale(1.15)}
-@keyframes pinPop{0%{transform:scale(.7)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+.login-inner{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.login-title{margin:0;font-size:24px;line-height:1.2;font-weight:800;color:var(--ink)}
+html:not(.rtl) .login-title{letter-spacing:-.02em}
+.login-sub{margin:6px 0 20px;font-size:13.5px;color:var(--ink-soft);font-weight:500;line-height:1.5}
+/* The PIN: six circles, filled as digits are typed, the next one ringed. */
+.pin-dots{display:flex;gap:18px;direction:ltr;margin-bottom:12px;padding:4px 0}
+.pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid #A9B8B0;transition:border-color 200ms ease,background-color 200ms ease,box-shadow 200ms ease}
+.pin-dot.next{border-color:var(--accent);box-shadow:0 0 0 4px rgba(var(--accent-rgb),.2)}
+.pin-dot.filled{border-color:var(--deep);background:var(--deep);animation:pinPop 380ms var(--spring)}
+@keyframes pinPop{0%{transform:scale(.6)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
 .pin-dots.err{animation:pinShake 380ms ease}
-.pin-dots.err .pin-dot{border-color:var(--clay);background:rgba(251,231,229,.7)}
-.pin-dots.err .pin-dot .core{background:var(--clay);border-color:var(--clay)}
+.pin-dots.err .pin-dot{border-color:var(--clay);background:var(--clay);box-shadow:none}
 .pin-dots.busy .pin-dot{animation:pinWave 900ms ease-in-out infinite}
 .pin-dots.busy .pin-dot:nth-child(2){animation-delay:80ms}.pin-dots.busy .pin-dot:nth-child(3){animation-delay:160ms}.pin-dots.busy .pin-dot:nth-child(4){animation-delay:240ms}.pin-dots.busy .pin-dot:nth-child(5){animation-delay:320ms}.pin-dots.busy .pin-dot:nth-child(6){animation-delay:400ms}
-@keyframes pinWave{50%{transform:translateY(-6px);background:rgba(var(--soft-rgb),.8)}}
+@keyframes pinWave{50%{transform:translateY(-5px)}}
 @keyframes pinShake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
-.login-error{min-height:20px;margin:0 0 10px;font-size:12px;font-weight:700;color:var(--clay-ink);text-align:center}
+.login-error{min-height:20px;margin:0 0 12px;font-size:12px;font-weight:700;color:var(--clay-ink);text-align:center}
 .login-error.info{color:var(--mint-ink)}
 .keypad{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;direction:ltr}
-.key{height:62px;border-radius:20px;font-family:var(--font);font-size:24px;font-weight:600;color:var(--ink);display:flex;align-items:center;justify-content:center;
-  border:1px solid rgba(255,255,255,.6);background:rgba(255,255,255,.3);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 6px 16px -8px rgba(var(--shade-rgb),.2);
-  animation:keyRise 420ms var(--ease-out) both;animation-delay:calc(var(--k,0)*22ms + 260ms)}
-.key:not(:disabled):active{transform:scale(.9);background:rgba(var(--soft-rgb),.8)}
-.key.clear,.key.backspace{background:transparent;border-color:transparent;box-shadow:none}
-.key.clear{font-family:inherit;font-size:14px;font-weight:700;color:var(--clay-ink)}
+.key{position:relative;overflow:hidden;height:64px;border:0;border-radius:20px;background:#F1F5F2;font-family:var(--font);font-size:25px;font-weight:600;color:var(--ink);
+  display:flex;align-items:center;justify-content:center;transition:background-color 160ms ease,transform 160ms ease;
+  animation:keyPop 440ms var(--spring) both;animation-delay:calc(var(--k,0)*26ms + 240ms)}
+.key:not(:disabled):active{transform:scale(.94);background:#E4ECE7}
+.key.clear,.key.backspace{background:transparent}
+.key.clear{color:var(--clay-ink)}
 .key.backspace{color:var(--ink-soft)}
-@keyframes keyRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.key-ripple{position:absolute;border-radius:50%;background:rgba(var(--accent-rgb),.28);transform:scale(0);animation:keyRipple 520ms ease-out forwards;pointer-events:none}
+@keyframes keyRipple{to{transform:scale(1);opacity:0}}
+@keyframes keyPop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:none}}
 
 /* Welcome back (after a PIN sign-in, instead of the splash) */
 .welcome{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;padding:24px;background:rgba(238,241,239,.4);-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%);animation:fadeIn 260ms ease both}
@@ -855,7 +855,7 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .content{padding-inline:26px}
   .supplier-items-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .order-tabs-shell{margin-inline:-26px}.order-tabs{padding-inline:26px}
-  .login-card{align-self:center;width:min(100% - 40px,460px);flex:none;margin-bottom:auto}
+  .login-panel{align-self:center;width:min(100% - 40px,460px);margin-bottom:calc(32px + var(--safe-bottom));border-radius:30px;padding-block:32px 28px}
 }
 
 /* ---------- Computers: a sidebar with every screen ---------- */
@@ -891,22 +891,24 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .modal-box{max-width:480px;padding:28px 26px 24px}
   .modal-box.modal-form{max-width:560px}
   .list-row:hover,.item-row:hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 14px 28px -16px rgba(var(--shade-rgb),.35)}
-  /* Sign-in: a two-part composition */
-  .login-wrap{display:grid;grid-template-columns:minmax(400px,46%) minmax(0,1fr)}
-  .login-mobile-brand{display:none}
+  /* Sign-in: two halves, the green brand side and the white PIN side */
+  .login-wrap{display:grid;grid-template-columns:minmax(420px,46%) minmax(0,1fr);min-height:100dvh;background:var(--glass)}
   .login-corner{top:24px;inset-inline-end:28px}
-  .login-brand-panel{display:flex;flex-direction:column;position:relative;isolation:isolate;overflow:hidden;padding:52px clamp(40px,5vw,80px);color:#fff;background:var(--hero);margin:16px;border-radius:34px;box-shadow:0 30px 60px -30px rgba(var(--deepd-rgb),.7)}
-  .brand-word{display:flex;align-items:flex-end;font-family:'Manrope',var(--font);font-size:44px;font-weight:800;letter-spacing:-.06em;line-height:1;direction:ltr}
-  .brand-word-dot{width:.2em;height:.2em;margin:0 0 .09em .07em;border-radius:50%;background:var(--on-dark);animation:dotPulse 2.8s ease-in-out infinite}
-  .login-brand-content{margin-block:auto}
-  .brand-kicker{font-size:10.5px;letter-spacing:.2em;color:var(--t-eyebrow);font-weight:700}
-  .brand-message{margin-top:18px;font-size:clamp(32px,3.2vw,54px);line-height:1.12;font-weight:800;letter-spacing:-.045em}
+  .login-corner .lang-chip{background:var(--glass);border-color:var(--line-strong);color:var(--deep)}
+  .login-brand{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:40px;min-height:100dvh;padding:56px clamp(44px,5vw,88px) 44px;background:var(--hero)}
+  .login-word{font-size:44px}
+  .login-pitch{display:block}
+  .brand-kicker{font-size:11px;letter-spacing:.2em;color:var(--t-eyebrow);font-weight:700}
+  .brand-message{margin:16px 0 0;font-size:clamp(34px,3.1vw,52px);line-height:1.1;font-weight:800;letter-spacing:-.04em}
   .brand-message em{font-style:normal;color:var(--t-bright)}
-  .brand-detail{font-size:15px;max-width:360px;line-height:1.75;margin-top:22px;color:var(--t-sub);font-weight:500}
-  .brand-footer{display:flex;gap:16px;justify-content:space-between;font-size:11.5px;color:var(--t-foot);font-weight:500}
+  .brand-detail{font-size:15px;max-width:380px;line-height:1.7;margin:20px 0 0;color:var(--t-sub);font-weight:500}
+  .brand-footer{display:flex;gap:16px;justify-content:space-between;width:100%;font-size:12px;color:var(--t-foot);font-weight:500}
   html.rtl .brand-message,html.rtl .brand-kicker,html.rtl .brand-detail{letter-spacing:0;line-height:1.6}
-  .login-card{align-self:center;justify-self:center;width:min(100% - 64px,460px);flex:none;margin:0;border-radius:34px;padding:40px 36px}
-  .key:hover{background:rgba(255,255,255,.55);transform:translateY(-1px)}
+  .login-panel{align-items:center;padding:96px 40px 56px;border-radius:0;box-shadow:none;animation:fadeIn 360ms ease both}
+  .login-title{font-size:30px}
+  .login-sub{margin-bottom:26px}
+  .key:hover{background:#E8EFEA}
+  .key.clear:hover,.key.backspace:hover{background:#F1F5F2}
 }
 @media (min-width:1600px){.supplier-items-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 /* Phones (every iPhone, Pro Max included): the top bar holds the streak, notes, connection,
@@ -925,16 +927,15 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .brand{font-size:21px}
   .hero-count{font-size:40px}
   .hero-ring,.hero-ring svg{width:60px;height:60px}
-  .pin-dot{width:38px;height:42px}
-  .key{height:56px}
+  .key{height:58px}
   .item-row{padding-inline:14px 8px}
   .step-btn{width:42px;height:42px}
 }
 @media (max-height:700px) and (max-width:959px){
-  .login-mobile-brand{height:150px}
-  .login-card{padding-top:20px}
-  .login-sub{margin-bottom:12px}
-  .key{height:52px}
+  .login-brand{padding-block:calc(48px + var(--safe-top)) 22px}
+  .login-panel{padding-top:22px}
+  .login-sub{margin-bottom:14px}
+  .key{height:54px}
   .keypad{gap:8px}
 }
 /* Hover tints for mouse users */
@@ -1239,14 +1240,19 @@ html.dark{--surface:rgba(255,255,255,.05);--surface-line:rgba(255,255,255,.08);-
 html.dark .has-qty .stepper{background:rgba(255,255,255,.1);box-shadow:none}
 html.dark .qty-input:focus,html.dark .list-row.tappable:active,html.dark .item-row:active{background:rgba(255,255,255,.1)}
 html.dark .ctx-preview .item-row{background:#1A241F}
-html.dark .tab-pill.active,html.dark .record-filters .tab-pill.active,html.dark .pick.on,html.dark .item-sort-rank,html.dark .pin-dot.filled .core,html.dark .seg-lens{background:color-mix(in srgb,var(--accent-strong) 70%,#0E1512)}
+html.dark .tab-pill.active,html.dark .record-filters .tab-pill.active,html.dark .pick.on,html.dark .item-sort-rank,html.dark .seg-lens{background:color-mix(in srgb,var(--accent-strong) 70%,#0E1512)}
 html.dark .supplier-mono{background:rgba(255,255,255,.1)}
 html.dark .chip,html.dark .key,html.dark .rico-suggest-x,html.dark .modal-banner,html.dark .item-sort-row,html.dark .dev-how,html.dark .dev-idle,html.dark .rec-edit,html.dark .sel-btn,html.dark .pad-key,html.dark .wa-btn.done,html.dark .rico-time span,html.dark .notes-compose textarea{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1)}
 html.dark .search-input,html.dark .field input:where(:not([type=checkbox]):not([type=radio])),html.dark .field select,html.dark .field textarea,html.dark .search-input:focus{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12);color:var(--ink)}
 html.dark .sel-panel{background:rgba(20,28,24,.97)}
 html.dark .bottomnav{border-color:rgba(255,255,255,.1);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 20px 40px -18px rgba(0,0,0,.7)}
 
-html.dark .key{box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 6px 16px -8px rgba(0,0,0,.5)}
+html.dark .key{background:rgba(255,255,255,.06);box-shadow:none}
+html.dark .key:not(:disabled):active,html.dark .key:hover{background:rgba(255,255,255,.12)}
+html.dark .key.clear,html.dark .key.backspace{background:transparent}
+html.dark .pin-dot{border-color:rgba(230,238,234,.4)}
+html.dark .pin-dot.filled{border-color:var(--accent);background:var(--accent)}
+html.dark .login-corner .lang-chip{color:#fff}
 html.dark .rico-bubble,html.dark .rico-typing,html.dark .rico-composer{border-color:rgba(255,255,255,.1)}
 html.dark .note-row:not(.is-done){background:#3A3214;border-color:#5C4E1C;color:#FFF3C2}
 html.dark .note-sticky{background:linear-gradient(170deg,#4A3F17,#3A3112);color:#FFF3C2}
@@ -1255,7 +1261,6 @@ html.dark .note-actions .btn-ghost{background:rgba(255,255,255,.08);color:#FFF3C
 html.dark .topbar{box-shadow:0 1px 0 rgba(255,255,255,.06)}
 html.dark .streak-chip:not(.lit){--f1:#5C6A62;--f2:#7D8B83;--f3:#A8B4AD}
 html.dark .who-badge{--wa:#DDE5E1;--wo:#18201C;--ws:rgba(255,255,255,.1);--wi:#E6EEEA}
-html.dark .login-brand-panel{color:#fff}
 html.dark .report-stats > div,html.dark .report-save,html.dark .report-chips span,html.dark .streak-bar,html.dark .report-bar i,html.dark .report-who{background:rgba(255,255,255,.06)}
 
 @media (prefers-reduced-motion:reduce){

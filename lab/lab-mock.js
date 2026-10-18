@@ -267,6 +267,8 @@
     }
     if(path.startsWith('recovery/')) return fail('invalid_credentials', 401);
     if(method === 'GET' && path === 'health') return ok();
+    // Asked before signing in, so it is answered without a session (no bot check in the Lab).
+    if(method === 'GET' && path === 'auth/security') return json({required:false, siteKey:null});
     const account = tokenAccount(headers);
     if(!account) return fail('unauthorized', 401);
     let m;
@@ -364,7 +366,6 @@
       (body.itemIds||[]).forEach((id, i)=>{ const it = db.items.find(x=>x.id===id && x.supplierId===sid); if(it) it.sortOrder = i; });
       save(); return ok();
     }
-    if(path==='auth/security')return json({required:false,siteKey:null});
     if(path==='items/aliases' && method==='PUT'){
       const entries=body.entries||[], conflicts=entries.filter(e=>{const i=db.items.find(i=>i.id===e.itemId);return !i || (JSON.stringify(i.aliases||[])!==JSON.stringify(e.before) && JSON.stringify(i.aliases||[])!==JSON.stringify(e.aliases));}).map(e=>e.itemId);
       if(conflicts.length)return json({conflicts},409);

@@ -546,7 +546,7 @@ async function boot(){
     clearApiSession();   // a sign-in from before the two accounts: sign in again
   }
   render();
-  hideSplash(0);   // keep the gentle exit; never add an artificial startup delay
+  hideSplash();
   if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); maybeFinishQueue(); }
   if(state.account && !loadedOk) retryLoad();
   // Notifications: register the service worker, read this device's status, and
@@ -560,7 +560,8 @@ async function boot(){
 }
 /* The branded loading screen lives in index.html so it shows instantly.
    It lifts away once the first real screen is on the page and style.css is
-   in, and never before the intro has had time to play (so it can't flash). */
+   in. On a fast start it waits only until the green wipe has painted the word
+   (about a second after it first appeared), so it never cuts off half-way. */
 function cssReady(){
   if(window.__cssReady || getComputedStyle(document.documentElement).getPropertyValue('--bg')) return Promise.resolve();
   return new Promise(res=>{
@@ -568,7 +569,7 @@ function cssReady(){
     setTimeout(res, 4000);   // never keep the app hidden because of a slow stylesheet
   });
 }
-async function hideSplash(minShown = 500){
+async function hideSplash(minShown = 1150){
   const el = document.getElementById('splash');
   if(!el || el.dataset.state === 'leaving') return;
   await cssReady();
@@ -1289,7 +1290,8 @@ function bump(el){
 function syncAppearance(){
   document.documentElement.removeAttribute('data-theme');
   const meta=document.querySelector('meta[name="theme-color"]');
-  if(meta)meta.content=document.documentElement.classList.contains('dark')?'#101613':'#EEF1EF';
+  // The sign-in page is dark green at the top in both appearances.
+  if(meta)meta.content=!state.account?'#14382C':document.documentElement.classList.contains('dark')?'#101613':'#EEF1EF';
 }
 /* A small badge identifying who made a change. */
 function whoBadge(account){
@@ -1446,38 +1448,32 @@ function pinDotClass(i){
   return `pin-dot${filled?' filled':''}${next?' next':''}`;
 }
 function renderLogin(){
-  const dots = Array.from({length:MAX_PIN_LEN}).map((_,i)=>`<span class="${pinDotClass(i)}"><span class="core"></span></span>`).join('');
+  const dots = Array.from({length:MAX_PIN_LEN}).map((_,i)=>`<span class="${pinDotClass(i)}"></span>`).join('');
   const keys = ['1','2','3','4','5','6','7','8','9'];
   const bad = LOGIN_ERRORS.includes(state.pinError);
   const msg = loginMessage();
   const word = 'ricotta'.split('').map((c,i)=>`<b style="--i:${i}">${c}</b>`).join('');
+  // Green brand side and the PIN side: one above the other on a phone, side by side on a computer.
   return `
   <div class="login-wrap">
-    <div class="login-corner">${langButton('loginLangBtn')}</div>
-    <aside class="login-brand-panel">
-      <div class="brand-word" dir="ltr">ricotta<span class="brand-word-dot"></span></div>
-      <div class="login-brand-content"><div class="brand-kicker">${esc(t('brandKicker'))}</div><div class="brand-message">${esc(t('brandMessage'))}<br><em>${esc(t('brandMessageAccent'))}</em></div><div class="brand-detail">${esc(t('brandDetail'))}</div></div>
+    <section class="login-brand">
+      <div class="login-word" dir="ltr" aria-hidden="true">${word}<i></i></div>
+      <div class="login-pitch"><div class="brand-kicker">${esc(t('brandKicker'))}</div><p class="brand-message">${esc(t('brandMessage'))}<br><em>${esc(t('brandMessageAccent'))}</em></p><p class="brand-detail">${esc(t('brandDetail'))}</p></div>
       <div class="brand-footer"><span>© ${new Date().getFullYear()} Ricotta</span><span>${esc(t('brandFooter'))}</span></div>
-    </aside>
-    <div class="login-mobile-brand" aria-hidden="true">
-      <div class="login-word">${word}<i></i></div><div class="login-orders">ORDERS</div>
-    </div>
-    <div class="login-card"><div class="login-inner">
-      <div class="login-heading">
-        <div class="login-eyebrow">${esc(t('welcomeBack'))}</div>
-        <h1 class="login-title">${esc(t('signIn'))}</h1>
-        <p class="login-sub">${esc(t('signInSub'))}</p>
-      </div>
-      <div class="pin-label" id="pinLabel">${esc(t('enterPin'))}</div>
+    </section>
+    <div class="login-corner">${langButton('loginLangBtn')}</div>
+    <main class="login-panel"><div class="login-inner">
+      <h1 class="login-title">${esc(t('signIn'))}</h1>
+      <p class="login-sub" id="pinLabel">${esc(t('enterPin'))}</p>
       <div class="pin-dots ${bad?'err':''} ${state.pinBusy?'busy':''}" role="group" aria-labelledby="pinLabel">${dots}</div>
       <div class="login-error ${state.pinError==='session'?'info':''}" role="alert" style="visibility:${msg?'visible':'hidden'};">${esc(msg) || '&nbsp;'}</div>
       <div class="keypad">
         ${keys.map((k,i)=>`<button class="key" data-key="${k}" style="--k:${i}">${k}</button>`).join('')}
-        <button class="key clear" data-key="clear" style="--k:9">${esc(t('clear'))}</button>
+        <button class="key clear" data-key="clear" style="--k:9" aria-label="${esc(t('clear'))}">${ICON_CLEAR}</button>
         <button class="key" data-key="0" style="--k:10">0</button>
         <button class="key backspace" data-key="back" style="--k:11" aria-label="${esc(t('deleteDigit'))}">${ICON_BACKSPACE}</button>
       </div>
-    </div></div>
+    </div></main>
   </div>`;
 }
 function updateLoginFeedback(){
@@ -1485,7 +1481,7 @@ function updateLoginFeedback(){
   if(!dots) return;
   dots.classList.toggle('err', LOGIN_ERRORS.includes(state.pinError));
   dots.classList.toggle('busy', state.pinBusy);
-  // Class changes alone drive the pop / next-box glow (see .pin-dot in style.css).
+  // Class changes alone drive the pop / next-circle ring (see .pin-dot in style.css).
   dots.querySelectorAll('.pin-dot').forEach((dot,index)=>{ dot.className = pinDotClass(index); });
   const message = document.querySelector('.login-error');
   message.textContent = loginMessage() || ' ';
@@ -1568,7 +1564,20 @@ async function startRecovery(ticket){
 function attachLoginEvents(){
   const lang = document.getElementById('loginLangBtn');
   if(lang) lang.onclick = e=>{ e.stopPropagation(); openLangMenu(lang); };
-  document.querySelectorAll('[data-key]').forEach(b=>b.onclick = ()=>pressKey(b.dataset.key));
+  document.querySelectorAll('[data-key]').forEach(b=>{
+    b.onclick = ()=>pressKey(b.dataset.key);
+    b.onpointerdown = e=>keyRipple(b, e);
+  });
+}
+/* A soft ring spreads from where the key was pressed. */
+function keyRipple(key, e){
+  if(key.disabled || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = key.getBoundingClientRect(), size = Math.max(box.width, box.height) * 2;
+  const ring = document.createElement('span');
+  ring.className = 'key-ripple';
+  ring.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - box.left - size / 2}px;top:${e.clientY - box.top - size / 2}px`;
+  key.appendChild(ring);
+  ring.addEventListener('animationend', ()=>ring.remove(), {once:true});
 }
 /* Physical keyboards (computers / tablets with a keyboard) can type the PIN. */
 document.addEventListener('keydown', e=>{
