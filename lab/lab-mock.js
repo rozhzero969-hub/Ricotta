@@ -338,9 +338,11 @@
       await new Promise(r=>setTimeout(r, 700));
       const rows = window.parseTransferText(text).map(p=>{
         const found = window.matchStockLocally(p.said), item = db.stock.find(i=>i.id === found.itemId);
-        const unit = item ? window.RicottaSearch.unit(item.units, p.unit || '') : p.unit;
+        const fitted = item ? window.RicottaSearch.fit(item.units, p.unit || '', p.amount) : null;
+        const unit = item ? (fitted ? fitted.unit : item.units.length ? null : p.unit) : p.unit;
+        const changed = !!item && !!p.unit && (fitted ? fitted.amount !== p.amount : item.units.length > 0);
         const sure = !!item && found.sure && (!item.units.length || !!unit);
-        return {said:p.said, amount:p.amount, unit:unit || null, itemId:item ? item.id : null, sure, suggestions:sure ? [] : found.suggestions};
+        return {said:p.said, amount:fitted ? fitted.amount : p.amount, unit:unit || null, wrote:changed ? {amount:p.amount, unit:p.unit} : null, itemId:item ? item.id : null, sure, suggestions:sure ? [] : found.suggestions};
       });
       return json({rows});
     }

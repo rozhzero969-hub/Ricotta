@@ -28,6 +28,19 @@ assert.equal(S.unit(['کیلۆ'],''),'کیلۆ');
 assert.equal(S.unit(['کیلۆ','دانە'],''),null,'two units and none written: the person picks');
 assert.equal(S.unit(['کیلۆ'],'carton'),null,'a unit the item does not have is not accepted');
 assert.ok(S.isUnit('kilos') && S.isUnit('فەردە') && !S.isUnit('tomatoes'));
+// Every workplace unit by its English name too, and another size of the same unit worked out exactly.
+for(const [said,units,want] of [['pcs',['دانە','غرام'],'دانە'],['bottles',['دانە','ملی لتر'],'دانە'],['sets',['سیت','دانە'],'سیت'],['سێت',['سیت'],'سیت'],
+ ['bucket',['ستل','غرام'],'ستل'],['سطل',['ستل'],'ستل'],['trays',['تەبەقە','دانە'],'تەبەقە'],['jar',['جام','غرام'],'جام'],['packets',['پاکەت','غرام'],'پاکەت'],
+ ['cartons',['کارتۆن','دانە'],'کارتۆن'],['bags',['فەردە','کیلۆ'],'فەردە'],['ml',['دانە','ملی لتر'],'ملی لتر'],['litres',['دانە','لتر'],'لتر'],['grams',['کیلۆ','غرام'],'غرام'],['meters',['مەتر'],'مەتر']])
+ assert.equal(S.unit(units,said),want,said);
+for(const name of S.unitNames) assert.ok(S.isUnit(name),'Rico\'s unit name '+name+' is known');
+assert.deepEqual(plain(S.fit(['دانە','غرام'],'kg',2)),{unit:'غرام',amount:2000},'2 kg is 2000 غرام for an item counted in grams');
+assert.deepEqual(plain(S.fit(['فەردە','کیلۆ'],'g',500)),{unit:'کیلۆ',amount:0.5});
+assert.deepEqual(plain(S.fit(['دانە','ملی لتر'],'L',1.5)),{unit:'ملی لتر',amount:1500});
+assert.deepEqual(plain(S.fit(['کیلۆ','غرام'],'kg',2)),{unit:'کیلۆ',amount:2},'an item with the unit itself keeps the amount');
+assert.equal(S.fit(['فەردە','کیلۆ'],'g',0.5),null,'0.0005 کیلۆ would need rounding: the person chooses');
+assert.equal(S.fit(['دانە'],'kg',3),null,'another kind of unit is never guessed');
+assert.equal(S.fit(['دانە','غرام'],'kg',null),null,'nothing to work out without an amount');
 
 // The workplace item list.
 const list=[
@@ -71,11 +84,56 @@ ctx.addTransferRows([
 const rows=run('transfer.rows');
 assert.deepEqual(plain(rows.map(r=>[r.itemId,r.amount,r.unit])),[['flour',3.5,'فەردە'],['tom',1,'کیلۆ'],['milk',6,null],['bbq',null,'دانە'],[null,1,null],['flour',1,null]]);
 assert.deepEqual(plain(rows.map(ctx.rowIssue)),['','check','unit','amount','item','unit'],'every problem is named');
-assert.equal(run("issueText(transfer.rows[5],'unit')"),ctx.T.en.trUnitMissing,'a unit the item lacks is dropped, so the person chooses one');
+assert.equal(run("issueText(transfer.rows[5],'unit')"),ctx.T.en.trWroteUnit('کارتۆن'),'a unit the item lacks is dropped, and the message names it so the person chooses one');
+assert.equal(run("issueText(transfer.rows[2],'unit')"),ctx.T.en.trUnitMissing,'two units and none written: choose one');
 rows[5].unit='کارتۆن';assert.equal(ctx.rowIssue(rows[5]),'unit');assert.equal(run("issueText(transfer.rows[5],'unit')"),ctx.T.en.trUnitWrong);
 assert.ok(stored.get('transfer:rozha').rows.length===6,'the list is kept on this phone');
 for(const bad of [0,-1,100000,1.0001,NaN]) assert.equal(run(`validAmount(${bad})`),false,'amount '+bad);
 assert.ok(run('validAmount(0.125) && validAmount(99999)'));
+
+// Reading lines like a person writes them, with the item names of the workplace: a size in a name is not the amount.
+ctx.ICON_DELETE='';ctx.document={getElementById:()=>null};
+ctx.setStockItems([...list,
+ {id:'kiwi',name:'1L Kiwi',units:['دانە','ملی لتر'],aliases:[]},
+ {id:'m380',name:'Milk Alfajer 24*380 - شیری الفجر 24*380',units:['دانە','غرام'],aliases:[]},
+ {id:'m390',name:'Milk Alfajer 48*390 - شیری الفجر 48*390',units:['دانە','غرام'],aliases:[]},
+ {id:'oil',name:'Cooking Oil 18L - زەیتی ۱۸ لیتری',units:['دانە','لتر'],aliases:[]},
+ {id:'bawadi',name:'مریشک بوادی ١.٢٠٠ کیلۆ (Bawadi Chicken 1.200 Kilo)',units:['دانە','غرام'],aliases:[]},
+ {id:'m70',name:'M 70 Blueberry',units:['دانە','ملی لتر'],aliases:[]},
+ {id:'cheese',name:'Cheese Balls - كرات الجبن',units:['ستل','غرام'],aliases:[]},
+ {id:'eggs',name:'هیلکە - Eggs',units:['تەبەقە','دانە'],aliases:[]},
+]);
+const lines=text=>plain(ctx.parseTransferText(text)).map(p=>[p.said,p.amount,p.unit]);
+assert.deepEqual(lines('1L Kiwi 5\nMilk Alfajer 24*380 3\nmilk alfajer 380 2\nCooking Oil 18L 2 pcs\nBawadi Chicken 1.200 Kilo 10\nM 70 Blueberry 4\n1L Kiwi'),[
+ ['1L Kiwi',5,null],['Milk Alfajer 24*380',3,null],['milk alfajer 380',2,null],['Cooking Oil 18L',2,'pcs'],['Bawadi Chicken 1.200 Kilo',10,null],['M 70 Blueberry',4,null],['1L Kiwi',null,null],
+],'sizes and numbers in names stay in the name');
+assert.deepEqual(lines('cheese balls 3 kg tomatoes 2 sacks\n2 kg tomatoes 1 sack flour'),[['cheese balls',3,'kg'],['tomatoes',2,'sacks'],['tomatoes',2,'kg'],['flour',1,'sack']],'a spoken line with several items is split');
+assert.deepEqual(lines('eggs two trays\nتەماتە دوو کیلۆ\nتەماتە کیلۆیەک\nطماطم كيلوين\nhalf kilo tomatoes\na kilo of tomatoes\n½ kg tomatoes\ntomatoes 2 crates'),[
+ ['eggs',2,'trays'],['تەماتە',2,'کیلۆ'],['تەماتە',1,'کیلۆ'],['طماطم',2,'كيلو'],['tomatoes',0.5,'kilo'],['tomatoes',1,'kilo'],['tomatoes',0.5,'kg'],['tomatoes',2,'crates'],
+],'number words, a kilo, کیلۆیەک, كيلوين, ½, and a unit word the app does not know');
+assert.deepEqual(lines('Seven 2'),[['Seven',2,null]],'number words count only on a line without digits');
+// Rows: the written unit becomes the item's own; another size is worked out and what was written is shown.
+run("transfer.rows=[];");
+ctx.addTransferRows([
+ {said:'cheese balls',amount:3,unit:'kg',itemId:'cheese',sure:true},
+ {said:'eggs',amount:2,unit:'trays',itemId:'eggs',sure:true},
+ {said:'1L Kiwi',amount:2,unit:'litres',itemId:'kiwi',sure:true},
+ {said:'eggs',amount:1,unit:'box',itemId:'eggs',sure:true},
+ {said:'tomatoes',amount:2,unit:'kg',itemId:null,sure:false,suggestions:['tom']},
+ {said:'flour',amount:2000,unit:'غرام',wrote:{amount:2,unit:'kg'},itemId:'flour',sure:true},
+]);
+const conv=run('transfer.rows');
+assert.deepEqual(plain(conv.map(r=>[r.itemId,r.amount,r.unit,r.wrote])),[['cheese',3000,'غرام',{amount:3,unit:'kg'}],['eggs',2,'تەبەقە',null],['kiwi',2000,'ملی لتر',{amount:2,unit:'litres'}],['eggs',1,null,{amount:1,unit:'box'}],[null,2,'kg',null],['flour',2,'کیلۆ',null]],
+ 'kg to غرام, trays to تەبەقە, litres to ملی لتر, a unit the item lacks waits for the person, and Rico\'s conversion is worked out again from what was written');
+assert.deepEqual(plain(conv.map(ctx.rowIssue)),['','','','unit','item',''],'converted rows are ready');
+assert.equal(run("issueText(transfer.rows[3],'unit')"),ctx.T.en.trWroteUnit('box'),'the message names the unit that was written');
+assert.match(ctx.renderTransferRow(conv[0]),/<div class="tr-from" dir="ltr"><span><bdi>3<\/bdi> <bdi>kg<\/bdi><\/span><span aria-hidden="true">=<\/span><span class="sr-only">is the same as<\/span><b><bdi>3000<\/bdi> <bdi>غرام<\/bdi><\/b><\/div>/,'the row shows 3 kg = 3000 غرام');
+assert.ok(!ctx.renderTransferRow(conv[1]).includes('tr-from'),'nothing to show when only the spelling changed');
+run("chooseStockItem(transfer.rows[4],'cheese',false)");
+assert.deepEqual(plain([conv[4].itemId,conv[4].amount,conv[4].unit,conv[4].wrote]),['cheese',2000,'غرام',{amount:2,unit:'kg'}],'picking the item works the amount out the same way');
+run("chooseStockItem(transfer.rows[4],'flour',false)");
+assert.deepEqual(plain([conv[4].amount,conv[4].unit]),[2,'کیلۆ'],'picking another item starts again from what was written');
+ctx.setStockItems(list);
 
 // The Excel file: a zip of stored parts with correct checksums, the stock system's sheets, and a styled first sheet.
 const sheetLib={};vm.createContext(sheetLib);vm.runInContext(fs.readFileSync('vendor/xlsx-0.20.3.min.js','utf8'),sheetLib);
@@ -130,5 +188,5 @@ XLSX.utils.book_append_sheet(template,XLSX.utils.aoa_to_sheet([['Unit'],['کیل
  assert.deepEqual(read.items,[{name:'Sugar - شەکر',units:['فەردە','کیلۆ']},{name:'Tea - چای',units:['پاکەت','کارتۆن']}],'the heading row is found and units are split');
  read=plain(await ctx.readStockListFile(file(new TextEncoder().encode('﻿Item name,Unit\nپیاز - Onions,کیلۆ\n"Oil, sunflower",تەنەکە\n'),'list.csv')));
  assert.deepEqual(read.items,[{name:'پیاز - Onions',units:['کیلۆ']},{name:'Oil, sunflower',units:['تەنەکە']}],'a UTF-8 CSV keeps Kurdish');
- console.log('Transfers: PASS (translations, units, reading lines, matching without guessing, row checks, merged repeats, styled Excel parts/checksums/sheets/dropdowns/formula-safe text, item list upload from xlsx and csv)');
+ console.log('Transfers: PASS (translations, units in three languages with exact conversion, reading lines with sizes in names and spoken amounts, matching without guessing, row checks, merged repeats, styled Excel parts/checksums/sheets/dropdowns/formula-safe text, item list upload from xlsx and csv)');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -55,18 +55,24 @@
   function rank(rows, query, fields) {
     return rows.map((row,index)=>({row,index,score:score(query,fields(row))})).filter(x=>Number.isFinite(x.score)).sort((a,b)=>a.score-b.score || a.index-b.index).map(x=>x.row);
   }
-  // Units the way people write or say them in Kurdish, Arabic and English; each group is one unit.
+  /* Units the way people write or say them in Kurdish, Arabic and English; each group is one unit, with the
+     workplace system's own spelling first and its English name as the first English word. */
   const UNIT_GROUPS=[
-    ['کیلۆ','کیلو','كيلو','kg','kgs','kilo','kilos','kilogram','کیلۆگرام','كغ','كيلوغرام'],
-    ['دانە','قطعة','حبة','عدد','piece','pieces','pcs','pc'],
-    ['کارتۆن','كارتون','carton','cartons','ctn'],
+    ['کیلۆ','کیلو','كيلو','کلو','كلو','کیلۆگرام','کیلوگرام','كيلوغرام','كيلوجرام','كغ','كجم','kg','kgs','kgm','kilo','kilos','kilu','kilogram','kilograms','kilogramme','kilogrammes'],
+    ['غرام','گرام','جرام','غم','غ','g','gm','gms','gr','grs','grm','gram','grams','gramme','grammes'],
+    ['ملی لتر','ملی لیتر','مل','مللتر','ملليتر','مليلتر','ml','mls','millilitre','milliliter','millilitres','milliliters'],
+    ['لتر','لیتر','ليتر','l','lt','ltr','ltrs','litre','liter','litres','liters'],
+    ['دانە','دانه','قطعة','حبة','عدد','piece','pieces','pcs','pc','pce','each','bottle','bottles'],
+    ['سیت','سێت','set','sets'],
+    ['ستل','سەتڵ','سطل','bucket','buckets','pail','pails','tub','tubs'],
     ['فەردە','فردة','کیسە','كيس','sack','sacks','bag','bags'],
-    ['سێت','سيت','set','sets'],
-    ['سندوق','صندوق','box','boxes','case'],
-    ['لتر','لیتر','litre','liter','litres','liters'],
-    ['غرام','گرام','gram','grams','gr'],
-    ['پاکەت','باكيت','pack','packet','packs'],
-    ['تەنەکە','تنكة','tin','tins'],
+    ['کارتۆن','كارتون','carton','cartons','ctn','ctns','cartoon','cartoons'],
+    ['پاکەت','پاکێت','باكيت','pack','packs','packet','packets','pkt','pkts'],
+    ['تەبەقە','طبقة','tray','trays'],
+    ['جام','jar','jars','pot','pots','bowl','bowls'],
+    ['مەتر','متر','meter','meters','metre','metres','mtr','m'],
+    ['سندوق','صندوق','box','boxes','case','cases','crate','crates'],
+    ['تەنەکە','تنكة','tin','tins','can','cans'],
   ];
   const unitGroup=value=>{const v=normalize(value);return v?UNIT_GROUPS.find(g=>g.some(w=>normalize(w)===v))||null:null;};
   /* The item's own unit for what was written (کیلۆ, kg and كيلو are one unit); null when none fits.
@@ -79,7 +85,27 @@
     const group=unitGroup(said);
     return group?units.find(u=>group.some(w=>normalize(w)===normalize(u)))||null:null;
   }
+  // The same unit in another size: 1 کیلۆ is 1000 غرام, 1 لتر is 1000 ملی لتر.
+  const UNIT_SIZES=[[UNIT_GROUPS[0],UNIT_GROUPS[1],1000],[UNIT_GROUPS[3],UNIT_GROUPS[2],1000]];
+  /* The amount in one of the item's own units: {unit, amount}, or null when none fits. An item counted in
+     another size of the written unit gets the exact amount (2 kg is 2000 غرام); nothing is ever rounded to fit. */
+  function fit(units, said, amount) {
+    const same=unit(units,said);
+    if(same)return {unit:same,amount};
+    const group=unitGroup(said);
+    if(!group || !(amount>0))return null;
+    for(const [big,small,times] of UNIT_SIZES){
+      const to=group===big?small:group===small?big:null;
+      const mine=to&&units.find(u=>to.some(w=>normalize(w)===normalize(u)));
+      if(!mine)continue;
+      const exact=group===big?amount*times:amount/times, value=Math.round(exact*1000)/1000;
+      if(value>0 && value<=99999 && Math.abs(value-exact)<1e-9)return {unit:mine,amount:value};
+    }
+    return null;
+  }
   /* Is this word a unit (one of the known spellings, or one of the given units)? */
   function isUnit(word, units=[]) { const s=normalize(word); return !!s && (!!unitGroup(word) || units.some(u=>normalize(u)===s)); }
-  globalThis.RicottaSearch=Object.freeze({normalize,score,rank,unit,isUnit});
+  // The English name of each known unit (kg, g, ml, l, piece, ...), for Rico to say which one a written unit is.
+  const unitNames=Object.freeze(UNIT_GROUPS.map(g=>g.find(w=>/^[a-z]/.test(w))));
+  globalThis.RicottaSearch=Object.freeze({normalize,score,rank,unit,fit,isUnit,unitNames});
 })();
