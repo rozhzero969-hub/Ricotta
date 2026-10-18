@@ -84,7 +84,8 @@ ctx.addTransferRows([
 const rows=run('transfer.rows');
 assert.deepEqual(plain(rows.map(r=>[r.itemId,r.amount,r.unit])),[['flour',3.5,'فەردە'],['tom',1,'کیلۆ'],['milk',6,null],['bbq',null,'دانە'],[null,1,null],['flour',1,null]]);
 assert.deepEqual(plain(rows.map(ctx.rowIssue)),['','check','unit','amount','item','unit'],'every problem is named');
-assert.equal(run("issueText(transfer.rows[5],'unit')"),ctx.T.en.trUnitMissing,'a unit the item lacks is dropped, so the person chooses one');
+assert.equal(run("issueText(transfer.rows[5],'unit')"),ctx.T.en.trWroteUnit('کارتۆن'),'a unit the item lacks is dropped, and the message names it so the person chooses one');
+assert.equal(run("issueText(transfer.rows[2],'unit')"),ctx.T.en.trUnitMissing,'two units and none written: choose one');
 rows[5].unit='کارتۆن';assert.equal(ctx.rowIssue(rows[5]),'unit');assert.equal(run("issueText(transfer.rows[5],'unit')"),ctx.T.en.trUnitWrong);
 assert.ok(stored.get('transfer:rozha').rows.length===6,'the list is kept on this phone');
 for(const bad of [0,-1,100000,1.0001,NaN]) assert.equal(run(`validAmount(${bad})`),false,'amount '+bad);
