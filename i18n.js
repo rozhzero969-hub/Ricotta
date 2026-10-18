@@ -142,7 +142,7 @@ const T = {
     pinsWeak:'Choose PINs that aren’t all the same digit or a simple run (like 123456).',
     ricoName:'Rico', ricoTalkingWith:n=>'Talking with '+n, ricoWroteFirst:'Rico wrote',
     ricoAutoOrderLabel:'Let Rico fill my order', ricoNewChat:'New chat',
-    ricoLateTitle:n=>n+' is late', ricoLateSub:(time,h,m)=>'Due at '+time+' · not sent yet ('+(h?h+' h ':'')+m+' min)',
+    ricoLateHead:'Late orders', ricoLateSub:(time,h,m)=>'Due at '+time+' · not sent yet ('+[h?h+' h':'',m||!h?m+' min':''].filter(Boolean).join(' ')+')',
     ricoPrepareIt:'Prepare it',
     ricoGreeting:(part,name)=>'Good '+part+(name?', '+name:'')+'.',
     ricoSuggestions:['Prepare today’s order','Check my order','How was this week?','What did we order last time?','Add a new item','Are any orders late today?'],
@@ -339,7 +339,7 @@ const T = {
     pinsWeak:'کۆدێک هەڵبژێرە کە هەموو ژمارەکانی وەک یەک نەبن یان زنجیرەیەکی سادە نەبێت (وەک 123456).',
     ricoName:'ریکۆ', ricoTalkingWith:n=>'قسەکردن لەگەڵ '+n, ricoWroteFirst:'ریکۆ نووسی',
     ricoAutoOrderLabel:'با ریکۆ داواکارییەکەم پڕ بکاتەوە', ricoNewChat:'گفتوگۆی نوێ',
-    ricoLateTitle:n=>n+' دواکەوتووە', ricoLateSub:(time,h,m)=>'کاتی '+time+' بوو · هێشتا نەنێردراوە ('+(h?h+' کاتژمێر و ':'')+m+' خولەک)',
+    ricoLateHead:'داواکارییە دواکەوتووەکان', ricoLateSub:(time,h,m)=>'کاتی '+time+' بوو · هێشتا نەنێردراوە ('+[h?h+' کاتژمێر':'',m||!h?m+' خولەک':''].filter(Boolean).join(' و ')+')',
     ricoPrepareIt:'ئامادەی بکە',
     ricoGreeting:(part,name)=>({morning:'بەیانیت باش',afternoon:'ڕۆژت باش',evening:'ئێوارەت باش'})[part]+(name?'، '+name:'')+'.',
     ricoSuggestions:['داواکاریی ئەمڕۆ ئامادە بکە','داواکارییەکەم بپشکنە','ئەم هەفتەیە چۆن بوو؟','جاری پێشوو چیمان داوا کرد؟','کاڵایەکی نوێ زیاد بکە','ئەمڕۆ هیچ داواکارییەک دواکەوتووە؟'],
@@ -536,7 +536,7 @@ const T = {
     pinsWeak:'اختر رموزًا ليست كلها رقمًا واحدًا أو تسلسلًا بسيطًا (مثل 123456).',
     ricoName:'ريكو', ricoTalkingWith:n=>'تتحدث مع '+n, ricoWroteFirst:'كتب ريكو',
     ricoAutoOrderLabel:'دع ريكو يملأ طلبي', ricoNewChat:'محادثة جديدة',
-    ricoLateTitle:n=>n+' متأخر', ricoLateSub:(time,h,m)=>'موعده '+time+' · لم يُرسل بعد ('+(h?h+' ساعة و':'')+m+' دقيقة)',
+    ricoLateHead:'طلبات متأخرة', ricoLateSub:(time,h,m)=>'موعده '+time+' · لم يُرسل بعد ('+[h?h+' ساعة':'',m||!h?m+' دقيقة':''].filter(Boolean).join(' و')+')',
     ricoPrepareIt:'جهّزه',
     ricoGreeting:(part,name)=>({morning:'صباح الخير',afternoon:'نهارك سعيد',evening:'مساء الخير'})[part]+(name?' يا '+name:'')+'.',
     ricoSuggestions:['جهّز طلب اليوم','راجع طلبي','كيف كان هذا الأسبوع؟','ماذا طلبنا آخر مرة؟','أضف مادة جديدة','هل هناك طلبات متأخرة اليوم؟'],
@@ -698,10 +698,10 @@ Object.assign(T.ar, {
    orderAgain:'أرسل مجددًا', reportDate:'التاريخ'
 });
 
-/* Order cut-offs, repeat orders, the month archive, replies to notes and Face ID. */
+/* Order cut-offs, repeat orders, the month archive and replies to notes. */
 Object.assign(T.en, {
   cutoffLabel:'Stops taking orders at', cutoffHint:'Optional. On this supplier’s order days the Order screen counts down to it, and Rico warns you 30 minutes before.',
-  cutoffShort:'Cut-off', cutoffClosed:'Closed for today', cutoffMinLeft:n=>n+' min left', cutoffHoursLeft:(h,m)=>h+' h '+m+' min left', cutoffUntil:x=>'Order by '+x,
+  cutoffShort:'Cut-off', cutoffClosed:'Closed for today', cutoffMinLeft:n=>n+' min left', cutoffHoursLeft:(h,m)=>h+' h'+(m?' '+m+' min':'')+' left', cutoffUntil:x=>'Order by '+x,
   repeatToday:'Repeat order for today', repeatAdd:'Add to order', repeatAdded:(n,name)=>n+(n===1?' item':' items')+' from “'+name+'” '+(n===1?'is':'are')+' in your order.',
   repeatTitle:'Repeat this order', repeatDaysLabel:'On these days',
   repeatHint:'On these days the Order screen offers this order with one tap. Nothing is sent by itself.',
@@ -717,7 +717,7 @@ Object.assign(T.en, {
   });
 Object.assign(T.ku, {
   cutoffLabel:'کاتی کۆتایی وەرگرتنی داواکاری', cutoffHint:'ئارەزوومەندانەیە. لە ڕۆژانی داواکاریی ئەم دابینکەرە، پەڕەی داواکاری کاتەکە دەژمێرێت و ریکۆ 30 خولەک پێشتر ئاگادارت دەکاتەوە.',
-  cutoffShort:'کاتی کۆتایی', cutoffClosed:'بۆ ئەمڕۆ داخراوە', cutoffMinLeft:n=>n+' خولەک ماوە', cutoffHoursLeft:(h,m)=>h+' کاتژمێر و '+m+' خولەک ماوە', cutoffUntil:x=>'تا '+x+' داوا بکە',
+  cutoffShort:'کاتی کۆتایی', cutoffClosed:'بۆ ئەمڕۆ داخراوە', cutoffMinLeft:n=>n+' خولەک ماوە', cutoffHoursLeft:(h,m)=>h+' کاتژمێر'+(m?' و '+m+' خولەک':'')+' ماوە', cutoffUntil:x=>'تا '+x+' داوا بکە',
   repeatToday:'داواکاریی دووبارەی ئەمڕۆ', repeatAdd:'زیادکردن بۆ داواکاری', repeatAdded:(n,name)=>n+' کاڵا لە «'+name+'» خرانە داواکارییەکەت.',
   repeatTitle:'دووبارەکردنەوەی ئەم داواکارییە', repeatDaysLabel:'لەم ڕۆژانەدا',
   repeatHint:'لەم ڕۆژانەدا پەڕەی داواکاری ئەم داواکارییە بە یەک دەستلێدان پێشنیار دەکات. هیچ شتێک خۆی نانێردرێت.',
@@ -733,7 +733,7 @@ Object.assign(T.ku, {
   });
 Object.assign(T.ar, {
   cutoffLabel:'يتوقف عن استلام الطلبات الساعة', cutoffHint:'اختياري. في أيام طلب هذا المورّد تعدّ صفحة الطلب تنازليًا حتى هذا الوقت، ويُنبّهك ريكو قبله بـ30 دقيقة.',
-  cutoffShort:'آخر موعد', cutoffClosed:'مغلق لليوم', cutoffMinLeft:n=>'باقي '+n+' دقيقة', cutoffHoursLeft:(h,m)=>'باقي '+h+' س و'+m+' د', cutoffUntil:x=>'اطلب قبل '+x,
+  cutoffShort:'آخر موعد', cutoffClosed:'مغلق لليوم', cutoffMinLeft:n=>'باقي '+n+' دقيقة', cutoffHoursLeft:(h,m)=>'باقي '+h+' س'+(m?' و'+m+' د':''), cutoffUntil:x=>'اطلب قبل '+x,
   repeatToday:'طلب متكرر لليوم', repeatAdd:'أضف إلى الطلب', repeatAdded:(n,name)=>'أُضيفت '+n+' مواد من «'+name+'» إلى طلبك.',
   repeatTitle:'كرّر هذا الطلب', repeatDaysLabel:'في هذه الأيام',
   repeatHint:'في هذه الأيام تعرض صفحة الطلب هذا الطلب بضغطة واحدة. لا يُرسل شيء تلقائيًا.',
