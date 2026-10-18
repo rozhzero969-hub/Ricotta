@@ -447,7 +447,7 @@ function signOut(reason, {preserveSession = false} = {}){
   state.account = null; state.name = ''; state.views = []; state.tabs = DEFAULT_TABS.slice();
   state.suppliers = []; state.items = []; state.units = []; state.history = [];
   state.activity = []; state.devices = []; state.reminder = null;
-  state.streak = null; state.notes = []; state.pins = []; state.weather = null; state.repeats = []; state.months = [];
+  state.streak = null; state.notes = []; state.pins = []; state.repeats = []; state.months = [];
   try{ updateAppBadge(); }catch(_){}
   state.orderNote='';state.messageFormat={};state.catalogQuery='';state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
@@ -1288,7 +1288,6 @@ function bump(el){
 }
 /* One Ricotta palette, with optional dark mode. */
 function syncAppearance(){
-  document.documentElement.removeAttribute('data-theme');
   const meta=document.querySelector('meta[name="theme-color"]');
   // The sign-in page is dark green at the top in both appearances.
   if(meta)meta.content=!state.account?'#14382C':document.documentElement.classList.contains('dark')?'#101613':'#EEF1EF';

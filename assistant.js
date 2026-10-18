@@ -199,12 +199,14 @@ function renderAssistant(){
         <button class="icon-btn" id="ricoNewBtn" title="${esc(t('ricoNewChat'))}" aria-label="${esc(t('ricoNewChat'))}" ${rico.messages.length?'':'disabled'}>${ICON_NEW_CHAT}</button>
       </div>
     </header>`;
-  const alerts = late.length ? `<div class="rico-alerts">${late.map(l=>`
-      <div class="rico-alert">
-        <span class="rico-alert-dot" aria-hidden="true"></span>
-        <div class="rico-alert-text"><b>${esc(t('ricoLateTitle')('\u2068'+l.name+'\u2069'))}</b><span>${esc(t('ricoLateSub')(l.time, Math.floor(l.mins/60), l.mins%60))}</span></div>
-        <button class="btn btn-primary" data-rico-late="${esc(l.supplierId)}">${esc(t('ricoPrepareIt'))}</button>
-      </div>`).join('')}</div>` : '';
+  // Every late supplier in one card: a heading with the count, then one row each.
+  const alerts = late.length ? `<section class="rico-alerts glass" aria-labelledby="ricoLateHead">
+      <div class="rico-alerts-head"><span class="rico-alert-dot" aria-hidden="true"></span><b id="ricoLateHead">${esc(t('ricoLateHead'))}</b><span class="supplier-item-count">${late.length}</span></div>
+      ${late.map(l=>`<div class="rico-alert">
+        <div class="rico-alert-text"><b dir="auto">${esc(l.name)}</b><span>${esc(t('ricoLateSub')(l.time, Math.floor(l.mins/60), l.mins%60))}</span></div>
+        <button class="btn btn-primary" data-rico-late="${esc(l.supplierId)}" aria-label="${esc(t('ricoPrepareIt'))} \u00b7 ${esc(l.name)}">${esc(t('ricoPrepareIt'))}</button>
+      </div>`).join('')}
+    </section>` : '';
   const thread = rico.messages.length
     ? rico.messages.map((m,i)=>ricoTimeDivider(rico.messages[i-1], m) + renderRicoMessage(m,i)).join('')
     : renderRicoIntro();

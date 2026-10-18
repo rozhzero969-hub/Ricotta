@@ -71,7 +71,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .item-row,.navbtn,.step-btn{-webkit-touch-callout:none}
 
 /* ---------- Shared surfaces ---------- */
-.glass,.supplier-group,.item-row,.list-row,.hist-card,.rec-card,.dev-card,.queue-card,.form-card,.unit-chip,.empty,.search-input,.quick-btn,.tab-pill,.page-date,.push-banner,.btn-ghost,.rico-head,.rico-chip,.rico-card,.rico-open,.rico-note,.rico-supplier-picker,.tab-scroll,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip,.rico-alert{
+.glass,.supplier-group,.item-row,.list-row,.hist-card,.rec-card,.dev-card,.queue-card,.form-card,.unit-chip,.empty,.search-input,.quick-btn,.tab-pill,.page-date,.push-banner,.btn-ghost,.rico-head,.rico-chip,.rico-card,.rico-open,.rico-note,.rico-supplier-picker,.tab-scroll,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip{
   background:var(--glass);
   border:1px solid var(--glass-rim);box-shadow:var(--glass-shadow)}
 
@@ -683,8 +683,9 @@ html:not(.rtl) .rico-name{letter-spacing:-.03em}
 .rico-auto{position:relative}
 .rico-auto.on{background:var(--accent-strong);color:#fff}
 .rico-auto.on::after{content:'';position:absolute;top:6px;inset-inline-end:6px;width:7px;height:7px;border-radius:50%;background:var(--t-bright);box-shadow:0 0 0 2px var(--accent-strong)}
-.rico-alerts{display:grid;gap:8px;margin-bottom:14px}
-.rico-alert{display:flex;align-items:center;gap:12px;padding:12px;padding-inline:16px 12px;border-radius:20px;border-color:rgba(214,72,63,.35)}
+.rico-alerts{display:grid;margin-bottom:14px;padding:6px 14px;border-radius:22px;border-color:rgba(214,72,63,.35)}
+.rico-alerts-head{display:flex;align-items:center;gap:10px;padding:10px 2px 8px;font-size:14px;font-weight:800;color:var(--clay-ink)}
+.rico-alert{display:flex;align-items:center;gap:12px;padding:10px 2px;border-top:1px solid var(--line)}
 .rico-alert-dot{width:10px;height:10px;border-radius:50%;background:var(--clay);flex-shrink:0;animation:alertPulse 1.8s ease-out infinite}
 .rico-alert-text{flex:1;min-width:0;display:grid;gap:2px}
 .rico-alert-text b{font-size:14px;font-weight:800;overflow-wrap:anywhere}
