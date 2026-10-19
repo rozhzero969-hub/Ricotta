@@ -1,5 +1,8 @@
 /* Cache only this build's immutable public assets. HTML, config, credentials,
-   API requests and business data always use the network. Push remains active. */
+   API requests and business data always use the network. Push remains active.
+   Opening the app always asks for the newest page: an older copy could point at
+   files a newer update has already replaced, and the app would then stay on its
+   loading screen. Offline, the copy the browser kept is used. */
 const STATIC_CACHE = 'ricotta-static-dev';
 const STATIC_FILES = [];
 const assetUrls = new Set(STATIC_FILES.map(file=>new URL(file,self.registration.scope).href));
@@ -12,6 +15,10 @@ self.addEventListener('activate', event => event.waitUntil((async()=>{
 })()));
 self.addEventListener('fetch', event => {
   const request=event.request;
+  if(request.method === 'GET' && request.mode === 'navigate' && request.url.startsWith(self.registration.scope)){
+    event.respondWith(openPage(request.url));
+    return;
+  }
   if(request.method !== 'GET' || !assetUrls.has(request.url)) return;
   event.respondWith((async()=>{
     let cache;
@@ -29,6 +36,16 @@ self.addEventListener('fetch', event => {
     return response;
   })());
 });
+
+/* The page, checked with the server every time (a quick "not modified" when nothing changed).
+   It is never stored here. */
+async function openPage(url){
+  let response;
+  try{ response=await fetch(url,{cache:'no-cache',credentials:'same-origin'}); }
+  catch(_){ response=await fetch(url,{cache:'force-cache',credentials:'same-origin'}); }
+  // A page that moved is opened at its new address (a navigation cannot take a followed redirect).
+  return response.redirected ? Response.redirect(response.url, 302) : response;
+}
 
 /* iOS requires every push to show a visible notification, so we always
    show one -- even if the app happens to be open, and even if something is

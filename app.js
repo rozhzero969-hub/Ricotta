@@ -530,22 +530,30 @@ async function boot(){
     document.getElementById('app').textContent='Open Ricotta directly to sign in.';
     hideSplash(0);return;
   }
-  state.deviceId = ensureDeviceId();
-  lset('faceIdKeys',null);
-  const savedLang = lget('lang');
-  state.lang = LANGS.includes(savedLang) ? savedLang : 'en';
-  const session = apiSession();
-  if(session && (session.account === 'rozha' || session.account === 'yunis')){
-    applyAccount(session);
-    loadedOk = await loadData();
-    if(!loadedOk && !apiSession()) state.account = null;   // the session was rejected
-    // Load the saved local draft only after the catalog is available, keeping
-    // it intact if the app starts while offline and needs to retry loading.
-    if(loadedOk){ restoreCartDraft(); restoreQueue(); }
-  } else if(session){
-    clearApiSession();   // a sign-in from before the two accounts: sign in again
+  try{
+    state.deviceId = ensureDeviceId();
+    lset('faceIdKeys',null);
+    const savedLang = lget('lang');
+    state.lang = LANGS.includes(savedLang) ? savedLang : 'en';
+    const session = apiSession();
+    if(session && (session.account === 'rozha' || session.account === 'yunis')){
+      applyAccount(session);
+      loadedOk = await loadData();
+      if(!loadedOk && !apiSession()) state.account = null;   // the session was rejected
+      // Load the saved local draft only after the catalog is available, keeping
+      // it intact if the app starts while offline and needs to retry loading.
+      if(loadedOk){ restoreCartDraft(); restoreQueue(); }
+    } else if(session){
+      clearApiSession();   // a sign-in from before the two accounts: sign in again
+    }
+    render();
+  }catch(e){
+    // Whatever goes wrong while starting, the loading screen never stays up: the app says so and offers Refresh.
+    console.error('start failed', e);
+    try{ showStartFailure(); }catch(_){ /* the loading screen still lifts */ }
+    hideSplash(0);
+    return;
   }
-  render();
   hideSplash();
   if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); maybeFinishQueue(); }
   if(state.account && !loadedOk) retryLoad();
@@ -557,6 +565,13 @@ async function boot(){
     if(state.account && (pushBannerMode() || banner)) render();
     handleLaunchIntent();
   });
+}
+function showStartFailure(){
+  const app = document.getElementById('app');
+  const say = (key, fallback)=>{ try{ return t(key) || fallback; }catch(e){ return fallback; } };
+  app.dataset.screen = 'error';
+  app.innerHTML = `<div class="start-failed" role="alert"><b>${esc(say('startFailedTitle', 'Ricotta could not open'))}</b><p>${esc(say('startFailedText', 'Something went wrong while starting. Refresh to try again.'))}</p><button type="button" class="btn btn-primary" id="startReload">${esc(say('refreshNow', 'Refresh'))}</button></div>`;
+  document.getElementById('startReload').onclick = ()=>hardReload();
 }
 /* The branded loading screen lives in index.html so it shows instantly.
    It lifts away once the first real screen is on the page and style.css is

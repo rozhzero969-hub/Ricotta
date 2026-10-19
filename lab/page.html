@@ -31,6 +31,11 @@
     background:rgba(255,255,255,.14);opacity:0;animation:spFade .5s ease .85s forwards}
   .splash-bar i{position:absolute;inset:0 auto 0 0;width:0;border-radius:3px;background:#34C27A;
     animation:spFill 3.2s cubic-bezier(.2,.6,.3,1) .85s forwards}
+  /* Needs no script: if the app has not started after 15 seconds, a way out appears. */
+  .splash-retry{position:absolute;left:50%;bottom:calc(44px + env(safe-area-inset-bottom));transform:translateX(-50%);padding:12px 22px;border-radius:999px;
+    background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#F2F7F4;font:600 14px/1.2 system-ui,-apple-system,'Segoe UI',sans-serif;
+    text-decoration:none;white-space:nowrap;visibility:hidden;opacity:0;animation:spRetry .4s ease 15s forwards}
+  @keyframes spRetry{to{visibility:visible;opacity:1}}
   .splash[data-state=leaving]{animation:spCurtain .28s cubic-bezier(.2,.8,.2,1) forwards;pointer-events:none}
   .splash[data-state=leaving] .splash-inner{animation:spInnerOut .38s cubic-bezier(.4,0,.2,1) forwards}
   .splash-bar::after{content:'';position:absolute;inset:0;border-radius:3px;background:#34C27A;opacity:0}
@@ -49,18 +54,20 @@
   @media (prefers-reduced-motion:reduce){
     .splash *,.splash{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important}
     .splash-wipe{display:none}
+    .splash .splash-retry{animation-delay:15s!important}
   }
 </style>
 <link rel="stylesheet" href="lab-panel.css">
 <script src="lab-mock.js"></script>
 <script src="boot.js"></script>
-<div id="splash" class="splash" aria-hidden="true">
-  <div class="splash-rings"><i></i><i></i></div>
-  <div class="splash-inner">
+<div id="splash" class="splash">
+  <div class="splash-rings" aria-hidden="true"><i></i><i></i></div>
+  <div class="splash-inner" aria-hidden="true">
     <div class="splash-mark"><div class="splash-reveal"><div class="splash-word">ricotta</div><div class="splash-wipe"></div></div><span class="splash-dot"></span></div>
     <div class="splash-sub">ORDERS</div>
     <div class="splash-bar"><i></i></div>
   </div>
+  <a class="splash-retry" href="./?reload">Reload · نوێکردنەوە</a>
 </div>
 
 <div id="app"></div>
