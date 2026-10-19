@@ -226,6 +226,11 @@ html:not(.rtl) .login-title{letter-spacing:-.02em}
 @keyframes keyRipple{to{transform:scale(1);opacity:0}}
 @keyframes keyPop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:none}}
 
+/* If starting fails, a plain message with Refresh instead of a loading screen that never ends */
+.start-failed{min-height:100dvh;display:grid;place-content:center;justify-items:center;gap:10px;padding:24px;text-align:center}
+.start-failed b{font-size:20px;font-weight:800}
+.start-failed p{margin:0 0 6px;max-width:300px;font-size:14px;line-height:1.5;color:var(--ink-soft)}
+
 /* Welcome back (after a PIN sign-in, instead of the splash) */
 .welcome{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;padding:24px;background:rgba(238,241,239,.4);-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%);animation:fadeIn 260ms ease both}
 .welcome.leaving{animation:welcomeOut 420ms var(--ease) forwards}
