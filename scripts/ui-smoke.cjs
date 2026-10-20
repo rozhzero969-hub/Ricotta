@@ -513,8 +513,13 @@ const server=http.createServer((req,res)=>{
       await login.page.evaluate(lang=>setLang(lang),lang);
       for(const width of viewportWidths){
         await login.page.setViewportSize({width,height:width>=960?900:740});await noOverflow(login.page,'login/'+lang+'/'+width);
-        const corner=await login.page.locator('#loginLangBtn').boundingBox();
-        assert.ok(corner && corner.y < 80,'the language button sits in the top corner ('+lang+'/'+width+')');
+        if(width>=960){
+          const corner=await login.page.locator('#loginLangBtn').boundingBox();
+          assert.ok(corner && corner.y < 80,'computers: the language button sits in the top corner ('+lang+'/'+width+')');
+        }else{
+          const row=await login.page.locator('#loginLangRow').boundingBox();
+          assert.ok(row && row.y > 370,'phones: the language row sits at the bottom ('+lang+'/'+width+')');
+        }
       }
     }
     await login.page.setViewportSize({width:1440,height:1000});await login.page.evaluate(()=>setLang('en'));await snapshot(login.page,'desktop-login.png');

@@ -280,7 +280,7 @@
         history:history(), historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
         activity:db.activity.filter(a=>a.ts >= monthStartIso()), inbox:db.inbox.slice(-20),
         pins:db.pins[me] || [], streak:streakView(), notes:db.notes, weather:db.weather,
-        repeats:db.repeats || [], months:LAB_MONTHS, messageFormat:db.messageFormats?.[account]||{}, draft:db.drafts?.[account] || {cart:{},revision:0}
+        repeats:db.repeats || [], months:LAB_MONTHS, draft:db.drafts?.[account] || {cart:{},revision:0}
       });
     }
     if(path === 'draft' && (method === 'GET' || method === 'PUT')){
@@ -296,7 +296,6 @@
       return json({...draft,conflicts:[]});
     }
     if(method === 'POST' && path === 'logout'){ db.signedOut = true; save(); return ok(); }
-    if(method==='PUT' && path==='me/message-format'){db.messageFormats ||= {};db.messageFormats[account]=body;save();return json(body);}
     if(method === 'PUT' && path === 'me/pins'){ db.pins[account] = (body.itemIds || []).slice(0, 60); save(); return ok(); }
     if(method === 'GET' && path === 'streak') return json(streakView());
     if(method === 'POST' && path === 'streak/recover'){ if(!streakRecover()) return fail('nothing_to_recover', 409); save(); return json({ok:true, streak:streakView()}); }
