@@ -49,7 +49,7 @@ const server=http.createServer((req,res)=>{
    await cdp.send('Emulation.setCPUThrottlingRate',{rate:4});
    let transferred=0;cdp.on('Network.loadingFinished',event=>{transferred+=event.encodedDataLength;});
    const started=Date.now();await page.goto(url,{waitUntil:'domcontentloaded'});
-   await page.waitForSelector(loggedIn?'#orderResults':'.keypad');
+   await page.waitForSelector(loggedIn?'#orderResults':'.pin-boxes');
    await page.waitForSelector('#splash',{state:'detached'});
    const readyMs=Date.now()-started;
    await page.waitForTimeout(1800);

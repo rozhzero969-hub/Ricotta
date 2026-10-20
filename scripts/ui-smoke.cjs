@@ -114,7 +114,7 @@ const server=http.createServer((req,res)=>{
       if(loggedIn && !sessionStorage.getItem('seeded')){ localStorage.setItem('ricottaOrders:apiSession',JSON.stringify(s)); sessionStorage.setItem('seeded','1'); }
     },{loggedIn,s:session(account)});
     const page=await ctx.newPage();page.on('pageerror',error=>errors.push(String(error)));
-    await page.goto(url);await page.waitForSelector(loggedIn?'#orderResults':'.keypad');await page.waitForSelector('#splash',{state:'detached'});
+    await page.goto(url);await page.waitForSelector(loggedIn?'#orderResults':'.pin-boxes');await page.waitForSelector('#splash',{state:'detached'});
     if(loggedIn)await page.locator('.order-options>summary').click();
     return {ctx,page,calls};
   }
@@ -493,11 +493,22 @@ const server=http.createServer((req,res)=>{
     await y.ctx.close();
 
     /* ---------- Sign in ---------- */
+    // A touch screen gets the number pad; tapping a key fills a box.
+    const touchLogin=await context({loggedIn:false,touch:true});
+    assert.equal(await touchLogin.page.locator('.keypad').isVisible(),true,'phones get the number pad');
+    await touchLogin.page.evaluate(()=>window.originalKey=document.querySelector('[data-key="1"]'));
+    await touchLogin.page.locator('[data-key="1"]').click();
+    assert.equal(await touchLogin.page.evaluate(()=>originalKey===document.querySelector('[data-key="1"]')),true,'PIN keypad remains mounted');
+    assert.equal(await touchLogin.page.locator('.pin-box.filled').count(),1,'a tapped key fills the first box');
+    await touchLogin.ctx.close();
+    // A computer has a keyboard: no number pad, the PIN is typed.
     const login=await context({loggedIn:false});
-    await login.page.evaluate(()=>window.originalKey=document.querySelector('[data-key="1"]'));
-    await login.page.locator('[data-key="1"]').click();
-    assert.equal(await login.page.evaluate(()=>originalKey===document.querySelector('[data-key="1"]')),true,'PIN keypad remains mounted');
-    await login.page.locator('[data-key="clear"]').click();
+    assert.equal(await login.page.locator('.keypad').isVisible(),false,'computers type the PIN, so the number pad is hidden');
+    assert.equal(await login.page.locator('.login-hints').isVisible(),true,'computers are told to type the PIN');
+    await login.page.keyboard.press('1');
+    assert.equal(await login.page.locator('.pin-box.filled').count(),1,'a typed digit fills the first box');
+    await login.page.keyboard.press('Escape');
+    assert.equal(await login.page.locator('.pin-box.filled').count(),0,'Escape clears the PIN');
     for(const lang of LANGS){
       await login.page.evaluate(lang=>setLang(lang),lang);
       for(const width of viewportWidths){
@@ -545,8 +556,8 @@ const server=http.createServer((req,res)=>{
     assert.match(await login.page.locator('.welcome-title').textContent(),/Welcome back, Yunis/,'welcome back says the name');
     await login.page.waitForSelector('#orderResults');
     assert.equal(await login.page.evaluate(()=>state.account),'yunis');
-    await login.page.locator('#logoutBtn').click();await login.page.waitForSelector('.keypad');
-    assert.equal(await login.page.locator('.pin-dot.filled').count(),0,'logout resets the PIN feedback');
+    await login.page.locator('#logoutBtn').click();await login.page.waitForSelector('.pin-boxes');
+    assert.equal(await login.page.locator('.pin-box.filled').count(),0,'logout resets the PIN feedback');
     await login.ctx.close();
     const reduced=await context({reducedMotion:'reduce'});await reduced.page.locator('[data-inc="i1"]').click();
     assert.equal(await reduced.page.locator('[data-qty="i1"]').evaluate(el=>el.getAnimations().length),0,'reduced motion skips JS feedback');

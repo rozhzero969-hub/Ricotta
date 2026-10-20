@@ -106,7 +106,9 @@ See [SECURITY.md](SECURITY.md) for the authentication model, permission boundari
 
 The loading screen is inline in `index.html`, so it paints on the first frame: solid dark green, a green bar paints the word in, then the dot, "ORDERS" and a filling bar. On a fast start it stays only until the word is painted (about a second), never longer; with reduced motion it lifts at once.
 
-The sign-in page is dark green with one white PIN sheet on phones (title, one line, six PIN circles and the keypad on one centre line) and two halves on computers: the green "A calmer kitchen" side and a plain white PIN side. The green side stays green in dark mode; the browser bar is green while the sign-in page shows.
+The sign-in page is dark green with one white PIN sheet on phones ("Welcome back.", one line, six PIN boxes and the number pad) and two halves on computers: the green "A calmer kitchen" side and a white side where the PIN is typed on the keyboard. The number pad shows only on touch screens; everywhere else the page says the PIN is typed and signs in by itself after the sixth digit. The green side stays green in dark mode; the browser bar is green while the sign-in page shows.
+
+Every screen opens with today's date in a small green line, its name and one sentence on what it is for. Cards are white with a hairline edge and no shadow; items on the Order screen are soft grey tiles that turn white with a green edge once picked. On computers the sidebar runs the full height with the ricotta mark at the top and the current screen in a mint highlight. The shared values (surfaces, corner sizes, the segmented-switch highlight) are tokens at the top of `style.css`.
 
 If starting ever fails, the app shows "Ricotta could not open" with Refresh instead of an endless loading screen; if its scripts cannot load at all, a Reload link appears on the loading screen after 15 seconds (it needs no script).
 

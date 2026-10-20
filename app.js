@@ -751,7 +751,8 @@ const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matche
 
 function renderBottomNav(){
   const button=id=>`<button type="button" class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}${id==='transfers'?transferNavBadge():''}</button>`;
-  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><span class="nav-indicator" aria-hidden="true"></span>${DEFAULT_TABS.map(button).join('')}<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${moreViews().map(button).join('')}</div></nav>`;
+  // On a computer the tab bar is the sidebar, with the ricotta mark at its top.
+  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="nav-indicator" aria-hidden="true"></span>${DEFAULT_TABS.map(button).join('')}<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${moreViews().map(button).join('')}</div></nav>`;
 }
 function renderManageNav(){
   return `<div class="manage-nav"><nav class="manage-sections" aria-label="${esc(t('catalog'))}">${[['manage','items'],['suppliers','suppliers'],['units','units']].filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav></div>`;
@@ -1343,8 +1344,8 @@ function lastQtyMap(){
 }
 
 function renderPageHeading(){
-  const now = new Date(), date = formatIraqDateTime(now, {weekday:'short', day:'numeric', month:'short'});
-  return `<header class="page-heading"><div><h1>${esc(viewLabel(state.view))}</h1><p class="page-guide">${esc(viewGuide(state.view))}</p></div><time class="page-date" datetime="${erbilDate(now)}">${esc(date)}</time></header>`;
+  const now = new Date(), date = formatIraqDateTime(now, {weekday:'long', day:'numeric', month:'long'});
+  return `<header class="page-heading"><time class="page-eyebrow page-date" datetime="${erbilDate(now)}">${esc(date)}</time><h1>${esc(viewLabel(state.view))}</h1><p class="page-guide">${esc(viewGuide(state.view))}</p></header>`;
 }
 
 /* ============ Notifications: banner ============ */
@@ -1372,7 +1373,7 @@ function langButton(id){
 function renderTopbar(){
   return `
   <header class="topbar">
-    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">Ricotta</span><span class="dot"></span></div><span class="topbar-title" aria-hidden="true"></span></div>
+    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="topbar-title" aria-hidden="true"></span></div>
     <div class="topbar-actions">
       ${renderStreakChip()}${renderNotesBell()}
       <div class="chip conn-chip ${state.apiOnline?'':'offline'}" id="connectionStatus"><span></span><em>${esc(state.apiOnline?t('online'):t('offline'))}</em></div>
@@ -1456,18 +1457,19 @@ function loginMessage(){
   return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), verification:t('securityCheckFailed'), device:t('deviceInUse'), session:state.sessionMsg})[state.pinError] || '';
 }
 const LOGIN_ERRORS = ['wrong','locked','network','verification'];
-function pinDotClass(i){
+function pinBoxClass(i){
   const filled = i < state.pinBuffer.length;
   const next = i === state.pinBuffer.length && !state.pinBusy && !state.pinError;
-  return `pin-dot${filled?' filled':''}${next?' next':''}`;
+  return `pin-box${filled?' filled':''}${next?' next':''}`;
 }
 function renderLogin(){
-  const dots = Array.from({length:MAX_PIN_LEN}).map((_,i)=>`<span class="${pinDotClass(i)}"></span>`).join('');
+  const boxes = Array.from({length:MAX_PIN_LEN}).map((_,i)=>`<span class="${pinBoxClass(i)}"></span>`).join('');
   const keys = ['1','2','3','4','5','6','7','8','9'];
   const bad = LOGIN_ERRORS.includes(state.pinError);
   const msg = loginMessage();
   const word = 'ricotta'.split('').map((c,i)=>`<b style="--i:${i}">${c}</b>`).join('');
   // Green brand side and the PIN side: one above the other on a phone, side by side on a computer.
+  // The number pad is for touch screens; everywhere else there is a keyboard, so the hints show instead.
   return `
   <div class="login-wrap">
     <section class="login-brand">
@@ -1477,26 +1479,29 @@ function renderLogin(){
     </section>
     <div class="login-corner">${langButton('loginLangBtn')}</div>
     <main class="login-panel"><div class="login-inner">
-      <h1 class="login-title">${esc(t('signIn'))}</h1>
-      <p class="login-sub" id="pinLabel">${esc(t('enterPin'))}</p>
-      <div class="pin-dots ${bad?'err':''} ${state.pinBusy?'busy':''}" role="group" aria-labelledby="pinLabel">${dots}</div>
+      <p class="login-eyebrow">${esc(t('loginEyebrow'))}</p>
+      <h1 class="login-title">${esc(t('loginTitle'))}</h1>
+      <p class="login-sub" id="pinLabel">${esc(t('loginSub'))}</p>
+      <div class="pin-boxes ${bad?'err':''} ${state.pinBusy?'busy':''}" role="group" aria-labelledby="pinLabel">${boxes}</div>
       <div class="login-error ${state.pinError==='session'?'info':''}" role="alert" style="visibility:${msg?'visible':'hidden'};">${esc(msg) || '&nbsp;'}</div>
+      <div class="login-hints"><p>${ICON_ENTER}${esc(t('loginAuto'))}</p><p>${esc(t('loginKeyboard'))}</p></div>
       <div class="keypad">
         ${keys.map((k,i)=>`<button class="key" data-key="${k}" style="--k:${i}">${k}</button>`).join('')}
         <button class="key clear" data-key="clear" style="--k:9" aria-label="${esc(t('clear'))}">${ICON_CLEAR}</button>
         <button class="key" data-key="0" style="--k:10">0</button>
         <button class="key backspace" data-key="back" style="--k:11" aria-label="${esc(t('deleteDigit'))}">${ICON_BACKSPACE}</button>
       </div>
+      <p class="login-private">${esc(t('loginPrivate'))}</p>
     </div></main>
   </div>`;
 }
 function updateLoginFeedback(){
-  const dots = document.querySelector('.pin-dots');
-  if(!dots) return;
-  dots.classList.toggle('err', LOGIN_ERRORS.includes(state.pinError));
-  dots.classList.toggle('busy', state.pinBusy);
-  // Class changes alone drive the pop / next-circle ring (see .pin-dot in style.css).
-  dots.querySelectorAll('.pin-dot').forEach((dot,index)=>{ dot.className = pinDotClass(index); });
+  const boxes = document.querySelector('.pin-boxes');
+  if(!boxes) return;
+  boxes.classList.toggle('err', LOGIN_ERRORS.includes(state.pinError));
+  boxes.classList.toggle('busy', state.pinBusy);
+  // Class changes alone drive the pop and the next box's caret (see .pin-box in style.css).
+  boxes.querySelectorAll('.pin-box').forEach((box,index)=>{ box.className = pinBoxClass(index); });
   const message = document.querySelector('.login-error');
   message.textContent = loginMessage() || ' ';
   message.style.visibility = loginMessage() ? 'visible' : 'hidden';
