@@ -67,7 +67,7 @@ function dateFormatter(options){
 }
 function formatIraqDateTime(value, options={}){
   const date = value instanceof Date ? value : new Date(value);
-  if(Number.isNaN(date.getTime())) return '\u2014';
+  if(Number.isNaN(date.getTime())) return '';
   return dateFormatter({
     timeZone: IRAQ_TIME_ZONE, hour12:true, ...options
   }).format(date);
@@ -76,7 +76,7 @@ function formatIraqDateTime(value, options={}){
    scheduler. Format that value with AM/PM without shifting its hour. */
 function formatStoredIraqTime(value){
   const match=String(value||'').match(/^(\d{1,2}):(\d{2})$/);
-  if(!match) return value || '\u2014';
+  if(!match) return value || '';
   const date=new Date(Date.UTC(2000,0,1,Number(match[1]),Number(match[2])));
   return dateFormatter({
     timeZone:'UTC', hour:'numeric', minute:'2-digit', hour12:true
@@ -390,7 +390,6 @@ async function loadData(){
   state.reminder = d.reminder || {enabled:false, time:'09:00'};
   if(d.streak) streakArrived(d.streak);
   state.pins = Array.isArray(d.pins) ? d.pins : [];
-  state.messageFormat=d.messageFormat || {};
   state.repeats = Array.isArray(d.repeats) ? d.repeats : [];
   state.months = Array.isArray(d.months) ? d.months : [];
   state.sharedDraft = d.draft || null;
@@ -449,7 +448,7 @@ function signOut(reason, {preserveSession = false} = {}){
   state.activity = []; state.devices = []; state.reminder = null;
   state.streak = null; state.notes = []; state.pins = []; state.repeats = []; state.months = [];
   try{ updateAppBadge(); }catch(_){}
-  state.orderNote='';state.messageFormat={};state.catalogQuery='';state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
+  state.orderNote='';state.catalogQuery='';state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
   reminderDraft = null;
   stopStepHold(); rowPress?.cancel();
@@ -751,7 +750,8 @@ const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matche
 
 function renderBottomNav(){
   const button=id=>`<button type="button" class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}${id==='transfers'?transferNavBadge():''}</button>`;
-  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><span class="nav-indicator" aria-hidden="true"></span>${DEFAULT_TABS.map(button).join('')}<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${moreViews().map(button).join('')}</div></nav>`;
+  // On a computer the tab bar is the sidebar, with the ricotta mark at its top.
+  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="nav-indicator" aria-hidden="true"></span>${DEFAULT_TABS.map(button).join('')}<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${moreViews().map(button).join('')}</div></nav>`;
 }
 function renderManageNav(){
   return `<div class="manage-nav"><nav class="manage-sections" aria-label="${esc(t('catalog'))}">${[['manage','items'],['suppliers','suppliers'],['units','units']].filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav></div>`;
@@ -776,6 +776,8 @@ function placeNavIndicator(){
   const nav = document.querySelector('.bottomnav'), ind = nav?.querySelector('.nav-indicator');
   if(!nav || !ind) return;
   markActiveNav();
+  if(nav.classList.contains('held')) return;       // while a finger slides along the bar, the finger decides
+  barButtons(nav).forEach(b=>b.classList.remove('lens-over'));
   const phone = isPhoneLayout();
   // On a computer the More button is hidden, so the lens goes to the screen's own row.
   const active = phone
@@ -783,6 +785,9 @@ function placeNavIndicator(){
     : nav.querySelector(`.navbtn[data-view="${mainView(state.view)}"]`);
   if(!active || !active.offsetWidth){ ind.style.opacity = '0'; return; }
   ind.style.opacity = '1';
+  // The first placement jumps straight there; after that the highlight glides.
+  const first = !nav.classList.contains('has-indicator');
+  if(first) ind.style.transition = 'none';
   nav.classList.add('has-indicator');
   if(!phone){
     ind.style.setProperty('--iy', active.offsetTop+'px');
@@ -791,6 +796,7 @@ function placeNavIndicator(){
     ind.style.setProperty('--ix', active.offsetLeft+'px');
     ind.style.setProperty('--iw', active.offsetWidth+'px');
   }
+  if(first){ void ind.offsetWidth; ind.style.transition = ''; }
 }
 /* Slides the lens to a fractional tab position (1.5 = halfway between the
    second and third tab); used while a finger is on the bar or the page. */
@@ -805,23 +811,80 @@ function setLensPosition(pos){
   ind.style.setProperty('--iw', (a.offsetWidth + (b.offsetWidth-a.offsetWidth)*f)+'px');
   btns.forEach((x,k)=>x.classList.toggle('lens-over', k===Math.round(p)));
 }
-/* ============ Filter rows with a glass lens ============
-   Every row of filter pills
-   gets the same lens as the tab bar: it glides to the chosen pill, and if you
-   hold the row and slide, it turns to glass and follows your finger; the pill
-   under the finger opens when you let go, exactly like the tab bar. The drag is
-   followed at document level, so a row redrawn meanwhile still continues it. */
-const segPills = seg=>[...seg.querySelectorAll('.tab-pill')];
-const segs = ()=>[...document.querySelectorAll('.record-filters.seg')];
-function segSlot(seg, x){
-  const b = segPills(seg), c = b.map(el=>{ const r = el.getBoundingClientRect(); return r.left+r.width/2; });
+/* Hold the tab bar and slide (phones): the lens follows the finger and each
+   tab it passes opens with a quick fade. Letting go on More opens More. */
+(function initBarSlide(){
+  let d = null;   // {id, x0, x, moved, last (button index), frame}
+  const nav = ()=>document.querySelector('.bottomnav');
+  const open = b=>{ const v = b?.dataset.view; if(v && mainView(state.view) !== v) goView(v, {keepLens:true, fade:true}); };
+  document.addEventListener('pointerdown', e=>{
+    const bar = e.target.closest?.('.bottomnav');
+    if(!bar || !isPhoneLayout() || e.button>0 || e.target.closest('.nav-more')) return;
+    d = {id:e.pointerId, x0:e.clientX, x:e.clientX, moved:false, last:barButtons(bar).findIndex(b=>b.classList.contains('active'))};
+  });
+  document.addEventListener('pointermove', e=>{
+    if(!d || e.pointerId!==d.id) return;
+    d.x = e.clientX;
+    const bar = nav(); if(!bar) return;
+    if(!d.moved){
+      if(Math.abs(e.clientX-d.x0) < 6) return;
+      d.moved = true; setMoreOpen(false); bar.classList.add('held');
+      try{ bar.setPointerCapture(e.pointerId); }catch(_){}
+    }
+    if(d.frame) return;
+    d.frame = requestAnimationFrame(()=>{
+      if(!d) return;
+      d.frame = 0;
+      const btns = barButtons(bar), s = slotAt(btns, d.x);
+      setLensPosition(s.pos);
+      if(s.index !== d.last){ d.last = s.index; open(btns[s.index]); }
+    });
+  });
+  const end = e=>{
+    if(!d || e.pointerId!==d.id) return;
+    const s = d; d = null; cancelAnimationFrame(s.frame);
+    const bar = nav(); if(!bar || !s.moved) return;
+    const btn = barButtons(bar)[slotAt(barButtons(bar), e.clientX || s.x).index];
+    bar.classList.remove('held');
+    open(btn);
+    placeNavIndicator();
+    if(btn?.id === 'navMoreBtn') setMoreOpen(true);
+    // The browser's own click after the slide must not press the tab again.
+    const swallow = ev=>{
+      if(!bar.contains(ev.target)) return;
+      ev.stopPropagation(); ev.preventDefault();
+      document.removeEventListener('click', swallow, {capture:true});
+    };
+    document.addEventListener('click', swallow, {capture:true});
+    setTimeout(()=>document.removeEventListener('click', swallow, {capture:true}), 300);
+  };
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+})();
+/* ============ Switches you can slide ============
+   Record's filters, Manage's sections and the small switches (dark mode,
+   Rico's history) share one behaviour with the tab bar: a highlight sits
+   under the chosen part, and if you hold it and slide, it follows your finger
+   and each part it passes opens as it goes. A switch that changes a setting
+   (dark mode) waits until you let go. The drag is followed at document
+   level, so a row redrawn meanwhile continues it. */
+const SEG_ROWS = '.record-filters,.manage-sections,.pill-seg';
+const segPills = seg=>[...seg.querySelectorAll('.tab-pill,.manage-section,.pill-seg-btn')];
+const segIsOn = el=>el.classList.contains('active') || el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-selected') === 'true';
+const segLive = seg=>!seg.classList.contains('dark-seg');
+const segs = ()=>[...document.querySelectorAll(SEG_ROWS)].filter(seg=>seg.classList.contains('seg'));
+/* Where x falls along a row of buttons: the nearest one, and a fractional
+   position (1.5 = halfway between the second and third). */
+function slotAt(buttons, x){
+  const c = buttons.map(el=>{ const r = el.getBoundingClientRect(); return r.left+r.width/2; });
   const order = c.map((v,k)=>[v,k]).sort((m,n)=>m[0]-n[0]);
   let pos = order[order.length-1][1], best = 0;
   c.forEach((v,k)=>{ if(Math.abs(v-x) < Math.abs(c[best]-x)) best = k; });
   if(x <= order[0][0]) pos = order[0][1];
   else for(let k=0;k<order.length-1;k++){ const [c1,i1]=order[k],[c2,i2]=order[k+1]; if(x<=c2){ pos = i1+(i2-i1)*((x-c1)/(c2-c1)); break; } }
-  return {el:b[best], index:best, pos};
+  return {index:best, pos};
 }
+const segSlot = (seg, x)=>slotAt(segPills(seg), x);
 function segLensTo(seg, pos){
   const lens = seg.querySelector('.seg-lens'), b = segPills(seg); if(!lens || !b.length) return;
   const p = Math.max(0, Math.min(b.length-1, pos)), i = Math.floor(p), f = p-i, a = b[i], n = b[Math.min(b.length-1, i+1)];
@@ -833,14 +896,14 @@ function segLensTo(seg, pos){
 }
 function segPlace(seg){
   if(seg.classList.contains('held')) return;       // while a finger is on it, the finger decides
-  const lens = seg.querySelector('.seg-lens'), on = seg.querySelector('.tab-pill.active');
+  const lens = seg.querySelector('.seg-lens'), on = segPills(seg).find(segIsOn);
   if(!lens) return;
   if(!on || !on.offsetWidth){ lens.style.opacity = '0'; return; }
   lens.style.opacity = '1';
   lens.style.setProperty('--lx', on.offsetLeft+'px'); lens.style.setProperty('--lw', on.offsetWidth+'px');
   if(!seg.classList.contains('seg-ready')) seg.classList.add('seg-ready');
 }
-let segDrag = null;   // {id, x0, x, moved, index (which row), last (pill index)}
+let segDrag = null;   // {id, x0, x, moved, index (which row), last (part index)}
 /* A row redrawn in the middle of a drag continues it: held, with the lens already under the finger. */
 function segAdopt(seg){
   if(!segDrag || !segDrag.moved) return;
@@ -851,31 +914,31 @@ function segAdopt(seg){
   if(lens) requestAnimationFrame(()=>requestAnimationFrame(()=>{ lens.style.transition = ''; }));
 }
 function enhanceSegments(){
-  document.querySelectorAll('.record-filters:not([data-lens])').forEach(seg=>{
+  document.querySelectorAll(SEG_ROWS).forEach(seg=>{
+    if(seg.dataset.lens) return;
     seg.dataset.lens = '1'; seg.classList.add('seg');
     const lens = document.createElement('span'); lens.className = 'seg-lens'; lens.setAttribute('aria-hidden', 'true');
     seg.prepend(lens);
-    new MutationObserver(()=>segPlace(seg)).observe(seg, {subtree:true, attributes:true, attributeFilter:['class']});
+    new MutationObserver(()=>segPlace(seg)).observe(seg, {subtree:true, attributes:true, attributeFilter:['class','aria-checked','aria-selected']});
     segPlace(seg);
     if(segDrag && segDrag.moved && segs().indexOf(seg) === segDrag.index) segAdopt(seg);
   });
 }
 document.addEventListener('pointerdown', e=>{
-  const seg = e.target.closest?.('.record-filters.seg');
-  if(!seg || e.button>0) return;
+  const seg = e.target.closest?.(SEG_ROWS);
+  if(!seg || !seg.classList.contains('seg') || e.button>0) return;
   segDrag = {id:e.pointerId, x0:e.clientX, x:e.clientX, moved:false, index:segs().indexOf(seg), last:null};
 });
 document.addEventListener('pointermove', e=>{
   if(!segDrag || e.pointerId!==segDrag.id) return;
   segDrag.x = e.clientX;
   if(!segDrag.moved && Math.abs(e.clientX-segDrag.x0) < 4) return;
-  let seg = segs()[segDrag.index]; if(!seg) return;
+  const seg = segs()[segDrag.index]; if(!seg) return;
   if(!segDrag.moved){
-    segDrag.moved = true; segDrag.last = segPills(seg).findIndex(p=>p.classList.contains('active'));
+    segDrag.moved = true; segDrag.last = segPills(seg).findIndex(segIsOn);
     seg.classList.add('held'); try{ seg.setPointerCapture(e.pointerId); }catch(_){}
   }
-  // The glass follows the finger (once per frame); the screen changes only when the finger lets go,
-  // so long lists are drawn once instead of for every pill passed on the way.
+  // The highlight follows the finger once per frame; a part opens as the highlight reaches it.
   if(segDrag.frame) return;
   segDrag.frame = requestAnimationFrame(()=>{
     if(!segDrag) return;
@@ -883,23 +946,25 @@ document.addEventListener('pointermove', e=>{
     const cur = segs()[segDrag.index]; if(!cur) return;
     const s = segSlot(cur, segDrag.x);
     segLensTo(cur, s.pos);
+    if(s.index === segDrag.last) return;
     segDrag.last = s.index;
+    const part = segPills(cur)[s.index];
+    if(segLive(cur) && part && !segIsOn(part)) part.click();
   });
 });
 const segEnd = e=>{
   if(!segDrag || e.pointerId!==segDrag.id) return;
   const d = segDrag; segDrag = null; cancelAnimationFrame(d.frame);
-  if(d.moved){ const cur = segs()[d.index]; if(cur) d.last = segSlot(cur, e.clientX || d.x).index; }
-  if(d.moved && d.last !== null){                      // let go: the pill under the finger is the one that opens
-    const cur = segs()[d.index], pill = cur && segPills(cur)[d.last];
-    if(pill && !pill.classList.contains('active')) pill.click();
+  if(d.moved){                                         // let go: the part under the finger is the one that stays open
+    const cur = segs()[d.index], part = cur && segPills(cur)[segSlot(cur, e.clientX || d.x).index];
+    if(part && !segIsOn(part)) part.click();
   }
   const seg = segs()[d.index];
   if(seg){ seg.classList.remove('held'); segPills(seg).forEach(x=>x.classList.remove('lens-over')); segPlace(seg); }
   if(!d.moved) return;
   // The browser's own click after a drag must not also press whatever is under the finger.
   const swallow = ev=>{
-    if(!seg?.contains(ev.target)) return;
+    if(!segs()[d.index]?.contains(ev.target)) return;
     ev.stopPropagation(); ev.preventDefault();
     document.removeEventListener('click',swallow,{capture:true});
   };
@@ -909,6 +974,7 @@ const segEnd = e=>{
 document.addEventListener('pointerup', segEnd);
 document.addEventListener('pointercancel', segEnd);
 window.addEventListener('resize', ()=>segs().forEach(segPlace));
+
 
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLangMenu(); });
 
@@ -956,7 +1022,7 @@ function pageGhost(content){
   copy.scrollTop = scrolled;
   return {layer, copy};
 }
-function goView(view, {fromOffset=0, keepLens=false} = {}){
+function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
   closeLangMenu();setMoreOpen(false);
   if(view !== 'assistant' && ricoRecorder.active) ricoResetVoice();   // leaving Rico drops an unsent recording
   if(!view || view === state.view || !canOpen(view)) return;
@@ -965,8 +1031,8 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
   const dir = (Math.sign(viewIndex(view) - viewIndex(state.view)) || 1) * (isRtl() ? -1 : 1);
   const old = document.querySelector('.content');
   const width = old ? old.getBoundingClientRect().width : window.innerWidth;
-  const withinManage=managedView(state.view)&&managedView(view);
-  const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : withinManage?{inn:[{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'none'}],out:[{opacity:1},{opacity:0}]}:transitionFrames(dir, width)) : null;
+  const quick = fade || (managedView(state.view) && managedView(view));   // within Manage, or sliding along the tab bar
+  const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : quick?{inn:[{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'none'}],out:[{opacity:1},{opacity:0}]}:transitionFrames(dir, width)) : null;
   const ghost = frames?.out ? pageGhost(old) : null;
   state.catalogQuery='';state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
@@ -982,7 +1048,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
     frames.inn[0] = {transform:`translate3d(${dir*width + fromOffset}px,0,0)`};
     frames.out[0] = {transform:`translate3d(${fromOffset}px,0,0)`};
   }
-  const opts = fromOffset ? {duration:SWIPE_MS, easing:SWIPE_EASE} : {duration:withinManage?180:PAGE_TRANSITION.ms, easing:PAGE_EASE};
+  const opts = fromOffset ? {duration:SWIPE_MS, easing:SWIPE_EASE} : {duration:quick?180:PAGE_TRANSITION.ms, easing:PAGE_EASE};
   content.style.transform = '';
   content.classList.add('gliding');
   const anims = [content.animate(frames.inn, opts)];
@@ -998,7 +1064,7 @@ function goView(view, {fromOffset=0, keepLens=false} = {}){
    open dialogs are left alone. */
 (function initPageSwipe(){
   let g = null;
-  const blocked = el=>el.closest('input,textarea,select,.stepper,.order-tabs,.record-filters,.rico-composer,.bottom-stack,.item-sort-list,.day-chips,.unit-grid,.rico-picker-list,#modalRoot .modal-overlay,.ctx-layer,.lang-layer');
+  const blocked = el=>el.closest('input,textarea,select,.stepper,.order-tabs,.record-filters,.manage-sections,.pill-seg,.rico-composer,.bottom-stack,.item-sort-list,.day-chips,.unit-grid,.rico-picker-list,#modalRoot .modal-overlay,.ctx-layer,.lang-layer');
   document.addEventListener('pointerdown', e=>{
     if(!isPhoneLayout() || e.pointerType==='mouse' || !state.account) return;
     const content = e.target.closest('.content');
@@ -1304,8 +1370,9 @@ function bump(el){
 /* One Ricotta palette, with optional dark mode. */
 function syncAppearance(){
   const meta=document.querySelector('meta[name="theme-color"]');
-  // The sign-in page is dark green at the top in both appearances.
-  if(meta)meta.content=!state.account?'#14382C':document.documentElement.classList.contains('dark')?'#101613':'#EEF1EF';
+  // Signed out, a computer shows the green half and a phone the light sign-in page.
+  const dark = document.documentElement.classList.contains('dark');
+  if(meta) meta.content = !state.account ? (isPhoneLayout() ? (dark?'#0E1512':'#F6F8F7') : '#14382C') : dark ? '#0E1512' : '#EEF1EF';
 }
 /* A small badge identifying who made a change. */
 function whoBadge(account){
@@ -1343,8 +1410,8 @@ function lastQtyMap(){
 }
 
 function renderPageHeading(){
-  const now = new Date(), date = formatIraqDateTime(now, {weekday:'short', day:'numeric', month:'short'});
-  return `<header class="page-heading"><div><h1>${esc(viewLabel(state.view))}</h1><p class="page-guide">${esc(viewGuide(state.view))}</p></div><time class="page-date" datetime="${erbilDate(now)}">${esc(date)}</time></header>`;
+  const now = new Date(), date = formatIraqDateTime(now, {weekday:'long', day:'numeric', month:'long'});
+  return `<header class="page-heading"><time class="page-eyebrow page-date" datetime="${erbilDate(now)}">${esc(date)}</time><h1>${esc(viewLabel(state.view))}</h1><p class="page-guide">${esc(viewGuide(state.view))}</p></header>`;
 }
 
 /* ============ Notifications: banner ============ */
@@ -1372,7 +1439,7 @@ function langButton(id){
 function renderTopbar(){
   return `
   <header class="topbar">
-    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">Ricotta</span><span class="dot"></span></div><span class="topbar-title" aria-hidden="true"></span></div>
+    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="topbar-title" aria-hidden="true"></span></div>
     <div class="topbar-actions">
       ${renderStreakChip()}${renderNotesBell()}
       <div class="chip conn-chip ${state.apiOnline?'':'offline'}" id="connectionStatus"><span></span><em>${esc(state.apiOnline?t('online'):t('offline'))}</em></div>
@@ -1404,6 +1471,9 @@ function openLangMenu(anchor){
       <div class="lang-actions"><button type="button" class="btn btn-ghost" data-lang-cancel>${esc(t('cancel'))}</button><button type="button" class="btn btn-primary" data-lang-apply disabled>${esc(t('apply'))}</button></div>
     </div>`;
   document.body.appendChild(layer);
+  // Opened near the bottom of the screen (the phone sign-in), the menu opens upwards.
+  const menu = layer.querySelector('.lang-menu'), h = menu.offsetHeight;
+  if(r.bottom + 8 + h > window.innerHeight - 8){ menu.style.top = Math.max(8, r.top - 8 - h)+'px'; menu.classList.add('up'); }
   const paint = ()=>{
     layer.querySelectorAll('[data-pick]').forEach(b=>b.classList.toggle('sel', b.dataset.pick === pick));
     layer.querySelector('[data-lang-apply]').disabled = pick === state.lang;
@@ -1433,7 +1503,7 @@ function attachShellEvents(){
 }
 /* Events inside the page that more than one screen uses. */
 function attachContentEvents(){
-  attachMessageSettings(); attachCatalogSearch();
+  attachCatalogSearch();
   document.querySelectorAll('[data-manage-view]').forEach(b=>b.onclick=()=>goView(b.dataset.manageView));
   const pushOn = document.getElementById('pushEnableBtn');
   if(pushOn) pushOn.onclick = async ()=>{
@@ -1456,18 +1526,20 @@ function loginMessage(){
   return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), verification:t('securityCheckFailed'), device:t('deviceInUse'), session:state.sessionMsg})[state.pinError] || '';
 }
 const LOGIN_ERRORS = ['wrong','locked','network','verification'];
-function pinDotClass(i){
+function pinBoxClass(i){
   const filled = i < state.pinBuffer.length;
   const next = i === state.pinBuffer.length && !state.pinBusy && !state.pinError;
-  return `pin-dot${filled?' filled':''}${next?' next':''}`;
+  return `pin-box${filled?' filled':''}${next?' next':''}`;
 }
 function renderLogin(){
-  const dots = Array.from({length:MAX_PIN_LEN}).map((_,i)=>`<span class="${pinDotClass(i)}"></span>`).join('');
+  const boxes = Array.from({length:MAX_PIN_LEN}).map((_,i)=>`<span class="${pinBoxClass(i)}"></span>`).join('');
   const keys = ['1','2','3','4','5','6','7','8','9'];
   const bad = LOGIN_ERRORS.includes(state.pinError);
   const msg = loginMessage();
   const word = 'ricotta'.split('').map((c,i)=>`<b style="--i:${i}">${c}</b>`).join('');
-  // Green brand side and the PIN side: one above the other on a phone, side by side on a computer.
+  // Computer: the green brand side and the white PIN side, the language in the top corner.
+  // Phone: one light column (the mark, the PIN, the number pad) with the language at the bottom.
+  // The number pad is for touch screens; everywhere else there is a keyboard, so the hints show instead.
   return `
   <div class="login-wrap">
     <section class="login-brand">
@@ -1477,26 +1549,30 @@ function renderLogin(){
     </section>
     <div class="login-corner">${langButton('loginLangBtn')}</div>
     <main class="login-panel"><div class="login-inner">
-      <h1 class="login-title">${esc(t('signIn'))}</h1>
-      <p class="login-sub" id="pinLabel">${esc(t('enterPin'))}</p>
-      <div class="pin-dots ${bad?'err':''} ${state.pinBusy?'busy':''}" role="group" aria-labelledby="pinLabel">${dots}</div>
+      <p class="login-eyebrow">${esc(t('loginEyebrow'))}</p>
+      <h1 class="login-title">${esc(t('loginTitle'))}</h1>
+      <p class="login-sub" id="pinLabel">${esc(t('loginSub'))}</p>
+      <div class="pin-boxes ${bad?'err':''} ${state.pinBusy?'busy':''}" role="group" aria-labelledby="pinLabel">${boxes}</div>
       <div class="login-error ${state.pinError==='session'?'info':''}" role="alert" style="visibility:${msg?'visible':'hidden'};">${esc(msg) || '&nbsp;'}</div>
+      <div class="login-hints"><p>${ICON_ENTER}${esc(t('loginAuto'))}</p><p>${esc(t('loginKeyboard'))}</p></div>
       <div class="keypad">
         ${keys.map((k,i)=>`<button class="key" data-key="${k}" style="--k:${i}">${k}</button>`).join('')}
-        <button class="key clear" data-key="clear" style="--k:9" aria-label="${esc(t('clear'))}">${ICON_CLEAR}</button>
+        <button class="key clear" data-key="clear" style="--k:9">${esc(t('clear'))}</button>
         <button class="key" data-key="0" style="--k:10">0</button>
         <button class="key backspace" data-key="back" style="--k:11" aria-label="${esc(t('deleteDigit'))}">${ICON_BACKSPACE}</button>
       </div>
+      <p class="login-private">${esc(t('loginPrivate'))}</p>
+      <button type="button" class="login-lang-row" id="loginLangRow" aria-haspopup="dialog" aria-label="${esc(t('language'))}">${ICON_GLOBE}<span>${LANG_NAMES[state.lang]}</span>${ICON_CHEVRON}</button>
     </div></main>
   </div>`;
 }
 function updateLoginFeedback(){
-  const dots = document.querySelector('.pin-dots');
-  if(!dots) return;
-  dots.classList.toggle('err', LOGIN_ERRORS.includes(state.pinError));
-  dots.classList.toggle('busy', state.pinBusy);
-  // Class changes alone drive the pop / next-circle ring (see .pin-dot in style.css).
-  dots.querySelectorAll('.pin-dot').forEach((dot,index)=>{ dot.className = pinDotClass(index); });
+  const boxes = document.querySelector('.pin-boxes');
+  if(!boxes) return;
+  boxes.classList.toggle('err', LOGIN_ERRORS.includes(state.pinError));
+  boxes.classList.toggle('busy', state.pinBusy);
+  // Class changes alone drive the pop and the next box's caret (see .pin-box in style.css).
+  boxes.querySelectorAll('.pin-box').forEach((box,index)=>{ box.className = pinBoxClass(index); });
   const message = document.querySelector('.login-error');
   message.textContent = loginMessage() || ' ';
   message.style.visibility = loginMessage() ? 'visible' : 'hidden';
@@ -1576,8 +1652,10 @@ async function startRecovery(ticket){
   });
 }
 function attachLoginEvents(){
-  const lang = document.getElementById('loginLangBtn');
-  if(lang) lang.onclick = e=>{ e.stopPropagation(); openLangMenu(lang); };
+  ['loginLangBtn','loginLangRow'].forEach(id=>{
+    const lang = document.getElementById(id);
+    if(lang) lang.onclick = e=>{ e.stopPropagation(); openLangMenu(lang); };
+  });
   document.querySelectorAll('[data-key]').forEach(b=>{
     b.onclick = ()=>pressKey(b.dataset.key);
     b.onpointerdown = e=>keyRipple(b, e);
@@ -2219,10 +2297,10 @@ async function loadRicoSuggestion(){
 /* ============ Send queue ============ */
 function buildMessage(entry){
   const noteOf = i => (state.items.find(x=>x.id === i.itemId) || {}).note;
-  const lines = sortedSupplierItems(entry.items).map(i=>`• ${i.name} — ${i.qty} ${unitLabel(i.unit)}${noteOf(i) ? ` (${noteOf(i)})` : ''}`);
+  const lines = sortedSupplierItems(entry.items).map(i=>`• ${i.name}: ${i.qty} ${unitLabel(i.unit)}${noteOf(i) ? ` (${noteOf(i)})` : ''}`);
   const header = ({en:'New order from Ricotta:', ku:'داواکارییەکی نوێ لە چێشتخانەی ریکۆتا:', ar:'طلب جديد من مطبخ ريكوتا:'})[state.lang];
-  const format=state.messageFormat||{}, note=entry.orderNote ?? state.queue?.orderNote ?? state.orderNote ?? '';
-  return [format.greeting,format.restaurant ? header.replace(/Ricotta|ريكوتا|ریکۆتا/g,()=>format.restaurant) : header,note,lines.join('\n'),format.closing].filter(Boolean).join('\n');
+  const note = entry.orderNote ?? state.queue?.orderNote ?? state.orderNote ?? '';
+  return [header, note, lines.join('\n')].filter(Boolean).join('\n');
 }
 /* WhatsApp wants the full international number without + or 00. Iraqi numbers
    written the local way (0750 123 4567 or 750 123 4567) get +964; a number
@@ -2318,7 +2396,7 @@ function printOrderSheet(entry, supplier){
   const w = window.open('', '_blank'); if(!w) return;
   w.opener = null;
   const printedAt = formatIraqDateTime(new Date(),{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-  w.document.write(`<!doctype html><html dir="${isRtl()?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${w0.title} — Ricotta</title><link rel="stylesheet" href="${SHEET_FONTS}"><style>body{font-family:'Sora','Noto Kufi Arabic',Arial,sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${w0.title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${esc(printedAt)}<br>${entry.items.length} ${w0.items}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${w0.item}</th><th>${w0.unit}</th><th>${w0.qty}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${w0.foot}</div></body></html>`);
+  w.document.write(`<!doctype html><html dir="${isRtl()?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${w0.title} · Ricotta</title><link rel="stylesheet" href="${SHEET_FONTS}"><style>body{font-family:'Sora','Noto Kufi Arabic',Arial,sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${w0.title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${esc(printedAt)}<br>${entry.items.length} ${w0.items}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${w0.item}</th><th>${w0.unit}</th><th>${w0.qty}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${w0.foot}</div></body></html>`);
   w.document.close(); w.focus();
   // Print once the fonts are in, so Kurdish and Arabic names use Noto Kufi.
   const link = w.document.querySelector('link');
@@ -2508,12 +2586,12 @@ function recordFieldLabel(k){
   return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), cutoff:t('cutoffShort')})[k] || k;
 }
 function recordValue(k, v){
-  if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||'\u2014';}catch(_){} }
+  if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||t('noValue');}catch(_){} }
   if(k==='available')return t(v==='false'?'unavailable':'availableToOrder');
   if(k === 'reminder') return reminderText(reminderFromCode(v));
   if(k === 'cutoff' && v) return reminderTimeLabel(v);
   if(k === 'supplier' && !v) return t('noSupplier');
-  if(!v) return '\u2014';
+  if(!v) return t('noValue');
   if(k === 'unit'){
     const u = state.units.find(x=>x.en === v);
     return u ? unitName(u) : v;
@@ -3086,7 +3164,7 @@ function deviceStatus(d){
   return (Date.now() - seen <= ACTIVE_WINDOW_MS) ? 'active' : 'idle';
 }
 function timeAgo(iso){
-  if(!iso) return '\u2014';
+  if(!iso) return t('never');
   const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
   if(mins < 1) return t('agoNow');
   if(mins < 60) return t('agoMin')(mins);
@@ -3095,7 +3173,7 @@ function timeAgo(iso){
   return t('agoDay')(Math.floor(hrs / 24));
 }
 function fmtDateTime(iso){
-  if(!iso) return '\u2014';
+  if(!iso) return t('never');
   return formatIraqDateTime(iso,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 }
 function renderDevices(){
@@ -3221,7 +3299,7 @@ function latestVersion(){
 }
 function renderSettings(){
   const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `${renderPendingSync()}${renderMessageSettings()}${renderAppearance()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderAppearance()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
 /* ============ Notifications (shown in Settings) ============ */
 /* The daily reminder starts as one switch. Turning it on opens the time,
