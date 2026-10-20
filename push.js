@@ -33,6 +33,8 @@ function urlB64ToUint8Array(b64){
 /* Which banner (if any) the Order screen should show. */
 function pushBannerMode(){
   if(!pushStatus.ready || !pushConfigured() || pushStatus.subscribed) return null;
+  /* The iPhone app (a WebKit shell) cannot receive web push, and "Add to Home Screen" makes no sense there. */
+  if(window.RICOTTA_NATIVE_SHELL === true) return null;
   const snoozed = lget('pushBannerSnoozedAt');
   if(snoozed && Date.now() - snoozed < PUSH_BANNER_SNOOZE_MS) return null;
   if(pushStatus.ios && !pushStatus.standalone) return 'ios';   /* must be added to Home Screen first */
