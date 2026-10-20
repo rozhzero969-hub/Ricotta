@@ -55,10 +55,39 @@ const IRAQ_TIME_ZONE = 'Asia/Baghdad';
 // Intl formatters hold native resources. Reuse them across long lists, with a
 // small bound so different language/format combinations cannot accumulate.
 const dateFormatters = new Map();
+/* Browsers without Kurdish dates (Chrome, Android) would write them in English. They get the
+   Kurdish words iPhones use instead, in Kurdish order ("چوارشەممە 21ی تشرینی یەکەم"). */
+const KU_DATES_NATIVE = (()=>{ try{ return Intl.DateTimeFormat.supportedLocalesOf('ckb').length > 0; }catch(_){ return false; } })();
+let kuDateWords = null;
+function kurdishDates(options){
+  // Kurdish times are 12-hour, like the app's other languages.
+  const base = new Intl.DateTimeFormat('en-GB-u-nu-latn', options.hour && options.hour12 === undefined ? {...options, hour12:true} : options);
+  if(!kuDateWords){
+    const en = o=>new Intl.DateTimeFormat('en-GB', {...o, timeZone:'UTC'});
+    kuDateWords = {am:'ب.ن', pm:'د.ن'};
+    ['کانوونی دووەم','شوبات','ئازار','نیسان','ئایار','حوزەیران','تەمووز','ئاب','ئەیلوول','تشرینی یەکەم','تشرینی دووەم','کانوونی یەکەم'].forEach((m, i)=>{
+      const d = new Date(Date.UTC(2026, i, 15));
+      kuDateWords[en({month:'long'}).format(d)] = kuDateWords[en({month:'short'}).format(d)] = m;
+    });
+    T.ku.weekdays.forEach((w, i)=>{
+      const d = new Date(Date.UTC(2026, 0, 4 + i));
+      kuDateWords[en({weekday:'long'}).format(d)] = kuDateWords[en({weekday:'short'}).format(d)] = w;
+    });
+  }
+  return {format(date){
+    const parts = base.formatToParts(date);
+    return parts.map((p, i)=>{
+      if(p.type === 'weekday' || p.type === 'month' || p.type === 'dayPeriod') return kuDateWords[p.value] || kuDateWords[p.value.toLowerCase()] || p.value;
+      const next = parts.slice(i + 1).find(x=>x.type !== 'literal');
+      if(p.type === 'day' && next?.type === 'month' && kuDateWords[next.value]) return p.value + 'ی';
+      return p.type === 'literal' ? p.value.replace(',', '،') : p.value;
+    }).join('');
+  }};
+}
 function dateFormatter(options){
   const locale = intlLocale(), key = JSON.stringify([locale, options]);
   if(!dateFormatters.has(key)){
-    const formatter = new Intl.DateTimeFormat(locale, options);
+    const formatter = locale.startsWith('ckb') && !KU_DATES_NATIVE ? kurdishDates(options) : new Intl.DateTimeFormat(locale, options);
     if(dateFormatters.size >= 12) dateFormatters.delete(dateFormatters.keys().next().value);
     dateFormatters.set(key, formatter);
   }
