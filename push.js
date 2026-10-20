@@ -213,17 +213,12 @@ async function saveReminder(enabled, time){
 /* ---------- Notification taps ---------- */
 /* kind: 'update' (the message Rozha wrote, with an Update button),
    'reminder' (daily reminder -> Order), 'supplier' (a supplier's reminder ->
-   Order on that supplier's tab), 'note' (Rozha's note -> the notes) and
-   'assistant' (Rico; his month-end message opens History and his reminder
-   about an unread note opens the notes). */
+   Order on that supplier's tab) and 'assistant' (Rico; his month-end message
+   opens History). */
 function handlePushIntent(kind, supplierId, message, view){
   if(kind === 'update'){ openUpdatePopup(message || ''); return; }
   if(!state.account) return;
-  if(kind === 'note' || (kind === 'assistant' && view === 'notes')){
-    refreshData(true); openNotesSheet();
-    if(kind === 'assistant') ricoRefreshInbox();
-  }
-  else if(kind === 'assistant'){ ricoRefreshInbox(); goView(view === 'history' && canOpen('history') ? 'history' : 'assistant'); }
+  if(kind === 'assistant'){ ricoRefreshInbox(); goView(view === 'history' && canOpen('history') ? 'history' : 'assistant'); }
   else if(kind === 'reminder' || kind === 'supplier'){
     if(kind === 'supplier' && supplierId && state.suppliers.some(s => s.id === supplierId)) state.orderTab = supplierId;
     if(state.view === 'order') render(); else goView('order');

@@ -3,9 +3,9 @@
    EDGE_PATH can select a locally installed Chromium/Edge executable.
    The server is mocked: two accounts (Rozha with every screen, Yunis with
    Order, Rico, History, Suppliers, Items, Record, Units) and a 181-item
-   catalog. It checks English, Kurdish and Arabic at six widths, the secret
-   code steps, the tab editor, page transitions, Rico's moods and inbox, and
-   that every language has every text. */
+   catalog. It checks English, Kurdish and Arabic at six widths, Admin's PIN
+   change, page transitions, Rico's moods and inbox, and that every language
+   has every text. */
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -40,7 +40,7 @@ for(const lang of ['ku','ar']){
   assert.deepEqual(deferred(fs.readFileSync(path.join(root,'lab','page.html'),'utf8')).filter(f=>!f.startsWith('lab-')),deferred(html),'lab/page.html loads the same app scripts as index.html');
 }
 
-const ALL_VIEWS=['order','assistant','transfers','manage','history','suppliers','itemsAdmin','units','record','devices','settings'];
+const ALL_VIEWS=['order','assistant','transfers','manage','history','suppliers','itemsAdmin','units','record','admin','settings'];
 const YUNIS_VIEWS=['order','assistant','transfers','history','suppliers','itemsAdmin','units','record'];
 const supplierNames=['Corner Cake','Golden Bread Bakery','Fresh produce','Daily essentials','Kitchen supplies','Beverages','Dairy','Meat supplier','دابینکەری سەوزە','دابینکەری بەرهەمەکان'];
 const suppliers=supplierNames.map((name,i)=>({id:'s'+i,name,phone:''}));
@@ -98,13 +98,11 @@ const server=http.createServer((req,res)=>{
       else if(endpoint==='assistant/inbox') data=fixtureFor(signedIn).inbox;
       else if(endpoint==='assistant/status') data={configured:true,provider:'gemini',model:'gemini-3.5-flash-lite'};
       else if(endpoint==='login'){
-        if(body.pin==='000000') data={recovery:true,ticket:'fixture-ticket'};
-        else if(body.pin==='358214'){ signedIn='yunis'; data={...session('yunis')}; }
+        if(body.pin==='358214'){ signedIn='yunis'; data={...session('yunis')}; }
         else if(body.pin==='471906'){ signedIn='rozha'; data={...session('rozha')}; }
         else { status=401; data={error:'invalid_credentials'}; }
       }
-      else if(endpoint==='recovery/name'){ if(body.name!=='rozha'){ status=401; data={error:'invalid_credentials'}; } else data={ok:true}; }
-      else if(endpoint==='recovery/verify'){ if(body.pin!=='471906'){ status=401; data={error:'invalid_credentials'}; } else data={ok:true}; }
+      else if(endpoint==='admin/pin' && body.currentPin!=='471906'){ status=403; data={error:'wrong_pin'}; }
       else data={ok:true};
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
@@ -115,7 +113,6 @@ const server=http.createServer((req,res)=>{
     },{loggedIn,s:session(account)});
     const page=await ctx.newPage();page.on('pageerror',error=>errors.push(String(error)));
     await page.goto(url);await page.waitForSelector(loggedIn?'#orderResults':'.pin-boxes');await page.waitForSelector('#splash',{state:'detached'});
-    if(loggedIn)await page.locator('.order-options>summary').click();
     return {ctx,page,calls};
   }
   const settle=page=>page.waitForFunction(()=>!document.querySelector('.content.gliding'),null,{timeout:4000});
@@ -131,9 +128,7 @@ const server=http.createServer((req,res)=>{
       await page.locator(`.bottomnav [data-view="${destination}"]`).click();
     }
     await settle(page);
-    if(destination==='order' && await page.locator('.order-options').getAttribute('open')===null)await page.locator('.order-options>summary').click();
   }
-  async function ensureOrderOptions(page){if(await page.locator('.order-options').count() && await page.locator('.order-options').getAttribute('open')===null)await page.locator('.order-options>summary').click();}
   async function noOverflow(page,label){
     const sizes=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));
     assert.ok(sizes.document<=sizes.viewport+1,label+' horizontal overflow '+JSON.stringify(sizes));
@@ -216,8 +211,13 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.evaluate(()=>originalInput===document.querySelector('#itemSearch')&&originalTop===document.querySelector('.topbar')&&originalNav===document.querySelector('.bottomnav')),true,'supplier switch preserves shell and search');
     assert.ok((await page.locator('.hero-sub').textContent()).includes('18'),'supplier count follows tab');
     await page.locator('#itemSearch').fill('no such item');assert.equal(await page.locator('#orderResults .item-row').count(),0);
-    await page.locator('#itemSearch').fill('');await ensureOrderOptions(page);await page.locator('#clearOrderBtn').click();
+    await page.locator('#itemSearch').fill('');
+    assert.equal(await page.locator('.order-options, #orderNoteBtn, [data-scale-order], #voiceOrderBtn').count(),0,'no fold, order note, double/halve or Say your order');
+    assert.equal(await page.locator('#sameAsLast').isVisible() && await page.locator('#clearOrderBtn').isVisible(),true,'Same as last time and Clear order are shown directly');
+    await page.locator('#clearOrderBtn').click();
     assert.equal(await page.evaluate(()=>localStorage.getItem('ricottaOrders:pendingCart:rozha')),null);
+    await page.locator('#sameAsLast').click();assert.equal(await page.locator('[data-qty="i1"]').inputValue(),'2');
+    await page.locator('.toast-undo').click();assert.equal(await page.evaluate(()=>state.cart.i1||0),0,'Same as last time can be undone');
     await page.locator('#sameAsLast').click();assert.equal(await page.locator('[data-qty="i1"]').inputValue(),'2');
 
     // The language menu: nothing changes until Apply.
@@ -267,7 +267,23 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('[data-delhist]').count(),1,'Rozha can delete history');
     await openView(page,'settings');
     assert.equal(await page.locator('#reminderEnabled').count(),1,'notifications live in Settings');
-    assert.equal(await page.locator('#adminPinInput').count(),0,'PINs cannot be changed in Settings');
+    assert.equal(await page.locator('[data-pin-change], #ricoKeyState, .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
+    // Admin: PINs (Rozha's current PIN first, the new one typed twice), devices and the connections.
+    await openView(page,'admin');
+    assert.equal(await page.locator('[data-pin-change]').count(),2,'Admin changes both PINs');
+    await page.locator('[data-pin-change="yunis"]').click();
+    assert.equal(await page.locator('#pinNew').getAttribute('type'),'password','PINs are hidden while typed');
+    await page.locator('#pinCurrent').fill('471906');await page.locator('#pinNew').fill('591837');await page.locator('#pinNewAgain').fill('591838');
+    await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>/match/.test(document.querySelector('#modalFormStatus')?.textContent||''));
+    assert.equal(calls.filter(c=>c.endpoint==='admin/pin').length,0,'a mistyped new PIN never leaves the device');
+    await page.locator('#pinNewAgain').fill('591837');await page.locator('#pinCurrent').fill('000000');
+    await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>/right/.test(document.querySelector('#modalFormStatus')?.textContent||''));
+    await page.locator('#pinCurrent').fill('471906');
+    await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>!document.querySelector('.modal-form'));
+    assert.deepEqual(calls.filter(c=>c.endpoint==='admin/pin').at(-1).body,{account:'yunis',currentPin:'471906',newPin:'591837'},'the change goes out once it is right');
     await page.waitForFunction(()=>document.querySelector('#ricoKeyState')?.textContent!=='Checking…',null,{timeout:5000});
     assert.equal(await page.locator('#ricoKeyState').textContent(),'Connected');
     await page.evaluate(()=>{location.hash='#rico-provider-setup'; maybeOpenRicoProviderSetup();});
@@ -277,7 +293,7 @@ const server=http.createServer((req,res)=>{
     await page.locator('#modalPromptOkBtn').click();
     await page.waitForSelector('#modalPromptInput',{state:'detached'});
     // Notify about update: three languages, only the written words.
-    await openView(page,'devices');
+    await openView(page,'admin');
     await page.locator('#devNotifyBtn').click();
     await page.locator('#mfUpdateMsgAr').fill('تحديث جديد');
     await page.locator('#mfUpdateMsgEn').fill('New ordering screen');
@@ -361,11 +377,9 @@ const server=http.createServer((req,res)=>{
     await page.mouse.move(rb.x+10,rb.y+rb.height/2);await page.mouse.down();await page.waitForTimeout(700);await page.mouse.up();
     await page.locator('#ctxLayer [data-ctx="5"]').click();
     assert.equal(await page.evaluate(()=>state.cart.i8),5,'press-and-hold menu adds 5');
-    await page.evaluate(()=>{state.orderNote='Keep chilled';persistCartDraft();});
-    await ensureOrderOptions(page);await page.locator('#clearOrderBtn').click();
-    assert.equal(await page.evaluate(()=>state.orderNote),'','clear also removes the order note');
+    await page.locator('#clearOrderBtn').click();
+    assert.equal(await page.evaluate(()=>state.cart.i8||0),0,'Clear order empties the order');
     await page.locator('.toast-undo').click();
-    assert.equal(await page.evaluate(()=>state.orderNote),'Keep chilled','undo restores the order note');
     assert.equal(await page.evaluate(()=>state.cart.i8),5,'clearing the order can be undone');
     await page.evaluate(()=>window.scrollTo(0,0));
     // A finger swipe to the left moves from Order to Rico, with the page sliding (silently).
@@ -442,7 +456,7 @@ const server=http.createServer((req,res)=>{
     const y=await context({account:'yunis'});
     assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS,'settings','manage'],'Yunis gets the right screens');
     await y.page.setViewportSize({width:390,height:844});
-    assert.equal(await y.page.locator('.bottomnav [data-view="devices"]').count(),0,'no Devices for Yunis');
+    assert.equal(await y.page.locator('.bottomnav [data-view="admin"]').count(),0,'no Admin for Yunis');
     await openView(y.page,'history');
     assert.equal(await y.page.locator('[data-delhist]').count(),0,'Yunis cannot delete history');
     await openView(y.page,'suppliers');
@@ -524,37 +538,11 @@ const server=http.createServer((req,res)=>{
     }
     await login.page.setViewportSize({width:1440,height:1000});await login.page.evaluate(()=>setLang('en'));await snapshot(login.page,'desktop-login.png');
     await login.page.setViewportSize({width:390,height:844});await snapshot(login.page,'phone-login.png');
-    // Secret code: a wrong name just closes.
+    // There is no secret code any more: 000000 is just a wrong PIN.
     await login.page.keyboard.type('000000');
-    await login.page.locator('#modalPromptInput').waitFor();
-    assert.equal(await login.page.locator('#modalPromptInput').getAttribute('autocapitalize'),'none','the name box never capitalises');
-    await login.page.locator('#modalPromptInput').fill('Rozha');
-    await login.page.locator('#modalPromptOkBtn').click();
-    await login.page.waitForFunction(()=>!document.querySelector('#modalRoot .modal-overlay'));
-    assert.equal(await login.page.locator('#modalRoot .modal-overlay').count(),0,'a wrong name closes without a word');
-    // The right name, Rozha's PIN, then the new codes.
-    await login.page.keyboard.type('000000');
-    await login.page.locator('#modalPromptInput').waitFor();
-    await login.page.locator('#modalPromptInput').fill('rozha');
-    await login.page.locator('#modalPromptOkBtn').click();
-    await login.page.waitForFunction(()=>document.querySelector('#modalPromptInput')?.type==='password');
-    await login.page.locator('#modalPromptInput').fill('471906');
-    await login.page.locator('#modalPromptOkBtn').click();
-    await login.page.locator('#recYunis').waitFor();
-    await login.page.locator('#recYunis').fill('111111');
-    await login.page.locator('#recCode').fill('111111');
-    await login.page.locator('#modalFormOk').click();
-    assert.match(await login.page.locator('#modalFormStatus').textContent(),/different/,'the codes must all be different');
-    await login.page.locator('#recCode').fill('');
-    assert.equal(await login.page.locator('#recAnswer').getAttribute('autocapitalize'),'none','the new answer is kept exactly as typed');
-    await login.page.locator('#recAnswer').fill('Rozha K');
-    await login.page.locator('#modalFormOk').click();
-    await login.page.waitForFunction(()=>!document.querySelector('.modal-form'));
-    const saved=login.calls.find(c=>c.endpoint==='recovery/save');
-    assert.deepEqual([saved.body.ticket,saved.body.yunisPin,saved.body.rozhaPin,saved.body.secretCode],['fixture-ticket','111111','',''],'only the filled-in code is sent');
-    assert.equal(saved.body.answer,'Rozha K','the new "Who are you?" answer is sent exactly, capitals included');
-    await login.page.locator('#modalAlertOkBtn').click();
-    await login.page.waitForFunction(()=>!document.querySelector('#modalRoot .modal-overlay'));
+    await login.page.waitForFunction(()=>state.pinError==='wrong');
+    assert.equal(await login.page.locator('#modalRoot .modal-overlay').count(),0,'no "Who are you?" step');
+    await login.page.waitForFunction(()=>state.pinBuffer==='');
     // Yunis signs in: welcome back, by name.
     await login.page.keyboard.type('358214');
     await login.page.waitForSelector('#welcome');
@@ -630,6 +618,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await mp.locator('#app').evaluate(el=>el.inert),false,'sign-out cleanup releases the background');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*ALL_VIEWS.length} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, secret code steps, welcome by name, fixed Manage navigation, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, dark mode, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*ALL_VIEWS.length} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, Admin PIN change, welcome by name, fixed Manage navigation, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, dark mode, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

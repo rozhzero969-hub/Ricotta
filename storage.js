@@ -39,7 +39,7 @@ function apiSessionMatches(session){
 function apiAccountMatchesUi(session){
   return typeof state === 'undefined' || !state?.account || !session || session.account === state.account;
 }
-function apiPathIsPublic(path){ return path === 'login' || path === 'auth/security' || path === 'health' || path.startsWith('recovery/'); }
+function apiPathIsPublic(path){ return path === 'login' || path === 'auth/security' || path === 'health'; }
 function staleApiReply(){ return {ok:false, status:0, data:null, stale:true}; }
 
 /* What this device is, for the Devices screen: "iPhone 16/17 Pro Max|App",
@@ -88,7 +88,7 @@ try{
 const appVersionHeader = () => typeof APP_VERSION === 'string' ? {'x-app-version':APP_VERSION} : {};
 
 /* Returns {ok, status, data}. Never throws. A 401 on a signed-in device means
-   the session was revoked (new PINs, remote log out) or expired. */
+   the session was revoked (a new PIN, remote log out) or expired. */
 async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
   const s = apiSession();
   if(!apiPathIsPublic(path) && !apiAccountMatchesUi(s)) return staleApiReply();
@@ -170,13 +170,11 @@ async function apiStream(path, body, onEvent, signal){
   }
 }
 
-/* Returns {account, name, tabs} on success, {recovery:true, ticket} when the
-   secret code was typed, or {error:'wrong'|'locked'|'network'}. */
+/* Returns {account, name, tabs} on success, or {error:'wrong'|'locked'|'network'|...}. */
 async function apiLogin(pin, freshDevice = false){
   const proof=await authBotProof();if(proof.error)return {error:proof.error};
   const r = await api('login', {method:'POST', body:{pin,turnstileToken:proof.token}});
   if(r.status===403 && r.data?.error==='verification_failed'){resetAuthSecurityConfig();return {error:'verification'};}
-  if(r.ok && r.data && r.data.recovery && r.data.ticket) return {recovery:true, ticket:r.data.ticket};
   if(r.ok && r.data && r.data.token){
     const d = r.data;
     lset('apiSession', {token:d.token, expiresAt:d.expiresAt, account:d.account, name:d.name, tabs:d.tabs});

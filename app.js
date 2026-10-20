@@ -2,13 +2,13 @@
    Depends on: DEFAULT_UNITS, PIN consts (config.js), T (i18n.js), icon strings
    (icons.js), lget/lset/api/apiLogin/apiSession/sendOrQueue/flushOutbox
    (storage.js), showConfirm/showAlert/showPrompt/showFormModal/showForcedRefresh
-   (modals.js), push helpers (push.js), Rico (assistant.js), the streak, notes and report card (kitchen.js), hardReload
+   (modals.js), push helpers (push.js), Rico (assistant.js), the streak and report card (kitchen.js), hardReload
    (update-check.js). Load this file after all of those; it calls boot() at
    the end.
 
    Two accounts sign in with their own PIN:
-     rozha  every screen
-     yunis  Order, Rico, Manage (items, suppliers, units), History (cannot delete), Record
+     rozha  every screen, Admin (PINs, devices, connection) included
+     yunis  Order, Rico, Transfers, Manage (items, suppliers, units), History (cannot delete), Record
    The server decides which screens an account may open (bootstrap.views) and
    enforces the same rules on every request. */
 /* ============ State ============ */
@@ -39,7 +39,6 @@ const state = {
   reminder: null,        // daily reminder settings {enabled,time}
   apiOnline: navigator.onLine,
   streak: null,          // the kitchen streak {count, best, lit, alive, recoverable}
-  notes: [],             // Rozha's notes for Yunis [{id, body, at, readAt, doneAt}]
   pins: []               // this account's pinned item ids (top of the Order screen)
 };
 
@@ -114,8 +113,8 @@ function toast(msg, kind='ok', {undo} = {}){
 /* ============ Devices ============
    The server keeps one row per device. This device reports "still here"
    every couple of minutes while the app is open (so Rozha can tell "active
-   now" from "signed in but idle") and polls for remote commands from the
-   Devices screen (log out / refresh). */
+   now" from "signed in but idle") and polls for remote commands from
+   Rozha's Admin screen (log out / refresh). */
 const HEARTBEAT_MS = 2*60*1000;       /* how often an open app reports "still here" */
 const ACTIVE_WINDOW_MS = 5*60*1000;   /* seen within this long ago = "active now" */
 const COMMAND_POLL_MS = 60*1000;
@@ -149,7 +148,7 @@ function heartbeat(){
 /* Shared drafts keep local edits durable while merging other devices' changes.
    The base quantities are persisted too: reconnecting never blindly replaces
    a newer server draft with an old offline copy. */
-let sharedDraft = {account:null, enabled:false, base:{}, noteBase:'', revision:0, remote:null, conflicts:[], busy:false, timer:null, epoch:0};
+let sharedDraft = {account:null, enabled:false, base:{}, revision:0, remote:null, conflicts:[], busy:false, timer:null, epoch:0};
 function cleanDraftCart(cart){
   return Object.fromEntries(Object.entries(cart || {}).filter(([,q])=>validOrderQuantity(q) && q>0));
 }
@@ -167,26 +166,25 @@ function mergeDraftCarts(base, local, remote){
 }
 function resetSharedDraft(){
   clearTimeout(sharedDraft.timer);
-  sharedDraft={account:null,enabled:false,base:{},noteBase:'',revision:0,remote:null,conflicts:[],busy:false,timer:null,epoch:sharedDraft.epoch+1};
+  sharedDraft={account:null,enabled:false,base:{},revision:0,remote:null,conflicts:[],busy:false,timer:null,epoch:sharedDraft.epoch+1};
 }
 function saveDraftMeta(){
   if(!sharedDraft.enabled || sharedDraft.account!==state.account) return;
-  lset('draftMeta:'+state.account,{base:sharedDraft.base,revision:sharedDraft.revision,noteBase:sharedDraft.noteBase});
+  lset('draftMeta:'+state.account,{base:sharedDraft.base,revision:sharedDraft.revision});
 }
 function draftStatusHtml(){
   if(!sharedDraft.enabled) return '';
   if(sharedDraft.conflicts.length){
-    const names=sharedDraft.conflicts.map(id=>id==='__note'?t('orderNote'):state.items.find(i=>i.id===id)?.name||id).join(', ');
+    const names=sharedDraft.conflicts.map(id=>state.items.find(i=>i.id===id)?.name||id).join(', ');
     return `<div class="form-card"><p role="alert">${esc(t('draftConflict'))} <b dir="auto">${esc(names)}</b></p><div class="form-actions"><button type="button" class="btn btn-ghost" data-draft-choice="remote">${esc(t('draftUseOther'))}</button><button type="button" class="btn btn-primary" data-draft-choice="local">${esc(t('draftKeepMine'))}</button></div></div>`;
   }
   return '';
 }
 function draftProgressLabel(){
   if(!sharedDraft.enabled) return t('draftLocal');
-  return draftChanges(sharedDraft.base,state.cart).length || (state.orderNote||'') !== (sharedDraft.noteBase||'') ? t('draftWaiting') : t('draftSynced');
+  return draftChanges(sharedDraft.base,state.cart).length ? t('draftWaiting') : t('draftSynced');
 }
 function paintDraftStatus(){
-  const preview=document.getElementById('orderNotePreview');if(preview){preview.textContent=state.orderNote||'';preview.hidden=!state.orderNote;}
   const el=document.getElementById('sharedDraftStatus');
   if(!el) return;
   el.innerHTML=draftStatusHtml();
@@ -194,16 +192,12 @@ function paintDraftStatus(){
   if(caption) caption.textContent=cartCount()?draftProgressLabel():t('selectToStart');
   el.querySelectorAll('[data-draft-choice]').forEach(b=>b.onclick=()=>resolveDraftConflict(b.dataset.draftChoice));
 }
-function receiveSharedDraft(data, base=sharedDraft.base, noteBase=sharedDraft.noteBase){
+function receiveSharedDraft(data, base=sharedDraft.base){
   if(!data || !data.cart || Number(data.revision)<sharedDraft.revision) return;
   const available=new Set(state.items.map(i=>i.id));
   const remote=Object.fromEntries(Object.entries(cleanDraftCart(data.cart)).filter(([id])=>available.has(id)));
   const merged=mergeDraftCarts(base,state.cart,remote);
   for(const item of state.items.filter(i=>i.available===false)){delete merged.cart[item.id];merged.conflicts=merged.conflicts.filter(id=>id!==item.id);}
-  const remoteNote=String(data.note||'');
-  if((state.orderNote||'')!==noteBase && remoteNote!==noteBase && remoteNote!==(state.orderNote||'')) merged.conflicts.push('__note');
-  else {if((state.orderNote||'')===noteBase) state.orderNote=remoteNote;sharedDraft.noteBase=remoteNote;}
-  sharedDraft.remoteNote=remoteNote; lset('orderNote:'+state.account,state.orderNote||'');
   sharedDraft.remote=remote; sharedDraft.revision=Number(data.revision)||0; sharedDraft.conflicts=merged.conflicts;
   if(!merged.conflicts.length) sharedDraft.base=remote;
   const changed=JSON.stringify(state.cart)!==JSON.stringify(merged.cart);
@@ -217,7 +211,7 @@ function startSharedDraft(data){
   if(sharedDraft.account!==state.account){
     resetSharedDraft(); sharedDraft.account=state.account; sharedDraft.enabled=true;
     const meta=lget('draftMeta:'+state.account);
-    sharedDraft.base=cleanDraftCart(meta?.base);sharedDraft.noteBase=meta?.noteBase||'';state.orderNote=lget('orderNote:'+state.account)||''; sharedDraft.revision=0;
+    sharedDraft.base=cleanDraftCart(meta?.base); sharedDraft.revision=0;
   }
   receiveSharedDraft(data);
   scheduleDraftSync();
@@ -234,11 +228,11 @@ async function syncSharedDraft(){
   sharedDraft.busy=true;
   try{
     const changes=draftChanges(sharedDraft.base,state.cart);
-    const sent={...state.cart}, sentNote=state.orderNote||'';
-    const writing=(changes.length || sentNote!==sharedDraft.noteBase) && !sharedDraft.conflicts.length;
-    const r=await api('draft',writing?{method:'PUT',body:{changes,noteBefore:sharedDraft.noteBase,noteAfter:sentNote}}:{});
+    const sent={...state.cart};
+    const writing=changes.length>0 && !sharedDraft.conflicts.length;
+    const r=await api('draft',writing?{method:'PUT',body:{changes}}:{});
     if(epoch!==sharedDraft.epoch || state.account!==account || r.stale) return;
-    if(r.ok || r.status===409) receiveSharedDraft(r.data,writing && r.ok ? sent : sharedDraft.base,writing && r.ok?sentNote:sharedDraft.noteBase);
+    if(r.ok || r.status===409) receiveSharedDraft(r.data,writing && r.ok ? sent : sharedDraft.base);
   }finally{
     if(epoch===sharedDraft.epoch){ sharedDraft.busy=false; paintDraftStatus(); }
   }
@@ -250,10 +244,9 @@ async function resolveDraftConflict(choice){
   if(epoch!==sharedDraft.epoch) return;
   if(!sharedDraft.remote || !sharedDraft.conflicts.length) return;
   if(choice==='remote') for(const id of sharedDraft.conflicts){
-    if(id==='__note'){state.orderNote=sharedDraft.remoteNote;continue;}
     if(sharedDraft.remote[id]) state.cart[id]=sharedDraft.remote[id]; else delete state.cart[id];
   }
-  sharedDraft.base={...sharedDraft.remote};sharedDraft.noteBase=sharedDraft.remoteNote||'';lset('orderNote:'+state.account,state.orderNote||''); sharedDraft.conflicts=[];
+  sharedDraft.base={...sharedDraft.remote}; sharedDraft.conflicts=[];
   persistCartDraft(); if(state.view==='order') refreshOrderView();
   await syncSharedDraft();
 }
@@ -263,7 +256,7 @@ setInterval(()=>{if(document.visibilityState==='visible') syncSharedDraft();},80
 function persistCartDraft(){
   if(!state.account) return;
   const draft=Object.fromEntries(Object.entries(state.cart).filter(([,qty])=>Number.isFinite(Number(qty)) && Number(qty)>0));
-  lset('pendingCart:'+state.account,Object.keys(draft).length?draft:null);lset('orderNote:'+state.account,state.orderNote||'');
+  lset('pendingCart:'+state.account,Object.keys(draft).length?draft:null);
   scheduleDraftSync();
 }
 function restoreCartDraft(){
@@ -283,14 +276,14 @@ function restoreCartDraft(){
   persistCartDraft();
 }
 
-/* Rozha's Devices screen: tell other devices to log out or refresh. */
+/* Rozha's Admin screen: tell other devices to log out or refresh. */
 async function sendDeviceCommand(type, ids){
   const r = await api('devices/command', {method:'POST', body:{type, ids}});
   if(!r.ok){ await showAlert(t('saveFailed')); return; }
   await refreshDevices();
 }
 /* Device side: pick up a command aimed at this device. Rozha also gets the
-   fresh device list for the Devices screen from the same request. */
+   fresh device list for the Admin screen from the same request. */
 let commandCheckBusy = false;
 let forcedRefreshOpen = false;
 async function checkCommands(){
@@ -301,7 +294,7 @@ async function checkCommands(){
     if(r.ok && Array.isArray(r.data)){
       const changed = JSON.stringify(r.data) !== JSON.stringify(state.devices);
       state.devices = r.data;
-      if(changed && state.view === 'devices') render();
+      if(changed && state.view === 'admin') render();
       const me = myDevice();
       if(me && commandIsPending(me) && me.command.id !== lget('handledCommand')) await runCommand(me.command);
     }
@@ -329,10 +322,23 @@ async function refreshDevices(){
   const r = await api('devices');
   if(r.ok && Array.isArray(r.data)){
     state.devices = r.data;
-    if(state.view === 'devices') render();
+    if(state.view === 'admin') render();
   }
 }
 const isVisible = ()=> document.visibilityState === 'visible';
+/* Endless decorations (style.css: html.still) pause while the app is out of sight, and while the battery
+   is low and not charging where the browser says so (Chrome, Android; iPhones keep Low Power Mode to
+   themselves). Reduce Motion turns them off completely. */
+let lowBattery = false;
+function syncMotion(){ document.documentElement.classList.toggle('still', !isVisible() || lowBattery); }
+document.addEventListener('visibilitychange', syncMotion);
+try{
+  if(navigator.getBattery) navigator.getBattery().then(b=>{
+    const check = ()=>{ lowBattery = !b.charging && b.level <= .2; syncMotion(); };
+    b.addEventListener('levelchange', check); b.addEventListener('chargingchange', check); check();
+  }, ()=>{});
+}catch(_){ /* no battery information: decorations follow visibility only */ }
+syncMotion();
 setInterval(()=>{ if(isVisible()) checkCommands(); }, COMMAND_POLL_MS);
 setInterval(()=>{ if(isVisible()) heartbeat(); }, HEARTBEAT_MS);
 document.addEventListener('visibilitychange', ()=>{
@@ -359,7 +365,7 @@ function accountLabel(a){ return a === 'rozha' || a === 'yunis' ? t('accountName
    start (bootstrap.views) and checks every request; this copy only covers
    an offline start before that answer arrives. */
 const ACCOUNT_VIEWS = {
-  rozha: ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record','devices','settings'],
+  rozha: ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record','admin','settings'],
   yunis: ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record']
 };
 const DEFAULT_TABS = ['order','assistant','transfers','manage'];
@@ -390,10 +396,8 @@ async function loadData(){
   state.reminder = d.reminder || {enabled:false, time:'09:00'};
   if(d.streak) streakArrived(d.streak);
   state.pins = Array.isArray(d.pins) ? d.pins : [];
-  state.repeats = Array.isArray(d.repeats) ? d.repeats : [];
   state.months = Array.isArray(d.months) ? d.months : [];
   state.sharedDraft = d.draft || null;
-  syncNotes(d.notes);
   ricoSetInbox(d.inbox || []);
   paintStreakChip(false);
   return true;
@@ -446,9 +450,9 @@ function signOut(reason, {preserveSession = false} = {}){
   state.account = null; state.name = ''; state.views = []; state.tabs = DEFAULT_TABS.slice();
   state.suppliers = []; state.items = []; state.units = []; state.history = [];
   state.activity = []; state.devices = []; state.reminder = null;
-  state.streak = null; state.notes = []; state.pins = []; state.repeats = []; state.months = [];
+  state.streak = null; state.pins = []; state.months = [];
   try{ updateAppBadge(); }catch(_){}
-  state.orderNote='';state.catalogQuery='';state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
+  state.catalogQuery='';state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
   reminderDraft = null;
   stopStepHold(); rowPress?.cancel();
@@ -650,7 +654,7 @@ const RENDERERS = {
   order:[()=>renderOrder(),()=>attachOrderEvents()], queue:[()=>renderQueue(),()=>attachQueueEvents()],
   history:[()=>renderHistory(),()=>attachHistoryEvents()], suppliers:[()=>renderSuppliers(),()=>attachSupplierEvents()],
   itemsAdmin:[()=>renderItemsAdmin(),()=>attachItemEvents()], units:[()=>renderUnits(),()=>attachUnitEvents()],
-  record:[()=>renderRecord(),()=>attachRecordEvents()], devices:[()=>renderDevices(),()=>attachDeviceEvents()],
+  record:[()=>renderRecord(),()=>attachRecordEvents()], admin:[()=>renderAdmin(),()=>attachAdminEvents()],
   manage:[()=>renderItemsAdmin(),()=>attachItemEvents()],
   settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()],
   transfers:[()=>renderTransfers(),()=>attachTransferEvents()]
@@ -706,7 +710,6 @@ function render(){
   }
   updateTopbar();
   paintStreakChip(false);
-  paintNotesBell();
   syncInstallPrompt();
 }
 
@@ -731,9 +734,9 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
 
 /* ============ Navigation ============
    Phones: Order, Rico, Transfers and Manage plus More (History, Record,
-   Devices, Settings). Computers: a sidebar with every screen. A lens glides to
+   Admin, Settings). Computers: a sidebar with every screen. A lens glides to
    the current tab, and on phones the page can be swiped between the tabs. */
-const VIEW_LABEL_KEYS = {manage:'manage',order:'order', assistant:'ricoName', transfers:'transfers', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', devices:'devicesTitle', settings:'settings', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {manage:'manage',order:'order', assistant:'ricoName', transfers:'transfers', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
@@ -743,7 +746,7 @@ function scrollBox(){ return (inAppFrame() && document.querySelector('.content')
 /* Every screen in tab-bar order: the four tabs first, then the rest. */
 function navOrder(){ return [...state.tabs, ...state.views.filter(v=>!state.tabs.includes(v))]; }
 const managedView=v=>['manage','itemsAdmin','suppliers','units'].includes(v);
-const moreViews=()=>['history','record','devices','settings'].filter(canOpen);
+const moreViews=()=>['history','record','admin','settings'].filter(canOpen);
 const mainView=v=>managedView(v)?'manage':v;
 function viewIndex(v){ const i = navOrder().indexOf(v); return i >= 0 ? i : navOrder().length; }
 const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1039,7 +1042,7 @@ function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
   render();
   scrollBox().scrollTo({top:0});
   if(view === 'record') refreshActivity();
-  if(view === 'devices') refreshDevices();
+  if(view === 'admin') refreshDevices();
   if(!keepLens) placeNavIndicator();
   const content = document.querySelector('.content');
   if(!frames || !content){ ghost?.layer.remove(); if(content) content.style.transform = ''; return; }
@@ -1441,7 +1444,7 @@ function renderTopbar(){
   <header class="topbar">
     <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="topbar-title" aria-hidden="true"></span></div>
     <div class="topbar-actions">
-      ${renderStreakChip()}${renderNotesBell()}
+      ${renderStreakChip()}
       <div class="chip conn-chip ${state.apiOnline?'':'offline'}" id="connectionStatus"><span></span><em>${esc(state.apiOnline?t('online'):t('offline'))}</em></div>
       ${langButton('langBtn')}
       <button type="button" class="logout-btn" id="logoutBtn" aria-label="${esc(t('logout'))}" title="${esc(t('logout'))}">${ICON_LOGOUT}</button>
@@ -1499,7 +1502,6 @@ function attachShellEvents(){
   document.getElementById('langBtn').onclick = e=>{ e.stopPropagation(); openLangMenu(e.currentTarget); };
   document.getElementById('logoutBtn').onclick = ()=>doLogout();
   document.getElementById('streakChip').onclick = openStreakSheet;
-  document.getElementById('notesBell').onclick = openNotesSheet;
 }
 /* Events inside the page that more than one screen uses. */
 function attachContentEvents(){
@@ -1591,7 +1593,6 @@ async function pressKey(k){
   state.pinBusy = true; state.pinError = ''; updateLoginFeedback();
   const res = await apiLogin(state.pinBuffer);
   state.pinBusy = false;
-  if(res.recovery){ state.pinBuffer = ''; updateLoginFeedback(); startRecovery(res.ticket); return; }
   if(res.error){
     state.pinError = res.error==='cancelled'?'':res.error; updateLoginFeedback();
     setTimeout(()=>{ state.pinBuffer=''; if(!state.account) updateLoginFeedback(); }, 650);
@@ -1614,42 +1615,6 @@ async function completeSignIn(res){
   heartbeat();
   if(pushStatus.subscribed) resyncPush();
   maybeOpenRicoProviderSetup();
-}
-/* The secret code, typed on the keypad instead of a PIN: "Who are you?"
-   (only the saved answer, written exactly, goes on; anything else just
-   closes), then Rozha's PIN, then new PINs, a new secret code and/or a new
-   answer. Saving a PIN or the code signs every phone out. */
-async function startRecovery(ticket){
-  const name = await showPrompt(esc(t('whoAreYou')), {plain:true, okLabel:t('continue'), cancelLabel:t('cancel')});
-  if(name === null) return;
-  const step1 = await api('recovery/name', {method:'POST', body:{ticket, name}});
-  if(!step1.ok){ if(step1.status === 429){ state.pinError = 'locked'; updateLoginFeedback(); } return; }
-  const pin = await showPrompt(esc(t('recoveryRozhaPin')), {password:true, maxLength:6, okLabel:t('continue'), cancelLabel:t('cancel')});
-  if(pin === null) return;
-  const step2 = await api('recovery/verify', {method:'POST', body:{ticket, pin}});
-  if(!step2.ok){ state.pinError = step2.status === 429 ? 'locked' : 'wrong'; updateLoginFeedback(); return; }
-  const field = (id, label)=>`<div class="field"><label for="${id}">${esc(label)}</label><input id="${id}" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" data-clear="1"></div>`;
-  await showFormModal({
-    title: t('recoveryTitle'),
-    bodyHtml: `<div class="notif-sub">${esc(t('recoveryHint'))}</div>${field('recRozha', t('recoveryNewRozha'))}${field('recYunis', t('recoveryNewYunis'))}${field('recCode', t('recoveryNewCode'))}`
-      + `<div class="field"><label for="recAnswer">${esc(t('recoveryNewAnswer'))}</label><input id="recAnswer" type="text" maxlength="40" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false"><div class="field-hint">${esc(t('recoveryAnswerHint'))}</div></div>`,
-    okLabel: t('save'),
-    onSubmit: async ()=>{
-      const v = id=>document.getElementById(id).value.trim();
-      const rozhaPin = v('recRozha'), yunisPin = v('recYunis'), secretCode = v('recCode'), answer = v('recAnswer');
-      const given = [rozhaPin, yunisPin, secretCode].filter(Boolean);
-      if(!given.length && !answer) return {error:t('recoveryNothing')};
-      if(given.some(x=>!/^\d{6}$/.test(x))) return {error:t('pinsInvalidLength')};
-      if(new Set(given).size !== given.length) return {error:t('pinsDuplicate')};
-      const r = await api('recovery/save', {method:'POST', body:{ticket, rozhaPin, yunisPin, secretCode, answer}});
-      if(r.ok){ setTimeout(()=>showAlert(esc(t('recoverySaved'))), 260); return {}; }
-      const code = r.data && r.data.error;
-      if(code === 'weak_pin') return {error:t('pinsWeak')};
-      if(code === 'duplicate_pin') return {error:t('pinsDuplicate')};
-      if(r.status === 401) return {error:t('recoveryExpired')};
-      return {error:t('saveFailed')};
-    }
-  });
 }
 function attachLoginEvents(){
   ['loginLangBtn','loginLangRow'].forEach(id=>{
@@ -1783,17 +1748,17 @@ function renderOrder(){
 
   const lastMap = lastOrderMap();
   return `
-    ${renderNoteSticky()}
     <div id="sharedDraftStatus">${draftStatusHtml()}</div>
     ${renderOrderHero(selectedCount, selectedSupplierCount)}
+    <div id="ricoSuggest">${renderRicoSuggestion()}</div>
+    <div class="order-quick-actions">
+      ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}<span>${t('sameAsLastTime')}</span></button>` : ''}
+      <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${ICON_DELETE}<span>${t('clearOrder')}</span></button>
+    </div>
     ${tabsHtml}
     <div class="search-row">
       <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" aria-label="${t('searchPlaceholder')}" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"><button type="button" class="search-clear" id="itemSearchClear" aria-label="${esc(t('clearSearch'))}" ${state.search?'':'hidden'}>&times;</button></div>
-      <details class="order-options"><summary>${esc(t('orderOptions'))}</summary><div class="order-options-body"><div class="order-arrange-row" id="orderArrangeRow">${renderOrderArrangeControl()}</div>${renderOrderTools()}<div id="repeatCards">${renderRepeatCards()}</div><div id="ricoSuggest">${renderRicoSuggestion()}</div><div class="order-quick-actions">
-        ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}<span>${t('sameAsLastTime')}</span></button>` : ''}
-        ${ricoVoiceSupported() ? `<button class="quick-btn voice-btn" id="voiceOrderBtn">${ICON_MIC}<span>${esc(t('voiceOrder'))}</span></button>` : ''}
-        <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0&&!state.orderNote?'disabled':''}>${ICON_DELETE}<span>${t('clearOrder')}</span></button>
-      </div></div></details>
+      <div class="order-arrange-row" id="orderArrangeRow">${renderOrderArrangeControl()}</div>
     </div>
     <div id="orderResults" aria-live="polite">${groupHtml || emptyState(t('noSearchResults'))}</div>
   `;
@@ -1859,10 +1824,6 @@ function refreshOrderResults(){
    focus and pointer targets. Filtering is the only path rebuilding results. */
 function refreshOrderView(pulseItemId=null){
   persistCartDraft();
-  const note=document.getElementById('orderNotePreview');
-  if(note){note.textContent=state.orderNote||'';note.hidden=!state.orderNote;}
-  const noteButton=document.getElementById('orderNoteBtn');
-  if(noteButton)noteButton.textContent=t('orderNote')+(state.orderNote?' •':'');
   const quantitySelector = pulseItemId ? `#orderResults [data-qty="${CSS.escape(pulseItemId)}"]` : '#orderResults [data-qty]';
   document.querySelectorAll(quantitySelector).forEach(input=>{
     const qty=state.cart[input.dataset.qty]||0, row=input.closest('.item-row');
@@ -1903,7 +1864,7 @@ function refreshCartSummary(){
     send.querySelector('.send-meta').textContent = sendMeta();
   }
   const clear=document.getElementById('clearOrderBtn');
-  if(clear) clear.disabled=c===0&&!state.orderNote;
+  if(clear) clear.disabled=c===0;
   const draft=document.querySelector('.draft-state');
   if(draft) draft.textContent=c?draftProgressLabel():t('selectToStart');
   paintRicoSuggestion();
@@ -1925,31 +1886,8 @@ function renderOrderBottomBar(){
     </button>
   </div>`;
 }
-/* The Order screen's voice button: listening (tap to finish), then working it out, then back. */
-function paintVoiceOrderBtn(){
-  const b = document.getElementById('voiceOrderBtn');
-  if(!b) return;
-  const mine = ricoRecorder.voiceOrder, on = ricoRecorder.active && mine, busy = ricoRecorder.busy && mine;
-  b.classList.toggle('listening', on);
-  b.classList.toggle('working', busy);
-  b.disabled = busy;
-  b.querySelector('span').textContent = on ? t('voiceOrderStop') : busy ? t('ricoTranscribing') : t('voiceOrder');
-}
 function attachOrderEvents(){
-  attachOrderTools();
   paintDraftStatus();
-  attachNoteSticky();
-  attachRepeatCards();
-  paintVoiceOrderBtn();
-  const voice = document.getElementById('voiceOrderBtn');
-  if(voice) voice.onclick = async ()=>{
-    // "Say your order": tap, speak, tap again; Rico then fills today’s order from what was said.
-    if(ricoRecorder.active){ await ricoToggleVoice(); paintVoiceOrderBtn(); return; }   // finishing keeps "fill my order"
-    ricoRecorder.voiceOrder = true;
-    await ricoToggleVoice();
-    if(!ricoRecorder.active) ricoRecorder.voiceOrder = false;
-    paintVoiceOrderBtn();
-  };
   document.querySelectorAll('[data-ordertab]').forEach(b=>b.onclick=()=>{
     if(state.orderTab===b.dataset.ordertab) return;
     state.orderTab = b.dataset.ordertab;
@@ -1993,15 +1931,23 @@ function attachOrderEvents(){
   }
   attachOrderResultEvents(document.getElementById('orderArrangeRow'));
   const same = document.getElementById('sameAsLast');
-  if(same) same.onclick = ()=>{ const m = lastOrderMap(); if(m) state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id && i.available!==false) && qty>0)); refreshOrderView(); };
+  // Replaces the current order with the last one sent; Undo brings back what was there.
+  if(same) same.onclick = ()=>{
+    const m = lastOrderMap();
+    if(!m) return;
+    const before = {...state.cart};
+    state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id && i.available!==false) && qty>0));
+    refreshOrderView();
+    toast(t('sameAsLastFilled'), 'ok', {undo:()=>{ state.cart = before; refreshOrderView(); }});
+  };
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.onclick=()=>{
-    const before={...state.cart},beforeNote=state.orderNote||'';
+    const before={...state.cart};
     // A cleared order starts over. An order being saved right now is kept; one whose save failed can be
     // cleared too (a save the server refuses would otherwise reopen on every Send), and Undo brings it back.
     const queue=state.queue?.record && state.queue.saveState!=='failed' ? null : state.queue;
-    state.cart={};state.orderNote='';persistCartDraft();if(queue){state.queue=null;persistQueue();}refreshOrderView();paintDraftStatus();
-    toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before;state.orderNote=beforeNote;persistCartDraft();paintDraftStatus(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
+    state.cart={};persistCartDraft();if(queue){state.queue=null;persistQueue();}refreshOrderView();paintDraftStatus();
+    toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before;persistCartDraft();paintDraftStatus(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
   };
   const send = document.getElementById('sendOrdersBtn');
   if(send) send.onclick = ()=>startSendQueue();
@@ -2034,9 +1980,9 @@ async function startSendQueue(){
   const before = state.queue && Date.now() - state.queue.at < QUEUE_KEEP_MS ? state.queue : [];
   state.queue = Object.keys(bySupplier).map(sid=>{
     const old = before.find(e=>e.supplierId===sid);
-    return {supplierId: sid, items: bySupplier[sid], sent: !!(old && old.sent && (before.orderNote||'')===(state.orderNote||'') && sameQueueItems(old.items, bySupplier[sid]))};
+    return {supplierId: sid, items: bySupplier[sid], sent: !!(old && old.sent && sameQueueItems(old.items, bySupplier[sid]))};
   });
-  state.queue.at = Date.now();state.queue.orderNote=state.orderNote||'';
+  state.queue.at = Date.now();
   persistQueue();
   goView('queue');
   if(state.queue.every(e=>e.sent)) maybeFinishQueue();
@@ -2054,7 +2000,7 @@ function persistQueue(){
   if(!state.account) return;
   const q = state.queue;
   lset('sendQueue:'+state.account, q ? {
-    at: q.at || Date.now(), orderNote:q.orderNote||'', record: q.record || null, saveState: q.saveState === 'failed' ? 'failed' : null,
+    at: q.at || Date.now(), record: q.record || null, saveState: q.saveState === 'failed' ? 'failed' : null,
     entries: q.map(e=>({supplierId:e.supplierId, items:e.items, sent:!!e.sent}))
   } : null);
 }
@@ -2073,7 +2019,7 @@ function restoreQueue(){
   const queue = entries.map(e=>({supplierId:e.supplierId, items:e.items, sent:!!e.sent}));
   queue.at = Number(saved.at);
   if(saved.record && typeof saved.record.id === 'string'){ queue.record = saved.record; queue.saveState = 'failed'; }
-  queue.orderNote=saved.orderNote||''; state.queue = queue;
+  state.queue = queue;
   state.view = 'queue';
   return true;
 }
@@ -2299,8 +2245,7 @@ function buildMessage(entry){
   const noteOf = i => (state.items.find(x=>x.id === i.itemId) || {}).note;
   const lines = sortedSupplierItems(entry.items).map(i=>`• ${i.name}: ${i.qty} ${unitLabel(i.unit)}${noteOf(i) ? ` (${noteOf(i)})` : ''}`);
   const header = ({en:'New order from Ricotta:', ku:'داواکارییەکی نوێ لە چێشتخانەی ریکۆتا:', ar:'طلب جديد من مطبخ ريكوتا:'})[state.lang];
-  const note = entry.orderNote ?? state.queue?.orderNote ?? state.orderNote ?? '';
-  return [header, note, lines.join('\n')].filter(Boolean).join('\n');
+  return [header, lines.join('\n')].join('\n');
 }
 /* WhatsApp wants the full international number without + or 00. Iraqi numbers
    written the local way (0750 123 4567 or 750 123 4567) get +964; a number
@@ -2351,7 +2296,7 @@ function markQueueSent(idx){
   const entry = state.queue && state.queue[idx];
   if(!entry) return;
   entry.sent = true;
-  state.queue.at = Date.now();state.queue.orderNote=state.orderNote||'';
+  state.queue.at = Date.now();
   persistQueue();
   render();
   maybeFinishQueue();
@@ -2410,7 +2355,7 @@ async function maybeFinishQueue(){
   finishingQueue = queue;
   try{
     const record = queue.record || {
-      id: 'o'+outboxJobId(), date: new Date().toISOString(), by: state.account, note:queue.orderNote ?? state.orderNote ?? '',
+      id: 'o'+outboxJobId(), date: new Date().toISOString(), by: state.account,
       entries: state.queue.map(e=>({
         supplierId: e.supplierId,
         supplierName: (state.suppliers.find(s=>s.id===e.supplierId)||{}).name || '',
@@ -2437,7 +2382,6 @@ async function maybeFinishQueue(){
     ricoSuggestion.at = 0;
     // Preserve any quantities edited while the save was waiting on the network.
     queue.forEach(entry=>entry.items.forEach(item=>{ if(state.cart[item.itemId] === item.qty) delete state.cart[item.itemId]; }));
-    if((state.orderNote||'')===(queue.orderNote||'')){state.orderNote='';lset('orderNote:'+state.account,'');}
     persistCartDraft();
     if(state.view === 'queue') render();
     // Let the "All orders sent" card land before returning to the Order screen.
@@ -2481,24 +2425,22 @@ function orderHistoryCard(rec){
     const itemsLine = e.items.map(i=>`${esc(i.name)} × ${i.qty} ${esc(unitLabel(i.unit))}`).join(' · ');
     return `<div class="hist-entry"><div class="hist-supplier">${supplierMono(name)}${esc(name)}</div><div class="hist-items">${itemsLine}</div></div>`;
   }).join('');
-  return `<div class="hist-card" data-search-row data-search-text="${esc([rec.note,rec.date,...rec.entries.flatMap(e=>[state.suppliers.find(s=>s.id===e.supplierId)?.name||e.supplierName||'',...e.items.flatMap(l=>[l.name,...(state.items.find(i=>i.id===l.itemId)?.aliases||[])])])].join(' '))}">
+  return `<div class="hist-card" data-search-row data-search-text="${esc([rec.date,...rec.entries.flatMap(e=>[state.suppliers.find(s=>s.id===e.supplierId)?.name||e.supplierName||'',...e.items.flatMap(l=>[l.name,...(state.items.find(i=>i.id===l.itemId)?.aliases||[])])])].join(' '))}">
     <div class="hist-top">
       <div class="hist-date">${esc(time)}${accountLabel(rec.by) ? ` \u00b7 ${esc(t('sentBy')(''))}${whoBadge(rec.by)}` : ''}</div>
       <div class="row-actions">
         ${canUndoOrder(rec) ? `<button class="btn btn-ghost hist-undo" data-undohist="${esc(rec.id)}">${esc(t('undo'))}</button>` : ''}
         <button class="btn btn-ghost hist-again" data-reorderhist="${esc(rec.id)}">${ICON_REPEAT}<span>${esc(t('orderAgain'))}</span></button>
-        <button class="icon-btn hist-repeat" data-repeathist="${esc(rec.id)}" aria-label="${esc(t('repeatTitle'))}" title="${esc(t('repeatTitle'))}">${ICON_CALENDAR}</button>
         ${isRozha() ? `<button class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
       </div>
     </div>
-    ${rec.note?`<p class="order-note-preview" dir="auto">${esc(rec.note)}</p>`:''}${supplierLines}
+    ${supplierLines}
   </div>`;
 }
 /* Orders for the current Baghdad calendar month, newest first. */
 function renderHistory(){
   const entries = state.history.map(rec=>({ts:Date.parse(rec.date), day:rec.date, html:orderHistoryCard(rec)})).sort((a,b)=>b.ts-a.ts);
   const tools = renderReportCard() + `<div class="hist-tools">
-    <button type="button" class="btn btn-ghost" id="repeatListBtn">${ICON_REPEAT}<span>${esc(t('repeatListTitle'))}${(state.repeats || []).length ? ` (${state.repeats.length})` : ''}</span></button>
     <button type="button" class="btn btn-ghost" id="monthsBtn">${ICON_CALENDAR}<span>${esc(t('monthsTitle'))}</span></button>
   </div>`;
   if(!entries.length) return tools + emptyState(t('noHistory'));
@@ -2513,9 +2455,7 @@ function renderHistory(){
 }
 function attachHistoryEvents(){
   document.getElementById('reportOpen')?.addEventListener('click', openReportSheet);
-  document.getElementById('repeatListBtn')?.addEventListener('click', openRepeatList);
   document.getElementById('monthsBtn')?.addEventListener('click', openMonthsSheet);
-  document.querySelectorAll('[data-repeathist]').forEach(b=>b.onclick=()=>{ const rec = state.history.find(r=>r.id === b.dataset.repeathist); if(rec) openRepeatForm(rec); });
   document.querySelectorAll('[data-undohist]').forEach(b=>b.onclick=()=>withBusy(b, ()=>undoOrder(b.dataset.undohist)));
   document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
     const rec = state.history.find(r=>r.id===b.dataset.reorderhist);
@@ -2526,7 +2466,7 @@ function attachHistoryEvents(){
       // longer have anywhere to show up on the order screen.
       if(state.items.some(i=>i.id===it.itemId && i.available!==false)) cart[it.itemId] = it.qty;
     }));
-    state.cart = cart;state.orderNote=rec.note||'';
+    state.cart = cart;
     persistCartDraft();
     goView('order');
     toast(t('reorderReady')(cartCount()));
@@ -2854,7 +2794,7 @@ function renderItemsAdmin(){
   return `
     <div class="action-row">
       <button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
-      <details class="list-options"><summary>${esc(t('moreTools'))}</summary><div><button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button></div></details>
+      <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button>
     </div>
     ${renderCatalogSearch()}<div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${itemsAdminListHtml()}</div>`;
 }
@@ -3148,7 +3088,7 @@ function attachUnitEvents(){
   });
 }
 
-/* ============ Devices (Rozha) ============ */
+/* ============ Devices (in Admin, Rozha) ============ */
 /* Which phones are signed in right now, to which account, when each one
    last signed in, and when it was last seen using the app. */
 /* Logged in = signed in, no log-out waiting for it, and seen within one
@@ -3216,7 +3156,7 @@ function renderDevices(){
       <div class="dev-top">
         <div class="dev-name">${who ? whoBadge(d.account) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
       </div>
-      <div class="dev-kind">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : NAV_ICONS.devices} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
+      <div class="dev-kind">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : ICON_MOBILE} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
       <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span></div>
       <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
       ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
@@ -3266,11 +3206,50 @@ function attachDeviceEvents(){
   };
 }
 
+/* ============ Admin (Rozha only) ============
+   PINs, the signed-in devices and the connection in one place. A PIN is
+   changed here, with Rozha's current PIN; the server checks it again and
+   counts wrong tries like wrong sign-ins. */
+function renderAdminPins(){
+  const row = a=>`<div class="admin-pin-row">${whoBadge(a)}<span class="admin-pin-dots" aria-hidden="true">••••••</span><button type="button" class="btn btn-ghost" data-pin-change="${a}" aria-label="${esc(t('pinChangeTitle')(accountLabel(a)))}">${ICON_KEY} ${esc(t('adminPinChange'))}</button></div>`;
+  return `<div class="section-title">${esc(t('adminPins'))}</div><div class="form-card admin-pins">${row('rozha')}${row('yunis')}<div class="notif-sub">${esc(t('adminPinsHint'))}</div></div>`;
+}
+function renderAdmin(){
+  const connection = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
+  return `<div class="admin-page">${renderAdminPins()}${connection}${renderRicoSettings()}${renderDevices()}</div>`;
+}
+function attachAdminEvents(){
+  document.querySelectorAll('[data-pin-change]').forEach(b=>b.onclick=()=>openPinChange(b.dataset.pinChange));
+  attachDeviceEvents();
+  loadRicoStatus();
+}
+function openPinChange(account){
+  const field = (id, label)=>`<div class="field"><label for="${id}">${esc(label)}</label><input id="${id}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></div>`;
+  showFormModal({
+    title: esc(t('pinChangeTitle')(accountLabel(account))),
+    bodyHtml: field('pinCurrent', t('pinCurrentLabel')) + field('pinNew', t('pinNewLabel')) + field('pinNewAgain', t('pinRepeatLabel')),
+    okLabel: t('save'),
+    onSubmit: async ()=>{
+      const v = id=>document.getElementById(id).value.trim();
+      const currentPin = v('pinCurrent'), newPin = v('pinNew');
+      if(![currentPin, newPin].every(x=>/^\d{6}$/.test(x))) return {error:t('pinsInvalidLength')};
+      if(newPin !== v('pinNewAgain')) return {error:t('pinMismatch')};
+      const r = await api('admin/pin', {method:'PUT', body:{account, currentPin, newPin}});
+      if(r.ok){
+        toast(account === 'rozha' ? t('pinChangedSelf') : t('pinChangedOther')(accountLabel(account)));
+        refreshDevices();
+        return {};
+      }
+      const code = r.data && r.data.error;
+      return {error: code === 'wrong_pin' ? t('pinCurrentWrong') : code === 'weak_pin' ? t('pinsWeak') : code === 'duplicate_pin' ? t('pinsDuplicate') : r.status === 429 ? t('tooManyAttempts') : t('saveFailed')};
+    }
+  });
+}
+
 /* ============ Settings (every account) ============
-   Appearance, the Order screen's display choices and notifications
-   are on this device for everyone; the connection and Rico's provider are
-   shown to Rozha only. PINs can't be changed here: only through the secret
-   code on the sign-in keypad (see startRecovery). */
+   Appearance, the Order screen's display choices, sounds and notifications,
+   all kept on this device. Rozha's tools (PINs, devices, the connection) are
+   in Admin. */
 function renderAppearance(){
   const dm=darkMode();
   return `<div class="section-title">${esc(t('settingsAppearance'))}</div><div class="form-card"><div class="dark-row"><span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div></div>`;
@@ -3280,6 +3259,9 @@ function renderDisplaySettings(){
   return `<div class="section-title">${esc(t('settingsOrderScreen'))}</div><div class="form-card">
     ${row('pref-compactRows', prefOn('compactRows'), 'compactRowsLabel', 'compactRowsHint')}
     ${row('pref-showLastQty', prefOn('showLastQty'), 'lastQtyLabel', 'lastQtyHint')}</div>`;
+}
+function renderOrderSounds(){
+  return `<div class="section-title">${esc(t('orderSounds'))}</div><div class="form-card">${[['qty','quantitySound'],['sent','sentSound']].map(([id,key])=>`<label class="check-row preference-row"><input type="checkbox" id="sound-${id}" data-sound="${id}" ${soundOn(id)?'checked':''}><span>${esc(t(key))}</span></label>`).join('')}</div>`;
 }
 function currentOutbox(){ return outbox().filter(j=>outboxJobAccount(j)===state.account); }
 function renderPendingSync(){
@@ -3298,8 +3280,7 @@ function latestVersion(){
   return (state.devices || []).map(d=>d.appVersion).filter(Boolean).reduce((m, v)=>versionCmp(v, m) > 0 ? v : m, APP_VERSION);
 }
 function renderSettings(){
-  const connectionCard = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `${renderPendingSync()}${renderAppearance()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}${isRozha() ? `${connectionCard}${renderRicoSettings()}` : ''}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderAppearance()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
 /* ============ Notifications (shown in Settings) ============ */
 /* The daily reminder starts as one switch. Turning it on opens the time,
@@ -3375,7 +3356,7 @@ function attachNotifEvents(){
   if(test) test.onclick = ()=> withBusy(test, async ()=> reportSendResult(await callSendPush('reminder-now')));
 }
 
-/* ---- Settings: Rico connection is managed server-side, never from a device. ---- */
+/* ---- Admin: Rico's connection is managed server-side, never from a device. ---- */
 function renderRicoSettings(){
   return `<div class="section-title">${t('ricoSettingsTitle')}</div>
     <div class="form-card rico-status-card">
@@ -3411,7 +3392,7 @@ async function maybeOpenRicoProviderSetup(){
   if(key === null){ closeRicoSetupRoute(); return; }
   const saved = await api('assistant/groq-key', {method:'PUT', body:{key}});
   closeRicoSetupRoute();
-  if(saved.ok){ toast(t('ricoGroqSaved')); if(state.view === 'settings') loadRicoStatus(); }
+  if(saved.ok){ toast(t('ricoGroqSaved')); if(state.view === 'admin') loadRicoStatus(); }
   else await showAlert(saved.data?.error === 'invalid_key' ? t('ricoGroqInvalid') : t('saveFailed'));
 }
 /* Disables a button while its action runs, so a double tap can't send twice. */
@@ -3439,11 +3420,6 @@ function attachSettingsEvents(){
     if(box) box.onchange = ()=>{ lset(key, box.checked ? true : null); applyPrefs(); };
   });
   attachNotifEvents();
-  if(isRozha()) loadRicoStatus();
 }
 
 boot();
-
-function renderOrderSounds(){
-  return `<details class="settings-group order-sound-settings"><summary>${esc(t('orderSounds'))}</summary><div>${[['qty','quantitySound'],['sent','sentSound']].map(([id,key])=>`<label class="check-row preference-row"><input type="checkbox" id="sound-${id}" data-sound="${id}" ${soundOn(id)?'checked':''}><span>${esc(t(key))}</span></label>`).join('')}</div></details>`;
-}

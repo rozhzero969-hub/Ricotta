@@ -1,31 +1,28 @@
 # Ricotta Orders
 
-Restaurant orders, suppliers, items, units, Records, device controls and Rico chat. The static web app supports English, Kurdish and Arabic. GitHub Pages serves the app; Supabase runs the database and the `api` and `send-push` Edge Functions.
+Restaurant orders, suppliers, items, units, Records, Rozha's Admin tab (PINs, devices, connection) and Rico chat. The static web app supports English, Kurdish and Arabic. GitHub Pages serves the app; Supabase runs the database and the `api` and `send-push` Edge Functions.
 
 ## Data and sign-in
 
-Two named accounts use server-verified PINs. Browser requests use revocable session tokens. Database tables and internal helpers are restricted to `service_role`; never put that key in the browser or commit it.
+Two named accounts use server-verified PINs. Only Rozha changes a PIN, hers or Yunis's, in Admin › PINs: the server checks her current PIN first (wrong tries count like wrong sign-ins), refuses weak PINs and the other account's PIN, and signs that account out everywhere except the device making the change. There is no secret code. Browser requests use revocable session tokens. Database tables and internal helpers are restricted to `service_role`; never put that key in the browser or commit it.
 
 Order History and Records retain the current **Asia/Baghdad calendar month**. Older orders, their lines and Records are permanently deleted at Baghdad midnight by `ricotta-monthly-history`; the daily cleanup catches up after downtime. The API also filters reads by month. PINs, the catalog and reminder settings are kept.
 
 Orders retry with stable IDs. Each pending order has its own local storage entry so tabs cannot overwrite one shared queue. Settings shows the pending count, Retry sync and Export copy. Export a previous month's unsynced order before clearing browser storage: it cannot be written into a later month's history. An order whose save the server refuses can be dropped with Clear order (Undo brings it back). A phone whose clock runs ahead still saves: the server uses its own time for an order dated in the future.
 
-Scheduled jobs (pg_cron): `ricotta-reminder-tick` every minute (reminders, Rico's messages, weather), `ricotta-daily-cleanup` (expired sessions, old attempts, alerts, inbox, notes), `ricotta-monthly-history` (the monthly cut) and `ricotta-cron-history` (keeps a week of pg_cron run history).
+Scheduled jobs (pg_cron): `ricotta-reminder-tick` every minute (reminders, Rico's messages, weather), `ricotta-daily-cleanup` (expired sessions, old attempts, alerts, inbox), `ricotta-monthly-history` (the monthly cut) and `ricotta-cron-history` (keeps a week of pg_cron run history).
 
 ## The kitchen
 
 Unfinished orders sync between devices signed in to the same account. Quantities are saved locally before syncing. Edits to different items merge; two different edits to the same item require choosing which quantity to keep. Rozha and Yunis have separate drafts. Visible devices check about every eight seconds and on returning to the app. The WhatsApp send queue stays on the device where it was started.
 
 - **Kitchen streak** (`kitchen.js`, `app_streak`): every Baghdad day with a sent order adds a day for the whole kitchen. Rico can bring a broken streak back within 7 days (`recover_streak`). Undoing the day's only order takes the day back.
-- **Kitchen notes** (`app_notes`): Rozha writes, Yunis gets a notification, a sticky note on Order and a banner; unread notes get a reminder from Rico after two hours.
 - **Report card**: at the top of History, computed from this month's orders, with an Excel (CSV) file and a printable report before the monthly cleanup.
 - **Weather**: the reminder tick keeps Erbil's weather from Open-Meteo in `app_weather` for Rico's morning messages.
 - Pinned items (`app_accounts.pins`), item notes (`app_items.note`, sent in the WhatsApp message) and Undo for 15 minutes after an order is saved.
 - Rozha and Yunis can read and delete each other's Rico chats; each only continues their own.
 - **Order cut-offs** (`app_suppliers.cutoff`, HH:MM Erbil): on the supplier's order days (its reminder days, or every day) Order, Send and Suppliers show a countdown; Rico warns 30 minutes before when nothing has gone to that supplier.
-- **Repeat orders** (`app_repeat_orders`): "Repeat" on a History order saves it for chosen weekdays; on those days the Order screen offers it with one tap. Nothing is sent by itself.
-- **Note replies**: Yunis answers a note (quick replies or a few words); Rozha gets a notification and a count on the bell.
-- **App icon badge**: unread notes, unseen replies and late suppliers (Home Screen app; on iPhone with notifications on).
+- **App icon badge**: late suppliers (Home Screen app; on iPhone with notifications on).
 - **Month archive** (`app_month_summaries`): before a month is cleared, `app_internal_monthly_cleanup` keeps its summary (orders, days, top items, suppliers, who sent). History › Past months.
 - **Friday summary**: Rico's short weekly recap on Friday evening.
 - On phones the WhatsApp buttons open the WhatsApp app directly (`whatsapp://send`); computers use `wa.me`.
@@ -34,7 +31,7 @@ The Lab (`lab/`, see its README) runs the real app on sample data for trying the
 
 ## Simple workspace
 
-The four main tabs are Order, Rico, Transfers and Manage. Manage groups Items, Suppliers and Units, History, Records, Devices (Rozha only) and Settings keep separate tabs: in More on phones and directly in the desktop sidebar. Order keeps its large summary; Order options holds notes, quantity scaling, repeat orders, voice and clearing. Imports are in Manage > More tools. English aliases remain searchable and editable without adding lines to item lists. The app uses one palette with light, dark or system appearance. Quantity taps and the order-sent chime have switches in Settings > Order sounds. Themes, weather effects, seasonal surprises and Face ID have been removed; PIN sign-in stays protected by Cloudflare.
+The four main tabs are Order, Rico, Transfers and Manage. Manage groups Items, Suppliers and Units, History, Records, Admin (Rozha only: PINs, devices, the connection and Rico's connection) and Settings keep separate tabs: in More on phones and directly in the desktop sidebar. Order keeps its large summary, then Rico suggests, Same as last time and Clear order (both with Undo), shown directly. Import Excel / CSV is next to Add item. Transfers is still being made: the tab shows its design, but it is inert and the server refuses its routes (`TRANSFERS_READY` in `transfers.js`, `TRANSFERS_OPEN` in the api) until the workplace system can take the file. English aliases remain searchable and editable without adding lines to item lists. The app uses one palette with light, dark or system appearance. Quantity taps and the order-sent chime have switches in Settings › Order sounds. Endless decorations (the Online dot, the only pulsing dot; the streak flame; the Transfers tape; Rico's face) run only on the screen that shows them, pause while the app is out of sight or the battery is low and not charging (where the browser tells), and stop with Reduce Motion. Themes, weather effects, seasonal surprises and Face ID have been removed; PIN sign-in stays protected by Cloudflare.
 
 ## Development and checks
 
@@ -55,7 +52,7 @@ Tests use mocked network requests and disposable PGlite/PostgreSQL databases. Th
 
 ## Database bootstrap and deployment
 
-`supabase/baseline.sql` is a verified schema-only snapshot of the retained tables/functions. On an **empty Supabase project**, enable `pgcrypto` and `pg_cron`, apply the baseline, then the SQL in `supabase/migrations/` in filename order. Configure the two account rows with privately generated bcrypt PIN hashes, recovery hashes and push/AI secrets. Do not use sample credentials in production.
+`supabase/baseline.sql` is a verified schema-only snapshot of the retained tables/functions. On an **empty Supabase project**, enable `pgcrypto` and `pg_cron`, apply the baseline, then the SQL in `supabase/migrations/` in filename order. Configure the two account rows with privately generated bcrypt PIN hashes and push/AI secrets. Do not use sample credentials in production.
 
 The earlier migration chain mixed removed features with missing live migrations. It has been replaced in the repository by this baseline. Existing production migration history remains intact. Do not replay the baseline on production or repair its applied history merely to match filenames. Future migrations extend this baseline.
 
@@ -73,7 +70,7 @@ Keep encrypted database backups outside the repository and browser. Supabase's b
 
 ## Ordering tools
 
-Supplier cards include WhatsApp and phone links. Orders support a shared whole-order note and quantities with up to three decimal places. Adjust quantities doubles or halves the selected items with confirmation and Undo. The WhatsApp message to a supplier is the same for everyone: a heading, the order note, then one line per item.
+Supplier cards include WhatsApp and phone links. Quantities have up to three decimal places. The WhatsApp message to a supplier is the same for everyone: a heading, then one line per item (with the item's note, if it has one).
 
 Items can be marked unavailable without deletion and given alternate search names. Items → Import Excel previews a first-sheet `.xlsx` or `.csv` file before saving, with at most 500 rows and a 2 MB file limit. Required column headings are `Name`, `Unit`, and `Supplier`; unit and supplier values must match one existing entry by name or ID. Optional headings are `ID`, `Aliases`, `Available`, and `Note`. Existing items match by ID or a unique name and supplier; omitted optional fields are preserved. Ambiguous or invalid rows must be corrected before importing.
 
@@ -81,7 +78,7 @@ The spreadsheet reader is the official SheetJS Community Edition 0.20.3 standalo
 
 ## Transfers
 
-Transfers is its own tab (both accounts) and has nothing to do with ordering. It makes the Excel file for the workplace stock system's *Upload Excel* button on **Move between storages**; the From and To storages are still chosen there. Until that button exists the tab shows a "Still in development" note; set `TRANSFERS_READY` in `transfers.js` to `true` to remove it.
+Transfers is its own tab (both accounts) and has nothing to do with ordering. It makes the Excel file for the workplace stock system's *Upload Excel* button on **Move between storages**; the From and To storages are still chosen there. Until that button exists the tab is locked: it shows "This tab is still being made" above an inert picture of the design, nobody can use or test it, and the api answers its four routes with 423. To open it, set `TRANSFERS_READY` in `transfers.js` and `TRANSFERS_OPEN` in `supabase/functions/api/index.ts` to `true`, and redeploy the api.
 
 - **Workplace item list.** Upload any Excel or CSV with an item name column once (the stock system's own template works: its *Item list* and *Units* sheets are read). A unit column is optional; several units are separated by commas. A new upload replaces the list; items that stay keep their id and remembered spellings. Stored in `app_stock_items`, reachable only through the API.
 - **Adding items.** Type or paste a list, say it (the microphone), take a photo of a paper list, or search an item. Rico (Gemini) reads the list and picks each item from the workplace list; the server accepts only ids from that list and units the item has. Without Rico the phone matches the names itself. A name is taken as sure only when it is exactly the item's name, one half of "English - کوردی" or "کوردی (English)", or a remembered spelling; anything else is marked for the person to confirm or pick, and *Remember* in the picker saves the spelling for next time.

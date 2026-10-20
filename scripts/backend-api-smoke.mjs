@@ -8,15 +8,15 @@ import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeader
 
 const digest = async value => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
 const token = 'test-session-token', tokenHash = await digest(token);
-let tables, errors, calls, reservation, match, saved;
+let tables, errors, calls, reservation, match, saved, pinResult;
 function reset() {
   tables = {
     app_sessions: [{ id: 'session', token_hash: tokenHash, account: 'rozha', device_id: 'device-1', expires_at: new Date(Date.now() + 60000).toISOString(), last_seen_at: new Date().toISOString(), revoked_at: null }],
     app_accounts: [{ id: 'rozha', name: 'Rozha', tabs: ['order', 'assistant', 'history'] }],
     app_items: [{ id: 'tomato', name: 'Tomatoes' }], app_suppliers: [{ id: 'supplier', name: 'Supplier' }],
-    app_recovery_tickets: [], app_push_subscriptions: [], app_login_attempts: [], app_devices: [{id:"device-1",account:"rozha"}], app_rico_inbox: [], app_audit_events: [],
+    app_push_subscriptions: [], app_login_attempts: [], app_devices: [{id:"device-1",account:"rozha"}], app_rico_inbox: [], app_audit_events: [],
   };
-  errors = new Map(); calls = []; reservation = [1, 2]; match = 'rozha'; saved = true;
+  errors = new Map(); calls = []; reservation = [1, 2]; match = 'rozha'; saved = true; pinResult = 'ok';
 }
 let requestAllowed=true;
 const db = {
@@ -29,9 +29,10 @@ const db = {
       return { data: reservation, error: null };
     }
     if (name === 'app_internal_match_code') return { data: match, error: null };
-    if (name === 'app_internal_set_credentials') return { data: 'ok', error: null };
+    if (name === 'app_internal_check_account_pin') return { data: args.p_pin === '482916', error: null };
+    if (name === 'app_internal_set_pin') return { data: pinResult, error: null };
     if (['app_internal_logout','app_internal_catalog_change','app_internal_device_command','app_internal_delete_order'].includes(name)) return {data:null,error:null};
-    if (name === 'app_internal_save_order_note') return { data: saved, error: null };
+    if (name === 'app_internal_save_order') return { data: saved, error: null };
     if (name === 'app_internal_streak_hit') return { data: { count: 1, best: 1, changed: true, milestone: false }, error: null };
     throw new Error(`Unexpected RPC ${name}`);
   },
@@ -78,7 +79,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory,cleanRepeatEntries } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', stripTypeScriptTypes(source) + '\nreturn { groupHistory,cleanRepeatEntries };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile );
+const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -101,11 +102,11 @@ try {
   const locked=await call('devices/command',{ids:['peer'],type:'logout'},'POST',false);assert.equal(locked.status,401);
   reset();requestAllowed=false;
   const throttled=await call('orders',{});assert.equal(throttled.status,429);assert.equal(throttled.headers.get('Retry-After'),'60');
-  assert.equal(calls.some(c=>c.name==='app_internal_save_order_note'),false);
+  assert.equal(calls.some(c=>c.name==='app_internal_save_order'),false);
   requestAllowed=true;reset();errors.set('app_internal_reserve_requests',true);
   assert.equal((await call('orders',{})).status,503,'request limits fail closed');
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';
-  for(const [path,method,body] of [['devices/command','POST',{ids:['peer'],type:'logout'}],['assistant/setup-status','GET',null],['assistant/groq-key','PUT',{key:'fake'}],['notes','POST',{body:'note'}],['push/send','POST',{type:'update'}]])assert.equal((await call(path,body,method)).status,403,`staff cannot use ${path}`);
+  for(const [path,method,body] of [['devices/command','POST',{ids:['peer'],type:'logout'}],['assistant/setup-status','GET',null],['assistant/groq-key','PUT',{key:'fake'}],['admin/pin','PUT',{account:'yunis',currentPin:'482916',newPin:'591837'}],['push/send','POST',{type:'update'}]])assert.equal((await call(path,body,method)).status,403,`staff cannot use ${path}`);
   assert.equal((await call('reminder',{enabled:true,time:'09:00'},'PUT')).status,200,'staff can set the daily reminder offered on their Settings screen');
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';tables.app_sessions[0].device_id=null;
   for(const [path,method] of [['push/subscription','DELETE'],['push/lang','PUT']])assert.equal((await call(path,{endpoint:'https://fcm.googleapis.com/fcm/send/orphan',lang:'en'},method)).status,403,'device-less staff sessions cannot modify orphan subscriptions');
@@ -150,7 +151,7 @@ try {
   reset();
   const validOrder = { id: 'order-1', date: new Date().toISOString(), entries: [{ supplierId: 'supplier', items: [{ itemId: 'tomato', name: 'Tomatoes', unit: 'kg', qty: 5 }] }] };
   assert.equal((await call('orders', validOrder)).status, 200);
-  const save = calls.find(c => c.name === 'app_internal_save_order_note');
+  const save = calls.find(c => c.name === 'app_internal_save_order');
   assert.deepEqual(save.args.p_lines, [{ supplier_id: 'supplier', supplier_name: 'Supplier', item_id: 'tomato', item_name: 'Tomatoes', unit_id: 'kg', qty: 5 }]);
   assert.equal(calls.some(c => c.table === 'app_orders' || c.table === 'app_order_lines'), false, 'the API delegates all order writes to one transaction');
   assert.match(calls.find(c => c.name === 'app_internal_streak_hit')?.args.p_day ?? '', /^\d{4}-\d{2}-\d{2}$/, 'a saved order counts toward the kitchen streak on its Baghdad day');
@@ -162,19 +163,19 @@ try {
     reset();
     const invalid = structuredClone(validOrder); invalid.entries[0].items[0].qty = qty;
     assert.equal((await call('orders', invalid)).status, 400, `reject quantity ${qty}`);
-    assert.equal(calls.some(c => c.name === 'app_internal_save_order_note'), false);
+    assert.equal(calls.some(c => c.name === 'app_internal_save_order'), false);
   }
   reset();
   const fastClock = structuredClone(validOrder); fastClock.date = new Date(Date.now() + 10 * 60000).toISOString();
   assert.equal((await call('orders', fastClock)).status, 200, 'a phone whose clock runs fast can still save its order');
-  assert.ok(Date.parse(calls.find(c => c.name === 'app_internal_save_order_note').args.p_date) <= Date.now(), 'a time in the future is saved as now');
+  assert.ok(Date.parse(calls.find(c => c.name === 'app_internal_save_order').args.p_date) <= Date.now(), 'a time in the future is saved as now');
   reset();
   const lastMonth = structuredClone(validOrder); lastMonth.date = new Date(Date.parse(monthStart()) - 60000).toISOString();
   assert.equal((await call('orders', lastMonth)).status, 409, 'an order from last month is still refused');
   reset();
   const noItemId = structuredClone(validOrder); delete noItemId.entries[0].items[0].itemId;
   assert.equal((await call('orders', noItemId)).status, 200);
-  assert.equal(calls.find(c => c.name === 'app_internal_save_order_note').args.p_lines[0].item_id, null, 'a line without an item id is saved without one');
+  assert.equal(calls.find(c => c.name === 'app_internal_save_order').args.p_lines[0].item_id, null, 'a line without an item id is saved without one');
   reset();
   assert.equal((await call('push/subscription', { endpoint: 'https://127.0.0.1/internal' }, 'PUT')).status, 400);
   tables.app_push_subscriptions.push({ endpoint: 'https://fcm.googleapis.com/fcm/send/peer', device_id: 'device-2' });
@@ -186,24 +187,36 @@ try {
   assert.deepEqual(boot.tabs,['order','assistant','transfers','manage']);
   assert.equal(boot.theme,undefined);
 
+  // Admin -> PINs: Rozha's current PIN first (a wrong one counts as a failed sign-in), no weak PINs.
   reset();
-  const ticket = 'verified-ticket';
-  tables.app_recovery_tickets.push({ token_hash: await digest(ticket), stage: 'verified', expires_at: new Date(Date.now() + 60000).toISOString() });
-  const results = await Promise.all([call('recovery/save', { ticket, rozhaPin: '432198' }, 'POST', false), call('recovery/save', { ticket, rozhaPin: '739152' }, 'POST', false)]);
-  assert.deepEqual(results.map(response => response.status).sort(), [200, 401]);
-  assert.equal(calls.filter(c => c.name === 'app_internal_set_credentials').length, 1, 'a verified recovery capability can change credentials only once');
+  assert.equal((await call('admin/pin',{account:'yunis',currentPin:'000000',newPin:'591837'},'PUT')).status,403,'a wrong current PIN changes nothing');
+  assert.equal(calls.some(c=>c.name==='app_internal_set_pin'),false);
+  assert.equal(tables.app_login_attempts.every(row=>!row.succeeded),true,'and counts as a failed sign-in');
   reset();
-  tables.app_recovery_tickets.push({ token_hash: await digest(ticket), stage: 'code', expires_at: new Date(Date.now() + 60000).toISOString() });
-  assert.equal((await call('recovery/name', { ticket, name: 'a'.repeat(40) + 'suffix' }, 'POST', false)).status, 401, 'valid answers cannot be accepted by truncating extra characters');
+  assert.equal((await call('admin/pin',{account:'yunis',currentPin:'482916',newPin:'123456'},'PUT')).status,400,'a weak PIN is refused');
+  assert.equal(calls.some(c=>c.name==='app_internal_reserve_login'),false,'before any PIN is checked');
+  reset();
+  assert.equal((await call('admin/pin',{account:'staff',currentPin:'482916',newPin:'591837'},'PUT')).status,400);
+  reset(); reservation = null;
+  assert.equal((await call('admin/pin',{account:'yunis',currentPin:'482916',newPin:'591837'},'PUT')).status,429,'the sign-in limits apply');
+  reset();
+  assert.equal((await call('admin/pin',{account:'yunis',currentPin:'482916',newPin:'591837'},'PUT')).status,200);
+  assert.deepEqual(calls.find(c=>c.name==='app_internal_set_pin').args,{p_account:'yunis',p_pin:'591837',p_keep_session:'session'},'this session stays signed in');
+  assert.equal(calls.find(c=>c.name==='app_internal_check_account_pin').args.p_account,'rozha','the current PIN checked is always Rozha\'s');
+  assert.equal(tables.app_audit_events.at(-1).action,'change_pin');
+  reset(); pinResult = 'duplicate';
+  assert.equal((await (await call('admin/pin',{account:'rozha',currentPin:'482916',newPin:'591837'},'PUT')).json()).error,'duplicate_pin');
+  // Transfers is still being made: its routes refuse.
+  reset();
+  for(const [path,method] of [['stock-items','GET'],['stock-items','PUT'],['stock-items/x/alias','POST'],['stock/read','POST']])assert.equal((await call(path,method==='GET'?null:{},method)).status,423,`${path} waits for Transfers`);
 
   // Retired sign-in and personalization endpoints are no longer reachable.
   reset();
   for(const path of ['passkey/register-options','passkey/register','passkey'])assert.equal((await call(path,{})).status,404);
   for(const path of ['passkey/login-options','passkey/login'])assert.equal((await call(path,{},'POST',false)).status,401);
   for(const path of ['me/theme','me/tabs'])assert.equal((await call(path,{},'PUT')).status,404);
+  // Kitchen notes, repeat orders and the secret code are gone too.
+  for(const [path,method] of [['notes','GET'],['notes','POST'],['notes/1/read','POST'],['repeat-orders','GET'],['repeat-orders','POST']])assert.equal((await call(path,method==='GET'?null:{},method)).status,404,`${path} is retired`);
+  for(const path of ['recovery/name','recovery/verify','recovery/save'])assert.equal((await call(path,{},'POST',false)).status,401,`${path} is retired`);
 } finally { console.error = mute; }
-assert.ok(cleanRepeatEntries([{supplierId:'s',items:[{itemId:'a',qty:0.125}]}]));
-assert.equal(cleanRepeatEntries([{items:[{itemId:'a',qty:0.0001}]}]),null);
-assert.equal(cleanRepeatEntries([{items:[{itemId:'a',qty:'2'}]}]),null);
-assert.equal(cleanRepeatEntries([{items:[{itemId:'a',qty:1},{itemId:'a',qty:2}]}]),null);
-console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, one-use recovery, retired endpoints)');
+console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, Admin PIN change, locked Transfers, retired endpoints)');

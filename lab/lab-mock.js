@@ -7,7 +7,7 @@
   document.documentElement.classList.add('booting');
   const LS = 'ricottaOrders:';
   const DB_KEY = 'ricottaLab:db';
-  const VIEWS = ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record','devices','settings'];
+  const VIEWS = ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record','admin','settings'];
   const ACCOUNT_VIEWS = {rozha:VIEWS, yunis:['order','assistant','transfers','history','suppliers','itemsAdmin','units','record']};
   const NAMES = {rozha:{en:'Rozha',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}};
 
@@ -94,14 +94,10 @@
     const iso = (y, m, d) => new Date(Date.UTC(y, m-1, d)).toISOString().slice(0,10);
     const lastDay = history.length && history[history.length-1].date.slice(0,10) === new Date().toISOString().slice(0,10) ? iso(today.y, today.m, today.d) : iso(today.y, today.m, today.d - 1);
     const streak = {count:12, best:18, last_day:lastDay, lost_count:0, lost_day:null, prev:null};
-    const notes = [
-      {id:1, body:'Please check the fridge temperature before closing tonight.', at:new Date(Date.now()-26*3600000).toISOString(), readAt:new Date(Date.now()-25*3600000).toISOString(), doneAt:new Date(Date.now()-24*3600000).toISOString()},
-      {id:2, body:'Order extra basil for the weekend, we have a big group on Friday.', at:new Date(Date.now()-50*60000).toISOString(), readAt:null, doneAt:null}
-    ];
     const weather = {temp:24, code:3, rain:false, snow:false, max:27, min:14, rainChance:10, dayCode:3, updatedAt:new Date().toISOString()};
     const chats = [{id:'0b7c4a9e-1f2d-4c3b-9a8e-7d6c5b4a3f21', account:'yunis', title:'How much mozzarella last week?', createdAt:new Date(Date.now()-5*3600000).toISOString(), updatedAt:new Date(Date.now()-5*3600000).toISOString(),
       messages:[{role:'user', text:'How much mozzarella did we order last week?', ts:Date.now()-5*3600000}, {role:'assistant', mood:'calm', text:'About **13 kg** over 3 orders, Yunis. Thursday was the biggest at 5 kg.', ts:Date.now()-5*3600000+4000}]}];
-    return {v:4, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, notes, weather, reminder:{enabled:true, time:'09:00'}, tabs:{}, seq:100, said:{}};
+    return {v:5, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, reminder:{enabled:true, time:'09:00'}, tabs:{}, seq:100, said:{}};
   }
   /* Two finished months for the archive (History itself only keeps this month). */
   const LAB_MONTHS = [
@@ -123,7 +119,7 @@
     ['Pizza Cheese - پەنیری پیتزا', ['کیلۆ','کارتۆن']], ['Dish Soap - سابوونی قاپ', ['دانە','کارتۆن']], ['Mini Water - ئاوی بچووک', ['کارتۆن']], ['Pepsi Can - پیپسی قوتوو', ['کارتۆن','دانە']]
   ].map(([name, units], i)=>({id:'st-'+(i+1), name, units, aliases:[]}));
   let db = lsGet(DB_KEY);
-  if(!db || db.v !== 4) db = seed();
+  if(!db || db.v !== 5) db = seed();
   if(!Array.isArray(db.stock)) db.stock = STOCK_SEED.map(i=>({...i, units:[...i.units]}));
   const save = () => lsSet(DB_KEY, db);
   save();
@@ -265,7 +261,6 @@
       db.signedOut = false; save();
       return json({token:'lab-'+account, account, name:NAMES[account].en, tabs:['order','assistant','transfers','manage'], expiresAt:new Date(Date.now()+18*3600000).toISOString()});
     }
-    if(path.startsWith('recovery/')) return fail('invalid_credentials', 401);
     if(method === 'GET' && path === 'health') return ok();
     // Asked before signing in, so it is answered without a session (no bot check in the Lab).
     if(method === 'GET' && path === 'auth/security') return json({required:false, siteKey:null});
@@ -279,19 +274,18 @@
         suppliers:db.suppliers, items:db.items, units:db.units,
         history:history(), historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
         activity:db.activity.filter(a=>a.ts >= monthStartIso()), inbox:db.inbox.slice(-20),
-        pins:db.pins[me] || [], streak:streakView(), notes:db.notes, weather:db.weather,
-        repeats:db.repeats || [], months:LAB_MONTHS, draft:db.drafts?.[account] || {cart:{},revision:0}
+        pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
+        months:LAB_MONTHS, draft:db.drafts?.[account] || {cart:{},revision:0}
       });
     }
     if(path === 'draft' && (method === 'GET' || method === 'PUT')){
       db.drafts ||= {};
       const draft=db.drafts[account] ||= {cart:{},revision:0};
       if(method === 'PUT'){
-        const conflicts=(body.noteAfter!=null && (draft.note||'')!==(body.noteBefore||'') && (draft.note||'')!==body.noteAfter)?['__note']:[];
-        conflicts.push(...(body.changes || []).filter(c=>(draft.cart[c.itemId]||0)!==c.before && (draft.cart[c.itemId]||0)!==c.after).map(c=>c.itemId));
+        const conflicts=(body.changes || []).filter(c=>(draft.cart[c.itemId]||0)!==c.before && (draft.cart[c.itemId]||0)!==c.after).map(c=>c.itemId);
         if(conflicts.length) return json({...draft,conflicts},409);
         for(const c of body.changes || []){if(c.after) draft.cart[c.itemId]=c.after; else delete draft.cart[c.itemId];}
-        if(body.noteAfter!=null)draft.note=body.noteAfter;draft.revision++; save();
+        draft.revision++; save();
       }
       return json({...draft,conflicts:[]});
     }
@@ -299,22 +293,11 @@
     if(method === 'PUT' && path === 'me/pins'){ db.pins[account] = (body.itemIds || []).slice(0, 60); save(); return ok(); }
     if(method === 'GET' && path === 'streak') return json(streakView());
     if(method === 'POST' && path === 'streak/recover'){ if(!streakRecover()) return fail('nothing_to_recover', 409); save(); return json({ok:true, streak:streakView()}); }
-    if(method === 'GET' && path === 'notes') return json(db.notes);
-    if(method === 'POST' && path === 'notes/replies-seen'){ db.notes.forEach(n=>{ if(n.reply && !n.replySeenAt) n.replySeenAt = new Date().toISOString(); }); save(); return ok(); }
-    if(method === 'POST' && (m = path.match(/^notes\/(\d+)\/reply$/))){
-      const n = db.notes.find(x=>x.id === Number(m[1]));
-      if(!n || account === 'rozha') return fail('forbidden', 403);
-      Object.assign(n, {reply:String(body.body||'').slice(0,300), repliedAt:new Date().toISOString(), replySeenAt:null, readAt:n.readAt || new Date().toISOString()});
-      save(); return json(n);
-    }
-    // Repeat orders and the month archive
-    if(method === 'GET' && path === 'repeat-orders') return json(db.repeats || []);
-    if(method === 'POST' && path === 'repeat-orders'){
-      const r = {id:crypto.randomUUID(), name:String(body.name||'').slice(0,120), days:body.days||[], entries:body.entries||[], by:account, createdAt:new Date().toISOString()};
-      db.repeats = [...(db.repeats || []), r]; save(); return json(r);
-    }
-    if(method === 'DELETE' && (m = path.match(/^repeat-orders\/(.+)$/))){ db.repeats = (db.repeats || []).filter(r=>r.id !== m[1]); save(); return ok(); }
+    // The month archive
     if(method === 'GET' && path === 'months') return json(LAB_MONTHS);
+    // Transfers is still being made: like the server (TRANSFERS_OPEN), its routes refuse until it is ready
+    // (TRANSFERS_READY in transfers.js, which loads after this file).
+    if(!(typeof TRANSFERS_READY !== 'undefined' && TRANSFERS_READY) && (path === 'stock-items' || path === 'stock/read' || path.startsWith('stock-items/'))) return fail('transfers_not_ready', 423);
     if(method === 'GET' && path === 'stock-items') return json(db.stock);
     if(method === 'PUT' && path === 'stock-items'){
       const items = Array.isArray(body.items) ? body.items : null;
@@ -346,19 +329,6 @@
         return {said:p.said, amount:fitted ? fitted.amount : p.amount, unit:unit || null, wrote:changed ? {amount:p.amount, unit:p.unit} : null, itemId:item ? item.id : null, sure, suggestions:sure ? [] : found.suggestions};
       });
       return json({rows});
-    }
-    if(method === 'POST' && path === 'notes'){
-      if(account !== 'rozha') return fail('forbidden', 403);
-      const n = {id:++db.seq, body:String(body.body||'').slice(0,500), at:new Date().toISOString(), readAt:null, doneAt:null};
-      db.notes.unshift(n); save(); return json(n);
-    }
-    if((m = path.match(/^notes\/(\d+)(?:\/(read|done))?$/))){
-      const n = db.notes.find(x=>x.id === Number(m[1]));
-      if(method === 'DELETE'){ if(account !== 'rozha') return fail('forbidden', 403); db.notes = db.notes.filter(x=>x !== n); save(); return ok(); }
-      if(!n || account === 'rozha') return fail('forbidden', 403);
-      if(m[2] === 'read'){ n.readAt = n.readAt || new Date().toISOString(); }
-      else { n.doneAt = body.done === false ? null : new Date().toISOString(); n.readAt = n.readAt || n.doneAt; }
-      save(); return ok();
     }
     if(method === 'PUT' && (m = path.match(/^supplier-order\/(.+)$/))){
       const sid = decodeURIComponent(m[1]);
@@ -413,6 +383,17 @@
     if(method === 'GET' && path === 'activity') return json(db.activity.filter(a=>a.ts >= monthStartIso()));
     if(method === 'GET' && path === 'devices') return json(devices(account));
     if(path === 'devices/me' || path === 'devices/me/ack' || path === 'devices/command') return ok();
+    /* Admin -> PINs. The Lab keeps no PINs: 000000 stands for a wrong current PIN, and Yunis's Lab PIN (222222)
+       can't be given to Rozha. */
+    if(method === 'PUT' && path === 'admin/pin'){
+      if(account !== 'rozha') return fail('forbidden', 403);
+      const pin = String(body.newPin || ''), digits = [...pin].map(Number);
+      if(!['rozha','yunis'].includes(body.account) || !/^\d{6}$/.test(pin)) return fail('invalid_pin');
+      if(new Set(pin).size === 1 || digits.every((d, i)=>!i || d === digits[i-1] + 1) || digits.every((d, i)=>!i || d === digits[i-1] - 1)) return fail('weak_pin');
+      if(!/^\d{6}$/.test(String(body.currentPin || '')) || body.currentPin === '000000') return fail('wrong_pin', 403);
+      if(body.account === 'rozha' && pin === '222222') return fail('duplicate_pin');
+      return ok();
+    }
     if((m = path.match(/^rico-chats(?:\/(.+))?$/))){
       const id = m[1] ? decodeURIComponent(m[1]) : null;
       if(method === 'GET' && !id) return json({chats:[...db.chats].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).map(c=>({id:c.id, account:c.account, title:c.title, createdAt:c.createdAt, updatedAt:c.updatedAt}))});

@@ -24,7 +24,7 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.equal((await q("select to_regclass('stock_receipts') as t"))[0].t,null);
  assert.equal((await q("select count(*)::int as n from pg_namespace where nspname='app_private'"))[0].n,0,'the empty leftover schema is gone');
  assert.deepEqual((await q('select key from app_secrets order by key')).map(r=>r.key),['gemini_api_key'],'unused secrets are removed, the rest stay');
- assert.equal((await q("select has_sequence_privilege('anon','app_notes_id_seq','USAGE') as allowed"))[0].allowed,false,'sequences are closed to the browser roles');
+ assert.equal((await q("select has_sequence_privilege('anon','app_rico_inbox_id_seq','USAGE') as allowed"))[0].allowed,false,'sequences are closed to the browser roles');
  await db.exec('create table public.later_table(id bigint generated always as identity primary key);');
  assert.equal((await q("select has_sequence_privilege('authenticated','later_table_id_seq','USAGE') as allowed"))[0].allowed,false,'and so are sequences made later');
  await db.exec('drop table public.later_table;');
@@ -108,7 +108,35 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await assert.rejects(db.exec("select app_internal_delete_order('older','yunis','device');"),/Forbidden/,'not after 15 minutes');
  await db.exec("select app_internal_delete_order('older','rozha','device');");
  assert.equal((await q("select count(*)::int as n from app_orders where id in ('fresh','older')"))[0].n,0);
+ // Admin -> PINs: a new PIN for one account, never the other account's PIN; that account is signed out
+ // everywhere except the session making the change. A six-digit code is a PIN or nothing (no secret code).
+ await db.exec(`update app_accounts set pin_hash=extensions.crypt('482916',extensions.gen_salt('bf',4)) where id='rozha';
+  update app_accounts set pin_hash=extensions.crypt('730154',extensions.gen_salt('bf',4)) where id='yunis';
+  delete from app_sessions; delete from app_devices;
+  insert into app_devices(id,account,logged_in) values('r-phone','rozha',true),('r-laptop','rozha',true),('y-phone','yunis',true);
+  insert into app_sessions(id,token_hash,device_id,expires_at,account) values
+   ('00000000-0000-4000-8000-0000000000a1','a','r-phone',now()+interval '1 day','rozha'),
+   ('00000000-0000-4000-8000-0000000000a2','b','r-laptop',now()+interval '1 day','rozha'),
+   ('00000000-0000-4000-8000-0000000000a3','c','y-phone',now()+interval '1 day','yunis');`);
+ const setPin=async(account,pin)=>(await q(`select app_internal_set_pin('${account}','${pin}','00000000-0000-4000-8000-0000000000a1') as r`))[0].r;
+ assert.equal(await setPin('rozha','730154'),'duplicate','the two PINs stay different');
+ assert.equal(await setPin('rozha','12a456'),'invalid');
+ assert.equal(await setPin('staff','591837'),'invalid');
+ assert.equal((await q('select count(*)::int as n from app_sessions where revoked_at is not null'))[0].n,0,'a refused PIN changes nothing');
+ assert.equal(await setPin('yunis','591837'),'ok');
+ assert.equal((await q("select app_internal_match_code('591837') as a"))[0].a,'yunis');
+ assert.equal((await q("select app_internal_match_code('730154') as a"))[0].a,null,'the old PIN no longer signs in');
+ assert.deepEqual((await q('select account, revoked_at is not null as out from app_sessions order by token_hash')).map(r=>[r.account,r.out]),[['rozha',false],['rozha',false],['yunis',true]],'only Yunis is signed out');
+ assert.equal(await setPin('rozha','264809'),'ok');
+ assert.deepEqual((await q("select token_hash, revoked_at is not null as out from app_sessions where account='rozha' order by token_hash")).map(r=>[r.token_hash,r.out]),[['a',false],['b',true]],'her own new PIN keeps this session and signs out her other devices');
+ assert.deepEqual((await q('select id, logged_in from app_devices order by id')).map(r=>[r.id,r.logged_in]),[['r-laptop',false],['r-phone',true],['y-phone',false]]);
+ assert.equal((await q("select has_function_privilege('authenticated','app_internal_set_pin(text,text,uuid)','EXECUTE') as allowed"))[0].allowed,false);
+ // Kitchen notes, repeat orders, the order note, the secret code and the message format left nothing behind.
+ for(const t of ['app_notes','app_repeat_orders','app_recovery_tickets']) assert.equal((await q(`select to_regclass('${t}') as t`))[0].t,null,t+' is gone');
+ assert.equal((await q("select count(*)::int as n from information_schema.columns where (table_name,column_name) in (('app_accounts','message_format'),('app_orders','note'),('app_order_drafts','note'))"))[0].n,0);
+ assert.equal((await q("select count(*)::int as n from pg_proc where proname in ('app_internal_set_credentials','app_internal_check_recovery_name','app_internal_set_recovery_name','app_internal_patch_draft_note','app_internal_save_order_note')"))[0].n,0);
+ await db.exec('select app_internal_cleanup();');
  // Exercise schema-only restore to another empty database, without business data.
  const restored=new PGlite({extensions:{pgcrypto}});await restored.exec('create role anon;create role authenticated;create role service_role;');await restored.exec(fs.readFileSync('supabase/baseline.sql','utf8'));for(const sql of migrations) await restored.exec(sql);await restored.close();
- await db.close();console.log('Database smoke: PASS (every migration, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, schema restore)');
+ await db.close();console.log('Database smoke: PASS (every migration, PIN change, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, schema restore)');
 })().catch(e=>{console.error(e);process.exitCode=1});
