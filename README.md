@@ -73,7 +73,7 @@ Keep encrypted database backups outside the repository and browser. Supabase's b
 
 ## Ordering tools
 
-Supplier cards include WhatsApp and phone links. Orders support a shared whole-order note and quantities with up to three decimal places. Adjust quantities doubles or halves the selected items with confirmation and Undo. Settings → WhatsApp message lets each account customize the restaurant name, greeting and closing.
+Supplier cards include WhatsApp and phone links. Orders support a shared whole-order note and quantities with up to three decimal places. Adjust quantities doubles or halves the selected items with confirmation and Undo. The WhatsApp message to a supplier is the same for everyone: a heading, the order note, then one line per item.
 
 Items can be marked unavailable without deletion and given alternate search names. Items → Import Excel previews a first-sheet `.xlsx` or `.csv` file before saving, with at most 500 rows and a 2 MB file limit. Required column headings are `Name`, `Unit`, and `Supplier`; unit and supplier values must match one existing entry by name or ID. Optional headings are `ID`, `Aliases`, `Available`, and `Note`. Existing items match by ID or a unique name and supplier; omitted optional fields are preserved. Ambiguous or invalid rows must be corrected before importing.
 
@@ -106,7 +106,9 @@ See [SECURITY.md](SECURITY.md) for the authentication model, permission boundari
 
 The loading screen is inline in `index.html`, so it paints on the first frame: solid dark green, a green bar paints the word in, then the dot, "ORDERS" and a filling bar. On a fast start it stays only until the word is painted (about a second), never longer; with reduced motion it lifts at once.
 
-The sign-in page is dark green with one white PIN sheet on phones (title, one line, six PIN circles and the keypad on one centre line) and two halves on computers: the green "A calmer kitchen" side and a plain white PIN side. The green side stays green in dark mode; the browser bar is green while the sign-in page shows.
+On phones the sign-in page is one light column: the ricotta mark, "Welcome back.", six PIN boxes, the number pad (with a "Clear" key) and the language at the bottom. On computers it has two halves: the green "A calmer kitchen" side and a white side where the PIN is typed on the keyboard, with the language in the top corner. The number pad shows only on touch screens; everywhere else the page says the PIN is typed and signs in by itself after the sixth digit. The green side stays green in dark mode.
+
+Every screen opens with today's date in a small green line, its name and one sentence on what it is for. Cards are white with a hairline edge and no shadow; items on the Order screen are soft grey tiles that turn white with a green edge once picked. On computers the sidebar runs the full height with the ricotta mark at the top and the current screen in a mint highlight. Buttons are round (pills and circles). Every switch (Record's filters, Manage's Items / Suppliers / Units, dark mode, Rico's history) and the phone tab bar can be held and slid: the highlight follows the finger and each part it passes opens as it goes (dark mode waits until you let go). The shared values (surfaces, corner sizes, the switch highlight) are tokens at the top of `style.css`. App text never uses em dashes.
 
 If starting ever fails, the app shows "Ricotta could not open" with Refresh instead of an endless loading screen; if its scripts cannot load at all, a Reload link appears on the loading screen after 15 seconds (it needs no script).
 

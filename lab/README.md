@@ -8,6 +8,8 @@ It runs the app's own files from the repository root unchanged, with two additio
 
 `page.html` is the app's `index.html` with these scripts added (no doctype or head; the Artifact wraps it).
 
+For an Artifact, build with `sh lab/build.sh artifact`. An Artifact shows the page inside a frame and the app refuses to run framed (so nobody can wrap the real sign-in in another site), so that build turns the check off in the Lab's own `dist/app.js`. A plain `sh lab/build.sh` (the local Lab and the tests) keeps it, like the app.
+
 ## Build and preview
 
 ```sh

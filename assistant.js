@@ -291,7 +291,9 @@ function ricoErrorText(code){
    face already shows it. */
 const RICO_MOOD_TAG = new RegExp(`\\[\\[?\\s*(?:mood\\s*:\\s*)?(?:${RICO_MOODS.join('|')})\\s*\\]\\]?[ \\t]*`, 'gi');
 function ricoClean(s){
-  return String(s || '').replace(/\[\[\s*data\s*:\s*([^\]]*?)\s*\]\]/gi, '$1').replace(/<<\/?DATA>>/gi, '').replace(RICO_MOOD_TAG, '');
+  // Older replies may still carry an em dash (or a spaced en dash) as a pause: a comma reads cleaner.
+  return String(s || '').replace(/\[\[\s*data\s*:\s*([^\]]*?)\s*\]\]/gi, '$1').replace(/<<\/?DATA>>/gi, '').replace(RICO_MOOD_TAG, '')
+    .replace(/\s*\u2014\s*|\s+\u2013\s+/g, ', ');
 }
 /* A small, safe Markdown subset: **bold**, `code`, bullet and numbered lists, paragraphs. */
 function ricoFormat(src){
@@ -354,12 +356,12 @@ function renderRicoProposalCard(p, mi){
     return ricoCard(icon, title, body, actions(t('save')), p);
   }
   if(p.kind === 'item_aliases'){
-    body=(p.entries||[]).map(e=>`<div class="rico-card-line"><span dir="auto">${esc(e.name)}</span><span dir="auto">${esc(e.aliases.join(', ')||'—')}</span></div>`).join('');
+    body=(p.entries||[]).map(e=>`<div class="rico-card-line"><span dir="auto">${esc(e.name)}</span><span dir="auto">${esc(e.aliases.join(', ')||t('noValue'))}</span></div>`).join('');
     return ricoCard(ICON_EDIT,`${esc(t('aliasChanges'))} (${p.entries.length})`,body,actions(t('save')),p);
   }
   if(p.kind === 'new_supplier'){
     icon = NAV_ICONS.suppliers; title = t('ricoCardNewSupplier');
-    body = ricoFields([[t('name'), p.name], [t('phone'), p.phone || '—']]);
+    body = ricoFields([[t('name'), p.name], [t('phone'), p.phone || t('noValue')]]);
     return ricoCard(icon, title, body, actions(t('addSupplier')), p);
   }
   if(p.kind === 'notify'){
@@ -899,6 +901,7 @@ function ricoOpenHistory(){
     }).join('') + `<button type="button" class="rico-hist-all${confirming === 'all' ? ' asking' : ''}" data-hist-all>${esc(confirming === 'all' ? t('ricoDeleteAllConfirm') : whose === state.account ? t('ricoDeleteAll') : t('ricoDeleteAllOf')(accountLabel(whose)))}</button>`;
   };
   paint();
+  enhanceSegments();   // Mine / the other person's: the same slide-able switch as everywhere else
   if(!rico.chats) ricoLoadChats().then(paint);
   let closed = false;
   const close = ()=>{

@@ -59,7 +59,6 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   DELETE repeat-orders/:id
 //   GET    months                                               the archive: one summary per finished month
 //   GET    draft | PUT draft          {changes, noteBefore, noteAfter}  this account's unsent order, shared between its devices
-//   PUT    me/message-format          {restaurant, greeting, closing}   the WhatsApp message around each order
 //   PUT    items/aliases              {entries}                 Rico's search-name changes, applied together
 //   GET    auth/security              (public)                  whether sign-in needs the bot check, and its site key
 //   GET    stock-items                                          Transfers: the workplace stock system's item list
@@ -282,9 +281,9 @@ async function readReminder() {
   return data ? { enabled: data.enabled, time: String(data.remind_time).slice(0, 5) } : null;
 }
 async function readAccount(id: string) {
-  const { data, error } = await app("accounts").select("id,name,pins,message_format").eq("id", id).maybeSingle();
+  const { data, error } = await app("accounts").select("id,name,pins").eq("id", id).maybeSingle();
   if (error) throw error;
-  return data ? { account: data.id, name: data.name, pins: Array.isArray(data.pins) ? data.pins : [], messageFormat: data.message_format ?? {} } : null;
+  return data ? { account: data.id, name: data.name, pins: Array.isArray(data.pins) ? data.pins : [] } : null;
 }
 async function orderLinesFor(orderRows: any[]): Promise<any[]> {
   // Lines are read in small batches of orders: a long id list in one request
@@ -322,7 +321,7 @@ async function bootstrap(s: Session) {
   return {
     account: s.account, name: me?.name ?? accountName(s.account), tabs: TABS,
     views: ACCOUNT_VIEWS[s.account],
-    pins: me?.pins ?? [], messageFormat: me?.messageFormat ?? {}, streak, notes,
+    pins: me?.pins ?? [], streak, notes,
     suppliers: (suppliers.data ?? []).map(toSupplier),
     items: (items.data ?? []).map(toItem),
     units: units.data ?? [],
@@ -809,11 +808,6 @@ Deno.serve(async (req) => {
     if (M === "POST" && path === "logout") {
       const { error } = await db.rpc("app_internal_logout", { p_session: s.id, p_device: s.deviceId });
       return error ? fail("logout_failed", 503) : ok();
-    }
-    if (M === "PUT" && path === "me/message-format") {
-      const message_format={restaurant:text(b.restaurant,80),greeting:text(b.greeting,200),closing:text(b.closing,200)};
-      const {error}=await app("accounts").update({message_format,updated_at:nowIso()}).eq("id",s.account);
-      return error ? fail("save_failed",503) : json(message_format);
     }
     if (M === "PUT" && path === "me/pins") {
       const ids = Array.isArray(b.itemIds) ? [...new Set(b.itemIds.map((id: unknown) => text(id, 120)).filter(Boolean))] : null;

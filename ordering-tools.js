@@ -42,12 +42,6 @@ const ORDERING_TEXT = {
     importPreview: "Review items",
     importInvalid: "Check the highlighted rows before importing.",
     importSaved: "Items imported",
-    messageFormat: "WhatsApp message",
-    restaurantName: "Restaurant name",
-    greeting: "Opening message",
-    closing: "Closing message",
-    messageHint:
-      "Optional text included with each supplier order. Leave blank to use the usual Ricotta message.",
     callSupplier: "Call",
     contactSupplier: "WhatsApp",
     catalogSearch: "Search this list…",
@@ -109,12 +103,6 @@ const ORDERING_TEXT = {
     importPreview: "پشکنینی کاڵاکان",
     importInvalid: "پێش هاوردەکردن ڕیزە دیاریکراوەکان بپشکنە.",
     importSaved: "کاڵاکان هاوردە کران",
-    messageFormat: "پەیامی واتساپ",
-    restaurantName: "ناوی چێشتخانە",
-    greeting: "پەیامی سەرەتا",
-    closing: "پەیامی کۆتایی",
-    messageHint:
-      "دەقی ئارەزوومەندانە بۆ هەر داواکارییەک. بۆ پەیامی ئاسایی ریکۆتا بە بەتاڵی بهێڵەوە.",
     callSupplier: "پەیوەندی",
     contactSupplier: "واتساپ",
     catalogSearch: "لە لیستەکە بگەڕێ…",
@@ -176,12 +164,6 @@ const ORDERING_TEXT = {
     importPreview: "مراجعة الأصناف",
     importInvalid: "راجع الصفوف المحددة قبل الاستيراد.",
     importSaved: "تم استيراد الأصناف",
-    messageFormat: "رسالة واتساب",
-    restaurantName: "اسم المطعم",
-    greeting: "رسالة البداية",
-    closing: "رسالة الختام",
-    messageHint:
-      "نص اختياري لكل طلب مورد. اتركه فارغاً لاستخدام رسالة ريكوتا المعتادة.",
     callSupplier: "اتصال",
     contactSupplier: "واتساب",
     catalogSearch: "ابحث في هذه القائمة…",
@@ -302,29 +284,6 @@ function attachOrderTools() {
         });
       }),
   );
-}
-function renderMessageSettings() {
-  const f = state.messageFormat || {};
-  return `<details class="settings-group"><summary>${esc(t("messageFormat"))}</summary><p class="field-hint">${esc(t("messageHint"))}</p><div class="field"><label for="messageRestaurant">${esc(t("restaurantName"))}</label><input id="messageRestaurant" maxlength="80" dir="auto" value="${esc(f.restaurant || "")}"></div><div class="field"><label for="messageGreeting">${esc(t("greeting"))}</label><textarea id="messageGreeting" rows="2" maxlength="200" dir="auto">${esc(f.greeting || "")}</textarea></div><div class="field"><label for="messageClosing">${esc(t("closing"))}</label><textarea id="messageClosing" rows="2" maxlength="200" dir="auto">${esc(f.closing || "")}</textarea></div><button type="button" class="btn btn-primary" id="messageFormatSave">${esc(t("save"))}</button></details>`;
-}
-function attachMessageSettings() {
-  const b = document.getElementById("messageFormatSave");
-  if (b)
-    b.onclick = () =>
-      withBusy(b, async () => {
-        const body = {
-          restaurant: document.getElementById("messageRestaurant").value.trim(),
-          greeting: document.getElementById("messageGreeting").value.trim(),
-          closing: document.getElementById("messageClosing").value.trim(),
-        };
-        const r = await api("me/message-format", { method: "PUT", body });
-        if (!r.ok) {
-          await showAlert(t("saveFailed"));
-          return;
-        }
-        state.messageFormat = body;
-        toast(t("savedMsg")(t("messageFormat")));
-      });
 }
 function supplierContactLinks(s) {
   if (!foldText(String(s.phone || "")).replace(/\D/g, "")) return "";
