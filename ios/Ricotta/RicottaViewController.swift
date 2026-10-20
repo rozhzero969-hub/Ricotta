@@ -33,11 +33,15 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         #endif
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
+        // The app page uses viewport-fit=cover and pads itself with env(safe-area-inset-*), so it fills
+        // the whole screen and paints its own background (and dark mode) behind the status bar.
+        // The print preview sits under a navigation bar, so it stays inside the safe area.
+        let fillsScreen = popupConfiguration == nil
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+            webView.topAnchor.constraint(equalTo: fillsScreen ? view.topAnchor : view.safeAreaLayoutGuide.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: fillsScreen ? view.bottomAnchor : view.safeAreaLayoutGuide.bottomAnchor)
         ])
         spinner.translatesAutoresizingMaskIntoConstraints = false
         spinner.hidesWhenStopped = true
