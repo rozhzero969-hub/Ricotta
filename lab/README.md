@@ -8,6 +8,8 @@ It runs the app's own files from the repository root unchanged, with two additio
 
 `page.html` is the app's `index.html` with these scripts added (no doctype or head; the Artifact wraps it).
 
+One change to the app's own code, in the Lab's copy only: an Artifact shows the page inside a frame, and the app refuses to run framed (so nobody can wrap the real sign-in in another site), so `build.sh` turns that check off in `dist/app.js`. The app itself keeps it.
+
 ## Build and preview
 
 ```sh
