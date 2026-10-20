@@ -20,6 +20,12 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         let configuration = popupConfiguration ?? WKWebViewConfiguration()
         configuration.websiteDataStore = .default() // Separate, persistent sign-in for this app.
         configuration.allowsInlineMediaPlayback = true
+        if popupConfiguration == nil {
+            // One read-only flag so the page can hide web-only hints (web push, Add to Home Screen).
+            // It is not a bridge: the page cannot call back into the app.
+            configuration.userContentController.addUserScript(WKUserScript(
+                source: "window.RICOTTA_NATIVE_SHELL = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         // Keep WebKit's default user agent and browser features for Cloudflare verification.
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
