@@ -2495,10 +2495,12 @@ function attachHistoryEvents(){
       // longer have anywhere to show up on the order screen.
       if(state.items.some(i=>i.id===it.itemId && i.available!==false)) cart[it.itemId] = it.qty;
     }));
+    // Replaces the order being made; Undo brings it back.
+    const before = {...state.cart};
     state.cart = cart;
     persistCartDraft();
     goView('order');
-    toast(t('reorderReady')(cartCount()));
+    toast(t('reorderReady')(cartCount()), 'ok', {undo:()=>{ state.cart = before; persistCartDraft(); if(state.view === 'order') refreshOrderView(); }});
   });
   document.querySelectorAll('[data-delhist]').forEach(b=>b.onclick=async()=>{
     if(!(await showConfirm(t('confirmDeleteHistory')))) return;

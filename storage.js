@@ -42,7 +42,7 @@ function apiAccountMatchesUi(session){
 function apiPathIsPublic(path){ return path === 'login' || path === 'auth/security' || path === 'health'; }
 function staleApiReply(){ return {ok:false, status:0, data:null, stale:true}; }
 
-/* What this device is, for the Devices screen: "iPhone 16/17 Pro Max|App",
+/* What this device is, for Admin's device list: "iPhone 16/17 Pro Max|App",
    "Windows PC|Chrome"... iPhones don't reveal their exact model to web
    pages, so the model family comes from the screen size. Android phones
    report their model (e.g. SM-S918B) through client hints. Sent with every
@@ -84,7 +84,7 @@ try{
   }, ()=>{});
 }catch(_){}
 
-/* Which version of the app this is (config.js), so the Devices screen can show who is up to date. */
+/* Which version of the app this is (config.js), so Admin's device list can show who is up to date. */
 const appVersionHeader = () => typeof APP_VERSION === 'string' ? {'x-app-version':APP_VERSION} : {};
 
 /* Returns {ok, status, data}. Never throws. A 401 on a signed-in device means

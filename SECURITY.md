@@ -30,7 +30,7 @@ Foreign browser origins and non-JSON writes are rejected before routing; a missi
 
 GitHub Pages supplies HTTPS/HSTS but does not support arbitrary response headers. The frontend CSP/referrer policy are supplied as meta tags; an embedded app refuses to render its sign-in/workspace as defense in depth. A true frame-ancestors header, Permissions-Policy and frontend nosniff header require a host/proxy that supports headers. Do not claim that a `_headers` file works on GitHub Pages. A hosting move must also update CORS, Turnstile hostnames, installed-app behavior and deployment settings.
 
-CI runs application/security regressions, dependency advisory checks and redacted Gitleaks scans; GitHub CodeQL and Dependabot provide ongoing scanning. Actions are pinned to reviewed commit SHAs. `.gitleaksignore` contains only exact reviewed historical public anon-key fingerprints and retired defaults verified not to match any current account/recovery hash. New matches must be investigated, never broadly ignored.
+CI runs application/security regressions, dependency advisory checks and redacted Gitleaks scans; GitHub CodeQL and Dependabot provide ongoing scanning. Actions are pinned to reviewed commit SHAs. `.gitleaksignore` contains only exact reviewed historical public anon-key fingerprints and retired defaults verified not to match any current account PIN hash. New matches must be investigated, never broadly ignored.
 
 ## Operational limits
 

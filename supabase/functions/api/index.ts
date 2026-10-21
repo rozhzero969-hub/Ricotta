@@ -110,9 +110,9 @@ const newId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 /* A Baghdad calendar day as YYYY-MM-DD, and whole days between two of them. */
 const baghdadDay = (d: Date | string = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baghdad", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(d));
 const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400_000);
-/* What the device says it is ("iPhone 16/17 Pro Max|App"), for the Devices screen. */
+/* What the device says it is ("iPhone 16/17 Pro Max|App"), for Admin's device list. */
 const deviceLabel = (req: Request) => text(req.headers.get("x-device-label"), 80).replace(/[^\x20-\x7E]/g, "") || null;
-/* Which version of the app the device runs (APP_VERSION in config.js), for the Devices screen. */
+/* Which version of the app the device runs (APP_VERSION in config.js), for Admin's device list. */
 const appVersion = (req: Request) => { const v = text(req.headers.get("x-app-version"), 40); return /^[A-Za-z0-9._-]{1,40}$/.test(v) ? v : null; };
 const nowIso = () => new Date().toISOString();
 const langOf = (v: unknown) => (LANGS.includes(String(v)) ? String(v) : "en");

@@ -41,7 +41,7 @@ const ORDERING_TEXT = {
       "Choose your items and quantities, then send the order through WhatsApp.",
     guideAssistant: "Ask Rico for help with your order or your kitchen.",
     guideHistory:
-      "Find this month’s orders, repeat an order, or save a report.",
+      "Find this month’s orders, send one again, or save a report.",
     guideQueue: "Open each supplier’s WhatsApp message to send your order.",
     guideSuppliers: "Manage supplier details, contact them, and set reminders.",
     guideItems: "Manage the items you order, their units and availability.",
