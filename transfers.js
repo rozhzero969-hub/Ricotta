@@ -12,8 +12,8 @@ const TRANSFER_TEXT = {
   en: {
     transfers: 'Transfers',
     trSoonPill: 'In development',
-    trSoonTitle: 'Transfers is almost ready',
-    trSoonText: 'You can try it now. It goes live once the workplace system adds its Upload Excel button.',
+    trSoonTitle: 'This tab is still being made',
+    trSoonText: 'You can look at the design, but it can’t be used or tested yet.',
     trSoonDone: 'Ricotta makes the Excel',
     trSoonWait: 'Workplace system adds Upload Excel',
     guideTransfers: 'Write the items to move between storages. Rico finds the exact names and makes the Excel for the workplace system.',
@@ -66,8 +66,8 @@ const TRANSFER_TEXT = {
   ku: {
     transfers: 'گواستنەوە',
     trSoonPill: 'لە گەشەپێداندایە',
-    trSoonTitle: 'گواستنەوە خەریکە ئامادە دەبێت',
-    trSoonText: 'دەتوانیت ئێستا تاقی بکەیتەوە. کاتێک سیستەمی شوێنی کار دوگمەی بارکردنی Excel زیاد دەکات، دەکەوێتە کار.',
+    trSoonTitle: 'ئەم بەشە هێشتا دروست دەکرێت',
+    trSoonText: 'دەتوانیت دیزاینەکەی ببینیت، بەڵام هێشتا ناتوانرێت بەکاربهێنرێت یان تاقی بکرێتەوە.',
     trSoonDone: 'ریکۆتا فایلی Excel دروست دەکات',
     trSoonWait: 'سیستەمی شوێنی کار دوگمەی بارکردنی Excel زیاد دەکات',
     guideTransfers: 'ئەو کاڵایانە بنووسە کە لە نێوان کۆگاکاندا دەگوازرێنەوە. ڕیکۆ ناوە ڕاستەکان دەدۆزێتەوە و فایلی Excel بۆ سیستەمی شوێنی کار دروست دەکات.',
@@ -120,8 +120,8 @@ const TRANSFER_TEXT = {
   ar: {
     transfers: 'النقل',
     trSoonPill: 'قيد التطوير',
-    trSoonTitle: 'النقل على وشك الجاهزية',
-    trSoonText: 'يمكنك تجربته الآن. سيعمل عندما يضيف نظام العمل زر رفع Excel.',
+    trSoonTitle: 'هذا القسم ما زال قيد الإنشاء',
+    trSoonText: 'يمكنك رؤية التصميم، لكن لا يمكن استخدامه أو تجربته بعد.',
     trSoonDone: 'ريكوتا يصنع ملف Excel',
     trSoonWait: 'نظام العمل يضيف زر رفع Excel',
     guideTransfers: 'اكتب المواد التي تريد نقلها بين المخازن. يجد ريكو الأسماء الصحيحة ويصنع ملف Excel لنظام العمل.',
@@ -173,11 +173,12 @@ const TRANSFER_TEXT = {
   },
 };
 for (const lang of ['en', 'ku', 'ar']) Object.assign(T[lang], TRANSFER_TEXT[lang]);
-/* The workplace system's Upload Excel button is not there yet, so the tab says it is still in development.
-   Set this to true once the workplace system can take the file. */
+/* Transfers is still being made: the tab shows its design, but nothing in it can be used or tested
+   (the server refuses its routes too, see TRANSFERS_OPEN in the api). Set this to true, with the
+   server's flag, once the workplace system can take the file. */
 const TRANSFERS_READY = false;
 const ICON_WRENCH = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></svg>`;
-/* The wrench on the Transfers tab, and the card at the top of the tab, while it is in development. */
+/* The wrench on the Transfers tab, and the card at the top of the tab, while it is being made. */
 const transferNavBadge = () => TRANSFERS_READY ? '' : `<i class="nav-soon" title="${esc(t('trSoonPill'))}">${ICON_WRENCH}</i>`;
 function renderTransferSoon(){
   if(TRANSFERS_READY) return '';
@@ -413,12 +414,14 @@ function addTransferRows(rows){
 /* ---------- Screen ---------- */
 function renderTransfers(){
   transferState();
-  const listed = stockList.items ? stockList.items.length : null;
+  const ready = TRANSFERS_READY;
+  const listed = ready && stockList.items ? stockList.items.length : null;
   const voice = ricoVoiceSupported();
   const intro = listed === 0 ? `<div class="form-card tr-empty-list"><p>${esc(t('trListEmpty'))}</p><button type="button" class="btn btn-primary" data-stock-upload>${ICON_DOWNLOAD} ${esc(t('trListUpload'))}</button></div>` : '';
-  const rows = transfer.rows.map(renderTransferRow).join('');
+  const rows = ready ? transfer.rows.map(renderTransferRow).join('') : '';
   // A computer shows the input and the item list beside the rows; a phone shows them one under another.
-  return `${renderTransferSoon()}<div class="tr-page"><div class="tr-side">${intro}
+  // While it is being made, the page is only a picture of the design: inert, so nothing can be tapped or typed.
+  return `${renderTransferSoon()}<div class="tr-page${ready ? '' : ' tr-locked'}"${ready ? '' : ' inert aria-hidden="true"'}><div class="tr-side">${intro}
     <div class="form-card tr-input">
       <div class="field"><label for="trText">${esc(t('trWriteLabel'))}</label>
       <textarea id="trText" rows="3" dir="auto" maxlength="4000" placeholder="${esc(t('trPlaceholder'))}">${esc(transfer.text)}</textarea></div>
@@ -432,11 +435,11 @@ function renderTransfers(){
       <div class="tr-results" id="trResults" role="listbox" hidden></div>
     </div></div>
     <div class="tr-col"><div class="action-row tr-rows-head">
-      <div class="section-title grow">${esc(t('trRowsTitle'))} (${transfer.rows.length})</div>
-      ${transfer.rows.length ? `<button type="button" class="btn btn-ghost" id="trClearBtn">${esc(t('trNewList'))}</button>` : ''}
+      <div class="section-title grow">${esc(t('trRowsTitle'))} (${ready ? transfer.rows.length : 0})</div>
+      ${ready && transfer.rows.length ? `<button type="button" class="btn btn-ghost" id="trClearBtn">${esc(t('trNewList'))}</button>` : ''}
     </div>
     <div id="trRows">${rows || emptyState(esc(t('trEmpty')))}</div></div>
-    <details class="settings-group tr-list"${listed === 0 ? ' hidden' : ''}><summary>${esc(t('trListTitle'))}${listed ? ` · ${listed}` : ''}</summary>
+    <details class="settings-group tr-list"${listed === null || listed === 0 ? ' hidden' : ''}><summary>${esc(t('trListTitle'))}${listed ? ` · ${listed}` : ''}</summary>
       <p class="field-hint">${esc(listed ? t('trListCount')(listed) : t('trListEmpty'))}</p><p class="field-hint">${esc(t('trListHint'))}</p>
       <button type="button" class="btn btn-ghost" data-stock-upload>${ICON_DOWNLOAD} ${esc(t('trListUpload'))}</button>
     </details></div>
@@ -474,6 +477,7 @@ function renderTransferConverted(row){
   return `<div class="tr-from" dir="ltr"><span>${part(row.wrote.amount, row.wrote.unit)}</span><span aria-hidden="true">=</span><span class="sr-only">${esc(t('trIsSame'))}</span><b>${part(row.amount, row.unit)}</b></div>`;
 }
 function renderTransferBar(){
+  if(!TRANSFERS_READY) return '';
   transferState();
   const bad = transfer.rows.filter(rowIssue).length, n = transfer.rows.length;
   return `<div class="bottom-bar transfer-bar ${n ? 'show' : ''}">
@@ -513,6 +517,7 @@ function paintTransferMic(){
 }
 
 function attachTransferEvents(){
+  if(!TRANSFERS_READY) return;
   transferState();
   const text = document.getElementById('trText');
   text.oninput = ()=>{ transfer.text = text.value; saveTransfer(); };

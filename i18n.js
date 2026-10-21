@@ -10,7 +10,7 @@ const T = {
     brandDetail:'Your suppliers, your essentials. Everything in its place.', brandFooter:'Made for your everyday.',
     draftLocal:'Draft on this device', selectToStart:'Choose your essentials to get started',
     increaseQty:name=>'Increase quantity for '+name, decreaseQty:name=>'Decrease quantity for '+name, quantityFor:name=>'Quantity for '+name,
-    online:'Online', offline:'Offline', language:'Language', apply:'Apply', ok:'OK', continue:'Continue',
+    online:'Online', offline:'Offline', language:'Language', apply:'Apply', ok:'OK',
     sessionEnded:'Your session ended. Sign in again to continue.',
     signingIn:'Signing in…', noValue:'None', never:'Never', tooManyAttempts:'Too many wrong tries. Wait a few minutes, then try again.',
     orderSheet:'Order sheet (PDF)',
@@ -134,12 +134,14 @@ const T = {
     weekdays:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
 
 
-    whoAreYou:'Who are you?', recoveryRozhaPin:'Enter Rozha’s current PIN', recoveryTitle:'Change PINs',
-    recoveryHint:'Fill in only what you want to change. A new PIN or secret code signs every device out.',
-    recoveryNewRozha:'New PIN for Rozha (6 digits)', recoveryNewYunis:'New PIN for Yunis (6 digits)', recoveryNewCode:'New secret code (6 digits)', recoveryNewAnswer:'New answer to “Who are you?”',  reminderEveryDayAt:time=>'On, every day at '+time+' (Erbil time).', reminderChangeTime:'Change time', reminderTurnedOff:'Daily reminder turned off.',      recoveryAnswerHint:'Capitals count: it must be typed exactly like this.',
-    recoveryNothing:'Enter at least one new code.', recoverySaved:'Saved. Every device was signed out; sign in with the new PIN.',
-    recoveryExpired:'That took too long. Start again from the keypad.',
-    pinsInvalidLength:'Each code must be 6 digits.', pinsDuplicate:'The two PINs and the secret code must all be different.',
+    reminderEveryDayAt:time=>'On, every day at '+time+' (Erbil time).', reminderChangeTime:'Change time', reminderTurnedOff:'Daily reminder turned off.',
+    adminTitle:'Admin', adminPins:'PINs', adminPinChange:'Change',
+    adminPinsHint:'A new PIN signs that person out on their other devices.', pinChangeTitle:n=>'New PIN for '+n,
+    pinCurrentLabel:'Your current PIN', pinNewLabel:'New PIN (6 digits)', pinRepeatLabel:'New PIN again',
+    pinMismatch:'The two new PINs don’t match.', pinCurrentWrong:'Your current PIN isn’t right.',
+    pinChangedSelf:'Your PIN is changed. Your other devices were signed out.', pinChangedOther:n=>n+'’s PIN is changed. '+n+' signs in again with the new one.',
+    sameAsLastFilled:'Filled in from your last order',
+    pinsInvalidLength:'A PIN is 6 digits.', pinsDuplicate:'Rozha and Yunis need different PINs.',
     pinsWeak:'Choose PINs that aren’t all the same digit or a simple run (like 123456).',
     ricoName:'Rico', ricoTalkingWith:n=>'Talking with '+n, ricoWroteFirst:'Rico wrote',
     ricoAutoOrderLabel:'Let Rico fill my order', ricoNewChat:'New chat',
@@ -208,7 +210,7 @@ const T = {
     brandDetail:'دابینکەر و پێداویستییەکانت، هەمووی لە شوێنی خۆیدا.', brandFooter:'بۆ کاری ڕۆژانەت.',
     draftLocal:'ڕەشنووس لەسەر ئەم ئامێرە', selectToStart:'بۆ دەستپێکردن پێداویستییەکانت هەڵبژێرە',
     increaseQty:name=>'زیادکردنی بڕی '+name, decreaseQty:name=>'کەمکردنەوەی بڕی '+name, quantityFor:name=>'بڕی '+name,
-    online:'ئۆنلاین', offline:'ئۆفلاین', language:'زمان', apply:'جێبەجێکردن', ok:'باشە', continue:'بەردەوامبوون',
+    online:'ئۆنلاین', offline:'ئۆفلاین', language:'زمان', apply:'جێبەجێکردن', ok:'باشە',
     sessionEnded:'دانیشتنەکەت کۆتایی هات. دووبارە بچۆ ژوورەوە بۆ بەردەوامبوون.',
     signingIn:'چوونەژوورەوە…', noValue:'هیچ', never:'هەرگیز', tooManyAttempts:'هەوڵی هەڵەی زۆر. چەند خولەکێک چاوەڕێ بکە، پاشان دووبارە هەوڵ بدەرەوە.',
     orderSheet:'پەڕەی داواکاری (PDF)',
@@ -332,12 +334,14 @@ const T = {
     weekdays:['یەکشەممە','دووشەممە','سێشەممە','چوارشەممە','پێنجشەممە','هەینی','شەممە'],
 
 
-    whoAreYou:'تۆ کێیت؟', recoveryRozhaPin:'کۆدی ئێستای ڕۆژا بنووسە', recoveryTitle:'گۆڕینی کۆدەکان',
-    recoveryHint:'تەنها ئەوەی دەتەوێت بیگۆڕیت پڕ بکەرەوە. کۆدی نوێ هەموو ئامێرەکان دەباتە دەرەوە.',
-    recoveryNewRozha:'کۆدی نوێی ڕۆژا (6 ژمارە)', recoveryNewYunis:'کۆدی نوێی یونس (6 ژمارە)', recoveryNewCode:'کۆدی نهێنیی نوێ (6 ژمارە)', recoveryNewAnswer:'وەڵامی نوێ بۆ «تۆ کێیت؟»',  reminderEveryDayAt:time=>'چالاکە، هەموو ڕۆژێک کاتژمێر '+time+' (کاتی هەولێر).', reminderChangeTime:'گۆڕینی کات', reminderTurnedOff:'بیرخەرەوەی ڕۆژانە ناچالاک کرا.',      recoveryAnswerHint:'پیتی گەورە و بچووک جیاوازن: دەبێت ڕێک بەم شێوەیە بنووسرێت.',
-    recoveryNothing:'لانیکەم یەک کۆدی نوێ بنووسە.', recoverySaved:'پاشەکەوت کرا. هەموو ئامێرەکان چوونە دەرەوە؛ بە کۆدە نوێیەکە بچۆرە ژوورەوە.',
-    recoveryExpired:'کاتەکە زۆری خایاند. دووبارە لە تەختەی ژمارەکانەوە دەست پێبکەوە.',
-    pinsInvalidLength:'هەر کۆدێک دەبێت 6 ژمارە بێت.', pinsDuplicate:'دوو کۆدەکە و کۆدی نهێنی دەبێت هەموویان جیاواز بن.',
+    reminderEveryDayAt:time=>'چالاکە، هەموو ڕۆژێک کاتژمێر '+time+' (کاتی هەولێر).', reminderChangeTime:'گۆڕینی کات', reminderTurnedOff:'بیرخەرەوەی ڕۆژانە ناچالاک کرا.',
+    adminTitle:'ئەدمین', adminPins:'کۆدەکان', adminPinChange:'گۆڕین',
+    adminPinsHint:'کۆدی نوێ ئەو کەسە لە ئامێرەکانی تری دەباتە دەرەوە.', pinChangeTitle:n=>'کۆدی نوێ بۆ '+n,
+    pinCurrentLabel:'کۆدی ئێستای خۆت', pinNewLabel:'کۆدی نوێ (6 ژمارە)', pinRepeatLabel:'دووبارە کۆدی نوێ',
+    pinMismatch:'دوو کۆدە نوێیەکە وەک یەک نین.', pinCurrentWrong:'کۆدی ئێستات هەڵەیە.',
+    pinChangedSelf:'کۆدەکەت گۆڕدرا. ئامێرەکانی ترت چوونە دەرەوە.', pinChangedOther:n=>'کۆدی '+n+' گۆڕدرا. '+n+' بە کۆدە نوێیەکە دەچێتەوە ژوورەوە.',
+    sameAsLastFilled:'لە داواکاریی پێشووەوە پڕکرایەوە',
+    pinsInvalidLength:'کۆد دەبێت 6 ژمارە بێت.', pinsDuplicate:'ڕۆژا و یونس دەبێت کۆدی جیاوازیان هەبێت.',
     pinsWeak:'کۆدێک هەڵبژێرە کە هەموو ژمارەکانی وەک یەک نەبن یان زنجیرەیەکی سادە نەبێت (وەک 123456).',
     ricoName:'ریکۆ', ricoTalkingWith:n=>'قسەکردن لەگەڵ '+n, ricoWroteFirst:'ریکۆ نووسی',
     ricoAutoOrderLabel:'با ریکۆ داواکارییەکەم پڕ بکاتەوە', ricoNewChat:'گفتوگۆی نوێ',
@@ -406,7 +410,7 @@ const T = {
     brandDetail:'مورّدوك واحتياجاتك، كل شيء في مكانه.', brandFooter:'صُنع ليومك.',
     draftLocal:'مسودة على هذا الجهاز', selectToStart:'اختر احتياجاتك للبدء',
     increaseQty:name=>'زيادة كمية '+name, decreaseQty:name=>'تقليل كمية '+name, quantityFor:name=>'كمية '+name,
-    online:'متصل', offline:'غير متصل', language:'اللغة', apply:'تطبيق', ok:'حسنًا', continue:'متابعة',
+    online:'متصل', offline:'غير متصل', language:'اللغة', apply:'تطبيق', ok:'حسنًا',
     sessionEnded:'انتهت جلستك. سجّل الدخول مرة أخرى للمتابعة.',
     signingIn:'جارٍ تسجيل الدخول…', noValue:'لا شيء', never:'أبدًا', tooManyAttempts:'محاولات خاطئة كثيرة. انتظر بضع دقائق ثم حاول مرة أخرى.',
     orderSheet:'ورقة الطلب (PDF)',
@@ -530,12 +534,14 @@ const T = {
     weekdays:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],
 
 
-    whoAreYou:'من أنت؟', recoveryRozhaPin:'أدخل رمز روژا الحالي', recoveryTitle:'تغيير الرموز',
-    recoveryHint:'املأ فقط ما تريد تغييره. أي رمز جديد يُخرج كل الأجهزة من الجلسة.',
-    recoveryNewRozha:'رمز جديد لروژا (6 أرقام)', recoveryNewYunis:'رمز جديد ليونس (6 أرقام)', recoveryNewCode:'رمز سري جديد (6 أرقام)', recoveryNewAnswer:'إجابة جديدة لسؤال «من أنت؟»',  reminderEveryDayAt:time=>'مفعّل، كل يوم الساعة '+time+' (توقيت أربيل).', reminderChangeTime:'تغيير الوقت', reminderTurnedOff:'تم إيقاف التذكير اليومي.',      recoveryAnswerHint:'الأحرف الكبيرة والصغيرة مختلفة: يجب كتابتها هكذا تمامًا.',
-    recoveryNothing:'أدخل رمزًا جديدًا واحدًا على الأقل.', recoverySaved:'تم الحفظ. خرجت كل الأجهزة؛ سجّل الدخول بالرمز الجديد.',
-    recoveryExpired:'استغرق الأمر وقتًا طويلًا. ابدأ من جديد من لوحة الأرقام.',
-    pinsInvalidLength:'يجب أن يتكون كل رمز من 6 أرقام.', pinsDuplicate:'يجب أن يكون الرمزان والرمز السري مختلفة كلها.',
+    reminderEveryDayAt:time=>'مفعّل، كل يوم الساعة '+time+' (توقيت أربيل).', reminderChangeTime:'تغيير الوقت', reminderTurnedOff:'تم إيقاف التذكير اليومي.',
+    adminTitle:'المشرف', adminPins:'الرموز', adminPinChange:'تغيير',
+    adminPinsHint:'الرمز الجديد يُخرج صاحبه من أجهزته الأخرى.', pinChangeTitle:n=>'رمز جديد لـ'+n,
+    pinCurrentLabel:'رمزك الحالي', pinNewLabel:'الرمز الجديد (6 أرقام)', pinRepeatLabel:'الرمز الجديد مرة أخرى',
+    pinMismatch:'الرمزان الجديدان غير متطابقين.', pinCurrentWrong:'رمزك الحالي غير صحيح.',
+    pinChangedSelf:'تم تغيير رمزك. خرجت أجهزتك الأخرى.', pinChangedOther:n=>'تم تغيير رمز '+n+'. يسجّل '+n+' الدخول من جديد بالرمز الجديد.',
+    sameAsLastFilled:'مُلئ من طلبك السابق',
+    pinsInvalidLength:'يجب أن يتكون الرمز من 6 أرقام.', pinsDuplicate:'يجب أن يكون لروژا ويونس رمزان مختلفان.',
     pinsWeak:'اختر رموزًا ليست كلها رقمًا واحدًا أو تسلسلًا بسيطًا (مثل 123456).',
     ricoName:'ريكو', ricoTalkingWith:n=>'تتحدث مع '+n, ricoWroteFirst:'كتب ريكو',
     ricoAutoOrderLabel:'دع ريكو يملأ طلبي', ricoNewChat:'محادثة جديدة',
@@ -597,8 +603,8 @@ const T = {
   }
 };
 
-/* The kitchen: the streak, kitchen notes, the monthly report card, pinned
-   items, item notes, undo, dark mode and shared Rico chats. Same rule as
+/* The kitchen: the streak, the monthly report card, pinned items, item
+   notes, undo, dark mode and shared Rico chats. Same rule as
    above: every language has every key. */
 const AR_DAYS = n => n + (n === 1 ? ' يوم' : n === 2 ? ' يومان' : n <= 10 ? ' أيام' : ' يومًا');
 Object.assign(T.en, {
@@ -616,11 +622,6 @@ Object.assign(T.en, {
   funFactTitle:'Rico’s fun fact', factTop:(item,n)=>item+' was ordered more than anything else this month: '+n+' times.',
   factLeast:item=>item+' was ordered only once this month. Still needed?', factBusiest:day=>day+' is the busiest day for orders this month.',
   factQty:(qty,unit,item)=>qty+' '+unit+' of '+item+' went out this month.', factOrders:n=>n+' orders sent so far this month.',
-  notesTitle:'Kitchen notes', notesFromRozha:'From Rozha', notesForYunis:'For Yunis', notesPlaceholder:'Write a note for Yunis…',
-  notesSend:'Send note', notesSent:'Note sent to Yunis', notesEmptyRozha:'No notes yet. Yunis gets a notification for each one.',
-  notesEmptyYunis:'No notes from Rozha.', notesSeen:t=>'Seen '+t, notesNotSeen:'Not seen yet', notesDone:'Done', notesMarkDone:'Mark as done',
-  notesNotDone:'Not done yet', notesDelete:'Delete note', notesNew:'New note from Rozha', notesUnread:n=>n===1?'1 new note':n+' new notes',
-  notesOpen:'Open notes',
   reportOpen:'Report card', reportTitle:m=>m+' report card', reportOrders:'Orders', reportDays:'Days with orders', reportStreak:'Streak',
   reportLines:'Items sent', reportTop:'Most ordered', reportSuppliers:'Top suppliers', reportBusiest:'Busiest day', reportWho:'Who sent',
   reportGrade:'Grade', reportGradeHint:(d,n)=>d+' of '+n+' days had orders', reportTimes:n=>n+'×',
@@ -629,7 +630,6 @@ Object.assign(T.en, {
   orderUndone:'Order taken back. It is in your draft again.', undoFailed:'It’s too late to undo this order.',
   pinItem:'Pin to top', unpinItem:'Unpin', pinnedTitle:'Pinned',
   itemNoteLabel:'Note for the supplier', itemNoteHint:'Goes into the WhatsApp message, e.g. “ripe, not soft”.', itemNoteEdit:'Note', recordNote:'Note',
-  voiceOrder:'Say your order', voiceOrderStop:'Listening… tap to finish', voiceOrderPrompt:'Fill today’s order from what I just said.',
   ricoHistoryMine:'My chats', ricoHistoryOf:n=>n+'’s chats', ricoReadOnly:n=>n+'’s chat with Rico · read only', ricoBackToMine:'Back to my chat',
   ricoDeleteAllOf:n=>'Delete all of '+n+'’s chats', ricoHistoryEmptyOf:n=>n+' has no chats with Rico.',
    orderAgain:'Send again', reportDate:'Date'
@@ -649,11 +649,6 @@ Object.assign(T.ku, {
   funFactTitle:'زانیاریی خۆشی ریکۆ', factTop:(item,n)=>item+' ئەم مانگە لە هەموو شتێک زیاتر داواکراوە: '+n+' جار.',
   factLeast:item=>item+' ئەم مانگە تەنها یەک جار داواکراوە. هێشتا پێویستە؟', factBusiest:day=>day+' ئەم مانگە قەرەباڵغترین ڕۆژی داواکارییە.',
   factQty:(qty,unit,item)=>qty+' '+unit+' '+item+' ئەم مانگە نێردرا.', factOrders:n=>'تا ئێستا ئەم مانگە '+n+' داواکاری نێردراوە.',
-  notesTitle:'تێبینییەکانی چێشتخانە', notesFromRozha:'لە ڕۆژاوە', notesForYunis:'بۆ یونس', notesPlaceholder:'تێبینییەک بۆ یونس بنووسە…',
-  notesSend:'ناردنی تێبینی', notesSent:'تێبینی بۆ یونس نێردرا', notesEmptyRozha:'هێشتا هیچ تێبینییەک نییە. یونس بۆ هەر یەکێکیان ئاگادارکردنەوە وەردەگرێت.',
-  notesEmptyYunis:'هیچ تێبینییەک لە ڕۆژاوە نییە.', notesSeen:t=>'بینرا '+t, notesNotSeen:'هێشتا نەبینراوە', notesDone:'ئەنجامدرا', notesMarkDone:'وەک ئەنجامدراو دیاری بکە',
-  notesNotDone:'هێشتا نەکراوە', notesDelete:'سڕینەوەی تێبینی', notesNew:'تێبینیی نوێ لە ڕۆژاوە', notesUnread:n=>n+' تێبینیی نوێ',
-  notesOpen:'کردنەوەی تێبینییەکان',
   reportOpen:'کارتی ڕاپۆرت', reportTitle:m=>'کارتی ڕاپۆرتی '+m, reportOrders:'داواکاری', reportDays:'ڕۆژانی داواکاری', reportStreak:'زنجیرە',
   reportLines:'کاڵای نێردراو', reportTop:'زۆرترین داواکراو', reportSuppliers:'دابینکەرە سەرەکییەکان', reportBusiest:'قەرەباڵغترین ڕۆژ', reportWho:'کێ ناردی',
   reportGrade:'نمرە', reportGradeHint:(d,n)=>d+' لە '+n+' ڕۆژ داواکارییان تێدا بوو', reportTimes:n=>n+'×',
@@ -662,7 +657,6 @@ Object.assign(T.ku, {
   orderUndone:'داواکارییەکە گەڕێندرایەوە. دیسان لە ڕەشنووسەکەتدایە.', undoFailed:'زۆر درەنگە بۆ گەڕاندنەوەی ئەم داواکارییە.',
   pinItem:'هەڵواسین لە سەرەوە', unpinItem:'لابردنی هەڵواسین', pinnedTitle:'هەڵواسراو',
   itemNoteLabel:'تێبینی بۆ دابینکەر', itemNoteHint:'دەچێتە ناو نامەی واتسئاپەکەوە، بۆ نموونە «پێگەیشتوو، نەرم نەبێت».', itemNoteEdit:'تێبینی', recordNote:'تێبینی',
-  voiceOrder:'داواکارییەکەت بڵێ', voiceOrderStop:'گوێ دەگرم… دابگرە بۆ تەواوکردن', voiceOrderPrompt:'داواکاریی ئەمڕۆ لەوەی ئێستا وتم پڕ بکەرەوە.',
   ricoHistoryMine:'گفتوگۆکانی من', ricoHistoryOf:n=>'گفتوگۆکانی '+n, ricoReadOnly:n=>'گفتوگۆی '+n+' لەگەڵ ریکۆ · تەنها خوێندنەوە', ricoBackToMine:'گەڕانەوە بۆ گفتوگۆکەی خۆم',
   ricoDeleteAllOf:n=>'سڕینەوەی هەموو گفتوگۆکانی '+n, ricoHistoryEmptyOf:n=>n+' هیچ گفتوگۆیەکی لەگەڵ ریکۆ نییە.',
    orderAgain:'دیسان بنێرە', reportDate:'بەروار'
@@ -682,11 +676,6 @@ Object.assign(T.ar, {
   funFactTitle:'معلومة ريكو الطريفة', factTop:(item,n)=>'طُلب '+item+' أكثر من أي شيء هذا الشهر: '+n+' مرة.',
   factLeast:item=>'طُلب '+item+' مرة واحدة فقط هذا الشهر. هل ما زال مطلوبًا؟', factBusiest:day=>day+' هو أكثر الأيام طلبًا هذا الشهر.',
   factQty:(qty,unit,item)=>'خرج '+qty+' '+unit+' من '+item+' هذا الشهر.', factOrders:n=>'أُرسل '+n+' طلبًا حتى الآن هذا الشهر.',
-  notesTitle:'ملاحظات المطبخ', notesFromRozha:'من روژا', notesForYunis:'ليونس', notesPlaceholder:'اكتب ملاحظة ليونس…',
-  notesSend:'إرسال الملاحظة', notesSent:'أُرسلت الملاحظة إلى يونس', notesEmptyRozha:'لا ملاحظات بعد. يصل إشعار ليونس عن كل واحدة.',
-  notesEmptyYunis:'لا ملاحظات من روژا.', notesSeen:t=>'شوهدت '+t, notesNotSeen:'لم تُشاهد بعد', notesDone:'تم', notesMarkDone:'وضع علامة تم',
-  notesNotDone:'لم تتم بعد', notesDelete:'حذف الملاحظة', notesNew:'ملاحظة جديدة من روژا', notesUnread:n=>n===1?'ملاحظة جديدة':n+' ملاحظات جديدة',
-  notesOpen:'فتح الملاحظات',
   reportOpen:'بطاقة التقرير', reportTitle:m=>'بطاقة تقرير '+m, reportOrders:'الطلبات', reportDays:'أيام فيها طلبات', reportStreak:'السلسلة',
   reportLines:'المواد المرسلة', reportTop:'الأكثر طلبًا', reportSuppliers:'أبرز المورّدين', reportBusiest:'أكثر الأيام ازدحامًا', reportWho:'من أرسل',
   reportGrade:'التقدير', reportGradeHint:(d,n)=>d+' من '+n+' أيام فيها طلبات', reportTimes:n=>n+'×',
@@ -695,58 +684,33 @@ Object.assign(T.ar, {
   orderUndone:'استُرجع الطلب. عاد إلى مسودتك.', undoFailed:'فات الأوان للتراجع عن هذا الطلب.',
   pinItem:'تثبيت في الأعلى', unpinItem:'إلغاء التثبيت', pinnedTitle:'المثبّتة',
   itemNoteLabel:'ملاحظة للمورّد', itemNoteHint:'تُضاف إلى رسالة واتساب، مثل «ناضجة، غير طرية».', itemNoteEdit:'ملاحظة', recordNote:'ملاحظة',
-  voiceOrder:'قل طلبك', voiceOrderStop:'أستمع… اضغط للإنهاء', voiceOrderPrompt:'املأ طلب اليوم مما قلته الآن.',
   ricoHistoryMine:'محادثاتي', ricoHistoryOf:n=>'محادثات '+n, ricoReadOnly:n=>'محادثة '+n+' مع ريكو · للقراءة فقط', ricoBackToMine:'العودة إلى محادثتي',
   ricoDeleteAllOf:n=>'حذف كل محادثات '+n, ricoHistoryEmptyOf:n=>'لا توجد محادثات لـ'+n+' مع ريكو.',
    orderAgain:'أرسل مجددًا', reportDate:'التاريخ'
 });
 
-/* Order cut-offs, repeat orders, the month archive and replies to notes. */
+/* Order cut-offs and the month archive. */
 Object.assign(T.en, {
   cutoffLabel:'Stops taking orders at', cutoffHint:'Optional. On this supplier’s order days the Order screen counts down to it, and Rico warns you 30 minutes before.',
   cutoffShort:'Cut-off', cutoffClosed:'Closed for today', cutoffMinLeft:n=>n+' min left', cutoffHoursLeft:(h,m)=>h+' h'+(m?' '+m+' min':'')+' left', cutoffUntil:x=>'Order by '+x,
-  repeatToday:'Repeat order for today', repeatAdd:'Add to order', repeatAdded:(n,name)=>n+(n===1?' item':' items')+' from “'+name+'” '+(n===1?'is':'are')+' in your order.',
-  repeatTitle:'Repeat this order', repeatDaysLabel:'On these days',
-  repeatHint:'On these days the Order screen offers this order with one tap. Nothing is sent by itself.',
-  repeatSaved:(name,days)=>'“'+name+'” will come back on '+days+'.', repeatTooMany:'There are already 30 repeat orders. Remove one first.',
-  repeatListTitle:'Repeat orders', repeatListHint:'Orders that come back on chosen days. Make one with “Repeat” on any order in History.',
-  repeatNone:'No repeat orders yet.', repeatConfirmDelete:'Stop repeating this order?',
   monthsTitle:'Past months', monthsHint:'History is cleared every month; a summary of each finished month stays here.',
   monthsNone:'Nothing here yet. The first summary is saved when this month ends.', monthsLastLine:(o,d)=>'Last month: '+o+' orders on '+d+' days',
   monthsTimes:n=>n+'×', monthsOrders:n=>n+(n===1?' order':' orders'),
-  notesReply:'Reply', notesReplyPrompt:'Your answer to Rozha', notesQuickOk:'👍 Got it', notesQuickDone:'✅ Done', notesQuickCall:'📞 Call me',
-  notesReplied:'Sent to Rozha.', notesReplyNew:'Yunis replied',
 
   });
 Object.assign(T.ku, {
   cutoffLabel:'کاتی کۆتایی وەرگرتنی داواکاری', cutoffHint:'ئارەزوومەندانەیە. لە ڕۆژانی داواکاریی ئەم دابینکەرە، پەڕەی داواکاری کاتەکە دەژمێرێت و ریکۆ 30 خولەک پێشتر ئاگادارت دەکاتەوە.',
   cutoffShort:'کاتی کۆتایی', cutoffClosed:'بۆ ئەمڕۆ داخراوە', cutoffMinLeft:n=>n+' خولەک ماوە', cutoffHoursLeft:(h,m)=>h+' کاتژمێر'+(m?' و '+m+' خولەک':'')+' ماوە', cutoffUntil:x=>'تا '+x+' داوا بکە',
-  repeatToday:'داواکاریی دووبارەی ئەمڕۆ', repeatAdd:'زیادکردن بۆ داواکاری', repeatAdded:(n,name)=>n+' کاڵا لە «'+name+'» خرانە داواکارییەکەت.',
-  repeatTitle:'دووبارەکردنەوەی ئەم داواکارییە', repeatDaysLabel:'لەم ڕۆژانەدا',
-  repeatHint:'لەم ڕۆژانەدا پەڕەی داواکاری ئەم داواکارییە بە یەک دەستلێدان پێشنیار دەکات. هیچ شتێک خۆی نانێردرێت.',
-  repeatSaved:(name,days)=>'«'+name+'» لە '+days+' دەگەڕێتەوە.', repeatTooMany:'30 داواکاریی دووبارە هەیە. سەرەتا یەکێک بسڕەوە.',
-  repeatListTitle:'داواکارییە دووبارەکان', repeatListHint:'ئەو داواکارییانەی لە ڕۆژانی دیاریکراو دەگەڕێنەوە. بە «دووبارە» لە هەر داواکارییەکی مێژوو یەکێک دروست بکە.',
-  repeatNone:'هێشتا هیچ داواکارییەکی دووبارە نییە.', repeatConfirmDelete:'دووبارەکردنەوەی ئەم داواکارییە ڕابگیرێت؟',
   monthsTitle:'مانگەکانی پێشوو', monthsHint:'مێژوو هەموو مانگێک دەسڕدرێتەوە؛ کورتەی هەر مانگێکی تەواوبوو لێرە دەمێنێتەوە.',
   monthsNone:'هێشتا هیچ شتێک لێرە نییە. یەکەم کورتە کاتێک ئەم مانگە تەواو دەبێت پاشەکەوت دەکرێت.', monthsLastLine:(o,d)=>'مانگی پێشوو: '+o+' داواکاری لە '+d+' ڕۆژدا',
   monthsTimes:n=>n+'×', monthsOrders:n=>n+' داواکاری',
-  notesReply:'وەڵام', notesReplyPrompt:'وەڵامەکەت بۆ ڕۆژا', notesQuickOk:'👍 تێگەیشتم', notesQuickDone:'✅ کرا', notesQuickCall:'📞 پەیوەندیم پێوە بکە',
-  notesReplied:'بۆ ڕۆژا نێردرا.', notesReplyNew:'یونس وەڵامی دایەوە',
 
   });
 Object.assign(T.ar, {
   cutoffLabel:'يتوقف عن استلام الطلبات الساعة', cutoffHint:'اختياري. في أيام طلب هذا المورّد تعدّ صفحة الطلب تنازليًا حتى هذا الوقت، ويُنبّهك ريكو قبله بـ30 دقيقة.',
   cutoffShort:'آخر موعد', cutoffClosed:'مغلق لليوم', cutoffMinLeft:n=>'باقي '+n+' دقيقة', cutoffHoursLeft:(h,m)=>'باقي '+h+' س'+(m?' و'+m+' د':''), cutoffUntil:x=>'اطلب قبل '+x,
-  repeatToday:'طلب متكرر لليوم', repeatAdd:'أضف إلى الطلب', repeatAdded:(n,name)=>'أُضيفت '+n+' مواد من «'+name+'» إلى طلبك.',
-  repeatTitle:'كرّر هذا الطلب', repeatDaysLabel:'في هذه الأيام',
-  repeatHint:'في هذه الأيام تعرض صفحة الطلب هذا الطلب بضغطة واحدة. لا يُرسل شيء تلقائيًا.',
-  repeatSaved:(name,days)=>'سيعود «'+name+'» في '+days+'.', repeatTooMany:'هناك 30 طلبًا متكررًا بالفعل. احذف واحدًا أولًا.',
-  repeatListTitle:'الطلبات المتكررة', repeatListHint:'طلبات تعود في أيام تختارها. أنشئ واحدًا بزر «تكرار» على أي طلب في السجل.',
-  repeatNone:'لا توجد طلبات متكررة بعد.', repeatConfirmDelete:'إيقاف تكرار هذا الطلب؟',
   monthsTitle:'الأشهر السابقة', monthsHint:'يُمسح السجل كل شهر، ويبقى هنا ملخص كل شهر منتهٍ.',
   monthsNone:'لا شيء هنا بعد. يُحفظ أول ملخص عند انتهاء هذا الشهر.', monthsLastLine:(o,d)=>'الشهر الماضي: '+o+' طلب في '+d+' يوم',
   monthsTimes:n=>n+'×', monthsOrders:n=>n+' طلب',
-  notesReply:'رد', notesReplyPrompt:'ردّك على روژا', notesQuickOk:'👍 فهمت', notesQuickDone:'✅ تم', notesQuickCall:'📞 اتصلي بي',
-  notesReplied:'أُرسل إلى روژا.', notesReplyNew:'ردّ يونس',
 
   });

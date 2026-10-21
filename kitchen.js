@@ -4,14 +4,11 @@
      first order, then lights up. A whole day with no order puts it out, and
      Rico can bring it back (free, for 7 days). The fire changes colour as it
      grows, and milestones (7, 14, 30, 60, 100, 200...) get a celebration.
-   - Kitchen notes: Rozha leaves notes for Yunis. Yunis gets a notification,
-     a sticky note at the top of the Order screen and a banner when one
-     arrives while the app is open; he marks them done, Rozha sees it.
    - Rico's monthly report card in History, with "Save this month" (an Excel
      file and a printable report) before History is cleared.
    - Rico's fun facts from this month's orders.
    - Undo: whoever sent an order can take it back for 15 minutes.
-   The server keeps all of it (streak, notes); this file only shows it.
+   The server keeps the streak; this file only shows it.
    Depends on (runtime only): state, t, esc, api, render, goView, toast,
    showConfirm, showAlert, ricoFace, ricoAsk, formatIraqDateTime, timeAgo,
    accountLabel, unitLabel, supplierName, isRozha. */
@@ -143,176 +140,14 @@ function funFact(){
   return facts[Math.floor(Math.random() * facts.length)] || '';
 }
 
-/* ---------- Kitchen notes ---------- */
-const notesNow = () => Array.isArray(state.notes) ? state.notes : [];
-const unreadNotes = () => isRozha() ? [] : notesNow().filter(n=>!n.readAt);
-/* Rozha: answers from Yunis she hasn't opened yet. */
-const unseenReplies = () => isRozha() ? notesNow().filter(n=>n.reply && !n.replySeenAt) : [];
-function renderNotesBell(){
-  const unread = unreadNotes().length + unseenReplies().length;
-  return `<button type="button" class="chip notes-bell${unread ? ' has-new' : ''}" id="notesBell" aria-label="${esc(t('notesTitle'))}${unread ? ' · ' + esc(t('notesUnread')(unread)) : ''}">${ICON_NOTE}${unread ? `<b>${unread}</b>` : ''}</button>`;
-}
-function paintNotesBell(){
-  const old = document.getElementById('notesBell');
-  if(!old) return;
-  old.outerHTML = renderNotesBell();
-  document.getElementById('notesBell').onclick = openNotesSheet;
-  updateAppBadge();
-}
-/* Yunis: a sticky note at the top of the Order screen while a note is unread. */
-function renderNoteSticky(){
-  if(isRozha()) return '';
-  const unread = unreadNotes();
-  if(!unread.length) return '';
-  const n = unread[0];
-  return `<div class="note-sticky" id="noteSticky" role="status">
-    <i class="note-tape" aria-hidden="true"></i>
-    <div class="note-sticky-top"><span class="note-from">${esc(t('notesFromRozha'))}</span><span class="note-when">${esc(timeAgo(n.at))}</span>${unread.length > 1 ? `<span class="note-more">+${unread.length - 1}</span>` : ''}</div>
-    <div class="note-text" dir="auto">${esc(n.body)}</div>
-    <div class="note-actions"><button type="button" class="btn btn-primary" data-note-done="${n.id}">${ICON_CHECK_SM} ${esc(t('notesMarkDone'))}</button><button type="button" class="btn btn-ghost" data-note-open>${esc(t('notesOpen'))}</button></div>
-  </div>`;
-}
-function attachNoteSticky(){
-  document.querySelectorAll('#noteSticky [data-note-done]').forEach(b=>b.onclick=()=>withBusy(b, ()=>setNoteDone(Number(b.dataset.noteDone), true)));
-  document.querySelector('#noteSticky [data-note-open]')?.addEventListener('click', openNotesSheet);
-}
-async function markNotesRead(){
-  const unread = unreadNotes();
-  if(!unread.length) return;
-  const now = new Date().toISOString();
-  unread.forEach(n=>{ n.readAt = now; });
-  paintNotesBell();
-  await Promise.all(unread.map(n=>api(`notes/${n.id}/read`, {method:'POST'})));
-}
-async function setNoteDone(id, done){
-  const n = notesNow().find(x=>x.id === id);
-  if(!n) return;
-  const r = await api(`notes/${id}/done`, {method:'POST', body:{done}});
-  if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
-  n.doneAt = done ? new Date().toISOString() : null;
-  n.readAt = n.readAt || new Date().toISOString();
-  paintNotesBell();
-  if(state.view === 'order'){ const st = document.getElementById('noteSticky'); if(st){ st.classList.add('out'); setTimeout(()=>render(), 260); } }
-  if(document.querySelector('.notes-sheet')) paintNotesList();
-}
-function noteRow(n){
-  const rozha = isRozha();
-  // Rozha sees whether Yunis has read it; Yunis only sees what he marked done.
-  const seen = n.doneAt ? `<span class="note-state done">${ICON_CHECK_SM} ${esc(t('notesDone'))} · ${esc(timeAgo(n.doneAt))}</span>`
-    : !rozha ? '' : n.readAt ? `<span class="note-state seen">${esc(t('notesSeen')(timeAgo(n.readAt)))}</span>` : `<span class="note-state">${esc(t('notesNotSeen'))}</span>`;
-  const reply = n.reply ? `<div class="note-reply${rozha && !n.replySeenAt ? ' new' : ''}"><b>${esc(accountLabel('yunis'))}</b><span dir="auto">${esc(n.reply)}</span><small>${esc(timeAgo(n.repliedAt))}</small></div>`
-    : rozha ? '' : `<div class="note-quick">${NOTE_QUICK_REPLIES.map(k=>`<button type="button" class="chip" data-note-quick="${n.id}" data-text="${esc(t(k))}">${esc(t(k))}</button>`).join('')}<button type="button" class="chip" data-note-reply="${n.id}">${ICON_SEND} ${esc(t('notesReply'))}</button></div>`;
-  return `<div class="note-row${n.doneAt ? ' is-done' : ''}">
-    <div class="note-row-body"><div class="note-text" dir="auto">${esc(n.body)}</div><div class="note-meta"><span>${esc(timeAgo(n.at))}</span>${seen}</div>${reply}</div>
-    ${rozha ? `<button type="button" class="icon-btn danger" data-note-del="${n.id}" aria-label="${esc(t('notesDelete'))}">${ICON_DELETE}</button>`
-      : `<button type="button" class="btn ${n.doneAt ? 'btn-ghost' : 'btn-primary'} note-done-btn" data-note-toggle="${n.id}">${n.doneAt ? esc(t('notesNotDone')) : esc(t('notesMarkDone'))}</button>`}
-  </div>`;
-}
-function paintNotesList(){
-  const list = document.querySelector('.notes-sheet .notes-list');
-  if(!list) return;
-  const notes = notesNow();
-  list.innerHTML = notes.length ? notes.map(noteRow).join('') : `<div class="field-hint notes-empty">${esc(isRozha() ? t('notesEmptyRozha') : t('notesEmptyYunis'))}</div>`;
-  list.querySelectorAll('[data-note-quick]').forEach(b=>b.onclick=()=>withBusy(b, ()=>replyToNote(Number(b.dataset.noteQuick), b.dataset.text)));
-  list.querySelectorAll('[data-note-reply]').forEach(b=>b.onclick=async()=>{
-    const text = await showPrompt(esc(t('notesReplyPrompt')), {maxLength:300, okLabel:t('notesSend')});
-    if(text && text.trim()) withBusy(b, ()=>replyToNote(Number(b.dataset.noteReply), text.trim()));
-  });
-  list.querySelectorAll('[data-note-toggle]').forEach(b=>b.onclick=()=>{ const n = notesNow().find(x=>x.id === Number(b.dataset.noteToggle)); if(n) withBusy(b, ()=>setNoteDone(n.id, !n.doneAt)); });
-  list.querySelectorAll('[data-note-del]').forEach(b=>b.onclick=async()=>{
-    if(!(await showConfirm(t('notesDelete') + '?'))) return;
-    const id = Number(b.dataset.noteDel);
-    const r = await api(`notes/${id}`, {method:'DELETE'});
-    if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
-    state.notes = notesNow().filter(x=>x.id !== id);
-    paintNotesList();
-  });
-}
-/* Yunis answers a note: a quick "Got it" or a few words. Rozha gets a notification. */
-const NOTE_QUICK_REPLIES = ['notesQuickOk', 'notesQuickDone', 'notesQuickCall'];
-async function replyToNote(id, text){
-  const r = await api(`notes/${id}/reply`, {method:'POST', body:{body:text}});
-  if(!r.ok || !r.data){ toast(t('saveFailed'), 'error'); return; }
-  state.notes = notesNow().map(n=>n.id === id ? r.data : n);
-  paintNotesList(); paintNotesBell();
-  toast(t('notesReplied'));
-  if(state.view === 'order' && !refreshBlocked()) render();
-}
-/* Rozha opened the notes: Yunis's answers count as seen. */
-async function markRepliesSeen(){
-  const unseen = unseenReplies();
-  if(!unseen.length) return;
-  const now = new Date().toISOString();
-  unseen.forEach(n=>{ n.replySeenAt = now; });
-  paintNotesBell();
-  await api('notes/replies-seen', {method:'POST'});
-}
-function openNotesSheet(){
-  const rozha = isRozha();
-  const {el} = openKitchenSheet('notes-sheet', `
-    <div class="notes-head">${ricoFace('thinking', 'rico-sm')}<div><div class="sel-title">${esc(t('notesTitle'))}</div><div class="notes-sub">${esc(rozha ? t('notesForYunis') : t('notesFromRozha'))}</div></div></div>
-    ${rozha ? `<form class="notes-compose" id="notesCompose"><textarea id="noteInput" rows="2" maxlength="500" placeholder="${esc(t('notesPlaceholder'))}" dir="auto"></textarea><button type="submit" class="btn btn-primary" id="noteSend">${ICON_SEND} ${esc(t('notesSend'))}</button></form>` : ''}
-    <div class="sel-list notes-list"></div>`, t('notesTitle'));
-  paintNotesList();
-  if(!rozha) markNotesRead(); else setTimeout(markRepliesSeen, 1500);
-  const form = el.querySelector('#notesCompose');
-  if(form) form.onsubmit = e=>{
-    e.preventDefault();
-    const input = el.querySelector('#noteInput'), body = input.value.trim();
-    if(!body) return;
-    withBusy(el.querySelector('#noteSend'), async ()=>{
-      const r = await api('notes', {method:'POST', body:{body}});
-      if(!r.ok || !r.data){ toast(t('saveFailed'), 'error'); return; }
-      state.notes = [r.data, ...notesNow()];
-      input.value = '';
-      paintNotesList();
-      toast(t('notesSent'));
-    });
-  };
-}
-/* A note arrived while the app is open: a banner slides down (Yunis only). */
-function noteArrived(n, title = t('notesNew')){
-  document.getElementById('noteBanner')?.remove();
-  const el = document.createElement('button');
-  el.type = 'button'; el.id = 'noteBanner'; el.className = 'note-banner';
-  el.innerHTML = `<span class="note-banner-icon">${ICON_NOTE}</span><span class="note-banner-text"><b>${esc(title)}</b><span dir="auto">${esc(n.body)}</span></span>`;
-  document.body.appendChild(el);
-  const close = ()=>{ el.classList.add('out'); setTimeout(()=>el.remove(), 300); };
-  el.onclick = ()=>{ close(); openNotesSheet(); };
-  setTimeout(close, 7000);
-}
-/* Called after every load of the server's data: new notes for Yunis get the banner. */
-let notesLoadedFor = null;   // the account whose notes are already on screen (no banner for the first load)
-function syncNotes(list){
-  if(!Array.isArray(list)) return;
-  const known = new Set(notesNow().map(n=>n.id));
-  const loaded = notesLoadedFor === state.account;
-  const fresh = state.account === 'yunis' && loaded ? list.filter(n=>!known.has(n.id) && !n.readAt) : [];
-  const repliedBefore = new Set(notesNow().filter(n=>n.reply).map(n=>n.id));
-  const replies = state.account === 'rozha' && loaded ? list.filter(n=>n.reply && !n.replySeenAt && !repliedBefore.has(n.id)) : [];
-  notesLoadedFor = state.account;
-  state.notes = list;
-  if(fresh.length) noteArrived(fresh[0]);
-  else if(replies.length) noteArrived({body:replies[0].reply}, t('notesReplyNew'));
-  paintNotesBell();
-}
-/* The streak and notes come quicker than the full refresh: checked every 45 seconds while the app is
-   open and whenever it comes back to the screen, so an order from the other phone lights the fire here too. */
+/* The streak comes quicker than the full refresh: checked every 45 seconds while the app is open and
+   whenever it comes back to the screen, so an order from the other phone lights the fire here too. */
 let kitchenCheckedAt = 0;
 async function kitchenCheck(){
   if(!state.account || document.visibilityState !== 'visible' || Date.now() - kitchenCheckedAt < 15000) return;
   kitchenCheckedAt = Date.now();
   const st = await api('streak');
   if(st.ok && st.data && typeof st.data.count === 'number') streakArrived(st.data);
-  // Yunis gets Rozha's new notes; Rozha gets Yunis's answers.
-  const r = await api('notes');
-  if(r.ok && Array.isArray(r.data)){
-    const sig = ()=>notesNow().map(n=>n.id + ':' + !!n.readAt + ':' + !!n.doneAt + ':' + !!n.reply).join();
-    const before = sig();
-    syncNotes(r.data);
-    if(before !== sig() && document.querySelector('.notes-sheet')) paintNotesList();
-    if(state.view === 'order' && before !== sig() && !refreshBlocked()) render();
-  }
   updateAppBadge();
 }
 setInterval(kitchenCheck, 45000);
@@ -353,7 +188,7 @@ function openReportSheet(){
   const maxTop = d.top[0]?.times || 1, total = Math.max(1, d.who.rozha + d.who.yunis);
   const fact = funFact();
   const {el} = openKitchenSheet('report-sheet', `
-    <div class="report-head"><div><div class="sel-title">${esc(t('reportTitle')(monthName()))}</div><div class="notes-sub">${esc(t('reportGradeHint')(d.days, d.elapsed))}</div></div><span class="report-grade big grade-${esc(d.grade.replace('+','p'))}" aria-label="${esc(t('reportGrade'))} ${esc(d.grade)}">${esc(d.grade)}</span></div>
+    <div class="report-head"><div><div class="sel-title">${esc(t('reportTitle')(monthName()))}</div><div class="report-sub">${esc(t('reportGradeHint')(d.days, d.elapsed))}</div></div><span class="report-grade big grade-${esc(d.grade.replace('+','p'))}" aria-label="${esc(t('reportGrade'))} ${esc(d.grade)}">${esc(d.grade)}</span></div>
     <div class="report-stats">
       <div><b>${d.orders}</b><span>${esc(t('reportOrders'))}</span></div>
       <div><b>${d.days}</b><span>${esc(t('reportDays'))}</span></div>
@@ -459,94 +294,6 @@ function paintCutoffs(){
 }
 setInterval(()=>{ if(document.visibilityState === 'visible') paintCutoffs(); }, 30000);
 
-/* ---------- Repeat orders ----------
-   A sent order saved to come back on chosen weekdays. On those days the Order screen offers it with one
-   tap ("Add to order"); nothing is sent by itself. Shared by both accounts. */
-const repeatDaysText = days=>days.length === 7 ? t('everyDay') : DAY_ORDER.filter(d=>days.includes(d)).map(d=>t('daysShort')[d]).join(', ');
-const repeatItemCount = r=>(r.entries || []).reduce((n, e)=>n + (e.items || []).filter(i=>state.items.some(x=>x.id === i.itemId && x.available!==false)).length, 0);
-function repeatHiddenToday(){ const v = lget('repeatHidden'); return v && v.date === erbilClock().date ? v.ids : []; }
-function repeatsToday(){
-  const now = erbilClock(), hidden = repeatHiddenToday();
-  return (state.repeats || []).filter(r=>(r.days || []).includes(now.weekday) && !hidden.includes(r.id) && repeatItemCount(r)
-    && !(r.entries || []).every(e=>e.supplierId && sentTodayTo(e.supplierId, now.date)));
-}
-function renderRepeatCards(){
-  return repeatsToday().slice(0, 3).map(r=>{
-    const names = [...new Set((r.entries || []).map(e=>supplierName(e.supplierId)))];
-    return `<div class="repeat-card glass">
-      <span class="repeat-ico" aria-hidden="true">${ICON_REPEAT}</span>
-      <div class="repeat-text"><b>${esc(t('repeatToday'))}</b><span dir="auto">${esc(r.name)}</span><small dir="auto">${esc(t('itemCount')(repeatItemCount(r)))} · ${esc(names.join(', '))}</small></div>
-      <button type="button" class="btn btn-primary" data-repeat-add="${esc(r.id)}">${esc(t('repeatAdd'))}</button>
-      <button type="button" class="rico-suggest-x" data-repeat-hide="${esc(r.id)}" aria-label="${esc(t('ricoSuggestDismiss'))}">×</button>
-    </div>`;
-  }).join('');
-}
-function hideRepeatToday(id){
-  const date = erbilClock().date;
-  lset('repeatHidden', {date, ids:[...repeatHiddenToday(), id]});
-}
-function attachRepeatCards(){
-  document.querySelectorAll('[data-repeat-add]').forEach(b=>b.onclick=()=>{
-    const r = (state.repeats || []).find(x=>x.id === b.dataset.repeatAdd);
-    if(!r) return;
-    const before = {...state.cart};
-    let n = 0;
-    (r.entries || []).forEach(e=>(e.items || []).forEach(i=>{
-      if(!state.items.some(x=>x.id === i.itemId && x.available!==false)) return;   // deleted from the catalog since
-      state.cart[i.itemId] = Math.max(state.cart[i.itemId] || 0, i.qty); n++;
-    }));
-    hideRepeatToday(r.id);
-    persistCartDraft(); render();
-    toast(t('repeatAdded')(n, r.name), 'ok', {undo:()=>{ state.cart = before; persistCartDraft(); render(); }});
-  });
-  document.querySelectorAll('[data-repeat-hide]').forEach(b=>b.onclick=()=>{ hideRepeatToday(b.dataset.repeatHide); render(); });
-}
-/* From History: save this order to come back on chosen weekdays. */
-function openRepeatForm(rec){
-  const entries = (rec.entries || []).map(e=>({supplierId:e.supplierId || null, items:(e.items || []).filter(i=>i.itemId).map(i=>({itemId:i.itemId, qty:i.qty}))})).filter(e=>e.items.length);
-  if(!entries.length) return;
-  const names = [...new Set(rec.entries.map(e=>supplierName(e.supplierId)))].join(', ');
-  const today = erbilClock().weekday;
-  showFormModal({
-    title: t('repeatTitle'),
-    bodyHtml: `<div class="field"><label for="rpName">${esc(t('name'))}</label><input id="rpName" maxlength="120" value="${esc(names.slice(0, 120))}"></div>
-      <div class="field"><label>${esc(t('repeatDaysLabel'))}</label>
-        <div class="day-chips">${DAY_ORDER.map(d=>`<button type="button" class="day-chip ${d === today ? 'on' : ''}" data-day="${d}">${t('daysShort')[d]}</button>`).join('')}</div></div>
-      <div class="notif-sub">${esc(t('repeatHint'))}</div>`,
-    okLabel: t('save'),
-    onOpen: box=>box.querySelectorAll('.day-chip').forEach(c=>c.onclick=()=>c.classList.toggle('on')),
-    onSubmit: async ()=>{
-      const name = document.getElementById('rpName').value.trim();
-      const days = [...document.querySelectorAll('.modal-form .day-chip.on, #modalRoot .day-chip.on')].map(c=>Number(c.dataset.day));
-      if(!name) return {error:t('nameRequired')};
-      if(!days.length) return {error:t('reminderDaysRequired')};
-      const r = await api('repeat-orders', {method:'POST', body:{name, days, entries}});
-      if(!r.ok || !r.data || !r.data.id) return {error:t(r.status === 409 ? 'repeatTooMany' : 'saveFailed')};
-      state.repeats = [...(state.repeats || []), r.data];
-      toast(t('repeatSaved')(name, repeatDaysText(days)));
-      if(state.view === 'history' || state.view === 'order') render();
-      return {};
-    }
-  });
-}
-/* History -> Repeat orders: every saved one, with its days; remove any. */
-function openRepeatList(){
-  const rows = ()=>(state.repeats || []).map(r=>`<div class="repeat-row"><div><b dir="auto">${esc(r.name)}</b><small>${esc(repeatDaysText(r.days || []))} · ${esc(t('itemCount')(repeatItemCount(r)))}</small></div>
-    <button type="button" class="icon-btn danger" data-repeat-del="${esc(r.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button></div>`).join('') || `<div class="notif-sub">${esc(t('repeatNone'))}</div>`;
-  const {el} = openKitchenSheet('repeat-sheet', `<div class="sel-title">${esc(t('repeatListTitle'))}</div>
-    <div class="notif-sub">${esc(t('repeatListHint'))}</div><div class="repeat-list">${rows()}</div>`, t('repeatListTitle'));
-  const bind = ()=>el.querySelectorAll('[data-repeat-del]').forEach(b=>b.onclick=async()=>{
-    const r = (state.repeats || []).find(x=>x.id === b.dataset.repeatDel);
-    if(!r || !(await showConfirm(`<b>${esc(r.name)}</b><br>${esc(t('repeatConfirmDelete'))}`))) return;
-    const res = await api(`repeat-orders/${encodeURIComponent(r.id)}`, {method:'DELETE'});
-    if(!res.ok){ await showAlert(t('saveFailed')); return; }
-    state.repeats = state.repeats.filter(x=>x.id !== r.id);
-    el.querySelector('.repeat-list').innerHTML = rows(); bind();
-    if(state.view === 'history') render();
-  });
-  bind();
-}
-
 /* ---------- The month archive ----------
    History is cleared at the start of each month; the server keeps a summary of every finished month. */
 const monthKeyOf = d=>d.toISOString().slice(0, 7);
@@ -576,8 +323,8 @@ function openMonthsSheet(){
 }
 
 /* ---------- The red number on the app icon ----------
-   Unread notes (Yunis), unseen answers (Rozha) and suppliers whose order is late (an hour past the
-   reminder, nothing sent today). Phones show it on the Home Screen icon (iPhone: notifications on). */
+   Suppliers whose order is late (an hour past the reminder, nothing sent today). Phones show it on
+   the Home Screen icon (iPhone: notifications on). */
 function lateSupplierCount(){
   const now = erbilClock();
   return state.suppliers.filter(s=>{
@@ -590,7 +337,7 @@ function lateSupplierCount(){
   }).length;
 }
 function appBadgeCount(){
-  return state.account ? unreadNotes().length + unseenReplies().length + lateSupplierCount() : 0;
+  return state.account ? lateSupplierCount() : 0;
 }
 function updateAppBadge(){
   const n = appBadgeCount();

@@ -440,7 +440,7 @@ async function ricoToggleVoice(){
   Object.assign(ricoRecorder, {active:true, rec, stream, chunks:[]});
   rec.ondataavailable = e=>{ if(e.data && e.data.size) ricoRecorder.chunks.push(e.data); };
   rec.onstop = ()=>ricoFinishVoice(rec.mimeType || mime || 'audio/webm');
-  rec.onerror = e=>{ ricoResetVoice(); ricoRecorder.voiceOrder = false; ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintTransferMic(); failed(e && e.error); };
+  rec.onerror = e=>{ ricoResetVoice(); ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintTransferMic(); failed(e && e.error); };
   if(apple) rec.start(); else rec.start(250);
   ricoRecorder.timer = setTimeout(()=>{ if(ricoRecorder.active) try{ rec.stop(); }catch(e){} }, 60000);
   ricoRefreshComposer();
@@ -457,7 +457,6 @@ async function ricoFinishVoice(mime){
   ricoResetVoice();
   ricoRecorder.busy = true;
   ricoRefreshComposer();
-  paintVoiceOrderBtn();
   paintTransferMic();
   try{
     if(blob.size < 1200){ toast(t('ricoMicTooShort'), 'warn'); return; }   // just a tap
@@ -472,11 +471,9 @@ async function ricoFinishVoice(mime){
     ricoRecorder.busy = false;
     // From the Transfers screen: the spoken list is read into transfer rows, not sent to Rico's chat.
     if(ricoRecorder.voiceTransfer){ ricoRecorder.voiceTransfer = false; transferVoiceText(text); }
-    // From the Order screen's "Say your order": Rico fills the order straight away.
-    else if(ricoRecorder.voiceOrder){ ricoRecorder.voiceOrder = false; ricoAsk(text + '\n\n' + t('voiceOrderPrompt'), {voiceOrder:true}); }
     else ricoAsk(text);
   }catch(e){ console.error('Voice message failed', e); toast(t('ricoMicFailed') + (e && e.name ? ` (${e.name})` : ''), 'warn'); }
-  finally{ ricoRecorder.busy = false; ricoRecorder.voiceOrder = false; ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintVoiceOrderBtn(); paintTransferMic(); }
+  finally{ ricoRecorder.busy = false; ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintTransferMic(); }
 }
 
 /* ---------- Events ---------- */
@@ -592,7 +589,7 @@ async function ricoAsk(text, options = {}){
   const scopeIds = options.supplierIds || [];
   const named = state.suppliers.filter(s=>String(text).toLocaleLowerCase().includes(s.name.toLocaleLowerCase())).map(s=>s.id);
   if(rico.viewing){ rico.viewing = null; rico.messages = []; rico.chatId = null; }
-  if(!options.voiceOrder && (options.quickAction==='prepare_order' || ricoOrderIntent(text)) && !scopeIds.length && !named.length){
+  if((options.quickAction==='prepare_order' || ricoOrderIntent(text)) && !scopeIds.length && !named.length){
     rico.messages.push({role:'user', text, ts:Date.now()});
     rico.messages.push({role:'assistant', text:t('ricoChooseSuppliers'), picker:{selectedIds:[], chosen:false}, ts:Date.now()});
     if(state.view !== 'assistant') goView('assistant'); else render();
@@ -617,7 +614,7 @@ async function ricoAsk(text, options = {}){
   const paint = ()=>{ if(frame) return; frame = requestAnimationFrame(()=>{ frame = 0; ricoPaintMessage(idx); }); };
   const body = {
     messages: ricoHistoryForServer(), lang: state.lang, screen: previousView,
-    autoOrder: ricoAutoOrder() || !!options.voiceOrder, cart: Object.fromEntries(Object.entries(state.cart).filter(([,q])=>q>0)),
+    autoOrder: ricoAutoOrder(), cart: Object.fromEntries(Object.entries(state.cart).filter(([,q])=>q>0)),
     quickAction: options.quickAction || undefined, supplierIds: options.supplierIds || undefined,
   };
   await apiStream('assistant/chat', body, ev=>{
@@ -631,7 +628,7 @@ async function ricoAsk(text, options = {}){
     else if(ev.type === 'proposal'){
       const p = {...ev.proposal, status:'pending'};
       bot.proposals.push(p);
-      if(p.kind === 'order' && (ricoAutoOrder() || options.voiceOrder)){ ricoApplyOrder(p, true); }
+      if(p.kind === 'order' && ricoAutoOrder()){ ricoApplyOrder(p, true); }
       paint();
     }
     else if(ev.type === 'mood'){ bot.mood = ev.mood; paint(); ricoPaintHeadFace(); }

@@ -10,15 +10,12 @@
 //       {type:"reminder-now"}                     test of the daily reminder
 //       {type:"supplier-test", supplierId}        test of one supplier's reminder
 //       {type:"assistant", title, bodyEn, bodyKu, bodyAr}  a message sent through Rico
-//       {type:"note", account, body}              Rozha left a kitchen note (only that account's phones)
-//       {type:"reply", account, body}             Yunis answered one of Rozha's notes (only Rozha's phones)
 //
 // Every tick also runs Rico's own messages: a cheer at 09:00 Erbil time (with
 // the day's weather), an hour after a supplier's reminder time (or the daily
 // reminder) with nothing sent, a telling-off, at 20:00 a warning when the
 // kitchen streak would end at midnight, on the last day of the month a
-// reminder to save the month's report card, and a nudge for Yunis when
-// Rozha's note has waited two hours unread, 30 minutes before a supplier's
+// reminder to save the month's report card, 30 minutes before a supplier's
 // order cut-off when nothing has gone to it yet, and a weekly summary on
 // Friday evening -- each once, in the app (Rico's inbox) and as a
 // notification. Erbil's weather is refreshed every hour.
@@ -147,10 +144,9 @@ async function send(subs: Sub[], payloadFor: Payload, ttl: number, urgency: "hig
   return { sent, failed, removed: dead.length };
 }
 
-async function sendReminder(payloadFor: Payload, account?: string) {
+async function sendReminder(payloadFor: Payload) {
   const { subs, skipped } = await loadSubs(true);
-  const mine = account ? subs.filter((s) => s.account === account) : subs;
-  return { ...(await send(mine, payloadFor, 2 * 3600, "high")), skipped: skipped + subs.length - mine.length };
+  return { ...(await send(subs, payloadFor, 2 * 3600, "high")), skipped };
 }
 
 /* ---- Daily reminder (one for the whole restaurant) ---- */
@@ -181,9 +177,8 @@ async function claimAlert(id: string, kind: string, supplierId: string | null) {
   return !!data?.length;
 }
 type Words = { mood: string; en: (n: string) => string; ku: (n: string) => string; ar: (n: string) => string };
-async function ricoSays(kind: string, key: string, words: Words, extra: Record<string, unknown> = {}, only?: string) {
-  const to = only ? ACCOUNTS.filter((a) => a === only) : ACCOUNTS;
-  const { error } = await sb.from("app_rico_inbox").upsert(to.map((a) => ({
+async function ricoSays(kind: string, key: string, words: Words, extra: Record<string, unknown> = {}) {
+  const { error } = await sb.from("app_rico_inbox").upsert(ACCOUNTS.map((a) => ({
     account: a, kind, mood: words.mood, body_en: words.en(NAMES[a].en), body_ku: words.ku(NAMES[a].ku), body_ar: words.ar(NAMES[a].ar),
     dedupe_key: `${key}|${a}`,
   })), { onConflict: "dedupe_key", ignoreDuplicates: true });
@@ -192,7 +187,7 @@ async function ricoSays(kind: string, key: string, words: Words, extra: Record<s
     title: RICO[lang],
     body: lang === "ku" ? words.ku(name ?? "") : lang === "ar" ? words.ar(name ?? "") : words.en(name ?? ""),
     kind: "assistant", mood: moodOf(words.mood), tag: `ricotta-rico-${key}`, ...extra,
-  }), only);
+  }));
 }
 /* "Hey Rozha!" when the name is known, "Hey!" when it isn't. */
 const hi = (word: string, n: string, sep = " ") => (n ? `${word}${sep}${n}` : word);
@@ -342,26 +337,6 @@ async function reportTick() {
   }, { view: "history" });
 }
 
-/* ---- Rozha's notes: if one waits two hours unread, Rico reminds Yunis (once per note) ---- */
-async function notesTick() {
-  const now = erbilNow();
-  if (now.minutes < 8 * 60 || now.minutes >= 22 * 60) return { skipped: "night" };
-  const { data: waiting } = await sb.from("app_notes").select("id,body")
-    .is("read_at", null).is("reminded_at", null).lt("created_at", new Date(Date.now() - 2 * 3600_000).toISOString())
-    .order("created_at").limit(5);
-  if (!waiting?.length) return { skipped: "nothing unread" };
-  const { data: claimed } = await sb.from("app_notes").update({ reminded_at: new Date().toISOString() })
-    .in("id", waiting.map((n: any) => n.id)).is("reminded_at", null).select("id");
-  if (!claimed?.length) return { skipped: "claimed elsewhere" };
-  const k = claimed.length;
-  return await ricoSays("note", `note-remind|${claimed.map((n: any) => n.id).join(",")}`, {
-    mood: "thinking",
-    en: (n) => `${hi("Psst", n, ", ")}! 📝 Rozha left you ${k === 1 ? "a note" : `${k} notes`} and ${k === 1 ? "it's" : "they're"} still unread. Tap the bell at the top to read ${k === 1 ? "it" : "them"}.`,
-    ku: (n) => `${hi("هێی", n)}! 📝 ڕۆژا ${k === 1 ? "تێبینییەکی" : `${k} تێبینی`} بۆ بەجێهێشتوویت و هێشتا نەتخوێندۆتەوە. زەنگەکەی سەرەوە دابگرە بۆ خوێندنەوە.`,
-    ar: (n) => `${ya(n)}! 📝 تركت لك روژا ${k === 1 ? "ملاحظة" : `${k} ملاحظات`} لم تُقرأ بعد. اضغط الجرس في الأعلى لقراءتها.`,
-  }, { view: "notes" }, "yunis");
-}
-
 /* ---- Order cut-offs: 30 minutes before a supplier stops taking orders, if nothing went to it today ---- */
 const CUTOFF_WARN_MIN = 30;
 async function cutoffTick() {
@@ -440,14 +415,6 @@ async function cheerTick() {
   const listEn = dueToday.slice(0, 6).join(", ");
   const k = dueToday.length;
   const wx = await weatherWords().catch(() => ({ en: "", ku: "", ar: "" }));
-  // Repeat orders due today are mentioned too (the Order screen offers them with one tap).
-  const { data: reps } = await sb.from("app_repeat_orders").select("name,days");
-  const due = (reps ?? []).filter((r: any) => (r.days ?? []).map(Number).includes(now.weekday)).map((r: any) => String(r.name).slice(0, 40)).slice(0, 4);
-  if (due.length) {
-    wx.en += ` Repeat order${due.length === 1 ? "" : "s"} today: ${due.join(", ")}.`;
-    wx.ku += ` داواکاریی دووبارە ئەمڕۆ: ${due.join("، ")}.`;
-    wx.ar += ` الطلبات المتكررة اليوم: ${due.join("، ")}.`;
-  }
   return await ricoSays("cheer", `cheer|${now.date}`, k ? {
     mood: "excited",
     en: (n) => `${hi("Good morning", n, ", ")}! ☀️ ${k} supplier${k === 1 ? " is" : "s are"} due today: ${listEn}.${wx.en} Let's get the orders out on time!`,
@@ -511,7 +478,6 @@ Deno.serve(async (req) => {
         try { result.cheer = await cheerTick(); } catch (e) { console.error("cheer tick failed", e); result.cheer = { error: true }; }
         try { result.streak = await streakTick(); } catch (e) { console.error("streak tick failed", e); result.streak = { error: true }; }
         try { result.report = await reportTick(); } catch (e) { console.error("report tick failed", e); result.report = { error: true }; }
-        try { result.notes = await notesTick(); } catch (e) { console.error("notes tick failed", e); result.notes = { error: true }; }
         try { result.cutoff = await cutoffTick(); } catch (e) { console.error("cutoff tick failed", e); result.cutoff = { error: true }; }
         try { result.weekly = await weeklyTick(); } catch (e) { console.error("weekly tick failed", e); result.weekly = { error: true }; }
         return json(result);
@@ -530,25 +496,6 @@ Deno.serve(async (req) => {
         return json(await sendReminder((lang) => ({
           title: title || RICO[lang], body: w.pick(lang), kind: "assistant", mood: moodOf(body.mood), tag: `ricotta-assistant-${Date.now()}`,
         })));
-      }
-      case "note": {
-        // A kitchen note: only the phones of the account it is for, in each phone's language.
-        const account = String(body.account ?? "");
-        const note = String(body.body ?? "").slice(0, 300);
-        if (!ACCOUNTS.includes(account) || !note) return json({ error: "invalid note" }, 400);
-        return json(await sendReminder((lang) => ({
-          title: L(lang, "📝 Note from Rozha", "📝 تێبینی لە ڕۆژاوە", "📝 ملاحظة من روژا"),
-          body: note, kind: "note", view: "notes", tag: `ricotta-note-${Date.now()}`,
-        }), account));
-      }
-      case "reply": {
-        // Yunis answered one of Rozha's notes: only Rozha's phones.
-        const reply = String(body.body ?? "").slice(0, 300);
-        if (!reply) return json({ error: "invalid reply" }, 400);
-        return json(await sendReminder((lang) => ({
-          title: L(lang, "💬 Yunis replied", "💬 یونس وەڵامی دایەوە", "💬 ردّ يونس"),
-          body: reply, kind: "note", view: "notes", tag: `ricotta-reply-${Date.now()}`,
-        }), "rozha"));
       }
       case "reminder-now":
         return json(await sendReminder((lang, name) => ({ ...dailyPayload(lang, name), title: L(lang, "Ricotta Orders (test)", "Ricotta Orders (تاقیکاری)", "Ricotta Orders (تجربة)") })));

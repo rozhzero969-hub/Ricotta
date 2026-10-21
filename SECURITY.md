@@ -4,9 +4,9 @@ Report vulnerabilities privately through GitHub's Security tab. Never include cr
 
 ## Trust boundary
 
-The public browser app talks only to the `api` Edge Function. PIN checks, account permissions, data ownership and request limits are enforced on the server. Hiding a tab is not authorization. Rozha manages devices, provider setup, update broadcasts, the shared daily reminder and kitchen notes. Yunis cannot use those administrative endpoints. Shared catalog and kitchen history remain shared by design; both accounts can read/delete saved chats, but only write their own. Yunis may undo their own order within 15 minutes; other history deletion is restricted to Rozha.
+The public browser app talks only to the `api` Edge Function. PIN checks, account permissions, data ownership and request limits are enforced on the server. Hiding a tab is not authorization. Rozha manages PINs, devices, provider setup and update broadcasts. Yunis cannot use those administrative endpoints. Shared catalog and kitchen history remain shared by design; both accounts can read/delete saved chats, but only write their own. Yunis may undo their own order within 15 minutes; other history deletion is restricted to Rozha.
 
-PINs and recovery answers are salted bcrypt hashes with cost 12. Sessions use random bearer tokens; only SHA-256 token hashes are stored in the database, and every request checks expiry/revocation. Cloudflare tokens are verified on the server for hostname, action and single use. The functions intentionally use `verify_jwt=false`: the API verifies its own sessions, and the push function requires the private cron secret.
+PINs are salted bcrypt hashes with cost 12. A PIN changes only through Admin with Rozha's current PIN; a wrong current PIN counts toward the same failed-sign-in limits. Sessions use random bearer tokens; only SHA-256 token hashes are stored in the database, and every request checks expiry/revocation. Cloudflare tokens are verified on the server for hostname, action and single use. The functions intentionally use `verify_jwt=false`: the API verifies its own sessions, and the push function requires the private cron secret.
 
 All app tables have RLS enabled and no grants to public/anon/authenticated. Device IDs are not credentials: sessions must match the device account, heartbeats cannot change ownership, and sign-in cannot claim a device with an active session from another account. Internal device IDs are excluded from shared activity responses.
 
@@ -30,7 +30,7 @@ Foreign browser origins and non-JSON writes are rejected before routing; a missi
 
 GitHub Pages supplies HTTPS/HSTS but does not support arbitrary response headers. The frontend CSP/referrer policy are supplied as meta tags; an embedded app refuses to render its sign-in/workspace as defense in depth. A true frame-ancestors header, Permissions-Policy and frontend nosniff header require a host/proxy that supports headers. Do not claim that a `_headers` file works on GitHub Pages. A hosting move must also update CORS, Turnstile hostnames, installed-app behavior and deployment settings.
 
-CI runs application/security regressions, dependency advisory checks and redacted Gitleaks scans; GitHub CodeQL and Dependabot provide ongoing scanning. Actions are pinned to reviewed commit SHAs. `.gitleaksignore` contains only exact reviewed historical public anon-key fingerprints and retired defaults verified not to match any current account/recovery hash. New matches must be investigated, never broadly ignored.
+CI runs application/security regressions, dependency advisory checks and redacted Gitleaks scans; GitHub CodeQL and Dependabot provide ongoing scanning. Actions are pinned to reviewed commit SHAs. `.gitleaksignore` contains only exact reviewed historical public anon-key fingerprints and retired defaults verified not to match any current account PIN hash. New matches must be investigated, never broadly ignored.
 
 ## Operational limits
 

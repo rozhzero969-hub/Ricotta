@@ -262,8 +262,8 @@ test('current unauthorized replies expire the session once', async()=>{
   assert.equal(c.apiSession(), null); assert.equal(expired(), 1);
 });
 
-test('login, recovery and public health replies retain their public semantics', async()=>{
-  for(const path of ['login', 'recovery/verify', 'health']){
+test('login, the bot check and public health replies retain their public semantics', async()=>{
+  for(const path of ['login', 'auth/security', 'health']){
     const {context:c, session, expired} = browser(); session('old');
     const pending = deferred(); c.fetch = async()=>pending.promise;
     const request = c.api(path, {method:'POST', body:{}});
@@ -342,10 +342,10 @@ test('another tab\'s account cannot send requests or chat from the previous acco
   assert.equal(c.apiSession().account, 'yunis', 'the other tab\'s shared session is preserved');
 });
 
-test('account guards allow the active account and public login, recovery and health', async()=>{
+test('account guards allow the active account and public login, the bot check and health', async()=>{
   const {context:c, calls, session} = browser(); session('yunis');
   c.state = {account:'rozha'};
-  for(const path of ['login', 'recovery/verify', 'health']) assert.equal((await c.api(path)).ok, true);
+  for(const path of ['login', 'auth/security', 'health']) assert.equal((await c.api(path)).ok, true);
   assert.equal(calls.length, 3);
   c.state.account = 'yunis';
   assert.equal(c.apiAccountMatchesUi(c.apiSession()), true);

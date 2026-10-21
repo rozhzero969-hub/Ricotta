@@ -8,9 +8,6 @@ const ORDERING_TEXT = {
     sentSound: "Order sent chime",
     manage: "Manage",
     catalog: "Catalog",
-    workspaceTools: "History & settings",
-    orderOptions: "Order options",
-    moreTools: "More tools",
     guideManage: "Your items, suppliers and units in one place.",
     catalogNoResults: "No matches found",
     securityCheck: "Quick security check",
@@ -19,17 +16,8 @@ const ORDERING_TEXT = {
     securityContinue: "Continue",
     aliasChanges: "Update search names",
     aliasConflict: "These names changed on another device. Ask Rico for a fresh preview.",
-    searchHint: "Search names, English aliases or details. Small typos are okay.",
     clearSearch: "Clear search",
     searchMatches: "Matches",
-    quantityLimit:
-      "Use quantities between 0.001 and 99999, with up to 3 decimal places.",
-    adjustQuantities: "Adjust quantities",
-    orderNote: "Order note",
-    orderNoteHint:
-      "This message is included with every supplier in this order.",
-    doubleQty: "Double quantities",
-    halfQty: "Halve quantities",
     availableToOrder: "Available to order",
     unavailable: "Unavailable",
     searchAliases: "Other names for search",
@@ -45,7 +33,6 @@ const ORDERING_TEXT = {
     callSupplier: "Call",
     contactSupplier: "WhatsApp",
     catalogSearch: "Search this list…",
-    quantityChanged: "Quantities updated",
     importRow: "Row",
     importError: "Name, unit or supplier is missing or unknown.",
     importDuplicate: "Duplicate item; use an ID or a unique name and supplier.",
@@ -54,14 +41,14 @@ const ORDERING_TEXT = {
       "Choose your items and quantities, then send the order through WhatsApp.",
     guideAssistant: "Ask Rico for help with your order or your kitchen.",
     guideHistory:
-      "Find this month’s orders, repeat an order, or save a report.",
+      "Find this month’s orders, send one again, or save a report.",
     guideQueue: "Open each supplier’s WhatsApp message to send your order.",
     guideSuppliers: "Manage supplier details, contact them, and set reminders.",
     guideItems: "Manage the items you order, their units and availability.",
     guideUnits: "Set the units used for quantities, such as kg, box or litre.",
     guideRecord: "See who added, changed or removed items and suppliers.",
-    guideDevices: "See signed-in devices and control their access.",
-    guideSettings: "Adjust the WhatsApp message, appearance, sounds and notifications.",
+    guideAdmin: "PINs, signed-in devices and the connection. Only you see this.",
+    guideSettings: "Adjust appearance, sounds and notifications.",
   },
   ku: {
     deviceInUse: "ئەم وێبگەڕە هێشتا بە هەژمارێکی تر چووەتە ژوورەوە. سەرەتا لەوێ بچۆ دەرەوە.",
@@ -70,9 +57,6 @@ const ORDERING_TEXT = {
     sentSound: "دەنگی ناردنی داواکاری",
     manage: "بەڕێوەبردن",
     catalog: "کاڵاکان",
-    workspaceTools: "مێژوو و ڕێکخستنەکان",
-    orderOptions: "هەڵبژاردەکانی داواکاری",
-    moreTools: "ئامرازی زیاتر",
     guideManage: "کاڵا، دابینکەر و یەکەکانت لە یەک شوێن.",
     catalogNoResults: "هیچ ئەنجامێک نەدۆزرایەوە",
     securityCheck: "پشکنینی خێرای ئاسایش",
@@ -81,16 +65,8 @@ const ORDERING_TEXT = {
     securityContinue: "بەردەوامبوون",
     aliasChanges: "نوێکردنەوەی ناوەکانی گەڕان",
     aliasConflict: "ئەم ناوانە لە ئامێرێکی تر گۆڕاون. لە ریکۆ داوای پێشبینینێکی نوێ بکە.",
-    searchHint: "بە ناو، ناوی ئینگلیزی یان وردەکاری بگەڕێ. هەڵەی بچووک لە نووسین ئاساییە.",
     clearSearch: "پاککردنەوەی گەڕان",
     searchMatches: "ئەنجامەکان",
-    quantityLimit:
-      "بڕەکان لە نێوان 0.001 و 99999 بن، بە زۆرترین 3 ژمارە دوای خاڵ.",
-    adjustQuantities: "ڕێکخستنی بڕەکان",
-    orderNote: "تێبینی داواکاری",
-    orderNoteHint: "ئەم پەیامە لەگەڵ داواکاریی هەموو دابینکەرەکان دەنێردرێت.",
-    doubleQty: "دوو هێندەکردنی بڕەکان",
-    halfQty: "نیوەکردنی بڕەکان",
     availableToOrder: "بەردەستە بۆ داواکردن",
     unavailable: "بەردەست نییە",
     searchAliases: "ناوی تر بۆ گەڕان",
@@ -106,7 +82,6 @@ const ORDERING_TEXT = {
     callSupplier: "پەیوەندی",
     contactSupplier: "واتساپ",
     catalogSearch: "لە لیستەکە بگەڕێ…",
-    quantityChanged: "بڕەکان نوێ کرانەوە",
     importRow: "ڕیز",
     importError: "ناو، یەکە یان دابینکەر نەنووسراوە یان نەناسراوە.",
     importDuplicate:
@@ -123,8 +98,8 @@ const ORDERING_TEXT = {
     guideItems: "کاڵاکان، یەکەکان و بەردەستییان بەڕێوەببە.",
     guideUnits: "یەکەی بڕەکان دیاری بکە، وەک کیلۆ، سندوق یان لیتر.",
     guideRecord: "ببینە کێ کاڵا و دابینکەری زیاد، گۆڕیو یان سڕیوەتەوە.",
-    guideDevices: "ئامێرە چووەژوورەوەکان ببینە و دەستگەیشتنیان بەڕێوەببە.",
-    guideSettings: "پەیامی واتساپ، ڕووکار، دەنگ و ئاگادارکردنەوەکان ڕێکبخە.",
+    guideAdmin: "کۆدەکان، ئامێرە چووەژوورەوەکان و پەیوەندی. تەنها تۆ ئەمە دەبینیت.",
+    guideSettings: "ڕووکار، دەنگ و ئاگادارکردنەوەکان ڕێکبخە.",
   },
   ar: {
     deviceInUse: "هذا المتصفح مسجل الدخول بحساب آخر. سجّل الخروج منه أولاً.",
@@ -133,9 +108,6 @@ const ORDERING_TEXT = {
     sentSound: "نغمة إرسال الطلب",
     manage: "إدارة",
     catalog: "الكتالوج",
-    workspaceTools: "السجل والإعدادات",
-    orderOptions: "خيارات الطلب",
-    moreTools: "أدوات إضافية",
     guideManage: "الأصناف والموردون والوحدات في مكان واحد.",
     catalogNoResults: "لم يتم العثور على نتائج",
     securityCheck: "تحقق أمني سريع",
@@ -144,15 +116,8 @@ const ORDERING_TEXT = {
     securityContinue: "متابعة",
     aliasChanges: "تحديث أسماء البحث",
     aliasConflict: "تغيّرت هذه الأسماء على جهاز آخر. اطلب معاينة جديدة من ريكو.",
-    searchHint: "ابحث بالاسم أو الأسماء الإنجليزية أو التفاصيل. الأخطاء البسيطة مقبولة.",
     clearSearch: "مسح البحث",
     searchMatches: "النتائج",
-    quantityLimit: "استخدم كميات بين 0.001 و99999، حتى 3 منازل عشرية.",
-    adjustQuantities: "تعديل الكميات",
-    orderNote: "ملاحظة الطلب",
-    orderNoteHint: "تُضاف هذه الرسالة إلى طلب كل مورد.",
-    doubleQty: "مضاعفة الكميات",
-    halfQty: "تنصيف الكميات",
     availableToOrder: "متاح للطلب",
     unavailable: "غير متاح",
     searchAliases: "أسماء أخرى للبحث",
@@ -167,7 +132,6 @@ const ORDERING_TEXT = {
     callSupplier: "اتصال",
     contactSupplier: "واتساب",
     catalogSearch: "ابحث في هذه القائمة…",
-    quantityChanged: "تم تحديث الكميات",
     importRow: "صف",
     importError: "الاسم أو الوحدة أو المورد مفقود أو غير معروف.",
     importDuplicate: "صنف مكرر؛ استخدم ID أو اسماً ومورداً فريدين.",
@@ -181,8 +145,8 @@ const ORDERING_TEXT = {
     guideItems: "أدر الأصناف ووحداتها ومدى توفرها للطلب.",
     guideUnits: "حدد وحدات الكميات مثل كغ أو صندوق أو لتر.",
     guideRecord: "اعرف من أضاف أو عدل أو حذف الأصناف والموردين.",
-    guideDevices: "راجع الأجهزة المسجلة وتحكم في وصولها.",
-    guideSettings: "اضبط رسالة واتساب والمظهر والأصوات والإشعارات.",
+    guideAdmin: "الرموز والأجهزة المسجلة والاتصال. لا يراها غيرك.",
+    guideSettings: "اضبط المظهر والأصوات والإشعارات.",
   },
 };
 for (const lang of ["en", "ku", "ar"]) {
@@ -227,62 +191,9 @@ function viewGuide(view) {
         itemsAdmin: "Items",
         units: "Units",
         record: "Record",
-        devices: "Devices",
+        admin: "Admin",
         settings: "Settings",
       }[view] || "Order"),
-  );
-}
-function renderOrderTools() {
-  return `<div class="order-tools"><button type="button" class="btn btn-ghost" id="orderNoteBtn">${esc(t("orderNote"))}${state.orderNote ? " •" : ""}</button><details><summary>${esc(t("adjustQuantities"))}</summary><div class="form-actions"><button type="button" class="btn btn-ghost" data-scale-order="2">${esc(t("doubleQty"))}</button><button type="button" class="btn btn-ghost" data-scale-order="0.5">${esc(t("halfQty"))}</button></div></details></div><p id="orderNotePreview" class="order-note-preview" dir="auto" ${state.orderNote ? "" : "hidden"}>${esc(state.orderNote || "")}</p>`;
-}
-function attachOrderTools() {
-  const note = document.getElementById("orderNoteBtn");
-  if (note)
-    note.onclick = () =>
-      showFormModal({
-        title: t("orderNote"),
-        bodyHtml: `<div class="field"><label for="wholeOrderNote">${esc(t("orderNoteHint"))}</label><textarea id="wholeOrderNote" maxlength="300" rows="3" dir="auto">${esc(state.orderNote || "")}</textarea></div>`,
-        onSubmit: async () => {
-          state.orderNote = document
-            .getElementById("wholeOrderNote")
-            .value.trim();
-          lset("orderNote:" + state.account, state.orderNote);
-          persistCartDraft();
-          render();
-          return {};
-        },
-      });
-  document.querySelectorAll("[data-scale-order]").forEach(
-    (b) =>
-      (b.onclick = async () => {
-        if (!cartCount()) return;
-        const factor = Number(b.dataset.scaleOrder);
-        if (
-          Object.values(state.cart).some(
-            (q) => q > 0 && !validOrderQuantity(q * factor),
-          )
-        ) {
-          await showAlert(t("quantityLimit"));
-          return;
-        }
-        if (
-          !(await showConfirm(t(factor === 2 ? "doubleQty" : "halfQty") + "?"))
-        )
-          return;
-        const before = { ...state.cart };
-        state.cart = Object.fromEntries(
-          Object.entries(state.cart)
-            .map(([id, q]) => [id, roundQuantity(q * factor)])
-            .filter(([, q]) => q > 0),
-        );
-        refreshOrderView();
-        toast(t("quantityChanged"), "ok", {
-          undo: () => {
-            state.cart = before;
-            refreshOrderView();
-          },
-        });
-      }),
   );
 }
 function supplierContactLinks(s) {

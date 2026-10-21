@@ -22,10 +22,9 @@ const server=http.createServer((req,res)=>{
   await page.waitForFunction(()=>state.items.length>10);
   assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','transfers','manage']);
   assert.equal(await page.locator('.hero-card,.streak-chip').count(),2,'summary board and kitchen streak remain');
-  assert.equal(await page.locator('.order-options').getAttribute('open'),null,'occasional tools start collapsed');
-  assert.equal(await page.locator('#clearOrderBtn').isVisible(),false);
-  await page.locator('.order-options>summary').click();
-  assert.equal(await page.locator('#orderNoteBtn').isVisible(),true,'order tools remain available');
+  assert.equal(await page.locator('.order-options').count(),0,'the Order screen has no fold');
+  assert.equal(await page.locator('#clearOrderBtn').isVisible(),true,'Clear order is shown directly');
+  assert.equal(await page.locator('#clearOrderBtn').isDisabled(),true,'and waits for something to clear');
   await page.locator('.bottomnav [data-view="manage"]').click();
   await page.waitForFunction(()=>!document.querySelector('.content.gliding'));
   await page.locator('[data-manage-view="suppliers"]').click();

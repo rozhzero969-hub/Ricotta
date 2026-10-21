@@ -7,8 +7,8 @@ const root=path.resolve(process.argv[2]||'dist'),prefix=path.resolve(process.arg
 const suppliers=Array.from({length:9},(_,i)=>({id:'s'+i,name:'Supplier '+i,phone:'07701234567'}));
 const items=Array.from({length:179},(_,i)=>({id:'i'+i,name:'تەماتە '+i,aliases:['Tomato '+i],unit:'box',supplierId:'s'+(i%9)}));
 const session={token:'performance-fixture',expiresAt:'2099-01-01T00:00:00Z',account:'rozha',name:'Rozha',tabs:['order','assistant','manage']};
-const views=['order','assistant','manage','history','suppliers','itemsAdmin','units','record','devices','settings'];
-const fixture={...session,views,suppliers,items,units:[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'}],history:[],devices:[],activity:[],inbox:[],notes:[],reminder:{enabled:false,time:'09:00'}};
+const views=['order','assistant','manage','history','suppliers','itemsAdmin','units','record','admin','settings'];
+const fixture={...session,views,suppliers,items,units:[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'}],history:[],devices:[],activity:[],inbox:[],reminder:{enabled:false,time:'09:00'}};
 const server=http.createServer((req,res)=>{
  const name=decodeURIComponent(new URL(req.url,'http://localhost').pathname),file=path.resolve(root,'.'+(name==='/'?'/index.html':name));
  if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}
@@ -29,7 +29,7 @@ const server=http.createServer((req,res)=>{
    const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block',ignoreHTTPSErrors:true}),errors=[];
    await ctx.route('**/functions/v1/api/**',async route=>{
     const endpoint=new URL(route.request().url()).pathname.split('/api/')[1];
-    let data=endpoint==='bootstrap'?fixture:endpoint==='auth/security'?{required:false,siteKey:null}:endpoint==='devices'||endpoint==='notes'||endpoint==='assistant/inbox'?[]:endpoint==='assistant/status'?{configured:true,provider:'gemini'}:{ok:true};
+    let data=endpoint==='bootstrap'?fixture:endpoint==='auth/security'?{required:false,siteKey:null}:endpoint==='devices'||endpoint==='assistant/inbox'?[]:endpoint==='assistant/status'?{configured:true,provider:'gemini'}:{ok:true};
     await new Promise(r=>setTimeout(r,300));await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
    });
    await ctx.addInitScript(({loggedIn,session})=>{

@@ -56,14 +56,14 @@ self.addEventListener('push', event => {
   try { data = event.data ? event.data.json() : {}; }
   catch (e) { data = { body: event.data ? event.data.text() : '' }; }
 
-  const kind = data.kind || 'general';   /* 'update' | 'reminder' | 'supplier' | 'assistant' | 'note' | 'general' */
+  const kind = data.kind || 'general';   /* 'update' | 'reminder' | 'supplier' | 'assistant' | 'general' */
   /* Rico's own messages carry his mood and show his face for it, not the app icon. */
   const RICO_MOODS = ['happy', 'excited', 'grateful', 'calm', 'thinking', 'worried', 'sad', 'angry'];
   const icon = kind === 'assistant' ? 'rico-' + (RICO_MOODS.includes(data.mood) ? data.mood : 'happy') + '.png' : 'icon-192.png';
   const title = data.title || 'Ricotta Orders';
   const supplierId = data.supplierId || '';
-  /* Some of Rico's messages belong to a screen: 'history' (save the month) or 'notes' (an unread note). */
-  const view = data.view === 'history' || data.view === 'notes' ? data.view : '';
+  /* Some of Rico's messages belong to a screen: 'history' (save the month). */
+  const view = data.view === 'history' ? data.view : '';
 
   event.waitUntil((async () => {
     try {
@@ -77,9 +77,9 @@ self.addEventListener('push', event => {
     } catch (e) {
       await self.registration.showNotification(title, { body: data.body || '', data: { kind, supplierId, view, body: data.body || '' } });
     }
-    /* The red number on the app icon: a note, an answer, or one of Rico's warnings adds one while the
-       app is closed. The app sets the exact number again whenever it is opened. */
-    if ((kind === 'note' || kind === 'assistant') && self.navigator && self.navigator.setAppBadge) {
+    /* The red number on the app icon: one of Rico's warnings adds one while the app is closed.
+       The app sets the exact number again whenever it is opened. */
+    if (kind === 'assistant' && self.navigator && self.navigator.setAppBadge) {
       try {
         const cache = await caches.open('ricotta-badge');
         const prev = Number(await (await cache.match('/badge'))?.text() || 0);

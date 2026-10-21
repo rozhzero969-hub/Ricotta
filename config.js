@@ -7,7 +7,7 @@
    live copy on the server and reloads (or asks, when an order is in
    progress) when they differ. Any unique value works -- date-based is
    easiest to keep straight. */
-const APP_VERSION = '2026-10-21.1';
+const APP_VERSION = '2026-10-21.2';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN
@@ -37,4 +37,4 @@ const DEFAULT_UNITS = [
   {id:'bunch', en:'bunch', ku:'دەستە', ar:'حزمة'}
 ];
 
-const MAX_PIN_LEN = 6;   /* both PINs and the secret code are six digits */
+const MAX_PIN_LEN = 6;   /* both PINs are six digits */

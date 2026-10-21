@@ -9,13 +9,10 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 // There are two accounts, each with its own PIN:
 //   rozha  full access
 //   yunis  Order, Rico, Transfers, Manage (items, suppliers, units), History (cannot delete), Record
+// Rozha's Admin screen changes either PIN (with her current PIN); there is no other way to change one.
 //
 // Routes (all JSON):
 //   POST   login                      {pin}                     -> {token, account, name, tabs, expiresAt}
-//                                                                  or {recovery:true, ticket} for the secret code
-//   POST   recovery/name              {ticket, name}            step 2 of the secret code: the saved answer, exactly
-//   POST   recovery/verify            {ticket, pin}             step 3: Rozha's current PIN
-//   POST   recovery/save              {ticket, rozhaPin?, yunisPin?, secretCode?, answer?}
 //   GET    health
 //   --- session required ---
 //   GET    bootstrap                                            -> everything the app needs to start
@@ -28,16 +25,13 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   DELETE orders/:id                 rozha: any; the sender: undo within 15 minutes
 //   GET    streak                                               the kitchen streak
 //   POST   streak/recover                                       Rico brings a broken kitchen streak back
-//   GET    notes                                                kitchen notes (Rozha writes, Yunis reads)
-//   POST   notes                      {body} (rozha)            leave a note for Yunis (he gets a notification)
-//   DELETE notes/:id                  (rozha)                   remove a note
-//   POST   notes/:id/read | notes/:id/done (yunis)              seen / done
 //   GET    rico-chats[?account=]                                both accounts' Rico chats (each can read and delete the other's)
 //   GET    activity                                             the Record
 //   GET    devices                    rozha: all, yunis: own row
 //   POST   devices/me                                           heartbeat ("still here")
 //   POST   devices/me/ack             {commandId}               a remote command was carried out
 //   POST   devices/command            {ids, type} (rozha)       remote log out / refresh
+//   PUT    admin/pin                  {account, currentPin, newPin} (rozha)  a new PIN for Rozha or Yunis
 //   PUT    push/subscription          {endpoint,p256dh,auth,lang}
 //   DELETE push/subscription          {endpoint}
 //   PUT    push/lang                  {endpoint, lang}
@@ -51,20 +45,15 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   GET    assistant/status                                     is Rico connected?
 //   GET    assistant/setup-status     (rozha)                   Groq one-time setup state
 //   PUT    assistant/groq-key         {key} (rozha)             add-only
-//   POST   notes/:id/reply            {body} (yunis)            answer one of Rozha's notes (she gets a notification)
-//   POST   notes/replies-seen         (rozha)                   Rozha has read Yunis's answers
-//   GET    repeat-orders                                        orders that come back on chosen weekdays
-//   POST   repeat-orders              {name, days, entries}     save one (both accounts)
-//   PUT    repeat-orders/:id          {name?, days?}            change its name or days
-//   DELETE repeat-orders/:id
 //   GET    months                                               the archive: one summary per finished month
-//   GET    draft | PUT draft          {changes, noteBefore, noteAfter}  this account's unsent order, shared between its devices
+//   GET    draft | PUT draft          {changes}                 this account's unsent order, shared between its devices
 //   PUT    items/aliases              {entries}                 Rico's search-name changes, applied together
 //   GET    auth/security              (public)                  whether sign-in needs the bot check, and its site key
 //   GET    stock-items                                          Transfers: the workplace stock system's item list
 //   PUT    stock-items                {items:[{name, units}]}   replace that list (spellings people taught it are kept)
 //   POST   stock-items/:id/alias      {alias}                   remember a spelling for one item
 //   POST   stock/read                 {text?, image?, mime?}    Rico reads a transfer list into rows (see stock.ts)
+//                                                                  (Transfers is still being made: all four answer 423 until TRANSFERS_OPEN)
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, saveGroqKey } from "./assistant.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
@@ -79,19 +68,20 @@ const SESSION_HOURS = 18;
 const LOGIN_WINDOW_MS = 10 * 60_000;
 const MAX_FAILED_LOGINS = 8;              // per network address, per window (spoofable -- see MAX_GLOBAL_FAILED_LOGINS)
 const MAX_GLOBAL_FAILED_LOGINS = 40;      // per window, across ALL claimed IPs -- not spoofable via headers
-const RECOVERY_TICKET_MS = 5 * 60_000;    // each secret-code step must be finished within this time
 const SEEN_WRITE_EVERY_MS = 5 * 60_000;   // throttle session last_seen_at writes
 const PAGE = 1000;                        // PostgREST returns at most 1000 rows per request
 const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
 const LANGS = ["en", "ku", "ar"];
 // Every screen of the app, and the ones each account may open.
-const VIEWS = ["order", "assistant", "transfers", "manage", "history", "suppliers", "itemsAdmin", "units", "record", "devices", "settings"];
+const VIEWS = ["order", "assistant", "transfers", "manage", "history", "suppliers", "itemsAdmin", "units", "record", "admin", "settings"];
 const ACCOUNT_VIEWS: Record<string, string[]> = {
   rozha: VIEWS,
   yunis: ["order", "assistant", "transfers", "manage", "history", "suppliers", "itemsAdmin", "units", "record"],
 };
 const TABS = ["order", "assistant", "transfers", "manage"];
+// Transfers is still being made: the tab shows its design, and these routes refuse until it is ready.
+const TRANSFERS_OPEN = false;
 // Allowed browser origin for this app. Set ALLOWED_ORIGIN if the production
 // site ever moves to another origin.
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "https://rozhzero969-hub.github.io";
@@ -120,9 +110,9 @@ const newId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 /* A Baghdad calendar day as YYYY-MM-DD, and whole days between two of them. */
 const baghdadDay = (d: Date | string = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baghdad", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(d));
 const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400_000);
-/* What the device says it is ("iPhone 16/17 Pro Max|App"), for the Devices screen. */
+/* What the device says it is ("iPhone 16/17 Pro Max|App"), for Admin's device list. */
 const deviceLabel = (req: Request) => text(req.headers.get("x-device-label"), 80).replace(/[^\x20-\x7E]/g, "") || null;
-/* Which version of the app the device runs (APP_VERSION in config.js), for the Devices screen. */
+/* Which version of the app the device runs (APP_VERSION in config.js), for Admin's device list. */
 const appVersion = (req: Request) => { const v = text(req.headers.get("x-app-version"), 40); return /^[A-Za-z0-9._-]{1,40}$/.test(v) ? v : null; };
 const nowIso = () => new Date().toISOString();
 const langOf = (v: unknown) => (LANGS.includes(String(v)) ? String(v) : "en");
@@ -148,8 +138,7 @@ function cleanReminder(r: any) {
   return { enabled: !!r.enabled, time, days, ...(updatedAt ? { updatedAt } : {}) };
 }
 /* Rejects the most obviously guessable 6-digit PINs: all one digit
-   (111111...) or a straight run (123456, 654321, ...). Only for the two
-   account PINs; the secret code is Rozha's own choice. */
+   (111111...) or a straight run (123456, 654321, ...). */
 function isWeakPin(pin: string): boolean {
   if (!/^\d{6}$/.test(pin)) return true;
   if (new Set(pin).size === 1) return true;
@@ -190,10 +179,6 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 /* ---------- Shapes the browser uses ---------- */
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, cutoff: s.cutoff ?? null });
 const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false });
-const toNote = (n: any) => ({ id: n.id, body: n.body, at: n.created_at, readAt: n.read_at, doneAt: n.done_at,
-  reply: n.reply ?? null, repliedAt: n.replied_at ?? null, replySeenAt: n.reply_seen_at ?? null });
-const toRepeat = (r: any) => ({ id: r.id, name: r.name, days: r.days, entries: r.entries, by: r.created_by, createdAt: r.created_at });
-const NOTE_COLUMNS = "id,body,created_at,read_at,done_at,reply,replied_at,reply_seen_at";
 /* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
    had one; recoverable: how many days Rico can bring back after it broke. */
 function streakView(r: any) {
@@ -210,11 +195,6 @@ async function readStreak() {
   const { data, error } = await app("streak").select("count,best,last_day,lost_count,lost_day").eq("id", true).maybeSingle();
   if (error) throw error;
   return streakView(data);
-}
-async function listNotes() {
-  const { data, error } = await app("notes").select(NOTE_COLUMNS).order("created_at", { ascending: false }).limit(40);
-  if (error) throw error;
-  return (data ?? []).map(toNote);
 }
 
 const toDevice = (d: any) => ({
@@ -251,7 +231,7 @@ function groupHistory(orders: any[], lines: any[]) {
       if (!e) { e = { supplierId, supplierName, items: [] }; entries.push(e); }
       e.items.push({ itemId: l.item_id, name: l.item_name, unit: l.unit_id, qty: Number(l.qty) });
     }
-    return { id: o.id, date: o.sent_at ?? o.created_at, by: o.sent_by ?? null, note: o.note ?? "", entries };
+    return { id: o.id, date: o.sent_at ?? o.created_at, by: o.sent_by ?? null, entries };
   });
 }
 
@@ -299,19 +279,17 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
 
 async function bootstrap(s: Session) {
   const since = monthStart();
-  const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, notes, repeats, months, draft] = await Promise.all([
+  const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, months, draft] = await Promise.all([
     readAccount(s.account),
     app("suppliers").select("id,name,phone,reminder,cutoff").order("name"),
     app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available").order("name"),
     app("units").select("id,en,ku,ar"),
-    readAll(() => app("orders").select("id,created_at,sent_at,sent_by,note").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
+    readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
     readReminder(),
     listDevices(s),
     listActivity(),
     listInbox(s),
     readStreak(),
-    listNotes(),
-    listRepeats(),
     listMonths(12),
     readDraft(s.account),
   ]);
@@ -321,24 +299,19 @@ async function bootstrap(s: Session) {
   return {
     account: s.account, name: me?.name ?? accountName(s.account), tabs: TABS,
     views: ACCOUNT_VIEWS[s.account],
-    pins: me?.pins ?? [], streak, notes,
+    pins: me?.pins ?? [], streak,
     suppliers: (suppliers.data ?? []).map(toSupplier),
     items: (items.data ?? []).map(toItem),
     units: units.data ?? [],
     history: groupHistory(orderRows, lines),
     historyMonth: monthKey(),
-    reminder, devices, activity, inbox, repeats, months, draft,
+    reminder, devices, activity, inbox, months, draft,
   };
 }
 async function readDraft(account: Account) {
-  const { data, error } = await app("order_drafts").select("cart,revision,note").eq("account", account).maybeSingle();
+  const { data, error } = await app("order_drafts").select("cart,revision").eq("account", account).maybeSingle();
   if (error) throw error;
-  return { cart: data?.cart ?? {}, revision: data?.revision ?? 0, note: data?.note ?? "", conflicts: [] };
-}
-async function listRepeats() {
-  const { data, error } = await app("repeat_orders").select("id,name,days,entries,created_by,created_at").order("created_at");
-  if (error) throw error;
-  return (data ?? []).map(toRepeat);
+  return { cart: data?.cart ?? {}, revision: data?.revision ?? 0, conflicts: [] };
 }
 /* The archive: one summary per finished month, newest first. */
 async function listMonths(limit = 24) {
@@ -347,36 +320,14 @@ async function listMonths(limit = 24) {
   return (data ?? []).map((m: any) => ({ month: m.month, ...m.data }));
 }
 
-/* ---------- Repeat orders ----------
-   A saved order (one or more suppliers) that comes back on chosen weekdays: the Order screen
-   offers it on those days with one tap. Both accounts can make, change and remove them. */
-const MAX_REPEATS = 30;
-function cleanRepeatDays(v: unknown): number[] | null {
-  if (!Array.isArray(v)) return null;
-  const days = [...new Set(v.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
-  return days.length ? days : null;
-}
-function cleanRepeatEntries(v: unknown): any[] | null {
-  if (!Array.isArray(v) || !v.length || v.length > 40) return null;
-  const ids=new Set<string>();
-  for(const e of v){
-    if(!e || !Array.isArray(e.items) || !e.items.length || e.items.length>200 || (e.supplierId!=null && (typeof e.supplierId!=="string" || e.supplierId.length>120)))return null;
-    for(const i of e.items){
-      if(!i || typeof i.itemId!=="string" || !i.itemId || i.itemId.length>120 || !validQuantity(i.qty) || ids.has(i.itemId))return null;
-      ids.add(i.itemId);
-    }
-  }
-  return v.map(e=>({supplierId:e.supplierId||null,items:e.items.map((i:any)=>({itemId:i.itemId,qty:i.qty}))}));
-}
-
 /* ---------- Sign-in, and wrong-guess limits ----------
    Two independent locks. The per-IP one is cheap and useful, but every one of
    those headers is client-suppliable when there is no trusted proxy in front
    of this function, so a spoofed value could claim a fresh IP on every
    request and never trip it. The second lock does not depend on any claimed
    identity at all -- it counts every failed attempt in the window, from
-   anywhere -- so brute force is capped no matter what headers are sent. The
-   secret-code steps count toward the same limits. */
+   anywhere -- so brute force is capped no matter what headers are sent. A
+   wrong current PIN on Admin's PIN change counts toward the same limits. */
 async function loginFingerprints(req: Request) {
   const ip = req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip")
     || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
@@ -421,14 +372,6 @@ async function login(req: Request) {
 
   const { data: match, error: matchError } = await db.rpc("app_internal_match_code", { p_code: String(pin) });
   if (matchError) throw new Error("credential_check_unavailable");
-  if (match === "recovery") {
-    // The secret code: the next step asks who is there. Not a sign-in yet.
-    await completeAttempt(attempt);
-    const ticket = randomToken();
-    const { error } = await app("recovery_tickets").insert({ token_hash: await hash(ticket), stage: "code", expires_at: new Date(Date.now() + RECOVERY_TICKET_MS).toISOString() });
-    if (error) return fail("login_failed", 503);
-    return json({ recovery: true, ticket });
-  }
   const success = match === "rozha" || match === "yunis";
   if (!success) return fail("invalid_credentials", 401);
   await completeAttempt(attempt);
@@ -467,98 +410,27 @@ async function startSession(req: Request, account: Account) {
   return json({ token, account, name: me?.name ?? accountName(account), tabs: TABS, expiresAt });
 }
 
-/* ---------- The secret code ----------
-   code on the keypad -> "Who are you?" (the saved answer, exactly as saved,
-   capitals included) -> Rozha's current PIN -> new PINs, a new secret code
-   and/or a new answer. A wrong answer at any step ends it and counts as a
-   failed sign-in. */
-async function takeTicket(raw: unknown, stage: string) {
-  const token = text(raw, 100);
-  if (!token) return null;
-  const key = await hash(token);
-  const { data, error } = await app("recovery_tickets").select("token_hash,stage,expires_at").eq("token_hash", key).maybeSingle();
-  if (error) throw new Error("recovery_ticket_unavailable");
-  if (!data) return null;
-  if (!Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()) {
-    await app("recovery_tickets").delete().eq("token_hash", key);
-    return null;
-  }
-  if (data.stage !== stage) return null;
-  return { key, expiresAt: data.expires_at };
-}
-async function recovery(req: Request, step: string) {
-  const b = await readBody(req);
-  const prints = await loginFingerprints(req);
-  const attempt = await reserveLogin(prints);
+/* ---------- PINs (Admin, Rozha only) ----------
+   Rozha gives herself or Yunis a new PIN after typing her current one. A wrong
+   current PIN counts as a failed sign-in (the same limits), so a phone left
+   signed in can't be used to guess it. The new PIN signs that account out
+   everywhere except the device making the change. */
+async function changePin(req: Request, s: Session, b: any) {
+  const account = b.account === "rozha" || b.account === "yunis" ? b.account as Account : null;
+  const newPin = String(b.newPin ?? "");
+  if (!account || !/^\d{6}$/.test(newPin)) return fail("invalid_pin");
+  if (isWeakPin(newPin)) return fail("weak_pin");
+  const attempt = await reserveLogin(await loginFingerprints(req));
   if (!attempt) return fail("too_many_attempts", 429);
-  const stage = step === "name" ? "code" : step === "verify" ? "name" : "verified";
-  const ticket = await takeTicket(b.ticket, stage);
-  if (!ticket) return fail("invalid_credentials", 401);
-  const { key } = ticket;
-  const refuse = async () => {
-    await app("recovery_tickets").delete().eq("token_hash", key);
-    return fail("invalid_credentials", 401);
-  };
-  const advance = async (next: string) => {
-    const { data, error } = await app("recovery_tickets")
-      .update({ stage: next, expires_at: new Date(Date.now() + RECOVERY_TICKET_MS).toISOString() })
-      .eq("token_hash", key).eq("stage", stage).gt("expires_at", nowIso()).select("token_hash");
-    if (error) throw new Error("recovery_ticket_unavailable");
-    return !!data?.length;
-  };
-
-  if (step === "name") {
-    // Case-sensitive; only a stray space before or after is ignored.
-    const name = String(b.name ?? "").trim();
-    if (!name || name.length > 40) return await refuse();
-    const { data: right, error } = await db.rpc("app_internal_check_recovery_name", { p_name: name });
-    if (error) throw new Error("credential_check_unavailable");
-    if (right !== true) return await refuse();
-    if (!await advance("name")) return fail("invalid_credentials", 401);
-    await completeAttempt(attempt);
-    return ok();
-  }
-  if (step === "verify") {
-    const { data: good, error } = await db.rpc("app_internal_check_account_pin", { p_account: "rozha", p_pin: String(b.pin ?? "") });
-    if (error) throw new Error("credential_check_unavailable");
-    if (good !== true) return await refuse();
-    if (!await advance("verified")) return fail("invalid_credentials", 401);
-    await completeAttempt(attempt);
-    return ok();
-  }
-  // save
-  const val = (v: unknown) => { const x = String(v ?? "").trim(); return x ? x : null; };
-  const rozhaPin = val(b.rozhaPin), yunisPin = val(b.yunisPin), secretCode = val(b.secretCode), answer = val(b.answer);
-  if (!rozhaPin && !yunisPin && !secretCode && !answer) return fail("nothing_to_change");
-  for (const v of [rozhaPin, yunisPin, secretCode]) if (v && !/^\d{6}$/.test(v)) return fail("invalid_pin");
-  if ((rozhaPin && isWeakPin(rozhaPin)) || (yunisPin && isWeakPin(yunisPin))) return fail("weak_pin");
-  if (answer && answer.length > 40) return fail("invalid_answer");
-  // Atomically consume the verified capability before changing credentials.
-  // Two simultaneous saves with the same ticket must never both succeed.
-  const { data: consumed, error: consumeError } = await app("recovery_tickets").delete()
-    .eq("token_hash", key).eq("stage", "verified").gt("expires_at", nowIso()).select("token_hash");
-  if (consumeError) throw new Error("recovery_ticket_unavailable");
-  if (!consumed?.length) return fail("invalid_credentials", 401);
-  if (rozhaPin || yunisPin || secretCode) {
-    const { data: result, error } = await db.rpc("app_internal_set_credentials", { p_rozha: rozhaPin, p_yunis: yunisPin, p_code: secretCode });
-    if (error) return fail("save_failed", 500);
-    if (result === "duplicate" || result === "invalid") {
-      // Validation did not change anything. Keep the original expiry and let
-      // the person correct the form without repeating the recovery steps.
-      const { error: restoreError } = await app("recovery_tickets").insert({ token_hash: key, stage: "verified", expires_at: ticket.expiresAt });
-      if (restoreError) return fail("save_failed", 500);
-      return fail(result === "duplicate" ? "duplicate_pin" : "invalid_pin");
-    }
-    if (result !== "ok") return fail("save_failed", 500);
-    // New codes end every session, so each phone must sign in with the new PIN.
-  }
-  if (answer) {
-    const { data: result, error } = await db.rpc("app_internal_set_recovery_name", { p_name: answer });
-    if (error || result !== "ok") return fail("save_failed", 500);
-  }
-  await app("audit_events").insert({ id: newId("audit"), actor: "rozha", device_id: text(req.headers.get("x-device-id"), 120) || null, action: "change_codes",
-    payload: { rozhaPin: !!rozhaPin, yunisPin: !!yunisPin, secretCode: !!secretCode, answer: !!answer } });
+  const { data: good, error } = await db.rpc("app_internal_check_account_pin", { p_account: "rozha", p_pin: String(b.currentPin ?? "") });
+  if (error) throw new Error("credential_check_unavailable");
+  if (good !== true) return fail("wrong_pin", 403);
   await completeAttempt(attempt);
+  const { data: result, error: setError } = await db.rpc("app_internal_set_pin", { p_account: account, p_pin: newPin, p_keep_session: s.id });
+  if (setError) return fail("save_failed", 500);
+  if (result === "duplicate") return fail("duplicate_pin");
+  if (result !== "ok") return fail("save_failed", 500);
+  await app("audit_events").insert({ id: newId("audit"), actor: "rozha", device_id: s.deviceId, action: "change_pin", payload: { account } });
   return ok();
 }
 
@@ -614,16 +486,6 @@ async function streakMilestone(count: number) {
   const { error } = await app("rico_inbox").upsert(rows, { onConflict: "dedupe_key", ignoreDuplicates: true });
   if (error) throw error;
 }
-/* A notification for one account's signed-in phones, sent by send-push. */
-async function pushTo(account: Account, payload: Record<string, unknown>) {
-  if (!CRON_SECRET) return;
-  await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-    method: "POST", signal: AbortSignal.timeout(15_000),
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}`, apikey: ANON_KEY, "x-cron-secret": CRON_SECRET },
-    body: JSON.stringify({ ...payload, account }),
-  }).then((r) => r.body?.cancel()).catch(() => {});
-}
-
 async function saveOrder(s: Session, b: any) {
   const id = text(b.id, 160);
   if (!id || !Array.isArray(b.entries) || !b.entries.length) return fail("invalid_order");
@@ -652,8 +514,8 @@ async function saveOrder(s: Session, b: any) {
   })));
   // Header and lines commit together. Retrying an existing
   // order never observes half an order.
-  const { data: saved, error } = await db.rpc("app_internal_save_order_note", {
-    p_id: id, p_date: date, p_account: s.account, p_lines: lines, p_note: text(b.note,300),
+  const { data: saved, error } = await db.rpc("app_internal_save_order", {
+    p_id: id, p_date: date, p_account: s.account, p_lines: lines,
   });
   if (error || (saved !== true && saved !== false)) return fail("save_failed", 500);
   if (saved) {
@@ -778,7 +640,6 @@ Deno.serve(async (req) => {
   try {
     if (M === "POST" && path === "login") return await login(req);
     if (M === "GET" && path === "auth/security")return json({required:botConfig.required,siteKey:botConfig.required&&botConfig.ready?botConfig.siteKey:null});
-    if (M === "POST" && ["recovery/name", "recovery/verify", "recovery/save"].includes(path)) return await recovery(req, path.slice(9));
     if (M === "GET" && path === "health") {
       const { error } = await app("accounts").select("id", { head: true }).limit(1);
       return error ? json({ ok: false }, 503) : json({ ok: true });
@@ -801,8 +662,7 @@ Deno.serve(async (req) => {
       const changes = b.changes;
       if (!Array.isArray(changes) || changes.length > 2000 || new Set(changes.map((c: any) => c?.itemId)).size !== changes.length || changes.some((c: any) =>
         !c || typeof c.itemId !== "string" || !c.itemId.length || c.itemId.length > 200 || !validQuantity(c.before,true) || !validQuantity(c.after,true) || c.before < 0 || c.after < 0 || c.before > 99999 || c.after > 99999)) return fail("invalid_draft");
-      if ((b.noteAfter != null && (typeof b.noteAfter!=="string" || b.noteAfter.length>300)) || (b.noteBefore != null && typeof b.noteBefore!=="string")) return fail("invalid_draft");
-      const { data, error } = await db.rpc("app_internal_patch_draft_note", { p_account: s.account, p_changes: changes, p_before: b.noteBefore ?? null, p_after: b.noteAfter ?? null });
+      const { data, error } = await db.rpc("app_internal_patch_draft", { p_account: s.account, p_changes: changes });
       return error ? fail("draft_save_failed", 503) : json(data, data?.conflicts?.length ? 409 : 200);
     }
     if (M === "POST" && path === "logout") {
@@ -862,83 +722,11 @@ Deno.serve(async (req) => {
       return json({ ok: true, streak: await readStreak() });
     }
 
-    // Kitchen notes: Rozha leaves them, Yunis reads them
-    if (M === "GET" && path === "notes") return json(await listNotes());
-    if (M === "POST" && path === "notes/replies-seen") {
-      if (!rozha) return fail("forbidden", 403);
-      const { error } = await app("notes").update({ reply_seen_at: nowIso() }).not("reply", "is", null).is("reply_seen_at", null);
-      return error ? fail("save_failed", 500) : ok();
-    }
-    if (M === "POST" && (m = path.match(/^notes\/(\d{1,15})\/reply$/))) {
-      // Yunis answers one of Rozha's notes; she gets a notification with the answer.
-      if (rozha) return fail("forbidden", 403);
-      const reply = text(b.body, 300);
-      if (!reply) return fail("empty_note");
-      const now = nowIso();
-      const { data, error } = await app("notes").update({ reply, replied_at: now, reply_seen_at: null, read_at: now })
-        .eq("id", Number(m[1])).select(NOTE_COLUMNS).maybeSingle();
-      if (error) return fail("save_failed", 500);
-      if (!data) return fail("not_found", 404);
-      await pushTo("rozha", { type: "reply", body: reply });
-      return json(toNote(data));
-    }
-    if (M === "POST" && path === "notes") {
-      if (!rozha) return fail("forbidden", 403);
-      const body = text(b.body, 500);
-      if (!body) return fail("empty_note");
-      const { data, error } = await app("notes").insert({ body, created_by: "rozha" }).select("id,body,created_at,read_at,done_at").single();
-      if (error) return fail("save_failed", 500);
-      await pushTo("yunis", { type: "note", body });
-      return json(toNote(data));
-    }
-    if ((m = path.match(/^notes\/(\d{1,15})(?:\/(read|done))?$/))) {
-      const id = Number(m[1]), act = m[2];
-      if (M === "DELETE" && !act) {
-        if (!rozha) return fail("forbidden", 403);
-        const { error } = await app("notes").delete().eq("id", id);
-        return error ? fail("delete_failed", 500) : ok();
-      }
-      if (M === "POST" && act) {
-        if (rozha) return fail("forbidden", 403);
-        const now = nowIso();
-        const patch = act === "read" ? { read_at: now } : { done_at: b.done === false ? null : now, read_at: now };
-        let q = app("notes").update(patch).eq("id", id);
-        if (act === "read") q = q.is("read_at", null);
-        const { error } = await q;
-        return error ? fail("save_failed", 500) : ok();
-      }
-    }
-
-    // Repeat orders
-    if (M === "GET" && path === "repeat-orders") return json(await listRepeats());
-    if (M === "POST" && path === "repeat-orders") {
-      const days = cleanRepeatDays(b.days), entries = cleanRepeatEntries(b.entries), name = text(b.name, 120);
-      if (!days || !entries || !name) return fail("invalid_repeat");
-      const { count } = await app("repeat_orders").select("id", { count: "exact", head: true });
-      if ((count ?? 0) >= MAX_REPEATS) return fail("too_many_repeats", 409);
-      const { data, error } = await app("repeat_orders").insert({ name, days, entries, created_by: s.account })
-        .select("id,name,days,entries,created_by,created_at").single();
-      return error ? fail("save_failed", 500) : json(toRepeat(data));
-    }
-    if ((m = path.match(/^repeat-orders\/([0-9a-f-]{36})$/i))) {
-      if (M === "DELETE") {
-        const { error } = await app("repeat_orders").delete().eq("id", m[1]);
-        return error ? fail("delete_failed", 500) : ok();
-      }
-      if (M === "PUT") {
-        const patch: Record<string, unknown> = { updated_at: nowIso() };
-        if (b.days !== undefined) { const days = cleanRepeatDays(b.days); if (!days) return fail("invalid_repeat"); patch.days = days; }
-        if (b.name !== undefined) { const name = text(b.name, 120); if (!name) return fail("invalid_repeat"); patch.name = name; }
-        const { data, error } = await app("repeat_orders").update(patch).eq("id", m[1]).select("id,name,days,entries,created_by,created_at").maybeSingle();
-        if (error) return fail("save_failed", 500);
-        return data ? json(toRepeat(data)) : fail("not_found", 404);
-      }
-    }
-
     // The month archive
     if (M === "GET" && path === "months") return json(await listMonths());
 
     // Transfers: the workplace item list, and reading a list to move between storages
+    if (!TRANSFERS_OPEN && (path === "stock-items" || path === "stock/read" || path.startsWith("stock-items/"))) return fail("transfers_not_ready", 423);
     if (M === "GET" && path === "stock-items") return json(await listStockItems(db));
     if (M === "PUT" && path === "stock-items") {
       const items = cleanStockList(b.items);
@@ -969,6 +757,9 @@ Deno.serve(async (req) => {
       return ok();
     }
     if (M === "POST" && path === "devices/command") return rozha ? await sendCommand(b) : fail("forbidden", 403);
+
+    // Admin
+    if (M === "PUT" && path === "admin/pin") return rozha ? await changePin(req, s, b) : fail("forbidden", 403);
 
     if (/^rico-chats(?:\/[^/]+)?$/.test(path)) return await ricoChats(req, s.account, path.split("/")[1] ?? null, b);
 

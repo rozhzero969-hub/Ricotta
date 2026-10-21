@@ -78,7 +78,7 @@ input:not([type=checkbox]):focus,select:focus,textarea:focus{border-color:var(--
 .item-row,.navbtn,.step-btn{-webkit-touch-callout:none}
 
 /* ---------- Shared surfaces: white cards with a hairline edge ---------- */
-.glass,.supplier-group,.list-row,.hist-card,.rec-card,.dev-card,.queue-card,.form-card,.settings-group,.list-options,.order-options,.unit-chip,.empty,.search-input,.quick-btn,.tab-pill,.push-banner,.btn-ghost,.repeat-card,.rico-head,.rico-chip,.rico-card,.rico-open,.rico-note,.rico-supplier-picker,.tab-scroll,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip{
+.glass,.supplier-group,.list-row,.hist-card,.rec-card,.dev-card,.queue-card,.form-card,.settings-group,.unit-chip,.empty,.search-input,.quick-btn,.tab-pill,.push-banner,.btn-ghost,.rico-head,.rico-chip,.rico-card,.rico-open,.rico-note,.rico-supplier-picker,.tab-scroll,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip{
   background:var(--surface);border:1px solid var(--line)}
 
 /* ---------- App shell ---------- */
@@ -175,7 +175,7 @@ html.rtl .lang-title{letter-spacing:0;font-size:11.5px}
 .navbtn.active svg{transform:translateY(-1px) scale(1.08)}
 .navbtn.lens-over svg{transform:scale(1.2)}
 .nav-brand{display:none}
-.nav-badge{position:absolute;top:8px;inset-inline-end:calc(50% - 16px);width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px #fff;animation:alertPulse 1.8s ease-out infinite}
+.nav-badge{position:absolute;top:8px;inset-inline-end:calc(50% - 16px);width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px #fff}
 /* ---------- Send bar (springs in when something is picked) ---------- */
 .bottom-bar{max-width:560px;width:100%;margin:0 auto;transform:translateY(150%) scale(.94);opacity:0;pointer-events:none;transition:transform 560ms var(--spring-soft),opacity 260ms ease}
 .bottom-bar.show{transform:none;opacity:1;pointer-events:auto}
@@ -301,13 +301,11 @@ html.rtl .hero-ring svg{transform:rotate(-90deg) scaleY(-1)}
 .search-wrap.catalog-search>svg{position:absolute;margin:0;inset-inline-start:15px}
 .search-input{width:100%;min-height:48px;padding:0 18px;padding-inline-start:44px;border-color:var(--line-strong);border-radius:999px;font-size:16px;font-weight:500;color:var(--ink);outline:none;transition:border-color 200ms ease}
 .search-input::placeholder{color:var(--ink-faint);font-weight:500}
-.order-quick-actions{display:flex;gap:8px;flex-wrap:wrap}
-/* Phones: Same as last time, Say your order and Clear order share one row as equal tiles. */
+.order-quick-actions{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+/* Phones: Same as last time and Clear order share one row as two equal round buttons. */
 @media (max-width:700px){
-  .order-quick-actions{flex:1 1 100%;flex-wrap:nowrap}
-  .order-quick-actions .quick-btn{flex:1 1 0;min-width:0;min-height:62px;padding:8px 6px;flex-direction:column;justify-content:center;gap:5px;
-    white-space:normal;text-align:center;line-height:1.2;font-size:11.5px}
-  .order-quick-actions .quick-btn span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .order-quick-actions{flex-wrap:nowrap}
+  .order-quick-actions .quick-btn{flex:1 1 0;min-width:0;justify-content:center;padding:0 12px;white-space:normal;text-align:center;line-height:1.2}
 }
 .quick-btn{min-height:46px;padding:0 18px;border-radius:999px;font-size:12.5px;font-weight:700;color:var(--deep);display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
 .quick-btn svg{width:16px;height:16px}
@@ -466,8 +464,16 @@ html.rtl .check-row input[type=checkbox]:checked::after{transform:translateX(-20
 .day-chip{min-width:0;height:40px;padding:0 2px;border-radius:999px;color:var(--tab-ink2);font-size:12px;font-weight:700}
 .day-chip.on{background:var(--accent-strong);border-color:var(--accent-strong);color:#fff;box-shadow:0 6px 14px -8px rgba(var(--deep-rgb),.8)}
 .cloud-state{display:flex;gap:12px;align-items:center;color:var(--ok-ink);font-size:13.5px}
-.cloud-state>span{width:10px;height:10px;border-radius:50%;background:var(--ok);flex-shrink:0;animation:livePulse 2.2s ease-out infinite}
+.cloud-state>span{width:10px;height:10px;border-radius:50%;background:var(--ok);flex-shrink:0}
 .cloud-state.offline{color:var(--clay-ink)}.cloud-state.offline>span{background:var(--clay);animation:none}
+/* Admin -> PINs: one row per person, the Change button at the end. */
+.admin-pin-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line)}
+.admin-pin-row:first-child{padding-top:0}
+.admin-pin-dots{flex:1 1 auto;min-width:0;font-size:15px;letter-spacing:.18em;color:var(--ink-faint);direction:ltr;text-align:start}
+@media(min-width:960px){.admin-page{max-width:720px}}
+.admin-pin-row .btn{min-height:40px;padding:0 16px;font-size:13px}
+.admin-pin-row .btn svg{width:15px;height:15px}
+.admin-pins .notif-sub{margin:12px 0 0}
 .app-version{margin:26px 0 8px;text-align:center;font-size:11px;font-weight:600;color:var(--ink-soft)}
 
 /* Units */
@@ -547,7 +553,6 @@ a.wa-btn:active{transform:scale(.95)}
 .dev-status{display:flex;align-items:center;gap:8px;margin:6px 0 10px}
 .dev-badge::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
 .dev-active{background:rgba(var(--ok-rgb),.16);color:var(--ok-ink)}
-.dev-active::before{animation:livePulse 2.2s ease-out infinite}
 .dev-idle{background:rgba(255,255,255,.6);color:var(--deep);border:1px solid var(--line-strong)}
 .dev-out{background:rgba(var(--deep-rgb),.06);color:var(--ink-soft)}
 .dev-ago{color:var(--ink-soft);font-weight:500}
@@ -713,14 +718,13 @@ html.rtl .install-prompt{right:auto;left:22px}
 @keyframes rbDrop{0%{opacity:0;transform:translateY(-3px)}20%,70%{opacity:1}100%{opacity:0;transform:translateY(8px)}}
 @keyframes rbTear{0%{opacity:0;transform:translateY(-2px)}25%,75%{opacity:1}100%{opacity:0;transform:translateY(10px)}}
 @keyframes rbHeart{0%{opacity:0;transform:translateY(4px) scale(.5)}30%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-12px) scale(1.1)}}
-@keyframes alertPulse{0%{box-shadow:0 0 0 0 rgba(214,72,63,.5)}80%,100%{box-shadow:0 0 0 9px rgba(214,72,63,0)}}
 
 /* Rico's screen */
 .rico-head{position:relative;display:flex;align-items:center;gap:12px;padding:12px;padding-inline:12px 10px;border-radius:var(--r-card);margin-bottom:14px}
 .rico-head-text{flex:1;min-width:0}
 .rico-name{display:flex;align-items:center;gap:8px;font-size:20px;font-weight:800;line-height:1.2}
 html:not(.rtl) .rico-name{letter-spacing:-.03em}
-.rico-online{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:livePulse 2.2s ease-out infinite}
+.rico-online{width:8px;height:8px;border-radius:50%;background:var(--ok)}
 .rico-who{margin-top:3px;color:var(--ink-soft);font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rico-head-actions{display:flex;gap:2px;flex-shrink:0}
 .rico-auto{position:relative}
@@ -729,7 +733,7 @@ html:not(.rtl) .rico-name{letter-spacing:-.03em}
 .rico-alerts{display:grid;margin-bottom:14px;padding:6px 14px;border-radius:var(--r-card);border-color:rgba(214,72,63,.35)}
 .rico-alerts-head{display:flex;align-items:center;gap:10px;padding:10px 2px 8px;font-size:14px;font-weight:800;color:var(--clay-ink)}
 .rico-alert{display:flex;align-items:center;gap:12px;padding:10px 2px;border-top:1px solid var(--line)}
-.rico-alert-dot{width:10px;height:10px;border-radius:50%;background:var(--clay);flex-shrink:0;animation:alertPulse 1.8s ease-out infinite}
+.rico-alert-dot{width:10px;height:10px;border-radius:50%;background:var(--clay);flex-shrink:0}
 .rico-alert-text{flex:1;min-width:0;display:grid;gap:2px}
 .rico-alert-text b{font-size:14px;font-weight:800;overflow-wrap:anywhere}
 .rico-alert-text span{font-size:12px;font-weight:600;color:var(--clay-ink)}
@@ -1107,15 +1111,10 @@ html.compact-rows .supplier-group{padding:8px}
 .streak-chip.ignite{animation:igniteChip 1.1s var(--spring)}
 @keyframes igniteChip{0%{transform:scale(.8)}40%{transform:scale(1.25)}100%{transform:none}}
 .streak-chip.broken{color:var(--clay-ink)}
-.notes-bell{position:relative;padding:0 10px;color:var(--ink-soft)}
-.notes-bell svg{width:16px;height:16px}
-.notes-bell.has-new{color:var(--accent-strong);animation:bellRing 2.4s ease-in-out infinite}
-.notes-bell b{position:absolute;top:-4px;inset-inline-end:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#E04848;color:#fff;font-size:10.5px;font-weight:800;display:grid;place-items:center;box-shadow:0 0 0 2px var(--bg)}
-@keyframes bellRing{0%,82%,100%{transform:rotate(0)}85%{transform:rotate(12deg)}90%{transform:rotate(-10deg)}95%{transform:rotate(6deg)}}
 @media (max-width:540px){.conn-chip em{display:none}.conn-chip{padding:0 11px}.topbar-actions{gap:5px}}
-@media (max-width:370px){.lang-chip svg:last-child{display:none}.lang-chip{padding:0 9px}.streak-chip,.notes-bell{padding:0 8px}}
+@media (max-width:370px){.lang-chip svg:last-child{display:none}.lang-chip{padding:0 9px}.streak-chip{padding:0 8px}}
 
-/* ---------- Bottom sheets for the streak, notes and the report card ---------- */
+/* ---------- Bottom sheets for the streak and the report card ---------- */
 .kitchen-sheet .sel-panel{max-height:86vh;overflow-y:auto;padding-inline:16px}
 .streak-hero{display:flex;flex-direction:column;align-items:center;padding:10px 0 6px;--f1:#A9B4AE;--f2:#C7D0CB;--f3:#E3E8E5}
 .streak-big .flame{width:84px;height:106px;filter:drop-shadow(0 12px 22px rgba(var(--shade-rgb),.25))}
@@ -1140,46 +1139,9 @@ html.compact-rows .supplier-group{padding:8px}
 @keyframes boomIn{from{transform:scale(.4) rotate(-6deg);opacity:0}to{transform:none;opacity:1}}
 .streak-boom-title{font-family:'Manrope',var(--font);font-size:30px;font-weight:800;letter-spacing:-.03em}
 .streak-boom-sub{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--t-sub)}
-.notes-head,.report-head{display:flex;align-items:center;gap:12px;padding:6px 2px 10px}
+.report-head{display:flex;align-items:center;gap:12px;padding:6px 2px 10px}
 .report-head{justify-content:space-between}
-.notes-sub{font-size:12.5px;color:var(--ink-soft);font-weight:600}
-.notes-compose{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
-.notes-compose textarea{width:100%;min-height:70px;border-radius:16px;border:1px solid var(--line-strong);background:rgba(255,255,255,.7);padding:12px 14px;font:500 15px/1.5 var(--font);color:var(--ink);resize:vertical}
-.notes-compose .btn{align-self:flex-end}
-.note-row{display:flex;gap:10px;align-items:center;padding:12px;border-radius:16px;background:#FFF6C8;border:1px solid #F0DE8A;margin-bottom:8px;color:#3A3214;box-shadow:0 8px 18px -14px rgba(0,0,0,.35)}
-.note-row.is-done{background:rgba(var(--deep-rgb),.05);border-color:var(--line);color:var(--ink-soft)}
-.note-row-body{flex:1;min-width:0}
-.note-row .note-text{font-size:14.5px;font-weight:600;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
-.note-row.is-done .note-text{text-decoration:line-through;text-decoration-thickness:1px}
-.note-meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:4px;font-size:11.5px;font-weight:600;opacity:.8}
-.note-state.done{color:var(--ok-ink)}.note-state svg{width:11px;height:11px;vertical-align:-1px}
-.note-done-btn{min-height:38px;padding:0 12px;font-size:12.5px;flex:none}
-.notes-empty{padding:18px 6px;text-align:center}
-.note-sticky{position:relative;margin:2px 4px 16px;padding:16px 16px 14px;border-radius:6px 6px 18px 6px;background:linear-gradient(170deg,#FFF6C8,#FBE98F);color:#3A3214;box-shadow:0 18px 30px -20px rgba(80,60,0,.55),0 2px 0 rgba(0,0,0,.04);transform:rotate(-1.2deg);animation:noteIn .7s var(--spring) both}
-[dir=rtl] .note-sticky{transform:rotate(1.2deg);border-radius:6px 6px 6px 18px}
-.note-sticky.out{animation:noteOut .26s ease-in forwards}
-@keyframes noteIn{from{transform:translateY(-24px) rotate(-6deg) scale(.9);opacity:0}}
-@keyframes noteOut{to{transform:translateY(-14px) rotate(-4deg) scale(.94);opacity:0}}
-.note-tape{position:absolute;top:-9px;left:50%;width:74px;height:20px;margin-left:-37px;background:rgba(255,255,255,.55);border:1px solid rgba(0,0,0,.05);transform:rotate(-3deg);box-shadow:0 2px 4px rgba(0,0,0,.06)}
-.note-sticky-top{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#7A6418}
-[dir=rtl] .note-sticky-top{letter-spacing:0}
-.note-when{font-weight:600;letter-spacing:0;text-transform:none;opacity:.8}
-.note-more{margin-inline-start:auto;background:#7A6418;color:#FFF6C8;border-radius:999px;padding:1px 8px;letter-spacing:0}
-.note-sticky .note-text{margin:8px 0 12px;font-size:16px;font-weight:700;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
-.note-actions{display:flex;gap:8px;flex-wrap:wrap}
-.note-actions .btn{min-height:40px;font-size:13px}
-.note-actions .btn-ghost{background:rgba(255,255,255,.5);color:#3A3214;border-color:rgba(0,0,0,.08)}
-.note-actions svg{width:13px;height:13px}
-.note-banner{position:fixed;z-index:460;top:calc(10px + var(--safe-top));left:50%;transform:translateX(-50%);width:min(420px,calc(100vw - 24px));display:flex;align-items:center;gap:12px;padding:12px 16px;border:0;border-radius:20px;text-align:start;
-  background:var(--hero);color:#fff;font:inherit;box-shadow:0 22px 44px -18px rgba(0,0,0,.55);animation:bannerIn .6s var(--spring) both;cursor:pointer}
-.note-banner.out{animation:bannerOut .28s ease-in forwards}
-@keyframes bannerIn{from{transform:translate(-50%,-140%)}to{transform:translate(-50%,0)}}
-@keyframes bannerOut{to{transform:translate(-50%,-140%);opacity:0}}
-.note-banner-icon{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.14);color:var(--t-bright);flex:none}
-.note-banner-icon svg{animation:bellRing 1.4s ease-in-out 2}
-.note-banner-text{display:flex;flex-direction:column;min-width:0;font-size:13px;line-height:1.4}
-.note-banner-text b{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--t-eyebrow)}
-.note-banner-text span{overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.report-sub{font-size:12.5px;color:var(--ink-soft);font-weight:600}
 
 /* ---------- Rico's monthly report card ---------- */
 .report-card{width:100%;display:flex;align-items:center;gap:12px;padding:12px 14px;margin:0 0 14px;border-radius:var(--r-card);text-align:start;color:var(--ink);font:inherit;cursor:pointer;
@@ -1219,13 +1181,12 @@ html.compact-rows .supplier-group{padding:8px}
 .report-save.warn{background:rgba(214,72,63,.07);border-color:rgba(214,72,63,.25)}
 .report-save p{margin:4px 0 10px;font-size:12.5px;line-height:1.5;color:var(--ink-soft)}
 
-/* ---------- Order screen: pinned items, item notes, voice ---------- */
+/* ---------- Order screen: pinned items, item notes ---------- */
 .pinned-group .pin-mono{background:var(--accent-strong);color:#fff}
 .pinned-group .pin-mono svg{width:14px;height:14px}
 .item-pin{display:inline-flex;margin-inline-end:5px;color:var(--accent-strong);vertical-align:-1px}
 .item-pin svg{width:12px;height:12px}
 .item-note{color:var(--mint-ink);font-weight:600}
-.voice-btn.listening{background:var(--accent-strong);color:#fff;animation:voicePulse 1.4s ease-in-out infinite}
 @keyframes voicePulse{0%,100%{box-shadow:0 0 0 0 rgba(var(--accent-rgb),.5)}50%{box-shadow:0 0 0 10px rgba(var(--accent-rgb),0)}}
 
 /* ---------- History: send again, undo ---------- */
@@ -1259,7 +1220,7 @@ html.dark{
 html.dark .ctx-preview .item-row{background:#1A241F}
 html.dark .order-tabs .tab-pill.active,html.dark .pick.on,html.dark .item-sort-rank{background:color-mix(in srgb,var(--accent-strong) 70%,#0E1512)}
 html.dark .supplier-mono{background:rgba(255,255,255,.1)}
-html.dark .rico-suggest-x,html.dark .modal-banner,html.dark .item-sort-row,html.dark .dev-how,html.dark .dev-idle,html.dark .rec-edit,html.dark .pad-key,html.dark .wa-btn.done,html.dark .rico-time span,html.dark .notes-compose textarea{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1)}
+html.dark .rico-suggest-x,html.dark .modal-banner,html.dark .item-sort-row,html.dark .dev-how,html.dark .dev-idle,html.dark .rec-edit,html.dark .pad-key,html.dark .wa-btn.done,html.dark .rico-time span{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1)}
 html.dark .search-input,html.dark .field input:where(:not([type=checkbox]):not([type=radio])),html.dark .field select,html.dark .field textarea,html.dark .search-input:focus{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12);color:var(--ink)}
 html.dark .sel-panel{background:rgba(20,28,24,.97)}
 html.dark .page-eyebrow,html.dark .login-eyebrow{color:var(--mint-ink)}
@@ -1268,16 +1229,12 @@ html.dark .pin-box.next::after{background:var(--accent)}
 @media (max-width:959px){html.dark .bottomnav{border-color:rgba(255,255,255,.1);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 20px 40px -18px rgba(0,0,0,.7)}}
 
 html.dark .rico-bubble,html.dark .rico-typing,html.dark .rico-composer{border-color:rgba(255,255,255,.1)}
-html.dark .note-row:not(.is-done){background:#3A3214;border-color:#5C4E1C;color:#FFF3C2}
-html.dark .note-sticky{background:linear-gradient(170deg,#4A3F17,#3A3112);color:#FFF3C2}
-html.dark .note-sticky-top{color:#E9CF6B}
-html.dark .note-actions .btn-ghost{background:rgba(255,255,255,.08);color:#FFF3C2}
 html.dark .streak-chip:not(.lit){--f1:#5C6A62;--f2:#7D8B83;--f3:#A8B4AD}
 html.dark .who-badge{--wa:#DDE5E1;--wo:#18201C;--ws:rgba(255,255,255,.1);--wi:#E6EEEA}
 html.dark .report-stats > div,html.dark .report-save,html.dark .report-chips span,html.dark .streak-bar,html.dark .report-bar i,html.dark .report-who{background:rgba(255,255,255,.06)}
 
 @media (prefers-reduced-motion:reduce){
-  .streak-chip .flame,.streak-hero .flame,.streak-boom *,.note-sticky,.note-banner,.notes-bell,.voice-btn{animation:none!important}
+  .streak-chip .flame,.streak-hero .flame,.streak-boom *{animation:none!important}
 }
 /* Order cut-off countdown */
 .cut-chip{display:inline-flex;align-items:center;gap:4px;margin-inline-start:8px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;
@@ -1290,18 +1247,6 @@ html.dark .report-stats > div,html.dark .report-save,html.dark .report-chips spa
 html.dark .cut-chip{background:rgba(255,255,255,.08);color:#E6EEEA}
 html.dark .cut-chip.soon{background:rgba(245,166,35,.22);color:#FFD58A}
 @media (prefers-reduced-motion: reduce){.cut-chip.soon{animation:none}}
-/* Repeat orders */
-.repeat-card{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:var(--r-card);margin:0 0 12px;position:relative}
-.repeat-ico{flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:rgba(var(--accent-rgb),.16);color:var(--deep)}
-.repeat-ico svg{width:18px;height:18px}
-.repeat-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.repeat-text b{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-strong)}
-.repeat-text span{font-weight:800;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.repeat-text small{font-size:12px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.repeat-card .btn{flex:none;padding:0 14px;min-height:42px}
-.repeat-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.repeat-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-radius:16px;background:var(--surface,rgba(255,255,255,.6))}
-.repeat-row small{display:block;font-size:12px;color:var(--ink-soft);margin-top:2px}
 .hist-tools{display:flex;gap:8px;margin:0 0 14px}
 /* The month archive */
 .months-list{display:flex;flex-direction:column;gap:10px;margin-top:12px}
@@ -1318,42 +1263,18 @@ html.dark .cut-chip.soon{background:rgba(245,166,35,.22);color:#FFD58A}
 .month-list b{font-weight:700;color:var(--ink-soft);white-space:nowrap}
 .empty-mini{padding:18px;text-align:center;color:var(--ink-soft);font-size:13px}
 .report-card-text small{font-size:11.5px;color:var(--ink-soft)}
-/* Replies to Rozha's notes */
-.note-reply{margin-top:8px;padding:8px 10px;border-radius:12px;background:rgba(var(--accent-rgb),.12);display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;font-size:13px}
-.note-reply b{font-size:12px}
-.note-reply small{font-size:11px;color:var(--ink-soft)}
-.note-reply.new{box-shadow:0 0 0 2px rgba(var(--accent-rgb),.45)}
-.note-quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.note-quick .chip{height:30px;padding:0 10px;font-size:12px;cursor:pointer}
-.note-quick .chip svg{width:13px;height:13px}
-html.dark .note-reply{background:rgba(255,255,255,.08)}
-/* ---------- Supplier rows, order tools and fold-out sections ---------- */
+/* ---------- Supplier rows and fold-out sections ---------- */
 [data-editsup]{flex-wrap:wrap}
 [data-editsup]>div:first-child{flex:1 1 100%}
 [data-editsup] .row-actions{width:100%;justify-content:flex-start;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--line)}
 .supplier-contact{font-size:12px;text-decoration:none;display:inline-flex;gap:7px;align-items:center}
-.order-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}
-.order-tools details{position:relative}
-.order-tools summary{cursor:pointer;min-height:44px;display:flex;align-items:center;padding:8px 16px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--ink)}
-.order-tools details[open]{flex-basis:100%;padding-bottom:8px}
-.order-tools details .form-actions{margin-top:8px}
-.order-note-preview{padding:14px 16px;border-inline-start:3px solid var(--accent-strong);border-radius:10px;background:var(--surface);color:var(--ink);font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
 .settings-group{padding:18px;margin-bottom:16px;border-radius:var(--r-card)}
 .settings-group .field{margin-top:14px}
-/* Every fold-out section (Settings, Order options, More tools) opens the same way: a title and a chevron that turns. */
-.list-options,.order-options{border-radius:var(--r)}
-.order-options{flex:1 1 100%}
-.settings-group>summary,.order-options>summary,.list-options>summary{list-style:none;min-height:44px;cursor:pointer;font-weight:700;color:var(--ink);display:flex;align-items:center;justify-content:space-between;gap:12px}
-.list-options>summary,.order-options>summary{padding:12px 14px;font-size:13px;font-weight:600}
-.settings-group>summary::-webkit-details-marker,.order-options>summary::-webkit-details-marker,.list-options>summary::-webkit-details-marker{display:none}
-.settings-group>summary:after,.order-options>summary:after,.list-options>summary:after{content:'';width:8px;height:8px;flex:none;margin-inline-end:4px;border:solid var(--ink-soft);border-width:0 2px 2px 0;transform:rotate(45deg) translateY(-2px);transition:transform .2s var(--ease)}
-.settings-group[open]>summary:after,.order-options[open]>summary:after,.list-options[open]>summary:after{transform:rotate(-135deg) translate(-2px,0)}
-.order-options-body{padding:0 12px 12px}
-.order-options .order-quick-actions{display:flex;flex-wrap:wrap}
-.list-options>div{padding:0 10px 10px}
-.order-options[open] .order-options-body,.list-options[open]>div{animation:optionsIn 180ms var(--ease-out)}
-@keyframes optionsIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
-@media(prefers-reduced-motion:reduce){.order-options[open] .order-options-body,.list-options[open]>div{animation:none}}
+/* A fold-out section (the Transfers item list) opens with a title and a chevron that turns. */
+.settings-group>summary{list-style:none;min-height:44px;cursor:pointer;font-weight:700;color:var(--ink);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.settings-group>summary::-webkit-details-marker{display:none}
+.settings-group>summary:after{content:'';width:8px;height:8px;flex:none;margin-inline-end:4px;border:solid var(--ink-soft);border-width:0 2px 2px 0;transform:rotate(45deg) translateY(-2px);transition:transform .2s var(--ease)}
+.settings-group[open]>summary:after{transform:rotate(-135deg) translate(-2px,0)}
 .availability-badge{display:inline-block;font-size:10px;font-weight:600;border:1px solid var(--line-strong);color:var(--ink-soft);padding:3px 7px;border-radius:6px;vertical-align:middle}
 .import-preview{max-height:320px;overflow:auto;margin-top:14px}
 .import-row{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;padding:12px;border-bottom:1px solid var(--line)}
@@ -1380,7 +1301,6 @@ html.dark .note-reply{background:rgba(255,255,255,.08)}
 .bottomnav.more-open .nav-more{visibility:visible;opacity:1;pointer-events:auto;transform:none}
 .nav-more .navbtn{height:66px;border-radius:20px;white-space:normal;text-align:center}
 .nav-more .navbtn.active{background:var(--accent-soft);color:var(--deep)}
-.order-sound-settings{margin-top:18px}
 @media(min-width:960px){
   .nav-more-btn{display:none}
   .nav-more{display:contents;visibility:visible;opacity:1;pointer-events:auto;transform:none}
@@ -1403,6 +1323,9 @@ html.dark .note-reply{background:rgba(255,255,255,.08)}
 
 /* ---------- Transfers: the list for the workplace "Move between storages" upload ---------- */
 .tr-soon{position:relative;overflow:hidden;isolation:isolate;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:0 14px;padding:20px 20px 16px;margin-bottom:16px;border-radius:var(--r-card);color:#fff;background:var(--hero);border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 28px -16px rgba(var(--deepd-rgb),.7)}
+/* Construction tape along the top edge, moving slowly. */
+.tr-soon::before{content:'';position:absolute;inset:0 0 auto;height:7px;background:repeating-linear-gradient(-45deg,#F5C451 0 9px,#15392B 9px 18px);animation:trTape 1.8s linear infinite}
+@keyframes trTape{to{background-position:25.456px 0}}
 .tr-soon-pill{grid-column:1;justify-self:start;display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;background:rgba(245,196,81,.14);border:1px solid rgba(245,196,81,.45);color:#F7D58A;font-size:11px;font-weight:800;letter-spacing:.03em}
 .tr-soon-pill i{width:7px;height:7px;border-radius:50%;background:#F5C451}
 .tr-soon-title{grid-column:1;margin-top:10px;font-size:18px;font-weight:800;line-height:1.3}
@@ -1414,7 +1337,7 @@ html.dark .note-reply{background:rgba(255,255,255,.08)}
 .tr-soon-steps .done .mark{background:var(--on-dark);color:#0D281F}
 .tr-soon-steps .wait{color:#F7D58A}
 .tr-soon-steps .wait .mark{border:2px dashed rgba(245,196,81,.75);color:#F5C451}
-/* The wrench on the Transfers tab while it is in development. */
+/* The wrench on the Transfers tab while it is being made. */
 .nav-soon{position:absolute;top:6px;inset-inline-end:calc(50% - 24px);width:17px;height:17px;border-radius:50%;display:grid;place-items:center;background:#F5C451;color:#3A2A00;box-shadow:0 0 0 2px var(--surface)}
 .nav-soon svg{width:10px;height:10px}
 @media(min-width:960px){.nav-soon{position:static;margin-inline-start:auto;box-shadow:none}}
@@ -1476,8 +1399,15 @@ html.dark .tr-check{color:#F5C46B}
   .tr-rows-head{margin-top:0}
   .tr-actions #trReadBtn{flex-basis:100%}
 }
-@media(prefers-reduced-motion:reduce){.tr-mic.listening{animation:none}}
+@media(prefers-reduced-motion:reduce){.tr-mic.listening,.tr-soon::before{animation:none}}
 /* Four tabs and More on a narrow phone: the longest labels (گواستنەوە, بەڕێوەبردن) keep their last letters. */
 @media(max-width:420px){.bottomnav>.navbtn{padding:0 2px}}
 /* On the narrowest phones the small title in the top bar is a little smaller. */
 @media(max-width:380px){.topbar-title{font-size:14px}}
+/* Transfers while it is being made: the page is a picture of the design (inert in transfers.js). */
+.tr-locked{pointer-events:none;user-select:none;-webkit-user-select:none;opacity:.6;filter:saturate(.6)}
+/* Endless decorations (the Online dot, the streak flame, the Transfers tape, Rico's face, the sign-in
+   dot) pause while the app is out of sight or the battery is low and not charging (app.js syncMotion).
+   Rico's face in the tab bar stays still: it only moves on his own screen. */
+html.still .conn-chip span,html.still .flame,html.still .tr-soon::before,html.still .login-word i,html.still .cut-chip.soon,html.still .rico-bot,html.still .rico-bot *{animation-play-state:paused!important}
+.rico-tab,.rico-tab *{animation:none!important}
