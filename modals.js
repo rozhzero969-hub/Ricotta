@@ -233,13 +233,10 @@ function showAlert(message) {
   return dialog.promise;
 }
 
-/* {password:true}: masked numeric PIN; {secret:true}: masked text;
-   {plain:true}: no capitalisation, corrections or spellcheck. */
+/* {secret:true}: masked text (Rico's provider key). */
 function showPrompt(message, opts = {}) {
   opts = opts || {};
-  const attrs = opts.password || opts.secret
-    ? `type="password" ${opts.password ? 'inputmode="numeric"' : ''} autocomplete="off"`
-    : opts.plain ? 'type="text" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false"' : 'type="text"';
+  const attrs = opts.secret ? 'type="password" autocomplete="off"' : 'type="text"';
   const length = Number(opts.maxLength);
   const max = Number.isSafeInteger(length) && length > 0 ? `maxlength="${length}"` : '';
   const dialog = createModal(ensureModalRoot(), `
