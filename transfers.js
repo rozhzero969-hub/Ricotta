@@ -16,7 +16,6 @@ const TRANSFER_TEXT = {
     trSoonText: 'You can look at the design, but it can’t be used or tested yet.',
     trSoonDone: 'Ricotta makes the Excel',
     trSoonWait: 'Workplace system adds Upload Excel',
-    guideTransfers: 'Write the items to move between storages. Rico finds the exact names and makes the Excel for the workplace system.',
     trWriteLabel: 'Items to move',
     trPlaceholder: 'e.g. tomatoes 2 kg, onions 1 sack, flour 3',
     trRead: 'Read with Rico',
@@ -70,7 +69,6 @@ const TRANSFER_TEXT = {
     trSoonText: 'دەتوانیت دیزاینەکەی ببینیت، بەڵام هێشتا ناتوانرێت بەکاربهێنرێت یان تاقی بکرێتەوە.',
     trSoonDone: 'ریکۆتا فایلی Excel دروست دەکات',
     trSoonWait: 'سیستەمی شوێنی کار دوگمەی بارکردنی Excel زیاد دەکات',
-    guideTransfers: 'ئەو کاڵایانە بنووسە کە لە نێوان کۆگاکاندا دەگوازرێنەوە. ڕیکۆ ناوە ڕاستەکان دەدۆزێتەوە و فایلی Excel بۆ سیستەمی شوێنی کار دروست دەکات.',
     trWriteLabel: 'کاڵاکانی گواستنەوە',
     trPlaceholder: 'بۆ نموونە: تەماتە 2 کیلۆ، پیاز 1 فەردە، ئارد 3',
     trRead: 'ڕیکۆ بیخوێنێتەوە',
@@ -124,7 +122,6 @@ const TRANSFER_TEXT = {
     trSoonText: 'يمكنك رؤية التصميم، لكن لا يمكن استخدامه أو تجربته بعد.',
     trSoonDone: 'ريكوتا يصنع ملف Excel',
     trSoonWait: 'نظام العمل يضيف زر رفع Excel',
-    guideTransfers: 'اكتب المواد التي تريد نقلها بين المخازن. يجد ريكو الأسماء الصحيحة ويصنع ملف Excel لنظام العمل.',
     trWriteLabel: 'المواد المراد نقلها',
     trPlaceholder: 'مثلاً: طماطم 2 كيلو، بصل 1 فردة، طحين 3',
     trRead: 'اقرأ مع ريكو',
@@ -623,7 +620,10 @@ function openStockPicker(row){
 async function readTransfer({text, image, mime}){
   if(!text?.trim() && !image) return;
   if(!stockList.items) await loadStockItems();
-  const r = await api('stock/read', {method:'POST', body:{text:text || '', image, mime, lang:state.lang}, timeout:60000});
+  // Rico reads with AI only with the person's permission; without it a written list is read on this phone.
+  const ai = await aiConsent();
+  if(image && !ai) return;
+  const r = ai ? await api('stock/read', {method:'POST', body:{text:text || '', image, mime, lang:state.lang}, timeout:60000}) : {ok:false};
   let rows = r.ok && Array.isArray(r.data?.rows) ? r.data.rows : null;
   if(!rows){
     if(image){ await showAlert(esc(t('trPhotoFailed'))); return; }

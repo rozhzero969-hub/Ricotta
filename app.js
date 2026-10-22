@@ -381,7 +381,7 @@ function setApiHealth(online){
   if(next === state.apiOnline) return;
   state.apiOnline = next;
   const el = document.getElementById('connectionStatus');
-  if(el){ el.classList.toggle('offline', !next); el.innerHTML = `<span></span><em>${next ? t('online') : t('offline')}</em>`; }
+  if(el) el.hidden = next;
   if(next) flushOutbox();
 }
 window.addEventListener('online', ()=>{ api('health'); });
@@ -625,7 +625,8 @@ async function hideSplash(minShown = 1150){
   await new Promise(r=>setTimeout(r, wait));
   el.dataset.state = 'leaving';
   document.documentElement.classList.remove('booting');
-  const done = ()=> el.remove();
+  let gone = false;
+  const done = ()=>{ if(gone) return; gone = true; el.remove(); syncAppearance(); };
   el.addEventListener('animationend', e=>{ if(e.target === el) done(); });
   setTimeout(done, 1400);   // safety net
 }
@@ -1011,11 +1012,11 @@ window.addEventListener('resize', ()=>segs().forEach(segPlace));
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLangMenu(); });
 
 /* ---------- Page transitions ----------
-   A short push transition preserves direction without holding up navigation.
-   Redrawing the same screen never plays an entrance animation. */
-const PAGE_TRANSITION = {ms:240};
+   Like an iPhone's tab bar, tapping a screen cross-fades to it quickly; only a finger swiping the
+   page slides it. Redrawing the same screen never plays an entrance animation. */
+const PAGE_TRANSITION = {ms:200};
 const SWIPE_MS = 180;
-const PAGE_EASE = 'cubic-bezier(.45,.05,.2,1)';
+const PAGE_EASE = 'cubic-bezier(.25,.1,.25,1)';
 // After a swipe the page is already moving with the finger, so it keeps going.
 const SWIPE_EASE = 'cubic-bezier(.2,.55,.25,1)';
 let glide = null;
@@ -1026,9 +1027,7 @@ function endGlide(){
   glide.content.classList.remove('gliding');
   glide = null;
 }
-function transitionFrames(dir,w){
-  return {inn:[{transform:`translate3d(${dir*w}px,0,0)`},{transform:'none'}],out:[{transform:'none',opacity:1},{opacity:0,offset:.45},{transform:`translate3d(${-dir*w*.3}px,0,0)`,opacity:0}]};
-}
+const FADE_FRAMES = {inn:[{opacity:0},{opacity:1}], out:[{opacity:1},{opacity:0}]};
 /* After a swipe both pages travel together, edge to edge: the old one slides
    all the way off to the other side while the new one pushes in beside it.
    Nothing fades and nothing overlaps, so no page ever shows through another. */
@@ -1064,7 +1063,7 @@ function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
   const old = document.querySelector('.content');
   const width = old ? old.getBoundingClientRect().width : window.innerWidth;
   const quick = fade || (managedView(state.view) && managedView(view));   // within Manage, or sliding along the tab bar
-  const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : quick?{inn:[{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'none'}],out:[{opacity:1},{opacity:0}]}:transitionFrames(dir, width)) : null;
+  const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : {inn:[...FADE_FRAMES.inn], out:[...FADE_FRAMES.out]}) : null;
   const ghost = frames?.out ? pageGhost(old) : null;
   state.catalogQuery='';state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
@@ -1080,7 +1079,7 @@ function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
     frames.inn[0] = {transform:`translate3d(${dir*width + fromOffset}px,0,0)`};
     frames.out[0] = {transform:`translate3d(${fromOffset}px,0,0)`};
   }
-  const opts = fromOffset ? {duration:SWIPE_MS, easing:SWIPE_EASE} : {duration:quick?180:PAGE_TRANSITION.ms, easing:PAGE_EASE};
+  const opts = fromOffset ? {duration:SWIPE_MS, easing:SWIPE_EASE} : {duration:quick?160:PAGE_TRANSITION.ms, easing:PAGE_EASE};
   content.style.transform = '';
   content.classList.add('gliding');
   const anims = [content.animate(frames.inn, opts)];
@@ -1399,12 +1398,14 @@ function bump(el){
   if(!el) return;
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
 }
-/* One Ricotta palette, with optional dark mode. */
+/* The browser bar and the iPhone's status bar match the page, light or dark. */
 function syncAppearance(){
   const meta=document.querySelector('meta[name="theme-color"]');
   // Signed out, a computer shows the green half and a phone the light sign-in page.
   const dark = document.documentElement.classList.contains('dark');
-  if(meta) meta.content = !state.account ? (isPhoneLayout() ? (dark?'#0E1512':'#F6F8F7') : '#14382C') : dark ? '#0E1512' : '#EEF1EF';
+  if(meta) meta.content = !state.account && !isPhoneLayout() ? '#14382C' : dark ? '#000000' : '#F2F2F7';
+  // The iPhone app matches it behind the page and in the status bar; hideSplash calls this again.
+  tellApp(document.getElementById('splash') ? 'page-splash' : dark ? 'page-dark' : 'page-light');
 }
 /* A small badge identifying who made a change. */
 function whoBadge(account){
@@ -1414,8 +1415,8 @@ function whoBadge(account){
 }
 /* Two display choices for the Order screen, kept per device (both start off). */
 const prefOn = key => lget(key) === true;
-/* Dark mode: 'off', 'on' or 'auto' (like the phone), kept per device. */
-const darkMode = () => ['on','auto'].includes(lget('darkMode')) ? lget('darkMode') : 'off';
+/* Light or dark: 'off' (light), 'on' (dark) or 'auto' (follows the phone, the default), kept per device. */
+const darkMode = () => ['on','off'].includes(lget('darkMode')) ? lget('darkMode') : 'auto';
 const DARK_QUERY = matchMedia('(prefers-color-scheme: dark)');
 function applyPrefs(){
   document.documentElement.classList.toggle('compact-rows', prefOn('compactRows'));
@@ -1443,7 +1444,7 @@ function lastQtyMap(){
 
 function renderPageHeading(){
   const now = new Date(), date = formatIraqDateTime(now, {weekday:'long', day:'numeric', month:'long'});
-  return `<header class="page-heading"><time class="page-eyebrow page-date" datetime="${erbilDate(now)}">${esc(date)}</time><h1>${esc(viewLabel(state.view))}</h1><p class="page-guide">${esc(viewGuide(state.view))}</p></header>`;
+  return `<header class="page-heading"><time class="page-eyebrow page-date" datetime="${erbilDate(now)}">${esc(date)}</time><h1>${esc(viewLabel(state.view))}</h1></header>`;
 }
 
 /* ============ Notifications: banner ============ */
@@ -1463,22 +1464,43 @@ function renderPushBanner(){
 }
 
 /* ============ Top bar ============
-   The same colour as the page, with Online, the language and a red glass
-   log-out button on top of it. */
+   A translucent bar over the page, like an iPhone app's: the ricotta mark,
+   the streak, "Offline" only while the connection is down, and the account
+   button (the person's initial) that holds the language and Sign Out. */
 function langButton(id){
   return `<button type="button" class="chip lang-chip" id="${id}" aria-haspopup="dialog" aria-label="${esc(t('language'))}">${ICON_GLOBE}<span class="lang-code">${state.lang.toUpperCase()}</span><span class="lang-name">${LANG_NAMES[state.lang]}</span>${ICON_CHEVRON}</button>`;
 }
+const accountInitial = ()=>accountLabel(state.account).trim().charAt(0).toUpperCase();
 function renderTopbar(){
   return `
   <header class="topbar">
-    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="topbar-title" aria-hidden="true"></span></div>
+    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div></div>
+    <span class="topbar-title" aria-hidden="true"></span>
     <div class="topbar-actions">
       ${renderStreakChip()}
-      <div class="chip conn-chip ${state.apiOnline?'':'offline'}" id="connectionStatus"><span></span><em>${esc(state.apiOnline?t('online'):t('offline'))}</em></div>
-      ${langButton('langBtn')}
-      <button type="button" class="logout-btn" id="logoutBtn" aria-label="${esc(t('logout'))}" title="${esc(t('logout'))}">${ICON_LOGOUT}</button>
+      <div class="chip conn-chip" id="connectionStatus" role="status"${state.apiOnline?' hidden':''}><span></span><em>${esc(t('offline'))}</em></div>
+      <button type="button" class="account-btn" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
     </div>
   </header>`;
+}
+/* The account sheet: who is signed in, the language, Settings, the privacy
+   policy and Sign Out, as grouped rows like the iPhone's own account page. */
+function privacyHref(){ return 'privacy.html#' + state.lang; }
+function openAccountSheet(){
+  const chevron = `<i class="sheet-chevron" aria-hidden="true"></i>`;
+  const sheet = openKitchenSheet('account-sheet', `
+    <div class="account-head"><span class="account-mono" aria-hidden="true">${esc(accountInitial())}</span><div><b>${esc(accountLabel(state.account))}</b><small>Ricotta Orders</small></div></div>
+    <div class="sheet-group">
+      <button type="button" class="sheet-row" id="langBtn" aria-haspopup="dialog">${ICON_GLOBE}<span>${esc(t('language'))}</span><em>${esc(LANG_NAMES[state.lang])}</em>${chevron}</button>
+      ${canOpen('settings') ? `<button type="button" class="sheet-row" data-account-go="settings">${NAV_ICONS.settings || ''}<span>${esc(t('settings'))}</span>${chevron}</button>` : ''}
+      <a class="sheet-row" href="${esc(privacyHref())}">${ICON_SHIELD}<span>${esc(t('privacyPolicy'))}</span>${chevron}</a>
+    </div>
+    <div class="sheet-group"><button type="button" class="sheet-row danger" id="logoutBtn">${ICON_LOGOUT}<span>${esc(t('logout'))}</span></button></div>`, t('accountMenu')(accountLabel(state.account)));
+  const el = sheet.el;
+  el.querySelector('#langBtn').onclick = ()=>{ sheet.close(); openLangMenu(document.getElementById('accountBtn')); };
+  el.querySelector('[data-account-go]')?.addEventListener('click', ()=>{ sheet.close(); goView('settings'); });
+  el.querySelector('#logoutBtn').onclick = ()=>{ sheet.close(); doLogout(); };
+  requestAnimationFrame(()=>el.querySelector('#langBtn')?.focus({preventScroll:true}));
 }
 
 /* ---------- Language menu ----------
@@ -1528,8 +1550,7 @@ function attachShellEvents(){
   const nav = document.querySelector('.bottomnav');
   nav.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>goView(b.dataset.view));
   document.getElementById('navMoreBtn').onclick=()=>setMoreOpen(!nav.classList.contains('more-open'));
-  document.getElementById('langBtn').onclick = e=>{ e.stopPropagation(); openLangMenu(e.currentTarget); };
-  document.getElementById('logoutBtn').onclick = ()=>doLogout();
+  document.getElementById('accountBtn').onclick = openAccountSheet;
   document.getElementById('streakChip').onclick = openStreakSheet;
 }
 /* Events inside the page that more than one screen uses. */
@@ -1567,14 +1588,13 @@ function renderLogin(){
   const keys = ['1','2','3','4','5','6','7','8','9'];
   const bad = LOGIN_ERRORS.includes(state.pinError);
   const msg = loginMessage();
-  const word = 'ricotta'.split('').map((c,i)=>`<b style="--i:${i}">${c}</b>`).join('');
   // Computer: the green brand side and the white PIN side, the language in the top corner.
   // Phone: one light column (the mark, the PIN, the number pad) with the language at the bottom.
   // The number pad is for touch screens; everywhere else there is a keyboard, so the hints show instead.
   return `
   <div class="login-wrap">
     <section class="login-brand">
-      <div class="login-word" dir="ltr" aria-hidden="true">${word}<i></i></div>
+      <div class="login-word" dir="ltr" aria-hidden="true">ricotta<i></i></div>
       <div class="login-pitch"><div class="brand-kicker">${esc(t('brandKicker'))}</div><p class="brand-message">${esc(t('brandMessage'))}<br><em>${esc(t('brandMessageAccent'))}</em></p><p class="brand-detail">${esc(t('brandDetail'))}</p></div>
       <div class="brand-footer"><span>© ${new Date().getFullYear()} Ricotta</span><span>${esc(t('brandFooter'))}</span></div>
     </section>
@@ -1587,10 +1607,10 @@ function renderLogin(){
       <div class="login-error ${state.pinError==='session'?'info':''}" role="alert" style="visibility:${msg?'visible':'hidden'};">${esc(msg) || '&nbsp;'}</div>
       <div class="login-hints"><p>${ICON_ENTER}${esc(t('loginAuto'))}</p><p>${esc(t('loginKeyboard'))}</p></div>
       <div class="keypad">
-        ${keys.map((k,i)=>`<button class="key" data-key="${k}" style="--k:${i}">${k}</button>`).join('')}
-        <button class="key clear" data-key="clear" style="--k:9">${esc(t('clear'))}</button>
-        <button class="key" data-key="0" style="--k:10">0</button>
-        <button class="key backspace" data-key="back" style="--k:11" aria-label="${esc(t('deleteDigit'))}">${ICON_BACKSPACE}</button>
+        ${keys.map(k=>`<button class="key" data-key="${k}">${k}</button>`).join('')}
+        <button class="key clear" data-key="clear">${esc(t('clear'))}</button>
+        <button class="key" data-key="0">0</button>
+        <button class="key backspace" data-key="back" aria-label="${esc(t('deleteDigit'))}">${ICON_BACKSPACE}</button>
       </div>
       <p class="login-private">${esc(t('loginPrivate'))}</p>
       <button type="button" class="login-lang-row" id="loginLangRow" aria-haspopup="dialog" aria-label="${esc(t('language'))}">${ICON_GLOBE}<span>${LANG_NAMES[state.lang]}</span>${ICON_CHEVRON}</button>
@@ -1624,6 +1644,7 @@ async function pressKey(k){
   state.pinBusy = false;
   if(res.error){
     state.pinError = res.error==='cancelled'?'':res.error; updateLoginFeedback();
+    if(LOGIN_ERRORS.includes(state.pinError)) haptic('error');
     setTimeout(()=>{ state.pinBuffer=''; if(!state.account) updateLoginFeedback(); }, 650);
     return;
   }
@@ -1650,20 +1671,7 @@ function attachLoginEvents(){
     const lang = document.getElementById(id);
     if(lang) lang.onclick = e=>{ e.stopPropagation(); openLangMenu(lang); };
   });
-  document.querySelectorAll('[data-key]').forEach(b=>{
-    b.onclick = ()=>pressKey(b.dataset.key);
-    b.onpointerdown = e=>keyRipple(b, e);
-  });
-}
-/* A soft ring spreads from where the key was pressed. */
-function keyRipple(key, e){
-  if(key.disabled || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const box = key.getBoundingClientRect(), size = Math.max(box.width, box.height) * 2;
-  const ring = document.createElement('span');
-  ring.className = 'key-ripple';
-  ring.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - box.left - size / 2}px;top:${e.clientY - box.top - size / 2}px`;
-  key.appendChild(ring);
-  ring.addEventListener('animationend', ()=>ring.remove(), {once:true});
+  document.querySelectorAll('[data-key]').forEach(b=>{ b.onclick = ()=>pressKey(b.dataset.key); });
 }
 /* Physical keyboards (computers / tablets with a keyboard) can type the PIN. */
 document.addEventListener('keydown', e=>{
@@ -2088,6 +2096,7 @@ function stepQty(btn){
   if(!id) return;
   const next = btn.dataset.inc ? Math.min(MAX_QTY, (state.cart[id]||0)+1) : Math.max(0,(state.cart[id]||0)-1);
   if(next === (state.cart[id]||0)) return;
+  haptic('selection');
   state.cart[id] = next;
   refreshOrderView(id);
 }
@@ -2155,7 +2164,8 @@ function openItemMenu(row){
   const actions = [[1,t('cmAdd')(1),ICON_PLUS],[5,t('cmAdd')(5),ICON_PLUS],[10,t('cmAdd')(10),ICON_PLUS],['type',t('cmType'),ICON_EDIT],
     ['pin', state.pins.includes(id) ? t('unpinItem') : t('pinItem'), ICON_PIN], ['note', t('itemNoteEdit'), ICON_NOTE]];
   if(qty) actions.push(['remove',t('cmRemove'),ICON_DELETE]);
-  const menuH = actions.length*48 + 8, below = rect.bottom + 12 + menuH < window.innerHeight - 90;
+  haptic('medium');
+  const menuH = actions.length*44 + 16, below = rect.bottom + 12 + menuH < window.innerHeight - 90;
   layer.innerHTML = `<div class="ctx-scrim"></div>
     <div class="ctx-preview" style="top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px"></div>
     <div class="ctx-menu ${below?'':'up'}" role="menu" style="${below?`top:${rect.bottom+12}px`:`top:${Math.max(12, rect.top-12-menuH)}px`};${isRtl()?`left:${Math.max(12,rect.left)}px`:`right:${Math.max(12, window.innerWidth-rect.right)}px`}">
@@ -2361,7 +2371,7 @@ const SHEET_WORDS = {
   ku:{title:'داواکارییەکی نوێ', none:'بێ دابینکەر', items:'کاڵا', item:'کاڵا', unit:'یەکە', qty:'بڕ', foot:'تکایە داواکارییەکە بەپێی ئەم بڕانە ئامادە بکەن. سوپاس.'},
   ar:{title:'طلب شراء', none:'بدون مورّد', items:'مواد', item:'المادة', unit:'الوحدة', qty:'الكمية', foot:'يرجى تجهيز هذا الطلب بالكميات المذكورة أعلاه. شكرًا لكم.'}
 };
-// The same fonts as the app: Sora, with Noto Kufi Arabic for every Kurdish or Arabic letter.
+// The same fonts as the app: Apple's system font, with Noto Kufi Arabic for Kurdish and Arabic where there is no system Arabic font.
 const SHEET_FONTS = new URL('fonts/fonts.css', location.href).href;
 function printOrderSheet(entry, supplier){
   const w0 = SHEET_WORDS[state.lang] || SHEET_WORDS.en;
@@ -2370,7 +2380,7 @@ function printOrderSheet(entry, supplier){
   const w = window.open('', '_blank'); if(!w) return;
   w.opener = null;
   const printedAt = formatIraqDateTime(new Date(),{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-  w.document.write(`<!doctype html><html dir="${isRtl()?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${w0.title} · Ricotta</title><link rel="stylesheet" href="${SHEET_FONTS}"><style>body{font-family:'Sora','Noto Kufi Arabic',Arial,sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${w0.title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${esc(printedAt)}<br>${entry.items.length} ${w0.items}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${w0.item}</th><th>${w0.unit}</th><th>${w0.qty}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${w0.foot}</div></body></html>`);
+  w.document.write(`<!doctype html><html dir="${isRtl()?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${w0.title} · Ricotta</title><link rel="stylesheet" href="${SHEET_FONTS}"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Kufi Arabic',Arial,sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${w0.title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${esc(printedAt)}<br>${entry.items.length} ${w0.items}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${w0.item}</th><th>${w0.unit}</th><th>${w0.qty}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${w0.foot}</div></body></html>`);
   w.document.close(); w.focus();
   // Print once the fonts are in, so Kurdish and Arabic names use Noto Kufi.
   const link = w.document.querySelector('link');
@@ -2391,7 +2401,7 @@ async function maybeFinishQueue(){
         items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
       }))
     };
-    if(!queue.record){try{playOrdersSent();}catch(_){/* Audio must never interrupt saving. */}}
+    if(!queue.record){try{playOrdersSent();haptic('success');}catch(_){/* Audio must never interrupt saving. */}}
     queue.record = record;
     queue.saveState = 'saving';
     persistQueue();   // the same order id after a restart, so it is never saved twice
@@ -3311,7 +3321,15 @@ function latestVersion(){
   return (state.devices || []).map(d=>d.appVersion).filter(Boolean).reduce((m, v)=>versionCmp(v, m) > 0 ? v : m, APP_VERSION);
 }
 function renderSettings(){
-  return `${renderPendingSync()}${renderAppearance()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderAppearance()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+}
+/* Privacy: Rico's AI permission (asked the first time Rico is used, and taken back here),
+   the privacy policy, and Sign Out at the very end, like the iPhone's Settings. */
+function renderPrivacySettings(){
+  return `<div class="section-title">${esc(t('settingsPrivacy'))}</div><div class="form-card">
+    <label class="check-row preference-row"><input type="checkbox" id="aiConsent" ${aiConsented()?'checked':''}><span>${esc(t('aiSettingLabel'))}<small>${esc(t('aiSettingHint'))}</small></span></label>
+    <a class="settings-link" href="${esc(privacyHref())}">${ICON_SHIELD}<span>${esc(t('privacyPolicy'))}</span><i class="sheet-chevron" aria-hidden="true"></i></a></div>
+    <div class="form-card settings-signout-card"><button type="button" class="settings-signout" id="settingsSignOut">${esc(t('logout'))}</button></div>`;
 }
 /* ============ Notifications (shown in Settings) ============ */
 /* The daily reminder starts as one switch. Turning it on opens the time,
@@ -3435,7 +3453,7 @@ async function withBusy(btn, fn){
 /* Appearance changes update in place, preserving scroll position. */
 function bindAppearance(){
   document.querySelectorAll('[data-dark]').forEach(b=>b.onclick=()=>{
-    lset('darkMode',b.dataset.dark==='off'?null:b.dataset.dark);applyPrefs();syncAppearance();
+    lset('darkMode',b.dataset.dark==='auto'?null:b.dataset.dark);applyPrefs();syncAppearance();
     document.querySelectorAll('[data-dark]').forEach(x=>x.setAttribute('aria-checked',String(x.dataset.dark===darkMode())));
   });
 }
@@ -3450,6 +3468,12 @@ function attachSettingsEvents(){
     const box = document.getElementById(id);
     if(box) box.onchange = ()=>{ lset(key, box.checked ? true : null); applyPrefs(); };
   });
+  const ai = document.getElementById('aiConsent');
+  if(ai) ai.onchange = async ()=>{
+    if(!ai.checked){ setAiConsent(false); return; }
+    ai.checked = await aiConsent();
+  };
+  document.getElementById('settingsSignOut').onclick = ()=>doLogout();
   attachNotifEvents();
 }
 

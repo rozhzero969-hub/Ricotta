@@ -91,6 +91,18 @@ function ricoFaceBase(mood = 'happy', cls = ''){
 }
 
 function ricoAutoOrder(){ return !!lget('ricoAutoOrder'); }
+/* Apple's rule (App Review 5.1.2): before anything goes to an AI service, the person is told where it
+   goes and says yes. Asked the first time Rico (or reading a list) is used, kept per person on this
+   device, and taken back with the switch in Settings. Not Now simply asks again next time. */
+const aiConsentKey = ()=>'aiConsent:' + state.account;
+function aiConsented(){ return lget(aiConsentKey()) === true; }
+function setAiConsent(on){ lset(aiConsentKey(), on ? true : null); }
+async function aiConsent(){
+  if(aiConsented()) return true;
+  const yes = await showConfirm(esc(t('aiBody')), {title:t('aiTitle'), okLabel:t('aiAllow'), cancelLabel:t('aiNotNow'), okClass:'btn-primary'});
+  if(yes) setAiConsent(true);
+  return yes;
+}
 /* Signing out forgets the chat and the inbox on this phone. */
 function ricoReset(){
   ricoStop(); ricoResetVoice(); clearTimeout(ricoSaveTimer);
@@ -417,6 +429,7 @@ async function ricoToggleVoice(){
   if(ricoRecorder.active){ try{ ricoRecorder.rec.stop(); }catch(e){ ricoResetVoice(); } return; }
   if(rico.streaming) return;
   if(!ricoVoiceSupported()){ toast(t('ricoMicUnsupported'), 'warn'); return; }
+  if(!(await aiConsent())) return;
   const denied = e=>e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
   const failed = e=>toast(denied(e) ? t('ricoMicDenied') : t('ricoMicNoStart') + (e && e.name ? ` (${e.name})` : ''), 'warn');
   let stream;
@@ -493,12 +506,13 @@ function attachAssistantEvents(){
     input.addEventListener('input', ()=>lset('ricoDraft', input.value || null));
   }
   document.getElementById('ricoMicBtn')?.addEventListener('click', ()=>ricoToggleVoice());
-  if(form) form.onsubmit = e=>{
+  if(form) form.onsubmit = async e=>{
     e.preventDefault();
     if(ricoRecorder.active){ ricoToggleVoice(); return; }
     if(rico.streaming){ ricoStop(); return; }
     const text = input.value.trim();
     if(!text) return;
+    if(!(await aiConsent())) return;   // the message stays in the box
     input.value = ''; input.style.height = 'auto'; lset('ricoDraft', null);
     ricoAsk(text);
   };
@@ -586,6 +600,7 @@ function ricoStop(){
 }
 async function ricoAsk(text, options = {}){
   if(rico.streaming) return;
+  if(!(await aiConsent())) return;
   const scopeIds = options.supplierIds || [];
   const named = state.suppliers.filter(s=>String(text).toLocaleLowerCase().includes(s.name.toLocaleLowerCase())).map(s=>s.id);
   if(rico.viewing){ rico.viewing = null; rico.messages = []; rico.chatId = null; }

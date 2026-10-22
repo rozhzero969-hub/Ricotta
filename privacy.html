@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- A plain page: no scripts, nothing loaded from elsewhere. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F2F2F7">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
+<title>Privacy Policy · Ricotta Orders</title>
+<link rel="icon" href="icon-192.png">
+<style>
+  /* Apple's legal pages: the system font, a narrow column, gray secondary text. Each language is a
+     section; the link's #en, #ku or #ar picks one, and English shows when none is picked. */
+  :root{--bg:#F2F2F7;--card:#fff;--ink:#000;--soft:#6E6E73;--line:rgba(60,60,67,.18);--tint:#1F7A4D;color-scheme:light}
+  @media (prefers-color-scheme:dark){:root{--bg:#000;--card:#1C1C1E;--ink:#fff;--soft:#98989F;--line:rgba(255,255,255,.16);--tint:#4CD38D;color-scheme:dark}}
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  @supports (font:-apple-system-body){html{font:-apple-system-body}}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,'Noto Kufi Arabic',sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+  [lang=ckb],[lang=ar]{line-height:1.8}
+  .wrap{max-width:720px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
+  nav{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+  nav a{color:var(--tint);text-decoration:none;font-weight:500}
+  .langs{display:flex;gap:6px}
+  .langs a{padding:6px 12px;border-radius:999px;background:rgba(118,118,128,.12);color:var(--ink);font-weight:500}
+  section{display:none}
+  section:target,body:not(:has(section:target)) #en{display:block}
+  h1{font-size:2.125rem;line-height:1.2;margin:0 0 4px}
+  .updated{color:var(--soft);margin:0 0 20px}
+  .card{background:var(--card);border-radius:22px;padding:4px 20px;margin:0 0 16px}
+  h2{font-size:1.25rem;line-height:1.3;margin:20px 0 8px}
+  p,li{font-size:1.0625rem;margin:0 0 12px}
+  ul{padding-inline-start:22px;margin:0 0 12px}
+  li{margin-bottom:8px}
+  .card>:last-child{margin-bottom:16px}
+  b{font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a href="./">‹ Ricotta</a>
+    <div class="langs"><a href="#en" lang="en">English</a><a href="#ku" lang="ckb" dir="rtl">کوردی</a><a href="#ar" lang="ar" dir="rtl">العربية</a></div>
+  </nav>
+
+  <section id="en" lang="en" dir="ltr">
+    <h1>Privacy Policy</h1>
+    <p class="updated">Ricotta Orders · Last updated 21 October 2026</p>
+    <div class="card">
+      <h2>Who uses this app</h2>
+      <p>Ricotta Orders is the private ordering app of the Ricotta kitchen in Erbil. Only the kitchen’s two staff accounts can sign in; there is no public sign-up. The kitchen manager, Rozha, is responsible for the data in it.</p>
+      <p>There are no ads, no tracking and no analytics, and no data is sold or shared for marketing.</p>
+    </div>
+    <div class="card">
+      <h2>What the app keeps, and why</h2>
+      <ul>
+        <li><b>Your account:</b> your name and your 6-digit PIN. The PIN is stored only as a one-way scramble (bcrypt), so nobody can read it back.</li>
+        <li><b>Signing in:</b> a sign-in token (scrambled), a random ID for this device, its type (for example iPhone), the app version and when it was last used. Each PIN try is kept with a scrambled form of the network address, to stop anyone guessing PINs.</li>
+        <li><b>The kitchen’s work:</b> suppliers (names, phone numbers, reminder times), items, units, orders (what was ordered, by whom and when), unsent drafts, a record of who changed items and suppliers, the kitchen streak and a summary of each finished month.</li>
+        <li><b>Rico:</b> chats you keep with Rico, the messages Rico writes to you, and a count of each AI request (which model and how long), used for the hourly limit.</li>
+        <li><b>Notifications:</b> if you turn them on, the delivery address your phone gives and your language.</li>
+      </ul>
+      <p>Voice messages to Rico and photos of item lists are only sent to be read and are not kept by Ricotta.</p>
+    </div>
+    <div class="card">
+      <h2>Who else handles it</h2>
+      <ul>
+        <li><b>Supabase</b> stores the data and runs the app’s server. <b>GitHub Pages</b> serves the app’s files.</li>
+        <li><b>Google Gemini and Groq</b> (AI services) write Rico’s replies and read voice messages and item lists. They receive what you write or say to Rico and the order details he needs (items, suppliers and quantities), never your PIN. This happens only after you allow it, and you can turn it off in Settings › Privacy.</li>
+        <li><b>Cloudflare Turnstile</b> may run a quick security check when you sign in.</li>
+        <li><b>Apple, Google or Mozilla</b> deliver notifications to your device, if you turn them on.</li>
+        <li><b>WhatsApp</b> opens with the order message when you choose to send an order; WhatsApp’s own policy applies there.</li>
+        <li><b>Open-Meteo</b> gives the weather for Erbil; no personal data is sent to it.</li>
+      </ul>
+      <p>Each of these services is used only to run the app and is expected to protect the data at least as well as this policy.</p>
+    </div>
+    <div class="card">
+      <h2>How long it is kept</h2>
+      <ul>
+        <li>Orders and the record of changes: the current month. When a month ends, it becomes one summary and the orders are deleted.</li>
+        <li>Rico’s messages and reminder marks: 30 days. AI request counts: 90 days.</li>
+        <li>Sign-ins end after 18 hours and are deleted 2 days later. PIN tries: 2 days. Devices that signed out and stayed unused: 30 days.</li>
+        <li>Accounts, suppliers, items, units, settings, drafts, the streak and month summaries: until they are deleted.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Your choices</h2>
+      <ul>
+        <li>Turn Rico’s AI off or on in Settings › Privacy. Turn notifications off in Settings.</li>
+        <li>Sign out from the account button at the top of the app.</li>
+        <li>To see, correct or delete your data, or to take back any permission, ask Rozha, the kitchen manager. She can delete it in the app or remove it from the database.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Security</h2>
+      <p>Everything travels over HTTPS. The database is locked so that only the app’s own server can open it, after checking the sign-in. The AI services’ keys stay on the server and never reach a phone.</p>
+      <h2>Changes</h2>
+      <p>If this policy changes, the new version is published here with a new date.</p>
+    </div>
+  </section>
+
+  <section id="ku" lang="ckb" dir="rtl">
+    <h1>سیاسەتی تایبەتمەندی</h1>
+    <p class="updated">ریکۆتا ئۆردەرز · دوایین نوێکردنەوە 21ی تشرینی یەکەمی 2026</p>
+    <div class="card">
+      <h2>کێ ئەم ئەپە بەکاردەهێنێت</h2>
+      <p>ریکۆتا ئۆردەرز ئەپی تایبەتی داواکاریی چێشتخانەی ریکۆتایە لە هەولێر. تەنها دوو هەژماری کارمەندانی چێشتخانەکە دەتوانن بچنە ژوورەوە؛ خۆتۆمارکردنی گشتی نییە. بەڕێوەبەری چێشتخانەکە، ڕۆژا، بەرپرسی زانیارییەکانی ناوێتی.</p>
+      <p>هیچ ڕیکلام، شوێنکەوتن و شیکاری تێدا نییە، و هیچ زانیارییەک نافرۆشرێت و بۆ بازرگانی نادرێت بە کەس.</p>
+    </div>
+    <div class="card">
+      <h2>ئەپەکە چی هەڵدەگرێت و بۆچی</h2>
+      <ul>
+        <li><b>هەژمارەکەت:</b> ناوەکەت و PIN ـە 6 ژمارەییەکەت. PIN تەنها بە شێوەی تێکدراوی یەکلایەنە (bcrypt) هەڵدەگیرێت، بۆیە کەس ناتوانێت بیخوێنێتەوە.</li>
+        <li><b>چوونەژوورەوە:</b> نیشانەیەکی چوونەژوورەوە (تێکدراو)، ناسنامەیەکی هەڕەمەکی بۆ ئەم ئامێرە، جۆرەکەی (بۆ نموونە iPhone)، وەشانی ئەپەکە و کاتی دوایین بەکارهێنان. هەر هەوڵێکی PIN لەگەڵ شێوەیەکی تێکدراوی ناونیشانی تۆڕەکە هەڵدەگیرێت، تا کەس نەتوانێت PIN بە مەزەندە بدۆزێتەوە.</li>
+        <li><b>کاری چێشتخانەکە:</b> دابینکەران (ناو، ژمارەی تەلەفۆن، کاتی بیرخستنەوە)، کاڵاکان، یەکەکان، داواکارییەکان (چی، کێ و کەی داوای کرد)، ڕەشنووسە نەنێردراوەکان، تۆمارێک لەوەی کێ کاڵا و دابینکەرانی گۆڕیوە، زنجیرەی چێشتخانەکە و پوختەی هەر مانگێکی تەواوبوو.</li>
+        <li><b>ریکۆ:</b> ئەو گفتوگۆیانەی لەگەڵ ریکۆ هەڵیاندەگریت، ئەو نامانەی ریکۆ بۆت دەنووسێت، و ژمارەی هەر داواکارییەکی زیرەکی دەستکرد (کام مۆدێل و چەند درێژ)، بۆ سنووری کاتژمێرانە.</li>
+        <li><b>ئاگادارکردنەوەکان:</b> ئەگەر هەڵیانبکەیت، ئەو ناونیشانی گەیاندنەی مۆبایلەکەت دەیدات و زمانەکەت.</li>
+      </ul>
+      <p>نامە دەنگییەکان بۆ ریکۆ و وێنەی لیستی کاڵاکان تەنها بۆ خوێندنەوە دەنێردرێن و ریکۆتا هەڵیان ناگرێت.</p>
+    </div>
+    <div class="card">
+      <h2>کێی تر مامەڵەی لەگەڵ دەکات</h2>
+      <ul>
+        <li><b>Supabase</b> زانیارییەکان هەڵدەگرێت و ڕاژەکاری ئەپەکە بەڕێوەدەبات. <b>GitHub Pages</b> فایلەکانی ئەپەکە پێشکەش دەکات.</li>
+        <li><b>Google Gemini و Groq</b> (خزمەتگوزارییەکانی زیرەکی دەستکرد) وەڵامەکانی ریکۆ دەنووسن و نامە دەنگییەکان و لیستی کاڵاکان دەخوێننەوە. ئەوەی دەینووسیت یان دەیڵێیت بە ریکۆ، و ئەو زانیارییانەی داواکاری کە پێویستیەتی (کاڵا، دابینکەر و بڕ) وەردەگرن، هەرگیز PIN ـەکەت وەرناگرن. ئەمە تەنها دوای ڕێگەپێدانی تۆ ڕوودەدات، و دەتوانیت لە ڕێکخستنەکان › تایبەتمەندی بیکوژێنیتەوە.</li>
+        <li><b>Cloudflare Turnstile</b> لەوانەیە لە کاتی چوونەژوورەوەدا پشکنینێکی خێرای ئاسایش بکات.</li>
+        <li><b>Apple، Google یان Mozilla</b> ئاگادارکردنەوەکان دەگەیەننە ئامێرەکەت، ئەگەر هەڵیانبکەیت.</li>
+        <li><b>WhatsApp</b> کاتێک دەتەوێت داواکارییەک بنێریت، لەگەڵ نامەی داواکارییەکە دەکرێتەوە؛ لەوێ سیاسەتی خۆی WhatsApp جێبەجێ دەبێت.</li>
+        <li><b>Open-Meteo</b> کەشوهەوای هەولێر دەدات؛ هیچ زانیارییەکی کەسی بۆی نانێردرێت.</li>
+      </ul>
+      <p>هەر یەک لەم خزمەتگوزارییانە تەنها بۆ کارپێکردنی ئەپەکە بەکاردێت و چاوەڕوان دەکرێت زانیارییەکان لانیکەم بەقەد ئەم سیاسەتە بپارێزێت.</p>
+    </div>
+    <div class="card">
+      <h2>چەند ماوە هەڵدەگیرێت</h2>
+      <ul>
+        <li>داواکارییەکان و تۆماری گۆڕانکارییەکان: مانگی ئێستا. کە مانگێک تەواو دەبێت، دەبێتە یەک پوختە و داواکارییەکان دەسڕدرێنەوە.</li>
+        <li>نامەکانی ریکۆ و نیشانەکانی بیرخستنەوە: 30 ڕۆژ. ژمارەی داواکارییەکانی زیرەکی دەستکرد: 90 ڕۆژ.</li>
+        <li>چوونەژوورەوەکان دوای 18 کاتژمێر کۆتاییان دێت و 2 ڕۆژ دواتر دەسڕدرێنەوە. هەوڵەکانی PIN: 2 ڕۆژ. ئەو ئامێرانەی چوونەتە دەرەوە و بەکارنەهاتوون: 30 ڕۆژ.</li>
+        <li>هەژمارەکان، دابینکەران، کاڵاکان، یەکەکان، ڕێکخستنەکان، ڕەشنووسەکان، زنجیرەکە و پوختەی مانگەکان: تا دەسڕدرێنەوە.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>هەڵبژاردنەکانی تۆ</h2>
+      <ul>
+        <li>زیرەکی دەستکردی ریکۆ لە ڕێکخستنەکان › تایبەتمەندی بکوژێنەوە یان هەڵیبکە. ئاگادارکردنەوەکان لە ڕێکخستنەکان بکوژێنەوە.</li>
+        <li>لە دوگمەی هەژمار لە سەرەوەی ئەپەکە بچۆ دەرەوە.</li>
+        <li>بۆ بینین، ڕاستکردنەوە یان سڕینەوەی زانیارییەکانت، یان کێشانەوەی هەر ڕێگەپێدانێک، داوا لە ڕۆژا، بەڕێوەبەری چێشتخانەکە بکە. دەتوانێت لە ئەپەکەدا بیسڕێتەوە یان لە بنکەدراوەکە لایببات.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>ئاسایش</h2>
+      <p>هەموو شتێک بە HTTPS دەگوازرێتەوە. بنکەدراوەکە داخراوە بە شێوەیەک کە تەنها ڕاژەکاری خودی ئەپەکە دەتوانێت بیکاتەوە، دوای پشکنینی چوونەژوورەوە. کلیلەکانی خزمەتگوزارییەکانی زیرەکی دەستکرد لە ڕاژەکار دەمێننەوە و هەرگیز ناگەنە مۆبایل.</p>
+      <h2>گۆڕانکارییەکان</h2>
+      <p>ئەگەر ئەم سیاسەتە بگۆڕدرێت، وەشانە نوێیەکە لێرە بە بەروارێکی نوێ بڵاودەکرێتەوە.</p>
+    </div>
+  </section>
+
+  <section id="ar" lang="ar" dir="rtl">
+    <h1>سياسة الخصوصية</h1>
+    <p class="updated">ريكوتا أوردرز · آخر تحديث 21 تشرين الأول 2026</p>
+    <div class="card">
+      <h2>من يستخدم هذا التطبيق</h2>
+      <p>ريكوتا أوردرز هو تطبيق الطلبات الخاص بمطبخ ريكوتا في أربيل. يمكن فقط لحسابي موظفي المطبخ تسجيل الدخول؛ لا يوجد تسجيل عام. مديرة المطبخ، روجا، هي المسؤولة عن البيانات فيه.</p>
+      <p>لا توجد إعلانات ولا تتبع ولا تحليلات، ولا تُباع أي بيانات ولا تُشارك لأغراض تسويقية.</p>
+    </div>
+    <div class="card">
+      <h2>ما يحتفظ به التطبيق، ولماذا</h2>
+      <ul>
+        <li><b>حسابك:</b> اسمك ورمز PIN المكون من 6 أرقام. يُحفظ الرمز فقط بصيغة مشفّرة باتجاه واحد (bcrypt)، فلا يستطيع أحد قراءته.</li>
+        <li><b>تسجيل الدخول:</b> رمز جلسة (مشفّر)، ومعرّف عشوائي لهذا الجهاز، ونوعه (مثل iPhone)، وإصدار التطبيق ووقت آخر استخدام. تُحفظ كل محاولة لإدخال الرمز مع صيغة مشفّرة من عنوان الشبكة، لمنع تخمين الرموز.</li>
+        <li><b>عمل المطبخ:</b> الموردون (الأسماء وأرقام الهواتف وأوقات التذكير)، والأصناف، والوحدات، والطلبات (ما طُلب ومن طلبه ومتى)، والمسودات غير المرسلة، وسجل بمن غيّر الأصناف والموردين، وسلسلة المطبخ، وملخص كل شهر منتهٍ.</li>
+        <li><b>ريكو:</b> المحادثات التي تحتفظ بها مع ريكو، والرسائل التي يكتبها لك، وعدد كل طلب للذكاء الاصطناعي (أي نموذج وما مدى طوله)، لتطبيق الحد الساعي.</li>
+        <li><b>الإشعارات:</b> إن فعّلتها، عنوان التوصيل الذي يقدمه هاتفك ولغتك.</li>
+      </ul>
+      <p>الرسائل الصوتية إلى ريكو وصور قوائم الأصناف تُرسل للقراءة فقط ولا يحتفظ بها ريكوتا.</p>
+    </div>
+    <div class="card">
+      <h2>من يتعامل معها أيضًا</h2>
+      <ul>
+        <li><b>Supabase</b> تخزّن البيانات وتشغّل خادم التطبيق. <b>GitHub Pages</b> تقدّم ملفات التطبيق.</li>
+        <li><b>Google Gemini وGroq</b> (خدمات ذكاء اصطناعي) تكتب ردود ريكو وتقرأ الرسائل الصوتية وقوائم الأصناف. تتلقى ما تكتبه أو تقوله لريكو وتفاصيل الطلبات التي يحتاجها (الأصناف والموردين والكميات)، ولا تتلقى رمز PIN أبدًا. يحدث ذلك فقط بعد إذنك، ويمكنك إيقافه من الإعدادات › الخصوصية.</li>
+        <li><b>Cloudflare Turnstile</b> قد يجري فحصًا أمنيًا سريعًا عند تسجيل الدخول.</li>
+        <li><b>Apple أو Google أو Mozilla</b> توصل الإشعارات إلى جهازك، إن فعّلتها.</li>
+        <li><b>WhatsApp</b> يُفتح مع رسالة الطلب عندما تختار إرسال طلب؛ وتنطبق هناك سياسة WhatsApp الخاصة.</li>
+        <li><b>Open-Meteo</b> تعطي طقس أربيل؛ لا تُرسل إليها أي بيانات شخصية.</li>
+      </ul>
+      <p>تُستخدم كل خدمة من هذه الخدمات فقط لتشغيل التطبيق، ويُتوقع منها أن تحمي البيانات بقدر هذه السياسة على الأقل.</p>
+    </div>
+    <div class="card">
+      <h2>مدة الاحتفاظ</h2>
+      <ul>
+        <li>الطلبات وسجل التغييرات: الشهر الحالي. عند انتهاء الشهر يصبح ملخصًا واحدًا وتُحذف الطلبات.</li>
+        <li>رسائل ريكو وعلامات التذكير: 30 يومًا. أعداد طلبات الذكاء الاصطناعي: 90 يومًا.</li>
+        <li>تنتهي جلسات الدخول بعد 18 ساعة وتُحذف بعد يومين. محاولات الرمز: يومان. الأجهزة التي سجّلت الخروج وبقيت دون استخدام: 30 يومًا.</li>
+        <li>الحسابات والموردون والأصناف والوحدات والإعدادات والمسودات والسلسلة وملخصات الأشهر: حتى تُحذف.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>خياراتك</h2>
+      <ul>
+        <li>أوقف ذكاء ريكو الاصطناعي أو شغّله من الإعدادات › الخصوصية. أوقف الإشعارات من الإعدادات.</li>
+        <li>سجّل الخروج من زر الحساب أعلى التطبيق.</li>
+        <li>لرؤية بياناتك أو تصحيحها أو حذفها، أو لسحب أي إذن، اطلب ذلك من روجا، مديرة المطبخ. يمكنها حذفها في التطبيق أو إزالتها من قاعدة البيانات.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>الأمان</h2>
+      <p>تنتقل كل البيانات عبر HTTPS. قاعدة البيانات مقفلة بحيث لا يستطيع فتحها إلا خادم التطبيق نفسه، بعد التحقق من تسجيل الدخول. تبقى مفاتيح خدمات الذكاء الاصطناعي على الخادم ولا تصل إلى أي هاتف.</p>
+      <h2>التغييرات</h2>
+      <p>إذا تغيّرت هذه السياسة، تُنشر النسخة الجديدة هنا بتاريخ جديد.</p>
+    </div>
+  </section>
+</div>
+</body>
+</html>

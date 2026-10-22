@@ -205,9 +205,10 @@ function showConfirm(message, opts = {}) {
   const okLabel = opts.okLabel || t('delete');
   const cancelLabel = opts.cancelLabel || t('cancel');
   const okClass = ['btn-danger', 'btn-primary', 'btn-ghost'].includes(opts.okClass) ? opts.okClass : 'btn-danger';
+  const title = opts.title ? `<div class="modal-alert-title">${esc(opts.title)}</div>` : '';
   const dialog = createModal(ensureModalRoot(), `
-    <div class="modal-overlay"><div class="modal-box">
-      <div class="modal-msg">${message}</div>
+    <div class="modal-overlay"><div class="modal-box modal-alert">
+      ${title}<div class="modal-msg">${message}</div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="modalCancelBtn">${esc(cancelLabel)}</button>
         <button type="button" class="btn ${okClass}" id="modalOkBtn">${esc(okLabel)}</button>
@@ -223,7 +224,7 @@ function showConfirm(message, opts = {}) {
 
 function showAlert(message) {
   const dialog = createModal(ensureModalRoot(), `
-    <div class="modal-overlay"><div class="modal-box">
+    <div class="modal-overlay"><div class="modal-box modal-alert">
       <div class="modal-msg">${message}</div>
       <div class="modal-actions"><button type="button" class="btn btn-primary" id="modalAlertOkBtn">${esc(t('ok'))}</button></div>
     </div></div>`);
@@ -240,7 +241,7 @@ function showPrompt(message, opts = {}) {
   const length = Number(opts.maxLength);
   const max = Number.isSafeInteger(length) && length > 0 ? `maxlength="${length}"` : '';
   const dialog = createModal(ensureModalRoot(), `
-    <div class="modal-overlay"><div class="modal-box">
+    <div class="modal-overlay"><div class="modal-box modal-alert">
       <div class="modal-msg">${message}</div>
       <div class="field"><input id="modalPromptInput" ${attrs} ${max} placeholder="${esc(opts.placeholder || '')}" value="${esc(opts.value || '')}"></div>
       <div class="modal-actions">

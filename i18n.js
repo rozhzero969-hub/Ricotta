@@ -10,7 +10,7 @@ const T = {
     brandDetail:'Your suppliers, your essentials. Everything in its place.', brandFooter:'Made for your everyday.',
     draftLocal:'Draft on this device', selectToStart:'Choose your essentials to get started',
     increaseQty:name=>'Increase quantity for '+name, decreaseQty:name=>'Decrease quantity for '+name, quantityFor:name=>'Quantity for '+name,
-    online:'Online', offline:'Offline', language:'Language', apply:'Apply', ok:'OK',
+    offline:'Offline', language:'Language', apply:'Apply', ok:'OK',
     sessionEnded:'Your session ended. Sign in again to continue.',
     signingIn:'Signing in…', noValue:'None', never:'Never', tooManyAttempts:'Too many wrong tries. Wait a few minutes, then try again.',
     orderSheet:'Order sheet (PDF)',
@@ -19,7 +19,7 @@ const T = {
     loadFailed:'Couldn’t reach the server. Check the connection.', retry:'Try again',
     splashLoading:'Getting your kitchen ready…',
     loginEyebrow:'Your workspace', loginTitle:'Welcome back.', loginSub:'Enter your 6-digit PIN to sign in.', loginAuto:'You\'ll sign in automatically.', loginKeyboard:'Type your PIN using your keyboard.', loginPrivate:'Private kitchen workspace', wrongPin:'Wrong PIN, try again', clear:'Clear',
-    order:'Order', history:'History', settings:'Settings', logout:'Log out',
+    order:'Order', history:'History', settings:'Settings', logout:'Sign Out',
     searchPlaceholder:'Search items…', sameAsLastTime:'Same as last time', clearOrder:'Clear order', previousSuppliers:'Previous suppliers', nextSuppliers:'More suppliers',
     noItemsYet:'No items yet. Add some in Items',
     itemsSelected:i=>i+' item'+(i===1?'':'s')+' selected', sendOrders:'Send today’s orders',
@@ -210,7 +210,7 @@ const T = {
     brandDetail:'دابینکەر و پێداویستییەکانت، هەمووی لە شوێنی خۆیدا.', brandFooter:'بۆ کاری ڕۆژانەت.',
     draftLocal:'ڕەشنووس لەسەر ئەم ئامێرە', selectToStart:'بۆ دەستپێکردن پێداویستییەکانت هەڵبژێرە',
     increaseQty:name=>'زیادکردنی بڕی '+name, decreaseQty:name=>'کەمکردنەوەی بڕی '+name, quantityFor:name=>'بڕی '+name,
-    online:'ئۆنلاین', offline:'ئۆفلاین', language:'زمان', apply:'جێبەجێکردن', ok:'باشە',
+    offline:'ئۆفلاین', language:'زمان', apply:'جێبەجێکردن', ok:'باشە',
     sessionEnded:'دانیشتنەکەت کۆتایی هات. دووبارە بچۆ ژوورەوە بۆ بەردەوامبوون.',
     signingIn:'چوونەژوورەوە…', noValue:'هیچ', never:'هەرگیز', tooManyAttempts:'هەوڵی هەڵەی زۆر. چەند خولەکێک چاوەڕێ بکە، پاشان دووبارە هەوڵ بدەرەوە.',
     orderSheet:'پەڕەی داواکاری (PDF)',
@@ -410,7 +410,7 @@ const T = {
     brandDetail:'مورّدوك واحتياجاتك، كل شيء في مكانه.', brandFooter:'صُنع ليومك.',
     draftLocal:'مسودة على هذا الجهاز', selectToStart:'اختر احتياجاتك للبدء',
     increaseQty:name=>'زيادة كمية '+name, decreaseQty:name=>'تقليل كمية '+name, quantityFor:name=>'كمية '+name,
-    online:'متصل', offline:'غير متصل', language:'اللغة', apply:'تطبيق', ok:'حسنًا',
+    offline:'غير متصل', language:'اللغة', apply:'تطبيق', ok:'حسنًا',
     sessionEnded:'انتهت جلستك. سجّل الدخول مرة أخرى للمتابعة.',
     signingIn:'جارٍ تسجيل الدخول…', noValue:'لا شيء', never:'أبدًا', tooManyAttempts:'محاولات خاطئة كثيرة. انتظر بضع دقائق ثم حاول مرة أخرى.',
     orderSheet:'ورقة الطلب (PDF)',
@@ -609,7 +609,7 @@ const T = {
 const AR_DAYS = n => n + (n === 1 ? ' يوم' : n === 2 ? ' يومان' : n <= 10 ? ' أيام' : ' يومًا');
 Object.assign(T.en, {
 
-  darkLabel:'Dark mode', darkHint:'Easier on the eyes at night.', darkOff:'Off', darkOn:'On', darkAuto:'Like the phone',
+  darkLabel:'Light or Dark', darkHint:'Automatic follows your phone.', darkOff:'Light', darkOn:'Dark', darkAuto:'Automatic',
 
   streakTitle:'Kitchen streak', streakDays:n=>n+' day'+(n===1?'':'s'), streakChip:n=>'Kitchen streak: '+n+' day'+(n===1?'':'s'),
   streakLit:'Today’s order is in. The fire is lit!', streakNotYet:'Send one order today to light the fire.',
@@ -636,7 +636,7 @@ Object.assign(T.en, {
 });
 Object.assign(T.ku, {
 
-  darkLabel:'دۆخی تاریک', darkHint:'شەوان چاوەکانت ئاسوودەتر دەبن.', darkOff:'کوژاوە', darkOn:'هەڵکراو', darkAuto:'وەک مۆبایلەکە',
+  darkLabel:'ڕووناک یان تاریک', darkHint:'خۆکار وەک ڕێکخستنی مۆبایلەکەت دەبێت.', darkOff:'ڕووناک', darkOn:'تاریک', darkAuto:'خۆکار',
 
   streakTitle:'زنجیرەی چێشتخانە', streakDays:n=>n+' ڕۆژ', streakChip:n=>'زنجیرەی چێشتخانە: '+n+' ڕۆژ',
   streakLit:'داواکاریی ئەمڕۆ نێردرا. ئاگرەکە هەڵگیرساوە!', streakNotYet:'ئەمڕۆ یەک داواکاری بنێرە بۆ هەڵگیرساندنی ئاگرەکە.',
@@ -663,7 +663,7 @@ Object.assign(T.ku, {
 });
 Object.assign(T.ar, {
 
-  darkLabel:'الوضع الداكن', darkHint:'أريح للعين ليلًا.', darkOff:'متوقف', darkOn:'مفعّل', darkAuto:'مثل الهاتف',
+  darkLabel:'فاتح أو داكن', darkHint:'التلقائي يتبع إعداد هاتفك.', darkOff:'فاتح', darkOn:'داكن', darkAuto:'تلقائي',
 
   streakTitle:'سلسلة المطبخ', streakDays:n=>AR_DAYS(n), streakChip:n=>'سلسلة المطبخ: '+AR_DAYS(n),
   streakLit:'طلب اليوم أُرسل. النار مشتعلة!', streakNotYet:'أرسل طلبًا واحدًا اليوم لإشعال النار.',
@@ -714,3 +714,24 @@ Object.assign(T.ar, {
   monthsTimes:n=>n+'×', monthsOrders:n=>n+' طلب',
 
   });
+
+/* The Apple-quality pass: the account button, the privacy policy and Rico's AI permission
+   (App Review 5.1.1 and 5.1.2). Same rule: every language has every key. */
+Object.assign(T.en, {
+  accountMenu:n=>'Account: '+n, privacyPolicy:'Privacy Policy', settingsPrivacy:'Privacy',
+  aiTitle:'Rico Uses AI', aiAllow:'Allow', aiNotNow:'Not Now',
+  aiBody:'To answer you, Rico sends what you write or say, and the order details he needs (items, suppliers and quantities), to Google Gemini or Groq. They use it only to write his reply. Your PIN is never sent.',
+  aiSettingLabel:'Rico’s AI', aiSettingHint:'Sends your messages to Google Gemini or Groq so Rico can answer. Off: Rico asks again before he answers.',
+});
+Object.assign(T.ku, {
+  accountMenu:n=>'هەژمار: '+n, privacyPolicy:'سیاسەتی تایبەتمەندی', settingsPrivacy:'تایبەتمەندی',
+  aiTitle:'ریکۆ زیرەکی دەستکرد بەکاردەهێنێت', aiAllow:'ڕێگە بدە', aiNotNow:'ئێستا نا',
+  aiBody:'بۆ وەڵامدانەوەت، ریکۆ ئەوەی دەینووسیت یان دەیڵێیت، لەگەڵ ئەو زانیارییانەی داواکاری کە پێویستیەتی (کاڵاکان، دابینکەران و بڕەکان)، دەنێرێت بۆ Google Gemini یان Groq. تەنها بۆ نووسینی وەڵامەکەی بەکاری دەهێنن. PIN ـەکەت هەرگیز نانێردرێت.',
+  aiSettingLabel:'زیرەکی دەستکردی ریکۆ', aiSettingHint:'نامەکانت دەنێرێت بۆ Google Gemini یان Groq تا ریکۆ وەڵام بداتەوە. کە کوژاوە بێت، ریکۆ پێش وەڵامدانەوە دووبارە دەپرسێت.',
+});
+Object.assign(T.ar, {
+  accountMenu:n=>'الحساب: '+n, privacyPolicy:'سياسة الخصوصية', settingsPrivacy:'الخصوصية',
+  aiTitle:'ريكو يستخدم الذكاء الاصطناعي', aiAllow:'سماح', aiNotNow:'ليس الآن',
+  aiBody:'ليجيبك، يرسل ريكو ما تكتبه أو تقوله، وتفاصيل الطلبات التي يحتاجها (الأصناف والموردين والكميات)، إلى Google Gemini أو Groq. يستخدمونها فقط لكتابة رده. لا يُرسل رمز PIN أبدًا.',
+  aiSettingLabel:'ذكاء ريكو الاصطناعي', aiSettingHint:'يرسل رسائلك إلى Google Gemini أو Groq ليتمكن ريكو من الرد. عند الإيقاف، يسأل ريكو مرة أخرى قبل أن يرد.',
+});

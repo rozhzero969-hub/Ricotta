@@ -1,0 +1,230 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Cancel": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پاشگەزبوونەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إلغاء"
+          }
+        }
+      }
+    },
+    "Can’t Open Ricotta": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ریکۆتا نەکرایەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر فتح ريكوتا"
+          }
+        }
+      }
+    },
+    "Check your internet connection, then try again.": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هێڵی ئینتەرنێتەکەت بپشکنە، پاشان دووبارە هەوڵ بدەرەوە."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحقّق من اتصالك بالإنترنت، ثم حاول مرة أخرى."
+          }
+        }
+      }
+    },
+    "Export Couldn’t Finish": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هەناردەکردن تەواو نەبوو"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر إكمال التصدير"
+          }
+        }
+      }
+    },
+    "OK": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "باشە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حسنًا"
+          }
+        }
+      }
+    },
+    "Open": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کردنەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فتح"
+          }
+        }
+      }
+    },
+    "Open in Safari": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لە Safari بیکەرەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فتح في Safari"
+          }
+        }
+      }
+    },
+    "Open this message in your browser?": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ئەم نامەیە لە وێبگەڕەکەتدا بکرێتەوە؟"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هل تريد فتح هذه الرسالة في المتصفح؟"
+          }
+        }
+      }
+    },
+    "Order Sheet": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پەڕەی داواکاری"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ورقة الطلب"
+          }
+        }
+      }
+    },
+    "Please try the export again.": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تکایە دووبارە هەناردە بکەرەوە."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يرجى إعادة محاولة التصدير."
+          }
+        }
+      }
+    },
+    "Print": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "چاپکردن"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "طباعة"
+          }
+        }
+      }
+    },
+    "Ricotta Order Sheet": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پەڕەی داواکاریی ریکۆتا"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ورقة طلب ريكوتا"
+          }
+        }
+      }
+    },
+    "Try Again": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "دووبارە هەوڵ بدەرەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حاول مرة أخرى"
+          }
+        }
+      }
+    },
+    "WhatsApp Isn’t Installed": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WhatsApp دانەمەزراوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WhatsApp غير مثبّت"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

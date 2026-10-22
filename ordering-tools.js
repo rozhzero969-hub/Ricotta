@@ -8,7 +8,6 @@ const ORDERING_TEXT = {
     sentSound: "Order sent chime",
     manage: "Manage",
     catalog: "Catalog",
-    guideManage: "Your items, suppliers and units in one place.",
     catalogNoResults: "No matches found",
     securityCheck: "Quick security check",
     securityCheckHint: "Verify this sign-in to continue.",
@@ -37,18 +36,6 @@ const ORDERING_TEXT = {
     importError: "Name, unit or supplier is missing or unknown.",
     importDuplicate: "Duplicate item; use an ID or a unique name and supplier.",
     importFailure: "Import paused. Saved rows are kept. Retry to continue.",
-    guideOrder:
-      "Choose your items and quantities, then send the order through WhatsApp.",
-    guideAssistant: "Ask Rico for help with your order or your kitchen.",
-    guideHistory:
-      "Find this month’s orders, send one again, or save a report.",
-    guideQueue: "Open each supplier’s WhatsApp message to send your order.",
-    guideSuppliers: "Manage supplier details, contact them, and set reminders.",
-    guideItems: "Manage the items you order, their units and availability.",
-    guideUnits: "Set the units used for quantities, such as kg, box or litre.",
-    guideRecord: "See who added, changed or removed items and suppliers.",
-    guideAdmin: "PINs, signed-in devices and the connection. Only you see this.",
-    guideSettings: "Adjust appearance, sounds and notifications.",
   },
   ku: {
     deviceInUse: "ئەم وێبگەڕە هێشتا بە هەژمارێکی تر چووەتە ژوورەوە. سەرەتا لەوێ بچۆ دەرەوە.",
@@ -57,7 +44,6 @@ const ORDERING_TEXT = {
     sentSound: "دەنگی ناردنی داواکاری",
     manage: "بەڕێوەبردن",
     catalog: "کاڵاکان",
-    guideManage: "کاڵا، دابینکەر و یەکەکانت لە یەک شوێن.",
     catalogNoResults: "هیچ ئەنجامێک نەدۆزرایەوە",
     securityCheck: "پشکنینی خێرای ئاسایش",
     securityCheckHint: "بۆ بەردەوامبوون، ئەم چوونەژوورەوەیە پشتڕاست بکەرەوە.",
@@ -88,18 +74,6 @@ const ORDERING_TEXT = {
       "کاڵای دووبارە؛ ID یان ناو و دابینکەرێکی تایبەت بەکاربهێنە.",
     importFailure:
       "هاوردە ڕاگیرا. ڕیزە پاشەکەوتکراوەکان دەمێننەوە. دووبارە هەوڵبدەرەوە.",
-    guideOrder: "کاڵا و بڕەکان هەڵبژێرە، پاشان بە واتساپ داواکاری بنێرە.",
-    guideAssistant: "بۆ داواکاری یان چێشتخانەکەت داوای یارمەتی لە ڕیکۆ بکە.",
-    guideHistory:
-      "داواکارییەکانی ئەم مانگە ببینە، دووبارەیان بکەرەوە یان ڕاپۆرت پاشەکەوت بکە.",
-    guideQueue: "پەیامی واتساپی هەر دابینکەرێک بکەرەوە بۆ ناردنی داواکاری.",
-    guideSuppliers:
-      "زانیاریی دابینکەرەکان و بیرخەرەوەکان بەڕێوەببە و پەیوەندییان پێوە بکە.",
-    guideItems: "کاڵاکان، یەکەکان و بەردەستییان بەڕێوەببە.",
-    guideUnits: "یەکەی بڕەکان دیاری بکە، وەک کیلۆ، سندوق یان لیتر.",
-    guideRecord: "ببینە کێ کاڵا و دابینکەری زیاد، گۆڕیو یان سڕیوەتەوە.",
-    guideAdmin: "کۆدەکان، ئامێرە چووەژوورەوەکان و پەیوەندی. تەنها تۆ ئەمە دەبینیت.",
-    guideSettings: "ڕووکار، دەنگ و ئاگادارکردنەوەکان ڕێکبخە.",
   },
   ar: {
     deviceInUse: "هذا المتصفح مسجل الدخول بحساب آخر. سجّل الخروج منه أولاً.",
@@ -108,7 +82,6 @@ const ORDERING_TEXT = {
     sentSound: "نغمة إرسال الطلب",
     manage: "إدارة",
     catalog: "الكتالوج",
-    guideManage: "الأصناف والموردون والوحدات في مكان واحد.",
     catalogNoResults: "لم يتم العثور على نتائج",
     securityCheck: "تحقق أمني سريع",
     securityCheckHint: "تحقق من تسجيل الدخول للمتابعة.",
@@ -137,16 +110,6 @@ const ORDERING_TEXT = {
     importDuplicate: "صنف مكرر؛ استخدم ID أو اسماً ومورداً فريدين.",
     importFailure:
       "توقف الاستيراد. الصفوف المحفوظة باقية. أعد المحاولة للمتابعة.",
-    guideOrder: "اختر الأصناف والكميات، ثم أرسل الطلب عبر واتساب.",
-    guideAssistant: "اطلب مساعدة ريكو في طلبك أو مطبخك.",
-    guideHistory: "راجع طلبات هذا الشهر أو كرر طلباً أو احفظ تقريراً.",
-    guideQueue: "افتح رسالة واتساب لكل مورد لإرسال طلبك.",
-    guideSuppliers: "أدر بيانات الموردين وتواصل معهم واضبط التذكيرات.",
-    guideItems: "أدر الأصناف ووحداتها ومدى توفرها للطلب.",
-    guideUnits: "حدد وحدات الكميات مثل كغ أو صندوق أو لتر.",
-    guideRecord: "اعرف من أضاف أو عدل أو حذف الأصناف والموردين.",
-    guideAdmin: "الرموز والأجهزة المسجلة والاتصال. لا يراها غيرك.",
-    guideSettings: "اضبط المظهر والأصوات والإشعارات.",
   },
 };
 for (const lang of ["en", "ku", "ar"]) {
@@ -176,25 +139,6 @@ function parseAliases(text) {
         .filter(Boolean),
     ),
   ].slice(0, 12);
-}
-function viewGuide(view) {
-  return t(
-    "guide" +
-      ({
-        order: "Order",
-        manage: "Manage",
-        assistant: "Assistant",
-        transfers: "Transfers",
-        history: "History",
-        queue: "Queue",
-        suppliers: "Suppliers",
-        itemsAdmin: "Items",
-        units: "Units",
-        record: "Record",
-        admin: "Admin",
-        settings: "Settings",
-      }[view] || "Order"),
-  );
 }
 function supplierContactLinks(s) {
   if (!foldText(String(s.phone || "")).replace(/\D/g, "")) return "";

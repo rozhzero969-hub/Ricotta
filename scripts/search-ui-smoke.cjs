@@ -50,7 +50,7 @@ const server=http.createServer((req,res)=>{
   await page.waitForFunction(()=>document.querySelectorAll('#orderResults .item-row').length>10);
   assert.ok(await page.locator('#orderResults .item-row').count()>10);
   await nav('itemsAdmin');
-  assert.match(await page.locator('.page-guide').textContent(),/Manage the items/,'Items has the correct guide');
+  assert.equal(await page.locator('.page-heading h1').textContent(),'Manage','Items opens under the Manage title');
   assert.equal(await page.locator('.catalog-search > svg').evaluate(el=>getComputedStyle(el).position),'absolute','search icon cannot overlap the input');
   assert.equal(await page.locator('.list-row').first().evaluate(el=>getComputedStyle(el).backdropFilter),'none','static list rows avoid expensive blur');
   await page.locator('#catalogSearch').fill('tomtao');

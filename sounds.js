@@ -46,6 +46,18 @@ function soundTone(f, dur, gain, at = 0, type = 'sine'){
   o.start(t); o.stop(t + dur + .02);
 }
 
+/* Words for the iPhone app (RicottaViewController.swift). It accepts only these and sends nothing
+   back; in a browser they go nowhere.
+   - Haptics, used sparingly as Apple's apps do: a tick when an amount changes, a success tap when
+     the orders are sent, an error buzz for a wrong PIN and a bump when the press-and-hold menu opens.
+   - The page's look (the green loading screen, dark or light), so the app paints the same colour
+     behind the page and the status bar text stays readable. */
+const NATIVE_WORDS = ['selection','light','medium','success','warning','error','page-splash','page-dark','page-light'];
+function tellApp(word){
+  try{ if(NATIVE_WORDS.includes(word)) window.webkit?.messageHandlers?.ricotta?.postMessage(word); }catch(_){ /* never interrupt the app */ }
+}
+const haptic = kind=>tellApp(kind);
+
 /* + and -: a soft, round tap. Holding a button repeats quickly, so ticks
    closer than 45 ms apart are skipped to keep it gentle. */
 function playQtyTick(up){
