@@ -42,12 +42,8 @@ const rico = {
    pastel colour. The gradient needs an id, so each drawing gets its own. */
 const RICO_MOODS = ['happy','excited','grateful','calm','thinking','worried','sad','angry'];
 let ricoBotSeq = 0;
-/* Rico keeps his expressive moods across the app. */
-function ricoFace(mood = 'happy', cls = ''){
-  const svg = ricoFaceBase(mood, cls);
-  return svg;
-}
-function ricoFaceBase(mood = 'happy', cls = ''){
+/* head: just his head, drawn square (the top bar). */
+function ricoFace(mood = 'happy', cls = '', {head = false} = {}){
   const m = RICO_MOODS.includes(mood) ? mood : 'happy';
   const g = 'rbg' + (++ricoBotSeq);
   let spark = '';
@@ -62,7 +58,7 @@ function ricoFaceBase(mood = 'happy', cls = ''){
       <path class="rb-e e-heart" d="M${x} 58 C${x-7} 53 ${x-5} 46 ${x} 50 C${x+5} 46 ${x+7} 53 ${x} 58 Z"/>
       <path class="rb-e e-bar" d="${flip ? `M${x+5} 48 L${x-4} 53` : `M${x-5} 48 L${x+4} 53`}"/>
       <path class="rb-e e-line" d="M${x-4.5} 53 L${x+4.5} 53"/>`;
-  return `<span class="rico-bot mood-${m} ${cls}" aria-hidden="true"><svg viewBox="0 0 100 106">
+  return `<span class="rico-bot mood-${m} ${cls}" aria-hidden="true"><svg viewBox="${head ? '13 1.5 74 74' : '0 0 100 106'}">
     <defs><radialGradient id="${g}" gradientUnits="userSpaceOnUse" cx="36" cy="16" r="92">
       <stop offset="0" stop-color="var(--rb-c1)"/><stop offset=".45" stop-color="var(--rb-c2)"/><stop offset="1" stop-color="var(--rb-c3)"/></radialGradient></defs>
     <g class="rb-all">

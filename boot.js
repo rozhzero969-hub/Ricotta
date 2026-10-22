@@ -19,6 +19,10 @@ window.__splashStart = performance.now();
     var mode = JSON.parse(localStorage.getItem('ricottaOrders:darkMode') || 'null');
     if(mode === 'on' || (mode !== 'off' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark');
   }catch(e){}
+  // On a phone the status bar (behind the time and battery) takes the theme's colour from the very
+  // first frame: a Home Screen app may read it only as it opens (app.js syncAppearance keeps it current).
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if(meta && window.matchMedia && matchMedia('(pointer: coarse)').matches) meta.content = document.documentElement.classList.contains('dark') ? '#000000' : '#F2F2F7';
 })();
 /* Text follows the iPhone's or iPad's text size (Settings > Display & Brightness > Text Size), like
    Apple's own apps. WebKit gives the chosen size as the -apple-system-body font (17px at the standard

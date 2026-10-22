@@ -11,7 +11,7 @@
    The server keeps the streak; this file only shows it.
    Depends on (runtime only): state, t, esc, api, render, goView, toast,
    showConfirm, showAlert, ricoFace, ricoAsk, formatIraqDateTime, timeAgo,
-   accountLabel, unitLabel, supplierName, isRozha. */
+   accountLabel, unitLabel, supplierName, isRozha, ricoReact. */
 
 /* ---------- The streak ---------- */
 const STREAK_GOALS = [7,14,30,60,100,150,200,300,365,500,1000];
@@ -30,6 +30,7 @@ function paintStreakChip(pop){
   old.outerHTML = renderStreakChip();
   const chip = document.getElementById('streakChip');
   chip.onclick = openStreakSheet;
+  if(pop) ricoReact('excited', 2400);
   if(pop && !matchMedia('(prefers-reduced-motion: reduce)').matches){ chip.classList.add('ignite'); setTimeout(()=>chip.classList.remove('ignite'), 1200); }
 }
 function nextGoal(n){ return STREAK_GOALS.find(g=>g > n) || (Math.floor(n / 100) + 1) * 100; }

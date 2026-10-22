@@ -6,7 +6,7 @@ const {chromium}=require('playwright'),fs=require('node:fs'),path=require('node:
 const root=path.resolve(process.argv[2]||'dist'),prefix=path.resolve(process.argv[3]||'/tmp/ricotta-performance');
 const suppliers=Array.from({length:9},(_,i)=>({id:'s'+i,name:'Supplier '+i,phone:'07701234567'}));
 const items=Array.from({length:179},(_,i)=>({id:'i'+i,name:'تەماتە '+i,aliases:['Tomato '+i],unit:'box',supplierId:'s'+(i%9)}));
-const session={token:'performance-fixture',expiresAt:'2099-01-01T00:00:00Z',account:'rozha',name:'Rozha',tabs:['order','assistant','manage']};
+const session={token:'performance-fixture',expiresAt:'2099-01-01T00:00:00Z',account:'rozha',name:'Rozha'};
 const views=['order','assistant','manage','history','suppliers','itemsAdmin','units','record','admin','settings'];
 const fixture={...session,views,suppliers,items,units:[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'}],history:[],devices:[],activity:[],inbox:[],reminder:{enabled:false,time:'09:00'}};
 const server=http.createServer((req,res)=>{

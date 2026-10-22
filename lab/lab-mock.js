@@ -97,7 +97,7 @@
     const weather = {temp:24, code:3, rain:false, snow:false, max:27, min:14, rainChance:10, dayCode:3, updatedAt:new Date().toISOString()};
     const chats = [{id:'0b7c4a9e-1f2d-4c3b-9a8e-7d6c5b4a3f21', account:'yunis', title:'How much mozzarella last week?', createdAt:new Date(Date.now()-5*3600000).toISOString(), updatedAt:new Date(Date.now()-5*3600000).toISOString(),
       messages:[{role:'user', text:'How much mozzarella did we order last week?', ts:Date.now()-5*3600000}, {role:'assistant', mood:'calm', text:'About **13 kg** over 3 orders, Yunis. Thursday was the biggest at 5 kg.', ts:Date.now()-5*3600000+4000}]}];
-    return {v:5, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, reminder:{enabled:true, time:'09:00'}, tabs:{}, seq:100, said:{}};
+    return {v:5, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, reminder:{enabled:true, time:'09:00'}, seq:100, said:{}};
   }
   /* Two finished months for the archive (History itself only keeps this month). */
   const LAB_MONTHS = [
@@ -131,7 +131,7 @@
   const sess = lsGet(LS+'apiSession');
   if(!db.signedOut && (!sess || String(sess.token||'').startsWith('lab-'))){
     const account = sess?.account === 'yunis' ? 'yunis' : 'rozha';
-    lsSet(LS+'apiSession', {token:'lab-'+account, account, name:NAMES[account].en, tabs:['order','assistant','transfers','manage'], expiresAt:new Date(Date.now()+18*3600000).toISOString()});
+    lsSet(LS+'apiSession', {token:'lab-'+account, account, name:NAMES[account].en, expiresAt:new Date(Date.now()+18*3600000).toISOString()});
   }
 
   /* ---- helpers ---- */
@@ -259,7 +259,7 @@
       if(!/^\d{6}$/.test(pin)) return fail('invalid_credentials', 401);
       const account = pin === '222222' ? 'yunis' : 'rozha';
       db.signedOut = false; save();
-      return json({token:'lab-'+account, account, name:NAMES[account].en, tabs:['order','assistant','transfers','manage'], expiresAt:new Date(Date.now()+18*3600000).toISOString()});
+      return json({token:'lab-'+account, account, name:NAMES[account].en, expiresAt:new Date(Date.now()+18*3600000).toISOString()});
     }
     if(method === 'GET' && path === 'health') return ok();
     // Asked before signing in, so it is answered without a session (no bot check in the Lab).
@@ -270,7 +270,7 @@
     if(method === 'GET' && path === 'bootstrap'){
       const me = account;
       return json({
-        account:me, name:NAMES[me].en, tabs:['order','assistant','transfers','manage'], views:ACCOUNT_VIEWS[me],
+        account:me, name:NAMES[me].en, views:ACCOUNT_VIEWS[me],
         suppliers:db.suppliers, items:db.items, units:db.units,
         history:history(), historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
         activity:db.activity.filter(a=>a.ts >= monthStartIso()), inbox:db.inbox.slice(-20),
@@ -375,7 +375,9 @@
     if(method === 'DELETE' && (m = path.match(/^orders\/(.+)$/))){
       const o = db.history.find(x=>x.id === decodeURIComponent(m[1]));
       if(!o) return json({ok:true, streak:streakView()});
-      if(account !== 'rozha' && (o.by !== account || Date.now() - Date.parse(o.date) > 15*60000)) return fail('forbidden', 403);
+      // As on the server: the sender may undo for 15 minutes; anything else takes Rozha's PIN (any 6 digits in the Lab).
+      if(body.pin !== undefined){ if(!/^\d{6}$/.test(String(body.pin))) return fail('wrong_pin', 403); }
+      else if(o.by !== account || Date.now() - Date.parse(o.date) > 15*60000) return fail('pin_required', 403);
       db.history = db.history.filter(x=>x !== o);
       streakUnhit(window.RICOTTA_TODAY || dayOf(o.date));
       save(); return json({ok:true, streak:streakView()});

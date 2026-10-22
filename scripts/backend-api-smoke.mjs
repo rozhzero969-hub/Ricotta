@@ -12,7 +12,7 @@ let tables, errors, calls, reservation, match, saved, pinResult;
 function reset() {
   tables = {
     app_sessions: [{ id: 'session', token_hash: tokenHash, account: 'rozha', device_id: 'device-1', expires_at: new Date(Date.now() + 60000).toISOString(), last_seen_at: new Date().toISOString(), revoked_at: null }],
-    app_accounts: [{ id: 'rozha', name: 'Rozha', tabs: ['order', 'assistant', 'history'] }],
+    app_accounts: [{ id: 'rozha', name: 'Rozha' }],
     app_items: [{ id: 'tomato', name: 'Tomatoes' }], app_suppliers: [{ id: 'supplier', name: 'Supplier' }],
     app_push_subscriptions: [], app_login_attempts: [], app_devices: [{id:"device-1",account:"rozha"}], app_rico_inbox: [], app_audit_events: [],
   };
@@ -184,8 +184,30 @@ try {
   reset();
   Object.assign(tables, { app_units: [], app_orders: [], app_order_lines: [], app_reminder_settings: [] });
   const bootRes = await call('bootstrap', undefined, 'GET'); const boot = await bootRes.json(); assert.equal(bootRes.status, 200);
-  assert.deepEqual(boot.tabs,['order','assistant','transfers','manage']);
+  assert.equal(boot.tabs,undefined);
   assert.equal(boot.theme,undefined);
+
+  // History: whoever sent an order may undo it for 15 minutes; deleting any other takes Rozha's PIN,
+  // on either phone, and a wrong PIN counts as a failed sign-in.
+  const fresh = new Date().toISOString(), old = new Date(Date.now() - 3600_000).toISOString();
+  const deletes = () => calls.filter(c => c.name === 'app_internal_delete_order');
+  reset(); tables.app_orders = [{ id: 'fresh', created_by: 'rozha', created_at: fresh }, { id: 'old', created_by: 'rozha', created_at: old }];
+  assert.equal((await call('orders/fresh', {}, 'DELETE')).status, 200, 'the sender can undo a fresh order');
+  assert.equal((await call('orders/old', {}, 'DELETE')).status, 403, 'an older order needs Rozha\u2019s PIN');
+  assert.equal(deletes().length, 1);
+  assert.equal((await call('orders/old', { pin: '111111' }, 'DELETE')).status, 403, 'a wrong PIN deletes nothing');
+  assert.equal(deletes().length, 1);
+  assert.ok(calls.some(c => c.name === 'app_internal_reserve_login'), 'a wrong PIN counts as a failed sign-in');
+  assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 200, 'Rozha\u2019s PIN deletes it');
+  assert.equal(deletes().at(-1).args.p_actor, 'rozha');
+  reset(); tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis';
+  tables.app_orders = [{ id: 'old', created_by: 'yunis', created_at: old }];
+  assert.equal((await call('orders/old', {}, 'DELETE')).status, 403, 'Yunis cannot delete an older order alone');
+  assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 200, 'Rozha\u2019s PIN works on Yunis\u2019s phone');
+  assert.equal(deletes().at(-1).args.p_actor, 'rozha');
+  reset(); reservation = null; tables.app_orders = [{ id: 'old', created_by: 'rozha', created_at: old }];
+  assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 429, 'after too many wrong PINs deleting waits too');
+  assert.equal(deletes().length, 0);
 
   // Admin -> PINs: Rozha's current PIN first (a wrong one counts as a failed sign-in), no weak PINs.
   reset();

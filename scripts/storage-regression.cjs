@@ -414,7 +414,7 @@ test('a sign-in lost on this browser never locks the other account out', async()
     devices.push(options.headers['x-device-id']);
     return options.headers['x-device-id'] === 'old-device'
       ? response(409, {error:'device_in_use'})
-      : response(200, {token:'new', expiresAt:'2099-01-01T00:00:00Z', account:'yunis', name:'Yunis', tabs:[]});
+      : response(200, {token:'new', expiresAt:'2099-01-01T00:00:00Z', account:'yunis', name:'Yunis'});
   };
   assert.equal(plain(await c.apiLogin('123456')).account, 'yunis');
   assert.equal(devices.length, 2);

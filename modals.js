@@ -318,7 +318,7 @@ function showFormModal(opts) {
       <div class="modal-actions modal-actions-wrap">
         <button type="button" class="btn btn-ghost" id="modalFormCancel">${esc(opts.cancelLabel || t('cancel'))}</button>
         ${opts.againLabel ? `<button type="button" class="btn btn-ghost" id="modalFormAgain">${esc(opts.againLabel)}</button>` : ''}
-        <button type="button" class="btn btn-primary" id="modalFormOk">${esc(opts.okLabel || t('save'))}</button>
+        <button type="button" class="btn ${opts.okClass === 'btn-danger' ? 'btn-danger' : 'btn-primary'}" id="modalFormOk">${esc(opts.okLabel || t('save'))}</button>
       </div>
     </div></div>`);
   const box = dialog.box;

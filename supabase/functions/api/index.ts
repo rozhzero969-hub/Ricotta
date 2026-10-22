@@ -22,7 +22,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   DELETE suppliers/:id | items/:id | units/:id                delete one record (+ its Record entry)
 //   PUT    supplier-order/:supplierId {itemIds}                 item order for one supplier
 //   POST   orders                     {id, date, entries}       save a sent order
-//   DELETE orders/:id                 rozha: any; the sender: undo within 15 minutes
+//   DELETE orders/:id                 {pin?} the sender: undo within 15 minutes; any with Rozha's PIN
 //   GET    streak                                               the kitchen streak
 //   POST   streak/recover                                       Rico brings a broken kitchen streak back
 //   GET    rico-chats[?account=]                                both accounts' Rico chats (each can read and delete the other's)
@@ -79,7 +79,8 @@ const ACCOUNT_VIEWS: Record<string, string[]> = {
   rozha: VIEWS,
   yunis: ["order", "assistant", "transfers", "manage", "history", "suppliers", "itemsAdmin", "units", "record"],
 };
-const TABS = ["order", "assistant", "transfers", "manage"];
+// Whoever sent an order may undo it this long without Rozha's PIN (the database allows the same).
+const UNDO_MS = 15 * 60_000;
 // Transfers is still being made: the tab shows its design, and these routes refuse until it is ready.
 const TRANSFERS_OPEN = false;
 // Allowed browser origin for this app. Set ALLOWED_ORIGIN if the production
@@ -297,7 +298,7 @@ async function bootstrap(s: Session) {
   const orderRows = orders;
   const lines = await orderLinesFor(orderRows);
   return {
-    account: s.account, name: me?.name ?? accountName(s.account), tabs: TABS,
+    account: s.account, name: me?.name ?? accountName(s.account),
     views: ACCOUNT_VIEWS[s.account],
     pins: me?.pins ?? [], streak,
     suppliers: (suppliers.data ?? []).map(toSupplier),
@@ -407,7 +408,7 @@ async function startSession(req: Request, account: Account) {
     }
   }
   const me = await readAccount(account);
-  return json({ token, account, name: me?.name ?? accountName(account), tabs: TABS, expiresAt });
+  return json({ token, account, name: me?.name ?? accountName(account), expiresAt });
 }
 
 /* ---------- PINs (Admin, Rozha only) ----------
@@ -705,10 +706,26 @@ Deno.serve(async (req) => {
     // Orders
     if (M === "POST" && path === "orders") return await saveOrder(s, b);
     if (M === "DELETE" && (m = path.match(/^orders\/([^/]{1,160})$/))) {
-      // Sent orders are the kitchen's paper trail: Rozha may remove any; whoever sent one
-      // may undo it within 15 minutes (the database checks both).
+      // Sent orders are the kitchen's paper trail. Whoever sent one may undo it within 15 minutes;
+      // removing any other takes Rozha's PIN, typed on whichever phone. A wrong PIN counts as a
+      // failed sign-in (the same limits), and the database checks both rules again.
       const id = decodeURIComponent(m[1]);
-      const { error } = await db.rpc("app_internal_delete_order", { p_id: id, p_actor: s.account, p_device: s.deviceId });
+      let actor: Account = s.account;
+      if (b.pin !== undefined) {
+        if (!/^\d{6}$/.test(String(b.pin))) return fail("wrong_pin", 403);
+        const attempt = await reserveLogin(await loginFingerprints(req));
+        if (!attempt) return fail("too_many_attempts", 429);
+        const { data: good, error } = await db.rpc("app_internal_check_account_pin", { p_account: "rozha", p_pin: String(b.pin) });
+        if (error) throw new Error("credential_check_unavailable");
+        if (good !== true) return fail("wrong_pin", 403);
+        await completeAttempt(attempt);
+        actor = "rozha";
+      } else {
+        const { data: order, error } = await app("orders").select("created_by,created_at").eq("id", id).maybeSingle();
+        if (error) return fail("delete_failed", 500);
+        if (order && (order.created_by !== s.account || Date.parse(order.created_at) < Date.now() - UNDO_MS)) return fail("pin_required", 403);
+      }
+      const { error } = await db.rpc("app_internal_delete_order", { p_id: id, p_actor: actor, p_device: s.deviceId });
       if (error) return /forbidden/i.test(String(error.message)) ? fail("forbidden", 403) : fail("delete_failed", 500);
       return json({ ok: true, streak: await readStreak().catch(() => null) });
     }

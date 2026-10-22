@@ -35,8 +35,8 @@ const T = {
     confirmDeleteSupplier:'Delete this supplier? Items assigned to them will be unassigned.',
     confirmDeleteItem:'Delete this item?',
     confirmDeleteUnit:'Delete this unit? Items using it will show no unit.',
-    confirmDeleteHistory:'Delete this order from history? This can’t be undone.',
-    orderAgain:'Order again', sentBy:n=>'by '+n,
+    deleteOrderTitle:'Delete Order?', deleteOrderNote:'Only Rozha can delete an order from History. This can’t be undone.', pinOf:n=>n+'’s PIN',
+    orderAgain:'Send again', sentBy:n=>'by '+n,
     heroEyebrow:"Today's order", heroStat:n=>n+' item'+(n===1?'':'s')+' selected',
     heroSub:(items,sups)=>items+' items across '+sups+' supplier'+(sups===1?'':'s'),
     heroStatWord:n=>n===1?'item selected':'items selected',
@@ -85,7 +85,7 @@ const T = {
     notifSettingsTitle:'Notifications', notifThisDevice:'This device',
     settingsAppearance:'Appearance',
 
-    settingsOrderScreen:'Order screen',
+    settingsOrderScreen:'Order screen', settingsTabBar:'Tab bar', showTransfersHint:'Show Transfers as a tab on this device.',
     compactRowsLabel:'Compact rows', compactRowsHint:'Fits more items on the screen when you place a long order.',
     lastQtyLabel:'Show last quantity', lastQtyHint:'Shows what you ordered last time under each item.', lastQty:n=>'Last: '+n,
     notifOn:'On', notifOff:'Off', notifTurnOff:'Turn off',
@@ -235,8 +235,8 @@ const T = {
     confirmDeleteSupplier:'ئەم دابینکەرە بسڕدرێتەوە؟ کاڵا پەیوەستەکان بێ دابینکەر دەبن.',
     confirmDeleteItem:'ئەم کاڵایە بسڕدرێتەوە؟',
     confirmDeleteUnit:'ئەم یەکەیە بسڕدرێتەوە؟ ئەو کاڵایانەی بەکاری دەهێنن بێ یەکە دەبن.',
-    confirmDeleteHistory:'ئەم داواکارییە لە مێژوو بسڕدرێتەوە؟ ئەمە ناگەڕێتەوە.',
-    orderAgain:'دووبارە داواکردن', sentBy:n=>'لەلایەن '+n,
+    deleteOrderTitle:'داواکارییەکە بسڕدرێتەوە؟', deleteOrderNote:'تەنها ڕۆژا دەتوانێت داواکاری لە مێژوو بسڕێتەوە. ئەمە ناگەڕێتەوە.', pinOf:n=>'کۆدی نهێنیی '+n,
+    orderAgain:'دیسان بنێرە', sentBy:n=>'لەلایەن '+n,
     heroEyebrow:'داواکاریی ئەمڕۆ', heroStat:n=>n+' کاڵا هەڵبژێردراوە',
     heroSub:(items,sups)=>items+' کاڵا لە '+sups+' دابینکەردا',
     heroStatWord:n=>'کاڵا هەڵبژێردراوە',
@@ -285,7 +285,7 @@ const T = {
     notifSettingsTitle:'ئاگادارکردنەوەکان', notifThisDevice:'ئەم ئامێرە',
     settingsAppearance:'ڕووکار',
 
-    settingsOrderScreen:'شاشەی داواکاری',
+    settingsOrderScreen:'شاشەی داواکاری', settingsTabBar:'شریتی تابەکان', showTransfersHint:'گواستنەوە وەک تابێک لەم ئامێرەدا پیشان بدە.',
     compactRowsLabel:'ڕیزی پچووک', compactRowsHint:'کاتێک داواکارییەکی درێژ دەکەیت کاڵای زیاتر لە شاشەکەدا دەبینیت.',
     lastQtyLabel:'نیشاندانی دوایین بڕ', lastQtyHint:'ئەوەی جاری پێشوو داوات کردووە لەژێر هەر کاڵایەک پیشان دەدات.', lastQty:n=>'دوایین: '+n,
     notifOn:'چالاکە', notifOff:'ناچالاکە', notifTurnOff:'ناچالاککردن',
@@ -435,8 +435,8 @@ const T = {
     confirmDeleteSupplier:'حذف هذا المورّد؟ ستصبح المواد التابعة له بدون مورّد.',
     confirmDeleteItem:'حذف هذه المادة؟',
     confirmDeleteUnit:'حذف هذه الوحدة؟ ستظهر المواد التي تستخدمها بدون وحدة.',
-    confirmDeleteHistory:'حذف هذا الطلب من السجل؟ لا يمكن التراجع عن ذلك.',
-    orderAgain:'اطلب مجددًا', sentBy:n=>'بواسطة '+n,
+    deleteOrderTitle:'حذف الطلب؟', deleteOrderNote:'روژا فقط يمكنها حذف طلب من السجل. لا يمكن التراجع عن ذلك.', pinOf:n=>'رمز '+n,
+    orderAgain:'أرسل مجددًا', sentBy:n=>'بواسطة '+n,
     heroEyebrow:'طلب اليوم', heroStat:n=>n+' مادة مختارة',
     heroSub:(items,sups)=>items+' مادة من '+sups+' مورّد',
     heroStatWord:n=>'مادة مختارة',
@@ -485,7 +485,7 @@ const T = {
     notifSettingsTitle:'الإشعارات', notifThisDevice:'هذا الجهاز',
     settingsAppearance:'المظهر',
 
-    settingsOrderScreen:'شاشة الطلب',
+    settingsOrderScreen:'شاشة الطلب', settingsTabBar:'شريط التبويبات', showTransfersHint:'إظهار النقل كتبويب على هذا الجهاز.',
     compactRowsLabel:'صفوف مضغوطة', compactRowsHint:'تتسع الشاشة لمواد أكثر عند تقديم طلب طويل.',
     lastQtyLabel:'إظهار آخر كمية', lastQtyHint:'يعرض ما طلبته آخر مرة تحت كل مادة.', lastQty:n=>'آخر مرة: '+n,
     notifOn:'مفعّلة', notifOff:'متوقفة', notifTurnOff:'إيقاف',
@@ -632,7 +632,7 @@ Object.assign(T.en, {
   itemNoteLabel:'Note for the supplier', itemNoteHint:'Goes into the WhatsApp message, e.g. “ripe, not soft”.', itemNoteEdit:'Note', recordNote:'Note',
   ricoHistoryMine:'My chats', ricoHistoryOf:n=>n+'’s chats', ricoReadOnly:n=>n+'’s chat with Rico · read only', ricoBackToMine:'Back to my chat',
   ricoDeleteAllOf:n=>'Delete all of '+n+'’s chats', ricoHistoryEmptyOf:n=>n+' has no chats with Rico.',
-   orderAgain:'Send again', reportDate:'Date'
+  reportDate:'Date'
 });
 Object.assign(T.ku, {
 
@@ -659,7 +659,7 @@ Object.assign(T.ku, {
   itemNoteLabel:'تێبینی بۆ دابینکەر', itemNoteHint:'دەچێتە ناو نامەی واتسئاپەکەوە، بۆ نموونە «پێگەیشتوو، نەرم نەبێت».', itemNoteEdit:'تێبینی', recordNote:'تێبینی',
   ricoHistoryMine:'گفتوگۆکانی من', ricoHistoryOf:n=>'گفتوگۆکانی '+n, ricoReadOnly:n=>'گفتوگۆی '+n+' لەگەڵ ریکۆ · تەنها خوێندنەوە', ricoBackToMine:'گەڕانەوە بۆ گفتوگۆکەی خۆم',
   ricoDeleteAllOf:n=>'سڕینەوەی هەموو گفتوگۆکانی '+n, ricoHistoryEmptyOf:n=>n+' هیچ گفتوگۆیەکی لەگەڵ ریکۆ نییە.',
-   orderAgain:'دیسان بنێرە', reportDate:'بەروار'
+  reportDate:'بەروار'
 });
 Object.assign(T.ar, {
 
@@ -686,7 +686,7 @@ Object.assign(T.ar, {
   itemNoteLabel:'ملاحظة للمورّد', itemNoteHint:'تُضاف إلى رسالة واتساب، مثل «ناضجة، غير طرية».', itemNoteEdit:'ملاحظة', recordNote:'ملاحظة',
   ricoHistoryMine:'محادثاتي', ricoHistoryOf:n=>'محادثات '+n, ricoReadOnly:n=>'محادثة '+n+' مع ريكو · للقراءة فقط', ricoBackToMine:'العودة إلى محادثتي',
   ricoDeleteAllOf:n=>'حذف كل محادثات '+n, ricoHistoryEmptyOf:n=>'لا توجد محادثات لـ'+n+' مع ريكو.',
-   orderAgain:'أرسل مجددًا', reportDate:'التاريخ'
+  reportDate:'التاريخ'
 });
 
 /* Order cut-offs and the month archive. */

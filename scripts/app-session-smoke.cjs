@@ -88,7 +88,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
 
   const crossTab = fixture();
   Object.assign(crossTab, {
-    LS_PREFIX:'ricottaOrders:', DEFAULT_TABS:['order','assistant','history'],
+    LS_PREFIX:'ricottaOrders:', tabsFor:()=>['order','history','manage'],
     rowPress:null, toastTimer:null, reminderDraft:{time:'09:00'},
     drafts:{}, listeners:{}, modalResets:0, streamResets:0, sessionClears:0,
     document:{getElementById:()=>null}, clearTimeout:()=>{},

@@ -53,14 +53,14 @@ const recordActivity=Array.from({length:500},(_,i)=>({
   fields:[{k:'name',from:'Before',to:'After'},{k:'reminder',from:'off',to:'09:00|6,0,1'}],
 }));
 const fixtureFor=account=>({
-  account, name:account==='rozha'?'Rozha':'Yunis', tabs:['order','assistant','history'], views:account==='rozha'?ALL_VIEWS:YUNIS_VIEWS,
+  account, name:account==='rozha'?'Rozha':'Yunis', views:account==='rozha'?ALL_VIEWS:YUNIS_VIEWS,
   suppliers, items, units:[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'}],
   history:[{id:'h1',date:'2026-09-23T08:00:00Z',by:'yunis',entries:[{supplierId:'s1',items:[{itemId:'i1',name:items[1].name,qty:2,unit:'box'}]}]}],
   devices:[], activity:recordActivity,
   reminder:{enabled:false,time:'09:00'},
   inbox:[{id:1,kind:'cheer',mood:'excited',en:'Good morning, Rozha! 3 suppliers are due today.',ku:'بەیانیت باش ڕۆژا!',ar:'صباح الخير يا روژا!',at:'2026-09-27T06:00:00Z',read:false}],
 });
-const session=account=>({token:'fixture-'+account,expiresAt:'2099-01-01T00:00:00Z',account,name:account==='rozha'?'Rozha':'Yunis',tabs:['order','assistant','history']});
+const session=account=>({token:'fixture-'+account,expiresAt:'2099-01-01T00:00:00Z',account,name:account==='rozha'?'Rozha':'Yunis'});
 const server=http.createServer((req,res)=>{
   const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
   const file=path.resolve(siteRoot,'.'+(pathname==='/'?'/index.html':pathname));
@@ -103,6 +103,7 @@ const server=http.createServer((req,res)=>{
         else { status=401; data={error:'invalid_credentials'}; }
       }
       else if(endpoint==='admin/pin' && body.currentPin!=='471906'){ status=403; data={error:'wrong_pin'}; }
+      else if(endpoint.startsWith('orders/') && req.method()==='DELETE' && body?.pin!==undefined && body.pin!=='471906'){ status=403; data={error:'wrong_pin'}; }
       else data={ok:true};
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
@@ -111,6 +112,7 @@ const server=http.createServer((req,res)=>{
       localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',JSON.stringify(Date.now()));
       // Both people already allowed Rico's AI (the permission itself is checked on Rico's screen below).
       for(const a of ['rozha','yunis']) localStorage.setItem('ricottaOrders:aiConsent:'+a,'true');
+      if(!sessionStorage.getItem('transfersTab')){ localStorage.setItem('ricottaOrders:showTransfers','true'); sessionStorage.setItem('transfersTab','1'); }
       if(loggedIn && !sessionStorage.getItem('seeded')){ localStorage.setItem('ricottaOrders:apiSession',JSON.stringify(s)); sessionStorage.setItem('seeded','1'); }
     },{loggedIn,s:session(account)});
     const page=await ctx.newPage();page.on('pageerror',error=>errors.push(String(error)));
@@ -123,8 +125,14 @@ const server=http.createServer((req,res)=>{
     if(['suppliers','units'].includes(destination)){
       await page.locator('.bottomnav [data-view="manage"]').click();await settle(page);
       await page.locator(`[data-manage-view="${destination}"]`).click();
+    }else if(destination==='assistant'){
+      await page.locator('#ricoTopBtn').click();
+    }else if(destination==='settings'){
+      await page.locator('#accountBtn').click();
+      await page.locator('[data-account-go="settings"]').click();
+      await page.waitForSelector('.account-sheet',{state:'detached'});
     }else{
-      if(!['order','assistant','transfers','manage'].includes(destination) && await page.evaluate(()=>innerWidth<960)){
+      if(!['order','history','transfers','manage'].includes(destination) && await page.evaluate(()=>innerWidth<960)){
         if(await page.locator('#navMoreBtn').getAttribute('aria-expanded')!=='true')await page.locator('#navMoreBtn').click();
       }
       await page.locator(`.bottomnav [data-view="${destination}"]`).click();
@@ -250,11 +258,16 @@ const server=http.createServer((req,res)=>{
         }
       }
     }
-    // All nested screens highlight Manage; the two daily screens keep their own destinations.
+    // All nested screens highlight Manage; Rico lights up in the top bar, and Settings (from the account sheet) has no tab.
     await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>setLang('en'));
     for(const view of ALL_VIEWS){
       await openView(page,view);
-      assert.equal(await page.locator('.bottomnav [aria-current="page"]').getAttribute('data-view'),['manage','itemsAdmin','suppliers','units'].includes(view)?'manage':view);
+      if(view==='settings') assert.equal(await page.locator('.bottomnav [aria-current="page"]').count(),0,'Settings is not a tab');
+      else if(view==='assistant'){
+        assert.equal(await page.locator('#ricoTopBtn').getAttribute('aria-current'),'page','Rico is current in the top bar');
+        assert.equal(await page.locator('.bottomnav [aria-current="page"]').count(),0,'Rico is not a tab');
+      }
+      else assert.equal(await page.locator('.bottomnav [aria-current="page"]').getAttribute('data-view'),['manage','itemsAdmin','suppliers','units'].includes(view)?'manage':view);
     }
     await openView(page,'order');await page.locator('[data-ordertab="all"]').click();await snapshot(page,'desktop-order.png');
     await page.evaluate(()=>{
@@ -270,7 +283,16 @@ const server=http.createServer((req,res)=>{
     await openView(page,'history');
     assert.match(await page.locator('.hist-date').textContent(),/AM|PM/,'history uses the 12-hour Iraq clock');
     assert.match(await page.locator('.hist-date').textContent(),/Yunis/,'history says who sent it');
-    assert.equal(await page.locator('[data-delhist]').count(),1,'Rozha can delete history');
+    assert.equal(await page.locator('.hist-lines li').count(),1,'each item has its own line');
+    assert.equal(await page.locator('.hist-actions [data-reorderhist]').count(),1,'Send again sits under the order');
+    await page.locator('[data-delhist]').click();
+    await page.locator('#delPin').fill('123456');await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>document.getElementById('modalFormStatus')?.classList.contains('error'));
+    assert.equal(await page.locator('.hist-card').count(),1,'a wrong PIN deletes nothing');
+    await page.locator('#delPin').fill('471906');await page.locator('#modalFormOk').click();
+    await page.waitForFunction(()=>!document.querySelector('.hist-card'));
+    assert.ok(calls.some(c=>c.endpoint==='orders/h1' && c.method==='DELETE' && c.body?.pin==='471906'),'Rozha\u2019s PIN goes with the delete');
+    await page.evaluate(name=>{ state.history=[{id:'h1',date:'2026-09-23T08:00:00Z',by:'yunis',entries:[{supplierId:'s1',items:[{itemId:'i1',name,qty:2,unit:'box'}]}]}]; render(); },items[1].name);
     await openView(page,'settings');
     assert.equal(await page.locator('#reminderEnabled').count(),1,'notifications live in Settings');
     assert.equal(await page.locator('[data-pin-change], #ricoKeyState, .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
@@ -375,11 +397,16 @@ const server=http.createServer((req,res)=>{
     await page.locator('#unitAddBtn').click();
     assert.equal(await page.locator('#mfUnitAr').count(),1,'units have an Arabic name');
     await page.locator('#modalFormCancel').click();
-    // Fixed main destinations: Order, Rico and Manage.
+    // Fixed main destinations: Order, History and Manage (Transfers is on for this device); More has the rest.
     await page.setViewportSize({width:390,height:844});await openView(page,'order');
-    assert.deepEqual(await page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','transfers','manage']);
+    assert.deepEqual(await page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','transfers','manage']);
     assert.equal(await page.locator('#navMoreBtn').count(),1);
+    assert.deepEqual(await page.locator('#navMore [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['record','admin'],'More has Record and Admin');
+    assert.equal(await page.locator('#ricoTopBtn').count(),1,'Rico is always in the top bar');
     assert.equal(await page.locator('#navEditTabs').count(),0);
+    await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
+    await page.locator('[data-inc]').first().click();
+    assert.equal(await page.locator('#ricoTopBtn.reacting .rico-bot.mood-happy').count(),1,'Rico reacts to the first item');
     await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
     const q5=page.locator('[data-qty="i5"]');
     await q5.focus();
@@ -400,7 +427,7 @@ const server=http.createServer((req,res)=>{
     await page.locator('.toast-undo').click();
     assert.equal(await page.evaluate(()=>state.cart.i8),5,'clearing the order can be undone');
     await page.evaluate(()=>window.scrollTo(0,0));
-    // A finger swipe to the left moves from Order to Rico, with the page sliding (silently).
+    // A finger swipe to the left moves from Order to History, with the page sliding (silently).
     await page.evaluate(()=>{ window.__tones=[]; });
     await page.evaluate(()=>{
       const el=document.querySelector('.content .page-heading'), r=el.getBoundingClientRect(), y=r.top+r.height/2;
@@ -409,7 +436,7 @@ const server=http.createServer((req,res)=>{
       for(const x of [280,240,180,120]) fire('pointermove',x);
       fire('pointerup',120);
     });
-    assert.equal(await page.evaluate(()=>state.view),'assistant','swiping the page moves to the next tab');
+    assert.equal(await page.evaluate(()=>state.view),'history','swiping the page moves to the next tab');
     assert.equal(await page.locator('.content.gliding').count(),1,'the swipe moves to the next page');
     assert.deepEqual(await page.evaluate(()=>__tones),[],'swiping between tabs makes no sound');
     assert.ok(await page.evaluate(()=>document.querySelector('.content.gliding').getAnimations()[0].effect.getTiming().duration<PAGE_TRANSITION.ms),'a swipe finishes quicker than a tap');
@@ -476,7 +503,7 @@ const server=http.createServer((req,res)=>{
     await y.page.setViewportSize({width:390,height:844});
     assert.equal(await y.page.locator('.bottomnav [data-view="admin"]').count(),0,'no Admin for Yunis');
     await openView(y.page,'history');
-    assert.equal(await y.page.locator('[data-delhist]').count(),0,'Yunis cannot delete history');
+    assert.equal(await y.page.locator('[data-delhist]').count(),1,'Yunis sees Delete, which asks for Rozha\u2019s PIN');
     await openView(y.page,'suppliers');
     assert.equal(await y.page.locator('#supAddBtn').count(),1,'Yunis can edit suppliers');
     await openView(y.page,'units');
@@ -499,7 +526,14 @@ const server=http.createServer((req,res)=>{
     assert.ok(await y.page.locator('.item-last').count()>=1,'Last quantity shows on rows when switched on');
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await y.page.locator('label:has(#pref-showLastQty)').click();
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','sound-qty:true','sound-sent:true','reminderEnabled:false','aiConsent:true']);
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','pref-showTransfers:true','sound-qty:true','sound-sent:true','reminderEnabled:false','aiConsent:true']);
+    // Turning Transfers off takes it out of the tab bar (and back in), without leaving Settings.
+    await y.page.locator('#pref-showTransfers').uncheck();
+    assert.deepEqual(await y.page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','manage'],'Transfers can be taken off the tab bar');
+    assert.equal(await y.page.evaluate(()=>canOpen('transfers')),false,'a hidden Transfers tab cannot be opened');
+    assert.equal(await y.page.evaluate(()=>state.view),'settings','Settings stays open');
+    await y.page.locator('#pref-showTransfers').check();
+    assert.deepEqual(await y.page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','transfers','manage'],'Transfers can be put back');
     assert.equal(await y.page.locator('#settingsSignOut').count(),1,'Sign Out is at the end of Settings');
     assert.match(await y.page.locator('.settings-link').getAttribute('href'),/^privacy\.html#en$/,'Settings links to the privacy policy');
     // Daily reminder, for Yunis too: the switch opens the time, Save and a test; only Save turns it on.

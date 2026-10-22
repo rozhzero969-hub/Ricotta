@@ -13,7 +13,7 @@ const siteRoot=process.env.UI_SITE_DIR?path.resolve(process.env.UI_SITE_DIR):roo
 
 const suppliers=[{id:'s0',name:'Golden Bread Bakery',phone:'0750 111 2222'},{id:'s1',name:'Fresh produce',phone:'07701234567'},{id:'s2',name:'Corner Cake',phone:''}];
 const items=[{id:'i0',name:'Bread',unit:'box',supplierId:'s0'},{id:'i1',name:'Tomato',unit:'box',supplierId:'s1'},{id:'i2',name:'Cake',unit:'box',supplierId:'s2'}];
-const session={token:'fixture-yunis',expiresAt:'2099-01-01T00:00:00Z',account:'yunis',name:'Yunis',tabs:['order','assistant','history']};
+const session={token:'fixture-yunis',expiresAt:'2099-01-01T00:00:00Z',account:'yunis',name:'Yunis'};
 
 const server=http.createServer((req,res)=>{
   const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
@@ -39,7 +39,7 @@ const server=http.createServer((req,res)=>{
     await ctx.route('**/functions/v1/api/**',async route=>{
       const req=route.request(), endpoint=new URL(req.url()).pathname.split('/api/')[1], body=req.postDataJSON?.()||null;
       let status=200, data={ok:true};
-      if(endpoint==='bootstrap') data={account:'yunis',name:'Yunis',tabs:session.tabs,views:['order','assistant','history','suppliers','itemsAdmin','units','record'],
+      if(endpoint==='bootstrap') data={account:'yunis',name:'Yunis',views:['order','assistant','history','suppliers','itemsAdmin','units','record'],
         suppliers,items,units:[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'}],history,devices:[],activity:[],reminder:{enabled:false,time:'09:00'},inbox:[]};
       else if(endpoint==='devices') data=[];
       else if(endpoint==='assistant/inbox') data=[];
@@ -127,8 +127,7 @@ const server=http.createServer((req,res)=>{
       assert.equal(saved[0].by,'yunis');
       assert.equal(await stored(page),null,lang+': nothing is left to resume');
       assert.equal(await page.evaluate(()=>localStorage.getItem('ricottaOrders:pendingCart:yunis')),null,lang+': the draft is cleared');
-      await page.locator('#navMoreBtn').click();
-      await page.locator('.nav-more [data-view="history"]').click();
+      await page.locator('.bottomnav > [data-view="history"]').click();
       await page.waitForFunction(()=>state.view==='history');
       assert.ok(await page.locator('.content').filter({hasText:'Tomato'}).count(),lang+': the order shows in History');
       // A restart afterwards shows the order screen, not the finished queue.
