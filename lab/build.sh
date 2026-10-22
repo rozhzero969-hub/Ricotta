@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 rm -rf dist
 mkdir -p dist
 # The app's own scripts exactly as page.html loads them (a new script is never left out), plus its files.
-for f in $(sed -n 's/.*<script[^>]* src="\([^"/]*\.js\)".*/\1/p' page.html | grep -v '^lab-') style.css icon-192.png apple-touch-icon.png rico-happy.png rico-thinking.png; do
+for f in $(sed -n 's/.*<script[^>]* src="\([^"/]*\.js\)".*/\1/p' page.html | grep -v '^lab-') style.css privacy.html icon-192.png apple-touch-icon.png rico-happy.png rico-thinking.png; do
   cp "../$f" dist/
 done
 mkdir -p dist/supabase/functions/_shared

@@ -1,0 +1,54 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "NSCameraUsageDescription": {
+      "comment": "Asked before the camera is used.",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Take a photo of an item list for Rico to read."
+          }
+        },
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "وێنەی لیستی کاڵاکان بگرە تا ریکۆ بیخوێنێتەوە."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "التقط صورة لقائمة الأصناف ليقرأها ريكو."
+          }
+        }
+      }
+    },
+    "NSMicrophoneUsageDescription": {
+      "comment": "Asked before the microphone is used.",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Record a spoken item list or a voice message for Rico."
+          }
+        },
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لیستی کاڵاکان یان نامەیەکی دەنگی بۆ ریکۆ تۆمار بکە."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سجّل قائمة أصناف بصوتك أو رسالة صوتية لريكو."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

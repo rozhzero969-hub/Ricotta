@@ -109,6 +109,8 @@ const server=http.createServer((req,res)=>{
     await ctx.addInitScript(({loggedIn,s})=>{
       window.RICOTTA_TODAY='2026-06-10';   // a day without a holiday theme, so the colour themes are tested
       localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',JSON.stringify(Date.now()));
+      // Both people already allowed Rico's AI (the permission itself is checked on Rico's screen below).
+      for(const a of ['rozha','yunis']) localStorage.setItem('ricottaOrders:aiConsent:'+a,'true');
       if(loggedIn && !sessionStorage.getItem('seeded')){ localStorage.setItem('ricottaOrders:apiSession',JSON.stringify(s)); sessionStorage.setItem('seeded','1'); }
     },{loggedIn,s:session(account)});
     const page=await ctx.newPage();page.on('pageerror',error=>errors.push(String(error)));
@@ -185,8 +187,9 @@ const server=http.createServer((req,res)=>{
     const {ctx,page,calls}=await context();
     assert.doesNotMatch(await page.locator('meta[name="viewport"]').getAttribute('content'),/user-scalable=no|maximum-scale=1(?:,|$)/,'browser zoom remains available for accessibility');
     assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).userSelect),'none','app chrome cannot be accidentally selected');
-    assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).fontFamily.includes('Sora')),true,'English uses Sora');
-    assert.match(await page.locator('body').evaluate(el=>getComputedStyle(el).fontFamily),/^"?Sora"?, "?Noto Kufi Arabic"?/,'Kurdish or Arabic names inside English text use Noto Kufi Arabic');
+    assert.match(await page.locator('body').evaluate(el=>getComputedStyle(el).fontFamily),/^-apple-system, BlinkMacSystemFont, system-ui/,'English uses Apple\u2019s system font');
+    assert.match(await page.locator('body').evaluate(el=>getComputedStyle(el).fontFamily),/"?Noto Kufi Arabic"?/,'Kurdish or Arabic names inside English text fall back to Noto Kufi Arabic off Apple devices');
+    assert.equal(await page.locator('#langBtn, #logoutBtn').count(),0,'the language and Sign Out live in the account sheet, not on the top bar');
     await page.evaluate(()=>{window.originalRow=document.querySelector('[data-item-id="i1"]');});
     const inc=page.locator('[data-inc="i1"]');
     await inc.focus();for(let i=0;i<12;i++) await page.keyboard.press('Enter');
@@ -220,7 +223,10 @@ const server=http.createServer((req,res)=>{
     await page.locator('.toast-undo').click();assert.equal(await page.evaluate(()=>state.cart.i1||0),0,'Same as last time can be undone');
     await page.locator('#sameAsLast').click();assert.equal(await page.locator('[data-qty="i1"]').inputValue(),'2');
 
-    // The language menu: nothing changes until Apply.
+    // The account button opens the account sheet; its Language row opens the language menu, where nothing changes until Apply.
+    await page.locator('#accountBtn').click();
+    await page.locator('.account-sheet #logoutBtn').waitFor();
+    assert.equal(await page.locator('#accountBtn').textContent(),'R','the account button shows the initial');
     await page.locator('#langBtn').click();
     await page.locator('.lang-menu').waitFor();
     assert.equal(await page.locator('.lang-row').count(),3,'English, Kurdish and Arabic');
@@ -331,8 +337,20 @@ const server=http.createServer((req,res)=>{
     }),true,'a voice message starts recording without errors');
     await settle(page);
     assert.deepEqual(await page.evaluate(()=>{ render(); return [...document.querySelectorAll('.content, .content *')].flatMap(el=>el.getAnimations().filter(x=>x.playState==='running' && x.effect.getComputedTiming().iterations!==Infinity).map(x=>String(el.className.baseVal??el.className)+':'+(x.animationName||'js'))); }),[],'redrawing the same screen never replays an entrance animation');
+    // Apple's rule 5.1.2: before anything goes to an AI service, Rico says where it goes and asks.
+    await page.evaluate(()=>localStorage.removeItem('ricottaOrders:aiConsent:rozha'));
+    const chatsBefore=calls.filter(c=>c.endpoint==='assistant/chat').length;
     await page.locator('[data-rico-action="late_orders"]').click();
+    await page.locator('.modal-alert-title').waitFor();
+    assert.match(await page.locator('.modal-alert').textContent(),/Google Gemini or Groq/,'the permission names the AI services');
+    await page.locator('#modalCancelBtn').click();
+    await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal-overlay'));
+    assert.equal(calls.filter(c=>c.endpoint==='assistant/chat').length,chatsBefore,'Not Now sends nothing to the AI');
+    await page.locator('[data-rico-action="late_orders"]').click();
+    await page.locator('#modalOkBtn').click();
+    await page.waitForFunction(n=>performance.getEntriesByType('resource').filter(r=>r.name.endsWith('/api/assistant/chat')).length>n,chatsBefore);
     await page.waitForFunction(()=>!rico.streaming);
+    assert.equal(await page.evaluate(()=>aiConsented()),true,'Allow is remembered');
     assert.equal(await page.locator('.rico-msg.bot .rico-bot').last().evaluate(el=>el.classList.contains('mood-angry')),true,'Rico\u2019s face shows his mood');
     assert.equal(await page.locator('.rico-head .rico-bot').evaluate(el=>el.classList.contains('mood-angry')),true,'the header face follows');
     assert.equal(await page.evaluate(()=>ricoFormat('[[data:Mam Fakhir]] has <<DATA>>9<</DATA>> items')),'<p>Mam Fakhir has 9 items</p>','data markers the AI copies are never shown');
@@ -481,7 +499,9 @@ const server=http.createServer((req,res)=>{
     assert.ok(await y.page.locator('.item-last').count()>=1,'Last quantity shows on rows when switched on');
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await y.page.locator('label:has(#pref-showLastQty)').click();
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','sound-qty:true','sound-sent:true','reminderEnabled:false']);
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','sound-qty:true','sound-sent:true','reminderEnabled:false','aiConsent:true']);
+    assert.equal(await y.page.locator('#settingsSignOut').count(),1,'Sign Out is at the end of Settings');
+    assert.match(await y.page.locator('.settings-link').getAttribute('href'),/^privacy\.html#en$/,'Settings links to the privacy policy');
     // Daily reminder, for Yunis too: the switch opens the time, Save and a test; only Save turns it on.
     assert.equal(await y.page.locator('#reminderTime').count(),0,'the daily reminder starts as just a switch');
     await y.page.locator('label:has(#reminderEnabled)').click();
@@ -549,7 +569,7 @@ const server=http.createServer((req,res)=>{
     assert.match(await login.page.locator('.welcome-title').textContent(),/Welcome back, Yunis/,'welcome back says the name');
     await login.page.waitForSelector('#orderResults');
     assert.equal(await login.page.evaluate(()=>state.account),'yunis');
-    await login.page.locator('#logoutBtn').click();await login.page.waitForSelector('.pin-boxes');
+    await login.page.locator('#accountBtn').click();await login.page.locator('.account-sheet #logoutBtn').click();await login.page.waitForSelector('.pin-boxes');
     assert.equal(await login.page.locator('.pin-box.filled').count(),0,'logout resets the PIN feedback');
     await login.ctx.close();
     const reduced=await context({reducedMotion:'reduce'});await reduced.page.locator('[data-inc="i1"]').click();
@@ -560,7 +580,7 @@ const server=http.createServer((req,res)=>{
     /* Dialogs preserve drafts, contain keyboard focus, and cannot be dismissed
        or submitted twice while a save is pending. APIs remain fully mocked. */
     const mp=reduced.page;
-    await mp.locator('#logoutBtn').focus();
+    await mp.locator('#accountBtn').focus();
     await mp.evaluate(()=>{window.modalPromptResult='pending';showPrompt('Regression prompt').then(value=>{modalPromptResult=value;});});
     assert.equal(await mp.locator('#modalPromptInput').getAttribute('aria-labelledby')!==null,true,'prompt has an accessible label');
     assert.equal(await mp.locator('#app').evaluate(el=>el.inert),true,'background is inert while a dialog is open');
@@ -571,7 +591,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await mp.evaluate(()=>document.activeElement.id),'modalPromptOkBtn','Shift+Tab wraps within the dialog');
     await mp.keyboard.press('Escape');
     await mp.waitForFunction(()=>modalPromptResult===null);
-    assert.equal(await mp.evaluate(()=>document.activeElement.id),'logoutBtn','closing returns focus to the opener');
+    assert.equal(await mp.evaluate(()=>document.activeElement.id),'accountBtn','closing returns focus to the opener');
     assert.equal(await mp.locator('#app').evaluate(el=>el.inert),false,'closing releases the background');
     assert.equal(await mp.locator('.modal-overlay').count(),0,'reduced-motion dialogs close immediately');
 

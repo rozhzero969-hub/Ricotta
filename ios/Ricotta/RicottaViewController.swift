@@ -1,7 +1,7 @@
 import UIKit
 import WebKit
 
-final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
     private var webView: WKWebView!
     private let popupConfiguration: WKWebViewConfiguration?
     init(popupConfiguration: WKWebViewConfiguration? = nil) {
@@ -11,20 +11,29 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
     required init?(coder: NSCoder) { fatalError("Use init(popupConfiguration:)") }
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let recovery = UIStackView()
-    private let message = UILabel()
     private var downloadFiles: [ObjectIdentifier: URL] = [:]
+    /// The app opens on the page's green loading screen, so it starts green with light status bar text;
+    /// the page then reports whether it is light or dark (see `userContentController(_:didReceive:)`).
+    private static let launchGreen = UIColor(named: "LaunchBackground") ?? UIColor(red: 0.078, green: 0.22, blue: 0.173, alpha: 1)
+    private var statusBarStyle: UIStatusBarStyle = .lightContent
+    private var pageReported = false
+    private let selectionFeedback = UISelectionFeedbackGenerator()
+    private let notificationFeedback = UINotificationFeedbackGenerator()
+    override var preferredStatusBarStyle: UIStatusBarStyle { popupConfiguration == nil ? statusBarStyle : .default }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = popupConfiguration == nil ? Self.launchGreen : .systemBackground
         let configuration = popupConfiguration ?? WKWebViewConfiguration()
         configuration.websiteDataStore = .default() // Separate, persistent sign-in for this app.
         configuration.allowsInlineMediaPlayback = true
         if popupConfiguration == nil {
-            // One read-only flag so the page can hide web-only hints (web push, Add to Home Screen).
-            // It is not a bridge: the page cannot call back into the app.
+            // One read-only flag so the page can hide web-only hints (web push, Add to Home Screen) and
+            // run as an app frame.
             configuration.userContentController.addUserScript(WKUserScript(
                 source: "window.RICOTTA_NATIVE_SHELL = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            // The page may send a few fixed words (haptics and its light or dark look) and gets nothing back.
+            configuration.userContentController.add(WeakMessageHandler(self), name: "ricotta")
         }
         // Keep WebKit's default user agent and browser features for Cloudflare verification.
         webView = WKWebView(frame: .zero, configuration: configuration)
@@ -33,7 +42,7 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         webView.allowsBackForwardNavigationGestures = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.isOpaque = false
-        webView.backgroundColor = .systemBackground
+        webView.backgroundColor = .clear
         #if DEBUG
         webView.isInspectable = true
         #endif
@@ -51,23 +60,52 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         ])
         spinner.translatesAutoresizingMaskIntoConstraints = false
         spinner.hidesWhenStopped = true
+        spinner.color = popupConfiguration == nil ? .white : nil
         view.addSubview(spinner)
         NSLayoutConstraint.activate([spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
                                      spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)])
-        message.text = "Ricotta could not open. Check your connection, then try again."
+        buildRecovery()
+        if popupConfiguration == nil { loadHome() }
+        else {
+            title = String(localized: "Order Sheet")
+            navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(closePreview))
+            navigationItem.rightBarButtonItem = UIBarButtonItem(title: String(localized: "Print"), style: .plain, target: self, action: #selector(printPreview))
+        }
+    }
+    /// When the app cannot reach Ricotta: Apple's "content unavailable" layout, with a symbol, a short
+    /// title, one line of help, a filled Try Again button and Open in Safari.
+    private func buildRecovery() {
+        let symbol = UIImageView(image: UIImage(systemName: "wifi.exclamationmark",
+                                                withConfiguration: UIImage.SymbolConfiguration(textStyle: .largeTitle, scale: .large)))
+        symbol.tintColor = .secondaryLabel
+        symbol.adjustsImageSizeForAccessibilityContentSizeCategory = true
+        let title = UILabel()
+        title.text = String(localized: "Can’t Open Ricotta")
+        title.font = UIFont.preferredFont(forTextStyle: .title2).withTraits(.traitBold)
+        title.adjustsFontForContentSizeCategory = true
+        title.numberOfLines = 0
+        title.textAlignment = .center
+        let message = UILabel()
+        message.text = String(localized: "Check your internet connection, then try again.")
+        message.font = .preferredFont(forTextStyle: .body)
+        message.textColor = .secondaryLabel
+        message.adjustsFontForContentSizeCategory = true
         message.numberOfLines = 0
         message.textAlignment = .center
-        message.font = .preferredFont(forTextStyle: .body)
-        message.adjustsFontForContentSizeCategory = true
-        let retry = UIButton(type: .system)
-        retry.setTitle("Try again", for: .normal)
-        retry.addTarget(self, action: #selector(loadHome), for: .touchUpInside)
-        let safari = UIButton(type: .system)
-        safari.setTitle("Open in Safari", for: .normal)
-        safari.addTarget(self, action: #selector(openSafari), for: .touchUpInside)
+        var retryLook = UIButton.Configuration.filled()
+        retryLook.title = String(localized: "Try Again")
+        retryLook.cornerStyle = .capsule
+        retryLook.buttonSize = .large
+        let retry = UIButton(configuration: retryLook, primaryAction: UIAction { [weak self] _ in self?.loadHome() })
+        var safariLook = UIButton.Configuration.plain()
+        safariLook.title = String(localized: "Open in Safari")
+        let safari = UIButton(configuration: safariLook, primaryAction: UIAction { _ in UIApplication.shared.open(RicottaNavigation.home) })
         recovery.axis = .vertical
-        recovery.spacing = 16
-        [message, retry, safari].forEach(recovery.addArrangedSubview)
+        recovery.alignment = .center
+        recovery.spacing = 10
+        [symbol, title, message, retry, safari].forEach(recovery.addArrangedSubview)
+        recovery.setCustomSpacing(16, after: symbol)
+        recovery.setCustomSpacing(24, after: message)
         recovery.translatesAutoresizingMaskIntoConstraints = false
         recovery.isHidden = true
         view.addSubview(recovery)
@@ -78,18 +116,39 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
             recovery.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 28),
             recovery.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -28)
         ])
-        if popupConfiguration == nil { loadHome() }
-        else {
-            title = "Order sheet"
-            navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(closePreview))
-            navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Print", style: .plain, target: self, action: #selector(printPreview))
+    }
+    private func setLook(background: UIColor, statusBar: UIStatusBarStyle) {
+        view.backgroundColor = background
+        statusBarStyle = statusBar
+        setNeedsStatusBarAppearanceUpdate()
+    }
+
+    /// The only words the page can send (sounds.js `NATIVE_WORDS`); anything else, or anything from
+    /// another page or frame, is ignored, and nothing is sent back.
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame, message.frameInfo.request.url.map(RicottaNavigation.isAppPage) == true,
+              let word = message.body as? String else { return }
+        if word.hasPrefix("page-") { pageReported = true }
+        switch word {
+        case "selection": selectionFeedback.selectionChanged()
+        case "light": UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        case "medium": UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        case "success": notificationFeedback.notificationOccurred(.success)
+        case "warning": notificationFeedback.notificationOccurred(.warning)
+        case "error": notificationFeedback.notificationOccurred(.error)
+        // The page's own background behind it, so nothing flashes when it resizes, and status bar
+        // text that can be read on it.
+        case "page-splash": setLook(background: Self.launchGreen, statusBar: .lightContent)
+        case "page-dark": setLook(background: .black, statusBar: .lightContent)
+        case "page-light": setLook(background: UIColor(red: 0.949, green: 0.949, blue: 0.969, alpha: 1), statusBar: .darkContent)
+        default: break
         }
     }
     @objc private func closePreview() { dismiss(animated: true) }
     @objc private func printPreview() {
         let printer = UIPrintInteractionController.shared
         let information = UIPrintInfo(dictionary: nil)
-        information.jobName = "Ricotta order sheet"
+        information.jobName = String(localized: "Ricotta Order Sheet")
         information.outputType = .general
         printer.printInfo = information
         printer.printFormatter = webView.viewPrintFormatter()
@@ -116,20 +175,30 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         if popupConfiguration != nil { dismiss(animated: true) }
     }
 
-    @objc private func loadHome() {
+    private func loadHome() {
         recovery.isHidden = true
         webView.isHidden = false
+        pageReported = false
+        setLook(background: Self.launchGreen, statusBar: .lightContent)
         spinner.startAnimating()
         webView.load(URLRequest(url: RicottaNavigation.home, cachePolicy: .reloadRevalidatingCacheData, timeoutInterval: 30))
     }
-    @objc private func openSafari() { UIApplication.shared.open(RicottaNavigation.home) }
     private func failed(_ error: Error) {
         guard (error as NSError).code != NSURLErrorCancelled else { return }
         spinner.stopAnimating()
         webView.isHidden = true
         recovery.isHidden = false
+        setLook(background: .systemBackground, statusBar: .default)
     }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { spinner.stopAnimating() }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        spinner.stopAnimating()
+        // A page that never reports its look (an older version of the site) gets the system's own colours.
+        guard popupConfiguration == nil else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, !self.pageReported, self.recovery.isHidden else { return }
+            self.setLook(background: .systemBackground, statusBar: .default)
+        }
+    }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(error) }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -178,9 +247,10 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         }
     }
     private func showExternalFallback(_ url: URL) {
-        let alert = UIAlertController(title: "WhatsApp is not installed", message: "Open this message in your browser?", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Open", style: .default) { _ in UIApplication.shared.open(url) })
+        let alert = UIAlertController(title: String(localized: "WhatsApp Isn’t Installed"),
+                                      message: String(localized: "Open this message in your browser?"), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(UIAlertAction(title: String(localized: "Open"), style: .default) { _ in UIApplication.shared.open(url) })
         present(alert, animated: true)
     }
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
@@ -210,8 +280,9 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
     }
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         if let file = downloadFiles.removeValue(forKey: ObjectIdentifier(download)) { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
-        let alert = UIAlertController(title: "Export could not finish", message: "Please try the export again.", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        let alert = UIAlertController(title: String(localized: "Export Couldn’t Finish"),
+                                      message: String(localized: "Please try the export again."), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
         present(alert, animated: true)
     }
 
@@ -224,22 +295,39 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
         let alert = UIAlertController(title: "Ricotta", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default) { _ in completionHandler() })
         present(alert, animated: true)
     }
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
         let alert = UIAlertController(title: "Ricotta", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel) { _ in completionHandler(false) })
+        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default) { _ in completionHandler(true) })
         present(alert, animated: true)
     }
     func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
         let alert = UIAlertController(title: "Ricotta", message: prompt, preferredStyle: .alert)
         alert.addTextField { $0.text = defaultText }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(alert.textFields?.first?.text) })
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel) { _ in completionHandler(nil) })
+        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default) { _ in completionHandler(alert.textFields?.first?.text) })
         present(alert, animated: true)
+    }
+}
+
+/// WKUserContentController keeps its message handlers alive; this one passes messages on without
+/// keeping the screen alive with them.
+private final class WeakMessageHandler: NSObject, WKScriptMessageHandler {
+    private weak var target: WKScriptMessageHandler?
+    init(_ target: WKScriptMessageHandler) { self.target = target }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        target?.userContentController(userContentController, didReceive: message)
+    }
+}
+
+private extension UIFont {
+    func withTraits(_ traits: UIFontDescriptor.SymbolicTraits) -> UIFont {
+        guard let descriptor = fontDescriptor.withSymbolicTraits(traits) else { return self }
+        return UIFont(descriptor: descriptor, size: 0)
     }
 }
