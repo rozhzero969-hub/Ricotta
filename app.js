@@ -136,10 +136,18 @@ function toast(msg, kind='ok', {undo} = {}){
     b.onclick = ()=>{ clearTimeout(toastTimer); el.classList.remove('show'); undo(); };
     el.appendChild(b);
   }
-  requestAnimationFrame(()=> el.classList.add('show'));
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=> el.classList.remove('show'), undo ? 4800 : 2600);
+  // The timer starts once the toast is actually on screen: one raised while the app was in the
+  // background used to show up later with its time already spent, and then never left.
+  requestAnimationFrame(()=>{
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> el.classList.remove('show'), undo ? 4800 : 2600);
+  });
 }
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'hidden'){ clearTimeout(toastTimer); document.getElementById('toast')?.classList.remove('show'); }
+});
 
 /* ============ Devices ============
    The server keeps one row per device. This device reports "still here"
@@ -517,6 +525,23 @@ async function doLogout(){
   if(reply.ok || reply.status===401) signOut();
   else toast(t('saveFailed'));
 }
+async function confirmSignOut(){
+  if(await showConfirm(esc(t('signOutMsg')), {title:t('signOutTitle'), okLabel:t('logout'), icon:GLYPH_SIGNOUT, tone:'danger'})) doLogout();
+}
+/* Refresh buttons: the arrows turn while the refresh runs (at least one full turn, so it reads as
+   a refresh even when the answer is instant). The screen may be drawn again meanwhile, so the
+   button is found again by its id. */
+async function spinRefresh(btn, run){
+  if(btn.classList.contains('refreshing')) return;
+  const id = btn.id, started = performance.now();
+  btn.classList.add('refreshing'); haptic('light');
+  try{ await run(); }
+  finally{
+    const again = (id && document.getElementById(id)) || btn;
+    again.classList.add('refreshing');
+    setTimeout(()=>{ again.classList.remove('refreshing'); }, Math.max(0, 750 - (performance.now() - started)));
+  }
+}
 /* Called by storage.js when the server rejects this device's session. */
 function onSessionExpired(){
   if(state.account) signOut(t('sessionEnded'));
@@ -606,8 +631,8 @@ function showStartFailure(){
   const app = document.getElementById('app');
   const say = (key, fallback)=>{ try{ return t(key) || fallback; }catch(e){ return fallback; } };
   app.dataset.screen = 'error';
-  app.innerHTML = `<div class="start-failed" role="alert"><b>${esc(say('startFailedTitle', 'Ricotta could not open'))}</b><p>${esc(say('startFailedText', 'Something went wrong while starting. Refresh to try again.'))}</p><button type="button" class="btn btn-primary" id="startReload">${esc(say('refreshNow', 'Refresh'))}</button></div>`;
-  document.getElementById('startReload').onclick = ()=>hardReload();
+  app.innerHTML = `<div class="start-failed" role="alert"><b>${esc(say('startFailedTitle', 'Ricotta could not open'))}</b><p>${esc(say('startFailedText', 'Something went wrong while starting. Refresh to try again.'))}</p><button type="button" class="btn btn-primary" id="startReload">${ICON_REFRESH}<span>${esc(say('refreshNow', 'Refresh'))}</span></button></div>`;
+  document.getElementById('startReload').onclick = e=>{ e.currentTarget.classList.add('refreshing'); hardReload(); };
 }
 /* The branded loading screen lives in index.html so it shows instantly.
    It lifts away once the first real screen is on the page and style.css is
@@ -755,6 +780,7 @@ function updateRicoBadge(){
   if(!btn) return;
   const late = ricoLateOrders().length, unread = ricoUnread();
   btn.classList.toggle('waiting', !!(late || unread));
+  btn.classList.toggle('late', !!late && !unread);
   btn.querySelector('.rico-badge').hidden = !(late || unread);
   btn.setAttribute('aria-label', late ? t('ricoNavLate')(late) : unread ? t('ricoNavUnread') : t('ricoName'));
   if(!btn.classList.contains('reacting')) setRicoTopMood(btn, unread ? ricoUnreadMood() : late ? 'angry' : 'happy');
@@ -1423,7 +1449,14 @@ function syncAppearance(){
   const meta=document.querySelector('meta[name="theme-color"]');
   // Signed out, a computer shows the green half and a phone the light sign-in page.
   const dark = document.documentElement.classList.contains('dark');
-  if(meta) meta.content = !state.account && !isPhoneLayout() ? '#14382C' : dark ? '#000000' : '#F2F2F7';
+  const color = !state.account && !isPhoneLayout() ? '#14382C' : dark ? '#000000' : '#F2F2F7';
+  // A Home Screen app can keep the colour it opened with when the tag only changes, so the tag is
+  // replaced with a new one.
+  if(meta && meta.content !== color){
+    const next = document.createElement('meta');
+    next.name = 'theme-color'; next.content = color;
+    meta.replaceWith(next);
+  }
   // The iPhone app matches it behind the page and in the status bar; hideSplash calls this again.
   tellApp(document.getElementById('splash') ? 'page-splash' : dark ? 'page-dark' : 'page-light');
 }
@@ -1520,7 +1553,7 @@ function openAccountSheet(){
   const el = sheet.el;
   el.querySelector('#langBtn').onclick = ()=>{ sheet.close(); openLangMenu(document.getElementById('accountBtn')); };
   el.querySelector('[data-account-go]')?.addEventListener('click', ()=>{ sheet.close(); goView('settings'); });
-  el.querySelector('#logoutBtn').onclick = ()=>{ sheet.close(); doLogout(); };
+  el.querySelector('#logoutBtn').onclick = ()=>{ sheet.close(); confirmSignOut(); };
   requestAnimationFrame(()=>el.querySelector('#langBtn')?.focus({preventScroll:true}));
 }
 
@@ -2202,6 +2235,7 @@ function openItemMenu(row){
   layer.id = 'ctxLayer'; layer.className = 'ctx-layer';
   const actions = [[1,t('cmAdd')(1),ICON_PLUS],[5,t('cmAdd')(5),ICON_PLUS],[10,t('cmAdd')(10),ICON_PLUS],['type',t('cmType'),ICON_EDIT],
     ['pin', state.pins.includes(id) ? t('unpinItem') : t('pinItem'), ICON_PIN], ['note', t('itemNoteEdit'), ICON_NOTE]];
+  if(canOpen('itemsAdmin')) actions.push(['edit', t('editItem'), ICON_EDIT_ITEM]);
   if(qty) actions.push(['remove',t('cmRemove'),ICON_DELETE]);
   haptic('medium');
   const menuH = actions.length*44 + 16, below = rect.bottom + 12 + menuH < window.innerHeight - 90;
@@ -2225,6 +2259,7 @@ function openItemMenu(row){
     if(a === 'type'){ setTimeout(()=>document.querySelector(`#orderResults [data-qty="${CSS.escape(id)}"]`)?.focus(), 240); return; }
     if(a === 'pin'){ togglePin(id); return; }
     if(a === 'note'){ editItemNote(id); return; }
+    if(a === 'edit'){ openItemModal(id); return; }
     if(a === 'remove'){
       state.cart[id] = 0; refreshOrderView(id);
       toast(t('itemRemoved'), 'ok', {undo:()=>{ state.cart[id] = before; refreshOrderView(id); }});
@@ -2693,7 +2728,7 @@ function attachRecordEvents(){
   const more = document.getElementById('recMoreBtn');
   if(more) more.onclick = ()=>{ state.recordLimit += RECORD_PAGE_SIZE; render(); };
   const r = document.getElementById('recRefreshBtn');
-  if(r) r.onclick = ()=> refreshActivity();
+  if(r) r.onclick = ()=> spinRefresh(r, refreshActivity);
 }
 
 /* ============ Shared popup pieces ============ */
@@ -3271,7 +3306,7 @@ function renderDevices(){
 }
 function attachDeviceEvents(){
   const r = document.getElementById('devRefreshBtn');
-  if(r) r.onclick = ()=> refreshDevices();
+  if(r) r.onclick = ()=> spinRefresh(r, refreshDevices);
   document.querySelectorAll('[data-devlogout]').forEach(b=>b.onclick=async()=>{
     const d = state.devices.find(x=>x.id===b.dataset.devlogout);
     if(!d) return;
@@ -3538,7 +3573,7 @@ function attachSettingsEvents(){
     if(!ai.checked){ setAiConsent(false); return; }
     ai.checked = await aiConsent();
   };
-  document.getElementById('settingsSignOut').onclick = ()=>doLogout();
+  document.getElementById('settingsSignOut').onclick = ()=>confirmSignOut();
   attachNotifEvents();
 }
 

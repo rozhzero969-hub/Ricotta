@@ -23,7 +23,7 @@
    language, with an Update button when a newer version is waiting.
 
    Depends on: APP_VERSION (config.js), t() and state (app.js),
-   showConfirm, showUpdatePopup (modals.js), lset (storage.js). */
+   showConfirm, showUpdatePopup (modals.js), GLYPH_UPDATE (icons.js), lset (storage.js). */
 const UPDATE_CHECK_INTERVAL_MS = 60000; /* check every minute */
 let updateCheckBusy = false;
 let updatePromptOpen = false;
@@ -93,7 +93,7 @@ async function checkForUpdate(){
     if(live === snoozedVersion) return;
     updatePromptOpen = true;
     const ok = await showConfirm(escUpdateText(t('updateReadyMsg')), {
-      okLabel: t('updateNow'), cancelLabel: t('later'), okClass: 'btn-primary'
+      title: t('updateTitle'), okLabel: t('updateNow'), cancelLabel: t('later'), okClass: 'btn-primary', icon: GLYPH_UPDATE
     });
     updatePromptOpen = false;
     if(ok){ hardReload(); return; }
@@ -112,7 +112,7 @@ async function openUpdatePopup(message){
     const hasUpdate = !!(live && live !== APP_VERSION);
     const words = String(message || '').trim();
     const body = `<div class="update-words" dir="auto">${escUpdateText(words || t('updateReadyMsg'))}</div>`;
-    const ok = await showUpdatePopup(body, hasUpdate ? t('updateNow') : t('ok'), hasUpdate ? t('later') : null);
+    const ok = await showUpdatePopup(body, hasUpdate ? t('updateNow') : t('ok'), hasUpdate ? t('later') : null, t('noticeTitle'));
     if(ok && hasUpdate){ hardReload(); return; }   /* page reloads; flag stays set until then */
   }catch(e){ console.error('update popup failed', e); }
   updatePromptOpen = false;
