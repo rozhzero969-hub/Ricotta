@@ -20,7 +20,7 @@ const server=http.createServer((req,res)=>{
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.locator('#itemSearch').waitFor();
   await page.waitForFunction(()=>state.items.length>10);
-  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','assistant','transfers','manage']);
+  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','manage'],'Transfers is off until Settings turns it on');
   assert.equal(await page.locator('.hero-card,.streak-chip').count(),2,'summary board and kitchen streak remain');
   assert.equal(await page.locator('.order-options').count(),0,'the Order screen has no fold');
   assert.equal(await page.locator('#clearOrderBtn').isVisible(),true,'Clear order is shown directly');
@@ -33,8 +33,9 @@ const server=http.createServer((req,res)=>{
   await page.locator('[data-manage-view="units"]').click();
   await page.locator('.unit-chip').first().waitFor();
   assert.equal(await page.locator('[data-manage-view="settings"]').count(),0,'Settings is not inside Manage');
-  await page.locator('#navMoreBtn').click();
-  await page.locator('.nav-more [data-view="settings"]').click();
+  await page.locator('#accountBtn').click();
+  await page.locator('[data-account-go="settings"]').click();
+  await page.waitForSelector('.account-sheet',{state:'detached'});
   await page.locator('[data-dark="on"]').click();
   assert.equal(await page.evaluate(()=>document.documentElement.classList.contains('dark')),true);
   assert.equal(await page.locator('.theme-btn,.faceid-btn,#faceIdToggle,#pref-weatherFx').count(),0,'retired features have no UI');

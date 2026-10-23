@@ -7,11 +7,12 @@
    - Rico's monthly report card in History, with "Save this month" (an Excel
      file and a printable report) before History is cleared.
    - Rico's fun facts from this month's orders.
-   - Undo: whoever sent an order can take it back for 15 minutes.
+   - Undo: Rozha can take back an order she sent for 15 minutes. Only she
+     removes orders; Yunis asks her.
    The server keeps the streak; this file only shows it.
    Depends on (runtime only): state, t, esc, api, render, goView, toast,
    showConfirm, showAlert, ricoFace, ricoAsk, formatIraqDateTime, timeAgo,
-   accountLabel, unitLabel, supplierName, isRozha. */
+   accountLabel, unitLabel, supplierName, isRozha, ricoReact. */
 
 /* ---------- The streak ---------- */
 const STREAK_GOALS = [7,14,30,60,100,150,200,300,365,500,1000];
@@ -30,6 +31,7 @@ function paintStreakChip(pop){
   old.outerHTML = renderStreakChip();
   const chip = document.getElementById('streakChip');
   chip.onclick = openStreakSheet;
+  if(pop) ricoReact('excited', 2400);
   if(pop && !matchMedia('(prefers-reduced-motion: reduce)').matches){ chip.classList.add('ignite'); setTimeout(()=>chip.classList.remove('ignite'), 1200); }
 }
 function nextGoal(n){ return STREAK_GOALS.find(g=>g > n) || (Math.floor(n / 100) + 1) * 100; }
@@ -239,9 +241,9 @@ function printMonthReport(){
   Promise.race([fontsIn, new Promise(r=>setTimeout(r, 2000))]).then(()=>w.print());
 }
 
-/* ---------- Undo a just-sent order (15 minutes, the person who sent it) ---------- */
+/* ---------- Undo a just-sent order (Rozha's own, for 15 minutes) ---------- */
 const UNDO_MS = 15 * 60 * 1000;
-const canUndoOrder = rec => rec && rec.by === state.account && Date.now() - Date.parse(rec.date) < UNDO_MS;
+const canUndoOrder = rec => isRozha() && rec && rec.by === state.account && Date.now() - Date.parse(rec.date) < UNDO_MS;
 async function undoOrder(id){
   const rec = state.history.find(h=>h.id === id);
   if(!rec) return;

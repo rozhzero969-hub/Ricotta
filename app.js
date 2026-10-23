@@ -16,7 +16,7 @@ const state = {
   lang: 'en',
   account: null,        // 'rozha' | 'yunis' | null (signed out)
   name: '',             // "Rozha" / "Yunis"
-  tabs: ['order','assistant','transfers','manage'],   // the four tab-bar screens (the same for both accounts)
+  tabs: ['order','history','manage'],   // the tab-bar screens (Transfers too where Settings turns it on)
   views: [],            // every screen this account may open
   view: 'order',
   pinBuffer: '',
@@ -48,7 +48,9 @@ const LANG_NAMES = {en:'English', ku:'کوردی', ar:'العربية'};
 function t(key){ const v = T[state.lang] && T[state.lang][key]; return v !== undefined ? v : T.en[key]; }
 const isRtl = ()=> state.lang !== 'en';
 const isRozha = ()=> state.account === 'rozha';
-const canOpen = view=> state.views.includes(view) || view === 'queue';
+const canOpen = view=> view === 'queue' || (state.views.includes(view) && (view !== 'transfers' || showTransfers()));
+/* Transfers is a tab only on a device that turns it on in Settings. */
+const showTransfers = ()=> lget('showTransfers') === true;
 /* Dates and times always use the digits 1 2 3, in every language. */
 function intlLocale(){ return ({en:'en-US', ku:'ckb-IQ', ar:'ar-IQ'})[state.lang] + '-u-nu-latn'; }
 const IRAQ_TIME_ZONE = 'Asia/Baghdad';
@@ -397,7 +399,9 @@ const ACCOUNT_VIEWS = {
   rozha: ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record','admin','settings'],
   yunis: ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record']
 };
-const DEFAULT_TABS = ['order','assistant','transfers','manage'];
+/* Order, History and Manage, with Transfers before Manage where Settings turns it on. Rico lives in
+   the top bar and Settings in the account sheet. */
+const tabsFor = ()=> showTransfers() ? ['order','history','transfers','manage'] : ['order','history','manage'];
 const DEVICE_VIEWS = ['settings','manage'];
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
 function applyAccount(a){
@@ -405,7 +409,7 @@ function applyAccount(a){
   state.name = a.name || ({rozha:'Rozha', yunis:'Yunis'})[state.account] || '';
   const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
   state.views = state.account ? [...views.filter(v=>!DEVICE_VIEWS.includes(v)), ...DEVICE_VIEWS] : [];
-  state.tabs = DEFAULT_TABS.slice();
+  state.tabs = tabsFor();
   if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
 }
 /* Loads everything this account needs from the server in one request. */
@@ -431,11 +435,11 @@ async function loadData(){
   paintStreakChip(false);
   return true;
 }
-/* Keeps the saved session's name and tabs current, so an offline start
-   shows the right person and tab bar. */
+/* Keeps the saved session's name current, so an offline start shows the
+   right person. */
 function saveSessionAccount(){
   const s = apiSession();
-  if(s) lset('apiSession', {...s, account:state.account, name:state.name, tabs:state.tabs});
+  if(s) lset('apiSession', {...s, account:state.account, name:state.name});
 }
 
 /* ============ Desktop installation ============ */
@@ -476,7 +480,7 @@ function signOut(reason, {preserveSession = false} = {}){
   ricoReset();
   if(!preserveSession) clearApiSession();
   forcedRefreshOpen = false;
-  state.account = null; state.name = ''; state.views = []; state.tabs = DEFAULT_TABS.slice();
+  state.account = null; state.name = ''; state.views = []; state.tabs = tabsFor();
   state.suppliers = []; state.items = []; state.units = []; state.history = [];
   state.activity = []; state.devices = []; state.reminder = null;
   state.streak = null; state.pins = []; state.months = [];
@@ -689,6 +693,7 @@ const RENDERERS = {
   settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()],
   transfers:[()=>renderTransfers(),()=>attachTransferEvents()]
 };
+const shellKey = ()=>[state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
 function render(){
   applyLangClasses();
   applyPrefs();
@@ -704,8 +709,7 @@ function render(){
   const content = `${state.view === 'assistant' ? '' : renderPageHeading()}${state.view === 'order' ? renderPushBanner() : ''}${managedView(state.view)?renderManageNav():''}${draw()}`;
   // The shell (top bar and tab bar) stays mounted while the account, its tabs
   // and the language stay the same.
-  const shellKey = [state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
-  const keepShell = app.dataset.shell === shellKey && app.querySelector('.content');
+  const keepShell = app.dataset.shell === shellKey() && app.querySelector('.content');
   // Redrawing the same screen keeps your place: lists refill a moment later, and without this the page
   // would shrink for that moment and snap to the top (very visible on a phone with the keyboard up).
   const sameView = keepShell && app.dataset.screen === state.view;
@@ -726,7 +730,7 @@ function render(){
     attachShellEvents();
   }
   app.classList.remove('static-update');
-  app.dataset.shell = shellKey; app.dataset.screen = state.view;
+  app.dataset.shell = shellKey(); app.dataset.screen = state.view;
   attachContentEvents();
   attach();
   if(state.view !== 'assistant') document.body.classList.remove('rico-composing');
@@ -743,29 +747,43 @@ function render(){
   syncInstallPrompt();
 }
 
-/* A red dot on Rico's tab while an order is late or Rico has written first
-   (checked every minute). */
+/* Rico in the top bar: his face in a small glass circle that opens his screen. While an order is
+   late or he has written first, he shows how he feels, a red dot appears and a ring of light turns
+   slowly around him (checked every minute). */
 function updateRicoBadge(){
-  const dot = document.querySelector('.navbtn[data-view="assistant"] .nav-badge');
-  if(!dot) return;
+  const btn = document.getElementById('ricoTopBtn');
+  if(!btn) return;
   const late = ricoLateOrders().length, unread = ricoUnread();
-  // While something is waiting, his tab shows how he feels instead of the spark.
-  const btn = dot.parentElement, mood = unread ? ricoUnreadMood() : late ? 'angry' : '';
-  if((btn.dataset.ricoFace || '') !== mood){
-    btn.dataset.ricoFace = mood;
-    const icon = btn.querySelector('.rico-spark, .rico-bot');
-    if(icon) icon.outerHTML = mood ? ricoFace(mood, 'rico-tab') : NAV_ICONS.assistant;
-  }
-  dot.hidden = !(late || unread);
-  dot.parentElement.setAttribute('aria-label', late ? t('ricoNavLate')(late) : unread ? t('ricoNavUnread') : t('ricoName'));
-
+  btn.classList.toggle('waiting', !!(late || unread));
+  btn.querySelector('.rico-badge').hidden = !(late || unread);
+  btn.setAttribute('aria-label', late ? t('ricoNavLate')(late) : unread ? t('ricoNavUnread') : t('ricoName'));
+  if(!btn.classList.contains('reacting')) setRicoTopMood(btn, unread ? ricoUnreadMood() : late ? 'angry' : 'happy');
 }
 setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
+/* Swapping the mood class (not the drawing) lets his colour and face cross-fade. */
+function setRicoTopMood(btn, mood){
+  const face = btn.querySelector('.rico-bot');
+  if(!face || face.classList.contains('mood-' + mood)) return;
+  RICO_MOODS.forEach(m=>face.classList.remove('mood-' + m));
+  face.classList.add('mood-' + mood);
+}
+/* Rico reacts to what just happened: his face changes for a moment while the ring flares once. */
+let ricoReactTimer = 0;
+function ricoReact(mood, ms = 1800){
+  const btn = document.getElementById('ricoTopBtn');
+  if(!btn) return;
+  clearTimeout(ricoReactTimer);
+  setRicoTopMood(btn, mood);
+  btn.classList.remove('reacting'); void btn.offsetWidth; btn.classList.add('reacting');
+  ricoReactTimer = setTimeout(()=>{ btn.classList.remove('reacting'); updateRicoBadge(); }, ms);
+}
 
 /* ============ Navigation ============
-   Phones: Order, Rico, Transfers and Manage plus More (History, Record,
-   Admin, Settings). Computers: a sidebar with every screen. A lens glides to
-   the current tab, and on phones the page can be swiped between the tabs. */
+   Phones: Order, History and Manage (and Transfers where Settings turns it
+   on) plus More (Record, and Admin for Rozha). Computers: a sidebar with the
+   same screens. Rico opens from the top bar and Settings from the account
+   sheet. A lens glides to the current tab, and on phones the page can be
+   swiped between the tabs. */
 const VIEW_LABEL_KEYS = {manage:'manage',order:'order', assistant:'ricoName', transfers:'transfers', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
@@ -773,18 +791,18 @@ function isPhoneLayout(){ return window.innerWidth < 960; }
    on a phone, see boot.js), otherwise the page itself. */
 function inAppFrame(){ return document.documentElement.classList.contains('app-shell') && isPhoneLayout(); }
 function scrollBox(){ return (inAppFrame() && document.querySelector('.content')) || document.scrollingElement; }
-/* Every screen in tab-bar order: the four tabs first, then the rest. */
+/* Every screen in tab-bar order: the tabs first, then the rest. */
 function navOrder(){ return [...state.tabs, ...state.views.filter(v=>!state.tabs.includes(v))]; }
 const managedView=v=>['manage','itemsAdmin','suppliers','units'].includes(v);
-const moreViews=()=>['history','record','admin','settings'].filter(canOpen);
+const moreViews=()=>['record','admin'].filter(canOpen);
 const mainView=v=>managedView(v)?'manage':v;
 function viewIndex(v){ const i = navOrder().indexOf(v); return i >= 0 ? i : navOrder().length; }
 const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function renderBottomNav(){
-  const button=id=>`<button type="button" class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span>${id==='assistant'?'<i class="nav-badge" hidden></i>':''}${id==='transfers'?transferNavBadge():''}</button>`;
+  const button=id=>`<button type="button" class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span>${id==='transfers'?transferNavBadge():''}</button>`;
   // On a computer the tab bar is the sidebar, with the ricotta mark at its top.
-  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="nav-indicator" aria-hidden="true"></span>${DEFAULT_TABS.map(button).join('')}<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${moreViews().map(button).join('')}</div></nav>`;
+  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${moreViews().map(button).join('')}</div></nav>`;
 }
 function renderManageNav(){
   return `<div class="manage-nav"><nav class="manage-sections" aria-label="${esc(t('catalog'))}">${[['manage','items'],['suppliers','suppliers'],['units','units']].filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav></div>`;
@@ -798,6 +816,8 @@ document.addEventListener('click',event=>{if(!event.target.closest('.bottomnav')
 document.addEventListener('keydown',event=>{if(event.key==='Escape')setMoreOpen(false);});
 function markActiveNav(){
   document.getElementById('navMoreBtn')?.classList.toggle('active',moreViews().includes(state.view));
+  const rico = document.getElementById('ricoTopBtn');
+  if(rico){ rico.classList.toggle('active', state.view === 'assistant'); if(state.view === 'assistant') rico.setAttribute('aria-current','page'); else rico.removeAttribute('aria-current'); }
   document.querySelectorAll('.bottomnav [data-view]').forEach(b=>{
     const on = b.dataset.view === mainView(state.view);
     b.classList.toggle('active', on);
@@ -1479,6 +1499,7 @@ function renderTopbar(){
     <div class="topbar-actions">
       ${renderStreakChip()}
       <div class="chip conn-chip" id="connectionStatus" role="status"${state.apiOnline?' hidden':''}><span></span><em>${esc(t('offline'))}</em></div>
+      <button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}"><span class="rico-plate">${ricoFace('happy', 'rico-top-face', {head:true})}</span><i class="rico-badge" hidden></i></button>
       <button type="button" class="account-btn" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
     </div>
   </header>`;
@@ -1547,11 +1568,25 @@ function setLang(lang){
 
 /* Events on the top bar and tab bar (bound once, when they are built). */
 function attachShellEvents(){
+  attachNavEvents();
+  document.getElementById('accountBtn').onclick = openAccountSheet;
+  document.getElementById('ricoTopBtn').onclick = ()=>goView('assistant');
+  document.getElementById('streakChip').onclick = openStreakSheet;
+}
+function attachNavEvents(){
   const nav = document.querySelector('.bottomnav');
   nav.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>goView(b.dataset.view));
   document.getElementById('navMoreBtn').onclick=()=>setMoreOpen(!nav.classList.contains('more-open'));
-  document.getElementById('accountBtn').onclick = openAccountSheet;
-  document.getElementById('streakChip').onclick = openStreakSheet;
+}
+/* Settings adds or removes Transfers: only the tab bar is drawn again, so the page keeps its place. */
+function redrawTabBar(){
+  state.tabs = tabsFor();
+  const nav = document.querySelector('.bottomnav');
+  if(!nav) return;
+  nav.outerHTML = renderBottomNav();
+  attachNavEvents();
+  document.getElementById('app').dataset.shell = shellKey();
+  placeNavIndicator();
 }
 /* Events inside the page that more than one screen uses. */
 function attachContentEvents(){
@@ -1975,6 +2010,7 @@ function attachOrderEvents(){
     const before = {...state.cart};
     state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id && i.available!==false) && qty>0));
     refreshOrderView();
+    ricoReact('excited');
     toast(t('sameAsLastFilled'), 'ok', {undo:()=>{ state.cart = before; refreshOrderView(); }});
   };
   const clear=document.getElementById('clearOrderBtn');
@@ -1984,6 +2020,7 @@ function attachOrderEvents(){
     // cleared too (a save the server refuses would otherwise reopen on every Send), and Undo brings it back.
     const queue=state.queue?.record && state.queue.saveState!=='failed' ? null : state.queue;
     state.cart={};persistCartDraft();if(queue){state.queue=null;persistQueue();}refreshOrderView();paintDraftStatus();
+    ricoReact('sad');
     toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before;persistCartDraft();paintDraftStatus(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
   };
   const send = document.getElementById('sendOrdersBtn');
@@ -2097,8 +2134,10 @@ function stepQty(btn){
   const next = btn.dataset.inc ? Math.min(MAX_QTY, (state.cart[id]||0)+1) : Math.max(0,(state.cart[id]||0)-1);
   if(next === (state.cart[id]||0)) return;
   haptic('selection');
+  const first = next > 0 && !cartCount();
   state.cart[id] = next;
   refreshOrderView(id);
+  if(first) ricoReact('happy');
 }
 /* Hold + or − and the number keeps going, faster the longer it's held. */
 let stepHold = null;
@@ -2401,7 +2440,7 @@ async function maybeFinishQueue(){
         items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
       }))
     };
-    if(!queue.record){try{playOrdersSent();haptic('success');}catch(_){/* Audio must never interrupt saving. */}}
+    if(!queue.record){try{playOrdersSent();haptic('success');ricoReact('grateful', 2400);}catch(_){/* Audio must never interrupt saving. */}}
     queue.record = record;
     queue.saveState = 'saving';
     persistQueue();   // the same order id after a restart, so it is never saved twice
@@ -2429,8 +2468,8 @@ async function maybeFinishQueue(){
     state.queue = null;
     if(state.view === 'queue') goView('order');
     if(result === 'saved'){
-      // Undo for 15 minutes (also from History), the streak may light up.
-      toast(t('orderSavedToHistory'), 'ok', {undo:()=>undoOrder(record.id)});
+      // Rozha can undo for 15 minutes (also from History); the streak may light up.
+      toast(t('orderSavedToHistory'), 'ok', isRozha() ? {undo:()=>undoOrder(record.id)} : {});
       try{ refreshStreak({celebrate:true, before:streakBefore}); }
       catch(error){ console.error('After-order extras failed', error); }   // the order is already saved
     } else toast(result === 'queued' ? t('orderSavedOffline') : t('saveFailed'), 'warn');
@@ -2455,26 +2494,31 @@ function dayLabel(date){
   if(erbilDate(d)===erbilDate(yesterday)) return t('yesterday');
   return formatIraqDateTime(d,{weekday:'long',day:'numeric',month:'long'});
 }
+/* One sent order, read like a receipt: the time, who sent it and how much went out on top; each
+   supplier with its items one per line (the name, then the amount); Send Again, Undo and Delete at
+   the bottom. */
 function orderHistoryCard(rec){
   const time = formatIraqDateTime(rec.date,{hour:'numeric',minute:'2-digit'});
-  const supplierLines = rec.entries.map(e=>{
+  const lineCount = rec.entries.reduce((n,e)=>n + e.items.length, 0);
+  const sections = rec.entries.map(e=>{
     // Prefer the live name; fall back to the name saved with the order (a deleted supplier).
     const live = state.suppliers.find(s=>s.id===e.supplierId);
     const name = live ? live.name : (e.supplierName || t('noSupplier'));
-    const itemsLine = e.items.map(i=>`${esc(i.name)} × ${i.qty} ${esc(unitLabel(i.unit))}`).join(' · ');
-    return `<div class="hist-entry"><div class="hist-supplier">${supplierMono(name)}${esc(name)}</div><div class="hist-items">${itemsLine}</div></div>`;
+    const lines = e.items.map(i=>`<li><span dir="auto">${esc(i.name)}</span><b dir="auto">${i.qty} ${esc(unitLabel(i.unit))}</b></li>`).join('');
+    return `<section class="hist-entry"><div class="hist-supplier">${supplierMono(name)}<span dir="auto">${esc(name)}</span></div><ul class="hist-lines">${lines}</ul></section>`;
   }).join('');
-  return `<div class="hist-card" data-search-row data-search-text="${esc([rec.date,...rec.entries.flatMap(e=>[state.suppliers.find(s=>s.id===e.supplierId)?.name||e.supplierName||'',...e.items.flatMap(l=>[l.name,...(state.items.find(i=>i.id===l.itemId)?.aliases||[])])])].join(' '))}">
+  return `<article class="hist-card" data-search-row data-search-text="${esc([rec.date,...rec.entries.flatMap(e=>[state.suppliers.find(s=>s.id===e.supplierId)?.name||e.supplierName||'',...e.items.flatMap(l=>[l.name,...(state.items.find(i=>i.id===l.itemId)?.aliases||[])])])].join(' '))}">
     <div class="hist-top">
-      <div class="hist-date">${esc(time)}${accountLabel(rec.by) ? ` \u00b7 ${esc(t('sentBy')(''))}${whoBadge(rec.by)}` : ''}</div>
-      <div class="row-actions">
-        ${canUndoOrder(rec) ? `<button class="btn btn-ghost hist-undo" data-undohist="${esc(rec.id)}">${esc(t('undo'))}</button>` : ''}
-        <button class="btn btn-ghost hist-again" data-reorderhist="${esc(rec.id)}">${ICON_REPEAT}<span>${esc(t('orderAgain'))}</span></button>
-        ${isRozha() ? `<button class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
-      </div>
+      <div class="hist-date"><b>${esc(time)}</b>${accountLabel(rec.by) ? `<span>${esc(t('sentBy')(''))}</span>${whoBadge(rec.by)}` : ''}</div>
+      <span class="hist-count">${esc(t('itemCount')(lineCount))}${rec.entries.length > 1 ? ` \u00b7 ${esc(t('supplierCount')(rec.entries.length))}` : ''}</span>
     </div>
-    ${supplierLines}
-  </div>`;
+    ${sections}
+    <div class="hist-actions">
+      <button type="button" class="btn btn-ghost hist-again" data-reorderhist="${esc(rec.id)}">${ICON_REPEAT}<span>${esc(t('orderAgain'))}</span></button>
+      ${canUndoOrder(rec) ? `<button type="button" class="btn btn-ghost hist-undo" data-undohist="${esc(rec.id)}">${esc(t('undo'))}</button>` : ''}
+      ${isRozha() ? `<button type="button" class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
+    </div>
+  </article>`;
 }
 /* Orders for the current Baghdad calendar month, newest first. */
 function renderHistory(){
@@ -2512,15 +2556,28 @@ function attachHistoryEvents(){
     goView('order');
     toast(t('reorderReady')(cartCount()), 'ok', {undo:()=>{ state.cart = before; persistCartDraft(); if(state.view === 'order') refreshOrderView(); }});
   });
-  document.querySelectorAll('[data-delhist]').forEach(b=>b.onclick=async()=>{
-    if(!(await showConfirm(t('confirmDeleteHistory')))) return;
+  // Only Rozha can delete an order, and only with her PIN (the server checks it); Yunis asks her.
+  document.querySelectorAll('[data-delhist]').forEach(b=>b.onclick=()=>{
     const id = b.dataset.delhist;
-    const r = await api(`orders/${encodeURIComponent(id)}`, {method:'DELETE'});
-    if(!r.ok){ await showAlert(t('saveFailed')); return; }
-    state.history = state.history.filter(h=>h.id!==id);
-    // Deleting the day's only order takes that day off the kitchen streak.
-    if(r.data && r.data.streak) streakArrived(r.data.streak, null);
-    render();
+    showFormModal({
+      title: esc(t('deleteOrderTitle')),
+      bodyHtml: `<div class="modal-msg">${esc(t('deleteOrderNote'))}</div><div class="field"><label for="delPin">${esc(t('yourPin'))}</label><input id="delPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></div>`,
+      okLabel: t('delete'), okClass: 'btn-danger',
+      onSubmit: async ()=>{
+        const pin = document.getElementById('delPin').value.trim();
+        if(!/^\d{6}$/.test(pin)) return {error:t('pinsInvalidLength')};
+        const r = await api(`orders/${encodeURIComponent(id)}`, {method:'DELETE', body:{pin}});
+        if(!r.ok){
+          const code = r.data && r.data.error;
+          return {error: code === 'wrong_pin' ? t('wrongPin') : r.status === 429 ? t('tooManyAttempts') : t('saveFailed')};
+        }
+        state.history = state.history.filter(h=>h.id!==id);
+        // Deleting the day's only order takes that day off the kitchen streak.
+        if(r.data && r.data.streak) streakArrived(r.data.streak, null);
+        render();
+        return {};
+      }
+    });
   });
 }
 
@@ -3301,6 +3358,12 @@ function renderDisplaySettings(){
     ${row('pref-compactRows', prefOn('compactRows'), 'compactRowsLabel', 'compactRowsHint')}
     ${row('pref-showLastQty', prefOn('showLastQty'), 'lastQtyLabel', 'lastQtyHint')}</div>`;
 }
+/* Transfers is still being made, so its tab is off until someone turns it on here (on this device). */
+function renderTabSettings(){
+  if(!state.views.includes('transfers')) return '';
+  return `<div class="section-title">${esc(t('settingsTabBar'))}</div><div class="form-card">
+    <label class="check-row preference-row"><input type="checkbox" id="pref-showTransfers" ${showTransfers()?'checked':''}><span>${esc(t('transfers'))}<small>${esc(t('showTransfersHint'))}</small></span></label></div>`;
+}
 function renderOrderSounds(){
   return `<div class="section-title">${esc(t('orderSounds'))}</div><div class="form-card">${[['qty','quantitySound'],['sent','sentSound']].map(([id,key])=>`<label class="check-row preference-row"><input type="checkbox" id="sound-${id}" data-sound="${id}" ${soundOn(id)?'checked':''}><span>${esc(t(key))}</span></label>`).join('')}</div>`;
 }
@@ -3321,7 +3384,7 @@ function latestVersion(){
   return (state.devices || []).map(d=>d.appVersion).filter(Boolean).reduce((m, v)=>versionCmp(v, m) > 0 ? v : m, APP_VERSION);
 }
 function renderSettings(){
-  return `${renderPendingSync()}${renderAppearance()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderAppearance()}${renderDisplaySettings()}${renderTabSettings()}${renderOrderSounds()}${renderNotifSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
 /* Privacy: Rico's AI permission (asked the first time Rico is used, and taken back here),
    the privacy policy, and Sign Out at the very end, like the iPhone's Settings. */
@@ -3468,6 +3531,8 @@ function attachSettingsEvents(){
     const box = document.getElementById(id);
     if(box) box.onchange = ()=>{ lset(key, box.checked ? true : null); applyPrefs(); };
   });
+  const transfersTab = document.getElementById('pref-showTransfers');
+  if(transfersTab) transfersTab.onchange = ()=>{ lset('showTransfers', transfersTab.checked ? true : null); redrawTabBar(); };
   const ai = document.getElementById('aiConsent');
   if(ai) ai.onchange = async ()=>{
     if(!ai.checked){ setAiConsent(false); return; }
