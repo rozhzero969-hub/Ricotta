@@ -200,19 +200,24 @@ function createModal(root, html, {role = 'dialog', cancelValue, onCancel} = {}) 
   return dialog;
 }
 
+/* The big popups (an update, a refresh, signing out, a notification) lead with a symbol on a tinted
+   tile and stack their buttons full width, like the iPhone's own important alerts. */
+function modalSymbol(icon, tone = '') {
+  return icon ? `<div class="modal-symbol ${tone}" aria-hidden="true">${icon}</div>` : '';
+}
 function showConfirm(message, opts = {}) {
   opts = opts || {};
   const okLabel = opts.okLabel || t('delete');
   const cancelLabel = opts.cancelLabel || t('cancel');
   const okClass = ['btn-danger', 'btn-primary', 'btn-ghost'].includes(opts.okClass) ? opts.okClass : 'btn-danger';
   const title = opts.title ? `<div class="modal-alert-title">${esc(opts.title)}</div>` : '';
+  const hero = !!opts.icon;
+  const okHtml = `<button type="button" class="btn ${okClass}" id="modalOkBtn">${esc(okLabel)}</button>`;
+  const cancelHtml = `<button type="button" class="btn btn-ghost" id="modalCancelBtn">${esc(cancelLabel)}</button>`;
   const dialog = createModal(ensureModalRoot(), `
-    <div class="modal-overlay"><div class="modal-box modal-alert">
-      ${title}<div class="modal-msg">${message}</div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" id="modalCancelBtn">${esc(cancelLabel)}</button>
-        <button type="button" class="btn ${okClass}" id="modalOkBtn">${esc(okLabel)}</button>
-      </div>
+    <div class="modal-overlay"><div class="modal-box modal-alert${hero ? ' modal-hero' : ''}">
+      ${modalSymbol(opts.icon, opts.tone)}${title}<div class="modal-msg">${message}</div>
+      <div class="modal-actions${hero ? ' stacked' : ''}">${hero ? okHtml + cancelHtml : cancelHtml + okHtml}</div>
     </div></div>`, {role: 'alertdialog', cancelValue: false});
   dialog.onCancel = () => dialog.finish(false);
   dialog.box.querySelector('#modalOkBtn').onclick = () => dialog.finish(true);
@@ -222,10 +227,11 @@ function showConfirm(message, opts = {}) {
   return dialog.promise;
 }
 
-function showAlert(message) {
+function showAlert(message, opts = {}) {
+  opts = opts || {};
   const dialog = createModal(ensureModalRoot(), `
-    <div class="modal-overlay"><div class="modal-box modal-alert">
-      <div class="modal-msg">${message}</div>
+    <div class="modal-overlay"><div class="modal-box modal-alert${opts.icon ? ' modal-hero' : ''}">
+      ${modalSymbol(opts.icon, opts.tone)}${opts.title ? `<div class="modal-alert-title">${esc(opts.title)}</div>` : ''}<div class="modal-msg">${message}</div>
       <div class="modal-actions"><button type="button" class="btn btn-primary" id="modalAlertOkBtn">${esc(t('ok'))}</button></div>
     </div></div>`);
   const ok = dialog.box.querySelector('#modalAlertOkBtn');
@@ -267,27 +273,29 @@ function showPrompt(message, opts = {}) {
 /* No cancel or outside dismissal: it remains until the caller reloads. */
 function showForcedRefresh(title, message, okLabel) {
   const dialog = createModal(ensureForceRoot(), `
-    <div class="modal-overlay"><div class="modal-box">
-      <div class="force-title">${esc(title)}</div><div class="modal-msg">${message}</div>
-      <div class="modal-actions"><button type="button" class="btn btn-primary" id="forceRefreshBtn">${esc(okLabel)}</button></div>
+    <div class="modal-overlay"><div class="modal-box modal-alert modal-hero">
+      ${modalSymbol(GLYPH_REFRESH)}<div class="force-title">${esc(title)}</div><div class="modal-msg">${message}</div>
+      <div class="modal-actions stacked"><button type="button" class="btn btn-primary" id="forceRefreshBtn">${ICON_REFRESH}<span>${esc(okLabel)}</span></button></div>
     </div></div>`, {role: 'alertdialog'});
   const button = dialog.box.querySelector('#forceRefreshBtn');
   button.onclick = () => {
     button.disabled = true;
-    button.classList.add('is-busy');
+    button.classList.add('refreshing');
     button.setAttribute('aria-busy', 'true');
+    dialog.box.querySelector('.modal-symbol').classList.add('refreshing');
     dialog.finish(true, true);
   };
   dialog.focus(button);
   return dialog.promise;
 }
 
-function showUpdatePopup(message, okLabel, laterLabel) {
+function showUpdatePopup(message, okLabel, laterLabel, title = '') {
   const dialog = createModal(ensureForceRoot(), `
-    <div class="modal-overlay"><div class="modal-box">
-      <div class="modal-msg">${message}</div><div class="modal-actions">
-        ${laterLabel ? `<button type="button" class="btn btn-ghost" id="updLaterBtn">${esc(laterLabel)}</button>` : ''}
+    <div class="modal-overlay"><div class="modal-box modal-alert modal-hero">
+      ${modalSymbol(laterLabel ? GLYPH_UPDATE : ICON_BELL)}${title ? `<div class="force-title">${esc(title)}</div>` : ''}<div class="modal-msg">${message}</div>
+      <div class="modal-actions stacked">
         <button type="button" class="btn btn-primary" id="updOkBtn">${esc(okLabel)}</button>
+        ${laterLabel ? `<button type="button" class="btn btn-ghost" id="updLaterBtn">${esc(laterLabel)}</button>` : ''}
       </div>
     </div></div>`, {cancelValue: false});
   const ok = dialog.box.querySelector('#updOkBtn');
@@ -307,7 +315,8 @@ function showUpdatePopup(message, okLabel, laterLabel) {
 }
 
 /* Popup form. onSubmit(again) returns {error}, {keepOpen:true, message},
-   or a success value. Only explicit Save or Cancel dismisses a draft. */
+   or a success value. Only explicit Save or Cancel dismisses a draft.
+   okClass 'btn-danger' makes the main button red (a delete). */
 function showFormModal(opts) {
   const dialog = createModal(ensureModalRoot(), `
     <div class="modal-overlay modal-overlay-top"><div class="modal-box modal-form">

@@ -603,7 +603,7 @@ const server=http.createServer((req,res)=>{
     assert.match(await login.page.locator('.welcome-title').textContent(),/Welcome back, Yunis/,'welcome back says the name');
     await login.page.waitForSelector('#orderResults');
     assert.equal(await login.page.evaluate(()=>state.account),'yunis');
-    await login.page.locator('#accountBtn').click();await login.page.locator('.account-sheet #logoutBtn').click();await login.page.waitForSelector('.pin-boxes');
+    await login.page.locator('#accountBtn').click();await login.page.locator('.account-sheet #logoutBtn').click();await login.page.locator('#modalOkBtn').click();await login.page.waitForSelector('.pin-boxes');
     assert.equal(await login.page.locator('.pin-box.filled').count(),0,'logout resets the PIN feedback');
     await login.ctx.close();
     const reduced=await context({reducedMotion:'reduce'});await reduced.page.locator('[data-inc="i1"]').click();
