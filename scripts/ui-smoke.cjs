@@ -503,7 +503,7 @@ const server=http.createServer((req,res)=>{
     await y.page.setViewportSize({width:390,height:844});
     assert.equal(await y.page.locator('.bottomnav [data-view="admin"]').count(),0,'no Admin for Yunis');
     await openView(y.page,'history');
-    assert.equal(await y.page.locator('[data-delhist]').count(),1,'Yunis sees Delete, which asks for Rozha\u2019s PIN');
+    assert.equal(await y.page.locator('[data-delhist], [data-undohist]').count(),0,'only Rozha can delete or undo orders');
     await openView(y.page,'suppliers');
     assert.equal(await y.page.locator('#supAddBtn').count(),1,'Yunis can edit suppliers');
     await openView(y.page,'units');

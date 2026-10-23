@@ -375,7 +375,8 @@
     if(method === 'DELETE' && (m = path.match(/^orders\/(.+)$/))){
       const o = db.history.find(x=>x.id === decodeURIComponent(m[1]));
       if(!o) return json({ok:true, streak:streakView()});
-      // As on the server: the sender may undo for 15 minutes; anything else takes Rozha's PIN (any 6 digits in the Lab).
+      // As on the server: only Rozha removes orders; her own for 15 minutes, any other with her PIN (any 6 digits in the Lab).
+      if(account !== 'rozha') return fail('forbidden', 403);
       if(body.pin !== undefined){ if(!/^\d{6}$/.test(String(body.pin))) return fail('wrong_pin', 403); }
       else if(o.by !== account || Date.now() - Date.parse(o.date) > 15*60000) return fail('pin_required', 403);
       db.history = db.history.filter(x=>x !== o);

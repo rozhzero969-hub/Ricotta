@@ -187,12 +187,12 @@ try {
   assert.equal(boot.tabs,undefined);
   assert.equal(boot.theme,undefined);
 
-  // History: whoever sent an order may undo it for 15 minutes; deleting any other takes Rozha's PIN,
-  // on either phone, and a wrong PIN counts as a failed sign-in.
+  // History: only Rozha removes orders. Her own for 15 minutes; any other takes her PIN, and a wrong
+  // PIN counts as a failed sign-in. Yunis cannot remove any (he asks her).
   const fresh = new Date().toISOString(), old = new Date(Date.now() - 3600_000).toISOString();
   const deletes = () => calls.filter(c => c.name === 'app_internal_delete_order');
   reset(); tables.app_orders = [{ id: 'fresh', created_by: 'rozha', created_at: fresh }, { id: 'old', created_by: 'rozha', created_at: old }];
-  assert.equal((await call('orders/fresh', {}, 'DELETE')).status, 200, 'the sender can undo a fresh order');
+  assert.equal((await call('orders/fresh', {}, 'DELETE')).status, 200, 'Rozha can undo her fresh order');
   assert.equal((await call('orders/old', {}, 'DELETE')).status, 403, 'an older order needs Rozha\u2019s PIN');
   assert.equal(deletes().length, 1);
   assert.equal((await call('orders/old', { pin: '111111' }, 'DELETE')).status, 403, 'a wrong PIN deletes nothing');
@@ -201,10 +201,11 @@ try {
   assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 200, 'Rozha\u2019s PIN deletes it');
   assert.equal(deletes().at(-1).args.p_actor, 'rozha');
   reset(); tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis';
-  tables.app_orders = [{ id: 'old', created_by: 'yunis', created_at: old }];
-  assert.equal((await call('orders/old', {}, 'DELETE')).status, 403, 'Yunis cannot delete an older order alone');
-  assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 200, 'Rozha\u2019s PIN works on Yunis\u2019s phone');
-  assert.equal(deletes().at(-1).args.p_actor, 'rozha');
+  tables.app_orders = [{ id: 'mine', created_by: 'yunis', created_at: fresh }, { id: 'old', created_by: 'yunis', created_at: old }];
+  assert.equal((await call('orders/mine', {}, 'DELETE')).status, 403, 'Yunis cannot undo even his own fresh order');
+  assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 403, 'not even with Rozha\u2019s PIN');
+  assert.equal(deletes().length, 0);
+  assert.equal(calls.some(c => c.name === 'app_internal_check_account_pin'), false, 'and no PIN is checked for him');
   reset(); reservation = null; tables.app_orders = [{ id: 'old', created_by: 'rozha', created_at: old }];
   assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 429, 'after too many wrong PINs deleting waits too');
   assert.equal(deletes().length, 0);

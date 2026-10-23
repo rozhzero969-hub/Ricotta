@@ -2468,8 +2468,8 @@ async function maybeFinishQueue(){
     state.queue = null;
     if(state.view === 'queue') goView('order');
     if(result === 'saved'){
-      // Undo for 15 minutes (also from History), the streak may light up.
-      toast(t('orderSavedToHistory'), 'ok', {undo:()=>undoOrder(record.id)});
+      // Rozha can undo for 15 minutes (also from History); the streak may light up.
+      toast(t('orderSavedToHistory'), 'ok', isRozha() ? {undo:()=>undoOrder(record.id)} : {});
       try{ refreshStreak({celebrate:true, before:streakBefore}); }
       catch(error){ console.error('After-order extras failed', error); }   // the order is already saved
     } else toast(result === 'queued' ? t('orderSavedOffline') : t('saveFailed'), 'warn');
@@ -2516,7 +2516,7 @@ function orderHistoryCard(rec){
     <div class="hist-actions">
       <button type="button" class="btn btn-ghost hist-again" data-reorderhist="${esc(rec.id)}">${ICON_REPEAT}<span>${esc(t('orderAgain'))}</span></button>
       ${canUndoOrder(rec) ? `<button type="button" class="btn btn-ghost hist-undo" data-undohist="${esc(rec.id)}">${esc(t('undo'))}</button>` : ''}
-      <button type="button" class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>
+      ${isRozha() ? `<button type="button" class="icon-btn danger" data-delhist="${esc(rec.id)}" aria-label="${esc(t('delete'))}" title="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
     </div>
   </article>`;
 }
@@ -2556,12 +2556,12 @@ function attachHistoryEvents(){
     goView('order');
     toast(t('reorderReady')(cartCount()), 'ok', {undo:()=>{ state.cart = before; persistCartDraft(); if(state.view === 'order') refreshOrderView(); }});
   });
-  // Only Rozha can delete an order: on any phone it asks for her PIN, and the server checks it.
+  // Only Rozha can delete an order, and only with her PIN (the server checks it); Yunis asks her.
   document.querySelectorAll('[data-delhist]').forEach(b=>b.onclick=()=>{
     const id = b.dataset.delhist;
     showFormModal({
       title: esc(t('deleteOrderTitle')),
-      bodyHtml: `<div class="modal-msg">${esc(t('deleteOrderNote'))}</div><div class="field"><label for="delPin">${esc(t('pinOf')(accountLabel('rozha')))}</label><input id="delPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></div>`,
+      bodyHtml: `<div class="modal-msg">${esc(t('deleteOrderNote'))}</div><div class="field"><label for="delPin">${esc(t('yourPin'))}</label><input id="delPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></div>`,
       okLabel: t('delete'), okClass: 'btn-danger',
       onSubmit: async ()=>{
         const pin = document.getElementById('delPin').value.trim();

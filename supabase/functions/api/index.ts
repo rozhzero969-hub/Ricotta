@@ -22,7 +22,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   DELETE suppliers/:id | items/:id | units/:id                delete one record (+ its Record entry)
 //   PUT    supplier-order/:supplierId {itemIds}                 item order for one supplier
 //   POST   orders                     {id, date, entries}       save a sent order
-//   DELETE orders/:id                 {pin?} the sender: undo within 15 minutes; any with Rozha's PIN
+//   DELETE orders/:id                 {pin?} rozha: her own within 15 minutes, any with her PIN
 //   GET    streak                                               the kitchen streak
 //   POST   streak/recover                                       Rico brings a broken kitchen streak back
 //   GET    rico-chats[?account=]                                both accounts' Rico chats (each can read and delete the other's)
@@ -79,7 +79,7 @@ const ACCOUNT_VIEWS: Record<string, string[]> = {
   rozha: VIEWS,
   yunis: ["order", "assistant", "transfers", "manage", "history", "suppliers", "itemsAdmin", "units", "record"],
 };
-// Whoever sent an order may undo it this long without Rozha's PIN (the database allows the same).
+// Rozha may undo an order she sent this long without typing her PIN.
 const UNDO_MS = 15 * 60_000;
 // Transfers is still being made: the tab shows its design, and these routes refuse until it is ready.
 const TRANSFERS_OPEN = false;
@@ -706,11 +706,11 @@ Deno.serve(async (req) => {
     // Orders
     if (M === "POST" && path === "orders") return await saveOrder(s, b);
     if (M === "DELETE" && (m = path.match(/^orders\/([^/]{1,160})$/))) {
-      // Sent orders are the kitchen's paper trail. Whoever sent one may undo it within 15 minutes;
-      // removing any other takes Rozha's PIN, typed on whichever phone. A wrong PIN counts as a
-      // failed sign-in (the same limits), and the database checks both rules again.
+      // Sent orders are the kitchen's paper trail, and only Rozha removes them (Yunis asks her). She
+      // may undo her own for 15 minutes; any other takes her PIN. A wrong PIN counts as a failed
+      // sign-in (the same limits), and the database checks the rules again.
+      if (!rozha) return fail("forbidden", 403);
       const id = decodeURIComponent(m[1]);
-      let actor: Account = s.account;
       if (b.pin !== undefined) {
         if (!/^\d{6}$/.test(String(b.pin))) return fail("wrong_pin", 403);
         const attempt = await reserveLogin(await loginFingerprints(req));
@@ -719,13 +719,12 @@ Deno.serve(async (req) => {
         if (error) throw new Error("credential_check_unavailable");
         if (good !== true) return fail("wrong_pin", 403);
         await completeAttempt(attempt);
-        actor = "rozha";
       } else {
         const { data: order, error } = await app("orders").select("created_by,created_at").eq("id", id).maybeSingle();
         if (error) return fail("delete_failed", 500);
         if (order && (order.created_by !== s.account || Date.parse(order.created_at) < Date.now() - UNDO_MS)) return fail("pin_required", 403);
       }
-      const { error } = await db.rpc("app_internal_delete_order", { p_id: id, p_actor: actor, p_device: s.deviceId });
+      const { error } = await db.rpc("app_internal_delete_order", { p_id: id, p_actor: s.account, p_device: s.deviceId });
       if (error) return /forbidden/i.test(String(error.message)) ? fail("forbidden", 403) : fail("delete_failed", 500);
       return json({ ok: true, streak: await readStreak().catch(() => null) });
     }
