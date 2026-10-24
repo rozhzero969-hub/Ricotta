@@ -191,7 +191,7 @@ async function apiLogin(pin, freshDevice = false){
     return apiLogin(pin, true);
   }
   if(r.status === 429) return {error:'locked'};
-  if(r.status === 0) return {error:'network'};
+  if(r.status === 0 || r.status === 408 || r.status >= 500) return {error:'network'};
   return {error:'wrong'};
 }
 
