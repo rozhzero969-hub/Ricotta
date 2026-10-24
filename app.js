@@ -3574,3 +3574,6 @@ function attachSettingsEvents(){
 }
 
 boot();
+
+window.addEventListener('resize',scheduleOverviewFit,{passive:true});
+window.addEventListener('scroll',scheduleOverviewFit,{passive:true,capture:true});

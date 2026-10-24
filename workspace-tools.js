@@ -43,7 +43,7 @@ function renderDesktopSummary(){
  const groups=new Map();for(const item of state.items){const qty=state.cart[item.id];if(!(qty>0)||item.available===false)continue;const sid=item.supplierId||'';if(!groups.has(sid))groups.set(sid,[]);groups.get(sid).push({item,qty});}
  return `<div class="desktop-order-summary"><h2>${esc(t('orderSummary'))}</h2><div class="summary-scroll">${groups.size?[...groups].map(([sid,rows])=>`<div class="summary-supplier"><h3 dir="auto">${esc(supplierName(sid)||t('noSupplier'))}</h3>${rows.map(({item,qty})=>`<div class="summary-line"><span dir="auto">${esc(item.name)}</span><b>${esc(qty)} ${esc(unitLabel(item.unit))}</b></div>`).join('')}</div>`).join(''):`<p class="summary-empty">${esc(t('noSelection'))}</p>`}</div><button type="button" class="btn btn-primary desktop-send" ${groups.size?'':'disabled'}>${esc(t('desktopSend'))}${ICON_CHAT}</button></div>`;
 }
-function paintDesktopSummary(){const slot=document.getElementById('desktopSummary');if(!slot)return;slot.innerHTML=renderDesktopSummary();slot.querySelector('.desktop-send').onclick=()=>startSendQueue();}
+function paintDesktopSummary(){const slot=document.getElementById('desktopSummary');if(!slot)return;slot.innerHTML=renderDesktopSummary();slot.querySelector('.desktop-send').onclick=()=>startSendQueue();fitOrderOverview();}
 function openDuplicateReview(){
  const pairs=duplicatePairs();
  const sheet=openKitchenSheet('duplicate-review',`<h2>${esc(t('reviewDuplicates'))}</h2><p class="field-hint">${esc(t('duplicatesHint'))}</p>${pairs.length?`<p class="field-hint">${esc(t('reviewedCount')(pairs.length+(pairs.truncated?'+':'')))}</p>`:''}<div class="duplicate-pairs">${pairs.slice(0,100).map(([a,b],n)=>`<button type="button" class="duplicate-pair" data-pair="${n}"><span><b dir="auto">${esc(a.name)} / ${esc(b.name)}</b><small>${esc(supplierName(a.supplierId))} · ${esc(unitLabel(a.unit))}</small></span><span aria-hidden="true">›</span></button>`).join('')||emptyState(esc(t('noDuplicates')))}</div>`,t('reviewDuplicates'));
@@ -130,4 +130,14 @@ function ricoOrderAfter(p,cart=state.cart){
 function historyCart(record){
  const cart={};for(const entry of record.entries)for(const line of entry.items){const id=historyItemId(line,entry.supplierId);if(!id)continue;const quantity=(cart[id]||0)+Number(line.qty);if(!validOrderQuantity(quantity))return null;if(quantity>0)cart[id]=roundQuantity(quantity);}
  return cart;
+}
+
+let overviewFitFrame=null;
+function scheduleOverviewFit(){if(overviewFitFrame!==null)return;overviewFitFrame=requestAnimationFrame(()=>{overviewFitFrame=null;fitOrderOverview();});}
+function fitOrderOverview(){
+ const overview=document.querySelector('.order-overview');if(!overview)return;
+ if(innerWidth<960){overview.style.removeProperty('max-height');overview.classList.remove('overview-compact');return;}
+ const available=Math.max(160,innerHeight-Math.max(16,overview.getBoundingClientRect().top)-18);
+ const value=available+'px';if(overview.style.maxHeight!==value)overview.style.maxHeight=value;
+ overview.classList.toggle('overview-compact',available<400);
 }

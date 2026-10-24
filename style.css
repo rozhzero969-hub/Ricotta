@@ -1594,3 +1594,5 @@ body.lang-ku .page-heading h1,body.lang-ar .page-heading h1{letter-spacing:0;lin
  .desktop-order-summary h2,.desktop-order-summary .desktop-send{flex:none}
  .summary-scroll{min-height:0;overflow-y:auto;scrollbar-width:thin;overscroll-behavior:contain}
 }
+
+@media(min-width:960px){.order-overview.overview-compact .order-hero{display:none}.overview-compact .desktop-order-summary{max-height:none}}
