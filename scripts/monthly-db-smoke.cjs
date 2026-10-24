@@ -119,11 +119,19 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
    ('00000000-0000-4000-8000-0000000000a2','b','r-laptop',now()+interval '1 day','rozha'),
    ('00000000-0000-4000-8000-0000000000a3','c','y-phone',now()+interval '1 day','yunis');`);
  const setPin=async(account,pin)=>(await q(`select app_internal_set_pin('${account}','${pin}','00000000-0000-4000-8000-0000000000a1') as r`))[0].r;
+ const deniedPin=async(session)=>(await q(`select app_internal_set_pin('rozha','591837','${session}') as r`))[0].r;
+ assert.equal(await deniedPin('00000000-0000-4000-8000-000000000099'),'forbidden','a missing session cannot change a PIN');
+ assert.equal(await deniedPin('00000000-0000-4000-8000-0000000000a3'),'forbidden','a staff session cannot change PINs through the internal function');
  assert.equal(await setPin('rozha','730154'),'duplicate','the two PINs stay different');
  assert.equal(await setPin('rozha','12a456'),'invalid');
  assert.equal(await setPin('staff','591837'),'invalid');
  assert.equal((await q('select count(*)::int as n from app_sessions where revoked_at is not null'))[0].n,0,'a refused PIN changes nothing');
+ await db.exec("create trigger fail_pin_record before insert on app_audit_events for each row execute function fail_record();");
+ await assert.rejects(setPin('yunis','591837'),/forced audit failure/,'a failed security record rolls the PIN change back');
+ assert.equal((await q("select app_internal_match_code('730154') as a"))[0].a,'yunis','a rolled-back change keeps the old PIN');
+ await db.exec('drop trigger fail_pin_record on app_audit_events;');
  assert.equal(await setPin('yunis','591837'),'ok');
+ assert.equal((await q("select count(*)::int as n from app_audit_events where action='change_pin'"))[0].n,1,'a successful PIN change records once');
  assert.equal((await q("select app_internal_match_code('591837') as a"))[0].a,'yunis');
  assert.equal((await q("select app_internal_match_code('730154') as a"))[0].a,null,'the old PIN no longer signs in');
  assert.deepEqual((await q('select account, revoked_at is not null as out from app_sessions order by token_hash')).map(r=>[r.account,r.out]),[['rozha',false],['rozha',false],['yunis',true]],'only Yunis is signed out');

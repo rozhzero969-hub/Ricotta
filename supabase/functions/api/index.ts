@@ -107,7 +107,6 @@ const fail = (error: string, status = 400) => json({ error }, status);
 
 const app = (table: string) => db.from(`app_${table}`);
 const text = (v: unknown, max = 160) => String(v ?? "").trim().slice(0, max);
-const newId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 /* A Baghdad calendar day as YYYY-MM-DD, and whole days between two of them. */
 const baghdadDay = (d: Date | string = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baghdad", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(d));
 const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400_000);
@@ -282,9 +281,9 @@ async function bootstrap(s: Session) {
   const since = monthStart();
   const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, months, draft] = await Promise.all([
     readAccount(s.account),
-    app("suppliers").select("id,name,phone,reminder,cutoff").order("name"),
-    app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available").order("name"),
-    app("units").select("id,en,ku,ar"),
+    readAll(() => app("suppliers").select("id,name,phone,reminder,cutoff").order("name").order("id")),
+    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available").order("name").order("id")),
+    readAll(() => app("units").select("id,en,ku,ar").order("id")),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
     readReminder(),
     listDevices(s),
@@ -294,16 +293,15 @@ async function bootstrap(s: Session) {
     listMonths(12),
     readDraft(s.account),
   ]);
-  for (const result of [suppliers, items, units]) if (result.error) throw result.error;
   const orderRows = orders;
   const lines = await orderLinesFor(orderRows);
   return {
     account: s.account, name: me?.name ?? accountName(s.account),
     views: ACCOUNT_VIEWS[s.account],
     pins: me?.pins ?? [], streak,
-    suppliers: (suppliers.data ?? []).map(toSupplier),
-    items: (items.data ?? []).map(toItem),
-    units: units.data ?? [],
+    suppliers: suppliers.map(toSupplier),
+    items: items.map(toItem),
+    units,
     history: groupHistory(orderRows, lines),
     historyMonth: monthKey(),
     reminder, devices, activity, inbox, months, draft,
@@ -430,8 +428,8 @@ async function changePin(req: Request, s: Session, b: any) {
   const { data: result, error: setError } = await db.rpc("app_internal_set_pin", { p_account: account, p_pin: newPin, p_keep_session: s.id });
   if (setError) return fail("save_failed", 500);
   if (result === "duplicate") return fail("duplicate_pin");
+  if (result === "forbidden") return fail("forbidden", 403);
   if (result !== "ok") return fail("save_failed", 500);
-  await app("audit_events").insert({ id: newId("audit"), actor: "rozha", device_id: s.deviceId, action: "change_pin", payload: { account } });
   return ok();
 }
 

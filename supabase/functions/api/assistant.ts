@@ -77,6 +77,17 @@ const dayOf = (iso: string) => erbilParts(new Date(iso));
 /* ---------------- the kitchen's data, loaded once per reply ---------------- */
 type World = Awaited<ReturnType<typeof loadWorld>>;
 
+// Page the catalog too: PostgREST caps each response at 1000 rows.
+async function catalogRows(build: () => any): Promise<{ data: any[]; error: null }> {
+  const rows: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await withTimeout<any>(build().range(from, from + 999), DB_TIMEOUT_MS, "catalog");
+    if (error) throw new Error("kitchen_data_unavailable");
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) return { data: rows, error: null };
+  }
+}
+
 async function loadWorld(db: any, s: Session) {
   const app = (t: string) => db.from(`app_${t}`);
   const since = monthStart();
@@ -84,9 +95,9 @@ async function loadWorld(db: any, s: Session) {
   // else is the same for both accounts.
   const full = s.account === "rozha";
   const [sup, items, units, orders, reminder, devices, activity, streak, months] = await withTimeout(Promise.all([
-    app("suppliers").select("id,name,phone,reminder,cutoff,created_at"),
-    app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available"),
-    app("units").select("id,en,ku,ar"),
+    catalogRows(() => app("suppliers").select("id,name,phone,reminder,cutoff,created_at").order("id")),
+    catalogRows(() => app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available").order("id")),
+    catalogRows(() => app("units").select("id,en,ku,ar").order("id")),
     app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at", { ascending: false }).limit(600),
     app("reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle(),
     full ? app("devices").select("account,label,logged_in,last_seen").order("last_seen", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),

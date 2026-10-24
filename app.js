@@ -1765,7 +1765,12 @@ function supplierName(id){
   const s = state.suppliers.find(x=>x.id===id);
   return s ? s.name : t('noSupplier');
 }
-function nameCollator(){ return new Intl.Collator(({en:'en', ku:'ckb', ar:'ar'})[state.lang], {sensitivity:'base', numeric:true}); }
+const nameCollators = new Map();
+function nameCollator(){
+  const lang = LANGS.includes(state.lang) ? state.lang : 'en';
+  if(!nameCollators.has(lang)) nameCollators.set(lang, new Intl.Collator(({en:'en', ku:'ckb', ar:'ar'})[lang], {sensitivity:'base', numeric:true}));
+  return nameCollators.get(lang);
+}
 function sortedByName(rows){ return [...rows].sort((a,b)=>nameCollator().compare(a.name||'', b.name||'')); }
 function sortedSupplierItems(rows){
   const custom = rows.some(i=>Number.isInteger(i.sortOrder));

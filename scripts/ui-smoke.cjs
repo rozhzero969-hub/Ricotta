@@ -195,7 +195,8 @@ const server=http.createServer((req,res)=>{
     const {ctx,page,calls}=await context();
     assert.doesNotMatch(await page.locator('meta[name="viewport"]').getAttribute('content'),/user-scalable=no|maximum-scale=1(?:,|$)/,'browser zoom remains available for accessibility');
     assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).userSelect),'none','app chrome cannot be accidentally selected');
-    assert.match(await page.locator('body').evaluate(el=>getComputedStyle(el).fontFamily),/^-apple-system, BlinkMacSystemFont, system-ui/,'English uses Apple\u2019s system font');
+    // macOS Chromium may serialize BlinkMacSystemFont as the equivalent system-ui alias.
+    assert.match(await page.locator('body').evaluate(el=>getComputedStyle(el).fontFamily),/^-apple-system, (?:BlinkMacSystemFont|"system-ui"), system-ui/,'English uses Apple\u2019s system font');
     assert.match(await page.locator('body').evaluate(el=>getComputedStyle(el).fontFamily),/"?Noto Kufi Arabic"?/,'Kurdish or Arabic names inside English text fall back to Noto Kufi Arabic off Apple devices');
     assert.equal(await page.locator('#langBtn, #logoutBtn').count(),0,'the language and Sign Out live in the account sheet, not on the top bar');
     await page.evaluate(()=>{window.originalRow=document.querySelector('[data-item-id="i1"]');});

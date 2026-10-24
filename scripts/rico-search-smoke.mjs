@@ -4,6 +4,23 @@ import {PGlite} from '@electric-sql/pglite';
 import {pgcrypto} from '@electric-sql/pglite/contrib/pgcrypto';
 import {_internals as rico} from '../supabase/functions/api/assistant.ts';
 const search=globalThis.RicottaSearch;
+// Rico and bootstrap must see the same catalog, including rows beyond PostgREST's first page.
+const catalog = {
+  app_items:Array.from({length:1005},(_,i)=>({id:'item'+i,name:'Item '+i})),
+  app_suppliers:Array.from({length:1002},(_,i)=>({id:'supplier'+i,name:'Supplier '+i})),
+  app_units:Array.from({length:1001},(_,i)=>({id:'unit'+i,en:'Unit '+i})),
+};
+const pagedDb={from(table){
+  let from=0,to=999;
+  const q={select(){return q;},order(){return q;},eq(){return q;},gte(){return q;},in(){return q;},limit(){return q;},
+    range(a,b){from=a;to=b;return q;},maybeSingle(){return Promise.resolve({data:null});},
+    then(resolve,reject){return Promise.resolve({data:(catalog[table]||[]).slice(from,to+1)}).then(resolve,reject);}};
+  return q;
+}};
+const largeWorld=await rico.loadWorld(pagedDb,{account:'yunis'});
+assert.equal(largeWorld.items.length,1005);
+assert.equal(largeWorld.suppliers.length,1002);
+assert.equal(largeWorld.units.length,1001);
 const w={items:[{id:'tomato',name:'تەماتە',aliases:['Tomato','Tomatoes'],unit_id:'kg',supplier_id:'veg',available:true},{id:'lettuce',name:'خاس لولو',aliases:['French lettuce'],unit_id:'kg',supplier_id:'veg',available:true},{id:'hidden',name:'Hidden',aliases:['Banana'],available:false}],suppliers:[{id:'veg',name:'Vegetable market'}],units:[{id:'kg',en:'kg',ku:'کیلۆ'}],history:[],cart:{},now:{date:'2026-10-14',weekday:3}};
 assert.equal(rico.toolFindItems(w,{query:'tomtao'}).items[0].item_id,'tomato');
 assert.equal(rico.toolFindItems(w,{query:'lettuce french'}).items[0].item_id,'lettuce');
