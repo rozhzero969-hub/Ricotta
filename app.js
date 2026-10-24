@@ -2020,13 +2020,19 @@ function attachOrderEvents(){
   attachOrderResultEvents(document.getElementById('orderResults'));
   const tabs=document.getElementById('orderTabs');
   if(tabs){
+    // Slides only the strip of supplier tabs (scrollIntoView would also move the page, which lost
+    // the remembered place when coming back to Order).
+    const centerTab=(pill, smooth)=>{
+      const strip=tabs.getBoundingClientRect(), rect=pill.getBoundingClientRect();
+      tabs.scrollBy({left:rect.left + rect.width/2 - (strip.left + strip.width/2), behavior:smooth && !reducedMotion() ? 'smooth' : 'auto'});
+    };
     const scrollTabs=step=>{
       const pills=[...tabs.querySelectorAll('.tab-pill')];
       if(!pills.length) return;
       const center=tabs.getBoundingClientRect().left+tabs.clientWidth/2;
       let index=0, distance=Infinity;
       pills.forEach((pill,i)=>{const rect=pill.getBoundingClientRect();const d=Math.abs(rect.left+rect.width/2-center);if(d<distance){distance=d;index=i;}});
-      pills[Math.max(0,Math.min(pills.length-1,index+step))].scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest',inline:'center'});
+      centerTab(pills[Math.max(0,Math.min(pills.length-1,index+step))], true);
     };
     const prev=document.getElementById('orderTabsPrev');
     const next=document.getElementById('orderTabsNext');
@@ -2037,7 +2043,8 @@ function attachOrderEvents(){
       e.preventDefault();
       tabs.scrollBy({left:e.deltaY,behavior:'auto'});
     },{passive:false});
-    tabs.querySelector('.tab-pill.active')?.scrollIntoView({block:'nearest',inline:'center'});
+    const active=tabs.querySelector('.tab-pill.active');
+    if(active) centerTab(active, false);
   }
   attachOrderResultEvents(document.getElementById('orderArrangeRow'));
   const same = document.getElementById('sameAsLast');
