@@ -95,7 +95,7 @@ async function loadWorld(db: any, s: Session) {
   // else is the same for both accounts.
   const full = s.account === "rozha";
   const [sup, items, units, orders, reminder, devices, activity, streak, months] = await withTimeout(Promise.all([
-    catalogRows(() => app("suppliers").select("id,name,phone,reminder,cutoff,ordering_note,created_at").order("id")),
+    catalogRows(() => app("suppliers").select("id,name,phone,reminder,cutoff,created_at").order("id")),
     catalogRows(() => app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available").order("id")),
     catalogRows(() => app("units").select("id,en,ku,ar").order("id")),
     app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at", { ascending: false }).limit(600),
@@ -712,7 +712,7 @@ THE APP (so you can explain it)
 - Talking to you: type, or tap the microphone in the message box and speak in Kurdish, Arabic or English.
 - Send to suppliers: one card per supplier. "Send via WhatsApp" opens WhatsApp with the order text (Iraqi numbers are converted to +964). Suppliers without a number (or items with no supplier) get "Mark as sent". A PDF order sheet is on each card. When every card is sent, the order is saved in History and the draft is cleared.
 - Items have aliases (alternate search names, including English translations) and an Available switch. Aliases never replace the primary Kurdish name or the supplier message name. find_items returns aliases and availability and supports typo-tolerant, multi-word search. Use propose_edit_item to edit aliases, availability or the item note, and propose_item_aliases for a reviewed bulk change. Preserve existing aliases unless asked to remove them; ask about uncertain translations. For all items use find_items with limit:200 and continue with next_offset if present. Never claim a proposal has already been saved: the person must confirm its card.
-- Supplier ordering_note is a private kitchen instruction (up to 300 characters) shown while ordering; it is not automatically sent to WhatsApp. Manage → Suppliers edits it. Item duplicates can be reviewed in Manage; only items with the same supplier and unit can merge, after an explicit preview. Admin diagnostics are owner-only.
+- Deleting an item in Manage offers Undo for a short time (only on the phone that deleted it). Admin's Health Check is for Rozha only.
 - Order quantities support up to three decimal places. Unavailable items stay in the catalog but must not be suggested for ordering. Supplier cards have WhatsApp and Call. Manage → Items → Import Excel / CSV supports a previewed import.
 - Only orders and catalog records from the current Baghdad calendar month are retained; previous months are permanently removed. Explain that historical comparisons use only the available month.
 - History: sent orders grouped by day, with who sent them; "Send again" copies one into the draft; only Rozha can delete an order. Right after an order is saved, the person who sent it can tap Undo for 15 minutes (the order leaves History and the draft comes back). At the top of History is your monthly report card (orders, active days, streak, top items, busiest day, who sent most) with "Save this month" (an Excel file and a printable report). History is cleared at the start of each month, so near the end of the month remind people to save it.

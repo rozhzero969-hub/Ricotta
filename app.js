@@ -124,7 +124,7 @@ function esc(s){
 /* Small, self-dismissing confirmation at the bottom of the screen -- used for
    successes, so they don't need an extra tap like a popup does. */
 let toastTimer = null;
-function toast(msg, kind='ok', {undo} = {}){
+function toast(msg, kind='ok', {undo, ms} = {}){
   let el = document.getElementById('toast');
   if(!el){ el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role','status'); document.body.appendChild(el); }
   el.className = 'toast ' + kind + (undo ? ' has-undo' : '');
@@ -142,7 +142,7 @@ function toast(msg, kind='ok', {undo} = {}){
   requestAnimationFrame(()=>{
     el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(()=> el.classList.remove('show'), undo ? 4800 : 2600);
+    toastTimer = setTimeout(()=> el.classList.remove('show'), ms || (undo ? 4800 : 2600));
   });
 }
 document.addEventListener('visibilitychange', ()=>{
@@ -493,7 +493,7 @@ function signOut(reason, {preserveSession = false} = {}){
   state.activity = []; state.devices = []; state.reminder = null;
   state.streak = null; state.pins = []; state.months = [];
   try{ updateAppBadge(); }catch(_){}
-  viewMemory.clear();diagnosticState={account:null,data:null,error:false,busy:false};
+  viewMemory.clear(); tabMemory.clear(); diagnosticState = {account:null, data:null, error:false, busy:false};
   state.catalogQuery='';state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
   reminderDraft = null;
@@ -656,7 +656,7 @@ async function hideSplash(minShown = 1150){
   el.dataset.state = 'leaving';
   document.documentElement.classList.remove('booting');
   let gone = false;
-  const done = ()=>{ if(gone) return; gone = true; el.remove(); syncAppearance(); };
+  const done = ()=>{ if(gone) return; gone = true; el.remove(); };
   el.addEventListener('animationend', e=>{ if(e.target === el) done(); });
   setTimeout(done, 1400);   // safety net
 }
@@ -710,7 +710,9 @@ function animateUi(element, frames, duration=220){
 // Keep the navigation shell mounted for route changes. Page changes animate
 // through goView; quantity, search and supplier interactions have smaller
 // update paths that never rebuild the page.
-const viewMemory = new Map();
+/* Each screen keeps its search and its place while you visit another one, and each supplier tab on
+   Order keeps its place too (for this session; signing out forgets them). */
+const viewMemory = new Map(), tabMemory = new Map();
 const RENDERERS = {
   order:[()=>renderOrder(),()=>attachOrderEvents()], queue:[()=>renderQueue(),()=>attachQueueEvents()],
   history:[()=>renderHistory(),()=>attachHistoryEvents()], suppliers:[()=>renderSuppliers(),()=>attachSupplierEvents()],
@@ -774,36 +776,25 @@ function render(){
   syncInstallPrompt();
 }
 
-/* Rico in the top bar: his face in a small glass circle that opens his screen. While an order is
-   late or he has written first, he shows how he feels, a red dot appears and a ring of light turns
-   slowly around him (checked every minute). */
+/* Rico in the top bar: his spark in a round button, like an iPhone toolbar symbol, that opens his
+   screen. A red dot while he has written first or an order is late (then the spark turns orange),
+   checked every minute. */
 function updateRicoBadge(){
   const btn = document.getElementById('ricoTopBtn');
   if(!btn) return;
   const late = ricoLateOrders().length, unread = ricoUnread();
-  btn.classList.toggle('waiting', !!(late || unread));
-  btn.classList.toggle('late', !!late && !unread);
+  btn.classList.toggle('late', !!late);
   btn.querySelector('.rico-badge').hidden = !(late || unread);
   btn.setAttribute('aria-label', late ? t('ricoNavLate')(late) : unread ? t('ricoNavUnread') : t('ricoName'));
-  if(!btn.classList.contains('reacting')) setRicoTopMood(btn, unread ? ricoUnreadMood() : late ? 'angry' : 'happy');
 }
 setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
-/* Swapping the mood class (not the drawing) lets his colour and face cross-fade. */
-function setRicoTopMood(btn, mood){
-  const face = btn.querySelector('.rico-bot');
-  if(!face || face.classList.contains('mood-' + mood)) return;
-  RICO_MOODS.forEach(m=>face.classList.remove('mood-' + m));
-  face.classList.add('mood-' + mood);
-}
-/* Rico reacts to what just happened: his face changes for a moment while the ring flares once. */
-let ricoReactTimer = 0;
-function ricoReact(mood, ms = 1800){
+/* Rico answers what just happened: the spark gives one quick twist (a small dip when the order was
+   cleared). Calling it again restarts the motion from the start. */
+function ricoReact(kind = 'up'){
   const btn = document.getElementById('ricoTopBtn');
-  if(!btn) return;
-  clearTimeout(ricoReactTimer);
-  setRicoTopMood(btn, mood);
+  if(!btn || reducedMotion()) return;
+  btn.dataset.react = kind;
   btn.classList.remove('reacting'); void btn.offsetWidth; btn.classList.add('reacting');
-  ricoReactTimer = setTimeout(()=>{ btn.classList.remove('reacting'); updateRicoBadge(); }, ms);
 }
 
 /* ============ Navigation ============
@@ -1113,12 +1104,12 @@ function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
   const quick = fade || (managedView(state.view) && managedView(view));   // within Manage, or sliding along the tab bar
   const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : {inn:[...FADE_FRAMES.inn], out:[...FADE_FRAMES.out]}) : null;
   const ghost = frames?.out ? pageGhost(old) : null;
-  viewMemory.set(state.view,{query:state.catalogQuery||'',top:scrollBox().scrollTop});
-  const remembered=viewMemory.get(view);
-  state.catalogQuery=remembered?.query||'';state.view = view;
+  viewMemory.set(state.view, {query:state.catalogQuery || '', top:scrollBox().scrollTop});
+  const remembered = viewMemory.get(view);
+  state.catalogQuery = remembered?.query || ''; state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
   render();
-  scrollBox().scrollTo({top:remembered?.top||0});
+  scrollBox().scrollTo({top:remembered?.top || 0});
   if(view === 'record') refreshActivity();
   if(view === 'admin') refreshDevices();
   if(!keepLens) placeNavIndicator();
@@ -1461,8 +1452,8 @@ function syncAppearance(){
     next.name = 'theme-color'; next.content = color;
     meta.replaceWith(next);
   }
-  // The iPhone app matches it behind the page and in the status bar; hideSplash calls this again.
-  tellApp(document.getElementById('splash') ? 'page-splash' : dark ? 'page-dark' : 'page-light');
+  // The iPhone app matches it behind the page and in the status bar.
+  tellApp(dark ? 'page-dark' : 'page-light');
 }
 /* A small badge identifying who made a change. */
 function whoBadge(account){
@@ -1536,7 +1527,7 @@ function renderTopbar(){
     <div class="topbar-actions">
       ${renderStreakChip()}
       <div class="chip conn-chip" id="connectionStatus" role="status"${state.apiOnline?' hidden':''}><span></span><em>${esc(t('offline'))}</em></div>
-      <button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}"><span class="rico-plate">${ricoFace('happy', 'rico-top-face', {head:true})}</span><i class="rico-badge" hidden></i></button>
+      <button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${NAV_ICONS.assistant}<i class="rico-badge" hidden></i></button>
       <button type="button" class="account-btn" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
     </div>
   </header>`;
@@ -1607,7 +1598,9 @@ function setLang(lang){
 function attachShellEvents(){
   attachNavEvents();
   document.getElementById('accountBtn').onclick = openAccountSheet;
-  document.getElementById('ricoTopBtn').onclick = ()=>goView('assistant');
+  const ricoBtn = document.getElementById('ricoTopBtn');
+  ricoBtn.onclick = ()=>goView('assistant');
+  ricoBtn.addEventListener('animationend', ()=>ricoBtn.classList.remove('reacting'));
   document.getElementById('streakChip').onclick = openStreakSheet;
 }
 function attachNavEvents(){
@@ -1796,7 +1789,9 @@ function sentToSupplierToday(supplierId){
 function lastOrderMap(){
   if(!state.history.length) return null;
   const last = state.history[state.history.length-1];
-  return historyCart(last);
+  const map = {};
+  last.entries.forEach(e=>e.items.forEach(it=>{ map[it.itemId] = it.qty; }));
+  return map;
 }
 /* Suppliers the current tab covers, and how many of them have something picked. */
 function supplierCoverage(){
@@ -1861,18 +1856,18 @@ function renderOrder(){
   const lastMap = lastOrderMap();
   return `
     <div id="sharedDraftStatus">${draftStatusHtml()}</div>
-    <div class="order-workspace"><aside class="order-overview">${renderOrderHero(selectedCount, selectedSupplierCount)}<div id="desktopSummary">${renderDesktopSummary()}</div></aside><div class="order-catalog">
+    ${renderOrderHero(selectedCount, selectedSupplierCount)}
     <div id="ricoSuggest">${renderRicoSuggestion()}</div>
     <div class="order-quick-actions">
       ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}<span>${t('sameAsLastTime')}</span></button>` : ''}
       <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${ICON_DELETE}<span>${t('clearOrder')}</span></button>
     </div>
+    ${tabsHtml}
     <div class="search-row">
       <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" aria-label="${t('searchPlaceholder')}" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"><button type="button" class="search-clear" id="itemSearchClear" aria-label="${esc(t('clearSearch'))}" ${state.search?'':'hidden'}>&times;</button></div>
       <div class="order-arrange-row" id="orderArrangeRow">${renderOrderArrangeControl()}</div>
     </div>
-    ${tabsHtml}
-    <div id="orderResults" aria-live="polite">${groupHtml || emptyState(t('noSearchResults'))}</div></div></div>
+    <div id="orderResults" aria-live="polite">${groupHtml || emptyState(t('noSearchResults'))}</div>
   `;
 }
 /* Search only replaces this result region; rebuilding #app on each keystroke
@@ -1885,6 +1880,7 @@ function renderOrderResults(){
     : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab);
   const availableItems = tabFiltered.filter(i=>i.available!==false);
   const visibleItems = q ? globalThis.RicottaSearch.rank(availableItems,state.search,itemSearchFields) : availableItems;
+  // Favourites lead the list (in a supplier's tab too) and are not repeated in their supplier's group.
   const pinned = !q ? state.pins.map(id=>tabFiltered.find(i=>i.id===id)).filter(i=>i && i.available!==false) : [];
 
   const groups = Object.create(null);
@@ -1897,9 +1893,9 @@ function renderOrderResults(){
     const rows = (q?groups[key]:sortedSupplierItems(groups[key]).filter(i=>!pinned.some(p=>p.id===i.id))).map(i=>itemRowHtml(i, lastQty)).join('');
     return state.orderTab==='all' ? `<div class="supplier-group">
       <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}<span class="supplier-item-count">${groups[key].length}</span></span></div>
-      ${supplierInstructions(key)}${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}
+      ${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}
       <div class="supplier-items-grid">${rows}</div>
-    </div>` : `${supplierInstructions(key)}${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}<div class="supplier-items-grid standalone">${rows}</div>`;
+    </div>` : `${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}<div class="supplier-items-grid standalone">${rows}</div>`;
   }).join('');
 
   const pinnedHtml = pinned.length ? `<div class="supplier-group pinned-group">
@@ -1980,7 +1976,6 @@ function refreshCartSummary(){
   const draft=document.querySelector('.draft-state');
   if(draft) draft.textContent=c?draftProgressLabel():t('selectToStart');
   paintRicoSuggestion();
-  paintDesktopSummary();
 }
 /* The most of one item a single order can hold (the server refuses more). */
 const MAX_QTY = 99999;
@@ -2000,10 +1995,10 @@ function renderOrderBottomBar(){
   </div>`;
 }
 function attachOrderEvents(){
-  paintDesktopSummary();
   paintDraftStatus();
   document.querySelectorAll('[data-ordertab]').forEach(b=>b.onclick=()=>{
     if(state.orderTab===b.dataset.ordertab) return;
+    tabMemory.set(state.orderTab, scrollBox().scrollTop);
     state.orderTab = b.dataset.ordertab;
     document.querySelectorAll('[data-ordertab]').forEach(tab=>{
       const active=tab.dataset.ordertab===state.orderTab;
@@ -2013,6 +2008,7 @@ function attachOrderEvents(){
     arrange.innerHTML=renderOrderArrangeControl();
     attachOrderResultEvents(arrange);
     refreshOrderResults();refreshCartSummary();
+    if(tabMemory.has(state.orderTab)) scrollBox().scrollTop = tabMemory.get(state.orderTab);
     animateUi(document.getElementById('orderResults'),[{opacity:.4,transform:'translateY(6px)'},{opacity:1,transform:'none'}]);
   });
   const search = document.getElementById('itemSearch');
@@ -2052,7 +2048,7 @@ function attachOrderEvents(){
     const before = {...state.cart};
     state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id && i.available!==false) && qty>0));
     refreshOrderView();
-    ricoReact('excited');
+    ricoReact();
     toast(t('sameAsLastFilled'), 'ok', {undo:()=>{ state.cart = before; refreshOrderView(); }});
   };
   const clear=document.getElementById('clearOrderBtn');
@@ -2062,7 +2058,7 @@ function attachOrderEvents(){
     // cleared too (a save the server refuses would otherwise reopen on every Send), and Undo brings it back.
     const queue=state.queue?.record && state.queue.saveState!=='failed' ? null : state.queue;
     state.cart={};persistCartDraft();if(queue){state.queue=null;persistQueue();}refreshOrderView();paintDraftStatus();
-    ricoReact('sad');
+    ricoReact('down');
     toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before;persistCartDraft();paintDraftStatus(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
   };
   const send = document.getElementById('sendOrdersBtn');
@@ -2076,7 +2072,6 @@ async function startSendQueue(){
   if(sharedDraft.conflicts.length){ toast(t('draftConflict')); return false; }
   // An order that is already being saved (or failed to save) is finished first.
   if(state.queue?.record){ goView('queue'); return true; }
-  if(!(await confirmDraftWarnings())) return false;
   const bySupplier = Object.create(null);
   Object.keys(state.cart).forEach(id=>{
     const qty = state.cart[id]; if(!qty) return;
@@ -2180,7 +2175,7 @@ function stepQty(btn){
   const first = next > 0 && !cartCount();
   state.cart[id] = next;
   refreshOrderView(id);
-  if(first) ricoReact('happy');
+  if(first) ricoReact();
 }
 /* Hold + or − and the number keeps going, faster the longer it's held. */
 let stepHold = null;
@@ -2402,7 +2397,7 @@ function renderQueue(){
       ? `<a class="wa-btn ${e.sent?'done':''}" data-send="${idx}" href="${esc(waLink(sup.phone, buildMessage(e)))}"${waOpensApp() ? '' : ' target="_blank" rel="noopener noreferrer"'}>${ICON_CHAT}${e.sent?t('sentSendAgain'):t('sendVia')}</a>`
       : `<button class="wa-btn ${e.sent?'done':''}" data-marksent="${idx}" ${e.sent?'disabled':''}>${e.sent?t('sent'):t('markSent')}</button>`;
     return `<div class="queue-card ${e.sent?'sent':''}">
-      ${supplierInstructions(e.supplierId)}<div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}${e.sent ? '' : cutoffChip(e.supplierId)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
+      <div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}${e.sent ? '' : cutoffChip(e.supplierId)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
       <div class="queue-items">${itemsLine}</div>
       ${canWhatsApp ? '' : `<div class="queue-note">${esc(!sup ? t('noSupplier') : t('noPhoneOnFile'))} · ${esc(t('markSentHint'))}</div>`}
       <div class="queue-actions">${sendBtn}<button class="pdf-btn" data-pdf="${idx}" aria-label="${esc(t('orderSheet'))}">${NAV_ICONS.record}<span>PDF</span></button></div>
@@ -2485,7 +2480,7 @@ async function maybeFinishQueue(){
         items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
       }))
     };
-    if(!queue.record){try{playOrdersSent();haptic('success');ricoReact('grateful', 2400);}catch(_){/* Audio must never interrupt saving. */}}
+    if(!queue.record){try{playOrdersSent();haptic('success');ricoReact();}catch(_){/* Audio must never interrupt saving. */}}
     queue.record = record;
     queue.saveState = 'saving';
     persistQueue();   // the same order id after a restart, so it is never saved twice
@@ -2588,8 +2583,12 @@ function attachHistoryEvents(){
   document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
     const rec = state.history.find(r=>r.id===b.dataset.reorderhist);
     if(!rec) return;
-    const cart=historyCart(rec);
-    if(!cart){toast(t('saveFailed'),'error');return;}
+    const cart = {};
+    rec.entries.forEach(e=>e.items.forEach(it=>{
+      // Skip items that were since deleted from the catalog -- they no
+      // longer have anywhere to show up on the order screen.
+      if(state.items.some(i=>i.id===it.itemId && i.available!==false)) cart[it.itemId] = it.qty;
+    }));
     // Replaces the order being made; Undo brings it back.
     const before = {...state.cart};
     state.cart = cart;
@@ -2662,7 +2661,7 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), cutoff:t('cutoffShort'), orderingNote:t('orderingInstructions')})[k] || k;
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), cutoff:t('cutoffShort')})[k] || k;
 }
 function recordValue(k, v){
   if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||t('noValue');}catch(_){} }
@@ -2836,7 +2835,7 @@ function renderSuppliers(){
       <button class="btn btn-primary add-btn" id="supAddBtn">${ICON_PLUS} ${t('addSupplier')}</button>
       <button class="btn btn-ghost" data-gorecord="supplier">${NAV_ICONS.record} ${t('record')}</button>
     </div>
-    ${renderCatalogSearch()}<div class="section-title">${t('suppliers')} (${state.suppliers.length})</div><div id="suppliersList">${list}</div>`;
+    ${renderCatalogSearch()}<div class="section-title">${t('suppliers')} (${state.suppliers.length})</div>${list}`;
 }
 function openSupplierModal(id){
   const existing = id ? state.suppliers.find(s=>s.id===id) : null;
@@ -2847,7 +2846,6 @@ function openSupplierModal(id){
     bodyHtml: `
       <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
       <div class="field"><label>${t('phone')}</label><input id="mfPhone" data-clear="1" inputmode="tel" placeholder="07xxxxxxxxx" value="${esc(existing?.phone||'')}"></div>
-      <div class="field"><label for="mfOrderingNote">${esc(t('orderingInstructions'))}</label><textarea id="mfOrderingNote" maxlength="300" rows="3" dir="auto">${esc(existing?.orderingNote||'')}</textarea><small class="field-hint">${esc(t('orderingInstructionsHint'))}</small></div>
       ${reminderFieldsHtml(existing?.reminder)}
       <div class="field"><label for="mfCutoff">${t('cutoffLabel')}</label><input id="mfCutoff" type="time" value="${esc(existing?.cutoff||'')}"><small class="field-hint">${esc(t('cutoffHint'))}</small></div>`,
     okLabel: t('save'),
@@ -2857,7 +2855,6 @@ function openSupplierModal(id){
       const name = document.getElementById('mfName').value.trim();
       const phone = document.getElementById('mfPhone').value.trim();
       const cutoff = document.getElementById('mfCutoff').value.trim().slice(0, 5);
-      const orderingNote=document.getElementById('mfOrderingNote').value.trim().slice(0,300);
       if(!name) return {error: t('nameRequired')};
       if(cutoff && !/^([01]\d|2[0-3]):[0-5]\d$/.test(cutoff)) return {error: t('reminderTimeInvalid')};
       const rem = readReminderFields();
@@ -2873,18 +2870,18 @@ function openSupplierModal(id){
         const s = state.suppliers.find(x=>x.id===existing.id);
         if(!s) return {};
         const oldCode = reminderCode(s.reminder);
-        const fields = diffFields([['name', s.name, name], ['phone', s.phone, phone], ['reminder', oldCode, newCode], ['cutoff', s.cutoff || '', cutoff], ['orderingNote', s.orderingNote||'',orderingNote]]);
+        const fields = diffFields([['name', s.name, name], ['phone', s.phone, phone], ['reminder', oldCode, newCode], ['cutoff', s.cutoff || '', cutoff]]);
         if(!fields.length) return {};   // nothing changed -- nothing to save or record
         // updatedAt tells the server when the reminder was last changed, so a time that
         // has already passed today starts tomorrow instead of firing the moment you save.
         const reminder = oldCode === newCode ? s.reminder
           : rem.on ? {...newRem, updatedAt: now} : {...(s.reminder||{}), enabled:false, updatedAt: now};
-        const next = {...s, name, phone, reminder, cutoff: cutoff || null, orderingNote};
+        const next = {...s, name, phone, reminder, cutoff: cutoff || null};
         if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
         Object.assign(s, next);
         logActivity({action:'edit', type:'supplier', name, fields});
       } else {
-        const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null, cutoff: cutoff || null, orderingNote};
+        const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null, cutoff: cutoff || null};
         if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
         state.suppliers.push(next);
         logActivity({action:'add', type:'supplier', name,
@@ -2937,7 +2934,6 @@ function renderItemsAdmin(){
       <button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
       <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button>
     </div>
-    <div class="catalog-tool-row"><button type="button" class="btn btn-ghost" id="duplicateReviewBtn">${esc(t('reviewDuplicates'))}</button></div>
     ${renderCatalogSearch()}<div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${itemsAdminListHtml()}</div>`;
 }
 function openSupplierItemOrder(supplierId){
@@ -3073,7 +3069,7 @@ function openItemModal(id){
         <select id="mfSupplier">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
-      <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><details class="item-more-options"><summary>${esc(t('moreOptions'))}</summary><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div></details><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
+      <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
       `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
@@ -3130,10 +3126,40 @@ function openItemModal(id){
 }
 function bindItemRows(root){
   root.querySelectorAll('[data-edititem]').forEach(row=>row.onclick=()=> openItemModal(row.dataset.edititem));
-  root.querySelectorAll('[data-delitem]').forEach(b=>b.onclick=e=>{e.stopPropagation();deleteItemWithUndo(b.dataset.delitem);});
+  root.querySelectorAll('[data-delitem]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); deleteItemWithUndo(b.dataset.delitem); });
+}
+/* Deleting an item asks first, then offers Undo. The server keeps a copy for 10 minutes that only
+   this account on this device can bring back; it comes back with its amount in the order. */
+async function deleteItemWithUndo(id){
+  const account = state.account, item = state.items.find(i=>i.id===id);
+  if(!item) return;
+  if(!(await showConfirm(`<b>${esc(item.name)}</b><br>${esc(t('confirmDeleteItem'))}`)) || account !== state.account) return;
+  const qty = state.cart[id] || 0;
+  const r = await api(`items/${encodeURIComponent(id)}`, {method:'DELETE'});
+  if(account !== state.account) return;
+  if(!r.ok || !r.data?.undoId){ await showAlert(t('saveFailed')); return; }
+  const supName = item.supplierId ? (state.suppliers.find(s=>s.id===item.supplierId)?.name || '') : '';
+  state.items = state.items.filter(i=>i.id!==id);
+  delete state.cart[id];
+  persistCartDraft();
+  logActivity({action:'delete', type:'item', name:item.name, fields:[
+    {k:'name', from:item.name}, {k:'unit', from:unitEn(item.unit)}, {k:'supplier', from:supName}
+  ]});
+  render();
+  let restoring = false;
+  toast(t('itemDeleted')(item.name), 'ok', {ms:8000, undo:async()=>{
+    if(restoring || account !== state.account) return;
+    restoring = true;
+    const back = await api('items/restore', {method:'POST', body:{undoId:r.data.undoId}});
+    if(account !== state.account) return;
+    if(!back.ok){ await showAlert(t('undoExpired')); return; }
+    if(await loadData()){
+      if(qty && !state.cart[id]) state.cart[id] = qty;
+      persistCartDraft(); render(); toast(t('itemRestored'));
+    }
+  }});
 }
 function attachItemEvents(){
-  document.getElementById('duplicateReviewBtn')?.addEventListener('click',openDuplicateReview);
   document.getElementById('itemAddBtn').onclick = ()=> openItemModal(null);
   const list = document.getElementById('itemsAdminList');
   bindItemRows(list);
@@ -3346,8 +3372,63 @@ function renderAdmin(){
   const connection = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
   return `<div class="admin-page">${renderAdminPins()}${connection}<div id="diagnosticsSlot">${renderDiagnostics()}</div>${renderRicoSettings()}${renderDevices()}</div>`;
 }
+/* Rozha's health check: the server and database, the four scheduled jobs (reminders, the monthly
+   History reset, the nightly clean-up, the scheduler's own log clean-up), orders waiting to save on
+   this phone and the shared draft. Read only; it runs by itself when Admin opens (at most once a
+   minute) and again with Check Now. Retry Saving shows only when something is waiting. */
+const DIAGNOSTIC_JOBS = [['ricotta-reminder-tick','jobReminder'], ['ricotta-monthly-history','jobHistory'], ['ricotta-daily-cleanup','jobCleanup'], ['ricotta-cron-history','jobLogs']];
+let diagnosticState = {account:null, data:null, error:false, busy:false};
+function waitingToSave(){ return currentOutbox().length + (state.queue?.record && state.queue.saveState === 'failed' ? 1 : 0); }
+function renderDiagnostics(){
+  if(!isRozha()) return '';
+  const ds = diagnosticState.account === state.account ? diagnosticState : {data:null, error:false, busy:false};
+  const jobs = Array.isArray(ds.data?.jobs) ? ds.data.jobs : [];
+  const row = (label, value, tone)=>`<div class="diagnostic-row"><span>${esc(label)}</span><b class="${tone}"><i aria-hidden="true"></i>${esc(value)}</b></div>`;
+  const server = ds.error ? row(t('apiDatabase'), t('needsAttention'), 'bad') : ds.data?.database ? row(t('apiDatabase'), t('healthy'), 'good') : row(t('apiDatabase'), t(ds.busy ? 'checking' : 'notChecked'), 'idle');
+  const jobRows = ds.data ? DIAGNOSTIC_JOBS.map(([name, label])=>{
+    const job = jobs.find(j=>j.name===name);
+    if(!job || !job.active) return row(t(label), t('jobDisabled'), 'bad');
+    if(job.failures24h > 0 || job.lastStatus === 'failed') return row(t(label), t('jobFailed'), 'bad');
+    return row(t(label), job.lastRun ? t('jobLastRun')(timeAgo(job.lastRun)) : t('notChecked'), job.lastRun ? 'good' : 'idle');
+  }).join('') : '';
+  const waiting = waitingToSave(), unsynced = sharedDraft.enabled && (sharedDraft.conflicts.length || draftChanges(sharedDraft.base, state.cart).length);
+  return `<div class="section-title">${esc(t('diagnostics'))}</div><section class="form-card diagnostic-card">
+    ${server}${jobRows}${row(t('deviceSaves'), String(waiting), waiting ? 'warn' : 'good')}${row(t('draftSaveState'), draftProgressLabel(), unsynced ? 'warn' : 'good')}
+    <p class="field-hint">${esc(t('diagnosticsHint'))}${ds.data?.checkedAt ? ` ${esc(t('checkedAt')(timeAgo(ds.data.checkedAt)))}` : ''}</p>
+    <div class="form-actions"><button type="button" class="btn btn-ghost" id="diagnosticsCheck" ${ds.busy?'disabled':''}>${ICON_REFRESH}<span>${esc(t(ds.busy?'checking':'checkNow'))}</span></button>${waiting || unsynced ? `<button type="button" class="btn btn-ghost" id="diagnosticsRetry">${esc(t('retryDraft'))}</button>` : ''}</div>
+  </section>`;
+}
+async function runDiagnostics(){
+  if(!isRozha() || diagnosticState.busy) return;
+  const account = state.account;
+  diagnosticState = {account, data:diagnosticState.account === account ? diagnosticState.data : null, error:false, busy:true};
+  paintDiagnostics();
+  const r = await api('admin/diagnostics');
+  if(account !== state.account) return;
+  diagnosticState = {account, data:r.ok ? r.data : null, error:!r.ok, busy:false};
+  paintDiagnostics();
+}
+function attachDiagnosticEvents(){
+  const check = document.getElementById('diagnosticsCheck');
+  if(check) check.onclick = ()=>spinRefresh(check, runDiagnostics);
+  const retry = document.getElementById('diagnosticsRetry');
+  if(retry) retry.onclick = async()=>{
+    const account = state.account;
+    retry.disabled = true;
+    await flushOutbox(); await syncSharedDraft();
+    if(account !== state.account) return;
+    if(state.queue?.record) await maybeFinishQueue();
+    paintDiagnostics();
+  };
+}
+function paintDiagnostics(){
+  const slot = document.getElementById('diagnosticsSlot');
+  if(slot && isRozha()){ slot.innerHTML = renderDiagnostics(); attachDiagnosticEvents(); }
+}
 function attachAdminEvents(){
   attachDiagnosticEvents();
+  const last = diagnosticState.account === state.account && diagnosticState.data?.checkedAt;
+  if(!last || Date.now() - Date.parse(last) > 60000) runDiagnostics();
   document.querySelectorAll('[data-pin-change]').forEach(b=>b.onclick=()=>openPinChange(b.dataset.pinChange));
   attachDeviceEvents();
   loadRicoStatus();
@@ -3574,6 +3655,3 @@ function attachSettingsEvents(){
 }
 
 boot();
-
-window.addEventListener('resize',scheduleOverviewFit,{passive:true});
-window.addEventListener('scroll',scheduleOverviewFit,{passive:true,capture:true});

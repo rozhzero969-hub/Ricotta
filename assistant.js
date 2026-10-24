@@ -44,8 +44,7 @@ const rico = {
    pastel colour. The gradient needs an id, so each drawing gets its own. */
 const RICO_MOODS = ['happy','excited','grateful','calm','thinking','worried','sad','angry'];
 let ricoBotSeq = 0;
-/* head: just his head, drawn square (the top bar). */
-function ricoFace(mood = 'happy', cls = '', {head = false} = {}){
+function ricoFace(mood = 'happy', cls = ''){
   const m = RICO_MOODS.includes(mood) ? mood : 'happy';
   const g = 'rbg' + (++ricoBotSeq);
   let spark = '';
@@ -60,7 +59,7 @@ function ricoFace(mood = 'happy', cls = '', {head = false} = {}){
       <path class="rb-e e-heart" d="M${x} 58 C${x-7} 53 ${x-5} 46 ${x} 50 C${x+5} 46 ${x+7} 53 ${x} 58 Z"/>
       <path class="rb-e e-bar" d="${flip ? `M${x+5} 48 L${x-4} 53` : `M${x-5} 48 L${x+4} 53`}"/>
       <path class="rb-e e-line" d="M${x-4.5} 53 L${x+4.5} 53"/>`;
-  return `<span class="rico-bot mood-${m} ${cls}" aria-hidden="true"><svg viewBox="${head ? '13 1.5 74 74' : '0 0 100 106'}">
+  return `<span class="rico-bot mood-${m} ${cls}" aria-hidden="true"><svg viewBox="0 0 100 106">
     <defs><radialGradient id="${g}" gradientUnits="userSpaceOnUse" cx="36" cy="16" r="92">
       <stop offset="0" stop-color="var(--rb-c1)"/><stop offset=".45" stop-color="var(--rb-c2)"/><stop offset="1" stop-color="var(--rb-c3)"/></radialGradient></defs>
     <g class="rb-all">
@@ -115,12 +114,6 @@ function ricoReset(){
 /* ---------- Rico's inbox ---------- */
 function ricoSetInbox(list){ rico.inbox = Array.isArray(list) ? list : []; }
 function ricoUnread(){ return rico.inbox.filter(m=>!m.read).length; }
-/* The mood of his newest unread message (his tab shows it as his face). */
-function ricoUnreadMood(){
-  const unread = rico.inbox.filter(m=>!m.read);
-  const m = unread.length ? unread[unread.length - 1].mood : '';
-  return RICO_MOODS.includes(m) ? m : 'happy';
-}
 function ricoInboxText(m){ return (state.lang === 'ku' ? m.ku : state.lang === 'ar' ? m.ar : m.en) || m.en; }
 /* Opening Rico reads his messages. */
 function ricoMarkInboxRead(){
@@ -354,7 +347,7 @@ function renderRicoProposalCard(p, mi){
     const groups=new Map();
     for(const id of ids){const item=state.items.find(i=>i.id===id);if(!item)continue;const supplier=supplierName(item.supplierId)||t('noSupplier');if(!groups.has(supplier))groups.set(supplier,[]);groups.get(supplier).push(item);}
     icon=NAV_ICONS.order;title=t('ricoReviewChanges');
-    body=[...groups].map(([supplier,items])=>`<div class="rico-card-group"><div class="rico-card-sup">${esc(supplier)}</div>${items.map(item=>`<div class="rico-card-line"><span dir="auto">${esc(item.name)}<small>${esc(unitLabel(item.unit))}</small></span><b class="rico-quantity-change"><span aria-label="${esc(t('currentQuantity'))}">${esc(before[item.id]||0)}</span><i aria-hidden="true">→</i><span aria-label="${esc(t('newQuantity'))}">${esc(after?.[item.id]||0)}</span></b></div>`).join('')}</div>`).join('')
+    body=[...groups].map(([supplier,items])=>`<div class="rico-card-group"><div class="rico-card-sup">${supplierMono(supplier)}${esc(supplier)}</div>${items.map(item=>`<div class="rico-card-line"><span dir="auto">${esc(item.name)}<small>${esc(unitLabel(item.unit))}</small></span><b class="rico-quantity-change"><span aria-label="${esc(t('currentQuantity'))}">${esc(before[item.id]||0)}</span><i aria-hidden="true">→</i><span aria-label="${esc(t('newQuantity'))}">${esc(after?.[item.id]||0)}</span></b></div>`).join('')}</div>`).join('')
       +(p.note?`<div class="rico-card-note">${esc(p.note)}</div>`:'')
       +`<div class="rico-card-note">${esc(t(p.mode==='add'?'ricoAddsToDraft':'ricoSetsDraft'))}</div>`;
     return ricoCard(icon,title,body,actions(t('ricoApplyChanges')),p);
@@ -742,6 +735,20 @@ function ricoSetStatus(mi, id, status, extra = {}){
   Object.assign(p, {status}, extra);
   if(status !== 'saving') ricoSaveSoon();
   if(state.view === 'assistant') ricoPaintMessage(mi);
+}
+/* The draft an order card would leave: null when it can't apply cleanly (an item is gone or no longer
+   available, its unit changed, or an amount would go past the limit), so nothing is half-applied. */
+function ricoOrderAfter(p, cart = state.cart){
+  if(!['add','set','replace'].includes(p.mode) || !Array.isArray(p.lines) || !p.lines.length) return null;
+  const next = p.mode === 'add' || p.mode === 'set' ? {...cart} : {};
+  for(const line of p.lines){
+    const item = state.items.find(i=>i.id===line.itemId && i.available!==false);
+    if(!item || !validOrderQuantity(Number(line.qty)) || (line.unitId !== undefined && line.unitId !== item.unit)) return null;
+    const q = p.mode === 'add' ? (next[line.itemId] || 0) + Number(line.qty) : Number(line.qty);
+    if(!validOrderQuantity(q)) return null;
+    if(q > 0) next[line.itemId] = roundQuantity(q); else delete next[line.itemId];
+  }
+  return next;
 }
 function ricoApplyOrder(p, auto){
   const before={...state.cart},next=ricoOrderAfter(p);

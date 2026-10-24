@@ -12,10 +12,10 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let recovery = UIStackView()
     private var downloadFiles: [ObjectIdentifier: URL] = [:]
-    /// The app opens on the page's green loading screen, so it starts green with light status bar text;
-    /// the page then reports whether it is light or dark (see `userContentController(_:didReceive:)`).
-    private static let launchGreen = UIColor(named: "LaunchBackground") ?? UIColor(red: 0.078, green: 0.22, blue: 0.173, alpha: 1)
-    private var statusBarStyle: UIStatusBarStyle = .lightContent
+    /// The app opens on the page's loading screen, which follows light or dark like the launch screen
+    /// (LaunchBackground); the page then reports which one it uses (see `userContentController(_:didReceive:)`).
+    private static let launchBackground = UIColor(named: "LaunchBackground") ?? .systemGroupedBackground
+    private var statusBarStyle: UIStatusBarStyle = .default
     private var pageReported = false
     private let selectionFeedback = UISelectionFeedbackGenerator()
     private let notificationFeedback = UINotificationFeedbackGenerator()
@@ -23,7 +23,7 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = popupConfiguration == nil ? Self.launchGreen : .systemBackground
+        view.backgroundColor = popupConfiguration == nil ? Self.launchBackground : .systemBackground
         let configuration = popupConfiguration ?? WKWebViewConfiguration()
         configuration.websiteDataStore = .default() // Separate, persistent sign-in for this app.
         configuration.allowsInlineMediaPlayback = true
@@ -60,7 +60,7 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         ])
         spinner.translatesAutoresizingMaskIntoConstraints = false
         spinner.hidesWhenStopped = true
-        spinner.color = popupConfiguration == nil ? .white : nil
+        spinner.color = nil
         view.addSubview(spinner)
         NSLayoutConstraint.activate([spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
                                      spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)])
@@ -138,7 +138,6 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         case "error": notificationFeedback.notificationOccurred(.error)
         // The page's own background behind it, so nothing flashes when it resizes, and status bar
         // text that can be read on it.
-        case "page-splash": setLook(background: Self.launchGreen, statusBar: .lightContent)
         case "page-dark": setLook(background: .black, statusBar: .lightContent)
         case "page-light": setLook(background: UIColor(red: 0.949, green: 0.949, blue: 0.969, alpha: 1), statusBar: .darkContent)
         default: break
@@ -179,7 +178,7 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         recovery.isHidden = true
         webView.isHidden = false
         pageReported = false
-        setLook(background: Self.launchGreen, statusBar: .lightContent)
+        setLook(background: Self.launchBackground, statusBar: .default)
         spinner.startAnimating()
         webView.load(URLRequest(url: RicottaNavigation.home, cachePolicy: .reloadRevalidatingCacheData, timeoutInterval: 30))
     }
