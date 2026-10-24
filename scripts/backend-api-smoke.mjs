@@ -28,7 +28,13 @@ const db = {
       if (reservation) tables.app_login_attempts.push(...reservation.map(id => ({ id, succeeded: false })));
       return { data: reservation, error: null };
     }
-    if (name === 'app_internal_match_code') return { data: match, error: null };
+    if (name === 'app_internal_start_session') {
+      if (errors.has('app_sessions:insert')) return {data:null,error:{message:'offline'}};
+      if (!['rozha','yunis'].includes(match)) return {data:{error:'invalid_credentials'},error:null};
+      for(const row of tables.app_login_attempts) if(args.p_attempt_ids.includes(row.id)) row.succeeded=true;
+      if(args.p_device && tables.app_sessions.some(row=>row.device_id===args.p_device && row.account!==match && row.revoked_at===null && row.expires_at>new Date().toISOString())) return {data:{error:'device_in_use'},error:null};
+      return {data:{account:match,name:'Test account',expiresAt:new Date(Date.now()+60000).toISOString()},error:null};
+    }
     if (name === 'app_internal_check_account_pin') return { data: args.p_pin === '482916', error: null };
     if (name === 'app_internal_set_pin') return { data: pinResult, error: null };
     if (['app_internal_logout','app_internal_catalog_change','app_internal_device_command','app_internal_delete_order'].includes(name)) return {data:null,error:null};
@@ -129,10 +135,10 @@ try {
   assert.equal((await call('items/tomato',{name:'Tomatoes'},'PUT')).status,500);
   reset(); reservation = null;
   assert.equal((await call('login', { pin: '432198' }, 'POST', false)).status, 429);
-  assert.equal(calls.some(c => c.name === 'app_internal_match_code'), false, 'quota is reserved before expensive PIN verification');
+  assert.equal(calls.some(c => c.name === 'app_internal_start_session'), false, 'quota is reserved before expensive PIN verification');
   reset(); errors.set('app_internal_reserve_login', true);
   assert.equal((await call('login', { pin: '432198' }, 'POST', false)).status, 500);
-  assert.equal(calls.some(c => c.name === 'app_internal_match_code'), false, 'broken rate limit cannot disable PIN protection');
+  assert.equal(calls.some(c => c.name === 'app_internal_start_session'), false, 'broken rate limit cannot disable PIN protection');
   reset(); errors.set('app_sessions:insert', true);
   const failedLogin = await call('login', { pin: '432198' }, 'POST', false);
   assert.equal(failedLogin.status, 503);
@@ -140,6 +146,10 @@ try {
   reset();
   assert.equal((await call('login', { pin: '432198' }, 'POST', false)).status, 200);
   assert.equal(tables.app_login_attempts.every(row => row.succeeded), true);
+  assert.equal(calls.some(c=>['app_sessions','app_devices'].includes(c.table) && ['insert','upsert'].includes(c.action)),false,'sign-in writes stay inside one database transaction');
+  reset(); match=null;
+  assert.equal((await call('login',{pin:'432198'},'POST',false)).status,401);
+  assert.equal(tables.app_login_attempts.every(row=>!row.succeeded),true,'wrong PINs retain their failed reservations');
 
   reset();tables.app_devices[0].account='yunis';
   assert.equal((await call('devices',null,'GET')).status,401,'a session cannot control a device currently bound to another account');

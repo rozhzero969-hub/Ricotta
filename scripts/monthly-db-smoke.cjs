@@ -139,6 +139,27 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.deepEqual((await q("select token_hash, revoked_at is not null as out from app_sessions where account='rozha' order by token_hash")).map(r=>[r.token_hash,r.out]),[['a',false],['b',true]],'her own new PIN keeps this session and signs out her other devices');
  assert.deepEqual((await q('select id, logged_in from app_devices order by id')).map(r=>[r.id,r.logged_in]),[['r-laptop',false],['r-phone',true],['y-phone',false]]);
  assert.equal((await q("select has_function_privilege('authenticated','app_internal_set_pin(text,text,uuid)','EXECUTE') as allowed"))[0].allowed,false);
+ // Sign-in is one transaction, serialized with PIN changes; invalidated PINs cannot create sessions.
+ let loginNumber=0;
+ const login=async(pin,device,hash)=>{
+  const label='login-test-'+(++loginNumber);
+  const attempts=await q(`insert into app_login_attempts(fingerprint_hash) values('${label}-ip'),('${label}-global') returning id`);
+  const ids=attempts.map(r=>r.id);
+  return (await q(`select app_internal_start_session('${pin}','${hash}','${device}','iPhone|App','test',array[${ids.join(',')}]::bigint[]) as r`))[0].r;
+ };
+ assert.equal((await login('482916','fresh-device','0'.repeat(64))).error,'invalid_credentials','the old PIN cannot issue a session after the PIN change');
+ const signedIn=await login('264809','fresh-device','1'.repeat(64));
+ assert.equal(signedIn.account,'rozha');
+ assert.equal((await q("select account from app_devices where id='fresh-device'"))[0].account,'rozha');
+ assert.equal((await login('591837','fresh-device','2'.repeat(64))).error,'device_in_use','another account cannot claim the active device');
+ assert.equal((await q("select count(*)::int as n from app_sessions where token_hash=repeat('2',64)"))[0].n,0,'a rejected device claim issues no session');
+ await db.exec("create function fail_device() returns trigger language plpgsql as $$ begin raise exception 'forced device failure'; end $$; create trigger fail_device before insert on app_devices for each row execute function fail_device();");
+ await assert.rejects(login('264809','broken-device','3'.repeat(64)),/forced device failure/);
+ assert.equal((await q("select count(*)::int as n from app_sessions where token_hash=repeat('3',64)"))[0].n,0,'device failure rolls session issuance back');
+ assert.equal((await q("select count(*)::int as n from app_login_attempts where fingerprint_hash like 'login-test-4-%' and succeeded"))[0].n,0,'failed transaction does not complete its reservations');
+ await db.exec('drop trigger fail_device on app_devices;');
+ assert.equal((await q("select has_function_privilege('anon','app_internal_start_session(text,text,text,text,text,bigint[])','execute') as a"))[0].a,false);
+ assert.equal((await q("select has_function_privilege('authenticated','app_internal_start_session(text,text,text,text,text,bigint[])','execute') as a"))[0].a,false);
  // Kitchen notes, repeat orders, the order note, the secret code and the message format left nothing behind.
  for(const t of ['app_notes','app_repeat_orders','app_recovery_tickets']) assert.equal((await q(`select to_regclass('${t}') as t`))[0].t,null,t+' is gone');
  assert.equal((await q("select count(*)::int as n from information_schema.columns where (table_name,column_name) in (('app_accounts','message_format'),('app_orders','note'),('app_order_drafts','note'))"))[0].n,0);

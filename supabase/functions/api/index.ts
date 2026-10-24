@@ -64,7 +64,6 @@ const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
 
-const SESSION_HOURS = 18;
 const LOGIN_WINDOW_MS = 10 * 60_000;
 const MAX_FAILED_LOGINS = 8;              // per network address, per window (spoofable -- see MAX_GLOBAL_FAILED_LOGINS)
 const MAX_GLOBAL_FAILED_LOGINS = 40;      // per window, across ALL claimed IPs -- not spoofable via headers
@@ -369,44 +368,23 @@ async function login(req: Request) {
   const attempt = await reserveLogin(prints);
   if (!attempt) return fail("too_many_attempts", 429);
 
-  const { data: match, error: matchError } = await db.rpc("app_internal_match_code", { p_code: String(pin) });
-  if (matchError) throw new Error("credential_check_unavailable");
-  const success = match === "rozha" || match === "yunis";
-  if (!success) return fail("invalid_credentials", 401);
-  await completeAttempt(attempt);
-  return await startSession(req, match as Account);
+  return await startSession(req, String(pin), attempt);
 }
 
-/* Issue a new session after a verified PIN sign-in. */
-async function startSession(req: Request, account: Account) {
+/* The database checks the PIN under the same account locks as PIN changes.
+   It commits attempts, session and device together; no orphan token or device takeover on a race. */
+async function startSession(req: Request, pin: string, attempt: number[]) {
   const token = randomToken();
-  const deviceId = text(req.headers.get("x-device-id"), 120) || null;
-  const expiresAt = new Date(Date.now() + SESSION_HOURS * 3600_000).toISOString();
-  // A client-supplied device ID is an identifier, never proof of device ownership.
-  if(deviceId){
-    const {data:active,error}=await app("sessions").select("id").eq("device_id",deviceId)
-      .neq("account",account).is("revoked_at",null).gt("expires_at",nowIso()).limit(1);
-    if(error)return fail("login_failed",503);
-    if(active?.length)return fail("device_in_use",409);
-  }
-  const { error: sessionError } = await app("sessions").insert({ token_hash: await hash(token), account, device_id: deviceId, expires_at: expiresAt });
-  if (sessionError) return fail("login_failed", 503);
-  if (deviceId) {
-    // A command sent before this sign-in is old news: mark it handled so an
-    // old "log out" can't kick the person out right after signing in.
-    const { data: prev, error: deviceReadError } = await app("devices").select("command").eq("id", deviceId).maybeSingle();
-    const {error:deviceWriteError}=await app("devices").upsert({
-      id: deviceId, account, label: deviceLabel(req), logged_in: true, last_login: nowIso(), last_seen: nowIso(), updated_at: nowIso(),
-      ...(appVersion(req) ? { app_version: appVersion(req) } : {}),
-      ...(prev?.command?.id ? { handled_command: String(prev.command.id) } : {}),
-    });
-    if(deviceReadError || deviceWriteError){
-      await app("sessions").delete().eq("token_hash",await hash(token));
-      return fail("login_failed",503);
-    }
-  }
-  const me = await readAccount(account);
-  return json({ token, account, name: me?.name ?? accountName(account), expiresAt });
+  const { data, error } = await db.rpc("app_internal_start_session", {
+    p_code: pin, p_token_hash: await hash(token),
+    p_device: text(req.headers.get("x-device-id"), 120) || null,
+    p_label: deviceLabel(req), p_version: appVersion(req), p_attempt_ids: attempt,
+  });
+  if (error) return fail("login_failed", 503);
+  if (data?.error === "invalid_credentials") return fail("invalid_credentials", 401);
+  if (data?.error === "device_in_use") return fail("device_in_use", 409);
+  if (!["rozha", "yunis"].includes(data?.account) || !Number.isFinite(Date.parse(data?.expiresAt))) return fail("login_failed", 503);
+  return json({ token, account: data.account, name: data.name ?? accountName(data.account), expiresAt: data.expiresAt });
 }
 
 /* ---------- PINs (Admin, Rozha only) ----------
