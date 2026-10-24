@@ -1584,3 +1584,13 @@ body.lang-ku .page-heading h1,body.lang-ar .page-heading h1{letter-spacing:0;lin
 
 #itemsAdminList,#suppliersList{max-width:900px;border-radius:19px;overflow:hidden;background:var(--surface)}
 #itemsAdminList .list-row,#suppliersList .list-row{max-width:none}
+
+/* Long desktop orders scroll only their rows; the primary action stays visible. */
+@media(min-width:960px){
+ .order-overview{display:flex;flex-direction:column;max-height:calc(100dvh - 116px)}
+ .order-overview .order-hero{flex:none}
+ #desktopSummary{display:flex;min-height:0;flex:0 1 auto}
+ .desktop-order-summary{display:flex;flex-direction:column;min-height:0;width:100%;overflow:hidden}
+ .desktop-order-summary h2,.desktop-order-summary .desktop-send{flex:none}
+ .summary-scroll{min-height:0;overflow-y:auto;scrollbar-width:thin;overscroll-behavior:contain}
+}

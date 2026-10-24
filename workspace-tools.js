@@ -41,7 +41,7 @@ async function confirmDraftWarnings(){
 }
 function renderDesktopSummary(){
  const groups=new Map();for(const item of state.items){const qty=state.cart[item.id];if(!(qty>0)||item.available===false)continue;const sid=item.supplierId||'';if(!groups.has(sid))groups.set(sid,[]);groups.get(sid).push({item,qty});}
- return `<div class="desktop-order-summary"><h2>${esc(t('orderSummary'))}</h2>${groups.size?[...groups].map(([sid,rows])=>`<div class="summary-supplier"><h3 dir="auto">${esc(supplierName(sid)||t('noSupplier'))}</h3>${rows.map(({item,qty})=>`<div class="summary-line"><span dir="auto">${esc(item.name)}</span><b>${esc(qty)} ${esc(unitLabel(item.unit))}</b></div>`).join('')}</div>`).join(''):`<p class="summary-empty">${esc(t('noSelection'))}</p>`}<button type="button" class="btn btn-primary desktop-send" ${groups.size?'':'disabled'}>${esc(t('desktopSend'))}${ICON_CHAT}</button></div>`;
+ return `<div class="desktop-order-summary"><h2>${esc(t('orderSummary'))}</h2><div class="summary-scroll">${groups.size?[...groups].map(([sid,rows])=>`<div class="summary-supplier"><h3 dir="auto">${esc(supplierName(sid)||t('noSupplier'))}</h3>${rows.map(({item,qty})=>`<div class="summary-line"><span dir="auto">${esc(item.name)}</span><b>${esc(qty)} ${esc(unitLabel(item.unit))}</b></div>`).join('')}</div>`).join(''):`<p class="summary-empty">${esc(t('noSelection'))}</p>`}</div><button type="button" class="btn btn-primary desktop-send" ${groups.size?'':'disabled'}>${esc(t('desktopSend'))}${ICON_CHAT}</button></div>`;
 }
 function paintDesktopSummary(){const slot=document.getElementById('desktopSummary');if(!slot)return;slot.innerHTML=renderDesktopSummary();slot.querySelector('.desktop-send').onclick=()=>startSendQueue();}
 function openDuplicateReview(){
