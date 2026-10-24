@@ -36,7 +36,7 @@ const T = {
     confirmDeleteItem:'Delete this item?',
     confirmDeleteUnit:'Delete this unit? Items using it will show no unit.',
     deleteOrderTitle:'Delete Order?', deleteOrderNote:'Type your PIN to delete this order from History. This can’t be undone.', yourPin:'Your PIN',
-    orderAgain:'Send again', sentBy:n=>'by '+n,
+    orderAgain:'Repeat order', sentBy:n=>'by '+n,
     heroEyebrow:"Today's order", heroStat:n=>n+' item'+(n===1?'':'s')+' selected',
     heroSub:(items,sups)=>items+' items across '+sups+' supplier'+(sups===1?'':'s'),
     heroStatWord:n=>n===1?'item selected':'items selected',

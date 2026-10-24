@@ -103,7 +103,10 @@ const server=http.createServer((req,res)=>{
     const payload='"><img src=x onerror="window.injected=true">';
     const holder=document.createElement('div');
     holder.innerHTML=renderRicoMessage({role:'assistant',text:payload,mood:payload,proposals:[{id:'test',kind:'notify',status:payload,title:payload,en:payload,ku:payload}]},0);
-    const order=renderRicoProposal({kind:'order',id:'proto',lines:[{supplier:'__proto__',name:payload,qty:1,unitId:'kg'}]},0);
+    state.items.push({id:'hostile-item',name:payload,supplierId:'hostile-supplier',unit:'kg'});
+    state.suppliers.push({id:'hostile-supplier',name:'__proto__'});
+    const order=renderRicoProposal({kind:'order',id:'proto',mode:'add',draftBefore:{},lines:[{itemId:'hostile-item',supplier:'__proto__',name:payload,qty:1,unitId:'kg'}]},0);
+    state.items.pop();state.suppliers.pop();
     return {injected:holder.querySelectorAll('img,[onerror]').length,text:holder.textContent,orderSafe:order.includes('&lt;img'),malformed:renderRicoProposal({kind:'order',lines:null},0)};
   });
   assert.equal(hostile.injected,0,'saved moods/card status/text cannot inject HTML');
