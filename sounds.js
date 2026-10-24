@@ -52,7 +52,7 @@ function soundTone(f, dur, gain, at = 0, type = 'sine'){
      the orders are sent, an error buzz for a wrong PIN and a bump when the press-and-hold menu opens.
    - The page's look (the green loading screen, dark or light), so the app paints the same colour
      behind the page and the status bar text stays readable. */
-const NATIVE_WORDS = ['selection','light','medium','success','warning','error','page-splash','page-dark','page-light'];
+const NATIVE_WORDS = ['selection','light','medium','success','warning','error','page-dark','page-light'];
 function tellApp(word){
   try{ if(NATIVE_WORDS.includes(word)) window.webkit?.messageHandlers?.ricotta?.postMessage(word); }catch(_){ /* never interrupt the app */ }
 }

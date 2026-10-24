@@ -407,7 +407,8 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#navEditTabs').count(),0);
     await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
     await page.locator('[data-inc]').first().click();
-    assert.equal(await page.locator('#ricoTopBtn.reacting .rico-bot.mood-happy').count(),1,'Rico reacts to the first item');
+    assert.equal(await page.locator('#ricoTopBtn.reacting').count(),1,'Rico reacts to the first item');
+    assert.equal(await page.locator('#ricoTopBtn .rico-bot').count(),0,'the top bar shows his spark, not his face');
     await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
     const q5=page.locator('[data-qty="i5"]');
     await q5.focus();
@@ -461,10 +462,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await phone.page.evaluate(()=>!!document.activeElement?.matches('input,select,textarea')),false,'editing on a phone does not open the keyboard by itself');
     await phone.page.waitForFunction(()=>document.querySelector('.modal-form').getAnimations().every(a=>a.playState==='finished'));
     const formBox=await phone.page.locator('.modal-form').boundingBox();
-    assert.ok(Math.abs(formBox.y+formBox.height-844)<2,'the approved phone form is anchored to the bottom');
-    assert.ok(formBox.y>=20 && formBox.x>=0 && formBox.x+formBox.width<=390,'the form stays inside the phone viewport');
-    assert.equal(await phone.page.locator('#modalFormCancel').isVisible(),true);
-    assert.equal(await phone.page.locator('#modalFormOk').isVisible(),true,'Save stays visible in the sheet header');
+    assert.ok(Math.abs(formBox.y+formBox.height/2-844/2)<40,'the popup sits in the middle of the screen, not at the bottom');
     await phone.page.locator('.modal-form input').first().focus();
     assert.equal(await phone.page.evaluate(()=>document.body.classList.contains('typing')),true,'typing is noticed');
     await phone.page.locator('#modalFormCancel').click();
@@ -676,6 +674,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await mp.locator('#app').evaluate(el=>el.inert),false,'sign-out cleanup releases the background');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*ALL_VIEWS.length} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, Admin PIN change, welcome by name, fixed Manage navigation, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, dark mode, undo, security policy, desktop install, phone typing, bottom form sheets and centred alerts, Home Screen app frame, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*ALL_VIEWS.length} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, Admin PIN change, welcome by name, fixed Manage navigation, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, dark mode, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

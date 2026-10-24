@@ -320,15 +320,15 @@ function showUpdatePopup(message, okLabel, laterLabel, title = '') {
 function showFormModal(opts) {
   const dialog = createModal(ensureModalRoot(), `
     <div class="modal-overlay modal-overlay-top"><div class="modal-box modal-form">
-      <div class="modal-form-header">
-        <button type="button" class="btn btn-ghost" id="modalFormCancel">${esc(opts.cancelLabel || t('cancel'))}</button>
-        <div class="modal-title">${opts.title}</div>
-        <button type="button" class="btn ${opts.okClass === 'btn-danger' ? 'btn-danger' : 'btn-primary'}" id="modalFormOk">${esc(opts.okLabel || t('save'))}</button>
-      </div>
+      <div class="modal-title">${opts.title}</div>
       ${opts.banner ? `<div class="modal-banner">${opts.banner}</div>` : ''}
       <div class="modal-body">${opts.bodyHtml}</div>
       <div class="modal-status" id="modalFormStatus" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></div>
-      ${opts.againLabel ? `<div class="modal-actions"><button type="button" class="btn btn-ghost" id="modalFormAgain">${esc(opts.againLabel)}</button></div>` : ''}
+      <div class="modal-actions modal-actions-wrap">
+        <button type="button" class="btn btn-ghost" id="modalFormCancel">${esc(opts.cancelLabel || t('cancel'))}</button>
+        ${opts.againLabel ? `<button type="button" class="btn btn-ghost" id="modalFormAgain">${esc(opts.againLabel)}</button>` : ''}
+        <button type="button" class="btn ${opts.okClass === 'btn-danger' ? 'btn-danger' : 'btn-primary'}" id="modalFormOk">${esc(opts.okLabel || t('save'))}</button>
+      </div>
     </div></div>`);
   const box = dialog.box;
   const status = box.querySelector('#modalFormStatus');

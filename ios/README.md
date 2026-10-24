@@ -17,7 +17,7 @@ There are no API secrets or database credentials in the native project.
 - Persistent WebKit storage, with a separate sign-in from Safari.
 - One message channel, `ricotta`, that accepts only fixed words from Ricotta's own page (main frame) and sends
   nothing back (see `sounds.js` `NATIVE_WORDS`): haptics (`selection`, `light`, `medium`, `success`, `warning`,
-  `error`) and the page's look (`page-splash`, `page-dark`, `page-light`), which sets the colour behind the page and
+  `error`) and the page's look (`page-dark`, `page-light`), which sets the colour behind the page and
   the status bar text. A page that never reports its look gets the system colours after it loads.
 - HTTPS-only in-app navigation restricted to Ricotta's repository path.
 - Cloudflare challenge subframes with WebKit's default user agent.

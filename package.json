@@ -2,8 +2,8 @@
   "name": "ricotta-orders",
   "private": true,
   "scripts": {
-    "test": "node --test scripts/storage-regression.cjs scripts/update-check-regression.cjs && node scripts/app-session-smoke.cjs && node scripts/backend-api-smoke.mjs && node scripts/backend-security-smoke.mjs && node scripts/backend-push-smoke.mjs && node scripts/rico-provider-smoke.mjs && node scripts/monthly-db-smoke.cjs && node scripts/draft-sync-smoke.cjs && node scripts/ordering-tools-smoke.cjs && node scripts/transfers-smoke.cjs && node scripts/transfers-api-smoke.mjs && node scripts/rico-search-smoke.mjs && node scripts/rico-lifecycle-smoke.cjs && node scripts/auth-hardening-smoke.mjs && node scripts/static-cache-smoke.cjs && node scripts/workspace-tools-smoke.cjs",
-    "test:ui": "node scripts/ui-smoke.cjs && node scripts/order-queue-smoke.cjs && node scripts/search-ui-smoke.cjs && node scripts/workspace-ui-smoke.cjs",
+    "test": "node --test scripts/storage-regression.cjs scripts/update-check-regression.cjs && node scripts/app-session-smoke.cjs && node scripts/backend-api-smoke.mjs && node scripts/backend-security-smoke.mjs && node scripts/backend-push-smoke.mjs && node scripts/rico-provider-smoke.mjs && node scripts/monthly-db-smoke.cjs && node scripts/draft-sync-smoke.cjs && node scripts/ordering-tools-smoke.cjs && node scripts/transfers-smoke.cjs && node scripts/transfers-api-smoke.mjs && node scripts/rico-search-smoke.mjs && node scripts/rico-lifecycle-smoke.cjs && node scripts/auth-hardening-smoke.mjs && node scripts/static-cache-smoke.cjs && node scripts/item-undo-health-smoke.cjs",
+    "test:ui": "node scripts/ui-smoke.cjs && node scripts/order-queue-smoke.cjs && node scripts/search-ui-smoke.cjs && node scripts/kept-features-ui-smoke.cjs",
     "lint": "node scripts/lint.cjs"
   },
   "devDependencies": {

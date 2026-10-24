@@ -252,6 +252,7 @@
 
   /* ---- the router ---- */
   let query = new URLSearchParams();
+  const labUndo = new Map();
   async function handle(path, method, headers, body){
     await new Promise(r=>setTimeout(r, 120 + Math.random()*180));   // a little network time
     if(method === 'POST' && path === 'login'){
@@ -340,6 +341,20 @@
       if(conflicts.length)return json({conflicts},409);
       entries.forEach(e=>{db.items.find(i=>i.id===e.itemId).aliases=e.aliases;});save();return json({conflicts:[],changed:entries.length});
     }
+    // As on the server: a deleted item can come back for 10 minutes on this device.
+    if(method === 'POST' && path === 'items/restore'){
+      const r = labUndo.get(body.undoId);
+      labUndo.delete(body.undoId);
+      if(!r || r.until < Date.now() || db.items.some(i=>i.id === r.item.id)) return json({error:'undo_expired'}, 409);
+      db.items.push(r.item);
+      db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:'add', type:'item', name:r.item.name, fields:[{k:'name', to:r.item.name}]});
+      save(); return json({ok:true, itemId:r.item.id});
+    }
+    if(method === 'GET' && path === 'admin/diagnostics'){
+      if(account !== 'rozha') return fail('forbidden', 403);
+      const ran = new Date(Date.now() - 4*60000).toISOString();
+      return json({checkedAt:new Date().toISOString(), database:true, jobs:['ricotta-reminder-tick','ricotta-monthly-history','ricotta-daily-cleanup','ricotta-cron-history'].map(name=>({name, active:true, lastRun:ran, lastStatus:'succeeded', failures24h:0}))});
+    }
     if((m = path.match(/^(suppliers|items|units)\/(.+)$/)) && (method === 'PUT' || method === 'DELETE')){
       const table = m[1], id = decodeURIComponent(m[2]);
       const list = db[table], idx = list.findIndex(x=>x.id===id), prev = idx >= 0 ? list[idx] : null;
@@ -355,6 +370,11 @@
         else row = {id, en:String(body.en||'').slice(0,80), ku:body.ku || null, ar:body.ar || null};
         if(idx >= 0) list[idx] = row; else list.push(row);
         db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:prev ? 'edit' : 'add', type, name:row.name || row.en, fields:prev ? [] : [{k:'name', to:row.name || row.en}]});
+      }
+      if(method === 'DELETE' && table === 'items' && prev){
+        const undoId = crypto.randomUUID();
+        labUndo.set(undoId, {item:prev, until:Date.now() + 10*60000});
+        save(); return json({ok:true, undoId});
       }
       save(); return ok();
     }

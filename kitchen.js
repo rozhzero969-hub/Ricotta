@@ -31,7 +31,7 @@ function paintStreakChip(pop){
   old.outerHTML = renderStreakChip();
   const chip = document.getElementById('streakChip');
   chip.onclick = openStreakSheet;
-  if(pop) ricoReact('excited', 2400);
+  if(pop) ricoReact();
   if(pop && !matchMedia('(prefers-reduced-motion: reduce)').matches){ chip.classList.add('ignite'); setTimeout(()=>chip.classList.remove('ignite'), 1200); }
 }
 function nextGoal(n){ return STREAK_GOALS.find(g=>g > n) || (Math.floor(n / 100) + 1) * 100; }

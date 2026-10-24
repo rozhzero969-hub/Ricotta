@@ -19,7 +19,8 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   logout
 //   PUT    me/pins                    {itemIds}                 items pinned to the top of this account's Order screen
 //   PUT    suppliers/:id | items/:id | units/:id                upsert one record (+ its Record entry)
-//   DELETE suppliers/:id | items/:id | units/:id                delete one record (+ its Record entry)
+//   DELETE suppliers/:id | items/:id | units/:id                delete one record (+ its Record entry); items return {undoId}
+//   POST   items/restore              {undoId}                  bring back an item deleted on this device in the last 10 minutes
 //   PUT    supplier-order/:supplierId {itemIds}                 item order for one supplier
 //   POST   orders                     {id, date, entries}       save a sent order
 //   DELETE orders/:id                 {pin?} rozha: her own within 15 minutes, any with her PIN
@@ -32,6 +33,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   devices/me/ack             {commandId}               a remote command was carried out
 //   POST   devices/command            {ids, type} (rozha)       remote log out / refresh
 //   PUT    admin/pin                  {account, currentPin, newPin} (rozha)  a new PIN for Rozha or Yunis
+//   GET    admin/diagnostics          (rozha)                   Health Check: database and scheduled jobs (summaries only)
 //   PUT    push/subscription          {endpoint,p256dh,auth,lang}
 //   DELETE push/subscription          {endpoint}
 //   PUT    push/lang                  {endpoint, lang}
@@ -176,8 +178,8 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 };
 
 /* ---------- Shapes the browser uses ---------- */
-const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, cutoff: s.cutoff ?? null, orderingNote: s.ordering_note ?? "" });
-const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false, updatedAt: i.updated_at });
+const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, cutoff: s.cutoff ?? null });
+const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false });
 /* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
    had one; recoverable: how many days Rico can bring back after it broke. */
 function streakView(r: any) {
@@ -280,8 +282,8 @@ async function bootstrap(s: Session) {
   const since = monthStart();
   const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, months, draft] = await Promise.all([
     readAccount(s.account),
-    readAll(() => app("suppliers").select("id,name,phone,reminder,cutoff,ordering_note").order("name").order("id")),
-    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,updated_at").order("name").order("id")),
+    readAll(() => app("suppliers").select("id,name,phone,reminder,cutoff").order("name").order("id")),
+    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available").order("name").order("id")),
     readAll(() => app("units").select("id,en,ku,ar").order("id")),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
     readReminder(),
@@ -418,7 +420,6 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
   suppliers: (id, b) => text(b.name) ? {
     id, name: text(b.name), phone: text(b.phone, 40) || null,
     reminder: cleanReminder(b.reminder), updated_at: nowIso(),
-    ...(Object.hasOwn(b,"orderingNote") ? {ordering_note:text(b.orderingNote,300)} : {}),
     ...(Object.hasOwn(b, "cutoff") ? { cutoff: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.cutoff ?? "")) ? String(b.cutoff) : null } : {}),
   } : null,
   items: (id, b) => text(b.name) ? {
@@ -658,12 +659,6 @@ Deno.serve(async (req) => {
       if (!rozha) return fail("forbidden",403);
       const {data,error}=await db.rpc("app_internal_diagnostics",{p_actor:s.account});
       return error ? fail("diagnostics_unavailable",503) : json(data);
-    }
-    if (M === "POST" && path === "items/merge") {
-      if (![b.keepId,b.removeId].every(v=>typeof v==="string" && v.length>0 && v.length<=120) || b.keepId===b.removeId ||
-          ![b.keepVersion,b.removeVersion].every(v=>typeof v==="string" && v.length<=40 && Number.isFinite(Date.parse(v)))) return fail("invalid_input");
-      const {data,error}=await db.rpc("app_internal_merge_items",{p_keep:b.keepId,p_remove:b.removeId,p_keep_version:b.keepVersion,p_remove_version:b.removeVersion,p_actor:s.account,p_device:s.deviceId});
-      return error ? fail("save_failed",503) : json(data,data?.error?409:200);
     }
     if (M === "POST" && path === "items/restore") {
       if (typeof b.undoId!=="string" || !/^[a-f0-9-]{36}$/.test(b.undoId)) return fail("invalid_input");

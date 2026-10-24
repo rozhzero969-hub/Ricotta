@@ -90,7 +90,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
   Object.assign(crossTab, {
     LS_PREFIX:'ricottaOrders:', tabsFor:()=>['order','history','manage'],
     rowPress:null, toastTimer:null, reminderDraft:{time:'09:00'},
-    viewMemory:new Map(), diagnosticState:{}, drafts:{}, listeners:{}, modalResets:0, streamResets:0, sessionClears:0,
+    viewMemory:new Map(), tabMemory:new Map(), diagnosticState:{}, drafts:{}, listeners:{}, modalResets:0, streamResets:0, sessionClears:0,
     document:{getElementById:()=>null}, clearTimeout:()=>{},
     ricoReset:()=>crossTab.streamResets++,
     stopStepHold:()=>{}, dismissAllModals:()=>crossTab.modalResets++,

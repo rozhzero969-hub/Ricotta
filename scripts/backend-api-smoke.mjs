@@ -35,7 +35,7 @@ const db = {
       if(args.p_device && tables.app_sessions.some(row=>row.device_id===args.p_device && row.account!==match && row.revoked_at===null && row.expires_at>new Date().toISOString())) return {data:{error:'device_in_use'},error:null};
       return {data:{account:match,name:'Test account',expiresAt:new Date(Date.now()+60000).toISOString()},error:null};
     }
-    if (['app_internal_item_undo','app_internal_merge_items','app_internal_diagnostics'].includes(name)) return {data:newResult,error:null};
+    if (['app_internal_item_undo','app_internal_diagnostics'].includes(name)) return {data:newResult,error:null};
     if (name === 'app_internal_check_account_pin') return { data: args.p_pin === '482916', error: null };
     if (name === 'app_internal_set_pin') return { data: pinResult, error: null };
     if (['app_internal_logout','app_internal_catalog_change','app_internal_device_command','app_internal_delete_order'].includes(name)) return {data:null,error:null};
@@ -112,13 +112,7 @@ try {
   newResult={error:'undo_expired'};assert.equal((await call('items/restore',{undoId:'12345678-1234-1234-1234-123456789abc'},'POST')).status,409);
   errors.set('app_internal_item_undo',true);assert.equal((await call('items/tomato',{},'DELETE')).status,503);
   reset();newResult={ok:true};
-  const merge={keepId:'a',removeId:'b',keepVersion:new Date().toISOString(),removeVersion:new Date().toISOString()};
-  for(const b of [{},{...merge,keepId:'b'},{...merge,keepVersion:'bad'},{...merge,removeId:7}])assert.equal((await call('items/merge',b)).status,400);
-  assert.equal((await call('items/merge',merge)).status,200);
-  assert.deepEqual(calls.find(c=>c.name==='app_internal_merge_items').args,{p_keep:'a',p_remove:'b',p_keep_version:merge.keepVersion,p_remove_version:merge.removeVersion,p_actor:'rozha',p_device:'device-1'});
-  newResult={error:'conflict'};assert.equal((await call('items/merge',merge)).status,409);
-  errors.set('app_internal_merge_items',true);assert.equal((await call('items/merge',merge)).status,503);
-  reset();newResult={ok:true};
+  assert.equal((await call('items/merge',{keepId:'a',removeId:'b'})).status,404,'item merging was removed');
   const history = groupHistory([{ id: 'archived', sent_at: '2026-10-01T12:00:00Z' }], [
     { order_id: 'archived', supplier_id: null, supplier_name: 'Former supplier A', item_id: 'a', item_name: 'Tomatoes', qty: 2 },
     { order_id: 'archived', supplier_id: null, supplier_name: 'Former supplier B', item_id: 'b', item_name: 'Apples', qty: 3 },
