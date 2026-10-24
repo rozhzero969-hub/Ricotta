@@ -424,3 +424,21 @@ test('a sign-in lost on this browser never locks the other account out', async()
   c.fetch = async()=>response(409, {error:'device_in_use'});
   assert.deepEqual(plain(await c.apiLogin('123456')), {error:'device'});
 });
+
+
+test('the native iPhone shell reports App rather than Website',()=>{
+  const {context:c}=browser();
+  c.navigator.userAgent='iPhone'; c.window.RICOTTA_NATIVE_SHELL=true;
+  assert.match(c.deviceLabel(),/\|App$/);
+});
+
+
+test('a sign-in service outage is not described as a wrong PIN',async()=>{
+  const {context:c}=browser(); c.authBotProof=async()=>({token:'fixture'});
+  for(const status of [0,408,500,503]){
+    c.api=async()=>({ok:false,status});
+    assert.equal((await c.apiLogin('fixture')).error,'network');
+  }
+  c.api=async()=>({ok:false,status:401});
+  assert.equal((await c.apiLogin('fixture')).error,'wrong');
+});

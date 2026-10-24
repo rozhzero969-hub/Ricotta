@@ -72,7 +72,7 @@ function deviceLabel(){
   else if(/Macintosh/.test(ua)) kind = 'Mac';
   else if(/Linux/.test(ua)) kind = 'Linux PC';
   else kind = 'Device';
-  const app = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+  const app = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true || window.RICOTTA_NATIVE_SHELL === true;
   // "kind|how", e.g. "Windows PC|Website" (the app shows the two parts separately).
   deviceLabelCache = `${kind}|${app ? 'App' : 'Website'}`.replace(/[^\x20-\x7E]/g, '').slice(0, 80);
   return deviceLabelCache;
@@ -191,7 +191,7 @@ async function apiLogin(pin, freshDevice = false){
     return apiLogin(pin, true);
   }
   if(r.status === 429) return {error:'locked'};
-  if(r.status === 0) return {error:'network'};
+  if(r.status === 0 || r.status === 408 || r.status >= 500) return {error:'network'};
   return {error:'wrong'};
 }
 

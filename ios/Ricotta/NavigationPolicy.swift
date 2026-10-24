@@ -1,6 +1,6 @@
 import Foundation
 
-/// Only Ricotta's own HTTPS pages are hosted inside the app. No native JavaScript bridge is exposed.
+/// Only Ricotta's own HTTPS pages are hosted inside the app. The native bridge accepts only fixed haptic/appearance messages from these pages.
 enum RicottaNavigation {
     static let home = URL(string: "https://rozhzero969-hub.github.io/Ricotta/")!
     static func isAppPage(_ url: URL) -> Bool {

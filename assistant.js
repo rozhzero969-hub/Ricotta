@@ -24,6 +24,8 @@ const ICON_STOP = `<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="
 const ICON_NEW_CHAT = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
 
 const rico = {
+  epoch: 0,             // invalidates work from a closed chat or previous sign-in
+  chatRequest: 0,
   messages: [],
   streaming: false,
   abort: null,
@@ -94,15 +96,20 @@ const aiConsentKey = ()=>'aiConsent:' + state.account;
 function aiConsented(){ return lget(aiConsentKey()) === true; }
 function setAiConsent(on){ lset(aiConsentKey(), on ? true : null); }
 async function aiConsent(){
+  if(!state.account) return false;
+  const context = ricoContext();
   if(aiConsented()) return true;
   const yes = await showConfirm(esc(t('aiBody')), {title:t('aiTitle'), okLabel:t('aiAllow'), cancelLabel:t('aiNotNow'), okClass:'btn-primary'});
+  if(!ricoContextCurrent(context)) return false;
   if(yes) setAiConsent(true);
   return yes;
 }
 /* Signing out forgets the chat and the inbox on this phone. */
 function ricoReset(){
+  rico.epoch++; rico.chatRequest++;
   ricoStop(); ricoResetVoice(); clearTimeout(ricoSaveTimer);
-  rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.viewing = null;
+  rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.chatsBusy = false; rico.viewing = null; rico.viewedId = null;
+  ricoRecorder.busy = false; ricoRecorder.voiceTransfer = false;
 }
 
 /* ---------- Rico's inbox ---------- */
@@ -415,53 +422,60 @@ function ricoComposerHint(){
    Tap the microphone, speak (Kurdish or English), tap again: the clip goes
    to the server, comes back as text, and is sent to Rico like a typed
    message. Recording stops by itself after a minute. Nothing is stored. */
-const ricoRecorder = {active:false, busy:false, rec:null, stream:null, chunks:[], timer:0};
+const ricoRecorder = {active:false, starting:false, busy:false, rec:null, stream:null, chunks:[], timer:0};
 function ricoVoiceSupported(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder); }
 function blobToBase64(blob){
   return new Promise((resolve, reject)=>{ const r = new FileReader(); r.onload = ()=>resolve(String(r.result).split(',')[1] || ''); r.onerror = reject; r.readAsDataURL(blob); });
 }
 async function ricoToggleVoice(){
-  if(ricoRecorder.busy) return;
+  if(ricoRecorder.busy || ricoRecorder.starting) return;
   if(ricoRecorder.active){ try{ ricoRecorder.rec.stop(); }catch(e){ ricoResetVoice(); } return; }
   if(rico.streaming) return;
   if(!ricoVoiceSupported()){ toast(t('ricoMicUnsupported'), 'warn'); return; }
-  if(!(await aiConsent())) return;
-  const denied = e=>e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
-  const failed = e=>toast(denied(e) ? t('ricoMicDenied') : t('ricoMicNoStart') + (e && e.name ? ` (${e.name})` : ''), 'warn');
-  let stream;
-  try{ stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true}}); }
-  catch(e){
-    // Some phones refuse the extra settings: ask again for a plain microphone.
-    if(denied(e)){ failed(e); return; }
-    try{ stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
-    catch(e2){ failed(e2); return; }
-  }
-  // iPhones record most reliably in their own format (mp4), in one piece; others prefer webm/opus.
-  const supports = m=>window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m);
-  const apple = /iPhone|iPad|Macintosh/.test(navigator.userAgent) && supports('audio/mp4');
-  const mime = (apple ? ['audio/mp4'] : ['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus']).find(supports) || '';
-  let rec;
-  try{ rec = new MediaRecorder(stream, mime ? {mimeType:mime, audioBitsPerSecond:32000} : undefined); }
-  catch(e){
-    try{ rec = new MediaRecorder(stream); }
-    catch(e2){ stream.getTracks().forEach(tr=>tr.stop()); failed(e2); return; }
-  }
-  Object.assign(ricoRecorder, {active:true, rec, stream, chunks:[]});
-  rec.ondataavailable = e=>{ if(e.data && e.data.size) ricoRecorder.chunks.push(e.data); };
-  rec.onstop = ()=>ricoFinishVoice(rec.mimeType || mime || 'audio/webm');
-  rec.onerror = e=>{ ricoResetVoice(); ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintTransferMic(); failed(e && e.error); };
-  if(apple) rec.start(); else rec.start(250);
-  ricoRecorder.timer = setTimeout(()=>{ if(ricoRecorder.active) try{ rec.stop(); }catch(e){} }, 60000);
-  ricoRefreshComposer();
+  const context = ricoContext(), voiceView = state.view;
+  ricoRecorder.starting = true;
+  try{
+    if(!(await aiConsent()) || !ricoContextCurrent(context)) return;
+    const denied = e=>e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+    const failed = e=>toast(denied(e) ? t('ricoMicDenied') : t('ricoMicNoStart') + (e && e.name ? ` (${e.name})` : ''), 'warn');
+    let stream;
+    try{ stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true}}); }
+    catch(e){
+      if(!ricoContextCurrent(context)) return;
+      // Some phones refuse the extra settings: ask again for a plain microphone.
+      if(denied(e)){ failed(e); return; }
+      try{ stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+      catch(e2){ failed(e2); return; }
+    }
+    if(!ricoContextCurrent(context) || state.view !== voiceView){ stream.getTracks().forEach(tr=>tr.stop()); return; }
+    // iPhones record most reliably in their own format (mp4), in one piece; others prefer webm/opus.
+    const supports = m=>window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m);
+    const apple = /iPhone|iPad|Macintosh/.test(navigator.userAgent) && supports('audio/mp4');
+    const mime = (apple ? ['audio/mp4'] : ['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus']).find(supports) || '';
+    let rec;
+    try{ rec = new MediaRecorder(stream, mime ? {mimeType:mime, audioBitsPerSecond:32000} : undefined); }
+    catch(e){
+      try{ rec = new MediaRecorder(stream); }
+      catch(e2){ stream.getTracks().forEach(tr=>tr.stop()); failed(e2); return; }
+    }
+    Object.assign(ricoRecorder, {active:true, rec, stream, chunks:[]});
+    rec.ondataavailable = e=>{ if(e.data && e.data.size) ricoRecorder.chunks.push(e.data); };
+    rec.onstop = ()=>ricoFinishVoice(rec.mimeType || mime || 'audio/webm');
+    rec.onerror = e=>{ ricoResetVoice(); ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintTransferMic(); failed(e && e.error); };
+    if(apple) rec.start(); else rec.start(250);
+    ricoRecorder.timer = setTimeout(()=>{ if(ricoRecorder.active) try{ rec.stop(); }catch(e){} }, 60000);
+    ricoRefreshComposer();
+  }finally{ if(ricoContextCurrent(context)) ricoRecorder.starting = false; }
 }
 function ricoResetVoice(){
   clearTimeout(ricoRecorder.timer);
   const rec = ricoRecorder.rec;
   if(rec && rec.state !== 'inactive'){ rec.onstop = null; try{ rec.stop(); }catch(e){} }   // dropped, not sent
   ricoRecorder.stream && ricoRecorder.stream.getTracks().forEach(tr=>tr.stop());
-  Object.assign(ricoRecorder, {active:false, rec:null, stream:null, chunks:[]});
+  Object.assign(ricoRecorder, {active:false, starting:false, rec:null, stream:null, chunks:[]});
 }
 async function ricoFinishVoice(mime){
+  const context = ricoContext();
   const blob = new Blob(ricoRecorder.chunks, {type:mime});
   ricoResetVoice();
   ricoRecorder.busy = true;
@@ -470,7 +484,9 @@ async function ricoFinishVoice(mime){
   try{
     if(blob.size < 1200){ toast(t('ricoMicTooShort'), 'warn'); return; }   // just a tap
     const audio = await blobToBase64(blob);
+    if(!ricoContextCurrent(context)) return;
     const r = await api('assistant/transcribe', {method:'POST', body:{audio, mime:mime.split(';')[0], lang:state.lang}, timeout:45000});
+    if(!ricoContextCurrent(context) || r.stale) return;
     const text = r.ok && r.data && typeof r.data.text === 'string' ? r.data.text.trim() : '';
     if(!text){
       const code = r.data && r.data.error;
@@ -481,8 +497,18 @@ async function ricoFinishVoice(mime){
     // From the Transfers screen: the spoken list is read into transfer rows, not sent to Rico's chat.
     if(ricoRecorder.voiceTransfer){ ricoRecorder.voiceTransfer = false; transferVoiceText(text); }
     else ricoAsk(text);
-  }catch(e){ console.error('Voice message failed', e); toast(t('ricoMicFailed') + (e && e.name ? ` (${e.name})` : ''), 'warn'); }
-  finally{ ricoRecorder.busy = false; ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintTransferMic(); }
+  }catch(e){ if(!ricoContextCurrent(context)) return; console.error('Voice message failed', e); toast(t('ricoMicFailed') + (e && e.name ? ` (${e.name})` : ''), 'warn'); }
+  finally{ if(ricoContextCurrent(context)){ ricoRecorder.busy = false; ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintTransferMic(); } }
+}
+
+/* Async consent, microphone and chat replies belong to the chat that started them. */
+function ricoContext(){ return {epoch:rico.epoch, account:state.account}; }
+function ricoContextCurrent(context){ return context.epoch === rico.epoch && context.account === state.account; }
+function ricoDraftKey(account = state.account){ return 'ricoDraft:' + account; }
+function ricoReadDraft(){
+  // The legacy key had no owner. Never assign its contents to the next person signing in.
+  lset('ricoDraft', null);
+  return state.account ? lget(ricoDraftKey()) : null;
 }
 
 /* ---------- Events ---------- */
@@ -498,8 +524,9 @@ function attachAssistantEvents(){
     input.addEventListener('focus', ()=>document.body.classList.add('rico-composing'));
     // Leaving the box gives the page more room at the bottom: stay at the newest message if we were there.
     input.addEventListener('blur', ()=>setTimeout(()=>{ const near = ricoNearBottom(); document.body.classList.remove('rico-composing'); if(near && rico.messages.length) ricoScroll(false); }, 120));
-    const draft = lget('ricoDraft'); if(draft && !input.value){ input.value = draft; grow(); }
-    input.addEventListener('input', ()=>lset('ricoDraft', input.value || null));
+    const draft = ricoReadDraft(); if(draft && !input.value){ input.value = draft; grow(); }
+    const draftAccount = state.account;
+    input.addEventListener('input', ()=>{ if(state.account === draftAccount) lset(ricoDraftKey(draftAccount), input.value || null); });
   }
   document.getElementById('ricoMicBtn')?.addEventListener('click', ()=>ricoToggleVoice());
   if(form) form.onsubmit = async e=>{
@@ -508,8 +535,9 @@ function attachAssistantEvents(){
     if(rico.streaming){ ricoStop(); return; }
     const text = input.value.trim();
     if(!text) return;
-    if(!(await aiConsent())) return;   // the message stays in the box
-    input.value = ''; input.style.height = 'auto'; lset('ricoDraft', null);
+    const context = ricoContext();
+    if(!(await aiConsent()) || !ricoContextCurrent(context)) return;   // the message stays in the box
+    input.value = ''; input.style.height = 'auto'; lset(ricoDraftKey(), null);
     ricoAsk(text);
   };
   document.getElementById('ricoNewBtn')?.addEventListener('click', ()=>ricoNewChat());
@@ -595,8 +623,9 @@ function ricoStop(){
   if(rico.abort){ rico.abort.abort(); rico.abort = null; }
 }
 async function ricoAsk(text, options = {}){
-  if(rico.streaming) return;
-  if(!(await aiConsent())) return;
+  if(rico.streaming || !state.account) return;
+  const context = ricoContext();
+  if(!(await aiConsent()) || !ricoContextCurrent(context) || rico.streaming) return;
   const scopeIds = options.supplierIds || [];
   const named = state.suppliers.filter(s=>String(text).toLocaleLowerCase().includes(s.name.toLocaleLowerCase())).map(s=>s.id);
   if(rico.viewing){ rico.viewing = null; rico.messages = []; rico.chatId = null; }
@@ -611,7 +640,6 @@ async function ricoAsk(text, options = {}){
     options = {quickAction:'prepare_order', supplierIds:named};
   }
   const previousView = state.view;
-  const requestAccount = state.account;
   rico.messages.push({role:'user', text, ts:Date.now()});
   const bot = {role:'assistant', text:'', proposals:[], steps:[], streaming:true, statusKey:'thinking', ts:Date.now()};
   rico.messages.push(bot);
@@ -622,13 +650,14 @@ async function ricoAsk(text, options = {}){
   const controller = new AbortController();
   rico.abort = controller;
   let frame = 0;
-  const paint = ()=>{ if(frame) return; frame = requestAnimationFrame(()=>{ frame = 0; ricoPaintMessage(idx); }); };
+  const paint = ()=>{ if(frame) return; frame = requestAnimationFrame(()=>{ frame = 0; if(ricoContextCurrent(context)) ricoPaintMessage(idx); }); };
   const body = {
     messages: ricoHistoryForServer(), lang: state.lang, screen: previousView,
     autoOrder: ricoAutoOrder(), cart: Object.fromEntries(Object.entries(state.cart).filter(([,q])=>q>0)),
     quickAction: options.quickAction || undefined, supplierIds: options.supplierIds || undefined,
   };
   await apiStream('assistant/chat', body, ev=>{
+    if(!ricoContextCurrent(context)) return;
     if(ev.type === 'text'){ bot.text += ev.text; bot.statusKey = null; bot.stepsDone = true; paint(); }
     else if(ev.type === 'status'){
       bot.statusKey = ev.tool;
@@ -645,8 +674,8 @@ async function ricoAsk(text, options = {}){
     else if(ev.type === 'mood'){ bot.mood = ev.mood; paint(); ricoPaintHeadFace(); }
     else if(ev.type === 'error'){ bot.error = ev.code; bot.retry = ['offline','busy','failed'].includes(ev.code); paint(); }
   }, controller.signal);
-  if(state.account !== requestAccount) return;
   cancelAnimationFrame(frame);
+  if(!ricoContextCurrent(context)) return;
   bot.streaming = false; bot.statusKey = null;
   if(controller.signal.aborted && !bot.text && !bot.proposals.length) bot.error = 'stopped';
   if(!controller.signal.aborted && !bot.text && !bot.proposals.length && !bot.error){ bot.error = 'failed'; bot.retry = true; }
@@ -855,16 +884,22 @@ const myChats = () => (rico.chats || []).filter(c=>(c.account || state.account) 
 function ricoNewChat(){
   if(rico.streaming) ricoStop();
   if(rico.messages.length) ricoSave();
-  rico.messages = []; rico.chatId = null; rico.viewing = null;
+  rico.epoch++; rico.chatRequest++;
+  ricoResetVoice(); ricoRecorder.busy = false; ricoRecorder.voiceTransfer = false;
+  rico.streaming = false;
+  rico.messages = []; rico.chatId = null; rico.viewing = null; rico.viewedId = null;
   render();
 }
 async function ricoOpenChat(id){
   if(rico.streaming) return false;
-  let r = await api('rico-chats/' + encodeURIComponent(id));
-  if(r.stale) r = await api('rico-chats/' + encodeURIComponent(id));   // a save happened at the same moment
+  const context = ricoContext(), request = ++rico.chatRequest;
+  const r = await api('rico-chats/' + encodeURIComponent(id));
+  if(!ricoContextCurrent(context) || request !== rico.chatRequest || r.stale) return false;
   if(!r.ok || !Array.isArray(r.data?.messages)){ toast(t('ricoChatLoadFailed'), 'error'); return false; }
   if(rico.chatId !== id && rico.messages.length) ricoSave();
   clearTimeout(ricoSaveTimer);
+  rico.epoch++;
+  ricoResetVoice(); ricoRecorder.busy = false; ricoRecorder.voiceTransfer = false;
   // The other person's chat opens read only: it can be read and deleted, never continued.
   rico.viewing = r.data.account && r.data.account !== state.account ? r.data.account : null;
   rico.chatId = rico.viewing ? null : id;
