@@ -1103,8 +1103,9 @@ function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
   const width = old ? old.getBoundingClientRect().width : window.innerWidth;
   const quick = fade || (managedView(state.view) && managedView(view));   // within Manage, or sliding along the tab bar
   const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : {inn:[...FADE_FRAMES.inn], out:[...FADE_FRAMES.out]}) : null;
-  const ghost = frames?.out ? pageGhost(old) : null;
+  // The place is saved before the old page moves into its slide-out copy (that empties the page).
   viewMemory.set(state.view, {query:state.catalogQuery || '', top:scrollBox().scrollTop});
+  const ghost = frames?.out ? pageGhost(old) : null;
   const remembered = viewMemory.get(view);
   state.catalogQuery = remembered?.query || ''; state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
