@@ -493,6 +493,7 @@ function signOut(reason, {preserveSession = false} = {}){
   state.activity = []; state.devices = []; state.reminder = null;
   state.streak = null; state.pins = []; state.months = [];
   try{ updateAppBadge(); }catch(_){}
+  viewMemory.clear();diagnosticState={account:null,data:null,error:false,busy:false};
   state.catalogQuery='';state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
   reminderDraft = null;
@@ -709,6 +710,7 @@ function animateUi(element, frames, duration=220){
 // Keep the navigation shell mounted for route changes. Page changes animate
 // through goView; quantity, search and supplier interactions have smaller
 // update paths that never rebuild the page.
+const viewMemory = new Map();
 const RENDERERS = {
   order:[()=>renderOrder(),()=>attachOrderEvents()], queue:[()=>renderQueue(),()=>attachQueueEvents()],
   history:[()=>renderHistory(),()=>attachHistoryEvents()], suppliers:[()=>renderSuppliers(),()=>attachSupplierEvents()],
@@ -1111,10 +1113,12 @@ function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
   const quick = fade || (managedView(state.view) && managedView(view));   // within Manage, or sliding along the tab bar
   const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : {inn:[...FADE_FRAMES.inn], out:[...FADE_FRAMES.out]}) : null;
   const ghost = frames?.out ? pageGhost(old) : null;
-  state.catalogQuery='';state.view = view;
+  viewMemory.set(state.view,{query:state.catalogQuery||'',top:scrollBox().scrollTop});
+  const remembered=viewMemory.get(view);
+  state.catalogQuery=remembered?.query||'';state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
   render();
-  scrollBox().scrollTo({top:0});
+  scrollBox().scrollTo({top:remembered?.top||0});
   if(view === 'record') refreshActivity();
   if(view === 'admin') refreshDevices();
   if(!keepLens) placeNavIndicator();
@@ -1792,9 +1796,7 @@ function sentToSupplierToday(supplierId){
 function lastOrderMap(){
   if(!state.history.length) return null;
   const last = state.history[state.history.length-1];
-  const map = {};
-  last.entries.forEach(e=>e.items.forEach(it=>{ map[it.itemId] = it.qty; }));
-  return map;
+  return historyCart(last);
 }
 /* Suppliers the current tab covers, and how many of them have something picked. */
 function supplierCoverage(){
@@ -1859,18 +1861,18 @@ function renderOrder(){
   const lastMap = lastOrderMap();
   return `
     <div id="sharedDraftStatus">${draftStatusHtml()}</div>
-    ${renderOrderHero(selectedCount, selectedSupplierCount)}
+    <div class="order-workspace"><aside class="order-overview">${renderOrderHero(selectedCount, selectedSupplierCount)}<div id="desktopSummary">${renderDesktopSummary()}</div></aside><div class="order-catalog">
     <div id="ricoSuggest">${renderRicoSuggestion()}</div>
     <div class="order-quick-actions">
       ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}<span>${t('sameAsLastTime')}</span></button>` : ''}
       <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${ICON_DELETE}<span>${t('clearOrder')}</span></button>
     </div>
-    ${tabsHtml}
     <div class="search-row">
       <div class="search-wrap">${ICON_SEARCH}<input class="search-input" id="itemSearch" aria-label="${t('searchPlaceholder')}" placeholder="${t('searchPlaceholder')}" value="${esc(state.search)}"><button type="button" class="search-clear" id="itemSearchClear" aria-label="${esc(t('clearSearch'))}" ${state.search?'':'hidden'}>&times;</button></div>
       <div class="order-arrange-row" id="orderArrangeRow">${renderOrderArrangeControl()}</div>
     </div>
-    <div id="orderResults" aria-live="polite">${groupHtml || emptyState(t('noSearchResults'))}</div>
+    ${tabsHtml}
+    <div id="orderResults" aria-live="polite">${groupHtml || emptyState(t('noSearchResults'))}</div></div></div>
   `;
 }
 /* Search only replaces this result region; rebuilding #app on each keystroke
@@ -1883,7 +1885,7 @@ function renderOrderResults(){
     : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab);
   const availableItems = tabFiltered.filter(i=>i.available!==false);
   const visibleItems = q ? globalThis.RicottaSearch.rank(availableItems,state.search,itemSearchFields) : availableItems;
-  const pinned = state.orderTab==='all' && !q ? state.pins.map(id=>state.items.find(i=>i.id===id)).filter(i=>i && i.available!==false) : [];
+  const pinned = !q ? state.pins.map(id=>tabFiltered.find(i=>i.id===id)).filter(i=>i && i.available!==false) : [];
 
   const groups = Object.create(null);
   visibleItems.forEach(i=>{
@@ -1892,12 +1894,12 @@ function renderOrderResults(){
   });
   const groupHtml = Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
     const label = key==='__none' ? t('noSupplier') : supplierName(key);
-    const rows = (q?groups[key]:sortedSupplierItems(groups[key])).map(i=>itemRowHtml(i, lastQty)).join('');
+    const rows = (q?groups[key]:sortedSupplierItems(groups[key]).filter(i=>!pinned.some(p=>p.id===i.id))).map(i=>itemRowHtml(i, lastQty)).join('');
     return state.orderTab==='all' ? `<div class="supplier-group">
       <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}<span class="supplier-item-count">${groups[key].length}</span></span></div>
-      ${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}
+      ${supplierInstructions(key)}${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}
       <div class="supplier-items-grid">${rows}</div>
-    </div>` : `${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}<div class="supplier-items-grid standalone">${rows}</div>`;
+    </div>` : `${supplierInstructions(key)}${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}<div class="supplier-items-grid standalone">${rows}</div>`;
   }).join('');
 
   const pinnedHtml = pinned.length ? `<div class="supplier-group pinned-group">
@@ -1978,6 +1980,7 @@ function refreshCartSummary(){
   const draft=document.querySelector('.draft-state');
   if(draft) draft.textContent=c?draftProgressLabel():t('selectToStart');
   paintRicoSuggestion();
+  paintDesktopSummary();
 }
 /* The most of one item a single order can hold (the server refuses more). */
 const MAX_QTY = 99999;
@@ -1997,6 +2000,7 @@ function renderOrderBottomBar(){
   </div>`;
 }
 function attachOrderEvents(){
+  paintDesktopSummary();
   paintDraftStatus();
   document.querySelectorAll('[data-ordertab]').forEach(b=>b.onclick=()=>{
     if(state.orderTab===b.dataset.ordertab) return;
@@ -2072,6 +2076,7 @@ async function startSendQueue(){
   if(sharedDraft.conflicts.length){ toast(t('draftConflict')); return false; }
   // An order that is already being saved (or failed to save) is finished first.
   if(state.queue?.record){ goView('queue'); return true; }
+  if(!(await confirmDraftWarnings())) return false;
   const bySupplier = Object.create(null);
   Object.keys(state.cart).forEach(id=>{
     const qty = state.cart[id]; if(!qty) return;
@@ -2397,7 +2402,7 @@ function renderQueue(){
       ? `<a class="wa-btn ${e.sent?'done':''}" data-send="${idx}" href="${esc(waLink(sup.phone, buildMessage(e)))}"${waOpensApp() ? '' : ' target="_blank" rel="noopener noreferrer"'}>${ICON_CHAT}${e.sent?t('sentSendAgain'):t('sendVia')}</a>`
       : `<button class="wa-btn ${e.sent?'done':''}" data-marksent="${idx}" ${e.sent?'disabled':''}>${e.sent?t('sent'):t('markSent')}</button>`;
     return `<div class="queue-card ${e.sent?'sent':''}">
-      <div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}${e.sent ? '' : cutoffChip(e.supplierId)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
+      ${supplierInstructions(e.supplierId)}<div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}${e.sent ? '' : cutoffChip(e.supplierId)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
       <div class="queue-items">${itemsLine}</div>
       ${canWhatsApp ? '' : `<div class="queue-note">${esc(!sup ? t('noSupplier') : t('noPhoneOnFile'))} · ${esc(t('markSentHint'))}</div>`}
       <div class="queue-actions">${sendBtn}<button class="pdf-btn" data-pdf="${idx}" aria-label="${esc(t('orderSheet'))}">${NAV_ICONS.record}<span>PDF</span></button></div>
@@ -2583,12 +2588,8 @@ function attachHistoryEvents(){
   document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
     const rec = state.history.find(r=>r.id===b.dataset.reorderhist);
     if(!rec) return;
-    const cart = {};
-    rec.entries.forEach(e=>e.items.forEach(it=>{
-      // Skip items that were since deleted from the catalog -- they no
-      // longer have anywhere to show up on the order screen.
-      if(state.items.some(i=>i.id===it.itemId && i.available!==false)) cart[it.itemId] = it.qty;
-    }));
+    const cart=historyCart(rec);
+    if(!cart){toast(t('saveFailed'),'error');return;}
     // Replaces the order being made; Undo brings it back.
     const before = {...state.cart};
     state.cart = cart;
@@ -2661,7 +2662,7 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), cutoff:t('cutoffShort')})[k] || k;
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), cutoff:t('cutoffShort'), orderingNote:t('orderingInstructions')})[k] || k;
 }
 function recordValue(k, v){
   if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||t('noValue');}catch(_){} }
@@ -2835,7 +2836,7 @@ function renderSuppliers(){
       <button class="btn btn-primary add-btn" id="supAddBtn">${ICON_PLUS} ${t('addSupplier')}</button>
       <button class="btn btn-ghost" data-gorecord="supplier">${NAV_ICONS.record} ${t('record')}</button>
     </div>
-    ${renderCatalogSearch()}<div class="section-title">${t('suppliers')} (${state.suppliers.length})</div>${list}`;
+    ${renderCatalogSearch()}<div class="section-title">${t('suppliers')} (${state.suppliers.length})</div><div id="suppliersList">${list}</div>`;
 }
 function openSupplierModal(id){
   const existing = id ? state.suppliers.find(s=>s.id===id) : null;
@@ -2846,6 +2847,7 @@ function openSupplierModal(id){
     bodyHtml: `
       <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
       <div class="field"><label>${t('phone')}</label><input id="mfPhone" data-clear="1" inputmode="tel" placeholder="07xxxxxxxxx" value="${esc(existing?.phone||'')}"></div>
+      <div class="field"><label for="mfOrderingNote">${esc(t('orderingInstructions'))}</label><textarea id="mfOrderingNote" maxlength="300" rows="3" dir="auto">${esc(existing?.orderingNote||'')}</textarea><small class="field-hint">${esc(t('orderingInstructionsHint'))}</small></div>
       ${reminderFieldsHtml(existing?.reminder)}
       <div class="field"><label for="mfCutoff">${t('cutoffLabel')}</label><input id="mfCutoff" type="time" value="${esc(existing?.cutoff||'')}"><small class="field-hint">${esc(t('cutoffHint'))}</small></div>`,
     okLabel: t('save'),
@@ -2855,6 +2857,7 @@ function openSupplierModal(id){
       const name = document.getElementById('mfName').value.trim();
       const phone = document.getElementById('mfPhone').value.trim();
       const cutoff = document.getElementById('mfCutoff').value.trim().slice(0, 5);
+      const orderingNote=document.getElementById('mfOrderingNote').value.trim().slice(0,300);
       if(!name) return {error: t('nameRequired')};
       if(cutoff && !/^([01]\d|2[0-3]):[0-5]\d$/.test(cutoff)) return {error: t('reminderTimeInvalid')};
       const rem = readReminderFields();
@@ -2870,18 +2873,18 @@ function openSupplierModal(id){
         const s = state.suppliers.find(x=>x.id===existing.id);
         if(!s) return {};
         const oldCode = reminderCode(s.reminder);
-        const fields = diffFields([['name', s.name, name], ['phone', s.phone, phone], ['reminder', oldCode, newCode], ['cutoff', s.cutoff || '', cutoff]]);
+        const fields = diffFields([['name', s.name, name], ['phone', s.phone, phone], ['reminder', oldCode, newCode], ['cutoff', s.cutoff || '', cutoff], ['orderingNote', s.orderingNote||'',orderingNote]]);
         if(!fields.length) return {};   // nothing changed -- nothing to save or record
         // updatedAt tells the server when the reminder was last changed, so a time that
         // has already passed today starts tomorrow instead of firing the moment you save.
         const reminder = oldCode === newCode ? s.reminder
           : rem.on ? {...newRem, updatedAt: now} : {...(s.reminder||{}), enabled:false, updatedAt: now};
-        const next = {...s, name, phone, reminder, cutoff: cutoff || null};
+        const next = {...s, name, phone, reminder, cutoff: cutoff || null, orderingNote};
         if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
         Object.assign(s, next);
         logActivity({action:'edit', type:'supplier', name, fields});
       } else {
-        const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null, cutoff: cutoff || null};
+        const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null, cutoff: cutoff || null, orderingNote};
         if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
         state.suppliers.push(next);
         logActivity({action:'add', type:'supplier', name,
@@ -2934,6 +2937,7 @@ function renderItemsAdmin(){
       <button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
       <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button>
     </div>
+    <div class="catalog-tool-row"><button type="button" class="btn btn-ghost" id="duplicateReviewBtn">${esc(t('reviewDuplicates'))}</button></div>
     ${renderCatalogSearch()}<div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${itemsAdminListHtml()}</div>`;
 }
 function openSupplierItemOrder(supplierId){
@@ -3069,7 +3073,7 @@ function openItemModal(id){
         <select id="mfSupplier">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
-      <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
+      <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><details class="item-more-options"><summary>${esc(t('moreOptions'))}</summary><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div></details><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
       `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
@@ -3126,24 +3130,10 @@ function openItemModal(id){
 }
 function bindItemRows(root){
   root.querySelectorAll('[data-edititem]').forEach(row=>row.onclick=()=> openItemModal(row.dataset.edititem));
-  root.querySelectorAll('[data-delitem]').forEach(b=>b.onclick=async(e)=>{
-    e.stopPropagation();   // don't also open the edit popup
-    const id = b.dataset.delitem;
-    const item = state.items.find(i=>i.id===id);
-    if(!item) return;
-    if(!(await showConfirm(`<b>${esc(item.name)}</b><br>${t('confirmDeleteItem')}`))) return;
-    if(!(await deleteRecord('items', id))){ await showAlert(t('saveFailed')); return; }
-    const supName = item.supplierId ? (state.suppliers.find(s=>s.id===item.supplierId)?.name || '') : '';
-    state.items = state.items.filter(i=>i.id!==id);
-    delete state.cart[id];
-    persistCartDraft();
-    logActivity({action:'delete', type:'item', name:item.name, fields:[
-      {k:'name', from:item.name}, {k:'unit', from:unitEn(item.unit)}, {k:'supplier', from:supName}
-    ]});
-    render();
-  });
+  root.querySelectorAll('[data-delitem]').forEach(b=>b.onclick=e=>{e.stopPropagation();deleteItemWithUndo(b.dataset.delitem);});
 }
 function attachItemEvents(){
+  document.getElementById('duplicateReviewBtn')?.addEventListener('click',openDuplicateReview);
   document.getElementById('itemAddBtn').onclick = ()=> openItemModal(null);
   const list = document.getElementById('itemsAdminList');
   bindItemRows(list);
@@ -3354,9 +3344,10 @@ function renderAdminPins(){
 }
 function renderAdmin(){
   const connection = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `<div class="admin-page">${renderAdminPins()}${connection}${renderRicoSettings()}${renderDevices()}</div>`;
+  return `<div class="admin-page">${renderAdminPins()}${connection}<div id="diagnosticsSlot">${renderDiagnostics()}</div>${renderRicoSettings()}${renderDevices()}</div>`;
 }
 function attachAdminEvents(){
+  attachDiagnosticEvents();
   document.querySelectorAll('[data-pin-change]').forEach(b=>b.onclick=()=>openPinChange(b.dataset.pinChange));
   attachDeviceEvents();
   loadRicoStatus();
@@ -3583,3 +3574,6 @@ function attachSettingsEvents(){
 }
 
 boot();
+
+window.addEventListener('resize',scheduleOverviewFit,{passive:true});
+window.addEventListener('scroll',scheduleOverviewFit,{passive:true,capture:true});

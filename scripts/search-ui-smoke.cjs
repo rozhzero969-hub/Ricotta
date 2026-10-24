@@ -103,11 +103,17 @@ const server=http.createServer((req,res)=>{
     const payload='"><img src=x onerror="window.injected=true">';
     const holder=document.createElement('div');
     holder.innerHTML=renderRicoMessage({role:'assistant',text:payload,mood:payload,proposals:[{id:'test',kind:'notify',status:payload,title:payload,en:payload,ku:payload}]},0);
-    const order=renderRicoProposal({kind:'order',id:'proto',lines:[{supplier:'__proto__',name:payload,qty:1,unitId:'kg'}]},0);
-    return {injected:holder.querySelectorAll('img,[onerror]').length,text:holder.textContent,orderSafe:order.includes('&lt;img'),malformed:renderRicoProposal({kind:'order',lines:null},0)};
+    state.items.push({id:'hostile-item',name:payload,supplierId:'hostile-supplier',unit:'kg'});
+    state.suppliers.push({id:'hostile-supplier',name:'__proto__'});
+    const order=renderRicoProposal({kind:'order',id:'proto',mode:'add',draftBefore:{},lines:[{itemId:'hostile-item',supplier:'__proto__',name:payload,qty:1,unitId:'kg'}]},0);
+    const applied=document.createElement('div');applied.innerHTML=renderRicoProposal({kind:'order',id:'injected-amount',mode:'add',status:'applied',appliedBefore:{'hostile-item':payload},appliedAfter:{'hostile-item':payload+'x'},lines:[{itemId:'hostile-item',qty:1,unitId:'kg'}]},0);
+    const appliedInjection=applied.querySelectorAll('img,[onerror]').length;
+    state.items.pop();state.suppliers.pop();
+    return {injected:holder.querySelectorAll('img,[onerror]').length,text:holder.textContent,orderSafe:order.includes('&lt;img'),appliedInjection,malformed:renderRicoProposal({kind:'order',lines:null},0)};
   });
   assert.equal(hostile.injected,0,'saved moods/card status/text cannot inject HTML');
   assert.ok(hostile.text.includes('<img'),'untrusted markup is displayed as text');
+  assert.equal(hostile.appliedInjection,0,'stored before/after quantities cannot inject HTML');
   assert.equal(hostile.orderSafe,true,'a supplier named __proto__ cannot crash grouping');
   assert.equal(hostile.malformed,'','malformed saved cards cannot break the chat screen');
   // Exercise the real verification dialog using a local provider stub.

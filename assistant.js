@@ -336,7 +336,7 @@ function ricoFormat(src){
 
 /* ---------- Proposal cards ---------- */
 function renderRicoProposal(p, mi){
-  if(!p || typeof p!=='object' || Array.isArray(p))return '';
+  if(!p || typeof p!=='object' || Array.isArray(p) || (p.kind==='order' && !Array.isArray(p.lines)))return '';
   try{return renderRicoProposalCard(p,mi);}catch(_){return '';}
 }
 function renderRicoProposalCard(p, mi){
@@ -348,16 +348,16 @@ function renderRicoProposalCard(p, mi){
         : `<div class="rico-card-actions"><button class="btn btn-primary${saving?' is-busy':''}" data-rico-apply="${mi}|${esc(p.id)}" ${saving?'disabled aria-busy="true"':''}>${primaryLabel}</button><button class="btn btn-ghost" data-rico-dismiss="${mi}|${esc(p.id)}" ${saving?'disabled':''}>${t('ricoNotNow')}</button></div>`;
   let body = '', title = '', icon = '';
   if(p.kind === 'order'){
-    const groups = Object.create(null);
-    p.lines.forEach(l=>{ (groups[l.supplier||t('noSupplier')] ||= []).push(l); });
-    icon = NAV_ICONS.order;
-    title = p.mode==='set' ? t('ricoCardSet')(p.lines.length) : t('ricoCardOrder')(p.lines.length);
-    const amount = l=> p.mode==='set' && !(Number(l.qty)>0) ? `<s>${esc(t('ricoRemoveLine'))}</s>` : `${esc(String(l.qty))} ${esc(unitLabel(l.unitId))}`;
-    body = Object.entries(groups).map(([sup, ls])=>`<div class="rico-card-group"><div class="rico-card-sup">${supplierMono(sup)}${esc(sup)}</div>${ls.map(l=>`<div class="rico-card-line"><span dir="auto">${esc(l.name)}</span><b>${amount(l)}</b></div>`).join('')}</div>`).join('')
-      + (p.note ? `<div class="rico-card-note">${esc(p.note)}</div>` : '')
-      + (p.mode==='add' ? `<div class="rico-card-note">${t('ricoAddsToDraft')}</div>` : '')
-      + (p.mode==='set' ? `<div class="rico-card-note">${t('ricoSetsDraft')}</div>` : '');
-    return ricoCard(icon, title, body, actions(p.mode==='set' ? t('ricoApplyChanges') : t('ricoPutInOrder')), p);
+    const before=p.appliedBefore||p.draftBefore||state.cart,after=p.appliedAfter||ricoOrderAfter(p,before);
+    if(!after)return ricoCard(NAV_ICONS.order,t('ricoReviewChanges'),`<p class="rico-card-note">${esc(t('ricoQuantityLimit'))}</p>`,`<button class="btn btn-ghost" data-rico-dismiss="${mi}|${esc(p.id)}">${esc(t('ricoNotNow'))}</button>`,p);
+    const ids=[...new Set([...(p.lines||[]).map(l=>l.itemId),...Object.keys(before)])].filter(id=>(before[id]||0)!==(after?.[id]||0));
+    const groups=new Map();
+    for(const id of ids){const item=state.items.find(i=>i.id===id);if(!item)continue;const supplier=supplierName(item.supplierId)||t('noSupplier');if(!groups.has(supplier))groups.set(supplier,[]);groups.get(supplier).push(item);}
+    icon=NAV_ICONS.order;title=t('ricoReviewChanges');
+    body=[...groups].map(([supplier,items])=>`<div class="rico-card-group"><div class="rico-card-sup">${esc(supplier)}</div>${items.map(item=>`<div class="rico-card-line"><span dir="auto">${esc(item.name)}<small>${esc(unitLabel(item.unit))}</small></span><b class="rico-quantity-change"><span aria-label="${esc(t('currentQuantity'))}">${esc(before[item.id]||0)}</span><i aria-hidden="true">→</i><span aria-label="${esc(t('newQuantity'))}">${esc(after?.[item.id]||0)}</span></b></div>`).join('')}</div>`).join('')
+      +(p.note?`<div class="rico-card-note">${esc(p.note)}</div>`:'')
+      +`<div class="rico-card-note">${esc(t(p.mode==='add'?'ricoAddsToDraft':'ricoSetsDraft'))}</div>`;
+    return ricoCard(icon,title,body,actions(t('ricoApplyChanges')),p);
   }
   if(p.kind === 'new_item'){
     icon = ICON_PLUS; title = t('ricoCardNewItem');
@@ -667,6 +667,7 @@ async function ricoAsk(text, options = {}){
     }
     else if(ev.type === 'proposal'){
       const p = {...ev.proposal, status:'pending'};
+      if(p.kind==='order')p.draftBefore={...state.cart};
       bot.proposals.push(p);
       if(p.kind === 'order' && ricoAutoOrder()){ ricoApplyOrder(p, true); }
       paint();
@@ -743,27 +744,26 @@ function ricoSetStatus(mi, id, status, extra = {}){
   if(state.view === 'assistant') ricoPaintMessage(mi);
 }
 function ricoApplyOrder(p, auto){
-  const before = {...state.cart};
-  if(p.mode !== 'add' && p.mode !== 'set') state.cart = {};
-  let n = 0;
-  p.lines.forEach(l=>{
-    if(!state.items.some(i=>i.id===l.itemId && i.available!==false)) return;
-    // 'set' may take an item out (qty 0); every other line is at least one.
-    if(p.mode === 'set' && !(Number(l.qty) > 0)){ delete state.cart[l.itemId]; n++; return; }
-    if(!validOrderQuantity(Number(l.qty)) || Number(l.qty)<=0)return;
-    const q = roundQuantity(Number(l.qty));
-    state.cart[l.itemId] = roundQuantity(p.mode === 'add' ? (state.cart[l.itemId]||0) + q : q);
-    n++;
-  });
-  persistCartDraft();
-  Object.assign(p, {status:'applied', undo:before, auto:!!auto, doneLabel:t('ricoOrderApplied')(n)});
-  if(!auto) toast(t('ricoOrderApplied')(n));
+  const before={...state.cart},next=ricoOrderAfter(p);
+  if(!next)return false;
+  const n=draftChanges(before,next).length;
+  state.cart=next;persistCartDraft();
+  const ids=draftChanges(before,next).map(c=>c.itemId);
+  Object.assign(p,{status:'applied',undo:before,appliedBefore:Object.fromEntries(ids.map(id=>[id,before[id]||0])),appliedAfter:Object.fromEntries(ids.map(id=>[id,next[id]||0])),auto:!!auto,doneLabel:t('ricoOrderApplied')(n)});
+  if(!auto)toast(t('ricoOrderApplied')(n));
+  return true;
 }
+
 async function ricoApply(mi, id, btn){
   const p = ricoFind(mi, id);
   if(!p || p.status !== 'pending') return;
+  const context=ricoContext();
+  if(p.kind==='order' && p.draftBefore && draftChanges(p.draftBefore,state.cart).length){
+    p.draftBefore={...state.cart};ricoPaintMessage(mi);toast(t('ricoDraftChanged'));return;
+  }
   const run = async ()=>{
-    if(p.kind === 'order'){ ricoApplyOrder(p, false); return true; }
+    if(!ricoContextCurrent(context))return false;
+    if(p.kind === 'order')return ricoApplyOrder(p,false);
     if(p.kind === 'item_aliases'){
       const r=await api('items/aliases',{method:'PUT',body:{entries:p.entries.map(e=>({itemId:e.itemId,name:e.name,before:e.before,aliases:e.aliases}))}});
       if(!r.ok){await showAlert(t(r.status===409?'aliasConflict':'saveFailed'));return false;}
@@ -822,13 +822,18 @@ async function ricoApply(mi, id, btn){
   if(btn){ btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy','true'); }
   if(state.view === 'assistant') ricoPaintMessage(mi);
   const ok = await run().catch(()=>false);
+  if(!ricoContextCurrent(context))return;
   p.status = ok ? 'applied' : 'pending';
   if(state.view === 'assistant') ricoPaintMessage(mi);
 }
 function ricoUndo(mi, id){
   const p = ricoFind(mi, id);
   if(!p || !p.undo) return;
-  state.cart = p.undo; persistCartDraft();
+  if(p.appliedAfter){
+    if(Object.entries(p.appliedAfter).some(([id,qty])=>(state.cart[id]||0)!==qty)){toast(t('ricoDraftChanged'));return;}
+    for(const [id,qty]of Object.entries(p.appliedBefore||{})){if(qty)state.cart[id]=qty;else delete state.cart[id];}
+  }else state.cart=p.undo;
+  persistCartDraft();
   ricoSetStatus(mi, id, 'undone', {undo:null});
   toast(t('ricoUndoneToast'));
 }
@@ -848,7 +853,7 @@ function ricoSerialize(){
     if(m.mood) out.mood = m.mood;
     if(m.error) out.error = m.error;
     if(m.steps && m.steps.length) out.steps = m.steps;
-    if(m.proposals && m.proposals.length) out.proposals = m.proposals.map(({undo, ...p})=>({...p, status: p.status === 'saving' ? 'pending' : p.status}));
+    if(m.proposals && m.proposals.length) out.proposals = m.proposals.map(({undo, draftBefore, ...p})=>({...p, status: p.status === 'saving' ? 'pending' : p.status}));
     return out;
   });
 }
