@@ -41,7 +41,7 @@ async function confirmDraftWarnings(){
 }
 function renderDesktopSummary(){
  const groups=new Map();for(const item of state.items){const qty=state.cart[item.id];if(!(qty>0)||item.available===false)continue;const sid=item.supplierId||'';if(!groups.has(sid))groups.set(sid,[]);groups.get(sid).push({item,qty});}
- return `<div class="desktop-order-summary"><h2>${esc(t('orderSummary'))}</h2>${groups.size?[...groups].map(([sid,rows])=>`<div class="summary-supplier"><h3 dir="auto">${esc(supplierName(sid)||t('noSupplier'))}</h3>${rows.map(({item,qty})=>`<div class="summary-line"><span dir="auto">${esc(item.name)}</span><b>${qty} ${esc(unitLabel(item.unit))}</b></div>`).join('')}</div>`).join(''):`<p class="summary-empty">${esc(t('noSelection'))}</p>`}<button type="button" class="btn btn-primary desktop-send" ${groups.size?'':'disabled'}>${esc(t('desktopSend'))}${ICON_CHAT}</button></div>`;
+ return `<div class="desktop-order-summary"><h2>${esc(t('orderSummary'))}</h2>${groups.size?[...groups].map(([sid,rows])=>`<div class="summary-supplier"><h3 dir="auto">${esc(supplierName(sid)||t('noSupplier'))}</h3>${rows.map(({item,qty})=>`<div class="summary-line"><span dir="auto">${esc(item.name)}</span><b>${esc(qty)} ${esc(unitLabel(item.unit))}</b></div>`).join('')}</div>`).join(''):`<p class="summary-empty">${esc(t('noSelection'))}</p>`}<button type="button" class="btn btn-primary desktop-send" ${groups.size?'':'disabled'}>${esc(t('desktopSend'))}${ICON_CHAT}</button></div>`;
 }
 function paintDesktopSummary(){const slot=document.getElementById('desktopSummary');if(!slot)return;slot.innerHTML=renderDesktopSummary();slot.querySelector('.desktop-send').onclick=()=>startSendQueue();}
 function openDuplicateReview(){
@@ -59,7 +59,7 @@ async function openMergeItems(a,b){
  if(!(await loadData()) || account!==state.account)return;
  a=state.items.find(i=>i.id===a.id);b=state.items.find(i=>i.id===b.id);
  if(!a||!b){await showAlert(t('mergeConflict'));return;}
- showFormModal({title:esc(t('mergeItems')),bodyHtml:`<p class="field-hint">${esc(t('mergeHint'))}</p><div class="field"><label for="mergeKeep">${esc(t('keepItem'))}</label><select id="mergeKeep"><option value="${esc(a.id)}">${esc(a.name)}</option><option value="${esc(b.id)}">${esc(b.name)}</option></select></div><div class="merge-comparison">${[a,b].map(i=>`<div><b dir="auto">${esc(i.name)}</b><p>${esc(supplierName(i.supplierId))} · ${esc(unitLabel(i.unit))}</p><p dir="auto">${esc((i.aliases||[]).join(', '))}</p>${i.note?`<p dir="auto">${esc(i.note)}</p>`:''}<small>${esc(t('currentQuantity'))}: ${state.cart[i.id]||0}</small></div>`).join('')}</div>`,okLabel:t('mergeItems'),onSubmit:async()=>{
+ showFormModal({title:esc(t('mergeItems')),bodyHtml:`<p class="field-hint">${esc(t('mergeHint'))}</p><div class="field"><label for="mergeKeep">${esc(t('keepItem'))}</label><select id="mergeKeep"><option value="${esc(a.id)}">${esc(a.name)}</option><option value="${esc(b.id)}">${esc(b.name)}</option></select></div><div class="merge-comparison">${[a,b].map(i=>`<div><b dir="auto">${esc(i.name)}</b><p>${esc(supplierName(i.supplierId))} · ${esc(unitLabel(i.unit))}</p><p dir="auto">${esc((i.aliases||[]).join(', '))}</p>${i.note?`<p dir="auto">${esc(i.note)}</p>`:''}<small>${esc(t('currentQuantity'))}: ${esc(state.cart[i.id]||0)}</small></div>`).join('')}</div>`,okLabel:t('mergeItems'),onSubmit:async()=>{
   if(account!==state.account)return {error:t('sessionEnded')};
   const keep=document.getElementById('mergeKeep').value===a.id?a:b,remove=keep===a?b:a;
   const signature=orderDraftSignature();
