@@ -9,7 +9,7 @@
      PINs              a new PIN for Rozha or Yunis
      Devices           signed-in phones: Refresh or Log Out
      Time in the App   per person and phone, adding up every day and never reset
-     Rico              what Rico did this month and what it cost
+     Rico              what Rico did this month and the tokens it used
      Catalog Check-up  items that need a look
    Each page's data is loaded when Admin or the page opens (at most once a minute) and with its
    refresh button. Depends on (runtime only): state, t, esc, api, render, toast, showConfirm,
@@ -25,9 +25,9 @@ const ADMIN_SOURCES = {health:'admin/diagnostics', security:'admin/security', pr
 const ADMIN_NEEDS = {home:['health','security','problems','usage','rico','roles'], problems:['problems'], security:['security'], health:['health','problems','security'],
   access:['roles'], pins:[], devices:[], time:['usage'], rico:['rico'], catalog:[]};
 let adminData = {account:null, busy:{}, failed:{}};
-let adminFilter = {problems:'open', security:'all'};
+let adminFilter = {problems:'open', security:'all', time:'day'};
 let adminListTop = 0;
-function resetAdmin(){ adminData = {account:null, busy:{}, failed:{}}; adminFilter = {problems:'open', security:'all'}; adminListTop = 0; }
+function resetAdmin(){ adminData = {account:null, busy:{}, failed:{}}; adminFilter = {problems:'open', security:'all', time:'day'}; adminListTop = 0; }
 function adminLoad(page, force = false){
   if(!isRozha()) return;
   if(adminData.account !== state.account){ resetAdmin(); adminData.account = state.account; }
@@ -40,12 +40,22 @@ async function adminFetch(key, force){
   const r = await api(ADMIN_SOURCES[key]);
   if(account !== state.account || adminData.account !== account) return;
   adminData.busy[key] = false;
-  // An answer of the wrong shape (an older server during a release) counts as not loaded.
+  // An answer of the wrong shape (an older server during a release) counts as not loaded. The screen is
+  // redrawn only when something on it changed, so the regular refresh below never makes it flicker.
   const good = r.ok && ADMIN_SHAPES[key](r.data);
+  const changed = good ? JSON.stringify(r.data) !== JSON.stringify(adminData[key]?.data) : !adminData.failed[key];
   if(good) adminData[key] = {at:Date.now(), data:r.data};
   adminData.failed[key] = !good;
-  paintAdmin();
+  if(changed) paintAdmin();
 }
+/* While Admin is on screen its numbers are fetched again every 30 seconds (the Health Check only when
+   asked, it runs real checks), so what it shows is current. Sign-ins, the security log and problems
+   also come at once through Live changes (app.js). */
+setInterval(()=>{
+  if(state.view !== 'admin' || !isRozha() || document.visibilityState !== 'visible') return;
+  (ADMIN_NEEDS[state.adminPage || 'home'] || []).filter(k=>k !== 'health').forEach(k=>adminFetch(k, true));
+  if(!state.adminPage || state.adminPage === 'devices') checkCommands();
+}, 30000);
 const isAdminObject = v=>!!v && typeof v === 'object' && !Array.isArray(v);
 const ADMIN_SHAPES = {problems:Array.isArray, health:isAdminObject, rico:isAdminObject,
   security:d=>isAdminObject(d) && Array.isArray(d.events), usage:d=>isAdminObject(d) && Array.isArray(d.people),
@@ -55,7 +65,9 @@ const adminValue = key=>adminData.account === state.account ? adminData[key]?.da
 /* ---------- The Admin screen ---------- */
 function renderAdmin(){
   if(!isRozha()) return '';
-  return `<div class="admin-page" id="adminSlot">${renderAdminBody()}</div>`;
+  // Ricotta's map card sits under the list, outside the part redrawn when new numbers arrive, so its
+  // picture and pin never restart.
+  return `<div class="admin-page"><div id="adminSlot">${renderAdminBody()}</div>${state.adminPage ? '' : adminPlaceCard()}</div>`;
 }
 function renderAdminBody(){
   const page = ADMIN_PAGES.includes(state.adminPage) ? state.adminPage : null;
@@ -85,7 +97,7 @@ function attachAdminBodyEvents(){
     await Promise.all(keys.map(k=>adminFetch(k, true)));
   }));
   ({problems:attachAdminProblems, security:attachAdminSecurity, health:attachAdminHealth, access:attachAdminAccess, pins:attachAdminPins,
-    devices:attachAdminDevices, catalog:attachAdminCatalog, rico:()=>loadRicoStatus()})[state.adminPage]?.(slot);
+    devices:attachAdminDevices, catalog:attachAdminCatalog, time:attachAdminTime, rico:()=>loadRicoStatus()})[state.adminPage]?.(slot);
 }
 /* Opens a page (or goes back to the list) with the iPhone's push: the new page slides in from the side
    while the list moves a little the other way and dims; Back reverses it. */
@@ -106,9 +118,14 @@ function openAdminPage(page){
   if(!motion || !content){ ghost?.layer.remove(); return; }
   const w = content.getBoundingClientRect().width, side = (next ? 1 : -1) * (isRtl() ? -1 : 1);
   const opts = {duration:420, easing:'cubic-bezier(.32,.72,0,1)'};
-  const inn = next ? [{transform:`translate3d(${side*w}px,0,0)`}, {transform:'none'}] : [{transform:`translate3d(${side*w*.3}px,0,0)`, opacity:.6}, {transform:'none', opacity:1}];
-  const out = next ? [{transform:'none', opacity:1}, {transform:`translate3d(${-side*w*.3}px,0,0)`, opacity:.6}] : [{transform:'none'}, {transform:`translate3d(${-side*w}px,0,0)`}];
-  if(next) ghost.layer.style.zIndex = '19';   // going forward, the new page slides over the list
+  // Like an iPhone push: the page in front covers the one behind. The page behind (the list going
+  // forward, the list coming back) is trimmed to just the part not yet covered, in step with the
+  // slide, so the two never show through each other.
+  const trimEdge = (to)=> (next ? side : -side) > 0 ? `inset(0 ${to}% 0 0)` : `inset(0 0 0 ${to}%)`;
+  const inn = next ? [{transform:`translate3d(${side*w}px,0,0)`}, {transform:'none'}]
+    : [{transform:`translate3d(${side*w*.3}px,0,0)`, opacity:.6, clipPath:trimEdge(70)}, {transform:'none', opacity:1, clipPath:trimEdge(0)}];
+  const out = next ? [{transform:'none', opacity:1, clipPath:trimEdge(0)}, {transform:`translate3d(${-side*w*.3}px,0,0)`, opacity:.6, clipPath:trimEdge(70)}]
+    : [{transform:'none'}, {transform:`translate3d(${-side*w}px,0,0)`}];
   content.classList.add('gliding');
   const anims = [content.animate(inn, opts), ghost.copy.animate(out, opts)];
   glide = {anims, ghost:ghost.layer, content};
@@ -126,6 +143,7 @@ const adminTile = (icon, tone)=>`<span class="ad-tile ${tone}" aria-hidden="true
 /* ---------- Durations and small helpers ---------- */
 function fmtDuration(sec){
   const s = Math.max(0, Math.round(Number(sec) || 0));
+  if(!s) return t('durMin')(0);   // none at all is 0, not "under a minute"
   if(s < 60) return t('durLessMin');
   const m = Math.round(s / 60);
   if(m < 60) return t('durMin')(m);
@@ -182,12 +200,19 @@ function renderAdminHome(){
     ${tile('security', ADMIN_ICONS.security, 'green', sec ? (locked ? t('adLocked') : t('adSigninOpenShort')) : wait, sec ? t('adWrongPins')(Number(sec.wrongPins24h) || 0) : t('loading'), locked)}
     ${tile('health', ADMIN_ICONS.health, 'green', health ? (bad ? t('adNeedsLook') : t('adWorking')) : adminData.failed.health ? t('adNeedsLook') : wait, health ? (bad || warn ? t('hcWarnShort')(bad + warn) : t('checkedAt')(timeAgo(health.checkedAt))) : t('loading'), bad > 0 || (!health && adminData.failed.health))}
     ${tile('time', ADMIN_ICONS.time, 'green', usage ? fmtDuration(today) : wait, usage ? people.map(p=>`${accountLabel(p.account)} ${fmtDuration(p.today)}`).join(' · ') : t('loading'))}
-    ${tile('rico', ICON_SPARKLE, 'green', ricoMonth === null ? wait : String(ricoMonth), rico ? t('adRicoSub')('$' + (Number(rico.cost?.usd) || 0).toFixed(2)) : t('loading'))}
+    ${tile('rico', ICON_SPARKLE, 'green', ricoMonth === null ? wait : String(ricoMonth), rico ? t('adRicoSub')(t('adTokens')(fmtTokens(ricoTokenTotal(rico), true))) : t('loading'))}
     ${tile('devices', ADMIN_ICONS.devices, 'gray', String(signedIn.length), t('adDevicesSub')(active))}
     ${tile('access', ADMIN_ICONS.access, 'green', roles ? t('adOfTotal')(roles.yunis.length, roles.roles.length) : wait, t('adAccessSub'))}
     ${tile('catalog', ADMIN_ICONS.catalog, 'gray', toReview ? String(toReview) : t('adNone'), toReview ? t('adCatalogSub') : t('adCatalogClear'))}
     ${tile('pins', ADMIN_ICONS.pins, 'gray', t('adminPinChange'), `${accountLabel('rozha')} · ${accountLabel('yunis')}`)}
   </div>`;
+}
+/* Ricotta on the map in the picture's own colours, with Directions to the kitchen in Apple Maps. */
+function adminPlaceCard(){
+  return `<section class="ad-place" aria-label="${esc(t('ricottaName'))}">
+    <div class="ad-place-map rmap" role="img" aria-label="${esc(t('mapStill'))}">${ricottaMapWorld({green:false})}<div class="ad-place-shade"></div>${mapCredit()}</div>
+    <div class="ad-place-foot"><div class="ad-place-name"><b>${esc(t('ricottaName'))}</b><span>${esc(t('ricottaCity'))}</span></div>${mapDirections('ad-place-go')}</div>
+  </section>`;
 }
 const ADMIN_ICONS = {
   problems:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19Z"/><path d="M12 10v4.5"/><path d="M12 17.5h.01"/></svg>`,
@@ -526,31 +551,55 @@ function attachAdminDevices(slot){
 
 /* ---------- Time in the app ---------- */
 /* Counted only while the app is open on the screen. It keeps adding up and is never reset, not even
-   when someone signs out. */
+   when someone signs out. Daily, Weekly or Monthly: each person's time in that period and the average
+   per day (over the days counted so far, so a new week or month is not averaged over days that have
+   not happened), and a chart of the last 14 days, 8 weeks or 6 months. */
+const TIME_PERIODS = ['day','week','month'];
+const dayNumber = iso=>Math.floor(Date.parse(String(iso).slice(0,10) + 'T00:00:00Z') / DAY_MS);
+function timeAverage(p, period, today){
+  if(!p.since) return 0;
+  const first = dayNumber(p.since), now = dayNumber(today);
+  const start = period === 'day' ? Math.max(first, now - 29) : period === 'week' ? Math.max(first, now - 6) : Math.max(first, dayNumber(today.slice(0,8) + '01'));
+  const total = Number(period === 'day' ? p.last30 : p[period]) || 0;
+  return total / Math.max(1, now - start + 1);
+}
 function renderAdminTime(){
   const u = adminValue('usage');
   if(!u) return `${adminHeading()}<div class="ad-empty"><p>${esc(adminData.failed.usage ? t('loadFailed') : t('loading'))}</p></div>`;
-  const people = ['rozha','yunis'].map(a=>(u.people || []).find(p=>p.account === a) || {account:a, today:0, week:0, month:0, total:0});
-  const days = (u.days || []).slice(-14);
-  const max = Math.max(1, ...days.map(d=>Math.max(Number(d.rozha) || 0, Number(d.yunis) || 0)));
-  const bars = days.map(d=>{
-    const label = formatIraqDateTime(new Date(d.day + 'T09:00:00Z'), {weekday:'narrow'});
-    return `<div class="ad-bar" title="${esc(formatIraqDateTime(new Date(d.day + 'T09:00:00Z'), {weekday:'long', day:'numeric', month:'short'}))}"><div class="ad-bar-pair"><i class="r" style="--h:${Math.round((Number(d.rozha) || 0) / max * 100)}%"></i><i class="y" style="--h:${Math.round((Number(d.yunis) || 0) / max * 100)}%"></i></div><small>${esc(label)}</small></div>`;
-  }).join('');
+  const period = TIME_PERIODS.includes(adminFilter.time) ? adminFilter.time : 'day';
+  const today = /^\d{4}-\d{2}-\d{2}$/.test(String(u.today)) ? u.today : new Date().toISOString().slice(0,10);
+  const people = ['rozha','yunis'].map(a=>(u.people || []).find(p=>p.account === a) || {account:a, today:0, week:0, month:0, last30:0, total:0});
+  const at = iso=>new Date(String(iso).slice(0,10) + 'T09:00:00Z');
+  const series = period === 'day' ? (u.days || []).slice(-14).map(d=>({...d, label:formatIraqDateTime(at(d.day), {weekday:'narrow'}), title:formatIraqDateTime(at(d.day), {weekday:'long', day:'numeric', month:'short'})}))
+    : period === 'week' ? (u.weeks || []).slice(-8).map(w=>({...w, label:formatIraqDateTime(at(w.start), {day:'numeric', month:'numeric'}), title:`${formatIraqDateTime(at(w.start), {day:'numeric', month:'short'})} – ${formatIraqDateTime(new Date(at(w.start).getTime() + 6 * DAY_MS), {day:'numeric', month:'short'})}`}))
+    : (u.months || []).slice(-6).map(m=>({...m, label:formatIraqDateTime(at(m.month + '-15'), {month:'short'}), title:formatIraqDateTime(at(m.month + '-15'), {month:'long', year:'numeric'})}));
+  const max = Math.max(1, ...series.map(d=>Math.max(Number(d.rozha) || 0, Number(d.yunis) || 0)));
+  const bars = series.map(d=>`<div class="ad-bar" title="${esc(d.title)} · ${esc(accountLabel('rozha'))} ${esc(fmtDuration(d.rozha))} · ${esc(accountLabel('yunis'))} ${esc(fmtDuration(d.yunis))}"><div class="ad-bar-pair"><i class="r" style="--h:${Math.round((Number(d.rozha) || 0) / max * 100)}%"></i><i class="y" style="--h:${Math.round((Number(d.yunis) || 0) / max * 100)}%"></i></div><small>${esc(d.label)}</small></div>`).join('');
+  const value = p=>Number(period === 'day' ? p.today : p[period]) || 0;
   const person = p=>`<section class="ad-card ad-time">
-    <div class="ad-card-head">${whoBadge(p.account)}<span class="ad-time-today">${esc(t('adToday')(fmtDuration(p.today)))}</span></div>
-    <div class="ad-stats inner"><div><b>${esc(fmtDuration(p.week))}</b><span>${esc(t('adLast7'))}</span></div><div><b>${esc(fmtDuration(p.month))}</b><span>${esc(t('adThisMonthLabel'))}</span></div><div><b>${esc(fmtDuration(p.total))}</b><span>${esc(p.since ? t('adSince')(formatIraqDateTime(new Date(p.since + 'T09:00:00Z'), {day:'numeric', month:'short'})) : t('adAllTime'))}</span></div></div>
+    <div class="ad-card-head">${whoBadge(p.account)}</div>
+    <div class="ad-stats inner two"><div><b>${esc(fmtDuration(value(p)))}</b><span>${esc(t('adTimeIn_' + period))}</span></div><div><b>${esc(fmtDuration(timeAverage(p, period, today)))}</b><span>${esc(t('adTimeAvg_' + period))}</span></div></div>
+    <p class="ad-time-total">${esc(t('adAllTime'))} ${esc(fmtDuration(p.total))}${p.since ? ` · ${esc(t('adSince')(formatIraqDateTime(at(p.since), {day:'numeric', month:'short'})))}` : ''}</p>
   </section>`;
   const devices = (u.devices || []).map(d=>`<div class="ad-event">${adminTile(/PC|Mac|Chromebook/.test(String(d.label)) ? ICON_COMPUTER : ICON_MOBILE, 'gray')}<div><b>${esc(adminDeviceLine(d.label))}</b><span>${esc(accountLabel(d.account))} · ${esc(t('adLastActive')(timeAgo(d.lastAt)))}</span></div><div class="ad-event-value"><b>${esc(fmtDuration(d.total))}</b><span>${esc(t('adToday')(fmtDuration(d.today)))}</span></div></div>`).join('');
   return `${adminHeading()}
+    <div class="ad-toolbar"><div class="pill-seg" role="tablist" aria-label="${esc(t('adminPage_time'))}">${TIME_PERIODS.map(v=>`<button type="button" role="tab" class="pill-seg-btn" data-time-period="${v}" aria-selected="${period === v}">${esc(t('adPeriod_' + v))}</button>`).join('')}</div></div>
     ${people.map(person).join('')}
-    ${days.length ? `<section class="ad-card"><div class="ad-chart-head"><b>${esc(t('adLast14'))}</b><span class="ad-legend"><i class="r"></i>${esc(accountLabel('rozha'))}<i class="y"></i>${esc(accountLabel('yunis'))}</span></div><div class="ad-bars" dir="ltr">${bars}</div></section>` : ''}
+    ${series.length ? `<section class="ad-card"><div class="ad-chart-head"><b>${esc(t('adChart_' + period))}</b><span class="ad-legend"><i class="r"></i>${esc(accountLabel('rozha'))}<i class="y"></i>${esc(accountLabel('yunis'))}</span></div><div class="ad-bars" dir="ltr">${bars}</div></section>` : ''}
     <div class="section-title">${esc(t('adByDevice'))}</div>
     <div class="ad-group ad-events">${devices || `<div class="ad-empty"><p>${esc(t('adNoTimeYet'))}</p></div>`}</div>
     <p class="ad-foot">${esc(t('adTimeFoot'))}</p>`;
 }
+function attachAdminTime(slot){
+  slot.querySelectorAll('[data-time-period]').forEach(b=>b.onclick = ()=>{ adminFilter.time = b.dataset.timePeriod; paintAdmin(); });
+}
 
 /* ---------- Rico ---------- */
+const ricoTokenTotal = r=>(Number(r?.tokens?.input) || 0) + (Number(r?.tokens?.output) || 0);
+/* A token count, exact with its digits grouped, or short (463K) where there is little room. */
+function fmtTokens(n, short = false){
+  return new Intl.NumberFormat('en-US', short ? {notation:'compact', maximumFractionDigits:1} : {}).format(Math.max(0, Math.round(Number(n) || 0)));
+}
 function renderAdminRico(){
   const r = adminValue('rico');
   const kinds = r?.kinds || {}, chats = Number(kinds.chat || 0), voice = Number(kinds.voice || 0), lists = Number(kinds.transfer || 0);
@@ -558,7 +607,7 @@ function renderAdminRico(){
   const people = r?.people || {}, ro = Number(people.rozha || 0), yu = Number(people.yunis || 0), both = Math.max(1, ro + yu);
   const days = (r?.days || []).slice(-14), max = Math.max(1, ...days.map(d=>Number(d.calls) || 0));
   const hourPct = r ? Math.min(100, Math.round((r.thisHour || 0) / (r.hourLimit || 400) * 100)) : 0;
-  const usd = r?.cost ? Number(r.cost.usd) || 0 : 0;
+  const tokens = {input:Number(r?.tokens?.input) || 0, output:Number(r?.tokens?.output) || 0};
   return `${adminHeading()}
     <section class="ad-card ad-rico-about">
       <div class="ad-card-head">${adminTile(ICON_SPARKLE, 'green')}<div class="ad-card-title"><b>${esc(t('ricoName'))}</b><span id="ricoKeyState" class="rico-connection">${esc(t('ricoChecking'))}</span></div></div>
@@ -566,11 +615,12 @@ function renderAdminRico(){
       <p class="ad-small-print">${esc(t('ricoAboutPrivacy'))}</p>
     </section>
     <div class="section-title">${esc(t('adThisMonthLabel'))}</div>
-    ${r ? `<div class="ad-stats"><div><b>${chats}</b><span>${esc(t('adRicoChats'))}</span></div><div><b>${voice}</b><span>${esc(t('adRicoVoice'))}</span></div><div><b>${esc(usd < 0.01 && usd > 0 ? '< $0.01' : '$' + usd.toFixed(2))}</b><span>${esc(t('adRicoCost'))}</span></div></div>
+    ${r ? `<div class="ad-stats"><div><b>${chats}</b><span>${esc(t('adRicoChats'))}</span></div><div><b>${voice}</b><span>${esc(t('adRicoVoice'))}</span></div><div><b>${esc(fmtTokens(tokens.input + tokens.output, true))}</b><span>${esc(t('adRicoTokens'))}</span></div></div>
     <section class="ad-card">
       <div class="ad-chart-head"><b>${esc(t('adRicoWho'))}</b></div>
       <div class="report-who"><i class="r" style="--w:${Math.round(ro / both * 100)}%"></i><i class="y" style="--w:${Math.round(yu / both * 100)}%"></i></div>
       <div class="report-who-names"><span>${esc(accountLabel('rozha'))} ${ro}</span><span>${esc(accountLabel('yunis'))} ${yu}</span></div>
+      <div class="ad-chart-head ad-gap"><b>${esc(t('adRicoTokens'))}</b><span>${esc(t('adTokensInOut')(fmtTokens(tokens.input), fmtTokens(tokens.output)))}</span></div>
       <div class="ad-chart-head ad-gap"><b>${esc(t('adRicoHour'))}</b><span>${esc(t('adRicoHourValue')(r.thisHour || 0, r.hourLimit || 400))}</span></div>
       <div class="ad-meter"><i style="--w:${hourPct}%"></i></div>
       ${days.length ? `<div class="ad-chart-head ad-gap"><b>${esc(t('adLast14'))}</b><span>${esc(t('adRicoTotal')(total))}</span></div><div class="ad-bars single" dir="ltr">${days.map(d=>`<div class="ad-bar" title="${esc(formatIraqDateTime(new Date(d.day + 'T09:00:00Z'), {weekday:'long', day:'numeric', month:'short'}))} · ${Number(d.calls) || 0}"><div class="ad-bar-pair"><i class="r" style="--h:${Math.round((Number(d.calls) || 0) / max * 100)}%"></i></div><small>${esc(formatIraqDateTime(new Date(d.day + 'T09:00:00Z'), {weekday:'narrow'}))}</small></div>`).join('')}</div>` : ''}

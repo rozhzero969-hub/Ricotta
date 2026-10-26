@@ -60,12 +60,19 @@ const fixtureFor=account=>({
   reminder:{enabled:false,time:'09:00'},
   inbox:[{id:1,kind:'cheer',mood:'excited',en:'Good morning, Rozha! 3 suppliers are due today.',ku:'بەیانیت باش ڕۆژا!',ar:'صباح الخير يا روژا!',at:'2026-09-27T06:00:00Z',read:false}],
 });
+// Time in the app, as the server sends it: per person, every day, weeks of 7 days and months.
+const usageFixture={today:'2026-06-10',
+  people:[{account:'rozha',today:1800,week:12600,month:25200,last30:54000,total:90000,since:'2026-04-20'},{account:'yunis',today:0,week:3600,month:3600,last30:3600,total:3600,since:'2026-06-08'}],
+  devices:[{account:'rozha',deviceId:'d1',label:'Mac|Website',today:1800,total:90000,lastAt:'2026-06-10T08:00:00Z'}],
+  days:Array.from({length:31},(_,i)=>({day:new Date(Date.UTC(2026,5,10-30+i)).toISOString().slice(0,10),rozha:i%3?1800:0,yunis:i>27?1200:0})),
+  weeks:Array.from({length:8},(_,i)=>({start:new Date(Date.UTC(2026,5,4-7*(7-i))).toISOString().slice(0,10),rozha:9000+i*600,yunis:i===7?3600:0})),
+  months:[{month:'2026-04',rozha:21600,yunis:0},{month:'2026-05',rozha:43200,yunis:0},{month:'2026-06',rozha:25200,yunis:3600}]};
 const session=account=>({token:'fixture-'+account,expiresAt:'2099-01-01T00:00:00Z',account,name:account==='rozha'?'Rozha':'Yunis'});
 const server=http.createServer((req,res)=>{
   const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
   const file=path.resolve(siteRoot,'.'+(pathname==='/'?'/index.html':pathname));
   if(!file.startsWith(siteRoot+path.sep)){res.writeHead(403);return res.end();}
-  fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);return res.end();}res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.webp':'image/webp','.woff2':'font/woff2'})[path.extname(file)]||'application/octet-stream');res.end(data);});
+  fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);return res.end();}res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2'})[path.extname(file)]||'application/octet-stream');res.end(data);});
 });
 (async()=>{
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -80,11 +87,20 @@ const server=http.createServer((req,res)=>{
     const calls=[];
     const over={};   // what the next bootstrap answers differently (Rozha changing Yunis's access)
     let signedIn=account;
+    // Live changes: the counters the server would send; bump() is a change made somewhere else.
+    const live={n:5,kinds:{data:5,draft:5,devices:5,admin:5,inbox:5}};
+    const bump=kind=>{live.n++;live.kinds={...live.kinds,[kind]:live.n};};
     await ctx.route('**/functions/v1/api/**',async route=>{
       const req=route.request();
       const endpoint=new URL(req.url()).pathname.split('/api/')[1];
       const body=req.postDataJSON?.()||null;
       calls.push({endpoint,method:req.method(),body});
+      if(endpoint==='signals'){
+        const q=new URL(req.url()).searchParams,since=Number(q.get('since')),until=Date.now()+Math.min(2000,Number(q.get('wait'))*1000);
+        while(since===live.n && Date.now()<until) await new Promise(r=>setTimeout(r,50));
+        await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(live)}).catch(()=>{});
+        return;
+      }
       if(endpoint==='assistant/chat'){
         const reply=body.quickAction==='last_order'?'Last sent order · 2026-09-23':'Fixture Rico reply';
         const events=[{type:'mood',mood:body.quickAction==='late_orders'?'angry':'excited'},{type:'text',text:reply},{type:'done'}];
@@ -96,6 +112,7 @@ const server=http.createServer((req,res)=>{
       else if(endpoint==='auth/security')data={required:false,siteKey:null};
       else if(endpoint==='devices') data=[];
       else if(endpoint==='activity') data=recordActivity;
+      else if(endpoint==='admin/usage') data=usageFixture;
       else if(endpoint==='assistant/inbox') data=fixtureFor(signedIn).inbox;
       else if(endpoint==='assistant/status') data={configured:true,provider:'gemini',model:'gemini-3.5-flash-lite'};
       else if(endpoint==='login'){
@@ -117,8 +134,8 @@ const server=http.createServer((req,res)=>{
       if(loggedIn && !sessionStorage.getItem('seeded')){ localStorage.setItem('ricottaOrders:apiSession',JSON.stringify(s)); sessionStorage.setItem('seeded','1'); }
     },{loggedIn,s:session(account)});
     const page=await ctx.newPage();page.on('pageerror',error=>errors.push(String(error)));
-    await page.goto(url);await page.waitForSelector(loggedIn?'#orderResults':'.pin-dots');await page.waitForSelector('#splash',{state:'detached'});
-    return {ctx,page,calls,over};
+    await page.goto(url);await page.waitForSelector(loggedIn?'#orderResults':'.pin-boxes');await page.waitForSelector('#splash',{state:'detached'});
+    return {ctx,page,calls,over,bump};
   }
   const settle=page=>page.waitForFunction(()=>!document.querySelector('.content.gliding'),null,{timeout:4000});
   async function openView(page,view){
@@ -194,7 +211,7 @@ const server=http.createServer((req,res)=>{
     }
 
     /* ---------- Rozha ---------- */
-    const {ctx,page,calls}=await context();
+    const {ctx,page,calls,bump}=await context();
     assert.doesNotMatch(await page.locator('meta[name="viewport"]').getAttribute('content'),/user-scalable=no|maximum-scale=1(?:,|$)/,'browser zoom remains available for accessibility');
     assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).userSelect),'none','app chrome cannot be accidentally selected');
     // macOS Chromium may serialize BlinkMacSystemFont as the equivalent system-ui alias.
@@ -331,6 +348,34 @@ const server=http.createServer((req,res)=>{
     await page.locator('#modalPromptInput').fill('gsk_'+ 'A'.repeat(30));
     await page.locator('#modalPromptOkBtn').click();
     await page.waitForSelector('#modalPromptInput',{state:'detached'});
+    // Time in the app: Daily, Weekly and Monthly, each with the time and the average per day, and its chart.
+    await page.locator('.admin-heading .page-back').click();await settle(page);
+    await page.locator('[data-admin-open="time"]').click();await settle(page);
+    await page.waitForSelector('[data-time-period]');
+    const timeCard=async()=>page.locator('.ad-time').first().locator('.ad-stats b').allTextContents();
+    assert.deepEqual(await timeCard(),['30 min','30 min'],'today, and a day on average over the last 30 days (54000 s / 30)');
+    assert.equal(await page.locator('.ad-bars .ad-bar').count(),14,'the last 14 days');
+    await page.locator('[data-time-period="week"]').click();
+    assert.deepEqual(await timeCard(),['3 h 30 min','30 min'],'the last 7 days, and a day on average (12600 s / 7)');
+    assert.equal(await page.locator('.ad-bars .ad-bar').count(),8,'8 weeks');
+    await page.locator('[data-time-period="month"]').click();
+    assert.deepEqual(await timeCard(),['7 h','42 min'],'this month, and a day on average over the 10 days so far (25200 s / 10)');
+    assert.equal(await page.locator('.ad-bars .ad-bar').count(),3,'one bar a month since the first counted one');
+    assert.equal(await page.locator('.ad-time').nth(1).locator('.ad-stats b').nth(1).textContent(),'20 min','Yunis’s average counts only the days since he started (3600 s / 3)');
+    await page.locator('[data-time-period="day"]').click();
+    // Live changes: a change made elsewhere is loaded at once, without waiting for a timer.
+    const loads=()=>calls.filter(c=>c.endpoint==='bootstrap').length, deviceLoads=()=>calls.filter(c=>c.endpoint==='devices').length;
+    await page.waitForFunction(()=>liveHealthy(),null,{timeout:5000});
+    const beforeLoads=loads(),beforeDevices=deviceLoads();
+    bump('data');
+    for(let i=0;i<40 && loads()===beforeLoads;i++)await page.waitForTimeout(50);
+    assert.ok(loads()>beforeLoads,'an order or item saved on the other phone is loaded within moments');
+    bump('devices');
+    for(let i=0;i<40 && deviceLoads()===beforeDevices;i++)await page.waitForTimeout(50);
+    assert.ok(deviceLoads()>beforeDevices,'a sign-in, sign-out or Refresh is picked up within moments');
+    const asks=()=>calls.filter(c=>c.endpoint==='signals').length, asked=asks();
+    await page.waitForTimeout(3000);
+    assert.ok(asks()-asked<=3,'with nothing new the app waits instead of asking in a tight loop ('+(asks()-asked)+' in 3 s)');
     // Devices: "Notify about update" is gone.
     await page.locator('.admin-heading .page-back').click();await settle(page);
     await page.locator('[data-admin-open="devices"]').click();await settle(page);
@@ -368,7 +413,8 @@ const server=http.createServer((req,res)=>{
     assert.equal(calls.filter(c=>c.endpoint==='assistant/chat').length,chatsBefore,'Not Now sends nothing to the AI');
     await page.locator('[data-rico-action="late_orders"]').click();
     await page.locator('#modalOkBtn').click();
-    await page.waitForFunction(n=>performance.getEntriesByType('resource').filter(r=>r.name.endsWith('/api/assistant/chat')).length>n,chatsBefore);
+    for(let i=0;i<200 && calls.filter(c=>c.endpoint==='assistant/chat').length<=chatsBefore;i++) await page.waitForTimeout(25);
+    assert.ok(calls.filter(c=>c.endpoint==='assistant/chat').length>chatsBefore,'Allow sends the question to Rico');
     await page.waitForFunction(()=>!rico.streaming);
     assert.equal(await page.evaluate(()=>aiConsented()),true,'Allow is remembered');
     assert.equal(await page.locator('.rico-msg.bot .rico-bot').last().evaluate(el=>el.classList.contains('mood-angry')),true,'Rico\u2019s face shows his mood');
@@ -393,7 +439,8 @@ const server=http.createServer((req,res)=>{
     await snapshot(page,'desktop-dialog.png');await page.locator('#modalFormCancel').click();
     await openView(page,'units');
     await page.locator('#unitAddBtn').click();
-    assert.equal(await page.locator('#mfUnitAr').count(),1,'units have an Arabic name');
+    assert.equal(await page.locator('#mfUnitName').count(),1,'a unit has one name field');
+    assert.equal(await page.locator('#mfUnitKu,#mfUnitAr').count(),0,'no Kurdish and Arabic copies');
     await page.locator('#modalFormCancel').click();
     // Fixed main destinations: Order, History and Manage (Transfers is on for this device); More has the rest.
     await page.setViewportSize({width:390,height:844});await openView(page,'order');
@@ -575,37 +622,57 @@ const server=http.createServer((req,res)=>{
     await y.ctx.close();
 
     /* ---------- Sign in ---------- */
-    // Design A: the PIN as six dots and a number pad low on the screen, where the thumb rests.
+    // A phone: Ricotta's street in green at the top, then six boxes and number keys low on the screen.
     const touchLogin=await context({loggedIn:false,touch:true});
     const tp=touchLogin.page;
     assert.equal(await tp.locator('.keypad').isVisible(),true,'phones get the number pad');
     assert.equal(await tp.locator('.login-hint').isVisible(),false,'phones are not told to type');
+    assert.equal(await tp.locator('#pinInput').isVisible(),false,'phones never open the keyboard');
+    await tp.waitForFunction(()=>{ const img=document.querySelector('.login-map img'); return img && img.complete && img.naturalWidth===1792; });
+    assert.equal(await tp.locator('.login-map .rmap-pin b').isVisible(),true,'the map shows Ricotta');
+    assert.equal(await tp.locator('.login-map .map-directions').getAttribute('href'),'https://maps.apple/p/RvAJw2GV9jAvf_','Directions opens Ricotta in Apple Maps');
+    assert.match(await tp.locator('.login-map .map-credit').textContent(),/Esri/,'the picture is credited');
+    assert.equal(await tp.evaluate(()=>document.querySelector('meta[name="theme-color"]').content),'#14382C','the status bar is green above the map');
     await tp.evaluate(()=>window.originalKey=document.querySelector('[data-key="1"]'));
     await tp.locator('[data-key="1"]').click();
     assert.equal(await tp.evaluate(()=>originalKey===document.querySelector('[data-key="1"]')),true,'PIN keypad remains mounted');
-    assert.equal(await tp.locator('.pin-dot.filled').count(),1,'a tapped key fills the first dot');
-    await tp.locator('.key-delete').click();
-    assert.equal(await tp.locator('.pin-dot.filled').count(),0,'Delete takes the digit back');
+    assert.equal(await tp.locator('.pin-box.filled').count(),1,'a tapped key fills the first box');
+    assert.equal(await tp.locator('.pin-box').nth(1).evaluate(el=>el.classList.contains('on')),true,'the next box waits with a ring');
+    await tp.locator('[data-key="back"]').click();
+    assert.equal(await tp.locator('.pin-box.filled').count(),0,'Delete takes the digit back');
+    await tp.locator('[data-key="2"]').click();await tp.locator('[data-key="3"]').click();await tp.locator('[data-key="clear"]').click();
+    assert.equal(await tp.locator('.pin-box.filled').count(),0,'Clear empties the PIN');
     const reach=await tp.evaluate(()=>{ const keys=document.querySelector('.keypad').getBoundingClientRect(), one=document.querySelector('[data-key="1"]').getBoundingClientRect(); return {top:keys.top/innerHeight, bottom:keys.bottom/innerHeight, key:Math.min(one.width,one.height)}; });
     assert.ok(reach.top>0.45 && reach.bottom<0.97,'the number pad sits in the lower half, within the thumb\u2019s reach '+JSON.stringify(reach));
-    assert.ok(reach.key>=60,'keys are large enough to hit without looking '+JSON.stringify(reach));
-    assert.equal(await tp.evaluate(()=>{ state.pinBuffer='123456'; state.pinBusy=true; updateLoginFeedback(); const busy=document.querySelector('.login-error'), info=busy.classList.contains('info') && busy.textContent.length>0; state.pinBusy=false; state.pinBuffer=''; updateLoginFeedback(); return info; }),true,'"Signing in" is shown as information, not in red');
+    assert.ok(reach.key>=56,'keys are large enough to hit without looking '+JSON.stringify(reach));
+    assert.equal(await tp.evaluate(()=>{ state.pinBuffer='123456'; state.pinBusy=true; updateLoginFeedback(); const sub=document.getElementById('pinLabel'), info=!sub.classList.contains('err') && sub.textContent===t('signingIn'); state.pinBusy=false; state.pinBuffer=''; updateLoginFeedback(); return info; }),true,'"Signing in" is shown as information, not in red');
+    assert.equal(await tp.evaluate(()=>{ state.pinError='wrong'; updateLoginFeedback(); const bad=document.getElementById('pinLabel').classList.contains('err') && document.querySelector('.pin-boxes').classList.contains('err'); state.pinError=''; updateLoginFeedback(); return bad; }),true,'a wrong PIN shows in red');
     for(const scheme of ['light','dark']){
       await tp.emulateMedia({colorScheme:scheme});
       await tp.waitForFunction(dark=>document.documentElement.classList.contains('dark')===dark,scheme==='dark');
-      const bg=await tp.evaluate(()=>getComputedStyle(document.querySelector('.login-wrap')).backgroundColor+'|'+getComputedStyle(document.body).backgroundColor);
-      const [r,g,b]=bg.match(/\d+/g).map(Number);
-      assert.ok(scheme==='dark'?r+g+b<200:r+g+b>600,'the sign-in background follows the '+scheme+' theme ('+bg+')');
+      const bg=await tp.evaluate(()=>getComputedStyle(document.querySelector('.login-panel')).backgroundColor);
+      assert.equal(bg,scheme==='dark'?'rgb(0, 0, 0)':'rgb(255, 255, 255)','the sign-in is pure '+(scheme==='dark'?'black':'white')+' in the '+scheme+' theme');
     }
     await snapshot(tp,'phone-login.png');
     await touchLogin.ctx.close();
-    // A computer has a keyboard too: the PIN can be typed, and the hint says so.
+    // A computer: the map on one half, only the boxes on the other. The PIN is typed and Esc clears it.
     const login=await context({loggedIn:false});
     assert.equal(await login.page.locator('.login-hint').isVisible(),true,'computers are told they can type the PIN');
+    assert.equal(await login.page.locator('.keypad').isVisible(),false,'computers have no number pad');
+    assert.equal(await login.page.evaluate(()=>document.activeElement?.id),'pinInput','typing goes straight into the PIN');
     await login.page.keyboard.press('1');
-    assert.equal(await login.page.locator('.pin-dot.filled').count(),1,'a typed digit fills the first dot');
+    assert.equal(await login.page.locator('.pin-box.filled').count(),1,'a typed digit fills the first box');
+    assert.equal(await login.page.locator('#pinInput').inputValue(),'','the hidden field keeps no digits');
     await login.page.keyboard.press('Escape');
-    assert.equal(await login.page.locator('.pin-dot.filled').count(),0,'Escape clears the PIN');
+    assert.equal(await login.page.locator('.pin-box.filled').count(),0,'Escape clears the PIN');
+    // The map moves a little around Ricotta, no further than its limit, and the arrow brings it back.
+    const mapBox=await login.page.locator('#loginMap').boundingBox();
+    await login.page.mouse.move(mapBox.x+mapBox.width/2,mapBox.y+mapBox.height/2);await login.page.mouse.down();
+    await login.page.mouse.move(mapBox.x+mapBox.width/2+400,mapBox.y+mapBox.height/2,{steps:8});await login.page.mouse.up();
+    const mapAt=()=>login.page.locator('#loginMap .rmap-world').evaluate(el=>(el.style.translate+' 0').split(' ').slice(0,2).map(parseFloat));
+    assert.deepEqual(await mapAt(),[140,0],'the map stops at its limit');
+    await login.page.locator('.map-recenter').click();
+    assert.deepEqual(await mapAt(),[0,0],'the arrow brings Ricotta back');
     for(const lang of LANGS){
       await login.page.evaluate(lang=>setLang(lang),lang);
       for(const width of viewportWidths){
@@ -625,14 +692,15 @@ const server=http.createServer((req,res)=>{
     // Yunis signs in: welcome back, by name.
     await login.page.keyboard.type('358214');
     await login.page.waitForSelector('#welcome');
-    assert.match(await login.page.locator('.welcome-title').textContent(),/Welcome back, Yunis/,'welcome back says the name');
+    assert.match(await login.page.locator('#welcome .sr-only').textContent(),/Welcome back, Yunis/,'welcome back says the name');
+    assert.equal(await login.page.locator('.welcome-name').textContent(),'Yunis','the name is large on the map');
     await login.page.waitForSelector('#orderResults');
     assert.equal(await login.page.evaluate(()=>state.account),'yunis');
     // Sign Out signs out straight away, with no "Are you sure?".
     await login.page.locator('#accountBtn').click();await login.page.locator('.account-sheet #logoutBtn').click();
-    await login.page.waitForSelector('.pin-dots');
+    await login.page.waitForSelector('.pin-boxes');
     assert.equal(await login.page.locator('#modalRoot .modal-overlay').count(),0,'no confirmation popup');
-    assert.equal(await login.page.locator('.pin-dot.filled').count(),0,'logout resets the PIN feedback');
+    assert.equal(await login.page.locator('.pin-box.filled').count(),0,'logout resets the PIN feedback');
     await login.ctx.close();
     const reduced=await context({reducedMotion:'reduce'});await reduced.page.locator('[data-inc="i1"]').click();
     assert.equal(await reduced.page.locator('[data-qty="i1"]').evaluate(el=>el.getAnimations().length),0,'reduced motion skips JS feedback');
@@ -700,6 +768,6 @@ const server=http.createServer((req,res)=>{
     assert.equal(await mp.locator('#app').evaluate(el=>el.inert),false,'sign-out cleanup releases the background');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*ALL_VIEWS.length} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, Yunis's roles from the server (tabs, More only past four screens), Admin tiles and PIN change, sign-in design A (thumb-reach keys, theme colours, no Sign Out popup), welcome by name, fixed Manage navigation, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, dark mode, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*ALL_VIEWS.length} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, Yunis's roles from the server (tabs, More only past four screens), Admin tiles and PIN change, sign-in with Ricotta's map (keys on phones, typing on computers, map limits, theme colours, no Sign Out popup), welcome by name, fixed Manage navigation, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, dark mode, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

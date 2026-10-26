@@ -157,9 +157,10 @@ document.addEventListener('visibilitychange', ()=>{
    every couple of minutes while the app is open (so Rozha can tell "active
    now" from "signed in but idle") and polls for remote commands from
    Rozha's Admin screen (log out / refresh). */
-const HEARTBEAT_MS = 2*60*1000;       /* how often an open app reports "still here" */
-const ACTIVE_WINDOW_MS = 5*60*1000;   /* seen within this long ago = "active now" */
-const COMMAND_POLL_MS = 60*1000;
+const HEARTBEAT_MS = 60*1000;         /* how often an open app reports "still here" */
+const ACTIVE_WINDOW_MS = 150*1000;    /* seen within this long ago = "active now" (a missed "still here" is allowed for) */
+const FALLBACK_POLL_MS = 15*1000;     /* checks when the live connection is down (see Live changes) */
+const SAFETY_POLL_MS = 2*60*1000;     /* and now and then even when it is up */
 
 /* A random id for this device, created once and remembered. Not a secret --
    just a way to recognise "this same phone" across sign-ins. */
@@ -295,7 +296,8 @@ async function resolveDraftConflict(choice){
   persistCartDraft(); if(state.view==='order') refreshOrderView();
   await syncSharedDraft();
 }
-setInterval(()=>{if(document.visibilityState==='visible') syncSharedDraft();},8000);
+// Live changes bring the other phone's draft at once; without them, every 8 seconds.
+setInterval(()=>{if(document.visibilityState==='visible' && !liveHealthy()) syncSharedDraft();},8000);
 /* Keep the unfinished order on this device so closing or refreshing the app
    does not discard the quantities the user has selected. */
 function persistCartDraft(){
@@ -333,7 +335,7 @@ let commandCheckBusy = false;
 let forcedRefreshOpen = false;
 async function checkCommands(){
   if(commandCheckBusy || !state.account) return;
-  commandCheckBusy = true;
+  commandCheckBusy = true; lastCommandCheck = Date.now();
   try{
     const r = await api('devices');
     if(r.ok && Array.isArray(r.data)){
@@ -384,12 +386,63 @@ try{
   }, ()=>{});
 }catch(_){ /* no battery information: decorations follow visibility only */ }
 syncMotion();
-setInterval(()=>{ if(isVisible()) checkCommands(); }, COMMAND_POLL_MS);
+let lastCommandCheck = 0;
+setInterval(()=>{ if(isVisible() && (!liveHealthy() || Date.now() - lastCommandCheck > SAFETY_POLL_MS)) checkCommands(); }, FALLBACK_POLL_MS);
 setInterval(()=>{ if(isVisible()) heartbeat(); }, HEARTBEAT_MS);
 document.addEventListener('visibilitychange', ()=>{
   // Back from WhatsApp: an order whose suppliers are all sent is saved now if it wasn't yet.
-  if(isVisible() && state.account){ checkCommands(); heartbeat(); maybeFinishQueue(); }
+  if(isVisible() && state.account){ checkCommands(); heartbeat(); maybeFinishQueue(); liveStart(); }
+  else liveStop();
 });
+
+/* ============ Live changes ============
+   While the app is on screen it keeps one question open with the server: "anything new?" (GET
+   signals). The server answers within about a second of a change (an order or item saved anywhere, a
+   sign-in or sign-out, a Refresh or Sign Out for this phone, the security log, a message from Rico), or
+   after 25 seconds with nothing new, and the app asks again; then only what changed is loaded. When
+   the server cannot be reached the older checks run every 15 seconds instead (FALLBACK_POLL_MS). */
+const live = {id:0, account:null, stop:null, n:null, kinds:{}, healthyAt:0, fails:0};
+const liveHealthy = ()=> Date.now() - live.healthyAt < 40000;
+const pause = ms=>new Promise(r=>setTimeout(r, ms));
+function liveStart(){
+  if(!state.account || !isVisible() || (live.stop && live.account === state.account)) return;
+  liveStop();
+  if(live.account !== state.account){ live.account = state.account; live.n = null; live.kinds = {}; live.healthyAt = 0; }
+  const id = ++live.id, stop = new AbortController();
+  live.stop = stop;
+  liveLoop(id, stop.signal).finally(()=>{ if(live.id === id) live.stop = null; });
+}
+function liveStop(){ live.stop?.abort(); live.stop = null; live.healthyAt = 0; }
+async function liveLoop(id, signal){
+  const account = state.account;
+  while(live.id === id && !signal.aborted && state.account === account && isVisible()){
+    const started = Date.now();
+    const r = await api(`signals?since=${live.n ?? -1}&wait=${live.n === null ? 0 : 25}`, {timeout:35000, signal, quiet:true});
+    if(live.id !== id || signal.aborted || state.account !== account) return;
+    const n = Number(r.data?.n), kinds = r.data?.kinds;
+    if(!r.ok || !Number.isSafeInteger(n) || !kinds || typeof kinds !== 'object' || Array.isArray(kinds)){
+      live.fails++; live.healthyAt = 0;
+      await pause(Math.min(30000, 1000 * 2 ** Math.min(live.fails, 5)));
+      continue;
+    }
+    live.fails = 0; live.healthyAt = Date.now();
+    if(live.n !== null && n !== live.n) liveChanged(kinds, n < live.n);
+    live.n = n; live.kinds = kinds;
+    // An answer that came back at once with nothing new (something in between that does not wait):
+    // never ask again in a tight loop.
+    if(Date.now() - started < 1000) await pause(1000);
+  }
+}
+/* A counter that went backwards (the server was reset) counts as every kind changing. */
+function liveChanged(kinds, reset){
+  const moved = k=> reset || Number(kinds[k] || 0) !== Number(live.kinds[k] || 0);
+  if(moved('data')) refreshData('live');
+  if(moved('draft')) syncSharedDraft();
+  if(moved('devices')) checkCommands();
+  if(moved('admin') && state.view === 'admin' && isRozha()) ['security','problems'].forEach(k=>adminFetch(k, true));
+  if(moved('inbox')) ricoRefreshInbox();
+}
+window.addEventListener('online', ()=>liveStart());
 
 /* ============ Connection status ============ */
 function setApiHealth(online){
@@ -512,6 +565,7 @@ window.addEventListener('appinstalled',()=>{
 document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
 /* Clears this device's sign-in and returns to the PIN pad. */
 function signOut(reason, {preserveSession = false} = {}){
+  liveStop();
   if(state.account) lset('bootCache:' + state.account, null);   // the kitchen's data does not stay on a signed-out phone
   resetSharedDraft(); state.sharedDraft=null;
   ricoReset();
@@ -576,16 +630,19 @@ function onSessionExpired(){
 }
 
 /* ============ Boot ============ */
-let loadedOk = false, lastLoadAt = 0, refreshBusy = false, refreshWaiting = false;
-/* Orders, items and suppliers saved on the other phone show up here too. A phone keeps the app open in
-   the background for days, so the data is reloaded when the app comes back on screen and every minute
-   while it is open. A popup, a picker or typing is never interrupted: the screen is redrawn after it. */
-const REFRESH_MS = 60000;
+let loadedOk = false, lastLoadAt = 0, refreshBusy = false, refreshWaiting = false, refreshAgain = false;
+/* Orders, items and suppliers saved on the other phone show up here too: at once through Live changes
+   ('live'), when the app comes back on screen (force), and every 20 seconds while the live connection is
+   down (every 2 minutes as a safety net while it is up). A popup, a picker or typing is never
+   interrupted: the screen is redrawn after it. */
+const REFRESH_MS = 20000;
 const refreshBlocked = () => !!document.querySelector('#modalRoot .modal-overlay, .sel-sheet, .pad-sheet, .ctx-layer') || document.getElementById('langLayer')
   || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
 async function refreshData(force){
-  if(refreshBusy || !state.account || !loadedOk || !isVisible() || !navigator.onLine) return;
-  if(Date.now() - lastLoadAt < (force ? 15000 : REFRESH_MS)) return;
+  if(refreshBusy){ if(force === 'live') refreshAgain = true; return; }
+  if(!state.account || !loadedOk || !isVisible() || !navigator.onLine) return;
+  const gap = force === 'live' ? 0 : force ? 15000 : liveHealthy() ? SAFETY_POLL_MS : REFRESH_MS;
+  if(Date.now() - lastLoadAt < gap) return;
   refreshBusy = true;
   try{
     // A change to what this person may open or do (Admin, Access) redraws the screen too.
@@ -594,6 +651,8 @@ async function refreshData(force){
     if(await loadData() && shown() !== before) refreshWaiting = true;
   }finally{ refreshBusy = false; }
   repaintAfterRefresh();
+  // A change that arrived while this load was under way is loaded too.
+  if(refreshAgain){ refreshAgain = false; refreshData('live'); }
 }
 let repaintTimer = 0;
 function repaintAfterRefresh(){
@@ -603,7 +662,7 @@ function repaintAfterRefresh(){
   refreshWaiting = false;
   render();
 }
-setInterval(()=>refreshData(false), 15000);
+setInterval(()=>refreshData(false), 5000);
 document.addEventListener('visibilitychange', ()=>refreshData(true));
 /* Offline at start-up: show what we can, say so, and keep trying quietly. */
 function retryLoad(){
@@ -647,7 +706,7 @@ async function boot(){
     return;
   }
   hideSplash();
-  if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); maybeFinishQueue(); }
+  if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); maybeFinishQueue(); liveStart(); }
   if(state.account && !loadedOk) retryLoad();
   // Notifications: register the service worker, read this device's status, and
   // handle being launched from a notification tap.
@@ -691,30 +750,81 @@ async function hideSplash(minShown = 1150){
   el.addEventListener('animationend', e=>{ if(e.target === el) done(); });
   setTimeout(done, 1400);   // safety net
 }
-/* After a PIN sign-in: "Welcome back, Yunis" with Rico waving covers the
-   moment the workspace loads (the ricotta splash is kept for app start). */
+/* ---------- Ricotta on the map (sign-in, Welcome back, Admin) ----------
+   One satellite picture of the street around the kitchen (Esri World Imagery), shipped with the app
+   so it shows offline, and Ricotta's pin with two soft rings. In "green" the picture takes Ricotta's
+   green; Admin shows it in its own colours. Directions opens Ricotta in Apple Maps. */
+const RICOTTA_MAP = 'ricotta-map.jpg';
+const RICOTTA_MAP_CREDIT = 'Esri, Vantor, Earthstar Geographics, GIS User Community';
+const RICOTTA_DIRECTIONS = 'https://maps.apple/p/RvAJw2GV9jAvf_';
+const ICON_OUT = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg>`;
+function ricottaMapWorld({green = true, label = false} = {}){
+  return `<div class="rmap-world" aria-hidden="true"><img src="${RICOTTA_MAP}" alt="" width="1792" height="1792" draggable="false" decoding="async">${green ? '<i class="rmap-tint"></i>' : ''}<span class="rmap-pin"><i></i><i></i><b></b>${label ? `<span>${esc(t('mapPinLabel'))}</span>` : ''}</span></div>`;
+}
+const mapDirections = cls=>`<a class="map-directions ${cls}" href="${RICOTTA_DIRECTIONS}" target="_blank" rel="noopener">${esc(t('directions'))}${ICON_OUT}</a>`;
+const mapCredit = ()=>`<span class="map-credit" dir="ltr">${RICOTTA_MAP_CREDIT}</span>`;
+/* The map moves a little around Ricotta under a finger or the mouse, with a rubber band past its
+   limits. On a phone it springs back to Ricotta when let go; on a computer it stays where it was
+   left and the arrow button brings it back. */
+function attachMapDrag(map, {limit, springBack}){
+  const world = map?.querySelector('.rmap-world');
+  if(!world) return;
+  const recenter = map.querySelector('.map-recenter');
+  let pos = {x:0, y:0}, drag = null;
+  const rubber = (v, l)=> Math.abs(v) <= l ? v : Math.sign(v) * (l + (Math.abs(v) - l) * .3);
+  const place = ()=>{ world.style.translate = `${pos.x}px ${pos.y}px`; recenter?.classList.toggle('show', Math.abs(pos.x) > 6 || Math.abs(pos.y) > 6); };
+  map.onpointerdown = e=>{
+    if(e.button > 0 || e.target.closest('a,button')) return;
+    drag = {id:e.pointerId, x:e.clientX - pos.x, y:e.clientY - pos.y};
+    map.setPointerCapture?.(e.pointerId); map.classList.add('dragging');
+  };
+  map.onpointermove = e=>{
+    if(!drag || e.pointerId !== drag.id) return;
+    pos = {x:rubber(e.clientX - drag.x, limit.x), y:rubber(e.clientY - drag.y, limit.y)}; place();
+  };
+  map.onpointerup = map.onpointercancel = e=>{
+    if(!drag || e.pointerId !== drag.id) return;
+    drag = null; map.classList.remove('dragging');
+    pos = springBack ? {x:0, y:0} : {x:Math.max(-limit.x, Math.min(limit.x, pos.x)), y:Math.max(-limit.y, Math.min(limit.y, pos.y))};
+    place();
+  };
+  if(recenter) recenter.onclick = ()=>{ pos = {x:0, y:0}; place(); };
+}
+
+/* After a PIN sign-in: "Welcome back, Yunis" over Ricotta's street in green (it settles from a little
+   closer), with a bar that fills while the workspace loads; then it fades and the app rises into place.
+   The earlier Welcome, with Rico waving, is kept in git: tag snapshot-2026-10-26-rico-welcome. */
 let welcomeShownAt = 0;
 function showWelcome(name){
   document.getElementById('welcome')?.remove();
   const el = document.createElement('div');
-  el.id = 'welcome'; el.className = 'welcome'; el.setAttribute('role','status');
-  el.innerHTML = `<div class="welcome-card">
-      ${ricoFace('excited','rico-welcome')}
-      <div class="welcome-title">${esc(t('welcomeName')(name))}</div>
-      <div class="welcome-sub">${esc(t('splashLoading'))}</div>
+  el.id = 'welcome'; el.className = 'welcome rmap green'; el.setAttribute('role','status');
+  el.innerHTML = `${ricottaMapWorld()}<div class="welcome-shade" aria-hidden="true"></div>
+    <div class="welcome-word" dir="ltr" aria-hidden="true">ricotta<i></i></div>
+    <span class="sr-only">${esc(t('welcomeName')(name))}</span>
+    <div class="welcome-text" aria-hidden="true">
+      <p class="welcome-line">${esc(t('welcomeBackLine'))}</p>
+      <p class="welcome-name" dir="auto">${esc(name)}</p>
       <div class="welcome-bar"><i></i></div>
+      <p class="welcome-sub">${esc(t('welcomeOpening'))}</p>
     </div>`;
   document.body.appendChild(el);
   welcomeShownAt = performance.now();
+  requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('filling')));
+  syncAppearance();
 }
-async function hideWelcome(minShown = 1300){
+async function hideWelcome(minShown = 1500){
   const el = document.getElementById('welcome');
-  if(!el) return;
-  if(matchMedia('(prefers-reduced-motion: reduce)').matches) minShown = 0;
+  if(!el || el.classList.contains('leaving')) return;
+  const still = reducedMotion();
+  if(still) minShown = 0;
   const wait = Math.max(0, minShown - (performance.now() - welcomeShownAt));
   await new Promise(r=>setTimeout(r, wait));
+  el.classList.add('done');   // the bar fills the last bit
+  await new Promise(r=>setTimeout(r, still ? 0 : 240));
   el.classList.add('leaving');
-  setTimeout(()=>el.remove(), 460);
+  if(!still) document.querySelector('.content')?.animate?.([{opacity:0, transform:'translateY(16px)'}, {opacity:1, transform:'none'}], {duration:600, easing:'cubic-bezier(.2,.8,.2,1)'});
+  setTimeout(()=>{ el.remove(); syncAppearance(); }, still ? 0 : 640);
 }
 
 function applyLangClasses(){
@@ -1160,12 +1270,16 @@ function goView(view, {fromOffset=0, velocity=0, peek=null, keepLens=false, fade
   scrollBox().scrollTo({top:remembered?.top || 0});
   // The swipe's preview of this page is replaced by the page itself, in the same place.
   peek?.layer.remove();
-  quietBar();
+  // After a swipe in the small (scrolled) tab bar, the bar grows back only once the pages have
+  // settled: the bar and the page moving at the same time read as a stutter.
+  const growAfter = !!fromOffset && !!frames && !!document.querySelector('.bottomnav.compact');
+  if(growAfter){ barQuietUntil = performance.now() + 1200; barLastY = scrollBox().scrollTop; paintToTop(); }
+  else quietBar();
   if(view === 'record') refreshActivity();
   if(view === 'admin') refreshDevices();
   if(!keepLens) placeNavIndicator();
   const content = document.querySelector('.content');
-  if(!frames || !content){ ghost?.layer.remove(); if(content) content.style.transform = ''; return; }
+  if(!frames || !content){ ghost?.layer.remove(); if(content) content.style.transform = ''; if(growAfter) quietBar(); return; }
   // After a swipe, pages start from where the finger left them.
   if(fromOffset){
     frames.inn[0] = {transform:`translate3d(${dir*width + fromOffset}px,0,0)`};
@@ -1182,7 +1296,7 @@ function goView(view, {fromOffset=0, velocity=0, peek=null, keepLens=false, fade
   if(ghost) anims.push(ghost.copy.animate(frames.out, opts));
   glide = {anims, ghost:ghost?.layer, content};
   const mine = glide;
-  anims[0].finished.then(()=>{ if(glide === mine) endGlide(); }, ()=>{});
+  anims[0].finished.then(()=>{ if(glide === mine) endGlide(); if(growAfter && state.view === view) quietBar(); }, ()=>{ if(growAfter) quietBar(); });
 }
 
 /* Swipe the page sideways to move between the tabs (phones), like the iPhone's Home Screen: the next
@@ -1549,7 +1663,9 @@ function bump(el){
 function syncAppearance(){
   const meta=document.querySelector('meta[name="theme-color"]');
   const dark = document.documentElement.classList.contains('dark');
-  const splash = document.documentElement.classList.contains('booting');
+  // Green behind the loading screen, Welcome back and a phone's sign-in (its map reaches the top).
+  const splash = document.documentElement.classList.contains('booting') || !!document.getElementById('welcome')
+    || (!state.account && matchMedia('(max-width:959px)').matches);
   const color = splash ? '#14382C' : dark ? '#000000' : '#F2F2F7';
   // A Home Screen app can keep the colour it opened with when the tag only changes, so the tag is
   // replaced with a new one.
@@ -1769,52 +1885,75 @@ function attachContentEvents(){
   });
 }
 
-/* ============ Login (PIN pad) ============ */
+/* ============ Login ============ */
 function loginMessage(){
   if(state.pinBusy) return t('signingIn');
   return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), verification:t('securityCheckFailed'), device:t('deviceInUse'), session:state.sessionMsg})[state.pinError] || '';
 }
 const LOGIN_ERRORS = ['wrong','locked','network','verification'];
-/* The sign-in, like the iPhone's passcode screen in the person's own look (Light, Dark or Automatic):
-   the ricotta mark, "Enter your PIN" and six dots in the upper part, and round number keys low on the
-   screen where the thumb rests, with Delete in the corner once a digit is typed. The language is under
-   the keys. A computer gets the same column and can type the PIN. */
+/* The sign-in. A phone: Ricotta's street in green at the top with the date and Directions, then a white
+   (or black) sheet with "Sign in", six boxes and number keys that answer the moment a finger lands.
+   A computer: the green map fills one half and the other half holds only the six boxes; the PIN is typed
+   on the keyboard and Esc clears it. A tablet keeps the keys. The message under "Sign in" says what to
+   do, "Signing in…", or what went wrong. */
 function renderLogin(){
-  const dots = Array.from({length:MAX_PIN_LEN}).map((_,i)=>`<span class="pin-dot${i < state.pinBuffer.length ? ' filled' : ''}"></span>`).join('');
-  const bad = LOGIN_ERRORS.includes(state.pinError);
-  const msg = loginMessage();
+  const date = esc(formatIraqDateTime(new Date(), {weekday:'long', day:'numeric', month:'long'}));
   const key = k=>`<button type="button" class="key" data-key="${k}">${k}</button>`;
   return `
   <div class="login-wrap">
+    <section class="login-map rmap green" id="loginMap" aria-label="${esc(t('mapLabel'))}">
+      ${ricottaMapWorld({label:true})}
+      <div class="login-map-shade" aria-hidden="true"></div>
+      <div class="login-map-top">
+        <div class="login-word" dir="ltr" aria-label="Ricotta">ricotta<i aria-hidden="true"></i></div>
+        <p class="login-date map-glass">${date}</p>
+        <button type="button" class="map-recenter map-glass" aria-label="${esc(t('mapRecenter'))}"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.5 3.5 3.7 10.6c-.8.3-.7 1.5.2 1.7l6.6 1.2 1.2 6.6c.2.9 1.4 1 1.7.2Z"/></svg></button>
+      </div>
+      <div class="login-map-foot">
+        <h2 class="login-tagline">${esc(t('loginTagline'))}</h2>
+        <div class="login-place"><span>${esc(t('ricottaPlace'))}</span>${mapDirections('map-glass')}</div>
+      </div>
+      ${mapCredit()}
+    </section>
     <main class="login-panel">
-      <div class="login-top">
-        <h1 class="login-word" dir="ltr" aria-label="Ricotta">ricotta<i aria-hidden="true"></i></h1>
-        <p class="login-sub" id="pinLabel">${esc(t('loginEnterPin'))}</p>
-        <div class="pin-dots${bad?' err':''}${state.pinBusy?' busy':''}" role="img" aria-labelledby="pinLabel" aria-describedby="pinCount"><span class="sr-only" id="pinCount">${esc(t('pinTyped')(state.pinBuffer.length, MAX_PIN_LEN))}</span>${dots}</div>
-        <div class="login-error${state.pinBusy || state.pinError==='session'?' info':''}" role="alert">${esc(msg)}</div>
+      <p class="login-date login-date-side">${date}</p>
+      <div class="login-card">
+        <h1 class="login-title">${esc(t('loginTitle'))}</h1>
+        <p class="login-sub" id="pinLabel" aria-live="polite"></p>
+        <div class="pin-field">
+          <div class="pin-boxes" role="img" aria-labelledby="pinLabel" aria-describedby="pinCount"><span class="sr-only" id="pinCount"></span>${'<span class="pin-box"><i></i></span>'.repeat(MAX_PIN_LEN)}</div>
+          <input class="pin-input" id="pinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="${MAX_PIN_LEN}" aria-label="${esc(t('loginEnterPin'))}" aria-describedby="pinCount">
+        </div>
+        <p class="login-hint">${esc(t('loginKeysHint')).replace('Esc', '<kbd>Esc</kbd>')}</p>
       </div>
       <div class="keypad" role="group" aria-label="${esc(t('loginEnterPin'))}">
         ${['1','2','3','4','5','6','7','8','9'].map(key).join('')}
-        <span class="key-gap" aria-hidden="true"></span>${key('0')}
-        <button type="button" class="key key-delete${state.pinBuffer ? '' : ' empty'}" data-key="back" aria-label="${esc(t('deleteDigit'))}">${esc(t('delete'))}</button>
+        <button type="button" class="key plain" data-key="clear">${esc(t('clear'))}</button>${key('0')}
+        <button type="button" class="key plain" data-key="back" aria-label="${esc(t('deleteDigit'))}"><svg width="24" height="18" viewBox="0 0 26 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M8 1h15a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8L1 10Z"/><path d="m12 6.5 7 7M19 6.5l-7 7"/></svg></button>
       </div>
-      <p class="login-hint">${esc(t('loginTypeHint'))}</p>
-      <button type="button" class="login-lang-row" id="loginLangRow" aria-haspopup="dialog" aria-label="${esc(t('language'))}">${ICON_GLOBE}<span>${LANG_NAMES[state.lang]}</span></button>
+      <footer class="login-foot">
+        <button type="button" class="login-lang" id="loginLangRow" aria-haspopup="dialog" aria-label="${esc(t('language'))}">${ICON_GLOBE}<span>${LANG_NAMES[state.lang]}</span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        <a class="login-privacy" href="${esc(privacyHref())}">${esc(t('privacyPolicy'))}</a>
+      </footer>
     </main>
   </div>`;
 }
+/* The boxes fill in as digits are typed and the next one waits with a green ring; they shake and turn
+   red on a wrong PIN and ripple while the PIN is checked. */
 function updateLoginFeedback(){
-  const dots = document.querySelector('.pin-dots');
-  if(!dots) return;
-  const bad = LOGIN_ERRORS.includes(state.pinError);
-  dots.classList.toggle('err', bad);
-  dots.classList.toggle('busy', state.pinBusy);
-  dots.querySelectorAll('.pin-dot').forEach((dot,index)=>dot.classList.toggle('filled', index < state.pinBuffer.length));
-  document.getElementById('pinCount').textContent = t('pinTyped')(state.pinBuffer.length, MAX_PIN_LEN);
-  const message = document.querySelector('.login-error');
-  message.textContent = loginMessage();
-  message.classList.toggle('info', state.pinBusy || state.pinError === 'session');   // "Signing in…" is not an error
-  document.querySelector('.key-delete')?.classList.toggle('empty', !state.pinBuffer);
+  const boxes = document.querySelector('.pin-boxes');
+  if(!boxes) return;
+  const n = state.pinBuffer.length, bad = LOGIN_ERRORS.includes(state.pinError), msg = loginMessage();
+  boxes.classList.toggle('err', bad);
+  boxes.classList.toggle('busy', state.pinBusy);
+  boxes.querySelectorAll('.pin-box').forEach((box, i)=>{
+    box.classList.toggle('filled', i < n);
+    box.classList.toggle('on', !state.pinBusy && !bad && i === n);
+  });
+  document.getElementById('pinCount').textContent = t('pinTyped')(n, MAX_PIN_LEN);
+  const sub = document.getElementById('pinLabel');
+  sub.textContent = msg || t('loginPinSub');
+  sub.classList.toggle('err', !!msg && !state.pinBusy && state.pinError !== 'session');   // "Signing in…" is not an error
   document.querySelectorAll('[data-key]').forEach(button=>button.disabled = state.pinBusy);
 }
 async function pressKey(k){
@@ -1850,25 +1989,38 @@ async function completeSignIn(res){
   maybeFinishQueue();
   hideWelcome();
   heartbeat();
+  liveStart();
   if(pushStatus.subscribed) resyncPush();
   maybeOpenRicoProviderSetup();
 }
 function attachLoginEvents(){
+  updateLoginFeedback();
   const lang = document.getElementById('loginLangRow');
   if(lang) lang.onclick = e=>{ e.stopPropagation(); openLangMenu(lang); };
-  // A key answers the moment the finger lands on it (a light tick), like the iPhone's passcode pad.
+  // A key answers the moment the finger lands on it (a light tick), like the iPhone's passcode pad: it
+  // turns green and dips a little, and springs back when the finger lifts.
   document.querySelectorAll('[data-key]').forEach(b=>{
-    b.onpointerdown = e=>{ if(e.button > 0 || b.disabled) return; e.preventDefault(); haptic('light'); pressKey(b.dataset.key); };
+    b.onpointerdown = e=>{ if(e.button > 0 || b.disabled) return; e.preventDefault(); b.classList.add('down'); haptic('light'); pressKey(b.dataset.key); };
+    b.onpointerup = b.onpointerleave = b.onpointercancel = ()=>b.classList.remove('down');
     b.onclick = e=>{ if(e.detail === 0) pressKey(b.dataset.key); };   // Enter or Space on a focused key
   });
+  // On a computer the boxes hold a hidden field, so the PIN can be typed (or pasted) straight away.
+  const pin = document.getElementById('pinInput');
+  if(pin){
+    pin.oninput = ()=>{ const digits = pin.value.replace(/\D/g, ''); pin.value = ''; [...digits].forEach(d=>pressKey(d)); };
+    if(pin.offsetParent && matchMedia('(hover:hover) and (pointer:fine)').matches) pin.focus({preventScroll:true});
+  }
+  const wide = matchMedia('(min-width:960px)').matches;
+  attachMapDrag(document.getElementById('loginMap'), wide ? {limit:{x:140, y:110}, springBack:false} : {limit:{x:90, y:60}, springBack:true});
 }
-/* Physical keyboards (computers / tablets with a keyboard) can type the PIN. */
+/* Physical keyboards (computers, tablets with a keyboard) type the PIN; the hidden field stays empty. */
 document.addEventListener('keydown', e=>{
   if(state.account || e.ctrlKey || e.metaKey || e.altKey) return;
   if(document.querySelector('#modalRoot .modal-overlay') || document.getElementById('langLayer')) return;
-  if(/^[0-9]$/.test(e.key)) pressKey(e.key);
-  else if(e.key === 'Backspace') pressKey('back');
-  else if(e.key === 'Escape') pressKey('clear');
+  const k = /^[0-9]$/.test(e.key) ? e.key : ({Backspace:'back', Escape:'clear'})[e.key];
+  if(!k || !document.querySelector('.pin-boxes')) return;
+  e.preventDefault();
+  pressKey(k);
 });
 
 /* ============ Order screen ============ */
@@ -1879,8 +2031,8 @@ const FOLD_TEXT = [[/[ً-ٰٟـ​-‏‪-‮⁦-⁩﻿]/g, ''], [/[أإآٱ]/g,
   [/ڵ/g, 'ل'], [/ڕ/g, 'ر'], [/پ/g, 'ب'], [/چ/g, 'ج'], [/ژ/g, 'ز'], [/ڤ/g, 'ف'],
   [/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x660)], [/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x6F0)]];
 function foldText(s){ return FOLD_TEXT.reduce((t, [re, to]) => t.replace(re, to), String(s ?? '').normalize('NFKC')).toLocaleLowerCase(); }
-/* A unit's name in the current language (English when it has none). */
-function unitName(u){ return !u ? '' : state.lang === 'ku' ? (u.ku || u.en) : state.lang === 'ar' ? (u.ar || u.en) : u.en; }
+/* A unit has one name, written in any language, and shows as written everywhere. */
+function unitName(u){ return u ? u.en : ''; }
 function unitLabel(unitId){ return unitName(state.units.find(x=>x.id===unitId)); }
 function supplierName(id){
   const s = state.suppliers.find(x=>x.id===id);
@@ -3268,25 +3420,13 @@ function attachItemEvents(){
 }
 
 /* ============ Units ============ */
-/* Each unit has an English name (required) and optional Kurdish and Arabic
-   names; every screen shows the one for the current language. */
-function unitFieldsHtml(prefix, u){
-  return `<div class="field"><label for="${prefix}En">${esc(t('englishLabel'))}</label><input id="${prefix}En" maxlength="80" data-clear="1" value="${esc(u?.en||'')}" placeholder="${esc(t('unitNamePlaceholder'))}"></div>
-    <div class="field"><label for="${prefix}Ku">${esc(t('kurdishLabel'))}</label><input id="${prefix}Ku" dir="rtl" maxlength="80" data-clear="1" value="${esc(u?.ku||'')}"></div>
-    <div class="field"><label for="${prefix}Ar">${esc(t('arabicLabel'))}</label><input id="${prefix}Ar" dir="rtl" maxlength="80" data-clear="1" value="${esc(u?.ar||'')}"></div>`;
-}
-function readUnitFields(prefix){
-  const v = id=>document.getElementById(prefix+id).value.trim();
-  return {en:v('En'), ku:v('Ku'), ar:v('Ar')};
-}
+/* A unit has one name, written in whatever language suits it (کیلۆ, box, ...). Units used to have
+   English, Kurdish and Arabic names; Record still shows those older changes. */
 function renderUnits(){
-  const chips = state.units.map(u=>{
-    const others = [u.en, u.ku, u.ar].filter(x=>x && x !== unitName(u));
-    return `<span class="unit-chip" data-search-row><span class="unit-names"><strong>${esc(unitName(u))}</strong>${others.length ? `<small>${esc([...new Set(others)].join(' · '))}</small>` : ''}</span>
+  const chips = state.units.map(u=>`<span class="unit-chip" data-search-row><span class="unit-names"><strong dir="auto">${esc(unitName(u))}</strong></span>
       ${canDo('catalog') ? `<button data-editunit="${esc(u.id)}" aria-label="${esc(t('editUnit'))}">${ICON_EDIT}</button>
       <button class="danger" data-delunit="${esc(u.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
-    </span>`;
-  }).join('');
+    </span>`).join('');
   return `
     <div class="action-row">
       ${canDo('catalog') ? `<button class="btn btn-primary add-btn" id="unitAddBtn">${ICON_PLUS} ${esc(t('addUnit'))}</button>` : ''}
@@ -3298,29 +3438,29 @@ function renderUnits(){
 function openUnitModal(unit){
   showFormModal({
     title: unit ? t('editUnit') : t('addUnit'),
-    banner: unit ? editingBanner(unitName(unit), [unit.en, unit.ku, unit.ar].filter(Boolean).join(' · ')) : '',
-    bodyHtml: unitFieldsHtml('mfUnit', unit),
+    banner: unit ? editingBanner(unitName(unit)) : '',
+    bodyHtml: `<div class="field"><label for="mfUnitName">${esc(t('unitNameLabel'))}</label><input id="mfUnitName" dir="auto" maxlength="80" data-clear="1" autocomplete="off" value="${esc(unit?.en||'')}" placeholder="${esc(t('unitNamePlaceholder'))}"></div>`,
     okLabel: t('save'),
     againLabel: unit ? null : t('saveAndAddAnother'),
     onSubmit: async (again)=>{
-      const {en, ku, ar} = readUnitFields('mfUnit');
-      if(!en) return {error:t('nameRequired')};
+      const name = document.getElementById('mfUnitName').value.trim();
+      if(!name) return {error:t('nameRequired')};
+      if(state.units.some(u=>u !== unit && foldText(String(u.en || '').trim()) === foldText(name))) return {error:t('unitExists')};   // کیلۆ and كيلۆ are the same name
       if(unit){
-        const fields = diffFields([['name',unit.en,en],['nameKu',unit.ku||'',ku],['nameAr',unit.ar||'',ar]]);
+        const fields = diffFields([['name',unit.en,name]]);
         if(!fields.length) return {};
-        if(!(await saveRecord('units',{id:unit.id,en,ku,ar}))) return {error:t('saveFailed')};
-        Object.assign(unit,{en,ku,ar});
-        logActivity({action:'edit',type:'unit',name:en,fields});
+        if(!(await saveRecord('units',{id:unit.id, en:name, ku:null, ar:null}))) return {error:t('saveFailed')};
+        Object.assign(unit,{en:name, ku:null, ar:null});
+        logActivity({action:'edit',type:'unit',name,fields});
       }else{
-        const next = {id:'u'+outboxJobId(), en, ku, ar};
+        const next = {id:'u'+outboxJobId(), en:name, ku:null, ar:null};
         if(!(await saveRecord('units', next))) return {error:t('saveFailed')};
         state.units.push(next);
-        logActivity({action:'add', type:'unit', name:en,
-          fields:[{k:'name', to:en}].concat(ku ? [{k:'nameKu', to:ku}] : [], ar ? [{k:'nameAr', to:ar}] : [])});
+        logActivity({action:'add', type:'unit', name, fields:[{k:'name', to:name}]});
       }
       render();
-      if(again) return {keepOpen:true, message:t('savedMsg')(en)};
-      toast(t('savedMsg')(en));
+      if(again) return {keepOpen:true, message:t('savedMsg')(name)};
+      toast(t('savedMsg')(name));
       return {};
     }
   });
@@ -3339,8 +3479,7 @@ function attachUnitEvents(){
     if(!(await deleteRecord('units', unit.id))){ await showAlert(esc(t('saveFailed'))); return; }
     state.units = state.units.filter(u=>u.id!==unit.id);
     state.items.forEach(i=>{ if(i.unit===unit.id) i.unit=null; });
-    logActivity({action:'delete', type:'unit', name:unit.en,
-      fields:[{k:'name', from:unit.en}].concat(unit.ku ? [{k:'nameKu', from:unit.ku}] : [], unit.ar ? [{k:'nameAr', from:unit.ar}] : [])});
+    logActivity({action:'delete', type:'unit', name:unit.en, fields:[{k:'name', from:unit.en}]});
     render();
   });
 }

@@ -20,7 +20,7 @@
 
    Depends on: APP_VERSION (config.js), t() and state (app.js),
    showConfirm (modals.js), GLYPH_UPDATE (icons.js), lset (storage.js). */
-const UPDATE_CHECK_INTERVAL_MS = 60000; /* check every minute */
+const UPDATE_CHECK_INTERVAL_MS = 15000; /* every 15 seconds while on screen (a small file from GitHub Pages, not the server) */
 let updateCheckBusy = false;
 let updatePromptOpen = false;
 let snoozedVersion = null;

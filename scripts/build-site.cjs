@@ -28,7 +28,11 @@ write('fonts/fonts.css',mincss(fonts.replaceAll('url(', 'url(../assets/')));
 const css=asset('style','css',mincss(read('style.css').toString()));
 const sheet=asset('spreadsheet','js',read('vendor/xlsx-0.20.3.min.js'));
 const boot=asset('boot','js',minjs(read('boot.js').toString().replace("'style.css'",JSON.stringify(css)).replace("'fonts/fonts.css'",JSON.stringify(fontCss))));
+// Ricotta's map picture is a hashed asset too, so the service worker keeps it and it shows offline.
+const map=asset('ricotta-map','jpg',read('ricotta-map.jpg'));
 let code=scripts.map(file=>read(file).toString()).join('\n;\n').replace('vendor/xlsx-0.20.3.min.js',sheet);
+assert.equal(code.split("'ricotta-map.jpg'").length,2,'the map picture is named once, in app.js');
+code=code.replace("'ricotta-map.jpg'",JSON.stringify(map));
 // The updater must refresh deployed files, not development source paths.
 code=code.replace(/const APP_FILES = \[[^\]]*\];/,`const APP_FILES = ${JSON.stringify(['config.js','sw.js',css,fontCss,boot])};`);
 const app=asset('app','js',minjs(code));

@@ -298,10 +298,15 @@ function ricoErrorText(code){
    A mood the AI wrote in the wrong shape ([happy], [[happy]]) is dropped: the
    face already shows it. */
 const RICO_MOOD_TAG = new RegExp(`\\[\\[?\\s*(?:mood\\s*:\\s*)?(?:${RICO_MOODS.join('|')})\\s*\\]\\]?[ \\t]*`, 'gi');
+/* Rico never shows emojis or picture symbols, even when the AI writes one anyway. ©, ® and ™ stay. */
+const RICO_PICTURES = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u2713\u2717]\uFE0F?(?:\u200D\p{Extended_Pictographic}\uFE0F?)*|[\uFE0F\u20E3]/gu;
+function ricoNoPictures(s){
+  return String(s || '').replace(RICO_PICTURES, m=>/^[\u00A9\u00AE\u2122]/.test(m) ? m : '').replace(/[ \t]{2,}/g, ' ').replace(/^[ \t]+|[ \t]+$/gm, '');
+}
 function ricoClean(s){
   // Older replies may still carry an em dash (or a spaced en dash) as a pause: a comma reads cleaner.
-  return String(s || '').replace(/\[\[\s*data\s*:\s*([^\]]*?)\s*\]\]/gi, '$1').replace(/<<\/?DATA>>/gi, '').replace(RICO_MOOD_TAG, '')
-    .replace(/\s*\u2014\s*|\s+\u2013\s+/g, ', ');
+  return ricoNoPictures(String(s || '').replace(/\[\[\s*data\s*:\s*([^\]]*?)\s*\]\]/gi, '$1').replace(/<<\/?DATA>>/gi, '').replace(RICO_MOOD_TAG, '')
+    .replace(/\s*\u2014\s*|\s+\u2013\s+/g, ', '));
 }
 /* A small, safe Markdown subset: **bold**, `code`, bullet and numbered lists, paragraphs. */
 function ricoFormat(src){

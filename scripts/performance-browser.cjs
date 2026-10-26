@@ -14,7 +14,7 @@ const server=http.createServer((req,res)=>{
  if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}
  fs.readFile(file,(err,data)=>{
   if(err){res.writeHead(404);return res.end();}
-  const ext=path.extname(file);res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.webp':'image/webp','.woff2':'font/woff2'})[ext]||'application/octet-stream');
+  const ext=path.extname(file);res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2'})[ext]||'application/octet-stream');
   res.setHeader('Cache-Control','public, max-age=600');
   if(/\.(html|js|css|json)$/.test(file) && /gzip/.test(req.headers['accept-encoding']||'')){res.setHeader('Content-Encoding','gzip');data=zlib.gzipSync(data);}
   res.end(data);

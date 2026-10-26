@@ -90,9 +90,9 @@ const json = value=>JSON.parse(JSON.stringify(value));
   Object.assign(crossTab, {
     LS_PREFIX:'ricottaOrders:', tabsFor:()=>['order','history','manage'],
     rowPress:null, toastTimer:null, reminderDraft:{time:'09:00'},
-    viewMemory:new Map(), tabMemory:new Map(), diagnosticState:{}, drafts:{}, listeners:{}, modalResets:0, streamResets:0, sessionClears:0,
+    viewMemory:new Map(), tabMemory:new Map(), diagnosticState:{}, drafts:{}, listeners:{}, modalResets:0, streamResets:0, liveStops:0, sessionClears:0,
     document:{getElementById:()=>null}, clearTimeout:()=>{},
-    ricoReset:()=>crossTab.streamResets++, resetAdmin:()=>{},
+    ricoReset:()=>crossTab.streamResets++, liveStop:()=>crossTab.liveStops++, resetAdmin:()=>{},
     stopStepHold:()=>{}, dismissAllModals:()=>crossTab.modalResets++,
     closeSelSheet:()=>{}, closeContextMenu:()=>{}, closeLangMenu:()=>{},
     window:{addEventListener:(name,handler)=>{crossTab.listeners[name]=handler;}},
@@ -119,7 +119,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
   assert.deepEqual(json(crossTab.state.cart),{});
   assert.equal(crossTab.state.queue,null);
   assert.equal(crossTab.state.pinError,'session');
-  assert.equal(crossTab.modalResets,1); assert.equal(crossTab.streamResets,1);
+  assert.equal(crossTab.modalResets,1); assert.equal(crossTab.streamResets,1); assert.equal(crossTab.liveStops,1,'signing out ends the live-changes wait');
   crossTab.state.account='yunis'; crossTab.state.cart={i2:3}; crossTab.session=null;
   crossTab.listeners.storage({key:'ricottaOrders:apiSession',oldValue:JSON.stringify(nextSession),newValue:null});
   assert.equal(crossTab.state.account,null,'logout in another tab clears this workspace');

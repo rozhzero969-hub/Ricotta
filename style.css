@@ -37,14 +37,12 @@
   --line-strong:rgba(var(--deep-rgb),.24);
   --fill:rgba(118,118,128,.12);     /* Apple's fill: search fields, steppers, gray buttons */
   --fill-strong:rgba(118,118,128,.2);
-  --key-press:rgba(118,118,128,.34); /* a sign-in key under the finger */
   --bubble:#E9E9EB;                 /* Rico's chat bubbles, as in Messages */
   --keyboard:rgba(209,211,217,.92); /* our number pad, the colours of the iPhone keyboard */
   --key:#FFFFFF;--key-down:#B4B8C2;
   --surface:#FFFFFF;                /* cards, sheets, the sidebar */
   --surface-2:rgba(118,118,128,.08);/* tiles inside a card, keys, tracks */
   --r-card:22px;                    /* cards and groups */
-  --login-bg:var(--bg);             /* the phone sign-in page */
   --r:12px;                         /* fields */
   --seg-on:var(--surface);          /* the chosen part of a segmented switch */
   --lift:0 3px 8px rgba(0,0,0,.12),0 3px 1px rgba(0,0,0,.04);
@@ -242,68 +240,160 @@ html.dark .to-top{color:#fff;background:rgba(30,30,32,.72);border-color:rgba(255
 html.rtl .send-go svg{transform:scaleX(-1)}
 @media (hover:hover) and (pointer:fine){.send-btn:not(:disabled):hover .send-go{transform:translateX(3px)}}
 
+/* ---------- Ricotta on the map (sign-in, Welcome back, Admin) ----------
+   One satellite picture of the street around the kitchen with Ricotta's pin and two soft rings. The
+   picture is placed so the pin sits at --mx/--my, zoomed by --mz (the pin keeps its size). "green"
+   turns it into Ricotta's green: gray first, then the green laid over as a colour. */
+.rmap{position:relative;overflow:hidden;isolation:isolate;background:#14382C}
+.rmap-world{position:absolute;left:calc(var(--mx,50%) - 813px);top:calc(var(--my,50%) - 870px);width:1792px;height:1792px;direction:ltr;
+  transform-origin:813px 870px;scale:var(--mz,1);pointer-events:none;transition:translate 620ms cubic-bezier(.2,.8,.2,1)}
+.rmap.dragging .rmap-world{transition:none}
+.rmap-world img{display:block;width:1792px;height:1792px;max-width:none;-webkit-user-drag:none;user-select:none}
+.rmap.green .rmap-world img{filter:grayscale(1) contrast(1.15) brightness(1.02)}
+.rmap-tint{position:absolute;inset:0;background:#1F7A4D;mix-blend-mode:color}
+.rmap-pin{position:absolute;left:813px;top:870px;width:0;height:0;scale:calc(1 / var(--mz,1))}
+.rmap-pin i{position:absolute;left:-28px;top:-28px;width:56px;height:56px;border-radius:50%;border:2px solid var(--accent);animation:mapRing 2.8s cubic-bezier(.2,.8,.2,1) infinite}
+.rmap-pin i+i{animation-delay:1.4s}
+.rmap-pin b{position:absolute;left:-12px;top:-12px;width:24px;height:24px;border-radius:50%;background:var(--accent);border:4px solid #fff;box-shadow:0 0 0 7px rgba(52,194,122,.25),0 4px 16px rgba(0,0,0,.4)}
+.rmap-pin span{position:absolute;left:0;bottom:24px;translate:-50% 0;white-space:nowrap;padding:6px 12px;border-radius:999px;background:#fff;color:#14382C;font-size:.8125rem;font-weight:600;line-height:1.2;box-shadow:0 6px 20px rgba(0,0,0,.3)}
+@keyframes mapRing{0%{transform:scale(.4);opacity:.9}100%{transform:scale(2.5);opacity:0}}
+@keyframes mapSettle{from{scale:var(--mz-from,calc(var(--mz,1) * 1.08))}}
+@keyframes loginRise{from{transform:translateY(14px);opacity:0}}
+.map-credit{position:absolute;right:14px;bottom:8px;font-size:.59375rem;line-height:1.2;color:rgba(255,255,255,.72);pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.35)}
+.map-glass{background:rgba(255,255,255,.16);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);color:#fff}
+.map-directions{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;font-size:.8125rem;font-weight:600;text-decoration:none;white-space:nowrap}
+
 /* ---------- Sign in ----------
-   Like the iPhone's passcode screen, in the person's own look (Light, Dark or Automatic): the ricotta
-   mark, "Enter your PIN" and six dots in the upper part, and round number keys low on the screen where
-   the thumb rests. Computers get the same column, centred, and can type the PIN. */
-html:has(.login-wrap){background:var(--bg)}
-.login-wrap{min-height:100dvh;display:flex;justify-content:center;background:var(--bg)}
-.login-panel{width:100%;max-width:420px;min-height:100dvh;display:flex;flex-direction:column;align-items:center;
-  padding:calc(28px + var(--safe-top)) 24px calc(14px + var(--safe-bottom));animation:fadeIn 300ms ease both}
-#app.static-update .login-panel,#app.static-update .login-word i{animation:none}
-.login-top{flex:1 1 auto;width:100%;min-height:210px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
-.login-word{display:flex;align-items:flex-end;margin:0;font-family:'Manrope',var(--font);font-size:2.125rem;font-weight:800;letter-spacing:-.055em;line-height:1;direction:ltr;color:var(--deep)}
-.login-word i{display:inline-block;width:.2em;height:.2em;border-radius:50%;background:var(--accent);margin:0 0 .09em .07em;animation:loginDotIn 400ms var(--ease-out) 200ms both}
-@keyframes loginDotIn{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
-.login-sub{margin:30px 0 0;font-size:1.0625rem;font-weight:400;color:var(--ink)}
-/* Six dots that fill in as digits are typed; they shake and turn red on a wrong PIN and ripple while
-   the PIN is checked. */
-.pin-dots{display:flex;gap:18px;margin-top:20px;direction:ltr}
-.pin-dot{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--ink);transition:background-color 100ms ease,border-color 120ms ease}
-.pin-dot.filled{background:var(--ink);animation:pinPop 180ms var(--ease-out)}
-@keyframes pinPop{from{transform:scale(.6)}to{transform:none}}
-.pin-dots.err{animation:pinShake 400ms var(--ease)}
-.pin-dots.err .pin-dot{border-color:var(--clay)}
-.pin-dots.err .pin-dot.filled{background:var(--clay)}
-.pin-dots.busy .pin-dot{animation:pinWave 900ms ease-in-out infinite}
-.pin-dots.busy .pin-dot:nth-child(3){animation-delay:80ms}.pin-dots.busy .pin-dot:nth-child(4){animation-delay:160ms}.pin-dots.busy .pin-dot:nth-child(5){animation-delay:240ms}.pin-dots.busy .pin-dot:nth-child(6){animation-delay:320ms}.pin-dots.busy .pin-dot:nth-child(7){animation-delay:400ms}
-@keyframes pinWave{50%{transform:translateY(-5px)}}
+   Pure white (or black) with Ricotta's green as the accent. A phone: the street in green at the top
+   with the wordmark, the date and Directions, then a sheet that rises over it with "Sign in", six boxes
+   and near-square number keys low on the screen. A computer: the green map fills one half (it can be
+   moved a little), the other half holds only the six boxes, typed on the keyboard. */
+.login-wrap{--l-bg:#FFF;--l-title:#14382C;--l-line:#E3E8E5;--l-box:#FFF;--l-key:#F2F3F2;--l-key-ink:#14382C;--l-accent:#1F7A4D;--l-ring:rgba(31,122,77,.18);--l-pill:rgba(31,122,77,.1);--l-pill-ink:#17603C;
+  min-height:100dvh;display:flex;flex-direction:column;background:var(--l-bg)}
+html.dark .login-wrap{--l-bg:#000;--l-title:#FFF;--l-line:#262A28;--l-box:#0F1110;--l-key:#1A1C1B;--l-key-ink:#FFF;--l-accent:#34C27A;--l-ring:rgba(52,194,122,.25);--l-pill:rgba(52,194,122,.16);--l-pill-ink:#4CD38D}
+html:has(.login-wrap){background:#FFF}
+html.dark:has(.login-wrap){background:#000}
+.login-map{flex:none;height:clamp(196px,calc(100dvh - 500px),352px);touch-action:none;--mx:50%;--my:57%;--mz:.78}
+.login-map .rmap-world{animation:mapSettle 1.6s cubic-bezier(.2,.8,.2,1) both;will-change:transform}   /* its own layer: dragging never repaints the picture */
+.login-map-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(14,40,31,.92) 0%,rgba(14,40,31,.45) 26%,rgba(14,40,31,.1) 52%,rgba(14,40,31,.35) 82%,rgba(14,40,31,.8) 100%)}
+.login-map-top{position:absolute;inset:0 0 auto;padding:calc(var(--safe-top) + 18px) 20px 0;display:flex;align-items:center;justify-content:space-between;gap:12px;pointer-events:none}
+.login-word,.welcome-word{display:flex;align-items:flex-end;margin:0;font-family:'Manrope',var(--font);font-size:1.875rem;font-weight:800;letter-spacing:-.055em;line-height:1;direction:ltr;color:#fff}
+.login-word i,.welcome-word i{display:inline-block;width:.2em;height:.2em;border-radius:50%;background:var(--accent);margin:0 0 .09em .07em}
+.login-date{margin:0;padding:7px 12px;border-radius:999px;font-size:.8125rem;font-weight:600;white-space:nowrap}
+.login-date-side,.map-recenter,.login-tagline,.login-place>span,.login-hint{display:none}
+.login-map-foot{position:absolute;inset-inline:20px;bottom:54px;pointer-events:none}
+.login-map-foot a{pointer-events:auto}
+.login-map .map-credit{bottom:35px}
+.login-panel{position:relative;flex:1;display:flex;flex-direction:column;margin-top:-28px;border-radius:28px 28px 0 0;background:var(--l-bg);
+  padding:26px 22px calc(var(--safe-bottom) + 8px);box-shadow:0 -10px 30px rgba(0,0,0,.18);animation:loginRise 700ms cubic-bezier(.2,.8,.2,1) 80ms both}
+#app.static-update .login-panel,#app.static-update .login-card,#app.static-update .login-map-foot,#app.static-update .login-map .rmap-world{animation:none}
+.login-title{margin:0;font-size:1.625rem;font-weight:700;letter-spacing:-.02em;line-height:1.2;color:var(--l-title)}
+html.rtl .login-title{letter-spacing:0}
+.login-sub{margin:4px 0 0;min-height:1.35em;font-size:.9375rem;line-height:1.35;color:var(--ink-soft)}
+.login-sub.err{color:var(--clay-ink);font-weight:500}
+.pin-field{position:relative;margin-top:18px}
+.pin-boxes{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;direction:ltr}
+.pin-box{height:52px;border-radius:12px;background:var(--l-box);border:1.5px solid var(--l-line);display:grid;place-items:center;transition:border-color 140ms ease,box-shadow 200ms ease}
+.pin-box.on{border-color:var(--l-accent);box-shadow:0 0 0 4px var(--l-ring)}
+.pin-box i{width:10px;height:10px;border-radius:50%;transform:scale(.4);transition:background-color 90ms ease,transform 280ms cubic-bezier(.34,1.56,.64,1)}
+.pin-box.filled i{background:var(--l-accent);transform:none}
+.pin-boxes.err{animation:pinShake 400ms var(--ease)}
+.pin-boxes.err .pin-box{border-color:var(--clay)}
+.pin-boxes.err .pin-box.filled i{background:var(--clay)}
+.pin-boxes.busy .pin-box i{animation:pinWave 900ms ease-in-out infinite}
+.pin-boxes.busy .pin-box:nth-child(3) i{animation-delay:80ms}.pin-boxes.busy .pin-box:nth-child(4) i{animation-delay:160ms}.pin-boxes.busy .pin-box:nth-child(5) i{animation-delay:240ms}.pin-boxes.busy .pin-box:nth-child(6) i{animation-delay:320ms}.pin-boxes.busy .pin-box:nth-child(7) i{animation-delay:400ms}
+@keyframes pinWave{50%{transform:translateY(-4px)}}
 @keyframes pinShake{15%,55%{transform:translateX(-9px)}35%,75%{transform:translateX(9px)}90%{transform:translateX(-3px)}}
-.login-error{min-height:22px;margin-top:16px;max-width:300px;font-size:.875rem;font-weight:500;line-height:1.35;color:var(--clay-ink)}
-.login-error.info{color:var(--ink-soft)}
-/* The keys: round, filled like the iPhone's, lighting up the instant a finger lands. */
-.keypad{display:grid;grid-template-columns:repeat(3,78px);gap:16px 26px;justify-content:center;direction:ltr;margin-top:10px}
-.key{width:78px;height:78px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;background:var(--fill);color:var(--ink);
-  font:400 2.125rem/1 var(--font);font-variant-numeric:tabular-nums;transition:background-color 220ms ease}
-.key:not(:disabled):active,.key.pressed{transform:none;background:var(--key-press);transition-duration:0s}
-.key-gap{width:78px;height:78px}
-.key-delete{background:transparent;font-size:1.0625rem;font-weight:400}
-.key-delete:not(:disabled):active{background:transparent;opacity:.5}
-.key-delete.empty{visibility:hidden}
-.login-hint{margin:16px 0 0;font-size:.8125rem;color:var(--ink-soft)}
-@media (pointer:coarse){.login-hint{display:none}}
-.login-lang-row{display:inline-flex;align-items:center;gap:7px;min-height:44px;margin-top:12px;padding:0 14px;border:0;border-radius:999px;background:none;color:var(--ink-soft);font:500 .9375rem var(--font)}
-.login-lang-row svg{width:17px;height:17px}
+.pin-input{display:none}
+/* The keys: nearly square, gray, big, and green the instant a finger lands. */
+.keypad{margin-top:auto;padding-top:18px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;direction:ltr}
+.key{height:58px;padding:0;border:0;border-radius:12px;display:grid;place-items:center;background:var(--l-key);color:var(--l-key-ink);
+  font:500 1.5625rem/1 var(--font);font-variant-numeric:tabular-nums;-webkit-user-select:none;user-select:none;
+  transition:transform 360ms cubic-bezier(.2,.8,.2,1),background-color 260ms ease,color 260ms ease}
+.key:not(:disabled):active{transform:none}
+.key.down{background:var(--l-accent);color:#fff;transform:scale(.95);transition:transform 60ms ease-out,background-color 0s,color 0s}
+.key.plain{background:transparent;color:var(--ink-soft);font-size:.9375rem;font-weight:600}
+.key.plain.down{background:var(--l-key);color:var(--l-title)}
+.login-foot{margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.login-lang{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 6px 0 2px;border:0;background:none;color:var(--ink-soft);font:500 .875rem var(--font)}
+.login-lang svg{flex:none}
+.login-privacy{padding:10px 2px;color:var(--ink-soft);font-size:.8125rem;text-decoration:none}
+@media (hover:hover) and (pointer:fine){.login-privacy:hover,.login-lang:hover{color:var(--l-title)}}
+/* A computer (or a tablet held sideways): the map on one half, the PIN on the other. */
+@media (min-width:960px){
+  .login-wrap{display:grid;grid-template-columns:1fr 1fr}
+  .login-map{height:auto;min-height:100dvh;--my:47%;--mz:1;cursor:grab}
+  .login-map.dragging{cursor:grabbing}
+  .login-map .rmap-world{animation-duration:1.8s}
+  .login-map-shade{background:linear-gradient(180deg,rgba(14,40,31,.9) 0%,rgba(14,40,31,.3) 20%,rgba(14,40,31,.08) 45%,rgba(14,40,31,.35) 68%,rgba(14,40,31,.94) 100%),
+    radial-gradient(circle at 50% 47%,rgba(14,40,31,0) 0,rgba(14,40,31,0) 200px,rgba(14,40,31,.3) 560px)}
+  .login-map-top{padding:44px 48px 0}
+  .login-word{font-size:2.125rem}
+  .login-map .login-date{display:none}
+  /* Hidden (and out of reach of the keyboard and screen readers) until the map has been moved. */
+  .map-recenter{display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:50%;pointer-events:auto;opacity:0;transform:scale(.6);visibility:hidden;
+    transition:opacity 240ms ease,transform 320ms cubic-bezier(.2,.8,.2,1),visibility 0s linear 320ms}
+  .map-recenter.show{opacity:1;transform:none;visibility:visible;transition-delay:0s}
+  .login-map-foot{inset-inline:48px;bottom:44px;animation:loginRise 900ms cubic-bezier(.2,.8,.2,1) 200ms both}
+  .login-tagline{display:block;margin:0;max-width:420px;font-size:2.25rem;line-height:1.14;font-weight:700;letter-spacing:-.022em;color:#fff}
+  html.rtl .login-tagline{letter-spacing:0;line-height:1.35}
+  .login-place{margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .login-place>span{display:inline;font-size:.9375rem;color:var(--t-foot)}
+  .map-directions{height:36px;padding:0 14px;font-size:.875rem}
+  .login-map .map-credit{right:16px;bottom:10px;font-size:.65625rem}
+  .login-panel{margin:0;border-radius:0;box-shadow:none;min-height:100dvh;padding:40px 56px 26px;animation:none}
+  .login-date-side{display:block;align-self:flex-end;padding:8px 14px;font-size:.875rem;background:var(--l-pill);color:var(--l-pill-ink)}
+  .login-card{flex:1;display:flex;flex-direction:column;justify-content:center;width:100%;max-width:392px;margin:0 auto;animation:loginRise 700ms cubic-bezier(.2,.8,.2,1) 120ms both}
+  .login-title{font-size:2.125rem}
+  .login-sub{margin:8px 0 0;font-size:1rem}
+  .pin-field{margin-top:30px}
+  .pin-boxes{gap:10px}
+  .pin-box{height:62px}
+  .pin-box i{width:11px;height:11px}
+  .keypad{width:100%;max-width:392px;margin:24px auto 0}
+  .login-foot{width:100%;max-width:392px;margin:0 auto}
+}
+@media (min-width:960px) and (hover:hover) and (pointer:fine){
+  .keypad{display:none}
+  .pin-input{display:block;position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;opacity:0;cursor:text;font-size:16px}
+  .login-hint{display:block;margin:14px 0 0;font-size:.8125rem;color:var(--ink-soft)}
+  .login-hint kbd{font:600 .6875rem var(--font);padding:2px 6px;border-radius:6px;border:1px solid var(--l-line);color:var(--ink)}
+}
+@media (min-width:2600px){.login-map{--mz:1.3}}
+@media (prefers-reduced-motion:reduce){.rmap-pin i{animation:none;opacity:0}.rmap-world,.login-map .rmap-world,.login-panel,.login-card,.login-map-foot{animation:none;transition:none}.key,.key.down{transition:none}}
 
 /* If starting fails, a plain message with Refresh instead of a loading screen that never ends */
 .start-failed{min-height:100dvh;display:grid;place-content:center;justify-items:center;gap:10px;padding:24px;text-align:center}
 .start-failed b{font-size:1.25rem;font-weight:700}
 .start-failed p{margin:0 0 6px;max-width:300px;font-size:.9375rem;line-height:1.5;color:var(--ink-soft)}
 
-/* Welcome back (after a PIN sign-in, instead of the splash) */
-.welcome{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;padding:24px;background:rgba(242,242,247,.5);-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%);animation:fadeIn 260ms ease both}
-.welcome.leaving{animation:welcomeOut 420ms var(--ease) forwards}
-@keyframes welcomeOut{to{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}}
-.welcome-card{width:min(100%,340px);border-radius:30px;padding:28px 24px 26px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;
-  background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--float-shadow);animation:welcomeIn 400ms var(--ease-out) both}
-.welcome.leaving .welcome-card{animation:welcomeCardOut 420ms var(--ease) forwards}
-@keyframes welcomeIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
-@keyframes welcomeCardOut{to{opacity:0;transform:translateY(-10px) scale(.97)}}
-.welcome-title{font-size:1.375rem;font-weight:700;margin-top:6px}
-.welcome-sub{font-size:.9375rem;color:var(--ink-soft);font-weight:400}
-.welcome-bar{position:relative;width:150px;height:4px;border-radius:4px;overflow:hidden;background:rgba(var(--deep-rgb),.1);margin-top:8px}
-.welcome-bar i{position:absolute;inset:0 auto 0 0;width:40%;border-radius:4px;background:linear-gradient(90deg,rgba(var(--accent-rgb),0),var(--accent),rgba(var(--accent-rgb),0));animation:sweep 1.15s cubic-bezier(.45,.05,.55,.95) infinite}
-@keyframes sweep{from{transform:translateX(-110%)}to{transform:translateX(260%)}}
+/* Welcome back (after a PIN sign-in): the street in green settling from a little closer, the name large
+   at the bottom, and a bar that fills while the workspace loads. It fades and grows a touch as it goes. */
+.welcome.rmap{position:fixed;inset:0;z-index:9000;--mx:50%;--my:40%;--mz:.82;--mz-from:1;color:#fff;
+  animation:fadeIn 260ms ease backwards;transition:opacity 600ms ease,transform 700ms cubic-bezier(.2,.8,.2,1)}
+.welcome .rmap-world{animation:mapSettle 2.6s cubic-bezier(.2,.8,.2,1) both}
+.welcome.leaving{opacity:0;transform:scale(1.04);pointer-events:none}
+.welcome-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(14,40,31,.55) 0%,rgba(14,40,31,.05) 35%,rgba(14,40,31,.45) 62%,rgba(14,40,31,.96) 100%)}
+.welcome-word{position:absolute;inset-inline-start:28px;top:calc(var(--safe-top) + 28px);font-size:1.75rem}
+.welcome-text{position:absolute;inset-inline:28px;bottom:calc(var(--safe-bottom) + 64px);max-width:520px;animation:loginRise 700ms cubic-bezier(.2,.8,.2,1) 120ms both}
+.welcome-line{margin:0;font-size:1.25rem;font-weight:500;color:var(--t-foot)}
+.welcome-name{margin:2px 0 0;font-size:3rem;line-height:1.1;font-weight:700;letter-spacing:-.025em;overflow-wrap:anywhere}
+html.rtl .welcome-name{letter-spacing:0}
+.welcome-bar{margin-top:22px;height:3px;border-radius:3px;background:rgba(255,255,255,.18);overflow:hidden}
+.welcome-bar i{display:block;height:100%;border-radius:3px;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform 1.6s cubic-bezier(.2,.8,.2,1)}
+html.rtl .welcome-bar i{transform-origin:right}
+.welcome.filling .welcome-bar i{transform:scaleX(.9)}
+.welcome.done .welcome-bar i{transform:none;transition-duration:240ms}
+.welcome-sub{margin:10px 0 0;font-size:.8125rem;color:var(--t-foot)}
+@media (min-width:960px){
+  .welcome.rmap{--my:45%;--mz:1.2;--mz-from:1.32}
+  .welcome-word{inset-inline-start:48px;top:44px;font-size:2.125rem}
+  .welcome-text{inset-inline:48px;bottom:56px}
+  .welcome-name{font-size:3.5rem}
+}
+@media (min-width:1700px){.welcome.rmap{--mz:1.6;--mz-from:1.75}}
+@media (min-width:2300px){.welcome.rmap{--mz:2.1;--mz-from:2.25}}
+@media (prefers-reduced-motion:reduce){.welcome .rmap-world,.welcome-text{animation:none}.welcome.rmap,.welcome-bar i{transition:none}}
 
 /* ---------- Order summary card ---------- */
 .hero-card{position:relative;overflow:hidden;isolation:isolate;border-radius:var(--r-card);padding:20px 20px 16px;margin-bottom:16px;color:#fff;background:var(--hero)}
@@ -713,7 +803,7 @@ html.rtl .install-prompt{right:auto;left:22px}
 .rico-bot{--size:44px;display:inline-block;flex-shrink:0;width:var(--size);height:calc(var(--size)*1.06);line-height:0}
 .rico-bot svg{width:100%;height:100%;overflow:visible}
 .rico-bot stop{transition:stop-color .5s ease}
-.rico-xs{--size:34px}.rico-sm{--size:32px;margin-top:2px}.rico-md{--size:48px}.rico-xl{--size:104px}.rico-welcome{--size:84px}
+.rico-xs{--size:34px}.rico-sm{--size:32px;margin-top:2px}.rico-md{--size:48px}.rico-xl{--size:104px}
 /* Each feeling has its own soft pastel: body, and the glow of eyes and spark. */
 .mood-happy{--rb-c1:#D4F7E3;--rb-c2:#8EDDB2;--rb-c3:#3F9A6E;--rb-eye:#9CF7C6;--rb-glow:rgba(156,247,198,.55)}
 .mood-excited{--rb-c1:#FFF6CF;--rb-c2:#FFD978;--rb-c3:#C28F22;--rb-eye:#FFE89A;--rb-glow:rgba(255,232,154,.6)}
@@ -1042,17 +1132,8 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .hero-count{font-size:2.5rem}
   .hero-ring,.hero-ring svg{width:60px;height:60px}
   .order-quick-actions .quick-btn svg{display:none}
-  .keypad{grid-template-columns:repeat(3,72px);gap:14px 22px}
-  .key,.key-gap{width:72px;height:72px}
   .item-row{padding-inline:14px 10px}
   .step-btn{width:40px}
-}
-@media (max-height:700px){
-  .login-sub{margin-top:20px}
-  .login-top{min-height:170px}
-  .keypad{grid-template-columns:repeat(3,68px);gap:11px 24px}
-  .key,.key-gap{width:68px;height:68px;font-size:1.875rem}
-  .login-lang-row{margin-top:6px}
 }
 /* Hover tints, only for a mouse or trackpad (a finger would leave them stuck on). */
 @media (hover:hover) and (pointer:fine){
@@ -1254,7 +1335,7 @@ html.dark{
   --bg:#000;--ink:#FFF;--ink-soft:#98989F;--ink-faint:#8E8E93;
   --deep:#F2F2F7;--deep-rgb:235,235,245;
   --line:rgba(255,255,255,.12);--line-strong:rgba(255,255,255,.18);
-  --fill:rgba(118,118,128,.24);--fill-strong:rgba(118,118,128,.32);--key-press:rgba(150,150,160,.55);
+  --fill:rgba(118,118,128,.24);--fill-strong:rgba(118,118,128,.32);
   --surface:#1C1C1E;--surface-2:rgba(118,118,128,.18);
   --seg-on:#636366;--lift:0 3px 8px rgba(0,0,0,.3);
   --bar:rgba(0,0,0,.72);--menu:rgba(37,37,40,.92);--bubble:#262628;
@@ -1468,7 +1549,8 @@ html.rtl .sheet-chevron{transform:rotate(-135deg)}
    visible edges. (Reduce Motion is handled above.) */
 @media (prefers-reduced-transparency:reduce){
   :root{--bar:var(--bg);--menu:var(--surface)}
-  .topbar,.bottomnav,.rico-composer,.lang-menu,.ctx-menu,.toast,.modal-box,.pad-panel,.nav-more,.ctx-scrim,.welcome{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+  .topbar,.bottomnav,.rico-composer,.lang-menu,.ctx-menu,.toast,.modal-box,.pad-panel,.nav-more,.ctx-scrim,.map-glass{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+  .map-glass{background:rgba(20,56,44,.92)}
   .bottomnav,.rico-composer{background:var(--surface)!important}
   .pad-panel{background:#D1D3D9}
   html.dark .pad-panel{background:#2B2B2E}
@@ -1533,6 +1615,17 @@ html.rtl .ad-strip{padding:10px 14px 10px 8px}
 .ad-tile-value{font-family:var(--font-round);font-size:1.375rem;font-weight:700;line-height:1.1;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ad-tile-card.alert .ad-tile-value{color:var(--clay-ink)}
 .ad-tile-sub{font-size:.75rem;color:var(--ink-soft);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Ricotta on the map, under the board: the street in its own colours, the name and Directions. */
+.ad-place{margin-top:14px;border-radius:var(--r-card);overflow:hidden;background:var(--surface)}
+.ad-place-map{height:236px;--my:54%;--mz:.8}
+.ad-place-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,0) 60%,rgba(0,0,0,.32) 100%)}
+.ad-place-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px 16px}
+.ad-place-name{min-width:0}
+.ad-place-name b{display:block;font-size:1.0625rem;font-weight:600}
+.ad-place-name span{display:block;margin-top:2px;font-size:.875rem;color:var(--ink-soft)}
+.ad-place-go{flex:none;height:38px;padding:0 15px;font-size:.875rem;background:var(--accent-strong);color:#fff}
+@media (hover:hover) and (pointer:fine){.ad-place-go:hover{background:#17603C}}
+@media (min-width:960px){.ad-place{margin-top:18px}.ad-place-map{height:300px;--mz:.9}.ad-place-foot{padding:16px 20px 18px}}
 @media (max-width:959px){
   .ad-board{gap:8px}
   .ad-tile-card{min-height:84px;padding:10px 12px;gap:4px;border-radius:18px}
@@ -1604,7 +1697,7 @@ html.rtl .ad-strip{padding:10px 14px 10px 8px}
 .ad-event+.ad-event{border-top:.5px solid var(--line)}
 .ad-event>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .ad-event b{font-size:.9375rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ad-event span{font-size:.75rem;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ad-event>div>span{font-size:.75rem;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ad-event .ad-event-value{flex:none;align-items:flex-end;text-align:end}
 .ad-health{display:flex;align-items:flex-start;gap:12px;padding:12px 16px}
 .ad-health+.ad-health{border-top:.5px solid var(--line)}
@@ -1619,13 +1712,18 @@ html.rtl .ad-strip{padding:10px 14px 10px 8px}
 .ad-person{display:flex;align-items:flex-start;gap:12px;margin:0 4px 6px}
 .ad-person p{margin:0;font-size:.875rem;line-height:1.45;color:var(--ink-soft)}
 .ad-switches{padding-block:6px}
+/* The screen's symbol beside each switch: a centred square, not one of the row's text lines. */
+.preference-row .ad-switch-icon{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--fill);color:var(--tint)}
+.preference-row .ad-switch-icon svg{width:17px;height:17px}
 .ad-switches .check-row{margin:0;padding:8px 0;align-items:center}
 .ad-switches .check-row+.check-row{border-top:.5px solid var(--line)}
 .ad-switch-icon{flex:none;width:28px;height:28px;border-radius:7px;display:grid;place-items:center;background:var(--fill);color:var(--tint)}
 .ad-switch-icon svg{width:16px;height:16px}
 .ad-switches input:disabled{opacity:.5}
 .ad-time .ad-card-head{align-items:center;justify-content:space-between}
-.ad-time-today{font-size:.9375rem;font-weight:600;color:var(--tint)}
+.ad-stats.inner.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ad-stats.inner.two b{font-size:1.25rem}
+.ad-time-total{margin:10px 2px 0;font-size:.8125rem;color:var(--ink-soft)}
 .ad-chart-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:.875rem}
 .ad-chart-head b{font-weight:600}
 .ad-chart-head span{font-size:.8125rem;color:var(--ink-soft)}
@@ -1764,6 +1862,8 @@ kbd{min-width:26px;height:26px;padding:0 7px;border-radius:7px;display:inline-gr
 .settings-row:not(:disabled):active{transform:none;background:var(--fill-strong)}
 .chat-owner{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font:600 .75rem var(--font-round);background:linear-gradient(180deg,#A5ABB8,#858994)}
 .chat-owner.r{background:linear-gradient(180deg,#2E9C64,#1F7A4D)}
+/* The rows stretch their title; the owner's badge stays a small circle like the account button. */
+.rico-recent-row .chat-owner,.rico-hist-open .chat-owner{flex:0 0 26px;width:26px;height:26px;overflow:visible;white-space:normal}
 .rico-hist-open{flex-wrap:wrap;row-gap:0}
 .rico-hist-open .rico-hist-title{flex:1 1 60%}
 .rico-hist-open small{flex:none;font-size:.75rem;color:var(--ink-soft)}
