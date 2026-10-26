@@ -77,6 +77,57 @@ const server=http.createServer((req,res)=>{
   assert.match(await page.locator('.spot-empty').textContent(),/No results/,'nothing found says so plainly');
   await page.locator('.spot-clear').click();
   assert.deepEqual([await page.locator('#spotInput').inputValue(),await page.locator('.spot-clear').isVisible(),await page.evaluate(()=>document.activeElement.id)],['',false,'spotInput'],'clearing keeps the field ready to type');
+  // The best matches first: "tom" finds Tomatoes, never "Automatic", and what was typed is marked.
+  await page.locator('#spotInput').fill('tom');
+  assert.match(await page.locator('.spot-row.active').textContent(),/Tomatoes/,'the item comes first');
+  assert.doesNotMatch(await page.locator('.spot-list').textContent(),/Automatic/,'actions only match where a word starts');
+  assert.equal(await page.locator('.spot-row.active mark').first().textContent(),'Tom','what was typed is marked');
+  // − and + right in the results; only that row changes and the highlight stays on it.
+  await page.evaluate(()=>{state.cart={};persistCartDraft();});
+  await page.locator('#spotInput').fill('tomatoes');
+  await page.locator('[data-spot-item="it-tom"] [data-spot-add]').click();
+  await page.locator('[data-spot-item="it-tom"] [data-spot-add]').click();
+  assert.equal(await page.evaluate(()=>state.cart['it-tom']),2,'+ adds right in the results');
+  assert.equal(await page.locator('[data-spot-item="it-tom"] .spot-qty').textContent(),'2','and shows the amount');
+  await page.locator('[data-spot-item="it-tom"] [data-spot-dec]').click();
+  assert.equal(await page.evaluate(()=>state.cart['it-tom']),1,'− takes one back');
+  assert.match(await page.locator('.spot-row.active').textContent(),/Tomatoes/,'the highlight stays on the row');
+  // Scopes narrow it down.
+  await page.locator('#spotInput').fill('a');
+  await page.locator('[data-spot-scope="suppliers"]').click();
+  assert.ok(await page.locator('.spot-row').count()>0 && await page.locator('[data-spot-item]').count()===0,'Suppliers shows only suppliers');
+  await page.locator('[data-spot-scope="all"]').click();
+  // A switch flips in place and the search stays open.
+  await page.locator('#spotInput').fill('compact');
+  const compact=await page.evaluate(()=>prefOn('compactRows'));
+  await page.locator('.spot-toggle').first().click();
+  assert.equal(await page.evaluate(()=>prefOn('compactRows')),!compact,'a switch flips in place');
+  assert.equal(await page.locator('.spot-toggle').first().getAttribute('aria-checked'),String(!compact),'and shows it');
+  await page.locator('.spot-toggle').first().click();
+  // Nothing found still offers Rico, who can answer what search cannot.
+  await page.locator('#spotInput').fill('zzqqxx');
+  assert.match(await page.locator('.spot-ask').textContent(),/Ask Rico/,'Ask Rico under "No results"');
+  // A day written the Iraqi way finds that day's orders.
+  const day=await page.evaluate(()=>{const o=state.history[0];const d=erbilDate(o.date);return Number(d.slice(8))+'/'+Number(d.slice(5,7));});
+  await page.locator('#spotInput').fill(day);
+  assert.ok(await page.locator('.spot-row .spot-ic').count()>0 && /Orders/i.test(await page.locator('.spot-group-title').first().textContent()),'"'+day+'" finds that day');
+  // What was opened lately comes back first, and can be cleared.
+  await page.locator('#spotInput').fill('basil');await page.keyboard.press('Enter');
+  await page.locator('.spot-layer').waitFor({state:'detached'});
+  await page.keyboard.press('Control+KeyK');await page.locator('#spotInput').waitFor();
+  assert.match(await page.locator('.spot-group').first().textContent(),/Recent.*Basil/s,'Recent shows what was opened');
+  await page.locator('[data-spot-forget]').click();
+  assert.doesNotMatch(await page.locator('.spot-list').textContent(),/Recent/,'and Clear forgets it');
+  await page.keyboard.press('Escape');await page.locator('.spot-layer').waitFor({state:'detached'});
+  // Closing animates (it used to vanish at once): the panel lifts away, then the layer goes.
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.keyboard.press('Control+KeyK');await page.locator('#spotInput').waitFor();
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'spotInput','the field is ready at once (iPhone keyboards need that)');
+  await page.waitForTimeout(400);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(()=>{ const p=document.querySelector('.spot-layer.out .spot-panel'); return p ? getComputedStyle(p).animationName : 'gone'; }),'spotOut','the panel lifts away');
+  await page.locator('.spot-layer').waitFor({state:'detached',timeout:1500});
+  await page.emulateMedia({reducedMotion:'reduce'});
   await page.keyboard.press('Escape');await page.locator('.spot-layer').waitFor({state:'detached'});
   await page.evaluate(()=>{state.cart={};persistCartDraft();});
   await nav('history');
@@ -172,6 +223,6 @@ const server=http.createServer((req,res)=>{
   assert.equal(await embedded.locator('.keypad,.content').count(),0,'embedded app exposes neither sign-in nor authenticated workspace');
   await framed.close();
   assert.deepEqual(errors,[]);
-  console.log('Search UI PASS: typo/alias order, clear buttons, the search sheet (tomato 5, clear, nothing found, Escape), list matches/empty/reset, history aliases, records beyond first page, units and Rico bulk alias preview/save');
+  console.log('Search UI PASS: typo/alias order, clear buttons, the search sheet (tomato 5, best matches first, − and + in place, scopes, switches, Ask Rico, dates, Recent, closing animation, clear, nothing found, Escape), list matches/empty/reset, history aliases, records beyond first page, units and Rico bulk alias preview/save');
  }finally{await browser.close();server.close();}
 })().catch(e=>{console.error(e);server.close();process.exitCode=1;});

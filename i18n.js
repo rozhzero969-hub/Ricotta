@@ -838,7 +838,7 @@ Object.assign(T.en, {
   tableFilter:'Show', tableSort:'Sort by', tableSortBy:c=>'Sort: '+c, tableColumns:'Columns', tableOrders:n=>Number(n)===1?'1 order':n+' orders',
   tableWithReminder:'With a reminder', tableNoPhone:'No phone number', tableNoneHere:'Nothing matches this filter.', tableAddToOrder:'Add 1 to the Order', tableAdded:n=>n+' added to the order',
   // Search and shortcuts
-  spotTitle:'Search', spotNone:'No results. Try another word or check the spelling.', spotPlaceholder:'Search items, suppliers, orders…', spotSuggestions:'Suggestions', spotActions:'Actions', spotOrders:'Orders this month', spotScreen:'Screen',
+  spotTitle:'Search', spotNone:'No results. Try another word or check the spelling.', spotSuggestions:'Suggestions', spotActions:'Actions', spotOrders:'Orders this month', spotScreen:'Screen',
   spotSet:(n,q,u)=>'Set '+n+' to '+q+(u?' '+u:''), spotSetDone:(n,q)=>n+': '+q, spotInOrder:q=>q+' in the order',
   keyboardShortcuts:'Keyboard Shortcuts', shortIntro:'On a computer these keys work anywhere in the app, except while typing in a field.',
   shortSearch:'Search everything', shortTabs:'Go to a screen', shortRico:'Open Rico', shortSettings:'Settings', shortNew:'New item, supplier, unit or chat',
@@ -924,7 +924,7 @@ Object.assign(T.ku, {
   fileSentBy:'نێردراو لەلایەن', fileTimes:'جار', fileWhat:'چی', fileValue:'بەها', pdfFooter:'Ricotta Orders', pdfPage:(n,m)=>'لاپەڕەی '+n+' لە '+m,
   tableFilter:'پیشاندان', tableSort:'ڕیزکردن بەپێی', tableSortBy:c=>'ڕیزکردن: '+c, tableColumns:'ستوونەکان', tableOrders:n=>n+' داواکاری',
   tableWithReminder:'بیرهێنانەوەیان هەیە', tableNoPhone:'بێ ژمارەی تەلەفۆن', tableNoneHere:'هیچ شتێک لەگەڵ ئەم فلتەرەدا ناگونجێت.', tableAddToOrder:'1 بۆ داواکاری زیاد بکە', tableAdded:n=>n+' بۆ داواکاری زیاد کرا',
-  spotTitle:'گەڕان', spotNone:'هیچ ئەنجامێک نییە. وشەیەکی تر تاقی بکەرەوە یان ڕێنووسەکەی بپشکنە.', spotPlaceholder:'گەڕان بە کاڵا، دابینکەر، داواکاری…', spotSuggestions:'پێشنیارەکان', spotActions:'کارەکان', spotOrders:'داواکارییەکانی ئەم مانگە', spotScreen:'شاشە',
+  spotTitle:'گەڕان', spotNone:'هیچ ئەنجامێک نییە. وشەیەکی تر تاقی بکەرەوە یان ڕێنووسەکەی بپشکنە.', spotSuggestions:'پێشنیارەکان', spotActions:'کارەکان', spotOrders:'داواکارییەکانی ئەم مانگە', spotScreen:'شاشە',
   spotSet:(n,q,u)=>n+' بکە بە '+q+(u?' '+u:''), spotSetDone:(n,q)=>n+': '+q, spotInOrder:q=>q+' لە داواکارییەکەدا',
   keyboardShortcuts:'کورتەڕێکانی تەختەکلیل', shortIntro:'لە کۆمپیوتەردا ئەم کلیلانە لە هەموو شوێنێکی ئەپەکەدا کار دەکەن، جگە لە کاتی نووسین لە خانەیەکدا.',
   shortSearch:'گەڕان لە هەموو شتێک', shortTabs:'چوون بۆ شاشەیەک', shortRico:'کردنەوەی ریکۆ', shortSettings:'ڕێکخستن', shortNew:'کاڵا، دابینکەر، یەکە یان گفتوگۆی نوێ',
@@ -1009,7 +1009,7 @@ Object.assign(T.ar, {
   fileSentBy:'أرسله', fileTimes:'مرات', fileWhat:'البند', fileValue:'القيمة', pdfFooter:'Ricotta Orders', pdfPage:(n,m)=>'صفحة '+n+' من '+m,
   tableFilter:'عرض', tableSort:'الفرز حسب', tableSortBy:c=>'الفرز: '+c, tableColumns:'الأعمدة', tableOrders:n=>n+' طلب',
   tableWithReminder:'لها تذكير', tableNoPhone:'بدون رقم هاتف', tableNoneHere:'لا شيء يطابق هذا العرض.', tableAddToOrder:'إضافة 1 إلى الطلب', tableAdded:n=>'أُضيفت '+n+' إلى الطلب',
-  spotTitle:'بحث', spotNone:'لا توجد نتائج. جرّب كلمة أخرى أو تحقّق من الإملاء.', spotPlaceholder:'ابحث عن مواد أو موردين أو طلبات…', spotSuggestions:'اقتراحات', spotActions:'إجراءات', spotOrders:'طلبات هذا الشهر', spotScreen:'شاشة',
+  spotTitle:'بحث', spotNone:'لا توجد نتائج. جرّب كلمة أخرى أو تحقّق من الإملاء.', spotSuggestions:'اقتراحات', spotActions:'إجراءات', spotOrders:'طلبات هذا الشهر', spotScreen:'شاشة',
   spotSet:(n,q,u)=>'اجعل '+n+' '+q+(u?' '+u:''), spotSetDone:(n,q)=>n+': '+q, spotInOrder:q=>q+' في الطلب',
   keyboardShortcuts:'اختصارات لوحة المفاتيح', shortIntro:'على الكمبيوتر تعمل هذه المفاتيح في أي مكان من التطبيق، إلا أثناء الكتابة في حقل.',
   shortSearch:'البحث في كل شيء', shortTabs:'الانتقال إلى شاشة', shortRico:'فتح ريكو', shortSettings:'الإعدادات', shortNew:'مادة أو مورّد أو وحدة أو محادثة جديدة',
@@ -1055,4 +1055,27 @@ Object.assign(T.ar, {
   ricottaName:'مطعم ريكوتا', ricottaCity:'أربيل، العراق', directions:'الاتجاهات', mapPinLabel:'ريكوتا',
   mapLabel:'خريطة حول ريكوتا. اسحب للتجول.', mapStill:'خريطة الشارع حول مطعم ريكوتا', mapRecenter:'العودة إلى ريكوتا',
   welcomeBackLine:'أهلًا بعودتك،', welcomeOpening:'نفتح ريكوتا',
+});
+
+/* ROZH-24: the smarter search. Same rule: every language has every key. */
+Object.assign(T.en, {
+  spotPlaceholder:'Search everything', spotStart:'Type to search items, suppliers, orders and more.',
+  spotRecent:'Recent', spotInThisOrder:n=>'In this order · '+n, spotChats:'Rico chats', spotShowAll:n=>'Show all '+n,
+  spotLastOrdered:x=>'last '+x, spotAskRico:q=>'Ask Rico: “'+q+'”', spotAskRicoSub:'He can count, compare and check',
+  spotScope_all:'All', spotScope_items:'Items', spotScope_suppliers:'Suppliers', spotScope_orders:'Orders', spotScope_actions:'Actions',
+  spotFootMove:'move', spotFootOpen:'open', spotFootClose:'close',
+});
+Object.assign(T.ku, {
+  spotPlaceholder:'گەڕان لە هەموو شتێک', spotStart:'بنووسە بۆ گەڕان لە کاڵا، دابینکەر، داواکاری و زیاتر.',
+  spotRecent:'دوایین جار', spotInThisOrder:n=>'لەم داواکارییەدا · '+n, spotChats:'گفتوگۆکانی ریکۆ', spotShowAll:n=>'پیشاندانی هەموو '+n,
+  spotLastOrdered:x=>'دوایین جار '+x, spotAskRico:q=>'لە ریکۆ بپرسە: «'+q+'»', spotAskRicoSub:'دەتوانێت بژمێرێت، بەراورد بکات و بپشکنێت',
+  spotScope_all:'هەموو', spotScope_items:'کاڵاکان', spotScope_suppliers:'دابینکەران', spotScope_orders:'داواکارییەکان', spotScope_actions:'کردارەکان',
+  spotFootMove:'جووڵان', spotFootOpen:'کردنەوە', spotFootClose:'داخستن',
+});
+Object.assign(T.ar, {
+  spotPlaceholder:'ابحث في كل شيء', spotStart:'اكتب للبحث في المواد والموردين والطلبات والمزيد.',
+  spotRecent:'الأخيرة', spotInThisOrder:n=>'في هذا الطلب · '+n, spotChats:'محادثات ريكو', spotShowAll:n=>'عرض الكل '+n,
+  spotLastOrdered:x=>'آخر طلب '+x, spotAskRico:q=>'اسأل ريكو: «'+q+'»', spotAskRicoSub:'يستطيع أن يحسب ويقارن ويتحقق',
+  spotScope_all:'الكل', spotScope_items:'المواد', spotScope_suppliers:'الموردون', spotScope_orders:'الطلبات', spotScope_actions:'الإجراءات',
+  spotFootMove:'تنقّل', spotFootOpen:'فتح', spotFootClose:'إغلاق',
 });

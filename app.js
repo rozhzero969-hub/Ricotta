@@ -60,6 +60,8 @@ const IRAQ_TIME_ZONE = 'Asia/Baghdad';
 // Intl formatters hold native resources. Reuse them across long lists, with a
 // small bound so different language/format combinations cannot accumulate.
 const dateFormatters = new Map();
+/* The months in Kurdish (Sorani), January first; also what search understands in "24 تشرینی یەکەم". */
+const KU_MONTHS = ['کانوونی دووەم','شوبات','ئازار','نیسان','ئایار','حوزەیران','تەمووز','ئاب','ئەیلوول','تشرینی یەکەم','تشرینی دووەم','کانوونی یەکەم'];
 /* Browsers without Kurdish dates (Chrome, Android) would write them in English. They get the
    Kurdish words iPhones use instead, in Kurdish order ("چوارشەممە 21ی تشرینی یەکەم"). */
 const KU_DATES_NATIVE = (()=>{ try{ return Intl.DateTimeFormat.supportedLocalesOf('ckb').length > 0; }catch(_){ return false; } })();
@@ -70,7 +72,7 @@ function kurdishDates(options){
   if(!kuDateWords){
     const en = o=>new Intl.DateTimeFormat('en-GB', {...o, timeZone:'UTC'});
     kuDateWords = {am:'ب.ن', pm:'د.ن'};
-    ['کانوونی دووەم','شوبات','ئازار','نیسان','ئایار','حوزەیران','تەمووز','ئاب','ئەیلوول','تشرینی یەکەم','تشرینی دووەم','کانوونی یەکەم'].forEach((m, i)=>{
+    KU_MONTHS.forEach((m, i)=>{
       const d = new Date(Date.UTC(2026, i, 15));
       kuDateWords[en({month:'long'}).format(d)] = kuDateWords[en({month:'short'}).format(d)] = m;
     });
@@ -3423,7 +3425,7 @@ function attachItemEvents(){
 /* A unit has one name, written in whatever language suits it (کیلۆ, box, ...). Units used to have
    English, Kurdish and Arabic names; Record still shows those older changes. */
 function renderUnits(){
-  const chips = state.units.map(u=>`<span class="unit-chip" data-search-row><span class="unit-names"><strong dir="auto">${esc(unitName(u))}</strong></span>
+  const chips = state.units.map(u=>`<span class="unit-chip" data-search-row data-unit-id="${esc(u.id)}"><span class="unit-names"><strong dir="auto">${esc(unitName(u))}</strong></span>
       ${canDo('catalog') ? `<button data-editunit="${esc(u.id)}" aria-label="${esc(t('editUnit'))}">${ICON_EDIT}</button>
       <button class="danger" data-delunit="${esc(u.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
     </span>`).join('');

@@ -273,6 +273,9 @@ html.rtl .send-go svg{transform:scaleX(-1)}
 html.dark .login-wrap{--l-bg:#000;--l-title:#FFF;--l-line:#262A28;--l-box:#0F1110;--l-key:#1A1C1B;--l-key-ink:#FFF;--l-accent:#34C27A;--l-ring:rgba(52,194,122,.25);--l-pill:rgba(52,194,122,.16);--l-pill-ink:#4CD38D}
 html:has(.login-wrap){background:#FFF}
 html.dark:has(.login-wrap){background:#000}
+/* iPhone Safari tints its bars (above and below the page) from the page's own background: on a phone
+   that is the green of the map, so no white band shows above it (the sign-in itself stays white or black). */
+@media (max-width:959px){html:has(.login-wrap),html.dark:has(.login-wrap),html:has(#welcome){background:#14382C}}
 .login-map{flex:none;height:clamp(196px,calc(100dvh - 500px),352px);touch-action:none;--mx:50%;--my:57%;--mz:.78}
 .login-map .rmap-world{animation:mapSettle 1.6s cubic-bezier(.2,.8,.2,1) both;will-change:transform}   /* its own layer: dragging never repaints the picture */
 .login-map-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(14,40,31,.92) 0%,rgba(14,40,31,.45) 26%,rgba(14,40,31,.1) 52%,rgba(14,40,31,.35) 82%,rgba(14,40,31,.8) 100%)}
@@ -1800,39 +1803,77 @@ html.rtl .ad-strip{padding:10px 14px 10px 8px}
 
 /* ---------- Search everything ----------
    A panel from the top (the keyboard needs the bottom), results grouped, the chosen one tinted. */
-.spot-layer{position:fixed;inset:0;z-index:320;display:flex;justify-content:center;align-items:flex-start;padding:calc(10px + var(--safe-top)) 10px 0}
-.spot-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);animation:fadeIn 180ms ease both}
-.spot-panel{position:relative;width:100%;max-width:640px;max-height:min(78vh,calc(var(--vv-height,100dvh) - 30px));display:flex;flex-direction:column;border-radius:26px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--float-shadow);animation:spotIn 320ms var(--spring-soft) both;overflow:hidden}
-@keyframes spotIn{from{opacity:0;transform:translateY(-12px) scale(.98)}to{opacity:1;transform:none}}
-.spot-layer.out .spot-panel{opacity:0;transform:translateY(-8px) scale(.98);transition:opacity 160ms ease,transform 180ms ease}
-.spot-layer.out .spot-scrim{opacity:0;transition:opacity 160ms ease}
-.spot-field{flex:none;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 16px;border-bottom:.5px solid var(--line)}
+/* Search: a panel that drops in from the top over a dimmed screen and lifts away when it closes. The
+   opening animations only fill backwards, so the closing ones can take over (a held "both" fill kept the
+   panel fully visible until it vanished at once). Nothing behind it scrolls while it is open. */
+.spot-layer{position:fixed;inset:0;z-index:320;display:flex;justify-content:center;align-items:flex-start;padding:calc(10px + var(--safe-top)) 10px 0;touch-action:none}
+.spot-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);animation:fadeIn 200ms ease backwards}
+.spot-panel{position:relative;width:100%;max-width:640px;max-height:min(80vh,calc(var(--vv-height,100dvh) - 24px));display:flex;flex-direction:column;border-radius:26px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--float-shadow);animation:spotIn 340ms var(--spring-soft) backwards;overflow:hidden;transform-origin:50% 0;touch-action:auto}
+@keyframes spotIn{from{opacity:0;transform:translateY(-14px) scale(.97)}}
+@keyframes spotOut{to{opacity:0;transform:translateY(-10px) scale(.97)}}
+.spot-layer.out .spot-panel{animation:spotOut 190ms var(--ease) forwards}
+.spot-layer.out .spot-scrim{animation:fadeOut 190ms ease forwards}
+.spot-field{flex:none;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 16px;border-bottom:.5px solid var(--line);touch-action:none}
 html.rtl .spot-field{padding:10px 16px 10px 10px}
 .spot-field>svg{flex:none;width:18px;height:18px;color:var(--ink-soft)}
-.spot-field input{flex:1;min-width:0;height:40px;border:0;background:none;font:400 1.125rem var(--font);color:var(--ink);outline:none}
+.spot-field input{flex:1;min-width:0;height:40px;border:0;background:none;font:400 1.125rem var(--font);color:var(--ink);outline:none;text-overflow:ellipsis}
 .spot-field input::-webkit-search-cancel-button,.spot-field input::-webkit-search-decoration{-webkit-appearance:none;appearance:none}
-/* The browser's own clear mark is replaced by the iPhone's: a small gray circle with an x. */
 .spot-clear{flex:none;width:36px;height:36px;margin-inline-start:-6px;padding:0;border:0;background:none;display:grid;place-items:center;cursor:pointer}
 .spot-clear[hidden]{display:none}
 .spot-clear svg{width:20px;height:20px;padding:4px;box-sizing:border-box;border-radius:50%;background:var(--ink-faint);color:var(--surface);fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round}
 .spot-cancel{flex:none;min-height:40px;padding:0 10px;border:0;background:none;color:var(--tint);font:500 1rem var(--font)}
-.spot-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:6px 8px 10px}
-.spot-group-title{padding:10px 10px 4px;font-size:.75rem;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-soft)}
+/* All, Items, Suppliers, Orders, Actions: once something is typed. */
+.spot-scopes{flex:none;display:flex;gap:6px;padding:8px 12px 6px;overflow-x:auto;scrollbar-width:none;touch-action:pan-x;border-bottom:.5px solid var(--line)}
+.spot-scopes::-webkit-scrollbar{display:none}
+.spot-scopes[hidden]{display:none}
+.spot-scope{flex:none;height:30px;padding:0 13px;border:0;border-radius:999px;background:var(--fill);color:var(--ink);font:500 .8125rem var(--font);white-space:nowrap}
+.spot-scope[aria-selected="true"]{background:var(--accent-strong);color:#fff}
+.spot-scope:not(:disabled):active{transform:scale(.96)}
+.spot-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:6px 8px 10px;touch-action:pan-y}
+.spot-group+.spot-group{margin-top:2px}
+.spot-group-title{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 10px 4px;font-size:.75rem;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-soft)}
+html.rtl .spot-group-title{letter-spacing:0}
+.spot-group-clear{border:0;background:none;padding:2px 4px;color:var(--tint);font:500 .8125rem var(--font);text-transform:none;letter-spacing:0}
 .spot-row-wrap{display:flex;align-items:center;gap:4px}
 .spot-row-wrap .spot-row{flex:1;min-width:0}
-.spot-row{display:flex;align-items:center;gap:12px;width:100%;min-height:50px;padding:6px 10px;border:0;border-radius:14px;background:none;font:inherit;color:var(--ink);text-align:start}
+.spot-row{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:6px 10px;border:0;border-radius:14px;background:none;font:inherit;color:var(--ink);text-align:start;transition:background-color 120ms ease}
+.spot-row:not(:disabled):active{transform:none;background:var(--fill-strong)}
 .spot-row.active{background:rgba(var(--accent-rgb),.16)}
 .spot-ic{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:var(--fill);color:var(--tint)}
 .spot-ic svg{width:17px;height:17px}
 .spot-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .spot-text b{font-size:.9688rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .spot-text small{font-size:.75rem;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.spot-set .spot-ic{background:var(--accent-strong);color:#fff}
-.spot-add{flex:none;width:40px;height:40px;border:0;border-radius:50%;display:grid;place-items:center;background:var(--fill);color:var(--tint)}
-.spot-empty{padding:24px;text-align:center;color:var(--ink-soft)}
+.spot-text mark{background:none;color:inherit;font-weight:700}
+.spot-text small mark{color:var(--ink)}
+.spot-set .spot-ic,.spot-ask .spot-ic{background:var(--accent-strong);color:#fff}
+.spot-more{min-height:40px;justify-content:center}
+.spot-more .spot-text{align-items:center}
+.spot-more .spot-text b{font-size:.875rem;color:var(--tint)}
+/* − amount + beside an item, like the Order screen's stepper; round Call and WhatsApp beside a supplier. */
+.spot-step{flex:none;display:flex;align-items:center;gap:2px;border-radius:999px;transition:background-color 160ms ease}
+.spot-step.has-qty{background:var(--fill);padding:2px}
+.spot-qty{min-width:26px;text-align:center;font:600 .9375rem var(--font-round);font-variant-numeric:tabular-nums;color:var(--ink)}
+.spot-mini{flex:none;width:38px;height:38px;border:0;border-radius:50%;display:grid;place-items:center;background:var(--fill);color:var(--tint);text-decoration:none}
+.spot-step.has-qty .spot-mini{background:transparent}
+.spot-mini svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round}
+.spot-mini.spot-plus svg{stroke-width:2.5}
+.spot-mini:not(:disabled):active{transform:scale(.9);background:var(--fill-strong)}
+/* A switch that flips in place. */
+.spot-switch{flex:none;position:relative;width:42px;height:26px;border-radius:999px;background:var(--fill-strong);transition:background-color 200ms ease}
+.spot-switch i{position:absolute;top:2px;inset-inline-start:2px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.2);transition:transform 240ms var(--spring-soft)}
+.spot-switch.on{background:var(--ok)}
+.spot-switch.on i{transform:translateX(16px)}
+html.rtl .spot-switch.on i{transform:translateX(-16px)}
+.spot-empty{padding:28px 24px;text-align:center;color:var(--ink-soft);line-height:1.45}
+/* On a computer: the keys that work here. */
+.spot-foot{flex:none;display:flex;gap:16px;justify-content:flex-end;padding:8px 16px;border-top:.5px solid var(--line);font-size:.75rem;color:var(--ink-soft)}
+.spot-foot span{display:inline-flex;align-items:center;gap:4px}
+.spot-foot kbd{min-width:18px;height:18px;padding:0 4px;border-radius:5px;border:1px solid var(--line-strong);display:inline-grid;place-items:center;font:600 .6875rem var(--font);color:var(--ink)}
 .spot-flash{animation:spotFlash 1.5s ease}
 @keyframes spotFlash{0%,40%{box-shadow:inset 0 0 0 2px var(--tint);background-color:rgba(var(--accent-rgb),.14)}100%{box-shadow:inset 0 0 0 2px transparent}}
-@media (hover:hover) and (pointer:fine){.spot-row:hover{background:var(--fill)}.spot-row.active:hover{background:rgba(var(--accent-rgb),.2)}}
+@media (hover:hover) and (pointer:fine){.spot-row:hover{background:var(--fill)}.spot-row.active:hover{background:rgba(var(--accent-rgb),.2)}.spot-mini:hover,.spot-scope[aria-selected="false"]:hover{background:var(--fill-strong)}}
+@media (prefers-reduced-motion:reduce){.spot-panel,.spot-scrim,.spot-layer.out .spot-panel,.spot-layer.out .spot-scrim{animation:none}.spot-switch,.spot-switch i{transition:none}}
 /* Keyboard shortcuts */
 .short-list{display:flex;flex-direction:column;border-radius:18px;background:var(--fill);padding:2px 14px;margin-top:10px}
 .short-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;font-size:.9375rem}
