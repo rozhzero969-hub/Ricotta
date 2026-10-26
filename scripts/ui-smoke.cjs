@@ -2,8 +2,8 @@
    Run: node scripts/ui-smoke.cjs
    EDGE_PATH can select a locally installed Chromium/Edge executable.
    The server is mocked: two accounts (Rozha with every screen, Yunis with
-   Order, Rico, History, Suppliers, Items, Record, Units) and a 181-item
-   catalog. It checks English, Kurdish and Arabic at six widths, Admin's PIN
+   the standard set the server gives him: Order, Rico, History, Manage,
+   Record) and a 181-item catalog. It checks English, Kurdish and Arabic at six widths, Admin's PIN
    change, page transitions, Rico's moods and inbox, and that every language
    has every text. */
 const {chromium}=require('playwright');
@@ -41,7 +41,7 @@ for(const lang of ['ku','ar']){
 }
 
 const ALL_VIEWS=['order','assistant','transfers','manage','history','suppliers','itemsAdmin','units','record','admin','settings'];
-const YUNIS_VIEWS=['order','assistant','transfers','history','suppliers','itemsAdmin','units','record'];
+const YUNIS_VIEWS=['order','assistant','history','manage','suppliers','itemsAdmin','units','record'];
 const supplierNames=['Corner Cake','Golden Bread Bakery','Fresh produce','Daily essentials','Kitchen supplies','Beverages','Dairy','Meat supplier','دابینکەری سەوزە','دابینکەری بەرهەمەکان'];
 const suppliers=supplierNames.map((name,i)=>({id:'s'+i,name,phone:''}));
 const items=Array.from({length:181},(_,i)=>({id:'i'+i,name:i%3===0?'تەماتە '+i:'Kitchen item '+String(i).padStart(3,'0'),unit:'box',supplierId:'s'+(i%10)}));
@@ -78,6 +78,7 @@ const server=http.createServer((req,res)=>{
     // Opened from the Home Screen (as iOS reports it).
     if(homeScreen) await ctx.addInitScript(()=>Object.defineProperty(Navigator.prototype,'standalone',{get:()=>true}));
     const calls=[];
+    const over={};   // what the next bootstrap answers differently (Rozha changing Yunis's access)
     let signedIn=account;
     await ctx.route('**/functions/v1/api/**',async route=>{
       const req=route.request();
@@ -91,7 +92,7 @@ const server=http.createServer((req,res)=>{
         return;
       }
       let status=200, data={};
-      if(endpoint==='bootstrap') data=fixtureFor(signedIn);
+      if(endpoint==='bootstrap') data={...fixtureFor(signedIn),...over};
       else if(endpoint==='auth/security')data={required:false,siteKey:null};
       else if(endpoint==='devices') data=[];
       else if(endpoint==='activity') data=recordActivity;
@@ -116,8 +117,8 @@ const server=http.createServer((req,res)=>{
       if(loggedIn && !sessionStorage.getItem('seeded')){ localStorage.setItem('ricottaOrders:apiSession',JSON.stringify(s)); sessionStorage.setItem('seeded','1'); }
     },{loggedIn,s:session(account)});
     const page=await ctx.newPage();page.on('pageerror',error=>errors.push(String(error)));
-    await page.goto(url);await page.waitForSelector(loggedIn?'#orderResults':'.pin-boxes');await page.waitForSelector('#splash',{state:'detached'});
-    return {ctx,page,calls};
+    await page.goto(url);await page.waitForSelector(loggedIn?'#orderResults':'.pin-dots');await page.waitForSelector('#splash',{state:'detached'});
+    return {ctx,page,calls,over};
   }
   const settle=page=>page.waitForFunction(()=>!document.querySelector('.content.gliding'),null,{timeout:4000});
   async function openView(page,view){
@@ -132,7 +133,8 @@ const server=http.createServer((req,res)=>{
       await page.locator('[data-account-go="settings"]').click();
       await page.waitForSelector('.account-sheet',{state:'detached'});
     }else{
-      if(!['order','history','transfers','manage'].includes(destination) && await page.evaluate(()=>innerWidth<960)){
+      // More exists only with more than four screens, and only holds the ones that are not tabs.
+      if(await page.locator(`#navMore [data-view="${destination}"]`).count() && await page.evaluate(()=>innerWidth<960)){
         if(await page.locator('#navMoreBtn').getAttribute('aria-expanded')!=='true')await page.locator('#navMoreBtn').click();
       }
       await page.locator(`.bottomnav [data-view="${destination}"]`).click();
@@ -257,6 +259,8 @@ const server=http.createServer((req,res)=>{
           await openView(page,view);
           await noOverflow(page,lang+'/'+width+'/'+view);
         }
+        const clipped=await page.evaluate(()=>[...document.querySelectorAll('.bottomnav>.navbtn span')].filter(s=>s.offsetHeight&&s.scrollHeight>s.clientHeight+1).map(s=>s.textContent));
+        assert.deepEqual(clipped,[],'tab labels are not cut off ('+lang+'/'+width+')');
       }
     }
     // All nested screens highlight Manage; Rico lights up in the top bar, and Settings (from the account sheet) has no tab.
@@ -297,8 +301,11 @@ const server=http.createServer((req,res)=>{
     await openView(page,'settings');
     assert.equal(await page.locator('#reminderEnabled').count(),1,'notifications live in Settings');
     assert.equal(await page.locator('[data-pin-change], #ricoKeyState, .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
-    // Admin: PINs (Rozha's current PIN first, the new one typed twice), devices and the connections.
+    // Admin: one screen of tiles, each opening its page. PINs: Rozha's current PIN first, the new one typed twice.
     await openView(page,'admin');
+    assert.equal(await page.locator('.ad-board [data-admin-open]').count(),9,'Admin shows every page as a tile');
+    await page.locator('[data-admin-open="pins"]').click();await settle(page);
+    assert.equal(await page.locator('.admin-heading h1').textContent(),'PINs');
     assert.equal(await page.locator('[data-pin-change]').count(),2,'Admin changes both PINs');
     await page.locator('[data-pin-change="yunis"]').click();
     assert.equal(await page.locator('#pinNew').getAttribute('type'),'password','PINs are hidden while typed');
@@ -313,6 +320,9 @@ const server=http.createServer((req,res)=>{
     await page.locator('#modalFormOk').click();
     await page.waitForFunction(()=>!document.querySelector('.modal-form'));
     assert.deepEqual(calls.filter(c=>c.endpoint==='admin/pin').at(-1).body,{account:'yunis',currentPin:'471906',newPin:'591837'},'the change goes out once it is right');
+    await page.locator('.admin-heading .page-back').click();await settle(page);
+    assert.equal(await page.locator('.ad-board').count(),1,'Back returns to the Admin tiles');
+    await page.locator('[data-admin-open="rico"]').click();await settle(page);
     await page.waitForFunction(()=>document.querySelector('#ricoKeyState')?.textContent!=='Checking…',null,{timeout:5000});
     assert.equal(await page.locator('#ricoKeyState').textContent(),'Connected');
     await page.evaluate(()=>{location.hash='#rico-provider-setup'; maybeOpenRicoProviderSetup();});
@@ -321,24 +331,11 @@ const server=http.createServer((req,res)=>{
     await page.locator('#modalPromptInput').fill('gsk_'+ 'A'.repeat(30));
     await page.locator('#modalPromptOkBtn').click();
     await page.waitForSelector('#modalPromptInput',{state:'detached'});
-    // Notify about update: three languages, only the written words.
-    await openView(page,'admin');
-    await page.locator('#devNotifyBtn').click();
-    await page.locator('#mfUpdateMsgAr').fill('تحديث جديد');
-    await page.locator('#mfUpdateMsgEn').fill('New ordering screen');
-    await page.locator('#modalFormOk').click();
-    await page.locator('#modalAlertOkBtn').waitFor();
-    assert.equal(await page.locator('.modal-form').count(),1,'the delivery result preserves the sending form until it is acknowledged');
-    await page.locator('#modalAlertOkBtn').click();
-    await page.waitForFunction(()=>!document.querySelector('.modal-form'));
-    const sent=calls.find(c=>c.endpoint==='push/send');
-    assert.deepEqual([sent.body.type,sent.body.bodyEn,sent.body.bodyKu,sent.body.bodyAr],['update','New ordering screen','','تحديث جديد'],'update message goes out as written');
-    assert.equal(sent.body.title,undefined,'the app adds no title of its own');
-    await page.evaluate(()=>{ const root=document.getElementById('modalRoot'); if(root) root.innerHTML=''; });
-    await page.evaluate(()=>{ openUpdatePopup('Only these words'); });
-    await page.locator('#forceRoot .update-words').waitFor();
-    assert.equal(await page.locator('#forceRoot .modal-msg').textContent(),'Only these words','the update popup shows only the written words');
-    await page.locator('#updOkBtn').click();
+    // Devices: "Notify about update" is gone.
+    await page.locator('.admin-heading .page-back').click();await settle(page);
+    await page.locator('[data-admin-open="devices"]').click();await settle(page);
+    assert.equal(await page.locator('#devNotifyBtn').count(),0,'no Notify about update');
+    assert.equal(await page.evaluate(()=>typeof openUpdatePopup+typeof showUpdatePopup),'undefinedundefined','the update popup is gone');
     // Rico: moods, inbox, the robot.
     await openView(page,'assistant');
     assert.equal(await page.locator('.rico-note').count(),1,'Rico\u2019s own message is at the top');
@@ -441,7 +438,8 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.evaluate(()=>state.view),'history','swiping the page moves to the next tab');
     assert.equal(await page.locator('.content.gliding').count(),1,'the swipe moves to the next page');
     assert.deepEqual(await page.evaluate(()=>__tones),[],'swiping between tabs makes no sound');
-    assert.ok(await page.evaluate(()=>document.querySelector('.content.gliding').getAnimations()[0].effect.getTiming().duration<PAGE_TRANSITION.ms),'a swipe finishes quicker than a tap');
+    assert.ok(await page.evaluate(()=>{ const ms=document.querySelector('.content.gliding').getAnimations()[0].effect.getTiming().duration; return ms>=SWIPE_MS && ms<=420; }),'a swipe carries on at the finger\u2019s speed, never slower than 420 ms');
+    assert.equal(await page.locator('.page-peek').count(),0,'the preview of the next page is replaced by the page itself');
     assert.ok(await page.evaluate(()=>{
       const out=document.querySelector('.page-ghost > .content').getAnimations()[0].effect.getKeyframes();
       return out.every(f=>f.opacity===undefined) && out.at(-1).transform.includes('-');
@@ -457,7 +455,9 @@ const server=http.createServer((req,res)=>{
     /* ---------- A phone with a touch screen ---------- */
     const phone=await context({touch:true});
     await openView(phone.page,'itemsAdmin');
-    await phone.page.locator('[data-edititem]').first().click();
+    assert.equal(await phone.page.locator('.data-table').isVisible(),false,'phones get the list, not the wide table');
+    await phone.page.locator('.table-list [data-edititem]').first().click();
+    await phone.page.locator('[data-detail="edit"]').click();
     await phone.page.locator('.modal-form').waitFor();
     assert.equal(await phone.page.evaluate(()=>!!document.activeElement?.matches('input,select,textarea')),false,'editing on a phone does not open the keyboard by itself');
     await phone.page.waitForFunction(()=>document.querySelector('.modal-form').getAnimations().every(a=>a.playState==='finished'));
@@ -469,9 +469,10 @@ const server=http.createServer((req,res)=>{
     await phone.page.waitForFunction(()=>!document.querySelector('.modal-form'));
     await openView(phone.page,'order');
     await phone.page.locator('#itemSearch').focus();
-    assert.equal(await phone.page.locator('.bottomnav').evaluate(el=>getComputedStyle(el).display),'none','the tab bar steps aside while typing');
+    assert.equal(await phone.page.locator('.bottomnav').isVisible(),false,'the tab bar steps aside while typing');
+    assert.equal(await phone.page.locator('.to-top').isVisible(),false,'and so does the back-to-top button');
     await phone.page.locator('#itemSearch').blur();
-    await phone.page.waitForFunction(()=>getComputedStyle(document.querySelector('.bottomnav')).display!=='none');
+    await phone.page.locator('.bottomnav').waitFor({state:'visible'});
     await phone.ctx.close();
 
     /* ---------- The Home Screen app ---------- */
@@ -501,9 +502,27 @@ const server=http.createServer((req,res)=>{
 
     /* ---------- Yunis ---------- */
     const y=await context({account:'yunis'});
-    assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS,'settings','manage'],'Yunis gets the right screens');
+    assert.deepEqual(await y.page.evaluate(()=>state.views),[...YUNIS_VIEWS,'settings'],'Yunis gets the right screens');
     await y.page.setViewportSize({width:390,height:844});
     assert.equal(await y.page.locator('.bottomnav [data-view="admin"]').count(),0,'no Admin for Yunis');
+    // Four screens or fewer: all are tabs, no More.
+    const yunisTabs=()=>y.page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view));
+    assert.deepEqual(await yunisTabs(),['order','history','manage','record'],'Yunis has four tabs');
+    assert.equal(await y.page.locator('#navMoreBtn').count(),0,'with four screens there is no More');
+    assert.equal(await y.page.evaluate(()=>canOpen('transfers')),false,'Transfers is Rozha\u2019s unless she gives it to him');
+    // Rozha gives him Transfers: the next refresh brings the tab (and More, for the fifth screen).
+    Object.assign(y.over,{views:['order','assistant','history','transfers','manage','suppliers','itemsAdmin','units','record','settings'],roles:['history','manage','catalog','record','transfers','assistant','send','exports','notify','reminders']});
+    await y.page.evaluate(async()=>{ lastLoadAt=0; await refreshData(true); });
+    await y.page.waitForFunction(()=>document.querySelector('#navMoreBtn'));
+    assert.deepEqual(await yunisTabs(),['order','history','transfers','manage'],'a new role shows up without signing in again');
+    assert.deepEqual(await y.page.locator('#navMore [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['record']);
+    // And takes Send away: the Order screen says who sends instead of offering the button.
+    Object.assign(y.over,{views:YUNIS_VIEWS.concat('settings'),roles:['history','manage','catalog','record','assistant','exports','notify','reminders']});
+    await y.page.evaluate(async()=>{ lastLoadAt=0; await refreshData(true); });
+    await y.page.waitForFunction(()=>!document.querySelector('#navMoreBtn'));
+    assert.equal(await y.page.evaluate(()=>canDo('send')),false);
+    for(const key of Object.keys(y.over)) delete y.over[key];
+    await y.page.evaluate(async()=>{ lastLoadAt=0; await refreshData(true); });
     await openView(y.page,'history');
     assert.equal(await y.page.locator('[data-delhist], [data-undohist]').count(),0,'only Rozha can delete or undo orders');
     await openView(y.page,'suppliers');
@@ -528,14 +547,7 @@ const server=http.createServer((req,res)=>{
     assert.ok(await y.page.locator('.item-last').count()>=1,'Last quantity shows on rows when switched on');
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await y.page.locator('label:has(#pref-showLastQty)').click();
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','pref-showTransfers:true','sound-qty:true','sound-sent:true','reminderEnabled:false','aiConsent:true']);
-    // Turning Transfers off takes it out of the tab bar (and back in), without leaving Settings.
-    await y.page.locator('#pref-showTransfers').uncheck();
-    assert.deepEqual(await y.page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','manage'],'Transfers can be taken off the tab bar');
-    assert.equal(await y.page.evaluate(()=>canOpen('transfers')),false,'a hidden Transfers tab cannot be opened');
-    assert.equal(await y.page.evaluate(()=>state.view),'settings','Settings stays open');
-    await y.page.locator('#pref-showTransfers').check();
-    assert.deepEqual(await y.page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','transfers','manage'],'Transfers can be put back');
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','sound-qty:true','sound-sent:true','reminderEnabled:false','aiConsent:true'],'no per-phone Transfers switch: Admin decides');
     assert.equal(await y.page.locator('#settingsSignOut').count(),1,'Sign Out is at the end of Settings');
     assert.match(await y.page.locator('.settings-link').getAttribute('href'),/^privacy\.html#en$/,'Settings links to the privacy policy');
     // Daily reminder, for Yunis too: the switch opens the time, Save and a test; only Save turns it on.
@@ -563,37 +575,48 @@ const server=http.createServer((req,res)=>{
     await y.ctx.close();
 
     /* ---------- Sign in ---------- */
-    // A touch screen gets the number pad; tapping a key fills a box.
+    // Design A: the PIN as six dots and a number pad low on the screen, where the thumb rests.
     const touchLogin=await context({loggedIn:false,touch:true});
-    assert.equal(await touchLogin.page.locator('.keypad').isVisible(),true,'phones get the number pad');
-    await touchLogin.page.evaluate(()=>window.originalKey=document.querySelector('[data-key="1"]'));
-    await touchLogin.page.locator('[data-key="1"]').click();
-    assert.equal(await touchLogin.page.evaluate(()=>originalKey===document.querySelector('[data-key="1"]')),true,'PIN keypad remains mounted');
-    assert.equal(await touchLogin.page.locator('.pin-box.filled').count(),1,'a tapped key fills the first box');
+    const tp=touchLogin.page;
+    assert.equal(await tp.locator('.keypad').isVisible(),true,'phones get the number pad');
+    assert.equal(await tp.locator('.login-hint').isVisible(),false,'phones are not told to type');
+    await tp.evaluate(()=>window.originalKey=document.querySelector('[data-key="1"]'));
+    await tp.locator('[data-key="1"]').click();
+    assert.equal(await tp.evaluate(()=>originalKey===document.querySelector('[data-key="1"]')),true,'PIN keypad remains mounted');
+    assert.equal(await tp.locator('.pin-dot.filled').count(),1,'a tapped key fills the first dot');
+    await tp.locator('.key-delete').click();
+    assert.equal(await tp.locator('.pin-dot.filled').count(),0,'Delete takes the digit back');
+    const reach=await tp.evaluate(()=>{ const keys=document.querySelector('.keypad').getBoundingClientRect(), one=document.querySelector('[data-key="1"]').getBoundingClientRect(); return {top:keys.top/innerHeight, bottom:keys.bottom/innerHeight, key:Math.min(one.width,one.height)}; });
+    assert.ok(reach.top>0.45 && reach.bottom<0.97,'the number pad sits in the lower half, within the thumb\u2019s reach '+JSON.stringify(reach));
+    assert.ok(reach.key>=60,'keys are large enough to hit without looking '+JSON.stringify(reach));
+    assert.equal(await tp.evaluate(()=>{ state.pinBuffer='123456'; state.pinBusy=true; updateLoginFeedback(); const busy=document.querySelector('.login-error'), info=busy.classList.contains('info') && busy.textContent.length>0; state.pinBusy=false; state.pinBuffer=''; updateLoginFeedback(); return info; }),true,'"Signing in" is shown as information, not in red');
+    for(const scheme of ['light','dark']){
+      await tp.emulateMedia({colorScheme:scheme});
+      await tp.waitForFunction(dark=>document.documentElement.classList.contains('dark')===dark,scheme==='dark');
+      const bg=await tp.evaluate(()=>getComputedStyle(document.querySelector('.login-wrap')).backgroundColor+'|'+getComputedStyle(document.body).backgroundColor);
+      const [r,g,b]=bg.match(/\d+/g).map(Number);
+      assert.ok(scheme==='dark'?r+g+b<200:r+g+b>600,'the sign-in background follows the '+scheme+' theme ('+bg+')');
+    }
+    await snapshot(tp,'phone-login.png');
     await touchLogin.ctx.close();
-    // A computer has a keyboard: no number pad, the PIN is typed.
+    // A computer has a keyboard too: the PIN can be typed, and the hint says so.
     const login=await context({loggedIn:false});
-    assert.equal(await login.page.locator('.keypad').isVisible(),false,'computers type the PIN, so the number pad is hidden');
-    assert.equal(await login.page.locator('.login-hints').isVisible(),true,'computers are told to type the PIN');
+    assert.equal(await login.page.locator('.login-hint').isVisible(),true,'computers are told they can type the PIN');
     await login.page.keyboard.press('1');
-    assert.equal(await login.page.locator('.pin-box.filled').count(),1,'a typed digit fills the first box');
+    assert.equal(await login.page.locator('.pin-dot.filled').count(),1,'a typed digit fills the first dot');
     await login.page.keyboard.press('Escape');
-    assert.equal(await login.page.locator('.pin-box.filled').count(),0,'Escape clears the PIN');
+    assert.equal(await login.page.locator('.pin-dot.filled').count(),0,'Escape clears the PIN');
     for(const lang of LANGS){
       await login.page.evaluate(lang=>setLang(lang),lang);
       for(const width of viewportWidths){
-        await login.page.setViewportSize({width,height:width>=960?900:740});await noOverflow(login.page,'login/'+lang+'/'+width);
-        if(width>=960){
-          const corner=await login.page.locator('#loginLangBtn').boundingBox();
-          assert.ok(corner && corner.y < 80,'computers: the language button sits in the top corner ('+lang+'/'+width+')');
-        }else{
-          const row=await login.page.locator('#loginLangRow').boundingBox();
-          assert.ok(row && row.y > 370,'phones: the language row sits at the bottom ('+lang+'/'+width+')');
-        }
+        const height=width>=960?900:740;
+        await login.page.setViewportSize({width,height});await noOverflow(login.page,'login/'+lang+'/'+width);
+        const row=await login.page.locator('#loginLangRow').boundingBox();
+        assert.ok(row && row.y+row.height<=height,'the language button is on screen without scrolling ('+lang+'/'+width+')');
       }
     }
     await login.page.setViewportSize({width:1440,height:1000});await login.page.evaluate(()=>setLang('en'));await snapshot(login.page,'desktop-login.png');
-    await login.page.setViewportSize({width:390,height:844});await snapshot(login.page,'phone-login.png');
+    await login.page.setViewportSize({width:390,height:844});
     // There is no secret code any more: 000000 is just a wrong PIN.
     await login.page.keyboard.type('000000');
     await login.page.waitForFunction(()=>state.pinError==='wrong');
@@ -605,8 +628,11 @@ const server=http.createServer((req,res)=>{
     assert.match(await login.page.locator('.welcome-title').textContent(),/Welcome back, Yunis/,'welcome back says the name');
     await login.page.waitForSelector('#orderResults');
     assert.equal(await login.page.evaluate(()=>state.account),'yunis');
-    await login.page.locator('#accountBtn').click();await login.page.locator('.account-sheet #logoutBtn').click();await login.page.locator('#modalOkBtn').click();await login.page.waitForSelector('.pin-boxes');
-    assert.equal(await login.page.locator('.pin-box.filled').count(),0,'logout resets the PIN feedback');
+    // Sign Out signs out straight away, with no "Are you sure?".
+    await login.page.locator('#accountBtn').click();await login.page.locator('.account-sheet #logoutBtn').click();
+    await login.page.waitForSelector('.pin-dots');
+    assert.equal(await login.page.locator('#modalRoot .modal-overlay').count(),0,'no confirmation popup');
+    assert.equal(await login.page.locator('.pin-dot.filled').count(),0,'logout resets the PIN feedback');
     await login.ctx.close();
     const reduced=await context({reducedMotion:'reduce'});await reduced.page.locator('[data-inc="i1"]').click();
     assert.equal(await reduced.page.locator('[data-qty="i1"]').evaluate(el=>el.getAnimations().length),0,'reduced motion skips JS feedback');
@@ -664,16 +690,16 @@ const server=http.createServer((req,res)=>{
     await mp.waitForFunction(()=>modalClosed);
 
     await mp.evaluate(()=>{
-      window.interruptedPrompt='pending';window.interruptedUpdate='pending';
+      window.interruptedPrompt='pending';window.interruptedConfirm='pending';
       showPrompt('Interrupted prompt').then(value=>{interruptedPrompt=value;});
-      showUpdatePopup('Interrupted update','Update','Later').then(value=>{interruptedUpdate=value;});
+      showConfirm('Interrupted question').then(value=>{interruptedConfirm=value;});
       dismissAllModals();
     });
-    await mp.waitForFunction(()=>interruptedPrompt===null&&interruptedUpdate===false);
-    assert.equal(await mp.locator('.modal-overlay').count(),0,'sign-out cleanup removes ordinary and update dialogs');
+    await mp.waitForFunction(()=>interruptedPrompt===null&&interruptedConfirm===false);
+    assert.equal(await mp.locator('.modal-overlay').count(),0,'sign-out cleanup removes every dialog');
     assert.equal(await mp.locator('#app').evaluate(el=>el.inert),false,'sign-out cleanup releases the background');
     await reduced.ctx.close();
     assert.deepEqual(errors,[],'no browser errors');
-    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*ALL_VIEWS.length} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, Admin PIN change, welcome by name, fixed Manage navigation, update message in 3 languages with only the written words, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, dark mode, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
+    console.log(JSON.stringify({result:'PASS',checks:`every text in 3 languages, ${3*viewportWidths.length*ALL_VIEWS.length} workspace layouts, ${3*viewportWidths.length} sign-in layouts, sidebar highlight and slide on every screen, language menu with Apply, Arabic font and 1 2 3 digits, Rozha vs Yunis screens and history delete, Yunis's roles from the server (tabs, More only past four screens), Admin tiles and PIN change, sign-in design A (thumb-reach keys, theme colours, no Sign Out popup), welcome by name, fixed Manage navigation, Rico moods and inbox, page swipe, tap-to-type and hold-to-repeat quantities, press-and-hold menu, dark mode, undo, security policy, desktop install, phone typing and centred popups, Home Screen app frame, reduced motion`,artifacts},null,2));
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

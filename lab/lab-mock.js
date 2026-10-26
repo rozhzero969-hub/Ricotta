@@ -7,8 +7,13 @@
   document.documentElement.classList.add('booting');
   const LS = 'ricottaOrders:';
   const DB_KEY = 'ricottaLab:db';
-  const VIEWS = ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record','admin','settings'];
-  const ACCOUNT_VIEWS = {rozha:VIEWS, yunis:['order','assistant','transfers','history','suppliers','itemsAdmin','units','record']};
+  /* The same roles and screens as the server (supabase/functions/api/index.ts). */
+  const ROLES = ['history','manage','catalog','record','transfers','assistant','send','exports','notify','reminders'];
+  const DEFAULT_ROLES = ROLES.filter(r=>r !== 'transfers');
+  const rolesOf = account => account === 'rozha' ? [...ROLES] : Array.isArray(db.roles?.yunis) ? ROLES.filter(r=>db.roles.yunis.includes(r)) : [...DEFAULT_ROLES];
+  const can = (account, role) => account === 'rozha' || (rolesOf(account).includes(role) && (role !== 'catalog' || rolesOf(account).includes('manage')));
+  const viewsFor = a => ['order', ...(can(a,'assistant') ? ['assistant'] : []), ...(can(a,'history') ? ['history'] : []), ...(can(a,'transfers') ? ['transfers'] : []),
+    ...(can(a,'manage') ? ['manage','suppliers','itemsAdmin','units'] : []), ...(can(a,'record') ? ['record'] : []), ...(a === 'rozha' ? ['admin'] : []), 'settings'];
   const NAMES = {rozha:{en:'Rozha',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}};
 
   const lsGet = k => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(_){ return null; } };
@@ -85,9 +90,9 @@
     const morning = atBaghdad(now.y, now.m, now.d, Math.min(9, now.h), 0);
     const inbox = [
       {id:1, kind:'cheer', mood:'excited', read:false, at:morning,
-       en:'Good morning, Rozha! ☀️ 3 suppliers are due today: Zakho Dairy, Erbil Veg Market, Ankawa Bakery. Let’s get the orders out on time!',
-       ku:'بەیانیت باش ڕۆژا! ☀️ ئەمڕۆ کاتی داواکاریی ٣ دابینکەرە: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. با بە کاتی خۆی بینێرین!',
-       ar:'صباح الخير يا روژا! ☀️ اليوم موعد 3 من المورّدين: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. لنرسل الطلبات في وقتها!'}
+       en:'Good morning, Rozha! 3 suppliers are due today: Zakho Dairy, Erbil Veg Market, Ankawa Bakery. Let’s get the orders out on time.',
+       ku:'بەیانیت باش ڕۆژا! ئەمڕۆ کاتی داواکاریی 3 دابینکەرە: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. با بە کاتی خۆی بینێرین.',
+       ar:'صباح الخير يا روژا! اليوم موعد 3 من المورّدين: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. لنرسل الطلبات في وقتها.'}
     ];
     items.find(i=>i.id==='it-tom').note = 'Ripe, not soft';
     const today = bag(new Date());
@@ -97,7 +102,29 @@
     const weather = {temp:24, code:3, rain:false, snow:false, max:27, min:14, rainChance:10, dayCode:3, updatedAt:new Date().toISOString()};
     const chats = [{id:'0b7c4a9e-1f2d-4c3b-9a8e-7d6c5b4a3f21', account:'yunis', title:'How much mozzarella last week?', createdAt:new Date(Date.now()-5*3600000).toISOString(), updatedAt:new Date(Date.now()-5*3600000).toISOString(),
       messages:[{role:'user', text:'How much mozzarella did we order last week?', ts:Date.now()-5*3600000}, {role:'assistant', mood:'calm', text:'About **13 kg** over 3 orders, Yunis. Thursday was the biggest at 5 kg.', ts:Date.now()-5*3600000+4000}]}];
-    return {v:5, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, reminder:{enabled:true, time:'09:00'}, seq:100, said:{}};
+    // Admin's sample logs: a few sign-ins, a wrong PIN, a new phone, two problems and two weeks of time in the app.
+    const ago = mins => new Date(Date.now() - mins*60000).toISOString();
+    const security = [
+      {id:7, at:ago(12), kind:'signin', account:'rozha', deviceId:'this-device', label:'Mac|Website', detail:{}},
+      {id:6, at:ago(95), kind:'wrong_pin', account:null, deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', detail:{}},
+      {id:5, at:ago(96), kind:'signin', account:'yunis', deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', detail:{}},
+      {id:4, at:ago(60*26), kind:'new_device', account:'yunis', deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', detail:{}},
+      {id:3, at:ago(60*26), kind:'signin', account:'yunis', deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', detail:{}},
+      {id:2, at:ago(60*50), kind:'pin_changed', account:'rozha', deviceId:'this-device', label:null, detail:{for:'yunis'}}
+    ];
+    const problems = [
+      {id:2, fingerprint:'a1b2c3d4e5f60718', kind:'error', message:"TypeError: Cannot read properties of undefined (reading 'name')", source:'app.js:2400', stack:'at renderQueue (app.js:2400:41)\nat render (app.js:737:22)', screen:'queue', account:'yunis', deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', version:'2026-10-24.3', count:3, firstAt:ago(300), lastAt:ago(40), resolvedAt:null},
+      {id:1, fingerprint:'0f1e2d3c4b5a6978', kind:'manual', message:'The PDF button on the send screen opened a page with no way back.', source:null, stack:null, screen:'queue', account:'rozha', deviceId:'lab-phone-rozha', label:'iPhone 16/17 Pro Max|App', version:'2026-10-24.3', count:1, firstAt:ago(60*20), lastAt:ago(60*20), resolvedAt:null}
+    ];
+    const usage = [];
+    for(let d = 13; d >= 0; d--){
+      const day = new Date(Date.now() - d*86400000).toISOString().slice(0,10);
+      usage.push({account:'rozha', deviceId:'this-device', label:'Mac|Website', day, seconds:1200 + ((d*733) % 2400)});
+      usage.push({account:'yunis', deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', day, seconds:2400 + ((d*911) % 3600)});
+      if(d % 3 === 0) usage.push({account:'rozha', deviceId:'lab-phone-rozha', label:'iPhone 16/17 Pro Max|App', day, seconds:600 + d*40});
+    }
+    return {v:6, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, reminder:{enabled:true, time:'09:00'}, seq:100, said:{},
+      roles:{yunis:null}, security, problems, usage};
   }
   /* Two finished months for the archive (History itself only keeps this month). */
   const LAB_MONTHS = [
@@ -119,7 +146,7 @@
     ['Pizza Cheese - پەنیری پیتزا', ['کیلۆ','کارتۆن']], ['Dish Soap - سابوونی قاپ', ['دانە','کارتۆن']], ['Mini Water - ئاوی بچووک', ['کارتۆن']], ['Pepsi Can - پیپسی قوتوو', ['کارتۆن','دانە']]
   ].map(([name, units], i)=>({id:'st-'+(i+1), name, units, aliases:[]}));
   let db = lsGet(DB_KEY);
-  if(!db || db.v !== 5) db = seed();
+  if(!db || db.v !== 6) db = seed();
   if(!Array.isArray(db.stock)) db.stock = STOCK_SEED.map(i=>({...i, units:[...i.units]}));
   const save = () => lsSet(DB_KEY, db);
   save();
@@ -188,7 +215,7 @@
     } else if(/late|due|forgot|دواکەوت|متأخر/.test(q)){
       say('worried', 'Zakho Dairy was due at 10:00 and hasn’t gone out yet. Want me to prepare it?', 'Zakho Dairy کاتژمێر ١٠:٠٠ بوو و هێشتا نەنێردراوە. با ئامادەی بکەم؟', 'طلب Zakho Dairy كان موعده 10:00 ولم يُرسل بعد. هل أجهّزه؟');
     } else if(/angry|mad|تووڕە|غاضب/.test(q)){
-      say('angry', 'Grr! Don’t make me angry, I’ll hide the basil. 😤 Just kidding.', 'گڕڕ! تووڕەم مەکە، ڕەیحانەکە دەشارمەوە. 😤 گاڵتە دەکەم.', 'غرر! لا تغضبني، سأخبئ الريحان. 😤 أمزح فقط.');
+      say('angry', 'Grr! Don’t make me angry, I’ll hide the basil. Just kidding.', 'گڕڕ! تووڕەم مەکە، ڕەیحانەکە دەشارمەوە. گاڵتە دەکەم.', 'غرر! لا تغضبني، سأخبئ الريحان. أمزح فقط.');
     } else {
       say('happy',
         `Hi ${name}! I’m Rico in the Lab, so I’m answering from sample data here. Ask me to prepare an order, what’s late today, or just say thanks and watch my face change.`,
@@ -271,10 +298,10 @@
     if(method === 'GET' && path === 'bootstrap'){
       const me = account;
       return json({
-        account:me, name:NAMES[me].en, views:ACCOUNT_VIEWS[me],
-        suppliers:db.suppliers, items:db.items, units:db.units,
+        account:me, name:NAMES[me].en, views:viewsFor(me), roles:rolesOf(me),
+        suppliers:db.suppliers, items:db.items.map(i=>({...i, createdAt:i.createdAt || '2026-08-01T09:00:00.000Z', lastOrderedAt:history().filter(o=>o.entries.some(e=>e.items.some(x=>x.itemId === i.id))).map(o=>o.date).sort().pop() || null})), units:db.units,
         history:history(), historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
-        activity:db.activity.filter(a=>a.ts >= monthStartIso()), inbox:db.inbox.slice(-20),
+        activity:can(me,'record') ? db.activity.filter(a=>a.ts >= monthStartIso()) : [], inbox:can(me,'assistant') ? db.inbox.slice(-20) : [],
         pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
         months:LAB_MONTHS, draft:db.drafts?.[account] || {cart:{},revision:0}
       });
@@ -291,6 +318,63 @@
       return json({...draft,conflicts:[]});
     }
     if(method === 'POST' && path === 'logout'){ db.signedOut = true; save(); return ok(); }
+    // Yunis's roles, checked like the server does.
+    const catalogWrite = ((method === 'PUT' || method === 'DELETE') && /^(?:suppliers|items|units)\/[^/]+$/.test(path)) || (method === 'PUT' && (path.startsWith('supplier-order/') || path === 'items/aliases')) || (method === 'POST' && path === 'items/restore');
+    if((catalogWrite && !can(account,'catalog')) || (method === 'POST' && path === 'orders' && !can(account,'send')) || (path === 'months' && !can(account,'history'))
+      || (path === 'activity' && !can(account,'record')) || (path.startsWith('stock') && !can(account,'transfers'))
+      || ((path.startsWith('assistant/') || path.startsWith('rico-chats') || path === 'streak/recover') && !can(account,'assistant'))
+      || (path === 'reminder' && !can(account,'reminders')) || (path === 'reports/catalog' && !can(account,'exports'))
+      || (path.startsWith('admin/') && account !== 'rozha')) return fail('forbidden', 403);
+    if(method === 'POST' && path === 'problems'){
+      const reports = Array.isArray(body.reports) ? body.reports.slice(0, 10) : [];
+      db.problems ||= [];
+      for(const r of reports){
+        const open = db.problems.find(p=>p.fingerprint === r.fingerprint && p.account === account && p.deviceId === (deviceId() || '') && !p.resolvedAt);
+        if(open){ open.count += r.count || 1; open.lastAt = new Date().toISOString(); open.message = String(r.message).slice(0, 500); }
+        else db.problems.unshift({id:++db.seq, fingerprint:r.fingerprint, kind:r.kind, message:String(r.message||'').slice(0,500), source:r.source || null, stack:r.stack || null, screen:r.screen || null,
+          account, deviceId:deviceId() || '', label:'Mac|Website', version:APP_VERSION, count:r.count || 1, firstAt:new Date().toISOString(), lastAt:new Date().toISOString(), resolvedAt:null});
+      }
+      save(); return json({ok:true, kept:reports.length});
+    }
+    if(method === 'GET' && path === 'reports/catalog'){
+      const items = {}, suppliers = {}, lastOrdered = {};
+      for(const o of history()) for(const e of o.entries){
+        if(e.supplierId){ const s = suppliers[e.supplierId] ||= {orders:0, lines:0, last:null, _o:new Set()}; s._o.add(o.id); s.lines += e.items.length; if(!s.last || o.date > s.last) s.last = o.date; }
+        for(const it of e.items){ const x = items[it.itemId] ||= {orders:0, qty:0, last:null, _o:new Set()}; x._o.add(o.id); x.qty += Number(it.qty); if(!x.last || o.date > x.last) x.last = o.date; lastOrdered[it.itemId] = x.last; }
+      }
+      for(const m of [items, suppliers]) for(const k in m){ m[k].orders = m[k]._o.size; delete m[k]._o; }
+      return json({from:monthStartIso(), items, suppliers, lastOrdered});
+    }
+    if(method === 'GET' && path === 'admin/security'){
+      const day = Date.now() - 86400000, week = Date.now() - 7*86400000, ev = db.security || [];
+      return json({checkedAt:new Date().toISOString(), wrongPins24h:ev.filter(e=>e.kind==='wrong_pin' && Date.parse(e.at) > day).length, signins24h:ev.filter(e=>e.kind==='signin' && Date.parse(e.at) > day).length,
+        newDevices7d:ev.filter(e=>e.kind==='new_device' && Date.parse(e.at) > week).length, failuresInWindow:db.lockFailures || 0, lockLimit:40, lockedUntil:db.lockedUntil || null, events:ev.slice(0, 60)});
+    }
+    if(method === 'POST' && path === 'admin/security/unlock'){ db.lockFailures = 0; db.lockedUntil = null; (db.security ||= []).unshift({id:++db.seq, at:new Date().toISOString(), kind:'unlocked', account:'rozha', deviceId:deviceId(), label:null, detail:{}}); save(); return json({ok:true, cleared:0}); }
+    if(method === 'GET' && path === 'admin/problems') return json((db.problems || []).filter(p=>!p.resolvedAt || Date.parse(p.resolvedAt) > Date.now() - 7*86400000));
+    if(method === 'POST' && path === 'admin/problems/resolve'){ const ids = new Set(body.ids || []); (db.problems || []).forEach(p=>{ if(ids.has(p.id) && !p.resolvedAt) p.resolvedAt = new Date().toISOString(); }); save(); return ok(); }
+    if(method === 'DELETE' && path === 'admin/problems'){ db.problems = (db.problems || []).filter(p=>!p.resolvedAt); save(); return ok(); }
+    if(method === 'GET' && path === 'admin/usage'){
+      const today = new Date().toISOString().slice(0,10), week = new Date(Date.now() - 6*86400000).toISOString().slice(0,10), month = today.slice(0,8) + '01';
+      const rows = db.usage || [], sum = list=>list.reduce((n, r)=>n + r.seconds, 0);
+      const people = ['rozha','yunis'].map(a=>{ const mine = rows.filter(r=>r.account === a); return {account:a, today:sum(mine.filter(r=>r.day === today)), week:sum(mine.filter(r=>r.day >= week)), month:sum(mine.filter(r=>r.day >= month)), total:sum(mine), since:mine.map(r=>r.day).sort()[0] || today}; });
+      const keys = [...new Set(rows.map(r=>r.account + '|' + r.deviceId))];
+      const devicesList = keys.map(k=>{ const mine = rows.filter(r=>r.account + '|' + r.deviceId === k); return {account:mine[0].account, deviceId:mine[0].deviceId, label:mine[mine.length-1].label, today:sum(mine.filter(r=>r.day === today)), total:sum(mine), lastAt:mine[mine.length-1].day + 'T12:00:00Z'}; });
+      const days = [...new Set(rows.map(r=>r.day))].sort().slice(-14).map(d=>({day:d, rozha:sum(rows.filter(r=>r.day === d && r.account === 'rozha')), yunis:sum(rows.filter(r=>r.day === d && r.account === 'yunis'))}));
+      return json({today, people, devices:devicesList, days});
+    }
+    if(method === 'GET' && path === 'admin/rico'){
+      const days = [...Array(14)].map((_, i)=>({day:new Date(Date.now() - (13 - i)*86400000).toISOString().slice(0,10), calls:[3,5,2,8,6,4,9,7,3,6,11,5,4,6][i]}));
+      return json({from:monthStartIso(), thisHour:3, kinds:{chat:74, voice:12}, people:{rozha:31, yunis:55}, days, cost:{usd:0.1842, input:412000, output:51000}, hourLimit:400, perPhoneHourLimit:60});
+    }
+    if(method === 'GET' && path === 'admin/roles') return json({roles:ROLES, yunis:rolesOf('yunis'), standard:!Array.isArray(db.roles?.yunis)});
+    if(method === 'PUT' && path === 'admin/roles'){
+      const roles = Array.isArray(body.roles) ? body.roles.filter(r=>ROLES.includes(r)) : null;
+      if(body.account !== 'yunis' || !roles) return fail('invalid_input');
+      (db.roles ||= {}).yunis = [...new Set(roles)].sort();
+      (db.security ||= []).unshift({id:++db.seq, at:new Date().toISOString(), kind:'roles_changed', account:'rozha', deviceId:deviceId(), label:null, detail:{for:'yunis', roles:db.roles.yunis}});
+      save(); return json({roles:rolesOf('yunis')});
+    }
     if(method === 'PUT' && path === 'me/pins'){ db.pins[account] = (body.itemIds || []).slice(0, 60); save(); return ok(); }
     if(method === 'GET' && path === 'streak') return json(streakView());
     if(method === 'POST' && path === 'streak/recover'){ if(!streakRecover()) return fail('nothing_to_recover', 409); save(); return json({ok:true, streak:streakView()}); }
@@ -352,8 +436,12 @@
     }
     if(method === 'GET' && path === 'admin/diagnostics'){
       if(account !== 'rozha') return fail('forbidden', 403);
-      const ran = new Date(Date.now() - 4*60000).toISOString();
-      return json({checkedAt:new Date().toISOString(), database:true, jobs:['ricotta-reminder-tick','ricotta-monthly-history','ricotta-daily-cleanup','ricotta-cron-history'].map(name=>({name, active:true, lastRun:ran, lastStatus:'succeeded', failures24h:0}))});
+      const ran = name => new Date(Date.now() - ({'ricotta-reminder-tick':1, 'ricotta-monthly-history':60*24*25, 'ricotta-daily-cleanup':60*7, 'ricotta-cron-history':60*7})[name]*60000).toISOString();
+      const open = (db.problems || []).filter(p=>!p.resolvedAt);
+      return json({checkedAt:new Date().toISOString(), database:true, latencyMs:84, databaseBytes:31457280, items:db.items.length, suppliers:db.suppliers.length, units:db.units.length,
+        ordersThisMonth:history().length, lastOrderAt:history().map(o=>o.date).sort().pop() || null, pushPhones:2, signedIn:3, openProblems:open.length,
+        problems24h:open.filter(p=>Date.parse(p.lastAt) > Date.now() - 86400000).length, wrongPins24h:(db.security || []).filter(e=>e.kind === 'wrong_pin' && Date.parse(e.at) > Date.now() - 86400000).length,
+        jobs:['ricotta-reminder-tick','ricotta-monthly-history','ricotta-daily-cleanup','ricotta-cron-history'].map(name=>({name, active:true, lastRun:ran(name), lastStatus:'succeeded', failures24h:0}))});
     }
     if((m = path.match(/^(suppliers|items|units)\/(.+)$/)) && (method === 'PUT' || method === 'DELETE')){
       const table = m[1], id = decodeURIComponent(m[2]);
@@ -385,9 +473,9 @@
           entries:body.entries.map(e=>({supplierId:e.supplierId || null, supplierName:e.supplierName || (db.suppliers.find(s=>s.id===e.supplierId)||{}).name || null, items:(e.items||[]).map(i=>({itemId:i.itemId, name:i.name, unit:i.unit, qty:Number(i.qty)}))}))});
         const n = NAMES[account];
         const words = {en:`Nice one, ${n.en}! The order is out.`, ku:`دەستت خۆش بێت ${n.ku}! داواکارییەکە نێردرا.`, ar:`أحسنت يا ${n.ar}! تم إرسال الطلب.`};
-        window.labInboxSay('cheer', th ? th.mood : 'happy', words, `sent|${account}|${new Date().toISOString().slice(0,10)}`);
+        window.labInboxSay('cheer', 'happy', words, `sent|${account}|${new Date().toISOString().slice(0,10)}`);
         const hit = streakHit(window.RICOTTA_TODAY || dayOf(body.date || new Date()));
-        if(hit.milestone) window.labInboxSay('streak', 'excited', {en:`🔥 ${hit.count} days in a row! Keep the fire going!`, ku:`🔥 ${hit.count} ڕۆژ لەسەر یەک! ئاگرەکە بە گڕ ڕابگرە!`, ar:`🔥 ${hit.count} يومًا متتاليًا! حافظ على النار!`}, 'streak|'+hit.count);
+        if(hit.milestone) window.labInboxSay('streak', 'excited', {en:`${hit.count} days in a row! Keep it going.`, ku:`${hit.count} ڕۆژ لەسەر یەک! بەردەوام بە.`, ar:`${hit.count} يومًا متتاليًا! استمر.`}, 'streak|'+hit.count);
         save();
       }
       return json({ok:true, streak:streakView()});
@@ -405,6 +493,13 @@
     }
     if(method === 'GET' && path === 'activity') return json(db.activity.filter(a=>a.ts >= monthStartIso()));
     if(method === 'GET' && path === 'devices') return json(devices(account));
+    if(method === 'POST' && path === 'devices/me' && Number(body.seconds) > 0){
+      const day = new Date().toISOString().slice(0,10), id = deviceId() || 'this-device';
+      db.usage ||= [];
+      const row = db.usage.find(r=>r.account === account && r.deviceId === id && r.day === day);
+      if(row) row.seconds = Math.min(86400, row.seconds + Math.min(1800, Math.floor(body.seconds))); else db.usage.push({account, deviceId:id, label:'Mac|Website', day, seconds:Math.min(1800, Math.floor(body.seconds))});
+      save();
+    }
     if(path === 'devices/me' || path === 'devices/me/ack' || path === 'devices/command') return ok();
     /* Admin -> PINs. The Lab keeps no PINs: 000000 stands for a wrong current PIN, and Yunis's Lab PIN (222222)
        can't be given to Rozha. */
@@ -429,7 +524,7 @@
         else db.chats.push({id, account, title:String(body.title||''), messages:body.messages, createdAt:now, updatedAt:now});
         db.chats = db.chats.slice(-30); save(); return ok();
       }
-      if(method === 'DELETE'){ const whose = query.get('account') || account; db.chats = db.chats.filter(c=>id ? c.id !== id : c.account !== whose); save(); return ok(); }
+      if(method === 'DELETE'){ const whose = query.get('account') || account; db.chats = db.chats.filter(c=>id ? c.id !== id : whose !== 'all' && c.account !== whose); save(); return ok(); }
     }
     if(method === 'POST' && path === 'assistant/chat') return ricoReply(account, body);
     if(method === 'POST' && path === 'assistant/transcribe') return fail('transcribe_unavailable', 503);

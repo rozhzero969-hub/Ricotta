@@ -70,7 +70,7 @@ function openStreakSheet(){
       <div class="streak-status">${esc(status)}</div>
     </div>
     <div class="streak-goal"><div class="streak-goal-row"><span>${esc(t('streakNext')(goal))}</span><span>${esc(t('streakBest')(Math.max(s.best, n)))}</span></div><div class="streak-bar"><i style="width:${pct}%"></i></div></div>
-    ${!n && s.recoverable ? `<button type="button" class="btn btn-primary streak-rico" data-streak-rico>${ricoFace('worried', 'rico-xs')}<span>${esc(t('streakAskRico'))}</span></button>` : ''}
+    ${!n && s.recoverable && canOpen('assistant') ? `<button type="button" class="btn btn-primary streak-rico" data-streak-rico>${ricoFace('worried', 'rico-xs')}<span>${esc(t('streakAskRico'))}</span></button>` : ''}
     <p class="streak-how">${esc(t('streakHow'))}</p>
     ${fact ? `<div class="fun-fact">${ricoFace('excited', 'rico-sm')}<div><b>${esc(t('funFactTitle'))}</b><span dir="auto">${esc(fact)}</span></div></div>` : ''}`, t('streakTitle'));
   el.querySelector('[data-streak-rico]')?.addEventListener('click', ()=>{ close(); ricoAsk(t('streakAskPrompt')); });
@@ -204,43 +204,13 @@ function openReportSheet(){
       <div><div class="report-sec-title">${esc(t('reportWho'))}</div><div class="report-who"><i class="r" style="--w:${Math.round(d.who.rozha/total*100)}%"></i><i class="y" style="--w:${Math.round(d.who.yunis/total*100)}%"></i></div><div class="report-who-names"><span>${esc(accountLabel('rozha'))} ${d.who.rozha}</span><span>${esc(accountLabel('yunis'))} ${d.who.yunis}</span></div></div>
     </div>
     ${fact ? `<div class="fun-fact">${ricoFace('excited', 'rico-sm')}<div><b>${esc(t('funFactTitle'))}</b><span dir="auto">${esc(fact)}</span></div></div>` : ''}
-    <div class="report-save${left <= 3 ? ' warn' : ''}"><b>${esc(t('reportSave'))}</b><p>${esc(left <= 3 ? t('reportClearsIn')(left) + ' ' : '')}${esc(t('reportSaveHint'))}</p>
-      <div class="form-actions"><button type="button" class="btn btn-primary" data-report-excel>${ICON_DOWNLOAD} ${esc(t('reportExcel'))}</button><button type="button" class="btn btn-ghost" data-report-print>${NAV_ICONS.record} ${esc(t('reportPrint'))}</button></div></div>`, t('reportOpen'));
-  el.querySelector('[data-report-excel]').onclick = exportMonthCsv;
-  el.querySelector('[data-report-print]').onclick = printMonthReport;
+    ${canDo('exports') ? `<div class="report-save${left <= 3 ? ' warn' : ''}"><b>${esc(t('reportSave'))}</b><p>${esc(left <= 3 ? t('reportClearsIn')(left) + ' ' : '')}${esc(t('reportSaveHint'))}</p>
+      <div class="form-actions"><button type="button" class="btn btn-primary" data-report-file="excel">${ICON_SHEET} ${esc(t('reportExcel'))}</button><button type="button" class="btn btn-ghost" data-report-file="pdf">${NAV_ICONS.record} ${esc(t('reportPrint'))}</button></div></div>` : ''}`, t('reportOpen'));
+  el.querySelectorAll('[data-report-file]').forEach(b=>b.onclick = ()=>withBusy(b, async()=>{
+    try{ await exportMonth(b.dataset.reportFile); }
+    catch(e){ console.error('Month file failed', e); await showAlert(esc(t('exportFailed'))); }
+  }));
 }
-/* Every line of every order this month, as a file Excel opens (UTF-8, so Kurdish and Arabic stay readable). */
-function safeCsvCell(value){
-  let text=String(value ?? '');
-  // Spreadsheet programs treat these leading characters as formulas even
-  // inside quoted CSV fields. Export names and notes as literal text.
-  if(/^[=+\-@\t\r\n]/.test(text.trimStart()) || /^[\t\r\n]/.test(text)) text="'"+text;
-  return `"${text.replace(/"/g,'""')}"`;
-}
-function exportMonthCsv(){
-  const rows = [['Date','Time','Sent by','Supplier','Item','Quantity','Unit']];
-  [...state.history].sort((a, b)=>Date.parse(a.date) - Date.parse(b.date)).forEach(h=>(h.entries||[]).forEach(e=>(e.items||[]).forEach(it=>rows.push([
-    erbilDate(h.date), formatIraqDateTime(h.date, {hour:'2-digit', minute:'2-digit', hour12:false}), accountLabel(h.by) || '',
-    e.supplierId ? supplierName(e.supplierId) : (e.supplierName || ''), it.name, it.qty, unitLabel(it.unit)]))));
-  const csv = '﻿' + rows.map(r=>r.map(safeCsvCell).join(',')).join('\r\n');
-  const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
-  const a = document.createElement('a');
-  a.href = url; a.download = `ricotta-orders-${erbilDate(new Date().toISOString()).slice(0, 7)}.csv`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url), 1500);
-}
-function printMonthReport(){
-  const d = reportData();
-  const w = window.open('', '_blank'); if(!w) return;
-  w.opener = null;
-  const days = [...state.history].sort((a, b)=>Date.parse(a.date) - Date.parse(b.date)).map(h=>`<tr><td>${esc(formatIraqDateTime(h.date, {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'}))}</td><td>${esc(accountLabel(h.by) || '')}</td><td>${(h.entries||[]).map(e=>`<b>${esc(e.supplierId ? supplierName(e.supplierId) : (e.supplierName || t('noSupplier')))}</b>: ${(e.items||[]).map(i=>`${esc(i.name)} × ${i.qty} ${esc(unitLabel(i.unit))}`).join(', ')}`).join('<br>')}</td></tr>`).join('');
-  w.document.write(`<!doctype html><html dir="${isRtl() ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><title>${esc(t('reportTitle')(monthName()))} · Ricotta</title><link rel="stylesheet" href="${SHEET_FONTS}"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Kufi Arabic',Arial,sans-serif;color:#172a21;margin:0;padding:34px}h1{margin:0 0 4px;font-size:26px}.sub{color:#5c6c63;margin-bottom:20px}.stats{display:flex;gap:12px;margin:16px 0 22px}.stats div{flex:1;background:#ecf6ee;border-radius:10px;padding:12px 14px}.stats b{display:block;font-size:24px;color:#1f5c3f}table{width:100%;border-collapse:collapse}th{background:#1f5c3f;color:#fff;text-align:start;padding:10px;font-size:12px}td{padding:10px;border-bottom:1px solid #dce8df;font-size:12.5px;vertical-align:top}tr:nth-child(even){background:#f5f9f6}</style></head><body><h1>${esc(t('reportTitle')(monthName()))}</h1><div class="sub">Ricotta · ${esc(t('reportGrade'))} ${esc(d.grade)} · ${esc(t('reportGradeHint')(d.days, d.elapsed))}</div><div class="stats"><div><b>${d.orders}</b>${esc(t('reportOrders'))}</div><div><b>${d.days}</b>${esc(t('reportDays'))}</div><div><b>${d.lines}</b>${esc(t('reportLines'))}</div></div><table><thead><tr><th>${esc(t('reportDate'))}</th><th>${esc(t('reportWho'))}</th><th>${esc(t('reportOrders'))}</th></tr></thead><tbody>${days}</tbody></table></body></html>`);
-  w.document.close(); w.focus();
-  const link = w.document.querySelector('link');
-  const fontsIn = new Promise(r=>{ link.onload = link.onerror = r; }).then(()=>w.document.fonts.ready);
-  Promise.race([fontsIn, new Promise(r=>setTimeout(r, 2000))]).then(()=>w.print());
-}
-
 /* ---------- Undo a just-sent order (Rozha's own, for 15 minutes) ---------- */
 const UNDO_MS = 15 * 60 * 1000;
 const canUndoOrder = rec => isRozha() && rec && rec.by === state.account && Date.now() - Date.parse(rec.date) < UNDO_MS;

@@ -289,29 +289,20 @@ function showForcedRefresh(title, message, okLabel) {
   return dialog.promise;
 }
 
-function showUpdatePopup(message, okLabel, laterLabel, title = '') {
-  const dialog = createModal(ensureForceRoot(), `
-    <div class="modal-overlay"><div class="modal-box modal-alert modal-hero">
-      ${modalSymbol(laterLabel ? GLYPH_UPDATE : ICON_BELL)}${title ? `<div class="force-title">${esc(title)}</div>` : ''}<div class="modal-msg">${message}</div>
-      <div class="modal-actions stacked">
-        <button type="button" class="btn btn-primary" id="updOkBtn">${esc(okLabel)}</button>
-        ${laterLabel ? `<button type="button" class="btn btn-ghost" id="updLaterBtn">${esc(laterLabel)}</button>` : ''}
-      </div>
-    </div></div>`, {cancelValue: false});
-  const ok = dialog.box.querySelector('#updOkBtn');
-  ok.onclick = () => {
-    if (laterLabel) {
-      dialog.box.querySelectorAll('button').forEach(button => { button.disabled = true; });
-      ok.classList.add('is-busy');
-      ok.setAttribute('aria-busy', 'true');
-    }
-    dialog.finish(true, !!laterLabel);
-  };
-  const later = dialog.box.querySelector('#updLaterBtn');
-  dialog.onCancel = () => dialog.finish(false);
-  if (later) later.onclick = dialog.onCancel;
-  dialog.focus(later || ok);
-  return dialog.promise;
+/* Cloudflare's check before signing in. It has no Cancel: it continues by itself the moment the check
+   passes (dialog.finish(token)); when the check fails, Try Again starts it over. Escape does nothing.
+   Returns the dialog; its promise gives the token, or null if the popup was removed. */
+function showChallenge(title, hint) {
+  const dialog = createModal(ensureModalRoot(), `
+    <div class="modal-overlay"><div class="modal-box modal-alert modal-hero modal-challenge">
+      ${modalSymbol(ICON_SHIELD)}<div class="modal-alert-title">${esc(title)}</div><div class="modal-msg">${esc(hint)}</div>
+      <div class="challenge-host" id="authChallenge"></div>
+      <div class="modal-status" role="status" aria-live="polite"></div>
+      <div class="modal-actions stacked" hidden><button type="button" class="btn btn-primary" id="challengeRetry">${esc(t('retry'))}</button></div>
+    </div></div>`, {role: 'alertdialog', cancelValue: null});
+  // No Cancel button: it checks and continues by itself. A keyboard's Escape still leaves.
+  dialog.onCancel = () => dialog.finish(null);
+  return dialog;
 }
 
 /* Popup form. onSubmit(again) returns {error}, {keepOpen:true, message},
@@ -379,6 +370,14 @@ function showFormModal(opts) {
       setStatus(result.message || result.msg, 'ok');
       dialog.focus(box.querySelector('[data-clear]') || ok);
       return;
+    }
+    // Saved: the button turns into a check for a moment, then the popup closes.
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      busy = true;
+      action.classList.add('is-done');
+      action.innerHTML = `${ICON_CHECK}<span class="sr-only">${esc(t('done'))}</span>`;
+      await new Promise(done => setTimeout(done, 420));
+      busy = false;
     }
     close();
   };

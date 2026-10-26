@@ -25,20 +25,22 @@ async function authBotProof(){
   if(!r.ok || typeof r.data?.required!=='boolean')return {error:'network'};
   if(!r.data.required)return {token:null};
   if(!r.data.siteKey)return {error:'verification'};
-  let token='',confirmed=false,widget,client;
+  let client,widget;
   try{client=await loadTurnstile();}catch{return {error:'verification'};}
-  try{
-    await showFormModal({title:esc(t('securityCheck')),bodyHtml:`<p>${esc(t('securityCheckHint'))}</p><div id="authChallenge"></div>`,okLabel:t('securityContinue'),
-      onOpen:(box,{submit})=>{
-        const ok=box.querySelector('#modalFormOk');ok.hidden=true;ok.disabled=true;
-        const reset=()=>{token='';ok.disabled=true;};
-        try{widget=client.render(box.querySelector('#authChallenge'),{sitekey:r.data.siteKey,action:'ricotta_auth',theme:document.documentElement.classList.contains('dark')?'dark':'light',size:'compact',
-          callback:value=>{if(!box.isConnected || confirmed || !value)return;token=value;ok.disabled=false;submit();},'expired-callback':reset,'error-callback':()=>{reset();box.querySelector('#modalFormStatus').textContent=t('securityCheckFailed');}});
-        }catch{box.querySelector('#modalFormStatus').textContent=t('securityCheckFailed');}
-      },
-      onSubmit:async()=>{if(!token)return {error:t('securityCheckFailed')};confirmed=true;return {};},
-    });
-  }catch{return {error:'verification'};}
+  const dialog=showChallenge(t('securityCheck'),t('securityCheckHint'));
+  const box=dialog.box,status=box.querySelector('.modal-status'),again=box.querySelector('.modal-actions');
+  const failed=()=>{status.textContent=t('securityCheckFailed');again.hidden=false;dialog.focus(box.querySelector('#challengeRetry'));};
+  const start=()=>{
+    status.textContent='';again.hidden=true;
+    try{if(widget!==undefined)client.remove(widget);}catch(_){}
+    try{widget=client.render(box.querySelector('#authChallenge'),{sitekey:r.data.siteKey,action:'ricotta_auth',theme:document.documentElement.classList.contains('dark')?'dark':'light',size:'compact',
+      callback:value=>{if(value && box.isConnected)dialog.finish(value);},'expired-callback':failed,'timeout-callback':failed,'error-callback':failed});
+    }catch(_){failed();}
+  };
+  box.querySelector('#challengeRetry').onclick=start;
+  start();
+  let token=null;
+  try{token=await dialog.promise;}
   finally{if(widget!==undefined){try{client.remove(widget);}catch(_){}}}
-  return confirmed?{token}:{error:'cancelled'};
+  return token?{token}:{error:'cancelled'};
 }

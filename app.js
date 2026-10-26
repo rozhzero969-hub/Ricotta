@@ -7,17 +7,19 @@
    the end.
 
    Two accounts sign in with their own PIN:
-     rozha  every screen, Admin (PINs, devices, connection) included
-     yunis  Order, Rico, Transfers, Manage (items, suppliers, units), History (cannot delete), Record
-   The server decides which screens an account may open (bootstrap.views) and
-   enforces the same rules on every request. */
+     rozha  every screen and every action, Admin included
+     yunis  Order, plus what Rozha gives him in Admin -> Access (screens and actions)
+   The server decides which screens an account may open (bootstrap.views) and what it may do
+   (bootstrap.roles), and enforces the same rules on every request. */
 /* ============ State ============ */
 const state = {
   lang: 'en',
   account: null,        // 'rozha' | 'yunis' | null (signed out)
   name: '',             // "Rozha" / "Yunis"
-  tabs: ['order','history','manage'],   // the tab-bar screens (Transfers too where Settings turns it on)
+  tabs: ['order','history','manage'],   // the tab-bar screens (at most four; the rest go into More)
   views: [],            // every screen this account may open
+  roles: [],            // what this account may do (Rozha: everything)
+  adminPage: null,      // the Admin page that is open ('problems', 'security', ...), or its list
   view: 'order',
   pinBuffer: '',
   pinError: '',         // '' | 'wrong' | 'locked' | 'network' | 'session'
@@ -48,9 +50,10 @@ const LANG_NAMES = {en:'English', ku:'کوردی', ar:'العربية'};
 function t(key){ const v = T[state.lang] && T[state.lang][key]; return v !== undefined ? v : T.en[key]; }
 const isRtl = ()=> state.lang !== 'en';
 const isRozha = ()=> state.account === 'rozha';
-const canOpen = view=> view === 'queue' || (state.views.includes(view) && (view !== 'transfers' || showTransfers()));
-/* Transfers is a tab only on a device that turns it on in Settings. */
-const showTransfers = ()=> lget('showTransfers') === true;
+/* What this account may do (the server checks the same roles on every request). Changing the catalog
+   also needs Manage. */
+const canDo = role=> isRozha() || (state.roles.includes(role) && (role !== 'catalog' || state.roles.includes('manage')));
+const canOpen = view=> view === 'queue' ? canDo('send') : state.views.includes(view);
 /* Dates and times always use the digits 1 2 3, in every language. */
 function intlLocale(){ return ({en:'en-US', ku:'ckb-IQ', ar:'ar-IQ'})[state.lang] + '-u-nu-latn'; }
 const IRAQ_TIME_ZONE = 'Asia/Baghdad';
@@ -180,8 +183,11 @@ function commandIsPending(d){ return !!(d.command && d.command.id !== d.handledC
 
 function heartbeat(){
   if(!state.account) return;
-  api('devices/me', {method:'POST', body:{}});
+  // "Still here", with the time spent in the app since the last one (put back if it doesn't arrive).
+  const seconds = takeUsage();
+  api('devices/me', {method:'POST', body:seconds ? {seconds} : {}}).then(r=>{ if(!r.ok) returnUsage(seconds); });
   flushOutbox();
+  flushProblems();
   syncSharedDraft();
 }
 /* Shared drafts keep local edits durable while merging other devices' changes.
@@ -333,7 +339,7 @@ async function checkCommands(){
     if(r.ok && Array.isArray(r.data)){
       const changed = JSON.stringify(r.data) !== JSON.stringify(state.devices);
       state.devices = r.data;
-      if(changed && state.view === 'admin') render();
+      if(changed) paintAdmin();
       const me = myDevice();
       if(me && commandIsPending(me) && me.command.id !== lget('handledCommand')) await runCommand(me.command);
     }
@@ -361,7 +367,7 @@ async function refreshDevices(){
   const r = await api('devices');
   if(r.ok && Array.isArray(r.data)){
     state.devices = r.data;
-    if(state.view === 'admin') render();
+    paintAdmin();
   }
 }
 const isVisible = ()=> document.visibilityState === 'visible';
@@ -392,6 +398,7 @@ function setApiHealth(online){
   state.apiOnline = next;
   const el = document.getElementById('connectionStatus');
   if(el) el.hidden = next;
+  updateTopbar();   // Offline takes room in the top bar: the screen's name makes way
   if(next) flushOutbox();
 }
 window.addEventListener('online', ()=>{ api('health'); });
@@ -403,20 +410,26 @@ function accountLabel(a){ return a === 'rozha' || a === 'yunis' ? t('accountName
 /* Screens each account may open. The server sends the real list with every
    start (bootstrap.views) and checks every request; this copy only covers
    an offline start before that answer arrives. */
+const ALL_ROLES = ['history','manage','catalog','record','transfers','assistant','send','exports','notify','reminders'];
 const ACCOUNT_VIEWS = {
-  rozha: ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record','admin','settings'],
-  yunis: ['order','assistant','transfers','history','suppliers','itemsAdmin','units','record']
+  rozha: ['order','assistant','history','transfers','manage','suppliers','itemsAdmin','units','record','admin','settings'],
+  yunis: ['order','assistant','history','manage','suppliers','itemsAdmin','units','record','settings']
 };
-/* Order, History and Manage, with Transfers before Manage where Settings turns it on. Rico lives in
-   the top bar and Settings in the account sheet. */
-const tabsFor = ()=> showTransfers() ? ['order','history','transfers','manage'] : ['order','history','manage'];
-const DEVICE_VIEWS = ['settings','manage'];
+const ACCOUNT_ROLES = {rozha:ALL_ROLES, yunis:ALL_ROLES.filter(r=>r !== 'transfers')};
+/* The screens of the tab bar, in order, for whoever is signed in. With four or fewer they are all
+   tabs; with more, the first four are and the rest are under More. Rico lives in the top bar and
+   Settings in the account sheet. */
+const NAV_SCREENS = ['order','history','transfers','manage','record','admin'];
+const navScreens = ()=> NAV_SCREENS.filter(v=>state.views.includes(v));
+const tabsFor = ()=> navScreens().length ? navScreens().slice(0, 4) : ['order'];
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
 function applyAccount(a){
   state.account = a.account === 'rozha' || a.account === 'yunis' ? a.account : null;
   state.name = a.name || ({rozha:'Rozha', yunis:'Yunis'})[state.account] || '';
   const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
-  state.views = state.account ? [...views.filter(v=>!DEVICE_VIEWS.includes(v)), ...DEVICE_VIEWS] : [];
+  state.views = state.account ? [...new Set([...views, 'settings'])] : [];
+  const roles = Array.isArray(a.roles) ? a.roles : (ACCOUNT_ROLES[state.account] || []);
+  state.roles = state.account ? roles.filter(r=>ALL_ROLES.includes(r)) : [];
   state.tabs = tabsFor();
   if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
 }
@@ -425,7 +438,23 @@ async function loadData(){
   const r = await api('bootstrap');
   if(!r.ok || !r.data || !r.data.account) return false;
   lastLoadAt = Date.now();
-  const d = r.data;
+  applyData(r.data);
+  state.offlineSince = null;
+  // Kept on this phone so the app still opens with everything when there is no connection (Offline
+  // access); signing out removes it.
+  if(state.account === r.data.account) lset('bootCache:' + state.account, {at:Date.now(), data:{...r.data, draft:null}});
+  return true;
+}
+/* The last data this phone loaded, when the server can't be reached at start (at most a week old). */
+function loadBootCache(){
+  const c = lget('bootCache:' + state.account);
+  if(!c?.data || c.data.account !== state.account || !(Date.now() - Number(c.at) < 7 * 86400000)) return false;
+  applyData(c.data);
+  state.sharedDraft = null;   // the shared draft waits for the server; this phone's own draft is kept
+  state.offlineSince = Number(c.at);
+  return true;
+}
+function applyData(d){
   applyAccount(d);
   saveSessionAccount();
   state.suppliers = d.suppliers || [];
@@ -441,13 +470,12 @@ async function loadData(){
   state.sharedDraft = d.draft || null;
   ricoSetInbox(d.inbox || []);
   paintStreakChip(false);
-  return true;
 }
 /* Keeps the saved session's name current, so an offline start shows the
    right person. */
 function saveSessionAccount(){
   const s = apiSession();
-  if(s) lset('apiSession', {...s, account:state.account, name:state.name});
+  if(s) lset('apiSession', {...s, account:state.account, name:state.name, views:state.views, roles:state.roles});
 }
 
 /* ============ Desktop installation ============ */
@@ -484,16 +512,17 @@ window.addEventListener('appinstalled',()=>{
 document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
 /* Clears this device's sign-in and returns to the PIN pad. */
 function signOut(reason, {preserveSession = false} = {}){
+  if(state.account) lset('bootCache:' + state.account, null);   // the kitchen's data does not stay on a signed-out phone
   resetSharedDraft(); state.sharedDraft=null;
   ricoReset();
   if(!preserveSession) clearApiSession();
   forcedRefreshOpen = false;
-  state.account = null; state.name = ''; state.views = []; state.tabs = tabsFor();
+  state.account = null; state.name = ''; state.views = []; state.roles = []; state.adminPage = null; state.tabs = tabsFor();
   state.suppliers = []; state.items = []; state.units = []; state.history = [];
   state.activity = []; state.devices = []; state.reminder = null;
   state.streak = null; state.pins = []; state.months = [];
   try{ updateAppBadge(); }catch(_){}
-  viewMemory.clear(); tabMemory.clear(); diagnosticState = {account:null, data:null, error:false, busy:false};
+  viewMemory.clear(); tabMemory.clear(); resetAdmin();
   state.catalogQuery='';state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
   reminderDraft = null;
@@ -521,13 +550,11 @@ function handleSessionStorage(event){
   signOut(t('sessionEnded'), {preserveSession: true});
 }
 window.addEventListener('storage', handleSessionStorage);
+/* Sign Out signs out straight away (no question first): the PIN brings everything back. */
 async function doLogout(){
   const reply=await api('logout',{method:'POST'});
   if(reply.ok || reply.status===401) signOut();
-  else toast(t('saveFailed'));
-}
-async function confirmSignOut(){
-  if(await showConfirm(esc(t('signOutMsg')), {title:t('signOutTitle'), okLabel:t('logout'), icon:GLYPH_SIGNOUT, tone:'danger'})) doLogout();
+  else toast(t('saveFailed'), 'error');
 }
 /* Refresh buttons: the arrows turn while the refresh runs (at least one full turn, so it reads as
    a refresh even when the answer is instant). The screen may be drawn again meanwhile, so the
@@ -561,7 +588,8 @@ async function refreshData(force){
   if(Date.now() - lastLoadAt < (force ? 15000 : REFRESH_MS)) return;
   refreshBusy = true;
   try{
-    const shown = () => JSON.stringify([state.history, state.items, state.suppliers, state.units, state.account]);
+    // A change to what this person may open or do (Admin, Access) redraws the screen too.
+    const shown = () => JSON.stringify([state.history, state.items, state.suppliers, state.units, state.account, state.views, state.roles]);
     const before = shown();
     if(await loadData() && shown() !== before) refreshWaiting = true;
   }finally{ refreshBusy = false; }
@@ -579,7 +607,7 @@ setInterval(()=>refreshData(false), 15000);
 document.addEventListener('visibilitychange', ()=>refreshData(true));
 /* Offline at start-up: show what we can, say so, and keep trying quietly. */
 function retryLoad(){
-  toast(t('loadFailed'), 'warn');
+  toast(state.offlineSince ? t('offlineCached')(formatIraqDateTime(state.offlineSince, {hour:'numeric', minute:'2-digit'})) : t('loadFailed'), 'warn', {ms:4200});
   const timer = setInterval(async ()=>{
     if(!state.account){ clearInterval(timer); return; }
     if(!isVisible() || !navigator.onLine) return;
@@ -594,7 +622,7 @@ async function boot(){
   }
   try{
     state.deviceId = ensureDeviceId();
-    lset('faceIdKeys',null);
+    lset('faceIdKeys',null); lset('showTransfers',null);   // settings from older versions
     const savedLang = lget('lang');
     state.lang = LANGS.includes(savedLang) ? savedLang : 'en';
     const session = apiSession();
@@ -602,6 +630,8 @@ async function boot(){
       applyAccount(session);
       loadedOk = await loadData();
       if(!loadedOk && !apiSession()) state.account = null;   // the session was rejected
+      // Offline: open with what this phone saved last time; the real data replaces it once it loads.
+      else if(!loadedOk && loadBootCache()){ restoreCartDraft(); restoreQueue(); }
       // Load the saved local draft only after the catalog is available, keeping
       // it intact if the app starts while offline and needs to retry loading.
       if(loadedOk){ restoreCartDraft(); restoreQueue(); }
@@ -655,6 +685,7 @@ async function hideSplash(minShown = 1150){
   await new Promise(r=>setTimeout(r, wait));
   el.dataset.state = 'leaving';
   document.documentElement.classList.remove('booting');
+  syncAppearance();
   let gone = false;
   const done = ()=>{ if(gone) return; gone = true; el.remove(); };
   el.addEventListener('animationend', e=>{ if(e.target === el) done(); });
@@ -723,6 +754,21 @@ const RENDERERS = {
   transfers:[()=>renderTransfers(),()=>attachTransferEvents()]
 };
 const shellKey = ()=>[state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
+/* One screen's page, without its events (render() attaches them). */
+function pageHtml(view){
+  const draw = (RENDERERS[view] || RENDERERS.order)[0];
+  // Rico has his own header, and an Admin page its own (with Admin's back button).
+  return `${view === 'assistant' || (view === 'admin' && state.adminPage) ? '' : renderPageHeading()}${view === 'order' ? renderPushBanner() : ''}${managedView(view)?renderManageNav():''}${draw()}`;
+}
+/* A neighbouring screen drawn for a swipe preview: the screens read state.view while they draw, so it
+   is set to that screen for the moment (with its own remembered search) and put back. */
+function peekHtml(view){
+  const was = {view:state.view, query:state.catalogQuery};
+  state.view = view; state.catalogQuery = viewMemory.get(view)?.query || '';
+  try{ return pageHtml(view); }
+  catch(e){ console.warn('swipe preview', e); return ''; }
+  finally{ state.view = was.view; state.catalogQuery = was.query; }
+}
 function render(){
   applyLangClasses();
   applyPrefs();
@@ -734,8 +780,8 @@ function render(){
     app.innerHTML = renderLogin(); attachLoginEvents(); syncInstallPrompt(); return;
   }
   if(!canOpen(state.view)) state.view = state.tabs[0] || 'order';
-  const [draw, attach] = RENDERERS[state.view] || RENDERERS.order;
-  const content = `${state.view === 'assistant' ? '' : renderPageHeading()}${state.view === 'order' ? renderPushBanner() : ''}${managedView(state.view)?renderManageNav():''}${draw()}`;
+  const attach = (RENDERERS[state.view] || RENDERERS.order)[1];
+  const content = pageHtml(state.view);
   // The shell (top bar and tab bar) stays mounted while the account, its tabs
   // and the language stay the same.
   const keepShell = app.dataset.shell === shellKey() && app.querySelector('.content');
@@ -755,7 +801,7 @@ function render(){
     markActiveNav();
   }else{
     app.innerHTML = `${renderTopbar()}<main class="content" id="mainContent">${content}</main>
-      <div class="bottom-stack">${state.view==='order'?renderOrderBottomBar():''}${state.view==='assistant'?renderRicoComposer():''}${state.view==='transfers'?renderTransferBar():''}${renderBottomNav()}</div>`;
+      <div class="bottom-stack">${state.view==='order'?renderOrderBottomBar():''}${state.view==='assistant'?renderRicoComposer():''}${state.view==='transfers'?renderTransferBar():''}<div class="nav-row">${renderBottomNav()}<button type="button" class="to-top" id="toTopBtn" aria-label="${esc(t('backToTop'))}" aria-hidden="true" tabindex="-1">${ICON_TO_TOP}</button></div></div>`;
     attachShellEvents();
   }
   app.classList.remove('static-update');
@@ -772,24 +818,23 @@ function render(){
     requestAnimationFrame(()=>{ app.querySelector('.content')?.style.removeProperty('min-height'); box.scrollTop = keepTop; });
   }
   updateTopbar();
+  paintToTop();
   paintStreakChip(false);
   syncInstallPrompt();
 }
 
-/* Rico in the top bar: his spark in a round button, like an iPhone toolbar symbol, that opens his
-   screen. A red dot while he has written first or an order is late (then the spark turns orange),
-   checked every minute. */
+/* Rico in the top bar: a green pill with his sparkle and his name, that opens his screen. A red dot
+   while he has written first or an order is late (checked every minute); the pill itself stays green. */
 function updateRicoBadge(){
   const btn = document.getElementById('ricoTopBtn');
   if(!btn) return;
   const late = ricoLateOrders().length, unread = ricoUnread();
-  btn.classList.toggle('late', !!late);
   btn.querySelector('.rico-badge').hidden = !(late || unread);
   btn.setAttribute('aria-label', late ? t('ricoNavLate')(late) : unread ? t('ricoNavUnread') : t('ricoName'));
 }
 setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
-/* Rico answers what just happened: the spark gives one quick twist (a small dip when the order was
-   cleared). Calling it again restarts the motion from the start. */
+/* Rico answers what just happened: the pill gives one small bounce and its sparkle a quick turn (a small
+   dip when the order was cleared). Calling it again restarts the motion from the start. */
 function ricoReact(kind = 'up'){
   const btn = document.getElementById('ricoTopBtn');
   if(!btn || reducedMotion()) return;
@@ -798,11 +843,10 @@ function ricoReact(kind = 'up'){
 }
 
 /* ============ Navigation ============
-   Phones: Order, History and Manage (and Transfers where Settings turns it
-   on) plus More (Record, and Admin for Rozha). Computers: a sidebar with the
-   same screens. Rico opens from the top bar and Settings from the account
-   sheet. A lens glides to the current tab, and on phones the page can be
-   swiped between the tabs. */
+   Phones: up to four tabs (Order, History, Transfers, Manage, Record, Admin, whichever this person may
+   open); with more than four, the rest are under More. Computers: a sidebar with every screen. Rico
+   opens from the top bar and Settings from the account sheet. A lens glides to the current tab, the
+   page can be swiped between the tabs, and the bar shrinks to its icons while you scroll down. */
 const VIEW_LABEL_KEYS = {manage:'manage',order:'order', assistant:'ricoName', transfers:'transfers', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
@@ -813,15 +857,17 @@ function scrollBox(){ return (inAppFrame() && document.querySelector('.content')
 /* Every screen in tab-bar order: the tabs first, then the rest. */
 function navOrder(){ return [...state.tabs, ...state.views.filter(v=>!state.tabs.includes(v))]; }
 const managedView=v=>['manage','itemsAdmin','suppliers','units'].includes(v);
-const moreViews=()=>['record','admin'].filter(canOpen);
+const moreViews=()=>navScreens().slice(4);
 const mainView=v=>managedView(v)?'manage':v;
 function viewIndex(v){ const i = navOrder().indexOf(v); return i >= 0 ? i : navOrder().length; }
 const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function renderBottomNav(){
   const button=id=>`<button type="button" class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span>${id==='transfers'?transferNavBadge():''}</button>`;
-  // On a computer the tab bar is the sidebar, with the ricotta mark at its top.
-  return `<nav class="bottomnav" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${moreViews().map(button).join('')}</div></nav>`;
+  const more = moreViews();
+  // On a computer the tab bar is the sidebar, with the ricotta mark at its top. More exists only when
+  // there are more than four screens.
+  return `<nav class="bottomnav" style="--n:${state.tabs.length + (more.length ? 1 : 0)}" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}${more.length ? `<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${more.map(button).join('')}</div>` : ''}</nav>`;
 }
 function renderManageNav(){
   return `<div class="manage-nav"><nav class="manage-sections" aria-label="${esc(t('catalog'))}">${[['manage','items'],['suppliers','suppliers'],['units','units']].filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav></div>`;
@@ -865,8 +911,9 @@ function placeNavIndicator(){
     ind.style.setProperty('--iy', active.offsetTop+'px');
     ind.style.setProperty('--ih', active.offsetHeight+'px');
   }else{
-    ind.style.setProperty('--ix', active.offsetLeft+'px');
-    ind.style.setProperty('--iw', active.offsetWidth+'px');
+    // The tabs share the bar equally, so the lens is placed by its position (see .nav-indicator): it
+    // stays on its tab while the bar itself grows or shrinks.
+    ind.style.setProperty('--ip', String(barButtons(nav).indexOf(active)));
   }
   if(first){ void ind.offsetWidth; ind.style.transition = ''; }
 }
@@ -877,10 +924,9 @@ function setLensPosition(pos){
   if(!nav || !ind || !isPhoneLayout()) return;
   const btns = barButtons(nav);
   if(!btns.length) return;
-  const p = Math.max(0, Math.min(btns.length-1, pos)), i = Math.floor(p), f = p-i, a = btns[i], b = btns[Math.min(btns.length-1,i+1)];
+  const p = Math.max(0, Math.min(btns.length-1, pos));
   ind.style.opacity = '1';
-  ind.style.setProperty('--ix', (a.offsetLeft + (b.offsetLeft-a.offsetLeft)*f)+'px');
-  ind.style.setProperty('--iw', (a.offsetWidth + (b.offsetWidth-a.offsetWidth)*f)+'px');
+  ind.style.setProperty('--ip', p.toFixed(3));
   btns.forEach((x,k)=>x.classList.toggle('lens-over', k===Math.round(p)));
 }
 /* Hold the tab bar and slide (phones): the lens follows the finger and each
@@ -1054,10 +1100,10 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLangMenu(); 
    Like an iPhone's tab bar, tapping a screen cross-fades to it quickly; only a finger swiping the
    page slides it. Redrawing the same screen never plays an entrance animation. */
 const PAGE_TRANSITION = {ms:200};
-const SWIPE_MS = 180;
+const SWIPE_MS = 200;
 const PAGE_EASE = 'cubic-bezier(.25,.1,.25,1)';
-// After a swipe the page is already moving with the finger, so it keeps going.
-const SWIPE_EASE = 'cubic-bezier(.2,.55,.25,1)';
+// After a swipe the page is already moving with the finger, so it keeps going and settles without a bounce.
+const SWIPE_EASE = 'cubic-bezier(.2,.8,.2,1)';
 let glide = null;
 function endGlide(){
   if(!glide) return;
@@ -1092,11 +1138,12 @@ function pageGhost(content){
   copy.scrollTop = scrolled;
   return {layer, copy};
 }
-function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
+function goView(view, {fromOffset=0, velocity=0, peek=null, keepLens=false, fade=false} = {}){
   closeLangMenu();setMoreOpen(false);
   if(view !== 'assistant' && ricoRecorder.active) ricoResetVoice();   // leaving Rico drops an unsent recording
-  if(!view || view === state.view || !canOpen(view)) return;
+  if(!view || view === state.view || !canOpen(view)){ peek?.layer.remove(); return; }
   reminderDraft = null;   // a reminder that wasn't saved stays off
+  if(view !== 'admin') state.adminPage = null;
   endGlide();
   const dir = (Math.sign(viewIndex(view) - viewIndex(state.view)) || 1) * (isRtl() ? -1 : 1);
   const old = document.querySelector('.content');
@@ -1111,6 +1158,9 @@ function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
   render();
   scrollBox().scrollTo({top:remembered?.top || 0});
+  // The swipe's preview of this page is replaced by the page itself, in the same place.
+  peek?.layer.remove();
+  quietBar();
   if(view === 'record') refreshActivity();
   if(view === 'admin') refreshDevices();
   if(!keepLens) placeNavIndicator();
@@ -1121,7 +1171,11 @@ function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
     frames.inn[0] = {transform:`translate3d(${dir*width + fromOffset}px,0,0)`};
     frames.out[0] = {transform:`translate3d(${fromOffset}px,0,0)`};
   }
-  const opts = fromOffset ? {duration:SWIPE_MS, easing:SWIPE_EASE} : {duration:quick?160:PAGE_TRANSITION.ms, easing:PAGE_EASE};
+  // After a swipe the pages carry on at the speed the finger let go (this curve starts about four times
+  // faster than its average), so there is no seam between dragging and gliding.
+  const remaining = Math.max(0, width - Math.abs(fromOffset));
+  const swipeMs = Math.round(Math.min(420, Math.max(SWIPE_MS, velocity ? 4 * remaining / Math.abs(velocity) : 300)));
+  const opts = fromOffset ? {duration:swipeMs, easing:SWIPE_EASE} : {duration:quick?160:PAGE_TRANSITION.ms, easing:PAGE_EASE};
   content.style.transform = '';
   content.classList.add('gliding');
   const anims = [content.animate(frames.inn, opts)];
@@ -1131,18 +1185,39 @@ function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
   anims[0].finished.then(()=>{ if(glide === mine) endGlide(); }, ()=>{});
 }
 
-/* Swipe the page sideways to move between the four tabs (phones). The page
-   follows the finger, the lens follows the page, and a short fling is
-   enough. Anything that scrolls sideways on its own, inputs, steppers and
-   open dialogs are left alone. */
+/* Swipe the page sideways to move between the tabs (phones), like the iPhone's Home Screen: the next
+   page is already there beside this one and both follow the finger; let go and they carry on at the
+   finger's speed (a short flick is enough: the release speed is projected forward, as iOS does). Past
+   the first or last tab the page resists, more the further it is pulled. Anything that scrolls
+   sideways on its own, inputs, steppers and open dialogs are left alone. */
+const rubberband = (x, size, c = .55)=> (x * size * c) / (size + c * Math.abs(x));
+const projectSwipe = (pxPerMs, rate = .995)=> pxPerMs * rate / (1 - rate);
+/* The neighbouring page, drawn beside this one in a layer of its own (with its remembered place). */
+function pagePeek(view, content){
+  const r = content.getBoundingClientRect(), top = viewMemory.get(view)?.top || 0;
+  const layer = document.createElement('div');
+  layer.className = 'page-ghost page-peek'; layer.setAttribute('aria-hidden','true');
+  Object.assign(layer.style, {left:r.left+'px', width:r.width+'px'});
+  const copy = content.cloneNode(false);
+  copy.removeAttribute('id'); copy.classList.remove('gliding');
+  copy.innerHTML = peekHtml(view);
+  copy.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+  if(inAppFrame()) Object.assign(copy.style, {top:r.top+'px', width:r.width+'px', height:r.height+'px', transform:''});
+  else Object.assign(copy.style, {top:(r.top + window.scrollY - top)+'px', width:r.width+'px', transform:''});
+  layer.appendChild(copy);
+  document.body.appendChild(layer);
+  if(inAppFrame()) copy.scrollTop = top;
+  return {view, layer, copy};
+}
 (function initPageSwipe(){
   let g = null;
-  const blocked = el=>el.closest('input,textarea,select,.stepper,.order-tabs,.record-filters,.manage-sections,.pill-seg,.rico-composer,.bottom-stack,.item-sort-list,.day-chips,.unit-grid,.rico-picker-list,#modalRoot .modal-overlay,.ctx-layer,.lang-layer');
+  const blocked = el=>el.closest('input,textarea,select,.stepper,.order-tabs,.record-filters,.manage-sections,.pill-seg,.rico-composer,.bottom-stack,.item-sort-list,.day-chips,.unit-grid,.rico-picker-list,.data-table-scroll,#modalRoot .modal-overlay,.ctx-layer,.lang-layer');
+  const dropPeek = s=>{ s.peek?.layer.remove(); s.peek = null; };
   document.addEventListener('pointerdown', e=>{
     if(!isPhoneLayout() || e.pointerType==='mouse' || !state.account) return;
     const content = e.target.closest('.content');
-    if(!content || blocked(e.target) || !state.tabs.includes(mainView(state.view))) return;
-    g = {x:e.clientX, y:e.clientY, t:performance.now(), id:e.pointerId, content, dx:0, mode:null};
+    if(!content || blocked(e.target) || !state.tabs.includes(mainView(state.view)) || state.adminPage) return;
+    g = {x:e.clientX, y:e.clientY, id:e.pointerId, content, dx:0, mode:null, peek:null, moves:[{x:e.clientX, t:performance.now()}]};
   }, {passive:true});
   document.addEventListener('pointermove', e=>{
     if(!g || e.pointerId!==g.id) return;
@@ -1153,18 +1228,23 @@ function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
       if(g.mode === 'x'){ endGlide(); document.body.classList.add('page-swiping'); }
     }
     if(g.mode !== 'x') return;
-    const rtl = isRtl() ? -1 : 1, i = state.tabs.indexOf(mainView(state.view));
+    g.moves.push({x:e.clientX, t:performance.now()});
+    if(g.moves.length > 6) g.moves.shift();
+    const rtl = isRtl() ? -1 : 1, i = state.tabs.indexOf(mainView(state.view)), w = g.content.getBoundingClientRect().width || window.innerWidth;
     const next = i - Math.sign(dx)*rtl;
-    const edge = next < 0 || next >= state.tabs.length;
-    g.dx = edge ? dx*.28 : dx;
+    const edge = !dx || next < 0 || next >= state.tabs.length;
+    g.dx = edge ? rubberband(dx, w) : dx;
     g.content.style.transform = `translate3d(${g.dx}px,0,0)`;
-    if(!edge) setLensPosition(i + (-g.dx*rtl)/window.innerWidth);
+    if(edge){ dropPeek(g); placeNavIndicator(); return; }
+    if(g.peek?.view !== state.tabs[next]){ dropPeek(g); g.peek = pagePeek(state.tabs[next], g.content); }
+    g.peek.copy.style.transform = `translate3d(${g.dx - Math.sign(g.dx)*w}px,0,0)`;
+    setLensPosition(i + (-g.dx*rtl)/w);
   }, {passive:true});
   const end = e=>{
     if(!g || e.pointerId!==g.id) return;
     const s = g; g = null;
     document.body.classList.remove('page-swiping');
-    if(s.mode !== 'x') return;
+    if(s.mode !== 'x'){ dropPeek(s); return; }
     // A sideways swipe that started on a button must not also press it.
     const swallow = ev=>{
       if(!s.content.contains(ev.target)) return;
@@ -1173,19 +1253,28 @@ function goView(view, {fromOffset=0, keepLens=false, fade=false} = {}){
     };
     document.addEventListener('click', swallow, {capture:true});
     setTimeout(()=>document.removeEventListener('click', swallow, {capture:true}), 350);
-    const rtl = isRtl() ? -1 : 1, i = state.tabs.indexOf(mainView(state.view));
-    const v = s.dx/Math.max(1, performance.now()-s.t);
-    const go = Math.abs(s.dx) > window.innerWidth*.26 || Math.abs(v) > .45;
+    const rtl = isRtl() ? -1 : 1, i = state.tabs.indexOf(mainView(state.view)), w = s.content.getBoundingClientRect().width || window.innerWidth;
+    // The finger's speed over its last few moves, in pixels per millisecond.
+    const first = s.moves[0], last = s.moves[s.moves.length-1];
+    const v = last.t - first.t > 0 ? (last.x - first.x) / (last.t - first.t) : 0;
+    const projected = s.dx + projectSwipe(v);
     const next = i - Math.sign(s.dx)*rtl;
-    if(go && next >= 0 && next < state.tabs.length){
-      // The new page arrives from where the finger left the old one.
-      goView(state.tabs[next], {fromOffset:s.dx});
+    const go = Math.sign(projected) === Math.sign(s.dx) && Math.abs(projected) > w * .5;
+    if(go && s.peek && next >= 0 && next < state.tabs.length){
+      // The new page carries on from where the finger left it, at the finger's speed.
+      goView(state.tabs[next], {fromOffset:s.dx, velocity:v, peek:s.peek});
       return;
     }
-    const back = s.content.animate?.([{transform:`translate3d(${s.dx}px,0,0)`},{transform:'none'}], {duration:360, easing:'cubic-bezier(.34,1.3,.5,1)'});
+    const settle = {duration:380, easing:'cubic-bezier(.2,.8,.2,1)'};
+    s.content.animate?.([{transform:`translate3d(${s.dx}px,0,0)`},{transform:'none'}], settle);
     s.content.style.transform = '';
+    if(s.peek){
+      const away = `translate3d(${-Math.sign(s.dx)*w}px,0,0)`, peek = s.peek;
+      peek.copy.style.transform = away;
+      const a = peek.copy.animate?.([{transform:`translate3d(${s.dx - Math.sign(s.dx)*w}px,0,0)`},{transform:away}], settle);
+      if(a) a.finished.then(()=>peek.layer.remove(), ()=>peek.layer.remove()); else peek.layer.remove();
+    }
     placeNavIndicator();
-    return back;
   };
   document.addEventListener('pointerup', end);
   document.addEventListener('pointercancel', end);
@@ -1280,7 +1369,7 @@ function openSelSheet(sel){
   const list = wrap.querySelector('.sel-list');
   const paint = q=>{
     const shown = globalThis.RicottaSearch.rank(opts,q,o=>o.label);
-    list.innerHTML = shown.length ? shown.map(o=>`<button type="button" class="sel-opt${o.on ? ' on' : ''}${o.value === '' ? ' none' : ''}" role="option" aria-selected="${o.on}" data-v="${esc(o.value)}"><span dir="auto">${esc(o.label)}</span>${o.on ? '<b aria-hidden="true">✓</b>' : ''}</button>`).join('')
+    list.innerHTML = shown.length ? shown.map(o=>`<button type="button" class="sel-opt${o.on ? ' on' : ''}${o.value === '' ? ' none' : ''}" role="option" aria-selected="${o.on}" data-v="${esc(o.value)}"><span dir="auto">${esc(o.label)}</span>${o.on ? ICON_CHECK : ''}</button>`).join('')
       : `<div class="field-hint">${esc(t('noSearchResults'))}</div>`;
   };
   paint('');
@@ -1431,7 +1520,22 @@ function updateTopbar(){
   bar.classList.toggle('scrolled', y > 6);
   const title = bar.querySelector('.topbar-title');
   if(title){ const label = viewLabel(state.view); if(title.textContent !== label) title.textContent = label; }
-  bar.classList.toggle('titled', y > 64);
+  const titled = y > 64;
+  if(titled && title) placeTopbarTitle(bar, title);
+  bar.classList.toggle('titled', titled);
+}
+/* The screen's name sits in the middle of the bar when there is room on both sides; when the buttons
+   beside it (the streak, Offline, Rico, the account) take that room, it moves into the free space
+   between them instead of sliding under them. */
+function placeTopbarTitle(bar, title){
+  const b = bar.getBoundingClientRect(), a = bar.querySelector('.topbar-actions')?.getBoundingClientRect();
+  if(!a || !b.width) return;
+  const pad = 16, gap = 10;
+  const lo = isRtl() ? a.right - b.left + gap : pad, hi = isRtl() ? b.width - pad : a.left - b.left - gap;
+  const mid = b.width / 2, half = Math.min(mid - lo, hi - mid);
+  const centered = half * 2 >= Math.min(title.scrollWidth, 150);
+  title.style.left = (centered ? mid : (lo + hi) / 2) + 'px';
+  title.style.maxWidth = Math.max(0, centered ? half * 2 : hi - lo) + 'px';
 }
 // Capturing: in the app frame it is the content, not the page, that scrolls.
 document.addEventListener('scroll', updateTopbar, {passive:true, capture:true});
@@ -1440,12 +1544,13 @@ function bump(el){
   if(!el) return;
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
 }
-/* The browser bar and the iPhone's status bar match the page, light or dark. */
+/* The browser bar and the iPhone's status bar match the page, light or dark, and the dark green of the
+   loading screen while it shows. */
 function syncAppearance(){
   const meta=document.querySelector('meta[name="theme-color"]');
-  // Signed out, a computer shows the green half and a phone the light sign-in page.
   const dark = document.documentElement.classList.contains('dark');
-  const color = !state.account && !isPhoneLayout() ? '#14382C' : dark ? '#000000' : '#F2F2F7';
+  const splash = document.documentElement.classList.contains('booting');
+  const color = splash ? '#14382C' : dark ? '#000000' : '#F2F2F7';
   // A Home Screen app can keep the colour it opened with when the tag only changes, so the tag is
   // replaced with a new one.
   if(meta && meta.content !== color){
@@ -1454,7 +1559,7 @@ function syncAppearance(){
     meta.replaceWith(next);
   }
   // The iPhone app matches it behind the page and in the status bar.
-  tellApp(dark ? 'page-dark' : 'page-light');
+  tellApp(splash ? 'page-splash' : dark ? 'page-dark' : 'page-light');
 }
 /* A small badge identifying who made a change. */
 function whoBadge(account){
@@ -1491,9 +1596,10 @@ function lastQtyMap(){
   return lastQtyCache.map;
 }
 
+/* A screen's large title, under the date, with Search beside it (it finds anything in the app). */
 function renderPageHeading(){
   const now = new Date(), date = formatIraqDateTime(now, {weekday:'long', day:'numeric', month:'long'});
-  return `<header class="page-heading"><time class="page-eyebrow page-date" datetime="${erbilDate(now)}">${esc(date)}</time><h1>${esc(viewLabel(state.view))}</h1></header>`;
+  return `<header class="page-heading"><time class="page-eyebrow page-date" datetime="${erbilDate(now)}">${esc(date)}</time><div class="page-title-row"><h1>${esc(viewLabel(state.view))}</h1><button type="button" class="heading-search" data-spotlight aria-label="${esc(t('spotTitle'))}" aria-keyshortcuts="Control+K Meta+K /">${ICON_SEARCH}</button></div></header>`;
 }
 
 /* ============ Notifications: banner ============ */
@@ -1516,9 +1622,6 @@ function renderPushBanner(){
    A translucent bar over the page, like an iPhone app's: the ricotta mark,
    the streak, "Offline" only while the connection is down, and the account
    button (the person's initial) that holds the language and Sign Out. */
-function langButton(id){
-  return `<button type="button" class="chip lang-chip" id="${id}" aria-haspopup="dialog" aria-label="${esc(t('language'))}">${ICON_GLOBE}<span class="lang-code">${state.lang.toUpperCase()}</span><span class="lang-name">${LANG_NAMES[state.lang]}</span>${ICON_CHEVRON}</button>`;
-}
 const accountInitial = ()=>accountLabel(state.account).trim().charAt(0).toUpperCase();
 function renderTopbar(){
   return `
@@ -1528,7 +1631,7 @@ function renderTopbar(){
     <div class="topbar-actions">
       ${renderStreakChip()}
       <div class="chip conn-chip" id="connectionStatus" role="status"${state.apiOnline?' hidden':''}><span></span><em>${esc(t('offline'))}</em></div>
-      <button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${NAV_ICONS.assistant}<i class="rico-badge" hidden></i></button>
+      ${canOpen('assistant') ? `<button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${ICON_SPARKLE}<span class="rico-top-name">${esc(t('ricoName'))}</span><i class="rico-badge" hidden></i></button>` : ''}
       <button type="button" class="account-btn" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
     </div>
   </header>`;
@@ -1549,7 +1652,7 @@ function openAccountSheet(){
   const el = sheet.el;
   el.querySelector('#langBtn').onclick = ()=>{ sheet.close(); openLangMenu(document.getElementById('accountBtn')); };
   el.querySelector('[data-account-go]')?.addEventListener('click', ()=>{ sheet.close(); goView('settings'); });
-  el.querySelector('#logoutBtn').onclick = ()=>{ sheet.close(); confirmSignOut(); };
+  el.querySelector('#logoutBtn').onclick = ()=>{ sheet.close(); doLogout(); };
   requestAnimationFrame(()=>el.querySelector('#langBtn')?.focus({preventScroll:true}));
 }
 
@@ -1600,28 +1703,55 @@ function attachShellEvents(){
   attachNavEvents();
   document.getElementById('accountBtn').onclick = openAccountSheet;
   const ricoBtn = document.getElementById('ricoTopBtn');
-  ricoBtn.onclick = ()=>goView('assistant');
-  ricoBtn.addEventListener('animationend', ()=>ricoBtn.classList.remove('reacting'));
+  if(ricoBtn){
+    ricoBtn.onclick = ()=>goView('assistant');
+    ricoBtn.addEventListener('animationend', e=>{ if(e.target === ricoBtn) ricoBtn.classList.remove('reacting'); });
+  }
   document.getElementById('streakChip').onclick = openStreakSheet;
 }
 function attachNavEvents(){
   const nav = document.querySelector('.bottomnav');
-  nav.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>goView(b.dataset.view));
-  document.getElementById('navMoreBtn').onclick=()=>setMoreOpen(!nav.classList.contains('more-open'));
+  // Tapping the screen you are on takes it back to the top, like an iPhone tab bar.
+  nav.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>{ if(b.dataset.view === state.view) scrollToTop(); else goView(b.dataset.view); });
+  const more = document.getElementById('navMoreBtn');
+  if(more) more.onclick=()=>setMoreOpen(!nav.classList.contains('more-open'));
+  const top = document.getElementById('toTopBtn');
+  if(top) top.onclick = scrollToTop;
 }
-/* Settings adds or removes Transfers: only the tab bar is drawn again, so the page keeps its place. */
-function redrawTabBar(){
-  state.tabs = tabsFor();
-  const nav = document.querySelector('.bottomnav');
-  if(!nav) return;
-  nav.outerHTML = renderBottomNav();
-  attachNavEvents();
-  document.getElementById('app').dataset.shell = shellKey();
-  placeNavIndicator();
+/* The tab bar gets out of the way while you read (phones): scrolling down shrinks it to its icons,
+   scrolling up or coming back near the top brings the names back. Far down a page, a round button
+   beside it goes back to the top. A screen that has just opened (or was put back where it was) starts
+   with the full bar. */
+let barQuietUntil = 0, barLastY = 0;
+function setBarCompact(on){ document.querySelector('.bottomnav')?.classList.toggle('compact', !!on && isPhoneLayout()); }
+function quietBar(){ barQuietUntil = performance.now() + 450; barLastY = scrollBox().scrollTop; setBarCompact(false); paintToTop(); }
+function paintToTop(){
+  const b = document.getElementById('toTopBtn');
+  if(!b) return;
+  const show = !!state.account && state.view !== 'assistant' && scrollBox().scrollTop > window.innerHeight * 1.2;
+  if(b.classList.contains('show') === show) return;
+  b.classList.toggle('show', show); b.tabIndex = show ? 0 : -1; b.setAttribute('aria-hidden', String(!show));
 }
+function scrollToTop(){
+  scrollBox().scrollTo({top:0, behavior:reducedMotion() ? 'auto' : 'smooth'});
+  setBarCompact(false);
+}
+document.addEventListener('scroll', e=>{
+  if(!state.account) return;
+  const box = scrollBox();
+  if(e.target !== box && !(box === document.scrollingElement && e.target === document)) return;
+  const y = box.scrollTop, d = y - barLastY;
+  barLastY = y;
+  paintToTop();
+  if(performance.now() < barQuietUntil || document.body.classList.contains('page-swiping')) return;
+  if(y < 40) setBarCompact(false);
+  else if(d > 6) setBarCompact(true);
+  else if(d < -10) setBarCompact(false);
+}, {passive:true, capture:true});
 /* Events inside the page that more than one screen uses. */
 function attachContentEvents(){
   attachCatalogSearch();
+  document.querySelectorAll('[data-spotlight]').forEach(b=>b.onclick = ()=>openSpotlight());
   document.querySelectorAll('[data-manage-view]').forEach(b=>b.onclick=()=>goView(b.dataset.manageView));
   const pushOn = document.getElementById('pushEnableBtn');
   if(pushOn) pushOn.onclick = async ()=>{
@@ -1631,6 +1761,7 @@ function attachContentEvents(){
   };
   const pushLater = document.getElementById('pushDismissBtn');
   if(pushLater) pushLater.onclick = ()=>{ snoozePushBanner(); render(); };
+  document.querySelectorAll('[data-export]').forEach(b=>b.onclick = ()=>openExportSheet(b.dataset.export));
   // "Record" shortcut buttons on the Suppliers / Items screens: jump to the
   // Record already filtered to that kind of change.
   document.querySelectorAll('[data-gorecord]').forEach(b=>b.onclick = ()=>{
@@ -1644,56 +1775,46 @@ function loginMessage(){
   return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), verification:t('securityCheckFailed'), device:t('deviceInUse'), session:state.sessionMsg})[state.pinError] || '';
 }
 const LOGIN_ERRORS = ['wrong','locked','network','verification'];
-function pinBoxClass(i){
-  const filled = i < state.pinBuffer.length;
-  const next = i === state.pinBuffer.length && !state.pinBusy && !state.pinError;
-  return `pin-box${filled?' filled':''}${next?' next':''}`;
-}
+/* The sign-in, like the iPhone's passcode screen in the person's own look (Light, Dark or Automatic):
+   the ricotta mark, "Enter your PIN" and six dots in the upper part, and round number keys low on the
+   screen where the thumb rests, with Delete in the corner once a digit is typed. The language is under
+   the keys. A computer gets the same column and can type the PIN. */
 function renderLogin(){
-  const boxes = Array.from({length:MAX_PIN_LEN}).map((_,i)=>`<span class="${pinBoxClass(i)}"></span>`).join('');
-  const keys = ['1','2','3','4','5','6','7','8','9'];
+  const dots = Array.from({length:MAX_PIN_LEN}).map((_,i)=>`<span class="pin-dot${i < state.pinBuffer.length ? ' filled' : ''}"></span>`).join('');
   const bad = LOGIN_ERRORS.includes(state.pinError);
   const msg = loginMessage();
-  // Computer: the green brand side and the white PIN side, the language in the top corner.
-  // Phone: one light column (the mark, the PIN, the number pad) with the language at the bottom.
-  // The number pad is for touch screens; everywhere else there is a keyboard, so the hints show instead.
+  const key = k=>`<button type="button" class="key" data-key="${k}">${k}</button>`;
   return `
   <div class="login-wrap">
-    <section class="login-brand">
-      <div class="login-word" dir="ltr" aria-hidden="true">ricotta<i></i></div>
-      <div class="login-pitch"><div class="brand-kicker">${esc(t('brandKicker'))}</div><p class="brand-message">${esc(t('brandMessage'))}<br><em>${esc(t('brandMessageAccent'))}</em></p><p class="brand-detail">${esc(t('brandDetail'))}</p></div>
-      <div class="brand-footer"><span>© ${new Date().getFullYear()} Ricotta</span><span>${esc(t('brandFooter'))}</span></div>
-    </section>
-    <div class="login-corner">${langButton('loginLangBtn')}</div>
-    <main class="login-panel"><div class="login-inner">
-      <p class="login-eyebrow">${esc(t('loginEyebrow'))}</p>
-      <h1 class="login-title">${esc(t('loginTitle'))}</h1>
-      <p class="login-sub" id="pinLabel">${esc(t('loginSub'))}</p>
-      <div class="pin-boxes ${bad?'err':''} ${state.pinBusy?'busy':''}" role="group" aria-labelledby="pinLabel">${boxes}</div>
-      <div class="login-error ${state.pinError==='session'?'info':''}" role="alert" style="visibility:${msg?'visible':'hidden'};">${esc(msg) || '&nbsp;'}</div>
-      <div class="login-hints"><p>${ICON_ENTER}${esc(t('loginAuto'))}</p><p>${esc(t('loginKeyboard'))}</p></div>
-      <div class="keypad">
-        ${keys.map(k=>`<button class="key" data-key="${k}">${k}</button>`).join('')}
-        <button class="key clear" data-key="clear">${esc(t('clear'))}</button>
-        <button class="key" data-key="0">0</button>
-        <button class="key backspace" data-key="back" aria-label="${esc(t('deleteDigit'))}">${ICON_BACKSPACE}</button>
+    <main class="login-panel">
+      <div class="login-top">
+        <h1 class="login-word" dir="ltr" aria-label="Ricotta">ricotta<i aria-hidden="true"></i></h1>
+        <p class="login-sub" id="pinLabel">${esc(t('loginEnterPin'))}</p>
+        <div class="pin-dots${bad?' err':''}${state.pinBusy?' busy':''}" role="img" aria-labelledby="pinLabel" aria-describedby="pinCount"><span class="sr-only" id="pinCount">${esc(t('pinTyped')(state.pinBuffer.length, MAX_PIN_LEN))}</span>${dots}</div>
+        <div class="login-error${state.pinBusy || state.pinError==='session'?' info':''}" role="alert">${esc(msg)}</div>
       </div>
-      <p class="login-private">${esc(t('loginPrivate'))}</p>
-      <button type="button" class="login-lang-row" id="loginLangRow" aria-haspopup="dialog" aria-label="${esc(t('language'))}">${ICON_GLOBE}<span>${LANG_NAMES[state.lang]}</span>${ICON_CHEVRON}</button>
-    </div></main>
+      <div class="keypad" role="group" aria-label="${esc(t('loginEnterPin'))}">
+        ${['1','2','3','4','5','6','7','8','9'].map(key).join('')}
+        <span class="key-gap" aria-hidden="true"></span>${key('0')}
+        <button type="button" class="key key-delete${state.pinBuffer ? '' : ' empty'}" data-key="back" aria-label="${esc(t('deleteDigit'))}">${esc(t('delete'))}</button>
+      </div>
+      <p class="login-hint">${esc(t('loginTypeHint'))}</p>
+      <button type="button" class="login-lang-row" id="loginLangRow" aria-haspopup="dialog" aria-label="${esc(t('language'))}">${ICON_GLOBE}<span>${LANG_NAMES[state.lang]}</span></button>
+    </main>
   </div>`;
 }
 function updateLoginFeedback(){
-  const boxes = document.querySelector('.pin-boxes');
-  if(!boxes) return;
-  boxes.classList.toggle('err', LOGIN_ERRORS.includes(state.pinError));
-  boxes.classList.toggle('busy', state.pinBusy);
-  // Class changes alone drive the pop and the next box's caret (see .pin-box in style.css).
-  boxes.querySelectorAll('.pin-box').forEach((box,index)=>{ box.className = pinBoxClass(index); });
+  const dots = document.querySelector('.pin-dots');
+  if(!dots) return;
+  const bad = LOGIN_ERRORS.includes(state.pinError);
+  dots.classList.toggle('err', bad);
+  dots.classList.toggle('busy', state.pinBusy);
+  dots.querySelectorAll('.pin-dot').forEach((dot,index)=>dot.classList.toggle('filled', index < state.pinBuffer.length));
+  document.getElementById('pinCount').textContent = t('pinTyped')(state.pinBuffer.length, MAX_PIN_LEN);
   const message = document.querySelector('.login-error');
-  message.textContent = loginMessage() || ' ';
-  message.style.visibility = loginMessage() ? 'visible' : 'hidden';
-  message.classList.toggle('info', state.pinError === 'session');
+  message.textContent = loginMessage();
+  message.classList.toggle('info', state.pinBusy || state.pinError === 'session');   // "Signing in…" is not an error
+  document.querySelector('.key-delete')?.classList.toggle('empty', !state.pinBuffer);
   document.querySelectorAll('[data-key]').forEach(button=>button.disabled = state.pinBusy);
 }
 async function pressKey(k){
@@ -1733,11 +1854,13 @@ async function completeSignIn(res){
   maybeOpenRicoProviderSetup();
 }
 function attachLoginEvents(){
-  ['loginLangBtn','loginLangRow'].forEach(id=>{
-    const lang = document.getElementById(id);
-    if(lang) lang.onclick = e=>{ e.stopPropagation(); openLangMenu(lang); };
+  const lang = document.getElementById('loginLangRow');
+  if(lang) lang.onclick = e=>{ e.stopPropagation(); openLangMenu(lang); };
+  // A key answers the moment the finger lands on it (a light tick), like the iPhone's passcode pad.
+  document.querySelectorAll('[data-key]').forEach(b=>{
+    b.onpointerdown = e=>{ if(e.button > 0 || b.disabled) return; e.preventDefault(); haptic('light'); pressKey(b.dataset.key); };
+    b.onclick = e=>{ if(e.detail === 0) pressKey(b.dataset.key); };   // Enter or Space on a focused key
   });
-  document.querySelectorAll('[data-key]').forEach(b=>{ b.onclick = ()=>pressKey(b.dataset.key); });
 }
 /* Physical keyboards (computers / tablets with a keyboard) can type the PIN. */
 document.addEventListener('keydown', e=>{
@@ -1824,7 +1947,7 @@ function supplierMono(name){
   return `<span class="supplier-mono" aria-hidden="true">${esc(ch.toLocaleUpperCase())}</span>`;
 }
 function renderOrderArrangeControl(){
-  return canOpen('itemsAdmin') && state.orderTab!=='all' && state.orderTab!=='__none'
+  return canDo('catalog') && state.orderTab!=='all' && state.orderTab!=='__none'
     ? `<button class="item-sort-trigger" data-sort-supplier="${esc(state.orderTab)}">${t('sortSupplierItems')}</button>` : '';
 }
 function orderTabs(){
@@ -1969,7 +2092,7 @@ function refreshCartSummary(){
   if(bar){
     bar.classList.toggle('show', c>0);
     const send = document.getElementById('sendOrdersBtn');
-    send.disabled = c === 0;
+    send.disabled = c === 0 || !canDo('send');
     send.querySelector('.send-meta').textContent = sendMeta();
   }
   const clear=document.getElementById('clearOrderBtn');
@@ -1988,9 +2111,11 @@ function sendMeta(){
 }
 function renderOrderBottomBar(){
   const c = cartCount();
+  // Without the send role the draft is still made here and shared; Rozha sends it.
+  const label = canDo('send') ? t('sendOrders') : t('sendNoAccess');
   return `<div class="bottom-bar ${c>0?'show':''}">
-    <button class="send-btn" id="sendOrdersBtn" ${c===0?'disabled':''}>
-      <span class="send-text"><span class="send-label">${t('sendOrders')}</span><span class="send-meta">${sendMeta()}</span></span>
+    <button class="send-btn" id="sendOrdersBtn" ${c===0 || !canDo('send')?'disabled':''}>
+      <span class="send-text"><span class="send-label">${esc(label)}</span><span class="send-meta">${sendMeta()}</span></span>
       <span class="send-go" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></span>
     </button>
   </div>`;
@@ -2077,6 +2202,7 @@ function attachOrderEvents(){
 /* Opens Send to suppliers with the current draft (the Send button, and
    Rico's "open send" shortcut). Returns false when there is nothing to send. */
 async function startSendQueue(){
+  if(!canDo('send')){ toast(t('sendNoAccess'), 'warn'); return false; }
   if(sharedDraft.conflicts.length){ toast(t('draftConflict')); return false; }
   // An order that is already being saved (or failed to save) is finished first.
   if(state.queue?.record){ goView('queue'); return true; }
@@ -2247,8 +2373,8 @@ function openItemMenu(row){
   const layer = document.createElement('div');
   layer.id = 'ctxLayer'; layer.className = 'ctx-layer';
   const actions = [[1,t('cmAdd')(1),ICON_PLUS],[5,t('cmAdd')(5),ICON_PLUS],[10,t('cmAdd')(10),ICON_PLUS],['type',t('cmType'),ICON_EDIT],
-    ['pin', state.pins.includes(id) ? t('unpinItem') : t('pinItem'), ICON_PIN], ['note', t('itemNoteEdit'), ICON_NOTE]];
-  if(canOpen('itemsAdmin')) actions.push(['edit', t('editItem'), ICON_EDIT_ITEM]);
+    ['pin', state.pins.includes(id) ? t('unpinItem') : t('pinItem'), ICON_PIN]];
+  if(canDo('catalog')) actions.push(['note', t('itemNoteEdit'), ICON_NOTE], ['edit', t('editItem'), ICON_EDIT_ITEM]);
   if(qty) actions.push(['remove',t('cmRemove'),ICON_DELETE]);
   haptic('medium');
   const menuH = actions.length*44 + 16, below = rect.bottom + 12 + menuH < window.innerHeight - 90;
@@ -2315,6 +2441,7 @@ const ricoSuggestion = {data:null, at:0, busy:false};
 const RICO_SUGGEST_TTL = 4*60*1000;
 function ricoSuggestionKey(sg){ return sg ? erbilNow().date+'|'+sg.supplierId : ''; }
 function currentRicoSuggestion(){
+  if(!canOpen('assistant')) return null;
   const sg = ricoSuggestion.data;
   if(!sg || !Array.isArray(sg.lines) || !sg.lines.length) return null;
   if(lget('ricoSuggestHidden') === ricoSuggestionKey(sg)) return null;
@@ -2356,7 +2483,7 @@ function paintRicoSuggestion(){
 }
 async function loadRicoSuggestion(){
   paintRicoSuggestion();
-  if(ricoSuggestion.busy || Date.now() - ricoSuggestion.at < RICO_SUGGEST_TTL) return;
+  if(!canOpen('assistant') || ricoSuggestion.busy || Date.now() - ricoSuggestion.at < RICO_SUGGEST_TTL) return;
   ricoSuggestion.busy = true;
   try{
     const r = await api('assistant/suggestion');
@@ -2405,7 +2532,7 @@ function renderQueue(){
       ? `<a class="wa-btn ${e.sent?'done':''}" data-send="${idx}" href="${esc(waLink(sup.phone, buildMessage(e)))}"${waOpensApp() ? '' : ' target="_blank" rel="noopener noreferrer"'}>${ICON_CHAT}${e.sent?t('sentSendAgain'):t('sendVia')}</a>`
       : `<button class="wa-btn ${e.sent?'done':''}" data-marksent="${idx}" ${e.sent?'disabled':''}>${e.sent?t('sent'):t('markSent')}</button>`;
     return `<div class="queue-card ${e.sent?'sent':''}">
-      <div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}${e.sent ? '' : cutoffChip(e.supplierId)}</span>${e.sent?`<span class="queue-badge">✓ ${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
+      <div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}${e.sent ? '' : cutoffChip(e.supplierId)}</span>${e.sent?`<span class="queue-badge">${ICON_CHECK}${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
       <div class="queue-items">${itemsLine}</div>
       ${canWhatsApp ? '' : `<div class="queue-note">${esc(!sup ? t('noSupplier') : t('noPhoneOnFile'))} · ${esc(t('markSentHint'))}</div>`}
       <div class="queue-actions">${sendBtn}<button class="pdf-btn" data-pdf="${idx}" aria-label="${esc(t('orderSheet'))}">${NAV_ICONS.record}<span>PDF</span></button></div>
@@ -2432,10 +2559,14 @@ function attachQueueEvents(){
   if(retry) retry.onclick = ()=>withBusy(retry, maybeFinishQueue);
   const back = document.getElementById('queueBackBtn');
   if(back) back.onclick = ()=>goView('order');
-  document.querySelectorAll('[data-pdf]').forEach(b=>b.onclick=()=>{
-    const entry = state.queue[parseInt(b.dataset.pdf)]; const supplier = state.suppliers.find(s=>s.id===entry?.supplierId);
-    if(entry) printOrderSheet(entry, supplier);
-  });
+  // The order sheet is a PDF handed to the share sheet (WhatsApp, Files, Print), so nothing opens in a
+  // window without a way back.
+  document.querySelectorAll('[data-pdf]').forEach(b=>b.onclick=()=>withBusy(b, async()=>{
+    const entry = state.queue?.[parseInt(b.dataset.pdf)]; const supplier = state.suppliers.find(s=>s.id===entry?.supplierId);
+    if(!entry) return;
+    try{ await orderSheetPdf(entry, supplier); }
+    catch(e){ console.error('Order sheet failed', e); await showAlert(esc(t('exportFailed'))); }
+  }));
   // The link opens WhatsApp by itself. The supplier is marked sent (and saved on this phone) right away, since
   // the iPhone may pause or close the app as WhatsApp opens; the screen is redrawn a moment later, because
   // removing the link while it is being followed would cancel opening WhatsApp.
@@ -2451,28 +2582,6 @@ function attachQueueEvents(){
   // some other way; without this the queue could never finish and the order
   // was never saved to History.
   document.querySelectorAll('[data-marksent]').forEach(b=>b.onclick=()=>markQueueSent(parseInt(b.dataset.marksent)));
-}
-/* A printable order sheet for one supplier, in the app's language. */
-const SHEET_WORDS = {
-  en:{title:'Purchase order', none:'No supplier', items:'items', item:'Item', unit:'Unit', qty:'Qty', foot:'Please prepare this order with the quantities listed above. Thank you.'},
-  ku:{title:'داواکارییەکی نوێ', none:'بێ دابینکەر', items:'کاڵا', item:'کاڵا', unit:'یەکە', qty:'بڕ', foot:'تکایە داواکارییەکە بەپێی ئەم بڕانە ئامادە بکەن. سوپاس.'},
-  ar:{title:'طلب شراء', none:'بدون مورّد', items:'مواد', item:'المادة', unit:'الوحدة', qty:'الكمية', foot:'يرجى تجهيز هذا الطلب بالكميات المذكورة أعلاه. شكرًا لكم.'}
-};
-// The same fonts as the app: Apple's system font, with Noto Kufi Arabic for Kurdish and Arabic where there is no system Arabic font.
-const SHEET_FONTS = new URL('fonts/fonts.css', location.href).href;
-function printOrderSheet(entry, supplier){
-  const w0 = SHEET_WORDS[state.lang] || SHEET_WORDS.en;
-  const supplierLabel = supplier?.name || w0.none;
-  const rows = sortedSupplierItems(entry.items).map((item,n)=>`<tr><td>${n+1}</td><td>${esc(item.name)}${(state.items.find(x=>x.id === item.itemId) || {}).note ? `<div style="font-size:12px;color:#5c6c63">${esc(state.items.find(x=>x.id === item.itemId).note)}</div>` : ''}</td><td>${esc(unitLabel(item.unit))}</td><td class="qty">${item.qty}</td></tr>`).join('');
-  const w = window.open('', '_blank'); if(!w) return;
-  w.opener = null;
-  const printedAt = formatIraqDateTime(new Date(),{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-  w.document.write(`<!doctype html><html dir="${isRtl()?'rtl':'ltr'}"><head><meta charset="utf-8"><title>${w0.title} · Ricotta</title><link rel="stylesheet" href="${SHEET_FONTS}"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Kufi Arabic',Arial,sans-serif;color:#172a21;margin:0;padding:38px}.head{border-bottom:3px solid #1f5c3f;padding-bottom:18px;display:flex;justify-content:space-between;align-items:end}.brand{font-size:39px;letter-spacing:-2px}.eyebrow{color:#1f5c3f;font-weight:800;font-size:13px}.title{font-size:24px;font-weight:800;margin:8px 0}.meta{color:#5c6c63;font-size:13px;text-align:end}table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#1f5c3f;color:#fff;text-align:start;padding:12px;font-size:13px}td{padding:13px 12px;border-bottom:1px solid #dce8df;font-size:14px}tr:nth-child(even){background:#f5f9f6}.qty{font-size:18px;font-weight:800;text-align:center;color:#1f5c3f}.foot{margin-top:28px;padding:15px 18px;background:#ecf6ee;border-radius:10px;color:#1f5c3f;font-weight:700}</style></head><body><header class="head"><div><div class="eyebrow">Ricotta Orders</div><div class="title">${w0.title}</div><div>${esc(supplierLabel)}</div></div><div class="meta">${esc(printedAt)}<br>${entry.items.length} ${w0.items}</div><div class="brand">Ricotta</div></header><table><thead><tr><th>#</th><th>${w0.item}</th><th>${w0.unit}</th><th>${w0.qty}</th></tr></thead><tbody>${rows}</tbody></table><div class="foot">${w0.foot}</div></body></html>`);
-  w.document.close(); w.focus();
-  // Print once the fonts are in, so Kurdish and Arabic names use Noto Kufi.
-  const link = w.document.querySelector('link');
-  const fontsIn = new Promise(r=>{ link.onload = link.onerror = r; }).then(()=>{ w.document.body.offsetWidth; return w.document.fonts.ready; });
-  Promise.race([fontsIn, new Promise(r=>setTimeout(r,2000))]).then(()=>w.print());
 }
 let finishingQueue = null;
 async function maybeFinishQueue(){
@@ -2505,6 +2614,8 @@ async function maybeFinishQueue(){
     queue.saveState = 'saved';
     lset('sendQueue:'+state.account, null);   // saved (or waiting in the outbox): nothing left to resume
     if(!state.history.some(h=>h.id===record.id)) state.history.push(record);
+    // The Catalog check-up knows these items were just ordered (nothing here may stop the save finishing).
+    try{ record.entries.forEach(e=>e.items.forEach(it=>{ const item = state.items?.find(i=>i.id === it.itemId); if(item) item.lastOrderedAt = record.date; })); }catch(_){}
     ricoSuggestion.at = 0;
     // Preserve any quantities edited while the save was waiting on the network.
     queue.forEach(entry=>entry.items.forEach(item=>{ if(state.cart[item.itemId] === item.qty) delete state.cart[item.itemId]; }));
@@ -2555,7 +2666,7 @@ function orderHistoryCard(rec){
     const lines = e.items.map(i=>`<li><span dir="auto">${esc(i.name)}</span><b dir="auto">${i.qty} ${esc(unitLabel(i.unit))}</b></li>`).join('');
     return `<section class="hist-entry"><div class="hist-supplier">${supplierMono(name)}<span dir="auto">${esc(name)}</span></div><ul class="hist-lines">${lines}</ul></section>`;
   }).join('');
-  return `<article class="hist-card" data-search-row data-search-text="${esc([rec.date,...rec.entries.flatMap(e=>[state.suppliers.find(s=>s.id===e.supplierId)?.name||e.supplierName||'',...e.items.flatMap(l=>[l.name,...(state.items.find(i=>i.id===l.itemId)?.aliases||[])])])].join(' '))}">
+  return `<article class="hist-card" data-order-id="${esc(rec.id)}" data-search-row data-search-text="${esc([rec.date,...rec.entries.flatMap(e=>[state.suppliers.find(s=>s.id===e.supplierId)?.name||e.supplierName||'',...e.items.flatMap(l=>[l.name,...(state.items.find(i=>i.id===l.itemId)?.aliases||[])])])].join(' '))}">
     <div class="hist-top">
       <div class="hist-date"><b>${esc(time)}</b>${accountLabel(rec.by) ? `<span>${esc(t('sentBy')(''))}</span>${whoBadge(rec.by)}` : ''}</div>
       <span class="hist-count">${esc(t('itemCount')(lineCount))}${rec.entries.length > 1 ? ` \u00b7 ${esc(t('supplierCount')(rec.entries.length))}` : ''}</span>
@@ -2826,24 +2937,14 @@ async function deleteRecord(table, id){
 
 /* ============ Suppliers ============ */
 function renderSuppliers(){
-  const list = state.suppliers.length ? sortedByName(state.suppliers).map(s=>`
-    <div class="list-row tappable" data-editsup="${esc(s.id)}">
-      <div><div class="name">${esc(s.name)}</div><div class="meta">${esc(s.phone||t('noPhoneOnFile'))}</div>
-        ${s.reminder && s.reminder.enabled ? `<div class="meta rem-line">${ICON_BELL} ${esc(reminderText(s.reminder))}</div>` : ''}
-        ${s.cutoff ? `<div class="meta rem-line">${ICON_CLOCK} ${esc(t('cutoffShort'))}: ${esc(reminderTimeLabel(s.cutoff))}</div>` : ''}</div>
-      <div class="row-actions">
-        ${supplierContactLinks(s)}
-        ${s.reminder && s.reminder.enabled ? `<button class="icon-btn" data-testsup="${esc(s.id)}" aria-label="${esc(t('testSupplierReminder'))}">${ICON_BELL}</button>` : ''}
-        <span class="icon-btn" aria-hidden="true">${ICON_EDIT}</span>
-        <button class="icon-btn danger" data-delsup="${esc(s.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>
-      </div>
-    </div>`).join('') : emptyState(t('noSuppliersYet'));
+  const edit = canDo('catalog');
   return `
     <div class="action-row">
-      <button class="btn btn-primary add-btn" id="supAddBtn">${ICON_PLUS} ${t('addSupplier')}</button>
-      <button class="btn btn-ghost" data-gorecord="supplier">${NAV_ICONS.record} ${t('record')}</button>
-    </div>
-    ${renderCatalogSearch()}<div class="section-title">${t('suppliers')} (${state.suppliers.length})</div>${list}`;
+      ${edit ? `<button class="btn btn-primary add-btn" id="supAddBtn">${ICON_PLUS} ${t('addSupplier')}</button>` : ''}
+      ${canDo('exports') ? `<button class="btn btn-ghost" data-export="suppliers">${ICON_SHEET} ${esc(t('exportBtn'))}</button>` : ''}
+      ${canOpen('record') ? `<button class="btn btn-ghost" data-gorecord="supplier">${NAV_ICONS.record} ${t('record')}</button>` : ''}
+    </div>${edit ? '' : `<p class="readonly-note">${esc(t('catalogReadOnly'))}</p>`}
+    ${renderCatalogSearch()}<div class="section-title">${t('suppliers')} (${state.suppliers.length})</div><div id="suppliersTable">${renderDataTable('suppliers')}</div>`;
 }
 function openSupplierModal(id){
   const existing = id ? state.suppliers.find(s=>s.id===id) : null;
@@ -2904,45 +3005,42 @@ function openSupplierModal(id){
   });
 }
 function attachSupplierEvents(){
-  document.getElementById('supAddBtn').onclick = ()=> openSupplierModal(null);
-  document.querySelectorAll('[data-contact]').forEach(a=>a.onclick=e=>e.stopPropagation());
-  document.querySelectorAll('[data-editsup]').forEach(row=>row.onclick=()=> openSupplierModal(row.dataset.editsup));
-  document.querySelectorAll('[data-testsup]').forEach(b=>b.onclick=async(e)=>{
-    e.stopPropagation();   // don't also open the edit popup
-    const sup = state.suppliers.find(s=>s.id===b.dataset.testsup);
-    if(!sup) return;
-    if(!(await showConfirm(`<b>${esc(sup.name)}</b><br>${t('confirmTestSupplier')}`, {okLabel:t('notifSend'), okClass:'btn-primary'}))) return;
-    reportSendResult(await callSendPush('supplier-test', {supplierId: sup.id}));
-  });
-  document.querySelectorAll('[data-delsup]').forEach(b=>b.onclick=async(e)=>{
-    e.stopPropagation();   // don't also open the edit popup
-    const id = b.dataset.delsup;
-    const sup = state.suppliers.find(s=>s.id===id);
-    if(!sup) return;
-    if(!(await showConfirm(`<b>${esc(sup.name)}</b><br>${t('confirmDeleteSupplier')}`))) return;
-    // The database unassigns that supplier's items by itself.
-    if(!(await deleteRecord('suppliers', id))){ await showAlert(t('saveFailed')); return; }
-    const unassigned = state.items.filter(i=>i.supplierId===id).length;
-    state.suppliers = state.suppliers.filter(s=>s.id!==id);
-    state.items.forEach(i=>{ if(i.supplierId===id) i.supplierId=null; });
-    if(state.itemFormSupplierId === id) state.itemFormSupplierId = null;
-    logActivity({action:'delete', type:'supplier', name:sup.name, unassigned,
-      fields:[{k:'name', from:sup.name}].concat(sup.phone ? [{k:'phone', from:sup.phone}] : [])});
-    render();
-  });
+  const add = document.getElementById('supAddBtn');
+  if(add) add.onclick = ()=> openSupplierModal(null);
+  attachDataTable('suppliers', document.getElementById('suppliersTable'));
+}
+async function testSupplierReminder(id){
+  const sup = state.suppliers.find(s=>s.id===id);
+  if(!sup) return;
+  if(!(await showConfirm(`<b>${esc(sup.name)}</b><br>${t('confirmTestSupplier')}`, {okLabel:t('notifSend'), okClass:'btn-primary'}))) return;
+  reportSendResult(await callSendPush('supplier-test', {supplierId: sup.id}));
+}
+async function deleteSupplier(id){
+  const sup = state.suppliers.find(s=>s.id===id);
+  if(!sup) return;
+  if(!(await showConfirm(`<b>${esc(sup.name)}</b><br>${t('confirmDeleteSupplier')}`))) return;
+  // The database unassigns that supplier's items by itself.
+  if(!(await deleteRecord('suppliers', id))){ await showAlert(t('saveFailed')); return; }
+  const unassigned = state.items.filter(i=>i.supplierId===id).length;
+  state.suppliers = state.suppliers.filter(s=>s.id!==id);
+  state.items.forEach(i=>{ if(i.supplierId===id) i.supplierId=null; });
+  if(state.itemFormSupplierId === id) state.itemFormSupplierId = null;
+  logActivity({action:'delete', type:'supplier', name:sup.name, unassigned,
+    fields:[{k:'name', from:sup.name}].concat(sup.phone ? [{k:'phone', from:sup.phone}] : [])});
+  render();
+  toast(t('deletedMsg')(sup.name));
 }
 
 /* ============ Items ============ */
-function itemsAdminListHtml(){
-  return sortedByName(state.items).map(i=>`<div class="list-row tappable" data-edititem="${esc(i.id)}"><div><div class="name">${esc(i.name)}${i.available===false?` <span class="availability-badge">${esc(t('unavailable'))}</span>`:''}</div><div class="meta">${esc(unitLabel(i.unit))} · ${esc(supplierName(i.supplierId))}</div></div><div class="row-actions"><span class="icon-btn" aria-hidden="true">${ICON_EDIT}</span><button class="icon-btn danger" data-delitem="${esc(i.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button></div></div>`).join('') || emptyState(t('noItemsYet'));
-}
 function renderItemsAdmin(){
+  const edit = canDo('catalog');
   return `
     <div class="action-row">
-      <button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
-      <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button>
-    </div>
-    ${renderCatalogSearch()}<div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${itemsAdminListHtml()}</div>`;
+      ${edit ? `<button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
+      <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button>` : ''}
+      ${canDo('exports') ? `<button class="btn btn-ghost" data-export="items">${ICON_SHEET} ${esc(t('exportBtn'))}</button>` : ''}
+    </div>${edit ? '' : `<p class="readonly-note">${esc(t('catalogReadOnly'))}</p>`}
+    ${renderCatalogSearch()}<div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${renderDataTable('items')}</div>`;
 }
 function openSupplierItemOrder(supplierId){
   const supplier=state.suppliers.find(s=>s.id===supplierId);
@@ -3132,10 +3230,6 @@ function openItemModal(id){
     }
   });
 }
-function bindItemRows(root){
-  root.querySelectorAll('[data-edititem]').forEach(row=>row.onclick=()=> openItemModal(row.dataset.edititem));
-  root.querySelectorAll('[data-delitem]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); deleteItemWithUndo(b.dataset.delitem); });
-}
 /* Deleting an item asks first, then offers Undo. The server keeps a copy for 10 minutes that only
    this account on this device can bring back; it comes back with its amount in the order. */
 async function deleteItemWithUndo(id){
@@ -3168,9 +3262,9 @@ async function deleteItemWithUndo(id){
   }});
 }
 function attachItemEvents(){
-  document.getElementById('itemAddBtn').onclick = ()=> openItemModal(null);
-  const list = document.getElementById('itemsAdminList');
-  bindItemRows(list);
+  const add = document.getElementById('itemAddBtn');
+  if(add) add.onclick = ()=> openItemModal(null);
+  attachDataTable('items', document.getElementById('itemsAdminList'));
 }
 
 /* ============ Units ============ */
@@ -3189,14 +3283,14 @@ function renderUnits(){
   const chips = state.units.map(u=>{
     const others = [u.en, u.ku, u.ar].filter(x=>x && x !== unitName(u));
     return `<span class="unit-chip" data-search-row><span class="unit-names"><strong>${esc(unitName(u))}</strong>${others.length ? `<small>${esc([...new Set(others)].join(' · '))}</small>` : ''}</span>
-      <button data-editunit="${esc(u.id)}" aria-label="${esc(t('editUnit'))}">${ICON_EDIT}</button>
-      <button class="danger" data-delunit="${esc(u.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>
+      ${canDo('catalog') ? `<button data-editunit="${esc(u.id)}" aria-label="${esc(t('editUnit'))}">${ICON_EDIT}</button>
+      <button class="danger" data-delunit="${esc(u.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
     </span>`;
   }).join('');
   return `
     <div class="action-row">
-      <button class="btn btn-primary add-btn" id="unitAddBtn">${ICON_PLUS} ${esc(t('addUnit'))}</button>
-      <button class="btn btn-ghost" data-gorecord="unit">${NAV_ICONS.record} ${esc(t('record'))}</button>
+      ${canDo('catalog') ? `<button class="btn btn-primary add-btn" id="unitAddBtn">${ICON_PLUS} ${esc(t('addUnit'))}</button>` : ''}
+      ${canOpen('record') ? `<button class="btn btn-ghost" data-gorecord="unit">${NAV_ICONS.record} ${esc(t('record'))}</button>` : ''}
     </div>
     ${renderCatalogSearch()}<div class="section-title">${esc(t('units'))} (${state.units.length})</div>
     ${chips ? `<div class="unit-grid">${chips}</div>` : emptyState(t('noUnitsYet'))}`;
@@ -3232,7 +3326,8 @@ function openUnitModal(unit){
   });
 }
 function attachUnitEvents(){
-  document.getElementById('unitAddBtn').onclick = ()=>openUnitModal(null);
+  const add = document.getElementById('unitAddBtn');
+  if(add) add.onclick = ()=>openUnitModal(null);
   document.querySelectorAll('[data-editunit]').forEach(b=>b.onclick = ()=>{
     const unit = state.units.find(u=>u.id===b.dataset.editunit);
     if(unit) openUnitModal(unit);
@@ -3250,21 +3345,7 @@ function attachUnitEvents(){
   });
 }
 
-/* ============ Devices (in Admin, Rozha) ============ */
-/* Which phones are signed in right now, to which account, when each one
-   last signed in, and when it was last seen using the app. */
-/* Logged in = signed in, no log-out waiting for it, and seen within one
-   session length (a sign-in expires after 18 hours even if nobody logs out). */
-const SESSION_MS = 18*60*60*1000;
-function isLoggedIn(d){
-  const seen = Date.parse(d.lastSeen || d.lastLogin || 0) || 0;
-  return !!d.loggedIn && Date.now() - seen < SESSION_MS && !(commandIsPending(d) && d.command.type === 'logout');
-}
-function deviceStatus(d){
-  if(!isLoggedIn(d)) return 'out';
-  const seen = d.lastSeen ? new Date(d.lastSeen).getTime() : 0;
-  return (Date.now() - seen <= ACTIVE_WINDOW_MS) ? 'active' : 'idle';
-}
+/* ============ Times ============ */
 function timeAgo(iso){
   if(!iso) return t('never');
   const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
@@ -3278,192 +3359,6 @@ function fmtDateTime(iso){
   if(!iso) return t('never');
   return formatIraqDateTime(iso,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 }
-function renderDevices(){
-  const visible = state.devices.filter(isLoggedIn);
-  const head = `
-    <div class="action-row">
-      <div class="section-title grow">${esc(t('devicesTitle'))} (${visible.length})</div>
-      <button class="btn btn-ghost" id="devRefreshBtn">${ICON_REFRESH} ${t('refresh')}</button>
-    </div>`;
-
-  const rank = {active:0, idle:1, out:2};
-  const sorted = [...visible].sort((a,b)=>
-    rank[deviceStatus(a)] - rank[deviceStatus(b)] ||
-    new Date(b.lastLogin || 0) - new Date(a.lastLogin || 0));
-  const loggedInCount = visible.length;
-  const activeCount = visible.filter(d=>deviceStatus(d)==='active').length;
-
-  const latest = latestVersion();
-  const hero = `<div class="hero-card">
-    <div class="hero-eyebrow">${t('devicesLoggedInEyebrow')}</div>
-    <div class="hero-stat">${t('devicesLoggedInStat')(loggedInCount)}</div>
-    <div class="hero-sub">${t('devicesActiveSub')(activeCount)}</div>
-    <div class="hero-sub dev-latest">${esc(t('latestVersion')(latest))}</div>
-  </div>`;
-
-  const others = otherDevices().filter(isLoggedIn);
-  const bulk = `<div class="dev-bulk">
-      <button class="btn btn-primary" id="devNotifyBtn">${ICON_BELL} ${t('sendUpdateNotif')}</button>
-      ${others.length ? `<button class="btn btn-primary" id="devRefreshAllBtn">${ICON_REFRESH} ${t('refreshAllDevices')}</button>
-      <button class="btn btn-danger" id="devLogoutAllBtn">${t('logoutAllOthers')}</button>` : ''}
-    </div>`;
-
-  const cards = sorted.map(d=>{
-    const st = deviceStatus(d);
-    const isThis = d.id === state.deviceId;
-    const who = accountLabel(d.account);
-    const parts = deviceParts(d);
-    const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
-    return `<div class="dev-card">
-      <div class="dev-top">
-        <div class="dev-name">${who ? whoBadge(d.account) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">\u00b7 ${esc(t('thisDevice'))}</span>` : ''}</div>
-      </div>
-      <div class="dev-kind">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : ICON_MOBILE} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
-      <div class="dev-status"><span class="dev-badge dev-${st}">${badge}</span></div>
-      <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
-      ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
-      <div class="rec-line"><span class="rec-k">${t('versionLabel')}</span> ${d.appVersion ? `${esc(d.appVersion)} <span class="dev-ver ${versionCmp(d.appVersion, latest) >= 0 ? 'ok' : 'old'}">${esc(t(versionCmp(d.appVersion, latest) >= 0 ? 'versionCurrent' : 'versionOld'))}</span>` : esc(t('versionUnknown'))}</div>
-      ${commandIsPending(d) ? `<div class="dev-pending">${d.command.type==='logout'?t('cmdLogoutPending'):t('cmdRefreshPending')} \u00b7 ${timeAgo(d.command.ts)}</div>` : ''}
-      ${isThis ? '' : `<div class="dev-actions">
-        <button class="btn btn-ghost" data-devrefresh="${esc(d.id)}">${ICON_REFRESH} ${t('refreshDevice')}</button>
-        ${isLoggedIn(d) ? `<button class="btn btn-danger" data-devlogout="${esc(d.id)}">${t('logoutDevice')}</button>` : ''}
-      </div>`}
-    </div>`;
-  }).join('');
-
-  return `${head}${hero}${bulk}${cards || emptyState(t('noDevicesYet'))}<div class="dev-hint">${t('devicesHint')}</div>`;
-}
-function attachDeviceEvents(){
-  const r = document.getElementById('devRefreshBtn');
-  if(r) r.onclick = ()=> spinRefresh(r, refreshDevices);
-  document.querySelectorAll('[data-devlogout]').forEach(b=>b.onclick=async()=>{
-    const d = state.devices.find(x=>x.id===b.dataset.devlogout);
-    if(!d) return;
-    const name = esc(deviceTitle(d));
-    if(!(await showConfirm(`<b>${name}</b><br>${t('confirmLogoutDevice')}`, {okLabel:t('logoutDevice')}))) return;
-    await sendDeviceCommand('logout', [d.id]);
-  });
-  document.querySelectorAll('[data-devrefresh]').forEach(b=>b.onclick=async()=>{
-    const d = state.devices.find(x=>x.id===b.dataset.devrefresh);
-    if(!d) return;
-    const name = esc(deviceTitle(d));
-    if(!(await showConfirm(`<b>${name}</b><br>${t('confirmRefreshDevice')}`, {okLabel:t('refreshDevice'), okClass:'btn-primary'}))) return;
-    await sendDeviceCommand('refresh', [d.id]);
-  });
-  const notifyBtn = document.getElementById('devNotifyBtn');
-  if(notifyBtn) notifyBtn.onclick = ()=> sendUpdateNotification();
-  const allRefresh = document.getElementById('devRefreshAllBtn');
-  if(allRefresh) allRefresh.onclick = async()=>{
-    const ids = otherDevices().filter(isLoggedIn).map(d=>d.id);
-    if(!ids.length) return;
-    if(!(await showConfirm(t('confirmRefreshAll')(ids.length), {okLabel:t('refreshAllDevices'), okClass:'btn-primary'}))) return;
-    await sendDeviceCommand('refresh', ids);
-  };
-  const allLogout = document.getElementById('devLogoutAllBtn');
-  if(allLogout) allLogout.onclick = async()=>{
-    const ids = otherDevices().filter(isLoggedIn).map(d=>d.id);
-    if(!ids.length) return;
-    if(!(await showConfirm(t('confirmLogoutAll')(ids.length), {okLabel:t('logoutAllOthers')}))) return;
-    await sendDeviceCommand('logout', ids);
-  };
-}
-
-/* ============ Admin (Rozha only) ============
-   PINs, the signed-in devices and the connection in one place. A PIN is
-   changed here, with Rozha's current PIN; the server checks it again and
-   counts wrong tries like wrong sign-ins. */
-function renderAdminPins(){
-  const row = a=>`<div class="admin-pin-row">${whoBadge(a)}<span class="admin-pin-dots" aria-hidden="true">••••••</span><button type="button" class="btn btn-ghost" data-pin-change="${a}" aria-label="${esc(t('pinChangeTitle')(accountLabel(a)))}">${ICON_KEY} ${esc(t('adminPinChange'))}</button></div>`;
-  return `<div class="section-title">${esc(t('adminPins'))}</div><div class="form-card admin-pins">${row('rozha')}${row('yunis')}<div class="notif-sub">${esc(t('adminPinsHint'))}</div></div>`;
-}
-function renderAdmin(){
-  const connection = `<div class="section-title">${esc(t('cloudSetup'))}</div><div class="form-card"><div class="cloud-state ${state.apiOnline?'':'offline'}"><span></span><div><b>${esc(state.apiOnline?t('cloudConnectedNote'):t('cloudOfflineNote'))}</b></div></div></div>`;
-  return `<div class="admin-page">${renderAdminPins()}${connection}<div id="diagnosticsSlot">${renderDiagnostics()}</div>${renderRicoSettings()}${renderDevices()}</div>`;
-}
-/* Rozha's health check: the server and database, the four scheduled jobs (reminders, the monthly
-   History reset, the nightly clean-up, the scheduler's own log clean-up), orders waiting to save on
-   this phone and the shared draft. Read only; it runs by itself when Admin opens (at most once a
-   minute) and again with Check Now. Retry Saving shows only when something is waiting. */
-const DIAGNOSTIC_JOBS = [['ricotta-reminder-tick','jobReminder'], ['ricotta-monthly-history','jobHistory'], ['ricotta-daily-cleanup','jobCleanup'], ['ricotta-cron-history','jobLogs']];
-let diagnosticState = {account:null, data:null, error:false, busy:false};
-function waitingToSave(){ return currentOutbox().length + (state.queue?.record && state.queue.saveState === 'failed' ? 1 : 0); }
-function renderDiagnostics(){
-  if(!isRozha()) return '';
-  const ds = diagnosticState.account === state.account ? diagnosticState : {data:null, error:false, busy:false};
-  const jobs = Array.isArray(ds.data?.jobs) ? ds.data.jobs : [];
-  const row = (label, value, tone)=>`<div class="diagnostic-row"><span>${esc(label)}</span><b class="${tone}"><i aria-hidden="true"></i>${esc(value)}</b></div>`;
-  const server = ds.error ? row(t('apiDatabase'), t('needsAttention'), 'bad') : ds.data?.database ? row(t('apiDatabase'), t('healthy'), 'good') : row(t('apiDatabase'), t(ds.busy ? 'checking' : 'notChecked'), 'idle');
-  const jobRows = ds.data ? DIAGNOSTIC_JOBS.map(([name, label])=>{
-    const job = jobs.find(j=>j.name===name);
-    if(!job || !job.active) return row(t(label), t('jobDisabled'), 'bad');
-    if(job.failures24h > 0 || job.lastStatus === 'failed') return row(t(label), t('jobFailed'), 'bad');
-    return row(t(label), job.lastRun ? t('jobLastRun')(timeAgo(job.lastRun)) : t('notChecked'), job.lastRun ? 'good' : 'idle');
-  }).join('') : '';
-  const waiting = waitingToSave(), unsynced = sharedDraft.enabled && (sharedDraft.conflicts.length || draftChanges(sharedDraft.base, state.cart).length);
-  return `<div class="section-title">${esc(t('diagnostics'))}</div><section class="form-card diagnostic-card">
-    ${server}${jobRows}${row(t('deviceSaves'), String(waiting), waiting ? 'warn' : 'good')}${row(t('draftSaveState'), draftProgressLabel(), unsynced ? 'warn' : 'good')}
-    <p class="field-hint">${esc(t('diagnosticsHint'))}${ds.data?.checkedAt ? ` ${esc(t('checkedAt')(timeAgo(ds.data.checkedAt)))}` : ''}</p>
-    <div class="form-actions"><button type="button" class="btn btn-ghost" id="diagnosticsCheck" ${ds.busy?'disabled':''}>${ICON_REFRESH}<span>${esc(t(ds.busy?'checking':'checkNow'))}</span></button>${waiting || unsynced ? `<button type="button" class="btn btn-ghost" id="diagnosticsRetry">${esc(t('retryDraft'))}</button>` : ''}</div>
-  </section>`;
-}
-async function runDiagnostics(){
-  if(!isRozha() || diagnosticState.busy) return;
-  const account = state.account;
-  diagnosticState = {account, data:diagnosticState.account === account ? diagnosticState.data : null, error:false, busy:true};
-  paintDiagnostics();
-  const r = await api('admin/diagnostics');
-  if(account !== state.account) return;
-  diagnosticState = {account, data:r.ok ? r.data : null, error:!r.ok, busy:false};
-  paintDiagnostics();
-}
-function attachDiagnosticEvents(){
-  const check = document.getElementById('diagnosticsCheck');
-  if(check) check.onclick = ()=>spinRefresh(check, runDiagnostics);
-  const retry = document.getElementById('diagnosticsRetry');
-  if(retry) retry.onclick = async()=>{
-    const account = state.account;
-    retry.disabled = true;
-    await flushOutbox(); await syncSharedDraft();
-    if(account !== state.account) return;
-    if(state.queue?.record) await maybeFinishQueue();
-    paintDiagnostics();
-  };
-}
-function paintDiagnostics(){
-  const slot = document.getElementById('diagnosticsSlot');
-  if(slot && isRozha()){ slot.innerHTML = renderDiagnostics(); attachDiagnosticEvents(); }
-}
-function attachAdminEvents(){
-  attachDiagnosticEvents();
-  const last = diagnosticState.account === state.account && diagnosticState.data?.checkedAt;
-  if(!last || Date.now() - Date.parse(last) > 60000) runDiagnostics();
-  document.querySelectorAll('[data-pin-change]').forEach(b=>b.onclick=()=>openPinChange(b.dataset.pinChange));
-  attachDeviceEvents();
-  loadRicoStatus();
-}
-function openPinChange(account){
-  const field = (id, label)=>`<div class="field"><label for="${id}">${esc(label)}</label><input id="${id}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></div>`;
-  showFormModal({
-    title: esc(t('pinChangeTitle')(accountLabel(account))),
-    bodyHtml: field('pinCurrent', t('pinCurrentLabel')) + field('pinNew', t('pinNewLabel')) + field('pinNewAgain', t('pinRepeatLabel')),
-    okLabel: t('save'),
-    onSubmit: async ()=>{
-      const v = id=>document.getElementById(id).value.trim();
-      const currentPin = v('pinCurrent'), newPin = v('pinNew');
-      if(![currentPin, newPin].every(x=>/^\d{6}$/.test(x))) return {error:t('pinsInvalidLength')};
-      if(newPin !== v('pinNewAgain')) return {error:t('pinMismatch')};
-      const r = await api('admin/pin', {method:'PUT', body:{account, currentPin, newPin}});
-      if(r.ok){
-        toast(account === 'rozha' ? t('pinChangedSelf') : t('pinChangedOther')(accountLabel(account)));
-        refreshDevices();
-        return {};
-      }
-      const code = r.data && r.data.error;
-      return {error: code === 'wrong_pin' ? t('pinCurrentWrong') : code === 'weak_pin' ? t('pinsWeak') : code === 'duplicate_pin' ? t('pinsDuplicate') : r.status === 429 ? t('tooManyAttempts') : t('saveFailed')};
-    }
-  });
-}
-
 /* ============ Settings (every account) ============
    Appearance, the Order screen's display choices, sounds and notifications,
    all kept on this device. Rozha's tools (PINs, devices, the connection) are
@@ -3477,12 +3372,6 @@ function renderDisplaySettings(){
   return `<div class="section-title">${esc(t('settingsOrderScreen'))}</div><div class="form-card">
     ${row('pref-compactRows', prefOn('compactRows'), 'compactRowsLabel', 'compactRowsHint')}
     ${row('pref-showLastQty', prefOn('showLastQty'), 'lastQtyLabel', 'lastQtyHint')}</div>`;
-}
-/* Transfers is still being made, so its tab is off until someone turns it on here (on this device). */
-function renderTabSettings(){
-  if(!state.views.includes('transfers')) return '';
-  return `<div class="section-title">${esc(t('settingsTabBar'))}</div><div class="form-card">
-    <label class="check-row preference-row"><input type="checkbox" id="pref-showTransfers" ${showTransfers()?'checked':''}><span>${esc(t('transfers'))}<small>${esc(t('showTransfersHint'))}</small></span></label></div>`;
 }
 function renderOrderSounds(){
   return `<div class="section-title">${esc(t('orderSounds'))}</div><div class="form-card">${[['qty','quantitySound'],['sent','sentSound']].map(([id,key])=>`<label class="check-row preference-row"><input type="checkbox" id="sound-${id}" data-sound="${id}" ${soundOn(id)?'checked':''}><span>${esc(t(key))}</span></label>`).join('')}</div>`;
@@ -3499,12 +3388,29 @@ function versionCmp(a, b){
   for(let i = 0; i < Math.max(pa.length, pb.length); i++){ const d = (+pa[i] || 0) - (+pb[i] || 0); if(d) return d; }
   return 0;
 }
-/* The newest version any phone runs (this one included). */
-function latestVersion(){
-  return (state.devices || []).map(d=>d.appVersion).filter(Boolean).reduce((m, v)=>versionCmp(v, m) > 0 ? v : m, APP_VERSION);
-}
 function renderSettings(){
-  return `${renderPendingSync()}${renderAppearance()}${renderDisplaySettings()}${renderTabSettings()}${renderOrderSounds()}${renderNotifSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderAppearance()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+}
+/* Help: tell Rozha about a problem (it arrives in Admin, Problems), and the keyboard shortcuts. */
+function renderHelpSettings(){
+  return `<div class="section-title">${esc(t('settingsHelp'))}</div><div class="form-card settings-rows">
+    <button type="button" class="settings-row" id="reportProblemBtn">${ICON_REPORT}<span>${esc(t('reportProblem'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
+    <button type="button" class="settings-row" id="shortcutsBtn">${ICON_KEYBOARD}<span>${esc(t('keyboardShortcuts'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button></div>`;
+}
+function openReportProblem(){
+  showFormModal({
+    title: esc(t('reportProblem')),
+    bodyHtml: `<p class="modal-msg">${esc(t('reportProblemHint'))}</p><div class="field"><label for="problemText">${esc(t('reportProblemLabel'))}</label><textarea id="problemText" rows="4" maxlength="500" dir="auto"></textarea></div><p class="field-hint">${esc(t('reportProblemPrivacy'))}</p>`,
+    okLabel: t('reportSend'),
+    onSubmit: async ()=>{
+      const text = document.getElementById('problemText').value.trim();
+      if(text.length < 3) return {error:t('reportProblemShort')};
+      reportProblem('manual', text);
+      const sent = await flushProblems();
+      toast(!sent ? t('reportQueued') : isRozha() ? t('reportSavedRozha') : t('reportSent'));
+      return {};
+    }
+  });
 }
 /* Privacy: Rico's AI permission (asked the first time Rico is used, and taken back here),
    the privacy policy, and Sign Out at the very end, like the iPhone's Settings. */
@@ -3544,8 +3450,8 @@ function renderNotifSettings(){
         <button class="btn btn-ghost" id="reminderCancelBtn">${esc(t('cancel'))}</button>
       </div>`;
   return `<div class="section-title">${t('notifSettingsTitle')}</div>
-    <div class="form-card">${device}<hr class="notif-divider">
-      <label class="check-row preference-row"><input type="checkbox" id="reminderEnabled" ${r.enabled || reminderDraft ? 'checked' : ''}><span>${esc(t('reminderTitle'))}<small>${esc(hint)}</small></span></label>${editor}</div>`;
+    <div class="form-card">${device}${canDo('reminders') ? `<hr class="notif-divider">
+      <label class="check-row preference-row"><input type="checkbox" id="reminderEnabled" ${r.enabled || reminderDraft ? 'checked' : ''}><span>${esc(t('reminderTitle'))}<small>${esc(hint)}</small></span></label>${editor}` : ''}</div>`;
 }
 function attachNotifEvents(){
   const tog = document.getElementById('pushToggleBtn');
@@ -3586,28 +3492,6 @@ function attachNotifEvents(){
   });
   const test = document.getElementById('reminderTestBtn');
   if(test) test.onclick = ()=> withBusy(test, async ()=> reportSendResult(await callSendPush('reminder-now')));
-}
-
-/* ---- Admin: Rico's connection is managed server-side, never from a device. ---- */
-function renderRicoSettings(){
-  return `<div class="section-title">${t('ricoSettingsTitle')}</div>
-    <div class="form-card rico-status-card">
-      <div class="rico-set-head">${ricoFace('calm','rico-md')}<div><b>${t('ricoName')}</b><div class="notif-sub" id="ricoProviderState">${t('ricoPoweredBy')}</div></div></div>
-      <div class="rico-connection" id="ricoKeyState" aria-live="polite">${t('ricoChecking')}</div>
-    </div>`;
-}
-async function loadRicoStatus(){
-  const el = document.getElementById('ricoKeyState');
-  if(!el) return;
-  const r = await api('assistant/status');
-  if(!document.getElementById('ricoKeyState')) return;
-  const st = r.ok && r.data ? r.data : null;
-  const connected = !!(st && st.configured);
-  el.textContent = !st ? t('loadFailed') : connected ? t('ricoConnected') : t('ricoDisconnected');
-  el.classList.toggle('connected', connected);
-  const provider = document.getElementById('ricoProviderState');
-  if(provider && st?.provider === 'groq') provider.textContent = t('ricoPoweredByGroq')(!!st.fallback);
-  else if(provider) provider.textContent = t('ricoPoweredByGemini');
 }
 
 /* The provider setup is intentionally not a Settings control. Rozha can
@@ -3651,14 +3535,14 @@ function attachSettingsEvents(){
     const box = document.getElementById(id);
     if(box) box.onchange = ()=>{ lset(key, box.checked ? true : null); applyPrefs(); };
   });
-  const transfersTab = document.getElementById('pref-showTransfers');
-  if(transfersTab) transfersTab.onchange = ()=>{ lset('showTransfers', transfersTab.checked ? true : null); redrawTabBar(); };
   const ai = document.getElementById('aiConsent');
   if(ai) ai.onchange = async ()=>{
     if(!ai.checked){ setAiConsent(false); return; }
     ai.checked = await aiConsent();
   };
-  document.getElementById('settingsSignOut').onclick = ()=>confirmSignOut();
+  document.getElementById('settingsSignOut').onclick = ()=>doLogout();
+  document.getElementById('reportProblemBtn').onclick = openReportProblem;
+  document.getElementById('shortcutsBtn').onclick = openShortcuts;
   attachNotifEvents();
 }
 

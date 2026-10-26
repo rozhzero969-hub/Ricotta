@@ -1,10 +1,10 @@
 /* Web Push: registers the service worker, subscribes this device, and sends
-   update notifications (Rozha) and test reminders.
+   and test reminders.
 
    Works on iOS 16.4+ only when the app is opened from the Home Screen icon.
    Depends on: VAPID_PUBLIC_KEY (config.js), state, t, esc, render, toast
    (app.js), lget/lset/api (storage.js), showAlert/showFormModal (modals.js),
-   openUpdatePopup (update-check.js). All are only used at runtime, so load
+   openAdminPage (admin.js). All are only used at runtime, so load
    order relative to those files doesn't matter. */
 
 const ICON_BELL = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`;
@@ -180,30 +180,6 @@ async function reportSendResult(res){
   else if(res.skipped) await showAlert(t('notifNoDevicesLoggedOut'));
   else await showAlert(t('notifNoDevices'));
 }
-/* "New update" notification to every phone that has notifications on.
-   Rozha writes the message in each language; the send-push
-   function gives every phone ONLY the message in its own language (English,
-   Kurdish or Arabic). A language left empty gets the first message that was
-   written. The app adds no words of its own. */
-async function sendUpdateNotification(){
-  const box = (id, label, dir)=>`<div class="field"><label for="${id}">${esc(label)}</label><textarea id="${id}" rows="3" dir="${dir}" data-clear="1" maxlength="300"></textarea></div>`;
-  await showFormModal({
-    title: t('sendUpdateNotif'),
-    bodyHtml: `${box('mfUpdateMsgEn', t('updateMessageEnLabel'), 'ltr')}${box('mfUpdateMsgKu', t('updateMessageKuLabel'), 'rtl')}${box('mfUpdateMsgAr', t('updateMessageArLabel'), 'rtl')}
-      <div class="field-hint">${esc(t('updateMessageHint'))}</div>`,
-    okLabel: t('notifSend'),
-    onOpen: (box)=>{ const ta = box.querySelector('#mfUpdateMsgEn'); if(ta) ta.focus(); },
-    onSubmit: async ()=>{
-      const v = id=>document.getElementById(id).value.trim();
-      const bodyEn = v('mfUpdateMsgEn'), bodyKu = v('mfUpdateMsgKu'), bodyAr = v('mfUpdateMsgAr');
-      if(!bodyEn && !bodyKu && !bodyAr) return { error: t('updateMessageRequired') };
-      const res = await callSendPush('update', { bodyEn, bodyKu, bodyAr });
-      await reportSendResult(res);
-      return {};
-    }
-  });
-}
-
 /* ---------- Daily reminder settings ---------- */
 async function saveReminder(enabled, time){
   const r = await api('reminder', {method:'PUT', body:{enabled, time}});
@@ -211,14 +187,13 @@ async function saveReminder(enabled, time){
 }
 
 /* ---------- Notification taps ---------- */
-/* kind: 'update' (the message Rozha wrote, with an Update button),
-   'reminder' (daily reminder -> Order), 'supplier' (a supplier's reminder ->
-   Order on that supplier's tab) and 'assistant' (Rico; his month-end message
-   opens History). */
+/* kind: 'reminder' (daily reminder -> Order), 'supplier' (a supplier's reminder -> Order on that
+   supplier's tab), 'assistant' (Rico; his month-end message opens History) and 'security' (a sign-in
+   from a new device -> Admin, Security). */
 function handlePushIntent(kind, supplierId, message, view){
-  if(kind === 'update'){ openUpdatePopup(message || ''); return; }
   if(!state.account) return;
-  if(kind === 'assistant'){ ricoRefreshInbox(); goView(view === 'history' && canOpen('history') ? 'history' : 'assistant'); }
+  if(kind === 'security'){ if(canOpen('admin')){ goView('admin'); openAdminPage('security'); } return; }
+  if(kind === 'assistant'){ ricoRefreshInbox(); if(view === 'history' && canOpen('history')) goView('history'); else if(canOpen('assistant')) goView('assistant'); }
   else if(kind === 'reminder' || kind === 'supplier'){
     if(kind === 'supplier' && supplierId && state.suppliers.some(s => s.id === supplierId)) state.orderTab = supplierId;
     if(state.view === 'order') render(); else goView('order');

@@ -12,10 +12,10 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let recovery = UIStackView()
     private var downloadFiles: [ObjectIdentifier: URL] = [:]
-    /// The app opens on the page's loading screen, which follows light or dark like the launch screen
-    /// (LaunchBackground); the page then reports which one it uses (see `userContentController(_:didReceive:)`).
-    private static let launchBackground = UIColor(named: "LaunchBackground") ?? .systemGroupedBackground
-    private var statusBarStyle: UIStatusBarStyle = .default
+    /// The app opens on the page's loading screen, the app's dark green in light and dark alike, like the
+    /// launch screen (LaunchBackground); the page then reports its look (see `userContentController(_:didReceive:)`).
+    private static let launchBackground = UIColor(named: "LaunchBackground") ?? UIColor(red: 0.078, green: 0.220, blue: 0.173, alpha: 1)
+    private var statusBarStyle: UIStatusBarStyle = .lightContent
     private var pageReported = false
     private let selectionFeedback = UISelectionFeedbackGenerator()
     private let notificationFeedback = UINotificationFeedbackGenerator()
@@ -138,6 +138,7 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         case "error": notificationFeedback.notificationOccurred(.error)
         // The page's own background behind it, so nothing flashes when it resizes, and status bar
         // text that can be read on it.
+        case "page-splash": setLook(background: Self.launchBackground, statusBar: .lightContent)
         case "page-dark": setLook(background: .black, statusBar: .lightContent)
         case "page-light": setLook(background: UIColor(red: 0.949, green: 0.949, blue: 0.969, alpha: 1), statusBar: .darkContent)
         default: break
@@ -178,7 +179,7 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         recovery.isHidden = true
         webView.isHidden = false
         pageReported = false
-        setLook(background: Self.launchBackground, statusBar: .default)
+        setLook(background: Self.launchBackground, statusBar: .lightContent)
         spinner.startAnimating()
         webView.load(URLRequest(url: RicottaNavigation.home, cachePolicy: .reloadRevalidatingCacheData, timeoutInterval: 30))
     }

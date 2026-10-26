@@ -20,7 +20,7 @@ const server=http.createServer((req,res)=>{
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.locator('#itemSearch').waitFor();
   await page.waitForFunction(()=>state.items.length>10);
-  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','manage'],'Transfers is off until Settings turns it on');
+  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','transfers','manage'],'Rozha has Transfers from the start');
   assert.equal(await page.locator('.hero-card,.streak-chip').count(),2,'summary board and kitchen streak remain');
   assert.equal(await page.locator('.order-options').count(),0,'the Order screen has no fold');
   assert.equal(await page.locator('#clearOrderBtn').isVisible(),true,'Clear order is shown directly');
@@ -55,13 +55,30 @@ const server=http.createServer((req,res)=>{
   assert.equal(await page.locator('.catalog-search > svg').evaluate(el=>getComputedStyle(el).position),'absolute','search icon cannot overlap the input');
   assert.equal(await page.locator('.list-row').first().evaluate(el=>getComputedStyle(el).backdropFilter),'none','static list rows avoid expensive blur');
   await page.locator('#catalogSearch').fill('tomtao');
-  assert.equal(await page.locator('[data-edititem="it-tom"]').isVisible(),true);
+  assert.equal(await page.locator('.table-list [data-edititem="it-tom"]').isVisible(),true,'a typo still finds the item (phones show the list)');
+  assert.equal(await page.locator('.data-table [data-edititem="it-tom"]').isVisible(),false,'the wide table stays hidden on phones');
   assert.ok(await page.locator('.list-row:visible').count()<5);
   await page.locator('#catalogSearch').fill('zzzxxxx');
   assert.equal(await page.locator('.list-row:visible').count(),0);
   assert.equal(await page.locator('#catalogSearchEmpty').isVisible(),true);
   await page.locator('#catalogSearchClear').click();
   assert.ok(await page.locator('.list-row:visible').count()>10);
+  // The search sheet (Ctrl/Cmd+K): "tomato 5" sets the quantity, the clear mark is the app's own, Escape closes.
+  await page.keyboard.press('Control+KeyK');
+  await page.locator('#spotInput').waitFor();
+  assert.equal(await page.locator('.spot-clear').isVisible(),false,'no clear mark while the field is empty');
+  await page.locator('#spotInput').fill('tomato 5');
+  assert.equal(await page.locator('.spot-clear').isVisible(),true);
+  assert.match(await page.locator('.spot-row.active').textContent(),/Tomatoes.*5/,'"tomato 5" offers to set Tomatoes to 5 first');
+  await page.keyboard.press('Enter');
+  await page.locator('.spot-layer').waitFor({state:'detached'});
+  assert.equal(await page.evaluate(()=>state.cart['it-tom']),5,'Enter sets the quantity');
+  await page.keyboard.press('Control+KeyK');await page.locator('#spotInput').fill('zzqqxx');
+  assert.match(await page.locator('.spot-empty').textContent(),/No results/,'nothing found says so plainly');
+  await page.locator('.spot-clear').click();
+  assert.deepEqual([await page.locator('#spotInput').inputValue(),await page.locator('.spot-clear').isVisible(),await page.evaluate(()=>document.activeElement.id)],['',false,'spotInput'],'clearing keeps the field ready to type');
+  await page.keyboard.press('Escape');await page.locator('.spot-layer').waitFor({state:'detached'});
+  await page.evaluate(()=>{state.cart={};persistCartDraft();});
   await nav('history');
   await page.locator('#catalogSearch').fill('tomato');
   assert.ok(await page.locator('.hist-card:visible').count()>0,'history matches current aliases');
@@ -116,33 +133,37 @@ const server=http.createServer((req,res)=>{
   assert.equal(hostile.appliedInjection,0,'stored before/after quantities cannot inject HTML');
   assert.equal(hostile.orderSafe,true,'a supplier named __proto__ cannot crash grouping');
   assert.equal(hostile.malformed,'','malformed saved cards cannot break the chat screen');
-  // Exercise the real verification dialog using a local provider stub.
+  // Exercise the real verification dialog using a local provider stub. It checks and continues by
+  // itself: no Continue and no Cancel; Try Again appears only when the check fails.
   await page.evaluate(()=>{
     authSecurityConfig=async()=>({ok:true,data:{required:true,siteKey:'local-test'}});
     window.turnstile={render:(el,opts)=>{window.proofOptions=opts;el.innerHTML='<div style="width:150px;height:140px">Local verification</div>';return 'local-widget';},remove:()=>{window.proofRemoved=true;}};
     window.proofResult=authBotProof();
   });
   await page.locator('#authChallenge').waitFor({state:'attached'});
-  assert.equal(await page.locator('#modalFormOk').isEnabled(),false,'verification requires a token');
-  assert.equal(await page.locator('#modalFormOk').isVisible(),false,'no manual Continue step');
+  assert.equal(await page.locator('.modal-challenge button:visible').count(),0,'no buttons while it checks');
+  assert.equal(await page.locator('#modalFormCancel, #modalFormOk').count(),0,'no Cancel and no Continue');
   const alignment=await page.locator('#authChallenge').evaluate(el=>{const frame=el.firstElementChild.getBoundingClientRect(),body=el.getBoundingClientRect();return Math.abs((frame.left+frame.right)-(body.left+body.right));});
   assert.ok(alignment<2,'verification widget is centred');
   await page.evaluate(()=>proofOptions['expired-callback']());
-  assert.equal(await page.locator('#modalFormOk').isEnabled(),false,'expired proof cannot be submitted');
+  assert.equal(await page.locator('#challengeRetry').isVisible(),true,'an expired check offers Try Again');
+  await page.locator('#challengeRetry').click();
+  assert.equal(await page.locator('#challengeRetry').isVisible(),false,'Try Again starts a fresh check');
   await page.evaluate(()=>{proofOptions.callback('fresh-token');proofOptions.callback('duplicate-token');});
   assert.deepEqual(await page.evaluate(()=>proofResult),{token:'fresh-token'},'success continues automatically exactly once');
   assert.equal(await page.evaluate(()=>proofRemoved),true,'widget is cleaned up');
   await page.evaluate(()=>{window.proofResult=authBotProof();});
   await page.locator('#authChallenge').waitFor({state:'attached'});
-  await page.locator('#modalFormCancel').click();
-  assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'});
+  await page.keyboard.press('Escape');
+  assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'},'a keyboard can still leave with Escape');
   await page.evaluate(()=>proofOptions.callback('late-token'));
   assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'},'late success cannot undo cancellation');
   await page.evaluate(()=>{window.turnstile.render=()=>{throw Error('provider failed');};window.proofResult=authBotProof();});
   await page.locator('#authChallenge').waitFor({state:'attached'});
-  assert.match(await page.locator('#modalFormStatus').textContent(),/could not finish/);
-  await page.locator('#modalFormCancel').click();
-  assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'},'provider failure remains cancellable');
+  assert.match(await page.locator('.modal-challenge .modal-status').textContent(),/could not finish/);
+  assert.equal(await page.locator('#challengeRetry').isVisible(),true,'a provider failure offers Try Again');
+  await page.evaluate(()=>dismissAllModals());
+  assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'},'closing every popup (sign-out) ends the check');
   const framed=await browser.newPage();
   await framed.goto('http://127.0.0.1:'+server.address().port+'/__frame-parent.html');
   await framed.setContent('<iframe src="http://127.0.0.1:'+server.address().port+'/"></iframe>');
@@ -151,6 +172,6 @@ const server=http.createServer((req,res)=>{
   assert.equal(await embedded.locator('.keypad,.content').count(),0,'embedded app exposes neither sign-in nor authenticated workspace');
   await framed.close();
   assert.deepEqual(errors,[]);
-  console.log('Search UI PASS: typo/alias order, clear buttons, list matches/empty/reset, history aliases, records beyond first page, units and Rico bulk alias preview/save');
+  console.log('Search UI PASS: typo/alias order, clear buttons, the search sheet (tomato 5, clear, nothing found, Escape), list matches/empty/reset, history aliases, records beyond first page, units and Rico bulk alias preview/save');
  }finally{await browser.close();server.close();}
 })().catch(e=>{console.error(e);server.close();process.exitCode=1;});

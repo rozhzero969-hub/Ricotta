@@ -36,6 +36,11 @@ const db = {
       return {data:{account:match,name:'Test account',expiresAt:new Date(Date.now()+60000).toISOString()},error:null};
     }
     if (['app_internal_item_undo','app_internal_diagnostics'].includes(name)) return {data:newResult,error:null};
+    if (['app_internal_security_event','app_internal_add_usage','app_internal_report_problems','app_internal_unlock_signin'].includes(name)) return {data:1,error:null};
+    if (name === 'app_internal_security_summary') return {data:{wrongPins24h:0,events:[]},error:null};
+    if (name === 'app_internal_catalog_report') return {data:{items:{},suppliers:{}},error:null};
+    if (name === 'app_internal_set_roles') return {data:args.p_roles,error:null};
+    if (name === 'app_internal_usage_summary') return {data:{people:[],devices:[],days:[]},error:null};
     if (name === 'app_internal_check_account_pin') return { data: args.p_pin === '482916', error: null };
     if (name === 'app_internal_set_pin') return { data: pinResult, error: null };
     if (['app_internal_logout','app_internal_catalog_change','app_internal_device_command','app_internal_delete_order'].includes(name)) return {data:null,error:null};
@@ -132,7 +137,25 @@ try {
   requestAllowed=true;reset();errors.set('app_internal_reserve_requests',true);
   assert.equal((await call('orders',{})).status,503,'request limits fail closed');
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';
-  for(const [path,method,body] of [['devices/command','POST',{ids:['peer'],type:'logout'}],['assistant/setup-status','GET',null],['assistant/groq-key','PUT',{key:'fake'}],['admin/pin','PUT',{account:'yunis',currentPin:'482916',newPin:'591837'}],['push/send','POST',{type:'update'}]])assert.equal((await call(path,body,method)).status,403,`staff cannot use ${path}`);
+  for(const [path,method,body] of [['devices/command','POST',{ids:['peer'],type:'logout'}],['assistant/setup-status','GET',null],['assistant/groq-key','PUT',{key:'fake'}],['admin/pin','PUT',{account:'yunis',currentPin:'482916',newPin:'591837'}],['admin/security','GET',null],['admin/problems','GET',null],['admin/roles','PUT',{account:'yunis',roles:['history']}],['admin/usage','GET',null],['admin/rico','GET',null]])assert.equal((await call(path,body,method)).status,403,`staff cannot use ${path}`);
+  assert.equal((await call('push/send',{type:'update'},'POST')).status,400,'the old update notification no longer exists');
+  // Yunis's roles are checked on the server: without them each route answers 403.
+  reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';tables.app_sessions[0].app_accounts={roles:['history']};
+  for(const [path,method,body] of [['orders','POST',{id:'o-role',entries:[{supplierId:'supplier',items:[{itemId:'tomato',name:'Tomatoes',qty:1}]}]}],['items/tomato','PUT',{name:'Tomatoes'}],['items/tomato','DELETE',{}],['suppliers/supplier','PUT',{name:'S'}],
+    ['supplier-order/supplier','PUT',{itemIds:['tomato']}],['activity','GET',null],['assistant/inbox','GET',null],['rico-chats','GET',null],['streak/recover','POST',{}],['stock-items','GET',null],
+    ['push/send','POST',{type:'assistant',bodyEn:'x'}],['push/send','POST',{type:'reminder-now'}],['reports/catalog','GET',null],['reminder','PUT',{enabled:true,time:'09:00'}]])
+    assert.equal((await call(path,body,method)).status,403,`without the role, staff cannot use ${method} ${path}`);
+  assert.equal((await call('months',null,'GET')).status,200,'the history role still opens the month archive');
+  reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';
+  const yunisBoot=await call('bootstrap',null,'GET');assert.deepEqual((await yunisBoot.json()).roles,['history','manage','catalog','record','assistant','send','exports','notify','reminders'],'Yunis has the standard set until Rozha changes it');
+  assert.equal((await call('problems',{reports:[{fingerprint:'0123456789abcdef',kind:'error',message:'boom'}]},'POST')).status,200,'any signed-in phone can report a problem');
+  assert.equal((await call('problems',{reports:[{fingerprint:'nothex',kind:'error',message:'boom'}]},'POST')).status,400,'problem reports are validated');
+  // A long message is cut at 500 characters without splitting an emoji, and control characters are dropped.
+  assert.equal((await call('problems',{reports:[{fingerprint:'0123456789abcdef',kind:'error',message:'x'.repeat(499)+'\u{1F600}tail\u0007',stack:'a\r\nb'}]},'POST')).status,200);
+  const kept=calls.filter(c=>c.name==='app_internal_report_problems').at(-1).args.p_reports[0];
+  assert.equal(Array.from(kept.message).length,500);assert.ok(kept.message.endsWith('\u{1F600}'),'the emoji at the limit stays whole');
+  assert.equal(kept.stack,'a\nb');
+  assert.equal((await call('problems',{reports:Array.from({length:11},()=>({fingerprint:'0123456789abcdef',kind:'error',message:'x'}))},'POST')).status,400,'at most 10 reports at once');
   assert.equal((await call('reminder',{enabled:true,time:'09:00'},'PUT')).status,200,'staff can set the daily reminder offered on their Settings screen');
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';tables.app_sessions[0].device_id=null;
   for(const [path,method] of [['push/subscription','DELETE'],['push/lang','PUT']])assert.equal((await call(path,{endpoint:'https://fcm.googleapis.com/fcm/send/orphan',lang:'en'},method)).status,403,'device-less staff sessions cannot modify orphan subscriptions');

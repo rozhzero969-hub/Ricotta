@@ -160,6 +160,108 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await db.exec('drop trigger fail_device on app_devices;');
  assert.equal((await q("select has_function_privilege('anon','app_internal_start_session(text,text,text,text,text,bigint[])','execute') as a"))[0].a,false);
  assert.equal((await q("select has_function_privilege('authenticated','app_internal_start_session(text,text,text,text,text,bigint[])','execute') as a"))[0].a,false);
+ // ROZH-22: sign-in writes the security log and says when a phone was never seen before.
+ assert.equal(signedIn.newDevice,true,'a phone that never signed in is new');
+ assert.equal((await login('264809','fresh-device','5'.repeat(64))).newDevice,false,'the same phone again is known');
+ assert.deepEqual((await q("select kind from app_security_events where device_id='fresh-device' order by id")).map(r=>r.kind),['signin','new_device','signin']);
+ assert.equal((await q("select count(*)::int as n from app_security_events where device_id='broken-device'"))[0].n,0,'a rolled-back sign-in leaves no log entry');
+ assert.equal((await q("select count(*)::int as n from app_security_events where kind='pin_changed'"))[0].n,2,'both PIN changes are in the log, the rolled-back one is not');
+ const event=(kind,device,dedupe)=>db.exec(`select app_internal_security_event('${kind}',null,'${device}','Mac|Browser','{}',${dedupe});`);
+ await event('locked','x-phone',600);await event('locked','x-phone',600);await event('locked','z-phone',600);
+ assert.equal((await q("select count(*)::int as n from app_security_events where kind='locked'"))[0].n,2,'a lock is written once per phone, not once per refused try');
+ await event('wrong_pin','x-phone',0);await event('wrong_pin','x-phone',0);
+ await assert.rejects(event('made_up','x-phone',0),/kind_check/);
+ await assert.rejects(q("select app_internal_security_summary('yunis','global-test',900,10)"),/Forbidden/);
+ await db.exec("insert into app_login_attempts(fingerprint_hash,attempted_at) select 'global-test', now()-make_interval(secs=>n) from generate_series(1,10) n;");
+ const security=async()=>(await q("select app_internal_security_summary('rozha','global-test',900,10) as r"))[0].r;
+ let summary=await security();
+ assert.deepEqual([summary.failuresInWindow,summary.wrongPins24h,summary.signins24h,summary.newDevices7d],[10,2,2,1]);
+ assert.ok(new Date(summary.lockedUntil)>new Date(),'ten wrong tries lock sign-in, with the time it opens again');
+ await assert.rejects(q("select app_internal_unlock_signin('yunis',900,'y-phone')"),/Forbidden/);
+ assert.ok((await q("select app_internal_unlock_signin('rozha',900,'r-phone') as n"))[0].n>=10);
+ summary=await security();
+ assert.deepEqual([summary.failuresInWindow,summary.lockedUntil,summary.events[0].kind],[0,null,'unlocked'],'Unlock sign-in opens it and is logged');
+ // Yunis's access: only Rozha changes it, only known roles, each once, and every change is logged.
+ await assert.rejects(db.exec("update app_accounts set roles=array['history','root'] where id='yunis'"),/roles_known/);
+ await assert.rejects(q("select app_internal_set_roles('yunis','yunis',array['transfers'],'y-phone')"),/Forbidden/,'only Rozha changes access');
+ await assert.rejects(q("select app_internal_set_roles('rozha','rozha',array['history'],'r-phone')"),/Forbidden/,'Rozha always keeps everything');
+ assert.deepEqual((await q("select app_internal_set_roles('rozha','yunis',array['send','history','send','transfers'],'r-phone') as r"))[0].r,['history','send','transfers']);
+ await assert.rejects(q("select app_internal_set_roles('rozha','yunis',array['history','admin'],'r-phone')"),/roles_known/,'an unknown role is refused');
+ assert.deepEqual((await q("select roles from app_accounts where id='yunis'"))[0].roles,['history','send','transfers'],'a refused change keeps the saved roles');
+ assert.deepEqual((await q("select app_internal_set_roles('rozha','yunis',array[]::text[],'r-phone') as r"))[0].r,[],'every role can be taken away');
+ const changes=await q("select detail from app_security_events where kind='roles_changed' order by id");
+ assert.deepEqual(changes.map(r=>[r.detail.before,r.detail.roles]),[[null,['history','send','transfers']],[['history','send','transfers'],[]]]);
+ await db.exec("update app_accounts set roles=null where id='yunis';");
+ // Problem reports: one open row per problem, phone and person; repeats add up; sizes and shapes are checked.
+ const report=async(list,account='yunis',device='y-phone')=>(await q(`select app_internal_report_problems('${JSON.stringify(list)}','${account}','${device}','iPhone|App','2026-10-26.1') as n`))[0].n;
+ const fp='ab'.repeat(8),problem={fingerprint:fp,kind:'error',message:'x is not defined'};
+ assert.equal(await report([{...problem,count:2}]),1);
+ assert.equal(await report([{...problem,screen:'order'}]),1);
+ assert.deepEqual((await q(`select count, screen, app_version from app_problem_reports where fingerprint='${fp}'`)),[{count:3,screen:'order',app_version:'2026-10-26.1'}],'a repeat only adds to the count');
+ await report([problem],'rozha','r-phone');
+ assert.equal((await q(`select count(*)::int as n from app_problem_reports where fingerprint='${fp}'`))[0].n,2,'another person or phone is its own row');
+ await assert.rejects(report([{...problem,fingerprint:'not-hex'}]),/fingerprint_check/);
+ await assert.rejects(report([{...problem,message:''}]),/message_check/);
+ await assert.rejects(report([{...problem,kind:'virus'}]),/kind_check/);
+ await assert.rejects(report([{...problem,stack:'s'.repeat(2001)}]),/stack_check/);
+ await assert.rejects(report(Array.from({length:11},()=>problem)),/Invalid report/,'at most 10 in one call');
+ await assert.rejects(report([problem],'staff'),/Invalid report/);
+ await db.exec(`update app_problem_reports set resolved_at=now() where fingerprint='${fp}' and account='yunis';`);
+ await report([problem]);
+ assert.equal((await q(`select count(*)::int as n from app_problem_reports where fingerprint='${fp}' and account='yunis' and resolved_at is null`))[0].n,1,'a fixed problem that comes back opens again');
+ await db.exec("insert into app_problem_reports(fingerprint,kind,message,account) select md5(n::text),'error','m','rozha' from generate_series(1,2000) n;");
+ assert.equal(await report([{...problem,fingerprint:'cd'.repeat(8)}]),0,'no more than 2000 open problems are kept');
+ assert.equal(await report([problem]),1,'but a problem already open still counts');
+ await db.exec("delete from app_problem_reports where message='m';");
+ // Time in the app: never more than the time that really passed, kept forever.
+ const use=async(seconds,device='y-phone',account='yunis')=>(await q(`select app_internal_add_usage('${account}','${device}','iPhone|App',${seconds}) as n`))[0].n;
+ assert.equal(await use(600),600,'the first report counts in full');
+ assert.ok(await use(900)<=16,'a phone cannot claim more time than has passed');
+ assert.equal(await use(-50),0);
+ assert.equal(await use(5000,'y-laptop'),1800,'one report is never more than 30 minutes');
+ await assert.rejects(use(10,''),/Invalid usage/);
+ await assert.rejects(use(10,'x-phone','staff'),/Invalid usage/);
+ await db.exec("update app_usage_time set updated_at=now()-interval '10 minutes';");
+ assert.equal(await use(300),300,'after ten minutes, five minutes count');
+ await assert.rejects(q("select app_internal_usage_summary('yunis')"),/Forbidden/);
+ const usage=(await q("select app_internal_usage_summary('rozha') as r"))[0].r,stored=(await q("select sum(seconds)::int as s from app_usage_time"))[0].s;
+ assert.deepEqual([usage.people.length,usage.people[0].account,usage.people[0].total,usage.people[0].today,usage.devices.length],[1,'yunis',stored,stored,2],'per person and per phone');
+ // When each item was last ordered: later orders move it forward, undo takes it back, exports count this month.
+ await db.exec("insert into app_suppliers(id,name) values('sup-1','Market'); insert into app_items(id,name,supplier_id) values('it-a','Apples','sup-1'),('it-b','Beans','sup-1');");
+ const lineA={item_id:'it-a',item_name:'Apples',qty:1,supplier_id:'sup-1',supplier_name:'Market'},lineB={item_id:'it-b',item_name:'Beans',qty:2,supplier_id:'sup-1',supplier_name:'Market'};
+ const send=(id,at,lines)=>db.exec(`select app_internal_save_order('${id}','${at}','rozha','${JSON.stringify(lines)}');`);
+ const lastOrdered=async()=>Object.fromEntries((await q("select id, last_ordered_at from app_items where id like 'it-%' order by id")).map(r=>[r.id,r.last_ordered_at&&new Date(r.last_ordered_at).toISOString()]));
+ await send('lo-1','2026-10-20T08:00:00Z',[lineA,lineB]);await send('lo-2','2026-10-25T08:00:00Z',[lineA]);await send('lo-0','2026-10-10T08:00:00Z',[lineA]);
+ assert.deepEqual(await lastOrdered(),{'it-a':'2026-10-25T08:00:00.000Z','it-b':'2026-10-20T08:00:00.000Z'},'an older order saved later does not move the date back');
+ await db.exec("select app_internal_delete_order('lo-2','rozha','r-phone');");
+ assert.deepEqual(await lastOrdered(),{'it-a':'2026-10-20T08:00:00.000Z','it-b':'2026-10-20T08:00:00.000Z'},'undoing the newest order goes back to the one before');
+ const catalog=(await q("select app_internal_catalog_report('2026-10-01T00:00:00Z') as r"))[0].r;
+ assert.deepEqual([catalog.items['it-a'].orders,Number(catalog.items['it-a'].qty),catalog.items['it-b'].orders,catalog.suppliers['sup-1'].orders,catalog.suppliers['sup-1'].lines],[2,2,1,2,3]);
+ // Rico's usage by kind, for Rozha only.
+ for(const model of ['pending:chat','pending:transcribe','pending:transfer']) await db.exec(`select app_internal_reserve_assistant('y-phone','yunis','${model}',50,100);`);
+ await assert.rejects(db.exec("insert into app_assistant_usage(device_id,account,model,kind) values('y-phone','yunis','m','image');"),/kind_check/);
+ await assert.rejects(q("select app_internal_rico_usage('yunis',now()-interval '1 day')"),/Forbidden/);
+ const rico=(await q("select app_internal_rico_usage('rozha',now()-interval '1 day') as r"))[0].r;
+ assert.deepEqual([rico.kinds,rico.people,rico.thisHour],[{chat:1,voice:1,transfer:1},{yunis:3},3]);
+ // Health Check reads the database itself.
+ await assert.rejects(q("select app_internal_diagnostics('yunis')"),/Forbidden/);
+ const health=(await q("select app_internal_diagnostics('rozha') as r"))[0].r;
+ assert.deepEqual([health.items,health.suppliers,health.openProblems,health.wrongPins24h,health.database],[2,1,2,2,true]);
+ assert.ok('databaseBytes' in health&&'lastOrderAt' in health&&'signedIn' in health);
+ // The nightly clean-up shortens the logs but never the time in the app.
+ await db.exec("update app_security_events set occurred_at=now()-interval '91 days' where kind='locked'; update app_problem_reports set resolved_at=now()-interval '31 days' where resolved_at is not null; update app_usage_time set day=day-400, updated_at=now()-interval '400 days';");
+ await db.exec('select app_internal_cleanup();');
+ assert.equal((await q("select count(*)::int as n from app_security_events where kind='locked'"))[0].n,0);
+ assert.ok((await q("select count(*)::int as n from app_security_events"))[0].n>0,'newer log entries stay');
+ assert.deepEqual((await q("select count(*)::int as n, count(*) filter (where resolved_at is null)::int as open from app_problem_reports"))[0],{n:2,open:2},'fixed problems go after 30 days');
+ assert.equal((await q("select sum(seconds)::int as s from app_usage_time"))[0].s,stored,'time in the app is never deleted');
+ // None of it is reachable from the browser roles.
+ for(const role of ['anon','authenticated']){
+  for(const t of ['app_security_events','app_problem_reports','app_usage_time']) assert.equal((await q(`select has_table_privilege('${role}','${t}','select') or has_table_privilege('${role}','${t}','insert') as a`))[0].a,false,role+' '+t);
+  for(const s of ['app_security_events_id_seq','app_problem_reports_id_seq']) assert.equal((await q(`select has_sequence_privilege('${role}','${s}','usage') as a`))[0].a,false,role+' '+s);
+  for(const f of ['app_internal_security_event(text,text,text,text,jsonb,integer)','app_internal_set_roles(text,text,text[],text)','app_internal_security_summary(text,text,integer,integer)','app_internal_unlock_signin(text,integer,text)','app_internal_report_problems(jsonb,text,text,text,text)','app_internal_add_usage(text,text,text,integer)','app_internal_usage_summary(text)','app_internal_catalog_report(timestamptz)','app_internal_rico_usage(text,timestamptz)','app_internal_diagnostics(text)'])
+   assert.equal((await q(`select has_function_privilege('${role}','${f}','execute') as a`))[0].a,false,role+' '+f);
+ }
  // Kitchen notes, repeat orders, the order note, the secret code and the message format left nothing behind.
  for(const t of ['app_notes','app_repeat_orders','app_recovery_tickets']) assert.equal((await q(`select to_regclass('${t}') as t`))[0].t,null,t+' is gone');
  assert.equal((await q("select count(*)::int as n from information_schema.columns where (table_name,column_name) in (('app_accounts','message_format'),('app_orders','note'),('app_order_drafts','note'))"))[0].n,0);
@@ -167,5 +269,5 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await db.exec('select app_internal_cleanup();');
  // Exercise schema-only restore to another empty database, without business data.
  const restored=new PGlite({extensions:{pgcrypto}});await restored.exec('create role anon;create role authenticated;create role service_role;');await restored.exec(fs.readFileSync('supabase/baseline.sql','utf8'));for(const sql of migrations) await restored.exec(sql);await restored.close();
- await db.close();console.log('Database smoke: PASS (every migration, PIN change, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, schema restore)');
+ await db.close();console.log('Database smoke: PASS (every migration, PIN change, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, security log, roles, problem reports, time in the app, last ordered, Rico usage, Health Check, schema restore)');
 })().catch(e=>{console.error(e);process.exitCode=1});
