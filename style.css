@@ -330,9 +330,10 @@ html.rtl .login-title{letter-spacing:0}
   .login-map-top{padding:44px 48px 0}
   .login-word{font-size:2.125rem}
   .login-map .login-date{display:none}
-  .map-recenter{display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:50%;pointer-events:auto;opacity:0;transform:scale(.6);transition:opacity 240ms ease,transform 320ms cubic-bezier(.2,.8,.2,1)}
-  .map-recenter.show{opacity:1;transform:none}
-  .map-recenter:not(.show){pointer-events:none}
+  /* Hidden (and out of reach of the keyboard and screen readers) until the map has been moved. */
+  .map-recenter{display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:50%;pointer-events:auto;opacity:0;transform:scale(.6);visibility:hidden;
+    transition:opacity 240ms ease,transform 320ms cubic-bezier(.2,.8,.2,1),visibility 0s linear 320ms}
+  .map-recenter.show{opacity:1;transform:none;visibility:visible;transition-delay:0s}
   .login-map-foot{inset-inline:48px;bottom:44px;animation:loginRise 900ms cubic-bezier(.2,.8,.2,1) 200ms both}
   .login-tagline{display:block;margin:0;max-width:420px;font-size:2.25rem;line-height:1.14;font-weight:700;letter-spacing:-.022em;color:#fff}
   html.rtl .login-tagline{letter-spacing:0;line-height:1.35}
