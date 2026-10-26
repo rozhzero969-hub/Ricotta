@@ -7,7 +7,7 @@
    live copy on the server and reloads (or asks, when an order is in
    progress) when they differ. Any unique value works -- date-based is
    easiest to keep straight. */
-const APP_VERSION = '2026-10-26.1';
+const APP_VERSION = '2026-10-26.2';
 
 /* Supabase project this app talks to. The browser only ever calls this
    project's `api` Edge Function (with a session token issued after a PIN
@@ -21,20 +21,20 @@ const SUPABASE_URL = 'https://pxufdcyqjtmtklmrjodg.supabase.co';
    Until this is replaced, the notification banner stays hidden. */
 const VAPID_PUBLIC_KEY = 'BJS1Qg-S1h6PJIp3JthweEJuG9sFZD-_-vsBKA44ZmWAWXzky9LUjJ57lUnWmCNRrp8YNNv8nFWCmr1PtC1WLRY';
 
-/* Only used if the server has no units at all. */
+/* Only used if the server has no units at all. A unit has one name, in any language (ROZH-23). */
 const DEFAULT_UNITS = [
-  {id:'kg', en:'kg', ku:'کیلۆگرام', ar:'كيلوغرام'},
-  {id:'g', en:'g', ku:'گرام', ar:'غرام'},
-  {id:'l', en:'liter', ku:'لیتر', ar:'لتر'},
-  {id:'piece', en:'piece', ku:'دانە', ar:'قطعة'},
-  {id:'carton', en:'carton', ku:'کارتۆن', ar:'كارتون'},
-  {id:'box', en:'box', ku:'سندوق', ar:'صندوق'},
-  {id:'pack', en:'pack', ku:'پاکەت', ar:'باكيت'},
-  {id:'bag', en:'bag', ku:'کیسە', ar:'كيس'},
-  {id:'bottle', en:'bottle', ku:'بوتڵ', ar:'قنينة'},
-  {id:'can', en:'can', ku:'قوتی', ar:'علبة'},
-  {id:'tray', en:'tray', ku:'سینی', ar:'صينية'},
-  {id:'bunch', en:'bunch', ku:'دەستە', ar:'حزمة'}
+  {id:'kg', en:'کیلۆگرام'},
+  {id:'g', en:'گرام'},
+  {id:'l', en:'لیتر'},
+  {id:'piece', en:'دانە'},
+  {id:'carton', en:'کارتۆن'},
+  {id:'box', en:'سندوق'},
+  {id:'pack', en:'پاکەت'},
+  {id:'bag', en:'کیسە'},
+  {id:'bottle', en:'بوتڵ'},
+  {id:'can', en:'قوتی'},
+  {id:'tray', en:'سینی'},
+  {id:'bunch', en:'دەستە'}
 ];
 
 const MAX_PIN_LEN = 6;   /* both PINs are six digits */

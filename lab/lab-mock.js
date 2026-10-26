@@ -30,10 +30,10 @@
   function seed(){
     const now = bag(new Date());
     const units = [
-      {id:'kg',en:'kg',ku:'کیلۆگرام',ar:'كيلوغرام'},{id:'g',en:'g',ku:'گرام',ar:'غرام'},{id:'l',en:'liter',ku:'لیتر',ar:'لتر'},
-      {id:'piece',en:'piece',ku:'دانە',ar:'قطعة'},{id:'carton',en:'carton',ku:'کارتۆن',ar:'كارتون'},{id:'box',en:'box',ku:'سندوق',ar:'صندوق'},
-      {id:'pack',en:'pack',ku:'پاکەت',ar:'باكيت'},{id:'bag',en:'bag',ku:'کیسە',ar:'كيس'},{id:'bottle',en:'bottle',ku:'بوتڵ',ar:'قنينة'},
-      {id:'can',en:'can',ku:'قوتی',ar:'علبة'},{id:'tray',en:'tray',ku:'سینی',ar:'صينية'},{id:'bunch',en:'bunch',ku:'دەستە',ar:'حزمة'}
+      {id:'kg', en:'کیلۆگرام'},{id:'g', en:'گرام'},{id:'l', en:'لیتر'},
+      {id:'piece', en:'دانە'},{id:'carton', en:'کارتۆن'},{id:'box', en:'سندوق'},
+      {id:'pack', en:'پاکەت'},{id:'bag', en:'کیسە'},{id:'bottle', en:'بوتڵ'},
+      {id:'can', en:'قوتی'},{id:'tray', en:'سینی'},{id:'bunch', en:'دەستە'}
     ];
     const stamp = new Date(Date.now() - 20*86400000).toISOString();
     const suppliers = [
@@ -117,13 +117,13 @@
       {id:1, fingerprint:'0f1e2d3c4b5a6978', kind:'manual', message:'The PDF button on the send screen opened a page with no way back.', source:null, stack:null, screen:'queue', account:'rozha', deviceId:'lab-phone-rozha', label:'iPhone 16/17 Pro Max|App', version:'2026-10-24.3', count:1, firstAt:ago(60*20), lastAt:ago(60*20), resolvedAt:null}
     ];
     const usage = [];
-    for(let d = 13; d >= 0; d--){
+    for(let d = 69; d >= 0; d--){
       const day = new Date(Date.now() - d*86400000).toISOString().slice(0,10);
       usage.push({account:'rozha', deviceId:'this-device', label:'Mac|Website', day, seconds:1200 + ((d*733) % 2400)});
       usage.push({account:'yunis', deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', day, seconds:2400 + ((d*911) % 3600)});
       if(d % 3 === 0) usage.push({account:'rozha', deviceId:'lab-phone-rozha', label:'iPhone 16/17 Pro Max|App', day, seconds:600 + d*40});
     }
-    return {v:6, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, reminder:{enabled:true, time:'09:00'}, seq:100, said:{},
+    return {v:7, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, reminder:{enabled:true, time:'09:00'}, seq:100, said:{},
       roles:{yunis:null}, security, problems, usage};
   }
   /* Two finished months for the archive (History itself only keeps this month). */
@@ -146,7 +146,7 @@
     ['Pizza Cheese - پەنیری پیتزا', ['کیلۆ','کارتۆن']], ['Dish Soap - سابوونی قاپ', ['دانە','کارتۆن']], ['Mini Water - ئاوی بچووک', ['کارتۆن']], ['Pepsi Can - پیپسی قوتوو', ['کارتۆن','دانە']]
   ].map(([name, units], i)=>({id:'st-'+(i+1), name, units, aliases:[]}));
   let db = lsGet(DB_KEY);
-  if(!db || db.v !== 6) db = seed();
+  if(!db || db.v !== 7) db = seed();
   if(!Array.isArray(db.stock)) db.stock = STOCK_SEED.map(i=>({...i, units:[...i.units]}));
   const save = () => lsSet(DB_KEY, db);
   save();
@@ -355,17 +355,27 @@
     if(method === 'POST' && path === 'admin/problems/resolve'){ const ids = new Set(body.ids || []); (db.problems || []).forEach(p=>{ if(ids.has(p.id) && !p.resolvedAt) p.resolvedAt = new Date().toISOString(); }); save(); return ok(); }
     if(method === 'DELETE' && path === 'admin/problems'){ db.problems = (db.problems || []).filter(p=>!p.resolvedAt); save(); return ok(); }
     if(method === 'GET' && path === 'admin/usage'){
-      const today = new Date().toISOString().slice(0,10), week = new Date(Date.now() - 6*86400000).toISOString().slice(0,10), month = today.slice(0,8) + '01';
-      const rows = db.usage || [], sum = list=>list.reduce((n, r)=>n + r.seconds, 0);
-      const people = ['rozha','yunis'].map(a=>{ const mine = rows.filter(r=>r.account === a); return {account:a, today:sum(mine.filter(r=>r.day === today)), week:sum(mine.filter(r=>r.day >= week)), month:sum(mine.filter(r=>r.day >= month)), total:sum(mine), since:mine.map(r=>r.day).sort()[0] || today}; });
+      // The same shape as the server: today, 7 days, this month, 30 days and all time per person; every one
+      // of the last 31 days; 8 weeks of 7 days ending today; 6 months; nothing before the first counted day.
+      const iso = ms=>new Date(ms).toISOString().slice(0,10), DAY = 86400000, now = Date.parse(iso(Date.now()) + 'T00:00:00Z');
+      const today = iso(now), month = today.slice(0,8) + '01';
+      const rows = db.usage || [], sum = list=>list.reduce((n, r)=>n + r.seconds, 0), first = rows.map(r=>r.day).sort()[0] || today;
+      const between = (a, b, who)=>sum(rows.filter(r=>r.day >= a && r.day <= b && (!who || r.account === who)));
+      const people = ['rozha','yunis'].filter(a=>rows.some(r=>r.account === a)).map(a=>{ const mine = rows.filter(r=>r.account === a); return {account:a, today:between(today, today, a), week:between(iso(now - 6*DAY), today, a), month:between(month, today, a), last30:between(iso(now - 29*DAY), today, a), total:sum(mine), since:mine.map(r=>r.day).sort()[0]}; });
       const keys = [...new Set(rows.map(r=>r.account + '|' + r.deviceId))];
       const devicesList = keys.map(k=>{ const mine = rows.filter(r=>r.account + '|' + r.deviceId === k); return {account:mine[0].account, deviceId:mine[0].deviceId, label:mine[mine.length-1].label, today:sum(mine.filter(r=>r.day === today)), total:sum(mine), lastAt:mine[mine.length-1].day + 'T12:00:00Z'}; });
-      const days = [...new Set(rows.map(r=>r.day))].sort().slice(-14).map(d=>({day:d, rozha:sum(rows.filter(r=>r.day === d && r.account === 'rozha')), yunis:sum(rows.filter(r=>r.day === d && r.account === 'yunis'))}));
-      return json({today, people, devices:devicesList, days});
+      const days = [];
+      for(let d = 30; d >= 0; d--){ const day = iso(now - d*DAY); if(day >= first) days.push({day, rozha:between(day, day, 'rozha'), yunis:between(day, day, 'yunis')}); }
+      const weeks = [];
+      for(let w = 7; w >= 0; w--){ const end = iso(now - 7*w*DAY), start = iso(now - (7*w + 6)*DAY); if(end >= first) weeks.push({start, rozha:between(start, end, 'rozha'), yunis:between(start, end, 'yunis')}); }
+      const months = [];
+      for(let m = 5; m >= 0; m--){ const d = new Date(now); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - m); const key = iso(d.getTime()).slice(0,7), next = new Date(d); next.setUTCMonth(next.getUTCMonth() + 1);
+        if(key >= first.slice(0,7)) months.push({month:key, rozha:between(key + '-01', iso(next.getTime() - DAY), 'rozha'), yunis:between(key + '-01', iso(next.getTime() - DAY), 'yunis')}); }
+      return json({today, people, devices:devicesList, days, weeks, months});
     }
     if(method === 'GET' && path === 'admin/rico'){
       const days = [...Array(14)].map((_, i)=>({day:new Date(Date.now() - (13 - i)*86400000).toISOString().slice(0,10), calls:[3,5,2,8,6,4,9,7,3,6,11,5,4,6][i]}));
-      return json({from:monthStartIso(), thisHour:3, kinds:{chat:74, voice:12}, people:{rozha:31, yunis:55}, days, cost:{usd:0.1842, input:412000, output:51000}, hourLimit:400, perPhoneHourLimit:60});
+      return json({from:monthStartIso(), thisHour:3, kinds:{chat:74, voice:12}, people:{rozha:31, yunis:55}, days, tokens:{input:412000, output:51000}, hourLimit:400, perPhoneHourLimit:60});
     }
     if(method === 'GET' && path === 'admin/roles') return json({roles:ROLES, yunis:rolesOf('yunis'), standard:!Array.isArray(db.roles?.yunis)});
     if(method === 'PUT' && path === 'admin/roles'){
@@ -558,6 +568,13 @@
     let body = {};
     try{ body = init.body ? JSON.parse(init.body) : {}; }catch(_){}
     if(init.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    // Live changes: the Lab is one browser, so nothing changes anywhere else and the wait simply ends.
+    if(method === 'GET' && path === 'signals'){
+      const wait = Math.min(25, Math.max(0, Number(query.get('wait')) || 0)) * 1000;
+      await new Promise(done=>{ const timer = setTimeout(done, wait); init.signal?.addEventListener('abort', ()=>{ clearTimeout(timer); done(); }, {once:true}); });
+      if(init.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      return new Response(JSON.stringify({n:1, kinds:{data:1, draft:1, devices:1, admin:1, inbox:1}}), {status:200, headers:{'Content-Type':'application/json'}});
+    }
     return handle(path, method, headers, body || {});
   };
 })();

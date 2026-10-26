@@ -33,6 +33,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   devices/me                 {seconds?}                heartbeat ("still here") and time spent in the app
 //   POST   devices/me/ack             {commandId}               a remote command was carried out
 //   POST   devices/command            {ids, type} (rozha)       remote log out / refresh
+//   GET    signals?since=n&wait=s                               waits (up to 25 s) until something changes; kinds and counters only
 //   PUT    admin/pin                  {account, currentPin, newPin} (rozha)  a new PIN for Rozha or Yunis
 //   GET    admin/diagnostics          (rozha)                   Health Check: database, scheduled jobs and counts (summaries only)
 //   GET    admin/security             (rozha)                   wrong PINs, the sign-in lock, new phones, the security log
@@ -41,7 +42,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   admin/problems/resolve     {ids} (rozha)             mark problems fixed
 //   DELETE admin/problems             (rozha)                   remove the fixed ones
 //   GET    admin/usage                (rozha)                   time spent in the app per person and phone
-//   GET    admin/rico                 (rozha)                   Rico's usage this month and its estimated cost
+//   GET    admin/rico                 (rozha)                   Rico's usage this month and the tokens it used
 //   PUT    admin/roles                {account, roles} (rozha)  what Yunis may open and do
 //   POST   problems                   {reports}                 errors this phone ran into (and Report a Problem)
 //   GET    reports/catalog            (exports)                 this month's orders per item and supplier, for Excel and PDF
@@ -493,7 +494,8 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
     ...(Object.hasOwn(b, "sortOrder") ? { sort_order: Number.isInteger(b.sortOrder) && b.sortOrder >= 0 ? b.sortOrder : null } : {}),
     updated_at: nowIso(),
   } : null,
-  units: (id, b) => text(b.en, 80) ? { id, en: text(b.en, 80), ku: text(b.ku, 80) || null, ar: text(b.ar, 80) || null } : null,
+  // A unit has one name, in any language (the Kurdish and Arabic copies are gone).
+  units: (id, b) => text(b.en, 80) ? { id, en: text(b.en, 80), ku: null, ar: null } : null,
 };
 
 /* Rico's short note after an order goes out (first one each day per
@@ -585,6 +587,27 @@ async function heartbeat(s: Session, label: string | null, version: string | nul
   return ok();
 }
 
+/* ---------- Live changes ----------
+   An open app asks "anything new since n?". The answer comes as soon as a counter in app_signals moves
+   (looked at every second), or after `wait` seconds (at most 25) with nothing new, and the app asks
+   again. Only the kinds of change and their counters are sent, never the data itself. */
+const SIGNAL_KINDS = ["data", "draft", "devices", "admin", "inbox"];
+async function readSignals() {
+  const { data, error } = await app("signals").select("kind,n");
+  if (error) throw error;
+  const kinds: Record<string, number> = {};
+  for (const r of data ?? []) if (SIGNAL_KINDS.includes(r.kind)) kinds[r.kind] = Number(r.n) || 0;
+  return { n: Math.max(0, ...Object.values(kinds)), kinds };
+}
+async function waitForSignals(since: number, waitSeconds: number, stop: AbortSignal) {
+  const until = Date.now() + waitSeconds * 1000;
+  for (;;) {
+    const now = await readSignals();
+    if (now.n !== since || Date.now() >= until || stop.aborted) return now;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
 async function sendCommand(b: any) {
   const type = b.type === "logout" ? "logout" : b.type === "refresh" ? "refresh" : "";
   const ids: string[] = Array.isArray(b.ids) ? b.ids.map((x: unknown) => text(x, 120)).filter(Boolean).slice(0, 50) : [];
@@ -673,25 +696,19 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
 }
 
 /* ---------- Admin (Rozha only) ---------- */
-/* Rico's estimated cost: list prices in US dollars per million tokens, as published in October 2026.
-   Voice clips are priced by length, not tokens, and count as zero here. */
-const PRICES: [RegExp, number, number][] = [[/flash-lite/i, 0.30, 2.50], [/flash/i, 1.50, 9.00], [/gpt-oss/i, 0.15, 0.60]];
-function ricoCost(models: any[]) {
-  let usd = 0, input = 0, output = 0;
-  for (const m of models ?? []) {
-    const i = Number(m.input) || 0, o = Number(m.output) || 0;
-    input += i; output += o;
-    const price = PRICES.find(([re]) => re.test(String(m.model ?? "")));
-    if (price) usd += (i * price[1] + o * price[2]) / 1e6;
-  }
-  return { usd: Math.round(usd * 10000) / 10000, input, output };
+/* Rico's tokens this month, as Google and Groq counted them in their own replies. No cost is worked out:
+   the real bill depends on the account's plan, which the app cannot see. */
+function ricoTokens(models: any[]) {
+  let input = 0, output = 0;
+  for (const m of models ?? []) { input += Number(m.input) || 0; output += Number(m.output) || 0; }
+  return { input, output };
 }
 async function adminRico() {
   const { data, error } = await db.rpc("app_internal_rico_usage", { p_actor: "rozha", p_from: monthStart() });
   if (error) throw error;
   const { models, ...rest } = data ?? {};
-  // Model names stay on the server: Admin shows what Rico did and what it cost.
-  return { ...rest, cost: ricoCost(models), hourLimit: 400, perPhoneHourLimit: 60 };
+  // Model names stay on the server: Admin shows what Rico did and the tokens it used.
+  return { ...rest, tokens: ricoTokens(models), hourLimit: 400, perPhoneHourLimit: 60 };
 }
 const PROBLEM_KINDS = ["error", "rejection", "console", "server", "manual"];
 // Cut by characters, not UTF-16 halves, so an emoji at the limit is never split (the database refuses half of one).
@@ -944,6 +961,11 @@ Deno.serve(async (req) => {
       return ok();
     }
     if (M === "POST" && path === "devices/command") return rozha ? await sendCommand(b) : fail("forbidden", 403);
+    if (M === "GET" && path === "signals") {
+      const q = new URL(req.url).searchParams, since = Number(q.get("since") ?? -1), wait = Number(q.get("wait") ?? 0);
+      if (!Number.isSafeInteger(since) || since < -1 || !Number.isFinite(wait) || wait < 0) return fail("invalid_input");
+      return json(await waitForSignals(since, Math.min(25, wait), req.signal));
+    }
 
     // Admin
     if (M === "PUT" && path === "admin/pin") return rozha ? await changePin(req, s, b) : fail("forbidden", 403);

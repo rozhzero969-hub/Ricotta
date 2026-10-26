@@ -305,5 +305,21 @@ try {
   // Kitchen notes, repeat orders and the secret code are gone too.
   for(const [path,method] of [['notes','GET'],['notes','POST'],['notes/1/read','POST'],['repeat-orders','GET'],['repeat-orders','POST']])assert.equal((await call(path,method==='GET'?null:{},method)).status,404,`${path} is retired`);
   for(const path of ['recovery/name','recovery/verify','recovery/save'])assert.equal((await call(path,{},'POST',false)).status,401,`${path} is retired`);
+  // Live changes: the counters right away, an answer as soon as one moves, and only kinds and counters.
+  reset();tables.app_signals=[{kind:'data',n:7,at:'x'},{kind:'devices',n:9,at:'x'},{kind:'secret',n:99}];
+  const now=await (await call('signals?since=-1&wait=0',null,'GET')).json();
+  assert.deepEqual(now,{n:9,kinds:{data:7,devices:9}},'kinds and counters only, unknown kinds ignored');
+  let started=Date.now();
+  setTimeout(()=>{tables.app_signals[0].n=10;},300);
+  assert.deepEqual(await (await call('signals?since=9&wait=5',null,'GET')).json(),{n:10,kinds:{data:10,devices:9}},'a change ends the wait');
+  assert.ok(Date.now()-started<2600,'within about a second');
+  started=Date.now();
+  assert.equal((await (await call('signals?since=10&wait=1',null,'GET')).json()).n,10,'nothing new: the same counter');
+  assert.ok(Date.now()-started>=900,'after waiting');
+  for(const bad of ['since=x','since=-2','since=1.5','since=1&wait=-1'])assert.equal((await call('signals?'+bad,null,'GET')).status,400,bad);
+  assert.equal((await call('signals?since=1',null,'GET',false)).status,401,'a session is needed');
+  tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';
+  assert.equal((await call('signals?since=-1&wait=0',null,'GET')).status,200,'Yunis waits too');
+  errors.set('app_signals:read',true);assert.equal((await call('signals?since=-1&wait=0',null,'GET')).status,500);
 } finally { console.error = mute; }
-console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, Admin PIN change, locked Transfers, retired endpoints)');
+console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, Admin PIN change, live change signals, locked Transfers, retired endpoints)');

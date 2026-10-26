@@ -89,11 +89,15 @@ const appVersionHeader = () => typeof APP_VERSION === 'string' ? {'x-app-version
 
 /* Returns {ok, status, data}. Never throws. A 401 on a signed-in device means
    the session was revoked (a new PIN, remote log out) or expired. */
-async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepalive=false} = {}){
+/* signal: stops the request early. quiet: a request that fails says nothing about the connection (the
+   live-changes wait, which is cut short whenever the app leaves the screen). */
+async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepalive=false, signal=null, quiet=false} = {}){
   const s = apiSession();
   if(!apiPathIsPublic(path) && !apiAccountMatchesUi(s)) return staleApiReply();
   const controller = new AbortController();
   const timer = setTimeout(()=>controller.abort(), timeout);
+  if(signal?.aborted) controller.abort();
+  else signal?.addEventListener('abort', ()=>controller.abort(), {once:true});
   const sessionCurrent = ()=>apiPathIsPublic(path) || (apiSessionMatches(s) && apiAccountMatchesUi(s));
   const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel(), ...appVersionHeader()};
   if(s) headers['x-session-token'] = s.token;
@@ -112,7 +116,7 @@ async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepalive=
     return {ok:res.ok, status:res.status, data};
   }catch(e){
     if(!sessionCurrent()) return staleApiReply();
-    setApiHealth(false);
+    if(!quiet) setApiHealth(false);
     return {ok:false, status:0, data:null};
   }finally{ clearTimeout(timer); }
 }

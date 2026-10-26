@@ -80,6 +80,14 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
   select app_internal_catalog_change('items','basil','{"name":"Basil","unit_id":"kg","note":"fresh"}','rozha','device');`);
  assert.deepEqual((await q("select payload from app_audit_events where entity_name='Basil'"))[0].payload.fields.map(f=>f.k).sort(),['aliases','available','name','note','supplier','unit'],'an item records the same fields as before');
  await db.exec("delete from app_items where id='basil'; delete from app_units where id='kg';");
+ // ROZH-23: a unit has one name. The Kurdish name becomes that name; a unit without one is removed,
+ // but only when no item or order line uses it. Running the change twice changes nothing more.
+ await db.exec(`insert into app_units(id,en,ku,ar) values('u-kg','kg','کیلۆ','كيلو'),('u-m','metre',null,'متر'),('u-box','box','',null),('u-pcs','pcs',' pcs ',null);
+  insert into app_items(id,name,unit_id) values('u-rice','Rice','u-box');`);
+ for(let i=0;i<2;i++) await db.exec(fs.readFileSync('supabase/migrations/20261026170000_one_name_units.sql','utf8'));
+ assert.deepEqual(await q("select id,en,ku,ar from app_units where id like 'u-%' order by id"),
+  [{id:'u-box',en:'box',ku:null,ar:null},{id:'u-kg',en:'کیلۆ',ku:null,ar:null},{id:'u-pcs',en:'pcs',ku:null,ar:null}],'units keep one name');
+ await db.exec("delete from app_items where id='u-rice'; delete from app_units where id like 'u-%';");
  await db.exec("select app_internal_device_command(array['device'],'logout');");
  assert.equal((await q('select revoked_at is not null as revoked from app_sessions'))[0].revoked,true);
  assert.equal((await q('select logged_in from app_devices'))[0].logged_in,false);
@@ -226,6 +234,20 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await assert.rejects(q("select app_internal_usage_summary('yunis')"),/Forbidden/);
  const usage=(await q("select app_internal_usage_summary('rozha') as r"))[0].r,stored=(await q("select sum(seconds)::int as s from app_usage_time"))[0].s;
  assert.deepEqual([usage.people.length,usage.people[0].account,usage.people[0].total,usage.people[0].today,usage.devices.length],[1,'yunis',stored,stored,2],'per person and per phone');
+ // By day, week and month: a day nobody used the app is a zero, and nothing before the first counted day shows.
+ await db.exec(`insert into app_usage_time(account,device_id,day,seconds) values
+   ('rozha','r-mac',(now() at time zone 'Asia/Baghdad')::date - 40,600),('rozha','r-mac',(now() at time zone 'Asia/Baghdad')::date - 3,1200),('yunis','y-old',(now() at time zone 'Asia/Baghdad')::date - 9,300);`);
+ const periods=(await q("select app_internal_usage_summary('rozha') as r"))[0].r,sum=(rows,k)=>rows.reduce((n,r)=>n+Number(r[k]),0);
+ assert.equal(periods.days.length,31,'the last 31 days, every one of them');
+ assert.deepEqual([periods.days.at(-1).day,periods.days.at(-4).rozha,periods.days.at(-2).rozha],[periods.today,1200,0],'days without use are zeros');
+ assert.equal(periods.weeks.length,6,'weeks start with the one holding the first counted day (40 days ago)');
+ assert.equal(periods.weeks.at(-1).start,new Date(Date.parse(periods.today+'T00:00:00Z')-6*86400000).toISOString().slice(0,10),'the newest week ends today');
+ assert.deepEqual([sum(periods.weeks,'rozha'),sum(periods.weeks,'yunis')],[1800,stored+300],'every counted second is in a week');
+ assert.ok(periods.months.length>=2 && periods.months.length<=6 && periods.months.at(-1).month===periods.today.slice(0,7),'months up to this one');
+ assert.deepEqual([sum(periods.months,'rozha'),sum(periods.months,'yunis')],[1800,stored+300],'and in a month');
+ const ro=periods.people.find(p=>p.account==='rozha');
+ assert.deepEqual([ro.today,ro.week,ro.last30,ro.total],[0,1200,1200,1800],'per person: today, 7 days, 30 days, all time');
+ await db.exec("delete from app_usage_time where device_id in ('r-mac','y-old');");
  // When each item was last ordered: later orders move it forward, undo takes it back, exports count this month.
  await db.exec("insert into app_suppliers(id,name) values('sup-1','Market'); insert into app_items(id,name,supplier_id) values('it-a','Apples','sup-1'),('it-b','Beans','sup-1');");
  const lineA={item_id:'it-a',item_name:'Apples',qty:1,supplier_id:'sup-1',supplier_name:'Market'},lineB={item_id:'it-b',item_name:'Beans',qty:2,supplier_id:'sup-1',supplier_name:'Market'};
@@ -262,6 +284,29 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
   for(const f of ['app_internal_security_event(text,text,text,text,jsonb,integer)','app_internal_set_roles(text,text,text[],text)','app_internal_security_summary(text,text,integer,integer)','app_internal_unlock_signin(text,integer,text)','app_internal_report_problems(jsonb,text,text,text,text)','app_internal_add_usage(text,text,text,integer)','app_internal_usage_summary(text)','app_internal_catalog_report(timestamptz)','app_internal_rico_usage(text,timestamptz)','app_internal_diagnostics(text)'])
    assert.equal((await q(`select has_function_privilege('${role}','${f}','execute') as a`))[0].a,false,role+' '+f);
  }
+ // Live changes: each kind of change moves its own counter, "still here" moves none, and a counter that
+ // cannot move never stops the change. The browser roles cannot read them.
+ const sig=async()=>Object.fromEntries((await q('select kind,n from app_signals')).map(r=>[r.kind,Number(r.n)]));
+ let was=await sig();
+ assert.deepEqual(Object.keys(was).sort(),['admin','data','devices','draft','inbox']);
+ await db.exec("insert into app_suppliers(id,name) values('sig-s','Signals');");
+ let now=await sig();assert.ok(now.data>was.data && now.devices===was.devices && now.admin===was.admin,'a new supplier is a data change, and only that');
+ await db.exec("insert into app_devices(id,account,logged_in,last_seen) values('sig-d','rozha',true,now());");was=await sig();
+ await db.exec("update app_devices set last_seen=now()+interval '1 minute', logged_in=true, updated_at=now() where id='sig-d';");
+ assert.deepEqual(await sig(),was,'a "still here" from a device changes nothing');
+ await db.exec("update app_devices set logged_in=false where id='sig-d';");
+ now=await sig();assert.ok(now.devices>was.devices && now.data===was.data,'signing out is a device change');
+ await db.exec("update app_accounts set updated_at=now() where id='rozha';");assert.equal((await sig()).data,now.data,'touching an account alone is no change');
+ await db.exec("insert into app_security_events(kind,account) values('signin','rozha');");assert.ok((await sig()).admin>now.admin,'the security log is an Admin change');
+ await db.exec("alter sequence app_signal_seq rename to app_signal_seq_away;");
+ await db.exec("delete from app_suppliers where id='sig-s';");
+ await db.exec("alter sequence app_signal_seq_away rename to app_signal_seq;");
+ assert.equal((await q("select count(*)::int as n from app_suppliers where id='sig-s'"))[0].n,0,'the change is saved even when its counter cannot move');
+ await db.exec("delete from app_devices where id='sig-d'; delete from app_security_events where kind='signin' and device_id is null;");
+ for(const role of ['anon','authenticated']){
+  assert.equal((await q(`select has_table_privilege('${role}','app_signals','select') as a`))[0].a,false,role+' app_signals');
+  assert.equal((await q(`select has_sequence_privilege('${role}','app_signal_seq','usage') as a`))[0].a,false,role+' app_signal_seq');
+ }
  // Kitchen notes, repeat orders, the order note, the secret code and the message format left nothing behind.
  for(const t of ['app_notes','app_repeat_orders','app_recovery_tickets']) assert.equal((await q(`select to_regclass('${t}') as t`))[0].t,null,t+' is gone');
  assert.equal((await q("select count(*)::int as n from information_schema.columns where (table_name,column_name) in (('app_accounts','message_format'),('app_orders','note'),('app_order_drafts','note'))"))[0].n,0);
@@ -269,5 +314,5 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await db.exec('select app_internal_cleanup();');
  // Exercise schema-only restore to another empty database, without business data.
  const restored=new PGlite({extensions:{pgcrypto}});await restored.exec('create role anon;create role authenticated;create role service_role;');await restored.exec(fs.readFileSync('supabase/baseline.sql','utf8'));for(const sql of migrations) await restored.exec(sql);await restored.close();
- await db.close();console.log('Database smoke: PASS (every migration, PIN change, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, security log, roles, problem reports, time in the app, last ordered, Rico usage, Health Check, schema restore)');
+ await db.close();console.log('Database smoke: PASS (every migration, PIN change, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, security log, roles, problem reports, time in the app by day, week and month, live change signals, one-name units, last ordered, Rico usage, Health Check, schema restore)');
 })().catch(e=>{console.error(e);process.exitCode=1});
