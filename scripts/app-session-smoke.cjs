@@ -92,7 +92,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
     rowPress:null, toastTimer:null, reminderDraft:{time:'09:00'},
     viewMemory:new Map(), tabMemory:new Map(), diagnosticState:{}, drafts:{}, listeners:{}, modalResets:0, streamResets:0, sessionClears:0,
     document:{getElementById:()=>null}, clearTimeout:()=>{},
-    ricoReset:()=>crossTab.streamResets++,
+    ricoReset:()=>crossTab.streamResets++, resetAdmin:()=>{},
     stopStepHold:()=>{}, dismissAllModals:()=>crossTab.modalResets++,
     closeSelSheet:()=>{}, closeContextMenu:()=>{}, closeLangMenu:()=>{},
     window:{addEventListener:(name,handler)=>{crossTab.listeners[name]=handler;}},
@@ -143,7 +143,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
   const tapped = (kind, view, account = 'yunis')=>{
     const opened = [];
     const c = vm.createContext({state:{account, view:'order', suppliers:[]}, goView:v=>opened.push(v),
-      refreshData:()=>{}, ricoRefreshInbox:()=>{}, canOpen:()=>true, render:()=>{}, openUpdatePopup:()=>opened.push('update')});
+      refreshData:()=>{}, ricoRefreshInbox:()=>{}, canOpen:()=>true, render:()=>{}, openAdminPage:p=>opened.push('admin:'+p)});
     vm.runInContext(intentCode, c);
     vm.runInContext(`handlePushIntent(${JSON.stringify(kind)}, '', '', ${JSON.stringify(view)})`, c);
     return opened;
@@ -151,7 +151,8 @@ const json = value=>JSON.parse(JSON.stringify(value));
   assert.deepEqual(tapped('assistant','history'),['history'],"Rico's end-of-month message opens History");
   assert.deepEqual(tapped('assistant',''),['assistant']);
   assert.deepEqual(tapped('note',''),[],'a kitchen note sent before notes were removed opens nothing');
-  assert.deepEqual(tapped('update','',null),['update'],'an update message opens even when signed out');
+  assert.deepEqual(tapped('update',''),[],'an update message from before it was removed opens nothing');
+  assert.deepEqual(tapped('security','admin','rozha'),['admin','admin:security'],'a new-device alert opens Admin, Security');
   assert.deepEqual(tapped('assistant','history',null),[],'nothing else opens while signed out');
   console.log(JSON.stringify({result:'PASS',checks:'recoverable failed order save, stable retry, a failing chime or save never sticks, stale completion and commands, cross-tab reset preserving session and account draft, WhatsApp numbers, notification taps'}));
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -89,7 +89,7 @@ const appVersionHeader = () => typeof APP_VERSION === 'string' ? {'x-app-version
 
 /* Returns {ok, status, data}. Never throws. A 401 on a signed-in device means
    the session was revoked (a new PIN, remote log out) or expired. */
-async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
+async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepalive=false} = {}){
   const s = apiSession();
   if(!apiPathIsPublic(path) && !apiAccountMatchesUi(s)) return staleApiReply();
   const controller = new AbortController();
@@ -99,13 +99,15 @@ async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS} = {}){
   if(s) headers['x-session-token'] = s.token;
   try{
     const res = await fetch(`${API_URL}/${path}`, {
-      method, headers, signal:controller.signal,
+      method, headers, signal:controller.signal, keepalive,
       body: body === undefined ? undefined : JSON.stringify(body)
     });
     if(!sessionCurrent()) return staleApiReply();
     const data = await res.json().catch(()=>null);
     if(!sessionCurrent()) return staleApiReply();
     setApiHealth(true);
+    // A server error is a problem for Rozha's Admin too (never the report itself, and never a busy limit).
+    if(res.status >= 500 && path !== 'problems' && data?.error !== 'rate_limit_unavailable') globalThis.reportProblem?.('server', `${method} ${path.split('?')[0].replace(/\/[^/]{16,}$/, '/…')} ${res.status} ${data?.error || ''}`.trim());
     if(res.status === 401 && s && !apiPathIsPublic(path)){ clearApiSession(); onSessionExpired(); }
     return {ok:res.ok, status:res.status, data};
   }catch(e){

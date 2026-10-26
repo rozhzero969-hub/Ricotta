@@ -165,17 +165,20 @@ function attachCatalogSearch() {
     const apply=()=>{
       state.catalogQuery=search.value;
       const rows=[...document.querySelectorAll('.list-row,.unit-chip,[data-search-row]')];
+      // A table in Manage is drawn twice (a table for computers, a list for phones): both are filtered, one is counted.
+      const counted=row=>!row.closest(isPhoneLayout()?'.data-table':'.table-list');
+      const total=rows.filter(counted).length;
       let shown=0;
       const scored=rows.map((row,index)=>{
         const item=state.items.find(i=>i.id===row.dataset.edititem);
         const fields=item?itemSearchFields(item):row.dataset.searchText||row.textContent;
         const score=globalThis.RicottaSearch.score(search.value,fields);
-        row.hidden=!Number.isFinite(score);if(!row.hidden)shown++;
+        row.hidden=!Number.isFinite(score);if(!row.hidden && counted(row))shown++;
         if(!row.dataset.searchOrder)row.dataset.searchOrder=String(index+1);
         return {row,index:Number(row.dataset.searchOrder),score};
       });
       if(['manage','suppliers','itemsAdmin'].includes(state.view))scored.sort((a,b)=>a.score-b.score||a.index-b.index).forEach(x=>x.row.parentNode.appendChild(x.row));
-      document.getElementById('catalogSearchCount').textContent=search.value.trim()?`${t('searchMatches')}: ${shown} / ${rows.length}`:'';
+      document.getElementById('catalogSearchCount').textContent=search.value.trim()?`${t('searchMatches')}: ${shown} / ${total}`:'';
       let empty=document.getElementById('catalogSearchEmpty');
       if(!empty){empty=document.createElement('div');empty.id='catalogSearchEmpty';search.closest('.list-search').after(empty);}
       empty.innerHTML=emptyState(t('catalogNoResults'));empty.hidden=state.view==='record' || shown>0 || !search.value.trim();

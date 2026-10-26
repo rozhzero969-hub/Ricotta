@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'dist');
 // without editing this file. config.js stays separate (the updater reads it); boot.js is built below.
 const scripts=[...fs.readFileSync(path.join(root,'index.html'),'utf8').matchAll(/<script defer src="([^"]+\.js)"><\/script>/g)].map(m=>m[1]).filter(f=>f!=='config.js'&&f!=='boot.js');
 assert.ok(scripts.length>5&&scripts.at(-1)==='update-check.js'&&scripts.includes('app.js'),'the app scripts are read from index.html');
-const copied=['manifest.json','config.js','privacy.html','icon-192.png','icon-512.png','apple-touch-icon.png','install-icon.webp','vendor/SHEETJS-LICENSE',...['happy','excited','grateful','calm','thinking','worried','sad','angry'].map(m=>'rico-'+m+'.png'),...['Manrope','NotoKufiArabic'].map(m=>'fonts/'+m+'-OFL.txt')];
+const copied=['manifest.json','config.js','privacy.html','404.html','icon-192.png','icon-512.png','apple-touch-icon.png','install-icon.webp','vendor/SHEETJS-LICENSE',...['happy','excited','grateful','calm','thinking','worried','sad','angry'].map(m=>'rico-'+m+'.png'),...['Manrope','NotoKufiArabic'].map(m=>'fonts/'+m+'-OFL.txt')];
 fs.rmSync(out,{recursive:true,force:true});fs.mkdirSync(out);
 function read(file){const source=path.join(root,file);assert.ok(fs.lstatSync(source).isFile(),file+' must be a real file');return fs.readFileSync(source);}
 function write(file,bytes){const target=path.join(out,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,bytes);}

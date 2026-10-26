@@ -18,19 +18,15 @@
    Remote commands): it re-downloads every app file first, so the reload
    really does pick up the newest version instead of a cached one.
 
-   openUpdatePopup(message) is what an "update" notification opens (see
-   push.js): it shows exactly the words Rozha wrote for this phone's
-   language, with an Update button when a newer version is waiting.
-
    Depends on: APP_VERSION (config.js), t() and state (app.js),
-   showConfirm, showUpdatePopup (modals.js), GLYPH_UPDATE (icons.js), lset (storage.js). */
+   showConfirm (modals.js), GLYPH_UPDATE (icons.js), lset (storage.js). */
 const UPDATE_CHECK_INTERVAL_MS = 60000; /* check every minute */
 let updateCheckBusy = false;
 let updatePromptOpen = false;
 let snoozedVersion = null;
 
 /* Every file the page loads. If you add a new .js/.css file, add it here. */
-const APP_FILES = ['boot.js','config.js','icons.js','i18n.js','storage.js','sounds.js','modals.js','bot-check.js','push.js','assistant.js','kitchen.js','supabase/functions/_shared/search.js', 'ordering-tools.js','transfers.js','app.js','update-check.js','sw.js','style.css'];
+const APP_FILES = ['boot.js','config.js','icons.js','i18n.js','storage.js','reports.js','sounds.js','modals.js','bot-check.js','push.js','assistant.js','kitchen.js','supabase/functions/_shared/search.js', 'ordering-tools.js','transfers.js','exports.js','tables.js','spotlight.js','admin.js','app.js','update-check.js','sw.js','style.css'];
 
 /* Reloads the page and makes sure the newest files are used. Browsers (and
    GitHub Pages) can keep serving cached copies of the scripts for a few
@@ -99,23 +95,6 @@ async function checkForUpdate(){
     if(ok){ hardReload(); return; }
     snoozedVersion = live;
   }finally{ updateCheckBusy = false; }
-}
-
-/* Opened by an "update" notification (tapped, or received while the app is
-   open). Shows only the message Rozha wrote. When a newer version is
-   waiting, Update reloads the app; otherwise the message closes with OK. */
-async function openUpdatePopup(message){
-  if(updatePromptOpen) return;
-  updatePromptOpen = true;
-  try{
-    const live = await fetchLiveVersion();
-    const hasUpdate = !!(live && live !== APP_VERSION);
-    const words = String(message || '').trim();
-    const body = `<div class="update-words" dir="auto">${escUpdateText(words || t('updateReadyMsg'))}</div>`;
-    const ok = await showUpdatePopup(body, hasUpdate ? t('updateNow') : t('ok'), hasUpdate ? t('later') : null, t('noticeTitle'));
-    if(ok && hasUpdate){ hardReload(); return; }   /* page reloads; flag stays set until then */
-  }catch(e){ console.error('update popup failed', e); }
-  updatePromptOpen = false;
 }
 
 setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL_MS);

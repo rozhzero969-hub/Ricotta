@@ -6,10 +6,11 @@
 // Only two callers exist, and both send the x-cron-secret header:
 //   - pg_cron, every minute:  {type:"reminder-tick"}
 //   - the api function, for a signed-in person:
-//       {type:"update", bodyEn, bodyKu, bodyAr}   "new update" push, written by Rozha
 //       {type:"reminder-now"}                     test of the daily reminder
 //       {type:"supplier-test", supplierId}        test of one supplier's reminder
 //       {type:"assistant", title, bodyEn, bodyKu, bodyAr}  a message sent through Rico
+//   - the api function, after a sign-in from a phone never seen before:
+//       {type:"security", account, excludeDevice, bodyEn, bodyKu, bodyAr}  to that account's other phones
 //
 // Every tick also runs Rico's own messages: a cheer at 09:00 Erbil time (with
 // the day's weather), an hour after a supplier's reminder time (or the daily
@@ -249,18 +250,18 @@ async function overdueTick() {
     const name = String(s.name).slice(0, 60), time = s.reminder.time;
     out.push({ supplier: name, ...(await ricoSays("overdue", `overdue|${s.id}|${s.date}`, {
       mood: "angry",
-      en: (n) => `${hi("Hey", n)}! 😠 ${name} was due at ${time} and still isn't sent. Tomatoes don't order themselves! Want me to prepare it?`,
-      ku: (n) => `${hi("هەی", n)}! 😠 داواکاریی ${name} کاتژمێر ${time} بوو و هێشتا نەنێردراوە. تەماتە خۆی داوا ناکات! با ئێستا ئامادەی بکەم؟`,
-      ar: (n) => `${ya(n)}! 😠 طلب ${name} كان موعده ${time} ولم يُرسل بعد. الطماطم لا تطلب نفسها! هل أجهّزه لك الآن؟`,
+      en: (n) => `${hi("Hey", n)}! ${name} was due at ${time} and still isn't sent. Tomatoes don't order themselves. Want me to prepare it?`,
+      ku: (n) => `${hi("هەی", n)}! داواکاریی ${name} کاتژمێر ${time} بوو و هێشتا نەنێردراوە. تەماتە خۆی داوا ناکات. با ئێستا ئامادەی بکەم؟`,
+      ar: (n) => `${ya(n)}! طلب ${name} كان موعده ${time} ولم يُرسل بعد. الطماطم لا تطلب نفسها. هل أجهّزه لك الآن؟`,
     }, { supplierId: String(s.id) })) });
   }
   if (dailyHit && !sentSince(dailyHit.date) && await claimAlert(`overdue|daily|${dailyHit.date}`, "overdue-daily", null)) {
     const time = String(daily!.remind_time).slice(0, 5);
     out.push({ daily: true, ...(await ricoSays("overdue", `overdue|daily|${dailyHit.date}`, {
       mood: "angry",
-      en: (n) => `${hi("Hey", n)}! 😠 It's past ${time} and not a single order has gone out today. Let's go!`,
-      ku: (n) => `${hi("هەی", n)}! 😠 کاتژمێر ${time} تێپەڕی و ئەمڕۆ هیچ داواکارییەک نەنێردراوە. با دەست پێ بکەین!`,
-      ar: (n) => `${ya(n)}! 😠 تجاوزت الساعة ${time} ولم يُرسل أي طلب اليوم. هيا بنا!`,
+      en: (n) => `${hi("Hey", n)}! It's past ${time} and not a single order has gone out today. Let's go.`,
+      ku: (n) => `${hi("هەی", n)}! کاتژمێر ${time} تێپەڕی و ئەمڕۆ هیچ داواکارییەک نەنێردراوە. با دەست پێ بکەین.`,
+      ar: (n) => `${ya(n)}! تجاوزت الساعة ${time} ولم يُرسل أي طلب اليوم. هيا بنا.`,
     })) });
   }
   return out;
@@ -316,9 +317,9 @@ async function streakTick() {
   const k = Number(st.count);
   return await ricoSays("streak", `streak-risk|${now.date}`, {
     mood: "worried",
-    en: (n) => `${hi("Hey", n)}! 🔥 Our ${k}-day streak goes out at midnight. One order today keeps the fire burning!`,
-    ku: (n) => `${hi("هەی", n)}! 🔥 زنجیرەی ${k} ڕۆژەمان نیوەشەو دەکوژێتەوە. تەنها یەک داواکاری ئەمڕۆ ئاگرەکە هەڵدەگیرسێنێتەوە!`,
-    ar: (n) => `${ya(n)}! 🔥 سلسلة الـ${k} يومًا ستنطفئ عند منتصف الليل. طلب واحد اليوم يبقي النار مشتعلة!`,
+    en: (n) => `${hi("Hey", n)}! Our ${k}-day streak ends at midnight. One order today keeps it going.`,
+    ku: (n) => `${hi("هەی", n)}! زنجیرەی ${k} ڕۆژەمان نیوەشەو کۆتایی دێت. تەنها یەک داواکاری ئەمڕۆ بەردەوامی دەکات.`,
+    ar: (n) => `${ya(n)}! سلسلة الـ${k} يومًا تنتهي عند منتصف الليل. طلب واحد اليوم يبقيها مستمرة.`,
   });
 }
 
@@ -331,9 +332,9 @@ async function reportTick() {
   if (!(await claimAlert(`report|${month}`, "report", null))) return { skipped: "already sent" };
   return await ricoSays("report", `report|${month}`, {
     mood: "excited",
-    en: (n) => `${hi("Hey", n)}! 📊 This month's report card is ready in History. Save the month there before it's cleared at midnight.`,
-    ku: (n) => `${hi("هەی", n)}! 📊 کارتی ڕاپۆرتی ئەم مانگە لە مێژوودا ئامادەیە. پێش ئەوەی نیوەشەو بسڕدرێتەوە مانگەکە پاشەکەوت بکە.`,
-    ar: (n) => `${ya(n)}! 📊 بطاقة تقرير هذا الشهر جاهزة في السجل. احفظ الشهر هناك قبل أن يُمسح عند منتصف الليل.`,
+    en: (n) => `${hi("Hey", n)}! This month's report card is ready in History. Save the month there before it's cleared at midnight.`,
+    ku: (n) => `${hi("هەی", n)}! کارتی ڕاپۆرتی ئەم مانگە لە مێژوودا ئامادەیە. پێش ئەوەی نیوەشەو بسڕدرێتەوە مانگەکە پاشەکەوت بکە.`,
+    ar: (n) => `${ya(n)}! بطاقة تقرير هذا الشهر جاهزة في السجل. احفظ الشهر هناك قبل أن يُمسح عند منتصف الليل.`,
   }, { view: "history" });
 }
 
@@ -363,9 +364,9 @@ async function cutoffTick() {
     const name = String(s.name).slice(0, 60), time = String(s.cutoff);
     out.push({ supplier: name, ...(await ricoSays("cutoff", `cutoff|${s.id}|${now.date}`, {
       mood: "worried",
-      en: (n) => `${hi("Quick", n, ", ")}! ⏰ ${name} stops taking orders at ${time} and nothing has gone to them today. Want me to prepare it?`,
-      ku: (n) => `${hi("زوو", n)}! ⏰ ${name} کاتژمێر ${time} داواکاری وەرناگرێت و ئەمڕۆ هیچیان بۆ نەنێردراوە. با ئێستا ئامادەی بکەم؟`,
-      ar: (n) => `${ya(n)}! ⏰ ${name} يتوقف عن استلام الطلبات الساعة ${time} ولم يُرسل له شيء اليوم. هل أجهّزه لك؟`,
+      en: (n) => `${hi("Quick", n, ", ")}! ${name} stops taking orders at ${time} and nothing has gone to them today. Want me to prepare it?`,
+      ku: (n) => `${hi("زوو", n)}! ${name} کاتژمێر ${time} داواکاری وەرناگرێت و ئەمڕۆ هیچیان بۆ نەنێردراوە. با ئێستا ئامادەی بکەم؟`,
+      ar: (n) => `${ya(n)}! ${name} يتوقف عن استلام الطلبات الساعة ${time} ولم يُرسل له شيء اليوم. هل أجهّزه لك؟`,
     }, { supplierId: String(s.id) })) });
   }
   return out;
@@ -393,9 +394,9 @@ async function weeklyTick() {
     ar: k > p ? `أكثر من ${p} في الأسبوع الماضي` : k < p ? `أقل من ${p} في الأسبوع الماضي` : "مثل الأسبوع الماضي" };
   return await ricoSays("weekly", `weekly|${now.date}`, {
     mood: k >= p && k > 0 ? "excited" : "calm",
-    en: (n) => `${hi("Happy Friday", n, ", ")}! 📊 This week: ${k} order${k === 1 ? "" : "s"}, ${trend.en}.${top ? ` Most ordered: ${top}.` : ""}${streak ? ` Streak: ${streak} 🔥.` : ""} Have a good weekend!`,
-    ku: (n) => `${hi("هەینیت باش", n)}! 📊 ئەم هەفتەیە: ${k} داواکاری، ${trend.ku}.${top ? ` زۆرترین داواکراو: ${top}.` : ""}${streak ? ` زنجیرە: ${streak} 🔥.` : ""} پشووی خۆش!`,
-    ar: (n) => `${hi("جمعة مباركة", n, " يا ")}! 📊 هذا الأسبوع: ${k} طلب، ${trend.ar}.${top ? ` الأكثر طلبًا: ${top}.` : ""}${streak ? ` السلسلة: ${streak} 🔥.` : ""} عطلة سعيدة!`,
+    en: (n) => `${hi("Happy Friday", n, ", ")}! This week: ${k} order${k === 1 ? "" : "s"}, ${trend.en}.${top ? ` Most ordered: ${top}.` : ""}${streak ? ` Streak: ${streak} days.` : ""} Have a good weekend!`,
+    ku: (n) => `${hi("هەینیت باش", n)}! ئەم هەفتەیە: ${k} داواکاری، ${trend.ku}.${top ? ` زۆرترین داواکراو: ${top}.` : ""}${streak ? ` زنجیرە: ${streak} ڕۆژ.` : ""} پشووی خۆش!`,
+    ar: (n) => `${hi("جمعة مباركة", n, " يا ")}! هذا الأسبوع: ${k} طلب، ${trend.ar}.${top ? ` الأكثر طلبًا: ${top}.` : ""}${streak ? ` السلسلة: ${streak} يومًا.` : ""} عطلة سعيدة!`,
   }, { view: "history" });
 }
 
@@ -417,14 +418,14 @@ async function cheerTick() {
   const wx = await weatherWords().catch(() => ({ en: "", ku: "", ar: "" }));
   return await ricoSays("cheer", `cheer|${now.date}`, k ? {
     mood: "excited",
-    en: (n) => `${hi("Good morning", n, ", ")}! ☀️ ${k} supplier${k === 1 ? " is" : "s are"} due today: ${listEn}.${wx.en} Let's get the orders out on time!`,
-    ku: (n) => `${hi("بەیانیت باش", n)}! ☀️ ئەمڕۆ کاتی داواکاریی ${k} دابینکەرە: ${list}.${wx.ku} با بە کاتی خۆی بینێرین!`,
-    ar: (n) => `${hi("صباح الخير", n, " يا ")}! ☀️ اليوم موعد ${k} من المورّدين: ${list}.${wx.ar} لنرسل الطلبات في وقتها!`,
+    en: (n) => `${hi("Good morning", n, ", ")}! ${k} supplier${k === 1 ? " is" : "s are"} due today: ${listEn}.${wx.en} Let's get the orders out on time.`,
+    ku: (n) => `${hi("بەیانیت باش", n)}! ئەمڕۆ کاتی داواکاریی ${k} دابینکەرە: ${list}.${wx.ku} با بە کاتی خۆی بینێرین.`,
+    ar: (n) => `${hi("صباح الخير", n, " يا ")}! اليوم موعد ${k} من المورّدين: ${list}.${wx.ar} لنرسل الطلبات في وقتها.`,
   } : {
     mood: "happy",
-    en: (n) => `${hi("Good morning", n, ", ")}! ☀️ No supplier is scheduled today.${wx.en} Have a great shift!`,
-    ku: (n) => `${hi("بەیانیت باش", n)}! ☀️ ئەمڕۆ هیچ دابینکەرێک کاتی داواکاریی نییە.${wx.ku} ڕۆژێکی خۆش!`,
-    ar: (n) => `${hi("صباح الخير", n, " يا ")}! ☀️ لا يوجد مورّد مجدول اليوم.${wx.ar} يومًا موفقًا!`,
+    en: (n) => `${hi("Good morning", n, ", ")}! No supplier is scheduled today.${wx.en} Have a great shift.`,
+    ku: (n) => `${hi("بەیانیت باش", n)}! ئەمڕۆ هیچ دابینکەرێک کاتی داواکاریی نییە.${wx.ku} ڕۆژێکی خۆش.`,
+    ar: (n) => `${hi("صباح الخير", n, " يا ")}! لا يوجد مورّد مجدول اليوم.${wx.ar} يومًا موفقًا.`,
   });
 }
 
@@ -482,12 +483,14 @@ Deno.serve(async (req) => {
         try { result.weekly = await weeklyTick(); } catch (e) { console.error("weekly tick failed", e); result.weekly = { error: true }; }
         return json(result);
       }
-      case "update": {
-        // Only the words Rozha wrote: each phone gets its own language.
+      case "security": {
+        // A sign-in from a phone never seen before: the account's other signed-in phones, never that one.
         const w = written(body);
-        if (!w.any) return json({ error: "empty message" }, 400);
-        const { subs } = await loadSubs(false);
-        return json(await send(subs, (lang) => ({ title: "Ricotta", body: w.pick(lang), kind: "update", tag: "ricotta-update" }), 86400, "normal"));
+        const account = ACCOUNTS.includes(body.account) ? body.account : null;
+        if (!w.any || !account) return json({ error: "invalid security alert" }, 400);
+        const { subs } = await loadSubs(true);
+        const mine = subs.filter((s) => s.account === account && s.device_id !== String(body.excludeDevice ?? ""));
+        return json(await send(mine, (lang) => ({ title: L(lang, "New sign-in", "چوونەژوورەوەی نوێ", "تسجيل دخول جديد"), body: w.pick(lang), kind: "security", view: "admin", tag: `ricotta-security-${Date.now()}` }), 6 * 3600, "high"));
       }
       case "assistant": {
         const w = written(body);

@@ -23,7 +23,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
   else if(endpoint==='assistant/status')data={configured:true,provider:'gemini'};
   else if(endpoint==='items/restore'){const item=receipts.get(body.undoId);assert.ok(item);fixture.items.push(item);receipts.delete(body.undoId);}
   else if(endpoint.startsWith('items/')&&method==='DELETE'){const id=endpoint.split('/')[1],item=fixture.items.find(i=>i.id===id);assert.ok(item);const token='12345678-1234-1234-1234-123456789abc';receipts.set(token,item);fixture.items=fixture.items.filter(i=>i.id!==id);data={ok:true,undoId:token};}
-  else if(endpoint==='admin/diagnostics')data={database:true,checkedAt:now,jobs:['ricotta-reminder-tick','ricotta-monthly-history','ricotta-daily-cleanup','ricotta-cron-history'].map(name=>({name,active:true,lastRun:now,lastStatus:'succeeded',failures24h:0}))};
+  else if(endpoint==='admin/diagnostics')data={database:true,checkedAt:now,latencyMs:140,items:42,suppliers:2,ordersThisMonth:1,pushPhones:2,problems24h:0,wrongPins24h:0,jobs:['ricotta-reminder-tick','ricotta-monthly-history','ricotta-daily-cleanup','ricotta-cron-history'].map(name=>({name,active:true,lastRun:now,lastStatus:'succeeded',failures24h:0}))};
   await route.fulfill({contentType:'application/json',body:JSON.stringify(data)});});
  const page=await ctx.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('http://127.0.0.1:'+server.address().port);await page.locator('#orderResults').waitFor();await page.waitForSelector('#splash',{state:'detached'});
@@ -59,19 +59,22 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  assert.equal(await page.locator('.modal-overlay').count(),0,'no warning popup before sending');
  await page.evaluate(()=>{state.queue=null;state.cart={};persistQueue();persistCartDraft();});
 
- // Deleting an item asks first, then offers Undo, which brings it back.
- await view('manage');await page.locator('[data-delitem="dup"]').click();await page.locator('#modalOkBtn').click();
+ // Deleting an item (from its details) asks first, then offers Undo, which brings it back.
+ await view('manage');await page.locator('.table-list [data-edititem="dup"]').click();
+ await page.locator('[data-detail="delete"]').click();await page.locator('#modalOkBtn').click();
  await page.waitForSelector('[data-edititem="dup"]',{state:'detached'});
  assert.match(await page.locator('#toast').textContent(),/Tomato deleted/);
- await page.locator('#toast .toast-undo').click();await page.locator('[data-edititem="dup"]').waitFor();
+ await page.locator('#toast .toast-undo').click();await page.locator('.table-list [data-edititem="dup"]').waitFor();
  assert.equal(receipts.size,0,'Undo uses the server copy');
 
- // The Health Check runs by itself when Admin opens.
+ // The Health Check runs by itself when Admin opens, and its page says in plain words what works.
  await page.waitForFunction(()=>!sharedDraft.enabled || (!sharedDraft.busy && !draftChanges(sharedDraft.base,state.cart).length));
- await view('admin');await page.waitForFunction(()=>document.querySelectorAll('.diagnostic-row').length>=7);
- assert.match(await page.locator('#diagnosticsSlot').textContent(),/Working/);
- assert.equal(await page.locator('.diagnostic-row .good').count()>=6,true,'healthy rows show a green dot');
- assert.equal(await page.locator('#diagnosticsRetry').count(),0,'Retry Saving shows only when something is waiting');
+ await view('admin');await page.waitForFunction(()=>/Working/.test(document.querySelector('[data-admin-open="health"]')?.textContent||''));
+ await page.locator('[data-admin-open="health"]').click();await page.waitForFunction(()=>document.querySelectorAll('.ad-health').length>=10);
+ assert.match(await page.locator('.ad-status').textContent(),/Everything is working/);
+ assert.equal(await page.locator('.ad-health.bad, .ad-health.warn').count(),0,'every row is green');
+ assert.deepEqual(await page.locator('.ad-stats b').allTextContents(),['42','2','1'],'counts come from the database');
+ assert.equal(await page.locator('[data-health-retry]').count(),0,'Retry Saving shows only when something is waiting');
 
  // Rico in the top bar: his spark (no face); his order cards show before and after.
  assert.equal(await page.locator('#ricoTopBtn .rico-bot').count(),0);assert.equal(await page.locator('#ricoTopBtn svg').count(),1);

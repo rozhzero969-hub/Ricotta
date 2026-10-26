@@ -31,7 +31,7 @@ const rico = {
   abort: null,
   inbox: [],           // messages Rico wrote first: {id, kind, mood, en, ku, ar, at, read}
   chatId: null,        // the saved chat these messages belong to (made on the first save)
-  chats: null,         // both accounts' saved chats {id, account, title, updatedAt}, newest first (null until loaded)
+  chats: null,         // one shared list of both accounts' saved chats {id, account, title, updatedAt}, newest first (null until loaded)
   chatsBusy: false,
   viewing: null,       // the other person's account while one of their chats is open (read only)
 };
@@ -245,9 +245,9 @@ function renderRicoIntro(){
     <h2 class="rico-hello">${esc(ricoGreeting())}</h2>
     <p class="rico-intro-text">${esc(t('ricoIntro'))}</p>
     <div class="rico-chips">${chips.map((c,i)=>`<button class="rico-chip" data-rico-ask="${esc(c)}" data-rico-action="${actions[i]}">${esc(c)}</button>`).join('')}</div>
-    ${myChats().length ? `<section class="rico-recent">
+    ${(rico.chats || []).length ? `<section class="rico-recent">
       <div class="rico-recent-h"><span>${esc(t('ricoRecentChats'))}</span><button class="rico-link" data-rico-history>${esc(t('ricoSeeAll'))}</button></div>
-      ${myChats().slice(0,3).map(c=>`<button class="rico-recent-row" data-rico-chat="${esc(c.id)}">${NAV_ICONS.assistant}<span dir="auto">${esc(c.title || t('ricoUntitled'))}</span><small>${esc(timeAgo(c.updatedAt))}</small></button>`).join('')}
+      ${rico.chats.slice(0,3).map(c=>`<button class="rico-recent-row" data-rico-chat="${esc(c.id)}">${chatOwnerMark(c)}<span dir="auto">${esc(c.title || t('ricoUntitled'))}</span><small>${esc(timeAgo(c.updatedAt))}</small></button>`).join('')}
     </section>` : ''}
   </div>`;
 }
@@ -334,10 +334,13 @@ function renderRicoProposal(p, mi){
 }
 function renderRicoProposalCard(p, mi){
   const done = p.status === 'applied', gone = ['dismissed','undone','expired'].includes(p.status), saving = p.status === 'saving';
-  const actions = primaryLabel=> gone
+  // A card for something this person may not do (Admin, Access) says so instead of offering a button.
+  const need = {new_item:'catalog', edit_item:'catalog', item_aliases:'catalog', new_supplier:'catalog', notify:'notify', streak:'assistant'}[p.kind];
+  const blocked = !!need && !canDo(need) && !done && !gone;
+  const actions = primaryLabel=> blocked ? `<div class="rico-card-state">${esc(t('ricoNoAccess'))}</div>` : gone
       ? `<div class="rico-card-state">${p.status==='undone'?t('ricoUndone'):p.status==='expired'?t('ricoCardOld'):t('ricoDismissed')}</div>`
       : done
-        ? `<div class="rico-card-state ok">✓ ${esc(p.doneLabel || t('ricoDone'))}${p.kind==='order' ? ` <button class="rico-link" data-rico-open="order">${t('ricoOpenOrder')}</button>${p.undo?` <button class="rico-link" data-rico-undo="${mi}|${esc(p.id)}">${t('ricoUndo')}</button>`:''}` : ''}</div>`
+        ? `<div class="rico-card-state ok">${ICON_CHECK}<span>${esc(p.doneLabel || t('ricoDone'))}</span>${p.kind==='order' ? ` <button class="rico-link" data-rico-open="order">${t('ricoOpenOrder')}</button>${p.undo?` <button class="rico-link" data-rico-undo="${mi}|${esc(p.id)}">${t('ricoUndo')}</button>`:''}` : ''}</div>`
         : `<div class="rico-card-actions"><button class="btn btn-primary${saving?' is-busy':''}" data-rico-apply="${mi}|${esc(p.id)}" ${saving?'disabled aria-busy="true"':''}>${primaryLabel}</button><button class="btn btn-ghost" data-rico-dismiss="${mi}|${esc(p.id)}" ${saving?'disabled':''}>${t('ricoNotNow')}</button></div>`;
   let body = '', title = '', icon = '';
   if(p.kind === 'order'){
@@ -384,6 +387,7 @@ function renderRicoProposalCard(p, mi){
   }
   if(p.kind === 'open'){
     if(p.screen !== 'send' && !canOpen(p.screen)) return '';
+    if(p.screen === 'send' && !canDo('send')) return '';
     if(p.screen === 'send') return `<button class="rico-open" data-rico-open="send">${ICON_CHAT}<span>${esc(p.label || t('ricoOpenSend'))}</span></button>`;
     return `<button class="rico-open" data-rico-open="${esc(p.screen)}" data-rico-sup="${esc(p.supplierId||'')}">${NAV_ICONS[p.screen]||NAV_ICONS.order}<span>${esc(p.label || t('ricoOpenScreen')(viewLabel(p.screen)))}</span></button>`;
   }
@@ -784,7 +788,7 @@ async function ricoApply(mi, id, btn){
       if(!(await saveRecord('items', next))){ await showAlert(t('saveFailed')); return false; }
       state.items.push(next);
       logActivity({action:'add', type:'item', name:p.name, fields:[{k:'name',to:p.name},{k:'unit',to:unitEn(p.unitId)},{k:'supplier',to:supplierId?supplierName(supplierId):''}]});
-      p.doneLabel = t('savedMsg')(p.name).replace(/^\u2713\s*/, '');
+      p.doneLabel = t('savedMsg')(p.name);
       return true;
     }
     if(p.kind === 'edit_item'){
@@ -797,7 +801,7 @@ async function ricoApply(mi, id, btn){
       if(!(await saveRecord('items', next))){ await showAlert(t('saveFailed')); return false; }
       Object.assign(i, next);if(i.available===false){delete state.cart[i.id];persistCartDraft();}
       if(fields.length) logActivity({action:'edit', type:'item', name:p.name, fields});
-      p.doneLabel = t('savedMsg')(p.name).replace(/^\u2713\s*/, '');
+      p.doneLabel = t('savedMsg')(p.name);
       return true;
     }
     if(p.kind === 'new_supplier'){
@@ -805,7 +809,7 @@ async function ricoApply(mi, id, btn){
       if(!(await saveRecord('suppliers', next))){ await showAlert(t('saveFailed')); return false; }
       state.suppliers.push(next);
       logActivity({action:'add', type:'supplier', name:p.name, fields:[{k:'name',to:p.name}].concat(p.phone?[{k:'phone',to:p.phone}]:[])});
-      p.doneLabel = t('savedMsg')(p.name).replace(/^\u2713\s*/, '');
+      p.doneLabel = t('savedMsg')(p.name);
       return true;
     }
     if(p.kind === 'streak'){
@@ -890,8 +894,11 @@ async function ricoLoadChats(){
     if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats;
   }finally{ rico.chatsBusy = false; }
 }
-/* This person's own chats (the list also holds the other person's). */
-const myChats = () => (rico.chats || []).filter(c=>(c.account || state.account) === state.account);
+/* Whose chat it is: the person's initial in a small circle (green for Rozha, gray for Yunis). */
+function chatOwnerMark(c){
+  const who = c.account || state.account;
+  return `<span class="chat-owner ${who === 'rozha' ? 'r' : 'y'}" title="${esc(accountLabel(who))}" aria-label="${esc(accountLabel(who))}">${esc(accountLabel(who).trim().charAt(0).toUpperCase())}</span>`;
+}
 /* A new chat: the current one stays in Chat history. */
 function ricoNewChat(){
   if(rico.streaming) ricoStop();
@@ -921,42 +928,37 @@ async function ricoOpenChat(id){
   ricoScroll(false);
   return true;
 }
-/* Chat history: a sheet from the bottom with two lists, this person's chats and the other person's
-   (Rozha and Yunis can read and delete each other's), newest first, by day. */
+/* Chat history: a sheet from the bottom with one list of every chat, Rozha's and Yunis's, newest first
+   and grouped by day; each shows whose it is. Both can open any chat (the other person's opens read only)
+   and delete it; Delete All asks once more before it removes every chat. */
 function ricoOpenHistory(){
   closeSelSheet();
   document.activeElement?.blur?.();
-  const other = state.account === 'rozha' ? 'yunis' : 'rozha';
-  let whose = rico.viewing || state.account;
   const wrap = document.createElement('div');
   wrap.id = 'ricoHistSheet'; wrap.className = 'sel-sheet rico-hist-sheet';
   wrap.innerHTML = `<div class="sel-scrim"></div><div class="sel-panel" role="dialog" aria-modal="true" aria-label="${esc(t('ricoHistory'))}">
     <div class="sel-grab"></div>
     <div class="rico-hist-top"><div class="sel-title">${esc(t('ricoHistory'))}</div><button type="button" class="btn btn-primary" data-hist-new>${ICON_NEW_CHAT}<span>${esc(t('ricoNewChat'))}</span></button></div>
-    <div class="pill-seg rico-hist-tabs" role="tablist"><button type="button" role="tab" class="pill-seg-btn" data-hist-tab="${state.account}">${esc(t('ricoHistoryMine'))}</button><button type="button" role="tab" class="pill-seg-btn" data-hist-tab="${other}">${esc(t('ricoHistoryOf')(accountLabel(other)))}</button></div>
     <div class="sel-list rico-hist-list"></div></div>`;
   document.body.appendChild(wrap);
   const list = wrap.querySelector('.rico-hist-list');
   let confirming = null;   // the chat id (or 'all') waiting for a second tap on Delete
   const paint = ()=>{
-    wrap.querySelectorAll('[data-hist-tab]').forEach(b=>b.setAttribute('aria-selected', b.dataset.histTab === whose));
     if(!rico.chats){ list.innerHTML = `<div class="field-hint rico-hist-empty">${esc(t('loading'))}</div>`; return; }
-    const chats = rico.chats.filter(c=>(c.account || state.account) === whose);
-    if(!chats.length){ list.innerHTML = `<div class="field-hint rico-hist-empty">${esc(whose === state.account ? t('ricoHistoryEmpty') : t('ricoHistoryEmptyOf')(accountLabel(whose)))}</div>`; return; }
+    if(!rico.chats.length){ list.innerHTML = `<div class="field-hint rico-hist-empty">${esc(t('ricoHistoryEmpty'))}</div>`; return; }
     let lastDay = '';
-    list.innerHTML = chats.map(c=>{
+    list.innerHTML = rico.chats.map(c=>{
       const day = dayLabel(c.updatedAt), head = day !== lastDay ? `<div class="rico-hist-day">${esc(day)}</div>` : '';
       lastDay = day;
       const asking = confirming === c.id;
-      return `${head}<div class="rico-hist-row${c.id === rico.chatId ? ' on' : ''}${asking ? ' asking' : ''}">
-        <button type="button" class="rico-hist-open" data-hist-open="${esc(c.id)}"><span dir="auto">${esc(c.title || t('ricoUntitled'))}</span><small>${esc(formatIraqDateTime(c.updatedAt,{hour:'numeric',minute:'2-digit'}))}</small></button>
+      return `${head}<div class="rico-hist-row${c.id === rico.chatId || c.id === rico.viewedId ? ' on' : ''}${asking ? ' asking' : ''}">
+        <button type="button" class="rico-hist-open" data-hist-open="${esc(c.id)}">${chatOwnerMark(c)}<span class="rico-hist-title" dir="auto">${esc(c.title || t('ricoUntitled'))}</span><small>${esc(accountLabel(c.account || state.account))} · ${esc(formatIraqDateTime(c.updatedAt,{hour:'numeric',minute:'2-digit'}))}</small></button>
         ${asking ? `<button type="button" class="btn btn-danger rico-hist-yes" data-hist-yes="${esc(c.id)}">${esc(t('delete'))}</button>`
           : `<button type="button" class="icon-btn danger" data-hist-del="${esc(c.id)}" aria-label="${esc(t('ricoDeleteChat'))}">${ICON_DELETE}</button>`}
       </div>`;
-    }).join('') + `<button type="button" class="rico-hist-all${confirming === 'all' ? ' asking' : ''}" data-hist-all>${esc(confirming === 'all' ? t('ricoDeleteAllConfirm') : whose === state.account ? t('ricoDeleteAll') : t('ricoDeleteAllOf')(accountLabel(whose)))}</button>`;
+    }).join('') + `<button type="button" class="rico-hist-all${confirming === 'all' ? ' asking' : ''}" data-hist-all>${esc(confirming === 'all' ? t('ricoDeleteAllConfirm') : t('ricoDeleteAll'))}</button>`;
   };
   paint();
-  enhanceSegments();   // Mine / the other person's: the same slide-able switch as everywhere else
   if(!rico.chats) ricoLoadChats().then(paint);
   let closed = false;
   const close = ()=>{
@@ -971,7 +973,6 @@ function ricoOpenHistory(){
   document.addEventListener('keydown', onKey, true);
   wrap.querySelector('.sel-scrim').onclick = close;
   wrap.querySelector('[data-hist-new]').onclick = ()=>{ close(); ricoNewChat(); };
-  wrap.querySelectorAll('[data-hist-tab]').forEach(b=>b.onclick = ()=>{ whose = b.dataset.histTab; confirming = null; paint(); });
   list.onclick = async e=>{
     const open = e.target.closest('[data-hist-open]'), del = e.target.closest('[data-hist-del]'), yes = e.target.closest('[data-hist-yes]'), all = e.target.closest('[data-hist-all]');
     if(open){ if(await ricoOpenChat(open.dataset.histOpen)) close(); return; }
@@ -980,13 +981,13 @@ function ricoOpenHistory(){
     if(!yes && !all) return;
     const id = yes ? yes.dataset.histYes : null;
     clearTimeout(ricoSaveTimer);
-    const r = await api(id ? 'rico-chats/' + id : 'rico-chats?account=' + whose, {method:'DELETE'});
+    const r = await api(id ? 'rico-chats/' + id : 'rico-chats?account=all', {method:'DELETE'});
     if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
-    rico.chats = id ? rico.chats.filter(c=>c.id !== id) : rico.chats.filter(c=>(c.account || state.account) !== whose);
-    const gone = id ? rico.chatId === id : whose === state.account;
-    if(gone){ rico.chatId = null; if(rico.messages.length && !rico.streaming && !rico.viewing){ rico.messages = []; } }
-    if(rico.viewing && (id ? id === rico.viewedId : whose === rico.viewing)){ rico.viewing = null; rico.messages = []; }
+    rico.chats = id ? rico.chats.filter(c=>c.id !== id) : [];
+    if(!id || rico.chatId === id){ rico.chatId = null; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }
+    if(rico.viewing && (!id || id === rico.viewedId)){ rico.viewing = null; rico.viewedId = null; rico.messages = []; }
     confirming = null; paint();
+    toast(id ? t('ricoChatDeleted') : t('ricoChatsDeleted'));
     if(state.view === 'assistant') render();
   };
   requestAnimationFrame(()=>{ if(!closed) list.querySelector('button')?.focus({preventScroll:true}); });

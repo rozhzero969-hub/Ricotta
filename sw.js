@@ -56,14 +56,14 @@ self.addEventListener('push', event => {
   try { data = event.data ? event.data.json() : {}; }
   catch (e) { data = { body: event.data ? event.data.text() : '' }; }
 
-  const kind = data.kind || 'general';   /* 'update' | 'reminder' | 'supplier' | 'assistant' | 'general' */
+  const kind = data.kind || 'general';   /* 'reminder' | 'supplier' | 'assistant' | 'security' | 'general' */
   /* Rico's own messages carry his mood and show his face for it, not the app icon. */
   const RICO_MOODS = ['happy', 'excited', 'grateful', 'calm', 'thinking', 'worried', 'sad', 'angry'];
   const icon = kind === 'assistant' ? 'rico-' + (RICO_MOODS.includes(data.mood) ? data.mood : 'happy') + '.png' : 'icon-192.png';
   const title = data.title || 'Ricotta Orders';
   const supplierId = data.supplierId || '';
-  /* Some of Rico's messages belong to a screen: 'history' (save the month). */
-  const view = data.view === 'history' ? data.view : '';
+  /* Some messages belong to a screen: 'history' (save the month), 'admin' (a new device signed in). */
+  const view = data.view === 'history' || data.view === 'admin' ? data.view : '';
 
   event.waitUntil((async () => {
     try {
@@ -87,25 +87,19 @@ self.addEventListener('push', event => {
         await self.navigator.setAppBadge(prev + 1);
       } catch (e) { /* the badge is a nice-to-have */ }
     }
-    /* If the app is open right now, show the update message straight away. */
-    if (kind === 'update') {
-      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      wins.forEach(w => w.postMessage({ kind, body: data.body || '' }));
-    }
   })());
 });
 
 /* Tapping a notification: focus the app if it's open, otherwise launch it.
    Either way the app is told what the notification was about (for a
-   supplier reminder, which supplier; for an update, its message; for some
-   of Rico's messages, which screen). */
+   supplier reminder, which supplier; for some messages, which screen). */
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const d = event.notification.data || {};
   const kind = d.kind || 'general';
   const supplierId = d.supplierId || '';
   const view = d.view || '';
-  const body = kind === 'update' ? String(d.body || '').slice(0, 300) : '';
+  const body = '';
   event.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     if (wins.length) {

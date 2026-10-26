@@ -8,14 +8,14 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //
 // There are two accounts, each with its own PIN:
 //   rozha  full access
-//   yunis  Order, Rico, Transfers, Manage (items, suppliers, units), History (cannot delete), Record
+//   yunis  what Rozha gives him in Admin -> Access (ROLES below); every route checks it here
 // Rozha's Admin screen changes either PIN (with her current PIN); there is no other way to change one.
 //
 // Routes (all JSON):
-//   POST   login                      {pin}                     -> {token, account, name, tabs, expiresAt}
+//   POST   login                      {pin}                     -> {token, account, name, expiresAt}
 //   GET    health
 //   --- session required ---
-//   GET    bootstrap                                            -> everything the app needs to start
+//   GET    bootstrap                                            -> everything the app needs to start (with views and roles)
 //   POST   logout
 //   PUT    me/pins                    {itemIds}                 items pinned to the top of this account's Order screen
 //   PUT    suppliers/:id | items/:id | units/:id                upsert one record (+ its Record entry)
@@ -26,14 +26,25 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   DELETE orders/:id                 {pin?} rozha: her own within 15 minutes, any with her PIN
 //   GET    streak                                               the kitchen streak
 //   POST   streak/recover                                       Rico brings a broken kitchen streak back
-//   GET    rico-chats[?account=]                                both accounts' Rico chats (each can read and delete the other's)
+//   GET    rico-chats                                           one shared list of both accounts' Rico chats
+//   DELETE rico-chats[/:id][?account=all]                       delete one chat, or all of them
 //   GET    activity                                             the Record
 //   GET    devices                    rozha: all, yunis: own row
-//   POST   devices/me                                           heartbeat ("still here")
+//   POST   devices/me                 {seconds?}                heartbeat ("still here") and time spent in the app
 //   POST   devices/me/ack             {commandId}               a remote command was carried out
 //   POST   devices/command            {ids, type} (rozha)       remote log out / refresh
 //   PUT    admin/pin                  {account, currentPin, newPin} (rozha)  a new PIN for Rozha or Yunis
-//   GET    admin/diagnostics          (rozha)                   Health Check: database and scheduled jobs (summaries only)
+//   GET    admin/diagnostics          (rozha)                   Health Check: database, scheduled jobs and counts (summaries only)
+//   GET    admin/security             (rozha)                   wrong PINs, the sign-in lock, new phones, the security log
+//   POST   admin/security/unlock      (rozha)                   wrong tries in the window stop counting
+//   GET    admin/problems             (rozha)                   problem reports from every phone
+//   POST   admin/problems/resolve     {ids} (rozha)             mark problems fixed
+//   DELETE admin/problems             (rozha)                   remove the fixed ones
+//   GET    admin/usage                (rozha)                   time spent in the app per person and phone
+//   GET    admin/rico                 (rozha)                   Rico's usage this month and its estimated cost
+//   PUT    admin/roles                {account, roles} (rozha)  what Yunis may open and do
+//   POST   problems                   {reports}                 errors this phone ran into (and Report a Problem)
+//   GET    reports/catalog            (exports)                 this month's orders per item and supplier, for Excel and PDF
 //   PUT    push/subscription          {endpoint,p256dh,auth,lang}
 //   DELETE push/subscription          {endpoint}
 //   PUT    push/lang                  {endpoint, lang}
@@ -74,12 +85,14 @@ const PAGE = 1000;                        // PostgREST returns at most 1000 rows
 const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
 const LANGS = ["en", "ku", "ar"];
-// Every screen of the app, and the ones each account may open.
-const VIEWS = ["order", "assistant", "transfers", "manage", "history", "suppliers", "itemsAdmin", "units", "record", "admin", "settings"];
-const ACCOUNT_VIEWS: Record<string, string[]> = {
-  rozha: VIEWS,
-  yunis: ["order", "assistant", "transfers", "manage", "history", "suppliers", "itemsAdmin", "units", "record"],
-};
+/* What Rozha can give Yunis in Admin -> Access. Screens: history, manage (Items, Suppliers, Units),
+   record, transfers, assistant (Rico). Features: catalog (add, change and delete items, suppliers and
+   units; needs manage), send (send orders to suppliers), exports (Excel and PDF files), notify (send a
+   notification to every phone through Rico), reminders (the daily reminder). Rozha always has all. */
+const ROLES = ["history", "manage", "catalog", "record", "transfers", "assistant", "send", "exports", "notify", "reminders"];
+const DEFAULT_ROLES = ROLES.filter((r) => r !== "transfers");
+const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
+  : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : [...DEFAULT_ROLES];
 // Rozha may undo an order she sent this long without typing her PIN.
 const UNDO_MS = 15 * 60_000;
 // Transfers is still being made: the tab shows its design, and these routes refuse until it is ready.
@@ -150,14 +163,21 @@ function isWeakPin(pin: string): boolean {
 }
 
 type Account = "rozha" | "yunis";
-type Session = { id: string; account: Account; deviceId: string | null };
+type Session = { id: string; account: Account; deviceId: string | null; roles: string[] };
 const isRozha = (s: Session) => s.account === "rozha";
+const can = (s: Session, role: string) => isRozha(s) || (s.roles.includes(role) && (role !== "catalog" || s.roles.includes("manage")));
+/* The screens an account may open, in the app's order. Settings is on every device. */
+function viewsFor(s: Session) {
+  return ["order", ...(can(s, "assistant") ? ["assistant"] : []), ...(can(s, "history") ? ["history"] : []),
+    ...(can(s, "transfers") ? ["transfers"] : []), ...(can(s, "manage") ? ["manage", "suppliers", "itemsAdmin", "units"] : []),
+    ...(can(s, "record") ? ["record"] : []), ...(isRozha(s) ? ["admin"] : []), "settings"];
+}
 
 async function authenticate(req: Request): Promise<Session | null> {
   const raw = req.headers.get("x-session-token") || req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!raw || raw.length > 256) return null;
   const { data } = await app("sessions")
-    .select("id,account,device_id,expires_at,revoked_at,last_seen_at")
+    .select("id,account,device_id,expires_at,revoked_at,last_seen_at,app_accounts(roles)")
     .eq("token_hash", await hash(raw)).maybeSingle();
   if (!data || data.revoked_at || !Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()) return null;
   if (data.account !== "rozha" && data.account !== "yunis") return null;
@@ -168,7 +188,7 @@ async function authenticate(req: Request): Promise<Session | null> {
     const {data:device,error}=await app("devices").select("account").eq("id",data.device_id).maybeSingle();
     if(error || device?.account!==data.account)return null;
   }
-  return { id: data.id, account: data.account, deviceId: data.device_id };
+  return { id: data.id, account: data.account, deviceId: data.device_id, roles: rolesOf(data.account, (data as any).app_accounts?.roles) };
 }
 const accountName = (a: string) => (a === "rozha" ? "Rozha" : a === "yunis" ? "Yunis" : a);
 /* Each name in the script of each language, for Rico's messages. */
@@ -179,7 +199,8 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 
 /* ---------- Shapes the browser uses ---------- */
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, cutoff: s.cutoff ?? null });
-const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false });
+const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false,
+  createdAt: i.created_at ?? null, lastOrderedAt: i.last_ordered_at ?? null });
 /* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
    had one; recoverable: how many days Rico can bring back after it broke. */
 function streakView(r: any) {
@@ -283,13 +304,13 @@ async function bootstrap(s: Session) {
   const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, months, draft] = await Promise.all([
     readAccount(s.account),
     readAll(() => app("suppliers").select("id,name,phone,reminder,cutoff").order("name").order("id")),
-    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available").order("name").order("id")),
+    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at").order("name").order("id")),
     readAll(() => app("units").select("id,en,ku,ar").order("id")),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
     readReminder(),
     listDevices(s),
-    listActivity(),
-    listInbox(s),
+    can(s, "record") ? listActivity() : Promise.resolve([]),
+    can(s, "assistant") ? listInbox(s) : Promise.resolve([]),
     readStreak(),
     listMonths(12),
     readDraft(s.account),
@@ -298,7 +319,7 @@ async function bootstrap(s: Session) {
   const lines = await orderLinesFor(orderRows);
   return {
     account: s.account, name: me?.name ?? accountName(s.account),
-    views: ACCOUNT_VIEWS[s.account],
+    views: viewsFor(s), roles: s.roles,
     pins: me?.pins ?? [], streak,
     suppliers: suppliers.map(toSupplier),
     items: items.map(toItem),
@@ -368,9 +389,49 @@ async function login(req: Request) {
   // valid PIN followed by extra characters could be accepted.
   if (!/^\d{6}$/.test(String(pin ?? ""))) return fail("invalid_credentials", 401);
   const attempt = await reserveLogin(prints);
-  if (!attempt) return fail("too_many_attempts", 429);
+  // A lock is written to the security log once per phone per lock, not once per refused try.
+  if (!attempt) { await securityEvent(req, "locked", null, {}, LOGIN_WINDOW_MS / 1000); return fail("too_many_attempts", 429); }
 
   return await startSession(req, String(pin), attempt);
+}
+
+/* ---------- The security log ---------- */
+async function securityEvent(req: Request, kind: string, account: Account | null, detail: Record<string, unknown> = {}, dedupeSeconds = 0) {
+  // The log must never stop a sign-in answer: a failed write is only noted.
+  try {
+    const { error } = await db.rpc("app_internal_security_event", {
+      p_kind: kind, p_account: account, p_device: text(req.headers.get("x-device-id"), 120) || null,
+      p_label: deviceLabel(req), p_detail: detail, p_dedupe_seconds: dedupeSeconds,
+    });
+    if (error) console.error("security_event_failed", kind);
+  } catch { console.error("security_event_failed", kind); }
+}
+/* Work that may finish after the reply (the runtime keeps it alive); a failure is only logged. */
+function later(work: Promise<unknown>) {
+  const done = work.catch(() => console.error("background_work_failed"));
+  (globalThis as any).EdgeRuntime?.waitUntil?.(done);
+}
+/* A phone that has never signed in to this account: Rozha hears about it at once (Rico's inbox and a
+   notification on her other signed-in phones), whoever it was. */
+async function alertNewDevice(req: Request, account: Account, deviceId: string | null) {
+  const [kind, how] = (deviceLabel(req) ?? "").split("|");
+  const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Baghdad", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
+  const n = LOCAL_NAMES[account];
+  const device = { en: kind || "a new device", ku: kind || "ئامێرێکی نوێ", ar: kind || "جهاز جديد" };
+  const via = how === "App" ? { en: " (app)", ku: " (ئەپ)", ar: " (التطبيق)" } : { en: "", ku: "", ar: "" };
+  const words = {
+    en: `New sign-in: ${n.en} on ${device.en}${via.en} at ${time}. If you didn't expect it, change that PIN in Admin, PINs.`,
+    ku: `چوونەژوورەوەی نوێ: ${n.ku} لەسەر ${device.ku}${via.ku} کاتژمێر ${time}. ئەگەر چاوەڕێی نەبوویت، ئەو کۆدە لە ئەدمین، کۆدەکان بگۆڕە.`,
+    ar: `تسجيل دخول جديد: ${n.ar} على ${device.ar}${via.ar} الساعة ${time}. إذا لم تكن تتوقعه، غيّر ذلك الرمز من المشرف، الرموز.`,
+  };
+  const { error } = await app("rico_inbox").insert({ account: "rozha", kind: "security", mood: "worried", body_en: words.en, body_ku: words.ku, body_ar: words.ar });
+  if (error) console.error("security_inbox_failed");
+  if (!CRON_SECRET) return;
+  await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+    method: "POST", signal: AbortSignal.timeout(15_000),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}`, apikey: ANON_KEY, "x-cron-secret": CRON_SECRET },
+    body: JSON.stringify({ type: "security", account: "rozha", excludeDevice: deviceId, bodyEn: words.en, bodyKu: words.ku, bodyAr: words.ar }),
+  }).catch(() => console.error("security_push_failed"));
 }
 
 /* The database checks the PIN under the same account locks as PIN changes.
@@ -383,9 +444,10 @@ async function startSession(req: Request, pin: string, attempt: number[]) {
     p_label: deviceLabel(req), p_version: appVersion(req), p_attempt_ids: attempt,
   });
   if (error) return fail("login_failed", 503);
-  if (data?.error === "invalid_credentials") return fail("invalid_credentials", 401);
+  if (data?.error === "invalid_credentials") { await securityEvent(req, "wrong_pin", null); return fail("invalid_credentials", 401); }
   if (data?.error === "device_in_use") return fail("device_in_use", 409);
   if (!["rozha", "yunis"].includes(data?.account) || !Number.isFinite(Date.parse(data?.expiresAt))) return fail("login_failed", 503);
+  if (data.newDevice) later(alertNewDevice(req, data.account, text(req.headers.get("x-device-id"), 120) || null));
   return json({ token, account: data.account, name: data.name ?? accountName(data.account), expiresAt: data.expiresAt });
 }
 
@@ -457,9 +519,9 @@ async function streakMilestone(count: number) {
     const n = LOCAL_NAMES[a];
     return {
       account: a, kind: "streak", mood: "excited", dedupe_key: `streak|${count}|${day}|${a}`,
-      body_en: `🔥 ${count} days in a row! The kitchen hasn't missed a single day. Keep the fire going, ${n.en}!`,
-      body_ku: `🔥 ${count} ڕۆژ لەسەر یەک! چێشتخانەکە تەنانەت یەک ڕۆژیشی لەدەست نەداوە. ئاگرەکە بە گڕ ڕابگرە، ${n.ku}!`,
-      body_ar: `🔥 ${count} يومًا متتاليًا! لم يفوّت المطبخ يومًا واحدًا. حافظ على اشتعال النار يا ${n.ar}!`,
+      body_en: `${count} days in a row! The kitchen hasn't missed a single day. Keep it going, ${n.en}.`,
+      body_ku: `${count} ڕۆژ لەسەر یەک! چێشتخانەکە تەنانەت یەک ڕۆژیشی لەدەست نەداوە. بەردەوام بە، ${n.ku}.`,
+      body_ar: `${count} يومًا متتاليًا! لم يفوّت المطبخ يومًا واحدًا. استمر يا ${n.ar}.`,
     };
   });
   const { error } = await app("rico_inbox").upsert(rows, { onConflict: "dedupe_key", ignoreDuplicates: true });
@@ -506,7 +568,13 @@ async function saveOrder(s: Session, b: any) {
 }
 
 /* ---------- Devices ---------- */
-async function heartbeat(s: Session, label: string | null, version: string | null) {
+async function heartbeat(s: Session, label: string | null, version: string | null, seconds: unknown) {
+  // Time in the app: the database adds at most the time that really passed since this phone last said.
+  const spent = Math.floor(Number(seconds));
+  if (Number.isFinite(spent) && spent > 0 && spent <= 1800) {
+    const { error } = await db.rpc("app_internal_add_usage", { p_account: s.account, p_device: s.deviceId || `__session:${s.id}`, p_label: label, p_seconds: spent });
+    if (error) console.error("usage_failed");
+  }
   if (!s.deviceId) return ok();
   const { data: d, error: readError } = await app("devices").select("command,handled_command").eq("id", s.deviceId).eq("account",s.account).maybeSingle();
   if (readError) throw readError;
@@ -526,13 +594,13 @@ async function sendCommand(b: any) {
 }
 
 /* ---------- Push ----------
-   Rozha may send anything. Yunis may test the daily reminder (Sounds &
-   notifications) or a supplier's reminder (Suppliers), and send what Rico
-   wrote (Rico has no limits). */
+   A test of the daily reminder needs the reminders role, a test of a supplier's reminder the catalog
+   role, and a notification written through Rico the notify role (Rozha has all three). */
+const PUSH_ROLES: Record<string, string> = { "reminder-now": "reminders", "supplier-test": "catalog", "assistant": "notify" };
 async function forwardPush(s: Session, b: any) {
   const type = text(b.type, 30);
-  const allowed = isRozha(s) ? ["update", "reminder-now", "supplier-test", "assistant"] : ["reminder-now", "supplier-test", "assistant"];
-  if (!allowed.includes(type)) return fail(isRozha(s) ? "invalid_type" : "forbidden", isRozha(s) ? 400 : 403);
+  if (!PUSH_ROLES[type]) return fail("invalid_type");
+  if (!can(s, PUSH_ROLES[type])) return fail("forbidden", 403);
   if (!CRON_SECRET) return fail("push_not_configured", 500);
   const res = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
     method: "POST",
@@ -547,7 +615,7 @@ async function forwardPush(s: Session, b: any) {
   return json(data, res.status);
 }
 
-/* Rico's chat history. Rozha and Yunis can read and delete each other's chats too (the app shows
+/* Rico's chat history: one shared list. Rozha and Yunis can read and delete every chat (the app shows
    whose each one is); each person only ever writes their own. */
 const CHAT_MAX_MESSAGES = 200, CHAT_MAX_CHARS = 200_000;
 const uuid = (v: unknown) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -595,12 +663,65 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
   if (req.method === "DELETE") {
     let q = db.from("app_rico_chats").delete();
     if (id !== null) q = q.eq("id", id);
+    else if (whose === "all") q = q.not("id", "is", null);
     else q = q.eq("account", whose === "rozha" || whose === "yunis" ? whose : actor);
     const { error } = await q;
     if (error) throw error;
     return json({ ok: true });
   }
   return fail("Unknown route", 404);
+}
+
+/* ---------- Admin (Rozha only) ---------- */
+/* Rico's estimated cost: list prices in US dollars per million tokens, as published in October 2026.
+   Voice clips are priced by length, not tokens, and count as zero here. */
+const PRICES: [RegExp, number, number][] = [[/flash-lite/i, 0.30, 2.50], [/flash/i, 1.50, 9.00], [/gpt-oss/i, 0.15, 0.60]];
+function ricoCost(models: any[]) {
+  let usd = 0, input = 0, output = 0;
+  for (const m of models ?? []) {
+    const i = Number(m.input) || 0, o = Number(m.output) || 0;
+    input += i; output += o;
+    const price = PRICES.find(([re]) => re.test(String(m.model ?? "")));
+    if (price) usd += (i * price[1] + o * price[2]) / 1e6;
+  }
+  return { usd: Math.round(usd * 10000) / 10000, input, output };
+}
+async function adminRico() {
+  const { data, error } = await db.rpc("app_internal_rico_usage", { p_actor: "rozha", p_from: monthStart() });
+  if (error) throw error;
+  const { models, ...rest } = data ?? {};
+  // Model names stay on the server: Admin shows what Rico did and what it cost.
+  return { ...rest, cost: ricoCost(models), hourLimit: 400, perPhoneHourLimit: 60 };
+}
+const PROBLEM_KINDS = ["error", "rejection", "console", "server", "manual"];
+// Cut by characters, not UTF-16 halves, so an emoji at the limit is never split (the database refuses half of one).
+const plain = (v: unknown, max: number) => Array.from(String(v ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").trim()).slice(0, max).join("");
+/* Problem reports from a phone: shapes and sizes are checked here, and again by the table. */
+function cleanProblems(v: unknown) {
+  if (!Array.isArray(v) || !v.length || v.length > 10) return null;
+  const out = [];
+  for (const r of v as any[]) {
+    if (!r || typeof r !== "object" || !/^[0-9a-f]{16,64}$/.test(String(r.fingerprint ?? "")) || !PROBLEM_KINDS.includes(r.kind)) return null;
+    const message = plain(r.message, 500);
+    if (!message) return null;
+    out.push({
+      fingerprint: String(r.fingerprint), kind: r.kind, message,
+      source: plain(r.source, 200) || null, stack: plain(String(r.stack ?? "").replace(/\r/g, ""), 2000) || null,
+      screen: /^[A-Za-z]{1,40}$/.test(String(r.screen ?? "")) ? String(r.screen) : null,
+      count: Number.isInteger(r.count) && r.count >= 1 && r.count <= 1000 ? r.count : 1,
+    });
+  }
+  return out;
+}
+async function adminProblems() {
+  const since = new Date(Date.now() - 7 * 86400_000).toISOString();
+  const { data, error } = await app("problem_reports")
+    .select("id,fingerprint,kind,message,source,stack,screen,account,device_id,device_label,app_version,count,first_at,last_at,resolved_at")
+    .or(`resolved_at.is.null,resolved_at.gte.${since}`).order("last_at", { ascending: false }).limit(300);
+  if (error) throw error;
+  return (data ?? []).map((p: any) => ({ id: p.id, fingerprint: p.fingerprint, kind: p.kind, message: p.message, source: p.source, stack: p.stack,
+    screen: p.screen, account: p.account, deviceId: p.device_id, label: p.device_label, version: p.app_version, count: p.count,
+    firstAt: p.first_at, lastAt: p.last_at, resolvedAt: p.resolved_at }));
 }
 
 /* ---------- Router ---------- */
@@ -629,6 +750,7 @@ Deno.serve(async (req) => {
     const rozha = isRozha(s);
     const keys=[`account:${s.account}:${M==="GET"?"read":"write"}`],limits=[M==="GET"?240:600];
     if(path==="push/send"){keys.push(`account:${s.account}:push`);limits.push(6);}
+    if(path==="problems"){keys.push(`account:${s.account}:problems`);limits.push(20);}
     if(path.startsWith("rico-chats") && M!=="GET"){keys.push(`account:${s.account}:chats`);limits.push(40);}
     if(path==="stock/read" || (path==="stock-items" && M==="PUT")){keys.push(`account:${s.account}:stock`);limits.push(20);}
     const limited=path==="logout"?null:await requestLimit(keys,limits);if(limited)return limited;
@@ -657,9 +779,65 @@ Deno.serve(async (req) => {
 
     if (M === "GET" && path === "admin/diagnostics") {
       if (!rozha) return fail("forbidden",403);
+      const started=performance.now();
       const {data,error}=await db.rpc("app_internal_diagnostics",{p_actor:s.account});
-      return error ? fail("diagnostics_unavailable",503) : json(data);
+      return error ? fail("diagnostics_unavailable",503) : json({...data,latencyMs:Math.round(performance.now()-started)});
     }
+    if (path.startsWith("admin/") && !rozha) return fail("forbidden", 403);
+    if (M === "GET" && path === "admin/security") {
+      const prints = await loginFingerprints(req);
+      const { data, error } = await db.rpc("app_internal_security_summary", { p_actor: s.account, p_global: prints[1], p_window_seconds: LOGIN_WINDOW_MS / 1000, p_global_limit: MAX_GLOBAL_FAILED_LOGINS });
+      return error ? fail("security_unavailable", 503) : json(data);
+    }
+    if (M === "POST" && path === "admin/security/unlock") {
+      const { data, error } = await db.rpc("app_internal_unlock_signin", { p_actor: s.account, p_window_seconds: LOGIN_WINDOW_MS / 1000, p_device: s.deviceId });
+      return error ? fail("save_failed", 500) : json({ ok: true, cleared: data });
+    }
+    if (M === "GET" && path === "admin/problems") return json(await adminProblems());
+    if (M === "POST" && path === "admin/problems/resolve") {
+      const ids = Array.isArray(b.ids) ? [...new Set(b.ids.filter((x: unknown) => Number.isSafeInteger(x) && Number(x) > 0))] : [];
+      if (!ids.length || ids.length > 300) return fail("invalid_input");
+      const { error } = await app("problem_reports").update({ resolved_at: nowIso() }).in("id", ids).is("resolved_at", null);
+      return error ? fail("save_failed", 500) : ok();
+    }
+    if (M === "DELETE" && path === "admin/problems") {
+      const { error } = await app("problem_reports").delete().not("resolved_at", "is", null);
+      return error ? fail("delete_failed", 500) : ok();
+    }
+    if (M === "GET" && path === "admin/usage") {
+      const { data, error } = await db.rpc("app_internal_usage_summary", { p_actor: s.account });
+      return error ? fail("usage_unavailable", 503) : json(data);
+    }
+    if (M === "GET" && path === "admin/rico") return json(await adminRico());
+    if (M === "GET" && path === "admin/roles") {
+      const { data, error } = await app("accounts").select("roles").eq("id", "yunis").maybeSingle();
+      return error ? fail("roles_unavailable", 503) : json({ roles: ROLES, yunis: rolesOf("yunis", data?.roles), standard: data?.roles == null });
+    }
+    if (M === "PUT" && path === "admin/roles") {
+      const roles = Array.isArray(b.roles) ? b.roles : null;
+      if (b.account !== "yunis" || !roles || roles.length > ROLES.length || roles.some((r: unknown) => typeof r !== "string" || !ROLES.includes(r)) || new Set(roles).size !== roles.length) return fail("invalid_input");
+      const { data, error } = await db.rpc("app_internal_set_roles", { p_actor: s.account, p_account: "yunis", p_roles: roles, p_device: s.deviceId });
+      return error ? fail("save_failed", 500) : json({ roles: rolesOf("yunis", data) });
+    }
+    if (M === "POST" && path === "problems") {
+      const reports = cleanProblems(b.reports);
+      if (!reports) return fail("invalid_input");
+      const { data, error } = await db.rpc("app_internal_report_problems", { p_reports: reports, p_account: s.account, p_device: s.deviceId || `__session:${s.id}`, p_label: deviceLabel(req), p_version: appVersion(req) });
+      return error ? fail("save_failed", 500) : json({ ok: true, kept: data });
+    }
+    if (M === "GET" && path === "reports/catalog") {
+      if (!can(s, "exports")) return fail("forbidden", 403);
+      const { data, error } = await db.rpc("app_internal_catalog_report", { p_from: monthStart() });
+      return error ? fail("report_unavailable", 503) : json(data);
+    }
+    // Yunis's roles: every route that reads or changes something he may be without is checked here.
+    const catalogWrite = (M === "PUT" || M === "DELETE") && /^(?:suppliers|items|units)\/[^/]+$/.test(path)
+      || (M === "PUT" && (path.startsWith("supplier-order/") || path === "items/aliases")) || (M === "POST" && path === "items/restore");
+    if (catalogWrite && !can(s, "catalog")) return fail("forbidden", 403);
+    if ((M === "POST" && path === "orders" && !can(s, "send")) || (path === "months" && !can(s, "history"))
+      || (path === "activity" && !can(s, "record")) || ((path.startsWith("stock") ) && !can(s, "transfers"))
+      || ((path.startsWith("assistant/") || path.startsWith("rico-chats") || path === "streak/recover") && !can(s, "assistant"))
+      || (path === "reminder" && !can(s, "reminders"))) return fail("forbidden", 403);
     if (M === "POST" && path === "items/restore") {
       if (typeof b.undoId!=="string" || !/^[a-f0-9-]{36}$/.test(b.undoId)) return fail("invalid_input");
       const {data,error}=await db.rpc("app_internal_item_undo",{p_id:b.undoId,p_actor:s.account,p_device:s.deviceId,p_restore:true});
@@ -757,7 +935,7 @@ Deno.serve(async (req) => {
 
     // Devices
     if (M === "GET" && path === "devices") return json(await listDevices(s));
-    if (M === "POST" && path === "devices/me") return await heartbeat(s, deviceLabel(req), appVersion(req));
+    if (M === "POST" && path === "devices/me") return await heartbeat(s, deviceLabel(req), appVersion(req), b.seconds);
     if (M === "POST" && path === "devices/me/ack") {
       if (s.deviceId) {
         const { error } = await app("devices").update({ handled_command: text(b.commandId, 120) || null }).eq("id", s.deviceId).eq("account",s.account);
