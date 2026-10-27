@@ -43,7 +43,6 @@ const server=http.createServer((req,res)=>{
         suppliers,items,units:[{id:'box',en:'box',ku:'سندوق',ar:'صندوق'}],history,devices:[],activity:[],reminder:{enabled:false,time:'09:00'},inbox:[]};
       else if(endpoint==='devices') data=[];
       else if(endpoint==='assistant/inbox') data=[];
-      else if(endpoint==='assistant/status') data={configured:true,provider:'gemini',model:'gemini-3.5-flash-lite'};
       else if(endpoint==='orders' && req.method()==='POST'){
         saved.push(body);
         if(server.orders==='broken'){ status=400; data={error:'Bad order'}; }

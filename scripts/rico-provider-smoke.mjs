@@ -7,7 +7,9 @@ const usage = [];
 const environment = new Map();
 globalThis.Deno = { env: { get: (key) => environment.get(key) ?? '' } };
 const aiStatus = new Map();
-const { adminAi, assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, removeAiKey, saveAiKey, saveGroqKey, _internals } = await import('../supabase/functions/api/assistant.ts');
+const ricoOrders = [];
+let kitchen = null; // set for the WhatsApp tests: { app_suppliers: [...], ... }
+const { adminAi, handleChat, handleTranscribe, _internals } = await import('../supabase/functions/api/assistant.ts');
 
 const db = {
   rpc(name, args) {
@@ -32,7 +34,8 @@ const db = {
         if (table === 'app_secrets') {
           if (secrets.has(row.key)) return Promise.resolve({ error: { code: '23505' } });
           secrets.set(row.key, row.value);
-        } else usage.push(row);
+        } else if (table === 'app_rico_orders') ricoOrders.push(row);
+        else usage.push(row);
         return Promise.resolve({ error: null });
       },
       then(resolve) {
@@ -48,7 +51,8 @@ const db = {
           ? [...secrets].filter(([key]) => !filters.length || filters.some(([field, values]) => field === 'key' && values.includes(key)))
             .map(([key, value]) => ({ key, value }))
           : table === 'app_ai_status' ? [...aiStatus.values()]
-          : table === 'app_assistant_usage' ? usage : [];
+          : table === 'app_assistant_usage' ? usage
+          : kitchen?.[table] ?? [];
         return Promise.resolve(resolve({ data, count: 0, error: null }));
       },
     };
@@ -86,7 +90,13 @@ globalThis.fetch = async (input, options = {}) => {
     return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
   }
   if (new URL(url).hostname === 'api.anthropic.com') return anthropic(url, options);
-  if (url.includes('api.groq.com/openai/v1/chat/completions')) {
+  if (new URL(url).hostname === 'graph.facebook.com') {
+    whatsappCalls.push({ url, auth: options.headers.authorization, body: JSON.parse(options.body) });
+    return whatsappWindowClosed
+      ? new Response(JSON.stringify({ error: { code: 131047, message: 'Re-engagement message' } }), { status: 400 })
+      : new Response(JSON.stringify({ messages: [{ id: 'wamid.test' + whatsappCalls.length }] }), { headers: { 'content-type': 'application/json' } });
+  }
+  if (url === 'https://api.groq.com/openai/v1/chat/completions') {
     if (groqUnavailable) return new Response('{"error":{"message":"busy"}}', { status: 503 });
     if (groqSecondTurnDown && groqTurn === 1) { groqTurn++; return new Response('{"error":{"message":"busy"}}', { status: 503 }); }
     const payload = groqReply ? groqReply.map(content => ({ choices: [{ delta: { content } }] }))
@@ -103,18 +113,16 @@ globalThis.fetch = async (input, options = {}) => {
 
 // Claude Haiku: a tool call first (with a thinking block that must go back unchanged), then the answer.
 let anthropicTurn = 0;
+const whatsappCalls = [];
+let whatsappWindowClosed = false;
 let anthropicFail = null; // { status, type, message } or 'slow'
-const anthropicKey = 'sk-ant-api03-' + 'C'.repeat(40), adminKey = 'sk-ant-admin01-' + 'D'.repeat(40);
+let anthropicTool = { name: 'open_screen', json: ['{"screen":', '"order"}'] };
+const anthropicKey = 'sk-ant-api03-' + 'C'.repeat(40);
 const sse = events => new Response(new ReadableStream({ start(controller) {
   controller.enqueue(new TextEncoder().encode(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(''))); controller.close();
 } }), { headers: { 'content-type': 'text/event-stream' } });
 async function anthropic(url, options) {
-  const key = options.headers['x-api-key'];
-  if (url.includes('/models?')) return new Response(key === anthropicKey ? '{"data":[]}' : '{}', { status: key === anthropicKey ? 200 : 401 });
-  if (url.includes('/organizations/cost_report')) {
-    if (key !== adminKey) return new Response('{}', { status: key === anthropicKey ? 403 : 401 });
-    return new Response(JSON.stringify({ data: [{ results: [{ amount: '1.25', currency: 'USD' }] }, { results: [{ amount: '2.5', currency: 'USD' }] }], has_more: false }), { headers: { 'content-type': 'application/json' } });
-  }
+  assert.equal(options.headers['x-api-key'], anthropicKey);
   if (anthropicFail === 'slow') return new Promise((_, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
   if (anthropicFail) return new Response(JSON.stringify({ type: 'error', error: { type: anthropicFail.type, message: anthropicFail.message ?? '' } }), { status: anthropicFail.status });
   if (anthropicTurn++ === 0) return sse([
@@ -123,9 +131,8 @@ async function anthropic(url, options) {
     { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Open the order.' } },
     { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'sig-1' } },
     { type: 'content_block_stop', index: 0 },
-    { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'toolu_1', name: 'open_screen', input: {} } },
-    { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"screen":' } },
-    { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '"order"}' } },
+    { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'toolu_1', name: anthropicTool.name, input: {} } },
+    ...anthropicTool.json.map(partial_json => ({ type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json } })),
     { type: 'content_block_stop', index: 1 },
     { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 9 } },
     { type: 'message_stop' }]);
@@ -145,7 +152,6 @@ const chat = async (content = 'Hello', lang = 'en') => {
   return (await response.text()).trim().split('\n').map(JSON.parse);
 };
 
-assert.deepEqual(await assistantStatus(db), { configured: true, model: 'gemini-3.5-flash-lite', provider: 'gemini', fallback: false });
 const geminiEvents = await chat();
 assert.deepEqual(geminiEvents.map(e => e.type), ['status', 'proposal', 'text', 'mood', 'text', 'done']);
 assert.equal(geminiEvents[3].mood, 'happy');
@@ -170,9 +176,7 @@ assert.equal(requests.length, beforeQuick, 'quick suggestions do not call Gemini
 emptyReply = true;
 assert.deepEqual((await chat()).map(e=>e.type), ['error','done'], 'empty MAX_TOKENS produces a visible failure');
 emptyReply = false;
-assert.deepEqual(await saveGroqKey(db, 'gsk_' + 'B'.repeat(30)), { ok: true });
-assert.deepEqual(await assistantSetupStatus(db), { groqConfigured: true });
-assert.deepEqual(await assistantStatus(db), { configured: true, model: 'openai/gpt-oss-120b', provider: 'groq', fallback: true });
+secrets.set('groq_api_key', 'gsk_' + 'B'.repeat(30)); // keys are set on the server only, never from the app
 const beforeGroq = requests.length;
 const groqEvents = await chat();
 assert.deepEqual(groqEvents.map(e => e.type), ['status', 'proposal', 'mood', 'text', 'done'], 'a mood tag split across chunks is still found');
@@ -225,14 +229,8 @@ assert.deepEqual(lookupEvents.map(e => e.type), ['status', 'mood', 'text', 'done
 assert.equal(requests.slice(beforeLookup).some(r => r.url.includes('streamGenerateContent')), true);
 groqSecondTurnDown = false; groqTool = 'open_screen';
 
-// Claude Haiku 5.5 answers first once its key is saved; the free AIs take over when it can't.
-assert.deepEqual(await saveAiKey(db, 'anthropic', 'sk-ant-api03-short'), { ok: false, error: 'invalid_key' });
-assert.deepEqual(await saveAiKey(db, 'anthropic', 'sk-ant-api03-' + 'E'.repeat(40)), { ok: false, error: 'invalid_key' }, 'a key Anthropic rejects is not saved');
-assert.equal(secrets.has('anthropic_api_key'), false);
-assert.deepEqual(await saveAiKey(db, 'openai', anthropicKey), { ok: false, error: 'invalid_input' });
-assert.deepEqual(await saveAiKey(db, 'anthropic', anthropicKey), { ok: true });
-assert.equal(secrets.get('anthropic_api_key'), anthropicKey);
-assert.equal((await assistantStatus(db)).provider, 'anthropic');
+// Claude Haiku 5.5 answers first once its key is on the server; the free AIs take over when it can't.
+secrets.set('anthropic_api_key', anthropicKey);
 const beforeHaiku = requests.length;
 const haikuEvents = await chat();
 assert.deepEqual(haikuEvents.map(e => e.type), ['status', 'proposal', 'text', 'mood', 'text', 'text', 'done']);
@@ -266,20 +264,61 @@ for (const [fail, state] of [[{ status: 400, type: 'invalid_request_error', mess
   assert.ok(Date.now() - started < 15000);
 }
 anthropicFail = null; anthropicTurn = 0;
-let ai = await adminAi(db);
+const ai = await adminAi(db);
 assert.deepEqual(ai.brains.map(b => [b.id, b.connected]), [['anthropic', true], ['gemini', true], ['groq', true]]);
 assert.equal(ai.brains[0].calls >= 1 && ai.brains[0].input >= 232, true);
-assert.deepEqual(ai.brains[0].bill, { error: 'no_admin_key' }, 'no bill is guessed without the admin key');
-assert.deepEqual(ai.brains[1].bill, { free: true });
-assert.equal(ai.adminKey, false);
-assert.deepEqual(await saveAiKey(db, 'anthropic_admin', 'sk-ant-admin01-' + 'F'.repeat(40)), { ok: false, error: 'invalid_key' });
-assert.deepEqual(await saveAiKey(db, 'anthropic_admin', adminKey), { ok: true });
-ai = await adminAi(db);
-assert.equal(ai.adminKey, true);
-assert.equal(ai.brains[0].bill.usd, 0.0375, 'the bill is Anthropic\'s own cost report (cents to dollars)');
-assert.equal(JSON.stringify(ai).includes('sk-ant'), false, 'keys never go back to the app');
-assert.deepEqual(await removeAiKey(db, 'anthropic'), { ok: true });
-assert.equal(secrets.has('anthropic_api_key'), false);
-assert.equal((await assistantStatus(db)).provider === 'anthropic', false);
+assert.equal(ai.brains[0].state, 'busy', 'the last answer state is kept');
+assert.deepEqual(Object.keys(ai.brains[0]).sort(), ['at', 'calls', 'connected', 'id', 'input', 'output', 'state'], 'no keys and no bill go to the app');
+assert.equal(JSON.stringify(ai).includes('sk-ant') || JSON.stringify(ai).includes('gsk_'), false, 'keys never go back to the app');
 
-console.log('Rico provider smoke: PASS (Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI bill from the cost report; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');
+// Rico orders by himself (TEST): usual amounts plus the ones Rozha named, sent by WhatsApp only to her number.
+const ago = m => new Date(Date.now() - m * 60000).toISOString();
+kitchen = {
+  app_suppliers: [{ id: 'sup-bakery', name: 'Bakery', phone: '', reminder: null }, { id: 'sup-veg', name: 'Vegetables', phone: '', reminder: null }],
+  app_units: [{ id: 'u-piece', en: 'piece' }, { id: 'u-kg', en: 'kg' }],
+  app_items: [{ id: 'it-burger', name: 'Burger bread', unit_id: 'u-piece', supplier_id: 'sup-bakery', available: true },
+    { id: 'it-toast', name: 'Toast bread', unit_id: 'u-piece', supplier_id: 'sup-bakery', available: true },
+    { id: 'it-tomato', name: 'Tomato', unit_id: 'u-kg', supplier_id: 'sup-veg', available: true }],
+  app_orders: [1, 2, 3].map(k => ({ id: 'o' + k, sent_at: ago(k), created_at: ago(k), sent_by: 'rozha' })),
+  app_order_lines: [1, 2, 3].map(k => ({ order_id: 'o' + k, supplier_id: 'sup-bakery', supplier_name: 'Bakery', item_id: 'it-burger', item_name: 'Burger bread', unit_id: 'u-piece', qty: 24 })),
+};
+const orderTool = input => { anthropicTurn = 0; anthropicTool = { name: 'send_test_order', json: [JSON.stringify(input)] }; };
+orderTool({ suppliers: ['Bakery'], items: [{ item_id: 'it-toast', qty: 2 }], language: 'en' });
+await chat('Rico, order from the bakery, and 2 toast bread');
+assert.equal(whatsappCalls.length, 0, 'nothing is sent before WhatsApp is set up');
+assert.equal(ricoOrders.length, 0);
+environment.set('WHATSAPP_TOKEN', 'EAA' + 'T'.repeat(40)); environment.set('WHATSAPP_PHONE_ID', '1370871979449071'); environment.set('WHATSAPP_TEST_TO', '+964 750 000 0000');
+orderTool({ suppliers: ['Bakery'], items: [{ item_id: 'it-toast', qty: 2 }], language: 'en' });
+const sentEvents = await chat('Rico, order from the bakery, and 2 toast bread');
+assert.equal(sentEvents.some(e => e.type === 'status' && e.tool === 'send_test_order'), true);
+assert.equal(whatsappCalls.length, 1);
+assert.equal(whatsappCalls[0].url, 'https://graph.facebook.com/v26.0/1370871979449071/messages');
+assert.equal(whatsappCalls[0].auth, 'Bearer EAA' + 'T'.repeat(40));
+assert.equal(whatsappCalls[0].body.to, '9647500000000', 'only Rozha\'s own number, digits only');
+assert.equal(whatsappCalls[0].body.type, 'text');
+assert.equal(whatsappCalls[0].body.text.body, '[TEST] Bakery\nNew order from Ricotta:\n• Burger bread: 24 piece\n• Toast bread: 2 piece', 'usual amounts plus the named one');
+assert.equal(ricoOrders.length, 1);
+assert.equal(ricoOrders[0].status, 'sent');
+assert.equal(ricoOrders[0].message_id, 'wamid.test1');
+assert.match(ricoOrders[0].reason, /usual amounts .*based on the last 3 orders.*with the amounts Rozha named/);
+const toolResult = JSON.parse(requests.filter(r => r.url === 'https://api.anthropic.com/v1/messages').at(-1).body.messages.at(-1).content[0].content);
+assert.deepEqual(toolResult.results[0].lines, ['Burger bread: 24 piece', 'Toast bread: 2 piece']);
+assert.match(toolResult.note, /only to Rozha's own WhatsApp/);
+whatsappWindowClosed = true;
+orderTool({ suppliers: ['Vegetables', 'Bakery'], items: [{ item_id: 'it-tomato', qty: 5 }, { item_id: 'it-burger', qty: 0 }] });
+await chat('Rico, send tomatoes 5 and the bakery order yourself');
+assert.equal(whatsappCalls.length, 2, 'a closed WhatsApp window stops the rest');
+assert.equal(whatsappCalls[1].body.text.body, '[TEST] Vegetables\nNew order from Ricotta:\n• Tomato: 5 kg');
+assert.deepEqual([ricoOrders[1].status, ricoOrders[1].error, ricoOrders[1].reason], ['failed', 'window_closed', 'the amounts Rozha named']);
+whatsappWindowClosed = false;
+orderTool({ suppliers: ['Bakery'] });
+const yunisChat = await handleChat(db, { id: 'y', account: 'yunis', deviceId: null }, { messages: [{ role: 'user', content: 'order bakery' }], lang: 'en' }, {}, new AbortController().signal);
+await yunisChat.text();
+assert.equal(whatsappCalls.length, 2, 'Yunis cannot make Rico send');
+kitchen = null; anthropicTool = { name: 'open_screen', json: ['{"screen":', '"order"}'] }; anthropicTurn = 0;
+secrets.delete('anthropic_api_key');
+const beforeNoHaiku = requests.length;
+await chat();
+assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname === 'api.anthropic.com'), false, 'without its key Haiku is skipped');
+
+console.log('Rico provider smoke: PASS (Rico sends test orders by WhatsApp to Rozha only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');

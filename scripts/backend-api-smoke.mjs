@@ -137,7 +137,7 @@ try {
   requestAllowed=true;reset();errors.set('app_internal_reserve_requests',true);
   assert.equal((await call('orders',{})).status,503,'request limits fail closed');
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';
-  for(const [path,method,body] of [['devices/command','POST',{ids:['peer'],type:'logout'}],['assistant/setup-status','GET',null],['assistant/groq-key','PUT',{key:'fake'}],['admin/pin','PUT',{account:'yunis',currentPin:'482916',newPin:'591837'}],['admin/security','GET',null],['admin/problems','GET',null],['admin/roles','PUT',{account:'yunis',roles:['history']}],['admin/usage','GET',null],['admin/rico','GET',null],['admin/ai','GET',null],['admin/ai/key','PUT',{kind:'anthropic',key:'fake'}],['admin/ai/key','DELETE',{kind:'anthropic'}]])assert.equal((await call(path,body,method)).status,403,`staff cannot use ${path}`);
+  for(const [path,method,body] of [['devices/command','POST',{ids:['peer'],type:'logout'}],['admin/pin','PUT',{account:'yunis',currentPin:'482916',newPin:'591837'}],['admin/security','GET',null],['admin/problems','GET',null],['admin/roles','PUT',{account:'yunis',roles:['history']}],['admin/usage','GET',null],['admin/rico','GET',null],['admin/ai','GET',null],['rico/orders','GET',null]])assert.equal((await call(path,body,method)).status,403,`staff cannot use ${path}`);
   assert.equal((await call('push/send',{type:'update'},'POST')).status,400,'the old update notification no longer exists');
   // Yunis's roles are checked on the server: without them each route answers 403.
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';tables.app_sessions[0].app_accounts={roles:['history']};
@@ -303,7 +303,7 @@ try {
   for(const path of ['passkey/login-options','passkey/login'])assert.equal((await call(path,{},'POST',false)).status,401);
   for(const path of ['me/theme','me/tabs'])assert.equal((await call(path,{},'PUT')).status,404);
   // Kitchen notes, repeat orders and the secret code are gone too.
-  for(const [path,method] of [['notes','GET'],['notes','POST'],['notes/1/read','POST'],['repeat-orders','GET'],['repeat-orders','POST']])assert.equal((await call(path,method==='GET'?null:{},method)).status,404,`${path} is retired`);
+  for(const [path,method] of [['notes','GET'],['notes','POST'],['notes/1/read','POST'],['repeat-orders','GET'],['repeat-orders','POST'],['assistant/status','GET'],['assistant/setup-status','GET'],['assistant/groq-key','PUT'],['admin/ai/key','PUT'],['admin/ai/key','DELETE']])assert.equal((await call(path,method==='GET'?null:{},method)).status,404,`${path} is retired`);
   for(const path of ['recovery/name','recovery/verify','recovery/save'])assert.equal((await call(path,{},'POST',false)).status,401,`${path} is retired`);
   // Live changes: the counters right away, an answer as soon as one moves, and only kinds and counters.
   reset();tables.app_signals=[{kind:'data',n:7,at:'x'},{kind:'devices',n:9,at:'x'},{kind:'secret',n:99}];

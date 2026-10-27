@@ -43,9 +43,8 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   DELETE admin/problems             (rozha)                   remove the fixed ones
 //   GET    admin/usage                (rozha)                   time spent in the app per person and phone
 //   GET    admin/rico                 (rozha)                   Rico's usage this month and the tokens it used
-//   GET    admin/ai                   (rozha)                   each AI: connected, last state, replies, tokens, Haiku's real bill
-//   PUT    admin/ai/key               {kind, key} (rozha)       connect Haiku (kind anthropic) or the bill (anthropic_admin); checked first
-//   DELETE admin/ai/key               {kind} (rozha)            disconnect one
+//   GET    admin/ai                   (rozha)                   each AI: connected, last state, replies, tokens
+//   GET    rico/orders                (rozha)                   orders Rico sent by himself (TEST, to her own WhatsApp)
 //   PUT    admin/roles                {account, roles} (rozha)  what Yunis may open and do
 //   POST   problems                   {reports}                 errors this phone ran into (and Report a Problem)
 //   GET    reports/catalog            (exports)                 this month's orders per item and supplier, for Excel and PDF
@@ -59,9 +58,6 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   GET    assistant/suggestion                                 today's "Rico suggests" card (no AI call)
 //   GET    assistant/inbox                                      messages Rico sent first
 //   POST   assistant/inbox/read                                 mark them read
-//   GET    assistant/status                                     is Rico connected?
-//   GET    assistant/setup-status     (rozha)                   Groq one-time setup state
-//   PUT    assistant/groq-key         {key} (rozha)             add-only
 //   GET    months                                               the archive: one summary per finished month
 //   GET    draft | PUT draft          {changes}                 this account's unsent order, shared between its devices
 //   PUT    items/aliases              {entries}                 Rico's search-name changes, applied together
@@ -72,7 +68,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   stock/read                 {text?, image?, mime?}    Rico reads a transfer list into rows (see stock.ts)
 //                                                                  (Transfers is still being made: all four answer 423 until TRANSFERS_OPEN)
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
-import { adminAi, assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, removeAiKey, saveAiKey, saveGroqKey } from "./assistant.ts";
+import { adminAi, handleChat, handleTranscribe, orderSuggestion, whatsappReady } from "./assistant.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 import { cleanStockList, listStockItems, readTransferList } from "./stock.ts";
 
@@ -829,11 +825,12 @@ Deno.serve(async (req) => {
       return error ? fail("usage_unavailable", 503) : json(data);
     }
     if (M === "GET" && path === "admin/rico") return json(await adminRico());
-    if (path === "admin/ai" || path === "admin/ai/key") {
+    if (M === "GET" && path === "admin/ai") return json(await adminAi(db));
+    if (M === "GET" && path === "rico/orders") {
       if (!rozha) return fail("forbidden", 403);
-      if (M === "GET" && path === "admin/ai") return json(await adminAi(db));
-      if (M === "PUT" && path === "admin/ai/key") { const r = await saveAiKey(db, b.kind, b.key); return json(r, r.ok ? 200 : r.error === "save_failed" || r.error === "check_failed" ? 503 : 400); }
-      if (M === "DELETE" && path === "admin/ai/key") { const r = await removeAiKey(db, b.kind); return json(r, r.ok ? 200 : r.error === "save_failed" ? 503 : 400); }
+      const { data, error } = await db.from("app_rico_orders").select("id,created_at,supplier_name,lines,reason,status,error,test")
+        .order("created_at", { ascending: false }).limit(100);
+      return error ? fail("rico_orders_unavailable", 503) : json({ ready: whatsappReady(), orders: data ?? [] });
     }
     if (M === "GET" && path === "admin/roles") {
       const { data, error } = await app("accounts").select("roles").eq("id", "yunis").maybeSingle();
@@ -989,13 +986,6 @@ Deno.serve(async (req) => {
     if (M === "POST" && path === "assistant/inbox/read") {
       await app("rico_inbox").update({ read_at: nowIso() }).eq("account", s.account).is("read_at", null);
       return ok();
-    }
-    if (M === "GET" && path === "assistant/status") return json(await assistantStatus(db));
-    if (M === "GET" && path === "assistant/setup-status") return rozha ? json(await assistantSetupStatus(db)) : fail("forbidden", 403);
-    if (M === "PUT" && path === "assistant/groq-key") {
-      if (!rozha) return fail("forbidden", 403);
-      const result = await saveGroqKey(db, b.key);
-      return result.ok ? ok() : fail(result.error ?? "save_failed", result.error === "already_configured" ? 409 : 400);
     }
 
     // Push notifications

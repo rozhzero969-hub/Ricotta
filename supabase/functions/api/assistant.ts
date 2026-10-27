@@ -343,7 +343,7 @@ function toolSuggestOrder(w: World, a: any) {
       basis = (reminderOn(s) && !wanted.length ? `reminder is set for ${WEEKDAYS[weekday]}; ` : "") +
         `based on the last ${recent.length} order${recent.length > 1 ? "s" : ""} (${recent.map((o) => o.date).join(", ")})`;
     }
-    if (date === w.now.date && sentToday(w, sid)) { skipped.push(`${s.name}: already sent today`); continue; }
+    if (!a.ignoreSent && date === w.now.date && sentToday(w, sid)) { skipped.push(`${s.name}: already sent today`); continue; }
     const per = new Map<string, number[]>();
     for (const o of basisOrders) for (const l of o.lines) if (l.supplierId === sid) (per.get(l.itemId) ?? per.set(l.itemId, []).get(l.itemId)!).push(l.qty);
     const minTimes = basisOrders.length >= 3 ? Math.ceil(basisOrders.length / 2) : 1;
@@ -655,6 +655,12 @@ const TOOLS = [
     input_schema: { type: "object", properties: { title: { type: "string" }, message_en: { type: "string" }, message_ku: { type: "string" }, message_ar: { type: "string" } }, required: ["message_en", "message_ku", "message_ar"] } },
   { name: "recover_streak", description: "Show a card that brings back the kitchen's broken order streak (free, up to 7 days after it broke). Use it when someone asks to save, restore or recover their streak.",
     input_schema: { type: "object", properties: {} } },
+  { name: "send_test_order", description: "Rozha only, TEST: you order by yourself and send each supplier's order straight away by WhatsApp. While testing, every message goes only to Rozha's own WhatsApp, never to the supplier. Amounts are the usual ones from recent orders (as suggest_order) unless the person named amounts; named items replace or add to those (qty 0 removes one). Use it only when Rozha clearly asks you to order or send by yourself; for anything else use propose_order_draft.",
+    input_schema: { type: "object", properties: {
+      suppliers: { type: "array", items: { type: "string" }, description: "Supplier names or ids, 1 to 6" },
+      items: { type: "array", items: { type: "object", properties: { item_id: { type: "string" }, qty: { type: "number" } }, required: ["item_id", "qty"] }, description: "Only the amounts the person named (item_id from find_items)" },
+      language: { type: "string", enum: ["en", "ku", "ar"], description: "Language of the message: the person's language" },
+    }, required: ["suppliers"] } },
   { name: "open_screen", description: "Show a button that opens a screen of the app (order, manage, transfers, send, history, suppliers, itemsAdmin, units, record, admin, settings). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
     input_schema: { type: "object", properties: { screen: { type: "string" }, supplier_id: { type: "string" }, label: { type: "string" } }, required: ["screen"] } },
 ];
@@ -705,7 +711,8 @@ WHAT YOU CAN DO (only what CONTEXT says the person may do: Rozha has everything,
 - Notifications: propose_notification with English, Kurdish and Arabic text, e.g. to remind the team about a late order.
 - Guide people through the app and use open_screen for a one-tap shortcut. Yunis's account has no Admin screen, so never offer it to Yunis.
 - A proposal only shows a card; the person must tap to confirm. After proposing, say in one sentence what the card does. Never claim something was saved, added or sent until the conversation shows it was confirmed ("[card ... : applied]").
-- Nothing is ever sent to a supplier automatically: sending always happens from Send to suppliers via WhatsApp, and the person taps it.
+- Nothing is ever sent to a supplier automatically: sending always happens from Send to suppliers via WhatsApp, and the person taps it. The one exception is the TEST below.
+- TEST, Rozha only: when Rozha clearly asks you to order or send by yourself ("Rico, order from X and Y", "send the bakery order yourself"), use send_test_order. It sends at once, without a card. While testing, the messages go only to Rozha's own WhatsApp, never to suppliers, and they are not in History, the report or the streak. Afterwards tell her in a few short lines what you sent to whom and why (the reason each result gives). If it says the WhatsApp window is closed, ask her to send "hi" to the Ricotta test number on WhatsApp and then ask you again. Never use it for Yunis.
 - Late orders: if CONTEXT shows a supplier whose reminder time passed more than an hour ago with no order sent today, bring it up early (angry, playful) and offer to prepare it. The server also sends a notification for this automatically (once per supplier per day).
 - You also message people first sometimes: a cheer in the morning (with Erbil's weather), a thank-you after an order goes out, a telling-off when an order is late, and streak milestones. Those appear at the top of this chat.
 - The kitchen streak: CONTEXT shows it. Every Baghdad day with at least one sent order (by Rozha or Yunis) adds a day; it is grey until today's first order, then the fire lights up. A whole day with no order breaks it. If someone asks to save, restore or recover the streak, use recover_streak (free, works up to 7 days after it broke). Celebrate milestones (7, 14, 30, 60, 100, 200...) and now and then mention the streak after an order goes out.
@@ -856,7 +863,7 @@ async function* readSSE(res: Response) {
 
 export async function config(db: any) {
   const { data, error } = await withTimeout<any>(db.from("app_secrets").select("key,value")
-    .in("key", ["gemini_api_key", "groq_api_key", "anthropic_api_key", "anthropic_admin_key"]), DB_TIMEOUT_MS, "assistant_config");
+    .in("key", ["gemini_api_key", "groq_api_key", "anthropic_api_key"]), DB_TIMEOUT_MS, "assistant_config");
   if (error) throw new Error("assistant_config_unavailable");
   const saved = Object.fromEntries((data ?? []).map((r: any) => [r.key, r.value]));
   const geminiSecret = Deno.env.get("GEMINI_API_KEY") ?? "";
@@ -864,32 +871,10 @@ export async function config(db: any) {
   const geminiKey = geminiSecret || saved.gemini_api_key || "";
   const groqKey = groqSecret || saved.groq_api_key || "";
   const anthropicKey = (Deno.env.get("ANTHROPIC_API_KEY") ?? "") || saved.anthropic_api_key || "";
-  const anthropicAdminKey = saved.anthropic_admin_key || "";
   const base = groqKey
     ? { provider: "groq" as const, key: groqKey, model: DEFAULT_GROQ_MODEL, geminiKey }
     : { provider: "gemini" as const, key: geminiKey, model: DEFAULT_GEMINI_MODEL, geminiKey };
-  return { ...base, groqKey, anthropicKey, anthropicAdminKey };
-}
-
-export async function assistantStatus(db: any) {
-  const c = await config(db);
-  if (c.anthropicKey) return { configured: true, model: ANTHROPIC_MODEL, provider: "anthropic", fallback: !!(c.geminiKey || c.groqKey) };
-  return { configured: !!c.key, model: c.model, provider: c.provider, fallback: c.provider === "groq" && !!c.geminiKey };
-}
-
-export async function assistantSetupStatus(db: any) {
-  const c = await config(db);
-  return { groqConfigured: c.provider === "groq" };
-}
-
-export async function saveGroqKey(db: any, key: unknown) {
-  const value = text(key, 300);
-  if (!/^gsk_[A-Za-z0-9_-]{20,}$/.test(value)) return { ok: false, error: "invalid_key" };
-  const c = await config(db);
-  if (c.provider === "groq") return { ok: false, error: "already_configured" };
-  // INSERT preserves add-only setup even when two requests arrive together.
-  const { error } = await db.from("app_secrets").insert({ key: "groq_api_key", value });
-  return error ? { ok: false, error: error.code === "23505" ? "already_configured" : "save_failed" } : { ok: true };
+  return { ...base, groqKey, anthropicKey };
 }
 
 type ProviderCfg = { provider: string; key: string; model: string; geminiKey: string };
@@ -1409,30 +1394,11 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   return new Response(stream, { headers: { ...cors, "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" } });
 }
 
-/* ---------------- Admin › Rico: the AIs, their tokens and the real bill ----------------
-   Every number here is real: tokens are what each AI reported for each reply (app_assistant_usage), the
-   state is how each AI answered last (app_ai_status), and Haiku's bill is Anthropic's own cost report,
-   read with a read-only admin key when one is connected. Nothing is estimated from prices. */
+/* ---------------- Admin › Rico: the AIs and their tokens ----------------
+   Every number here is real: tokens are what each AI reported for each reply (app_assistant_usage) and
+   the state is how each AI answered last (app_ai_status). The keys themselves live only on the server
+   (Supabase secrets, or the locked app_secrets table) and never reach the app. */
 const providerOf = (model: string) => /^claude/i.test(model) ? "anthropic" : /^gemini/i.test(model) ? "gemini" : /^pending:/.test(model) ? "" : "groq";
-async function anthropicSpend(adminKey: string, from: string): Promise<{ usd: number } | { error: string }> {
-  let cents = 0, page = "";
-  for (let i = 0; i < 4; i++) {
-    const url = new URL(`${ANTHROPIC_URL}/organizations/cost_report`);
-    url.searchParams.set("starting_at", from);
-    url.searchParams.set("limit", "31");
-    if (page) url.searchParams.set("page", page);
-    let res: Response;
-    try { res = await fetch(url, { headers: { "x-api-key": adminKey, "anthropic-version": ANTHROPIC_VERSION } }); }
-    catch { return { error: "unavailable" }; }
-    if (res.status === 401 || res.status === 403) return { error: "admin_key_rejected" };
-    if (!res.ok) { console.error("anthropic cost report", res.status); return { error: "unavailable" }; }
-    const body = await res.json().catch(() => null);
-    for (const bucket of body?.data ?? []) for (const r of bucket?.results ?? []) cents += Number(r?.amount) || 0;
-    if (!body?.has_more || !body?.next_page) break;
-    page = String(body.next_page);
-  }
-  return { usd: Math.round(cents * 100) / 10000 }; // dollars, kept to a hundredth of a cent: Haiku replies cost fractions of a cent
-}
 export async function adminAi(db: any) {
   const c = await config(db);
   const from = monthStart();
@@ -1449,56 +1415,19 @@ export async function adminAi(db: any) {
     t.calls++; t.input += Number(r.input_tokens) || 0; t.output += Number(r.output_tokens) || 0;
   }
   const stateOf = (p: string) => (states.data ?? []).find((x: any) => x.provider === p) ?? null;
-  const bill = c.anthropicAdminKey ? await anthropicSpend(c.anthropicAdminKey, from) : { error: "no_admin_key" };
-  const brain = (id: string, connected: boolean, billing: unknown) => ({
+  const brain = (id: string, connected: boolean) => ({
     id, connected, state: stateOf(id)?.state ?? null, at: stateOf(id)?.at ?? null,
-    calls: totals[id]?.calls ?? 0, input: totals[id]?.input ?? 0, output: totals[id]?.output ?? 0, bill: billing,
+    calls: totals[id]?.calls ?? 0, input: totals[id]?.input ?? 0, output: totals[id]?.output ?? 0,
   });
   return {
     from,
     brains: [
-      brain("anthropic", !!c.anthropicKey, bill),
-      brain("gemini", !!c.geminiKey, { free: true }),
-      brain("groq", !!c.groqKey, { free: true }),
+      brain("anthropic", !!c.anthropicKey),
+      brain("gemini", !!c.geminiKey),
+      brain("groq", !!c.groqKey),
     ],
-    adminKey: !!c.anthropicAdminKey,
   };
 }
-/* Rozha connects (or replaces) a key from Admin. Each key is checked with Anthropic before it is saved:
-   the Rico key by listing models (no tokens are spent), the admin key by reading the cost report. Keys
-   are never sent back to the app. */
-// Only the start is checked here (Anthropic changes the rest of the format now and then); Anthropic itself decides.
-const KEY_SHAPES: Record<string, RegExp> = { anthropic: /^sk-ant-(?!admin)[A-Za-z0-9_-]{20,300}$/, anthropic_admin: /^sk-ant-admin[A-Za-z0-9_-]{20,300}$/ };
-// What a refused key looked like, for the logs: its length and the public part of the prefix, never the secret.
-const keyHint = (k: string) => `${k.length} chars, ${(k.match(/^sk-ant-[a-z]+\d*/)?.[0] ?? k.slice(0, 3) + "…")}`;
-export async function saveAiKey(db: any, kind: unknown, key: unknown) {
-  const k = String(kind ?? ""), value = String(key ?? "").trim();
-  if (!KEY_SHAPES[k]) return { ok: false, error: "invalid_input" };
-  if (!KEY_SHAPES[k].test(value)) { console.error("anthropic key shape", k, keyHint(value)); return { ok: false, error: "invalid_key" }; }
-  let res: Response;
-  try {
-    res = k === "anthropic"
-      ? await fetch(`${ANTHROPIC_URL}/models?limit=1`, { headers: { "x-api-key": value, "anthropic-version": ANTHROPIC_VERSION } })
-      : await fetch(`${ANTHROPIC_URL}/organizations/cost_report?starting_at=${encodeURIComponent(monthStart())}&limit=1`, { headers: { "x-api-key": value, "anthropic-version": ANTHROPIC_VERSION } });
-  } catch { return { ok: false, error: "check_failed" }; }
-  if (res.status === 401 || res.status === 403) {
-    const err = await res.json().catch(() => null);
-    console.error("anthropic key refused", k, res.status, err?.error?.type ?? "", keyHint(value));
-    return { ok: false, error: k === "anthropic_admin" && res.status === 403 ? "not_admin" : "invalid_key" };
-  }
-  if (!res.ok) { console.error("anthropic key check", k, res.status); return { ok: false, error: k === "anthropic_admin" && res.status === 404 ? "not_organization" : "check_failed" }; }
-  const { error } = await db.from("app_secrets").upsert({ key: k === "anthropic" ? "anthropic_api_key" : "anthropic_admin_key", value }, { onConflict: "key" });
-  if (error) return { ok: false, error: "save_failed" };
-  if (k === "anthropic") await noteBrain(db, "anthropic", true);
-  return { ok: true };
-}
-export async function removeAiKey(db: any, kind: unknown) {
-  const k = String(kind ?? "");
-  if (!KEY_SHAPES[k]) return { ok: false, error: "invalid_input" };
-  const { error } = await db.from("app_secrets").delete().eq("key", k === "anthropic" ? "anthropic_api_key" : "anthropic_admin_key");
-  return error ? { ok: false, error: "save_failed" } : { ok: true };
-}
-
 /* ---------------- voice messages ----------------
    The app records a short clip and sends it here as base64. Kurdish goes to
    Gemini first, and so does Arabic (Sorani and Arabic script both come out
@@ -1570,6 +1499,75 @@ export async function handleTranscribe(db: any, s: Session, body: any, cors: Rec
   return out({ text: text.trim().slice(0, 2000) });
 }
 
+/* ---------------- Rico orders by himself (TEST) ----------------
+   Rico builds each supplier's order (usual amounts from recent orders, or the amounts Rozha named) and
+   sends it at once by WhatsApp (Meta's WhatsApp Cloud API). While testing, every message goes only to
+   Rozha's own number (WHATSAPP_TEST_TO), never to the supplier. The token, the sending number and her
+   number are Supabase secrets: the app never sees them. Each send is kept in app_rico_orders, apart
+   from the kitchen's own orders (not in History, the report or the streak). */
+const WHATSAPP_URL = "https://graph.facebook.com/v26.0";
+const RICO_ORDERS_PER_HOUR = 20;
+const ORDER_HEADER: Record<string, string> = { en: "New order from Ricotta:", ku: "داواکارییەکی نوێ لە چێشتخانەی ریکۆتا:", ar: "طلب جديد من مطبخ ريكوتا:" };
+export function whatsappReady() {
+  return !!(Deno.env.get("WHATSAPP_TOKEN") && Deno.env.get("WHATSAPP_PHONE_ID") && Deno.env.get("WHATSAPP_TEST_TO"));
+}
+// WhatsApp's error codes, in Rico's words: 131047 = she hasn't messaged the number in 24 hours,
+// 131030 = her number isn't on the test list, 190 = the token expired or was removed.
+const waError = (code: number) => code === 131047 ? "window_closed" : code === 131030 ? "recipient_not_allowed"
+  : code === 190 ? "token_rejected" : code === 130429 || code === 131056 || code === 80007 ? "busy" : "failed";
+async function sendTestOrder(db: any, w: World, a: any, emit: Emit) {
+  if (w.account !== "rozha") return { error: "Only Rozha can let you send orders by yourself." };
+  if (!whatsappReady()) return { error: "not_set_up", note: "WhatsApp sending is not set up on the server yet. Tell Rozha; nothing was sent." };
+  const wanted = [...new Map((Array.isArray(a.suppliers) ? a.suppliers : []).slice(0, 6)
+    .map((x: unknown) => findSupplier(w, x)).filter((x: any) => x?.id).map((x: any) => [x.id, x])).values()] as any[];
+  if (!wanted.length) return { error: "Name the suppliers to order from (use list_suppliers for their names)." };
+  const since = new Date(Date.now() - 3600_000).toISOString();
+  const { count } = await withTimeout<any>(db.from("app_rico_orders").select("id", { count: "exact", head: true }).gte("created_at", since), DB_TIMEOUT_MS, "rico_orders");
+  if ((count ?? 0) + wanted.length > RICO_ORDERS_PER_HOUR) return { error: `At most ${RICO_ORDERS_PER_HOUR} orders an hour while testing. Nothing was sent.` };
+  const lang = ["en", "ku", "ar"].includes(a.language) ? a.language : "en";
+  const named = (Array.isArray(a.items) ? a.items : []).slice(0, 200)
+    .map((n: any) => ({ item: w.items.find((i) => i.id === text(n?.item_id, 80)), qty: Number(n?.qty) }))
+    .filter((n: any) => n.item && Number.isFinite(n.qty) && n.qty >= 0 && n.qty <= 100000);
+  const token = Deno.env.get("WHATSAPP_TOKEN")!, phoneId = Deno.env.get("WHATSAPP_PHONE_ID")!;
+  const to = Deno.env.get("WHATSAPP_TEST_TO")!.replace(/\D/g, "");
+  const results: any[] = [];
+  for (const s of wanted) {
+    const usual = (toolSuggestOrder(w, { suppliers: [s.id], ignoreSent: true }) as any).suppliers[0];
+    const lines = new Map<string, { item_id: string; name: string; unit: string; qty: number }>(
+      (usual?.lines ?? []).map((l: any) => [l.item_id, { item_id: l.item_id, name: l.name, unit: l.unit, qty: l.qty }]));
+    const mine = named.filter((n: any) => n.item.supplier_id === s.id);
+    for (const n of mine) {
+      if (n.qty === 0) lines.delete(n.item.id);
+      else lines.set(n.item.id, { item_id: n.item.id, name: n.item.name, unit: unitName(w, n.item.unit_id), qty: roundQty(n.qty) });
+    }
+    if (!lines.size) { results.push({ supplier: s.name, status: "skipped", reason: "no usual items and no amounts named" }); continue; }
+    const reason = mine.length ? (usual ? `usual amounts (${usual.basis}), with the amounts Rozha named` : "the amounts Rozha named") : `usual amounts: ${usual.basis}`;
+    const list = [...lines.values()];
+    const body = [`[TEST] ${s.name}`, ORDER_HEADER[lang], ...list.map((l) => `• ${l.name}: ${l.qty} ${l.unit}`)].join("\n");
+    let status = "failed", error: string | null = null, messageId: string | null = null;
+    try {
+      const res = await fetch(`${WHATSAPP_URL}/${encodeURIComponent(phoneId)}/messages`, {
+        method: "POST", signal: AbortSignal.timeout(15_000),
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: body.slice(0, 4000) } }),
+      });
+      const out = await res.json().catch(() => null);
+      if (res.ok && out?.messages?.[0]?.id) { status = "sent"; messageId = String(out.messages[0].id); }
+      else { error = waError(Number(out?.error?.code)); console.error("whatsapp", res.status, out?.error?.code ?? ""); }
+    } catch { error = "busy"; console.error("whatsapp unreachable"); }
+    const { error: saveError } = await withTimeout<any>(db.from("app_rico_orders").insert({
+      account: w.account, supplier_id: s.id, supplier_name: s.name, lines: list, reason, status, error, message_id: messageId,
+    }), DB_TIMEOUT_MS, "rico_orders");
+    if (saveError) console.error("rico order not kept");
+    results.push({ supplier: s.name, status, error, reason, lines: list.map((l) => `${l.name}: ${l.qty} ${l.unit}`) });
+    if (error === "window_closed" || error === "token_rejected" || error === "recipient_not_allowed") break;
+  }
+  return {
+    results,
+    note: "TEST: these went only to Rozha's own WhatsApp, not to the suppliers, and are not in History. Tell her briefly what you sent and why. window_closed: ask her to send \"hi\" to the Ricotta test number on WhatsApp, then ask you again. token_rejected or not_set_up: the WhatsApp token in Supabase needs renewing.",
+  };
+}
+
 async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto: boolean): Promise<unknown> {
   if (!STATUS_TOOLS.has(name)) return { error: "Unknown tool." };
   switch (name) {
@@ -1589,6 +1587,7 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
     case "propose_notification": return proposeNotification(a, emit);
     case "open_screen": return proposeOpen(a, emit);
     case "recover_streak": return proposeStreakRecover(w, emit);
+    case "send_test_order": return sendTestOrder(db, w, a, emit);
   }
   return { error: "Unknown tool." };
 }

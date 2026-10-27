@@ -294,6 +294,23 @@ function openMonthsSheet(){
     <div class="months-list">${list.length ? list.map(card).join('') : `<div class="empty-mini">${esc(t('monthsNone'))}</div>`}</div>`, t('monthsTitle'));
 }
 
+/* Rico's orders (TEST): orders Rico sent by himself over WhatsApp, kept apart from the kitchen's own
+   History. While testing they go only to Rozha's own WhatsApp. Rozha only. */
+async function openRicoOrdersSheet(){
+  const r = await api('rico/orders');
+  const orders = r.ok && Array.isArray(r.data?.orders) ? r.data.orders : null;
+  const card = o=>`<details class="month-card rico-order">
+      <summary><b dir="auto">${esc(o.supplier_name)}</b><span>${esc(formatIraqDateTime(o.created_at, {hour:'numeric', minute:'2-digit'}))} · <em class="${o.status === 'sent' ? 'up' : 'down'}">${esc(o.status === 'sent' ? t('ricoOrderSent') : t('ricoOrderFailed')(o.error))}</em></span></summary>
+      <ul class="month-list">${(o.lines || []).map(l=>`<li><span dir="auto">${esc(l.name)}</span><b>${esc(String(l.qty))} ${esc(unitLabel(l.unit) || l.unit || '')}</b></li>`).join('')}</ul>
+      ${o.reason ? `<div class="notif-sub" dir="auto">${esc(t('ricoOrderWhy'))}: ${esc(o.reason)}</div>` : ''}
+    </details>`;
+  const body = !orders ? `<div class="empty-mini">${esc(t('loadFailed'))}</div>`
+    : orders.length ? orders.map(card).join('') : `<div class="empty-mini">${esc(t('ricoOrdersNone'))}</div>`;
+  openKitchenSheet('months-sheet', `<div class="sel-title">${esc(t('ricoOrdersTitle'))}</div>
+    <div class="notif-sub">${esc(t('ricoOrdersHint'))}${orders && !r.data.ready ? ' ' + esc(t('ricoOrdersNotReady')) : ''}</div>
+    <div class="months-list">${body}</div>`, t('ricoOrdersTitle'));
+}
+
 /* ---------- The red number on the app icon ----------
    Suppliers whose order is late (an hour past the reminder, nothing sent today). Phones show it on
    the Home Screen icon (iPhone: notifications on). */

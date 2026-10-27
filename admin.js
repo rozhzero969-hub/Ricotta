@@ -97,7 +97,7 @@ function attachAdminBodyEvents(){
     await Promise.all(keys.map(k=>adminFetch(k, true)));
   }));
   ({problems:attachAdminProblems, security:attachAdminSecurity, health:attachAdminHealth, access:attachAdminAccess, pins:attachAdminPins,
-    devices:attachAdminDevices, catalog:attachAdminCatalog, time:attachAdminTime, rico:slot=>{ loadRicoStatus(); attachAdminAi(slot); }})[state.adminPage]?.(slot);
+    devices:attachAdminDevices, catalog:attachAdminCatalog, time:attachAdminTime})[state.adminPage]?.(slot);
 }
 /* Opens a page (or goes back to the list) with the iPhone's push: the new page slides in from the side
    while the list moves a little the other way and dims; Back reverses it. */
@@ -610,7 +610,7 @@ function renderAdminRico(){
   const tokens = {input:Number(r?.tokens?.input) || 0, output:Number(r?.tokens?.output) || 0};
   return `${adminHeading()}
     <section class="ad-card ad-rico-about">
-      <div class="ad-card-head">${adminTile(ICON_SPARKLE, 'green')}<div class="ad-card-title"><b>${esc(t('ricoName'))}</b><span id="ricoKeyState" class="rico-connection">${esc(t('ricoChecking'))}</span></div></div>
+      <div class="ad-card-head">${adminTile(ICON_SPARKLE, 'green')}<div class="ad-card-title"><b>${esc(t('ricoName'))}</b></div></div>
       <p>${esc(t('ricoAbout'))}</p>
       <p class="ad-small-print">${esc(t('ricoAboutPrivacy'))}</p>
     </section>
@@ -630,8 +630,7 @@ function renderAdminRico(){
 }
 /* Rico's AIs: Claude Haiku answers first, Google Gemini and Groq take over when it can't. For each: whether
    it is connected, how it answered last, this month's replies and tokens (as each AI reported them), and
-   the bill (Haiku's comes from Anthropic's own cost report once its read-only admin key is connected; the
-   backups are on free plans). Keys are typed here, checked with Anthropic, and never shown again. */
+   that the backups are on free plans. The keys never reach the app: they are set on the server only. */
 const AI_BRAINS = {anthropic:{name:'Claude Haiku 5.5', role:'aiRoleMain'}, gemini:{name:'Google Gemini', role:'aiRoleBackup1'}, groq:{name:'Groq', role:'aiRoleBackup2'}};
 function renderAdminAi(){
   const a = adminValue('ai');
@@ -640,48 +639,14 @@ function renderAdminAi(){
   const row = b=>{
     const info = AI_BRAINS[b.id] || {name:b.id, role:''};
     const status = !b.connected ? t('aiNotConnected') : b.state ? t('aiState_' + b.state) : t('aiNotUsedYet');
-    const bill = b.bill?.free ? t('aiFreePlan') : b.bill && typeof b.bill.usd === 'number' ? t('aiSpent')(b.bill.usd > 0 && b.bill.usd < 0.01 ? '<$0.01' : '$' + b.bill.usd.toFixed(2))
-      : b.bill?.error === 'no_admin_key' ? t('aiBillNeedsKey') : b.bill?.error === 'admin_key_rejected' ? t('aiBillKeyRejected') : t('aiBillUnavailable');
-    const actions = b.id === 'anthropic' ? `<div class="ad-ai-actions">
-        <button type="button" class="btn btn-ghost" data-ai-key="anthropic">${esc(b.connected ? t('aiReplaceKey') : t('aiConnect'))}</button>
-        ${b.connected ? `<button type="button" class="btn btn-ghost" data-ai-key="anthropic_admin">${esc(a.adminKey ? t('aiReplaceBillKey') : t('aiConnectBill'))}</button>` : ''}
-        ${b.connected ? `<button type="button" class="btn btn-ghost danger-text" data-ai-remove="anthropic">${esc(t('aiDisconnect'))}</button>` : ''}
-      </div>` : '';
     return `<div class="ad-ai">
       <div class="ad-ai-head"><div class="ad-card-title"><b>${esc(info.name)}</b><span>${esc(t(info.role))}</span></div>
         <span class="ad-ai-state ${b.connected ? tone(b.state) : 'idle'}"><i aria-hidden="true"></i>${esc(status)}${b.connected && b.at ? ` · ${esc(timeAgo(b.at))}` : ''}</span></div>
-      <div class="ad-ai-numbers"><span>${esc(t('aiReplies')(b.calls))}</span><span>${esc(t('adTokensInOut')(fmtTokens(b.input), fmtTokens(b.output)))}</span>${b.connected || b.bill?.free ? `<span class="ad-ai-bill">${esc(bill)}</span>` : ''}</div>
-      ${actions}</div>`;
+      <div class="ad-ai-numbers"><span>${esc(t('aiReplies')(b.calls))}</span><span>${esc(t('adTokensInOut')(fmtTokens(b.input), fmtTokens(b.output)))}</span>${b.id !== 'anthropic' ? `<span class="ad-ai-bill">${esc(t('aiFreePlan'))}</span>` : ''}</div></div>`;
   };
   return `<div class="section-title">${esc(t('aiBrainsTitle'))}</div>
     <section class="ad-card ad-ai-list">${a.brains.map(row).join('')}</section>
     <p class="ad-foot">${esc(t('aiBrainsFoot'))}</p>`;
-}
-function attachAdminAi(slot){
-  slot.querySelectorAll('[data-ai-key]').forEach(b=>b.onclick = ()=>withBusy(b, async()=>{
-    const kind = b.dataset.aiKey;
-    const key = await showPrompt(esc(t(kind === 'anthropic' ? 'aiKeyPrompt' : 'aiBillKeyPrompt')), {placeholder:kind === 'anthropic' ? 'sk-ant-api…' : 'sk-ant-admin…', secret:true, okLabel:t('save'), maxLength:300});
-    if(key === null || !key.trim()) return;
-    const r = await api('admin/ai/key', {method:'PUT', body:{kind, key:key.trim()}, timeout:20000});
-    if(r.ok){ toast(t(kind === 'anthropic' ? 'aiKeySaved' : 'aiBillKeySaved')); adminFetch('ai', true); return; }
-    await showAlert(esc(t('aiKeyError_' + (['invalid_key','not_admin','not_organization','check_failed'].includes(r.data?.error) ? r.data.error : 'other'))));
-  }));
-  slot.querySelectorAll('[data-ai-remove]').forEach(b=>b.onclick = ()=>withBusy(b, async()=>{
-    if(!(await showConfirm(esc(t('aiDisconnectConfirm')), {okLabel:t('aiDisconnect'), okClass:'btn-danger'}))) return;
-    const r = await api('admin/ai/key', {method:'DELETE', body:{kind:b.dataset.aiRemove}});
-    if(r.ok){ adminFetch('ai', true); return; }
-    await showAlert(esc(t('saveFailed')));
-  }));
-}
-async function loadRicoStatus(){
-  const el = document.getElementById('ricoKeyState');
-  if(!el) return;
-  const r = await api('assistant/status');
-  const now = document.getElementById('ricoKeyState');
-  if(!now) return;
-  const connected = !!(r.ok && r.data?.configured);
-  now.textContent = !r.ok ? t('loadFailed') : connected ? t('ricoConnected') : t('ricoDisconnected');
-  now.classList.toggle('connected', connected);
 }
 
 /* ---------- Catalog check-up ---------- */
