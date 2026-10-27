@@ -650,7 +650,7 @@ function renderAdminAi(){
     return `<div class="ad-ai">
       <div class="ad-ai-head"><div class="ad-card-title"><b>${esc(info.name)}</b><span>${esc(t(info.role))}</span></div>
         <span class="ad-ai-state ${b.connected ? tone(b.state) : 'idle'}"><i aria-hidden="true"></i>${esc(status)}${b.connected && b.at ? ` · ${esc(timeAgo(b.at))}` : ''}</span></div>
-      <div class="ad-ai-numbers"><span>${esc(t('aiReplies')(b.calls))}</span><span>${esc(t('adTokensInOut')(fmtTokens(b.input), fmtTokens(b.output)))}</span><span class="ad-ai-bill">${esc(bill)}</span></div>
+      <div class="ad-ai-numbers"><span>${esc(t('aiReplies')(b.calls))}</span><span>${esc(t('adTokensInOut')(fmtTokens(b.input), fmtTokens(b.output)))}</span>${b.connected || b.bill?.free ? `<span class="ad-ai-bill">${esc(bill)}</span>` : ''}</div>
       ${actions}</div>`;
   };
   return `<div class="section-title">${esc(t('aiBrainsTitle'))}</div>
