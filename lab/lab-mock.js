@@ -395,6 +395,14 @@
       if(!['anthropic','anthropic_admin'].includes(body.kind)) return fail('invalid_input');
       (db.ai ||= {})[body.kind === 'anthropic' ? 'anthropic' : 'admin'] = false; save(); return ok();
     }
+    // Rico's orders (TEST): what Rico sent by himself over WhatsApp, Rozha only (like the server).
+    if(method === 'GET' && path === 'rico/orders'){
+      if(account !== 'rozha') return fail('forbidden', 403);
+      const at = m=>new Date(Date.now() - m*60000).toISOString();
+      return json({ready:true, orders:[
+        {id:2, created_at:at(12), supplier_name:'Bakery', status:'sent', error:null, test:true, reason:'usual amounts: ordered on 3 of the last 4 Tuesdays', lines:[{name:'Burger bread', qty:24, unit:'piece'},{name:'Toast bread', qty:6, unit:'pack'}]},
+        {id:1, created_at:at(60*26), supplier_name:'Vegetables', status:'failed', error:'window_closed', test:true, reason:'the amounts Rozha named', lines:[{name:'Tomato', qty:5, unit:'kg'}]}]});
+    }
     if(method === 'GET' && path === 'admin/roles') return json({roles:ROLES, yunis:rolesOf('yunis'), standard:!Array.isArray(db.roles?.yunis)});
     if(method === 'PUT' && path === 'admin/roles'){
       const roles = Array.isArray(body.roles) ? body.roles.filter(r=>ROLES.includes(r)) : null;

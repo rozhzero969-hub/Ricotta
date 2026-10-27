@@ -2838,6 +2838,7 @@ function renderHistory(){
   const entries = state.history.map(rec=>({ts:Date.parse(rec.date), day:rec.date, html:orderHistoryCard(rec)})).sort((a,b)=>b.ts-a.ts);
   const tools = renderReportCard() + `<div class="hist-tools">
     <button type="button" class="btn btn-ghost" id="monthsBtn">${ICON_CALENDAR}<span>${esc(t('monthsTitle'))}</span></button>
+    ${state.account === 'rozha' ? `<button type="button" class="btn btn-ghost" id="ricoOrdersBtn">${ICON_SPARKLE}<span>${esc(t('ricoOrdersTitle'))}</span></button>` : ''}
   </div>`;
   if(!entries.length) return tools + emptyState(t('noHistory'));
   let lastDay = '';
@@ -2852,6 +2853,7 @@ function renderHistory(){
 function attachHistoryEvents(){
   document.getElementById('reportOpen')?.addEventListener('click', openReportSheet);
   document.getElementById('monthsBtn')?.addEventListener('click', openMonthsSheet);
+  document.getElementById('ricoOrdersBtn')?.addEventListener('click', e=>withBusy(e.currentTarget, openRicoOrdersSheet));
   document.querySelectorAll('[data-undohist]').forEach(b=>b.onclick=()=>withBusy(b, ()=>undoOrder(b.dataset.undohist)));
   document.querySelectorAll('[data-reorderhist]').forEach(b=>b.onclick=()=>{
     const rec = state.history.find(r=>r.id===b.dataset.reorderhist);

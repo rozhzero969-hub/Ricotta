@@ -161,7 +161,7 @@ const T = {
     ricoStatus:{thinking:'Thinking…', find_items:'Looking through your items…', list_suppliers:'Checking your suppliers…', order_history:'Reading order history…',
       ordering_patterns:'Working out your busy days…', suggest_order:'Preparing a suggestion…', recent_changes:'Checking recent changes…',
       propose_order_draft:'Getting the order ready…', propose_new_item:'Preparing the new item…', propose_edit_item:'Preparing the change…',
-      propose_new_supplier:'Preparing the new supplier…', propose_notification:'Writing the notification…', open_screen:'One moment…',
+      propose_new_supplier:'Preparing the new supplier…', propose_notification:'Writing the notification…', open_screen:'One moment…', send_test_order:'Sending on WhatsApp…',
       review_draft:'Checking your order…', insights:'Looking at this week…', recover_streak:'Bringing the streak back…',},
     ricoErrors:{not_configured:'Rico is disconnected. Rozha can check Rico’s connection in Settings.', rate_limited:'That’s a lot of questions in one hour. Give Rico a short break and try again soon.',
       busy:'Rico is very busy right now. Try again in a moment.', failed:'Something went wrong. Try again.', offline:'No connection. Check the internet and try again.',
@@ -369,7 +369,7 @@ const T = {
     ricoStatus:{thinking:'بیر دەکاتەوە…', find_items:'سەیری کاڵاکانت دەکات…', list_suppliers:'دابینکەرەکانت دەپشکنێت…', order_history:'مێژووی داواکارییەکان دەخوێنێتەوە…',
       ordering_patterns:'ڕۆژە قەرەباڵغەکانت هەژمار دەکات…', suggest_order:'پێشنیارێک ئامادە دەکات…', recent_changes:'دوایین گۆڕانکارییەکان دەپشکنێت…',
       propose_order_draft:'داواکارییەکە ئامادە دەکات…', propose_new_item:'کاڵا نوێیەکە ئامادە دەکات…', propose_edit_item:'گۆڕانکارییەکە ئامادە دەکات…',
-      propose_new_supplier:'دابینکەرە نوێیەکە ئامادە دەکات…', propose_notification:'ئاگادارکردنەوەکە دەنووسێت…', open_screen:'تۆزێک چاوەڕێ بکە…',
+      propose_new_supplier:'دابینکەرە نوێیەکە ئامادە دەکات…', propose_notification:'ئاگادارکردنەوەکە دەنووسێت…', open_screen:'تۆزێک چاوەڕێ بکە…', send_test_order:'لە واتسئاپ دەینێرێت…',
       review_draft:'داواکارییەکەت دەپشکنێت…', insights:'سەیری ئەم هەفتەیە دەکات…', recover_streak:'زنجیرەکە دەگەڕێنێتەوە…',},
     ricoErrors:{not_configured:'ریکۆ پەیوەست نییە. ڕۆژا دەتوانێت پەیوەندیی ریکۆ لە ڕێکخستن بپشکنێت.', rate_limited:'لە یەک کاتژمێردا پرسیاری زۆرت کرد. تۆزێک پشوو بدە و دواتر هەوڵ بدەرەوە.',
       busy:'ریکۆ ئێستا زۆر سەرقاڵە. تۆزێکی تر هەوڵ بدەرەوە.', failed:'هەڵەیەک ڕوویدا. دووبارە هەوڵ بدەرەوە.', offline:'پەیوەندی نییە. ئینتەرنێت بپشکنە و دووبارە هەوڵ بدەرەوە.',
@@ -577,7 +577,7 @@ const T = {
     ricoStatus:{thinking:'يفكّر…', find_items:'يبحث في موادك…', list_suppliers:'يتحقق من مورّديك…', order_history:'يقرأ سجل الطلبات…',
       ordering_patterns:'يحسب أيام الازدحام…', suggest_order:'يجهّز اقتراحًا…', recent_changes:'يتحقق من آخر التغييرات…',
       propose_order_draft:'يجهّز الطلب…', propose_new_item:'يجهّز المادة الجديدة…', propose_edit_item:'يجهّز التعديل…',
-      propose_new_supplier:'يجهّز المورّد الجديد…', propose_notification:'يكتب الإشعار…', open_screen:'لحظة…',
+      propose_new_supplier:'يجهّز المورّد الجديد…', propose_notification:'يكتب الإشعار…', open_screen:'لحظة…', send_test_order:'يرسل عبر واتساب…',
       review_draft:'يراجع طلبك…', insights:'ينظر في هذا الأسبوع…', recover_streak:'يعيد السلسلة…',},
     ricoErrors:{not_configured:'ريكو غير متصل. يمكن لروژا التحقق من اتصال ريكو في الإعدادات.', rate_limited:'أسئلة كثيرة خلال ساعة واحدة. امنح ريكو استراحة قصيرة وحاول لاحقًا.',
       busy:'ريكو مشغول جدًا الآن. حاول بعد قليل.', failed:'حدث خطأ ما. حاول مرة أخرى.', offline:'لا يوجد اتصال. تحقّق من الإنترنت وحاول مرة أخرى.',
@@ -714,7 +714,7 @@ Object.assign(T.ar, {
 Object.assign(T.en, {
   cutoffLabel:'Stops taking orders at', cutoffHint:'Optional. On this supplier’s order days the Order screen counts down to it, and Rico warns you 30 minutes before.',
   cutoffShort:'Cut-off', cutoffClosed:'Closed for today', cutoffMinLeft:n=>n+' min left', cutoffHoursLeft:(h,m)=>h+' h'+(m?' '+m+' min':'')+' left', cutoffUntil:x=>'Order by '+x,
-  monthsTitle:'Past months', monthsHint:'History is cleared every month; a summary of each finished month stays here.',
+  ricoOrdersTitle:"Rico's orders", ricoOrdersHint:"Orders Rico sent by himself. Test: they go only to your own WhatsApp, not to suppliers, and are not in History, the report or the streak.", ricoOrdersNone:'Rico has not sent any orders yet. Ask him: "Rico, order from the bakery".', ricoOrdersNotReady:'WhatsApp is not set up on the server yet.', ricoOrderSent:'Sent', ricoOrderFailed:e=>'Not sent'+({window_closed:': send "hi" to the test number first', recipient_not_allowed:': your number is not on the test list', token_rejected:': the WhatsApp token needs renewing', busy:': WhatsApp was busy'}[e]||''), ricoOrderWhy:'Why', monthsTitle:'Past months', monthsHint:'History is cleared every month; a summary of each finished month stays here.',
   monthsNone:'Nothing here yet. The first summary is saved when this month ends.', monthsLastLine:(o,d)=>'Last month: '+o+' orders on '+d+' days',
   monthsTimes:n=>n+'×', monthsOrders:n=>n+(n===1?' order':' orders'),
 
@@ -722,7 +722,7 @@ Object.assign(T.en, {
 Object.assign(T.ku, {
   cutoffLabel:'کاتی کۆتایی وەرگرتنی داواکاری', cutoffHint:'ئارەزوومەندانەیە. لە ڕۆژانی داواکاریی ئەم دابینکەرە، پەڕەی داواکاری کاتەکە دەژمێرێت و ریکۆ 30 خولەک پێشتر ئاگادارت دەکاتەوە.',
   cutoffShort:'کاتی کۆتایی', cutoffClosed:'بۆ ئەمڕۆ داخراوە', cutoffMinLeft:n=>n+' خولەک ماوە', cutoffHoursLeft:(h,m)=>h+' کاتژمێر'+(m?' و '+m+' خولەک':'')+' ماوە', cutoffUntil:x=>'تا '+x+' داوا بکە',
-  monthsTitle:'مانگەکانی پێشوو', monthsHint:'مێژوو هەموو مانگێک دەسڕدرێتەوە؛ کورتەی هەر مانگێکی تەواوبوو لێرە دەمێنێتەوە.',
+  ricoOrdersTitle:'داواکارییەکانی ریکۆ', ricoOrdersHint:'ئەو داواکارییانەی ریکۆ خۆی ناردوونی. تاقیکردنەوە: تەنها بۆ واتسئاپی خۆت دەچن، نەک بۆ دابینکەران، و لە مێژوو و ڕاپۆرت و زنجیرەدا نین.', ricoOrdersNone:'ریکۆ هێشتا هیچ داواکارییەکی نەناردووە. پێی بڵێ: «ریکۆ، لە نانەواخانە داوا بکە».', ricoOrdersNotReady:'واتسئاپ هێشتا لە سێرڤەر ڕێک نەخراوە.', ricoOrderSent:'نێردرا', ricoOrderFailed:e=>'نەنێردرا'+({window_closed:': سەرەتا «hi» بۆ ژمارەی تاقیکردنەوە بنێرە', recipient_not_allowed:': ژمارەکەت لە لیستی تاقیکردنەوەدا نییە', token_rejected:': تۆکنی واتسئاپ پێویستی بە نوێکردنەوەیە', busy:': واتسئاپ سەرقاڵ بوو'}[e]||''), ricoOrderWhy:'بۆچی', monthsTitle:'مانگەکانی پێشوو', monthsHint:'مێژوو هەموو مانگێک دەسڕدرێتەوە؛ کورتەی هەر مانگێکی تەواوبوو لێرە دەمێنێتەوە.',
   monthsNone:'هێشتا هیچ شتێک لێرە نییە. یەکەم کورتە کاتێک ئەم مانگە تەواو دەبێت پاشەکەوت دەکرێت.', monthsLastLine:(o,d)=>'مانگی پێشوو: '+o+' داواکاری لە '+d+' ڕۆژدا',
   monthsTimes:n=>n+'×', monthsOrders:n=>n+' داواکاری',
 
@@ -730,7 +730,7 @@ Object.assign(T.ku, {
 Object.assign(T.ar, {
   cutoffLabel:'يتوقف عن استلام الطلبات الساعة', cutoffHint:'اختياري. في أيام طلب هذا المورّد تعدّ صفحة الطلب تنازليًا حتى هذا الوقت، ويُنبّهك ريكو قبله بـ30 دقيقة.',
   cutoffShort:'آخر موعد', cutoffClosed:'مغلق لليوم', cutoffMinLeft:n=>'باقي '+n+' دقيقة', cutoffHoursLeft:(h,m)=>'باقي '+h+' س'+(m?' و'+m+' د':''), cutoffUntil:x=>'اطلب قبل '+x,
-  monthsTitle:'الأشهر السابقة', monthsHint:'يُمسح السجل كل شهر، ويبقى هنا ملخص كل شهر منتهٍ.',
+  ricoOrdersTitle:'طلبات ريكو', ricoOrdersHint:'الطلبات التي أرسلها ريكو بنفسه. تجربة: تصل إلى واتساب الخاص بك فقط، لا إلى المورّدين، ولا تظهر في السجل أو التقرير أو السلسلة.', ricoOrdersNone:'لم يرسل ريكو أي طلب بعد. اطلب منه: «ريكو، اطلب من المخبز».', ricoOrdersNotReady:'واتساب غير مُعدّ على الخادم بعد.', ricoOrderSent:'أُرسل', ricoOrderFailed:e=>'لم يُرسل'+({window_closed:': أرسل «hi» إلى رقم التجربة أولًا', recipient_not_allowed:': رقمك ليس في قائمة التجربة', token_rejected:': رمز واتساب يحتاج إلى تجديد', busy:': واتساب كان مشغولًا'}[e]||''), ricoOrderWhy:'السبب', monthsTitle:'الأشهر السابقة', monthsHint:'يُمسح السجل كل شهر، ويبقى هنا ملخص كل شهر منتهٍ.',
   monthsNone:'لا شيء هنا بعد. يُحفظ أول ملخص عند انتهاء هذا الشهر.', monthsLastLine:(o,d)=>'الشهر الماضي: '+o+' طلب في '+d+' يوم',
   monthsTimes:n=>n+'×', monthsOrders:n=>n+' طلب',
 

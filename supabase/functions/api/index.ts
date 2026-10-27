@@ -46,6 +46,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   GET    admin/ai                   (rozha)                   each AI: connected, last state, replies, tokens, Haiku's real bill
 //   PUT    admin/ai/key               {kind, key} (rozha)       connect Haiku (kind anthropic) or the bill (anthropic_admin); checked first
 //   DELETE admin/ai/key               {kind} (rozha)            disconnect one
+//   GET    rico/orders                (rozha)                   orders Rico sent by himself (TEST, to her own WhatsApp)
 //   PUT    admin/roles                {account, roles} (rozha)  what Yunis may open and do
 //   POST   problems                   {reports}                 errors this phone ran into (and Report a Problem)
 //   GET    reports/catalog            (exports)                 this month's orders per item and supplier, for Excel and PDF
@@ -72,7 +73,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   stock/read                 {text?, image?, mime?}    Rico reads a transfer list into rows (see stock.ts)
 //                                                                  (Transfers is still being made: all four answer 423 until TRANSFERS_OPEN)
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
-import { adminAi, assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, removeAiKey, saveAiKey, saveGroqKey } from "./assistant.ts";
+import { adminAi, assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, orderSuggestion, removeAiKey, saveAiKey, saveGroqKey, whatsappReady } from "./assistant.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 import { cleanStockList, listStockItems, readTransferList } from "./stock.ts";
 
@@ -834,6 +835,12 @@ Deno.serve(async (req) => {
       if (M === "GET" && path === "admin/ai") return json(await adminAi(db));
       if (M === "PUT" && path === "admin/ai/key") { const r = await saveAiKey(db, b.kind, b.key); return json(r, r.ok ? 200 : r.error === "save_failed" || r.error === "check_failed" ? 503 : 400); }
       if (M === "DELETE" && path === "admin/ai/key") { const r = await removeAiKey(db, b.kind); return json(r, r.ok ? 200 : r.error === "save_failed" ? 503 : 400); }
+    }
+    if (M === "GET" && path === "rico/orders") {
+      if (!rozha) return fail("forbidden", 403);
+      const { data, error } = await db.from("app_rico_orders").select("id,created_at,supplier_name,lines,reason,status,error,test")
+        .order("created_at", { ascending: false }).limit(100);
+      return error ? fail("rico_orders_unavailable", 503) : json({ ready: whatsappReady(), orders: data ?? [] });
     }
     if (M === "GET" && path === "admin/roles") {
       const { data, error } = await app("accounts").select("roles").eq("id", "yunis").maybeSingle();

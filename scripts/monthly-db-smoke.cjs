@@ -272,6 +272,12 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await assert.rejects(db.exec("insert into app_ai_status(provider,state) values('openai','working');"),/provider_check/);
  await assert.rejects(db.exec("insert into app_ai_status(provider,state) values('groq','sleepy');"),/state_check/);
  assert.equal((await q("select has_table_privilege('anon','app_ai_status','select') as a, has_table_privilege('authenticated','app_ai_status','select') as b"))[0].a,false,'the browser cannot read AI states');
+ // Rico's own orders (TEST): kept apart from the kitchen's orders, server only.
+ await db.exec(`insert into app_rico_orders(account,supplier_id,supplier_name,lines,reason,status,message_id) values('rozha','sup-1','Bakery','[{"name":"Bread","qty":24,"unit":"piece"}]','usual amounts','sent','wamid.1');`);
+ assert.deepEqual((await q("select status,test from app_rico_orders"))[0],{status:'sent',test:true},'Rico orders are test orders by default');
+ await assert.rejects(db.exec("insert into app_rico_orders(account,supplier_name,lines,status) values('rozha','Bakery','[]','sent');"),/lines_check/,'an order needs lines');
+ await assert.rejects(db.exec(`insert into app_rico_orders(account,supplier_name,lines,status) values('rozha','Bakery','[{"qty":1}]','queued');`),/status_check/);
+ assert.equal((await q("select has_table_privilege('authenticated','app_rico_orders','select') as a"))[0].a,false,'the browser cannot read them');
  // Health Check reads the database itself.
  await assert.rejects(q("select app_internal_diagnostics('yunis')"),/Forbidden/);
  const health=(await q("select app_internal_diagnostics('rozha') as r"))[0].r;

@@ -117,6 +117,7 @@ const server=http.createServer((req,res)=>{
         {id:'anthropic',connected:true,state:'no_funds',at:new Date().toISOString(),calls:12,input:52000,output:4100,bill:{error:'no_admin_key'}},
         {id:'gemini',connected:true,state:'working',at:new Date().toISOString(),calls:30,input:142000,output:25100,bill:{free:true}},
         {id:'groq',connected:false,state:null,at:null,calls:0,input:0,output:0,bill:{free:true}}]};
+      else if(endpoint==='rico/orders') data={ready:true,orders:[{id:1,created_at:new Date().toISOString(),supplier_name:'Bakery',status:'sent',error:null,test:true,reason:'usual amounts: based on the last 3 orders',lines:[{name:'Burger bread',qty:24,unit:'piece'}]},{id:2,created_at:new Date().toISOString(),supplier_name:'Vegetables',status:'failed',error:'window_closed',test:true,reason:'',lines:[{name:'Tomato',qty:5,unit:'kg'}]}]};
       else if(endpoint==='admin/ai/key' && req.method()==='PUT' && !/^sk-ant-api\d\d-/.test(body.key)){ status=400; data={ok:false,error:'invalid_key'}; }
       else if(endpoint==='assistant/inbox') data=fixtureFor(signedIn).inbox;
       else if(endpoint==='assistant/status') data={configured:true,provider:'gemini',model:'gemini-3.5-flash-lite'};
@@ -312,6 +313,15 @@ const server=http.createServer((req,res)=>{
     assert.match(await page.locator('.hist-date').textContent(),/Yunis/,'history says who sent it');
     assert.equal(await page.locator('.hist-lines li').count(),1,'each item has its own line');
     assert.equal(await page.locator('.hist-actions [data-reorderhist]').count(),1,'Send again sits under the order');
+    const signedInAs=await page.evaluate(()=>state.account);
+    assert.equal(await page.locator('#ricoOrdersBtn').count(),signedInAs==='rozha'?1:0,"Rico's orders are Rozha's only");
+    if(signedInAs==='rozha'){
+      await page.locator('#ricoOrdersBtn').click();
+      await page.waitForSelector('.rico-order');
+      assert.equal(await page.locator('.rico-order').count(),2,"Rico's orders are listed apart from History");
+      assert.match(await page.locator('.rico-order').nth(1).innerText(),/Not sent: send "hi" to the test number first/);
+      await page.keyboard.press('Escape');await page.waitForSelector('.rico-order',{state:'detached'});
+    }
     await page.locator('[data-delhist]').click();
     await page.locator('#delPin').fill('123456');await page.locator('#modalFormOk').click();
     await page.waitForFunction(()=>document.getElementById('modalFormStatus')?.classList.contains('error'));
