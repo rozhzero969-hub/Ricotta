@@ -12,8 +12,10 @@ function read(file){const source=path.join(root,file);assert.ok(fs.lstatSync(sou
 function write(file,bytes){const target=path.join(out,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,bytes);}
 const emitted=[];
 function asset(name,ext,bytes){const hash=createHash('sha256').update(bytes).digest('hex').slice(0,12),file=`assets/${name}.${hash}.${ext}`;write(file,bytes);emitted.push(file);return file;}
-const minjs=s=>transformSync(s,{loader:'js',minify:true,target:'es2022',legalComments:'none'}).code;
-const mincss=s=>transformSync(s,{loader:'css',minify:true,target:'es2022',legalComments:'none'}).code;
+// charset utf8: Kurdish and Arabic stay as letters (ascii would write each one as a 6-character \u escape,
+// about 150 KB more for the phone to download and read).
+const minjs=s=>transformSync(s,{loader:'js',minify:true,target:'es2022',legalComments:'none',charset:'utf8'}).code;
+const mincss=s=>transformSync(s,{loader:'css',minify:true,target:'es2022',legalComments:'none',charset:'utf8'}).code;
 for(const file of copied)write(file,read(file));
 // Load a matching version marker with this document; keep root config.js live for update probes.
 const config=asset('config','js',minjs(read('config.js').toString()));
