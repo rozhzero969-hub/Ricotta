@@ -20,10 +20,10 @@
    refreshDevices, deviceParts, deviceTitle, otherDevices, commandIsPending, versionCmp. Load before app.js. */
 
 const ADMIN_PAGES = ['problems','security','health','access','pins','devices','time','rico','catalog'];
-const ADMIN_SOURCES = {health:'admin/diagnostics', security:'admin/security', problems:'admin/problems', usage:'admin/usage', rico:'admin/rico', roles:'admin/roles'};
+const ADMIN_SOURCES = {health:'admin/diagnostics', security:'admin/security', problems:'admin/problems', usage:'admin/usage', rico:'admin/rico', ai:'admin/ai', roles:'admin/roles'};
 /* What each page needs (the list itself shows a value from most of them). */
 const ADMIN_NEEDS = {home:['health','security','problems','usage','rico','roles'], problems:['problems'], security:['security'], health:['health','problems','security'],
-  access:['roles'], pins:[], devices:[], time:['usage'], rico:['rico'], catalog:[]};
+  access:['roles'], pins:[], devices:[], time:['usage'], rico:['rico','ai'], catalog:[]};
 let adminData = {account:null, busy:{}, failed:{}};
 let adminFilter = {problems:'open', security:'all', time:'day'};
 let adminListTop = 0;
@@ -57,7 +57,7 @@ setInterval(()=>{
   if(!state.adminPage || state.adminPage === 'devices') checkCommands();
 }, 30000);
 const isAdminObject = v=>!!v && typeof v === 'object' && !Array.isArray(v);
-const ADMIN_SHAPES = {problems:Array.isArray, health:isAdminObject, rico:isAdminObject,
+const ADMIN_SHAPES = {problems:Array.isArray, health:isAdminObject, rico:isAdminObject, ai:d=>isAdminObject(d) && Array.isArray(d.brains),
   security:d=>isAdminObject(d) && Array.isArray(d.events), usage:d=>isAdminObject(d) && Array.isArray(d.people),
   roles:d=>isAdminObject(d) && Array.isArray(d.yunis) && Array.isArray(d.roles)};
 const adminValue = key=>adminData.account === state.account ? adminData[key]?.data : null;
@@ -97,7 +97,7 @@ function attachAdminBodyEvents(){
     await Promise.all(keys.map(k=>adminFetch(k, true)));
   }));
   ({problems:attachAdminProblems, security:attachAdminSecurity, health:attachAdminHealth, access:attachAdminAccess, pins:attachAdminPins,
-    devices:attachAdminDevices, catalog:attachAdminCatalog, time:attachAdminTime, rico:()=>loadRicoStatus()})[state.adminPage]?.(slot);
+    devices:attachAdminDevices, catalog:attachAdminCatalog, time:attachAdminTime, rico:slot=>{ loadRicoStatus(); attachAdminAi(slot); }})[state.adminPage]?.(slot);
 }
 /* Opens a page (or goes back to the list) with the iPhone's push: the new page slides in from the side
    while the list moves a little the other way and dims; Back reverses it. */
@@ -614,6 +614,7 @@ function renderAdminRico(){
       <p>${esc(t('ricoAbout'))}</p>
       <p class="ad-small-print">${esc(t('ricoAboutPrivacy'))}</p>
     </section>
+    ${renderAdminAi()}
     <div class="section-title">${esc(t('adThisMonthLabel'))}</div>
     ${r ? `<div class="ad-stats"><div><b>${chats}</b><span>${esc(t('adRicoChats'))}</span></div><div><b>${voice}</b><span>${esc(t('adRicoVoice'))}</span></div><div><b>${esc(fmtTokens(tokens.input + tokens.output, true))}</b><span>${esc(t('adRicoTokens'))}</span></div></div>
     <section class="ad-card">
@@ -626,6 +627,51 @@ function renderAdminRico(){
       ${days.length ? `<div class="ad-chart-head ad-gap"><b>${esc(t('adLast14'))}</b><span>${esc(t('adRicoTotal')(total))}</span></div><div class="ad-bars single" dir="ltr">${days.map(d=>`<div class="ad-bar" title="${esc(formatIraqDateTime(new Date(d.day + 'T09:00:00Z'), {weekday:'long', day:'numeric', month:'short'}))} · ${Number(d.calls) || 0}"><div class="ad-bar-pair"><i class="r" style="--h:${Math.round((Number(d.calls) || 0) / max * 100)}%"></i></div><small>${esc(formatIraqDateTime(new Date(d.day + 'T09:00:00Z'), {weekday:'narrow'}))}</small></div>`).join('')}</div>` : ''}
     </section>
     <p class="ad-foot">${esc(t('adRicoFoot'))}</p>` : `<div class="ad-empty"><p>${esc(adminData.failed.rico ? t('loadFailed') : t('loading'))}</p></div>`}`;
+}
+/* Rico's AIs: Claude Haiku answers first, Google Gemini and Groq take over when it can't. For each: whether
+   it is connected, how it answered last, this month's replies and tokens (as each AI reported them), and
+   the bill (Haiku's comes from Anthropic's own cost report once its read-only admin key is connected; the
+   backups are on free plans). Keys are typed here, checked with Anthropic, and never shown again. */
+const AI_BRAINS = {anthropic:{name:'Claude Haiku 5.5', role:'aiRoleMain'}, gemini:{name:'Google Gemini', role:'aiRoleBackup1'}, groq:{name:'Groq', role:'aiRoleBackup2'}};
+function renderAdminAi(){
+  const a = adminValue('ai');
+  if(!a) return `<div class="section-title">${esc(t('aiBrainsTitle'))}</div><div class="ad-empty"><p>${esc(adminData.failed.ai ? t('loadFailed') : t('loading'))}</p></div>`;
+  const tone = st=>st === 'working' ? 'good' : st === 'busy' ? 'warn' : st ? 'bad' : 'idle';
+  const row = b=>{
+    const info = AI_BRAINS[b.id] || {name:b.id, role:''};
+    const status = !b.connected ? t('aiNotConnected') : b.state ? t('aiState_' + b.state) : t('aiNotUsedYet');
+    const bill = b.bill?.free ? t('aiFreePlan') : b.bill && typeof b.bill.usd === 'number' ? t('aiSpent')(b.bill.usd > 0 && b.bill.usd < 0.01 ? '<$0.01' : '$' + b.bill.usd.toFixed(2))
+      : b.bill?.error === 'no_admin_key' ? t('aiBillNeedsKey') : b.bill?.error === 'admin_key_rejected' ? t('aiBillKeyRejected') : t('aiBillUnavailable');
+    const actions = b.id === 'anthropic' ? `<div class="ad-ai-actions">
+        <button type="button" class="btn btn-ghost" data-ai-key="anthropic">${esc(b.connected ? t('aiReplaceKey') : t('aiConnect'))}</button>
+        ${b.connected ? `<button type="button" class="btn btn-ghost" data-ai-key="anthropic_admin">${esc(a.adminKey ? t('aiReplaceBillKey') : t('aiConnectBill'))}</button>` : ''}
+        ${b.connected ? `<button type="button" class="btn btn-ghost danger-text" data-ai-remove="anthropic">${esc(t('aiDisconnect'))}</button>` : ''}
+      </div>` : '';
+    return `<div class="ad-ai">
+      <div class="ad-ai-head"><div class="ad-card-title"><b>${esc(info.name)}</b><span>${esc(t(info.role))}</span></div>
+        <span class="ad-ai-state ${b.connected ? tone(b.state) : 'idle'}"><i aria-hidden="true"></i>${esc(status)}${b.connected && b.at ? ` · ${esc(timeAgo(b.at))}` : ''}</span></div>
+      <div class="ad-ai-numbers"><span>${esc(t('aiReplies')(b.calls))}</span><span>${esc(t('adTokensInOut')(fmtTokens(b.input), fmtTokens(b.output)))}</span><span class="ad-ai-bill">${esc(bill)}</span></div>
+      ${actions}</div>`;
+  };
+  return `<div class="section-title">${esc(t('aiBrainsTitle'))}</div>
+    <section class="ad-card ad-ai-list">${a.brains.map(row).join('')}</section>
+    <p class="ad-foot">${esc(t('aiBrainsFoot'))}</p>`;
+}
+function attachAdminAi(slot){
+  slot.querySelectorAll('[data-ai-key]').forEach(b=>b.onclick = ()=>withBusy(b, async()=>{
+    const kind = b.dataset.aiKey;
+    const key = await showPrompt(esc(t(kind === 'anthropic' ? 'aiKeyPrompt' : 'aiBillKeyPrompt')), {placeholder:kind === 'anthropic' ? 'sk-ant-api…' : 'sk-ant-admin…', secret:true, okLabel:t('save'), maxLength:300});
+    if(key === null || !key.trim()) return;
+    const r = await api('admin/ai/key', {method:'PUT', body:{kind, key:key.trim()}, timeout:20000});
+    if(r.ok){ toast(t(kind === 'anthropic' ? 'aiKeySaved' : 'aiBillKeySaved')); adminFetch('ai', true); return; }
+    await showAlert(esc(t('aiKeyError_' + (['invalid_key','not_admin','not_organization','check_failed'].includes(r.data?.error) ? r.data.error : 'other'))));
+  }));
+  slot.querySelectorAll('[data-ai-remove]').forEach(b=>b.onclick = ()=>withBusy(b, async()=>{
+    if(!(await showConfirm(esc(t('aiDisconnectConfirm')), {okLabel:t('aiDisconnect'), okClass:'btn-danger'}))) return;
+    const r = await api('admin/ai/key', {method:'DELETE', body:{kind:b.dataset.aiRemove}});
+    if(r.ok){ adminFetch('ai', true); return; }
+    await showAlert(esc(t('saveFailed')));
+  }));
 }
 async function loadRicoStatus(){
   const el = document.getElementById('ricoKeyState');

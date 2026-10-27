@@ -91,7 +91,8 @@ function ricoAutoOrder(){ return !!lget('ricoAutoOrder'); }
 /* Apple's rule (App Review 5.1.2): before anything goes to an AI service, the person is told where it
    goes and says yes. Asked the first time Rico (or reading a list) is used, kept per person on this
    device, and taken back with the switch in Settings. Not Now simply asks again next time. */
-const aiConsentKey = ()=>'aiConsent:' + state.account;
+// v2 (ROZH-25): Anthropic (Claude) was added to the services Rico uses, so everyone is asked once more.
+const aiConsentKey = ()=>'aiConsent2:' + state.account;
 function aiConsented(){ return lget(aiConsentKey()) === true; }
 function setAiConsent(on){ lset(aiConsentKey(), on ? true : null); }
 async function aiConsent(){

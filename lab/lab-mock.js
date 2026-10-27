@@ -377,6 +377,24 @@
       const days = [...Array(14)].map((_, i)=>({day:new Date(Date.now() - (13 - i)*86400000).toISOString().slice(0,10), calls:[3,5,2,8,6,4,9,7,3,6,11,5,4,6][i]}));
       return json({from:monthStartIso(), thisHour:3, kinds:{chat:74, voice:12}, people:{rozha:31, yunis:55}, days, tokens:{input:412000, output:51000}, hourLimit:400, perPhoneHourLimit:60});
     }
+    // Rico's AI: Lab keys are never checked with Anthropic; a key of the right shape is "connected".
+    if(method === 'GET' && path === 'admin/ai'){
+      const ai = db.ai ||= {anthropic:false, admin:false};
+      return json({from:monthStartIso(), adminKey:ai.admin, brains:[
+        {id:'anthropic', connected:ai.anthropic, state:ai.anthropic ? 'working' : null, at:ai.anthropic ? new Date(Date.now() - 4*60000).toISOString() : null, calls:ai.anthropic ? 41 : 0, input:ai.anthropic ? 236000 : 0, output:ai.anthropic ? 18400 : 0, bill:ai.admin ? {usd:0.03} : {error:'no_admin_key'}},
+        {id:'gemini', connected:true, state:'working', at:new Date(Date.now() - 3600000).toISOString(), calls:30, input:142000, output:25100, bill:{free:true}},
+        {id:'groq', connected:true, state:'busy', at:new Date(Date.now() - 86400000).toISOString(), calls:15, input:34000, output:7500, bill:{free:true}}]});
+    }
+    if(method === 'PUT' && path === 'admin/ai/key'){
+      const shape = {anthropic:/^sk-ant-api\d\d-[A-Za-z0-9_-]{20,}$/, anthropic_admin:/^sk-ant-admin\d\d-[A-Za-z0-9_-]{20,}$/}[body.kind];
+      if(!shape) return fail('invalid_input');
+      if(!shape.test(String(body.key || '').trim())) return fail('invalid_key');
+      (db.ai ||= {})[body.kind === 'anthropic' ? 'anthropic' : 'admin'] = true; save(); return ok();
+    }
+    if(method === 'DELETE' && path === 'admin/ai/key'){
+      if(!['anthropic','anthropic_admin'].includes(body.kind)) return fail('invalid_input');
+      (db.ai ||= {})[body.kind === 'anthropic' ? 'anthropic' : 'admin'] = false; save(); return ok();
+    }
     if(method === 'GET' && path === 'admin/roles') return json({roles:ROLES, yunis:rolesOf('yunis'), standard:!Array.isArray(db.roles?.yunis)});
     if(method === 'PUT' && path === 'admin/roles'){
       const roles = Array.isArray(body.roles) ? body.roles.filter(r=>ROLES.includes(r)) : null;

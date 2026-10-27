@@ -72,7 +72,7 @@ function fixture() {
   consent.c.state.account='yunis'; consent.c.rico.epoch++;
   decision.resolve(true);
   assert.equal(await agreeing,false,'late consent cannot authorize the next account');
-  assert.equal(consent.saved.has('aiConsent:yunis'),false);
+  assert.equal(consent.saved.has('aiConsent2:yunis'),false);
 
   const stream=fixture(), done=deferred(); let event;
   vm.runInContext(part('async function ricoAsk(', '/* Rico\'s face in the header'),stream.c);

@@ -6,7 +6,8 @@ const secrets = new Map();
 const usage = [];
 const environment = new Map();
 globalThis.Deno = { env: { get: (key) => environment.get(key) ?? '' } };
-const { assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, saveGroqKey, _internals } = await import('../supabase/functions/api/assistant.ts');
+const aiStatus = new Map();
+const { adminAi, assistantSetupStatus, assistantStatus, handleChat, handleTranscribe, removeAiKey, saveAiKey, saveGroqKey, _internals } = await import('../supabase/functions/api/assistant.ts');
 
 const db = {
   rpc(name, args) {
@@ -26,7 +27,7 @@ const db = {
       maybeSingle() { return Promise.resolve({ data: null }); },
       delete() { action = 'delete'; return query; },
       update(row) { action = 'update'; change = row; return query; },
-      upsert(row) { secrets.set(row.key, row.value); return Promise.resolve({ error: null }); },
+      upsert(row) { if (table === 'app_ai_status') aiStatus.set(row.provider, row); else secrets.set(row.key, row.value); return Promise.resolve({ error: null }); },
       insert(row) {
         if (table === 'app_secrets') {
           if (secrets.has(row.key)) return Promise.resolve({ error: { code: '23505' } });
@@ -45,7 +46,9 @@ const db = {
         }
         const data = table === 'app_secrets'
           ? [...secrets].filter(([key]) => !filters.length || filters.some(([field, values]) => field === 'key' && values.includes(key)))
-            .map(([key, value]) => ({ key, value })) : [];
+            .map(([key, value]) => ({ key, value }))
+          : table === 'app_ai_status' ? [...aiStatus.values()]
+          : table === 'app_assistant_usage' ? usage : [];
         return Promise.resolve(resolve({ data, count: 0, error: null }));
       },
     };
@@ -82,6 +85,7 @@ globalThis.fetch = async (input, options = {}) => {
     const body = new ReadableStream({ start(controller) { controller.enqueue(encoded.slice(0, split)); controller.enqueue(encoded.slice(split)); controller.close(); } });
     return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
   }
+  if (url.startsWith('https://api.anthropic.com/v1/')) return anthropic(url, options);
   if (url.includes('api.groq.com/openai/v1/chat/completions')) {
     if (groqUnavailable) return new Response('{"error":{"message":"busy"}}', { status: 503 });
     if (groqSecondTurnDown && groqTurn === 1) { groqTurn++; return new Response('{"error":{"message":"busy"}}', { status: 503 }); }
@@ -95,6 +99,45 @@ globalThis.fetch = async (input, options = {}) => {
   }
   throw new Error(`Unexpected upstream: ${url}`);
 };
+
+
+// Claude Haiku: a tool call first (with a thinking block that must go back unchanged), then the answer.
+let anthropicTurn = 0;
+let anthropicFail = null; // { status, type, message } or 'slow'
+const anthropicKey = 'sk-ant-api03-' + 'C'.repeat(40), adminKey = 'sk-ant-admin01-' + 'D'.repeat(40);
+const sse = events => new Response(new ReadableStream({ start(controller) {
+  controller.enqueue(new TextEncoder().encode(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(''))); controller.close();
+} }), { headers: { 'content-type': 'text/event-stream' } });
+async function anthropic(url, options) {
+  const key = options.headers['x-api-key'];
+  if (url.includes('/models?')) return new Response(key === anthropicKey ? '{"data":[]}' : '{}', { status: key === anthropicKey ? 200 : 401 });
+  if (url.includes('/organizations/cost_report')) {
+    if (key !== adminKey) return new Response('{}', { status: key === anthropicKey ? 403 : 401 });
+    return new Response(JSON.stringify({ data: [{ results: [{ amount: '1.25', currency: 'USD' }] }, { results: [{ amount: '2.5', currency: 'USD' }] }], has_more: false }), { headers: { 'content-type': 'application/json' } });
+  }
+  if (anthropicFail === 'slow') return new Promise((_, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
+  if (anthropicFail) return new Response(JSON.stringify({ type: 'error', error: { type: anthropicFail.type, message: anthropicFail.message ?? '' } }), { status: anthropicFail.status });
+  if (anthropicTurn++ === 0) return sse([
+    { type: 'message_start', message: { usage: { input_tokens: 12, cache_read_input_tokens: 100, cache_creation_input_tokens: 0, output_tokens: 1 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Open the order.' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'sig-1' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'toolu_1', name: 'open_screen', input: {} } },
+    { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"screen":' } },
+    { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '"order"}' } },
+    { type: 'content_block_stop', index: 1 },
+    { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 9 } },
+    { type: 'message_stop' }]);
+  return sse([
+    { type: 'message_start', message: { usage: { input_tokens: 20, cache_read_input_tokens: 100, output_tokens: 1 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '[[mood:happy]] Haiku ' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'is here.' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 6 } },
+    { type: 'message_stop' }]);
+}
 
 const session = { id: 'test-session', account: 'rozha', deviceId: null };
 const chat = async (content = 'Hello', lang = 'en') => {
@@ -182,4 +225,61 @@ assert.deepEqual(lookupEvents.map(e => e.type), ['status', 'mood', 'text', 'done
 assert.equal(requests.slice(beforeLookup).some(r => r.url.includes('streamGenerateContent')), true);
 groqSecondTurnDown = false; groqTool = 'open_screen';
 
-console.log('Rico provider smoke: PASS (Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');
+// Claude Haiku 5.5 answers first once its key is saved; the free AIs take over when it can't.
+assert.deepEqual(await saveAiKey(db, 'anthropic', 'sk-ant-api03-short'), { ok: false, error: 'invalid_key' });
+assert.deepEqual(await saveAiKey(db, 'anthropic', 'sk-ant-api03-' + 'E'.repeat(40)), { ok: false, error: 'invalid_key' }, 'a key Anthropic rejects is not saved');
+assert.equal(secrets.has('anthropic_api_key'), false);
+assert.deepEqual(await saveAiKey(db, 'openai', anthropicKey), { ok: false, error: 'invalid_input' });
+assert.deepEqual(await saveAiKey(db, 'anthropic', anthropicKey), { ok: true });
+assert.equal(secrets.get('anthropic_api_key'), anthropicKey);
+assert.equal((await assistantStatus(db)).provider, 'anthropic');
+const beforeHaiku = requests.length;
+const haikuEvents = await chat();
+assert.deepEqual(haikuEvents.map(e => e.type), ['status', 'proposal', 'text', 'mood', 'text', 'text', 'done']);
+assert.equal(haikuEvents.filter(e => e.type === 'text').map(e => e.text).join(''), '\n\nHaiku is here.');
+const haikuCalls = requests.slice(beforeHaiku);
+assert.equal(haikuCalls.length, 2, 'Haiku did the tool round itself; no other AI was asked');
+assert.equal(haikuCalls[0].body.model, 'claude-haiku-5-5');
+assert.equal(haikuCalls[0].body.output_config.effort, 'low');
+assert.equal('temperature' in haikuCalls[0].body, false);
+assert.deepEqual(haikuCalls[0].body.system[0].cache_control, { type: 'ephemeral' }, 'Rico\'s manual is cached');
+assert.match(haikuCalls[0].body.system[0].text, /You are Rico/);
+assert.equal(haikuCalls[0].body.tools.some(t => t.name === 'open_screen' && t.input_schema), true);
+const turnBack = haikuCalls[1].body.messages;
+assert.deepEqual(turnBack.at(-2).content[0], { type: 'thinking', thinking: 'Open the order.', signature: 'sig-1' }, 'thinking goes back unchanged');
+assert.deepEqual(turnBack.at(-2).content[1].input, { screen: 'order' });
+assert.equal(turnBack.at(-1).content[0].type, 'tool_result');
+assert.equal(turnBack.at(-1).content[0].tool_use_id, 'toolu_1');
+assert.equal(usage.at(-1).model, 'claude-haiku-5-5');
+assert.equal(usage.at(-1).input_tokens, 232, 'cached input is counted too');
+assert.equal(usage.at(-1).output_tokens, 15);
+assert.equal(aiStatus.get('anthropic').state, 'working');
+for (const [fail, state] of [[{ status: 400, type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' }, 'no_funds'],
+  [{ status: 401, type: 'authentication_error' }, 'key_rejected'], [{ status: 529, type: 'overloaded_error' }, 'busy'], ['slow', 'busy']]) {
+  anthropicFail = fail; geminiTurn = 1; groqTurn = 1;
+  const started = Date.now(), before = requests.length;
+  const events = await chat();
+  assert.equal(events.find(e => e.type === 'text')?.text !== undefined, true, `${state}: a backup still answers`);
+  assert.equal(events.some(e => e.type === 'error'), false);
+  assert.equal(requests.slice(before).some(r => !r.url.startsWith('https://api.anthropic.com')), true);
+  assert.equal(aiStatus.get('anthropic').state, state);
+  assert.ok(Date.now() - started < 15000);
+}
+anthropicFail = null; anthropicTurn = 0;
+let ai = await adminAi(db);
+assert.deepEqual(ai.brains.map(b => [b.id, b.connected]), [['anthropic', true], ['gemini', true], ['groq', true]]);
+assert.equal(ai.brains[0].calls >= 1 && ai.brains[0].input >= 232, true);
+assert.deepEqual(ai.brains[0].bill, { error: 'no_admin_key' }, 'no bill is guessed without the admin key');
+assert.deepEqual(ai.brains[1].bill, { free: true });
+assert.equal(ai.adminKey, false);
+assert.deepEqual(await saveAiKey(db, 'anthropic_admin', 'sk-ant-admin01-' + 'F'.repeat(40)), { ok: false, error: 'invalid_key' });
+assert.deepEqual(await saveAiKey(db, 'anthropic_admin', adminKey), { ok: true });
+ai = await adminAi(db);
+assert.equal(ai.adminKey, true);
+assert.equal(ai.brains[0].bill.usd, 0.0375, 'the bill is Anthropic\'s own cost report (cents to dollars)');
+assert.equal(JSON.stringify(ai).includes('sk-ant'), false, 'keys never go back to the app');
+assert.deepEqual(await removeAiKey(db, 'anthropic'), { ok: true });
+assert.equal(secrets.has('anthropic_api_key'), false);
+assert.equal((await assistantStatus(db)).provider === 'anthropic', false);
+
+console.log('Rico provider smoke: PASS (Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI bill from the cost report; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');

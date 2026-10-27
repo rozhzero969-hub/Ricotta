@@ -26,6 +26,13 @@ const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const KURDISH_GEMINI_MODEL = "gemini-3.5-flash";   // writes much better Sorani; falls back to flash-lite
 const KURDISH_MODEL_WAIT_MS = 10_000;  // if it hasn't started answering by then (busy), flash-lite answers instead
 const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
+// Rico's main brain (ROZH-25): Claude Haiku 5.5 through Anthropic's Messages API. Called over plain HTTPS
+// like Gemini and Groq above: the Node tests import this file directly and the server's frozen Deno lock
+// has no Anthropic package, so a raw request keeps both working without a new dependency.
+const ANTHROPIC_MODEL = "claude-haiku-5-5";
+const ANTHROPIC_VERSION = "2026-10-21";
+const ANTHROPIC_URL = "https://api.anthropic.com/v1";
+const HAIKU_WAIT_MS = 12_000;      // if Haiku hasn't started answering by then, Gemini answers instead
 const MAX_TURNS = 4;               // cap slow tool round-trips per reply
 const MAX_OUTPUT_TOKENS = 8192; // enough space for a reviewed catalog-wide alias proposal
 const REPLY_TIMEOUT_MS = 45_000;
@@ -849,20 +856,24 @@ async function* readSSE(res: Response) {
 
 export async function config(db: any) {
   const { data, error } = await withTimeout<any>(db.from("app_secrets").select("key,value")
-    .in("key", ["gemini_api_key", "groq_api_key"]), DB_TIMEOUT_MS, "assistant_config");
+    .in("key", ["gemini_api_key", "groq_api_key", "anthropic_api_key", "anthropic_admin_key"]), DB_TIMEOUT_MS, "assistant_config");
   if (error) throw new Error("assistant_config_unavailable");
   const saved = Object.fromEntries((data ?? []).map((r: any) => [r.key, r.value]));
   const geminiSecret = Deno.env.get("GEMINI_API_KEY") ?? "";
   const groqSecret = Deno.env.get("GROQ_API_KEY") ?? "";
   const geminiKey = geminiSecret || saved.gemini_api_key || "";
   const groqKey = groqSecret || saved.groq_api_key || "";
-  return groqKey
+  const anthropicKey = (Deno.env.get("ANTHROPIC_API_KEY") ?? "") || saved.anthropic_api_key || "";
+  const anthropicAdminKey = saved.anthropic_admin_key || "";
+  const base = groqKey
     ? { provider: "groq" as const, key: groqKey, model: DEFAULT_GROQ_MODEL, geminiKey }
     : { provider: "gemini" as const, key: geminiKey, model: DEFAULT_GEMINI_MODEL, geminiKey };
+  return { ...base, groqKey, anthropicKey, anthropicAdminKey };
 }
 
 export async function assistantStatus(db: any) {
   const c = await config(db);
+  if (c.anthropicKey) return { configured: true, model: ANTHROPIC_MODEL, provider: "anthropic", fallback: !!(c.geminiKey || c.groqKey) };
   return { configured: !!c.key, model: c.model, provider: c.provider, fallback: c.provider === "groq" && !!c.geminiKey };
 }
 
@@ -880,6 +891,8 @@ export async function saveGroqKey(db: any, key: unknown) {
   const { error } = await db.from("app_secrets").insert({ key: "groq_api_key", value });
   return error ? { ok: false, error: error.code === "23505" ? "already_configured" : "save_failed" } : { ok: true };
 }
+
+type ProviderCfg = { provider: string; key: string; model: string; geminiKey: string };
 
 /* Shared by both providers: run one tool call, catch its errors the same
    way, and truncate the result the same way before it goes back to the
@@ -901,7 +914,7 @@ async function execTool(db: any, w: World, name: string, args: any, emit: Emit, 
 /* Returns true once it has answered (or shown an error), or the error code
    when the very first request failed (or took longer than firstWaitMs to
    start), so the caller can try another model. */
-async function streamGemini(db: any, w: World, cfg: Awaited<ReturnType<typeof config>>,
+async function streamGemini(db: any, w: World, cfg: ProviderCfg,
   messages: any[], system: { text: string }[], emit: Emit, auto: boolean, signal: AbortSignal,
   usage: { input: number; output: number }, firstWaitMs = 0): Promise<true | string> {
   const contents: any[] = messages.map((m) => ({
@@ -980,9 +993,115 @@ async function streamGemini(db: any, w: World, cfg: Awaited<ReturnType<typeof co
   return true;
 }
 
+/* Claude Haiku 5.5 (Anthropic Messages API, streamed). Rico's long manual and the tool list are cached
+   (they come first and never change between replies), so a repeat chat reads them at a fraction of the
+   price. Thinking stays adaptive at low effort: quick replies, deeper only when a question needs it.
+   Returns true once it has answered (or shown an error), or the error code when nothing was shown yet
+   (no reply within firstWaitMs, a rejected key, no credit, busy), so the caller can ask Gemini. */
+async function streamAnthropic(db: any, w: World, key: string,
+  messages: any[], system: { text: string }[], emit: Emit, auto: boolean, signal: AbortSignal,
+  usage: { input: number; output: number }, firstWaitMs = 0): Promise<true | string> {
+  const conversation: any[] = messages.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }));
+  const tools = TOOLS.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.input_schema }));
+  const blocks = [{ type: "text", text: system[0].text, cache_control: { type: "ephemeral" } },
+    ...system.slice(1).map((part) => ({ type: "text", text: part.text }))];
+  let shown = false;
+  const show: Emit = (e) => { if (e.type === "text" || e.type === "proposal") shown = true; emit(e); };
+  const call = new AbortController();
+  if (signal.aborted) call.abort();
+  else signal.addEventListener("abort", () => call.abort(), { once: true });
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    if (turn === MAX_TURNS - 1) blocks.push({ type: "text", text: "- You have used many lookups: answer now with what you have." });
+    const slow = turn === 0 && firstWaitMs ? setTimeout(() => call.abort(), firstWaitMs) : 0;
+    const res = await fetch(`${ANTHROPIC_URL}/messages`, {
+      method: "POST", signal: call.signal,
+      headers: { "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL, max_tokens: MAX_OUTPUT_TOKENS, stream: true,
+        system: blocks, tools, messages: conversation, output_config: { effort: "low" },
+      }),
+    }).catch((e) => { if (turn === 0 && call.signal.aborted && !signal.aborted) return null; throw e; })
+      .finally(() => clearTimeout(slow));
+    if (!res) { console.error("anthropic slow"); return "busy"; }
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      console.error("anthropic", res.status, err?.error?.type ?? "");
+      const message = String(err?.error?.message ?? "");
+      const code = res.status === 401 || res.status === 403 ? "key_rejected"
+        : res.status === 402 || err?.error?.type === "billing_error" || /credit balance/i.test(message) ? "no_funds"
+        : res.status === 429 || res.status === 529 || res.status >= 500 ? "busy"
+        : res.status === 404 ? "model_unavailable" : "failed";
+      if (!shown) return code;
+      emit({ type: "error", code });
+      return true;
+    }
+    // The reply comes back in blocks (thinking, text, tool calls). They are rebuilt here so the
+    // assistant turn can be sent back unchanged with the tool results, as the API requires.
+    const content: any[] = [];
+    const json: string[] = [];
+    let stop = "";
+    let sawText = false;
+    for await (const event of readSSE(res)) {
+      if (event.type === "message_start") {
+        const u = event.message?.usage ?? {};
+        usage.input += (Number(u.input_tokens) || 0) + (Number(u.cache_read_input_tokens) || 0) + (Number(u.cache_creation_input_tokens) || 0);
+      } else if (event.type === "content_block_start") {
+        content[event.index] = { ...event.content_block };
+        json[event.index] = "";
+        if (event.content_block?.type === "tool_use") emit({ type: "status", tool: event.content_block.name });
+      } else if (event.type === "content_block_delta") {
+        const block = content[event.index], d = event.delta ?? {};
+        if (!block) continue;
+        if (d.type === "text_delta" && d.text) {
+          block.text = (block.text ?? "") + d.text;
+          if (turn > 0 && !sawText) show({ type: "text", text: "\n\n" });
+          show({ type: "text", text: noPictures(d.text) });
+          sawText = true;
+        } else if (d.type === "input_json_delta") json[event.index] += d.partial_json ?? "";
+        else if (d.type === "thinking_delta") block.thinking = (block.thinking ?? "") + (d.thinking ?? "");
+        else if (d.type === "signature_delta") block.signature = (block.signature ?? "") + (d.signature ?? "");
+      } else if (event.type === "content_block_stop") {
+        const block = content[event.index];
+        if (block?.type === "tool_use") {
+          try { block.input = json[event.index] ? JSON.parse(json[event.index]) : {}; } catch { block.input = {}; }
+        }
+      } else if (event.type === "message_delta") {
+        if (event.delta?.stop_reason) stop = event.delta.stop_reason;
+        if (event.usage?.output_tokens !== undefined) usage.output += Number(event.usage.output_tokens) || 0;
+      } else if (event.type === "error") {
+        throw new Error("anthropic_stream_error");
+      }
+    }
+    if (stop === "refusal") { emit({ type: "error", code: "failed" }); return true; }
+    const calls = content.filter((b) => b?.type === "tool_use");
+    if (stop !== "tool_use" || !calls.length) {
+      if (!sawText && !shown) { if (turn === 0) return "failed"; emit({ type: "error", code: "failed" }); }
+      return true;
+    }
+    conversation.push({ role: "assistant", content: content.filter(Boolean) });
+    const results: any[] = [];
+    for (const c of calls) {
+      const { text: result } = await execTool(db, w, c.name, c.input ?? {}, show, auto);
+      results.push({ type: "tool_result", tool_use_id: c.id, content: result });
+    }
+    conversation.push({ role: "user", content: results });
+  }
+  emit({ type: "error", code: "failed" });
+  return true;
+}
+
+/* How each AI answered last (Admin shows it): working, key_rejected, no_funds, busy, failed, model_unavailable. */
+async function noteBrain(db: any, provider: "anthropic" | "gemini" | "groq", outcome: true | boolean | string) {
+  const state = outcome === true ? "working" : typeof outcome === "string" ? outcome : "failed";
+  try {
+    const { error } = await withTimeout<any>(db.from("app_ai_status").upsert({ provider, state, at: new Date().toISOString() }, { onConflict: "provider" }), DB_TIMEOUT_MS, "ai_status");
+    if (error) console.error("ai status failed");
+  } catch { console.error("ai status failed"); }
+}
+
 /* Groq's chat API is OpenAI-compatible. GPT-OSS does not support parallel
    local tool calls, so each tool round trip is deliberately sequential. */
-async function streamGroq(db: any, w: World, cfg: Awaited<ReturnType<typeof config>>,
+async function streamGroq(db: any, w: World, cfg: ProviderCfg,
   messages: any[], system: { text: string }[], emit: Emit, auto: boolean, signal: AbortSignal,
   usage: { input: number; output: number }): Promise<boolean> {
   const conversation: any[] = [
@@ -1208,7 +1327,7 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   // quota slot. Every provider request reserves its slot before calling AI,
   // so simultaneous replies and transcription share the same hard limits.
   const cfg = await config(db);
-  if (!cfg.key) return errorStream("not_configured");
+  if (!cfg.key && !cfg.anthropicKey) return errorStream("not_configured");
   let usageId: number | null;
   try { usageId = await reserveUsage(db, s, "chat"); }
   catch { return errorStream("failed", 503); }
@@ -1232,28 +1351,45 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
       const moods = moodFilter(send);
       const emit = moods.emit;
       try {
-        const gemini = (model: string, firstWaitMs = 0) => {
+        const gemini = async (model: string, firstWaitMs = 0) => {
           modelUsed = model;
-          return streamGemini(db, w, { provider: "gemini", key: cfg.geminiKey, model, geminiKey: cfg.geminiKey }, messages, system, emit, auto, upstream.signal, usage, firstWaitMs);
+          const r = await streamGemini(db, w, { provider: "gemini", key: cfg.geminiKey, model, geminiKey: cfg.geminiKey }, messages, system, emit, auto, upstream.signal, usage, firstWaitMs);
+          await noteBrain(db, "gemini", r);
+          return r;
         };
-        const groq = cfg.provider === "groq" ? () => { modelUsed = cfg.model; return streamGroq(db, w, cfg, messages, system, emit, auto, upstream.signal, usage); } : null;
-        // Kurdish or Arabic (the app language, or Arabic-script letters in the
-        // latest message): Gemini's stronger model first.
-        const rtl = body.lang === "ku" || body.lang === "ar" || /[\u0600-\u06FF]/.test(messages[messages.length - 1].content);
-        let failed: string | null = null;
-        if (rtl && cfg.geminiKey) {
-          let r = await gemini(KURDISH_GEMINI_MODEL, KURDISH_MODEL_WAIT_MS);
-          if (r !== true) r = await gemini(DEFAULT_GEMINI_MODEL);
-          if (r !== true) failed = groq && await groq() ? null : r;
-        } else if (groq) {
-          if (!await groq()) {
-            const r = cfg.geminiKey ? await gemini(DEFAULT_GEMINI_MODEL) : "failed";
-            if (r !== true) failed = r;
+        const groq = cfg.provider === "groq" ? async () => {
+          modelUsed = cfg.model;
+          const r = await streamGroq(db, w, cfg, messages, system, emit, auto, upstream.signal, usage);
+          await noteBrain(db, "groq", r);
+          return r;
+        } : null;
+        // The backups, as before Haiku: Kurdish or Arabic (the app language, or Arabic-script letters in
+        // the latest message) go to Gemini's stronger model first; otherwise Groq, then Gemini.
+        const backups = async (): Promise<string | null> => {
+          const rtl = body.lang === "ku" || body.lang === "ar" || /[\u0600-\u06FF]/.test(messages[messages.length - 1].content);
+          if (rtl && cfg.geminiKey) {
+            let r = await gemini(KURDISH_GEMINI_MODEL, KURDISH_MODEL_WAIT_MS);
+            if (r !== true) r = await gemini(DEFAULT_GEMINI_MODEL);
+            return r === true ? null : groq && await groq() ? null : r;
           }
-        } else {
+          if (groq) {
+            if (await groq()) return null;
+            const r = cfg.geminiKey ? await gemini(DEFAULT_GEMINI_MODEL) : "failed";
+            return r === true ? null : r;
+          }
+          if (!cfg.geminiKey) return "not_configured";
           const r = await gemini(DEFAULT_GEMINI_MODEL);
-          if (r !== true) failed = r;
-        }
+          return r === true ? null : r;
+        };
+        // Claude Haiku answers first. If it can't (no credit, a rejected key, busy, or no reply within
+        // HAIKU_WAIT_MS) before anything is shown, the free backups answer instead.
+        let failed: string | null = null;
+        if (cfg.anthropicKey) {
+          modelUsed = ANTHROPIC_MODEL;
+          const r = await streamAnthropic(db, w, cfg.anthropicKey, messages, system, emit, auto, upstream.signal, usage, HAIKU_WAIT_MS);
+          await noteBrain(db, "anthropic", r);
+          if (r !== true) failed = cfg.geminiKey || cfg.groqKey ? await backups() : r;
+        } else failed = await backups();
         if (failed) emit({ type: "error", code: failed });
         moods.flush();
         emit({ type: "done" });
@@ -1271,6 +1407,89 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
     cancel() { upstream.abort(); },
   });
   return new Response(stream, { headers: { ...cors, "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" } });
+}
+
+/* ---------------- Admin › Rico: the AIs, their tokens and the real bill ----------------
+   Every number here is real: tokens are what each AI reported for each reply (app_assistant_usage), the
+   state is how each AI answered last (app_ai_status), and Haiku's bill is Anthropic's own cost report,
+   read with a read-only admin key when one is connected. Nothing is estimated from prices. */
+const providerOf = (model: string) => /^claude/i.test(model) ? "anthropic" : /^gemini/i.test(model) ? "gemini" : /^pending:/.test(model) ? "" : "groq";
+async function anthropicSpend(adminKey: string, from: string): Promise<{ usd: number } | { error: string }> {
+  let cents = 0, page = "";
+  for (let i = 0; i < 4; i++) {
+    const url = new URL(`${ANTHROPIC_URL}/organizations/cost_report`);
+    url.searchParams.set("starting_at", from);
+    url.searchParams.set("limit", "31");
+    if (page) url.searchParams.set("page", page);
+    let res: Response;
+    try { res = await fetch(url, { headers: { "x-api-key": adminKey, "anthropic-version": ANTHROPIC_VERSION } }); }
+    catch { return { error: "unavailable" }; }
+    if (res.status === 401 || res.status === 403) return { error: "admin_key_rejected" };
+    if (!res.ok) { console.error("anthropic cost report", res.status); return { error: "unavailable" }; }
+    const body = await res.json().catch(() => null);
+    for (const bucket of body?.data ?? []) for (const r of bucket?.results ?? []) cents += Number(r?.amount) || 0;
+    if (!body?.has_more || !body?.next_page) break;
+    page = String(body.next_page);
+  }
+  return { usd: Math.round(cents * 100) / 10000 }; // dollars, kept to a hundredth of a cent: Haiku replies cost fractions of a cent
+}
+export async function adminAi(db: any) {
+  const c = await config(db);
+  const from = monthStart();
+  const [states, rows] = await Promise.all([
+    withTimeout<any>(db.from("app_ai_status").select("provider,state,at"), DB_TIMEOUT_MS, "ai_status"),
+    withTimeout<any>(db.from("app_assistant_usage").select("model,input_tokens,output_tokens").gte("created_at", from).limit(20000), DB_TIMEOUT_MS, "ai_usage"),
+  ]);
+  if (states.error || rows.error) throw new Error("ai_unavailable");
+  const totals: Record<string, { calls: number; input: number; output: number }> = {};
+  for (const r of rows.data ?? []) {
+    const p = providerOf(String(r.model ?? ""));
+    if (!p) continue;
+    const t = totals[p] ??= { calls: 0, input: 0, output: 0 };
+    t.calls++; t.input += Number(r.input_tokens) || 0; t.output += Number(r.output_tokens) || 0;
+  }
+  const stateOf = (p: string) => (states.data ?? []).find((x: any) => x.provider === p) ?? null;
+  const bill = c.anthropicAdminKey ? await anthropicSpend(c.anthropicAdminKey, from) : { error: "no_admin_key" };
+  const brain = (id: string, connected: boolean, billing: unknown) => ({
+    id, connected, state: stateOf(id)?.state ?? null, at: stateOf(id)?.at ?? null,
+    calls: totals[id]?.calls ?? 0, input: totals[id]?.input ?? 0, output: totals[id]?.output ?? 0, bill: billing,
+  });
+  return {
+    from,
+    brains: [
+      brain("anthropic", !!c.anthropicKey, bill),
+      brain("gemini", !!c.geminiKey, { free: true }),
+      brain("groq", !!c.groqKey, { free: true }),
+    ],
+    adminKey: !!c.anthropicAdminKey,
+  };
+}
+/* Rozha connects (or replaces) a key from Admin. Each key is checked with Anthropic before it is saved:
+   the Rico key by listing models (no tokens are spent), the admin key by reading the cost report. Keys
+   are never sent back to the app. */
+const KEY_SHAPES: Record<string, RegExp> = { anthropic: /^sk-ant-api\d\d-[A-Za-z0-9_-]{20,}$/, anthropic_admin: /^sk-ant-admin\d\d-[A-Za-z0-9_-]{20,}$/ };
+export async function saveAiKey(db: any, kind: unknown, key: unknown) {
+  const k = String(kind ?? ""), value = String(key ?? "").trim();
+  if (!KEY_SHAPES[k]) return { ok: false, error: "invalid_input" };
+  if (!KEY_SHAPES[k].test(value)) return { ok: false, error: "invalid_key" };
+  let res: Response;
+  try {
+    res = k === "anthropic"
+      ? await fetch(`${ANTHROPIC_URL}/models?limit=1`, { headers: { "x-api-key": value, "anthropic-version": ANTHROPIC_VERSION } })
+      : await fetch(`${ANTHROPIC_URL}/organizations/cost_report?starting_at=${encodeURIComponent(monthStart())}&limit=1`, { headers: { "x-api-key": value, "anthropic-version": ANTHROPIC_VERSION } });
+  } catch { return { ok: false, error: "check_failed" }; }
+  if (res.status === 401 || res.status === 403) return { ok: false, error: k === "anthropic_admin" && res.status === 403 ? "not_admin" : "invalid_key" };
+  if (!res.ok) { console.error("anthropic key check", k, res.status); return { ok: false, error: k === "anthropic_admin" && res.status === 404 ? "not_organization" : "check_failed" }; }
+  const { error } = await db.from("app_secrets").upsert({ key: k === "anthropic" ? "anthropic_api_key" : "anthropic_admin_key", value }, { onConflict: "key" });
+  if (error) return { ok: false, error: "save_failed" };
+  if (k === "anthropic") await noteBrain(db, "anthropic", true);
+  return { ok: true };
+}
+export async function removeAiKey(db: any, kind: unknown) {
+  const k = String(kind ?? "");
+  if (!KEY_SHAPES[k]) return { ok: false, error: "invalid_input" };
+  const { error } = await db.from("app_secrets").delete().eq("key", k === "anthropic" ? "anthropic_api_key" : "anthropic_admin_key");
+  return error ? { ok: false, error: "save_failed" } : { ok: true };
 }
 
 /* ---------------- voice messages ----------------
