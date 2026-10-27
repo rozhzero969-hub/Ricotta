@@ -85,7 +85,7 @@ globalThis.fetch = async (input, options = {}) => {
     const body = new ReadableStream({ start(controller) { controller.enqueue(encoded.slice(0, split)); controller.enqueue(encoded.slice(split)); controller.close(); } });
     return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
   }
-  if (url.startsWith('https://api.anthropic.com/v1/')) return anthropic(url, options);
+  if (new URL(url).hostname === 'api.anthropic.com') return anthropic(url, options);
   if (url.includes('api.groq.com/openai/v1/chat/completions')) {
     if (groqUnavailable) return new Response('{"error":{"message":"busy"}}', { status: 503 });
     if (groqSecondTurnDown && groqTurn === 1) { groqTurn++; return new Response('{"error":{"message":"busy"}}', { status: 503 }); }
@@ -261,7 +261,7 @@ for (const [fail, state] of [[{ status: 400, type: 'invalid_request_error', mess
   const events = await chat();
   assert.equal(events.find(e => e.type === 'text')?.text !== undefined, true, `${state}: a backup still answers`);
   assert.equal(events.some(e => e.type === 'error'), false);
-  assert.equal(requests.slice(before).some(r => !r.url.startsWith('https://api.anthropic.com')), true);
+  assert.equal(requests.slice(before).some(r => new URL(r.url).hostname !== 'api.anthropic.com'), true);
   assert.equal(aiStatus.get('anthropic').state, state);
   assert.ok(Date.now() - started < 15000);
 }
