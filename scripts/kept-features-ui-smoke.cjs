@@ -20,7 +20,6 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
   else if(endpoint==='draft'){if(method==='PUT'){for(const c of body.changes){if(c.after)cart[c.itemId]=c.after;else delete cart[c.itemId];}revision++;}data={cart:{...cart},revision,conflicts:[]};}
   else if(endpoint==='auth/security')data={required:false};
   else if(endpoint==='devices'||endpoint==='activity'||endpoint==='assistant/inbox')data=[];
-  else if(endpoint==='assistant/status')data={configured:true,provider:'gemini'};
   else if(endpoint==='items/restore'){const item=receipts.get(body.undoId);assert.ok(item);fixture.items.push(item);receipts.delete(body.undoId);}
   else if(endpoint.startsWith('items/')&&method==='DELETE'){const id=endpoint.split('/')[1],item=fixture.items.find(i=>i.id===id);assert.ok(item);const token='12345678-1234-1234-1234-123456789abc';receipts.set(token,item);fixture.items=fixture.items.filter(i=>i.id!==id);data={ok:true,undoId:token};}
   else if(endpoint==='admin/diagnostics')data={database:true,checkedAt:now,latencyMs:140,items:42,suppliers:2,ordersThisMonth:1,pushPhones:2,problems24h:0,wrongPins24h:0,jobs:['ricotta-reminder-tick','ricotta-monthly-history','ricotta-daily-cleanup','ricotta-cron-history'].map(name=>({name,active:true,lastRun:now,lastStatus:'succeeded',failures24h:0}))};

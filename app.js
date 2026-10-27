@@ -708,7 +708,7 @@ async function boot(){
     return;
   }
   hideSplash();
-  if(state.account){ heartbeat(); checkCommands(); maybeOpenRicoProviderSetup(); maybeFinishQueue(); liveStart(); }
+  if(state.account){ heartbeat(); checkCommands(); maybeFinishQueue(); liveStart(); }
   if(state.account && !loadedOk) retryLoad();
   // Notifications: register the service worker, read this device's status, and
   // handle being launched from a notification tap.
@@ -1993,7 +1993,6 @@ async function completeSignIn(res){
   heartbeat();
   liveStart();
   if(pushStatus.subscribed) resyncPush();
-  maybeOpenRicoProviderSetup();
 }
 function attachLoginEvents(){
   updateLoginFeedback();
@@ -3637,23 +3636,6 @@ function attachNotifEvents(){
   if(test) test.onclick = ()=> withBusy(test, async ()=> reportSendResult(await callSendPush('reminder-now')));
 }
 
-/* The provider setup is intentionally not a Settings control. Rozha can
-   open the one-time route after signing in; the API accepts only a new Groq
-   key and never exposes or deletes an existing provider key. */
-function ricoSetupRequested(){ return location.hash === '#rico-provider-setup'; }
-function closeRicoSetupRoute(){ history.replaceState(null, '', location.pathname + location.search); }
-async function maybeOpenRicoProviderSetup(){
-  if(!ricoSetupRequested()) return;
-  if(!isRozha()){ closeRicoSetupRoute(); return; }
-  const status = await api('assistant/setup-status');
-  if(!status.ok || status.data?.groqConfigured){ closeRicoSetupRoute(); return; }
-  const key = await showPrompt(t('ricoGroqSetupPrompt'), {placeholder:'gsk_…', secret:true, okLabel:t('ricoGroqSave')});
-  if(key === null){ closeRicoSetupRoute(); return; }
-  const saved = await api('assistant/groq-key', {method:'PUT', body:{key}});
-  closeRicoSetupRoute();
-  if(saved.ok){ toast(t('ricoGroqSaved')); if(state.view === 'admin') loadRicoStatus(); }
-  else await showAlert(saved.data?.error === 'invalid_key' ? t('ricoGroqInvalid') : t('saveFailed'));
-}
 /* Disables a button while its action runs, so a double tap can't send twice. */
 async function withBusy(btn, fn){
   if(!btn || btn.disabled) return;

@@ -1028,9 +1028,6 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 .rico-hist-all.asking{background:rgba(255,59,48,.12);border-radius:12px}
 .rico-hist-empty{padding:18px 8px;text-align:center}
 .rico-status-card{max-width:460px}
-.rico-connection{display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:0 12px;border-radius:999px;background:rgba(255,59,48,.12);color:var(--clay-ink);font-size:.875rem;font-weight:500}
-.rico-connection::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
-.rico-connection.connected{background:rgba(var(--accent-rgb),.16);color:var(--tint)}
 
 /* ---------- Phones and tablets ---------- */
 @media (max-width:959px){
@@ -1734,8 +1731,6 @@ html.rtl .ad-strip{padding:10px 14px 10px 8px}
 .ad-ai-state.bad{color:var(--clay-ink)}.ad-ai-state.bad i{background:var(--red)}
 .ad-ai-numbers{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:.8125rem;color:var(--ink-soft)}
 .ad-ai-bill{color:var(--ink);font-weight:500}
-.ad-ai-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.ad-ai-actions .btn{min-height:36px;padding:0 14px;font-size:.875rem}
 .ad-check-count{flex:none;min-width:34px;height:34px;padding:0 8px;border-radius:999px;display:grid;place-items:center;background:rgba(255,59,48,.12);color:var(--clay-ink);font-family:var(--font-round);font-weight:700}
 .ad-check-count.none{background:rgba(var(--accent-rgb),.16);color:var(--tint)}
 .ad-check-list{display:flex;flex-direction:column;padding:0 8px 8px}

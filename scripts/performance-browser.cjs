@@ -29,7 +29,7 @@ const server=http.createServer((req,res)=>{
    const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block',ignoreHTTPSErrors:true}),errors=[];
    await ctx.route('**/functions/v1/api/**',async route=>{
     const endpoint=new URL(route.request().url()).pathname.split('/api/')[1];
-    let data=endpoint==='bootstrap'?fixture:endpoint==='auth/security'?{required:false,siteKey:null}:endpoint==='devices'||endpoint==='assistant/inbox'?[]:endpoint==='assistant/status'?{configured:true,provider:'gemini'}:{ok:true};
+    let data=endpoint==='bootstrap'?fixture:endpoint==='auth/security'?{required:false,siteKey:null}:endpoint==='devices'||endpoint==='assistant/inbox'?[]:{ok:true};
     await new Promise(r=>setTimeout(r,300));await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
    });
    await ctx.addInitScript(({loggedIn,session})=>{

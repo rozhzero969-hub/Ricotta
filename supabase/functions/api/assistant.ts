@@ -863,7 +863,7 @@ async function* readSSE(res: Response) {
 
 export async function config(db: any) {
   const { data, error } = await withTimeout<any>(db.from("app_secrets").select("key,value")
-    .in("key", ["gemini_api_key", "groq_api_key", "anthropic_api_key", "anthropic_admin_key"]), DB_TIMEOUT_MS, "assistant_config");
+    .in("key", ["gemini_api_key", "groq_api_key", "anthropic_api_key"]), DB_TIMEOUT_MS, "assistant_config");
   if (error) throw new Error("assistant_config_unavailable");
   const saved = Object.fromEntries((data ?? []).map((r: any) => [r.key, r.value]));
   const geminiSecret = Deno.env.get("GEMINI_API_KEY") ?? "";
@@ -871,32 +871,10 @@ export async function config(db: any) {
   const geminiKey = geminiSecret || saved.gemini_api_key || "";
   const groqKey = groqSecret || saved.groq_api_key || "";
   const anthropicKey = (Deno.env.get("ANTHROPIC_API_KEY") ?? "") || saved.anthropic_api_key || "";
-  const anthropicAdminKey = saved.anthropic_admin_key || "";
   const base = groqKey
     ? { provider: "groq" as const, key: groqKey, model: DEFAULT_GROQ_MODEL, geminiKey }
     : { provider: "gemini" as const, key: geminiKey, model: DEFAULT_GEMINI_MODEL, geminiKey };
-  return { ...base, groqKey, anthropicKey, anthropicAdminKey };
-}
-
-export async function assistantStatus(db: any) {
-  const c = await config(db);
-  if (c.anthropicKey) return { configured: true, model: ANTHROPIC_MODEL, provider: "anthropic", fallback: !!(c.geminiKey || c.groqKey) };
-  return { configured: !!c.key, model: c.model, provider: c.provider, fallback: c.provider === "groq" && !!c.geminiKey };
-}
-
-export async function assistantSetupStatus(db: any) {
-  const c = await config(db);
-  return { groqConfigured: c.provider === "groq" };
-}
-
-export async function saveGroqKey(db: any, key: unknown) {
-  const value = text(key, 300);
-  if (!/^gsk_[A-Za-z0-9_-]{20,}$/.test(value)) return { ok: false, error: "invalid_key" };
-  const c = await config(db);
-  if (c.provider === "groq") return { ok: false, error: "already_configured" };
-  // INSERT preserves add-only setup even when two requests arrive together.
-  const { error } = await db.from("app_secrets").insert({ key: "groq_api_key", value });
-  return error ? { ok: false, error: error.code === "23505" ? "already_configured" : "save_failed" } : { ok: true };
+  return { ...base, groqKey, anthropicKey };
 }
 
 type ProviderCfg = { provider: string; key: string; model: string; geminiKey: string };
@@ -1416,30 +1394,11 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   return new Response(stream, { headers: { ...cors, "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" } });
 }
 
-/* ---------------- Admin › Rico: the AIs, their tokens and the real bill ----------------
-   Every number here is real: tokens are what each AI reported for each reply (app_assistant_usage), the
-   state is how each AI answered last (app_ai_status), and Haiku's bill is Anthropic's own cost report,
-   read with a read-only admin key when one is connected. Nothing is estimated from prices. */
+/* ---------------- Admin › Rico: the AIs and their tokens ----------------
+   Every number here is real: tokens are what each AI reported for each reply (app_assistant_usage) and
+   the state is how each AI answered last (app_ai_status). The keys themselves live only on the server
+   (Supabase secrets, or the locked app_secrets table) and never reach the app. */
 const providerOf = (model: string) => /^claude/i.test(model) ? "anthropic" : /^gemini/i.test(model) ? "gemini" : /^pending:/.test(model) ? "" : "groq";
-async function anthropicSpend(adminKey: string, from: string): Promise<{ usd: number } | { error: string }> {
-  let cents = 0, page = "";
-  for (let i = 0; i < 4; i++) {
-    const url = new URL(`${ANTHROPIC_URL}/organizations/cost_report`);
-    url.searchParams.set("starting_at", from);
-    url.searchParams.set("limit", "31");
-    if (page) url.searchParams.set("page", page);
-    let res: Response;
-    try { res = await fetch(url, { headers: { "x-api-key": adminKey, "anthropic-version": ANTHROPIC_VERSION } }); }
-    catch { return { error: "unavailable" }; }
-    if (res.status === 401 || res.status === 403) return { error: "admin_key_rejected" };
-    if (!res.ok) { console.error("anthropic cost report", res.status); return { error: "unavailable" }; }
-    const body = await res.json().catch(() => null);
-    for (const bucket of body?.data ?? []) for (const r of bucket?.results ?? []) cents += Number(r?.amount) || 0;
-    if (!body?.has_more || !body?.next_page) break;
-    page = String(body.next_page);
-  }
-  return { usd: Math.round(cents * 100) / 10000 }; // dollars, kept to a hundredth of a cent: Haiku replies cost fractions of a cent
-}
 export async function adminAi(db: any) {
   const c = await config(db);
   const from = monthStart();
@@ -1456,56 +1415,19 @@ export async function adminAi(db: any) {
     t.calls++; t.input += Number(r.input_tokens) || 0; t.output += Number(r.output_tokens) || 0;
   }
   const stateOf = (p: string) => (states.data ?? []).find((x: any) => x.provider === p) ?? null;
-  const bill = c.anthropicAdminKey ? await anthropicSpend(c.anthropicAdminKey, from) : { error: "no_admin_key" };
-  const brain = (id: string, connected: boolean, billing: unknown) => ({
+  const brain = (id: string, connected: boolean) => ({
     id, connected, state: stateOf(id)?.state ?? null, at: stateOf(id)?.at ?? null,
-    calls: totals[id]?.calls ?? 0, input: totals[id]?.input ?? 0, output: totals[id]?.output ?? 0, bill: billing,
+    calls: totals[id]?.calls ?? 0, input: totals[id]?.input ?? 0, output: totals[id]?.output ?? 0,
   });
   return {
     from,
     brains: [
-      brain("anthropic", !!c.anthropicKey, bill),
-      brain("gemini", !!c.geminiKey, { free: true }),
-      brain("groq", !!c.groqKey, { free: true }),
+      brain("anthropic", !!c.anthropicKey),
+      brain("gemini", !!c.geminiKey),
+      brain("groq", !!c.groqKey),
     ],
-    adminKey: !!c.anthropicAdminKey,
   };
 }
-/* Rozha connects (or replaces) a key from Admin. Each key is checked with Anthropic before it is saved:
-   the Rico key by listing models (no tokens are spent), the admin key by reading the cost report. Keys
-   are never sent back to the app. */
-// Only the start is checked here (Anthropic changes the rest of the format now and then); Anthropic itself decides.
-const KEY_SHAPES: Record<string, RegExp> = { anthropic: /^sk-ant-(?!admin)[A-Za-z0-9_-]{20,300}$/, anthropic_admin: /^sk-ant-admin[A-Za-z0-9_-]{20,300}$/ };
-// What a refused key looked like, for the logs: its length and the public part of the prefix, never the secret.
-const keyHint = (k: string) => `${k.length} chars, ${(k.match(/^sk-ant-[a-z]+\d*/)?.[0] ?? k.slice(0, 3) + "…")}`;
-export async function saveAiKey(db: any, kind: unknown, key: unknown) {
-  const k = String(kind ?? ""), value = String(key ?? "").trim();
-  if (!KEY_SHAPES[k]) return { ok: false, error: "invalid_input" };
-  if (!KEY_SHAPES[k].test(value)) { console.error("anthropic key shape", k, keyHint(value)); return { ok: false, error: "invalid_key" }; }
-  let res: Response;
-  try {
-    res = k === "anthropic"
-      ? await fetch(`${ANTHROPIC_URL}/models?limit=1`, { headers: { "x-api-key": value, "anthropic-version": ANTHROPIC_VERSION } })
-      : await fetch(`${ANTHROPIC_URL}/organizations/cost_report?starting_at=${encodeURIComponent(monthStart())}&limit=1`, { headers: { "x-api-key": value, "anthropic-version": ANTHROPIC_VERSION } });
-  } catch { return { ok: false, error: "check_failed" }; }
-  if (res.status === 401 || res.status === 403) {
-    const err = await res.json().catch(() => null);
-    console.error("anthropic key refused", k, res.status, err?.error?.type ?? "", keyHint(value));
-    return { ok: false, error: k === "anthropic_admin" && res.status === 403 ? "not_admin" : "invalid_key" };
-  }
-  if (!res.ok) { console.error("anthropic key check", k, res.status); return { ok: false, error: k === "anthropic_admin" && res.status === 404 ? "not_organization" : "check_failed" }; }
-  const { error } = await db.from("app_secrets").upsert({ key: k === "anthropic" ? "anthropic_api_key" : "anthropic_admin_key", value }, { onConflict: "key" });
-  if (error) return { ok: false, error: "save_failed" };
-  if (k === "anthropic") await noteBrain(db, "anthropic", true);
-  return { ok: true };
-}
-export async function removeAiKey(db: any, kind: unknown) {
-  const k = String(kind ?? "");
-  if (!KEY_SHAPES[k]) return { ok: false, error: "invalid_input" };
-  const { error } = await db.from("app_secrets").delete().eq("key", k === "anthropic" ? "anthropic_api_key" : "anthropic_admin_key");
-  return error ? { ok: false, error: "save_failed" } : { ok: true };
-}
-
 /* ---------------- voice messages ----------------
    The app records a short clip and sends it here as base64. Kurdish goes to
    Gemini first, and so does Arabic (Sorani and Arabic script both come out

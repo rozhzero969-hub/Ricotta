@@ -113,14 +113,12 @@ const server=http.createServer((req,res)=>{
       else if(endpoint==='devices') data=[];
       else if(endpoint==='activity') data=recordActivity;
       else if(endpoint==='admin/usage') data=usageFixture;
-      else if(endpoint==='admin/ai' && req.method()==='GET') data={from:'2026-10-01T00:00:00Z',adminKey:false,brains:[
-        {id:'anthropic',connected:true,state:'no_funds',at:new Date().toISOString(),calls:12,input:52000,output:4100,bill:{error:'no_admin_key'}},
-        {id:'gemini',connected:true,state:'working',at:new Date().toISOString(),calls:30,input:142000,output:25100,bill:{free:true}},
-        {id:'groq',connected:false,state:null,at:null,calls:0,input:0,output:0,bill:{free:true}}]};
+      else if(endpoint==='admin/ai' && req.method()==='GET') data={from:'2026-10-01T00:00:00Z',brains:[
+        {id:'anthropic',connected:true,state:'no_funds',at:new Date().toISOString(),calls:12,input:52000,output:4100},
+        {id:'gemini',connected:true,state:'working',at:new Date().toISOString(),calls:30,input:142000,output:25100},
+        {id:'groq',connected:false,state:null,at:null,calls:0,input:0,output:0}]};
       else if(endpoint==='rico/orders') data={ready:true,orders:[{id:1,created_at:new Date().toISOString(),supplier_name:'Bakery',status:'sent',error:null,test:true,reason:'usual amounts: based on the last 3 orders',lines:[{name:'Burger bread',qty:24,unit:'piece'}]},{id:2,created_at:new Date().toISOString(),supplier_name:'Vegetables',status:'failed',error:'window_closed',test:true,reason:'',lines:[{name:'Tomato',qty:5,unit:'kg'}]}]};
-      else if(endpoint==='admin/ai/key' && req.method()==='PUT' && !/^sk-ant-api\d\d-/.test(body.key)){ status=400; data={ok:false,error:'invalid_key'}; }
       else if(endpoint==='assistant/inbox') data=fixtureFor(signedIn).inbox;
-      else if(endpoint==='assistant/status') data={configured:true,provider:'gemini',model:'gemini-3.5-flash-lite'};
       else if(endpoint==='login'){
         if(body.pin==='358214'){ signedIn='yunis'; data={...session('yunis')}; }
         else if(body.pin==='471906'){ signedIn='rozha'; data={...session('rozha')}; }
@@ -332,7 +330,7 @@ const server=http.createServer((req,res)=>{
     await page.evaluate(name=>{ state.history=[{id:'h1',date:'2026-09-23T08:00:00Z',by:'yunis',entries:[{supplierId:'s1',items:[{itemId:'i1',name,qty:2,unit:'box'}]}]}]; render(); },items[1].name);
     await openView(page,'settings');
     assert.equal(await page.locator('#reminderEnabled').count(),1,'notifications live in Settings');
-    assert.equal(await page.locator('[data-pin-change], #ricoKeyState, .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
+    assert.equal(await page.locator('[data-pin-change], .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
     // Admin: one screen of tiles, each opening its page. PINs: Rozha's current PIN first, the new one typed twice.
     await openView(page,'admin');
     assert.equal(await page.locator('.ad-board [data-admin-open]').count(),9,'Admin shows every page as a tile');
@@ -355,28 +353,15 @@ const server=http.createServer((req,res)=>{
     await page.locator('.admin-heading .page-back').click();await settle(page);
     assert.equal(await page.locator('.ad-board').count(),1,'Back returns to the Admin tiles');
     await page.locator('[data-admin-open="rico"]').click();await settle(page);
-    await page.waitForFunction(()=>document.querySelector('#ricoKeyState')?.textContent!=='Checking…',null,{timeout:5000});
-    assert.equal(await page.locator('#ricoKeyState').textContent(),'Connected');
-    // Rico's AI: each AI with its state, replies, tokens and bill; keys are typed masked and checked first.
+    // Rico's AI: each AI with its state, replies and tokens. Keys are never typed or shown in the app.
     await page.waitForSelector('.ad-ai-list .ad-ai');
     assert.equal(await page.locator('.ad-ai').count(),3,'Haiku, Gemini and Groq');
     assert.match(await page.locator('.ad-ai').first().innerText(),/Claude Haiku[\s\S]*Out of credit[\s\S]*12 replies/);
     assert.equal(await page.locator('.ad-ai-state.bad').count(),1);
     assert.match(await page.locator('.ad-ai').nth(1).innerText(),/Free plan/);
     assert.match(await page.locator('.ad-ai').nth(2).innerText(),/Not connected/);
-    await page.locator('[data-ai-key="anthropic"]').click();
-    await page.waitForSelector('#modalPromptInput');
-    assert.equal(await page.locator('#modalPromptInput').getAttribute('type'),'password','the Haiku key is masked');
-    await page.locator('#modalPromptInput').fill('not-a-key');await page.locator('#modalPromptOkBtn').click();
-    await page.waitForFunction(()=>/did not accept this key/i.test(document.querySelector('.modal-msg')?.textContent||''));
-    assert.deepEqual(calls.filter(c=>c.endpoint==='admin/ai/key').at(-1).body,{kind:'anthropic',key:'not-a-key'});
-    await page.locator('#modalAlertOkBtn').click();await page.waitForSelector('#modalAlertOkBtn',{state:'detached'});
-    await page.evaluate(()=>{location.hash='#rico-provider-setup'; maybeOpenRicoProviderSetup();});
-    await page.waitForSelector('#modalPromptInput');
-    assert.equal(await page.locator('#modalPromptInput').getAttribute('type'),'password','provider key is masked in the one-time setup');
-    await page.locator('#modalPromptInput').fill('gsk_'+ 'A'.repeat(30));
-    await page.locator('#modalPromptOkBtn').click();
-    await page.waitForSelector('#modalPromptInput',{state:'detached'});
+    assert.equal(await page.locator('.ad-ai').first().locator('.ad-ai-bill').count(),0,'Haiku shows no bill line');
+    assert.equal(await page.locator('.ad-ai-list input, [data-ai-key], [data-ai-remove], #ricoKeyState').count(),0,'no key fields or key buttons anywhere in Admin');
     // Time in the app: Daily, Weekly and Monthly, each with the time and the average per day, and its chart.
     await page.locator('.admin-heading .page-back').click();await settle(page);
     await page.locator('[data-admin-open="time"]').click();await settle(page);

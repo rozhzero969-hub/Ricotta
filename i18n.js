@@ -6,8 +6,6 @@ const T = {
     pendingSync:'Orders waiting to sync', pendingSyncHint:'These orders are saved on this device. Retry syncing or export a copy. Orders from a previous month need to be exported.', syncRetry:'Retry sync', syncExport:'Export copy',
     accountName:a=>({rozha:'Rozha', yunis:'Yunis'})[a] || a,
     workspaceLabel:'Your kitchen, organised', welcomeName:n=>'Welcome back, '+n,
-    
-    
     draftLocal:'Draft on this device', selectToStart:'Choose your essentials to get started',
     increaseQty:name=>'Increase quantity for '+name, decreaseQty:name=>'Decrease quantity for '+name, quantityFor:name=>'Quantity for '+name,
     offline:'Offline', language:'Language', apply:'Apply', ok:'OK',
@@ -50,7 +48,6 @@ const T = {
     heroStatWord:n=>n===1?'item selected':'items selected',
     suppliersCovered:(a,b)=>a+' of '+b+' suppliers have items picked',
     allSuppliers:'All',
-    
     updateNow:'Update Now', later:'Later', updateTitle:'New Version Ready', updateReadyMsg:'A new version of the app is ready. Update now? Your order is kept.',
     noSearchResults:'No items match here',
     noDevicesYet:'No devices are signed in right now',
@@ -67,8 +64,6 @@ const T = {
     statusActive:'Active now', statusLoggedIn:'Signed in', statusLoggedOut:'Signed out',
     lastLoginLabel:'Last sign-in', lastSeenLabel:'Last seen', versionLabel:'Version', versionCurrent:'Up to date', versionOld:'Needs update', versionUnknown:'not reported yet (opens the old app)', appVersionLine:v=>'Ricotta Orders · version '+v, agoNow:'just now', agoMin:n=>n+' min ago', agoHour:n=>n+' h ago', agoDay:n=>n+' d ago',
     devicesLoggedInEyebrow:'Signed in now',
-    
-    
     devicesHint:'Active now = used the app in the last 5 minutes. Signed in = signed in, but the app is closed or idle. A device that signs out, or that you sign out, leaves this list.',
     logoutDevice:'Log out', refreshDevice:'Refresh',
     logoutAllOthers:'Log out all others', refreshAllDevices:'Refresh all devices',
@@ -93,7 +88,7 @@ const T = {
     notifSettingsTitle:'Notifications', notifThisDevice:'This device',
     settingsAppearance:'Appearance',
 
-    settingsOrderScreen:'Order screen', 
+    settingsOrderScreen:'Order screen',
     compactRowsLabel:'Compact rows', compactRowsHint:'Fits more items on the screen when you place a long order.',
     lastQtyLabel:'Show last quantity', lastQtyHint:'Shows what you ordered last time under each item.', lastQty:n=>'Last: '+n,
     notifOn:'On', notifOff:'Off', notifTurnOff:'Turn off',
@@ -116,10 +111,6 @@ const T = {
     notifPartialMsg:(s,f)=>'Sent to '+s+' device'+(s===1?'':'s')+'; '+f+' could not be reached.',
     notifDeliveryFailed:'The notification could not be delivered to any device. On that device, turn notifications off and on again.',
     notifNoDevicesLoggedOut:'Only signed-out devices have notifications on. Reminders go to signed-in devices.',
-    
-    
-    
-    
     notifSend:'Send',
     notifSentMsg:n=>'Sent to '+n+' device'+(n===1?'':'s')+'.',
     notifNoDevices:'No devices have notifications turned on yet.',
@@ -168,7 +159,7 @@ const T = {
       key_rejected:'The AI service rejected Rico’s key. Rozha needs to update it.', model_unavailable:'The AI service is unavailable right now. Please try again later.',
       stopped:'Stopped.', bad_request:'Rico couldn’t read that message. Try again.'},
     ricoOpenSettings:'Open Settings', ricoUndone:'Undone', ricoDismissed:'Not now', ricoDone:'Done', ricoOpenOrder:'Open order', ricoUndo:'Undo', ricoNotNow:'Not now',
-    ricoAddsToDraft:'These are added to what’s already in your draft.', 
+    ricoAddsToDraft:'These are added to what’s already in your draft.',
     ricoCardNewItem:'New item', ricoCardEditItem:'Change item', ricoCardNewSupplier:'New supplier', ricoCardNotify:'Notification to every device',
     ricoOpenScreen:n=>'Open '+n, ricoAutoTag:'Filled by Rico',
     ricoPlaceholder:'Message Rico…', ricoStop:'Stop', ricoSend:'Send',
@@ -185,11 +176,6 @@ const T = {
     ricoOrderApplied:n=>n+' item'+(n===1?'':'s')+' put in today’s order',
     ricoNotificationSent:'Notification sent', ricoUndoneToast:'Your previous order draft is back',
     ricoNavLate:n=>'Rico: '+n+' late order'+(n===1?'':'s'), ricoNavUnread:'Rico: a new message',
-    ricoChecking:'Checking…', 
-    
-    ricoConnected:'Connected', ricoDisconnected:'Disconnected',
-    ricoGroqSetupPrompt:'Paste your Groq API key. It is sent directly to the protected server and this one-time setup closes after saving.',
-    ricoGroqSave:'Save Groq key', ricoGroqSaved:'Groq GPT-OSS 120B is ready. Gemini remains the fallback.', ricoGroqInvalid:'Enter a valid Groq key beginning with gsk_.',
     ricoSuggestsLabel:'Rico suggests',
     ricoSuggestUsual:(sup,day)=>'Your usual '+day+' order from '+sup+'.',
     ricoSuggestDue:(sup,time)=>sup+' was due at '+time+' and hasn’t been sent yet.',
@@ -214,8 +200,6 @@ const T = {
     pendingSync:'داواکارییە چاوەڕوانەکان', pendingSyncHint:'ئەم داواکارییانە لەم ئامێرە پاشەکەوت کراون. دووبارە هەوڵ بدە یان کۆپی هەناردە بکە. داواکاری مانگی پێشوو هەناردە بکە.', syncRetry:'دووبارە هەوڵدان', syncExport:'هەناردەی کۆپی',
     accountName:a=>({rozha:'ڕۆژا', yunis:'یونس'})[a] || a,
     workspaceLabel:'چێشتخانەکەت بە ڕێکوپێکی', welcomeName:n=>'بەخێربێیتەوە، '+n,
-    
-    
     draftLocal:'ڕەشنووس لەسەر ئەم ئامێرە', selectToStart:'بۆ دەستپێکردن پێداویستییەکانت هەڵبژێرە',
     increaseQty:name=>'زیادکردنی بڕی '+name, decreaseQty:name=>'کەمکردنەوەی بڕی '+name, quantityFor:name=>'بڕی '+name,
     offline:'ئۆفلاین', language:'زمان', apply:'جێبەجێکردن', ok:'باشە',
@@ -258,7 +242,6 @@ const T = {
     heroStatWord:n=>'کاڵا هەڵبژێردراوە',
     suppliersCovered:(a,b)=>a+' لە '+b+' دابینکەر کاڵایان بۆ هەڵبژێردراوە',
     allSuppliers:'هەموو',
-    
     updateNow:'ئێستا نوێی بکەرەوە', later:'دواتر', updateTitle:'وەشانی نوێ ئامادەیە', updateReadyMsg:'وەشانێکی نوێی ئەپەکە ئامادەیە. ئێستا نوێی بکەیتەوە؟ داواکارییەکەت دەمێنێتەوە.',
     noSearchResults:'هیچ کاڵایەک لێرە نییە',
     noDevicesYet:'ئێستا هیچ ئامێرێک نەچووەتە ژوورەوە',
@@ -275,8 +258,6 @@ const T = {
     statusActive:'ئێستا چالاکە', statusLoggedIn:'چووەتە ژوورەوە', statusLoggedOut:'چووەتە دەرەوە',
     lastLoginLabel:'دوایین چوونەژوورەوە', lastSeenLabel:'دوایین بینین', versionLabel:'وەشان', versionCurrent:'نوێیە', versionOld:'پێویستی بە نوێکردنەوەیە', versionUnknown:'هێشتا نەناردراوە (ئەپی کۆن)', appVersionLine:v=>'Ricotta Orders · وەشانی '+v, agoNow:'ئێستا', agoMin:n=>'پێش '+n+' خولەک', agoHour:n=>'پێش '+n+' کاتژمێر', agoDay:n=>'پێش '+n+' ڕۆژ',
     devicesLoggedInEyebrow:'ئێستا چووەتە ژوورەوە',
-    
-    
     devicesHint:'چالاک = لە 5 خولەکی ڕابردوودا ئەپەکەی بەکارهێناوە. چووەتە ژوورەوە = چووەتە ژوورەوە بەڵام ئەپەکە داخراوە یان بێکارە. کاتێک ئامێرێک دەردەچێت، یان تۆ دەری دەکەیت، لەم لیستە دەسڕدرێتەوە.',
     logoutDevice:'دەرکردن', refreshDevice:'نوێکردنەوە',
     logoutAllOthers:'دەرکردنی هەموو ئامێرەکانی تر', refreshAllDevices:'نوێکردنەوەی هەموو ئامێرەکان',
@@ -301,7 +282,7 @@ const T = {
     notifSettingsTitle:'ئاگادارکردنەوەکان', notifThisDevice:'ئەم ئامێرە',
     settingsAppearance:'ڕووکار',
 
-    settingsOrderScreen:'شاشەی داواکاری', 
+    settingsOrderScreen:'شاشەی داواکاری',
     compactRowsLabel:'ڕیزی پچووک', compactRowsHint:'کاتێک داواکارییەکی درێژ دەکەیت کاڵای زیاتر لە شاشەکەدا دەبینیت.',
     lastQtyLabel:'نیشاندانی دوایین بڕ', lastQtyHint:'ئەوەی جاری پێشوو داوات کردووە لەژێر هەر کاڵایەک پیشان دەدات.', lastQty:n=>'دوایین: '+n,
     notifOn:'چالاکە', notifOff:'ناچالاکە', notifTurnOff:'ناچالاککردن',
@@ -324,10 +305,6 @@ const T = {
     notifPartialMsg:(s,f)=>'بۆ '+s+' ئامێر نێردرا؛ '+f+' نەگەیشت.',
     notifDeliveryFailed:'ئاگادارکردنەوەکە نەگەیشتە هیچ ئامێرێک. لەسەر ئەو ئامێرە ئاگادارکردنەوەکان ناچالاک بکە و دووبارە چالاکیان بکەوە.',
     notifNoDevicesLoggedOut:'تەنها ئەو ئامێرانەی چوونەتە دەرەوە ئاگادارکردنەوەیان چالاکە. بیرخەرەوەکان بۆ ئامێری چووەتە ژوورەوە دەنێردرێن.',
-    
-    
-    
-    
     notifSend:'ناردن',
     notifSentMsg:n=>'بۆ '+n+' ئامێر نێردرا.',
     notifNoDevices:'هێشتا هیچ ئامێرێک ئاگادارکردنەوەی چالاک نەکردووە.',
@@ -376,7 +353,7 @@ const T = {
       key_rejected:'خزمەتگوزاریی AI کلیلی ریکۆی ڕەتکردەوە. پێویستە ڕۆژا نوێی بکاتەوە.', model_unavailable:'خزمەتگوزاریی AI ئێستا بەردەست نییە. دواتر هەوڵ بدەرەوە.',
       stopped:'وەستێنرا.', bad_request:'ریکۆ نەیتوانی ئەو پەیامە بخوێنێتەوە. دووبارە هەوڵ بدەرەوە.'},
     ricoOpenSettings:'کردنەوەی ڕێکخستن', ricoUndone:'گەڕێندرایەوە', ricoDismissed:'ئێستا نا', ricoDone:'تەواو', ricoOpenOrder:'کردنەوەی داواکاری', ricoUndo:'گەڕاندنەوە', ricoNotNow:'ئێستا نا',
-    ricoAddsToDraft:'ئەمانە دەخرێنە سەر ئەوەی لە ڕەشنووسەکەتدا هەیە.', 
+    ricoAddsToDraft:'ئەمانە دەخرێنە سەر ئەوەی لە ڕەشنووسەکەتدا هەیە.',
     ricoCardNewItem:'کاڵای نوێ', ricoCardEditItem:'گۆڕینی کاڵا', ricoCardNewSupplier:'دابینکەری نوێ', ricoCardNotify:'ئاگادارکردنەوە بۆ هەموو ئامێرەکان',
     ricoOpenScreen:n=>'کردنەوەی '+n, ricoAutoTag:'ریکۆ پڕی کردەوە',
     ricoPlaceholder:'نامەیەک بۆ ریکۆ بنووسە…', ricoStop:'ڕاگرتن', ricoSend:'ناردن',
@@ -393,11 +370,6 @@ const T = {
     ricoOrderApplied:n=>n+' کاڵا خرایە داواکاریی ئەمڕۆ',
     ricoNotificationSent:'ئاگادارکردنەوە نێردرا', ricoUndoneToast:'ڕەشنووسی پێشووی داواکارییەکەت گەڕایەوە',
     ricoNavLate:n=>'ریکۆ: '+n+' داواکاریی دواکەوتوو', ricoNavUnread:'ریکۆ: نامەیەکی نوێ',
-    ricoChecking:'دەپشکنرێت…', 
-    
-    ricoConnected:'پەیوەستە', ricoDisconnected:'پچڕاوە',
-    ricoGroqSetupPrompt:'کلیلی API ـی Groq دابنێ. ڕاستەوخۆ بۆ سێرڤەری پارێزراو دەنێردرێت و ئەم ڕێکخستنە یەکجارەیە دوای پاشەکەوتکردن دادەخرێت.',
-    ricoGroqSave:'پاشەکەوتکردنی کلیلی Groq', ricoGroqSaved:'Groq GPT-OSS 120B ئامادەیە. Gemini وەک پاشکەوت دەمێنێتەوە.', ricoGroqInvalid:'کلیلی دروستی Groq بنووسە کە بە gsk_ دەست پێبکات.',
     ricoSuggestsLabel:'پێشنیاری ریکۆ',
     ricoSuggestUsual:(sup,day)=>'داواکاریی ئاسایی ڕۆژی '+day+' لە '+sup+'.',
     ricoSuggestDue:(sup,time)=>'کاتی '+sup+' '+time+' بوو و هێشتا نەنێردراوە.',
@@ -422,8 +394,6 @@ const T = {
     pendingSync:'طلبات بانتظار المزامنة', pendingSyncHint:'هذه الطلبات محفوظة على هذا الجهاز. أعد المزامنة أو صدّر نسخة. يجب تصدير طلبات الشهر السابق.', syncRetry:'إعادة المزامنة', syncExport:'تصدير نسخة',
     accountName:a=>({rozha:'روژا', yunis:'يونس'})[a] || a,
     workspaceLabel:'مطبخك، منظّم', welcomeName:n=>'أهلًا بعودتك يا '+n,
-    
-    
     draftLocal:'مسودة على هذا الجهاز', selectToStart:'اختر احتياجاتك للبدء',
     increaseQty:name=>'زيادة كمية '+name, decreaseQty:name=>'تقليل كمية '+name, quantityFor:name=>'كمية '+name,
     offline:'غير متصل', language:'اللغة', apply:'تطبيق', ok:'حسنًا',
@@ -466,7 +436,6 @@ const T = {
     heroStatWord:n=>'مادة مختارة',
     suppliersCovered:(a,b)=>a+' من '+b+' مورّدين لديهم مواد مختارة',
     allSuppliers:'الكل',
-    
     updateNow:'حدّث الآن', later:'لاحقًا', updateTitle:'نسخة جديدة جاهزة', updateReadyMsg:'نسخة جديدة من التطبيق جاهزة. هل تريد التحديث الآن؟ سيبقى طلبك محفوظًا.',
     noSearchResults:'لا توجد مواد مطابقة هنا',
     noDevicesYet:'لا يوجد جهاز مسجّل الدخول الآن',
@@ -483,8 +452,6 @@ const T = {
     statusActive:'نشط الآن', statusLoggedIn:'مسجّل الدخول', statusLoggedOut:'خارج الجلسة',
     lastLoginLabel:'آخر دخول', lastSeenLabel:'آخر ظهور', versionLabel:'الإصدار', versionCurrent:'محدّث', versionOld:'يحتاج تحديثًا', versionUnknown:'لم يُرسل بعد (التطبيق القديم)', appVersionLine:v=>'Ricotta Orders · الإصدار '+v, agoNow:'الآن', agoMin:n=>'قبل '+n+' دقيقة', agoHour:n=>'قبل '+n+' ساعة', agoDay:n=>'قبل '+n+' يوم',
     devicesLoggedInEyebrow:'مسجّل الدخول الآن',
-    
-    
     devicesHint:'نشط الآن = استخدم التطبيق خلال آخر 5 دقائق. مسجّل الدخول = مسجّل لكن التطبيق مغلق أو خامل. الجهاز الذي يخرج، أو تُخرجه أنت، يختفي من هذه القائمة.',
     logoutDevice:'إخراج', refreshDevice:'تحديث',
     logoutAllOthers:'إخراج كل الأجهزة الأخرى', refreshAllDevices:'تحديث كل الأجهزة',
@@ -509,7 +476,7 @@ const T = {
     notifSettingsTitle:'الإشعارات', notifThisDevice:'هذا الجهاز',
     settingsAppearance:'المظهر',
 
-    settingsOrderScreen:'شاشة الطلب', 
+    settingsOrderScreen:'شاشة الطلب',
     compactRowsLabel:'صفوف مضغوطة', compactRowsHint:'تتسع الشاشة لمواد أكثر عند تقديم طلب طويل.',
     lastQtyLabel:'إظهار آخر كمية', lastQtyHint:'يعرض ما طلبته آخر مرة تحت كل مادة.', lastQty:n=>'آخر مرة: '+n,
     notifOn:'مفعّلة', notifOff:'متوقفة', notifTurnOff:'إيقاف',
@@ -532,10 +499,6 @@ const T = {
     notifPartialMsg:(s,f)=>'أُرسل إلى '+s+' جهاز؛ تعذّر الوصول إلى '+f+'.',
     notifDeliveryFailed:'تعذّر إيصال الإشعار إلى أي جهاز. على ذلك الجهاز، أوقف الإشعارات ثم فعّلها مجددًا.',
     notifNoDevicesLoggedOut:'الإشعارات مفعّلة فقط على أجهزة خارج الجلسة. التذكيرات تُرسل إلى الأجهزة المسجّلة.',
-    
-    
-    
-    
     notifSend:'إرسال',
     notifSentMsg:n=>'أُرسل إلى '+n+' جهاز.',
     notifNoDevices:'لم يفعّل أي جهاز الإشعارات بعد.',
@@ -584,7 +547,7 @@ const T = {
       key_rejected:'رفضت خدمة الذكاء الاصطناعي مفتاح ريكو. يجب على روژا تحديثه.', model_unavailable:'خدمة الذكاء الاصطناعي غير متاحة الآن. حاول لاحقًا.',
       stopped:'تم الإيقاف.', bad_request:'لم يستطع ريكو قراءة تلك الرسالة. حاول مرة أخرى.'},
     ricoOpenSettings:'فتح الإعدادات', ricoUndone:'تم التراجع', ricoDismissed:'ليس الآن', ricoDone:'تم', ricoOpenOrder:'فتح الطلب', ricoUndo:'تراجع', ricoNotNow:'ليس الآن',
-    ricoAddsToDraft:'تُضاف هذه إلى ما هو موجود في مسودتك.', 
+    ricoAddsToDraft:'تُضاف هذه إلى ما هو موجود في مسودتك.',
     ricoCardNewItem:'مادة جديدة', ricoCardEditItem:'تعديل مادة', ricoCardNewSupplier:'مورّد جديد', ricoCardNotify:'إشعار إلى كل الأجهزة',
     ricoOpenScreen:n=>'فتح '+n, ricoAutoTag:'ملأه ريكو',
     ricoPlaceholder:'اكتب رسالة إلى ريكو…', ricoStop:'إيقاف', ricoSend:'إرسال',
@@ -601,11 +564,6 @@ const T = {
     ricoOrderApplied:n=>'وُضعت '+n+' مادة في طلب اليوم',
     ricoNotificationSent:'أُرسل الإشعار', ricoUndoneToast:'عادت مسودة طلبك السابقة',
     ricoNavLate:n=>'ريكو: '+n+' طلب متأخر', ricoNavUnread:'ريكو: رسالة جديدة',
-    ricoChecking:'جارٍ التحقق…', 
-    
-    ricoConnected:'متصل', ricoDisconnected:'غير متصل',
-    ricoGroqSetupPrompt:'الصق مفتاح Groq API. يُرسل مباشرة إلى الخادم المحمي، ويُغلق هذا الإعداد لمرة واحدة بعد الحفظ.',
-    ricoGroqSave:'حفظ مفتاح Groq', ricoGroqSaved:'Groq GPT-OSS 120B جاهز، ويبقى Gemini احتياطيًا.', ricoGroqInvalid:'أدخل مفتاح Groq صحيحًا يبدأ بـ gsk_.',
     ricoSuggestsLabel:'يقترح ريكو',
     ricoSuggestUsual:(sup,day)=>'طلبك المعتاد يوم '+day+' من '+sup+'.',
     ricoSuggestDue:(sup,time)=>'موعد '+sup+' كان '+time+' ولم يُرسل بعد.',
@@ -655,7 +613,6 @@ Object.assign(T.en, {
   pinItem:'Pin to top', unpinItem:'Unpin', pinnedTitle:'Pinned',
   itemNoteLabel:'Note for the supplier', itemNoteHint:'Goes into the WhatsApp message, e.g. “ripe, not soft”.', itemNoteEdit:'Note', recordNote:'Note',
   ricoReadOnly:n=>n+'’s chat with Rico · read only', ricoBackToMine:'Back to my chat',
-  
   });
 Object.assign(T.ku, {
 
@@ -681,7 +638,6 @@ Object.assign(T.ku, {
   pinItem:'هەڵواسین لە سەرەوە', unpinItem:'لابردنی هەڵواسین', pinnedTitle:'هەڵواسراو',
   itemNoteLabel:'تێبینی بۆ دابینکەر', itemNoteHint:'دەچێتە ناو نامەی واتسئاپەکەوە، بۆ نموونە «پێگەیشتوو، نەرم نەبێت».', itemNoteEdit:'تێبینی', recordNote:'تێبینی',
   ricoReadOnly:n=>'گفتوگۆی '+n+' لەگەڵ ریکۆ · تەنها خوێندنەوە', ricoBackToMine:'گەڕانەوە بۆ گفتوگۆکەی خۆم',
-  
   });
 Object.assign(T.ar, {
 
@@ -707,7 +663,6 @@ Object.assign(T.ar, {
   pinItem:'تثبيت في الأعلى', unpinItem:'إلغاء التثبيت', pinnedTitle:'المثبّتة',
   itemNoteLabel:'ملاحظة للمورّد', itemNoteHint:'تُضاف إلى رسالة واتساب، مثل «ناضجة، غير طرية».', itemNoteEdit:'ملاحظة', recordNote:'ملاحظة',
   ricoReadOnly:n=>'محادثة '+n+' مع ريكو · للقراءة فقط', ricoBackToMine:'العودة إلى محادثتي',
-  
   });
 
 /* Order cut-offs and the month archive. */
@@ -1086,44 +1041,20 @@ Object.assign(T.en, {
   aiBrainsTitle:'Rico’s AI', aiRoleMain:'Answers first', aiRoleBackup1:'Backup when Haiku can’t answer', aiRoleBackup2:'Backup when Gemini is busy',
   aiNotConnected:'Not connected', aiNotUsedYet:'Connected, not used yet', aiState_working:'Working', aiState_key_rejected:'Key rejected', aiState_no_funds:'Out of credit',
   aiState_busy:'Busy', aiState_failed:'Problem', aiState_model_unavailable:'Model unavailable', aiState_not_configured:'Not connected',
-  aiReplies:n=>n===1?'1 reply this month':n+' replies this month', aiFreePlan:'Free plan', aiSpent:x=>x+' spent this month (from Anthropic)',
-  aiBillNeedsKey:'Connect the bill to see the real spend', aiBillKeyRejected:'The bill key was rejected', aiBillUnavailable:'Anthropic’s bill could not be read right now',
-  aiConnect:'Connect Haiku', aiReplaceKey:'Replace key', aiConnectBill:'Connect the bill', aiReplaceBillKey:'Replace bill key', aiDisconnect:'Disconnect',
+  aiReplies:n=>n===1?'1 reply this month':n+' replies this month', aiFreePlan:'Free plan',
   aiBrainsFoot:'Haiku answers first. If it can’t (no credit, a rejected key, busy or slow), Gemini answers, and Groq when Gemini is busy. Voice messages are read by Gemini or Groq.',
-  aiKeyPrompt:'Paste Rico’s Anthropic API key. It is checked with Anthropic, saved on the server, and never shown again.',
-  aiBillKeyPrompt:'Paste the read-only Anthropic admin key. It is only used to read the real bill, is checked first, and is never shown again.',
-  aiKeySaved:'Haiku is connected', aiBillKeySaved:'The bill is connected',
-  aiKeyError_invalid_key:'Anthropic did not accept this key. Check that it was copied in full.', aiKeyError_not_admin:'This key cannot read the bill. Use an admin key (it starts with sk-ant-admin).',
-  aiKeyError_not_organization:'Anthropic only shares the bill with organization accounts. Your spend stays visible in Anthropic’s Console.', aiKeyError_check_failed:'Anthropic could not be reached to check the key. Try again in a moment.',
-  aiKeyError_other:'The key could not be saved. Try again.', aiDisconnectConfirm:'Disconnect Haiku? Rico will answer with the free backups until a key is connected again.',
 });
 Object.assign(T.ku, {
   aiBrainsTitle:'زیرەکی دەستکردی ریکۆ', aiRoleMain:'یەکەم وەڵام دەداتەوە', aiRoleBackup1:'یەدەگ کاتێک Haiku ناتوانێت وەڵام بداتەوە', aiRoleBackup2:'یەدەگ کاتێک Gemini سەرقاڵە',
   aiNotConnected:'پەیوەست نییە', aiNotUsedYet:'پەیوەستە، هێشتا بەکارنەهاتووە', aiState_working:'کار دەکات', aiState_key_rejected:'کلیلەکە ڕەتکرایەوە', aiState_no_funds:'باڵانس نەماوە',
   aiState_busy:'سەرقاڵە', aiState_failed:'کێشە', aiState_model_unavailable:'مۆدێلەکە بەردەست نییە', aiState_not_configured:'پەیوەست نییە',
-  aiReplies:n=>n+' وەڵام ئەم مانگە', aiFreePlan:'پلانی بێبەرامبەر', aiSpent:x=>x+' خەرجکراوە ئەم مانگە (لە Anthropic ەوە)',
-  aiBillNeedsKey:'پسوولەکە پەیوەست بکە بۆ بینینی خەرجی ڕاستەقینە', aiBillKeyRejected:'کلیلی پسوولەکە ڕەتکرایەوە', aiBillUnavailable:'ئێستا پسوولەی Anthropic نەخوێندرایەوە',
-  aiConnect:'Haiku پەیوەست بکە', aiReplaceKey:'گۆڕینی کلیل', aiConnectBill:'پسوولەکە پەیوەست بکە', aiReplaceBillKey:'گۆڕینی کلیلی پسوولە', aiDisconnect:'پچڕاندن',
+  aiReplies:n=>n+' وەڵام ئەم مانگە', aiFreePlan:'پلانی بێبەرامبەر',
   aiBrainsFoot:'Haiku یەکەم وەڵام دەداتەوە. ئەگەر نەتوانێت (باڵانس نەماوە، کلیل ڕەتکراوە، سەرقاڵ یان خاو)، Gemini وەڵام دەداتەوە، و Groq کاتێک Gemini سەرقاڵە. نامە دەنگییەکان Gemini یان Groq دەیانخوێننەوە.',
-  aiKeyPrompt:'کلیلی API ی Anthropic ی ریکۆ لێرە دابنێ. لەگەڵ Anthropic دەپشکنرێت، لەسەر سێرڤەر پاشەکەوت دەکرێت و هەرگیز دووبارە پیشان نادرێتەوە.',
-  aiBillKeyPrompt:'کلیلی ئەدمینی Anthropic (تەنها خوێندنەوە) لێرە دابنێ. تەنها بۆ خوێندنەوەی پسوولەی ڕاستەقینە بەکاردێت، سەرەتا دەپشکنرێت و هەرگیز پیشان نادرێتەوە.',
-  aiKeySaved:'Haiku پەیوەستکرا', aiBillKeySaved:'پسوولەکە پەیوەستکرا',
-  aiKeyError_invalid_key:'Anthropic ئەم کلیلەی وەرنەگرت. دڵنیابە کە بە تەواوی کۆپی کراوە.', aiKeyError_not_admin:'ئەم کلیلە ناتوانێت پسوولە بخوێنێتەوە. کلیلی ئەدمین بەکاربهێنە (بە sk-ant-admin دەست پێدەکات).',
-  aiKeyError_not_organization:'Anthropic تەنها پسوولە بە هەژمارە ڕێکخراوەکان دەدات. خەرجییەکەت لە Console ی Anthropic دا دیارە.', aiKeyError_check_failed:'نەتوانرا پەیوەندی بە Anthropic بکرێت بۆ پشکنینی کلیلەکە. دواتر هەوڵ بدەرەوە.',
-  aiKeyError_other:'کلیلەکە پاشەکەوت نەکرا. دووبارە هەوڵ بدەرەوە.', aiDisconnectConfirm:'Haiku بپچڕێنرێت؟ ریکۆ بە یەدەگە بێبەرامبەرەکان وەڵام دەداتەوە تا کلیلێک دووبارە پەیوەست دەکرێتەوە.',
 });
 Object.assign(T.ar, {
   aiBrainsTitle:'ذكاء ريكو', aiRoleMain:'يجيب أولًا', aiRoleBackup1:'احتياطي عندما لا يستطيع Haiku الإجابة', aiRoleBackup2:'احتياطي عندما يكون Gemini مشغولًا',
   aiNotConnected:'غير متصل', aiNotUsedYet:'متصل، لم يُستخدم بعد', aiState_working:'يعمل', aiState_key_rejected:'المفتاح مرفوض', aiState_no_funds:'نفد الرصيد',
   aiState_busy:'مشغول', aiState_failed:'مشكلة', aiState_model_unavailable:'النموذج غير متاح', aiState_not_configured:'غير متصل',
-  aiReplies:n=>n+' رد هذا الشهر', aiFreePlan:'خطة مجانية', aiSpent:x=>x+' أُنفقت هذا الشهر (من Anthropic)',
-  aiBillNeedsKey:'اربط الفاتورة لرؤية الإنفاق الحقيقي', aiBillKeyRejected:'رُفض مفتاح الفاتورة', aiBillUnavailable:'تعذّرت قراءة فاتورة Anthropic الآن',
-  aiConnect:'ربط Haiku', aiReplaceKey:'استبدال المفتاح', aiConnectBill:'ربط الفاتورة', aiReplaceBillKey:'استبدال مفتاح الفاتورة', aiDisconnect:'فصل',
+  aiReplies:n=>n+' رد هذا الشهر', aiFreePlan:'خطة مجانية',
   aiBrainsFoot:'يجيب Haiku أولًا. إن لم يستطع (نفد الرصيد، أو رُفض المفتاح، أو مشغول، أو بطيء) يجيب Gemini، ثم Groq عندما يكون Gemini مشغولًا. تُقرأ الرسائل الصوتية بواسطة Gemini أو Groq.',
-  aiKeyPrompt:'ألصق مفتاح Anthropic API الخاص بريكو. يُتحقق منه مع Anthropic، ويُحفظ على الخادم، ولا يُعرض مرة أخرى.',
-  aiBillKeyPrompt:'ألصق مفتاح المشرف لدى Anthropic (للقراءة فقط). يُستخدم فقط لقراءة الفاتورة الحقيقية، ويُتحقق منه أولًا، ولا يُعرض مرة أخرى.',
-  aiKeySaved:'تم ربط Haiku', aiBillKeySaved:'تم ربط الفاتورة',
-  aiKeyError_invalid_key:'لم تقبل Anthropic هذا المفتاح. تأكد من نسخه كاملًا.', aiKeyError_not_admin:'هذا المفتاح لا يقرأ الفاتورة. استخدم مفتاح مشرف (يبدأ بـ sk-ant-admin).',
-  aiKeyError_not_organization:'تشارك Anthropic الفاتورة مع حسابات المؤسسات فقط. يبقى إنفاقك ظاهرًا في Console لدى Anthropic.', aiKeyError_check_failed:'تعذّر الوصول إلى Anthropic للتحقق من المفتاح. حاول بعد قليل.',
-  aiKeyError_other:'تعذّر حفظ المفتاح. حاول مرة أخرى.', aiDisconnectConfirm:'فصل Haiku؟ سيجيب ريكو بالخيارات الاحتياطية المجانية حتى يُربط مفتاح من جديد.',
 });
