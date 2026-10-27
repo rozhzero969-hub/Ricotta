@@ -741,19 +741,19 @@ Object.assign(T.ar, {
 Object.assign(T.en, {
   accountMenu:n=>'Account: '+n, privacyPolicy:'Privacy Policy', settingsPrivacy:'Privacy',
   aiTitle:'Rico Uses AI', aiAllow:'Allow', aiNotNow:'Not Now',
-  aiBody:'To answer you, Rico sends what you write or say, and the order details he needs (items, suppliers and quantities), to Google Gemini or Groq. They use it only to write his reply. Your PIN is never sent.',
+  aiBody:'To answer you, Rico sends what you write or say, and the order details he needs (items, suppliers and quantities), to Anthropic (Claude), Google Gemini or Groq. They use it only to write his reply. Your PIN is never sent.',
   aiSettingLabel:'Rico’s AI', aiSettingHint:'Sends your messages to Google Gemini or Groq so Rico can answer. Off: Rico asks again before he answers.',
 });
 Object.assign(T.ku, {
   accountMenu:n=>'هەژمار: '+n, privacyPolicy:'سیاسەتی تایبەتمەندی', settingsPrivacy:'تایبەتمەندی',
   aiTitle:'ریکۆ زیرەکی دەستکرد بەکاردەهێنێت', aiAllow:'ڕێگە بدە', aiNotNow:'ئێستا نا',
-  aiBody:'بۆ وەڵامدانەوەت، ریکۆ ئەوەی دەینووسیت یان دەیڵێیت، لەگەڵ ئەو زانیارییانەی داواکاری کە پێویستیەتی (کاڵاکان، دابینکەران و بڕەکان)، دەنێرێت بۆ Google Gemini یان Groq. تەنها بۆ نووسینی وەڵامەکەی بەکاری دەهێنن. PIN ـەکەت هەرگیز نانێردرێت.',
+  aiBody:'بۆ وەڵامدانەوەت، ریکۆ ئەوەی دەینووسیت یان دەیڵێیت، لەگەڵ ئەو زانیارییانەی داواکاری کە پێویستیەتی (کاڵاکان، دابینکەران و بڕەکان)، دەنێرێت بۆ Anthropic (Claude)، Google Gemini یان Groq. تەنها بۆ نووسینی وەڵامەکەی بەکاری دەهێنن. PIN ـەکەت هەرگیز نانێردرێت.',
   aiSettingLabel:'زیرەکی دەستکردی ریکۆ', aiSettingHint:'نامەکانت دەنێرێت بۆ Google Gemini یان Groq تا ریکۆ وەڵام بداتەوە. کە کوژاوە بێت، ریکۆ پێش وەڵامدانەوە دووبارە دەپرسێت.',
 });
 Object.assign(T.ar, {
   accountMenu:n=>'الحساب: '+n, privacyPolicy:'سياسة الخصوصية', settingsPrivacy:'الخصوصية',
   aiTitle:'ريكو يستخدم الذكاء الاصطناعي', aiAllow:'سماح', aiNotNow:'ليس الآن',
-  aiBody:'ليجيبك، يرسل ريكو ما تكتبه أو تقوله، وتفاصيل الطلبات التي يحتاجها (الأصناف والموردين والكميات)، إلى Google Gemini أو Groq. يستخدمونها فقط لكتابة رده. لا يُرسل رمز PIN أبدًا.',
+  aiBody:'ليجيبك، يرسل ريكو ما تكتبه أو تقوله، وتفاصيل الطلبات التي يحتاجها (الأصناف والموردين والكميات)، إلى Anthropic (Claude) أو Google Gemini أو Groq. يستخدمونها فقط لكتابة رده. لا يُرسل رمز PIN أبدًا.',
   aiSettingLabel:'ذكاء ريكو الاصطناعي', aiSettingHint:'يرسل رسائلك إلى Google Gemini أو Groq ليتمكن ريكو من الرد. عند الإيقاف، يسأل ريكو مرة أخرى قبل أن يرد.',
 });
 
@@ -766,7 +766,7 @@ Object.assign(T.en, {
   offlineCached:x=>'Offline. Showing what this phone saved at '+x+'.',
   sendNoAccess:'Rozha sends the orders', catalogReadOnly:'You can look through the catalog. Rozha can let you change it in Admin.',
   ricoNoAccess:'This isn’t turned on for you. Ask Rozha.', ricoChatDeleted:'Chat deleted', ricoChatsDeleted:'All chats deleted',
-  ricoAbout:'Rico is the assistant built into Ricotta. He works from the kitchen’s own data (the items, the suppliers and this month’s orders) to prepare order drafts, check an order before it goes out, point out late suppliers and answer questions in Kurdish, Arabic and English. He only suggests: nothing is saved or sent until someone taps to confirm. Built on Google Gemini.',
+  ricoAbout:'Rico is the assistant built into Ricotta. He works from the kitchen’s own data (the items, the suppliers and this month’s orders) to prepare order drafts, check an order before it goes out, point out late suppliers and answer questions in Kurdish, Arabic and English. He only suggests: nothing is saved or sent until someone taps to confirm. Built on Claude Haiku by Anthropic, with Google Gemini and Groq as backups.',
   ricoAboutPrivacy:'Rico only receives what he needs to answer. PINs are never sent.',
   // Admin
   adminPage_problems:'Problems', adminPage_security:'Security', adminPage_health:'Health Check', adminPage_access:'Yunis’s Access', adminPage_pins:'PINs',
@@ -797,7 +797,7 @@ Object.assign(T.en, {
   adLastActive:x=>'active '+x, adNoTimeYet:'No time counted yet. It starts adding up with this update.',
   adTimeFoot:'Counted while the app is on the screen and someone used it in the last 5 minutes. It keeps adding up every day and never resets, not even when someone signs out.',
   adRicoChats:'Chats', adRicoVoice:'Voice messages', adRicoTokens:'Tokens used', adTokens:n=>n+' tokens', adTokensInOut:(i,o)=>i+' read · '+o+' written', adRicoWho:'Who used Rico', adRicoHour:'This hour',
-  adRicoHourValue:(n,m)=>n+' of '+m, adRicoTotal:n=>n+' this month', adRicoFoot:'Tokens are counted by Google and Groq in every reply Rico gets. Usage is kept for 90 days.',
+  adRicoHourValue:(n,m)=>n+' of '+m, adRicoTotal:n=>n+' this month', adRicoFoot:'Tokens are counted by Anthropic, Google and Groq in every reply Rico gets. Usage is kept for 90 days.',
   adLastOrdered:x=>'last ordered '+x, adNeverOrdered:'never ordered', adNothingHere:'Nothing here.',
   hcAnswered:ms=>'Answered in '+ms+' ms', hcServerHint:'Saves the orders and the catalog. Every phone uses it.', hcServerFix:'The app can’t reach the server. Check the connection, then Check Now.',
   hcSpace:'Database space', hcSpaceHint:'How much of the free plan’s 500 MB is used.', hcSpaceValue:mb=>mb+' MB of 500 MB', hcSpaceFix:'Getting full. Ask about a bigger plan if it keeps growing.',
@@ -856,7 +856,7 @@ Object.assign(T.ku, {
   offlineCached:x=>'ئۆفلاینیت. ئەوە پیشان دەدرێت کە ئەم مۆبایلە کاتژمێر '+x+' پاشەکەوتی کرد.',
   sendNoAccess:'ڕۆژا داواکارییەکان دەنێرێت', catalogReadOnly:'دەتوانیت سەیری لیستەکە بکەیت. ڕۆژا دەتوانێت لە ئەدمین ڕێگەت پێ بدات بیگۆڕیت.',
   ricoNoAccess:'ئەمە بۆ تۆ چالاک نییە. لە ڕۆژا بپرسە.', ricoChatDeleted:'گفتوگۆکە سڕایەوە', ricoChatsDeleted:'هەموو گفتوگۆکان سڕانەوە',
-  ricoAbout:'ریکۆ یاریدەدەری ناو ریکۆتایە. لەسەر زانیارییەکانی خودی چێشتخانەکە کار دەکات (کاڵاکان، دابینکەران و داواکارییەکانی ئەم مانگە) بۆ ئامادەکردنی ڕەشنووسی داواکاری، پشکنینی داواکاری پێش ناردن، ئاماژەکردن بە دابینکەرە دواکەوتووەکان و وەڵامدانەوەی پرسیار بە کوردی، عەرەبی و ئینگلیزی. تەنها پێشنیار دەکات: هیچ شتێک پاشەکەوت یان نانێردرێت تا کەسێک بۆ دڵنیابوونەوە دایبگرێت. لەسەر Google Gemini دروستکراوە.',
+  ricoAbout:'ریکۆ یاریدەدەری ناو ریکۆتایە. لەسەر زانیارییەکانی خودی چێشتخانەکە کار دەکات (کاڵاکان، دابینکەران و داواکارییەکانی ئەم مانگە) بۆ ئامادەکردنی ڕەشنووسی داواکاری، پشکنینی داواکاری پێش ناردن، ئاماژەکردن بە دابینکەرە دواکەوتووەکان و وەڵامدانەوەی پرسیار بە کوردی، عەرەبی و ئینگلیزی. تەنها پێشنیار دەکات: هیچ شتێک پاشەکەوت یان نانێردرێت تا کەسێک بۆ دڵنیابوونەوە دایبگرێت. لەسەر Claude Haiku ی Anthropic دروستکراوە، لەگەڵ Google Gemini و Groq وەک یەدەگ.',
   ricoAboutPrivacy:'ریکۆ تەنها ئەوە وەردەگرێت کە بۆ وەڵامدانەوە پێویستیەتی. کۆدەکان هەرگیز نانێردرێن.',
   adminPage_problems:'کێشەکان', adminPage_security:'ئاسایش', adminPage_health:'پشکنینی تەندروستی', adminPage_access:'دەسەڵاتەکانی یونس', adminPage_pins:'کۆدەکان',
   adminPage_devices:'ئامێرەکان', adminPage_time:'کات لە ئەپەکەدا', adminPage_rico:'ریکۆ', adminPage_catalog:'پشکنینی لیستی کاڵا',
@@ -886,7 +886,7 @@ Object.assign(T.ku, {
   adLastActive:x=>'چالاک '+x, adNoTimeYet:'هێشتا هیچ کاتێک نەژمێردراوە. لەگەڵ ئەم نوێکردنەوەیەدا دەست پێ دەکات.',
   adTimeFoot:'کاتێک دەژمێردرێت کە ئەپەکە لەسەر شاشەیە و کەسێک لە 5 خولەکی ڕابردوودا بەکاری هێنابێت. هەموو ڕۆژێک زیاد دەبێت و هەرگیز سفر نابێتەوە، تەنانەت کاتێک کەسێک دەچێتە دەرەوەش.',
   adRicoChats:'گفتوگۆکان', adRicoVoice:'نامەی دەنگی', adRicoTokens:'تۆکنی بەکارهاتوو', adTokens:n=>n+' تۆکن', adTokensInOut:(i,o)=>i+' خوێندراو · '+o+' نووسراو', adRicoWho:'کێ ریکۆی بەکارهێنا', adRicoHour:'ئەم کاتژمێرە',
-  adRicoHourValue:(n,m)=>n+' لە '+m, adRicoTotal:n=>n+' ئەم مانگە', adRicoFoot:'تۆکنەکان لە هەر وەڵامێکی ریکۆدا لەلایەن Google و Groq ەوە دەژمێردرێن. بەکارهێنان بۆ 90 ڕۆژ دەهێڵرێتەوە.',
+  adRicoHourValue:(n,m)=>n+' لە '+m, adRicoTotal:n=>n+' ئەم مانگە', adRicoFoot:'تۆکنەکان لە هەر وەڵامێکی ریکۆدا لەلایەن Anthropic، Google و Groq ەوە دەژمێردرێن. بەکارهێنان بۆ 90 ڕۆژ دەهێڵرێتەوە.',
   adLastOrdered:x=>'دوایین داواکردن '+x, adNeverOrdered:'هەرگیز داوا نەکراوە', adNothingHere:'هیچ شتێک لێرە نییە.',
   hcAnswered:ms=>'لە '+ms+' میلیچرکەدا وەڵامی دایەوە', hcServerHint:'داواکارییەکان و لیستی کاڵا پاشەکەوت دەکات. هەموو مۆبایلێک بەکاری دەهێنێت.', hcServerFix:'ئەپەکە ناگاتە سێرڤەر. پەیوەندییەکە بپشکنە، پاشان دووبارە بپشکنە.',
   hcSpace:'شوێنی بنکەدراوە', hcSpaceHint:'چەند لە 500 مێگابایتی پلانی بێبەرامبەر بەکارهاتووە.', hcSpaceValue:mb=>mb+' مێگابایت لە 500', hcSpaceFix:'خەریکە پڕ دەبێت. ئەگەر هەر زیاد بوو، پرسیاری پلانێکی گەورەتر بکە.',
@@ -941,7 +941,7 @@ Object.assign(T.ar, {
   offlineCached:x=>'غير متصل. يُعرض ما حفظه هذا الهاتف الساعة '+x+'.',
   sendNoAccess:'روژا ترسل الطلبات', catalogReadOnly:'يمكنك تصفح القائمة. يمكن لروژا أن تسمح لك بتعديلها من المشرف.',
   ricoNoAccess:'هذا غير مفعّل لك. اسأل روژا.', ricoChatDeleted:'حُذفت المحادثة', ricoChatsDeleted:'حُذفت كل المحادثات',
-  ricoAbout:'ريكو هو المساعد المدمج في ريكوتا. يعمل من بيانات المطبخ نفسه (المواد والموردين وطلبات هذا الشهر) ليجهّز مسودات الطلبات، ويراجع الطلب قبل إرساله، وينبّه إلى الموردين المتأخرين، ويجيب عن الأسئلة بالكردية والعربية والإنجليزية. هو يقترح فقط: لا يُحفظ أو يُرسل أي شيء حتى يضغط أحد للتأكيد. مبني على Google Gemini.',
+  ricoAbout:'ريكو هو المساعد المدمج في ريكوتا. يعمل من بيانات المطبخ نفسه (المواد والموردين وطلبات هذا الشهر) ليجهّز مسودات الطلبات، ويراجع الطلب قبل إرساله، وينبّه إلى الموردين المتأخرين، ويجيب عن الأسئلة بالكردية والعربية والإنجليزية. هو يقترح فقط: لا يُحفظ أو يُرسل أي شيء حتى يضغط أحد للتأكيد. مبني على Claude Haiku من Anthropic، مع Google Gemini وGroq احتياطيًا.',
   ricoAboutPrivacy:'لا يتلقى ريكو إلا ما يحتاجه للإجابة. لا تُرسل الرموز أبدًا.',
   adminPage_problems:'المشكلات', adminPage_security:'الأمان', adminPage_health:'فحص الحالة', adminPage_access:'صلاحيات يونس', adminPage_pins:'الرموز',
   adminPage_devices:'الأجهزة', adminPage_time:'الوقت في التطبيق', adminPage_rico:'ريكو', adminPage_catalog:'مراجعة القائمة',
@@ -971,7 +971,7 @@ Object.assign(T.ar, {
   adLastActive:x=>'نشط '+x, adNoTimeYet:'لم يُحسب أي وقت بعد. يبدأ الحساب مع هذا التحديث.',
   adTimeFoot:'يُحسب ما دام التطبيق على الشاشة واستخدمه أحد خلال آخر 5 دقائق. يزداد كل يوم ولا يُصفّر أبدًا، حتى عند تسجيل الخروج.',
   adRicoChats:'المحادثات', adRicoVoice:'الرسائل الصوتية', adRicoTokens:'الرموز المستخدمة', adTokens:n=>n+' رمز', adTokensInOut:(i,o)=>i+' مقروء · '+o+' مكتوب', adRicoWho:'من استخدم ريكو', adRicoHour:'هذه الساعة',
-  adRicoHourValue:(n,m)=>n+' من '+m, adRicoTotal:n=>n+' هذا الشهر', adRicoFoot:'تحسب Google و Groq الرموز في كل رد يتلقاه ريكو. يُحتفظ بالاستخدام 90 يومًا.',
+  adRicoHourValue:(n,m)=>n+' من '+m, adRicoTotal:n=>n+' هذا الشهر', adRicoFoot:'تحسب Anthropic وGoogle وGroq الرموز في كل رد يتلقاه ريكو. يُحتفظ بالاستخدام 90 يومًا.',
   adLastOrdered:x=>'آخر طلب '+x, adNeverOrdered:'لم يُطلب أبدًا', adNothingHere:'لا شيء هنا.',
   hcAnswered:ms=>'أجاب خلال '+ms+' ملّي ثانية', hcServerHint:'يحفظ الطلبات والقائمة. يستخدمه كل هاتف.', hcServerFix:'لا يصل التطبيق إلى الخادم. تحقق من الاتصال، ثم افحص الآن.',
   hcSpace:'مساحة قاعدة البيانات', hcSpaceHint:'كم استُخدم من 500 ميغابايت في الخطة المجانية.', hcSpaceValue:mb=>mb+' ميغابايت من 500', hcSpaceFix:'تقترب من الامتلاء. اسأل عن خطة أكبر إذا استمرت في الزيادة.',
@@ -1078,4 +1078,52 @@ Object.assign(T.ar, {
   spotLastOrdered:x=>'آخر طلب '+x, spotAskRico:q=>'اسأل ريكو: «'+q+'»', spotAskRicoSub:'يستطيع أن يحسب ويقارن ويتحقق',
   spotScope_all:'الكل', spotScope_items:'المواد', spotScope_suppliers:'الموردون', spotScope_orders:'الطلبات', spotScope_actions:'الإجراءات',
   spotFootMove:'تنقّل', spotFootOpen:'فتح', spotFootClose:'إغلاق',
+});
+
+/* ROZH-25: Rico's AIs in Admin (Claude Haiku first, Google Gemini and Groq as backups). Same rule: every
+   language has every key. */
+Object.assign(T.en, {
+  aiBrainsTitle:'Rico’s AI', aiRoleMain:'Answers first', aiRoleBackup1:'Backup when Haiku can’t answer', aiRoleBackup2:'Backup when Gemini is busy',
+  aiNotConnected:'Not connected', aiNotUsedYet:'Connected, not used yet', aiState_working:'Working', aiState_key_rejected:'Key rejected', aiState_no_funds:'Out of credit',
+  aiState_busy:'Busy', aiState_failed:'Problem', aiState_model_unavailable:'Model unavailable', aiState_not_configured:'Not connected',
+  aiReplies:n=>n===1?'1 reply this month':n+' replies this month', aiFreePlan:'Free plan', aiSpent:x=>x+' spent this month (from Anthropic)',
+  aiBillNeedsKey:'Connect the bill to see the real spend', aiBillKeyRejected:'The bill key was rejected', aiBillUnavailable:'Anthropic’s bill could not be read right now',
+  aiConnect:'Connect Haiku', aiReplaceKey:'Replace key', aiConnectBill:'Connect the bill', aiReplaceBillKey:'Replace bill key', aiDisconnect:'Disconnect',
+  aiBrainsFoot:'Haiku answers first. If it can’t (no credit, a rejected key, busy or slow), Gemini answers, and Groq when Gemini is busy. Voice messages are read by Gemini or Groq.',
+  aiKeyPrompt:'Paste Rico’s Anthropic API key. It is checked with Anthropic, saved on the server, and never shown again.',
+  aiBillKeyPrompt:'Paste the read-only Anthropic admin key. It is only used to read the real bill, is checked first, and is never shown again.',
+  aiKeySaved:'Haiku is connected', aiBillKeySaved:'The bill is connected',
+  aiKeyError_invalid_key:'Anthropic did not accept this key. Check that it was copied in full.', aiKeyError_not_admin:'This key cannot read the bill. Use an admin key (it starts with sk-ant-admin).',
+  aiKeyError_not_organization:'Anthropic only shares the bill with organization accounts. Your spend stays visible in Anthropic’s Console.', aiKeyError_check_failed:'Anthropic could not be reached to check the key. Try again in a moment.',
+  aiKeyError_other:'The key could not be saved. Try again.', aiDisconnectConfirm:'Disconnect Haiku? Rico will answer with the free backups until a key is connected again.',
+});
+Object.assign(T.ku, {
+  aiBrainsTitle:'زیرەکی دەستکردی ریکۆ', aiRoleMain:'یەکەم وەڵام دەداتەوە', aiRoleBackup1:'یەدەگ کاتێک Haiku ناتوانێت وەڵام بداتەوە', aiRoleBackup2:'یەدەگ کاتێک Gemini سەرقاڵە',
+  aiNotConnected:'پەیوەست نییە', aiNotUsedYet:'پەیوەستە، هێشتا بەکارنەهاتووە', aiState_working:'کار دەکات', aiState_key_rejected:'کلیلەکە ڕەتکرایەوە', aiState_no_funds:'باڵانس نەماوە',
+  aiState_busy:'سەرقاڵە', aiState_failed:'کێشە', aiState_model_unavailable:'مۆدێلەکە بەردەست نییە', aiState_not_configured:'پەیوەست نییە',
+  aiReplies:n=>n+' وەڵام ئەم مانگە', aiFreePlan:'پلانی بێبەرامبەر', aiSpent:x=>x+' خەرجکراوە ئەم مانگە (لە Anthropic ەوە)',
+  aiBillNeedsKey:'پسوولەکە پەیوەست بکە بۆ بینینی خەرجی ڕاستەقینە', aiBillKeyRejected:'کلیلی پسوولەکە ڕەتکرایەوە', aiBillUnavailable:'ئێستا پسوولەی Anthropic نەخوێندرایەوە',
+  aiConnect:'Haiku پەیوەست بکە', aiReplaceKey:'گۆڕینی کلیل', aiConnectBill:'پسوولەکە پەیوەست بکە', aiReplaceBillKey:'گۆڕینی کلیلی پسوولە', aiDisconnect:'پچڕاندن',
+  aiBrainsFoot:'Haiku یەکەم وەڵام دەداتەوە. ئەگەر نەتوانێت (باڵانس نەماوە، کلیل ڕەتکراوە، سەرقاڵ یان خاو)، Gemini وەڵام دەداتەوە، و Groq کاتێک Gemini سەرقاڵە. نامە دەنگییەکان Gemini یان Groq دەیانخوێننەوە.',
+  aiKeyPrompt:'کلیلی API ی Anthropic ی ریکۆ لێرە دابنێ. لەگەڵ Anthropic دەپشکنرێت، لەسەر سێرڤەر پاشەکەوت دەکرێت و هەرگیز دووبارە پیشان نادرێتەوە.',
+  aiBillKeyPrompt:'کلیلی ئەدمینی Anthropic (تەنها خوێندنەوە) لێرە دابنێ. تەنها بۆ خوێندنەوەی پسوولەی ڕاستەقینە بەکاردێت، سەرەتا دەپشکنرێت و هەرگیز پیشان نادرێتەوە.',
+  aiKeySaved:'Haiku پەیوەستکرا', aiBillKeySaved:'پسوولەکە پەیوەستکرا',
+  aiKeyError_invalid_key:'Anthropic ئەم کلیلەی وەرنەگرت. دڵنیابە کە بە تەواوی کۆپی کراوە.', aiKeyError_not_admin:'ئەم کلیلە ناتوانێت پسوولە بخوێنێتەوە. کلیلی ئەدمین بەکاربهێنە (بە sk-ant-admin دەست پێدەکات).',
+  aiKeyError_not_organization:'Anthropic تەنها پسوولە بە هەژمارە ڕێکخراوەکان دەدات. خەرجییەکەت لە Console ی Anthropic دا دیارە.', aiKeyError_check_failed:'نەتوانرا پەیوەندی بە Anthropic بکرێت بۆ پشکنینی کلیلەکە. دواتر هەوڵ بدەرەوە.',
+  aiKeyError_other:'کلیلەکە پاشەکەوت نەکرا. دووبارە هەوڵ بدەرەوە.', aiDisconnectConfirm:'Haiku بپچڕێنرێت؟ ریکۆ بە یەدەگە بێبەرامبەرەکان وەڵام دەداتەوە تا کلیلێک دووبارە پەیوەست دەکرێتەوە.',
+});
+Object.assign(T.ar, {
+  aiBrainsTitle:'ذكاء ريكو', aiRoleMain:'يجيب أولًا', aiRoleBackup1:'احتياطي عندما لا يستطيع Haiku الإجابة', aiRoleBackup2:'احتياطي عندما يكون Gemini مشغولًا',
+  aiNotConnected:'غير متصل', aiNotUsedYet:'متصل، لم يُستخدم بعد', aiState_working:'يعمل', aiState_key_rejected:'المفتاح مرفوض', aiState_no_funds:'نفد الرصيد',
+  aiState_busy:'مشغول', aiState_failed:'مشكلة', aiState_model_unavailable:'النموذج غير متاح', aiState_not_configured:'غير متصل',
+  aiReplies:n=>n+' رد هذا الشهر', aiFreePlan:'خطة مجانية', aiSpent:x=>x+' أُنفقت هذا الشهر (من Anthropic)',
+  aiBillNeedsKey:'اربط الفاتورة لرؤية الإنفاق الحقيقي', aiBillKeyRejected:'رُفض مفتاح الفاتورة', aiBillUnavailable:'تعذّرت قراءة فاتورة Anthropic الآن',
+  aiConnect:'ربط Haiku', aiReplaceKey:'استبدال المفتاح', aiConnectBill:'ربط الفاتورة', aiReplaceBillKey:'استبدال مفتاح الفاتورة', aiDisconnect:'فصل',
+  aiBrainsFoot:'يجيب Haiku أولًا. إن لم يستطع (نفد الرصيد، أو رُفض المفتاح، أو مشغول، أو بطيء) يجيب Gemini، ثم Groq عندما يكون Gemini مشغولًا. تُقرأ الرسائل الصوتية بواسطة Gemini أو Groq.',
+  aiKeyPrompt:'ألصق مفتاح Anthropic API الخاص بريكو. يُتحقق منه مع Anthropic، ويُحفظ على الخادم، ولا يُعرض مرة أخرى.',
+  aiBillKeyPrompt:'ألصق مفتاح المشرف لدى Anthropic (للقراءة فقط). يُستخدم فقط لقراءة الفاتورة الحقيقية، ويُتحقق منه أولًا، ولا يُعرض مرة أخرى.',
+  aiKeySaved:'تم ربط Haiku', aiBillKeySaved:'تم ربط الفاتورة',
+  aiKeyError_invalid_key:'لم تقبل Anthropic هذا المفتاح. تأكد من نسخه كاملًا.', aiKeyError_not_admin:'هذا المفتاح لا يقرأ الفاتورة. استخدم مفتاح مشرف (يبدأ بـ sk-ant-admin).',
+  aiKeyError_not_organization:'تشارك Anthropic الفاتورة مع حسابات المؤسسات فقط. يبقى إنفاقك ظاهرًا في Console لدى Anthropic.', aiKeyError_check_failed:'تعذّر الوصول إلى Anthropic للتحقق من المفتاح. حاول بعد قليل.',
+  aiKeyError_other:'تعذّر حفظ المفتاح. حاول مرة أخرى.', aiDisconnectConfirm:'فصل Haiku؟ سيجيب ريكو بالخيارات الاحتياطية المجانية حتى يُربط مفتاح من جديد.',
 });

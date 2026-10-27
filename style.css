@@ -1722,6 +1722,20 @@ html.rtl .ad-strip{padding:10px 14px 10px 8px}
 .ad-check summary{list-style:none;display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer}
 .ad-check summary::-webkit-details-marker{display:none}
 .ad-check[open] summary .sheet-chevron{transform:rotate(90deg)}
+/* Admin › Rico › Rico's AI: one row per AI with its state, this month's numbers and the bill. */
+.ad-ai-list{padding:4px 16px}
+.ad-ai{padding:14px 0}
+.ad-ai+.ad-ai{border-top:.5px solid var(--line)}
+.ad-ai-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.ad-ai-state{flex:none;display:inline-flex;align-items:center;gap:6px;max-width:55%;font-size:.8125rem;font-weight:600;color:var(--ink-soft);text-align:end}
+.ad-ai-state i{flex:none;width:8px;height:8px;border-radius:50%;background:var(--ink-faint)}
+.ad-ai-state.good{color:var(--ok-ink)}.ad-ai-state.good i{background:var(--ok)}
+.ad-ai-state.warn i{background:#FF9F0A}
+.ad-ai-state.bad{color:var(--clay-ink)}.ad-ai-state.bad i{background:var(--red)}
+.ad-ai-numbers{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:.8125rem;color:var(--ink-soft)}
+.ad-ai-bill{color:var(--ink);font-weight:500}
+.ad-ai-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.ad-ai-actions .btn{min-height:36px;padding:0 14px;font-size:.875rem}
 .ad-check-count{flex:none;min-width:34px;height:34px;padding:0 8px;border-radius:999px;display:grid;place-items:center;background:rgba(255,59,48,.12);color:var(--clay-ink);font-family:var(--font-round);font-weight:700}
 .ad-check-count.none{background:rgba(var(--accent-rgb),.16);color:var(--tint)}
 .ad-check-list{display:flex;flex-direction:column;padding:0 8px 8px}

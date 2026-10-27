@@ -265,6 +265,13 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await assert.rejects(q("select app_internal_rico_usage('yunis',now()-interval '1 day')"),/Forbidden/);
  const rico=(await q("select app_internal_rico_usage('rozha',now()-interval '1 day') as r"))[0].r;
  assert.deepEqual([rico.kinds,rico.people,rico.thisHour],[{chat:1,voice:1,transfer:1},{yunis:3},3]);
+ // How each of Rico's AIs answered last: one row per AI, server only.
+ await db.exec("insert into app_ai_status(provider,state) values('anthropic','no_funds') on conflict (provider) do update set state=excluded.state;");
+ await db.exec("insert into app_ai_status(provider,state) values('anthropic','working') on conflict (provider) do update set state=excluded.state;");
+ assert.deepEqual(await q("select provider,state from app_ai_status"),[{provider:'anthropic',state:'working'}]);
+ await assert.rejects(db.exec("insert into app_ai_status(provider,state) values('openai','working');"),/provider_check/);
+ await assert.rejects(db.exec("insert into app_ai_status(provider,state) values('groq','sleepy');"),/state_check/);
+ assert.equal((await q("select has_table_privilege('anon','app_ai_status','select') as a, has_table_privilege('authenticated','app_ai_status','select') as b"))[0].a,false,'the browser cannot read AI states');
  // Health Check reads the database itself.
  await assert.rejects(q("select app_internal_diagnostics('yunis')"),/Forbidden/);
  const health=(await q("select app_internal_diagnostics('rozha') as r"))[0].r;
