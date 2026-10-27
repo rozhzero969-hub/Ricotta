@@ -386,7 +386,7 @@
         {id:'groq', connected:true, state:'busy', at:new Date(Date.now() - 86400000).toISOString(), calls:15, input:34000, output:7500, bill:{free:true}}]});
     }
     if(method === 'PUT' && path === 'admin/ai/key'){
-      const shape = {anthropic:/^sk-ant-api\d\d-[A-Za-z0-9_-]{20,}$/, anthropic_admin:/^sk-ant-admin\d\d-[A-Za-z0-9_-]{20,}$/}[body.kind];
+      const shape = {anthropic:/^sk-ant-(?!admin)[A-Za-z0-9_-]{20,300}$/, anthropic_admin:/^sk-ant-admin[A-Za-z0-9_-]{20,300}$/}[body.kind];
       if(!shape) return fail('invalid_input');
       if(!shape.test(String(body.key || '').trim())) return fail('invalid_key');
       (db.ai ||= {})[body.kind === 'anthropic' ? 'anthropic' : 'admin'] = true; save(); return ok();

@@ -1467,18 +1467,25 @@ export async function adminAi(db: any) {
 /* Rozha connects (or replaces) a key from Admin. Each key is checked with Anthropic before it is saved:
    the Rico key by listing models (no tokens are spent), the admin key by reading the cost report. Keys
    are never sent back to the app. */
-const KEY_SHAPES: Record<string, RegExp> = { anthropic: /^sk-ant-api\d\d-[A-Za-z0-9_-]{20,}$/, anthropic_admin: /^sk-ant-admin\d\d-[A-Za-z0-9_-]{20,}$/ };
+// Only the start is checked here (Anthropic changes the rest of the format now and then); Anthropic itself decides.
+const KEY_SHAPES: Record<string, RegExp> = { anthropic: /^sk-ant-(?!admin)[A-Za-z0-9_-]{20,300}$/, anthropic_admin: /^sk-ant-admin[A-Za-z0-9_-]{20,300}$/ };
+// What a refused key looked like, for the logs: its length and the public part of the prefix, never the secret.
+const keyHint = (k: string) => `${k.length} chars, ${(k.match(/^sk-ant-[a-z]+\d*/)?.[0] ?? k.slice(0, 3) + "…")}`;
 export async function saveAiKey(db: any, kind: unknown, key: unknown) {
   const k = String(kind ?? ""), value = String(key ?? "").trim();
   if (!KEY_SHAPES[k]) return { ok: false, error: "invalid_input" };
-  if (!KEY_SHAPES[k].test(value)) return { ok: false, error: "invalid_key" };
+  if (!KEY_SHAPES[k].test(value)) { console.error("anthropic key shape", k, keyHint(value)); return { ok: false, error: "invalid_key" }; }
   let res: Response;
   try {
     res = k === "anthropic"
       ? await fetch(`${ANTHROPIC_URL}/models?limit=1`, { headers: { "x-api-key": value, "anthropic-version": ANTHROPIC_VERSION } })
       : await fetch(`${ANTHROPIC_URL}/organizations/cost_report?starting_at=${encodeURIComponent(monthStart())}&limit=1`, { headers: { "x-api-key": value, "anthropic-version": ANTHROPIC_VERSION } });
   } catch { return { ok: false, error: "check_failed" }; }
-  if (res.status === 401 || res.status === 403) return { ok: false, error: k === "anthropic_admin" && res.status === 403 ? "not_admin" : "invalid_key" };
+  if (res.status === 401 || res.status === 403) {
+    const err = await res.json().catch(() => null);
+    console.error("anthropic key refused", k, res.status, err?.error?.type ?? "", keyHint(value));
+    return { ok: false, error: k === "anthropic_admin" && res.status === 403 ? "not_admin" : "invalid_key" };
+  }
   if (!res.ok) { console.error("anthropic key check", k, res.status); return { ok: false, error: k === "anthropic_admin" && res.status === 404 ? "not_organization" : "check_failed" }; }
   const { error } = await db.from("app_secrets").upsert({ key: k === "anthropic" ? "anthropic_api_key" : "anthropic_admin_key", value }, { onConflict: "key" });
   if (error) return { ok: false, error: "save_failed" };
