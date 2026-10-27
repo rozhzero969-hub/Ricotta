@@ -96,7 +96,7 @@ globalThis.fetch = async (input, options = {}) => {
       ? new Response(JSON.stringify({ error: { code: 131047, message: 'Re-engagement message' } }), { status: 400 })
       : new Response(JSON.stringify({ messages: [{ id: 'wamid.test' + whatsappCalls.length }] }), { headers: { 'content-type': 'application/json' } });
   }
-  if (url.includes('api.groq.com/openai/v1/chat/completions')) {
+  if (url === 'https://api.groq.com/openai/v1/chat/completions') {
     if (groqUnavailable) return new Response('{"error":{"message":"busy"}}', { status: 503 });
     if (groqSecondTurnDown && groqTurn === 1) { groqTurn++; return new Response('{"error":{"message":"busy"}}', { status: 503 }); }
     const payload = groqReply ? groqReply.map(content => ({ choices: [{ delta: { content } }] }))
@@ -301,7 +301,7 @@ assert.equal(ricoOrders.length, 1);
 assert.equal(ricoOrders[0].status, 'sent');
 assert.equal(ricoOrders[0].message_id, 'wamid.test1');
 assert.match(ricoOrders[0].reason, /usual amounts .*based on the last 3 orders.*with the amounts Rozha named/);
-const toolResult = JSON.parse(requests.filter(r => r.url.includes('anthropic.com/v1/messages')).at(-1).body.messages.at(-1).content[0].content);
+const toolResult = JSON.parse(requests.filter(r => r.url === 'https://api.anthropic.com/v1/messages').at(-1).body.messages.at(-1).content[0].content);
 assert.deepEqual(toolResult.results[0].lines, ['Burger bread: 24 piece', 'Toast bread: 2 piece']);
 assert.match(toolResult.note, /only to Rozha's own WhatsApp/);
 whatsappWindowClosed = true;
@@ -319,6 +319,6 @@ kitchen = null; anthropicTool = { name: 'open_screen', json: ['{"screen":', '"or
 secrets.delete('anthropic_api_key');
 const beforeNoHaiku = requests.length;
 await chat();
-assert.equal(requests.slice(beforeNoHaiku).some(r => r.url.includes('anthropic.com')), false, 'without its key Haiku is skipped');
+assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname === 'api.anthropic.com'), false, 'without its key Haiku is skipped');
 
 console.log('Rico provider smoke: PASS (Rico sends test orders by WhatsApp to Rozha only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');
