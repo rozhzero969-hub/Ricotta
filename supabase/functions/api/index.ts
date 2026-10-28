@@ -173,12 +173,15 @@ function viewsFor(s: Session) {
     ...(can(s, "record") ? ["record"] : []), ...(isRozha(s) ? ["admin"] : []), "settings"];
 }
 
-async function authenticate(req: Request): Promise<Session | null> {
+/* null: no valid session (401, the phone signs in again). "unavailable": the check itself could not run
+   (a database hiccup): 503, and the phone keeps its session. Either way nothing is allowed. */
+async function authenticate(req: Request): Promise<Session | null | "unavailable"> {
   const raw = req.headers.get("x-session-token") || req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!raw || raw.length > 256) return null;
-  const { data } = await app("sessions")
+  const { data, error: lookupError } = await app("sessions")
     .select("id,account,device_id,expires_at,revoked_at,last_seen_at,app_accounts(roles)")
     .eq("token_hash", await hash(raw)).maybeSingle();
+  if (lookupError) return "unavailable";
   if (!data || data.revoked_at || !Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()) return null;
   if (data.account !== "rozha" && data.account !== "yunis") return null;
   if (Date.now() - new Date(data.last_seen_at).getTime() > SEEN_WRITE_EVERY_MS) {
@@ -186,7 +189,8 @@ async function authenticate(req: Request): Promise<Session | null> {
   }
   if(data.device_id){
     const {data:device,error}=await app("devices").select("account").eq("id",data.device_id).maybeSingle();
-    if(error || device?.account!==data.account)return null;
+    if(error)return "unavailable";
+    if(device?.account!==data.account)return null;
   }
   return { id: data.id, account: data.account, deviceId: data.device_id, roles: rolesOf(data.account, (data as any).app_accounts?.roles) };
 }
@@ -312,11 +316,16 @@ async function bootstrap(s: Session) {
     can(s, "record") ? listActivity() : Promise.resolve([]),
     can(s, "assistant") ? listInbox(s) : Promise.resolve([]),
     readStreak(),
-    listMonths(12),
+    can(s, "history") ? listMonths(12) : Promise.resolve([]),
     readDraft(s.account),
   ]);
-  const orderRows = orders;
+  // Without History, the phone gets only today's orders and which suppliers they went to (the Order
+  // screen marks those suppliers sent): no items, amounts or earlier days. Same rule as Rico's.
+  const today = baghdadDay();
+  const orderRows = can(s, "history") ? orders : orders.filter((o: any) => baghdadDay(o.sent_at ?? o.created_at) === today);
   const lines = await orderLinesFor(orderRows);
+  const history = groupHistory(orderRows, lines);
+  if (!can(s, "history")) for (const o of history) for (const e of o.entries) e.items = [];
   return {
     account: s.account, name: me?.name ?? accountName(s.account),
     views: viewsFor(s), roles: s.roles,
@@ -324,7 +333,7 @@ async function bootstrap(s: Session) {
     suppliers: suppliers.map(toSupplier),
     items: items.map(toItem),
     units,
-    history: groupHistory(orderRows, lines),
+    history,
     historyMonth: monthKey(),
     reminder, devices, activity, inbox, months, draft,
   };
@@ -762,6 +771,7 @@ Deno.serve(async (req) => {
     }
 
     const s = await authenticate(req);
+    if (s === "unavailable") return fail("auth_unavailable", 503);
     if (!s) return fail("unauthorized", 401);
     const rozha = isRozha(s);
     const keys=[`account:${s.account}:${M==="GET"?"read":"write"}`],limits=[M==="GET"?240:600];

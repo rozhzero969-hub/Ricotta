@@ -41,6 +41,14 @@ function apiAccountMatchesUi(session){
 }
 function apiPathIsPublic(path){ return path === 'login' || path === 'auth/security' || path === 'health'; }
 function staleApiReply(){ return {ok:false, status:0, data:null, stale:true}; }
+/* The session stored on this device has run out. That is this account's own session ending, not a
+   reply meant for another account: sign in again, exactly as when the server answers 401. */
+function apiSessionExpired(path){
+  const stored = lget('apiSession');
+  if(apiPathIsPublic(path) || !stored?.token || apiSession()) return false;
+  clearApiSession(); onSessionExpired();
+  return true;
+}
 
 /* What this device is, for Admin's device list: "iPhone 16/17 Pro Max|App",
    "Windows PC|Chrome"... iPhones don't reveal their exact model to web
@@ -92,6 +100,7 @@ const appVersionHeader = () => typeof APP_VERSION === 'string' ? {'x-app-version
 /* signal: stops the request early. quiet: a request that fails says nothing about the connection (the
    live-changes wait, which is cut short whenever the app leaves the screen). */
 async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepalive=false, signal=null, quiet=false} = {}){
+  if(apiSessionExpired(path)) return {ok:false, status:401, data:{error:'session_expired'}};
   const s = apiSession();
   if(!apiPathIsPublic(path) && !apiAccountMatchesUi(s)) return staleApiReply();
   const controller = new AbortController();
@@ -124,6 +133,7 @@ async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepalive=
 /* Streams an NDJSON reply (Rico's chat): calls onEvent(object) for every line
    as it arrives. Never throws; network trouble arrives as {type:'error',code:'offline'}. */
 async function apiStream(path, body, onEvent, signal){
+  if(apiSessionExpired(path)) return;
   const s = apiSession();
   if(!apiPathIsPublic(path) && !apiAccountMatchesUi(s)) return staleApiReply();
   const sessionCurrent = ()=>apiPathIsPublic(path) || (apiSessionMatches(s) && apiAccountMatchesUi(s));

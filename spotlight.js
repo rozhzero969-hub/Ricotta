@@ -42,7 +42,7 @@ function spotCommands(){
     {id:'export-items', icon:ICON_SHEET, label:t('exportItemsTitle'), words:['export excel pdf items download'], when:()=>canDo('exports'), run:()=>openExportSheet('items')},
     {id:'export-suppliers', icon:ICON_SHEET, label:t('exportSuppliersTitle'), words:['export excel pdf suppliers download'], when:()=>canDo('exports'), run:()=>openExportSheet('suppliers')},
     {id:'month', icon:ICON_CALENDAR, label:t('reportOpen'), words:['report card month'], when:()=>canOpen('history') && state.history.length, run:()=>{ goView('history'); openReportSheet(); }},
-    {id:'same', icon:ICON_REPEAT, label:t('sameAsLastTime'), words:['same as last time repeat'], when:()=>state.history.length > 0 && canOpen('order'), run:()=>{ goView('order'); requestAnimationFrame(()=>document.getElementById('sameAsLast')?.click()); }},
+    {id:'same', icon:ICON_REPEAT, label:t('sameAsLastTime'), words:['same as last time repeat'], when:()=>canOpen('history') && state.history.length > 0 && canOpen('order'), run:()=>{ goView('order'); requestAnimationFrame(()=>document.getElementById('sameAsLast')?.click()); }},
     {id:'clear', icon:ICON_DELETE, label:t('clearOrder'), words:['clear order empty'], when:()=>cartCount() > 0, run:()=>{ goView('order'); requestAnimationFrame(()=>document.getElementById('clearOrderBtn')?.click()); }},
     {id:'new-chat', icon:ICON_SPARKLE, label:t('ricoNewChat'), words:['rico new chat'], when:()=>canOpen('assistant'), run:()=>{ goView('assistant'); ricoNewChat(); }},
     ...[['on','darkOn','dark mode night'], ['off','darkOff','light mode day'], ['auto','darkAuto','automatic appearance system']].map(([v, k, w])=>({id:'dark-' + v, icon:NAV_ICONS.settings, label:`${t('darkLabel')}: ${t(k)}`, words:[w], run:()=>{ lset('darkMode', v === 'auto' ? null : v); applyPrefs(); syncAppearance(); render(); }})),
@@ -307,6 +307,9 @@ function spotFlash(el){
 function openSpotlight(initial = ''){
   if(!state.account) return;
   spotClose?.();
+  // Search belongs to the account that opened it: signing out or switching account closes it (spotClose(true)),
+  // and anything still captured from before does nothing.
+  const owner = state.account, opener = document.activeElement;
   document.activeElement?.blur?.();
   spotScope = 'all';
   const layer = document.createElement('div');
@@ -344,26 +347,40 @@ function openSpotlight(initial = ''){
     if(keep) list.scrollTop = top; else list.scrollTop = 0;
     mark();
   };
+  // A modal: the page behind it is inert while it is open, and focus goes back to what opened it.
+  const behind = [...document.body.children].filter(el=>el !== layer && !el.inert);
+  behind.forEach(el=>{ el.inert = true; });
   let closed = false;
-  const close = ()=>{
+  const close = (now = false)=>{
     if(closed) return; closed = true;
     if(spotClose === close) spotClose = null;
     document.removeEventListener('keydown', onKey, true);
+    behind.forEach(el=>{ el.inert = false; });
     layer.classList.add('out'); layer.inert = true;
     const gone = ()=>layer.remove();
-    if(reducedMotion()) gone();
+    if(now || reducedMotion()) gone();
     else{ layer.querySelector('.spot-panel').addEventListener('animationend', gone, {once:true}); setTimeout(gone, 400); }
+    if(!now && state.account === owner && opener?.isConnected) opener.focus?.({preventScroll:true});
   };
   spotClose = close;
+  const mine = ()=>{ if(state.account === owner) return true; close(true); return false; };
   const run = i=>{
     const r = flat[i];
-    if(!r) return;
+    if(!r || !mine()) return;
     if(r.kind === 'more'){ spotScope = r.scope; paint(); input.focus({preventScroll:true}); return; }
     if(r.kind === 'toggle'){ r.c.set(!r.c.on()); haptic('selection'); spotRemember(r); paint(true); return; }
     spotRemember(r); close(); spotRun(r);
   };
   const onKey = e=>{
+    if(!mine()) return;
     if(e.key === 'Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); }
+    else if(e.key === 'Tab'){
+      const stops = [...layer.querySelectorAll('input,button:not([hidden]),[tabindex]:not([tabindex="-1"])')].filter(el=>!el.closest('[hidden]') && el.offsetParent !== null);
+      if(!stops.length) return;
+      const i = stops.indexOf(document.activeElement);
+      if(e.shiftKey && i <= 0){ e.preventDefault(); stops[stops.length - 1].focus(); }
+      else if(!e.shiftKey && (i === -1 || i === stops.length - 1)){ e.preventDefault(); stops[0].focus(); }
+    }
     else if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); if(flat.length){ active = (active + (e.key === 'ArrowDown' ? 1 : -1) + flat.length) % flat.length; mark(true); } }
     else if(e.key === 'Enter' && document.activeElement === input && !e.isComposing){ e.preventDefault(); run(active); }
   };
@@ -375,6 +392,7 @@ function openSpotlight(initial = ''){
   layer.querySelector('.spot-scrim').onclick = close;
   layer.querySelector('.spot-cancel').onclick = close;
   list.addEventListener('click', e=>{
+    if(!mine()) return;
     const step = e.target.closest('[data-spot-add],[data-spot-dec]');
     if(step){
       const id = step.dataset.spotAdd || step.dataset.spotDec;

@@ -215,6 +215,26 @@ const server=http.createServer((req,res)=>{
   assert.equal(await page.locator('#challengeRetry').isVisible(),true,'a provider failure offers Try Again');
   await page.evaluate(()=>dismissAllModals());
   assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'},'closing every popup (sign-out) ends the check');
+  // F26: search is a real modal. Tab and Shift+Tab stay inside it, and the page behind is inert.
+  await page.evaluate(()=>{ dismissAllModals(); goView('order'); });
+  await page.keyboard.press('Control+KeyK');await page.locator('#spotInput').waitFor();
+  await page.locator('#spotInput').fill('tom');
+  for(let i=0;i<8;i++){ await page.keyboard.press('Shift+Tab'); assert.equal(await page.evaluate(()=>!!document.activeElement.closest('.spot-layer')),true,'Shift+Tab stays inside search'); }
+  for(let i=0;i<8;i++){ await page.keyboard.press('Tab'); assert.equal(await page.evaluate(()=>!!document.activeElement.closest('.spot-layer')),true,'Tab stays inside search'); }
+  assert.equal(await page.evaluate(()=>document.getElementById('app').inert),true,'the page behind is inert');
+  await page.keyboard.press('Escape');await page.locator('.spot-layer').waitFor({state:'detached'});
+  assert.equal(await page.evaluate(()=>document.getElementById('app').inert),false,'and comes back when search closes');
+  // F03 + F04: the session ran out while search was open. The next request signs out (no stuck screen), and the
+  // old account's search results go with it at once.
+  await page.keyboard.press('Control+KeyK');await page.locator('#spotInput').waitFor();
+  await page.locator('#spotInput').fill('tomato');
+  await page.evaluate(()=>{ const k='ricottaOrders:apiSession'; const s=JSON.parse(localStorage.getItem(k)); s.expiresAt=new Date(Date.now()-1000).toISOString(); localStorage.setItem(k,JSON.stringify(s)); });
+  const expired=await page.evaluate(()=>api('draft'));
+  assert.equal(expired.status,401,'an expired session is not treated as a stale reply');
+  assert.equal(await page.evaluate(()=>state.account),null,'the workspace is cleared');
+  assert.equal(await page.locator('.spot-layer').count(),0,'search closes with the old account');
+  assert.equal(await page.evaluate(()=>lget('apiSession')),null,'the old session is removed');
+  await page.locator('.keypad,.signin-map,#app').first().waitFor();
   const framed=await browser.newPage();
   await framed.goto('http://127.0.0.1:'+server.address().port+'/__frame-parent.html');
   await framed.setContent('<iframe src="http://127.0.0.1:'+server.address().port+'/"></iframe>');
@@ -223,6 +243,6 @@ const server=http.createServer((req,res)=>{
   assert.equal(await embedded.locator('.keypad,.content').count(),0,'embedded app exposes neither sign-in nor authenticated workspace');
   await framed.close();
   assert.deepEqual(errors,[]);
-  console.log('Search UI PASS: typo/alias order, clear buttons, the search sheet (tomato 5, best matches first, − and + in place, scopes, switches, Ask Rico, dates, Recent, closing animation, clear, nothing found, Escape), list matches/empty/reset, history aliases, records beyond first page, units and Rico bulk alias preview/save');
+  console.log('Search UI PASS: search is a modal (focus kept inside, page inert), an expired session signs out and closes search, typo/alias order, clear buttons, the search sheet (tomato 5, best matches first, − and + in place, scopes, switches, Ask Rico, dates, Recent, closing animation, clear, nothing found, Escape), list matches/empty/reset, history aliases, records beyond first page, units and Rico bulk alias preview/save');
  }finally{await browser.close();server.close();}
 })().catch(e=>{console.error(e);server.close();process.exitCode=1;});
