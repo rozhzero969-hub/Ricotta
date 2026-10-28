@@ -238,7 +238,6 @@ function spotRowHtml(r, i, q){
   if(r.kind === 'badqty') return `<div class="spot-row spot-note" ${at} aria-disabled="true"><span class="spot-ic">${ICON_PLUS}</span>${text(esc(t('spotQtyInvalid')), '')}</div>`;
   if(r.kind === 'set') return `<button type="button" class="spot-row spot-set" ${at}><span class="spot-ic">${ICON_PLUS}</span>${text(esc(t('spotSet')(r.item.name, r.qty, unitLabel(r.item.unit))), esc(r.item.supplierId ? supplierName(r.item.supplierId) : t('noSupplier')))}</button>`;
   if(r.kind === 'item'){
-    const qty = state.cart[r.item.id] || 0;
     const sub = [spotMark(r.item.supplierId ? supplierName(r.item.supplierId) : t('noSupplier'), q), esc(unitLabel(r.item.unit)), r.item.lastOrderedAt ? esc(t('spotLastOrdered')(spotWhen(r.item.lastOrderedAt))) : ''].filter(Boolean).join(' · ');
     return `<div class="spot-row-wrap" data-spot-item="${esc(r.item.id)}"><button type="button" class="spot-row" ${at}><span class="spot-ic">${NAV_ICONS.order}</span>${text(spotMark(r.item.name, q), sub)}</button>${canOpen('order') ? spotStepHtml(r.item) : ''}</div>`;
   }

@@ -1,6 +1,10 @@
 name: Publish browser app
+# Publishes only a commit whose Checks (tests) and Security runs both passed, and builds that exact commit.
+# Main is protected too (smoke and audit required), so nothing untested reaches it; this is the second lock.
 on:
-  push:
+  workflow_run:
+    workflows: [Checks]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 permissions:
@@ -10,10 +14,30 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
+      - name: The commit passed Checks and Security, and is still the newest on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for wf in checks.yml security.yml; do
+            ok=$(gh api "repos/$REPO/actions/workflows/$wf/runs?head_sha=$SHA&event=push&per_page=20" \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
+            if [ "$ok" -lt 1 ]; then echo "$wf has not passed for $SHA: not publishing"; exit 1; fi
+          done
+          latest=$(gh api "repos/$REPO/commits/main" --jq .sha)
+          if [ "$latest" != "$SHA" ]; then echo "main moved on to $latest: its own run publishes it"; exit 1; fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.SHA }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

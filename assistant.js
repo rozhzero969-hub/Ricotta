@@ -1,8 +1,10 @@
 /* Rico -- the in-app AI assistant (the "Rico" tab).
    Talks to POST api/assistant/chat, which streams the reply (see
-   supabase/functions/api/assistant.ts). Rico can only PROPOSE changes: each
-   proposal is a card here, and nothing happens until the person taps it; the
-   change is then made through the normal API with this person's session.
+   supabase/functions/api/assistant.ts). Rico PROPOSES changes: each proposal is
+   a card here, and nothing happens until the person taps it; the change is then
+   made through the normal API with this person's session. The one exception is
+   the WhatsApp TEST: when Rozha asks, Rico sends an order to her own WhatsApp
+   himself (History › Rico's orders).
    Every reply carries a mood, which Rico's face and colour show. Rico also
    writes first sometimes (a morning cheer, a thank-you after an order, a
    telling-off when an order is late): those messages come from the server's

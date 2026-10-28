@@ -23,13 +23,13 @@ There are no API secrets or database credentials in the native project.
 - Cloudflare challenge subframes with WebKit's default user agent.
 - WhatsApp, telephone and email links handed to their installed apps.
 - Native file sharing for downloadable exports.
-- Native preview for order sheets/monthly reports. Tap **Print** in its toolbar to print or save a PDF through the system print workflow.
+- PDFs and spreadsheets are downloaded and shared as files; the page never opens extra windows, so the app creates none.
 - Camera and microphone usage descriptions; capture is prompted only for Ricotta's main page.
 - Apple's "content unavailable" screen when Ricotta can't be reached (and when the web process ends): a symbol,
   a title, one line of help, Try Again and Open in Safari.
 - English, Kurdish (`ckb`) and Arabic for the app's own words (`Localizable.xcstrings`) and its camera and
   microphone questions (`InfoPlist.xcstrings`). The page has its own language setting.
-- A privacy manifest (`PrivacyInfo.xcprivacy`: no tracking, the data the app collects for its own work) and
+- A privacy manifest (`PrivacyInfo.xcprivacy`: no tracking; the data the app collects for its own work, plus time in the app and error reports) and
   `ITSAppUsesNonExemptEncryption = NO` (only standard HTTPS), so App Store Connect asks no export question.
 - Web Inspector enabled in Debug builds only.
 

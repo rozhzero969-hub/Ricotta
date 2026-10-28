@@ -22,11 +22,5 @@ dc674d59d15ea4d0efea552032e90fb65b1b41c3:config.js:jwt:31
 
 # Retired config defaults; none match any current account or recovery hash (verified 2026-10-17).
 05933585f3335f8ef51bc5591219a2906c0cb08a:config.js:hardcoded-staff-credential:32
-05933585f3335f8ef51bc5591219a2906c0cb08a:config.js:hardcoded-staff-credential:32
-05933585f3335f8ef51bc5591219a2906c0cb08a:config.js:hardcoded-staff-credential:32
 840738e34d692672f3062e35546a59f172275df7:config.js:hardcoded-staff-credential:32
-840738e34d692672f3062e35546a59f172275df7:config.js:hardcoded-staff-credential:32
-840738e34d692672f3062e35546a59f172275df7:config.js:hardcoded-staff-credential:32
-7b1035e0d80f8e787fee4e921d07d8db93d99c95:config.js:hardcoded-staff-credential:25
-7b1035e0d80f8e787fee4e921d07d8db93d99c95:config.js:hardcoded-staff-credential:25
 7b1035e0d80f8e787fee4e921d07d8db93d99c95:config.js:hardcoded-staff-credential:25

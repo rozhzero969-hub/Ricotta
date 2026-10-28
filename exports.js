@@ -122,15 +122,26 @@ async function brandedPdf(doc){
     ctx.textAlign = align === 'end' ? (rtl ? 'left' : 'right') : align === 'center' ? 'center' : (rtl ? 'right' : 'left');
     ctx.fillText(String(s ?? ''), X(x), yy);
   };
-  const wrap = (s, width, size, weight = 400)=>{
+  // Words wrap at spaces; a word too long for the column breaks between letters (whole graphemes, so
+  // Kurdish and Arabic letters and emoji stay intact). A row never needs more than maxLines lines.
+  const graphemes = s=>typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter(undefined, {granularity:'grapheme'}).segment(s)].map(g=>g.segment) : Array.from(s);
+  const wrap = (s, width, size, weight = 400, maxLines = 40)=>{
     font(size, weight);
-    const words = String(s ?? '').split(/\s+/).filter(Boolean), lines = [];
+    const fits = v=>ctx.measureText(v).width <= width;
+    const words = String(s ?? '').split(/\s+/).filter(Boolean).flatMap(w=>{
+      if(fits(w)) return [w];
+      const parts = []; let part = '';
+      for(const g of graphemes(w)){ if(part && !fits(part + g)){ parts.push(part); part = g; } else part += g; }
+      return part ? [...parts, part] : parts;
+    });
+    const lines = [];
     let line = '';
     for(const w of words){
       const next = line ? line + ' ' + w : w;
-      if(ctx.measureText(next).width <= width || !line) line = next; else { lines.push(line); line = w; }
+      if(fits(next) || !line) line = next; else { lines.push(line); line = w; }
     }
     if(line) lines.push(line);
+    if(lines.length > maxLines){ lines.length = maxLines; lines[maxLines - 1] = lines[maxLines - 1].replace(/.{0,2}$/u, '') + '…'; }
     return lines.length ? lines : [''];
   };
   const newPage = ()=>{
@@ -192,8 +203,13 @@ async function brandedPdf(doc){
       const h = Math.max(...lines.map(l=>l.length)) * 12.5 + 9;
       if(room(h)) headRow();
       if(r % 2 === 1){ ctx.fillStyle = PDF_COLORS.band; ctx.fillRect(PDF_M, y, width, h); }
-      lines.forEach((l, i)=>l.forEach((part, k)=>text(part, cols[i].align === 'end' ? xs[i] + colW(i) - 8 : xs[i] + 8, y + 13.5 + k * 12.5,
-        {size:9.5, weight:cols[i].bold ? 700 : 400, color:cols[i].bold ? PDF_COLORS.deep : PDF_COLORS.ink, align:cols[i].align})));
+      // Each cell draws only inside its own column, so nothing can run over the next one.
+      lines.forEach((l, i)=>{
+        ctx.save(); ctx.beginPath(); ctx.rect(X(xs[i]) - (rtl ? colW(i) : 0), y, colW(i), h); ctx.clip();
+        l.forEach((part, k)=>text(part, cols[i].align === 'end' ? xs[i] + colW(i) - 8 : xs[i] + 8, y + 13.5 + k * 12.5,
+          {size:9.5, weight:cols[i].bold ? 700 : 400, color:cols[i].bold ? PDF_COLORS.deep : PDF_COLORS.ink, align:cols[i].align}));
+        ctx.restore();
+      });
       ctx.fillStyle = PDF_COLORS.line; ctx.fillRect(PDF_M, y + h - .6, width, .6);
       y += h;
     });
@@ -218,7 +234,14 @@ async function brandedPdf(doc){
     text(t('pdfFooter'), PDF_M, PDF_H - PDF_M + 14, {size:7.5, color:PDF_COLORS.soft});
     text(t('pdfPage')(i + 1, pages.length), PDF_W - PDF_M, PDF_H - PDF_M + 14, {size:7.5, color:PDF_COLORS.soft, align:'end'});
   });
-  const jpegs = await Promise.all(pages.map(c=>new Promise(res=>c.toBlob(b=>res(b), 'image/jpeg', .9)).then(b=>b.arrayBuffer()).then(a=>new Uint8Array(a))));
+  // One page at a time, each canvas freed as soon as it is a JPEG (a page is about 8 MB as pixels).
+  const jpegs = [];
+  for(const c of pages){
+    const blob = await new Promise(res=>c.toBlob(b=>res(b), 'image/jpeg', .9));
+    jpegs.push(new Uint8Array(await blob.arrayBuffer()));
+    c.width = c.height = 0;
+  }
+  pages.length = 0;
   return new Blob([pdfFile(jpegs, doc.title)], {type:'application/pdf'});
 }
 function pdfRound(ctx, x, y, w, h, r){

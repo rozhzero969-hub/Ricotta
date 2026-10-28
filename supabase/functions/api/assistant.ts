@@ -15,12 +15,12 @@ import { monthStart } from "../_shared/month.ts";
 // (Rozha or Yunis) and has the same tools for both. Anything that CHANGES data -- adding an
 // item or supplier, filling the order, sending a notification -- is only
 // *proposed*: the app shows a card and the person taps to confirm, and the app
-// then makes the change through the normal API with that person's session.
+// then makes the change through the normal API with that person's session. The one exception is the
+// WhatsApp TEST send (send_test_order), which only reaches Rozha's own number.
 //
-// Rico prefers Groq's GPT-OSS 120B for English when configured and falls back
-// to Gemini. Kurdish and Arabic go to Gemini first: GPT-OSS writes poor Sorani.
-// Provider keys stay server-side; the one-time Groq setup can only add a key,
-// never remove either provider from a signed-in device.
+// Claude Haiku answers first when its key is set; if it can't, the free backups do: Kurdish and
+// Arabic go to Gemini first (GPT-OSS writes poor Sorani), English to Groq's GPT-OSS 120B, then Gemini.
+// Every key (Anthropic, Gemini, Groq, WhatsApp) lives only on the server and is never sent to the app.
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const KURDISH_GEMINI_MODEL = "gemini-3.5-flash";   // writes much better Sorani; falls back to flash-lite
