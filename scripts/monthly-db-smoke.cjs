@@ -224,7 +224,16 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  // Time in the app: never more than the time that really passed, kept forever.
  const use=async(seconds,device='y-phone',account='yunis')=>(await q(`select app_internal_add_usage('${account}','${device}','iPhone|App',${seconds}) as n`))[0].n;
  assert.equal(await use(600),600,'the first report counts in full');
- assert.ok(await use(900)<=16,'a phone cannot claim more time than has passed');
+ assert.ok(await use(900)<=1,'a phone cannot claim more time than has passed');
+ // F14: many reports at the same moment add nothing (the old rule gave 15 extra seconds every time: 315 s for 20).
+ let burst=0;for(let i=0;i<20;i++) burst+=await use(30);
+ assert.ok(burst<=1,'20 reports at once credit no extra time');
+ // F15: the same batch sent again (its answer was lost) is counted once.
+ const useBatch=async(seconds,batch)=>(await q(`select app_internal_add_usage('yunis','y-batch','iPhone|App',${seconds},'${batch}') as n`))[0].n;
+ assert.equal(await useBatch(120,'11111111-1111-4111-8111-111111111111'),120);
+ await db.exec("update app_usage_time set updated_at=now()-interval '10 minutes' where device_id='y-batch';");
+ assert.equal(await useBatch(120,'11111111-1111-4111-8111-111111111111'),0,'a batch is counted once');
+ assert.equal(await useBatch(120,'22222222-2222-4222-8222-222222222222'),120,'a new batch counts');
  assert.equal(await use(-50),0);
  assert.equal(await use(5000,'y-laptop'),1800,'one report is never more than 30 minutes');
  await assert.rejects(use(10,''),/Invalid usage/);
@@ -233,7 +242,7 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.equal(await use(300),300,'after ten minutes, five minutes count');
  await assert.rejects(q("select app_internal_usage_summary('yunis')"),/Forbidden/);
  const usage=(await q("select app_internal_usage_summary('rozha') as r"))[0].r,stored=(await q("select sum(seconds)::int as s from app_usage_time"))[0].s;
- assert.deepEqual([usage.people.length,usage.people[0].account,usage.people[0].total,usage.people[0].today,usage.devices.length],[1,'yunis',stored,stored,2],'per person and per phone');
+ assert.deepEqual([usage.people.length,usage.people[0].account,usage.people[0].total,usage.people[0].today,usage.devices.length],[1,'yunis',stored,stored,3],'per person and per phone (y-phone, y-laptop, y-batch)');
  // By day, week and month: a day nobody used the app is a zero, and nothing before the first counted day shows.
  await db.exec(`insert into app_usage_time(account,device_id,day,seconds) values
    ('rozha','r-mac',(now() at time zone 'Asia/Baghdad')::date - 40,600),('rozha','r-mac',(now() at time zone 'Asia/Baghdad')::date - 3,1200),('yunis','y-old',(now() at time zone 'Asia/Baghdad')::date - 9,300);`);
@@ -316,6 +325,12 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  const ai=(await q("select app_internal_ai_usage(now()-interval '1 day') as r"))[0].r;
  assert.deepEqual(ai.anthropic,{calls:0,input:100,output:0},'a failed try counts its tokens but not a reply');
  assert.equal(ai.gemini.calls,2,'the answered try and the voice message are Gemini');
+ // F27: the nightly clean-up keeps Rico's test orders and saved Rico chats for 90 days.
+ await db.exec(`insert into app_rico_orders(account,supplier_name,lines,status,created_at) values
+   ('rozha','Old','[{"name":"x","qty":1,"unit":"kg"}]','sent',now()-interval '91 days'),('rozha','Recent','[{"name":"x","qty":1,"unit":"kg"}]','sent',now()-interval '89 days');`);
+ await db.exec("select app_internal_cleanup();");
+ assert.deepEqual((await q("select supplier_name from app_rico_orders order by 1")).map(r=>r.supplier_name),['Recent'],'91-day test orders go, 89-day ones stay');
+ await db.exec("delete from app_rico_orders;");
  // Health Check reads the database itself.
  await assert.rejects(q("select app_internal_diagnostics('yunis')"),/Forbidden/);
  const health=(await q("select app_internal_diagnostics('rozha') as r"))[0].r;
@@ -330,9 +345,9 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.equal((await q("select sum(seconds)::int as s from app_usage_time"))[0].s,stored,'time in the app is never deleted');
  // None of it is reachable from the browser roles.
  for(const role of ['anon','authenticated']){
-  for(const t of ['app_security_events','app_problem_reports','app_usage_time']) assert.equal((await q(`select has_table_privilege('${role}','${t}','select') or has_table_privilege('${role}','${t}','insert') as a`))[0].a,false,role+' '+t);
+  for(const t of ['app_security_events','app_problem_reports','app_usage_time','app_usage_batches','app_rico_orders']) assert.equal((await q(`select has_table_privilege('${role}','${t}','select') or has_table_privilege('${role}','${t}','insert') as a`))[0].a,false,role+' '+t);
   for(const s of ['app_security_events_id_seq','app_problem_reports_id_seq']) assert.equal((await q(`select has_sequence_privilege('${role}','${s}','usage') as a`))[0].a,false,role+' '+s);
-  for(const f of ['app_internal_security_event(text,text,text,text,jsonb,integer)','app_internal_set_roles(text,text,text[],text)','app_internal_security_summary(text,text,integer,integer)','app_internal_unlock_signin(text,integer,text)','app_internal_report_problems(jsonb,text,text,text,text)','app_internal_add_usage(text,text,text,integer)','app_internal_usage_summary(text)','app_internal_catalog_report(timestamptz)','app_internal_rico_usage(text,timestamptz)','app_internal_diagnostics(text)'])
+  for(const f of ['app_internal_security_event(text,text,text,text,jsonb,integer)','app_internal_set_roles(text,text,text[],text)','app_internal_security_summary(text,text,integer,integer)','app_internal_unlock_signin(text,integer,text)','app_internal_report_problems(jsonb,text,text,text,text)','app_internal_add_usage(text,text,text,integer,text)','app_internal_usage_summary(text)','app_internal_catalog_report(timestamptz)','app_internal_rico_usage(text,timestamptz)','app_internal_diagnostics(text)'])
    assert.equal((await q(`select has_function_privilege('${role}','${f}','execute') as a`))[0].a,false,role+' '+f);
  }
  // Live changes: each kind of change moves its own counter, "still here" moves none, and a counter that
@@ -365,5 +380,5 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await db.exec('select app_internal_cleanup();');
  // Exercise schema-only restore to another empty database, without business data.
  const restored=new PGlite({extensions:{pgcrypto}});await restored.exec('create role anon;create role authenticated;create role service_role;');await restored.exec(fs.readFileSync('supabase/baseline.sql','utf8'));for(const sql of migrations) await restored.exec(sql);await restored.close();
- await db.close();console.log('Database smoke: PASS (every migration, PIN change, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, security log, roles, problem reports, time in the app by day, week and month, live change signals, one-name units, last ordered (and Undo keeps it), edits that change only the fields sent, Rico usage, Rico send reservations (duplicates, hourly limit), AI totals per try, Health Check, schema restore)');
+ await db.close();console.log('Database smoke: PASS (every migration, PIN change, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, security log, roles, problem reports, time in the app by day, week and month, live change signals, one-name units, last ordered (and Undo keeps it), edits that change only the fields sent, Rico usage, Rico send reservations (duplicates, hourly limit), no extra time for bursts, usage batches counted once, 90-day clean-up, AI totals per try, Health Check, schema restore)');
 })().catch(e=>{console.error(e);process.exitCode=1});
