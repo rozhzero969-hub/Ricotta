@@ -266,7 +266,13 @@ async function listDevices(s: Session) {
   if (!isRozha(s)) q = q.eq("id", s.deviceId ?? "").eq("account",s.account);
   const { data, error } = await q;
   if (error) throw error;
-  return (data ?? []).map(toDevice);
+  // "Signed in" means a session that still works now, not just the last thing the phone reported.
+  const ids = (data ?? []).map((d: any) => d.id);
+  const { data: live, error: liveError } = ids.length ? await app("sessions").select("device_id")
+    .in("device_id", ids).is("revoked_at", null).gt("expires_at", nowIso()) : { data: [], error: null };
+  if (liveError) throw liveError;
+  const signedIn = new Set((live ?? []).map((r: any) => r.device_id));
+  return (data ?? []).map((d: any) => toDevice({ ...d, logged_in: !!d.logged_in && signedIn.has(d.id) }));
 }
 async function listActivity() {
   const rows = await readAll(() => app("audit_events")
@@ -596,12 +602,14 @@ async function saveOrder(s: Session, b: any) {
 }
 
 /* ---------- Devices ---------- */
-async function heartbeat(s: Session, label: string | null, version: string | null, seconds: unknown) {
-  // Time in the app: the database adds at most the time that really passed since this phone last said.
+async function heartbeat(s: Session, label: string | null, version: string | null, seconds: unknown, batch: unknown) {
+  // Time in the app: the database adds at most the time that really passed since this phone last said,
+  // and counts each batch id once (the phone sends the same id again until it hears back).
   const spent = Math.floor(Number(seconds));
   if (Number.isFinite(spent) && spent > 0 && spent <= 1800) {
-    const { error } = await db.rpc("app_internal_add_usage", { p_account: s.account, p_device: s.deviceId || `__session:${s.id}`, p_label: label, p_seconds: spent });
-    if (error) console.error("usage_failed");
+    const { error } = await db.rpc("app_internal_add_usage", { p_account: s.account, p_device: s.deviceId || `__session:${s.id}`, p_label: label, p_seconds: spent,
+      p_batch: typeof batch === "string" && uuid(batch) ? batch : null });
+    if (error) { console.error("usage_failed"); return fail("usage_unavailable", 503); }
   }
   if (!s.deviceId) return ok();
   const { data: d, error: readError } = await app("devices").select("command,handled_command").eq("id", s.deviceId).eq("account",s.account).maybeSingle();
@@ -694,7 +702,9 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
     return json({ chats: (data ?? []).map((c: any) => ({ id: c.id, account: c.account, title: c.title, createdAt: c.created_at, updatedAt: c.updated_at })) });
   }
   if (req.method === "GET") {
-    const { data, error } = await db.from("app_rico_chats").select("id,account,title,messages,created_at,updated_at").eq("id", id).maybeSingle();
+    // Saved chats last 90 days (the nightly clean-up removes older ones); an older one is gone here too.
+    const { data, error } = await db.from("app_rico_chats").select("id,account,title,messages,created_at,updated_at").eq("id", id)
+      .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString()).maybeSingle();
     if (error) throw error;
     return data ? json({ id: data.id, account: data.account, title: data.title, messages: data.messages, createdAt: data.created_at, updatedAt: data.updated_at }) : fail("Chat not found", 404);
   }
@@ -740,16 +750,25 @@ const PROBLEM_KINDS = ["error", "rejection", "console", "server", "manual"];
 // Cut by characters, not UTF-16 halves, so an emoji at the limit is never split (the database refuses half of one).
 const plain = (v: unknown, max: number) => Array.from(String(v ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").trim()).slice(0, max).join("");
 /* Problem reports from a phone: shapes and sizes are checked here, and again by the table. */
+/* Problem reports never keep PINs, tokens, keys, long numbers or the details of a web address (the phone
+   takes them out too, before it keeps anything). */
+const redactProblem = (t: string) => t
+  .replace(/\b(?:sk-ant|sk|gsk|EAA|AIza)[\w-]{8,}/g, "[key]")
+  .replace(/\bBearer\s+[\w.~+/=-]+/gi, "Bearer [token]")
+  .replace(/\b(?=[\w-]*\d)(?=[\w-]*[A-Za-z])[\w-]{32,}\b/g, "[token]")   // long mixed letters and digits
+  .replace(/(https?:\/\/[^\s?#]+)[?#][^\s)]*/g, "$1")
+  .replace(/\+?\d[\d ]{6,}\d/g, "[number]")
+  .replace(/\b\d{6}\b/g, "[pin]");
 function cleanProblems(v: unknown) {
   if (!Array.isArray(v) || !v.length || v.length > 10) return null;
   const out = [];
   for (const r of v as any[]) {
     if (!r || typeof r !== "object" || !/^[0-9a-f]{16,64}$/.test(String(r.fingerprint ?? "")) || !PROBLEM_KINDS.includes(r.kind)) return null;
-    const message = plain(r.message, 500);
+    const message = redactProblem(plain(r.message, 500));
     if (!message) return null;
     out.push({
       fingerprint: String(r.fingerprint), kind: r.kind, message,
-      source: plain(r.source, 200) || null, stack: plain(String(r.stack ?? "").replace(/\r/g, ""), 2000) || null,
+      source: redactProblem(plain(r.source, 200)) || null, stack: redactProblem(plain(String(r.stack ?? "").replace(/\r/g, ""), 2000)) || null,
       screen: /^[A-Za-z]{1,40}$/.test(String(r.screen ?? "")) ? String(r.screen) : null,
       count: Number.isInteger(r.count) && r.count >= 1 && r.count <= 1000 ? r.count : 1,
     });
@@ -986,7 +1005,7 @@ Deno.serve(async (req) => {
 
     // Devices
     if (M === "GET" && path === "devices") return json(await listDevices(s));
-    if (M === "POST" && path === "devices/me") return await heartbeat(s, deviceLabel(req), appVersion(req), b.seconds);
+    if (M === "POST" && path === "devices/me") return await heartbeat(s, deviceLabel(req), appVersion(req), b.seconds, b.batch);
     if (M === "POST" && path === "devices/me/ack") {
       if (s.deviceId) {
         const { error } = await app("devices").update({ handled_command: text(b.commandId, 120) || null }).eq("id", s.deviceId).eq("account",s.account);

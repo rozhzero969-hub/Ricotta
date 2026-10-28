@@ -796,7 +796,7 @@ function contextBlock(w: World, s: Session, body: any) {
 - Catalog: ${w.suppliers.length} suppliers, ${w.items.length} items (${w.items.filter((i) => !i.supplier_id).length} without supplier), ${w.units.length} units.
 - Newest items: <<DATA>>${lastItems.join("; ") || "none"}<</DATA>>.
 - History is limited to the current Baghdad calendar month. Older months were deleted; do not infer their totals.
-- Sent orders this calendar month: ${w.history.length}; last 7 days: ${w.history.filter((o) => Date.parse(o.at) > Date.now() - 7 * 86400_000).length}.
+- Sent orders this calendar month: ${w.history.length >= 600 ? "at least 600 (only the latest 600 are loaded)" : w.history.length}; last 7 days: ${w.history.filter((o) => Date.parse(o.at) > Date.now() - 7 * 86400_000).length}.
 - Latest orders: <<DATA>>${recent.join(" | ") || "none yet"}<</DATA>>.
 - Today's supplier reminders: <<DATA>>${due.join("; ") || "none today"}<</DATA>>.
 - Daily order reminder: ${w.dailyReminder?.enabled ? `on at ${w.dailyReminder.time}` : "off"}; orders sent today: ${w.history.filter((o) => o.date === w.now.date).length}.

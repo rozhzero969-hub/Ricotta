@@ -304,6 +304,29 @@ try {
   for(const path of ['me/theme','me/tabs'])assert.equal((await call(path,{},'PUT')).status,404);
   // Kitchen notes, repeat orders and the secret code are gone too.
   for(const [path,method] of [['notes','GET'],['notes','POST'],['notes/1/read','POST'],['repeat-orders','GET'],['repeat-orders','POST'],['assistant/status','GET'],['assistant/setup-status','GET'],['assistant/groq-key','PUT'],['admin/ai/key','PUT'],['admin/ai/key','DELETE']])assert.equal((await call(path,method==='GET'?null:{},method)).status,404,`${path} is retired`);
+  // F15: a usage batch goes to the database with its id; a database problem is a 503 (the phone keeps the batch).
+  reset();
+  assert.equal((await call('devices/me', { seconds: 60, batch: '11111111-1111-4111-8111-111111111111' })).status, 200);
+  assert.equal(calls.find(c => c.name === 'app_internal_add_usage').args.p_batch, '11111111-1111-4111-8111-111111111111');
+  reset(); errors.set('app_internal_add_usage', true);
+  assert.equal((await call('devices/me', { seconds: 60, batch: '11111111-1111-4111-8111-111111111111' })).status, 503, 'the phone sends the batch again later');
+  // F17: problem reports never keep PINs, tokens, keys, long numbers or web address details.
+  reset();
+  assert.equal((await call('problems', { reports: [{ fingerprint: 'a'.repeat(16), kind: 'console', message: 'login 482916 failed token=abcdefghijklmnopqrstuvwxyz0123456789 sk-ant-api03-SECRETSECRET https://x.test/a?pin=482916 call 0750 969 2627', stack: 'Bearer abc.def.ghi' }] })).status, 200);
+  const stored = calls.find(c => c.name === 'app_internal_report_problems').args.p_reports[0];
+  assert.doesNotMatch(JSON.stringify(stored), /482916|abcdefghijklmnop|SECRETSECRET|pin=|969 2627|abc\.def/, 'nothing sensitive is kept');
+  assert.match(stored.message, /\[pin\].*\[token\]|\[token\].*\[pin\]/);
+  // F28: a device only shows "signed in" while one of its sessions still works.
+  reset();
+  tables.app_devices = [{ id: 'device-1', account: 'rozha', logged_in: true }, { id: 'device-2', account: 'yunis', logged_in: true }];
+  const devices = await (await call('devices', null, 'GET')).json();
+  assert.deepEqual(devices.map(d => [d.id, d.loggedIn]), [['device-1', true], ['device-2', false]], 'an expired phone is not shown as signed in');
+  // F27: saved Rico chats last 90 days; an older one can't be opened even by its id.
+  reset();
+  tables.app_rico_chats = [{ id: '33333333-3333-4333-8333-333333333333', account: 'rozha', title: 'old', messages: [], created_at: '2026-01-01T00:00:00Z', updated_at: new Date(Date.now() - 91 * 86400000).toISOString() },
+    { id: '44444444-4444-4444-8444-444444444444', account: 'rozha', title: 'new', messages: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }];
+  assert.equal((await call('rico-chats/33333333-3333-4333-8333-333333333333', null, 'GET')).status, 404);
+  assert.equal((await call('rico-chats/44444444-4444-4444-8444-444444444444', null, 'GET')).status, 200);
   // F06: an edit that names its fields sends only those to the database; anything else is refused.
   reset();
   assert.equal((await call('items/tomato', { name: 'Cherry tomatoes', note: 'stale note', only: ['name'] }, 'PUT')).status, 200);
@@ -370,4 +393,4 @@ try {
   assert.equal((await call('signals?since=-1&wait=0',null,'GET')).status,200,'Yunis waits too');
   errors.set('app_signals:read',true);assert.equal((await call('signals?since=-1&wait=0',null,'GET')).status,500);
 } finally { console.error = mute; }
-console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, Admin PIN change, live change signals, locked Transfers, retired endpoints, edits that change only the fields they name, History and Record roles in the start-up data, 503 when the session check cannot run)');
+console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, Admin PIN change, live change signals, locked Transfers, retired endpoints, edits that change only the fields they name, usage batches, redacted problem reports, real signed-in devices, History and Record roles in the start-up data, 503 when the session check cannot run)');

@@ -54,7 +54,7 @@
     <div class="card">
       <h2>Who uses this app</h2>
       <p>Ricotta Orders is the private ordering app of the Ricotta kitchen in Erbil. Only the kitchen’s two staff accounts can sign in; there is no public sign-up. The kitchen manager, Rozha, is responsible for the data in it.</p>
-      <p>There are no ads, no tracking and no analytics, and no data is sold or shared for marketing.</p>
+      <p>There are no ads and no tracking across other apps or websites, and no data is sold or shared for marketing. The app does keep two records about its own use, explained below: time spent in the app, and error reports.</p>
     </div>
     <div class="card">
       <h2>What the app keeps, and why</h2>
@@ -63,6 +63,9 @@
         <li><b>Signing in:</b> a sign-in token (scrambled), a random ID for this device, its type (for example iPhone), the app version and when it was last used. Each PIN try is kept with a scrambled form of the network address, to stop anyone guessing PINs.</li>
         <li><b>The kitchen’s work:</b> suppliers (names, phone numbers, reminder times), items, units, orders (what was ordered, by whom and when), unsent drafts, a record of who changed items and suppliers, the kitchen streak and a summary of each finished month.</li>
         <li><b>Rico:</b> chats you keep with Rico, the messages Rico writes to you, and a count of each AI request (which model and how long), used for the hourly limit.</li>
+        <li><b>Time in the app:</b> how many seconds the app was on screen and in use, per person, phone and day. Rozha sees these totals in Admin.</li>
+        <li><b>Error reports:</b> when something goes wrong, the error’s own text, the screen, the phone type and the app version, under the person who was signed in (or “before sign-in”). PINs, sign-in tokens, keys and long numbers are removed before anything is kept.</li>
+        <li><b>Rico’s test orders:</b> the orders Rico sends to Rozha’s own WhatsApp while testing (supplier, items, amounts and the reason).</li>
         <li><b>Notifications:</b> if you turn them on, the delivery address your phone gives and your language.</li>
       </ul>
       <p>Voice messages to Rico and photos of item lists are only sent to be read and are not kept by Ricotta.</p>
@@ -84,7 +87,8 @@
       <h2>How long it is kept</h2>
       <ul>
         <li>Orders and the record of changes: the current month. When a month ends, it becomes one summary and the orders are deleted.</li>
-        <li>Rico’s messages and reminder marks: 30 days. AI request counts: 90 days.</li>
+        <li>Rico’s messages and reminder marks: 30 days. AI request counts, Rico’s test orders, and saved Rico chats (after their last use): 90 days.</li>
+        <li>Error reports: up to 120 days (30 days once fixed). Time in the app: kept as a running total, with no end date.</li>
         <li>Sign-ins end after 18 hours and are deleted 2 days later. PIN tries: 2 days. Devices that signed out and stayed unused: 30 days.</li>
         <li>Accounts, suppliers, items, units, settings, drafts, the streak and month summaries: until they are deleted.</li>
       </ul>
@@ -113,7 +117,7 @@
     <div class="card">
       <h2>کێ ئەم ئەپە بەکاردەهێنێت</h2>
       <p>ریکۆتا ئۆردەرز ئەپی تایبەتی داواکاریی چێشتخانەی ریکۆتایە لە هەولێر. تەنها دوو هەژماری کارمەندانی چێشتخانەکە دەتوانن بچنە ژوورەوە؛ خۆتۆمارکردنی گشتی نییە. بەڕێوەبەری چێشتخانەکە، ڕۆژا، بەرپرسی زانیارییەکانی ناوێتی.</p>
-      <p>هیچ ڕیکلام، شوێنکەوتن و شیکاری تێدا نییە، و هیچ زانیارییەک نافرۆشرێت و بۆ بازرگانی نادرێت بە کەس.</p>
+      <p>هیچ ڕیکلام و شوێنکەوتنێک لە ئەپ و ماڵپەڕەکانی تردا نییە، و هیچ زانیارییەک نافرۆشرێت و بۆ بازرگانی نادرێت بە کەس. ئەپەکە دوو تۆمار دەربارەی بەکارهێنانی خۆی هەڵدەگرێت، کە لە خوارەوە ڕوونکراونەتەوە: کاتی بەکارهێنانی ئەپ، و ڕاپۆرتی هەڵەکان.</p>
     </div>
     <div class="card">
       <h2>ئەپەکە چی هەڵدەگرێت و بۆچی</h2>
@@ -122,6 +126,9 @@
         <li><b>چوونەژوورەوە:</b> نیشانەیەکی چوونەژوورەوە (تێکدراو)، ناسنامەیەکی هەڕەمەکی بۆ ئەم ئامێرە، جۆرەکەی (بۆ نموونە iPhone)، وەشانی ئەپەکە و کاتی دوایین بەکارهێنان. هەر هەوڵێکی PIN لەگەڵ شێوەیەکی تێکدراوی ناونیشانی تۆڕەکە هەڵدەگیرێت، تا کەس نەتوانێت PIN بە مەزەندە بدۆزێتەوە.</li>
         <li><b>کاری چێشتخانەکە:</b> دابینکەران (ناو، ژمارەی تەلەفۆن، کاتی بیرخستنەوە)، کاڵاکان، یەکەکان، داواکارییەکان (چی، کێ و کەی داوای کرد)، ڕەشنووسە نەنێردراوەکان، تۆمارێک لەوەی کێ کاڵا و دابینکەرانی گۆڕیوە، زنجیرەی چێشتخانەکە و پوختەی هەر مانگێکی تەواوبوو.</li>
         <li><b>ریکۆ:</b> ئەو گفتوگۆیانەی لەگەڵ ریکۆ هەڵیاندەگریت، ئەو نامانەی ریکۆ بۆت دەنووسێت، و ژمارەی هەر داواکارییەکی زیرەکی دەستکرد (کام مۆدێل و چەند درێژ)، بۆ سنووری کاتژمێرانە.</li>
+        <li><b>کاتی بەکارهێنانی ئەپ:</b> چەند چرکە ئەپەکە لەسەر شاشە بووە و بەکارهاتووە، بۆ هەر کەسێک، ئامێرێک و ڕۆژێک. ڕۆژا ئەم کۆیانە لە ئەدمین دەبینێت.</li>
+        <li><b>ڕاپۆرتی هەڵەکان:</b> کاتێک شتێک تێکدەچێت، دەقی هەڵەکە خۆی، شاشەکە، جۆری ئامێرەکە و وەشانی ئەپەکە، لەژێر ناوی ئەو کەسەی چووبووە ژوورەوە (یان «پێش چوونەژوورەوە»). PIN، تۆکنی چوونەژوورەوە، کلیلەکان و ژمارە درێژەکان پێش هەڵگرتن لادەبرێن.</li>
+        <li><b>داواکارییە تاقیکارییەکانی ریکۆ:</b> ئەو داواکارییانەی ریکۆ لە کاتی تاقیکردنەوەدا بۆ واتسئاپی خودی ڕۆژا دەینێرێت (دابینکەر، کاڵاکان، بڕەکان و هۆکارەکە).</li>
         <li><b>ئاگادارکردنەوەکان:</b> ئەگەر هەڵیانبکەیت، ئەو ناونیشانی گەیاندنەی مۆبایلەکەت دەیدات و زمانەکەت.</li>
       </ul>
       <p>نامە دەنگییەکان بۆ ریکۆ و وێنەی لیستی کاڵاکان تەنها بۆ خوێندنەوە دەنێردرێن و ریکۆتا هەڵیان ناگرێت.</p>
@@ -143,7 +150,8 @@
       <h2>چەند ماوە هەڵدەگیرێت</h2>
       <ul>
         <li>داواکارییەکان و تۆماری گۆڕانکارییەکان: مانگی ئێستا. کە مانگێک تەواو دەبێت، دەبێتە یەک پوختە و داواکارییەکان دەسڕدرێنەوە.</li>
-        <li>نامەکانی ریکۆ و نیشانەکانی بیرخستنەوە: 30 ڕۆژ. ژمارەی داواکارییەکانی زیرەکی دەستکرد: 90 ڕۆژ.</li>
+        <li>نامەکانی ریکۆ و نیشانەکانی بیرخستنەوە: 30 ڕۆژ. ژمارەی داواکارییەکانی زیرەکی دەستکرد، داواکارییە تاقیکارییەکانی ریکۆ، و گفتوگۆ هەڵگیراوەکانی ریکۆ (دوای دوایین بەکارهێنان): 90 ڕۆژ.</li>
+        <li>ڕاپۆرتی هەڵەکان: تا 120 ڕۆژ (30 ڕۆژ دوای چاککردن). کاتی بەکارهێنانی ئەپ: وەک کۆیەکی بەردەوام، بێ کاتی کۆتایی.</li>
         <li>چوونەژوورەوەکان دوای 18 کاتژمێر کۆتاییان دێت و 2 ڕۆژ دواتر دەسڕدرێنەوە. هەوڵەکانی PIN: 2 ڕۆژ. ئەو ئامێرانەی چوونەتە دەرەوە و بەکارنەهاتوون: 30 ڕۆژ.</li>
         <li>هەژمارەکان، دابینکەران، کاڵاکان، یەکەکان، ڕێکخستنەکان، ڕەشنووسەکان، زنجیرەکە و پوختەی مانگەکان: تا دەسڕدرێنەوە.</li>
       </ul>
@@ -172,7 +180,7 @@
     <div class="card">
       <h2>من يستخدم هذا التطبيق</h2>
       <p>ريكوتا أوردرز هو تطبيق الطلبات الخاص بمطبخ ريكوتا في أربيل. يمكن فقط لحسابي موظفي المطبخ تسجيل الدخول؛ لا يوجد تسجيل عام. مديرة المطبخ، روجا، هي المسؤولة عن البيانات فيه.</p>
-      <p>لا توجد إعلانات ولا تتبع ولا تحليلات، ولا تُباع أي بيانات ولا تُشارك لأغراض تسويقية.</p>
+      <p>لا توجد إعلانات ولا تتبع عبر التطبيقات أو المواقع الأخرى، ولا تُباع أي بيانات ولا تُشارك لأغراض تسويقية. يحتفظ التطبيق بسجلّين عن استخدامه، موضّحين أدناه: الوقت المستغرق في التطبيق، وتقارير الأخطاء.</p>
     </div>
     <div class="card">
       <h2>ما يحتفظ به التطبيق، ولماذا</h2>
@@ -181,6 +189,9 @@
         <li><b>تسجيل الدخول:</b> رمز جلسة (مشفّر)، ومعرّف عشوائي لهذا الجهاز، ونوعه (مثل iPhone)، وإصدار التطبيق ووقت آخر استخدام. تُحفظ كل محاولة لإدخال الرمز مع صيغة مشفّرة من عنوان الشبكة، لمنع تخمين الرموز.</li>
         <li><b>عمل المطبخ:</b> الموردون (الأسماء وأرقام الهواتف وأوقات التذكير)، والأصناف، والوحدات، والطلبات (ما طُلب ومن طلبه ومتى)، والمسودات غير المرسلة، وسجل بمن غيّر الأصناف والموردين، وسلسلة المطبخ، وملخص كل شهر منتهٍ.</li>
         <li><b>ريكو:</b> المحادثات التي تحتفظ بها مع ريكو، والرسائل التي يكتبها لك، وعدد كل طلب للذكاء الاصطناعي (أي نموذج وما مدى طوله)، لتطبيق الحد الساعي.</li>
+        <li><b>الوقت في التطبيق:</b> عدد الثواني التي كان فيها التطبيق ظاهرًا ومستخدمًا، لكل شخص وجهاز ويوم. ترى روژا هذه المجاميع في الإدارة.</li>
+        <li><b>تقارير الأخطاء:</b> عند حدوث خطأ، نص الخطأ نفسه، والشاشة، ونوع الجهاز، وإصدار التطبيق، باسم الشخص الذي كان مسجّلًا الدخول (أو «قبل تسجيل الدخول»). تُزال الرموز السرية ورموز الدخول والمفاتيح والأرقام الطويلة قبل حفظ أي شيء.</li>
+        <li><b>طلبات ريكو التجريبية:</b> الطلبات التي يرسلها ريكو أثناء التجربة إلى واتساب روژا نفسها (المورّد، والأصناف، والكميات، والسبب).</li>
         <li><b>الإشعارات:</b> إن فعّلتها، عنوان التوصيل الذي يقدمه هاتفك ولغتك.</li>
       </ul>
       <p>الرسائل الصوتية إلى ريكو وصور قوائم الأصناف تُرسل للقراءة فقط ولا يحتفظ بها ريكوتا.</p>
@@ -202,7 +213,8 @@
       <h2>مدة الاحتفاظ</h2>
       <ul>
         <li>الطلبات وسجل التغييرات: الشهر الحالي. عند انتهاء الشهر يصبح ملخصًا واحدًا وتُحذف الطلبات.</li>
-        <li>رسائل ريكو وعلامات التذكير: 30 يومًا. أعداد طلبات الذكاء الاصطناعي: 90 يومًا.</li>
+        <li>رسائل ريكو وعلامات التذكير: 30 يومًا. أعداد طلبات الذكاء الاصطناعي، وطلبات ريكو التجريبية، ومحادثات ريكو المحفوظة (بعد آخر استخدام): 90 يومًا.</li>
+        <li>تقارير الأخطاء: حتى 120 يومًا (30 يومًا بعد إصلاحها). الوقت في التطبيق: يُحفظ كمجموع متواصل، دون تاريخ انتهاء.</li>
         <li>تنتهي جلسات الدخول بعد 18 ساعة وتُحذف بعد يومين. محاولات الرمز: يومان. الأجهزة التي سجّلت الخروج وبقيت دون استخدام: 30 يومًا.</li>
         <li>الحسابات والموردون والأصناف والوحدات والإعدادات والمسودات والسلسلة وملخصات الأشهر: حتى تُحذف.</li>
       </ul>
