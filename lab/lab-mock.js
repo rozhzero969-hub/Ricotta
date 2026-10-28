@@ -474,6 +474,13 @@
         if(idx >= 0) list.splice(idx, 1);
         if(table === 'suppliers') db.items.forEach(i=>{ if(i.supplierId === id) i.supplierId = null; });
         db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:'delete', type, name:prev ? (prev.name || prev.en) : id, fields:[]});
+      } else if(Array.isArray(body.only) && prev && table !== 'units'){
+        // Like the server: an edit that names its fields changes only those.
+        const allowed = table === 'suppliers' ? ['name','phone','reminder','cutoff'] : ['name','unit','supplierId','note','aliases','available','sortOrder'];
+        if(body.only.some(k=>!allowed.includes(k)) || (body.only.includes('name') && !String(body.name||'').trim())) return fail('invalid_input');
+        for(const k of body.only) prev[k] = body[k] ?? (k === 'note' ? '' : null);
+        if(body.only.includes('supplierId') && !body.only.includes('sortOrder')) prev.sortOrder = 'sortOrder' in body ? body.sortOrder : null;
+        db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:'edit', type, name:prev.name, fields:[]});
       } else {
         let row;
         if(table === 'suppliers') row = {id, name:String(body.name||'').slice(0,160), phone:body.phone || null, reminder:body.reminder || null, cutoff:'cutoff' in body ? body.cutoff || null : (prev ? prev.cutoff || null : null)};

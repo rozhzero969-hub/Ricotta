@@ -304,6 +304,19 @@ try {
   for(const path of ['me/theme','me/tabs'])assert.equal((await call(path,{},'PUT')).status,404);
   // Kitchen notes, repeat orders and the secret code are gone too.
   for(const [path,method] of [['notes','GET'],['notes','POST'],['notes/1/read','POST'],['repeat-orders','GET'],['repeat-orders','POST'],['assistant/status','GET'],['assistant/setup-status','GET'],['assistant/groq-key','PUT'],['admin/ai/key','PUT'],['admin/ai/key','DELETE']])assert.equal((await call(path,method==='GET'?null:{},method)).status,404,`${path} is retired`);
+  // F06: an edit that names its fields sends only those to the database; anything else is refused.
+  reset();
+  assert.equal((await call('items/tomato', { name: 'Cherry tomatoes', note: 'stale note', only: ['name'] }, 'PUT')).status, 200);
+  assert.deepEqual(Object.keys(calls.find(c => c.name === 'app_internal_catalog_change').args.p_row).sort(), ['id', 'name', 'updated_at'], 'the stale note is not sent');
+  reset();
+  assert.equal((await call('items/tomato', { supplierId: 'supplier', sortOrder: null, only: ['supplierId'] }, 'PUT')).status, 200);
+  assert.deepEqual(Object.keys(calls.find(c => c.name === 'app_internal_catalog_change').args.p_row).sort(), ['id', 'sort_order', 'supplier_id', 'updated_at']);
+  reset();
+  assert.equal((await call('suppliers/supplier', { phone: '0750 111 2222', only: ['phone'] }, 'PUT')).status, 200);
+  assert.deepEqual(Object.keys(calls.find(c => c.name === 'app_internal_catalog_change').args.p_row).sort(), ['id', 'phone', 'updated_at']);
+  reset();
+  assert.equal((await call('items/tomato', { name: '', only: ['name'] }, 'PUT')).status, 400, 'a blank name is still refused');
+  assert.equal((await call('items/tomato', { created_at: 'x', only: ['created_at'] }, 'PUT')).status, 400, 'unknown fields are refused');
   // F01: History and Record follow the roles everywhere, the start-up data too. Without History the phone gets
   // only today's orders and their suppliers (for "sent today"), with no items, amounts or earlier days.
   const staff = roles => { reset(); tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis'; tables.app_sessions[0].app_accounts = { roles }; };
@@ -357,4 +370,4 @@ try {
   assert.equal((await call('signals?since=-1&wait=0',null,'GET')).status,200,'Yunis waits too');
   errors.set('app_signals:read',true);assert.equal((await call('signals?since=-1&wait=0',null,'GET')).status,500);
 } finally { console.error = mute; }
-console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, Admin PIN change, live change signals, locked Transfers, retired endpoints, History and Record roles in the start-up data, 503 when the session check cannot run)');
+console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, Admin PIN change, live change signals, locked Transfers, retired endpoints, edits that change only the fields they name, History and Record roles in the start-up data, 503 when the session check cannot run)');

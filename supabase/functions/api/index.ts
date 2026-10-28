@@ -506,6 +506,24 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
   units: (id, b) => text(b.en, 80) ? { id, en: text(b.en, 80), ku: null, ar: null } : null,
 };
 
+/* An edit names the fields the person changed (b.only): just those are saved, so a form that was open while
+   another phone saved something newer never puts the old values back (the database keeps what isn't sent).
+   A new record, or a client without b.only, sends everything as before. */
+const CATALOG_FIELDS: Record<string, Record<string, string[]>> = {
+  suppliers: { name: ["name"], phone: ["phone"], reminder: ["reminder"], cutoff: ["cutoff"] },
+  items: { name: ["name"], unit: ["unit_id"], supplierId: ["supplier_id", "sort_order"], note: ["note"], aliases: ["aliases"], available: ["available"], sortOrder: ["sort_order"] },
+};
+function catalogRow(table: string, id: string, b: any) {
+  if (!Array.isArray(b.only) || !CATALOG_FIELDS[table]) return CATALOG[table](id, b);
+  const only: string[] = b.only.filter((k: unknown) => typeof k === "string" && Object.hasOwn(CATALOG_FIELDS[table], k));
+  if (!only.length || only.length !== b.only.length) return null;
+  if (only.includes("name") && !text(b.name)) return null;
+  const full = CATALOG[table](id, { ...b, name: only.includes("name") ? b.name : "x" });
+  if (!full) return null;
+  const keep = new Set(["id", "updated_at", ...only.flatMap((k) => CATALOG_FIELDS[table][k])]);
+  return Object.fromEntries(Object.entries(full).filter(([k]) => keep.has(k)));
+}
+
 /* Rico's short note after an order goes out (first one each day per
    account). The words live here so every language matches. */
 const CHEERS = [
@@ -900,7 +918,7 @@ Deno.serve(async (req) => {
           const {data,error}=await db.rpc("app_internal_item_undo",{p_id:id,p_actor:s.account,p_device:s.deviceId,p_restore:false});
           return error ? fail("delete_failed",503) : json(data,data?.error?409:200);
         }
-        const row = M === "PUT" ? CATALOG[table](id, b) : null;
+        const row = M === "PUT" ? catalogRow(table, id, b) : null;
         if (M === "PUT" && !row) return fail("invalid_input");
         const { error } = await db.rpc("app_internal_catalog_change", { p_table: table, p_id: id, p_row: row, p_actor: s.account, p_device: s.deviceId });
         return error ? fail(M === "DELETE" ? "delete_failed" : "save_failed", 500) : ok();
