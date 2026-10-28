@@ -150,9 +150,42 @@ async function sendReminder(payloadFor: Payload) {
   return { ...(await send(subs, payloadFor, 2 * 3600, "high")), skipped };
 }
 
+/* A read that failed is never taken as "no orders": the tick stops (and runs again next time) instead of
+   telling anyone an order is late or missing. */
+function must<T>(res: { data: T; error: unknown }, what: string): T {
+  if (res.error) throw new Error(`${what}_unavailable`);
+  return res.data;
+}
+/* Order lines for many orders: small id batches (URL length) and every page past the 1000-row limit. */
+async function linesFor(ids: string[], columns: string) {
+  const out: any[] = [];
+  for (let i = 0; i < ids.length; i += 60) {
+    for (let from = 0; ; from += 1000) {
+      const page = must(await sb.from("app_order_lines").select(columns).in("order_id", ids.slice(i, i + 60)).order("id").range(from, from + 999), "order_lines") as any[];
+      out.push(...(page ?? []));
+      if (!page || page.length < 1000) break;
+    }
+  }
+  return out;
+}
+/* A message that reached no phone at all (every delivery failed) gives its once-only claim back, so the
+   next tick inside the same window tries again. One that reached some phones keeps it: they never get it twice. */
+const reachedNobody = (r: any) => !!r && !r.disabled && Number(r.failed) > 0 && Number(r.sent) === 0;
+async function releaseAlert(id: string) {
+  const { error } = await sb.from("app_assistant_alerts").delete().eq("id", id);
+  if (error) console.error("alert release failed");
+}
+async function saysOnce(id: string, kind: string, supplierId: string | null, say: () => Promise<any>) {
+  if (!(await claimAlert(id, kind, supplierId))) return null;
+  let result: any;
+  try { result = await say(); } catch (e) { await releaseAlert(id); throw e; }
+  if (reachedNobody(result)) { await releaseAlert(id); console.error("alert not delivered, will retry", kind); }
+  return result;
+}
+
 /* ---- Daily reminder (one for the whole restaurant) ---- */
 async function dailyTick() {
-  const { data: r } = await sb.from("app_reminder_settings").select("*").eq("id", true).maybeSingle();
+  const r = must(await sb.from("app_reminder_settings").select("*").eq("id", true).maybeSingle(), "reminder") as any;
   if (!r?.enabled) return { skipped: "disabled" };
   const now = erbilNow();
   const [h, m] = String(r.remind_time).split(":").map(Number);
@@ -163,7 +196,13 @@ async function dailyTick() {
     .update({ last_sent_date: now.date }).eq("id", true)
     .or(`last_sent_date.is.null,last_sent_date.neq.${now.date}`).select();
   if (!claimed?.length) return { skipped: "already sent today" };
-  return await sendReminder(dailyPayload);
+  const result = await sendReminder(dailyPayload).catch(async (e) => { await unclaimDaily(now.date, r.last_sent_date); throw e; });
+  if (reachedNobody(result)) { await unclaimDaily(now.date, r.last_sent_date); console.error("daily reminder not delivered, will retry"); }
+  return result;
+}
+async function unclaimDaily(date: string, before: string | null) {
+  const { error } = await sb.from("app_reminder_settings").update({ last_sent_date: before ?? null }).eq("id", true).eq("last_sent_date", date);
+  if (error) console.error("daily release failed");
 }
 
 /* ---- Rico's own messages ----
@@ -221,7 +260,7 @@ function lateFor(time: string, days: number[], updatedAt?: string): { late: numb
 }
 async function overdueTick() {
   const due: any[] = [];
-  const { data: sups } = await sb.from("app_suppliers").select("id,name,reminder").not("reminder", "is", null);
+  const sups = must(await sb.from("app_suppliers").select("id,name,reminder").not("reminder", "is", null), "suppliers") as any[];
   for (const s of sups ?? []) {
     const r = s.reminder;
     if (!r?.enabled || !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(r.time))) continue;
@@ -229,16 +268,16 @@ async function overdueTick() {
     const hit = lateFor(r.time, days, r.updatedAt);
     if (hit) due.push({ ...s, ...hit });
   }
-  const { data: daily } = await sb.from("app_reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle();
+  const daily = must(await sb.from("app_reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle(), "reminder") as any;
   const dailyHit = daily?.enabled ? lateFor(String(daily.remind_time).slice(0, 5), ALL_DAYS) : null;
   if (!due.length && !dailyHit) return { skipped: "nothing late" };
 
   // Orders sent since the start of yesterday, so each check can use its own day.
   const since = recentDays()[1].date;
-  const { data: orders } = await sb.from("app_orders").select("id,sent_at").eq("status", "sent").gte("sent_at", `${since}T00:00:00${ERBIL_OFFSET}`);
+  const orders = must(await sb.from("app_orders").select("id,sent_at").eq("status", "sent").gte("sent_at", `${since}T00:00:00${ERBIL_OFFSET}`), "orders") as any[];
   const sentAt = new Map((orders ?? []).map((o: any) => [o.id, Date.parse(o.sent_at)]));
   const ids = [...sentAt.keys()];
-  const { data: lines } = ids.length ? await sb.from("app_order_lines").select("order_id,supplier_id").in("order_id", ids) : { data: [] as any[] };
+  const lines = await linesFor(ids, "order_id,supplier_id");
   const dayStart = (date: string) => Date.parse(`${date}T00:00:00${ERBIL_OFFSET}`);
   const sentSince = (date: string, supplierId?: string) =>
     (lines ?? []).some((l: any) => (!supplierId || l.supplier_id === supplierId) && (sentAt.get(l.order_id) ?? 0) >= dayStart(date))
@@ -246,23 +285,24 @@ async function overdueTick() {
   const out: unknown[] = [];
   for (const s of due) {
     if (sentSince(s.date, s.id)) continue;
-    if (!(await claimAlert(`overdue|${s.id}|${s.date}`, "overdue", s.id))) continue;
     const name = String(s.name).slice(0, 60), time = s.reminder.time;
-    out.push({ supplier: name, ...(await ricoSays("overdue", `overdue|${s.id}|${s.date}`, {
+    const said = await saysOnce(`overdue|${s.id}|${s.date}`, "overdue", s.id, () => ricoSays("overdue", `overdue|${s.id}|${s.date}`, {
       mood: "angry",
       en: (n) => `${hi("Hey", n)}! ${name} was due at ${time} and still isn't sent. Tomatoes don't order themselves. Want me to prepare it?`,
       ku: (n) => `${hi("هەی", n)}! داواکاریی ${name} کاتژمێر ${time} بوو و هێشتا نەنێردراوە. تەماتە خۆی داوا ناکات. با ئێستا ئامادەی بکەم؟`,
       ar: (n) => `${ya(n)}! طلب ${name} كان موعده ${time} ولم يُرسل بعد. الطماطم لا تطلب نفسها. هل أجهّزه لك الآن؟`,
-    }, { supplierId: String(s.id) })) });
+    }, { supplierId: String(s.id) }));
+    if (said) out.push({ supplier: name, ...said });
   }
-  if (dailyHit && !sentSince(dailyHit.date) && await claimAlert(`overdue|daily|${dailyHit.date}`, "overdue-daily", null)) {
+  if (dailyHit && !sentSince(dailyHit.date)) {
     const time = String(daily!.remind_time).slice(0, 5);
-    out.push({ daily: true, ...(await ricoSays("overdue", `overdue|daily|${dailyHit.date}`, {
+    const said = await saysOnce(`overdue|daily|${dailyHit.date}`, "overdue-daily", null, () => ricoSays("overdue", `overdue|daily|${dailyHit.date}`, {
       mood: "angry",
       en: (n) => `${hi("Hey", n)}! It's past ${time} and not a single order has gone out today. Let's go.`,
       ku: (n) => `${hi("هەی", n)}! کاتژمێر ${time} تێپەڕی و ئەمڕۆ هیچ داواکارییەک نەنێردراوە. با دەست پێ بکەین.`,
       ar: (n) => `${ya(n)}! تجاوزت الساعة ${time} ولم يُرسل أي طلب اليوم. هيا بنا.`,
-    })) });
+    }));
+    if (said) out.push({ daily: true, ...said });
   }
   return out;
 }
@@ -329,20 +369,19 @@ async function reportTick() {
   const t = new Date(`${now.date}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + 1);
   if (t.getUTCDate() !== 1 || now.minutes < 17 * 60 || now.minutes >= 21 * 60) return { skipped: "not the time" };
   const month = now.date.slice(0, 7);
-  if (!(await claimAlert(`report|${month}`, "report", null))) return { skipped: "already sent" };
-  return await ricoSays("report", `report|${month}`, {
+  return await saysOnce(`report|${month}`, "report", null, () => ricoSays("report", `report|${month}`, {
     mood: "excited",
     en: (n) => `${hi("Hey", n)}! This month's report card is ready in History. Save the month there before it's cleared at midnight.`,
     ku: (n) => `${hi("هەی", n)}! کارتی ڕاپۆرتی ئەم مانگە لە مێژوودا ئامادەیە. پێش ئەوەی نیوەشەو بسڕدرێتەوە مانگەکە پاشەکەوت بکە.`,
     ar: (n) => `${ya(n)}! بطاقة تقرير هذا الشهر جاهزة في السجل. احفظ الشهر هناك قبل أن يُمسح عند منتصف الليل.`,
-  }, { view: "history" });
+  }, { view: "history" })) ?? { skipped: "already sent" };
 }
 
 /* ---- Order cut-offs: 30 minutes before a supplier stops taking orders, if nothing went to it today ---- */
 const CUTOFF_WARN_MIN = 30;
 async function cutoffTick() {
   const now = erbilNow();
-  const { data: sups } = await sb.from("app_suppliers").select("id,name,reminder,cutoff").not("cutoff", "is", null);
+  const sups = must(await sb.from("app_suppliers").select("id,name,reminder,cutoff").not("cutoff", "is", null), "suppliers") as any[];
   const soon = (sups ?? []).filter((s: any) => {
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(s.cutoff))) return false;
     const r = s.reminder;
@@ -353,21 +392,21 @@ async function cutoffTick() {
     return left > 0 && left <= CUTOFF_WARN_MIN;
   });
   if (!soon.length) return { skipped: "nothing closing" };
-  const { data: orders } = await sb.from("app_orders").select("id").eq("status", "sent").gte("sent_at", `${now.date}T00:00:00${ERBIL_OFFSET}`);
+  const orders = must(await sb.from("app_orders").select("id").eq("status", "sent").gte("sent_at", `${now.date}T00:00:00${ERBIL_OFFSET}`), "orders") as any[];
   const ids = (orders ?? []).map((o: any) => o.id);
-  const { data: lines } = ids.length ? await sb.from("app_order_lines").select("supplier_id").in("order_id", ids) : { data: [] as any[] };
+  const lines = await linesFor(ids, "supplier_id");
   const sent = new Set((lines ?? []).map((l: any) => l.supplier_id));
   const out: unknown[] = [];
   for (const s of soon) {
     if (sent.has(s.id)) continue;
-    if (!(await claimAlert(`cutoff|${s.id}|${now.date}`, "cutoff", s.id))) continue;
     const name = String(s.name).slice(0, 60), time = String(s.cutoff);
-    out.push({ supplier: name, ...(await ricoSays("cutoff", `cutoff|${s.id}|${now.date}`, {
+    const said = await saysOnce(`cutoff|${s.id}|${now.date}`, "cutoff", s.id, () => ricoSays("cutoff", `cutoff|${s.id}|${now.date}`, {
       mood: "worried",
       en: (n) => `${hi("Quick", n, ", ")}! ${name} stops taking orders at ${time} and nothing has gone to them today. Want me to prepare it?`,
       ku: (n) => `${hi("زوو", n)}! ${name} کاتژمێر ${time} داواکاری وەرناگرێت و ئەمڕۆ هیچیان بۆ نەنێردراوە. با ئێستا ئامادەی بکەم؟`,
       ar: (n) => `${ya(n)}! ${name} يتوقف عن استلام الطلبات الساعة ${time} ولم يُرسل له شيء اليوم. هل أجهّزه لك؟`,
-    }, { supplierId: String(s.id) })) });
+    }, { supplierId: String(s.id) }));
+    if (said) out.push({ supplier: name, ...said });
   }
   return out;
 }
@@ -376,36 +415,40 @@ async function cutoffTick() {
 async function weeklyTick() {
   const now = erbilNow();
   if (now.weekday !== 5 || now.minutes < 17 * 60 || now.minutes >= 21 * 60) return { skipped: "not the time" };
-  if (!(await claimAlert(`weekly|${now.date}`, "weekly", null))) return { skipped: "already sent" };
   const dayMs = 86400_000, end = Date.now(), start = end - 7 * dayMs;
-  const { data: orders } = await sb.from("app_orders").select("id,sent_at").eq("status", "sent").gte("sent_at", new Date(start - 7 * dayMs).toISOString());
+  const orders = must(await sb.from("app_orders").select("id,sent_at").eq("status", "sent").gte("sent_at", new Date(start - 7 * dayMs).toISOString()), "orders") as any[];
+  // History is cleared at the start of each month: a week that reaches into last month is only partly
+  // here, so it is never compared as if it were whole.
+  const monthStartMs = Date.parse(`${now.date.slice(0, 8)}01T00:00:00${ERBIL_OFFSET}`);
+  const wholeWeek = start >= monthStartMs, wholeLastWeek = start - 7 * dayMs >= monthStartMs;
   const thisWeek = (orders ?? []).filter((o: any) => Date.parse(o.sent_at) >= start), lastWeek = (orders ?? []).filter((o: any) => Date.parse(o.sent_at) < start);
   const ids = thisWeek.map((o: any) => o.id);
-  const { data: lines } = ids.length ? await sb.from("app_order_lines").select("item_name").in("order_id", ids) : { data: [] as any[] };
+  const lines = await linesFor(ids, "item_name");
   const tally = new Map<string, number>();
   for (const l of lines ?? []) tally.set(l.item_name, (tally.get(l.item_name) ?? 0) + 1);
   const top = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
-  const { data: st } = await sb.from("app_streak").select("count,last_day").eq("id", true).maybeSingle();
+  const st = must(await sb.from("app_streak").select("count,last_day").eq("id", true).maybeSingle(), "streak") as any;
   const y = new Date(`${now.date}T12:00:00Z`); y.setUTCDate(y.getUTCDate() - 1);
   const streak = st && (String(st.last_day) === now.date || String(st.last_day) === y.toISOString().slice(0, 10)) ? Number(st.count) : 0;
   const k = thisWeek.length, p = lastWeek.length;
-  const trend = { en: k > p ? `up from ${p} last week` : k < p ? `down from ${p} last week` : "the same as last week",
+  const trend = !wholeWeek ? { en: "since the 1st", ku: "لە یەکی مانگەوە", ar: "منذ بداية الشهر" }
+    : !wholeLastWeek ? { en: "last week's are cleared with the month", ku: "هی هەفتەی پێشوو لەگەڵ مانگەکە سڕاونەتەوە", ar: "طلبات الأسبوع الماضي مُسحت مع الشهر" }
+    : { en: k > p ? `up from ${p} last week` : k < p ? `down from ${p} last week` : "the same as last week",
     ku: k > p ? `زیاتر لە ${p}ی هەفتەی پێشوو` : k < p ? `کەمتر لە ${p}ی هەفتەی پێشوو` : "وەک هەفتەی پێشوو",
     ar: k > p ? `أكثر من ${p} في الأسبوع الماضي` : k < p ? `أقل من ${p} في الأسبوع الماضي` : "مثل الأسبوع الماضي" };
-  return await ricoSays("weekly", `weekly|${now.date}`, {
+  return await saysOnce(`weekly|${now.date}`, "weekly", null, () => ricoSays("weekly", `weekly|${now.date}`, {
     mood: k >= p && k > 0 ? "excited" : "calm",
     en: (n) => `${hi("Happy Friday", n, ", ")}! This week: ${k} order${k === 1 ? "" : "s"}, ${trend.en}.${top ? ` Most ordered: ${top}.` : ""}${streak ? ` Streak: ${streak} days.` : ""} Have a good weekend!`,
     ku: (n) => `${hi("هەینیت باش", n)}! ئەم هەفتەیە: ${k} داواکاری، ${trend.ku}.${top ? ` زۆرترین داواکراو: ${top}.` : ""}${streak ? ` زنجیرە: ${streak} ڕۆژ.` : ""} پشووی خۆش!`,
     ar: (n) => `${hi("جمعة مباركة", n, " يا ")}! هذا الأسبوع: ${k} طلب، ${trend.ar}.${top ? ` الأكثر طلبًا: ${top}.` : ""}${streak ? ` السلسلة: ${streak} يومًا.` : ""} عطلة سعيدة!`,
-  }, { view: "history" });
+  }, { view: "history" }));
 }
 
 /* Rico's good-morning message: which suppliers are due today. */
 async function cheerTick() {
   const now = erbilNow();
   if (now.minutes < CHEER_AT_MIN || now.minutes >= CHEER_AT_MIN + CHEER_WINDOW_MIN) return { skipped: "outside window" };
-  if (!(await claimAlert(`cheer|${now.date}`, "cheer", null))) return { skipped: "already sent today" };
-  const { data: sups } = await sb.from("app_suppliers").select("name,reminder").not("reminder", "is", null);
+  const sups = must(await sb.from("app_suppliers").select("name,reminder").not("reminder", "is", null), "suppliers") as any[];
   const dueToday = (sups ?? []).filter((s: any) => {
     const r = s.reminder;
     if (!r?.enabled) return false;
@@ -416,7 +459,7 @@ async function cheerTick() {
   const listEn = dueToday.slice(0, 6).join(", ");
   const k = dueToday.length;
   const wx = await weatherWords().catch(() => ({ en: "", ku: "", ar: "" }));
-  return await ricoSays("cheer", `cheer|${now.date}`, k ? {
+  return await saysOnce(`cheer|${now.date}`, "cheer", null, () => ricoSays("cheer", `cheer|${now.date}`, k ? {
     mood: "excited",
     en: (n) => `${hi("Good morning", n, ", ")}! ${k} supplier${k === 1 ? " is" : "s are"} due today: ${listEn}.${wx.en} Let's get the orders out on time.`,
     ku: (n) => `${hi("بەیانیت باش", n)}! ئەمڕۆ کاتی داواکاریی ${k} دابینکەرە: ${list}.${wx.ku} با بە کاتی خۆی بینێرین.`,
@@ -426,13 +469,13 @@ async function cheerTick() {
     en: (n) => `${hi("Good morning", n, ", ")}! No supplier is scheduled today.${wx.en} Have a great shift.`,
     ku: (n) => `${hi("بەیانیت باش", n)}! ئەمڕۆ هیچ دابینکەرێک کاتی داواکاریی نییە.${wx.ku} ڕۆژێکی خۆش.`,
     ar: (n) => `${hi("صباح الخير", n, " يا ")}! لا يوجد مورّد مجدول اليوم.${wx.ar} يومًا موفقًا.`,
-  });
+  })) ?? { skipped: "already sent today" };
 }
 
 /* ---- Per-supplier reminders ----
    reminder = { enabled, time: "HH:MM" (Erbil), days: [0..6] (0 = Sunday), updatedAt } */
 async function supplierTick() {
-  const { data } = await sb.from("app_suppliers").select("id,name,reminder").not("reminder", "is", null);
+  const data = must(await sb.from("app_suppliers").select("id,name,reminder").not("reminder", "is", null), "suppliers") as any[];
   const now = Date.now();
   const today = erbilNow();
   const out: unknown[] = [];

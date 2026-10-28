@@ -130,7 +130,7 @@ const server=http.createServer((req,res)=>{
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
     await ctx.addInitScript(({loggedIn,s})=>{
-      window.RICOTTA_TODAY='2026-06-10';   // a day without a holiday theme, so the colour themes are tested
+      window.RICOTTA_TODAY='2026-06-10';   // a fixed day, so the test does not depend on the date
       localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',JSON.stringify(Date.now()));
       // Both people already allowed Rico's AI (the permission itself is checked on Rico's screen below).
       for(const a of ['rozha','yunis']) localStorage.setItem('ricottaOrders:aiConsent2:'+a,'true');

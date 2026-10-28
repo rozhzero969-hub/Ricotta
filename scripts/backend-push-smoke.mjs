@@ -44,6 +44,7 @@ const db = {
       if (range) { rowPages.push({ table, range }); rows = rows.slice(range[0], range[1] + 1); }
       if (action === 'insert') tables[table] = [...(tables[table] ?? []), ...(Array.isArray(change) ? change : [change])];
       if (action === 'update') for (const row of rows) Object.assign(row, change);
+      if (action === 'delete') tables[table] = (tables[table] ?? []).filter(row => !rows.includes(row));
       if (action === 'upsert') {
         // Rico's alerts and inbox must never overwrite an earlier copy; a plain upsert replaces the row.
         if (table === 'app_assistant_alerts' || table === 'app_rico_inbox') assert.equal(conflict?.ignoreDuplicates, true);
@@ -70,6 +71,7 @@ const db = {
       insert(row) { action = 'insert'; change = row; return q; },
       upsert(row, options) { action = 'upsert'; change = row; conflict = options; return q; },
       update(row) { action = 'update'; change = row; return q; },
+      delete() { action = 'delete'; return q; },
       maybeSingle() { const result = run(); return Promise.resolve({ ...result, data: result.data?.[0] ?? null }); },
       then(resolve, reject) { return Promise.resolve(run()).then(resolve, reject); },
     };
@@ -88,7 +90,7 @@ const fetchStub = async (url) => {
   weatherCalls.push(String(url));
   return new Response(JSON.stringify(weather), { status: 200, headers: { 'content-type': 'application/json' } });
 };
-const { loadSubs, claimAlert, ricoSays } = new Function('createClient', 'Deno', 'webpush', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'fetch', stripTypeScriptTypes(source) + '\nreturn { loadSubs, claimAlert, ricoSays };')(
+const { loadSubs, claimAlert, ricoSays, saysOnce, overdueTick, linesFor } = new Function('createClient', 'Deno', 'webpush', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'fetch', stripTypeScriptTypes(source) + '\nreturn { loadSubs, claimAlert, ricoSays, saysOnce, overdueTick, linesFor };')(
   () => db, deno, { setVapidDetails() {}, sendNotification() { assert.fail('push must stay disabled without VAPID'); } }, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, fetchStub,
 );
 reset();
@@ -123,4 +125,26 @@ assert.deepEqual([tables.app_weather?.[0]?.data?.rain, tables.app_weather?.[0]?.
 const again = await (await handler(req({ type: 'reminder-tick' }))).json();
 assert.deepEqual([again.weather, weatherCalls.length], [{ skipped: 'fresh' }, 1], 'fresh weather is not fetched again on the next tick');
 
-console.log('Backend push smoke: PASS');
+// F21: a read that fails is never taken as "no orders": the late-order check stops instead of alerting.
+reset();
+const due = new Date(Date.now() - 90 * 60000);
+const hhmm = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Baghdad', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(due);
+tables.app_suppliers = [{ id: 'sup', name: 'Bakery', reminder: { enabled: true, time: hhmm, days: [0, 1, 2, 3, 4, 5, 6] } }];
+tables.app_orders = [];
+queryError = 'app_orders';
+await assert.rejects(overdueTick(), /orders_unavailable/);
+assert.equal(tables.app_assistant_alerts.length, 0, 'no late alert from a failed read');
+queryError = '';
+// F22: a message that reached no phone gives its claim back (the next tick tries again); one that reached some keeps it.
+reset();
+assert.equal(await saysOnce('retry-me', 'cheer', null, async () => ({ sent: 0, failed: 2 })) !== null, true);
+assert.equal(tables.app_assistant_alerts.some(a => a.id === 'retry-me'), false, 'nobody got it: claim released');
+await saysOnce('partly', 'cheer', null, async () => ({ sent: 1, failed: 1 }));
+assert.equal(tables.app_assistant_alerts.some(a => a.id === 'partly'), true, 'some phones got it: never sent twice');
+await assert.rejects(saysOnce('throws', 'cheer', null, async () => { throw new Error('push down'); }));
+assert.equal(tables.app_assistant_alerts.some(a => a.id === 'throws'), false);
+// F23: order lines are read past the 1000-row limit.
+reset();
+assert.equal((await linesFor(['order'], 'order_id,supplier_id')).length, 1001, 'every line, not the first 1000');
+
+console.log('Backend push smoke: PASS (failed reads never become alerts, undelivered alerts retry, every order line is read)');

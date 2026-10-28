@@ -89,6 +89,19 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.evaluate(()=>{state.cart={tom:99999};rico.messages=[{role:'assistant',text:'Check.',proposals:[{id:'limit',kind:'order',mode:'add',status:'pending',draftBefore:{tom:99999},lines:[{itemId:'tom',qty:1}]}]}];render();});
  assert.equal(await page.locator('[data-rico-apply]').count(),0);assert.match(await page.locator('.rico-card').textContent(),/99,999/);
 
+ // F24: a 160-letter item name with no spaces wraps inside its column in the PDF (it used to paint across the page).
+ const pdfCheck=await page.evaluate(async()=>{
+   const proto=CanvasRenderingContext2D.prototype,orig=proto.fillText,drawn=[];
+   proto.fillText=function(t,x,y){const w=this.measureText(String(t)).width;drawn.push({t:String(t),w});return orig.apply(this,arguments);};
+   try{
+     const long='Tomatoesextralongnamewithoutanyspaces'.repeat(5).slice(0,160);
+     const blob=await brandedPdf({title:'Test',stamp:'now',info:[],sections:[{heading:'Items',columns:[{label:'Item',w:3},{label:'Qty',w:1,align:'end'}],rows:[[long,'5 kg'],['تەماتە'.repeat(30),'2']]}]});
+     return {size:blob.size,widest:Math.max(...drawn.filter(d=>/Tomatoes|تەماتە/.test(d.t)).map(d=>d.w)),pieces:drawn.filter(d=>/Tomatoes/.test(d.t)).length};
+   }finally{proto.fillText=orig;}
+ });
+ assert.ok(pdfCheck.size>1000,'a PDF is made');
+ assert.ok(pdfCheck.pieces>=2,'the long name is split into lines');
+ assert.ok(pdfCheck.widest<=(595.28-80)*3/4,'no line is wider than its column');
  await page.screenshot({path:path.join(out,'kept-features.png')});assert.deepEqual(errors,[]);await ctx.close();
- console.log(JSON.stringify({result:'PASS',checks:'saved design, favourites per supplier, remembered places per tab and screen, no send warnings, item delete Undo, Health Check, Rico spark button, reviewed Rico cards',artifacts:out}));
+ console.log(JSON.stringify({result:'PASS',checks:'long names wrap inside their PDF column, saved design, favourites per supplier, remembered places per tab and screen, no send warnings, item delete Undo, Health Check, Rico spark button, reviewed Rico cards',artifacts:out}));
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);server.close();process.exitCode=1;});

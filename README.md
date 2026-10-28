@@ -22,7 +22,7 @@ Unfinished orders sync between devices signed in to the same account. Quantities
 - **Report card**: at the top of History, computed from this month's orders, with an Excel file and a PDF before the monthly cleanup.
 - **Exports** (`exports.js`): Excel and PDF of items and suppliers with this month's order counts (`reports/catalog`), the month's report and a sent order as a PDF. Files carry the Ricotta header; Excel cells are written as text, never formulas. PDFs open in a sheet with a Done button, so a phone always has a way back.
 - **Weather**: the reminder tick keeps Erbil's weather from Open-Meteo in `app_weather` for Rico's morning messages.
-- Pinned items (`app_accounts.pins`), item notes (`app_items.note`, sent in the WhatsApp message) and Undo for 15 minutes after an order is saved.
+- Pinned items (`app_accounts.pins`), item notes (`app_items.note`, sent in the WhatsApp message) and, for Rozha, Undo for 15 minutes after an order is saved (older ones with her PIN).
 - Rico's chat history is one list for both people, each chat marked with who started it; both can open and delete any chat (or all), and each only continues their own.
 - **Order cut-offs** (`app_suppliers.cutoff`, HH:MM Erbil): on the supplier's order days (its reminder days, or every day) Order, Send and Suppliers show a countdown; Rico warns 30 minutes before when nothing has gone to that supplier.
 - **App icon badge**: late suppliers (Home Screen app; on iPhone with notifications on).
@@ -91,11 +91,11 @@ Supplier cards include WhatsApp and phone links. Quantities have up to three dec
 
 Items can be marked unavailable without deletion and given alternate search names. Items → Import Excel previews a first-sheet `.xlsx` or `.csv` file before saving, with at most 500 rows and a 2 MB file limit. Required column headings are `Name`, `Unit`, and `Supplier`; unit and supplier values must match one existing entry by name or ID. Optional headings are `ID`, `Aliases`, `Available`, and `Note`. Existing items match by ID or a unique name and supplier; omitted optional fields are preserved. Ambiguous or invalid rows must be corrected before importing.
 
-The spreadsheet reader is the official SheetJS Community Edition 0.20.3 standalone build, stored locally in `vendor/` with its Apache 2.0 license. It loads only when importing a spreadsheet or making a stock file, and does not execute spreadsheet formulas.
+The spreadsheet reader is the official SheetJS Community Edition 0.20.3 standalone build, stored locally in `vendor/` with its Apache 2.0 license. It loads only when importing items from a spreadsheet or reading a stock list in Transfers, and does not execute spreadsheet formulas. Excel and PDF exports don't use it.
 
 ## Transfers
 
-Transfers is its own tab (both accounts) and has nothing to do with ordering. It makes the Excel file for the workplace stock system's *Upload Excel* button on **Move between storages**; the From and To storages are still chosen there. Until that button exists the tab is locked: it shows "This tab is still being made" above an inert picture of the design, nobody can use or test it, and the api answers its four routes with 423. To open it, set `TRANSFERS_READY` in `transfers.js` and `TRANSFERS_OPEN` in `supabase/functions/api/index.ts` to `true`, and redeploy the api.
+Transfers is its own tab (Rozha; Yunis only if she gives him the Transfers role in Admin › Access) and has nothing to do with ordering. It makes the Excel file for the workplace stock system's *Upload Excel* button on **Move between storages**; the From and To storages are still chosen there. Until that button exists the tab is locked: it shows "This tab is still being made" above an inert picture of the design, nobody can use or test it, and the api answers its four routes with 423. To open it, set `TRANSFERS_READY` in `transfers.js` and `TRANSFERS_OPEN` in `supabase/functions/api/index.ts` to `true`, and redeploy the api.
 
 - **Workplace item list.** Upload any Excel or CSV with an item name column once (the stock system's own template works: its *Item list* and *Units* sheets are read). A unit column is optional; several units are separated by commas. A new upload replaces the list; items that stay keep their id and remembered spellings. Stored in `app_stock_items`, reachable only through the API.
 - **Adding items.** Type or paste a list, say it (the microphone), take a photo of a paper list, or search an item. Rico reads the list and picks each item from the workplace list; the server accepts only ids from that list and units the item has. Without Rico the phone matches the names itself. A name is taken as sure only when it is exactly the item's name, one half of "English - کوردی" or "کوردی (English)", or a remembered spelling; anything else is marked for the person to confirm or pick, and *Remember* in the picker saves the spelling for next time.
@@ -112,7 +112,7 @@ The sign-in security check centres the Cloudflare widget and continues automatic
 
 ## Security checks and publishing
 
-See [SECURITY.md](SECURITY.md) for the authentication model, permission boundaries, rate limits and hosting limitations. Build the browser-only publishing artifact with `node scripts/build-site.cjs`; configure GitHub Pages to use GitHub Actions. Do not publish the repository root. Security CI audits the Node and Deno dependency locks and scans Git history without logging secret values.
+See [SECURITY.md](SECURITY.md) for the authentication model, permission boundaries, rate limits and hosting limitations. Build the browser-only publishing artifact with `node scripts/build-site.cjs`; configure GitHub Pages to use GitHub Actions. Do not publish the repository root. Publishing waits for the tests: `pages.yml` runs only after **Checks** passed on main, also requires **Security** to have passed for that commit, and builds that exact commit (never a newer, untested one). Main is protected: changes arrive through pull requests whose `smoke` and `audit` checks passed. Security CI audits the Node and Deno dependency locks and scans Git history without logging secret values.
 
 ## Loading and performance
 

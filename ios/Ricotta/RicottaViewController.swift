@@ -3,12 +3,8 @@ import WebKit
 
 final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
     private var webView: WKWebView!
-    private let popupConfiguration: WKWebViewConfiguration?
-    init(popupConfiguration: WKWebViewConfiguration? = nil) {
-        self.popupConfiguration = popupConfiguration
-        super.init(nibName: nil, bundle: nil)
-    }
-    required init?(coder: NSCoder) { fatalError("Use init(popupConfiguration:)") }
+    init() { super.init(nibName: nil, bundle: nil) }
+    required init?(coder: NSCoder) { fatalError("Use init()") }
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let recovery = UIStackView()
     private var downloadFiles: [ObjectIdentifier: URL] = [:]
@@ -19,22 +15,20 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
     private var pageReported = false
     private let selectionFeedback = UISelectionFeedbackGenerator()
     private let notificationFeedback = UINotificationFeedbackGenerator()
-    override var preferredStatusBarStyle: UIStatusBarStyle { popupConfiguration == nil ? statusBarStyle : .default }
+    override var preferredStatusBarStyle: UIStatusBarStyle { statusBarStyle }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = popupConfiguration == nil ? Self.launchBackground : .systemBackground
-        let configuration = popupConfiguration ?? WKWebViewConfiguration()
+        view.backgroundColor = Self.launchBackground
+        let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default() // Separate, persistent sign-in for this app.
         configuration.allowsInlineMediaPlayback = true
-        if popupConfiguration == nil {
-            // One read-only flag so the page can hide web-only hints (web push, Add to Home Screen) and
-            // run as an app frame.
-            configuration.userContentController.addUserScript(WKUserScript(
-                source: "window.RICOTTA_NATIVE_SHELL = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
-            // The page may send a few fixed words (haptics and its light or dark look) and gets nothing back.
-            configuration.userContentController.add(WeakMessageHandler(self), name: "ricotta")
-        }
+        // One read-only flag so the page can hide web-only hints (web push, Add to Home Screen) and
+        // run as an app frame.
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: "window.RICOTTA_NATIVE_SHELL = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // The page may send a few fixed words (haptics and its light or dark look) and gets nothing back.
+        configuration.userContentController.add(WeakMessageHandler(self), name: "ricotta")
         // Keep WebKit's default user agent and browser features for Cloudflare verification.
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
@@ -50,13 +44,11 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         view.addSubview(webView)
         // The app page uses viewport-fit=cover and pads itself with env(safe-area-inset-*), so it fills
         // the whole screen and paints its own background (and dark mode) behind the status bar.
-        // The print preview sits under a navigation bar, so it stays inside the safe area.
-        let fillsScreen = popupConfiguration == nil
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: fillsScreen ? view.topAnchor : view.safeAreaLayoutGuide.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: fillsScreen ? view.bottomAnchor : view.safeAreaLayoutGuide.bottomAnchor)
+            webView.topAnchor.constraint(equalTo: view.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         spinner.translatesAutoresizingMaskIntoConstraints = false
         spinner.hidesWhenStopped = true
@@ -65,12 +57,7 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         NSLayoutConstraint.activate([spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
                                      spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)])
         buildRecovery()
-        if popupConfiguration == nil { loadHome() }
-        else {
-            title = String(localized: "Order Sheet")
-            navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(closePreview))
-            navigationItem.rightBarButtonItem = UIBarButtonItem(title: String(localized: "Print"), style: .plain, target: self, action: #selector(printPreview))
-        }
+        loadHome()
     }
     /// When the app cannot reach Ricotta: Apple's "content unavailable" layout, with a symbol, a short
     /// title, one line of help, a filled Try Again button and Open in Safari.
@@ -144,36 +131,8 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
         default: break
         }
     }
-    @objc private func closePreview() { dismiss(animated: true) }
-    @objc private func printPreview() {
-        let printer = UIPrintInteractionController.shared
-        let information = UIPrintInfo(dictionary: nil)
-        information.jobName = String(localized: "Ricotta Order Sheet")
-        information.outputType = .general
-        printer.printInfo = information
-        printer.printFormatter = webView.viewPrintFormatter()
-        if let button = navigationItem.rightBarButtonItem {
-            printer.present(from: button, animated: true)
-        } else {
-            printer.present(animated: true)
-        }
-    }
-    // Existing PDF/report actions write a printable document into a new about:blank window.
-    // WebKit does not display window.print(); expose the native Print action on that preview.
-    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
-                 for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        guard action.targetFrame == nil, action.request.url?.absoluteString == "about:blank",
-              action.sourceFrame.isMainFrame, action.sourceFrame.request.url.map(RicottaNavigation.isAppPage) == true,
-              presentedViewController == nil else { return nil }
-        let preview = RicottaViewController(popupConfiguration: configuration)
-        preview.loadViewIfNeeded()
-        let navigation = UINavigationController(rootViewController: preview)
-        present(navigation, animated: true)
-        return preview.webView
-    }
-    func webViewDidClose(_ webView: WKWebView) {
-        if popupConfiguration != nil { dismiss(animated: true) }
-    }
+    // PDFs and spreadsheets are downloaded as files (see the download delegate). The page never opens
+    // new windows, so none are created: WKUIDelegate's createWebViewWith keeps its default (nil).
 
     private func loadHome() {
         recovery.isHidden = true
@@ -193,7 +152,6 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         spinner.stopAnimating()
         // A page that never reports its look (an older version of the site) gets the system's own colours.
-        guard popupConfiguration == nil else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let self, !self.pageReported, self.recovery.isHidden else { return }
             self.setLook(background: .systemBackground, statusBar: .default)
@@ -208,11 +166,6 @@ final class RicottaViewController: UIViewController, WKNavigationDelegate, WKUID
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
-        if url.absoluteString == "about:blank", popupConfiguration != nil ||
-            (action.targetFrame == nil && action.sourceFrame.isMainFrame && action.sourceFrame.request.url.map(RicottaNavigation.isAppPage) == true) {
-            decisionHandler(.allow)
-            return
-        }
         if action.targetFrame?.isMainFrame == false {
             // Turnstile uses HTTPS and sandboxed about: frames. Do not restrict ordinary subresources.
             decisionHandler(RicottaNavigation.isChallengeFrame(url) ? .allow : .cancel)

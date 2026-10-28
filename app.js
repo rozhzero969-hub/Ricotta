@@ -186,9 +186,9 @@ function commandIsPending(d){ return !!(d.command && d.command.id !== d.handledC
 
 function heartbeat(){
   if(!state.account) return;
-  // "Still here", with the time spent in the app since the last one (put back if it doesn't arrive).
-  const seconds = takeUsage();
-  api('devices/me', {method:'POST', body:seconds ? {seconds} : {}}).then(r=>{ if(!r.ok) returnUsage(seconds); });
+  // "Still here", with the time spent in the app since the last one (sent again if it doesn't arrive).
+  const batch = takeUsage();
+  api('devices/me', {method:'POST', body:usageBody(batch)}).then(r=>settleUsage(batch, r));
   flushOutbox();
   flushProblems();
   syncSharedDraft();
