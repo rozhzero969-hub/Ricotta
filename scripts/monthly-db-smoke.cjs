@@ -294,6 +294,28 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await assert.rejects(db.exec("insert into app_rico_orders(account,supplier_name,lines,status) values('rozha','Bakery','[]','sent');"),/lines_check/,'an order needs lines');
  await assert.rejects(db.exec(`insert into app_rico_orders(account,supplier_name,lines,status) values('rozha','Bakery','[{"qty":1}]','queued');`),/status_check/);
  assert.equal((await q("select has_table_privilege('authenticated','app_rico_orders','select') as a"))[0].a,false,'the browser cannot read them');
+ // F09/F10: Rico's sends are written down and their slots reserved in one locked step.
+ const reserve=async(key,parts=1)=>(await q(`select app_internal_rico_send_reserve('rozha','${key.padEnd(64,'0')}','sup-1','Bakery','[{"name":"Bread","qty":1,"unit":"piece"}]','usual','[TEST] Bakery',${parts},20) as r`))[0].r;
+ await db.exec("delete from app_rico_orders;");
+ const first=await reserve('a');
+ assert.ok(first.id,'the first send is written down as pending');
+ assert.equal((await q(`select status from app_rico_orders where id=${first.id}`))[0].status,'pending');
+ assert.equal((await reserve('a')).duplicate,true,'the same order again is the earlier result');
+ await db.exec(`update app_rico_orders set status='failed' where id=${first.id};`);
+ assert.ok((await reserve('a')).id,'after a clear failure it may go again');
+ assert.equal((await reserve('b',20)).limited,true,'20 more parts would pass 20 an hour (one is pending)');
+ assert.ok((await reserve('c',19)).id);
+ assert.equal((await reserve('d')).limited,true,'the hour is full');
+ await assert.rejects(q(`select app_internal_rico_send_reserve('rozha','short','s','S','[]','',null,1,20)`),/Invalid send/);
+ await assert.rejects(db.exec(`insert into app_rico_orders(account,supplier_name,lines,status) values('rozha','B','[{"q":1}]','queued');`),/status_check/);
+ await db.exec("delete from app_rico_orders;");
+ // F20: Admin's AI totals come from each reply's tries; a voice message read by Gemini counts as Gemini.
+ await db.exec(`insert into app_assistant_usage(device_id,account,model,kind,input_tokens,output_tokens,attempts) values
+  ('r-phone','rozha','gemini-3.5-flash','chat',150,12,'[{"provider":"anthropic","model":"claude-haiku-5-5","input":100,"output":0,"answered":false,"outcome":"busy"},{"provider":"gemini","model":"gemini-3.5-flash","input":50,"output":12,"answered":true,"outcome":"working"}]'),
+  ('r-phone','rozha','transcribe:gemini-3.5-flash-lite','voice',0,0,null);`);
+ const ai=(await q("select app_internal_ai_usage(now()-interval '1 day') as r"))[0].r;
+ assert.deepEqual(ai.anthropic,{calls:0,input:100,output:0},'a failed try counts its tokens but not a reply');
+ assert.equal(ai.gemini.calls,2,'the answered try and the voice message are Gemini');
  // Health Check reads the database itself.
  await assert.rejects(q("select app_internal_diagnostics('yunis')"),/Forbidden/);
  const health=(await q("select app_internal_diagnostics('rozha') as r"))[0].r;
@@ -343,5 +365,5 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await db.exec('select app_internal_cleanup();');
  // Exercise schema-only restore to another empty database, without business data.
  const restored=new PGlite({extensions:{pgcrypto}});await restored.exec('create role anon;create role authenticated;create role service_role;');await restored.exec(fs.readFileSync('supabase/baseline.sql','utf8'));for(const sql of migrations) await restored.exec(sql);await restored.close();
- await db.close();console.log('Database smoke: PASS (every migration, PIN change, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, security log, roles, problem reports, time in the app by day, week and month, live change signals, one-name units, last ordered (and Undo keeps it), edits that change only the fields sent, Rico usage, Health Check, schema restore)');
+ await db.close();console.log('Database smoke: PASS (every migration, PIN change, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, security log, roles, problem reports, time in the app by day, week and month, live change signals, one-name units, last ordered (and Undo keeps it), edits that change only the fields sent, Rico usage, Rico send reservations (duplicates, hourly limit), AI totals per try, Health Check, schema restore)');
 })().catch(e=>{console.error(e);process.exitCode=1});

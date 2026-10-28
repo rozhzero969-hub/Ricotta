@@ -9,10 +9,32 @@ globalThis.Deno = { env: { get: (key) => environment.get(key) ?? '' } };
 const aiStatus = new Map();
 const ricoOrders = [];
 let kitchen = null; // set for the WhatsApp tests: { app_suppliers: [...], ... }
+let reserveFails = false;
 const { adminAi, handleChat, handleTranscribe, _internals } = await import('../supabase/functions/api/assistant.ts');
 
 const db = {
   rpc(name, args) {
+    // The send reservation, as the database does it: same order within 15 minutes = the earlier result;
+    // the hour's messages are counted before this one is written down as pending.
+    if (name === 'app_internal_rico_send_reserve') {
+      if (reserveFails) return Promise.resolve({ data: null, error: { message: 'offline' } });
+      const dup = ricoOrders.findLast(r => r.idem_key === args.p_key && r.status !== 'failed' && Date.now() - r.at < 15 * 60000);
+      if (dup) return Promise.resolve({ data: { duplicate: true, id: dup.id, status: dup.status, at: new Date(dup.at).toISOString() }, error: null });
+      const used = ricoOrders.filter(r => Date.now() - r.at < 3600000).reduce((n, r) => n + (r.status === 'pending' ? r.parts : r.status === 'failed' ? 0 : Math.max(r.sent_parts, 1)), 0);
+      if (used + args.p_parts > args.p_limit) return Promise.resolve({ data: { limited: true, used }, error: null });
+      const row = { id: ricoOrders.length + 1, at: Date.now(), account: args.p_account, supplier_id: args.p_supplier_id, supplier_name: args.p_supplier_name,
+        lines: args.p_lines, reason: args.p_reason, content: args.p_content, parts: args.p_parts, sent_parts: 0, idem_key: args.p_key, status: 'pending' };
+      ricoOrders.push(row);
+      return Promise.resolve({ data: { id: row.id }, error: null });
+    }
+    if (name === 'app_internal_ai_usage') {
+      const totals = {};
+      for (const row of usage) for (const a of row.attempts ?? []) {
+        const t = totals[a.provider] ??= { calls: 0, input: 0, output: 0 };
+        t.calls += a.answered ? 1 : 0; t.input += a.input; t.output += a.output;
+      }
+      return Promise.resolve({ data: totals, error: null });
+    }
     assert.equal(name, 'app_internal_reserve_assistant');
     const id = usage.length + 1;
     usage.push({ id, device_id: args.p_device_id, account: args.p_account, model: args.p_model, input_tokens: 0, output_tokens: 0 });
@@ -39,6 +61,10 @@ const db = {
         return Promise.resolve({ error: null });
       },
       then(resolve) {
+        if (action === 'update' && table === 'app_rico_orders') {
+          const id = filters.find(([field]) => field === 'id')?.[1]?.[0];
+          Object.assign(ricoOrders.find(row => row.id === id), change);
+        }
         if (action === 'update' && table === 'app_assistant_usage') {
           const id = filters.find(([field]) => field === 'id')?.[1]?.[0];
           Object.assign(usage.find(row => row.id === id), change);
@@ -92,6 +118,7 @@ globalThis.fetch = async (input, options = {}) => {
   if (new URL(url).hostname === 'api.anthropic.com') return anthropic(url, options);
   if (new URL(url).hostname === 'graph.facebook.com') {
     whatsappCalls.push({ url, auth: options.headers.authorization, body: JSON.parse(options.body) });
+    if (whatsappThrows) throw new TypeError('network connection lost');
     return whatsappWindowClosed
       ? new Response(JSON.stringify({ error: { code: 131047, message: 'Re-engagement message' } }), { status: 400 })
       : new Response(JSON.stringify({ messages: [{ id: 'wamid.test' + whatsappCalls.length }] }), { headers: { 'content-type': 'application/json' } });
@@ -115,6 +142,8 @@ globalThis.fetch = async (input, options = {}) => {
 let anthropicTurn = 0;
 const whatsappCalls = [];
 let whatsappWindowClosed = false;
+let whatsappThrows = false;
+let anthropicSecondTurnDown = false;
 let anthropicFail = null; // { status, type, message } or 'slow'
 let anthropicTool = { name: 'open_screen', json: ['{"screen":', '"order"}'] };
 const anthropicKey = 'sk-ant-api03-' + 'C'.repeat(40);
@@ -123,6 +152,7 @@ const sse = events => new Response(new ReadableStream({ start(controller) {
 } }), { headers: { 'content-type': 'text/event-stream' } });
 async function anthropic(url, options) {
   assert.equal(options.headers['x-api-key'], anthropicKey);
+  if (anthropicSecondTurnDown && anthropicTurn === 1) { anthropicTurn++; return new Response('{"type":"error","error":{"type":"overloaded_error"}}', { status: 529 }); }
   if (anthropicFail === 'slow') return new Promise((_, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
   if (anthropicFail) return new Response(JSON.stringify({ type: 'error', error: { type: anthropicFail.type, message: anthropicFail.message ?? '' } }), { status: anthropicFail.status });
   if (anthropicTurn++ === 0) return sse([
@@ -222,6 +252,8 @@ groqTurn = 0; const beforeHalfway = requests.length;
 const halfwayEvents = await chat();
 assert.deepEqual(halfwayEvents.map(e => e.type), ['status', 'proposal', 'error', 'done'], 'a card already shown is never repeated by another model');
 assert.equal(halfwayEvents[2].code, 'busy');
+assert.equal(aiStatus.get('groq').state, 'busy', 'F19: a reply that ended in an error is not recorded as working');
+assert.deepEqual(usage.at(-1).attempts.map(t => [t.provider, t.answered, t.outcome]), [['groq', true, 'busy']], 'F20: each AI try is kept with its outcome');
 assert.equal(requests.slice(beforeHalfway).some(r => r.url.includes('streamGenerateContent')), false, 'no second model starts the reply again');
 groqTurn = 0; groqTool = 'list_suppliers'; geminiTurn = 1; const beforeLookup = requests.length;
 const lookupEvents = await chat();
@@ -315,6 +347,67 @@ orderTool({ suppliers: ['Bakery'] });
 const yunisChat = await handleChat(db, { id: 'y', account: 'yunis', deviceId: null }, { messages: [{ role: 'user', content: 'order bakery' }], lang: 'en' }, {}, new AbortController().signal);
 await yunisChat.text();
 assert.equal(whatsappCalls.length, 2, 'Yunis cannot make Rico send');
+const lastToolResult = () => JSON.parse(requests.filter(r => r.url === 'https://api.anthropic.com/v1/messages').at(-1).body.messages.at(-1).content[0].content);
+// F09: the same order again within 15 minutes returns the earlier result; no second message.
+orderTool({ suppliers: ['Bakery'], items: [{ item_id: 'it-toast', qty: 2 }], language: 'en' });
+await chat('Rico, order from the bakery, and 2 toast bread');
+assert.equal(whatsappCalls.length, 2, 'a repeated order is not sent twice');
+assert.equal(lastToolResult().results[0].status, 'already_sent');
+// F09: once a message went out, a failing AI is not replaced by a backup that would send it again.
+orderTool({ suppliers: ['Vegetables'], items: [{ item_id: 'it-tomato', qty: 3 }] }); anthropicSecondTurnDown = true;
+const beforeFallback = requests.length;
+const afterSend = await chat('Rico, send 3 tomatoes yourself');
+anthropicSecondTurnDown = false;
+assert.equal(whatsappCalls.length, 3);
+assert.equal(requests.slice(beforeFallback).some(r => !['api.anthropic.com', 'graph.facebook.com'].includes(new URL(r.url).hostname)), false, 'no backup AI starts the reply again');
+assert.equal(afterSend.find(e => e.type === 'error')?.code, 'busy');
+// F12: named items are checked like a normal order; one problem and nothing is sent.
+for (const [items, problem] of [[[{ item_id: 'it-tomato', qty: 100000 }], /not a valid amount/], [[{ item_id: 'it-tomato', qty: 1.23456 }], /not a valid amount/],
+  [[{ item_id: 'it-nope', qty: 1 }], /unknown item_id/], [[{ item_id: 'it-burger', qty: 1 }], /belongs to Bakery, which was not named/]]) {
+  orderTool({ suppliers: ['Vegetables'], items });
+  await chat('send it');
+  assert.equal(whatsappCalls.length, 3, `nothing sent for ${JSON.stringify(items)}`);
+  assert.match(lastToolResult().problems.join(' '), problem);
+}
+kitchen.app_items.find(i => i.id === 'it-tomato').available = false;
+orderTool({ suppliers: ['Vegetables'], items: [{ item_id: 'it-tomato', qty: 2 }] });
+await chat('send it');
+assert.equal(whatsappCalls.length, 3); assert.match(lastToolResult().problems[0], /not available/);
+kitchen.app_items.find(i => i.id === 'it-tomato').available = true;
+// F11: a long order goes as numbered parts, every line whole; nothing is cut off.
+kitchen.app_suppliers.push({ id: 'sup-big', name: 'Big market', phone: '', reminder: null });
+for (let k = 0; k < 100; k++) kitchen.app_items.push({ id: 'it-big-' + k, name: `Long item name number ${k} with extra words to fill`, unit_id: 'u-kg', supplier_id: 'sup-big', available: true });
+const before11 = whatsappCalls.length;
+orderTool({ suppliers: ['Big market'], items: Array.from({ length: 100 }, (_, k) => ({ item_id: 'it-big-' + k, qty: k + 1 })) });
+await chat('send the big market order');
+const bodies = whatsappCalls.slice(before11).map(c => c.body.text.body);
+assert.ok(bodies.length >= 2 && bodies.every(b => b.length <= 4096), 'several messages, each within WhatsApp\'s limit');
+assert.match(bodies[0], /^\[TEST\] Big market \(1\/\d+\)/);
+for (let k = 0; k < 100; k++) assert.ok(bodies.some(b => b.includes(`number ${k} with extra words to fill: ${k + 1} kg`)), `line ${k} is sent`);
+assert.deepEqual([ricoOrders.at(-1).status, ricoOrders.at(-1).sent_parts, ricoOrders.at(-1).parts], ['sent', bodies.length, bodies.length]);
+// F10: the hour's limit is reserved before sending; a full hour, or a reservation that can't be made, sends nothing.
+const filler = { id: 999, at: Date.now(), status: 'sent', parts: 20, sent_parts: 20, idem_key: 'x'.repeat(64) };
+ricoOrders.push(filler);
+orderTool({ suppliers: ['Vegetables'], items: [{ item_id: 'it-tomato', qty: 7 }] });
+await chat('send it');
+assert.equal(lastToolResult().results[0].error, 'limit'); assert.equal(whatsappCalls.length, before11 + bodies.length);
+ricoOrders.splice(ricoOrders.indexOf(filler), 1);
+reserveFails = true;
+orderTool({ suppliers: ['Vegetables'], items: [{ item_id: 'it-tomato', qty: 8 }] });
+await chat('send it');
+reserveFails = false;
+assert.equal(lastToolResult().results[0].error, 'not_recorded', 'no record, no message'); assert.equal(whatsappCalls.length, before11 + bodies.length);
+// F09: an unclear outcome (the connection dropped) stays "uncertain" and is never sent again on its own.
+whatsappThrows = true;
+orderTool({ suppliers: ['Vegetables'], items: [{ item_id: 'it-tomato', qty: 9 }] });
+await chat('send it');
+whatsappThrows = false;
+assert.equal(ricoOrders.at(-1).status, 'uncertain');
+const callsAfterUnclear = whatsappCalls.length;
+orderTool({ suppliers: ['Vegetables'], items: [{ item_id: 'it-tomato', qty: 9 }] });
+await chat('send it again');
+assert.equal(whatsappCalls.length, callsAfterUnclear, 'not resent after an unclear outcome');
+assert.equal(lastToolResult().results[0].status, 'already_sent');
 // F08: a past amount in another unit never becomes a usual amount in the unit the item has now.
 {
   const world = await _internals.loadWorld(db, { id: 'r', account: 'rozha', deviceId: null });

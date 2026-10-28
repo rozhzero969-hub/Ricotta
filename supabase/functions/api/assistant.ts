@@ -159,6 +159,8 @@ async function loadWorld(db: any, s: Session) {
   }));
   return {
     full, account: s.account, now, can,
+    acted: false,                       // a tool did something outside the chat (a WhatsApp send): never start the reply again
+    signal: null as AbortSignal | null, // the chat's own signal: a stopped chat sends nothing new
     suppliers: (sup.data ?? []) as any[],
     items: (items.data ?? []) as any[],
     units: (units.data ?? []) as any[],
@@ -1024,13 +1026,14 @@ async function streamAnthropic(db: any, w: World, key: string,
     if (!res) { console.error("anthropic slow"); return "busy"; }
     if (!res.ok) {
       const err = await res.json().catch(() => null);
-      console.error("anthropic", res.status, err?.error?.type ?? "");
+      // Anthropic's own words say what was wrong with the request; keys and long numbers are taken out first.
+      console.error("anthropic", res.status, err?.error?.type ?? "", String(err?.error?.message ?? "").replace(/sk-ant-[\w-]+/g, "[key]").replace(/\d{7,}/g, "[number]").slice(0, 300));
       const message = String(err?.error?.message ?? "");
       const code = res.status === 401 || res.status === 403 ? "key_rejected"
         : res.status === 402 || err?.error?.type === "billing_error" || /credit balance/i.test(message) ? "no_funds"
         : res.status === 429 || res.status === 529 || res.status >= 500 ? "busy"
         : res.status === 404 ? "model_unavailable" : "failed";
-      if (!shown) return code;
+      if (!shown && !w.acted) return code;
       emit({ type: "error", code });
       return true;
     }
@@ -1077,7 +1080,8 @@ async function streamAnthropic(db: any, w: World, key: string,
       if (!sawText && !shown) { if (turn === 0) return "failed"; emit({ type: "error", code: "failed" }); }
       return true;
     }
-    conversation.push({ role: "assistant", content: content.filter(Boolean) });
+    // An empty text block cannot be sent back (Anthropic refuses the whole request), so it is left out.
+    conversation.push({ role: "assistant", content: content.filter((b) => b && !(b.type === "text" && !b.text)) });
     const results: any[] = [];
     for (const c of calls) {
       const { text: result } = await execTool(db, w, c.name, c.input ?? {}, show, auto);
@@ -1090,6 +1094,7 @@ async function streamAnthropic(db: any, w: World, key: string,
 }
 
 /* How each AI answered last (Admin shows it): working, key_rejected, no_funds, busy, failed, model_unavailable. */
+const BRAIN_STATES = new Set(["working", "key_rejected", "no_funds", "busy", "failed", "model_unavailable", "not_configured"]);
 async function noteBrain(db: any, provider: "anthropic" | "gemini" | "groq", outcome: true | boolean | string) {
   const state = outcome === true ? "working" : typeof outcome === "string" ? outcome : "failed";
   try {
@@ -1128,7 +1133,7 @@ async function streamGroq(db: any, w: World, cfg: ProviderCfg,
       // Nothing shown yet: the caller can still ask Gemini. Once this reply has text or cards on screen,
       // starting again with another model would show them twice (and fill an auto-filled order twice),
       // so it ends here with an error and the person can retry.
-      if (!shown) return false;
+      if (!shown && !w.acted) return false;
       emit({ type: "error", code: res.status === 401 || res.status === 403 ? "key_rejected" : res.status === 429 || res.status === 503 ? "busy" : "failed" });
       return true;
     }
@@ -1283,10 +1288,10 @@ export async function reserveUsage(db: any, s: Session, kind: "chat" | "transcri
   return id;
 }
 
-export async function finishUsage(db: any, id: number, model: string, input = 0, output = 0) {
+export async function finishUsage(db: any, id: number, model: string, input = 0, output = 0, attempts: unknown[] | null = null) {
   try {
     const { error } = await withTimeout<any>(db.from("app_assistant_usage")
-      .update({ model, input_tokens: input, output_tokens: output }).eq("id", id), DB_TIMEOUT_MS, "assistant_usage");
+      .update({ model, input_tokens: input, output_tokens: output, ...(attempts?.length ? { attempts: attempts.slice(0, 10) } : {}) }).eq("id", id), DB_TIMEOUT_MS, "assistant_usage");
     if (error) console.error("assistant usage update failed");
   } catch { console.error("assistant usage update failed"); }
 }
@@ -1347,6 +1352,9 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   else signal.addEventListener("abort", () => upstream.abort(), { once: true });
   let timedOut = false;
   const deadline = setTimeout(() => { timedOut = true; upstream.abort(); }, REPLY_TIMEOUT_MS);
+  w.signal = upstream.signal;
+  // Every AI tried for this reply, with its own tokens and how it went (Admin adds these up per AI).
+  const attempts: { provider: string; model: string; input: number; output: number; answered: boolean; outcome: string }[] = [];
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -1356,18 +1364,25 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
       const moods = moodFilter(send);
       const emit = moods.emit;
       try {
-        const gemini = async (model: string, firstWaitMs = 0) => {
+        // One try of one AI. "true" from a streamer means "handled, don't ask another AI", which includes
+        // replies that ended in an error: Admin's health shows that error, not "working".
+        let shownError: string | null = null;
+        const tracked: Emit = (e) => { if (e.type === "error") shownError = String(e.code ?? "failed"); emit(e); };
+        const attempt = async <T,>(provider: "anthropic" | "gemini" | "groq", model: string, run: (u: { input: number; output: number }) => Promise<T>) => {
+          const u = { input: 0, output: 0 };
+          shownError = null;
           modelUsed = model;
-          const r = await streamGemini(db, w, { provider: "gemini", key: cfg.geminiKey, model, geminiKey: cfg.geminiKey }, messages, system, emit, auto, upstream.signal, usage, firstWaitMs);
-          await noteBrain(db, "gemini", r);
+          const r = await run(u);
+          const outcome = r === true ? (shownError ?? "working") : typeof r === "string" ? r : "failed";
+          attempts.push({ provider, model, input: u.input, output: u.output, answered: r === true, outcome });
+          usage.input += u.input; usage.output += u.output;
+          await noteBrain(db, provider, outcome === "working" ? true : BRAIN_STATES.has(outcome) ? outcome : "failed");
           return r;
         };
-        const groq = cfg.provider === "groq" ? async () => {
-          modelUsed = cfg.model;
-          const r = await streamGroq(db, w, cfg, messages, system, emit, auto, upstream.signal, usage);
-          await noteBrain(db, "groq", r);
-          return r;
-        } : null;
+        const gemini = (model: string, firstWaitMs = 0) => attempt("gemini", model, (u) =>
+          streamGemini(db, w, { provider: "gemini", key: cfg.geminiKey, model, geminiKey: cfg.geminiKey }, messages, system, tracked, auto, upstream.signal, u, firstWaitMs));
+        const groq = cfg.provider === "groq" ? () => attempt("groq", cfg.model, (u) =>
+          streamGroq(db, w, cfg, messages, system, tracked, auto, upstream.signal, u)) : null;
         // The backups, as before Haiku: Kurdish or Arabic (the app language, or Arabic-script letters in
         // the latest message) go to Gemini's stronger model first; otherwise Groq, then Gemini.
         const backups = async (): Promise<string | null> => {
@@ -1390,10 +1405,10 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
         // HAIKU_WAIT_MS) before anything is shown, the free backups answer instead.
         let failed: string | null = null;
         if (cfg.anthropicKey) {
-          modelUsed = ANTHROPIC_MODEL;
-          const r = await streamAnthropic(db, w, cfg.anthropicKey, messages, system, emit, auto, upstream.signal, usage, HAIKU_WAIT_MS);
-          await noteBrain(db, "anthropic", r);
-          if (r !== true) failed = cfg.geminiKey || cfg.groqKey ? await backups() : r;
+          const r = await attempt("anthropic", ANTHROPIC_MODEL, (u) =>
+            streamAnthropic(db, w, cfg.anthropicKey, messages, system, tracked, auto, upstream.signal, u, HAIKU_WAIT_MS));
+          // A WhatsApp send already happened: never start the reply again with another AI.
+          if (r !== true) failed = w.acted ? r : cfg.geminiKey || cfg.groqKey ? await backups() : r;
         } else failed = await backups();
         if (failed) emit({ type: "error", code: failed });
         moods.flush();
@@ -1406,7 +1421,7 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
         clearTimeout(deadline);
         open = false;
         try { controller.close(); } catch { /* already closed */ }
-        await finishUsage(db, usageId!, modelUsed, usage.input, usage.output);
+        await finishUsage(db, usageId!, modelUsed, usage.input, usage.output, attempts);
       }
     },
     cancel() { upstream.abort(); },
@@ -1418,22 +1433,17 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
    Every number here is real: tokens are what each AI reported for each reply (app_assistant_usage) and
    the state is how each AI answered last (app_ai_status). The keys themselves live only on the server
    (Supabase secrets, or the locked app_secrets table) and never reach the app. */
-const providerOf = (model: string) => /^claude/i.test(model) ? "anthropic" : /^gemini/i.test(model) ? "gemini" : /^pending:/.test(model) ? "" : "groq";
 export async function adminAi(db: any) {
   const c = await config(db);
   const from = monthStart();
-  const [states, rows] = await Promise.all([
+  // Added up in the database from each reply's AI attempts (older rows by their model), so nothing is cut
+  // off at a row limit and a backup's tokens are never counted under the AI that answered last.
+  const [states, usage] = await Promise.all([
     withTimeout<any>(db.from("app_ai_status").select("provider,state,at"), DB_TIMEOUT_MS, "ai_status"),
-    withTimeout<any>(db.from("app_assistant_usage").select("model,input_tokens,output_tokens").gte("created_at", from).limit(20000), DB_TIMEOUT_MS, "ai_usage"),
+    withTimeout<any>(db.rpc("app_internal_ai_usage", { p_from: from }), DB_TIMEOUT_MS, "ai_usage"),
   ]);
-  if (states.error || rows.error) throw new Error("ai_unavailable");
-  const totals: Record<string, { calls: number; input: number; output: number }> = {};
-  for (const r of rows.data ?? []) {
-    const p = providerOf(String(r.model ?? ""));
-    if (!p) continue;
-    const t = totals[p] ??= { calls: 0, input: 0, output: 0 };
-    t.calls++; t.input += Number(r.input_tokens) || 0; t.output += Number(r.output_tokens) || 0;
-  }
+  if (states.error || usage.error) throw new Error("ai_unavailable");
+  const totals: Record<string, { calls: number; input: number; output: number }> = usage.data ?? {};
   const stateOf = (p: string) => (states.data ?? []).find((x: any) => x.provider === p) ?? null;
   const brain = (id: string, connected: boolean) => ({
     id, connected, state: stateOf(id)?.state ?? null, at: stateOf(id)?.at ?? null,
@@ -1520,13 +1530,18 @@ export async function handleTranscribe(db: any, s: Session, body: any, cors: Rec
 }
 
 /* ---------------- Rico orders by himself (TEST) ----------------
-   Rico builds each supplier's order (usual amounts from recent orders, or the amounts Rozha named) and
-   sends it at once by WhatsApp (Meta's WhatsApp Cloud API). While testing, every message goes only to
-   Rozha's own number (WHATSAPP_TEST_TO), never to the supplier. The token, the sending number and her
-   number are Supabase secrets: the app never sees them. Each send is kept in app_rico_orders, apart
-   from the kitchen's own orders (not in History, the report or the streak). */
+   Rico builds each supplier's order (usual amounts from recent orders, plus any amounts Rozha named) and
+   sends it by WhatsApp (Meta's WhatsApp Cloud API). While testing, every message goes only to Rozha's own
+   number (WHATSAPP_TEST_TO), never to the supplier. The token, the sending number and her number are
+   Supabase secrets: the app never sees them. Each send is kept in app_rico_orders, apart from the
+   kitchen's own orders (not in History, the report or the streak).
+   Safety: the request is checked like a normal order (nothing is quietly dropped or changed); the send is
+   written down and its hourly slot reserved before anything goes out (one locked database step); the same
+   order again within 15 minutes returns the earlier result instead of a second message; a long order goes
+   as numbered parts; an unclear outcome is kept as 'uncertain' and never resent automatically. */
 const WHATSAPP_URL = "https://graph.facebook.com/v26.0";
-const RICO_ORDERS_PER_HOUR = 20;
+const RICO_MESSAGES_PER_HOUR = 20;
+const WHATSAPP_PART_CHARS = 3800;   // WhatsApp's limit is 4096; headers and numbering fit in the rest
 const ORDER_HEADER: Record<string, string> = { en: "New order from Ricotta:", ku: "داواکارییەکی نوێ لە چێشتخانەی ریکۆتا:", ar: "طلب جديد من مطبخ ريكوتا:" };
 export function whatsappReady() {
   return !!(Deno.env.get("WHATSAPP_TOKEN") && Deno.env.get("WHATSAPP_PHONE_ID") && Deno.env.get("WHATSAPP_TEST_TO"));
@@ -1535,19 +1550,41 @@ export function whatsappReady() {
 // 131030 = her number isn't on the test list, 190 = the token expired or was removed.
 const waError = (code: number) => code === 131047 ? "window_closed" : code === 131030 ? "recipient_not_allowed"
   : code === 190 ? "token_rejected" : code === 130429 || code === 131056 || code === 80007 ? "busy" : "failed";
-async function sendTestOrder(db: any, w: World, a: any, emit: Emit) {
+const sha256 = async (v: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+const validQty = (q: number) => Number.isFinite(q) && q >= 0 && q <= 99999 && Math.abs(q * 1000 - Math.round(q * 1000)) < 1e-6;
+/* The message parts: each starts with the supplier and, when there are several, "(1/2)". Lines are never cut. */
+function orderParts(supplier: string, lang: string, lines: string[]) {
+  const parts: string[][] = [];
+  for (const line of lines) {
+    const cur = parts[parts.length - 1];
+    if (!cur || cur.join("\n").length + line.length + 1 > WHATSAPP_PART_CHARS) parts.push([line]); else cur.push(line);
+  }
+  return parts.map((ls, k) => [`[TEST] ${supplier}${parts.length > 1 ? ` (${k + 1}/${parts.length})` : ""}`, ORDER_HEADER[lang], ...ls].join("\n"));
+}
+async function sendTestOrder(db: any, w: World, a: any) {
   if (w.account !== "rozha") return { error: "Only Rozha can let you send orders by yourself." };
   if (!whatsappReady()) return { error: "not_set_up", note: "WhatsApp sending is not set up on the server yet. Tell Rozha; nothing was sent." };
-  const wanted = [...new Map((Array.isArray(a.suppliers) ? a.suppliers : []).slice(0, 6)
-    .map((x: unknown) => findSupplier(w, x)).filter((x: any) => x?.id).map((x: any) => [x.id, x])).values()] as any[];
-  if (!wanted.length) return { error: "Name the suppliers to order from (use list_suppliers for their names)." };
-  const since = new Date(Date.now() - 3600_000).toISOString();
-  const { count } = await withTimeout<any>(db.from("app_rico_orders").select("id", { count: "exact", head: true }).gte("created_at", since), DB_TIMEOUT_MS, "rico_orders");
-  if ((count ?? 0) + wanted.length > RICO_ORDERS_PER_HOUR) return { error: `At most ${RICO_ORDERS_PER_HOUR} orders an hour while testing. Nothing was sent.` };
+  const asked = Array.isArray(a.suppliers) ? a.suppliers.slice(0, 7) : [];
+  const wanted = [...new Map(asked.map((x: unknown) => findSupplier(w, x)).filter((x: any) => x?.id).map((x: any) => [x.id, x])).values()] as any[];
+  if (!asked.length || asked.length > 6) return { error: "Name 1 to 6 suppliers (use list_suppliers for their names). Nothing was sent." };
+  if (wanted.length !== new Set(asked.map((x: unknown) => String(x))).size) return { error: "One of those suppliers was not found. Check the names with list_suppliers. Nothing was sent." };
+  // The named amounts are checked like a normal order: a real, available item of one of these suppliers,
+  // an amount up to 99999 with at most 3 decimals (0 removes it). One problem stops the whole send.
+  const named = Array.isArray(a.items) ? a.items : [];
+  const problems: string[] = [];
+  const picks: { item: any; qty: number }[] = [];
+  if (named.length > 200) problems.push("too many items (at most 200)");
+  for (const n of named.slice(0, 200)) {
+    const id = typeof n?.item_id === "string" ? n.item_id : "", qty = Number(n?.qty);
+    const item = w.items.find((i) => i.id === id);
+    if (!item) problems.push(`unknown item_id "${id.slice(0, 60)}"`);
+    else if (item.available === false) problems.push(`${item.name} is not available to order`);
+    else if (!wanted.some((sp) => sp.id === item.supplier_id)) problems.push(`${item.name} belongs to ${supplierName(w, item.supplier_id)}, which was not named`);
+    else if (!validQty(qty)) problems.push(`${item.name}: ${n?.qty} is not a valid amount (0 to 99999, at most 3 decimals)`);
+    else picks.push({ item, qty });
+  }
+  if (problems.length) return { error: "invalid_items", problems, note: "Nothing was sent. Tell Rozha what was wrong and ask her to check." };
   const lang = ["en", "ku", "ar"].includes(a.language) ? a.language : "en";
-  const named = (Array.isArray(a.items) ? a.items : []).slice(0, 200)
-    .map((n: any) => ({ item: w.items.find((i) => i.id === text(n?.item_id, 80)), qty: Number(n?.qty) }))
-    .filter((n: any) => n.item && Number.isFinite(n.qty) && n.qty >= 0 && n.qty <= 100000);
   const token = Deno.env.get("WHATSAPP_TOKEN")!, phoneId = Deno.env.get("WHATSAPP_PHONE_ID")!;
   const to = Deno.env.get("WHATSAPP_TEST_TO")!.replace(/\D/g, "");
   const results: any[] = [];
@@ -1555,36 +1592,58 @@ async function sendTestOrder(db: any, w: World, a: any, emit: Emit) {
     const usual = (toolSuggestOrder(w, { suppliers: [s.id], ignoreSent: true }) as any).suppliers[0];
     const lines = new Map<string, { item_id: string; name: string; unit: string; qty: number }>(
       (usual?.lines ?? []).map((l: any) => [l.item_id, { item_id: l.item_id, name: l.name, unit: l.unit, qty: l.qty }]));
-    const mine = named.filter((n: any) => n.item.supplier_id === s.id);
+    const mine = picks.filter((n) => n.item.supplier_id === s.id);
     for (const n of mine) {
       if (n.qty === 0) lines.delete(n.item.id);
-      else lines.set(n.item.id, { item_id: n.item.id, name: n.item.name, unit: unitName(w, n.item.unit_id), qty: roundQty(n.qty) });
+      else lines.set(n.item.id, { item_id: n.item.id, name: n.item.name, unit: unitName(w, n.item.unit_id), qty: n.qty });
     }
     if (!lines.size) { results.push({ supplier: s.name, status: "skipped", reason: "no usual items and no amounts named" }); continue; }
     const reason = mine.length ? (usual ? `usual amounts (${usual.basis}), with the amounts Rozha named` : "the amounts Rozha named") : `usual amounts: ${usual.basis}`;
     const list = [...lines.values()];
-    const body = [`[TEST] ${s.name}`, ORDER_HEADER[lang], ...list.map((l) => `• ${l.name}: ${l.qty} ${l.unit}`)].join("\n");
-    let status = "failed", error: string | null = null, messageId: string | null = null;
-    try {
-      const res = await fetch(`${WHATSAPP_URL}/${encodeURIComponent(phoneId)}/messages`, {
-        method: "POST", signal: AbortSignal.timeout(15_000),
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: body.slice(0, 4000) } }),
-      });
-      const out = await res.json().catch(() => null);
-      if (res.ok && out?.messages?.[0]?.id) { status = "sent"; messageId = String(out.messages[0].id); }
-      else { error = waError(Number(out?.error?.code)); console.error("whatsapp", res.status, out?.error?.code ?? ""); }
-    } catch { error = "busy"; console.error("whatsapp unreachable"); }
-    const { error: saveError } = await withTimeout<any>(db.from("app_rico_orders").insert({
-      account: w.account, supplier_id: s.id, supplier_name: s.name, lines: list, reason, status, error, message_id: messageId,
-    }), DB_TIMEOUT_MS, "rico_orders");
-    if (saveError) console.error("rico order not kept");
-    results.push({ supplier: s.name, status, error, reason, lines: list.map((l) => `${l.name}: ${l.qty} ${l.unit}`) });
-    if (error === "window_closed" || error === "token_rejected" || error === "recipient_not_allowed") break;
+    const parts = orderParts(s.name, lang, list.map((l) => `• ${l.name}: ${l.qty} ${l.unit}`));
+    if (parts.length > 20) { results.push({ supplier: s.name, status: "failed", error: "too_long" }); continue; }
+    const content = parts.join("\n\n");
+    if (w.signal?.aborted) { results.push({ supplier: s.name, status: "skipped", reason: "the chat was stopped" }); break; }
+    // Written down, slot reserved, duplicate check: one locked step, before anything goes out.
+    const { data: slot, error: slotError } = await withTimeout<any>(db.rpc("app_internal_rico_send_reserve", {
+      p_account: w.account, p_key: await sha256(`${w.account}|${s.id}|${content}`), p_supplier_id: s.id, p_supplier_name: s.name,
+      p_lines: list, p_reason: reason, p_content: content, p_parts: parts.length, p_limit: RICO_MESSAGES_PER_HOUR,
+    }), DB_TIMEOUT_MS, "rico_send_reserve");
+    if (slotError || !slot) { results.push({ supplier: s.name, status: "failed", error: "not_recorded" }); break; }
+    if (slot.duplicate) { results.push({ supplier: s.name, status: "already_sent", earlier: slot.status, at: slot.at, note: "The same order went out less than 15 minutes ago; it was not sent again." }); continue; }
+    if (slot.limited) { results.push({ supplier: s.name, status: "skipped", error: "limit", note: `At most ${RICO_MESSAGES_PER_HOUR} messages an hour while testing.` }); break; }
+    w.acted = true;
+    const ids: string[] = [];
+    let error: string | null = null, unclear = false;
+    for (const body of parts) {
+      if (w.signal?.aborted && ids.length) { error = "stopped"; break; }
+      try {
+        const res = await fetch(`${WHATSAPP_URL}/${encodeURIComponent(phoneId)}/messages`, {
+          method: "POST", signal: AbortSignal.timeout(15_000),
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body } }),
+        });
+        const out = await res.json().catch(() => null);
+        if (res.ok && out?.messages?.[0]?.id) { ids.push(String(out.messages[0].id)); continue; }
+        // WhatsApp answered with a reason: this part was not sent. A server error without one is unclear.
+        if (out?.error?.code) error = waError(Number(out.error.code)); else { error = "failed"; unclear = res.status >= 500; }
+        console.error("whatsapp", res.status, out?.error?.code ?? "");
+      } catch { error = "busy"; unclear = true; console.error("whatsapp unreachable"); }
+      break;
+    }
+    const status = unclear ? "uncertain" : !ids.length ? "failed" : ids.length < parts.length ? "partial" : "sent";
+    const { error: saveError } = await withTimeout<any>(db.from("app_rico_orders").update({
+      status, error, sent_parts: ids.length, message_ids: ids, message_id: ids[0] ?? null,
+    }).eq("id", slot.id), DB_TIMEOUT_MS, "rico_orders");
+    if (saveError) console.error("rico order not updated");
+    results.push({ supplier: s.name, status, error, parts: parts.length, sent_parts: ids.length, reason, lines: list.map((l) => `${l.name}: ${l.qty} ${l.unit}`) });
+    if (error === "window_closed" || error === "token_rejected" || error === "recipient_not_allowed" || unclear) break;
   }
   return {
     results,
-    note: "TEST: these went only to Rozha's own WhatsApp, not to the suppliers, and are not in History. Tell her briefly what you sent and why. window_closed: ask her to send \"hi\" to the Ricotta test number on WhatsApp, then ask you again. token_rejected or not_set_up: the WhatsApp token in Supabase needs renewing.",
+    note: "TEST: these went only to Rozha's own WhatsApp, not to the suppliers, and are not in History. Tell her briefly what you sent and why. "
+      + "already_sent: say it went out a few minutes ago and was not sent twice. uncertain: say WhatsApp did not confirm, ask her to check her WhatsApp, and do NOT send again. "
+      + "partial: say how many parts arrived. window_closed: ask her to send \"hi\" to the Ricotta test number on WhatsApp, then ask you again. token_rejected or not_set_up: the WhatsApp token in Supabase needs renewing.",
   };
 }
 
@@ -1611,7 +1670,7 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
     case "propose_notification": return proposeNotification(a, emit);
     case "open_screen": return proposeOpen(a, emit);
     case "recover_streak": return proposeStreakRecover(w, emit);
-    case "send_test_order": return sendTestOrder(db, w, a, emit);
+    case "send_test_order": return sendTestOrder(db, w, a);
   }
   return { error: "Unknown tool." };
 }
