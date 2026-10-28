@@ -23,7 +23,7 @@
    KU_MONTHS. Load before app.js. */
 
 let spotClose = null;
-const spotNumber = /(?:^|\s)(\d+(?:[.,]\d+)?)(?=\s|$)/;
+const spotNumber = /(?:^|\s)([\d٠-٩۰-۹]+(?:[.,٫][\d٠-٩۰-۹]+)?)(?=\s|$)/;   // Kurdish and Arabic digits too
 const SPOT_SCOPES = ['all','items','suppliers','orders','actions'];
 const SPOT_RECENT_MAX = 6;
 const spotNorm = v=>globalThis.RicottaSearch.normalize(v);
@@ -170,8 +170,10 @@ function spotResults(raw, scope = 'all'){
     const found = words ? spotRank(state.items.filter(i=>i.available !== false), words, i=>score(words, itemSearchFields(i))) : [];
     const rows = [];
     if(num && found[0]){
-      const qty = Number(num[1].replace(',', '.'));
-      if(qty > 0 && qty <= 99999) rows.push({kind:'set', item:found[0].row, qty});
+      // The same rule as saving an order: up to 99999, at most 3 decimals. Anything else says so.
+      const qty = Number(foldText(num[1]).replace(/[٫,]/g, '.'));
+      if(qty > 0 && validOrderQuantity(qty)) rows.push({kind:'set', item:found[0].row, qty});
+      else if(qty > 0) rows.push({kind:'badqty'});
     }
     const limit = wide ? 40 : 6;
     rows.push(...found.slice(0, limit).map(x=>({kind:'item', item:x.row})));
@@ -233,6 +235,7 @@ function spotRowHtml(r, i, q){
     const on = r.c.on();
     return `<button type="button" class="spot-row spot-toggle" ${at} aria-checked="${on}"><span class="spot-ic">${NAV_ICONS.settings}</span>${text(spotMark(r.c.label, q), esc(viewLabel('settings')))}<span class="spot-switch${on ? ' on' : ''}" aria-hidden="true"><i></i></span></button>`;
   }
+  if(r.kind === 'badqty') return `<div class="spot-row spot-note" ${at} aria-disabled="true"><span class="spot-ic">${ICON_PLUS}</span>${text(esc(t('spotQtyInvalid')), '')}</div>`;
   if(r.kind === 'set') return `<button type="button" class="spot-row spot-set" ${at}><span class="spot-ic">${ICON_PLUS}</span>${text(esc(t('spotSet')(r.item.name, r.qty, unitLabel(r.item.unit))), esc(r.item.supplierId ? supplierName(r.item.supplierId) : t('noSupplier')))}</button>`;
   if(r.kind === 'item'){
     const qty = state.cart[r.item.id] || 0;
@@ -366,7 +369,7 @@ function openSpotlight(initial = ''){
   const mine = ()=>{ if(state.account === owner) return true; close(true); return false; };
   const run = i=>{
     const r = flat[i];
-    if(!r || !mine()) return;
+    if(!r || r.kind === 'badqty' || !mine()) return;
     if(r.kind === 'more'){ spotScope = r.scope; paint(); input.focus({preventScroll:true}); return; }
     if(r.kind === 'toggle'){ r.c.set(!r.c.on()); haptic('selection'); spotRemember(r); paint(true); return; }
     spotRemember(r); close(); spotRun(r);

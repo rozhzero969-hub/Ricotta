@@ -205,11 +205,17 @@ const sentToday = (w: World, supplierId: string | null) =>
   w.history.some((o) => o.date === w.now.date && o.lines.some((l) => l.supplierId === supplierId));
 
 /* ---------------- read-only tools ---------------- */
+/* A past amount counts toward an item's usual amount only in the unit (and from the supplier) the item has
+   now: 10 kg ordered before its unit became boxes never turns into 10 boxes. */
+const sameAsNow = (w: World, l: { itemId: string; unitId: string | null; supplierId: string | null }) => {
+  const it = w.items.find((i) => i.id === l.itemId);
+  return !!it && (it.unit_id ?? null) === (l.unitId ?? null) && (it.supplier_id ?? null) === (l.supplierId ?? null);
+};
 function itemStats(w: World, itemId: string) {
   const qtys: number[] = [];
   let last: string | null = null;
-  for (const o of w.history) for (const l of o.lines) if (l.itemId === itemId) { qtys.push(l.qty); last = o.date; }
-  return { timesOrdered: qtys.length, lastOrdered: last, usualQty: qtys.length ? roundQty(median(qtys)) : null };
+  for (const o of w.history) for (const l of o.lines) if (l.itemId === itemId) { if (sameAsNow(w, l)) qtys.push(l.qty); last = o.date; }
+  return { timesOrdered: w.history.filter((o) => o.lines.some((l) => l.itemId === itemId)).length, lastOrdered: last, usualQty: qtys.length ? roundQty(median(qtys)) : null };
 }
 
 function toolFindItems(w: World, a: any) {
@@ -352,7 +358,7 @@ function toolSuggestOrder(w: World, a: any) {
     }
     if (!a.ignoreSent && date === w.now.date && sentToday(w, sid)) { skipped.push(`${s.name}: already sent today`); continue; }
     const per = new Map<string, number[]>();
-    for (const o of basisOrders) for (const l of o.lines) if (l.supplierId === sid) (per.get(l.itemId) ?? per.set(l.itemId, []).get(l.itemId)!).push(l.qty);
+    for (const o of basisOrders) for (const l of o.lines) if (l.supplierId === sid && sameAsNow(w, l)) (per.get(l.itemId) ?? per.set(l.itemId, []).get(l.itemId)!).push(l.qty);
     const minTimes = basisOrders.length >= 3 ? Math.ceil(basisOrders.length / 2) : 1;
     const lines = [...per.entries()].filter(([id, q]) => liveItems.has(id) && q.length >= minTimes).map(([id, q]) => {
       const it = liveItems.get(id)!;

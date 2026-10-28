@@ -315,6 +315,14 @@ orderTool({ suppliers: ['Bakery'] });
 const yunisChat = await handleChat(db, { id: 'y', account: 'yunis', deviceId: null }, { messages: [{ role: 'user', content: 'order bakery' }], lang: 'en' }, {}, new AbortController().signal);
 await yunisChat.text();
 assert.equal(whatsappCalls.length, 2, 'Yunis cannot make Rico send');
+// F08: a past amount in another unit never becomes a usual amount in the unit the item has now.
+{
+  const world = await _internals.loadWorld(db, { id: 'r', account: 'rozha', deviceId: null });
+  assert.equal(_internals.toolSuggestOrder(world, { suppliers: ['sup-bakery'], ignoreSent: true }).suppliers[0].lines[0].qty, 24);
+  world.items.find(i => i.id === 'it-burger').unit_id = 'u-kg';   // the item's unit changed since those orders
+  const after = _internals.toolSuggestOrder(world, { suppliers: ['sup-bakery'], ignoreSent: true });
+  assert.equal(after.suppliers.length, 0, '24 pieces are not suggested as 24 kg');
+}
 kitchen = null; anthropicTool = { name: 'open_screen', json: ['{"screen":', '"order"}'] }; anthropicTurn = 0;
 secrets.delete('anthropic_api_key');
 const beforeNoHaiku = requests.length;

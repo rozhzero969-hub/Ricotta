@@ -259,6 +259,22 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.deepEqual(await lastOrdered(),{'it-a':'2026-10-20T08:00:00.000Z','it-b':'2026-10-20T08:00:00.000Z'},'undoing the newest order goes back to the one before');
  const catalog=(await q("select app_internal_catalog_report('2026-10-01T00:00:00Z') as r"))[0].r;
  assert.deepEqual([catalog.items['it-a'].orders,Number(catalog.items['it-a'].qty),catalog.items['it-b'].orders,catalog.suppliers['sup-1'].orders,catalog.suppliers['sup-1'].lines],[2,2,1,2,3]);
+ // F13: undoing an order after older orders were cleared goes back to the date the item had before it.
+ await db.exec("delete from app_orders where id in ('lo-0','lo-1');");   // the monthly clean-up removed them
+ await send('lo-3','2026-10-26T08:00:00Z',[lineB]);
+ await db.exec("select app_internal_delete_order('lo-3','rozha','r-phone');");
+ assert.equal((await lastOrdered())['it-b'],'2026-10-20T08:00:00.000Z','the earlier date survives even though its order is gone');
+ // F13: deleting an item and restoring it with Undo keeps its "last ordered" date.
+ const del=(await q("select app_internal_item_undo('it-b','rozha','r-phone',false) as r"))[0].r;
+ await q(`select app_internal_item_undo('${del.undoId}','rozha','r-phone',true)`);
+ assert.equal((await lastOrdered())['it-b'],'2026-10-20T08:00:00.000Z','Undo brings back the date too');
+ // F06: an edit that sends only some fields leaves the others as they are (another phone's newer note stays).
+ await db.exec("update app_items set note='newer note from the other phone' where id='it-b';");
+ await db.exec(`select app_internal_catalog_change('items','it-b','{"id":"it-b","name":"Green beans"}'::jsonb,'rozha','r-phone');`);
+ assert.deepEqual((await q("select name,note,supplier_id from app_items where id='it-b'"))[0],{name:'Green beans',note:'newer note from the other phone',supplier_id:'sup-1'});
+ await db.exec("update app_suppliers set phone='0750 111 2222' where id='sup-1';");
+ await db.exec(`select app_internal_catalog_change('suppliers','sup-1','{"id":"sup-1","name":"Main market"}'::jsonb,'rozha','r-phone');`);
+ assert.deepEqual((await q("select name,phone from app_suppliers where id='sup-1'"))[0],{name:'Main market',phone:'0750 111 2222'});
  // Rico's usage by kind, for Rozha only.
  for(const model of ['pending:chat','pending:transcribe','pending:transfer']) await db.exec(`select app_internal_reserve_assistant('y-phone','yunis','${model}',50,100);`);
  await assert.rejects(db.exec("insert into app_assistant_usage(device_id,account,model,kind) values('y-phone','yunis','m','image');"),/kind_check/);
@@ -327,5 +343,5 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await db.exec('select app_internal_cleanup();');
  // Exercise schema-only restore to another empty database, without business data.
  const restored=new PGlite({extensions:{pgcrypto}});await restored.exec('create role anon;create role authenticated;create role service_role;');await restored.exec(fs.readFileSync('supabase/baseline.sql','utf8'));for(const sql of migrations) await restored.exec(sql);await restored.close();
- await db.close();console.log('Database smoke: PASS (every migration, PIN change, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, security log, roles, problem reports, time in the app by day, week and month, live change signals, one-name units, last ordered, Rico usage, Health Check, schema restore)');
+ await db.close();console.log('Database smoke: PASS (every migration, PIN change, month boundary, retained October data, cascades, audit rollback, logout, chat ownership, idempotent orders, streak, undo window, permissions, leftovers removed, workplace item list, security log, roles, problem reports, time in the app by day, week and month, live change signals, one-name units, last ordered (and Undo keeps it), edits that change only the fields sent, Rico usage, Health Check, schema restore)');
 })().catch(e=>{console.error(e);process.exitCode=1});

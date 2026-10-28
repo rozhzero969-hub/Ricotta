@@ -215,6 +215,33 @@ const server=http.createServer((req,res)=>{
   assert.equal(await page.locator('#challengeRetry').isVisible(),true,'a provider failure offers Try Again');
   await page.evaluate(()=>dismissAllModals());
   assert.deepEqual(await page.evaluate(()=>proofResult),{error:'cancelled'},'closing every popup (sign-out) ends the check');
+  // F07 + F29: search only offers amounts an order can save, and reads Kurdish and Arabic digits.
+  await page.evaluate(()=>{ dismissAllModals(); goView('order'); });
+  await page.keyboard.press('Control+KeyK');await page.locator('#spotInput').waitFor();
+  await page.locator('#spotInput').fill('tomato 1.23456');
+  assert.equal(await page.locator('.spot-set').count(),0,'no action that would save 5 decimals');
+  assert.match(await page.locator('.spot-note').textContent(),/at most 3 decimals/);
+  await page.locator('#spotInput').fill('tomato ٥');
+  assert.match(await page.locator('.spot-set').textContent(),/to 5\b/,'Arabic-Indic digits work');
+  await page.locator('#spotInput').fill('tomato ۲٫۵');
+  assert.match(await page.locator('.spot-set').textContent(),/to 2\.5\b/,'Persian digits and the Arabic decimal mark work');
+  await page.keyboard.press('Escape');await page.locator('.spot-layer').waitFor({state:'detached'});
+  // F29: pinning every item of a supplier leaves no empty group behind.
+  const supId=await page.evaluate(()=>{ const sid=state.items.find(i=>i.supplierId && i.available!==false).supplierId; state.pins=state.items.filter(i=>i.supplierId===sid && i.available!==false).map(i=>i.id); state.orderTab='all'; state.search=''; render(); return sid; });
+  assert.equal(await page.evaluate(sid=>[...document.querySelectorAll('.supplier-group:not(.pinned-group) .supplier-heading-name')].some(h=>h.textContent.includes(supplierName(sid))),supId),false,'no empty supplier heading');
+  await page.evaluate(()=>{ state.pins=[]; render(); });
+  // F06: an item form that was open while another phone saved a newer note: changing only the name keeps
+  // the newer note.
+  await page.evaluate(()=>{ dismissAllModals(); openItemModal('it-tom'); });
+  await page.locator('#mfName').waitFor();
+  await page.evaluate(()=>{ window.labDb().items.find(i=>i.id==='it-tom').note='Ripe ones only'; });   // the other phone
+  await page.evaluate(()=>loadData?.());
+  await page.waitForFunction(()=>state.items.find(i=>i.id==='it-tom').note==='Ripe ones only');
+  await page.locator('#mfName').fill('Tomato (big)');
+  await page.locator('#modalFormOk').click();await page.locator('#mfName').waitFor({state:'detached'});
+  await page.evaluate(()=>loadData?.());
+  await page.waitForFunction(()=>state.items.find(i=>i.id==='it-tom').name==='Tomato (big)');
+  assert.equal(await page.evaluate(()=>state.items.find(i=>i.id==='it-tom').note),'Ripe ones only','the other phone\'s newer note survives');
   // F26: search is a real modal. Tab and Shift+Tab stay inside it, and the page behind is inert.
   await page.evaluate(()=>{ dismissAllModals(); goView('order'); });
   await page.keyboard.press('Control+KeyK');await page.locator('#spotInput').waitFor();
@@ -243,6 +270,6 @@ const server=http.createServer((req,res)=>{
   assert.equal(await embedded.locator('.keypad,.content').count(),0,'embedded app exposes neither sign-in nor authenticated workspace');
   await framed.close();
   assert.deepEqual(errors,[]);
-  console.log('Search UI PASS: search is a modal (focus kept inside, page inert), an expired session signs out and closes search, typo/alias order, clear buttons, the search sheet (tomato 5, best matches first, − and + in place, scopes, switches, Ask Rico, dates, Recent, closing animation, clear, nothing found, Escape), list matches/empty/reset, history aliases, records beyond first page, units and Rico bulk alias preview/save');
+  console.log('Search UI PASS: search offers only savable amounts (Kurdish and Arabic digits too), no empty group after pinning, an open item form keeps another phone\'s newer note, search is a modal (focus kept inside, page inert), an expired session signs out and closes search, typo/alias order, clear buttons, the search sheet (tomato 5, best matches first, − and + in place, scopes, switches, Ask Rico, dates, Recent, closing animation, clear, nothing found, Escape), list matches/empty/reset, history aliases, records beyond first page, units and Rico bulk alias preview/save');
  }finally{await browser.close();server.close();}
 })().catch(e=>{console.error(e);server.close();process.exitCode=1;});

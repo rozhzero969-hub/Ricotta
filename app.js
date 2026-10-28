@@ -2168,9 +2168,12 @@ function renderOrderResults(){
   });
   const groupHtml = Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
     const label = key==='__none' ? t('noSupplier') : supplierName(key);
-    const rows = (q?groups[key]:sortedSupplierItems(groups[key]).filter(i=>!pinned.some(p=>p.id===i.id))).map(i=>itemRowHtml(i, lastQty)).join('');
+    // Pinned items show only under Pinned: a supplier whose items are all pinned has no group of its own.
+    const shown = q ? groups[key] : sortedSupplierItems(groups[key]).filter(i=>!pinned.some(p=>p.id===i.id));
+    if(!shown.length) return '';
+    const rows = shown.map(i=>itemRowHtml(i, lastQty)).join('');
     return state.orderTab==='all' ? `<div class="supplier-group">
-      <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}<span class="supplier-item-count">${groups[key].length}</span></span></div>
+      <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}<span class="supplier-item-count">${shown.length}</span></span></div>
       ${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}
       <div class="supplier-items-grid">${rows}</div>
     </div>` : `${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}<div class="supplier-items-grid standalone">${rows}</div>`;
@@ -2180,10 +2183,10 @@ function renderOrderResults(){
       <div class="supplier-head"><span class="supplier-heading-name"><span class="supplier-mono pin-mono" aria-hidden="true">${ICON_PIN}</span>${esc(t('pinnedTitle'))}<span class="supplier-item-count">${pinned.length}</span></span></div>
       <div class="supplier-items-grid">${pinned.map(i=>itemRowHtml(i, lastQty)).join('')}</div>
     </div>` : '';
-  return groupHtml ? pinnedHtml + groupHtml : groupHtml;
+  return groupHtml || pinnedHtml ? pinnedHtml + groupHtml : groupHtml;
 }
-/* One item on the Order screen: name, unit, its note, and - / quantity / +. A pinned item shows twice
-   (Pinned and its supplier); both rows share the same quantity. */
+/* One item on the Order screen: name, unit, its note, and - / quantity / +. A pinned item shows once,
+   under Pinned (not again in its supplier's group). */
 function itemRowHtml(i, lastQty){
   const qty = state.cart[i.id] || 0;
   return `
@@ -2579,9 +2582,9 @@ async function editItemNote(id){
   const note = await showPrompt(`<b>${esc(i.name)}</b><br>${esc(t('itemNoteHint'))}`, {value:i.note || '', placeholder:t('itemNoteLabel'), okLabel:t('save'), maxLength:120});
   if(note === null) return;
   const before = i.note || '';
-  const next = {...i, note:String(note).trim().slice(0, 120)};
+  const next = {note:String(note).trim().slice(0, 120)};
   if(next.note === before) return;
-  if(!(await saveRecord('items', next))){ await showAlert(t('saveFailed')); return; }
+  if(!(await saveChanges('items', i.id, next))){ await showAlert(t('saveFailed')); return; }
   Object.assign(i, next);
   logActivity({action:'edit', type:'item', name:i.name, fields:[{k:'note', from:before, to:next.note}]});
   refreshOrderResults();
@@ -3087,6 +3090,11 @@ function resetReminderFields(){
 async function saveRecord(table, rec){
   return (await api(`${table}/${encodeURIComponent(rec.id)}`, {method:'PUT', body:rec})).ok;
 }
+/* An edit sends only what the person changed: the server leaves every other field as it is, so a form
+   that was open while another phone saved a newer note, number or reminder never puts the old one back. */
+async function saveChanges(table, id, changes){
+  return (await api(`${table}/${encodeURIComponent(id)}`, {method:'PUT', body:{...changes, only:Object.keys(changes)}})).ok;
+}
 async function deleteRecord(table, id){
   return (await api(`${table}/${encodeURIComponent(id)}`, {method:'DELETE'})).ok;
 }
@@ -3105,6 +3113,7 @@ function renderSuppliers(){
 function openSupplierModal(id){
   const existing = id ? state.suppliers.find(s=>s.id===id) : null;
   if(id && !existing) return;
+  const opened = existing ? structuredClone(existing) : null;   // what the form shows; changes are measured from it
   showFormModal({
     title: existing ? t('editSupplier') : t('addSupplier'),
     banner: existing ? editingBanner(existing.name, existing.phone) : '',
@@ -3134,16 +3143,18 @@ function openSupplierModal(id){
       if(existing){
         const s = state.suppliers.find(x=>x.id===existing.id);
         if(!s) return {};
-        const oldCode = reminderCode(s.reminder);
-        const fields = diffFields([['name', s.name, name], ['phone', s.phone, phone], ['reminder', oldCode, newCode], ['cutoff', s.cutoff || '', cutoff]]);
+        const o = opened, oldCode = reminderCode(o.reminder);
+        const fields = diffFields([['name', o.name, name], ['phone', o.phone, phone], ['reminder', oldCode, newCode], ['cutoff', o.cutoff || '', cutoff]]);
         if(!fields.length) return {};   // nothing changed -- nothing to save or record
+        const changes = {};
+        if(name !== o.name) changes.name = name;
+        if(phone !== (o.phone || '')) changes.phone = phone;
         // updatedAt tells the server when the reminder was last changed, so a time that
         // has already passed today starts tomorrow instead of firing the moment you save.
-        const reminder = oldCode === newCode ? s.reminder
-          : rem.on ? {...newRem, updatedAt: now} : {...(s.reminder||{}), enabled:false, updatedAt: now};
-        const next = {...s, name, phone, reminder, cutoff: cutoff || null};
-        if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
-        Object.assign(s, next);
+        if(oldCode !== newCode) changes.reminder = rem.on ? {...newRem, updatedAt: now} : {...(o.reminder||{}), enabled:false, updatedAt: now};
+        if(cutoff !== (o.cutoff || '')) changes.cutoff = cutoff || null;
+        if(!(await saveChanges('suppliers', s.id, changes))) return {error: t('saveFailed')};
+        Object.assign(s, changes);
         logActivity({action:'edit', type:'supplier', name, fields});
       } else {
         const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null, cutoff: cutoff || null};
@@ -3311,6 +3322,7 @@ function openSupplierItemOrder(supplierId){
 function openItemModal(id){
   const existing = id ? state.items.find(i=>i.id===id) : null;
   if(id && !existing) return;
+  const opened = existing ? structuredClone(existing) : null;   // what the form shows; changes are measured from it
   const unitOptions = state.units.map(u=>`<option value="${esc(u.id)}" ${existing?.unit===u.id?'selected':''}>${esc(unitName(u))}</option>`).join('');
   // While adding a fresh item, the last supplier picked stays selected so
   // bulk-adding items for one supplier doesn't need reselecting each time.
@@ -3355,17 +3367,24 @@ function openItemModal(id){
       if(editing){
         const i = state.items.find(x=>x.id===editing.id);
         if(!i) return {};
-        const oldSupName = i.supplierId ? (state.suppliers.find(s=>s.id===i.supplierId)?.name || '') : '';
+        const o = opened;
+        const oldSupName = o.supplierId ? (state.suppliers.find(s=>s.id===o.supplierId)?.name || '') : '';
         const fields = diffFields([
-          ['name', i.name, name],
-          ['unit', unitEn(i.unit), unitEn(unit)],
+          ['name', o.name, name],
+          ['unit', unitEn(o.unit), unitEn(unit)],
           ['supplier', oldSupName, newSupName],
-          ['note', i.note || '', note],['aliases',(i.aliases||[]).join(', '),aliases.join(', ')],['available',String(i.available!==false),String(available)]
+          ['note', o.note || '', note],['aliases',(o.aliases||[]).join(', '),aliases.join(', ')],['available',String(o.available!==false),String(available)]
         ]);
         if(fields.length){
-          const next = {...i, name, unit, supplierId, note, aliases, available, sortOrder:supplierId===i.supplierId?i.sortOrder:null};
-          if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
-          Object.assign(i, next);if(!available){delete state.cart[i.id];persistCartDraft();}
+          const changes = {};
+          if(name !== o.name) changes.name = name;
+          if(unit !== o.unit) changes.unit = unit;
+          if((supplierId || null) !== (o.supplierId || null)){ changes.supplierId = supplierId; changes.sortOrder = null; }
+          if(note !== (o.note || '')) changes.note = note;
+          if(aliases.join('\n') !== (o.aliases || []).join('\n')) changes.aliases = aliases;
+          if(available !== (o.available !== false)) changes.available = available;
+          if(!(await saveChanges('items', i.id, changes))) return {error: t('saveFailed')};
+          Object.assign(i, changes);if(changes.available === false){delete state.cart[i.id];persistCartDraft();}
           logActivity({action:'edit', type:'item', name, fields});
         }
       } else {
