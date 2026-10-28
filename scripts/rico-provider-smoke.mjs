@@ -321,4 +321,23 @@ const beforeNoHaiku = requests.length;
 await chat();
 assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname === 'api.anthropic.com'), false, 'without its key Haiku is skipped');
 
-console.log('Rico provider smoke: PASS (Rico sends test orders by WhatsApp to Rozha only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');
+// F01: Rico follows the same roles. Without History he can't read or reveal past orders (tools and the
+// instant answers alike); without Record, no change log.
+{
+  const noHistory = { id: 'y2', account: 'yunis', deviceId: null, roles: ['assistant'] };
+  const ask = async (body) => (await (await handleChat(db, noHistory, { messages: [{ role: 'user', content: 'x' }], lang: 'en', ...body }, {}, new AbortController().signal)).text()).trim().split('\n').map(JSON.parse);
+  const before = requests.length;
+  const last = await ask({ quickAction: 'last_order' });
+  assert.match(last.find(e => e.type === 'text').text, /History isn't open for you/, 'the instant answer refuses');
+  assert.equal(requests.length, before, 'and no AI is asked');
+  const world = await _internals.loadWorld(db, noHistory);
+  assert.equal(world.can.history, false); assert.equal(world.can.record, false);
+  assert.deepEqual(world.months, []); assert.deepEqual(world.activity, []);
+  assert.equal(world.history.every(o => o.lines.every(l => l.itemId === '' && l.qty === 0)), true, 'no items or amounts reach Rico');
+  assert.equal((await _internals.runTool(db, world, 'order_history', {}, () => {}, false)).error, 'no_access');
+  assert.equal((await _internals.runTool(db, world, 'recent_changes', {}, () => {}, false)).error, 'no_access');
+  const full = await _internals.loadWorld(db, { id: 'r', account: 'rozha', deviceId: null });
+  assert.equal(full.can.history && full.can.record, true);
+}
+
+console.log('Rico provider smoke: PASS (History and Record roles inside Rico; Rico sends test orders by WhatsApp to Rozha only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');

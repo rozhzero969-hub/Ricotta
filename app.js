@@ -589,6 +589,7 @@ function signOut(reason, {preserveSession = false} = {}){
   state.sessionMsg = reason || '';
   dismissAllModals();
   closeSelSheet(); closeContextMenu();
+  if(typeof spotClose === 'function') spotClose(true);   // search shows the old account's items and orders: it goes at once
   document.getElementById('toast')?.remove(); clearTimeout(toastTimer);
   document.getElementById('welcome')?.remove();
   closeLangMenu();

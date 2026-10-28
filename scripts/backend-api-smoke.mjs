@@ -304,6 +304,41 @@ try {
   for(const path of ['me/theme','me/tabs'])assert.equal((await call(path,{},'PUT')).status,404);
   // Kitchen notes, repeat orders and the secret code are gone too.
   for(const [path,method] of [['notes','GET'],['notes','POST'],['notes/1/read','POST'],['repeat-orders','GET'],['repeat-orders','POST'],['assistant/status','GET'],['assistant/setup-status','GET'],['assistant/groq-key','PUT'],['admin/ai/key','PUT'],['admin/ai/key','DELETE']])assert.equal((await call(path,method==='GET'?null:{},method)).status,404,`${path} is retired`);
+  // F01: History and Record follow the roles everywhere, the start-up data too. Without History the phone gets
+  // only today's orders and their suppliers (for "sent today"), with no items, amounts or earlier days.
+  const staff = roles => { reset(); tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis'; tables.app_sessions[0].app_accounts = { roles }; };
+  const seedOrders = () => {
+    const now = new Date(), yesterday = new Date(Date.now() - 86400000);
+    tables.app_orders = [{ id: 'o-today', status: 'sent', created_at: now.toISOString(), sent_at: now.toISOString(), sent_by: 'rozha' },
+      ...(yesterday.toISOString() >= monthStart() ? [{ id: 'o-before', status: 'sent', created_at: yesterday.toISOString(), sent_at: yesterday.toISOString(), sent_by: 'rozha' }] : [])];
+    tables.app_order_lines = [{ id: 1, order_id: 'o-today', supplier_id: 'supplier', supplier_name: 'Supplier', item_id: 'tomato', item_name: 'Tomatoes', unit_id: 'kg', qty: 5 },
+      { id: 2, order_id: 'o-before', supplier_id: 'supplier', supplier_name: 'Supplier', item_id: 'tomato', item_name: 'Tomatoes', unit_id: 'kg', qty: 9 }];
+    tables.app_month_summaries = [{ month: '2026-09', data: { orders: 41 } }];
+  };
+  staff([]); seedOrders();
+  const staffBoot = await call('bootstrap', null, 'GET'); assert.equal(staffBoot.status, 200);
+  let bootData = await staffBoot.json();
+  assert.deepEqual(bootData.history.map(h => h.id), ['o-today'], 'no earlier days without History');
+  assert.deepEqual(bootData.history[0].entries, [{ supplierId: 'supplier', supplierName: 'Supplier', items: [] }], 'only which supplier was sent today');
+  assert.deepEqual(bootData.months, [], 'no past months without History');
+  assert.equal(calls.some(c => c.table === 'app_month_summaries'), false);
+  assert.equal((await call('months', null, 'GET')).status, 403);
+  staff(['history']); seedOrders();
+  bootData = await (await call('bootstrap', null, 'GET')).json();
+  assert.equal(bootData.history.length, tables.app_orders.length, 'History shows every order this month');
+  assert.equal(bootData.history[0].entries[0].items.length, 1);
+  assert.equal(bootData.months.length, 1);
+  // F05: a session check that cannot run is a 503 (the phone keeps its session); a bad session is a 401.
+  reset(); errors.set('app_sessions:read', true);
+  assert.equal((await call('bootstrap', null, 'GET')).status, 503, 'a database hiccup does not sign anyone out');
+  reset(); errors.set('app_devices:read', true);
+  assert.equal((await call('bootstrap', null, 'GET')).status, 503);
+  reset(); tables.app_devices[0].account = 'yunis';
+  assert.equal((await call('bootstrap', null, 'GET')).status, 401, 'a device of another account is refused');
+  reset(); tables.app_sessions[0].revoked_at = new Date().toISOString();
+  assert.equal((await call('bootstrap', null, 'GET')).status, 401);
+  reset(); tables.app_sessions[0].expires_at = new Date(Date.now() - 1000).toISOString();
+  assert.equal((await call('bootstrap', null, 'GET')).status, 401);
   for(const path of ['recovery/name','recovery/verify','recovery/save'])assert.equal((await call(path,{},'POST',false)).status,401,`${path} is retired`);
   // Live changes: the counters right away, an answer as soon as one moves, and only kinds and counters.
   reset();tables.app_signals=[{kind:'data',n:7,at:'x'},{kind:'devices',n:9,at:'x'},{kind:'secret',n:99}];
@@ -322,4 +357,4 @@ try {
   assert.equal((await call('signals?since=-1&wait=0',null,'GET')).status,200,'Yunis waits too');
   errors.set('app_signals:read',true);assert.equal((await call('signals?since=-1&wait=0',null,'GET')).status,500);
 } finally { console.error = mute; }
-console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, Admin PIN change, live change signals, locked Transfers, retired endpoints)');
+console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, Admin PIN change, live change signals, locked Transfers, retired endpoints, History and Record roles in the start-up data, 503 when the session check cannot run)');

@@ -150,17 +150,24 @@ async function loadWorld(db: any, s: Session) {
       })),
     };
   });
+  // The same roles the api checks: without History, Rico sees only which suppliers were sent today
+  // (no items, amounts or past days); without Record, no change log; past months need History too.
+  const now = erbilParts();
+  const can = { history: full || (s.roles ?? []).includes("history"), record: full || (s.roles ?? []).includes("record") };
+  const seen: Order[] = can.history ? history : history.filter((o) => o.date === now.date).map((o) => ({
+    ...o, lines: o.lines.map((l) => ({ supplierId: l.supplierId, supplierName: l.supplierName, itemId: "", name: "", unitId: null, qty: 0 })),
+  }));
   return {
-    full, account: s.account, now: erbilParts(),
+    full, account: s.account, now, can,
     suppliers: (sup.data ?? []) as any[],
     items: (items.data ?? []) as any[],
     units: (units.data ?? []) as any[],
-    history,
+    history: seen,
     dailyReminder: reminder.data ? { enabled: !!reminder.data.enabled, time: String(reminder.data.remind_time).slice(0, 5) } : null,
     devices: (devices.data ?? []) as any[],
-    activity: (activity.data ?? []) as any[],
+    activity: can.record ? (activity.data ?? []) as any[] : [],
     streak: streak.data ?? null,
-    months: (months.data ?? []) as any[],
+    months: can.history ? (months.data ?? []) as any[] : [],
     cart: {} as Record<string, number>,   // this device's draft, filled in by handleChat
   };
 }
@@ -471,6 +478,7 @@ function toolInsights(w: World, a: any) {
    isn't sent yet, with its usual items. */
 export async function orderSuggestion(db: any, s: Session) {
   const w = await loadWorld(db, s);
+  if (!w.can.history) return { suggestion: null };
   const plan = toolSuggestOrder(w, {});
   const late = new Set(w.suppliers.filter((sp) => {
     const due = reminderToday(w, sp);
@@ -1165,6 +1173,12 @@ function quickReply(w: World, body: any, emit: Emit): boolean {
   const L = (en: string, ku: string, ar: string) => (lang === "ku" ? ku : lang === "ar" ? ar : en);
   const say = (mood: string, message: string) => { emit({ type: "mood", mood }); emit({ type: "text", text: message }); };
   const n = NAMES[w.account];
+  if (["prepare_order", "last_order", "check_order", "week_insights"].includes(body.quickAction) && !w.can.history) {
+    say("calm", L("That needs past orders, and History isn't open for you. Rozha can turn it on in Admin.",
+      "ئەمە پێویستی بە داواکارییەکانی پێشووە، و مێژوو بۆ تۆ کراوە نییە. ڕۆژا دەتوانێت لە ئەدمین بیکاتەوە.",
+      "هذا يحتاج إلى الطلبات السابقة، والسجل غير متاح لك. يمكن لروژا تفعيله من الإدارة."));
+    return true;
+  }
   switch (body.quickAction) {
     case "prepare_order": {
       const ids = Array.isArray(body.supplierIds) ? [...new Set(body.supplierIds)].slice(0, w.suppliers.length) : [];
@@ -1568,8 +1582,12 @@ async function sendTestOrder(db: any, w: World, a: any, emit: Emit) {
   };
 }
 
+// Tools that read past orders or the change log follow the person's roles, whatever the model asks.
+const HISTORY_TOOLS = new Set(["order_history", "ordering_patterns", "suggest_order", "insights", "review_draft", "send_test_order"]);
 async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto: boolean): Promise<unknown> {
   if (!STATUS_TOOLS.has(name)) return { error: "Unknown tool." };
+  if (HISTORY_TOOLS.has(name) && !w.can.history) return { error: "no_access", note: "This person has no History access, so past orders can't be used. Say so briefly." };
+  if (name === "recent_changes" && !w.can.record) return { error: "no_access", note: "This person has no Record access. Say so briefly." };
   switch (name) {
     case "find_items": return toolFindItems(w, a);
     case "list_suppliers": return toolListSuppliers(w);
@@ -1593,4 +1611,4 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
 }
 
 /* For local tests only (not used by the app). */
-export const _internals = { loadWorld, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, proposeEditItem, proposeItemAliases, MANUAL, TOOLS, moodFilter, erbilParts };
+export const _internals = { loadWorld, runTool, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, proposeEditItem, proposeItemAliases, MANUAL, TOOLS, moodFilter, erbilParts };
