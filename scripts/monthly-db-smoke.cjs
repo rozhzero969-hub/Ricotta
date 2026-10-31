@@ -34,18 +34,27 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  insert into app_order_lines(order_id,item_name,qty) values('september','Old',1),('october-7','Kept',1);
  insert into app_audit_events(id,occurred_at,action) values('old','2026-09-30T20:59:59Z','add'),('kept','2026-09-30T21:00:00Z','add');
  select app_internal_monthly_cleanup('2026-10-07T12:00:00Z');`);
- assert.deepEqual((await q('select id from app_orders order by id')).map(r=>r.id),['october-7','october-start']);
+ assert.deepEqual((await q('select id from app_orders order by id')).map(r=>r.id),['october-7','october-start','september'],'orders stay 60 days, across the month change');
  const archived=await q("select month, data from app_month_summaries");
  assert.deepEqual(archived.map(r=>[r.month,r.data.orders,r.data.lines,r.data.topItems[0].name]),[['2026-09',1,1,'Old']],'a month is summarised into the archive before it is cleared');
  await db.exec("select app_internal_monthly_cleanup('2026-10-08T12:00:00Z');");
  assert.equal((await q('select count(*)::int as n from app_month_summaries'))[0].n,1,'the archive keeps one summary per month');
- assert.equal((await q('select count(*)::int as n from app_order_lines'))[0].n,1);
+ assert.equal((await q('select count(*)::int as n from app_order_lines'))[0].n,2);
  assert.deepEqual((await q('select id from app_audit_events')).map(r=>r.id),['kept']);
  await db.exec("select app_internal_monthly_cleanup('2026-10-31T20:59:59Z');");
- assert.equal((await q('select count(*)::int as n from app_orders'))[0].n,2);
+ assert.equal((await q('select count(*)::int as n from app_orders'))[0].n,3);
  await db.exec("select app_internal_monthly_cleanup('2026-10-31T21:00:00Z');");
+ assert.equal((await q('select count(*)::int as n from app_orders'))[0].n,3,'the new month keeps the orders');
+ assert.equal((await q('select count(*)::int as n from app_audit_events'))[0].n,0,'the record of changes still clears each month');
+ assert.deepEqual((await q("select month,(data->>'orders')::int as n from app_month_summaries order by month")).map(r=>[r.month,r.n]),[['2026-09',1],['2026-10',2]],'and the finished month gets its summary');
+ await db.exec("select app_internal_monthly_cleanup('2026-11-29T20:59:59Z');");
+ assert.equal((await q('select count(*)::int as n from app_orders'))[0].n,3,'exactly 60 days is still kept');
+ await db.exec("select app_internal_monthly_cleanup('2026-11-29T21:00:01Z');");
+ assert.deepEqual((await q('select id from app_orders')).map(r=>r.id),['october-7'],'older than 60 days goes');
+ assert.equal((await q('select count(*)::int as n from app_order_lines'))[0].n,1,'with its lines');
+ assert.deepEqual((await q("select month,(data->>'orders')::int as n from app_month_summaries order by month")).map(r=>[r.month,r.n]),[['2026-09',1],['2026-10',2]],'a summary stays as it was when its orders go');
+ await db.exec("select app_internal_monthly_cleanup('2027-02-01T00:00:00Z'); delete from app_month_summaries;");
  assert.equal((await q('select count(*)::int as n from app_orders'))[0].n,0);
- assert.equal((await q('select count(*)::int as n from app_audit_events'))[0].n,0);
  await db.exec(`select app_internal_catalog_change('units','box','{"en":"box"}', 'rozha','device');`);
  assert.equal((await q("select count(*)::int as n from app_audit_events where entity_type='unit'"))[0].n,1);
  await db.exec("create function fail_record() returns trigger language plpgsql as $$ begin raise exception 'forced audit failure'; end $$; create trigger fail_record before insert on app_audit_events for each row execute function fail_record();");
@@ -172,6 +181,17 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.equal(signedIn.newDevice,true,'a phone that never signed in is new');
  assert.equal((await login('264809','fresh-device','5'.repeat(64))).newDevice,false,'the same phone again is known');
  assert.deepEqual((await q("select kind from app_security_events where device_id='fresh-device' order by id")).map(r=>r.kind),['signin','new_device','signin']);
+ // A phone used by both accounts: each account's first time is new, and after that switching back and forth never is.
+ await db.exec("insert into app_device_accounts(device_id,account) values('shared-phone','rozha'),('shared-phone','yunis'); insert into app_devices(id,account,logged_in) values('shared-phone','yunis',false);");
+ assert.equal((await login('264809','shared-phone','6'.repeat(64))).newDevice,false,'Rozha on a phone last used by Yunis is not new');
+ await db.exec("update app_sessions set revoked_at=now() where device_id='shared-phone'; update app_devices set logged_in=false where id='shared-phone';");
+ assert.equal((await login('591837','shared-phone','7'.repeat(64))).newDevice,false,'and neither is Yunis coming back');
+ await db.exec("update app_sessions set revoked_at=now() where device_id='shared-phone'; update app_devices set logged_in=false where id='shared-phone';");
+ await db.exec("delete from app_device_accounts where device_id='shared-phone' and account='yunis'; update app_devices set account='rozha' where id='shared-phone';");
+ assert.equal((await login('591837','shared-phone','8'.repeat(64))).newDevice,true,'an account never seen on the phone is new');
+ assert.equal((await q("select count(*)::int as n from app_device_accounts where device_id='shared-phone'"))[0].n,2,'and is remembered');
+ assert.equal((await q("select has_table_privilege('anon','app_device_accounts','select') as a"))[0].a,false,'the browser roles cannot read it');
+ await db.exec("delete from app_security_events where device_id='shared-phone'; delete from app_sessions where device_id='shared-phone'; delete from app_devices where id='shared-phone'; delete from app_login_attempts where fingerprint_hash like 'login-test-%';");
  assert.equal((await q("select count(*)::int as n from app_security_events where device_id='broken-device'"))[0].n,0,'a rolled-back sign-in leaves no log entry');
  assert.equal((await q("select count(*)::int as n from app_security_events where kind='pin_changed'"))[0].n,2,'both PIN changes are in the log, the rolled-back one is not');
  const event=(kind,device,dedupe)=>db.exec(`select app_internal_security_event('${kind}',null,'${device}','Mac|Browser','{}',${dedupe});`);
@@ -277,6 +297,19 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  const del=(await q("select app_internal_item_undo('it-b','rozha','r-phone',false) as r"))[0].r;
  await q(`select app_internal_item_undo('${del.undoId}','rozha','r-phone',true)`);
  assert.equal((await lastOrdered())['it-b'],'2026-10-20T08:00:00.000Z','Undo brings back the date too');
+ // An edit of a few fields never brings back something deleted on another phone.
+ await assert.rejects(db.exec(`select app_internal_catalog_change('items','it-gone','{"id":"it-gone","note":"x","partial":true}'::jsonb,'rozha','r-phone');`),/catalog_gone/);
+ assert.equal((await q("select count(*)::int as n from app_items where id='it-gone'"))[0].n,0);
+ // Deleting an order corrects its finished month's summary, only while that whole month's orders are still kept.
+ const lastMonth=(await q("select to_char(date_trunc('month',(now() at time zone 'Asia/Baghdad') - interval '1 month'),'YYYY-MM') as m"))[0].m;
+ const oldest=(await q("select to_char(date_trunc('month',(now() at time zone 'Asia/Baghdad') - interval '4 months'),'YYYY-MM') as m"))[0].m;
+ await db.exec(`delete from app_month_summaries where month in ('${lastMonth}','${oldest}');
+  insert into app_month_summaries(month,data) values('${lastMonth}','{"orders":9}'),('${oldest}','{"orders":9}');
+  insert into app_orders(id,status,sent_at,sent_by) values('sum-new','sent','${lastMonth}-10T09:00:00Z','rozha'),('sum-new2','sent','${lastMonth}-11T09:00:00Z','rozha'),('sum-old','sent','${oldest}-10T09:00:00Z','rozha');
+  select app_internal_delete_order('sum-new','rozha','r-phone'); select app_internal_delete_order('sum-old','rozha','r-phone');`);
+ const summaryOf=async m=>(await q(`select (data->>'orders')::int as n from app_month_summaries where month='${m}'`))[0].n;
+ assert.equal(await summaryOf(oldest),9,'a month partly past 60 days keeps its summary');
+ await db.exec("delete from app_orders where id='sum-new2';");
  // F06: an edit that sends only some fields leaves the others as they are (another phone's newer note stays).
  await db.exec("update app_items set note='newer note from the other phone' where id='it-b';");
  await db.exec(`select app_internal_catalog_change('items','it-b','{"id":"it-b","name":"Green beans"}'::jsonb,'rozha','r-phone');`);

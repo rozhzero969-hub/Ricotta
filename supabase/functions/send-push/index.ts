@@ -145,9 +145,10 @@ async function send(subs: Sub[], payloadFor: Payload, ttl: number, urgency: "hig
   return { sent, failed, removed: dead.length };
 }
 
-async function sendReminder(payloadFor: Payload) {
-  const { subs, skipped } = await loadSubs(true);
-  return { ...(await send(subs, payloadFor, 2 * 3600, "high")), skipped };
+async function sendReminder(payloadFor: Payload, only?: Set<string>) {
+  const loaded = await loadSubs(true);
+  const subs = only ? loaded.subs.filter((s) => s.account && only.has(s.account)) : loaded.subs;
+  return { ...(await send(subs, payloadFor, 2 * 3600, "high")), skipped: loaded.skipped + loaded.subs.length - subs.length };
 }
 
 /* A read that failed is never taken as "no orders": the tick stops (and runs again next time) instead of
@@ -217,8 +218,18 @@ async function claimAlert(id: string, kind: string, supplierId: string | null) {
   return !!data?.length;
 }
 type Words = { mood: string; en: (n: string) => string; ku: (n: string) => string; ar: (n: string) => string };
+/* Who has Rico: Rozha always, Yunis while his access includes Rico (no saved list = the standard set, which does).
+   A read that fails sends nothing. Turning his access on again brings the messages back. */
+async function ricoAccounts() {
+  const rows = must(await sb.from("app_accounts").select("id,roles"), "accounts") as any[];
+  return new Set(ACCOUNTS.filter((a) => {
+    const roles = (rows ?? []).find((r: any) => r.id === a)?.roles;
+    return a === "rozha" || !Array.isArray(roles) || roles.includes("assistant");
+  }));
+}
 async function ricoSays(kind: string, key: string, words: Words, extra: Record<string, unknown> = {}) {
-  const { error } = await sb.from("app_rico_inbox").upsert(ACCOUNTS.map((a) => ({
+  const allowed = await ricoAccounts();
+  const { error } = await sb.from("app_rico_inbox").upsert(ACCOUNTS.filter((a) => allowed.has(a)).map((a) => ({
     account: a, kind, mood: words.mood, body_en: words.en(NAMES[a].en), body_ku: words.ku(NAMES[a].ku), body_ar: words.ar(NAMES[a].ar),
     dedupe_key: `${key}|${a}`,
   })), { onConflict: "dedupe_key", ignoreDuplicates: true });
@@ -227,7 +238,7 @@ async function ricoSays(kind: string, key: string, words: Words, extra: Record<s
     title: RICO[lang],
     body: lang === "ku" ? words.ku(name ?? "") : lang === "ar" ? words.ar(name ?? "") : words.en(name ?? ""),
     kind: "assistant", mood: moodOf(words.mood), tag: `ricotta-rico-${key}`, ...extra,
-  }));
+  }), allowed);
 }
 /* "Hey Rozha!" when the name is known, "Hey!" when it isn't. */
 const hi = (word: string, n: string, sep = " ") => (n ? `${word}${sep}${n}` : word);
@@ -417,10 +428,6 @@ async function weeklyTick() {
   if (now.weekday !== 5 || now.minutes < 17 * 60 || now.minutes >= 21 * 60) return { skipped: "not the time" };
   const dayMs = 86400_000, end = Date.now(), start = end - 7 * dayMs;
   const orders = must(await sb.from("app_orders").select("id,sent_at").eq("status", "sent").gte("sent_at", new Date(start - 7 * dayMs).toISOString()), "orders") as any[];
-  // History is cleared at the start of each month: a week that reaches into last month is only partly
-  // here, so it is never compared as if it were whole.
-  const monthStartMs = Date.parse(`${now.date.slice(0, 8)}01T00:00:00${ERBIL_OFFSET}`);
-  const wholeWeek = start >= monthStartMs, wholeLastWeek = start - 7 * dayMs >= monthStartMs;
   const thisWeek = (orders ?? []).filter((o: any) => Date.parse(o.sent_at) >= start), lastWeek = (orders ?? []).filter((o: any) => Date.parse(o.sent_at) < start);
   const ids = thisWeek.map((o: any) => o.id);
   const lines = await linesFor(ids, "item_name");
@@ -431,9 +438,7 @@ async function weeklyTick() {
   const y = new Date(`${now.date}T12:00:00Z`); y.setUTCDate(y.getUTCDate() - 1);
   const streak = st && (String(st.last_day) === now.date || String(st.last_day) === y.toISOString().slice(0, 10)) ? Number(st.count) : 0;
   const k = thisWeek.length, p = lastWeek.length;
-  const trend = !wholeWeek ? { en: "since the 1st", ku: "لە یەکی مانگەوە", ar: "منذ بداية الشهر" }
-    : !wholeLastWeek ? { en: "last week's are cleared with the month", ku: "هی هەفتەی پێشوو لەگەڵ مانگەکە سڕاونەتەوە", ar: "طلبات الأسبوع الماضي مُسحت مع الشهر" }
-    : { en: k > p ? `up from ${p} last week` : k < p ? `down from ${p} last week` : "the same as last week",
+  const trend = { en: k > p ? `up from ${p} last week` : k < p ? `down from ${p} last week` : "the same as last week",
     ku: k > p ? `زیاتر لە ${p}ی هەفتەی پێشوو` : k < p ? `کەمتر لە ${p}ی هەفتەی پێشوو` : "وەک هەفتەی پێشوو",
     ar: k > p ? `أكثر من ${p} في الأسبوع الماضي` : k < p ? `أقل من ${p} في الأسبوع الماضي` : "مثل الأسبوع الماضي" };
   return await saysOnce(`weekly|${now.date}`, "weekly", null, () => ricoSays("weekly", `weekly|${now.date}`, {
@@ -539,9 +544,10 @@ Deno.serve(async (req) => {
         const w = written(body);
         if (!w.any) return json({ error: "empty message" }, 400);
         const title = String(body.title || "").slice(0, 80);
+        // Without its own title this message comes from Rico, so it follows who has Rico.
         return json(await sendReminder((lang) => ({
           title: title || RICO[lang], body: w.pick(lang), kind: "assistant", mood: moodOf(body.mood), tag: `ricotta-assistant-${Date.now()}`,
-        })));
+        }), title ? undefined : await ricoAccounts()));
       }
       case "reminder-now":
         return json(await sendReminder((lang, name) => ({ ...dailyPayload(lang, name), title: L(lang, "Ricotta Orders (test)", "Ricotta Orders (تاقیکاری)", "Ricotta Orders (تجربة)") })));

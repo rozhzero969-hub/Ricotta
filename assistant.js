@@ -128,7 +128,7 @@ function ricoMarkInboxRead(){
 /* Picks up new messages from Rico while the app is open (every few minutes,
    and when the app comes back to the front). */
 async function ricoRefreshInbox(){
-  if(!state.account) return;
+  if(!state.account || !canOpen('assistant')) return;   // Rico is off for this person
   const r = await api('assistant/inbox');
   if(!r.ok || !Array.isArray(r.data)) return;
   const before = rico.inbox.map(m=>m.id+':'+m.read).join();

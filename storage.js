@@ -21,6 +21,8 @@ function lset(key, value){
 /* ============ API client ============ */
 const API_URL = `${SUPABASE_URL}/functions/v1/api`;
 const API_TIMEOUT_MS = 12000;
+/* The server runs next to the database (Ireland), so its several database steps per request are quicker. */
+const apiUrl = path=>`${API_URL}/${path}${path.includes('?') ? '&' : '?'}forceFunctionRegion=eu-west-1`;
 
 function apiSession(){
   const s = lget('apiSession');
@@ -111,7 +113,7 @@ async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepalive=
   const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel(), ...appVersionHeader()};
   if(s) headers['x-session-token'] = s.token;
   try{
-    const res = await fetch(`${API_URL}/${path}`, {
+    const res = await fetch(apiUrl(path), {
       method, headers, signal:controller.signal, keepalive,
       body: body === undefined ? undefined : JSON.stringify(body)
     });
@@ -146,7 +148,7 @@ async function apiStream(path, body, onEvent, signal){
   let timedOut = false;
   const timer = setTimeout(()=>{ timedOut = true; stop(); }, 55000);
   try{
-    const res = await fetch(`${API_URL}/${path}`, {method:'POST', headers, body:JSON.stringify(body), signal:streamController.signal});
+    const res = await fetch(apiUrl(path), {method:'POST', headers, body:JSON.stringify(body), signal:streamController.signal});
     if(!sessionCurrent()){ stop(); return; }
     setApiHealth(true);
     if(res.status === 401 && s && !apiPathIsPublic(path)){ clearApiSession(); onSessionExpired(); return; }

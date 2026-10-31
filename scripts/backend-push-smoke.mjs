@@ -102,6 +102,18 @@ queryError = '';
 const words = {mood:'happy',en:()=> 'Hello',ku:()=> 'Hello',ar:()=> 'Hello'};
 await ricoSays('cheer','fixture-inbox',words); await ricoSays('cheer','fixture-inbox',words);
 assert.equal(tables.app_rico_inbox.length,2,'retries leave one inbox message per account');
+// Yunis gets Rico's messages only while his access includes Rico. Other reminders are not affected.
+tables.app_accounts = [{ id:'rozha', roles:null }, { id:'yunis', roles:['history','send'] }];
+await ricoSays('cheer','access-off',words);
+assert.deepEqual(tables.app_rico_inbox.filter(r=>r.dedupe_key.startsWith('access-off|')).map(r=>r.account),['rozha'],'Rico off: nothing for Yunis');
+tables.app_accounts[1].roles = ['history','assistant'];
+await ricoSays('cheer','access-on',words);
+assert.deepEqual(tables.app_rico_inbox.filter(r=>r.dedupe_key.startsWith('access-on|')).map(r=>r.account).sort(),['rozha','yunis'],'Rico on: he gets them');
+queryError = 'app_accounts';
+const inboxBefore = tables.app_rico_inbox.length;
+await assert.rejects(ricoSays('cheer','access-unknown',words));
+assert.equal(tables.app_rico_inbox.length,inboxBefore,'if access cannot be read, nothing goes out');
+queryError = ''; delete tables.app_accounts;
 queryError = 'app_rico_inbox';
 await assert.rejects(ricoSays('cheer','other-inbox',words));
 reset();

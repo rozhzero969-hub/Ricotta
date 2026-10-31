@@ -2584,7 +2584,8 @@ async function editItemNote(id){
   const before = i.note || '';
   const next = {note:String(note).trim().slice(0, 120)};
   if(next.note === before) return;
-  if(!(await saveChanges('items', i.id, next))){ await showAlert(t('saveFailed')); return; }
+  const saved = await saveChanges('items', i.id, next);
+  if(saved !== true){ await showAlert(saveError(saved)); return; }
   Object.assign(i, next);
   logActivity({action:'edit', type:'item', name:i.name, fields:[{k:'note', from:before, to:next.note}]});
   refreshOrderResults();
@@ -2836,7 +2837,7 @@ function orderHistoryCard(rec){
     </div>
   </article>`;
 }
-/* Orders for the current Baghdad calendar month, newest first. */
+/* The last 60 days of orders, newest first. */
 function renderHistory(){
   const entries = state.history.map(rec=>({ts:Date.parse(rec.date), day:rec.date, html:orderHistoryCard(rec)})).sort((a,b)=>b.ts-a.ts);
   const tools = renderReportCard() + `<div class="hist-tools">
@@ -3093,8 +3094,11 @@ async function saveRecord(table, rec){
 /* An edit sends only what the person changed: the server leaves every other field as it is, so a form
    that was open while another phone saved a newer note, number or reminder never puts the old one back. */
 async function saveChanges(table, id, changes){
-  return (await api(`${table}/${encodeURIComponent(id)}`, {method:'PUT', body:{...changes, only:Object.keys(changes)}})).ok;
+  const r = await api(`${table}/${encodeURIComponent(id)}`, {method:'PUT', body:{...changes, only:Object.keys(changes)}});
+  if(r.data?.error === 'gone') refreshData(true);   // deleted on another phone: the list catches up
+  return r.ok ? true : r.data?.error === 'gone' ? 'gone' : false;
 }
+const saveError = result=>t(result === 'gone' ? 'deletedElsewhere' : 'saveFailed');
 async function deleteRecord(table, id){
   return (await api(`${table}/${encodeURIComponent(id)}`, {method:'DELETE'})).ok;
 }
@@ -3153,7 +3157,8 @@ function openSupplierModal(id){
         // has already passed today starts tomorrow instead of firing the moment you save.
         if(oldCode !== newCode) changes.reminder = rem.on ? {...newRem, updatedAt: now} : {...(o.reminder||{}), enabled:false, updatedAt: now};
         if(cutoff !== (o.cutoff || '')) changes.cutoff = cutoff || null;
-        if(!(await saveChanges('suppliers', s.id, changes))) return {error: t('saveFailed')};
+        const saved = await saveChanges('suppliers', s.id, changes);
+        if(saved !== true) return {error: saveError(saved)};
         Object.assign(s, changes);
         logActivity({action:'edit', type:'supplier', name, fields});
       } else {
@@ -3383,7 +3388,8 @@ function openItemModal(id){
           if(note !== (o.note || '')) changes.note = note;
           if(aliases.join('\n') !== (o.aliases || []).join('\n')) changes.aliases = aliases;
           if(available !== (o.available !== false)) changes.available = available;
-          if(!(await saveChanges('items', i.id, changes))) return {error: t('saveFailed')};
+          const saved = await saveChanges('items', i.id, changes);
+          if(saved !== true) return {error: saveError(saved)};
           Object.assign(i, changes);if(changes.available === false){delete state.cart[i.id];persistCartDraft();}
           logActivity({action:'edit', type:'item', name, fields});
         }

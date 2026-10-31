@@ -300,7 +300,7 @@
       return json({
         account:me, name:NAMES[me].en, views:viewsFor(me), roles:rolesOf(me),
         suppliers:db.suppliers, items:db.items.map(i=>({...i, createdAt:i.createdAt || '2026-08-01T09:00:00.000Z', lastOrderedAt:history().filter(o=>o.entries.some(e=>e.items.some(x=>x.itemId === i.id))).map(o=>o.date).sort().pop() || null})), units:db.units,
-        history:history(), historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
+        history:db.history.filter(o => Date.parse(o.date) >= Date.now() - 60 * 86400000), historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
         activity:can(me,'record') ? db.activity.filter(a=>a.ts >= monthStartIso()) : [], inbox:can(me,'assistant') ? db.inbox.slice(-20) : [],
         pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
         months:LAB_MONTHS, draft:db.drafts?.[account] || {cart:{},revision:0}
@@ -474,6 +474,8 @@
         if(idx >= 0) list.splice(idx, 1);
         if(table === 'suppliers') db.items.forEach(i=>{ if(i.supplierId === id) i.supplierId = null; });
         db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:'delete', type, name:prev ? (prev.name || prev.en) : id, fields:[]});
+      } else if(Array.isArray(body.only) && !prev && table !== 'units'){
+        return fail('gone', 409);
       } else if(Array.isArray(body.only) && prev && table !== 'units'){
         // Like the server: an edit that names its fields changes only those.
         const allowed = table === 'suppliers' ? ['name','phone','reminder','cutoff'] : ['name','unit','supplierId','note','aliases','available','sortOrder'];

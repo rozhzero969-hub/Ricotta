@@ -105,9 +105,14 @@ function streakMilestone(n){
   setTimeout(close, 4200);
 }
 /* ---------- Rico's fun facts (this month's orders) ---------- */
+/* History holds 60 days; the report card, its files and the fun facts are about this month. */
+function thisMonthOrders(){
+  const month = erbilDate(new Date().toISOString()).slice(0, 7);
+  return state.history.filter(h=>erbilDate(h.date).startsWith(month));
+}
 function monthLines(){
   const lines = [];
-  state.history.forEach(h=>(h.entries||[]).forEach(e=>(e.items||[]).forEach(it=>lines.push({...it, supplierId:e.supplierId, supplierName:e.supplierName, date:h.date, by:h.by}))));
+  thisMonthOrders().forEach(h=>(h.entries||[]).forEach(e=>(e.items||[]).forEach(it=>lines.push({...it, supplierId:e.supplierId, supplierName:e.supplierName, date:h.date, by:h.by}))));
   return lines;
 }
 function itemTally(){
@@ -123,7 +128,7 @@ function itemTally(){
 function weekdayName(d){ return formatIraqDateTime(new Date(Date.UTC(2026, 0, 4 + d, 9)), {weekday:'long'}); }
 function busiestWeekday(){
   const n = [0,0,0,0,0,0,0];
-  state.history.forEach(h=>{ n[new Date(new Date(h.date).getTime() + 3*3600_000).getUTCDay()]++; });
+  thisMonthOrders().forEach(h=>{ n[new Date(new Date(h.date).getTime() + 3*3600_000).getUTCDay()]++; });
   const max = Math.max(...n);
   return max ? n.indexOf(max) : -1;
 }
@@ -137,8 +142,8 @@ function funFact(){
   const heavy = tally.filter(x=>x.qty >= 5);
   if(heavy.length){ const x = heavy[Math.floor(Math.random()*heavy.length)]; facts.push(t('factQty')(Math.round(x.qty*10)/10, unitLabel(x.unit), x.name)); }
   const day = busiestWeekday();
-  if(day >= 0 && state.history.length >= 4) facts.push(t('factBusiest')(weekdayName(day)));
-  if(state.history.length >= 3) facts.push(t('factOrders')(state.history.length));
+  if(day >= 0 && thisMonthOrders().length >= 4) facts.push(t('factBusiest')(weekdayName(day)));
+  if(thisMonthOrders().length >= 3) facts.push(t('factOrders')(thisMonthOrders().length));
   return facts[Math.floor(Math.random() * facts.length)] || '';
 }
 
@@ -163,30 +168,30 @@ function daysLeftInMonth(){
   return {day:p[2], last, left:last - p[2]};
 }
 function reportData(){
-  const days = new Set(state.history.map(h=>erbilDate(h.date)));
+  const orders = thisMonthOrders();
+  const days = new Set(orders.map(h=>erbilDate(h.date)));
   const {day} = daysLeftInMonth();
   const tally = itemTally();
   const sup = new Map();
   monthLines().forEach(l=>{ const k = l.supplierId || l.supplierName || ''; const x = sup.get(k) || {name:l.supplierId ? supplierName(l.supplierId) : (l.supplierName || t('noSupplier')), n:0}; x.n++; sup.set(k, x); });
   const who = {rozha:0, yunis:0};
-  state.history.forEach(h=>{ if(h.by in who) who[h.by]++; });
+  orders.forEach(h=>{ if(h.by in who) who[h.by]++; });
   const ratio = day ? days.size / day : 0;
-  const grade = !state.history.length ? '·' : ratio >= .95 ? 'A+' : ratio >= .85 ? 'A' : ratio >= .7 ? 'B' : ratio >= .5 ? 'C' : 'D';
-  return {orders:state.history.length, days:days.size, elapsed:day, lines:monthLines().length, top:tally.slice(0, 5),
+  const grade = !orders.length ? '·' : ratio >= .95 ? 'A+' : ratio >= .85 ? 'A' : ratio >= .7 ? 'B' : ratio >= .5 ? 'C' : 'D';
+  return {orders:orders.length, days:days.size, elapsed:day, lines:monthLines().length, top:tally.slice(0, 5),
     suppliers:[...sup.values()].sort((a, b)=>b.n - a.n).slice(0, 4), who, grade, busiest:busiestWeekday()};
 }
 function renderReportCard(){
-  if(!state.history.length) return '';
-  const d = reportData(), {left} = daysLeftInMonth();
-  const warn = left <= 3;
-  return `<button type="button" class="report-card${warn ? ' warn' : ''}" id="reportOpen">
+  if(!thisMonthOrders().length) return '';
+  const d = reportData();
+  return `<button type="button" class="report-card" id="reportOpen">
     <span class="report-grade grade-${esc(d.grade.replace('+','p'))}">${esc(d.grade)}</span>
-    <span class="report-card-text"><b>${esc(t('reportTitle')(monthName()))}</b><span>${esc(t('reportGradeHint')(d.days, d.elapsed))} · ${d.orders} ${esc(t('reportOrders').toLowerCase())}</span>${lastMonthLine() ? `<small>${esc(lastMonthLine())}</small>` : ''}${warn ? `<em>${esc(t('reportClearsIn')(left))}</em>` : ''}</span>
-    ${ricoFace(warn ? 'worried' : 'happy', 'rico-sm')}
+    <span class="report-card-text"><b>${esc(t('reportTitle')(monthName()))}</b><span>${esc(t('reportGradeHint')(d.days, d.elapsed))} · ${d.orders} ${esc(t('reportOrders').toLowerCase())}</span>${lastMonthLine() ? `<small>${esc(lastMonthLine())}</small>` : ''}</span>
+    ${ricoFace('happy', 'rico-sm')}
   </button>`;
 }
 function openReportSheet(){
-  const d = reportData(), s = streakNow(), {left} = daysLeftInMonth();
+  const d = reportData(), s = streakNow();
   const maxTop = d.top[0]?.times || 1, total = Math.max(1, d.who.rozha + d.who.yunis);
   const fact = funFact();
   const {el} = openKitchenSheet('report-sheet', `
@@ -204,7 +209,7 @@ function openReportSheet(){
       <div><div class="report-sec-title">${esc(t('reportWho'))}</div><div class="report-who"><i class="r" style="--w:${Math.round(d.who.rozha/total*100)}%"></i><i class="y" style="--w:${Math.round(d.who.yunis/total*100)}%"></i></div><div class="report-who-names"><span>${esc(accountLabel('rozha'))} ${d.who.rozha}</span><span>${esc(accountLabel('yunis'))} ${d.who.yunis}</span></div></div>
     </div>
     ${fact ? `<div class="fun-fact">${ricoFace('excited', 'rico-sm')}<div><b>${esc(t('funFactTitle'))}</b><span dir="auto">${esc(fact)}</span></div></div>` : ''}
-    ${canDo('exports') ? `<div class="report-save${left <= 3 ? ' warn' : ''}"><b>${esc(t('reportSave'))}</b><p>${esc(left <= 3 ? t('reportClearsIn')(left) + ' ' : '')}${esc(t('reportSaveHint'))}</p>
+    ${canDo('exports') ? `<div class="report-save"><b>${esc(t('reportSave'))}</b><p>${esc(t('reportSaveHint'))}</p>
       <div class="form-actions"><button type="button" class="btn btn-primary" data-report-file="excel">${ICON_SHEET} ${esc(t('reportExcel'))}</button><button type="button" class="btn btn-ghost" data-report-file="pdf">${NAV_ICONS.record} ${esc(t('reportPrint'))}</button></div></div>` : ''}`, t('reportOpen'));
   el.querySelectorAll('[data-report-file]').forEach(b=>b.onclick = ()=>withBusy(b, async()=>{
     try{ await exportMonth(b.dataset.reportFile); }

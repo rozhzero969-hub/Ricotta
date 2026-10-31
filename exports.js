@@ -288,7 +288,7 @@ async function catalogReport(){
   const r = await api('reports/catalog');
   if(r.ok && r.data) return r.data;
   const items = {}, suppliers = {};
-  for(const o of state.history) for(const e of o.entries || []){
+  for(const o of thisMonthOrders()) for(const e of o.entries || []){
     if(e.supplierId){ const s = suppliers[e.supplierId] ||= {orders:0, lines:0, last:null, ids:new Set()}; s.ids.add(o.id); s.lines += (e.items || []).length; if(!s.last || o.date > s.last) s.last = o.date; s.orders = s.ids.size; }
     for(const it of e.items || []){ const x = items[it.itemId] ||= {orders:0, qty:0, last:null, ids:new Set()}; x.ids.add(o.id); x.qty += Number(it.qty) || 0; if(!x.last || o.date > x.last) x.last = o.date; x.orders = x.ids.size; }
   }
@@ -364,7 +364,7 @@ async function orderSheetPdf(entry, supplier){
 /* This month's orders (History, the report card): every line in Excel, or the month's report as a PDF. */
 async function exportMonth(format){
   const at = new Date(), d = reportData(), month = monthName();
-  const orders = [...state.history].sort((a, b)=>Date.parse(a.date) - Date.parse(b.date));
+  const orders = [...thisMonthOrders()].sort((a, b)=>Date.parse(a.date) - Date.parse(b.date));
   const title = t('fileMonthTitle')(month), subtitle = t('fileMonthSub')(d.orders, d.days, fileStamp(at));
   if(format === 'excel'){
     const rows = [];
