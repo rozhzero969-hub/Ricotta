@@ -8,7 +8,7 @@ Two named accounts use server-verified PINs. Only Rozha changes a PIN, hers or Y
 
 **Yunis's roles** (`app_accounts.roles`): Rozha always has everything. For Yunis, `null` is the standard set (everything except Transfers); Admin › Access saves an explicit list once Rozha changes it. The roles are `history`, `manage`, `catalog`, `record`, `transfers`, `assistant`, `send`, `exports`, `notify` and `reminders`. The api checks them on every request (`can()` in `api/index.ts`) and answers 403 without the role; bootstrap sends the screens (`views`) and `roles`, and the app hides what he can't use. A change shows up on his phone at its next refresh, without signing in again.
 
-Order History and Records retain the current **Asia/Baghdad calendar month**. Older orders, their lines and Records are permanently deleted at Baghdad midnight by `ricotta-monthly-history`; the daily cleanup catches up after downtime. The API also filters reads by month. PINs, the catalog and reminder settings are kept.
+Orders and their lines are kept **60 days**, in History and for Rico, and are then permanently deleted at Baghdad midnight by `ricotta-monthly-history`. Records keep the current **Asia/Baghdad calendar month**. The daily cleanup catches up after downtime. PINs, the catalog and reminder settings are kept.
 
 Orders retry with stable IDs. Each pending order has its own local storage entry so tabs cannot overwrite one shared queue. Settings shows the pending count, Retry sync and Export copy. Export a previous month's unsynced order before clearing browser storage: it cannot be written into a later month's history. An order whose save the server refuses can be dropped with Clear order (Undo brings it back). A phone whose clock runs ahead still saves: the server uses its own time for an order dated in the future.
 
@@ -19,14 +19,14 @@ Scheduled jobs (pg_cron): `ricotta-reminder-tick` every minute (reminders, Rico'
 Unfinished orders sync between devices signed in to the same account. Quantities are saved locally before syncing. Edits to different items merge; two different edits to the same item require choosing which quantity to keep. Rozha and Yunis have separate drafts. Visible devices check about every eight seconds and on returning to the app. The WhatsApp send queue stays on the device where it was started.
 
 - **Kitchen streak** (`kitchen.js`, `app_streak`): every Baghdad day with a sent order adds a day for the whole kitchen. Rico can bring a broken streak back within 7 days (`recover_streak`). Undoing the day's only order takes the day back.
-- **Report card**: at the top of History, computed from this month's orders, with an Excel file and a PDF before the monthly cleanup.
+- **Report card**: at the top of History, computed from this month's orders, with an Excel file and a PDF.
 - **Exports** (`exports.js`): Excel and PDF of items and suppliers with this month's order counts (`reports/catalog`), the month's report and a sent order as a PDF. Files carry the Ricotta header; Excel cells are written as text, never formulas. PDFs open in a sheet with a Done button, so a phone always has a way back.
 - **Weather**: the reminder tick keeps Erbil's weather from Open-Meteo in `app_weather` for Rico's morning messages.
 - Pinned items (`app_accounts.pins`), item notes (`app_items.note`, sent in the WhatsApp message) and, for Rozha, Undo for 15 minutes after an order is saved (older ones with her PIN).
 - Rico's chat history is one list for both people, each chat marked with who started it; both can open and delete any chat (or all), and each only continues their own.
 - **Order cut-offs** (`app_suppliers.cutoff`, HH:MM Erbil): on the supplier's order days (its reminder days, or every day) Order, Send and Suppliers show a countdown; Rico warns 30 minutes before when nothing has gone to that supplier.
 - **App icon badge**: late suppliers (Home Screen app; on iPhone with notifications on).
-- **Month archive** (`app_month_summaries`): before a month is cleared, `app_internal_monthly_cleanup` keeps its summary (orders, days, top items, suppliers, who sent). History › Past months.
+- **Month archive** (`app_month_summaries`): when a month ends, `app_internal_monthly_cleanup` keeps its summary (orders, days, top items, suppliers, who sent). History › Past months.
 - **Friday summary**: Rico's short weekly recap on Friday evening.
 - On phones the WhatsApp buttons open the WhatsApp app directly (`whatsapp://send`); computers use `wa.me`.
 
@@ -83,7 +83,7 @@ The app requests Cloudflare's script only when enabled. The API verifies each to
 
 ## Backups and recovery
 
-Keep encrypted database backups outside the repository and browser. Supabase's backup availability depends on the project's plan; check the dashboard and use an external backup if necessary. Review the retention policy before restoring: normal cleanup immediately removes data from previous months. Restore business backups to a separate project first, verify catalog and current-month order counts, then redeploy functions and revoke restored sessions before switching traffic. `pnpm test` verifies that the schema baseline restores into an empty database; it is not a production-data recovery drill.
+`scripts/backup-local.sh`, run nightly by a LaunchAgent on Rozha's Mac, saves the kitchen's data (no secrets, PIN hashes, sessions or push keys) to `~/Ricotta Backups` and keeps 30 files. Keep encrypted database backups outside the repository and browser. Supabase's backup availability depends on the project's plan; check the dashboard and use an external backup if necessary. Review the retention policy before restoring: normal cleanup immediately removes data from previous months. Restore business backups to a separate project first, verify catalog and current-month order counts, then redeploy functions and revoke restored sessions before switching traffic. `pnpm test` verifies that the schema baseline restores into an empty database; it is not a production-data recovery drill.
 
 ## Ordering tools
 

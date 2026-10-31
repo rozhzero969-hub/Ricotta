@@ -196,19 +196,22 @@ const server=http.createServer((req,res)=>{
       assert.equal(await page.locator('.rec-card').count(),500,'no audit entries are dropped');
       await openView(page,'order');await openView(page,'record');
       assert.equal(await page.locator('.rec-card').count(),30,'reopening Record resets its rendering budget');
+      // History shows 60 days; the report card counts only this month.
+      const sixty=await page.evaluate(()=>{const before=reportData().orders;const old={id:'old-45',date:new Date(Date.now()-45*86400000).toISOString(),by:'rozha',entries:[{supplierId:null,supplierName:'Old market',items:[{itemId:'old',name:'Old item',unit:'kg',qty:1}]}]};state.history.unshift(old);const r=[before===reportData().orders,thisMonthOrders().every(o=>o.id!=='old-45'),renderHistory().includes('Old market')];state.history.shift();return r;});
+      assert.deepEqual(sixty,[true,true,true],'older orders are in History but not in this month\'s report');
       // The older of two overlapping refreshes must not overwrite the newer one.
       const pending=[];
-      await ctx.route('**/functions/v1/api/activity',route=>{pending.push(route);});
+      await ctx.route('**/functions/v1/api/activity*',route=>{pending.push(route);});
       await page.evaluate(()=>{void refreshActivity();void refreshActivity();});
       for(let attempt=0;pending.length<2&&attempt<100;attempt++) await page.waitForTimeout(20);
       assert.equal(pending.length,2);
       await pending[1].fulfill({contentType:'application/json',body:JSON.stringify([{...recordActivity[0],name:'Newest response'}])});
       await page.waitForFunction(()=>document.querySelector('.rec-name')?.textContent==='Newest response');
       await pending[0].fulfill({contentType:'application/json',body:JSON.stringify([{...recordActivity[0],name:'Stale response'}])});
-      await page.waitForFunction(()=>performance.getEntriesByType('resource').filter(r=>r.name.endsWith('/api/activity')).length>=4);
+      await page.waitForFunction(()=>performance.getEntriesByType('resource').filter(r=>r.name.includes('/api/activity')).length>=4);
       assert.equal(await page.locator('.rec-name').textContent(),'Newest response','late refresh cannot replace newer records');
-      await ctx.unroute('**/functions/v1/api/activity');
-      await ctx.route('**/functions/v1/api/activity',route=>route.fulfill({status:503,contentType:'application/json',body:'{}'}));
+      await ctx.unroute('**/functions/v1/api/activity*');
+      await ctx.route('**/functions/v1/api/activity*',route=>route.fulfill({status:503,contentType:'application/json',body:'{}'}));
       await page.evaluate(()=>refreshActivity());
       assert.equal(await page.locator('.rec-name').textContent(),'Newest response','failed refresh keeps the visible history');
       await ctx.close();

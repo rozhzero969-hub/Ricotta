@@ -309,8 +309,9 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
   return lines;
 }
 
+const ORDER_KEEP_DAYS = 60;   // the database clean-up deletes orders older than this
 async function bootstrap(s: Session) {
-  const since = monthStart();
+  const since = new Date(Date.now() - ORDER_KEEP_DAYS * 86400_000).toISOString();
   const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, months, draft] = await Promise.all([
     readAccount(s.account),
     readAll(() => app("suppliers").select("id,name,phone,reminder,cutoff").order("name").order("id")),
@@ -527,7 +528,7 @@ function catalogRow(table: string, id: string, b: any) {
   const full = CATALOG[table](id, { ...b, name: only.includes("name") ? b.name : "x" });
   if (!full) return null;
   const keep = new Set(["id", "updated_at", ...only.flatMap((k) => CATALOG_FIELDS[table][k])]);
-  return Object.fromEntries(Object.entries(full).filter(([k]) => keep.has(k)));
+  return { ...Object.fromEntries(Object.entries(full).filter(([k]) => keep.has(k))), partial: true };
 }
 
 /* Rico's short note after an order goes out (first one each day per
@@ -538,6 +539,7 @@ const CHEERS = [
   { mood: "grateful", en: (n: string) => `Thanks, ${n}. Today's order is done. One less thing to worry about.`, ku: (n: string) => `سوپاس ${n}. داواکاریی ئەمڕۆ تەواو بوو. شتێکی کەمتر بۆ خەمخواردن.`, ar: (n: string) => `شكرًا يا ${n}. طلب اليوم جاهز، هم أقل.` },
 ];
 async function cheerAfterOrder(s: Session) {
+  if (!can(s, "assistant")) return;   // Rico is off for this person: no message from him
   const date = baghdadDay();
   const c = CHEERS[Math.floor(Math.random() * CHEERS.length)];
   const n = LOCAL_NAMES[s.account];
@@ -549,7 +551,11 @@ async function cheerAfterOrder(s: Session) {
 /* Rico's congratulations when the kitchen streak reaches 7, 14, 30, 60, 100... days (both accounts). */
 async function streakMilestone(count: number) {
   const day = baghdadDay();
-  const rows = (["rozha", "yunis"] as const).map((a) => {
+  // Only people who have Rico get his message.
+  const { data: people, error: peopleError } = await app("accounts").select("id,roles");
+  if (peopleError) throw peopleError;
+  const hasRico = (a: "rozha" | "yunis") => a === "rozha" || rolesOf(a, (people ?? []).find((p: any) => p.id === a)?.roles).includes("assistant");
+  const rows = (["rozha", "yunis"] as const).filter(hasRico).map((a) => {
     const n = LOCAL_NAMES[a];
     return {
       account: a, kind: "streak", mood: "excited", dedupe_key: `streak|${count}|${day}|${a}`,
@@ -603,22 +609,24 @@ async function saveOrder(s: Session, b: any) {
 
 /* ---------- Devices ---------- */
 async function heartbeat(s: Session, label: string | null, version: string | null, seconds: unknown, batch: unknown) {
+  let credited: number | undefined;   // told to the phone, so it can keep a second or two the clock did not allow yet
   // Time in the app: the database adds at most the time that really passed since this phone last said,
   // and counts each batch id once (the phone sends the same id again until it hears back).
   const spent = Math.floor(Number(seconds));
   if (Number.isFinite(spent) && spent > 0 && spent <= 1800) {
-    const { error } = await db.rpc("app_internal_add_usage", { p_account: s.account, p_device: s.deviceId || `__session:${s.id}`, p_label: label, p_seconds: spent,
+    const { data, error } = await db.rpc("app_internal_add_usage", { p_account: s.account, p_device: s.deviceId || `__session:${s.id}`, p_label: label, p_seconds: spent,
       p_batch: typeof batch === "string" && uuid(batch) ? batch : null });
     if (error) { console.error("usage_failed"); return fail("usage_unavailable", 503); }
+    credited = Number(data) || 0;
   }
-  if (!s.deviceId) return ok();
+  if (!s.deviceId) return json({ ok: true, credited });
   const { data: d, error: readError } = await app("devices").select("command,handled_command").eq("id", s.deviceId).eq("account",s.account).maybeSingle();
   if (readError) throw readError;
   const pendingLogout = d?.command?.type === "logout" && d.command.id !== d.handled_command;
-  if (pendingLogout) return json({ ok: true, device: null });   // don't flip it back to "logged in"
+  if (pendingLogout) return json({ ok: true, device: null, credited });   // don't flip it back to "logged in"
   const { error } = await app("devices").update({ ...(label ? { label } : {}), ...(version ? { app_version: version } : {}), logged_in: true, last_seen: nowIso(), updated_at: nowIso() }).eq("id",s.deviceId).eq("account",s.account);
   if (error) throw error;
-  return ok();
+  return json({ ok: true, credited });
 }
 
 /* ---------- Live changes ----------
@@ -940,6 +948,7 @@ Deno.serve(async (req) => {
         const row = M === "PUT" ? catalogRow(table, id, b) : null;
         if (M === "PUT" && !row) return fail("invalid_input");
         const { error } = await db.rpc("app_internal_catalog_change", { p_table: table, p_id: id, p_row: row, p_actor: s.account, p_device: s.deviceId });
+        if (error && /catalog_gone/.test(String(error.message))) return fail("gone", 409);
         return error ? fail(M === "DELETE" ? "delete_failed" : "save_failed", 500) : ok();
       }
     }

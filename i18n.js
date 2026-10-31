@@ -607,8 +607,8 @@ Object.assign(T.en, {
   reportOpen:'Report card', reportTitle:m=>m+' report card', reportOrders:'Orders', reportDays:'Days with orders', reportStreak:'Streak',
   reportLines:'Items sent', reportTop:'Most ordered', reportSuppliers:'Top suppliers', reportBusiest:'Busiest day', reportWho:'Who sent',
   reportGrade:'Grade', reportGradeHint:(d,n)=>d+' of '+n+' days had orders', reportTimes:n=>n+'×',
-  reportSave:'Save this month', reportSaveHint:'History is cleared at the start of next month. Save an Excel file or print the report first.',
-  reportExcel:'Excel file', reportPrint:'Print or PDF', reportClearsIn:n=>n===0?'History is cleared tonight at midnight.':'History is cleared in '+n+' day'+(n===1?'':'s')+'.',
+  reportSave:'Save this month', reportSaveHint:'Orders stay in History for 60 days. Save an Excel file or print the report to keep them longer.',
+  reportExcel:'Excel file', reportPrint:'Print or PDF',
   orderUndone:'Order taken back. It is in your draft again.', undoFailed:'It’s too late to undo this order.',
   pinItem:'Pin to top', unpinItem:'Unpin', pinnedTitle:'Pinned',
   itemNoteLabel:'Note for the supplier', itemNoteHint:'Goes into the WhatsApp message, e.g. “ripe, not soft”.', itemNoteEdit:'Note', recordNote:'Note',
@@ -632,8 +632,8 @@ Object.assign(T.ku, {
   reportOpen:'کارتی ڕاپۆرت', reportTitle:m=>'کارتی ڕاپۆرتی '+m, reportOrders:'داواکاری', reportDays:'ڕۆژانی داواکاری', reportStreak:'زنجیرە',
   reportLines:'کاڵای نێردراو', reportTop:'زۆرترین داواکراو', reportSuppliers:'دابینکەرە سەرەکییەکان', reportBusiest:'قەرەباڵغترین ڕۆژ', reportWho:'کێ ناردی',
   reportGrade:'نمرە', reportGradeHint:(d,n)=>d+' لە '+n+' ڕۆژ داواکارییان تێدا بوو', reportTimes:n=>n+'×',
-  reportSave:'پاشەکەوتکردنی ئەم مانگە', reportSaveHint:'مێژوو لە سەرەتای مانگی داهاتوودا دەسڕدرێتەوە. پێشتر فایلی ئێکسڵ پاشەکەوت بکە یان ڕاپۆرتەکە چاپ بکە.',
-  reportExcel:'فایلی ئێکسڵ', reportPrint:'چاپ یان PDF', reportClearsIn:n=>n===0?'مێژوو ئەمشەو نیوەشەو دەسڕدرێتەوە.':'مێژوو دوای '+n+' ڕۆژ دەسڕدرێتەوە.',
+  reportSave:'پاشەکەوتکردنی ئەم مانگە', reportSaveHint:'داواکارییەکان 60 ڕۆژ لە مێژوودا دەمێننەوە. فایلی ئێکسڵ پاشەکەوت بکە یان ڕاپۆرتەکە چاپ بکە بۆ ئەوەی زیاتر بیانهێڵیتەوە.',
+  reportExcel:'فایلی ئێکسڵ', reportPrint:'چاپ یان PDF',
   orderUndone:'داواکارییەکە گەڕێندرایەوە. دیسان لە ڕەشنووسەکەتدایە.', undoFailed:'زۆر درەنگە بۆ گەڕاندنەوەی ئەم داواکارییە.',
   pinItem:'هەڵواسین لە سەرەوە', unpinItem:'لابردنی هەڵواسین', pinnedTitle:'هەڵواسراو',
   itemNoteLabel:'تێبینی بۆ دابینکەر', itemNoteHint:'دەچێتە ناو نامەی واتسئاپەکەوە، بۆ نموونە «پێگەیشتوو، نەرم نەبێت».', itemNoteEdit:'تێبینی', recordNote:'تێبینی',
@@ -657,8 +657,8 @@ Object.assign(T.ar, {
   reportOpen:'بطاقة التقرير', reportTitle:m=>'بطاقة تقرير '+m, reportOrders:'الطلبات', reportDays:'أيام فيها طلبات', reportStreak:'السلسلة',
   reportLines:'المواد المرسلة', reportTop:'الأكثر طلبًا', reportSuppliers:'أبرز المورّدين', reportBusiest:'أكثر الأيام ازدحامًا', reportWho:'من أرسل',
   reportGrade:'التقدير', reportGradeHint:(d,n)=>d+' من '+n+' أيام فيها طلبات', reportTimes:n=>n+'×',
-  reportSave:'حفظ هذا الشهر', reportSaveHint:'يُمسح السجل في بداية الشهر القادم. احفظ ملف إكسل أو اطبع التقرير أولًا.',
-  reportExcel:'ملف إكسل', reportPrint:'طباعة أو PDF', reportClearsIn:n=>n===0?'يُمسح السجل الليلة عند منتصف الليل.':'يُمسح السجل بعد '+AR_DAYS(n)+'.',
+  reportSave:'حفظ هذا الشهر', reportSaveHint:'تبقى الطلبات في السجل 60 يومًا. احفظ ملف إكسل أو اطبع التقرير للاحتفاظ بها مدة أطول.',
+  reportExcel:'ملف إكسل', reportPrint:'طباعة أو PDF',
   orderUndone:'استُرجع الطلب. عاد إلى مسودتك.', undoFailed:'فات الأوان للتراجع عن هذا الطلب.',
   pinItem:'تثبيت في الأعلى', unpinItem:'إلغاء التثبيت', pinnedTitle:'المثبّتة',
   itemNoteLabel:'ملاحظة للمورّد', itemNoteHint:'تُضاف إلى رسالة واتساب، مثل «ناضجة، غير طرية».', itemNoteEdit:'ملاحظة', recordNote:'ملاحظة',
@@ -780,7 +780,7 @@ Object.assign(T.en, {
   durLessMin:'Under 1 min', durMin:m=>m+' min', durHour:h=>h+' h', durHourMin:(h,m)=>h+' h '+m+' min',
   // Files
   exportBtn:'Export', exportItemsTitle:'Export Items', exportSuppliersTitle:'Export Suppliers', exportMonthTitle:'Save This Month',
-  exportHint:'With this month’s order counts.', exportMonthHint:'Every order this month. History is cleared when the month ends.',
+  exportHint:'With this month’s order counts.', exportMonthHint:'Every order this month. Orders stay in History for 60 days.',
   exportExcel:'Excel', exportExcelHint:'A spreadsheet to sort, filter and keep', exportPdf:'PDF', exportPdfHint:'A document to print or send',
   exportFailed:'The file couldn’t be made. Please try again.', fileExcelReady:'Excel file ready', filePdfReady:'PDF ready',
   fileItemsTitle:'Items', fileSuppliersTitle:'Suppliers', fileItemsSub:(n,m,at)=>n+' items · orders in '+m+' · made '+at, fileSuppliersSub:(n,m,at)=>n+' suppliers · orders in '+m+' · made '+at,
@@ -868,7 +868,7 @@ Object.assign(T.ku, {
   checkFoot:'کاڵایەک دابگرە بۆ چاککردنی.',
   durLessMin:'کەمتر لە 1 خولەک', durMin:m=>m+' خولەک', durHour:h=>h+' کاتژمێر', durHourMin:(h,m)=>h+' کاتژمێر و '+m+' خولەک',
   exportBtn:'هەناردەکردن', exportItemsTitle:'هەناردەکردنی کاڵاکان', exportSuppliersTitle:'هەناردەکردنی دابینکەران', exportMonthTitle:'پاشەکەوتکردنی ئەم مانگە',
-  exportHint:'لەگەڵ ژمارەی داواکارییەکانی ئەم مانگە.', exportMonthHint:'هەموو داواکارییەکانی ئەم مانگە. مێژوو لە کۆتایی مانگدا پاک دەکرێتەوە.',
+  exportHint:'لەگەڵ ژمارەی داواکارییەکانی ئەم مانگە.', exportMonthHint:'هەموو داواکارییەکانی ئەم مانگە. داواکارییەکان 60 ڕۆژ لە مێژوودا دەمێننەوە.',
   exportExcel:'Excel', exportExcelHint:'خشتەیەک بۆ ڕیزکردن، فلتەرکردن و هەڵگرتن', exportPdf:'PDF', exportPdfHint:'بەڵگەنامەیەک بۆ چاپکردن یان ناردن',
   exportFailed:'فایلەکە دروست نەکرا. تکایە دووبارە هەوڵ بدەرەوە.', fileExcelReady:'فایلی Excel ئامادەیە', filePdfReady:'PDF ئامادەیە',
   fileItemsTitle:'کاڵاکان', fileSuppliersTitle:'دابینکەران', fileItemsSub:(n,m,at)=>n+' کاڵا · داواکارییەکانی '+m+' · دروستکرا '+at, fileSuppliersSub:(n,m,at)=>n+' دابینکەر · داواکارییەکانی '+m+' · دروستکرا '+at,
@@ -953,7 +953,7 @@ Object.assign(T.ar, {
   checkFoot:'اضغط على مادة لإصلاحها.',
   durLessMin:'أقل من دقيقة', durMin:m=>m+' د', durHour:h=>h+' س', durHourMin:(h,m)=>h+' س '+m+' د',
   exportBtn:'تصدير', exportItemsTitle:'تصدير المواد', exportSuppliersTitle:'تصدير الموردين', exportMonthTitle:'حفظ هذا الشهر',
-  exportHint:'مع عدد طلبات هذا الشهر.', exportMonthHint:'كل طلبات هذا الشهر. يُمسح السجل عند انتهاء الشهر.',
+  exportHint:'مع عدد طلبات هذا الشهر.', exportMonthHint:'كل طلبات هذا الشهر. تبقى الطلبات في السجل 60 يومًا.',
   exportExcel:'Excel', exportExcelHint:'جدول للفرز والتصفية والحفظ', exportPdf:'PDF', exportPdfHint:'مستند للطباعة أو الإرسال',
   exportFailed:'تعذّر إنشاء الملف. حاول مرة أخرى.', fileExcelReady:'ملف Excel جاهز', filePdfReady:'ملف PDF جاهز',
   fileItemsTitle:'المواد', fileSuppliersTitle:'الموردون', fileItemsSub:(n,m,at)=>n+' مادة · طلبات '+m+' · أُنشئ '+at, fileSuppliersSub:(n,m,at)=>n+' مورّد · طلبات '+m+' · أُنشئ '+at,
@@ -1038,6 +1038,7 @@ Object.assign(T.ar, {
 /* ROZH-25: Rico's AIs in Admin (Claude Haiku first, Google Gemini and Groq as backups). Same rule: every
    language has every key. */
 Object.assign(T.en, {
+  deletedElsewhere:'This was deleted on another phone, so it can’t be saved.',
   aiBrainsTitle:'Rico’s AI', aiRoleMain:'Answers first', aiRoleBackup1:'Backup when Haiku can’t answer', aiRoleBackup2:'Backup when Gemini is busy',
   aiNotConnected:'Not connected', aiNotUsedYet:'Connected, not used yet', aiState_working:'Working', aiState_key_rejected:'Key rejected', aiState_no_funds:'Out of credit',
   aiState_busy:'Busy', aiState_failed:'Problem', aiState_model_unavailable:'Model unavailable', aiState_not_configured:'Not connected',
@@ -1045,6 +1046,7 @@ Object.assign(T.en, {
   aiBrainsFoot:'Haiku answers first. If it can’t (no credit, a rejected key, busy or slow), Gemini answers, and Groq when Gemini is busy. Voice messages are read by Gemini or Groq.',
 });
 Object.assign(T.ku, {
+  deletedElsewhere:'ئەمە لە ئامێرێکی تر سڕایەوە، بۆیە پاشەکەوت ناکرێت.',
   aiBrainsTitle:'زیرەکی دەستکردی ریکۆ', aiRoleMain:'یەکەم وەڵام دەداتەوە', aiRoleBackup1:'یەدەگ کاتێک Haiku ناتوانێت وەڵام بداتەوە', aiRoleBackup2:'یەدەگ کاتێک Gemini سەرقاڵە',
   aiNotConnected:'پەیوەست نییە', aiNotUsedYet:'پەیوەستە، هێشتا بەکارنەهاتووە', aiState_working:'کار دەکات', aiState_key_rejected:'کلیلەکە ڕەتکرایەوە', aiState_no_funds:'باڵانس نەماوە',
   aiState_busy:'سەرقاڵە', aiState_failed:'کێشە', aiState_model_unavailable:'مۆدێلەکە بەردەست نییە', aiState_not_configured:'پەیوەست نییە',
@@ -1052,6 +1054,7 @@ Object.assign(T.ku, {
   aiBrainsFoot:'Haiku یەکەم وەڵام دەداتەوە. ئەگەر نەتوانێت (باڵانس نەماوە، کلیل ڕەتکراوە، سەرقاڵ یان خاو)، Gemini وەڵام دەداتەوە، و Groq کاتێک Gemini سەرقاڵە. نامە دەنگییەکان Gemini یان Groq دەیانخوێننەوە.',
 });
 Object.assign(T.ar, {
+  deletedElsewhere:'حُذف هذا من جهاز آخر، لذا لا يمكن حفظه.',
   aiBrainsTitle:'ذكاء ريكو', aiRoleMain:'يجيب أولًا', aiRoleBackup1:'احتياطي عندما لا يستطيع Haiku الإجابة', aiRoleBackup2:'احتياطي عندما يكون Gemini مشغولًا',
   aiNotConnected:'غير متصل', aiNotUsedYet:'متصل، لم يُستخدم بعد', aiState_working:'يعمل', aiState_key_rejected:'المفتاح مرفوض', aiState_no_funds:'نفد الرصيد',
   aiState_busy:'مشغول', aiState_failed:'مشكلة', aiState_model_unavailable:'النموذج غير متاح', aiState_not_configured:'غير متصل',

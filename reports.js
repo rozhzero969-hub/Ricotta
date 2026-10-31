@@ -143,6 +143,9 @@ function takeUsage(){
 function settleUsage(batch, r){
   if(!batch || !(r.ok || r.status === 400)) return;
   if(lget(usageOutboxKey(batch.account))?.id === batch.id) lset(usageOutboxKey(batch.account), null);
+  // The server's clock allowed a second or two less than this phone counted: they go in the next batch.
+  const short = batch.seconds - Number(r.data?.credited);
+  if(short > 0 && short <= 5){ const key = 'usagePending:' + batch.account; lset(key, (Number(lget(key)) || 0) + short); }
 }
 const usageBody = batch=>batch ? {seconds:batch.seconds, batch:batch.id} : {};
 ['pointerdown', 'keydown', 'wheel', 'touchmove'].forEach(type=>document.addEventListener(type, ()=>{ usageLastUse = Date.now(); }, {passive:true, capture:true}));

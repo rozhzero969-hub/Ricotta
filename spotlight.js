@@ -41,7 +41,7 @@ function spotCommands(){
     {id:'add-unit', icon:ICON_PLUS, label:t('addUnit'), words:['new unit add'], when:()=>canDo('catalog'), run:()=>{ goView('units'); openUnitModal(null); }},
     {id:'export-items', icon:ICON_SHEET, label:t('exportItemsTitle'), words:['export excel pdf items download'], when:()=>canDo('exports'), run:()=>openExportSheet('items')},
     {id:'export-suppliers', icon:ICON_SHEET, label:t('exportSuppliersTitle'), words:['export excel pdf suppliers download'], when:()=>canDo('exports'), run:()=>openExportSheet('suppliers')},
-    {id:'month', icon:ICON_CALENDAR, label:t('reportOpen'), words:['report card month'], when:()=>canOpen('history') && state.history.length, run:()=>{ goView('history'); openReportSheet(); }},
+    {id:'month', icon:ICON_CALENDAR, label:t('reportOpen'), words:['report card month'], when:()=>canOpen('history') && thisMonthOrders().length, run:()=>{ goView('history'); openReportSheet(); }},
     {id:'same', icon:ICON_REPEAT, label:t('sameAsLastTime'), words:['same as last time repeat'], when:()=>canOpen('history') && state.history.length > 0 && canOpen('order'), run:()=>{ goView('order'); requestAnimationFrame(()=>document.getElementById('sameAsLast')?.click()); }},
     {id:'clear', icon:ICON_DELETE, label:t('clearOrder'), words:['clear order empty'], when:()=>cartCount() > 0, run:()=>{ goView('order'); requestAnimationFrame(()=>document.getElementById('clearOrderBtn')?.click()); }},
     {id:'new-chat', icon:ICON_SPARKLE, label:t('ricoNewChat'), words:['rico new chat'], when:()=>canOpen('assistant'), run:()=>{ goView('assistant'); ricoNewChat(); }},
@@ -362,7 +362,8 @@ function openSpotlight(initial = ''){
     const gone = ()=>layer.remove();
     if(now || reducedMotion()) gone();
     else{ layer.querySelector('.spot-panel').addEventListener('animationend', gone, {once:true}); setTimeout(gone, 400); }
-    if(!now && state.account === owner && opener?.isConnected) opener.focus?.({preventScroll:true});
+    // Back to what opened search, except a text box: on a phone that would bring the keyboard back up.
+    if(!now && state.account === owner && opener?.isConnected && !opener.matches?.('input,textarea,[contenteditable]')) opener.focus?.({preventScroll:true});
   };
   spotClose = close;
   const mine = ()=>{ if(state.account === owner) return true; close(true); return false; };

@@ -49,6 +49,19 @@ test('F15: a usage batch stays with the account that counted it', async () => {
   assert.equal(r.ctx.lget('usageOutbox:rozha'), null);
 });
 
+test('seconds the server clock did not allow yet go in the next batch, a repeat of a counted batch adds nothing', () => {
+  const r = load();
+  r.signIn('rozha'); r.ctx.lset('usagePending:rozha', 60);
+  r.settleUsage(r.takeUsage(), { ok: true, status: 200, data: { credited: 58 } });
+  assert.equal(r.ctx.lget('usagePending:rozha'), 2);
+  r.ctx.lset('usagePending:rozha', 60);
+  r.settleUsage(r.takeUsage(), { ok: true, status: 200, data: { credited: 0 } });
+  assert.equal(r.ctx.lget('usagePending:rozha') || 0, 0, 'the same batch sent again was already counted');
+  r.ctx.lset('usagePending:rozha', 60);
+  r.settleUsage(r.takeUsage(), { ok: true, status: 200 });
+  assert.equal(r.ctx.lget('usagePending:rozha') || 0, 0, 'no answer about it, nothing added');
+});
+
 test('F16: problems keep their account; an ack removes only what was sent', async () => {
   const r = load();
   r.signIn('rozha'); r.reportProblem('error', 'Rozha broke it');

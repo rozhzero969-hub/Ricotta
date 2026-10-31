@@ -23,6 +23,7 @@ const db = {
   async rpc(name, args) {
     calls.push({ name, args });
     if (errors.has(name)) return { data: null, error: { message: 'offline' } };
+    if (name === 'app_internal_catalog_change' && args.p_id === 'deleted-elsewhere') return { data: null, error: { message: 'catalog_gone' } };
     if (name === 'app_internal_reserve_requests') return {data: requestAllowed, error: errors.has(name)?{message:'offline'}:null};
     if (name === 'app_internal_reserve_login') {
       if (reservation) tables.app_login_attempts.push(...reservation.map(id => ({ id, succeeded: false })));
@@ -330,15 +331,34 @@ try {
   // F06: an edit that names its fields sends only those to the database; anything else is refused.
   reset();
   assert.equal((await call('items/tomato', { name: 'Cherry tomatoes', note: 'stale note', only: ['name'] }, 'PUT')).status, 200);
-  assert.deepEqual(Object.keys(calls.find(c => c.name === 'app_internal_catalog_change').args.p_row).sort(), ['id', 'name', 'updated_at'], 'the stale note is not sent');
+  assert.deepEqual(Object.keys(calls.find(c => c.name === 'app_internal_catalog_change').args.p_row).sort(), ['id', 'name', 'partial', 'updated_at'], 'the stale note is not sent');
   reset();
   assert.equal((await call('items/tomato', { supplierId: 'supplier', sortOrder: null, only: ['supplierId'] }, 'PUT')).status, 200);
-  assert.deepEqual(Object.keys(calls.find(c => c.name === 'app_internal_catalog_change').args.p_row).sort(), ['id', 'sort_order', 'supplier_id', 'updated_at']);
+  assert.deepEqual(Object.keys(calls.find(c => c.name === 'app_internal_catalog_change').args.p_row).sort(), ['id', 'partial', 'sort_order', 'supplier_id', 'updated_at']);
   reset();
   assert.equal((await call('suppliers/supplier', { phone: '0750 111 2222', only: ['phone'] }, 'PUT')).status, 200);
-  assert.deepEqual(Object.keys(calls.find(c => c.name === 'app_internal_catalog_change').args.p_row).sort(), ['id', 'phone', 'updated_at']);
+  assert.deepEqual(Object.keys(calls.find(c => c.name === 'app_internal_catalog_change').args.p_row).sort(), ['id', 'partial', 'phone', 'updated_at']);
   reset();
   assert.equal((await call('items/tomato', { name: '', only: ['name'] }, 'PUT')).status, 400, 'a blank name is still refused');
+  const gone = await call('items/deleted-elsewhere', { note: 'x', only: ['note'] }, 'PUT');
+  assert.equal(gone.status, 409, 'an edit of something deleted on another phone is refused');
+  assert.equal((await gone.json()).error, 'gone');
+  // Bootstrap reads the same 60 days of orders the database keeps.
+  reset();
+  const oldOrder = new Date(Date.now() - 45 * 86400000).toISOString(), tooOld = new Date(Date.now() - 61 * 86400000).toISOString();
+  tables.app_orders = [{ id: 'o-45', status: 'sent', created_at: oldOrder, sent_at: oldOrder, sent_by: 'rozha' }, { id: 'o-61', status: 'sent', created_at: tooOld, sent_at: tooOld, sent_by: 'rozha' }];
+  tables.app_order_lines = [];
+  const sixtyDays = await call('bootstrap', null, 'GET');
+  assert.equal(sixtyDays.status, 200);
+  assert.deepEqual((await sixtyDays.json()).history.map(h => h.id), ['o-45'], 'History holds 60 days');
+  // Rico's cheer goes only to someone who has Rico.
+  for (const [roles, cheers] of [[['send', 'history'], 0], [['send', 'history', 'assistant'], 1]]) {
+    reset(); saved = true;
+    tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis'; tables.app_sessions[0].app_accounts = { roles };
+    assert.equal((await call('orders', { id: 'order-cheer', date: new Date().toISOString(), entries: [{ supplierId: 'supplier', items: [{ itemId: 'tomato', name: 'Tomatoes', unit: 'kg', qty: 5 }] }] })).status, 200);
+    assert.equal(tables.app_rico_inbox.filter(r => r.account === 'yunis').length, cheers, roles.join() + ': Rico cheer');
+  }
+  reset();
   assert.equal((await call('items/tomato', { created_at: 'x', only: ['created_at'] }, 'PUT')).status, 400, 'unknown fields are refused');
   // F01: History and Record follow the roles everywhere, the start-up data too. Without History the phone gets
   // only today's orders and their suppliers (for "sent today"), with no items, amounts or earlier days.

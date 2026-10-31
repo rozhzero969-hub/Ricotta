@@ -903,6 +903,13 @@ html.rtl .install-prompt{right:auto;left:22px}
 .rico-hello{margin:6px 0 0;font-size:1.75rem;font-weight:700;line-height:1.2;text-wrap:balance}
 .rico-intro-text{margin:0;max-width:460px;color:var(--ink-soft);font-size:1.0625rem;font-weight:400;line-height:1.4}
 .rico-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;width:100%}
+/* With alerts or notes above it, the greeting folds to one line so the shortcuts stay above the message box. */
+:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:10px;padding-top:6px}
+:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro .rico-xl{--size:44px}
+:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro .rico-hello{margin:0;font-size:1.25rem}
+:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro .rico-intro-text{display:none}
+:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro .rico-chips{grid-column:1/-1;margin-top:2px}
+:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro .rico-recent{grid-column:1/-1}
 .rico-chip{padding:10px 16px;border-radius:999px;display:inline-flex;align-items:center;font-size:.9375rem;font-weight:500;color:var(--ink);text-align:start;min-height:40px}
 .rico-msg{display:flex;gap:10px;align-items:flex-start}
 .rico-msg:not(.painted){animation:msgIn 300ms var(--ease-out) both}

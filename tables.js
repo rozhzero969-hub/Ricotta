@@ -17,10 +17,10 @@ function saveTablePrefs(kind, prefs){ lset(TABLE_KEY, {...(lget(TABLE_KEY) || {}
 /* This month's orders per item and per supplier, from the orders on this phone. */
 let tableStatsCache = {key:'', items:{}, suppliers:{}};
 function tableStats(){
-  const last = state.history[state.history.length - 1], key = state.history.length + '|' + (last?.id || '');
+  const orders = thisMonthOrders(), last = orders[orders.length - 1], key = orders.length + '|' + (last?.id || '');
   if(tableStatsCache.key === key) return tableStatsCache;
   const items = {}, suppliers = {};
-  for(const o of state.history) for(const e of o.entries || []){
+  for(const o of orders) for(const e of o.entries || []){
     if(e.supplierId){ const s = suppliers[e.supplierId] ||= {orders:new Set(), last:''}; s.orders.add(o.id); if(o.date > s.last) s.last = o.date; }
     for(const it of e.items || []){ const x = items[it.itemId] ||= {orders:new Set(), qty:0, last:''}; x.orders.add(o.id); x.qty += Number(it.qty) || 0; if(o.date > x.last) x.last = o.date; }
   }

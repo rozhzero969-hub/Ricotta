@@ -104,6 +104,8 @@ async function catalogRows(build: () => any): Promise<{ data: any[]; error: null
 async function loadWorld(db: any, s: Session) {
   const app = (t: string) => db.from(`app_${t}`);
   const since = monthStart();
+  // Orders are kept 60 days, so Rico's usual amounts and patterns don't start over each month.
+  const ordersSince = new Date(Date.now() - 60 * 86400_000).toISOString();
   // Rozha also sees which phones are signed in (Admin -> Devices); everything
   // else is the same for both accounts.
   const full = s.account === "rozha";
@@ -111,7 +113,7 @@ async function loadWorld(db: any, s: Session) {
     catalogRows(() => app("suppliers").select("id,name,phone,reminder,cutoff,created_at").order("id")),
     catalogRows(() => app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available").order("id")),
     catalogRows(() => app("units").select("id,en,ku,ar").order("id")),
-    app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at", { ascending: false }).limit(600),
+    app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").gte("sent_at", ordersSince).order("sent_at", { ascending: false }).limit(600),
     app("reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle(),
     full ? app("devices").select("account,label,logged_in,last_seen").order("last_seen", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
     app("audit_events").select("occurred_at,actor,action,entity_type,entity_name,payload")
@@ -734,7 +736,7 @@ WHAT YOU CAN DO (only what CONTEXT says the person may do: Rozha has everything,
 - The kitchen streak: CONTEXT shows it. Every Baghdad day with at least one sent order (by Rozha or Yunis) adds a day; it is grey until today's first order, then the fire lights up. A whole day with no order breaks it. If someone asks to save, restore or recover the streak, use recover_streak (free, works up to 7 days after it broke). Celebrate milestones (7, 14, 30, 60, 100, 200...) and now and then mention the streak after an order goes out.
 - Fun facts: now and then (not every reply) add one short fun fact from the data, e.g. the most or least ordered item this month, the busiest weekday, or how many kilos of something went out. Only real numbers from CONTEXT or a tool.
 - Order cut-offs: a supplier can have a cut-off time (Suppliers -> edit -> "Stops taking orders at"). The Order screen counts down to it and you send a warning 30 minutes before. If CONTEXT shows a cut-off coming up for an unsent supplier, mention it first and offer to prepare that order.
-- Month archive: History is cleared at the start of each month, but a summary of every finished month is kept (History -> report card -> Past months). Use the "Past months" line in CONTEXT to compare months; never invent numbers for months that are not there.
+- Month archive: History and your tools hold the last 60 days of orders, and a summary of every finished month is kept (History -> report card -> Past months). Use the "Past months" line in CONTEXT to compare months; never invent numbers for months that are not there.
 - Every Friday evening you send a short weekly summary (orders this week vs last week, the streak, the top item).
 - Sign-in uses a PIN protected by Cloudflare verification. Face ID and fingerprint sign-in have been removed. Do not offer them.
 
@@ -796,7 +798,7 @@ function contextBlock(w: World, s: Session, body: any) {
 - Catalog: ${w.suppliers.length} suppliers, ${w.items.length} items (${w.items.filter((i) => !i.supplier_id).length} without supplier), ${w.units.length} units.
 - Newest items: <<DATA>>${lastItems.join("; ") || "none"}<</DATA>>.
 - History is limited to the current Baghdad calendar month. Older months were deleted; do not infer their totals.
-- Sent orders this calendar month: ${w.history.length >= 600 ? "at least 600 (only the latest 600 are loaded)" : w.history.length}; last 7 days: ${w.history.filter((o) => Date.parse(o.at) > Date.now() - 7 * 86400_000).length}.
+- Sent orders this calendar month: ${w.history.filter((o) => Date.parse(o.at) >= Date.parse(monthStart())).length}; orders you can read go back ${w.can.history ? "60 days" : "to today only"}${w.history.length >= 600 ? " (only the latest 600)" : ""}; last 7 days: ${w.history.filter((o) => Date.parse(o.at) > Date.now() - 7 * 86400_000).length}.
 - Latest orders: <<DATA>>${recent.join(" | ") || "none yet"}<</DATA>>.
 - Today's supplier reminders: <<DATA>>${due.join("; ") || "none today"}<</DATA>>.
 - Daily order reminder: ${w.dailyReminder?.enabled ? `on at ${w.dailyReminder.time}` : "off"}; orders sent today: ${w.history.filter((o) => o.date === w.now.date).length}.
