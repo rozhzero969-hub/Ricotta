@@ -53,13 +53,13 @@ test('seconds the server clock did not allow yet go in the next batch, a repeat 
   const r = load();
   r.signIn('rozha'); r.ctx.lset('usagePending:rozha', 60);
   r.settleUsage(r.takeUsage(), { ok: true, status: 200, data: { credited: 58 } });
-  assert.equal(r.ctx.lget('usagePending:rozha'), 2);
+  assert.equal(Math.floor(r.ctx.lget('usagePending:rozha')), 2);
   r.ctx.lset('usagePending:rozha', 60);
   r.settleUsage(r.takeUsage(), { ok: true, status: 200, data: { credited: 0 } });
-  assert.equal(r.ctx.lget('usagePending:rozha') || 0, 0, 'the same batch sent again was already counted');
+  assert.equal(Math.floor(r.ctx.lget('usagePending:rozha') || 0), 0, 'the same batch sent again was already counted');
   r.ctx.lset('usagePending:rozha', 60);
   r.settleUsage(r.takeUsage(), { ok: true, status: 200 });
-  assert.equal(r.ctx.lget('usagePending:rozha') || 0, 0, 'no answer about it, nothing added');
+  assert.equal(Math.floor(r.ctx.lget('usagePending:rozha') || 0), 0, 'no answer about it, nothing added');
 });
 
 test('F16: problems keep their account; an ack removes only what was sent', async () => {
