@@ -12,5 +12,10 @@
     "eslint": "10.13.0",
     "playwright": "1.64.1"
   },
-  "type": "module"
+  "type": "module",
+  "pnpm": {
+    "overrides": {
+      "minimatch": "11.0.3"
+    }
+  }
 }
