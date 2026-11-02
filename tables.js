@@ -85,7 +85,17 @@ function tableRows(kind){
   };
   return {rows:[...rows].sort(cmp), col, filter, prefs};
 }
+/* Settings > Features can turn the tables off: a plain list by name, and a tap opens the form. */
+function renderPlainList(kind){
+  const rows = [...TABLES[kind].rows()].sort((a, b)=>nameCollator().compare(a.name || '', b.name || ''));
+  if(!rows.length) return emptyState(t(kind === 'items' ? 'noItemsYet' : 'noSuppliersYet'));
+  return `<div class="plain-list">${rows.map(r=>{
+    const meta = kind === 'items' ? `${unitLabel(r.unit) || '·'} · ${r.supplierId ? supplierName(r.supplierId) : t('noSupplier')}` : (r.phone || t('noPhoneOnFile'));
+    return `<button type="button" class="list-row tappable" data-search-row data-table-row="${esc(r.id)}" ${kind === 'items' ? `data-edititem="${esc(r.id)}"` : `data-search-text="${esc([r.name, r.phone || ''].join(' '))}"`}><div><div class="name" dir="auto">${esc(r.name)}${r.available === false ? ` <span class="availability-badge">${esc(t('unavailable'))}</span>` : ''}</div><div class="meta" dir="auto">${esc(meta)}</div></div><i class="sheet-chevron" aria-hidden="true"></i></button>`;
+  }).join('')}</div>`;
+}
 function renderDataTable(kind){
+  if(!featureOn('tables')) return renderPlainList(kind);
   const cfg = TABLES[kind], {rows, col, prefs} = tableRows(kind);
   const counts = Object.fromEntries(cfg.filters.map(f=>[f.id, cfg.rows().filter(f.test).length]));
   const chips = `<div class="table-filters record-filters glass" role="group" aria-label="${esc(t('tableFilter'))}">${cfg.filters.filter(f=>f.id === 'all' || counts[f.id]).map(f=>`<button type="button" class="tab-pill${prefs.filter === f.id ? ' active' : ''}" aria-pressed="${prefs.filter === f.id}" data-table-filter="${f.id}">${esc(f.label())}${f.id === 'all' ? '' : `<span class="tab-count">${counts[f.id]}</span>`}</button>`).join('')}</div>`;

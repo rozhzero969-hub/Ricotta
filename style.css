@@ -1916,3 +1916,9 @@ kbd{min-width:26px;height:26px;padding:0 7px;border-radius:7px;display:inline-gr
   .spot-panel,.modal-box.modal-alert,.btn.is-done .ic-check,.ad-bar-pair i{animation:none!important;transition:none!important}
   .spot-flash{animation:none}
 }
+
+/* ---------- The big update ---------- */
+.settings-hint{margin:-4px 0 8px;font-size:.8125rem;color:var(--ink-soft)}
+.plain-list{display:grid;gap:8px}
+.wipe-banner{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;margin-bottom:12px;border-radius:var(--r-card);background:rgba(255,204,0,.2);font-size:.9375rem;line-height:1.35}
+.wipe-banner svg{flex:none;width:20px;height:20px;margin-top:1px}

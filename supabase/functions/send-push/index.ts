@@ -422,6 +422,23 @@ async function cutoffTick() {
   return out;
 }
 
+/* ---- 2 days before the wipe day: Rico says so once, in the morning ---- */
+async function wipeTick() {
+  const now = erbilNow();
+  if (now.minutes < 9 * 60) return { skipped: "before 9:00" };
+  const row = must(await sb.from("app_wipe").select("next_wipe").eq("id", true).maybeSingle(), "wipe") as any;
+  if (!row?.next_wipe) return { skipped: "no wipe day" };
+  const left = Math.round((Date.parse(`${row.next_wipe}T00:00:00Z`) - Date.parse(`${now.date}T00:00:00Z`)) / dayMs);
+  if (left !== 2) return { skipped: "not yet" };
+  const key = `wipe|${row.next_wipe}`;
+  return await saysOnce(key, "wipe", null, () => ricoSays("wipe", key, {
+    mood: "worried",
+    en: (n) => `${hi("Heads up", n, ", ")}: in 2 days, history older than 60 days will be deleted. That means old orders, Records and my chats. Save anything you need first.`,
+    ku: (n) => `${hi("ئاگاداربە", n)}: دوای 2 ڕۆژ مێژووی کۆنتر لە 60 ڕۆژ دەسڕدرێتەوە. واتە داواکارییە کۆنەکان، تۆمارەکان و گفتوگۆکانم. پێشتر ئەوەی پێویستتە پاشەکەوتی بکە.`,
+    ar: (n) => `${ya(n)}، بعد يومين سيُحذف السجل الأقدم من 60 يومًا: الطلبات القديمة والسجلات ومحادثاتي. احفظ ما تحتاجه أولًا.`,
+  }));
+}
+
 /* ---- Friday evening: the week in a few lines (orders vs last week, the streak, the top item) ---- */
 async function weeklyTick() {
   const now = erbilNow();
@@ -528,6 +545,7 @@ Deno.serve(async (req) => {
         try { result.streak = await streakTick(); } catch (e) { console.error("streak tick failed", e); result.streak = { error: true }; }
         try { result.report = await reportTick(); } catch (e) { console.error("report tick failed", e); result.report = { error: true }; }
         try { result.cutoff = await cutoffTick(); } catch (e) { console.error("cutoff tick failed", e); result.cutoff = { error: true }; }
+        try { result.wipe = await wipeTick(); } catch (e) { console.error("wipe tick failed", e); result.wipe = { error: "failed" }; }
         try { result.weekly = await weeklyTick(); } catch (e) { console.error("weekly tick failed", e); result.weekly = { error: true }; }
         return json(result);
       }

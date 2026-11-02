@@ -522,6 +522,8 @@ function applyData(d){
   if(d.streak) streakArrived(d.streak);
   state.pins = Array.isArray(d.pins) ? d.pins : [];
   state.months = Array.isArray(d.months) ? d.months : [];
+  state.nextWipe = d.nextWipe || null;
+  applyFeatures();
   state.sharedDraft = d.draft || null;
   ricoSetInbox(d.inbox || []);
   paintStreakChip(false);
@@ -2837,10 +2839,10 @@ function orderHistoryCard(rec){
     </div>
   </article>`;
 }
-/* The last 60 days of orders, newest first. */
+/* Every order still kept (at least 60 days), newest first. */
 function renderHistory(){
   const entries = state.history.map(rec=>({ts:Date.parse(rec.date), day:rec.date, html:orderHistoryCard(rec)})).sort((a,b)=>b.ts-a.ts);
-  const tools = renderReportCard() + `<div class="hist-tools">
+  const tools = wipeBanner() + renderReportCard() + `<div class="hist-tools">
     <button type="button" class="btn btn-ghost" id="monthsBtn">${ICON_CALENDAR}<span>${esc(t('monthsTitle'))}</span></button>
     ${state.account === 'rozha' ? `<button type="button" class="btn btn-ghost" id="ricoOrdersBtn">${ICON_SPARKLE}<span>${esc(t('ricoOrdersTitle'))}</span></button>` : ''}
   </div>`;
@@ -2994,7 +2996,7 @@ function renderRecord(){
       <div class="section-title grow" id="recordCount">${esc(t('record'))} (${rows.length})</div>
       <button class="btn btn-ghost" id="recRefreshBtn">${ICON_REFRESH} ${esc(t('refresh'))}</button>
     </div>
-    ${filterHtml}${renderCatalogSearch()}
+    ${wipeBanner()}${filterHtml}${renderCatalogSearch()}
     <div id="recordResults">${cards || emptyState(t(state.catalogQuery?.trim()?'catalogNoResults':'recordEmpty'))}
     ${rows.length > state.recordLimit ? `<button class="btn btn-ghost" id="recMoreBtn">${esc(t('loadMoreRecord'))}</button>` : ''}</div>`;
 }
@@ -3557,7 +3559,7 @@ function versionCmp(a, b){
   return 0;
 }
 function renderSettings(){
-  return `${renderPendingSync()}${renderAppearance()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderAppearance()}${renderFeatureSettings()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
 /* Help: tell Rozha about a problem (it arrives in Admin, Problems), and the keyboard shortcuts. */
 function renderHelpSettings(){
@@ -3681,6 +3683,7 @@ function attachSettingsEvents(){
  const exp=document.getElementById('syncExportBtn');
  if(exp) exp.onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(currentOutbox(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ricotta-pending-orders.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   bindAppearance();
+  attachFeatureSettings();
   document.querySelectorAll('[data-sound]').forEach(box=>box.onchange=()=>{setSoundOn(box.dataset.sound,box.checked);});
   [['pref-compactRows','compactRows'],['pref-showLastQty','showLastQty']].forEach(([id,key])=>{
     const box = document.getElementById(id);

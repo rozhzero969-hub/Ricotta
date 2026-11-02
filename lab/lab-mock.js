@@ -300,10 +300,10 @@
       return json({
         account:me, name:NAMES[me].en, views:viewsFor(me), roles:rolesOf(me),
         suppliers:db.suppliers, items:db.items.map(i=>({...i, createdAt:i.createdAt || '2026-08-01T09:00:00.000Z', lastOrderedAt:history().filter(o=>o.entries.some(e=>e.items.some(x=>x.itemId === i.id))).map(o=>o.date).sort().pop() || null})), units:db.units,
-        history:db.history.filter(o => Date.parse(o.date) >= Date.now() - 60 * 86400000), historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
-        activity:can(me,'record') ? db.activity.filter(a=>a.ts >= monthStartIso()) : [], inbox:can(me,'assistant') ? db.inbox.slice(-20) : [],
+        history:db.history, historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
+        activity:can(me,'record') ? db.activity : [], inbox:can(me,'assistant') ? db.inbox.slice(-20) : [],
         pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
-        months:LAB_MONTHS, draft:db.drafts?.[account] || {cart:{},revision:0}
+        months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
       });
     }
     if(path === 'draft' && (method === 'GET' || method === 'PUT')){
@@ -523,7 +523,7 @@
       streakUnhit(window.RICOTTA_TODAY || dayOf(o.date));
       save(); return json({ok:true, streak:streakView()});
     }
-    if(method === 'GET' && path === 'activity') return json(db.activity.filter(a=>a.ts >= monthStartIso()));
+    if(method === 'GET' && path === 'activity') return json(db.activity);
     if(method === 'GET' && path === 'devices') return json(devices(account));
     if(method === 'POST' && path === 'devices/me' && Number(body.seconds) > 0){
       const day = new Date().toISOString().slice(0,10), id = deviceId() || 'this-device';

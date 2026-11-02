@@ -350,7 +350,7 @@ try {
   tables.app_order_lines = [];
   const sixtyDays = await call('bootstrap', null, 'GET');
   assert.equal(sixtyDays.status, 200);
-  assert.deepEqual((await sixtyDays.json()).history.map(h => h.id), ['o-45'], 'History holds 60 days');
+  assert.deepEqual((await sixtyDays.json()).history.map(h => h.id).sort(), ['o-45', 'o-61'], 'History shows everything still kept: the wipe day decides what goes');
   // Rico's cheer goes only to someone who has Rico.
   for (const [roles, cheers] of [[['send', 'history'], 0], [['send', 'history', 'assistant'], 1]]) {
     reset(); saved = true;

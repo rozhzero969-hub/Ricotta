@@ -277,7 +277,7 @@ async function listDevices(s: Session) {
 async function listActivity() {
   const rows = await readAll(() => app("audit_events")
     .select("id,occurred_at,actor,device_id,action,entity_type,entity_name,payload")
-    .gte("occurred_at",monthStart()).in("action",RECORD_ACTIONS).in("entity_type",RECORD_TYPES)
+    .in("action",RECORD_ACTIONS).in("entity_type",RECORD_TYPES)
     .order("occurred_at",{ascending:false}).order("id"));
   return rows.map(toActivity);
 }
@@ -309,15 +309,13 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
   return lines;
 }
 
-const ORDER_KEEP_DAYS = 60;   // the database clean-up deletes orders older than this
 async function bootstrap(s: Session) {
-  const since = new Date(Date.now() - ORDER_KEEP_DAYS * 86400_000).toISOString();
-  const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, months, draft] = await Promise.all([
+  const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, months, draft, wipe] = await Promise.all([
     readAccount(s.account),
     readAll(() => app("suppliers").select("id,name,phone,reminder,cutoff").order("name").order("id")),
     readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at").order("name").order("id")),
     readAll(() => app("units").select("id,en,ku,ar").order("id")),
-    readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
+    readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")),
     readReminder(),
     listDevices(s),
     can(s, "record") ? listActivity() : Promise.resolve([]),
@@ -325,7 +323,9 @@ async function bootstrap(s: Session) {
     readStreak(),
     can(s, "history") ? listMonths(12) : Promise.resolve([]),
     readDraft(s.account),
+    app("wipe").select("next_wipe").eq("id", true).maybeSingle(),
   ]);
+  if (wipe.error) throw wipe.error;
   // Without History, the phone gets only today's orders and which suppliers they went to (the Order
   // screen marks those suppliers sent): no items, amounts or earlier days. Same rule as Rico's.
   const today = baghdadDay();
@@ -342,7 +342,7 @@ async function bootstrap(s: Session) {
     units,
     history,
     historyMonth: monthKey(),
-    reminder, devices, activity, inbox, months, draft,
+    reminder, devices, activity, inbox, months, draft, nextWipe: wipe.data?.next_wipe ?? null,
   };
 }
 async function readDraft(account: Account) {

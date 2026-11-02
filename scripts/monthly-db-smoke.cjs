@@ -30,37 +30,35 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await db.exec('drop table public.later_table;');
  await assert.rejects(db.exec("insert into app_orders(id,status,sent_at) values('draft','draft',now())"),/orders_status_check/,'only sent orders exist');
  await assert.rejects(db.exec("insert into app_orders(id,status,sent_at,sent_by) values('staff','sent',now(),'staff')"),/app_orders_sent_by_check/,'only the two accounts send orders');
- await db.exec(`insert into app_orders(id,status,sent_at) values('september','sent','2026-09-30T20:59:59Z'),('october-start','sent','2026-09-30T21:00:00Z'),('october-7','sent','2026-10-07T10:00:00Z');
+ await db.exec("update app_wipe set next_wipe='2026-12-05', last_wipe=null;");
+ await db.exec(`insert into app_orders(id,status,sent_at) values('september','sent','2026-09-30T20:59:59Z'),('october-start','sent','2026-09-30T21:00:00Z'),('october-7','sent','2026-10-07T00:00:00Z');
  insert into app_order_lines(order_id,item_name,qty) values('september','Old',1),('october-7','Kept',1);
- insert into app_audit_events(id,occurred_at,action) values('old','2026-09-30T20:59:59Z','add'),('kept','2026-09-30T21:00:00Z','add');
+ insert into app_audit_events(id,occurred_at,action) values('old','2026-09-30T20:59:59Z','add'),('kept','2026-11-10T00:00:00Z','add');
  select app_internal_monthly_cleanup('2026-10-07T12:00:00Z');`);
- assert.deepEqual((await q('select id from app_orders order by id')).map(r=>r.id),['october-7','october-start','september'],'orders stay 60 days, across the month change');
- const archived=await q("select month, data from app_month_summaries");
- assert.deepEqual(archived.map(r=>[r.month,r.data.orders,r.data.lines,r.data.topItems[0].name]),[['2026-09',1,1,'Old']],'a month is summarised into the archive before it is cleared');
- await db.exec("select app_internal_monthly_cleanup('2026-10-08T12:00:00Z');");
- assert.equal((await q('select count(*)::int as n from app_month_summaries'))[0].n,1,'the archive keeps one summary per month');
- assert.equal((await q('select count(*)::int as n from app_order_lines'))[0].n,2);
- assert.deepEqual((await q('select id from app_audit_events')).map(r=>r.id),['kept']);
- await db.exec("select app_internal_monthly_cleanup('2026-10-31T20:59:59Z');");
- assert.equal((await q('select count(*)::int as n from app_orders'))[0].n,3);
- await db.exec("select app_internal_monthly_cleanup('2026-10-31T21:00:00Z');");
- assert.equal((await q('select count(*)::int as n from app_orders'))[0].n,3,'the new month keeps the orders');
- assert.equal((await q('select count(*)::int as n from app_audit_events'))[0].n,0,'the record of changes still clears each month');
- assert.deepEqual((await q("select month,(data->>'orders')::int as n from app_month_summaries order by month")).map(r=>[r.month,r.n]),[['2026-09',1],['2026-10',2]],'and the finished month gets its summary');
- await db.exec("select app_internal_monthly_cleanup('2026-11-29T20:59:59Z');");
- assert.equal((await q('select count(*)::int as n from app_orders'))[0].n,3,'exactly 60 days is still kept');
- await db.exec("select app_internal_monthly_cleanup('2026-11-29T21:00:01Z');");
- assert.deepEqual((await q('select id from app_orders')).map(r=>r.id),['october-7'],'older than 60 days goes');
+ assert.deepEqual((await q('select id from app_orders order by id')).map(r=>r.id),['october-7','october-start','september'],'nothing goes before the wipe day');
+ assert.deepEqual((await q("select month, (data->>'orders')::int as n from app_month_summaries")).map(r=>[r.month,r.n]),[['2026-09',1]],'a finished month is summarised without waiting for the wipe day');
+ await db.exec("select app_internal_monthly_cleanup('2026-12-04T20:59:59Z');");
+ assert.equal((await q('select count(*)::int as n from app_orders'))[0].n,3,'not until the wipe day starts in Baghdad');
+ assert.equal((await q("select to_char(next_wipe,'YYYY-MM-DD') as d from app_wipe"))[0].d,'2026-12-05');
+ await db.exec("select app_internal_monthly_cleanup('2026-12-04T21:00:01Z');");
+ assert.deepEqual((await q('select id from app_orders')).map(r=>r.id),['october-7'],'on the wipe day, older than 60 days goes, and the last 60 days stay');
  assert.equal((await q('select count(*)::int as n from app_order_lines'))[0].n,1,'with its lines');
- assert.deepEqual((await q("select month,(data->>'orders')::int as n from app_month_summaries order by month")).map(r=>[r.month,r.n]),[['2026-09',1],['2026-10',2]],'a summary stays as it was when its orders go');
- await db.exec("select app_internal_monthly_cleanup('2027-02-01T00:00:00Z'); delete from app_month_summaries;");
- assert.equal((await q('select count(*)::int as n from app_orders'))[0].n,0);
+ assert.deepEqual((await q('select id from app_audit_events')).map(r=>r.id),['kept'],'Records too, and what is newer stays');
+ assert.equal((await q("select to_char(next_wipe,'YYYY-MM-DD') as d from app_wipe"))[0].d,'2027-02-03','the next wipe day is 60 days later');
+ assert.equal((await q("select to_char(last_wipe,'YYYY-MM-DD') as d from app_wipe"))[0].d,'2026-12-05');
+ await db.exec("delete from app_orders; delete from app_month_summaries; delete from app_audit_events; update app_wipe set next_wipe='2030-01-01', last_wipe=null;");
+ assert.equal((await q("select has_table_privilege('anon','app_wipe','select') as a"))[0].a,false,'the browser roles cannot read it');
  await db.exec(`select app_internal_catalog_change('units','box','{"en":"box"}', 'rozha','device');`);
  assert.equal((await q("select count(*)::int as n from app_audit_events where entity_type='unit'"))[0].n,1);
  await db.exec("create function fail_record() returns trigger language plpgsql as $$ begin raise exception 'forced audit failure'; end $$; create trigger fail_record before insert on app_audit_events for each row execute function fail_record();");
  await assert.rejects(db.exec(`select app_internal_catalog_change('units','box','{"en":"changed"}', 'rozha','device');`),/forced audit failure/);
  assert.equal((await q("select en from app_units where id='box'"))[0].en,'box');
  await db.exec("insert into app_accounts(id,name,pin_hash) values('rozha','Rozha','test-only'),('yunis','Yunis','test-only');");
+ await db.exec(`update app_wipe set next_wipe='2026-12-05';
+  insert into app_rico_chats(id,account,title,messages,updated_at) values('11111111-1111-4111-8111-111111111111','rozha','old','[]','2026-09-01T00:00:00Z'),('22222222-2222-4222-8222-222222222222','rozha','new','[]','2026-11-10T00:00:00Z');
+  select app_internal_monthly_cleanup('2026-12-05T12:00:00Z');`);
+ assert.deepEqual((await q('select title from app_rico_chats')).map(r=>r.title),['new'],'Rico chats go on the wipe day too');
+ await db.exec("delete from app_rico_chats; update app_wipe set next_wipe='2030-01-01', last_wipe=null;");
  await db.exec("drop trigger fail_record on app_audit_events; insert into app_devices(id,logged_in) values('device',true); insert into app_sessions(token_hash,device_id,expires_at,account) values('hash','device',now()+interval '1 day','rozha');");
  // Transfers: the workplace item list is replaced in one go. Names are unique whatever their capitals,
  // units keep their first order without repeats, and items that stay keep their id and remembered spellings.
@@ -358,11 +356,13 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  const ai=(await q("select app_internal_ai_usage(now()-interval '1 day') as r"))[0].r;
  assert.deepEqual(ai.anthropic,{calls:0,input:100,output:0},'a failed try counts its tokens but not a reply');
  assert.equal(ai.gemini.calls,2,'the answered try and the voice message are Gemini');
- // F27: the nightly clean-up keeps Rico's test orders and saved Rico chats for 90 days.
+ // Rico's test orders follow the wipe day: nothing on an ordinary night, older than 60 days on the day.
  await db.exec(`insert into app_rico_orders(account,supplier_name,lines,status,created_at) values
-   ('rozha','Old','[{"name":"x","qty":1,"unit":"kg"}]','sent',now()-interval '91 days'),('rozha','Recent','[{"name":"x","qty":1,"unit":"kg"}]','sent',now()-interval '89 days');`);
+   ('rozha','Old','[{"name":"x","qty":1,"unit":"kg"}]','sent',now()-interval '61 days'),('rozha','Recent','[{"name":"x","qty":1,"unit":"kg"}]','sent',now()-interval '59 days');`);
  await db.exec("select app_internal_cleanup();");
- assert.deepEqual((await q("select supplier_name from app_rico_orders order by 1")).map(r=>r.supplier_name),['Recent'],'91-day test orders go, 89-day ones stay');
+ assert.equal((await q("select count(*)::int as n from app_rico_orders"))[0].n,2,'an ordinary night deletes nothing');
+ await db.exec("update app_wipe set next_wipe=(now() at time zone 'Asia/Baghdad')::date; select app_internal_cleanup();");
+ assert.deepEqual((await q("select supplier_name from app_rico_orders order by 1")).map(r=>r.supplier_name),['Recent'],'the wipe day takes the 61-day one and keeps the 59-day one');
  await db.exec("delete from app_rico_orders;");
  // Health Check reads the database itself.
  await assert.rejects(q("select app_internal_diagnostics('yunis')"),/Forbidden/);
