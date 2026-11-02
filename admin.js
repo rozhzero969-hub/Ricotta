@@ -678,7 +678,7 @@ function attachAdminCatalog(slot){
 /* Admin, Restore: the server keeps a copy of the kitchen's data for 7 days. Restoring brings back what was
    deleted since that day; it never changes what exists now. Her PIN is asked first. */
 function renderAdminRestore(){
-  const rows = adminData.backups;
+  const rows = adminValue('backups');
   return `${adminHeading()}<p class="notif-sub">${esc(t('restoreHint'))}</p>
     ${Array.isArray(rows) ? (rows.length ? `<div class="form-card restore-list">${rows.map(r=>`<div class="restore-row"><div><b>${esc(formatIraqDateTime(r.day + 'T12:00:00Z', {weekday:'long', day:'numeric', month:'long'}))}</b><small>${esc(t('restoreCounts')(r.orders, r.items, r.suppliers))}</small></div><button type="button" class="btn btn-ghost" data-restore-day="${esc(r.day)}">${esc(t('restoreBtn'))}</button></div>`).join('')}</div>` : `<div class="empty-mini">${esc(t('restoreNone'))}</div>`) : `<div class="empty-mini">${esc(t('checking'))}</div>`}`;
 }

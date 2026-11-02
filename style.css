@@ -2068,3 +2068,4 @@ body.lang-ku .rico-note-text,body.lang-ar .rico-note-text,body.lang-ku .rico-tex
 .order-quick-actions .quick-btn{flex:0 0 auto!important;white-space:nowrap!important;padding:0 14px}
 .order-quick-actions .quick-btn svg{display:block!important}
 .year-sheet .report-stats{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}
+@media (min-width:960px){.board-sheet .sel-panel{width:min(960px,92vw);max-width:none}}
