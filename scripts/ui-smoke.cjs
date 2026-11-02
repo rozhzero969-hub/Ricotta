@@ -130,6 +130,7 @@ const server=http.createServer((req,res)=>{
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
     await ctx.addInitScript(({loggedIn,s})=>{
+      for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:toured:'+a,'true');
       window.RICOTTA_TODAY='2026-06-10';   // a fixed day, so the test does not depend on the date
       localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',JSON.stringify(Date.now()));
       // Both people already allowed Rico's AI (the permission itself is checked on Rico's screen below).
@@ -196,6 +197,17 @@ const server=http.createServer((req,res)=>{
       assert.equal(await page.locator('.rec-card').count(),500,'no audit entries are dropped');
       await openView(page,'order');await openView(page,'record');
       assert.equal(await page.locator('.rec-card').count(),30,'reopening Record resets its rendering budget');
+      // Interactive tables can be turned off in Settings; the wipe warning shows only in the last 2 days.
+      const options=await page.evaluate(()=>{const plain=()=>{setFeature('tables',false);const r=renderDataTable('items');setFeature('tables',true);return r.includes('plain-list')&&!r.includes('class="data-table"');};const banner=d=>{state.nextWipe=new Date(Date.now()+d*86400000).toISOString().slice(0,10);return !!wipeBanner();};const r=[plain(),renderDataTable('items').includes('data-table'),banner(0),banner(2),banner(3)];state.nextWipe=null;return r;});
+      assert.deepEqual(options,[true,true,true,true,false],'tables switch and the wipe warning');
+      // The order helpers, from the kept orders.
+      const helpers=await page.evaluate(()=>{const keep={history:state.history,cart:state.cart,items:state.items};
+        const it=state.items[0],o=q=>({id:'h'+Math.random(),date:new Date(Date.now()-7*86400000).toISOString(),by:'rozha',entries:[{supplierId:it.supplierId,items:[{itemId:it.id,name:it.name,qty:q,unit:it.unit}]}]});
+        state.history=[o(5),o(5),o(5),o(5)];state.cart={[it.id]:50};const odd=oddAmounts().map(x=>x.usual);state.cart={[it.id]:6};const fine=oddAmounts().length;
+        const other=state.items.find(x=>x.supplierId===it.supplierId&&x.id!==it.id);state.cart=other?{[other.id]:1}:{};const forgot=other?forgottenItems().map(x=>x.item.id):[it.id];
+        const usual=usualAmount(it.id),week=weekdayOrder(new Date().getDay()).map(l=>l.qty);
+        Object.assign(state,keep);return [odd,fine,forgot[0]===it.id,usual,week];});
+      assert.deepEqual(helpers,[[5],0,true,5,[5]],'odd amount, forgotten item, usual amount, weekday order');
       // History shows 60 days; the report card counts only this month.
       const sixty=await page.evaluate(()=>{const before=reportData().orders;const old={id:'old-45',date:new Date(Date.now()-45*86400000).toISOString(),by:'rozha',entries:[{supplierId:null,supplierName:'Old market',items:[{itemId:'old',name:'Old item',unit:'kg',qty:1}]}]};state.history.unshift(old);const r=[before===reportData().orders,thisMonthOrders().every(o=>o.id!=='old-45'),renderHistory().includes('Old market')];state.history.shift();return r;});
       assert.deepEqual(sixty,[true,true,true],'older orders are in History but not in this month\'s report');
@@ -336,7 +348,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('[data-pin-change], .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
     // Admin: one screen of tiles, each opening its page. PINs: Rozha's current PIN first, the new one typed twice.
     await openView(page,'admin');
-    assert.equal(await page.locator('.ad-board [data-admin-open]').count(),9,'Admin shows every page as a tile');
+    assert.equal(await page.locator('.ad-board [data-admin-open]').count(),10,'Admin shows every page as a tile');
     await page.locator('[data-admin-open="pins"]').click();await settle(page);
     assert.equal(await page.locator('.admin-heading h1').textContent(),'PINs');
     assert.equal(await page.locator('[data-pin-change]').count(),2,'Admin changes both PINs');
@@ -469,7 +481,7 @@ const server=http.createServer((req,res)=>{
     await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
     await page.locator('[data-inc]').first().click();
     assert.equal(await page.locator('#ricoTopBtn.reacting').count(),1,'Rico reacts to the first item');
-    assert.equal(await page.locator('#ricoTopBtn .rico-bot').count(),0,'the top bar shows his spark, not his face');
+    assert.equal(await page.locator('#ricoTopBtn .rico-bot').count(),1,'the top bar shows the Spark with his face');
     await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
     const q5=page.locator('[data-qty="i5"]');
     await q5.focus();
@@ -611,7 +623,7 @@ const server=http.createServer((req,res)=>{
     assert.ok(await y.page.locator('.item-last').count()>=1,'Last quantity shows on rows when switched on');
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await y.page.locator('label:has(#pref-showLastQty)').click();
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','sound-qty:true','sound-sent:true','reminderEnabled:false','aiConsent:true'],'no per-phone Transfers switch: Admin decides');
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]:not([data-feature])')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','sound-qty:true','sound-sent:true','reminderEnabled:false','aiConsent:true'],'no per-phone Transfers switch: Admin decides');
     assert.equal(await y.page.locator('#settingsSignOut').count(),1,'Sign Out is at the end of Settings');
     assert.match(await y.page.locator('.settings-link').getAttribute('href'),/^privacy\.html#en$/,'Settings links to the privacy policy');
     // Daily reminder, for Yunis too: the switch opens the time, Save and a test; only Save turns it on.

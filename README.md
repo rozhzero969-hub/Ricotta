@@ -8,7 +8,7 @@ Two named accounts use server-verified PINs. Only Rozha changes a PIN, hers or Y
 
 **Yunis's roles** (`app_accounts.roles`): Rozha always has everything. For Yunis, `null` is the standard set (everything except Transfers); Admin › Access saves an explicit list once Rozha changes it. The roles are `history`, `manage`, `catalog`, `record`, `transfers`, `assistant`, `send`, `exports`, `notify` and `reminders`. The api checks them on every request (`can()` in `api/index.ts`) and answers 403 without the role; bootstrap sends the screens (`views`) and `roles`, and the app hides what he can't use. A change shows up on his phone at its next refresh, without signing in again.
 
-Orders and their lines are kept **60 days**, in History and for Rico, and are then permanently deleted at Baghdad midnight by `ricotta-monthly-history`. Records keep the current **Asia/Baghdad calendar month**. The daily cleanup catches up after downtime. PINs, the catalog and reminder settings are kept.
+History has one **wipe day every 60 days** (`app_wipe.next_wipe`): on that day, `ricotta-monthly-history` deletes orders, Records, Rico's test orders and saved Rico chats older than 60 days, so 60 to 120 days are kept. The app warns from 2 days before, on History, on Record and in a message from Rico. Finished months keep their summary, and the daily cleanup catches up after downtime. PINs, the catalog and reminder settings are kept.
 
 Orders retry with stable IDs. Each pending order has its own local storage entry so tabs cannot overwrite one shared queue. Settings shows the pending count, Retry sync and Export copy. Export a previous month's unsynced order before clearing browser storage: it cannot be written into a later month's history. An order whose save the server refuses can be dropped with Clear order (Undo brings it back). A phone whose clock runs ahead still saves: the server uses its own time for an order dated in the future.
 
@@ -28,6 +28,12 @@ Unfinished orders sync between devices signed in to the same account. Quantities
 - **App icon badge**: late suppliers (Home Screen app; on iPhone with notifications on).
 - **Month archive** (`app_month_summaries`): when a month ends, `app_internal_monthly_cleanup` keeps its summary (orders, days, top items, suppliers, who sent). History › Past months.
 - **Friday summary**: Rico's short weekly recap on Friday evening.
+- **Features** (`features.js`): Settings switches per person on their device, each with a default; small touches have no switch.
+- **Order helpers** (`order-tools-plus.js`): odd amounts, forgotten items, the usual order for a weekday, swipe for the usual, reading a pasted message or a photo of a list (`orders/read-list`, Gemini), places (`app_items.place`), pictures (public `item-photos` storage bucket, made on first upload), a printable sheet, hold to send and a 10-second countdown. WhatsApp's own sends can't be recalled.
+- **Rico tab** (`rico-plus.js`): next step, the week, the morning briefing, receipts and the order check answered on the phone, What Rico remembers (`app_rico_rules`), read aloud with the phone's own voices (not every phone has Kurdish), and his sheet on Order. Rico himself is the Spark; `rico-<mood>.png` are his notification pictures.
+- **Reports** (`reports-plus.js`): charts, trends, comparing months, a past month as PDF, the year, milestones, today's board on computers, and the tour.
+- **Restore** (`app_backups`): a daily copy on the server, kept 7 days. Admin, Restore brings back only what is gone, after Rozha's PIN.
+- **Rico's letter and the daily check**: on the 1st, a letter from the finished month's summary; each morning a quiet line for Rozha in Rico's messages (no notification).
 - On phones the WhatsApp buttons open the WhatsApp app directly (`whatsapp://send`); computers use `wa.me`.
 
 The Lab (`lab/`, see its README) runs the real app on sample data for trying these without touching the kitchen.
@@ -83,7 +89,7 @@ The app requests Cloudflare's script only when enabled. The API verifies each to
 
 ## Backups and recovery
 
-`scripts/backup-local.sh`, run nightly by a LaunchAgent on Rozha's Mac, saves the kitchen's data (no secrets, PIN hashes, sessions or push keys) to `~/Ricotta Backups` and keeps 30 files. Keep encrypted database backups outside the repository and browser. Supabase's backup availability depends on the project's plan; check the dashboard and use an external backup if necessary. Review the retention policy before restoring: normal cleanup immediately removes data from previous months. Restore business backups to a separate project first, verify catalog and current-month order counts, then redeploy functions and revoke restored sessions before switching traffic. `pnpm test` verifies that the schema baseline restores into an empty database; it is not a production-data recovery drill.
+`scripts/backup-local.sh`, run once a day by a LaunchAgent whenever the Mac is on on Rozha's Mac, saves the kitchen's data (no secrets, PIN hashes, sessions or push keys) to `~/Ricotta Backups` and keeps 30 files. Keep encrypted database backups outside the repository and browser. Supabase's backup availability depends on the project's plan; check the dashboard and use an external backup if necessary. Review the retention policy before restoring: normal cleanup immediately removes data from previous months. Restore business backups to a separate project first, verify catalog and current-month order counts, then redeploy functions and revoke restored sessions before switching traffic. `pnpm test` verifies that the schema baseline restores into an empty database; it is not a production-data recovery drill.
 
 ## Ordering tools
 

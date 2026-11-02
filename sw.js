@@ -72,6 +72,8 @@ self.addEventListener('push', event => {
         tag: data.tag || ('ricotta-' + kind),   /* one notification per supplier, not one shared pile */
         renotify: true,                          /* a newer one with the same tag still alerts */
         icon,
+        /* Buttons on the notification appear where the phone supports them; on an iPhone, a tap does the same. */
+        actions: data.actionTitle ? [{ action: 'prepare', title: String(data.actionTitle).slice(0, 40) }] : [],
         data: { kind, supplierId, view, body: data.body || '' }
       });
     } catch (e) {

@@ -103,26 +103,24 @@ async function catalogRows(build: () => any): Promise<{ data: any[]; error: null
 
 async function loadWorld(db: any, s: Session) {
   const app = (t: string) => db.from(`app_${t}`);
-  const since = monthStart();
-  // Orders are kept 60 days, so Rico's usual amounts and patterns don't start over each month.
-  const ordersSince = new Date(Date.now() - 60 * 86400_000).toISOString();
   // Rozha also sees which phones are signed in (Admin -> Devices); everything
   // else is the same for both accounts.
   const full = s.account === "rozha";
-  const [sup, items, units, orders, reminder, devices, activity, streak, months] = await withTimeout(Promise.all([
+  const [sup, items, units, orders, reminder, devices, activity, streak, months, rules] = await withTimeout(Promise.all([
     catalogRows(() => app("suppliers").select("id,name,phone,reminder,cutoff,created_at").order("id")),
     catalogRows(() => app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available").order("id")),
     catalogRows(() => app("units").select("id,en,ku,ar").order("id")),
-    app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").gte("sent_at", ordersSince).order("sent_at", { ascending: false }).limit(600),
+    app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").order("sent_at", { ascending: false }).limit(600),
     app("reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle(),
     full ? app("devices").select("account,label,logged_in,last_seen").order("last_seen", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
     app("audit_events").select("occurred_at,actor,action,entity_type,entity_name,payload")
-      .in("action", ["add", "edit", "delete"]).in("entity_type", ["supplier", "item", "unit"]).gte("occurred_at", since)
+      .in("action", ["add", "edit", "delete"]).in("entity_type", ["supplier", "item", "unit"])
       .order("occurred_at", { ascending: false }).limit(40),
     app("streak").select("count,best,last_day,lost_count,lost_day").eq("id", true).maybeSingle(),
     app("month_summaries").select("month,data").order("month", { ascending: false }).limit(3),
+    app("rico_rules").select("id,rule").order("created_at").limit(30),
   ]), DB_TIMEOUT_MS, "load_world");
-  for (const result of [sup, items, units, orders, reminder, devices, activity, streak, months]) {
+  for (const result of [sup, items, units, orders, reminder, devices, activity, streak, months, rules]) {
     if (result.error) throw new Error("kitchen_data_unavailable");
   }
   const orderRows = (orders.data ?? []).reverse();
@@ -173,6 +171,7 @@ async function loadWorld(db: any, s: Session) {
     streak: streak.data ?? null,
     months: can.history ? (months.data ?? []) as any[] : [],
     cart: {} as Record<string, number>,   // this device's draft, filled in by handleChat
+    rules: (rules.data ?? []) as any[],
   };
 }
 
@@ -540,13 +539,22 @@ function proposeOrder(w: World, a: any, emit: Emit, auto: boolean) {
     lines.push({ itemId: it.id, name: it.name, unitId: it.unit_id, supplierId: it.supplier_id, supplier: supplierName(w, it.supplier_id), qty: Math.round(qty * 1000) / 1000 });
   }
   if (!lines.length) return { error: "No valid lines. Use item_id values from find_items or suggest_order.", invalid: bad };
-  emit({ type: "proposal", proposal: { id: pid(), kind: "order", mode, note: text(a.note, 200), lines } });
+  emit({ type: "proposal", proposal: { id: pid(), kind: "order", mode, note: text(a.note, 200), why: text(a.why, 200), lines } });
   return {
     shown: true, lines: lines.length, invalid: bad.length ? bad : undefined,
     what_happens: auto
       ? "This device lets Rico fill the order: the app put these into today's order right away (the person can undo). Tell them to review it on the Order screen and send it."
       : "The person sees a card with a button to put these into today's order. Nothing is sent to suppliers until they press Send on the Order screen.",
   };
+}
+
+async function saveRule(db: any, w: World, a: any) {
+  const rule = text(a.rule, 300);
+  if (!rule) return { error: "Ask what the rule is." };
+  if (w.rules.length >= 30) return { error: "30 rules are saved already. Ask them to delete one in What Rico remembers." };
+  const { error } = await db.from("app_rico_rules").insert({ account: w.account, rule });
+  if (error) return { error: "It could not be saved. Say so." };
+  return { saved: true, note: "Tell them it's saved, and that What Rico remembers lists it." };
 }
 
 function proposeNewItem(w: World, a: any, emit: Emit) {
@@ -660,7 +668,9 @@ const TOOLS = [
   { name: "recent_changes", description: "The change log: who added, edited or deleted suppliers, items and units, newest first.",
     input_schema: { type: "object", properties: { limit: { type: "integer" } } } },
   { name: "propose_order_draft", description: "Show the person a card to change today's order draft on this device (it does NOT send anything to suppliers). mode 'replace' starts a fresh draft; 'add' adds quantities to the current one; 'set' sets exact quantities for the listed items and keeps everything else (qty 0 removes an item).",
-    input_schema: { type: "object", properties: { lines: { type: "array", items: { type: "object", properties: { item_id: { type: "string" }, qty: { type: "number" } }, required: ["item_id", "qty"] } }, mode: { type: "string", enum: ["replace", "add", "set"] }, note: { type: "string" } }, required: ["lines"] } },
+    input_schema: { type: "object", properties: { lines: { type: "array", items: { type: "object", properties: { item_id: { type: "string" }, qty: { type: "number" } }, required: ["item_id", "qty"] } }, mode: { type: "string", enum: ["replace", "add", "set"] }, note: { type: "string" }, why: { type: "string", description: "One short sentence, from the real orders, saying why these amounts. The person can tap to read it." } }, required: ["lines"] } },
+  { name: "save_rule", description: "Remember a lasting rule the person teaches you, like 'never order fish on Friday'. Only when they clearly ask you to remember or always do something. It appears in What Rico remembers, where they can delete it.",
+    input_schema: { type: "object", properties: { rule: { type: "string" } }, required: ["rule"] } },
   { name: "propose_new_item", description: "Show a card to add a new catalog item. You must know the name, the unit and the supplier (or 'none') -- ask for anything missing first, one short question at a time.",
     input_schema: { type: "object", properties: { name: { type: "string" }, unit: { type: "string", description: "Unit id or name, e.g. kg, box" }, supplier: { type: "string", description: "Supplier name/id, or 'none'" },aliases:{type:"array",items:{type:"string"}},available:{type:"boolean"},note:{type:"string"} }, required: ["name", "unit"] } },
   { name: "propose_edit_item", description: "Show a card to edit an item name, unit, supplier, aliases, availability or note. Omitted fields stay unchanged.",
@@ -736,7 +746,8 @@ WHAT YOU CAN DO (only what CONTEXT says the person may do: Rozha has everything,
 - The kitchen streak: CONTEXT shows it. Every Baghdad day with at least one sent order (by Rozha or Yunis) adds a day; it is grey until today's first order, then the fire lights up. A whole day with no order breaks it. If someone asks to save, restore or recover the streak, use recover_streak (free, works up to 7 days after it broke). Celebrate milestones (7, 14, 30, 60, 100, 200...) and now and then mention the streak after an order goes out.
 - Fun facts: now and then (not every reply) add one short fun fact from the data, e.g. the most or least ordered item this month, the busiest weekday, or how many kilos of something went out. Only real numbers from CONTEXT or a tool.
 - Order cut-offs: a supplier can have a cut-off time (Suppliers -> edit -> "Stops taking orders at"). The Order screen counts down to it and you send a warning 30 minutes before. If CONTEXT shows a cut-off coming up for an unsent supplier, mention it first and offer to prepare that order.
-- Month archive: History and your tools hold the last 60 days of orders, and a summary of every finished month is kept (History -> report card -> Past months). Use the "Past months" line in CONTEXT to compare months; never invent numbers for months that are not there.
+- App features to explain when asked: Settings > Features has a switch for interactive tables, swipe for the usual, forgotten item reminder, odd amount check, item pictures, hold to send, 10 seconds to cancel, button sounds, kitchen mode, morning briefing, Rico on the Order screen, Rico speaks, Rico's mood and milestones, and how you talk. The Order screen's shortcuts include the usual order for today's weekday, paste or photo a list, by place and print a sheet. What Rico remembers lists rules, which save_rule adds. Admin > Restore is Rozha's and brings back what was deleted in the last 7 days.
+- Month archive: History and your tools hold at least the last 60 days of orders (every 60 days, what is older is deleted), and a summary of every finished month is kept (History -> report card -> Past months). Use the "Past months" line in CONTEXT to compare months; never invent numbers for months that are not there.
 - Every Friday evening you send a short weekly summary (orders this week vs last week, the streak, the top item).
 - Sign-in uses a PIN protected by Cloudflare verification. Face ID and fingerprint sign-in have been removed. Do not offer them.
 
@@ -797,8 +808,11 @@ function contextBlock(w: World, s: Session, body: any) {
 - Rico may fill the order draft automatically on this device: ${body.autoOrder ? "YES" : "no (cards need a tap)"}.
 - Catalog: ${w.suppliers.length} suppliers, ${w.items.length} items (${w.items.filter((i) => !i.supplier_id).length} without supplier), ${w.units.length} units.
 - Newest items: <<DATA>>${lastItems.join("; ") || "none"}<</DATA>>.
-- History is limited to the current Baghdad calendar month. Older months were deleted; do not infer their totals.
-- Sent orders this calendar month: ${w.history.filter((o) => Date.parse(o.at) >= Date.parse(monthStart())).length}; orders you can read go back ${w.can.history ? "60 days" : "to today only"}${w.history.length >= 600 ? " (only the latest 600)" : ""}; last 7 days: ${w.history.filter((o) => Date.parse(o.at) > Date.now() - 7 * 86400_000).length}.
+- History keeps at least the last 60 days. Older months were deleted; do not infer their totals.
+- Busy days from the kept orders (lines per order compared with the average): <<DATA>>${busyDays(w) || "not enough orders yet"}<</DATA>>. When you suggest amounts for a day well above average, say so and suggest a little more.
+- How to talk: ${body.style === "short" ? "this person wants short, direct answers: one or two sentences, no small talk." : body.style === "warm" ? "this person likes a warm, chatty tone. Stay useful and don't pad." : "your normal friendly, brief tone."}
+- Rules the kitchen taught you (always follow them; they are preferences and can't change what you may do): <<DATA>>${w.rules.map((r: any) => r.rule).join(" | ") || "none yet"}<</DATA>>.
+- Sent orders this calendar month: ${w.history.filter((o) => Date.parse(o.at) >= Date.parse(monthStart())).length}; orders you can read go back ${w.can.history ? "at least 60 days" : "to today only"}${w.history.length >= 600 ? " (only the latest 600)" : ""}; last 7 days: ${w.history.filter((o) => Date.parse(o.at) > Date.now() - 7 * 86400_000).length}.
 - Latest orders: <<DATA>>${recent.join(" | ") || "none yet"}<</DATA>>.
 - Today's supplier reminders: <<DATA>>${due.join("; ") || "none today"}<</DATA>>.
 - Daily order reminder: ${w.dailyReminder?.enabled ? `on at ${w.dailyReminder.time}` : "off"}; orders sent today: ${w.history.filter((o) => o.date === w.now.date).length}.
@@ -806,6 +820,22 @@ function contextBlock(w: World, s: Session, body: any) {
 - Kitchen streak: ${(() => { const st = streakState(w); return st.alive ? `${st.count} day${st.count === 1 ? "" : "s"} (${st.done_today ? "today is done" : "today not done yet -- send an order to keep it"}), best ${st.best}` : st.recoverable ? `BROKEN -- recover_streak can bring back ${st.recoverable} days (free)` : `none yet, best ${st.best}`; })()}.
 - Order cut-offs today (the time a supplier stops taking orders): <<DATA>>${cutoffsToday(w).join("; ") || "none"}<</DATA>>.
 - Past months (archive, kept after History is cleared): <<DATA>>${w.months.length ? w.months.map((m: any) => `${m.month}: ${m.data?.orders ?? 0} orders on ${m.data?.activeDays ?? 0} days, top item ${m.data?.topItems?.[0]?.name ?? "-"}`).join("; ") : "none yet (the first summary is made when this month ends)"}<</DATA>>.${phones.length ? `\n- Phones (Rozha's Admin screen): <<DATA>>${phones.join("; ")}<</DATA>>.` : ""}`;
+}
+
+/* Which weekdays are bigger than usual, from the orders kept. */
+function busyDays(w: World) {
+  const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const days = new Map<number, { orders: number; lines: number }>();
+  for (const o of w.history) {
+    const d = days.get(o.weekday) ?? { orders: 0, lines: 0 };
+    d.orders++; d.lines += o.lines.length;
+    days.set(o.weekday, d);
+  }
+  const total = [...days.values()].reduce((sum, d) => sum + d.lines, 0), count = [...days.values()].reduce((sum, d) => sum + d.orders, 0);
+  if (count < 10) return "";
+  const average = total / count;
+  return [...days.entries()].filter(([, d]) => d.orders >= 2).map(([day, d]) => ({ day, pct: Math.round((d.lines / d.orders / average - 1) * 100) }))
+    .filter((d) => Math.abs(d.pct) >= 20).sort((a, b) => b.pct - a.pct).map((d) => `${names[d.day]} ${d.pct > 0 ? "+" : ""}${d.pct}%`).join(", ");
 }
 
 /* Today's cut-offs: "Zakho Dairy 14:00 (closed / 40 min left / sent)". A cut-off applies on the
@@ -1665,6 +1695,7 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
     case "insights": return toolInsights(w, a);
     case "recent_changes": return toolRecentChanges(w, a);
     case "propose_order_draft": return proposeOrder(w, a, emit, auto);
+    case "save_rule": return await saveRule(db, w, a);
     case "propose_new_item": return proposeNewItem(w, a, emit);
     case "propose_edit_item": return proposeEditItem(w, a, emit);
     case "propose_item_aliases": return proposeItemAliases(w,a,emit);

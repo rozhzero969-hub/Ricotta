@@ -19,10 +19,10 @@
    draftProgressLabel, flushOutbox, syncSharedDraft, maybeFinishQueue, currentOutbox, sendDeviceCommand,
    refreshDevices, deviceParts, deviceTitle, otherDevices, commandIsPending, versionCmp. Load before app.js. */
 
-const ADMIN_PAGES = ['problems','security','health','access','pins','devices','time','rico','catalog'];
-const ADMIN_SOURCES = {health:'admin/diagnostics', security:'admin/security', problems:'admin/problems', usage:'admin/usage', rico:'admin/rico', ai:'admin/ai', roles:'admin/roles'};
+const ADMIN_PAGES = ['problems','security','health','access','pins','devices','time','rico','catalog','restore'];
+const ADMIN_SOURCES = {backups:'admin/backups', health:'admin/diagnostics', security:'admin/security', problems:'admin/problems', usage:'admin/usage', rico:'admin/rico', ai:'admin/ai', roles:'admin/roles'};
 /* What each page needs (the list itself shows a value from most of them). */
-const ADMIN_NEEDS = {home:['health','security','problems','usage','rico','roles'], problems:['problems'], security:['security'], health:['health','problems','security'],
+const ADMIN_NEEDS = {restore:['backups'], home:['health','security','problems','usage','rico','roles'], problems:['problems'], security:['security'], health:['health','problems','security'],
   access:['roles'], pins:[], devices:[], time:['usage'], rico:['rico','ai'], catalog:[]};
 let adminData = {account:null, busy:{}, failed:{}};
 let adminFilter = {problems:'open', security:'all', time:'day'};
@@ -57,7 +57,7 @@ setInterval(()=>{
   if(!state.adminPage || state.adminPage === 'devices') checkCommands();
 }, 30000);
 const isAdminObject = v=>!!v && typeof v === 'object' && !Array.isArray(v);
-const ADMIN_SHAPES = {problems:Array.isArray, health:isAdminObject, rico:isAdminObject, ai:d=>isAdminObject(d) && Array.isArray(d.brains),
+const ADMIN_SHAPES = {backups:Array.isArray, problems:Array.isArray, health:isAdminObject, rico:isAdminObject, ai:d=>isAdminObject(d) && Array.isArray(d.brains),
   security:d=>isAdminObject(d) && Array.isArray(d.events), usage:d=>isAdminObject(d) && Array.isArray(d.people),
   roles:d=>isAdminObject(d) && Array.isArray(d.yunis) && Array.isArray(d.roles)};
 const adminValue = key=>adminData.account === state.account ? adminData[key]?.data : null;
@@ -73,7 +73,7 @@ function renderAdminBody(){
   const page = ADMIN_PAGES.includes(state.adminPage) ? state.adminPage : null;
   if(!page) return renderAdminHome();
   return ({problems:renderAdminProblems, security:renderAdminSecurity, health:renderAdminHealth, access:renderAdminAccess, pins:renderAdminPins,
-    devices:renderAdminDevices, time:renderAdminTime, rico:renderAdminRico, catalog:renderAdminCatalog})[page]();
+    devices:renderAdminDevices, time:renderAdminTime, rico:renderAdminRico, catalog:renderAdminCatalog, restore:renderAdminRestore})[page]();
 }
 /* Redraws only Admin's own part (the heading stays), when new data arrives. */
 function paintAdmin(){
@@ -96,7 +96,7 @@ function attachAdminBodyEvents(){
     if(state.adminPage === 'devices') await refreshDevices();
     await Promise.all(keys.map(k=>adminFetch(k, true)));
   }));
-  ({problems:attachAdminProblems, security:attachAdminSecurity, health:attachAdminHealth, access:attachAdminAccess, pins:attachAdminPins,
+  ({restore:attachAdminRestore, problems:attachAdminProblems, security:attachAdminSecurity, health:attachAdminHealth, access:attachAdminAccess, pins:attachAdminPins,
     devices:attachAdminDevices, catalog:attachAdminCatalog, time:attachAdminTime})[state.adminPage]?.(slot);
 }
 /* Opens a page (or goes back to the list) with the iPhone's push: the new page slides in from the side
@@ -204,6 +204,7 @@ function renderAdminHome(){
     ${tile('devices', ADMIN_ICONS.devices, 'gray', String(signedIn.length), t('adDevicesSub')(active))}
     ${tile('access', ADMIN_ICONS.access, 'green', roles ? t('adOfTotal')(roles.yunis.length, roles.roles.length) : wait, t('adAccessSub'))}
     ${tile('catalog', ADMIN_ICONS.catalog, 'gray', toReview ? String(toReview) : t('adNone'), toReview ? t('adCatalogSub') : t('adCatalogClear'))}
+    ${tile('restore', ADMIN_ICONS.health, 'gray', t('restoreBtn'), t('adRestoreSub'))}
     ${tile('pins', ADMIN_ICONS.pins, 'gray', t('adminPinChange'), `${accountLabel('rozha')} · ${accountLabel('yunis')}`)}
   </div>`;
 }
@@ -672,4 +673,29 @@ function renderAdminCatalog(){
 }
 function attachAdminCatalog(slot){
   slot.querySelectorAll('[data-check-item]').forEach(b=>b.onclick = ()=>openItemModal(b.dataset.checkItem));
+}
+
+/* Admin, Restore: the server keeps a copy of the kitchen's data for 7 days. Restoring brings back what was
+   deleted since that day; it never changes what exists now. Her PIN is asked first. */
+function renderAdminRestore(){
+  const rows = adminValue('backups');
+  return `${adminHeading()}<p class="notif-sub">${esc(t('restoreHint'))}</p>
+    ${Array.isArray(rows) ? (rows.length ? `<div class="form-card restore-list">${rows.map(r=>`<div class="restore-row"><div><b>${esc(formatIraqDateTime(r.day + 'T12:00:00Z', {weekday:'long', day:'numeric', month:'long'}))}</b><small>${esc(t('restoreCounts')(r.orders, r.items, r.suppliers))}</small></div><button type="button" class="btn btn-ghost" data-restore-day="${esc(r.day)}">${esc(t('restoreBtn'))}</button></div>`).join('')}</div>` : `<div class="empty-mini">${esc(t('restoreNone'))}</div>`) : `<div class="empty-mini">${esc(t('checking'))}</div>`}`;
+}
+function attachAdminRestore(){
+  document.querySelectorAll('[data-restore-day]').forEach(b=>b.onclick = ()=>{
+    const day = b.dataset.restoreDay;
+    showFormModal({
+      title:esc(t('restoreBtn')),
+      bodyHtml:`<p class="modal-msg">${esc(t('restoreConfirm'))}</p><div class="field"><label for="restorePin">${esc(t('restorePin'))}</label><input id="restorePin" type="password" inputmode="numeric" maxlength="6" autocomplete="off"></div>`,
+      okLabel:t('restoreBtn'),
+      onSubmit:async ()=>{
+        const r = await api('admin/backups/restore', {method:'POST', body:{day, pin:document.getElementById('restorePin').value}});
+        if(!r.ok) return {error:t(r.data?.error === 'wrong_pin' ? 'wrongPin' : 'saveFailed')};
+        await loadData(); render();
+        toast(t('restoreDone')(r.data.orders, r.data.items, r.data.suppliers), 'ok');
+        return {};
+      },
+    });
+  });
 }

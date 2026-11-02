@@ -903,13 +903,6 @@ html.rtl .install-prompt{right:auto;left:22px}
 .rico-hello{margin:6px 0 0;font-size:1.75rem;font-weight:700;line-height:1.2;text-wrap:balance}
 .rico-intro-text{margin:0;max-width:460px;color:var(--ink-soft);font-size:1.0625rem;font-weight:400;line-height:1.4}
 .rico-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;width:100%}
-/* With alerts or notes above it, the greeting folds to one line so the shortcuts stay above the message box. */
-:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:10px;padding-top:6px}
-:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro .rico-xl{--size:44px}
-:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro .rico-hello{margin:0;font-size:1.25rem}
-:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro .rico-intro-text{display:none}
-:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro .rico-chips{grid-column:1/-1;margin-top:2px}
-:is(.rico-alerts,.rico-inbox)~.rico-thread .rico-intro .rico-recent{grid-column:1/-1}
 .rico-chip{padding:10px 16px;border-radius:999px;display:inline-flex;align-items:center;font-size:.9375rem;font-weight:500;color:var(--ink);text-align:start;min-height:40px}
 .rico-msg{display:flex;gap:10px;align-items:flex-start}
 .rico-msg:not(.painted){animation:msgIn 300ms var(--ease-out) both}
@@ -1916,3 +1909,163 @@ kbd{min-width:26px;height:26px;padding:0 7px;border-radius:7px;display:inline-gr
   .spot-panel,.modal-box.modal-alert,.btn.is-done .ic-check,.ad-bar-pair i{animation:none!important;transition:none!important}
   .spot-flash{animation:none}
 }
+
+/* ---------- The big update ---------- */
+.settings-hint{margin:-4px 0 8px;font-size:.8125rem;color:var(--ink-soft)}
+.plain-list{display:grid;gap:8px}
+.wipe-banner{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;margin-bottom:12px;border-radius:var(--r-card);background:rgba(255,204,0,.2);font-size:.9375rem;line-height:1.35}
+.wipe-banner svg{flex:none;width:20px;height:20px;margin-top:1px}
+
+/* Rico as a spark: his eyes and mouth are dark on the pastel star, in every mood. */
+.rico-bot[class*="mood-"]{--rb-eye:#14382C;--rb-glow:transparent}
+.rb-star{stroke:rgba(16,41,31,.14);stroke-width:1}
+.rb-head{transform-origin:50% 50%}
+.rico-top{width:44px;height:44px;padding:0!important;background:none!important;justify-content:center;overflow:visible}
+.rico-top .rico-bot{--size:36px}
+.rico-top svg{width:100%;height:100%}
+.rico-top.active{outline:2px solid var(--tint);outline-offset:-2px}
+.rico-top .rico-badge{position:absolute;top:3px;inset-inline-end:2px}
+
+/* The Rico tab */
+.rico-intro-head{display:flex;align-items:center;gap:10px}
+.rico-intro .rico-hello{margin:0;font-size:1.375rem}
+.rico-intro{align-items:stretch}
+.p-eyebrow{font-size:.75rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--tint)}
+html.rtl .p-eyebrow{letter-spacing:0}
+.rico-next{display:grid;gap:6px;padding:14px;border-radius:var(--r-card);background:var(--surface)}
+.rico-next .btn{justify-self:start;margin-top:4px}
+.rico-next.urgent{box-shadow:inset 0 0 0 1.5px rgba(255,59,48,.4)}
+.rico-next-title{font-size:1.1875rem;font-weight:700;line-height:1.25}
+.rico-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;padding:6px;border-radius:var(--r-card);background:var(--surface)}
+.rico-day{display:flex;flex-direction:column;align-items:center;gap:2px;min-height:58px;padding:6px 0;border:0;border-radius:14px;background:none;color:var(--ink-soft);font-size:.6875rem}
+.rico-day b{font-size:1rem;font-weight:600;color:var(--ink)}
+.rico-day i{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.rico-day i.none{background:transparent}
+.rico-day.today{background:var(--tint);color:var(--on-tint,#fff)}
+.rico-day.today b{color:inherit}
+.rico-day.today i{background:currentColor}
+html.dark .rico-day.today{color:#000}
+.rico-inbox-more{justify-self:start;padding:6px 2px}
+.rico-inbox-all{display:grid;gap:8px;margin-top:10px}
+.rico-brief{display:grid;gap:12px}
+.rico-brief-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.rico-brief-cards{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;margin-inline:-4px;padding:4px;scrollbar-width:none}
+.rico-brief-card{flex:0 0 min(86%,340px);display:grid;gap:8px;align-content:start;min-height:230px;padding:16px;border-radius:var(--r-card);background:var(--surface);scroll-snap-align:start}
+.rico-brief-card .btn{justify-self:start}
+.rico-receipts{display:grid;gap:8px}
+.rico-receipt{padding:12px 14px;border-radius:14px 14px 4px 4px;background:var(--surface);box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.rico-receipt-line{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-top:1px dashed var(--line);font-size:.9375rem}
+.rico-receipt-line:first-of-type{margin-top:6px}
+.rico-check{display:grid;gap:8px}
+.rico-check-ok{display:flex;align-items:center;gap:8px;font-size:.9375rem;color:var(--tint)}
+.rico-why{margin-top:6px;font-size:.8125rem;color:var(--ink-soft)}
+.rico-why summary{cursor:pointer;color:var(--tint);font-weight:500}
+.rico-speak{justify-self:start;margin-top:2px;font-size:.8125rem}
+.quick-btn .rico-bot{--size:20px;margin:0}
+.rico-top .rb-shadow,.quick-btn .rb-shadow{display:none}
+.mem-add{display:flex;gap:8px;margin-top:10px}
+.mem-add input{flex:1;min-width:0;min-height:44px;padding:0 14px;border:0;border-radius:22px;background:var(--fill);font-size:1rem}
+.mem-rule{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:.9375rem}
+
+/* Checks before sending */
+.check-head{display:flex;align-items:center;gap:12px;margin-bottom:10px;text-align:start}
+.check-head .sel-title{text-align:start}
+.check-list{display:grid;gap:8px;margin-bottom:12px}
+.check-issue{display:grid;gap:8px;padding:12px;border-radius:14px;background:var(--surface-2)}
+.check-issue small{display:block;color:var(--ink-soft);font-size:.8125rem}
+.check-actions{display:flex;flex-wrap:wrap;gap:8px}
+.check-actions .btn{min-height:38px}
+.check-go{width:100%}
+.countdown{display:grid;justify-items:center;gap:8px;padding:12px 0;text-align:center}
+.countdown-num{font-size:3.5rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;color:var(--tint)}
+.countdown-actions{display:flex;gap:10px;margin-top:8px}
+.send-btn.hold-send{position:relative;overflow:hidden}
+.send-hold-fill{position:absolute;inset:0;background:rgba(255,255,255,.25);transform:scaleX(0);transform-origin:left center;pointer-events:none}
+html.rtl .send-hold-fill{transform-origin:right center}
+.send-btn.holding .send-hold-fill{transform:scaleX(1);transition:transform .8s linear}
+.item-row{transition:transform .12s ease}
+.item-photo{flex:none;width:44px;height:44px;border-radius:10px;object-fit:cover;background:var(--surface-2)}
+.quick-btn.on{color:var(--tint)}
+.board-only{display:none}
+@media (min-width:960px){.board-only{display:inline-flex}}
+
+/* Lists, photos */
+#listText{width:100%;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);resize:vertical}
+.list-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.list-photo{cursor:pointer}
+.status-line{min-height:1.3em;margin-top:8px;font-size:.875rem;color:var(--ink-soft)}
+.list-rows{display:grid;gap:6px;margin:10px 0}
+.list-row-read{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-radius:12px;background:var(--surface-2)}
+.list-row-read small{display:block;font-size:.75rem;color:var(--ink-soft)}
+.list-row-read.unsure{opacity:.7}
+.list-row-read input{width:76px;text-align:center}
+.photo-field{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.photo-thumb{width:56px;height:56px;border-radius:12px;object-fit:cover}
+
+/* Reports */
+.chart-bars{display:flex;align-items:flex-end;gap:2px;height:72px}
+.chart-bar{flex:1;min-width:0;height:var(--h);min-height:3px;border-radius:3px 3px 0 0;background:var(--accent)}
+.chart-bar.none{background:var(--line);height:3px}
+.chart-axis{display:flex;justify-content:space-between;margin-top:3px;font-size:.6875rem;color:var(--ink-soft)}
+.trend-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line);font-size:.9375rem}
+.trend-row small{display:block;font-size:.75rem;color:var(--ink-soft)}
+.spark{flex:none;color:var(--tint)}
+.milestones{display:flex;flex-wrap:wrap;gap:6px}
+.milestone{display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:0 10px;border-radius:15px;background:var(--surface-2);font-size:.8125rem;color:var(--ink-soft)}
+.milestone.got{background:var(--accent-soft);color:var(--tint);font-weight:600}
+.months-tools{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.month-pdf{margin-top:10px}
+.compare-pick{display:flex;gap:8px;margin:10px 0}
+.compare-pick select{flex:1;min-width:0}
+.compare-scroll{overflow-x:auto}
+.compare{width:100%;border-collapse:collapse;font-size:.875rem}
+.compare th,.compare td{padding:7px 6px;border-top:1px solid var(--line);text-align:end;font-variant-numeric:tabular-nums}
+.compare th[scope=row]{text-align:start;font-weight:500}
+.compare thead th{border-top:0;font-size:.75rem;color:var(--ink-soft)}
+.compare .up{color:var(--tint)}
+.year-hero,.tour-step{display:grid;justify-items:center;gap:8px;text-align:center}
+.year-top{margin:6px 0;padding-inline-start:20px;font-size:1rem;font-weight:600}
+.tour-step{padding:8px 0}
+.tour-step .btn{min-width:140px;margin-top:6px}
+.board{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}
+.board-col h3{display:flex;align-items:center;gap:6px;margin:0 0 8px;font-size:1rem}
+.board-card{display:grid;gap:4px;padding:12px;margin-bottom:8px;border-radius:14px;background:var(--surface-2);font-size:.875rem}
+.board-card.late{box-shadow:inset 0 0 0 1.5px rgba(255,59,48,.4)}
+.board-card .btn{justify-self:start;min-height:34px}
+.restore-list{display:grid;gap:0}
+.restore-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.restore-row:first-child{border-top:0}
+.restore-row small{display:block;font-size:.8125rem;color:var(--ink-soft)}
+.feature-select{margin-top:10px}
+
+/* Kitchen mode: bigger text and buttons for a shared tablet */
+html.kitchen-mode{font-size:118%}
+html.kitchen-mode .step-btn{min-width:52px;min-height:52px}
+html.kitchen-mode .qty-input{min-height:52px;font-size:1.25rem}
+
+/* Kurdish and Arabic: no tracking, a little more room, and small text a touch larger */
+body.lang-ku small,body.lang-ar small,body.lang-ku .notif-sub,body.lang-ar .notif-sub{font-size:max(.8125rem,1em);line-height:1.55}
+body.lang-ku .section-title,body.lang-ar .section-title,body.lang-ku .hero-eyebrow,body.lang-ar .hero-eyebrow{letter-spacing:0;text-transform:none}
+body.lang-ku .rico-note-text,body.lang-ar .rico-note-text,body.lang-ku .rico-text,body.lang-ar .rico-text{line-height:1.7}
+
+/* The paper order sheet */
+.print-sheet{display:none}
+@media print{
+  body>*:not(.print-sheet){display:none!important}
+  .print-sheet{display:block;padding:12mm;color:#000;background:#fff;font-size:12pt}
+  .print-sheet h1{margin:0;font-size:18pt}
+  .print-sheet h2{margin:14pt 0 4pt;font-size:13pt}
+  .print-sheet table{width:100%;border-collapse:collapse}
+  .print-sheet td{padding:4pt;border-bottom:.5pt solid #999}
+  .print-sheet .box{width:14pt}
+  .print-sheet .box::before{content:"";display:block;width:10pt;height:10pt;border:1pt solid #000}
+  .print-sheet .qty{width:60pt;text-align:end;font-weight:700}
+}
+
+/* The Order screen's shortcuts scroll sideways in one line, so their words stay readable. */
+.order-quick-actions{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
+.order-quick-actions::-webkit-scrollbar{display:none}
+.order-quick-actions .quick-btn{flex:0 0 auto!important;white-space:nowrap!important;padding:0 14px}
+.order-quick-actions .quick-btn svg{display:block!important}
+.year-sheet .report-stats{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}
+@media (min-width:960px){.board-sheet .sel-panel{width:min(960px,92vw);max-width:none}}

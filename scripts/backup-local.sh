@@ -2,7 +2,7 @@
 # Nightly copy of the kitchen's data on this Mac, in ~/Ricotta Backups (the newest 30 files stay).
 # One query, so everything in a file is from the same moment. Left out on purpose: secrets, PIN hashes,
 # sign-in sessions, push keys, and short-lived counters.
-# Runs from ~/Library/LaunchAgents/com.ricotta.backup.plist, only while the Mac is on.
+# Runs from ~/Library/LaunchAgents/com.ricotta.backup.plist at login and every hour, one file a day, only while the Mac is on.
 set -eu
 DIR="$HOME/Ricotta Backups"
 SUPABASE="$HOME/.local/bin/supabase"
@@ -11,6 +11,8 @@ mkdir -p "$DIR"
 cd "$DIR"
 export PATH="$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 FILE="ricotta-$(date +%Y-%m-%d).json"
+# Checked every hour while the Mac is on, so a night it was asleep or off is caught up the same day.
+[ -s "$FILE" ] && exit 0
 TMP="$FILE.part"
 SQL="$(mktemp)"
 trap 'rm -f "$SQL" "$TMP"' EXIT

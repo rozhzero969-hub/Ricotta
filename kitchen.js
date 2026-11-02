@@ -202,6 +202,7 @@ function openReportSheet(){
       <div><b>${d.lines}</b><span>${esc(t('reportLines'))}</span></div>
       <div class="tier-${streakTier(s.count)}"><b>${FLAME_SVG}${s.count}</b><span>${esc(t('reportStreak'))}</span></div>
     </div>
+    ${monthChartHtml()}${trendsHtml()}${milestonesHtml()}
     ${d.top.length ? `<div class="report-sec"><div class="report-sec-title">${esc(t('reportTop'))}</div>${d.top.map(x=>`<div class="report-bar"><span dir="auto">${esc(x.name)}</span><i style="--w:${Math.round(x.times/maxTop*100)}%"></i><b>${esc(t('reportTimes')(x.times))}</b></div>`).join('')}</div>` : ''}
     ${d.suppliers.length ? `<div class="report-sec"><div class="report-sec-title">${esc(t('reportSuppliers'))}</div><div class="report-chips">${d.suppliers.map(x=>`<span>${supplierMono(x.name)}${esc(x.name)} <b>${x.n}</b></span>`).join('')}</div></div>` : ''}
     <div class="report-sec report-two">
@@ -292,11 +293,19 @@ function openMonthsSheet(){
       ${top ? `<div class="month-sub">${esc(t('reportTop'))}</div><ul class="month-list">${top}</ul>` : ''}
       ${sups ? `<div class="month-sub">${esc(t('reportSuppliers'))}</div><ul class="month-list">${sups}</ul>` : ''}
       ${who ? `<div class="month-sub">${esc(t('reportWho'))}</div><div class="notif-sub">${esc(who)}</div>` : ''}
+      ${canDo('exports') ? `<button type="button" class="btn btn-ghost month-pdf" data-month-pdf="${i}">${ICON_SHEET}<span>${esc(t('monthPdf'))}</span></button>` : ''}
     </details>`;
   };
-  openKitchenSheet('months-sheet', `<div class="sel-title">${esc(t('monthsTitle'))}</div>
+  const {el, close} = openKitchenSheet('months-sheet', `<div class="sel-title">${esc(t('monthsTitle'))}</div>
     <div class="notif-sub">${esc(t('monthsHint'))}</div>
+    <div class="months-tools">${list.length >= 2 ? `<button type="button" class="btn btn-ghost" id="compareBtn">${esc(t('compareBtn'))}</button>` : ''}<button type="button" class="btn btn-ghost" id="yearBtn">${esc(t('yearBtn'))}</button></div>
     <div class="months-list">${list.length ? list.map(card).join('') : `<div class="empty-mini">${esc(t('monthsNone'))}</div>`}</div>`, t('monthsTitle'));
+  el.querySelector('#compareBtn')?.addEventListener('click', ()=>{ close(); openCompareMonths(); });
+  el.querySelector('#yearBtn').addEventListener('click', ()=>{ close(); openYearReview(); });
+  el.querySelectorAll('[data-month-pdf]').forEach(b=>b.onclick = ()=>withBusy(b, async()=>{
+    try{ await exportPastMonth(list[+b.dataset.monthPdf]); }
+    catch(e){ console.error('Month file failed', e); await showAlert(esc(t('exportFailed'))); }
+  }));
 }
 
 /* Rico's orders (TEST): orders Rico sent by himself over WhatsApp, kept apart from the kitchen's own

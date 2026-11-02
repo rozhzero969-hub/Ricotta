@@ -167,3 +167,37 @@ export async function readTransferList(db: any, s: Session, body: any): Promise<
   }).filter((r) => r.said || r.itemId);
   return out({ rows });
 }
+
+/* A paper list or a pasted message for the Order screen: the same reading, picking from the kitchen's own items. */
+export async function readOrderList(db: any, s: Session, body: any): Promise<Reply> {
+  const listText = text(body.text, MAX_TEXT);
+  const image = typeof body.image === "string" ? body.image.replace(/^data:[^,]*,/, "") : "";
+  const mime = String(body.mime ?? "").split(";")[0].trim().toLowerCase();
+  if (!listText && !image) return out({ error: "empty" }, 400);
+  if (image && (image.length > MAX_IMAGE_B64 || !/^[A-Za-z0-9+/=]+$/.test(image) || !IMAGE_TYPES.includes(mime))) return out({ error: "invalid_image" }, 400);
+  const cfg = await config(db);
+  if (!cfg.geminiKey) return out({ error: "not_configured" }, 503);
+  const { data: rows, error } = await db.from("app_items").select("id,name,aliases,unit_id").neq("available", false).limit(MAX_PROMPT_ITEMS);
+  if (error) return out({ error: "failed" }, 503);
+  const items = (rows ?? []).map((i: any) => ({ id: i.id, name: i.name, units: [], aliases: i.aliases ?? [] })) as StockItem[];
+  let usageId: number | null;
+  try { usageId = await reserveUsage(db, s, "transfer"); }
+  catch { return out({ error: "failed" }, 503); }
+  if (usageId === null) return out({ error: "rate_limited" }, 429);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), READ_TIMEOUT_MS);
+  let result: any = { error: "failed" }, model = READ_MODEL;
+  try {
+    for (const m of [READ_MODEL, FALLBACK_MODEL]) {
+      model = m;
+      result = await askGemini(cfg.geminiKey, m, items, { text: listText, image, mime }, ctrl.signal).catch(() => ({ error: ctrl.signal.aborted ? "busy" : "failed" }));
+      if (!result.error) break;
+    }
+  } finally { clearTimeout(timer); }
+  await finishUsage(db, usageId, `transfer:${model}`, Number(result.usage?.promptTokenCount) || 0, Number(result.usage?.candidatesTokenCount) || 0);
+  if (result.error) return out({ error: result.error }, 502);
+  const known = new Set(items.map((i) => i.id));
+  return out({ rows: (result.rows as any[]).slice(0, 200).map((r) => ({
+    said: text(r?.said, 160), qty: cleanAmount(r?.amount), itemId: known.has(text(r?.itemId, 120)) ? text(r?.itemId, 120) : null, sure: r?.sure === true,
+  })).filter((r) => r.said || r.itemId) });
+}

@@ -38,22 +38,14 @@ const rico = {
   viewing: null,       // the other person's account while one of their chats is open (read only)
 };
 
-/* Rico: a little kitchen robot. A soft cloud-shaped head (like a chef's
-   hat) in the Ricotta greens, a dark glass screen for a face with glowing
-   eyes, and a small body with Rico's spark on its chest. The mood class on
-   the root picks which eyes and mouth show, the eye colour, and how the
-   arms and body move (see .rb-* in style.css). Each mood also has its own
-   pastel colour. The gradient needs an id, so each drawing gets its own. */
+/* Rico: a four-point spark with a face. The mood class on the root picks which eyes and mouth show,
+   their colour and how he moves (see .rb-* in style.css). Each mood has its own pastel. The gradient
+   needs an id, so each drawing gets its own. */
 const RICO_MOODS = ['happy','excited','grateful','calm','thinking','worried','sad','angry'];
 let ricoBotSeq = 0;
 function ricoFace(mood = 'happy', cls = ''){
   const m = RICO_MOODS.includes(mood) ? mood : 'happy';
   const g = 'rbg' + (++ricoBotSeq);
-  let spark = '';
-  for(let k=0;k<8;k++){
-    const a=k*Math.PI/4, L=k%2?3.2:5.2, w=.8, c=Math.cos(a), s=Math.sin(a);
-    spark+=`M${(50+w*c).toFixed(2)} ${(83+w*s).toFixed(2)}L${(50+L*s).toFixed(2)} ${(83-L*c).toFixed(2)}L${(50-w*c).toFixed(2)} ${(83-w*s).toFixed(2)}Z`;
-  }
   const eye = (x, flip) => `
       <rect class="rb-e e-pill" x="${x-3.6}" y="47" width="7.2" height="12" rx="3.6"/>
       <path class="rb-e e-arc" d="M${x-5} 56 Q${x} 47 ${x+5} 56"/>
@@ -62,29 +54,22 @@ function ricoFace(mood = 'happy', cls = ''){
       <path class="rb-e e-bar" d="${flip ? `M${x+5} 48 L${x-4} 53` : `M${x-5} 48 L${x+4} 53`}"/>
       <path class="rb-e e-line" d="M${x-4.5} 53 L${x+4.5} 53"/>`;
   return `<span class="rico-bot mood-${m} ${cls}" aria-hidden="true"><svg viewBox="0 0 100 106">
-    <defs><radialGradient id="${g}" gradientUnits="userSpaceOnUse" cx="36" cy="16" r="92">
-      <stop offset="0" stop-color="var(--rb-c1)"/><stop offset=".45" stop-color="var(--rb-c2)"/><stop offset="1" stop-color="var(--rb-c3)"/></radialGradient></defs>
+    <defs><radialGradient id="${g}" gradientUnits="userSpaceOnUse" cx="38" cy="26" r="78">
+      <stop offset="0" stop-color="var(--rb-c1)"/><stop offset=".5" stop-color="var(--rb-c2)"/><stop offset="1" stop-color="var(--rb-c3)"/></radialGradient></defs>
     <g class="rb-all">
-      <ellipse class="rb-shadow" cx="50" cy="103" rx="20" ry="2.6"/>
-      <g class="rb-feet" fill="url(#${g})"><rect x="36" y="93" width="11" height="8" rx="4"/><rect x="53" y="93" width="11" height="8" rx="4"/></g>
-      <rect class="rb-arm l" x="24.5" y="72" width="9" height="18" rx="4.5" fill="url(#${g})"/>
-      <rect class="rb-arm r" x="66.5" y="72" width="9" height="18" rx="4.5" fill="url(#${g})"/>
-      <rect class="rb-body" x="32" y="68" width="36" height="29" rx="12" fill="url(#${g})"/>
-      <rect class="rb-chest" x="40.5" y="76" width="19" height="14" rx="5"/>
-      <path class="rb-spark" d="${spark}"/>
+      <ellipse class="rb-shadow" cx="50" cy="103" rx="16" ry="2.4"/>
       <g class="rb-head">
-        <g fill="url(#${g})"><circle cx="50" cy="24" r="19"/><circle cx="32" cy="32" r="14"/><circle cx="68" cy="32" r="14"/><circle cx="38" cy="18" r="12"/><circle cx="62" cy="18" r="12"/><rect x="15" y="30" width="70" height="42" rx="20"/></g>
-        <ellipse class="rb-shine" cx="37" cy="15" rx="11" ry="5" transform="rotate(-22 37 15)"/>
-        <rect class="rb-visor" x="21" y="37" width="58" height="30" rx="12"/>
-        <path class="rb-visor-glass" d="M26 42 Q50 36 74 42"/>
-        <g class="rb-eyes"><g class="rb-eye l">${eye(39,false)}</g><g class="rb-eye r">${eye(61,true)}</g></g>
-        <g class="rb-brows"><path class="rb-brow l" d="M34 44 L44 42.5"/><path class="rb-brow r" d="M66 44 L56 42.5"/></g>
-        <g class="rb-mouths"><path class="rb-mo mo-smile" d="M45 61.5 Q50 65 55 61.5"/><path class="rb-mo mo-open" d="M44.5 60.5 Q50 67 55.5 60.5 Z"/><path class="rb-mo mo-flat" d="M46 62.5 L54 62.5"/><path class="rb-mo mo-frown" d="M45 64 Q50 60 55 64"/><path class="rb-mo mo-grr" d="M44 63.5 L47 61.5 L50 63.5 L53 61.5 L56 63.5"/></g>
-        <g class="rb-dots"><circle cx="72" cy="12" r="2.2"/><circle cx="79" cy="7" r="2.8"/><circle cx="87" cy="2" r="3.4"/></g>
-        <path class="rb-tear" d="M36 62 c0 0 -3 4 -3 6 a3 3 0 0 0 6 0 c0 -2 -3 -6 -3 -6z"/>
-        <path class="rb-drop" d="M82 36 c0 0 -4 5 -4 8 a4 4 0 0 0 8 0 c0 -3 -4 -8 -4 -8z"/>
-        <g class="rb-steam"><path d="M14 20 c-3 -3 3 -5 0 -9"/><path d="M86 20 c3 -3 -3 -5 0 -9"/></g>
-        <path class="rb-heart" d="M84 20 c-2 -4 -9 -3 -9 2 c0 4 9 9 9 9 s9 -5 9 -9 c0 -5 -7 -6 -9 -2z"/>
+        <path class="rb-star" fill="url(#${g})" d="M50 3c3.6 27 19.200 43.400 47 47.500-27.800 4.100-43.400 20.500-47 47.500-3.600-27-19.200-43.400-47-47.500C30.800 46.400 46.400 30 50 3z"/>
+        <g transform="translate(50 50) scale(.7) translate(-50 -55)">
+          <g class="rb-eyes"><g class="rb-eye l">${eye(39,false)}</g><g class="rb-eye r">${eye(61,true)}</g></g>
+          <g class="rb-brows"><path class="rb-brow l" d="M34 44 L44 42.5"/><path class="rb-brow r" d="M66 44 L56 42.5"/></g>
+          <g class="rb-mouths"><path class="rb-mo mo-smile" d="M45 61.5 Q50 65 55 61.5"/><path class="rb-mo mo-open" d="M44.5 60.5 Q50 67 55.5 60.5 Z"/><path class="rb-mo mo-flat" d="M46 62.5 L54 62.5"/><path class="rb-mo mo-frown" d="M45 64 Q50 60 55 64"/></g>
+        </g>
+        <g class="rb-dots"><circle cx="76" cy="20" r="2.2"/><circle cx="83" cy="14" r="2.8"/><circle cx="91" cy="8" r="3.4"/></g>
+        <path class="rb-tear" d="M38 62 c0 0 -3 4 -3 6 a3 3 0 0 0 6 0 c0 -2 -3 -6 -3 -6z"/>
+        <path class="rb-drop" d="M78 30 c0 0 -4 5 -4 8 a4 4 0 0 0 8 0 c0 -3 -4 -8 -4 -8z"/>
+        <g class="rb-steam"><path d="M22 28 c-3 -3 3 -5 0 -9"/><path d="M78 28 c3 -3 -3 -5 0 -9"/></g>
+        <path class="rb-heart" d="M84 26 c-2 -4 -9 -3 -9 2 c0 4 9 9 9 9 s9 -5 9 -9 c0 -5 -7 -6 -9 -2z"/>
       </g>
     </g></svg></span>`;
 }
@@ -148,7 +133,7 @@ function ricoCurrentMood(){
     if(RICO_MOODS.includes(m.mood)) return m.mood;
   }
   const last = rico.inbox[rico.inbox.length - 1];
-  return last && !last.read ? last.mood : 'happy';
+  return last && !last.read ? last.mood : typeof kitchenMood === 'function' ? kitchenMood() : 'happy';
 }
 
 /* ---------- Late orders (same rule as the server's push alert) ---------- */
@@ -211,13 +196,14 @@ function renderAssistant(){
       </div>
     </header>`;
   // Every late supplier in one card: a heading with the count, then one row each.
-  const alerts = late.length ? `<section class="rico-alerts glass" aria-labelledby="ricoLateHead">
+  const alerts = late.length > 1 ? `<section class="rico-alerts glass" aria-labelledby="ricoLateHead">
       <div class="rico-alerts-head"><span class="rico-alert-dot" aria-hidden="true"></span><b id="ricoLateHead">${esc(t('ricoLateHead'))}</b><span class="supplier-item-count">${late.length}</span></div>
       ${late.map(l=>`<div class="rico-alert">
         <div class="rico-alert-text"><b dir="auto">${esc(l.name)}</b><span>${esc(t('ricoLateSub')(l.time, Math.floor(l.mins/60), l.mins%60))}</span></div>
         <button class="btn btn-primary" data-rico-late="${esc(l.supplierId)}" aria-label="${esc(t('ricoPrepareIt'))} \u00b7 ${esc(l.name)}">${esc(t('ricoPrepareIt'))}</button>
       </div>`).join('')}
     </section>` : '';
+  if(briefingDue()) return `${head}${renderBriefing()}`;
   const thread = rico.messages.length
     ? rico.messages.map((m,i)=>ricoTimeDivider(rico.messages[i-1], m) + renderRicoMessage(m,i)).join('')
     : renderRicoIntro();
@@ -232,22 +218,22 @@ function ricoTimeDivider(prev, m){
 }
 /* The newest few messages Rico wrote first, above the chat. */
 function renderRicoInbox(){
-  const list = rico.inbox.slice(-3);
+  const list = rico.inbox.slice(-1);
   if(!list.length) return '';
   return `<div class="rico-inbox">${list.map(m=>`
     <div class="rico-note mood-tint-${esc(m.mood)} ${m.read?'':'unread'}">
       ${ricoFace(m.mood, 'rico-sm')}
       <div class="rico-note-body"><div class="rico-note-meta">${esc(t('ricoWroteFirst'))} · ${esc(timeAgo(m.at))}</div><div class="rico-note-text" dir="auto">${esc(ricoInboxText(m))}</div></div>
-    </div>`).join('')}</div>`;
+    </div>`).join('')}${rico.inbox.length > 1 ? `<button type="button" class="rico-link rico-inbox-more" id="ricoInboxAll">${esc(t('inboxSeeAll')(rico.inbox.length))}</button>` : ''}</div>`;
 }
 function renderRicoIntro(){
   const chips = t('ricoSuggestions');
   const actions = ['prepare_order','check_order','week_insights','last_order','add_item','late_orders'];
   return `<div class="rico-intro">
-    ${ricoFace('happy', 'rico-xl')}
-    <h2 class="rico-hello">${esc(ricoGreeting())}</h2>
-    <p class="rico-intro-text">${esc(t('ricoIntro'))}</p>
+    <div class="rico-intro-head">${ricoFace(kitchenMood(), 'rico-md')}<h2 class="rico-hello">${esc(ricoGreeting())}</h2></div>
+    ${renderRicoNext()}${renderRicoWeek()}
     <div class="rico-chips">${chips.map((c,i)=>`<button class="rico-chip" data-rico-ask="${esc(c)}" data-rico-action="${actions[i]}">${esc(c)}</button>`).join('')}</div>
+    <button type="button" class="rico-link" id="ricoMemoryBtn">${esc(t('memoryTitle'))}</button>
     ${(rico.chats || []).length ? `<section class="rico-recent">
       <div class="rico-recent-h"><span>${esc(t('ricoRecentChats'))}</span><button class="rico-link" data-rico-history>${esc(t('ricoSeeAll'))}</button></div>
       ${rico.chats.slice(0,3).map(c=>`<button class="rico-recent-row" data-rico-chat="${esc(c.id)}">${chatOwnerMark(c)}<span dir="auto">${esc(c.title || t('ricoUntitled'))}</span><small>${esc(timeAgo(c.updatedAt))}</small></button>`).join('')}
@@ -275,7 +261,7 @@ function renderRicoMessage(m, i){
   return `<div class="rico-msg bot${m.streaming?' streaming':''}" id="rico-m-${i}">
     ${ricoFace(mood, 'rico-sm')}
     <div class="rico-col">
-      ${stepsHtml}${typing}${body ? `<div class="rico-bubble mood-tint-${mood}" dir="auto"><div class="rico-text">${body}</div></div>` : ''}${status}${picker}${cards}${err}
+      ${stepsHtml}${typing}${body ? `<div class="rico-bubble mood-tint-${mood}" dir="auto"><div class="rico-text">${body}</div></div>` : ''}${status}${picker}${cards}${renderRicoReceipt(m, i)}${renderRicoCheck(m)}${err}${m.text && !m.streaming && ricoCanSpeak() ? `<button type="button" class="rico-link rico-speak" data-rico-speak="${i}">${esc(t('speakBtn'))}</button>` : ''}
     </div>
   </div>`;
 }
@@ -360,6 +346,7 @@ function renderRicoProposalCard(p, mi){
     icon=NAV_ICONS.order;title=t('ricoReviewChanges');
     body=[...groups].map(([supplier,items])=>`<div class="rico-card-group"><div class="rico-card-sup">${supplierMono(supplier)}${esc(supplier)}</div>${items.map(item=>`<div class="rico-card-line"><span dir="auto">${esc(item.name)}<small>${esc(unitLabel(item.unit))}</small></span><b class="rico-quantity-change"><span aria-label="${esc(t('currentQuantity'))}">${esc(before[item.id]||0)}</span><i aria-hidden="true">→</i><span aria-label="${esc(t('newQuantity'))}">${esc(after?.[item.id]||0)}</span></b></div>`).join('')}</div>`).join('')
       +(p.note?`<div class="rico-card-note">${esc(p.note)}</div>`:'')
+      +(p.why?`<details class="rico-why"><summary>${esc(t('whyLabel'))}</summary><span dir="auto">${esc(p.why)}</span></details>`:'')
       +`<div class="rico-card-note">${esc(t(p.mode==='add'?'ricoAddsToDraft':'ricoSetsDraft'))}</div>`;
     return ricoCard(icon,title,body,actions(t('ricoApplyChanges')),p);
   }
@@ -518,6 +505,9 @@ function ricoReadDraft(){
 
 /* ---------- Events ---------- */
 function attachAssistantEvents(){
+  const briefingRoot = document.querySelector('.rico-brief');
+  if(briefingRoot){ attachBriefing(briefingRoot); attachRicoThreadEvents(briefingRoot); }
+  document.getElementById('ricoInboxAll')?.addEventListener('click', openRicoInboxSheet);
   const input = document.getElementById('ricoInput');
   const form = document.getElementById('ricoComposer');
   if(input){
@@ -561,7 +551,17 @@ function attachAssistantEvents(){
   ricoMarkInboxRead();
 }
 function attachRicoThreadEvents(root){
-  root.querySelectorAll('[data-rico-ask]').forEach(b=>b.onclick=()=>ricoAsk(b.dataset.ricoAsk, {quickAction:b.dataset.ricoAction}));
+  root.querySelectorAll('[data-rico-ask]').forEach(b=>b.onclick=()=>{
+    // These two are answered on this phone, as a receipt and a checklist.
+    if(b.dataset.ricoAction === 'last_order' && canOpen('history')) return ricoAnswerLastOrder(b.dataset.ricoAsk);
+    if(b.dataset.ricoAction === 'check_order' && canOpen('history')) return ricoAnswerCheck(b.dataset.ricoAsk);
+    ricoAsk(b.dataset.ricoAsk, {quickAction:b.dataset.ricoAction});
+  });
+  root.querySelectorAll('[data-rico-day]').forEach(b=>b.onclick=()=>ricoAsk(t('weekAsk')(b.dataset.ricoDay)));
+  root.querySelector('#ricoMemoryBtn')?.addEventListener('click', openRicoMemory);
+  root.querySelectorAll('[data-receipt-same]').forEach(b=>b.onclick=()=>ricoReceiptToCart(rico.messages[+b.dataset.receiptSame]));
+  root.querySelectorAll('[data-rico-speak]').forEach(b=>b.onclick=()=>ricoSpeak(rico.messages[+b.dataset.ricoSpeak]?.text || ''));
+  if(root.querySelector('.rico-check [data-issue]')) attachOrderIssues(root.querySelector('.rico-check'));
   root.querySelectorAll('[data-rico-chat]').forEach(b=>b.onclick=()=>ricoOpenChat(b.dataset.ricoChat));
   root.querySelectorAll('[data-rico-history]').forEach(b=>b.onclick=()=>ricoOpenHistory());
   root.querySelectorAll('[data-rico-steps]').forEach(d=>d.ontoggle=()=>{ const m=rico.messages[+d.dataset.ricoSteps]; if(m) m.stepsOpen=d.open; });
@@ -659,7 +659,7 @@ async function ricoAsk(text, options = {}){
   const body = {
     messages: ricoHistoryForServer(), lang: state.lang, screen: previousView,
     autoOrder: ricoAutoOrder(), cart: Object.fromEntries(Object.entries(state.cart).filter(([,q])=>q>0)),
-    quickAction: options.quickAction || undefined, supplierIds: options.supplierIds || undefined,
+    quickAction: options.quickAction || undefined, supplierIds: options.supplierIds || undefined, style: typeof ricoStyle === 'function' ? ricoStyle() : undefined,
   };
   await apiStream('assistant/chat', body, ev=>{
     if(!ricoContextCurrent(context)) return;
@@ -867,11 +867,13 @@ function ricoChatTitle(){
   return first ? ricoClean(first.text).replace(/\s+/g, ' ').trim().slice(0, 80) : '';
 }
 function ricoSerialize(){
-  return rico.messages.filter(m=>!m.streaming && (m.role === 'user' || m.text || (m.proposals||[]).length || m.error)).slice(-200).map(m=>{
+  return rico.messages.filter(m=>!m.streaming && (m.role === 'user' || m.text || (m.proposals||[]).length || m.error || m.receipt || m.check)).slice(-200).map(m=>{
     const out = {role:m.role, text:m.text || '', ts:m.ts || Date.now()};
     if(m.mood) out.mood = m.mood;
     if(m.error) out.error = m.error;
     if(m.steps && m.steps.length) out.steps = m.steps;
+    if(m.receipt) out.receipt = m.receipt;
+    if(m.check) out.check = m.check;
     if(m.proposals && m.proposals.length) out.proposals = m.proposals.map(({undo, draftBefore, ...p})=>({...p, status: p.status === 'saving' ? 'pending' : p.status}));
     return out;
   });
