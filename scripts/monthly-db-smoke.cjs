@@ -364,6 +364,27 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  await db.exec("update app_wipe set next_wipe=(now() at time zone 'Asia/Baghdad')::date; select app_internal_cleanup();");
  assert.deepEqual((await q("select supplier_name from app_rico_orders order by 1")).map(r=>r.supplier_name),['Recent'],'the wipe day takes the 61-day one and keeps the 59-day one');
  await db.exec("delete from app_rico_orders;");
+ // Restore: a daily copy, 7 days kept, brings back only what is gone; PIN is checked by the API.
+ await db.exec(`insert into app_units(id,en) values('bk-u','kg') on conflict do nothing;
+   insert into app_suppliers(id,name) values('bk-s','Backup supplier');
+   insert into app_items(id,name,unit_id,supplier_id,place) values('bk-i','Backup item','bk-u','bk-s','Cold room');
+   insert into app_orders(id,status,sent_at,sent_by) values('bk-o','sent',now(),'rozha');
+   insert into app_order_lines(order_id,supplier_id,supplier_name,item_id,item_name,unit_id,qty) values('bk-o','bk-s','Backup supplier','bk-i','Backup item','bk-u',5);
+   insert into app_backups(day,data) values(current_date-30,'{}');
+   select app_internal_make_backup();`);
+ assert.equal((await q("select count(*)::int as n from app_backups where day<current_date-20"))[0].n,0,'copies older than 7 days go');
+ const copyDay=(await q("select to_char(max(day),'YYYY-MM-DD') as d from app_backups"))[0].d;
+ assert.equal((await q("select app_internal_list_backups() as r"))[0].r[0].day,copyDay,'the list says what is kept');
+ await db.exec("delete from app_orders where id='bk-o'; delete from app_items where id='bk-i'; delete from app_suppliers where id='bk-s'; update app_units set en='changed' where id='bk-u';");
+ await assert.rejects(q(`select app_internal_restore_backup('${copyDay}','yunis','d')`),/Forbidden/,'only Rozha restores');
+ const restored2=(await q(`select app_internal_restore_backup('${copyDay}','rozha','r-phone') as r`))[0].r;
+ assert.ok(restored2.orders===1&&restored2.items===1&&restored2.suppliers===1,'what was deleted comes back');
+ assert.equal((await q("select count(*)::int as n from app_order_lines where order_id='bk-o'"))[0].n,1,'with its lines');
+ assert.equal((await q("select place from app_items where id='bk-i'"))[0].place,'Cold room');
+ assert.equal((await q("select en from app_units where id='bk-u'"))[0].en,'changed','what exists now is not changed');
+ assert.equal((await q("select app_internal_restore_backup('1999-01-01','rozha','d') as r"))[0].r.error,'not_found');
+ for(const t of ['app_backups','app_rico_rules']) assert.equal((await q(`select has_table_privilege('anon','${t}','select') as a`))[0].a,false,t+' is closed to the browser roles');
+ await db.exec("delete from app_order_lines where order_id='bk-o'; delete from app_orders where id='bk-o'; delete from app_items where id='bk-i'; delete from app_suppliers where id='bk-s'; delete from app_units where id='bk-u'; delete from app_backups; delete from app_audit_events where entity_type='backup';");
  // Health Check reads the database itself.
  await assert.rejects(q("select app_internal_diagnostics('yunis')"),/Forbidden/);
  const health=(await q("select app_internal_diagnostics('rozha') as r"))[0].r;

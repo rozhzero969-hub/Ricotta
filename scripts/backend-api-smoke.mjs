@@ -351,6 +351,22 @@ try {
   const sixtyDays = await call('bootstrap', null, 'GET');
   assert.equal(sixtyDays.status, 200);
   assert.deepEqual((await sixtyDays.json()).history.map(h => h.id).sort(), ['o-45', 'o-61'], 'History shows everything still kept: the wipe day decides what goes');
+  // Rico's rules, an item's place, restoring: who may do what.
+  reset();
+  tables.app_rico_rules = [];
+  assert.equal((await call('rico-rules', { rule: 'Never order fish on Friday' })).status, 200);
+  assert.equal(tables.app_rico_rules[0].rule, 'Never order fish on Friday');
+  assert.equal((await call('rico-rules', { rule: ' ' })).status, 400, 'an empty rule is refused');
+  assert.deepEqual((await (await call('rico-rules', null, 'GET')).json()).map(r => r.rule), ['Never order fish on Friday']);
+  assert.equal((await call('items/tomato/extra', { place: 'Cold room' }, 'PUT')).status, 200);
+  assert.equal(tables.app_items.find(i => i.id === 'tomato').place, 'Cold room');
+  assert.equal((await call('items/none/extra', { place: 'x' }, 'PUT')).status, 409, 'a deleted item says so');
+  assert.equal((await call('admin/backups/restore', { day: 'yesterday', pin: '123456' })).status, 400);
+  reset(); tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis'; tables.app_sessions[0].app_accounts = { roles: ['send', 'history'] };
+  assert.equal((await call('items/tomato/extra', { place: 'x' }, 'PUT')).status, 403, 'a place needs the catalog role');
+  assert.equal((await call('admin/backups', null, 'GET')).status, 403, 'backups are Rozha\'s');
+  assert.equal((await call('admin/backups/restore', { day: '2026-11-01', pin: '123456' })).status, 403);
+  assert.equal((await call('items/tomato/photo', { image: 'x' })).status, 403);
   // Rico's cheer goes only to someone who has Rico.
   for (const [roles, cheers] of [[['send', 'history'], 0], [['send', 'history', 'assistant'], 1]]) {
     reset(); saved = true;

@@ -28,6 +28,12 @@ Unfinished orders sync between devices signed in to the same account. Quantities
 - **App icon badge**: late suppliers (Home Screen app; on iPhone with notifications on).
 - **Month archive** (`app_month_summaries`): when a month ends, `app_internal_monthly_cleanup` keeps its summary (orders, days, top items, suppliers, who sent). History › Past months.
 - **Friday summary**: Rico's short weekly recap on Friday evening.
+- **Features** (`features.js`): Settings switches per person on their device, each with a default; small touches have no switch.
+- **Order helpers** (`order-tools-plus.js`): odd amounts, forgotten items, the usual order for a weekday, swipe for the usual, reading a pasted message or a photo of a list (`orders/read-list`, Gemini), places (`app_items.place`), pictures (public `item-photos` storage bucket, made on first upload), a printable sheet, hold to send and a 10-second countdown. WhatsApp's own sends can't be recalled.
+- **Rico tab** (`rico-plus.js`): next step, the week, the morning briefing, receipts and the order check answered on the phone, What Rico remembers (`app_rico_rules`), read aloud with the phone's own voices (not every phone has Kurdish), and his sheet on Order. Rico himself is the Spark; `rico-<mood>.png` are his notification pictures.
+- **Reports** (`reports-plus.js`): charts, trends, comparing months, a past month as PDF, the year, milestones, today's board on computers, and the tour.
+- **Restore** (`app_backups`): a daily copy on the server, kept 7 days. Admin, Restore brings back only what is gone, after Rozha's PIN.
+- **Rico's letter and the daily check**: on the 1st, a letter from the finished month's summary; each morning a quiet line for Rozha in Rico's messages (no notification).
 - On phones the WhatsApp buttons open the WhatsApp app directly (`whatsapp://send`); computers use `wa.me`.
 
 The Lab (`lab/`, see its README) runs the real app on sample data for trying these without touching the kitchen.

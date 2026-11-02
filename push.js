@@ -193,7 +193,15 @@ async function saveReminder(enabled, time){
 function handlePushIntent(kind, supplierId, message, view){
   if(!state.account) return;
   if(kind === 'security'){ if(canOpen('admin')){ goView('admin'); openAdminPage('security'); } return; }
-  if(kind === 'assistant'){ ricoRefreshInbox(); if(view === 'history' && canOpen('history')) goView('history'); else if(canOpen('assistant')) goView('assistant'); }
+  if(kind === 'assistant'){
+    ricoRefreshInbox();
+    if(view === 'history' && canOpen('history')) goView('history');
+    else if(canOpen('assistant')){
+      goView('assistant');
+      // A message about a supplier that is due: go straight to preparing its order.
+      if(supplierId && state.suppliers.some(s => s.id === supplierId)) document.querySelector(`[data-rico-late="${CSS.escape(supplierId)}"]`)?.click();
+    }
+  }
   else if(kind === 'reminder' || kind === 'supplier'){
     if(kind === 'supplier' && supplierId && state.suppliers.some(s => s.id === supplierId)) state.orderTab = supplierId;
     if(state.view === 'order') render(); else goView('order');

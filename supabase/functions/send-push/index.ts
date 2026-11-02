@@ -237,7 +237,8 @@ async function ricoSays(kind: string, key: string, words: Words, extra: Record<s
   return await sendReminder((lang, name) => ({
     title: RICO[lang],
     body: lang === "ku" ? words.ku(name ?? "") : lang === "ar" ? words.ar(name ?? "") : words.en(name ?? ""),
-    kind: "assistant", mood: moodOf(words.mood), tag: `ricotta-rico-${key}`, ...extra,
+    kind: "assistant", mood: moodOf(words.mood), tag: `ricotta-rico-${key}`,
+    ...(extra.supplierId ? { actionTitle: lang === "ku" ? "ئامادەی بکە" : lang === "ar" ? "جهّزه" : "Prepare it" } : {}), ...extra,
   }), allowed);
 }
 /* "Hey Rozha!" when the name is known, "Hey!" when it isn't. */
@@ -382,9 +383,9 @@ async function reportTick() {
   const month = now.date.slice(0, 7);
   return await saysOnce(`report|${month}`, "report", null, () => ricoSays("report", `report|${month}`, {
     mood: "excited",
-    en: (n) => `${hi("Hey", n)}! This month's report card is ready in History. Save the month there before it's cleared at midnight.`,
-    ku: (n) => `${hi("هەی", n)}! کارتی ڕاپۆرتی ئەم مانگە لە مێژوودا ئامادەیە. پێش ئەوەی نیوەشەو بسڕدرێتەوە مانگەکە پاشەکەوت بکە.`,
-    ar: (n) => `${ya(n)}! بطاقة تقرير هذا الشهر جاهزة في السجل. احفظ الشهر هناك قبل أن يُمسح عند منتصف الليل.`,
+    en: (n) => `${hi("Hey", n)}! This month's report card is ready in History, with its Excel file and PDF.`,
+    ku: (n) => `${hi("هەی", n)}! کارتی ڕاپۆرتی ئەم مانگە لە مێژوودا ئامادەیە، لەگەڵ فایلی ئێکسڵ و PDF.`,
+    ar: (n) => `${ya(n)}! بطاقة تقرير هذا الشهر جاهزة في السجل، مع ملف إكسل وملف PDF.`,
   }, { view: "history" })) ?? { skipped: "already sent" };
 }
 
@@ -422,13 +423,55 @@ async function cutoffTick() {
   return out;
 }
 
+/* ---- The 1st of the month: Rico's letter about the month that ended, from its summary ---- */
+async function letterTick() {
+  const now = erbilNow();
+  if (now.date.slice(8) !== "01" || now.minutes < 9 * 60) return { skipped: "not the time" };
+  const rows = must(await sb.from("app_month_summaries").select("month,data").lt("month", now.date.slice(0, 7)).order("month", { ascending: false }).limit(2), "months") as any[];
+  const last = rows?.[0];
+  if (!last) return { skipped: "no finished month" };
+  const n = Number(last.data?.orders) || 0, top = String(last.data?.topItems?.[0]?.name ?? "").slice(0, 60);
+  const before = rows?.[1] ? Number(rows[1].data?.orders) || 0 : null;
+  const change = (more: string, fewer: string, same: string) => before === null ? "" : n > before ? more.replace("#", String(n - before)) : n < before ? fewer.replace("#", String(before - n)) : same;
+  const key = `letter|${last.month}`;
+  return await saysOnce(key, "report", null, () => ricoSays("report", key, {
+    mood: "happy",
+    en: (name) => `${hi("Hi", name, " ")}, here's ${last.month}: ${n} orders${change(", # more than the month before", ", # fewer than the month before", ", the same as the month before")}${top ? `. Most ordered: ${top}` : ""}. The full report is in History, Past months.`,
+    ku: (name) => `${hi("سڵاو", name)}، ئەمە ${last.month}: ${n} داواکاری${before === null ? "" : n > before ? `، ${n - before} زیاتر لە مانگی پێشوو` : n < before ? `، ${before - n} کەمتر لە مانگی پێشوو` : `، وەک مانگی پێشوو`}${top ? `. زۆرترین داواکراو: ${top}` : ""}. ڕاپۆرتی تەواو لە مێژوو، مانگەکانی ڕابردوو.`,
+    ar: (name) => `${ya(name)}، هذا ${last.month}: ${n} طلبًا${before === null ? "" : n > before ? `، بزيادة ${n - before} عن الشهر السابق` : n < before ? `، بنقص ${before - n} عن الشهر السابق` : `، مثل الشهر السابق`}${top ? `. الأكثر طلبًا: ${top}` : ""}. التقرير الكامل في السجل، الأشهر الماضية.`,
+  }, { view: "history" })) ?? { skipped: "already sent" };
+}
+
+/* ---- Each morning: one quiet line for Rozha in Rico's messages, no notification ---- */
+async function healthTick() {
+  const now = erbilNow();
+  if (now.minutes < 8 * 60) return { skipped: "before 8:00" };
+  const copy = must(await sb.from("app_backups").select("day").order("day", { ascending: false }).limit(1), "backups") as any[];
+  const ai = must(await sb.from("app_ai_status").select("provider,state"), "ai") as any[];
+  const subs = must(await sb.from("app_push_subscriptions").select("endpoint").limit(1), "subs") as any[];
+  const yesterday = new Date(Date.parse(`${now.date}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  const backupOk = !!copy?.[0] && String(copy[0].day) >= yesterday;
+  const aiOk = (ai ?? []).some((a: any) => a.state === "working");
+  const pushOk = (subs ?? []).length > 0;
+  const allOk = backupOk && aiOk && pushOk;
+  const say = (ok: boolean, good: string, bad: string) => ok ? good : bad;
+  const { error } = await sb.from("app_rico_inbox").upsert([{
+    account: "rozha", kind: "health", mood: allOk ? "calm" : "worried", dedupe_key: `health|${now.date}|rozha`,
+    body_en: `Daily check: backup ${say(backupOk, "OK", "missing")}, Rico ${say(aiOk, "OK", "having trouble")}, notifications ${say(pushOk, "OK", "no phones signed up")}.`,
+    body_ku: `پشکنینی ڕۆژانە: پاشەکەوت ${say(backupOk, "باشە", "نییە")}، ریکۆ ${say(aiOk, "باشە", "کێشەی هەیە")}، ئاگادارکردنەوەکان ${say(pushOk, "باشە", "هیچ ئامێرێک تۆمار نەکراوە")}.`,
+    body_ar: `الفحص اليومي: النسخة الاحتياطية ${say(backupOk, "سليمة", "غير موجودة")}، ريكو ${say(aiOk, "سليم", "به مشكلة")}، الإشعارات ${say(pushOk, "سليمة", "لا أجهزة مسجلة")}.`,
+  }], { onConflict: "dedupe_key", ignoreDuplicates: true });
+  if (error) throw error;
+  return { ok: allOk };
+}
+
 /* ---- 2 days before the wipe day: Rico says so once, in the morning ---- */
 async function wipeTick() {
   const now = erbilNow();
   if (now.minutes < 9 * 60) return { skipped: "before 9:00" };
   const row = must(await sb.from("app_wipe").select("next_wipe").eq("id", true).maybeSingle(), "wipe") as any;
   if (!row?.next_wipe) return { skipped: "no wipe day" };
-  const left = Math.round((Date.parse(`${row.next_wipe}T00:00:00Z`) - Date.parse(`${now.date}T00:00:00Z`)) / dayMs);
+  const left = Math.round((Date.parse(`${row.next_wipe}T00:00:00Z`) - Date.parse(`${now.date}T00:00:00Z`)) / 86400000);
   if (left !== 2) return { skipped: "not yet" };
   const key = `wipe|${row.next_wipe}`;
   return await saysOnce(key, "wipe", null, () => ricoSays("wipe", key, {
@@ -545,6 +588,8 @@ Deno.serve(async (req) => {
         try { result.streak = await streakTick(); } catch (e) { console.error("streak tick failed", e); result.streak = { error: true }; }
         try { result.report = await reportTick(); } catch (e) { console.error("report tick failed", e); result.report = { error: true }; }
         try { result.cutoff = await cutoffTick(); } catch (e) { console.error("cutoff tick failed", e); result.cutoff = { error: true }; }
+        try { result.letter = await letterTick(); } catch (e) { console.error("letter tick failed", e); result.letter = { error: "failed" }; }
+        try { result.health = await healthTick(); } catch (e) { console.error("health tick failed", e); result.health = { error: "failed" }; }
         try { result.wipe = await wipeTick(); } catch (e) { console.error("wipe tick failed", e); result.wipe = { error: "failed" }; }
         try { result.weekly = await weeklyTick(); } catch (e) { console.error("weekly tick failed", e); result.weekly = { error: true }; }
         return json(result);

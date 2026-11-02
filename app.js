@@ -524,6 +524,7 @@ function applyData(d){
   state.months = Array.isArray(d.months) ? d.months : [];
   state.nextWipe = d.nextWipe || null;
   applyFeatures();
+  setTimeout(()=>{ checkMilestones(); maybeShowTour(); }, 800);
   state.sharedDraft = d.draft || null;
   ricoSetInbox(d.inbox || []);
   paintStreakChip(false);
@@ -1214,7 +1215,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLangMenu(); 
 /* ---------- Page transitions ----------
    Like an iPhone's tab bar, tapping a screen cross-fades to it quickly; only a finger swiping the
    page slides it. Redrawing the same screen never plays an entrance animation. */
-const PAGE_TRANSITION = {ms:200};
+const PAGE_TRANSITION = {ms:220};
 const SWIPE_MS = 200;
 const PAGE_EASE = 'cubic-bezier(.25,.1,.25,1)';
 // After a swipe the page is already moving with the finger, so it keeps going and settles without a bounce.
@@ -1227,7 +1228,7 @@ function endGlide(){
   glide.content.classList.remove('gliding');
   glide = null;
 }
-const FADE_FRAMES = {inn:[{opacity:0},{opacity:1}], out:[{opacity:1},{opacity:0}]};
+const FADE_FRAMES = {inn:[{opacity:0, transform:'translate3d(0,6px,0)'},{opacity:1, transform:'none'}], out:[{opacity:1},{opacity:0}]};
 /* After a swipe both pages travel together, edge to edge: the old one slides
    all the way off to the other side while the new one pushes in beside it.
    Nothing fades and nothing overlaps, so no page ever shows through another. */
@@ -1330,7 +1331,7 @@ function pagePeek(view, content){
 }
 (function initPageSwipe(){
   let g = null;
-  const blocked = el=>el.closest('input,textarea,select,.stepper,.order-tabs,.record-filters,.manage-sections,.pill-seg,.rico-composer,.bottom-stack,.item-sort-list,.day-chips,.unit-grid,.rico-picker-list,.data-table-scroll,#modalRoot .modal-overlay,.ctx-layer,.lang-layer');
+  const blocked = el=>(typeof featureOn === 'function' && featureOn('swipe') && el.closest('.item-row')) || el.closest('.order-quick-actions,input,textarea,select,.stepper,.order-tabs,.record-filters,.manage-sections,.pill-seg,.rico-composer,.bottom-stack,.item-sort-list,.day-chips,.unit-grid,.rico-picker-list,.data-table-scroll,#modalRoot .modal-overlay,.ctx-layer,.lang-layer');
   const dropPeek = s=>{ s.peek?.layer.remove(); s.peek = null; };
   document.addEventListener('pointerdown', e=>{
     if(!isPhoneLayout() || e.pointerType==='mouse' || !state.account) return;
@@ -1659,6 +1660,12 @@ function placeTopbarTitle(bar, title){
 // Capturing: in the app frame it is the content, not the page, that scrolls.
 document.addEventListener('scroll', updateTopbar, {passive:true, capture:true});
 /* Restarts a CSS "bump" animation on an element (used for changing numbers). */
+/* A number rolls to its new value, up or down. */
+function rollNumber(el, to, up = true){
+  el.textContent = to;
+  if(reducedMotion()) return;
+  el.animate?.([{transform:`translateY(${up ? '45%' : '-45%'})`, opacity:.2}, {transform:'none', opacity:1}], {duration:220, easing:'cubic-bezier(.2,.8,.2,1)'});
+}
 function bump(el){
   if(!el) return;
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
@@ -1752,7 +1759,7 @@ function renderTopbar(){
     <div class="topbar-actions">
       ${renderStreakChip()}
       <div class="chip conn-chip" id="connectionStatus" role="status"${state.apiOnline?' hidden':''}><span></span><em>${esc(t('offline'))}</em></div>
-      ${canOpen('assistant') ? `<button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${ICON_SPARKLE}<span class="rico-top-name">${esc(t('ricoName'))}</span><i class="rico-badge" hidden></i></button>` : ''}
+      ${canOpen('assistant') ? `<button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${ricoFace(kitchenMood(), 'rico-top-face')}<i class="rico-badge" hidden></i></button>` : ''}
       <button type="button" class="account-btn" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
     </div>
   </header>`;
@@ -2140,6 +2147,12 @@ function renderOrder(){
     <div id="ricoSuggest">${renderRicoSuggestion()}</div>
     <div class="order-quick-actions">
       ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}<span>${t('sameAsLastTime')}</span></button>` : ''}
+      ${renderRicoOrderButton()}
+      ${weekdayOrder().length ? `<button class="quick-btn" id="dayOrderBtn">${ICON_CALENDAR}<span>${esc(t('dayOrderBtn')(formatIraqDateTime(new Date(), {weekday:'long'})))}</span></button>` : ''}
+      ${canDo('send') ? `<button class="quick-btn" id="readListBtn">${ICON_CAMERA}<span>${esc(t('listBtn'))}</span></button>` : ''}
+      ${knownPlaces().length ? `<button class="quick-btn${orderByPlace() ? ' on' : ''}" id="placeSortBtn" aria-pressed="${orderByPlace()}">${NAV_ICONS.manage}<span>${esc(t('placeSort'))}</span></button>` : ''}
+      <button class="quick-btn" id="printSheetBtn">${ICON_SHEET}<span>${esc(t('printBtn'))}</span></button>
+      <button class="quick-btn board-only" id="dayBoardBtn">${ICON_CALENDAR}<span>${esc(t('boardBtn'))}</span></button>
       <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${ICON_DELETE}<span>${t('clearOrder')}</span></button>
     </div>
     ${tabsHtml}
@@ -2168,6 +2181,12 @@ function renderOrderResults(){
     const key = i.supplierId || '__none';
     (groups[key] = groups[key]||[]).push(i);
   });
+  if(orderByPlace() && !q){
+    return itemsByPlace(visibleItems).map(([place, list])=>`<div class="supplier-group">
+      <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(place || '·')}${esc(place || t('placeNone'))}<span class="supplier-item-count">${list.length}</span></span></div>
+      <div class="supplier-items-grid">${list.map(i=>itemRowHtml(i, lastQty)).join('')}</div>
+    </div>`).join('');
+  }
   const groupHtml = Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
     const label = key==='__none' ? t('noSupplier') : supplierName(key);
     // Pinned items show only under Pinned: a supplier whose items are all pinned has no group of its own.
@@ -2193,6 +2212,7 @@ function itemRowHtml(i, lastQty){
   const qty = state.cart[i.id] || 0;
   return `
       <div class="item-row ${qty>0?'has-qty':''}" data-item-id="${esc(i.id)}">
+        ${i.photoUrl && featureOn('itemPhotos') ? `<img class="item-photo" src="${esc(i.photoUrl)}" alt="" loading="lazy">` : ''}
         <div class="item-info">
           <div class="item-name">${state.pins.includes(i.id) ? `<span class="item-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(i.name)}</div>
 
@@ -2235,7 +2255,7 @@ function refreshCartSummary(){
     const stat = hero.querySelector('.hero-stat');
     const count = hero.querySelector('.hero-count');
     const sub = hero.querySelector('.hero-sub');
-    if(count && count.textContent !== String(c)){ count.textContent = c; bump(count); }
+    if(count && count.textContent !== String(c)){ rollNumber(count, c, c > Number(count.textContent)); }
     hero.querySelector('.hero-word').textContent = t('heroStatWord')(c);
     if(stat) stat.setAttribute('aria-label', t('heroStat')(c));
     if(sub) sub.textContent = t('heroSub')(selectedCount, selectedSupplierCount);
@@ -2354,9 +2374,23 @@ function attachOrderEvents(){
     toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before;persistCartDraft();paintDraftStatus(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
   };
   const send = document.getElementById('sendOrdersBtn');
-  if(send) send.onclick = ()=>startSendQueue();
+  if(send && featureOn('holdSend')) attachHoldToSend(send, reviewedSend);
+  else if(send) send.onclick = reviewedSend;
+  document.getElementById('dayOrderBtn')?.addEventListener('click', loadWeekdayOrder);
+  document.getElementById('readListBtn')?.addEventListener('click', openReadList);
+  document.getElementById('printSheetBtn')?.addEventListener('click', printOrderSheet);
+  document.getElementById('dayBoardBtn')?.addEventListener('click', openDayBoard);
+  document.getElementById('ricoFloat')?.addEventListener('click', openRicoOrderSheet);
+  document.getElementById('placeSortBtn')?.addEventListener('click', ()=>{ lset('orderByPlace', orderByPlace() ? null : true); render(); });
   const options=document.querySelector('.order-options');
   options?.addEventListener('toggle',()=>{if(options.open)loadRicoSuggestion();});
+}
+/* The Send button: the order check, then 10 seconds to change your mind, then the send screen. */
+async function reviewedSend(){
+  if(!canDo('send') || sharedDraft.conflicts.length || state.queue?.record) return startSendQueue();
+  if(!(await reviewBeforeSend())) return false;
+  if(!cartCount() || !(await sendCountdown())) return false;
+  return startSendQueue();
 }
 /* Opens Send to suppliers with the current draft (the Send button, and
    Rico's "open send" shortcut). Returns false when there is nothing to send. */
@@ -2430,6 +2464,7 @@ function restoreQueue(){
 }
 function attachOrderResultEvents(root){
   if(!root) return;
+  attachSwipeUsual(root);
   root.querySelectorAll('[data-sort-supplier]').forEach(button=>button.onclick=()=>openSupplierItemOrder(button.dataset.sortSupplier));
   root.querySelectorAll('[data-inc],[data-dec]').forEach(b=>{
     // Pointer presses are handled by the hold-to-repeat code below; a click
@@ -3350,11 +3385,12 @@ function openItemModal(id){
         <select id="mfSupplier">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
-      <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
+      ${itemExtraFields(existing)}<label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
       `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
     onOpen: (box)=>{
+      attachItemExtras(box, existing);
       const sel = box.querySelector('#mfSupplier');
       const hint = box.querySelector('#mfSupHint');
       if(sel && hint) sel.onchange = ()=>{
@@ -3369,6 +3405,10 @@ function openItemModal(id){
       const note = document.getElementById('mfNote').value.trim().slice(0, 120), aliases=parseAliases(document.getElementById('mfAliases').value), available=document.getElementById('mfAvailable').checked;
       if(!name) return {error: t('nameRequired')};
       if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
+      if(existing){
+        const liveItem = state.items.find(x=>x.id===existing.id);
+        if(liveItem && !(await saveItemPlace(liveItem, document.getElementById('mfPlace')?.value || ''))) return {error: t('saveFailed')};
+      }
       const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
       const editing = existing;
       if(editing){
@@ -3565,6 +3605,7 @@ function renderSettings(){
 function renderHelpSettings(){
   return `<div class="section-title">${esc(t('settingsHelp'))}</div><div class="form-card settings-rows">
     <button type="button" class="settings-row" id="reportProblemBtn">${ICON_REPORT}<span>${esc(t('reportProblem'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
+    <button type="button" class="settings-row" id="tourBtn">${ICON_SPARKLE}<span>${esc(t('tourBtn'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
     <button type="button" class="settings-row" id="shortcutsBtn">${ICON_KEYBOARD}<span>${esc(t('keyboardShortcuts'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button></div>`;
 }
 function openReportProblem(){
@@ -3697,6 +3738,7 @@ function attachSettingsEvents(){
   document.getElementById('settingsSignOut').onclick = ()=>doLogout();
   document.getElementById('reportProblemBtn').onclick = openReportProblem;
   document.getElementById('shortcutsBtn').onclick = openShortcuts;
+  document.getElementById('tourBtn').onclick = openTour;
   attachNotifEvents();
 }
 

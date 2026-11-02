@@ -70,7 +70,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { adminAi, handleChat, handleTranscribe, orderSuggestion, whatsappReady } from "./assistant.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
-import { cleanStockList, listStockItems, readTransferList } from "./stock.ts";
+import { cleanStockList, listStockItems, readOrderList, readTransferList } from "./stock.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -203,7 +203,7 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 
 /* ---------- Shapes the browser uses ---------- */
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, cutoff: s.cutoff ?? null });
-const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false,
+const toItem = (i: any) => ({ id: i.id, name: i.name, place: i.place ?? null, photoUrl: i.photo_url ?? null, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false,
   createdAt: i.created_at ?? null, lastOrderedAt: i.last_ordered_at ?? null });
 /* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
    had one; recoverable: how many days Rico can bring back after it broke. */
@@ -313,7 +313,7 @@ async function bootstrap(s: Session) {
   const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, months, draft, wipe] = await Promise.all([
     readAccount(s.account),
     readAll(() => app("suppliers").select("id,name,phone,reminder,cutoff").order("name").order("id")),
-    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at").order("name").order("id")),
+    readAll(() => app("items").select("id,name,place,photo_url,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at").order("name").order("id")),
     readAll(() => app("units").select("id,en,ku,ar").order("id")),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")),
     readReminder(),
@@ -520,6 +520,32 @@ const CATALOG_FIELDS: Record<string, Record<string, string[]>> = {
   suppliers: { name: ["name"], phone: ["phone"], reminder: ["reminder"], cutoff: ["cutoff"] },
   items: { name: ["name"], unit: ["unit_id"], supplierId: ["supplier_id", "sort_order"], note: ["note"], aliases: ["aliases"], available: ["available"], sortOrder: ["sort_order"] },
 };
+/* Item pictures live in a public storage bucket: nothing about them is private, and the phone resizes them first. */
+const PHOTO_BUCKET = "item-photos";
+const MAX_PHOTO_BYTES = 200_000;
+async function saveItemPhoto(id: string, b: any) {
+  const { data: item, error: readError } = await app("items").select("id,photo_url").eq("id", id).maybeSingle();
+  if (readError) return fail("save_failed", 500);
+  if (!item) return fail("gone", 409);
+  const store = db.storage.from(PHOTO_BUCKET);
+  const old = String(item.photo_url ?? "").split(`/${PHOTO_BUCKET}/`)[1];
+  let url: string | null = null;
+  if (b) {
+    const image = typeof b.image === "string" ? b.image.replace(/^data:[^,]*,/, "") : "";
+    if (!image || !/^[A-Za-z0-9+/=]+$/.test(image) || image.length > MAX_PHOTO_BYTES * 1.4) return fail("invalid_input");
+    const bytes = Uint8Array.from(atob(image), (c) => c.charCodeAt(0));
+    if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return fail("invalid_input");   // the app always sends a JPEG
+    const name = `${crypto.randomUUID()}.jpg`;
+    await db.storage.createBucket(PHOTO_BUCKET, { public: true, fileSizeLimit: MAX_PHOTO_BYTES, allowedMimeTypes: ["image/jpeg"] }).catch(() => null);
+    const { error } = await store.upload(name, bytes, { contentType: "image/jpeg", cacheControl: "31536000" });
+    if (error) return fail("save_failed", 500);
+    url = store.getPublicUrl(name).data.publicUrl;
+  }
+  const { error } = await app("items").update({ photo_url: url }).eq("id", id);
+  if (error) return fail("save_failed", 500);
+  if (old) await store.remove([old]).catch(() => null);
+  return json({ ok: true, photoUrl: url });
+}
 function catalogRow(table: string, id: string, b: any) {
   if (!Array.isArray(b.only) || !CATALOG_FIELDS[table]) return CATALOG[table](id, b);
   const only: string[] = b.only.filter((k: unknown) => typeof k === "string" && Object.hasOwn(CATALOG_FIELDS[table], k));
@@ -1006,6 +1032,55 @@ Deno.serve(async (req) => {
       const { data, error } = await db.rpc("app_internal_stock_alias", { p_id: decodeURIComponent(m[1]), p_alias: alias });
       if (error) return fail("save_failed", 500);
       return data ? ok() : fail("not_found", 404);
+    }
+    if (M === "POST" && path === "orders/read-list") {
+      if (!can(s, "send")) return fail("forbidden", 403);
+      const r = await readOrderList(db, s, b);
+      return json(r.body, r.status);
+    }
+    if ((m = path.match(/^items\/([^/]{1,120})\/extra$/)) && M === "PUT") {
+      if (!can(s, "catalog")) return fail("forbidden", 403);
+      const place = b.place === null || b.place === "" ? null : text(b.place, 40);
+      const { error, data } = await app("items").update({ place }).eq("id", decodeURIComponent(m[1])).select("id");
+      if (error) return fail("save_failed", 500);
+      return data?.length ? ok() : fail("gone", 409);
+    }
+    if ((m = path.match(/^items\/([^/]{1,120})\/photo$/)) && (M === "POST" || M === "DELETE")) {
+      if (!can(s, "catalog")) return fail("forbidden", 403);
+      return await saveItemPhoto(decodeURIComponent(m[1]), M === "DELETE" ? null : b);
+    }
+    if (path === "rico-rules" && M === "GET") {
+      const { data, error } = await app("rico_rules").select("id,account,rule,created_at").order("created_at");
+      return error ? fail("load_failed", 500) : json(data ?? []);
+    }
+    if (path === "rico-rules" && M === "POST") {
+      const rule = text(b.rule, 300);
+      if (!rule) return fail("invalid_input");
+      const { count, error: countError } = await app("rico_rules").select("id", { count: "exact", head: true });
+      if (countError) return fail("save_failed", 500);
+      if ((count ?? 0) >= 30) return fail("too_many", 409);
+      const { error } = await app("rico_rules").insert({ account: s.account, rule });
+      return error ? fail("save_failed", 500) : ok();
+    }
+    if ((m = path.match(/^rico-rules\/([0-9a-f-]{36})$/)) && M === "DELETE") {
+      const { error } = await app("rico_rules").delete().eq("id", m[1]);
+      return error ? fail("delete_failed", 500) : ok();
+    }
+    if (path === "admin/backups" && M === "GET") {
+      if (!isRozha(s)) return fail("forbidden", 403);
+      const { data, error } = await db.rpc("app_internal_list_backups");
+      return error ? fail("load_failed", 500) : json(data ?? []);
+    }
+    if (path === "admin/backups/restore" && M === "POST") {
+      if (!isRozha(s)) return fail("forbidden", 403);
+      const day = String(b.day ?? "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return fail("invalid_input");
+      const { data: good, error: pinError } = await db.rpc("app_internal_check_account_pin", { p_account: "rozha", p_pin: String(b.pin ?? "") });
+      if (pinError) throw new Error("credential_check_unavailable");
+      if (good !== true) return fail("wrong_pin", 403);
+      const { data, error } = await db.rpc("app_internal_restore_backup", { p_day: day, p_actor: s.account, p_device: s.deviceId });
+      if (error) return fail("save_failed", 500);
+      return json(data, data?.error ? 404 : 200);
     }
     if (M === "POST" && path === "stock/read") { const r = await readTransferList(db, s, b); return json(r.body, r.status); }
 

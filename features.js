@@ -26,12 +26,17 @@ function setFeature(id, on){ lset(featureKey(id), on); applyFeatures(); }
 function applyFeatures(){
   document.documentElement.classList.toggle('kitchen-mode', featureOn('kitchenMode'));
 }
+const ricoStyleKey = ()=>`ricoStyle:${state.account || ''}`;
+function ricoStyle(){ const v = lget(ricoStyleKey()); return v === 'short' || v === 'warm' ? v : 'normal'; }
 function renderFeatureSettings(){
   const shown = FEATURES.filter(f=>!f.role || canOpen(f.role));
-  return `<div class="section-title">${esc(t('featuresTitle'))}</div><p class="settings-hint">${esc(t('featuresHint'))}</p><div class="form-card">${shown.map(f=>`<label class="check-row preference-row"><input type="checkbox" data-feature="${f.id}" ${featureOn(f.id) ? 'checked' : ''}><span>${esc(t('feat_' + f.id))}<small>${esc(t('feat_' + f.id + '_hint'))}</small></span></label>`).join('')}</div>`;
+  const style = canOpen('assistant') ? `<div class="field feature-select"><label for="ricoStyleSel">${esc(t('styleLabel'))}</label><select id="ricoStyleSel">${['normal', 'short', 'warm'].map(v=>`<option value="${v}" ${ricoStyle() === v ? 'selected' : ''}>${esc(t('style_' + v))}</option>`).join('')}</select></div>` : '';
+  return `<div class="section-title">${esc(t('featuresTitle'))}</div><p class="settings-hint">${esc(t('featuresHint'))}</p><div class="form-card">${shown.map(f=>`<label class="check-row preference-row"><input type="checkbox" data-feature="${f.id}" ${featureOn(f.id) ? 'checked' : ''}><span>${esc(t('feat_' + f.id))}<small>${esc(t('feat_' + f.id + '_hint'))}</small></span></label>`).join('')}${style}</div>`;
 }
 function attachFeatureSettings(){
   document.querySelectorAll('[data-feature]').forEach(box=>box.onchange = ()=>setFeature(box.dataset.feature, box.checked));
+  const style = document.getElementById('ricoStyleSel');
+  if(style) style.onchange = ()=>lset(ricoStyleKey(), style.value === 'normal' ? null : style.value);
 }
 /* The warning before the wipe day: shown from 2 days before, on History and Record. */
 function wipeDaysLeft(){

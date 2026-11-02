@@ -32,6 +32,12 @@ function soundContext(){
   if(soundCtx?.state !== 'running' && Object.keys(SOUND_KEYS).some(soundOn)) soundContext();
 }, {passive:true, capture:true}));
 
+/* Settings > Features, Button sounds: a soft click on buttons (the steppers have their own). */
+document.addEventListener('click', e=>{
+  if(typeof featureOn !== 'function' || !featureOn('tapSound')) return;
+  const b = e.target.closest?.('button,.settings-row,a.btn');
+  if(b && !b.closest('.stepper') && !b.disabled) soundTone(1200, .03, .06);
+}, {passive:true, capture:true});
 function soundTone(f, dur, gain, at = 0, type = 'sine'){
   const c = soundContext();
   if(!c) return;

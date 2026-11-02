@@ -16,7 +16,7 @@ const server=http.createServer((req,res)=>{
  try{
   const page=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
-  await page.addInitScript(()=>localStorage.setItem('ricottaOrders:lang','"en"'));
+  await page.addInitScript(()=>{localStorage.setItem('ricottaOrders:lang','"en"');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:toured:'+a,'true');});
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.locator('#itemSearch').waitFor();
   await page.waitForFunction(()=>state.items.length>10);

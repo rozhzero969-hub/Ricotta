@@ -306,6 +306,17 @@
         months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
       });
     }
+    if(path === 'rico-rules'){
+      db.rules ||= [{id:'11111111-1111-4111-8111-111111111111', account:'rozha', rule:'Never order fish on Friday', created_at:new Date().toISOString()}];
+      if(method === 'POST'){ db.rules.push({id:crypto.randomUUID(), account, rule:String(body.rule).slice(0, 300), created_at:new Date().toISOString()}); return json({ok:true}); }
+      return json(db.rules);
+    }
+    if(path.startsWith('rico-rules/') && method === 'DELETE'){ db.rules = (db.rules || []).filter(r=>r.id !== path.split('/')[1]); return json({ok:true}); }
+    if(path === 'admin/backups' && method === 'GET') return json(Array.from({length:7}, (_, i)=>({day:new Date(Date.now() - i * 86400000).toISOString().slice(0, 10), suppliers:db.suppliers.length, items:db.items.length, orders:db.history.length, at:new Date().toISOString()})));
+    if(path === 'admin/backups/restore' && method === 'POST') return /^\d{6}$/.test(String(body.pin || '')) && body.pin !== '000000' ? json({suppliers:0, units:0, items:1, orders:2}) : fail('wrong_pin', 403);
+    if(path === 'orders/read-list' && method === 'POST') return json({rows:db.items.slice(0, 4).map((i, n)=>({said:i.name, qty:n + 2, itemId:i.id, sure:true})).concat({said:'Something unclear', qty:1, itemId:null, sure:false})});
+    if(/^items\/[^/]+\/extra$/.test(path) && method === 'PUT'){ const i = db.items.find(x=>x.id === decodeURIComponent(path.split('/')[1])); if(!i) return fail('gone', 409); i.place = body.place; return json({ok:true}); }
+    if(/^items\/[^/]+\/photo$/.test(path)){ const i = db.items.find(x=>x.id === decodeURIComponent(path.split('/')[1])); if(!i) return fail('gone', 409); i.photoUrl = method === 'POST' ? 'data:image/jpeg;base64,' + body.image.replace(/^data:[^,]*,/, '') : null; return json({ok:true, photoUrl:i.photoUrl}); }
     if(path === 'draft' && (method === 'GET' || method === 'PUT')){
       db.drafts ||= {};
       const draft=db.drafts[account] ||= {cart:{},revision:0};
