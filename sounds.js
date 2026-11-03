@@ -1,14 +1,18 @@
 /* Sounds, made by the app itself (nothing is downloaded).
-     + and -        a soft tap (+ a touch higher than -)
-     orders sent    a rising C-E-G-C chime
+     + and -           a soft tap (+ a touch higher than -)
+     orders sent       a rising C-E-G-C chime
+     Rico replies      two soft notes, up
+     something wrong   two low notes, down (wrong PIN, a failed save)
+     a milestone       a short fanfare (rare on purpose)
+     undo              the order chime falling back down
    Each one can be turned on or off per device on the Settings. On
    iPhone they follow the silent switch like any app. Browsers only allow
    sound once the person has touched the page, so the audio is (re)started
    on every touch until it is running. */
-const SOUND_KEYS = {qty:'soundQty', sent:'soundSent'};
+const SOUND_KEYS = {qty:'soundQty', sent:'soundSent', rico:'soundRico', error:'soundError', milestone:'soundMilestone', undo:'soundUndo'};
 let soundCtx = null, soundOut = null, lastTick = 0;
 
-// Both are account settings (features.js) and start on.
+// They are account settings (features.js) and start on.
 function soundOn(which){ return typeof featureOn === 'function' ? featureOn(SOUND_KEYS[which]) : true; }
 function setSoundOn(which, on){ setFeature(SOUND_KEYS[which], on); }
 
@@ -75,4 +79,25 @@ function playOrdersSent(){
     soundTone(f, .6, .16, i * .085);
     soundTone(f * 2.01, .36, .04, i * .085);
   });
+}
+
+/* Rico's answer arrived: E then A, soft. */
+function playRicoReply(){
+  if(!soundOn('rico')) return;
+  soundTone(1318.5, .35, .14); soundTone(1760, .5, .12, .12);
+}
+/* Something went wrong: two low notes, never loud. */
+function playError(){
+  if(!soundOn('error')) return;
+  soundTone(220, .12, .2, 0, 'triangle'); soundTone(196, .16, .2, .13, 'triangle');
+}
+/* A kitchen milestone or a streak goal: C E G C E. */
+function playMilestone(){
+  if(!soundOn('milestone')) return;
+  [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i)=>{ soundTone(f, .7, .13, i * .09); soundTone(f * 2.01, .42, .03, i * .09); });
+}
+/* Undo: the order chime going back down. */
+function playUndo(){
+  if(!soundOn('undo')) return;
+  [1046.5, 783.99, 659.25].forEach((f, i)=>{ soundTone(f, .4, .12, i * .07); soundTone(f * 2.01, .24, .03, i * .07); });
 }

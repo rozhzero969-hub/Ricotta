@@ -93,7 +93,7 @@ function rowMeta(kind, r){
 /* Settings > Look can turn the tables off: a plain list by name, and a tap opens the form. */
 function renderPlainList(kind){
   const rows = [...TABLES[kind].rows()].sort((a, b)=>nameCollator().compare(a.name || '', b.name || ''));
-  if(!rows.length) return emptyState(t(kind === 'items' ? 'noItemsYet' : 'noSuppliersYet'));
+  if(!rows.length) return emptyState(t(kind === 'items' ? 'noItemsYet' : 'noSuppliersYet'), canDo('catalog') ? (kind === 'items' ? 'item' : 'supplier') : null);
   return `<div class="plain-list">${rows.map(r=>{
     return `<button type="button" class="list-row tappable" data-search-row data-table-row="${esc(r.id)}" ${kind === 'items' ? `data-edititem="${esc(r.id)}"` : `data-search-text="${esc([r.name, r.phone || ''].join(' '))}"`}><div><div class="name" dir="auto">${esc(r.name)}${r.available === false ? ` <span class="availability-badge">${esc(t('unavailable'))}</span>` : ''}</div><div class="meta">${rowMeta(kind, r)}</div></div><i class="sheet-chevron" aria-hidden="true"></i></button>`;
   }).join('')}</div>`;
@@ -106,7 +106,7 @@ function renderDataTable(kind){
   const tools = `<div class="table-tools">${chips}<div class="table-buttons">
       <button type="button" class="btn btn-ghost table-sort-btn" data-table-sort-menu>${ICON_SORT}<span>${esc(t('tableSortBy')(col.label()))}</span></button>
       <button type="button" class="btn btn-ghost table-cols-btn" data-table-cols>${ICON_COLUMNS}<span>${esc(t('tableColumns'))}</span></button></div></div>`;
-  if(!rows.length) return tools + emptyState(t(prefs.filter === 'all' ? (kind === 'items' ? 'noItemsYet' : 'noSuppliersYet') : 'tableNoneHere'));
+  if(!rows.length) return tools + emptyState(t(prefs.filter === 'all' ? (kind === 'items' ? 'noItemsYet' : 'noSuppliersYet') : 'tableNoneHere'), prefs.filter === 'all' && canDo('catalog') ? (kind === 'items' ? 'item' : 'supplier') : null);
   const cols = tableColumns(kind);
   const head = cols.map(c=>`<th scope="col" class="${c.end ? 'end' : ''}"${prefs.sort === c.id ? ` aria-sort="${prefs.dir > 0 ? 'ascending' : 'descending'}"` : ''}><button type="button" data-table-sort="${c.id}">${esc(c.label())}${prefs.sort === c.id ? `<i class="sort-arrow${prefs.dir < 0 ? ' down' : ''}" aria-hidden="true"></i>` : ''}</button></th>`).join('');
   const rowAttr = r=>`data-search-row data-table-row="${esc(r.id)}" ${kind === 'items' ? `data-edititem="${esc(r.id)}"` : `data-search-text="${esc([r.name, r.phone || ''].join(' '))}"`}`;

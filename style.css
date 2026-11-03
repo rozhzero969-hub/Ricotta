@@ -3,8 +3,8 @@
    page with no borders, hairline separators, translucent bars and sheets, and the Ricotta green as
    the tint for buttons, switches and the chosen tab. Light and dark mode follow the phone unless
    Settings says otherwise. Text sizes are in rem, so they follow the iPhone's text size (boot.js).
-   Motion uses Apple's calm curves with no bounce, and everything animated collapses under
-   prefers-reduced-motion. */
+   Motion uses Apple's soft curves, the same on every phone and computer (Reduce Motion included, as
+   Rozha chose). */
 :root{
   /* Apple's system colours, with Ricotta's green. Dark mode changes them below. */
   --bg:#F2F2F7;                     /* the page: Apple's grouped background */
@@ -156,7 +156,6 @@ body.page-swiping *{transition:none!important}
 .refreshing svg{animation:refreshTurn .75s var(--ease-out) infinite}
 @keyframes refreshTurn{to{transform:rotate(1turn)}}
 
-@media (prefers-reduced-motion:reduce){.refreshing svg{animation:none}}
 
 /* ---------- Language menu: an iPhone menu, nothing changes until Apply ---------- */
 .lang-layer{position:fixed;inset:0;z-index:600}
@@ -191,14 +190,18 @@ html.rtl .lang-menu.up{transform-origin:bottom left}
 .nav-indicator{position:absolute;top:4px;bottom:4px;left:4px;border-radius:999px;background:var(--fill);
   width:calc((100% - 8px) / var(--n,4));transform:translateX(calc(var(--ip,0) * 100%));transition:transform 380ms var(--spring-soft),scale 300ms var(--ease-out);pointer-events:none;z-index:0}
 @media (max-width:959px){html.rtl .nav-indicator{left:auto;right:4px;transform:translateX(calc(var(--ip,0) * -100%))}}
-.bottomnav.held .nav-indicator{scale:1.1 1.15;transition:transform 70ms linear,width 70ms linear,scale 300ms var(--ease-out);
-  background:rgba(255,255,255,.55);box-shadow:inset 0 1px 0 #fff,inset 0 0 0 1px rgba(255,255,255,.8),0 10px 24px -8px rgba(0,0,0,.25)}
+.bottomnav.held .nav-indicator{scale:calc(1.22 + var(--st,0)) calc(1.32 - var(--st,0) * .6);z-index:2;
+  transition:transform 90ms linear,width 70ms linear,scale 220ms var(--spring-soft),background 260ms ease,box-shadow 260ms ease;
+  background:rgba(255,255,255,.1);-webkit-backdrop-filter:saturate(180%) brightness(1.05);backdrop-filter:saturate(180%) brightness(1.05);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.9),inset 0 -1px 1px rgba(255,255,255,.35),inset 0 0 0 .5px rgba(255,255,255,.6),0 10px 26px -8px rgba(0,0,0,.28)}
+.nav-indicator{transition:transform 380ms var(--spring-soft),scale 420ms var(--spring-soft),background 260ms ease}
 .navbtn{position:relative;z-index:1;flex:1 1 0;min-width:0;height:56px;border:0;background:transparent;border-radius:999px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 6px;color:var(--ink);font-size:.6875rem;font-weight:500;white-space:nowrap}
 .navbtn:not(:disabled):active{transform:none}
 .navbtn span{max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .navbtn svg{width:24px;height:24px;transition:transform 300ms var(--ease-out)}
 .navbtn.active,.navbtn.lens-over{color:var(--tint);font-weight:600}
 .navbtn.lens-over svg{transform:scale(1.1)}
+.bottomnav.held .navbtn.lens-over svg{transform:scale(1.2)}
 .nav-brand{display:none}
 /* While you scroll down a page the bar gets out of the way: it shrinks to its icons (a shorter,
    narrower pill), and scrolling up or reaching the top brings the names back. Far down a page a round
@@ -218,7 +221,6 @@ html.rtl .lang-menu.up{transform-origin:bottom left}
 .to-top.show{width:54px;margin-inline-start:10px;opacity:1;transform:none}
 .bottomnav.compact+.to-top.show{width:46px;height:46px}
 html.dark .to-top{color:#fff;background:rgba(30,30,32,.72);border-color:rgba(255,255,255,.1);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 30px rgba(0,0,0,.5)}
-@media (prefers-reduced-motion:reduce){.nav-row .bottomnav,.navbtn,.navbtn span,.to-top{transition-duration:0s!important}}
 /* ---------- Send bar (rises from the bottom when something is picked) ---------- */
 .bottom-bar{max-width:560px;width:100%;margin:0 auto;transform:translateY(130%);opacity:0;pointer-events:none;transition:transform 420ms var(--spring-soft),opacity 200ms ease}
 .bottom-bar.show{transform:none;opacity:1;pointer-events:auto}
@@ -229,7 +231,7 @@ html.dark .to-top{color:#fff;background:rgba(30,30,32,.72);border-color:rgba(255
 html.rtl .send-go svg{transform:scaleX(-1)}
 @media (hover:hover) and (pointer:fine){.send-btn:not(:disabled):hover .send-go{transform:translateX(3px)}}
 
-/* ---------- Ricotta on the map (sign-in, Welcome back, Admin) ----------
+/* ---------- Ricotta on the map (sign-in, Welcome back) ----------
    One satellite picture of the street around the kitchen with Ricotta's pin and two soft rings. The
    picture is placed so the pin sits at --mx/--my, zoomed by --mz (the pin keeps its size). "green"
    turns it into Ricotta's green: gray first, then the green laid over as a colour. */
@@ -352,7 +354,6 @@ html.rtl .login-title{letter-spacing:0}
   .login-hint kbd{font:600 .6875rem var(--font);padding:2px 6px;border-radius:6px;border:1px solid var(--l-line);color:var(--ink)}
 }
 @media (min-width:2600px){.login-map{--mz:1.3}}
-@media (prefers-reduced-motion:reduce){.rmap-pin i{animation:none;opacity:0}.rmap-world,.login-map .rmap-world,.login-panel,.login-card,.login-map-foot{animation:none;transition:none}.key,.key.down{transition:none}}
 
 /* If starting fails, a plain message with Refresh instead of a loading screen that never ends */
 .start-failed{min-height:100dvh;display:grid;place-content:center;justify-items:center;gap:10px;padding:24px;text-align:center}
@@ -385,7 +386,6 @@ html.rtl .welcome-bar i{transform-origin:right}
 }
 @media (min-width:1700px){.welcome.rmap{--mz:1.6;--mz-from:1.75}}
 @media (min-width:2300px){.welcome.rmap{--mz:2.1;--mz-from:2.25}}
-@media (prefers-reduced-motion:reduce){.welcome .rmap-world,.welcome-text{animation:none}.welcome.rmap,.welcome-bar i{transition:none}}
 
 /* ---------- Order summary card ---------- */
 .hero-card{position:relative;overflow:hidden;isolation:isolate;border-radius:var(--r-card);padding:20px 20px 16px;margin-bottom:16px;color:#fff;background:var(--hero)}
@@ -552,6 +552,13 @@ html.rtl .field select{background-position:left 14px center}
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--ink-soft);font-size:1.0625rem;font-weight:400;line-height:1.4;padding:48px 24px;border:0;background:transparent}
 .empty svg{width:48px;height:48px;color:var(--ink-faint);margin-bottom:12px}
 .empty-text{max-width:280px}
+.skel{display:grid;gap:8px;padding:4px 0}
+.skel-row{display:grid;gap:8px;padding:14px 16px;border-radius:var(--r-card);background:var(--surface)}
+.skel-row i{display:block;height:12px;border-radius:6px;background:var(--fill-strong);animation:skelBreath 1.4s ease-in-out infinite}
+.skel-row i+i{height:10px;background:var(--fill);animation-delay:.15s}
+@keyframes skelBreath{0%,100%{opacity:1}50%{opacity:.45}}
+.empty .empty-spark{width:64px;height:64px;margin-bottom:12px;color:inherit}
+.empty-go{margin-top:16px}
 /* ---------- Segmented controls (Record's filters, Manage's sections, light or dark, Rico's history) ----------
    Apple's segmented control: a gray capsule with the chosen part on a white thumb. The script adds a
    thumb that slides (see "Switches you can slide" in app.js): hold it and drag, and the part under it
@@ -567,17 +574,34 @@ html.rtl .field select{background-position:left 14px center}
 .seg.held .seg-lens{scale:1.04 1.08;transition:transform 90ms linear,width 90ms linear,scale 250ms var(--ease-out)}
 .seg.held .lens-over{color:var(--ink)!important}
 .pill-seg{display:inline-flex}
-@media (prefers-reduced-motion:reduce){.seg-lens,.seg.seg-ready .seg-lens{transition:none!important}}
 
 /* The iPhone's switch, for every checkbox: 51 by 31, a white knob, green when on. */
 .check-row{display:flex;align-items:center;gap:12px;font-size:1.0625rem;font-weight:400;margin:4px 0 16px;cursor:pointer}
 .check-row svg{color:var(--tint);flex-shrink:0}
 .preference-row span{display:flex;flex-direction:column;gap:2px}
+.preference-row.has-ico>span{flex:1;min-width:0}
+/* The last row of a card ends with the card's own padding, not an extra gap. */
+.form-card>.check-row:last-child{margin-bottom:4px}
+.dark-row{margin-bottom:14px}
+/* Settings icons: a 30px rounded square, lined up with the row's first line of text. */
+.set-ico{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;align-self:flex-start;margin-top:-2px;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.06)}
+.set-ico svg{display:block;width:19px;height:19px;transform-origin:50% 18%}
+.settings-row>.set-ico,.settings-link>.set-ico{align-self:center;margin-top:0}
+.set-head{display:flex;align-items:flex-start;gap:12px;min-width:0}
+.set-head>span{display:flex;flex-direction:column;font-size:1.0625rem}
+.dark-row>.set-head{flex:1 1 220px}
+.feature-select .set-head{align-items:center;margin-bottom:10px}
+.feature-select .set-head label{margin:0;font-size:1.0625rem;font-weight:400;color:var(--ink)}
 .preference-row small{font-size:.8125rem;font-weight:400;color:var(--ink-soft);line-height:1.35}
 .check-row input[type=checkbox]{appearance:none;-webkit-appearance:none;flex-shrink:0;width:51px;height:31px;margin:0;border-radius:999px;background:rgba(120,120,128,.16);position:relative;cursor:pointer;transition:background-color 250ms ease;order:2;margin-inline-start:auto}
 .check-row input[type=checkbox]::after{content:'';position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 3px 1px rgba(0,0,0,.06);transition:transform 250ms var(--ease-out)}
 .check-row input[type=checkbox]:checked{background:var(--accent)}
 .check-row input[type=checkbox]:checked::after{transform:translateX(20px)}
+/* Pressed, the knob stretches toward where it is going, like the iPhone's switches. */
+.check-row input[type=checkbox]::after{transition:transform 300ms cubic-bezier(.32,.72,0,1),width 220ms cubic-bezier(.32,.72,0,1)}
+.check-row input[type=checkbox]:active::after{width:34px}
+.check-row input[type=checkbox]:checked:active::after{transform:translateX(13px)}
+html.rtl .check-row input[type=checkbox]:checked:active::after{transform:translateX(-13px)}
 html.rtl .check-row input[type=checkbox]::after{left:auto;right:2px}
 html.rtl .check-row input[type=checkbox]:checked::after{transform:translateX(-20px)}
 .notif-sub{font-size:.8125rem;color:var(--ink-soft);line-height:1.55;margin:0 0 12px;font-weight:400}
@@ -600,9 +624,9 @@ html.rtl .check-row input[type=checkbox]:checked::after{transform:translateX(-20
 .app-version{margin:26px 0 8px;text-align:center;font-size:.8125rem;font-weight:400;color:var(--ink-soft)}
 
 /* Units */
-.unit-grid{display:flex;flex-wrap:wrap;gap:8px}
-.unit-chip{min-width:0;display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);padding:8px;padding-inline:14px 6px;font-size:.8125rem;font-weight:600}
-.unit-names{display:grid;gap:2px;line-height:1.25;padding-inline-end:4px}
+.unit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.unit-chip{min-width:0;display:flex;align-items:center;gap:6px;border-radius:var(--r);padding:8px;padding-inline:14px 6px;font-size:.8125rem;font-weight:600}
+.unit-names{flex:1;min-width:0;display:grid;gap:2px;line-height:1.25;padding-inline-end:4px}
 .unit-names small{color:var(--ink-soft);font-size:.75rem;font-weight:400}
 .unit-chip button{border:0;background:transparent;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--tint)}
 .unit-chip button.danger{color:var(--red)}
@@ -632,7 +656,15 @@ a.wa-btn{text-decoration:none;cursor:pointer;touch-action:manipulation;-webkit-t
 a.wa-btn:active{transform:scale(.97)}
 .wa-btn.done{background:var(--fill);color:var(--tint)}
 .queue-done{display:flex;align-items:center;gap:14px;padding:18px;border-radius:var(--r-card);margin-bottom:14px;color:#fff;background:var(--hero)}
-.queue-done .tick{width:40px;height:40px;border-radius:50%;background:var(--on-dark);color:var(--deep-dark);display:grid;place-items:center;flex-shrink:0;animation:tickIn 300ms var(--ease-out) both}
+.queue-done .tick{width:40px;height:40px;border-radius:50%;background:var(--on-dark);color:var(--deep-dark);display:grid;place-items:center;flex-shrink:0;animation:tickIn 420ms var(--spring-soft) both}
+/* All sent: the circle grows in, then the check draws itself. */
+.queue-done .tick path{stroke-dasharray:24;stroke-dashoffset:24;animation:checkDraw 380ms cubic-bezier(.32,.72,0,1) 260ms forwards}
+@keyframes checkDraw{to{stroke-dashoffset:0}}
+.queue-done{animation:queueDoneIn 460ms var(--spring-soft) both}
+@keyframes queueDoneIn{from{transform:translateY(10px) scale(.98);opacity:0}}
+.pull-spark{position:fixed;left:50%;top:calc(var(--safe-top) + 58px);z-index:35;width:34px;height:34px;opacity:0;pointer-events:none;transform:translate(-50%,0)}
+.pull-spark .pull-face{width:34px;height:34px}
+.fly-dot{position:fixed;left:0;top:0;z-index:600;width:12px;height:12px;border-radius:50%;background:var(--accent);pointer-events:none;box-shadow:0 2px 8px rgba(var(--accent-rgb),.5)}
 .queue-done b{display:block;font-size:1.0625rem}
 .queue-done small{font-size:.8125rem;color:var(--t-foot);font-weight:500}
 
@@ -870,14 +902,14 @@ html.rtl .install-prompt{right:auto;left:22px}
 .rico-auto{position:relative}
 .rico-auto.on{background:var(--accent-strong);color:#fff}
 .rico-auto.on::after{content:'';position:absolute;top:6px;inset-inline-end:6px;width:7px;height:7px;border-radius:50%;background:var(--t-bright);box-shadow:0 0 0 2px var(--accent-strong)}
-.rico-alerts{display:grid;margin-bottom:14px;padding:6px 16px;border-radius:var(--r-card)}
-.rico-alerts-head{display:flex;align-items:center;gap:10px;padding:10px 0 8px;font-size:1.0625rem;font-weight:600;color:var(--clay-ink)}
-.rico-alert{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:.5px solid var(--line-strong)}
-.rico-alert-dot{width:10px;height:10px;border-radius:50%;background:var(--clay);flex-shrink:0}
-.rico-alert-text{flex:1;min-width:0;display:grid;gap:2px}
-.rico-alert-text b{font-size:.9375rem;font-weight:700;overflow-wrap:anywhere}
-.rico-alert-text span{font-size:.8125rem;font-weight:500;color:var(--clay-ink)}
-.rico-alert .btn{min-height:40px;padding:0 14px;font-size:.8125rem;flex-shrink:0}
+
+
+
+
+
+
+
+
 /* Messages Rico wrote first, tinted with his mood */
 .rico-inbox{display:grid;gap:8px;margin-bottom:16px}
 .rico-note{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:var(--r-card)}
@@ -890,7 +922,7 @@ html.rtl .install-prompt{right:auto;left:22px}
 .rico-thread{display:flex;flex-direction:column;gap:14px;max-width:820px;margin-inline:auto}
 .rico-intro{display:flex;flex-direction:column;align-items:flex-start;text-align:start;gap:10px;padding:18px 4px 6px}
 .rico-hello{margin:6px 0 0;font-size:1.75rem;font-weight:700;line-height:1.2;text-wrap:balance}
-.rico-intro-text{margin:0;max-width:460px;color:var(--ink-soft);font-size:1.0625rem;font-weight:400;line-height:1.4}
+
 .rico-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;width:100%}
 .rico-chip{padding:10px 16px;border-radius:999px;display:inline-flex;align-items:center;font-size:.9375rem;font-weight:500;color:var(--ink);text-align:start;min-height:40px}
 .rico-msg{display:flex;gap:10px;align-items:flex-start}
@@ -917,6 +949,11 @@ html.rtl .install-prompt{right:auto;left:22px}
 .rico-typing i:nth-child(2){animation-delay:.15s}.rico-typing i:nth-child(3){animation-delay:.3s}
 .rico-typing span{margin-inline-start:6px;font-size:.8125rem;font-weight:500;color:var(--ink-soft)}
 @keyframes typeDot{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-5px);opacity:1}}
+/* While Rico writes, Spark breathes softly; his answer grows out of him (assistant.js). */
+.rico-msg.bot.streaming .rico-sm{animation:sparkBreath 1.6s ease-in-out infinite}
+@keyframes sparkBreath{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+.rico-msg.bot .rico-bubble{transform-origin:top left}
+html.rtl .rico-msg.bot .rico-bubble{transform-origin:top right}
 .rico-status-line{display:inline-flex;align-items:center;gap:8px;font-size:.8125rem;font-weight:500;color:var(--ink-soft);padding-inline-start:6px}
 .rico-status-line i{width:12px;height:12px;border-radius:50%;border:2px solid rgba(var(--deep-rgb),.18);border-top-color:var(--accent-strong);animation:spin .8s linear infinite}
 .rico-steps{display:grid;gap:7px;font-size:.8125rem;font-weight:500;color:var(--ink-soft);padding:2px 0;margin-inline-start:2px}
@@ -976,30 +1013,30 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 .rico-composer textarea::placeholder{color:var(--ink-faint)}
 .rico-send{width:40px;height:40px;border-radius:50%;border:0;display:grid;place-items:center;flex-shrink:0;background:var(--accent-strong);color:#fff}
 .rico-send.stop{background:var(--red)}
-.rico-mic{position:relative;width:40px;height:40px;border-radius:50%;border:0;display:grid;place-items:center;flex-shrink:0;background:transparent;color:var(--ink-soft);transition:background-color .25s ease,color .25s ease}
-.rico-mic:disabled{opacity:.4}
-.rico-mic-wave{display:none;position:absolute;inset:0;align-items:center;justify-content:center;gap:3px}
-.rico-mic-wave i{width:3px;height:10px;border-radius:2px;background:#fff;animation:micWave .9s ease-in-out infinite}
-.rico-mic-wave i:nth-child(2){animation-delay:.15s}.rico-mic-wave i:nth-child(3){animation-delay:.3s}.rico-mic-wave i:nth-child(4){animation-delay:.45s}
+
+
+
+
+
 @keyframes micWave{50%{height:20px}}
-.rico-composer.recording .rico-mic{background:var(--clay);color:transparent;animation:micPulse 1.4s ease-out infinite}
-.rico-composer.recording .rico-mic svg,.rico-composer.transcribing .rico-mic svg{opacity:0}
-.rico-composer.recording .rico-mic-wave{display:flex}
+
+
+
 @keyframes micPulse{0%{box-shadow:0 0 0 0 rgba(255,59,48,.45)}100%{box-shadow:0 0 0 12px rgba(255,59,48,0)}}
-.rico-composer.recording textarea::placeholder{color:var(--clay-ink);font-weight:500}
-.rico-composer.transcribing .rico-mic::after{content:'';position:absolute;width:18px;height:18px;border-radius:50%;border:2.4px solid rgba(var(--deep-rgb),.2);border-top-color:var(--accent-strong);animation:spin .8s linear infinite}
+
+
 #app[data-screen="assistant"] .content{padding-bottom:calc(200px + var(--safe-bottom))}
 /* Chat history: time lines in the chat, recent chats under the suggestions, and the history sheet */
 .rico-time{display:flex;justify-content:center;margin:4px 0 -4px}
 .rico-time span{font-size:.75rem;font-weight:500;color:var(--ink-soft);padding:4px 10px}
-.rico-recent{width:100%;margin-top:22px}
-.rico-recent-h{display:flex;align-items:center;justify-content:space-between;font-size:.8125rem;font-weight:400;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-soft);margin:0 4px 6px}
-.rico-recent-h .rico-link{text-transform:none;letter-spacing:0}
-.rico-recent-row{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:0 12px;border:0;border-radius:14px;background:transparent;font:inherit;font-size:1.0625rem;font-weight:400;color:var(--ink);text-align:start;cursor:pointer}
-.rico-recent-row:active{background:var(--fill)}
-.rico-recent-row svg{flex:none;width:16px;height:16px;color:var(--tint)}
-.rico-recent-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rico-recent-row small,.rico-hist-open small{flex:none;font-size:.9375rem;font-weight:400;color:var(--ink-soft)}
+
+
+
+
+
+
+
+.rico-hist-open small{flex:none;font-size:.9375rem;font-weight:400;color:var(--ink-soft)}
 .rico-hist-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
 .rico-hist-top .sel-title{margin:0}
 .rico-hist-top .btn{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px}
@@ -1032,7 +1069,7 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   html.app-shell #app{position:fixed;left:0;right:0;top:var(--vv-top,0px);height:var(--vv-height,100dvh);min-height:0;overflow:hidden}
   html.app-shell #app[data-screen="login"]{overflow-y:auto;overscroll-behavior:contain}
   html.app-shell .topbar{position:absolute;left:0;right:0;top:0}
-  html.app-shell .content{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-top:calc(68px + var(--safe-top))}
+  html.app-shell .content{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;overscroll-behavior-y:none;-webkit-overflow-scrolling:touch;padding-top:calc(68px + var(--safe-top))}
   html.app-shell .bottom-stack{position:absolute}
   body.rico-composing #app[data-screen="assistant"] .content{padding-bottom:120px}
 }
@@ -1104,15 +1141,11 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 }
 /* Hover tints, only for a mouse or trackpad (a finger would leave them stuck on). */
 @media (hover:hover) and (pointer:fine){
-  .icon-btn:hover,.chip:hover,.rico-chip:hover,.quick-btn:not(:disabled):hover,.btn-ghost:not(:disabled):hover,.tab-pill:not(.active):hover,.step-btn:not(:disabled):hover,.sheet-row:hover,.settings-link:hover,.sel-opt:hover,.rico-recent-row:hover{background:var(--fill-strong)}
+  .icon-btn:hover,.chip:hover,.rico-chip:hover,.quick-btn:not(:disabled):hover,.btn-ghost:not(:disabled):hover,.tab-pill:not(.active):hover,.step-btn:not(:disabled):hover,.sheet-row:hover,.settings-link:hover,.sel-opt:hover{background:var(--fill-strong)}
   .list-row.tappable:hover,.item-row:not(.has-qty):hover{background-color:var(--fill)}
   .btn-primary:not(:disabled):hover,.wa-btn:not(.done):hover,.rico-send:hover{filter:brightness(1.08)}
 }
 @media (hover:hover) and (pointer:fine) and (min-width:960px){.navbtn:not(.active):hover{background:var(--fill)}}
-@media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.001ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
-  .btn.is-busy::before,.modal-status:not(:empty){animation:none!important}
-}
 
 /* Quick picks (a row of choices, one or several on) */
 .picks{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
@@ -1137,7 +1170,10 @@ select.sel-native{position:absolute!important;width:1px!important;height:1px!imp
 .sel-sheet{position:fixed;inset:0;z-index:300;display:flex;align-items:flex-end;justify-content:center}
 .sel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.25);animation:fadeIn 200ms ease both}
 .sel-panel{position:relative;width:calc(100% - 16px);max-width:520px;max-height:72vh;margin-bottom:calc(8px + env(safe-area-inset-bottom));display:flex;flex-direction:column;background:var(--surface);border-radius:34px;padding:8px 12px 14px;box-shadow:0 -4px 40px rgba(0,0,0,.12);animation:selUp 380ms var(--spring-soft) both}
-.sel-grab{width:36px;height:5px;border-radius:3px;background:rgba(var(--deep-rgb),.3);margin:2px auto 10px}
+.sel-grab{position:relative;width:36px;height:5px;border-radius:3px;background:rgba(var(--deep-rgb),.3);margin:2px auto 10px;touch-action:none}
+/* The handle's touch area spans the sheet's top, so it is easy to catch and pull down. */
+.sel-grab::before{content:"";position:absolute;inset:-14px -120px -10px}
+.sel-title,.rico-hist-top{touch-action:none}
 .sel-title{flex:none;font-size:1.0625rem;font-weight:600;padding:0 6px 10px;text-align:center}
 .sel-search{flex:none;margin:0 0 8px}
 .sel-list{flex:1 1 auto;min-height:0;align-content:start;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;display:grid;gap:2px;padding-bottom:4px;scrollbar-width:none}
@@ -1148,11 +1184,8 @@ select.sel-native{position:absolute!important;width:1px!important;height:1px!imp
 .sel-opt.on b{color:var(--tint)}
 .sel-opt.none{color:var(--ink-soft);font-weight:400}
 .sel-opt b{flex:none}
-.sel-sheet.out .sel-panel{transform:translateY(110%);transition:transform 220ms ease-in}
-.sel-sheet.out .sel-scrim{opacity:0;transition:opacity 200ms ease}
 @keyframes selUp{from{transform:translateY(110%)}to{transform:none}}
 @media (min-width:700px){.sel-sheet{align-items:center}.sel-panel{margin-bottom:0;border-radius:28px;max-height:70vh;animation:fadeIn 180ms ease both}}
-@media (prefers-reduced-motion:reduce){.sel-panel{animation:none}}
 .section-title{margin-top:18px}
 
 /* ---------- Our number pad (phones): the iPhone's number keyboard ---------- */
@@ -1163,7 +1196,9 @@ input.pad-input.pad-on{border-color:var(--tint)!important;box-shadow:0 0 0 4px r
 .pad-panel{pointer-events:auto;width:100%;max-width:560px;padding:8px 6px calc(8px + var(--safe-bottom));border-radius:26px 26px 0 0;
   background:var(--keyboard);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);
   box-shadow:0 -1px 0 var(--line);animation:selUp 300ms var(--spring-soft) both;touch-action:manipulation}
-.pad-sheet.out .pad-panel{transform:translateY(100%);transition:transform 200ms ease-in}
+/* A new animation replaces the opening one; a transition could not move it while selUp still holds it. */
+.pad-sheet.out .pad-panel{animation:padDown 240ms cubic-bezier(.32,.72,0,1) forwards}
+@keyframes padDown{from{transform:none}to{transform:translateY(100%)}}
 .pad-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 10px 8px}
 .pad-label{font-size:.9375rem;font-weight:500;color:var(--ink-soft);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pad-done{flex:none;height:36px;padding:0 18px;border:0;border-radius:999px;background:var(--accent-strong);color:#fff;font:inherit;font-size:1.0625rem;font-weight:600}
@@ -1175,7 +1210,6 @@ input.pad-input.pad-on{border-color:var(--tint)!important;box-shadow:0 0 0 4px r
 .pad-del{background:transparent;box-shadow:none;color:var(--ink)}
 html.pad-open .bottom-stack{opacity:0;transition:opacity .15s ease}
 html.pad-open .bottom-stack>*{pointer-events:none}
-@media (prefers-reduced-motion:reduce){.pad-panel{animation:none}}
 
 /* ---------- Settings: show last quantity, compact rows ---------- */
 .item-last{color:var(--tint);font-weight:500}
@@ -1204,6 +1238,7 @@ html.compact-rows .item-row{min-height:48px;padding-block:4px}
 .lit.tier-gold,.report-stats .tier-gold,.streak-boom.tier-gold{--f1:#D99A00;--f2:#FFD34D;--f3:#FFF6C8}
 .streak-chip.lit .flame,.streak-hero.lit .flame,.streak-boom .flame{animation:flameFlicker 1.6s ease-in-out infinite;transform-origin:50% 100%}
 @keyframes flameFlicker{0%,100%{transform:scale(1,1)}30%{transform:scale(.96,1.06) rotate(-2deg)}60%{transform:scale(1.03,.97) rotate(2deg)}}
+.boom-dot{position:absolute;left:50%;top:50%;width:8px;height:8px;border-radius:50%;background:var(--accent);pointer-events:none}
 .streak-chip.ignite{animation:igniteChip 500ms var(--ease-out)}
 @keyframes igniteChip{0%{transform:scale(.85)}100%{transform:none}}
 .streak-chip.broken{color:var(--clay-ink)}
@@ -1230,7 +1265,7 @@ html.compact-rows .item-row{min-height:48px;padding-block:4px}
 .streak-boom{position:fixed;inset:0;z-index:440;display:grid;place-items:center;background:rgba(0,0,0,.25);animation:fadeIn .25s ease both}
 .streak-boom.out{animation:boomOut .35s ease forwards}
 @keyframes boomOut{to{opacity:0}}
-.streak-boom-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 30px;border-radius:34px;background:var(--hero);color:#fff;box-shadow:0 20px 50px rgba(0,0,0,.35);animation:boomIn .5s var(--spring-soft) both;max-width:calc(100vw - 40px)}
+.streak-boom-card{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 30px;border-radius:34px;background:var(--hero);color:#fff;box-shadow:0 20px 50px rgba(0,0,0,.35);animation:boomIn .5s var(--spring-soft) both;max-width:calc(100vw - 40px)}
 @keyframes boomIn{from{transform:scale(.8);opacity:0}to{transform:none;opacity:1}}
 .streak-boom-title{font-family:var(--font-round);font-size:1.875rem;font-weight:700}
 .streak-boom-sub{display:flex;align-items:center;gap:8px;font-size:.9375rem;font-weight:500;color:var(--t-sub)}
@@ -1245,6 +1280,14 @@ html.compact-rows .item-row{min-height:48px;padding-block:4px}
 .report-card-text b{font-size:1.0625rem;color:var(--ink)}
 .report-card-text em{font-style:normal;color:var(--clay-ink);font-weight:600}
 .report-grade{width:46px;height:46px;flex:none;border-radius:14px;display:grid;place-items:center;font-family:var(--font-round);font-size:1.25rem;font-weight:700;color:#fff;background:var(--hero)}
+.report-sheet .report-grade.big{animation:gradeLand 520ms var(--spring) 260ms both}
+@keyframes gradeLand{0%{transform:scale(.4) rotate(-8deg);opacity:0}70%{transform:scale(1.08) rotate(2deg);opacity:1}100%{transform:none}}
+/* The month report: bars grow one after another as the sheet arrives. */
+.report-sheet .chart-bars>*{transform-origin:bottom;animation:barGrow 520ms cubic-bezier(.32,.72,0,1) both;animation-delay:calc(200ms + var(--bi,0) * 18ms)}
+@keyframes barGrow{from{transform:scaleY(0)}}
+.report-sheet .report-bar i::after{transform-origin:left;animation:barGrowX 620ms cubic-bezier(.32,.72,0,1) 300ms both}
+html.rtl .report-sheet .report-bar i::after{transform-origin:right}
+@keyframes barGrowX{from{transform:scaleX(0)}}
 .report-grade.big{width:62px;height:62px;font-size:1.75rem;border-radius:18px}
 .grade-Ap,.grade-A{background:linear-gradient(150deg,#2FB36D,#1E7A47)}
 .grade-B{background:linear-gradient(150deg,#3FA7EA,#1F5F99)}
@@ -1312,21 +1355,16 @@ html.dark{
   color-scheme:dark}
 html.dark .rico-composer{background:rgba(30,30,32,.72);border-color:rgba(255,255,255,.1);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 30px rgba(0,0,0,.5)}
 @media (max-width:959px){html.dark .bottomnav{background:rgba(30,30,32,.72);border-color:rgba(255,255,255,.1);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 30px rgba(0,0,0,.5)}}
-html.dark .bottomnav.held .nav-indicator{background:rgba(255,255,255,.14);box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+html.dark .bottomnav.held .nav-indicator{background:rgba(255,255,255,.08);box-shadow:inset 0 1px 1px rgba(255,255,255,.35),inset 0 0 0 .5px rgba(255,255,255,.25),0 10px 26px -8px rgba(0,0,0,.6)}
 html.dark .streak-chip:not(.lit){--f1:#636366;--f2:#8E8E93;--f3:#AEAEB2}
 html.dark .who-badge{--ws:var(--fill);--wi:var(--ink)}
 
-@media (prefers-reduced-motion:reduce){
-  .streak-chip .flame,.streak-hero .flame,.streak-boom *{animation:none!important}
-}
-/* Order cut-off countdown */
-.cut-chip{display:inline-flex;align-items:center;gap:4px;margin-inline-start:8px;padding:2px 9px;border-radius:999px;font-size:.75rem;font-weight:600;white-space:nowrap;
-  background:var(--fill);color:var(--ink);vertical-align:middle}
-.cut-chip.soon{background:rgba(255,59,48,.12);color:var(--clay-ink)}
-.cut-chip.closed{background:var(--fill);color:var(--ink-soft)}
-.cut-row{margin:-2px 0 10px}
-.cut-row .cut-chip{margin-inline-start:0}
-html.dark .cut-chip.soon{background:rgba(255,69,58,.2);color:var(--clay-ink)}
+
+
+
+
+
+
 .hist-tools{display:flex;gap:8px;margin:0 0 14px}
 /* The month archive */
 .months-list{display:flex;flex-direction:column;gap:10px;margin-top:12px}
@@ -1391,95 +1429,86 @@ html.rtl .nav-more{transform-origin:bottom left}
   .nav-more>.navbtn:first-child{margin-top:19px}
   .nav-more>.navbtn:first-child::before{content:'';position:absolute;top:-10px;left:12px;right:12px;height:.5px;background:var(--line-strong)}
 }
-@media(prefers-reduced-motion:reduce){.nav-more{transition:none}}
 
 /* Keep the provider widget centred without scaling its interactive frame. */
 #authChallenge{display:flex;justify-content:center;margin:18px auto;}
-.cut-chip svg{flex-shrink:0}
+
 
 /* ---------- Transfers: the list for the workplace "Move between storages" upload ---------- */
-.tr-soon{position:relative;overflow:hidden;isolation:isolate;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:0 14px;padding:20px 20px 16px;margin-bottom:16px;border-radius:var(--r-card);color:#fff;background:var(--hero);border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 28px -16px rgba(var(--deepd-rgb),.7)}
+
 /* Construction tape along the top edge, moving slowly. */
-.tr-soon-pill{grid-column:1;justify-self:start;display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;font-size:.75rem;font-weight:600;letter-spacing:.02em}
-.tr-soon-pill i{width:7px;height:7px;border-radius:50%;background:var(--on-dark)}
-.tr-soon-title{grid-column:1;margin-top:10px;font-size:1.25rem;font-weight:700;line-height:1.3}
-.tr-soon p{grid-column:1;margin:4px 0 0;font-size:.8125rem;font-weight:500;line-height:1.55;color:var(--t-sub)}
-.tr-soon-rico{grid-column:2;grid-row:1 / span 3;align-self:center;width:62px;height:62px;filter:drop-shadow(0 6px 12px rgba(0,0,0,.25))}
-.tr-soon-steps{grid-column:1 / -1;list-style:none;margin:14px 0 0;padding:12px 0 0;border-top:1px solid rgba(255,255,255,.12);display:grid;gap:9px}
-.tr-soon-steps li{display:flex;align-items:center;gap:10px;font-size:.8125rem;font-weight:600;line-height:1.35}
-.tr-soon-steps .mark{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center}
-.tr-soon-steps .done .mark{background:var(--on-dark);color:#0D281F}
-.tr-soon-steps .wait{color:var(--t-sub)}
-.tr-soon-steps .wait .mark{border:2px dashed rgba(255,255,255,.4);color:#fff}
+
+
+
+
+
+
+
+
+
+
+
 /* The wrench on the Transfers tab while it is being made. */
-.nav-soon{position:absolute;top:6px;inset-inline-end:calc(50% - 24px);width:17px;height:17px;border-radius:50%;display:grid;place-items:center;background:#8E8E93;color:#fff;box-shadow:0 0 0 2px var(--surface)}
-.nav-soon svg{width:10px;height:10px}
-@media(min-width:960px){.nav-soon{position:static;margin-inline-start:auto;box-shadow:none}}
-.tr-input .field{margin-bottom:12px}
-.tr-input textarea{min-height:96px}
-.tr-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.tr-actions .btn{flex:1 1 0;min-width:0;white-space:nowrap}
-.tr-actions #trReadBtn{flex-basis:100%}
-.tr-actions .btn svg{width:16px;height:16px;flex:none}
-.tr-actions .btn span{overflow:hidden;text-overflow:ellipsis}
-.tr-mic.listening{background:var(--accent-strong);color:#fff;animation:voicePulse 1.4s ease-in-out infinite}
-.tr-mic.working{opacity:.7}
-.tr-search{flex:none}
-.tr-results{display:grid;gap:2px;margin-top:8px;max-height:min(320px,46vh);overflow-y:auto;overscroll-behavior:contain;padding:4px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
-.tr-results .field-hint,.tr-picker .sel-list>.field-hint{padding:8px 14px;margin:0}
-.tr-results .sel-opt small,.tr-picker .sel-opt small{flex:none;font-size:.8125rem;font-weight:500;color:var(--ink-soft)}
-.tr-rows-head{margin:22px 0 10px}
-.tr-rows-head .btn{flex:0 0 auto;min-height:40px;padding:0 16px;font-size:.8125rem}
-.tr-row{padding:12px 12px 10px;margin-bottom:10px;border-radius:var(--r-card);border-inline-start:4px solid var(--accent-strong)}
-.tr-row.bad{border-inline-start-color:var(--clay);background:linear-gradient(rgba(214,72,63,.05),rgba(214,72,63,.05)),var(--surface)}
-.tr-row.check{border-inline-start-color:#D99A00;background:linear-gradient(rgba(245,166,35,.08),rgba(245,166,35,.08)),var(--surface)}
-.tr-main{display:flex;align-items:flex-start;gap:6px}
-.tr-item{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:6px 4px;border:0;background:none;color:var(--ink);font:inherit;text-align:start;cursor:pointer}
-.tr-item b{font-size:1.0625rem;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
-.tr-item small{font-size:.8125rem;font-weight:500;color:var(--ink-soft);overflow-wrap:anywhere}
-.tr-row.bad:not(.check) .tr-item b{color:var(--clay-ink)}
-.tr-check{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:4px 4px 8px;font-size:.8125rem;font-weight:600;color:#9A5B00}
-.tr-check span{flex:1 1 140px}
-.tr-check .btn{min-height:38px;padding:0 16px;font-size:.8125rem}
-.tr-suggest{display:flex;flex-wrap:wrap;gap:6px;margin:2px 4px 8px}
-.tr-suggest .chip{max-width:100%;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer}
-.tr-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:10px;padding:0 4px}
-.tr-fields .field{margin:0}
-.tr-fields .field label{font-size:.75rem;margin-bottom:5px}
-.tr-fields input,.tr-fields select{min-height:46px!important}
-.tr-msg{font-size:.8125rem;font-weight:600;color:var(--clay-ink);padding:6px 4px 0}
-.tr-from{display:flex;align-items:center;flex-wrap:wrap;gap:6px;width:fit-content;max-width:100%;margin:8px 4px 0;padding:5px 10px;border-radius:10px;background:var(--accent-soft);color:var(--ink-soft);font-size:.8125rem;font-weight:600;font-variant-numeric:tabular-nums}
-.tr-from b{color:var(--ok-ink);font-weight:700}
-.tr-msg:empty{display:none}
-.tr-empty-list{display:flex;flex-direction:column;align-items:flex-start;gap:12px;border-inline-start:4px solid #D99A00}
-.tr-empty-list p{margin:0;font-size:.9375rem;font-weight:500;line-height:1.5;color:var(--ink)}
-.tr-list{margin-top:22px}
-.tr-list .field-hint{margin:0 0 10px}
-.tr-list .btn svg{width:15px;height:15px}
-.tr-picker .tr-remember{margin:0 6px 8px;font-size:.8125rem}
-.tr-import .import-row{grid-template-columns:minmax(0,1fr);gap:3px}
-.tr-import .import-row small{grid-column:1}
-.transfer-bar .send-go svg{width:20px;height:20px}
-html.dark .tr-row.check{background:linear-gradient(rgba(245,166,35,.05),rgba(245,166,35,.05)),var(--surface)}
-html.dark .tr-row.bad{background:linear-gradient(rgba(214,72,63,.06),rgba(214,72,63,.06)),var(--surface)}
-html.dark .tr-check{color:#F5C46B}
-@media(min-width:600px){.tr-actions #trReadBtn{flex-basis:0;flex-grow:1.4}}
-@media(min-width:960px){.tr-page,.tr-soon{max-width:720px}}
-@media(min-width:1100px){
-  .tr-soon{max-width:none}
-  .tr-page{max-width:none;display:grid;grid-template-columns:minmax(320px,400px) minmax(0,1fr);grid-template-areas:"side rows" "list rows";gap:0 28px;align-items:start}
-  .tr-side{grid-area:side}.tr-col{grid-area:rows;min-width:0}.tr-list{grid-area:list}
-  .tr-page .form-card{max-width:none}
-  .tr-rows-head{margin-top:0}
-  .tr-actions #trReadBtn{flex-basis:100%}
-}
-@media(prefers-reduced-motion:reduce){.tr-mic.listening{animation:none}}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Four tabs and More on a narrow phone: the longest labels (گواستنەوە, بەڕێوەبردن) keep their last letters. */
 @media(max-width:420px){.bottomnav>.navbtn{padding:0 2px}}
 /* On the narrowest phones the small title in the top bar is a little smaller. */
 @media(max-width:380px){.topbar-title{font-size:.9375rem}}
 /* Transfers while it is being made: the page is a picture of the design (inert in transfers.js). */
-.tr-locked{pointer-events:none;user-select:none;-webkit-user-select:none;opacity:.6;filter:saturate(.6)}
+
 /* Endless decorations (the streak flame, the Transfers tape, Rico's face) pause while
    the app is out of sight or the battery is low and not charging (app.js syncMotion). */
 html.still .flame,html.still .rico-bot,html.still .rico-bot *{animation-play-state:paused!important}
@@ -1575,20 +1604,10 @@ html.rtl .ad-strip{padding:10px 14px 10px 8px}
 .ad-tile-top .ad-tile{width:26px;height:26px;border-radius:7px}
 .ad-tile-top .ad-tile svg{width:15px;height:15px}
 .ad-tile-name{flex:1;min-width:0;font-size:.8125rem;font-weight:600;line-height:1.2;color:var(--ink-soft);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
-.ad-tile-value{font-family:var(--font-round);font-size:1.375rem;font-weight:700;line-height:1.1;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ad-tile-value{font-family:var(--font-round);font-size:1.375rem;font-weight:700;line-height:1.15;letter-spacing:-.01em;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
 .ad-tile-card.alert .ad-tile-value{color:var(--clay-ink)}
 .ad-tile-sub{font-size:.75rem;color:var(--ink-soft);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Ricotta on the map, under the board: the street in its own colours, the name and Directions. */
-.ad-place{margin-top:14px;border-radius:var(--r-card);overflow:hidden;background:var(--surface)}
-.ad-place-map{height:236px;--my:54%;--mz:.8}
-.ad-place-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,0) 60%,rgba(0,0,0,.32) 100%)}
-.ad-place-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px 16px}
-.ad-place-name{min-width:0}
-.ad-place-name b{display:block;font-size:1.0625rem;font-weight:600}
-.ad-place-name span{display:block;margin-top:2px;font-size:.875rem;color:var(--ink-soft)}
-.ad-place-go{flex:none;height:38px;padding:0 15px;font-size:.875rem;background:var(--accent-strong);color:#fff}
-@media (hover:hover) and (pointer:fine){.ad-place-go:hover{background:#17603C}}
-@media (min-width:960px){.ad-place{margin-top:18px}.ad-place-map{height:300px;--mz:.9}.ad-place-foot{padding:16px 20px 18px}}
 @media (max-width:959px){
   .ad-board{gap:8px}
   .ad-tile-card{min-height:84px;padding:10px 12px;gap:4px;border-radius:18px}
@@ -1780,8 +1799,8 @@ html.rtl .ad-strip{padding:10px 14px 10px 8px}
    panel fully visible until it vanished at once). Nothing behind it scrolls while it is open. */
 .spot-layer{position:fixed;inset:0;z-index:320;display:flex;justify-content:center;align-items:flex-start;padding:calc(10px + var(--safe-top)) 10px 0;touch-action:none}
 .spot-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);animation:fadeIn 200ms ease backwards}
-.spot-panel{position:relative;width:100%;max-width:640px;max-height:min(80vh,calc(var(--vv-height,100dvh) - 24px));display:flex;flex-direction:column;border-radius:26px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--float-shadow);animation:spotIn 340ms var(--spring-soft) backwards;overflow:hidden;transform-origin:50% 0;touch-action:auto}
-@keyframes spotIn{from{opacity:0;transform:translateY(-14px) scale(.97)}}
+.spot-panel{position:relative;width:100%;max-width:640px;max-height:min(80vh,calc(var(--vv-height,100dvh) - 24px));display:flex;flex-direction:column;border-radius:26px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--float-shadow);animation:spotIn 420ms var(--spring-soft) backwards;transform-origin:top center;overflow:hidden;transform-origin:50% 0;touch-action:auto}
+@keyframes spotIn{from{opacity:0;transform:translateY(-18px) scale(.92)}}
 @keyframes spotOut{to{opacity:0;transform:translateY(-10px) scale(.97)}}
 .spot-layer.out .spot-panel{animation:spotOut 190ms var(--ease) forwards}
 .spot-layer.out .spot-scrim{animation:fadeOut 190ms ease forwards}
@@ -1845,7 +1864,6 @@ html.rtl .spot-switch.on i{transform:translateX(-16px)}
 .spot-flash{animation:spotFlash 1.5s ease}
 @keyframes spotFlash{0%,40%{box-shadow:inset 0 0 0 2px var(--tint);background-color:rgba(var(--accent-rgb),.14)}100%{box-shadow:inset 0 0 0 2px transparent}}
 @media (hover:hover) and (pointer:fine){.spot-row:hover{background:var(--fill)}.spot-row.active:hover{background:rgba(var(--accent-rgb),.2)}.spot-mini:hover,.spot-scope[aria-selected="false"]:hover{background:var(--fill-strong)}}
-@media (prefers-reduced-motion:reduce){.spot-panel,.spot-scrim,.spot-layer.out .spot-panel,.spot-layer.out .spot-scrim{animation:none}.spot-switch,.spot-switch i{transition:none}}
 /* Keyboard shortcuts */
 .short-list{display:flex;flex-direction:column;border-radius:18px;background:var(--fill);padding:2px 14px;margin-top:10px}
 .short-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;font-size:.9375rem}
@@ -1876,7 +1894,7 @@ kbd{min-width:26px;height:26px;padding:0 7px;border-radius:7px;display:inline-gr
 .chat-owner{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font:600 .75rem var(--font-round);background:linear-gradient(180deg,#A5ABB8,#858994)}
 .chat-owner.r{background:linear-gradient(180deg,#2E9C64,#1F7A4D)}
 /* The rows stretch their title; the owner's badge stays a small circle like the account button. */
-.rico-recent-row .chat-owner,.rico-hist-open .chat-owner{flex:0 0 26px;width:26px;height:26px;overflow:visible;white-space:normal}
+.rico-hist-open .chat-owner{flex:0 0 26px;width:26px;height:26px;overflow:visible;white-space:normal}
 .rico-hist-open{flex-wrap:wrap;row-gap:0}
 .rico-hist-open .rico-hist-title{flex:1 1 60%}
 .rico-hist-open small{flex:none;font-size:.75rem;color:var(--ink-soft)}
@@ -1894,10 +1912,6 @@ kbd{min-width:26px;height:26px;padding:0 7px;border-radius:7px;display:inline-gr
 @keyframes alertIn{from{opacity:0;transform:scale(1.08)}to{opacity:1;transform:none}}
 .modal-overlay.closing .modal-box.modal-alert{animation:alertOut 160ms ease forwards}
 @keyframes alertOut{to{opacity:0;transform:scale(.96)}}
-@media (prefers-reduced-motion:reduce){
-  .spot-panel,.modal-box.modal-alert,.btn.is-done .ic-check,.ad-bar-pair i{animation:none!important;transition:none!important}
-  .spot-flash{animation:none}
-}
 
 /* ---------- The big update ---------- */
 .settings-hint{margin:-4px 0 8px;font-size:.8125rem;color:var(--ink-soft)}
@@ -1926,11 +1940,11 @@ html.rtl .p-eyebrow{letter-spacing:0}
 .rico-receipt{padding:12px 14px;border-radius:14px 14px 4px 4px;background:var(--surface);box-shadow:0 2px 10px rgba(0,0,0,.06)}
 .rico-receipt-line{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-top:1px dashed var(--line);font-size:.9375rem}
 .rico-receipt-line:first-of-type{margin-top:6px}
-.rico-check{display:grid;gap:8px}
-.rico-check-ok{display:flex;align-items:center;gap:8px;font-size:.9375rem;color:var(--tint)}
+
+
 .rico-why{margin-top:6px;font-size:.8125rem;color:var(--ink-soft)}
 .rico-why summary{cursor:pointer;color:var(--tint);font-weight:500}
-.rico-speak{justify-self:start;margin-top:2px;font-size:.8125rem}
+
 .quick-btn .rico-bot{--size:20px;margin:0}
 .rico-top .rb-shadow,.quick-btn .rb-shadow{display:none}
 .mem-add{display:flex;gap:8px;margin-top:10px}
@@ -1941,36 +1955,36 @@ html.rtl .p-eyebrow{letter-spacing:0}
 .check-head{display:flex;align-items:center;gap:12px;margin-bottom:10px;text-align:start}
 .check-head .sel-title{text-align:start}
 .check-list{display:grid;gap:8px;margin-bottom:12px}
-.check-issue{display:grid;gap:8px;padding:12px;border-radius:14px;background:var(--surface-2)}
-.check-issue small{display:block;color:var(--ink-soft);font-size:.8125rem}
-.check-actions{display:flex;flex-wrap:wrap;gap:8px}
-.check-actions .btn{min-height:38px}
-.check-go{width:100%}
-.countdown{display:grid;justify-items:center;gap:8px;padding:12px 0;text-align:center}
-.countdown-num{font-size:3.5rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;color:var(--tint)}
-.countdown-actions{display:flex;gap:10px;margin-top:8px}
-.send-btn.hold-send{position:relative;overflow:hidden}
-.send-hold-fill{position:absolute;inset:0;background:rgba(255,255,255,.25);transform:scaleX(0);transform-origin:left center;pointer-events:none}
-html.rtl .send-hold-fill{transform-origin:right center}
-.send-btn.holding .send-hold-fill{transform:scaleX(1);transition:transform .8s linear}
+
+
+
+
+
+
+
+
+
+
+
+
 .item-row{transition:transform .12s ease}
-.item-photo{flex:none;width:44px;height:44px;border-radius:10px;object-fit:cover;background:var(--surface-2)}
+
 .quick-btn.on{color:var(--tint)}
-.board-only{display:none}
-@media (min-width:960px){.board-only{display:inline-flex}}
+
+
 
 /* Lists, photos */
 #listText{width:100%;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);resize:vertical}
-.list-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.list-photo{cursor:pointer}
+
+
 .status-line{min-height:1.3em;margin-top:8px;font-size:.875rem;color:var(--ink-soft)}
-.list-rows{display:grid;gap:6px;margin:10px 0}
-.list-row-read{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-radius:12px;background:var(--surface-2)}
-.list-row-read small{display:block;font-size:.75rem;color:var(--ink-soft)}
-.list-row-read.unsure{opacity:.7}
-.list-row-read input{width:76px;text-align:center}
-.photo-field{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.photo-thumb{width:56px;height:56px;border-radius:12px;object-fit:cover}
+
+
+
+
+
+
+
 
 /* Reports */
 .chart-bars{display:flex;align-items:flex-end;gap:2px;height:72px}
@@ -1998,10 +2012,10 @@ html.rtl .send-hold-fill{transform-origin:right center}
 .tour-step{padding:8px 0}
 .tour-step .btn{min-width:140px;margin-top:6px}
 .board{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}
-.board-col h3{display:flex;align-items:center;gap:6px;margin:0 0 8px;font-size:1rem}
-.board-card{display:grid;gap:4px;padding:12px;margin-bottom:8px;border-radius:14px;background:var(--surface-2);font-size:.875rem}
-.board-card.late{box-shadow:inset 0 0 0 1.5px rgba(255,59,48,.4)}
-.board-card .btn{justify-self:start;min-height:34px}
+
+
+
+
 .restore-list{display:grid;gap:0}
 .restore-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
 .restore-row:first-child{border-top:0}
@@ -2019,18 +2033,8 @@ body.lang-ku .section-title,body.lang-ar .section-title,body.lang-ku .hero-eyebr
 body.lang-ku .rico-note-text,body.lang-ar .rico-note-text,body.lang-ku .rico-text,body.lang-ar .rico-text{line-height:1.7}
 
 /* The paper order sheet */
-.print-sheet{display:none}
-@media print{
-  body>*:not(.print-sheet){display:none!important}
-  .print-sheet{display:block;padding:12mm;color:#000;background:#fff;font-size:12pt}
-  .print-sheet h1{margin:0;font-size:18pt}
-  .print-sheet h2{margin:14pt 0 4pt;font-size:13pt}
-  .print-sheet table{width:100%;border-collapse:collapse}
-  .print-sheet td{padding:4pt;border-bottom:.5pt solid #999}
-  .print-sheet .box{width:14pt}
-  .print-sheet .box::before{content:"";display:block;width:10pt;height:10pt;border:1pt solid #000}
-  .print-sheet .qty{width:60pt;text-align:end;font-weight:700}
-}
+
+
 
 /* The Order screen's shortcuts scroll sideways in one line, so their words stay readable. */
 .order-quick-actions{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
@@ -2038,7 +2042,7 @@ body.lang-ku .rico-note-text,body.lang-ar .rico-note-text,body.lang-ku .rico-tex
 .order-quick-actions .quick-btn{flex:0 0 auto!important;white-space:nowrap!important;padding:0 14px}
 .order-quick-actions .quick-btn svg{display:block!important}
 .year-sheet .report-stats{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}
-@media (min-width:960px){.board-sheet .sel-panel{width:min(960px,92vw);max-width:none}}
+
 
 .tab-pill .tab-pin{display:inline-flex;margin-inline-end:5px}
 .tab-pill .tab-pin svg{width:12px;height:12px}

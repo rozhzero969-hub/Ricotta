@@ -17,6 +17,8 @@ const server=http.createServer((req,res)=>{
   const page=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>{localStorage.setItem('ricottaOrders:lang','"en"');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:toured:'+a,'true');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:ricoBriefing:'+a,JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));});
+  // Pages change at once in this test, so each step finds one page (the app itself always animates).
+  await page.addInitScript(()=>{ window.__ricottaStillForTests=true; });
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.locator('#itemSearch').waitFor();
   await page.waitForFunction(()=>state.items.length>10);
@@ -27,6 +29,7 @@ const server=http.createServer((req,res)=>{
   await page.evaluate(()=>{ state.cart[state.items[0].id]=1; refreshOrderView(state.items[0].id); });
   assert.equal(await page.locator('#clearOrderBtn').isVisible(),true,'and then it is there');
   await page.evaluate(()=>{ state.cart={}; refreshOrderView(); });
+  await page.waitForFunction(()=>!document.getAnimations().some(a=>a.playState==='running' && a.effect?.getTiming().iterations!==Infinity));
   // + adds only on a real tap: a finger that lands on it and moves (a swipe or a scroll) adds nothing.
   const plus=page.locator('#orderResults [data-inc]').first(), plusId=await plus.getAttribute('data-inc');
   const box=await plus.boundingBox(), cx=box.x+box.width/2, cy=box.y+box.height/2;
@@ -44,10 +47,10 @@ const server=http.createServer((req,res)=>{
   assert.ok(await page.locator(`[data-ordertab="${tabId}"] .tab-pin`).count()===1,'a pinned supplier comes first with a pin');
   await page.locator('.bottomnav [data-view="manage"]').click();
   await page.waitForFunction(()=>!document.querySelector('.content.gliding'));
-  await page.locator('[data-manage-view="suppliers"]').click();
+  await page.locator('#app [data-manage-view="suppliers"]').click();
   await page.locator('#supAddBtn').waitFor();
   assert.equal(await page.locator('.bottomnav [data-view="manage"]').getAttribute('aria-current'),'page');
-  await page.locator('[data-manage-view="units"]').click();
+  await page.locator('#app [data-manage-view="units"]').click();
   await page.locator('.unit-chip').first().waitFor();
   assert.equal(await page.locator('[data-manage-view="settings"]').count(),0,'Settings is not inside Manage');
   await page.locator('#accountBtn').click();
@@ -137,14 +140,14 @@ const server=http.createServer((req,res)=>{
   assert.doesNotMatch(await page.locator('.spot-list').textContent(),/Recent/,'and Clear forgets it');
   await page.keyboard.press('Escape');await page.locator('.spot-layer').waitFor({state:'detached'});
   // Closing animates (it used to vanish at once): the panel lifts away, then the layer goes.
-  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.emulateMedia({reducedMotion:'no-preference'});await page.evaluate(()=>{window.__ricottaStillForTests=false;});
   await page.keyboard.press('Control+KeyK');await page.locator('#spotInput').waitFor();
   assert.equal(await page.evaluate(()=>document.activeElement.id),'spotInput','the field is ready at once (iPhone keyboards need that)');
   await page.waitForTimeout(400);
   await page.keyboard.press('Escape');
   assert.equal(await page.evaluate(()=>{ const p=document.querySelector('.spot-layer.out .spot-panel'); return p ? getComputedStyle(p).animationName : 'gone'; }),'spotOut','the panel lifts away');
   await page.locator('.spot-layer').waitFor({state:'detached',timeout:1500});
-  await page.emulateMedia({reducedMotion:'reduce'});
+  await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>{window.__ricottaStillForTests=true;});
   await page.keyboard.press('Escape');await page.locator('.spot-layer').waitFor({state:'detached'});
   await page.evaluate(()=>{state.cart={};persistCartDraft();});
   await nav('history');

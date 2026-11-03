@@ -578,6 +578,7 @@ async function ricoAsk(text, options = {}){
   if(controller.signal.aborted && !bot.text && !bot.proposals.length) bot.error = 'stopped';
   if(!controller.signal.aborted && !bot.text && !bot.proposals.length && !bot.error){ bot.error = 'failed'; bot.retry = true; }
   rico.streaming = false; rico.abort = null;
+  if(bot.text && !bot.error) playRicoReply();
   ricoSaveSoon();
   if(state.view === 'assistant'){
     ricoPaintMessage(idx);
@@ -603,7 +604,10 @@ function ricoPaintMessage(i){
   tmp.innerHTML = renderRicoMessage(m, i);
   const fresh = tmp.firstElementChild;
   fresh.classList.add('painted');
+  // Rico's answer grows out of Spark the first time it appears, then stays still while text streams in.
+  const hadBubble = !!el.querySelector('.rico-bubble'), bubble = fresh.querySelector('.rico-bubble');
   el.replaceWith(fresh);
+  if(bubble && !hadBubble && !reducedMotion()) bubble.animate?.([{transform:'scale(.6)', opacity:0}, {transform:'none', opacity:1}], {duration:420, easing:'cubic-bezier(.32,.72,0,1)'});
   if(m.streaming && m.text){
     const last = fresh.querySelector('.rico-text > :last-child');
     if(last) last.insertAdjacentHTML('beforeend', '<span class="rico-caret" aria-hidden="true"></span>');
@@ -623,7 +627,7 @@ function ricoRefreshComposer(){
 }
 function ricoNearBottom(){ const box = scrollBox(); return box.scrollTop + box.clientHeight >= box.scrollHeight - 220; }
 function ricoScroll(smooth){
-  requestAnimationFrame(()=>scrollBox().scrollTo({top:scrollBox().scrollHeight, behavior: smooth && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto'}));
+  requestAnimationFrame(()=>scrollBox().scrollTo({top:scrollBox().scrollHeight, behavior: smooth && !reducedMotion() ? 'smooth' : 'auto'}));
 }
 
 /* ---------- Carrying out a confirmed proposal ---------- */
@@ -837,7 +841,7 @@ function ricoOpenHistory(){
   const list = wrap.querySelector('.rico-hist-list');
   let confirming = null;   // the chat id (or 'all') waiting for a second tap on Delete
   const paint = ()=>{
-    if(!rico.chats){ list.innerHTML = `<div class="field-hint rico-hist-empty">${esc(t('loading'))}</div>`; return; }
+    if(!rico.chats){ list.innerHTML = loadingLines(4); return; }
     if(!rico.chats.length){ list.innerHTML = `<div class="field-hint rico-hist-empty">${esc(t('ricoHistoryEmpty'))}</div>`; return; }
     let lastDay = '';
     list.innerHTML = rico.chats.map(c=>{
@@ -854,17 +858,17 @@ function ricoOpenHistory(){
   paint();
   if(!rico.chats) ricoLoadChats().then(paint);
   let closed = false;
-  const close = ()=>{
+  const close = (velocity = 0)=>{
     if(closed) return; closed = true;
     if(activeSelSheet === close) activeSelSheet = null;
-    wrap.classList.add('out'); wrap.inert = true;
     document.removeEventListener('keydown', onKey, true);
-    setTimeout(()=>wrap.remove(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220);
+    sheetLeave(wrap, velocity);
   };
   activeSelSheet = close;
   const onKey = e=>{ if(e.key === 'Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); } };
   document.addEventListener('keydown', onKey, true);
-  wrap.querySelector('.sel-scrim').onclick = close;
+  wrap.querySelector('.sel-scrim').onclick = ()=>close();
+  attachSheetDrag(wrap, close);
   wrap.querySelector('[data-hist-new]').onclick = ()=>{ close(); ricoNewChat(); };
   list.onclick = async e=>{
     const open = e.target.closest('[data-hist-open]'), del = e.target.closest('[data-hist-del]'), yes = e.target.closest('[data-hist-yes]'), all = e.target.closest('[data-hist-all]');
