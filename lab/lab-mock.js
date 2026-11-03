@@ -8,11 +8,11 @@
   const LS = 'ricottaOrders:';
   const DB_KEY = 'ricottaLab:db';
   /* The same roles and screens as the server (supabase/functions/api/index.ts). */
-  const ROLES = ['history','manage','catalog','record','transfers','assistant','send','exports','notify','reminders'];
-  const DEFAULT_ROLES = ROLES.filter(r=>r !== 'transfers');
+  const ROLES = ['history','manage','catalog','record','assistant','send','exports','notify'];
+  const DEFAULT_ROLES = ROLES;
   const rolesOf = account => account === 'rozha' ? [...ROLES] : Array.isArray(db.roles?.yunis) ? ROLES.filter(r=>db.roles.yunis.includes(r)) : [...DEFAULT_ROLES];
   const can = (account, role) => account === 'rozha' || (rolesOf(account).includes(role) && (role !== 'catalog' || rolesOf(account).includes('manage')));
-  const viewsFor = a => ['order', ...(can(a,'assistant') ? ['assistant'] : []), ...(can(a,'history') ? ['history'] : []), ...(can(a,'transfers') ? ['transfers'] : []),
+  const viewsFor = a => ['order', ...(can(a,'assistant') ? ['assistant'] : []), ...(can(a,'history') ? ['history'] : []),
     ...(can(a,'manage') ? ['manage','suppliers','itemsAdmin','units'] : []), ...(can(a,'record') ? ['record'] : []), ...(a === 'rozha' ? ['admin'] : []), 'settings'];
   const NAMES = {rozha:{en:'Rozha',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}};
 
@@ -123,7 +123,7 @@
       usage.push({account:'yunis', deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', day, seconds:2400 + ((d*911) % 3600)});
       if(d % 3 === 0) usage.push({account:'rozha', deviceId:'lab-phone-rozha', label:'iPhone 16/17 Pro Max|App', day, seconds:600 + d*40});
     }
-    return {v:7, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, reminder:{enabled:true, time:'09:00'}, seq:100, said:{},
+    return {v:7, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, seq:100, said:{},
       roles:{yunis:null}, security, problems, usage};
   }
   /* Two finished months for the archive (History itself only keeps this month). */
@@ -135,22 +135,11 @@
       suppliers:[{name:'Zakho Dairy', orders:16, lines:84}, {name:'Erbil Veg Market', orders:13, lines:101}],
       topItems:[{name:'Tomatoes', unit:'kg', times:13, qty:80}, {name:'Mozzarella', unit:'kg', times:12, qty:52}]}
   ];
-  /* The workplace stock system's item list (Transfers), in its "English - کوردی" naming. */
-  const STOCK_SEED = [
-    ['Al Hadbaa Flour - ئاردی حەدبا', ['فەردە','کیلۆ']], ['Almonds - بادەم', ['کیلۆ']], ['Al Mudhish Milk - شیری مودهش', ['دانە','کارتۆن']],
-    ['Bato Fries - پەتاتەی باتۆ', ['کارتۆن']], ['Aleppo Pepper - بیبەری حەلەب', ['کیلۆ']], ['Apple Cider Vinegar - سرکەی سێو', ['دانە']],
-    ['Banoleya Bread - نانی بانۆلیا', ['سێت','دانە']], ['Barbecue Sauce - سۆسی باربیکیو', ['دانە','کارتۆن']], ['Beans - فاسۆلیا', ['فەردە','کیلۆ']],
-    ['Tomatoes - تەماتە', ['کیلۆ','سندوق']], ['Onions - پیاز', ['فەردە','کیلۆ']], ['Mozzarella - مۆزارێلا', ['کیلۆ']],
-    ['Eggs - هێلکە', ['کارتۆن','دانە']], ['Cucumber - خەیار', ['کیلۆ']], ['Lemons - لیمۆ', ['کیلۆ']], ['Sunflower Oil - ڕۆنی گوڵەبەڕۆژە', ['تەنەکە','دانە']],
-    ['Black Tea - چای ڕەش', ['پاکەت','کارتۆن']], ['Sugar - شەکر', ['فەردە','کیلۆ']], ['Kebab Meat - گۆشتی کەباب', ['کیلۆ']], ['Chicken Breast - سنگی مریشک', ['کیلۆ','کارتۆن']],
-    ['Pizza Cheese - پەنیری پیتزا', ['کیلۆ','کارتۆن']], ['Dish Soap - سابوونی قاپ', ['دانە','کارتۆن']], ['Mini Water - ئاوی بچووک', ['کارتۆن']], ['Pepsi Can - پیپسی قوتوو', ['کارتۆن','دانە']]
-  ].map(([name, units], i)=>({id:'st-'+(i+1), name, units, aliases:[]}));
   let db = lsGet(DB_KEY);
   if(!db || db.v !== 7) db = seed();
-  if(!Array.isArray(db.stock)) db.stock = STOCK_SEED.map(i=>({...i, units:[...i.units]}));
   const save = () => lsSet(DB_KEY, db);
   save();
-  window.labResetData = () => { db = seed(); db.stock = STOCK_SEED.map(i=>({...i, units:[...i.units]})); save(); };
+  window.labResetData = () => { db = seed(); save(); };
   window.labDb = () => db;
 
   /* Signed in as Rozha when the Lab opens, so the real Order screen shows first. */
@@ -171,7 +160,7 @@
   const devices = account => {
     const now = new Date().toISOString(), earlier = new Date(Date.now()-2*3600000).toISOString();
     const list = [
-      {id:deviceId() || 'this-device', account, label:'Mac|Website', loggedIn:true, lastLogin:earlier, lastSeen:now, command:null, handledCommand:null, appVersion:APP_VERSION},
+      {id:deviceId() || 'this-device', account, label:'Mac|Website', loggedIn:true, lastLogin:earlier, lastSeen:now, command:null, handledCommand:null, appVersion:APP_VERSION, push:true},
       {id:'lab-phone-yunis', account:'yunis', label:'iPhone 16 Pro|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-6*60000).toISOString(), command:null, handledCommand:null, appVersion:'2026-10-09.1'},
       {id:'lab-phone-rozha', account:'rozha', label:'iPhone 16/17 Pro Max|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-40*60000).toISOString(), command:null, handledCommand:null}
     ];
@@ -300,7 +289,7 @@
       return json({
         account:me, name:NAMES[me].en, views:viewsFor(me), roles:rolesOf(me),
         suppliers:db.suppliers, items:db.items.map(i=>({...i, createdAt:i.createdAt || '2026-08-01T09:00:00.000Z', lastOrderedAt:history().filter(o=>o.entries.some(e=>e.items.some(x=>x.itemId === i.id))).map(o=>o.date).sort().pop() || null})), units:db.units,
-        history:db.history, historyMonth:monthStartIso().slice(0,7), reminder:db.reminder, devices:devices(me),
+        history:db.history, historyMonth:monthStartIso().slice(0,7), settings:(db.settings ||= {})[me] || {}, devices:devices(me),
         activity:can(me,'record') ? db.activity : [], inbox:can(me,'assistant') ? db.inbox.slice(-20) : [],
         pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
         months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
@@ -315,8 +304,6 @@
     if(path === 'admin/backups' && method === 'GET') return json(Array.from({length:7}, (_, i)=>({day:new Date(Date.now() - i * 86400000).toISOString().slice(0, 10), suppliers:db.suppliers.length, items:db.items.length, orders:db.history.length, at:new Date().toISOString()})));
     if(path === 'admin/backups/restore' && method === 'POST') return /^\d{6}$/.test(String(body.pin || '')) && body.pin !== '000000' ? json({suppliers:0, units:0, items:1, orders:2}) : fail('wrong_pin', 403);
     if(path === 'orders/read-list' && method === 'POST') return json({rows:db.items.slice(0, 4).map((i, n)=>({said:i.name, qty:n + 2, itemId:i.id, sure:true})).concat({said:'Something unclear', qty:1, itemId:null, sure:false})});
-    if(/^items\/[^/]+\/extra$/.test(path) && method === 'PUT'){ const i = db.items.find(x=>x.id === decodeURIComponent(path.split('/')[1])); if(!i) return fail('gone', 409); i.place = body.place; return json({ok:true}); }
-    if(/^items\/[^/]+\/photo$/.test(path)){ const i = db.items.find(x=>x.id === decodeURIComponent(path.split('/')[1])); if(!i) return fail('gone', 409); i.photoUrl = method === 'POST' ? 'data:image/jpeg;base64,' + body.image.replace(/^data:[^,]*,/, '') : null; return json({ok:true, photoUrl:i.photoUrl}); }
     if(path === 'draft' && (method === 'GET' || method === 'PUT')){
       db.drafts ||= {};
       const draft=db.drafts[account] ||= {cart:{},revision:0};
@@ -332,9 +319,9 @@
     // Yunis's roles, checked like the server does.
     const catalogWrite = ((method === 'PUT' || method === 'DELETE') && /^(?:suppliers|items|units)\/[^/]+$/.test(path)) || (method === 'PUT' && (path.startsWith('supplier-order/') || path === 'items/aliases')) || (method === 'POST' && path === 'items/restore');
     if((catalogWrite && !can(account,'catalog')) || (method === 'POST' && path === 'orders' && !can(account,'send')) || (path === 'months' && !can(account,'history'))
-      || (path === 'activity' && !can(account,'record')) || (path.startsWith('stock') && !can(account,'transfers'))
+      || (path === 'activity' && !can(account,'record'))
       || ((path.startsWith('assistant/') || path.startsWith('rico-chats') || path === 'streak/recover') && !can(account,'assistant'))
-      || (path === 'reminder' && !can(account,'reminders')) || (path === 'reports/catalog' && !can(account,'exports'))
+      || (path === 'reports/catalog' && !can(account,'exports'))
       || (path.startsWith('admin/') && account !== 'rozha')) return fail('forbidden', 403);
     if(method === 'POST' && path === 'problems'){
       const reports = Array.isArray(body.reports) ? body.reports.slice(0, 10) : [];
@@ -389,10 +376,11 @@
       return json({from:monthStartIso(), thisHour:3, kinds:{chat:74, voice:12}, people:{rozha:31, yunis:55}, days, tokens:{input:412000, output:51000}, hourLimit:400, perPhoneHourLimit:60});
     }
     // Rico's AI: which AIs answer, how each answered last, and this month's replies and tokens.
+    if(method === 'PUT' && /^admin\/ai\/(anthropic|gemini|groq)$/.test(path)){ db.aiOff ||= {}; db.aiOff[path.split('/')[2]] = !body.enabled; save(); return ok(); }
     if(method === 'GET' && path === 'admin/ai') return json({from:monthStartIso(), brains:[
-      {id:'anthropic', connected:true, state:'working', at:new Date(Date.now() - 4*60000).toISOString(), calls:41, input:236000, output:18400},
-      {id:'gemini', connected:true, state:'working', at:new Date(Date.now() - 3600000).toISOString(), calls:30, input:142000, output:25100},
-      {id:'groq', connected:true, state:'busy', at:new Date(Date.now() - 86400000).toISOString(), calls:15, input:34000, output:7500}]});
+      {id:'anthropic', connected:true, state:'working', at:new Date(Date.now() - 4*60000).toISOString(), calls:41, input:236000, output:18400, enabled:!db.aiOff?.anthropic},
+      {id:'gemini', connected:true, state:'working', at:new Date(Date.now() - 3600000).toISOString(), calls:30, input:142000, output:25100, enabled:!db.aiOff?.gemini},
+      {id:'groq', connected:true, state:'busy', at:new Date(Date.now() - 86400000).toISOString(), calls:15, input:34000, output:7500, enabled:!db.aiOff?.groq}]});
     // Rico's orders (TEST): what Rico sent by himself over WhatsApp, Rozha only (like the server).
     if(method === 'GET' && path === 'rico/orders'){
       if(account !== 'rozha') return fail('forbidden', 403);
@@ -414,41 +402,6 @@
     if(method === 'POST' && path === 'streak/recover'){ if(!streakRecover()) return fail('nothing_to_recover', 409); save(); return json({ok:true, streak:streakView()}); }
     // The month archive
     if(method === 'GET' && path === 'months') return json(LAB_MONTHS);
-    // Transfers is still being made: like the server (TRANSFERS_OPEN), its routes refuse until it is ready
-    // (TRANSFERS_READY in transfers.js, which loads after this file).
-    if(!(typeof TRANSFERS_READY !== 'undefined' && TRANSFERS_READY) && (path === 'stock-items' || path === 'stock/read' || path.startsWith('stock-items/'))) return fail('transfers_not_ready', 423);
-    if(method === 'GET' && path === 'stock-items') return json(db.stock);
-    if(method === 'PUT' && path === 'stock-items'){
-      const items = Array.isArray(body.items) ? body.items : null;
-      if(!items || items.length > 5000 || items.some(i=>!String(i?.name||'').trim())) return fail('invalid_input');
-      const old = new Map(db.stock.map(i=>[i.name.toLowerCase(), i])), seen = new Set();
-      db.stock = items.filter(i=>{ const k = String(i.name).trim().toLowerCase(); if(seen.has(k)) return false; seen.add(k); return true; })
-        .map((i, n)=>{ const name = String(i.name).trim().slice(0,200), prev = old.get(name.toLowerCase()); return {id:prev ? prev.id : 'st-'+(++db.seq), name, units:[...new Set((i.units||[]).map(u=>String(u).trim()).filter(Boolean))].slice(0,20), aliases:prev ? prev.aliases : []}; });
-      save(); return json({ok:true, count:db.stock.length});
-    }
-    if(method === 'POST' && (m = path.match(/^stock-items\/([^/]{1,80})\/alias$/))){
-      const item = db.stock.find(i=>i.id === decodeURIComponent(m[1])), alias = String(body.alias||'').trim();
-      if(!alias || alias.length > 120) return fail('invalid_input');
-      if(!item) return fail('not_found', 404);
-      if(alias.toLowerCase() !== item.name.toLowerCase()) item.aliases = [...item.aliases.filter(a=>a.toLowerCase() !== alias.toLowerCase()), alias].slice(-30);
-      save(); return ok();
-    }
-    /* No Gemini in the Lab: the list is read with the app's own matching, the way the server checks Rico's answer.
-       A photo always reads as the same handwritten sample list. */
-    if(method === 'POST' && path === 'stock/read'){
-      const text = body.image ? 'ئاردی حەدبا 2 فەردە\nbadam 1.5 kilo\nmudhish 6 دانە\nbbq sauce 3\nsomething else 1' : String(body.text||'').slice(0,4000);
-      if(!text.trim()) return fail('empty');
-      await new Promise(r=>setTimeout(r, 700));
-      const rows = window.parseTransferText(text).map(p=>{
-        const found = window.matchStockLocally(p.said), item = db.stock.find(i=>i.id === found.itemId);
-        const fitted = item ? window.RicottaSearch.fit(item.units, p.unit || '', p.amount) : null;
-        const unit = item ? (fitted ? fitted.unit : item.units.length ? null : p.unit) : p.unit;
-        const changed = !!item && !!p.unit && (fitted ? fitted.amount !== p.amount : item.units.length > 0);
-        const sure = !!item && found.sure && (!item.units.length || !!unit);
-        return {said:p.said, amount:fitted ? fitted.amount : p.amount, unit:unit || null, wrote:changed ? {amount:p.amount, unit:p.unit} : null, itemId:item ? item.id : null, sure, suggestions:sure ? [] : found.suggestions};
-      });
-      return json({rows});
-    }
     if(method === 'PUT' && (m = path.match(/^supplier-order\/(.+)$/))){
       const sid = decodeURIComponent(m[1]);
       (body.itemIds||[]).forEach((id, i)=>{ const it = db.items.find(x=>x.id===id && x.supplierId===sid); if(it) it.sortOrder = i; });
@@ -489,14 +442,14 @@
         return fail('gone', 409);
       } else if(Array.isArray(body.only) && prev && table !== 'units'){
         // Like the server: an edit that names its fields changes only those.
-        const allowed = table === 'suppliers' ? ['name','phone','reminder','cutoff'] : ['name','unit','supplierId','note','aliases','available','sortOrder'];
+        const allowed = table === 'suppliers' ? ['name','phone','reminder'] : ['name','unit','supplierId','note','aliases','available','sortOrder'];
         if(body.only.some(k=>!allowed.includes(k)) || (body.only.includes('name') && !String(body.name||'').trim())) return fail('invalid_input');
         for(const k of body.only) prev[k] = body[k] ?? (k === 'note' ? '' : null);
         if(body.only.includes('supplierId') && !body.only.includes('sortOrder')) prev.sortOrder = 'sortOrder' in body ? body.sortOrder : null;
         db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:'edit', type, name:prev.name, fields:[]});
       } else {
         let row;
-        if(table === 'suppliers') row = {id, name:String(body.name||'').slice(0,160), phone:body.phone || null, reminder:body.reminder || null, cutoff:'cutoff' in body ? body.cutoff || null : (prev ? prev.cutoff || null : null)};
+        if(table === 'suppliers') row = {id, name:String(body.name||'').slice(0,160), phone:body.phone || null, reminder:body.reminder || null};
         else if(table === 'items') row = {id, name:String(body.name||'').slice(0,160), unit:body.unit || null, supplierId:body.supplierId || null, note:'note' in body ? String(body.note||'').slice(0,120) : (prev ? prev.note || '' : ''), sortOrder:'sortOrder' in body ? body.sortOrder : (prev ? prev.sortOrder : null), aliases:'aliases' in body ? body.aliases : (prev ? prev.aliases || [] : []), available:'available' in body ? body.available !== false : (prev ? prev.available !== false : true)};
         else row = {id, en:String(body.en||'').slice(0,80), ku:body.ku || null, ar:body.ar || null};
         if(idx >= 0) list[idx] = row; else list.push(row);
@@ -580,7 +533,7 @@
     if(method === 'POST' && path === 'assistant/inbox/read'){ db.inbox.forEach(x=>x.read = true); save(); return ok(); }
     if(path === 'push/subscription' || path === 'push/lang') return ok();
     if(method === 'POST' && path === 'push/send') return json({sent:0, failed:0, removed:0, lab:true});
-    if(method === 'PUT' && path === 'reminder'){ db.reminder = {enabled:!!body.enabled, time:String(body.time||'09:00')}; save(); return ok(); }
+    if(method === 'PUT' && path === 'settings'){ db.settings ||= {}; db.settings[account] = {...(db.settings[account] || {}), [body.key]:body.value}; save(); return ok(); }
     return fail('not_found', 404);
   }
 

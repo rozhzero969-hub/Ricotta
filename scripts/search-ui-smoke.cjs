@@ -16,15 +16,32 @@ const server=http.createServer((req,res)=>{
  try{
   const page=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
-  await page.addInitScript(()=>{localStorage.setItem('ricottaOrders:lang','"en"');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:toured:'+a,'true');});
+  await page.addInitScript(()=>{localStorage.setItem('ricottaOrders:lang','"en"');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:toured:'+a,'true');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:ricoBriefing:'+a,JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));});
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.locator('#itemSearch').waitFor();
   await page.waitForFunction(()=>state.items.length>10);
-  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','transfers','manage'],'Rozha has Transfers from the start');
+  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','manage','record'],'Rozha\'s tabs, with Transfers gone');
   assert.equal(await page.locator('.hero-card,.streak-chip').count(),2,'summary board and kitchen streak remain');
   assert.equal(await page.locator('.order-options').count(),0,'the Order screen has no fold');
-  assert.equal(await page.locator('#clearOrderBtn').isVisible(),true,'Clear order is shown directly');
-  assert.equal(await page.locator('#clearOrderBtn').isDisabled(),true,'and waits for something to clear');
+  assert.equal(await page.locator('#clearOrderBtn').isVisible(),false,'Clear order shows only once something is chosen');
+  await page.evaluate(()=>{ state.cart[state.items[0].id]=1; refreshOrderView(state.items[0].id); });
+  assert.equal(await page.locator('#clearOrderBtn').isVisible(),true,'and then it is there');
+  await page.evaluate(()=>{ state.cart={}; refreshOrderView(); });
+  // + adds only on a real tap: a finger that lands on it and moves (a swipe or a scroll) adds nothing.
+  const plus=page.locator('#orderResults [data-inc]').first(), plusId=await plus.getAttribute('data-inc');
+  const box=await plus.boundingBox(), cx=box.x+box.width/2, cy=box.y+box.height/2;
+  await page.evaluate(({cx,cy})=>{ const el=document.elementFromPoint(cx,cy).closest('[data-inc]'); const ev=(type,x)=>el.dispatchEvent(new PointerEvent(type,{bubbles:true,clientX:x,clientY:cy,pointerId:7,pointerType:'touch',isPrimary:true})); ev('pointerdown',cx); document.dispatchEvent(new PointerEvent('pointermove',{clientX:cx-60,clientY:cy,pointerId:7,pointerType:'touch'})); document.dispatchEvent(new PointerEvent('pointerup',{clientX:cx-60,clientY:cy,pointerId:7,pointerType:'touch'})); },{cx,cy});
+  assert.equal(await page.evaluate(id=>state.cart[id]||0,plusId),0,'a swipe across + adds nothing');
+  await page.evaluate(({cx,cy})=>{ const el=document.elementFromPoint(cx,cy).closest('[data-inc]'); el.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,clientX:cx,clientY:cy,pointerId:8,pointerType:'touch',isPrimary:true})); document.dispatchEvent(new PointerEvent('pointerup',{clientX:cx,clientY:cy,pointerId:8,pointerType:'touch'})); },{cx,cy});
+  assert.equal(await page.evaluate(id=>state.cart[id]||0,plusId),1,'a tap adds one');
+  await page.evaluate(()=>{ state.cart={}; refreshOrderView(); });
+  // Hold a supplier's tab: pin it first.
+  const tab=page.locator('[data-ordertab]:not([data-ordertab="all"])').last(), tabId=await tab.getAttribute('data-ordertab');
+  await page.evaluate(id=>{ const el=document.querySelector(`[data-ordertab="${id}"]`); el.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,clientX:5,clientY:5,pointerId:9})); },tabId);
+  await page.locator('.ctx-menu [data-ctx="pin"]').waitFor();
+  await page.locator('.ctx-menu [data-ctx="pin"]').click();
+  await page.waitForFunction(id=>document.querySelectorAll('[data-ordertab]')[1]?.dataset.ordertab===id,tabId);
+  assert.ok(await page.locator(`[data-ordertab="${tabId}"] .tab-pin`).count()===1,'a pinned supplier comes first with a pin');
   await page.locator('.bottomnav [data-view="manage"]').click();
   await page.waitForFunction(()=>!document.querySelector('.content.gliding'));
   await page.locator('[data-manage-view="suppliers"]').click();
@@ -55,7 +72,7 @@ const server=http.createServer((req,res)=>{
   assert.equal(await page.locator('.catalog-search > svg').evaluate(el=>getComputedStyle(el).position),'absolute','search icon cannot overlap the input');
   assert.equal(await page.locator('.list-row').first().evaluate(el=>getComputedStyle(el).backdropFilter),'none','static list rows avoid expensive blur');
   await page.locator('#catalogSearch').fill('tomtao');
-  assert.equal(await page.locator('.table-list [data-edititem="it-tom"]').isVisible(),true,'a typo still finds the item (phones show the list)');
+  assert.equal(await page.locator('.plain-list [data-edititem="it-tom"]').isVisible(),true,'a typo still finds the item (phones show the list)');
   assert.equal(await page.locator('.data-table [data-edititem="it-tom"]').isVisible(),false,'the wide table stays hidden on phones');
   assert.ok(await page.locator('.list-row:visible').count()<5);
   await page.locator('#catalogSearch').fill('zzzxxxx');

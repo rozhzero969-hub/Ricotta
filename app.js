@@ -465,16 +465,16 @@ function accountLabel(a){ return a === 'rozha' || a === 'yunis' ? t('accountName
 /* Screens each account may open. The server sends the real list with every
    start (bootstrap.views) and checks every request; this copy only covers
    an offline start before that answer arrives. */
-const ALL_ROLES = ['history','manage','catalog','record','transfers','assistant','send','exports','notify','reminders'];
+const ALL_ROLES = ['history','manage','catalog','record','assistant','send','exports','notify','reminders'];
 const ACCOUNT_VIEWS = {
-  rozha: ['order','assistant','history','transfers','manage','suppliers','itemsAdmin','units','record','admin','settings'],
+  rozha: ['order','assistant','history','manage','suppliers','itemsAdmin','units','record','admin','settings'],
   yunis: ['order','assistant','history','manage','suppliers','itemsAdmin','units','record','settings']
 };
-const ACCOUNT_ROLES = {rozha:ALL_ROLES, yunis:ALL_ROLES.filter(r=>r !== 'transfers')};
+const ACCOUNT_ROLES = {rozha:ALL_ROLES, yunis:ALL_ROLES};
 /* The screens of the tab bar, in order, for whoever is signed in. With four or fewer they are all
    tabs; with more, the first four are and the rest are under More. Rico lives in the top bar and
    Settings in the account sheet. */
-const NAV_SCREENS = ['order','history','transfers','manage','record','admin'];
+const NAV_SCREENS = ['order','history','manage','record','admin'];
 const navScreens = ()=> NAV_SCREENS.filter(v=>state.views.includes(v));
 const tabsFor = ()=> navScreens().length ? navScreens().slice(0, 4) : ['order'];
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
@@ -518,12 +518,13 @@ function applyData(d){
   state.history = d.history || [];
   state.devices = d.devices || [];
   state.activity = d.activity || [];
-  state.reminder = d.reminder || {enabled:false, time:'09:00'};
+  state.settings = d.settings && typeof d.settings === 'object' ? d.settings : {};
   if(d.streak) streakArrived(d.streak);
   state.pins = Array.isArray(d.pins) ? d.pins : [];
   state.months = Array.isArray(d.months) ? d.months : [];
   state.nextWipe = d.nextWipe || null;
   applyFeatures();
+  carryOverLocalSettings();
   setTimeout(()=>{ checkMilestones(); maybeShowTour(); }, 800);
   state.sharedDraft = d.draft || null;
   ricoSetInbox(d.inbox || []);
@@ -578,13 +579,12 @@ function signOut(reason, {preserveSession = false} = {}){
   forcedRefreshOpen = false;
   state.account = null; state.name = ''; state.views = []; state.roles = []; state.adminPage = null; state.tabs = tabsFor();
   state.suppliers = []; state.items = []; state.units = []; state.history = [];
-  state.activity = []; state.devices = []; state.reminder = null;
+  state.activity = []; state.devices = []; state.settings = {};
   state.streak = null; state.pins = []; state.months = [];
   try{ updateAppBadge(); }catch(_){}
   viewMemory.clear(); tabMemory.clear(); resetAdmin();
   state.catalogQuery='';state.cart = {}; state.search = ''; state.orderTab = 'all'; state.itemFormSupplierId = null;
   ricoSuggestion.data = null; ricoSuggestion.at = 0;
-  reminderDraft = null;
   stopStepHold(); rowPress?.cancel();
   state.pinBuffer = ''; state.view = 'order'; state.queue = null;
   finishingQueue = null;
@@ -687,7 +687,7 @@ async function boot(){
   }
   try{
     state.deviceId = ensureDeviceId();
-    lset('faceIdKeys',null); lset('showTransfers',null);   // settings from older versions
+    lset('faceIdKeys',null); lset('showTransfers',null); lset('stockItems',null);   // settings from older versions
     const savedLang = lget('lang');
     state.lang = LANGS.includes(savedLang) ? savedLang : 'en';
     const session = apiSession();
@@ -866,8 +866,7 @@ const RENDERERS = {
   itemsAdmin:[()=>renderItemsAdmin(),()=>attachItemEvents()], units:[()=>renderUnits(),()=>attachUnitEvents()],
   record:[()=>renderRecord(),()=>attachRecordEvents()], admin:[()=>renderAdmin(),()=>attachAdminEvents()],
   manage:[()=>renderItemsAdmin(),()=>attachItemEvents()],
-  settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()],
-  transfers:[()=>renderTransfers(),()=>attachTransferEvents()]
+  settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
 };
 const shellKey = ()=>[state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
 /* One screen's page, without its events (render() attaches them). */
@@ -913,11 +912,10 @@ function render(){
     stack.querySelector('.rico-composer')?.remove();
     if(state.view === 'order') stack.insertAdjacentHTML('afterbegin', renderOrderBottomBar());
     if(state.view === 'assistant') stack.insertAdjacentHTML('afterbegin', renderRicoComposer());
-    if(state.view === 'transfers') stack.insertAdjacentHTML('afterbegin', renderTransferBar());
     markActiveNav();
   }else{
     app.innerHTML = `${renderTopbar()}<main class="content" id="mainContent">${content}</main>
-      <div class="bottom-stack">${state.view==='order'?renderOrderBottomBar():''}${state.view==='assistant'?renderRicoComposer():''}${state.view==='transfers'?renderTransferBar():''}<div class="nav-row">${renderBottomNav()}<button type="button" class="to-top" id="toTopBtn" aria-label="${esc(t('backToTop'))}" aria-hidden="true" tabindex="-1">${ICON_TO_TOP}</button></div></div>`;
+      <div class="bottom-stack">${state.view==='order'?renderOrderBottomBar():''}${state.view==='assistant'?renderRicoComposer():''}<div class="nav-row">${renderBottomNav()}<button type="button" class="to-top" id="toTopBtn" aria-label="${esc(t('backToTop'))}" aria-hidden="true" tabindex="-1">${ICON_TO_TOP}</button></div></div>`;
     attachShellEvents();
   }
   app.classList.remove('static-update');
@@ -959,11 +957,11 @@ function ricoReact(kind = 'up'){
 }
 
 /* ============ Navigation ============
-   Phones: up to four tabs (Order, History, Transfers, Manage, Record, Admin, whichever this person may
+   Phones: up to four tabs (Order, History, Manage, Record, Admin, whichever this person may
    open); with more than four, the rest are under More. Computers: a sidebar with every screen. Rico
    opens from the top bar and Settings from the account sheet. A lens glides to the current tab, the
    page can be swiped between the tabs, and the bar shrinks to its icons while you scroll down. */
-const VIEW_LABEL_KEYS = {manage:'manage',order:'order', assistant:'ricoName', transfers:'transfers', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
@@ -979,7 +977,7 @@ function viewIndex(v){ const i = navOrder().indexOf(v); return i >= 0 ? i : navO
 const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function renderBottomNav(){
-  const button=id=>`<button type="button" class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span>${id==='transfers'?transferNavBadge():''}</button>`;
+  const button=id=>`<button type="button" class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span></button>`;
   const more = moreViews();
   // On a computer the tab bar is the sidebar, with the ricotta mark at its top. More exists only when
   // there are more than four screens.
@@ -1256,9 +1254,7 @@ function pageGhost(content){
 }
 function goView(view, {fromOffset=0, velocity=0, peek=null, keepLens=false, fade=false} = {}){
   closeLangMenu();setMoreOpen(false);
-  if(view !== 'assistant' && ricoRecorder.active) ricoResetVoice();   // leaving Rico drops an unsent recording
   if(!view || view === state.view || !canOpen(view)){ peek?.layer.remove(); return; }
-  reminderDraft = null;   // a reminder that wasn't saved stays off
   if(view !== 'admin') state.adminPage = null;
   endGlide();
   const dir = (Math.sign(viewIndex(view) - viewIndex(state.view)) || 1) * (isRtl() ? -1 : 1);
@@ -1276,9 +1272,9 @@ function goView(view, {fromOffset=0, velocity=0, peek=null, keepLens=false, fade
   scrollBox().scrollTo({top:remembered?.top || 0});
   // The swipe's preview of this page is replaced by the page itself, in the same place.
   peek?.layer.remove();
-  // After a swipe in the small (scrolled) tab bar, the bar grows back only once the pages have
-  // settled: the bar and the page moving at the same time read as a stutter.
-  const growAfter = !!fromOffset && !!frames && !!document.querySelector('.bottomnav.compact');
+  // With the small (scrolled) tab bar, after a tap or a swipe, the bar grows back only once the pages
+  // have settled: the bar and the page moving at the same time read as a stutter.
+  const growAfter = !!frames && !!document.querySelector('.bottomnav.compact');
   if(growAfter){ barQuietUntil = performance.now() + 1200; barLastY = scrollBox().scrollTop; paintToTop(); }
   else quietBar();
   if(view === 'record') refreshActivity();
@@ -1476,7 +1472,7 @@ function openSelSheet(sel){
   closeSelSheet();
   document.activeElement?.blur?.();   // close the keyboard first, so the sheet has the screen
   // "Choose a supplier" and similar are prompts, not choices: they stay on the button but not in the list.
-  const prompts = [t('chooseSupplier'), t('trChooseUnit')];
+  const prompts = [t('chooseSupplier'), t('chooseUnit')];
   const opts = [...sel.options].filter(o=>(!o.disabled || o.selected) && !(o.value === '' && prompts.includes(o.textContent))).map(o=>({value:o.value, label:o.textContent, on:o.selected}));
   const long = opts.length > 9;
   const wrap = document.createElement('div');
@@ -1696,12 +1692,12 @@ function whoBadge(account){
   return `<span class="who-badge"><s aria-hidden="true">${esc(name.trim().charAt(0).toUpperCase())}</s>${esc(name)}</span>`;
 }
 /* Two display choices for the Order screen, kept per device (both start off). */
-const prefOn = key => lget(key) === true;
+const prefOn = key => featureOn(key);
 /* Light or dark: 'off' (light), 'on' (dark) or 'auto' (follows the phone, the default), kept per device. */
-const darkMode = () => ['on','off'].includes(lget('darkMode')) ? lget('darkMode') : 'auto';
+const darkMode = () => choice('darkMode');
 const DARK_QUERY = matchMedia('(prefers-color-scheme: dark)');
 function applyPrefs(){
-  document.documentElement.classList.toggle('compact-rows', prefOn('compactRows'));
+  applyFeatures();
   const m = darkMode();
   document.documentElement.classList.toggle('dark', m === 'on' || (m === 'auto' && DARK_QUERY.matches));
 }
@@ -2115,8 +2111,10 @@ function renderOrderArrangeControl(){
 }
 function orderTabs(){
   const tabs = [{id:'all', label:t('allSuppliers')}];
-  sortedByName(state.suppliers).forEach(s=>{
-    if(state.items.some(i=>i.supplierId===s.id)) tabs.push({id:s.id, label:s.name});
+  // Pinned suppliers come first (hold a supplier's tab to pin it), the rest by name.
+  const pinned = pinnedSuppliers();
+  [...sortedByName(state.suppliers)].sort((a,b)=>(pinned.includes(a.id) ? 0 : 1) - (pinned.includes(b.id) ? 0 : 1) || pinned.indexOf(a.id) - pinned.indexOf(b.id)).forEach(s=>{
+    if(state.items.some(i=>i.supplierId===s.id)) tabs.push({id:s.id, label:s.name, pinned:pinned.includes(s.id)});
   });
   if(state.items.some(i=>!i.supplierId)) tabs.push({id:'__none', label:t('noSupplier')});
   return tabs;
@@ -2135,7 +2133,7 @@ function renderOrder(){
   const tabsHtml = `<div class="order-tabs-shell">
     <button class="tab-scroll tab-scroll-prev" id="orderTabsPrev" aria-label="${t('previousSuppliers')}">‹</button>
     <div class="order-tabs" id="orderTabs">${tabs.map(tb=>`
-      <button class="tab-pill ${state.orderTab===tb.id?'active':''}" aria-pressed="${state.orderTab===tb.id}" data-ordertab="${esc(tb.id)}">${esc(tb.label)}<span class="tab-count">${tb.id==='all'?state.items.length:state.items.filter(i=>(i.supplierId||'__none')===tb.id).length}</span></button>
+      <button class="tab-pill ${state.orderTab===tb.id?'active':''}" aria-pressed="${state.orderTab===tb.id}" data-ordertab="${esc(tb.id)}">${tb.pinned ? `<span class="tab-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(tb.label)}<span class="tab-count">${tb.id==='all'?state.items.length:state.items.filter(i=>(i.supplierId||'__none')===tb.id).length}</span></button>
     `).join('')}</div>
     <button class="tab-scroll tab-scroll-next" id="orderTabsNext" aria-label="${t('nextSuppliers')}">›</button>
   </div>`;
@@ -2149,11 +2147,7 @@ function renderOrder(){
       ${lastMap ? `<button class="quick-btn" id="sameAsLast">${ICON_REPEAT}<span>${t('sameAsLastTime')}</span></button>` : ''}
       ${renderRicoOrderButton()}
       ${weekdayOrder().length ? `<button class="quick-btn" id="dayOrderBtn">${ICON_CALENDAR}<span>${esc(t('dayOrderBtn')(formatIraqDateTime(new Date(), {weekday:'long'})))}</span></button>` : ''}
-      ${canDo('send') ? `<button class="quick-btn" id="readListBtn">${ICON_CAMERA}<span>${esc(t('listBtn'))}</span></button>` : ''}
-      ${knownPlaces().length ? `<button class="quick-btn${orderByPlace() ? ' on' : ''}" id="placeSortBtn" aria-pressed="${orderByPlace()}">${NAV_ICONS.manage}<span>${esc(t('placeSort'))}</span></button>` : ''}
-      <button class="quick-btn" id="printSheetBtn">${ICON_SHEET}<span>${esc(t('printBtn'))}</span></button>
-      <button class="quick-btn board-only" id="dayBoardBtn">${ICON_CALENDAR}<span>${esc(t('boardBtn'))}</span></button>
-      <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'disabled':''}>${ICON_DELETE}<span>${t('clearOrder')}</span></button>
+      <button class="quick-btn clear-order-btn" id="clearOrderBtn" ${cartCount()===0?'hidden':''}>${ICON_DELETE}<span>${t('clearOrder')}</span></button>
     </div>
     ${tabsHtml}
     <div class="search-row">
@@ -2181,12 +2175,6 @@ function renderOrderResults(){
     const key = i.supplierId || '__none';
     (groups[key] = groups[key]||[]).push(i);
   });
-  if(orderByPlace() && !q){
-    return itemsByPlace(visibleItems).map(([place, list])=>`<div class="supplier-group">
-      <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(place || '·')}${esc(place || t('placeNone'))}<span class="supplier-item-count">${list.length}</span></span></div>
-      <div class="supplier-items-grid">${list.map(i=>itemRowHtml(i, lastQty)).join('')}</div>
-    </div>`).join('');
-  }
   const groupHtml = Object.keys(groups).sort((a,b)=>nameCollator().compare(a==='__none'?t('noSupplier'):supplierName(a), b==='__none'?t('noSupplier'):supplierName(b))).map(key=>{
     const label = key==='__none' ? t('noSupplier') : supplierName(key);
     // Pinned items show only under Pinned: a supplier whose items are all pinned has no group of its own.
@@ -2195,9 +2183,8 @@ function renderOrderResults(){
     const rows = shown.map(i=>itemRowHtml(i, lastQty)).join('');
     return state.orderTab==='all' ? `<div class="supplier-group">
       <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}<span class="supplier-item-count">${shown.length}</span></span></div>
-      ${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}
       <div class="supplier-items-grid">${rows}</div>
-    </div>` : `${key!=='__none' && cutoffChip(key) ? `<div class="cut-row">${cutoffChip(key)}</div>` : ''}<div class="supplier-items-grid standalone">${rows}</div>`;
+    </div>` : `<div class="supplier-items-grid standalone">${rows}</div>`;
   }).join('');
 
   const pinnedHtml = pinned.length ? `<div class="supplier-group pinned-group">
@@ -2212,7 +2199,6 @@ function itemRowHtml(i, lastQty){
   const qty = state.cart[i.id] || 0;
   return `
       <div class="item-row ${qty>0?'has-qty':''}" data-item-id="${esc(i.id)}">
-        ${i.photoUrl && featureOn('itemPhotos') ? `<img class="item-photo" src="${esc(i.photoUrl)}" alt="" loading="lazy">` : ''}
         <div class="item-info">
           <div class="item-name">${state.pins.includes(i.id) ? `<span class="item-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(i.name)}</div>
 
@@ -2275,7 +2261,7 @@ function refreshCartSummary(){
     send.querySelector('.send-meta').textContent = sendMeta();
   }
   const clear=document.getElementById('clearOrderBtn');
-  if(clear) clear.disabled=c===0;
+  if(clear) clear.hidden = c===0;
   const draft=document.querySelector('.draft-state');
   if(draft) draft.textContent=c?draftProgressLabel():t('selectToStart');
   paintRicoSuggestion();
@@ -2299,8 +2285,56 @@ function renderOrderBottomBar(){
     </button>
   </div>`;
 }
+/* Supplier tabs: hold one to pin it first or edit it, like an item. */
+const pinnedSuppliers = ()=>Array.isArray(state.settings?.pinnedSuppliers) ? state.settings.pinnedSuppliers.filter(id=>state.suppliers.some(s=>s.id === id)) : [];
+function togglePinSupplier(id){
+  const now = pinnedSuppliers();
+  setSetting('pinnedSuppliers', now.includes(id) ? now.filter(x=>x !== id) : [...now, id].slice(-30)).then(()=>{ if(state.view === 'order') render(); });
+  if(state.view === 'order') render();
+}
+function openSupplierTabMenu(tab){
+  const id = tab.dataset.ordertab;
+  if(!state.suppliers.some(s=>s.id === id)) return;
+  closeContextMenu();
+  const rect = tab.getBoundingClientRect();
+  const actions = [['pin', pinnedSuppliers().includes(id) ? t('unpinSupplier') : t('pinSupplier'), ICON_PIN]];
+  if(canDo('catalog')) actions.push(['edit', t('editSupplier'), ICON_EDIT]);
+  haptic('medium');
+  const layer = document.createElement('div');
+  layer.id = 'ctxLayer'; layer.className = 'ctx-layer';
+  const left = Math.min(Math.max(12, rect.left), window.innerWidth - 232);
+  layer.innerHTML = `<div class="ctx-scrim"></div>
+    <div class="ctx-menu" role="menu" style="top:${rect.bottom + 10}px;left:${left}px">
+      ${actions.map(([a, label, icon])=>`<button type="button" role="menuitem" data-ctx="${a}"><span>${esc(label)}</span>${icon}</button>`).join('')}
+    </div>`;
+  document.body.appendChild(layer);
+  layer.querySelector('.ctx-scrim').onclick = closeContextMenu;
+  layer.addEventListener('keydown', e=>{ if(e.key==='Escape') closeContextMenu(); });
+  layer.querySelector('[data-ctx]')?.focus({preventScroll:true});
+  layer.querySelectorAll('[data-ctx]').forEach(b=>b.onclick=()=>{
+    closeContextMenu();
+    if(b.dataset.ctx === 'pin') togglePinSupplier(id);
+    else openSupplierModal(id);
+  });
+}
+function attachSupplierTabHold(tab){
+  let timer = 0, x = 0, y = 0, held = false;
+  const stop = ()=>{ clearTimeout(timer); document.removeEventListener('pointermove', move); };
+  const move = e=>{ if(Math.abs(e.clientX - x) > 8 || Math.abs(e.clientY - y) > 8) stop(); };
+  tab.addEventListener('pointerdown', e=>{
+    if(e.button > 0) return;
+    held = false; x = e.clientX; y = e.clientY;
+    timer = setTimeout(()=>{ held = true; stop(); openSupplierTabMenu(tab); }, 480);
+    document.addEventListener('pointermove', move, {passive:true});
+  });
+  ['pointerup','pointercancel'].forEach(type=>tab.addEventListener(type, stop));
+  tab.addEventListener('contextmenu', e=>{ e.preventDefault(); if(!held) openSupplierTabMenu(tab); });
+  // The click that ends a hold doesn't also switch the tab.
+  tab.addEventListener('click', e=>{ if(held){ e.stopImmediatePropagation(); held = false; } }, true);
+}
 function attachOrderEvents(){
   paintDraftStatus();
+  document.querySelectorAll('[data-ordertab]').forEach(attachSupplierTabHold);
   document.querySelectorAll('[data-ordertab]').forEach(b=>b.onclick=()=>{
     if(state.orderTab===b.dataset.ordertab) return;
     tabMemory.set(state.orderTab, scrollBox().scrollTop);
@@ -2374,23 +2408,11 @@ function attachOrderEvents(){
     toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before;persistCartDraft();paintDraftStatus(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
   };
   const send = document.getElementById('sendOrdersBtn');
-  if(send && featureOn('holdSend')) attachHoldToSend(send, reviewedSend);
-  else if(send) send.onclick = reviewedSend;
+  if(send) send.onclick = ()=>startSendQueue();
   document.getElementById('dayOrderBtn')?.addEventListener('click', loadWeekdayOrder);
-  document.getElementById('readListBtn')?.addEventListener('click', openReadList);
-  document.getElementById('printSheetBtn')?.addEventListener('click', printOrderSheet);
-  document.getElementById('dayBoardBtn')?.addEventListener('click', openDayBoard);
   document.getElementById('ricoFloat')?.addEventListener('click', openRicoOrderSheet);
-  document.getElementById('placeSortBtn')?.addEventListener('click', ()=>{ lset('orderByPlace', orderByPlace() ? null : true); render(); });
   const options=document.querySelector('.order-options');
   options?.addEventListener('toggle',()=>{if(options.open)loadRicoSuggestion();});
-}
-/* The Send button: the order check, then 10 seconds to change your mind, then the send screen. */
-async function reviewedSend(){
-  if(!canDo('send') || sharedDraft.conflicts.length || state.queue?.record) return startSendQueue();
-  if(!(await reviewBeforeSend())) return false;
-  if(!cartCount() || !(await sendCountdown())) return false;
-  return startSendQueue();
 }
 /* Opens Send to suppliers with the current draft (the Send button, and
    Rico's "open send" shortcut). Returns false when there is nothing to send. */
@@ -2517,16 +2539,25 @@ function startStepHold(btn, e){
   if(e.button > 0 || btn.disabled) return;
   e.preventDefault();   // no text selection or focus jump while holding
   stopStepHold();
-  stepHold = {btn, timer:0, n:0};
+  // A tap counts when the finger lifts without moving; holding still repeats. A finger that moves is
+  // swiping or scrolling the page, so nothing is added.
+  const x = e.clientX, y = e.clientY;
+  stepHold = {btn, timer:0, n:0, moved:false};
   btn.classList.add('holding');
-  stepQty(btn);
   const tick = ()=>{
     if(!stepHold || stepHold.btn !== btn || btn.disabled || !btn.isConnected){ stopStepHold(); return; }
     stepQty(btn); stepHold.n++;
     stepHold.timer = setTimeout(tick, Math.max(45, 150 - stepHold.n*9));
   };
   stepHold.timer = setTimeout(tick, 420);
-  const up = ()=>{ stopStepHold(); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up); };
+  const move = ev=>{ if(stepHold && (Math.abs(ev.clientX - x) > 10 || Math.abs(ev.clientY - y) > 10)){ stepHold.moved = true; stopStepHold(); } };
+  const up = ev=>{
+    const tap = stepHold && stepHold.btn === btn && !stepHold.moved && stepHold.n === 0 && ev.type === 'pointerup';
+    stopStepHold();
+    if(tap) stepQty(btn);
+    document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up);
+  };
+  document.addEventListener('pointermove', move, {passive:true});
   document.addEventListener('pointerup', up);
   document.addEventListener('pointercancel', up);
 }
@@ -2727,7 +2758,7 @@ function renderQueue(){
       ? `<a class="wa-btn ${e.sent?'done':''}" data-send="${idx}" href="${esc(waLink(sup.phone, buildMessage(e)))}"${waOpensApp() ? '' : ' target="_blank" rel="noopener noreferrer"'}>${ICON_CHAT}${e.sent?t('sentSendAgain'):t('sendVia')}</a>`
       : `<button class="wa-btn ${e.sent?'done':''}" data-marksent="${idx}" ${e.sent?'disabled':''}>${e.sent?t('sent'):t('markSent')}</button>`;
     return `<div class="queue-card ${e.sent?'sent':''}">
-      <div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}${e.sent ? '' : cutoffChip(e.supplierId)}</span>${e.sent?`<span class="queue-badge">${ICON_CHECK}${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
+      <div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}</span>${e.sent?`<span class="queue-badge">${ICON_CHECK}${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
       <div class="queue-items">${itemsLine}</div>
       ${canWhatsApp ? '' : `<div class="queue-note">${esc(!sup ? t('noSupplier') : t('noPhoneOnFile'))} · ${esc(t('markSentHint'))}</div>`}
       <div class="queue-actions">${sendBtn}<button class="pdf-btn" data-pdf="${idx}" aria-label="${esc(t('orderSheet'))}">${NAV_ICONS.record}<span>PDF</span></button></div>
@@ -2983,7 +3014,6 @@ function recordValue(k, v){
   if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||t('noValue');}catch(_){} }
   if(k==='available')return t(v==='false'?'unavailable':'availableToOrder');
   if(k === 'reminder') return reminderText(reminderFromCode(v));
-  if(k === 'cutoff' && v) return reminderTimeLabel(v);
   if(k === 'supplier' && !v) return t('noSupplier');
   if(!v) return t('noValue');
   if(k === 'unit'){
@@ -3161,17 +3191,14 @@ function openSupplierModal(id){
     bodyHtml: `
       <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
       <div class="field"><label>${t('phone')}</label><input id="mfPhone" data-clear="1" inputmode="tel" placeholder="07xxxxxxxxx" value="${esc(existing?.phone||'')}"></div>
-      ${reminderFieldsHtml(existing?.reminder)}
-      <div class="field"><label for="mfCutoff">${t('cutoffLabel')}</label><input id="mfCutoff" type="time" value="${esc(existing?.cutoff||'')}"><small class="field-hint">${esc(t('cutoffHint'))}</small></div>`,
+      ${reminderFieldsHtml(existing?.reminder)}`,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
     onOpen: (box)=> attachReminderFields(box),
     onSubmit: async (again)=>{
       const name = document.getElementById('mfName').value.trim();
       const phone = document.getElementById('mfPhone').value.trim();
-      const cutoff = document.getElementById('mfCutoff').value.trim().slice(0, 5);
       if(!name) return {error: t('nameRequired')};
-      if(cutoff && !/^([01]\d|2[0-3]):[0-5]\d$/.test(cutoff)) return {error: t('reminderTimeInvalid')};
       const rem = readReminderFields();
       if(rem.on){
         if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(rem.time)) return {error: t('reminderTimeInvalid')};
@@ -3185,7 +3212,7 @@ function openSupplierModal(id){
         const s = state.suppliers.find(x=>x.id===existing.id);
         if(!s) return {};
         const o = opened, oldCode = reminderCode(o.reminder);
-        const fields = diffFields([['name', o.name, name], ['phone', o.phone, phone], ['reminder', oldCode, newCode], ['cutoff', o.cutoff || '', cutoff]]);
+        const fields = diffFields([['name', o.name, name], ['phone', o.phone, phone], ['reminder', oldCode, newCode]]);
         if(!fields.length) return {};   // nothing changed -- nothing to save or record
         const changes = {};
         if(name !== o.name) changes.name = name;
@@ -3193,18 +3220,17 @@ function openSupplierModal(id){
         // updatedAt tells the server when the reminder was last changed, so a time that
         // has already passed today starts tomorrow instead of firing the moment you save.
         if(oldCode !== newCode) changes.reminder = rem.on ? {...newRem, updatedAt: now} : {...(o.reminder||{}), enabled:false, updatedAt: now};
-        if(cutoff !== (o.cutoff || '')) changes.cutoff = cutoff || null;
         const saved = await saveChanges('suppliers', s.id, changes);
         if(saved !== true) return {error: saveError(saved)};
         Object.assign(s, changes);
         logActivity({action:'edit', type:'supplier', name, fields});
       } else {
-        const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null, cutoff: cutoff || null};
+        const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null};
         if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
         state.suppliers.push(next);
         logActivity({action:'add', type:'supplier', name,
           fields:[{k:'name', to:name}].concat(phone ? [{k:'phone', to:phone}] : [])
-                 .concat(rem.on ? [{k:'reminder', to:newCode}] : []).concat(cutoff ? [{k:'cutoff', to:cutoff}] : [])});
+                 .concat(rem.on ? [{k:'reminder', to:newCode}] : [])});
       }
       render();
       if(again){ resetReminderFields(); return {keepOpen:true, message:t('savedMsg')(name)}; }
@@ -3385,12 +3411,11 @@ function openItemModal(id){
         <select id="mfSupplier">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
-      ${itemExtraFields(existing)}<label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
+      <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
       `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
     onOpen: (box)=>{
-      attachItemExtras(box, existing);
       const sel = box.querySelector('#mfSupplier');
       const hint = box.querySelector('#mfSupHint');
       if(sel && hint) sel.onchange = ()=>{
@@ -3405,10 +3430,6 @@ function openItemModal(id){
       const note = document.getElementById('mfNote').value.trim().slice(0, 120), aliases=parseAliases(document.getElementById('mfAliases').value), available=document.getElementById('mfAvailable').checked;
       if(!name) return {error: t('nameRequired')};
       if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
-      if(existing){
-        const liveItem = state.items.find(x=>x.id===existing.id);
-        if(liveItem && !(await saveItemPlace(liveItem, document.getElementById('mfPlace')?.value || ''))) return {error: t('saveFailed')};
-      }
       const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
       const editing = existing;
       if(editing){
@@ -3573,18 +3594,9 @@ function fmtDateTime(iso){
    Appearance, the Order screen's display choices, sounds and notifications,
    all kept on this device. Rozha's tools (PINs, devices, the connection) are
    in Admin. */
-function renderAppearance(){
+function renderAppearanceRow(){
   const dm=darkMode();
-  return `<div class="section-title">${esc(t('settingsAppearance'))}</div><div class="form-card"><div class="dark-row"><span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div></div>`;
-}
-function renderDisplaySettings(){
-  const row = (id, on, label, hint)=>`<label class="check-row preference-row"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${esc(t(label))}<small>${esc(t(hint))}</small></span></label>`;
-  return `<div class="section-title">${esc(t('settingsOrderScreen'))}</div><div class="form-card">
-    ${row('pref-compactRows', prefOn('compactRows'), 'compactRowsLabel', 'compactRowsHint')}
-    ${row('pref-showLastQty', prefOn('showLastQty'), 'lastQtyLabel', 'lastQtyHint')}</div>`;
-}
-function renderOrderSounds(){
-  return `<div class="section-title">${esc(t('orderSounds'))}</div><div class="form-card">${[['qty','quantitySound'],['sent','sentSound']].map(([id,key])=>`<label class="check-row preference-row"><input type="checkbox" id="sound-${id}" data-sound="${id}" ${soundOn(id)?'checked':''}><span>${esc(t(key))}</span></label>`).join('')}</div>`;
+  return `<div class="dark-row"><span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>`;
 }
 function currentOutbox(){ return outbox().filter(j=>outboxJobAccount(j)===state.account); }
 function renderPendingSync(){
@@ -3599,7 +3611,7 @@ function versionCmp(a, b){
   return 0;
 }
 function renderSettings(){
-  return `${renderPendingSync()}${renderAppearance()}${renderFeatureSettings()}${renderDisplaySettings()}${renderOrderSounds()}${renderNotifSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderNotifSettings()}${renderFeatureSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
 /* Help: tell Rozha about a problem (it arrives in Admin, Problems), and the keyboard shortcuts. */
 function renderHelpSettings(){
@@ -3635,74 +3647,24 @@ function renderPrivacySettings(){
 /* The daily reminder starts as one switch. Turning it on opens the time,
    a test button and Save; only Save turns it on for real (leaving without
    saving keeps it off). Turning it off saves "off" straight away. */
-let reminderDraft = null;   // {time} while the reminder is being set up or changed
 function reminderTimeLabel(time){
   const [h, m] = String(time || '09:00').split(':').map(Number);
   return dateFormatter({hour:'numeric', minute:'2-digit'}).format(new Date(2000, 0, 1, h, m));
 }
+/* Notifications are this phone's: one switch. On, it gets Rico's messages and the suppliers' reminders. */
 function renderNotifSettings(){
-  let device;
-  if(!pushConfigured()){
-    device = `<div class="notif-sub">${t('notifNotConfigured')}</div>`;
-  } else if(!pushStatus.supported){
-    device = `<div class="notif-sub">${t('notifUnsupported')}</div>`;
-  } else if(pushStatus.subscribed){
-    device = `<div class="notif-status on">${ICON_BELL} ${t('notifThisDevice')}: ${t('notifOn')}<button class="btn btn-ghost" id="pushToggleBtn">${t('notifTurnOff')}</button></div>`;
-  } else {
-    device = `<div class="notif-status off">${ICON_BELL} ${t('notifThisDevice')}: ${t('notifOff')}<button class="btn btn-primary" id="pushToggleBtn">${t('notifEnable')}</button></div>`;
-  }
-  const r = state.reminder || {enabled:false, time:'09:00'};
-  const hint = reminderDraft ? t('supplierRemindersHint') : r.enabled ? t('reminderEveryDayAt')(reminderTimeLabel(r.time)) : t('supplierRemindersHint');
-  const editor = !reminderDraft ? (r.enabled ? `<button class="btn btn-ghost reminder-change" id="reminderChangeBtn">${esc(t('reminderChangeTime'))}</button>` : '') : `
-      <div class="field"><label for="reminderTime">${t('reminderTimeLabel')}</label><input id="reminderTime" type="time" value="${esc(reminderDraft.time)}"></div>
-      <div class="form-actions">
-        <button class="btn btn-primary" id="reminderSaveBtn">${t('reminderSave')}</button>
-        <button class="btn btn-ghost" id="reminderTestBtn">${ICON_BELL} ${t('reminderSendNow')}</button>
-        <button class="btn btn-ghost" id="reminderCancelBtn">${esc(t('cancel'))}</button>
-      </div>`;
-  return `<div class="section-title">${t('notifSettingsTitle')}</div>
-    <div class="form-card">${device}${canDo('reminders') ? `<hr class="notif-divider">
-      <label class="check-row preference-row"><input type="checkbox" id="reminderEnabled" ${r.enabled || reminderDraft ? 'checked' : ''}><span>${esc(t('reminderTitle'))}<small>${esc(hint)}</small></span></label>${editor}` : ''}</div>`;
+  const note = !pushConfigured() ? t('notifNotConfigured') : !pushStatus.supported ? t('notifUnsupported') : '';
+  return `<div class="section-title">${esc(t('settingsGroup_notif'))}</div><div class="form-card">${note ? `<div class="notif-sub">${esc(note)}</div>` : `<label class="check-row preference-row"><input type="checkbox" id="pushSwitch" ${pushStatus.subscribed ? 'checked' : ''}><span>${esc(t('notifSwitch'))}<small>${esc(t('notifSwitchHint'))}</small></span></label>`}</div>`;
 }
 function attachNotifEvents(){
-  const tog = document.getElementById('pushToggleBtn');
-  if(tog) tog.onclick = async ()=>{
-    if(pushStatus.subscribed){ await disablePush(); render(); return; }
+  const box = document.getElementById('pushSwitch');
+  if(box) box.onchange = async ()=>{
+    box.disabled = true;
+    if(!box.checked){ await disablePush(); render(); return; }
     const res = await enablePush();
     render();
     await showPushEnableResult(res);
   };
-  const r = ()=>state.reminder || {enabled:false, time:'09:00'};
-  const box = document.getElementById('reminderEnabled');
-  if(box) box.onchange = async ()=>{
-    if(box.checked){ reminderDraft = {time:r().time}; render(); return; }
-    reminderDraft = null;
-    if(r().enabled){
-      if(!(await saveReminder(false, r().time))){ box.checked = true; await showAlert(t('reminderSaveFailed')); return; }
-      state.reminder = {...r(), enabled:false};
-      toast(t('reminderTurnedOff'));
-    }
-    render();
-  };
-  const change = document.getElementById('reminderChangeBtn');
-  if(change) change.onclick = ()=>{ reminderDraft = {time:r().time}; render(); };
-  const time = document.getElementById('reminderTime');
-  // iPhone's time wheel reports on "change", others on "input": keep both.
-  if(time) time.oninput = time.onchange = ()=>{ reminderDraft.time = time.value; };
-  const cancel = document.getElementById('reminderCancelBtn');
-  if(cancel) cancel.onclick = ()=>{ reminderDraft = null; render(); };
-  const save = document.getElementById('reminderSaveBtn');
-  if(save) save.onclick = ()=> withBusy(save, async ()=>{
-    const value = time.value;
-    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)){ await showAlert(t('reminderTimeInvalid')); return; }
-    if(!(await saveReminder(true, value))){ await showAlert(t('reminderSaveFailed')); return; }
-    state.reminder = {enabled:true, time:value};
-    reminderDraft = null;
-    render();
-    toast(t('reminderSaved'));
-  });
-  const test = document.getElementById('reminderTestBtn');
-  if(test) test.onclick = ()=> withBusy(test, async ()=> reportSendResult(await callSendPush('reminder-now')));
 }
 
 /* Disables a button while its action runs, so a double tap can't send twice. */
@@ -3714,7 +3676,7 @@ async function withBusy(btn, fn){
 /* Appearance changes update in place, preserving scroll position. */
 function bindAppearance(){
   document.querySelectorAll('[data-dark]').forEach(b=>b.onclick=()=>{
-    lset('darkMode',b.dataset.dark==='auto'?null:b.dataset.dark);applyPrefs();syncAppearance();
+    setSetting('darkMode',b.dataset.dark).then(()=>{applyPrefs();syncAppearance();});applyPrefs();syncAppearance();
     document.querySelectorAll('[data-dark]').forEach(x=>x.setAttribute('aria-checked',String(x.dataset.dark===darkMode())));
   });
 }
@@ -3725,11 +3687,6 @@ function attachSettingsEvents(){
  if(exp) exp.onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(currentOutbox(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ricotta-pending-orders.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   bindAppearance();
   attachFeatureSettings();
-  document.querySelectorAll('[data-sound]').forEach(box=>box.onchange=()=>{setSoundOn(box.dataset.sound,box.checked);});
-  [['pref-compactRows','compactRows'],['pref-showLastQty','showLastQty']].forEach(([id,key])=>{
-    const box = document.getElementById(id);
-    if(box) box.onchange = ()=>{ lset(key, box.checked ? true : null); applyPrefs(); };
-  });
   const ai = document.getElementById('aiConsent');
   if(ai) ai.onchange = async ()=>{
     if(!ai.checked){ setAiConsent(false); return; }

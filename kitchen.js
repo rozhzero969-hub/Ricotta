@@ -233,9 +233,7 @@ async function undoOrder(id){
   if(state.view === 'history' || state.view === 'order') render();
 }
 
-/* ---------- Order cut-offs ----------
-   A supplier can stop taking orders at a set time (Erbil). On its order days (its reminder days, or every
-   day without them) the Order screen counts down to it; after it, "Closed today". Hidden once sent today. */
+/* ---------- Erbil's clock, and whether a supplier was sent to today ---------- */
 const BAGHDAD_HM = new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Baghdad', hour:'2-digit', minute:'2-digit', hourCycle:'h23'});
 function erbilClock(){
   const date = erbilDate(new Date().toISOString());
@@ -243,34 +241,6 @@ function erbilClock(){
   return {date, minutes:h * 60 + m, weekday:new Date(date + 'T12:00:00Z').getUTCDay()};
 }
 const sentTodayTo = (supplierId, today)=>state.history.some(h=>erbilDate(h.date) === today && (h.entries || []).some(e=>e.supplierId === supplierId));
-function cutoffState(sup){
-  if(!sup || !/^([01]\d|2[0-3]):[0-5]\d$/.test(sup.cutoff || '')) return null;
-  const now = erbilClock(), r = sup.reminder;
-  const days = r && r.enabled && Array.isArray(r.days) && r.days.length ? r.days.map(Number) : [0,1,2,3,4,5,6];
-  if(!days.includes(now.weekday)) return null;
-  const [h, m] = sup.cutoff.split(':').map(Number);
-  return {time:sup.cutoff, left:h * 60 + m - now.minutes, sent:sentTodayTo(sup.id, now.date)};
-}
-function cutoffChipInner(c){
-  if(c.left <= 0) return `${esc(t('cutoffClosed'))}`;
-  const left = c.left >= 60 ? t('cutoffHoursLeft')(Math.floor(c.left / 60), c.left % 60) : t('cutoffMinLeft')(c.left);
-  return `${ICON_CLOCK} ${esc(c.left <= 60 ? left : t('cutoffUntil')(reminderTimeLabel(c.time)))}`;
-}
-function cutoffChip(supplierId){
-  const c = cutoffState(state.suppliers.find(s=>s.id === supplierId));
-  if(!c || c.sent) return '';
-  return `<span class="cut-chip${c.left <= 0 ? ' closed' : c.left <= 60 ? ' soon' : ''}" data-cutoff="${esc(supplierId)}" title="${esc(t('cutoffLabel'))} ${esc(reminderTimeLabel(c.time))}">${cutoffChipInner(c)}</span>`;
-}
-/* The countdown moves every minute without redrawing the screen. */
-function paintCutoffs(){
-  document.querySelectorAll('[data-cutoff]').forEach(el=>{
-    const c = cutoffState(state.suppliers.find(s=>s.id === el.dataset.cutoff));
-    if(!c || c.sent){ el.remove(); return; }
-    el.className = 'cut-chip' + (c.left <= 0 ? ' closed' : c.left <= 60 ? ' soon' : '');
-    el.innerHTML = cutoffChipInner(c);
-  });
-}
-setInterval(()=>{ if(document.visibilityState === 'visible') paintCutoffs(); }, 30000);
 
 /* ---------- The month archive ----------
    History is cleared at the start of each month; the server keeps a summary of every finished month. */

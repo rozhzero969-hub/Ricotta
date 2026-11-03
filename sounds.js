@@ -5,12 +5,12 @@
    iPhone they follow the silent switch like any app. Browsers only allow
    sound once the person has touched the page, so the audio is (re)started
    on every touch until it is running. */
-const SOUND_KEYS = {qty:'sound.qty', sent:'sound.sent'};
+const SOUND_KEYS = {qty:'soundQty', sent:'soundSent'};
 let soundCtx = null, soundOut = null, lastTick = 0;
 
-// Everything starts on until it is turned off on this device.
-function soundOn(which){ return lget(SOUND_KEYS[which]) !== 'off'; }
-function setSoundOn(which, on){ lset(SOUND_KEYS[which], on ? 'on' : 'off'); }
+// Both are account settings (features.js) and start on.
+function soundOn(which){ return typeof featureOn === 'function' ? featureOn(SOUND_KEYS[which]) : true; }
+function setSoundOn(which, on){ setFeature(SOUND_KEYS[which], on); }
 
 function soundContext(){
   if(!soundCtx){
@@ -32,12 +32,6 @@ function soundContext(){
   if(soundCtx?.state !== 'running' && Object.keys(SOUND_KEYS).some(soundOn)) soundContext();
 }, {passive:true, capture:true}));
 
-/* Settings > Features, Button sounds: a soft click on buttons (the steppers have their own). */
-document.addEventListener('click', e=>{
-  if(typeof featureOn !== 'function' || !featureOn('tapSound')) return;
-  const b = e.target.closest?.('button,.settings-row,a.btn');
-  if(b && !b.closest('.stepper') && !b.disabled) soundTone(1200, .03, .06);
-}, {passive:true, capture:true});
 function soundTone(f, dur, gain, at = 0, type = 'sine'){
   const c = soundContext();
   if(!c) return;

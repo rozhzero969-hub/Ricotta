@@ -11,22 +11,19 @@ function fixture() {
   const c = vm.createContext({
     rico:{epoch:0,chatRequest:0,messages:[],streaming:false,chats:null,viewing:null},
     state:{account:'rozha',view:'assistant',suppliers:[],cart:{},lang:'en'},
-    ricoRecorder:{active:false,busy:false,chunks:[]}, ricoSaveTimer:null,
+    ricoSaveTimer:null,
     lget:key=>saved.get(key), lset:(key,v)=>v == null?saved.delete(key):saved.set(key,v),
     t:key=>key, toast:msg=>notices.push(msg), render(){}, ricoScroll(){}, ricoSave(){},
     clearTimeout, AbortController, Blob, console, navigator:{mediaDevices:{}}, window:{},
-    ricoResetVoice(){ c.ricoRecorder.active=false; },
-    ricoRefreshComposer(){}, paintTransferMic(){}, aiConsent:async()=>true,
-    blobToBase64:async()=> 'fake-audio', ricoAsk:text=>asked.push(text),
-    ricoVoiceSupported:()=>true, ricoStop(){ c.rico.abort?.abort(); },
+    ricoRefreshComposer(){}, aiConsent:async()=>true,
+    ricoAsk:text=>asked.push(text),
+    ricoStop(){ c.rico.abort?.abort(); },
     ricoOrderIntent:()=>false, ricoHistoryForServer:()=>[], ricoAutoOrder:()=>false,
     ricoPaintMessage(){}, ricoPaintHeadFace(){}, ricoSaveSoon(){},
     requestAnimationFrame:()=>1, cancelAnimationFrame(){},
   });
   vm.runInContext(part('function ricoContext()', '/* ---------- Events ---------- */') +
-    part('function ricoNewChat()', '/* Chat history:') +
-    part('async function ricoFinishVoice(', '/* Async consent,') +
-    part('async function ricoToggleVoice(', 'function ricoResetVoice('), c);
+    part('function ricoNewChat()', '/* Chat history:'), c);
   return {c,saved,notices,asked};
 }
 (async()=>{
@@ -49,21 +46,6 @@ function fixture() {
   second.resolve({ok:true,data:{account:'rozha',messages:[{role:'user',text:'Second'}]}}); await b;
   first.resolve({ok:true,data:{account:'rozha',messages:[{role:'user',text:'First'}]}}); await a;
   assert.equal(ordered.c.rico.messages[0].text,'Second','the most recently selected chat wins');
-
-  const voice=fixture(), transcription=deferred();
-  voice.c.ricoRecorder.chunks=[new Uint8Array(2000)]; voice.c.api=()=>transcription.promise;
-  const transcribing=voice.c.ricoFinishVoice('audio/webm'); await turn();
-  voice.c.state.account='yunis'; voice.c.rico.epoch++; voice.c.ricoRecorder.busy=true;
-  transcription.resolve({ok:true,data:{text:'Private spoken message'}}); await transcribing;
-  assert.equal(voice.asked.length,0,'an old transcription is never submitted as the next account');
-  assert.equal(voice.c.ricoRecorder.busy,true,'an old finally cannot reset a newer recording');
-
-  const permission=fixture(), mic=deferred(); let stopped=0;
-  permission.c.navigator.mediaDevices.getUserMedia=()=>mic.promise;
-  const recording=permission.c.ricoToggleVoice(); await turn();
-  permission.c.state.account='yunis'; permission.c.rico.epoch++;
-  mic.resolve({getTracks:()=>[{stop(){stopped++;}}]}); await recording;
-  assert.equal(stopped,1,'a delayed microphone permission releases the microphone after sign-out');
 
   const consent=fixture(), decision=deferred();
   consent.c.esc=s=>s; consent.c.showConfirm=()=>decision.promise;
@@ -90,5 +72,5 @@ function fixture() {
   vm.runInContext('sortedByName(rows); sortedSupplierItems(rows);',sorting);
   assert.equal(collators,1,'one reused collator for repeated list sorts');
   sorting.state.lang='ku'; vm.runInContext('sortedByName(rows)',sorting); assert.equal(collators,2);
-  console.log('Rico lifecycle PASS: isolated drafts, stale chat opens, latest selection, voice/account changes, microphone cleanup, stale streaming');
+  console.log('Rico lifecycle PASS: isolated drafts, stale chat opens, latest selection, stale streaming');
 })().catch(e=>{console.error(e);process.exitCode=1;});

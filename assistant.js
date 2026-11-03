@@ -94,9 +94,8 @@ async function aiConsent(){
 /* Signing out forgets the chat and the inbox on this phone. */
 function ricoReset(){
   rico.epoch++; rico.chatRequest++;
-  ricoStop(); ricoResetVoice(); clearTimeout(ricoSaveTimer);
+  ricoStop(); clearTimeout(ricoSaveTimer);
   rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.chatsBusy = false; rico.viewing = null; rico.viewedId = null;
-  ricoRecorder.busy = false; ricoRecorder.voiceTransfer = false;
 }
 
 /* ---------- Rico's inbox ---------- */
@@ -182,7 +181,6 @@ function ricoGreeting(){
   return t('ricoGreeting')(part, accountLabel(state.account));
 }
 function renderAssistant(){
-  const late = ricoLateOrders();
   const head = `<header class="rico-head">
       ${ricoFace(ricoCurrentMood(), 'rico-md')}
       <div class="rico-head-text">
@@ -191,24 +189,17 @@ function renderAssistant(){
       </div>
       <div class="rico-head-actions">
         <button class="icon-btn rico-auto ${ricoAutoOrder()?'on':''}" id="ricoAutoBtn" aria-pressed="${ricoAutoOrder()}" title="${esc(t('ricoAutoOrderLabel'))}" aria-label="${esc(t('ricoAutoOrderLabel'))}">${NAV_ICONS.order}</button>
+        <button class="icon-btn" id="ricoMemoryBtn" title="${esc(t('memoryTitle'))}" aria-label="${esc(t('memoryTitle'))}">${ICON_NOTE}</button>
         <button class="icon-btn" id="ricoHistBtn" title="${esc(t('ricoHistory'))}" aria-label="${esc(t('ricoHistory'))}">${NAV_ICONS.history}</button>
         <button class="icon-btn" id="ricoNewBtn" title="${esc(t('ricoNewChat'))}" aria-label="${esc(t('ricoNewChat'))}" ${rico.messages.length?'':'disabled'}>${ICON_NEW_CHAT}</button>
       </div>
     </header>`;
-  // Every late supplier in one card: a heading with the count, then one row each.
-  const alerts = late.length > 1 ? `<section class="rico-alerts glass" aria-labelledby="ricoLateHead">
-      <div class="rico-alerts-head"><span class="rico-alert-dot" aria-hidden="true"></span><b id="ricoLateHead">${esc(t('ricoLateHead'))}</b><span class="supplier-item-count">${late.length}</span></div>
-      ${late.map(l=>`<div class="rico-alert">
-        <div class="rico-alert-text"><b dir="auto">${esc(l.name)}</b><span>${esc(t('ricoLateSub')(l.time, Math.floor(l.mins/60), l.mins%60))}</span></div>
-        <button class="btn btn-primary" data-rico-late="${esc(l.supplierId)}" aria-label="${esc(t('ricoPrepareIt'))} \u00b7 ${esc(l.name)}">${esc(t('ricoPrepareIt'))}</button>
-      </div>`).join('')}
-    </section>` : '';
   if(briefingDue()) return `${head}${renderBriefing()}`;
   const thread = rico.messages.length
     ? rico.messages.map((m,i)=>ricoTimeDivider(rico.messages[i-1], m) + renderRicoMessage(m,i)).join('')
     : renderRicoIntro();
   const viewing = rico.viewing ? `<div class="rico-viewing" role="status"><span>${esc(t('ricoReadOnly')(accountLabel(rico.viewing)))}</span></div>` : '';
-  return `${head}${viewing}${rico.viewing ? '' : alerts + renderRicoInbox()}<div class="rico-thread${rico.viewing ? ' read-only' : ''}" id="ricoThread" aria-live="polite">${thread}</div>`;
+  return `${head}${viewing}${rico.viewing ? '' : renderRicoInbox()}<div class="rico-thread${rico.viewing ? ' read-only' : ''}" id="ricoThread" aria-live="polite">${thread}</div>`;
 }
 /* A small date and time line where a chat starts, a new day begins, or after a half-hour pause. */
 function ricoTimeDivider(prev, m){
@@ -229,15 +220,10 @@ function renderRicoInbox(){
 function renderRicoIntro(){
   const chips = t('ricoSuggestions');
   const actions = ['prepare_order','check_order','week_insights','last_order','add_item','late_orders'];
+  // A quiet first screen: Rico's latest message sits above, and these shortcuts. Chats and What Rico
+  // remembers are in the header.
   return `<div class="rico-intro">
-    <div class="rico-intro-head">${ricoFace(kitchenMood(), 'rico-md')}<h2 class="rico-hello">${esc(ricoGreeting())}</h2></div>
-    ${renderRicoNext()}${renderRicoWeek()}
     <div class="rico-chips">${chips.map((c,i)=>`<button class="rico-chip" data-rico-ask="${esc(c)}" data-rico-action="${actions[i]}">${esc(c)}</button>`).join('')}</div>
-    <button type="button" class="rico-link" id="ricoMemoryBtn">${esc(t('memoryTitle'))}</button>
-    ${(rico.chats || []).length ? `<section class="rico-recent">
-      <div class="rico-recent-h"><span>${esc(t('ricoRecentChats'))}</span><button class="rico-link" data-rico-history>${esc(t('ricoSeeAll'))}</button></div>
-      ${rico.chats.slice(0,3).map(c=>`<button class="rico-recent-row" data-rico-chat="${esc(c.id)}">${chatOwnerMark(c)}<span dir="auto">${esc(c.title || t('ricoUntitled'))}</span><small>${esc(timeAgo(c.updatedAt))}</small></button>`).join('')}
-    </section>` : ''}
   </div>`;
 }
 function renderRicoMessage(m, i){
@@ -261,7 +247,7 @@ function renderRicoMessage(m, i){
   return `<div class="rico-msg bot${m.streaming?' streaming':''}" id="rico-m-${i}">
     ${ricoFace(mood, 'rico-sm')}
     <div class="rico-col">
-      ${stepsHtml}${typing}${body ? `<div class="rico-bubble mood-tint-${mood}" dir="auto"><div class="rico-text">${body}</div></div>` : ''}${status}${picker}${cards}${renderRicoReceipt(m, i)}${renderRicoCheck(m)}${err}${m.text && !m.streaming && ricoCanSpeak() ? `<button type="button" class="rico-link rico-speak" data-rico-speak="${i}">${esc(t('speakBtn'))}</button>` : ''}
+      ${stepsHtml}${typing}${body ? `<div class="rico-bubble mood-tint-${mood}" dir="auto"><div class="rico-text">${body}</div></div>` : ''}${status}${picker}${cards}${renderRicoReceipt(m, i)}${err}
     </div>
   </div>`;
 }
@@ -398,102 +384,13 @@ function ricoCard(icon, title, body, actions, p){
 /* ---------- Composer (lives in the bottom stack above the tab bar) ---------- */
 function renderRicoComposer(){
   if(rico.viewing) return `<div class="rico-composer rico-composer-viewing"><button type="button" class="btn btn-primary" data-rico-mine>${esc(t('ricoBackToMine'))}</button></div>`;
-  const voice = ricoVoiceSupported();
-  return `<form class="rico-composer ${ricoRecorder.active?'recording':''} ${ricoRecorder.busy?'transcribing':''}" id="ricoComposer" autocomplete="off">
+  return `<form class="rico-composer" id="ricoComposer" autocomplete="off">
     <label class="sr-only" for="ricoInput">${esc(t('ricoPlaceholder'))}</label>
-    <textarea id="ricoInput" rows="1" maxlength="2000" enterkeyhint="send" placeholder="${esc(ricoComposerHint())}" dir="auto"></textarea>
-    ${voice ? `<button type="button" class="rico-mic" id="ricoMicBtn" aria-label="${esc(t('ricoMic'))}" aria-pressed="${ricoRecorder.active}">${ICON_MIC}<span class="rico-mic-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span></button>` : ''}
+    <textarea id="ricoInput" rows="1" maxlength="2000" enterkeyhint="send" placeholder="${esc(t('ricoPlaceholder'))}" dir="auto"></textarea>
     <button type="submit" class="rico-send ${rico.streaming?'stop':''}" id="ricoSendBtn" aria-label="${esc(rico.streaming?t('ricoStop'):t('ricoSend'))}">${rico.streaming?ICON_STOP:ICON_SEND_UP}</button>
   </form>`;
 }
-function ricoComposerHint(){
-  return ricoRecorder.active ? t('ricoListening') : ricoRecorder.busy ? t('ricoTranscribing') : t('ricoPlaceholder');
-}
-
-/* ---------- Voice messages ----------
-   Tap the microphone, speak (Kurdish or English), tap again: the clip goes
-   to the server, comes back as text, and is sent to Rico like a typed
-   message. Recording stops by itself after a minute. Nothing is stored. */
-const ricoRecorder = {active:false, starting:false, busy:false, rec:null, stream:null, chunks:[], timer:0};
-function ricoVoiceSupported(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder); }
-function blobToBase64(blob){
-  return new Promise((resolve, reject)=>{ const r = new FileReader(); r.onload = ()=>resolve(String(r.result).split(',')[1] || ''); r.onerror = reject; r.readAsDataURL(blob); });
-}
-async function ricoToggleVoice(){
-  if(ricoRecorder.busy || ricoRecorder.starting) return;
-  if(ricoRecorder.active){ try{ ricoRecorder.rec.stop(); }catch(e){ ricoResetVoice(); } return; }
-  if(rico.streaming) return;
-  if(!ricoVoiceSupported()){ toast(t('ricoMicUnsupported'), 'warn'); return; }
-  const context = ricoContext(), voiceView = state.view;
-  ricoRecorder.starting = true;
-  try{
-    if(!(await aiConsent()) || !ricoContextCurrent(context)) return;
-    const denied = e=>e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
-    const failed = e=>toast(denied(e) ? t('ricoMicDenied') : t('ricoMicNoStart') + (e && e.name ? ` (${e.name})` : ''), 'warn');
-    let stream;
-    try{ stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true}}); }
-    catch(e){
-      if(!ricoContextCurrent(context)) return;
-      // Some phones refuse the extra settings: ask again for a plain microphone.
-      if(denied(e)){ failed(e); return; }
-      try{ stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
-      catch(e2){ failed(e2); return; }
-    }
-    if(!ricoContextCurrent(context) || state.view !== voiceView){ stream.getTracks().forEach(tr=>tr.stop()); return; }
-    // iPhones record most reliably in their own format (mp4), in one piece; others prefer webm/opus.
-    const supports = m=>window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m);
-    const apple = /iPhone|iPad|Macintosh/.test(navigator.userAgent) && supports('audio/mp4');
-    const mime = (apple ? ['audio/mp4'] : ['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus']).find(supports) || '';
-    let rec;
-    try{ rec = new MediaRecorder(stream, mime ? {mimeType:mime, audioBitsPerSecond:32000} : undefined); }
-    catch(e){
-      try{ rec = new MediaRecorder(stream); }
-      catch(e2){ stream.getTracks().forEach(tr=>tr.stop()); failed(e2); return; }
-    }
-    Object.assign(ricoRecorder, {active:true, rec, stream, chunks:[]});
-    rec.ondataavailable = e=>{ if(e.data && e.data.size) ricoRecorder.chunks.push(e.data); };
-    rec.onstop = ()=>ricoFinishVoice(rec.mimeType || mime || 'audio/webm');
-    rec.onerror = e=>{ ricoResetVoice(); ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintTransferMic(); failed(e && e.error); };
-    if(apple) rec.start(); else rec.start(250);
-    ricoRecorder.timer = setTimeout(()=>{ if(ricoRecorder.active) try{ rec.stop(); }catch(e){} }, 60000);
-    ricoRefreshComposer();
-  }finally{ if(ricoContextCurrent(context)) ricoRecorder.starting = false; }
-}
-function ricoResetVoice(){
-  clearTimeout(ricoRecorder.timer);
-  const rec = ricoRecorder.rec;
-  if(rec && rec.state !== 'inactive'){ rec.onstop = null; try{ rec.stop(); }catch(e){} }   // dropped, not sent
-  ricoRecorder.stream && ricoRecorder.stream.getTracks().forEach(tr=>tr.stop());
-  Object.assign(ricoRecorder, {active:false, starting:false, rec:null, stream:null, chunks:[]});
-}
-async function ricoFinishVoice(mime){
-  const context = ricoContext();
-  const blob = new Blob(ricoRecorder.chunks, {type:mime});
-  ricoResetVoice();
-  ricoRecorder.busy = true;
-  ricoRefreshComposer();
-  paintTransferMic();
-  try{
-    if(blob.size < 1200){ toast(t('ricoMicTooShort'), 'warn'); return; }   // just a tap
-    const audio = await blobToBase64(blob);
-    if(!ricoContextCurrent(context)) return;
-    const r = await api('assistant/transcribe', {method:'POST', body:{audio, mime:mime.split(';')[0], lang:state.lang}, timeout:45000});
-    if(!ricoContextCurrent(context) || r.stale) return;
-    const text = r.ok && r.data && typeof r.data.text === 'string' ? r.data.text.trim() : '';
-    if(!text){
-      const code = r.data && r.data.error;
-      toast(code === 'rate_limited' ? t('ricoErrors').rate_limited : code === 'not_configured' ? t('ricoErrors').not_configured : r.status === 0 ? t('ricoErrors').offline : t('ricoMicFailed'), 'warn');
-      return;
-    }
-    ricoRecorder.busy = false;
-    // From the Transfers screen: the spoken list is read into transfer rows, not sent to Rico's chat.
-    if(ricoRecorder.voiceTransfer){ ricoRecorder.voiceTransfer = false; transferVoiceText(text); }
-    else ricoAsk(text);
-  }catch(e){ if(!ricoContextCurrent(context)) return; console.error('Voice message failed', e); toast(t('ricoMicFailed') + (e && e.name ? ` (${e.name})` : ''), 'warn'); }
-  finally{ if(ricoContextCurrent(context)){ ricoRecorder.busy = false; ricoRecorder.voiceTransfer = false; ricoRefreshComposer(); paintTransferMic(); } }
-}
-
-/* Async consent, microphone and chat replies belong to the chat that started them. */
+/* Async consent and chat replies belong to the chat that started them. */
 function ricoContext(){ return {epoch:rico.epoch, account:state.account}; }
 function ricoContextCurrent(context){ return context.epoch === rico.epoch && context.account === state.account; }
 function ricoDraftKey(account = state.account){ return 'ricoDraft:' + account; }
@@ -523,10 +420,8 @@ function attachAssistantEvents(){
     const draftAccount = state.account;
     input.addEventListener('input', ()=>{ if(state.account === draftAccount) lset(ricoDraftKey(draftAccount), input.value || null); });
   }
-  document.getElementById('ricoMicBtn')?.addEventListener('click', ()=>ricoToggleVoice());
   if(form) form.onsubmit = async e=>{
     e.preventDefault();
-    if(ricoRecorder.active){ ricoToggleVoice(); return; }
     if(rico.streaming){ ricoStop(); return; }
     const text = input.value.trim();
     if(!text) return;
@@ -538,6 +433,7 @@ function attachAssistantEvents(){
   document.getElementById('ricoNewBtn')?.addEventListener('click', ()=>ricoNewChat());
   document.querySelectorAll('[data-rico-mine]').forEach(b=>b.onclick=()=>ricoNewChat());
   document.getElementById('ricoHistBtn')?.addEventListener('click', ()=>ricoOpenHistory());
+  document.getElementById('ricoMemoryBtn')?.addEventListener('click', openRicoMemory);
   if(rico.chats === null) ricoLoadChats().then(()=>{ if(state.view === 'assistant' && !rico.messages.length && rico.chats?.length && !refreshBlocked()) render(); });
   document.getElementById('ricoAutoBtn')?.addEventListener('click', async ()=>{
     const on = !ricoAutoOrder();
@@ -554,14 +450,10 @@ function attachRicoThreadEvents(root){
   root.querySelectorAll('[data-rico-ask]').forEach(b=>b.onclick=()=>{
     // These two are answered on this phone, as a receipt and a checklist.
     if(b.dataset.ricoAction === 'last_order' && canOpen('history')) return ricoAnswerLastOrder(b.dataset.ricoAsk);
-    if(b.dataset.ricoAction === 'check_order' && canOpen('history')) return ricoAnswerCheck(b.dataset.ricoAsk);
     ricoAsk(b.dataset.ricoAsk, {quickAction:b.dataset.ricoAction});
   });
-  root.querySelectorAll('[data-rico-day]').forEach(b=>b.onclick=()=>ricoAsk(t('weekAsk')(b.dataset.ricoDay)));
-  root.querySelector('#ricoMemoryBtn')?.addEventListener('click', openRicoMemory);
   root.querySelectorAll('[data-receipt-same]').forEach(b=>b.onclick=()=>ricoReceiptToCart(rico.messages[+b.dataset.receiptSame]));
-  root.querySelectorAll('[data-rico-speak]').forEach(b=>b.onclick=()=>ricoSpeak(rico.messages[+b.dataset.ricoSpeak]?.text || ''));
-  if(root.querySelector('.rico-check [data-issue]')) attachOrderIssues(root.querySelector('.rico-check'));
+
   root.querySelectorAll('[data-rico-chat]').forEach(b=>b.onclick=()=>ricoOpenChat(b.dataset.ricoChat));
   root.querySelectorAll('[data-rico-history]').forEach(b=>b.onclick=()=>ricoOpenHistory());
   root.querySelectorAll('[data-rico-steps]').forEach(d=>d.ontoggle=()=>{ const m=rico.messages[+d.dataset.ricoSteps]; if(m) m.stepsOpen=d.open; });
@@ -722,12 +614,6 @@ function ricoPaintMessage(i){
 function ricoRefreshComposer(){
   const form = document.getElementById('ricoComposer');
   if(form){
-    form.classList.toggle('recording', ricoRecorder.active);
-    form.classList.toggle('transcribing', ricoRecorder.busy);
-    const input = document.getElementById('ricoInput');
-    if(input) input.placeholder = ricoComposerHint();
-    const mic = document.getElementById('ricoMicBtn');
-    if(mic){ mic.setAttribute('aria-pressed', String(ricoRecorder.active)); mic.disabled = ricoRecorder.busy || rico.streaming; }
   }
   const btn = document.getElementById('ricoSendBtn');
   if(!btn) return;
@@ -867,13 +753,12 @@ function ricoChatTitle(){
   return first ? ricoClean(first.text).replace(/\s+/g, ' ').trim().slice(0, 80) : '';
 }
 function ricoSerialize(){
-  return rico.messages.filter(m=>!m.streaming && (m.role === 'user' || m.text || (m.proposals||[]).length || m.error || m.receipt || m.check)).slice(-200).map(m=>{
+  return rico.messages.filter(m=>!m.streaming && (m.role === 'user' || m.text || (m.proposals||[]).length || m.error || m.receipt)).slice(-200).map(m=>{
     const out = {role:m.role, text:m.text || '', ts:m.ts || Date.now()};
     if(m.mood) out.mood = m.mood;
     if(m.error) out.error = m.error;
     if(m.steps && m.steps.length) out.steps = m.steps;
     if(m.receipt) out.receipt = m.receipt;
-    if(m.check) out.check = m.check;
     if(m.proposals && m.proposals.length) out.proposals = m.proposals.map(({undo, draftBefore, ...p})=>({...p, status: p.status === 'saving' ? 'pending' : p.status}));
     return out;
   });
@@ -914,7 +799,6 @@ function ricoNewChat(){
   if(rico.streaming) ricoStop();
   if(rico.messages.length) ricoSave();
   rico.epoch++; rico.chatRequest++;
-  ricoResetVoice(); ricoRecorder.busy = false; ricoRecorder.voiceTransfer = false;
   rico.streaming = false;
   rico.messages = []; rico.chatId = null; rico.viewing = null; rico.viewedId = null;
   render();
@@ -928,7 +812,6 @@ async function ricoOpenChat(id){
   if(rico.chatId !== id && rico.messages.length) ricoSave();
   clearTimeout(ricoSaveTimer);
   rico.epoch++;
-  ricoResetVoice(); ricoRecorder.busy = false; ricoRecorder.voiceTransfer = false;
   // The other person's chat opens read only: it can be read and deleted, never continued.
   rico.viewing = r.data.account && r.data.account !== state.account ? r.data.account : null;
   rico.chatId = rico.viewing ? null : id;

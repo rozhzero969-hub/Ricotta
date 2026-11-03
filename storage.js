@@ -101,7 +101,15 @@ const appVersionHeader = () => typeof APP_VERSION === 'string' ? {'x-app-version
    the session was revoked (a new PIN, remote log out) or expired. */
 /* signal: stops the request early. quiet: a request that fails says nothing about the connection (the
    live-changes wait, which is cut short whenever the app leaves the screen). */
-async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepalive=false, signal=null, quiet=false} = {}){
+/* A read that meets a short server hiccup (503) is tried once more before anyone hears about it. */
+async function api(path, opts = {}){
+  const read = (opts.method || 'GET') === 'GET';
+  const first = await apiOnce(path, {...opts, retrying:read});
+  if(!read || first.status !== 503 || opts.signal?.aborted) return first;
+  await new Promise(resolve=>setTimeout(resolve, 700));
+  return apiOnce(path, opts);
+}
+async function apiOnce(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepalive=false, signal=null, quiet=false, retrying=false} = {}){
   if(apiSessionExpired(path)) return {ok:false, status:401, data:{error:'session_expired'}};
   const s = apiSession();
   if(!apiPathIsPublic(path) && !apiAccountMatchesUi(s)) return staleApiReply();
@@ -122,7 +130,7 @@ async function api(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepalive=
     if(!sessionCurrent()) return staleApiReply();
     setApiHealth(true);
     // A server error is a problem for Rozha's Admin too (never the report itself, and never a busy limit).
-    if(res.status >= 500 && path !== 'problems' && data?.error !== 'rate_limit_unavailable') globalThis.reportProblem?.('server', `${method} ${path.split('?')[0].replace(/\/[^/]{16,}$/, '/…')} ${res.status} ${data?.error || ''}`.trim());
+    if(res.status >= 500 && !(retrying && res.status === 503) && path !== 'problems' && data?.error !== 'rate_limit_unavailable') globalThis.reportProblem?.('server', `${method} ${path.split('?')[0].replace(/\/[^/]{16,}$/, '/…')} ${res.status} ${data?.error || ''}`.trim());
     if(res.status === 401 && s && !apiPathIsPublic(path)){ clearApiSession(); onSessionExpired(); }
     return {ok:res.ok, status:res.status, data};
   }catch(e){

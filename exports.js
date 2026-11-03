@@ -1,7 +1,7 @@
 /* Ricotta Orders -- Excel and PDF files, in Ricotta's own look.
    - Excel (.xlsx): the ricotta mark, a title and a line about what the file holds, then a dark green
      header row (frozen, with filters), banded rows, a totals row where totals make sense, and
-     right-to-left sheets for Kurdish and Arabic. Built here with no library (zipStore in transfers.js).
+     right-to-left sheets for Kurdish and Arabic. Built here with no library (zipStore below).
    - PDF: each A4 page is drawn on a canvas, so Kurdish and Arabic text is shaped exactly as on the
      screen, and the pages are written into a small PDF file by hand. It opens the phone's share sheet
      (WhatsApp, Files, Print...) or downloads on a computer; nothing opens in a new window, so there is
@@ -13,6 +13,45 @@
    xmlText, XML_HEAD, SHEET_NS, isRtl, canDo, monthName, reportData, weekdayName. */
 
 /* ---------- Excel ---------- */
+/* Files: handing one to the person, and the zip and XML parts an Excel file is made of. */
+const FILE_TIME = new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Baghdad', hour:'2-digit', minute:'2-digit', hourCycle:'h23'});
+/* Hands a file to the person: the share sheet on a phone (Save to Files, WhatsApp...), a download on a computer. */
+async function deliverFile(blob, name){
+  const file = typeof File === 'function' ? new File([blob], name, {type:blob.type}) : null;
+  if(file && matchMedia('(pointer: coarse)').matches && navigator.canShare?.({files:[file]})){
+    try{ await navigator.share({files:[file], title:name}); return true; }
+    catch(e){ if(e?.name === 'AbortError') return false; }
+  }
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  return true;
+}
+const xmlText = v => String(v ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+const SHEET_NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+const CRC_TABLE = (()=>{ const table = new Uint32Array(256); for(let n = 0; n < 256; n++){ let c = n; for(let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; table[n] = c >>> 0; } return table; })();
+function crc32(bytes){ let c = 0xFFFFFFFF; for(let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(files){
+  const enc = new TextEncoder(), chunks = [], central = [];
+  let offset = 0;
+  const u16 = v => [v & 0xFF, (v >>> 8) & 0xFF], u32 = v => [v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF];
+  const DATE = 0x21; // 1980-01-01, a fixed stamp keeps the bytes the same for the same rows
+  for(const [name, content] of files){
+    const nameBytes = enc.encode(name), data = typeof content === 'string' ? enc.encode(content) : content, crc = crc32(data);
+    const local = [...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(DATE), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nameBytes.length), ...u16(0)];
+    chunks.push(Uint8Array.from(local), nameBytes, data);
+    central.push(Uint8Array.from([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(DATE), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nameBytes.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset)]), nameBytes);
+    offset += local.length + nameBytes.length + data.length;
+  }
+  const centralSize = central.reduce((n, c)=>n + c.length, 0);
+  const end = Uint8Array.from([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(centralSize), ...u32(offset), ...u16(0)]);
+  const all = [...chunks, ...central, end], out = new Uint8Array(all.reduce((n, c)=>n + c.length, 0));
+  let at = 0;
+  for(const c of all){ out.set(c, at); at += c.length; }
+  return out;
+}
+
 const XL_COL = n=>{ let s = ''; n++; while(n){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
 const XL_STYLES = XML_HEAD + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
   + '<fonts count="7"><font><sz val="11"/><color rgb="FF1C1C1E"/><name val="Calibri"/><family val="2"/></font>'
@@ -311,7 +350,7 @@ function suppliersTable(rep){
   return sortedByName(state.suppliers).map(s=>{
     const m = rep.suppliers?.[s.id] || {}, r = s.reminder;
     const days = r && r.enabled ? (reminderDays(r).length === 7 ? t('everyDay') : DAY_ORDER.filter(d=>reminderDays(r).includes(d)).map(d=>t('daysShort')[d]).join(', ')) : '';
-    return {supplier:s, cells:[s.name, s.phone || '', state.items.filter(i=>i.supplierId === s.id).length, r && r.enabled ? r.time : '', days, s.cutoff || '', Number(m.orders || 0), Number(m.lines || 0), shortDate(m.last)]};
+    return {supplier:s, cells:[s.name, s.phone || '', state.items.filter(i=>i.supplierId === s.id).length, r && r.enabled ? r.time : '', days, Number(m.orders || 0), Number(m.lines || 0), shortDate(m.last)]};
   });
 }
 async function exportCatalog(kind, format){
@@ -342,13 +381,13 @@ async function exportCatalog(kind, format){
   const sum = i=>table.reduce((n, r)=>n + (Number(r.cells[i]) || 0), 0);
   if(format === 'excel'){
     const columns = [{label:t('supplier'), width:28}, {label:t('phone'), width:18}, {label:t('items'), width:9, type:'number'}, {label:t('fileReminder'), width:12}, {label:t('reminderDaysLabel'), width:26},
-      {label:t('cutoffShort'), width:11}, {label:t('fileOrdersMonth'), width:15, type:'number'}, {label:t('fileLinesMonth'), width:15, type:'number'}, {label:t('fileLastOrder'), width:14}];
-    return deliverExcel(brandedWorkbook({title, subtitle, at, sheets:[{name:title, columns, rows:table.map(r=>r.cells), totals:[t('fileTotal'), '', sum(2), '', '', '', sum(6), sum(7), '']}]}), `${t('fileSuppliersTitle')} ${fileDay(at)}`);
+      {label:t('fileOrdersMonth'), width:15, type:'number'}, {label:t('fileLinesMonth'), width:15, type:'number'}, {label:t('fileLastOrder'), width:14}];
+    return deliverExcel(brandedWorkbook({title, subtitle, at, sheets:[{name:title, columns, rows:table.map(r=>r.cells), totals:[t('fileTotal'), '', sum(2), '', '', sum(5), sum(6), '']}]}), `${t('fileSuppliersTitle')} ${fileDay(at)}`);
   }
-  return deliverPdf({title, subtitle, stamp:fileStamp(at), info:[[t('suppliers'), String(state.suppliers.length)], [t('items'), String(state.items.length)], [t('fileOrdersMonth'), String(sum(6))], [t('fileLinesMonth'), String(sum(7))]],
+  return deliverPdf({title, subtitle, stamp:fileStamp(at), info:[[t('suppliers'), String(state.suppliers.length)], [t('items'), String(state.items.length)], [t('fileOrdersMonth'), String(sum(5))], [t('fileLinesMonth'), String(sum(6))]],
     sections:[{columns:[{label:t('supplier'), w:26, bold:true}, {label:t('phone'), w:18}, {label:t('items'), w:8, align:'end'}, {label:t('fileReminder'), w:16}, {label:t('fileOrdersMonth'), w:12, align:'end'}, {label:t('fileLastOrder'), w:13}],
-      rows:table.map(r=>[r.cells[0], r.cells[1] || '·', String(r.cells[2]), [r.cells[3], r.cells[4]].filter(Boolean).join(' · ') || '·', String(r.cells[6]), r.cells[8] || '·']),
-      totals:[t('fileTotal'), '', String(sum(2)), '', String(sum(6)), '']}]}, `${t('fileSuppliersTitle')} ${fileDay(at)}`);
+      rows:table.map(r=>[r.cells[0], r.cells[1] || '·', String(r.cells[2]), [r.cells[3], r.cells[4]].filter(Boolean).join(' · ') || '·', String(r.cells[5]), r.cells[7] || '·']),
+      totals:[t('fileTotal'), '', String(sum(2)), '', String(sum(5)), '']}]}, `${t('fileSuppliersTitle')} ${fileDay(at)}`);
 }
 /* One supplier's order sheet (Send to suppliers, PDF): what to prepare, with quantities in bold. */
 async function orderSheetPdf(entry, supplier){

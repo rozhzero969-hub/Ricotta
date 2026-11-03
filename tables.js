@@ -56,7 +56,6 @@ const TABLES = {
       {id:'phone', label:()=>t('phone'), value:s=>s.phone || '·', sort:s=>s.phone || '', text:true},
       {id:'items', label:()=>t('items'), value:s=>String(state.items.filter(i=>i.supplierId === s.id).length), sort:s=>state.items.filter(i=>i.supplierId === s.id).length, end:true, short:n=>t('itemCount')(Number(n))},
       {id:'reminder', label:()=>t('fileReminder'), value:s=>s.reminder?.enabled ? reminderText(s.reminder) : t('reminderOff'), sort:s=>s.reminder?.enabled ? s.reminder.time : '￿', text:true},
-      {id:'cutoff', label:()=>t('cutoffShort'), value:s=>s.cutoff ? reminderTimeLabel(s.cutoff) : '·', sort:s=>s.cutoff || '￿'},
       {id:'month', label:()=>t('fileOrdersMonth'), value:s=>String(tableStats().suppliers[s.id]?.orders.size || 0), sort:s=>tableStats().suppliers[s.id]?.orders.size || 0, end:true, short:n=>t('tableOrders')(n)},
       {id:'last', label:()=>t('fileLastOrder'), value:s=>tableStats().suppliers[s.id]?.last ? timeAgo(tableStats().suppliers[s.id].last) : t('never'), sort:s=>tableStats().suppliers[s.id]?.last || '', short:v=>v},
     ],
@@ -85,13 +84,18 @@ function tableRows(kind){
   };
   return {rows:[...rows].sort(cmp), col, filter, prefs};
 }
-/* Settings > Features can turn the tables off: a plain list by name, and a tap opens the form. */
+/* A row's second line: the unit and the supplier (or the phone), each in its own direction, so a
+   Kurdish unit never turns the whole line around. */
+function rowMeta(kind, r){
+  if(kind !== 'items') return `<span dir="ltr">${esc(r.phone || t('noPhoneOnFile'))}</span>`;
+  return `<span dir="auto">${esc(r.supplierId ? supplierName(r.supplierId) : t('noSupplier'))}</span> · <span dir="auto">${esc(unitLabel(r.unit) || '·')}</span>`;
+}
+/* Settings > Look can turn the tables off: a plain list by name, and a tap opens the form. */
 function renderPlainList(kind){
   const rows = [...TABLES[kind].rows()].sort((a, b)=>nameCollator().compare(a.name || '', b.name || ''));
   if(!rows.length) return emptyState(t(kind === 'items' ? 'noItemsYet' : 'noSuppliersYet'));
   return `<div class="plain-list">${rows.map(r=>{
-    const meta = kind === 'items' ? `${unitLabel(r.unit) || '·'} · ${r.supplierId ? supplierName(r.supplierId) : t('noSupplier')}` : (r.phone || t('noPhoneOnFile'));
-    return `<button type="button" class="list-row tappable" data-search-row data-table-row="${esc(r.id)}" ${kind === 'items' ? `data-edititem="${esc(r.id)}"` : `data-search-text="${esc([r.name, r.phone || ''].join(' '))}"`}><div><div class="name" dir="auto">${esc(r.name)}${r.available === false ? ` <span class="availability-badge">${esc(t('unavailable'))}</span>` : ''}</div><div class="meta" dir="auto">${esc(meta)}</div></div><i class="sheet-chevron" aria-hidden="true"></i></button>`;
+    return `<button type="button" class="list-row tappable" data-search-row data-table-row="${esc(r.id)}" ${kind === 'items' ? `data-edititem="${esc(r.id)}"` : `data-search-text="${esc([r.name, r.phone || ''].join(' '))}"`}><div><div class="name" dir="auto">${esc(r.name)}${r.available === false ? ` <span class="availability-badge">${esc(t('unavailable'))}</span>` : ''}</div><div class="meta">${rowMeta(kind, r)}</div></div><i class="sheet-chevron" aria-hidden="true"></i></button>`;
   }).join('')}</div>`;
 }
 function renderDataTable(kind){
@@ -110,8 +114,7 @@ function renderDataTable(kind){
   // Phones: one row each, with what the list is sorted by on the right (not the name, which is the row).
   const side = r=>['name', 'supplier', 'phone'].includes(col.id) ? '' : col.short ? col.short(col.value(r)) : col.value(r);
   const list = rows.map(r=>{
-    const meta = kind === 'items' ? `${unitLabel(r.unit) || '·'} · ${r.supplierId ? supplierName(r.supplierId) : t('noSupplier')}` : (r.phone || t('noPhoneOnFile'));
-    return `<button type="button" class="list-row tappable table-row" ${rowAttr(r)}><div><div class="name" dir="auto">${esc(r.name)}${r.available === false ? ` <span class="availability-badge">${esc(t('unavailable'))}</span>` : ''}</div><div class="meta" dir="auto">${esc(meta)}</div></div><span class="table-side">${esc(side(r))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
+    return `<button type="button" class="list-row tappable table-row" ${rowAttr(r)}><div><div class="name" dir="auto">${esc(r.name)}${r.available === false ? ` <span class="availability-badge">${esc(t('unavailable'))}</span>` : ''}</div><div class="meta">${rowMeta(kind, r)}</div></div><span class="table-side">${esc(side(r))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
   }).join('');
   return `${tools}<div class="data-table-scroll"><table class="data-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div><div class="table-list">${list}</div>`;
 }

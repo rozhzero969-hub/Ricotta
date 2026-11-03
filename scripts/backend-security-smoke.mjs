@@ -1,7 +1,7 @@
 // Node 24+: local request/provider mocks only; no real keys or database.
 import assert from 'node:assert/strict';
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody } from '../supabase/functions/_shared/security.ts';
-import { handleChat, handleTranscribe, _internals } from '../supabase/functions/api/assistant.ts';
+import { handleChat, _internals } from '../supabase/functions/api/assistant.ts';
 
 globalThis.Deno = { env: { get: () => '' } };
 const request = body => new Request('https://example.test', { method: 'POST', body });
@@ -67,10 +67,6 @@ assert.equal(providerCalls, 1);
 assert.equal(reservations.at(-1).p_device_id, '__session:session-1', 'missing device IDs still have a quota identity');
 assert.equal(completed.at(-1).input_tokens, 7);
 
-const audio = { audio: Buffer.alloc(900, 1).toString('base64'), mime: 'audio/webm', lang: 'en' };
-quota = null;
-assert.equal((await handleTranscribe(db, session, audio, {})).status, 429);
-assert.equal(providerCalls, 1, 'transcription shares the reply quota');
 key = '';
 const beforeQuick = reservations.length;
 const quick = await handleChat(db, session, { ...body, quickAction: 'last_order' }, {}, new AbortController().signal);

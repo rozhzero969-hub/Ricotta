@@ -101,23 +101,6 @@ function checkMilestones(){
   toast(t('milestoneNew')(t('ms_' + fresh[fresh.length - 1])), 'ok');
 }
 
-/* ---------- The day on a big screen ---------- */
-function openDayBoard(){
-  const now = erbilNow(), late = new Set(ricoLateOrders().map(l=>l.supplierId));
-  const rows = state.suppliers.filter(s=>state.items.some(i=>i.supplierId === s.id)).map(s=>{
-    const c = cutoffState(s), sent = sentTodayTo(s.id, now.date);
-    const dueToday = s.reminder?.enabled && (!s.reminder.days?.length || s.reminder.days.map(Number).includes(now.weekday));
-    return {s, c, sent, dueToday, late:late.has(s.id)};
-  }).filter(x=>x.sent || x.dueToday || x.c);
-  const col = (title, list, note)=>`<section class="board-col"><h3>${esc(title)}<span class="tab-count">${list.length}</span></h3>${list.map(x=>`<article class="board-card${x.late ? ' late' : ''}"><b dir="auto">${esc(x.s.name)}</b><span>${esc(note(x))}</span>${x.sent ? '' : `<button type="button" class="btn btn-ghost" data-board-open="${esc(x.s.id)}">${esc(t('order'))}</button>`}</article>`).join('') || `<div class="empty-mini">${esc(t('boardEmpty'))}</div>`}</section>`;
-  const open = rows.filter(x=>!x.sent);
-  const soon = open.filter(x=>x.late || (x.c && x.c.left > 0 && x.c.left <= 120));
-  const later = open.filter(x=>!soon.includes(x));
-  const timeOf = x=>x.c ? t('cutoffUntil')(reminderTimeLabel(x.c.time)) : x.s.reminder?.time ? reminderTimeLabel(x.s.reminder.time) : '';
-  const {el, close} = openKitchenSheet('board-sheet', `<div class="sel-title">${esc(t('boardTitle'))}</div><div class="board">${col(t('boardNow'), soon, timeOf)}${col(t('boardLater'), later, timeOf)}${col(t('boardSent'), rows.filter(x=>x.sent), ()=>t('boardSentNote'))}</div>`, t('boardTitle'));
-  el.querySelectorAll('[data-board-open]').forEach(b=>b.onclick = ()=>{ close(); state.orderTab = b.dataset.boardOpen; if(state.view === 'order') render(); else goView('order'); });
-}
-
 /* ---------- A short tour, once for someone new ---------- */
 function maybeShowTour(){
   if(!state.account) return;

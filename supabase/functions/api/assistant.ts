@@ -49,8 +49,8 @@ type Session = { id: string; account: "rozha" | "yunis"; deviceId: string | null
 /* What each role lets a person do, for CONTEXT (the api checks the same roles on every request). */
 const ROLE_WORDS: Record<string, string> = {
   history: "History", manage: "Manage (items, suppliers, units, read only without catalog)", catalog: "add, change and delete items, suppliers and units",
-  record: "Record", transfers: "Transfers", assistant: "Rico", send: "send orders to suppliers", exports: "Excel and PDF exports",
-  notify: "send notifications through Rico", reminders: "the daily reminder",
+  record: "Record", assistant: "Rico", send: "send orders to suppliers", exports: "Excel and PDF exports",
+  notify: "send notifications through Rico",
 };
 type Line = { supplierId: string | null; supplierName: string | null; itemId: string; name: string; unitId: string | null; qty: number };
 type Order = { id: string; at: string; date: string; time: string; weekday: number; lines: Line[] };
@@ -106,12 +106,11 @@ async function loadWorld(db: any, s: Session) {
   // Rozha also sees which phones are signed in (Admin -> Devices); everything
   // else is the same for both accounts.
   const full = s.account === "rozha";
-  const [sup, items, units, orders, reminder, devices, activity, streak, months, rules] = await withTimeout(Promise.all([
-    catalogRows(() => app("suppliers").select("id,name,phone,reminder,cutoff,created_at").order("id")),
+  const [sup, items, units, orders, devices, activity, streak, months, rules] = await withTimeout(Promise.all([
+    catalogRows(() => app("suppliers").select("id,name,phone,reminder,created_at").order("id")),
     catalogRows(() => app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available").order("id")),
     catalogRows(() => app("units").select("id,en,ku,ar").order("id")),
     app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").order("sent_at", { ascending: false }).limit(600),
-    app("reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle(),
     full ? app("devices").select("account,label,logged_in,last_seen").order("last_seen", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
     app("audit_events").select("occurred_at,actor,action,entity_type,entity_name,payload")
       .in("action", ["add", "edit", "delete"]).in("entity_type", ["supplier", "item", "unit"])
@@ -120,7 +119,7 @@ async function loadWorld(db: any, s: Session) {
     app("month_summaries").select("month,data").order("month", { ascending: false }).limit(3),
     app("rico_rules").select("id,rule").order("created_at").limit(30),
   ]), DB_TIMEOUT_MS, "load_world");
-  for (const result of [sup, items, units, orders, reminder, devices, activity, streak, months, rules]) {
+  for (const result of [sup, items, units, orders, devices, activity, streak, months, rules]) {
     if (result.error) throw new Error("kitchen_data_unavailable");
   }
   const orderRows = (orders.data ?? []).reverse();
@@ -165,7 +164,6 @@ async function loadWorld(db: any, s: Session) {
     items: (items.data ?? []) as any[],
     units: (units.data ?? []) as any[],
     history: seen,
-    dailyReminder: reminder.data ? { enabled: !!reminder.data.enabled, time: String(reminder.data.remind_time).slice(0, 5) } : null,
     devices: (devices.data ?? []) as any[],
     activity: can.record ? (activity.data ?? []) as any[] : [],
     streak: streak.data ?? null,
@@ -249,7 +247,7 @@ function toolListSuppliers(w: World) {
       const gaps = dates.slice(1).map((d, i) => (d - dates[i]) / 86400_000);
       const r = s.reminder?.enabled ? s.reminder : null;
       return {
-        supplier_id: s.id, name: s.name, has_whatsapp_number: !!s.phone, order_cutoff: s.cutoff || null,
+        supplier_id: s.id, name: s.name, has_whatsapp_number: !!s.phone,
         items: w.items.filter((i) => i.supplier_id === s.id).length,
         reminder: r ? { time: r.time, days: (Array.isArray(r.days) && r.days.length ? r.days : [0, 1, 2, 3, 4, 5, 6]).map((d: number) => WEEKDAYS[d]) } : null,
         orders_this_month: orders.length,
@@ -643,7 +641,7 @@ function proposeStreakRecover(w: World, emit: Emit) {
 
 function proposeOpen(a: any, emit: Emit) {
   // "send" opens Send to suppliers with the current draft (the person still taps each WhatsApp send).
-  const screens = ["order", "manage", "transfers", "send", "history", "suppliers", "itemsAdmin", "units", "record", "admin", "settings"];
+  const screens = ["order", "manage", "send", "history", "suppliers", "itemsAdmin", "units", "record", "admin", "settings"];
   const screen = screens.includes(a.screen) ? a.screen : "order";
   emit({ type: "proposal", proposal: { id: pid(), kind: "open", screen, supplierId: text(a.supplier_id, 120) || null, label: text(a.label, 60) } });
   return { shown: true };
@@ -689,7 +687,7 @@ const TOOLS = [
       items: { type: "array", items: { type: "object", properties: { item_id: { type: "string" }, qty: { type: "number" } }, required: ["item_id", "qty"] }, description: "Only the amounts the person named (item_id from find_items)" },
       language: { type: "string", enum: ["en", "ku", "ar"], description: "Language of the message: the person's language" },
     }, required: ["suppliers"] } },
-  { name: "open_screen", description: "Show a button that opens a screen of the app (order, manage, transfers, send, history, suppliers, itemsAdmin, units, record, admin, settings). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
+  { name: "open_screen", description: "Show a button that opens a screen of the app (order, manage, send, history, suppliers, itemsAdmin, units, record, admin, settings). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
     input_schema: { type: "object", properties: { screen: { type: "string" }, supplier_id: { type: "string" }, label: { type: "string" } }, required: ["screen"] } },
 ];
 const STATUS_TOOLS = new Set(TOOLS.map((t) => t.name));
@@ -745,8 +743,7 @@ WHAT YOU CAN DO (only what CONTEXT says the person may do: Rozha has everything,
 - You also message people first sometimes: a cheer in the morning (with Erbil's weather), a thank-you after an order goes out, a telling-off when an order is late, and streak milestones. Those appear at the top of this chat.
 - The kitchen streak: CONTEXT shows it. Every Baghdad day with at least one sent order (by Rozha or Yunis) adds a day; it is grey until today's first order, then the fire lights up. A whole day with no order breaks it. If someone asks to save, restore or recover the streak, use recover_streak (free, works up to 7 days after it broke). Celebrate milestones (7, 14, 30, 60, 100, 200...) and now and then mention the streak after an order goes out.
 - Fun facts: now and then (not every reply) add one short fun fact from the data, e.g. the most or least ordered item this month, the busiest weekday, or how many kilos of something went out. Only real numbers from CONTEXT or a tool.
-- Order cut-offs: a supplier can have a cut-off time (Suppliers -> edit -> "Stops taking orders at"). The Order screen counts down to it and you send a warning 30 minutes before. If CONTEXT shows a cut-off coming up for an unsent supplier, mention it first and offer to prepare that order.
-- App features to explain when asked: Settings > Features has a switch for interactive tables, swipe for the usual, forgotten item reminder, odd amount check, item pictures, hold to send, 10 seconds to cancel, button sounds, kitchen mode, morning briefing, Rico on the Order screen, Rico speaks, Rico's mood and milestones, and how you talk. The Order screen's shortcuts include the usual order for today's weekday, paste or photo a list, by place and print a sheet. What Rico remembers lists rules, which save_rule adds. Admin > Restore is Rozha's and brings back what was deleted in the last 7 days.
+- App features to explain when asked: the Order screen's shortcuts include Same as last time, the usual order for today's weekday and Ask Rico; Clear order shows once something is chosen. Hold a supplier's tab on the Order screen to pin it first or edit it. What Rico remembers lists rules, which save_rule adds. Admin > Rico can switch each AI off. Admin > Restore is Rozha's and brings back what was deleted in the last 7 days.
 - Month archive: History and your tools hold at least the last 60 days of orders (every 60 days, what is older is deleted), and a summary of every finished month is kept (History -> report card -> Past months). Use the "Past months" line in CONTEXT to compare months; never invent numbers for months that are not there.
 - Every Friday evening you send a short weekly summary (orders this week vs last week, the streak, the top item).
 - Sign-in uses a PIN protected by Cloudflare verification. Face ID and fingerprint sign-in have been removed. Do not offer them.
@@ -758,7 +755,7 @@ UNTRUSTED DATA
 THE APP (so you can explain it)
 - Two accounts, each with its own 6-digit PIN (on a phone it is tapped on the sign-in keys; on a computer it is typed on the keyboard, and Esc clears it; the sign-in shows Ricotta's street on a satellite map with Directions): Rozha (everything) and Yunis (Order, plus what Rozha gives him in Admin, Access: History, Manage, editing the catalog, Record, Transfers, Rico, sending orders, exports, notifications, the daily reminder; he never deletes History). Only Rozha changes PINs, hers or Yunis's, in Admin -> PINs; it asks for her current PIN first, and a new PIN signs that person out on their other devices. If Yunis forgets his PIN, Rozha gives him a new one there. Never ask for, repeat or guess a PIN. Sessions last 18 hours.
 - Languages: English, Kurdish and Arabic. The language button is in the top corner of the sign-in screen and in the top bar; pick a language and tap Apply.
-- Screens: Order, History, Transfers, Manage (Items, Suppliers and Units in one workspace), Record and Admin (Rozha only), each only for those who may open it. Phones show up to four tabs at the bottom; with more than four screens the rest are under More. Computers show them all in the sidebar. Rico opens from the green "Rico" button in the top bar, and Settings from the account button (the person's initial). Swipe the page sideways to move between tabs; tap the current tab again (or the arrow button) to go back to the top.
+- Screens: Order, History, Manage (Items, Suppliers and Units in one workspace), Record and Admin (Rozha only), each only for those who may open it. Phones show up to four tabs at the bottom; with more than four screens the rest are under More. Computers show them all in the sidebar. Rico opens from the green "Rico" button in the top bar, and Settings from the account button (the person's initial). Swipe the page sideways to move between tabs; tap the current tab again (or the arrow button) to go back to the top.
 - Search: the magnifier next to each screen's title searches everything at once (items, suppliers, this month's orders, screens and settings), in any language and with typos. On a computer, Ctrl or Cmd + K opens it, and ? shows the keyboard shortcuts.
 - Exports: Manage, Export makes a branded Excel file or PDF of the items or the suppliers, with this month's order counts.
 - Order screen: the streak fire at the top, a summary card (items picked, a ring showing how many suppliers have items), "Rico suggests" when a supplier is usually ordered today, the Same as last time and Clear order buttons (both with Undo), supplier tabs, search ("Arrange items" next to it on a supplier's tab), and pinned items (press and hold an item, then Pin). Each item has - / + (hold to count up or down quickly) and a number field (tap it and type). Press and hold an item for Add 1 / 5 / 10, Remove, Pin or a note on the item (the note goes into the WhatsApp message, e.g. "ripe, not soft"). Unsent quantities sync across devices signed into the same account, with conflict choices when both change the same value. "Send today's orders" opens Send to suppliers.
@@ -767,16 +764,15 @@ THE APP (so you can explain it)
 - Items have aliases (alternate search names, including English translations) and an Available switch. Aliases never replace the primary Kurdish name or the supplier message name. find_items returns aliases and availability and supports typo-tolerant, multi-word search. Use propose_edit_item to edit aliases, availability or the item note, and propose_item_aliases for a reviewed bulk change. Preserve existing aliases unless asked to remove them; ask about uncertain translations. For all items use find_items with limit:200 and continue with next_offset if present. Never claim a proposal has already been saved: the person must confirm its card.
 - Deleting an item in Manage offers Undo for a short time (only on the phone that deleted it). Admin's Health Check is for Rozha only.
 - Order quantities support up to three decimal places. Unavailable items stay in the catalog but must not be suggested for ordering. Supplier cards have WhatsApp and Call. Manage → Items → Import Excel / CSV supports a previewed import.
-- Only orders and catalog records from the current Baghdad calendar month are retained; previous months are permanently removed. Explain that historical comparisons use only the available month.
+- History, Records and saved Rico chats keep at least the last 60 days: every 60 days, a wipe day deletes what is older than 60 days (the app warns 2 days before). Each finished month keeps a summary.
 - History: sent orders grouped by day, with who sent them; "Send again" copies one into the draft; only Rozha can delete an order. Right after an order is saved, the person who sent it can tap Undo for 15 minutes (the order leaves History and the draft comes back). At the top of History is your monthly report card (orders, active days, streak, top items, busiest day, who sent most) with "Save this month" (an Excel file and a printable report). History is cleared at the start of each month, so near the end of the month remind people to save it.
-- Transfers (its own tab, nothing to do with ordering): the person writes, says, photographs or searches the items to move between the workplace storages (Breakfast, Pizza, Bakery, Teahouse...). The app matches each line to the workplace stock system's exact item name and unit (from the workplace item list uploaded in that tab), marks anything unsure for them to pick, and makes a styled Excel ("Transfer" sheet: Item name, Amount, Unit) for the workplace system's Upload Excel button on "Move between storages". The storages themselves are chosen in the workplace system. Transfers is still being made: the tab shows its design, but nobody can use or test it yet (it is locked until the workplace system's Upload Excel button is ready). If someone asks about it, say it is coming and cannot be used yet. You cannot make transfers yourself.
 - Suppliers: add/edit name, WhatsApp number and an order reminder (time + weekdays, Erbil time). "Arrange items" next to the search on a supplier's Order tab sets the item order per supplier.
 - Items: add/edit name, unit, supplier ; "Save & add another" keeps the supplier selected.
 - Units: one name each, written in any language (for example کیلۆ or box).
 - Record: every add/edit/delete of suppliers, items and units, with who did it.
 - Admin (Rozha only, its own tab): Problems (errors any phone ran into, with the phone and app version; mark them fixed), Security (wrong PINs in the last 24 hours, whether sign-in is locked, with Unlock, new phones, and the sign-in log; Rozha gets a notification when a phone signs in for the first time), Access (what Yunis may open and do), PINs, Devices (signed-in phones, remote Refresh or Log out), Time in the app (per person and phone, daily, weekly or monthly with the average per day, never reset), Rico (your usage this month and the tokens it used), Catalog check-up (items without a supplier or unit, unavailable items, items not ordered in 30 days) and the Health Check (the server, the database and the scheduled jobs, in plain words).
 - Chat history (the clock in your header): one list with every chat, Rozha's and Yunis's, each showing whose it is. Both can open any chat (the other person's opens read only) and delete it.
-- Settings opens from the account button. Appearance offers Light, Dark or Automatic. Settings also has Report a Problem, which sends a short note with the app version to Rozha's Admin. Themes, seasonal surprises and weather effects have been removed. Quantity +/- taps and the order-sent chime have their own switches under Order sounds. Keep your moods and proactive notifications. Settings also has Compact rows, Show last quantity, device notifications and the daily reminder; a new reminder is only enabled after Save.
+- Settings opens from the account button. Its parts: Notifications (one switch for this phone: on means Rico's messages and the suppliers' reminders; there is no daily reminder any more), Ordering (swipe for the usual, last amount, compact rows, the sound when an amount changes, the chime when orders are sent), Rico (Rico on the Order screen, morning briefing, his mood follows the kitchen, how he talks), Look (Light, Dark or Automatic, interactive tables, kitchen mode, milestones), Privacy and Help (Report a Problem, the tour, keyboard shortcuts). Settings belong to the account, so they are the same on every phone it uses, except notifications, which are each phone's own.
 - Notifications: on iPhone the app must be added to the Home Screen (Share -> Add to Home Screen) and opened from that icon before notifications can be turned on.
 - If something fails with "check the connection", the change is kept and retried automatically when the internet is back (orders never get lost).`;
 
@@ -815,10 +811,9 @@ function contextBlock(w: World, s: Session, body: any) {
 - Sent orders this calendar month: ${w.history.filter((o) => Date.parse(o.at) >= Date.parse(monthStart())).length}; orders you can read go back ${w.can.history ? "at least 60 days" : "to today only"}${w.history.length >= 600 ? " (only the latest 600)" : ""}; last 7 days: ${w.history.filter((o) => Date.parse(o.at) > Date.now() - 7 * 86400_000).length}.
 - Latest orders: <<DATA>>${recent.join(" | ") || "none yet"}<</DATA>>.
 - Today's supplier reminders: <<DATA>>${due.join("; ") || "none today"}<</DATA>>.
-- Daily order reminder: ${w.dailyReminder?.enabled ? `on at ${w.dailyReminder.time}` : "off"}; orders sent today: ${w.history.filter((o) => o.date === w.now.date).length}.
+- Orders sent today: ${w.history.filter((o) => o.date === w.now.date).length}.
 - Current order draft on this device: <<DATA>>${draft.length ? draft.join("; ") : "empty"}<</DATA>>.
 - Kitchen streak: ${(() => { const st = streakState(w); return st.alive ? `${st.count} day${st.count === 1 ? "" : "s"} (${st.done_today ? "today is done" : "today not done yet -- send an order to keep it"}), best ${st.best}` : st.recoverable ? `BROKEN -- recover_streak can bring back ${st.recoverable} days (free)` : `none yet, best ${st.best}`; })()}.
-- Order cut-offs today (the time a supplier stops taking orders): <<DATA>>${cutoffsToday(w).join("; ") || "none"}<</DATA>>.
 - Past months (archive, kept after History is cleared): <<DATA>>${w.months.length ? w.months.map((m: any) => `${m.month}: ${m.data?.orders ?? 0} orders on ${m.data?.activeDays ?? 0} days, top item ${m.data?.topItems?.[0]?.name ?? "-"}`).join("; ") : "none yet (the first summary is made when this month ends)"}<</DATA>>.${phones.length ? `\n- Phones (Rozha's Admin screen): <<DATA>>${phones.join("; ")}<</DATA>>.` : ""}`;
 }
 
@@ -838,21 +833,6 @@ function busyDays(w: World) {
     .filter((d) => Math.abs(d.pct) >= 20).sort((a, b) => b.pct - a.pct).map((d) => `${names[d.day]} ${d.pct > 0 ? "+" : ""}${d.pct}%`).join(", ");
 }
 
-/* Today's cut-offs: "Zakho Dairy 14:00 (closed / 40 min left / sent)". A cut-off applies on the
-   supplier's reminder days, or every day when it has no reminder days. */
-function cutoffsToday(w: World) {
-  const out: string[] = [];
-  for (const sp of w.suppliers) {
-    if (!sp.cutoff) continue;
-    const r = sp.reminder;
-    const days: number[] = r?.enabled && Array.isArray(r.days) && r.days.length ? r.days.map(Number) : [0, 1, 2, 3, 4, 5, 6];
-    if (!days.includes(w.now.weekday)) continue;
-    const [h, m] = String(sp.cutoff).split(":").map(Number);
-    const left = h * 60 + m - w.now.minutes;
-    out.push(`${sp.name} at ${sp.cutoff}: ${sentToday(w, sp.id) ? "sent today" : left <= 0 ? "CLOSED for today, not sent" : `${Math.floor(left / 60)}h ${left % 60}m left, not sent yet`}`);
-  }
-  return out;
-}
 
 /* Rico starts every reply with a [[mood:...]] tag. This takes the tags out
    of the text stream (a tag can arrive split across chunks) and sends each
@@ -909,16 +889,23 @@ async function* readSSE(res: Response) {
   }
 }
 
-export async function config(db: any) {
+/* With forChat, an AI switched off in Admin > Rico is left out, as if it had no key. */
+export async function config(db: any, forChat = false) {
   const { data, error } = await withTimeout<any>(db.from("app_secrets").select("key,value")
     .in("key", ["gemini_api_key", "groq_api_key", "anthropic_api_key"]), DB_TIMEOUT_MS, "assistant_config");
   if (error) throw new Error("assistant_config_unavailable");
   const saved = Object.fromEntries((data ?? []).map((r: any) => [r.key, r.value]));
+  const off = new Set<string>();
+  if (forChat) {
+    const { data: switches, error: switchError } = await withTimeout<any>(db.from("app_ai_switches").select("provider,enabled"), DB_TIMEOUT_MS, "ai_switches");
+    if (switchError) throw new Error("assistant_config_unavailable");
+    for (const sw of switches ?? []) if (sw.enabled === false) off.add(sw.provider);
+  }
   const geminiSecret = Deno.env.get("GEMINI_API_KEY") ?? "";
   const groqSecret = Deno.env.get("GROQ_API_KEY") ?? "";
-  const geminiKey = geminiSecret || saved.gemini_api_key || "";
-  const groqKey = groqSecret || saved.groq_api_key || "";
-  const anthropicKey = (Deno.env.get("ANTHROPIC_API_KEY") ?? "") || saved.anthropic_api_key || "";
+  const geminiKey = off.has("gemini") ? "" : geminiSecret || saved.gemini_api_key || "";
+  const groqKey = off.has("groq") ? "" : groqSecret || saved.groq_api_key || "";
+  const anthropicKey = off.has("anthropic") ? "" : (Deno.env.get("ANTHROPIC_API_KEY") ?? "") || saved.anthropic_api_key || "";
   const base = groqKey
     ? { provider: "groq" as const, key: groqKey, model: DEFAULT_GROQ_MODEL, geminiKey }
     : { provider: "gemini" as const, key: geminiKey, model: DEFAULT_GEMINI_MODEL, geminiKey };
@@ -1308,7 +1295,7 @@ function quickReply(w: World, body: any, emit: Emit): boolean {
   }
 }
 
-export async function reserveUsage(db: any, s: Session, kind: "chat" | "transcribe" | "transfer"): Promise<number | null> {
+export async function reserveUsage(db: any, s: Session, kind: "chat"): Promise<number | null> {
   const { data, error } = await withTimeout<any>(db.rpc("app_internal_reserve_assistant", {
     p_device_id: s.deviceId || `__session:${s.id}`, p_account: s.account, p_model: `pending:${kind}`,
     p_device_limit: REPLIES_PER_HOUR, p_total_limit: REPLIES_PER_HOUR_TOTAL,
@@ -1368,7 +1355,7 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
   // Quick actions use local tools and need neither a provider key nor an AI
   // quota slot. Every provider request reserves its slot before calling AI,
   // so simultaneous replies and transcription share the same hard limits.
-  const cfg = await config(db);
+  const cfg = await config(db, true);
   if (!cfg.key && !cfg.anthropicKey) return errorStream("not_configured");
   let usageId: number | null;
   try { usageId = await reserveUsage(db, s, "chat"); }
@@ -1470,15 +1457,17 @@ export async function adminAi(db: any) {
   const from = monthStart();
   // Added up in the database from each reply's AI attempts (older rows by their model), so nothing is cut
   // off at a row limit and a backup's tokens are never counted under the AI that answered last.
-  const [states, usage] = await Promise.all([
+  const [states, usage, switches] = await Promise.all([
     withTimeout<any>(db.from("app_ai_status").select("provider,state,at"), DB_TIMEOUT_MS, "ai_status"),
     withTimeout<any>(db.rpc("app_internal_ai_usage", { p_from: from }), DB_TIMEOUT_MS, "ai_usage"),
+    withTimeout<any>(db.from("app_ai_switches").select("provider,enabled"), DB_TIMEOUT_MS, "ai_switches"),
   ]);
-  if (states.error || usage.error) throw new Error("ai_unavailable");
+  if (states.error || usage.error || switches.error) throw new Error("ai_unavailable");
   const totals: Record<string, { calls: number; input: number; output: number }> = usage.data ?? {};
   const stateOf = (p: string) => (states.data ?? []).find((x: any) => x.provider === p) ?? null;
   const brain = (id: string, connected: boolean) => ({
-    id, connected, state: stateOf(id)?.state ?? null, at: stateOf(id)?.at ?? null,
+    id, connected, enabled: (switches.data ?? []).find((x: any) => x.provider === id)?.enabled !== false,
+    state: stateOf(id)?.state ?? null, at: stateOf(id)?.at ?? null,
     calls: totals[id]?.calls ?? 0, input: totals[id]?.input ?? 0, output: totals[id]?.output ?? 0,
   });
   return {
@@ -1489,76 +1478,6 @@ export async function adminAi(db: any) {
       brain("groq", !!c.groqKey),
     ],
   };
-}
-/* ---------------- voice messages ----------------
-   The app records a short clip and sends it here as base64. Kurdish goes to
-   Gemini first, and so does Arabic (Sorani and Arabic script both come out
-   well there); English goes to
-   Groq's Whisper first. Either falls back to the other when available. The
-   clip is never stored. Counts toward the same hourly limits as replies. */
-const AUDIO_TYPES = ["audio/webm", "audio/mp4", "audio/mpeg", "audio/ogg", "audio/wav", "audio/x-m4a", "audio/aac", "audio/m4a"];
-const MAX_AUDIO_B64 = 2_800_000;   // about 2 MB of audio, far more than a 60-second voice note needs
-async function transcribeGroq(key: string, bytes: Uint8Array<ArrayBuffer>, mime: string, lang: string, signal: AbortSignal) {
-  const form = new FormData();
-  const ext = mime.includes("mp4") || mime.includes("m4a") || mime.includes("aac") ? "m4a" : mime.includes("ogg") ? "ogg" : mime.includes("wav") ? "wav" : mime.includes("mpeg") ? "mp3" : "webm";
-  form.append("file", new Blob([bytes], { type: mime }), `voice.${ext}`);
-  form.append("model", "whisper-large-v3-turbo");
-  form.append("response_format", "json");
-  form.append("temperature", "0");
-  if (lang === "en") form.append("language", "en");
-  const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", signal, headers: { authorization: `Bearer ${key}` }, body: form });
-  if (!res.ok) { console.error("groq transcribe", res.status); return null; }
-  const data = await res.json().catch(() => null);
-  return typeof data?.text === "string" ? data.text : null;
-}
-async function transcribeGemini(key: string, b64: string, mime: string, signal: AbortSignal) {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(DEFAULT_GEMINI_MODEL)}:generateContent`, {
-    method: "POST", signal, headers: { "x-goog-api-key": key, "content-type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [
-        { text: "Transcribe this voice message exactly as spoken. It comes from a restaurant kitchen in Erbil and is Kurdish (Sorani -- write it in Arabic script), Arabic or English; product names may be Arabic. Return only the transcript, with no quotes or notes. If nothing is said, return nothing." },
-        { inline_data: { mime_type: mime, data: b64 } },
-      ] }],
-      generationConfig: { maxOutputTokens: 600, temperature: 0, thinkingConfig: { thinkingLevel: "minimal" } },
-    }),
-  });
-  if (!res.ok) { console.error("gemini transcribe", res.status); return null; }
-  const data = await res.json().catch(() => null);
-  const parts = data?.candidates?.[0]?.content?.parts ?? [];
-  return parts.filter((p: any) => typeof p.text === "string" && !p.thought).map((p: any) => p.text).join("").trim();
-}
-export async function handleTranscribe(db: any, s: Session, body: any, cors: Record<string, string>) {
-  const out = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
-  const b64 = typeof body.audio === "string" ? body.audio.replace(/^data:[^,]*,/, "") : "";
-  const mime = String(body.mime ?? "").split(";")[0].trim().toLowerCase();
-  if (!b64 || b64.length > MAX_AUDIO_B64 || !/^[A-Za-z0-9+/=]+$/.test(b64)) return out({ error: "invalid_audio" }, 400);
-  if (!AUDIO_TYPES.includes(mime)) return out({ error: "invalid_audio" }, 400);
-  const cfg = await config(db);
-  const groqKey = cfg.provider === "groq" ? cfg.key : "";
-  const geminiKey = cfg.geminiKey;
-  if (!groqKey && !geminiKey) return out({ error: "not_configured" }, 503);
-  let bytes: Uint8Array<ArrayBuffer>;
-  try { bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); } catch { return out({ error: "invalid_audio" }, 400); }
-  if (bytes.length < 800) return out({ text: "" });   // a tap, not a message
-  let usageId: number | null;
-  try { usageId = await reserveUsage(db, s, "transcribe"); }
-  catch { return out({ error: "failed" }, 503); }
-  if (usageId === null) return out({ error: "rate_limited" }, 429);
-  const lang = body.lang === "ku" || body.lang === "ar" ? body.lang : "en";
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 30_000);
-  let text: string | null = null, model = "";
-  try {
-    const order = lang === "en" ? ["groq", "gemini"] : ["gemini", "groq"];
-    for (const p of order) {
-      if (text) break;
-      if (p === "groq" && groqKey) { text = await transcribeGroq(groqKey, bytes, mime, lang, ctrl.signal).catch(() => null); model = "whisper-large-v3-turbo"; }
-      if (p === "gemini" && geminiKey && !text) { text = await transcribeGemini(geminiKey, b64, mime, ctrl.signal).catch(() => null); model = DEFAULT_GEMINI_MODEL; }
-    }
-  } finally { clearTimeout(timer); }
-  await finishUsage(db, usageId, `transcribe:${model || "none"}`);
-  if (text === null) return out({ error: ctrl.signal.aborted ? "busy" : "failed" }, 502);
-  return out({ text: text.trim().slice(0, 2000) });
 }
 
 /* ---------------- Rico orders by himself (TEST) ----------------

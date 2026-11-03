@@ -40,7 +40,7 @@ for(const lang of ['ku','ar']){
   assert.deepEqual(deferred(fs.readFileSync(path.join(root,'lab','page.html'),'utf8')).filter(f=>!f.startsWith('lab-')),deferred(html),'lab/page.html loads the same app scripts as index.html');
 }
 
-const ALL_VIEWS=['order','assistant','transfers','manage','history','suppliers','itemsAdmin','units','record','admin','settings'];
+const ALL_VIEWS=['order','assistant','manage','history','suppliers','itemsAdmin','units','record','admin','settings'];
 const YUNIS_VIEWS=['order','assistant','history','manage','suppliers','itemsAdmin','units','record'];
 const supplierNames=['Corner Cake','Golden Bread Bakery','Fresh produce','Daily essentials','Kitchen supplies','Beverages','Dairy','Meat supplier','دابینکەری سەوزە','دابینکەری بەرهەمەکان'];
 const suppliers=supplierNames.map((name,i)=>({id:'s'+i,name,phone:''}));
@@ -130,12 +130,11 @@ const server=http.createServer((req,res)=>{
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
     await ctx.addInitScript(({loggedIn,s})=>{
-      for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:toured:'+a,'true');
+      for(const a of ['rozha','yunis']){localStorage.setItem('ricottaOrders:toured:'+a,'true');localStorage.setItem('ricottaOrders:ricoBriefing:'+a,JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));}
       window.RICOTTA_TODAY='2026-06-10';   // a fixed day, so the test does not depend on the date
       localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',JSON.stringify(Date.now()));
       // Both people already allowed Rico's AI (the permission itself is checked on Rico's screen below).
       for(const a of ['rozha','yunis']) localStorage.setItem('ricottaOrders:aiConsent2:'+a,'true');
-      if(!sessionStorage.getItem('transfersTab')){ localStorage.setItem('ricottaOrders:showTransfers','true'); sessionStorage.setItem('transfersTab','1'); }
       if(loggedIn && !sessionStorage.getItem('seeded')){ localStorage.setItem('ricottaOrders:apiSession',JSON.stringify(s)); sessionStorage.setItem('seeded','1'); }
     },{loggedIn,s:session(account)});
     const page=await ctx.newPage();page.on('pageerror',error=>errors.push(String(error)));
@@ -203,11 +202,10 @@ const server=http.createServer((req,res)=>{
       // The order helpers, from the kept orders.
       const helpers=await page.evaluate(()=>{const keep={history:state.history,cart:state.cart,items:state.items};
         const it=state.items[0],o=q=>({id:'h'+Math.random(),date:new Date(Date.now()-7*86400000).toISOString(),by:'rozha',entries:[{supplierId:it.supplierId,items:[{itemId:it.id,name:it.name,qty:q,unit:it.unit}]}]});
-        state.history=[o(5),o(5),o(5),o(5)];state.cart={[it.id]:50};const odd=oddAmounts().map(x=>x.usual);state.cart={[it.id]:6};const fine=oddAmounts().length;
-        const other=state.items.find(x=>x.supplierId===it.supplierId&&x.id!==it.id);state.cart=other?{[other.id]:1}:{};const forgot=other?forgottenItems().map(x=>x.item.id):[it.id];
+        state.history=[o(5),o(5),o(5),o(5)];
         const usual=usualAmount(it.id),week=weekdayOrder(new Date().getDay()).map(l=>l.qty);
-        Object.assign(state,keep);return [odd,fine,forgot[0]===it.id,usual,week];});
-      assert.deepEqual(helpers,[[5],0,true,5,[5]],'odd amount, forgotten item, usual amount, weekday order');
+        Object.assign(state,keep);return [usual,week];});
+      assert.deepEqual(helpers,[5,[5]],'usual amount, weekday order');
       // History shows 60 days; the report card counts only this month.
       const sixty=await page.evaluate(()=>{const before=reportData().orders;const old={id:'old-45',date:new Date(Date.now()-45*86400000).toISOString(),by:'rozha',entries:[{supplierId:null,supplierName:'Old market',items:[{itemId:'old',name:'Old item',unit:'kg',qty:1}]}]};state.history.unshift(old);const r=[before===reportData().orders,thisMonthOrders().every(o=>o.id!=='old-45'),renderHistory().includes('Old market')];state.history.shift();return r;});
       assert.deepEqual(sixty,[true,true,true],'older orders are in History but not in this month\'s report');
@@ -344,7 +342,8 @@ const server=http.createServer((req,res)=>{
     assert.ok(calls.some(c=>c.endpoint==='orders/h1' && c.method==='DELETE' && c.body?.pin==='471906'),'Rozha\u2019s PIN goes with the delete');
     await page.evaluate(name=>{ state.history=[{id:'h1',date:'2026-09-23T08:00:00Z',by:'yunis',entries:[{supplierId:'s1',items:[{itemId:'i1',name,qty:2,unit:'box'}]}]}]; render(); },items[1].name);
     await openView(page,'settings');
-    assert.equal(await page.locator('#reminderEnabled').count(),1,'notifications live in Settings');
+    assert.equal(await page.locator('#pushSwitch, .form-card .notif-sub').count()>=1,true,'notifications live in Settings');
+    assert.equal(await page.locator('#reminderEnabled').count(),0,'there is no daily reminder');
     assert.equal(await page.locator('[data-pin-change], .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
     // Admin: one screen of tiles, each opening its page. PINs: Rozha's current PIN first, the new one typed twice.
     await openView(page,'admin');
@@ -376,7 +375,8 @@ const server=http.createServer((req,res)=>{
     assert.match(await page.locator('.ad-ai').nth(1).innerText(),/Free plan/);
     assert.match(await page.locator('.ad-ai').nth(2).innerText(),/Not connected/);
     assert.equal(await page.locator('.ad-ai').first().locator('.ad-ai-bill').count(),0,'Haiku shows no bill line');
-    assert.equal(await page.locator('.ad-ai-list input, [data-ai-key], [data-ai-remove], #ricoKeyState').count(),0,'no key fields or key buttons anywhere in Admin');
+    assert.equal(await page.locator('.ad-ai-list input:not([data-ai-switch]), [data-ai-key], [data-ai-remove], #ricoKeyState').count(),0,'no key fields or key buttons anywhere in Admin');
+    assert.equal(await page.locator('.ad-ai-list [data-ai-switch]').count(),3,'each AI has an on/off switch');
     // Time in the app: Daily, Weekly and Monthly, each with the time and the average per day, and its chart.
     await page.locator('.admin-heading .page-back').click();await settle(page);
     await page.locator('[data-admin-open="time"]').click();await settle(page);
@@ -413,7 +413,8 @@ const server=http.createServer((req,res)=>{
     // Rico: moods, inbox, the robot.
     await openView(page,'assistant');
     assert.equal(await page.locator('.rico-note').count(),1,'Rico\u2019s own message is at the top');
-    assert.match(await page.locator('.rico-hello').textContent(),/Rozha/,'Rico greets the account by name');
+    assert.equal(await page.locator('.rico-hello, .rico-week, .rico-next, .rico-recent').count(),0,'a quiet first screen: his message and the shortcuts only');
+    assert.ok(await page.locator('.rico-chip').count()>=4,'the shortcuts are there');
     assert.equal(await page.locator('#ricoNameForm').count(),0,'Rico never asks for a name');
     assert.ok(calls.some(c=>c.endpoint==='assistant/inbox/read'),'opening Rico reads his messages');
     // Clicking into Rico's message box must not resize the page (the body once picked up the typing-bubble style).
@@ -421,14 +422,7 @@ const server=http.createServer((req,res)=>{
     await page.locator('#ricoInput').click();
     assert.equal(await page.evaluate(()=>document.body.getBoundingClientRect().width),widthBefore,'typing to Rico keeps the page full width');
     await page.locator('#ricoInput').blur();
-    // Voice message: starting and stopping a recording runs cleanly (with a stand-in microphone).
-    assert.equal(await page.evaluate(async()=>{
-      const stream={getTracks:()=>[{stop(){}}]};
-      Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:async()=>stream},configurable:true});
-      window.MediaRecorder=class{ constructor(){ this.mimeType='audio/webm'; } static isTypeSupported(){ return true; } start(){} stop(){ this.onstop?.(); } };
-      window.ricoFinishVoice=()=>{};
-      await ricoToggleVoice(); const on=ricoRecorder.active; ricoResetVoice(); return on;
-    }),true,'a voice message starts recording without errors');
+    assert.equal(await page.locator('#ricoMicBtn').count(),0,'there is no voice button');
     await settle(page);
     assert.deepEqual(await page.evaluate(()=>{ render(); return [...document.querySelectorAll('.content, .content *')].flatMap(el=>el.getAnimations().filter(x=>x.playState==='running' && x.effect.getComputedTiming().iterations!==Infinity).map(x=>String(el.className.baseVal??el.className)+':'+(x.animationName||'js'))); }),[],'redrawing the same screen never replays an entrance animation');
     // Apple's rule 5.1.2: before anything goes to an AI service, Rico says where it goes and asks.
@@ -471,11 +465,11 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#mfUnitName').count(),1,'a unit has one name field');
     assert.equal(await page.locator('#mfUnitKu,#mfUnitAr').count(),0,'no Kurdish and Arabic copies');
     await page.locator('#modalFormCancel').click();
-    // Fixed main destinations: Order, History and Manage (Transfers is on for this device); More has the rest.
+    // Main destinations: Order, History, Manage and Record; More has Admin.
     await page.setViewportSize({width:390,height:844});await openView(page,'order');
-    assert.deepEqual(await page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','transfers','manage']);
+    assert.deepEqual(await page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','manage','record']);
     assert.equal(await page.locator('#navMoreBtn').count(),1);
-    assert.deepEqual(await page.locator('#navMore [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['record','admin'],'More has Record and Admin');
+    assert.deepEqual(await page.locator('#navMore [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['admin'],'More has Admin');
     assert.equal(await page.locator('#ricoTopBtn').count(),1,'Rico is always in the top bar');
     assert.equal(await page.locator('#navEditTabs').count(),0);
     await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
@@ -531,8 +525,8 @@ const server=http.createServer((req,res)=>{
     /* ---------- A phone with a touch screen ---------- */
     const phone=await context({touch:true});
     await openView(phone.page,'itemsAdmin');
-    assert.equal(await phone.page.locator('.data-table').isVisible(),false,'phones get the list, not the wide table');
-    await phone.page.locator('.table-list [data-edititem]').first().click();
+    assert.equal(await phone.page.locator('.data-table').isVisible(),false,'tables are off unless turned on in Settings');
+    await phone.page.locator('.plain-list [data-edititem]').first().click();
     await phone.page.locator('[data-detail="edit"]').click();
     await phone.page.locator('.modal-form').waitFor();
     assert.equal(await phone.page.evaluate(()=>!!document.activeElement?.matches('input,select,textarea')),false,'editing on a phone does not open the keyboard by itself');
@@ -585,15 +579,13 @@ const server=http.createServer((req,res)=>{
     const yunisTabs=()=>y.page.locator('.bottomnav > .navbtn[data-view]').evaluateAll(els=>els.map(el=>el.dataset.view));
     assert.deepEqual(await yunisTabs(),['order','history','manage','record'],'Yunis has four tabs');
     assert.equal(await y.page.locator('#navMoreBtn').count(),0,'with four screens there is no More');
-    assert.equal(await y.page.evaluate(()=>canOpen('transfers')),false,'Transfers is Rozha\u2019s unless she gives it to him');
-    // Rozha gives him Transfers: the next refresh brings the tab (and More, for the fifth screen).
-    Object.assign(y.over,{views:['order','assistant','history','transfers','manage','suppliers','itemsAdmin','units','record','settings'],roles:['history','manage','catalog','record','transfers','assistant','send','exports','notify','reminders']});
+    // Rozha takes Record away: the next refresh drops the tab without signing in again.
+    Object.assign(y.over,{views:['order','assistant','history','manage','suppliers','itemsAdmin','units','settings'],roles:['history','manage','catalog','assistant','send','exports','notify']});
     await y.page.evaluate(async()=>{ lastLoadAt=0; await refreshData(true); });
-    await y.page.waitForFunction(()=>document.querySelector('#navMoreBtn'));
-    assert.deepEqual(await yunisTabs(),['order','history','transfers','manage'],'a new role shows up without signing in again');
-    assert.deepEqual(await y.page.locator('#navMore [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['record']);
+    await y.page.waitForFunction(()=>!document.querySelector('.bottomnav > .navbtn[data-view="record"]'));
+    assert.deepEqual(await yunisTabs(),['order','history','manage'],'a role change shows up without signing in again');
     // And takes Send away: the Order screen says who sends instead of offering the button.
-    Object.assign(y.over,{views:YUNIS_VIEWS.concat('settings'),roles:['history','manage','catalog','record','assistant','exports','notify','reminders']});
+    Object.assign(y.over,{views:YUNIS_VIEWS.concat('settings'),roles:['history','manage','catalog','record','assistant','exports','notify']});
     await y.page.evaluate(async()=>{ lastLoadAt=0; await refreshData(true); });
     await y.page.waitForFunction(()=>!document.querySelector('#navMoreBtn'));
     assert.equal(await y.page.evaluate(()=>canDo('send')),false);
@@ -614,39 +606,24 @@ const server=http.createServer((req,res)=>{
     assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('dark')),true);
     await y.page.locator('[data-dark="off"]').click();
     assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('dark')),false);
-    await y.page.locator('label:has(#pref-compactRows)').click();
+    // Settings belong to the account: each switch saves on the server for him.
+    const featureBox=id=>y.page.locator(`label:has([data-feature="${id}"])`);
+    await featureBox('compactRows').click();
     assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('compact-rows')),true,'Compact rows switch works');
-    await y.page.locator('label:has(#pref-compactRows)').click();
+    assert.deepEqual(y.calls.filter(c=>c.endpoint==='settings').at(-1).body,{key:'compactRows',value:true},'saved on his account');
+    await featureBox('compactRows').click();
     assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('compact-rows')),false,'Compact rows switch turns off');
-    await y.page.locator('label:has(#pref-showLastQty)').click();
+    await featureBox('showLastQty').click();
     await y.page.evaluate(()=>goView('order')); await settle(y.page);
     assert.ok(await y.page.locator('.item-last').count()>=1,'Last quantity shows on rows when switched on');
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
-    await y.page.locator('label:has(#pref-showLastQty)').click();
-    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('.content input[type=checkbox]:not([data-feature])')].map(i=>i.id+':'+i.checked)),['pref-compactRows:false','pref-showLastQty:false','sound-qty:true','sound-sent:true','reminderEnabled:false','aiConsent:true'],'no per-phone Transfers switch: Admin decides');
+    await featureBox('showLastQty').click();
+    assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('[data-feature]')].map(i=>i.dataset.feature+':'+i.checked)),
+      ['swipe:true','showLastQty:false','compactRows:false','soundQty:true','soundSent:true','ricoSheet:true','ricoBriefing:true','ricoMood:true','tables:false','kitchenMode:false','milestones:true'],'the defaults, in their sections');
+    assert.deepEqual(await y.page.locator('.content .section-title').evaluateAll(els=>els.map(e=>e.textContent)),['Notifications','Ordering','Rico','Look','Help','Privacy'],'settings are in sections');
+    assert.equal(await y.page.locator('#reminderEnabled,#reminderTime').count(),0,'no daily reminder');
     assert.equal(await y.page.locator('#settingsSignOut').count(),1,'Sign Out is at the end of Settings');
     assert.match(await y.page.locator('.settings-link').getAttribute('href'),/^privacy\.html#en$/,'Settings links to the privacy policy');
-    // Daily reminder, for Yunis too: the switch opens the time, Save and a test; only Save turns it on.
-    assert.equal(await y.page.locator('#reminderTime').count(),0,'the daily reminder starts as just a switch');
-    await y.page.locator('label:has(#reminderEnabled)').click();
-    assert.equal(await y.page.locator('#reminderTime, #reminderSaveBtn, #reminderTestBtn').count(),3,'turning it on shows the time, Save and a test button');
-    await y.page.evaluate(()=>goView('order')); await settle(y.page); await y.page.evaluate(()=>goView('settings')); await settle(y.page);
-    assert.deepEqual(await y.page.evaluate(()=>[document.getElementById('reminderEnabled').checked, !!document.getElementById('reminderTime')]),[false,false],'leaving without saving keeps it off');
-    assert.equal(y.calls.filter(c=>c.endpoint==='reminder').length,0,'nothing was saved');
-    await y.page.locator('label:has(#reminderEnabled)').click();
-    await y.page.locator('#reminderTime').fill('21:30');
-    await y.page.locator('#reminderTestBtn').click();
-    await y.page.waitForFunction(()=>!!document.querySelector('#modalAlertOkBtn'),null,{timeout:5000}).catch(()=>{});
-    assert.ok(y.calls.some(c=>c.endpoint==='push/send' && c.body.type==='reminder-now'),'Yunis can send a test reminder');
-    await y.page.locator('#modalAlertOkBtn').click(); await y.page.waitForFunction(()=>!document.querySelector('#modalRoot .modal-overlay'));
-    await y.page.locator('#reminderSaveBtn').click();
-    await y.page.waitForFunction(()=>!document.getElementById('reminderTime'));
-    assert.deepEqual(y.calls.filter(c=>c.endpoint==='reminder').map(c=>c.body),[{enabled:true,time:'21:30'}],'Save turns it on at the chosen time');
-    assert.match(await y.page.locator('label:has(#reminderEnabled) small').textContent(),/9:30/,'once saved it shows when it rings, and the time and buttons tuck away');
-    assert.equal(await y.page.locator('#reminderChangeBtn').count(),1,'the time can still be changed');
-    await y.page.locator('label:has(#reminderEnabled)').click();
-    await y.page.waitForFunction(()=>!document.getElementById('reminderEnabled').checked);
-    assert.deepEqual(y.calls.filter(c=>c.endpoint==='reminder').at(-1).body,{enabled:false,time:'21:30'},'turning it off saves straight away');
     await snapshot(y.page,'phone-yunis.png');
     await y.ctx.close();
 

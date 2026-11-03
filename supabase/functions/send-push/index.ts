@@ -6,18 +6,16 @@
 // Only two callers exist, and both send the x-cron-secret header:
 //   - pg_cron, every minute:  {type:"reminder-tick"}
 //   - the api function, for a signed-in person:
-//       {type:"reminder-now"}                     test of the daily reminder
 //       {type:"supplier-test", supplierId}        test of one supplier's reminder
 //       {type:"assistant", title, bodyEn, bodyKu, bodyAr}  a message sent through Rico
 //   - the api function, after a sign-in from a phone never seen before:
 //       {type:"security", account, excludeDevice, bodyEn, bodyKu, bodyAr}  to that account's other phones
 //
 // Every tick also runs Rico's own messages: a cheer at 09:00 Erbil time (with
-// the day's weather), an hour after a supplier's reminder time (or the daily
-// reminder) with nothing sent, a telling-off, at 20:00 a warning when the
+// the day's weather), an hour after a supplier's reminder time with nothing
+// sent, a telling-off, at 20:00 a warning when the
 // kitchen streak would end at midnight, on the last day of the month a
-// reminder to save the month's report card, 30 minutes before a supplier's
-// order cut-off when nothing has gone to it yet, and a weekly summary on
+// reminder to save the month's report card, and a weekly summary on
 // Friday evening -- each once, in the app (Rico's inbox) and as a
 // notification. Erbil's weather is refreshed every hour.
 //
@@ -64,12 +62,6 @@ const RICO: Record<Lang, string> = { en: "Rico", ku: "ریکۆ", ar: "ريكو" 
 const RICO_MOODS = ["happy", "excited", "grateful", "calm", "thinking", "worried", "sad", "angry"];
 const moodOf = (m: unknown) => (RICO_MOODS.includes(String(m)) ? String(m) : "happy");
 
-const dailyPayload: Payload = (lang) => ({
-  title: "Ricotta Orders",
-  body: L(lang, "Time to place today's orders.", "کاتی ناردنی داواکارییەکانی ئەمڕۆیە.", "حان وقت إرسال طلبات اليوم."),
-  kind: "reminder",
-  tag: "ricotta-reminder",
-});
 function supplierPayload(s: any, test = false): Payload {
   const name = String(s?.name ?? "").slice(0, 60);
   return (lang) => ({
@@ -184,28 +176,6 @@ async function saysOnce(id: string, kind: string, supplierId: string | null, say
   return result;
 }
 
-/* ---- Daily reminder (one for the whole restaurant) ---- */
-async function dailyTick() {
-  const r = must(await sb.from("app_reminder_settings").select("*").eq("id", true).maybeSingle(), "reminder") as any;
-  if (!r?.enabled) return { skipped: "disabled" };
-  const now = erbilNow();
-  const [h, m] = String(r.remind_time).split(":").map(Number);
-  const target = h * 60 + m;
-  if (now.minutes < target || now.minutes >= target + WINDOW_MS / 60000) return { skipped: "outside window" };
-  // Claim today's send first so two overlapping ticks can never both send.
-  const { data: claimed } = await sb.from("app_reminder_settings")
-    .update({ last_sent_date: now.date }).eq("id", true)
-    .or(`last_sent_date.is.null,last_sent_date.neq.${now.date}`).select();
-  if (!claimed?.length) return { skipped: "already sent today" };
-  const result = await sendReminder(dailyPayload).catch(async (e) => { await unclaimDaily(now.date, r.last_sent_date); throw e; });
-  if (reachedNobody(result)) { await unclaimDaily(now.date, r.last_sent_date); console.error("daily reminder not delivered, will retry"); }
-  return result;
-}
-async function unclaimDaily(date: string, before: string | null) {
-  const { error } = await sb.from("app_reminder_settings").update({ last_sent_date: before ?? null }).eq("id", true).eq("last_sent_date", date);
-  if (error) console.error("daily release failed");
-}
-
 /* ---- Rico's own messages ----
    app_assistant_alerts makes each one happen only once. The same words go
    to both accounts' inboxes (with their own name) and to signed-in phones. */
@@ -280,9 +250,7 @@ async function overdueTick() {
     const hit = lateFor(r.time, days, r.updatedAt);
     if (hit) due.push({ ...s, ...hit });
   }
-  const daily = must(await sb.from("app_reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle(), "reminder") as any;
-  const dailyHit = daily?.enabled ? lateFor(String(daily.remind_time).slice(0, 5), ALL_DAYS) : null;
-  if (!due.length && !dailyHit) return { skipped: "nothing late" };
+  if (!due.length) return { skipped: "nothing late" };
 
   // Orders sent since the start of yesterday, so each check can use its own day.
   const since = recentDays()[1].date;
@@ -305,16 +273,6 @@ async function overdueTick() {
       ar: (n) => `${ya(n)}! طلب ${name} كان موعده ${time} ولم يُرسل بعد. الطماطم لا تطلب نفسها. هل أجهّزه لك الآن؟`,
     }, { supplierId: String(s.id) }));
     if (said) out.push({ supplier: name, ...said });
-  }
-  if (dailyHit && !sentSince(dailyHit.date)) {
-    const time = String(daily!.remind_time).slice(0, 5);
-    const said = await saysOnce(`overdue|daily|${dailyHit.date}`, "overdue-daily", null, () => ricoSays("overdue", `overdue|daily|${dailyHit.date}`, {
-      mood: "angry",
-      en: (n) => `${hi("Hey", n)}! It's past ${time} and not a single order has gone out today. Let's go.`,
-      ku: (n) => `${hi("هەی", n)}! کاتژمێر ${time} تێپەڕی و ئەمڕۆ هیچ داواکارییەک نەنێردراوە. با دەست پێ بکەین.`,
-      ar: (n) => `${ya(n)}! تجاوزت الساعة ${time} ولم يُرسل أي طلب اليوم. هيا بنا.`,
-    }));
-    if (said) out.push({ daily: true, ...said });
   }
   return out;
 }
@@ -389,39 +347,6 @@ async function reportTick() {
   }, { view: "history" })) ?? { skipped: "already sent" };
 }
 
-/* ---- Order cut-offs: 30 minutes before a supplier stops taking orders, if nothing went to it today ---- */
-const CUTOFF_WARN_MIN = 30;
-async function cutoffTick() {
-  const now = erbilNow();
-  const sups = must(await sb.from("app_suppliers").select("id,name,reminder,cutoff").not("cutoff", "is", null), "suppliers") as any[];
-  const soon = (sups ?? []).filter((s: any) => {
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(s.cutoff))) return false;
-    const r = s.reminder;
-    const days = r?.enabled && Array.isArray(r.days) && r.days.length ? r.days.map(Number) : ALL_DAYS;
-    if (!days.includes(now.weekday)) return false;
-    const [h, m] = String(s.cutoff).split(":").map(Number);
-    const left = h * 60 + m - now.minutes;
-    return left > 0 && left <= CUTOFF_WARN_MIN;
-  });
-  if (!soon.length) return { skipped: "nothing closing" };
-  const orders = must(await sb.from("app_orders").select("id").eq("status", "sent").gte("sent_at", `${now.date}T00:00:00${ERBIL_OFFSET}`), "orders") as any[];
-  const ids = (orders ?? []).map((o: any) => o.id);
-  const lines = await linesFor(ids, "supplier_id");
-  const sent = new Set((lines ?? []).map((l: any) => l.supplier_id));
-  const out: unknown[] = [];
-  for (const s of soon) {
-    if (sent.has(s.id)) continue;
-    const name = String(s.name).slice(0, 60), time = String(s.cutoff);
-    const said = await saysOnce(`cutoff|${s.id}|${now.date}`, "cutoff", s.id, () => ricoSays("cutoff", `cutoff|${s.id}|${now.date}`, {
-      mood: "worried",
-      en: (n) => `${hi("Quick", n, ", ")}! ${name} stops taking orders at ${time} and nothing has gone to them today. Want me to prepare it?`,
-      ku: (n) => `${hi("زوو", n)}! ${name} کاتژمێر ${time} داواکاری وەرناگرێت و ئەمڕۆ هیچیان بۆ نەنێردراوە. با ئێستا ئامادەی بکەم؟`,
-      ar: (n) => `${ya(n)}! ${name} يتوقف عن استلام الطلبات الساعة ${time} ولم يُرسل له شيء اليوم. هل أجهّزه لك؟`,
-    }, { supplierId: String(s.id) }));
-    if (said) out.push({ supplier: name, ...said });
-  }
-  return out;
-}
 
 /* ---- The 1st of the month: Rico's letter about the month that ended, from its summary ---- */
 async function letterTick() {
@@ -580,14 +505,12 @@ Deno.serve(async (req) => {
     switch (body.type) {
       case "reminder-tick": {
         const result: Record<string, unknown> = {};
-        try { result.daily = await dailyTick(); } catch (e) { console.error("daily tick failed", e); result.daily = { error: true }; }
         try { result.suppliers = await supplierTick(); } catch (e) { console.error("supplier tick failed", e); result.suppliers = { error: true }; }
         try { result.late = await overdueTick(); } catch (e) { console.error("late-order tick failed", e); result.late = { error: true }; }
         try { result.weather = await weatherTick(); } catch (e) { console.error("weather tick failed", e); result.weather = { error: true }; }
         try { result.cheer = await cheerTick(); } catch (e) { console.error("cheer tick failed", e); result.cheer = { error: true }; }
         try { result.streak = await streakTick(); } catch (e) { console.error("streak tick failed", e); result.streak = { error: true }; }
         try { result.report = await reportTick(); } catch (e) { console.error("report tick failed", e); result.report = { error: true }; }
-        try { result.cutoff = await cutoffTick(); } catch (e) { console.error("cutoff tick failed", e); result.cutoff = { error: true }; }
         try { result.letter = await letterTick(); } catch (e) { console.error("letter tick failed", e); result.letter = { error: "failed" }; }
         try { result.health = await healthTick(); } catch (e) { console.error("health tick failed", e); result.health = { error: "failed" }; }
         try { result.wipe = await wipeTick(); } catch (e) { console.error("wipe tick failed", e); result.wipe = { error: "failed" }; }
@@ -612,8 +535,6 @@ Deno.serve(async (req) => {
           title: title || RICO[lang], body: w.pick(lang), kind: "assistant", mood: moodOf(body.mood), tag: `ricotta-assistant-${Date.now()}`,
         }), title ? undefined : await ricoAccounts()));
       }
-      case "reminder-now":
-        return json(await sendReminder((lang, name) => ({ ...dailyPayload(lang, name), title: L(lang, "Ricotta Orders (test)", "Ricotta Orders (تاقیکاری)", "Ricotta Orders (تجربة)") })));
       case "supplier-test": {
         const { data: s } = await sb.from("app_suppliers").select("id,name").eq("id", String(body.supplierId ?? "")).maybeSingle();
         if (!s) return json({ error: "supplier not found" }, 404);

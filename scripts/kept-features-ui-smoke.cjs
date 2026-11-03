@@ -14,7 +14,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
   suppliers:[{id:'s',name:'Vegetables',phone:'07501234567'},{id:'b',name:'Bakery',phone:''}],units:[{id:'kg',en:'kg',ku:'کیلۆ',ar:'كيلو'}],
   items:[{id:'tom',name:'Tomatoes',unit:'kg',supplierId:'s',aliases:['tomato']},{id:'dup',name:'Tomato',unit:'kg',supplierId:'s'},...filler],
   pins:['tom'],history:[{id:'h1',date:before,by:'rozha',entries:[{supplierId:'s',items:[{itemId:'tom',name:'Tomatoes',unit:'kg',qty:2}]}]}],devices:[],activity:[],inbox:[]};
- await ctx.addInitScript(()=>{localStorage.setItem('ricottaOrders:toured:rozha','true');localStorage.setItem('ricottaOrders:apiSession',JSON.stringify({token:'kept-fixture',account:'rozha',name:'Rozha',expiresAt:'2099-01-01T00:00:00Z'}));localStorage.setItem('ricottaOrders:lang','"en"');localStorage.setItem('ricottaOrders:aiConsent2:rozha','true');localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',String(Date.now()));});
+ await ctx.addInitScript(()=>{localStorage.setItem('ricottaOrders:toured:rozha','true');localStorage.setItem('ricottaOrders:ricoBriefing:rozha',JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));localStorage.setItem('ricottaOrders:apiSession',JSON.stringify({token:'kept-fixture',account:'rozha',name:'Rozha',expiresAt:'2099-01-01T00:00:00Z'}));localStorage.setItem('ricottaOrders:lang','"en"');localStorage.setItem('ricottaOrders:aiConsent2:rozha','true');localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',String(Date.now()));});
  await ctx.route('**/functions/v1/api/**',async route=>{const req=route.request(),endpoint=new URL(req.url()).pathname.split('/api/')[1],method=req.method(),body=method==='GET'?null:req.postDataJSON();calls.push({endpoint,method,body});let data={ok:true};
   if(endpoint==='bootstrap')data={...fixture,draft:{cart,revision}};
   else if(endpoint==='draft'){if(method==='PUT'){for(const c of body.changes){if(c.after)cart[c.itemId]=c.after;else delete cart[c.itemId];}revision++;}data={cart:{...cart},revision,conflicts:[]};}
@@ -59,11 +59,11 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.evaluate(()=>{state.queue=null;state.cart={};persistQueue();persistCartDraft();});
 
  // Deleting an item (from its details) asks first, then offers Undo, which brings it back.
- await view('manage');await page.locator('.table-list [data-edititem="dup"]').click();
+ await view('manage');await page.locator('.plain-list [data-edititem="dup"]').click();
  await page.locator('[data-detail="delete"]').click();await page.locator('#modalOkBtn').click();
  await page.waitForSelector('[data-edititem="dup"]',{state:'detached'});
  assert.match(await page.locator('#toast').textContent(),/Tomato deleted/);
- await page.locator('#toast .toast-undo').click();await page.locator('.table-list [data-edititem="dup"]').waitFor();
+ await page.locator('#toast .toast-undo').click();await page.locator('.plain-list [data-edititem="dup"]').waitFor();
  assert.equal(receipts.size,0,'Undo uses the server copy');
 
  // The Health Check runs by itself when Admin opens, and its page says in plain words what works.

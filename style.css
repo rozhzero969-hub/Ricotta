@@ -140,28 +140,17 @@ body.page-swiping *{transition:none!important}
 .account-btn{width:34px;height:34px;font-size:.9375rem}
 
 /* ---------- Rico in the top bar ----------
-   A pill with his sparkle and his name, in the app's green on a soft green fill: solid green while
-   his screen is open, and a red dot when he has written first or an order is late. It shrinks a little
-   under the finger; when he reacts the pill gives one small bounce and the sparkle a quick turn (a
-   small dip when the order was cleared). */
-.rico-top{position:relative;flex:none;height:34px;padding:0 13px 0 10px;border:0;border-radius:999px;display:inline-flex;align-items:center;gap:6px;
-  background:rgba(var(--accent-rgb),.14);color:var(--tint);font:600 .9375rem/1 var(--font);letter-spacing:-.01em;white-space:nowrap;
-  transition:background-color .25s ease,color .25s ease,transform .14s var(--ease-out);-webkit-tap-highlight-color:transparent}
-html.rtl .rico-top{padding:0 10px 0 13px}
-.rico-top svg{width:16px;height:16px;flex:none}
-.rico-top:active{transform:scale(.94);transition-duration:.06s}
-.rico-top.active{background:var(--tint);color:#fff}
-html.dark .rico-top{background:rgba(var(--accent-rgb),.2)}
-html.dark .rico-top.active{background:var(--tint);color:#000}
+   The Spark with his face, and a red dot when he has written first or an order is late. He shrinks a
+   little under the finger; when he reacts he gives one small bounce (a small dip when the order was cleared). */
+.rico-top{position:relative;flex:none;width:44px;height:44px;padding:0;border:0;border-radius:50%;background:none;display:inline-grid;place-items:center;
+  transition:transform .14s var(--ease-out);-webkit-tap-highlight-color:transparent}
+.rico-top .rico-bot{--size:36px}
+.rico-top:active{transform:scale(.92);transition-duration:.06s}
 .rico-top.reacting{animation:ricoBounce .5s var(--ease-out)}
-.rico-top.reacting svg{animation:ricoTwist .6s var(--ease-out)}
-.rico-top.reacting[data-react="down"]{animation:none}
-.rico-top.reacting[data-react="down"] svg{animation:ricoDip .45s var(--ease-out)}
-.rico-badge{position:absolute;top:-2px;inset-inline-end:-2px;width:10px;height:10px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px var(--bg)}
+.rico-top.reacting[data-react="down"]{animation:ricoDip .45s var(--ease-out)}
+.rico-badge{position:absolute;top:3px;inset-inline-end:2px;width:10px;height:10px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px var(--bg)}
 @keyframes ricoBounce{30%{transform:scale(1.08)}60%{transform:scale(.98)}}
-@keyframes ricoTwist{40%{transform:rotate(25deg) scale(1.2)}100%{transform:none}}
-@keyframes ricoDip{45%{transform:scale(.8);opacity:.6}}
-@media (max-width:360px){.rico-top-name{display:none}.rico-top{width:34px;padding:0;justify-content:center}}
+@keyframes ricoDip{45%{transform:scale(.85)}}
 
 /* ---------- Refresh: the arrows turn while it works ---------- */
 .refreshing svg{animation:refreshTurn .75s var(--ease-out) infinite}
@@ -1920,31 +1909,12 @@ kbd{min-width:26px;height:26px;padding:0 7px;border-radius:7px;display:inline-gr
 .rico-bot[class*="mood-"]{--rb-eye:#14382C;--rb-glow:transparent}
 .rb-star{stroke:rgba(16,41,31,.14);stroke-width:1}
 .rb-head{transform-origin:50% 50%}
-.rico-top{width:44px;height:44px;padding:0!important;background:none!important;justify-content:center;overflow:visible}
-.rico-top .rico-bot{--size:36px}
-.rico-top svg{width:100%;height:100%}
-.rico-top.active{outline:2px solid var(--tint);outline-offset:-2px}
-.rico-top .rico-badge{position:absolute;top:3px;inset-inline-end:2px}
 
 /* The Rico tab */
-.rico-intro-head{display:flex;align-items:center;gap:10px}
-.rico-intro .rico-hello{margin:0;font-size:1.375rem}
 .rico-intro{align-items:stretch}
 .p-eyebrow{font-size:.75rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--tint)}
 html.rtl .p-eyebrow{letter-spacing:0}
-.rico-next{display:grid;gap:6px;padding:14px;border-radius:var(--r-card);background:var(--surface)}
-.rico-next .btn{justify-self:start;margin-top:4px}
-.rico-next.urgent{box-shadow:inset 0 0 0 1.5px rgba(255,59,48,.4)}
-.rico-next-title{font-size:1.1875rem;font-weight:700;line-height:1.25}
-.rico-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;padding:6px;border-radius:var(--r-card);background:var(--surface)}
-.rico-day{display:flex;flex-direction:column;align-items:center;gap:2px;min-height:58px;padding:6px 0;border:0;border-radius:14px;background:none;color:var(--ink-soft);font-size:.6875rem}
-.rico-day b{font-size:1rem;font-weight:600;color:var(--ink)}
-.rico-day i{width:6px;height:6px;border-radius:50%;background:var(--accent)}
-.rico-day i.none{background:transparent}
-.rico-day.today{background:var(--tint);color:var(--on-tint,#fff)}
-.rico-day.today b{color:inherit}
-.rico-day.today i{background:currentColor}
-html.dark .rico-day.today{color:#000}
+.rico-brief-title{font-size:1.1875rem;font-weight:700;line-height:1.25}
 .rico-inbox-more{justify-self:start;padding:6px 2px}
 .rico-inbox-all{display:grid;gap:8px;margin-top:10px}
 .rico-brief{display:grid;gap:12px}
@@ -2069,3 +2039,30 @@ body.lang-ku .rico-note-text,body.lang-ar .rico-note-text,body.lang-ku .rico-tex
 .order-quick-actions .quick-btn svg{display:block!important}
 .year-sheet .report-stats{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}
 @media (min-width:960px){.board-sheet .sel-panel{width:min(960px,92vw);max-width:none}}
+
+.tab-pill .tab-pin{display:inline-flex;margin-inline-end:5px}
+.tab-pill .tab-pin svg{width:12px;height:12px}
+
+/* Manage on a phone: both list styles are one grouped card, rows read from the start edge, and the
+   buttons above them sit in tidy rows (the main one across, the others side by side). */
+.list-row{text-align:start}
+.list-row .name,.list-row .meta{text-align:start}
+.plain-list,.table-list{display:block;margin-bottom:16px;border-radius:var(--r-card);background:var(--surface);overflow:hidden}
+.plain-list>.list-row,.table-list>.list-row{width:100%;border-radius:0!important;margin:0!important;background:transparent;box-shadow:none}
+.plain-list>.list-row+.list-row,.table-list>.list-row+.list-row{border-top:0}
+.plain-list>.list-row+.list-row::before,.table-list>.list-row+.list-row::before{content:'';position:absolute;top:0;inset-inline:16px 0;border-top:.5px solid var(--line-strong)}
+@media (max-width:599px){
+  .action-row{display:flex;flex-wrap:wrap;gap:8px}
+  .action-row>.add-btn{flex:1 1 100%}
+  .action-row>.btn-ghost{flex:1 1 0;min-width:0;min-height:44px;padding-inline:10px;font-size:.875rem}
+  .table-tools{display:grid;gap:8px}
+  .table-filters{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .table-filters::-webkit-scrollbar{display:none}
+  .table-buttons{display:flex;gap:8px}
+  .table-buttons>.btn{flex:1 1 0;min-width:0;justify-content:center}
+}
+.ad-ai-switch{min-height:0;padding:0;background:none;box-shadow:none}
+.rico-head{background:none!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;padding:4px 0 8px;margin-bottom:8px}
+.rico-head .rico-bot{--size:40px}
+/* A form or sheet takes focus when it opens (for screen readers); that is not a keyboard focus to show. */
+.modal-box:focus,.modal-box:focus-visible,.sel-panel:focus,.sel-panel:focus-visible{outline:none}
