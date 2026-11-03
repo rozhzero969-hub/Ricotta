@@ -8,7 +8,7 @@ function monthChartHtml(){
   const counts = Array.from({length:last}, ()=>0);
   orders.forEach(o=>{ const d = +erbilDate(o.date).slice(8) - 1; if(d >= 0 && d < last) counts[d]++; });
   const max = Math.max(1, ...counts);
-  return `<div class="report-sec"><div class="report-sec-title">${esc(t('chartPerDay'))}</div><div class="chart-bars" role="img" aria-label="${esc(t('chartPerDayAlt')(orders.length, daysLeftInMonth().day))}">${counts.map((n, i)=>`<span class="chart-bar${n ? '' : ' none'}" style="--h:${Math.round(n / max * 100)}%" title="${i + 1}: ${n}"></span>`).join('')}</div><div class="chart-axis"><span>1</span><span>${last}</span></div></div>`;
+  return `<div class="report-sec"><div class="report-sec-title">${esc(t('chartPerDay'))}</div><div class="chart-bars" role="img" aria-label="${esc(t('chartPerDayAlt')(orders.length, daysLeftInMonth().day))}">${counts.map((n, i)=>`<span class="chart-bar${n ? '' : ' none'}" style="--h:${Math.round(n / max * 100)}%;--bi:${i}" title="${i + 1}: ${n}"></span>`).join('')}</div><div class="chart-axis"><span>1</span><span>${last}</span></div></div>`;
 }
 /* One item's amount per order over the orders kept, as a small line. */
 function sparkline(values, w = 120, h = 32){

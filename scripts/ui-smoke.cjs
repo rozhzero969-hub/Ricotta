@@ -619,8 +619,8 @@ const server=http.createServer((req,res)=>{
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await featureBox('showLastQty').click();
     assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('[data-feature]')].map(i=>i.dataset.feature+':'+i.checked)),
-      ['swipe:true','showLastQty:false','compactRows:false','soundQty:true','soundSent:true','ricoSheet:true','ricoBriefing:true','ricoMood:true','tables:false','kitchenMode:false','milestones:true'],'the defaults, in their sections');
-    assert.deepEqual(await y.page.locator('.content .section-title').evaluateAll(els=>els.map(e=>e.textContent)),['Notifications','Ordering','Rico','Look','Help','Privacy'],'settings are in sections');
+      ['swipe:true','showLastQty:false','compactRows:false','soundQty:true','soundSent:true','soundRico:true','soundError:true','soundMilestone:true','soundUndo:true','ricoSheet:true','ricoBriefing:true','ricoMood:true','tables:false','kitchenMode:false','milestones:true'],'the defaults, in their sections');
+    assert.deepEqual(await y.page.locator('.content .section-title').evaluateAll(els=>els.map(e=>e.textContent)),['Notifications','Ordering','Sounds','Rico','Look','Help','Privacy'],'settings are in sections');
     assert.equal(await y.page.locator('#reminderEnabled,#reminderTime').count(),0,'no daily reminder');
     assert.equal(await y.page.locator('#settingsSignOut').count(),1,'Sign Out is at the end of Settings');
     assert.match(await y.page.locator('.settings-link').getAttribute('href'),/^privacy\.html#en$/,'Settings links to the privacy policy');
@@ -709,9 +709,9 @@ const server=http.createServer((req,res)=>{
     assert.equal(await login.page.locator('.pin-box.filled').count(),0,'logout resets the PIN feedback');
     await login.ctx.close();
     const reduced=await context({reducedMotion:'reduce'});await reduced.page.locator('[data-inc="i1"]').click();
-    assert.equal(await reduced.page.locator('[data-qty="i1"]').evaluate(el=>el.getAnimations().length),0,'reduced motion skips JS feedback');
+    // Rozha keeps every animation even with Reduce Motion on (2026-11-03): pages still glide.
     await reduced.page.evaluate(()=>goView('history'));
-    assert.equal(await reduced.page.locator('.content.gliding').count(),0,'reduced motion skips the page transition');
+    assert.equal(await reduced.page.locator('.content.gliding').count(),1,'pages glide even with Reduce Motion on');
 
     /* Dialogs preserve drafts, contain keyboard focus, and cannot be dismissed
        or submitted twice while a save is pending. APIs remain fully mocked. */
@@ -729,7 +729,8 @@ const server=http.createServer((req,res)=>{
     await mp.waitForFunction(()=>modalPromptResult===null);
     assert.equal(await mp.evaluate(()=>document.activeElement.id),'accountBtn','closing returns focus to the opener');
     assert.equal(await mp.locator('#app').evaluate(el=>el.inert),false,'closing releases the background');
-    assert.equal(await mp.locator('.modal-overlay').count(),0,'reduced-motion dialogs close immediately');
+    await mp.locator('.modal-overlay').waitFor({state:'detached',timeout:1500});
+    assert.equal(await mp.locator('.modal-overlay').count(),0,'dialogs leave after their closing animation');
 
     await mp.evaluate(()=>{
       window.modalSubmits=0;window.modalClosed=false;
@@ -740,7 +741,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await mp.locator('label[for="regressionDraft"]').count(),1,'form labels point to their fields');
     await mp.locator('#modalFormOk').click();
     assert.equal(await mp.locator('#modalFormOk').getAttribute('aria-busy'),'true','saving is announced on the action');
-    assert.equal(await mp.locator('#modalFormOk').evaluate(el=>getComputedStyle(el,'::before').animationName),'none','reduced motion shows a static loading indicator');
+    assert.equal(await mp.locator('#modalFormOk').evaluate(el=>getComputedStyle(el,'::before').animationName),'spin','the saving indicator turns, Reduce Motion or not');
     assert.equal(await mp.locator('#regressionDraft').isDisabled(),true,'saving locks the submitted values');
     await mp.keyboard.press('Escape');
     await mp.evaluate(()=>document.querySelector('#modalFormOk').click());

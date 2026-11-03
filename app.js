@@ -118,9 +118,21 @@ function formatStoredIraqTime(value){
   }).format(date);
 }
 /* Consistent "nothing here yet" block, used for every empty list. */
-function emptyState(msg){
-  return `<div class="empty">${ICON_EMPTY}<div class="empty-text">${msg}</div></div>`;
+/* While something loads: gray lines where the rows will be, breathing softly; the rows then fade in
+   in the same place, so nothing jumps. */
+function loadingLines(n = 3){
+  return `<div class="skel" role="status" aria-label="${esc(t('loading'))}">${Array.from({length:n}, (_, i)=>`<div class="skel-row"><i style="width:${[62, 78, 54, 70][i % 4]}%"></i><i style="width:${[34, 26, 40, 30][i % 4]}%"></i></div>`).join('')}</div>`;
 }
+/* An empty page: Spark, one line, and the one button that fills it (when there is one). */
+const EMPTY_ACTIONS = {order:['emptyStartOrder', ()=>goView('order')], item:['addItem', ()=>openItemModal(null)], supplier:['addSupplier', ()=>openSupplierModal(null)]};
+function emptyState(msg, action){
+  const a = EMPTY_ACTIONS[action];
+  return `<div class="empty">${typeof ricoFace === 'function' ? ricoFace('calm', 'empty-spark') : ICON_EMPTY}<div class="empty-text">${msg}</div>${a ? `<button type="button" class="btn btn-primary empty-go" data-empty-go="${action}">${esc(t(a[0]))}</button>` : ''}</div>`;
+}
+document.addEventListener('click', e=>{
+  const b = e.target.closest?.('[data-empty-go]');
+  if(b) EMPTY_ACTIONS[b.dataset.emptyGo]?.[1]();
+});
 /* Escapes text before it's inserted into innerHTML, so a typed name can
    never break out of its tag and inject HTML. */
 function esc(s){
@@ -133,6 +145,7 @@ function toast(msg, kind='ok', {undo, ms} = {}){
   let el = document.getElementById('toast');
   if(!el){ el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role','status'); document.body.appendChild(el); }
   el.className = 'toast ' + kind + (undo ? ' has-undo' : '');
+  if(kind === 'error' || msg === t('saveFailed')){ try{ playError(); }catch(_){ /* sound never blocks a message */ } }
   el.textContent = '';
   const text = document.createElement('span'); text.textContent = msg; text.dir = 'auto'; el.appendChild(text);
   if(undo){
@@ -745,7 +758,7 @@ async function hideSplash(minShown = 1150){
   const el = document.getElementById('splash');
   if(!el || el.dataset.state === 'leaving') return;
   await cssReady();
-  if(matchMedia('(prefers-reduced-motion: reduce)').matches) minShown=0;
+  if(reducedMotion()) minShown=0;
   const wait = Math.max(0, minShown - (performance.now() - (window.__splashStart || 0)));
   await new Promise(r=>setTimeout(r, wait));
   el.dataset.state = 'leaving';
@@ -756,10 +769,10 @@ async function hideSplash(minShown = 1150){
   el.addEventListener('animationend', e=>{ if(e.target === el) done(); });
   setTimeout(done, 1400);   // safety net
 }
-/* ---------- Ricotta on the map (sign-in, Welcome back, Admin) ----------
+/* ---------- Ricotta on the map (sign-in, Welcome back) ----------
    One satellite picture of the street around the kitchen (Esri World Imagery), shipped with the app
    so it shows offline, and Ricotta's pin with two soft rings. In "green" the picture takes Ricotta's
-   green; Admin shows it in its own colours. Directions opens Ricotta in Apple Maps. */
+   green. Directions opens Ricotta in Apple Maps. */
 const RICOTTA_MAP = 'ricotta-map.jpg';
 const RICOTTA_MAP_CREDIT = 'Esri, Vantor, Earthstar Geographics, GIS User Community';
 const RICOTTA_DIRECTIONS = 'https://maps.apple/p/RvAJw2GV9jAvf_';
@@ -848,7 +861,7 @@ const uiMotion = new WeakMap();
 function animateUi(element, frames, duration=220){
   if(!element || !element.animate) return;
   uiMotion.get(element)?.cancel();
-  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if(reducedMotion()) return;
   const animation=element.animate(frames,{duration,easing:'cubic-bezier(.2,.8,.2,1)'});
   uiMotion.set(element,animation);
 }
@@ -974,7 +987,9 @@ const managedView=v=>['manage','itemsAdmin','suppliers','units'].includes(v);
 const moreViews=()=>navScreens().slice(4);
 const mainView=v=>managedView(v)?'manage':v;
 function viewIndex(v){ const i = navOrder().indexOf(v); return i >= 0 ? i : navOrder().length; }
-const reducedMotion = ()=> matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* Rozha chose (2026-11-03) to keep every animation even when a phone has Reduce Motion on, so the app
+   moves the same way everywhere. Kept as one switch in case that changes. */
+const reducedMotion = ()=> window.__ricottaStillForTests === true;   // only the automated screen tests set this
 
 function renderBottomNav(){
   const button=id=>`<button type="button" class="navbtn" data-view="${id}">${NAV_ICONS[id]||ICON_MORE}<span>${esc(viewLabel(id))}</span></button>`;
@@ -1043,8 +1058,9 @@ function setLensPosition(pos){
   ind.style.setProperty('--ip', p.toFixed(3));
   btns.forEach((x,k)=>x.classList.toggle('lens-over', k===Math.round(p)));
 }
-/* Hold the tab bar and slide (phones): the lens follows the finger and each
-   tab it passes opens with a quick fade. Letting go on More opens More. */
+/* Hold the tab bar and slide (phones), like iOS 26: the pill lifts into clear glass a little bigger
+   than the bar, follows the finger and stretches as it moves; each tab it passes opens softly behind
+   it. Letting go settles it back into the green pill. Letting go on More opens More. */
 (function initBarSlide(){
   let d = null;   // {id, x0, x, moved, last (button index), frame}
   const nav = ()=>document.querySelector('.bottomnav');
@@ -1052,21 +1068,33 @@ function setLensPosition(pos){
   document.addEventListener('pointerdown', e=>{
     const bar = e.target.closest?.('.bottomnav');
     if(!bar || !isPhoneLayout() || e.button>0 || e.target.closest('.nav-more')) return;
-    d = {id:e.pointerId, x0:e.clientX, x:e.clientX, moved:false, last:barButtons(bar).findIndex(b=>b.classList.contains('active'))};
+    d = {id:e.pointerId, x0:e.clientX, x:e.clientX, moved:false, last:barButtons(bar).findIndex(b=>b.classList.contains('active')), vx:e.clientX, vt:performance.now()};
+    // Holding still for a moment lifts the glass too, before the finger moves.
+    const mine = d;
+    d.hold = setTimeout(()=>{ if(d === mine && !d.moved) lift(bar, e.pointerId); }, 220);
   });
+  // The pill turns into clear glass, a little bigger than the bar, and follows the finger.
+  const lift = (bar, id)=>{
+    d.moved = true; clearTimeout(d.hold); setMoreOpen(false); bar.classList.add('held'); haptic('selection');
+    try{ bar.setPointerCapture(id); }catch(_){}
+    const btns = barButtons(bar); setLensPosition(slotAt(btns, d.x).pos);
+  };
   document.addEventListener('pointermove', e=>{
     if(!d || e.pointerId!==d.id) return;
     d.x = e.clientX;
     const bar = nav(); if(!bar) return;
     if(!d.moved){
       if(Math.abs(e.clientX-d.x0) < 6) return;
-      d.moved = true; setMoreOpen(false); bar.classList.add('held');
-      try{ bar.setPointerCapture(e.pointerId); }catch(_){}
+      lift(bar, e.pointerId);
     }
     if(d.frame) return;
     d.frame = requestAnimationFrame(()=>{
       if(!d) return;
       d.frame = 0;
+      // Moving fast, the glass stretches along the bar; slowing down, it rounds out again.
+      const now = performance.now(), v = Math.abs(d.x - d.vx) / Math.max(8, now - d.vt);
+      d.vx = d.x; d.vt = now;
+      bar.querySelector('.nav-indicator')?.style.setProperty('--st', Math.min(.2, v * .22).toFixed(3));
       const btns = barButtons(bar), s = slotAt(btns, d.x);
       setLensPosition(s.pos);
       if(s.index !== d.last){ d.last = s.index; open(btns[s.index]); }
@@ -1074,8 +1102,9 @@ function setLensPosition(pos){
   });
   const end = e=>{
     if(!d || e.pointerId!==d.id) return;
-    const s = d; d = null; cancelAnimationFrame(s.frame);
+    const s = d; d = null; cancelAnimationFrame(s.frame); clearTimeout(s.hold);
     const bar = nav(); if(!bar || !s.moved) return;
+    bar.querySelector('.nav-indicator')?.style.setProperty('--st', '0');
     const btn = barButtons(bar)[slotAt(barButtons(bar), e.clientX || s.x).index];
     bar.classList.remove('held');
     open(btn);
@@ -1213,7 +1242,10 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLangMenu(); 
 /* ---------- Page transitions ----------
    Like an iPhone's tab bar, tapping a screen cross-fades to it quickly; only a finger swiping the
    page slides it. Redrawing the same screen never plays an entrance animation. */
+/* A tap on a tab slides the pages sideways like a swipe, softly: they start quickly and take their
+   time to settle (Rozha, 2026-11-03). Opening something from the page itself still fades. */
 const PAGE_TRANSITION = {ms:220};
+const TAB_SLIDE = {ms:460, ease:'cubic-bezier(.32,.72,0,1)'};
 const SWIPE_MS = 200;
 const PAGE_EASE = 'cubic-bezier(.25,.1,.25,1)';
 // After a swipe the page is already moving with the finger, so it keeps going and settles without a bounce.
@@ -1232,6 +1264,24 @@ const FADE_FRAMES = {inn:[{opacity:0, transform:'translate3d(0,6px,0)'},{opacity
    Nothing fades and nothing overlaps, so no page ever shows through another. */
 function swipeFrames(dir, w){
   return {inn:[{transform:`translate3d(${dir*w}px,0,0)`}, {transform:'none'}], out:[{transform:'none'}, {transform:`translate3d(${-dir*w}px,0,0)`}]};
+}
+/* The first time a page opens, its rows fade up one after another, quickly; never again after, so it
+   never slows anyone down. */
+const LIST_ROWS = '.item-row,.hist-card,.rec-card,.ad-tile-card,.list-row,.unit-chip,.rico-chip,.form-card';
+function listsComeIn(content){
+  if(reducedMotion()) return;
+  [...content.querySelectorAll(LIST_ROWS)].slice(0, 12).forEach((row, i)=>{
+    row.animate?.([{opacity:0, transform:'translateY(10px)'}, {opacity:1, transform:'none'}], {duration:340, delay:60 + i * 28, easing:'cubic-bezier(.23,1,.32,1)', fill:'backwards'});
+  });
+}
+/* A tap: the new page comes in from the side of the tab that was tapped while the old one moves away
+   a little slower and dims, so the two read as layers instead of a hard edge. A swipe keeps the pages
+   edge to edge, under the finger. */
+function softSlideFrames(dir, w, edge){
+  if(edge) return swipeFrames(dir, w);
+  const inFrom = Math.round(dir * w * .42), outTo = Math.round(-dir * w * .22);
+  return {inn:[{transform:`translate3d(${inFrom}px,0,0)`, opacity:0}, {transform:'none', opacity:1}],
+    out:[{transform:'none', opacity:1}, {transform:`translate3d(${outTo}px,0,0)`, opacity:0}]};
 }
 /* The page that is leaving, laid exactly where it was. Its parts are moved
    (not copied) into a fixed layer, so even the 179-item Order page costs
@@ -1261,7 +1311,9 @@ function goView(view, {fromOffset=0, velocity=0, peek=null, keepLens=false, fade
   const old = document.querySelector('.content');
   const width = old ? old.getBoundingClientRect().width : window.innerWidth;
   const quick = fade || (managedView(state.view) && managedView(view));   // within Manage, or sliding along the tab bar
-  const frames = old && old.animate && !reducedMotion() ? (fromOffset ? swipeFrames(dir, width) : {inn:[...FADE_FRAMES.inn], out:[...FADE_FRAMES.out]}) : null;
+  // Within Manage the sections switch like a segmented control: a quick fade, not a slide.
+  const slide = !!fromOffset || (!fade && !(managedView(state.view) && managedView(view)));
+  const frames = old && old.animate && !reducedMotion() ? (slide ? softSlideFrames(dir, width, !!fromOffset) : {inn:[...FADE_FRAMES.inn], out:[...FADE_FRAMES.out]}) : null;
   // The place is saved before the old page moves into its slide-out copy (that empties the page).
   viewMemory.set(state.view, {query:state.catalogQuery || '', top:scrollBox().scrollTop});
   const ghost = frames?.out ? pageGhost(old) : null;
@@ -1281,6 +1333,7 @@ function goView(view, {fromOffset=0, velocity=0, peek=null, keepLens=false, fade
   if(view === 'admin') refreshDevices();
   if(!keepLens) placeNavIndicator();
   const content = document.querySelector('.content');
+  if(!remembered && content) listsComeIn(content);
   if(!frames || !content){ ghost?.layer.remove(); if(content) content.style.transform = ''; if(growAfter) quietBar(); return; }
   // After a swipe, pages start from where the finger left them.
   if(fromOffset){
@@ -1291,7 +1344,7 @@ function goView(view, {fromOffset=0, velocity=0, peek=null, keepLens=false, fade
   // faster than its average), so there is no seam between dragging and gliding.
   const remaining = Math.max(0, width - Math.abs(fromOffset));
   const swipeMs = Math.round(Math.min(420, Math.max(SWIPE_MS, velocity ? 4 * remaining / Math.abs(velocity) : 300)));
-  const opts = fromOffset ? {duration:swipeMs, easing:SWIPE_EASE} : {duration:quick?160:PAGE_TRANSITION.ms, easing:PAGE_EASE};
+  const opts = fromOffset ? {duration:swipeMs, easing:SWIPE_EASE} : slide ? {duration:TAB_SLIDE.ms, easing:TAB_SLIDE.ease} : {duration:quick?160:PAGE_TRANSITION.ms, easing:PAGE_EASE};
   content.style.transform = '';
   content.classList.add('gliding');
   const anims = [content.animate(frames.inn, opts)];
@@ -1490,12 +1543,10 @@ function openSelSheet(sel){
   };
   paint('');
   let closed = false;
-  const close = ()=>{
+  const close = (velocity = 0)=>{
     if(closed) return; closed = true;
     if(activeSelSheet === close) activeSelSheet = null;
-    wrap.classList.add('out'); wrap.inert = true;
-    if(matchMedia('(prefers-reduced-motion: reduce)').matches) wrap.remove();
-    else setTimeout(()=>wrap.remove(), 220);
+    sheetLeave(wrap, velocity);
     document.removeEventListener('keydown', onKey, true);
     if(sel._selBtn?.isConnected) sel._selBtn.focus({preventScroll:true});
   };
@@ -1509,7 +1560,8 @@ function openSelSheet(sel){
     else if(!e.shiftKey && (document.activeElement === last || !wrap.contains(document.activeElement))){ e.preventDefault(); first?.focus(); }
   };
   document.addEventListener('keydown', onKey, true);
-  wrap.querySelector('.sel-scrim').onclick = close;
+  wrap.querySelector('.sel-scrim').onclick = ()=>close();
+  attachSheetDrag(wrap, close);
   wrap.querySelector('.sel-search input')?.addEventListener('input', e=>paint(e.target.value));
   list.onclick = e=>{
     const b = e.target.closest('[data-v]'); if(!b) return;
@@ -1549,7 +1601,7 @@ function padClose(){
   document.documentElement.classList.remove('pad-open');
   document.body.style.paddingBottom = '';
   el.classList.add('out');
-  setTimeout(()=>el.remove(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220);
+  setTimeout(()=>el.remove(), reducedMotion() ? 0 : 220);
 }
 function padFieldLabel(input){
   return (input.getAttribute('aria-label') || input.closest('.field')?.querySelector('label')?.textContent || '').trim();
@@ -1661,6 +1713,26 @@ function rollNumber(el, to, up = true){
   el.textContent = to;
   if(reducedMotion()) return;
   el.animate?.([{transform:`translateY(${up ? '45%' : '-45%'})`, opacity:.2}, {transform:'none', opacity:1}], {duration:220, easing:'cubic-bezier(.2,.8,.2,1)'});
+}
+/* An amount rolls: the old number slides out and the new one comes in from below (up) or above (down). */
+function rollInput(input, up){
+  if(reducedMotion() || !input.animate) return;
+  input.animate([{transform:`translateY(${up ? 55 : -55}%)`, opacity:0}, {transform:'none', opacity:1}], {duration:260, easing:'cubic-bezier(.32,.72,0,1)'});
+}
+/* A small green dot flies from the + to the Send bar, which answers with a little nod. */
+function flyToSend(from){
+  const bar = document.querySelector('.bottom-bar.show .send-btn');
+  if(!bar || !from?.isConnected || reducedMotion()) return;
+  const a = from.getBoundingClientRect(), b = bar.getBoundingClientRect();
+  if(!a.width || b.top < a.top) return;
+  const dot = document.createElement('i'); dot.className = 'fly-dot'; dot.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(dot);
+  const x0 = a.left + a.width / 2 - 6, y0 = a.top + a.height / 2 - 6, x1 = b.left + b.width / 2 - 6, y1 = b.top + 10;
+  const fly = dot.animate([
+    {transform:`translate(${x0}px,${y0}px) scale(1)`, opacity:1},
+    {transform:`translate(${(x0 + x1) / 2}px,${Math.min(y0, y1) - 40}px) scale(1.1)`, opacity:1, offset:.45},
+    {transform:`translate(${x1}px,${y1}px) scale(.5)`, opacity:.5}], {duration:560, easing:'cubic-bezier(.45,0,.25,1)'});
+  fly.finished.catch(()=>{}).then(()=>{ dot.remove(); bar.animate?.([{transform:'scale(1)'}, {transform:'scale(1.03)'}, {transform:'scale(1)'}], {duration:300, easing:'cubic-bezier(.32,.72,0,1)'}); });
 }
 function bump(el){
   if(!el) return;
@@ -1978,6 +2050,7 @@ async function pressKey(k){
   state.pinBusy = false;
   if(res.error){
     state.pinError = res.error==='cancelled'?'':res.error; updateLoginFeedback();
+    if(state.pinError) playError();
     if(LOGIN_ERRORS.includes(state.pinError)) haptic('error');
     setTimeout(()=>{ state.pinBuffer=''; if(!state.account) updateLoginFeedback(); }, 650);
     return;
@@ -2121,7 +2194,7 @@ function orderTabs(){
 }
 function renderOrder(){
   if(!state.items.length){
-    return emptyState(t('noItemsYet'));
+    return emptyState(t('noItemsYet'), canDo('catalog') ? 'item' : null);
   }
   const tabs = orderTabs();
   if(!tabs.some(tb=>tb.id===state.orderTab)) state.orderTab = 'all';
@@ -2223,11 +2296,11 @@ function refreshOrderView(pulseItemId=null){
   persistCartDraft();
   const quantitySelector = pulseItemId ? `#orderResults [data-qty="${CSS.escape(pulseItemId)}"]` : '#orderResults [data-qty]';
   document.querySelectorAll(quantitySelector).forEach(input=>{
-    const qty=state.cart[input.dataset.qty]||0, row=input.closest('.item-row');
+    const qty=state.cart[input.dataset.qty]||0, row=input.closest('.item-row'), was=Number(input.value)||0;
     input.value=qty;
+    if(pulseItemId && qty!==was) rollInput(input, qty>was);
     row.classList.toggle('has-qty',qty>0);
     row.querySelector('[data-dec]').disabled=qty===0;
-    if(pulseItemId) bump(input);
   });
   refreshCartSummary();
 }
@@ -2287,10 +2360,21 @@ function renderOrderBottomBar(){
 }
 /* Supplier tabs: hold one to pin it first or edit it, like an item. */
 const pinnedSuppliers = ()=>Array.isArray(state.settings?.pinnedSuppliers) ? state.settings.pinnedSuppliers.filter(id=>state.suppliers.some(s=>s.id === id)) : [];
+/* The tabs glide to their new places (pinned first) instead of jumping: each starts where it was. */
+function renderTabsGliding(){
+  const before = new Map([...document.querySelectorAll('[data-ordertab]')].map(b=>[b.dataset.ordertab, b.getBoundingClientRect().left]));
+  render();
+  if(reducedMotion()) return;
+  document.querySelectorAll('[data-ordertab]').forEach(b=>{
+    const was = before.get(b.dataset.ordertab); if(was === undefined) return;
+    const dx = was - b.getBoundingClientRect().left;
+    if(Math.abs(dx) > 1) b.animate?.([{transform:`translateX(${dx}px)`}, {transform:'none'}], {duration:460, easing:'cubic-bezier(.32,.72,0,1)'});
+  });
+}
 function togglePinSupplier(id){
   const now = pinnedSuppliers();
   setSetting('pinnedSuppliers', now.includes(id) ? now.filter(x=>x !== id) : [...now, id].slice(-30)).then(()=>{ if(state.view === 'order') render(); });
-  if(state.view === 'order') render();
+  if(state.view === 'order') renderTabsGliding();
 }
 function openSupplierTabMenu(tab){
   const id = tab.dataset.ordertab;
@@ -2403,6 +2487,9 @@ function attachOrderEvents(){
     // A cleared order starts over. An order being saved right now is kept; one whose save failed can be
     // cleared too (a save the server refuses would otherwise reopen on every Send), and Undo brings it back.
     const queue=state.queue?.record && state.queue.saveState!=='failed' ? null : state.queue;
+    // The chosen rows nod away one after another, top to bottom, while their amounts go to zero.
+    const rows=[...document.querySelectorAll('#orderResults .item-row.has-qty')].slice(0,14);
+    rows.forEach((row,i)=>row.animate?.([{transform:'none',opacity:1},{transform:'translateX(-14px) scale(.98)',opacity:.35,offset:.5},{transform:'none',opacity:1}],{duration:420,delay:i*40,easing:'cubic-bezier(.32,.72,0,1)'}));
     state.cart={};persistCartDraft();if(queue){state.queue=null;persistQueue();}refreshOrderView();paintDraftStatus();
     ricoReact('down');
     toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before;persistCartDraft();paintDraftStatus(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
@@ -2523,8 +2610,10 @@ function stepQty(btn){
   if(next === (state.cart[id]||0)) return;
   haptic('selection');
   const first = next > 0 && !cartCount();
+  const up = next > (state.cart[id]||0);
   state.cart[id] = next;
   refreshOrderView(id);
+  if(up && !stepHold?.n) flyToSend(btn);
   if(first) ricoReact();
 }
 /* Hold + or − and the number keeps going, faster the longer it's held. */
@@ -2848,7 +2937,7 @@ async function maybeFinishQueue(){
     persistCartDraft();
     if(state.view === 'queue') render();
     // Let the "All orders sent" card land before returning to the Order screen.
-    await new Promise(r=>setTimeout(r, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1300));
+    await new Promise(r=>setTimeout(r, reducedMotion() ? 0 : 1300));
     if(!apiSessionMatches(session) || state.queue !== queue) return;
     state.queue = null;
     if(state.view === 'queue') goView('order');
@@ -2912,7 +3001,7 @@ function renderHistory(){
     <button type="button" class="btn btn-ghost" id="monthsBtn">${ICON_CALENDAR}<span>${esc(t('monthsTitle'))}</span></button>
     ${state.account === 'rozha' ? `<button type="button" class="btn btn-ghost" id="ricoOrdersBtn">${ICON_SPARKLE}<span>${esc(t('ricoOrdersTitle'))}</span></button>` : ''}
   </div>`;
-  if(!entries.length) return tools + emptyState(t('noHistory'));
+  if(!entries.length) return tools + emptyState(t('noHistory'), 'order');
   let lastDay = '';
   const cards = entries.map(e=>{
     const day = dayLabel(e.day);
@@ -3290,7 +3379,6 @@ function openSupplierItemOrder(supplierId){
     onOpen:(box)=>{
       list=box.querySelector('#supplierItemOrderList');
       list.innerHTML=draft.map((item,index)=>`<div class="item-sort-row" data-item-id="${esc(item.id)}"><span class="item-sort-rank">${index+1}</span><span class="item-sort-name">${esc(item.name)}</span><button type="button" class="item-sort-handle" data-drag-handle aria-label="${esc(t('dragItem')(item.name))}" aria-keyshortcuts="ArrowUp ArrowDown" title="${esc(t('sortSupplierItems'))}"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="8" cy="5" r="1.6"/><circle cx="16" cy="5" r="1.6"/><circle cx="8" cy="12" r="1.6"/><circle cx="16" cy="12" r="1.6"/><circle cx="8" cy="19" r="1.6"/><circle cx="16" cy="19" r="1.6"/></svg></button></div>`).join('');
-      const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const rows=()=>[...list.querySelectorAll('.item-sort-row')];
       const updateRanks=()=>rows().forEach((row,index)=>{row.querySelector('.item-sort-rank').textContent=index+1;});
       const moveRow=(row,before)=>{
@@ -3298,7 +3386,7 @@ function openSupplierItemOrder(supplierId){
         const previous=new Map(rows().filter(el=>el!==row).map(el=>[el,el.getBoundingClientRect().top]));
         list.insertBefore(row,before);
         updateRanks();
-        if(reducedMotion) return;
+        if(reducedMotion()) return;
         rows().filter(el=>el!==row).forEach(el=>{
           const delta=previous.get(el)-el.getBoundingClientRect().top;
           if(Math.abs(delta)>1) el.animate([{transform:`translateY(${delta}px)`},{transform:'translateY(0)'}],{duration:230,easing:'cubic-bezier(.2,.8,.2,1)'});
@@ -3360,7 +3448,7 @@ function openSupplierItemOrder(supplierId){
           const end=row.getBoundingClientRect();
           const from=active.lastY-active.startY;
           const settle=()=>{ghost.remove();row.classList.remove('is-placeholder');};
-          if(reducedMotion) settle();
+          if(reducedMotion()) settle();
           else ghost.animate([{transform:`translate3d(0,${from}px,0)`,opacity:1},{transform:`translate3d(0,${end.top-active.ghostTop}px,0)`,opacity:0}],{duration:190,easing:'ease-out'}).finished.then(settle,settle);
         }
         active=null;
@@ -3596,7 +3684,7 @@ function fmtDateTime(iso){
    in Admin. */
 function renderAppearanceRow(){
   const dm=darkMode();
-  return `<div class="dark-row"><span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>`;
+  return `<div class="dark-row"><div class="set-head">${setIcon('darkMode')}<span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span></div><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>`;
 }
 function currentOutbox(){ return outbox().filter(j=>outboxJobAccount(j)===state.account); }
 function renderPendingSync(){
@@ -3616,9 +3704,9 @@ function renderSettings(){
 /* Help: tell Rozha about a problem (it arrives in Admin, Problems), and the keyboard shortcuts. */
 function renderHelpSettings(){
   return `<div class="section-title">${esc(t('settingsHelp'))}</div><div class="form-card settings-rows">
-    <button type="button" class="settings-row" id="reportProblemBtn">${ICON_REPORT}<span>${esc(t('reportProblem'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
-    <button type="button" class="settings-row" id="tourBtn">${ICON_SPARKLE}<span>${esc(t('tourBtn'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
-    <button type="button" class="settings-row" id="shortcutsBtn">${ICON_KEYBOARD}<span>${esc(t('keyboardShortcuts'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button></div>`;
+    <button type="button" class="settings-row" id="reportProblemBtn">${setIcon('report')}<span>${esc(t('reportProblem'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
+    <button type="button" class="settings-row" id="tourBtn">${setIcon('tour')}<span>${esc(t('tourBtn'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
+    <button type="button" class="settings-row" id="shortcutsBtn">${setIcon('shortcuts')}<span>${esc(t('keyboardShortcuts'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button></div>`;
 }
 function openReportProblem(){
   showFormModal({
@@ -3639,14 +3727,11 @@ function openReportProblem(){
    the privacy policy, and Sign Out at the very end, like the iPhone's Settings. */
 function renderPrivacySettings(){
   return `<div class="section-title">${esc(t('settingsPrivacy'))}</div><div class="form-card">
-    <label class="check-row preference-row"><input type="checkbox" id="aiConsent" ${aiConsented()?'checked':''}><span>${esc(t('aiSettingLabel'))}<small>${esc(t('aiSettingHint'))}</small></span></label>
-    <a class="settings-link" href="${esc(privacyHref())}">${ICON_SHIELD}<span>${esc(t('privacyPolicy'))}</span><i class="sheet-chevron" aria-hidden="true"></i></a></div>
+    <label class="check-row preference-row has-ico"><input type="checkbox" id="aiConsent" ${aiConsented()?'checked':''}>${setIcon('ai')}<span>${esc(t('aiSettingLabel'))}<small>${esc(t('aiSettingHint'))}</small></span></label>
+    <a class="settings-link" href="${esc(privacyHref())}">${setIcon('privacy')}<span>${esc(t('privacyPolicy'))}</span><i class="sheet-chevron" aria-hidden="true"></i></a></div>
     <div class="form-card settings-signout-card"><button type="button" class="settings-signout" id="settingsSignOut">${esc(t('logout'))}</button></div>`;
 }
 /* ============ Notifications (shown in Settings) ============ */
-/* The daily reminder starts as one switch. Turning it on opens the time,
-   a test button and Save; only Save turns it on for real (leaving without
-   saving keeps it off). Turning it off saves "off" straight away. */
 function reminderTimeLabel(time){
   const [h, m] = String(time || '09:00').split(':').map(Number);
   return dateFormatter({hour:'numeric', minute:'2-digit'}).format(new Date(2000, 0, 1, h, m));
@@ -3654,7 +3739,7 @@ function reminderTimeLabel(time){
 /* Notifications are this phone's: one switch. On, it gets Rico's messages and the suppliers' reminders. */
 function renderNotifSettings(){
   const note = !pushConfigured() ? t('notifNotConfigured') : !pushStatus.supported ? t('notifUnsupported') : '';
-  return `<div class="section-title">${esc(t('settingsGroup_notif'))}</div><div class="form-card">${note ? `<div class="notif-sub">${esc(note)}</div>` : `<label class="check-row preference-row"><input type="checkbox" id="pushSwitch" ${pushStatus.subscribed ? 'checked' : ''}><span>${esc(t('notifSwitch'))}<small>${esc(t('notifSwitchHint'))}</small></span></label>`}</div>`;
+  return `<div class="section-title">${esc(t('settingsGroup_notif'))}</div><div class="form-card">${note ? `<div class="notif-sub">${esc(note)}</div>` : `<label class="check-row preference-row has-ico"><input type="checkbox" id="pushSwitch" ${pushStatus.subscribed ? 'checked' : ''}>${setIcon('notif')}<span>${esc(t('notifSwitch'))}<small>${esc(t('notifSwitchHint'))}</small></span></label>`}</div>`;
 }
 function attachNotifEvents(){
   const box = document.getElementById('pushSwitch');
@@ -3663,6 +3748,8 @@ function attachNotifEvents(){
     if(!box.checked){ await disablePush(); render(); return; }
     const res = await enablePush();
     render();
+    // Turned on: the bell rings twice.
+    if(pushStatus.subscribed) document.querySelector('#pushSwitch ~ .set-ico svg')?.animate?.([0,16,-14,10,-6,3,0].map(r=>({transform:`rotate(${r}deg)`})), {duration:800, easing:'cubic-bezier(.25,.1,.25,1)'});
     await showPushEnableResult(res);
   };
 }
@@ -3700,3 +3787,56 @@ function attachSettingsEvents(){
 }
 
 boot();
+
+/* ============ Pull to refresh (phones) ============
+   At the top of a page, pull down: the page follows with growing resistance and Spark appears above it.
+   Let go past the line and Spark turns once while the newest orders, items and suppliers load; then the
+   page settles back. Inputs, sheets and the tab bar are left alone. */
+(function initPullRefresh(){
+  const LINE = 72;
+  let p = null;
+  const spark = ()=>{
+    let el = document.getElementById('pullSpark');
+    if(!el){ el = document.createElement('div'); el.id = 'pullSpark'; el.className = 'pull-spark'; el.setAttribute('aria-hidden', 'true'); el.innerHTML = typeof ricoFace === 'function' ? ricoFace('happy', 'pull-face') : ''; document.body.appendChild(el); }
+    return el;
+  };
+  document.addEventListener('touchstart', e=>{
+    if(!state.account || !inAppFrame() || e.touches.length !== 1) return;
+    const content = document.querySelector('.content');
+    if(!content || scrollBox().scrollTop > 0 || refreshBlocked() || e.target.closest('.bottom-stack,.topbar,input,textarea,select,.sel-sheet,.rico-composer,.data-table-scroll')) return;
+    p = {y:e.touches[0].clientY, x:e.touches[0].clientX, d:0, content, on:false};
+  }, {passive:true});
+  document.addEventListener('touchmove', e=>{
+    if(!p) return;
+    const dy = e.touches[0].clientY - p.y, dx = e.touches[0].clientX - p.x;
+    if(!p.on){
+      if(dy < 8 || Math.abs(dx) > dy || scrollBox().scrollTop > 0){ if(Math.abs(dx) > 10 || dy < -4) p = null; return; }
+      p.on = true;
+    }
+    p.d = rubberband(dy, window.innerHeight, .4);
+    p.content.style.transform = `translate3d(0,${p.d}px,0)`;
+    const s = spark(), k = Math.min(1, p.d / LINE);
+    s.style.opacity = String(k); s.style.transform = `translate(-50%, ${p.d * .45}px) scale(${.6 + k * .4}) rotate(${k * 180}deg)`;
+  }, {passive:true});
+  const end = async ()=>{
+    if(!p) return;
+    const {d, content, on} = p; p = null;
+    if(!on) return;
+    const s = spark(), back = ()=>{
+      content.animate?.([{transform:content.style.transform || 'none'}, {transform:'none'}], {duration:420, easing:'cubic-bezier(.32,.72,0,1)'});
+      content.style.transform = '';
+      s.animate?.([{opacity:s.style.opacity || 1}, {opacity:0}], {duration:240, fill:'forwards'}).finished.then(()=>s.remove(), ()=>s.remove());
+    };
+    if(d < LINE){ back(); return; }
+    haptic('light');
+    content.style.transform = `translate3d(0,${LINE * .8}px,0)`;
+    s.style.transform = `translate(-50%, ${LINE * .36}px) scale(1)`;
+    const turn = s.animate?.([{rotate:'0deg'}, {rotate:'360deg'}], {duration:800, iterations:Infinity, easing:'cubic-bezier(.45,0,.25,1)'});
+    const started = performance.now();
+    try{ await refreshData(true); }catch(_){ /* the page simply settles back */ }
+    await new Promise(r=>setTimeout(r, Math.max(0, 700 - (performance.now() - started))));
+    turn?.cancel(); back();
+  };
+  document.addEventListener('touchend', end);
+  document.addEventListener('touchcancel', end);
+})();

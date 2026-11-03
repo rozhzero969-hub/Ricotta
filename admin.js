@@ -65,9 +65,7 @@ const adminValue = key=>adminData.account === state.account ? adminData[key]?.da
 /* ---------- The Admin screen ---------- */
 function renderAdmin(){
   if(!isRozha()) return '';
-  // Ricotta's map card sits under the list, outside the part redrawn when new numbers arrive, so its
-  // picture and pin never restart.
-  return `<div class="admin-page"><div id="adminSlot">${renderAdminBody()}</div>${state.adminPage ? '' : adminPlaceCard()}</div>`;
+  return `<div class="admin-page"><div id="adminSlot">${renderAdminBody()}</div></div>`;
 }
 function renderAdminBody(){
   const page = ADMIN_PAGES.includes(state.adminPage) ? state.adminPage : null;
@@ -204,18 +202,12 @@ function renderAdminHome(){
     ${tile('devices', ADMIN_ICONS.devices, 'gray', String(signedIn.length), t('adDevicesSub')(active))}
     ${tile('access', ADMIN_ICONS.access, 'green', roles ? t('adOfTotal')(roles.yunis.length, roles.roles.length) : wait, t('adAccessSub'))}
     ${tile('catalog', ADMIN_ICONS.catalog, 'gray', toReview ? String(toReview) : t('adNone'), toReview ? t('adCatalogSub') : t('adCatalogClear'))}
-    ${tile('restore', ADMIN_ICONS.health, 'gray', t('restoreBtn'), t('adRestoreSub'))}
+    ${tile('restore', ADMIN_ICONS.restore, 'gray', t('adRestoreValue'), t('adRestoreSub'))}
     ${tile('pins', ADMIN_ICONS.pins, 'gray', t('adminPinChange'), `${accountLabel('rozha')} · ${accountLabel('yunis')}`)}
   </div>`;
 }
-/* Ricotta on the map in the picture's own colours, with Directions to the kitchen in Apple Maps. */
-function adminPlaceCard(){
-  return `<section class="ad-place" aria-label="${esc(t('ricottaName'))}">
-    <div class="ad-place-map rmap" role="img" aria-label="${esc(t('mapStill'))}">${ricottaMapWorld({green:false})}<div class="ad-place-shade"></div>${mapCredit()}</div>
-    <div class="ad-place-foot"><div class="ad-place-name"><b>${esc(t('ricottaName'))}</b><span>${esc(t('ricottaCity'))}</span></div>${mapDirections('ad-place-go')}</div>
-  </section>`;
-}
 const ADMIN_ICONS = {
+  restore:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4 4.5v3.7h3.7"/><path d="M12 8v4l2.6 1.6"/></svg>`,
   problems:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19Z"/><path d="M12 10v4.5"/><path d="M12 17.5h.01"/></svg>`,
   security:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6Z"/></svg>`,
   health:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>`,
@@ -266,7 +258,7 @@ function renderAdminProblems(){
       <div class="ad-card-actions">${g.rows.some(r=>!r.resolvedAt) ? `<button type="button" class="btn btn-ghost" data-problem-fix="${esc(g.fingerprint)}">${ICON_CHECK}<span>${esc(t('adMarkFixed'))}</span></button>` : `<span class="ad-fixed">${esc(t('adFixedAgo')(timeAgo(g.rows.map(r=>r.resolvedAt).sort().pop())))}</span>`}</div>
     </article>`;
   }).join('');
-  const empty = adminValue('problems') ? `<div class="ad-empty">${adminTile(ICON_CHECK, 'green')}<b>${esc(t(adminFilter.problems === 'fixed' ? 'adNoFixed' : 'adNoProblems'))}</b><p>${esc(t('adProblemsHint'))}</p></div>` : `<div class="ad-empty"><p>${esc(adminData.failed.problems ? t('loadFailed') : t('loading'))}</p></div>`;
+  const empty = adminValue('problems') ? `<div class="ad-empty">${adminTile(ICON_CHECK, 'green')}<b>${esc(t(adminFilter.problems === 'fixed' ? 'adNoFixed' : 'adNoProblems'))}</b><p>${esc(t('adProblemsHint'))}</p></div>` : (adminData.failed.problems ? `<div class="ad-empty"><p>${esc(t('loadFailed'))}</p></div>` : loadingLines());
   return `${adminHeading()}
     <div class="ad-toolbar"><div class="pill-seg" role="tablist" aria-label="${esc(t('adminPage_problems'))}">${[['open', t('adOpen')(new Set(open.map(p=>p.fingerprint)).size)], ['fixed', t('adFixed')]].map(([v, l])=>`<button type="button" role="tab" class="pill-seg-btn" data-problem-filter="${v}" aria-selected="${adminFilter.problems === v}">${esc(l)}</button>`).join('')}</div></div>
     ${cards || empty}
@@ -304,7 +296,7 @@ function securityEventText(e){
 }
 function renderAdminSecurity(){
   const sec = adminValue('security');
-  if(!sec) return `${adminHeading()}<div class="ad-empty"><p>${esc(adminData.failed.security ? t('loadFailed') : t('loading'))}</p></div>`;
+  if(!sec) return `${adminHeading()}${adminData.failed.security ? `<div class="ad-empty"><p>${esc(t('loadFailed'))}</p></div>` : loadingLines()}`;
   const locked = sec.lockedUntil && Date.parse(sec.lockedUntil) > Date.now();
   const icon = {signin:[ADMIN_ICONS.enter, 'green'], new_device:[ADMIN_ICONS.devices, 'red'], wrong_pin:[ADMIN_ICONS.wrong, 'gray'], locked:[ADMIN_ICONS.lock, 'red'],
     unlocked:[ADMIN_ICONS.unlock, 'green'], pin_changed:[ADMIN_ICONS.pins, 'gray'], roles_changed:[ADMIN_ICONS.person, 'gray']};
@@ -408,7 +400,7 @@ const ACCESS_SCREENS = [['history', NAV_ICONS.history], ['manage', NAV_ICONS.man
 const ACCESS_ACTIONS = ['catalog', 'send', 'exports', 'notify'];
 function renderAdminAccess(){
   const r = adminValue('roles');
-  if(!r) return `${adminHeading()}<div class="ad-empty"><p>${esc(adminData.failed.roles ? t('loadFailed') : t('loading'))}</p></div>`;
+  if(!r) return `${adminHeading()}${adminData.failed.roles ? `<div class="ad-empty"><p>${esc(t('loadFailed'))}</p></div>` : loadingLines()}`;
   const on = new Set(r.yunis);
   const row = (role, icon)=>{
     const needsManage = role === 'catalog' && !on.has('manage');
@@ -518,7 +510,7 @@ function renderAdminDevices(){
     </div>`;
   }).join('');
   return `${adminHeading()}
-    <div class="ad-stats"><div><b>${visible.length}</b><span>${esc(t('devicesLoggedInEyebrow'))}</span></div><div><b>${activeCount}</b><span>${esc(t('adActiveNow'))}</span></div><div><b class="ad-small">${esc(latest)}</b><span>${esc(t('adNewestVersion'))}</span></div></div>
+    <div class="ad-stats"><div><b>${visible.length}</b><span>${esc(t('devicesLoggedInEyebrow'))}</span></div><div><b>${activeCount}</b><span>${esc(t('adActiveNow'))}</span></div><div><b class="ad-small">${esc(String(latest).replace(/^\d{4}-/, ''))}</b><span>${esc(t('adNewestVersion'))}</span></div></div>
     ${others.length ? `<div class="dev-bulk"><button class="btn btn-ghost" id="devRefreshAllBtn">${ICON_REFRESH} ${t('refreshAllDevices')}</button><button class="btn btn-danger" id="devLogoutAllBtn">${t('logoutAllOthers')}</button></div>` : ''}
     ${cards || emptyState(t('noDevicesYet'))}<div class="dev-hint">${t('devicesHint')}</div>`;
 }
@@ -567,7 +559,7 @@ function timeAverage(p, period, today){
 }
 function renderAdminTime(){
   const u = adminValue('usage');
-  if(!u) return `${adminHeading()}<div class="ad-empty"><p>${esc(adminData.failed.usage ? t('loadFailed') : t('loading'))}</p></div>`;
+  if(!u) return `${adminHeading()}${adminData.failed.usage ? `<div class="ad-empty"><p>${esc(t('loadFailed'))}</p></div>` : loadingLines()}`;
   const period = TIME_PERIODS.includes(adminFilter.time) ? adminFilter.time : 'day';
   const today = /^\d{4}-\d{2}-\d{2}$/.test(String(u.today)) ? u.today : new Date().toISOString().slice(0,10);
   const people = ['rozha','yunis'].map(a=>(u.people || []).find(p=>p.account === a) || {account:a, today:0, week:0, month:0, last30:0, total:0});
@@ -628,7 +620,7 @@ function renderAdminRico(){
       <div class="ad-meter"><i style="--w:${hourPct}%"></i></div>
       ${days.length ? `<div class="ad-chart-head ad-gap"><b>${esc(t('adLast14'))}</b><span>${esc(t('adRicoTotal')(total))}</span></div><div class="ad-bars single" dir="ltr">${days.map(d=>`<div class="ad-bar" title="${esc(formatIraqDateTime(new Date(d.day + 'T09:00:00Z'), {weekday:'long', day:'numeric', month:'short'}))} · ${Number(d.calls) || 0}"><div class="ad-bar-pair"><i class="r" style="--h:${Math.round((Number(d.calls) || 0) / max * 100)}%"></i></div><small>${esc(formatIraqDateTime(new Date(d.day + 'T09:00:00Z'), {weekday:'narrow'}))}</small></div>`).join('')}</div>` : ''}
     </section>
-    <p class="ad-foot">${esc(t('adRicoFoot'))}</p>` : `<div class="ad-empty"><p>${esc(adminData.failed.rico ? t('loadFailed') : t('loading'))}</p></div>`}`;
+    <p class="ad-foot">${esc(t('adRicoFoot'))}</p>` : (adminData.failed.rico ? `<div class="ad-empty"><p>${esc(t('loadFailed'))}</p></div>` : loadingLines())}`;
 }
 /* Rico's AIs: Claude Haiku answers first, Google Gemini and Groq take over when it can't. For each: a switch
    (one that is off is skipped), whether it is connected, how it answered last, this month's replies and
@@ -636,7 +628,7 @@ function renderAdminRico(){
 const AI_BRAINS = {anthropic:{name:'Claude Haiku 5.5', role:'aiRoleMain'}, gemini:{name:'Google Gemini', role:'aiRoleBackup1'}, groq:{name:'Groq', role:'aiRoleBackup2'}};
 function renderAdminAi(){
   const a = adminValue('ai');
-  if(!a) return `<div class="section-title">${esc(t('aiBrainsTitle'))}</div><div class="ad-empty"><p>${esc(adminData.failed.ai ? t('loadFailed') : t('loading'))}</p></div>`;
+  if(!a) return `<div class="section-title">${esc(t('aiBrainsTitle'))}</div>${adminData.failed.ai ? `<div class="ad-empty"><p>${esc(t('loadFailed'))}</p></div>` : loadingLines(3)}`;
   const tone = st=>st === 'working' ? 'good' : st === 'busy' ? 'warn' : st ? 'bad' : 'idle';
   const row = b=>{
     const info = AI_BRAINS[b.id] || {name:b.id, role:''};

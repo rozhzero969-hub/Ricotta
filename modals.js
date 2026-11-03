@@ -138,7 +138,7 @@ function closeModal(target) {
     };
     const onEnd = event => { if (event.target.matches('.modal-box') && event.animationName === 'sheetOut') finish(); };
     let timer;
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) finish();
+    if (reducedMotion()) finish();
     else {
       overlay.classList.add('closing');
       overlay.addEventListener('animationend', onEnd);
@@ -372,7 +372,7 @@ function showFormModal(opts) {
       return;
     }
     // Saved: the button turns into a check for a moment, then the popup closes.
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (!reducedMotion()) {
       busy = true;
       action.classList.add('is-done');
       action.innerHTML = `${ICON_CHECK}<span class="sr-only">${esc(t('done'))}</span>`;
@@ -405,4 +405,59 @@ function showFormModal(opts) {
     dialog.focus(modalFocusable(box).find(control => control.matches('input, select, textarea, .sel-btn')));
   }
   return dialog.promise;
+}
+
+/* ---------- Sheets that rise from the bottom (pickers, the month report, Rico's chats) ----------
+   They leave the way they came: down, at the speed they were let go, while the dimming fades. On a
+   wide screen, where the sheet sits in the middle, it fades and shrinks a touch. The sheet is removed
+   only once it has gone. */
+const SHEET_EASE = 'cubic-bezier(.32,.72,0,1)';
+function sheetLeave(wrap, velocity = 0){
+  const panel = wrap.querySelector('.sel-panel'), scrim = wrap.querySelector('.sel-scrim');
+  wrap.classList.add('out'); wrap.inert = true;
+  if(!panel || !panel.animate){ wrap.remove(); return Promise.resolve(); }
+  const from = getComputedStyle(panel).transform, fromOpacity = getComputedStyle(scrim).opacity;
+  panel.getAnimations().forEach(a=>a.cancel()); scrim.getAnimations().forEach(a=>a.cancel());
+  const wide = matchMedia('(min-width:700px)').matches;
+  const start = from === 'none' ? 'translateY(0)' : from;
+  const moved = from === 'none' ? 0 : Number(from.match(/matrix\([^)]*,\s*([-\d.]+)\)$/)?.[1]) || 0;
+  const rest = Math.max(0, panel.offsetHeight + 24 - moved);
+  const ms = velocity > .3 ? Math.max(160, Math.min(320, rest / velocity)) : 300;
+  scrim.animate([{opacity:fromOpacity}, {opacity:0}], {duration:ms, easing:'ease', fill:'forwards'});
+  const out = wide ? panel.animate([{transform:start, opacity:1}, {transform:'scale(.96)', opacity:0}], {duration:220, easing:'ease', fill:'forwards'})
+    : panel.animate([{transform:start}, {transform:'translateY(calc(100% + 24px))'}], {duration:ms, easing:velocity > .3 ? 'cubic-bezier(.2,.6,.3,1)' : SHEET_EASE, fill:'forwards'});
+  return out.finished.catch(()=>{}).then(()=>wrap.remove());
+}
+/* Pull a sheet down by its handle or its title to close it. Past a third of its height, or with a flick,
+   it goes; otherwise it springs back. Lists inside keep scrolling as usual. */
+function attachSheetDrag(wrap, close){
+  const panel = wrap.querySelector('.sel-panel'), scrim = wrap.querySelector('.sel-scrim');
+  if(!panel || matchMedia('(min-width:700px)').matches) return;
+  let drag = null;
+  panel.addEventListener('pointerdown', e=>{
+    const handle = e.target.closest('.sel-grab,.sel-title,.rico-hist-top,.report-head,.streak-hero,.sheet-handle-zone');
+    if(!handle || e.target.closest('button,input,select,textarea,a') || e.button > 0) return;
+    drag = {id:e.pointerId, y:e.clientY, dy:0, t:performance.now(), v:0};
+    panel.setPointerCapture?.(e.pointerId);
+    panel.getAnimations().forEach(a=>{ a.commitStyles?.(); a.cancel(); });
+  });
+  panel.addEventListener('pointermove', e=>{
+    if(!drag || e.pointerId !== drag.id) return;
+    const raw = e.clientY - drag.y, now = performance.now();
+    // Upwards it barely moves, as if held by a spring.
+    const dy = raw >= 0 ? raw : -Math.sqrt(-raw) * 2;
+    drag.v = (dy - drag.dy) / Math.max(8, now - drag.t); drag.dy = dy; drag.t = now;
+    panel.style.transform = `translateY(${dy}px)`;
+    scrim.style.opacity = String(Math.max(0, 1 - Math.max(0, dy) / panel.offsetHeight));
+  });
+  const end = e=>{
+    if(!drag || e.pointerId !== drag.id) return;
+    const {dy, v} = drag; drag = null;
+    if(dy > panel.offsetHeight / 3 || (v > .5 && dy > 12)){ close(v); return; }
+    const from = panel.style.transform || 'translateY(0)';
+    panel.style.transform = ''; scrim.style.opacity = '';
+    panel.animate([{transform:from}, {transform:'translateY(0)'}], {duration:420, easing:SHEET_EASE});
+  };
+  panel.addEventListener('pointerup', end);
+  panel.addEventListener('pointercancel', end);
 }

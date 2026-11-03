@@ -18,7 +18,7 @@ function fixture(overrides = {}) {
     toast:(message)=>sandbox.notices.push(message), goView:view=>{sandbox.state.view=view;},
     apiSession:()=>sandbox.session, apiSessionMatches:s=>s?.token===sandbox.session?.token,
     signOut:()=>{sandbox.logouts++;sandbox.session=null;}, hardReload:async()=>sandbox.reloads++,
-    matchMedia:()=>({matches:true}), setTimeout:callback=>{callback();return 0;},
+    matchMedia:()=>({matches:true}), reducedMotion:()=>true, setTimeout:callback=>{callback();return 0;},
     api:async()=>({ok:true}), showForcedRefresh:async()=>true,
     sendOrQueue:async(_path,_method,record)=>{sandbox.writes.push(record);return 'saved';},
     ...overrides,

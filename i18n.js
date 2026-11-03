@@ -696,20 +696,20 @@ Object.assign(T.ar, {
 Object.assign(T.en, {
   accountMenu:n=>'Account: '+n, privacyPolicy:'Privacy Policy', settingsPrivacy:'Privacy',
   aiTitle:'Rico Uses AI', aiAllow:'Allow', aiNotNow:'Not Now',
-  aiBody:'To answer you, Rico sends what you write or say, and the order details he needs (items, suppliers and quantities), to Anthropic (Claude), Google Gemini or Groq. They use it only to write his reply. Your PIN is never sent.',
-  aiSettingLabel:'Rico’s AI', aiSettingHint:'Sends your messages to Google Gemini or Groq so Rico can answer. Off: Rico asks again before he answers.',
+  aiBody:'To answer you, Rico sends what you write, and the order details he needs (items, suppliers and quantities), to Anthropic (Claude), Google Gemini or Groq. They use it only to write his reply. Your PIN is never sent.',
+  aiSettingLabel:'Rico’s AI', aiSettingHint:'Sends your messages to Claude Haiku, Google Gemini or Groq so Rico can answer. Off: Rico asks again before he answers.',
 });
 Object.assign(T.ku, {
   accountMenu:n=>'هەژمار: '+n, privacyPolicy:'سیاسەتی تایبەتمەندی', settingsPrivacy:'تایبەتمەندی',
   aiTitle:'ریکۆ زیرەکی دەستکرد بەکاردەهێنێت', aiAllow:'ڕێگە بدە', aiNotNow:'ئێستا نا',
-  aiBody:'بۆ وەڵامدانەوەت، ریکۆ ئەوەی دەینووسیت یان دەیڵێیت، لەگەڵ ئەو زانیارییانەی داواکاری کە پێویستیەتی (کاڵاکان، دابینکەران و بڕەکان)، دەنێرێت بۆ Anthropic (Claude)، Google Gemini یان Groq. تەنها بۆ نووسینی وەڵامەکەی بەکاری دەهێنن. PIN ـەکەت هەرگیز نانێردرێت.',
-  aiSettingLabel:'زیرەکی دەستکردی ریکۆ', aiSettingHint:'نامەکانت دەنێرێت بۆ Google Gemini یان Groq تا ریکۆ وەڵام بداتەوە. کە کوژاوە بێت، ریکۆ پێش وەڵامدانەوە دووبارە دەپرسێت.',
+  aiBody:'بۆ وەڵامدانەوەت، ریکۆ ئەوەی دەینووسیت، لەگەڵ ئەو زانیارییانەی داواکاری کە پێویستیەتی (کاڵاکان، دابینکەران و بڕەکان)، دەنێرێت بۆ Anthropic (Claude)، Google Gemini یان Groq. تەنها بۆ نووسینی وەڵامەکەی بەکاری دەهێنن. PIN ـەکەت هەرگیز نانێردرێت.',
+  aiSettingLabel:'زیرەکی دەستکردی ریکۆ', aiSettingHint:'نامەکانت دەنێرێت بۆ Claude Haiku، Google Gemini یان Groq تا ریکۆ وەڵام بداتەوە. کە کوژاوە بێت، ریکۆ پێش وەڵامدانەوە دووبارە دەپرسێت.',
 });
 Object.assign(T.ar, {
   accountMenu:n=>'الحساب: '+n, privacyPolicy:'سياسة الخصوصية', settingsPrivacy:'الخصوصية',
   aiTitle:'ريكو يستخدم الذكاء الاصطناعي', aiAllow:'سماح', aiNotNow:'ليس الآن',
-  aiBody:'ليجيبك، يرسل ريكو ما تكتبه أو تقوله، وتفاصيل الطلبات التي يحتاجها (الأصناف والموردين والكميات)، إلى Anthropic (Claude) أو Google Gemini أو Groq. يستخدمونها فقط لكتابة رده. لا يُرسل رمز PIN أبدًا.',
-  aiSettingLabel:'ذكاء ريكو الاصطناعي', aiSettingHint:'يرسل رسائلك إلى Google Gemini أو Groq ليتمكن ريكو من الرد. عند الإيقاف، يسأل ريكو مرة أخرى قبل أن يرد.',
+  aiBody:'ليجيبك، يرسل ريكو ما تكتبه، وتفاصيل الطلبات التي يحتاجها (الأصناف والموردين والكميات)، إلى Anthropic (Claude) أو Google Gemini أو Groq. يستخدمونها فقط لكتابة رده. لا يُرسل رمز PIN أبدًا.',
+  aiSettingLabel:'ذكاء ريكو الاصطناعي', aiSettingHint:'يرسل رسائلك إلى Claude Haiku أو Google Gemini أو Groq ليتمكن ريكو من الرد. عند الإيقاف، يسأل ريكو مرة أخرى قبل أن يرد.',
 });
 
 /* The big October update (ROZH-22): the sign-in, Admin's dashboard and pages, Yunis's access, problem
@@ -751,7 +751,7 @@ Object.assign(T.en, {
   adThisMonthLabel:'This month', adSince:x=>'since '+x, adAllTime:'All time', adLast14:'Last 14 days', adByDevice:'By device',
   adLastActive:x=>'active '+x, adNoTimeYet:'No time counted yet. It starts adding up with this update.',
   adTimeFoot:'Counted while the app is on the screen and someone used it in the last 5 minutes. It keeps adding up every day and never resets, not even when someone signs out.',
-  adRicoChats:'Chats', adRicoVoice:'Voice messages', adRicoTokens:'Tokens used', adTokens:n=>n+' tokens', adTokensInOut:(i,o)=>i+' read · '+o+' written', adRicoWho:'Who used Rico', adRicoHour:'This hour',
+  adRicoChats:'Chats', adRicoTokens:'Tokens used', adTokens:n=>n+' tokens', adTokensInOut:(i,o)=>i+' read · '+o+' written', adRicoWho:'Who used Rico', adRicoHour:'This hour',
   adRicoHourValue:(n,m)=>n+' of '+m, adRicoTotal:n=>n+' this month', adRicoFoot:'Tokens are counted by Anthropic, Google and Groq in every reply Rico gets. Usage is kept for 90 days.',
   adLastOrdered:x=>'last ordered '+x, adNeverOrdered:'never ordered', adNothingHere:'Nothing here.',
   hcAnswered:ms=>'Answered in '+ms+' ms', hcServerHint:'Saves the orders and the catalog. Every phone uses it.', hcServerFix:'The app can’t reach the server. Check the connection, then Check Now.',
@@ -768,7 +768,7 @@ Object.assign(T.en, {
   hcWarnShort:n=>n+' to check',
   accessIntro:'Choose what Yunis can open and do. His phone follows within a minute, and the server checks it on every request.',
   accessScreens:'Screens', accessActions:'What he can do', accessOrderAlways:'Always on.', accessSaved:'Yunis’s access saved', accessStandard:'Use the Standard Set',
-  accessFoot:'The standard set is everything except Transfers. Rozha always has everything.', roleNeedsManage:'Turn on Manage first.',
+  accessFoot:'The standard set turns everything on. Rozha always has everything.', roleNeedsManage:'Turn on Manage first.',
   role_history:'History', role_historyHint:'Sent orders and the month’s report card.', role_manage:'Manage', role_manageHint:'See the items, suppliers and units.',
   role_record:'Record', role_recordHint:'Who changed what in the catalog.', 
   role_assistant:'Rico', role_assistantHint:'Chat with Rico and see his suggestions.', role_catalog:'Change the catalog', role_catalogHint:'Add, edit and delete items, suppliers and units.',
@@ -840,7 +840,7 @@ Object.assign(T.ku, {
   adThisMonthLabel:'ئەم مانگە', adSince:x=>'لە '+x+'ەوە', adAllTime:'هەموو کات', adLast14:'14 ڕۆژی ڕابردوو', adByDevice:'بەپێی ئامێر',
   adLastActive:x=>'چالاک '+x, adNoTimeYet:'هێشتا هیچ کاتێک نەژمێردراوە. لەگەڵ ئەم نوێکردنەوەیەدا دەست پێ دەکات.',
   adTimeFoot:'کاتێک دەژمێردرێت کە ئەپەکە لەسەر شاشەیە و کەسێک لە 5 خولەکی ڕابردوودا بەکاری هێنابێت. هەموو ڕۆژێک زیاد دەبێت و هەرگیز سفر نابێتەوە، تەنانەت کاتێک کەسێک دەچێتە دەرەوەش.',
-  adRicoChats:'گفتوگۆکان', adRicoVoice:'نامەی دەنگی', adRicoTokens:'تۆکنی بەکارهاتوو', adTokens:n=>n+' تۆکن', adTokensInOut:(i,o)=>i+' خوێندراو · '+o+' نووسراو', adRicoWho:'کێ ریکۆی بەکارهێنا', adRicoHour:'ئەم کاتژمێرە',
+  adRicoChats:'گفتوگۆکان', adRicoTokens:'تۆکنی بەکارهاتوو', adTokens:n=>n+' تۆکن', adTokensInOut:(i,o)=>i+' خوێندراو · '+o+' نووسراو', adRicoWho:'کێ ریکۆی بەکارهێنا', adRicoHour:'ئەم کاتژمێرە',
   adRicoHourValue:(n,m)=>n+' لە '+m, adRicoTotal:n=>n+' ئەم مانگە', adRicoFoot:'تۆکنەکان لە هەر وەڵامێکی ریکۆدا لەلایەن Anthropic، Google و Groq ەوە دەژمێردرێن. بەکارهێنان بۆ 90 ڕۆژ دەهێڵرێتەوە.',
   adLastOrdered:x=>'دوایین داواکردن '+x, adNeverOrdered:'هەرگیز داوا نەکراوە', adNothingHere:'هیچ شتێک لێرە نییە.',
   hcAnswered:ms=>'لە '+ms+' میلیچرکەدا وەڵامی دایەوە', hcServerHint:'داواکارییەکان و لیستی کاڵا پاشەکەوت دەکات. هەموو مۆبایلێک بەکاری دەهێنێت.', hcServerFix:'ئەپەکە ناگاتە سێرڤەر. پەیوەندییەکە بپشکنە، پاشان دووبارە بپشکنە.',
@@ -857,7 +857,7 @@ Object.assign(T.ku, {
   hcWarnShort:n=>n+' بۆ پشکنین',
   accessIntro:'هەڵبژێرە یونس چی بکاتەوە و چی بکات. مۆبایلەکەی لە ماوەی یەک خولەکدا جێبەجێی دەکات، و سێرڤەرەکە لە هەموو داواکارییەکدا دەیپشکنێت.',
   accessScreens:'شاشەکان', accessActions:'ئەوەی دەتوانێت بیکات', accessOrderAlways:'هەمیشە چالاکە.', accessSaved:'دەسەڵاتەکانی یونس پاشەکەوت کران', accessStandard:'بەکارهێنانی کۆمەڵە ئاساییەکە',
-  accessFoot:'کۆمەڵە ئاساییەکە هەموو شتێکە جگە لە گواستنەوە. ڕۆژا هەمیشە هەموو شتێکی هەیە.', roleNeedsManage:'سەرەتا بەڕێوەبردن چالاک بکە.',
+  accessFoot:'کۆمەڵە ئاساییەکە هەموو شتێک دادەگیرسێنێت. ڕۆژا هەمیشە هەموو شتێکی هەیە.', roleNeedsManage:'سەرەتا بەڕێوەبردن چالاک بکە.',
   role_history:'مێژوو', role_historyHint:'داواکارییە نێردراوەکان و کارتی ڕاپۆرتی مانگ.', role_manage:'بەڕێوەبردن', role_manageHint:'بینینی کاڵاکان، دابینکەران و یەکەکان.',
   role_record:'تۆمار', role_recordHint:'کێ چی لە لیستی کاڵادا گۆڕیوە.', 
   role_assistant:'ریکۆ', role_assistantHint:'گفتوگۆ لەگەڵ ریکۆ و بینینی پێشنیارەکانی.', role_catalog:'گۆڕینی لیستی کاڵا', role_catalogHint:'زیادکردن، دەستکاریکردن و سڕینەوەی کاڵا، دابینکەر و یەکە.',
@@ -925,7 +925,7 @@ Object.assign(T.ar, {
   adThisMonthLabel:'هذا الشهر', adSince:x=>'منذ '+x, adAllTime:'كل الوقت', adLast14:'آخر 14 يومًا', adByDevice:'حسب الجهاز',
   adLastActive:x=>'نشط '+x, adNoTimeYet:'لم يُحسب أي وقت بعد. يبدأ الحساب مع هذا التحديث.',
   adTimeFoot:'يُحسب ما دام التطبيق على الشاشة واستخدمه أحد خلال آخر 5 دقائق. يزداد كل يوم ولا يُصفّر أبدًا، حتى عند تسجيل الخروج.',
-  adRicoChats:'المحادثات', adRicoVoice:'الرسائل الصوتية', adRicoTokens:'الرموز المستخدمة', adTokens:n=>n+' رمز', adTokensInOut:(i,o)=>i+' مقروء · '+o+' مكتوب', adRicoWho:'من استخدم ريكو', adRicoHour:'هذه الساعة',
+  adRicoChats:'المحادثات', adRicoTokens:'الرموز المستخدمة', adTokens:n=>n+' رمز', adTokensInOut:(i,o)=>i+' مقروء · '+o+' مكتوب', adRicoWho:'من استخدم ريكو', adRicoHour:'هذه الساعة',
   adRicoHourValue:(n,m)=>n+' من '+m, adRicoTotal:n=>n+' هذا الشهر', adRicoFoot:'تحسب Anthropic وGoogle وGroq الرموز في كل رد يتلقاه ريكو. يُحتفظ بالاستخدام 90 يومًا.',
   adLastOrdered:x=>'آخر طلب '+x, adNeverOrdered:'لم يُطلب أبدًا', adNothingHere:'لا شيء هنا.',
   hcAnswered:ms=>'أجاب خلال '+ms+' ملّي ثانية', hcServerHint:'يحفظ الطلبات والقائمة. يستخدمه كل هاتف.', hcServerFix:'لا يصل التطبيق إلى الخادم. تحقق من الاتصال، ثم افحص الآن.',
@@ -942,7 +942,7 @@ Object.assign(T.ar, {
   hcWarnShort:n=>n+' للفحص',
   accessIntro:'اختر ما يمكن ليونس فتحه وفعله. يتبع هاتفه ذلك خلال دقيقة، ويتحقق الخادم منه في كل طلب.',
   accessScreens:'الشاشات', accessActions:'ما يمكنه فعله', accessOrderAlways:'مفعّل دائمًا.', accessSaved:'حُفظت صلاحيات يونس', accessStandard:'استخدام المجموعة القياسية',
-  accessFoot:'المجموعة القياسية هي كل شيء ما عدا النقل. لدى روژا كل شيء دائمًا.', roleNeedsManage:'فعّل الإدارة أولًا.',
+  accessFoot:'المجموعة القياسية تشغّل كل شيء. لدى روژا كل شيء دائمًا.', roleNeedsManage:'فعّل الإدارة أولًا.',
   role_history:'السجل', role_historyHint:'الطلبات المرسلة وبطاقة تقرير الشهر.', role_manage:'الإدارة', role_manageHint:'رؤية المواد والموردين والوحدات.',
   role_record:'السجلّ', role_recordHint:'من غيّر ماذا في القائمة.', 
   role_assistant:'ريكو', role_assistantHint:'الدردشة مع ريكو ورؤية اقتراحاته.', role_catalog:'تعديل القائمة', role_catalogHint:'إضافة وتعديل وحذف المواد والموردين والوحدات.',
@@ -985,8 +985,8 @@ Object.assign(T.en, {
   adChart_day:'Last 14 days', adChart_week:'Last 8 weeks', adChart_month:'Last 6 months',
   loginTitle:'Sign in', loginPinSub:'Enter your 6-digit PIN.', loginKeysHint:'Just start typing. Esc clears it.',
   loginTagline:'Daily ordering for the Ricotta kitchen.', ricottaPlace:'Ricotta Restaurant · Erbil',
-  ricottaName:'Ricotta Restaurant', ricottaCity:'Erbil, Iraq', directions:'Directions', mapPinLabel:'Ricotta',
-  mapLabel:'Map around Ricotta. Drag to look around.', mapStill:'Map of the street around Ricotta Restaurant', mapRecenter:'Back to Ricotta',
+  directions:'Directions', mapPinLabel:'Ricotta',
+  mapLabel:'Map around Ricotta. Drag to look around.', mapRecenter:'Back to Ricotta',
   welcomeBackLine:'Welcome back,', welcomeOpening:'Opening Ricotta',
 });
 Object.assign(T.ku, {
@@ -996,8 +996,8 @@ Object.assign(T.ku, {
   adChart_day:'14 ڕۆژی ڕابردوو', adChart_week:'8 هەفتەی ڕابردوو', adChart_month:'6 مانگی ڕابردوو',
   loginTitle:'چوونەژوورەوە', loginPinSub:'کۆدە 6 ژمارەییەکەت بنووسە.', loginKeysHint:'تەنها دەست بە نووسین بکە. Esc دەیسڕێتەوە.',
   loginTagline:'داواکاری ڕۆژانە بۆ چێشتخانەی ریکۆتا.', ricottaPlace:'چێشتخانەی ریکۆتا · هەولێر',
-  ricottaName:'چێشتخانەی ریکۆتا', ricottaCity:'هەولێر، عێراق', directions:'ڕێنوێنی', mapPinLabel:'ریکۆتا',
-  mapLabel:'نەخشەی دەوروبەری ریکۆتا. ڕایبکێشە بۆ سەیرکردنی دەوروبەر.', mapStill:'نەخشەی شەقامی دەوروبەری چێشتخانەی ریکۆتا', mapRecenter:'گەڕانەوە بۆ ریکۆتا',
+  directions:'ڕێنوێنی', mapPinLabel:'ریکۆتا',
+  mapLabel:'نەخشەی دەوروبەری ریکۆتا. ڕایبکێشە بۆ سەیرکردنی دەوروبەر.', mapRecenter:'گەڕانەوە بۆ ریکۆتا',
   welcomeBackLine:'بەخێربێیتەوە،', welcomeOpening:'ریکۆتا دەکرێتەوە',
 });
 Object.assign(T.ar, {
@@ -1007,8 +1007,8 @@ Object.assign(T.ar, {
   adChart_day:'آخر 14 يومًا', adChart_week:'آخر 8 أسابيع', adChart_month:'آخر 6 أشهر',
   loginTitle:'تسجيل الدخول', loginPinSub:'أدخل رمزك المكوّن من 6 أرقام.', loginKeysHint:'ابدأ الكتابة فقط. Esc يمسحه.',
   loginTagline:'الطلبات اليومية لمطبخ ريكوتا.', ricottaPlace:'مطعم ريكوتا · أربيل',
-  ricottaName:'مطعم ريكوتا', ricottaCity:'أربيل، العراق', directions:'الاتجاهات', mapPinLabel:'ريكوتا',
-  mapLabel:'خريطة حول ريكوتا. اسحب للتجول.', mapStill:'خريطة الشارع حول مطعم ريكوتا', mapRecenter:'العودة إلى ريكوتا',
+  directions:'الاتجاهات', mapPinLabel:'ريكوتا',
+  mapLabel:'خريطة حول ريكوتا. اسحب للتجول.', mapRecenter:'العودة إلى ريكوتا',
   welcomeBackLine:'أهلًا بعودتك،', welcomeOpening:'نفتح ريكوتا',
 });
 
@@ -1043,7 +1043,7 @@ Object.assign(T.en, {
   aiNotConnected:'Not connected', aiNotUsedYet:'Connected, not used yet', aiState_working:'Working', aiState_key_rejected:'Key rejected', aiState_no_funds:'Out of credit',
   aiState_busy:'Busy', aiState_failed:'Problem', aiState_model_unavailable:'Model unavailable', aiState_not_configured:'Not connected',
   aiReplies:n=>n===1?'1 reply this month':n+' replies this month', aiFreePlan:'Free plan',
-  aiBrainsFoot:'Haiku answers first. If it can’t (no credit, a rejected key, busy or slow), Gemini answers, and Groq when Gemini is busy. Voice messages are read by Gemini or Groq.',
+  aiBrainsFoot:'Haiku answers first. If it can’t (no credit, a rejected key, busy or slow), Gemini answers, and Groq when Gemini is busy.',
 });
 Object.assign(T.ku, {
   deletedElsewhere:'ئەمە لە ئامێرێکی تر سڕایەوە، بۆیە پاشەکەوت ناکرێت.',
@@ -1051,7 +1051,7 @@ Object.assign(T.ku, {
   aiNotConnected:'پەیوەست نییە', aiNotUsedYet:'پەیوەستە، هێشتا بەکارنەهاتووە', aiState_working:'کار دەکات', aiState_key_rejected:'کلیلەکە ڕەتکرایەوە', aiState_no_funds:'باڵانس نەماوە',
   aiState_busy:'سەرقاڵە', aiState_failed:'کێشە', aiState_model_unavailable:'مۆدێلەکە بەردەست نییە', aiState_not_configured:'پەیوەست نییە',
   aiReplies:n=>n+' وەڵام ئەم مانگە', aiFreePlan:'پلانی بێبەرامبەر',
-  aiBrainsFoot:'Haiku یەکەم وەڵام دەداتەوە. ئەگەر نەتوانێت (باڵانس نەماوە، کلیل ڕەتکراوە، سەرقاڵ یان خاو)، Gemini وەڵام دەداتەوە، و Groq کاتێک Gemini سەرقاڵە. نامە دەنگییەکان Gemini یان Groq دەیانخوێننەوە.',
+  aiBrainsFoot:'Haiku یەکەم وەڵام دەداتەوە. ئەگەر نەتوانێت (باڵانس نەماوە، کلیل ڕەتکراوە، سەرقاڵ یان خاو)، Gemini وەڵام دەداتەوە، و Groq کاتێک Gemini سەرقاڵە.',
 });
 Object.assign(T.ar, {
   deletedElsewhere:'حُذف هذا من جهاز آخر، لذا لا يمكن حفظه.',
@@ -1059,7 +1059,7 @@ Object.assign(T.ar, {
   aiNotConnected:'غير متصل', aiNotUsedYet:'متصل، لم يُستخدم بعد', aiState_working:'يعمل', aiState_key_rejected:'المفتاح مرفوض', aiState_no_funds:'نفد الرصيد',
   aiState_busy:'مشغول', aiState_failed:'مشكلة', aiState_model_unavailable:'النموذج غير متاح', aiState_not_configured:'غير متصل',
   aiReplies:n=>n+' رد هذا الشهر', aiFreePlan:'خطة مجانية',
-  aiBrainsFoot:'يجيب Haiku أولًا. إن لم يستطع (نفد الرصيد، أو رُفض المفتاح، أو مشغول، أو بطيء) يجيب Gemini، ثم Groq عندما يكون Gemini مشغولًا. تُقرأ الرسائل الصوتية بواسطة Gemini أو Groq.',
+  aiBrainsFoot:'يجيب Haiku أولًا. إن لم يستطع (نفد الرصيد، أو رُفض المفتاح، أو مشغول، أو بطيء) يجيب Gemini، ثم Groq عندما يكون Gemini مشغولًا.',
 });
 
 /* The big update: history wipe day and the Features settings. */
@@ -1145,7 +1145,7 @@ Object.assign(T.en, {
   inboxTitle:'Rico\'s messages', inboxNone:'No messages.', inboxSeeAll:n=>'See all '+n,
   
   tourBtn:'Show the tour', tourNext:'Next', tourDone:'Start', tour1T:'Make an order', tour1:'Choose amounts on the Order screen. Swipe an item to add its usual amount.', tour2T:'Send it', tour2:'Send opens WhatsApp with each supplier\'s order, ready to go.', tour3T:'Meet Rico', tour3:'Tap the spark at the top. He prepares orders, checks them and answers questions.', tour4T:'You\'re ready', tour4:'Everything you send is saved in History.',
-  adminPage_restore:'Restore', adRestoreSub:'The last 7 days', restoreHint:'The server keeps a copy of the kitchen\'s data each day for 7 days. Restoring brings back what was deleted since that day. Nothing that exists now is changed.', restoreBtn:'Restore', restoreNone:'The first copy is made tonight.', restoreCounts:(o,i,s)=>o+' orders, '+i+' items, '+s+' suppliers', restoreConfirm:'This brings back anything deleted since this day. Enter your PIN to continue.', restorePin:'Your PIN', restoreDone:(o,i,s)=>'Brought back '+o+' orders, '+i+' items and '+s+' suppliers',
+  adminPage_restore:'Restore', adRestoreSub:'The last 7 days', adRestoreValue:'Deleted items', restoreHint:'The server keeps a copy of the kitchen\'s data each day for 7 days. Restoring brings back what was deleted since that day. Nothing that exists now is changed.', restoreBtn:'Restore', restoreNone:'The first copy is made tonight.', restoreCounts:(o,i,s)=>o+' orders, '+i+' items, '+s+' suppliers', restoreConfirm:'This brings back anything deleted since this day. Enter your PIN to continue.', restorePin:'Your PIN', restoreDone:(o,i,s)=>'Brought back '+o+' orders, '+i+' items and '+s+' suppliers',
 });
 Object.assign(T.ku, {
   dayOrderBtn:d=>'ئاسایی '+d, dayOrderLoaded:n=>n+' کاڵای ئاسایی زیاد کرا',
@@ -1171,7 +1171,7 @@ Object.assign(T.ku, {
   inboxTitle:'نامەکانی ریکۆ', inboxNone:'هیچ نامەیەک نییە.', inboxSeeAll:n=>'هەر '+n+' نامە ببینە',
   
   tourBtn:'گەشتەکە پیشان بدە', tourNext:'دواتر', tourDone:'دەستپێک', tour1T:'داواکارییەک دروست بکە', tour1:'بڕەکان لە شاشەی داواکاری هەڵبژێرە. کاڵایەک ڕابکێشە بۆ زیادکردنی بڕی ئاسایی.', tour2T:'بینێرە', tour2:'ناردن واتسئاپ دەکاتەوە بە داواکاری هەر دابینکەرێک، ئامادە.', tour3T:'ریکۆ بناسە', tour3:'لەسەرەوە دەست لە ئەستێرەکە بدە. داواکاری ئامادە دەکات، دەیپشکنێت و وەڵام دەداتەوە.', tour4T:'ئامادەیت', tour4:'هەرچی دەینێریت لە مێژوودا پاشەکەوت دەکرێت.',
-  adminPage_restore:'گەڕاندنەوە', adRestoreSub:'7 ڕۆژی ڕابردوو', restoreHint:'سێرڤەر هەر ڕۆژێک کۆپییەک لە داتای چێشتخانە بۆ 7 ڕۆژ هەڵدەگرێت. گەڕاندنەوە ئەوە دەهێنێتەوە کە لەو ڕۆژەوە سڕاوەتەوە. هیچ شتێکی ئێستا ناگۆڕێت.', restoreBtn:'گەڕاندنەوە', restoreNone:'یەکەم کۆپی ئەمشەو دروست دەکرێت.', restoreCounts:(o,i,s)=>o+' داواکاری، '+i+' کاڵا، '+s+' دابینکەر', restoreConfirm:'ئەمە هەرچی لەم ڕۆژەوە سڕاوەتەوە دەیهێنێتەوە. PIN ەکەت بنووسە بۆ بەردەوامبوون.', restorePin:'PIN ەکەت', restoreDone:(o,i,s)=>o+' داواکاری، '+i+' کاڵا و '+s+' دابینکەر گەڕێندرانەوە',
+  adminPage_restore:'گەڕاندنەوە', adRestoreSub:'7 ڕۆژی ڕابردوو', adRestoreValue:'سڕاوەکان', restoreHint:'سێرڤەر هەر ڕۆژێک کۆپییەک لە داتای چێشتخانە بۆ 7 ڕۆژ هەڵدەگرێت. گەڕاندنەوە ئەوە دەهێنێتەوە کە لەو ڕۆژەوە سڕاوەتەوە. هیچ شتێکی ئێستا ناگۆڕێت.', restoreBtn:'گەڕاندنەوە', restoreNone:'یەکەم کۆپی ئەمشەو دروست دەکرێت.', restoreCounts:(o,i,s)=>o+' داواکاری، '+i+' کاڵا، '+s+' دابینکەر', restoreConfirm:'ئەمە هەرچی لەم ڕۆژەوە سڕاوەتەوە دەیهێنێتەوە. PIN ەکەت بنووسە بۆ بەردەوامبوون.', restorePin:'PIN ەکەت', restoreDone:(o,i,s)=>o+' داواکاری، '+i+' کاڵا و '+s+' دابینکەر گەڕێندرانەوە',
 });
 Object.assign(T.ar, {
   dayOrderBtn:d=>'المعتاد ليوم '+d, dayOrderLoaded:n=>'أُضيف '+n+' من الأصناف المعتادة',
@@ -1197,23 +1197,35 @@ Object.assign(T.ar, {
   inboxTitle:'رسائل ريكو', inboxNone:'لا توجد رسائل.', inboxSeeAll:n=>'عرض الكل ('+n+')',
   
   tourBtn:'اعرض الجولة', tourNext:'التالي', tourDone:'ابدأ', tour1T:'أنشئ طلبًا', tour1:'اختر الكميات في شاشة الطلب. اسحب صنفًا لإضافة كميته المعتادة.', tour2T:'أرسله', tour2:'يفتح الإرسال واتساب بطلب كل مورد جاهزًا.', tour3T:'تعرّف على ريكو', tour3:'اضغط النجمة في الأعلى. يجهّز الطلبات ويفحصها ويجيب عن الأسئلة.', tour4T:'أنت جاهز', tour4:'كل ما ترسله يُحفظ في السجل.',
-  adminPage_restore:'الاستعادة', adRestoreSub:'آخر 7 أيام', restoreHint:'يحتفظ الخادم بنسخة من بيانات المطبخ كل يوم لمدة 7 أيام. تعيد الاستعادة ما حُذف منذ ذلك اليوم، ولا تغيّر شيئًا موجودًا.', restoreBtn:'استعادة', restoreNone:'تُنشأ أول نسخة الليلة.', restoreCounts:(o,i,s)=>o+' طلبًا، '+i+' صنفًا، '+s+' موردًا', restoreConfirm:'سيعيد هذا كل ما حُذف منذ هذا اليوم. أدخل رمزك للمتابعة.', restorePin:'رمزك', restoreDone:(o,i,s)=>'أُعيد '+o+' طلبًا و'+i+' صنفًا و'+s+' موردًا',
+  adminPage_restore:'الاستعادة', adRestoreSub:'آخر 7 أيام', adRestoreValue:'المحذوفات', restoreHint:'يحتفظ الخادم بنسخة من بيانات المطبخ كل يوم لمدة 7 أيام. تعيد الاستعادة ما حُذف منذ ذلك اليوم، ولا تغيّر شيئًا موجودًا.', restoreBtn:'استعادة', restoreNone:'تُنشأ أول نسخة الليلة.', restoreCounts:(o,i,s)=>o+' طلبًا، '+i+' صنفًا، '+s+' موردًا', restoreConfirm:'سيعيد هذا كل ما حُذف منذ هذا اليوم. أدخل رمزك للمتابعة.', restorePin:'رمزك', restoreDone:(o,i,s)=>'أُعيد '+o+' طلبًا و'+i+' صنفًا و'+s+' موردًا',
 });
 
 /* The clean-up: settings in sections, one notification switch, AI switches, pinned suppliers. */
 Object.assign(T.en, {
   chooseUnit:"Choose a unit",
+  emptyStartOrder:'Start an order',
+  settingsGroup_sound:'Sounds',
+  feat_soundRico:'When Rico replies', feat_soundRico_hint:'Two soft notes when his answer arrives.',
+  feat_soundError:'When something goes wrong', feat_soundError_hint:'Two low notes for a wrong PIN or a save that failed.',
+  feat_soundMilestone:'Milestones', feat_soundMilestone_hint:'A short fanfare for a streak goal or a kitchen award.',
+  feat_soundUndo:'Undo', feat_soundUndo_hint:'The order chime going back down when you undo.',
   settingsGroup_notif:'Notifications', settingsGroup_order:'Ordering', settingsGroup_rico:'Rico', settingsGroup_look:'Look',
   notifSwitch:'Notifications on this phone', notifSwitchHint:'Rico\'s messages and the suppliers\' reminders. This switch is for this phone only.',
   feat_showLastQty:'Show the last amount', feat_showLastQty_hint:'Each item shows how much you ordered last time.',
   feat_compactRows:'Compact rows', feat_compactRows_hint:'Fits more items on the screen.',
-  feat_soundQty:'Sound when you change an amount', feat_soundQty_hint:'A soft tap each time you press + or −.',
+  feat_soundQty:'Sound when you change an amount', feat_soundQty_hint:'A soft tap each time you press\u00a0+ or\u00a0−.',
   feat_soundSent:'Sound when orders are sent', feat_soundSent_hint:'A short chime once every supplier\'s order has gone.',
   aiUse:n=>'Use '+n, aiSwitchedOff:'Switched off', aiTurnedOn:'Switched on. Rico can use it again.', aiTurnedOff:'Switched off. Rico skips it from now on.',
   pinSupplier:'Pin supplier', unpinSupplier:'Unpin supplier', sheetAskAbout:'Ask me anything about this order.',
 });
 Object.assign(T.ku, {
   chooseUnit:"یەکە هەڵبژێرە",
+  emptyStartOrder:'دەست بە داواکارییەک بکە',
+  settingsGroup_sound:'دەنگەکان',
+  feat_soundRico:'کاتێک ریکۆ وەڵام دەداتەوە', feat_soundRico_hint:'دوو دەنگی نەرم کاتێک وەڵامەکەی دێت.',
+  feat_soundError:'کاتێک شتێک هەڵە دەبێت', feat_soundError_hint:'دوو دەنگی نزم بۆ کۆدی هەڵە یان پاشەکەوتێک کە سەرنەکەوت.',
+  feat_soundMilestone:'دەستکەوتەکان', feat_soundMilestone_hint:'دەنگێکی کورتی ئاهەنگ بۆ ئامانجی زنجیرە یان خەڵاتی چێشتخانە.',
+  feat_soundUndo:'گەڕاندنەوە', feat_soundUndo_hint:'زەنگی داواکاری بە پێچەوانە کاتێک دەیگەڕێنیتەوە.',
   settingsGroup_notif:'ئاگادارکردنەوەکان', settingsGroup_order:'داواکاری', settingsGroup_rico:'ریکۆ', settingsGroup_look:'شێوە',
   notifSwitch:'ئاگادارکردنەوە لەم مۆبایلەدا', notifSwitchHint:'نامەکانی ریکۆ و بیرخستنەوەی دابینکەران. ئەم دوگمەیە تەنها بۆ ئەم مۆبایلەیە.',
   feat_showLastQty:'دوایین بڕ پیشان بدە', feat_showLastQty_hint:'هەر کاڵایەک پیشانی دەدات دوایین جار چەندت داوا کرد.',
@@ -1225,6 +1237,12 @@ Object.assign(T.ku, {
 });
 Object.assign(T.ar, {
   chooseUnit:"اختر وحدة",
+  emptyStartOrder:'ابدأ طلبًا',
+  settingsGroup_sound:'الأصوات',
+  feat_soundRico:'عندما يرد ريكو', feat_soundRico_hint:'نغمتان ناعمتان عند وصول رده.',
+  feat_soundError:'عندما يحدث خطأ', feat_soundError_hint:'نغمتان منخفضتان لرمز خاطئ أو حفظ لم ينجح.',
+  feat_soundMilestone:'الإنجازات', feat_soundMilestone_hint:'نغمة احتفال قصيرة لهدف السلسلة أو جائزة المطبخ.',
+  feat_soundUndo:'التراجع', feat_soundUndo_hint:'رنة الطلب نازلة عند التراجع.',
   settingsGroup_notif:'الإشعارات', settingsGroup_order:'الطلب', settingsGroup_rico:'ريكو', settingsGroup_look:'المظهر',
   notifSwitch:'الإشعارات على هذا الهاتف', notifSwitchHint:'رسائل ريكو وتذكيرات الموردين. هذا المفتاح لهذا الهاتف فقط.',
   feat_showLastQty:'إظهار آخر كمية', feat_showLastQty_hint:'يعرض كل صنف الكمية التي طلبتها آخر مرة.',

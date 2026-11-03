@@ -32,7 +32,12 @@ function paintStreakChip(pop){
   const chip = document.getElementById('streakChip');
   chip.onclick = openStreakSheet;
   if(pop) ricoReact();
-  if(pop && !matchMedia('(prefers-reduced-motion: reduce)').matches){ chip.classList.add('ignite'); setTimeout(()=>chip.classList.remove('ignite'), 1200); }
+  if(pop && !reducedMotion()){
+    chip.classList.add('ignite'); setTimeout(()=>chip.classList.remove('ignite'), 1200);
+    // The flame flares up and the new count rolls in from below.
+    chip.querySelector('.flame')?.animate?.([{transform:'scale(1) rotate(0)'}, {transform:'scale(1.3) rotate(-6deg)'}, {transform:'scale(1.15) rotate(5deg)'}, {transform:'none'}], {duration:700, easing:'cubic-bezier(.32,.72,0,1)'});
+    chip.querySelector('b')?.animate?.([{transform:'translateY(60%)', opacity:0}, {transform:'none', opacity:1}], {duration:360, delay:120, easing:'cubic-bezier(.32,.72,0,1)', fill:'backwards'});
+  }
 }
 function nextGoal(n){ return STREAK_GOALS.find(g=>g > n) || (Math.floor(n / 100) + 1) * 100; }
 /* A bottom sheet in the app's own style. Returns {el, close}. */
@@ -44,17 +49,17 @@ function openKitchenSheet(cls, html, label){
   wrap.innerHTML = `<div class="sel-scrim"></div><div class="sel-panel" role="dialog" aria-modal="true" aria-label="${esc(label)}"><div class="sel-grab"></div>${html}</div>`;
   document.body.appendChild(wrap);
   let closed = false;
-  const close = ()=>{
+  const close = (velocity = 0)=>{
     if(closed) return; closed = true;
     if(activeSelSheet === close) activeSelSheet = null;
-    wrap.classList.add('out'); wrap.inert = true;
     document.removeEventListener('keydown', onKey, true);
-    setTimeout(()=>wrap.remove(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220);
+    sheetLeave(wrap, velocity);
   };
   activeSelSheet = close;
   const onKey = e=>{ if(e.key === 'Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); } };
   document.addEventListener('keydown', onKey, true);
-  wrap.querySelector('.sel-scrim').onclick = close;
+  wrap.querySelector('.sel-scrim').onclick = ()=>close();
+  attachSheetDrag(wrap, close);
   return {el:wrap, close};
 }
 function openStreakSheet(){
@@ -100,6 +105,14 @@ function streakMilestone(n){
   el.id = 'streakBoom'; el.className = 'streak-boom tier-' + streakTier(n); el.setAttribute('role', 'status');
   el.innerHTML = `<div class="streak-boom-card"><div class="streak-big">${FLAME_SVG}</div><div class="streak-boom-title">${esc(t('streakMilestone')(n))}</div><div class="streak-boom-sub">${ricoFace('excited', 'rico-sm')}<span>${esc(t('streakMilestoneSub'))}</span></div></div>`;
   document.body.appendChild(el);
+  playMilestone();
+  // A ring of small green dots opens around the card once, then fades.
+  const card = el.querySelector('.streak-boom-card');
+  if(card && !reducedMotion()) for(let i = 0; i < 12; i++){
+    const dot = document.createElement('i'); dot.className = 'boom-dot'; card.appendChild(dot);
+    const a = i / 12 * Math.PI * 2;
+    dot.animate([{transform:'translate(-50%,-50%) scale(1)', opacity:1}, {transform:`translate(calc(-50% + ${Math.cos(a) * 150}px), calc(-50% + ${Math.sin(a) * 110}px)) scale(.4)`, opacity:0}], {duration:1000, delay:200, easing:'cubic-bezier(.23,1,.32,1)', fill:'both'});
+  }
   const close = ()=>{ el.classList.add('out'); setTimeout(()=>el.remove(), 400); };
   el.onclick = close;
   setTimeout(close, 4200);
@@ -229,7 +242,7 @@ async function undoOrder(id){
   (rec.entries||[]).forEach(e=>(e.items||[]).forEach(it=>{ if(state.items.some(i=>i.id === it.itemId && i.available!==false)) state.cart[it.itemId] = Math.max(state.cart[it.itemId] || 0, it.qty); }));
   persistCartDraft();
   if(r.data && r.data.streak) streakArrived(r.data.streak, null);
-  toast(t('orderUndone'));
+  toast(t('orderUndone')); playUndo();
   if(state.view === 'history' || state.view === 'order') render();
 }
 
