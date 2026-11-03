@@ -111,6 +111,10 @@ html.rtl .page-eyebrow,html.rtl .section-title{letter-spacing:0}
    looks the same): recomputing a 35px blur under every moving card each frame
    is what made transitions lag on phones. */
 .content.gliding,.page-ghost>.content{will-change:transform,opacity}
+/* The card stack: the new page slides in over the old one, so both are solid and the old copy sits underneath. */
+.page-ghost.below{z-index:0}
+.content.carding{z-index:1;background:var(--bg);overflow:hidden}
+.page-ghost>.content{background:var(--bg)}
 .content.gliding *,.page-ghost *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 body.page-swiping *{transition:none!important}
 
@@ -188,20 +192,24 @@ html.rtl .lang-menu.up{transform-origin:bottom left}
   background:rgba(255,255,255,.75);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);border:.5px solid rgba(255,255,255,.7);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 8px 30px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);touch-action:none}
 .nav-indicator{position:absolute;top:4px;bottom:4px;left:4px;border-radius:999px;background:var(--fill);
-  width:calc((100% - 8px) / var(--n,4));transform:translateX(calc(var(--ip,0) * 100%));transition:transform 380ms var(--spring-soft),scale 300ms var(--ease-out);pointer-events:none;z-index:0}
-@media (max-width:959px){html.rtl .nav-indicator{left:auto;right:4px;transform:translateX(calc(var(--ip,0) * -100%))}}
-.bottomnav.held .nav-indicator{scale:calc(1.22 + var(--st,0)) calc(1.32 - var(--st,0) * .6);z-index:2;
-  transition:transform 90ms linear,width 70ms linear,scale 220ms var(--spring-soft),background 260ms ease,box-shadow 260ms ease;
+  width:calc((100% - 8px) / var(--n,4));translate:calc(var(--ip,0) * 100%) 0;pointer-events:none;z-index:0}
+/* translate (not transform) places it: a transform would be enlarged with the glass when it is held. */
+@media (max-width:959px){html.rtl .nav-indicator{left:auto;right:4px;translate:calc(var(--ip,0) * -100%) 0}}
+/* Held: 1.2 times a tab (GLASS_SCALE in app.js), right under the finger, kept inside the bar. */
+.bottomnav.held .nav-indicator{scale:1.2;z-index:2;
+  transition:scale 100ms linear,background 100ms linear,box-shadow 100ms linear;
   background:rgba(255,255,255,.1);-webkit-backdrop-filter:saturate(180%) brightness(1.05);backdrop-filter:saturate(180%) brightness(1.05);
   box-shadow:inset 0 1px 1px rgba(255,255,255,.9),inset 0 -1px 1px rgba(255,255,255,.35),inset 0 0 0 .5px rgba(255,255,255,.6),0 10px 26px -8px rgba(0,0,0,.28)}
-.nav-indicator{transition:transform 380ms var(--spring-soft),scale 420ms var(--spring-soft),background 260ms ease}
+.nav-indicator{transition:translate 200ms linear,scale 100ms linear,background 100ms linear}
+/* Letting go, the glass settles into the pill in 100 ms (Tab Motion Lab). */
+.bottomnav.letgo .nav-indicator{transition:translate 100ms linear,scale 100ms linear,background 100ms linear}
 .navbtn{position:relative;z-index:1;flex:1 1 0;min-width:0;height:56px;border:0;background:transparent;border-radius:999px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 6px;color:var(--ink);font-size:.6875rem;font-weight:500;white-space:nowrap}
 .navbtn:not(:disabled):active{transform:none}
 .navbtn span{max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .navbtn svg{width:24px;height:24px;transition:transform 300ms var(--ease-out)}
 .navbtn.active,.navbtn.lens-over{color:var(--tint);font-weight:600}
 .navbtn.lens-over svg{transform:scale(1.1)}
-.bottomnav.held .navbtn.lens-over svg{transform:scale(1.2)}
+.bottomnav.held .navbtn.lens-over svg{transform:scale(1.3)}
 .nav-brand{display:none}
 /* While you scroll down a page the bar gets out of the way: it shrinks to its icons (a shorter,
    narrower pill), and scrolling up or reaching the top brings the names back. Far down a page a round
@@ -1102,7 +1110,7 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .bottomnav{grid-column:1;grid-row:1/-1;position:sticky;top:0;align-self:start;height:100dvh;overflow-y:auto;flex-direction:column;gap:2px;margin:0;padding:22px 14px;border-radius:0;max-width:none;touch-action:auto;
     background:var(--surface);border:0;border-inline-end:.5px solid var(--line-strong);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
   .nav-brand{display:flex;font-size:1.625rem;padding:6px 12px 26px}
-  .nav-indicator{top:0;left:14px;right:14px;bottom:auto;width:auto!important;height:var(--ih,0);transform:translateY(var(--iy,0));transition:transform 300ms var(--spring-soft),height 300ms var(--spring-soft);background:rgba(var(--accent-rgb),.16);border-radius:999px;box-shadow:none}
+  .nav-indicator{top:0;left:14px;right:14px;bottom:auto;width:auto!important;height:var(--ih,0);translate:none;transform:translateY(var(--iy,0));transition:transform 300ms var(--spring-soft),height 300ms var(--spring-soft);background:rgba(var(--accent-rgb),.16);border-radius:999px;box-shadow:none}
   .navbtn{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:12px;height:40px;min-width:0;padding:0 14px;border-radius:999px;font-size:1.0625rem;font-weight:400;color:var(--ink)}
   .navbtn span{max-width:none}
   .bottomnav>.navbtn span{max-height:none}
@@ -1123,6 +1131,8 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .supplier-group{padding:16px}
   .step-btn{width:40px;height:36px}
   .form-card,.settings-group,.list-row,.section-title{max-width:720px}
+  /* Rows inside a list card fill the card, and a heading with a button beside it keeps the button at the end. */
+  .plain-list>.list-row,.table-list>.list-row,.section-title.grow{max-width:none}
   .modal-box{max-width:480px;padding:28px 26px 24px}
   .modal-box.modal-alert{max-width:320px;padding:22px 18px 18px}
   .modal-box.modal-form{max-width:560px}
@@ -2050,11 +2060,24 @@ body.lang-ku .rico-note-text,body.lang-ar .rico-note-text,body.lang-ku .rico-tex
 /* Manage on a phone: both list styles are one grouped card, rows read from the start edge, and the
    buttons above them sit in tidy rows (the main one across, the others side by side). */
 .list-row{text-align:start}
-.list-row .name,.list-row .meta{text-align:start}
+.list-row>div:first-child{flex:1}
+/* A name in another script (a Kurdish name in the English app) still starts at the app's own edge, so
+   every name and the line under it line up down the list. */
+.list-row .name,.list-row .meta{text-align:left}
+html.rtl .list-row .name,html.rtl .list-row .meta{text-align:right}
 .plain-list,.table-list{display:block;margin-bottom:16px;border-radius:var(--r-card);background:var(--surface);overflow:hidden}
 .plain-list>.list-row,.table-list>.list-row{width:100%;border-radius:0!important;margin:0!important;background:transparent;box-shadow:none}
 .plain-list>.list-row+.list-row,.table-list>.list-row+.list-row{border-top:0}
 .plain-list>.list-row+.list-row::before,.table-list>.list-row+.list-row::before{content:'';position:absolute;top:0;inset-inline:16px 0;border-top:.5px solid var(--line-strong)}
+/* Wide screens: the list fills its card in two columns instead of stopping two thirds of the way across. */
+@media (min-width:1100px){
+  .plain-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .plain-list>.list-row{max-width:none}
+  .plain-list>.list-row:nth-child(2)::before{display:none}
+  .plain-list>.list-row:nth-child(even){border-inline-start:.5px solid var(--line-strong)}
+  #recordResults{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;align-items:start}
+  #recordResults>:not(.rec-card){grid-column:1/-1}
+}
 @media (max-width:599px){
   .action-row{display:flex;flex-wrap:wrap;gap:8px}
   .action-row>.add-btn{flex:1 1 100%}
