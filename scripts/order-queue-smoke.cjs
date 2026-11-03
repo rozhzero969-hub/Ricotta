@@ -52,7 +52,7 @@ const server=http.createServer((req,res)=>{
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
     await ctx.addInitScript(({s,lang})=>{
-      for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:toured:'+a,'true');
+      for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:toured:'+a,'true');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:ricoBriefing:'+a,JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));
       localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',JSON.stringify(Date.now()));
       if(!sessionStorage.getItem('seeded')){ localStorage.setItem('ricottaOrders:apiSession',JSON.stringify(s)); localStorage.setItem('ricottaOrders:lang',JSON.stringify(lang)); sessionStorage.setItem('seeded','1'); }
     },{s:session,lang});

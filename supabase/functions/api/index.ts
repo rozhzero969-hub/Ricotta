@@ -54,7 +54,6 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   PUT    reminder                   {enabled, time}           daily reminder settings
 //   POST   push/send                  {type, ...}               forwarded to send-push
 //   POST   assistant/chat             {messages, lang, ...}     Rico's reply, streamed (see assistant.ts)
-//   POST   assistant/transcribe       {audio, mime, lang}       a voice message to Rico, as text
 //   GET    assistant/suggestion                                 today's "Rico suggests" card (no AI call)
 //   GET    assistant/inbox                                      messages Rico sent first
 //   POST   assistant/inbox/read                                 mark them read
@@ -62,15 +61,9 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   GET    draft | PUT draft          {changes}                 this account's unsent order, shared between its devices
 //   PUT    items/aliases              {entries}                 Rico's search-name changes, applied together
 //   GET    auth/security              (public)                  whether sign-in needs the bot check, and its site key
-//   GET    stock-items                                          Transfers: the workplace stock system's item list
-//   PUT    stock-items                {items:[{name, units}]}   replace that list (spellings people taught it are kept)
-//   POST   stock-items/:id/alias      {alias}                   remember a spelling for one item
-//   POST   stock/read                 {text?, image?, mime?}    Rico reads a transfer list into rows (see stock.ts)
-//                                                                  (Transfers is still being made: all four answer 423 until TRANSFERS_OPEN)
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
-import { adminAi, handleChat, handleTranscribe, orderSuggestion, whatsappReady } from "./assistant.ts";
+import { adminAi, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
-import { cleanStockList, listStockItems, readOrderList, readTransferList } from "./stock.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -86,17 +79,18 @@ const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
 const LANGS = ["en", "ku", "ar"];
 /* What Rozha can give Yunis in Admin -> Access. Screens: history, manage (Items, Suppliers, Units),
-   record, transfers, assistant (Rico). Features: catalog (add, change and delete items, suppliers and
+   record, assistant (Rico). Features: catalog (add, change and delete items, suppliers and
    units; needs manage), send (send orders to suppliers), exports (Excel and PDF files), notify (send a
-   notification to every phone through Rico), reminders (the daily reminder). Rozha always has all. */
-const ROLES = ["history", "manage", "catalog", "record", "transfers", "assistant", "send", "exports", "notify", "reminders"];
-const DEFAULT_ROLES = ROLES.filter((r) => r !== "transfers");
+   notification to every phone through Rico). Rozha always has all. */
+const ROLES = ["history", "manage", "catalog", "record", "assistant", "send", "exports", "notify"];
+const DEFAULT_ROLES = ROLES;
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
   : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : [...DEFAULT_ROLES];
+// Account settings the app may save (Settings), and the ones with a list of choices.
+const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "ricoSheet", "ricoBriefing", "ricoMood", "tables", "kitchenMode", "milestones"]);
+const SETTING_CHOICES: Record<string, string[]> = { darkMode: ["auto", "on", "off"], ricoStyle: ["normal", "short", "warm"] };
 // Rozha may undo an order she sent this long without typing her PIN.
 const UNDO_MS = 15 * 60_000;
-// Transfers is still being made: the tab shows its design, and these routes refuse until it is ready.
-const TRANSFERS_OPEN = false;
 // Allowed browser origin for this app. Set ALLOWED_ORIGIN if the production
 // site ever moves to another origin.
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "https://rozhzero969-hub.github.io";
@@ -139,7 +133,6 @@ const hash = async (value: string) => {
    Anything larger than the route allows is refused before it is parsed, so a
    huge upload can't tie up the function. */
 const MAX_BODY_BYTES = 256 * 1024;
-const MAX_AUDIO_BODY_BYTES = 3 * 1024 * 1024;
 const readBody = (req: Request, max = MAX_BODY_BYTES) => readJsonBody(req, max);
 /* A supplier reminder is stored as JSON; only these fields in these shapes
    are kept, so a client can't park arbitrary data in the database. */
@@ -169,7 +162,7 @@ const can = (s: Session, role: string) => isRozha(s) || (s.roles.includes(role) 
 /* The screens an account may open, in the app's order. Settings is on every device. */
 function viewsFor(s: Session) {
   return ["order", ...(can(s, "assistant") ? ["assistant"] : []), ...(can(s, "history") ? ["history"] : []),
-    ...(can(s, "transfers") ? ["transfers"] : []), ...(can(s, "manage") ? ["manage", "suppliers", "itemsAdmin", "units"] : []),
+    ...(can(s, "manage") ? ["manage", "suppliers", "itemsAdmin", "units"] : []),
     ...(can(s, "record") ? ["record"] : []), ...(isRozha(s) ? ["admin"] : []), "settings"];
 }
 
@@ -202,8 +195,8 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 };
 
 /* ---------- Shapes the browser uses ---------- */
-const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, cutoff: s.cutoff ?? null });
-const toItem = (i: any) => ({ id: i.id, name: i.name, place: i.place ?? null, photoUrl: i.photo_url ?? null, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false,
+const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder });
+const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false,
   createdAt: i.created_at ?? null, lastOrderedAt: i.last_ordered_at ?? null });
 /* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
    had one; recoverable: how many days Rico can bring back after it broke. */
@@ -226,7 +219,7 @@ async function readStreak() {
 const toDevice = (d: any) => ({
   id: d.id, account: d.account ?? null, label: d.label ?? null, loggedIn: d.logged_in,
   lastLogin: d.last_login, lastSeen: d.last_seen, command: d.command, handledCommand: d.handled_command,
-  appVersion: d.app_version ?? null,
+  appVersion: d.app_version ?? null, push: !!d.push,
 });
 const toActivity = (a: any) => ({
   ...(a.payload ?? {}), id: a.id, ts: a.occurred_at, actor: a.actor,
@@ -272,7 +265,10 @@ async function listDevices(s: Session) {
     .in("device_id", ids).is("revoked_at", null).gt("expires_at", nowIso()) : { data: [], error: null };
   if (liveError) throw liveError;
   const signedIn = new Set((live ?? []).map((r: any) => r.device_id));
-  return (data ?? []).map((d: any) => toDevice({ ...d, logged_in: !!d.logged_in && signedIn.has(d.id) }));
+  const { data: subs, error: subsError } = ids.length ? await app("push_subscriptions").select("device_id").in("device_id", ids) : { data: [], error: null };
+  if (subsError) throw subsError;
+  const notified = new Set((subs ?? []).map((r: any) => r.device_id));
+  return (data ?? []).map((d: any) => toDevice({ ...d, logged_in: !!d.logged_in && signedIn.has(d.id), push: notified.has(d.id) }));
 }
 async function listActivity() {
   const rows = await readAll(() => app("audit_events")
@@ -287,15 +283,10 @@ async function listInbox(s: Session) {
   if (error) throw error;
   return (data ?? []).reverse().map(toInbox);
 }
-async function readReminder() {
-  const { data, error } = await app("reminder_settings").select("enabled,remind_time").eq("id", true).maybeSingle();
-  if (error) throw error;
-  return data ? { enabled: data.enabled, time: String(data.remind_time).slice(0, 5) } : null;
-}
 async function readAccount(id: string) {
-  const { data, error } = await app("accounts").select("id,name,pins").eq("id", id).maybeSingle();
+  const { data, error } = await app("accounts").select("id,name,pins,settings").eq("id", id).maybeSingle();
   if (error) throw error;
-  return data ? { account: data.id, name: data.name, pins: Array.isArray(data.pins) ? data.pins : [] } : null;
+  return data ? { account: data.id, name: data.name, pins: Array.isArray(data.pins) ? data.pins : [], settings: data.settings ?? {} } : null;
 }
 async function orderLinesFor(orderRows: any[]): Promise<any[]> {
   // Lines are read in small batches of orders: a long id list in one request
@@ -310,13 +301,12 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
 }
 
 async function bootstrap(s: Session) {
-  const [me, suppliers, items, units, orders, reminder, devices, activity, inbox, streak, months, draft, wipe] = await Promise.all([
+  const [me, suppliers, items, units, orders, devices, activity, inbox, streak, months, draft, wipe] = await Promise.all([
     readAccount(s.account),
-    readAll(() => app("suppliers").select("id,name,phone,reminder,cutoff").order("name").order("id")),
-    readAll(() => app("items").select("id,name,place,photo_url,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at").order("name").order("id")),
+    readAll(() => app("suppliers").select("id,name,phone,reminder").order("name").order("id")),
+    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at").order("name").order("id")),
     readAll(() => app("units").select("id,en,ku,ar").order("id")),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")),
-    readReminder(),
     listDevices(s),
     can(s, "record") ? listActivity() : Promise.resolve([]),
     can(s, "assistant") ? listInbox(s) : Promise.resolve([]),
@@ -342,7 +332,7 @@ async function bootstrap(s: Session) {
     units,
     history,
     historyMonth: monthKey(),
-    reminder, devices, activity, inbox, months, draft, nextWipe: wipe.data?.next_wipe ?? null,
+    settings: me?.settings ?? {}, devices, activity, inbox, months, draft, nextWipe: wipe.data?.next_wipe ?? null,
   };
 }
 async function readDraft(account: Account) {
@@ -498,7 +488,6 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
   suppliers: (id, b) => text(b.name) ? {
     id, name: text(b.name), phone: text(b.phone, 40) || null,
     reminder: cleanReminder(b.reminder), updated_at: nowIso(),
-    ...(Object.hasOwn(b, "cutoff") ? { cutoff: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.cutoff ?? "")) ? String(b.cutoff) : null } : {}),
   } : null,
   items: (id, b) => text(b.name) ? {
     id, name: text(b.name), unit_id: text(b.unit, 120) || null,
@@ -517,35 +506,9 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
    another phone saved something newer never puts the old values back (the database keeps what isn't sent).
    A new record, or a client without b.only, sends everything as before. */
 const CATALOG_FIELDS: Record<string, Record<string, string[]>> = {
-  suppliers: { name: ["name"], phone: ["phone"], reminder: ["reminder"], cutoff: ["cutoff"] },
+  suppliers: { name: ["name"], phone: ["phone"], reminder: ["reminder"] },
   items: { name: ["name"], unit: ["unit_id"], supplierId: ["supplier_id", "sort_order"], note: ["note"], aliases: ["aliases"], available: ["available"], sortOrder: ["sort_order"] },
 };
-/* Item pictures live in a public storage bucket: nothing about them is private, and the phone resizes them first. */
-const PHOTO_BUCKET = "item-photos";
-const MAX_PHOTO_BYTES = 200_000;
-async function saveItemPhoto(id: string, b: any) {
-  const { data: item, error: readError } = await app("items").select("id,photo_url").eq("id", id).maybeSingle();
-  if (readError) return fail("save_failed", 500);
-  if (!item) return fail("gone", 409);
-  const store = db.storage.from(PHOTO_BUCKET);
-  const old = String(item.photo_url ?? "").split(`/${PHOTO_BUCKET}/`)[1];
-  let url: string | null = null;
-  if (b) {
-    const image = typeof b.image === "string" ? b.image.replace(/^data:[^,]*,/, "") : "";
-    if (!image || !/^[A-Za-z0-9+/=]+$/.test(image) || image.length > MAX_PHOTO_BYTES * 1.4) return fail("invalid_input");
-    const bytes = Uint8Array.from(atob(image), (c) => c.charCodeAt(0));
-    if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return fail("invalid_input");   // the app always sends a JPEG
-    const name = `${crypto.randomUUID()}.jpg`;
-    await db.storage.createBucket(PHOTO_BUCKET, { public: true, fileSizeLimit: MAX_PHOTO_BYTES, allowedMimeTypes: ["image/jpeg"] }).catch(() => null);
-    const { error } = await store.upload(name, bytes, { contentType: "image/jpeg", cacheControl: "31536000" });
-    if (error) return fail("save_failed", 500);
-    url = store.getPublicUrl(name).data.publicUrl;
-  }
-  const { error } = await app("items").update({ photo_url: url }).eq("id", id);
-  if (error) return fail("save_failed", 500);
-  if (old) await store.remove([old]).catch(() => null);
-  return json({ ok: true, photoUrl: url });
-}
 function catalogRow(table: string, id: string, b: any) {
   if (!Array.isArray(b.only) || !CATALOG_FIELDS[table]) return CATALOG[table](id, b);
   const only: string[] = b.only.filter((k: unknown) => typeof k === "string" && Object.hasOwn(CATALOG_FIELDS[table], k));
@@ -687,7 +650,7 @@ async function sendCommand(b: any) {
 /* ---------- Push ----------
    A test of the daily reminder needs the reminders role, a test of a supplier's reminder the catalog
    role, and a notification written through Rico the notify role (Rozha has all three). */
-const PUSH_ROLES: Record<string, string> = { "reminder-now": "reminders", "supplier-test": "catalog", "assistant": "notify" };
+const PUSH_ROLES: Record<string, string> = { "supplier-test": "catalog", "assistant": "notify" };
 async function forwardPush(s: Session, b: any) {
   const type = text(b.type, 30);
   if (!PUSH_ROLES[type]) return fail("invalid_type");
@@ -849,9 +812,8 @@ Deno.serve(async (req) => {
     if(path==="push/send"){keys.push(`account:${s.account}:push`);limits.push(6);}
     if(path==="problems"){keys.push(`account:${s.account}:problems`);limits.push(20);}
     if(path.startsWith("rico-chats") && M!=="GET"){keys.push(`account:${s.account}:chats`);limits.push(40);}
-    if(path==="stock/read" || (path==="stock-items" && M==="PUT")){keys.push(`account:${s.account}:stock`);limits.push(20);}
     const limited=path==="logout"?null:await requestLimit(keys,limits);if(limited)return limited;
-    const b = M === "GET" ? {} : await readBody(req, ["assistant/transcribe", "stock/read", "stock-items"].includes(path) ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES);
+    const b = M === "GET" ? {} : await readBody(req, MAX_BODY_BYTES);
     let m: RegExpMatchArray | null;
 
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
@@ -939,9 +901,8 @@ Deno.serve(async (req) => {
       || (M === "PUT" && (path.startsWith("supplier-order/") || path === "items/aliases")) || (M === "POST" && path === "items/restore");
     if (catalogWrite && !can(s, "catalog")) return fail("forbidden", 403);
     if ((M === "POST" && path === "orders" && !can(s, "send")) || (path === "months" && !can(s, "history"))
-      || (path === "activity" && !can(s, "record")) || ((path.startsWith("stock") ) && !can(s, "transfers"))
-      || ((path.startsWith("assistant/") || path.startsWith("rico-chats") || path === "streak/recover") && !can(s, "assistant"))
-      || (path === "reminder" && !can(s, "reminders"))) return fail("forbidden", 403);
+      || (path === "activity" && !can(s, "record"))
+      || ((path.startsWith("assistant/") || path.startsWith("rico-chats") || path === "streak/recover") && !can(s, "assistant"))) return fail("forbidden", 403);
     if (M === "POST" && path === "items/restore") {
       if (typeof b.undoId!=="string" || !/^[a-f0-9-]{36}$/.test(b.undoId)) return fail("invalid_input");
       const {data,error}=await db.rpc("app_internal_item_undo",{p_id:b.undoId,p_actor:s.account,p_device:s.deviceId,p_restore:true});
@@ -1017,37 +978,23 @@ Deno.serve(async (req) => {
     // The month archive
     if (M === "GET" && path === "months") return json(await listMonths());
 
-    // Transfers: the workplace item list, and reading a list to move between storages
-    if (!TRANSFERS_OPEN && (path === "stock-items" || path === "stock/read" || path.startsWith("stock-items/"))) return fail("transfers_not_ready", 423);
-    if (M === "GET" && path === "stock-items") return json(await listStockItems(db));
-    if (M === "PUT" && path === "stock-items") {
-      const items = cleanStockList(b.items);
-      if (!items) return fail("invalid_input");
-      const { data, error } = await db.rpc("app_internal_replace_stock_items", { p_items: items });
-      return error ? fail("save_failed", 500) : json({ ok: true, count: data });
+    // Settings are the account's own: both of its phones share them.
+    if (M === "PUT" && path === "settings") {
+      const key = String(b.key ?? ""), value = b.value;
+      const ok_ = SETTING_KEYS.has(key) ? typeof value === "boolean"
+        : key === "pinnedSuppliers" ? Array.isArray(value) && value.length <= 30 && value.every((v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 120)
+        : (SETTING_CHOICES[key] ?? []).includes(value);
+      if (!ok_) return fail("invalid_input");
+      const { data: me, error: readError } = await app("accounts").select("settings").eq("id", s.account).maybeSingle();
+      if (readError || !me) return fail("save_failed", 500);
+      const { error } = await app("accounts").update({ settings: { ...(me.settings ?? {}), [key]: value } }).eq("id", s.account);
+      return error ? fail("save_failed", 500) : ok();
     }
-    if (M === "POST" && (m = path.match(/^stock-items\/([^/]{1,80})\/alias$/))) {
-      const alias = text(b.alias, 120);
-      if (!alias) return fail("invalid_input");
-      const { data, error } = await db.rpc("app_internal_stock_alias", { p_id: decodeURIComponent(m[1]), p_alias: alias });
-      if (error) return fail("save_failed", 500);
-      return data ? ok() : fail("not_found", 404);
-    }
-    if (M === "POST" && path === "orders/read-list") {
-      if (!can(s, "send")) return fail("forbidden", 403);
-      const r = await readOrderList(db, s, b);
-      return json(r.body, r.status);
-    }
-    if ((m = path.match(/^items\/([^/]{1,120})\/extra$/)) && M === "PUT") {
-      if (!can(s, "catalog")) return fail("forbidden", 403);
-      const place = b.place === null || b.place === "" ? null : text(b.place, 40);
-      const { error, data } = await app("items").update({ place }).eq("id", decodeURIComponent(m[1])).select("id");
-      if (error) return fail("save_failed", 500);
-      return data?.length ? ok() : fail("gone", 409);
-    }
-    if ((m = path.match(/^items\/([^/]{1,120})\/photo$/)) && (M === "POST" || M === "DELETE")) {
-      if (!can(s, "catalog")) return fail("forbidden", 403);
-      return await saveItemPhoto(decodeURIComponent(m[1]), M === "DELETE" ? null : b);
+    if (M === "PUT" && (m = path.match(/^admin\/ai\/(anthropic|gemini|groq)$/))) {
+      if (!isRozha(s)) return fail("forbidden", 403);
+      if (typeof b.enabled !== "boolean") return fail("invalid_input");
+      const { error } = await app("ai_switches").upsert({ provider: m[1], enabled: b.enabled, updated_at: nowIso() });
+      return error ? fail("save_failed", 500) : ok();
     }
     if (path === "rico-rules" && M === "GET") {
       const { data, error } = await app("rico_rules").select("id,account,rule,created_at").order("created_at");
@@ -1082,7 +1029,6 @@ Deno.serve(async (req) => {
       if (error) return fail("save_failed", 500);
       return json(data, data?.error ? 404 : 200);
     }
-    if (M === "POST" && path === "stock/read") { const r = await readTransferList(db, s, b); return json(r.body, r.status); }
 
     // Record
     if (M === "GET" && path === "activity") return json(await listActivity());
@@ -1111,7 +1057,6 @@ Deno.serve(async (req) => {
 
     // Rico, the assistant
     if (M === "POST" && path === "assistant/chat") return await handleChat(db, s, b, cors, req.signal);
-    if (M === "POST" && path === "assistant/transcribe") return await handleTranscribe(db, s, b, cors);
     if (M === "GET" && path === "assistant/suggestion") return json(await orderSuggestion(db, s));
     if (M === "GET" && path === "assistant/inbox") return json(await listInbox(s));
     if (M === "POST" && path === "assistant/inbox/read") {
@@ -1153,21 +1098,6 @@ Deno.serve(async (req) => {
       return error ? fail("save_failed", 500) : ok();
     }
     if (M === "POST" && path === "push/send") return await forwardPush(s, b);
-    // Both accounts can set the kitchen's daily reminder (it is on both Settings screens).
-    if (M === "PUT" && path === "reminder") {
-      const time = String(b.time ?? "").trim();
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return fail("invalid_time");
-      // A time still ahead today can fire today; one that already passed waits for tomorrow.
-      const erbil = new Date(Date.now() + 3 * 3600_000);
-      const nowMin = erbil.getUTCHours() * 60 + erbil.getUTCMinutes();
-      const [h, mi] = time.split(":").map(Number);
-      const { error } = await app("reminder_settings").upsert({
-        id: true, enabled: !!b.enabled, remind_time: time,
-        last_sent_date: h * 60 + mi > nowMin ? null : erbil.toISOString().slice(0, 10),
-      });
-      return error ? fail("save_failed", 500) : ok();
-    }
-
     return fail("not_found", 404);
   } catch (e) {
     if (e instanceof BodyTooLarge) return fail("too_large", 413);

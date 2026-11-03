@@ -60,27 +60,11 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.deepEqual((await q('select title from app_rico_chats')).map(r=>r.title),['new'],'Rico chats go on the wipe day too');
  await db.exec("delete from app_rico_chats; update app_wipe set next_wipe='2030-01-01', last_wipe=null;");
  await db.exec("drop trigger fail_record on app_audit_events; insert into app_devices(id,logged_in) values('device',true); insert into app_sessions(token_hash,device_id,expires_at,account) values('hash','device',now()+interval '1 day','rozha');");
- // Transfers: the workplace item list is replaced in one go. Names are unique whatever their capitals,
- // units keep their first order without repeats, and items that stay keep their id and remembered spellings.
- await db.exec(`select app_internal_replace_stock_items('[{"name":"Tomatoes - تەماتە","units":["کیلۆ","سندوق","کیلۆ"]},{"name":"Onions - پیاز"},{"name":" tomatoes - تەماتە ","units":["کیلۆ"]}]');`);
- const stock=await q("select id,name,units,position from app_stock_items order by position");
- assert.deepEqual(stock.map(r=>[r.name,r.units,r.position]),[['Tomatoes - تەماتە',['کیلۆ','سندوق'],0],['Onions - پیاز',[],1]],'one row per name, units without repeats');
- const tom=stock[0].id,aliases=async()=>(await q(`select aliases from app_stock_items where id='${tom}'`))[0].aliases;
- assert.equal((await q(`select app_internal_stock_alias('${tom}','tomatos') as ok`))[0].ok,true);
- await db.exec(`select app_internal_stock_alias('${tom}','TOMATOS'); select app_internal_stock_alias('${tom}','tomatoes - تەماتە');`);
- assert.deepEqual(await aliases(),['TOMATOS'],'a spelling is kept once (the newest way it was written), never the item name itself');
- assert.equal((await q("select app_internal_stock_alias('missing','x') as ok"))[0].ok,false);
- await assert.rejects(db.exec(`select app_internal_stock_alias('${tom}','  ');`),/Invalid alias/);
- for(let n=0;n<35;n++) await db.exec(`select app_internal_stock_alias('${tom}','spelling ${n}');`);
- assert.equal((await aliases()).length,30,'the newest 30 spellings are kept');
- assert.equal((await aliases()).at(-1),'spelling 34');
- assert.equal((await q(`select app_internal_replace_stock_items('[{"name":"TOMATOES - تەماتە","units":["کیلۆ"]},{"name":"Cucumber - خەیار","units":["کیلۆ"]}]') as n`))[0].n,2);
- const renamed=await q("select id,name,units,cardinality(aliases) as kept from app_stock_items order by position");
- assert.deepEqual(renamed.map(r=>[r.id===tom,r.name,r.units,r.kept]),[[true,'TOMATOES - تەماتە',['کیلۆ'],30],[false,'Cucumber - خەیار',['کیلۆ'],0]],'a new list keeps ids and spellings, removes items no longer in it');
- for(const bad of ['{}','[{"name":""}]','[{"name":"x","units":"kg"}]',JSON.stringify([{name:'x',units:Array.from({length:21},(_,i)=>'u'+i)}])])
-  await assert.rejects(db.exec(`select app_internal_replace_stock_items('${bad}');`),/Invalid stock/,'rejects '+bad);
- assert.equal((await q("select count(*)::int as n from app_stock_items"))[0].n,2,'a rejected list changes nothing');
- assert.deepEqual((await q("select has_table_privilege('anon','app_stock_items','SELECT') as a, has_function_privilege('authenticated','app_internal_replace_stock_items(jsonb)','EXECUTE') as b, has_function_privilege('anon','app_internal_stock_alias(text,text)','EXECUTE') as c"))[0],{a:false,b:false,c:false},'the browser roles cannot reach the list');
+ // Transfers is gone: its list, its functions and its role.
+ assert.equal((await q("select to_regclass('public.app_stock_items') as t"))[0].t,null,'the workplace list is gone');
+ assert.equal((await q("select count(*)::int as n from pg_proc where proname in ('app_internal_replace_stock_items','app_internal_stock_alias')"))[0].n,0);
+ assert.equal((await q("select count(*)::int as n from information_schema.columns where (table_name,column_name) in (('app_suppliers','cutoff'),('app_items','place'),('app_items','photo_url'))"))[0].n,0,'cut-offs, places and pictures are gone');
+ assert.equal((await q("select to_regclass('public.app_reminder_settings') as t"))[0].t,null,'the daily reminder is gone');
  // The per-item stock fields from the earlier Excel attempt are gone; items still save and record as before.
  assert.equal((await q("select count(*)::int as n from information_schema.columns where table_name='app_items' and column_name like 'stock%'"))[0].n,0);
  await db.exec(`select app_internal_catalog_change('units','kg','{"en":"kg","ku":"کیلۆ"}','rozha','device');
@@ -209,14 +193,14 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.deepEqual([summary.failuresInWindow,summary.lockedUntil,summary.events[0].kind],[0,null,'unlocked'],'Unlock sign-in opens it and is logged');
  // Yunis's access: only Rozha changes it, only known roles, each once, and every change is logged.
  await assert.rejects(db.exec("update app_accounts set roles=array['history','root'] where id='yunis'"),/roles_known/);
- await assert.rejects(q("select app_internal_set_roles('yunis','yunis',array['transfers'],'y-phone')"),/Forbidden/,'only Rozha changes access');
+ await assert.rejects(q("select app_internal_set_roles('yunis','yunis',array['notify'],'y-phone')"),/Forbidden/,'only Rozha changes access');
  await assert.rejects(q("select app_internal_set_roles('rozha','rozha',array['history'],'r-phone')"),/Forbidden/,'Rozha always keeps everything');
- assert.deepEqual((await q("select app_internal_set_roles('rozha','yunis',array['send','history','send','transfers'],'r-phone') as r"))[0].r,['history','send','transfers']);
+ assert.deepEqual((await q("select app_internal_set_roles('rozha','yunis',array['send','history','send','notify'],'r-phone') as r"))[0].r,['history','notify','send']);
  await assert.rejects(q("select app_internal_set_roles('rozha','yunis',array['history','admin'],'r-phone')"),/roles_known/,'an unknown role is refused');
- assert.deepEqual((await q("select roles from app_accounts where id='yunis'"))[0].roles,['history','send','transfers'],'a refused change keeps the saved roles');
+ assert.deepEqual((await q("select roles from app_accounts where id='yunis'"))[0].roles,['history','notify','send'],'a refused change keeps the saved roles');
  assert.deepEqual((await q("select app_internal_set_roles('rozha','yunis',array[]::text[],'r-phone') as r"))[0].r,[],'every role can be taken away');
  const changes=await q("select detail from app_security_events where kind='roles_changed' order by id");
- assert.deepEqual(changes.map(r=>[r.detail.before,r.detail.roles]),[[null,['history','send','transfers']],[['history','send','transfers'],[]]]);
+ assert.deepEqual(changes.map(r=>[r.detail.before,r.detail.roles]),[[null,['history','notify','send']],[['history','notify','send'],[]]]);
  await db.exec("update app_accounts set roles=null where id='yunis';");
  // Problem reports: one open row per problem, phone and person; repeats add up; sizes and shapes are checked.
  const report=async(list,account='yunis',device='y-phone')=>(await q(`select app_internal_report_problems('${JSON.stringify(list)}','${account}','${device}','iPhone|App','2026-10-26.1') as n`))[0].n;
@@ -295,6 +279,13 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  const del=(await q("select app_internal_item_undo('it-b','rozha','r-phone',false) as r"))[0].r;
  await q(`select app_internal_item_undo('${del.undoId}','rozha','r-phone',true)`);
  assert.equal((await lastOrdered())['it-b'],'2026-10-20T08:00:00.000Z','Undo brings back the date too');
+ // An edit of only the note, or only "available", keeps the name (it used to fail without one).
+ await db.exec(`select app_internal_catalog_change('items','it-a','{"id":"it-a","note":"only the note","partial":true}'::jsonb,'rozha','r-phone');
+   select app_internal_catalog_change('items','it-a','{"id":"it-a","available":false,"partial":true}'::jsonb,'rozha','r-phone');
+   select app_internal_catalog_change('suppliers','sup-1','{"id":"sup-1","phone":"07501112222","partial":true}'::jsonb,'rozha','r-phone');`);
+ assert.deepEqual((await q("select name,note,available from app_items where id='it-a'"))[0],{name:'Apples',note:'only the note',available:false});
+ assert.equal((await q("select name from app_suppliers where id='sup-1'"))[0].name.length>0,true,'the supplier keeps its name');
+ await db.exec("update app_items set available=true, note=null where id='it-a';");
  // An edit of a few fields never brings back something deleted on another phone.
  await assert.rejects(db.exec(`select app_internal_catalog_change('items','it-gone','{"id":"it-gone","note":"x","partial":true}'::jsonb,'rozha','r-phone');`),/catalog_gone/);
  assert.equal((await q("select count(*)::int as n from app_items where id='it-gone'"))[0].n,0);
@@ -367,7 +358,7 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  // Restore: a daily copy, 7 days kept, brings back only what is gone; PIN is checked by the API.
  await db.exec(`insert into app_units(id,en) values('bk-u','kg') on conflict do nothing;
    insert into app_suppliers(id,name) values('bk-s','Backup supplier');
-   insert into app_items(id,name,unit_id,supplier_id,place) values('bk-i','Backup item','bk-u','bk-s','Cold room');
+   insert into app_items(id,name,unit_id,supplier_id,note) values('bk-i','Backup item','bk-u','bk-s','Cold room');
    insert into app_orders(id,status,sent_at,sent_by) values('bk-o','sent',now(),'rozha');
    insert into app_order_lines(order_id,supplier_id,supplier_name,item_id,item_name,unit_id,qty) values('bk-o','bk-s','Backup supplier','bk-i','Backup item','bk-u',5);
    insert into app_backups(day,data) values(current_date-30,'{}');
@@ -380,7 +371,7 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  const restored2=(await q(`select app_internal_restore_backup('${copyDay}','rozha','r-phone') as r`))[0].r;
  assert.ok(restored2.orders===1&&restored2.items===1&&restored2.suppliers===1,'what was deleted comes back');
  assert.equal((await q("select count(*)::int as n from app_order_lines where order_id='bk-o'"))[0].n,1,'with its lines');
- assert.equal((await q("select place from app_items where id='bk-i'"))[0].place,'Cold room');
+ assert.equal((await q("select note from app_items where id='bk-i'"))[0].note,'Cold room');
  assert.equal((await q("select en from app_units where id='bk-u'"))[0].en,'changed','what exists now is not changed');
  assert.equal((await q("select app_internal_restore_backup('1999-01-01','rozha','d') as r"))[0].r.error,'not_found');
  for(const t of ['app_backups','app_rico_rules']) assert.equal((await q(`select has_table_privilege('anon','${t}','select') as a`))[0].a,false,t+' is closed to the browser roles');

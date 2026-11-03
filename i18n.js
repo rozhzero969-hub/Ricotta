@@ -85,19 +85,19 @@ const T = {
     notifEnabledMsg:'Notifications are on for this device.',
     notifDeniedMsg:'Notifications are blocked. Turn them on for Ricotta Orders in your phone Settings, under Notifications.',
     notifFailedMsg:'Could not turn on notifications. Please try again.',
-    notifSettingsTitle:'Notifications', notifThisDevice:'This device',
-    settingsAppearance:'Appearance',
+    
+    
 
-    settingsOrderScreen:'Order screen',
-    compactRowsLabel:'Compact rows', compactRowsHint:'Fits more items on the screen when you place a long order.',
-    lastQtyLabel:'Show last quantity', lastQtyHint:'Shows what you ordered last time under each item.', lastQty:n=>'Last: '+n,
-    notifOn:'On', notifOff:'Off', notifTurnOff:'Turn off',
+    
+    
+    lastQty:n=>'Last: '+n,
+    notifOn:'On', notifOff:'Off', 
     notifUnsupported:'This browser can’t receive notifications. On iPhone, add the app to your Home Screen and open it from there.',
     notifNotConfigured:'Notifications aren’t set up yet.',
-    reminderTitle:'Daily order reminder',
-    reminderTimeLabel:'Reminder time (Erbil time)', reminderSave:'Save reminder',
-    reminderSaved:'Reminder saved.', reminderSaveFailed:'Could not save the reminder. Check the connection and try again.',
-    reminderSendNow:'Send a test reminder now',
+    
+    reminderTimeLabel:'Reminder time (Erbil time)', 
+    
+    
     reminderOff:'Off', everyDay:'Every day', daysShort:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
     reminderShort:'Reminder',
     supplierReminderLabel:'Order reminder for this supplier',
@@ -107,7 +107,7 @@ const T = {
     reminderDaysRequired:'Pick at least one day for the reminder.',
     testSupplierReminder:'Send a test reminder',
     confirmTestSupplier:'Send a test reminder for this supplier to every signed-in device that has notifications on?',
-    supplierRemindersHint:'Each supplier can also have its own reminder. Set it in Suppliers.',
+    
     notifPartialMsg:(s,f)=>'Sent to '+s+' device'+(s===1?'':'s')+'; '+f+' could not be reached.',
     notifDeliveryFailed:'The notification could not be delivered to any device. On that device, turn notifications off and on again.',
     notifNoDevicesLoggedOut:'Only signed-out devices have notifications on. Reminders go to signed-in devices.',
@@ -133,7 +133,7 @@ const T = {
     weekdays:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
 
 
-    reminderEveryDayAt:time=>'On, every day at '+time+' (Erbil time).', reminderChangeTime:'Change time', reminderTurnedOff:'Daily reminder turned off.',
+    
     adminTitle:'Admin', adminPinChange:'Change',
     adminPinsHint:'A new PIN signs that person out on their other devices.', pinChangeTitle:n=>'New PIN for '+n,
     pinCurrentLabel:'Your current PIN', pinNewLabel:'New PIN (6 digits)', pinRepeatLabel:'New PIN again',
@@ -144,11 +144,11 @@ const T = {
     pinsWeak:'Choose PINs that aren’t all the same digit or a simple run (like 123456).',
     ricoName:'Rico', ricoTalkingWith:n=>'Talking with '+n, ricoWroteFirst:'Rico wrote',
     ricoAutoOrderLabel:'Let Rico fill my order', ricoNewChat:'New chat',
-    ricoLateHead:'Late orders', ricoLateSub:(time,h,m)=>'Due at '+time+' · not sent yet ('+[h?h+' h':'',m||!h?m+' min':''].filter(Boolean).join(' ')+')',
+    ricoLateSub:(time,h,m)=>'Due at '+time+' · not sent yet ('+[h?h+' h':'',m||!h?m+' min':''].filter(Boolean).join(' ')+')',
     ricoPrepareIt:'Prepare it',
     ricoGreeting:(part,name)=>'Good '+part+(name?', '+name:'')+'.',
     ricoSuggestions:['Prepare today’s order','Check my order','How was this week?','What did we order last time?','Add a new item','Are any orders late today?'],
-    ricoIntro:'I’m Rico, your kitchen robot. I know your suppliers, items and every order you’ve sent. Ask me anything.',
+    
     ricoStatus:{thinking:'Thinking…', find_items:'Looking through your items…', list_suppliers:'Checking your suppliers…', order_history:'Reading order history…',
       ordering_patterns:'Working out your busy days…', suggest_order:'Preparing a suggestion…', recent_changes:'Checking recent changes…',
       propose_order_draft:'Getting the order ready…', propose_new_item:'Preparing the new item…', propose_edit_item:'Preparing the change…',
@@ -181,12 +181,12 @@ const T = {
     ricoSuggestDue:(sup,time)=>sup+' was due at '+time+' and hasn’t been sent yet.',
     ricoSuggestAdd:n=>'Add '+n+' item'+(n===1?'':'s'), ricoSuggestAdded:(n,sup)=>n+' item'+(n===1?'':'s')+' from '+sup+' added', ricoSuggestDismiss:'Hide suggestion',
     ricoWorkedSteps:n=>'Worked through '+n+' step'+(n===1?'':'s'),
-    ricoMic:'Speak to Rico', ricoListening:'Listening… tap to send', ricoTranscribing:'Writing down what you said…',
-    ricoMicDenied:'Microphone access is blocked. Allow it for Ricotta Orders in your phone settings.',
-    ricoMicFailed:'I couldn’t make out that recording. Try again, a little closer to the phone.',
-    ricoMicNoStart:'The microphone didn’t start. Close any app using it (a call, voice notes) and try again.',
-    ricoMicTooShort:'That was too short to hear. Tap, say your words, then tap again to finish.',
-    ricoMicUnsupported:'Voice messages aren’t available in this browser.',
+    
+    
+    
+    
+    
+    
     ricoSetsDraft:'Only these items change; the rest of your draft stays as it is.', ricoApplyChanges:'Apply changes',
     ricoOpenSend:'Open Send to suppliers',
     chooseSupplier:'Choose a supplier',
@@ -279,19 +279,19 @@ const T = {
     notifEnabledMsg:'ئاگادارکردنەوەکان بۆ ئەم ئامێرە چالاک کران.',
     notifDeniedMsg:'ئاگادارکردنەوەکان بلۆک کراون. لە ڕێکخستنەکانی مۆبایلەکەت، بەشی Notifications، بۆ Ricotta Orders چالاکیان بکە.',
     notifFailedMsg:'نەتوانرا ئاگادارکردنەوەکان چالاک بکرێن. تکایە دووبارە هەوڵبدەرەوە.',
-    notifSettingsTitle:'ئاگادارکردنەوەکان', notifThisDevice:'ئەم ئامێرە',
-    settingsAppearance:'ڕووکار',
+    
+    
 
-    settingsOrderScreen:'شاشەی داواکاری',
-    compactRowsLabel:'ڕیزی پچووک', compactRowsHint:'کاتێک داواکارییەکی درێژ دەکەیت کاڵای زیاتر لە شاشەکەدا دەبینیت.',
-    lastQtyLabel:'نیشاندانی دوایین بڕ', lastQtyHint:'ئەوەی جاری پێشوو داوات کردووە لەژێر هەر کاڵایەک پیشان دەدات.', lastQty:n=>'دوایین: '+n,
-    notifOn:'چالاکە', notifOff:'ناچالاکە', notifTurnOff:'ناچالاککردن',
+    
+    
+    lastQty:n=>'دوایین: '+n,
+    notifOn:'چالاکە', notifOff:'ناچالاکە', 
     notifUnsupported:'ئەم وێبگەڕە ناتوانێت ئاگادارکردنەوە وەربگرێت. لە ئایفۆن، ئەپەکە زیاد بکە بۆ Home Screen و لەوێوە بیکەرەوە.',
     notifNotConfigured:'ئاگادارکردنەوەکان هێشتا ڕێک نەخراون.',
-    reminderTitle:'بیرخەرەوەی ڕۆژانەی داواکاری',
-    reminderTimeLabel:'کاتی بیرخەرەوە (کاتی هەولێر)', reminderSave:'پاشەکەوتکردنی بیرخەرەوە',
-    reminderSaved:'بیرخەرەوە پاشەکەوت کرا.', reminderSaveFailed:'بیرخەرەوەکە پاشەکەوت نەکرا. پەیوەندییەکە بپشکنە و دووبارە هەوڵ بدەرەوە.',
-    reminderSendNow:'ناردنی بیرخەرەوەیەکی تاقیکاری ئێستا',
+    
+    reminderTimeLabel:'کاتی بیرخەرەوە (کاتی هەولێر)', 
+    
+    
     reminderOff:'ناچالاک', everyDay:'هەموو ڕۆژێک', daysShort:['یەک','دوو','سێ','چوار','پێنج','هەینی','شەم'],
     reminderShort:'بیرخەرەوە',
     supplierReminderLabel:'بیرخەرەوەی داواکاری بۆ ئەم دابینکەرە',
@@ -301,7 +301,7 @@ const T = {
     reminderDaysRequired:'لانیکەم یەک ڕۆژ بۆ بیرخەرەوەکە هەڵبژێرە.',
     testSupplierReminder:'ناردنی بیرخەرەوەی تاقیکاری',
     confirmTestSupplier:'بیرخەرەوەی تاقیکاری بۆ ئەم دابینکەرە بنێردرێت بۆ هەموو ئامێرێکی چووەتە ژوورەوە کە ئاگادارکردنەوەی چالاکە؟',
-    supplierRemindersHint:'هەر دابینکەرێک دەتوانێت بیرخەرەوەی تایبەت بە خۆی هەبێت. لە بەشی دابینکەران ڕێکی بخە.',
+    
     notifPartialMsg:(s,f)=>'بۆ '+s+' ئامێر نێردرا؛ '+f+' نەگەیشت.',
     notifDeliveryFailed:'ئاگادارکردنەوەکە نەگەیشتە هیچ ئامێرێک. لەسەر ئەو ئامێرە ئاگادارکردنەوەکان ناچالاک بکە و دووبارە چالاکیان بکەوە.',
     notifNoDevicesLoggedOut:'تەنها ئەو ئامێرانەی چوونەتە دەرەوە ئاگادارکردنەوەیان چالاکە. بیرخەرەوەکان بۆ ئامێری چووەتە ژوورەوە دەنێردرێن.',
@@ -327,7 +327,7 @@ const T = {
     weekdays:['یەکشەممە','دووشەممە','سێشەممە','چوارشەممە','پێنجشەممە','هەینی','شەممە'],
 
 
-    reminderEveryDayAt:time=>'چالاکە، هەموو ڕۆژێک کاتژمێر '+time+' (کاتی هەولێر).', reminderChangeTime:'گۆڕینی کات', reminderTurnedOff:'بیرخەرەوەی ڕۆژانە ناچالاک کرا.',
+    
     adminTitle:'ئەدمین', adminPinChange:'گۆڕین',
     adminPinsHint:'کۆدی نوێ ئەو کەسە لە ئامێرەکانی تری دەباتە دەرەوە.', pinChangeTitle:n=>'کۆدی نوێ بۆ '+n,
     pinCurrentLabel:'کۆدی ئێستای خۆت', pinNewLabel:'کۆدی نوێ (6 ژمارە)', pinRepeatLabel:'دووبارە کۆدی نوێ',
@@ -338,11 +338,11 @@ const T = {
     pinsWeak:'کۆدێک هەڵبژێرە کە هەموو ژمارەکانی وەک یەک نەبن یان زنجیرەیەکی سادە نەبێت (وەک 123456).',
     ricoName:'ریکۆ', ricoTalkingWith:n=>'قسەکردن لەگەڵ '+n, ricoWroteFirst:'ریکۆ نووسی',
     ricoAutoOrderLabel:'با ریکۆ داواکارییەکەم پڕ بکاتەوە', ricoNewChat:'گفتوگۆی نوێ',
-    ricoLateHead:'داواکارییە دواکەوتووەکان', ricoLateSub:(time,h,m)=>'کاتی '+time+' بوو · هێشتا نەنێردراوە ('+[h?h+' کاتژمێر':'',m||!h?m+' خولەک':''].filter(Boolean).join(' و ')+')',
+    ricoLateSub:(time,h,m)=>'کاتی '+time+' بوو · هێشتا نەنێردراوە ('+[h?h+' کاتژمێر':'',m||!h?m+' خولەک':''].filter(Boolean).join(' و ')+')',
     ricoPrepareIt:'ئامادەی بکە',
     ricoGreeting:(part,name)=>({morning:'بەیانیت باش',afternoon:'ڕۆژت باش',evening:'ئێوارەت باش'})[part]+(name?'، '+name:'')+'.',
     ricoSuggestions:['داواکاریی ئەمڕۆ ئامادە بکە','داواکارییەکەم بپشکنە','ئەم هەفتەیە چۆن بوو؟','جاری پێشوو چیمان داوا کرد؟','کاڵایەکی نوێ زیاد بکە','ئەمڕۆ هیچ داواکارییەک دواکەوتووە؟'],
-    ricoIntro:'من ریکۆم، ڕۆبۆتی چێشتخانەکەت. دابینکەر و کاڵاکانت و هەموو ئەو داواکارییانەی ناردووتە دەناسم. هەر پرسیارێکت هەیە بیپرسە.',
+    
     ricoStatus:{thinking:'بیر دەکاتەوە…', find_items:'سەیری کاڵاکانت دەکات…', list_suppliers:'دابینکەرەکانت دەپشکنێت…', order_history:'مێژووی داواکارییەکان دەخوێنێتەوە…',
       ordering_patterns:'ڕۆژە قەرەباڵغەکانت هەژمار دەکات…', suggest_order:'پێشنیارێک ئامادە دەکات…', recent_changes:'دوایین گۆڕانکارییەکان دەپشکنێت…',
       propose_order_draft:'داواکارییەکە ئامادە دەکات…', propose_new_item:'کاڵا نوێیەکە ئامادە دەکات…', propose_edit_item:'گۆڕانکارییەکە ئامادە دەکات…',
@@ -375,12 +375,12 @@ const T = {
     ricoSuggestDue:(sup,time)=>'کاتی '+sup+' '+time+' بوو و هێشتا نەنێردراوە.',
     ricoSuggestAdd:n=>'زیادکردنی '+n+' کاڵا', ricoSuggestAdded:(n,sup)=>n+' کاڵا لە '+sup+' زیادکرا', ricoSuggestDismiss:'شاردنەوەی پێشنیار',
     ricoWorkedSteps:n=>n+' هەنگاو تەواو کرا',
-    ricoMic:'قسە لەگەڵ ریکۆ بکە', ricoListening:'گوێ دەگرێت… بۆ ناردن دایبگرە', ricoTranscribing:'قسەکانت دەنووسێتەوە…',
-    ricoMicDenied:'مایکرۆفۆن داخراوە. لە ڕێکخستنی مۆبایلەکەت ڕێگەی پێ بدە بۆ Ricotta Orders.',
-    ricoMicFailed:'نەمتوانی تۆمارەکە تێبگەم. دووبارە هەوڵ بدەرەوە، کەمێک نزیکتر لە مۆبایلەکە.',
-    ricoMicNoStart:'مایکرۆفۆنەکە دەستی پێ نەکرد. هەر ئەپێک کە بەکاری دەهێنێت دابخە (پەیوەندی، تۆماری دەنگ) و دووبارە هەوڵ بدەرەوە.',
-    ricoMicTooShort:'ئەوە زۆر کورت بوو. دابگرە، قسەکانت بکە، پاشان دووبارە دابگرە بۆ تەواوکردن.',
-    ricoMicUnsupported:'نامەی دەنگی لەم وێبگەڕەدا بەردەست نییە.',
+    
+    
+    
+    
+    
+    
     ricoSetsDraft:'تەنها ئەم کاڵایانە دەگۆڕێن؛ باقی ڕەشنووسەکەت وەک خۆی دەمێنێتەوە.', ricoApplyChanges:'جێبەجێکردنی گۆڕانکارییەکان',
     ricoOpenSend:'کردنەوەی ناردن بۆ دابینکەران',
     chooseSupplier:'دابینکەرێک هەڵبژێرە',
@@ -473,19 +473,19 @@ const T = {
     notifEnabledMsg:'الإشعارات مفعّلة على هذا الجهاز.',
     notifDeniedMsg:'الإشعارات محظورة. فعّلها لـ Ricotta Orders من إعدادات الهاتف، ضمن الإشعارات.',
     notifFailedMsg:'تعذّر تفعيل الإشعارات. حاول مرة أخرى.',
-    notifSettingsTitle:'الإشعارات', notifThisDevice:'هذا الجهاز',
-    settingsAppearance:'المظهر',
+    
+    
 
-    settingsOrderScreen:'شاشة الطلب',
-    compactRowsLabel:'صفوف مضغوطة', compactRowsHint:'تتسع الشاشة لمواد أكثر عند تقديم طلب طويل.',
-    lastQtyLabel:'إظهار آخر كمية', lastQtyHint:'يعرض ما طلبته آخر مرة تحت كل مادة.', lastQty:n=>'آخر مرة: '+n,
-    notifOn:'مفعّلة', notifOff:'متوقفة', notifTurnOff:'إيقاف',
+    
+    
+    lastQty:n=>'آخر مرة: '+n,
+    notifOn:'مفعّلة', notifOff:'متوقفة', 
     notifUnsupported:'هذا المتصفح لا يستقبل الإشعارات. على الآيفون، أضف التطبيق إلى الشاشة الرئيسية وافتحه من هناك.',
     notifNotConfigured:'الإشعارات غير مُعدّة بعد.',
-    reminderTitle:'تذكير الطلب اليومي',
-    reminderTimeLabel:'وقت التذكير (بتوقيت أربيل)', reminderSave:'حفظ التذكير',
-    reminderSaved:'تم حفظ التذكير.', reminderSaveFailed:'تعذّر حفظ التذكير. تحقّق من الاتصال وحاول مرة أخرى.',
-    reminderSendNow:'إرسال تذكير تجريبي الآن',
+    
+    reminderTimeLabel:'وقت التذكير (بتوقيت أربيل)', 
+    
+    
     reminderOff:'متوقف', everyDay:'كل يوم', daysShort:['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت'],
     reminderShort:'تذكير',
     supplierReminderLabel:'تذكير طلب لهذا المورّد',
@@ -495,7 +495,7 @@ const T = {
     reminderDaysRequired:'اختر يومًا واحدًا على الأقل للتذكير.',
     testSupplierReminder:'إرسال تذكير تجريبي',
     confirmTestSupplier:'إرسال تذكير تجريبي لهذا المورّد إلى كل جهاز مسجّل مفعّلة فيه الإشعارات؟',
-    supplierRemindersHint:'يمكن لكل مورّد أن يكون له تذكيره الخاص. اضبطه من قسم المورّدين.',
+    
     notifPartialMsg:(s,f)=>'أُرسل إلى '+s+' جهاز؛ تعذّر الوصول إلى '+f+'.',
     notifDeliveryFailed:'تعذّر إيصال الإشعار إلى أي جهاز. على ذلك الجهاز، أوقف الإشعارات ثم فعّلها مجددًا.',
     notifNoDevicesLoggedOut:'الإشعارات مفعّلة فقط على أجهزة خارج الجلسة. التذكيرات تُرسل إلى الأجهزة المسجّلة.',
@@ -521,7 +521,7 @@ const T = {
     weekdays:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],
 
 
-    reminderEveryDayAt:time=>'مفعّل، كل يوم الساعة '+time+' (توقيت أربيل).', reminderChangeTime:'تغيير الوقت', reminderTurnedOff:'تم إيقاف التذكير اليومي.',
+    
     adminTitle:'المشرف', adminPinChange:'تغيير',
     adminPinsHint:'الرمز الجديد يُخرج صاحبه من أجهزته الأخرى.', pinChangeTitle:n=>'رمز جديد لـ'+n,
     pinCurrentLabel:'رمزك الحالي', pinNewLabel:'الرمز الجديد (6 أرقام)', pinRepeatLabel:'الرمز الجديد مرة أخرى',
@@ -532,11 +532,11 @@ const T = {
     pinsWeak:'اختر رموزًا ليست كلها رقمًا واحدًا أو تسلسلًا بسيطًا (مثل 123456).',
     ricoName:'ريكو', ricoTalkingWith:n=>'تتحدث مع '+n, ricoWroteFirst:'كتب ريكو',
     ricoAutoOrderLabel:'دع ريكو يملأ طلبي', ricoNewChat:'محادثة جديدة',
-    ricoLateHead:'طلبات متأخرة', ricoLateSub:(time,h,m)=>'موعده '+time+' · لم يُرسل بعد ('+[h?h+' ساعة':'',m||!h?m+' دقيقة':''].filter(Boolean).join(' و')+')',
+    ricoLateSub:(time,h,m)=>'موعده '+time+' · لم يُرسل بعد ('+[h?h+' ساعة':'',m||!h?m+' دقيقة':''].filter(Boolean).join(' و')+')',
     ricoPrepareIt:'جهّزه',
     ricoGreeting:(part,name)=>({morning:'صباح الخير',afternoon:'نهارك سعيد',evening:'مساء الخير'})[part]+(name?' يا '+name:'')+'.',
     ricoSuggestions:['جهّز طلب اليوم','راجع طلبي','كيف كان هذا الأسبوع؟','ماذا طلبنا آخر مرة؟','أضف مادة جديدة','هل هناك طلبات متأخرة اليوم؟'],
-    ricoIntro:'أنا ريكو، روبوت مطبخك. أعرف مورّديك وموادك وكل طلب أرسلته. اسألني أي شيء.',
+    
     ricoStatus:{thinking:'يفكّر…', find_items:'يبحث في موادك…', list_suppliers:'يتحقق من مورّديك…', order_history:'يقرأ سجل الطلبات…',
       ordering_patterns:'يحسب أيام الازدحام…', suggest_order:'يجهّز اقتراحًا…', recent_changes:'يتحقق من آخر التغييرات…',
       propose_order_draft:'يجهّز الطلب…', propose_new_item:'يجهّز المادة الجديدة…', propose_edit_item:'يجهّز التعديل…',
@@ -569,12 +569,12 @@ const T = {
     ricoSuggestDue:(sup,time)=>'موعد '+sup+' كان '+time+' ولم يُرسل بعد.',
     ricoSuggestAdd:n=>'أضف '+n+' مادة', ricoSuggestAdded:(n,sup)=>'أُضيفت '+n+' مادة من '+sup, ricoSuggestDismiss:'إخفاء الاقتراح',
     ricoWorkedSteps:n=>'أنهى '+n+' خطوة',
-    ricoMic:'تحدّث إلى ريكو', ricoListening:'يستمع… اضغط للإرسال', ricoTranscribing:'يكتب ما قلته…',
-    ricoMicDenied:'الميكروفون محظور. اسمح به لـ Ricotta Orders من إعدادات الهاتف.',
-    ricoMicFailed:'لم أفهم التسجيل. حاول مرة أخرى وأنت أقرب قليلًا إلى الهاتف.',
-    ricoMicNoStart:'لم يعمل الميكروفون. أغلق أي تطبيق يستخدمه (مكالمة، مذكرات صوتية) وحاول مرة أخرى.',
-    ricoMicTooShort:'كان التسجيل قصيرًا جدًا. اضغط، قل كلامك، ثم اضغط مرة أخرى للإنهاء.',
-    ricoMicUnsupported:'الرسائل الصوتية غير متاحة في هذا المتصفح.',
+    
+    
+    
+    
+    
+    
     ricoSetsDraft:'تتغير هذه المواد فقط، ويبقى باقي المسودة كما هو.', ricoApplyChanges:'تطبيق التغييرات',
     ricoOpenSend:'فتح الإرسال إلى المورّدين',
     chooseSupplier:'اختر مورّداً',
@@ -667,24 +667,24 @@ Object.assign(T.ar, {
 
 /* Order cut-offs and the month archive. */
 Object.assign(T.en, {
-  cutoffLabel:'Stops taking orders at', cutoffHint:'Optional. On this supplier’s order days the Order screen counts down to it, and Rico warns you 30 minutes before.',
-  cutoffShort:'Cut-off', cutoffClosed:'Closed for today', cutoffMinLeft:n=>n+' min left', cutoffHoursLeft:(h,m)=>h+' h'+(m?' '+m+' min':'')+' left', cutoffUntil:x=>'Order by '+x,
+  
+  
   ricoOrdersTitle:"Rico's orders", ricoOrdersHint:"Orders Rico sent by himself. Test: they go only to your own WhatsApp, not to suppliers, and are not in History, the report or the streak.", ricoOrdersNone:'Rico has not sent any orders yet. Ask him: "Rico, order from the bakery".', ricoOrdersNotReady:'WhatsApp is not set up on the server yet.', ricoOrderSent:'Sent', ricoOrderFailed:e=>'Not sent'+({window_closed:': send "hi" to the test number first', recipient_not_allowed:': your number is not on the test list', token_rejected:': the WhatsApp token needs renewing', busy:': WhatsApp was busy'}[e]||''), ricoOrderWhy:'Why', monthsTitle:'Past months', monthsHint:'History is cleared every month; a summary of each finished month stays here.',
   monthsNone:'Nothing here yet. The first summary is saved when this month ends.', monthsLastLine:(o,d)=>'Last month: '+o+' orders on '+d+' days',
   monthsTimes:n=>n+'×', monthsOrders:n=>n+(n===1?' order':' orders'),
 
   });
 Object.assign(T.ku, {
-  cutoffLabel:'کاتی کۆتایی وەرگرتنی داواکاری', cutoffHint:'ئارەزوومەندانەیە. لە ڕۆژانی داواکاریی ئەم دابینکەرە، پەڕەی داواکاری کاتەکە دەژمێرێت و ریکۆ 30 خولەک پێشتر ئاگادارت دەکاتەوە.',
-  cutoffShort:'کاتی کۆتایی', cutoffClosed:'بۆ ئەمڕۆ داخراوە', cutoffMinLeft:n=>n+' خولەک ماوە', cutoffHoursLeft:(h,m)=>h+' کاتژمێر'+(m?' و '+m+' خولەک':'')+' ماوە', cutoffUntil:x=>'تا '+x+' داوا بکە',
+  
+  
   ricoOrdersTitle:'داواکارییەکانی ریکۆ', ricoOrdersHint:'ئەو داواکارییانەی ریکۆ خۆی ناردوونی. تاقیکردنەوە: تەنها بۆ واتسئاپی خۆت دەچن، نەک بۆ دابینکەران، و لە مێژوو و ڕاپۆرت و زنجیرەدا نین.', ricoOrdersNone:'ریکۆ هێشتا هیچ داواکارییەکی نەناردووە. پێی بڵێ: «ریکۆ، لە نانەواخانە داوا بکە».', ricoOrdersNotReady:'واتسئاپ هێشتا لە سێرڤەر ڕێک نەخراوە.', ricoOrderSent:'نێردرا', ricoOrderFailed:e=>'نەنێردرا'+({window_closed:': سەرەتا «hi» بۆ ژمارەی تاقیکردنەوە بنێرە', recipient_not_allowed:': ژمارەکەت لە لیستی تاقیکردنەوەدا نییە', token_rejected:': تۆکنی واتسئاپ پێویستی بە نوێکردنەوەیە', busy:': واتسئاپ سەرقاڵ بوو'}[e]||''), ricoOrderWhy:'بۆچی', monthsTitle:'مانگەکانی پێشوو', monthsHint:'مێژوو هەموو مانگێک دەسڕدرێتەوە؛ کورتەی هەر مانگێکی تەواوبوو لێرە دەمێنێتەوە.',
   monthsNone:'هێشتا هیچ شتێک لێرە نییە. یەکەم کورتە کاتێک ئەم مانگە تەواو دەبێت پاشەکەوت دەکرێت.', monthsLastLine:(o,d)=>'مانگی پێشوو: '+o+' داواکاری لە '+d+' ڕۆژدا',
   monthsTimes:n=>n+'×', monthsOrders:n=>n+' داواکاری',
 
   });
 Object.assign(T.ar, {
-  cutoffLabel:'يتوقف عن استلام الطلبات الساعة', cutoffHint:'اختياري. في أيام طلب هذا المورّد تعدّ صفحة الطلب تنازليًا حتى هذا الوقت، ويُنبّهك ريكو قبله بـ30 دقيقة.',
-  cutoffShort:'آخر موعد', cutoffClosed:'مغلق لليوم', cutoffMinLeft:n=>'باقي '+n+' دقيقة', cutoffHoursLeft:(h,m)=>'باقي '+h+' س'+(m?' و'+m+' د':''), cutoffUntil:x=>'اطلب قبل '+x,
+  
+  
   ricoOrdersTitle:'طلبات ريكو', ricoOrdersHint:'الطلبات التي أرسلها ريكو بنفسه. تجربة: تصل إلى واتساب الخاص بك فقط، لا إلى المورّدين، ولا تظهر في السجل أو التقرير أو السلسلة.', ricoOrdersNone:'لم يرسل ريكو أي طلب بعد. اطلب منه: «ريكو، اطلب من المخبز».', ricoOrdersNotReady:'واتساب غير مُعدّ على الخادم بعد.', ricoOrderSent:'أُرسل', ricoOrderFailed:e=>'لم يُرسل'+({window_closed:': أرسل «hi» إلى رقم التجربة أولًا', recipient_not_allowed:': رقمك ليس في قائمة التجربة', token_rejected:': رمز واتساب يحتاج إلى تجديد', busy:': واتساب كان مشغولًا'}[e]||''), ricoOrderWhy:'السبب', monthsTitle:'الأشهر السابقة', monthsHint:'يُمسح السجل كل شهر، ويبقى هنا ملخص كل شهر منتهٍ.',
   monthsNone:'لا شيء هنا بعد. يُحفظ أول ملخص عند انتهاء هذا الشهر.', monthsLastLine:(o,d)=>'الشهر الماضي: '+o+' طلب في '+d+' يوم',
   monthsTimes:n=>n+'×', monthsOrders:n=>n+' طلب',
@@ -721,7 +721,7 @@ Object.assign(T.en, {
   offlineCached:x=>'Offline. Showing what this phone saved at '+x+'.',
   sendNoAccess:'Rozha sends the orders', catalogReadOnly:'You can look through the catalog. Rozha can let you change it in Admin.',
   ricoNoAccess:'This isn’t turned on for you. Ask Rozha.', ricoChatDeleted:'Chat deleted', ricoChatsDeleted:'All chats deleted',
-  ricoAbout:'Rico is the assistant built into Ricotta. He works from the kitchen’s own data (the items, the suppliers and this month’s orders) to prepare order drafts, check an order before it goes out, point out late suppliers and answer questions in Kurdish, Arabic and English. He only suggests: nothing is saved or sent until someone taps to confirm. Built on Claude Haiku by Anthropic, with Google Gemini and Groq as backups.',
+  ricoAbout:'Rico is the assistant built into Ricotta. He works from the kitchen’s own data (the items, the suppliers and the orders kept in History) to prepare order drafts, check an order before it goes out, point out late suppliers and answer questions in Kurdish, Arabic and English. He only suggests: nothing is saved or sent until someone taps to confirm. Built on Claude Haiku by Anthropic, with Google Gemini and Groq as backups.',
   ricoAboutPrivacy:'Rico only receives what he needs to answer. PINs are never sent.',
   // Admin
   adminPage_problems:'Problems', adminPage_security:'Security', adminPage_health:'Health Check', adminPage_access:'Yunis’s Access', adminPage_pins:'PINs',
@@ -770,10 +770,10 @@ Object.assign(T.en, {
   accessScreens:'Screens', accessActions:'What he can do', accessOrderAlways:'Always on.', accessSaved:'Yunis’s access saved', accessStandard:'Use the Standard Set',
   accessFoot:'The standard set is everything except Transfers. Rozha always has everything.', roleNeedsManage:'Turn on Manage first.',
   role_history:'History', role_historyHint:'Sent orders and the month’s report card.', role_manage:'Manage', role_manageHint:'See the items, suppliers and units.',
-  role_record:'Record', role_recordHint:'Who changed what in the catalog.', role_transfers:'Transfers', role_transfersHint:'Moving stock between storages.',
+  role_record:'Record', role_recordHint:'Who changed what in the catalog.', 
   role_assistant:'Rico', role_assistantHint:'Chat with Rico and see his suggestions.', role_catalog:'Change the catalog', role_catalogHint:'Add, edit and delete items, suppliers and units.',
   role_send:'Send orders', role_sendHint:'Send to suppliers. Without it he prepares the order and Rozha sends it.', role_exports:'Excel and PDF files', role_exportsHint:'Export the items, the suppliers and the month.',
-  role_notify:'Notifications', role_notifyHint:'Send a notification to every phone through Rico.', role_reminders:'Daily reminder', role_remindersHint:'Change the kitchen’s daily order reminder.',
+  role_notify:'Notifications', role_notifyHint:'Send a notification to every phone through Rico.', 
   check_noSupplier:'No supplier', check_noSupplierHint:'They can’t be sent to anyone.', check_noUnit:'No unit', check_noUnitHint:'The order can’t say how much.',
   check_unavailable:'Unavailable', check_unavailableHint:'Hidden on Order until switched back on.', check_quiet:'Not ordered in 30 days', check_quietHint:'Still needed? Mark it unavailable or delete it.',
   checkFoot:'Tap an item to fix it.',
@@ -811,7 +811,7 @@ Object.assign(T.ku, {
   offlineCached:x=>'ئۆفلاینیت. ئەوە پیشان دەدرێت کە ئەم مۆبایلە کاتژمێر '+x+' پاشەکەوتی کرد.',
   sendNoAccess:'ڕۆژا داواکارییەکان دەنێرێت', catalogReadOnly:'دەتوانیت سەیری لیستەکە بکەیت. ڕۆژا دەتوانێت لە ئەدمین ڕێگەت پێ بدات بیگۆڕیت.',
   ricoNoAccess:'ئەمە بۆ تۆ چالاک نییە. لە ڕۆژا بپرسە.', ricoChatDeleted:'گفتوگۆکە سڕایەوە', ricoChatsDeleted:'هەموو گفتوگۆکان سڕانەوە',
-  ricoAbout:'ریکۆ یاریدەدەری ناو ریکۆتایە. لەسەر زانیارییەکانی خودی چێشتخانەکە کار دەکات (کاڵاکان، دابینکەران و داواکارییەکانی ئەم مانگە) بۆ ئامادەکردنی ڕەشنووسی داواکاری، پشکنینی داواکاری پێش ناردن، ئاماژەکردن بە دابینکەرە دواکەوتووەکان و وەڵامدانەوەی پرسیار بە کوردی، عەرەبی و ئینگلیزی. تەنها پێشنیار دەکات: هیچ شتێک پاشەکەوت یان نانێردرێت تا کەسێک بۆ دڵنیابوونەوە دایبگرێت. لەسەر Claude Haiku ی Anthropic دروستکراوە، لەگەڵ Google Gemini و Groq وەک یەدەگ.',
+  ricoAbout:'ریکۆ یاریدەدەری ناو ریکۆتایە. لەسەر زانیارییەکانی خودی چێشتخانەکە کار دەکات (کاڵاکان، دابینکەران و ئەو داواکارییانەی لە مێژوودا هەڵگیراون) بۆ ئامادەکردنی ڕەشنووسی داواکاری، پشکنینی داواکاری پێش ناردن، ئاماژەکردن بە دابینکەرە دواکەوتووەکان و وەڵامدانەوەی پرسیار بە کوردی، عەرەبی و ئینگلیزی. تەنها پێشنیار دەکات: هیچ شتێک پاشەکەوت یان نانێردرێت تا کەسێک بۆ دڵنیابوونەوە دایبگرێت. لەسەر Claude Haiku ی Anthropic دروستکراوە، لەگەڵ Google Gemini و Groq وەک یەدەگ.',
   ricoAboutPrivacy:'ریکۆ تەنها ئەوە وەردەگرێت کە بۆ وەڵامدانەوە پێویستیەتی. کۆدەکان هەرگیز نانێردرێن.',
   adminPage_problems:'کێشەکان', adminPage_security:'ئاسایش', adminPage_health:'پشکنینی تەندروستی', adminPage_access:'دەسەڵاتەکانی یونس', adminPage_pins:'کۆدەکان',
   adminPage_devices:'ئامێرەکان', adminPage_time:'کات لە ئەپەکەدا', adminPage_rico:'ریکۆ', adminPage_catalog:'پشکنینی لیستی کاڵا',
@@ -859,10 +859,10 @@ Object.assign(T.ku, {
   accessScreens:'شاشەکان', accessActions:'ئەوەی دەتوانێت بیکات', accessOrderAlways:'هەمیشە چالاکە.', accessSaved:'دەسەڵاتەکانی یونس پاشەکەوت کران', accessStandard:'بەکارهێنانی کۆمەڵە ئاساییەکە',
   accessFoot:'کۆمەڵە ئاساییەکە هەموو شتێکە جگە لە گواستنەوە. ڕۆژا هەمیشە هەموو شتێکی هەیە.', roleNeedsManage:'سەرەتا بەڕێوەبردن چالاک بکە.',
   role_history:'مێژوو', role_historyHint:'داواکارییە نێردراوەکان و کارتی ڕاپۆرتی مانگ.', role_manage:'بەڕێوەبردن', role_manageHint:'بینینی کاڵاکان، دابینکەران و یەکەکان.',
-  role_record:'تۆمار', role_recordHint:'کێ چی لە لیستی کاڵادا گۆڕیوە.', role_transfers:'گواستنەوە', role_transfersHint:'گواستنەوەی کاڵا لە نێوان کۆگاکاندا.',
+  role_record:'تۆمار', role_recordHint:'کێ چی لە لیستی کاڵادا گۆڕیوە.', 
   role_assistant:'ریکۆ', role_assistantHint:'گفتوگۆ لەگەڵ ریکۆ و بینینی پێشنیارەکانی.', role_catalog:'گۆڕینی لیستی کاڵا', role_catalogHint:'زیادکردن، دەستکاریکردن و سڕینەوەی کاڵا، دابینکەر و یەکە.',
   role_send:'ناردنی داواکاری', role_sendHint:'ناردن بۆ دابینکەران. بەبێ ئەمە داواکارییەکە ئامادە دەکات و ڕۆژا دەینێرێت.', role_exports:'فایلی Excel و PDF', role_exportsHint:'هەناردەکردنی کاڵاکان، دابینکەران و مانگەکە.',
-  role_notify:'ئاگادارکردنەوەکان', role_notifyHint:'ناردنی ئاگادارکردنەوە بۆ هەموو مۆبایلەکان لە ڕێگەی ریکۆوە.', role_reminders:'بیرهێنانەوەی ڕۆژانە', role_remindersHint:'گۆڕینی بیرهێنانەوەی ڕۆژانەی داواکاریی چێشتخانە.',
+  role_notify:'ئاگادارکردنەوەکان', role_notifyHint:'ناردنی ئاگادارکردنەوە بۆ هەموو مۆبایلەکان لە ڕێگەی ریکۆوە.', 
   check_noSupplier:'بێ دابینکەر', check_noSupplierHint:'بۆ کەس نانێردرێن.', check_noUnit:'بێ یەکە', check_noUnitHint:'داواکارییەکە ناتوانێت بڵێت چەند.',
   check_unavailable:'بەردەست نییە', check_unavailableHint:'لە داواکاری شاراوەیە تا دووبارە چالاک دەکرێتەوە.', check_quiet:'30 ڕۆژە داوا نەکراوە', check_quietHint:'هێشتا پێویستە؟ وەک بەردەست نییە دیاری بکە یان بیسڕەوە.',
   checkFoot:'کاڵایەک دابگرە بۆ چاککردنی.',
@@ -896,7 +896,7 @@ Object.assign(T.ar, {
   offlineCached:x=>'غير متصل. يُعرض ما حفظه هذا الهاتف الساعة '+x+'.',
   sendNoAccess:'روژا ترسل الطلبات', catalogReadOnly:'يمكنك تصفح القائمة. يمكن لروژا أن تسمح لك بتعديلها من المشرف.',
   ricoNoAccess:'هذا غير مفعّل لك. اسأل روژا.', ricoChatDeleted:'حُذفت المحادثة', ricoChatsDeleted:'حُذفت كل المحادثات',
-  ricoAbout:'ريكو هو المساعد المدمج في ريكوتا. يعمل من بيانات المطبخ نفسه (المواد والموردين وطلبات هذا الشهر) ليجهّز مسودات الطلبات، ويراجع الطلب قبل إرساله، وينبّه إلى الموردين المتأخرين، ويجيب عن الأسئلة بالكردية والعربية والإنجليزية. هو يقترح فقط: لا يُحفظ أو يُرسل أي شيء حتى يضغط أحد للتأكيد. مبني على Claude Haiku من Anthropic، مع Google Gemini وGroq احتياطيًا.',
+  ricoAbout:'ريكو هو المساعد المدمج في ريكوتا. يعمل من بيانات المطبخ نفسه (المواد والموردين والطلبات المحفوظة في السجل) ليجهّز مسودات الطلبات، ويراجع الطلب قبل إرساله، وينبّه إلى الموردين المتأخرين، ويجيب عن الأسئلة بالكردية والعربية والإنجليزية. هو يقترح فقط: لا يُحفظ أو يُرسل أي شيء حتى يضغط أحد للتأكيد. مبني على Claude Haiku من Anthropic، مع Google Gemini وGroq احتياطيًا.',
   ricoAboutPrivacy:'لا يتلقى ريكو إلا ما يحتاجه للإجابة. لا تُرسل الرموز أبدًا.',
   adminPage_problems:'المشكلات', adminPage_security:'الأمان', adminPage_health:'فحص الحالة', adminPage_access:'صلاحيات يونس', adminPage_pins:'الرموز',
   adminPage_devices:'الأجهزة', adminPage_time:'الوقت في التطبيق', adminPage_rico:'ريكو', adminPage_catalog:'مراجعة القائمة',
@@ -944,10 +944,10 @@ Object.assign(T.ar, {
   accessScreens:'الشاشات', accessActions:'ما يمكنه فعله', accessOrderAlways:'مفعّل دائمًا.', accessSaved:'حُفظت صلاحيات يونس', accessStandard:'استخدام المجموعة القياسية',
   accessFoot:'المجموعة القياسية هي كل شيء ما عدا النقل. لدى روژا كل شيء دائمًا.', roleNeedsManage:'فعّل الإدارة أولًا.',
   role_history:'السجل', role_historyHint:'الطلبات المرسلة وبطاقة تقرير الشهر.', role_manage:'الإدارة', role_manageHint:'رؤية المواد والموردين والوحدات.',
-  role_record:'السجلّ', role_recordHint:'من غيّر ماذا في القائمة.', role_transfers:'النقل', role_transfersHint:'نقل المخزون بين المخازن.',
+  role_record:'السجلّ', role_recordHint:'من غيّر ماذا في القائمة.', 
   role_assistant:'ريكو', role_assistantHint:'الدردشة مع ريكو ورؤية اقتراحاته.', role_catalog:'تعديل القائمة', role_catalogHint:'إضافة وتعديل وحذف المواد والموردين والوحدات.',
   role_send:'إرسال الطلبات', role_sendHint:'الإرسال إلى الموردين. بدونها يجهّز الطلب وترسله روژا.', role_exports:'ملفات Excel و PDF', role_exportsHint:'تصدير المواد والموردين والشهر.',
-  role_notify:'الإشعارات', role_notifyHint:'إرسال إشعار إلى كل الهواتف عبر ريكو.', role_reminders:'التذكير اليومي', role_remindersHint:'تغيير تذكير الطلب اليومي للمطبخ.',
+  role_notify:'الإشعارات', role_notifyHint:'إرسال إشعار إلى كل الهواتف عبر ريكو.', 
   check_noSupplier:'بدون مورّد', check_noSupplierHint:'لا يمكن إرسالها إلى أحد.', check_noUnit:'بدون وحدة', check_noUnitHint:'لا يستطيع الطلب أن يقول الكمية.',
   check_unavailable:'غير متوفرة', check_unavailableHint:'مخفية في الطلب حتى تُفعّل مجددًا.', check_quiet:'لم تُطلب منذ 30 يومًا', check_quietHint:'ما زالت مطلوبة؟ اجعلها غير متوفرة أو احذفها.',
   checkFoot:'اضغط على مادة لإصلاحها.',
@@ -1066,136 +1066,171 @@ Object.assign(T.ar, {
 Object.assign(T.en, {
   wipeWarnToday:'History older than 60 days will be deleted tonight: orders, Records and Rico\'s chats. Save anything you need first.',
   wipeWarnSoon:n=>'History older than 60 days will be deleted in '+n+' day'+(n===1?'':'s')+': orders, Records and Rico\'s chats. Save anything you need first.',
-  featuresTitle:'Features', featuresHint:'Turn these on or off for yourself on this device.',
+  
   feat_tables:'Interactive tables', feat_tables_hint:'Sorting, filters and columns in Items and Suppliers. Off shows a plain list.',
   feat_swipe:'Swipe for the usual', feat_swipe_hint:'Swipe an item on the Order screen to add its usual amount.',
-  feat_forgot:'Forgotten item reminder', feat_forgot_hint:'Before sending, Rico mentions items you usually order together.',
-  feat_oddOrder:'Odd amount check', feat_oddOrder_hint:'Stops you when an amount is far from your usual.',
-  feat_itemPhotos:'Pictures on items', feat_itemPhotos_hint:'Shows item pictures on the Order screen.',
-  feat_holdSend:'Hold to send', feat_holdSend_hint:'Press and hold to send, so an order can\'t go out by accident.',
-  feat_sendCancel:'10 seconds to cancel', feat_sendCancel_hint:'A short countdown after Send, with a Cancel button.',
-  feat_tapSound:'Button sounds', feat_tapSound_hint:'A soft click on buttons. It follows the silent switch.',
+  
+  
+  
+  
+  
+  
   feat_kitchenMode:'Kitchen mode', feat_kitchenMode_hint:'Larger text and buttons, for a shared tablet.',
   feat_ricoBriefing:'Morning briefing', feat_ricoBriefing_hint:'Short cards from Rico the first time you open him each morning.',
   feat_ricoSheet:'Rico on the Order screen', feat_ricoSheet_hint:'A button on the Order screen that opens Rico over your order.',
-  feat_ricoSpeak:'Rico speaks', feat_ricoSpeak_hint:'Adds a button to read Rico\'s answers aloud.',
+  
   feat_ricoMood:'Rico\'s mood follows the kitchen', feat_ricoMood_hint:'Worried when something is late, happy when all is sent.',
   feat_milestones:'Kitchen milestones', feat_milestones_hint:'Small awards, like 30 days in a row.',
 });
 Object.assign(T.ku, {
   wipeWarnToday:'مێژووی کۆنتر لە 60 ڕۆژ ئەمشەو دەسڕدرێتەوە: داواکارییەکان، تۆمارەکان و گفتوگۆکانی ریکۆ. پێشتر ئەوەی پێویستتە پاشەکەوتی بکە.',
   wipeWarnSoon:n=>'مێژووی کۆنتر لە 60 ڕۆژ دوای '+n+' ڕۆژ دەسڕدرێتەوە: داواکارییەکان، تۆمارەکان و گفتوگۆکانی ریکۆ. پێشتر ئەوەی پێویستتە پاشەکەوتی بکە.',
-  featuresTitle:'تایبەتمەندییەکان', featuresHint:'ئەمانە بۆ خۆت لەم ئامێرەدا هەڵبکە یان بکوژێنەوە.',
+  
   feat_tables:'خشتەی کارلێکەر', feat_tables_hint:'ڕیزکردن، پاڵێوەر و ستوون لە کاڵاکان و دابینکەران. کوژاندنەوە لیستێکی سادە پیشان دەدات.',
   feat_swipe:'ڕاکێشان بۆ بڕی ئاسایی', feat_swipe_hint:'کاڵایەک لە شاشەی داواکاری ڕابکێشە بۆ زیادکردنی بڕی ئاسایی.',
-  feat_forgot:'بیرخستنەوەی کاڵای لەبیرچوو', feat_forgot_hint:'پێش ناردن، ریکۆ باسی ئەو کاڵایانە دەکات کە زۆرجار پێکەوە داوایان دەکەیت.',
-  feat_oddOrder:'پشکنینی بڕی نائاسایی', feat_oddOrder_hint:'کاتێک بڕێک زۆر جیاوازە لە ئاسایی، ئاگادارت دەکاتەوە.',
-  feat_itemPhotos:'وێنە لەسەر کاڵاکان', feat_itemPhotos_hint:'وێنەی کاڵاکان لە شاشەی داواکاری پیشان دەدات.',
-  feat_holdSend:'ڕاگرتن بۆ ناردن', feat_holdSend_hint:'پەنجەت ڕابگرە بۆ ناردن، بۆ ئەوەی داواکاری بە هەڵە نەچێت.',
-  feat_sendCancel:'10 چرکە بۆ هەڵوەشاندنەوە', feat_sendCancel_hint:'دوای ناردن ژماردنێکی کورت لەگەڵ دوگمەی هەڵوەشاندنەوە.',
-  feat_tapSound:'دەنگی دوگمەکان', feat_tapSound_hint:'کلیکێکی نەرم لەسەر دوگمەکان. دوگمەی بێدەنگی پەیڕەو دەکات.',
+  
+  
+  
+  
+  
+  
   feat_kitchenMode:'شێوازی چێشتخانە', feat_kitchenMode_hint:'نووسین و دوگمەی گەورەتر، بۆ تابلێتی هاوبەش.',
   feat_ricoBriefing:'پوختەی بەیانیان', feat_ricoBriefing_hint:'کارتی کورت لە ریکۆوە یەکەم جار کە هەر بەیانییەک دەیکەیتەوە.',
   feat_ricoSheet:'ریکۆ لە شاشەی داواکاری', feat_ricoSheet_hint:'دوگمەیەک لە شاشەی داواکاری کە ریکۆ لەسەر داواکارییەکەت دەکاتەوە.',
-  feat_ricoSpeak:'ریکۆ قسە دەکات', feat_ricoSpeak_hint:'دوگمەیەک زیاد دەکات بۆ خوێندنەوەی وەڵامەکانی ریکۆ بە دەنگ.',
+  
   feat_ricoMood:'مەزاجی ریکۆ لەگەڵ چێشتخانە', feat_ricoMood_hint:'نیگەران کاتێک شتێک دواکەوتووە، دڵخۆش کاتێک هەموو نێردراوە.',
   feat_milestones:'خاڵەکانی چێشتخانە', feat_milestones_hint:'خەڵاتی بچووک، وەک 30 ڕۆژ لەسەریەک.',
 });
 Object.assign(T.ar, {
   wipeWarnToday:'سيُحذف السجل الأقدم من 60 يومًا الليلة: الطلبات والسجلات ومحادثات ريكو. احفظ ما تحتاجه أولًا.',
   wipeWarnSoon:n=>'سيُحذف السجل الأقدم من 60 يومًا بعد '+AR_DAYS(n)+': الطلبات والسجلات ومحادثات ريكو. احفظ ما تحتاجه أولًا.',
-  featuresTitle:'الميزات', featuresHint:'شغّل هذه الميزات أو أوقفها لنفسك على هذا الجهاز.',
+  
   feat_tables:'جداول تفاعلية', feat_tables_hint:'الفرز والتصفية والأعمدة في الأصناف والموردين. الإيقاف يعرض قائمة بسيطة.',
   feat_swipe:'اسحب للكمية المعتادة', feat_swipe_hint:'اسحب صنفًا في شاشة الطلب لإضافة كميته المعتادة.',
-  feat_forgot:'تذكير بالأصناف المنسية', feat_forgot_hint:'قبل الإرسال، يذكر ريكو الأصناف التي تطلبها معًا عادةً.',
-  feat_oddOrder:'فحص الكميات الغريبة', feat_oddOrder_hint:'ينبهك عندما تكون الكمية بعيدة عن المعتاد.',
-  feat_itemPhotos:'صور على الأصناف', feat_itemPhotos_hint:'يعرض صور الأصناف في شاشة الطلب.',
-  feat_holdSend:'اضغط مطولًا للإرسال', feat_holdSend_hint:'اضغط مطولًا للإرسال حتى لا يُرسل الطلب بالخطأ.',
-  feat_sendCancel:'10 ثوانٍ للإلغاء', feat_sendCancel_hint:'عد تنازلي قصير بعد الإرسال مع زر إلغاء.',
-  feat_tapSound:'أصوات الأزرار', feat_tapSound_hint:'نقرة خفيفة على الأزرار. تتبع مفتاح الصامت.',
+  
+  
+  
+  
+  
+  
   feat_kitchenMode:'وضع المطبخ', feat_kitchenMode_hint:'نص وأزرار أكبر لجهاز لوحي مشترك.',
   feat_ricoBriefing:'موجز الصباح', feat_ricoBriefing_hint:'بطاقات قصيرة من ريكو أول مرة تفتحه كل صباح.',
   feat_ricoSheet:'ريكو في شاشة الطلب', feat_ricoSheet_hint:'زر في شاشة الطلب يفتح ريكو فوق طلبك.',
-  feat_ricoSpeak:'ريكو يتحدث', feat_ricoSpeak_hint:'يضيف زرًا لقراءة إجابات ريكو بصوت عالٍ.',
+  
   feat_ricoMood:'مزاج ريكو يتبع المطبخ', feat_ricoMood_hint:'قلق عند تأخر شيء، وسعيد عند إرسال كل شيء.',
   feat_milestones:'إنجازات المطبخ', feat_milestones_hint:'جوائز صغيرة، مثل 30 يومًا متتاليًا.',
 });
 
 Object.assign(T.en, {
   dayOrderBtn:d=>'Usual '+d, dayOrderLoaded:n=>n+' usual items added',
-  checkTitle:'Before you send', checkSub:'A few things looked different from your usual.', checkUsual:(q,u)=>'You usually order '+q+' '+u+'.', checkMakeIt:q=>'Make it '+q, checkKeep:'Keep it', checkForgot:'You usually order this too.', checkAdd:(q,u)=>'Add '+q+' '+u, checkNotToday:'Not today', checkSendAnyway:'Continue anyway', checkLooksGood:'Continue',
-  checkEmpty:'Your order is empty, so there is nothing to check yet.', checkAllGood:'I checked your order and it looks right.', checkFound:n=>n===1?'One thing needs a look.':n+' things need a look.', checkAmountsOk:'Amounts look normal', checkNothingForgot:'Nothing forgotten',
-  sendingIn:'Sending your order', sendingHint:'Cancel now to change something. Once WhatsApp sends a message, it can\'t be taken back.', sendNow:'Send now', holdToSend:'Press and hold to send',
+  
+  
+  
   swipeNoUsual:'No usual amount yet for this item', swipeAdded:(q,u)=>'Added '+q+' '+u,
-  listBtn:'Paste or photo a list', listTitle:'Add from a list', listHint:'Paste a message or take a photo of a paper list. Check the result before adding it.', listPlaceholder:'5 kilos tomatoes\n2 boxes eggs', listPhoto:'Take a photo', listRead:'Read the list', listReading:'Reading the list...', listFailed:'The list could not be read. Try again.', listNothing:'No items were found in that.', listNoMatch:'Not found in your items', listAdd:'Add to order', listAdded:n=>n+' items added to the order',
-  printBtn:'Print a sheet', printTitle:'Order sheet', placeSort:'By place', placeNone:'No place set', placeLabel:'Where it is kept', placeHint:'Cold room, freezer, dry store...',
-  photoLabel:'Picture', photoAdd:'Add a picture', photoChange:'Change picture', photoRemove:'Remove', photoSaving:'Saving...', photoSaved:'Saved',
+  
+  
+  
   chartPerDay:'Orders each day', chartPerDayAlt:(n,d)=>n+' orders over '+d+' days', trendsTitle:'Changing the most', trendUp:p=>'Up '+p+'%', trendDown:p=>'Down '+p+'%', trendSteady:'About the same',
   compareBtn:'Compare two months', compareTitle:'Compare two months', compareFirst:'First month', compareSecond:'Second month', compareChange:'Change', monthPdf:'Save as PDF',
   yearBtn:'Your year', yearTitle:y=>'Your '+y+' in the kitchen', yearStreak:'Longest streak', yearBest:m=>'Best month: '+m, yearHint:'From each finished month\'s summary and this month so far.',
   milestonesTitle:'Milestones', ms_streak7:'7 days in a row', ms_streak30:'30 days in a row', ms_streak100:'100 days in a row', ms_orders100:'100 orders', ms_orders500:'500 orders', ms_orders1000:'1,000 orders', milestoneNew:n=>'New milestone: '+n,
-  nextLabel:'Next', nextLate:n=>n+' is late', nextCloses:(n,h)=>n+' closes at '+h, nextUsual:c=>c?'Their last order had '+c+' items.':'No past order yet.', nextDue:n=>n+' is due today', nextUsualAt:h=>'Usually around '+h, nextDone:'All done for now', nextDoneSub:'Nothing is due right now.', nextOthers:n=>n+' more are late',
-  weekLabel:'The last 7 days', weekDayLabel:(d,n)=>d+', '+n+' orders', weekAsk:d=>'What did we order on '+d+'?',
+  nextLate:n=>n+' is late', nextDue:n=>n+' is due today', nextUsualAt:h=>'Usually around '+h, nextDone:'All done for now', nextDoneSub:'Nothing is due right now.', 
+  
   briefTitle:'Morning briefing', briefToday:'Today', briefBusy:'Today\'s size', briefBusier:p=>'This weekday usually runs '+p+'% bigger.', briefQuieter:p=>'This weekday usually runs '+p+'% smaller.', briefBusySub:'From the orders kept in History.', briefNote:'From Rico', briefStreak:'Streak', briefStreakTitle:n=>n+' days in a row', briefStreakSub:'Send an order today to keep it going.', briefSkip:'Skip', briefDone:'Done',
   receiptIntro:'Here is your last order.', receiptNone:'There are no orders in History yet.', receiptSame:'Order the same',
-  speakBtn:'Read aloud', speakNoVoice:'This phone has no voice for this language.', whyLabel:'Why these amounts?',
+  whyLabel:'Why these amounts?',
   styleLabel:'How Rico talks', style_normal:'Normal', style_short:'Short and direct', style_warm:'Warm and chatty',
   memoryTitle:'What Rico remembers', memoryHint:'Rules you teach Rico stay until you delete them. His usual amounts come from History.', memoryRules:'Rules', memoryLoading:'Loading...', memoryNone:'No rules yet.', memoryAddLabel:'A new rule', memoryAddHint:'Never order fish on Friday', memoryAdd:'Add', memoryUsual:'Usual amounts', memoryNoOrders:'No orders yet.',
   sheetOpen:'Ask Rico', sheetEmpty:'Your order is empty. Ask me anything.', sheetAsk:'Ask Rico about this order',
   inboxTitle:'Rico\'s messages', inboxNone:'No messages.', inboxSeeAll:n=>'See all '+n,
-  boardBtn:'Today\'s board', boardTitle:'Today\'s board', boardNow:'Do now', boardLater:'Later today', boardSent:'Sent', boardEmpty:'Nothing here', boardSentNote:'Sent today',
+  
   tourBtn:'Show the tour', tourNext:'Next', tourDone:'Start', tour1T:'Make an order', tour1:'Choose amounts on the Order screen. Swipe an item to add its usual amount.', tour2T:'Send it', tour2:'Send opens WhatsApp with each supplier\'s order, ready to go.', tour3T:'Meet Rico', tour3:'Tap the spark at the top. He prepares orders, checks them and answers questions.', tour4T:'You\'re ready', tour4:'Everything you send is saved in History.',
   adminPage_restore:'Restore', adRestoreSub:'The last 7 days', restoreHint:'The server keeps a copy of the kitchen\'s data each day for 7 days. Restoring brings back what was deleted since that day. Nothing that exists now is changed.', restoreBtn:'Restore', restoreNone:'The first copy is made tonight.', restoreCounts:(o,i,s)=>o+' orders, '+i+' items, '+s+' suppliers', restoreConfirm:'This brings back anything deleted since this day. Enter your PIN to continue.', restorePin:'Your PIN', restoreDone:(o,i,s)=>'Brought back '+o+' orders, '+i+' items and '+s+' suppliers',
 });
 Object.assign(T.ku, {
   dayOrderBtn:d=>'ئاسایی '+d, dayOrderLoaded:n=>n+' کاڵای ئاسایی زیاد کرا',
-  checkTitle:'پێش ناردن', checkSub:'هەندێک شت جیاواز بوو لە ئاسایی.', checkUsual:(q,u)=>'زۆرجار '+q+' '+u+' داوا دەکەیت.', checkMakeIt:q=>'بیکە '+q, checkKeep:'وەک خۆی', checkForgot:'زۆرجار ئەمەش داوا دەکەیت.', checkAdd:(q,u)=>q+' '+u+' زیاد بکە', checkNotToday:'ئەمڕۆ نا', checkSendAnyway:'بەردەوام بە', checkLooksGood:'بەردەوام بە',
-  checkEmpty:'داواکارییەکەت بەتاڵە، هێشتا شتێک نییە بۆ پشکنین.', checkAllGood:'داواکارییەکەتم پشکنی و دروستە.', checkFound:n=>n===1?'شتێک پێویستی بە سەیرکردنە.':n+' شت پێویستیان بە سەیرکردنە.', checkAmountsOk:'بڕەکان ئاساییە', checkNothingForgot:'هیچ لەبیر نەچووە',
-  sendingIn:'داواکارییەکەت دەنێردرێت', sendingHint:'ئێستا هەڵیوەشێنەوە بۆ گۆڕینی شتێک. کە واتسئاپ نامەیەک بنێرێت، ناگەڕێتەوە.', sendNow:'ئێستا بینێرە', holdToSend:'پەنجەت ڕابگرە بۆ ناردن',
+  
+  
+  
   swipeNoUsual:'هێشتا بڕی ئاسایی بۆ ئەم کاڵایە نییە', swipeAdded:(q,u)=>q+' '+u+' زیاد کرا',
-  listBtn:'لیست بلکێنە یان وێنە بگرە', listTitle:'زیادکردن لە لیستێکەوە', listHint:'نامەیەک بلکێنە یان وێنەی لیستێکی کاغەز بگرە. پێش زیادکردن ئەنجامەکە بپشکنە.', listPlaceholder:'5 کیلۆ تەماتە\n2 سندوق هێلکە', listPhoto:'وێنە بگرە', listRead:'لیستەکە بخوێنەوە', listReading:'لیستەکە دەخوێنرێتەوە...', listFailed:'لیستەکە نەخوێنرایەوە. دووبارە هەوڵ بدەوە.', listNothing:'هیچ کاڵایەک نەدۆزرایەوە.', listNoMatch:'لە کاڵاکانت نەدۆزرایەوە', listAdd:'زیادکردن بۆ داواکاری', listAdded:n=>n+' کاڵا بۆ داواکاری زیاد کرا',
-  printBtn:'چاپکردنی پەڕە', printTitle:'پەڕەی داواکاری', placeSort:'بەپێی شوێن', placeNone:'شوێن دیاری نەکراوە', placeLabel:'لە کوێ هەڵدەگیرێت', placeHint:'ژووری سارد، سەلاجە، کۆگا...',
-  photoLabel:'وێنە', photoAdd:'وێنە زیاد بکە', photoChange:'وێنە بگۆڕە', photoRemove:'لابردن', photoSaving:'پاشەکەوت دەکرێت...', photoSaved:'پاشەکەوت کرا',
+  
+  
+  
   chartPerDay:'داواکاری هەر ڕۆژێک', chartPerDayAlt:(n,d)=>n+' داواکاری لە '+d+' ڕۆژدا', trendsTitle:'زۆرترین گۆڕانکاری', trendUp:p=>p+'% زیادی کردووە', trendDown:p=>p+'% کەمی کردووە', trendSteady:'نزیکەی وەک خۆی',
   compareBtn:'بەراوردی دوو مانگ', compareTitle:'بەراوردی دوو مانگ', compareFirst:'مانگی یەکەم', compareSecond:'مانگی دووەم', compareChange:'گۆڕان', monthPdf:'وەک PDF پاشەکەوت بکە',
   yearBtn:'ساڵەکەت', yearTitle:y=>'ساڵی '+y+' لە چێشتخانە', yearStreak:'درێژترین زنجیرە', yearBest:m=>'باشترین مانگ: '+m, yearHint:'لە پوختەی هەر مانگێکی تەواوبوو و ئەم مانگە تا ئێستا.',
   milestonesTitle:'خاڵەکان', ms_streak7:'7 ڕۆژ لەسەریەک', ms_streak30:'30 ڕۆژ لەسەریەک', ms_streak100:'100 ڕۆژ لەسەریەک', ms_orders100:'100 داواکاری', ms_orders500:'500 داواکاری', ms_orders1000:'1,000 داواکاری', milestoneNew:n=>'خاڵێکی نوێ: '+n,
-  nextLabel:'دواتر', nextLate:n=>n+' دواکەوتووە', nextCloses:(n,h)=>n+' کاتژمێر '+h+' دادەخات', nextUsual:c=>c?'دوایین داواکارییان '+c+' کاڵا بوو.':'هێشتا داواکاری پێشوو نییە.', nextDue:n=>n+' ئەمڕۆ کاتی هاتووە', nextUsualAt:h=>'زۆرجار نزیکەی '+h, nextDone:'ئێستا هەمووی تەواوە', nextDoneSub:'ئێستا هیچ کاتی نەهاتووە.', nextOthers:n=>n+' ی تر دواکەوتوون',
-  weekLabel:'7 ڕۆژی ڕابردوو', weekDayLabel:(d,n)=>d+'، '+n+' داواکاری', weekAsk:d=>'ڕۆژی '+d+' چیمان داوا کرد؟',
+  nextLate:n=>n+' دواکەوتووە', nextDue:n=>n+' ئەمڕۆ کاتی هاتووە', nextUsualAt:h=>'زۆرجار نزیکەی '+h, nextDone:'ئێستا هەمووی تەواوە', nextDoneSub:'ئێستا هیچ کاتی نەهاتووە.', 
+  
   briefTitle:'پوختەی بەیانی', briefToday:'ئەمڕۆ', briefBusy:'قەبارەی ئەمڕۆ', briefBusier:p=>'ئەم ڕۆژە زۆرجار '+p+'% گەورەترە.', briefQuieter:p=>'ئەم ڕۆژە زۆرجار '+p+'% بچووکترە.', briefBusySub:'لە داواکارییە هەڵگیراوەکانی مێژوو.', briefNote:'لە ریکۆوە', briefStreak:'زنجیرە', briefStreakTitle:n=>n+' ڕۆژ لەسەریەک', briefStreakSub:'ئەمڕۆ داواکارییەک بنێرە بۆ بەردەوامبوون.', briefSkip:'تێپەڕاندن', briefDone:'تەواو',
   receiptIntro:'ئەمە دوایین داواکاریتە.', receiptNone:'هێشتا داواکاری لە مێژوودا نییە.', receiptSame:'هەمان داواکاری',
-  speakBtn:'بە دەنگ بیخوێنەوە', speakNoVoice:'ئەم مۆبایلە دەنگی ئەم زمانەی نییە.', whyLabel:'بۆچی ئەم بڕانە؟',
+  whyLabel:'بۆچی ئەم بڕانە؟',
   styleLabel:'ریکۆ چۆن قسە دەکات', style_normal:'ئاسایی', style_short:'کورت و ڕاستەوخۆ', style_warm:'گەرم و قسەخۆش',
   memoryTitle:'ریکۆ چی لەبیرە', memoryHint:'ئەو یاسایانەی فێری ریکۆی دەکەیت دەمێننەوە تا دەیانسڕیتەوە. بڕە ئاساییەکانی لە مێژووەوەن.', memoryRules:'یاساکان', memoryLoading:'بارکردن...', memoryNone:'هێشتا یاسا نییە.', memoryAddLabel:'یاسایەکی نوێ', memoryAddHint:'هەرگیز ڕۆژی هەینی ماسی داوا مەکە', memoryAdd:'زیادکردن', memoryUsual:'بڕە ئاساییەکان', memoryNoOrders:'هێشتا داواکاری نییە.',
   sheetOpen:'لە ریکۆ بپرسە', sheetEmpty:'داواکارییەکەت بەتاڵە. هەر شتێکم لێ بپرسە.', sheetAsk:'دەربارەی ئەم داواکارییە لە ریکۆ بپرسە',
   inboxTitle:'نامەکانی ریکۆ', inboxNone:'هیچ نامەیەک نییە.', inboxSeeAll:n=>'هەر '+n+' نامە ببینە',
-  boardBtn:'تەختەی ئەمڕۆ', boardTitle:'تەختەی ئەمڕۆ', boardNow:'ئێستا بیکە', boardLater:'دواتر ئەمڕۆ', boardSent:'نێردراو', boardEmpty:'هیچ لێرە نییە', boardSentNote:'ئەمڕۆ نێردرا',
+  
   tourBtn:'گەشتەکە پیشان بدە', tourNext:'دواتر', tourDone:'دەستپێک', tour1T:'داواکارییەک دروست بکە', tour1:'بڕەکان لە شاشەی داواکاری هەڵبژێرە. کاڵایەک ڕابکێشە بۆ زیادکردنی بڕی ئاسایی.', tour2T:'بینێرە', tour2:'ناردن واتسئاپ دەکاتەوە بە داواکاری هەر دابینکەرێک، ئامادە.', tour3T:'ریکۆ بناسە', tour3:'لەسەرەوە دەست لە ئەستێرەکە بدە. داواکاری ئامادە دەکات، دەیپشکنێت و وەڵام دەداتەوە.', tour4T:'ئامادەیت', tour4:'هەرچی دەینێریت لە مێژوودا پاشەکەوت دەکرێت.',
   adminPage_restore:'گەڕاندنەوە', adRestoreSub:'7 ڕۆژی ڕابردوو', restoreHint:'سێرڤەر هەر ڕۆژێک کۆپییەک لە داتای چێشتخانە بۆ 7 ڕۆژ هەڵدەگرێت. گەڕاندنەوە ئەوە دەهێنێتەوە کە لەو ڕۆژەوە سڕاوەتەوە. هیچ شتێکی ئێستا ناگۆڕێت.', restoreBtn:'گەڕاندنەوە', restoreNone:'یەکەم کۆپی ئەمشەو دروست دەکرێت.', restoreCounts:(o,i,s)=>o+' داواکاری، '+i+' کاڵا، '+s+' دابینکەر', restoreConfirm:'ئەمە هەرچی لەم ڕۆژەوە سڕاوەتەوە دەیهێنێتەوە. PIN ەکەت بنووسە بۆ بەردەوامبوون.', restorePin:'PIN ەکەت', restoreDone:(o,i,s)=>o+' داواکاری، '+i+' کاڵا و '+s+' دابینکەر گەڕێندرانەوە',
 });
 Object.assign(T.ar, {
   dayOrderBtn:d=>'المعتاد ليوم '+d, dayOrderLoaded:n=>'أُضيف '+n+' من الأصناف المعتادة',
-  checkTitle:'قبل الإرسال', checkSub:'بعض الأشياء تبدو مختلفة عن المعتاد.', checkUsual:(q,u)=>'عادةً تطلب '+q+' '+u+'.', checkMakeIt:q=>'اجعلها '+q, checkKeep:'أبقها', checkForgot:'عادةً تطلب هذا أيضًا.', checkAdd:(q,u)=>'أضف '+q+' '+u, checkNotToday:'ليس اليوم', checkSendAnyway:'تابع على أي حال', checkLooksGood:'تابع',
-  checkEmpty:'طلبك فارغ، فلا يوجد ما يُفحص بعد.', checkAllGood:'فحصت طلبك ويبدو صحيحًا.', checkFound:n=>n===1?'شيء واحد يحتاج إلى نظرة.':n+' أشياء تحتاج إلى نظرة.', checkAmountsOk:'الكميات طبيعية', checkNothingForgot:'لم يُنسَ شيء',
-  sendingIn:'جارٍ إرسال طلبك', sendingHint:'ألغِ الآن لتغيير شيء. بعد أن يرسل واتساب الرسالة لا يمكن استرجاعها.', sendNow:'أرسل الآن', holdToSend:'اضغط مطولًا للإرسال',
+  
+  
+  
   swipeNoUsual:'لا توجد كمية معتادة لهذا الصنف بعد', swipeAdded:(q,u)=>'أُضيف '+q+' '+u,
-  listBtn:'الصق قائمة أو صوّرها', listTitle:'أضف من قائمة', listHint:'الصق رسالة أو صوّر قائمة ورقية. راجع النتيجة قبل إضافتها.', listPlaceholder:'5 كيلو طماطم\n2 صندوق بيض', listPhoto:'التقط صورة', listRead:'اقرأ القائمة', listReading:'جارٍ قراءة القائمة...', listFailed:'تعذرت قراءة القائمة. حاول مرة أخرى.', listNothing:'لم يُعثر على أصناف.', listNoMatch:'غير موجود في أصنافك', listAdd:'أضف إلى الطلب', listAdded:n=>'أُضيف '+n+' من الأصناف إلى الطلب',
-  printBtn:'اطبع ورقة', printTitle:'ورقة الطلب', placeSort:'حسب المكان', placeNone:'لم يُحدد مكان', placeLabel:'أين يُحفظ', placeHint:'غرفة التبريد، المجمدة، المخزن...',
-  photoLabel:'صورة', photoAdd:'أضف صورة', photoChange:'غيّر الصورة', photoRemove:'إزالة', photoSaving:'جارٍ الحفظ...', photoSaved:'تم الحفظ',
+  
+  
+  
   chartPerDay:'الطلبات كل يوم', chartPerDayAlt:(n,d)=>n+' طلبًا خلال '+d+' يومًا', trendsTitle:'الأكثر تغيرًا', trendUp:p=>'زاد '+p+'%', trendDown:p=>'نقص '+p+'%', trendSteady:'كما هو تقريبًا',
   compareBtn:'قارن شهرين', compareTitle:'قارن شهرين', compareFirst:'الشهر الأول', compareSecond:'الشهر الثاني', compareChange:'التغير', monthPdf:'احفظ بصيغة PDF',
   yearBtn:'سنتك', yearTitle:y=>'سنة '+y+' في المطبخ', yearStreak:'أطول سلسلة', yearBest:m=>'أفضل شهر: '+m, yearHint:'من ملخص كل شهر منتهٍ وهذا الشهر حتى الآن.',
   milestonesTitle:'الإنجازات', ms_streak7:'7 أيام متتالية', ms_streak30:'30 يومًا متتاليًا', ms_streak100:'100 يوم متتالٍ', ms_orders100:'100 طلب', ms_orders500:'500 طلب', ms_orders1000:'1,000 طلب', milestoneNew:n=>'إنجاز جديد: '+n,
-  nextLabel:'التالي', nextLate:n=>n+' متأخر', nextCloses:(n,h)=>'يغلق '+n+' الساعة '+h, nextUsual:c=>c?'كان طلبهم الأخير '+c+' أصناف.':'لا يوجد طلب سابق بعد.', nextDue:n=>'حان موعد '+n+' اليوم', nextUsualAt:h=>'عادةً حوالي '+h, nextDone:'انتهى كل شيء الآن', nextDoneSub:'لا شيء مستحق الآن.', nextOthers:n=>n+' آخرون متأخرون',
-  weekLabel:'آخر 7 أيام', weekDayLabel:(d,n)=>d+'، '+n+' طلبات', weekAsk:d=>'ماذا طلبنا يوم '+d+'؟',
+  nextLate:n=>n+' متأخر', nextDue:n=>'حان موعد '+n+' اليوم', nextUsualAt:h=>'عادةً حوالي '+h, nextDone:'انتهى كل شيء الآن', nextDoneSub:'لا شيء مستحق الآن.', 
+  
   briefTitle:'موجز الصباح', briefToday:'اليوم', briefBusy:'حجم اليوم', briefBusier:p=>'هذا اليوم عادةً أكبر بنسبة '+p+'%.', briefQuieter:p=>'هذا اليوم عادةً أصغر بنسبة '+p+'%.', briefBusySub:'من الطلبات المحفوظة في السجل.', briefNote:'من ريكو', briefStreak:'السلسلة', briefStreakTitle:n=>n+' أيام متتالية', briefStreakSub:'أرسل طلبًا اليوم لتستمر.', briefSkip:'تخطَّ', briefDone:'تم',
   receiptIntro:'هذا طلبك الأخير.', receiptNone:'لا توجد طلبات في السجل بعد.', receiptSame:'اطلب نفسه',
-  speakBtn:'اقرأ بصوت عالٍ', speakNoVoice:'لا يوجد في هذا الهاتف صوت لهذه اللغة.', whyLabel:'لماذا هذه الكميات؟',
+  whyLabel:'لماذا هذه الكميات؟',
   styleLabel:'كيف يتحدث ريكو', style_normal:'عادي', style_short:'قصير ومباشر', style_warm:'ودود ومتحدث',
   memoryTitle:'ما يتذكره ريكو', memoryHint:'القواعد التي تعلّمها لريكو تبقى حتى تحذفها. كمياته المعتادة من السجل.', memoryRules:'القواعد', memoryLoading:'جارٍ التحميل...', memoryNone:'لا توجد قواعد بعد.', memoryAddLabel:'قاعدة جديدة', memoryAddHint:'لا تطلب السمك يوم الجمعة أبدًا', memoryAdd:'إضافة', memoryUsual:'الكميات المعتادة', memoryNoOrders:'لا توجد طلبات بعد.',
   sheetOpen:'اسأل ريكو', sheetEmpty:'طلبك فارغ. اسألني أي شيء.', sheetAsk:'اسأل ريكو عن هذا الطلب',
   inboxTitle:'رسائل ريكو', inboxNone:'لا توجد رسائل.', inboxSeeAll:n=>'عرض الكل ('+n+')',
-  boardBtn:'لوحة اليوم', boardTitle:'لوحة اليوم', boardNow:'الآن', boardLater:'لاحقًا اليوم', boardSent:'أُرسل', boardEmpty:'لا شيء هنا', boardSentNote:'أُرسل اليوم',
+  
   tourBtn:'اعرض الجولة', tourNext:'التالي', tourDone:'ابدأ', tour1T:'أنشئ طلبًا', tour1:'اختر الكميات في شاشة الطلب. اسحب صنفًا لإضافة كميته المعتادة.', tour2T:'أرسله', tour2:'يفتح الإرسال واتساب بطلب كل مورد جاهزًا.', tour3T:'تعرّف على ريكو', tour3:'اضغط النجمة في الأعلى. يجهّز الطلبات ويفحصها ويجيب عن الأسئلة.', tour4T:'أنت جاهز', tour4:'كل ما ترسله يُحفظ في السجل.',
   adminPage_restore:'الاستعادة', adRestoreSub:'آخر 7 أيام', restoreHint:'يحتفظ الخادم بنسخة من بيانات المطبخ كل يوم لمدة 7 أيام. تعيد الاستعادة ما حُذف منذ ذلك اليوم، ولا تغيّر شيئًا موجودًا.', restoreBtn:'استعادة', restoreNone:'تُنشأ أول نسخة الليلة.', restoreCounts:(o,i,s)=>o+' طلبًا، '+i+' صنفًا، '+s+' موردًا', restoreConfirm:'سيعيد هذا كل ما حُذف منذ هذا اليوم. أدخل رمزك للمتابعة.', restorePin:'رمزك', restoreDone:(o,i,s)=>'أُعيد '+o+' طلبًا و'+i+' صنفًا و'+s+' موردًا',
+});
+
+/* The clean-up: settings in sections, one notification switch, AI switches, pinned suppliers. */
+Object.assign(T.en, {
+  chooseUnit:"Choose a unit",
+  settingsGroup_notif:'Notifications', settingsGroup_order:'Ordering', settingsGroup_rico:'Rico', settingsGroup_look:'Look',
+  notifSwitch:'Notifications on this phone', notifSwitchHint:'Rico\'s messages and the suppliers\' reminders. This switch is for this phone only.',
+  feat_showLastQty:'Show the last amount', feat_showLastQty_hint:'Each item shows how much you ordered last time.',
+  feat_compactRows:'Compact rows', feat_compactRows_hint:'Fits more items on the screen.',
+  feat_soundQty:'Sound when you change an amount', feat_soundQty_hint:'A soft tap each time you press + or −.',
+  feat_soundSent:'Sound when orders are sent', feat_soundSent_hint:'A short chime once every supplier\'s order has gone.',
+  aiUse:n=>'Use '+n, aiSwitchedOff:'Switched off', aiTurnedOn:'Switched on. Rico can use it again.', aiTurnedOff:'Switched off. Rico skips it from now on.',
+  pinSupplier:'Pin supplier', unpinSupplier:'Unpin supplier', sheetAskAbout:'Ask me anything about this order.',
+});
+Object.assign(T.ku, {
+  chooseUnit:"یەکە هەڵبژێرە",
+  settingsGroup_notif:'ئاگادارکردنەوەکان', settingsGroup_order:'داواکاری', settingsGroup_rico:'ریکۆ', settingsGroup_look:'شێوە',
+  notifSwitch:'ئاگادارکردنەوە لەم مۆبایلەدا', notifSwitchHint:'نامەکانی ریکۆ و بیرخستنەوەی دابینکەران. ئەم دوگمەیە تەنها بۆ ئەم مۆبایلەیە.',
+  feat_showLastQty:'دوایین بڕ پیشان بدە', feat_showLastQty_hint:'هەر کاڵایەک پیشانی دەدات دوایین جار چەندت داوا کرد.',
+  feat_compactRows:'ڕیزی بچووکتر', feat_compactRows_hint:'کاڵای زیاتر لەسەر شاشە جێ دەبێتەوە.',
+  feat_soundQty:'دەنگ کاتێک بڕێک دەگۆڕیت', feat_soundQty_hint:'لێدانێکی نەرم هەر جارێک + یان − دادەگریت.',
+  feat_soundSent:'دەنگ کاتێک داواکارییەکان دەنێردرێن', feat_soundSent_hint:'زەنگێکی کورت کاتێک داواکاری هەموو دابینکەرێک نێردرا.',
+  aiUse:n=>n+' بەکاربهێنە', aiSwitchedOff:'کوژاوەتەوە', aiTurnedOn:'هەڵکرا. ریکۆ دەتوانێت دووبارە بەکاری بهێنێت.', aiTurnedOff:'کوژایەوە. ریکۆ لەمەودوا بەکاری ناهێنێت.',
+  pinSupplier:'دابینکەر بچەسپێنە', unpinSupplier:'لابردنی چەسپاندن', sheetAskAbout:'هەر شتێک دەربارەی ئەم داواکارییە لێم بپرسە.',
+});
+Object.assign(T.ar, {
+  chooseUnit:"اختر وحدة",
+  settingsGroup_notif:'الإشعارات', settingsGroup_order:'الطلب', settingsGroup_rico:'ريكو', settingsGroup_look:'المظهر',
+  notifSwitch:'الإشعارات على هذا الهاتف', notifSwitchHint:'رسائل ريكو وتذكيرات الموردين. هذا المفتاح لهذا الهاتف فقط.',
+  feat_showLastQty:'إظهار آخر كمية', feat_showLastQty_hint:'يعرض كل صنف الكمية التي طلبتها آخر مرة.',
+  feat_compactRows:'صفوف مضغوطة', feat_compactRows_hint:'يتسع لعدد أكبر من الأصناف على الشاشة.',
+  feat_soundQty:'صوت عند تغيير الكمية', feat_soundQty_hint:'نقرة خفيفة كلما ضغطت + أو −.',
+  feat_soundSent:'صوت عند إرسال الطلبات', feat_soundSent_hint:'رنة قصيرة بعد إرسال طلب كل مورد.',
+  aiUse:n=>'استخدم '+n, aiSwitchedOff:'متوقف', aiTurnedOn:'تم التشغيل. يمكن لريكو استخدامه مجددًا.', aiTurnedOff:'تم الإيقاف. سيتخطاه ريكو من الآن.',
+  pinSupplier:'تثبيت المورد', unpinSupplier:'إلغاء تثبيت المورد', sheetAskAbout:'اسألني أي شيء عن هذا الطلب.',
 });

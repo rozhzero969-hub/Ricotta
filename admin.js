@@ -97,7 +97,7 @@ function attachAdminBodyEvents(){
     await Promise.all(keys.map(k=>adminFetch(k, true)));
   }));
   ({restore:attachAdminRestore, problems:attachAdminProblems, security:attachAdminSecurity, health:attachAdminHealth, access:attachAdminAccess, pins:attachAdminPins,
-    devices:attachAdminDevices, catalog:attachAdminCatalog, time:attachAdminTime})[state.adminPage]?.(slot);
+    devices:attachAdminDevices, catalog:attachAdminCatalog, time:attachAdminTime, rico:attachAdminAiSwitches})[state.adminPage]?.(slot);
 }
 /* Opens a page (or goes back to the list) with the iPhone's push: the new page slides in from the side
    while the list moves a little the other way and dims; Back reverses it. */
@@ -404,8 +404,8 @@ function attachAdminHealth(slot){
 }
 
 /* ---------- Yunis's access ---------- */
-const ACCESS_SCREENS = [['history', NAV_ICONS.history], ['manage', NAV_ICONS.manage], ['record', NAV_ICONS.record], ['transfers', NAV_ICONS.transfers], ['assistant', ICON_SPARKLE]];
-const ACCESS_ACTIONS = ['catalog', 'send', 'exports', 'notify', 'reminders'];
+const ACCESS_SCREENS = [['history', NAV_ICONS.history], ['manage', NAV_ICONS.manage], ['record', NAV_ICONS.record], ['assistant', ICON_SPARKLE]];
+const ACCESS_ACTIONS = ['catalog', 'send', 'exports', 'notify'];
 function renderAdminAccess(){
   const r = adminValue('roles');
   if(!r) return `${adminHeading()}<div class="ad-empty"><p>${esc(adminData.failed.roles ? t('loadFailed') : t('loading'))}</p></div>`;
@@ -440,7 +440,7 @@ function attachAdminAccess(slot){
   });
   const standard = slot.querySelector('#accessStandard');
   if(standard) standard.onclick = ()=>withBusy(standard, async()=>{
-    if(await save(ALL_ROLES.filter(r=>r !== 'transfers'))) toast(t('accessSaved'));
+    if(await save(ALL_ROLES)) toast(t('accessSaved'));
   });
 }
 
@@ -508,6 +508,7 @@ function renderAdminDevices(){
       <div class="dev-kind">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : ICON_MOBILE} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
       <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
       ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
+      <div class="rec-line"><span class="rec-k">${t('settingsGroup_notif')}</span> <span class="dev-notif ${d.push ? 'on' : 'off'}">${esc(t(d.push ? 'notifOn' : 'notifOff'))}</span></div>
       <div class="rec-line"><span class="rec-k">${t('versionLabel')}</span> ${d.appVersion ? `${esc(d.appVersion)} <span class="dev-ver ${versionCmp(d.appVersion, latest) >= 0 ? 'ok' : 'old'}">${esc(t(versionCmp(d.appVersion, latest) >= 0 ? 'versionCurrent' : 'versionOld'))}</span>` : esc(t('versionUnknown'))}</div>
       ${commandIsPending(d) ? `<div class="dev-pending">${d.command.type==='logout'?t('cmdLogoutPending'):t('cmdRefreshPending')} · ${timeAgo(d.command.ts)}</div>` : ''}
       ${isThis ? '' : `<div class="dev-actions">
@@ -603,8 +604,8 @@ function fmtTokens(n, short = false){
 }
 function renderAdminRico(){
   const r = adminValue('rico');
-  const kinds = r?.kinds || {}, chats = Number(kinds.chat || 0), voice = Number(kinds.voice || 0), lists = Number(kinds.transfer || 0);
-  const total = chats + voice + lists;
+  const kinds = r?.kinds || {}, chats = Number(kinds.chat || 0);
+  const total = chats;
   const people = r?.people || {}, ro = Number(people.rozha || 0), yu = Number(people.yunis || 0), both = Math.max(1, ro + yu);
   const days = (r?.days || []).slice(-14), max = Math.max(1, ...days.map(d=>Number(d.calls) || 0));
   const hourPct = r ? Math.min(100, Math.round((r.thisHour || 0) / (r.hourLimit || 400) * 100)) : 0;
@@ -617,7 +618,7 @@ function renderAdminRico(){
     </section>
     ${renderAdminAi()}
     <div class="section-title">${esc(t('adThisMonthLabel'))}</div>
-    ${r ? `<div class="ad-stats"><div><b>${chats}</b><span>${esc(t('adRicoChats'))}</span></div><div><b>${voice}</b><span>${esc(t('adRicoVoice'))}</span></div><div><b>${esc(fmtTokens(tokens.input + tokens.output, true))}</b><span>${esc(t('adRicoTokens'))}</span></div></div>
+    ${r ? `<div class="ad-stats"><div><b>${chats}</b><span>${esc(t('adRicoChats'))}</span></div><div><b>${esc(fmtTokens(tokens.input + tokens.output, true))}</b><span>${esc(t('adRicoTokens'))}</span></div></div>
     <section class="ad-card">
       <div class="ad-chart-head"><b>${esc(t('adRicoWho'))}</b></div>
       <div class="report-who"><i class="r" style="--w:${Math.round(ro / both * 100)}%"></i><i class="y" style="--w:${Math.round(yu / both * 100)}%"></i></div>
@@ -629,9 +630,9 @@ function renderAdminRico(){
     </section>
     <p class="ad-foot">${esc(t('adRicoFoot'))}</p>` : `<div class="ad-empty"><p>${esc(adminData.failed.rico ? t('loadFailed') : t('loading'))}</p></div>`}`;
 }
-/* Rico's AIs: Claude Haiku answers first, Google Gemini and Groq take over when it can't. For each: whether
-   it is connected, how it answered last, this month's replies and tokens (as each AI reported them), and
-   that the backups are on free plans. The keys never reach the app: they are set on the server only. */
+/* Rico's AIs: Claude Haiku answers first, Google Gemini and Groq take over when it can't. For each: a switch
+   (one that is off is skipped), whether it is connected, how it answered last, this month's replies and
+   tokens, and that the backups are on free plans. The keys never reach the app: they are on the server only. */
 const AI_BRAINS = {anthropic:{name:'Claude Haiku 5.5', role:'aiRoleMain'}, gemini:{name:'Google Gemini', role:'aiRoleBackup1'}, groq:{name:'Groq', role:'aiRoleBackup2'}};
 function renderAdminAi(){
   const a = adminValue('ai');
@@ -642,7 +643,8 @@ function renderAdminAi(){
     const status = !b.connected ? t('aiNotConnected') : b.state ? t('aiState_' + b.state) : t('aiNotUsedYet');
     return `<div class="ad-ai">
       <div class="ad-ai-head"><div class="ad-card-title"><b>${esc(info.name)}</b><span>${esc(t(info.role))}</span></div>
-        <span class="ad-ai-state ${b.connected ? tone(b.state) : 'idle'}"><i aria-hidden="true"></i>${esc(status)}${b.connected && b.at ? ` · ${esc(timeAgo(b.at))}` : ''}</span></div>
+        <label class="check-row ad-ai-switch"><span class="sr-only">${esc(t('aiUse')(info.name))}</span><input type="checkbox" data-ai-switch="${esc(b.id)}" ${b.enabled !== false ? 'checked' : ''}></label></div>
+      <span class="ad-ai-state ${b.enabled === false ? 'idle' : b.connected ? tone(b.state) : 'idle'}"><i aria-hidden="true"></i>${esc(b.enabled === false ? t('aiSwitchedOff') : status)}${b.enabled !== false && b.connected && b.at ? ` · ${esc(timeAgo(b.at))}` : ''}</span>
       <div class="ad-ai-numbers"><span>${esc(t('aiReplies')(b.calls))}</span><span>${esc(t('adTokensInOut')(fmtTokens(b.input), fmtTokens(b.output)))}</span>${b.id !== 'anthropic' ? `<span class="ad-ai-bill">${esc(t('aiFreePlan'))}</span>` : ''}</div></div>`;
   };
   return `<div class="section-title">${esc(t('aiBrainsTitle'))}</div>
@@ -697,5 +699,19 @@ function attachAdminRestore(){
         return {};
       },
     });
+  });
+}
+
+/* Admin > Rico: switching an AI off or on. Rico skips one that is off from his next reply. */
+function attachAdminAiSwitches(root){
+  root.querySelectorAll('[data-ai-switch]').forEach(box=>box.onchange = async ()=>{
+    box.disabled = true;
+    const r = await api('admin/ai/' + box.dataset.aiSwitch, {method:'PUT', body:{enabled:box.checked}});
+    box.disabled = false;
+    if(!r.ok){ box.checked = !box.checked; toast(t('saveFailed'), 'warn'); return; }
+    const a = adminValue('ai'), brain = a?.brains?.find(x=>x.id === box.dataset.aiSwitch);
+    if(brain) brain.enabled = box.checked;
+    toast(t(box.checked ? 'aiTurnedOn' : 'aiTurnedOff'));
+    paintAdmin();
   });
 }

@@ -1,42 +1,76 @@
-/* Features people can turn off in Settings. Each person's choice is kept on their own device, per account;
-   a feature with no choice yet uses its default here. Small touches have no switch. */
-const FEATURES = [
-  {id:'tables', on:true},
-  {id:'swipe', on:true},
-  {id:'forgot', on:true},
-  {id:'oddOrder', on:true},
-  {id:'itemPhotos', on:true},
-  {id:'holdSend', on:false},
-  {id:'sendCancel', on:true},
-  {id:'tapSound', on:false},
-  {id:'kitchenMode', on:false},
-  {id:'ricoBriefing', on:true, role:'assistant'},
-  {id:'ricoSheet', on:true, role:'assistant'},
-  {id:'ricoSpeak', on:false, role:'assistant'},
-  {id:'ricoMood', on:true, role:'assistant'},
-  {id:'milestones', on:true},
+/* Settings belong to the account: changing them on Yunis's account changes them for Yunis on every
+   phone. They are saved on the server (app_accounts.settings) and come back with the start-up data.
+   Notifications stay with each phone, since each phone signs up for them itself.
+   A setting with no saved choice uses its default here. */
+const SETTINGS = [
+  {id:'swipe', group:'order', on:true},
+  {id:'showLastQty', group:'order', on:false},
+  {id:'compactRows', group:'order', on:false},
+  {id:'soundQty', group:'order', on:true},
+  {id:'soundSent', group:'order', on:true},
+  {id:'ricoSheet', group:'rico', on:true, role:'assistant'},
+  {id:'ricoBriefing', group:'rico', on:true, role:'assistant'},
+  {id:'ricoMood', group:'rico', on:true, role:'assistant'},
+  {id:'tables', group:'look', on:false},
+  {id:'kitchenMode', group:'look', on:false},
+  {id:'milestones', group:'look', on:true},
 ];
-const featureKey = id=>`feature:${state.account || ''}:${id}`;
+const CHOICES = {darkMode:['auto', 'on', 'off'], ricoStyle:['normal', 'short', 'warm']};
+const SETTING_GROUPS = ['order', 'rico', 'look'];
+
 function featureOn(id){
-  const saved = lget(featureKey(id));
-  return typeof saved === 'boolean' ? saved : !!FEATURES.find(f=>f.id === id)?.on;
+  const saved = state.settings?.[id];
+  return typeof saved === 'boolean' ? saved : !!SETTINGS.find(f=>f.id === id)?.on;
 }
-function setFeature(id, on){ lset(featureKey(id), on); applyFeatures(); }
-/* Features that change the whole page are classes on <html>. */
+function choice(id){
+  const saved = state.settings?.[id];
+  return CHOICES[id].includes(saved) ? saved : CHOICES[id][0];
+}
+/* Saves one setting for this account. It applies at once; if the server can't take it, it goes back. */
+async function setSetting(id, value){
+  const before = state.settings?.[id];
+  state.settings = {...(state.settings || {}), [id]:value};
+  applyFeatures();
+  const r = await api('settings', {method:'PUT', body:{key:id, value}});
+  if(r.ok) return true;
+  state.settings = {...state.settings, [id]:before};
+  applyFeatures();
+  toast(t('saveFailed'), 'warn');
+  if(state.view === 'settings') render();
+  return false;
+}
+const setFeature = (id, on)=>setSetting(id, !!on);
+const ricoStyle = ()=>choice('ricoStyle');
+/* Choices made on this phone before settings moved to the account are carried over once. */
+async function carryOverLocalSettings(){
+  if(!state.account || Object.keys(state.settings || {}).length) return;
+  const old = {compactRows:lget('compactRows') === true ? true : undefined, showLastQty:lget('showLastQty') === true ? true : undefined,
+    soundQty:lget('sound.qty') === 'off' ? false : undefined, soundSent:lget('sound.sent') === 'off' ? false : undefined,
+    darkMode:['on', 'off'].includes(lget('darkMode')) ? lget('darkMode') : undefined};
+  for(const [key, value] of Object.entries(old)) if(value !== undefined) await setSetting(key, value);
+  ['compactRows', 'showLastQty', 'sound.qty', 'sound.sent', 'darkMode'].forEach(k=>lset(k, null));
+}
+/* Settings that change the whole page are classes on <html>. */
 function applyFeatures(){
   document.documentElement.classList.toggle('kitchen-mode', featureOn('kitchenMode'));
+  document.documentElement.classList.toggle('compact-rows', featureOn('compactRows'));
 }
-const ricoStyleKey = ()=>`ricoStyle:${state.account || ''}`;
-function ricoStyle(){ const v = lget(ricoStyleKey()); return v === 'short' || v === 'warm' ? v : 'normal'; }
 function renderFeatureSettings(){
-  const shown = FEATURES.filter(f=>!f.role || canOpen(f.role));
-  const style = canOpen('assistant') ? `<div class="field feature-select"><label for="ricoStyleSel">${esc(t('styleLabel'))}</label><select id="ricoStyleSel">${['normal', 'short', 'warm'].map(v=>`<option value="${v}" ${ricoStyle() === v ? 'selected' : ''}>${esc(t('style_' + v))}</option>`).join('')}</select></div>` : '';
-  return `<div class="section-title">${esc(t('featuresTitle'))}</div><p class="settings-hint">${esc(t('featuresHint'))}</p><div class="form-card">${shown.map(f=>`<label class="check-row preference-row"><input type="checkbox" data-feature="${f.id}" ${featureOn(f.id) ? 'checked' : ''}><span>${esc(t('feat_' + f.id))}<small>${esc(t('feat_' + f.id + '_hint'))}</small></span></label>`).join('')}${style}</div>`;
+  const row = f=>`<label class="check-row preference-row"><input type="checkbox" data-feature="${f.id}" ${featureOn(f.id) ? 'checked' : ''}><span>${esc(t('feat_' + f.id))}<small>${esc(t('feat_' + f.id + '_hint'))}</small></span></label>`;
+  return SETTING_GROUPS.map(group=>{
+    const rows = SETTINGS.filter(f=>f.group === group && (!f.role || canOpen(f.role))).map(row).join('');
+    const extra = group === 'rico' && canOpen('assistant') ? `<div class="field feature-select"><label for="ricoStyleSel">${esc(t('styleLabel'))}</label><select id="ricoStyleSel">${CHOICES.ricoStyle.map(v=>`<option value="${v}" ${ricoStyle() === v ? 'selected' : ''}>${esc(t('style_' + v))}</option>`).join('')}</select></div>` : '';
+    if(!rows && !extra) return '';
+    return `<div class="section-title">${esc(t('settingsGroup_' + group))}</div><div class="form-card">${group === 'look' ? renderAppearanceRow() : ''}${rows}${extra}</div>`;
+  }).join('');
 }
 function attachFeatureSettings(){
-  document.querySelectorAll('[data-feature]').forEach(box=>box.onchange = ()=>setFeature(box.dataset.feature, box.checked));
+  document.querySelectorAll('[data-feature]').forEach(box=>box.onchange = async ()=>{
+    if(!(await setFeature(box.dataset.feature, box.checked))) box.checked = !box.checked;
+    if(box.dataset.feature === 'tables' && state.view !== 'settings') render();
+  });
   const style = document.getElementById('ricoStyleSel');
-  if(style) style.onchange = ()=>lset(ricoStyleKey(), style.value === 'normal' ? null : style.value);
+  if(style) style.onchange = ()=>setSetting('ricoStyle', style.value);
 }
 /* The warning before the wipe day: shown from 2 days before, on History and Record. */
 function wipeDaysLeft(){

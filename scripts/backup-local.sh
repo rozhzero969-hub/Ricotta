@@ -18,7 +18,7 @@ SQL="$(mktemp)"
 trap 'rm -f "$SQL" "$TMP"' EXIT
 {
   printf "select jsonb_build_object('at', now()"
-  for t in suppliers items units orders order_lines month_summaries order_drafts reminder_settings streak stock_items rico_orders rico_chats audit_events usage_time; do
+  for t in suppliers items units orders order_lines month_summaries order_drafts streak rico_orders rico_chats audit_events usage_time; do
     printf ", '%s', (select coalesce(jsonb_agg(t), '[]') from public.app_%s t)" "$t" "$t"
   done
   printf ", 'accounts', (select coalesce(jsonb_agg(t), '[]') from (select id, name, roles, pins from public.app_accounts) t)) as backup;\n"

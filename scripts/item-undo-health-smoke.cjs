@@ -15,10 +15,10 @@ const {PGlite}=require('@electric-sql/pglite'),{pgcrypto}=require('@electric-sql
  assert.equal((await q("select to_regprocedure('public.app_internal_merge_items(text,text,timestamptz,timestamptz,text,text)') is null as gone"))[0].gone,true,'item merging is gone');
 
  await db.exec("insert into app_accounts(id,name,pin_hash,pins) values('rozha','Rozha','test','{}'),('yunis','Yunis','test','{}');insert into app_units(id,en) values('kg','kg');insert into app_suppliers(id,name) values('s','Market');");
- await db.query("select app_internal_catalog_change('suppliers','s',$1::jsonb,'rozha','device')",[JSON.stringify({name:'Market renamed',cutoff:'09:30'})]);
- assert.deepEqual((await q("select name,cutoff from app_suppliers where id='s'"))[0],{name:'Market renamed',cutoff:'09:30'},'suppliers still save');
+ await db.query("select app_internal_catalog_change('suppliers','s',$1::jsonb,'rozha','device')",[JSON.stringify({name:'Market renamed',phone:'07501112233'})]);
+ assert.deepEqual((await q("select name,phone from app_suppliers where id='s'"))[0],{name:'Market renamed',phone:'07501112233'},'suppliers still save');
  const audit=(await q("select payload from app_audit_events where entity_type='supplier' order by occurred_at desc limit 1"))[0].payload;
- assert.deepEqual(audit.fields.map(f=>f.k).sort(),['cutoff','name'],'the Record shows only real supplier fields');
+ assert.deepEqual(audit.fields.map(f=>f.k).sort(),['name','phone'],'the Record shows only real supplier fields');
 
  // Undo after deleting an item.
  await db.exec("insert into app_items(id,name,unit_id,supplier_id,aliases,note) values('a','Tomatoes','kg','s',array['tomato'],'ripe');");

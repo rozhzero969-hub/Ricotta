@@ -33,7 +33,7 @@ let spotScope = 'all';
 function spotCommands(){
   const go = v=>()=>goView(v);
   const list = [
-    ...['order','history','transfers','manage','suppliers','units','record','admin','settings','assistant'].filter(v=>canOpen(v))
+    ...['order','history','manage','suppliers','units','record','admin','settings','assistant'].filter(v=>canOpen(v))
       .map(v=>({id:'go-' + v, icon:NAV_ICONS[v === 'suppliers' ? 'suppliers' : v === 'units' ? 'units' : v] || ICON_SPARKLE, label:viewLabel(v), sub:t('spotScreen'), words:[v, v === 'assistant' ? 'rico chat ai' : ''], run:go(v)})),
     {id:'send', icon:ICON_CHAT, label:t('sendOrders'), sub:()=>t('itemCount')(cartCount()), words:['send whatsapp suppliers'], when:()=>canDo('send') && cartCount() > 0, run:()=>startSendQueue()},
     {id:'add-item', icon:ICON_PLUS, label:t('addItem'), words:['new item add'], when:()=>canDo('catalog'), run:()=>{ goView('manage'); openItemModal(null); }},
@@ -58,10 +58,10 @@ function spotCommands(){
 /* Switches that flip right in the results (the search stays open), showing whether each is on. */
 function spotToggles(){
   return [
-    {id:'sound-qty', label:t('quantitySound'), words:['sound quantity tap tick order sounds'], on:()=>soundOn('qty'), set:v=>setSoundOn('qty', v)},
-    {id:'sound-sent', label:t('sentSound'), words:['sound sent chime order sounds'], on:()=>soundOn('sent'), set:v=>setSoundOn('sent', v)},
-    {id:'compact', label:t('compactRowsLabel'), words:['compact rows dense small'], on:()=>prefOn('compactRows'), set:v=>{ lset('compactRows', v ? true : null); applyPrefs(); }},
-    {id:'last-qty', label:t('lastQtyLabel'), words:['show last quantity previous'], on:()=>prefOn('showLastQty'), set:v=>{ lset('showLastQty', v ? true : null); applyPrefs(); if(state.view === 'order') render(); }},
+    {id:'sound-qty', label:t('feat_soundQty'), words:['sound quantity tap tick order sounds'], on:()=>soundOn('qty'), set:v=>setSoundOn('qty', v)},
+    {id:'sound-sent', label:t('feat_soundSent'), words:['sound sent chime order sounds'], on:()=>soundOn('sent'), set:v=>setSoundOn('sent', v)},
+    {id:'compact', label:t('feat_compactRows'), words:['compact rows dense small'], on:()=>prefOn('compactRows'), set:v=>setFeature('compactRows', v)},
+    {id:'last-qty', label:t('feat_showLastQty'), words:['show last quantity previous'], on:()=>prefOn('showLastQty'), set:v=>{ setFeature('showLastQty', v); if(state.view === 'order') render(); }},
   ];
 }
 /* An action matches only where a word starts ("tom" never finds "Automatic"), or as a typo of a whole

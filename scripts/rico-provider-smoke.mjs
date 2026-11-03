@@ -300,7 +300,7 @@ const ai = await adminAi(db);
 assert.deepEqual(ai.brains.map(b => [b.id, b.connected]), [['anthropic', true], ['gemini', true], ['groq', true]]);
 assert.equal(ai.brains[0].calls >= 1 && ai.brains[0].input >= 232, true);
 assert.equal(ai.brains[0].state, 'busy', 'the last answer state is kept');
-assert.deepEqual(Object.keys(ai.brains[0]).sort(), ['at', 'calls', 'connected', 'id', 'input', 'output', 'state'], 'no keys and no bill go to the app');
+assert.deepEqual(Object.keys(ai.brains[0]).sort(), ['at', 'calls', 'connected', 'enabled', 'id', 'input', 'output', 'state'], 'no keys and no bill go to the app');
 assert.equal(JSON.stringify(ai).includes('sk-ant') || JSON.stringify(ai).includes('gsk_'), false, 'keys never go back to the app');
 
 // Rico orders by himself (TEST): usual amounts plus the ones Rozha named, sent by WhatsApp only to her number.

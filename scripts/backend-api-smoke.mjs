@@ -143,12 +143,12 @@ try {
   // Yunis's roles are checked on the server: without them each route answers 403.
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';tables.app_sessions[0].app_accounts={roles:['history']};
   for(const [path,method,body] of [['orders','POST',{id:'o-role',entries:[{supplierId:'supplier',items:[{itemId:'tomato',name:'Tomatoes',qty:1}]}]}],['items/tomato','PUT',{name:'Tomatoes'}],['items/tomato','DELETE',{}],['suppliers/supplier','PUT',{name:'S'}],
-    ['supplier-order/supplier','PUT',{itemIds:['tomato']}],['activity','GET',null],['assistant/inbox','GET',null],['rico-chats','GET',null],['streak/recover','POST',{}],['stock-items','GET',null],
-    ['push/send','POST',{type:'assistant',bodyEn:'x'}],['push/send','POST',{type:'reminder-now'}],['reports/catalog','GET',null],['reminder','PUT',{enabled:true,time:'09:00'}]])
+    ['supplier-order/supplier','PUT',{itemIds:['tomato']}],['activity','GET',null],['assistant/inbox','GET',null],['rico-chats','GET',null],['streak/recover','POST',{}],
+    ['push/send','POST',{type:'assistant',bodyEn:'x'}],['reports/catalog','GET',null],['admin/ai/groq','PUT',{enabled:false}]])
     assert.equal((await call(path,body,method)).status,403,`without the role, staff cannot use ${method} ${path}`);
   assert.equal((await call('months',null,'GET')).status,200,'the history role still opens the month archive');
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';
-  const yunisBoot=await call('bootstrap',null,'GET');assert.deepEqual((await yunisBoot.json()).roles,['history','manage','catalog','record','assistant','send','exports','notify','reminders'],'Yunis has the standard set until Rozha changes it');
+  const yunisBoot=await call('bootstrap',null,'GET');assert.deepEqual((await yunisBoot.json()).roles,['history','manage','catalog','record','assistant','send','exports','notify'],'Yunis has the standard set until Rozha changes it');
   assert.equal((await call('problems',{reports:[{fingerprint:'0123456789abcdef',kind:'error',message:'boom'}]},'POST')).status,200,'any signed-in phone can report a problem');
   assert.equal((await call('problems',{reports:[{fingerprint:'nothex',kind:'error',message:'boom'}]},'POST')).status,400,'problem reports are validated');
   // A long message is cut at 500 characters without splitting an emoji, and control characters are dropped.
@@ -157,7 +157,16 @@ try {
   assert.equal(Array.from(kept.message).length,500);assert.ok(kept.message.endsWith('\u{1F600}'),'the emoji at the limit stays whole');
   assert.equal(kept.stack,'a\nb');
   assert.equal((await call('problems',{reports:Array.from({length:11},()=>({fingerprint:'0123456789abcdef',kind:'error',message:'x'}))},'POST')).status,400,'at most 10 reports at once');
-  assert.equal((await call('reminder',{enabled:true,time:'09:00'},'PUT')).status,200,'staff can set the daily reminder offered on their Settings screen');
+  // Settings belong to the account: only known keys and values.
+  tables.app_accounts = [{ id:'yunis', name:'Yunis', pins:[], settings:{} }];
+  assert.equal((await call('settings',{key:'tables',value:true},'PUT')).status,200);
+  assert.deepEqual(tables.app_accounts[0].settings,{tables:true},'saved on his account');
+  assert.equal((await call('settings',{key:'darkMode',value:'on'},'PUT')).status,200);
+  assert.equal((await call('settings',{key:'pinnedSuppliers',value:['supplier']},'PUT')).status,200);
+  assert.deepEqual(tables.app_accounts[0].settings,{tables:true,darkMode:'on',pinnedSuppliers:['supplier']});
+  for(const bad of [{key:'tables',value:'yes'},{key:'darkMode',value:'purple'},{key:'secret',value:true},{key:'pinnedSuppliers',value:[1]}])
+    assert.equal((await call('settings',bad,'PUT')).status,400,'refused: '+JSON.stringify(bad));
+  assert.equal((await call('reminder',{enabled:true,time:'09:00'},'PUT')).status,404,'the daily reminder is gone');
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';tables.app_sessions[0].device_id=null;
   for(const [path,method] of [['push/subscription','DELETE'],['push/lang','PUT']])assert.equal((await call(path,{endpoint:'https://fcm.googleapis.com/fcm/send/orphan',lang:'en'},method)).status,403,'device-less staff sessions cannot modify orphan subscriptions');
   reset();requestAllowed=false;
@@ -236,7 +245,7 @@ try {
   assert.equal((await call('push/subscription', { endpoint: 'https://fcm.googleapis.com/fcm/send/peer', p256dh: 'A'.repeat(87), auth: 'B'.repeat(22) }, 'PUT')).status, 403, 'another device cannot overwrite a subscription');
 
   reset();
-  Object.assign(tables, { app_units: [], app_orders: [], app_order_lines: [], app_reminder_settings: [] });
+  Object.assign(tables, { app_units: [], app_orders: [], app_order_lines: [] });
   const bootRes = await call('bootstrap', undefined, 'GET'); const boot = await bootRes.json(); assert.equal(bootRes.status, 200);
   assert.equal(boot.tabs,undefined);
   assert.equal(boot.theme,undefined);
@@ -294,9 +303,9 @@ try {
   assert.equal((await call('admin/pin',{account:'yunis',currentPin:'482916',newPin:'591837'},'PUT')).status,403,'a session revoked before the commit cannot change a PIN');
   reset(); pinResult = 'duplicate';
   assert.equal((await (await call('admin/pin',{account:'rozha',currentPin:'482916',newPin:'591837'},'PUT')).json()).error,'duplicate_pin');
-  // Transfers is still being made: its routes refuse.
+  // Transfers and voice messages are gone.
   reset();
-  for(const [path,method] of [['stock-items','GET'],['stock-items','PUT'],['stock-items/x/alias','POST'],['stock/read','POST']])assert.equal((await call(path,method==='GET'?null:{},method)).status,423,`${path} waits for Transfers`);
+  for(const [path,method] of [['stock-items','GET'],['stock-items','PUT'],['stock/read','POST'],['assistant/transcribe','POST'],['orders/read-list','POST']])assert.equal((await call(path,method==='GET'?null:{},method)).status,404,`${path} is gone`);
 
   // Retired sign-in and personalization endpoints are no longer reachable.
   reset();
@@ -351,22 +360,18 @@ try {
   const sixtyDays = await call('bootstrap', null, 'GET');
   assert.equal(sixtyDays.status, 200);
   assert.deepEqual((await sixtyDays.json()).history.map(h => h.id).sort(), ['o-45', 'o-61'], 'History shows everything still kept: the wipe day decides what goes');
-  // Rico's rules, an item's place, restoring: who may do what.
+  // Rico's rules, restoring, AI switches: who may do what.
   reset();
   tables.app_rico_rules = [];
   assert.equal((await call('rico-rules', { rule: 'Never order fish on Friday' })).status, 200);
   assert.equal(tables.app_rico_rules[0].rule, 'Never order fish on Friday');
   assert.equal((await call('rico-rules', { rule: ' ' })).status, 400, 'an empty rule is refused');
   assert.deepEqual((await (await call('rico-rules', null, 'GET')).json()).map(r => r.rule), ['Never order fish on Friday']);
-  assert.equal((await call('items/tomato/extra', { place: 'Cold room' }, 'PUT')).status, 200);
-  assert.equal(tables.app_items.find(i => i.id === 'tomato').place, 'Cold room');
-  assert.equal((await call('items/none/extra', { place: 'x' }, 'PUT')).status, 409, 'a deleted item says so');
   assert.equal((await call('admin/backups/restore', { day: 'yesterday', pin: '123456' })).status, 400);
   reset(); tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis'; tables.app_sessions[0].app_accounts = { roles: ['send', 'history'] };
-  assert.equal((await call('items/tomato/extra', { place: 'x' }, 'PUT')).status, 403, 'a place needs the catalog role');
+  assert.equal((await call('admin/ai/groq', { enabled: false }, 'PUT')).status, 403, 'only Rozha switches an AI');
   assert.equal((await call('admin/backups', null, 'GET')).status, 403, 'backups are Rozha\'s');
   assert.equal((await call('admin/backups/restore', { day: '2026-11-01', pin: '123456' })).status, 403);
-  assert.equal((await call('items/tomato/photo', { image: 'x' })).status, 403);
   // Rico's cheer goes only to someone who has Rico.
   for (const [roles, cheers] of [[['send', 'history'], 0], [['send', 'history', 'assistant'], 1]]) {
     reset(); saved = true;

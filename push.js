@@ -181,13 +181,9 @@ async function reportSendResult(res){
   else await showAlert(t('notifNoDevices'));
 }
 /* ---------- Daily reminder settings ---------- */
-async function saveReminder(enabled, time){
-  const r = await api('reminder', {method:'PUT', body:{enabled, time}});
-  return r.ok;
-}
 
 /* ---------- Notification taps ---------- */
-/* kind: 'reminder' (daily reminder -> Order), 'supplier' (a supplier's reminder -> Order on that
+/* kind: 'supplier' (a supplier's reminder -> Order on that
    supplier's tab), 'assistant' (Rico; his month-end message opens History) and 'security' (a sign-in
    from a new device -> Admin, Security). */
 function handlePushIntent(kind, supplierId, message, view){
