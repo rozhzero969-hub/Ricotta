@@ -26,7 +26,7 @@ let updatePromptOpen = false;
 let snoozedVersion = null;
 
 /* Every file the page loads. If you add a new .js/.css file, add it here. */
-const APP_FILES = ['boot.js','config.js','icons.js','i18n.js','storage.js','reports.js','sounds.js','features.js','rico-plus.js','order-tools-plus.js','reports-plus.js','modals.js','bot-check.js','push.js','assistant.js','kitchen.js','supabase/functions/_shared/search.js', 'ordering-tools.js','exports.js','tables.js','spotlight.js','admin.js','app.js','update-check.js','sw.js','style.css'];
+const APP_FILES = ['boot.js','config.js','icons.js','i18n.js','storage.js','reports.js','sounds.js','features.js','rico-plus.js','order-tools-plus.js','reports-plus.js','modals.js','bot-check.js','push.js','assistant.js','kitchen.js','supabase/functions/_shared/search.js', 'ordering-tools.js','exports.js','tables.js','supabase/functions/_shared/receipts.js','receipts.js','spotlight.js','admin.js','app.js','update-check.js','sw.js','style.css'];
 
 /* Reloads the page and makes sure the newest files are used. Browsers (and
    GitHub Pages) can keep serving cached copies of the scripts for a few

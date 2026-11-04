@@ -8,12 +8,12 @@
   const LS = 'ricottaOrders:';
   const DB_KEY = 'ricottaLab:db';
   /* The same roles and screens as the server (supabase/functions/api/index.ts). */
-  const ROLES = ['history','manage','catalog','record','assistant','send','exports','notify'];
-  const DEFAULT_ROLES = ROLES;
+  const ROLES = ['history','manage','catalog','record','assistant','send','exports','notify','receipts'];
+  const DEFAULT_ROLES = ROLES.filter(r=>r !== 'receipts');
   const rolesOf = account => account === 'rozha' ? [...ROLES] : Array.isArray(db.roles?.yunis) ? ROLES.filter(r=>db.roles.yunis.includes(r)) : [...DEFAULT_ROLES];
   const can = (account, role) => account === 'rozha' || (rolesOf(account).includes(role) && (role !== 'catalog' || rolesOf(account).includes('manage')));
   const viewsFor = a => ['order', ...(can(a,'assistant') ? ['assistant'] : []), ...(can(a,'history') ? ['history'] : []),
-    ...(can(a,'manage') ? ['manage','suppliers','itemsAdmin','units'] : []), ...(can(a,'record') ? ['record'] : []), ...(a === 'rozha' ? ['admin'] : []), 'settings'];
+    ...(can(a,'manage') ? ['manage','suppliers','itemsAdmin','units'] : []), ...(can(a,'receipts') ? ['receipts'] : []), ...(can(a,'record') ? ['record'] : []), ...(a === 'rozha' ? ['admin'] : []), 'settings'];
   const NAMES = {rozha:{en:'Rozha',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}};
 
   const lsGet = k => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(_){ return null; } };
@@ -294,6 +294,49 @@
         pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
         months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
       });
+    }
+    // Receipts: a small copy of what Rico reads from Ricotta Restaurant, and a Rico who fills a receipt
+    // in two seconds and saves it right after it is approved (there is no Mac in the Lab).
+    if(path === 'receipts' || path === 'receipts-settings' || path.startsWith('receipts/')){
+      if(!can(account, 'receipts')) return fail('forbidden', 403);
+      db.rr ||= {receipts:[], helper:{online:true, lastSeen:new Date().toISOString(), signedIn:true, busyWith:null, autoApprove:false, stopped:false, limits:{bigTotal:1000000, priceJump:30, rateMin:1500, rateMax:1800}, version:'lab'}, next:28};
+      const cat = {at:new Date().toISOString(), suppliers:['Bread House Bakery','Coffee Supply','Corner Cake','Jabal Amman','ITALY COFFEE QAHOWA','شوینی لقمان بۆ کەلەشیر و قاز و قەل','کۆگای مختار','ابو ابراهيم قصاب'],
+        zones:['Main Storage','Kebab','Pizza','Bakery','Teahouse','Kentucky'],
+        items:[{name:'Frozen Peas - بزالیا سادە', base:'غرام', units:[{name:'دانە', factor:400},{name:'کارتۆن', factor:8000}]},
+          {name:'هیل (Natural Green Indian Cardamoms)', base:'غرام', units:[{name:'دانە', factor:1000}]},
+          {name:'Kalabeb', base:'غرام', units:[{name:'کیلۆ', factor:1000}]},
+          {name:'Roasted Coffee', base:'غرام', units:[{name:'کیلۆ', factor:1000}]},
+          {name:'Yogurt - ماستی ماستاو', base:'غرام', units:[{name:'جام', factor:2000},{name:'ستل', factor:1}]},
+          {name:'Los Amigos Cheddar Cheese  - جبن شیدار سائل', base:'غرام', units:[{name:'دانە', factor:3000},{name:'کارتۆن', factor:18000}]},
+          {name:'Mushroom - کوارگ', base:'دانە', units:[{name:'کارتۆن', factor:8}]}]};
+      const R = globalThis.RicottaReceipts, list = db.rr.receipts, now = ()=>new Date().toISOString();
+      if(method === 'GET' && path === 'receipts') return json({receipts:list.filter(r=>r.status !== 'draft' || r.by === account), catalog:cat, helper:db.rr.helper, last:{'Frozen Peas - بزالیا سادە|دانە (400×)|IQD':2000}});
+      if(method === 'PUT' && path === 'receipts-settings'){ if(account !== 'rozha') return fail('forbidden', 403); if(typeof body.autoApprove === 'boolean') db.rr.helper.autoApprove = body.autoApprove; if(typeof body.stopped === 'boolean') db.rr.helper.stopped = body.stopped; save(); return json(db.rr.helper); }
+      const m = path.match(/^receipts\/([0-9a-f-]{36})(?:\/(send|approve|cancel|photos))?$/); if(!m) return fail('not_found', 404);
+      let r = list.find(x=>x.id === m[1]);
+      if(method === 'PUT' && !m[2]){
+        if(r && r.status !== 'draft') return fail('not_a_draft', 409);
+        if(!r){ r = {id:m[1], by:account, source:'app', status:'draft', warnings:[], log:[], photos:[], finance:null, total:null, version:0, createdAt:now()}; list.unshift(r); }
+        Object.assign(r, {supplier:body.supplier, invoice:body.invoice, zone:body.zone || 'Main Storage', currency:body.currency === 'USD' ? 'USD' : 'IQD', rate:body.rate ?? null, delivery:body.delivery ?? null, lines:body.lines || [], version:r.version + 1, updatedAt:now()});
+        save(); return json(r);
+      }
+      if(!r) return fail('not_found', 404);
+      if(method === 'DELETE'){ db.rr.receipts = list.filter(x=>x !== r); save(); return ok(); }
+      if(method === 'GET' && m[2] === 'photos') return json({photos:[]});
+      if(m[2] === 'send'){
+        const c = R.check(r, cat, db.rr.helper.limits, {});
+        if(c.errors.length) return json({error:'invalid_receipt', errors:c.errors}, 422);
+        Object.assign(r, {status:'queued', total:c.total, warnings:c.warnings, sentAt:now(), log:[...r.log, {at:now(), who:account, text:'Sent to Rico'}]});
+        setTimeout(()=>{ if(r.status !== 'queued') return; Object.assign(r, {status:'review', log:[...r.log, {at:now(), who:'rico', text:'Filled in Ricotta Restaurant and read every box back. Waiting for approval.'}]}); save(); }, 2000);
+        save(); return json(r);
+      }
+      if(m[2] === 'approve'){
+        if(r.status !== 'review') return fail('not_waiting', 409);
+        Object.assign(r, {status:'saved', approvedBy:account, savedAt:now(), finance:{tab:'Purchases', month:new Date().toISOString().slice(0, 7), no:db.rr.next++}, log:[...r.log, {at:now(), who:account, text:'Approved'}, {at:now(), who:'rico', text:'Saved and found in Invoices. Every line matches.'}]});
+        save(); return json(r);
+      }
+      if(m[2] === 'cancel'){ if(!['draft','queued','filling','review','problem'].includes(r.status)) return fail('too_late', 409); Object.assign(r, {status:'cancelled', log:[...r.log, {at:now(), who:account, text:'Cancelled'}]}); save(); return json(r); }
+      return fail('not_found', 404);
     }
     if(path === 'rico-rules'){
       db.rules ||= [{id:'11111111-1111-4111-8111-111111111111', account:'rozha', rule:'Never order fish on Friday', created_at:new Date().toISOString()}];

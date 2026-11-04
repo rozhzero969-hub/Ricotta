@@ -61,8 +61,11 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   GET    draft | PUT draft          {changes}                 this account's unsent order, shared between its devices
 //   PUT    items/aliases              {entries}                 Rico's search-name changes, applied together
 //   GET    auth/security              (public)                  whether sign-in needs the bot check, and its site key
+//   receipts, receipts/:id[/send|approve|cancel|photos], receipts-settings, and helper/* for Rico on
+//   the Mac: see receipts.ts
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { adminAi, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
+import { helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -81,9 +84,10 @@ const LANGS = ["en", "ku", "ar"];
 /* What Rozha can give Yunis in Admin -> Access. Screens: history, manage (Items, Suppliers, Units),
    record, assistant (Rico). Features: catalog (add, change and delete items, suppliers and
    units; needs manage), send (send orders to suppliers), exports (Excel and PDF files), notify (send a
-   notification to every phone through Rico). Rozha always has all. */
-const ROLES = ["history", "manage", "catalog", "record", "assistant", "send", "exports", "notify"];
-const DEFAULT_ROLES = ROLES;
+   notification to every phone through Rico), receipts (Receipts, entered in Ricotta Restaurant by Rico).
+   Rozha always has all. */
+const ROLES = ["history", "manage", "catalog", "record", "assistant", "send", "exports", "notify", "receipts"];
+const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts");   // Receipts only when Rozha gives it
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
   : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : [...DEFAULT_ROLES];
 // Account settings the app may save (Settings), and the ones with a list of choices.
@@ -163,7 +167,7 @@ const can = (s: Session, role: string) => isRozha(s) || (s.roles.includes(role) 
 function viewsFor(s: Session) {
   return ["order", ...(can(s, "assistant") ? ["assistant"] : []), ...(can(s, "history") ? ["history"] : []),
     ...(can(s, "manage") ? ["manage", "suppliers", "itemsAdmin", "units"] : []),
-    ...(can(s, "record") ? ["record"] : []), ...(isRozha(s) ? ["admin"] : []), "settings"];
+    ...(can(s, "receipts") ? ["receipts"] : []), ...(can(s, "record") ? ["record"] : []), ...(isRozha(s) ? ["admin"] : []), "settings"];
 }
 
 /* null: no valid session (401, the phone signs in again). "unavailable": the check itself could not run
@@ -622,7 +626,7 @@ async function heartbeat(s: Session, label: string | null, version: string | nul
    An open app asks "anything new since n?". The answer comes as soon as a counter in app_signals moves
    (looked at every second), or after `wait` seconds (at most 25) with nothing new, and the app asks
    again. Only the kinds of change and their counters are sent, never the data itself. */
-const SIGNAL_KINDS = ["data", "draft", "devices", "admin", "inbox"];
+const SIGNAL_KINDS = ["data", "draft", "devices", "admin", "inbox", "receipts"];
 async function readSignals() {
   const { data, error } = await app("signals").select("kind,n");
   if (error) throw error;
@@ -804,6 +808,14 @@ Deno.serve(async (req) => {
       return error ? json({ ok: false }, 503) : json({ ok: true });
     }
 
+    // Rico on Rozha's Mac has his own door (receipts.ts), with its own secret instead of a session.
+    if (path.startsWith("helper/")) {
+      if (!(await helperAllowed(req))) return fail("unauthorized", 401);
+      const limited = await requestLimit(["helper"], [900]); if (limited) return limited;
+      const hb = M === "GET" ? {} : await readBody(req, path.endsWith("/photo") ? 4_400_000 : MAX_BODY_BYTES);
+      return await helperRoute({ db, json, fail, account: null, rozha: false }, M, path, hb);
+    }
+
     const s = await authenticate(req);
     if (s === "unavailable") return fail("auth_unavailable", 503);
     if (!s) return fail("unauthorized", 401);
@@ -817,6 +829,10 @@ Deno.serve(async (req) => {
     let m: RegExpMatchArray | null;
 
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
+    if (path === "receipts" || path === "receipts-settings" || path.startsWith("receipts/")) {
+      if (!can(s, "receipts")) return fail("forbidden", 403);
+      return (await receiptsRoute({ db, json, fail, account: s.account, rozha }, M, path, b)) ?? fail("not_found", 404);
+    }
     if (M === "GET" && path === "draft") return json(await readDraft(s.account));
     if (M === "PUT" && path === "draft") {
       const changes = b.changes;

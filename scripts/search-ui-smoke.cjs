@@ -22,7 +22,7 @@ const server=http.createServer((req,res)=>{
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.locator('#itemSearch').waitFor();
   await page.waitForFunction(()=>state.items.length>10);
-  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','manage','record'],'Rozha\'s tabs, with Transfers gone');
+  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','receipts','manage'],'Rozha\'s tabs: Receipts after History, Record and Admin under More');
   assert.equal(await page.locator('.hero-card,.streak-chip').count(),2,'summary board and kitchen streak remain');
   assert.equal(await page.locator('.order-options').count(),0,'the Order screen has no fold');
   assert.equal(await page.locator('#clearOrderBtn').isVisible(),false,'Clear order shows only once something is chosen');
