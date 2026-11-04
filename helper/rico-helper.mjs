@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 
-const VERSION = "2026-11-05.1";
+const VERSION = "2026-11-05.2";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -45,10 +45,27 @@ async function api(path, { method = "GET", body } = {}) {
   }
 }
 const report = (id, body) => api(`helper/receipts/${id}/report`, { method: "POST", body });
-async function photo(page, id, kind, locator) {
+/* Photos of the whole page. Ricotta Restaurant scrolls inside its own box, so one picture shows only
+   what is on screen: Rico scrolls that box from the top to the bottom and takes as many pictures as it
+   takes (a little overlap between them), so every box, line and total is in a photo. */
+async function photo(page, id, kind) {
   try {
-    const buf = locator ? await locator.screenshot({ type: "jpeg", quality: 70 }) : await page.screenshot({ type: "jpeg", quality: 70, fullPage: true });
-    await api(`helper/receipts/${id}/photo`, { method: "POST", body: { kind, image: buf.toString("base64") } });
+    const box = await page.evaluateHandle(() => {
+      const all = [...document.querySelectorAll("main, div, section")].filter((el) => {
+        const st = getComputedStyle(el);
+        return /(auto|scroll)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 40 && el.clientHeight > 200;
+      });
+      return all.sort((a, b) => b.clientHeight * b.clientWidth - a.clientHeight * a.clientWidth)[0] || document.scrollingElement;
+    });
+    const height = await box.evaluate((el) => el.scrollHeight), view = await box.evaluate((el) => el.clientHeight);
+    const step = Math.max(200, view - 80), shots = Math.min(8, Math.ceil(Math.max(1, height - view) / step) + 1);
+    for (let i = 0; i < shots; i++) {
+      await box.evaluate((el, y) => el.scrollTo(0, y), Math.min(i * step, height - view));
+      await sleep(350);
+      const buf = await page.screenshot({ type: "jpeg", quality: 72 });
+      await api(`helper/receipts/${id}/photo`, { method: "POST", body: { kind, image: buf.toString("base64") } });
+    }
+    await box.evaluate((el) => el.scrollTo(0, 0));
   } catch (e) { log("photo failed:", e.message); }
 }
 
@@ -67,13 +84,19 @@ async function openBrowser() {
 /* Signed out (the session ran out)? Sign in again with what setup saved, and say so. */
 async function ensureSignedIn(id) {
   await page.waitForLoadState("domcontentloaded");
-  if (!/\/login/.test(page.url())) { signedIn = true; return; }
+  // Ricotta Restaurant decides in the page itself whether to show the sign-in, a moment after loading:
+  // wait until either the sign-in box or the app is there.
+  const passBox = page.locator("input[type=password]").first();
+  await Promise.race([passBox.waitFor({ timeout: 20_000 }), page.getByText("INVENTORY").first().waitFor({ timeout: 20_000 }), page.getByText("Receipt details").first().waitFor({ timeout: 20_000 })]).catch(() => {});
+  if (!/\/login/.test(page.url()) && !(await passBox.isVisible().catch(() => false))) { signedIn = true; return; }
   signedIn = false;
   const user = readSecret("rr-username"), pass = readSecret("rr-password");
   if (!user || !pass) stop("Ricotta Restaurant signed out and Rico has no sign-in saved. Run node helper/setup.mjs");
-  await page.getByRole("button", { name: /^Password$/ }).click().catch(() => {});
-  await page.getByLabel(/Username/i).fill(user);
-  await page.getByLabel(/^Password$/i).fill(pass);
+  // The Password tab (not PIN), then the two boxes, found by their kind rather than their labels.
+  await page.getByRole("tab", { name: /^Password$/ }).or(page.getByRole("button", { name: /^Password$/ })).first().click().catch(() => {});
+  await passBox.waitFor({ timeout: 10_000 });
+  await page.locator("input:not([type=password]):not([type=hidden]):not([type=checkbox]):not([type=radio])").first().fill(user);
+  await passBox.fill(pass);
   await page.getByRole("button", { name: /^Sign in$/ }).click();
   await page.waitForURL((u) => !/\/login/.test(String(u)), { timeout: 20_000 }).catch(() => stop("Rico could not sign in to Ricotta Restaurant (wrong sign-in or a new check on the page)."));
   signedIn = true;
@@ -97,7 +120,7 @@ function capture(paths) {
       if (paths.every((p) => p in got)) { page.off("response", on); resolve(got); }
     };
     page.on("response", on);
-    setTimeout(() => { page.off("response", on); resolve(got); }, 30_000);
+    setTimeout(() => { page.off("response", on); resolve(got); }, 45_000);
   });
   return done;
 }
@@ -105,11 +128,16 @@ function capture(paths) {
 /* What Rico reads from Ricotta Restaurant for the app: suppliers, zones (not the two Breakfast ones)
    and the purchased items (not the ones named "-") with their units. */
 async function readCatalog() {
-  const wait = capture(["/api/v1/inventory/items", "/api/v1/purchasing/conversions", "/api/v1/purchasing/suppliers", "/api/v1/inventory/zones", "/api/v1/inventory/units"]);
+  // The unit names (غرام, کیلۆ, ...) load on the Units page; everything else on New receipt.
+  const waitUnits = capture(["/api/v1/inventory/units"]);
+  await go("/inventory/units");
+  const u = await waitUnits;
+  const wait = capture(["/api/v1/inventory/items", "/api/v1/purchasing/conversions", "/api/v1/purchasing/suppliers", "/api/v1/inventory/zones"]);
   await go("/inventory/new-receipt");
   const c = await wait;
-  if (!c["/api/v1/inventory/items"]) throw new Error("Could not read the item list from Ricotta Restaurant");
-  const units = Object.fromEntries((c["/api/v1/inventory/units"]?.units ?? []).map((u) => [u.id, u.name]));
+  if (!c["/api/v1/inventory/items"] || !c["/api/v1/purchasing/suppliers"] || !c["/api/v1/inventory/zones"]) throw new Error("Could not read the lists from Ricotta Restaurant (the page did not load them)");
+  if (!u["/api/v1/inventory/units"]?.units?.length) throw new Error("Could not read the unit names from Ricotta Restaurant");
+  const units = Object.fromEntries(u["/api/v1/inventory/units"].units.map((x) => [x.id, x.name]));
   const conv = c["/api/v1/purchasing/conversions"] ?? [];
   const zonesRaw = c["/api/v1/inventory/zones"];
   const zones = (Array.isArray(zonesRaw) ? zonesRaw : zonesRaw?.zones ?? []).map((z) => z.name).filter((n) => n && !/breakfast/i.test(n));
@@ -146,16 +174,19 @@ async function typeNumber(input, value) {
   const back = digits(await input.inputValue());
   if (Number(back) !== Number(value)) stop(`Typed ${value} but Ricotta Restaurant shows ${back}.`);
 }
-/* The unit option for a receipt line: same unit name and size, whatever order the label is drawn in. */
-function unitMatches(label, want) {
-  const a = (label || "").trim(), m = a.match(/^(.*?)\s*\(\s*([\d.]+)\s*×\s*\)$/) || a.match(/^\(\s*([\d.]+)\s*×\s*\)\s*(.*)$/);
-  const w = want.match(/^(.*?)\s*\(([\d.]+)×\)$/);
-  if (!w) return a === want;
-  if (!m) return false;
-  const [name, f] = a.startsWith("(") ? [m[2], m[1]] : [m[1], m[2]];
-  return name.trim() === w[1].trim() && Number(f) === Number(w[2]);
+/* The unit option for a receipt line: the same unit name and the same size. Ricotta Restaurant writes
+   the size as "(×6)" and the app as "(6×)", and in a right-to-left name the brackets can come first;
+   so the name and the number are read out and compared, never the text as a whole. */
+function unitParts(label) {
+  const t = String(label || "").replace(/[٠-٩]/g, (d) => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, (d) => d.charCodeAt(0) - 0x6f0).replace(/[\u200e\u200f\u2066-\u2069]/g, "").trim();
+  const m = t.match(/\(\s*×?\s*([\d.,]+)\s*×?\s*\)/);
+  if (!m) return { name: t, factor: 1 };
+  return { name: t.replace(m[0], "").trim(), factor: Number(m[1].replace(/,/g, "")) };
 }
-
+function unitMatches(label, want) {
+  const a = unitParts(label), w = unitParts(want);
+  return a.name === w.name && a.factor === w.factor;
+}
 async function fill(r) {
   await go("/inventory/new-receipt", r.id);
   await page.getByText("Receipt details").first().waitFor({ timeout: 20_000 });
@@ -311,14 +342,17 @@ async function heartbeat(idle) {
 }
 await openBrowser();
 log(`Rico ${VERSION}${PRACTICE ? " (practice: nothing is saved)" : ""}`);
-await readCatalog().catch((e) => log("catalog:", e.message));
-let lastCatalog = Date.now();
+// Anything left half way when Rico last stopped is sorted out first (see the API's helper/recover).
+await api("helper/recover", { method: "POST" }).then((x) => { if (x?.recovered) log(`picked up ${x.recovered} receipt(s) left half way`); }, (e) => log("recover:", e.message));
+let lastCatalog = 0;
+await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => log("Could not read the lists yet:", e.message));
 for (;;) {
   const h = await heartbeat(true);
   if (h && !h.stopped) {
     const { receipt } = await api("helper/claim", { method: "POST" }).catch((e) => { log("claim:", e.message); return {}; });
     if (receipt) { await work(receipt); continue; }
   }
-  if (Date.now() - lastCatalog > 30 * 60_000) { await readCatalog().catch((e) => log("catalog:", e.message)); lastCatalog = Date.now(); }
+  // Every 30 minutes; after a failed read, again a minute later.
+  if (Date.now() - lastCatalog > (lastCatalog ? 30 * 60_000 : 60_000)) await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => { log("Could not read the lists yet:", e.message); lastCatalog = Date.now() - 29 * 60_000; });
   await sleep(5000);
 }

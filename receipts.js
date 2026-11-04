@@ -255,7 +255,10 @@ function renderReceiptView(){
     ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('rrStatus_saved'))}</span><b>${esc(r.finance?.no ? t('rrFinanceNo')(r.finance.tab, r.finance.no) : t('rrStatus_saved'))}</b><small>${esc(r.finance?.month || '')}</small></div>`
     : `<div class="rr-state ${r.status}">${rrRico()}<div><b>${esc(t('rrStatus_' + r.status))}</b><small>${esc(r.status === 'problem' ? r.problem || '' : t('rrStatusHint_' + r.status))}</small></div></div>`;
   const lines = r.lines.map((l, i)=>`<li><span class="rr-num">${i + 1}</span><span><b dir="auto">${esc(l.item)}</b><small>${esc(rrNum(l.qty, 3))} × <bdi>${esc(l.unit)}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</small></span><b>${esc(rrMoney(l.qty * l.cost, r.currency))}</b></li>`).join('');
-  const pics = (photos?.list || []).map(p=>`<a class="rr-photo" href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="${esc(t('rrPhoto_' + p.kind))}" loading="lazy"><span>${esc(t('rrPhoto_' + p.kind))}</span></a>`).join('');
+  // A long page comes in several photos, top to bottom: each says which part it is ("2 of 3").
+  const list = photos?.list || [], of = k=>list.filter(p=>p.kind === k).length, seen = {};
+  const pics = list.map(p=>{ seen[p.kind] = (seen[p.kind] || 0) + 1; const label = t('rrPhoto_' + p.kind) + (of(p.kind) > 1 ? ' ' + t('rrPartOf')(seen[p.kind], of(p.kind)) : '');
+    return `<a class="rr-photo" href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="${esc(label)}" loading="lazy"><span>${esc(label)}</span></a>`; }).join('');
   const t2 = globalThis.RicottaReceipts.totals(r);
   return `<div class="rr-page">${rrBackBar(r.supplier || '')}
     ${head}
