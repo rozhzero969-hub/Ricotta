@@ -53,6 +53,7 @@ function renderReceipts(){
       <div class="rr-hero-top"><span>${esc(t('rrToday'))}</span><span class="rr-rico-state ${h.online && !h.stopped ? 'on' : ''}">${rrRico()}${esc(rrHelperLine(h))}</span></div>
       <div class="rr-hero-sum"><b>IQD ${esc(rrNum(sum))}</b><span>${esc(t('rrSavedToday')(saved.length))}</span></div>
       <button type="button" class="rr-new" id="rrNew">${ICON_PLUS}<span>${esc(t('rrNew'))}</span></button>
+      ${isRozha() ? rrRicoControls(h) : ''}
     </div>
     ${needs.length ? `<div class="section-title">${esc(t('rrNeedsYou'))}</div><div class="rr-list rr-needs">${needs.map(row).join('')}</div>` : ''}
     ${drafts.length ? `<div class="section-title">${esc(t('rrDrafts'))}</div><div class="rr-list">${drafts.map(row).join('')}</div>` : ''}
@@ -61,10 +62,20 @@ function renderReceipts(){
     ${rr.data.catalog?.at ? `<p class="rr-foot">${esc(t('rrCatalogAt')(rr.data.catalog.items.length, formatIraqDateTime(new Date(rr.data.catalog.at), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'})))}</p>` : `<p class="rr-foot">${esc(t('rrNoCatalog'))}</p>`}
   </div>`;
 }
+/* Start Rico (real or practice) or stop him, through the launcher on the Mac. */
+function rrRicoControls(h){
+  const l = h.launcher || {};
+  const busy = !!l.command;
+  const btn = (action, label, cls = '')=>`<button type="button" class="rr-ctl ${cls}" data-rico="${action}" ${busy || !l.online ? 'disabled' : ''}>${esc(label)}</button>`;
+  const buttons = h.online ? btn('stop', t('rrStopRicoNow'), 'stop') : `${btn('real', t('rrStartRico'), 'go')}${btn('practice', t('rrPractice'))}`;
+  const line = !l.online ? t('rrLauncherOff') : busy ? t('rrLauncherWorking') : l.result || '';
+  return `<div class="rr-ctls">${buttons}</div>${line ? `<p class="rr-ctl-note">${esc(line)}</p>` : ''}`;
+}
 function rrHelperLine(h){
   if(h.stopped) return t('rrRicoStopped');
   if(!h.online) return t('rrRicoOff');
-  return h.busyWith ? t('rrRicoBusy') : t('rrRicoOn');
+  const on = h.busyWith ? t('rrRicoBusy') : t('rrRicoOn');
+  return h.mode === 'practice' ? on + ' · ' + t('rrPracticeShort') : on;
 }
 function rrStatusLine(r){
   const inv = r.invoice ? '#' + r.invoice + ' · ' : '';
@@ -77,6 +88,13 @@ function attachReceiptsEvents(){
   if(rr.page === 'view') return attachReceiptView();
   document.getElementById('rrNew')?.addEventListener('click', ()=>rrNewDraft());
   document.querySelectorAll('[data-rr-open]').forEach(b=>b.onclick = ()=>rrOpen(b.dataset.rrOpen));
+  document.querySelectorAll('[data-rico]').forEach(b=>b.onclick = async ()=>{
+    b.disabled = true;
+    const res = await api('receipts-settings/rico', {method:'POST', body:{action:b.dataset.rico}});
+    if(res.data?.helper || (res.ok && res.data)) rr.data.helper = res.data.helper || res.data;
+    if(!res.ok) toast(res.data?.error === 'launcher_off' ? t('rrLauncherOff') : t('saveFailed'), 'error');
+    render();
+  });
 }
 function rrOpen(id){
   const r = rrFind(id); if(!r) return;

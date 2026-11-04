@@ -17,6 +17,8 @@
 // Routes for Rico on the Mac (header x-helper-token, the RICO_HELPER_TOKEN secret):
 //   POST   helper/heartbeat    {version, signedIn}   still here; answers the switches
 //   POST   helper/recover                            Rico started: what he left half way is sorted out
+//   POST   helper/launcher     {running, result}     the launcher on the Mac; answers {command}
+//   POST   receipts-settings/rico {action}           (session, rozha) start Rico (real | practice) or stop him
 //   PUT    helper/catalog      {suppliers, zones, items}
 //   POST   helper/claim                              the next receipt to work on, or none
 //   GET    helper/receipts/:id                       one receipt (Rico waits on it for the approval)
@@ -78,8 +80,10 @@ export function view(r: any, withLog = true) {
 }
 export function helperView(h: any) {
   const seen = h.last_seen ? Date.parse(h.last_seen) : 0;
+  const ls = h.launcher_seen ? Date.parse(h.launcher_seen) : 0;
   return { online: !!seen && Date.now() - seen < 90_000, lastSeen: h.last_seen ?? null, signedIn: !!h.signed_in, busyWith: h.busy_with ?? null,
-    autoApprove: !!h.auto_approve, stopped: !!h.stopped, limits: limitsOf(h), version: h.version ?? null };
+    autoApprove: !!h.auto_approve, stopped: !!h.stopped, limits: limitsOf(h), version: h.version ?? null, mode: h.mode ?? null,
+    launcher: { online: !!ls && Date.now() - ls < 30_000, command: h.command ?? null, result: h.launch_result ?? null, at: h.launch_at ?? null } };
 }
 /* Only these draft fields, in these shapes, are kept. */
 function cleanDraft(b: any) {
@@ -108,6 +112,18 @@ const nameOf = (who: string) => who === "rozha" ? "Rozha" : who === "yunis" ? "Y
 /* Anything about a receipt that someone should hear about on Telegram (see telegram.ts). */
 let notify: (db: any, r: any, event: string) => Promise<void> = async () => {};
 export function onReceiptEvent(fn: typeof notify) { notify = fn; }
+/* Rico started, stopped or could not start (from the launcher on the Mac). */
+let launchNotify: (db: any, text: string) => Promise<void> = async () => {};
+export function onLaunchEvent(fn: typeof launchNotify) { launchNotify = fn; }
+/* Start Rico for real, in practice mode, or stop him: the launcher on the Mac picks this up. */
+export async function ricoCommand(db: any, action: string, by: string) {
+  if (!["real", "practice", "stop"].includes(action)) return { error: "invalid_input" };
+  const h = await helperRow(db);
+  const ls = h.launcher_seen ? Date.parse(h.launcher_seen) : 0;
+  if (!ls || Date.now() - ls > 30_000) return { error: "launcher_off", helper: helperView(h) };
+  await rr(db, "helper").update({ command: action, command_by: by, command_at: now(), launch_result: null }).eq("id", true);
+  return { helper: helperView(await helperRow(db)) };
+}
 async function tell(db: any, r: any, event: string) { try { await notify(db, r, event); } catch (e) { console.error("telegram notify", event, e); } }
 
 export async function sendReceipt(db: any, r: any, who: string, confirm: unknown, source?: string): Promise<Done> {
@@ -168,6 +184,11 @@ export async function receiptsRoute(ctx: Ctx, M: string, path: string, b: any): 
     if (error) throw error;
     return json({ receipts: (data ?? []).filter((r: any) => r.status !== "draft" || r.created_by === ctx.account).map((r: any) => view(r)), catalog, helper: helperView(h), last });
   }
+  if (M === "POST" && path === "receipts-settings/rico") {
+    if (!ctx.rozha) return fail("forbidden", 403);
+    const r = await ricoCommand(db, t(b.action, 20), ctx.account ?? "rozha");
+    return r.error ? json({ error: r.error, helper: r.helper }, r.error === "launcher_off" ? 409 : 400) : json(r.helper);
+  }
   if (M === "PUT" && path === "receipts-settings") {
     if (!ctx.rozha) return fail("forbidden", 403);
     const patch: Record<string, unknown> = {};
@@ -219,11 +240,24 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
   let m: RegExpMatchArray | null;
   if (M === "POST" && path === "helper/heartbeat") {
     const h = await helperRow(db);
-    const patch: Record<string, unknown> = { last_seen: now(), signed_in: b.signedIn === true, version: t(b.version, 40) || null };
+    const patch: Record<string, unknown> = { last_seen: now(), signed_in: b.signedIn === true, version: t(b.version, 40) || null, mode: b.mode === "practice" ? "practice" : "real" };
     if (b.idle === true) patch.busy_with = null;
     await rr(db, "helper").update(patch).eq("id", true);
     await cleanOldPhotos(db, h);
     return json(helperView({ ...h, ...patch }));
+  }
+  // The launcher on the Mac checks in every few seconds: whether Rico is running and in which mode, and
+  // how the last start or stop went. It gets the command waiting for it, once.
+  if (M === "POST" && path === "helper/launcher") {
+    const h = await helperRow(db);
+    const patch: Record<string, unknown> = { launcher_seen: now() };
+    if (b.running === false && h.mode) { patch.mode = null; patch.last_seen = null; patch.signed_in = false; }
+    if (typeof b.result === "string" && b.result) { patch.launch_result = t(b.result, 400); patch.launch_at = now(); }
+    const command = h.command ?? null;
+    if (command) { patch.command = null; patch.command_by = null; }
+    await rr(db, "helper").update(patch).eq("id", true);
+    if (patch.launch_result) { try { await launchNotify(db, String(patch.launch_result)); } catch (e) { console.error("launch notify", e); } }
+    return json({ command });
   }
   // Rico just started: a receipt he was filling in when he stopped goes back in line (nothing was saved
   // yet); one he was saving is shown as a problem, because Ricotta Restaurant may already have it.
