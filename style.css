@@ -111,11 +111,10 @@ html.rtl .page-eyebrow,html.rtl .section-title{letter-spacing:0}
    looks the same): recomputing a 35px blur under every moving card each frame
    is what made transitions lag on phones. */
 .content.gliding,.page-ghost>.content{will-change:transform,opacity}
-/* Floating cards (see cardLook): both pages are solid cards, and a slightly darker backdrop shows round
-   them while they move. */
-.content.carding{background:var(--bg);overflow:hidden}
-html.cards-moving{background:#D1D1D6}
-html.dark.cards-moving{background:#1C1C1E}
+/* Pages sliding side by side (see cardLook). Long lists skip drawing rows that are off screen
+   (content-visibility below); a page that is moving must draw all of them, or it slides in blank. */
+.content.carding{will-change:transform}
+.content.carding :is(.list-row,.hist-card),.page-ghost :is(.list-row,.hist-card){content-visibility:visible}
 .page-ghost>.content{background:var(--bg)}
 .content.gliding *,.page-ghost *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 body.page-swiping *{transition:none!important}

@@ -513,9 +513,9 @@ const server=http.createServer((req,res)=>{
     assert.ok(await page.evaluate(()=>{
       const out=document.querySelector('.page-ghost > .content').getAnimations()[0].effect.getKeyframes();
       const inn=document.querySelector('.content.gliding').getAnimations()[0].effect.getKeyframes();
-      // Side by side: the old page ends a full screen away and the new one lands in place, both full size.
-      return /translate3d\(-\d+px/.test(out.at(-1).transform) && /translate3d\(0px,\s*0/.test(inn.at(-1).transform) && /scale\(1(\.0+)?\)/.test(inn.at(-1).transform);
-    }),'after a swipe the floating cards finish side by side: the old page leaves as the new one arrives');
+      // Side by side, like the Home Screen: only a slide, the old page ends a full screen away and the new one lands in place.
+      return [...out, ...inn].every(f=>f.opacity===undefined && !/scale/.test(f.transform)) && /translate3d\(-\d+px/.test(out.at(-1).transform) && /translate3d\(0px,\s*0/.test(inn.at(-1).transform);
+    }),'after a swipe the pages finish side by side: the old page leaves as the new one arrives');
     await settle(page);
     await page.evaluate(()=>setLang('ku'));await openView(page,'order');
     assert.ok(parseFloat(await page.locator('#itemSearch').evaluate(el=>getComputedStyle(el).fontSize))>=16,'mobile search avoids focus zoom');

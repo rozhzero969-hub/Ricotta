@@ -1238,11 +1238,10 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLangMenu(); 
    Like an iPhone's tab bar, tapping a screen cross-fades to it quickly; only a finger swiping the
    page slides it. Redrawing the same screen never plays an entrance animation. */
 /* Tapping a tab, sliding the glass along the bar and swiping the page all move the pages the same way,
-   chosen by Rozha in Swipe Styles (2026-11-04): floating cards. The two pages sit side by side with no
-   gap and move together; halfway they shrink a little, round their corners and the leaving page fades
-   slightly. They finish on a soft spring (0.5 s, no bounce) that starts at the finger's own speed, like
-   the iPhone Home Screen. Nothing ever slides over anything. Sections inside Manage still fade. */
-const CARD = {settle:.5, shrink:.07, dim:.12, radius:36, turnAt:.35, flick:1.4};
+   like the iPhone Home Screen (Rozha, 2026-11-04): the two pages sit side by side and slide together,
+   nothing else. They finish on a soft spring (0.5 s, no bounce) that starts at the finger's own speed.
+   Only a transform moves, so phones draw it on the GPU without lag. Sections inside Manage still fade. */
+const CARD = {settle:.5, turnAt:.35, flick:1.4, maxSpeed:5};
 const PAGE_EASE = 'cubic-bezier(.25,.1,.25,1)';
 let glide = null;
 function endGlide(){
@@ -1250,8 +1249,6 @@ function endGlide(){
   glide.anims.forEach(a=>a.cancel());
   glide.ghost?.remove();
   glide.content.classList.remove('gliding', 'carding');
-  cardsMoving(false);
-  glide.content.style.transformOrigin = '';
   glide = null;
 }
 const FADE_FRAMES = {inn:[{opacity:0, transform:'translate3d(0,6px,0)'},{opacity:1, transform:'none'}], out:[{opacity:1},{opacity:0}]};
@@ -1264,19 +1261,19 @@ function listsComeIn(content){
     row.animate?.([{opacity:0, transform:'translateY(10px)'}, {opacity:1, transform:'none'}], {duration:340, delay:60 + i * 28, easing:'cubic-bezier(.23,1,.32,1)', fill:'backwards'});
   });
 }
-/* A page's look when it sits off screens from the middle (0 in place, -1 one screen to the left). */
-function cardLook(off, w){
-  const mid = Math.min(1, Math.sin(Math.min(1, Math.abs(off)) * Math.PI) * 1.6);
-  return {transform:`translate3d(${Math.round(off * w)}px,0,0) scale(${(1 - CARD.shrink * mid).toFixed(4)})`,
-    opacity:(1 - CARD.dim * Math.min(1, Math.abs(off))).toFixed(3), borderRadius:`${Math.round(CARD.radius * mid)}px`};
-}
+/* A page's place when it sits off screens from the middle (0 in place, -1 one screen to the left). */
+const cardLook = (off, w)=>({transform:`translate3d(${Math.round(off * w)}px,0,0)`});
 /* The soft spring (critically damped, like an iPhone spring with no bounce): from progress p0 moving at
    v0 (screens per second) to target, as a list of points ~16 ms apart, so the browser plays it smoothly. */
 function springPath(p0, v0, target){
-  const w = 2 * Math.PI / CARD.settle, d0 = p0 - target, pts = [];
+  // A very fast flick would carry the pages past their place and off the screen (a blank flash): the
+  // speed is capped and the pages never pass where they stop, as on the Home Screen.
+  const w = 2 * Math.PI / CARD.settle, d0 = p0 - target, pts = [], up = target >= p0;
+  v0 = Math.max(-CARD.maxSpeed, Math.min(CARD.maxSpeed, v0));
   let t = 0;
   for(;;){
-    const p = target + (d0 + (v0 + w * d0) * t) * Math.exp(-w * t);
+    const raw = target + (d0 + (v0 + w * d0) * t) * Math.exp(-w * t);
+    const p = up ? Math.min(target, raw) : Math.max(target, raw);
     pts.push(p);
     if((Math.abs(p - target) < .002 && t > .05) || t > 1.2){ pts[pts.length-1] = target; break; }
     t += 1 / 60;
@@ -1289,18 +1286,16 @@ function cardFrames(dir, w, p0 = 0, v0 = 0){
   return {inn:pts.map(p=>cardLook(dir * (1 - p), w)), out:pts.map(p=>cardLook(-dir * p, w)), ms};
 }
 const paintCard = (el, look)=>{ for(const k in look) el.style[k] = look[k]; };
-// While cards move, a slightly darker backdrop shows round their shrunken corners.
-const cardsMoving = on=>document.documentElement.classList.toggle('cards-moving', on);
-/* A page shrinks towards the middle of what is on screen, not the middle of a long page. */
-function shrinkOrigin(el){
-  const r = el.getBoundingClientRect(), mid = Math.min(r.bottom, window.innerHeight) / 2 + Math.max(r.top, 0) / 2;
-  return `50% ${Math.round(mid - r.top + (inAppFrame() ? el.scrollTop : 0))}px`;
-}
 /* The page that is leaving, laid exactly where it was. Its parts are moved
    (not copied) into a fixed layer, so even the 179-item Order page costs
    nothing to set up; the fresh page is then drawn into the emptied .content. */
 function pageGhost(content){
+  // Measured where it sits at rest: after a swipe the page is still slid sideways under the finger, and
+  // measuring it there would move the copy twice, off the screen.
+  const slid = content.style.transform;
+  content.style.transform = '';
   const r = content.getBoundingClientRect();
+  content.style.transform = slid;
   const scrolled = inAppFrame() ? content.scrollTop : 0;
   const layer = document.createElement('div');
   layer.className = 'page-ghost'; layer.setAttribute('aria-hidden','true');
@@ -1329,9 +1324,7 @@ function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
   const frames = old && old.animate && !reducedMotion() ? (slide ? cardFrames(dir, width, start, speed) : {inn:[...FADE_FRAMES.inn], out:[...FADE_FRAMES.out]}) : null;
   // The place is saved before the old page moves into its slide-out copy (that empties the page).
   viewMemory.set(state.view, {query:state.catalogQuery || '', top:scrollBox().scrollTop});
-  const origin = slide && old ? shrinkOrigin(old) : '';
   const ghost = frames?.out ? pageGhost(old) : null;
-  if(ghost && slide) ghost.copy.style.transformOrigin = origin;
   const remembered = viewMemory.get(view);
   state.catalogQuery = remembered?.query || ''; state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
@@ -1349,13 +1342,12 @@ function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
   if(!keepLens) placeNavIndicator();
   const content = document.querySelector('.content');
   if(!remembered && content) listsComeIn(content);
-  if(!frames || !content){ ghost?.layer.remove(); if(content) paintCard(content, {transform:'', opacity:'', borderRadius:'', transformOrigin:''}); if(growAfter) quietBar(); return; }
+  if(!frames || !content){ ghost?.layer.remove(); if(content) paintCard(content, {transform:''}); if(growAfter) quietBar(); return; }
   // After a swipe the pages carry on from where the finger left them, at its speed.
   const opts = slide ? {duration:Math.max(16, frames.ms), easing:'linear'} : {duration:160, easing:PAGE_EASE};
-  paintCard(content, {transform:'', opacity:'', borderRadius:'', transformOrigin:''});
-  if(slide) content.style.transformOrigin = shrinkOrigin(content);
+  paintCard(content, {transform:''});
   content.classList.add('gliding');
-  if(slide){ content.classList.add('carding'); cardsMoving(true); }
+  if(slide) content.classList.add('carding');
   const anims = [content.animate(frames.inn, opts)];
   if(ghost) anims.push(ghost.copy.animate(frames.out, opts));
   glide = {anims, ghost:ghost?.layer, content};
@@ -1402,7 +1394,7 @@ function pagePeek(view, content){
     if(!g.mode){
       if(Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
       g.mode = Math.abs(dx) > Math.abs(dy)*1.3 ? 'x' : 'y';
-      if(g.mode === 'x'){ endGlide(); document.body.classList.add('page-swiping'); g.content.classList.add('carding'); cardsMoving(true); }
+      if(g.mode === 'x'){ endGlide(); document.body.classList.add('page-swiping'); g.content.classList.add('carding'); }
     }
     if(g.mode !== 'x') return;
     g.moves.push({x:e.clientX, t:performance.now()});
@@ -1411,10 +1403,8 @@ function pagePeek(view, content){
     const next = i - Math.sign(dx)*rtl;
     const edge = !dx || next < 0 || next >= state.tabs.length;
     g.dx = edge ? rubberband(dx, w) : dx;
-    if(edge){ dropPeek(g); paintCard(g.content, {transform:`translate3d(${g.dx}px,0,0)`, opacity:'', borderRadius:''}); placeNavIndicator(); return; }
-    // Floating cards under the finger: this page and the next one move side by side.
-    if(!g.origin) g.origin = shrinkOrigin(g.content);
-    g.content.style.transformOrigin = g.origin;
+    if(edge){ dropPeek(g); paintCard(g.content, {transform:`translate3d(${g.dx}px,0,0)`}); placeNavIndicator(); return; }
+    // Under the finger this page and the next one move side by side, like the Home Screen.
     const f = Math.min(1, Math.abs(g.dx) / w), side = Math.sign(g.dx);
     paintCard(g.content, cardLook(side * f, w));
     if(g.peek?.view !== state.tabs[next]){ dropPeek(g); g.peek = pagePeek(state.tabs[next], g.content); }
@@ -1450,9 +1440,9 @@ function pagePeek(view, content){
     }
     // Not far enough: the pages spring back the way they came.
     const {pts, ms} = springPath(f, -speed, 0), back = {duration:Math.max(16, ms), easing:'linear'};
-    paintCard(s.content, {transform:'', opacity:'', borderRadius:''});
+    paintCard(s.content, {transform:''});
     const home = s.content.animate?.(pts.map(p=>cardLook(side * p, w)), back);
-    const rest = ()=>{ if(!glide){ s.content.style.transformOrigin = ''; s.content.classList.remove('carding'); cardsMoving(false); } };
+    const rest = ()=>{ if(!glide) s.content.classList.remove('carding'); };
     if(home) home.finished.then(rest, ()=>{}); else rest();
     if(s.peek){
       const peek = s.peek, a = peek.copy.animate?.(pts.map(p=>cardLook(-side * (1 - p), w)), back);
