@@ -16,6 +16,7 @@
 //   PUT    receipts-settings   {autoApprove, stopped, limits} (rozha)
 // Routes for Rico on the Mac (header x-helper-token, the RICO_HELPER_TOKEN secret):
 //   POST   helper/heartbeat    {version, signedIn}   still here; answers the switches
+//   POST   helper/recover                            Rico started: what he left half way is sorted out
 //   PUT    helper/catalog      {suppliers, zones, items}
 //   POST   helper/claim                              the next receipt to work on, or none
 //   GET    helper/receipts/:id                       one receipt (Rico waits on it for the approval)
@@ -204,6 +205,22 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     await rr(db, "helper").update(patch).eq("id", true);
     await cleanOldPhotos(db, h);
     return json(helperView({ ...h, ...patch }));
+  }
+  // Rico just started: a receipt he was filling in when he stopped goes back in line (nothing was saved
+  // yet); one he was saving is shown as a problem, because Ricotta Restaurant may already have it.
+  if (M === "POST" && path === "helper/recover") {
+    const { data: stuck, error } = await rr(db, "receipts").select("*").in("status", ["filling", "saving"]);
+    if (error) throw error;
+    for (const r of stuck ?? []) {
+      const filling = r.status === "filling";
+      await rr(db, "receipts").update({
+        status: filling ? "queued" : "problem", version: r.version + 1, updated_at: now(),
+        problem: filling ? null : "Rico was restarted while saving this. Check Invoices in Ricotta Restaurant before sending it again.",
+        log: [...(r.log ?? []), logEntry(filling ? "Rico was restarted while filling this in. Trying again." : "Rico was restarted while saving this.")],
+      }).eq("id", r.id).eq("version", r.version);
+    }
+    await rr(db, "helper").update({ busy_with: null }).eq("id", true);
+    return json({ ok: true, recovered: (stuck ?? []).length });
   }
   if (M === "PUT" && path === "helper/catalog") {
     const strings = (v: unknown, n: number) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.length && x.length <= 200).slice(0, n) : []);
