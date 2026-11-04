@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 
-const VERSION = "2026-11-05.2";
+const VERSION = "2026-11-06.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -45,27 +45,49 @@ async function api(path, { method = "GET", body } = {}) {
   }
 }
 const report = (id, body) => api(`helper/receipts/${id}/report`, { method: "POST", body });
-/* Photos of the whole page. Ricotta Restaurant scrolls inside its own box, so one picture shows only
-   what is on screen: Rico scrolls that box from the top to the bottom and takes as many pictures as it
-   takes (a little overlap between them), so every box, line and total is in a photo. */
+/* One photo of the whole page. Ricotta Restaurant scrolls inside its own box, so one picture shows only
+   what is on screen: Rico scrolls that box from the top to the bottom, photographs it at each place,
+   and joins the pieces into one tall picture (in a hidden browser of his own), so the whole receipt,
+   from Receipt details to the Total, is in a single photo. If joining fails, the pieces are sent. */
+let joiner = null;
+async function joinPhotos(pieces, height, view) {
+  joiner ??= await chromium.launch({ headless: true });
+  const p = await joiner.newPage();
+  try {
+    return await p.evaluate(async ({ pieces, height, view }) => {
+      const imgs = await Promise.all(pieces.map((x) => new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = "data:image/png;base64," + x.b64; })));
+      // Pixels per page point, made at most 1400 wide so the photo stays small enough to send.
+      const fit = Math.min(1, 1400 / imgs[0].width), scale = (imgs[0].height / view) * fit, c = document.createElement("canvas");
+      c.width = Math.round(imgs[0].width * fit); c.height = Math.round(height * scale);
+      const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+      imgs.forEach((img, k) => g.drawImage(img, 0, Math.round(pieces[k].y * scale), c.width, Math.round(img.height * fit)));
+      return c.toDataURL("image/jpeg", 0.82).split(",")[1];
+    }, { pieces, height, view });
+  } finally { await p.close(); }
+}
 async function photo(page, id, kind) {
+  const upload = (b64) => api(`helper/receipts/${id}/photo`, { method: "POST", body: { kind, image: b64 } });
   try {
     const box = await page.evaluateHandle(() => {
       const all = [...document.querySelectorAll("main, div, section")].filter((el) => {
         const st = getComputedStyle(el);
         return /(auto|scroll)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 40 && el.clientHeight > 200;
       });
-      return all.sort((a, b) => b.clientHeight * b.clientWidth - a.clientHeight * a.clientWidth)[0] || document.scrollingElement;
+      return all.sort((a, b) => b.clientHeight * b.clientWidth - a.clientHeight * a.clientWidth)[0] || null;
     });
+    if (!(await box.evaluate((el) => !!el))) { await upload((await page.screenshot({ type: "jpeg", quality: 80, fullPage: true })).toString("base64")); return; }
     const height = await box.evaluate((el) => el.scrollHeight), view = await box.evaluate((el) => el.clientHeight);
-    const step = Math.max(200, view - 80), shots = Math.min(8, Math.ceil(Math.max(1, height - view) / step) + 1);
-    for (let i = 0; i < shots; i++) {
-      await box.evaluate((el, y) => el.scrollTo(0, y), Math.min(i * step, height - view));
+    const step = Math.max(200, view - 60), pieces = [];
+    for (let y = 0; ; y += step) {
+      const at = Math.min(y, height - view);
+      await box.evaluate((el, v) => el.scrollTo(0, v), at);
       await sleep(350);
-      const buf = await page.screenshot({ type: "jpeg", quality: 72 });
-      await api(`helper/receipts/${id}/photo`, { method: "POST", body: { kind, image: buf.toString("base64") } });
+      pieces.push({ y: at, b64: (await box.asElement().screenshot({ type: "png" })).toString("base64") });
+      if (at >= height - view || pieces.length >= 12) break;
     }
     await box.evaluate((el) => el.scrollTo(0, 0));
+    try { await upload(await joinPhotos(pieces, height, view)); }
+    catch (e) { log("joining the photos failed, sending them one by one:", e.message); for (const x of pieces) await upload(x.b64); }
   } catch (e) { log("photo failed:", e.message); }
 }
 

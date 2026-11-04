@@ -297,6 +297,7 @@
     }
     // Receipts: a small copy of what Rico reads from Ricotta Restaurant, and a Rico who fills a receipt
     // in two seconds and saves it right after it is approved (there is no Mac in the Lab).
+    if(path === 'receipts-settings/telegram') return method === 'GET' ? json({ready:true, connected:!!db.tgLinked}) : json({link:'https://t.me/RicottaHelperBot?start=lab', bot:'RicottaHelperBot'});
     if(path === 'receipts' || path === 'receipts-settings' || path.startsWith('receipts/')){
       if(!can(account, 'receipts')) return fail('forbidden', 403);
       db.rr ||= {receipts:[], helper:{online:true, lastSeen:new Date().toISOString(), signedIn:true, busyWith:null, autoApprove:false, stopped:false, limits:{bigTotal:1000000, priceJump:30, rateMin:1500, rateMax:1800}, version:'lab'}, next:28};
@@ -311,7 +312,7 @@
           {name:'Mushroom - کوارگ', base:'دانە', units:[{name:'کارتۆن', factor:8}]}]};
       const R = globalThis.RicottaReceipts, list = db.rr.receipts, now = ()=>new Date().toISOString();
       if(method === 'GET' && path === 'receipts') return json({receipts:list.filter(r=>r.status !== 'draft' || r.by === account), catalog:cat, helper:db.rr.helper, last:{'Frozen Peas - بزالیا سادە|دانە (400×)|IQD':2000}});
-      if(method === 'PUT' && path === 'receipts-settings'){ if(account !== 'rozha') return fail('forbidden', 403); if(typeof body.autoApprove === 'boolean') db.rr.helper.autoApprove = body.autoApprove; if(typeof body.stopped === 'boolean') db.rr.helper.stopped = body.stopped; save(); return json(db.rr.helper); }
+      if(method === 'PUT' && path === 'receipts-settings'){ if(account !== 'rozha') return fail('forbidden', 403); if(typeof body.autoApprove === 'boolean') db.rr.helper.autoApprove = body.autoApprove; if(typeof body.stopped === 'boolean') db.rr.helper.stopped = body.stopped; if(body.limits) Object.assign(db.rr.helper.limits, body.limits); save(); return json(db.rr.helper); }
       const m = path.match(/^receipts\/([0-9a-f-]{36})(?:\/(send|approve|cancel|photos))?$/); if(!m) return fail('not_found', 404);
       let r = list.find(x=>x.id === m[1]);
       if(method === 'PUT' && !m[2]){

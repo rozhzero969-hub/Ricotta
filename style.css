@@ -2186,6 +2186,11 @@ html.rtl .list-row .name,html.rtl .list-row .meta{text-align:right}
 .rr-view-actions{display:flex;gap:10px;flex-wrap:wrap}
 .rr-view-actions .btn{flex:1;min-width:140px}
 .rr-settings .rr-set-status{display:flex;gap:12px;align-items:center;padding:4px 0 12px}
+.rr-limits{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.rr-limits-actions{display:flex;gap:10px;margin-top:10px}.rr-limits-actions .btn{flex:1}
+.rr-settings .rr-tg{padding:12px 0 4px;border-top:.5px solid var(--line);margin-top:6px}
+.rr-settings .rr-tg{flex-wrap:wrap}.rr-settings .rr-tg>span{flex:1;min-width:0}.rr-settings .rr-tg .btn{width:100%}
+.rr-limits .rr-field{justify-content:flex-end}
 .rr-settings .rr-set-status b{display:block}.rr-settings .rr-set-status small{display:block;color:var(--ink-soft);font-size:.8125rem}
 html.dark .rr-line.warn{background:rgba(245,158,11,.08)}
 html.dark .rr-line-warn,html.dark .rr-warns p{color:#FDBA74}

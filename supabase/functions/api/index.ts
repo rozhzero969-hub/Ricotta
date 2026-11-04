@@ -62,10 +62,11 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   PUT    items/aliases              {entries}                 Rico's search-name changes, applied together
 //   GET    auth/security              (public)                  whether sign-in needs the bot check, and its site key
 //   receipts, receipts/:id[/send|approve|cancel|photos], receipts-settings, and helper/* for Rico on
-//   the Mac: see receipts.ts
+//   the Mac: see receipts.ts; receipts-settings/telegram and telegram/webhook for the bot: telegram.ts
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { adminAi, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
 import { helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
+import { telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -808,6 +809,11 @@ Deno.serve(async (req) => {
       return error ? json({ ok: false }, 503) : json({ ok: true });
     }
 
+    // Telegram calls this for the Ricotta Helper bot; telegram.ts checks its secret header first.
+    if (M === "POST" && path === "telegram/webhook") {
+      const limited = await requestLimit(["telegram"], [600]); if (limited) return limited;
+      return (await telegramWebhook(db, req, await readBody(req, MAX_BODY_BYTES))) ? ok() : fail("forbidden", 403);
+    }
     // Rico on Rozha's Mac has his own door (receipts.ts), with its own secret instead of a session.
     if (path.startsWith("helper/")) {
       if (!(await helperAllowed(req))) return fail("unauthorized", 401);
@@ -829,6 +835,11 @@ Deno.serve(async (req) => {
     let m: RegExpMatchArray | null;
 
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
+    if (path === "receipts-settings/telegram") {
+      if (!rozha) return fail("forbidden", 403);
+      if (M === "GET") return json(await telegramStatus(db));
+      if (M === "POST") { const r = await telegramLink(db, s.account, `${SUPABASE_URL}/functions/v1/api`); return r.error ? fail(r.error, 503) : json(r); }
+    }
     if (path === "receipts" || path === "receipts-settings" || path.startsWith("receipts/")) {
       if (!can(s, "receipts")) return fail("forbidden", 403);
       return (await receiptsRoute({ db, json, fail, account: s.account, rozha }, M, path, b)) ?? fail("not_found", 404);
