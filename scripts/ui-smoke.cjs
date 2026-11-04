@@ -508,13 +508,14 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.evaluate(()=>state.view),'history','swiping the page moves to the next tab');
     assert.equal(await page.locator('.content.gliding').count(),1,'the swipe moves to the next page');
     assert.deepEqual(await page.evaluate(()=>__tones),[],'swiping between tabs makes no sound');
-    assert.ok(await page.evaluate(()=>{ const ms=document.querySelector('.content.gliding').getAnimations()[0].effect.getTiming().duration; return ms>0 && ms<=CARD.ms; }),'a swipe finishes the card stack in what is left of its 200 ms');
+    assert.ok(await page.evaluate(()=>{ const ms=document.querySelector('.content.gliding').getAnimations()[0].effect.getTiming().duration; return ms>0 && ms<=1200; }),'a swipe finishes on the soft spring');
     assert.equal(await page.locator('.page-peek').count(),0,'the preview of the next page is replaced by the page itself');
     assert.ok(await page.evaluate(()=>{
       const out=document.querySelector('.page-ghost > .content').getAnimations()[0].effect.getKeyframes();
       const inn=document.querySelector('.content.gliding').getAnimations()[0].effect.getKeyframes();
-      return out.at(-1).transform.includes('scale(0.9') && Number(out.at(-1).opacity)===.5 && /translate3d\(0px,\s*0/.test(inn.at(-1).transform);
-    }),'after a swipe the card stack finishes: the new page lands on top while the old one shrinks back and dims');
+      // Side by side: the old page ends a full screen away and the new one lands in place, both full size.
+      return /translate3d\(-\d+px/.test(out.at(-1).transform) && /translate3d\(0px,\s*0/.test(inn.at(-1).transform) && /scale\(1(\.0+)?\)/.test(inn.at(-1).transform);
+    }),'after a swipe the floating cards finish side by side: the old page leaves as the new one arrives');
     await settle(page);
     await page.evaluate(()=>setLang('ku'));await openView(page,'order');
     assert.ok(parseFloat(await page.locator('#itemSearch').evaluate(el=>getComputedStyle(el).fontSize))>=16,'mobile search avoids focus zoom');
