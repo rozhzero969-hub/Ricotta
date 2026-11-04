@@ -111,9 +111,11 @@ html.rtl .page-eyebrow,html.rtl .section-title{letter-spacing:0}
    looks the same): recomputing a 35px blur under every moving card each frame
    is what made transitions lag on phones. */
 .content.gliding,.page-ghost>.content{will-change:transform,opacity}
-/* The card stack: the new page slides in over the old one, so both are solid and the old copy sits underneath. */
-.page-ghost.below{z-index:0}
-.content.carding{z-index:1;background:var(--bg);overflow:hidden}
+/* Floating cards (see cardLook): both pages are solid cards, and a slightly darker backdrop shows round
+   them while they move. */
+.content.carding{background:var(--bg);overflow:hidden}
+html.cards-moving{background:#D1D1D6}
+html.dark.cards-moving{background:#1C1C1E}
 .page-ghost>.content{background:var(--bg)}
 .content.gliding *,.page-ghost *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 body.page-swiping *{transition:none!important}
