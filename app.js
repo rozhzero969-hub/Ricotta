@@ -456,6 +456,7 @@ function liveChanged(kinds, reset){
   if(moved('devices')) checkCommands();
   if(moved('admin') && state.view === 'admin' && isRozha()) ['security','problems'].forEach(k=>adminFetch(k, true));
   if(moved('inbox')) ricoRefreshInbox();
+  if(moved('receipts') && rr.data) rrLoad(true);
 }
 window.addEventListener('online', ()=>liveStart());
 
@@ -478,16 +479,16 @@ function accountLabel(a){ return a === 'rozha' || a === 'yunis' ? t('accountName
 /* Screens each account may open. The server sends the real list with every
    start (bootstrap.views) and checks every request; this copy only covers
    an offline start before that answer arrives. */
-const ALL_ROLES = ['history','manage','catalog','record','assistant','send','exports','notify','reminders'];
+const ALL_ROLES = ['history','manage','catalog','record','assistant','send','exports','notify','receipts'];
 const ACCOUNT_VIEWS = {
-  rozha: ['order','assistant','history','manage','suppliers','itemsAdmin','units','record','admin','settings'],
+  rozha: ['order','assistant','history','manage','suppliers','itemsAdmin','units','receipts','record','admin','settings'],
   yunis: ['order','assistant','history','manage','suppliers','itemsAdmin','units','record','settings']
 };
 const ACCOUNT_ROLES = {rozha:ALL_ROLES, yunis:ALL_ROLES};
 /* The screens of the tab bar, in order, for whoever is signed in. With four or fewer they are all
    tabs; with more, the first four are and the rest are under More. Rico lives in the top bar and
    Settings in the account sheet. */
-const NAV_SCREENS = ['order','history','manage','record','admin'];
+const NAV_SCREENS = ['order','history','receipts','manage','record','admin'];
 const navScreens = ()=> NAV_SCREENS.filter(v=>state.views.includes(v));
 const tabsFor = ()=> navScreens().length ? navScreens().slice(0, 4) : ['order'];
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
@@ -879,14 +880,15 @@ const RENDERERS = {
   itemsAdmin:[()=>renderItemsAdmin(),()=>attachItemEvents()], units:[()=>renderUnits(),()=>attachUnitEvents()],
   record:[()=>renderRecord(),()=>attachRecordEvents()], admin:[()=>renderAdmin(),()=>attachAdminEvents()],
   manage:[()=>renderItemsAdmin(),()=>attachItemEvents()],
-  settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()]
+  settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()],
+  receipts:[()=>renderReceipts(),()=>attachReceiptsEvents()]
 };
 const shellKey = ()=>[state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
 /* One screen's page, without its events (render() attaches them). */
 function pageHtml(view){
   const draw = (RENDERERS[view] || RENDERERS.order)[0];
   // Rico has his own header, and an Admin page its own (with Admin's back button).
-  return `${view === 'assistant' || (view === 'admin' && state.adminPage) ? '' : renderPageHeading()}${view === 'order' ? renderPushBanner() : ''}${managedView(view)?renderManageNav():''}${draw()}`;
+  return `${view === 'assistant' || (view === 'admin' && state.adminPage) || (view === 'receipts' && rr.page !== 'list') ? '' : renderPageHeading()}${view === 'order' ? renderPushBanner() : ''}${managedView(view)?renderManageNav():''}${draw()}`;
 }
 /* A neighbouring screen drawn for a swipe preview: the screens read state.view while they draw, so it
    is set to that screen for the moment (with its own remembered search) and put back. */
@@ -974,7 +976,7 @@ function ricoReact(kind = 'up'){
    open); with more than four, the rest are under More. Computers: a sidebar with every screen. Rico
    opens from the top bar and Settings from the account sheet. A lens glides to the current tab, the
    page can be swiped between the tabs, and the bar shrinks to its icons while you scroll down. */
-const VIEW_LABEL_KEYS = {manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {receipts:'rrTitle', manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
@@ -1328,6 +1330,7 @@ function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
   const remembered = viewMemory.get(view);
   state.catalogQuery = remembered?.query || ''; state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
+  if(view === 'receipts'){ rr.page = 'list'; rr.id = null; rrLoad(true); }
   render();
   scrollBox().scrollTo({top:remembered?.top || 0});
   // The swipe's preview of this page is replaced by the page itself, in the same place.
@@ -3705,7 +3708,7 @@ function versionCmp(a, b){
   return 0;
 }
 function renderSettings(){
-  return `${renderPendingSync()}${renderNotifSettings()}${renderFeatureSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  return `${renderPendingSync()}${renderNotifSettings()}${renderRicoReceiptSettings()}${renderFeatureSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
 /* Help: tell Rozha about a problem (it arrives in Admin, Problems), and the keyboard shortcuts. */
 function renderHelpSettings(){
@@ -3774,6 +3777,7 @@ function bindAppearance(){
   });
 }
 function attachSettingsEvents(){
+  attachRicoReceiptSettings();
  const retry=document.getElementById('syncRetryBtn');
  if(retry) retry.onclick=async()=>{retry.disabled=true;await flushOutbox();await loadData();render();};
  const exp=document.getElementById('syncExportBtn');
