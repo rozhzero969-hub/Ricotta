@@ -26,7 +26,7 @@ async function rrLoad(quiet = false){
     else if(editing) rr.data.receipts = rr.data.receipts.map(x=>x.id === editing.id ? editing : x);
   }
   else if(!rr.data) rr.failed = true;
-  if(state.view === 'receipts' && !document.activeElement?.closest?.('.rr-edit')) render();
+  if((state.view === 'receipts' && !document.activeElement?.closest?.('.rr-edit')) || (state.view === 'settings' && !document.activeElement?.closest?.('.rr-limits'))) render();
 }
 
 /* ---------- The list ---------- */
@@ -301,12 +301,22 @@ function renderRicoReceiptSettings(){
   if(!isRozha() || !canOpen('receipts')) return '';
   const h = rr.data?.helper;
   if(!h){ if(!rr.loading) rrLoad(true); return ''; }
+  if(!rr.tg && !rr.tgLoading){ rr.tgLoading = true; api('receipts-settings/telegram', {quiet:true}).then(r=>{ rr.tgLoading = false; if(r.ok){ rr.tg = r.data; if(state.view === 'settings') render(); } }); }
   return `<div class="section-title">${esc(t('rrSettingsTitle'))}</div>
     <div class="form-card rr-settings">
       <div class="rr-set-status">${rrRico()}<span><b>${esc(t('rrRicoMac'))}</b><small>${esc(rrHelperLine(h))}${h.online ? ' · ' + esc(h.signedIn ? t('rrSignedIn') : t('rrSignedOut')) : ''}</small></span></div>
       <label class="check-row preference-row"><input type="checkbox" id="rrAuto" ${h.autoApprove ? 'checked' : ''}><span>${esc(t('rrAutoApprove'))}<small>${esc(t('rrAutoApproveHint'))}</small></span></label>
       <label class="check-row preference-row"><input type="checkbox" id="rrStop" ${h.stopped ? 'checked' : ''}><span>${esc(t('rrStop'))}<small>${esc(t('rrStopHint'))}</small></span></label>
-      <p class="field-hint">${esc(t('rrLimitsLine')(rrNum(h.limits.bigTotal), h.limits.priceJump, h.limits.rateMin, h.limits.rateMax))}</p>
+      <div class="rr-limits">
+        <label class="rr-field"><span class="rr-label">${esc(t('rrLimBig'))}</span><input class="rr-input" id="rrLimBig" inputmode="numeric" value="${h.limits.bigTotal}"></label>
+        <label class="rr-field"><span class="rr-label">${esc(t('rrLimJump'))}</span><input class="rr-input" id="rrLimJump" inputmode="numeric" value="${h.limits.priceJump}"></label>
+        <label class="rr-field"><span class="rr-label">${esc(t('rrLimRateMin'))}</span><input class="rr-input" id="rrLimMin" inputmode="numeric" value="${h.limits.rateMin}"></label>
+        <label class="rr-field"><span class="rr-label">${esc(t('rrLimRateMax'))}</span><input class="rr-input" id="rrLimMax" inputmode="numeric" value="${h.limits.rateMax}"></label>
+      </div>
+      <div class="rr-limits-actions"><button type="button" class="btn btn-ghost" id="rrLimDefault">${esc(t('rrLimDefaults'))}</button><button type="button" class="btn btn-primary" id="rrLimSave">${esc(t('rrLimSave'))}</button></div>
+      <p class="field-hint">${esc(t('rrLimHint'))}</p>
+      <div class="rr-set-status rr-tg"><span><b>${esc(t('rrTelegram'))}</b><small>${esc(!rr.tg ? '' : !rr.tg.ready ? t('rrTgNotSetUp') : rr.tg.connected ? t('rrTgConnected') : t('rrTgNotConnected'))}</small></span>
+        ${rr.tg?.ready ? `<button type="button" class="btn btn-ghost" id="rrTgConnect">${esc(rr.tg.connected ? t('rrTgReconnect') : t('rrTgConnect'))}</button>` : ''}</div>
     </div>`;
 }
 function attachRicoReceiptSettings(){
@@ -317,4 +327,20 @@ function attachRicoReceiptSettings(){
   };
   const a = document.getElementById('rrAuto'); if(a) a.onchange = ()=>put({autoApprove:a.checked});
   const s = document.getElementById('rrStop'); if(s) s.onchange = ()=>put({stopped:s.checked});
+  // The limits: asks twice above this total, warns at this price change, the dollar rate range.
+  const lim = id=>rrParse(document.getElementById(id)?.value ?? '', false);
+  const ls = document.getElementById('rrLimSave'); if(ls) ls.onclick = ()=>{
+    const v = {bigTotal:lim('rrLimBig'), priceJump:lim('rrLimJump'), rateMin:lim('rrLimMin'), rateMax:lim('rrLimMax')};
+    if(!(v.bigTotal > 0) || !(v.priceJump >= 1 && v.priceJump <= 500) || !(v.rateMin > 0) || !(v.rateMax >= v.rateMin)){ toast(t('rrLimBad'), 'error'); return; }
+    put({limits:v});
+  };
+  const ld = document.getElementById('rrLimDefault'); if(ld) ld.onclick = ()=>put({limits:{bigTotal:1000000, priceJump:30, rateMin:1500, rateMax:1800}});
+  // Opens the bot with a one-time code, so it knows this chat is Rozha's (and answers nobody else).
+  const tgb = document.getElementById('rrTgConnect'); if(tgb) tgb.onclick = async ()=>{
+    const win = window.open('', '_blank');
+    const r = await api('receipts-settings/telegram', {method:'POST', body:{}});
+    if(!r.ok || !r.data?.link){ win?.close(); toast(t('saveFailed'), 'error'); return; }
+    if(win) win.location.href = r.data.link; else location.href = r.data.link;
+    rr.tg = null;   // read again when Settings is drawn next
+  };
 }

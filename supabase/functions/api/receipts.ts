@@ -47,26 +47,26 @@ export async function helperAllowed(req: Request) {
   return (await sha(got)) === (await sha(want));
 }
 
-async function helperRow(db: any) {
+export async function helperRow(db: any) {
   const { data, error } = await rr(db, "helper").select("*").eq("id", true).maybeSingle();
   if (error) throw error;
   return data ?? {};
 }
-const limitsOf = (h: any) => ({ bigTotal: Number(h.big_total) || 1000000, priceJump: Number(h.price_jump) || 30, rateMin: Number(h.rate_min) || 1500, rateMax: Number(h.rate_max) || 1800 });
-async function catalogOf(db: any) {
+export const limitsOf = (h: any) => ({ bigTotal: Number(h.big_total) || 1000000, priceJump: Number(h.price_jump) || 30, rateMin: Number(h.rate_min) || 1500, rateMax: Number(h.rate_max) || 1800 });
+export async function catalogOf(db: any) {
   const { data, error } = await rr(db, "catalog").select("data,updated_at").eq("id", true).maybeSingle();
   if (error) throw error;
   return data ? { ...data.data, at: data.updated_at } : { suppliers: [], zones: [], items: [], at: null };
 }
 /* The last price paid per item, unit and currency, from saved receipts (newest first). */
-async function lastPrices(db: any) {
+export async function lastPrices(db: any) {
   const { data, error } = await rr(db, "receipts").select("currency,lines,saved_at").eq("status", "saved").order("saved_at", { ascending: false }).limit(400);
   if (error) throw error;
   const last: Record<string, number> = {};
   for (const r of data ?? []) for (const l of r.lines ?? []) { const k = `${l.item}|${l.unit}|${r.currency}`; if (!(k in last)) last[k] = l.cost; }
   return last;
 }
-function view(r: any, withLog = true) {
+export function view(r: any, withLog = true) {
   return {
     id: r.id, by: r.created_by, source: r.source, status: r.status, supplier: r.supplier, invoice: r.invoice, zone: r.zone,
     currency: r.currency, rate: r.rate == null ? null : Number(r.rate), delivery: r.delivery == null ? null : Number(r.delivery),
@@ -76,7 +76,7 @@ function view(r: any, withLog = true) {
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
-function helperView(h: any) {
+export function helperView(h: any) {
   const seen = h.last_seen ? Date.parse(h.last_seen) : 0;
   return { online: !!seen && Date.now() - seen < 90_000, lastSeen: h.last_seen ?? null, signedIn: !!h.signed_in, busyWith: h.busy_with ?? null,
     autoApprove: !!h.auto_approve, stopped: !!h.stopped, limits: limitsOf(h), version: h.version ?? null };
@@ -100,6 +100,61 @@ function cleanDraft(b: any) {
   };
 }
 const logEntry = (text: string, who = "rico") => ({ at: now(), who, text: t(text, 300) });
+
+
+/* ---------- What a person does to a receipt (the app and Telegram share these) ---------- */
+type Done = { row?: any; error?: string; status?: number; extra?: Record<string, unknown> };
+const nameOf = (who: string) => who === "rozha" ? "Rozha" : who === "yunis" ? "Yunis" : who;
+/* Anything about a receipt that someone should hear about on Telegram (see telegram.ts). */
+let notify: (db: any, r: any, event: string) => Promise<void> = async () => {};
+export function onReceiptEvent(fn: typeof notify) { notify = fn; }
+async function tell(db: any, r: any, event: string) { try { await notify(db, r, event); } catch (e) { console.error("telegram notify", event, e); } }
+
+export async function sendReceipt(db: any, r: any, who: string, confirm: unknown, source?: string): Promise<Done> {
+  if (!["draft", "problem"].includes(r.status)) return { error: "already_sent" };
+  if (r.status === "draft" && r.created_by !== who) return { error: "forbidden", status: 403 };
+  const [h, catalog, last] = await Promise.all([helperRow(db), catalogOf(db), lastPrices(db)]);
+  const c = R.check(view(r), catalog, limitsOf(h), last);
+  if (c.errors.length) return { error: "invalid_receipt", status: 422, extra: { errors: c.errors } };
+  // Every warning must have been seen and confirmed before Rico gets the receipt.
+  const confirmed = new Set(Array.isArray(confirm) ? confirm.map((x: unknown) => t(x, 40)) : []);
+  if (c.warnings.some((w: any) => !confirmed.has(w.code))) return { error: "needs_confirmation", extra: { warnings: c.warnings } };
+  const { data: sent, error } = await rr(db, "receipts").update({
+    status: "queued", total: c.total, warnings: c.warnings, problem: null, sent_at: now(), version: r.version + 1, updated_at: now(),
+    ...(source ? { source } : {}),
+    log: [...(r.log ?? []), logEntry(`Sent to Rico by ${nameOf(who)}${source === "telegram" ? " on Telegram" : ""}`, who)],
+  }).eq("id", r.id).eq("version", r.version).select("*").maybeSingle();
+  if (error?.code === "23505") return { error: "invoice_already_sent" };
+  if (error || !sent) return { error: error ? "send_failed" : "changed_elsewhere", status: error ? 503 : 409 };
+  await tell(db, sent, "queued");
+  return { row: sent };
+}
+export async function approveReceipt(db: any, r: any, who: string): Promise<Done> {
+  if (r.status !== "review") return { error: "not_waiting" };
+  const { data, error } = await rr(db, "receipts").update({
+    status: "approved", approved_by: who, approved_at: now(), version: r.version + 1, updated_at: now(),
+    log: [...(r.log ?? []), logEntry(`Approved by ${nameOf(who)}`, who)],
+  }).eq("id", r.id).eq("version", r.version).select("*").maybeSingle();
+  return error || !data ? { error: "changed_elsewhere" } : { row: data };
+}
+export async function cancelReceipt(db: any, r: any, who: string): Promise<Done> {
+  // Once Rico has pressed save it can't be taken back here: Ricotta Restaurant has it.
+  if (!["draft", "queued", "filling", "review", "problem"].includes(r.status)) return { error: "too_late" };
+  const { data, error } = await rr(db, "receipts").update({
+    status: "cancelled", version: r.version + 1, updated_at: now(),
+    log: [...(r.log ?? []), logEntry(`Cancelled by ${nameOf(who)}`, who)],
+  }).eq("id", r.id).eq("version", r.version).select("*").maybeSingle();
+  return error || !data ? { error: "changed_elsewhere" } : { row: data };
+}
+export async function photoLinks(db: any, r: any, kinds?: string[]) {
+  const out = [];
+  for (const p of r.photos ?? []) {
+    if (kinds && !kinds.includes(p.kind)) continue;
+    const { data: s } = await db.storage.from(BUCKET).createSignedUrl(p.path, 3600);
+    if (s?.signedUrl) out.push({ kind: p.kind, at: p.at, url: s.signedUrl });
+  }
+  return out;
+}
 
 export async function receiptsRoute(ctx: Ctx, M: string, path: string, b: any): Promise<Response | null> {
   const { db, json, fail } = ctx;
@@ -144,50 +199,14 @@ export async function receiptsRoute(ctx: Ctx, M: string, path: string, b: any): 
       const { error: e2 } = await rr(db, "receipts").delete().eq("id", id).eq("status", "draft");
       return e2 ? fail("delete_failed", 503) : json({ ok: true });
     }
-    if (M === "GET" && action === "photos") {
-      const out = [];
-      for (const p of r.photos ?? []) {
-        const { data: s } = await db.storage.from(BUCKET).createSignedUrl(p.path, 600);
-        if (s?.signedUrl) out.push({ kind: p.kind, at: p.at, url: s.signedUrl });
-      }
-      return json({ photos: out });
-    }
+    if (M === "GET" && action === "photos") return json({ photos: await photoLinks(db, r) });
     if (M !== "POST" || !action) return fail("not_found", 404);
-    if (action === "send") {
-      if (!["draft", "problem"].includes(r.status)) return fail("already_sent", 409);
-      if (r.status === "draft" && r.created_by !== ctx.account) return fail("forbidden", 403);
-      const [h, catalog, last] = await Promise.all([helperRow(db), catalogOf(db), lastPrices(db)]);
-      const c = R.check(view(r), catalog, limitsOf(h), last);
-      if (c.errors.length) return json({ error: "invalid_receipt", errors: c.errors }, 422);
-      // Every warning must have been seen and confirmed in the app before Rico gets the receipt.
-      const confirmed = new Set(Array.isArray(b.confirm) ? b.confirm.map((x: unknown) => t(x, 40)) : []);
-      const unconfirmed = c.warnings.filter((w: any) => !confirmed.has(w.code));
-      if (unconfirmed.length) return json({ error: "needs_confirmation", warnings: c.warnings }, 409);
-      const { data: sent, error: e2 } = await rr(db, "receipts").update({
-        status: "queued", total: c.total, warnings: c.warnings, problem: null, sent_at: now(), version: r.version + 1, updated_at: now(),
-        log: [...(r.log ?? []), logEntry(`Sent to Rico by ${ctx.account === "rozha" ? "Rozha" : "Yunis"}`, ctx.account ?? "app")],
-      }).eq("id", id).eq("version", r.version).select("*").maybeSingle();
-      if (e2?.code === "23505") return fail("invoice_already_sent", 409);
-      if (e2 || !sent) return fail(e2 ? "send_failed" : "changed_elsewhere", e2 ? 503 : 409);
-      return json(view(sent));
-    }
-    if (action === "approve") {
-      if (r.status !== "review") return fail("not_waiting", 409);
-      const { data: a, error: e2 } = await rr(db, "receipts").update({
-        status: "approved", approved_by: ctx.account, approved_at: now(), version: r.version + 1, updated_at: now(),
-        log: [...(r.log ?? []), logEntry(`Approved by ${ctx.account === "rozha" ? "Rozha" : "Yunis"}`, ctx.account ?? "app")],
-      }).eq("id", id).eq("version", r.version).select("*").maybeSingle();
-      return e2 || !a ? fail("changed_elsewhere", 409) : json(view(a));
-    }
-    if (action === "cancel") {
-      // Once Rico has pressed save it can't be taken back here: Ricotta Restaurant has it.
-      if (!["draft", "queued", "filling", "review", "problem"].includes(r.status)) return fail("too_late", 409);
-      const { data: c, error: e2 } = await rr(db, "receipts").update({
-        status: "cancelled", version: r.version + 1, updated_at: now(),
-        log: [...(r.log ?? []), logEntry(`Cancelled by ${ctx.account === "rozha" ? "Rozha" : "Yunis"}`, ctx.account ?? "app")],
-      }).eq("id", id).eq("version", r.version).select("*").maybeSingle();
-      return e2 || !c ? fail("changed_elsewhere", 409) : json(view(c));
-    }
+    const who = ctx.account ?? "rozha";
+    const res = action === "send" ? await sendReceipt(db, r, who, b.confirm)
+      : action === "approve" ? await approveReceipt(db, r, who)
+      : action === "cancel" ? await cancelReceipt(db, r, who) : null;
+    if (!res) return fail("not_found", 404);
+    return res.error ? json({ error: res.error, ...(res.extra ?? {}) }, res.status ?? 409) : json(view(res.row));
   }
   return null;
 }
@@ -248,9 +267,10 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     if (M === "POST" && action === "photo") {
       const kind = PHOTO_KINDS.includes(b.kind) ? b.kind : null;
       const bytes = typeof b.image === "string" && b.image.length < 4_200_000 ? Uint8Array.from(atob(b.image), (c) => c.charCodeAt(0)) : null;
-      if (!kind || !bytes || bytes[0] !== 0xff || bytes[1] !== 0xd8) return fail("invalid_photo");
-      const p = `${id}/${kind}-${Date.now()}.jpg`;
-      const { error: up } = await db.storage.from(BUCKET).upload(p, bytes, { contentType: "image/jpeg", upsert: false });
+      const png = !!bytes && bytes[0] === 0x89 && bytes[1] === 0x50, jpeg = !!bytes && bytes[0] === 0xff && bytes[1] === 0xd8;
+      if (!kind || !bytes || !(png || jpeg)) return fail("invalid_photo");
+      const p = `${id}/${kind}-${Date.now()}.${png ? "png" : "jpg"}`;
+      const { error: up } = await db.storage.from(BUCKET).upload(p, bytes, { contentType: png ? "image/png" : "image/jpeg", upsert: false });
       if (up) return fail("upload_failed", 503);
       const { error: e2 } = await rr(db, "receipts").update({ photos: [...(r.photos ?? []), { kind, path: p, at: now() }], updated_at: now() }).eq("id", id);
       return e2 ? fail("save_failed", 503) : json({ ok: true });
@@ -265,10 +285,10 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
         if (to === "problem") patch.problem = t(b.problem || "Rico stopped. See his notes.", 500);
         if (to === "saved") { patch.saved_at = now(); patch.finance = b.finance && typeof b.finance === "object" ? { tab: t(b.finance.tab, 80), month: t(b.finance.month, 7), no: Number.isSafeInteger(b.finance.no) ? b.finance.no : null } : null; }
         // "Rico saves by himself": a receipt filled in with nothing unusual is approved at once.
-        // One Rico drafted from a chat message always waits for a person.
+        // One Rico drafted from a chat message (source "rico") always waits for a person.
         if (to === "review") {
           const h = await helperRow(db);
-          if (h.auto_approve && r.source === "app" && !(r.warnings ?? []).length) {
+          if (h.auto_approve && r.source !== "rico" && !(r.warnings ?? []).length) {
             Object.assign(patch, { status: "approved", approved_by: "auto", approved_at: now() });
             patch.log = [...log, logEntry("Approved by himself (Rico saves by himself is on)")];
           }
@@ -276,7 +296,9 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
       }
       if (["saved", "problem", "cancelled"].includes(String(patch.status ?? r.status))) await rr(db, "helper").update({ busy_with: null }).eq("id", true);
       const { data: u, error: e2 } = await rr(db, "receipts").update(patch).eq("id", id).eq("version", r.version).select("*").maybeSingle();
-      return e2 || !u ? fail("changed_elsewhere", 409) : json(view(u));
+      if (e2 || !u) return fail("changed_elsewhere", 409);
+      if (u.status !== r.status && ["review", "approved", "saved", "problem"].includes(u.status)) await tell(db, u, u.status);
+      return json(view(u));
     }
   }
   return fail("not_found", 404);
