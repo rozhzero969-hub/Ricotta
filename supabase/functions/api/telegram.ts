@@ -12,7 +12,7 @@
 // from it, so nobody else can pretend to be Telegram.
 import "../_shared/search.js";
 import "../_shared/receipts.js";
-import { approveReceipt, cancelReceipt, catalogOf, helperRow, helperView, onReceiptEvent, photoLinks, sendReceipt } from "./receipts.ts";
+import { approveReceipt, cancelReceipt, catalogOf, helperRow, helperView, onLaunchEvent, onReceiptEvent, photoLinks, ricoCommand, sendReceipt } from "./receipts.ts";
 
 const R = (globalThis as any).RicottaReceipts;
 const S = (globalThis as any).RicottaSearch;
@@ -48,7 +48,7 @@ async function stateOf(d: any, chat: number) {
 const saveState = (d: any, chat: number, data: any) => db(d, "state").upsert({ chat_id: chat, data, updated_at: new Date().toISOString() });
 const say = (chat: number, text: string, buttons?: { text: string; data: string }[][]) =>
   tg("sendMessage", { chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true, ...(buttons ? { reply_markup: { inline_keyboard: buttons.map((row) => row.map((b) => ({ text: b.text, callback_data: b.data }))) } } : {}) });
-const MENU = [[{ text: "New receipt", data: "n" }]];
+const MENU = [[{ text: "New receipt", data: "n" }, { text: "Rico on the Mac", data: "rico" }]];
 
 /* ---------- Settings > Connect Telegram ---------- */
 export async function telegramLink(d: any, account: string, apiUrl: string) {
@@ -87,17 +87,52 @@ export async function telegramWebhook(d: any, req: Request, update: any) {
   const who = link.account;
   if (cb) { await onButton(d, chat, who, cb); return true; }
   if (/^\/(new|start)$/.test(text)) return (await startDraft(d, chat), true);
+  if (/^\/rico$/.test(text)) return (await ricoPanel(d, chat), true);
   if (/^\/cancel$/.test(text)) { const st = await stateOf(d, chat); delete st.draft; await saveState(d, chat, st); await say(chat, "Stopped. Nothing was sent.", MENU); return true; }
   if (text) await onText(d, chat, who, text);
   return true;
+}
+
+/* ---------- Lists to tap (typing a few letters still searches) ---------- */
+const PAGE = 10;
+/* One page of names as buttons (two a row), with Back / Next. The names on the screen are kept in the
+   chat's state, so a tap picks exactly the name it showed. */
+async function showList(d: any, chat: number, st: any, kind: "s" | "i" | "u", page: number, names: string[], title: string) {
+  const pages = Math.max(1, Math.ceil(names.length / PAGE)), p = Math.min(Math.max(0, page), pages - 1);
+  const shown = names.slice(p * PAGE, p * PAGE + PAGE);
+  st.opts = shown;
+  await saveState(d, chat, st);
+  const pick = kind === "s" ? "s:" : "i:";
+  const rows: { text: string; data: string }[][] = [];
+  shown.forEach((n, k) => { const b = { text: n.length > 30 ? n.slice(0, 29) + "…" : n, data: pick + k }; if (k % 2 === 0) rows.push([b]); else rows[rows.length - 1].push(b); });
+  const nav = [];
+  if (p > 0) nav.push({ text: "‹ Back", data: `pg:${kind}:${p - 1}` });
+  if (p < pages - 1) nav.push({ text: `Next › (${p + 2}/${pages})`, data: `pg:${kind}:${p + 1}` });
+  if (nav.length) rows.push(nav);
+  if (kind === "u") rows.push([{ text: "All items", data: "pg:i:0" }]);
+  await say(chat, title, rows);
+}
+const supplierNames = (cat: any) => [...cat.suppliers].sort((a: string, b: string) => a.localeCompare(b));
+const itemNames = (cat: any) => cat.items.map((i: any) => i.name).sort((a: string, b: string) => a.localeCompare(b));
+/* What was bought from this supplier before, most often first. */
+async function usualItems(d: any, supplier: string, cat: any) {
+  const { data } = await d.from("app_rr_receipts").select("lines").eq("supplier", supplier).not("status", "in", "(draft,cancelled)").order("created_at", { ascending: false }).limit(40);
+  const count = new Map<string, number>(), known = new Set(cat.items.map((i: any) => i.name));
+  for (const r of data ?? []) for (const l of r.lines ?? []) if (known.has(l.item)) count.set(l.item, (count.get(l.item) ?? 0) + 1);
+  return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
+}
+async function askItem(d: any, chat: number, st: any, cat: any, first: boolean) {
+  const dr = st.draft, usual = await usualItems(d, dr.supplier, cat), n = dr.lines.length + 1;
+  const lead = first ? "Now the items." : `Item ${n}.`;
+  if (usual.length) await showList(d, chat, st, "u", 0, usual, `${lead} Usually from ${esc(dr.supplier)}, or tap All items. You can also type a few letters.`);
+  else await showList(d, chat, st, "i", 0, itemNames(cat), `${lead} Pick one, or type a few letters to search.`);
 }
 
 /* ---------- Making a receipt, step by step ---------- */
 async function startDraft(d: any, chat: number) {
   const st = await stateOf(d, chat);
   st.draft = { step: "supplier", supplier: null, invoice: null, zone: "Main Storage", currency: "IQD", rate: null, delivery: null, lines: [], cur: null };
-  await saveState(d, chat, st);
-  await say(chat, "New receipt. Which supplier? Type a few letters of its name.\n\nSend /cancel to stop at any time.");
+  await showList(d, chat, st, "s", 0, supplierNames(await catalogOf(d)), "New receipt. Which supplier? Pick one, or type a few letters to search.\n\nSend /cancel to stop at any time.");
 }
 const digitsOf = (s: string) => s.replace(/[٠-٩]/g, (x) => String(x.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (x) => String(x.charCodeAt(0) - 0x6f0)).replace(/[,\s]/g, "");
 async function onText(d: any, chat: number, who: string, text: string) {
@@ -124,15 +159,15 @@ async function onText(d: any, chat: number, who: string, text: string) {
   if (dr.step === "rate") {
     if (!/^\d+(\.\d{1,3})?$/.test(v)) { await say(chat, "Type the rate as a number, for example 1500 or 1678.571."); return; }
     dr.rate = Number(v); dr.step = "item";
-    await saveState(d, chat, st);
-    await say(chat, `$1 = ${esc(v)} IQD. Now the first item: type a few letters of its name.`);
+    await say(chat, `$1 = ${esc(v)} IQD.`);
+    await askItem(d, chat, st, cat, true);
     return;
   }
   if (dr.step === "delivery") {
     if (!/^\d+$/.test(v)) { await say(chat, "Type the delivery fee as a whole number, or 0 for none."); return; }
     dr.delivery = Number(v) || null; dr.step = "item";
-    await saveState(d, chat, st);
-    await say(chat, `${dr.delivery ? "Delivery " + num(dr.delivery) + "." : "No delivery."} Now the first item: type a few letters of its name.`);
+    await say(chat, dr.delivery ? "Delivery " + num(dr.delivery) + "." : "No delivery.");
+    await askItem(d, chat, st, cat, true);
     return;
   }
   if (dr.step === "qty") {
@@ -180,9 +215,26 @@ async function onButton(d: any, chat: number, who: string, cb: any) {
     return;
   }
   if (data === "n") return startDraft(d, chat);
+  if (data === "rico") return ricoPanel(d, chat);
+  const rc = data.match(/^rc:(real|practice|stop)$/);
+  if (rc) {
+    if (who !== "rozha") { await say(chat, "Only Rozha can start or stop Rico."); return; }
+    const res = await ricoCommand(d, rc[1], "telegram");
+    await say(chat, res.error === "launcher_off" ? "The Mac is off, or Rico's launcher isn't set up on it, so Rico can't be started from here."
+      : rc[1] === "stop" ? "Stopping Rico on the Mac..." : `Starting Rico${rc[1] === "practice" ? " in practice mode (nothing is saved)" : ""} on the Mac... I'll tell you when he's ready.`);
+    return;
+  }
   const st = await stateOf(d, chat), dr = st.draft;
   if (!dr) { await say(chat, "That receipt was finished or stopped. Tap New receipt to make one.", MENU); return; }
   const cat = await catalogOf(d);
+  const pg = data.match(/^pg:([siu]):(\d+)$/);
+  if (pg) {
+    const page = Number(pg[2]);
+    if (pg[1] === "s" && dr.step === "supplier") await showList(d, chat, st, "s", page, supplierNames(cat), "Which supplier?");
+    if (pg[1] === "i" && dr.step === "item") await showList(d, chat, st, "i", page, itemNames(cat), "All items, A to Z:");
+    if (pg[1] === "u" && dr.step === "item") await showList(d, chat, st, "u", page, await usualItems(d, dr.supplier, cat), "Usually from this supplier:");
+    return;
+  }
   const pick = data.match(/^([siuc]):(.+)$/);
   if (pick?.[1] === "s" && dr.step === "supplier") {
     dr.supplier = st.opts?.[Number(pick[2])]; if (!dr.supplier) return;
@@ -200,8 +252,8 @@ async function onButton(d: any, chat: number, who: string, cb: any) {
   }
   if (data === "d0" && dr.step === "delivery") {
     dr.delivery = null; dr.step = "item";
-    await saveState(d, chat, st);
-    await say(chat, "No delivery. Now the first item: type a few letters of its name.");
+    await say(chat, "No delivery.");
+    await askItem(d, chat, st, cat, true);
     return;
   }
   if (pick?.[1] === "i" && dr.step === "item") {
@@ -220,8 +272,8 @@ async function onButton(d: any, chat: number, who: string, cb: any) {
     await say(chat, `How many ${esc(dr.cur.unit)}?`);
     return;
   }
-  if (data === "a" && dr.step === "more") { dr.step = "item"; await saveState(d, chat, st); await say(chat, `Item ${dr.lines.length + 1}: type a few letters of its name.`); return; }
-  if (data === "undo" && dr.step === "more") { dr.lines.pop(); if (!dr.lines.length) dr.step = "item"; await saveState(d, chat, st); if (dr.lines.length) await showDraft(chat, dr); else await say(chat, "Removed. Type a few letters of the first item."); return; }
+  if (data === "a" && dr.step === "more") { dr.step = "item"; await askItem(d, chat, st, cat, false); return; }
+  if (data === "undo" && dr.step === "more") { dr.lines.pop(); if (!dr.lines.length) dr.step = "item"; await saveState(d, chat, st); if (dr.lines.length) await showDraft(chat, dr); else await askItem(d, chat, st, cat, true); return; }
   if (data === "x") { delete st.draft; await saveState(d, chat, st); await say(chat, "Stopped. Nothing was sent.", MENU); return; }
   if ((data === "send" || data === "sendok") && dr.step === "more") {
     const row = { id: dr.id || crypto.randomUUID(), created_by: who, source: "telegram", status: "draft", supplier: dr.supplier, invoice: dr.invoice, zone: dr.zone,
@@ -246,6 +298,15 @@ async function onButton(d: any, chat: number, who: string, cb: any) {
     await say(chat, `Sent to Rico: <b>${esc(dr.supplier)}</b> #${esc(dr.invoice)}, ${money(R.totals(dr).total, dr.currency)}. I'll send you the photo to check.`, MENU);
   }
 }
+
+/* ---------- Rico on the Mac: start (real or practice) and stop ---------- */
+async function ricoPanel(d: any, chat: number) {
+  const h = helperView(await helperRow(d));
+  const state = h.online ? `Rico is on${h.mode === "practice" ? " in practice mode (nothing is saved)" : ""}${h.signedIn ? ", signed in to Ricotta Restaurant" : ""}.`
+    : h.launcher.online ? "Rico is off. The Mac is on, so you can start him." : "The Mac is off, or Rico's launcher isn't set up on it.";
+  await say(chat, state, [[{ text: "Start Rico", data: "rc:real" }, { text: "Practice mode", data: "rc:practice" }], [{ text: "Stop Rico", data: "rc:stop" }]]);
+}
+onLaunchEvent(async (d, text) => { if (!telegramReady()) return; const chat = await chatOf(d); if (chat) await say(chat, esc(text)); });
 
 /* ---------- Telling Rozha what happened ---------- */
 async function sendPhotos(chat: number, urls: string[], caption?: string) {
@@ -286,8 +347,11 @@ async function receiptEvent(d: any, r: any, event: string) {
     return;
   }
   if (event === "problem") {
-    const photos = await photoLinks(d, r, ["problem"]);
-    await say(chat, `Rico stopped.\n${head}\n\n${esc(r.problem ?? "")}`);
+    // The photo of where Rico stopped; a practice run has none, so the photo of what he filled in.
+    let photos = await photoLinks(d, r, ["problem"]);
+    if (!photos.length) photos = await photoLinks(d, r, ["before"]);
+    const practice = /^Practice run/.test(r.problem ?? "");
+    await say(chat, practice ? `Practice run: this is what Rico filled in. Nothing was saved.\n${head}` : `Rico stopped.\n${head}\n\n${esc(r.problem ?? "")}`);
     if (photos.length) await sendPhotos(chat, photos.map((p) => p.url).slice(0, 4));
   }
 }

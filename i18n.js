@@ -2,6 +2,7 @@
    (scripts/ui-smoke.cjs checks that). Numbers are always written 1 2 3. */
 const T = {
   en:{
+    rrStartRico:'Start Rico', rrPractice:'Practice mode', rrStopRicoNow:'Stop Rico', rrPracticeShort:'practice', rrLauncherOff:'The Mac is off, or Rico’s launcher is not set up on it.', rrLauncherWorking:'Telling the Mac...',
     rrLimBig:'Ask twice above (IQD)', rrLimJump:'Price change warning (%)', rrLimRateMin:'Lowest dollar rate', rrLimRateMax:'Highest dollar rate', rrLimSave:'Save limits', rrLimDefaults:'Back to the defaults', rrLimHint:'Defaults: 1,000,000 IQD, 30%, 1,500 to 1,800. They apply to receipts from every phone and from Telegram.', rrLimBad:'Check the limits: whole numbers, and the highest rate not below the lowest.',
     rrTelegram:'Telegram (Ricotta Helper)', rrTgConnected:'Connected: Rico sends receipts to approve and reports there', rrTgNotConnected:'Not connected yet', rrTgNotSetUp:'The bot token is not set on the server yet', rrTgConnect:'Connect Telegram', rrTgReconnect:'Connect again',
     rrPartOf:(a,b)=>a+' of '+b,
@@ -200,6 +201,7 @@ const T = {
 
   },
   ku:{
+    rrStartRico:'دەستپێکردنی ریکۆ', rrPractice:'دۆخی تاقیکردنەوە', rrStopRicoNow:'وەستاندنی ریکۆ', rrPracticeShort:'تاقیکردنەوە', rrLauncherOff:'ماکەکە کوژاوەتەوە، یان دەستپێکەری ریکۆ لەسەری دانەمەزراوە.', rrLauncherWorking:'بە ماکەکە دەڵێین...',
     rrLimBig:'لە سەرووی ئەمە دووجار بپرسە (دینار)', rrLimJump:'ئاگادارکردنەوە لە گۆڕانی نرخی (%)', rrLimRateMin:'کەمترین نرخی دۆلار', rrLimRateMax:'زۆرترین نرخی دۆلار', rrLimSave:'پاشەکەوتکردنی سنوورەکان', rrLimDefaults:'گەڕانەوە بۆ بنەڕەت', rrLimHint:'بنەڕەت: 1,000,000 دینار، 30%، 1,500 تا 1,800. بۆ وەسڵەکانی هەموو مۆبایلێک و تێلیگرام کار دەکەن.', rrLimBad:'سنوورەکان بپشکنە: ژمارەی تەواو، و زۆرترین نرخ کەمتر نەبێت لە کەمترین.',
     rrTelegram:'تێلیگرام (Ricotta Helper)', rrTgConnected:'پەیوەستە: ریکۆ وەسڵەکان بۆ پەسەندکردن و ڕاپۆرتەکان لەوێ دەنێرێت', rrTgNotConnected:'هێشتا پەیوەست نییە', rrTgNotSetUp:'کلیلی بۆتەکە هێشتا لەسەر سێرڤەر دانەنراوە', rrTgConnect:'پەیوەستکردنی تێلیگرام', rrTgReconnect:'دووبارە پەیوەستکردن',
     rrPartOf:(a,b)=>a+' لە '+b,
@@ -398,6 +400,7 @@ const T = {
 
   },
   ar:{
+    rrStartRico:'تشغيل ريكو', rrPractice:'وضع التجربة', rrStopRicoNow:'إيقاف ريكو', rrPracticeShort:'تجربة', rrLauncherOff:'الماك مطفأ، أو مشغّل ريكو غير مثبت عليه.', rrLauncherWorking:'جارٍ إبلاغ الماك...',
     rrLimBig:'اسأل مرتين فوق (دينار)', rrLimJump:'نبّه عند تغير السعر بنسبة (%)', rrLimRateMin:'أدنى سعر للدولار', rrLimRateMax:'أعلى سعر للدولار', rrLimSave:'حفظ الحدود', rrLimDefaults:'العودة إلى الافتراضي', rrLimHint:'الافتراضي: 1,000,000 دينار، 30%، 1,500 إلى 1,800. تنطبق على إيصالات كل الأجهزة وتيليغرام.', rrLimBad:'تحقق من الحدود: أرقام صحيحة، وأعلى سعر ليس أقل من الأدنى.',
     rrTelegram:'تيليغرام (Ricotta Helper)', rrTgConnected:'متصل: يرسل ريكو الإيصالات للموافقة والتقارير هناك', rrTgNotConnected:'غير متصل بعد', rrTgNotSetUp:'لم يُضبط مفتاح البوت على الخادم بعد', rrTgConnect:'ربط تيليغرام', rrTgReconnect:'ربط مرة أخرى',
     rrPartOf:(a,b)=>a+' من '+b,

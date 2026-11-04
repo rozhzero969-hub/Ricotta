@@ -18,6 +18,35 @@ function ask(question, hidden = false) {
   });
 }
 
+// `node helper/setup.mjs --launcher`: installs Rico's launcher, which macOS starts at every login, so the
+// Start Rico, Practice mode and Stop Rico buttons in the app and on Telegram work without Terminal.
+if (process.argv.includes("--launcher")) {
+  const { writeFileSync, mkdirSync, realpathSync } = await import("node:fs");
+  const { dirname, join } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const here = dirname(fileURLToPath(import.meta.url));
+  const plist = join(homedir(), "Library", "LaunchAgents", "com.ricotta.rico-launcher.plist");
+  const logs = join(homedir(), "Library", "Logs");
+  mkdirSync(dirname(plist), { recursive: true }); mkdirSync(logs, { recursive: true });
+  const x = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  writeFileSync(plist, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.ricotta.rico-launcher</string>
+  <key>ProgramArguments</key><array><string>${x(realpathSync(process.execPath))}</string><string>${x(join(here, "launcher.mjs"))}</string></array>
+  <key>WorkingDirectory</key><string>${x(dirname(here))}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>${x(join(logs, "RicoLauncher.log"))}</string>
+  <key>StandardErrorPath</key><string>${x(join(logs, "RicoLauncher.log"))}</string>
+</dict></plist>
+`);
+  const uid = process.getuid();
+  try { execFileSync("/bin/launchctl", ["bootout", `gui/${uid}`, plist], { stdio: "ignore" }); } catch {}
+  execFileSync("/bin/launchctl", ["bootstrap", `gui/${uid}`, plist], { stdio: "ignore" });
+  console.log("Rico's launcher is installed and running. It starts by itself whenever you log in.\nUse Start Rico, Practice mode and Stop Rico in the app's Receipts tab or in Telegram.");
+  process.exit(0);
+}
 console.log("Rico setup. What you type for the password and PIN is not shown and is kept only in this Mac's Keychain.\n");
 const user = await ask("Ricotta Restaurant username: ");
 const pass = await ask("Ricotta Restaurant password: ", true);

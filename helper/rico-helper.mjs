@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 
-const VERSION = "2026-11-06.1";
+const VERSION = "2026-11-07.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -360,9 +360,11 @@ async function waitForApproval(r) {
 
 /* ---------- Main loop ---------- */
 async function heartbeat(idle) {
-  try { return await api("helper/heartbeat", { method: "POST", body: { version: VERSION, signedIn, idle } }); } catch (e) { log("heartbeat:", e.message); return null; }
+  try { return await api("helper/heartbeat", { method: "POST", body: { version: VERSION, signedIn, idle, mode: PRACTICE ? "practice" : "real" } }); } catch (e) { log("heartbeat:", e.message); return null; }
 }
 await openBrowser();
+// Stopped (Stop Rico, Ctrl+C or closing Terminal): his browser windows close with him.
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, async () => { try { await browser?.close(); await joiner?.close(); } finally { process.exit(0); } });
 log(`Rico ${VERSION}${PRACTICE ? " (practice: nothing is saved)" : ""}`);
 // Anything left half way when Rico last stopped is sorted out first (see the API's helper/recover).
 await api("helper/recover", { method: "POST" }).then((x) => { if (x?.recovered) log(`picked up ${x.recovered} receipt(s) left half way`); }, (e) => log("recover:", e.message));
