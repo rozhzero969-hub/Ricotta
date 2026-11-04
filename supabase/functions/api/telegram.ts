@@ -286,8 +286,11 @@ async function receiptEvent(d: any, r: any, event: string) {
     return;
   }
   if (event === "problem") {
-    const photos = await photoLinks(d, r, ["problem"]);
-    await say(chat, `Rico stopped.\n${head}\n\n${esc(r.problem ?? "")}`);
+    // The photo of where Rico stopped; a practice run has none, so the photo of what he filled in.
+    let photos = await photoLinks(d, r, ["problem"]);
+    if (!photos.length) photos = await photoLinks(d, r, ["before"]);
+    const practice = /^Practice run/.test(r.problem ?? "");
+    await say(chat, practice ? `Practice run: this is what Rico filled in. Nothing was saved.\n${head}` : `Rico stopped.\n${head}\n\n${esc(r.problem ?? "")}`);
     if (photos.length) await sendPhotos(chat, photos.map((p) => p.url).slice(0, 4));
   }
 }
