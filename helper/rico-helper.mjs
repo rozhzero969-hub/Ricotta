@@ -416,7 +416,7 @@ await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => log("Could 
     try {
       const w = await api("helper/shot/wait", { method: "POST", body: { wait: 20 } });
       if (!w?.want) continue;
-      const img = (await page.screenshot({ type: "jpeg", quality: 75 })).toString("base64");
+      const img = (await page.screenshot({ type: "jpeg", quality: 70, scale: "css" })).toString("base64");
       const what = await page.title().catch(() => "");
       await api("helper/shot", { method: "POST", body: { chat: w.chat, image: img, caption: `Rico's screen at ${new Date().toLocaleTimeString()}${PRACTICE ? " (practice mode)" : ""}${what ? ": " + what : ""}` } });
       log("sent a live screenshot");

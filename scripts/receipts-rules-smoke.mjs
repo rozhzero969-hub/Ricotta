@@ -31,7 +31,10 @@ c = R.check({ ...base, supplier: "Jabal  Amman" }, cat, {}, {});
 assert.ok(c.errors.some((e) => e.code === "supplierUnknown"));
 
 // Numbers: whole prices, quantities with up to 3 decimals, an invoice of digits only, a unit of that item.
-for (const [bad, code] of [[{ cost: 2000.5 }, "cost"], [{ cost: 0 }, "cost"], [{ qty: 0 }, "qty"], [{ qty: 1.2345 }, "qty"], [{ unit: "کیلۆ (1000×)" }, "unitUnknown"]])
+// A unit cost may have a dot (up to 3 decimals); more than that, zero or less is refused.
+assert.deepEqual(R.check({ ...base, lines: [{ ...base.lines[0], cost: 1250.5 }] }, cat, {}, {}).errors, []);
+assert.equal(R.totals({ ...base, delivery: null, lines: [{ ...base.lines[0], cost: 1250.5 }] }).total, 5002);
+for (const [bad, code] of [[{ cost: 2000.5555 }, "cost"], [{ cost: 0 }, "cost"], [{ qty: 0 }, "qty"], [{ qty: 1.2345 }, "qty"], [{ unit: "کیلۆ (1000×)" }, "unitUnknown"]])
   assert.ok(R.check({ ...base, lines: [{ ...base.lines[0], ...bad }] }, cat, {}, {}).errors.some((e) => e.code === code), code);
 assert.ok(R.check({ ...base, invoice: "12a" }, cat, {}, {}).errors.some((e) => e.code === "invoice"));
 assert.ok(R.check({ ...base, zone: "Breakfast" }, cat, {}, {}).errors.some((e) => e.code === "zone"));
@@ -54,4 +57,4 @@ c = R.check({ ...base, lines: [{ item: "Yogurt - ماستی ماستاو", unit:
 assert.ok(c.warnings.some((w) => w.code === "tinyUnit"));
 c = R.check({ ...base, lines: [{ ...base.lines[0], qty: 500 }] }, cat, { bigTotal: 1000000 }, {});
 assert.ok(c.warnings.some((w) => w.code === "bigTotal" && w.iqd === 1005000));
-console.log("Receipt rules PASS: exact names (spaces, Kurdish letters), units, whole prices, decimals, invoices with zeros, USD totals, delivery, warnings");
+console.log("Receipt rules PASS: exact names (spaces, Kurdish letters), units, prices with up to 3 decimals, invoices with zeros, USD totals, delivery, warnings");

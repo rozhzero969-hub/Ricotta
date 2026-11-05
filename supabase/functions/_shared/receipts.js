@@ -19,6 +19,8 @@
   function trimNumber(n) { return String(Math.round(n * 1000) / 1000); }
   const wholePositive = (v) => Number.isSafeInteger(v) && v > 0;
   const qtyOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 99999 && Math.round(v * 1000) === v * 1000;
+  // A unit cost may have a dot (up to 3 decimals), in dinars or dollars.
+  const costOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 1e10 && Math.round(v * 1000) === v * 1000;
   const rateOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 100000 && Math.round(v * 1000) === v * 1000;
   /* Money the way Ricotta Restaurant adds it up: each line qty × cost, then the delivery. */
   function totals(r) {
@@ -56,13 +58,13 @@
       const opt = unitOptions(item).find((o) => o.label === l.unit);
       if (!opt) errors.push({ code: 'unitUnknown', line: n });
       if (!qtyOk(l.qty)) errors.push({ code: 'qty', line: n });
-      if (!wholePositive(l.cost)) errors.push({ code: 'cost', line: n });
+      if (!costOk(l.cost)) errors.push({ code: 'cost', line: n });
       if (seen.has(l.item)) warnings.push({ code: 'duplicate', line: n, first: seen.get(l.item) });
       else seen.set(l.item, n);
       // A unit that counts as a single gram or millilitre on an item normally bought in bigger units.
       if (opt && opt.factor === 1 && opt.label !== item.base && unitOptions(item).some((o) => o.factor > 1)) warnings.push({ code: 'tinyUnit', line: n });
       const before = last && last[`${l.item}|${l.unit}|${r.currency}`];
-      if (before && wholePositive(l.cost) && before > 0) {
+      if (before && costOk(l.cost) && before > 0) {
         const pct = Math.round(((l.cost - before) / before) * 100);
         if (Math.abs(pct) >= lim.priceJump) warnings.push({ code: 'priceJump', line: n, before, pct });
       }
