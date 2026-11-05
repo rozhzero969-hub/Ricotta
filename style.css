@@ -2183,34 +2183,58 @@ html.dark .rr-line-warn,html.dark .rr-warns p{color:#FDBA74}
 .rr-opt.on{font-weight:600}
 .rr-opt.none{color:var(--ink-soft)}
 .rr-n{font-variant-numeric:tabular-nums}
-.rr-lines{display:flex;flex-direction:column}
-.rr-lhead{display:none}
-.rr-line{position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px 0;border-top:.5px solid var(--line)}
-.rr-line:first-of-type{border-top:0;padding-top:0}
-.rr-num{grid-column:1/-1;font-size:.8125rem;font-weight:600;color:var(--ink-soft);font-variant-numeric:tabular-nums}
-.rr-f-item{grid-column:1/-1}
-.rr-del{position:absolute;inset-inline-end:0;top:6px;width:34px;height:34px;border:0;background:none;color:var(--ink-faint);display:grid;place-items:center;border-radius:50%}
-.rr-line:first-of-type .rr-del{top:-8px}
+.rr-lines{display:flex;flex-direction:column;gap:12px}
+/* Each item in its own box, like Ricotta Restaurant: the item on top, then unit, qty, cost and total. */
+.rr-line{position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px;border:1px solid var(--line-strong);border-radius:14px;background:var(--surface)}
+.rr-f-item{grid-column:1/-1;padding-inline-end:40px}
+.rr-line .rr-field>label,.rr-total>span{font-size:.6875rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft)}
+.rr-del{position:absolute;inset-inline-end:10px;top:10px;width:34px;height:34px;border:0;background:none;color:var(--ink-faint);display:grid;place-items:center;border-radius:50%}
 .rr-del:hover{color:var(--red);background:var(--fill)}
 .rr-del svg{width:16px;height:16px}
 .rr-total{justify-content:flex-end}
-.rr-total span{font-size:.8125rem;font-weight:600;color:var(--ink-soft)}
 .rr-total b{height:46px;display:flex;align-items:center;font-size:.9375rem;font-weight:600;font-variant-numeric:tabular-nums}
-.rr-line.warn .rr-input{box-shadow:inset 0 0 0 1px rgba(245,158,11,.6)}
+.rr-line.warn{border-color:rgba(245,158,11,.7)}
 .rr-line-warn{grid-column:1/-1;margin:0;font-size:.8125rem;color:#9A3412}
 @media (min-width:760px){
-  .rr-lhead,.rr-line{grid-template-columns:20px minmax(0,2.6fr) minmax(0,1.5fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1fr) 34px;align-items:center;column-gap:10px}
-  .rr-lhead{display:grid;padding:0 0 8px;font-size:.75rem;font-weight:600;color:var(--ink-soft)}
-  .rr-lhead span:nth-child(6){text-align:end}
-  .rr-line{padding:6px 0;border-top:0}
-  .rr-line:first-of-type{padding-top:6px}
-  .rr-num,.rr-f-item{grid-column:auto}
-  .rr-line .rr-field>label,.rr-line .rr-total>span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .rr-line{grid-template-columns:minmax(0,1.6fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1fr) 34px;align-items:end;column-gap:12px}
+  .rr-f-item{padding-inline-end:0;grid-column:1/-1}
+  .rr-total{align-items:flex-end}
   .rr-total b{justify-content:flex-end}
-  .rr-del,.rr-line:first-of-type .rr-del{position:static}
-  .rr-line-warn{grid-column:2/-1;margin-top:-2px}
+  .rr-del{position:static;align-self:end;margin-bottom:6px}
+  .rr-line-warn{margin-top:-2px}
 }
-.rr-add{margin-top:10px;height:40px;padding:0 4px;border:0;background:none;color:var(--tint);font:inherit;font-size:.9375rem;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+/* Sections like Ricotta Restaurant's: a light header strip with an orange mark, fields in light boxes,
+   the selected currency filled green, and the total with Cancel and Receive at the bottom. */
+.rr-edit .rr-card{padding:0;border:1px solid var(--line-strong);box-shadow:0 1px 3px rgba(15,23,42,.06);overflow:visible}
+.rr-edit .rr-card-title{margin:0;padding:14px 20px;border-bottom:1px solid var(--line-strong);border-radius:var(--r-card) var(--r-card) 0 0;background:var(--rr-strip);display:flex;align-items:center;justify-content:flex-start;gap:12px;font-size:1rem;font-weight:600}
+.rr-edit .rr-card-title::before{content:"";width:4px;height:20px;border-radius:2px;background:#F59E0B;flex:none}
+.rr-edit .rr-card-title .rr-count{margin-inline-start:auto}
+.rr-edit .rr-card>.rr-grid{padding:20px 20px 4px;row-gap:18px}
+.rr-edit .rr-card>.rr-lines{padding:20px 20px 4px}
+.rr-edit .rr-card>.rr-add{margin:14px 20px 0}
+.rr-edit .rr-card>.rr-keys{margin:10px 20px 0}
+.rr-edit .rr-card>:last-child{margin-bottom:20px}
+.rr-edit .rr-field>label,.rr-edit .rr-field>.rr-label{font-size:.9375rem;font-weight:500;color:var(--ink)}
+.rr-edit .rr-line .rr-field>label,.rr-edit .rr-total>span{font-size:.75rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft)}
+.rr-edit .rr-input,.rr-edit .rr-field .sel-btn{background:var(--rr-box);border:1px solid var(--line-strong);border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.06)}
+.rr-edit .rr-input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent;background:var(--surface)}
+.rr-edit .rr-line{border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.rr-edit .rr-del{color:#F87171}
+.rr-edit .rr-cur{border:1px solid var(--line-strong);border-radius:12px;padding:3px;background:var(--surface)}
+.rr-edit .rr-cur .pill-seg-btn{border-radius:9px}
+.rr-edit .rr-cur .pill-seg-btn[aria-checked=true]{background:var(--accent-strong);color:#fff;box-shadow:none}
+.rr-edit .rr-sum{background:none;border:0;border-top:1px solid var(--line-strong);border-radius:0;padding:18px 4px 4px;align-items:center}
+.rr-edit .rr-sum-total{flex-direction:row;align-items:baseline;flex-wrap:wrap;gap:6px}
+.rr-edit .rr-sum-total span{font-size:1rem;font-weight:500;color:var(--ink-soft)}
+.rr-edit .rr-sum-total small{flex-basis:100%}
+.rr-sum-acts{display:flex;align-items:center;gap:14px}
+.rr-cancel{height:44px;padding:0 14px;border:0;background:none;color:var(--ink);font:inherit;font-size:1rem;font-weight:500;border-radius:999px}
+.rr-cancel:hover{background:var(--fill)}
+.rr-sum .btn-primary svg{width:18px;height:18px}
+@media (max-width:520px){.rr-sum-acts{width:100%;flex-direction:row-reverse}.rr-sum-acts .btn{flex:1}}
+:root{--rr-strip:#F8FAFC;--rr-box:#F8FAFC}
+html.dark{--rr-strip:rgba(255,255,255,.04);--rr-box:rgba(255,255,255,.05)}
+.rr-add{height:42px;padding:0 16px;border:1px solid rgba(var(--accent-rgb),.55);border-radius:12px;background:rgba(var(--accent-rgb),.08);color:var(--tint);font:inherit;font-size:.9375rem;font-weight:600;display:inline-flex;align-items:center;gap:6px}
 .rr-add svg{width:16px;height:16px}
 .rr-keys{margin:6px 0 0;font-size:.75rem;color:var(--ink-faint)}
 @media (pointer:coarse){.rr-keys{display:none}}
@@ -2228,9 +2252,41 @@ html.dark .rr-line-warn,html.dark .rr-warns p{color:#FDBA74}
 .rr-done-tag svg{width:14px;height:14px}
 .rr-done b{font-size:1.5rem;font-weight:700;letter-spacing:-.02em;margin-top:2px}
 .rr-done small{color:var(--ink-soft)}
-.rr-view-lines .rr-num{grid-column:auto;width:20px;flex:none}
+.rr-view-lines .rr-num{width:20px;flex:none;font-size:.8125rem;font-weight:600;color:var(--ink-soft);font-variant-numeric:tabular-nums}
 html.dark .rr-line-warn{color:#FDBA74}
 .rr-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .rr-filters .sel-btn{min-height:36px;height:36px;border-radius:999px;padding:0 12px;font-size:.875rem;width:auto;max-width:100%}
 .rr-filter-clear{height:36px;padding:0 12px;border:0;border-radius:999px;background:none;color:var(--tint);font:inherit;font-size:.875rem;font-weight:600}
 .rr-ev[role=button]{cursor:pointer}
+
+/* Names in any language line up with the app (left in English, right in Kurdish and Arabic), like
+   Ricotta Restaurant's lists, while each name still reads in its own direction. Zero specificity, so
+   anything that sets its own alignment (centred names) keeps it. */
+:where(html[dir=ltr]) :where([dir=auto]){text-align:left}
+:where(html[dir=rtl]) :where([dir=auto]){text-align:right}
+
+/* History: Orders | Receipts, two separate groups. */
+.hist-switch{display:flex;width:max-content;max-width:100%;margin:0 0 16px}
+.rr-hist .hist-date{display:flex;align-items:center;gap:10px}
+.rr-hist-state{display:inline-flex;align-items:center;gap:6px;font-size:.8125rem;color:var(--ink-soft)}
+.rr-hist-total{font-weight:700;font-variant-numeric:tabular-nums}
+.rr-hist-name{display:flex;flex-direction:column;gap:2px;margin-bottom:8px}
+.rr-hist-name b{font-size:1.0625rem;font-weight:600}
+.rr-hist-name small{font-size:.8125rem;color:var(--ink-soft)}
+.rr-hist-lines{list-style:none;margin:0 0 10px;padding:0}
+.rr-hist-lines li{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-top:.5px solid var(--line);font-size:.9375rem}
+.rr-hist-lines li b{font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums}
+/* Photos large, in the middle of the card. */
+.rr-hist-photos{display:flex;flex-direction:column;align-items:center;gap:14px;margin:12px 0 4px}
+.rr-hist-photos figure{margin:0;width:100%;max-width:620px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.rr-hist-photo{display:block;width:100%;padding:0;border:1px solid var(--line-strong);border-radius:14px;overflow:hidden;background:var(--fill);cursor:zoom-in}
+.rr-hist-photo img{display:block;width:100%;height:auto;max-height:75vh;object-fit:contain;object-position:top;background:#fff}
+.rr-hist-photos figcaption{font-size:.8125rem;font-weight:600;color:var(--ink-soft)}
+.rr-photo{border:0;font:inherit;text-align:start;cursor:zoom-in}
+/* Full size photo. */
+.rr-lb{position:fixed;inset:0;z-index:1000;background:rgba(10,12,14,.92);overflow:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column}
+.rr-lb-bar{position:sticky;top:0;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;color:#fff;font-size:.9375rem;font-weight:600;background:linear-gradient(rgba(10,12,14,.95),rgba(10,12,14,.6))}
+.rr-lb-acts{display:flex;gap:8px}
+.rr-lb-acts button{width:40px;height:40px;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:1.25rem;line-height:1;display:grid;place-items:center}
+.rr-lb-stage{flex:1;display:flex;justify-content:center;align-items:flex-start;padding:8px 12px calc(env(safe-area-inset-bottom) + 24px)}
+.rr-lb-stage img{display:block;width:min(960px,100%);height:auto;border-radius:10px;background:#fff}

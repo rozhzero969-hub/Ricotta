@@ -13,7 +13,7 @@
 //   POST   receipts/:id/approve                      the photo is right: Rico may save it
 //   POST   receipts/:id/cancel                       stop it (Rico discards what he filled in)
 //   GET    receipts/:id/photos                       short-lived links to its photos
-//   PUT    receipts-settings   {autoApprove, stopped, limits} (rozha)
+//   PUT    receipts-settings   {stopped, limits} (rozha)
 // Routes for Rico on the Mac (header x-helper-token, the RICO_HELPER_TOKEN secret):
 //   POST   helper/heartbeat    {version, signedIn}   still here; answers the switches
 //   POST   helper/recover                            Rico started: what he left half way is sorted out
@@ -100,7 +100,7 @@ export function helperView(h: any) {
   const seen = h.last_seen ? Date.parse(h.last_seen) : 0;
   const ls = h.launcher_seen ? Date.parse(h.launcher_seen) : 0;
   return { online: !!seen && Date.now() - seen < 90_000, lastSeen: h.last_seen ?? null, signedIn: !!h.signed_in, busyWith: h.busy_with ?? null,
-    autoApprove: !!h.auto_approve, stopped: !!h.stopped, limits: limitsOf(h), version: h.version ?? null, mode: h.mode ?? null,
+    stopped: !!h.stopped, limits: limitsOf(h), version: h.version ?? null, mode: h.mode ?? null,
     launcher: { online: !!ls && Date.now() - ls < LAUNCHER_FRESH, command: h.command ?? null, result: h.launch_result ?? null, at: h.launch_at ?? null } };
 }
 /* Only these draft fields, in these shapes, are kept. */
@@ -227,7 +227,6 @@ export async function receiptsRoute(ctx: Ctx, M: string, path: string, b: any): 
   if (M === "PUT" && path === "receipts-settings") {
     if (!ctx.rozha) return fail("forbidden", 403);
     const patch: Record<string, unknown> = {};
-    if (typeof b.autoApprove === "boolean") patch.auto_approve = b.autoApprove;
     if (typeof b.stopped === "boolean") patch.stopped = b.stopped;
     const l = b.limits ?? {};
     if (Number.isSafeInteger(l.bigTotal) && l.bigTotal > 0) patch.big_total = l.bigTotal;
@@ -393,15 +392,7 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
         patch.status = to;
         if (to === "problem") patch.problem = t(b.problem || "Rico stopped. See his notes.", 500);
         if (to === "saved") { patch.saved_at = now(); patch.finance = b.finance && typeof b.finance === "object" ? { tab: t(b.finance.tab, 80), month: t(b.finance.month, 7), no: Number.isSafeInteger(b.finance.no) ? b.finance.no : null } : null; }
-        // "Rico saves by himself": a receipt filled in with nothing unusual is approved at once.
-        // One Rico drafted from a chat message (source "rico") always waits for a person.
-        if (to === "review") {
-          const h = await helperRow(db);
-          if (h.auto_approve && r.source !== "rico" && !(r.warnings ?? []).length) {
-            Object.assign(patch, { status: "approved", approved_by: "auto", approved_at: now() });
-            patch.log = [...log, logEntry("Approved by himself (Rico saves by himself is on)")];
-          }
-        }
+        // A receipt Rico filled in always waits for a person to approve it (the database insists too).
       }
       if (["saved", "problem", "cancelled"].includes(String(patch.status ?? r.status))) await rr(db, "helper").update({ busy_with: null }).eq("id", true);
       const { data: u, error: e2 } = await rr(db, "receipts").update(patch).eq("id", id).eq("version", r.version).select("*").maybeSingle();
