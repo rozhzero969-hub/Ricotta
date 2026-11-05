@@ -45,9 +45,14 @@
   // A unit cost may have a dot (up to 3 decimals), in dinars or dollars.
   const costOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 1e10 && Math.round(v * 1000) === v * 1000;
   const rateOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 100000 && Math.round(v * 1000) === v * 1000;
-  /* Money the way Ricotta Restaurant adds it up: each line qty × cost, then the delivery. */
+  /* Money the way Ricotta Restaurant adds it up: each line qty × cost, rounded to the dinar (10.4 ×
+     1,057.692 is IQD 11,000 there, not 10,999.997), then the delivery. Dollars keep their cents. */
+  function lineTotal(l, currency) {
+    const v = (Number(l && l.qty) || 0) * (Number(l && l.cost) || 0);
+    return currency === 'USD' ? Math.round(v * 1000) / 1000 : Math.round(v);
+  }
   function totals(r) {
-    const items = (r.lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.cost) || 0), 0);
+    const items = (r.lines || []).reduce((s, l) => s + lineTotal(l, r.currency), 0);
     const itemsRounded = Math.round(items * 1000) / 1000;
     if (r.currency === 'USD') return { items: itemsRounded, delivery: 0, total: itemsRounded, iqd: Math.round(itemsRounded * (Number(r.rate) || 0)) };
     const delivery = Number(r.delivery) || 0;
@@ -110,5 +115,5 @@
     if (!errors.length && t.iqd >= lim.bigTotal) warnings.push({ code: 'bigTotal', iqd: t.iqd, limit: lim.bigTotal });
     return { errors, warnings, ...t };
   }
-  globalThis.RicottaReceipts = Object.freeze({ unitOptions, totals, check, unitIsOdd, defaultUnit, unitWord, MAX_LINES });
+  globalThis.RicottaReceipts = Object.freeze({ unitOptions, totals, lineTotal, check, unitIsOdd, defaultUnit, unitWord, MAX_LINES });
 })();

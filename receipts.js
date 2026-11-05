@@ -9,6 +9,8 @@ const RR_ACTIVE = ['queued','filling','review','approved','saving'];
 const rrSubpage = ()=> state.view === 'receipts' && rr.page !== 'list';
 const rrNum = (n, d = 0)=> Number(n || 0).toLocaleString('en-US', {maximumFractionDigits:d});
 const rrMoney = (n, cur)=> cur === 'USD' ? '$' + rrNum(n, 3) : 'IQD ' + rrNum(n, 3);
+/* A unit as Ricotta Restaurant shows it: the size written "(×1000)" (the value stays "(1000×)"). */
+const rrUnitShow = label=> String(label || '').replace(/\(\s*([\d.,]+)\s*×\s*\)/, '(×$1)');
 const rrRico = ()=> `<span class="rr-rico" aria-hidden="true">${ICON_SPARKLE}</span>`;
 function rrFind(id){ return rr.data?.receipts.find(r=>r.id === id) || null; }
 function rrLimits(){ return rr.data?.helper?.limits || {}; }
@@ -238,11 +240,11 @@ function renderReceiptEdit(){
   const usd = r.currency === 'USD';
   const lines = r.lines.map((l, i)=>{
     const item = rrItem(l.item), units = item ? globalThis.RicottaReceipts.unitOptions(item) : [];
-    const lineTotal = (Number(l.qty) || 0) * (Number(l.cost) || 0);
+    const lineTotal = globalThis.RicottaReceipts.lineTotal(l, r.currency);
     const warn = c.warnings.filter(w=>w.line === i + 1).map(w=>rrWarnText(w)).join(' ');
     return `<div class="rr-line${warn ? ' warn' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="rrItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('rrItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
-      <div class="rr-field rr-f-unit"><label for="rrUnit${i}">${esc(t('rrUnit'))}</label><select id="rrUnit${i}" data-l-unit="${i}" ${item ? '' : 'disabled'}>${opt('', t('rrBaseUnit'), !l.unit)}${units.map(u=>opt(u.label, u.label, u.label === l.unit)).join('')}</select></div>
+      <div class="rr-field rr-f-unit"><label for="rrUnit${i}">${esc(t('rrUnit'))}</label><select id="rrUnit${i}" data-l-unit="${i}" ${item ? '' : 'disabled'}>${opt('', t('rrBaseUnit'), !l.unit)}${units.map(u=>opt(u.label, rrUnitShow(u.label), u.label === l.unit)).join('')}</select></div>
       <div class="rr-field"><label for="rrQty${i}">${esc(t('rrQty'))}</label><input id="rrQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${l.qty ?? ''}" placeholder="0"></div>
       <div class="rr-field"><label for="rrCost${i}">${esc(t('rrUnitCost'))}${usd ? ' ($)' : ''}</label><input id="rrCost${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-cost="${i}" value="${rrShowNum(l.cost)}" placeholder="0"></div>
       <div class="rr-field rr-total"><span>${esc(t('rrTotal'))}</span><b>${lineTotal ? esc(rrMoney(lineTotal, r.currency)) : '—'}</b></div>
@@ -395,7 +397,7 @@ function attachReceiptEdit(){
 /* Only the totals change while typing a number: the boxes keep their focus and the keyboard stays up. */
 function rrPaintTotals(r){
   const c = globalThis.RicottaReceipts.totals(r);
-  r.lines.forEach((l, i)=>{ const b = document.querySelector(`[data-line="${i}"] .rr-total b`); if(b){ const v = (Number(l.qty) || 0) * (Number(l.cost) || 0); b.textContent = v ? rrMoney(v, r.currency) : '—'; } });
+  r.lines.forEach((l, i)=>{ const b = document.querySelector(`[data-line="${i}"] .rr-total b`); if(b){ const v = globalThis.RicottaReceipts.lineTotal(l, r.currency); b.textContent = v ? rrMoney(v, r.currency) : '—'; } });
   const sum = document.querySelector('.rr-sum-total b'); if(sum) sum.textContent = rrMoney(c.total, r.currency);
   const small = document.querySelector('.rr-sum-total small'); if(small) small.textContent = r.currency === 'USD' ? (c.iqd ? '= IQD ' + rrNum(c.iqd) : '') : (c.delivery ? t('rrPlusDelivery')(rrNum(c.items), rrNum(c.delivery)) : '');
 }
@@ -434,7 +436,7 @@ function renderReceiptView(){
   const head = r.status === 'saved'
     ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('rrStatus_saved'))}</span><b>${esc(r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : t('rrStatus_saved'))}</b><small>${esc(t('rrFindIt')(r.invoice, rrWhen(r.savedAt)))}</small></div>`
     : `<div class="rr-state ${rrIsPractice(r) ? 'practice' : r.status}">${rrRico()}<div><b>${esc(rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}</b><small>${esc(r.status === 'problem' ? r.problem || '' : t('rrStatusHint_' + r.status))}</small></div></div>`;
-  const lines = r.lines.map((l, i)=>`<li><span class="rr-num">${i + 1}</span><span><b dir="auto">${esc(l.item)}</b><small>${esc(rrNum(l.qty, 3))} × <bdi>${esc(l.unit)}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</small></span><b>${esc(rrMoney(l.qty * l.cost, r.currency))}</b></li>`).join('');
+  const lines = r.lines.map((l, i)=>`<li><span class="rr-num">${i + 1}</span><span><b dir="auto">${esc(l.item)}</b><small>${esc(rrNum(l.qty, 3))} × <bdi>${esc(rrUnitShow(l.unit))}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</small></span><b>${esc(rrMoney(globalThis.RicottaReceipts.lineTotal(l, r.currency), r.currency))}</b></li>`).join('');
   // A long page comes in several photos, top to bottom: each says which part it is ("2 of 3").
   const list = photos?.list || [], of = k=>list.filter(p=>p.kind === k).length, seen = {};
   const pics = list.map(p=>{ seen[p.kind] = (seen[p.kind] || 0) + 1; const label = t('rrPhoto_' + p.kind) + (of(p.kind) > 1 ? ' ' + t('rrPartOf')(seen[p.kind], of(p.kind)) : '');
@@ -596,7 +598,7 @@ function rrHistCard(r){
   const when = formatIraqDateTime(new Date(r.sentAt || r.createdAt), {hour:'numeric', minute:'2-digit'});
   const tone = rrIsPractice(r) || r.status === 'cancelled' ? 'draft' : r.status === 'saved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : 'busy';
   const meta = [r.invoice ? '#' + r.invoice : '', rrSourceName(r), accountLabel(r.by), m ? t(m === 'practice' ? 'rrModePractice' : 'rrModeReal') : '', r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : ''].filter(Boolean).join(' · ');
-  const lines = r.lines.map(l=>`<li><span dir="auto">${esc(l.item)}</span><b>${esc(rrNum(l.qty, 3))} × <bdi>${esc(l.unit)}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</b></li>`).join('');
+  const lines = r.lines.map(l=>`<li><span dir="auto">${esc(l.item)}</span><b>${esc(rrNum(l.qty, 3))} × <bdi>${esc(rrUnitShow(l.unit))}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</b></li>`).join('');
   return `<article class="hist-card rr-hist" data-search-row data-search-text="${esc([r.supplier, r.invoice, ...r.lines.map(l=>l.item)].join(' '))}">
     <div class="hist-top"><div class="hist-date"><b>${esc(when)}</b><span class="rr-hist-state"><i class="rr-dot ${tone}" aria-hidden="true"></i>${esc(rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}</span></div>
       <span class="rr-hist-total">${esc(r.total == null ? '' : rrMoney(r.total, r.currency))}</span></div>

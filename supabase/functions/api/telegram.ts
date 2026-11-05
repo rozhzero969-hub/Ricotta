@@ -15,6 +15,8 @@ import "../_shared/receipts.js";
 import { approveReceipt, cancelReceipt, catalogOf, helperRow, helperView, onLaunchEvent, onReceiptEvent, onShot, photoLinks, requestShot, ricoCommand, ricoEvents, sendReceipt } from "./receipts.ts";
 
 const R = (globalThis as any).RicottaReceipts;
+/* A unit as Ricotta Restaurant shows it: the size written "(×1000)" (the value stays "(1000×)"). */
+const unitShow = (label: unknown) => String(label ?? "").replace(/\(\s*([\d.,]+)\s*×\s*\)/, "(×$1)");
 const S = (globalThis as any).RicottaSearch;
 const TOKEN = () => Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
 const db = (d: any, table: string) => d.from(`app_tg_${table}`);
@@ -272,7 +274,7 @@ async function onText(d: any, chat: number, who: string, text: string) {
     if (!/^\d+(\.\d{1,3})?$/.test(v) || Number(v) <= 0) { await say(chat, "Type the quantity as a number, for example 4 or 2.5."); return; }
     dr.cur.qty = Number(v); dr.step = "cost";
     await saveState(d, chat, st);
-    await say(chat, `Unit cost for one ${esc(dr.cur.unit)}, in ${dr.currency === "USD" ? "dollars" : "IQD"}? (Commas are fine, and a dot for decimals: 1,250.5)`);
+    await say(chat, `Unit cost for one ${esc(unitShow(dr.cur.unit))}, in ${dr.currency === "USD" ? "dollars" : "IQD"}? (Commas are fine, and a dot for decimals: 1,250.5)`);
     return;
   }
   if (dr.step === "cost") {
@@ -286,7 +288,7 @@ async function onText(d: any, chat: number, who: string, text: string) {
 }
 function draftText(dr: any) {
   const t = R.totals(dr);
-  const lines = dr.lines.map((l: any, i: number) => `${i + 1}. ${esc(l.item)}\n    ${num(l.qty, 3)} × ${esc(l.unit)} · ${money(l.cost, dr.currency)} = <b>${money(l.qty * l.cost, dr.currency)}</b>`).join("\n");
+  const lines = dr.lines.map((l: any, i: number) => `${i + 1}. ${esc(l.item)}\n    ${num(l.qty, 3)} × ${esc(unitShow(l.unit))} · ${money(l.cost, dr.currency)} = <b>${money(R.lineTotal(l, dr.currency), dr.currency)}</b>`).join("\n");
   return `<b>${esc(dr.supplier)}</b> · invoice ${esc(dr.invoice)} · ${esc(dr.zone)}\n${dr.currency === "USD" ? `USD, $1 = ${num(dr.rate, 3)} IQD` : dr.delivery ? `Delivery ${num(dr.delivery)}` : "No delivery"}\n\n${lines}\n\nTotal <b>${money(t.total, dr.currency)}</b>${dr.currency === "USD" ? ` = IQD ${num(t.iqd)}` : ""}`;
 }
 const showDraft = (chat: number, dr: any) => say(chat, draftText(dr), [[{ text: "Add item", data: "a" }, { text: "Send to Rico", data: "send" }], [{ text: "Remove last item", data: "undo" }, { text: "Cancel", data: "x" }]]);
@@ -367,14 +369,14 @@ async function onButton(d: any, chat: number, who: string, cb: any) {
     const units = R.unitOptions(item);
     dr.cur = { item: name, unit: null, qty: null, cost: null }; dr.step = "unit"; st.opts = units.map((u: any) => u.label);
     await saveState(d, chat, st);
-    await say(chat, `<b>${esc(name)}</b>. Which unit?`, units.map((u: any, k: number) => [{ text: u.label, data: "u:" + k }]));
+    await say(chat, `<b>${esc(name)}</b>. Which unit?`, units.map((u: any, k: number) => [{ text: unitShow(u.label), data: "u:" + k }]));
     return;
   }
   if (pick?.[1] === "u" && dr.step === "unit") {
     dr.cur.unit = st.opts?.[Number(pick[2])]; if (!dr.cur.unit) return;
     dr.step = "qty";
     await saveState(d, chat, st);
-    await say(chat, `How many ${esc(dr.cur.unit)}?`);
+    await say(chat, `How many ${esc(unitShow(dr.cur.unit))}?`);
     return;
   }
   if (data === "a" && dr.step === "more") { dr.step = "item"; await askItem(d, chat, st, cat, false); return; }
@@ -478,7 +480,7 @@ async function receiptEvent(d: any, r: any, event: string) {
     const photos = await photoLinks(d, r, ["before"]);
     if (photos.length) await sendPhotos(chat, photos.map((p) => p.url));
     const warn = (r.warnings ?? []).map((w: any) => "• " + (WARN[w.code]?.(w) ?? w.code)).join("\n");
-    await say(chat, `Rico filled this in Ricotta Restaurant. Nothing is saved yet.\n\n${head}\n${(r.lines ?? []).map((l: any, i: number) => `${i + 1}. ${esc(l.item)} · ${num(l.qty, 3)} × ${esc(l.unit)} · ${money(l.cost, r.currency)}`).join("\n")}${warn ? "\n\n" + warn : ""}`,
+    await say(chat, `Rico filled this in Ricotta Restaurant. Nothing is saved yet.\n\n${head}\n${(r.lines ?? []).map((l: any, i: number) => `${i + 1}. ${esc(l.item)} · ${num(l.qty, 3)} × ${esc(unitShow(l.unit))} · ${money(l.cost, r.currency)}`).join("\n")}${warn ? "\n\n" + warn : ""}`,
       [[{ text: "Approve and save", data: "ap:" + r.id }, { text: "Cancel", data: "cx:" + r.id }]]);
     return;
   }
