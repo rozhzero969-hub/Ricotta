@@ -396,7 +396,7 @@ function attachAdminHealth(slot){
 }
 
 /* ---------- Yunis's access ---------- */
-const ACCESS_SCREENS = [['history', NAV_ICONS.history], ['manage', NAV_ICONS.manage], ['receipts', NAV_ICONS.receipts], ['record', NAV_ICONS.record], ['assistant', ICON_SPARKLE]];
+const ACCESS_SCREENS = [['history', NAV_ICONS.history], ['manage', NAV_ICONS.manage], ['receipts', NAV_ICONS.receipts], ['transfers', NAV_ICONS.transfers], ['record', NAV_ICONS.record], ['assistant', ICON_SPARKLE]];
 const ACCESS_ACTIONS = ['catalog', 'send', 'exports', 'notify'];
 function renderAdminAccess(){
   const r = adminValue('roles');

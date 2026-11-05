@@ -46,5 +46,20 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.equal((await q("select count(*)::int n from app_rr_receipts where invoice='2'"))[0].n,0);
  // A receipt moving along wakes the open apps.
  assert.ok((await q("select n from app_signals where kind='receipts'")).length);
+ // Transfers: a person approves before anything moves; never Breakfast, never the same storage; Rico
+ // takes approved ones first, each once; every step is in his activity record as a transfer; Yunis may be
+ // given Transfers.
+ await db.exec("update app_accounts set roles=array['history','transfers'] where id='yunis'");
+ const tins=(st,ago='0',extra='')=>db.query(`insert into app_rr_transfers(created_by,status,from_zone,to_zone,lines,sent_at${extra?',approved_by,approved_at':''}) values('rozha','${st}','Main Storage','Minibar','[{"item":"Lemon","unit":"کیلۆ","qty":2}]',now()-interval '${ago} minutes'${extra?",'rozha',now()":''}) returning id`);
+ await assert.rejects(db.exec("insert into app_rr_transfers(created_by,status,from_zone,to_zone) values('rozha','approved','Main Storage','Minibar')"),/person_approves/);
+ await assert.rejects(db.exec("insert into app_rr_transfers(created_by,status,from_zone,to_zone) values('rozha','draft','Main Storage','Main Storage')"),/two_zones/);
+ await assert.rejects(db.exec("insert into app_rr_transfers(created_by,status,from_zone,to_zone) values('rozha','draft','Main Storage','نانی بەیانی (Breakfast)')"),/no_breakfast/);
+ await tins('queued','10'); await tins('approved','1','yes');
+ const ttake=async()=> (await q("select status,mode from app_internal_rr_claim_transfer('real')"))[0];
+ assert.deepEqual(await ttake(),{status:'moving',mode:null});
+ assert.deepEqual(await ttake(),{status:'filling',mode:'real'});
+ assert.equal(await ttake(),undefined);
+ assert.ok((await q("select count(*)::int n from app_rr_events where what='transfer' and status='filling'"))[0].n>=1);
+ assert.equal((await q("select has_table_privilege('authenticated','app_rr_transfers','select') as a"))[0].a,false);
  console.log('Receipts DB PASS: a person always approves, private tables, practice/real mode, activity record, Yunis role, claim order and once only, one invoice at a time, stop switch, stuck and 60-day clean-up, live signal');
 })().catch(e=>{console.error(e);process.exit(1);});

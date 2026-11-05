@@ -17,8 +17,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
+import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-10.1";
+const VERSION = "2026-11-11.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -26,6 +27,7 @@ const PROFILE = join(homedir(), "Library", "Application Support", "RicoHelper", 
 const TOKEN = readSecret("helper-token");
 if (!TOKEN) { console.log("Rico is not set up yet. Run: node helper/setup.mjs"); process.exit(1); }
 const R = globalThis.RicottaReceipts;
+const TR = globalThis.RicottaTransfers;
 const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -95,8 +97,8 @@ async function joinPhotos(pieces, height, geo) {
     }, { pieces, height, geo });
   } finally { await p.close(); }
 }
-async function photo(page, id, kind) {
-  const upload = (b64) => api(`helper/receipts/${id}/photo`, { method: "POST", body: { kind, image: b64 } });
+async function photo(page, id, kind, what = "receipts") {
+  const upload = (b64) => api(`helper/${what}/${id}/photo`, { method: "POST", body: { kind, image: b64 } });
   try {
     const box = await page.evaluateHandle(() => {
       const all = [...document.querySelectorAll("main, div, section")].filter((el) => {
@@ -205,8 +207,17 @@ async function readCatalog() {
     conv.filter((x) => x.inventory_item_id === i.id && x.is_active).forEach((x) => add(x.supplier_unit_name, x.multiplier_to_base));
     return { name: i.name, base: units[i.usage_unit_id] || i.base_unit, units: list };
   });
-  await api("helper/catalog", { method: "PUT", body: { suppliers, zones, items } });
-  catalogNow = { suppliers, zones, items, at: Date.now() };
+  // For transfers: every active item with its counting, base and buying units and its stock in each
+  // storage (base units), as Ricotta Restaurant's Stock tab and transfer page show it.
+  const titems = c["/api/v1/inventory/items"].items.filter((i) => i.is_active && i.name.trim() !== "-").map((i) => ({
+    name: i.name, base: units[i.usage_unit_id] || i.base_unit,
+    count: i.inventory_unit_name ? { name: i.inventory_unit_name, factor: Number(i.inventory_factor_to_base) || 1 } : null,
+    buy: i.purchase_unit_name ? { name: i.purchase_unit_name, factor: Number(i.purchase_factor) || 1 } : null,
+    stock: Object.fromEntries((i.stocks || []).filter((z) => z.zone_name && !/breakfast/i.test(z.zone_name)).map((z) => [z.zone_name, Number(z.quantity) || 0])),
+  }));
+  const allZones = (Array.isArray(zonesRaw) ? zonesRaw : zonesRaw?.zones ?? []).map((z) => z.name).filter(Boolean);
+  await api("helper/catalog", { method: "PUT", body: { suppliers, zones: allZones.filter((n) => !/breakfast|بەیانی/i.test(n)), items, titems } });
+  catalogNow = { suppliers, zones, items, titems, at: Date.now() };
   log(`read ${items.length} items, ${suppliers.length} suppliers, ${zones.length} zones`);
 }
 
@@ -379,6 +390,172 @@ async function findInInvoices(r) {
   return { tab, month, no: first ? Number(first[1]) : null };
 }
 
+/* ---------- One transfer between storages ---------- */
+const treport = (id, body) => api(`helper/transfers/${id}/report`, { method: "POST", body });
+const erbilDay = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baghdad", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+const dayBefore = (day) => { const d = new Date(day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+/* Picks an option in one of the page's search lists by its name exactly (an item's option also shows
+   its stock, which is left out of the comparison). */
+async function pickByName(trigger, name, what) {
+  await trigger.click();
+  const box = page.getByRole("listbox").last();
+  await box.waitFor({ state: "visible", timeout: 8000 });
+  const search = page.locator("input[placeholder^='Search']").last();
+  if (await search.isVisible().catch(() => false)) await search.fill(String(name).split(" - ")[0].split(" · ")[0].slice(0, 30));
+  await page.waitForFunction(() => { const o = [...document.querySelectorAll("[role=listbox] [role=option]")]; return o.length && o.some((x) => x.textContent.trim() !== "-"); }, null, { timeout: 10_000 }).catch(() => {});
+  const hits = await box.getByRole("option").evaluateAll((os, want) => os.map((o, i) => [i, (o.querySelector("span")?.textContent ?? "").replace(/\s+/g, " ").trim()]).filter(([, n]) => n === want).map(([i]) => i), flat(name));
+  if (hits.length !== 1) { await page.keyboard.press("Escape"); stop(`${what} "${name}" was ${hits.length ? "found more than once" : "not found"} in Ricotta Restaurant.`); }
+  await box.getByRole("option").nth(hits[0]).locator("button").click();
+}
+/* "3.2 کیلۆ available in Main Storage" read as an amount in base units, using the item's units. */
+function availableBase(text, item) {
+  const m = flat(text).match(/([\d.,]+)\s*(.*?)\s+available in/);
+  if (!m) return null;
+  const n = Number(m[1].replace(/,/g, "")), opt = TR.unitOptions(item).find((o) => o.name === m[2].trim());
+  return opt ? n * opt.factor : null;
+}
+const transferRows = () => page.locator('main button[aria-haspopup="listbox"]:not([aria-label])');
+const rowOf = (i) => page.locator('input[placeholder="amount"]').nth(i).locator('xpath=ancestor::div[.//button[@aria-label="Remove"]][1]');
+/* The day: "Record for yesterday" puts a transfer on the day before, so it is only done on the day
+   after the one it is for; a normal one only on its own day. Anything else would land on a wrong date. */
+function checkDay(t) {
+  const today = erbilDay();
+  if (!t.forDay) return;
+  if (t.yesterday && dayBefore(today) !== t.forDay) stop(`This transfer was to be recorded for ${t.forDay}, but today it can only be recorded for ${dayBefore(today)}. Nothing was moved; check the date and send it again.`);
+  if (!t.yesterday && today !== t.forDay) stop(`This transfer was for ${t.forDay}, but it is now ${today}. Nothing was moved; send it again with Record for yesterday on if it belongs to yesterday.`);
+}
+async function fillTransfer(t) {
+  checkDay(t);
+  // Against the lists as they are now (re-read if older than 10 minutes): stock and names.
+  if (!catalogNow || Date.now() - catalogNow.at > 10 * 60_000) await readCatalog().catch((e) => log("Could not re-read the lists:", e.message));
+  if (catalogNow) {
+    const c = TR.check({ from: t.from, to: t.to, yesterday: false, lines: t.lines }, catalogNow, {});
+    if (c.errors.length) stop(`This transfer doesn't match Ricotta Restaurant now (${c.errors.map((e) => (e.line ? "item " + e.line + ": " : "") + e.code).join(", ")}). Nothing was moved.`);
+  }
+  await go("/inventory/transfer", t.id);
+  await page.getByText("Move stock between storages").first().waitFor({ timeout: 20_000 });
+  const fromB = page.locator('button[aria-label="From storage"]'), toB = page.locator('button[aria-label="To storage"]');
+  if (!/Choose/.test(await fromB.innerText())) stop("The Move between storages form in Ricotta Restaurant was not empty. Rico did not touch it.");
+  await pickByName(fromB, t.from, "Storage");
+  await pickByName(toB, t.to, "Storage");
+  const yb = page.getByRole("button", { name: /^Record for yesterday/ });
+  if (((await yb.getAttribute("aria-pressed")) === "true") !== !!t.yesterday) await yb.click();
+  const items = new Map((catalogNow?.titems ?? []).map((i) => [i.name, i]));
+  for (let i = 0; i < t.lines.length; i++) {
+    const l = t.lines[i];
+    if (i > 0) await page.getByRole("button", { name: /Add another item/ }).click();
+    await pickByName(transferRows().nth(i), l.item, `Item ${i + 1}`);
+    const row = rowOf(i), unitB = row.locator('button[aria-label="Unit"]');
+    if (flat(await unitB.innerText()) !== flat(l.unit)) await pickByName(unitB, l.unit, `Item ${i + 1}'s unit`);
+    await typeNumber(page.locator('input[placeholder="amount"]').nth(i), l.qty);
+  }
+  await page.evaluate(() => document.activeElement?.blur?.());
+  await verifyTransfer(t, items, "after filling it in");
+  return [`From ${t.from} to ${t.to}${t.yesterday ? ", recorded for yesterday" : ""}`, `${t.lines.length} items filled in, read back and checked against the stock available`];
+}
+/* Reads the whole form back: storages, Record for yesterday, the number of lines, and each line's
+   item, unit and amount, and that each amount is there in the From storage right now. */
+async function verifyTransfer(t, items, when) {
+  const bad = (m) => stop(`Rico checked the transfer ${when} and stopped: ${m}. Nothing was moved.`);
+  const from = flat(await page.locator('button[aria-label="From storage"]').innerText()), to = flat(await page.locator('button[aria-label="To storage"]').innerText());
+  if (from !== flat(t.from)) bad(`From reads "${from}"`);
+  if (to !== flat(t.to)) bad(`To reads "${to}"`);
+  const y = (await page.getByRole("button", { name: /^Record for yesterday/ }).getAttribute("aria-pressed")) === "true";
+  if (y !== !!t.yesterday) bad(`Record for yesterday is ${y ? "on" : "off"}`);
+  const n = await transferRows().count();
+  if (n !== t.lines.length) bad(`the form has ${n} items, the transfer has ${t.lines.length}`);
+  const need = new Map();
+  for (let i = 0; i < t.lines.length; i++) {
+    const l = t.lines[i], row = rowOf(i), item = items.get(l.item);
+    const name = flat(await transferRows().nth(i).getAttribute("title") ?? await transferRows().nth(i).innerText());
+    if (name !== flat(l.item)) bad(`item ${i + 1} reads "${name}", not "${l.item}"`);
+    const unit = flat(await row.locator('button[aria-label="Unit"]').innerText());
+    if (unit !== flat(l.unit)) bad(`item ${i + 1}'s unit reads "${unit}", not "${l.unit}"`);
+    const q = digits(await page.locator('input[placeholder="amount"]').nth(i).inputValue());
+    if (Number(q) !== Number(l.qty)) bad(`item ${i + 1}'s amount reads ${q}, not ${l.qty}`);
+    const opt = TR.unitOptions(item).find((o) => o.name === l.unit);
+    if (!item || !opt) bad(`item ${i + 1}'s unit can't be checked`);
+    need.set(l.item, (need.get(l.item) ?? 0) + l.qty * opt.factor);
+    const have = availableBase(await row.locator("p", { hasText: "available in" }).innerText().catch(() => ""), item);
+    if (have == null) bad(`item ${i + 1}: the stock available couldn't be read`);
+    if (need.get(l.item) > have + 1e-9) bad(`item ${i + 1} (${l.item}): only ${TR.inCounting(item, have).qty} ${TR.inCounting(item, have).unit} is in ${t.from} now`);
+  }
+}
+/* After Move it: Ricotta Restaurant either refuses a line in red (and may have moved the others) or
+   clears the form. Then the transfer is looked for in Recent transfers. */
+async function pressMove(t) {
+  pressedMove = true;
+  await page.getByRole("button", { name: /^Move it$/ }).click();
+  const outcome = await page.waitForFunction(() => {
+    const txt = document.querySelector("main")?.innerText ?? "";
+    if (/Insufficient stock|cannot|failed|error/i.test(txt)) return "refused";
+    const to = document.querySelector('button[aria-label="To storage"]');
+    return to && /Choose/.test(to.textContent) ? "moved" : false;
+  }, null, { timeout: 45_000 }).then((h) => h.jsonValue()).catch(() => "unknown");
+  if (outcome === "refused") {
+    const msg = flat(await page.locator("main").innerText()).match(/(Insufficient stock[^.]*\.|[^.]*(cannot|failed|error)[^.]*\.)/i)?.[0] ?? "a line was refused";
+    stop(`Ricotta Restaurant refused part of this transfer: "${msg}". Other lines may have moved. Check Recent transfers there before doing anything.`);
+  }
+  if (outcome !== "moved") stop("Ricotta Restaurant did not clear the form after Move it, so Rico can't tell whether it moved. Check Recent transfers there before doing anything.");
+  await sleep(1500);
+  // Recent transfers: the "Transfer to: <to>" group should list every item (and BACKDATED for yesterday).
+  const group = page.locator("main").getByText(new RegExp("Transfer to:\\s*" + t.to.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).first();
+  let found = false, note = "";
+  if (await group.count()) {
+    const card = flat(await group.locator("xpath=ancestor::*[contains(., 'Total')][1]").innerText().catch(() => ""));
+    const missing = t.lines.filter((l) => !card.includes(flat(l.item)));
+    found = !missing.length;
+    note = missing.length ? `not seen there: ${missing.map((l) => l.item).join(", ")}` : t.yesterday && !/BACKDATED/i.test(card) ? "the BACKDATED mark wasn't seen" : "";
+  } else note = `no "Transfer to: ${t.to}" group was seen`;
+  await photo(page, t.id, "after", "transfers");
+  return { found, note };
+}
+let pressedMove = false;
+async function workTransfer(t) {
+  pressedMove = false;
+  log(`transfer ${t.id.slice(0, 8)} ${t.status} ${t.from} -> ${t.to}`);
+  try {
+    if (t.status === "filling") {
+      const steps = await fillTransfer(t);
+      await photo(page, t.id, "before", "transfers");
+      if (PRACTICE) {
+        await go("/inventory/transfer", t.id);   // a reload clears the form there: nothing moves
+        await treport(t.id, { status: "problem", problem: "Practice run: filled in, checked, photographed and cleared. Nothing was moved.", log: [...steps, "Practice: cleared"] });
+        return;
+      }
+      if ((await api(`helper/transfers/${t.id}`)).status === "cancelled") { await go("/inventory/transfer", t.id); await treport(t.id, { log: [...steps, "Cancelled in the app. Cleared in Ricotta Restaurant; nothing was moved."] }); return; }
+      await treport(t.id, { status: "review", log: [...steps, "Photo taken. Waiting for approval."] });
+      for (;;) {
+        const now = await api(`helper/transfers/${t.id}/wait`, { method: "POST", body: { wait: 20 } });
+        if (now.status === "review") continue;
+        if (now.status === "cancelled") { await go("/inventory/transfer", t.id); await treport(t.id, { status: "cancelled", log: ["Cleared in Ricotta Restaurant. Nothing was moved."] }); return; }
+        if (now.status !== "approved") return;
+        await treport(t.id, { status: "moving", log: ["Approval received"] });
+        t = { ...now, status: "moving" };
+        break;
+      }
+    }
+    if (t.status === "moving" || t.status === "approved") {
+      // Filled in again from the start (Ricotta Restaurant keeps no unfinished transfer), checked again
+      // against the live stock, then moved.
+      const items = new Map((catalogNow?.titems ?? []).map((i) => [i.name, i]));
+      await fillTransfer(t);
+      await verifyTransfer(t, items, "just before moving");
+      await treport(t.id, { log: ["Filled in again and checked against the live stock just before moving: everything matches"] });
+      const r = await pressMove(t);
+      await treport(t.id, { status: "moved", result: { checked: r.found, note: r.note || null }, log: [r.found ? `Moved. Seen in Recent transfers (Transfer to: ${t.to})${r.note ? "; " + r.note : ""}` : `Moved, but Rico couldn't confirm it in Recent transfers (${r.note}). Please check there.`] });
+      log(`moved ${t.from} -> ${t.to}`);
+      await readCatalog().catch(() => {});   // the stock changed: the app shows it at once
+    }
+  } catch (e) {
+    const msg = e instanceof Stop ? e.message : `Rico ran into an error: ${e.message}`;
+    log("STOPPED:", msg);
+    await photo(page, t.id, "problem", "transfers").catch(() => {});
+    if (!pressedMove) await go("/inventory/transfer", t.id).catch(() => {});   // nothing moved: the form is cleared
+    await treport(t.id, { status: "problem", problem: msg, log: [msg] }).catch((x) => log("report failed:", x.message));
+  }
+}
+
 /* ---------- One receipt ---------- */
 let pressedSave = false;
 let catalogNow = null;   // the lists as Rico last read them from Ricotta Restaurant
@@ -477,8 +654,9 @@ for (;;) {
   let waited = false;
   if (h && !h.stopped) {
     // Waits up to 20 s on the server for a receipt, so a new one starts within a second or two.
-    const { receipt } = await api("helper/claim", { method: "POST", body: { wait: 20, mode: PRACTICE ? "practice" : "real" } }).catch((e) => { log("claim:", e.message); return {}; });
+    const { receipt, transfer } = await api("helper/claim", { method: "POST", body: { wait: 20, mode: PRACTICE ? "practice" : "real", transfers: true } }).catch((e) => { log("claim:", e.message); return {}; });
     if (receipt) { await work(receipt); continue; }
+    if (transfer) { await workTransfer(transfer); continue; }
     waited = true;
   }
   // Every 30 minutes; after a failed read, again a minute later.

@@ -81,3 +81,31 @@ assert.equal(R.lineTotal({ qty: 10.4, cost: 1057.692 }, "IQD"), 11000);
 assert.equal(R.totals({ currency: "IQD", lines: [{ qty: 10.4, cost: 1057.692 }], delivery: 500 }).total, 11500);
 console.log("Receipt totals PASS: each line rounded to the dinar like Ricotta Restaurant");
 
+
+// Transfers: never more than the From storage has (lines of the same item together), the counting unit
+// first, a unit name used twice with different sizes can't be used, all-of-it / unusual / yesterday are
+// asked about, and the two Breakfast storages are never offered.
+{
+  await import("../supabase/functions/_shared/transfers.js");
+  const T = globalThis.RicottaTransfers;
+  const toast = { name: "White Toast - توست أبيض", base: "دانە", count: { name: "سیت", factor: 25 }, buy: { name: "کارتۆن", factor: 250 }, stock: { "Main Storage": 250, Minibar: 0 } };
+  const veal = { name: "Veal Kebab", base: "غرام", count: { name: "کیلۆ", factor: 1000 }, buy: { name: "غرام", factor: 1000 }, stock: { "Main Storage": 5000 } };
+  const cat = { zones: ["Main Storage", "Minibar", "Breakfast", "نانی بەیانی (Breakfast)"], titems: [toast, veal] };
+  assert.deepEqual(T.zonesOf(cat), ["Main Storage", "Minibar"]);
+  assert.deepEqual(T.unitOptions(toast).map((u) => u.name), ["سیت", "دانە", "کارتۆن"]);
+  assert.ok(T.unitOptions(veal).find((u) => u.name === "غرام").unclear);
+  assert.deepEqual(T.inCounting(toast, 250), { qty: 10, unit: "سیت" });
+  const tr = (lines, extra = {}) => ({ from: "Main Storage", to: "Minibar", lines, ...extra });
+  const codes = (r, usual) => { const c = T.check(r, cat, usual || {}); return [...c.errors, ...c.warnings].map((x) => x.code).sort(); };
+  assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 4 }])), []);
+  assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 11 }])), ["notEnough"]);
+  assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 6 }, { item: toast.name, unit: "دانە", qty: 101 }])), ["duplicate", "notEnough"]);
+  assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 10 }])), ["allStock"]);
+  assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 4 }]), { [toast.name]: 25 }), ["unusual"]);
+  assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 1 }], { yesterday: true })), ["yesterday"]);
+  assert.deepEqual(codes(tr([{ item: veal.name, unit: "غرام", qty: 1 }])), ["unitUnclear"]);
+  assert.deepEqual(codes({ from: "Main Storage", to: "Main Storage", lines: [{ item: toast.name, unit: "سیت", qty: 1 }] }), ["sameZone"]);
+  assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 1 }], { to: "Breakfast" })), ["toUnknown"]);
+  assert.deepEqual(T.itemsIn(cat, "Minibar"), []);
+  console.log("Transfer rules PASS: stock never exceeded (same item added up), counting unit first, unclear units refused, all-of-it / unusual / yesterday asked, no Breakfast storages");
+}
