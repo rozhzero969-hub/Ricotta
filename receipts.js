@@ -169,11 +169,11 @@ function rrBackBar(title, extra = ''){
 function rrCombo(id, value, placeholder, attrs = ''){
   return `<div class="rr-combo"><input id="${id}" class="rr-input" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="${id}List" autocomplete="off" spellcheck="false" dir="auto" value="${esc(value || '')}" placeholder="${esc(placeholder)}" ${attrs}><div class="rr-pop" id="${id}List" role="listbox" hidden></div></div>`;
 }
-function rrComboBind(input, names, onPick){
+function rrComboBind(input, names, onPick, extra){
   const pop = input.nextElementSibling;
   let shown = [], hi = -1, picked = input.value;
   const paint = ()=>{
-    pop.innerHTML = shown.length ? shown.map((n, i)=>`<div class="rr-opt${i === hi ? ' hi' : ''}${n === picked ? ' on' : ''}" role="option" id="${input.id}O${i}" aria-selected="${i === hi}" data-i="${i}" dir="auto">${esc(n)}</div>`).join('')
+    pop.innerHTML = shown.length ? shown.map((n, i)=>`<div class="rr-opt${i === hi ? ' hi' : ''}${n === picked ? ' on' : ''}" role="option" id="${input.id}O${i}" aria-selected="${i === hi}" data-i="${i}">${extra ? `<span dir="auto">${esc(n)}</span><small>${esc(extra(n))}</small>` : `<span dir="auto">${esc(n)}</span>`}</div>`).join('')
       : `<div class="rr-opt none">${esc(t('rrNoMatch'))}</div>`;
     if(hi >= 0) input.setAttribute('aria-activedescendant', `${input.id}O${hi}`); else input.removeAttribute('aria-activedescendant');
     pop.querySelector('.hi')?.scrollIntoView({block:'nearest'});
@@ -560,15 +560,17 @@ function renderRicoActivity(){
     if(e.kind === 'command'){ badge = t('rrEvPressed'); tone = 'edit'; name = t(e.status === 'stop' ? 'rrStopRicoNow' : e.status === 'practice' ? 'rrPractice' : 'rrStartRico'); }
     else if(e.kind === 'launch'){ badge = 'Rico'; tone = 'add'; name = e.text || ''; }
     else {
-      badge = practice && e.status === 'problem' ? t('rrPracticeRun') : t('rrStatus_' + e.status);
-      tone = e.status === 'saved' ? 'add' : e.status === 'problem' && !practice ? 'delete' : 'edit';
+      const tfr = e.what === 'transfer';
+      badge = practice && e.status === 'problem' ? t(tfr ? 'tfPracticeRun' : 'rrPracticeRun') : t((tfr ? 'tfStatus_' : 'rrStatus_') + e.status);
+      tone = e.status === 'saved' || e.status === 'moved' ? 'add' : e.status === 'problem' && !practice ? 'delete' : 'edit';
       name = (e.supplier || '') + (e.invoice ? ' #' + e.invoice : '');
       if(e.status === 'problem' && !practice && e.text) line = e.text;
     }
     const meta = [when, who(e.by), e.kind === 'status' && e.mode ? t(practice ? 'rrModePractice' : 'rrModeReal') : '', e.source === 'telegram' ? 'Telegram' : ''].filter(Boolean).join(' · ');
-    const open = e.receipt && rr.data?.receipts?.some(r=>r.id === e.receipt);
-    return `<div class="rec-card rr-ev"${open ? ` role="button" tabindex="0" data-rr-open-from-record="${esc(e.receipt)}"` : ''}>
-      <div class="rec-top"><span class="rec-badge rec-${tone}">${esc(badge)}</span><span class="rec-type">${esc(e.kind === 'status' ? t('rrEvReceipt') : 'Rico')}</span></div>
+    const isT = e.what === 'transfer';
+    const open = e.receipt && (isT ? tf.data?.transfers?.some(r=>r.id === e.receipt) : rr.data?.receipts?.some(r=>r.id === e.receipt));
+    return `<div class="rec-card rr-ev"${open ? ` role="button" tabindex="0" ${isT ? 'data-tf-open-from-record' : 'data-rr-open-from-record'}="${esc(e.receipt)}"` : ''}>
+      <div class="rec-top"><span class="rec-badge rec-${tone}">${esc(badge)}</span><span class="rec-type">${esc(e.kind === 'status' ? t(isT ? 'rrEvTransfer' : 'rrEvReceipt') : 'Rico')}</span></div>
       <div class="rec-name" dir="auto">${esc(name)}</div>${line ? `<div class="rec-line">${esc(line)}</div>` : ''}
       <div class="rec-meta">${esc(meta)}</div></div>`;
   }).join('');

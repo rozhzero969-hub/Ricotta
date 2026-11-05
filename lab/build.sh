@@ -13,7 +13,7 @@ for f in $(sed -n 's/.*<script[^>]* src="\([^"/]*\.js\)".*/\1/p' page.html | gre
   cp "../$f" dist/
 done
 mkdir -p dist/supabase/functions/_shared
-cp ../supabase/functions/_shared/search.js ../supabase/functions/_shared/receipts.js dist/supabase/functions/_shared/
+cp ../supabase/functions/_shared/search.js ../supabase/functions/_shared/receipts.js ../supabase/functions/_shared/transfers.js dist/supabase/functions/_shared/
 cp -R ../fonts dist/fonts
 cp ../install-icon.webp dist/
 mkdir -p dist/vendor

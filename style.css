@@ -2178,7 +2178,9 @@ html.dark .rr-line-warn,html.dark .rr-warns p{color:#FDBA74}
 .rr-count{font-size:.8125rem;font-weight:500;color:var(--ink-soft)}
 .rr-combo{position:relative}
 .rr-pop{position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:30;max-height:288px;overflow:auto;background:var(--surface);border-radius:14px;box-shadow:0 0 0 .5px var(--line),0 12px 32px rgba(0,0,0,.14);padding:4px}
-.rr-opt{padding:9px 10px;border-radius:9px;font-size:.9375rem;cursor:default;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rr-opt{padding:9px 10px;border-radius:9px;font-size:.9375rem;cursor:default;display:flex;align-items:baseline;gap:10px}
+.rr-opt>span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rr-opt>small{flex:none;font-size:.75rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
 .rr-opt.hi{background:var(--fill)}
 .rr-opt.on{font-weight:600}
 .rr-opt.none{color:var(--ink-soft)}
@@ -2299,3 +2301,34 @@ html.dark .rr-line-warn{color:#FDBA74}
 .rr-lb-stage{flex:1;display:flex;justify-content:center;align-items:flex-start;padding:8px 12px calc(env(safe-area-inset-bottom) + 24px)}
 .rr-lb-stage img{display:block;width:min(960px,100%);height:auto;border-radius:10px;background:#fff}
 @media (max-width:360px){.rr-sum .btn-primary{height:auto;min-height:48px;padding:6px 10px}.rr-sum .btn-primary span{white-space:normal;line-height:1.2;text-align:start}}
+
+/* Transfers: laid out like Ricotta Restaurant's "Move stock between storages". */
+.tf-zones{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:end;gap:12px;padding:20px 20px 4px}
+.tf-arrow{height:46px;display:grid;place-items:center;color:var(--ink-soft);font-size:1.125rem}
+@media (max-width:560px){.tf-zones{grid-template-columns:minmax(0,1fr)}.tf-arrow{height:auto;transform:rotate(90deg)}}
+.tf-edit .rr-card>.tf-zones{padding:20px 20px 4px}
+.tf-empty{margin:20px;padding:22px;border:1px dashed var(--line-strong);border-radius:12px;text-align:center;color:var(--ink-soft);font-size:.9375rem}
+.tf-line{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+@media (min-width:760px){.tf-line{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 34px;align-items:end}.tf-line .rr-f-item{grid-column:1/-1}.tf-line .rr-f-unit{grid-column:2}.tf-line .rr-del{grid-column:3;grid-row:2}}
+.tf-avail{grid-column:1/-1;margin:-2px 0 0;font-size:.8125rem;color:var(--ink-soft)}
+.tf-avail.short{color:var(--red);font-weight:600}
+.tf-adds{display:flex;align-items:center;gap:8px;margin:14px 20px 0;flex-wrap:wrap}
+.tf-adds .rr-add{margin:0}
+.tf-addn{height:42px;min-width:52px;padding:0 12px;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;font-size:.9375rem;font-weight:600}
+.tf-yest{width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;border:1px solid var(--line-strong);border-radius:var(--r-card);background:var(--surface);color:var(--ink);font:inherit;text-align:start;cursor:pointer}
+.tf-yest span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.tf-yest b{font-weight:600}
+.tf-yest small{font-size:.8125rem;color:var(--ink-soft)}
+.tf-yest i{flex:none;width:46px;height:28px;border-radius:999px;background:var(--fill);position:relative;transition:background .2s}
+.tf-yest i::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s}
+.tf-yest.on{border-color:rgba(245,158,11,.6);background:rgba(245,158,11,.08)}
+.tf-yest.on b{color:#B45309}
+.tf-yest.on i{background:#F59E0B}
+.tf-yest.on i::after{transform:translateX(18px)}
+html[dir=rtl] .tf-yest.on i::after{transform:translateX(-18px)}
+html.dark .tf-yest.on b{color:#FBBF24}
+.tf-day{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.tf-export{display:flex;gap:6px;text-transform:none;letter-spacing:0}
+.tf-export button{height:30px;padding:0 12px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;font-size:.8125rem;font-weight:600}
+.tf-num li>span i{font-style:normal;color:var(--ink-soft);font-variant-numeric:tabular-nums;margin-inline-end:6px}
+@media (prefers-reduced-motion:reduce){.tf-yest i,.tf-yest i::after{transition:none}}

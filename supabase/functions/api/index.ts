@@ -66,6 +66,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { adminAi, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
 import { helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
+import { transfersRoute } from "./transfers.ts";
 import { telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 
@@ -87,8 +88,8 @@ const LANGS = ["en", "ku", "ar"];
    units; needs manage), send (send orders to suppliers), exports (Excel and PDF files), notify (send a
    notification to every phone through Rico), receipts (Receipts, entered in Ricotta Restaurant by Rico).
    Rozha always has all. */
-const ROLES = ["history", "manage", "catalog", "record", "assistant", "send", "exports", "notify", "receipts"];
-const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts");   // Receipts only when Rozha gives it
+const ROLES = ["history", "manage", "catalog", "record", "assistant", "send", "exports", "notify", "receipts", "transfers"];
+const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers");   // Receipts and Transfers only when Rozha gives them
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
   : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : [...DEFAULT_ROLES];
 // Account settings the app may save (Settings), and the ones with a list of choices.
@@ -168,7 +169,7 @@ const can = (s: Session, role: string) => isRozha(s) || (s.roles.includes(role) 
 function viewsFor(s: Session) {
   return ["order", ...(can(s, "assistant") ? ["assistant"] : []), ...(can(s, "history") ? ["history"] : []),
     ...(can(s, "manage") ? ["manage", "suppliers", "itemsAdmin", "units"] : []),
-    ...(can(s, "receipts") ? ["receipts"] : []), ...(can(s, "record") ? ["record"] : []), ...(isRozha(s) ? ["admin"] : []), "settings"];
+    ...(can(s, "receipts") ? ["receipts"] : []), ...(can(s, "transfers") ? ["transfers"] : []), ...(can(s, "record") ? ["record"] : []), ...(isRozha(s) ? ["admin"] : []), "settings"];
 }
 
 /* null: no valid session (401, the phone signs in again). "unavailable": the check itself could not run
@@ -843,6 +844,10 @@ Deno.serve(async (req) => {
     if (path === "receipts" || path === "receipts-settings" || path === "receipts-settings/rico" || path === "receipts-activity" || path.startsWith("receipts/")) {
       if (!can(s, "receipts")) return fail("forbidden", 403);
       return (await receiptsRoute({ db, json, fail, account: s.account, rozha }, M, path, b)) ?? fail("not_found", 404);
+    }
+    if (path === "transfers" || path.startsWith("transfers/")) {
+      if (!can(s, "transfers")) return fail("forbidden", 403);
+      return (await transfersRoute({ db, json, fail, account: s.account, rozha }, M, path, b)) ?? fail("not_found", 404);
     }
     if (M === "GET" && path === "draft") return json(await readDraft(s.account));
     if (M === "PUT" && path === "draft") {

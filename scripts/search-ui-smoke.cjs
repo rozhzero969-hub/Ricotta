@@ -22,7 +22,7 @@ const server=http.createServer((req,res)=>{
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.locator('#itemSearch').waitFor();
   await page.waitForFunction(()=>state.items.length>10);
-  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','receipts','manage'],'Rozha\'s tabs: Receipts after History, Record and Admin under More');
+  assert.deepEqual(await page.locator('.bottomnav > [data-view]').evaluateAll(els=>els.map(el=>el.dataset.view)),['order','history','receipts','transfers'],'Rozha\'s tabs: Receipts and Transfers after History; Manage, Record and Admin under More');
   assert.equal(await page.locator('.hero-card,.streak-chip').count(),2,'summary board and kitchen streak remain');
   assert.equal(await page.locator('.order-options').count(),0,'the Order screen has no fold');
   assert.equal(await page.locator('#clearOrderBtn').isVisible(),false,'Clear order shows only once something is chosen');
@@ -45,11 +45,12 @@ const server=http.createServer((req,res)=>{
   await page.locator('.ctx-menu [data-ctx="pin"]').click();
   await page.waitForFunction(id=>document.querySelectorAll('[data-ordertab]')[1]?.dataset.ordertab===id,tabId);
   assert.ok(await page.locator(`[data-ordertab="${tabId}"] .tab-pin`).count()===1,'a pinned supplier comes first with a pin');
-  await page.locator('.bottomnav [data-view="manage"]').click();
+  // Manage is under More on a phone (Order, History, Receipts and Transfers are the tabs).
+  await page.evaluate(()=>goView('manage'));
   await page.waitForFunction(()=>!document.querySelector('.content.gliding'));
   await page.locator('#app [data-manage-view="suppliers"]').click();
   await page.locator('#supAddBtn').waitFor();
-  assert.equal(await page.locator('.bottomnav [data-view="manage"]').getAttribute('aria-current'),'page');
+  assert.ok(await page.evaluate(()=>['manage','suppliers'].includes(state.view)),'Suppliers opens inside Manage');
   await page.locator('#app [data-manage-view="units"]').click();
   await page.locator('.unit-chip').first().waitFor();
   assert.equal(await page.locator('[data-manage-view="settings"]').count(),0,'Settings is not inside Manage');
@@ -169,9 +170,9 @@ const server=http.createServer((req,res)=>{
     buttons[0].dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:21,pointerType:'touch',clientX:x,clientY:y}));
     document.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:21,pointerType:'touch',clientX:to,clientY:y}));
     document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerId:21,pointerType:'touch',clientX:to,clientY:y}));
-    document.querySelector('.bottomnav [data-view="manage"]').click();
+    document.querySelector('.bottomnav [data-view="history"]').click();
     return state.view;
-  }),'manage','a filter drag does not swallow the next navigation tap');
+  }),'history','a filter drag does not swallow the next navigation tap');
   await nav('units');
   await page.locator('#catalogSearch').fill('kilogram');
   await page.locator('#catalogSearchClear').click();

@@ -145,7 +145,7 @@ const server=http.createServer((req,res)=>{
   async function openView(page,view){
     const destination=view==='itemsAdmin'?'manage':view;
     if(['suppliers','units'].includes(destination)){
-      await page.locator('.bottomnav [data-view="manage"]').click();await settle(page);
+      await page.evaluate(()=>goView('manage'));await settle(page);
       await page.locator(`[data-manage-view="${destination}"]`).click();
     }else if(destination==='assistant'){
       await page.locator('#ricoTopBtn').click();
@@ -197,13 +197,13 @@ const server=http.createServer((req,res)=>{
       await openView(page,'order');await openView(page,'record');
       assert.equal(await page.locator('.rec-card').count(),30,'reopening Record resets its rendering budget');
       // Interactive tables can be turned off in Settings; the wipe warning shows only in the last 2 days.
-      const options=await page.evaluate(()=>{const plain=()=>{setFeature('tables',false);const r=renderDataTable('items');setFeature('tables',true);return r.includes('plain-list')&&!r.includes('class="data-table"');};const banner=d=>{state.nextWipe=new Date(Date.now()+d*86400000).toISOString().slice(0,10);return !!wipeBanner();};const r=[plain(),renderDataTable('items').includes('data-table'),banner(0),banner(2),banner(3)];state.nextWipe=null;return r;});
+      const options=await page.evaluate(()=>{const plain=()=>{setFeature('tables',false);const r=renderDataTable('items');setFeature('tables',true);return r.includes('plain-list')&&!r.includes('class="data-table"');};const banner=d=>{const day=new Date(BAGHDAD_DAY.format(new Date())+'T12:00:00Z');day.setUTCDate(day.getUTCDate()+d);state.nextWipe=day.toISOString().slice(0,10);return !!wipeBanner();};const r=[plain(),renderDataTable('items').includes('data-table'),banner(0),banner(2),banner(3)];state.nextWipe=null;return r;});
       assert.deepEqual(options,[true,true,true,true,false],'tables switch and the wipe warning');
       // The order helpers, from the kept orders.
       const helpers=await page.evaluate(()=>{const keep={history:state.history,cart:state.cart,items:state.items};
         const it=state.items[0],o=q=>({id:'h'+Math.random(),date:new Date(Date.now()-7*86400000).toISOString(),by:'rozha',entries:[{supplierId:it.supplierId,items:[{itemId:it.id,name:it.name,qty:q,unit:it.unit}]}]});
         state.history=[o(5),o(5),o(5),o(5)];
-        const usual=usualAmount(it.id),week=weekdayOrder(new Date().getDay()).map(l=>l.qty);
+        const usual=usualAmount(it.id),week=weekdayOrder().map(l=>l.qty);
         Object.assign(state,keep);return [usual,week];});
       assert.deepEqual(helpers,[5,[5]],'usual amount, weekday order');
       // History shows 60 days; the report card counts only this month.

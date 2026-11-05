@@ -8,12 +8,12 @@
   const LS = 'ricottaOrders:';
   const DB_KEY = 'ricottaLab:db';
   /* The same roles and screens as the server (supabase/functions/api/index.ts). */
-  const ROLES = ['history','manage','catalog','record','assistant','send','exports','notify','receipts'];
-  const DEFAULT_ROLES = ROLES.filter(r=>r !== 'receipts');
+  const ROLES = ['history','manage','catalog','record','assistant','send','exports','notify','receipts','transfers'];
+  const DEFAULT_ROLES = ROLES.filter(r=>r !== 'receipts' && r !== 'transfers');
   const rolesOf = account => account === 'rozha' ? [...ROLES] : Array.isArray(db.roles?.yunis) ? ROLES.filter(r=>db.roles.yunis.includes(r)) : [...DEFAULT_ROLES];
   const can = (account, role) => account === 'rozha' || (rolesOf(account).includes(role) && (role !== 'catalog' || rolesOf(account).includes('manage')));
   const viewsFor = a => ['order', ...(can(a,'assistant') ? ['assistant'] : []), ...(can(a,'history') ? ['history'] : []),
-    ...(can(a,'manage') ? ['manage','suppliers','itemsAdmin','units'] : []), ...(can(a,'receipts') ? ['receipts'] : []), ...(can(a,'record') ? ['record'] : []), ...(a === 'rozha' ? ['admin'] : []), 'settings'];
+    ...(can(a,'manage') ? ['manage','suppliers','itemsAdmin','units'] : []), ...(can(a,'receipts') ? ['receipts'] : []), ...(can(a,'transfers') ? ['transfers'] : []), ...(can(a,'record') ? ['record'] : []), ...(a === 'rozha' ? ['admin'] : []), 'settings'];
   const NAMES = {rozha:{en:'Rozha',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}};
 
   const lsGet = k => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(_){ return null; } };
@@ -294,6 +294,49 @@
         pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
         months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
       });
+    }
+    // Transfers: the stock Rico reads, and a Rico who fills a transfer in two seconds and moves it once approved.
+    if(path === 'transfers' || path.startsWith('transfers/')){
+      if(!can(account, 'transfers')) return fail('forbidden', 403);
+      db.tf ||= {transfers:[]};
+      const T = globalThis.RicottaTransfers, list = db.tf.transfers, now = ()=>new Date().toISOString(), today = new Date().toISOString().slice(0, 10);
+      const cat = {at:now(), zones:['Main Storage','Breakfast','Appetizers','Minibar','Kentucky','Kebab','Pizza','Bakery','Teahouse','نانی بەیانی (Breakfast)'],
+        titems:[{name:'Aleppo Pepper - پول بیبەر', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'فەردە', factor:25000}, stock:{'Main Storage':3200, Minibar:0}},
+          {name:'White Toast - توست أبيض', base:'دانە', count:{name:'سیت', factor:25}, buy:{name:'کارتۆن', factor:250}, stock:{'Main Storage':250, Appetizers:50}},
+          {name:'Lemon - لیمۆ', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:null, stock:{'Main Storage':12500, Minibar:2000}},
+          {name:'Oil 1L - زەیتی 1 لیتری', base:'مل', count:{name:'دانە', factor:1000}, buy:{name:'کارتۆن', factor:12000}, stock:{'Main Storage':40000}},
+          {name:'Faheta Bread - صمونی فاهیتا', base:'دانە', count:{name:'دانە', factor:1}, buy:null, stock:{'Main Storage':40}}]};
+      if(method === 'GET' && path === 'transfers') return json({transfers:list.filter(r=>r.status !== 'draft' || r.by === account), catalog:{zones:T.zonesOf(cat), titems:cat.titems, at:cat.at}, helper:(db.rr && db.rr.helper) || {online:true, mode:'real', launcher:{online:true}}, usual:{}, today});
+      const m = path.match(/^transfers\/([0-9a-f-]{36})(?:\/(send|approve|cancel|photos))?$/); if(!m) return fail('not_found', 404);
+      let r = list.find(x=>x.id === m[1]);
+      if(method === 'PUT' && !m[2]){
+        if(r && r.status !== 'draft') return fail('not_a_draft', 409);
+        if(!r){ r = {id:m[1], by:account, source:'app', status:'draft', warnings:[], log:[], photos:[], version:0, createdAt:now()}; list.unshift(r); }
+        Object.assign(r, {from:body.from, to:body.to, yesterday:!!body.yesterday, lines:body.lines || [], version:r.version + 1, updatedAt:now()});
+        save(); return json(r);
+      }
+      if(!r) return fail('not_found', 404);
+      if(method === 'DELETE'){ db.tf.transfers = list.filter(x=>x !== r); save(); return ok(); }
+      if(method === 'GET' && m[2] === 'photos'){
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1100"><rect width="900" height="1100" fill="#fff"/><text x="40" y="80" font-size="40" font-family="sans-serif">Move stock between storages</text><text x="40" y="150" font-size="32" font-family="sans-serif">${(r.from||'')} → ${(r.to||'')}</text>${(r.lines||[]).map((l,i)=>`<text x="40" y="${240+i*70}" font-size="30" font-family="sans-serif">${i+1}. ${String(l.item).replace(/[<&]/g,'')} · ${l.qty} ${l.unit}</text>`).join('')}</svg>`;
+        return json({photos:(r.photos||[]).map(p=>({kind:p.kind, at:p.at, url:'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)}))});
+      }
+      if(m[2] === 'send'){
+        const c = T.check({from:r.from, to:r.to, yesterday:r.yesterday, lines:r.lines}, cat, {});
+        if(c.errors.length) return json({error:'invalid_transfer', errors:c.errors}, 422);
+        const conf = new Set(body.confirm || []); if(c.warnings.some(w=>!conf.has(w.code))) return json({error:'needs_confirmation', warnings:c.warnings}, 409);
+        Object.assign(r, {status:'queued', warnings:c.warnings, sentAt:now(), forDay:r.yesterday ? new Date(Date.now() - 86400e3).toISOString().slice(0, 10) : today, log:[...r.log, {at:now(), who:account, text:'Sent to Rico'}]});
+        setTimeout(()=>{ if(r.status !== 'queued') return; Object.assign(r, {status:'review', mode:'real', photos:[{kind:'before', at:now()}], log:[...r.log, {at:now(), who:'rico', text:'Filled in and checked against the stock. Waiting for approval.'}]}); save(); }, 2000);
+        save(); return json(r);
+      }
+      if(m[2] === 'approve'){
+        if(r.status !== 'review') return fail('not_waiting', 409);
+        Object.assign(r, {status:'approved', approvedBy:account, approvedAt:now(), log:[...r.log, {at:now(), who:account, text:'Approved'}]});
+        setTimeout(()=>{ Object.assign(r, {status:'moved', movedAt:now(), result:{checked:true}, photos:[...r.photos, {kind:'after', at:now()}], log:[...r.log, {at:now(), who:'rico', text:'Moved. Seen in Recent transfers'}]}); save(); }, 2000);
+        save(); return json(r);
+      }
+      if(m[2] === 'cancel'){ Object.assign(r, {status:'cancelled', log:[...r.log, {at:now(), who:account, text:'Cancelled'}]}); save(); return json(r); }
+      return fail('not_found', 404);
     }
     // Receipts: a small copy of what Rico reads from Ricotta Restaurant, and a Rico who fills a receipt
     // in two seconds and saves it right after it is approved (there is no Mac in the Lab).

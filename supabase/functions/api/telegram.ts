@@ -12,6 +12,7 @@
 // from it, so nobody else can pretend to be Telegram.
 import "../_shared/search.js";
 import "../_shared/receipts.js";
+import { approveTransfer, cancelTransfer, erbilDay, onTransferEvent, sendTransfer, transferPhotoLinks } from "./transfers.ts";
 import { approveReceipt, cancelReceipt, catalogOf, helperRow, helperView, onLaunchEvent, onReceiptEvent, onShot, photoLinks, requestShot, ricoCommand, ricoEvents, sendReceipt } from "./receipts.ts";
 
 const R = (globalThis as any).RicottaReceipts;
@@ -50,7 +51,7 @@ async function stateOf(d: any, chat: number) {
 const saveState = (d: any, chat: number, data: any) => db(d, "state").upsert({ chat_id: chat, data, updated_at: new Date().toISOString() });
 const say = (chat: number, text: string, buttons?: { text: string; data: string }[][]) =>
   tg("sendMessage", { chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true, ...(buttons ? { reply_markup: { inline_keyboard: buttons.map((row) => row.map((b) => ({ text: b.text, callback_data: b.data }))) } } : {}) });
-const MENU = [[{ text: "New receipt", data: "n" }, { text: "Rico on the Mac", data: "rico" }], [{ text: "What is Rico doing?", data: "rw" }]];
+const MENU = [[{ text: "New receipt", data: "n" }, { text: "New transfer", data: "nt" }], [{ text: "Rico on the Mac", data: "rico" }, { text: "What is Rico doing?", data: "rw" }]];
 
 /* ---------- Settings > Connect Telegram ---------- */
 export async function telegramLink(d: any, account: string, apiUrl: string) {
@@ -94,7 +95,8 @@ export async function telegramWebhook(d: any, req: Request, update: any) {
   if (/^\/rico$/.test(text)) return (await ricoPanel(d, chat), true);
   if (/^\/(doing|status)$/.test(text)) return (await ricoDoing(d, chat), true);
   if (/^\/(shot|screenshot)$/.test(text)) return (await ricoShot(d, chat), true);
-  if (/^\/cancel$/.test(text)) { const st = await stateOf(d, chat); delete st.draft; await saveState(d, chat, st); await say(chat, "Stopped. Nothing was sent.", MENU); return true; }
+  if (/^\/(transfer|newtransfer)$/.test(text)) return (await tStart(d, chat, who), true);
+  if (/^\/cancel$/.test(text)) { const st = await stateOf(d, chat); delete st.draft; delete st.tdraft; await saveState(d, chat, st); await say(chat, "Stopped. Nothing was sent.", MENU); return true; }
   if (/^\/(receipts|today)$/.test(text)) return (await receiptsNow(d, chat), true);
   if (/^\/help$/.test(text)) return (await help(chat), true);
   if (text && await typed(d, chat, who, text)) return true;
@@ -111,6 +113,7 @@ function intentOf(text: string) {
   const s = text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").replace(/\b(please|pls|plz|now)\b/g, "").trim();
   const w = new Set(s.split(" "));
   const rico = w.has("rico") || w.has("ریکۆ") || w.has("helper");
+  if (/^(new transfer|transfer|transfers|move stock|make (a )?transfer|گواستنەوە|گواستنەوەی نوێ)$/.test(s)) return { do: "transfer" };
   const m = s.match(/^(?:new receipt|new|receipt|make (?:a )?receipt|وەسڵی نوێ|وەسڵ)(?: (.+))?$/);
   if (m) return { do: "new", rest: m[1] ?? "" };
   if (/^(help|menu|hi|hello|hey|commands|what can you do|سڵاو)$/.test(s)) return { do: "help" };
@@ -128,14 +131,14 @@ async function typed(d: any, chat: number, who: string, text: string) {
   if (!commandsSet) {
     commandsSet = true;
     await tg("setMyCommands", { commands: [
-      { command: "new", description: "New receipt" }, { command: "rico", description: "Start or stop Rico on the Mac" },
+      { command: "new", description: "New receipt" }, { command: "transfer", description: "New transfer between storages" }, { command: "rico", description: "Start or stop Rico on the Mac" },
       { command: "status", description: "What Rico is doing" }, { command: "shot", description: "Live screenshot of Rico's screen" },
       { command: "receipts", description: "Receipts waiting and saved today" }, { command: "cancel", description: "Stop the receipt being made" },
       { command: "help", description: "What you can type" }] });
   }
   const st = await stateOf(d, chat);
-  if (st.draft) {
-    if (/^(cancel|stop|never ?mind|quit|exit)$/i.test(text.trim())) { delete st.draft; await saveState(d, chat, st); await say(chat, "Stopped. Nothing was sent.", MENU); return true; }
+  if (st.draft || st.tdraft) {
+    if (/^(cancel|stop|never ?mind|quit|exit)$/i.test(text.trim())) { delete st.draft; delete st.tdraft; await saveState(d, chat, st); await say(chat, "Stopped. Nothing was sent.", MENU); return true; }
     return false;
   }
   const i = intentOf(text);
@@ -144,6 +147,7 @@ async function typed(d: any, chat: number, who: string, text: string) {
     if (text.trim().length >= 3 && S.rank((await catalogOf(d)).suppliers, text, (x: string) => x).length) { await startDraft(d, chat); await onText(d, chat, who, text); return true; }
     await say(chat, "I didn't get that. " + HELP_SHORT, MENU); return true;
   }
+  if (i.do === "transfer") { await tStart(d, chat, who); return true; }
   if (i.do === "new") { await startDraft(d, chat); if (i.rest) await onText(d, chat, who, i.rest); return true; }
   if (i.do === "help") { await help(chat); return true; }
   if (i.do === "shot") { await ricoShot(d, chat); return true; }
@@ -231,12 +235,14 @@ async function askItem(d: any, chat: number, st: any, cat: any, first: boolean) 
 /* ---------- Making a receipt, step by step ---------- */
 async function startDraft(d: any, chat: number) {
   const st = await stateOf(d, chat);
+  delete st.tdraft;
   st.draft = { step: "supplier", supplier: null, invoice: null, zone: "Main Storage", currency: "IQD", rate: null, delivery: null, lines: [], cur: null };
   await showList(d, chat, st, "s", 0, supplierNames(await catalogOf(d)), "New receipt. Which supplier? Pick one, or type a few letters to search.\n\nSend /cancel to stop at any time.");
 }
 const digitsOf = (s: string) => s.replace(/[٠-٩]/g, (x) => String(x.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (x) => String(x.charCodeAt(0) - 0x6f0)).replace(/[,\s]/g, "");
 async function onText(d: any, chat: number, who: string, text: string) {
   const st = await stateOf(d, chat), dr = st.draft;
+  if (st.tdraft) return tText(d, chat, who, text, st);
   if (!dr) { await say(chat, "Tap New receipt to make one.", MENU); return; }
   const cat = await catalogOf(d);
   if (dr.step === "supplier" || dr.step === "item") {
@@ -306,6 +312,9 @@ const WARN: Record<string, (w: any) => string> = {
 async function onButton(d: any, chat: number, who: string, cb: any) {
   const data = String(cb.data ?? "");
   await tg("answerCallbackQuery", { callback_query_id: cb.id });
+  const tact = data.match(/^(tap|tapy|tcx):([0-9a-f-]{36})$/);
+  if (tact) return tApprove(d, chat, who, tact[1], tact[2], cb);
+  if (/^(nt|tx|ta|tundo|ty|tyy|tyn|tsend|tsendok|tp:\d+|tz:\d+|ti:\d+|tu:\d+)$/.test(data)) return tButton(d, chat, who, data, cb);
   // Approve or cancel a receipt Rico filled in.
   const act = data.match(/^(ap|apy|cx):([0-9a-f-]{36})$/);
   if (act) {
@@ -501,3 +510,185 @@ async function receiptEvent(d: any, r: any, event: string) {
   }
 }
 onReceiptEvent(receiptEvent);
+
+/* ---------- Transfers between storages, step by step ----------
+   From (Main Storage first), To (never the same), then items from what the From storage has, each
+   with its unit and amount (never more than is there), Record for yesterday (asked before it is
+   turned on), and Send. Rico's photo comes back with Approve and move / Cancel. */
+const TT = (globalThis as any).RicottaTransfers;
+async function canTransfer(d: any, who: string) {
+  if (who === "rozha") return true;
+  const { data } = await d.from("app_accounts").select("roles").eq("id", who).maybeSingle();
+  return Array.isArray(data?.roles) && data.roles.includes("transfers");
+}
+const tItemOf = (cat: any, name: string) => (cat.titems ?? []).find((i: any) => i.name === name) ?? null;
+const tStock = (item: any, zone: string) => { const c = TT.inCounting(item, TT.available(item, zone)); return `${num(c.qty, 3)} ${c.unit}`; };
+async function tList(d: any, chat: number, st: any, kind: "z" | "i", page: number, names: string[], title: string) {
+  const pages = Math.max(1, Math.ceil(names.length / PAGE)), p = Math.min(Math.max(0, page), pages - 1);
+  const shown = names.slice(p * PAGE, p * PAGE + PAGE);
+  st.topts = shown; st.tlist = { kind, names, title };
+  await saveState(d, chat, st);
+  const rows: { text: string; data: string }[][] = [];
+  shown.forEach((n, k) => { const b = { text: n.length > 30 ? n.slice(0, 29) + "…" : n, data: (kind === "z" ? "tz:" : "ti:") + k }; if (k % 2 === 0) rows.push([b]); else rows[rows.length - 1].push(b); });
+  const nav = [];
+  if (p > 0) nav.push({ text: "‹ Back", data: `tp:${p - 1}` });
+  if (p < pages - 1) nav.push({ text: `Next › (${p + 2}/${pages})`, data: `tp:${p + 1}` });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "Cancel transfer", data: "tx" }]);
+  await say(chat, title, rows);
+}
+async function tStart(d: any, chat: number, who: string) {
+  if (!(await canTransfer(d, who))) { await say(chat, "Transfers aren't turned on for this account."); return; }
+  const cat = await catalogOf(d), zones = TT.zonesOf(cat);
+  if (!(cat as any).titems?.length) { await say(chat, "Rico hasn't read the stock from Ricotta Restaurant yet. Start Rico on the Mac first.", MENU); return; }
+  const st = await stateOf(d, chat);
+  delete st.draft;
+  st.tdraft = { step: "from", from: null, to: null, yesterday: false, lines: [], cur: null };
+  const order = [...zones].sort((a: string, b: string) => (a === "Main Storage" ? -1 : b === "Main Storage" ? 1 : a.localeCompare(b)));
+  await tList(d, chat, st, "z", 0, order, "New transfer. From which storage?");
+}
+async function tAskItem(d: any, chat: number, st: any, cat: any) {
+  const dr = st.tdraft, names = TT.itemsIn(cat, dr.from).map((i: any) => i.name).sort((a: string, b: string) => a.localeCompare(b));
+  await tList(d, chat, st, "i", 0, names, `Item ${dr.lines.length + 1} from <b>${esc(dr.from)}</b>. Pick one, or type a few letters to search.`);
+}
+async function tShow(chat: number, dr: any) {
+  const lines = dr.lines.map((l: any, i: number) => `${i + 1}. ${esc(l.item)} · <b>${num(l.qty, 3)} ${esc(l.unit)}</b>`).join("\n");
+  await say(chat, `<b>${esc(dr.from)} → ${esc(dr.to)}</b>${dr.yesterday ? "\n<b>Recorded for yesterday</b>" : ""}\n${lines || "No items yet."}\n\n${dr.lines.length} item(s).`, [
+    [{ text: "Add item", data: "ta" }, { text: "Undo last", data: "tundo" }],
+    [{ text: dr.yesterday ? "Record for yesterday: ON (turn off)" : "Record for yesterday: off", data: "ty" }],
+    [{ text: "Send to Rico", data: "tsend" }, { text: "Cancel", data: "tx" }]]);
+}
+/* Typed text while a transfer is being made: a search, or an amount. */
+async function tText(d: any, chat: number, who: string, text: string, st: any) {
+  const dr = st.tdraft, cat = await catalogOf(d);
+  if (dr.step === "from" || dr.step === "to" || dr.step === "item") {
+    const pool = dr.step === "item" ? TT.itemsIn(cat, dr.from).map((i: any) => i.name) : TT.zonesOf(cat).filter((z: string) => z !== dr.from);
+    const found = S.rank(pool, text, (x: string) => x).slice(0, 8);
+    if (!found.length) { await say(chat, "Nothing found. Try other letters."); return; }
+    await tList(d, chat, st, dr.step === "item" ? "i" : "z", 0, found, "Which one?");
+    return;
+  }
+  if (dr.step === "qty") {
+    const v = digitsOf(text);
+    if (!/^\d+(\.\d{1,3})?$/.test(v) || Number(v) <= 0) { await say(chat, "Type the amount as a number, for example 3 or 2.5."); return; }
+    const item = tItemOf(cat, dr.cur.item), opt = TT.unitOptions(item).find((o: any) => o.name === dr.cur.unit);
+    const already = dr.lines.filter((l: any) => l.item === dr.cur.item).reduce((s: number, l: any) => s + l.qty * (TT.unitOptions(item).find((o: any) => o.name === l.unit)?.factor ?? 1), 0);
+    if (already + Number(v) * opt.factor > TT.available(item, dr.from) + 1e-9) { await say(chat, `Only ${tStock(item, dr.from)} is in ${esc(dr.from)}. Type a smaller amount.`); return; }
+    dr.cur.qty = Number(v); dr.lines.push(dr.cur); dr.cur = null; dr.step = "more";
+    await saveState(d, chat, st);
+    await tShow(chat, dr);
+    return;
+  }
+  await say(chat, "Use the buttons above, or type cancel.");
+}
+async function tButton(d: any, chat: number, who: string, data: string, cb: any) {
+  const st = await stateOf(d, chat), dr = st.tdraft, cat = await catalogOf(d);
+  if (data === "nt") return tStart(d, chat, who);
+  if (!dr) { await say(chat, "That transfer was finished or stopped. Tap New transfer to make one.", MENU); return; }
+  if (data === "tx") { delete st.tdraft; await saveState(d, chat, st); await say(chat, "Stopped. Nothing was sent.", MENU); return; }
+  const pg = data.match(/^tp:(\d+)$/);
+  if (pg && st.tlist) return tList(d, chat, st, st.tlist.kind, Number(pg[1]), st.tlist.names, st.tlist.title);
+  const z = data.match(/^tz:(\d+)$/);
+  if (z && (dr.step === "from" || dr.step === "to")) {
+    const name = st.topts?.[Number(z[1])]; if (!name) return;
+    if (dr.step === "from") { dr.from = name; dr.step = "to"; return tList(d, chat, st, "z", 0, TT.zonesOf(cat).filter((x: string) => x !== name), `From <b>${esc(name)}</b>. To which storage?`); }
+    dr.to = name; dr.step = "item"; return tAskItem(d, chat, st, cat);
+  }
+  const it = data.match(/^ti:(\d+)$/);
+  if (it && dr.step === "item") {
+    const name = st.topts?.[Number(it[1])], item = name && tItemOf(cat, name); if (!item) return;
+    const units = TT.unitOptions(item).filter((o: any) => !o.unclear);
+    dr.cur = { item: name, unit: null, qty: null }; dr.step = "unit"; st.tunits = units.map((u: any) => u.name);
+    await saveState(d, chat, st);
+    await say(chat, `<b>${esc(name)}</b>: ${tStock(item, dr.from)} in ${esc(dr.from)}. Which unit?`, [units.map((u: any, k: number) => ({ text: u.name, data: "tu:" + k }))]);
+    return;
+  }
+  const u = data.match(/^tu:(\d+)$/);
+  if (u && dr.step === "unit") {
+    dr.cur.unit = st.tunits?.[Number(u[1])]; if (!dr.cur.unit) return;
+    dr.step = "qty"; await saveState(d, chat, st);
+    await say(chat, `How many ${esc(dr.cur.unit)}?`);
+    return;
+  }
+  if (data === "ta" && dr.step === "more") { dr.step = "item"; return tAskItem(d, chat, st, cat); }
+  if (data === "tundo" && dr.step === "more") { dr.lines.pop(); await saveState(d, chat, st); if (dr.lines.length) return tShow(chat, dr); dr.step = "item"; return tAskItem(d, chat, st, cat); }
+  if (data === "ty" && dr.step === "more") {
+    if (dr.yesterday) { dr.yesterday = false; await saveState(d, chat, st); return tShow(chat, dr); }
+    const y = new Date(erbilDay() + "T12:00:00Z"); y.setUTCDate(y.getUTCDate() - 1);
+    await say(chat, `Record this transfer for yesterday (${y.toISOString().slice(0, 10)})? It will count on that day in reports.`, [[{ text: "Yes, for yesterday", data: "tyy" }, { text: "No", data: "tyn" }]]);
+    return;
+  }
+  if ((data === "tyy" || data === "tyn") && dr.step === "more") { dr.yesterday = data === "tyy"; await saveState(d, chat, st); return tShow(chat, dr); }
+  if ((data === "tsend" || data === "tsendok") && dr.step === "more") {
+    const row = { id: dr.id || crypto.randomUUID(), created_by: who, source: "telegram", status: "draft", from_zone: dr.from, to_zone: dr.to, yesterday: !!dr.yesterday, lines: dr.lines };
+    dr.id = row.id;
+    const { data: saved, error } = await d.from("app_rr_transfers").upsert(row).select("*").maybeSingle();
+    if (error || !saved) { await say(chat, "That didn't save. Try again in a moment."); return; }
+    // Record for yesterday was confirmed when it was turned on; anything else is confirmed here.
+    const confirm = data === "tsendok" ? (dr.confirm ?? []) : dr.yesterday ? ["yesterday"] : [];
+    const res = await sendTransfer(d, saved, who, confirm, "telegram");
+    if (res.error === "needs_confirmation") {
+      const ws = ((res.extra?.warnings as any[]) ?? []);
+      dr.confirm = [...new Set(ws.map((w) => w.code))];
+      await saveState(d, chat, st);
+      await say(chat, "Check these first:\n\n" + ws.filter((w) => w.code !== "yesterday").map((w) => "• " + tWarn(w)).join("\n"), [[{ text: "They're right, send", data: "tsendok" }, { text: "Cancel", data: "tx" }]]);
+      return;
+    }
+    if (res.error) {
+      const errs = ((res.extra?.errors as any[]) ?? []).map((e) => (e.line ? `Item ${e.line}: ` : "") + (e.code === "notEnough" ? `only ${num(e.have.qty, 3)} ${e.have.unit} there` : e.code)).join(", ");
+      await say(chat, `That can't be sent yet${errs ? ": " + esc(errs) : ""}.`);
+      return;
+    }
+    delete st.tdraft; await saveState(d, chat, st);
+    await say(chat, `Sent to Rico: <b>${esc(dr.from)} → ${esc(dr.to)}</b>, ${dr.lines.length} item(s)${dr.yesterday ? ", for yesterday" : ""}. I'll send you the photo to check.`, MENU);
+  }
+}
+const tWarn = (w: any) => w.code === "duplicate" ? `Item ${w.line} is the same item as item ${w.first}`
+  : w.code === "allStock" ? `Item ${w.line}: moves all of it (${num(w.have.qty, 3)} ${esc(w.have.unit)})`
+  : w.code === "unusual" ? `Item ${w.line}: ${num(w.times, 1)} times more than usually moved` : w.code === "yesterday" ? "Recorded for yesterday" : w.code;
+/* Approve (asked once more) or cancel a transfer Rico filled in. */
+async function tApprove(d: any, chat: number, who: string, kind: string, id: string, cb: any) {
+  const { data: r } = await d.from("app_rr_transfers").select("*").eq("id", id).maybeSingle();
+  if (!r) { await say(chat, "That transfer is no longer here."); return; }
+  if (!(await canTransfer(d, who))) { await say(chat, "Transfers aren't turned on for this account."); return; }
+  if (kind === "tap") {
+    const ws = (r.warnings ?? []).filter((w: any) => w.code !== "yesterday").map((w: any) => "• " + tWarn(w)).join("\n");
+    await say(chat, `Are you sure? Move ${(r.lines ?? []).length} item(s) <b>${esc(r.from_zone)} → ${esc(r.to_zone)}</b>${r.yesterday ? ", recorded for yesterday" : ""}?${ws ? "\n\n" + ws : ""}`,
+      [[{ text: "Yes, approve and move", data: "tapy:" + r.id }, { text: "Cancel transfer", data: "tcx:" + r.id }]]);
+    return;
+  }
+  const res = kind === "tapy" ? await approveTransfer(d, r, who) : await cancelTransfer(d, r, who);
+  await tg("editMessageReplyMarkup", { chat_id: chat, message_id: cb.message.message_id, reply_markup: { inline_keyboard: [] } });
+  await say(chat, res.error ? (res.error === "too_late" ? "Too late: Rico already moved it." : res.error === "not_waiting" ? "This transfer isn't waiting for approval any more." : "That didn't work. Try in the app.")
+    : kind === "tapy" ? `Approved. Rico checks the stock again and moves <b>${esc(r.from_zone)} → ${esc(r.to_zone)}</b> now.` : "Cancelled. Rico clears it; nothing was moved.");
+}
+async function transferEvent(d: any, r: any, event: string) {
+  if (!telegramReady()) return;
+  const chat = await chatOf(d);
+  if (!chat) return;
+  const head = `<b>${esc(r.from_zone)} → ${esc(r.to_zone)}</b> · ${(r.lines ?? []).length} item(s)${r.yesterday ? " · for yesterday" : ""}`;
+  const lines = (r.lines ?? []).map((l: any, i: number) => `${i + 1}. ${esc(l.item)} · ${num(l.qty, 3)} ${esc(l.unit)}`).join("\n");
+  if (event === "review") {
+    const photos = await transferPhotoLinks(d, r, ["before"]);
+    if (photos.length) await sendPhotos(chat, photos.map((p: any) => p.url));
+    const ws = (r.warnings ?? []).filter((w: any) => w.code !== "yesterday").map((w: any) => "• " + tWarn(w)).join("\n");
+    await say(chat, `Rico filled in this transfer in Ricotta Restaurant. Nothing has moved yet.\n\n${head}\n${lines}${ws ? "\n\n" + ws : ""}`,
+      [[{ text: "Approve and move", data: "tap:" + r.id }, { text: "Cancel", data: "tcx:" + r.id }]]);
+    return;
+  }
+  if (event === "moved") {
+    const photos = await transferPhotoLinks(d, r, ["after"]);
+    const sure = r.result?.checked !== false;
+    await say(chat, `Moved. ${head}\n${sure ? "Checked in Recent transfers." : "Rico couldn't confirm it in Recent transfers: please check there."}`);
+    if (photos.length) await sendPhotos(chat, photos.map((p: any) => p.url));
+    return;
+  }
+  if (event === "problem") {
+    let photos = await transferPhotoLinks(d, r, ["problem"]);
+    if (!photos.length) photos = await transferPhotoLinks(d, r, ["before"]);
+    const practice = /^Practice run/.test(r.problem ?? "");
+    await say(chat, practice ? `Practice run: this is the transfer Rico filled in. Nothing was moved.\n${head}` : `Rico stopped the transfer.\n${head}\n\n${esc(r.problem ?? "")}`);
+    if (photos.length) await sendPhotos(chat, photos.map((p: any) => p.url).slice(0, 4));
+  }
+}
+onTransferEvent(transferEvent);

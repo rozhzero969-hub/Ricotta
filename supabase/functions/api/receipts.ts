@@ -31,22 +31,23 @@
 //   POST   helper/receipts/:id/report {status, log, problem, finance, totals}
 //   POST   helper/receipts/:id/photo  {kind, image (base64 JPEG)}
 import "../_shared/receipts.js";
+import { claimTransfer, transferHelperRoute, tview } from "./transfers.ts";
 const R = (globalThis as any).RicottaReceipts;
 
 type Ctx = {
   db: any; json: (b: unknown, s?: number) => Response; fail: (e: string, s?: number) => Response;
   account: "rozha" | "yunis" | null; rozha: boolean;
 };
-const BUCKET = "receipt-photos";
+export const BUCKET = "receipt-photos";
 const PHOTO_KINDS = ["before", "after", "invoices", "problem"];
 const t = (v: unknown, max = 200) => String(v ?? "").slice(0, max);
 const now = () => new Date().toISOString();
 const rr = (db: any, table: string) => db.from(`app_rr_${table}`);
 const LAUNCHER_FRESH = 45_000;   // the launcher waits up to 20 s on the server, then asks again
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const waitFor = (v: unknown) => Math.max(0, Math.min(20, Number(v) || 0)) * 1000;
+export const waitFor = (v: unknown) => Math.max(0, Math.min(20, Number(v) || 0)) * 1000;
 /* Asks again every ~0.7 s until there is an answer or the time is up. */
-async function poll<T>(ms: number, fn: () => Promise<T | null>): Promise<T | null> {
+export async function poll<T>(ms: number, fn: () => Promise<T | null>): Promise<T | null> {
   const until = Date.now() + ms;
   for (;;) {
     const v = await fn();
@@ -121,12 +122,12 @@ function cleanDraft(b: any) {
     lines,
   };
 }
-const logEntry = (text: string, who = "rico") => ({ at: now(), who, text: t(text, 300) });
+export const logEntry = (text: string, who = "rico") => ({ at: now(), who, text: t(text, 300) });
 
 
 /* ---------- What a person does to a receipt (the app and Telegram share these) ---------- */
 type Done = { row?: any; error?: string; status?: number; extra?: Record<string, unknown> };
-const nameOf = (who: string) => who === "rozha" ? "Rozha" : who === "yunis" ? "Yunis" : who;
+export const nameOf = (who: string) => who === "rozha" ? "Rozha" : who === "yunis" ? "Yunis" : who;
 /* Anything about a receipt that someone should hear about on Telegram (see telegram.ts). */
 let notify: (db: any, r: any, event: string) => Promise<void> = async () => {};
 export function onReceiptEvent(fn: typeof notify) { notify = fn; }
@@ -147,7 +148,7 @@ export async function requestShot(db: any, chat: number) {
 export async function ricoEvents(db: any, limit = 300) {
   const { data, error } = await rr(db, "events").select("*").order("at", { ascending: false }).order("id", { ascending: false }).limit(limit);
   if (error) throw error;
-  return (data ?? []).map((e: any) => ({ id: e.id, at: e.at, kind: e.kind, status: e.status, receipt: e.receipt_id, supplier: e.supplier, invoice: e.invoice, source: e.source, mode: e.mode, by: e.actor, text: e.text }));
+  return (data ?? []).map((e: any) => ({ id: e.id, at: e.at, what: e.what ?? "receipt", kind: e.kind, status: e.status, receipt: e.receipt_id, supplier: e.supplier, invoice: e.invoice, source: e.source, mode: e.mode, by: e.actor, text: e.text }));
 }
 /* Start Rico for real, in practice mode, or stop him: the launcher on the Mac picks this up. */
 export async function ricoCommand(db: any, action: string, by: string) {
@@ -333,8 +334,19 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
         log: [...(r.log ?? []), logEntry(filling ? "Rico was restarted while filling this in. Trying again." : "Rico was restarted while saving this.")],
       }).eq("id", r.id).eq("version", r.version);
     }
+    // Transfers the same way: one being filled in goes back in line; one being moved is a problem,
+    // because Ricotta Restaurant may already have moved it.
+    const { data: tstuck } = await db.from("app_rr_transfers").select("*").in("status", ["filling", "moving"]);
+    for (const r of tstuck ?? []) {
+      const filling = r.status === "filling";
+      await db.from("app_rr_transfers").update({
+        status: filling ? "queued" : "problem", version: r.version + 1, updated_at: now(),
+        problem: filling ? null : "Rico was restarted while moving this. Check Recent transfers in Ricotta Restaurant before sending it again.",
+        log: [...(r.log ?? []), logEntry(filling ? "Rico was restarted while filling this in. Trying again." : "Rico was restarted while moving this.")],
+      }).eq("id", r.id).eq("version", r.version);
+    }
     await rr(db, "helper").update({ busy_with: null }).eq("id", true);
-    return json({ ok: true, recovered: (stuck ?? []).length });
+    return json({ ok: true, recovered: (stuck ?? []).length + (tstuck ?? []).length });
   }
   if (M === "PUT" && path === "helper/catalog") {
     const strings = (v: unknown, n: number) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.length && x.length <= 200).slice(0, n) : []);
@@ -342,20 +354,35 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
       name: t(i?.name, 200), base: t(i?.base, 40),
       units: (Array.isArray(i?.units) ? i.units : []).slice(0, 20).map((u: any) => ({ name: t(u?.name, 40), factor: Number(u?.factor) })).filter((u: any) => u.name && Number.isFinite(u.factor) && u.factor > 0),
     })).filter((i: any) => i.name && i.base);
-    const data = { suppliers: strings(b.suppliers, 500), zones: strings(b.zones, 50), items };
+    // Everything that can be moved between storages: each item's counting, base and buying units and
+    // its stock in each storage (base units), exactly as Ricotta Restaurant has it.
+    const unit = (u: any) => (u && t(u.name, 40) && Number(u.factor) > 0 ? { name: t(u.name, 40), factor: Number(u.factor) } : null);
+    const titems = (Array.isArray(b.titems) ? b.titems : []).slice(0, 3000).map((i: any) => ({
+      name: t(i?.name, 200), base: t(i?.base, 40), count: unit(i?.count), buy: unit(i?.buy),
+      stock: Object.fromEntries(Object.entries(i?.stock && typeof i.stock === "object" ? i.stock : {}).slice(0, 40)
+        .map(([z, q]) => [t(z, 80), Number(q)]).filter(([z, q]) => z && Number.isFinite(q as number))),
+    })).filter((i: any) => i.name && i.base);
+    const data = { suppliers: strings(b.suppliers, 500), zones: strings(b.zones, 50), items, titems, stockAt: titems.length ? now() : null };
     if (!data.suppliers.length || !data.zones.length || !items.length) return fail("invalid_catalog");
     const { error } = await rr(db, "catalog").upsert({ id: true, data, updated_at: now() });
     return error ? fail("save_failed", 503) : json({ ok: true, items: items.length });
   }
   if (M === "POST" && path === "helper/claim") {
     const mode = b.mode === "practice" ? "practice" : b.mode === "real" ? "real" : null;
-    const r = await poll(waitFor(b.wait), async () => {
+    // Receipts first, then transfers; waits up to {wait} s for either.
+    const got = await poll(waitFor(b.wait), async () => {
       const { data, error } = await db.rpc("app_internal_rr_claim", { p_mode: mode });
       if (error) throw error;
-      return (Array.isArray(data) ? data[0] : data) ?? null;
+      const r = (Array.isArray(data) ? data[0] : data) ?? null;
+      if (r) return { receipt: view(r) };
+      if (b.transfers !== true) return null;
+      const tr = await claimTransfer(db, mode);
+      return tr ? { transfer: tview(tr) } : null;
     });
-    return json({ receipt: r ? view(r) : null, helper: helperView(await helperRow(db)) });
+    return json({ receipt: null, transfer: null, ...(got ?? {}), helper: helperView(await helperRow(db)) });
   }
+
+  if (path.startsWith("helper/transfers/")) return (await transferHelperRoute(ctx, M, path, b)) ?? fail("not_found", 404);
   if ((m = path.match(/^helper\/receipts\/([0-9a-f-]{36})\/wait$/)) && M === "POST") {
     const id = m[1];
     const r = await poll(waitFor(b.wait), async () => {
@@ -410,7 +437,7 @@ async function cleanOldPhotos(db: any, h: any) {
   if (h.photos_cleaned === today) return;
   await rr(db, "helper").update({ photos_cleaned: today }).eq("id", true);
   const { data: folders } = await db.storage.from(BUCKET).list("", { limit: 1000 });
-  const keep = new Set(((await rr(db, "receipts").select("id")).data ?? []).map((r: any) => r.id));
+  const keep = new Set([...((await rr(db, "receipts").select("id")).data ?? []), ...((await db.from("app_rr_transfers").select("id")).data ?? [])].map((r: any) => r.id));
   const gone = (folders ?? []).map((f: any) => f.name).filter((n: string) => /^[0-9a-f-]{36}$/.test(n) && !keep.has(n));
   // Live screenshots were for that moment: gone after a day.
   const { data: shots } = await db.storage.from(BUCKET).list("shots", { limit: 1000 });
