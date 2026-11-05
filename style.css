@@ -2230,3 +2230,7 @@ html.dark .rr-line-warn,html.dark .rr-warns p{color:#FDBA74}
 .rr-done small{color:var(--ink-soft)}
 .rr-view-lines .rr-num{grid-column:auto;width:20px;flex:none}
 html.dark .rr-line-warn{color:#FDBA74}
+.rr-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.rr-filters .sel-btn{min-height:36px;height:36px;border-radius:999px;padding:0 12px;font-size:.875rem;width:auto;max-width:100%}
+.rr-filter-clear{height:36px;padding:0 12px;border:0;border-radius:999px;background:none;color:var(--tint);font:inherit;font-size:.875rem;font-weight:600}
+.rr-ev[role=button]{cursor:pointer}

@@ -4,7 +4,7 @@
    Restaurant's own New receipt page: Receipt details, then Items received, then the total) and one
    that was sent (Rico's photo to approve, or the saved receipt with its finance number). Names are the
    exact ones Rico read from Ricotta Restaurant; the rules are shared with the API (RicottaReceipts). */
-const rr = {data:null, loading:false, page:'list', id:null, saveTimer:0, photos:{}, sending:false};
+const rr = {data:null, loading:false, page:'list', id:null, saveTimer:0, photos:{}, sending:false, filter:{src:'all', mode:'all', by:'all'}, fresh:false};
 const RR_ACTIVE = ['queued','filling','review','approved','saving'];
 const rrSubpage = ()=> state.view === 'receipts' && rr.page !== 'list';
 const rrNum = (n, d = 0)=> Number(n || 0).toLocaleString('en-US', {maximumFractionDigits:d});
@@ -39,9 +39,21 @@ function renderReceipts(){
   const isToday = r=> erbilDate(new Date(r.sentAt || r.createdAt)) === today;
   const saved = list.filter(r=>r.status === 'saved' && isToday(r));
   const sum = saved.reduce((s, r)=> s + (r.currency === 'USD' ? Math.round(r.total * (r.rate || 0)) : r.total), 0);
-  const needs = list.filter(r=>r.status === 'review' || (r.status === 'problem' && !rrIsPractice(r)));
-  const drafts = list.filter(r=>r.status === 'draft');
-  const rest = list.filter(r=>!needs.includes(r) && !drafts.includes(r));
+  // Filters: where it was made, who made it, and whether Rico ran it for real or in practice.
+  const f = rr.filter;
+  const people = [...new Set(list.map(r=>r.by).filter(Boolean))];
+  const shown = list.filter(r=>(f.src === 'all' || (r.source === 'telegram' ? 'telegram' : 'app') === f.src)
+    && (f.mode === 'all' || rrModeOf(r) === f.mode) && (f.by === 'all' || r.by === f.by));
+  const needs = shown.filter(r=>r.status === 'review' || (r.status === 'problem' && !rrIsPractice(r)));
+  const drafts = shown.filter(r=>r.status === 'draft');
+  const rest = shown.filter(r=>!needs.includes(r) && !drafts.includes(r));
+  const fsel = (key, opts)=>`<select class="rr-filter" data-rr-filter="${key}" aria-label="${esc(t('rrFilter_' + key))}">${opts.map(([v, label])=>`<option value="${esc(v)}"${f[key] === v ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
+  const filters = list.length ? `<div class="rr-filters">
+    ${fsel('src', [['all', t('rrAllPlaces')], ['app', t('rrSource_app')], ['telegram', t('rrSource_telegram')]])}
+    ${fsel('mode', [['all', t('rrRealAndPractice')], ['real', t('rrModeReal')], ['practice', t('rrModePractice')]])}
+    ${fsel('by', [['all', t('rrEveryone')], ...people.map(p=>[p, accountLabel(p) || p])])}
+    ${f.src !== 'all' || f.mode !== 'all' || f.by !== 'all' ? `<button type="button" class="rr-filter-clear" id="rrFilterClear">${esc(t('rrClearFilters'))}</button>` : ''}
+  </div>` : '';
   const ricoOn = h.online && !h.stopped;
   const row = r=>{
     const tone = rrIsPractice(r) ? 'draft' : r.status === 'saved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : r.status === 'draft' ? 'draft' : 'busy';
@@ -58,10 +70,11 @@ function renderReceipts(){
       <div class="rr-ov-rico"><i class="rr-dot ${ricoOn ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrHelperLine(h))}</span>${isRozha() ? rrRicoControls(h) : ''}</div>
       ${isRozha() ? rrRicoNote(h) : ''}
     </section>
+    ${filters}
     ${needs.length ? `<div class="section-title">${esc(t('rrNeedsYou'))}</div><div class="rr-list rr-needs">${needs.map(row).join('')}</div>` : ''}
     ${drafts.length ? `<div class="section-title">${esc(t('rrDrafts'))}</div><div class="rr-list">${drafts.map(row).join('')}</div>` : ''}
-    <div class="section-title">${esc(t('rrRecent'))}</div>
-    ${rest.length ? `<div class="rr-list">${rest.slice(0, 80).map(row).join('')}</div>` : emptyState(t('rrEmpty'))}
+    ${rest.length ? `<div class="section-title">${esc(t('rrRecent'))}</div><div class="rr-list">${rest.slice(0, 200).map(row).join('')}</div>`
+      : !list.length ? emptyState(t('rrEmpty')) : !shown.length ? emptyState(t('rrNoMatchFilter')) : ''}
     ${rr.data.catalog?.at ? `<p class="rr-foot">${esc(t('rrCatalogAt')(rr.data.catalog.items.length, formatIraqDateTime(new Date(rr.data.catalog.at), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'})))}</p>` : `<p class="rr-foot">${esc(t('rrNoCatalog'))}</p>`}
   </div>`;
 }
@@ -79,7 +92,9 @@ function rrRicoNote(h){
   return line ? `<p class="rr-ctl-note">${esc(line)}</p>` : '';
 }
 /* Practice runs end as "problem" on purpose: they are not something to fix. */
-const rrIsPractice = r=> r.status === 'problem' && /^Practice run/.test(r.problem || '');
+const rrIsPractice = r=> r.status === 'problem' && (r.mode === 'practice' || /^Practice run/.test(r.problem || ''));
+/* Real or practice: set when Rico takes the receipt (older ones are read from his message). */
+const rrModeOf = r=> r.mode || (/^Practice run/.test(r.problem || '') ? 'practice' : ['saving','saved'].includes(r.status) ? 'real' : null);
 function rrHelperLine(h){
   if(h.stopped) return t('rrRicoStopped');
   if(!h.online) return t('rrRicoOff');
@@ -89,9 +104,10 @@ function rrHelperLine(h){
 const rrWhen = d=> d ? formatIraqDateTime(new Date(d), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'}) : '';
 const rrSourceName = r=> t('rrSource_' + (['telegram','rico'].includes(r.source) ? r.source : 'app'));
 function rrStatusLine(r){
-  const inv = (r.invoice ? '#' + r.invoice + ' · ' : '') + rrWhen(r.createdAt) + (r.source === 'telegram' ? ' · Telegram' : '') + ' · ';
+  const m = rrModeOf(r);
+  const inv = (r.invoice ? '#' + r.invoice + ' · ' : '') + rrWhen(r.createdAt) + (r.source === 'telegram' ? ' · Telegram' : '') + (m && !rrIsPractice(r) ? ' · ' + t(m === 'practice' ? 'rrModePractice' : 'rrModeReal') : '') + ' · ';
   if(r.status === 'saved') return inv + (r.finance?.no ? t('rrFinanceNo')(r.finance.tab, r.finance.no) : t('rrStatus_saved'));
-  if(rrIsPractice(r)) return t('rrPracticeRun');
+  if(rrIsPractice(r)) return inv + t('rrPracticeRun');
   if(r.status === 'problem') return r.problem || t('rrStatus_problem');
   return inv + t('rrStatus_' + r.status);
 }
@@ -100,6 +116,8 @@ function attachReceiptsEvents(){
   if(rr.page === 'view') return attachReceiptView();
   document.getElementById('rrNew')?.addEventListener('click', ()=>rrNewDraft());
   document.querySelectorAll('[data-rr-open]').forEach(b=>b.onclick = ()=>rrOpen(b.dataset.rrOpen));
+  document.querySelectorAll('[data-rr-filter]').forEach(s=>s.onchange = ()=>{ rr.filter[s.dataset.rrFilter] = s.value; render(); });
+  const clear = document.getElementById('rrFilterClear'); if(clear) clear.onclick = ()=>{ rr.filter = {src:'all', mode:'all', by:'all'}; render(); };
   document.querySelectorAll('[data-rico]').forEach(b=>b.onclick = async ()=>{
     b.disabled = true;
     const res = await api('receipts-settings/rico', {method:'POST', body:{action:b.dataset.rico}});
@@ -122,7 +140,7 @@ function rrNewDraft(copyOf){
     lines:(src.lines || []).map(l=>({...l})), total:null, warnings:[], log:[], photos:[], version:0, createdAt:new Date().toISOString()};
   if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null, cost:null});
   rr.data.receipts.unshift(r);
-  rr.id = r.id; rr.page = 'edit';
+  rr.id = r.id; rr.page = 'edit'; rr.fresh = true;
   render(); scrollBox().scrollTo({top:0});
 }
 
@@ -153,9 +171,14 @@ function rrComboBind(input, names, onPick){
   };
   const close = ()=>{ pop.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); };
   const pick = n=>{ picked = n; input.value = n; close(); onPick(n, false); };
-  input.addEventListener('focus', ()=>{ input.select(); if(!picked) open(''); });
+  // A click on a box with a name selects the whole name, so one Delete (or typing) replaces it.
+  let focusing = false;
+  input.addEventListener('focus', ()=>{ focusing = true; input.select(); if(!picked) open(''); });
+  input.addEventListener('mouseup', e=>{ if(focusing){ e.preventDefault(); input.select(); } focusing = false; });
+  input.addEventListener('blur', ()=>{ focusing = false; });
   input.addEventListener('input', ()=>open(input.value.trim()));
   input.addEventListener('keydown', e=>{
+    if((e.key === 'Backspace' || e.key === 'Delete') && picked && input.value === picked){ e.preventDefault(); input.value = ''; open(''); return; }
     if(pop.hidden){
       if(e.key === 'ArrowDown'){ e.preventDefault(); open(''); }
       else if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && picked && input.value === picked){ e.preventDefault(); onPick(picked, true); }
@@ -294,14 +317,23 @@ function attachReceiptEdit(){
   document.querySelectorAll('[data-l-unit]').forEach(s=>s.onchange = ()=>{ const i = +s.dataset.lUnit; r.lines[i].unit = s.value; changed(true); go('rrQty' + i); });
   document.querySelectorAll('[data-l-qty]').forEach(el=>{
     const i = +el.dataset.lQty;
-    el.oninput = ()=>{ const v = rrOnlyNum(el, true); r.lines[i].qty = v; el.classList.toggle('bad', Number.isNaN(v)); changed(); };
+    el.oninput = ()=>{ const v = rrOnlyNum(el, true); r.lines[i].qty = v; el.classList.toggle('bad', Number.isNaN(v)); changed(); autoLine(el); };
     enter(el, ()=>go('rrCost' + i));
   });
   // Enter in the unit cost opens the next item (a new one after the last), already on its search box.
   const addLine = ()=>{ r.lines.push({item:'', unit:'', qty:null, cost:null}); repaint(); go('rrItem' + (r.lines.length - 1)); };
+  // Item, Qty and price all filled on the last line: the next empty line appears by itself, and the box
+  // being typed in keeps its place.
+  const autoLine = el=>{
+    const last = r.lines[r.lines.length - 1];
+    if(!(last.item && last.qty > 0 && last.cost > 0)) return;
+    const id = el.id, at = el.selectionStart;
+    r.lines.push({item:'', unit:'', qty:null, cost:null}); repaint();
+    const again = document.getElementById(id); if(again){ again.focus({preventScroll:true}); try{ again.setSelectionRange(at, at); }catch(_){} }
+  };
   document.querySelectorAll('[data-l-cost]').forEach(el=>{
     const i = +el.dataset.lCost;
-    el.oninput = ()=>{ const v = rrOnlyNum(el, r.currency === 'USD'); r.lines[i].cost = v; el.classList.toggle('bad', Number.isNaN(v)); changed(); };
+    el.oninput = ()=>{ const v = rrOnlyNum(el, r.currency === 'USD'); r.lines[i].cost = v; el.classList.toggle('bad', Number.isNaN(v)); changed(); autoLine(el); };
     enter(el, ()=>{ rrSaveSoon(r); if(i < r.lines.length - 1) go('rrItem' + (i + 1)); else addLine(); });
   });
   document.querySelectorAll('[data-l-del]').forEach(b=>b.onclick = ()=>{ r.lines.splice(+b.dataset.lDel, 1); if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null, cost:null}); changed(true); });
@@ -320,7 +352,7 @@ function attachReceiptEdit(){
     if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.activeElement?.blur?.(); rrSend(r); }
   };
   // A new receipt starts on the supplier box (on a computer; a phone waits for a tap).
-  if(!r.supplier && !matchMedia('(pointer: coarse)').matches && !document.activeElement?.closest?.('.rr-edit')) requestAnimationFrame(()=>go('rrSupplier'));
+  if(rr.fresh){ rr.fresh = false; if(!r.supplier && !matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>go('rrSupplier')); }
 }
 /* Only the totals change while typing a number: the boxes keep their focus and the keyboard stays up. */
 function rrPaintTotals(r){
@@ -378,6 +410,7 @@ function renderReceiptView(){
     <div class="rr-card"><dl class="rr-facts"><dt>${esc(t('rrInvoice'))}</dt><dd>${esc(r.invoice ? '#' + r.invoice : '')}</dd>
       <dt>${esc(t('rrMadeIn'))}</dt><dd>${esc(rrSourceName(r) + (accountLabel(r.by) ? ' · ' + accountLabel(r.by) : ''))}</dd>
       <dt>${esc(t('rrMadeAt'))}</dt><dd>${esc(rrWhen(r.createdAt))}</dd>
+      ${rrModeOf(r) ? `<dt>${esc(t('rrRicoMode'))}</dt><dd>${esc(t(rrModeOf(r) === 'practice' ? 'rrModePracticeLong' : 'rrModeReal'))}</dd>` : ''}
       ${r.sentAt ? `<dt>${esc(t('rrSentAt'))}</dt><dd>${esc(rrWhen(r.sentAt))}</dd>` : ''}
       ${r.approvedAt ? `<dt>${esc(t('rrApprovedAt'))}</dt><dd>${esc(rrWhen(r.approvedAt) + (accountLabel(r.approvedBy) ? ' · ' + accountLabel(r.approvedBy) : ''))}</dd>` : ''}
       ${r.savedAt ? `<dt>${esc(t('rrSavedAt'))}</dt><dd>${esc(rrWhen(r.savedAt))}</dd>` : ''}
@@ -460,3 +493,41 @@ function attachRicoReceiptSettings(){
     rr.tg = null;   // read again when Settings is drawn next
   };
 }
+
+/* ---------- Rico's activity (Record tab, "Rico") ----------
+   Every step of every receipt, each Start / Practice / Stop pressed, and how each start went. */
+const rrAct = {list:null, loading:false};
+async function rrLoadActivity(){
+  if(rrAct.loading) return;
+  rrAct.loading = true;
+  const r = await api('receipts-activity', {quiet:true});
+  rrAct.loading = false;
+  if(r.ok && Array.isArray(r.data?.events)) rrAct.list = r.data.events;
+  else if(!rrAct.list) rrAct.list = [];
+  if(state.view === 'record' && state.recordFilter === 'rico') render();
+}
+function renderRicoActivity(){
+  if(!rrAct.list){ rrLoadActivity(); return loadingLines(4); }
+  if(!rrAct.list.length) return emptyState(t('rrNoActivity'));
+  const who = by => by === 'auto' ? t('rrByHimself') : by === 'telegram' ? 'Telegram' : by === 'rico' ? 'Rico' : accountLabel(by) || by || '';
+  return rrAct.list.map(e=>{
+    const when = formatIraqDateTime(new Date(e.at), {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+    const practice = e.mode === 'practice' || /^Practice run/.test(e.text || '');
+    let badge, tone, name, line = '';
+    if(e.kind === 'command'){ badge = t('rrEvPressed'); tone = 'edit'; name = t(e.status === 'stop' ? 'rrStopRicoNow' : e.status === 'practice' ? 'rrPractice' : 'rrStartRico'); }
+    else if(e.kind === 'launch'){ badge = 'Rico'; tone = 'add'; name = e.text || ''; }
+    else {
+      badge = practice && e.status === 'problem' ? t('rrPracticeRun') : t('rrStatus_' + e.status);
+      tone = e.status === 'saved' ? 'add' : e.status === 'problem' && !practice ? 'delete' : 'edit';
+      name = (e.supplier || '') + (e.invoice ? ' #' + e.invoice : '');
+      if(e.status === 'problem' && !practice && e.text) line = e.text;
+    }
+    const meta = [when, who(e.by), e.kind === 'status' && e.mode ? t(practice ? 'rrModePractice' : 'rrModeReal') : '', e.source === 'telegram' ? 'Telegram' : ''].filter(Boolean).join(' · ');
+    const open = e.receipt && rr.data?.receipts?.some(r=>r.id === e.receipt);
+    return `<div class="rec-card rr-ev"${open ? ` role="button" tabindex="0" data-rr-open-from-record="${esc(e.receipt)}"` : ''}>
+      <div class="rec-top"><span class="rec-badge rec-${tone}">${esc(badge)}</span><span class="rec-type">${esc(e.kind === 'status' ? t('rrEvReceipt') : 'Rico')}</span></div>
+      <div class="rec-name" dir="auto">${esc(name)}</div>${line ? `<div class="rec-line">${esc(line)}</div>` : ''}
+      <div class="rec-meta">${esc(meta)}</div></div>`;
+  }).join('');
+}
+

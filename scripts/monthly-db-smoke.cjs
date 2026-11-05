@@ -399,7 +399,7 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  // cannot move never stops the change. The browser roles cannot read them.
  const sig=async()=>Object.fromEntries((await q('select kind,n from app_signals')).map(r=>[r.kind,Number(r.n)]));
  let was=await sig();
- assert.deepEqual(Object.keys(was).sort(),['admin','data','devices','draft','inbox']);
+ assert.deepEqual(Object.keys(was).sort(),['admin','data','devices','draft','inbox','receipts']);
  await db.exec("insert into app_suppliers(id,name) values('sig-s','Signals');");
  let now=await sig();assert.ok(now.data>was.data && now.devices===was.devices && now.admin===was.admin,'a new supplier is a data change, and only that');
  await db.exec("insert into app_devices(id,account,logged_in,last_seen) values('sig-d','rozha',true,now());");was=await sig();

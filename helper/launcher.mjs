@@ -15,17 +15,23 @@ const LOG = createWriteStream(join(homedir(), "Library", "Logs", "Rico.log"), { 
 const note = (s) => LOG.write(`${new Date().toISOString()} ${s}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let child = null, mode = null, pending = null, lastLine = "";
-async function checkIn(result) {
-  const token = readSecret("helper-token");
-  if (!token) return null;
+let child = null, mode = null, lastLine = "";
+const token = () => readSecret("helper-token");
+async function call(body, ms) {
+  const t = token();
+  if (!t) return null;
   try {
-    const res = await fetch(`${API}/helper/launcher`, { method: "POST", headers: { "content-type": "application/json", "x-helper-token": token },
-      body: JSON.stringify({ running: !!child, mode, ...(result ? { result } : {}) }), signal: AbortSignal.timeout(20_000) });
+    const res = await fetch(`${API}/helper/launcher`, { method: "POST", headers: { "content-type": "application/json", "x-helper-token": t },
+      body: JSON.stringify({ running: !!child, mode, ...body }), signal: AbortSignal.timeout(ms) });
     return res.ok ? await res.json() : null;
   } catch { return null; }
 }
-const report = (text) => { pending = text; note(text); };
+/* How a start or stop went goes to the server at once (the app and Telegram hear it straight away),
+   on its own request, so it never waits behind the long wait for the next command. */
+async function report(text) {
+  note(text);
+  for (let i = 0; i < 5; i++) { if (await call({ result: text, take: false }, 15_000)) return; await sleep(2000); }
+}
 
 function start(m) {
   mode = m;
@@ -60,15 +66,17 @@ function stop() {
   });
 }
 
+// The launcher itself being stopped (log out, restart, an update) stops Rico with it.
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, async () => { await stop(); process.exit(0); });
 note("launcher started");
 for (;;) {
-  const answer = await checkIn(pending);
-  if (answer) pending = null;
-  const cmd = answer?.command;
+  // Waits up to 20 s on the server, which answers the moment Start or Stop is pressed.
+  const answer = await call({ wait: 20 }, 35_000);
+  if (!answer) { await sleep(3000); continue; }
+  const cmd = answer.command;
   if (cmd === "stop") { await stop(); report("Rico is off."); }
   else if (cmd === "real" || cmd === "practice") {
     if (child && mode === cmd) report(`Rico is already on${cmd === "practice" ? " in practice mode" : ""}.`);
     else { await stop(); start(cmd); }
   }
-  await sleep(4000);
 }

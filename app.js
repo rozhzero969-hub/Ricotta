@@ -457,6 +457,7 @@ function liveChanged(kinds, reset){
   if(moved('admin') && state.view === 'admin' && isRozha()) ['security','problems'].forEach(k=>adminFetch(k, true));
   if(moved('inbox')) ricoRefreshInbox();
   if(moved('receipts') && rr.data) rrLoad(true);
+  if(moved('receipts') && state.view === 'record' && state.recordFilter === 'rico') rrLoadActivity();
 }
 window.addEventListener('online', ()=>liveStart());
 
@@ -3125,10 +3126,13 @@ function renderRecord(){
     {id:'all', label:t('filterAll')},
     {id:'supplier', label:t('suppliers')},
     {id:'item', label:t('items')},
-    {id:'unit', label:t('units')}
+    {id:'unit', label:t('units')},
+    ...(state.tabs.includes('receipts') ? [{id:'rico', label:'Rico'}] : [])
   ];
   const filterHtml = `<div class="record-filters glass" role="group">${filters.map(f=>`
     <button class="tab-pill ${state.recordFilter===f.id?'active':''}" aria-pressed="${state.recordFilter===f.id}" data-recfilter="${f.id}">${f.label}</button>`).join('')}</div>`;
+  if(state.recordFilter === 'rico') return `<div class="action-row"><div class="section-title grow" id="recordCount">${esc(t('rrRicoActivity'))}</div>
+      <button class="btn btn-ghost" id="recRefreshBtn">${ICON_REFRESH} ${esc(t('refresh'))}</button></div>${filterHtml}<div id="recordResults">${renderRicoActivity()}</div>`;
   const rows = state.activity
     .filter(a => (state.recordFilter==='all' || a.type===state.recordFilter) && catalogMatches(recordSearchFields(a)))
     .sort((a,b)=> new Date(b.ts) - new Date(a.ts));
@@ -3177,7 +3181,8 @@ function attachRecordEvents(){
   const more = document.getElementById('recMoreBtn');
   if(more) more.onclick = ()=>{ state.recordLimit += RECORD_PAGE_SIZE; render(); };
   const r = document.getElementById('recRefreshBtn');
-  if(r) r.onclick = ()=> spinRefresh(r, refreshActivity);
+  if(r) r.onclick = ()=> spinRefresh(r, state.recordFilter === 'rico' ? rrLoadActivity : refreshActivity);
+  document.querySelectorAll('[data-rr-open-from-record]').forEach(b=>b.onclick = ()=>{ goView('receipts'); rrOpen(b.dataset.rrOpenFromRecord); });
 }
 
 /* ============ Shared popup pieces ============ */

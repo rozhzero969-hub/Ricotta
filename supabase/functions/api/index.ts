@@ -840,7 +840,7 @@ Deno.serve(async (req) => {
       if (M === "GET") return json(await telegramStatus(db));
       if (M === "POST") { const r = await telegramLink(db, s.account, `${SUPABASE_URL}/functions/v1/api`); return r.error ? fail(r.error, 503) : json(r); }
     }
-    if (path === "receipts" || path === "receipts-settings" || path === "receipts-settings/rico" || path.startsWith("receipts/")) {
+    if (path === "receipts" || path === "receipts-settings" || path === "receipts-settings/rico" || path === "receipts-activity" || path.startsWith("receipts/")) {
       if (!can(s, "receipts")) return fail("forbidden", 403);
       return (await receiptsRoute({ db, json, fail, account: s.account, rozha }, M, path, b)) ?? fail("not_found", 404);
     }

@@ -12,7 +12,7 @@
 // from it, so nobody else can pretend to be Telegram.
 import "../_shared/search.js";
 import "../_shared/receipts.js";
-import { approveReceipt, cancelReceipt, catalogOf, helperRow, helperView, onLaunchEvent, onReceiptEvent, photoLinks, ricoCommand, sendReceipt } from "./receipts.ts";
+import { approveReceipt, cancelReceipt, catalogOf, helperRow, helperView, onLaunchEvent, onReceiptEvent, onShot, photoLinks, requestShot, ricoCommand, ricoEvents, sendReceipt } from "./receipts.ts";
 
 const R = (globalThis as any).RicottaReceipts;
 const S = (globalThis as any).RicottaSearch;
@@ -48,7 +48,7 @@ async function stateOf(d: any, chat: number) {
 const saveState = (d: any, chat: number, data: any) => db(d, "state").upsert({ chat_id: chat, data, updated_at: new Date().toISOString() });
 const say = (chat: number, text: string, buttons?: { text: string; data: string }[][]) =>
   tg("sendMessage", { chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true, ...(buttons ? { reply_markup: { inline_keyboard: buttons.map((row) => row.map((b) => ({ text: b.text, callback_data: b.data }))) } } : {}) });
-const MENU = [[{ text: "New receipt", data: "n" }, { text: "Rico on the Mac", data: "rico" }]];
+const MENU = [[{ text: "New receipt", data: "n" }, { text: "Rico on the Mac", data: "rico" }], [{ text: "What is Rico doing?", data: "rw" }]];
 
 /* ---------- Settings > Connect Telegram ---------- */
 export async function telegramLink(d: any, account: string, apiUrl: string) {
@@ -86,11 +86,109 @@ export async function telegramWebhook(d: any, req: Request, update: any) {
   if (!link) { if (msg) await say(chat, "This bot is private."); return true; }
   const who = link.account;
   if (cb) { await onButton(d, chat, who, cb); return true; }
-  if (/^\/(new|start)$/.test(text)) return (await startDraft(d, chat), true);
+  if (/^\/new$/.test(text)) return (await startDraft(d, chat), true);
+  if (/^\/start$/.test(text)) return (await help(chat), true);
+  if (/^\/(rico_on|on)$/.test(text)) return (await typed(d, chat, who, "rico on"), true);
   if (/^\/rico$/.test(text)) return (await ricoPanel(d, chat), true);
+  if (/^\/(doing|status)$/.test(text)) return (await ricoDoing(d, chat), true);
+  if (/^\/(shot|screenshot)$/.test(text)) return (await ricoShot(d, chat), true);
   if (/^\/cancel$/.test(text)) { const st = await stateOf(d, chat); delete st.draft; await saveState(d, chat, st); await say(chat, "Stopped. Nothing was sent.", MENU); return true; }
+  if (/^\/(receipts|today)$/.test(text)) return (await receiptsNow(d, chat), true);
+  if (/^\/help$/.test(text)) return (await help(chat), true);
+  if (text && await typed(d, chat, who, text)) return true;
   if (text) await onText(d, chat, who, text);
   return true;
+}
+
+/* ---------- Typing instead of tapping ----------
+   Short plain words do what the buttons do: "rico on", "practice", "rico off", "status", "screenshot",
+   "receipts", "new receipt bread house" (starts one and searches the supplier). While a receipt is being
+   made, only "cancel" is read this way, so names typed as answers are never taken for commands. */
+let commandsSet = false;
+function intentOf(text: string) {
+  const s = text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").replace(/\b(please|pls|plz|now)\b/g, "").trim();
+  const w = new Set(s.split(" "));
+  const rico = w.has("rico") || w.has("ریکۆ") || w.has("helper");
+  const m = s.match(/^(?:new receipt|new|receipt|make (?:a )?receipt|وەسڵی نوێ|وەسڵ)(?: (.+))?$/);
+  if (m) return { do: "new", rest: m[1] ?? "" };
+  if (/^(help|menu|hi|hello|hey|commands|what can you do|سڵاو)$/.test(s)) return { do: "help" };
+  if (/screen ?shot|^(shot|ss|screen|show me|show screen|see screen|photo|picture)$/.test(s)) return { do: "shot" };
+  if (/^(receipts|waiting|pending|today|list|approve|to approve|what s waiting)$/.test(s)) return { do: "receipts" };
+  if ((rico || w.has("start") || w.has("on") || w.has("mode")) && (w.has("practice") || w.has("test") || w.has("تاقیکردنەوە"))) return { do: "practice" };
+  if (/^(practice|practice mode|test mode|test)$/.test(s)) return { do: "practice" };
+  if ((rico && (w.has("off") || w.has("stop") || w.has("close"))) || /^(stop|stop rico|rico off|off|turn off|shut down)$/.test(s)) return { do: "stop" };
+  if ((rico || w.has("start")) && (w.has("real") || w.has("for real"))) return { do: "real" };
+  if ((rico && (w.has("on") || w.has("start") || w.has("open"))) || /^(start|on|turn on|start rico|rico on)$/.test(s)) return { do: "ask" };
+  if (/^(status|doing|what s rico doing|whats rico doing|what is rico doing|where is rico|rico|is rico on|rico status|busy)$/.test(s) || (rico && (w.has("doing") || w.has("status")))) return { do: "doing" };
+  return null;
+}
+async function typed(d: any, chat: number, who: string, text: string) {
+  if (!commandsSet) {
+    commandsSet = true;
+    await tg("setMyCommands", { commands: [
+      { command: "new", description: "New receipt" }, { command: "rico", description: "Start or stop Rico on the Mac" },
+      { command: "status", description: "What Rico is doing" }, { command: "shot", description: "Live screenshot of Rico's screen" },
+      { command: "receipts", description: "Receipts waiting and saved today" }, { command: "cancel", description: "Stop the receipt being made" },
+      { command: "help", description: "What you can type" }] });
+  }
+  const st = await stateOf(d, chat);
+  if (st.draft) {
+    if (/^(cancel|stop|never ?mind|quit|exit)$/i.test(text.trim())) { delete st.draft; await saveState(d, chat, st); await say(chat, "Stopped. Nothing was sent.", MENU); return true; }
+    return false;
+  }
+  const i = intentOf(text);
+  if (!i) {
+    // A supplier's name on its own starts a receipt from that supplier.
+    if (text.trim().length >= 3 && S.rank((await catalogOf(d)).suppliers, text, (x: string) => x).length) { await startDraft(d, chat); await onText(d, chat, who, text); return true; }
+    await say(chat, "I didn't get that. " + HELP_SHORT, MENU); return true;
+  }
+  if (i.do === "new") { await startDraft(d, chat); if (i.rest) await onText(d, chat, who, i.rest); return true; }
+  if (i.do === "help") { await help(chat); return true; }
+  if (i.do === "shot") { await ricoShot(d, chat); return true; }
+  if (i.do === "doing") { await ricoDoing(d, chat); return true; }
+  if (i.do === "receipts") { await receiptsNow(d, chat); return true; }
+  if (i.do === "ask") {
+    const h = helperView(await helperRow(d));
+    if (h.online) await say(chat, `Rico is already on${h.mode === "practice" ? " in practice mode" : ""}.`, [[{ text: "Stop Rico", data: "rc:stop" }, { text: "What is he doing?", data: "rw" }]]);
+    else await say(chat, "Which mode?", [[{ text: "Real (saves receipts)", data: "rc:real" }], [{ text: "Practice (nothing is saved)", data: "rc:practice" }]]);
+    return true;
+  }
+  await ricoCmd(d, chat, who, i.do);
+  return true;
+}
+const HELP_SHORT = "You can type: new receipt, rico on, practice, rico off, status, screenshot, receipts.";
+async function help(chat: number) {
+  await say(chat, [
+    "<b>Type any of these</b> (or tap the buttons):",
+    "• <b>new receipt</b>: start one. Add the supplier to skip a step: <i>new receipt bread house</i>",
+    "• <b>rico on</b>: start Rico (I ask which mode)",
+    "• <b>practice</b>: start Rico in practice mode, nothing is saved",
+    "• <b>rico off</b>: stop Rico",
+    "• <b>status</b>: what Rico is doing right now",
+    "• <b>screenshot</b>: a live picture of Rico's screen",
+    "• <b>receipts</b>: what is waiting for you and what was saved today",
+    "• <b>cancel</b>: stop the receipt you are making",
+  ].join("\n"), MENU);
+}
+/* What is waiting for approval (with the buttons), what is in line, and what was saved today. */
+async function receiptsNow(d: any, chat: number) {
+  const since = new Date(Date.now() - 2 * 86400_000).toISOString();
+  const { data } = await d.from("app_rr_receipts").select("id,status,supplier,invoice,total,currency,mode,problem,saved_at,finance").gte("created_at", since).neq("status", "draft").order("created_at", { ascending: false }).limit(100);
+  const rows = data ?? [];
+  const day = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Baghdad" });
+  const today = day(new Date().toISOString());
+  const review = rows.filter((r: any) => r.status === "review");
+  const queued = rows.filter((r: any) => ["queued", "filling", "approved", "saving"].includes(r.status));
+  const saved = rows.filter((r: any) => r.status === "saved" && r.saved_at && day(r.saved_at) === today);
+  const stopped = rows.filter((r: any) => r.status === "problem" && r.mode !== "practice" && !/^Practice run/.test(r.problem ?? ""));
+  const line = (r: any) => `<b>${esc(r.supplier)}</b> #${esc(r.invoice)} · ${money(Number(r.total), r.currency)}`;
+  if (!review.length && !queued.length && !saved.length && !stopped.length) { await say(chat, "Nothing waiting, and nothing saved today yet.", MENU); return; }
+  if (review.length) for (const r of review.slice(0, 5)) await say(chat, `Waiting for you: ${line(r)}`, [[{ text: "Approve and save", data: "ap:" + r.id }, { text: "Cancel", data: "cx:" + r.id }]]);
+  const parts = [];
+  if (queued.length) parts.push(`<b>With Rico (${queued.length})</b>\n` + queued.map(line).join("\n"));
+  if (stopped.length) parts.push(`<b>Stopped (${stopped.length})</b>, see the app\n` + stopped.map(line).join("\n"));
+  if (saved.length) parts.push(`<b>Saved today (${saved.length})</b>\n` + saved.map((r: any) => line(r) + (r.finance?.no ? ` · #${esc(r.finance.no)}` : "")).join("\n"));
+  if (parts.length) await say(chat, parts.join("\n\n"), MENU);
 }
 
 /* ---------- Lists to tap (typing a few letters still searches) ---------- */
@@ -216,14 +314,10 @@ async function onButton(d: any, chat: number, who: string, cb: any) {
   }
   if (data === "n") return startDraft(d, chat);
   if (data === "rico") return ricoPanel(d, chat);
+  if (data === "rw") return ricoDoing(d, chat);
+  if (data === "rs") return ricoShot(d, chat);
   const rc = data.match(/^rc:(real|practice|stop)$/);
-  if (rc) {
-    if (who !== "rozha") { await say(chat, "Only Rozha can start or stop Rico."); return; }
-    const res = await ricoCommand(d, rc[1], "telegram");
-    await say(chat, res.error === "launcher_off" ? "The Mac is off, or Rico's launcher isn't set up on it, so Rico can't be started from here."
-      : rc[1] === "stop" ? "Stopping Rico on the Mac..." : `Starting Rico${rc[1] === "practice" ? " in practice mode (nothing is saved)" : ""} on the Mac... I'll tell you when he's ready.`);
-    return;
-  }
+  if (rc) return ricoCmd(d, chat, who, rc[1]);
   const st = await stateOf(d, chat), dr = st.draft;
   if (!dr) { await say(chat, "That receipt was finished or stopped. Tap New receipt to make one.", MENU); return; }
   const cat = await catalogOf(d);
@@ -304,8 +398,46 @@ async function ricoPanel(d: any, chat: number) {
   const h = helperView(await helperRow(d));
   const state = h.online ? `Rico is on${h.mode === "practice" ? " in practice mode (nothing is saved)" : ""}${h.signedIn ? ", signed in to Ricotta Restaurant" : ""}.`
     : h.launcher.online ? "Rico is off. The Mac is on, so you can start him." : "The Mac is off, or Rico's launcher isn't set up on it.";
-  await say(chat, state, [[{ text: "Start Rico", data: "rc:real" }, { text: "Practice mode", data: "rc:practice" }], [{ text: "Stop Rico", data: "rc:stop" }]]);
+  await say(chat, state, [[{ text: "Start Rico", data: "rc:real" }, { text: "Practice mode", data: "rc:practice" }], [{ text: "Stop Rico", data: "rc:stop" }],
+    [{ text: "What is Rico doing?", data: "rw" }, { text: "Live screenshot", data: "rs" }]]);
 }
+const STEP: Record<string, string> = { queued: "sent to Rico", filling: "filling in", review: "photo ready to check", approved: "approved", saving: "saving",
+  saved: "saved", problem: "stopped", cancelled: "cancelled" };
+const timeOf = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { timeZone: "Asia/Baghdad", hour: "numeric", minute: "2-digit" });
+function eventLine(e: any) {
+  const who = e.by === "rozha" ? "Rozha" : e.by === "yunis" ? "Yunis" : e.by === "telegram" ? "Telegram" : e.by === "auto" ? "himself" : null;
+  if (e.kind === "command") return `${timeOf(e.at)} ${e.status === "stop" ? "Stop" : e.status === "practice" ? "Practice mode" : "Start"} pressed${who ? " on " + who : ""}`;
+  if (e.kind === "launch") return `${timeOf(e.at)} ${esc(e.text)}`;
+  const practice = e.mode === "practice" || /^Practice run/.test(e.text ?? "");
+  return `${timeOf(e.at)} <b>${esc(e.supplier ?? "")}</b>${e.invoice ? " #" + esc(e.invoice) : ""}: ${practice && e.status === "problem" ? "practice run done, nothing saved" : STEP[e.status] ?? e.status}${practice && e.status !== "problem" ? " (practice)" : ""}${e.status === "approved" && who ? " by " + who : ""}`;
+}
+/* What Rico is doing right now, and what he did last. */
+async function ricoDoing(d: any, chat: number) {
+  const h = helperView(await helperRow(d));
+  let now = !h.online ? (h.launcher.online ? "Rico is off. The Mac is on." : "Rico is off, and the Mac looks off too.")
+    : h.stopped ? "Rico is on but stopped in Settings, so he takes no receipts."
+    : `Rico is on${h.mode === "practice" ? " in practice mode" : ""}${h.signedIn ? ", signed in to Ricotta Restaurant" : ", not signed in yet"}.`;
+  if (h.online && h.busyWith) {
+    const { data: r } = await d.from("app_rr_receipts").select("supplier,invoice,status,log").eq("id", h.busyWith).maybeSingle();
+    if (r) now += `\n\nWorking on <b>${esc(r.supplier)}</b> #${esc(r.invoice)} (${STEP[r.status] ?? r.status}):\n` + (r.log ?? []).slice(-4).map((x: any) => `• ${esc(x.text)}`).join("\n");
+  } else if (h.online) now += " Nothing to do right now.";
+  const { count } = await d.from("app_rr_receipts").select("id", { count: "exact", head: true }).eq("status", "queued");
+  if (count) now += `\n${count} receipt(s) waiting for him.`;
+  const last = await ricoEvents(d, 8);
+  if (last.length) now += "\n\n<b>Lately</b>\n" + last.map(eventLine).join("\n");
+  await say(chat, now, h.online ? [[{ text: "Live screenshot", data: "rs" }, { text: "Refresh", data: "rw" }]] : [[{ text: "Rico on the Mac", data: "rico" }]]);
+}
+async function ricoCmd(d: any, chat: number, who: string, action: string) {
+  if (who !== "rozha") { await say(chat, "Only Rozha can start or stop Rico."); return; }
+  const res = await ricoCommand(d, action, "telegram");
+  await say(chat, res.error === "launcher_off" ? "The Mac is off, or Rico's launcher isn't set up on it, so Rico can't be started from here."
+    : action === "stop" ? "Stopping Rico on the Mac..." : `Starting Rico${action === "practice" ? " in practice mode (nothing is saved)" : ""} on the Mac... I'll tell you when he's ready.`);
+}
+async function ricoShot(d: any, chat: number) {
+  const res = await requestShot(d, chat);
+  await say(chat, res.error ? "Rico is off, so there is nothing to see. Start him first." : "Taking a screenshot of Rico's screen...");
+}
+onShot(async (_d, chat, url, caption) => { if (telegramReady() && url) await tg("sendPhoto", { chat_id: chat, photo: url, caption: caption || "Rico's screen right now" }); });
 onLaunchEvent(async (d, text) => { if (!telegramReady()) return; const chat = await chatOf(d); if (chat) await say(chat, esc(text)); });
 
 /* ---------- Telling Rozha what happened ---------- */
