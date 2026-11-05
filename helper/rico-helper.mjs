@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 
-const VERSION = "2026-11-09.1";
+const VERSION = "2026-11-10.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -50,19 +50,49 @@ const report = (id, body) => api(`helper/receipts/${id}/report`, { method: "POST
    and joins the pieces into one tall picture (in a hidden browser of his own), so the whole receipt,
    from Receipt details to the Total, is in a single photo. If joining fails, the pieces are sent. */
 let joiner = null;
-async function joinPhotos(pieces, height, view) {
+async function joinPhotos(pieces, height, geo) {
   joiner ??= await chromium.launch({ headless: true });
   const p = await joiner.newPage();
   try {
-    return await p.evaluate(async ({ pieces, height, view }) => {
+    return await p.evaluate(async ({ pieces, height, geo }) => {
       const imgs = await Promise.all(pieces.map((x) => new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = "data:image/png;base64," + x.b64; })));
-      // Pixels per page point, made at most 1400 wide so the photo stays small enough to send.
-      const fit = Math.min(1, 1400 / imgs[0].width), scale = (imgs[0].height / view) * fit, c = document.createElement("canvas");
-      c.width = Math.round(imgs[0].width * fit); c.height = Math.round(height * scale);
+      // Photo pixels per page point, taken from the photo itself and the box's real size on screen (its
+      // border and scrollbar included), made at most 1400 wide so the photo stays small enough to send.
+      const ratio = imgs[0].height / geo.rectH, fit = Math.min(1, 1400 / imgs[0].width), c = document.createElement("canvas");
+      c.width = Math.round(imgs[0].width * fit); c.height = Math.round(height * ratio * fit);
       const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
-      imgs.forEach((img, k) => g.drawImage(img, 0, Math.round(pieces[k].y * scale), c.width, Math.round(img.height * fit)));
+      // Only the box's visible content is used. Each piece after the first loses its top 12 points (the
+      // shadow of the page's header), and is lined up by its content: its top strip is slid up and down
+      // until it matches the end of the piece before, pixel for pixel, so nothing shows twice or is cut.
+      const tmp = document.createElement("canvas"), t = tmp.getContext("2d");
+      let bottom = 0;
+      imgs.forEach((img, k) => {
+        const skip = k ? 12 : 0, sy = (geo.top + skip) * ratio, sh = (geo.view - skip) * ratio;
+        let dy = Math.round((pieces[k].y + skip) * ratio * fit);
+        if (k) {
+          const strip = Math.round(36 * ratio * fit);
+          tmp.width = c.width; tmp.height = strip;
+          t.drawImage(img, 0, sy, img.width, strip / fit, 0, 0, c.width, strip);
+          const a = t.getImageData(0, 0, c.width, strip).data;
+          let best = dy, bestDiff = Infinity;
+          for (let off = -Math.round(90 * ratio * fit); off <= Math.round(90 * ratio * fit); off++) {
+            const y0 = dy + off;
+            if (y0 < 0 || y0 + strip > bottom) continue;
+            const b = g.getImageData(0, y0, c.width, strip).data;
+            let d = 0;
+            for (let i = 0; i < a.length; i += 28) d += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
+            if (d < bestDiff) { bestDiff = d; best = y0; }
+          }
+          dy = best;
+        }
+        const dh = Math.round(sh * fit);
+        g.drawImage(img, 0, sy, img.width, sh, 0, dy, c.width, dh);
+        bottom = Math.max(bottom, dy + dh);
+      });
+      // The page's real end: whatever is below the last piece is cut off.
+      if (bottom < c.height) { const out = document.createElement("canvas"); out.width = c.width; out.height = bottom; out.getContext("2d").drawImage(c, 0, 0); return out.toDataURL("image/jpeg", 0.82).split(",")[1]; }
       return c.toDataURL("image/jpeg", 0.82).split(",")[1];
-    }, { pieces, height, view });
+    }, { pieces, height, geo });
   } finally { await p.close(); }
 }
 async function photo(page, id, kind) {
@@ -77,16 +107,20 @@ async function photo(page, id, kind) {
     });
     if (!(await box.evaluate((el) => !!el))) { await upload((await page.screenshot({ type: "jpeg", quality: 80, fullPage: true })).toString("base64")); return; }
     const height = await box.evaluate((el) => el.scrollHeight), view = await box.evaluate((el) => el.clientHeight);
+    const geo = await box.evaluate((el) => ({ rectH: el.getBoundingClientRect().height, top: el.clientTop, view: el.clientHeight }));
     const step = Math.max(200, view - 60), pieces = [];
     for (let y = 0; ; y += step) {
-      const at = Math.min(y, height - view);
-      await box.evaluate((el, v) => el.scrollTo(0, v), at);
+      const want = Math.min(y, height - view);
+      // Scrolled at once (the page scrolls smoothly otherwise), and placed by where it really is, so
+      // the pieces line up exactly when they are joined.
+      await box.evaluate((el, v) => el.scrollTo({ top: v, behavior: "instant" }), want);
       await sleep(350);
+      const at = await box.evaluate((el) => el.scrollTop);
       pieces.push({ y: at, b64: (await box.asElement().screenshot({ type: "png" })).toString("base64") });
-      if (at >= height - view || pieces.length >= 12) break;
+      if (at >= height - view - 1 || want >= height - view || pieces.length >= 12) break;
     }
-    await box.evaluate((el) => el.scrollTo(0, 0));
-    try { await upload(await joinPhotos(pieces, height, view)); }
+    await box.evaluate((el) => el.scrollTo({ top: 0, behavior: "instant" }));
+    try { await upload(await joinPhotos(pieces, height, geo)); }
     catch (e) { log("joining the photos failed, sending them one by one:", e.message); for (const x of pieces) await upload(x.b64); }
   } catch (e) { log("photo failed:", e.message); }
 }
@@ -253,6 +287,8 @@ async function fill(r) {
     await typeNumber(page.getByLabel("Qty").nth(i), l.qty);
     await typeNumber(page.getByLabel("Unit cost").nth(i), l.cost);
   }
+  // Nothing stays selected (the last box's Tab lands on its delete button): a stray key can't change the form.
+  await page.evaluate(() => document.activeElement?.blur?.());
   steps.push(`${r.lines.length} items filled in and read back`);
   await verifyForm(r, "after filling it in");
   steps.push("Whole form read back: supplier, zone, invoice, every item, unit, quantity and price match; totals match");
@@ -369,8 +405,10 @@ async function work(r) {
     if (r.status === "saving" || r.status === "approved") {
       const text = await save(r);
       const finance = await findInInvoices(r);
-      await report(r.id, { status: "saved", finance, log: [`Saved: "${text}"`, `Found in Invoices, ${finance.tab} #${finance.no ?? "?"}`] });
-      log(`saved ${finance.tab} #${finance.no}`);
+      // The row number in Invoices is only its place in the list (it moves when Ricotta Restaurant changes its
+      // tabs), so the receipt is known by its tab, its invoice number and the day.
+      await report(r.id, { status: "saved", finance, log: [`Saved: "${text}"`, `Found in Invoices, ${finance.tab} tab, invoice #${r.invoice} (row ${finance.no ?? "?"} today)`] });
+      log(`saved ${finance.tab} invoice #${r.invoice}`);
     }
   } catch (e) {
     const msg = e instanceof Stop ? e.message : `Rico ran into an error: ${e.message}`;
@@ -387,7 +425,8 @@ async function waitForApproval(r) {
   for (;;) {
     // The server answers the moment it is approved or cancelled (or after 20 s, then Rico asks again).
     const now = await api(`helper/receipts/${r.id}/wait`, { method: "POST", body: { wait: 20 } });
-    if (now.status === "approved") { await api(`helper/receipts/${r.id}/report`, { method: "POST", body: { log: ["Approval received"] } }); return { ...now, status: "saving" }; }
+    // Marked "saving" before anything is pressed: if the Mac stops now, it is never saved a second time.
+    if (now.status === "approved") { await report(r.id, { status: "saving", log: ["Approval received"] }); return { ...now, status: "saving" }; }
     if (now.status === "cancelled") {
       await discard().catch(() => {});
       await report(r.id, { status: "cancelled", log: ["Discarded in Ricotta Restaurant. Nothing was saved."] });

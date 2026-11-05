@@ -267,7 +267,7 @@ export async function receiptsRoute(ctx: Ctx, M: string, path: string, b: any): 
 }
 
 /* ---------- Rico on the Mac ---------- */
-const HELPER_NEXT: Record<string, string[]> = { filling: ["review", "problem"], approved: ["saved", "problem"], saving: ["saved", "problem"], cancelled: ["cancelled"], review: ["problem"] };
+const HELPER_NEXT: Record<string, string[]> = { filling: ["review", "problem"], approved: ["saving", "saved", "problem"], saving: ["saved", "problem"], cancelled: ["cancelled"], review: ["problem"] };
 
 export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Promise<Response> {
   const { db, json, fail } = ctx;

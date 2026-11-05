@@ -187,7 +187,7 @@ async function receiptsNow(d: any, chat: number) {
   const parts = [];
   if (queued.length) parts.push(`<b>With Rico (${queued.length})</b>\n` + queued.map(line).join("\n"));
   if (stopped.length) parts.push(`<b>Stopped (${stopped.length})</b>, see the app\n` + stopped.map(line).join("\n"));
-  if (saved.length) parts.push(`<b>Saved today (${saved.length})</b>\n` + saved.map((r: any) => line(r) + (r.finance?.no ? ` · #${esc(r.finance.no)}` : "")).join("\n"));
+  if (saved.length) parts.push(`<b>Saved today (${saved.length})</b>\n` + saved.map((r: any) => line(r) + (r.finance?.tab ? ` · ${esc(r.finance.tab)}` : "")).join("\n"));
   if (parts.length) await say(chat, parts.join("\n\n"), MENU);
 }
 
@@ -474,7 +474,7 @@ async function receiptEvent(d: any, r: any, event: string) {
   if (event === "saved") {
     const f = r.finance ?? {};
     const photos = await photoLinks(d, r, ["after", "invoices"]);
-    await say(chat, `Saved. <b>${esc(f.tab ?? "Purchases")} #${esc(f.no ?? "?")}</b>\n${head}\nReceived · sent to finance`);
+    await say(chat, `Saved in Invoices, <b>${esc(f.tab ?? "Purchases")}</b> tab (look for invoice #${esc(r.invoice)}).\n${head}\nReceived · sent to finance`);
     if (photos.length) await sendPhotos(chat, photos.map((p) => p.url));
     return;
   }

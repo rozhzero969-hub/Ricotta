@@ -119,7 +119,7 @@ const rrSourceName = r=> t('rrSource_' + (['telegram','rico'].includes(r.source)
 function rrStatusLine(r){
   const m = rrModeOf(r);
   const inv = (r.invoice ? '#' + r.invoice + ' · ' : '') + rrWhen(r.createdAt) + (r.source === 'telegram' ? ' · Telegram' : '') + (m && !rrIsPractice(r) ? ' · ' + t(m === 'practice' ? 'rrModePractice' : 'rrModeReal') : '') + ' · ';
-  if(r.status === 'saved') return inv + (r.finance?.no ? t('rrFinanceNo')(r.finance.tab, r.finance.no) : t('rrStatus_saved'));
+  if(r.status === 'saved') return inv + (r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : t('rrStatus_saved'));
   if(rrIsPractice(r)) return inv + t('rrPracticeRun');
   if(r.status === 'problem') return r.problem || t('rrStatus_problem');
   return inv + t('rrStatus_' + r.status);
@@ -427,7 +427,7 @@ function renderReceiptView(){
   const photos = rr.photos[r.id];
   if(r.photos.length && (!photos || photos.count !== r.photos.length)) rrLoadPhotos(r);
   const head = r.status === 'saved'
-    ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('rrStatus_saved'))}</span><b>${esc(r.finance?.no ? t('rrFinanceNo')(r.finance.tab, r.finance.no) : t('rrStatus_saved'))}</b><small>${esc(r.finance?.month || '')}</small></div>`
+    ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('rrStatus_saved'))}</span><b>${esc(r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : t('rrStatus_saved'))}</b><small>${esc(t('rrFindIt')(r.invoice, rrWhen(r.savedAt)))}</small></div>`
     : `<div class="rr-state ${rrIsPractice(r) ? 'practice' : r.status}">${rrRico()}<div><b>${esc(rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}</b><small>${esc(r.status === 'problem' ? r.problem || '' : t('rrStatusHint_' + r.status))}</small></div></div>`;
   const lines = r.lines.map((l, i)=>`<li><span class="rr-num">${i + 1}</span><span><b dir="auto">${esc(l.item)}</b><small>${esc(rrNum(l.qty, 3))} × <bdi>${esc(l.unit)}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</small></span><b>${esc(rrMoney(l.qty * l.cost, r.currency))}</b></li>`).join('');
   // A long page comes in several photos, top to bottom: each says which part it is ("2 of 3").
@@ -587,7 +587,7 @@ function rrHistCard(r){
   const m = rrModeOf(r);
   const when = formatIraqDateTime(new Date(r.sentAt || r.createdAt), {hour:'numeric', minute:'2-digit'});
   const tone = rrIsPractice(r) || r.status === 'cancelled' ? 'draft' : r.status === 'saved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : 'busy';
-  const meta = [r.invoice ? '#' + r.invoice : '', rrSourceName(r), accountLabel(r.by), m ? t(m === 'practice' ? 'rrModePractice' : 'rrModeReal') : '', r.finance?.no ? t('rrFinanceNo')(r.finance.tab, r.finance.no) : ''].filter(Boolean).join(' · ');
+  const meta = [r.invoice ? '#' + r.invoice : '', rrSourceName(r), accountLabel(r.by), m ? t(m === 'practice' ? 'rrModePractice' : 'rrModeReal') : '', r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : ''].filter(Boolean).join(' · ');
   const lines = r.lines.map(l=>`<li><span dir="auto">${esc(l.item)}</span><b>${esc(rrNum(l.qty, 3))} × <bdi>${esc(l.unit)}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</b></li>`).join('');
   return `<article class="hist-card rr-hist" data-search-row data-search-text="${esc([r.supplier, r.invoice, ...r.lines.map(l=>l.item)].join(' '))}">
     <div class="hist-top"><div class="hist-date"><b>${esc(when)}</b><span class="rr-hist-state"><i class="rr-dot ${tone}" aria-hidden="true"></i>${esc(rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}</span></div>
