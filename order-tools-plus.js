@@ -14,7 +14,7 @@ function median(list){
 }
 const usualAmount = id=>roundQuantity(median(itemAmounts(id)));
 /* The usual order for a weekday: items in at least half of that weekday's orders, at their usual amount there. */
-function weekdayOrder(day = new Date().getDay()){
+function weekdayOrder(day = new Date(Date.now() + 3 * 3600000).getUTCDay()){
   const weekdayOf = iso=>new Date(new Date(iso).getTime() + 3 * 3600000).getUTCDay();
   const orders = state.history.filter(o=>weekdayOf(o.date) === day);
   if(orders.length < 2) return [];

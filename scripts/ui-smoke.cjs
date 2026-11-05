@@ -203,7 +203,7 @@ const server=http.createServer((req,res)=>{
       const helpers=await page.evaluate(()=>{const keep={history:state.history,cart:state.cart,items:state.items};
         const it=state.items[0],o=q=>({id:'h'+Math.random(),date:new Date(Date.now()-7*86400000).toISOString(),by:'rozha',entries:[{supplierId:it.supplierId,items:[{itemId:it.id,name:it.name,qty:q,unit:it.unit}]}]});
         state.history=[o(5),o(5),o(5),o(5)];
-        const usual=usualAmount(it.id),week=weekdayOrder(new Date().getDay()).map(l=>l.qty);
+        const usual=usualAmount(it.id),week=weekdayOrder().map(l=>l.qty);
         Object.assign(state,keep);return [usual,week];});
       assert.deepEqual(helpers,[5,[5]],'usual amount, weekday order');
       // History shows 60 days; the report card counts only this month.
