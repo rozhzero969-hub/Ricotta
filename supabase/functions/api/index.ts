@@ -818,7 +818,7 @@ Deno.serve(async (req) => {
     if (path.startsWith("helper/")) {
       if (!(await helperAllowed(req))) return fail("unauthorized", 401);
       const limited = await requestLimit(["helper"], [900]); if (limited) return limited;
-      const hb = M === "GET" ? {} : await readBody(req, path.endsWith("/photo") ? 4_400_000 : MAX_BODY_BYTES);
+      const hb = M === "GET" ? {} : await readBody(req, path.endsWith("/photo") || path === "helper/shot" ? 4_400_000 : MAX_BODY_BYTES);
       return await helperRoute({ db, json, fail, account: null, rozha: false }, M, path, hb);
     }
 

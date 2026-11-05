@@ -20,7 +20,7 @@ const TOKEN = () => Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
 const db = (d: any, table: string) => d.from(`app_tg_${table}`);
 const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const num = (n: number, d = 0) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: d });
-const money = (n: number, cur: string) => (cur === "USD" ? "$" + num(n, 2) : "IQD " + num(n));
+const money = (n: number, cur: string) => (cur === "USD" ? "$" + num(n, 3) : "IQD " + num(n, 3));
 
 async function sha(v: string) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v));
@@ -272,11 +272,11 @@ async function onText(d: any, chat: number, who: string, text: string) {
     if (!/^\d+(\.\d{1,3})?$/.test(v) || Number(v) <= 0) { await say(chat, "Type the quantity as a number, for example 4 or 2.5."); return; }
     dr.cur.qty = Number(v); dr.step = "cost";
     await saveState(d, chat, st);
-    await say(chat, `Unit cost for one ${esc(dr.cur.unit)}, in ${dr.currency === "USD" ? "whole dollars" : "IQD"}?`);
+    await say(chat, `Unit cost for one ${esc(dr.cur.unit)}, in ${dr.currency === "USD" ? "dollars" : "IQD"}? (Commas are fine, and a dot for decimals: 1,250.5)`);
     return;
   }
   if (dr.step === "cost") {
-    if (!/^\d+$/.test(v) || Number(v) <= 0) { await say(chat, `Type the unit cost as a whole number${dr.currency === "USD" ? " of dollars" : ""}.`); return; }
+    if (!/^\d+(\.\d{1,3})?$/.test(v) || Number(v) <= 0) { await say(chat, `Type the unit cost as a number${dr.currency === "USD" ? " of dollars" : ""}, for example 12,500 or 1,250.5.`); return; }
     dr.cur.cost = Number(v); dr.lines.push(dr.cur); dr.cur = null; dr.step = "more";
     await saveState(d, chat, st);
     await showDraft(chat, dr);
