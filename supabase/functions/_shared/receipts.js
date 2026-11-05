@@ -17,6 +17,29 @@
     return out;
   }
   function trimNumber(n) { return String(Math.round(n * 1000) / 1000); }
+  /* Unit names that say their own size: a gram (or millilitre) is 1, a kilo (or litre) is 1000 of the
+     base. A unit whose name says one size and counts another (a "gram" that counts 1000 grams) is wrong
+     in Ricotta Restaurant's list and is never chosen by itself; a receipt using it is questioned. */
+  const GRAM = /^(غرام|گرام|گرم|غم|gram|grams|gr|g|مل|ملی|میلی|مللی|ml)$/i;
+  const KILO = /^(کیلۆ|کیلو|كيلو|كيلۆ|kg|kilo|kilogram|لیتر|لتر|litre|liter|l)$/i;
+  const unitWord = (label) => { const m = String(label || '').match(/^(.*?)\s*\(\s*[\d.,]+\s*×\s*\)\s*$/); return (m ? m[1] : String(label || '')).replace(/[\u200e\u200f]/g, '').trim(); };
+  function impliedFactor(item, opt) {
+    const w = unitWord(opt.label), base = unitWord(item && item.base);
+    if (GRAM.test(w)) return 1;
+    if (KILO.test(w) && GRAM.test(base)) return 1000;
+    return null;
+  }
+  const unitIsOdd = (item, opt) => { const f = impliedFactor(item, opt); return f != null && f !== opt.factor; };
+  /* The unit picked for an item when nothing else says: the one bought last time, else the biggest one
+     whose name agrees with its size. */
+  function defaultUnit(item, lastLabels) {
+    const opts = unitOptions(item);
+    const last = (lastLabels || []).find((l) => opts.some((o) => o.label === l));
+    if (last) return last;
+    const good = opts.filter((o) => !unitIsOdd(item, o));
+    const pool = good.length ? good : opts;
+    return pool.length ? pool.reduce((a, b) => (b.factor > a.factor ? b : a)).label : '';
+  }
   const wholePositive = (v) => Number.isSafeInteger(v) && v > 0;
   const qtyOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 99999 && Math.round(v * 1000) === v * 1000;
   // A unit cost may have a dot (up to 3 decimals), in dinars or dollars.
@@ -63,6 +86,20 @@
       else seen.set(l.item, n);
       // A unit that counts as a single gram or millilitre on an item normally bought in bigger units.
       if (opt && opt.factor === 1 && opt.label !== item.base && unitOptions(item).some((o) => o.factor > 1)) warnings.push({ code: 'tinyUnit', line: n });
+      if (opt && unitIsOdd(item, opt)) warnings.push({ code: 'unitNameOdd', line: n, unit: unitWord(opt.label), factor: opt.factor, base: unitWord(item.base) });
+      // A gram (or millilitre) costing 1,000 IQD or $1 or more is almost surely the wrong unit or price.
+      if (opt && GRAM.test(unitWord(opt.label)) && costOk(l.cost) && l.cost >= (r.currency === 'USD' ? 1 : 1000)) warnings.push({ code: 'gramPrice', line: n, cost: l.cost, unit: unitWord(opt.label), currency: r.currency });
+      // The price per gram (or piece) far from what was paid last time in another unit: a wrong unit.
+      if (opt && costOk(l.cost) && last) {
+        for (const o of unitOptions(item)) {
+          if (o.label === l.unit) continue;
+          const was = last[`${l.item}|${o.label}|${r.currency}`];
+          if (!(was > 0)) continue;
+          const now = l.cost / opt.factor, then = was / o.factor, ratio = now / then;
+          if (ratio > 3 || ratio < 1 / 3) warnings.push({ code: 'unitPriceOdd', line: n, now, then, base: unitWord(item.base), times: Math.round((ratio > 1 ? ratio : 1 / ratio) * 10) / 10, more: ratio > 1 });
+          break;
+        }
+      }
       const before = last && last[`${l.item}|${l.unit}|${r.currency}`];
       if (before && costOk(l.cost) && before > 0) {
         const pct = Math.round(((l.cost - before) / before) * 100);
@@ -73,5 +110,5 @@
     if (!errors.length && t.iqd >= lim.bigTotal) warnings.push({ code: 'bigTotal', iqd: t.iqd, limit: lim.bigTotal });
     return { errors, warnings, ...t };
   }
-  globalThis.RicottaReceipts = Object.freeze({ unitOptions, totals, check, MAX_LINES });
+  globalThis.RicottaReceipts = Object.freeze({ unitOptions, totals, check, unitIsOdd, defaultUnit, unitWord, MAX_LINES });
 })();

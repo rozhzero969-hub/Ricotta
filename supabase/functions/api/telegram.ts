@@ -297,15 +297,26 @@ const WARN: Record<string, (w: any) => string> = {
   tinyUnit: (w) => `Item ${w.line}: this unit counts as only 1 gram or piece`,
   rateOdd: (w) => `The dollar rate is outside ${w.min} to ${w.max}`,
   bigTotal: (w) => `A big receipt: IQD ${num(w.iqd)}`,
+  unitNameOdd: (w) => `Item ${w.line}: the unit "${esc(w.unit)}" counts as ${num(w.factor)} ${esc(w.base)}. Its name doesn't match its size; check it's the unit you meant`,
+  gramPrice: (w) => `Item ${w.line}: ${money(w.cost, w.currency)} per ${esc(w.unit)} is far too expensive or odd. Are you sure?`,
+  unitPriceOdd: (w) => `Item ${w.line}: ${num(w.times, 1)} times ${w.more ? "more" : "less"} per ${esc(w.base)} than last time. Check the unit`,
 };
 async function onButton(d: any, chat: number, who: string, cb: any) {
   const data = String(cb.data ?? "");
   await tg("answerCallbackQuery", { callback_query_id: cb.id });
   // Approve or cancel a receipt Rico filled in.
-  const act = data.match(/^(ap|cx):([0-9a-f-]{36})$/);
+  const act = data.match(/^(ap|apy|cx):([0-9a-f-]{36})$/);
   if (act) {
     const { data: r } = await d.from("app_rr_receipts").select("*").eq("id", act[2]).maybeSingle();
     if (!r) { await say(chat, "That receipt is no longer here."); return; }
+    // A receipt with anything unusual (or a big one) is asked about once more before Rico saves it.
+    if (act[1] === "ap" && ((r.warnings ?? []).length || Number(r.total) >= (await helperView(await helperRow(d))).limits.bigTotal)) {
+      const ws = (r.warnings ?? []).map((w: any) => "• " + (WARN[w.code]?.(w) ?? w.code)).join("\n");
+      await say(chat, `Are you sure? <b>${esc(r.supplier)}</b> #${esc(r.invoice)}, ${money(Number(r.total), r.currency)}${ws ? "\n\n" + ws : ""}`,
+        [[{ text: "Yes, approve and save", data: "apy:" + r.id }, { text: "Cancel receipt", data: "cx:" + r.id }]]);
+      return;
+    }
+    if (act[1] === "apy") act[1] = "ap";
     const res = act[1] === "ap" ? await approveReceipt(d, r, who) : await cancelReceipt(d, r, who);
     await tg("editMessageReplyMarkup", { chat_id: chat, message_id: cb.message.message_id, reply_markup: { inline_keyboard: [] } });
     await say(chat, res.error ? (res.error === "too_late" ? "Too late: Rico already saved it." : res.error === "not_waiting" ? "This receipt isn't waiting for approval any more." : "That didn't work. Try in the app.")

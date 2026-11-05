@@ -206,6 +206,7 @@ async function readCatalog() {
     return { name: i.name, base: units[i.usage_unit_id] || i.base_unit, units: list };
   });
   await api("helper/catalog", { method: "PUT", body: { suppliers, zones, items } });
+  catalogNow = { suppliers, zones, items, at: Date.now() };
   log(`read ${items.length} items, ${suppliers.length} suppliers, ${zones.length} zones`);
 }
 
@@ -380,11 +381,20 @@ async function findInInvoices(r) {
 
 /* ---------- One receipt ---------- */
 let pressedSave = false;
+let catalogNow = null;   // the lists as Rico last read them from Ricotta Restaurant
 async function work(r) {
   pressedSave = false;
   log(`receipt ${r.id.slice(0, 8)} ${r.status} ${r.supplier} #${r.invoice}`);
   try {
     if (r.status === "filling") {
+      // First a check against Ricotta Restaurant's lists as they are now (re-read if older than 10
+      // minutes): an item, unit, supplier or zone renamed or removed since the receipt was sent, and
+      // Rico stops before touching anything instead of guessing.
+      if (!catalogNow || Date.now() - catalogNow.at > 10 * 60_000) await readCatalog().catch((e) => log("Could not re-read the lists:", e.message));
+      if (catalogNow) {
+        const c = R.check(r, catalogNow, {}, {});
+        if (c.errors.length) stop(`This receipt no longer matches Ricotta Restaurant's lists (${c.errors.map((e) => (e.line ? "item " + e.line + ": " : "") + e.code).join(", ")}). Something was renamed or removed there. Nothing was filled in; fix the receipt and send it again.`);
+      }
       const steps = await fill(r);
       await photo(page, r.id, "before");
       if (PRACTICE) {
