@@ -20,8 +20,14 @@
 //   POST   helper/launcher     {running, result}     the launcher on the Mac; answers {command}
 //   POST   receipts-settings/rico {action}           (session, rozha) start Rico (real | practice) or stop him
 //   PUT    helper/catalog      {suppliers, zones, items}
-//   POST   helper/claim                              the next receipt to work on, or none
-//   GET    helper/receipts/:id                       one receipt (Rico waits on it for the approval)
+//   POST   helper/claim       {wait, mode}          the next receipt to work on; waits up to {wait} s for one
+// Waiting on the server (instead of asking every few seconds) is what makes Rico start, stop and take
+// a new receipt within a second or two.
+//   GET    helper/receipts/:id                       one receipt
+//   POST   helper/receipts/:id/wait {wait}           answers as soon as the receipt is no longer waiting for approval
+//   POST   helper/shot/wait   {wait}                answers as soon as someone asks for a live screenshot
+//   POST   helper/shot        {chat, image}         the screenshot, sent to whoever asked
+//   GET    receipts-activity                         (session) what Rico did, newest first (the Record tab)
 //   POST   helper/receipts/:id/report {status, log, problem, finance, totals}
 //   POST   helper/receipts/:id/photo  {kind, image (base64 JPEG)}
 import "../_shared/receipts.js";
@@ -36,6 +42,18 @@ const PHOTO_KINDS = ["before", "after", "invoices", "problem"];
 const t = (v: unknown, max = 200) => String(v ?? "").slice(0, max);
 const now = () => new Date().toISOString();
 const rr = (db: any, table: string) => db.from(`app_rr_${table}`);
+const LAUNCHER_FRESH = 45_000;   // the launcher waits up to 20 s on the server, then asks again
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const waitFor = (v: unknown) => Math.max(0, Math.min(20, Number(v) || 0)) * 1000;
+/* Asks again every ~0.7 s until there is an answer or the time is up. */
+async function poll<T>(ms: number, fn: () => Promise<T | null>): Promise<T | null> {
+  const until = Date.now() + ms;
+  for (;;) {
+    const v = await fn();
+    if (v || Date.now() >= until) return v;
+    await pause(700);
+  }
+}
 
 async function sha(v: string) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v));
@@ -70,7 +88,7 @@ export async function lastPrices(db: any) {
 }
 export function view(r: any, withLog = true) {
   return {
-    id: r.id, by: r.created_by, source: r.source, status: r.status, supplier: r.supplier, invoice: r.invoice, zone: r.zone,
+    id: r.id, by: r.created_by, source: r.source, mode: r.mode ?? null, status: r.status, supplier: r.supplier, invoice: r.invoice, zone: r.zone,
     currency: r.currency, rate: r.rate == null ? null : Number(r.rate), delivery: r.delivery == null ? null : Number(r.delivery),
     lines: r.lines ?? [], total: r.total == null ? null : Number(r.total), warnings: r.warnings ?? [], problem: r.problem,
     finance: r.finance, photos: (r.photos ?? []).map((p: any) => ({ kind: p.kind, at: p.at })), log: withLog ? r.log ?? [] : undefined,
@@ -83,7 +101,7 @@ export function helperView(h: any) {
   const ls = h.launcher_seen ? Date.parse(h.launcher_seen) : 0;
   return { online: !!seen && Date.now() - seen < 90_000, lastSeen: h.last_seen ?? null, signedIn: !!h.signed_in, busyWith: h.busy_with ?? null,
     autoApprove: !!h.auto_approve, stopped: !!h.stopped, limits: limitsOf(h), version: h.version ?? null, mode: h.mode ?? null,
-    launcher: { online: !!ls && Date.now() - ls < 30_000, command: h.command ?? null, result: h.launch_result ?? null, at: h.launch_at ?? null } };
+    launcher: { online: !!ls && Date.now() - ls < LAUNCHER_FRESH, command: h.command ?? null, result: h.launch_result ?? null, at: h.launch_at ?? null } };
 }
 /* Only these draft fields, in these shapes, are kept. */
 function cleanDraft(b: any) {
@@ -115,12 +133,28 @@ export function onReceiptEvent(fn: typeof notify) { notify = fn; }
 /* Rico started, stopped or could not start (from the launcher on the Mac). */
 let launchNotify: (db: any, text: string) => Promise<void> = async () => {};
 export function onLaunchEvent(fn: typeof launchNotify) { launchNotify = fn; }
+/* A live screenshot Rico took because someone asked for it on Telegram. */
+let shotNotify: (db: any, chat: number, url: string, caption: string) => Promise<void> = async () => {};
+export function onShot(fn: typeof shotNotify) { shotNotify = fn; }
+/* Asks Rico for a live screenshot of what he has on the screen; it goes to this chat. */
+export async function requestShot(db: any, chat: number) {
+  const h = helperView(await helperRow(db));
+  if (!h.online) return { error: "rico_off" };
+  await rr(db, "helper").update({ shot_want: now(), shot_chat: chat }).eq("id", true);
+  return { ok: true };
+}
+/* What Rico did lately (newest first): receipt steps, Start / Stop presses and how they went. */
+export async function ricoEvents(db: any, limit = 300) {
+  const { data, error } = await rr(db, "events").select("*").order("at", { ascending: false }).order("id", { ascending: false }).limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((e: any) => ({ id: e.id, at: e.at, kind: e.kind, status: e.status, receipt: e.receipt_id, supplier: e.supplier, invoice: e.invoice, source: e.source, mode: e.mode, by: e.actor, text: e.text }));
+}
 /* Start Rico for real, in practice mode, or stop him: the launcher on the Mac picks this up. */
 export async function ricoCommand(db: any, action: string, by: string) {
   if (!["real", "practice", "stop"].includes(action)) return { error: "invalid_input" };
   const h = await helperRow(db);
   const ls = h.launcher_seen ? Date.parse(h.launcher_seen) : 0;
-  if (!ls || Date.now() - ls > 30_000) return { error: "launcher_off", helper: helperView(h) };
+  if (!ls || Date.now() - ls > LAUNCHER_FRESH) return { error: "launcher_off", helper: helperView(h) };
   await rr(db, "helper").update({ command: action, command_by: by, command_at: now(), launch_result: null }).eq("id", true);
   return { helper: helperView(await helperRow(db)) };
 }
@@ -184,6 +218,7 @@ export async function receiptsRoute(ctx: Ctx, M: string, path: string, b: any): 
     if (error) throw error;
     return json({ receipts: (data ?? []).filter((r: any) => r.status !== "draft" || r.created_by === ctx.account).map((r: any) => view(r)), catalog, helper: helperView(h), last });
   }
+  if (M === "GET" && path === "receipts-activity") return json({ events: await ricoEvents(db) });
   if (M === "POST" && path === "receipts-settings/rico") {
     if (!ctx.rozha) return fail("forbidden", 403);
     const r = await ricoCommand(db, t(b.action, 20), ctx.account ?? "rozha");
@@ -253,11 +288,38 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     const patch: Record<string, unknown> = { launcher_seen: now() };
     if (b.running === false && h.mode) { patch.mode = null; patch.last_seen = null; patch.signed_in = false; }
     if (typeof b.result === "string" && b.result) { patch.launch_result = t(b.result, 400); patch.launch_at = now(); }
-    const command = h.command ?? null;
-    if (command) { patch.command = null; patch.command_by = null; }
     await rr(db, "helper").update(patch).eq("id", true);
     if (patch.launch_result) { try { await launchNotify(db, String(patch.launch_result)); } catch (e) { console.error("launch notify", e); } }
+    if (b.take === false) return json({ command: null });
+    // The command is taken once: only the request that clears it gets it.
+    const command = await poll(waitFor(b.wait), async () => {
+      const { data } = await rr(db, "helper").select("command").eq("id", true).maybeSingle();
+      if (!data?.command) return null;
+      const { data: took } = await rr(db, "helper").update({ command: null, command_by: null, launcher_seen: now() }).eq("id", true).eq("command", data.command).select("id");
+      return took?.length ? String(data.command) : null;
+    });
+    if (!command && b.wait) await rr(db, "helper").update({ launcher_seen: now() }).eq("id", true);
     return json({ command });
+  }
+  if (M === "POST" && path === "helper/shot/wait") {
+    const want = await poll(waitFor(b.wait), async () => {
+      const { data } = await rr(db, "helper").select("shot_want,shot_chat").eq("id", true).maybeSingle();
+      if (!data?.shot_want) return null;
+      const { data: took } = await rr(db, "helper").update({ shot_want: null }).eq("id", true).eq("shot_want", data.shot_want).select("id");
+      return took?.length ? { chat: data.shot_chat } : null;
+    });
+    return json(want ? { want: true, chat: want.chat } : { want: false });
+  }
+  if (M === "POST" && path === "helper/shot") {
+    const chat = Number(b.chat);
+    const bytes = typeof b.image === "string" && b.image.length < 4_200_000 ? Uint8Array.from(atob(b.image), (c) => c.charCodeAt(0)) : null;
+    if (!Number.isSafeInteger(chat) || !bytes || !(bytes[0] === 0xff && bytes[1] === 0xd8)) return fail("invalid_photo");
+    const p = `shots/${Date.now()}.jpg`;
+    const { error: up } = await db.storage.from(BUCKET).upload(p, bytes, { contentType: "image/jpeg", upsert: false });
+    if (up) return fail("upload_failed", 503);
+    const { data: s } = await db.storage.from(BUCKET).createSignedUrl(p, 3600);
+    try { await shotNotify(db, chat, s?.signedUrl ?? "", t(b.caption, 300)); } catch (e) { console.error("shot notify", e); }
+    return json({ ok: true });
   }
   // Rico just started: a receipt he was filling in when he stopped goes back in line (nothing was saved
   // yet); one he was saving is shown as a problem, because Ricotta Restaurant may already have it.
@@ -287,10 +349,23 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     return error ? fail("save_failed", 503) : json({ ok: true, items: items.length });
   }
   if (M === "POST" && path === "helper/claim") {
-    const { data, error } = await db.rpc("app_internal_rr_claim");
-    if (error) throw error;
-    const r = Array.isArray(data) ? data[0] : data;
+    const mode = b.mode === "practice" ? "practice" : b.mode === "real" ? "real" : null;
+    const r = await poll(waitFor(b.wait), async () => {
+      const { data, error } = await db.rpc("app_internal_rr_claim", { p_mode: mode });
+      if (error) throw error;
+      return (Array.isArray(data) ? data[0] : data) ?? null;
+    });
     return json({ receipt: r ? view(r) : null, helper: helperView(await helperRow(db)) });
+  }
+  if ((m = path.match(/^helper\/receipts\/([0-9a-f-]{36})\/wait$/)) && M === "POST") {
+    const id = m[1];
+    const r = await poll(waitFor(b.wait), async () => {
+      const { data, error } = await rr(db, "receipts").select("*").eq("id", id).maybeSingle();
+      if (error) throw error;
+      return !data || data.status !== "review" ? (data ?? { gone: true }) : null;
+    });
+    if (!r) { const { data } = await rr(db, "receipts").select("*").eq("id", id).maybeSingle(); return data ? json(view(data)) : fail("not_found", 404); }
+    return (r as any).gone ? fail("not_found", 404) : json(view(r));
   }
   if ((m = path.match(/^helper\/receipts\/([0-9a-f-]{36})(?:\/(report|photo))?$/))) {
     const id = m[1], action = m[2] ?? null;
@@ -346,6 +421,10 @@ async function cleanOldPhotos(db: any, h: any) {
   const { data: folders } = await db.storage.from(BUCKET).list("", { limit: 1000 });
   const keep = new Set(((await rr(db, "receipts").select("id")).data ?? []).map((r: any) => r.id));
   const gone = (folders ?? []).map((f: any) => f.name).filter((n: string) => /^[0-9a-f-]{36}$/.test(n) && !keep.has(n));
+  // Live screenshots were for that moment: gone after a day.
+  const { data: shots } = await db.storage.from(BUCKET).list("shots", { limit: 1000 });
+  const old = (shots ?? []).filter((f: any) => Number(f.name.split(".")[0]) < Date.now() - 86400_000).map((f: any) => `shots/${f.name}`);
+  if (old.length) await db.storage.from(BUCKET).remove(old);
   for (const folder of gone.slice(0, 50)) {
     const { data: files } = await db.storage.from(BUCKET).list(folder, { limit: 100 });
     const paths = (files ?? []).map((f: any) => `${folder}/${f.name}`);

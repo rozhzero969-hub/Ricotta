@@ -298,7 +298,7 @@
     // Receipts: a small copy of what Rico reads from Ricotta Restaurant, and a Rico who fills a receipt
     // in two seconds and saves it right after it is approved (there is no Mac in the Lab).
     if(path === 'receipts-settings/telegram') return method === 'GET' ? json({ready:true, connected:!!db.tgLinked}) : json({link:'https://t.me/RicottaHelperBot?start=lab', bot:'RicottaHelperBot'});
-    if(path === 'receipts' || path === 'receipts-settings' || path === 'receipts-settings/rico' || path.startsWith('receipts/')){
+    if(path === 'receipts' || path === 'receipts-settings' || path === 'receipts-settings/rico' || path === 'receipts-activity' || path.startsWith('receipts/')){
       if(!can(account, 'receipts')) return fail('forbidden', 403);
       db.rr ||= {receipts:[], helper:{online:true, lastSeen:new Date().toISOString(), signedIn:true, busyWith:null, autoApprove:false, stopped:false, limits:{bigTotal:1000000, priceJump:30, rateMin:1500, rateMax:1800}, version:'lab', mode:'real', launcher:{online:true, command:null, result:null, at:null}}, next:28};
       const cat = {at:new Date().toISOString(), suppliers:['Bread House Bakery','Coffee Supply','Corner Cake','Jabal Amman','ITALY COFFEE QAHOWA','شوینی لقمان بۆ کەلەشیر و قاز و قەل','کۆگای مختار','ابو ابراهيم قصاب'],
@@ -312,6 +312,10 @@
           {name:'Mushroom - کوارگ', base:'دانە', units:[{name:'کارتۆن', factor:8}]}]};
       const R = globalThis.RicottaReceipts, list = db.rr.receipts, now = ()=>new Date().toISOString();
       if(method === 'GET' && path === 'receipts') return json({receipts:list.filter(r=>r.status !== 'draft' || r.by === account), catalog:cat, helper:db.rr.helper, last:{'Frozen Peas - بزالیا سادە|دانە (400×)|IQD':2000}});
+      if(method === 'GET' && path === 'receipts-activity'){ const t0 = Date.now(); return json({events:[
+        {id:3, at:new Date(t0 - 60e3).toISOString(), kind:'status', status:'problem', supplier:'Bread House Bakery', invoice:'2627', source:'telegram', mode:'practice', by:'rico', text:'Practice run: filled in, photographed and discarded. Nothing was saved.'},
+        {id:2, at:new Date(t0 - 120e3).toISOString(), kind:'launch', mode:'practice', text:'Rico (practice mode, nothing is saved) is on: signed in to Ricotta Restaurant and read 317 items, 57 suppliers and 12 zones.'},
+        {id:1, at:new Date(t0 - 130e3).toISOString(), kind:'command', status:'practice', by:'rozha'}]}); }
       if(method === 'POST' && path === 'receipts-settings/rico'){ const h = db.rr.helper; if(body.action === 'stop'){ h.online = false; h.mode = null; h.launcher.result = 'Rico is off.'; } else { h.online = true; h.mode = body.action; h.launcher.result = (body.action === 'practice' ? 'Rico (practice mode, nothing is saved)' : 'Rico') + ' is on: signed in to Ricotta Restaurant and read 7 items, 8 suppliers and 6 zones.'; } save(); return json(h); }
       if(method === 'PUT' && path === 'receipts-settings'){ if(account !== 'rozha') return fail('forbidden', 403); if(typeof body.autoApprove === 'boolean') db.rr.helper.autoApprove = body.autoApprove; if(typeof body.stopped === 'boolean') db.rr.helper.stopped = body.stopped; if(body.limits) Object.assign(db.rr.helper.limits, body.limits); save(); return json(db.rr.helper); }
       const m = path.match(/^receipts\/([0-9a-f-]{36})(?:\/(send|approve|cancel|photos))?$/); if(!m) return fail('not_found', 404);

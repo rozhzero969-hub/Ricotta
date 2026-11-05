@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 
-const VERSION = "2026-11-07.1";
+const VERSION = "2026-11-08.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -346,8 +346,8 @@ async function work(r) {
 /* Waits (keeping the filled-in form open) until the receipt is approved or cancelled in the app. */
 async function waitForApproval(r) {
   for (;;) {
-    await sleep(3000);
-    const now = await api(`helper/receipts/${r.id}`);
+    // The server answers the moment it is approved or cancelled (or after 20 s, then Rico asks again).
+    const now = await api(`helper/receipts/${r.id}/wait`, { method: "POST", body: { wait: 20 } });
     if (now.status === "approved") { await api(`helper/receipts/${r.id}/report`, { method: "POST", body: { log: ["Approval received"] } }); return { ...now, status: "saving" }; }
     if (now.status === "cancelled") {
       await discard().catch(() => {});
@@ -370,13 +370,30 @@ log(`Rico ${VERSION}${PRACTICE ? " (practice: nothing is saved)" : ""}`);
 await api("helper/recover", { method: "POST" }).then((x) => { if (x?.recovered) log(`picked up ${x.recovered} receipt(s) left half way`); }, (e) => log("recover:", e.message));
 let lastCatalog = 0;
 await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => log("Could not read the lists yet:", e.message));
+/* A live screenshot when someone asks for one on Telegram: waits on the server, so it comes in a second
+   or two, even while Rico is in the middle of a receipt. */
+(async function shots() {
+  for (;;) {
+    try {
+      const w = await api("helper/shot/wait", { method: "POST", body: { wait: 20 } });
+      if (!w?.want) continue;
+      const img = (await page.screenshot({ type: "jpeg", quality: 75 })).toString("base64");
+      const what = await page.title().catch(() => "");
+      await api("helper/shot", { method: "POST", body: { chat: w.chat, image: img, caption: `Rico's screen at ${new Date().toLocaleTimeString()}${PRACTICE ? " (practice mode)" : ""}${what ? ": " + what : ""}` } });
+      log("sent a live screenshot");
+    } catch (e) { log("screenshot:", e.message); await sleep(5000); }
+  }
+})();
 for (;;) {
   const h = await heartbeat(true);
+  let waited = false;
   if (h && !h.stopped) {
-    const { receipt } = await api("helper/claim", { method: "POST" }).catch((e) => { log("claim:", e.message); return {}; });
+    // Waits up to 20 s on the server for a receipt, so a new one starts within a second or two.
+    const { receipt } = await api("helper/claim", { method: "POST", body: { wait: 20, mode: PRACTICE ? "practice" : "real" } }).catch((e) => { log("claim:", e.message); return {}; });
     if (receipt) { await work(receipt); continue; }
+    waited = true;
   }
   // Every 30 minutes; after a failed read, again a minute later.
   if (Date.now() - lastCatalog > (lastCatalog ? 30 * 60_000 : 60_000)) await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => { log("Could not read the lists yet:", e.message); lastCatalog = Date.now() - 29 * 60_000; });
-  await sleep(5000);
+  if (!waited) await sleep(3000);
 }
