@@ -119,7 +119,7 @@ const rrSourceName = r=> t('rrSource_' + (['telegram','rico'].includes(r.source)
 function rrStatusLine(r){
   const m = rrModeOf(r);
   const inv = (r.invoice ? '#' + r.invoice + ' · ' : '') + rrWhen(r.createdAt) + (r.source === 'telegram' ? ' · Telegram' : '') + (m && !rrIsPractice(r) ? ' · ' + t(m === 'practice' ? 'rrModePractice' : 'rrModeReal') : '') + ' · ';
-  if(r.status === 'saved') return inv + (r.finance?.no ? t('rrFinanceNo')(r.finance.tab, r.finance.no) : t('rrStatus_saved'));
+  if(r.status === 'saved') return inv + (r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : t('rrStatus_saved'));
   if(rrIsPractice(r)) return inv + t('rrPracticeRun');
   if(r.status === 'problem') return r.problem || t('rrStatus_problem');
   return inv + t('rrStatus_' + r.status);
@@ -277,6 +277,9 @@ function rrWarnText(w){
   if(w.code === 'tinyUnit') return t('rrWarnTinyUnit');
   if(w.code === 'rateOdd') return t('rrWarnRate')(w.min, w.max);
   if(w.code === 'bigTotal') return t('rrWarnBig')(rrNum(w.iqd));
+  if(w.code === 'unitNameOdd') return t('rrWarnUnitName')(w.unit, rrNum(w.factor), w.base);
+  if(w.code === 'gramPrice') return t('rrWarnGramPrice')(rrMoney(w.cost, w.currency), w.unit);
+  if(w.code === 'unitPriceOdd') return t('rrWarnUnitPrice')(rrNum(w.times, 1), w.more, w.base);
   return '';
 }
 const RR_ERR_KEYS = {supplier:'rrErrSupplier', supplierUnknown:'rrErrSupplier', invoice:'rrErrInvoice', zone:'rrErrZone', currency:'rrErrRate', rate:'rrErrRate', deliveryUsd:'rrErrDelivery', delivery:'rrErrDelivery', noLines:'rrErrNoLines', tooManyLines:'rrErrNoLines', itemUnknown:'rrErrItem', unitUnknown:'rrErrUnit', qty:'rrErrQty', cost:'rrErrCost'};
@@ -340,8 +343,10 @@ function attachReceiptEdit(){
         l.item = v;
         const units = rrItem(v) ? globalThis.RicottaReceipts.unitOptions(rrItem(v)) : [];
         // The unit it was bought in last time comes first, else the biggest one; a click changes it.
-        const lastKey = Object.keys(rr.data.last || {}).find(k=>k.startsWith(v + '|') && units.some(u=>k === `${v}|${u.label}|${r.currency}`));
-        l.unit = lastKey ? lastKey.slice(v.length + 1, lastKey.lastIndexOf('|')) : units.length ? units.reduce((a, b)=>b.factor > a.factor ? b : a).label : '';
+        // The unit bought last time, else the biggest one whose name agrees with its size (never a
+        // "gram" that counts 1000 grams); a click changes it.
+        const lastLabels = Object.keys(rr.data.last || {}).filter(k=>k.startsWith(v + '|') && k.endsWith('|' + r.currency)).map(k=>k.slice(v.length + 1, k.lastIndexOf('|')));
+        l.unit = rrItem(v) ? globalThis.RicottaReceipts.defaultUnit(rrItem(v), lastLabels) : '';
         changed(true);
       }
       go('rrQty' + i);
@@ -427,7 +432,7 @@ function renderReceiptView(){
   const photos = rr.photos[r.id];
   if(r.photos.length && (!photos || photos.count !== r.photos.length)) rrLoadPhotos(r);
   const head = r.status === 'saved'
-    ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('rrStatus_saved'))}</span><b>${esc(r.finance?.no ? t('rrFinanceNo')(r.finance.tab, r.finance.no) : t('rrStatus_saved'))}</b><small>${esc(r.finance?.month || '')}</small></div>`
+    ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('rrStatus_saved'))}</span><b>${esc(r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : t('rrStatus_saved'))}</b><small>${esc(t('rrFindIt')(r.invoice, rrWhen(r.savedAt)))}</small></div>`
     : `<div class="rr-state ${rrIsPractice(r) ? 'practice' : r.status}">${rrRico()}<div><b>${esc(rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}</b><small>${esc(r.status === 'problem' ? r.problem || '' : t('rrStatusHint_' + r.status))}</small></div></div>`;
   const lines = r.lines.map((l, i)=>`<li><span class="rr-num">${i + 1}</span><span><b dir="auto">${esc(l.item)}</b><small>${esc(rrNum(l.qty, 3))} × <bdi>${esc(l.unit)}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</small></span><b>${esc(rrMoney(l.qty * l.cost, r.currency))}</b></li>`).join('');
   // A long page comes in several photos, top to bottom: each says which part it is ("2 of 3").
@@ -468,12 +473,15 @@ function attachReceiptView(){
   const r = rrFind(rr.id); if(!r) return;
   document.getElementById('rrBack').onclick = rrBack;
   const act = async (action, ask)=>{
-    if(ask && !await showConfirm(esc(ask), {okLabel:action === 'approve' ? t('rrApprove') : t('rrCancelReceipt'), okClass:action === 'approve' ? 'btn-primary' : 'btn-danger'})) return;
+    if(ask && !await showConfirm(esc(ask).replace(/\n/g, '<br>'), {okLabel:action === 'approve' ? t('rrApprove') : t('rrCancelReceipt'), okClass:action === 'approve' ? 'btn-primary' : 'btn-danger'})) return;
     const res = await api(`receipts/${r.id}/${action}`, {method:'POST', body:{}});
     if(!res.ok){ toast(res.data?.error === 'too_late' ? t('rrTooLate') : t('saveFailed'), 'error'); rrLoad(true); return; }
     Object.assign(r, res.data); render();
   };
-  const ap = document.getElementById('rrApprove'); if(ap) ap.onclick = ()=>act('approve', r.total >= (rrLimits().bigTotal || Infinity) ? t('rrBigAgain')(rrNum(r.total)) : null);
+  // Anything unusual (or a big total) is asked about once more before Rico saves it.
+  const ws = (r.warnings || []).map(w=>(w.line ? t('rrLineN')(w.line) + ': ' : '') + rrWarnText(w)).filter(Boolean);
+  const ask = ws.length ? t('rrApproveAsk') + '\n• ' + ws.join('\n• ') : r.total >= (rrLimits().bigTotal || Infinity) ? t('rrBigAgain')(rrNum(r.total)) : null;
+  const ap = document.getElementById('rrApprove'); if(ap) ap.onclick = ()=>act('approve', ask);
   const cn = document.getElementById('rrCancel'); if(cn) cn.onclick = ()=>act('cancel', t('rrCancelAsk'));
   const cp = document.getElementById('rrCopy'); if(cp) cp.onclick = ()=>rrNewDraft(r);
   attachLightbox();
@@ -587,7 +595,7 @@ function rrHistCard(r){
   const m = rrModeOf(r);
   const when = formatIraqDateTime(new Date(r.sentAt || r.createdAt), {hour:'numeric', minute:'2-digit'});
   const tone = rrIsPractice(r) || r.status === 'cancelled' ? 'draft' : r.status === 'saved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : 'busy';
-  const meta = [r.invoice ? '#' + r.invoice : '', rrSourceName(r), accountLabel(r.by), m ? t(m === 'practice' ? 'rrModePractice' : 'rrModeReal') : '', r.finance?.no ? t('rrFinanceNo')(r.finance.tab, r.finance.no) : ''].filter(Boolean).join(' · ');
+  const meta = [r.invoice ? '#' + r.invoice : '', rrSourceName(r), accountLabel(r.by), m ? t(m === 'practice' ? 'rrModePractice' : 'rrModeReal') : '', r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : ''].filter(Boolean).join(' · ');
   const lines = r.lines.map(l=>`<li><span dir="auto">${esc(l.item)}</span><b>${esc(rrNum(l.qty, 3))} × <bdi>${esc(l.unit)}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</b></li>`).join('');
   return `<article class="hist-card rr-hist" data-search-row data-search-text="${esc([r.supplier, r.invoice, ...r.lines.map(l=>l.item)].join(' '))}">
     <div class="hist-top"><div class="hist-date"><b>${esc(when)}</b><span class="rr-hist-state"><i class="rr-dot ${tone}" aria-hidden="true"></i>${esc(rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}</span></div>

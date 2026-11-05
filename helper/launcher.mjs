@@ -37,6 +37,9 @@ function start(m) {
   mode = m;
   const label = m === "practice" ? "Rico (practice mode, nothing is saved)" : "Rico";
   child = spawn(process.execPath, [join(HERE, "rico-helper.mjs"), ...(m === "practice" ? ["--practice"] : [])], { cwd: dirname(HERE), stdio: ["ignore", "pipe", "pipe"] });
+  // The Mac stays awake while Rico runs (macOS's own caffeinate, which ends by itself when Rico stops);
+  // a sleeping Mac would stop him in the middle of a receipt.
+  try { spawn("/usr/bin/caffeinate", ["-i", "-w", String(child.pid)], { stdio: "ignore", detached: true }).unref(); } catch (e) { note("caffeinate: " + e.message); }
   let ready = false;
   const timer = setTimeout(() => { if (!ready && child) report(`${label} started, but the lists haven't loaded after 2 minutes. Check the Mac.`); }, 120_000);
   const read = (buf) => {

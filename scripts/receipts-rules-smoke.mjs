@@ -58,3 +58,20 @@ assert.ok(c.warnings.some((w) => w.code === "tinyUnit"));
 c = R.check({ ...base, lines: [{ ...base.lines[0], qty: 500 }] }, cat, { bigTotal: 1000000 }, {});
 assert.ok(c.warnings.some((w) => w.code === "bigTotal" && w.iqd === 1005000));
 console.log("Receipt rules PASS: exact names (spaces, Kurdish letters), units, prices with up to 3 decimals, invoices with zeros, USD totals, delivery, warnings");
+
+// A unit whose name says one size but counts another (Veal Kebab's "غرام" that counts 1000) is never the
+// default and is questioned; a gram at 1,000 IQD or more is questioned; a price per gram far from last
+// time in another unit is questioned. A correct kilo is not.
+{
+  const veal = { name: "Veal Kebab - کباب عجل", base: "غرام", units: [{ factor: 1000, name: "غرام" }, { factor: 1000, name: "کیلۆ" }] };
+  const vc = { suppliers: ["S"], zones: ["Z"], items: [veal] };
+  const vr = (unit, qty, cost) => ({ supplier: "S", invoice: "1", zone: "Z", currency: "IQD", lines: [{ item: veal.name, unit, qty, cost }] });
+  assert.equal(R.defaultUnit(veal, []), "کیلۆ (1000×)");
+  assert.equal(R.defaultUnit(veal, ["غرام (1000×)"]), "غرام (1000×)");
+  const codes = (r, last) => R.check(r, vc, {}, last || {}).warnings.map((w) => w.code).sort();
+  assert.deepEqual(codes(vr("غرام (1000×)", 4, 14000)), ["gramPrice", "unitNameOdd"]);
+  assert.deepEqual(codes(vr("غرام", 4000, 14000), { "Veal Kebab - کباب عجل|کیلۆ (1000×)|IQD": 14000 }), ["bigTotal", "gramPrice", "unitPriceOdd"]);
+  assert.deepEqual(codes(vr("کیلۆ (1000×)", 4, 14000), { "Veal Kebab - کباب عجل|کیلۆ (1000×)|IQD": 14000 }), []);
+  assert.deepEqual(codes(vr("غرام", 500, 14)), []);
+  console.log("Receipt unit checks PASS: odd unit names never default and are questioned, expensive grams and far-off prices per gram are questioned, a correct kilo is not");
+}
