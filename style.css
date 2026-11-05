@@ -2227,11 +2227,20 @@ html.dark .rr-line-warn,html.dark .rr-warns p{color:#FDBA74}
 .rr-edit .rr-sum-total{flex-direction:row;align-items:baseline;flex-wrap:wrap;gap:6px}
 .rr-edit .rr-sum-total span{font-size:1rem;font-weight:500;color:var(--ink-soft)}
 .rr-edit .rr-sum-total small{flex-basis:100%}
-.rr-sum-acts{display:flex;align-items:center;gap:14px}
-.rr-cancel{height:44px;padding:0 14px;border:0;background:none;color:var(--ink);font:inherit;font-size:1rem;font-weight:500;border-radius:999px}
-.rr-cancel:hover{background:var(--fill)}
+/* Cancel (red, on the left) and Receive (on the right): rounded squares, never pills, and on a phone
+   they share the full width side by side without spilling off the screen. */
+.rr-sum-acts{display:flex;align-items:center;gap:10px}
+.rr-cancel{height:48px;padding:0 20px;border:0;border-radius:12px;background:rgba(255,59,48,.12);color:var(--red);font:inherit;font-size:1rem;font-weight:600}
+.rr-cancel:hover{background:rgba(255,59,48,.2)}
+html.dark .rr-cancel{background:rgba(255,69,58,.2);color:#FF6961}
+.rr-sum .btn-primary{height:48px;min-height:48px;border-radius:12px;padding:0 20px}
 .rr-sum .btn-primary svg{width:18px;height:18px}
-@media (max-width:520px){.rr-sum-acts{width:100%;flex-direction:row-reverse}.rr-sum-acts .btn{flex:1}}
+@media (max-width:520px){
+  .rr-sum-acts{width:100%;display:grid;grid-template-columns:auto minmax(0,1fr)}
+  .rr-sum-acts>*{min-width:0;width:100%;padding:0 16px}
+  .rr-sum .btn-primary{padding:0 12px;gap:6px;font-size:.9375rem}
+  .rr-sum .btn-primary span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
 :root{--rr-strip:#F8FAFC;--rr-box:#F8FAFC}
 html.dark{--rr-strip:rgba(255,255,255,.04);--rr-box:rgba(255,255,255,.05)}
 .rr-add{height:42px;padding:0 16px;border:1px solid rgba(var(--accent-rgb),.55);border-radius:12px;background:rgba(var(--accent-rgb),.08);color:var(--tint);font:inherit;font-size:.9375rem;font-weight:600;display:inline-flex;align-items:center;gap:6px}
@@ -2244,7 +2253,6 @@ html.dark{--rr-strip:rgba(255,255,255,.04);--rr-box:rgba(255,255,255,.05)}
 .rr-sum-total b{font-size:1.5rem;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .rr-sum-total small{font-size:.8125rem;color:var(--ink-soft)}
 .rr-sum .btn{flex:none}
-@media (max-width:520px){.rr-sum .btn{width:100%}}
 .rr-sum-line{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-weight:700}
 .rr-sum-line b{font-variant-numeric:tabular-nums}
 .rr-done{background:var(--surface);border-radius:var(--r-card);padding:16px;display:flex;flex-direction:column;gap:4px}
@@ -2290,3 +2298,4 @@ html.dark .rr-line-warn{color:#FDBA74}
 .rr-lb-acts button{width:40px;height:40px;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:1.25rem;line-height:1;display:grid;place-items:center}
 .rr-lb-stage{flex:1;display:flex;justify-content:center;align-items:flex-start;padding:8px 12px calc(env(safe-area-inset-bottom) + 24px)}
 .rr-lb-stage img{display:block;width:min(960px,100%);height:auto;border-radius:10px;background:#fff}
+@media (max-width:360px){.rr-sum .btn-primary{height:auto;min-height:48px;padding:6px 10px}.rr-sum .btn-primary span{white-space:normal;line-height:1.2;text-align:start}}
