@@ -300,7 +300,7 @@
     if(path === 'receipts-settings/telegram') return method === 'GET' ? json({ready:true, connected:!!db.tgLinked}) : json({link:'https://t.me/RicottaHelperBot?start=lab', bot:'RicottaHelperBot'});
     if(path === 'receipts' || path === 'receipts-settings' || path === 'receipts-settings/rico' || path === 'receipts-activity' || path.startsWith('receipts/')){
       if(!can(account, 'receipts')) return fail('forbidden', 403);
-      db.rr ||= {receipts:[], helper:{online:true, lastSeen:new Date().toISOString(), signedIn:true, busyWith:null, autoApprove:false, stopped:false, limits:{bigTotal:1000000, priceJump:30, rateMin:1500, rateMax:1800}, version:'lab', mode:'real', launcher:{online:true, command:null, result:null, at:null}}, next:28};
+      db.rr ||= {receipts:[], helper:{online:true, lastSeen:new Date().toISOString(), signedIn:true, busyWith:null, stopped:false, limits:{bigTotal:1000000, priceJump:30, rateMin:1500, rateMax:1800}, version:'lab', mode:'real', launcher:{online:true, command:null, result:null, at:null}}, next:28};
       const cat = {at:new Date().toISOString(), suppliers:['Bread House Bakery','Coffee Supply','Corner Cake','Jabal Amman','ITALY COFFEE QAHOWA','شوینی لقمان بۆ کەلەشیر و قاز و قەل','کۆگای مختار','ابو ابراهيم قصاب'],
         zones:['Main Storage','Kebab','Pizza','Bakery','Teahouse','Kentucky'],
         items:[{name:'Frozen Peas - بزالیا سادە', base:'غرام', units:[{name:'دانە', factor:400},{name:'کارتۆن', factor:8000}]},
@@ -317,7 +317,7 @@
         {id:2, at:new Date(t0 - 120e3).toISOString(), kind:'launch', mode:'practice', text:'Rico (practice mode, nothing is saved) is on: signed in to Ricotta Restaurant and read 317 items, 57 suppliers and 12 zones.'},
         {id:1, at:new Date(t0 - 130e3).toISOString(), kind:'command', status:'practice', by:'rozha'}]}); }
       if(method === 'POST' && path === 'receipts-settings/rico'){ const h = db.rr.helper; if(body.action === 'stop'){ h.online = false; h.mode = null; h.launcher.result = 'Rico is off.'; } else { h.online = true; h.mode = body.action; h.launcher.result = (body.action === 'practice' ? 'Rico (practice mode, nothing is saved)' : 'Rico') + ' is on: signed in to Ricotta Restaurant and read 7 items, 8 suppliers and 6 zones.'; } save(); return json(h); }
-      if(method === 'PUT' && path === 'receipts-settings'){ if(account !== 'rozha') return fail('forbidden', 403); if(typeof body.autoApprove === 'boolean') db.rr.helper.autoApprove = body.autoApprove; if(typeof body.stopped === 'boolean') db.rr.helper.stopped = body.stopped; if(body.limits) Object.assign(db.rr.helper.limits, body.limits); save(); return json(db.rr.helper); }
+      if(method === 'PUT' && path === 'receipts-settings'){ if(account !== 'rozha') return fail('forbidden', 403); if(typeof body.stopped === 'boolean') db.rr.helper.stopped = body.stopped; if(body.limits) Object.assign(db.rr.helper.limits, body.limits); save(); return json(db.rr.helper); }
       const m = path.match(/^receipts\/([0-9a-f-]{36})(?:\/(send|approve|cancel|photos))?$/); if(!m) return fail('not_found', 404);
       let r = list.find(x=>x.id === m[1]);
       if(method === 'PUT' && !m[2]){
@@ -328,12 +328,17 @@
       }
       if(!r) return fail('not_found', 404);
       if(method === 'DELETE'){ db.rr.receipts = list.filter(x=>x !== r); save(); return ok(); }
-      if(method === 'GET' && m[2] === 'photos') return json({photos:[]});
+      // A sample photo (a tall receipt drawing) so the Lab shows how photos look.
+      if(method === 'GET' && m[2] === 'photos'){
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1500"><rect width="900" height="1500" fill="#fff"/><rect x="40" y="40" width="820" height="90" rx="12" fill="#1E6B4F"/><text x="70" y="98" font-size="40" fill="#fff" font-family="sans-serif">New purchase receipt</text>${(r.lines||[]).map((l,i)=>`<rect x="40" y="${180+i*170}" width="820" height="140" rx="14" fill="none" stroke="#d0d5dd" stroke-width="3"/><text x="70" y="${240+i*170}" font-size="34" font-family="sans-serif">${(l.item||'').replace(/[<&]/g,'')}</text><text x="70" y="${290+i*170}" font-size="30" fill="#555" font-family="sans-serif">${l.qty} x ${l.cost}</text>`).join('')}<text x="40" y="1440" font-size="44" font-family="sans-serif">Total: IQD ${r.total||0}</text></svg>`;
+        const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        return json({photos:(r.photos||[]).map(p=>({kind:p.kind, at:p.at, url}))});
+      }
       if(m[2] === 'send'){
         const c = R.check(r, cat, db.rr.helper.limits, {});
         if(c.errors.length) return json({error:'invalid_receipt', errors:c.errors}, 422);
         Object.assign(r, {status:'queued', total:c.total, warnings:c.warnings, sentAt:now(), log:[...r.log, {at:now(), who:account, text:'Sent to Rico'}]});
-        setTimeout(()=>{ if(r.status !== 'queued') return; Object.assign(r, {status:'review', log:[...r.log, {at:now(), who:'rico', text:'Filled in Ricotta Restaurant and read every box back. Waiting for approval.'}]}); save(); }, 2000);
+        setTimeout(()=>{ if(r.status !== 'queued') return; Object.assign(r, {status:'review', photos:[{kind:'before', at:now()}], log:[...r.log, {at:now(), who:'rico', text:'Filled in Ricotta Restaurant and read every box back. Waiting for approval.'}]}); save(); }, 2000);
         save(); return json(r);
       }
       if(m[2] === 'approve'){

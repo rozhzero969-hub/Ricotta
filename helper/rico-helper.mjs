@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 
-const VERSION = "2026-11-08.1";
+const VERSION = "2026-11-09.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -254,9 +254,42 @@ async function fill(r) {
     await typeNumber(page.getByLabel("Unit cost").nth(i), l.cost);
   }
   steps.push(`${r.lines.length} items filled in and read back`);
-  await checkTotals(r);
-  steps.push("Totals match");
+  await verifyForm(r, "after filling it in");
+  steps.push("Whole form read back: supplier, zone, invoice, every item, unit, quantity and price match; totals match");
   return steps;
+}
+/* Reads the whole form back and compares it with the receipt: supplier, zone, invoice, the rate or
+   delivery, the number of item lines, and each line's item, unit, quantity and unit cost. Any difference
+   at all and Rico stops. Done once the form is filled in, and again just before saving. */
+const flat = (x) => String(x ?? "").replace(/[\u200e\u200f\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim();
+async function verifyForm(r, when) {
+  const bad = (m) => stop(`Rico checked the form ${when} and stopped: ${m}. Nothing was saved.`);
+  const sup = flat(await page.getByRole("button", { name: "Supplier" }).innerText());
+  if (sup !== flat(r.supplier)) bad(`the supplier reads "${sup}"`);
+  const zone = flat(await page.getByRole("button", { name: "Zone" }).innerText());
+  if (zone !== flat(r.zone)) bad(`the zone reads "${zone}"`);
+  const inv = flat(await page.getByPlaceholder("e.g. 1024").inputValue());
+  if (inv !== r.invoice) bad(`the invoice reads "${inv}"`);
+  if (r.currency === "USD") {
+    const v = digits(await page.locator("xpath=//*[contains(text(),\"Today's rate\")]/following::input[1]").inputValue());
+    if (Number(v) !== Number(r.rate)) bad(`the dollar rate reads ${v}`);
+  } else if (r.delivery) {
+    const v = digits(await page.locator("xpath=//*[contains(text(),'How much was the delivery')]/following::input[1]").inputValue());
+    if (Number(v) !== Number(r.delivery)) bad(`the delivery reads ${v}`);
+  }
+  const qty = page.getByLabel("Qty"), cost = page.getByLabel("Unit cost"), units = page.getByRole("button", { name: "Unit" });
+  const lines = await qty.count();
+  if (lines !== r.lines.length) bad(`the form has ${lines} item lines, the receipt has ${r.lines.length}`);
+  for (let i = 0; i < r.lines.length; i++) {
+    const l = r.lines[i], n = i + 1;
+    if (!(await page.getByRole("button", { name: exact(l.item) }).count()) && !(await page.getByText(exact(l.item)).count())) bad(`item ${n} (${l.item}) is not on the form`);
+    const u = flat(await units.nth(i).innerText());
+    if (!unitMatches(u, l.unit)) bad(`item ${n}'s unit reads "${u}", not "${l.unit}"`);
+    const q = digits(await qty.nth(i).inputValue()), c = digits(await cost.nth(i).inputValue());
+    if (Number(q) !== Number(l.qty)) bad(`item ${n}'s quantity reads ${q}, not ${l.qty}`);
+    if (Number(c) !== Number(l.cost)) bad(`item ${n}'s unit cost reads ${c}, not ${l.cost}`);
+  }
+  await checkTotals(r);
 }
 /* Ricotta Restaurant's own total must match ours to the dinar (and to the cent on a USD receipt). */
 async function checkTotals(r) {
@@ -277,14 +310,18 @@ async function save(r) {
     await go("/inventory/new-receipt", r.id);
     if (!(await page.getByText(/We kept your unsaved receipt/i).isVisible().catch(() => false))) stop("The filled-in receipt was gone from Ricotta Restaurant before saving. Nothing was saved; send it again.");
   }
-  await checkTotals(r);
+  // The last look before anything is saved: the whole form again, line by line.
+  await verifyForm(r, "just before saving");
+  await report(r.id, { log: ["Whole form checked again just before saving: everything matches"] });
+  pressedSave = true;
   await page.getByRole("button", { name: /Receive & send to finance/ }).click();
   const banner = page.getByText(/Receipt sent/i).first();
   await banner.waitFor({ timeout: 45_000 }).catch(() => stop("Ricotta Restaurant did not say the receipt was sent. Check Invoices before doing anything."));
   const text = (await banner.locator("xpath=..").innerText()).replace(/\s+/g, " ");
   await photo(page, r.id, "after");
   const t = R.totals(r);
-  if (!text.replace(/,/g, "").includes(String(t.iqd))) await report(r.id, { log: [`The green message reads "${text}"; checking Invoices.`] });
+  // Saved, but with a different amount than ours: never called "saved"; it is shown as a problem to check.
+  if (!text.replace(/,/g, "").includes(String(t.iqd))) stop(`Ricotta Restaurant saved it, but its message reads "${text}" and our total is IQD ${t.iqd}. Check this receipt in Invoices.`);
   return text;
 }
 /* Finds the saved receipt in Invoices (its supplier's own tab, or Purchases) and reads its number. */
@@ -306,7 +343,9 @@ async function findInInvoices(r) {
 }
 
 /* ---------- One receipt ---------- */
+let pressedSave = false;
 async function work(r) {
+  pressedSave = false;
   log(`receipt ${r.id.slice(0, 8)} ${r.status} ${r.supplier} #${r.invoice}`);
   try {
     if (r.status === "filling") {
@@ -339,7 +378,7 @@ async function work(r) {
     await photo(page, r.id, "problem").catch(() => {});
     // Nothing was saved yet while filling in, so the half-filled form is cleared away. Once saving has
     // started it is never touched: Ricotta Restaurant may already have it.
-    if (r.status === "filling") await discard().catch(() => {});
+    if (r.status === "filling" || ((r.status === "saving" || r.status === "approved") && !pressedSave)) await discard().catch(() => {});
     await report(r.id, { status: "problem", problem: msg, log: [msg] }).catch((x) => log("report failed:", x.message));
   }
 }

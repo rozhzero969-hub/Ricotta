@@ -26,7 +26,8 @@ async function rrLoad(quiet = false){
     else if(editing) rr.data.receipts = rr.data.receipts.map(x=>x.id === editing.id ? editing : x);
   }
   else if(!rr.data) rr.failed = true;
-  if((state.view === 'receipts' && !document.activeElement?.closest?.('.rr-edit')) || (state.view === 'settings' && !document.activeElement?.closest?.('.rr-limits'))) render();
+  if((state.view === 'receipts' && !document.activeElement?.closest?.('.rr-edit')) || (state.view === 'settings' && !document.activeElement?.closest?.('.rr-limits'))
+    || (state.view === 'history' && state.histMode === 'receipts' && !document.activeElement?.closest?.('.search-wrap'))) render();
 }
 
 /* ---------- The list ---------- */
@@ -40,20 +41,11 @@ function renderReceipts(){
   const saved = list.filter(r=>r.status === 'saved' && isToday(r));
   const sum = saved.reduce((s, r)=> s + (r.currency === 'USD' ? Math.round(r.total * (r.rate || 0)) : r.total), 0);
   // Filters: where it was made, who made it, and whether Rico ran it for real or in practice.
-  const f = rr.filter;
-  const people = [...new Set(list.map(r=>r.by).filter(Boolean))];
-  const shown = list.filter(r=>(f.src === 'all' || (r.source === 'telegram' ? 'telegram' : 'app') === f.src)
-    && (f.mode === 'all' || rrModeOf(r) === f.mode) && (f.by === 'all' || r.by === f.by));
+  const shown = rrFiltered(list);
   const needs = shown.filter(r=>r.status === 'review' || (r.status === 'problem' && !rrIsPractice(r)));
   const drafts = shown.filter(r=>r.status === 'draft');
   const rest = shown.filter(r=>!needs.includes(r) && !drafts.includes(r));
-  const fsel = (key, opts)=>`<select class="rr-filter" data-rr-filter="${key}" aria-label="${esc(t('rrFilter_' + key))}">${opts.map(([v, label])=>`<option value="${esc(v)}"${f[key] === v ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
-  const filters = list.length ? `<div class="rr-filters">
-    ${fsel('src', [['all', t('rrAllPlaces')], ['app', t('rrSource_app')], ['telegram', t('rrSource_telegram')]])}
-    ${fsel('mode', [['all', t('rrRealAndPractice')], ['real', t('rrModeReal')], ['practice', t('rrModePractice')]])}
-    ${fsel('by', [['all', t('rrEveryone')], ...people.map(p=>[p, accountLabel(p) || p])])}
-    ${f.src !== 'all' || f.mode !== 'all' || f.by !== 'all' ? `<button type="button" class="rr-filter-clear" id="rrFilterClear">${esc(t('rrClearFilters'))}</button>` : ''}
-  </div>` : '';
+  const filters = rrFilterBar(list);
   const ricoOn = h.online && !h.stopped;
   const row = r=>{
     const tone = rrIsPractice(r) ? 'draft' : r.status === 'saved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : r.status === 'draft' ? 'draft' : 'busy';
@@ -77,6 +69,27 @@ function renderReceipts(){
       : !list.length ? emptyState(t('rrEmpty')) : !shown.length ? emptyState(t('rrNoMatchFilter')) : ''}
     ${rr.data.catalog?.at ? `<p class="rr-foot">${esc(t('rrCatalogAt')(rr.data.catalog.items.length, formatIraqDateTime(new Date(rr.data.catalog.at), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'})))}</p>` : `<p class="rr-foot">${esc(t('rrNoCatalog'))}</p>`}
   </div>`;
+}
+/* The filters (made in, made by, real or practice), shared by the Receipts list and History > Receipts. */
+function rrFiltered(list){
+  const f = rr.filter;
+  return list.filter(r=>(f.src === 'all' || (r.source === 'telegram' ? 'telegram' : 'app') === f.src)
+    && (f.mode === 'all' || rrModeOf(r) === f.mode) && (f.by === 'all' || r.by === f.by));
+}
+function rrFilterBar(list){
+  if(!list.length) return '';
+  const f = rr.filter, people = [...new Set(list.map(r=>r.by).filter(Boolean))];
+  const fsel = (key, opts)=>`<select class="rr-filter" data-rr-filter="${key}" aria-label="${esc(t('rrFilter_' + key))}">${opts.map(([v, label])=>`<option value="${esc(v)}"${f[key] === v ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
+  return `<div class="rr-filters">
+    ${fsel('src', [['all', t('rrAllPlaces')], ['app', t('rrSource_app')], ['telegram', t('rrSource_telegram')]])}
+    ${fsel('mode', [['all', t('rrRealAndPractice')], ['real', t('rrModeReal')], ['practice', t('rrModePractice')]])}
+    ${fsel('by', [['all', t('rrEveryone')], ...people.map(p=>[p, accountLabel(p) || p])])}
+    ${f.src !== 'all' || f.mode !== 'all' || f.by !== 'all' ? `<button type="button" class="rr-filter-clear" id="rrFilterClear">${esc(t('rrClearFilters'))}</button>` : ''}
+  </div>`;
+}
+function attachRrFilters(){
+  document.querySelectorAll('[data-rr-filter]').forEach(s=>s.onchange = ()=>{ rr.filter[s.dataset.rrFilter] = s.value; render(); });
+  const clear = document.getElementById('rrFilterClear'); if(clear) clear.onclick = ()=>{ rr.filter = {src:'all', mode:'all', by:'all'}; render(); };
 }
 /* Start Rico (real or practice) or stop him, through the launcher on the Mac. */
 function rrRicoControls(h){
@@ -116,8 +129,7 @@ function attachReceiptsEvents(){
   if(rr.page === 'view') return attachReceiptView();
   document.getElementById('rrNew')?.addEventListener('click', ()=>rrNewDraft());
   document.querySelectorAll('[data-rr-open]').forEach(b=>b.onclick = ()=>rrOpen(b.dataset.rrOpen));
-  document.querySelectorAll('[data-rr-filter]').forEach(s=>s.onchange = ()=>{ rr.filter[s.dataset.rrFilter] = s.value; render(); });
-  const clear = document.getElementById('rrFilterClear'); if(clear) clear.onclick = ()=>{ rr.filter = {src:'all', mode:'all', by:'all'}; render(); };
+  attachRrFilters();
   document.querySelectorAll('[data-rico]').forEach(b=>b.onclick = async ()=>{
     b.disabled = true;
     const res = await api('receipts-settings/rico', {method:'POST', body:{action:b.dataset.rico}});
@@ -216,17 +228,15 @@ function renderReceiptEdit(){
     const lineTotal = (Number(l.qty) || 0) * (Number(l.cost) || 0);
     const warn = c.warnings.filter(w=>w.line === i + 1).map(w=>rrWarnText(w)).join(' ');
     return `<div class="rr-line${warn ? ' warn' : ''}" data-line="${i}">
-      <span class="rr-num">${i + 1}</span>
-      <div class="rr-field rr-f-item"><label for="rrItem${i}">${esc(t('rrItem'))}</label>${rrCombo('rrItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
+      <div class="rr-field rr-f-item"><label for="rrItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('rrItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
       <div class="rr-field rr-f-unit"><label for="rrUnit${i}">${esc(t('rrUnit'))}</label><select id="rrUnit${i}" data-l-unit="${i}" ${item ? '' : 'disabled'}>${opt('', t('rrBaseUnit'), !l.unit)}${units.map(u=>opt(u.label, u.label, u.label === l.unit)).join('')}</select></div>
       <div class="rr-field"><label for="rrQty${i}">${esc(t('rrQty'))}</label><input id="rrQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${l.qty ?? ''}" placeholder="0"></div>
       <div class="rr-field"><label for="rrCost${i}">${esc(t('rrUnitCost'))}${usd ? ' ($)' : ''}</label><input id="rrCost${i}" class="rr-input rr-n" inputmode="${usd ? 'decimal' : 'numeric'}" autocomplete="off" data-l-cost="${i}" value="${l.cost ?? ''}" placeholder="0"></div>
-      <div class="rr-field rr-total"><span>${esc(t('rrTotal'))}</span><b>${lineTotal ? esc(rrMoney(lineTotal, r.currency)) : '0'}</b></div>
+      <div class="rr-field rr-total"><span>${esc(t('rrTotal'))}</span><b>${lineTotal ? esc(rrMoney(lineTotal, r.currency)) : '—'}</b></div>
       <button type="button" class="rr-del" data-l-del="${i}" tabindex="-1" aria-label="${esc(t('rrRemoveItem')(i + 1))}">${ICON_DELETE}</button>
       ${warn ? `<p class="rr-line-warn">${esc(warn)}</p>` : ''}</div>`;
   }).join('');
-  const head = `<div class="rr-lhead" aria-hidden="true"><span>#</span><span>${esc(t('rrItem'))}</span><span>${esc(t('rrUnit'))}</span><span>${esc(t('rrQty'))}</span><span>${esc(t('rrUnitCost'))}${usd ? ' ($)' : ''}</span><span>${esc(t('rrTotal'))}</span><span></span></div>`;
-  return `<div class="rr-page rr-edit">${rrBackBar(t('rrNewTitle'), `<button type="button" class="rr-head-act" id="rrDiscard">${esc(t('rrDiscardReceipt'))}</button>`)}
+  return `<div class="rr-page rr-edit">${rrBackBar(t('rrNewTitle'))}
     <section class="rr-card"><h2 class="rr-card-title">${esc(t('rrDetails'))}</h2>
       <div class="rr-grid">
         <div class="rr-field"><label for="rrSupplier">${esc(t('rrSupplier'))}</label>${rrCombo('rrSupplier', r.supplier, t('rrSearchSupplier'))}</div>
@@ -238,12 +248,13 @@ function renderReceiptEdit(){
           : `<div class="rr-field"><label for="rrDelivery">${esc(t('rrDelivery'))}</label><input id="rrDelivery" class="rr-input rr-n" inputmode="numeric" autocomplete="off" value="${r.delivery ?? ''}" placeholder="${esc(t('rrNoDelivery'))}"></div>`}
       </div></section>
     <section class="rr-card"><h2 class="rr-card-title"><span>${esc(t('rrItems'))}</span><span class="rr-count">${esc(t('rrItemCount')(r.lines.filter(l=>l.item).length))}</span></h2>
-      <div class="rr-lines">${head}${lines}</div>
+      <div class="rr-lines">${lines}</div>
       <button type="button" class="rr-add" id="rrAdd">${ICON_PLUS}<span>${esc(t('rrAddItem'))}</span></button>
       <p class="rr-keys">${esc(t('rrKeysHint')(RR_MOD))}</p></section>
     <div class="rr-sum">
-      <div class="rr-sum-total"><span>${esc(t('rrTotal'))}</span><b>${esc(rrMoney(c.total, r.currency))}</b><small>${esc(usd ? (c.iqd ? '= IQD ' + rrNum(c.iqd) : '') : (c.delivery ? t('rrPlusDelivery')(rrNum(c.items), rrNum(c.delivery)) : ''))}</small></div>
-      <button type="button" class="btn btn-primary" id="rrSend">${esc(t('rrSend'))}</button>
+      <div class="rr-sum-total"><span>${esc(t('rrTotal'))}:</span> <b>${esc(rrMoney(c.total, r.currency))}</b><small>${esc(usd ? (c.iqd ? '= IQD ' + rrNum(c.iqd) : '') : (c.delivery ? t('rrPlusDelivery')(rrNum(c.items), rrNum(c.delivery)) : ''))}</small></div>
+      <div class="rr-sum-acts"><button type="button" class="rr-cancel" id="rrDiscard">${esc(t('cancel'))}</button>
+        <button type="button" class="btn btn-primary" id="rrSend">${ICON_CHECK}<span>${esc(t('rrSend'))}</span></button></div>
     </div>
   </div>`;
 }
@@ -264,6 +275,7 @@ function rrParse(v, decimals){
   if(!(decimals ? /^\d+(\.\d{1,3})?$/ : /^\d+$/).test(s)) return NaN;
   return Number(s);
 }
+const rrIsEmpty = r=> !r.supplier && !r.invoice && r.delivery == null && r.rate == null && !r.lines.some(l=>l.item || l.qty || l.cost);
 function rrSaveSoon(r){
   clearTimeout(rr.saveTimer);
   rr.saveTimer = setTimeout(()=>rrSaveDraft(r), 600);
@@ -285,7 +297,15 @@ function attachReceiptEdit(){
   const enter = (el, fn)=>{ if(el) el.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.isComposing){ e.preventDefault(); fn(); } }); };
   const firstItem = ()=>{ const i = r.lines.findIndex(l=>!l.item); return 'rrItem' + (i < 0 ? 0 : i); };
   const moneyBox = ()=> r.currency === 'USD' ? 'rrRate' : 'rrDelivery';
-  document.getElementById('rrBack').onclick = async ()=>{ await rrSaveDraft(r); rrBack(); };
+  // Leaving a receipt with nothing filled in throws it away; anything typed is kept as a draft.
+  document.getElementById('rrBack').onclick = async ()=>{
+    if(rrIsEmpty(r)){
+      clearTimeout(rr.saveTimer);
+      if(r.version) await api('receipts/' + r.id, {method:'DELETE', quiet:true});
+      rr.data.receipts = rr.data.receipts.filter(x=>x.id !== r.id);
+    } else await rrSaveDraft(r);
+    rrBack();
+  };
   // Supplier: pick, then the invoice number.
   rrComboBind(document.getElementById('rrSupplier'), cat.suppliers, (v, again)=>{
     if(!again && v !== r.supplier){ r.supplier = v; changed(true); }
@@ -357,7 +377,7 @@ function attachReceiptEdit(){
 /* Only the totals change while typing a number: the boxes keep their focus and the keyboard stays up. */
 function rrPaintTotals(r){
   const c = globalThis.RicottaReceipts.totals(r);
-  r.lines.forEach((l, i)=>{ const b = document.querySelector(`[data-line="${i}"] .rr-total b`); if(b){ const v = (Number(l.qty) || 0) * (Number(l.cost) || 0); b.textContent = v ? rrMoney(v, r.currency) : '0'; } });
+  r.lines.forEach((l, i)=>{ const b = document.querySelector(`[data-line="${i}"] .rr-total b`); if(b){ const v = (Number(l.qty) || 0) * (Number(l.cost) || 0); b.textContent = v ? rrMoney(v, r.currency) : '—'; } });
   const sum = document.querySelector('.rr-sum-total b'); if(sum) sum.textContent = rrMoney(c.total, r.currency);
   const small = document.querySelector('.rr-sum-total small'); if(small) small.textContent = r.currency === 'USD' ? (c.iqd ? '= IQD ' + rrNum(c.iqd) : '') : (c.delivery ? t('rrPlusDelivery')(rrNum(c.items), rrNum(c.delivery)) : '');
 }
@@ -400,7 +420,7 @@ function renderReceiptView(){
   // A long page comes in several photos, top to bottom: each says which part it is ("2 of 3").
   const list = photos?.list || [], of = k=>list.filter(p=>p.kind === k).length, seen = {};
   const pics = list.map(p=>{ seen[p.kind] = (seen[p.kind] || 0) + 1; const label = t('rrPhoto_' + p.kind) + (of(p.kind) > 1 ? ' ' + t('rrPartOf')(seen[p.kind], of(p.kind)) : '');
-    return `<a class="rr-photo" href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="${esc(label)}" loading="lazy"><span>${esc(label)}</span></a>`; }).join('');
+    return `<button type="button" class="rr-photo" data-lb="${esc(r.id)}" data-lb-i="${list.indexOf(p)}"><img src="${esc(p.url)}" alt="${esc(label)}" loading="lazy"><span>${esc(label)}</span></button>`; }).join('');
   const t2 = globalThis.RicottaReceipts.totals(r);
   return `<div class="rr-page">${rrBackBar(r.supplier || '')}
     ${head}
@@ -429,7 +449,7 @@ function renderReceiptView(){
 async function rrLoadPhotos(r){
   rr.photos[r.id] = {count:r.photos.length, list:rr.photos[r.id]?.list || []};
   const res = await api(`receipts/${r.id}/photos`, {quiet:true});
-  if(res.ok && Array.isArray(res.data?.photos)){ rr.photos[r.id].list = res.data.photos; if(rr.page === 'view' && rr.id === r.id) render(); }
+  if(res.ok && Array.isArray(res.data?.photos)){ rr.photos[r.id].list = res.data.photos; rrPaintPhotos(r); }
 }
 function attachReceiptView(){
   const r = rrFind(rr.id); if(!r) return;
@@ -443,6 +463,7 @@ function attachReceiptView(){
   const ap = document.getElementById('rrApprove'); if(ap) ap.onclick = ()=>act('approve', r.total >= (rrLimits().bigTotal || Infinity) ? t('rrBigAgain')(rrNum(r.total)) : null);
   const cn = document.getElementById('rrCancel'); if(cn) cn.onclick = ()=>act('cancel', t('rrCancelAsk'));
   const cp = document.getElementById('rrCopy'); if(cp) cp.onclick = ()=>rrNewDraft(r);
+  attachLightbox();
 }
 
 /* ---------- Settings: Rico ---------- */
@@ -454,7 +475,7 @@ function renderRicoReceiptSettings(){
   return `<div class="section-title">${esc(t('rrSettingsTitle'))}</div>
     <div class="form-card rr-settings">
       <div class="rr-set-status">${rrRico()}<span><b>${esc(t('rrRicoMac'))}</b><small>${esc(rrHelperLine(h))}${h.online ? ' · ' + esc(h.signedIn ? t('rrSignedIn') : t('rrSignedOut')) : ''}</small></span></div>
-      <label class="check-row preference-row"><input type="checkbox" id="rrAuto" ${h.autoApprove ? 'checked' : ''}><span>${esc(t('rrAutoApprove'))}<small>${esc(t('rrAutoApproveHint'))}</small></span></label>
+      <p class="field-hint rr-approve-note">${esc(t('rrPersonApproves'))}</p>
       <label class="check-row preference-row"><input type="checkbox" id="rrStop" ${h.stopped ? 'checked' : ''}><span>${esc(t('rrStop'))}<small>${esc(t('rrStopHint'))}</small></span></label>
       <div class="rr-limits">
         <label class="rr-field"><span class="rr-label">${esc(t('rrLimBig'))}</span><input class="rr-input" id="rrLimBig" inputmode="numeric" value="${h.limits.bigTotal}"></label>
@@ -474,7 +495,6 @@ function attachRicoReceiptSettings(){
     if(res.ok && rr.data){ rr.data.helper = res.data; toast(t('rrSettingsSaved')); } else toast(t('saveFailed'), 'error');
     render();
   };
-  const a = document.getElementById('rrAuto'); if(a) a.onchange = ()=>put({autoApprove:a.checked});
   const s = document.getElementById('rrStop'); if(s) s.onchange = ()=>put({stopped:s.checked});
   // The limits: asks twice above this total, warns at this price change, the dollar rate range.
   const lim = id=>rrParse(document.getElementById(id)?.value ?? '', false);
@@ -531,3 +551,78 @@ function renderRicoActivity(){
   }).join('');
 }
 
+
+/* ---------- History > Receipts ----------
+   Every receipt (not drafts), newest first by day, each with its details and its photos shown large
+   in the middle of the card; a tap on a photo opens it full size. Orders stay in History > Orders. */
+const rrPhotoLabel = k=> t('rrPhoto_' + k);
+function rrHistPhotos(r){
+  if(!r.photos.length) return '';
+  const got = rr.photos[r.id];
+  if(!got || got.count !== r.photos.length) rrLoadPhotos(r);
+  const list = rr.photos[r.id]?.list || [];
+  if(!list.length) return `<div class="rr-hist-photos" data-rr-photos="${esc(r.id)}">${loadingLines(1)}</div>`;
+  return `<div class="rr-hist-photos" data-rr-photos="${esc(r.id)}">${list.map((p, i)=>`<figure><button type="button" class="rr-hist-photo" data-lb="${esc(r.id)}" data-lb-i="${i}" aria-label="${esc(rrPhotoLabel(p.kind))}"><img src="${esc(p.url)}" alt="${esc(rrPhotoLabel(p.kind))}" loading="lazy"></button><figcaption>${esc(rrPhotoLabel(p.kind))}</figcaption></figure>`).join('')}</div>`;
+}
+/* New photo links: History redraws just that receipt's photos; the receipt page redraws itself. */
+function rrPaintPhotos(r){
+  const box = document.querySelector(`[data-rr-photos="${CSS.escape(r.id)}"]`);
+  if(box && state.view === 'history'){ const w = document.createElement('div'); w.innerHTML = rrHistPhotos(r); if(w.firstElementChild) box.replaceWith(w.firstElementChild); attachLightbox(); return; }
+  if(state.view === 'receipts' && rr.page === 'view' && rr.id === r.id) render();
+}
+function rrHistCard(r){
+  const m = rrModeOf(r);
+  const when = formatIraqDateTime(new Date(r.sentAt || r.createdAt), {hour:'numeric', minute:'2-digit'});
+  const tone = rrIsPractice(r) || r.status === 'cancelled' ? 'draft' : r.status === 'saved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : 'busy';
+  const meta = [r.invoice ? '#' + r.invoice : '', rrSourceName(r), accountLabel(r.by), m ? t(m === 'practice' ? 'rrModePractice' : 'rrModeReal') : '', r.finance?.no ? t('rrFinanceNo')(r.finance.tab, r.finance.no) : ''].filter(Boolean).join(' · ');
+  const lines = r.lines.map(l=>`<li><span dir="auto">${esc(l.item)}</span><b>${esc(rrNum(l.qty, 3))} × <bdi>${esc(l.unit)}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</b></li>`).join('');
+  return `<article class="hist-card rr-hist" data-search-row data-search-text="${esc([r.supplier, r.invoice, ...r.lines.map(l=>l.item)].join(' '))}">
+    <div class="hist-top"><div class="hist-date"><b>${esc(when)}</b><span class="rr-hist-state"><i class="rr-dot ${tone}" aria-hidden="true"></i>${esc(rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}</span></div>
+      <span class="rr-hist-total">${esc(r.total == null ? '' : rrMoney(r.total, r.currency))}</span></div>
+    <div class="rr-hist-name"><b dir="auto">${esc(r.supplier || '')}</b><small>${esc(meta)}</small></div>
+    <ul class="rr-hist-lines">${lines}</ul>
+    ${rrHistPhotos(r)}
+    <div class="hist-actions"><button type="button" class="btn btn-ghost" data-rr-hist-open="${esc(r.id)}">${esc(t('rrOpenReceipt'))}</button></div>
+  </article>`;
+}
+function renderReceiptHistory(){
+  if(!rr.data){ if(!rr.loading && !rr.failed) rrLoad(); return rr.failed ? emptyState(t('loadFailed')) : loadingLines(3); }
+  const all = rr.data.receipts.filter(r=>r.status !== 'draft');
+  if(!all.length) return emptyState(t('rrHistEmpty'));
+  const list = rrFiltered(all).map(r=>({r, at:r.sentAt || r.createdAt})).sort((a, b)=>Date.parse(b.at) - Date.parse(a.at));
+  let lastDay = '';
+  const cards = list.map(({r, at})=>{ const day = dayLabel(at); const head = day !== lastDay ? `<div class="hist-day">${esc(day)}</div>` : ''; lastDay = day; return head + rrHistCard(r); }).join('');
+  return rrFilterBar(all) + renderCatalogSearch() + (cards || emptyState(t('rrNoMatchFilter')));
+}
+function attachReceiptHistory(){
+  attachRrFilters(); attachLightbox();
+  document.querySelectorAll('[data-rr-hist-open]').forEach(b=>b.onclick = ()=>{ const id = b.dataset.rrHistOpen; goView('receipts'); rrOpen(id); });
+}
+
+/* A photo full size: dark backdrop, the photo in the middle at its full readable width (a long receipt
+   scrolls), the receipt's other photos with the arrows; Escape, ✕ or a tap outside closes it. */
+function attachLightbox(){
+  document.querySelectorAll('[data-lb]').forEach(b=>b.onclick = ()=>openLightbox(b.dataset.lb, Number(b.dataset.lbI) || 0));
+}
+function openLightbox(id, at){
+  const list = rr.photos[id]?.list || []; if(!list.length) return;
+  document.getElementById('rrLightbox')?.remove();
+  const box = document.createElement('div');
+  box.id = 'rrLightbox'; box.className = 'rr-lb'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+  const paint = ()=>{
+    const p = list[at];
+    box.innerHTML = `<div class="rr-lb-bar"><span>${esc(rrPhotoLabel(p.kind))}${list.length > 1 ? ' · ' + (at + 1) + ' / ' + list.length : ''}</span>
+      <span class="rr-lb-acts">${list.length > 1 ? `<button type="button" data-lb-go="-1" aria-label="${esc(t('rrPrevPhoto'))}">‹</button><button type="button" data-lb-go="1" aria-label="${esc(t('rrNextPhoto'))}">›</button>` : ''}<button type="button" data-lb-close aria-label="${esc(t('rrClosePhoto'))}">✕</button></span></div>
+      <div class="rr-lb-stage"><img src="${esc(p.url)}" alt="${esc(rrPhotoLabel(p.kind))}"></div>`;
+    box.scrollTop = 0;
+  };
+  const close = ()=>{ box.remove(); document.removeEventListener('keydown', key, true); };
+  const go = d=>{ at = (at + d + list.length) % list.length; paint(); };
+  const key = e=>{ if(e.key === 'Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); } else if(e.key === 'ArrowRight') go(1); else if(e.key === 'ArrowLeft') go(-1); };
+  box.addEventListener('click', e=>{
+    if(e.target.closest('[data-lb-close]') || e.target === box || e.target.classList.contains('rr-lb-stage')) return close();
+    const g = e.target.closest('[data-lb-go]'); if(g) go(Number(g.dataset.lbGo));
+  });
+  document.addEventListener('keydown', key, true);
+  paint(); document.body.appendChild(box);
+}

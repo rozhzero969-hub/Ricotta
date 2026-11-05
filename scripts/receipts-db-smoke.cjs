@@ -13,8 +13,12 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.equal((await q("select has_function_privilege('authenticated','app_internal_rr_claim(text)','execute') as a"))[0].a,false);
  // Yunis may be given Receipts.
  await db.exec("update app_accounts set roles=array['history','receipts'] where id='yunis'");
- const ins=(inv,status,ago='0')=>db.exec(`insert into app_rr_receipts(created_by,status,supplier,invoice,lines,sent_at,created_at) values('rozha','${status}','Jabal Amman','${inv}','[]',now()-interval '${ago} minutes',now()-interval '${ago} minutes')`);
+ const ins=(inv,status,ago='0')=>db.exec(`insert into app_rr_receipts(created_by,status,supplier,invoice,lines,sent_at,created_at,approved_by,approved_at) values('rozha','${status}','Jabal Amman','${inv}','[]',now()-interval '${ago} minutes',now()-interval '${ago} minutes',${status === 'approved' ? "'rozha',now()" : 'null,null'})`);
  await ins('1','queued','10'); await ins('2','queued','5'); await ins('3','approved','1'); await ins('4','draft');
+ // A person always approves: never Rico himself, never without a name; the switch can't be turned on.
+ await assert.rejects(db.exec("insert into app_rr_receipts(created_by,status,supplier,invoice,lines) values('rozha','approved','Jabal Amman','70','[]')"),/person_approves/);
+ await assert.rejects(db.exec("insert into app_rr_receipts(created_by,status,supplier,invoice,lines,approved_by,approved_at) values('rozha','saved','Jabal Amman','71','[]','auto',now())"),/person_approves/);
+ await assert.rejects(db.exec("update app_rr_helper set auto_approve=true"),/never_auto/);
  // Approved ones first (they only need saving), then the oldest queued one; each is taken once.
  const take=async()=> (await q('select invoice,status from app_internal_rr_claim()'))[0];
  assert.deepEqual(await take(),{invoice:'3',status:'saving'});
@@ -42,5 +46,5 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.equal((await q("select count(*)::int n from app_rr_receipts where invoice='2'"))[0].n,0);
  // A receipt moving along wakes the open apps.
  assert.ok((await q("select n from app_signals where kind='receipts'")).length);
- console.log('Receipts DB PASS: private tables, practice/real mode, activity record, Yunis role, claim order and once only, one invoice at a time, stop switch, stuck and 60-day clean-up, live signal');
+ console.log('Receipts DB PASS: a person always approves, private tables, practice/real mode, activity record, Yunis role, claim order and once only, one invoice at a time, stop switch, stuck and 60-day clean-up, live signal');
 })().catch(e=>{console.error(e);process.exit(1);});

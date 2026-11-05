@@ -3006,6 +3006,15 @@ function orderHistoryCard(rec){
 }
 /* Every order still kept (at least 60 days), newest first. */
 function renderHistory(){
+  // Orders and receipts are two separate groups of the same tab, never mixed.
+  const both = state.tabs.includes('receipts');
+  const mode = both && state.histMode === 'receipts' ? 'receipts' : 'orders';
+  const switcher = both ? `<div class="pill-seg hist-switch" role="radiogroup" aria-label="${esc(t('history'))}">
+    <button type="button" class="pill-seg-btn" role="radio" aria-checked="${mode === 'orders'}" data-histmode="orders">${esc(t('histOrders'))}</button>
+    <button type="button" class="pill-seg-btn" role="radio" aria-checked="${mode === 'receipts'}" data-histmode="receipts">${esc(t('rrTitle'))}</button></div>` : '';
+  return switcher + (mode === 'receipts' ? renderReceiptHistory() : renderOrderHistory());
+}
+function renderOrderHistory(){
   const entries = state.history.map(rec=>({ts:Date.parse(rec.date), day:rec.date, html:orderHistoryCard(rec)})).sort((a,b)=>b.ts-a.ts);
   const tools = wipeBanner() + renderReportCard() + `<div class="hist-tools">
     <button type="button" class="btn btn-ghost" id="monthsBtn">${ICON_CALENDAR}<span>${esc(t('monthsTitle'))}</span></button>
@@ -3022,6 +3031,8 @@ function renderHistory(){
   return tools + renderCatalogSearch() + cards;
 }
 function attachHistoryEvents(){
+  document.querySelectorAll('[data-histmode]').forEach(b=>b.onclick = ()=>{ state.histMode = b.dataset.histmode; render(); scrollBox().scrollTo({top:0}); });
+  if(state.tabs.includes('receipts') && state.histMode === 'receipts') return attachReceiptHistory();
   document.getElementById('reportOpen')?.addEventListener('click', openReportSheet);
   document.getElementById('monthsBtn')?.addEventListener('click', openMonthsSheet);
   document.getElementById('ricoOrdersBtn')?.addEventListener('click', e=>withBusy(e.currentTarget, openRicoOrdersSheet));
