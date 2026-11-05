@@ -75,3 +75,9 @@ console.log("Receipt rules PASS: exact names (spaces, Kurdish letters), units, p
   assert.deepEqual(codes(vr("غرام", 500, 14)), []);
   console.log("Receipt unit checks PASS: odd unit names never default and are questioned, expensive grams and far-off prices per gram are questioned, a correct kilo is not");
 }
+
+// A line is rounded to the dinar like Ricotta Restaurant (10.4 x 1,057.692 is IQD 11,000 there).
+assert.equal(R.lineTotal({ qty: 10.4, cost: 1057.692 }, "IQD"), 11000);
+assert.equal(R.totals({ currency: "IQD", lines: [{ qty: 10.4, cost: 1057.692 }], delivery: 500 }).total, 11500);
+console.log("Receipt totals PASS: each line rounded to the dinar like Ricotta Restaurant");
+
