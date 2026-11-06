@@ -380,7 +380,7 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     const history = hb ? {
       at: t(hb.at, 40), days: Math.floor(num(hb.days)),
       t: Object.fromEntries(Object.entries(hb.t && typeof hb.t === "object" ? hb.t : {}).slice(0, 3000).map(([k, v]: [string, any]): [string, any] => [t(k, 200), {
-        ...stat(v), r: Object.fromEntries(Object.entries(v?.r && typeof v.r === "object" ? v.r : {}).slice(0, 80).map(([rk, c]) => [t(rk, 170), Math.floor(num(c))])),
+        ...stat(v), r: Object.fromEntries(Object.entries(v?.r && typeof v.r === "object" ? v.r : {}).slice(0, 80).map(([rk, c]: [string, any]) => [t(rk, 170), typeof c === "object" ? stat(c) : { n: Math.floor(num(c)), q: 0, hi: 0 }])),
       }]).filter(([k, v]: [string, any]) => k && v.n && v.q)),
       p: Object.fromEntries(Object.entries(hb.p && typeof hb.p === "object" ? hb.p : {}).slice(0, 3000).map(([k, v]: [string, any]): [string, any] => [t(k, 200), stat(v)]).filter(([k, v]: [string, any]) => k && v.n && v.q)),
     } : ((await catalogOf(db)) as any).history ?? null;

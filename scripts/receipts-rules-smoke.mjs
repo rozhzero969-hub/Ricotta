@@ -118,15 +118,30 @@ console.log("Receipt totals PASS: each line rounded to the dinar like Ricotta Re
   assert.deepEqual(codes({ from: "Main Storage", to: "Main Storage", lines: [{ item: toast.name, unit: "سیت", qty: 1 }] }), ["sameZone"]);
   assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 1 }], { to: "Breakfast" })), ["toUnknown"]);
   assert.deepEqual(T.itemsIn(cat, "Minibar"), []);
-  // Learnt from Ricotta Restaurant's record: Tomato usually 3 kg (largest 37 kg), mostly Main Storage to Appetizers.
+  // Learnt from Ricotta Restaurant's record. Each storage has its own demand: Al Sharqiyah takes about
+  // 10 kg of tomato, Pizza about 2 kg; Coca-Cola only ever goes to Minibar.
   {
-    const tomato = { name: "Tomato", base: "غرام", count: { name: "کیلۆ", factor: 1000 }, buy: null, stock: { "Main Storage": 200000, Appetizers: 0, Pizza: 0 } };
-    const hc = { zones: ["Main Storage", "Appetizers", "Pizza"], titems: [tomato], history: { t: { Tomato: { n: 93, q: 3000, hi: 37000, r: { "Main Storage>Appetizers": 19 } } } } };
-    const w = (qty, to = "Appetizers") => T.check({ from: "Main Storage", to, lines: [{ item: "Tomato", unit: "کیلۆ", qty }] }, hc, {}).warnings.map((x) => x.code);
-    assert.deepEqual(w(13.5), [], "a big but normal day asks nothing (more than 3 times the usual, less than the largest)");
-    assert.deepEqual(w(135), ["unusual"], "135 for 13.5 is asked about");
-    assert.deepEqual(w(0.2), ["unusualLow"], "far less than usual is asked about");
-    assert.deepEqual(w(3, "Pizza"), ["newRoute"], "a storage it never went to is asked about");
+    const tomato = { name: "Tomato", base: "غرام", count: { name: "کیلۆ", factor: 1000 }, buy: null, stock: { "Main Storage": 200000 } };
+    const cola = { name: "Coca-Cola", base: "دانە", count: { name: "دانە", factor: 1 }, buy: null, stock: { "Main Storage": 500 } };
+    const hc = { zones: ["Main Storage", "Al Sharqiyah", "Pizza", "Minibar", "Kebab"], titems: [tomato, cola], history: { t: {
+      Tomato: { n: 40, q: 4000, hi: 14000, r: { "Main Storage>Al Sharqiyah": { n: 20, q: 10000, hi: 14000 }, "Main Storage>Pizza": { n: 10, q: 2000, hi: 3000 } } },
+      "Coca-Cola": { n: 12, q: 48, hi: 96, r: { "Main Storage>Minibar": { n: 12, q: 48, hi: 96 } } },
+    } } };
+    const w = (item, unit, qty, to) => T.check({ from: "Main Storage", to, lines: [{ item, unit, qty }] }, hc, {}).warnings;
+    const codes = (...a) => w(...a).map((x) => x.code);
+    assert.deepEqual(codes("Tomato", "کیلۆ", 10, "Al Sharqiyah"), [], "10 kg to Al Sharqiyah is its normal day");
+    assert.deepEqual(codes("Tomato", "کیلۆ", 2, "Pizza"), [], "2 kg to Pizza is its normal day");
+    assert.deepEqual(codes("Tomato", "کیلۆ", 1.5, "Al Sharqiyah"), [], "a small day is not a typo");
+    assert.deepEqual(codes("Tomato", "کیلۆ", 0.5, "Al Sharqiyah"), ["unusualLow"], "0.5 kg to Al Sharqiyah (usually 10 kg) is asked about");
+    assert.equal(w("Tomato", "کیلۆ", 0.5, "Al Sharqiyah")[0].zone, "Al Sharqiyah", "and names the storage");
+    assert.deepEqual(codes("Tomato", "کیلۆ", 10, "Pizza"), ["unusual"], "10 kg to Pizza (usually 2 kg) is asked about");
+    assert.deepEqual(codes("Tomato", "کیلۆ", 135, "Al Sharqiyah"), ["unusual"], "135 for 13.5 is asked about");
+    const c = w("Coca-Cola", "دانە", 24, "Pizza");
+    assert.deepEqual(c.map((x) => x.code), ["newRoute"], "Coca-Cola to Pizza is asked about");
+    assert.deepEqual(c[0].usualTo, ["Minibar"], "with where it usually goes");
+    assert.deepEqual(codes("Coca-Cola", "دانە", 24, "Minibar"), [], "Coca-Cola to Minibar is normal");
+    assert.equal(T.usualFor(hc, "Tomato", "Main Storage", "Pizza").stat.q, 2000);
+    assert.equal(T.usualFor(hc, "Coca-Cola", "Main Storage", "Pizza").never, true);
   }
   console.log("Transfer rules PASS: stock never exceeded (same item added up), counting unit first, unclear units refused, all-of-it / unusual / yesterday asked, no Breakfast storages");
 }

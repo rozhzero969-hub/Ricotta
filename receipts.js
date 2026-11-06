@@ -176,6 +176,56 @@ function rrBackBar(title, extra = ''){
 /* A search box with its own list: typing narrows it, Tab (Shift+Tab) and the arrows go through the
    matches, Enter picks one and moves on. The list opens by itself only while nothing is picked yet, so
    Tab still leaves a box that already has its answer. */
+/* Keeps the whole line in sight while typing: a line's search box goes near the top (room for its list
+   below it), any other box shows its whole line (item, amount, unit). */
+function rrReveal(el){
+  const show = ()=>{
+    if(!el.isConnected) return;
+    const line = el.closest('.rr-line');
+    if(line && el.matches('[data-l-item]')) line.scrollIntoView({block:'start'});
+    else (line || el).scrollIntoView({block:'nearest'});
+  };
+  // After the page has settled (a redraw puts the old scroll place back first).
+  show(); requestAnimationFrame(()=>requestAnimationFrame(show));
+}
+/* A click in a box selects what is in it, so one keystroke or Delete replaces it (as Tab already does). */
+function rrSelectOnClick(root){
+  root.querySelectorAll('input.rr-input, input[data-l-item], input.rr-combo').forEach(el=>{
+    if(el._selClick) return; el._selClick = true;
+    let fresh = false;
+    el.addEventListener('focus', ()=>{ fresh = true; requestAnimationFrame(()=>{ if(document.activeElement === el) el.select(); }); });
+    el.addEventListener('mouseup', e=>{ if(fresh){ fresh = false; e.preventDefault(); el.select(); } });
+    el.addEventListener('blur', ()=>{ fresh = false; });
+  });
+}
+/* Line shortcuts on the Receipts and Transfers forms (⌥ on a Mac, Alt elsewhere; by key position, so a
+   Mac's ⌥ letters don't matter): N new line, D the same item again, X remove the line, U its unit menu,
+   ↑ ↓ the same box on the line above or below, Y Record for yesterday (Transfers). Returns true if used. */
+function rrLineKeys(e, a){
+  if(!e.altKey || e.metaKey || e.ctrlKey || document.querySelector('.modal-overlay')) return false;
+  const line = document.activeElement?.closest?.('.rr-line'), i = line ? +line.dataset.line : -1;
+  const kind = el=> el?.matches?.('[data-l-item]') ? 'item' : el?.matches?.('[data-l-qty]') ? 'qty' : el?.matches?.('[data-l-cost]') ? 'cost' : el?.classList?.contains('sel-btn') ? 'unit' : 'item';
+  const k = e.code, run = fn=>{ e.preventDefault(); e.stopPropagation(); fn(); return true; };
+  if(k === 'KeyN') return run(()=>a.add());
+  if(k === 'KeyY' && a.yesterday) return run(a.yesterday);
+  if(i < 0) return false;
+  if(k === 'KeyD') return run(()=>a.dup(i));
+  if(k === 'KeyX') return run(()=>line.querySelector('[data-l-del]')?.click());
+  if(k === 'KeyU') return run(()=>line.querySelector('.sel-btn')?.click());
+  if(k === 'ArrowUp' || k === 'ArrowDown'){
+    const other = document.querySelector(`.rr-line[data-line="${i + (k === 'ArrowDown' ? 1 : -1)}"]`); if(!other) return false;
+    const want = kind(document.activeElement);
+    const el = want === 'qty' ? other.querySelector('[data-l-qty]') : want === 'cost' ? other.querySelector('[data-l-cost]') : want === 'unit' ? other.querySelector('.sel-btn') : other.querySelector('[data-l-item]');
+    return run(()=>{ el.focus({preventScroll:true}); el.select?.(); rrReveal(el); });
+  }
+  return false;
+}
+/* N on the Receipts or Transfers form: the first empty line's search (or a new line). */
+function rrFocusFree(){
+  const free = [...document.querySelectorAll('.rr-edit [data-l-item]')].find(el=>!el.value);
+  if(free){ free.focus({preventScroll:true}); rrReveal(free); }
+  else document.querySelector('#rrAdd, #tfAdd')?.click();
+}
 function rrCombo(id, value, placeholder, attrs = ''){
   return `<div class="rr-combo"><input id="${id}" class="rr-input" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="${id}List" autocomplete="off" spellcheck="false" dir="auto" value="${esc(value || '')}" placeholder="${esc(placeholder)}" ${attrs}><div class="rr-pop" id="${id}List" role="listbox" hidden></div></div>`;
 }
@@ -254,7 +304,7 @@ function renderReceiptEdit(){
     const warn = c.warnings.filter(w=>w.line === i + 1).map(w=>rrWarnText(w)).join(' ');
     return `<div class="rr-line${warn ? ' warn' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="rrItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('rrItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
-      <div class="rr-field rr-f-unit"><label for="rrUnit${i}">${esc(t('rrUnit'))}</label><select id="rrUnit${i}" data-l-unit="${i}" ${item ? '' : 'disabled'}>${opt('', t('rrBaseUnit'), !l.unit)}${units.map(u=>opt(u.label, rrUnitShow(u.label), u.label === l.unit)).join('')}</select></div>
+      <div class="rr-field rr-f-unit"><label for="rrUnit${i}">${esc(t('rrUnit'))}</label><select id="rrUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${opt('', t('rrBaseUnit'), !l.unit)}${units.map(u=>opt(u.label, rrUnitShow(u.label), u.label === l.unit)).join('')}</select></div>
       <div class="rr-field"><label for="rrQty${i}">${esc(t('rrQty'))}</label><input id="rrQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${l.qty ?? ''}" placeholder="0"></div>
       <div class="rr-field"><label for="rrCost${i}">${esc(t('rrUnitCost'))}${usd ? ' ($)' : ''}</label><input id="rrCost${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-cost="${i}" value="${rrShowNum(l.cost)}" placeholder="0"></div>
       <div class="rr-field rr-total"><span>${esc(t('rrTotal'))}</span><b>${lineTotal ? esc(rrMoney(lineTotal, r.currency)) : '—'}</b></div>
@@ -283,6 +333,17 @@ function renderReceiptEdit(){
     </div>
     ${rrBelow()}
   </div>`;
+}
+/* "Item 3 · Lettuce: ...": a question names the item it is about. */
+function rrWarnLine(w, r){
+  const l = r && r.lines && w.line ? r.lines[w.line - 1] : null, name = l && l.item ? String(l.item).split(' - ')[0].trim() : '';
+  return (w.line ? t('rrLineN')(w.line) + (name ? ' · ' + name : '') + ': ' : '') + rrWarnText(w);
+}
+function rrSummary(r, ws){
+  const tt = globalThis.RicottaReceipts.totals(r);
+  return `<div class="cf-sum"><div class="cf-route"><b dir="auto">${esc(r.supplier || '')}</b></div>
+    <div class="cf-meta">${esc([r.invoice ? '#' + r.invoice : '', t('rrItemCount')(r.lines.filter(l=>l.item).length), r.zone, rrMoney(tt.total, r.currency)].filter(Boolean).join(' · '))}</div></div>
+    ${ws.length ? `<div class="cf-list-title">${esc(t('rrCheckThese'))}</div><ul class="cf-list">${ws.map(w=>`<li dir="auto">${esc(w)}</li>`).join('')}</ul>` : ''}`;
 }
 function rrWarnText(w){
   if(w.code === 'pressed') return t('rrWarnPressed');
@@ -322,10 +383,11 @@ async function rrSaveDraft(r){
 }
 function attachReceiptEdit(){
   const r = rrFind(rr.id); if(!r) return;
+  rrSelectOnClick(document.querySelector('.rr-edit') || document);
   const cat = rr.data.catalog;
   const repaint = ()=>{ const top = scrollBox().scrollTop; render(); scrollBox().scrollTop = top; };
   const changed = (redraw = false)=>{ rrSaveSoon(r); if(redraw) repaint(); else rrPaintTotals(r); };
-  const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); el.scrollIntoView({block:'nearest'}); el.select?.(); };
+  const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); el.select?.(); rrReveal(el); };
   const enter = (el, fn)=>{ if(el) el.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.isComposing){ e.preventDefault(); fn(); } }); };
   const firstItem = ()=>{ const i = r.lines.findIndex(l=>!l.item); return 'rrItem' + (i < 0 ? 0 : i); };
   const moneyBox = ()=> r.currency === 'USD' ? 'rrRate' : 'rrDelivery';
@@ -394,7 +456,8 @@ function attachReceiptEdit(){
   // Cmd/Ctrl + Enter sends from anywhere on the page.
   document.onkeydown = e=>{
     if(state.view !== 'receipts' || rr.page !== 'edit'){ document.onkeydown = null; return; }
-    if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.activeElement?.blur?.(); rrSend(r); }
+    if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.activeElement?.blur?.(); rrSend(r); return; }
+    rrLineKeys(e, {add:()=>addLine(), dup:i=>{ const l = r.lines[i]; r.lines.splice(i + 1, 0, {item:l.item, unit:l.unit, qty:null, cost:l.cost}); changed(true); go('rrQty' + (i + 1)); }});
   };
   // A new receipt starts on the supplier box (on a computer; a phone waits for a tap).
   if(rr.fresh){ rr.fresh = false; if(!r.supplier && !matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>go('rrSupplier')); }
@@ -417,7 +480,7 @@ async function rrSend(r){
     return;
   }
   // Every warning is read and confirmed before Rico gets the receipt.
-  if(c.warnings.length && !await showConfirm(`<ul class="rr-errs">${c.warnings.map(w=>`<li>${esc((w.line ? t('rrLineN')(w.line) + ': ' : '') + rrWarnText(w))}</li>`).join('')}</ul>`, {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary'})) return;
+  if(c.warnings.length && !await showConfirm(rrSummary(r, c.warnings.map(w=>rrWarnLine(w, r))), {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary', enter:true, wide:true})) return;
   if(c.warnings.some(w=>w.code === 'bigTotal') && !await showConfirm(esc(t('rrBigAgain')(rrNum(c.iqd))), {title:t('rrSureTitle'), okLabel:t('rrSend'), okClass:'btn-primary'})) return;
   rr.sending = true;
   try{
@@ -442,7 +505,7 @@ async function rrPost(r, codes){
   if(!res.ok && res.data?.error === 'needs_confirmation'){
     const more = (res.data.warnings || []).filter(w=>!codes.includes(w.code));
     if(!more.length) return res;
-    if(!await showConfirm(`<ul class="rr-errs">${more.map(w=>`<li>${esc((w.line ? t('rrLineN')(w.line) + ': ' : '') + rrWarnText(w))}</li>`).join('')}</ul>`, {title:t('rrSureTitle'), okLabel:t('rrSendAnyway'), okClass:'btn-danger'})) return null;
+    if(!await showConfirm(rrSummary(r, more.map(w=>rrWarnLine(w, r))), {title:t('rrSureTitle'), okLabel:t('rrSendAnyway'), okClass:'btn-danger', wide:true})) return null;
     res = await api(`receipts/${r.id}/send`, {method:'POST', body:{confirm:[...codes, ...more.map(w=>w.code)]}});
   }
   return res;
@@ -465,7 +528,7 @@ function renderReceiptView(){
   return `<div class="rr-page">${rrBackBar(r.supplier || '')}
     ${head}
     ${r.photos.length ? `<div class="section-title">${esc(t('rrPhotos'))}</div><div class="rr-photos">${pics || loadingLines(1)}</div>` : ''}
-    ${(r.warnings || []).length && r.status === 'review' ? `<div class="rr-card rr-warns">${r.warnings.map(w=>`<p>${esc((w.line ? t('rrLineN')(w.line) + ': ' : '') + rrWarnText(w))}</p>`).join('')}</div>` : ''}
+    ${(r.warnings || []).length && r.status === 'review' ? `<div class="rr-card rr-warns">${r.warnings.map(w=>`<p>${esc(rrWarnLine(w, r))}</p>`).join('')}</div>` : ''}
     <div class="section-title">${esc(t('rrItemCount')(r.lines.length))}</div>
     <div class="rr-card"><dl class="rr-facts"><dt>${esc(t('rrInvoice'))}</dt><dd>${esc(r.invoice ? '#' + r.invoice : '')}</dd>
       <dt>${esc(t('rrMadeIn'))}</dt><dd>${esc(rrSourceName(r) + (accountLabel(r.by) ? ' · ' + accountLabel(r.by) : ''))}</dd>
@@ -495,17 +558,27 @@ async function rrLoadPhotos(r){
 function attachReceiptView(){
   const r = rrFind(rr.id); if(!r) return;
   document.getElementById('rrBack').onclick = rrBack;
-  const act = async (action, ask)=>{
-    if(ask && !await showConfirm(esc(ask).replace(/\n/g, '<br>'), {okLabel:action === 'approve' ? t('rrApprove') : t('rrCancelReceipt'), okClass:action === 'approve' ? 'btn-primary' : 'btn-danger'})) return;
+  const act = async (action)=>{
+    // Approving shows the receipt once more (and anything to check), and Enter approves; cancelling asks plainly.
+    const ws = (r.warnings || []).map(w=>rrWarnLine(w, r)).filter(Boolean);
+    const big = r.total >= (rrLimits().bigTotal || Infinity);
+    const ok = action === 'approve'
+      ? await showConfirm(rrSummary(r, ws) + (big ? `<p class="cf-alert">${esc(t('rrBigAgain')(rrNum(r.total)))}</p>` : ''), {title:t('rrApproveTitle'), okLabel:t('rrApprove'), okClass:'btn-primary', enter:true, wide:true})
+      : await showConfirm(esc(t('rrCancelAsk')), {okLabel:t('rrCancelReceipt'), okClass:'btn-danger'});
+    if(!ok) return;
     const res = await api(`receipts/${r.id}/${action}`, {method:'POST', body:{}});
     if(!res.ok){ toast(res.data?.error === 'too_late' ? t('rrTooLate') : t('saveFailed'), 'error'); rrLoad(true); return; }
     Object.assign(r, res.data); render();
   };
-  // Anything unusual (or a big total) is asked about once more before Rico saves it.
-  const ws = (r.warnings || []).map(w=>(w.line ? t('rrLineN')(w.line) + ': ' : '') + rrWarnText(w)).filter(Boolean);
-  const ask = ws.length ? t('rrApproveAsk') + '\n• ' + ws.join('\n• ') : r.total >= (rrLimits().bigTotal || Infinity) ? t('rrBigAgain')(rrNum(r.total)) : null;
-  const ap = document.getElementById('rrApprove'); if(ap) ap.onclick = ()=>act('approve', ask);
-  const cn = document.getElementById('rrCancel'); if(cn) cn.onclick = ()=>act('cancel', t('rrCancelAsk'));
+  const ap = document.getElementById('rrApprove'); if(ap) ap.onclick = ()=>act('approve');
+  // Enter on the page approves too (when nothing is being typed and no box is open).
+  document.onkeydown = e=>{
+    if(state.view !== 'receipts' || rr.page !== 'view'){ document.onkeydown = null; return; }
+    if(document.querySelector('.modal-overlay') || e.target.closest?.('input,textarea,select')) return;
+    if(e.key === 'Enter' && ap && !e.target.closest?.('button')){ e.preventDefault(); ap.click(); }
+    else if(e.key === 'Escape'){ e.preventDefault(); rrBack(); }
+  };
+  const cn = document.getElementById('rrCancel'); if(cn) cn.onclick = ()=>act('cancel');
   const cp = document.getElementById('rrCopy'); if(cp) cp.onclick = ()=>rrNewDraft(r);
   const rt = document.getElementById('rrRetry'); if(rt) rt.onclick = ()=>rrRetry(r);
   attachLightbox();
@@ -516,9 +589,9 @@ function attachReceiptView(){
 async function rrRetry(r){
   const c = globalThis.RicottaReceipts.check(r, rr.data.catalog, rrLimits(), rr.data.last);
   if(c.errors.length){ await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li>${esc(rrErrText(e))}</li>`).join('')}</ul><p>${esc(t('rrRetryCopy'))}</p>`, {title:t('rrFixFirst')}); return; }
-  const ws = c.warnings.map(w=>(w.line ? t('rrLineN')(w.line) + ': ' : '') + rrWarnText(w)).filter(Boolean);
-  const msg = (r.pressedAt || r.approvedAt ? `<p><b>${esc(t('rrRetryCheckFirst'))}</b></p>` : '') + `<p>${esc(t('rrRetryAsk')(r.supplier || '', r.lines.length))}</p>` + (ws.length ? `<ul class="rr-errs">${ws.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>` : '');
-  if(!await showConfirm(msg, {title:t('rrRetry'), okLabel:t('rrRetry'), okClass:'btn-primary'})) return;
+  const ws = c.warnings.map(w=>rrWarnLine(w, r)).filter(Boolean);
+  const msg = (r.pressedAt || r.approvedAt ? `<p class="cf-alert">${esc(t('rrRetryCheckFirst'))}</p>` : '') + rrSummary(r, ws);
+  if(!await showConfirm(msg, {title:t('rrRetry'), okLabel:t('rrRetry'), okClass:'btn-primary', wide:true, enter:!(r.pressedAt || r.approvedAt)})) return;
   const res = await rrPost(r, c.warnings.map(w=>w.code));
   if(!res) return;
   if(!res.ok){ toast(res.data?.error === 'invoice_already_sent' ? t('rrErrAlreadySent') : res.data?.errors ? res.data.errors.map(rrErrText).join(' · ') : t('saveFailed'), 'error'); rrLoad(true); return; }
