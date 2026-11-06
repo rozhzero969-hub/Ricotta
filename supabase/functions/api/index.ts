@@ -93,7 +93,7 @@ const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers")
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
   : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : [...DEFAULT_ROLES];
 // Account settings the app may save (Settings), and the ones with a list of choices.
-const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "ricoBriefing", "ricoMood", "tables", "kitchenMode", "milestones", "ricoAutoStart"]);
+const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "ricoBriefing", "ricoMood", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto"]);
 const SETTING_CHOICES: Record<string, string[]> = { darkMode: ["auto", "on", "off"], ricoStyle: ["normal", "short", "warm"] };
 // Rozha may undo an order she sent this long without typing her PIN.
 const UNDO_MS = 15 * 60_000;
@@ -1015,6 +1015,9 @@ Deno.serve(async (req) => {
       const key = String(b.key ?? ""), value = b.value;
       const ok_ = SETTING_KEYS.has(key) ? typeof value === "boolean"
         : key === "pinnedSuppliers" ? Array.isArray(value) && value.length <= 30 && value.every((v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 120)
+        // Her own keys for the Receipts and Transfers line shortcuts ({add:"Alt+KeyN", ...}); {} is the standard ones.
+        : key === "keys" ? !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length <= 12
+          && Object.entries(value).every(([k, v]) => ["add", "dup", "del", "unit", "up", "down", "yest"].includes(k) && typeof v === "string" && /^(Mod\+)?(Alt\+)?(Shift\+)?[A-Za-z0-9]{1,20}$/.test(v) && /^(Mod|Alt)/.test(v))
         : (SETTING_CHOICES[key] ?? []).includes(value);
       if (!ok_) return fail("invalid_input");
       const { data: me, error: readError } = await app("accounts").select("settings").eq("id", s.account).maybeSingle();

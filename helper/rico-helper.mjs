@@ -20,7 +20,7 @@ import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-12.3";
+const VERSION = "2026-11-13.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -690,6 +690,11 @@ async function workTransfer(t) {
         return;
       }
       if ((await api(`helper/transfers/${t.id}`)).status === "cancelled") { await go("/inventory/transfer", t.id); await treport(t.id, { log: [...steps, "Cancelled in the app. Cleared in Ricotta Restaurant; nothing was moved."] }); return; }
+      // Sent to move without asking again: no second approval; moved now (checked once more first).
+      if (t.auto && t.approvedBy) {
+        await treport(t.id, { status: "moving", log: [...steps, "Photo taken. Sent to move without asking again: moving now."] });
+        t = { ...t, status: "moving", filled: true };
+      } else {
       await treport(t.id, { status: "review", log: [...steps, "Photo taken. Waiting for approval."] });
       for (;;) {
         const now = await api(`helper/transfers/${t.id}/wait`, { method: "POST", body: { wait: 20 } });
@@ -700,14 +705,15 @@ async function workTransfer(t) {
         t = { ...now, status: "moving" };
         break;
       }
+      }
     }
     if (t.status === "moving" || t.status === "approved") {
       // Filled in again from the start (Ricotta Restaurant keeps no unfinished transfer), checked again
       // against the live stock, then moved.
       const items = new Map((catalogNow?.titems ?? []).map((i) => [i.name, i]));
-      await fillTransfer(t);
+      if (!t.filled) await fillTransfer(t);   // still filled in when moved without a second approval
       await verifyTransfer(t, items, "just before moving");
-      await treport(t.id, { log: ["Filled in again and checked against the live stock just before moving: everything matches"] });
+      await treport(t.id, { log: [t.filled ? "Checked against the live stock again just before moving: everything matches" : "Filled in again and checked against the live stock just before moving: everything matches"] });
       const r = await pressMove(t);
       await treport(t.id, { status: "moved", result: { checked: r.found, note: r.note || null }, log: [r.found ? `Moved. Checked in Ricotta Restaurant's stock record: all ${t.lines.length} items moved once, in exactly these amounts, ${t.from} to ${t.to}${t.yesterday ? ", dated yesterday" : ""}.` : `Moved, but ${r.note}. Check Recent transfers in Ricotta Restaurant.`] });
       log(`moved ${t.from} -> ${t.to}`);

@@ -34,7 +34,7 @@ export function tview(r: any, withLog = true) {
     id: r.id, by: r.created_by, source: r.source, mode: r.mode ?? null, status: r.status, from: r.from_zone, to: r.to_zone,
     yesterday: !!r.yesterday, forDay: r.for_day, lines: r.lines ?? [], warnings: r.warnings ?? [], problem: r.problem, result: r.result,
     photos: (r.photos ?? []).map((p: any) => ({ kind: p.kind, at: p.at })), log: withLog ? r.log ?? [] : undefined,
-    approvedBy: r.approved_by, approvedAt: r.approved_at, sentAt: r.sent_at, movedAt: r.moved_at, pressedAt: r.pressed_at ?? null, version: r.version,
+    approvedBy: r.approved_by, approvedAt: r.approved_at, sentAt: r.sent_at, movedAt: r.moved_at, pressedAt: r.pressed_at ?? null, auto: !!r.auto, version: r.version,
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -81,10 +81,15 @@ export async function sendTransfer(db: any, r: any, who: string, confirm: unknow
   const twin = await sameTransfer(db, r, forDay);
   if (twin) warnings.push({ code: "repeat", at: twin.moved_at ?? twin.sent_at, status: twin.status });
   if (warnings.some((w: any) => !confirmed.has(w.code))) return { error: "needs_confirmation", extra: { warnings } };
+  // "Move without asking again" (the sender's setting): sending is the approval, so Rico moves it as
+  // soon as it is filled in and checked. Otherwise a person approves Rico's photo first.
+  const { data: acc } = await db.from("app_accounts").select("settings").eq("id", who).maybeSingle();
+  const auto = acc?.settings?.tfAuto === true;
   const { data: sent, error } = await tt(db).update({
+    auto, approved_by: auto ? who : null, approved_at: auto ? now() : null,
     status: "queued", warnings, problem: null, pressed_at: null, sent_at: now(), for_day: forDay,
     version: r.version + 1, updated_at: now(), ...(source ? { source } : {}),
-    log: [...(r.log ?? []), logEntry(`Sent to Rico by ${nameOf(who)}${source === "telegram" ? " on Telegram" : ""}${r.yesterday ? " (record for yesterday)" : ""}`, who)],
+    log: [...(r.log ?? []), logEntry(`Sent to Rico by ${nameOf(who)}${source === "telegram" ? " on Telegram" : ""}${r.yesterday ? " (record for yesterday)" : ""}${auto ? ", to move without asking again" : ""}`, who)],
   }).eq("id", r.id).eq("version", r.version).select("*").maybeSingle();
   if (error || !sent) return { error: error ? "send_failed" : "changed_elsewhere", status: error ? 503 : 409 };
   await tellT(db, sent, "queued");
@@ -208,7 +213,9 @@ export async function transferHelperRoute(ctx: Ctx, M: string, path: string, b: 
     // Rico says so just before pressing Move it; if this isn't saved he doesn't press.
     if (b.pressed === true) { if (!["approved", "moving"].includes(r.status)) return fail("bad_status", 409); patch.pressed_at = now(); }
     if (to && to !== r.status) {
-      if (!(NEXT[r.status] ?? []).includes(to)) return fail("bad_status", 409);
+      // A transfer sent to move without asking again goes from filled in straight to moving.
+      const autoMove = r.auto && r.approved_by && r.status === "filling" && to === "moving";
+      if (!autoMove && !(NEXT[r.status] ?? []).includes(to)) return fail("bad_status", 409);
       patch.status = to;
       if (to === "problem") patch.problem = tx(b.problem || "Rico stopped. See his notes.", 500);
       if (to === "moved") { patch.moved_at = now(); patch.result = b.result && typeof b.result === "object" ? b.result : null; }

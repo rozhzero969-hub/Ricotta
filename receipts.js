@@ -251,37 +251,31 @@ function rrReveal(el){
   // After the page has settled (a redraw puts the old scroll place back first).
   show(); requestAnimationFrame(()=>requestAnimationFrame(show));
 }
-/* A click in a box selects what is in it, so one keystroke or Delete replaces it (as Tab already does). */
-function rrSelectOnClick(root){
-  root.querySelectorAll('input.rr-input, input[data-l-item], input.rr-combo').forEach(el=>{
-    if(el._selClick) return; el._selClick = true;
-    let fresh = false;
-    el.addEventListener('focus', ()=>{ fresh = true; requestAnimationFrame(()=>{ if(document.activeElement === el) el.select(); }); });
-    el.addEventListener('mouseup', e=>{ if(fresh){ fresh = false; e.preventDefault(); el.select(); } });
-    el.addEventListener('blur', ()=>{ fresh = false; });
-  });
-}
-/* Line shortcuts on the Receipts and Transfers forms (⌥ on a Mac, Alt elsewhere; by key position, so a
-   Mac's ⌥ letters don't matter): N new line, D the same item again, X remove the line, U its unit menu,
-   ↑ ↓ the same box on the line above or below, Y Record for yesterday (Transfers). Returns true if used. */
+/* Line shortcuts on the Receipts and Transfers forms. Each can be changed (press ? › Change); the
+   standard ones: ⌥N new line, ⌥D the same item again, ⌥X remove the line, ⌥U its unit, ⌥↑ ⌥↓ the
+   same box on the line above or below, ⌥Y Record for yesterday (Transfers). Keys are matched by
+   position, so a Mac's ⌥ letters don't matter. */
+const RR_KEYS = {add:'Alt+KeyN', dup:'Alt+KeyD', del:'Alt+KeyX', unit:'Alt+KeyU', up:'Alt+ArrowUp', down:'Alt+ArrowDown', yest:'Alt+KeyY'};
+const rrKeyOf = act=> (state.settings?.keys && state.settings.keys[act]) || RR_KEYS[act];
+/* An event as "Mod+Alt+Shift+KeyN" (Mod is ⌘ on a Mac, Ctrl elsewhere). */
+const rrCombo_ = e=> [(e.metaKey || e.ctrlKey) ? 'Mod' : '', e.altKey ? 'Alt' : '', e.shiftKey ? 'Shift' : '', e.code].filter(Boolean).join('+');
 function rrLineKeys(e, a){
-  if(!e.altKey || e.metaKey || e.ctrlKey || document.querySelector('.modal-overlay')) return false;
+  if(document.querySelector('.modal-overlay') || !(e.altKey || e.metaKey || e.ctrlKey)) return false;
+  const combo = rrCombo_(e), act = Object.keys(RR_KEYS).find(k=>rrKeyOf(k) === combo);
+  if(!act) return false;
   const line = document.activeElement?.closest?.('.rr-line'), i = line ? +line.dataset.line : -1;
   const kind = el=> el?.matches?.('[data-l-item]') ? 'item' : el?.matches?.('[data-l-qty]') ? 'qty' : el?.matches?.('[data-l-cost]') ? 'cost' : el?.classList?.contains('sel-btn') ? 'unit' : 'item';
-  const k = e.code, run = fn=>{ e.preventDefault(); e.stopPropagation(); fn(); return true; };
-  if(k === 'KeyN') return run(()=>a.add());
-  if(k === 'KeyY' && a.yesterday) return run(a.yesterday);
+  const run = fn=>{ e.preventDefault(); e.stopPropagation(); fn(); return true; };
+  if(act === 'add') return run(()=>a.add());
+  if(act === 'yest') return a.yesterday ? run(a.yesterday) : false;
   if(i < 0) return false;
-  if(k === 'KeyD') return run(()=>a.dup(i));
-  if(k === 'KeyX') return run(()=>line.querySelector('[data-l-del]')?.click());
-  if(k === 'KeyU') return run(()=>line.querySelector('.sel-btn')?.click());
-  if(k === 'ArrowUp' || k === 'ArrowDown'){
-    const other = document.querySelector(`.rr-line[data-line="${i + (k === 'ArrowDown' ? 1 : -1)}"]`); if(!other) return false;
-    const want = kind(document.activeElement);
-    const el = want === 'qty' ? other.querySelector('[data-l-qty]') : want === 'cost' ? other.querySelector('[data-l-cost]') : want === 'unit' ? other.querySelector('.sel-btn') : other.querySelector('[data-l-item]');
-    return run(()=>{ el.focus({preventScroll:true}); el.select?.(); rrReveal(el); });
-  }
-  return false;
+  if(act === 'dup') return run(()=>a.dup(i));
+  if(act === 'del') return run(()=>line.querySelector('[data-l-del]')?.click());
+  if(act === 'unit') return run(()=>line.querySelector('.sel-btn')?.click());
+  const other = document.querySelector(`.rr-line[data-line="${i + (act === 'down' ? 1 : -1)}"]`); if(!other) return false;
+  const want = kind(document.activeElement);
+  const el = want === 'qty' ? other.querySelector('[data-l-qty]') : want === 'cost' ? other.querySelector('[data-l-cost]') : want === 'unit' ? other.querySelector('.sel-btn') : other.querySelector('[data-l-item]');
+  return run(()=>{ el.focus({preventScroll:true}); rrReveal(el); });
 }
 /* N on the Receipts or Transfers form: the first empty line's search (or a new line). */
 function rrFocusFree(){
@@ -308,13 +302,13 @@ function rrComboBind(input, names, onPick, extra){
   };
   const close = ()=>{ pop.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); };
   const pick = n=>{ picked = n; input.value = n; close(); onPick(n, false); };
-  // A click on a box with a name selects the whole name, so one Delete (or typing) replaces it.
-  let focusing = false;
-  input.addEventListener('focus', ()=>{ focusing = true; input.select(); if(!picked) open(''); });
-  input.addEventListener('mouseup', e=>{ if(focusing){ e.preventDefault(); input.select(); } focusing = false; });
-  input.addEventListener('blur', ()=>{ focusing = false; });
+  // A click (or Tab) on a box shows the whole list, the chosen one marked; nothing is selected. The first
+  // letter typed starts a new search in place of the chosen name; Delete clears it.
+  input.addEventListener('focus', ()=>{ open(''); });
+  input.addEventListener('mousedown', ()=>{ if(document.activeElement === input && pop.hidden) open(''); });
   input.addEventListener('input', ()=>open(input.value.trim()));
   input.addEventListener('keydown', e=>{
+    if(picked && input.value === picked && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey){ input.value = ''; }
     if((e.key === 'Backspace' || e.key === 'Delete') && picked && input.value === picked){ e.preventDefault(); input.value = ''; open(''); return; }
     if(pop.hidden){
       if(e.key === 'ArrowDown'){ e.preventDefault(); open(''); }
@@ -448,11 +442,10 @@ async function rrSaveDraft(r){
 }
 function attachReceiptEdit(){
   const r = rrFind(rr.id); if(!r) return;
-  rrSelectOnClick(document.querySelector('.rr-edit') || document);
   const cat = rr.data.catalog;
   const repaint = ()=>{ const top = scrollBox().scrollTop; render(); scrollBox().scrollTop = top; };
   const changed = (redraw = false)=>{ rrSaveSoon(r); if(redraw) repaint(); else rrPaintTotals(r); };
-  const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); el.select?.(); rrReveal(el); };
+  const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); if(!el.matches('[role=combobox]')) el.select?.(); rrReveal(el); };
   const enter = (el, fn)=>{ if(el) el.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.isComposing){ e.preventDefault(); fn(); } }); };
   const firstItem = ()=>{ const i = r.lines.findIndex(l=>!l.item); return 'rrItem' + (i < 0 ? 0 : i); };
   const moneyBox = ()=> r.currency === 'USD' ? 'rrRate' : 'rrDelivery';
@@ -688,35 +681,57 @@ async function ricoAutoStart(){
 }
 
 /* ---------- Settings: Rico ---------- */
+/* Settings > Rico: his status, the two approval rules (receipts always; transfers as she chooses), the
+   limits as plain values with Edit, and Telegram. */
 function renderRicoReceiptSettings(){
   if(!isRozha() || !canOpen('receipts')) return '';
   const h = rr.data?.helper;
   if(!h){ if(!rr.loading) rrLoad(true); return ''; }
   if(!rr.tg && !rr.tgLoading){ rr.tgLoading = true; api('receipts-settings/telegram', {quiet:true}).then(r=>{ rr.tgLoading = false; if(r.ok){ rr.tg = r.data; if(state.view === 'settings') render(); } }); }
+  const L = h.limits, on = h.online && !h.stopped;
+  const val = (label, v)=>`<div class="rs-val"><span>${esc(label)}</span><b dir="ltr">${esc(v)}</b></div>`;
+  const limits = rr.editLimits ? `<div class="rr-limits">
+        <label class="rr-field"><span class="rr-label">${esc(t('rrLimBig'))}</span><input class="rr-input" id="rrLimBig" inputmode="numeric" value="${L.bigTotal}"></label>
+        <label class="rr-field"><span class="rr-label">${esc(t('rrLimJump'))}</span><input class="rr-input" id="rrLimJump" inputmode="numeric" value="${L.priceJump}"></label>
+        <label class="rr-field"><span class="rr-label">${esc(t('rrLimRateMin'))}</span><input class="rr-input" id="rrLimMin" inputmode="numeric" value="${L.rateMin}"></label>
+        <label class="rr-field"><span class="rr-label">${esc(t('rrLimRateMax'))}</span><input class="rr-input" id="rrLimMax" inputmode="numeric" value="${L.rateMax}"></label>
+      </div>
+      <div class="rs-actions"><button type="button" class="btn btn-ghost" id="rrLimDefault">${esc(t('rsStandard'))}</button><span></span><button type="button" class="btn btn-ghost" id="rrLimCancel">${esc(t('cancel'))}</button><button type="button" class="btn btn-primary" id="rrLimSave">${esc(t('rrLimSave'))}</button></div>
+      <p class="field-hint">${esc(t('rrLimHint'))}</p>`
+    : `<div class="rs-vals">${val(t('rrLimBig'), 'IQD ' + rrNum(L.bigTotal))}${val(t('rrLimJump'), L.priceJump + '%')}${val(t('rsRate'), rrNum(L.rateMin) + ' – ' + rrNum(L.rateMax))}</div>`;
   return `<div class="section-title">${esc(t('rrSettingsTitle'))}</div>
     <div class="form-card rr-settings">
-      <div class="rr-set-status">${rrRico()}<span><b>${esc(t('rrRicoMac'))}</b><small>${esc(rrHelperLine(h))}${h.online ? ' · ' + esc(h.signedIn ? t('rrSignedIn') : t('rrSignedOut')) : ''}</small></span></div>
-      <p class="field-hint rr-approve-note">${esc(t('rrPersonApproves'))}</p>
-      <label class="check-row preference-row"><input type="checkbox" id="rrStop" ${h.stopped ? 'checked' : ''}><span>${esc(t('rrStop'))}<small>${esc(t('rrStopHint'))}</small></span></label>
-      <div class="rr-limits">
-        <label class="rr-field"><span class="rr-label">${esc(t('rrLimBig'))}</span><input class="rr-input" id="rrLimBig" inputmode="numeric" value="${h.limits.bigTotal}"></label>
-        <label class="rr-field"><span class="rr-label">${esc(t('rrLimJump'))}</span><input class="rr-input" id="rrLimJump" inputmode="numeric" value="${h.limits.priceJump}"></label>
-        <label class="rr-field"><span class="rr-label">${esc(t('rrLimRateMin'))}</span><input class="rr-input" id="rrLimMin" inputmode="numeric" value="${h.limits.rateMin}"></label>
-        <label class="rr-field"><span class="rr-label">${esc(t('rrLimRateMax'))}</span><input class="rr-input" id="rrLimMax" inputmode="numeric" value="${h.limits.rateMax}"></label>
+      <div class="rs-head">${rrRico()}<span><b>${esc(t('rrRicoMac'))}</b><small><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i>${esc(rrHelperLine(h))}${h.online ? ' · ' + esc(h.signedIn ? t('rrSignedIn') : t('rrSignedOut')) : ''}</small></span></div>
+      <div class="rs-group">
+        <div class="rs-title">${esc(t('rsApprovals'))}</div>
+        <div class="rs-rule"><b>${esc(t('rrTitle'))}</b><small>${esc(t('rsReceiptsAlways'))}</small></div>
+        <label class="check-row preference-row rs-switch"><input type="checkbox" id="tfAutoSet" ${featureOn('tfAuto') ? 'checked' : ''}><span><b>${esc(t('tfTitle'))}: ${esc(t('rsTfAuto'))}</b><small>${esc(t('rsTfAutoHint'))}</small></span></label>
       </div>
-      <div class="rr-limits-actions"><button type="button" class="btn btn-ghost" id="rrLimDefault">${esc(t('rrLimDefaults'))}</button><button type="button" class="btn btn-primary" id="rrLimSave">${esc(t('rrLimSave'))}</button></div>
-      <p class="field-hint">${esc(t('rrLimHint'))}</p>
-      <div class="rr-set-status rr-tg"><span><b>${esc(t('rrTelegram'))}</b><small>${esc(!rr.tg ? '' : !rr.tg.ready ? t('rrTgNotSetUp') : rr.tg.connected ? t('rrTgConnected') : t('rrTgNotConnected'))}</small></span>
+      <div class="rs-group">
+        <div class="rs-title"><span>${esc(t('rsLimits'))}</span>${rr.editLimits ? '' : `<button type="button" class="rs-edit" id="rrLimEdit">${esc(t('rsEdit'))}</button>`}</div>
+        ${limits}
+      </div>
+      <div class="rs-group">
+        <label class="check-row preference-row rs-switch"><input type="checkbox" id="rrStop" ${h.stopped ? 'checked' : ''}><span><b>${esc(t('rrStop'))}</b><small>${esc(t('rrStopHint'))}</small></span></label>
+      </div>
+      <div class="rs-group rs-tg"><span><b>${esc(t('rrTelegram'))}</b><small>${esc(!rr.tg ? '' : !rr.tg.ready ? t('rrTgNotSetUp') : rr.tg.connected ? t('rrTgConnected') : t('rrTgNotConnected'))}</small></span>
         ${rr.tg?.ready ? `<button type="button" class="btn btn-ghost" id="rrTgConnect">${esc(rr.tg.connected ? t('rrTgReconnect') : t('rrTgConnect'))}</button>` : ''}</div>
     </div>`;
 }
 function attachRicoReceiptSettings(){
   const put = async body=>{
     const res = await api('receipts-settings', {method:'PUT', body});
-    if(res.ok && rr.data){ rr.data.helper = res.data; toast(t('rrSettingsSaved')); } else toast(t('saveFailed'), 'error');
+    if(res.ok && rr.data){ rr.data.helper = res.data; toast(t('rrSettingsSaved')); rr.editLimits = false; } else toast(t('saveFailed'), 'error');
     render();
   };
   const s = document.getElementById('rrStop'); if(s) s.onchange = ()=>put({stopped:s.checked});
+  // Transfers without a second approval: asked once more when it is turned on.
+  const au = document.getElementById('tfAutoSet'); if(au) au.onchange = async ()=>{
+    if(au.checked && !await showConfirm(esc(t('rsTfAutoAsk')), {title:t('rsTfAuto'), okLabel:t('rsTurnOn'), okClass:'btn-primary'})){ au.checked = false; return; }
+    if(!(await setFeature('tfAuto', au.checked))) au.checked = !au.checked;
+  };
+  const ed = document.getElementById('rrLimEdit'); if(ed) ed.onclick = ()=>{ rr.editLimits = true; render(); document.getElementById('rrLimBig')?.focus(); };
+  const lc = document.getElementById('rrLimCancel'); if(lc) lc.onclick = ()=>{ rr.editLimits = false; render(); };
   // The limits: asks twice above this total, warns at this price change, the dollar rate range.
   const lim = id=>rrParse(document.getElementById(id)?.value ?? '', false);
   const ls = document.getElementById('rrLimSave'); if(ls) ls.onclick = ()=>{

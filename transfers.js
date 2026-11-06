@@ -14,7 +14,7 @@ const tfQty = q=> rrNum(q, 3);
 function tfAvailHtml(item, zone, short, unit){
   const have = TF().available(item, zone), o = TF().unitOptions(item).find(u=>u.name === unit);
   const c = o ? {qty:Math.round((have / o.factor) * 10000) / 10000, unit:o.name} : TF().inCounting(item, have);
-  return `<span class="tf-have${short ? ' short' : ''}"><span>${esc(short ? t('tfOnlyHave') : t('tfAvailLabel'))}</span><b dir="ltr">${esc(tfQty(c.qty))} <bdi>${esc(c.unit)}</bdi></b><span>${esc(t('tfInZone')(zone))}</span></span>`;
+  return `<span class="tf-have${short ? ' short' : ''}">${esc(short ? t('tfOnlyHave') : t('tfAvailLabel'))} <b dir="ltr">${esc(tfQty(c.qty))} <bdi>${esc(c.unit)}</bdi></b> ${esc(t('tfInZone')(zone))}</span>`;
 }
 /* The day a transfer counts on: today, or yesterday with Record for yesterday on. */
 const tfDayLabel = day=> day ? formatIraqDateTime(new Date(day + 'T12:00:00+03:00'), {weekday:'short', day:'numeric', month:'short'}) : '';
@@ -52,7 +52,7 @@ const tfTone = r=> tfIsPractice(r) || r.status === 'cancelled' || r.status === '
 const tfStatusText = r=> tfIsPractice(r) ? t('tfPracticeRun') : r.pendingSend && r.status === 'draft' ? t('rrWaitingToSend') : t('tfStatus_' + r.status);
 function tfLine(r){
   const n = (r.lines || []).filter(l=>l.item).length;
-  return [t('rrItemCount')(n), rrWhen(r.sentAt || r.createdAt), accountLabel(r.by), rrSourceName(r), r.yesterday ? t('tfForYesterday') : '',
+  return [t('rrItemCount')(n), rrWhen(r.sentAt || r.createdAt), accountLabel(r.by), rrSourceName(r), r.yesterday ? t('tfForYesterday') : '', r.auto ? t('tfNoSecond') : '',
     r.status === 'problem' ? r.problem || tfStatusText(r) : tfStatusText(r)].filter(Boolean).join(' · ');
 }
 const tfFiltered = list=> list.filter(r=>tf.filter.src === 'all' || (r.source === 'telegram' ? 'telegram' : 'app') === tf.filter.src);
@@ -178,7 +178,7 @@ function renderTransferEdit(){
     <div class="rr-sum">
       <div class="rr-sum-total"><span>${esc(t('tfItemsLabel'))}:</span> <b>${r.lines.filter(l=>l.item).length}</b><small>${esc(ready ? `${r.from} → ${r.to}` : '')}</small></div>
       <div class="rr-sum-acts"><button type="button" class="rr-cancel" id="tfDiscard">${esc(t('cancel'))}</button><button type="button" class="rr-keep" id="tfKeepDraft" title="${esc(t('rrKeepDraftHint'))}">${esc(t('rrKeepDraft'))}</button>
-        <button type="button" class="btn btn-primary" id="tfSend" ${ready ? '' : 'disabled'}>${ICON_CHECK}<span>${esc(t('tfSend'))}</span></button></div>
+        <button type="button" class="btn btn-primary" id="tfSend" ${ready ? '' : 'disabled'}>${ICON_CHECK}<span>${esc(featureOn('tfAuto') ? t('tfSendMove') : t('tfSend'))}</span></button></div>
     </div>
     ${tfBelow()}
   </div>`;
@@ -196,11 +196,10 @@ async function tfSaveDraft(r){
 }
 function attachTransferEdit(){
   const r = tfFind(tf.id); if(!r) return;
-  rrSelectOnClick(document.querySelector('.tf-edit') || document);
   const cat = tf.data.catalog, zones = TF().zonesOf(cat);
   const repaint = ()=>{ const top = scrollBox().scrollTop; render(); scrollBox().scrollTop = top; };
   const changed = (redraw = false)=>{ tfSaveSoon(r); if(redraw) repaint(); };
-  const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); el.select?.(); rrReveal(el); };
+  const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); if(!el.matches('[role=combobox]')) el.select?.(); rrReveal(el); };
   const enter = (el, fn)=>{ if(el) el.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.isComposing){ e.preventDefault(); fn(); } }); };
   // From, then To (never the same storage), then the first item.
   rrComboBind(document.getElementById('tfFrom'), zones, (v, again)=>{
@@ -242,6 +241,12 @@ function attachTransferEdit(){
     const i = +el.dataset.lQty;
     el.oninput = ()=>{ r.lines[i].qty = rrOnlyNum(el, true, true); tfSaveSoon(r); tfPaintStock(r); autoLine(el); };
     enter(el, ()=>{ tfSaveSoon(r); if(i < r.lines.length - 1) go('tfItem' + (i + 1)); else addLine(); });
+    // Tab on the amount opens the line's unit menu; Tab again moves to the next unit, Enter picks it.
+    el.addEventListener('keydown', e=>{
+      const sel = document.getElementById('tfUnit' + i);
+      if(e.key !== 'Tab' || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey || !sel || sel.disabled || sel.options.length < 2) return;
+      e.preventDefault(); tfSaveSoon(r); openSelPop(sel);
+    });
   });
   document.querySelectorAll('[data-l-del]').forEach(b=>b.onclick = ()=>{ r.lines.splice(+b.dataset.lDel, 1); if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null}); changed(true); });
   document.getElementById('tfAdd')?.addEventListener('click', ()=>addLine());
@@ -326,6 +331,8 @@ async function tfSend(r, keepForm = false){
   }
   // Record for yesterday was confirmed when it was turned on; everything else is read and confirmed here.
   const ask = c.warnings.filter(w=>w.code !== 'yesterday');
+  // Moving without a second approval: this is the approval, so what will move is always shown first.
+  if(featureOn('tfAuto') && !ask.length && !await showConfirm(tfSummary(r, []), {title:t('tfApproveTitle')(r.lines.filter(l=>l.item).length), okLabel:t('tfSendMove'), okClass:'btn-primary', enter:true, wide:true})) return false;
   if(ask.length && !await showConfirm(tfSummary(r, ask.map(w=>tfWarnText(w, r))), {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary', enter:true, wide:true})) return false;
   // No connection: kept here, waiting to send; the form is free for the next one (From stays).
   const parkIt = ()=>{ r.pendingSend = true; r.dirty = true; tfKeep(); tf.lastFrom = r.from; toast(t('rrSavedOffline'), 'warn'); if(!keepForm) tfNewDraft(); else render(); };
@@ -395,7 +402,8 @@ function renderTransferView(){
   const facts = [[t('tfFrom'), r.from], [t('tfTo'), r.to], [t('tfDay'), tfDayLabel(r.forDay) + (r.yesterday ? ' · ' + t('tfForYesterday') : '')],
     [t('rrMadeIn'), rrSourceName(r) + (accountLabel(r.by) ? ' · ' + accountLabel(r.by) : '')], [t('rrMadeAt'), rrWhen(r.createdAt)],
     ...(r.mode ? [[t('rrRicoMode'), t(r.mode === 'practice' ? 'rrModePracticeLong' : 'rrModeReal')]] : []),
-    ...(r.sentAt ? [[t('rrSentAt'), rrWhen(r.sentAt)]] : []), ...(r.approvedAt ? [[t('rrApprovedAt'), rrWhen(r.approvedAt) + (accountLabel(r.approvedBy) ? ' · ' + accountLabel(r.approvedBy) : '')]] : []),
+    ...(r.sentAt ? [[t('rrSentAt'), rrWhen(r.sentAt)]] : []),
+    ...(r.auto ? [[t('tfApproval'), t('tfApprovalAuto')(accountLabel(r.approvedBy) || '')]] : r.approvedAt ? [[t('rrApprovedAt'), rrWhen(r.approvedAt) + (accountLabel(r.approvedBy) ? ' · ' + accountLabel(r.approvedBy) : '')]] : []),
     ...(r.movedAt ? [[t('tfMovedAt'), rrWhen(r.movedAt)]] : [])];
   return `<div class="rr-page">${rrBackBar(t('tfTitleOne'))}
     ${head}
@@ -490,16 +498,50 @@ async function tfExportDay(day, format){
     .sort((a, b)=>Date.parse(a.movedAt || a.sentAt) - Date.parse(b.movedAt || b.sentAt));
   const at = new Date(), title = t('tfFileTitle')(tfDayLabel(day)), subtitle = t('tfFileSub')(list.length, list.reduce((n, r)=>n + r.lines.length, 0), fileStamp(at));
   if(format === 'excel'){
-    const rows = list.flatMap(r=>r.lines.map((l, i)=>[day, formatIraqDateTime(new Date(r.movedAt || r.sentAt), {hour:'2-digit', minute:'2-digit', hour12:false}), r.from, r.to, i + 1, l.item, Number(l.qty), l.unit, accountLabel(r.approvedBy) || '', r.yesterday ? t('tfForYesterday') : '']));
+    const rows = list.flatMap(r=>r.lines.map((l, i)=>[day, formatIraqDateTime(new Date(r.movedAt || r.sentAt), {hour:'2-digit', minute:'2-digit', hour12:false}), r.from, r.to, i + 1, l.item, Number(l.qty), l.unit, tfApprovalText(r), r.yesterday ? t('tfForYesterday') : '']));
     return deliverExcel(brandedWorkbook({title, subtitle, at, sheets:[{name:t('tfTitle'), columns:[
       {label:t('fileDate'), width:12}, {label:t('fileTime'), width:8}, {label:t('tfFrom'), width:18}, {label:t('tfTo'), width:18}, {label:'#', width:5, type:'number'},
-      {label:t('fileItem'), width:34}, {label:t('fileQty'), width:10, type:'number'}, {label:t('unit'), width:10}, {label:t('rrApprovedAt'), width:12}, {label:t('tfDay'), width:14}], rows}]}),
+      {label:t('fileItem'), width:34}, {label:t('fileQty'), width:10, type:'number'}, {label:t('unit'), width:10}, {label:t('tfApproval'), width:24}, {label:t('tfDay'), width:14}], rows}]}),
       `${t('tfFileName')} ${day}`);
   }
-  return deliverPdf({title, subtitle, stamp:fileStamp(at), info:[[t('tfTitle'), String(list.length)], [t('tfItemsLabel'), String(list.reduce((n, r)=>n + r.lines.length, 0))]],
-    sections:list.map(r=>({heading:`${tfRoute(r)} · ${formatIraqDateTime(new Date(r.movedAt || r.sentAt), {hour:'numeric', minute:'2-digit'})}${r.yesterday ? ' · ' + t('tfForYesterday') : ''}`,
-      columns:[{label:'#', w:8}, {label:t('fileItem'), w:62, bold:true}, {label:t('fileQty'), w:14, align:'end'}, {label:t('unit'), w:16}],
-      rows:r.lines.map((l, i)=>[String(i + 1), l.item, tfQty(l.qty), l.unit])}))}, `${t('tfFileName')} ${day}`);
+  return deliverPdf({title, subtitle, stamp:fileStamp(at), signoff:true, info:[[t('tfTitle'), String(list.length)], [t('tfItemsLabel'), String(list.reduce((n, r)=>n + r.lines.length, 0))]],
+    sections:tfPdfSections(list)}, `${t('tfFileName')} ${day}`);
+}
+/* Who approved a transfer, for files: the person, or "when sent" for one moved without a second approval. */
+const tfApprovalText = r=> r.auto ? t('tfNoSecond') : accountLabel(r.approvedBy) || '';
+/* One section per transfer: From → To, the time, whether it was for yesterday and who approved it. */
+const tfPdfSections = list=> list.map(r=>({heading:`${tfRoute(r)} · ${formatIraqDateTime(new Date(r.movedAt || r.sentAt), {hour:'numeric', minute:'2-digit'})}${r.yesterday ? ' · ' + t('tfForYesterday') : ''}${tfApprovalText(r) ? ' · ' + tfApprovalText(r) : ''}`,
+  columns:[{label:'#', w:8}, {label:t('fileItem'), w:62, bold:true}, {label:t('fileQty'), w:14, align:'end'}, {label:t('unit'), w:16}],
+  rows:r.lines.map((l, i)=>[String(i + 1), l.item, tfQty(l.qty), l.unit])}));
+/* One day's receipts and transfers in one file (History > By day): key figures, then each receipt
+   with its lines and total, then each transfer, and lines to sign. */
+async function dayExport(day, format){
+  const recs = (rr.data?.receipts || []).filter(r=>r.status === 'saved' && erbilDate(new Date(r.savedAt || r.sentAt || r.createdAt)) === day).sort((a, b)=>Date.parse(a.savedAt || a.sentAt) - Date.parse(b.savedAt || b.sentAt));
+  const moves = (tf.data?.transfers || []).filter(r=>r.status === 'moved' && (r.forDay || erbilDate(new Date(r.sentAt || r.createdAt))) === day).sort((a, b)=>Date.parse(a.movedAt || a.sentAt) - Date.parse(b.movedAt || b.sentAt));
+  const iqd = r=> r.currency === 'USD' ? Math.round((r.total || 0) * (r.rate || 0)) : (r.total || 0);
+  const sum = recs.reduce((s, r)=>s + iqd(r), 0), items = moves.reduce((n, r)=>n + r.lines.length, 0);
+  const at = new Date(), label = tfDayLabel(day), title = t('dayFileTitle')(label), subtitle = t('dayFileSub')(recs.length, rrNum(sum), moves.length, items);
+  const time = d=>formatIraqDateTime(new Date(d), {hour:'2-digit', minute:'2-digit', hour12:false});
+  if(format === 'excel'){
+    const lineTotal = (l, r)=>globalThis.RicottaReceipts.lineTotal(l, r.currency);
+    return deliverExcel(brandedWorkbook({title, subtitle, at, sheets:[
+      {name:t('rrTitle'), columns:[{label:t('fileTime'), width:8}, {label:t('rrSupplier'), width:30}, {label:t('rrInvoice'), width:14}, {label:'#', width:5, type:'number'}, {label:t('fileItem'), width:34},
+        {label:t('fileQty'), width:10, type:'number'}, {label:t('unit'), width:14}, {label:t('rrUnitCost'), width:13, type:'number'}, {label:t('rrTotal'), width:14, type:'number'}, {label:t('rrCurrency'), width:9}, {label:t('rrZone'), width:16}],
+        rows:recs.flatMap(r=>r.lines.map((l, i)=>[time(r.savedAt || r.sentAt), r.supplier, r.invoice || '', i + 1, l.item, Number(l.qty), fileUnit(l.unit), Number(l.cost), lineTotal(l, r), r.currency, r.zone])),
+        totals:[t('fileTotal'), '', '', '', '', '', '', '', sum, 'IQD', '']},
+      {name:t('tfTitle'), columns:[{label:t('fileTime'), width:8}, {label:t('tfFrom'), width:18}, {label:t('tfTo'), width:18}, {label:'#', width:5, type:'number'}, {label:t('fileItem'), width:34},
+        {label:t('fileQty'), width:10, type:'number'}, {label:t('unit'), width:10}, {label:t('tfApproval'), width:24}, {label:t('tfDay'), width:14}],
+        rows:moves.flatMap(r=>r.lines.map((l, i)=>[time(r.movedAt || r.sentAt), r.from, r.to, i + 1, l.item, Number(l.qty), l.unit, tfApprovalText(r), r.yesterday ? t('tfForYesterday') : '']))},
+    ]}), `${t('dayFileName')} ${day}`);
+  }
+  const recSections = recs.map(r=>{ const tt = globalThis.RicottaReceipts.totals(r);
+    return {heading:`${r.supplier} · #${r.invoice || ''} · ${formatIraqDateTime(new Date(r.savedAt || r.sentAt), {hour:'numeric', minute:'2-digit'})}${r.finance?.tab ? ' · ' + t('rrInInvoices')(r.finance.tab) : ''}`,
+      columns:[{label:'#', w:6}, {label:t('fileItem'), w:38, bold:true}, {label:t('fileQty'), w:9, align:'end'}, {label:t('unit'), w:14}, {label:t('rrUnitCost'), w:15, align:'end'}, {label:t('rrTotal'), w:18, align:'end'}],
+      rows:r.lines.map((l, i)=>[String(i + 1), l.item, rrNum(l.qty, 3), fileUnit(l.unit), rrMoney(l.cost, r.currency), rrMoney(globalThis.RicottaReceipts.lineTotal(l, r.currency), r.currency)]),
+      totals:[t('fileTotal'), '', '', '', '', rrMoney(tt.total, r.currency)]}; });
+  return deliverPdf({title, subtitle, stamp:fileStamp(at), signoff:true,
+    info:[[t('dayFileReceipts'), String(recs.length)], [t('dayFileSpent'), 'IQD ' + rrNum(sum)], [t('dayFileTransfers'), String(moves.length)], [t('tfItemsLabel'), String(items)]],
+    sections:[...recSections, ...tfPdfSections(moves)]}, `${t('dayFileName')} ${day}`);
 }
 
 /* ---------- History > By day ----------
@@ -522,13 +564,51 @@ function renderDaysHistory(){
     // Every one sent that day, then how many are done and what the done ones came to.
     const stats = [withR && d.r.length ? `<span class="day-stat"><b>${d.r.length}</b> ${esc(t('dayReceipts')(d.r.length))} · ${esc(t('daySaved')(saved.length))}${saved.length ? ` · IQD ${esc(rrNum(iqd))}` : ''}</span>` : '',
       withT && d.t.length ? `<span class="day-stat"><b>${d.t.length}</b> ${esc(t('dayTransfers')(d.t.length))} · ${esc(t('dayMoved')(moved.length))}${moved.length ? ` · ${esc(t('tfItemsMoved')(moved.reduce((n, r)=>n + r.lines.length, 0)))}` : ''}</span>` : ''].join('');
-    return `<section class="day-card"><header class="day-head"><b>${esc(dayLabel(day + 'T12:00:00+03:00'))}</b><div class="day-stats">${stats}</div></header>
+    return `<section class="day-card"><header class="day-head"><div class="day-top"><b>${esc(dayLabel(day + 'T12:00:00+03:00'))}</b>${saved.length || moved.length ? `<span class="day-files"><button type="button" class="day-file" data-day-export="${day}" data-format="pdf">PDF</button><button type="button" class="day-file" data-day-export="${day}" data-format="excel">Excel</button></span>` : ''}</div><div class="day-stats">${stats}</div></header>
       ${d.r.length ? `<div class="day-sub">${esc(t('rrTitle'))}</div><div class="rr-list">${d.r.sort(newest).map(rrRow).join('')}</div>` : ''}
       ${d.t.length ? `<div class="day-sub">${esc(t('tfTitle'))}</div><div class="rr-list">${d.t.sort(newest).map(tfRow).join('')}</div>` : ''}
     </section>`;
   }).join('')}</div>`;
 }
 function attachDaysHistory(){
+  document.querySelectorAll('[data-day-export]').forEach(b=>b.onclick = ()=>withBusy(b, ()=>dayExport(b.dataset.dayExport, b.dataset.format)));
   document.querySelectorAll('.day-list [data-rr-open]').forEach(b=>b.onclick = ()=>{ const id = b.dataset.rrOpen; goView('receipts'); rrOpen(id); });
   document.querySelectorAll('.day-list [data-tf-open]').forEach(b=>b.onclick = ()=>{ const id = b.dataset.tfOpen; goView('transfers'); tfOpen(id); });
 }
+
+/* ---------- Files Rico offers in the chat ---------- */
+async function ricoMakeFile(d){
+  if((d.what !== 'transfers_day') && !rr.data){ await rrLoad(true); }
+  if((d.what === 'day' || d.what === 'transfers_day') && !tf.data){ await tfLoad(true); }
+  if((d.what !== 'transfers_day' && !rr.data) || ((d.what === 'day' || d.what === 'transfers_day') && !tf.data)){ toast(t('loadFailed'), 'error'); return; }
+  if(d.what === 'day') return dayExport(d.day, d.format);
+  if(d.what === 'transfers_day') return tfExportDay(d.day, d.format);
+  const list = d.what === 'receipt' ? rr.data.receipts.filter(r=>r.id === d.receipt)
+    : rr.data.receipts.filter(r=>r.status === 'saved' && erbilDate(new Date(r.savedAt || r.sentAt || r.createdAt)) === d.day);
+  if(!list.length){ toast(t('ricoFileNone'), 'warn'); return; }
+  return rrExportList(list, d.format, d.what === 'receipt' ? null : d.day);
+}
+/* Receipts as a file: one receipt (with its supplier and invoice) or one day's, each with its lines and total. */
+async function rrExportList(list, format, day){
+  const at = new Date(), one = list.length === 1 && !day ? list[0] : null;
+  const iqd = r=> r.currency === 'USD' ? Math.round((r.total || 0) * (r.rate || 0)) : (r.total || 0), sum = list.reduce((s, r)=>s + iqd(r), 0);
+  const title = one ? t('rrFileOne')(one.supplier, one.invoice || '') : t('rrFileDay')(tfDayLabel(day));
+  const subtitle = one ? [formatIraqDateTime(new Date(one.savedAt || one.sentAt || one.createdAt), {day:'numeric', month:'short', year:'numeric', hour:'numeric', minute:'2-digit'}), one.zone, one.finance?.tab ? t('rrInInvoices')(one.finance.tab) : ''].filter(Boolean).join(' · ') : t('rrFileDaySub')(list.length, rrNum(sum));
+  const name = one ? `${one.supplier} ${one.invoice || ''}` : `${t('rrTitle')} ${day}`;
+  if(format === 'excel'){
+    return deliverExcel(brandedWorkbook({title, subtitle, at, sheets:[{name:t('rrTitle'), columns:[{label:t('rrSupplier'), width:30}, {label:t('rrInvoice'), width:14}, {label:'#', width:5, type:'number'}, {label:t('fileItem'), width:34},
+      {label:t('fileQty'), width:10, type:'number'}, {label:t('unit'), width:14}, {label:t('rrUnitCost'), width:13, type:'number'}, {label:t('rrTotal'), width:14, type:'number'}, {label:t('rrCurrency'), width:9}],
+      rows:list.flatMap(r=>r.lines.map((l, i)=>[r.supplier, r.invoice || '', i + 1, l.item, Number(l.qty), fileUnit(l.unit), Number(l.cost), globalThis.RicottaReceipts.lineTotal(l, r.currency), r.currency])),
+      totals:[t('fileTotal'), '', '', '', '', '', '', sum, 'IQD']}]}), name);
+  }
+  return deliverPdf({title, subtitle, stamp:fileStamp(at), signoff:true,
+    info:one ? [[t('rrSupplier'), one.supplier], [t('rrInvoice'), '#' + (one.invoice || '')], [t('rrItemsLabel'), String(one.lines.length)], [t('rrTotal'), rrMoney(globalThis.RicottaReceipts.totals(one).total, one.currency)]]
+      : [[t('dayFileReceipts'), String(list.length)], [t('dayFileSpent'), 'IQD ' + rrNum(sum)]],
+    sections:list.map(r=>({heading:one ? '' : `${r.supplier} · #${r.invoice || ''}`,
+      columns:[{label:'#', w:6}, {label:t('fileItem'), w:38, bold:true}, {label:t('fileQty'), w:9, align:'end'}, {label:t('unit'), w:14}, {label:t('rrUnitCost'), w:15, align:'end'}, {label:t('rrTotal'), w:18, align:'end'}],
+      rows:r.lines.map((l, i)=>[String(i + 1), l.item, rrNum(l.qty, 3), fileUnit(l.unit), rrMoney(l.cost, r.currency), rrMoney(globalThis.RicottaReceipts.lineTotal(l, r.currency), r.currency)]),
+      totals:[t('fileTotal'), '', '', '', '', rrMoney(globalThis.RicottaReceipts.totals(r).total, r.currency)]}))}, name);
+}
+
+/* A unit for files with its size first ("(×6) سیت"), so it reads the same in a PDF and in Excel. */
+function fileUnit(label){ const m = rrUnitShow(label).match(/^(.*?)\s*(\([^)]*\))\s*$/); return m ? `${m[2]} ${m[1]}` : rrUnitShow(label); }

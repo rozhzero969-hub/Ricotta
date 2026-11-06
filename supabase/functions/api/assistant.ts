@@ -152,7 +152,8 @@ async function loadWorld(db: any, s: Session) {
   // The same roles the api checks: without History, Rico sees only which suppliers were sent today
   // (no items, amounts or past days); without Record, no change log; past months need History too.
   const now = erbilParts();
-  const can = { history: full || (s.roles ?? []).includes("history"), record: full || (s.roles ?? []).includes("record") };
+  const can = { history: full || (s.roles ?? []).includes("history"), record: full || (s.roles ?? []).includes("record"),
+    receipts: full || (s.roles ?? []).includes("receipts"), transfers: full || (s.roles ?? []).includes("transfers") };
   const seen: Order[] = can.history ? history : history.filter((o) => o.date === now.date).map((o) => ({
     ...o, lines: o.lines.map((l) => ({ supplierId: l.supplierId, supplierName: l.supplierName, itemId: "", name: "", unitId: null, qty: 0 })),
   }));
@@ -647,6 +648,41 @@ function proposeOpen(a: any, emit: Emit) {
   return { shown: true };
 }
 
+/* Receipts and transfers Rico entered in Ricotta Restaurant (last 60 days), to find the one(s) someone
+   means before making a file of them. Receipts by day, supplier or invoice; transfers by day or storage. */
+async function findRicoRecords(db: any, w: World, a: any) {
+  const kind = a.kind === "transfers" ? "transfers" : "receipts";
+  if (kind === "receipts" && !w.can.receipts) return { error: "no_access", note: "This person can't open Receipts. Say so briefly." };
+  if (kind === "transfers" && !w.can.transfers) return { error: "no_access", note: "This person can't open Transfers. Say so briefly." };
+  const day = typeof a.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(a.day) ? a.day : null;
+  const since = new Date(Date.now() - 60 * 86400_000).toISOString();
+  const erbil = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baghdad", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+  const has = (v: unknown, q: unknown) => !q || String(v ?? "").toLowerCase().includes(String(q).toLowerCase().trim());
+  if (kind === "receipts") {
+    const { data } = await withTimeout<any>(db.from("app_rr_receipts").select("id,status,supplier,invoice,zone,currency,total,lines,saved_at,sent_at,created_at").neq("status", "draft").gte("created_at", since).order("created_at", { ascending: false }).limit(300), DB_TIMEOUT_MS, "receipts");
+    const list = (data ?? []).map((r: any) => ({ receipt_id: r.id, day: erbil(r.saved_at || r.sent_at || r.created_at), status: r.status, supplier: r.supplier, invoice: r.invoice, zone: r.zone, total: Number(r.total), currency: r.currency, items: (r.lines ?? []).length }))
+      .filter((r: any) => (!day || r.day === day) && has(r.supplier, a.supplier) && has(r.invoice, a.invoice));
+    return { receipts: list.slice(0, 40), count: list.length };
+  }
+  const { data } = await withTimeout<any>(db.from("app_rr_transfers").select("id,status,from_zone,to_zone,for_day,yesterday,lines,auto,sent_at,created_at").neq("status", "draft").gte("created_at", since).order("created_at", { ascending: false }).limit(300), DB_TIMEOUT_MS, "transfers");
+  const list = (data ?? []).map((r: any) => ({ transfer_id: r.id, day: r.for_day || erbil(r.sent_at || r.created_at), status: r.status, from: r.from_zone, to: r.to_zone, items: (r.lines ?? []).length, no_second_approval: !!r.auto }))
+    .filter((r: any) => (!day || r.day === day) && (has(r.from, a.storage) || has(r.to, a.storage)));
+  return { transfers: list.slice(0, 40), count: list.length };
+}
+/* A file of receipts or transfers, made on the person's phone when they tap the button in the chat. */
+function proposeFile(w: World, a: any, emit: Emit) {
+  const what = ["day", "transfers_day", "receipts_day", "receipt"].includes(a.what) ? a.what : null;
+  const format = a.format === "excel" ? "excel" : a.format === "pdf" ? "pdf" : null;
+  const day = typeof a.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(a.day) ? a.day : null;
+  if (!what || !format) return { error: "Say what file (day, transfers_day, receipts_day or receipt) and which format (pdf or excel)." };
+  if (what === "receipt" && !/^[0-9a-f-]{36}$/.test(String(a.receipt_id ?? ""))) return { error: "Find the receipt first with find_rico_records and pass its receipt_id." };
+  if (what !== "receipt" && !day) return { error: "Which day? Pass day as YYYY-MM-DD (Erbil)." };
+  if ((what === "receipt" || what === "receipts_day") && !w.can.receipts) return { error: "no_access", note: "This person can't open Receipts." };
+  if (what === "transfers_day" && !w.can.transfers) return { error: "no_access", note: "This person can't open Transfers." };
+  emit({ type: "proposal", proposal: { id: pid(), kind: "file", what, format, day, receiptId: what === "receipt" ? String(a.receipt_id) : null, label: text(a.label, 80) } });
+  return { shown: true, note: "The download button is in the chat; the file is made on their phone when they tap it." };
+}
+
 /* ---------------- tool definitions ---------------- */
 const TOOLS = [
   { name: "find_items", description: "Search the item catalog. Returns item_id, name, unit, supplier, when it was added, how often it was ordered, usual quantity. Use newest:true to list the most recently added items. Leave query empty to list all (capped by limit).",
@@ -687,6 +723,10 @@ const TOOLS = [
       items: { type: "array", items: { type: "object", properties: { item_id: { type: "string" }, qty: { type: "number" } }, required: ["item_id", "qty"] }, description: "Only the amounts the person named (item_id from find_items)" },
       language: { type: "string", enum: ["en", "ku", "ar"], description: "Language of the message: the person's language" },
     }, required: ["suppliers"] } },
+  { name: "find_rico_records", description: "Receipts or transfers that Rico entered in Ricotta Restaurant (last 60 days), to find the ones someone means: receipts by day, supplier name (part of it is fine) or invoice number; transfers by day or storage. Use it before make_file when it isn't clear which receipt, supplier or day they mean, and ask them if there is more than one.",
+    input_schema: { type: "object", properties: { kind: { type: "string", enum: ["receipts", "transfers"] }, day: { type: "string", description: "YYYY-MM-DD (Erbil)" }, supplier: { type: "string" }, invoice: { type: "string" }, storage: { type: "string" } }, required: ["kind"] } },
+  { name: "make_file", description: "Show a button in the chat that downloads a PDF or Excel file: what='transfers_day' (one day's transfers), 'receipts_day' (one day's receipts), 'day' (one day's receipts and transfers together, with totals) or 'receipt' (one receipt: pass receipt_id from find_rico_records). If they didn't say the day, the receipt (supplier or invoice) or PDF/Excel, ask first in one short question; 'today' and 'yesterday' are Erbil days.",
+    input_schema: { type: "object", properties: { what: { type: "string", enum: ["day", "transfers_day", "receipts_day", "receipt"] }, format: { type: "string", enum: ["pdf", "excel"] }, day: { type: "string", description: "YYYY-MM-DD (Erbil)" }, receipt_id: { type: "string" }, label: { type: "string", description: "Short button text, in their language" } }, required: ["what", "format"] } },
   { name: "open_screen", description: "Show a button that opens a screen of the app (order, manage, send, history, suppliers, itemsAdmin, units, record, admin, settings). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
     input_schema: { type: "object", properties: { screen: { type: "string" }, supplier_id: { type: "string" }, label: { type: "string" } }, required: ["screen"] } },
 ];
@@ -735,6 +775,7 @@ WHAT YOU CAN DO (only what CONTEXT says the person may do: Rozha has everything,
 - If someone asks for today's order without naming suppliers, ask whether they want one supplier, several, or all before building a draft. Never silently choose the scope.
 - Add or change catalog data: propose_new_item needs name, unit AND supplier -- if any is missing, ask for it (offer the likely choices from the data, e.g. "kg, box or piece?"). propose_edit_item and propose_new_supplier likewise.
 - Notifications: propose_notification with English, Kurdish and Arabic text, e.g. to remind the team about a late order.
+- Files: when someone asks for a PDF or Excel of receipts or transfers (a day's transfers, a day's receipts, a whole day, or one receipt by supplier or invoice), use make_file. If the day, the receipt or PDF/Excel isn't clear, ask in one short question; use find_rico_records to find the receipt (and ask which one if there are several). Then say the button is ready.
 - Guide people through the app and use open_screen for a one-tap shortcut. Yunis's account has no Admin screen, so never offer it to Yunis.
 - A proposal only shows a card; the person must tap to confirm. After proposing, say in one sentence what the card does. Never claim something was saved, added or sent until the conversation shows it was confirmed ("[card ... : applied]").
 - Nothing is ever sent to a supplier automatically: sending always happens from Send to suppliers via WhatsApp, and the person taps it. The one exception is the TEST below.
@@ -1621,6 +1662,8 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
     case "propose_new_supplier": return proposeNewSupplier(w, a, emit);
     case "propose_notification": return proposeNotification(a, emit);
     case "open_screen": return proposeOpen(a, emit);
+    case "find_rico_records": return await findRicoRecords(db, w, a);
+    case "make_file": return proposeFile(w, a, emit);
     case "recover_streak": return proposeStreakRecover(w, emit);
     case "send_test_order": return sendTestOrder(db, w, a);
   }
