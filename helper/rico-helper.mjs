@@ -19,7 +19,7 @@ import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-11.2";
+const VERSION = "2026-11-11.3";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -360,8 +360,11 @@ async function save(r) {
   }
   // The last look before anything is saved: the whole form again, line by line.
   await verifyForm(r, "just before saving");
-  await report(r.id, { log: ["Whole form checked again just before saving: everything matches"] });
+  // Recorded before pressing (if it can't be recorded, Rico doesn't press): the app then knows Save may
+  // have happened, whatever comes after.
+  await report(r.id, { pressed: true, log: ["Whole form checked again just before saving: everything matches. Pressing Save."] });
   pressedSave = true;
+  const pressedAt = Date.now();
   await page.getByRole("button", { name: /Receive & send to finance/ }).click();
   const banner = page.getByText(/Receipt sent/i).first();
   await banner.waitFor({ timeout: 45_000 }).catch(() => stop("Ricotta Restaurant did not say the receipt was sent. Check Invoices before doing anything."));
@@ -370,6 +373,10 @@ async function save(r) {
   const t = R.totals(r);
   // Saved, but with a different amount than ours: never called "saved"; it is shown as a problem to check.
   if (!text.replace(/,/g, "").includes(String(t.iqd))) stop(`Ricotta Restaurant saved it, but its message reads "${text}" and our total is IQD ${t.iqd}. Check this receipt in Invoices.`);
+  // Its stock record: the same items and amounts, into the right storage.
+  const rec = await checkReceiptRecord(r, pressedAt);
+  if (rec.ok === false) stop(`Ricotta Restaurant saved it, but its stock record doesn't match: ${rec.note}. Check this receipt in Invoices.`);
+  await report(r.id, { log: [rec.ok ? "Checked in Ricotta Restaurant's stock record: every item and amount arrived in " + r.zone : rec.note + " (the total matched)."] }).catch(() => {});
   return text;
 }
 /* Finds the saved receipt in Invoices (its supplier's own tab, or Purchases) and reads its number. */
@@ -391,6 +398,79 @@ async function findInInvoices(r) {
 }
 
 /* ---------- One transfer between storages ---------- */
+/* Ricotta Restaurant's own stock record since a moment: what really happened there, line by line.
+   Read in Rico's own signed-in page with its own sign-in; nothing is changed. Newest first, 100 a page. */
+async function movementsSince(sinceMs, types) {
+  const since = new Date(sinceMs).toISOString();
+  return page.evaluate(async ({ since, types }) => {
+    const h = { Authorization: "Bearer " + localStorage.getItem("ricotta_token") };
+    let out = [];
+    for (let p = 1; p <= 10; p++) {
+      const r = await fetch(`/api/v1/inventory/movements?page=${p}&size=100`, { headers: h });
+      if (!r.ok) return null;
+      const j = await r.json(), ms = j.movements || [];
+      out = out.concat(ms.filter((m) => types.includes(m.movement_type) && m.created_at >= since));
+      if (!ms.length || !j.has_more || ms[ms.length - 1].created_at < since) break;
+    }
+    return out.map((m) => ({ item: m.item_name, qty: Math.abs(Number(m.quantity)), zone: m.zone_name, other: m.source, day: m.effective_date, at: m.created_at }));
+  }, { since, types });
+}
+const near = (a, b) => Math.abs(a - b) < 1e-6 * Math.max(1, Math.abs(a), Math.abs(b));
+/* After Move it: Ricotta Restaurant's record must show every item moving out of From into To once, in
+   exactly the amount sent (all lines of an item together), on the right day, and nothing else. */
+async function checkMoveRecord(t, pressedAt) {
+  const items = new Map((catalogNow?.titems ?? []).map((i) => [i.name, i]));
+  const need = new Map();
+  for (const l of t.lines) {
+    const opt = TR.unitOptions(items.get(l.item)).find((o) => o.name === l.unit);
+    if (!opt) return { found: false, note: `${l.item}'s unit couldn't be checked` };
+    need.set(l.item, (need.get(l.item) ?? 0) + l.qty * opt.factor);
+  }
+  const day = t.yesterday ? dayBefore(erbilDay()) : null;
+  let note = "";
+  for (let tries = 0; tries < 5; tries++) {
+    if (tries) await sleep(2500);
+    const rows = await movementsSince(pressedAt - 120_000, ["transfer_out"]).catch(() => null);
+    if (!rows) { note = "Rico couldn't read Ricotta Restaurant's stock record"; continue; }
+    const mine = rows.filter((m) => flat(m.zone) === flat(t.from) && flat(m.other) === flat(t.to));
+    const got = new Map();
+    for (const m of mine) got.set(m.item, (got.get(m.item) ?? 0) + m.qty);
+    const off = [...need].filter(([n, q]) => !near(got.get(n) ?? 0, q)).map(([n, q]) => `${n}: ${got.get(n) ?? 0} instead of ${q}`);
+    const extra = [...got.keys()].filter((n) => !need.has(n));
+    const wrongDay = day ? mine.filter((m) => need.has(m.item) && m.day !== day).map((m) => m.item) : [];
+    if (!off.length && !extra.length && !wrongDay.length) return { found: true, note: "" };
+    note = [off.length ? `amounts in its record differ (${off.join("; ")})` : "", extra.length ? `it also shows ${extra.join(", ")} moved` : "", wrongDay.length ? `not dated ${day}: ${[...new Set(wrongDay)].join(", ")}` : ""].filter(Boolean).join("; ");
+  }
+  return { found: false, note };
+}
+/* After Save: one receipt's lines arrive in the stock record together (one moment). That group must
+   have exactly our items, amounts (in base units) and storage. */
+async function checkReceiptRecord(r, pressedAt) {
+  const items = new Map((catalogNow?.items ?? []).map((i) => [i.name, i]));
+  const need = new Map();
+  for (const l of r.lines) {
+    const item = items.get(l.item), opt = !l.unit ? { factor: 1 } : R.unitOptions(item).find((o) => o.label === l.unit);
+    if (!item || !opt) return { ok: null, note: `${l.item}'s unit couldn't be checked` };
+    need.set(l.item, (need.get(l.item) ?? 0) + l.qty * opt.factor);
+  }
+  for (let tries = 0; tries < 5; tries++) {
+    if (tries) await sleep(2500);
+    const rows = await movementsSince(pressedAt - 120_000, ["purchase_in"]).catch(() => null);
+    if (!rows) continue;
+    const groups = new Map();
+    for (const m of rows) groups.set(m.at, [...(groups.get(m.at) ?? []), m]);
+    for (const g of groups.values()) {
+      const names = new Set(g.map((m) => m.item));
+      if (names.size !== need.size || [...need.keys()].some((n) => !names.has(n))) continue;
+      const got = new Map();
+      for (const m of g) got.set(m.item, (got.get(m.item) ?? 0) + m.qty);
+      const off = [...need].filter(([n, q]) => !near(got.get(n), q)).map(([n, q]) => `${n}: ${got.get(n)} instead of ${q}`);
+      const zones = [...new Set(g.map((m) => m.zone))].filter((z) => flat(z) !== flat(r.zone));
+      return off.length || zones.length ? { ok: false, note: [off.join("; "), zones.length ? `received into ${zones.join(", ")}, not ${r.zone}` : ""].filter(Boolean).join("; ") } : { ok: true, note: "" };
+    }
+  }
+  return { ok: null, note: "Rico couldn't find this receipt in Ricotta Restaurant's stock record" };
+}
 const treport = (id, body) => api(`helper/transfers/${id}/report`, { method: "POST", body });
 const erbilDay = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baghdad", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const dayBefore = (day) => { const d = new Date(day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
@@ -499,31 +579,36 @@ async function verifyTransfer(t, items, when) {
 /* After Move it: Ricotta Restaurant either refuses a line in red (and may have moved the others) or
    clears the form. Then the transfer is looked for in Recent transfers. */
 async function pressMove(t) {
+  // Recorded before pressing (if it can't be recorded, Rico doesn't press): the app then knows Move it
+  // may have happened, whatever comes after.
+  await treport(t.id, { pressed: true, log: ["Pressing Move it"] });
   pressedMove = true;
+  const pressedAt = Date.now();
   await page.getByRole("button", { name: /^Move it$/ }).click();
+  // Ricotta Restaurant then shows "Moved! Moved 24 items from Main Storage to Appetizers." with a
+  // "Move something else" button, or refuses a line in red ("Insufficient stock ...").
   const outcome = await page.waitForFunction(() => {
     const txt = document.querySelector("main")?.innerText ?? "";
     if (/Insufficient stock|cannot|failed|error/i.test(txt)) return "refused";
+    const m = txt.match(/Moved\s+(\d+)\s+items?\s+from\s+(.+?)\s+to\s+(.+?)\.(\s|$)/);
+    if (m) return JSON.stringify({ n: +m[1], from: m[2].trim(), to: m[3].trim() });
     const to = document.querySelector('button[aria-label="To storage"]');
-    return to && /Choose/.test(to.textContent) ? "moved" : false;
-  }, null, { timeout: 45_000 }).then((h) => h.jsonValue()).catch(() => "unknown");
+    return to && /Choose/.test(to.textContent) ? "cleared" : false;
+  }, null, { timeout: 90_000 }).then((h) => h.jsonValue()).catch(() => "unknown");
   if (outcome === "refused") {
+    await photo(page, t.id, "after", "transfers").catch(() => {});
     const msg = flat(await page.locator("main").innerText()).match(/(Insufficient stock[^.]*\.|[^.]*(cannot|failed|error)[^.]*\.)/i)?.[0] ?? "a line was refused";
     stop(`Ricotta Restaurant refused part of this transfer: "${msg}". Other lines may have moved. Check Recent transfers there before doing anything.`);
   }
-  if (outcome !== "moved") stop("Ricotta Restaurant did not clear the form after Move it, so Rico can't tell whether it moved. Check Recent transfers there before doing anything.");
-  await sleep(1500);
-  // Recent transfers: the "Transfer to: <to>" group should list every item (and BACKDATED for yesterday).
-  const group = page.locator("main").getByText(new RegExp("Transfer to:\\s*" + t.to.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).first();
-  let found = false, note = "";
-  if (await group.count()) {
-    const card = flat(await group.locator("xpath=ancestor::*[contains(., 'Total')][1]").innerText().catch(() => ""));
-    const missing = t.lines.filter((l) => !card.includes(flat(l.item)));
-    found = !missing.length;
-    note = missing.length ? `not seen there: ${missing.map((l) => l.item).join(", ")}` : t.yesterday && !/BACKDATED/i.test(card) ? "the BACKDATED mark wasn't seen" : "";
-  } else note = `no "Transfer to: ${t.to}" group was seen`;
+  if (outcome === "unknown") stop("Ricotta Restaurant didn't say the transfer moved, so Rico can't tell whether it did. Check Recent transfers there before doing anything.");
+  // The "after" photo is the proof: taken on Ricotta Restaurant's own "Moved!" message.
   await photo(page, t.id, "after", "transfers");
-  return { found, note };
+  if (outcome === "cleared") return { found: false, note: "Ricotta Restaurant cleared the form without a Moved message; please check Recent transfers" };
+  const said = JSON.parse(outcome);
+  const off = [said.n !== t.lines.length ? `${said.n} items, not ${t.lines.length}` : "", flat(said.from) !== flat(t.from) ? `from ${said.from}` : "", flat(said.to) !== flat(t.to) ? `to ${said.to}` : ""].filter(Boolean);
+  if (off.length) return { found: false, note: `Ricotta Restaurant said it moved ${off.join(", ")}. Please check Recent transfers` };
+  // The proof: Ricotta Restaurant's own stock record, line by line.
+  return checkMoveRecord(t, pressedAt);
 }
 let pressedMove = false;
 async function workTransfer(t) {
@@ -558,7 +643,7 @@ async function workTransfer(t) {
       await verifyTransfer(t, items, "just before moving");
       await treport(t.id, { log: ["Filled in again and checked against the live stock just before moving: everything matches"] });
       const r = await pressMove(t);
-      await treport(t.id, { status: "moved", result: { checked: r.found, note: r.note || null }, log: [r.found ? `Moved. Seen in Recent transfers (Transfer to: ${t.to})${r.note ? "; " + r.note : ""}` : `Moved, but Rico couldn't confirm it in Recent transfers (${r.note}). Please check there.`] });
+      await treport(t.id, { status: "moved", result: { checked: r.found, note: r.note || null }, log: [r.found ? `Moved. Checked in Ricotta Restaurant's stock record: all ${t.lines.length} items moved once, in exactly these amounts, ${t.from} to ${t.to}${t.yesterday ? ", dated yesterday" : ""}.` : `Moved, but ${r.note}. Check Recent transfers in Ricotta Restaurant.`] });
       log(`moved ${t.from} -> ${t.to}`);
       await readCatalog().catch(() => {});   // the stock changed: the app shows it at once
     }

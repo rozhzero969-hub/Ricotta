@@ -285,6 +285,7 @@ function renderReceiptEdit(){
   </div>`;
 }
 function rrWarnText(w){
+  if(w.code === 'pressed') return t('rrWarnPressed');
   if(w.code === 'priceJump') return t('rrWarnPrice')(w.pct, rrNum(w.before));
   if(w.code === 'duplicate') return t('rrWarnDuplicate')(w.first);
   if(w.code === 'tinyUnit') return t('rrWarnTinyUnit');
@@ -419,7 +420,8 @@ async function rrSend(r){
   rr.sending = true;
   try{
     if(!await rrSaveDraft(r)){ toast(t('saveFailed'), 'error'); return; }
-    const res = await api(`receipts/${r.id}/send`, {method:'POST', body:{confirm:[...new Set(c.warnings.map(w=>w.code))]}});
+    const res = await rrPost(r, c.warnings.map(w=>w.code));
+    if(!res) return;
     if(!res.ok){
       const msg = res.data?.error === 'invoice_already_sent' ? t('rrErrAlreadySent') : res.data?.errors ? res.data.errors.map(rrErrText).join(' · ') : t('saveFailed');
       toast(msg, 'error'); return;
@@ -428,6 +430,20 @@ async function rrSend(r){
     toast(t('rrSent'));
     rrNewDraft({zone:r.zone});
   } finally { rr.sending = false; }
+}
+
+/* Sends to Rico. The server may ask about more than the app knows (Rico already pressed Save for this
+   receipt or one with the same invoice): that is shown and confirmed before it goes. */
+async function rrPost(r, codes){
+  codes = [...new Set(codes)];
+  let res = await api(`receipts/${r.id}/send`, {method:'POST', body:{confirm:codes}});
+  if(!res.ok && res.data?.error === 'needs_confirmation'){
+    const more = (res.data.warnings || []).filter(w=>!codes.includes(w.code));
+    if(!more.length) return res;
+    if(!await showConfirm(`<ul class="rr-errs">${more.map(w=>`<li>${esc((w.line ? t('rrLineN')(w.line) + ': ' : '') + rrWarnText(w))}</li>`).join('')}</ul>`, {title:t('rrSureTitle'), okLabel:t('rrSendAnyway'), okClass:'btn-danger'})) return null;
+    res = await api(`receipts/${r.id}/send`, {method:'POST', body:{confirm:[...codes, ...more.map(w=>w.code)]}});
+  }
+  return res;
 }
 
 /* ---------- A sent receipt ---------- */
@@ -499,9 +515,10 @@ async function rrRetry(r){
   const c = globalThis.RicottaReceipts.check(r, rr.data.catalog, rrLimits(), rr.data.last);
   if(c.errors.length){ await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li>${esc(rrErrText(e))}</li>`).join('')}</ul><p>${esc(t('rrRetryCopy'))}</p>`, {title:t('rrFixFirst')}); return; }
   const ws = c.warnings.map(w=>(w.line ? t('rrLineN')(w.line) + ': ' : '') + rrWarnText(w)).filter(Boolean);
-  const msg = (r.approvedAt ? `<p><b>${esc(t('rrRetryCheckFirst'))}</b></p>` : '') + `<p>${esc(t('rrRetryAsk')(r.supplier || '', r.lines.length))}</p>` + (ws.length ? `<ul class="rr-errs">${ws.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>` : '');
+  const msg = (r.pressedAt || r.approvedAt ? `<p><b>${esc(t('rrRetryCheckFirst'))}</b></p>` : '') + `<p>${esc(t('rrRetryAsk')(r.supplier || '', r.lines.length))}</p>` + (ws.length ? `<ul class="rr-errs">${ws.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>` : '');
   if(!await showConfirm(msg, {title:t('rrRetry'), okLabel:t('rrRetry'), okClass:'btn-primary'})) return;
-  const res = await api(`receipts/${r.id}/send`, {method:'POST', body:{confirm:[...new Set(c.warnings.map(w=>w.code))]}});
+  const res = await rrPost(r, c.warnings.map(w=>w.code));
+  if(!res) return;
   if(!res.ok){ toast(res.data?.error === 'invoice_already_sent' ? t('rrErrAlreadySent') : res.data?.errors ? res.data.errors.map(rrErrText).join(' · ') : t('saveFailed'), 'error'); rrLoad(true); return; }
   Object.assign(r, res.data); toast(t('rrSent')); render();
 }

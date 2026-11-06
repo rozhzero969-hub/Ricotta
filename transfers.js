@@ -256,6 +256,8 @@ function tfErrText(e){
   const s = t(TF_ERR[e.code] || 'tfErrItem'); return e.line ? t('rrLineN')(e.line) + ': ' + s : s;
 }
 function tfWarnText(w){
+  if(w.code === 'pressed') return t('tfWarnPressed');
+  if(w.code === 'repeat') return t('tfWarnRepeat')(rrWhen(w.at));
   if(w.code === 'duplicate') return t('rrLineN')(w.line) + ': ' + t('rrWarnDuplicate')(w.first);
   if(w.code === 'allStock') return t('rrLineN')(w.line) + ': ' + t('tfWarnAll')(tfQty(w.have.qty) + ' ' + w.have.unit);
   if(w.code === 'unusual') return t('rrLineN')(w.line) + ': ' + t('tfWarnUnusual')(rrNum(w.times, 1));
@@ -278,13 +280,28 @@ async function tfSend(r){
   tf.sending = true;
   try{
     if(!await tfSaveDraft(r)){ toast(t('saveFailed'), 'error'); return; }
-    const res = await api(`transfers/${r.id}/send`, {method:'POST', body:{confirm:[...new Set(c.warnings.map(w=>w.code))]}});
+    const res = await tfPost(r, c.warnings.map(w=>w.code));
+    if(!res) return;
     if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(tfErrText).join(' · ') : t('saveFailed'), 'error'); return; }
     Object.assign(r, res.data);
     tf.lastFrom = r.from;
     toast(t('rrSent'));
     tfNewDraft();   // like Ricotta Restaurant: the form clears, From stays
   } finally { tf.sending = false; }
+}
+
+/* Sends to Rico. The server may ask about more than the app knows (Rico already pressed Move it for this
+   one, or the same transfer was already sent): those are shown and confirmed before it goes. */
+async function tfPost(r, codes){
+  codes = [...new Set(codes)];
+  let res = await api(`transfers/${r.id}/send`, {method:'POST', body:{confirm:codes}});
+  if(!res.ok && res.data?.error === 'needs_confirmation'){
+    const more = (res.data.warnings || []).filter(w=>!codes.includes(w.code));
+    if(!more.length) return res;
+    if(!await showConfirm(`<ul class="rr-errs">${more.map(w=>`<li>${esc(tfWarnText(w))}</li>`).join('')}</ul>`, {title:t('rrSureTitle'), okLabel:t('rrSendAnyway'), okClass:'btn-danger'})) return null;
+    res = await api(`transfers/${r.id}/send`, {method:'POST', body:{confirm:[...codes, ...more.map(w=>w.code)]}});
+  }
+  return res;
 }
 
 /* ---------- A sent transfer ---------- */
@@ -311,7 +328,7 @@ function tfLinesList(r){
 function renderTransferView(){
   const r = tfFind(tf.id); if(!r){ tf.page = 'edit'; return renderTransfers(); }
   const head = r.status === 'moved'
-    ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('tfStatus_moved'))}</span><b dir="auto">${esc(tfRoute(r))}</b><small>${esc(r.result && r.result.checked === false ? t('tfNotConfirmed') : t('tfSeenRecent'))}</small></div>`
+    ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('tfStatus_moved'))}</span><b dir="auto">${esc(tfRoute(r))}</b><small>${esc(r.result && r.result.checked === false ? t('tfNotConfirmed') + (r.result.note ? ': ' + r.result.note : '') : t('tfSeenRecent'))}</small></div>`
     : `<div class="rr-state ${tfIsPractice(r) ? 'practice' : r.status}">${rrRico()}<div><b>${esc(tfStatusText(r))}</b><small>${esc(r.status === 'problem' ? r.problem || '' : t('tfStatusHint_' + r.status))}</small></div></div>`;
   const facts = [[t('tfFrom'), r.from], [t('tfTo'), r.to], [t('tfDay'), tfDayLabel(r.forDay) + (r.yesterday ? ' · ' + t('tfForYesterday') : '')],
     [t('rrMadeIn'), rrSourceName(r) + (accountLabel(r.by) ? ' · ' + accountLabel(r.by) : '')], [t('rrMadeAt'), rrWhen(r.createdAt)],
@@ -357,9 +374,10 @@ async function tfRetry(r){
   const c = TF().check({from:r.from, to:r.to, yesterday:r.yesterday, lines:r.lines}, tf.data.catalog, tf.data.usual);
   if(c.errors.length){ await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li>${esc(tfErrText(e))}</li>`).join('')}</ul><p>${esc(t('rrRetryCopy'))}</p>`, {title:t('rrFixFirst')}); return; }
   const ws = c.warnings.map(tfWarnText).filter(Boolean);
-  const msg = (r.approvedAt ? `<p><b>${esc(t('tfRetryCheckFirst'))}</b></p>` : '') + `<p>${esc(t('tfApproveAsk')(tfRoute(r), r.lines.length))}</p>` + (ws.length ? `<ul class="rr-errs">${ws.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>` : '');
+  const msg = (r.pressedAt || r.approvedAt ? `<p><b>${esc(t('tfRetryCheckFirst'))}</b></p>` : '') + `<p>${esc(t('tfApproveAsk')(tfRoute(r), r.lines.length))}</p>` + (ws.length ? `<ul class="rr-errs">${ws.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>` : '');
   if(!await showConfirm(msg, {title:t('rrRetry'), okLabel:t('rrRetry'), okClass:'btn-primary'})) return;
-  const res = await api(`transfers/${r.id}/send`, {method:'POST', body:{confirm:[...new Set(c.warnings.map(w=>w.code))]}});
+  const res = await tfPost(r, c.warnings.map(w=>w.code));
+  if(!res) return;
   if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(tfErrText).join(' · ') : t('saveFailed'), 'error'); tfLoad(true); return; }
   Object.assign(r, res.data); toast(t('rrSent')); render();
 }
