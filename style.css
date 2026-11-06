@@ -2385,3 +2385,23 @@ html.dark .tf-have.short{background:rgba(248,113,113,.14);color:#FECACA}
 .sel-pop-opt:hover,.sel-pop-opt.kb{background:var(--fill)}
 .sel-pop-opt.on{font-weight:600}
 .modal-wide .modal-actions .btn{white-space:nowrap}
+
+/* Working offline: the note under Rico's line, the "Waiting to send" rows with Send. */
+.rr-offline{margin:8px 0 0;padding:8px 12px;border-radius:10px;background:#FFF7ED;color:#9A3412;font-size:.875rem;line-height:1.4}
+html.dark .rr-offline{background:rgba(251,146,60,.14);color:#FED7AA}
+.rr-row-wrap{display:flex;align-items:center;gap:8px}
+.rr-row-wrap .rr-row{flex:1;min-width:0}
+.rr-row-send{flex:none;height:36px;padding:0 14px;border:0;border-radius:10px;background:var(--tint);color:#fff;font:inherit;font-size:.875rem;font-weight:600}
+.rr-send-all{height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600;text-transform:none;letter-spacing:0}
+.rr-keep{height:48px;padding:0 16px;border:0;border-radius:12px;background:var(--fill);color:var(--ink);font:inherit;font-size:.9375rem;font-weight:600;white-space:nowrap}
+@media (max-width:560px){.rr-sum-acts{grid-template-columns:auto auto minmax(0,1fr)!important}.rr-keep{padding:0 12px}}
+/* History > By day: each day with its totals, then its receipts and transfers. */
+.day-list{display:flex;flex-direction:column;gap:14px;margin-top:12px}
+.day-card{background:var(--surface);border-radius:var(--r-card);padding:14px 16px}
+.day-head{display:flex;flex-direction:column;gap:6px;padding-bottom:10px;border-bottom:.5px solid var(--line)}
+.day-head>b{font-size:1.0625rem}
+.day-stats{display:flex;flex-wrap:wrap;gap:8px}
+.day-stat{padding:4px 10px;border-radius:8px;background:var(--fill);font-size:.8125rem;color:var(--ink-soft)}
+.day-stat b{color:var(--ink);font-variant-numeric:tabular-nums}
+.day-sub{margin:12px 0 4px;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:var(--ink-soft)}
+.day-card .rr-list{padding:0;background:none}

@@ -10,7 +10,6 @@ const TF = ()=> globalThis.RicottaTransfers;
 const tfFind = id=> tf.data?.transfers.find(r=>r.id === id) || null;
 const tfItem = name=> (tf.data?.catalog?.titems || []).find(i=>i.name === name) || null;
 const tfQty = q=> rrNum(q, 3);
-const tfAvailText = (item, zone)=>{ const c = TF().inCounting(item, TF().available(item, zone)); return t('tfAvailable')(tfQty(c.qty) + ' ' + c.unit, zone); };
 /* "Available: 9 سیت in Main Storage", the amount in bold in a small box (red when there isn't enough). */
 function tfAvailHtml(item, zone, short, unit){
   const have = TF().available(item, zone), o = TF().unitOptions(item).find(u=>u.name === unit);
@@ -19,8 +18,9 @@ function tfAvailHtml(item, zone, short, unit){
 }
 /* The day a transfer counts on: today, or yesterday with Record for yesterday on. */
 const tfDayLabel = day=> day ? formatIraqDateTime(new Date(day + 'T12:00:00+03:00'), {weekday:'short', day:'numeric', month:'short'}) : '';
-const tfToday = ()=> tf.data?.today || erbilDate(new Date());
-const tfYesterday = ()=>{ const d = new Date(tfToday() + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+const tfToday = ()=> erbilDate(new Date());   // Erbil's day now (a copy kept offline may be from an earlier day)
+const tfDayBefore = day=>{ const d = new Date(day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+const tfYesterday = ()=> tfDayBefore(tfToday());
 
 async function tfLoad(quiet = false){
   if(tf.loading) return;
@@ -33,14 +33,23 @@ async function tfLoad(quiet = false){
     tf.data = r.data;
     if(editing && !tfFind(editing.id)) tf.data.transfers.unshift(editing);
     else if(editing) tf.data.transfers = tf.data.transfers.map(x=>x.id === editing.id ? editing : x);
-    tf.failed = false;
+    tf.failed = false; tf.copyAt = null;
+    rrKeepCopy('tf', tf.data);
+    rrMergeDrafts('tf', tf.data.transfers).forEach(d=>tfSaveDraft(d));
   }
-  else if(!tf.data) tf.failed = true;
-  if((state.view === 'transfers' && !document.activeElement?.closest?.('.tf-edit')) || (state.view === 'history' && state.histMode === 'transfers' && !document.activeElement?.closest?.('.search-wrap'))) render();
+  else if(!tf.data){
+    // No connection: the copy kept on this device (stock as Rico last read it), with this device's drafts.
+    const c = rrCopyOf('tf');
+    if(c){ tf.data = c.data; tf.copyAt = c.at; rrMergeDrafts('tf', tf.data.transfers); } else tf.failed = true;
+  }
+  if((state.view === 'transfers' && !document.activeElement?.closest?.('.tf-edit')) || (state.view === 'history' && ['transfers', 'days'].includes(state.histMode) && !document.activeElement?.closest?.('.search-wrap'))) render();
 }
+addEventListener('online', async ()=>{ if(!tf.data) return; await tfLoad(true); if(state.view === 'transfers' && tf.page === 'edit') rrRepaintKeepFocus(); });
+addEventListener('offline', ()=>{ if(state.view === 'transfers' && tf.page === 'edit') rrRepaintKeepFocus(); });
+const tfKeep = ()=> tf.data && rrKeepDrafts('tf', tf.data.transfers, tfIsEmpty);
 const tfIsPractice = r=> r.status === 'problem' && (r.mode === 'practice' || /^Practice run/.test(r.problem || ''));
 const tfTone = r=> tfIsPractice(r) || r.status === 'cancelled' || r.status === 'draft' ? 'draft' : r.status === 'moved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : 'busy';
-const tfStatusText = r=> tfIsPractice(r) ? t('tfPracticeRun') : t('tfStatus_' + r.status);
+const tfStatusText = r=> tfIsPractice(r) ? t('tfPracticeRun') : r.pendingSend && r.status === 'draft' ? t('rrWaitingToSend') : t('tfStatus_' + r.status);
 function tfLine(r){
   const n = (r.lines || []).filter(l=>l.item).length;
   return [t('rrItemCount')(n), rrWhen(r.sentAt || r.createdAt), accountLabel(r.by), rrSourceName(r), r.yesterday ? t('tfForYesterday') : '',
@@ -74,10 +83,11 @@ function tfBelow(){
   const list = tf.data.transfers.filter(r=>!tfIsPractice(r)), shown = tfFiltered(list), today = tfToday();
   const isToday = r=> erbilDate(new Date(r.sentAt || r.createdAt)) === today;
   const needs = shown.filter(r=>r.status === 'review' || r.status === 'problem');
-  const drafts = shown.filter(r=>r.status === 'draft' && r.id !== tf.id && !tfIsEmpty(r));
+  const waiting = list.filter(r=>r.status === 'draft' && r.pendingSend && r.id !== tf.id);
+  const drafts = shown.filter(r=>r.status === 'draft' && !r.pendingSend && r.id !== tf.id && !tfIsEmpty(r));
   const done = shown.filter(r=>!needs.includes(r) && r.status !== 'draft' && isToday(r));
   const moved = done.filter(r=>r.status === 'moved');
-  return `<div class="rr-below">${tfFilterBar(list)}
+  return `<div class="rr-below">${rrWaitingHtml(waiting, tfRow, 'tf')}${tfFilterBar(list)}
     ${needs.length ? `<div class="section-title">${esc(t('rrNeedsYou'))}</div><div class="rr-list rr-needs">${needs.map(tfRow).join('')}</div>` : ''}
     ${drafts.length ? `<div class="section-title">${esc(t('rrDrafts'))}</div><div class="rr-list">${drafts.map(tfRow).join('')}</div>` : ''}
     <div class="section-title rr-today-title"><span>${esc(t('rrToday'))}</span>${moved.length ? `<small>${esc(t('tfMovedToday')(moved.length))} · ${esc(t('tfItemsMoved')(moved.reduce((n, r)=>n + r.lines.length, 0)))}</small>` : ''}</div>
@@ -151,7 +161,7 @@ function renderTransferEdit(){
       ${item ? `<p class="tf-avail${short ? ' short' : ''}">${tfAvailHtml(item, r.from, short, l.unit)}${tfUsualNote(item, r)}</p>` : ''}
     </div>`;
   }).join('');
-  return `<div class="rr-page rr-edit tf-edit">${rrRicoBar(tf.data.helper)}
+  return `<div class="rr-page rr-edit tf-edit">${rrRicoBar(tf.data.helper, tf.copyAt)}
     <section class="rr-card"><h2 class="rr-card-title">${esc(t('tfStorages'))}</h2>
       <div class="tf-zones">
         <div class="rr-field"><label for="tfFrom">${esc(t('tfFrom'))}</label>${rrCombo('tfFrom', r.from, t('tfChoose'))}</div>
@@ -167,20 +177,21 @@ function renderTransferEdit(){
       <span><b>${esc(t('tfYesterday'))}</b><small>${esc(r.yesterday ? t('tfYesterdayOn')(tfDayLabel(tfYesterday())) : t('tfYesterdayHint'))}</small></span><i aria-hidden="true"></i></button>
     <div class="rr-sum">
       <div class="rr-sum-total"><span>${esc(t('tfItemsLabel'))}:</span> <b>${r.lines.filter(l=>l.item).length}</b><small>${esc(ready ? `${r.from} → ${r.to}` : '')}</small></div>
-      <div class="rr-sum-acts"><button type="button" class="rr-cancel" id="tfDiscard">${esc(t('cancel'))}</button>
+      <div class="rr-sum-acts"><button type="button" class="rr-cancel" id="tfDiscard">${esc(t('cancel'))}</button><button type="button" class="rr-keep" id="tfKeepDraft" title="${esc(t('rrKeepDraftHint'))}">${esc(t('rrKeepDraft'))}</button>
         <button type="button" class="btn btn-primary" id="tfSend" ${ready ? '' : 'disabled'}>${ICON_CHECK}<span>${esc(t('tfSend'))}</span></button></div>
     </div>
     ${tfBelow()}
   </div>`;
 }
 const tfIsEmpty = r=> !r.to && !r.yesterday && !r.lines.some(l=>l.item || l.qty);
-function tfSaveSoon(r){ clearTimeout(tf.saveTimer); tf.saveTimer = setTimeout(()=>tfSaveDraft(r), 600); }
+function tfSaveSoon(r){ r.dirty = true; tfKeep(); clearTimeout(tf.saveTimer); tf.saveTimer = setTimeout(()=>tfSaveDraft(r), 600); }
 async function tfSaveDraft(r){
   clearTimeout(tf.saveTimer);
   const body = {from:r.from || null, to:r.to || null, yesterday:!!r.yesterday,
     lines:r.lines.filter(l=>l.item).map(l=>({item:l.item, unit:l.unit, qty:Number.isFinite(l.qty) ? l.qty : null}))};
-  const res = await api('transfers/' + r.id, {method:'PUT', body});
-  if(res.ok && res.data?.id) r.version = res.data.version;
+  const res = await api('transfers/' + r.id, {method:'PUT', body, quiet:true});
+  if(res.ok && res.data?.id){ r.version = res.data.version; r.dirty = false; tfKeep(); }
+  tf.netDown = res.status === 0;
   return res.ok;
 }
 function attachTransferEdit(){
@@ -244,10 +255,12 @@ function attachTransferEdit(){
     if(!tfIsEmpty(r) && !await showConfirm(esc(t('tfDiscardAsk')), {okLabel:t('rrDiscard')})) return;
     clearTimeout(tf.saveTimer);
     if(r.version) await api('transfers/' + r.id, {method:'DELETE'});
-    tf.data.transfers = tf.data.transfers.filter(x=>x.id !== r.id);
+    tf.data.transfers = tf.data.transfers.filter(x=>x.id !== r.id); tfKeep();
     tfNewDraft({from:r.from});
   };
   document.getElementById('tfSend').onclick = ()=>tfSend(r);
+  // Keep as draft: this one stays in Drafts (on the server, or on this device with no connection) and the form is free.
+  document.getElementById('tfKeepDraft').onclick = ()=>{ if(tfIsEmpty(r)) return; r.dirty = true; tfKeep(); tfSaveDraft(r); tf.lastFrom = r.from; toast(t('rrDraftKept')); tfNewDraft(); };
   document.onkeydown = e=>{
     if(state.view !== 'transfers' || tf.page !== 'edit'){ document.onkeydown = null; return; }
     if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.activeElement?.blur?.(); tfSend(r); return; }
@@ -289,8 +302,8 @@ function tfWarnText(w, r){
   if(w.code === 'yesterday') return t('tfYesterdayOn')(tfDayLabel(tfYesterday()));
   return '';
 }
-async function tfSend(r){
-  if(tf.sending) return;
+async function tfSend(r, keepForm = false){
+  if(tf.sending) return false;
   r.lines = r.lines.filter(l=>l.item || l.qty);
   const c = TF().check({from:r.from, to:r.to, yesterday:r.yesterday, lines:r.lines}, tf.data.catalog, tf.data.usual);
   if(c.errors.length){
@@ -299,19 +312,35 @@ async function tfSend(r){
     await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li>${esc(tfErrText(e))}</li>`).join('')}</ul>`, {title:t('rrFixFirst')});
     return;
   }
+  // Written on an earlier day (with no connection, or a draft kept overnight): which day it counts on is
+  // asked, because Ricotta Restaurant can record only today or yesterday.
+  const written = erbilDate(new Date(r.createdAt || Date.now())), meant = r.yesterday ? tfDayBefore(written) : written;
+  if(meant !== tfToday()){
+    if(meant === tfYesterday()){
+      const forYesterday = await showConfirm(esc(t('tfWrittenEarlier')(tfDayLabel(meant))), {title:t('tfWhichDay'), okLabel:t('tfForYesterdayBtn'), cancelLabel:t('tfForTodayBtn'), okClass:'btn-primary', enter:true});
+      if(r.yesterday !== forYesterday){ r.yesterday = forYesterday; tfSaveSoon(r); }
+      if(forYesterday) c.warnings.some(w=>w.code === 'yesterday') || c.warnings.push({code:'yesterday'});
+      else c.warnings = c.warnings.filter(w=>w.code !== 'yesterday');
+    } else if(!await showConfirm(esc(t('tfTooOld')(tfDayLabel(meant))), {title:t('tfWhichDay'), okLabel:t('tfForTodayBtn'), okClass:'btn-primary'})) return false;
+    else { if(r.yesterday){ r.yesterday = false; tfSaveSoon(r); } c.warnings = c.warnings.filter(w=>w.code !== 'yesterday'); }
+  }
   // Record for yesterday was confirmed when it was turned on; everything else is read and confirmed here.
   const ask = c.warnings.filter(w=>w.code !== 'yesterday');
-  if(ask.length && !await showConfirm(tfSummary(r, ask.map(w=>tfWarnText(w, r))), {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary', enter:true, wide:true})) return;
+  if(ask.length && !await showConfirm(tfSummary(r, ask.map(w=>tfWarnText(w, r))), {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary', enter:true, wide:true})) return false;
+  // No connection: kept here, waiting to send; the form is free for the next one (From stays).
+  const parkIt = ()=>{ r.pendingSend = true; r.dirty = true; tfKeep(); tf.lastFrom = r.from; toast(t('rrSavedOffline'), 'warn'); if(!keepForm) tfNewDraft(); else render(); };
+  if(rrOffline()) return parkIt();
   tf.sending = true;
   try{
-    if(!await tfSaveDraft(r)){ toast(t('saveFailed'), 'error'); return; }
+    if(!await tfSaveDraft(r)){ if(tf.netDown) return parkIt(); toast(t('saveFailed'), 'error'); return false; }
     const res = await tfPost(r, c.warnings.map(w=>w.code));
-    if(!res) return;
-    if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(tfErrText).join(' · ') : t('saveFailed'), 'error'); return; }
-    Object.assign(r, res.data);
+    if(!res) return false;
+    if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(tfErrText).join(' · ') : t('saveFailed'), 'error'); return false; }
+    Object.assign(r, res.data); delete r.pendingSend; delete r.dirty; tfKeep();
     tf.lastFrom = r.from;
     toast(t('rrSent'));
-    tfNewDraft();   // like Ricotta Restaurant: the form clears, From stays
+    if(keepForm) render(); else tfNewDraft();   // like Ricotta Restaurant: the form clears, From stays
+    return true;
   } finally { tf.sending = false; }
 }
 
@@ -471,4 +500,35 @@ async function tfExportDay(day, format){
     sections:list.map(r=>({heading:`${tfRoute(r)} · ${formatIraqDateTime(new Date(r.movedAt || r.sentAt), {hour:'numeric', minute:'2-digit'})}${r.yesterday ? ' · ' + t('tfForYesterday') : ''}`,
       columns:[{label:'#', w:8}, {label:t('fileItem'), w:62, bold:true}, {label:t('fileQty'), w:14, align:'end'}, {label:t('unit'), w:16}],
       rows:r.lines.map((l, i)=>[String(i + 1), l.item, tfQty(l.qty), l.unit])}))}, `${t('tfFileName')} ${day}`);
+}
+
+/* ---------- History > By day ----------
+   Each day's receipts and transfers together, newest day first, with that day's totals: receipts saved
+   and what they came to, transfers moved and how many items. A transfer belongs to the day it counts on
+   (Record for yesterday puts it on the day before); a receipt to the day it was saved (or sent). */
+function renderDaysHistory(){
+  const withR = state.views.includes('receipts'), withT = state.views.includes('transfers');
+  if(withR && !rr.data && !rr.loading && !rr.failed) rrLoad(true);
+  if(withT && !tf.data && !tf.loading && !tf.failed) tfLoad(true);
+  if((withR && !rr.data) || (withT && !tf.data)) return (withR && rr.failed) || (withT && tf.failed) ? emptyState(t('loadFailed')) : loadingLines(3);
+  const days = new Map(), at = day=>{ if(!days.has(day)) days.set(day, {r:[], t:[]}); return days.get(day); };
+  if(withR) rr.data.receipts.filter(r=>!['draft', 'cancelled'].includes(r.status) && !rrIsPractice(r)).forEach(r=>at(erbilDate(new Date(r.savedAt || r.sentAt || r.createdAt))).r.push(r));
+  if(withT) tf.data.transfers.filter(r=>!['draft', 'cancelled'].includes(r.status) && !tfIsPractice(r)).forEach(r=>at(r.forDay || erbilDate(new Date(r.sentAt || r.createdAt))).t.push(r));
+  if(!days.size) return emptyState(t('daysEmpty'));
+  const newest = (a, b)=>Date.parse(b.sentAt || b.createdAt) - Date.parse(a.sentAt || a.createdAt);
+  return `<div class="day-list">${[...days.keys()].sort().reverse().map(day=>{
+    const d = days.get(day), saved = d.r.filter(r=>r.status === 'saved'), moved = d.t.filter(r=>r.status === 'moved');
+    const iqd = saved.reduce((s, r)=>s + (r.currency === 'USD' ? Math.round(r.total * (r.rate || 0)) : (r.total || 0)), 0);
+    // Every one sent that day, then how many are done and what the done ones came to.
+    const stats = [withR && d.r.length ? `<span class="day-stat"><b>${d.r.length}</b> ${esc(t('dayReceipts')(d.r.length))} · ${esc(t('daySaved')(saved.length))}${saved.length ? ` · IQD ${esc(rrNum(iqd))}` : ''}</span>` : '',
+      withT && d.t.length ? `<span class="day-stat"><b>${d.t.length}</b> ${esc(t('dayTransfers')(d.t.length))} · ${esc(t('dayMoved')(moved.length))}${moved.length ? ` · ${esc(t('tfItemsMoved')(moved.reduce((n, r)=>n + r.lines.length, 0)))}` : ''}</span>` : ''].join('');
+    return `<section class="day-card"><header class="day-head"><b>${esc(dayLabel(day + 'T12:00:00+03:00'))}</b><div class="day-stats">${stats}</div></header>
+      ${d.r.length ? `<div class="day-sub">${esc(t('rrTitle'))}</div><div class="rr-list">${d.r.sort(newest).map(rrRow).join('')}</div>` : ''}
+      ${d.t.length ? `<div class="day-sub">${esc(t('tfTitle'))}</div><div class="rr-list">${d.t.sort(newest).map(tfRow).join('')}</div>` : ''}
+    </section>`;
+  }).join('')}</div>`;
+}
+function attachDaysHistory(){
+  document.querySelectorAll('.day-list [data-rr-open]').forEach(b=>b.onclick = ()=>{ const id = b.dataset.rrOpen; goView('receipts'); rrOpen(id); });
+  document.querySelectorAll('.day-list [data-tf-open]').forEach(b=>b.onclick = ()=>{ const id = b.dataset.tfOpen; goView('transfers'); tfOpen(id); });
 }

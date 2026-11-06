@@ -15,11 +15,12 @@
 import { chromium } from "playwright";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
 import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-12.2";
+const VERSION = "2026-11-12.3";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -191,7 +192,9 @@ function capture(paths) {
    ("Main Storage>Appetizers") was used; and how many deliveries came and their usual and largest amount.
    The checks use it to ask about an amount far from the usual one (135 for 13.5) or a storage it has
    never gone to. */
-let historyNow = null;
+// What was learnt is kept on the Mac too, so starting Rico again the same day doesn't read it all again.
+const HISTORY_FILE = join(homedir(), "Library", "Application Support", "RicoHelper", "learnt.json");
+let historyNow = (() => { try { const h = JSON.parse(readFileSync(HISTORY_FILE, "utf8")); return h?.at && h.t && h.p ? h : null; } catch { return null; } })();
 const HISTORY_DAYS = 21;
 let historyBusy = false, lastCatalogBody = null;
 async function readHistory() {
@@ -231,6 +234,7 @@ async function readHistory() {
     t: Object.fromEntries(Object.entries(lists.t).map(([n, e]) => [n, { ...stat(e), r: Object.fromEntries(Object.entries(e.r).map(([k, v]) => [k, stat(v)])) }])),
     p: Object.fromEntries(Object.entries(lists.p).map(([n, e]) => [n, stat(e)])),
   };
+  try { writeFileSync(HISTORY_FILE, JSON.stringify(historyNow)); } catch (e) { log("could not keep what was learnt:", e.message); }
   log(`learnt from the stock record: ${Object.keys(historyNow.t).length} items moved, ${Object.keys(historyNow.p).length} delivered (${HISTORY_DAYS} days)`);
 }
 /* Learns again once a day, in the background; then the lists are sent again with what was learnt. */

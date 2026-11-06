@@ -3047,12 +3047,14 @@ function orderHistoryCard(rec){
 /* Every order still kept (at least 60 days), newest first. */
 function renderHistory(){
   // Orders, receipts and transfers are separate groups of the same tab, never mixed.
-  const groups = ['orders', ...(state.views.includes('receipts') ? ['receipts'] : []), ...(state.views.includes('transfers') ? ['transfers'] : [])];
+  // By day: each day's receipts and transfers together, with the day's totals.
+  const rico = state.views.includes('receipts') || state.views.includes('transfers');
+  const groups = ['orders', ...(rico ? ['days'] : []), ...(state.views.includes('receipts') ? ['receipts'] : []), ...(state.views.includes('transfers') ? ['transfers'] : [])];
   const mode = groups.includes(state.histMode) ? state.histMode : 'orders';
-  const label = {orders:t('histOrders'), receipts:t('rrTitle'), transfers:t('tfTitle')};
+  const label = {orders:t('histOrders'), days:t('histDays'), receipts:t('rrTitle'), transfers:t('tfTitle')};
   const switcher = groups.length > 1 ? `<div class="pill-seg hist-switch" role="radiogroup" aria-label="${esc(t('history'))}">
     ${groups.map(g=>`<button type="button" class="pill-seg-btn" role="radio" aria-checked="${mode === g}" data-histmode="${g}">${esc(label[g])}</button>`).join('')}</div>` : '';
-  return switcher + (mode === 'receipts' ? renderReceiptHistory() : mode === 'transfers' ? renderTransferHistory() : renderOrderHistory());
+  return switcher + (mode === 'days' ? renderDaysHistory() : mode === 'receipts' ? renderReceiptHistory() : mode === 'transfers' ? renderTransferHistory() : renderOrderHistory());
 }
 function renderOrderHistory(){
   const entries = state.history.map(rec=>({ts:Date.parse(rec.date), day:rec.date, html:orderHistoryCard(rec)})).sort((a,b)=>b.ts-a.ts);
@@ -3072,6 +3074,7 @@ function renderOrderHistory(){
 }
 function attachHistoryEvents(){
   document.querySelectorAll('[data-histmode]').forEach(b=>b.onclick = ()=>{ state.histMode = b.dataset.histmode; render(); scrollBox().scrollTo({top:0}); });
+  if(state.histMode === 'days' && (state.views.includes('receipts') || state.views.includes('transfers'))) return attachDaysHistory();
   if(state.views.includes('receipts') && state.histMode === 'receipts') return attachReceiptHistory();
   if(state.views.includes('transfers') && state.histMode === 'transfers') return attachTransferHistory();
   document.getElementById('reportOpen')?.addEventListener('click', openReportSheet);
