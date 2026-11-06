@@ -15,6 +15,7 @@ const SETTINGS = [
   {id:'ricoSheet', group:'rico', on:true, role:'assistant'},
   {id:'ricoBriefing', group:'rico', on:true, role:'assistant'},
   {id:'ricoMood', group:'rico', on:true, role:'assistant'},
+  {id:'ricoAutoStart', group:'rico', on:false, role:'receipts', rozha:true},
   {id:'tables', group:'look', on:false},
   {id:'kitchenMode', group:'look', on:false},
   {id:'milestones', group:'look', on:true},
@@ -40,6 +41,7 @@ const SETTING_ICONS = {
   ricoSheet:['#1F7A4D', SF('<path d="M12 3.4c.7 4.9 3.7 7.9 8.6 8.6-4.9.7-7.9 3.7-8.6 8.6-.7-4.9-3.7-7.9-8.6-8.6 4.9-.7 7.9-3.7 8.6-8.6Z"/>', true)],
   ricoBriefing:['#FF9F0A', SF('<circle cx="12" cy="12" r="3.6" fill="#fff" stroke="none"/><path d="M12 3v1.6M12 19.4V21M3 12h1.6M19.4 12H21M5.6 5.6l1.15 1.15M17.25 17.25l1.15 1.15M5.6 18.4l1.15-1.15M17.25 6.75l1.15-1.15"/>')],
   ricoMood:['#AF52DE', SF('<circle cx="12" cy="12" r="8.4"/><path d="M8.4 13.6a4.4 4.4 0 0 0 7.2 0"/><circle cx="9.2" cy="9.9" r="1.15" fill="#fff" stroke="none"/><circle cx="14.8" cy="9.9" r="1.15" fill="#fff" stroke="none"/>')],
+  ricoAutoStart:['#34C759', SF('<path d="M12 3.4v7.4"/><path d="M7.1 6.6a7.2 7.2 0 1 0 9.8 0"/>')],
   ricoStyle:['#30B0C7', SF('<path d="M5.4 4.6h13.2a2.2 2.2 0 0 1 2.2 2.2v7.6a2.2 2.2 0 0 1-2.2 2.2H12l-4.4 3.3a.5.5 0 0 1-.8-.4V16.6H5.4a2.2 2.2 0 0 1-2.2-2.2V6.8a2.2 2.2 0 0 1 2.2-2.2Z"/>', true)],
   darkMode:['#007AFF', SF('<circle cx="12" cy="12" r="8.2"/><path d="M12 3.8a8.2 8.2 0 0 1 0 16.4Z" fill="#fff" stroke="none"/>')],
   tables:['#32ADE6', SF('<rect x="3.6" y="4.8" width="16.8" height="14.4" rx="2.4"/><path d="M3.6 10h16.8M10 10v9.2"/>')],
@@ -93,7 +95,7 @@ function applyFeatures(){
 function renderFeatureSettings(){
   const row = f=>`<label class="check-row preference-row has-ico"><input type="checkbox" data-feature="${f.id}" ${featureOn(f.id) ? 'checked' : ''}>${setIcon(f.id)}<span>${esc(t('feat_' + f.id))}<small>${esc(t('feat_' + f.id + '_hint'))}</small></span></label>`;
   return SETTING_GROUPS.map(group=>{
-    const rows = SETTINGS.filter(f=>f.group === group && (!f.role || canOpen(f.role))).map(row).join('');
+    const rows = SETTINGS.filter(f=>f.group === group && (!f.role || canOpen(f.role)) && (!f.rozha || isRozha())).map(row).join('');
     const extra = group === 'rico' && canOpen('assistant') ? `<div class="field feature-select"><div class="set-head">${setIcon('ricoStyle')}<label for="ricoStyleSel">${esc(t('styleLabel'))}</label></div><select id="ricoStyleSel">${CHOICES.ricoStyle.map(v=>`<option value="${v}" ${ricoStyle() === v ? 'selected' : ''}>${esc(t('style_' + v))}</option>`).join('')}</select></div>` : '';
     if(!rows && !extra) return '';
     return `<div class="section-title">${esc(t('settingsGroup_' + group))}</div><div class="form-card">${group === 'look' ? renderAppearanceRow() : ''}${rows}${extra}</div>`;

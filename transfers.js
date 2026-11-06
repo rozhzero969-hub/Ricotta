@@ -5,7 +5,7 @@
    then moved). Storages, items and units are named exactly as there; the rules are shared with the API
    and Rico (RicottaTransfers). Stock is Ricotta Restaurant's, as Rico last read it, and Rico checks the
    live stock again on their page right before moving. */
-const tf = {data:null, loading:false, page:'list', id:null, saveTimer:0, sending:false, fresh:false, lastFrom:null, failed:false};
+const tf = {data:null, loading:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false, lastFrom:null, failed:false};
 const TF = ()=> globalThis.RicottaTransfers;
 const tfFind = id=> tf.data?.transfers.find(r=>r.id === id) || null;
 const tfItem = name=> (tf.data?.catalog?.titems || []).find(i=>i.name === name) || null;
@@ -23,7 +23,7 @@ async function tfLoad(quiet = false){
   tf.loading = false;
   if(r.ok && r.data && Array.isArray(r.data.transfers)){
     // A draft being typed keeps what is on the screen until it is saved.
-    const editing = tf.page === 'edit' ? tfFind(tf.id) : null;
+    const editing = tfFind(tf.formId)?.status === 'draft' ? tfFind(tf.formId) : null;
     tf.data = r.data;
     if(editing && !tfFind(editing.id)) tf.data.transfers.unshift(editing);
     else if(editing) tf.data.transfers = tf.data.transfers.map(x=>x.id === editing.id ? editing : x);
@@ -37,52 +37,72 @@ const tfTone = r=> tfIsPractice(r) || r.status === 'cancelled' || r.status === '
 const tfStatusText = r=> tfIsPractice(r) ? t('tfPracticeRun') : t('tfStatus_' + r.status);
 function tfLine(r){
   const n = (r.lines || []).filter(l=>l.item).length;
-  return [t('rrItemCount')(n), rrWhen(r.sentAt || r.createdAt), r.yesterday ? t('tfForYesterday') : '', r.source === 'telegram' ? 'Telegram' : '',
-    r.mode && !tfIsPractice(r) ? t(r.mode === 'practice' ? 'rrModePractice' : 'rrModeReal') : '', tfStatusText(r)].filter(Boolean).join(' · ');
+  return [t('rrItemCount')(n), rrWhen(r.sentAt || r.createdAt), accountLabel(r.by), rrSourceName(r), r.yesterday ? t('tfForYesterday') : '',
+    r.status === 'problem' ? r.problem || tfStatusText(r) : tfStatusText(r)].filter(Boolean).join(' · ');
 }
+const tfFiltered = list=> list.filter(r=>tf.filter.src === 'all' || (r.source === 'telegram' ? 'telegram' : 'app') === tf.filter.src);
 const tfRoute = r=> `${r.from || t('tfNoFrom')} → ${r.to || t('tfNoTo')}`;
 
-/* ---------- The list ---------- */
+/* ---------- The tab: a new transfer straight away (like Ricotta Restaurant's Move between storages),
+   Rico's switch above it, and what needs you, drafts and today's transfers below it. ---------- */
 function renderTransfers(){
-  if(tf.page === 'edit') return renderTransferEdit();
   if(tf.page === 'view') return renderTransferView();
   if(!tf.data){ if(!tf.loading && !tf.failed) tfLoad(); return tf.failed ? emptyState(t('loadFailed')) : loadingLines(4); }
-  const h = tf.data.helper, list = tf.data.transfers, today = tfToday();
-  const moved = list.filter(r=>r.status === 'moved' && erbilDate(new Date(r.movedAt || r.sentAt)) === today);
-  const needs = list.filter(r=>r.status === 'review' || (r.status === 'problem' && !tfIsPractice(r)));
-  const drafts = list.filter(r=>r.status === 'draft');
-  const rest = list.filter(r=>!needs.includes(r) && !drafts.includes(r));
-  const row = r=>`<button type="button" class="rr-row" data-tf-open="${esc(r.id)}"><i class="rr-dot ${tfTone(r)}" aria-hidden="true"></i>
-    <span class="rr-row-main"><b dir="auto">${esc(tfRoute(r))}</b><small>${esc(tfLine(r))}</small></span></button>`;
-  const ricoOn = h.online && !h.stopped;
-  return `<div class="rr-page">
-    <section class="rr-card rr-overview">
-      <div class="rr-ov-top">
-        <div class="rr-ov-sum"><span>${esc(t('rrToday'))}</span><b>${esc(t('tfMovedToday')(moved.length))}</b><small>${esc(t('tfItemsMoved')(moved.reduce((n, r)=>n + r.lines.length, 0)))}</small></div>
-        <button type="button" class="btn btn-primary rr-new" id="tfNew">${ICON_PLUS}<span>${esc(t('tfNew'))}</span></button>
-      </div>
-      <div class="rr-ov-rico"><i class="rr-dot ${ricoOn ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrHelperLine(h))}</span></div>
-    </section>
-    ${needs.length ? `<div class="section-title">${esc(t('rrNeedsYou'))}</div><div class="rr-list">${needs.map(row).join('')}</div>` : ''}
-    ${drafts.length ? `<div class="section-title">${esc(t('rrDrafts'))}</div><div class="rr-list">${drafts.map(row).join('')}</div>` : ''}
-    ${rest.length ? `<div class="section-title">${esc(t('rrRecent'))}</div><div class="rr-list">${rest.slice(0, 200).map(row).join('')}</div>` : !list.length ? emptyState(t('tfEmpty')) : ''}
+  if(!tf.data.catalog?.titems?.length) return `<div class="rr-page">${rrRicoBar(tf.data.helper)}${emptyState(t('tfNoStock'))}${tfBelow()}</div>`;
+  const cur = tfFind(tf.formId);
+  if(cur && cur.status === 'draft'){ tf.id = cur.id; tf.page = 'edit'; } else tfNewDraft(null, false);
+  return renderTransferEdit();
+}
+const tfRow = r=>`<button type="button" class="rr-row" data-tf-open="${esc(r.id)}"><i class="rr-dot ${tfTone(r)}" aria-hidden="true"></i>
+  <span class="rr-row-main"><b dir="auto">${esc(tfRoute(r))}</b><small>${esc(tfLine(r))}</small></span></button>`;
+function tfBelow(){
+  const list = tf.data.transfers.filter(r=>!tfIsPractice(r)), shown = tfFiltered(list), today = tfToday();
+  const isToday = r=> erbilDate(new Date(r.sentAt || r.createdAt)) === today;
+  const needs = shown.filter(r=>r.status === 'review' || r.status === 'problem');
+  const drafts = shown.filter(r=>r.status === 'draft' && r.id !== tf.id && !tfIsEmpty(r));
+  const done = shown.filter(r=>!needs.includes(r) && r.status !== 'draft' && isToday(r));
+  const moved = done.filter(r=>r.status === 'moved');
+  return `<div class="rr-below">${tfFilterBar(list)}
+    ${needs.length ? `<div class="section-title">${esc(t('rrNeedsYou'))}</div><div class="rr-list rr-needs">${needs.map(tfRow).join('')}</div>` : ''}
+    ${drafts.length ? `<div class="section-title">${esc(t('rrDrafts'))}</div><div class="rr-list">${drafts.map(tfRow).join('')}</div>` : ''}
+    <div class="section-title rr-today-title"><span>${esc(t('rrToday'))}</span>${moved.length ? `<small>${esc(t('tfMovedToday')(moved.length))} · ${esc(t('tfItemsMoved')(moved.reduce((n, r)=>n + r.lines.length, 0)))}</small>` : ''}</div>
+    ${done.length ? `<div class="rr-list">${done.map(tfRow).join('')}</div>` : `<p class="rr-none">${esc(t('tfNoneToday'))}</p>`}
+    <button type="button" class="rr-to-history" data-to-history="transfers">${esc(t('rrSeeHistory'))}</button>
     ${tf.data.catalog?.at ? `<p class="rr-foot">${esc(t('tfStockAt')(formatIraqDateTime(new Date(tf.data.catalog.at), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'})))}</p>` : `<p class="rr-foot">${esc(t('rrNoCatalog'))}</p>`}
   </div>`;
 }
+/* The filter (made in the app or on Telegram), for the tab and History > Transfers. */
+function tfFilterBar(list){
+  if(!list.length) return '';
+  const fsel = `<select class="rr-filter" data-tf-filter="src" aria-label="${esc(t('rrFilter_src'))}">${[['all', t('rrAllPlaces')], ['app', t('rrSource_app')], ['telegram', t('rrSource_telegram')]].map(([v, l])=>`<option value="${v}"${tf.filter.src === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  return `<div class="rr-filters">${fsel}${tf.filter.src !== 'all' ? `<button type="button" class="rr-filter-clear" id="tfFilterClear">${esc(t('rrClearFilters'))}</button>` : ''}</div>`;
+}
+function attachTfFilters(){
+  document.querySelectorAll('[data-tf-filter]').forEach(s=>s.onchange = ()=>{ tf.filter[s.dataset.tfFilter] = s.value; rrRepaintKeep(); });
+  const fc = document.getElementById('tfFilterClear'); if(fc) fc.onclick = ()=>{ tf.filter = {src:'all'}; rrRepaintKeep(); };
+}
 function attachTransfersEvents(){
-  if(tf.page === 'edit') return attachTransferEdit();
   if(tf.page === 'view') return attachTransferView();
-  document.getElementById('tfNew')?.addEventListener('click', ()=>tfNewDraft());
   document.querySelectorAll('[data-tf-open]').forEach(b=>b.onclick = ()=>tfOpen(b.dataset.tfOpen));
+  attachTfFilters();
+  attachRicoBar();
+  if(tf.page === 'edit' && tfFind(tf.id)) attachTransferEdit();
 }
 function tfOpen(id){
   const r = tfFind(id); if(!r) return;
+  if(r.status === 'draft'){ tfDropBlankForm(r.id); tf.formId = id; }
   tf.id = id; tf.page = r.status === 'draft' ? 'edit' : 'view';
   render(); scrollBox().scrollTo({top:0});
 }
-function tfBack(){ tf.page = 'list'; tf.id = null; render(); scrollBox().scrollTo({top:0}); }
-function tfNewDraft(copyOf){
-  if(!tf.data?.catalog?.titems?.length){ toast(t('tfNoStock'), 'error'); return; }
+/* Back from a sent transfer: to the form, with whatever was being typed in it. */
+function tfBack(){ tf.page = 'edit'; tf.id = null; render(); scrollBox().scrollTo({top:0}); }
+function tfDropBlankForm(keep){
+  const f = tfFind(tf.formId);
+  if(f && f.id !== keep && f.status === 'draft' && !f.version && tfIsEmpty(f)) tf.data.transfers = tf.data.transfers.filter(x=>x.id !== f.id);
+}
+function tfNewDraft(copyOf, draw = true){
+  if(!tf.data?.catalog?.titems?.length){ if(draw) toast(t('tfNoStock'), 'error'); return; }
+  tfDropBlankForm();
   const zones = TF().zonesOf(tf.data.catalog), src = copyOf || {};
   // From starts on Main Storage (or the storage of the last transfer sent); To is chosen each time.
   const from = src.from || (zones.includes(tf.lastFrom) ? tf.lastFrom : zones.includes('Main Storage') ? 'Main Storage' : '');
@@ -90,8 +110,8 @@ function tfNewDraft(copyOf){
     lines:(src.lines || []).map(l=>({...l})), warnings:[], log:[], photos:[], version:0, createdAt:new Date().toISOString()};
   if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null});
   tf.data.transfers.unshift(r);
-  tf.id = r.id; tf.page = 'edit'; tf.fresh = true;
-  render(); scrollBox().scrollTo({top:0});
+  tf.id = tf.formId = r.id; tf.page = 'edit'; tf.fresh = true;
+  if(draw){ render(); scrollBox().scrollTo({top:0}); }
 }
 
 /* ---------- Writing a transfer (like Ricotta Restaurant's page) ---------- */
@@ -101,7 +121,7 @@ function tfNeedByItem(r){
   return m;
 }
 function renderTransferEdit(){
-  const r = tfFind(tf.id); if(!r){ tf.page = 'list'; return renderTransfers(); }
+  const r = tfFind(tf.id); if(!r){ tf.page = 'edit'; tf.formId = null; return renderTransfers(); }
   const cat = tf.data.catalog, need = tfNeedByItem(r);
   const opt = (v, label, on)=>`<option value="${esc(v)}"${on ? ' selected' : ''}>${esc(label)}</option>`;
   const ready = r.from && r.to;
@@ -116,7 +136,7 @@ function renderTransferEdit(){
       ${item ? `<p class="tf-avail${short ? ' short' : ''}">${esc(short ? t('tfNotEnough')(tfQty(TF().inCounting(item, have).qty) + ' ' + TF().inCounting(item, have).unit, r.from) : tfAvailText(item, r.from))}</p>` : ''}
     </div>`;
   }).join('');
-  return `<div class="rr-page rr-edit tf-edit">${rrBackBar(t('tfNewTitle'))}
+  return `<div class="rr-page rr-edit tf-edit">${rrRicoBar(tf.data.helper)}
     <section class="rr-card"><h2 class="rr-card-title">${esc(t('tfStorages'))}</h2>
       <div class="tf-zones">
         <div class="rr-field"><label for="tfFrom">${esc(t('tfFrom'))}</label>${rrCombo('tfFrom', r.from, t('tfChoose'))}</div>
@@ -135,6 +155,7 @@ function renderTransferEdit(){
       <div class="rr-sum-acts"><button type="button" class="rr-cancel" id="tfDiscard">${esc(t('cancel'))}</button>
         <button type="button" class="btn btn-primary" id="tfSend" ${ready ? '' : 'disabled'}>${ICON_CHECK}<span>${esc(t('tfSend'))}</span></button></div>
     </div>
+    ${tfBelow()}
   </div>`;
 }
 const tfIsEmpty = r=> !r.to && !r.yesterday && !r.lines.some(l=>l.item || l.qty);
@@ -154,11 +175,6 @@ function attachTransferEdit(){
   const changed = (redraw = false)=>{ tfSaveSoon(r); if(redraw) repaint(); };
   const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); el.scrollIntoView({block:'nearest'}); el.select?.(); };
   const enter = (el, fn)=>{ if(el) el.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.isComposing){ e.preventDefault(); fn(); } }); };
-  document.getElementById('rrBack').onclick = async ()=>{
-    if(tfIsEmpty(r)){ clearTimeout(tf.saveTimer); if(r.version) await api('transfers/' + r.id, {method:'DELETE', quiet:true}); tf.data.transfers = tf.data.transfers.filter(x=>x.id !== r.id); }
-    else await tfSaveDraft(r);
-    tfBack();
-  };
   // From, then To (never the same storage), then the first item.
   rrComboBind(document.getElementById('tfFrom'), zones, (v, again)=>{
     if(!again && v !== r.from){ r.from = v; if(r.to === v) r.to = ''; changed(true); }
@@ -213,7 +229,7 @@ function attachTransferEdit(){
     clearTimeout(tf.saveTimer);
     if(r.version) await api('transfers/' + r.id, {method:'DELETE'});
     tf.data.transfers = tf.data.transfers.filter(x=>x.id !== r.id);
-    tfBack();
+    tfNewDraft({from:r.from});
   };
   document.getElementById('tfSend').onclick = ()=>tfSend(r);
   document.onkeydown = e=>{
@@ -267,7 +283,7 @@ async function tfSend(r){
     Object.assign(r, res.data);
     tf.lastFrom = r.from;
     toast(t('rrSent'));
-    tf.page = 'view'; render(); scrollBox().scrollTo({top:0});
+    tfNewDraft();   // like Ricotta Restaurant: the form clears, From stays
   } finally { tf.sending = false; }
 }
 
@@ -293,7 +309,7 @@ function tfLinesList(r){
   return `<ol class="rr-view-lines">${r.lines.map((l, i)=>`<li><span class="rr-num">${i + 1}</span><span><b dir="auto">${esc(l.item)}</b></span><b>${esc(tfQty(l.qty))} <bdi>${esc(l.unit)}</bdi></b></li>`).join('')}</ol>`;
 }
 function renderTransferView(){
-  const r = tfFind(tf.id); if(!r){ tf.page = 'list'; return renderTransfers(); }
+  const r = tfFind(tf.id); if(!r){ tf.page = 'edit'; return renderTransfers(); }
   const head = r.status === 'moved'
     ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('tfStatus_moved'))}</span><b dir="auto">${esc(tfRoute(r))}</b><small>${esc(r.result && r.result.checked === false ? t('tfNotConfirmed') : t('tfSeenRecent'))}</small></div>`
     : `<div class="rr-state ${tfIsPractice(r) ? 'practice' : r.status}">${rrRico()}<div><b>${esc(tfStatusText(r))}</b><small>${esc(r.status === 'problem' ? r.problem || '' : t('tfStatusHint_' + r.status))}</small></div></div>`;
@@ -313,6 +329,7 @@ function renderTransferView(){
       ${r.status === 'review' ? `<button type="button" class="btn btn-ghost" id="tfCancel">${esc(t('tfCancelOne'))}</button><button type="button" class="btn btn-primary" id="tfApprove">${esc(t('tfApprove'))}</button>` : ''}
       ${['queued','problem'].includes(r.status) ? `<button type="button" class="btn btn-ghost" id="tfCancel">${esc(t('tfCancelOne'))}</button>` : ''}
       ${['problem','cancelled','moved'].includes(r.status) ? `<button type="button" class="btn btn-ghost" id="tfCopy">${esc(t('rrCopy'))}</button>` : ''}
+      ${r.status === 'problem' && !tfIsPractice(r) ? `<button type="button" class="btn btn-primary" id="tfRetry">${esc(t('rrRetry'))}</button>` : ''}
     </div>
   </div>`;
 }
@@ -331,7 +348,20 @@ function attachTransferView(){
   const ap = document.getElementById('tfApprove'); if(ap) ap.onclick = ()=>act('approve', ask);
   const cn = document.getElementById('tfCancel'); if(cn) cn.onclick = ()=>act('cancel', t('tfCancelAsk'));
   const cp = document.getElementById('tfCopy'); if(cp) cp.onclick = ()=>tfNewDraft(r);
+  const rt = document.getElementById('tfRetry'); if(rt) rt.onclick = ()=>tfRetry(r);
   attachLightbox();
+}
+/* Retry: the same transfer to Rico again, checked against the stock as Rico last read it. If it had
+   been approved, Rico may already have pressed Move it, so Recent transfers is to be checked first. */
+async function tfRetry(r){
+  const c = TF().check({from:r.from, to:r.to, yesterday:r.yesterday, lines:r.lines}, tf.data.catalog, tf.data.usual);
+  if(c.errors.length){ await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li>${esc(tfErrText(e))}</li>`).join('')}</ul><p>${esc(t('rrRetryCopy'))}</p>`, {title:t('rrFixFirst')}); return; }
+  const ws = c.warnings.map(tfWarnText).filter(Boolean);
+  const msg = (r.approvedAt ? `<p><b>${esc(t('tfRetryCheckFirst'))}</b></p>` : '') + `<p>${esc(t('tfApproveAsk')(tfRoute(r), r.lines.length))}</p>` + (ws.length ? `<ul class="rr-errs">${ws.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>` : '');
+  if(!await showConfirm(msg, {title:t('rrRetry'), okLabel:t('rrRetry'), okClass:'btn-primary'})) return;
+  const res = await api(`transfers/${r.id}/send`, {method:'POST', body:{confirm:[...new Set(c.warnings.map(w=>w.code))]}});
+  if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(tfErrText).join(' · ') : t('saveFailed'), 'error'); tfLoad(true); return; }
+  Object.assign(r, res.data); toast(t('rrSent')); render();
 }
 
 /* ---------- History > Transfers ----------
@@ -339,18 +369,21 @@ function attachTransferView(){
    each day can be saved as a PDF or an Excel file. */
 function renderTransferHistory(){
   if(!tf.data){ if(!tf.loading && !tf.failed) tfLoad(); return tf.failed ? emptyState(t('loadFailed')) : loadingLines(3); }
-  const all = tf.data.transfers.filter(r=>r.status !== 'draft');
-  if(!all.length) return emptyState(t('tfHistEmpty'));
+  // Practice runs are not part of the record.
+  const every = tf.data.transfers.filter(r=>r.status !== 'draft' && !tfIsPractice(r));
+  if(!every.length) return emptyState(t('tfHistEmpty'));
+  const all = tfFiltered(every);
+  if(!all.length) return tfFilterBar(every) + emptyState(t('rrNoMatchFilter'));
   const dayOf = r=> r.forDay || erbilDate(new Date(r.sentAt || r.createdAt));
   const days = [...new Set(all.map(dayOf))].sort().reverse();
-  return renderCatalogSearch() + days.map(day=>{
+  return tfFilterBar(every) + renderCatalogSearch() + days.map(day=>{
     const list = all.filter(r=>dayOf(r) === day).sort((a, b)=>Date.parse(b.sentAt || b.createdAt) - Date.parse(a.sentAt || a.createdAt));
     const moved = list.filter(r=>r.status === 'moved');
     return `<div class="hist-day tf-day"><span>${esc(dayLabel(day + 'T12:00:00+03:00'))}</span>${moved.length ? `<span class="tf-export"><button type="button" data-tf-export="${day}" data-format="pdf">PDF</button><button type="button" data-tf-export="${day}" data-format="excel">Excel</button></span>` : ''}</div>`
       + list.map(r=>`<article class="hist-card rr-hist" data-search-row data-search-text="${esc([r.from, r.to, ...r.lines.map(l=>l.item)].join(' '))}">
         <div class="hist-top"><div class="hist-date"><b>${esc(formatIraqDateTime(new Date(r.sentAt || r.createdAt), {hour:'numeric', minute:'2-digit'}))}</b><span class="rr-hist-state"><i class="rr-dot ${tfTone(r)}" aria-hidden="true"></i>${esc(tfStatusText(r))}</span></div>
           <span class="rr-hist-total">${esc(t('rrItemCount')(r.lines.length))}</span></div>
-        <div class="rr-hist-name"><b dir="auto">${esc(tfRoute(r))}</b><small>${esc([rrSourceName(r), accountLabel(r.by), r.yesterday ? t('tfForYesterday') : '', r.mode ? t(r.mode === 'practice' ? 'rrModePractice' : 'rrModeReal') : ''].filter(Boolean).join(' · '))}</small></div>
+        <div class="rr-hist-name"><b dir="auto">${esc(tfRoute(r))}</b><small>${esc([rrSourceName(r), accountLabel(r.by), r.yesterday ? t('tfForYesterday') : ''].filter(Boolean).join(' · '))}</small></div>
         <ol class="rr-hist-lines tf-num">${r.lines.map((l, i)=>`<li><span dir="auto"><i>${i + 1}</i> ${esc(l.item)}</span><b>${esc(tfQty(l.qty))} <bdi>${esc(l.unit)}</bdi></b></li>`).join('')}</ol>
         ${tfPhotos(r)}
         <div class="hist-actions"><button type="button" class="btn btn-ghost" data-tf-hist-open="${esc(r.id)}">${esc(t('tfOpenOne'))}</button></div>
@@ -358,7 +391,7 @@ function renderTransferHistory(){
   }).join('');
 }
 function attachTransferHistory(){
-  attachLightbox();
+  attachTfFilters(); attachLightbox();
   document.querySelectorAll('[data-tf-hist-open]').forEach(b=>b.onclick = ()=>{ const id = b.dataset.tfHistOpen; goView('transfers'); tfOpen(id); });
   document.querySelectorAll('[data-tf-export]').forEach(b=>b.onclick = ()=>withBusy(b, ()=>tfExportDay(b.dataset.tfExport, b.dataset.format)));
 }

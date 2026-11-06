@@ -4,9 +4,9 @@
    Restaurant's own New receipt page: Receipt details, then Items received, then the total) and one
    that was sent (Rico's photo to approve, or the saved receipt with its finance number). Names are the
    exact ones Rico read from Ricotta Restaurant; the rules are shared with the API (RicottaReceipts). */
-const rr = {data:null, loading:false, page:'list', id:null, saveTimer:0, photos:{}, sending:false, filter:{src:'all', mode:'all', by:'all'}, fresh:false};
+const rr = {data:null, loading:false, page:'edit', id:null, formId:null, saveTimer:0, photos:{}, sending:false, filter:{src:'all'}, fresh:false};
 const RR_ACTIVE = ['queued','filling','review','approved','saving'];
-const rrSubpage = ()=> state.view === 'receipts' && rr.page !== 'list';
+const rrSubpage = ()=> state.view === 'receipts' && rr.page === 'view';
 const rrNum = (n, d = 0)=> Number(n || 0).toLocaleString('en-US', {maximumFractionDigits:d});
 const rrMoney = (n, cur)=> cur === 'USD' ? '$' + rrNum(n, 3) : 'IQD ' + rrNum(n, 3);
 /* A unit as Ricotta Restaurant shows it: the size written "(×1000)" (the value stays "(1000×)"). */
@@ -22,7 +22,7 @@ async function rrLoad(quiet = false){
   rr.loading = false;
   if(r.ok && r.data && Array.isArray(r.data.receipts)){
     // A draft being typed keeps what is on the screen until it is saved.
-    const editing = rr.page === 'edit' ? rrFind(rr.id) : null;
+    const editing = rrFind(rr.formId)?.status === 'draft' ? rrFind(rr.formId) : null;
     rr.data = r.data;
     if(editing && !rrFind(editing.id)) rr.data.receipts.unshift(editing);
     else if(editing) rr.data.receipts = rr.data.receipts.map(x=>x.id === editing.id ? editing : x);
@@ -32,66 +32,76 @@ async function rrLoad(quiet = false){
     || (state.view === 'history' && state.histMode === 'receipts' && !document.activeElement?.closest?.('.search-wrap'))) render();
 }
 
-/* ---------- The list ---------- */
+/* ---------- The tab: a new receipt straight away (like Ricotta Restaurant's New receipt page), with
+   Rico's switch above it and what needs you, drafts and today's receipts below it. ---------- */
 function renderReceipts(){
-  if(rr.page === 'edit') return renderReceiptEdit();
   if(rr.page === 'view') return renderReceiptView();
   if(!rr.data){ if(!rr.loading && !rr.failed) rrLoad(); return rr.failed ? emptyState(t('loadFailed')) : loadingLines(4); }
-  const h = rr.data.helper, list = rr.data.receipts;
-  const today = erbilDate(new Date());
-  const isToday = r=> erbilDate(new Date(r.sentAt || r.createdAt)) === today;
-  const saved = list.filter(r=>r.status === 'saved' && isToday(r));
+  if(!rr.data.catalog?.items?.length) return `<div class="rr-page">${rrRicoBar(rr.data.helper)}${emptyState(t('rrNoCatalog'))}${rrBelow()}</div>`;
+  const cur = rrFind(rr.formId);
+  if(cur && cur.status === 'draft'){ rr.id = cur.id; rr.page = 'edit'; } else rrNewDraft(null, false);
+  return renderReceiptEdit();
+}
+const rrRow = r=>{
+  const tone = r.status === 'saved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : ['draft','cancelled'].includes(r.status) ? 'draft' : 'busy';
+  return `<button type="button" class="rr-row" data-rr-open="${esc(r.id)}"><i class="rr-dot ${tone}" aria-hidden="true"></i>
+    <span class="rr-row-main"><b dir="auto">${esc(r.supplier || t('rrNoSupplier'))}</b><small>${esc(rrStatusLine(r))}</small></span>
+    <span class="rr-row-amt">${esc(r.total == null ? '' : rrMoney(r.total, r.currency))}</span></button>`;
+};
+/* Under the form: what needs you (to approve, or that Rico couldn't do), other drafts, and today's. */
+function rrBelow(){
+  const list = rr.data.receipts.filter(r=>!rrIsPractice(r)), shown = rrFiltered(list);
+  const today = erbilDate(new Date()), isToday = r=> erbilDate(new Date(r.sentAt || r.createdAt)) === today;
+  const needs = shown.filter(r=>r.status === 'review' || r.status === 'problem');
+  const drafts = shown.filter(r=>r.status === 'draft' && r.id !== rr.id && !rrIsEmpty(r));
+  const done = shown.filter(r=>!needs.includes(r) && r.status !== 'draft' && isToday(r));
+  const saved = done.filter(r=>r.status === 'saved');
   const sum = saved.reduce((s, r)=> s + (r.currency === 'USD' ? Math.round(r.total * (r.rate || 0)) : r.total), 0);
-  // Filters: where it was made, who made it, and whether Rico ran it for real or in practice.
-  const shown = rrFiltered(list);
-  const needs = shown.filter(r=>r.status === 'review' || (r.status === 'problem' && !rrIsPractice(r)));
-  const drafts = shown.filter(r=>r.status === 'draft');
-  const rest = shown.filter(r=>!needs.includes(r) && !drafts.includes(r));
-  const filters = rrFilterBar(list);
-  const ricoOn = h.online && !h.stopped;
-  const row = r=>{
-    const tone = rrIsPractice(r) ? 'draft' : r.status === 'saved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : r.status === 'draft' ? 'draft' : 'busy';
-    return `<button type="button" class="rr-row" data-rr-open="${esc(r.id)}"><i class="rr-dot ${tone}" aria-hidden="true"></i>
-      <span class="rr-row-main"><b dir="auto">${esc(r.supplier || t('rrNoSupplier'))}</b><small>${esc(rrStatusLine(r))}</small></span>
-      <span class="rr-row-amt">${esc(r.total == null ? '' : rrMoney(r.total, r.currency))}</span></button>`;
-  };
-  return `<div class="rr-page">
-    <section class="rr-card rr-overview">
-      <div class="rr-ov-top">
-        <div class="rr-ov-sum"><span>${esc(t('rrToday'))}</span><b>IQD ${esc(rrNum(sum))}</b><small>${esc(t('rrSavedToday')(saved.length))}</small></div>
-        <button type="button" class="btn btn-primary rr-new" id="rrNew">${ICON_PLUS}<span>${esc(t('rrNew'))}</span></button>
-      </div>
-      <div class="rr-ov-rico"><i class="rr-dot ${ricoOn ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrHelperLine(h))}</span>${isRozha() ? rrRicoControls(h) : ''}</div>
-      ${isRozha() ? rrRicoNote(h) : ''}
-    </section>
-    ${filters}
-    ${needs.length ? `<div class="section-title">${esc(t('rrNeedsYou'))}</div><div class="rr-list rr-needs">${needs.map(row).join('')}</div>` : ''}
-    ${drafts.length ? `<div class="section-title">${esc(t('rrDrafts'))}</div><div class="rr-list">${drafts.map(row).join('')}</div>` : ''}
-    ${rest.length ? `<div class="section-title">${esc(t('rrRecent'))}</div><div class="rr-list">${rest.slice(0, 200).map(row).join('')}</div>`
-      : !list.length ? emptyState(t('rrEmpty')) : !shown.length ? emptyState(t('rrNoMatchFilter')) : ''}
+  return `<div class="rr-below">${rrFilterBar(list)}
+    ${needs.length ? `<div class="section-title">${esc(t('rrNeedsYou'))}</div><div class="rr-list rr-needs">${needs.map(rrRow).join('')}</div>` : ''}
+    ${drafts.length ? `<div class="section-title">${esc(t('rrDrafts'))}</div><div class="rr-list">${drafts.map(rrRow).join('')}</div>` : ''}
+    <div class="section-title rr-today-title"><span>${esc(t('rrToday'))}</span>${saved.length ? `<small>${esc(t('rrSavedToday')(saved.length))} · IQD ${esc(rrNum(sum))}</small>` : ''}</div>
+    ${done.length ? `<div class="rr-list">${done.map(rrRow).join('')}</div>` : `<p class="rr-none">${esc(t('rrNoneToday'))}</p>`}
+    <button type="button" class="rr-to-history" data-to-history="receipts">${esc(t('rrSeeHistory'))}</button>
     ${rr.data.catalog?.at ? `<p class="rr-foot">${esc(t('rrCatalogAt')(rr.data.catalog.items.length, formatIraqDateTime(new Date(rr.data.catalog.at), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'})))}</p>` : `<p class="rr-foot">${esc(t('rrNoCatalog'))}</p>`}
   </div>`;
 }
-/* The filters (made in, made by, real or practice), shared by the Receipts list and History > Receipts. */
+/* Rico's line with Start / Practice / Stop, at the top of both the Receipts and the Transfers tab. */
+function rrRicoBar(h){
+  if(!h) return '';
+  const on = h.online && !h.stopped;
+  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrHelperLine(h))}</span>${isRozha() ? rrRicoControls(h) : ''}</div>${isRozha() ? rrRicoNote(h) : ''}</section>`;
+}
+function attachRicoBar(){
+  document.querySelectorAll('[data-rico]').forEach(b=>b.onclick = async ()=>{
+    b.disabled = true;
+    const res = await api('receipts-settings/rico', {method:'POST', body:{action:b.dataset.rico}});
+    const h = res.data?.helper || (res.ok ? res.data : null);
+    if(h){ if(rr.data) rr.data.helper = h; if(typeof tf !== 'undefined' && tf.data) tf.data.helper = h; }
+    if(!res.ok) toast(res.data?.error === 'launcher_off' ? t('rrLauncherOff') : t('saveFailed'), 'error');
+    rrRepaintKeep();
+  });
+  document.querySelectorAll('[data-to-history]').forEach(b=>b.onclick = ()=>{ state.histMode = b.dataset.toHistory; goView('history'); });
+}
+/* Redraws without losing the place on the page (a form being typed keeps its scroll). */
+function rrRepaintKeep(){ const top = scrollBox().scrollTop; render(); scrollBox().scrollTop = top; }
+/* The filter (made in the app or on Telegram), shared by the Receipts tab and History > Receipts. */
 function rrFiltered(list){
   const f = rr.filter;
-  return list.filter(r=>(f.src === 'all' || (r.source === 'telegram' ? 'telegram' : 'app') === f.src)
-    && (f.mode === 'all' || rrModeOf(r) === f.mode) && (f.by === 'all' || r.by === f.by));
+  return list.filter(r=>f.src === 'all' || (r.source === 'telegram' ? 'telegram' : 'app') === f.src);
 }
 function rrFilterBar(list){
   if(!list.length) return '';
-  const f = rr.filter, people = [...new Set(list.map(r=>r.by).filter(Boolean))];
+  const f = rr.filter;
   const fsel = (key, opts)=>`<select class="rr-filter" data-rr-filter="${key}" aria-label="${esc(t('rrFilter_' + key))}">${opts.map(([v, label])=>`<option value="${esc(v)}"${f[key] === v ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
   return `<div class="rr-filters">
     ${fsel('src', [['all', t('rrAllPlaces')], ['app', t('rrSource_app')], ['telegram', t('rrSource_telegram')]])}
-    ${fsel('mode', [['all', t('rrRealAndPractice')], ['real', t('rrModeReal')], ['practice', t('rrModePractice')]])}
-    ${fsel('by', [['all', t('rrEveryone')], ...people.map(p=>[p, accountLabel(p) || p])])}
-    ${f.src !== 'all' || f.mode !== 'all' || f.by !== 'all' ? `<button type="button" class="rr-filter-clear" id="rrFilterClear">${esc(t('rrClearFilters'))}</button>` : ''}
+    ${f.src !== 'all' ? `<button type="button" class="rr-filter-clear" id="rrFilterClear">${esc(t('rrClearFilters'))}</button>` : ''}
   </div>`;
 }
 function attachRrFilters(){
-  document.querySelectorAll('[data-rr-filter]').forEach(s=>s.onchange = ()=>{ rr.filter[s.dataset.rrFilter] = s.value; render(); });
-  const clear = document.getElementById('rrFilterClear'); if(clear) clear.onclick = ()=>{ rr.filter = {src:'all', mode:'all', by:'all'}; render(); };
+  document.querySelectorAll('[data-rr-filter]').forEach(s=>s.onchange = ()=>{ rr.filter[s.dataset.rrFilter] = s.value; rrRepaintKeep(); });
+  const clear = document.getElementById('rrFilterClear'); if(clear) clear.onclick = ()=>{ rr.filter = {src:'all'}; rrRepaintKeep(); };
 }
 /* Start Rico (real or practice) or stop him, through the launcher on the Mac. */
 function rrRicoControls(h){
@@ -119,43 +129,43 @@ function rrHelperLine(h){
 const rrWhen = d=> d ? formatIraqDateTime(new Date(d), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'}) : '';
 const rrSourceName = r=> t('rrSource_' + (['telegram','rico'].includes(r.source) ? r.source : 'app'));
 function rrStatusLine(r){
-  const m = rrModeOf(r);
-  const inv = (r.invoice ? '#' + r.invoice + ' · ' : '') + rrWhen(r.createdAt) + (r.source === 'telegram' ? ' · Telegram' : '') + (m && !rrIsPractice(r) ? ' · ' + t(m === 'practice' ? 'rrModePractice' : 'rrModeReal') : '') + ' · ';
+  const inv = [r.invoice ? '#' + r.invoice : '', rrWhen(r.sentAt || r.createdAt), accountLabel(r.by), rrSourceName(r)].filter(Boolean).join(' · ') + ' · ';
   if(r.status === 'saved') return inv + (r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : t('rrStatus_saved'));
   if(rrIsPractice(r)) return inv + t('rrPracticeRun');
-  if(r.status === 'problem') return r.problem || t('rrStatus_problem');
+  if(r.status === 'problem') return inv + (r.problem || t('rrStatus_problem'));
   return inv + t('rrStatus_' + r.status);
 }
 function attachReceiptsEvents(){
-  if(rr.page === 'edit') return attachReceiptEdit();
   if(rr.page === 'view') return attachReceiptView();
-  document.getElementById('rrNew')?.addEventListener('click', ()=>rrNewDraft());
   document.querySelectorAll('[data-rr-open]').forEach(b=>b.onclick = ()=>rrOpen(b.dataset.rrOpen));
   attachRrFilters();
-  document.querySelectorAll('[data-rico]').forEach(b=>b.onclick = async ()=>{
-    b.disabled = true;
-    const res = await api('receipts-settings/rico', {method:'POST', body:{action:b.dataset.rico}});
-    if(res.data?.helper || (res.ok && res.data)) rr.data.helper = res.data.helper || res.data;
-    if(!res.ok) toast(res.data?.error === 'launcher_off' ? t('rrLauncherOff') : t('saveFailed'), 'error');
-    render();
-  });
+  attachRicoBar();
+  if(rr.page === 'edit' && rrFind(rr.id)) attachReceiptEdit();
 }
 function rrOpen(id){
   const r = rrFind(id); if(!r) return;
+  if(r.status === 'draft'){ rrDropBlankForm(r.id); rr.formId = id; }
   rr.id = id; rr.page = r.status === 'draft' ? 'edit' : 'view';
   render(); scrollBox().scrollTo({top:0});
 }
-function rrBack(){ rr.page = 'list'; rr.id = null; render(); scrollBox().scrollTo({top:0}); }
-function rrNewDraft(copyOf){
-  if(!rr.data?.catalog?.items?.length){ toast(t('rrNoCatalog'), 'error'); return; }
+/* Back from a sent receipt: to the form, with whatever was being typed in it. */
+function rrBack(){ rr.page = 'edit'; rr.id = null; render(); scrollBox().scrollTo({top:0}); }
+/* A form nobody typed in is never kept. */
+function rrDropBlankForm(keep){
+  const f = rrFind(rr.formId);
+  if(f && f.id !== keep && f.status === 'draft' && !f.version && rrIsEmpty(f)) rr.data.receipts = rr.data.receipts.filter(x=>x.id !== f.id);
+}
+function rrNewDraft(copyOf, draw = true){
+  if(!rr.data?.catalog?.items?.length){ if(draw) toast(t('rrNoCatalog'), 'error'); return; }
+  rrDropBlankForm();
   const src = copyOf || {};
   const r = {id:crypto.randomUUID(), by:state.account, source:'app', status:'draft', supplier:src.supplier || '', invoice:copyOf ? '' : '',
     zone:src.zone || 'Main Storage', currency:src.currency || 'IQD', rate:src.rate ?? null, delivery:src.delivery ?? null,
     lines:(src.lines || []).map(l=>({...l})), total:null, warnings:[], log:[], photos:[], version:0, createdAt:new Date().toISOString()};
   if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null, cost:null});
   rr.data.receipts.unshift(r);
-  rr.id = r.id; rr.page = 'edit'; rr.fresh = true;
-  render(); scrollBox().scrollTo({top:0});
+  rr.id = rr.formId = r.id; rr.page = 'edit'; rr.fresh = true;
+  if(draw){ render(); scrollBox().scrollTo({top:0}); }
 }
 
 /* ---------- Writing a receipt ---------- */
@@ -233,7 +243,7 @@ const rrCommas = v=>{ const [a, b] = String(v).split('.'); return a.replace(/\B(
 const rrShowNum = v=> v == null || v === '' ? '' : rrCommas(String(v));
 const RR_MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';
 function renderReceiptEdit(){
-  const r = rrFind(rr.id); if(!r){ rr.page = 'list'; return renderReceipts(); }
+  const r = rrFind(rr.id); if(!r){ rr.page = 'edit'; rr.formId = null; return renderReceipts(); }
   const cat = rr.data.catalog;
   const opt = (v, label, on)=>`<option value="${esc(v)}"${on ? ' selected' : ''}>${esc(label)}</option>`;
   const c = globalThis.RicottaReceipts.check(r, cat, rrLimits(), rr.data.last);
@@ -251,7 +261,7 @@ function renderReceiptEdit(){
       <button type="button" class="rr-del" data-l-del="${i}" tabindex="-1" aria-label="${esc(t('rrRemoveItem')(i + 1))}">${ICON_DELETE}</button>
       ${warn ? `<p class="rr-line-warn">${esc(warn)}</p>` : ''}</div>`;
   }).join('');
-  return `<div class="rr-page rr-edit">${rrBackBar(t('rrNewTitle'))}
+  return `<div class="rr-page rr-edit">${rrRicoBar(rr.data.helper)}
     <section class="rr-card"><h2 class="rr-card-title">${esc(t('rrDetails'))}</h2>
       <div class="rr-grid">
         <div class="rr-field"><label for="rrSupplier">${esc(t('rrSupplier'))}</label>${rrCombo('rrSupplier', r.supplier, t('rrSearchSupplier'))}</div>
@@ -271,6 +281,7 @@ function renderReceiptEdit(){
       <div class="rr-sum-acts"><button type="button" class="rr-cancel" id="rrDiscard">${esc(t('cancel'))}</button>
         <button type="button" class="btn btn-primary" id="rrSend">${ICON_CHECK}<span>${esc(t('rrSend'))}</span></button></div>
     </div>
+    ${rrBelow()}
   </div>`;
 }
 function rrWarnText(w){
@@ -315,15 +326,6 @@ function attachReceiptEdit(){
   const enter = (el, fn)=>{ if(el) el.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.isComposing){ e.preventDefault(); fn(); } }); };
   const firstItem = ()=>{ const i = r.lines.findIndex(l=>!l.item); return 'rrItem' + (i < 0 ? 0 : i); };
   const moneyBox = ()=> r.currency === 'USD' ? 'rrRate' : 'rrDelivery';
-  // Leaving a receipt with nothing filled in throws it away; anything typed is kept as a draft.
-  document.getElementById('rrBack').onclick = async ()=>{
-    if(rrIsEmpty(r)){
-      clearTimeout(rr.saveTimer);
-      if(r.version) await api('receipts/' + r.id, {method:'DELETE', quiet:true});
-      rr.data.receipts = rr.data.receipts.filter(x=>x.id !== r.id);
-    } else await rrSaveDraft(r);
-    rrBack();
-  };
   // Supplier: pick, then the invoice number.
   rrComboBind(document.getElementById('rrSupplier'), cat.suppliers, (v, again)=>{
     if(!again && v !== r.supplier){ r.supplier = v; changed(true); }
@@ -383,7 +385,7 @@ function attachReceiptEdit(){
     clearTimeout(rr.saveTimer);
     if(r.version) await api('receipts/' + r.id, {method:'DELETE'});
     rr.data.receipts = rr.data.receipts.filter(x=>x.id !== r.id);
-    rrBack();
+    rrNewDraft(r.zone ? {zone:r.zone} : null);
   };
   document.getElementById('rrSend').onclick = ()=>rrSend(r);
   // Cmd/Ctrl + Enter sends from anywhere on the page.
@@ -424,13 +426,13 @@ async function rrSend(r){
     }
     Object.assign(r, res.data);
     toast(t('rrSent'));
-    rr.page = 'view'; render(); scrollBox().scrollTo({top:0});
+    rrNewDraft({zone:r.zone});
   } finally { rr.sending = false; }
 }
 
 /* ---------- A sent receipt ---------- */
 function renderReceiptView(){
-  const r = rrFind(rr.id); if(!r){ rr.page = 'list'; return renderReceipts(); }
+  const r = rrFind(rr.id); if(!r){ rr.page = 'edit'; return renderReceipts(); }
   const photos = rr.photos[r.id];
   if(r.photos.length && (!photos || photos.count !== r.photos.length)) rrLoadPhotos(r);
   const head = r.status === 'saved'
@@ -463,6 +465,7 @@ function renderReceiptView(){
       ${r.status === 'review' ? `<button type="button" class="btn btn-ghost" id="rrCancel">${esc(t('rrCancelReceipt'))}</button><button type="button" class="btn btn-primary" id="rrApprove">${esc(t('rrApprove'))}</button>` : ''}
       ${['queued','problem'].includes(r.status) ? `<button type="button" class="btn btn-ghost" id="rrCancel">${esc(t('rrCancelReceipt'))}</button>` : ''}
       ${['problem','cancelled','saved'].includes(r.status) ? `<button type="button" class="btn btn-ghost" id="rrCopy">${esc(t('rrCopy'))}</button>` : ''}
+      ${r.status === 'problem' && !rrIsPractice(r) ? `<button type="button" class="btn btn-primary" id="rrRetry">${esc(t('rrRetry'))}</button>` : ''}
     </div>
   </div>`;
 }
@@ -486,7 +489,39 @@ function attachReceiptView(){
   const ap = document.getElementById('rrApprove'); if(ap) ap.onclick = ()=>act('approve', ask);
   const cn = document.getElementById('rrCancel'); if(cn) cn.onclick = ()=>act('cancel', t('rrCancelAsk'));
   const cp = document.getElementById('rrCopy'); if(cp) cp.onclick = ()=>rrNewDraft(r);
+  const rt = document.getElementById('rrRetry'); if(rt) rt.onclick = ()=>rrRetry(r);
   attachLightbox();
+}
+
+/* Retry: the same receipt to Rico again, after it is checked against the lists as they are now. If it
+   had been approved, Rico may already have pressed Save, so Ricotta Restaurant is to be checked first. */
+async function rrRetry(r){
+  const c = globalThis.RicottaReceipts.check(r, rr.data.catalog, rrLimits(), rr.data.last);
+  if(c.errors.length){ await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li>${esc(rrErrText(e))}</li>`).join('')}</ul><p>${esc(t('rrRetryCopy'))}</p>`, {title:t('rrFixFirst')}); return; }
+  const ws = c.warnings.map(w=>(w.line ? t('rrLineN')(w.line) + ': ' : '') + rrWarnText(w)).filter(Boolean);
+  const msg = (r.approvedAt ? `<p><b>${esc(t('rrRetryCheckFirst'))}</b></p>` : '') + `<p>${esc(t('rrRetryAsk')(r.supplier || '', r.lines.length))}</p>` + (ws.length ? `<ul class="rr-errs">${ws.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>` : '');
+  if(!await showConfirm(msg, {title:t('rrRetry'), okLabel:t('rrRetry'), okClass:'btn-primary'})) return;
+  const res = await api(`receipts/${r.id}/send`, {method:'POST', body:{confirm:[...new Set(c.warnings.map(w=>w.code))]}});
+  if(!res.ok){ toast(res.data?.error === 'invoice_already_sent' ? t('rrErrAlreadySent') : res.data?.errors ? res.data.errors.map(rrErrText).join(' · ') : t('saveFailed'), 'error'); rrLoad(true); return; }
+  Object.assign(r, res.data); toast(t('rrSent')); render();
+}
+
+/* Setting "Start Rico when the app opens" (Rozha, off unless she turns it on): each time the app opens
+   or comes back to the front, Rico is started if he is off, the Mac's launcher is on and he isn't
+   stopped in Settings. At most every 2 minutes. */
+let rrAutoAt = 0;
+async function ricoAutoStart(){
+  if(!isRozha() || !featureOn('ricoAutoStart') || !canOpen('receipts') || Date.now() - rrAutoAt < 120_000) return;
+  rrAutoAt = Date.now();
+  await rrLoad(true);
+  const h = rr.data?.helper, l = h?.launcher || {};
+  if(!h || h.online || h.stopped || !l.online || l.command) return;
+  const res = await api('receipts-settings/rico', {method:'POST', body:{action:'real'}, quiet:true});
+  if(!res.ok) return;
+  rr.data.helper = res.data?.helper || res.data;
+  if(typeof tf !== 'undefined' && tf.data) tf.data.helper = rr.data.helper;
+  toast(t('rrAutoStarting'));
+  if(['receipts', 'transfers'].includes(state.view) && !document.activeElement?.closest?.('.rr-edit')) rrRepaintKeep();
 }
 
 /* ---------- Settings: Rico ---------- */
@@ -596,10 +631,9 @@ function rrPaintPhotos(r){
   if(state.view === 'receipts' && rr.page === 'view' && rr.id === r.id) render();
 }
 function rrHistCard(r){
-  const m = rrModeOf(r);
   const when = formatIraqDateTime(new Date(r.sentAt || r.createdAt), {hour:'numeric', minute:'2-digit'});
   const tone = rrIsPractice(r) || r.status === 'cancelled' ? 'draft' : r.status === 'saved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : 'busy';
-  const meta = [r.invoice ? '#' + r.invoice : '', rrSourceName(r), accountLabel(r.by), m ? t(m === 'practice' ? 'rrModePractice' : 'rrModeReal') : '', r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : ''].filter(Boolean).join(' · ');
+  const meta = [r.invoice ? '#' + r.invoice : '', rrSourceName(r), accountLabel(r.by), r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : ''].filter(Boolean).join(' · ');
   const lines = r.lines.map(l=>`<li><span dir="auto">${esc(l.item)}</span><b>${esc(rrNum(l.qty, 3))} × <bdi>${esc(rrUnitShow(l.unit))}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</b></li>`).join('');
   return `<article class="hist-card rr-hist" data-search-row data-search-text="${esc([r.supplier, r.invoice, ...r.lines.map(l=>l.item)].join(' '))}">
     <div class="hist-top"><div class="hist-date"><b>${esc(when)}</b><span class="rr-hist-state"><i class="rr-dot ${tone}" aria-hidden="true"></i>${esc(rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}</span></div>
@@ -612,7 +646,8 @@ function rrHistCard(r){
 }
 function renderReceiptHistory(){
   if(!rr.data){ if(!rr.loading && !rr.failed) rrLoad(); return rr.failed ? emptyState(t('loadFailed')) : loadingLines(3); }
-  const all = rr.data.receipts.filter(r=>r.status !== 'draft');
+  // Practice runs are not part of the record.
+  const all = rr.data.receipts.filter(r=>r.status !== 'draft' && !rrIsPractice(r));
   if(!all.length) return emptyState(t('rrHistEmpty'));
   const list = rrFiltered(all).map(r=>({r, at:r.sentAt || r.createdAt})).sort((a, b)=>Date.parse(b.at) - Date.parse(a.at));
   let lastDay = '';

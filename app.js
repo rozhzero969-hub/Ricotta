@@ -541,6 +541,7 @@ function applyData(d){
   state.nextWipe = d.nextWipe || null;
   applyFeatures();
   carryOverLocalSettings();
+  ricoAutoStart();
   setTimeout(()=>{ checkMilestones(); maybeShowTour(); }, 800);
   state.sharedDraft = d.draft || null;
   ricoSetInbox(d.inbox || []);
@@ -891,7 +892,7 @@ const shellKey = ()=>[state.account, state.lang, state.tabs.join(','), state.vie
 function pageHtml(view){
   const draw = (RENDERERS[view] || RENDERERS.order)[0];
   // Rico has his own header, and an Admin page its own (with Admin's back button).
-  return `${view === 'assistant' || (view === 'admin' && state.adminPage) || (view === 'receipts' && rr.page !== 'list') || (view === 'transfers' && tf.page !== 'list') ? '' : renderPageHeading()}${view === 'order' ? renderPushBanner() : ''}${managedView(view)?renderManageNav():''}${draw()}`;
+  return `${view === 'assistant' || (view === 'admin' && state.adminPage) || (view === 'receipts' && rr.page === 'view') || (view === 'transfers' && tf.page === 'view') ? '' : renderPageHeading()}${view === 'order' ? renderPushBanner() : ''}${managedView(view)?renderManageNav():''}${draw()}`;
 }
 /* A neighbouring screen drawn for a swipe preview: the screens read state.view while they draw, so it
    is set to that screen for the moment (with its own remembered search) and put back. */
@@ -1333,8 +1334,9 @@ function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
   const remembered = viewMemory.get(view);
   state.catalogQuery = remembered?.query || ''; state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
-  if(view === 'receipts'){ rr.page = 'list'; rr.id = null; rrLoad(true); }
-  if(view === 'transfers'){ tf.page = 'list'; tf.id = null; tfLoad(true); }
+  // Receipts and Transfers open on their form (what was being typed stays in it).
+  if(view === 'receipts'){ rr.page = 'edit'; rr.id = null; rrLoad(true); }
+  if(view === 'transfers'){ tf.page = 'edit'; tf.id = null; tfLoad(true); }
   render();
   scrollBox().scrollTo({top:remembered?.top || 0});
   // The swipe's preview of this page is replaced by the page itself, in the same place.
