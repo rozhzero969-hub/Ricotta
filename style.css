@@ -2170,7 +2170,7 @@ html.dark .rr-line-warn,html.dark .rr-warns p{color:#FDBA74}
 .rr-ov-rico{display:flex;align-items:center;gap:10px;padding-top:12px;border-top:.5px solid var(--line);font-size:.9375rem;flex-wrap:wrap}
 .rr-ov-rico>span{flex:1;min-width:0}
 .rr-ctls{display:flex;gap:8px}
-.rr-ctl{height:34px;padding:0 14px;border:0;border-radius:999px;background:var(--fill);color:var(--ink);font:inherit;font-size:.875rem;font-weight:600}
+.rr-ctl{height:34px;padding:0 14px;border:0;border-radius:10px;background:var(--fill);color:var(--ink);font:inherit;font-size:.875rem;font-weight:600}
 .rr-ctl.stop{color:var(--red)}
 .rr-ctl:disabled{opacity:.45}
 .rr-ctl-note{margin:-4px 0 0;font-size:.8125rem;color:var(--ink-soft)}
@@ -2265,7 +2265,7 @@ html.dark{--rr-strip:rgba(255,255,255,.04);--rr-box:rgba(255,255,255,.05)}
 .rr-view-lines .rr-num{width:20px;flex:none;font-size:.8125rem;font-weight:600;color:var(--ink-soft);font-variant-numeric:tabular-nums}
 html.dark .rr-line-warn{color:#FDBA74}
 .rr-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.rr-filters .sel-btn{min-height:36px;height:36px;border-radius:999px;padding:0 12px;font-size:.875rem;width:auto;max-width:100%}
+.rr-filters .sel-btn{min-height:36px;height:36px;border-radius:10px;padding:0 12px;font-size:.875rem;width:auto;max-width:100%}
 .rr-filter-clear{height:36px;padding:0 12px;border:0;border-radius:999px;background:none;color:var(--tint);font:inherit;font-size:.875rem;font-weight:600}
 .rr-ev[role=button]{cursor:pointer}
 
@@ -2332,3 +2332,15 @@ html.dark .tf-yest.on b{color:#FBBF24}
 .tf-export button{height:30px;padding:0 12px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;font-size:.8125rem;font-weight:600}
 .tf-num li>span i{font-style:normal;color:var(--ink-soft);font-variant-numeric:tabular-nums;margin-inline-end:6px}
 @media (prefers-reduced-motion:reduce){.tf-yest i,.tf-yest i::after{transition:none}}
+
+/* Receipts and Transfers open on their form: Rico's line on top, the lists under the form. */
+.rr-ricobar{padding:12px 16px}
+.rr-edit .rr-ricobar{padding:12px 16px;border:0;box-shadow:none}
+.rr-ricobar .rr-ov-rico{padding-top:0;border-top:0}
+.rr-ricobar .rr-ctl-note{margin:8px 0 0}
+.rr-below{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.rr-below>.section-title{margin:6px 16px 0}
+.rr-today-title{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.rr-today-title small{text-transform:none;letter-spacing:0;font-size:.8125rem}
+.rr-none{margin:0 16px;font-size:.875rem;color:var(--ink-soft)}
+.rr-to-history{align-self:flex-start;margin:0 8px;padding:8px;border:0;border-radius:10px;background:none;color:var(--tint);font:inherit;font-size:.9375rem;font-weight:600}
