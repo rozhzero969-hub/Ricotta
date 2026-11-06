@@ -94,12 +94,15 @@ console.log("Receipt totals PASS: each line rounded to the dinar like Ricotta Re
   assert.deepEqual(T.zonesOf(cat), ["Main Storage", "Minibar"]);
   assert.deepEqual(T.unitOptions(toast).map((u) => u.name), ["سیت", "دانە", "کارتۆن"]);
   assert.ok(T.unitOptions(veal).find((u) => u.name === "غرام").unclear);
+  // No counting unit (Mushroom): Ricotta Restaurant counts it in its buying unit, so that comes first.
+  assert.deepEqual(T.unitOptions({ name: "Mushroom", base: "دانە", count: null, buy: { name: "کارتۆن", factor: 8 } }).map((u) => u.name), ["کارتۆن", "دانە"]);
+  assert.deepEqual(T.unitOptions({ name: "Parsley", base: "دانە", count: null, buy: null }).map((u) => u.name), ["دانە"]);
   assert.deepEqual(T.inCounting(toast, 250), { qty: 10, unit: "سیت" });
   const tr = (lines, extra = {}) => ({ from: "Main Storage", to: "Minibar", lines, ...extra });
   const codes = (r, usual) => { const c = T.check(r, cat, usual || {}); return [...c.errors, ...c.warnings].map((x) => x.code).sort(); };
   assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 4 }])), []);
   assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 11 }])), ["notEnough"]);
-  assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 6 }, { item: toast.name, unit: "دانە", qty: 101 }])), ["duplicate", "notEnough"]);
+  assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 6 }, { item: toast.name, unit: "دانە", qty: 101 }])), ["notEnough"], "the same item twice: no warning, the lines are added together");
   assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 10 }])), ["allStock"]);
   assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 4 }]), { [toast.name]: 25 }), ["unusual"]);
   assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 1 }], { yesterday: true })), ["yesterday"]);

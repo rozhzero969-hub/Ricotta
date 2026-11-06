@@ -17,7 +17,10 @@
       if (!same) out.push({ name, factor: f });
       else if (same.factor !== f) same.unclear = true;
     };
-    if (item) { add(item.count && item.count.name, item.count && item.count.factor); add(item.base, 1); add(item.buy && item.buy.name, item.buy && item.buy.factor); }
+    // Ricotta Restaurant counts in the item's counting unit; an item without one (Mushroom) it
+    // counts in its buying unit (کارتۆن), so that comes first, as on their page.
+    if (item && item.count && item.count.name) { add(item.count.name, item.count.factor); add(item.base, 1); add(item.buy && item.buy.name, item.buy && item.buy.factor); }
+    else if (item) { add(item.buy && item.buy.name, item.buy && item.buy.factor); add(item.base, 1); }
     return out;
   }
   const round3 = (n) => Math.round(n * 1000) / 1000;
@@ -57,8 +60,9 @@
       if (!qtyOk(l.qty)) { errors.push({ code: 'qty', line: n }); return; }
       const base = round3(l.qty * opt.factor);
       totalByItem.set(l.item, round3((totalByItem.get(l.item) || 0) + base));
-      if (seen.has(l.item)) warnings.push({ code: 'duplicate', line: n, first: seen.get(l.item) });
-      else seen.set(l.item, n);
+      // The same item on two lines is normal (someone came back for more): no warning, the
+      // lines are added together for the stock check below.
+      if (!seen.has(l.item)) seen.set(l.item, n);
       const u = usual && usual[l.item];
       if (u > 0 && base > u * 3) warnings.push({ code: 'unusual', line: n, times: Math.round((base / u) * 10) / 10 });
     });
