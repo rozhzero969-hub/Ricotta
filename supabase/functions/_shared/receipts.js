@@ -105,6 +105,14 @@
           break;
         }
       }
+      // An amount far from what usually arrives of this item (Ricotta Restaurant's record of the last
+      // weeks): 135 for 13.5, or kilos typed as grams.
+      const h = cat.history && cat.history.p && cat.history.p[l.item];
+      if (opt && qtyOk(l.qty) && h && h.n >= 3 && h.q > 0) {
+        const base = l.qty * opt.factor, usualQty = Math.round((h.q / opt.factor) * 1000) / 1000, unit = unitWord(opt.label);
+        if (base > h.q * 4 && base > (h.hi || h.q) * 2) warnings.push({ code: 'qtyHigh', line: n, usual: usualQty, unit, times: Math.round((base / h.q) * 10) / 10 });
+        else if (base * 10 < h.q) warnings.push({ code: 'qtyLow', line: n, usual: usualQty, unit });
+      }
       const before = last && last[`${l.item}|${l.unit}|${r.currency}`];
       if (before && costOk(l.cost) && before > 0) {
         const pct = Math.round(((l.cost - before) / before) * 100);

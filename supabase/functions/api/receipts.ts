@@ -371,7 +371,20 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
       stock: Object.fromEntries(Object.entries(i?.stock && typeof i.stock === "object" ? i.stock : {}).slice(0, 40)
         .map(([z, q]) => [t(z, 80), Number(q)]).filter(([z, q]) => z && Number.isFinite(q as number))),
     })).filter((i: any) => i.name && i.base);
-    const data = { suppliers: strings(b.suppliers, 500), zones: strings(b.zones, 50), items, titems, stockAt: titems.length ? now() : null };
+    // What usually happens (Rico reads Ricotta Restaurant's stock record of the last weeks once a day):
+    // per item the number of moves or deliveries, the usual and the largest amount (base units), and
+    // for moves how often each route ("Main Storage>Appetizers") was used.
+    const num = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 0);
+    const stat = (v: any) => ({ n: Math.min(99999, Math.floor(num(v?.n))), q: num(v?.q), hi: num(v?.hi) || num(v?.q) });
+    const hb = b.history && typeof b.history === "object" ? b.history : null;
+    const history = hb ? {
+      at: t(hb.at, 40), days: Math.floor(num(hb.days)),
+      t: Object.fromEntries(Object.entries(hb.t && typeof hb.t === "object" ? hb.t : {}).slice(0, 3000).map(([k, v]: [string, any]): [string, any] => [t(k, 200), {
+        ...stat(v), r: Object.fromEntries(Object.entries(v?.r && typeof v.r === "object" ? v.r : {}).slice(0, 80).map(([rk, c]) => [t(rk, 170), Math.floor(num(c))])),
+      }]).filter(([k, v]: [string, any]) => k && v.n && v.q)),
+      p: Object.fromEntries(Object.entries(hb.p && typeof hb.p === "object" ? hb.p : {}).slice(0, 3000).map(([k, v]: [string, any]): [string, any] => [t(k, 200), stat(v)]).filter(([k, v]: [string, any]) => k && v.n && v.q)),
+    } : ((await catalogOf(db)) as any).history ?? null;
+    const data = { suppliers: strings(b.suppliers, 500), zones: strings(b.zones, 50), items, titems, history, stockAt: titems.length ? now() : null };
     if (!data.suppliers.length || !data.zones.length || !items.length) return fail("invalid_catalog");
     const { error } = await rr(db, "catalog").upsert({ id: true, data, updated_at: now() });
     return error ? fail("save_failed", 503) : json({ ok: true, items: items.length });

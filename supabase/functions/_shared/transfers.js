@@ -50,7 +50,8 @@
     const lines = Array.isArray(t.lines) ? t.lines : [];
     if (!lines.length) errors.push({ code: 'noLines' });
     if (lines.length > MAX_LINES) errors.push({ code: 'tooManyLines' });
-    const seen = new Map(), totalByItem = new Map();
+    const seen = new Map(), totalByItem = new Map(), routeAsked = new Set();
+    const hist = (cat && cat.history && cat.history.t) || {};
     lines.forEach((l, i) => {
       const n = i + 1, item = items.get(l && l.item);
       if (!item) { errors.push({ code: 'itemUnknown', line: n }); return; }
@@ -63,8 +64,15 @@
       // The same item on two lines is normal (someone came back for more): no warning, the
       // lines are added together for the stock check below.
       if (!seen.has(l.item)) seen.set(l.item, n);
-      const u = usual && usual[l.item];
-      if (u > 0 && base > u * 3) warnings.push({ code: 'unusual', line: n, times: Math.round((base / u) * 10) / 10 });
+      // The usual amount: from Ricotta Restaurant's own record of the last weeks (Rico reads it once a
+      // day) when there are enough moves of this item, otherwise from the transfers made here.
+      // Asked only when it is both 3 times the usual and more than anything moved in those weeks, so a
+      // big but normal day doesn't ask (tested on a real 24-item transfer: no questions).
+      const h = hist[l.item], u = h && h.n >= 3 ? h.q : usual && usual[l.item];
+      if (u > 0 && base > u * 3 && (!h || h.n < 3 || base > (h.hi || u) * 1.2)) warnings.push({ code: 'unusual', line: n, times: Math.round((base / u) * 10) / 10, usual: inCounting(item, u) });
+      else if (h && h.n >= 5 && u > 0 && base * 10 < u) warnings.push({ code: 'unusualLow', line: n, usual: inCounting(item, u) });
+      // Moved often, but never from this storage to that one: perhaps the wrong storage.
+      if (h && h.n >= 5 && t.from && t.to && h.r && !h.r[t.from + '>' + t.to] && !routeAsked.has(l.item)) { routeAsked.add(l.item); warnings.push({ code: 'newRoute', line: n, from: t.from, to: t.to }); }
     });
     // Never more than the storage has (all lines of the same item together): Ricotta Restaurant would
     // move the rest and leave this one behind.

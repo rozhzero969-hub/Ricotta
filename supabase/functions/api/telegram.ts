@@ -306,6 +306,8 @@ const WARN: Record<string, (w: any) => string> = {
   duplicate: (w) => `Item ${w.line} is the same item as item ${w.first}`,
   pressed: () => "Rico already pressed Save for this receipt (or one with the same invoice). Check Invoices in Ricotta Restaurant first: send it only if it is not there.",
   tinyUnit: (w) => `Item ${w.line}: this unit counts as only 1 gram or piece`,
+  qtyHigh: (w) => `Item ${w.line}: ${num(w.times, 1)} times the usual delivery (usually about ${num(w.usual, 3)} ${esc(w.unit)}). A typo?`,
+  qtyLow: (w) => `Item ${w.line}: far less than usual (usually about ${num(w.usual, 3)} ${esc(w.unit)}). A typo?`,
   rateOdd: (w) => `The dollar rate is outside ${w.min} to ${w.max}`,
   bigTotal: (w) => `A big receipt: IQD ${num(w.iqd)}`,
   unitNameOdd: (w) => `Item ${w.line}: the unit "${esc(w.unit)}" counts as ${num(w.factor)} ${esc(w.base)}. Its name doesn't match its size; check it's the unit you meant`,
@@ -650,7 +652,9 @@ const tWarn = (w: any) => w.code === "pressed" ? "Rico already pressed Move it f
   : w.code === "repeat" ? "The same transfer (same storages, day, items and amounts) was already sent. Send it again only if it really happened twice."
   : w.code === "duplicate" ? `Item ${w.line} is the same item as item ${w.first}`
   : w.code === "allStock" ? `Item ${w.line}: moves all of it (${num(w.have.qty, 3)} ${esc(w.have.unit)})`
-  : w.code === "unusual" ? `Item ${w.line}: ${num(w.times, 1)} times more than usually moved` : w.code === "yesterday" ? "Recorded for yesterday" : w.code;
+  : w.code === "unusual" ? `Item ${w.line}: ${num(w.times, 1)} times more than usually moved${w.usual ? ` (usually about ${num(w.usual.qty, 3)} ${esc(w.usual.unit)})` : ""}`
+  : w.code === "unusualLow" ? `Item ${w.line}: far less than usually moved (usually about ${num(w.usual.qty, 3)} ${esc(w.usual.unit)}). A typo?`
+  : w.code === "newRoute" ? `Item ${w.line}: never moved from ${esc(w.from)} to ${esc(w.to)} in the last 3 weeks. The right storage?` : w.code === "yesterday" ? "Recorded for yesterday" : w.code;
 /* Approve (asked once more) or cancel a transfer Rico filled in. */
 async function tApprove(d: any, chat: number, who: string, kind: string, id: string, cb: any) {
   const { data: r } = await d.from("app_rr_transfers").select("*").eq("id", id).maybeSingle();
