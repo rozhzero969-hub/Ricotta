@@ -328,7 +328,7 @@ function tfLinesList(r){
 function renderTransferView(){
   const r = tfFind(tf.id); if(!r){ tf.page = 'edit'; return renderTransfers(); }
   const head = r.status === 'moved'
-    ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('tfStatus_moved'))}</span><b dir="auto">${esc(tfRoute(r))}</b><small>${esc(r.result && r.result.checked === false ? t('tfNotConfirmed') : t('tfSeenRecent'))}</small></div>`
+    ? `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('tfStatus_moved'))}</span><b dir="auto">${esc(tfRoute(r))}</b><small>${esc(r.result && r.result.checked === false ? t('tfNotConfirmed') + (r.result.note ? ': ' + r.result.note : '') : t('tfSeenRecent'))}</small></div>`
     : `<div class="rr-state ${tfIsPractice(r) ? 'practice' : r.status}">${rrRico()}<div><b>${esc(tfStatusText(r))}</b><small>${esc(r.status === 'problem' ? r.problem || '' : t('tfStatusHint_' + r.status))}</small></div></div>`;
   const facts = [[t('tfFrom'), r.from], [t('tfTo'), r.to], [t('tfDay'), tfDayLabel(r.forDay) + (r.yesterday ? ' · ' + t('tfForYesterday') : '')],
     [t('rrMadeIn'), rrSourceName(r) + (accountLabel(r.by) ? ' · ' + accountLabel(r.by) : '')], [t('rrMadeAt'), rrWhen(r.createdAt)],

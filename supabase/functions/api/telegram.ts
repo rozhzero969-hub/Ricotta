@@ -69,7 +69,9 @@ export async function telegramStatus(d: any, account = "rozha") {
 
 /* ---------- Telegram calls us ---------- */
 export async function telegramWebhook(d: any, req: Request, update: any) {
-  if (!telegramReady() || req.headers.get("x-telegram-bot-api-secret-token") !== (await webhookSecret())) return false;
+  // Compared as hashes, so the secret's length or first letters never leak through timing.
+  const given = req.headers.get("x-telegram-bot-api-secret-token") ?? "";
+  if (!telegramReady() || !given || given.length > 256 || (await sha(given)) !== (await sha(await webhookSecret()))) return false;
   const msg = update.message, cb = update.callback_query;
   const chat = Number(msg?.chat?.id ?? cb?.message?.chat?.id);
   if (!Number.isSafeInteger(chat)) return true;
