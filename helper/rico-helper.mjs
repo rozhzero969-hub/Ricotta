@@ -20,7 +20,7 @@ import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-13.1";
+const VERSION = "2026-11-13.2";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -492,7 +492,7 @@ async function checkMoveRecord(t, pressedAt) {
     if (!opt) return { found: false, note: `${l.item}'s unit couldn't be checked` };
     need.set(l.item, (need.get(l.item) ?? 0) + l.qty * opt.factor);
   }
-  const day = t.yesterday ? dayBefore(erbilDay()) : null;
+  const day = t.rrYesterday ? t.forDay : null;   // backdated: its record shows the day; otherwise its own today
   let note = "";
   for (let tries = 0; tries < 5; tries++) {
     if (tries) await sleep(2500);
@@ -572,16 +572,23 @@ async function rowUnit(row) {
 }
 /* The day: "Record for yesterday" puts a transfer on the day before, so it is only done on the day
    after the one it is for; a normal one only on its own day. Anything else would land on a wrong date. */
+/* The day: Ricotta Restaurant keeps its own day, which changes at 3:00 in the morning in Erbil (it runs
+   on UTC), and its "Record for yesterday" means the day before its own day. So Rico decides from
+   Ricotta Restaurant's day: the transfer's day is its today (switch off) or its yesterday (switch on);
+   any other day can't be recorded there, and he stops before filling anything in. (On 7 Nov at 2:30
+   in the morning its "yesterday" was 5 Nov, which is how 6 Nov's transfers got dated 5 Nov.) */
+const rrDay = () => new Date().toISOString().slice(0, 10);
 function checkDay(t) {
-  const today = erbilDay();
-  if (!t.forDay) return;
-  if (t.yesterday && dayBefore(today) !== t.forDay) stop(`This transfer was to be recorded for ${t.forDay}, but today it can only be recorded for ${dayBefore(today)}. Nothing was moved; check the date and send it again.`);
-  if (!t.yesterday && today !== t.forDay) stop(`This transfer was for ${t.forDay}, but it is now ${today}. Nothing was moved; send it again with Record for yesterday on if it belongs to yesterday.`);
+  const R = rrDay();
+  if (!t.forDay) return { yesterday: !!t.yesterday };
+  if (t.forDay === R) return { yesterday: false };
+  if (t.forDay === dayBefore(R)) return { yesterday: true };
+  stop(`This transfer is for ${t.forDay}, but Ricotta Restaurant is on ${R} now (its day changes at 3:00 in the morning, Erbil time), so it can't be recorded on ${t.forDay} there. Nothing was moved. Send it again after 3:00, or with Record for yesterday set for the day it belongs to.`);
 }
 let tfFillingAt = null;   // the line being filled in, for a readable message if Rico gets stuck
 async function fillTransfer(t) {
   tfFillingAt = null;
-  checkDay(t);
+  t.rrYesterday = checkDay(t).yesterday;
   // Against the lists as they are now (re-read if older than 10 minutes): stock and names.
   if (!catalogNow || Date.now() - catalogNow.at > 10 * 60_000) await readCatalog().catch((e) => log("Could not re-read the lists:", e.message));
   if (catalogNow) {
@@ -595,7 +602,7 @@ async function fillTransfer(t) {
   await pickByName(fromB, t.from, "Storage");
   await pickByName(toB, t.to, "Storage");
   const yb = page.getByRole("button", { name: /^Record for yesterday/ });
-  if (((await yb.getAttribute("aria-pressed")) === "true") !== !!t.yesterday) await yb.click();
+  if (((await yb.getAttribute("aria-pressed")) === "true") !== !!t.rrYesterday) await yb.click();
   const items = new Map((catalogNow?.titems ?? []).map((i) => [i.name, i]));
   for (let i = 0; i < t.lines.length; i++) {
     const l = t.lines[i];
@@ -622,7 +629,7 @@ async function verifyTransfer(t, items, when) {
   if (from !== flat(t.from)) bad(`From reads "${from}"`);
   if (to !== flat(t.to)) bad(`To reads "${to}"`);
   const y = (await page.getByRole("button", { name: /^Record for yesterday/ }).getAttribute("aria-pressed")) === "true";
-  if (y !== !!t.yesterday) bad(`Record for yesterday is ${y ? "on" : "off"}`);
+  if (y !== !!t.rrYesterday) bad(`Record for yesterday is ${y ? "on" : "off"}`);
   const n = await transferRows().count();
   if (n !== t.lines.length) bad(`the form has ${n} items, the transfer has ${t.lines.length}`);
   const need = new Map();
