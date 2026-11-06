@@ -19,7 +19,7 @@ import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-11.3";
+const VERSION = "2026-11-12.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -185,6 +185,68 @@ function capture(paths) {
 
 /* What Rico reads from Ricotta Restaurant for the app: suppliers, zones (not the two Breakfast ones)
    and the purchased items (not the ones named "-") with their units. */
+/* What usually happens, learnt from Ricotta Restaurant's own stock record of the last 3 weeks (read
+   once a day, gently: 200 lines a page with a pause between pages; nothing is changed). Per item: how
+   many times it was moved and the usual and largest amount (base units), with how often each route
+   ("Main Storage>Appetizers") was used; and how many deliveries came and their usual and largest amount.
+   The checks use it to ask about an amount far from the usual one (135 for 13.5) or a storage it has
+   never gone to. */
+let historyNow = null;
+const HISTORY_DAYS = 21;
+let historyBusy = false, lastCatalogBody = null;
+async function readHistory() {
+  const since = new Date(Date.now() - HISTORY_DAYS * 86400_000).toISOString();
+  // In a tab of its own, so receipts and transfers carry on in the main one meanwhile.
+  const hp = await page.context().newPage();
+  let got;
+  try {
+    await hp.goto(RR + "/inventory", { waitUntil: "domcontentloaded" });
+    got = await hp.evaluate(async (since) => {
+    const h = { Authorization: "Bearer " + localStorage.getItem("ricotta_token") };
+    const out = [];
+    for (let p = 1; p <= 150; p++) {
+      const r = await fetch(`/api/v1/inventory/movements?page=${p}&size=200`, { headers: h });
+      if (!r.ok) return { error: r.status };
+      const j = await r.json(), ms = j.movements || [];
+      for (const m of ms) if ((m.movement_type === "transfer_out" || m.movement_type === "purchase_in") && m.created_at >= since)
+        out.push([m.movement_type === "transfer_out" ? "t" : "p", m.item_name, Math.abs(Number(m.quantity)), m.zone_name, m.source, m.created_at]);
+      if (!ms.length || !j.has_more || ms[ms.length - 1].created_at < since) return { rows: out };
+      await new Promise((res) => setTimeout(res, 250));
+    }
+    return { rows: out };
+    }, since);
+  } finally { await hp.close().catch(() => {}); }
+  if (!got?.rows) throw new Error(`could not read the stock record (${got?.error ?? "no answer"})`);
+  // One move or delivery of an item can come from several deliveries in stock (two lines, same moment).
+  const one = new Map();
+  for (const [k, item, q, zone, other, at] of got.rows) {
+    const key = [k, item, zone, other ?? "", at].join("|");
+    const x = one.get(key) ?? { k, item, q: 0, route: `${zone}>${other ?? ""}` };
+    x.q += q; one.set(key, x);
+  }
+  const lists = { t: {}, p: {} };
+  for (const x of one.values()) {
+    const e = (lists[x.k][x.item] ??= { qs: [], r: {} });
+    e.qs.push(x.q);
+    if (x.k === "t") e.r[x.route] = (e.r[x.route] ?? 0) + 1;
+  }
+  const stat = (e) => { const s = [...e.qs].sort((a, b) => a - b); return { n: s.length, q: Math.round(s[Math.floor(s.length / 2)] * 1000) / 1000, hi: Math.round(s[s.length - 1] * 1000) / 1000 }; };
+  historyNow = {
+    at: new Date().toISOString(), days: HISTORY_DAYS,
+    t: Object.fromEntries(Object.entries(lists.t).map(([n, e]) => [n, { ...stat(e), r: e.r }])),
+    p: Object.fromEntries(Object.entries(lists.p).map(([n, e]) => [n, stat(e)])),
+  };
+  log(`learnt from the stock record: ${Object.keys(historyNow.t).length} items moved, ${Object.keys(historyNow.p).length} delivered (${HISTORY_DAYS} days)`);
+}
+/* Learns again once a day, in the background; then the lists are sent again with what was learnt. */
+function learnSoon() {
+  if (historyBusy || (historyNow && Date.now() - Date.parse(historyNow.at) < 20 * 3600_000)) return;
+  historyBusy = true;
+  readHistory()
+    .then(async () => { if (lastCatalogBody) await api("helper/catalog", { method: "PUT", body: { ...lastCatalogBody, history: historyNow } }); if (catalogNow) catalogNow.history = historyNow; })
+    .catch((e) => log("Could not learn from the stock record:", e.message))
+    .finally(() => { historyBusy = false; });
+}
 async function readCatalog() {
   // The unit names (غرام, کیلۆ, ...) load on the Units page; everything else on New receipt.
   const waitUnits = capture(["/api/v1/inventory/units"]);
@@ -216,8 +278,12 @@ async function readCatalog() {
     stock: Object.fromEntries((i.stocks || []).filter((z) => z.zone_name && !/breakfast/i.test(z.zone_name)).map((z) => [z.zone_name, Number(z.quantity) || 0])),
   }));
   const allZones = (Array.isArray(zonesRaw) ? zonesRaw : zonesRaw?.zones ?? []).map((z) => z.name).filter(Boolean);
-  await api("helper/catalog", { method: "PUT", body: { suppliers, zones: allZones.filter((n) => !/breakfast|بەیانی/i.test(n)), items, titems } });
-  catalogNow = { suppliers, zones, items, titems, at: Date.now() };
+  // The usual amounts and routes go with the lists (the server keeps the last ones until Rico has
+  // learnt them); they are learnt again once a day, in the background.
+  lastCatalogBody = { suppliers, zones: allZones.filter((n) => !/breakfast|بەیانی/i.test(n)), items, titems };
+  await api("helper/catalog", { method: "PUT", body: { ...lastCatalogBody, history: historyNow } });
+  catalogNow = { suppliers, zones, items, titems, history: historyNow, at: Date.now() };
+  learnSoon();
   log(`read ${items.length} items, ${suppliers.length} suppliers, ${zones.length} zones`);
 }
 

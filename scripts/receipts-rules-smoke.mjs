@@ -57,6 +57,14 @@ c = R.check({ ...base, lines: [{ item: "Yogurt - ماستی ماستاو", unit:
 assert.ok(c.warnings.some((w) => w.code === "tinyUnit"));
 c = R.check({ ...base, lines: [{ ...base.lines[0], qty: 500 }] }, cat, { bigTotal: 1000000 }, {});
 assert.ok(c.warnings.some((w) => w.code === "bigTotal" && w.iqd === 1005000));
+// Learnt from Ricotta Restaurant's record: Quzi usually arrives as 47.5 kg (largest 53 kg).
+{
+  const qc = { ...cat, items: [...cat.items, { name: "Quzi", base: "غرام", units: [{ name: "کیلۆ", factor: 1000 }] }], history: { p: { Quzi: { n: 4, q: 47500, hi: 53000 } } } };
+  const qr = (qty) => R.check({ ...base, lines: [{ item: "Quzi", unit: "کیلۆ (1000×)", qty, cost: 20000 }] }, qc, {}, {}).warnings.map((x) => x.code).filter((c) => c === "qtyHigh" || c === "qtyLow");
+  assert.deepEqual(qr(47.5), []);
+  assert.deepEqual(qr(475), ["qtyHigh"], "475 kg for 47.5 is asked about");
+  assert.deepEqual(qr(4), ["qtyLow"], "4 kg when 47.5 usually arrives is asked about");
+}
 console.log("Receipt rules PASS: exact names (spaces, Kurdish letters), units, prices with up to 3 decimals, invoices with zeros, USD totals, delivery, warnings");
 
 // A unit whose name says one size but counts another (Veal Kebab's "غرام" that counts 1000) is never the
@@ -110,5 +118,15 @@ console.log("Receipt totals PASS: each line rounded to the dinar like Ricotta Re
   assert.deepEqual(codes({ from: "Main Storage", to: "Main Storage", lines: [{ item: toast.name, unit: "سیت", qty: 1 }] }), ["sameZone"]);
   assert.deepEqual(codes(tr([{ item: toast.name, unit: "سیت", qty: 1 }], { to: "Breakfast" })), ["toUnknown"]);
   assert.deepEqual(T.itemsIn(cat, "Minibar"), []);
+  // Learnt from Ricotta Restaurant's record: Tomato usually 3 kg (largest 37 kg), mostly Main Storage to Appetizers.
+  {
+    const tomato = { name: "Tomato", base: "غرام", count: { name: "کیلۆ", factor: 1000 }, buy: null, stock: { "Main Storage": 200000, Appetizers: 0, Pizza: 0 } };
+    const hc = { zones: ["Main Storage", "Appetizers", "Pizza"], titems: [tomato], history: { t: { Tomato: { n: 93, q: 3000, hi: 37000, r: { "Main Storage>Appetizers": 19 } } } } };
+    const w = (qty, to = "Appetizers") => T.check({ from: "Main Storage", to, lines: [{ item: "Tomato", unit: "کیلۆ", qty }] }, hc, {}).warnings.map((x) => x.code);
+    assert.deepEqual(w(13.5), [], "a big but normal day asks nothing (more than 3 times the usual, less than the largest)");
+    assert.deepEqual(w(135), ["unusual"], "135 for 13.5 is asked about");
+    assert.deepEqual(w(0.2), ["unusualLow"], "far less than usual is asked about");
+    assert.deepEqual(w(3, "Pizza"), ["newRoute"], "a storage it never went to is asked about");
+  }
   console.log("Transfer rules PASS: stock never exceeded (same item added up), counting unit first, unclear units refused, all-of-it / unusual / yesterday asked, no Breakfast storages");
 }

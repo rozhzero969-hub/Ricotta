@@ -289,6 +289,8 @@ function rrWarnText(w){
   if(w.code === 'priceJump') return t('rrWarnPrice')(w.pct, rrNum(w.before));
   if(w.code === 'duplicate') return t('rrWarnDuplicate')(w.first);
   if(w.code === 'tinyUnit') return t('rrWarnTinyUnit');
+  if(w.code === 'qtyHigh') return t('rrWarnQtyHigh')(rrNum(w.times, 1), rrNum(w.usual, 3) + ' ' + w.unit);
+  if(w.code === 'qtyLow') return t('rrWarnQtyLow')(rrNum(w.usual, 3) + ' ' + w.unit);
   if(w.code === 'rateOdd') return t('rrWarnRate')(w.min, w.max);
   if(w.code === 'bigTotal') return t('rrWarnBig')(rrNum(w.iqd));
   if(w.code === 'unitNameOdd') return t('rrWarnUnitName')(w.unit, rrNum(w.factor), w.base);

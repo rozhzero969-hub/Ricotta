@@ -136,7 +136,7 @@ export async function transfersRoute(ctx: Ctx, M: string, path: string, b: any):
     if (error) throw error;
     const c = cat as any;
     return json({ transfers: (data ?? []).filter((r: any) => r.status !== "draft" || r.created_by === ctx.account).map((r: any) => tview(r)),
-      catalog: { zones: T.zonesOf(c), titems: c.titems ?? [], at: c.at }, helper: helperView(h), usual, today: erbilDay() });
+      catalog: { zones: T.zonesOf(c), titems: c.titems ?? [], history: (c as any).history ?? null, at: c.at }, helper: helperView(h), usual, today: erbilDay() });
   }
   if ((m = path.match(/^transfers\/([0-9a-f-]{36})(?:\/(send|approve|cancel|photos))?$/))) {
     const id = m[1], action = m[2] ?? null;

@@ -260,7 +260,9 @@ function tfWarnText(w){
   if(w.code === 'repeat') return t('tfWarnRepeat')(rrWhen(w.at));
   if(w.code === 'duplicate') return t('rrLineN')(w.line) + ': ' + t('rrWarnDuplicate')(w.first);
   if(w.code === 'allStock') return t('rrLineN')(w.line) + ': ' + t('tfWarnAll')(tfQty(w.have.qty) + ' ' + w.have.unit);
-  if(w.code === 'unusual') return t('rrLineN')(w.line) + ': ' + t('tfWarnUnusual')(rrNum(w.times, 1));
+  if(w.code === 'unusual') return t('rrLineN')(w.line) + ': ' + t('tfWarnUnusual')(rrNum(w.times, 1)) + (w.usual ? ' ' + t('tfUsually')(tfQty(w.usual.qty) + ' ' + w.usual.unit) : '');
+  if(w.code === 'unusualLow') return t('rrLineN')(w.line) + ': ' + t('tfWarnLow')(tfQty(w.usual.qty) + ' ' + w.usual.unit);
+  if(w.code === 'newRoute') return t('rrLineN')(w.line) + ': ' + t('tfWarnRoute')(w.from, w.to);
   if(w.code === 'yesterday') return t('tfYesterdayOn')(tfDayLabel(tfYesterday()));
   return '';
 }
