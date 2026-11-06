@@ -19,7 +19,7 @@ import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-11.2";
+const VERSION = "2026-11-11.3";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -501,29 +501,29 @@ async function verifyTransfer(t, items, when) {
 async function pressMove(t) {
   pressedMove = true;
   await page.getByRole("button", { name: /^Move it$/ }).click();
+  // Ricotta Restaurant then shows "Moved! Moved 24 items from Main Storage to Appetizers." with a
+  // "Move something else" button, or refuses a line in red ("Insufficient stock ...").
   const outcome = await page.waitForFunction(() => {
     const txt = document.querySelector("main")?.innerText ?? "";
     if (/Insufficient stock|cannot|failed|error/i.test(txt)) return "refused";
+    const m = txt.match(/Moved\s+(\d+)\s+items?\s+from\s+(.+?)\s+to\s+(.+?)\.(\s|$)/);
+    if (m) return JSON.stringify({ n: +m[1], from: m[2].trim(), to: m[3].trim() });
     const to = document.querySelector('button[aria-label="To storage"]');
-    return to && /Choose/.test(to.textContent) ? "moved" : false;
-  }, null, { timeout: 45_000 }).then((h) => h.jsonValue()).catch(() => "unknown");
+    return to && /Choose/.test(to.textContent) ? "cleared" : false;
+  }, null, { timeout: 90_000 }).then((h) => h.jsonValue()).catch(() => "unknown");
   if (outcome === "refused") {
+    await photo(page, t.id, "after", "transfers").catch(() => {});
     const msg = flat(await page.locator("main").innerText()).match(/(Insufficient stock[^.]*\.|[^.]*(cannot|failed|error)[^.]*\.)/i)?.[0] ?? "a line was refused";
     stop(`Ricotta Restaurant refused part of this transfer: "${msg}". Other lines may have moved. Check Recent transfers there before doing anything.`);
   }
-  if (outcome !== "moved") stop("Ricotta Restaurant did not clear the form after Move it, so Rico can't tell whether it moved. Check Recent transfers there before doing anything.");
-  await sleep(1500);
-  // Recent transfers: the "Transfer to: <to>" group should list every item (and BACKDATED for yesterday).
-  const group = page.locator("main").getByText(new RegExp("Transfer to:\\s*" + t.to.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).first();
-  let found = false, note = "";
-  if (await group.count()) {
-    const card = flat(await group.locator("xpath=ancestor::*[contains(., 'Total')][1]").innerText().catch(() => ""));
-    const missing = t.lines.filter((l) => !card.includes(flat(l.item)));
-    found = !missing.length;
-    note = missing.length ? `not seen there: ${missing.map((l) => l.item).join(", ")}` : t.yesterday && !/BACKDATED/i.test(card) ? "the BACKDATED mark wasn't seen" : "";
-  } else note = `no "Transfer to: ${t.to}" group was seen`;
+  if (outcome === "unknown") stop("Ricotta Restaurant didn't say the transfer moved, so Rico can't tell whether it did. Check Recent transfers there before doing anything.");
+  // The "after" photo is the proof: taken on Ricotta Restaurant's own "Moved!" message.
   await photo(page, t.id, "after", "transfers");
-  return { found, note };
+  if (outcome === "cleared") return { found: false, note: "Ricotta Restaurant cleared the form without a Moved message; please check Recent transfers" };
+  const said = JSON.parse(outcome);
+  const off = [said.n !== t.lines.length ? `${said.n} items, not ${t.lines.length}` : "", flat(said.from) !== flat(t.from) ? `from ${said.from}` : "", flat(said.to) !== flat(t.to) ? `to ${said.to}` : ""].filter(Boolean);
+  if (off.length) return { found: false, note: `Ricotta Restaurant said it moved ${off.join(", ")}. Please check Recent transfers` };
+  return { found: true, note: "" };
 }
 let pressedMove = false;
 async function workTransfer(t) {
@@ -558,7 +558,7 @@ async function workTransfer(t) {
       await verifyTransfer(t, items, "just before moving");
       await treport(t.id, { log: ["Filled in again and checked against the live stock just before moving: everything matches"] });
       const r = await pressMove(t);
-      await treport(t.id, { status: "moved", result: { checked: r.found, note: r.note || null }, log: [r.found ? `Moved. Seen in Recent transfers (Transfer to: ${t.to})${r.note ? "; " + r.note : ""}` : `Moved, but Rico couldn't confirm it in Recent transfers (${r.note}). Please check there.`] });
+      await treport(t.id, { status: "moved", result: { checked: r.found, note: r.note || null }, log: [r.found ? `Moved. Ricotta Restaurant said: Moved ${t.lines.length} items from ${t.from} to ${t.to}. Photo taken.` : `Moved, but ${r.note}.`] });
       log(`moved ${t.from} -> ${t.to}`);
       await readCatalog().catch(() => {});   // the stock changed: the app shows it at once
     }
