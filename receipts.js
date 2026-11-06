@@ -26,10 +26,66 @@ async function rrLoad(quiet = false){
     rr.data = r.data;
     if(editing && !rrFind(editing.id)) rr.data.receipts.unshift(editing);
     else if(editing) rr.data.receipts = rr.data.receipts.map(x=>x.id === editing.id ? editing : x);
+    rr.copyAt = null; rr.failed = false;
+    rrKeepCopy('rr', rr.data);
+    rrMergeDrafts('rr', rr.data.receipts).forEach(d=>rrSaveDraft(d));
   }
-  else if(!rr.data) rr.failed = true;
+  else if(!rr.data){
+    // No connection: the copy kept on this device, with this device's drafts.
+    const c = rrCopyOf('rr');
+    if(c){ rr.data = c.data; rr.copyAt = c.at; rrMergeDrafts('rr', rr.data.receipts); } else rr.failed = true;
+  }
   if((state.view === 'receipts' && !document.activeElement?.closest?.('.rr-edit')) || (state.view === 'settings' && !document.activeElement?.closest?.('.rr-limits'))
-    || (state.view === 'history' && state.histMode === 'receipts' && !document.activeElement?.closest?.('.search-wrap'))) render();
+    || (state.view === 'history' && ['receipts', 'days'].includes(state.histMode) && !document.activeElement?.closest?.('.search-wrap'))) render();
+}
+/* Redraws even while a box is being typed in, keeping that box, its cursor and the scroll place. */
+function rrRepaintKeepFocus(){
+  const a = document.activeElement, id = a?.id, s = a?.selectionStart, e = a?.selectionEnd, top = scrollBox().scrollTop;
+  render(); scrollBox().scrollTop = top;
+  const b = id && document.getElementById(id);
+  if(b){ b.focus({preventScroll:true}); try{ if(s != null) b.setSelectionRange(s, e); }catch(_){} }
+}
+// Back online: what waits to send gets its Send buttons at once (and drafts are saved on the server).
+addEventListener('online', async ()=>{ if(!rr.data) return; await rrLoad(true); if(state.view === 'receipts' && rr.page === 'edit') rrRepaintKeepFocus(); });
+addEventListener('offline', ()=>{ if(state.view === 'receipts' && rr.page === 'edit') rrRepaintKeepFocus(); });
+const rrKeep = ()=> rr.data && rrKeepDrafts('rr', rr.data.receipts, rrIsEmpty);
+
+/* ---------- Working offline (Receipts and Transfers) ----------
+   The last lists, stock, receipts and transfers are kept on this device, and so is every draft, even
+   one written with no connection. One sent with no connection waits here ("Waiting to send") and goes
+   with Send once there is a connection. Nothing reaches Rico until it is sent, and Rico never acts
+   before a person approves. */
+const rrOffline = ()=> !navigator.onLine || state.apiOnline === false;
+function rrKeepCopy(kind, data){
+  const key = kind + 'Copy:' + state.account, listKey = kind === 'rr' ? 'receipts' : 'transfers';
+  const slim = {...data, [listKey]:(data[listKey] || []).filter(x=>x.status !== 'draft').slice(0, 200).map(x=>({...x, log:[]}))};
+  if(!lset(key, {at:Date.now(), data:slim})) lset(key, {at:Date.now(), data:{...slim, [listKey]:[]}});
+}
+function rrCopyOf(kind){ const c = lget(kind + 'Copy:' + state.account); return c && c.data && Date.now() - c.at < 14 * 86400000 ? c : null; }
+/* Every draft of this account on this device (changed ones are saved on the server when it can be reached). */
+function rrKeepDrafts(kind, list, isEmpty){
+  lset(kind + 'Drafts:' + state.account, (list || []).filter(x=>x.status === 'draft' && x.by === state.account && (x.pendingSend || x.dirty || !isEmpty(x))).map(x=>({...x, log:[]})));
+}
+/* The device's drafts merged into the server's list: one changed here (or waiting to send) wins and is
+   saved there; one the server no longer has and that wasn't changed here was removed elsewhere. */
+function rrMergeDrafts(kind, list){
+  const push = [];
+  for(const d of lget(kind + 'Drafts:' + state.account) || []){
+    const s = list.find(x=>x.id === d.id);
+    if(!s){ if(d.dirty || d.pendingSend || !d.version){ list.unshift(d); if(d.dirty || !d.version) push.push(d); } }
+    else if(s.status === 'draft'){ if(d.dirty){ Object.assign(s, d); push.push(s); } else if(d.pendingSend) s.pendingSend = true; }
+  }
+  return push;
+}
+function rrOfflineNote(copyAt){
+  if(!rrOffline() && !copyAt) return '';
+  return `<p class="rr-offline">${esc(t('rrOfflineNote'))}${copyAt ? ' ' + esc(t('rrCopyFrom')(formatIraqDateTime(new Date(copyAt), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'}))) : ''}</p>`;
+}
+/* "Waiting to send": rows with Send, and Send all when there are several. */
+function rrWaitingHtml(list, row, kind){
+  if(!list.length) return '';
+  return `<div class="section-title rr-today-title"><span>${esc(t('rrWaitingToSend'))}</span>${list.length > 1 && !rrOffline() ? `<button type="button" class="rr-send-all" data-${kind}-sendall>${esc(t('rrSendAll'))}</button>` : ''}</div>
+    <div class="rr-list rr-waiting">${list.map(r=>`<div class="rr-row-wrap">${row(r)}${rrOffline() ? '' : `<button type="button" class="rr-row-send" data-${kind}-send="${esc(r.id)}">${esc(t('rrSendNow'))}</button>`}</div>`).join('')}</div>`;
 }
 
 /* ---------- The tab: a new receipt straight away (like Ricotta Restaurant's New receipt page), with
@@ -53,11 +109,12 @@ function rrBelow(){
   const list = rr.data.receipts.filter(r=>!rrIsPractice(r)), shown = rrFiltered(list);
   const today = erbilDate(new Date()), isToday = r=> erbilDate(new Date(r.sentAt || r.createdAt)) === today;
   const needs = shown.filter(r=>r.status === 'review' || r.status === 'problem');
-  const drafts = shown.filter(r=>r.status === 'draft' && r.id !== rr.id && !rrIsEmpty(r));
+  const waiting = list.filter(r=>r.status === 'draft' && r.pendingSend && r.id !== rr.id);
+  const drafts = shown.filter(r=>r.status === 'draft' && !r.pendingSend && r.id !== rr.id && !rrIsEmpty(r));
   const done = shown.filter(r=>!needs.includes(r) && r.status !== 'draft' && isToday(r));
   const saved = done.filter(r=>r.status === 'saved');
   const sum = saved.reduce((s, r)=> s + (r.currency === 'USD' ? Math.round(r.total * (r.rate || 0)) : r.total), 0);
-  return `<div class="rr-below">${rrFilterBar(list)}
+  return `<div class="rr-below">${rrWaitingHtml(waiting, rrRow, 'rr')}${rrFilterBar(list)}
     ${needs.length ? `<div class="section-title">${esc(t('rrNeedsYou'))}</div><div class="rr-list rr-needs">${needs.map(rrRow).join('')}</div>` : ''}
     ${drafts.length ? `<div class="section-title">${esc(t('rrDrafts'))}</div><div class="rr-list">${drafts.map(rrRow).join('')}</div>` : ''}
     <div class="section-title rr-today-title"><span>${esc(t('rrToday'))}</span>${saved.length ? `<small>${esc(t('rrSavedToday')(saved.length))} · IQD ${esc(rrNum(sum))}</small>` : ''}</div>
@@ -67,10 +124,10 @@ function rrBelow(){
   </div>`;
 }
 /* Rico's line with Start / Practice / Stop, at the top of both the Receipts and the Transfers tab. */
-function rrRicoBar(h){
+function rrRicoBar(h, copyAt){
   if(!h) return '';
-  const on = h.online && !h.stopped;
-  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrHelperLine(h))}</span>${isRozha() ? rrRicoControls(h) : ''}</div>${isRozha() ? rrRicoNote(h) : ''}</section>`;
+  const on = h.online && !h.stopped && !rrOffline();
+  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrOffline() ? t('rrOfflineShort') : rrHelperLine(h))}</span>${isRozha() && !rrOffline() ? rrRicoControls(h) : ''}</div>${isRozha() && !rrOffline() ? rrRicoNote(h) : ''}${rrOfflineNote(copyAt)}</section>`;
 }
 function attachRicoBar(){
   document.querySelectorAll('[data-rico]').forEach(b=>b.onclick = async ()=>{
@@ -82,6 +139,11 @@ function attachRicoBar(){
     rrRepaintKeep();
   });
   document.querySelectorAll('[data-to-history]').forEach(b=>b.onclick = ()=>{ state.histMode = b.dataset.toHistory; goView('history'); });
+  // Waiting to send: one, or all of them one after another (each still asks what it needs to).
+  document.querySelectorAll('[data-rr-send]').forEach(b=>b.onclick = ()=>{ const r = rrFind(b.dataset.rrSend); if(r) withBusy(b, ()=>rrSend(r, true)); });
+  document.querySelectorAll('[data-tf-send]').forEach(b=>b.onclick = ()=>{ const r = tfFind(b.dataset.tfSend); if(r) withBusy(b, ()=>tfSend(r, true)); });
+  document.querySelector('[data-rr-sendall]')?.addEventListener('click', e=>withBusy(e.currentTarget, async ()=>{ for(const r of rr.data.receipts.filter(x=>x.status === 'draft' && x.pendingSend && x.id !== rr.id)){ if(await rrSend(r, true) === false) break; } }));
+  document.querySelector('[data-tf-sendall]')?.addEventListener('click', e=>withBusy(e.currentTarget, async ()=>{ for(const r of tf.data.transfers.filter(x=>x.status === 'draft' && x.pendingSend && x.id !== tf.id)){ if(await tfSend(r, true) === false) break; } }));
 }
 /* Redraws without losing the place on the page (a form being typed keeps its scroll). */
 function rrRepaintKeep(){ const top = scrollBox().scrollTop; render(); scrollBox().scrollTop = top; }
@@ -133,6 +195,7 @@ function rrStatusLine(r){
   if(r.status === 'saved') return inv + (r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : t('rrStatus_saved'));
   if(rrIsPractice(r)) return inv + t('rrPracticeRun');
   if(r.status === 'problem') return inv + (r.problem || t('rrStatus_problem'));
+  if(r.status === 'draft' && r.pendingSend) return inv + t('rrWaitingToSend');
   return inv + t('rrStatus_' + r.status);
 }
 function attachReceiptsEvents(){
@@ -311,7 +374,7 @@ function renderReceiptEdit(){
       <button type="button" class="rr-del" data-l-del="${i}" tabindex="-1" aria-label="${esc(t('rrRemoveItem')(i + 1))}">${ICON_DELETE}</button>
       ${warn ? `<p class="rr-line-warn">${esc(warn)}</p>` : ''}</div>`;
   }).join('');
-  return `<div class="rr-page rr-edit">${rrRicoBar(rr.data.helper)}
+  return `<div class="rr-page rr-edit">${rrRicoBar(rr.data.helper, rr.copyAt)}
     <section class="rr-card"><h2 class="rr-card-title">${esc(t('rrDetails'))}</h2>
       <div class="rr-grid">
         <div class="rr-field"><label for="rrSupplier">${esc(t('rrSupplier'))}</label>${rrCombo('rrSupplier', r.supplier, t('rrSearchSupplier'))}</div>
@@ -328,7 +391,7 @@ function renderReceiptEdit(){
       <p class="rr-keys">${esc(t('rrKeysHint')(RR_MOD))}</p></section>
     <div class="rr-sum">
       <div class="rr-sum-total"><span>${esc(t('rrTotal'))}:</span> <b>${esc(rrMoney(c.total, r.currency))}</b><small>${esc(usd ? (c.iqd ? '= IQD ' + rrNum(c.iqd) : '') : (c.delivery ? t('rrPlusDelivery')(rrNum(c.items), rrNum(c.delivery)) : ''))}</small></div>
-      <div class="rr-sum-acts"><button type="button" class="rr-cancel" id="rrDiscard">${esc(t('cancel'))}</button>
+      <div class="rr-sum-acts"><button type="button" class="rr-cancel" id="rrDiscard">${esc(t('cancel'))}</button><button type="button" class="rr-keep" id="rrKeepDraft" title="${esc(t('rrKeepDraftHint'))}">${esc(t('rrKeepDraft'))}</button>
         <button type="button" class="btn btn-primary" id="rrSend">${ICON_CHECK}<span>${esc(t('rrSend'))}</span></button></div>
     </div>
     ${rrBelow()}
@@ -370,6 +433,7 @@ function rrParse(v, decimals){
 }
 const rrIsEmpty = r=> !r.supplier && !r.invoice && r.delivery == null && r.rate == null && !r.lines.some(l=>l.item || l.qty || l.cost);
 function rrSaveSoon(r){
+  r.dirty = true; rrKeep();
   clearTimeout(rr.saveTimer);
   rr.saveTimer = setTimeout(()=>rrSaveDraft(r), 600);
 }
@@ -377,8 +441,9 @@ async function rrSaveDraft(r){
   clearTimeout(rr.saveTimer);
   const body = {supplier:r.supplier || null, invoice:r.invoice || null, zone:r.zone, currency:r.currency, rate:Number.isFinite(r.rate) ? r.rate : null,
     delivery:Number.isFinite(r.delivery) ? r.delivery : null, lines:r.lines.filter(l=>l.item).map(l=>({item:l.item, unit:l.unit, qty:Number.isFinite(l.qty) ? l.qty : null, cost:Number.isFinite(l.cost) ? l.cost : null}))};
-  const res = await api('receipts/' + r.id, {method:'PUT', body});
-  if(res.ok && res.data?.id) r.version = res.data.version;
+  const res = await api('receipts/' + r.id, {method:'PUT', body, quiet:true});
+  if(res.ok && res.data?.id){ r.version = res.data.version; r.dirty = false; rrKeep(); }
+  rr.netDown = res.status === 0;
   return res.ok;
 }
 function attachReceiptEdit(){
@@ -449,10 +514,12 @@ function attachReceiptEdit(){
     if(!await showConfirm(esc(t('rrDiscardAsk')), {okLabel:t('rrDiscard')})) return;
     clearTimeout(rr.saveTimer);
     if(r.version) await api('receipts/' + r.id, {method:'DELETE'});
-    rr.data.receipts = rr.data.receipts.filter(x=>x.id !== r.id);
+    rr.data.receipts = rr.data.receipts.filter(x=>x.id !== r.id); rrKeep();
     rrNewDraft(r.zone ? {zone:r.zone} : null);
   };
   document.getElementById('rrSend').onclick = ()=>rrSend(r);
+  // Keep as draft: this one stays in Drafts (on the server, or on this device with no connection) and the form is free.
+  document.getElementById('rrKeepDraft').onclick = ()=>{ if(rrIsEmpty(r)) return; r.dirty = true; rrKeep(); rrSaveDraft(r); toast(t('rrDraftKept')); rrNewDraft({zone:r.zone}); };
   // Cmd/Ctrl + Enter sends from anywhere on the page.
   document.onkeydown = e=>{
     if(state.view !== 'receipts' || rr.page !== 'edit'){ document.onkeydown = null; return; }
@@ -469,8 +536,8 @@ function rrPaintTotals(r){
   const sum = document.querySelector('.rr-sum-total b'); if(sum) sum.textContent = rrMoney(c.total, r.currency);
   const small = document.querySelector('.rr-sum-total small'); if(small) small.textContent = r.currency === 'USD' ? (c.iqd ? '= IQD ' + rrNum(c.iqd) : '') : (c.delivery ? t('rrPlusDelivery')(rrNum(c.items), rrNum(c.delivery)) : '');
 }
-async function rrSend(r){
-  if(rr.sending) return;
+async function rrSend(r, keepForm = false){
+  if(rr.sending) return false;
   r.lines = r.lines.filter(l=>l.item || l.qty || l.cost);
   const c = globalThis.RicottaReceipts.check(r, rr.data.catalog, rrLimits(), rr.data.last);
   if(c.errors.length){
@@ -482,18 +549,22 @@ async function rrSend(r){
   // Every warning is read and confirmed before Rico gets the receipt.
   if(c.warnings.length && !await showConfirm(rrSummary(r, c.warnings.map(w=>rrWarnLine(w, r))), {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary', enter:true, wide:true})) return;
   if(c.warnings.some(w=>w.code === 'bigTotal') && !await showConfirm(esc(t('rrBigAgain')(rrNum(c.iqd))), {title:t('rrSureTitle'), okLabel:t('rrSend'), okClass:'btn-primary'})) return;
+  // No connection: kept here, waiting to send; the form is free for the next one.
+  const parkIt = ()=>{ r.pendingSend = true; r.dirty = true; rrKeep(); toast(t('rrSavedOffline'), 'warn'); if(!keepForm) rrNewDraft({zone:r.zone}); else render(); };
+  if(rrOffline()) return parkIt();
   rr.sending = true;
   try{
-    if(!await rrSaveDraft(r)){ toast(t('saveFailed'), 'error'); return; }
+    if(!await rrSaveDraft(r)){ if(rr.netDown) return parkIt(); toast(t('saveFailed'), 'error'); return; }
     const res = await rrPost(r, c.warnings.map(w=>w.code));
     if(!res) return;
     if(!res.ok){
       const msg = res.data?.error === 'invoice_already_sent' ? t('rrErrAlreadySent') : res.data?.errors ? res.data.errors.map(rrErrText).join(' · ') : t('saveFailed');
       toast(msg, 'error'); return;
     }
-    Object.assign(r, res.data);
+    Object.assign(r, res.data); delete r.pendingSend; delete r.dirty; rrKeep();
     toast(t('rrSent'));
-    rrNewDraft({zone:r.zone});
+    if(keepForm) render(); else rrNewDraft({zone:r.zone});
+    return true;
   } finally { rr.sending = false; }
 }
 
