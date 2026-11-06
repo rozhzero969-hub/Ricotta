@@ -25,6 +25,7 @@ jobs:
         with:
           deno-version: v2.x
       - run: deno check --node-modules-dir=none --lock=deno.lock --frozen-lockfile supabase/functions/api/index.ts supabase/functions/send-push/index.ts
+      - run: deno run --node-modules-dir=none --lock=deno.lock --frozen-lockfile --allow-env scripts/rico-twice-smoke.ts
       - run: pnpm run lint
       - run: node scripts/build-site.cjs
       - run: pnpm test

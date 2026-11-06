@@ -360,7 +360,9 @@ async function save(r) {
   }
   // The last look before anything is saved: the whole form again, line by line.
   await verifyForm(r, "just before saving");
-  await report(r.id, { log: ["Whole form checked again just before saving: everything matches"] });
+  // Recorded before pressing (if it can't be recorded, Rico doesn't press): the app then knows Save may
+  // have happened, whatever comes after.
+  await report(r.id, { pressed: true, log: ["Whole form checked again just before saving: everything matches. Pressing Save."] });
   pressedSave = true;
   await page.getByRole("button", { name: /Receive & send to finance/ }).click();
   const banner = page.getByText(/Receipt sent/i).first();
@@ -499,6 +501,9 @@ async function verifyTransfer(t, items, when) {
 /* After Move it: Ricotta Restaurant either refuses a line in red (and may have moved the others) or
    clears the form. Then the transfer is looked for in Recent transfers. */
 async function pressMove(t) {
+  // Recorded before pressing (if it can't be recorded, Rico doesn't press): the app then knows Move it
+  // may have happened, whatever comes after.
+  await treport(t.id, { pressed: true, log: ["Pressing Move it"] });
   pressedMove = true;
   await page.getByRole("button", { name: /^Move it$/ }).click();
   // Ricotta Restaurant then shows "Moved! Moved 24 items from Main Storage to Appetizers." with a

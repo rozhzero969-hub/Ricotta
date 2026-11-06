@@ -302,6 +302,7 @@ const showDraft = (chat: number, dr: any) => say(chat, draftText(dr), [[{ text: 
 const WARN: Record<string, (w: any) => string> = {
   priceJump: (w) => `Item ${w.line}: price ${w.pct > 0 ? "up" : "down"} ${Math.abs(w.pct)}% (last time ${num(w.before)})`,
   duplicate: (w) => `Item ${w.line} is the same item as item ${w.first}`,
+  pressed: () => "Rico already pressed Save for this receipt (or one with the same invoice). Check Invoices in Ricotta Restaurant first: send it only if it is not there.",
   tinyUnit: (w) => `Item ${w.line}: this unit counts as only 1 gram or piece`,
   rateOdd: (w) => `The dollar rate is outside ${w.min} to ${w.max}`,
   bigTotal: (w) => `A big receipt: IQD ${num(w.iqd)}`,
@@ -643,7 +644,9 @@ async function tButton(d: any, chat: number, who: string, data: string, cb: any)
     await say(chat, `Sent to Rico: <b>${esc(dr.from)} → ${esc(dr.to)}</b>, ${dr.lines.length} item(s)${dr.yesterday ? ", for yesterday" : ""}. I'll send you the photo to check.`, MENU);
   }
 }
-const tWarn = (w: any) => w.code === "duplicate" ? `Item ${w.line} is the same item as item ${w.first}`
+const tWarn = (w: any) => w.code === "pressed" ? "Rico already pressed Move it for this transfer. Check Recent transfers in Ricotta Restaurant first: send it only if it did not move."
+  : w.code === "repeat" ? "The same transfer (same storages, day, items and amounts) was already sent. Send it again only if it really happened twice."
+  : w.code === "duplicate" ? `Item ${w.line} is the same item as item ${w.first}`
   : w.code === "allStock" ? `Item ${w.line}: moves all of it (${num(w.have.qty, 3)} ${esc(w.have.unit)})`
   : w.code === "unusual" ? `Item ${w.line}: ${num(w.times, 1)} times more than usually moved` : w.code === "yesterday" ? "Recorded for yesterday" : w.code;
 /* Approve (asked once more) or cancel a transfer Rico filled in. */

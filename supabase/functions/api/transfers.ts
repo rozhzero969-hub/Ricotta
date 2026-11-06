@@ -34,7 +34,7 @@ export function tview(r: any, withLog = true) {
     id: r.id, by: r.created_by, source: r.source, mode: r.mode ?? null, status: r.status, from: r.from_zone, to: r.to_zone,
     yesterday: !!r.yesterday, forDay: r.for_day, lines: r.lines ?? [], warnings: r.warnings ?? [], problem: r.problem, result: r.result,
     photos: (r.photos ?? []).map((p: any) => ({ kind: p.kind, at: p.at })), log: withLog ? r.log ?? [] : undefined,
-    approvedBy: r.approved_by, approvedAt: r.approved_at, sentAt: r.sent_at, movedAt: r.moved_at, version: r.version,
+    approvedBy: r.approved_by, approvedAt: r.approved_at, sentAt: r.sent_at, movedAt: r.moved_at, pressedAt: r.pressed_at ?? null, version: r.version,
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -73,16 +73,31 @@ export async function sendTransfer(db: any, r: any, who: string, confirm: unknow
   const c = T.check(asCheck(r), cat, usual);
   if (c.errors.length) return { error: "invalid_transfer", status: 422, extra: { errors: c.errors } };
   const confirmed = new Set(Array.isArray(confirm) ? confirm.map((x: unknown) => tx(x, 40)) : []);
-  if (c.warnings.some((w: any) => !confirmed.has(w.code))) return { error: "needs_confirmation", extra: { warnings: c.warnings } };
-  const today = erbilDay();
+  // Never the same move twice: one Rico already pressed Move it for, or the very same transfer (same
+  // storages, day and items) already on its way or moved, is sent only after the person confirms.
+  const today = erbilDay(), forDay = r.yesterday ? dayBefore(today) : today;
+  const warnings = [...c.warnings];
+  if (r.pressed_at) warnings.push({ code: "pressed", at: r.pressed_at });
+  const twin = await sameTransfer(db, r, forDay);
+  if (twin) warnings.push({ code: "repeat", at: twin.moved_at ?? twin.sent_at, status: twin.status });
+  if (warnings.some((w: any) => !confirmed.has(w.code))) return { error: "needs_confirmation", extra: { warnings } };
   const { data: sent, error } = await tt(db).update({
-    status: "queued", warnings: c.warnings, problem: null, sent_at: now(), for_day: r.yesterday ? dayBefore(today) : today,
+    status: "queued", warnings, problem: null, pressed_at: null, sent_at: now(), for_day: forDay,
     version: r.version + 1, updated_at: now(), ...(source ? { source } : {}),
     log: [...(r.log ?? []), logEntry(`Sent to Rico by ${nameOf(who)}${source === "telegram" ? " on Telegram" : ""}${r.yesterday ? " (record for yesterday)" : ""}`, who)],
   }).eq("id", r.id).eq("version", r.version).select("*").maybeSingle();
   if (error || !sent) return { error: error ? "send_failed" : "changed_elsewhere", status: error ? 503 : 409 };
   await tellT(db, sent, "queued");
   return { row: sent };
+}
+/* The same transfer sent before: same storages, same day and the same items and amounts, that is on its
+   way, moved, or stopped after Rico pressed Move it. */
+const sig = (lines: any[]) => (lines ?? []).map((l: any) => `${l.item}|${l.unit}|${Number(l.qty)}`).sort().join("\n");
+async function sameTransfer(db: any, r: any, forDay: string) {
+  const { data } = await tt(db).select("id,status,lines,sent_at,moved_at,pressed_at").eq("from_zone", r.from_zone).eq("to_zone", r.to_zone)
+    .eq("for_day", forDay).neq("id", r.id).in("status", ["queued", "filling", "review", "approved", "moving", "moved", "problem"]).limit(50);
+  const mine = sig(r.lines);
+  return (data ?? []).find((x: any) => (x.status !== "problem" || x.pressed_at) && sig(x.lines) === mine) ?? null;
 }
 export async function approveTransfer(db: any, r: any, who: string): Promise<Done> {
   if (r.status !== "review") return { error: "not_waiting" };
@@ -190,6 +205,8 @@ export async function transferHelperRoute(ctx: Ctx, M: string, path: string, b: 
     const log = [...(r.log ?? []), ...(Array.isArray(b.log) ? b.log : []).slice(0, 30).map((x: unknown) => logEntry(String(x)))].slice(-120);
     const to = typeof b.status === "string" ? b.status : null;
     const patch: Record<string, unknown> = { log, updated_at: now(), version: r.version + 1 };
+    // Rico says so just before pressing Move it; if this isn't saved he doesn't press.
+    if (b.pressed === true) { if (!["approved", "moving"].includes(r.status)) return fail("bad_status", 409); patch.pressed_at = now(); }
     if (to && to !== r.status) {
       if (!(NEXT[r.status] ?? []).includes(to)) return fail("bad_status", 409);
       patch.status = to;

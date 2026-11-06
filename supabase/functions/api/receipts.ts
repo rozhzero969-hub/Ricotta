@@ -93,7 +93,7 @@ export function view(r: any, withLog = true) {
     currency: r.currency, rate: r.rate == null ? null : Number(r.rate), delivery: r.delivery == null ? null : Number(r.delivery),
     lines: r.lines ?? [], total: r.total == null ? null : Number(r.total), warnings: r.warnings ?? [], problem: r.problem,
     finance: r.finance, photos: (r.photos ?? []).map((p: any) => ({ kind: p.kind, at: p.at })), log: withLog ? r.log ?? [] : undefined,
-    approvedBy: r.approved_by, approvedAt: r.approved_at, sentAt: r.sent_at, savedAt: r.saved_at, version: r.version,
+    approvedBy: r.approved_by, approvedAt: r.approved_at, sentAt: r.sent_at, savedAt: r.saved_at, pressedAt: r.pressed_at ?? null, version: r.version,
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -169,9 +169,18 @@ export async function sendReceipt(db: any, r: any, who: string, confirm: unknown
   if (c.errors.length) return { error: "invalid_receipt", status: 422, extra: { errors: c.errors } };
   // Every warning must have been seen and confirmed before Rico gets the receipt.
   const confirmed = new Set(Array.isArray(confirm) ? confirm.map((x: unknown) => t(x, 40)) : []);
-  if (c.warnings.some((w: any) => !confirmed.has(w.code))) return { error: "needs_confirmation", extra: { warnings: c.warnings } };
+  // Never saved twice: this receipt, or another with the same supplier and invoice, that stopped after
+  // Rico pressed Save is sent again only after the person has checked Ricotta Restaurant.
+  const warnings = [...c.warnings];
+  let pressed = r.pressed_at;
+  if (!pressed && r.invoice) {
+    const { data: o } = await rr(db, "receipts").select("pressed_at").eq("supplier", r.supplier).eq("invoice", r.invoice).neq("id", r.id).eq("status", "problem").not("pressed_at", "is", null).limit(1);
+    pressed = o?.[0]?.pressed_at ?? null;
+  }
+  if (pressed) warnings.push({ code: "pressed", at: pressed });
+  if (warnings.some((w: any) => !confirmed.has(w.code))) return { error: "needs_confirmation", extra: { warnings } };
   const { data: sent, error } = await rr(db, "receipts").update({
-    status: "queued", total: c.total, warnings: c.warnings, problem: null, sent_at: now(), version: r.version + 1, updated_at: now(),
+    status: "queued", total: c.total, warnings, problem: null, pressed_at: null, sent_at: now(), version: r.version + 1, updated_at: now(),
     ...(source ? { source } : {}),
     log: [...(r.log ?? []), logEntry(`Sent to Rico by ${nameOf(who)}${source === "telegram" ? " on Telegram" : ""}`, who)],
   }).eq("id", r.id).eq("version", r.version).select("*").maybeSingle();
@@ -414,6 +423,8 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
       const log = [...(r.log ?? []), ...(Array.isArray(b.log) ? b.log : []).slice(0, 30).map((x: unknown) => logEntry(String(x)))].slice(-120);
       const to = typeof b.status === "string" ? b.status : null;
       const patch: Record<string, unknown> = { log, updated_at: now(), version: r.version + 1 };
+      // Rico says so just before pressing Save; if this isn't saved he doesn't press.
+      if (b.pressed === true) { if (!["approved", "saving"].includes(r.status)) return fail("bad_status", 409); patch.pressed_at = now(); }
       if (to && to !== r.status) {
         if (!(HELPER_NEXT[r.status] ?? []).includes(to)) return fail("bad_status", 409);
         patch.status = to;
