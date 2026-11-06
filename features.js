@@ -16,6 +16,7 @@ const SETTINGS = [
   {id:'ricoBriefing', group:'rico', on:true, role:'assistant'},
   {id:'ricoMood', group:'rico', on:true, role:'assistant'},
   {id:'ricoAutoStart', group:'rico', on:false, role:'receipts', rozha:true},
+  {id:'tfAuto', group:'none', on:false},
   {id:'tables', group:'look', on:false},
   {id:'kitchenMode', group:'look', on:false},
   {id:'milestones', group:'look', on:true},

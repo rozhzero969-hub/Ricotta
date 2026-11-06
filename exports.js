@@ -53,96 +53,119 @@ function zipStore(files){
 }
 
 const XL_COL = n=>{ let s = ''; n++; while(n){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+/* The styles, by index (s="n"):
+   0 plain · 1 the mark · 2 title · 3 the line under it · 4 header · 5/6 text (white/banded)
+   7/8 whole numbers 1,234 (white/banded) · 9 totals label · 10 totals whole number · 11 header, right
+   12/13 decimals 1,234.5 (white/banded) · 14 totals decimal · 15 the "Prepared" line, small caps */
 const XL_STYLES = XML_HEAD + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-  + '<fonts count="7"><font><sz val="11"/><color rgb="FF1C1C1E"/><name val="Calibri"/><family val="2"/></font>'
-  + '<font><b/><sz val="20"/><color rgb="FF14382C"/><name val="Calibri"/><family val="2"/></font>'
-  + '<font><b/><sz val="14"/><color rgb="FF1C1C1E"/><name val="Calibri"/><family val="2"/></font>'
+  + '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.0##"/></numFmts>'
+  + '<fonts count="8"><font><sz val="11"/><color rgb="FF1C1C1E"/><name val="Calibri"/><family val="2"/></font>'
+  + '<font><b/><sz val="22"/><color rgb="FF14382C"/><name val="Calibri"/><family val="2"/></font>'
+  + '<font><b/><sz val="15"/><color rgb="FF1C1C1E"/><name val="Calibri"/><family val="2"/></font>'
   + '<font><sz val="10"/><color rgb="FF6E6E73"/><name val="Calibri"/><family val="2"/></font>'
-  + '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>'
+  + '<font><b/><sz val="10.5"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>'
   + '<font><sz val="11"/><color rgb="FF1C1C1E"/><name val="Calibri"/><family val="2"/></font>'
-  + '<font><b/><sz val="11"/><color rgb="FF14382C"/><name val="Calibri"/><family val="2"/></font></fonts>'
+  + '<font><b/><sz val="11"/><color rgb="FF14382C"/><name val="Calibri"/><family val="2"/></font>'
+  + '<font><b/><sz val="8.5"/><color rgb="FF1F7A4D"/><name val="Calibri"/><family val="2"/></font></fonts>'
   + '<fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'
   + '<fill><patternFill patternType="solid"><fgColor rgb="FF14382C"/><bgColor indexed="64"/></patternFill></fill>'
-  + '<fill><patternFill patternType="solid"><fgColor rgb="FFF2F8F4"/><bgColor indexed="64"/></patternFill></fill>'
+  + '<fill><patternFill patternType="solid"><fgColor rgb="FFF4F8F5"/><bgColor indexed="64"/></patternFill></fill>'
   + '<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill>'
   + '<fill><patternFill patternType="solid"><fgColor rgb="FFE3F1E8"/><bgColor indexed="64"/></patternFill></fill></fills>'
-  + '<borders count="3"><border><left/><right/><top/><bottom/><diagonal/></border>'
-  + '<border><left style="thin"><color rgb="FFDCE8DF"/></left><right style="thin"><color rgb="FFDCE8DF"/></right><top style="thin"><color rgb="FFDCE8DF"/></top><bottom style="thin"><color rgb="FFDCE8DF"/></bottom><diagonal/></border>'
-  + '<border><left style="thin"><color rgb="FFDCE8DF"/></left><right style="thin"><color rgb="FFDCE8DF"/></right><top style="medium"><color rgb="FF14382C"/></top><bottom style="thin"><color rgb="FFDCE8DF"/></bottom><diagonal/></border></borders>'
+  + '<borders count="4"><border><left/><right/><top/><bottom/><diagonal/></border>'
+  + '<border><left/><right/><top/><bottom style="thin"><color rgb="FFE1E9E3"/></bottom><diagonal/></border>'
+  + '<border><left/><right/><top style="thin"><color rgb="FF14382C"/></top><bottom style="double"><color rgb="FF14382C"/></bottom><diagonal/></border>'
+  + '<border><left/><right/><top/><bottom style="medium"><color rgb="FF1F7A4D"/></bottom><diagonal/></border></borders>'
   + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-  + '<cellXfs count="12"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+  + '<cellXfs count="16"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
   + '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
   + '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
-  + '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
-  + '<xf numFmtId="0" fontId="4" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
-  + '<xf numFmtId="0" fontId="5" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
-  + '<xf numFmtId="0" fontId="5" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
-  + '<xf numFmtId="0" fontId="5" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>'
-  + '<xf numFmtId="0" fontId="5" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>'
-  + '<xf numFmtId="0" fontId="6" fillId="5" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>'
-  + '<xf numFmtId="0" fontId="6" fillId="5" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>'
-  + '<xf numFmtId="0" fontId="4" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1"/></xf></cellXfs>'
+  + '<xf numFmtId="0" fontId="3" fillId="0" borderId="3" xfId="0" applyFont="1" applyBorder="1"/>'
+  + '<xf numFmtId="0" fontId="4" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1" indent="1"/></xf>'
+  + '<xf numFmtId="0" fontId="5" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1" indent="1"/></xf>'
+  + '<xf numFmtId="0" fontId="5" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1" indent="1"/></xf>'
+  + '<xf numFmtId="3" fontId="5" fillId="4" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center" indent="1"/></xf>'
+  + '<xf numFmtId="3" fontId="5" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center" indent="1"/></xf>'
+  + '<xf numFmtId="0" fontId="6" fillId="5" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" indent="1"/></xf>'
+  + '<xf numFmtId="3" fontId="6" fillId="5" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center" indent="1"/></xf>'
+  + '<xf numFmtId="0" fontId="4" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1" indent="1"/></xf>'
+  + '<xf numFmtId="164" fontId="5" fillId="4" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center" indent="1"/></xf>'
+  + '<xf numFmtId="164" fontId="5" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center" indent="1"/></xf>'
+  + '<xf numFmtId="164" fontId="6" fillId="5" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center" indent="1"/></xf>'
+  + '<xf numFmtId="0" fontId="7" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>'
   + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><dxfs count="0"/><tableStyles count="0"/></styleSheet>';
-/* One sheet: the mark, a title, a line about the file, then the table from row 5 (frozen and filtered). */
-function brandedSheetXml(sheet, {title, subtitle, rtl}){
+/* One sheet, laid out like a company report: the mark and "Ricotta Restaurant", the title, a line about
+   the file (ruled under), then the table from row 6: a dark header (frozen, with filters, repeated on
+   every printed page), banded rows, numbers with thousands separators, and a totals row ruled above and
+   double-ruled below. Printed: fitted to the page width, "Ricotta Restaurant", the title and page
+   numbers in the header and footer. */
+function brandedSheetXml(sheet, {title, subtitle, rtl, stamp}){
   const cols = sheet.columns, last = XL_COL(cols.length - 1);
   const cell = (c, r, v, style) => typeof v === 'number' && Number.isFinite(v)
     ? `<c r="${XL_COL(c)}${r}" s="${style}"><v>${v}</v></c>`
     : `<c r="${XL_COL(c)}${r}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xmlText(v ?? '')}</t></is></c>`;
   const num = c=>cols[c].type === 'number';
+  // Whole numbers as 1,234; anything with a fraction as 1,234.5 (up to three places).
+  const nstyle = (v, whole, dec)=> typeof v === 'number' && !Number.isInteger(v) ? dec : whole;
   const rows = [
-    `<row r="1" ht="30" customHeight="1">${cell(0, 1, 'ricotta.', 1)}</row>`,
-    `<row r="2" ht="22" customHeight="1">${cell(0, 2, title, 2)}</row>`,
-    `<row r="3" ht="18" customHeight="1">${cell(0, 3, subtitle, 3)}</row>`,
-    `<row r="4" ht="8" customHeight="1"></row>`,
-    `<row r="5" ht="26" customHeight="1">${cols.map((col, c)=>cell(c, 5, col.label, num(c) ? 11 : 4)).join('')}</row>`,
+    `<row r="1" ht="32" customHeight="1">${cell(0, 1, 'ricotta.', 1)}</row>`,
+    `<row r="2" ht="15" customHeight="1">${cell(0, 2, t('fileCompany'), 15)}</row>`,
+    `<row r="3" ht="24" customHeight="1">${cell(0, 3, title, 2)}</row>`,
+    `<row r="4" ht="20" customHeight="1">${cols.map((_, c)=>cell(c, 4, c === 0 ? subtitle : '', 3)).join('')}</row>`,
+    `<row r="5" ht="10" customHeight="1"></row>`,
+    `<row r="6" ht="28" customHeight="1">${cols.map((col, c)=>cell(c, 6, col.label, num(c) ? 11 : 4)).join('')}</row>`,
   ];
   sheet.rows.forEach((line, i)=>{
-    const r = i + 6, band = i % 2 === 1;
-    rows.push(`<row r="${r}" ht="20" customHeight="1">${line.map((v, c)=>cell(c, r, v, num(c) ? (band ? 8 : 7) : (band ? 6 : 5))).join('')}</row>`);
+    const r = i + 7, band = i % 2 === 1;
+    rows.push(`<row r="${r}" ht="21" customHeight="1">${line.map((v, c)=>cell(c, r, v, num(c) ? (band ? nstyle(v, 8, 13) : nstyle(v, 7, 12)) : (band ? 6 : 5))).join('')}</row>`);
   });
-  const end = sheet.rows.length + 5;
-  if(sheet.totals) rows.push(`<row r="${end + 1}" ht="22" customHeight="1">${sheet.totals.map((v, c)=>cell(c, end + 1, v, num(c) ? 10 : 9)).join('')}</row>`);
+  const end = sheet.rows.length + 6;
+  if(sheet.totals) rows.push(`<row r="${end + 1}" ht="24" customHeight="1">${sheet.totals.map((v, c)=>cell(c, end + 1, v, num(c) ? nstyle(v, 10, 14) : 9)).join('')}</row>`);
   const lastRow = end + (sheet.totals ? 1 : 0);
   return XML_HEAD + `<worksheet ${SHEET_NS}><sheetPr><tabColor rgb="FF14382C"/><pageSetUpPr fitToPage="1"/></sheetPr>`
     + `<dimension ref="A1:${last}${lastRow}"/>`
-    + `<sheetViews><sheetView workbookViewId="0" showGridLines="0"${rtl ? ' rightToLeft="1"' : ''}${sheet.first ? ' tabSelected="1"' : ''}><pane ySplit="5" topLeftCell="A6" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A6" sqref="A6"/></sheetView></sheetViews>`
-    + '<sheetFormatPr defaultRowHeight="20"/>'
+    + `<sheetViews><sheetView workbookViewId="0" showGridLines="0" zoomScale="110"${rtl ? ' rightToLeft="1"' : ''}${sheet.first ? ' tabSelected="1"' : ''}><pane ySplit="6" topLeftCell="A7" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A7" sqref="A7"/></sheetView></sheetViews>`
+    + '<sheetFormatPr defaultRowHeight="21"/>'
     + `<cols>${cols.map((col, i)=>`<col min="${i + 1}" max="${i + 1}" width="${col.width || 16}" customWidth="1"/>`).join('')}</cols>`
     + `<sheetData>${rows.join('')}</sheetData>`
-    + (sheet.rows.length ? `<autoFilter ref="A5:${last}${end}"/>` : '')
-    + '<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>'
+    + (sheet.rows.length ? `<autoFilter ref="A6:${last}${end}"/>` : '')
+    + '<pageMargins left="0.45" right="0.45" top="0.7" bottom="0.7" header="0.3" footer="0.3"/>'
     + `<pageSetup paperSize="9" orientation="${cols.length > 6 ? 'landscape' : 'portrait'}" fitToWidth="1" fitToHeight="0"/>`
-    + `<headerFooter><oddHeader>${xmlText('&L&"-,Bold"Ricotta&R' + title)}</oddHeader><oddFooter>${xmlText('&L' + subtitle + '&R&P / &N')}</oddFooter></headerFooter>`
+    + `<headerFooter><oddHeader>${xmlText('&L&"-,Bold"&10Ricotta Restaurant&C&10' + title + '&R&9' + (stamp || ''))}</oddHeader><oddFooter>${xmlText('&L&8' + t('fileInternal') + '&C&8' + subtitle + '&R&8' + t('pdfPage')('&P', '&N'))}</oddFooter></headerFooter>`
     + '</worksheet>';
 }
 /* A workbook from sheets [{name, columns:[{label, width, type}], rows, totals}]. */
 function brandedWorkbook({title, subtitle, sheets, at = new Date()}){
-  const rtl = isRtl();
+  const rtl = isRtl(), stamp = fileStamp(at);
   sheets.forEach((s, i)=>{ s.first = i === 0; });
   const created = at.toISOString().replace(/\.\d+Z$/, 'Z');
+  const sheetName = s=>xmlText(String(s.name).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31));
   const parts = [
     ['[Content_Types].xml', XML_HEAD + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
       + sheets.map((_, i)=>`<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')
       + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>'],
     ['_rels/.rels', XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>'],
-    ['docProps/core.xml', XML_HEAD + `<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlText(title)}</dc:title><dc:creator>Ricotta Orders</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${created}</dcterms:created></cp:coreProperties>`],
-    ['xl/workbook.xml', XML_HEAD + `<workbook ${SHEET_NS}><bookViews><workbookView activeTab="0"/></bookViews><sheets>${sheets.map((s, i)=>`<sheet name="${xmlText(String(s.name).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>`
-      + `<definedNames>${sheets.map((s, i)=>s.rows.length ? `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${xmlText(String(s.name).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31))}'!$A$5:$${XL_COL(s.columns.length - 1)}$${s.rows.length + 5}</definedName>` : '').join('')}</definedNames></workbook>`],
+    ['docProps/core.xml', XML_HEAD + `<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlText(title)}</dc:title><dc:creator>Ricotta Restaurant</dc:creator><cp:keywords>${xmlText(fileRef(at))}</cp:keywords><dcterms:created xsi:type="dcterms:W3CDTF">${created}</dcterms:created></cp:coreProperties>`],
+    // Filters, and the header row repeated at the top of every printed page.
+    ['xl/workbook.xml', XML_HEAD + `<workbook ${SHEET_NS}><bookViews><workbookView activeTab="0"/></bookViews><sheets>${sheets.map((s, i)=>`<sheet name="${sheetName(s)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>`
+      + `<definedNames>${sheets.map((s, i)=>(s.rows.length ? `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${sheetName(s)}'!$A$6:$${XL_COL(s.columns.length - 1)}$${s.rows.length + 6}</definedName>` : '')
+        + `<definedName name="_xlnm.Print_Titles" localSheetId="${i}">'${sheetName(s)}'!$6:$6</definedName>`).join('')}</definedNames></workbook>`],
     ['xl/_rels/workbook.xml.rels', XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
       + sheets.map((_, i)=>`<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')
       + `<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
     ['xl/styles.xml', XL_STYLES],
-    ...sheets.map((s, i)=>[`xl/worksheets/sheet${i + 1}.xml`, brandedSheetXml(s, {title:s.title || title, subtitle, rtl})]),
+    ...sheets.map((s, i)=>[`xl/worksheets/sheet${i + 1}.xml`, brandedSheetXml(s, {title:s.title || title, subtitle, rtl, stamp})]),
   ];
   return zipStore(parts);
 }
+/* A reference for a file, from when it was made (RIC-20261106-2214), shown on the PDF and kept in the Excel's properties. */
+const fileRef = (at = new Date())=>'RIC-' + erbilDate(at.toISOString()).replace(/-/g, '') + '-' + FILE_TIME.format(at).replace(':', '');
 
 /* ---------- PDF ---------- */
 /* A4 in points, drawn at 2 pixels per point. */
 const PDF_W = 595.28, PDF_H = 841.89, PDF_SCALE = 2, PDF_M = 40;
 const PDF_FONT = `-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Kufi Arabic", Arial, sans-serif`;
-const PDF_COLORS = {deep:'#14382C', green:'#1F7A4D', accent:'#34C27A', ink:'#1C1C1E', soft:'#6E6E73', line:'#DCE8DF', band:'#F2F8F4', head:'#14382C', total:'#E3F1E8'};
+const PDF_COLORS = {deep:'#14382C', green:'#1F7A4D', accent:'#34C27A', ink:'#1C1C1E', soft:'#6E6E73', line:'#E1E9E3', band:'#F4F8F5', head:'#14382C', total:'#E3F1E8', tile:'#FFFFFF', tileLine:'#DCE8DF'};
 /* The fonts the page draws with are loaded first (Noto Kufi Arabic where there is no system Arabic font). */
 async function pdfFonts(){
   try{ await Promise.race([Promise.all([document.fonts.load(`800 22px Manrope`), document.fonts.load(`12px "Noto Kufi Arabic"`)]), new Promise(r=>setTimeout(r, 1500))]); }catch(_){}
@@ -190,33 +213,39 @@ async function brandedPdf(doc){
     ctx.scale(PDF_SCALE, PDF_SCALE);
     ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, PDF_W, PDF_H);
     pages.push(canvas);
-    // The header on every page: the ricotta mark, the document's name and the date.
+    // The band on every page: the ricotta mark and "Ricotta Restaurant" on deep green, the document's
+    // name, its reference and when it was made on the other side, a thin bright line under it.
+    ctx.fillStyle = PDF_COLORS.deep; ctx.fillRect(0, 0, PDF_W, 58);
+    ctx.fillStyle = PDF_COLORS.accent; ctx.fillRect(0, 58, PDF_W, 2.2);
     ctx.direction = 'ltr'; ctx.textAlign = 'left';
-    ctx.font = `800 21px Manrope, ${PDF_FONT}`; ctx.fillStyle = PDF_COLORS.deep;
-    const markX = rtl ? PDF_W - PDF_M - ctx.measureText('ricotta').width - 7 : PDF_M;
-    ctx.fillText('ricotta', markX, PDF_M + 16);
-    ctx.fillStyle = PDF_COLORS.accent; ctx.beginPath(); ctx.arc(markX + ctx.measureText('ricotta').width + 4, PDF_M + 13, 2.6, 0, Math.PI * 2); ctx.fill();
-    text(doc.title, PDF_W - PDF_M, PDF_M + 7, {size:9, weight:600, color:PDF_COLORS.ink, align:'end'});
-    text(doc.stamp, PDF_W - PDF_M, PDF_M + 19, {size:8, color:PDF_COLORS.soft, align:'end'});
-    ctx.fillStyle = PDF_COLORS.green; ctx.fillRect(PDF_M, PDF_M + 28, PDF_W - 2 * PDF_M, 1.4);
-    y = PDF_M + 52;
+    ctx.font = `800 21px Manrope, ${PDF_FONT}`; ctx.fillStyle = '#FFFFFF';
+    const mw = ctx.measureText('ricotta').width, markX = rtl ? PDF_W - PDF_M - mw - 7 : PDF_M;
+    ctx.fillText('ricotta', markX, 30);
+    ctx.fillStyle = PDF_COLORS.accent; ctx.beginPath(); ctx.arc(markX + mw + 4, 27, 2.6, 0, Math.PI * 2); ctx.fill();
+    text(t('fileCompany'), PDF_M, 45, {size:7.5, weight:600, color:'#BFE3CF'});
+    text(doc.title, PDF_W - PDF_M, 24, {size:9.5, weight:700, color:'#FFFFFF', align:'end'});
+    text(`${doc.ref || ''}${doc.ref ? '  ·  ' : ''}${doc.stamp || ''}`, PDF_W - PDF_M, 39, {size:7.5, color:'#BFE3CF', align:'end'});
+    y = 60 + 30;
   };
   const room = need=>{ if(y + need > PDF_H - PDF_M - 26){ newPage(); return true; } return false; };
   newPage();
-  // Title and the line under it.
-  text(doc.title, PDF_M, y + 6, {size:20, weight:700}); y += 22;
-  if(doc.subtitle){ for(const l of wrap(doc.subtitle, PDF_W - 2 * PDF_M, 10)){ text(l, PDF_M, y + 6, {size:10, color:PDF_COLORS.soft}); y += 14; } }
-  y += 10;
-  // Info tiles: a row of small labelled boxes (supplier, phone, date, items...).
+  // Title, the line under it, and who it is for.
+  doc.ref = doc.ref || fileRef();
+  text(doc.title, PDF_M, y + 8, {size:22, weight:800, color:PDF_COLORS.deep}); y += 24;
+  if(doc.subtitle){ for(const l of wrap(doc.subtitle, PDF_W - 2 * PDF_M, 10.5)){ text(l, PDF_M, y + 6, {size:10.5, color:PDF_COLORS.soft}); y += 15; } }
+  y += 12;
+  // Key figures: white tiles with a thin rule and a green bar, the figure large.
   if(doc.info?.length){
-    const n = Math.min(4, doc.info.length), gap = 8, w = (PDF_W - 2 * PDF_M - gap * (n - 1)) / n;
+    const n = Math.min(4, doc.info.length), gap = 10, w = (PDF_W - 2 * PDF_M - gap * (n - 1)) / n;
     doc.info.slice(0, 4).forEach(([label, value], i)=>{
-      const x = PDF_M + i * (w + gap);
-      ctx.fillStyle = PDF_COLORS.band; pdfRound(ctx, rtl ? PDF_W - x - w : x, y, w, 40, 7); ctx.fill();
-      text(label, x + 10, y + 15, {size:7.5, weight:600, color:PDF_COLORS.soft});
-      text(wrap(value, w - 20, 11, 700)[0], x + 10, y + 31, {size:11, weight:700, color:PDF_COLORS.deep});
+      const x = PDF_M + i * (w + gap), bx = rtl ? PDF_W - x - w : x;
+      ctx.fillStyle = PDF_COLORS.tile; ctx.strokeStyle = PDF_COLORS.tileLine; ctx.lineWidth = .8;
+      pdfRound(ctx, bx, y, w, 50, 8); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = PDF_COLORS.green; ctx.fillRect(rtl ? bx + w - 3 : bx, y + 10, 3, 30);
+      text(String(label).toUpperCase(), x + 12, y + 17, {size:7, weight:700, color:PDF_COLORS.soft});
+      text(wrap(value, w - 24, 15, 800)[0], x + 12, y + 38, {size:15, weight:800, color:PDF_COLORS.deep});
     });
-    y += 54;
+    y += 66;
   }
   for(const section of doc.sections){
     const cols = section.columns, width = PDF_W - 2 * PDF_M;
@@ -229,7 +258,11 @@ async function brandedPdf(doc){
       cols.forEach((c, i)=>text(c.label, c.align === 'end' ? xs[i] + colW(i) - 8 : xs[i] + 8, y + 14.5, {size:8.5, weight:700, color:'#FFFFFF', align:c.align}));
       y += 22;
     };
-    if(section.heading){ room(60); text(section.heading, PDF_M, y + 12, {size:12, weight:700, color:PDF_COLORS.deep}); y += 22; }
+    if(section.heading){
+      room(60);
+      ctx.fillStyle = PDF_COLORS.accent; ctx.fillRect(rtl ? PDF_W - PDF_M - 3 : PDF_M, y + 2, 3, 13);
+      text(section.heading, PDF_M + 10, y + 13, {size:12.5, weight:800, color:PDF_COLORS.deep}); y += 24;
+    }
     room(50); headRow();
     section.rows.forEach((row, r)=>{
       if(row.group){
@@ -266,12 +299,27 @@ async function brandedPdf(doc){
     room(lines.length * 14 + 20);
     ctx.fillStyle = PDF_COLORS.band; pdfRound(ctx, PDF_M, y, PDF_W - 2 * PDF_M, lines.length * 14 + 18, 8); ctx.fill();
     lines.forEach((l, k)=>text(l, PDF_M + 12, y + 18 + k * 14, {size:10, weight:600, color:PDF_COLORS.deep}));
+    y += lines.length * 14 + 30;
   }
-  // Page numbers and the maker on every page.
+  // Sign-off: lines to sign and date, for the ones that are checked and kept on paper.
+  if(doc.signoff){
+    room(70);
+    const w = (PDF_W - 2 * PDF_M - 30) / 2;
+    [t('fileCheckedBy'), t('fileApprovedBy')].forEach((label, i)=>{
+      const x = PDF_M + i * (w + 30);
+      ctx.fillStyle = PDF_COLORS.ink; ctx.fillRect(rtl ? PDF_W - x - w : x, y + 34, w, .7);
+      text(label, x, y + 47, {size:8, weight:600, color:PDF_COLORS.soft});
+      text(t('fileDateLine'), x + w, y + 47, {size:8, color:PDF_COLORS.soft, align:'end'});
+    });
+    y += 60;
+  }
+  // The footer on every page: a rule, the company and "internal document", the reference, the page.
   pages.forEach((c, i)=>{
     ctx = c.getContext('2d');
-    text(t('pdfFooter'), PDF_M, PDF_H - PDF_M + 14, {size:7.5, color:PDF_COLORS.soft});
-    text(t('pdfPage')(i + 1, pages.length), PDF_W - PDF_M, PDF_H - PDF_M + 14, {size:7.5, color:PDF_COLORS.soft, align:'end'});
+    ctx.fillStyle = PDF_COLORS.line; ctx.fillRect(PDF_M, PDF_H - PDF_M + 2, PDF_W - 2 * PDF_M, .7);
+    text(`${t('fileCompany')}  ·  ${t('fileInternal')}`, PDF_M, PDF_H - PDF_M + 16, {size:7.5, color:PDF_COLORS.soft});
+    text(doc.ref, PDF_W / 2, PDF_H - PDF_M + 16, {size:7.5, color:PDF_COLORS.soft, align:'center'});
+    text(t('pdfPage')(i + 1, pages.length), PDF_W - PDF_M, PDF_H - PDF_M + 16, {size:7.5, weight:600, color:PDF_COLORS.ink, align:'end'});
   });
   // One page at a time, each canvas freed as soon as it is a JPEG (a page is about 8 MB as pixels).
   const jpegs = [];

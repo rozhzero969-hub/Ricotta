@@ -424,16 +424,49 @@ function openSpotlight(initial = ''){
 const SHORTCUTS = [
   ['K', 'shortSearch', true], ['/', 'shortSearch'], ['1 – 6', 'shortTabs'], ['R', 'shortRico'], [',', 'shortSettings'],
   ['N', 'shortNew'], ['S', 'shortSend'], ['[  ]', 'shortSupplierTabs'], ['T', 'shortTop'], ['?', 'shortHelp'], ['Esc', 'shortClose'],
-  ['Enter', 'shortRrSend', true], ['⌥  N', 'shortRrAdd'], ['⌥  D', 'shortRrDup'], ['⌥  X', 'shortRrDel'], ['⌥  U', 'shortRrUnit'],
-  ['⌥  ↑  ↓', 'shortRrMove'], ['⌥  Y', 'shortRrYest'], ['Enter', 'shortRrApprove'], ['Esc', 'shortRrBack'],
+  ['Enter', 'shortRrSend', true], ['Enter', 'shortRrApprove'], ['Esc', 'shortRrBack'],
 ];
+/* The Receipts and Transfers line shortcuts, which can be changed (RR_KEYS in receipts.js). */
+const RR_KEY_LABELS = {add:'shortRrAdd', dup:'shortRrDup', del:'shortRrDel', unit:'shortRrUnit', up:'shortRrUp', down:'shortRrDown', yest:'shortRrYest'};
+function keyCaps(combo){
+  const name = c=> c.startsWith('Key') ? c.slice(3) : c.startsWith('Digit') ? c.slice(5) : {ArrowUp:'↑', ArrowDown:'↓', ArrowLeft:'←', ArrowRight:'→', Backspace:'⌫', Enter:'↵', Space:'Space', Slash:'/', Period:'.', Comma:',', Minus:'-', Equal:'='}[c] || c;
+  return combo.split('+').map(p=>`<kbd>${esc(p === 'Mod' ? (isMac ? '⌘' : 'Ctrl') : p === 'Alt' ? (isMac ? '⌥' : 'Alt') : p === 'Shift' ? '⇧' : name(p))}</kbd>`).join('');
+}
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+let shortSheet = null;
 function openShortcuts(){
   const key = (k, mod)=>`${mod ? `<kbd>${isMac ? '⌘' : 'Ctrl'}</kbd>` : ''}${k.split(/\s+–\s+|\s{2,}/).map(x=>`<kbd>${esc(x)}</kbd>`).join(k.includes('–') ? '<span>–</span>' : '')}`;
-  openKitchenSheet('shortcuts-sheet', `<div class="sel-title">${esc(t('keyboardShortcuts'))}</div>
+  const html = `<div class="sel-title">${esc(t('keyboardShortcuts'))}</div>
     <p class="notif-sub">${esc(t('shortIntro'))}</p>
     <div class="short-list">${SHORTCUTS.map(([k, label, mod])=>`<div class="short-row"><span>${esc(t(label))}</span><span class="short-keys" dir="ltr">${key(k, mod)}</span></div>`).join('')}</div>
-    <div class="short-device"><b>${esc(t('shortOpenTitle'))}</b><p>${esc(t('shortOpenMac'))}</p><p>${esc(t('shortOpenIphone'))}</p></div>`, t('keyboardShortcuts'));
+    <div class="short-sub"><b>${esc(t('shortRrTitle'))}</b><button type="button" class="short-std" id="shortStd">${esc(t('rsStandard'))}</button></div>
+    <div class="short-list">${Object.keys(RR_KEY_LABELS).map(a=>`<div class="short-row"><span>${esc(t(RR_KEY_LABELS[a]))}</span><span class="short-keys" dir="ltr" data-keys="${a}">${keyCaps(rrKeyOf(a))}</span><button type="button" class="short-change" data-change="${a}">${esc(t('shortChange'))}</button></div>`).join('')}</div>
+    <p class="notif-sub">${esc(t('shortChangeHint'))}</p>
+    <div class="short-device"><b>${esc(t('shortOpenTitle'))}</b><p>${esc(t('shortOpenMac'))}</p><p>${esc(t('shortOpenIphone'))}</p></div>`;
+  // Open already (a shortcut was just changed): the list is redrawn in place.
+  if(shortSheet?.el.isConnected){ const panel = shortSheet.el.querySelector('.sel-panel'); panel.innerHTML = '<div class="sel-grab"></div>' + html; }
+  else shortSheet = openKitchenSheet('shortcuts-sheet', html, t('keyboardShortcuts'));
+  // Change: the next keys pressed (with ⌥, ⌘ or Ctrl) become this shortcut; Esc keeps the old one.
+  const sheet = document.querySelector('.shortcuts-sheet');
+  sheet?.querySelector('#shortStd')?.addEventListener('click', async ()=>{ await setSetting('keys', {}); toast(t('shortStdDone')); openShortcuts(); });
+  sheet?.querySelectorAll('[data-change]').forEach(b=>b.onclick = ()=>{
+    const act = b.dataset.change, caps = sheet.querySelector(`[data-keys="${act}"]`);
+    caps.innerHTML = `<em>${esc(t('shortPress'))}</em>`; b.disabled = true;
+    const grab = async e=>{
+      if(['Alt', 'Meta', 'Control', 'Shift'].includes(e.key)) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      removeEventListener('keydown', grab, true);
+      if(e.key === 'Escape'){ openShortcuts(); return; }
+      const combo = rrCombo_(e), taken = Object.keys(RR_KEYS).find(k=>k !== act && rrKeyOf(k) === combo);
+      // Needs ⌥, ⌘ or Ctrl (plain keys are for typing), and not ⌘↵ (send) or ⌘K (search).
+      if(!(e.altKey || e.metaKey || e.ctrlKey) || ['Mod+Enter', 'Mod+KeyK', 'Mod+KeyC', 'Mod+KeyV', 'Mod+KeyX', 'Mod+KeyZ', 'Mod+KeyA'].includes(combo)){ toast(t('shortNeedsMod'), 'warn'); openShortcuts(); return; }
+      if(taken){ toast(t('shortTaken')(t(RR_KEY_LABELS[taken])), 'warn'); openShortcuts(); return; }
+      const keys = {...(state.settings?.keys || {}), [act]:combo};
+      Object.keys(keys).forEach(k=>{ if(keys[k] === RR_KEYS[k]) delete keys[k]; });
+      await setSetting('keys', keys); openShortcuts();
+    };
+    addEventListener('keydown', grab, true);
+  });
 }
 document.addEventListener('keydown', e=>{
   if(!state.account || e.defaultPrevented || e.isComposing) return;

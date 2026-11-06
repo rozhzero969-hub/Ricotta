@@ -686,9 +686,10 @@ async function transferEvent(d: any, r: any, event: string) {
     return;
   }
   if (event === "moved") {
-    const photos = await transferPhotoLinks(d, r, ["after"]);
+    // Moved without a second approval: the photo of the filled-in form comes too.
+    const photos = await transferPhotoLinks(d, r, r.auto ? ["before", "after"] : ["after"]);
     const sure = r.result?.checked !== false;
-    await say(chat, `Moved. ${head}\n${sure ? "Checked in Recent transfers." : "Rico couldn't confirm it in Recent transfers: please check there."}`);
+    await say(chat, `Moved${r.auto ? " (without a second approval)" : ""}. ${head}\n${sure ? "Checked in Ricotta Restaurant's stock record: every item moved once, in exactly these amounts." : "Rico couldn't confirm it in the stock record: please check Recent transfers."}${r.auto ? "\n" + lines : ""}`);
     if (photos.length) await sendPhotos(chat, photos.map((p: any) => p.url));
     return;
   }

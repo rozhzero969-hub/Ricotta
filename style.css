@@ -2369,13 +2369,11 @@ html.dark .tf-avail .tf-never{color:#FDBA74}
 html.dark .cf-list li{background:rgba(251,146,60,.14);color:#FED7AA}
 html.dark .cf-alert{background:rgba(248,113,113,.14);color:#FECACA}
 html.dark .cf-list-title{color:#FDBA74}
-/* "Available: 9 سیت in Main Storage": the amount stands out. */
-.tf-avail{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:2px}
-.tf-have{display:inline-flex;align-items:baseline;gap:6px;padding:5px 10px;border-radius:8px;background:#ECFDF5;color:#065F46;font-size:.875rem}
-.tf-have b{font-size:1rem;font-weight:700;font-variant-numeric:tabular-nums}
-.tf-have.short{background:#FEF2F2;color:#991B1B}
-html.dark .tf-have{background:rgba(52,211,153,.14);color:#A7F3D0}
-html.dark .tf-have.short{background:rgba(248,113,113,.14);color:#FECACA}
+/* "Available 74 دانە in Main Storage": plain text, only the amount and its unit in bold. */
+.tf-avail{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;margin-top:2px}
+.tf-have{font-size:.875rem;color:var(--ink-soft)}
+.tf-have b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.tf-have.short,.tf-have.short b{color:var(--red)}
 /* Lines come into view whole, below the top bar. */
 .rr-line{scroll-margin-top:96px;scroll-margin-bottom:24px}
 /* The unit menu: a small list right under its box. */
@@ -2405,3 +2403,39 @@ html.dark .rr-offline{background:rgba(251,146,60,.14);color:#FED7AA}
 .day-stat b{color:var(--ink);font-variant-numeric:tabular-nums}
 .day-sub{margin:12px 0 4px;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:var(--ink-soft)}
 .day-card .rr-list{padding:0;background:none}
+
+/* Settings > Rico: status, approvals, limits (plain values, Edit), Stop, Telegram, in groups. */
+.rr-settings{display:flex;flex-direction:column;gap:0;padding:0!important;overflow:hidden}
+.rs-head{display:flex;align-items:center;gap:12px;padding:16px}
+.rs-head .rr-rico{flex:none}
+.rs-head b{display:block;font-size:1.0625rem}
+.rs-head small{display:flex;align-items:center;gap:6px;color:var(--ink-soft);font-size:.875rem}
+.rs-group{padding:14px 16px;border-top:.5px solid var(--line)}
+.rs-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:.8125rem;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:var(--ink-soft)}
+.rs-rule{padding:4px 0 10px}
+.rs-rule b{display:block}
+.rs-rule small{color:var(--ink-soft);font-size:.875rem;line-height:1.4}
+.rs-switch{padding:6px 0!important;border:0!important}
+.rs-switch b{font-weight:600}
+.rs-vals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.rs-val{padding:10px 12px;border-radius:12px;background:var(--fill);display:flex;flex-direction:column;gap:2px;min-width:0}
+.rs-val span{font-size:.75rem;color:var(--ink-soft)}
+.rs-val b{font-size:1rem;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:560px){.rs-vals{grid-template-columns:1fr}}
+.rs-edit{height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600;text-transform:none;letter-spacing:0}
+.rs-actions{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;margin-top:12px}
+.rs-tg{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.rs-tg b{display:block}
+.rs-tg small{color:var(--ink-soft);font-size:.875rem}
+
+/* Shortcuts sheet: the line shortcuts with Change, and Standard. */
+.short-sub{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px}
+.short-std,.short-change{height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600;flex:none}
+.short-change:disabled{opacity:.5}
+.short-row .short-keys em{font-style:normal;color:var(--tint);font-weight:600}
+.short-row:has(.short-change){gap:10px}
+.short-row:has(.short-change) .short-keys{margin-inline-start:auto}
+
+.day-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.day-files{display:flex;gap:6px}
+.day-file{height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600}

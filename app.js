@@ -1561,9 +1561,9 @@ function openSelPop(sel){
   const gone = e=>{ if(!pop.contains(e.target)) close(false); };
   const keys = e=>{
     if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); close(); }
-    else if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); at = (at + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length; mark(); }
+    // Tab (and the arrows) go through the choices, round and round; Enter picks one.
+    else if(e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab'){ e.preventDefault(); e.stopPropagation(); at = (at + (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey) ? 1 : items.length - 1)) % items.length; mark(); }
     else if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); e.stopPropagation(); choose(items[at].dataset.v); }
-    else if(e.key === 'Tab') close(false);
   };
   items.forEach(b=>b.onclick = ()=>choose(b.dataset.v));
   addEventListener('pointerdown', outside, true); addEventListener('keydown', keys, true); addEventListener('scroll', gone, true);

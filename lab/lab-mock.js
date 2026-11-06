@@ -325,8 +325,12 @@
         const c = T.check({from:r.from, to:r.to, yesterday:r.yesterday, lines:r.lines}, cat, {});
         if(c.errors.length) return json({error:'invalid_transfer', errors:c.errors}, 422);
         const conf = new Set(body.confirm || []); if(c.warnings.some(w=>!conf.has(w.code))) return json({error:'needs_confirmation', warnings:c.warnings}, 409);
-        Object.assign(r, {status:'queued', warnings:c.warnings, sentAt:now(), forDay:r.yesterday ? new Date(Date.now() - 86400e3).toISOString().slice(0, 10) : today, log:[...r.log, {at:now(), who:account, text:'Sent to Rico'}]});
-        setTimeout(()=>{ if(r.status !== 'queued') return; Object.assign(r, {status:'review', mode:'real', photos:[{kind:'before', at:now()}], log:[...r.log, {at:now(), who:'rico', text:'Filled in and checked against the stock. Waiting for approval.'}]}); save(); }, 2000);
+        // "Move without asking again" (the sender's setting): approved when sent, moved right after filling in.
+        const auto = !!(db.settings && db.settings[account] && db.settings[account].tfAuto);
+        Object.assign(r, {status:'queued', auto, approvedBy:auto ? account : null, approvedAt:auto ? now() : null, warnings:c.warnings, sentAt:now(), forDay:r.yesterday ? new Date(Date.now() - 86400e3).toISOString().slice(0, 10) : today, log:[...r.log, {at:now(), who:account, text:'Sent to Rico'}]});
+        setTimeout(()=>{ if(r.status !== 'queued') return;
+          if(auto){ Object.assign(r, {status:'moved', mode:'real', movedAt:now(), result:{checked:true}, photos:[{kind:'before', at:now()}, {kind:'after', at:now()}], log:[...r.log, {at:now(), who:'rico', text:'Moved without a second approval. Checked in the stock record.'}]}); save(); return; }
+          Object.assign(r, {status:'review', mode:'real', photos:[{kind:'before', at:now()}], log:[...r.log, {at:now(), who:'rico', text:'Filled in and checked against the stock. Waiting for approval.'}]}); save(); }, 2000);
         save(); return json(r);
       }
       if(m[2] === 'approve'){
