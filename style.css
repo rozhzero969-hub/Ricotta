@@ -542,7 +542,7 @@ html.rtl .field select{background-position:left 14px center}
 .field-hint{font-size:.8125rem;font-weight:400;color:var(--ink-soft);margin:6px 4px 0;line-height:1.4}
 .field-hint:empty{display:none}
 .form-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
-.btn{position:relative;min-height:44px;padding:0 20px;border-radius:999px;border:0;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:.9375rem;line-height:1.3}
+.btn{position:relative;min-height:44px;padding:0 20px;border-radius:12px;border:0;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:.9375rem;line-height:1.3}
 .btn svg{width:16px;height:16px;flex-shrink:0}
 .btn:disabled{opacity:.45}
 /* Apple's three button looks: filled green, gray, and red for anything that removes. */
@@ -2344,3 +2344,44 @@ html.dark .tf-yest.on b{color:#FBBF24}
 .rr-today-title small{text-transform:none;letter-spacing:0;font-size:.8125rem}
 .rr-none{margin:0 16px;font-size:.875rem;color:var(--ink-soft)}
 .rr-to-history{align-self:flex-start;margin:0 8px;padding:8px;border:0;border-radius:10px;background:none;color:var(--tint);font:inherit;font-size:.9375rem;font-weight:600}
+
+/* Under each transfer line: what the To storage usually gets, or that it never gets this item. */
+.tf-avail .tf-usual{color:var(--ink-soft)}
+.tf-avail .tf-never{color:#B45309;font-weight:600}
+html.dark .tf-avail .tf-never{color:#FDBA74}
+
+/* Buttons are rounded squares (her choice), dialogs included. */
+.modal-actions .btn,.modal-box .modal-actions.stacked .btn{border-radius:12px}
+.btn .kbd{margin-inline-start:8px;padding:1px 6px;border-radius:6px;background:rgba(255,255,255,.22);font-size:.8125rem;font-weight:600;line-height:1.4}
+@media (pointer:coarse){.btn .kbd{display:none}}
+/* Approve and check boxes: a summary first, then anything to check, left aligned. */
+.modal-box.modal-alert.modal-wide{max-width:440px;text-align:start;padding:22px 20px 18px;border-radius:24px}
+.modal-wide .modal-alert-title{font-size:1.1875rem;margin:0 0 12px}
+.modal-wide .modal-msg{color:var(--ink)!important;margin:0 0 18px}
+.cf-sum{padding:12px 14px;border-radius:12px;background:var(--fill)}
+.cf-route{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:1.0625rem}
+.cf-route span{color:var(--ink-soft)}
+.cf-meta{margin-top:4px;font-size:.875rem;color:var(--ink-soft)}
+.cf-list-title{margin:14px 0 6px;font-size:.8125rem;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:#B45309}
+.cf-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.cf-list li{padding:8px 12px;border-radius:10px;background:#FFF7ED;color:#7C2D12;font-size:.9375rem;line-height:1.35}
+.cf-alert{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#FEF2F2;color:#991B1B;font-weight:600;font-size:.9375rem}
+html.dark .cf-list li{background:rgba(251,146,60,.14);color:#FED7AA}
+html.dark .cf-alert{background:rgba(248,113,113,.14);color:#FECACA}
+html.dark .cf-list-title{color:#FDBA74}
+/* "Available: 9 سیت in Main Storage": the amount stands out. */
+.tf-avail{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:2px}
+.tf-have{display:inline-flex;align-items:baseline;gap:6px;padding:5px 10px;border-radius:8px;background:#ECFDF5;color:#065F46;font-size:.875rem}
+.tf-have b{font-size:1rem;font-weight:700;font-variant-numeric:tabular-nums}
+.tf-have.short{background:#FEF2F2;color:#991B1B}
+html.dark .tf-have{background:rgba(52,211,153,.14);color:#A7F3D0}
+html.dark .tf-have.short{background:rgba(248,113,113,.14);color:#FECACA}
+/* Lines come into view whole, below the top bar. */
+.rr-line{scroll-margin-top:96px;scroll-margin-bottom:24px}
+/* The unit menu: a small list right under its box. */
+.sel-pop{position:fixed;z-index:1200;max-height:min(320px,60vh);overflow:auto;padding:6px;border-radius:14px;background:var(--surface);border:1px solid var(--line-strong);box-shadow:0 12px 32px rgba(15,23,42,.16)}
+.sel-pop-opt{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:10px;background:none;color:var(--ink);font:inherit;font-size:1rem;text-align:start}
+.sel-pop-opt svg{width:18px;height:18px;color:var(--tint);flex:none}
+.sel-pop-opt:hover,.sel-pop-opt.kb{background:var(--fill)}
+.sel-pop-opt.on{font-weight:600}
+.modal-wide .modal-actions .btn{white-space:nowrap}

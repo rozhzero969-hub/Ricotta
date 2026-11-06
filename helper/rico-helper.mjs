@@ -19,7 +19,7 @@ import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-12.1";
+const VERSION = "2026-11-12.2";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -196,26 +196,20 @@ const HISTORY_DAYS = 21;
 let historyBusy = false, lastCatalogBody = null;
 async function readHistory() {
   const since = new Date(Date.now() - HISTORY_DAYS * 86400_000).toISOString();
-  // In a tab of its own, so receipts and transfers carry on in the main one meanwhile.
-  const hp = await page.context().newPage();
-  let got;
-  try {
-    await hp.goto(RR + "/inventory", { waitUntil: "domcontentloaded" });
-    got = await hp.evaluate(async (since) => {
-    const h = { Authorization: "Bearer " + localStorage.getItem("ricotta_token") };
-    const out = [];
-    for (let p = 1; p <= 150; p++) {
-      const r = await fetch(`/api/v1/inventory/movements?page=${p}&size=200`, { headers: h });
-      if (!r.ok) return { error: r.status };
-      const j = await r.json(), ms = j.movements || [];
-      for (const m of ms) if ((m.movement_type === "transfer_out" || m.movement_type === "purchase_in") && m.created_at >= since)
-        out.push([m.movement_type === "transfer_out" ? "t" : "p", m.item_name, Math.abs(Number(m.quantity)), m.zone_name, m.source, m.created_at]);
-      if (!ms.length || !j.has_more || ms[ms.length - 1].created_at < since) return { rows: out };
-      await new Promise((res) => setTimeout(res, 250));
-    }
-    return { rows: out };
-    }, since);
-  } finally { await hp.close().catch(() => {}); }
+  // Read straight from Ricotta Restaurant's server with Rico's own sign-in (no extra tab), so receipts
+  // and transfers carry on meanwhile.
+  const token = await page.evaluate(() => localStorage.getItem("ricotta_token")).catch(() => null);
+  if (!token) throw new Error("not signed in yet");
+  const got = { rows: [] };
+  for (let p = 1; p <= 150; p++) {
+    const r = await fetch(`${RR}/api/v1/inventory/movements?page=${p}&size=200`, { headers: { Authorization: "Bearer " + token }, signal: AbortSignal.timeout(30_000) });
+    if (!r.ok) throw new Error(`the stock record answered ${r.status}`);
+    const j = await r.json(), ms = j.movements || [];
+    for (const m of ms) if ((m.movement_type === "transfer_out" || m.movement_type === "purchase_in") && m.created_at >= since)
+      got.rows.push([m.movement_type === "transfer_out" ? "t" : "p", m.item_name, Math.abs(Number(m.quantity)), m.zone_name, m.source, m.created_at]);
+    if (!ms.length || !j.has_more || ms[ms.length - 1].created_at < since) break;
+    await sleep(250);
+  }
   if (!got?.rows) throw new Error(`could not read the stock record (${got?.error ?? "no answer"})`);
   // One move or delivery of an item can come from several deliveries in stock (two lines, same moment).
   const one = new Map();
@@ -228,12 +222,13 @@ async function readHistory() {
   for (const x of one.values()) {
     const e = (lists[x.k][x.item] ??= { qs: [], r: {} });
     e.qs.push(x.q);
-    if (x.k === "t") e.r[x.route] = (e.r[x.route] ?? 0) + 1;
+    if (x.k === "t") (e.r[x.route] ??= { qs: [] }).qs.push(x.q);
   }
   const stat = (e) => { const s = [...e.qs].sort((a, b) => a - b); return { n: s.length, q: Math.round(s[Math.floor(s.length / 2)] * 1000) / 1000, hi: Math.round(s[s.length - 1] * 1000) / 1000 }; };
   historyNow = {
     at: new Date().toISOString(), days: HISTORY_DAYS,
-    t: Object.fromEntries(Object.entries(lists.t).map(([n, e]) => [n, { ...stat(e), r: e.r }])),
+    // Each storage has its own demand: per route ("Main Storage>Pizza") its own usual and largest amount.
+    t: Object.fromEntries(Object.entries(lists.t).map(([n, e]) => [n, { ...stat(e), r: Object.fromEntries(Object.entries(e.r).map(([k, v]) => [k, stat(v)])) }])),
     p: Object.fromEntries(Object.entries(lists.p).map(([n, e]) => [n, stat(e)])),
   };
   log(`learnt from the stock record: ${Object.keys(historyNow.t).length} items moved, ${Object.keys(historyNow.p).length} delivered (${HISTORY_DAYS} days)`);
@@ -271,7 +266,8 @@ async function readCatalog() {
   });
   // For transfers: every active item with its counting, base and buying units and its stock in each
   // storage (base units), as Ricotta Restaurant's Stock tab and transfer page show it.
-  const titems = c["/api/v1/inventory/items"].items.filter((i) => i.is_active && i.name.trim() !== "-").map((i) => ({
+  // Only items that were ever bought (as on the Stock tab), never the ones named "-".
+  const titems = c["/api/v1/inventory/items"].items.filter((i) => i.is_active && i.has_purchase_history && i.name.trim() !== "-").map((i) => ({
     name: i.name, base: units[i.usage_unit_id] || i.base_unit,
     count: i.inventory_unit_name ? { name: i.inventory_unit_name, factor: Number(i.inventory_factor_to_base) || 1 } : null,
     buy: i.purchase_unit_name ? { name: i.purchase_unit_name, factor: Number(i.purchase_factor) || 1 } : null,
@@ -802,7 +798,13 @@ log(`Rico ${VERSION}${PRACTICE ? " (practice: nothing is saved)" : ""}`);
 // Anything left half way when Rico last stopped is sorted out first (see the API's helper/recover).
 await api("helper/recover", { method: "POST" }).then((x) => { if (x?.recovered) log(`picked up ${x.recovered} receipt(s) left half way`); }, (e) => log("recover:", e.message));
 let lastCatalog = 0;
+/* Between jobs Rico rests on Ricotta Restaurant's Inventory home page (as Rozha prefers). */
+async function restHome() {
+  if (new URL(page.url()).pathname === "/inventory") return;
+  await go("/inventory").catch((e) => log("home:", e.message));
+}
 await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => log("Could not read the lists yet:", e.message));
+await restHome();
 /* A live screenshot when someone asks for one on Telegram: waits on the server, so it comes in a second
    or two, even while Rico is in the middle of a receipt. */
 (async function shots() {
@@ -823,11 +825,11 @@ for (;;) {
   if (h && !h.stopped) {
     // Waits up to 20 s on the server for a receipt, so a new one starts within a second or two.
     const { receipt, transfer } = await api("helper/claim", { method: "POST", body: { wait: 20, mode: PRACTICE ? "practice" : "real", transfers: true } }).catch((e) => { log("claim:", e.message); return {}; });
-    if (receipt) { await work(receipt); continue; }
-    if (transfer) { await workTransfer(transfer); continue; }
+    if (receipt) { await work(receipt); await restHome(); continue; }
+    if (transfer) { await workTransfer(transfer); await restHome(); continue; }
     waited = true;
   }
   // Every 30 minutes; after a failed read, again a minute later.
-  if (Date.now() - lastCatalog > (lastCatalog ? 30 * 60_000 : 60_000)) await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => { log("Could not read the lists yet:", e.message); lastCatalog = Date.now() - 29 * 60_000; });
+  if (Date.now() - lastCatalog > (lastCatalog ? 30 * 60_000 : 60_000)) { await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => { log("Could not read the lists yet:", e.message); lastCatalog = Date.now() - 29 * 60_000; }); await restHome(); }
   if (!waited) await sleep(3000);
 }

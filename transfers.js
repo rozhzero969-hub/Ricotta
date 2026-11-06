@@ -11,6 +11,12 @@ const tfFind = id=> tf.data?.transfers.find(r=>r.id === id) || null;
 const tfItem = name=> (tf.data?.catalog?.titems || []).find(i=>i.name === name) || null;
 const tfQty = q=> rrNum(q, 3);
 const tfAvailText = (item, zone)=>{ const c = TF().inCounting(item, TF().available(item, zone)); return t('tfAvailable')(tfQty(c.qty) + ' ' + c.unit, zone); };
+/* "Available: 9 سیت in Main Storage", the amount in bold in a small box (red when there isn't enough). */
+function tfAvailHtml(item, zone, short, unit){
+  const have = TF().available(item, zone), o = TF().unitOptions(item).find(u=>u.name === unit);
+  const c = o ? {qty:Math.round((have / o.factor) * 10000) / 10000, unit:o.name} : TF().inCounting(item, have);
+  return `<span class="tf-have${short ? ' short' : ''}"><span>${esc(short ? t('tfOnlyHave') : t('tfAvailLabel'))}</span><b dir="ltr">${esc(tfQty(c.qty))} <bdi>${esc(c.unit)}</bdi></b><span>${esc(t('tfInZone')(zone))}</span></span>`;
+}
 /* The day a transfer counts on: today, or yesterday with Record for yesterday on. */
 const tfDayLabel = day=> day ? formatIraqDateTime(new Date(day + 'T12:00:00+03:00'), {weekday:'short', day:'numeric', month:'short'}) : '';
 const tfToday = ()=> tf.data?.today || erbilDate(new Date());
@@ -41,6 +47,15 @@ function tfLine(r){
     r.status === 'problem' ? r.problem || tfStatusText(r) : tfStatusText(r)].filter(Boolean).join(' · ');
 }
 const tfFiltered = list=> list.filter(r=>tf.filter.src === 'all' || (r.source === 'telegram' ? 'telegram' : 'app') === tf.filter.src);
+/* Under each line: what the To storage usually gets of this item, or that it never gets it. */
+function tfUsualNote(item, r){
+  if(!item || !r.from || !r.to || !TF().usualFor) return '';
+  const u = TF().usualFor(tf.data?.catalog, item.name, r.from, r.to);
+  if(u.never) return ` <span class="tf-never">· ${esc(t('tfNeverTo')(r.to))}</span>`;
+  if(!u.stat) return '';
+  const c = TF().inCounting(item, u.stat.q);
+  return ` <span class="tf-usual">· ${esc(t('tfUsuallyGets')(r.to, tfQty(c.qty) + ' ' + c.unit))}</span>`;
+}
 const tfRoute = r=> `${r.from || t('tfNoFrom')} → ${r.to || t('tfNoTo')}`;
 
 /* ---------- The tab: a new transfer straight away (like Ricotta Restaurant's Move between storages),
@@ -131,9 +146,9 @@ function renderTransferEdit(){
     return `<div class="rr-line tf-line${short ? ' warn' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="tfItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('tfItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
       <div class="rr-field"><label for="tfQty${i}">${esc(t('tfAmount'))}</label><input id="tfQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${rrShowNum(l.qty)}" placeholder="${esc(t('tfAmountHint'))}"></div>
-      <div class="rr-field rr-f-unit"><label for="tfUnit${i}">${esc(t('rrUnit'))}</label><select id="tfUnit${i}" data-l-unit="${i}" ${item ? '' : 'disabled'}>${units.length ? units.map(u=>opt(u.name, u.name + (u.unclear ? ' (?)' : ''), u.name === l.unit)).join('') : opt('', t('rrUnit'), true)}</select></div>
+      <div class="rr-field rr-f-unit"><label for="tfUnit${i}">${esc(t('rrUnit'))}</label><select id="tfUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${units.length ? units.map(u=>opt(u.name, u.name + (u.unclear ? ' (?)' : ''), u.name === l.unit)).join('') : opt('', t('rrUnit'), true)}</select></div>
       <button type="button" class="rr-del" data-l-del="${i}" tabindex="-1" aria-label="${esc(t('rrRemoveItem')(i + 1))}">${ICON_DELETE}</button>
-      ${item ? `<p class="tf-avail${short ? ' short' : ''}">${esc(short ? t('tfNotEnough')(tfQty(TF().inCounting(item, have).qty) + ' ' + TF().inCounting(item, have).unit, r.from) : tfAvailText(item, r.from))}</p>` : ''}
+      ${item ? `<p class="tf-avail${short ? ' short' : ''}">${tfAvailHtml(item, r.from, short, l.unit)}${tfUsualNote(item, r)}</p>` : ''}
     </div>`;
   }).join('');
   return `<div class="rr-page rr-edit tf-edit">${rrRicoBar(tf.data.helper)}
@@ -170,10 +185,11 @@ async function tfSaveDraft(r){
 }
 function attachTransferEdit(){
   const r = tfFind(tf.id); if(!r) return;
+  rrSelectOnClick(document.querySelector('.tf-edit') || document);
   const cat = tf.data.catalog, zones = TF().zonesOf(cat);
   const repaint = ()=>{ const top = scrollBox().scrollTop; render(); scrollBox().scrollTop = top; };
   const changed = (redraw = false)=>{ tfSaveSoon(r); if(redraw) repaint(); };
-  const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); el.scrollIntoView({block:'nearest'}); el.select?.(); };
+  const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); el.select?.(); rrReveal(el); };
   const enter = (el, fn)=>{ if(el) el.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.isComposing){ e.preventDefault(); fn(); } }); };
   // From, then To (never the same storage), then the first item.
   rrComboBind(document.getElementById('tfFrom'), zones, (v, again)=>{
@@ -234,7 +250,9 @@ function attachTransferEdit(){
   document.getElementById('tfSend').onclick = ()=>tfSend(r);
   document.onkeydown = e=>{
     if(state.view !== 'transfers' || tf.page !== 'edit'){ document.onkeydown = null; return; }
-    if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.activeElement?.blur?.(); tfSend(r); }
+    if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.activeElement?.blur?.(); tfSend(r); return; }
+    rrLineKeys(e, {add:()=>addLine(), yesterday:()=>document.getElementById('tfYest')?.click(),
+      dup:i=>{ const l = r.lines[i]; r.lines.splice(i + 1, 0, {item:l.item, unit:l.unit, qty:null}); changed(true); go('tfQty' + (i + 1)); }});
   };
   if(tf.fresh){ tf.fresh = false; if(!matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>go(r.from ? 'tfTo' : 'tfFrom')); }
 }
@@ -246,7 +264,7 @@ function tfPaintStock(r){
     const have = TF().available(item, r.from), short = need.get(l.item) > have + 1e-9, c = TF().inCounting(item, have);
     p.classList.toggle('short', short); p.closest('.tf-line')?.classList.toggle('warn', short);
     const first = r.lines.findIndex(x=>x.item === l.item), again = first > -1 && first < i ? ' · ' + t('rrWarnDuplicate')(first + 1) : '';
-    p.textContent = (short ? t('tfNotEnough')(tfQty(c.qty) + ' ' + c.unit, r.from) : tfAvailText(item, r.from)) + again;
+    p.innerHTML = tfAvailHtml(item, r.from, short, l.unit) + (again ? `<span class="tf-usual">${esc(again)}</span>` : '') + tfUsualNote(item, r);
   });
 }
 const TF_ERR = {from:'tfErrFrom', fromUnknown:'tfErrFrom', to:'tfErrTo', toUnknown:'tfErrTo', sameZone:'tfErrSame', noLines:'rrErrNoLines', tooManyLines:'rrErrNoLines',
@@ -255,14 +273,19 @@ function tfErrText(e){
   if(e.code === 'notEnough') return t('rrLineN')(e.line) + ': ' + t('tfErrNotEnough')(tfQty(e.need.qty) + ' ' + e.need.unit, tfQty(e.have.qty) + ' ' + e.have.unit);
   const s = t(TF_ERR[e.code] || 'tfErrItem'); return e.line ? t('rrLineN')(e.line) + ': ' + s : s;
 }
-function tfWarnText(w){
+/* "Item 3 · Lettuce": the line number with the item's short name, so a question says what it is about. */
+function tfLineLabel(w, r){
+  const l = r && r.lines && r.lines[w.line - 1], name = l && l.item ? String(l.item).split(' - ')[0].trim() : '';
+  return t('rrLineN')(w.line) + (name ? ' · ' + name : '');
+}
+function tfWarnText(w, r){
   if(w.code === 'pressed') return t('tfWarnPressed');
   if(w.code === 'repeat') return t('tfWarnRepeat')(rrWhen(w.at));
-  if(w.code === 'duplicate') return t('rrLineN')(w.line) + ': ' + t('rrWarnDuplicate')(w.first);
-  if(w.code === 'allStock') return t('rrLineN')(w.line) + ': ' + t('tfWarnAll')(tfQty(w.have.qty) + ' ' + w.have.unit);
-  if(w.code === 'unusual') return t('rrLineN')(w.line) + ': ' + t('tfWarnUnusual')(rrNum(w.times, 1)) + (w.usual ? ' ' + t('tfUsually')(tfQty(w.usual.qty) + ' ' + w.usual.unit) : '');
-  if(w.code === 'unusualLow') return t('rrLineN')(w.line) + ': ' + t('tfWarnLow')(tfQty(w.usual.qty) + ' ' + w.usual.unit);
-  if(w.code === 'newRoute') return t('rrLineN')(w.line) + ': ' + t('tfWarnRoute')(w.from, w.to);
+  if(w.code === 'duplicate') return tfLineLabel(w, r) + ': ' + t('rrWarnDuplicate')(w.first);
+  if(w.code === 'allStock') return tfLineLabel(w, r) + ': ' + t('tfWarnAll')(tfQty(w.have.qty) + ' ' + w.have.unit, r && r.from);
+  if(w.code === 'unusual') return tfLineLabel(w, r) + ': ' + t('tfWarnUnusual')(rrNum(w.times, 1)) + (w.usual ? ' ' + (w.zone ? t('tfUsuallyZone')(w.zone, tfQty(w.usual.qty) + ' ' + w.usual.unit) : t('tfUsually')(tfQty(w.usual.qty) + ' ' + w.usual.unit)) : '');
+  if(w.code === 'unusualLow') return tfLineLabel(w, r) + ': ' + (w.zone ? t('tfWarnLowZone')(w.zone, tfQty(w.usual.qty) + ' ' + w.usual.unit) : t('tfWarnLow')(tfQty(w.usual.qty) + ' ' + w.usual.unit));
+  if(w.code === 'newRoute') return tfLineLabel(w, r) + ': ' + t('tfWarnRoute')(w.from, w.to) + (w.usualTo?.length ? ' ' + t('tfUsuallyTo')(w.usualTo.join(', ')) : '');
   if(w.code === 'yesterday') return t('tfYesterdayOn')(tfDayLabel(tfYesterday()));
   return '';
 }
@@ -278,7 +301,7 @@ async function tfSend(r){
   }
   // Record for yesterday was confirmed when it was turned on; everything else is read and confirmed here.
   const ask = c.warnings.filter(w=>w.code !== 'yesterday');
-  if(ask.length && !await showConfirm(`<ul class="rr-errs">${ask.map(w=>`<li>${esc(tfWarnText(w))}</li>`).join('')}</ul>`, {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary'})) return;
+  if(ask.length && !await showConfirm(tfSummary(r, ask.map(w=>tfWarnText(w, r))), {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary', enter:true, wide:true})) return;
   tf.sending = true;
   try{
     if(!await tfSaveDraft(r)){ toast(t('saveFailed'), 'error'); return; }
@@ -292,6 +315,14 @@ async function tfSend(r){
   } finally { tf.sending = false; }
 }
 
+/* A transfer at a glance for the approve and check boxes: From → To, how many items and the day, then
+   anything to check, each named by its item. */
+function tfSummary(r, ws){
+  const day = r.yesterday ? t('tfForDay')(tfDayLabel(r.forDay || tfYesterday())) : t('tfToday');
+  return `<div class="cf-sum"><div class="cf-route"><b dir="auto">${esc(r.from || '')}</b><span aria-hidden="true">→</span><b dir="auto">${esc(r.to || '')}</b></div>
+    <div class="cf-meta">${esc(t('rrItemCount')(r.lines.filter(l=>l.item).length))} · ${esc(day)}</div></div>
+    ${ws.length ? `<div class="cf-list-title">${esc(t('rrCheckThese'))}</div><ul class="cf-list">${ws.map(w=>`<li dir="auto">${esc(w)}</li>`).join('')}</ul>` : ''}`;
+}
 /* Sends to Rico. The server may ask about more than the app knows (Rico already pressed Move it for this
    one, or the same transfer was already sent): those are shown and confirmed before it goes. */
 async function tfPost(r, codes){
@@ -300,7 +331,7 @@ async function tfPost(r, codes){
   if(!res.ok && res.data?.error === 'needs_confirmation'){
     const more = (res.data.warnings || []).filter(w=>!codes.includes(w.code));
     if(!more.length) return res;
-    if(!await showConfirm(`<ul class="rr-errs">${more.map(w=>`<li>${esc(tfWarnText(w))}</li>`).join('')}</ul>`, {title:t('rrSureTitle'), okLabel:t('rrSendAnyway'), okClass:'btn-danger'})) return null;
+    if(!await showConfirm(tfSummary(r, more.map(w=>tfWarnText(w, r))), {title:t('rrSureTitle'), okLabel:t('rrSendAnyway'), okClass:'btn-danger', wide:true})) return null;
     res = await api(`transfers/${r.id}/send`, {method:'POST', body:{confirm:[...codes, ...more.map(w=>w.code)]}});
   }
   return res;
@@ -340,7 +371,7 @@ function renderTransferView(){
   return `<div class="rr-page">${rrBackBar(t('tfTitleOne'))}
     ${head}
     ${r.photos.length ? `<div class="section-title">${esc(t('rrPhotos'))}</div>${tfPhotos(r)}` : ''}
-    ${(r.warnings || []).filter(w=>w.code !== 'yesterday').length && r.status === 'review' ? `<div class="rr-card rr-warns">${r.warnings.filter(w=>w.code !== 'yesterday').map(w=>`<p>${esc(tfWarnText(w))}</p>`).join('')}</div>` : ''}
+    ${(r.warnings || []).filter(w=>w.code !== 'yesterday').length && r.status === 'review' ? `<div class="rr-card rr-warns">${r.warnings.filter(w=>w.code !== 'yesterday').map(w=>`<p>${esc(tfWarnText(w, r))}</p>`).join('')}</div>` : ''}
     <div class="section-title">${esc(t('rrItemCount')(r.lines.length))}</div>
     <div class="rr-card"><dl class="rr-facts">${facts.map(([a, b])=>`<dt>${esc(a)}</dt><dd dir="auto">${esc(b || '')}</dd>`).join('')}</dl>${tfLinesList(r)}</div>
     ${r.log?.length ? `<div class="section-title">${esc(t('rrWhatRicoDid'))}</div><div class="rr-card rr-log">${r.log.slice(-20).map(e=>`<p><time>${esc(formatIraqDateTime(new Date(e.at), {hour:'numeric', minute:'2-digit'}))}</time><span>${esc(e.text)}</span></p>`).join('')}</div>` : ''}
@@ -355,17 +386,26 @@ function renderTransferView(){
 function attachTransferView(){
   const r = tfFind(tf.id); if(!r) return;
   document.getElementById('rrBack').onclick = tfBack;
-  const act = async (action, ask)=>{
-    if(ask && !await showConfirm(esc(ask).replace(/\n/g, '<br>'), {okLabel:action === 'approve' ? t('tfApprove') : t('tfCancelOne'), okClass:action === 'approve' ? 'btn-primary' : 'btn-danger'})) return;
+  const act = async (action)=>{
+    // Approving shows what will move once more (and anything to check), and Enter approves; cancelling asks plainly.
+    const ws = (r.warnings || []).filter(w=>w.code !== 'yesterday').map(w=>tfWarnText(w, r)).filter(Boolean);
+    const ok = action === 'approve'
+      ? await showConfirm(tfSummary(r, ws), {title:t('tfApproveTitle')(r.lines.length), okLabel:t('tfApprove'), okClass:'btn-primary', enter:true, wide:true})
+      : await showConfirm(esc(t('tfCancelAsk')), {okLabel:t('tfCancelOne'), okClass:'btn-danger'});
+    if(!ok) return;
     const res = await api(`transfers/${r.id}/${action}`, {method:'POST', body:{}});
     if(!res.ok){ toast(res.data?.error === 'too_late' ? t('tfTooLate') : t('saveFailed'), 'error'); tfLoad(true); return; }
     Object.assign(r, res.data); render();
   };
-  // Approving always shows what will move (and anything unusual) once more.
-  const ws = (r.warnings || []).filter(w=>w.code !== 'yesterday').map(tfWarnText).filter(Boolean);
-  const ask = t('tfApproveAsk')(tfRoute(r), r.lines.length) + (r.yesterday ? '\n' + t('tfYesterdayOn')(tfDayLabel(r.forDay)) : '') + (ws.length ? '\n• ' + ws.join('\n• ') : '');
-  const ap = document.getElementById('tfApprove'); if(ap) ap.onclick = ()=>act('approve', ask);
-  const cn = document.getElementById('tfCancel'); if(cn) cn.onclick = ()=>act('cancel', t('tfCancelAsk'));
+  const ap = document.getElementById('tfApprove'); if(ap) ap.onclick = ()=>act('approve');
+  // Enter on the page approves too (when nothing is being typed and no box is open).
+  document.onkeydown = e=>{
+    if(state.view !== 'transfers' || tf.page !== 'view'){ document.onkeydown = null; return; }
+    if(document.querySelector('.modal-overlay') || e.target.closest?.('input,textarea,select')) return;
+    if(e.key === 'Enter' && ap && !e.target.closest?.('button')){ e.preventDefault(); ap.click(); }
+    else if(e.key === 'Escape'){ e.preventDefault(); tfBack(); }
+  };
+  const cn = document.getElementById('tfCancel'); if(cn) cn.onclick = ()=>act('cancel');
   const cp = document.getElementById('tfCopy'); if(cp) cp.onclick = ()=>tfNewDraft(r);
   const rt = document.getElementById('tfRetry'); if(rt) rt.onclick = ()=>tfRetry(r);
   attachLightbox();
@@ -375,9 +415,9 @@ function attachTransferView(){
 async function tfRetry(r){
   const c = TF().check({from:r.from, to:r.to, yesterday:r.yesterday, lines:r.lines}, tf.data.catalog, tf.data.usual);
   if(c.errors.length){ await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li>${esc(tfErrText(e))}</li>`).join('')}</ul><p>${esc(t('rrRetryCopy'))}</p>`, {title:t('rrFixFirst')}); return; }
-  const ws = c.warnings.map(tfWarnText).filter(Boolean);
-  const msg = (r.pressedAt || r.approvedAt ? `<p><b>${esc(t('tfRetryCheckFirst'))}</b></p>` : '') + `<p>${esc(t('tfApproveAsk')(tfRoute(r), r.lines.length))}</p>` + (ws.length ? `<ul class="rr-errs">${ws.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>` : '');
-  if(!await showConfirm(msg, {title:t('rrRetry'), okLabel:t('rrRetry'), okClass:'btn-primary'})) return;
+  const ws = c.warnings.map(w=>tfWarnText(w, r)).filter(Boolean);
+  const msg = (r.pressedAt || r.approvedAt ? `<p class="cf-alert">${esc(t('tfRetryCheckFirst'))}</p>` : '') + tfSummary(r, ws);
+  if(!await showConfirm(msg, {title:t('rrRetry'), okLabel:t('rrRetry'), okClass:'btn-primary', wide:true, enter:!(r.pressedAt || r.approvedAt)})) return;
   const res = await tfPost(r, c.warnings.map(w=>w.code));
   if(!res) return;
   if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(tfErrText).join(' · ') : t('saveFailed'), 'error'); tfLoad(true); return; }

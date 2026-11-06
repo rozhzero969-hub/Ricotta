@@ -1524,7 +1524,8 @@ function enhanceSelects(root = document){
     if(sel.getAttribute('aria-label')) btn.setAttribute('aria-label', sel.getAttribute('aria-label'));
     sel._selBtn = btn; sel.after(btn);
     btn.addEventListener('pointerdown', e=>{ if(document.activeElement?.matches?.('input,textarea')) e.preventDefault(); });
-    btn.onclick = ()=>openSelSheet(sel);
+    // data-inline (the unit of a receipt or transfer line): a small menu right under the box instead of a sheet.
+    btn.onclick = ()=>sel.hasAttribute('data-inline') ? openSelPop(sel) : openSelSheet(sel);
     sel.addEventListener('change', ()=>selSync(sel));
     new MutationObserver(()=>selSync(sel)).observe(sel, {childList:true, subtree:true, attributes:true, attributeFilter:['disabled']});
     selSync(sel);
@@ -1533,6 +1534,40 @@ function enhanceSelects(root = document){
 function selTitle(sel){
   const lab = sel._selBtn?.id && document.querySelector(`label[for="${CSS.escape(sel._selBtn.id)}"]`);
   return (lab?.textContent || sel.closest('.field')?.querySelector('label')?.textContent || sel.getAttribute('aria-label') || '').trim();
+}
+/* A small menu that opens right under its box (units on receipt and transfer lines): the choices with a
+   check by the chosen one. Arrow keys and Enter work, Escape or a click outside closes it. */
+function openSelPop(sel){
+  closeSelSheet();
+  document.querySelector('.sel-pop')?.remove();
+  const btn = sel._selBtn, r = btn.getBoundingClientRect();
+  const opts = [...sel.options].map(o=>({value:o.value, label:o.textContent, on:o.selected}));
+  const pop = document.createElement('div');
+  pop.className = 'sel-pop'; pop.setAttribute('role', 'listbox');
+  pop.innerHTML = opts.map(o=>`<button type="button" class="sel-pop-opt${o.on ? ' on' : ''}" role="option" aria-selected="${o.on}" data-v="${esc(o.value)}"><span dir="auto">${esc(o.label)}</span>${o.on ? ICON_CHECK : ''}</button>`).join('');
+  document.body.appendChild(pop);
+  const w = Math.max(r.width, 180), h = pop.offsetHeight, below = innerHeight - r.bottom > h + 12;
+  pop.style.width = w + 'px';
+  pop.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+  pop.style.top = (below ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
+  btn.setAttribute('aria-expanded', 'true');
+  const items = [...pop.querySelectorAll('.sel-pop-opt')];
+  let at = Math.max(0, items.findIndex(b=>b.classList.contains('on')));
+  const mark = ()=>items.forEach((b, i)=>b.classList.toggle('kb', i === at));
+  const close = (focusBtn = true)=>{ pop.remove(); btn.setAttribute('aria-expanded', 'false'); removeEventListener('pointerdown', outside, true); removeEventListener('keydown', keys, true); removeEventListener('scroll', gone, true); if(focusBtn) btn.focus({preventScroll:true}); };
+  // Always tells the form (even the same unit), which then goes back to the amount: Enter goes on from there.
+  const choose = v=>{ close(false); sel.value = v; sel.dispatchEvent(new Event('change', {bubbles:true})); };
+  const outside = e=>{ if(!pop.contains(e.target) && e.target !== btn && !btn.contains(e.target)) close(false); };
+  const gone = e=>{ if(!pop.contains(e.target)) close(false); };
+  const keys = e=>{
+    if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); close(); }
+    else if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); at = (at + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length; mark(); }
+    else if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); e.stopPropagation(); choose(items[at].dataset.v); }
+    else if(e.key === 'Tab') close(false);
+  };
+  items.forEach(b=>b.onclick = ()=>choose(b.dataset.v));
+  addEventListener('pointerdown', outside, true); addEventListener('keydown', keys, true); addEventListener('scroll', gone, true);
+  mark();
 }
 let activeSelSheet = null;
 function closeSelSheet(){ activeSelSheet?.(); }

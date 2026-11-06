@@ -424,6 +424,8 @@ function openSpotlight(initial = ''){
 const SHORTCUTS = [
   ['K', 'shortSearch', true], ['/', 'shortSearch'], ['1 – 6', 'shortTabs'], ['R', 'shortRico'], [',', 'shortSettings'],
   ['N', 'shortNew'], ['S', 'shortSend'], ['[  ]', 'shortSupplierTabs'], ['T', 'shortTop'], ['?', 'shortHelp'], ['Esc', 'shortClose'],
+  ['Enter', 'shortRrSend', true], ['⌥  N', 'shortRrAdd'], ['⌥  D', 'shortRrDup'], ['⌥  X', 'shortRrDel'], ['⌥  U', 'shortRrUnit'],
+  ['⌥  ↑  ↓', 'shortRrMove'], ['⌥  Y', 'shortRrYest'], ['Enter', 'shortRrApprove'], ['Esc', 'shortRrBack'],
 ];
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 function openShortcuts(){
@@ -451,7 +453,7 @@ document.addEventListener('keydown', e=>{
   if(k === 's' && state.view === 'order' && canDo('send') && cartCount()) return act(()=>startSendQueue());
   if(k === 'n'){
     const fn = {manage:()=>canDo('catalog') && openItemModal(null), itemsAdmin:()=>canDo('catalog') && openItemModal(null), suppliers:()=>canDo('catalog') && openSupplierModal(null),
-      units:()=>canDo('catalog') && openUnitModal(null), assistant:()=>ricoNewChat()}[state.view];
+      units:()=>canDo('catalog') && openUnitModal(null), assistant:()=>ricoNewChat(), receipts:()=>rrFocusFree(), transfers:()=>rrFocusFree()}[state.view];
     if(fn) act(fn);
     return;
   }

@@ -212,10 +212,11 @@ function showConfirm(message, opts = {}) {
   const okClass = ['btn-danger', 'btn-primary', 'btn-ghost'].includes(opts.okClass) ? opts.okClass : 'btn-danger';
   const title = opts.title ? `<div class="modal-alert-title">${esc(opts.title)}</div>` : '';
   const hero = !!opts.icon;
-  const okHtml = `<button type="button" class="btn ${okClass}" id="modalOkBtn">${esc(okLabel)}</button>`;
+  // enter: Enter presses the main button (approving, sending); otherwise Enter stays on Cancel.
+  const okHtml = `<button type="button" class="btn ${okClass}" id="modalOkBtn">${esc(okLabel)}${opts.enter ? '<span class="kbd" aria-hidden="true">↵</span>' : ''}</button>`;
   const cancelHtml = `<button type="button" class="btn btn-ghost" id="modalCancelBtn">${esc(cancelLabel)}</button>`;
   const dialog = createModal(ensureModalRoot(), `
-    <div class="modal-overlay"><div class="modal-box modal-alert${hero ? ' modal-hero' : ''}">
+    <div class="modal-overlay"><div class="modal-box modal-alert${hero ? ' modal-hero' : ''}${opts.wide ? ' modal-wide' : ''}">
       ${modalSymbol(opts.icon, opts.tone)}${title}<div class="modal-msg">${message}</div>
       <div class="modal-actions${hero ? ' stacked' : ''}">${hero ? okHtml + cancelHtml : cancelHtml + okHtml}</div>
     </div></div>`, {role: 'alertdialog', cancelValue: false});
@@ -223,7 +224,7 @@ function showConfirm(message, opts = {}) {
   dialog.box.querySelector('#modalOkBtn').onclick = () => dialog.finish(true);
   const cancel = dialog.box.querySelector('#modalCancelBtn');
   cancel.onclick = dialog.onCancel;
-  dialog.focus(cancel);
+  dialog.focus(opts.enter ? dialog.box.querySelector('#modalOkBtn') : cancel);
   return dialog.promise;
 }
 

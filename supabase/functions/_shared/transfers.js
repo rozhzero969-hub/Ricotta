@@ -33,6 +33,11 @@
   }
   const qtyOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 999999 && Math.round(v * 1000) === v * 1000;
   /* The storages a transfer can use: Ricotta Restaurant's, without the two Breakfast ones. */
+  /* One route's numbers ("Main Storage>Pizza"): {n, q, hi}; an older plain count is {n} only. */
+  const routeCount = (v) => (v && typeof v === 'object' ? Number(v.n) || 0 : Number(v) || 0);
+  const routeStat = (h, from, to) => { const v = h && h.r && h.r[from + '>' + to]; return v == null ? null : typeof v === 'object' ? v : { n: Number(v) || 0, q: 0, hi: 0 }; };
+  /* What this storage usually gets of this item (base units), when it has had it often enough. */
+  const usualFor = (cat, item, from, to) => { const h = cat && cat.history && cat.history.t && cat.history.t[item]; const rs = routeStat(h, from, to); return { stat: rs && rs.n >= 3 && rs.q > 0 ? rs : null, never: !!(h && h.n >= 3 && h.r && !(rs && rs.n > 0)) }; };
   const zonesOf = (cat) => ((cat && cat.zones) || []).filter((z) => !BREAKFAST.test(z));
   /* The items that can be moved out of a storage: the ones with stock there. */
   const itemsIn = (cat, zone) => ((cat && cat.titems) || []).filter((i) => available(i, zone) > 0);
@@ -68,11 +73,20 @@
       // day) when there are enough moves of this item, otherwise from the transfers made here.
       // Asked only when it is both 3 times the usual and more than anything moved in those weeks, so a
       // big but normal day doesn't ask (tested on a real 24-item transfer: no questions).
-      const h = hist[l.item], u = h && h.n >= 3 ? h.q : usual && usual[l.item];
-      if (u > 0 && base > u * 3 && (!h || h.n < 3 || base > (h.hi || u) * 1.2)) warnings.push({ code: 'unusual', line: n, times: Math.round((base / u) * 10) / 10, usual: inCounting(item, u) });
-      else if (h && h.n >= 5 && u > 0 && base * 10 < u) warnings.push({ code: 'unusualLow', line: n, usual: inCounting(item, u) });
-      // Moved often, but never from this storage to that one: perhaps the wrong storage.
-      if (h && h.n >= 5 && t.from && t.to && h.r && !h.r[t.from + '>' + t.to] && !routeAsked.has(l.item)) { routeAsked.add(l.item); warnings.push({ code: 'newRoute', line: n, from: t.from, to: t.to }); }
+      // Each storage has its own demand (Al Sharqiyah takes 10 kg of tomato a day, Pizza 2 kg every
+      // other day): compared with what this storage usually gets when it is known, otherwise the item.
+      const h = hist[l.item], rs = routeStat(h, t.from, t.to);
+      const ref = rs && rs.n >= 3 && rs.q > 0 ? rs : h && h.n >= 3 ? h : null, u = ref ? ref.q : usual && usual[l.item];
+      const zone = ref && ref === rs ? t.to : null;
+      if (u > 0 && base > u * 3 && (!ref || base > (ref.hi || u) * 1.2)) warnings.push({ code: 'unusual', line: n, times: Math.round((base / u) * 10) / 10, usual: inCounting(item, u), zone });
+      else if (rs && rs.n >= 5 && rs.q > 0 && base * 10 < rs.q) warnings.push({ code: 'unusualLow', line: n, usual: inCounting(item, rs.q), zone: t.to });
+      // Each storage has its own items (Coca-Cola goes to Minibar only): an item moved out of this
+      // storage before, but never to that one, is asked about, with where it usually goes.
+      if (h && h.n >= 3 && t.from && t.to && h.r && !(rs && rs.n > 0) && !routeAsked.has(l.item)) {
+        routeAsked.add(l.item);
+        const usualTo = Object.entries(h.r).filter(([k, v]) => k.indexOf(t.from + '>') === 0 && routeCount(v) > 0).sort((a, b) => routeCount(b[1]) - routeCount(a[1])).slice(0, 3).map(([k]) => k.slice(t.from.length + 1));
+        warnings.push({ code: 'newRoute', line: n, from: t.from, to: t.to, usualTo });
+      }
     });
     // Never more than the storage has (all lines of the same item together): Ricotta Restaurant would
     // move the rest and leave this one behind.
@@ -84,5 +98,5 @@
     if (t.yesterday) warnings.push({ code: 'yesterday' });
     return { errors, warnings, count: lines.filter((l) => l && l.item).length };
   }
-  globalThis.RicottaTransfers = Object.freeze({ unitOptions, available, inCounting, zonesOf, itemsIn, check, MAX_LINES });
+  globalThis.RicottaTransfers = Object.freeze({ unitOptions, available, inCounting, zonesOf, itemsIn, check, usualFor, MAX_LINES });
 })();

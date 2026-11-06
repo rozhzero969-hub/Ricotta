@@ -652,9 +652,9 @@ const tWarn = (w: any) => w.code === "pressed" ? "Rico already pressed Move it f
   : w.code === "repeat" ? "The same transfer (same storages, day, items and amounts) was already sent. Send it again only if it really happened twice."
   : w.code === "duplicate" ? `Item ${w.line} is the same item as item ${w.first}`
   : w.code === "allStock" ? `Item ${w.line}: moves all of it (${num(w.have.qty, 3)} ${esc(w.have.unit)})`
-  : w.code === "unusual" ? `Item ${w.line}: ${num(w.times, 1)} times more than usually moved${w.usual ? ` (usually about ${num(w.usual.qty, 3)} ${esc(w.usual.unit)})` : ""}`
-  : w.code === "unusualLow" ? `Item ${w.line}: far less than usually moved (usually about ${num(w.usual.qty, 3)} ${esc(w.usual.unit)}). A typo?`
-  : w.code === "newRoute" ? `Item ${w.line}: never moved from ${esc(w.from)} to ${esc(w.to)} in the last 3 weeks. The right storage?` : w.code === "yesterday" ? "Recorded for yesterday" : w.code;
+  : w.code === "unusual" ? `Item ${w.line}: ${num(w.times, 1)} times more than usual${w.usual ? ` (${w.zone ? esc(w.zone) + " usually gets" : "usually"} about ${num(w.usual.qty, 3)} ${esc(w.usual.unit)})` : ""}`
+  : w.code === "unusualLow" ? `Item ${w.line}: far less than ${w.zone ? esc(w.zone) + " usually gets" : "usual"} (about ${num(w.usual.qty, 3)} ${esc(w.usual.unit)}). A typo?`
+  : w.code === "newRoute" ? `Item ${w.line}: never went from ${esc(w.from)} to ${esc(w.to)} in the last 3 weeks${w.usualTo?.length ? `; it usually goes to ${esc(w.usualTo.join(", "))}` : ""}. The right storage?` : w.code === "yesterday" ? "Recorded for yesterday" : w.code;
 /* Approve (asked once more) or cancel a transfer Rico filled in. */
 async function tApprove(d: any, chat: number, who: string, kind: string, id: string, cb: any) {
   const { data: r } = await d.from("app_rr_transfers").select("*").eq("id", id).maybeSingle();
