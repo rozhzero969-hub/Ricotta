@@ -19,7 +19,7 @@ import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-11.1";
+const VERSION = "2026-11-11.2";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -416,6 +416,14 @@ function availableBase(text, item) {
 }
 const transferRows = () => page.locator('main button[aria-haspopup="listbox"]:not([aria-label])');
 const rowOf = (i) => page.locator('input[placeholder="amount"]').nth(i).locator('xpath=ancestor::div[.//button[@aria-label="Remove"]][1]');
+/* An item with one unit (Parsley: دانە only) has no Unit menu, just the unit as plain text beside
+   the amount. Returns the unit shown and the menu button when there is one. */
+async function rowUnit(row) {
+  const b = row.locator('button[aria-label="Unit"]');
+  if (await b.count()) return { button: b, unit: flat(await b.innerText()) };
+  const plain = row.locator("div.grid > span").first();
+  return { button: null, unit: (await plain.count()) ? flat(await plain.innerText()) : "" };
+}
 /* The day: "Record for yesterday" puts a transfer on the day before, so it is only done on the day
    after the one it is for; a normal one only on its own day. Anything else would land on a wrong date. */
 function checkDay(t) {
@@ -424,7 +432,9 @@ function checkDay(t) {
   if (t.yesterday && dayBefore(today) !== t.forDay) stop(`This transfer was to be recorded for ${t.forDay}, but today it can only be recorded for ${dayBefore(today)}. Nothing was moved; check the date and send it again.`);
   if (!t.yesterday && today !== t.forDay) stop(`This transfer was for ${t.forDay}, but it is now ${today}. Nothing was moved; send it again with Record for yesterday on if it belongs to yesterday.`);
 }
+let tfFillingAt = null;   // the line being filled in, for a readable message if Rico gets stuck
 async function fillTransfer(t) {
+  tfFillingAt = null;
   checkDay(t);
   // Against the lists as they are now (re-read if older than 10 minutes): stock and names.
   if (!catalogNow || Date.now() - catalogNow.at > 10 * 60_000) await readCatalog().catch((e) => log("Could not re-read the lists:", e.message));
@@ -443,12 +453,17 @@ async function fillTransfer(t) {
   const items = new Map((catalogNow?.titems ?? []).map((i) => [i.name, i]));
   for (let i = 0; i < t.lines.length; i++) {
     const l = t.lines[i];
+    tfFillingAt = { n: i + 1, item: l.item };
     if (i > 0) await page.getByRole("button", { name: /Add another item/ }).click();
     await pickByName(transferRows().nth(i), l.item, `Item ${i + 1}`);
-    const row = rowOf(i), unitB = row.locator('button[aria-label="Unit"]');
-    if (flat(await unitB.innerText()) !== flat(l.unit)) await pickByName(unitB, l.unit, `Item ${i + 1}'s unit`);
+    const u = await rowUnit(rowOf(i));
+    if (u.unit !== flat(l.unit)) {
+      if (!u.button) stop(`Item ${i + 1} (${l.item}) can only be moved in ${u.unit || "one unit"} in Ricotta Restaurant, not ${l.unit}. Nothing was moved.`);
+      await pickByName(u.button, l.unit, `Item ${i + 1}'s unit`);
+    }
     await typeNumber(page.locator('input[placeholder="amount"]').nth(i), l.qty);
   }
+  tfFillingAt = null;
   await page.evaluate(() => document.activeElement?.blur?.());
   await verifyTransfer(t, items, "after filling it in");
   return [`From ${t.from} to ${t.to}${t.yesterday ? ", recorded for yesterday" : ""}`, `${t.lines.length} items filled in, read back and checked against the stock available`];
@@ -469,7 +484,7 @@ async function verifyTransfer(t, items, when) {
     const l = t.lines[i], row = rowOf(i), item = items.get(l.item);
     const name = flat(await transferRows().nth(i).getAttribute("title") ?? await transferRows().nth(i).innerText());
     if (name !== flat(l.item)) bad(`item ${i + 1} reads "${name}", not "${l.item}"`);
-    const unit = flat(await row.locator('button[aria-label="Unit"]').innerText());
+    const { unit } = await rowUnit(row);
     if (unit !== flat(l.unit)) bad(`item ${i + 1}'s unit reads "${unit}", not "${l.unit}"`);
     const q = digits(await page.locator('input[placeholder="amount"]').nth(i).inputValue());
     if (Number(q) !== Number(l.qty)) bad(`item ${i + 1}'s amount reads ${q}, not ${l.qty}`);
@@ -548,8 +563,10 @@ async function workTransfer(t) {
       await readCatalog().catch(() => {});   // the stock changed: the app shows it at once
     }
   } catch (e) {
-    const msg = e instanceof Stop ? e.message : `Rico ran into an error: ${e.message}`;
-    log("STOPPED:", msg);
+    const where = tfFillingAt ? ` on item ${tfFillingAt.n} (${tfFillingAt.item})` : "";
+    const msg = e instanceof Stop ? e.message
+      : `Rico got stuck${where} and stopped. ${pressedMove ? "Move it was already pressed: check Recent transfers in Ricotta Restaurant before doing anything." : "Nothing was moved; use Copy to send it again."}`;
+    log("STOPPED:", msg, e instanceof Stop ? "" : `(${String(e.message).split("\n")[0]})`);
     await photo(page, t.id, "problem", "transfers").catch(() => {});
     if (!pressedMove) await go("/inventory/transfer", t.id).catch(() => {});   // nothing moved: the form is cleared
     await treport(t.id, { status: "problem", problem: msg, log: [msg] }).catch((x) => log("report failed:", x.message));

@@ -229,7 +229,8 @@ function tfPaintStock(r){
     const p = document.querySelector(`[data-line="${i}"] .tf-avail`), item = tfItem(l.item); if(!p || !item) return;
     const have = TF().available(item, r.from), short = need.get(l.item) > have + 1e-9, c = TF().inCounting(item, have);
     p.classList.toggle('short', short); p.closest('.tf-line')?.classList.toggle('warn', short);
-    p.textContent = short ? t('tfNotEnough')(tfQty(c.qty) + ' ' + c.unit, r.from) : tfAvailText(item, r.from);
+    const first = r.lines.findIndex(x=>x.item === l.item), again = first > -1 && first < i ? ' · ' + t('rrWarnDuplicate')(first + 1) : '';
+    p.textContent = (short ? t('tfNotEnough')(tfQty(c.qty) + ' ' + c.unit, r.from) : tfAvailText(item, r.from)) + again;
   });
 }
 const TF_ERR = {from:'tfErrFrom', fromUnknown:'tfErrFrom', to:'tfErrTo', toUnknown:'tfErrTo', sameZone:'tfErrSame', noLines:'rrErrNoLines', tooManyLines:'rrErrNoLines',
