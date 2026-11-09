@@ -67,7 +67,8 @@ import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { adminAi, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
 import { helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
 import { transfersRoute } from "./transfers.ts";
-import { telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
+import { scanReceipt } from "./scan.ts";
+import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -93,7 +94,7 @@ const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers")
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
   : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : [...DEFAULT_ROLES];
 // Account settings the app may save (Settings), and the ones with a list of choices.
-const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "ricoBriefing", "ricoMood", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto"]);
+const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "ricoBriefing", "ricoMood", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto", "ricoLively"]);
 const SETTING_CHOICES: Record<string, string[]> = { darkMode: ["auto", "on", "off"], ricoStyle: ["normal", "short", "warm"] };
 // Rozha may undo an order she sent this long without typing her PIN.
 const UNDO_MS = 15 * 60_000;
@@ -820,6 +821,8 @@ Deno.serve(async (req) => {
       if (!(await helperAllowed(req))) return fail("unauthorized", 401);
       const limited = await requestLimit(["helper"], [900]); if (limited) return limited;
       const hb = M === "GET" ? {} : await readBody(req, path.endsWith("/photo") || path === "helper/shot" ? 4_400_000 : MAX_BODY_BYTES);
+      // Rico's evening check on Telegram (once a day; he asks after 22:00 Erbil).
+      if (M === "POST" && path === "helper/daily-summary") return json(await dailySummary(db));
       return await helperRoute({ db, json, fail, account: null, rozha: false }, M, path, hb);
     }
 
@@ -832,7 +835,7 @@ Deno.serve(async (req) => {
     if(path==="problems"){keys.push(`account:${s.account}:problems`);limits.push(20);}
     if(path.startsWith("rico-chats") && M!=="GET"){keys.push(`account:${s.account}:chats`);limits.push(40);}
     const limited=path==="logout"?null:await requestLimit(keys,limits);if(limited)return limited;
-    const b = M === "GET" ? {} : await readBody(req, MAX_BODY_BYTES);
+    const b = M === "GET" ? {} : await readBody(req, path === "receipts/scan" ? 4_400_000 : MAX_BODY_BYTES);
     let m: RegExpMatchArray | null;
 
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
@@ -840,6 +843,13 @@ Deno.serve(async (req) => {
       if (!rozha) return fail("forbidden", 403);
       if (M === "GET") return json(await telegramStatus(db));
       if (M === "POST") { const r = await telegramLink(db, s.account, `${SUPABASE_URL}/functions/v1/api`); return r.error ? fail(r.error, 503) : json(r); }
+    }
+    // A paper receipt's photo read into the form (the person checks and sends it as usual).
+    if (M === "POST" && path === "receipts/scan") {
+      if (!can(s, "receipts")) return fail("forbidden", 403);
+      const limited = await requestLimit(["scan:" + s.account], [30]); if (limited) return limited;
+      const r = await scanReceipt(db, b.image);
+      return (r as any).error ? fail((r as any).error, 422) : json(r);
     }
     if (path === "receipts" || path === "receipts-settings" || path === "receipts-settings/rico" || path === "receipts-activity" || path.startsWith("receipts/")) {
       if (!can(s, "receipts")) return fail("forbidden", 403);
@@ -868,6 +878,12 @@ Deno.serve(async (req) => {
       return error ? fail("save_failed", 500) : ok();
     }
 
+    // Admin > Server: the database's and the photo files' sizes against the free plan's limits.
+    if (M === "GET" && path === "admin/server") {
+      if (!rozha) return fail("forbidden", 403);
+      const [dbSize, files] = await Promise.all([db.rpc("app_internal_db_size"), db.rpc("app_internal_files_size")]);
+      return json({ dbBytes: Number(dbSize.data) || 0, filesBytes: Number(files.data) || 0, dbLimit: 500 * 1048576, filesLimit: 1073741824 });
+    }
     if (M === "GET" && path === "admin/diagnostics") {
       if (!rozha) return fail("forbidden",403);
       const started=performance.now();
@@ -1017,7 +1033,7 @@ Deno.serve(async (req) => {
         : key === "pinnedSuppliers" ? Array.isArray(value) && value.length <= 30 && value.every((v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 120)
         // Her own keys for the Receipts and Transfers line shortcuts ({add:"Alt+KeyN", ...}); {} is the standard ones.
         : key === "keys" ? !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length <= 12
-          && Object.entries(value).every(([k, v]) => ["add", "dup", "del", "unit", "up", "down", "yest"].includes(k) && typeof v === "string" && /^(Mod\+)?(Alt\+)?(Shift\+)?[A-Za-z0-9]{1,20}$/.test(v) && /^(Mod|Alt)/.test(v))
+          && Object.entries(value).every(([k, v]) => ["unit_menu", "next", "add", "dup", "del", "unit", "up", "down", "yest"].includes(k) && typeof v === "string" && /^(Mod\+)?(Alt\+)?(Shift\+)?[A-Za-z0-9]{1,20}$/.test(v) && (k === "unit_menu" || k === "next" || /^(Mod|Alt)/.test(v)))
         : (SETTING_CHOICES[key] ?? []).includes(value);
       if (!ok_) return fail("invalid_input");
       const { data: me, error: readError } = await app("accounts").select("settings").eq("id", s.account).maybeSingle();

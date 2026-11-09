@@ -48,12 +48,11 @@ addEventListener('online', async ()=>{ if(!tf.data) return; await tfLoad(true); 
 addEventListener('offline', ()=>{ if(state.view === 'transfers' && tf.page === 'edit') rrRepaintKeepFocus(); });
 const tfKeep = ()=> tf.data && rrKeepDrafts('tf', tf.data.transfers, tfIsEmpty);
 const tfIsPractice = r=> r.status === 'problem' && (r.mode === 'practice' || /^Practice run/.test(r.problem || ''));
-const tfTone = r=> tfIsPractice(r) || r.status === 'cancelled' || r.status === 'draft' ? 'draft' : r.status === 'moved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : 'busy';
 const tfStatusText = r=> tfIsPractice(r) ? t('tfPracticeRun') : r.pendingSend && r.status === 'draft' ? t('rrWaitingToSend') : t('tfStatus_' + r.status);
 function tfLine(r){
   const n = (r.lines || []).filter(l=>l.item).length;
   return [t('rrItemCount')(n), rrWhen(r.sentAt || r.createdAt), accountLabel(r.by), rrSourceName(r), r.yesterday ? t('tfForYesterday') : '', r.auto ? t('tfNoSecond') : '',
-    r.status === 'problem' ? r.problem || tfStatusText(r) : tfStatusText(r)].filter(Boolean).join(' · ');
+    r.status === 'problem' ? r.problem || '' : ''].filter(Boolean).join(' · ');
 }
 const tfFiltered = list=> list.filter(r=>tf.filter.src === 'all' || (r.source === 'telegram' ? 'telegram' : 'app') === tf.filter.src);
 /* Under each line: what the To storage usually gets of this item, or that it never gets it. */
@@ -77,8 +76,8 @@ function renderTransfers(){
   if(cur && cur.status === 'draft'){ tf.id = cur.id; tf.page = 'edit'; } else tfNewDraft(null, false);
   return renderTransferEdit();
 }
-const tfRow = r=>`<button type="button" class="rr-row" data-tf-open="${esc(r.id)}"><i class="rr-dot ${tfTone(r)}" aria-hidden="true"></i>
-  <span class="rr-row-main"><b dir="auto">${esc(tfRoute(r))}</b><small>${esc(tfLine(r))}</small></span></button>`;
+const tfRow = r=>`<button type="button" class="rr-row${r.status === 'cancelled' ? ' is-off' : ''}" data-tf-open="${esc(r.id)}">
+  <span class="rr-row-main"><b dir="auto">${esc(tfRoute(r))}</b><small>${esc(tfLine(r))}</small></span>${r.status === 'draft' && !r.pendingSend ? '' : stChip(r, tfStatusText(r))}</button>`;
 function tfBelow(){
   const list = tf.data.transfers.filter(r=>!tfIsPractice(r)), shown = tfFiltered(list), today = tfToday();
   const isToday = r=> erbilDate(new Date(r.sentAt || r.createdAt)) === today;
@@ -93,7 +92,7 @@ function tfBelow(){
     <div class="section-title rr-today-title"><span>${esc(t('rrToday'))}</span>${moved.length ? `<small>${esc(t('tfMovedToday')(moved.length))} · ${esc(t('tfItemsMoved')(moved.reduce((n, r)=>n + r.lines.length, 0)))}</small>` : ''}</div>
     ${done.length ? `<div class="rr-list">${done.map(tfRow).join('')}</div>` : `<p class="rr-none">${esc(t('tfNoneToday'))}</p>`}
     <button type="button" class="rr-to-history" data-to-history="transfers">${esc(t('rrSeeHistory'))}</button>
-    ${tf.data.catalog?.at ? `<p class="rr-foot">${esc(t('tfStockAt')(formatIraqDateTime(new Date(tf.data.catalog.at), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'})))}</p>` : `<p class="rr-foot">${esc(t('rrNoCatalog'))}</p>`}
+    ${rrStockNote(tf.data.catalog?.at, tf.data.catalog?.history?.at)}
   </div>`;
 }
 /* The filter (made in the app or on Telegram), for the tab and History > Transfers. */
@@ -152,6 +151,9 @@ function renderTransferEdit(){
   const ready = r.from && r.to;
   const lines = r.lines.map((l, i)=>{
     const item = tfItem(l.item), units = item ? TF().unitOptions(item) : [];
+    // An item with no unit, or a unit it no longer has (changed in Ricotta Restaurant), gets its
+    // counting unit at once: a line never shows without a unit.
+    if(item && units.length && !units.some(u=>u.name === l.unit)){ l.unit = units[0].name; tfSaveSoon(r); }
     const have = item ? TF().available(item, r.from) : 0, short = item && need.get(l.item) > have + 1e-9;
     return `<div class="rr-line tf-line${short ? ' warn' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="tfItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('tfItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
@@ -176,7 +178,7 @@ function renderTransferEdit(){
     <button type="button" class="tf-yest${r.yesterday ? ' on' : ''}" id="tfYest" role="switch" aria-checked="${r.yesterday}">
       <span><b>${esc(t('tfYesterday'))}</b><small>${esc(r.yesterday ? t('tfYesterdayOn')(tfDayLabel(tfYesterday())) : t('tfYesterdayHint'))}</small></span><i aria-hidden="true"></i></button>
     <div class="rr-sum">
-      <div class="rr-sum-total"><span>${esc(t('tfItemsLabel'))}:</span> <b>${r.lines.filter(l=>l.item).length}</b><small>${esc(ready ? `${r.from} → ${r.to}` : '')}</small></div>
+      <div class="rr-sum-total"><b>${esc(t('rrItemCount')(r.lines.filter(l=>l.item).length))}</b><small>${esc(ready ? `${r.from} → ${r.to}` : '')}</small></div>
       <div class="rr-sum-acts"><button type="button" class="rr-cancel" id="tfDiscard">${esc(t('cancel'))}</button><button type="button" class="rr-keep" id="tfKeepDraft" title="${esc(t('rrKeepDraftHint'))}">${esc(t('rrKeepDraft'))}</button>
         <button type="button" class="btn btn-primary" id="tfSend" ${ready ? '' : 'disabled'}>${ICON_CHECK}<span>${esc(featureOn('tfAuto') ? t('tfSendMove') : t('tfSend'))}</span></button></div>
     </div>
@@ -217,7 +219,7 @@ function attachTransferEdit(){
   document.querySelectorAll('[data-l-item]').forEach(inp=>{
     const i = +inp.dataset.lItem;
     rrComboBind(inp, names, (v, again)=>{
-      const l = r.lines[i];
+      const l = r.lines[i]; if(!l) return;   // the line went away while the list was open
       if(!again && v !== l.item){
         l.item = v;
         // The unit Ricotta Restaurant counts it in (what "available" is shown in); a click changes it.
@@ -227,7 +229,7 @@ function attachTransferEdit(){
       go('tfQty' + i);
     }, stockOf);
   });
-  document.querySelectorAll('[data-l-unit]').forEach(s=>s.onchange = ()=>{ const i = +s.dataset.lUnit; r.lines[i].unit = s.value; changed(true); go('tfQty' + i); });
+  document.querySelectorAll('[data-l-unit]').forEach(s=>s.onchange = ()=>{ const i = +s.dataset.lUnit; if(!r.lines[i]) return; r.lines[i].unit = s.value; changed(true); go('tfQty' + i); });
   const addLine = (n = 1)=>{ for(let k = 0; k < n; k++) r.lines.push({item:'', unit:'', qty:null}); repaint(); go('tfItem' + (r.lines.length - n)); };
   // Item and amount filled on the last line: the next empty line appears by itself.
   const autoLine = el=>{
@@ -239,12 +241,16 @@ function attachTransferEdit(){
   };
   document.querySelectorAll('[data-l-qty]').forEach(el=>{
     const i = +el.dataset.lQty;
-    el.oninput = ()=>{ r.lines[i].qty = rrOnlyNum(el, true, true); tfSaveSoon(r); tfPaintStock(r); autoLine(el); };
-    enter(el, ()=>{ tfSaveSoon(r); if(i < r.lines.length - 1) go('tfItem' + (i + 1)); else addLine(); });
-    // Tab on the amount opens the line's unit menu; Tab again moves to the next unit, Enter picks it.
+    // A box from a form that was just redrawn (a line removed, another one opened) does nothing.
+    el.oninput = ()=>{ if(!r.lines[i] || tfFind(tf.id) !== r) return; r.lines[i].qty = rrOnlyNum(el, true, true); tfSaveSoon(r); tfPaintStock(r); autoLine(el); };
+    // On an amount (keys can be changed under ?): Enter goes to the next item; Tab opens the line's unit
+    // menu, Tab again moves through the units and Enter picks one.
     el.addEventListener('keydown', e=>{
+      if(e.isComposing) return;
+      const combo = rrCombo_(e);
+      if(combo === rrKeyOf('next')){ e.preventDefault(); tfSaveSoon(r); if(i < r.lines.length - 1) go('tfItem' + (i + 1)); else addLine(); return; }
       const sel = document.getElementById('tfUnit' + i);
-      if(e.key !== 'Tab' || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey || !sel || sel.disabled || sel.options.length < 2) return;
+      if(combo !== rrKeyOf('unit_menu') || !sel || sel.disabled || sel.options.length < 2) return;
       e.preventDefault(); tfSaveSoon(r); openSelPop(sel);
     });
   });
@@ -270,7 +276,7 @@ function attachTransferEdit(){
     if(state.view !== 'transfers' || tf.page !== 'edit'){ document.onkeydown = null; return; }
     if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.activeElement?.blur?.(); tfSend(r); return; }
     rrLineKeys(e, {add:()=>addLine(), yesterday:()=>document.getElementById('tfYest')?.click(),
-      dup:i=>{ const l = r.lines[i]; r.lines.splice(i + 1, 0, {item:l.item, unit:l.unit, qty:null}); changed(true); go('tfQty' + (i + 1)); }});
+      dup:i=>{ const l = r.lines[i]; if(!l) return; r.lines.splice(i + 1, 0, {item:l.item, unit:l.unit, qty:null}); changed(true); go('tfQty' + (i + 1)); }});
   };
   if(tf.fresh){ tf.fresh = false; if(!matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>go(r.from ? 'tfTo' : 'tfFrom')); }
 }
@@ -296,13 +302,15 @@ function tfLineLabel(w, r){
   const l = r && r.lines && r.lines[w.line - 1], name = l && l.item ? String(l.item).split(' - ')[0].trim() : '';
   return t('rrLineN')(w.line) + (name ? ' · ' + name : '');
 }
+/* An amount with its unit kept in reading order inside any sentence ("1 دانە", never "دانە 1"). */
+const qtyU = (q, u)=>'\u2066' + q + ' ' + u + '\u2069';
 function tfWarnText(w, r){
   if(w.code === 'pressed') return t('tfWarnPressed');
   if(w.code === 'repeat') return t('tfWarnRepeat')(rrWhen(w.at));
   if(w.code === 'duplicate') return tfLineLabel(w, r) + ': ' + t('rrWarnDuplicate')(w.first);
-  if(w.code === 'allStock') return tfLineLabel(w, r) + ': ' + t('tfWarnAll')(tfQty(w.have.qty) + ' ' + w.have.unit, r && r.from);
-  if(w.code === 'unusual') return tfLineLabel(w, r) + ': ' + t('tfWarnUnusual')(rrNum(w.times, 1)) + (w.usual ? ' ' + (w.zone ? t('tfUsuallyZone')(w.zone, tfQty(w.usual.qty) + ' ' + w.usual.unit) : t('tfUsually')(tfQty(w.usual.qty) + ' ' + w.usual.unit)) : '');
-  if(w.code === 'unusualLow') return tfLineLabel(w, r) + ': ' + (w.zone ? t('tfWarnLowZone')(w.zone, tfQty(w.usual.qty) + ' ' + w.usual.unit) : t('tfWarnLow')(tfQty(w.usual.qty) + ' ' + w.usual.unit));
+  if(w.code === 'allStock') return tfLineLabel(w, r) + ': ' + t('tfWarnAll')(qtyU(tfQty(w.have.qty), w.have.unit), r && r.from);
+  if(w.code === 'unusual') return tfLineLabel(w, r) + ': ' + t('tfWarnUnusual')(rrNum(w.times, 1)) + (w.usual ? ' ' + (w.zone ? t('tfUsuallyZone')(w.zone, qtyU(tfQty(w.usual.qty), w.usual.unit)) : t('tfUsually')(qtyU(tfQty(w.usual.qty), w.usual.unit))) : '');
+  if(w.code === 'unusualLow') return tfLineLabel(w, r) + ': ' + (w.zone ? t('tfWarnLowZone')(w.zone, qtyU(tfQty(w.usual.qty), w.usual.unit)) : t('tfWarnLow')(qtyU(tfQty(w.usual.qty), w.usual.unit)));
   if(w.code === 'newRoute') return tfLineLabel(w, r) + ': ' + t('tfWarnRoute')(w.from, w.to) + (w.usualTo?.length ? ' ' + t('tfUsuallyTo')(w.usualTo.join(', ')) : '');
   if(w.code === 'yesterday') return t('tfYesterdayOn')(tfDayLabel(tfYesterday()));
   return '';
@@ -357,7 +365,7 @@ function tfSummary(r, ws){
   const day = r.yesterday ? t('tfForDay')(tfDayLabel(r.forDay || tfYesterday())) : t('tfToday');
   return `<div class="cf-sum"><div class="cf-route"><b dir="auto">${esc(r.from || '')}</b><span aria-hidden="true">→</span><b dir="auto">${esc(r.to || '')}</b></div>
     <div class="cf-meta">${esc(t('rrItemCount')(r.lines.filter(l=>l.item).length))} · ${esc(day)}</div></div>
-    ${ws.length ? `<div class="cf-list-title">${esc(t('rrCheckThese'))}</div><ul class="cf-list">${ws.map(w=>`<li dir="auto">${esc(w)}</li>`).join('')}</ul>` : ''}`;
+    ${ws.length ? `<ul class="cf-list">${ws.map(w=>`<li dir="auto">${esc(w)}</li>`).join('')}</ul>` : ''}`;
 }
 /* Sends to Rico. The server may ask about more than the app knows (Rico already pressed Move it for this
    one, or the same transfer was already sent): those are shown and confirmed before it goes. */
@@ -477,8 +485,8 @@ function renderTransferHistory(){
     const list = all.filter(r=>dayOf(r) === day).sort((a, b)=>Date.parse(b.sentAt || b.createdAt) - Date.parse(a.sentAt || a.createdAt));
     const moved = list.filter(r=>r.status === 'moved');
     return `<div class="hist-day tf-day"><span>${esc(dayLabel(day + 'T12:00:00+03:00'))}</span>${moved.length ? `<span class="tf-export"><button type="button" data-tf-export="${day}" data-format="pdf">PDF</button><button type="button" data-tf-export="${day}" data-format="excel">Excel</button></span>` : ''}</div>`
-      + list.map(r=>`<article class="hist-card rr-hist" data-search-row data-search-text="${esc([r.from, r.to, ...r.lines.map(l=>l.item)].join(' '))}">
-        <div class="hist-top"><div class="hist-date"><b>${esc(formatIraqDateTime(new Date(r.sentAt || r.createdAt), {hour:'numeric', minute:'2-digit'}))}</b><span class="rr-hist-state"><i class="rr-dot ${tfTone(r)}" aria-hidden="true"></i>${esc(tfStatusText(r))}</span></div>
+      + list.map(r=>`<article class="hist-card rr-hist${r.status === 'cancelled' ? ' is-off' : ''}" data-search-row data-search-text="${esc([r.from, r.to, ...r.lines.map(l=>l.item)].join(' '))}">
+        <div class="hist-top"><div class="hist-date"><b>${esc(formatIraqDateTime(new Date(r.sentAt || r.createdAt), {hour:'numeric', minute:'2-digit'}))}</b>${stChip(r, tfStatusText(r))}</div>
           <span class="rr-hist-total">${esc(t('rrItemCount')(r.lines.length))}</span></div>
         <div class="rr-hist-name"><b dir="auto">${esc(tfRoute(r))}</b><small>${esc([rrSourceName(r), accountLabel(r.by), r.yesterday ? t('tfForYesterday') : ''].filter(Boolean).join(' · '))}</small></div>
         <ol class="rr-hist-lines tf-num">${r.lines.map((l, i)=>`<li><span dir="auto"><i>${i + 1}</i> ${esc(l.item)}</span><b>${esc(tfQty(l.qty))} <bdi>${esc(l.unit)}</bdi></b></li>`).join('')}</ol>
@@ -578,9 +586,12 @@ function attachDaysHistory(){
 
 /* ---------- Files Rico offers in the chat ---------- */
 async function ricoMakeFile(d){
-  if((d.what !== 'transfers_day') && !rr.data){ await rrLoad(true); }
-  if((d.what === 'day' || d.what === 'transfers_day') && !tf.data){ await tfLoad(true); }
-  if((d.what !== 'transfers_day' && !rr.data) || ((d.what === 'day' || d.what === 'transfers_day') && !tf.data)){ toast(t('loadFailed'), 'error'); return; }
+  const needR = canOpen('receipts') && d.what !== 'transfers_day', needT = canOpen('transfers') && ['day', 'transfers_day', 'photos', 'zip'].includes(d.what);
+  if(needR && !rr.data) await rrLoad(true);
+  if(needT && !tf.data) await tfLoad(true);
+  if((needR && !rr.data) || (needT && !tf.data)){ toast(t('loadFailed'), 'error'); return; }
+  if(d.what === 'photos') return ricoPhotosZip(d);
+  if(d.what === 'zip') return ricoDaysZip(d.day, d.to || d.day);
   if(d.what === 'day') return dayExport(d.day, d.format);
   if(d.what === 'transfers_day') return tfExportDay(d.day, d.format);
   const list = d.what === 'receipt' ? rr.data.receipts.filter(r=>r.id === d.receipt)
@@ -612,3 +623,46 @@ async function rrExportList(list, format, day){
 
 /* A unit for files with its size first ("(×6) سیت"), so it reads the same in a PDF and in Excel. */
 function fileUnit(label){ const m = rrUnitShow(label).match(/^(.*?)\s*(\([^)]*\))\s*$/); return m ? `${m[2]} ${m[1]}` : rrUnitShow(label); }
+
+/* Files made into one ZIP: the day files are made as for a download, but kept instead of handed over. */
+async function collectFiles(run){
+  const out = [], de = deliverExcel, dp = deliverPdf;
+  deliverExcel = async (bytes, name)=>{ out.push([safeFileName(name) + '.xlsx', bytes]); };
+  deliverPdf = async (doc, name)=>{ out.push([safeFileName(name) + '.pdf', new Uint8Array(await (await brandedPdf(doc)).arrayBuffer())]); };
+  try{ await run(); } finally{ deliverExcel = de; deliverPdf = dp; }
+  return out;
+}
+/* Rico's photos (before, after, problem) of receipts and transfers, as files for a ZIP. */
+async function photoFiles(list, kind){
+  const out = [];
+  for(const r of list){
+    if(!r.photos?.length) continue;
+    const res = await api(`${kind}/${r.id}/photos`, {quiet:true});
+    const folder = safeFileName(kind === 'receipts' ? `${r.supplier} #${r.invoice || ''}` : `${r.from} to ${r.to} ${(r.sentAt || '').slice(11, 16).replace(':', '')}`);
+    let n = 0;
+    for(const p of res.data?.photos || []){
+      try{ const b = await (await fetch(p.url)).arrayBuffer(); out.push([`${folder}/${p.kind}-${++n}.jpg`, new Uint8Array(b)]); }catch(_){}
+    }
+  }
+  return out;
+}
+const dayOfR = r=> erbilDate(new Date(r.savedAt || r.sentAt || r.createdAt)), dayOfT = r=> r.forDay || erbilDate(new Date(r.sentAt || r.createdAt));
+async function ricoPhotosZip(d){
+  const recs = d.receipt ? (rr.data?.receipts || []).filter(r=>r.id === d.receipt) : d.transfer ? [] : (rr.data?.receipts || []).filter(r=>r.status !== 'draft' && dayOfR(r) === d.day);
+  const moves = d.transfer ? (tf.data?.transfers || []).filter(r=>r.id === d.transfer) : d.receipt ? [] : (tf.data?.transfers || []).filter(r=>r.status !== 'draft' && dayOfT(r) === d.day);
+  const files = [...await photoFiles(recs, 'receipts'), ...await photoFiles(moves, 'transfers')];
+  if(!files.length){ toast(t('ricoFileNone'), 'warn'); return; }
+  return deliverFile(new Blob([zipStore(files)], {type:'application/zip'}), `${t('ricoFilePhotos')} ${d.day || ''}.zip`.replace(/\s+\.zip$/, '.zip'));
+}
+/* Everything for a day or several: each day's PDF and Excel (receipts and transfers) and all the photos. */
+async function ricoDaysZip(from, to){
+  const files = [];
+  for(let day = from; day <= to; day = (()=>{ const x = new Date(day + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); })()){
+    const recs = (rr.data?.receipts || []).filter(r=>r.status !== 'draft' && dayOfR(r) === day), moves = (tf.data?.transfers || []).filter(r=>r.status !== 'draft' && dayOfT(r) === day);
+    if(!recs.length && !moves.length) continue;
+    const docs = await collectFiles(async ()=>{ await dayExport(day, 'pdf'); await dayExport(day, 'excel'); });
+    files.push(...docs.map(([n, b])=>[`${day}/${n}`, b]), ...(await photoFiles(recs, 'receipts')).map(([n, b])=>[`${day}/photos/${n}`, b]), ...(await photoFiles(moves, 'transfers')).map(([n, b])=>[`${day}/photos/${n}`, b]));
+  }
+  if(!files.length){ toast(t('ricoFileNone'), 'warn'); return; }
+  return deliverFile(new Blob([zipStore(files)], {type:'application/zip'}), `Ricotta ${from}${to !== from ? ' to ' + to : ''}.zip`);
+}

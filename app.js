@@ -1562,8 +1562,9 @@ function openSelPop(sel){
   const keys = e=>{
     if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); close(); }
     // Tab (and the arrows) go through the choices, round and round; Enter picks one.
-    else if(e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab'){ e.preventDefault(); e.stopPropagation(); at = (at + (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey) ? 1 : items.length - 1)) % items.length; mark(); }
-    else if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); e.stopPropagation(); choose(items[at].dataset.v); }
+    // The unit-menu key (Tab unless changed) and the arrows go through the choices; Enter (or the next-item key) picks.
+    else if(e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab' || (typeof rrKeyOf === 'function' && rrCombo_(e) === rrKeyOf('unit_menu'))){ e.preventDefault(); e.stopPropagation(); at = (at + (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey) ? items.length - 1 : 1)) % items.length; mark(); }
+    else if(e.key === 'Enter' || e.key === ' ' || (typeof rrKeyOf === 'function' && rrCombo_(e) === rrKeyOf('next'))){ e.preventDefault(); e.stopPropagation(); choose(items[at].dataset.v); }
   };
   items.forEach(b=>b.onclick = ()=>choose(b.dataset.v));
   addEventListener('pointerdown', outside, true); addEventListener('keydown', keys, true); addEventListener('scroll', gone, true);

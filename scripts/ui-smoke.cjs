@@ -347,7 +347,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('[data-pin-change], .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
     // Admin: one screen of tiles, each opening its page. PINs: Rozha's current PIN first, the new one typed twice.
     await openView(page,'admin');
-    assert.equal(await page.locator('.ad-board [data-admin-open]').count(),10,'Admin shows every page as a tile');
+    assert.equal(await page.locator('.ad-list [data-admin-open]').count(),10,'Admin lists every page');
     await page.locator('[data-admin-open="pins"]').click();await settle(page);
     assert.equal(await page.locator('.admin-heading h1').textContent(),'PINs');
     assert.equal(await page.locator('[data-pin-change]').count(),2,'Admin changes both PINs');
@@ -365,7 +365,7 @@ const server=http.createServer((req,res)=>{
     await page.waitForFunction(()=>!document.querySelector('.modal-form'));
     assert.deepEqual(calls.filter(c=>c.endpoint==='admin/pin').at(-1).body,{account:'yunis',currentPin:'471906',newPin:'591837'},'the change goes out once it is right');
     await page.locator('.admin-heading .page-back').click();await settle(page);
-    assert.equal(await page.locator('.ad-board').count(),1,'Back returns to the Admin tiles');
+    assert.equal(await page.locator('.ad-list').count(),3,'Back returns to the Admin list');
     await page.locator('[data-admin-open="rico"]').click();await settle(page);
     // Rico's AI: each AI with its state, replies and tokens. Keys are never typed or shown in the app.
     await page.waitForSelector('.ad-ai-list .ad-ai');
@@ -621,7 +621,7 @@ const server=http.createServer((req,res)=>{
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await featureBox('showLastQty').click();
     assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('[data-feature]')].map(i=>i.dataset.feature+':'+i.checked)),
-      ['swipe:true','showLastQty:false','compactRows:false','soundQty:true','soundSent:true','soundRico:true','soundError:true','soundMilestone:true','soundUndo:true','ricoSheet:true','ricoBriefing:true','ricoMood:true','tables:false','kitchenMode:false','milestones:true'],'the defaults, in their sections');
+      ['swipe:true','showLastQty:false','compactRows:false','soundQty:true','soundSent:true','soundRico:true','soundError:true','soundMilestone:true','soundUndo:true','ricoSheet:true','ricoMood:true','ricoLively:true','tables:false','kitchenMode:false','milestones:true'],'the defaults, in their sections');
     assert.deepEqual(await y.page.locator('.content .section-title').evaluateAll(els=>els.map(e=>e.textContent)),['Notifications','Ordering','Sounds','Rico','Look','Help','Privacy'],'settings are in sections');
     assert.equal(await y.page.locator('#reminderEnabled,#reminderTime').count(),0,'no daily reminder');
     assert.equal(await y.page.locator('#settingsSignOut').count(),1,'Sign Out is at the end of Settings');

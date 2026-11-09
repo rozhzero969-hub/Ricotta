@@ -76,16 +76,22 @@
       // Each storage has its own demand (Al Sharqiyah takes 10 kg of tomato a day, Pizza 2 kg every
       // other day): compared with what this storage usually gets when it is known, otherwise the item.
       const h = hist[l.item], rs = routeStat(h, t.from, t.to);
-      const ref = rs && rs.n >= 3 && rs.q > 0 ? rs : h && h.n >= 3 ? h : null, u = ref ? ref.q : usual && usual[l.item];
-      const zone = ref && ref === rs ? t.to : null;
-      if (u > 0 && base > u * 3 && (!ref || base > (ref.hi || u) * 1.2)) warnings.push({ code: 'unusual', line: n, times: Math.round((base / u) * 10) / 10, usual: inCounting(item, u), zone });
-      else if (rs && rs.n >= 5 && rs.q > 0 && base * 10 < rs.q) warnings.push({ code: 'unusualLow', line: n, usual: inCounting(item, rs.q), zone: t.to });
-      // Each storage has its own items (Coca-Cola goes to Minibar only): an item moved out of this
-      // storage before, but never to that one, is asked about, with where it usually goes.
-      if (h && h.n >= 3 && t.from && t.to && h.r && !(rs && rs.n > 0) && !routeAsked.has(l.item)) {
-        routeAsked.add(l.item);
-        const usualTo = Object.entries(h.r).filter(([k, v]) => k.indexOf(t.from + '>') === 0 && routeCount(v) > 0).sort((a, b) => routeCount(b[1]) - routeCount(a[1])).slice(0, 3).map(([k]) => k.slice(t.from.length + 1));
-        warnings.push({ code: 'newRoute', line: n, from: t.from, to: t.to, usualTo });
+      // Never sent to this storage: that is the only question (with where it usually goes); no amount
+      // is compared, as there is no usual for this storage (Pomegranate to Minibar).
+      if (h && h.n >= 3 && t.from && t.to && h.r && !(rs && rs.n > 0)) {
+        if (!routeAsked.has(l.item)) {
+          routeAsked.add(l.item);
+          const usualTo = Object.entries(h.r).filter(([k, v]) => k.indexOf(t.from + '>') === 0 && routeCount(v) > 0 && !BREAKFAST.test(k)).sort((a, b) => routeCount(b[1]) - routeCount(a[1])).slice(0, 3).map(([k]) => k.slice(t.from.length + 1));
+          warnings.push({ code: 'newRoute', line: n, from: t.from, to: t.to, usualTo });
+        }
+      } else {
+        // Each storage has its own demand: compared with what this storage usually gets. Only when
+        // nothing is known per storage is the item's overall usual used (and from these transfers).
+        const ref = rs && rs.n >= 3 && rs.q > 0 ? rs : !rs && h && h.n >= 3 && !(h.r && Object.keys(h.r).length) ? h : null;
+        const u = ref ? ref.q : !h ? usual && usual[l.item] : 0;
+        const zone = ref && ref === rs ? t.to : null;
+        if (u > 0 && base > u * 3 && (!ref || base > (ref.hi || u) * 1.2)) warnings.push({ code: 'unusual', line: n, times: Math.round((base / u) * 10) / 10, usual: inCounting(item, u), zone });
+        else if (ref === rs && rs && rs.n >= 5 && base * 10 < rs.q) warnings.push({ code: 'unusualLow', line: n, usual: inCounting(item, rs.q), zone: t.to });
       }
     });
     // Never more than the storage has (all lines of the same item together): Ricotta Restaurant would

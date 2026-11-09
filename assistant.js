@@ -44,6 +44,8 @@ const rico = {
 const RICO_MOODS = ['happy','excited','grateful','calm','thinking','worried','sad','angry'];
 let ricoBotSeq = 0;
 function ricoFace(mood = 'happy', cls = ''){
+  // Settings: with Rico's animations and expressions off he is just the plain star.
+  if(typeof featureOn === 'function' && !featureOn('ricoLively')) return `<span class="rico-bot rico-plain ${cls}" aria-hidden="true">${ICON_SPARKLE}</span>`;
   const m = RICO_MOODS.includes(mood) ? mood : 'happy';
   const g = 'rbg' + (++ricoBotSeq);
   const eye = (x, flip) => `
@@ -194,7 +196,6 @@ function renderAssistant(){
         <button class="icon-btn" id="ricoNewBtn" title="${esc(t('ricoNewChat'))}" aria-label="${esc(t('ricoNewChat'))}" ${rico.messages.length?'':'disabled'}>${ICON_NEW_CHAT}</button>
       </div>
     </header>`;
-  if(briefingDue()) return `${head}${renderBriefing()}`;
   const thread = rico.messages.length
     ? rico.messages.map((m,i)=>ricoTimeDivider(rico.messages[i-1], m) + renderRicoMessage(m,i)).join('')
     : renderRicoIntro();
@@ -367,9 +368,9 @@ function renderRicoProposalCard(p, mi){
     return ricoCard(icon, title, body, actions(t('ricoStreakBtn')), p);
   }
   if(p.kind === 'file'){
-    const what = {day:t('ricoFileDay'), transfers_day:t('ricoFileTransfers'), receipts_day:t('ricoFileReceipts'), receipt:t('ricoFileReceipt')}[p.what] || '';
+    const what = {day:t('ricoFileDay'), transfers_day:t('ricoFileTransfers'), receipts_day:t('ricoFileReceipts'), receipt:t('ricoFileReceipt'), photos:t('ricoFilePhotos'), zip:t('ricoFileDay')}[p.what] || '';
     const when = p.day ? formatIraqDateTime(new Date(p.day + 'T12:00:00+03:00'), {weekday:'short', day:'numeric', month:'short'}) : '';
-    return `<button class="rico-open rico-file" data-rico-file="${esc(p.id)}" data-what="${esc(p.what)}" data-format="${esc(p.format)}" data-day="${esc(p.day || '')}" data-receipt="${esc(p.receiptId || '')}">${ICON_DOWNLOAD}<span>${esc(p.label || ((p.format === 'excel' ? 'Excel' : 'PDF') + ' · ' + what + (when ? ' · ' + when : '')))}</span></button>`;
+    return `<button class="rico-open rico-file" data-rico-file="${esc(p.id)}" data-what="${esc(p.what)}" data-format="${esc(p.format)}" data-day="${esc(p.day || '')}" data-to="${esc(p.to || '')}" data-receipt="${esc(p.receiptId || '')}" data-transfer="${esc(p.transferId || '')}">${ICON_DOWNLOAD}<span>${esc(p.label || (({excel:'Excel', pdf:'PDF', photos:t('ricoFilePhotos'), zip:'ZIP'})[p.format] + ' · ' + what + (when ? ' · ' + when : '') + (p.to ? ' – ' + formatIraqDateTime(new Date(p.to + 'T12:00:00+03:00'), {day:'numeric', month:'short'}) : '')))}</span></button>`;
   }
   if(p.kind === 'open'){
     if(p.screen !== 'send' && !canOpen(p.screen)) return '';
@@ -407,8 +408,6 @@ function ricoReadDraft(){
 
 /* ---------- Events ---------- */
 function attachAssistantEvents(){
-  const briefingRoot = document.querySelector('.rico-brief');
-  if(briefingRoot){ attachBriefing(briefingRoot); attachRicoThreadEvents(briefingRoot); }
   document.getElementById('ricoInboxAll')?.addEventListener('click', openRicoInboxSheet);
   const input = document.getElementById('ricoInput');
   const form = document.getElementById('ricoComposer');
@@ -479,7 +478,7 @@ function attachRicoThreadEvents(root){
   root.querySelectorAll('[data-rico-dismiss]').forEach(b=>b.onclick=()=>{ const [mi,id]=b.dataset.ricoDismiss.split('|'); ricoSetStatus(+mi, id, 'dismissed'); });
   root.querySelectorAll('[data-rico-undo]').forEach(b=>b.onclick=()=>{ const [mi,id]=b.dataset.ricoUndo.split('|'); ricoUndo(+mi, id); });
   // A file Rico offered: made here and handed over (share sheet on a phone, a download on a computer).
-  root.querySelectorAll('[data-rico-file]').forEach(b=>b.onclick=()=>withBusy(b, ()=>ricoMakeFile(b.dataset)));
+  root.querySelectorAll('[data-rico-file]').forEach(b=>b.onclick=()=>withBusy(b, ()=>ricoMakeFile({...b.dataset})));
   root.querySelectorAll('[data-rico-open]').forEach(b=>b.onclick=()=>{
     const screen = b.dataset.ricoOpen, sup = b.dataset.ricoSup;
     if(screen === 'send'){ startSendQueue().then(ok=>{ if(!ok) goView('order'); }); return; }
