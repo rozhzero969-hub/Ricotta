@@ -2404,29 +2404,20 @@ html.dark .rr-offline{background:rgba(251,146,60,.14);color:#FED7AA}
 .day-sub{margin:12px 0 4px;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:var(--ink-soft)}
 .day-card .rr-list{padding:0;background:none}
 
-/* Settings > Rico: status, approvals, limits (plain values, Edit), Stop, Telegram, in groups. */
-.rr-settings{display:flex;flex-direction:column;gap:0;padding:0!important;overflow:hidden}
-.rs-head{display:flex;align-items:center;gap:12px;padding:16px}
-.rs-head .rr-rico{flex:none}
-.rs-head b{display:block;font-size:1.0625rem}
-.rs-head small{display:flex;align-items:center;gap:6px;color:var(--ink-soft);font-size:.875rem}
-.rs-group{padding:14px 16px;border-top:.5px solid var(--line)}
-.rs-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:.8125rem;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:var(--ink-soft)}
-.rs-rule{padding:4px 0 10px}
-.rs-rule b{display:block}
-.rs-rule small{color:var(--ink-soft);font-size:.875rem;line-height:1.4}
-.rs-switch{padding:6px 0!important;border:0!important}
-.rs-switch b{font-weight:600}
-.rs-vals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.rs-val{padding:10px 12px;border-radius:12px;background:var(--fill);display:flex;flex-direction:column;gap:2px;min-width:0}
-.rs-val span{font-size:.75rem;color:var(--ink-soft)}
-.rs-val b{font-size:1rem;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media (max-width:560px){.rs-vals{grid-template-columns:1fr}}
-.rs-edit{height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600;text-transform:none;letter-spacing:0}
-.rs-actions{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;margin-top:12px}
-.rs-tg{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.rs-tg b{display:block}
-.rs-tg small{color:var(--ink-soft);font-size:.875rem}
+/* Settings > Rico: a plain settings list; the limits change in a small box (Edit). */
+.rs-card{padding:0 16px!important}
+.rs-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:10px 0;border-bottom:.5px solid var(--line)}
+.rs-card>:last-child{border-bottom:0}
+.rs-row>span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.rs-status>span{flex-direction:row;align-items:center;gap:8px}
+.rs-row small{color:var(--ink-soft);font-size:.8125rem}
+.rs-row b{font-weight:500;color:var(--ink-soft);text-align:end;font-variant-numeric:tabular-nums}
+.rs-switch{border-bottom:.5px solid var(--line)!important}
+.section-title.rs-sub{display:flex;align-items:center;justify-content:space-between}
+.rs-edit{height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600;text-transform:none;letter-spacing:0;flex:none}
+.rs-form{display:grid;gap:12px}
+.rs-field{display:flex;flex-direction:column;gap:6px;font-size:.8125rem;color:var(--ink-soft)}
+.rs-std{justify-self:start;height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600}
 
 /* Shortcuts sheet: the line shortcuts with Change, and Standard. */
 .short-sub{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px}
@@ -2439,3 +2430,72 @@ html.dark .rr-offline{background:rgba(251,146,60,.14);color:#FED7AA}
 .day-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .day-files{display:flex;gap:6px}
 .day-file{height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600}
+
+/* Admin home: a quiet status line, then a plain list in three groups; red only for today's trouble. */
+.ad-quiet{display:flex;align-items:center;gap:8px;margin:4px 16px 0;font-size:.875rem;color:var(--ink-soft)}
+.ad-quiet .ad-refresh,.ad-quiet button{margin-inline-start:auto}
+.ad-list{background:var(--surface);border-radius:var(--r-card);overflow:hidden}
+.ad-row{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;padding:10px 16px;border:0;background:none;color:var(--ink);font:inherit;text-align:start;border-bottom:.5px solid var(--line)}
+.ad-list>.ad-row:last-child{border-bottom:0}
+.ad-row:active{background:var(--fill)}
+.ad-row-ico{flex:none;width:22px;height:22px;color:var(--ink-soft)}
+.ad-row-ico svg{width:22px;height:22px}
+.ad-row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.ad-row-main b{font-weight:500;font-size:1rem}
+.ad-row-main small{font-size:.8125rem;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ad-row-val{flex:none;font-size:.9375rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.ad-row-go{flex:none;color:var(--ink-faint);font-size:1.25rem;line-height:1}
+.ad-row.alert .ad-row-ico,.ad-row.alert .ad-row-val{color:var(--red)}
+.ad-row.alert .ad-row-val{font-weight:600}
+/* Quiet icons on the Admin pages: no coloured squares, red only for trouble. */
+.ad-tile,.ad-tile.green,.ad-tile.gray{background:none;color:var(--ink-soft)}
+.ad-tile.red{background:none;color:var(--red)}
+
+/* Status labels: the same small label everywhere; a cancelled one is faded with its total struck. */
+.st{flex:none;display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;font-size:.75rem;font-weight:600;white-space:nowrap}
+.st-ok{background:#E8F5EE;color:#166534}.st-wait,.st-check{background:#FFF4E5;color:#9A5B00}.st-busy{background:#E8F1FD;color:#1D4ED8}
+.st-bad{background:#FDECEC;color:#B42318}.st-off{background:var(--fill);color:var(--ink-soft)}
+html.dark .st-ok{background:rgba(52,199,89,.16);color:#86EFAC}html.dark .st-wait,html.dark .st-check{background:rgba(245,158,11,.16);color:#FCD34D}
+html.dark .st-busy{background:rgba(59,130,246,.18);color:#93C5FD}html.dark .st-bad{background:rgba(239,68,68,.16);color:#FCA5A5}
+.rr-row{align-items:center;gap:10px}
+.is-off{opacity:.55}
+.is-off .rr-row-amt,.is-off .rr-hist-total,.is-off .rr-hist-lines b{text-decoration:line-through}
+.hist-date .st{margin-inline-start:8px}
+
+/* Rico without animations and expressions (Settings): a plain star, nothing moves. */
+.rico-plain{display:inline-grid;place-items:center;color:var(--accent-strong)}
+.rico-plain svg{width:100%;height:100%}
+html.rico-still .rico-bot,html.rico-still .rico-bot *{animation:none!important;transition:none!important}
+
+/* The form's foot: count and route on the left; Cancel as red text, Keep as draft, Send on the right. */
+.rr-edit .rr-sum{flex-wrap:wrap;gap:12px}
+.rr-edit .rr-sum-total b{font-size:1.0625rem;font-weight:600}
+.rr-cancel{height:44px;padding:0 14px;border:0;border-radius:12px;background:none!important;color:var(--red);font:inherit;font-size:.9375rem;font-weight:600}
+.rr-cancel:hover{background:var(--fill)!important}
+.rr-keep{height:44px;padding:0 14px;background:var(--fill)}
+.rr-sum .btn-primary{height:44px;min-height:44px}
+.rr-foot.warn{color:#9A5B00}
+html.dark .rr-foot.warn{color:#FCD34D}
+/* The check box's list: plain lines with a small orange mark, not filled boxes. */
+.cf-list{gap:0;margin-top:12px}
+.cf-list li{position:relative;padding:9px 0 9px 16px;border-radius:0;background:none!important;color:var(--ink)!important;border-top:.5px solid var(--line);font-size:.9375rem}
+.cf-list li:first-child{border-top:0}
+.cf-list li::before{content:"";position:absolute;inset-inline-start:2px;top:16px;width:6px;height:6px;border-radius:50%;background:#F59E0B}
+html.rtl .cf-list li{padding:9px 16px 9px 0}
+.modal-wide .modal-actions .btn{white-space:nowrap;min-width:0}
+.btn .kbd{flex:none}
+
+.rr-scan{margin-inline-start:auto;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600}
+.rr-scan svg{width:15px;height:15px}
+/* Calm, consistent look (no "AI made" feel): flat colours instead of gradients, and rounded-square
+   action buttons everywhere (the tab bar and segmented switches keep their shape). */
+.grade-Ap,.grade-A{background:#1F8A52}.grade-B{background:#2873B8}.grade-C{background:#C27A12}.grade-D{background:#C2483F}
+.supplier-mono,.who-badge s{background:#8E8E93}
+.account-btn,.account-mono{background:#6B7280}
+.streak-bar i{background:#F2780F}
+.modal-symbol{background:rgba(var(--accent-rgb),.12)!important;box-shadow:none!important}
+.modal-symbol.danger{background:rgba(255,59,48,.1)!important}
+.quick-btn,.pdf-btn,.item-sort-trigger,.lang-actions .btn,.map-directions,.search-input{border-radius:12px}
+.chip{border-radius:10px}
+.rr-ricobar .rr-ctl-note:empty{display:none}
+.rr-ricobar{padding:10px 16px}

@@ -89,6 +89,7 @@ function attachAdminBodyEvents(){
   const slot = document.getElementById('adminSlot');
   if(!slot) return;
   slot.querySelectorAll('[data-admin-open]').forEach(b=>b.onclick = ()=>openAdminPage(b.dataset.adminOpen));
+  slot.querySelector('#adServer')?.addEventListener('click', openAdServer);
   slot.querySelectorAll('[data-admin-refresh]').forEach(b=>b.onclick = ()=>spinRefresh(b, async()=>{
     const keys = ADMIN_NEEDS[state.adminPage || 'home'];
     if(state.adminPage === 'devices') await refreshDevices();
@@ -158,7 +159,8 @@ const viewName = v=>VIEW_LABEL_KEYS[v] ? viewLabel(v) : v;
 /* Everything that needs Rozha's attention right now, for the summary at the top. */
 function adminIssues(){
   const out = [];
-  const problems = (adminValue('problems') || []).filter(p=>!p.resolvedAt);
+  // Only problems seen in the last 24 hours need a look; older ones wait quietly in Problems.
+  const problems = (adminValue('problems') || []).filter(p=>!p.resolvedAt && Date.now() - Date.parse(p.lastAt) < 86400000);
   if(problems.length) out.push({page:'problems', text:t('adIssueProblems')(new Set(problems.map(p=>p.fingerprint)).size)});
   const sec = adminValue('security');
   if(sec?.lockedUntil && Date.parse(sec.lockedUntil) > Date.now()) out.push({page:'security', text:t('adIssueLocked')});
@@ -185,26 +187,51 @@ function renderAdminHome(){
   const signedIn = state.devices.filter(isLoggedIn), active = signedIn.filter(d=>deviceStatus(d) === 'active').length;
   const toReview = catalogCheckup().reduce((n, g)=>n + g.items.length, 0);
   const wait = '·';
-  const tile = (page, icon, tone, value, sub, alert)=>`<button type="button" class="ad-tile-card${alert ? ' alert' : ''}${page === 'pins' ? ' slim' : ''}" data-admin-open="${page}">
-      <span class="ad-tile-top">${adminTile(icon, alert ? 'red' : tone)}<span class="ad-tile-name">${esc(t('adminPage_' + page))}</span></span>
-      <b class="ad-tile-value" dir="auto">${esc(value)}</b><span class="ad-tile-sub" dir="auto">${esc(sub)}</span></button>`;
-  const status = `<section class="ad-strip ${issues.length ? 'attention' : loading ? 'checking' : 'ok'}" aria-live="polite">
-      <span class="ad-strip-mark" aria-hidden="true">${issues.length ? '!' : ICON_CHECK}</span>
-      <span class="ad-strip-text"><b>${esc(loading && !issues.length ? t('checking') : issues.length ? t('adAttention')(issues.length) : t('adAllGood'))}</b>
-        <span>${esc(issues.length ? issues.map(i=>i.text).join(' · ') : health?.checkedAt ? t('checkedAt')(timeAgo(health.checkedAt)) : t('adSummaryHint'))}</span></span>
-      ${adminRefresh()}</section>`;
-  return status + `<div class="ad-board">
-    ${tile('problems', ADMIN_ICONS.problems, 'gray', adminValue('problems') ? (openProblems ? String(openProblems) : t('adNone')) : wait, adminValue('problems') ? (openProblems ? t('adProblemsSub')(recent) : t('adProblemsClear')) : t('loading'), openProblems > 0)}
-    ${tile('security', ADMIN_ICONS.security, 'green', sec ? (locked ? t('adLocked') : t('adSigninOpenShort')) : wait, sec ? t('adWrongPins')(Number(sec.wrongPins24h) || 0) : t('loading'), locked)}
-    ${tile('health', ADMIN_ICONS.health, 'green', health ? (bad ? t('adNeedsLook') : t('adWorking')) : adminData.failed.health ? t('adNeedsLook') : wait, health ? (bad || warn ? t('hcWarnShort')(bad + warn) : t('checkedAt')(timeAgo(health.checkedAt))) : t('loading'), bad > 0 || (!health && adminData.failed.health))}
-    ${tile('time', ADMIN_ICONS.time, 'green', usage ? fmtDuration(today) : wait, usage ? people.map(p=>`${accountLabel(p.account)} ${fmtDuration(p.today)}`).join(' · ') : t('loading'))}
-    ${tile('rico', ICON_SPARKLE, 'green', ricoMonth === null ? wait : String(ricoMonth), rico ? t('adRicoSub')(t('adTokens')(fmtTokens(ricoTokenTotal(rico), true))) : t('loading'))}
-    ${tile('devices', ADMIN_ICONS.devices, 'gray', String(signedIn.length), t('adDevicesSub')(active))}
-    ${tile('access', ADMIN_ICONS.access, 'green', roles ? t('adOfTotal')(roles.yunis.length, roles.roles.length) : wait, t('adAccessSub'))}
-    ${tile('catalog', ADMIN_ICONS.catalog, 'gray', toReview ? String(toReview) : t('adNone'), toReview ? t('adCatalogSub') : t('adCatalogClear'))}
-    ${tile('restore', ADMIN_ICONS.restore, 'gray', t('adRestoreValue'), t('adRestoreSub'))}
-    ${tile('pins', ADMIN_ICONS.pins, 'gray', t('adminPinChange'), `${accountLabel('rozha')} · ${accountLabel('yunis')}`)}
-  </div>`;
+  // A plain list in three groups (like a phone's Settings): a quiet icon, the name, what matters on the
+  // right, and red only for what needs a look today.
+  const row = (page, icon, value, sub, alert)=>`<button type="button" class="ad-row${alert ? ' alert' : ''}" data-admin-open="${page}">
+      <span class="ad-row-ico" aria-hidden="true">${icon}</span>
+      <span class="ad-row-main"><b>${esc(t('adminPage_' + page))}</b><small dir="auto">${esc(sub)}</small></span>
+      <span class="ad-row-val" dir="auto">${esc(value)}</span><span class="ad-row-go" aria-hidden="true">›</span></button>`;
+  const group = (title, rows)=>`<div class="section-title">${esc(title)}</div><div class="ad-list">${rows}</div>`;
+  const status = issues.length ? `<section class="ad-strip attention" aria-live="polite">
+      <span class="ad-strip-mark" aria-hidden="true">!</span>
+      <span class="ad-strip-text"><b>${esc(t('adAttention')(issues.length))}</b><span>${esc(issues.map(i=>i.text).join(' · '))}</span></span>
+      ${adminRefresh()}</section>`
+    : `<p class="ad-quiet" aria-live="polite"><i class="rr-dot ok" aria-hidden="true"></i>${esc(loading ? t('checking') : t('adAllGood'))}${health?.checkedAt && !loading ? ' · ' + esc(t('checkedAt')(timeAgo(health.checkedAt))) : ''}${adminRefresh()}</p>`;
+  return status
+    + group(t('adGroupNow'),
+      row('problems', ADMIN_ICONS.problems, adminValue('problems') ? (openProblems ? String(openProblems) : t('adNone')) : wait, adminValue('problems') ? (openProblems ? t('adProblemsSub')(recent) : t('adProblemsClear')) : t('loading'), recent > 0)
+      + row('security', ADMIN_ICONS.security, sec ? (locked ? t('adLocked') : t('adSigninOpenShort')) : wait, sec ? t('adWrongPins')(Number(sec.wrongPins24h) || 0) : t('loading'), locked)
+      + row('health', ADMIN_ICONS.health, health ? (bad ? t('adNeedsLook') : t('adWorking')) : adminData.failed.health ? t('adNeedsLook') : wait, health ? (bad || warn ? t('hcWarnShort')(bad + warn) : t('checkedAt')(timeAgo(health.checkedAt))) : t('loading'), bad > 0 || (!health && adminData.failed.health)))
+    + group(t('adGroupActivity'),
+      row('time', ADMIN_ICONS.time, usage ? fmtDuration(today) : wait, usage ? people.map(p=>`${accountLabel(p.account)} ${fmtDuration(p.today)}`).join(' · ') : t('loading'))
+      + row('rico', ICON_SPARKLE, ricoMonth === null ? wait : String(ricoMonth), rico ? t('adRicoSub')(t('adTokens')(fmtTokens(ricoTokenTotal(rico), true))) : t('loading'))
+      + row('devices', ADMIN_ICONS.devices, String(signedIn.length), t('adDevicesSub')(active))
+      + adServerRow())
+    + group(t('adGroupManage'),
+      row('access', ADMIN_ICONS.access, roles ? t('adOfTotal')(roles.yunis.length, roles.roles.length) : wait, t('adAccessSub'))
+      + row('catalog', ADMIN_ICONS.catalog, toReview ? String(toReview) : t('adNone'), toReview ? t('adCatalogSub') : t('adCatalogClear'))
+      + row('restore', ADMIN_ICONS.restore, '', t('adRestoreSub'))
+      + row('pins', ADMIN_ICONS.pins, '', `${accountLabel('rozha')} · ${accountLabel('yunis')}`));
+}
+/* Admin > Server: how full the database and the photo storage are (live), each explained in one sentence. */
+let adServer = null, adServerAt = 0;
+function adServerRow(){
+  if(Date.now() - adServerAt > 60000){ adServerAt = Date.now(); api('admin/server', {quiet:true}).then(r=>{ if(r.ok){ adServer = r.data; if(state.view === 'admin' && !state.adminPage) render(); } }); }
+  const mb = b=> b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : Math.round(b / 1048576) + ' MB';
+  const v = adServer ? `${mb(adServer.dbBytes)} / ${mb(adServer.dbLimit)}` : '·';
+  return `<button type="button" class="ad-row" id="adServer"><span class="ad-row-ico" aria-hidden="true">${ADMIN_ICONS.health}</span>
+    <span class="ad-row-main"><b>${esc(t('adServer'))}</b><small>${esc(adServer ? t('adServerSub')(mb(adServer.filesBytes), mb(adServer.filesLimit)) : t('loading'))}</small></span>
+    <span class="ad-row-val" dir="ltr">${esc(v)}</span><span class="ad-row-go" aria-hidden="true">›</span></button>`;
+}
+function openAdServer(){
+  if(!adServer) return;
+  const mb = b=> b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : Math.round(b / 1048576) + ' MB';
+  showAlert(`<div class="rs-form" style="text-align:start">
+    <div><b>${esc(t('adSrvDb'))}: ${esc(mb(adServer.dbBytes))} / ${esc(mb(adServer.dbLimit))}</b><p class="field-hint">${esc(t('adSrvDbHint'))}</p></div>
+    <div><b>${esc(t('adSrvFiles'))}: ${esc(mb(adServer.filesBytes))} / ${esc(mb(adServer.filesLimit))}</b><p class="field-hint">${esc(t('adSrvFilesHint'))}</p></div>
+    <p class="field-hint">${esc(t('adSrvMore'))}</p></div>`, {title:t('adServer')});
 }
 const ADMIN_ICONS = {
   restore:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4 4.5v3.7h3.7"/><path d="M12 8v4l2.6 1.6"/></svg>`,

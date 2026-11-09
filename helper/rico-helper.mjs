@@ -20,7 +20,7 @@ import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-13.1";
+const VERSION = "2026-11-14.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -36,7 +36,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function api(path, { method = "GET", body } = {}) {
   for (let tries = 0; ; tries++) {
     try {
-      const res = await fetch(`${API}/${path}`, { method, headers: { "content-type": "application/json", "x-helper-token": TOKEN }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+      const res = await fetch(`${API}/${path}`, { method, headers: { "content-type": "application/json", "x-helper-token": TOKEN }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(70_000) });
       const data = await res.json().catch(() => null);
       if (res.ok) return data;
       if (res.status === 401) throw new Error("Ricotta Orders did not accept Rico's token. Run node helper/setup.mjs --new-token");
@@ -197,17 +197,37 @@ const HISTORY_FILE = join(homedir(), "Library", "Application Support", "RicoHelp
 let historyNow = (() => { try { const h = JSON.parse(readFileSync(HISTORY_FILE, "utf8")); return h?.at && h.t && h.p ? h : null; } catch { return null; } })();
 const HISTORY_DAYS = 21;
 let historyBusy = false, lastCatalogBody = null;
+/* Rico's sign-in to Ricotta Restaurant's server, read from his signed-in page and kept (read again if it
+   stops working). Read calmly: the page may be loading, so it waits and tries again rather than
+   giving up (this is what kept Rico from learning from 6 Nov: the page was moving as he read it). */
+let rrTok = null;
+async function rrToken(fresh = false) {
+  if (rrTok && !fresh) return rrTok;
+  for (let i = 0; i < 12; i++) {
+    const v = await page.evaluate(() => localStorage.getItem("ricotta_token")).catch(() => null);
+    if (v) return (rrTok = v);
+    await page.waitForLoadState("domcontentloaded").catch(() => {});
+    await sleep(1000);
+  }
+  throw new Error("could not read Rico's sign-in to Ricotta Restaurant");
+}
+/* A read from Ricotta Restaurant's server with Rico's sign-in (nothing is changed there). */
+async function rrGet(path) {
+  for (const fresh of [false, true]) {
+    const r = await fetch(RR + path, { headers: { Authorization: "Bearer " + (await rrToken(fresh)) }, signal: AbortSignal.timeout(30_000) });
+    if (r.status === 401 || r.status === 403) continue;
+    if (!r.ok) throw new Error(`Ricotta Restaurant answered ${r.status}`);
+    return r.json();
+  }
+  throw new Error("Ricotta Restaurant didn't accept Rico's sign-in");
+}
 async function readHistory() {
   const since = new Date(Date.now() - HISTORY_DAYS * 86400_000).toISOString();
   // Read straight from Ricotta Restaurant's server with Rico's own sign-in (no extra tab), so receipts
   // and transfers carry on meanwhile.
-  const token = await page.evaluate(() => localStorage.getItem("ricotta_token")).catch(() => null);
-  if (!token) throw new Error("not signed in yet");
   const got = { rows: [] };
   for (let p = 1; p <= 150; p++) {
-    const r = await fetch(`${RR}/api/v1/inventory/movements?page=${p}&size=200`, { headers: { Authorization: "Bearer " + token }, signal: AbortSignal.timeout(30_000) });
-    if (!r.ok) throw new Error(`the stock record answered ${r.status}`);
-    const j = await r.json(), ms = j.movements || [];
+    const j = await rrGet(`/api/v1/inventory/movements?page=${p}&size=200`), ms = j.movements || [];
     for (const m of ms) if ((m.movement_type === "transfer_out" || m.movement_type === "purchase_in") && m.created_at >= since)
       got.rows.push([m.movement_type === "transfer_out" ? "t" : "p", m.item_name, Math.abs(Number(m.quantity)), m.zone_name, m.source, m.created_at]);
     if (!ms.length || !j.has_more || ms[ms.length - 1].created_at < since) break;
@@ -257,15 +277,18 @@ async function readCatalog() {
   if (!c["/api/v1/inventory/items"] || !c["/api/v1/purchasing/suppliers"] || !c["/api/v1/inventory/zones"]) throw new Error("Could not read the lists from Ricotta Restaurant (the page did not load them)");
   if (!u["/api/v1/inventory/units"]?.units?.length) throw new Error("Could not read the unit names from Ricotta Restaurant");
   const units = Object.fromEntries(u["/api/v1/inventory/units"].units.map((x) => [x.id, x.name]));
-  const conv = c["/api/v1/purchasing/conversions"] ?? [];
   const zonesRaw = c["/api/v1/inventory/zones"];
   const zones = (Array.isArray(zonesRaw) ? zonesRaw : zonesRaw?.zones ?? []).map((z) => z.name).filter((n) => n && !/breakfast/i.test(n));
   const supRaw = c["/api/v1/purchasing/suppliers"];
   const suppliers = (Array.isArray(supRaw) ? supRaw : supRaw?.suppliers ?? []).filter((s) => s.is_active !== false).map((s) => s.name);
   const items = c["/api/v1/inventory/items"].items.filter((i) => i.is_active && i.has_purchase_history && i.name.trim() !== "-").map((i) => {
+    // Only the item's own formats, as on its page in Ricotta Restaurant: the counting format and the
+    // buying format (the usage unit is the base). Old supplier units left in the conversions list
+    // (Veal Kebab's "غرام = 1000", Glass Water's "box") never show up.
     const list = [];
-    const add = (name, factor) => { const f = Number(factor); if (name && f > 0 && !list.some((u) => u.name === name && u.factor === f)) list.push({ name, factor: f }); };
-    conv.filter((x) => x.inventory_item_id === i.id && x.is_active).forEach((x) => add(x.supplier_unit_name, x.multiplier_to_base));
+    const add = (name, factor) => { const f = Number(factor); if (name && f > 0 && !(name === (units[i.usage_unit_id] || i.base_unit) && f === 1) && !list.some((u) => u.name === name && u.factor === f)) list.push({ name, factor: f }); };
+    add(i.inventory_unit_name, i.inventory_factor_to_base);
+    add(i.purchase_unit_name, i.purchase_factor);
     return { name: i.name, base: units[i.usage_unit_id] || i.base_unit, units: list };
   });
   // For transfers: every active item with its counting, base and buying units and its stock in each
@@ -443,6 +466,7 @@ async function save(r) {
   const rec = await checkReceiptRecord(r, pressedAt);
   if (rec.ok === false) stop(`Ricotta Restaurant saved it, but its stock record doesn't match: ${rec.note}. Check this receipt in Invoices.`);
   await report(r.id, { log: [rec.ok ? "Checked in Ricotta Restaurant's stock record: every item and amount arrived in " + r.zone : rec.note + " (the total matched)."] }).catch(() => {});
+  lastSaveChecked = rec.ok === true;   // not found in the record: shown as "Check this" in the app
   return text;
 }
 /* Finds the saved receipt in Invoices (its supplier's own tab, or Purchases) and reads its number. */
@@ -468,18 +492,13 @@ async function findInInvoices(r) {
    Read in Rico's own signed-in page with its own sign-in; nothing is changed. Newest first, 100 a page. */
 async function movementsSince(sinceMs, types) {
   const since = new Date(sinceMs).toISOString();
-  return page.evaluate(async ({ since, types }) => {
-    const h = { Authorization: "Bearer " + localStorage.getItem("ricotta_token") };
-    let out = [];
-    for (let p = 1; p <= 10; p++) {
-      const r = await fetch(`/api/v1/inventory/movements?page=${p}&size=100`, { headers: h });
-      if (!r.ok) return null;
-      const j = await r.json(), ms = j.movements || [];
-      out = out.concat(ms.filter((m) => types.includes(m.movement_type) && m.created_at >= since));
-      if (!ms.length || !j.has_more || ms[ms.length - 1].created_at < since) break;
-    }
-    return out.map((m) => ({ item: m.item_name, qty: Math.abs(Number(m.quantity)), zone: m.zone_name, other: m.source, day: m.effective_date, at: m.created_at }));
-  }, { since, types });
+  let out = [];
+  for (let p = 1; p <= 10; p++) {
+    const j = await rrGet(`/api/v1/inventory/movements?page=${p}&size=100`), ms = j.movements || [];
+    out = out.concat(ms.filter((m) => types.includes(m.movement_type) && m.created_at >= since));
+    if (!ms.length || !j.has_more || ms[ms.length - 1].created_at < since) break;
+  }
+  return out.map((m) => ({ item: m.item_name, qty: Math.abs(Number(m.quantity)), zone: m.zone_name, other: m.source, day: m.effective_date, at: m.created_at }));
 }
 const near = (a, b) => Math.abs(a - b) < 1e-6 * Math.max(1, Math.abs(a), Math.abs(b));
 /* After Move it: Ricotta Restaurant's record must show every item moving out of From into To once, in
@@ -492,7 +511,7 @@ async function checkMoveRecord(t, pressedAt) {
     if (!opt) return { found: false, note: `${l.item}'s unit couldn't be checked` };
     need.set(l.item, (need.get(l.item) ?? 0) + l.qty * opt.factor);
   }
-  const day = t.yesterday ? dayBefore(erbilDay()) : null;
+  const day = t.rrYesterday ? t.forDay : null;   // backdated: its record shows the day; otherwise its own today
   let note = "";
   for (let tries = 0; tries < 5; tries++) {
     if (tries) await sleep(2500);
@@ -572,18 +591,25 @@ async function rowUnit(row) {
 }
 /* The day: "Record for yesterday" puts a transfer on the day before, so it is only done on the day
    after the one it is for; a normal one only on its own day. Anything else would land on a wrong date. */
+/* The day: Ricotta Restaurant keeps its own day, which changes at 3:00 in the morning in Erbil (it runs
+   on UTC), and its "Record for yesterday" means the day before its own day. So Rico decides from
+   Ricotta Restaurant's day: the transfer's day is its today (switch off) or its yesterday (switch on);
+   any other day can't be recorded there, and he stops before filling anything in. (On 7 Nov at 2:30
+   in the morning its "yesterday" was 5 Nov, which is how 6 Nov's transfers got dated 5 Nov.) */
+const rrDay = () => new Date().toISOString().slice(0, 10);
 function checkDay(t) {
-  const today = erbilDay();
-  if (!t.forDay) return;
-  if (t.yesterday && dayBefore(today) !== t.forDay) stop(`This transfer was to be recorded for ${t.forDay}, but today it can only be recorded for ${dayBefore(today)}. Nothing was moved; check the date and send it again.`);
-  if (!t.yesterday && today !== t.forDay) stop(`This transfer was for ${t.forDay}, but it is now ${today}. Nothing was moved; send it again with Record for yesterday on if it belongs to yesterday.`);
+  const R = rrDay();
+  if (!t.forDay) return { yesterday: !!t.yesterday };
+  if (t.forDay === R) return { yesterday: false };
+  if (t.forDay === dayBefore(R)) return { yesterday: true };
+  stop(`This transfer is for ${t.forDay}, but Ricotta Restaurant is on ${R} now (its day changes at 3:00 in the morning, Erbil time), so it can't be recorded on ${t.forDay} there. Nothing was moved. Send it again after 3:00, or with Record for yesterday set for the day it belongs to.`);
 }
 let tfFillingAt = null;   // the line being filled in, for a readable message if Rico gets stuck
 async function fillTransfer(t) {
   tfFillingAt = null;
-  checkDay(t);
+  t.rrYesterday = checkDay(t).yesterday;
   // Against the lists as they are now (re-read if older than 10 minutes): stock and names.
-  if (!catalogNow || Date.now() - catalogNow.at > 10 * 60_000) await readCatalog().catch((e) => log("Could not re-read the lists:", e.message));
+  if (!catalogNow || Date.now() - catalogNow.at > 2 * 60_000) await readCatalog().catch((e) => log("Could not re-read the lists:", e.message));
   if (catalogNow) {
     const c = TR.check({ from: t.from, to: t.to, yesterday: false, lines: t.lines }, catalogNow, {});
     if (c.errors.length) stop(`This transfer doesn't match Ricotta Restaurant now (${c.errors.map((e) => (e.line ? "item " + e.line + ": " : "") + e.code).join(", ")}). Nothing was moved.`);
@@ -595,7 +621,7 @@ async function fillTransfer(t) {
   await pickByName(fromB, t.from, "Storage");
   await pickByName(toB, t.to, "Storage");
   const yb = page.getByRole("button", { name: /^Record for yesterday/ });
-  if (((await yb.getAttribute("aria-pressed")) === "true") !== !!t.yesterday) await yb.click();
+  if (((await yb.getAttribute("aria-pressed")) === "true") !== !!t.rrYesterday) await yb.click();
   const items = new Map((catalogNow?.titems ?? []).map((i) => [i.name, i]));
   for (let i = 0; i < t.lines.length; i++) {
     const l = t.lines[i];
@@ -622,7 +648,7 @@ async function verifyTransfer(t, items, when) {
   if (from !== flat(t.from)) bad(`From reads "${from}"`);
   if (to !== flat(t.to)) bad(`To reads "${to}"`);
   const y = (await page.getByRole("button", { name: /^Record for yesterday/ }).getAttribute("aria-pressed")) === "true";
-  if (y !== !!t.yesterday) bad(`Record for yesterday is ${y ? "on" : "off"}`);
+  if (y !== !!t.rrYesterday) bad(`Record for yesterday is ${y ? "on" : "off"}`);
   const n = await transferRows().count();
   if (n !== t.lines.length) bad(`the form has ${n} items, the transfer has ${t.lines.length}`);
   const need = new Map();
@@ -697,7 +723,8 @@ async function workTransfer(t) {
       } else {
       await treport(t.id, { status: "review", log: [...steps, "Photo taken. Waiting for approval."] });
       for (;;) {
-        const now = await api(`helper/transfers/${t.id}/wait`, { method: "POST", body: { wait: 20 } });
+        await heartbeat(false);   // still here while waiting for approval (the app shows him on)
+        const now = await api(`helper/transfers/${t.id}/wait`, { method: "POST", body: { wait: 50 } });
         if (now.status === "review") continue;
         if (now.status === "cancelled") { await go("/inventory/transfer", t.id); await treport(t.id, { status: "cancelled", log: ["Cleared in Ricotta Restaurant. Nothing was moved."] }); return; }
         if (now.status !== "approved") return;
@@ -731,7 +758,7 @@ async function workTransfer(t) {
 }
 
 /* ---------- One receipt ---------- */
-let pressedSave = false;
+let pressedSave = false, lastSaveChecked = true;
 let catalogNow = null;   // the lists as Rico last read them from Ricotta Restaurant
 async function work(r) {
   pressedSave = false;
@@ -741,7 +768,7 @@ async function work(r) {
       // First a check against Ricotta Restaurant's lists as they are now (re-read if older than 10
       // minutes): an item, unit, supplier or zone renamed or removed since the receipt was sent, and
       // Rico stops before touching anything instead of guessing.
-      if (!catalogNow || Date.now() - catalogNow.at > 10 * 60_000) await readCatalog().catch((e) => log("Could not re-read the lists:", e.message));
+      if (!catalogNow || Date.now() - catalogNow.at > 2 * 60_000) await readCatalog().catch((e) => log("Could not re-read the lists:", e.message));
       if (catalogNow) {
         const c = R.check(r, catalogNow, {}, {});
         if (c.errors.length) stop(`This receipt no longer matches Ricotta Restaurant's lists (${c.errors.map((e) => (e.line ? "item " + e.line + ": " : "") + e.code).join(", ")}). Something was renamed or removed there. Nothing was filled in; fix the receipt and send it again.`);
@@ -765,7 +792,7 @@ async function work(r) {
     }
     if (r.status === "saving" || r.status === "approved") {
       const text = await save(r);
-      const finance = await findInInvoices(r);
+      const finance = { ...(await findInInvoices(r)), checked: lastSaveChecked };
       // The row number in Invoices is only its place in the list (it moves when Ricotta Restaurant changes its
       // tabs), so the receipt is known by its tab, its invoice number and the day.
       await report(r.id, { status: "saved", finance, log: [`Saved: "${text}"`, `Found in Invoices, ${finance.tab} tab, invoice #${r.invoice} (row ${finance.no ?? "?"} today)`] });
@@ -785,7 +812,8 @@ async function work(r) {
 async function waitForApproval(r) {
   for (;;) {
     // The server answers the moment it is approved or cancelled (or after 20 s, then Rico asks again).
-    const now = await api(`helper/receipts/${r.id}/wait`, { method: "POST", body: { wait: 20 } });
+    await heartbeat(false);   // still here while waiting for approval (the app shows him on)
+    const now = await api(`helper/receipts/${r.id}/wait`, { method: "POST", body: { wait: 50 } });
     // Marked "saving" before anything is pressed: if the Mac stops now, it is never saved a second time.
     if (now.status === "approved") { await report(r.id, { status: "saving", log: ["Approval received"] }); return { ...now, status: "saving" }; }
     if (now.status === "cancelled") {
@@ -807,7 +835,7 @@ for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, async () => { try { awa
 log(`Rico ${VERSION}${PRACTICE ? " (practice: nothing is saved)" : ""}`);
 // Anything left half way when Rico last stopped is sorted out first (see the API's helper/recover).
 await api("helper/recover", { method: "POST" }).then((x) => { if (x?.recovered) log(`picked up ${x.recovered} receipt(s) left half way`); }, (e) => log("recover:", e.message));
-let lastCatalog = 0;
+let lastCatalog = 0, summaryDay = null;
 /* Between jobs Rico rests on Ricotta Restaurant's Inventory home page (as Rozha prefers). */
 async function restHome() {
   if (new URL(page.url()).pathname === "/inventory") return;
@@ -820,7 +848,7 @@ await restHome();
 (async function shots() {
   for (;;) {
     try {
-      const w = await api("helper/shot/wait", { method: "POST", body: { wait: 20 } });
+      const w = await api("helper/shot/wait", { method: "POST", body: { wait: 50 } });
       if (!w?.want) continue;
       const img = (await page.screenshot({ type: "jpeg", quality: 70, scale: "css" })).toString("base64");
       const what = await page.title().catch(() => "");
@@ -834,12 +862,17 @@ for (;;) {
   let waited = false;
   if (h && !h.stopped) {
     // Waits up to 20 s on the server for a receipt, so a new one starts within a second or two.
-    const { receipt, transfer } = await api("helper/claim", { method: "POST", body: { wait: 20, mode: PRACTICE ? "practice" : "real", transfers: true } }).catch((e) => { log("claim:", e.message); return {}; });
+    const { receipt, transfer } = await api("helper/claim", { method: "POST", body: { wait: 50, mode: PRACTICE ? "practice" : "real", transfers: true } }).catch((e) => { log("claim:", e.message); return {}; });
     if (receipt) { await work(receipt); await restHome(); continue; }
     if (transfer) { await workTransfer(transfer); await restHome(); continue; }
     waited = true;
   }
-  // Every 30 minutes; after a failed read, again a minute later.
-  if (Date.now() - lastCatalog > (lastCatalog ? 30 * 60_000 : 60_000)) { await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => { log("Could not read the lists yet:", e.message); lastCatalog = Date.now() - 29 * 60_000; }); await restHome(); }
+  // Every 10 minutes (new items, suppliers and unit changes show up soon); after a failed read, again a minute later.
+  if (Date.now() - lastCatalog > (lastCatalog ? 10 * 60_000 : 60_000)) { await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => { log("Could not read the lists yet:", e.message); lastCatalog = Date.now() - 9 * 60_000; }); await restHome(); }
+  // After 22:00 Erbil, once a day: the evening check on Telegram (the server sends it only once).
+  if (!PRACTICE && summaryDay !== erbilDay() && +new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Baghdad", hour: "2-digit", hourCycle: "h23" }).format(new Date()) >= 22) {
+    summaryDay = erbilDay();
+    await api("helper/daily-summary", { method: "POST", body: {} }).catch((e) => log("evening check:", e.message));
+  }
   if (!waited) await sleep(3000);
 }

@@ -35,16 +35,6 @@ function loadWeekdayOrder(){
   persistCartDraft(); refreshOrderView();
   toast(t('dayOrderLoaded')(lines.length), 'ok', {undo:()=>{ state.cart = before; persistCartDraft(); refreshOrderView(); }});
 }
-/* Which weekdays run bigger than average, for Rico's briefing. */
-function busyToday(){
-  const weekdayOf = iso=>new Date(new Date(iso).getTime() + 3 * 3600000).getUTCDay();
-  if(state.history.length < 10) return 0;
-  const lines = o=>(o.entries || []).reduce((n, e)=>n + (e.items || []).length, 0);
-  const all = state.history.reduce((n, o)=>n + lines(o), 0) / state.history.length;
-  const today = state.history.filter(o=>weekdayOf(o.date) === new Date().getDay());
-  if(today.length < 2 || !all) return 0;
-  return Math.round((today.reduce((n, o)=>n + lines(o), 0) / today.length / all - 1) * 100);
-}
 
 /* ---------- Swipe an item for its usual amount ---------- */
 function attachSwipeUsual(root){

@@ -6,7 +6,6 @@
    exact ones Rico read from Ricotta Restaurant; the rules are shared with the API (RicottaReceipts). */
 const rr = {data:null, loading:false, page:'edit', id:null, formId:null, saveTimer:0, photos:{}, sending:false, filter:{src:'all'}, fresh:false};
 const RR_ACTIVE = ['queued','filling','review','approved','saving'];
-const rrSubpage = ()=> state.view === 'receipts' && rr.page === 'view';
 const rrNum = (n, d = 0)=> Number(n || 0).toLocaleString('en-US', {maximumFractionDigits:d});
 const rrMoney = (n, cur)=> cur === 'USD' ? '$' + rrNum(n, 3) : 'IQD ' + rrNum(n, 3);
 /* A unit as Ricotta Restaurant shows it: the size written "(×1000)" (the value stays "(1000×)"). */
@@ -98,12 +97,21 @@ function renderReceipts(){
   if(cur && cur.status === 'draft'){ rr.id = cur.id; rr.page = 'edit'; } else rrNewDraft(null, false);
   return renderReceiptEdit();
 }
-const rrRow = r=>{
-  const tone = r.status === 'saved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : ['draft','cancelled'].includes(r.status) ? 'draft' : 'busy';
-  return `<button type="button" class="rr-row" data-rr-open="${esc(r.id)}"><i class="rr-dot ${tone}" aria-hidden="true"></i>
+/* The status of a receipt or transfer as one small label, the same everywhere: waiting (orange), on its
+   way (blue), done (green), check this (orange), stopped (red), cancelled (grey, the row faded). */
+function stKind(r){
+  if(r.status === 'cancelled' || r.status === 'draft') return 'off';
+  if(r.status === 'saved') return r.finance?.checked === false ? 'check' : 'ok';
+  if(r.status === 'moved') return r.result?.checked === false ? 'check' : 'ok';
+  if(r.status === 'problem') return r.mode === 'practice' || /^Practice run/.test(r.problem || '') ? 'off' : 'bad';
+  if(r.status === 'review') return 'wait';
+  return 'busy';
+}
+const stChip = (r, label)=>`<span class="st st-${stKind(r)}">${esc(stKind(r) === 'check' ? t('stCheckThis') : label)}</span>`;
+const rrRow = r=>`<button type="button" class="rr-row${r.status === 'cancelled' ? ' is-off' : ''}" data-rr-open="${esc(r.id)}">
     <span class="rr-row-main"><b dir="auto">${esc(r.supplier || t('rrNoSupplier'))}</b><small>${esc(rrStatusLine(r))}</small></span>
+    ${r.status === 'draft' && !r.pendingSend ? '' : stChip(r, r.pendingSend && r.status === 'draft' ? t('rrWaitingToSend') : rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}
     <span class="rr-row-amt">${esc(r.total == null ? '' : rrMoney(r.total, r.currency))}</span></button>`;
-};
 /* Under the form: what needs you (to approve, or that Rico couldn't do), other drafts, and today's. */
 function rrBelow(){
   const list = rr.data.receipts.filter(r=>!rrIsPractice(r)), shown = rrFiltered(list);
@@ -120,14 +128,22 @@ function rrBelow(){
     <div class="section-title rr-today-title"><span>${esc(t('rrToday'))}</span>${saved.length ? `<small>${esc(t('rrSavedToday')(saved.length))} · IQD ${esc(rrNum(sum))}</small>` : ''}</div>
     ${done.length ? `<div class="rr-list">${done.map(rrRow).join('')}</div>` : `<p class="rr-none">${esc(t('rrNoneToday'))}</p>`}
     <button type="button" class="rr-to-history" data-to-history="receipts">${esc(t('rrSeeHistory'))}</button>
-    ${rr.data.catalog?.at ? `<p class="rr-foot">${esc(t('rrCatalogAt')(rr.data.catalog.items.length, formatIraqDateTime(new Date(rr.data.catalog.at), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'})))}</p>` : `<p class="rr-foot">${esc(t('rrNoCatalog'))}</p>`}
+    ${rrStockNote(rr.data.catalog?.at, rr.data.catalog?.history?.at)}
   </div>`;
+}
+/* The line under the lists: when Ricotta Restaurant's lists and stock were last read, said plainly, and
+   in orange when that is long ago (Rico off) or when Rico hasn't learnt the usual amounts for a day. */
+function rrStockNote(at, learntAt){
+  if(!at) return `<p class="rr-foot warn">${esc(t('rrNoCatalog'))}</p>`;
+  const old = Date.now() - Date.parse(at) > 3 * 3600000, unlearnt = learntAt && Date.now() - Date.parse(learntAt) > 36 * 3600000;
+  const when = formatIraqDateTime(new Date(at), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'});
+  return `<p class="rr-foot${old || unlearnt ? ' warn' : ''}">${esc(old ? t('rrStockOld')(when) : t('tfStockAt')(when))}${unlearnt ? ' ' + esc(t('rrNotLearnt')) : ''}</p>`;
 }
 /* Rico's line with Start / Practice / Stop, at the top of both the Receipts and the Transfers tab. */
 function rrRicoBar(h, copyAt){
   if(!h) return '';
   const on = h.online && !h.stopped && !rrOffline();
-  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrOffline() ? t('rrOfflineShort') : rrHelperLine(h))}</span>${isRozha() && !rrOffline() ? rrRicoControls(h) : ''}</div>${isRozha() && !rrOffline() ? rrRicoNote(h) : ''}${rrOfflineNote(copyAt)}</section>`;
+  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrOffline() ? t('rrOfflineShort') : rrHelperLine(h))}</span>${isRozha() && !rrOffline() ? rrRicoControls(h) : ''}</div>${isRozha() && !rrOffline() ? rrRicoNote(h) : ''}${h.online && h.signedIn === false ? `<p class="rr-offline">${esc(t('rrNotSignedIn'))}</p>` : ''}${rrOfflineNote(copyAt)}</section>`;
 }
 function attachRicoBar(){
   document.querySelectorAll('[data-rico]').forEach(b=>b.onclick = async ()=>{
@@ -191,12 +207,11 @@ function rrHelperLine(h){
 const rrWhen = d=> d ? formatIraqDateTime(new Date(d), {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'}) : '';
 const rrSourceName = r=> t('rrSource_' + (['telegram','rico'].includes(r.source) ? r.source : 'app'));
 function rrStatusLine(r){
-  const inv = [r.invoice ? '#' + r.invoice : '', rrWhen(r.sentAt || r.createdAt), accountLabel(r.by), rrSourceName(r)].filter(Boolean).join(' · ') + ' · ';
-  if(r.status === 'saved') return inv + (r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : t('rrStatus_saved'));
-  if(rrIsPractice(r)) return inv + t('rrPracticeRun');
-  if(r.status === 'problem') return inv + (r.problem || t('rrStatus_problem'));
-  if(r.status === 'draft' && r.pendingSend) return inv + t('rrWaitingToSend');
-  return inv + t('rrStatus_' + r.status);
+  // The status is the label beside it; this line says what else matters.
+  const base = [r.invoice ? '#' + r.invoice : '', rrWhen(r.sentAt || r.createdAt), accountLabel(r.by), rrSourceName(r)];
+  if(r.status === 'saved' && r.finance?.tab) base.push(t('rrInInvoices')(r.finance.tab));
+  if(r.status === 'problem' && !rrIsPractice(r)) base.push(r.problem || '');
+  return base.filter(Boolean).join(' · ');
 }
 function attachReceiptsEvents(){
   if(rr.page === 'view') return attachReceiptView();
@@ -255,13 +270,14 @@ function rrReveal(el){
    standard ones: ⌥N new line, ⌥D the same item again, ⌥X remove the line, ⌥U its unit, ⌥↑ ⌥↓ the
    same box on the line above or below, ⌥Y Record for yesterday (Transfers). Keys are matched by
    position, so a Mac's ⌥ letters don't matter. */
-const RR_KEYS = {add:'Alt+KeyN', dup:'Alt+KeyD', del:'Alt+KeyX', unit:'Alt+KeyU', up:'Alt+ArrowUp', down:'Alt+ArrowDown', yest:'Alt+KeyY'};
+// unit: on an amount, opens the unit menu and then moves through the units; next: from an amount to the next item.
+const RR_KEYS = {unit_menu:'Tab', next:'Enter', add:'Alt+KeyN', dup:'Alt+KeyD', del:'Alt+KeyX', unit:'Alt+KeyU', up:'Alt+ArrowUp', down:'Alt+ArrowDown', yest:'Alt+KeyY'};
 const rrKeyOf = act=> (state.settings?.keys && state.settings.keys[act]) || RR_KEYS[act];
 /* An event as "Mod+Alt+Shift+KeyN" (Mod is ⌘ on a Mac, Ctrl elsewhere). */
 const rrCombo_ = e=> [(e.metaKey || e.ctrlKey) ? 'Mod' : '', e.altKey ? 'Alt' : '', e.shiftKey ? 'Shift' : '', e.code].filter(Boolean).join('+');
 function rrLineKeys(e, a){
   if(document.querySelector('.modal-overlay') || !(e.altKey || e.metaKey || e.ctrlKey)) return false;
-  const combo = rrCombo_(e), act = Object.keys(RR_KEYS).find(k=>rrKeyOf(k) === combo);
+  const combo = rrCombo_(e), act = Object.keys(RR_KEYS).find(k=>k !== 'unit_menu' && k !== 'next' && rrKeyOf(k) === combo);
   if(!act) return false;
   const line = document.activeElement?.closest?.('.rr-line'), i = line ? +line.dataset.line : -1;
   const kind = el=> el?.matches?.('[data-l-item]') ? 'item' : el?.matches?.('[data-l-qty]') ? 'qty' : el?.matches?.('[data-l-cost]') ? 'cost' : el?.classList?.contains('sel-btn') ? 'unit' : 'item';
@@ -357,8 +373,11 @@ function renderReceiptEdit(){
   const usd = r.currency === 'USD';
   const lines = r.lines.map((l, i)=>{
     const item = rrItem(l.item), units = item ? globalThis.RicottaReceipts.unitOptions(item) : [];
+    // A unit the item no longer has (changed in Ricotta Restaurant) is replaced by its usual one.
+    if(item && l.unit && !units.some(u=>u.label === l.unit)){ l.unit = globalThis.RicottaReceipts.defaultUnit(item, []) || ''; rrSaveSoon(r); }
     const lineTotal = globalThis.RicottaReceipts.lineTotal(l, r.currency);
-    const warn = c.warnings.filter(w=>w.line === i + 1).map(w=>rrWarnText(w)).join(' ');
+    // The line being typed in isn't judged until its box is left (8 on the way to 800 is not "price down").
+    const warn = rr.typingLine === i ? '' : c.warnings.filter(w=>w.line === i + 1).map(w=>rrWarnText(w)).join(' ');
     return `<div class="rr-line${warn ? ' warn' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="rrItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('rrItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
       <div class="rr-field rr-f-unit"><label for="rrUnit${i}">${esc(t('rrUnit'))}</label><select id="rrUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${opt('', t('rrBaseUnit'), !l.unit)}${units.map(u=>opt(u.label, rrUnitShow(u.label), u.label === l.unit)).join('')}</select></div>
@@ -369,7 +388,7 @@ function renderReceiptEdit(){
       ${warn ? `<p class="rr-line-warn">${esc(warn)}</p>` : ''}</div>`;
   }).join('');
   return `<div class="rr-page rr-edit">${rrRicoBar(rr.data.helper, rr.copyAt)}
-    <section class="rr-card"><h2 class="rr-card-title">${esc(t('rrDetails'))}</h2>
+    <section class="rr-card"><h2 class="rr-card-title"><span>${esc(t('rrDetails'))}</span><button type="button" class="rr-scan" id="rrScan">${ICON_CAMERA || ''}<span>${esc(t('rrScan'))}</span></button></h2>
       <div class="rr-grid">
         <div class="rr-field"><label for="rrSupplier">${esc(t('rrSupplier'))}</label>${rrCombo('rrSupplier', r.supplier, t('rrSearchSupplier'))}</div>
         <div class="rr-field"><label for="rrZone">${esc(t('rrZone'))}</label><select id="rrZone">${cat.zones.map(z=>opt(z, z, z === r.zone)).join('')}</select></div>
@@ -400,15 +419,15 @@ function rrSummary(r, ws){
   const tt = globalThis.RicottaReceipts.totals(r);
   return `<div class="cf-sum"><div class="cf-route"><b dir="auto">${esc(r.supplier || '')}</b></div>
     <div class="cf-meta">${esc([r.invoice ? '#' + r.invoice : '', t('rrItemCount')(r.lines.filter(l=>l.item).length), r.zone, rrMoney(tt.total, r.currency)].filter(Boolean).join(' · '))}</div></div>
-    ${ws.length ? `<div class="cf-list-title">${esc(t('rrCheckThese'))}</div><ul class="cf-list">${ws.map(w=>`<li dir="auto">${esc(w)}</li>`).join('')}</ul>` : ''}`;
+    ${ws.length ? `<ul class="cf-list">${ws.map(w=>`<li dir="auto">${esc(w)}</li>`).join('')}</ul>` : ''}`;
 }
 function rrWarnText(w){
   if(w.code === 'pressed') return t('rrWarnPressed');
   if(w.code === 'priceJump') return t('rrWarnPrice')(w.pct, rrNum(w.before));
   if(w.code === 'duplicate') return t('rrWarnDuplicate')(w.first);
   if(w.code === 'tinyUnit') return t('rrWarnTinyUnit');
-  if(w.code === 'qtyHigh') return t('rrWarnQtyHigh')(rrNum(w.times, 1), rrNum(w.usual, 3) + ' ' + w.unit);
-  if(w.code === 'qtyLow') return t('rrWarnQtyLow')(rrNum(w.usual, 3) + ' ' + w.unit);
+  if(w.code === 'qtyHigh') return t('rrWarnQtyHigh')(rrNum(w.times, 1), '\u2066' + rrNum(w.usual, 3) + ' ' + w.unit + '\u2069');
+  if(w.code === 'qtyLow') return t('rrWarnQtyLow')('\u2066' + rrNum(w.usual, 3) + ' ' + w.unit + '\u2069');
   if(w.code === 'rateOdd') return t('rrWarnRate')(w.min, w.max);
   if(w.code === 'bigTotal') return t('rrWarnBig')(rrNum(w.iqd));
   if(w.code === 'unitNameOdd') return t('rrWarnUnitName')(w.unit, rrNum(w.factor), w.base);
@@ -465,7 +484,7 @@ function attachReceiptEdit(){
   document.querySelectorAll('[data-l-item]').forEach(inp=>{
     const i = +inp.dataset.lItem;
     rrComboBind(inp, names, (v, again)=>{
-      const l = r.lines[i];
+      const l = r.lines[i]; if(!l) return;   // the line went away while the list was open
       if(!again && v !== l.item){
         l.item = v;
         const units = rrItem(v) ? globalThis.RicottaReceipts.unitOptions(rrItem(v)) : [];
@@ -479,10 +498,16 @@ function attachReceiptEdit(){
       go('rrQty' + i);
     });
   });
-  document.querySelectorAll('[data-l-unit]').forEach(s=>s.onchange = ()=>{ const i = +s.dataset.lUnit; r.lines[i].unit = s.value; changed(true); go('rrQty' + i); });
+  document.querySelectorAll('[data-l-unit]').forEach(s=>s.onchange = ()=>{ const i = +s.dataset.lUnit; if(!r.lines[i]) return; r.lines[i].unit = s.value; changed(true); go('rrQty' + i); });
+  // Typing an amount or a price: that line's question waits; leaving the box shows it at once (or clears it).
+  const judgeOnLeave = (el, i)=>{
+    el.addEventListener('focus', ()=>{ rr.typingLine = i; });
+    el.addEventListener('blur', ()=>{ if(rr.typingLine !== i) return; rr.typingLine = null; setTimeout(()=>{ if(state.view === 'receipts' && rr.page === 'edit' && rrFind(rr.id) === r) rrRepaintKeepFocus(); }, 0); });
+  };
   document.querySelectorAll('[data-l-qty]').forEach(el=>{
     const i = +el.dataset.lQty;
-    el.oninput = ()=>{ const v = rrOnlyNum(el, true); r.lines[i].qty = v; el.classList.toggle('bad', Number.isNaN(v)); changed(); autoLine(el); };
+    judgeOnLeave(el, i);
+    el.oninput = ()=>{ if(!r.lines[i] || rrFind(rr.id) !== r) return; const v = rrOnlyNum(el, true); r.lines[i].qty = v; el.classList.toggle('bad', Number.isNaN(v)); changed(); autoLine(el); };
     enter(el, ()=>go('rrCost' + i));
   });
   // Enter in the unit cost opens the next item (a new one after the last), already on its search box.
@@ -498,7 +523,8 @@ function attachReceiptEdit(){
   };
   document.querySelectorAll('[data-l-cost]').forEach(el=>{
     const i = +el.dataset.lCost;
-    el.oninput = ()=>{ const v = rrOnlyNum(el, true, true); r.lines[i].cost = v; el.classList.toggle('bad', Number.isNaN(v)); changed(); autoLine(el); };
+    judgeOnLeave(el, i);
+    el.oninput = ()=>{ if(!r.lines[i] || rrFind(rr.id) !== r) return; const v = rrOnlyNum(el, true, true); r.lines[i].cost = v; el.classList.toggle('bad', Number.isNaN(v)); changed(); autoLine(el); };
     enter(el, ()=>{ rrSaveSoon(r); if(i < r.lines.length - 1) go('rrItem' + (i + 1)); else addLine(); });
   });
   document.querySelectorAll('[data-l-del]').forEach(b=>b.onclick = ()=>{ r.lines.splice(+b.dataset.lDel, 1); if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null, cost:null}); changed(true); });
@@ -511,13 +537,14 @@ function attachReceiptEdit(){
     rrNewDraft(r.zone ? {zone:r.zone} : null);
   };
   document.getElementById('rrSend').onclick = ()=>rrSend(r);
+  document.getElementById('rrScan')?.addEventListener('click', e=>rrScanPhoto(r, e.currentTarget));
   // Keep as draft: this one stays in Drafts (on the server, or on this device with no connection) and the form is free.
   document.getElementById('rrKeepDraft').onclick = ()=>{ if(rrIsEmpty(r)) return; r.dirty = true; rrKeep(); rrSaveDraft(r); toast(t('rrDraftKept')); rrNewDraft({zone:r.zone}); };
   // Cmd/Ctrl + Enter sends from anywhere on the page.
   document.onkeydown = e=>{
     if(state.view !== 'receipts' || rr.page !== 'edit'){ document.onkeydown = null; return; }
     if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.activeElement?.blur?.(); rrSend(r); return; }
-    rrLineKeys(e, {add:()=>addLine(), dup:i=>{ const l = r.lines[i]; r.lines.splice(i + 1, 0, {item:l.item, unit:l.unit, qty:null, cost:l.cost}); changed(true); go('rrQty' + (i + 1)); }});
+    rrLineKeys(e, {add:()=>addLine(), dup:i=>{ const l = r.lines[i]; if(!l) return; r.lines.splice(i + 1, 0, {item:l.item, unit:l.unit, qty:null, cost:l.cost}); changed(true); go('rrQty' + (i + 1)); }});
   };
   // A new receipt starts on the supplier box (on a computer; a phone waits for a tap).
   if(rr.fresh){ rr.fresh = false; if(!r.supplier && !matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>go('rrSupplier')); }
@@ -648,6 +675,30 @@ function attachReceiptView(){
   attachLightbox();
 }
 
+/* From a photo: a picture of the paper receipt is made smaller here, read on the server, and what was
+   read fills this form (only names from Ricotta Restaurant's lists). The person checks it and sends it. */
+function rrScanPhoto(r, btn){
+  const pick = document.createElement('input');
+  pick.type = 'file'; pick.accept = 'image/*'; pick.setAttribute('capture', 'environment');
+  pick.onchange = ()=>withBusy(btn, async ()=>{
+    const f = pick.files?.[0]; if(!f) return;
+    const img = await globalThis.createImageBitmap(f).catch(()=>null); if(!img){ toast(t('saveFailed'), 'error'); return; }
+    const k = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const image = c.toDataURL('image/jpeg', .82).split(',')[1];
+    const res = await api('receipts/scan', {method:'POST', body:{image}, timeout:90000});
+    if(!res.ok){ toast(t('rrScanFailed'), 'error'); return; }
+    const d = res.data;
+    if(d.supplier) r.supplier = d.supplier;
+    if(d.invoice) r.invoice = d.invoice;
+    r.currency = d.currency || r.currency;
+    if(d.delivery != null && r.currency === 'IQD') r.delivery = d.delivery;
+    if(d.lines?.length) r.lines = [...d.lines.map(l=>({item:l.item, unit:l.unit, qty:l.qty, cost:l.cost})), {item:'', unit:'', qty:null, cost:null}];
+    rrSaveSoon(r); render();
+    toast(t('rrScanned')(d.lines?.length || 0), 'warn', {ms:5000});
+  });
+  pick.click();
+}
 /* Retry: the same receipt to Rico again, after it is checked against the lists as they are now. If it
    had been approved, Rico may already have pressed Save, so Ricotta Restaurant is to be checked first. */
 async function rrRetry(r){
@@ -681,48 +732,36 @@ async function ricoAutoStart(){
 }
 
 /* ---------- Settings: Rico ---------- */
-/* Settings > Rico: his status, the two approval rules (receipts always; transfers as she chooses), the
-   limits as plain values with Edit, and Telegram. */
+/* Settings > Rico, as a plain settings list: his status, the approval rules, the receipt limits as
+   values (Edit opens a small box to change them), Stop, and Telegram. */
 function renderRicoReceiptSettings(){
   if(!isRozha() || !canOpen('receipts')) return '';
   const h = rr.data?.helper;
   if(!h){ if(!rr.loading) rrLoad(true); return ''; }
   if(!rr.tg && !rr.tgLoading){ rr.tgLoading = true; api('receipts-settings/telegram', {quiet:true}).then(r=>{ rr.tgLoading = false; if(r.ok){ rr.tg = r.data; if(state.view === 'settings') render(); } }); }
   const L = h.limits, on = h.online && !h.stopped;
-  const val = (label, v)=>`<div class="rs-val"><span>${esc(label)}</span><b dir="ltr">${esc(v)}</b></div>`;
-  const limits = rr.editLimits ? `<div class="rr-limits">
-        <label class="rr-field"><span class="rr-label">${esc(t('rrLimBig'))}</span><input class="rr-input" id="rrLimBig" inputmode="numeric" value="${L.bigTotal}"></label>
-        <label class="rr-field"><span class="rr-label">${esc(t('rrLimJump'))}</span><input class="rr-input" id="rrLimJump" inputmode="numeric" value="${L.priceJump}"></label>
-        <label class="rr-field"><span class="rr-label">${esc(t('rrLimRateMin'))}</span><input class="rr-input" id="rrLimMin" inputmode="numeric" value="${L.rateMin}"></label>
-        <label class="rr-field"><span class="rr-label">${esc(t('rrLimRateMax'))}</span><input class="rr-input" id="rrLimMax" inputmode="numeric" value="${L.rateMax}"></label>
-      </div>
-      <div class="rs-actions"><button type="button" class="btn btn-ghost" id="rrLimDefault">${esc(t('rsStandard'))}</button><span></span><button type="button" class="btn btn-ghost" id="rrLimCancel">${esc(t('cancel'))}</button><button type="button" class="btn btn-primary" id="rrLimSave">${esc(t('rrLimSave'))}</button></div>
-      <p class="field-hint">${esc(t('rrLimHint'))}</p>`
-    : `<div class="rs-vals">${val(t('rrLimBig'), 'IQD ' + rrNum(L.bigTotal))}${val(t('rrLimJump'), L.priceJump + '%')}${val(t('rsRate'), rrNum(L.rateMin) + ' – ' + rrNum(L.rateMax))}</div>`;
+  const row = (label, value)=>`<div class="rs-row"><span>${esc(label)}</span><b dir="ltr">${esc(value)}</b></div>`;
   return `<div class="section-title">${esc(t('rrSettingsTitle'))}</div>
-    <div class="form-card rr-settings">
-      <div class="rs-head">${rrRico()}<span><b>${esc(t('rrRicoMac'))}</b><small><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i>${esc(rrHelperLine(h))}${h.online ? ' · ' + esc(h.signedIn ? t('rrSignedIn') : t('rrSignedOut')) : ''}</small></span></div>
-      <div class="rs-group">
-        <div class="rs-title">${esc(t('rsApprovals'))}</div>
-        <div class="rs-rule"><b>${esc(t('rrTitle'))}</b><small>${esc(t('rsReceiptsAlways'))}</small></div>
-        <label class="check-row preference-row rs-switch"><input type="checkbox" id="tfAutoSet" ${featureOn('tfAuto') ? 'checked' : ''}><span><b>${esc(t('tfTitle'))}: ${esc(t('rsTfAuto'))}</b><small>${esc(t('rsTfAutoHint'))}</small></span></label>
-      </div>
-      <div class="rs-group">
-        <div class="rs-title"><span>${esc(t('rsLimits'))}</span>${rr.editLimits ? '' : `<button type="button" class="rs-edit" id="rrLimEdit">${esc(t('rsEdit'))}</button>`}</div>
-        ${limits}
-      </div>
-      <div class="rs-group">
-        <label class="check-row preference-row rs-switch"><input type="checkbox" id="rrStop" ${h.stopped ? 'checked' : ''}><span><b>${esc(t('rrStop'))}</b><small>${esc(t('rrStopHint'))}</small></span></label>
-      </div>
-      <div class="rs-group rs-tg"><span><b>${esc(t('rrTelegram'))}</b><small>${esc(!rr.tg ? '' : !rr.tg.ready ? t('rrTgNotSetUp') : rr.tg.connected ? t('rrTgConnected') : t('rrTgNotConnected'))}</small></span>
-        ${rr.tg?.ready ? `<button type="button" class="btn btn-ghost" id="rrTgConnect">${esc(rr.tg.connected ? t('rrTgReconnect') : t('rrTgConnect'))}</button>` : ''}</div>
+    <div class="form-card rs-card">
+      <div class="rs-row rs-status"><span><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i>${esc(t('rrRicoMac'))}</span><b>${esc(rrHelperLine(h))}</b></div>
+      <div class="rs-row"><span>${esc(t('rrTitle'))}</span><b>${esc(t('rsAlwaysYou'))}</b></div>
+      <label class="check-row preference-row rs-switch"><input type="checkbox" id="tfAutoSet" ${featureOn('tfAuto') ? 'checked' : ''}><span>${esc(t('tfTitle'))}: ${esc(t('rsTfAuto'))}<small>${esc(t('rsTfAutoShort'))}</small></span></label>
+      <label class="check-row preference-row rs-switch"><input type="checkbox" id="rrStop" ${h.stopped ? 'checked' : ''}><span>${esc(t('rrStop'))}<small>${esc(t('rrStopHint'))}</small></span></label>
+    </div>
+    <div class="section-title rs-sub"><span>${esc(t('rsLimits'))}</span><button type="button" class="rs-edit" id="rrLimEdit">${esc(t('rsEdit'))}</button></div>
+    <div class="form-card rs-card">
+      ${row(t('rrLimBig'), 'IQD ' + rrNum(L.bigTotal))}${row(t('rrLimJump'), L.priceJump + '%')}${row(t('rsRate'), rrNum(L.rateMin) + ' – ' + rrNum(L.rateMax))}
+    </div>
+    <div class="form-card rs-card">
+      <div class="rs-row"><span>${esc(t('rrTelegram'))}<small>${esc(!rr.tg ? '' : !rr.tg.ready ? t('rrTgNotSetUp') : rr.tg.connected ? t('rrTgConnected') : t('rrTgNotConnected'))}</small></span>
+        ${rr.tg?.ready ? `<button type="button" class="rs-edit" id="rrTgConnect">${esc(rr.tg.connected ? t('rrTgReconnect') : t('rrTgConnect'))}</button>` : ''}</div>
     </div>`;
 }
 function attachRicoReceiptSettings(){
   const put = async body=>{
     const res = await api('receipts-settings', {method:'PUT', body});
-    if(res.ok && rr.data){ rr.data.helper = res.data; toast(t('rrSettingsSaved')); rr.editLimits = false; } else toast(t('saveFailed'), 'error');
-    render();
+    if(res.ok && rr.data){ rr.data.helper = res.data; toast(t('rrSettingsSaved')); } else toast(t('saveFailed'), 'error');
+    render(); return res.ok;
   };
   const s = document.getElementById('rrStop'); if(s) s.onchange = ()=>put({stopped:s.checked});
   // Transfers without a second approval: asked once more when it is turned on.
@@ -730,17 +769,8 @@ function attachRicoReceiptSettings(){
     if(au.checked && !await showConfirm(esc(t('rsTfAutoAsk')), {title:t('rsTfAuto'), okLabel:t('rsTurnOn'), okClass:'btn-primary'})){ au.checked = false; return; }
     if(!(await setFeature('tfAuto', au.checked))) au.checked = !au.checked;
   };
-  const ed = document.getElementById('rrLimEdit'); if(ed) ed.onclick = ()=>{ rr.editLimits = true; render(); document.getElementById('rrLimBig')?.focus(); };
-  const lc = document.getElementById('rrLimCancel'); if(lc) lc.onclick = ()=>{ rr.editLimits = false; render(); };
-  // The limits: asks twice above this total, warns at this price change, the dollar rate range.
-  const lim = id=>rrParse(document.getElementById(id)?.value ?? '', false);
-  const ls = document.getElementById('rrLimSave'); if(ls) ls.onclick = ()=>{
-    const v = {bigTotal:lim('rrLimBig'), priceJump:lim('rrLimJump'), rateMin:lim('rrLimMin'), rateMax:lim('rrLimMax')};
-    if(!(v.bigTotal > 0) || !(v.priceJump >= 1 && v.priceJump <= 500) || !(v.rateMin > 0) || !(v.rateMax >= v.rateMin)){ toast(t('rrLimBad'), 'error'); return; }
-    put({limits:v});
-  };
-  const ld = document.getElementById('rrLimDefault'); if(ld) ld.onclick = ()=>put({limits:{bigTotal:1000000, priceJump:30, rateMin:1500, rateMax:1800}});
-  // Opens the bot with a one-time code, so it knows this chat is Rozha's (and answers nobody else).
+  // Edit: a small box with the limits; Standard puts the usual ones in it, Save keeps them.
+  const ed = document.getElementById('rrLimEdit'); if(ed) ed.onclick = ()=>rrEditLimits(put);
   const tgb = document.getElementById('rrTgConnect'); if(tgb) tgb.onclick = async ()=>{
     const win = window.open('', '_blank');
     const r = await api('receipts-settings/telegram', {method:'POST', body:{}});
@@ -748,6 +778,25 @@ function attachRicoReceiptSettings(){
     if(win) win.location.href = r.data.link; else location.href = r.data.link;
     rr.tg = null;   // read again when Settings is drawn next
   };
+}
+async function rrEditLimits(put){
+  const L = rr.data.helper.limits, STD = {bigTotal:1000000, priceJump:30, rateMin:1500, rateMax:1800};
+  const field = (id, label, v)=>`<label class="rs-field"><span>${esc(label)}</span><input class="rr-input" id="${id}" inputmode="numeric" value="${v}"></label>`;
+  const html = `<div class="rs-form">${field('rrLimBig', t('rrLimBig'), L.bigTotal)}${field('rrLimJump', t('rrLimJump'), L.priceJump)}${field('rrLimMin', t('rrLimRateMin'), L.rateMin)}${field('rrLimMax', t('rrLimRateMax'), L.rateMax)}
+    <button type="button" class="rs-std" id="rrLimStd">${esc(t('rsStandard'))}</button></div>`;
+  const shown = showConfirm(html, {title:t('rsLimits'), okLabel:t('rrLimSave'), okClass:'btn-primary', cancelLabel:t('cancel'), wide:true});
+  // The boxes are kept, so their values can be read after Save closes the box.
+  let els = {};
+  requestAnimationFrame(()=>{
+    els = Object.fromEntries(['rrLimBig', 'rrLimJump', 'rrLimMin', 'rrLimMax'].map(id=>[id, document.getElementById(id)]));
+    document.getElementById('rrLimStd')?.addEventListener('click', ()=>{ els.rrLimBig.value = STD.bigTotal; els.rrLimJump.value = STD.priceJump; els.rrLimMin.value = STD.rateMin; els.rrLimMax.value = STD.rateMax; });
+    els.rrLimBig?.focus();
+  });
+  if(!await shown) return;
+  const num = id=>rrParse(els[id]?.value ?? '', false);
+  const v = {bigTotal:num('rrLimBig'), priceJump:num('rrLimJump'), rateMin:num('rrLimMin'), rateMax:num('rrLimMax')};
+  if(!(v.bigTotal > 0) || !(v.priceJump >= 1 && v.priceJump <= 500) || !(v.rateMin > 0) || !(v.rateMax >= v.rateMin)){ toast(t('rrLimBad'), 'error'); return; }
+  put({limits:v});
 }
 
 /* ---------- Rico's activity (Record tab, "Rico") ----------
@@ -813,8 +862,8 @@ function rrHistCard(r){
   const tone = rrIsPractice(r) || r.status === 'cancelled' ? 'draft' : r.status === 'saved' ? 'ok' : r.status === 'problem' ? 'bad' : r.status === 'review' ? 'wait' : 'busy';
   const meta = [r.invoice ? '#' + r.invoice : '', rrSourceName(r), accountLabel(r.by), r.finance?.tab ? t('rrInInvoices')(r.finance.tab) : ''].filter(Boolean).join(' · ');
   const lines = r.lines.map(l=>`<li><span dir="auto">${esc(l.item)}</span><b>${esc(rrNum(l.qty, 3))} × <bdi>${esc(rrUnitShow(l.unit))}</bdi> · ${esc(rrMoney(l.cost, r.currency))}</b></li>`).join('');
-  return `<article class="hist-card rr-hist" data-search-row data-search-text="${esc([r.supplier, r.invoice, ...r.lines.map(l=>l.item)].join(' '))}">
-    <div class="hist-top"><div class="hist-date"><b>${esc(when)}</b><span class="rr-hist-state"><i class="rr-dot ${tone}" aria-hidden="true"></i>${esc(rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}</span></div>
+  return `<article class="hist-card rr-hist${r.status === 'cancelled' ? ' is-off' : ''}" data-search-row data-search-text="${esc([r.supplier, r.invoice, ...r.lines.map(l=>l.item)].join(' '))}">
+    <div class="hist-top"><div class="hist-date"><b>${esc(when)}</b>${stChip(r, rrIsPractice(r) ? t('rrPracticeRun') : t('rrStatus_' + r.status))}</div>
       <span class="rr-hist-total">${esc(r.total == null ? '' : rrMoney(r.total, r.currency))}</span></div>
     <div class="rr-hist-name"><b dir="auto">${esc(r.supplier || '')}</b><small>${esc(meta)}</small></div>
     <ul class="rr-hist-lines">${lines}</ul>

@@ -12,46 +12,12 @@ function ricoNextStep(){
   if(due) return {supplierId:due.id, title:t('nextDue')(due.name), sub:t('nextUsualAt')(reminderTimeLabel(due.reminder.time))};
   return {done:true, title:t('nextDone'), sub:t('nextDoneSub')};
 }
-const usualSupplierCount = sid=>{
-  const last = [...state.history].sort((a, b)=>Date.parse(b.date) - Date.parse(a.date)).flatMap(o=>o.entries || []).find(e=>e.supplierId === sid);
-  return last ? (last.items || []).length : 0;
-};
 /* What the kitchen's state says about Rico's face. */
 function kitchenMood(){
   if(!featureOn('ricoMood') || !canOpen('order') || !state.account) return 'happy';
   if(ricoLateOrders().length) return 'worried';
   const n = ricoNextStep();
   return n?.urgent ? 'worried' : n?.done ? 'happy' : 'calm';
-}
-
-/* ---------- Morning briefing ---------- */
-function briefingCards(){
-  const cards = [], now = erbilNow(), n = ricoNextStep();
-  if(n) cards.push({mood:n.urgent ? 'worried' : 'happy', label:t('briefToday'), title:n.title, sub:n.sub, supplierId:n.done ? null : n.supplierId});
-  const busy = busyToday();
-  if(Math.abs(busy) >= 20) cards.push({mood:busy > 0 ? 'excited' : 'calm', label:t('briefBusy'), title:busy > 0 ? t('briefBusier')(busy) : t('briefQuieter')(-busy), sub:t('briefBusySub')});
-  const unread = rico.inbox.filter(m=>!m.read).slice(-1)[0];
-  if(unread) cards.push({mood:unread.mood || 'happy', label:t('briefNote'), title:ricoInboxText(unread)});
-  const s = state.streak?.count || 0;
-  if(s >= 3) cards.push({mood:'excited', label:t('briefStreak'), title:t('briefStreakTitle')(s), sub:t('briefStreakSub')});
-  return now ? cards : [];
-}
-const briefingKey = ()=>'ricoBriefing:' + state.account;
-function briefingDue(){
-  if(!featureOn('ricoBriefing') || rico.messages.length || rico.viewing) return false;
-  const h = +new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Baghdad', hour:'2-digit', hourCycle:'h23'}).format(new Date());
-  return h >= 5 && h < 12 && lget(briefingKey()) !== BAGHDAD_DAY.format(new Date()) && briefingCards().length > 0;
-}
-function renderBriefing(){
-  const cards = briefingCards();
-  return `<section class="rico-brief" aria-label="${esc(t('briefTitle'))}"><div class="rico-brief-top"><div class="rico-hello">${esc(ricoGreeting())}</div><button type="button" class="rico-link" id="briefSkip">${esc(t('briefSkip'))}</button></div>
-    <div class="rico-brief-cards">${cards.map((c, i)=>`<article class="rico-brief-card">${ricoFace(c.mood, 'rico-md')}<div class="p-eyebrow">${i + 1} / ${cards.length} · ${esc(c.label)}</div><div class="rico-brief-title" dir="auto">${esc(c.title)}</div>${c.sub ? `<div class="notif-sub" dir="auto">${esc(c.sub)}</div>` : ''}${c.supplierId ? `<button type="button" class="btn btn-primary" data-rico-late="${esc(c.supplierId)}">${esc(t('ricoPrepareIt'))}</button>` : ''}</article>`).join('')}</div>
-    <button type="button" class="btn btn-ghost" id="briefDone">${esc(t('briefDone'))}</button></section>`;
-}
-function attachBriefing(root){
-  const end = ()=>{ lset(briefingKey(), BAGHDAD_DAY.format(new Date())); render(); };
-  root.querySelector('#briefSkip')?.addEventListener('click', end);
-  root.querySelector('#briefDone')?.addEventListener('click', end);
 }
 
 /* ---------- Answers worked out on this phone: no AI needed ---------- */

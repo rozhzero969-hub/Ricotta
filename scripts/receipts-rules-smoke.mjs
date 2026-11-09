@@ -142,6 +142,20 @@ console.log("Receipt totals PASS: each line rounded to the dinar like Ricotta Re
     assert.deepEqual(codes("Coca-Cola", "دانە", 24, "Minibar"), [], "Coca-Cola to Minibar is normal");
     assert.equal(T.usualFor(hc, "Tomato", "Main Storage", "Pizza").stat.q, 2000);
     assert.equal(T.usualFor(hc, "Coca-Cola", "Main Storage", "Pizza").never, true);
+    // Her two real cases: Pomegranate to Minibar (never goes there) says only that, no "usually 2.7 kg";
+    // 15 kg of green pepper to Pizza (Pizza usually gets about 1 kg) is asked about.
+    const pom = { name: "Pomegranate", base: "غرام", count: { name: "کیلۆ", factor: 1000 }, buy: null, stock: { "Main Storage": 50000 } };
+    const gp = { name: "Green Pepper", base: "غرام", count: { name: "کیلۆ", factor: 1000 }, buy: null, stock: { "Main Storage": 50000 } };
+    const real = { zones: ["Main Storage", "Minibar", "Pizza", "Appetizers"], titems: [pom, gp], history: { t: {
+      Pomegranate: { n: 40, q: 2700, hi: 6000, r: { "Main Storage>Appetizers": { n: 30, q: 3000, hi: 6000 }, "Main Storage>Breakfast": { n: 2, q: 1000, hi: 1000 } } },
+      "Green Pepper": { n: 75, q: 1000, hi: 10500, r: { "Main Storage>Pizza": { n: 12, q: 1000, hi: 2000 }, "Main Storage>Al Sharqiyah": { n: 31, q: 4000, hi: 10500 } } },
+    } } };
+    const pw = T.check({ from: "Main Storage", to: "Minibar", lines: [{ item: "Pomegranate", unit: "کیلۆ", qty: 8.5 }] }, real, {}).warnings;
+    assert.deepEqual(pw.map((x) => x.code), ["newRoute"], "never goes there: only that question");
+    assert.deepEqual(pw[0].usualTo, ["Appetizers"], "Breakfast is never suggested");
+    const gw = T.check({ from: "Main Storage", to: "Pizza", lines: [{ item: "Green Pepper", unit: "کیلۆ", qty: 15 }] }, real, {}).warnings;
+    assert.deepEqual(gw.map((x) => x.code), ["unusual"], "15 kg to Pizza is asked about");
+    assert.equal(gw[0].zone, "Pizza");
   }
   console.log("Transfer rules PASS: stock never exceeded (same item added up), counting unit first, unclear units refused, all-of-it / unusual / yesterday asked, no Breakfast storages");
 }

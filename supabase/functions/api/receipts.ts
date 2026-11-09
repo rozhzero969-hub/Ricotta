@@ -45,7 +45,8 @@ const now = () => new Date().toISOString();
 const rr = (db: any, table: string) => db.from(`app_rr_${table}`);
 const LAUNCHER_FRESH = 45_000;   // the launcher waits up to 20 s on the server, then asks again
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
-export const waitFor = (v: unknown) => Math.max(0, Math.min(20, Number(v) || 0)) * 1000;
+// Up to 50 s on the server (fewer requests and server logs; an answer still comes the moment there is one).
+export const waitFor = (v: unknown) => Math.max(0, Math.min(50, Number(v) || 0)) * 1000;
 /* Asks again every ~0.7 s until there is an answer or the time is up. */
 export async function poll<T>(ms: number, fn: () => Promise<T | null>): Promise<T | null> {
   const until = Date.now() + ms;
@@ -442,7 +443,7 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
         if (!(HELPER_NEXT[r.status] ?? []).includes(to)) return fail("bad_status", 409);
         patch.status = to;
         if (to === "problem") patch.problem = t(b.problem || "Rico stopped. See his notes.", 500);
-        if (to === "saved") { patch.saved_at = now(); patch.finance = b.finance && typeof b.finance === "object" ? { tab: t(b.finance.tab, 80), month: t(b.finance.month, 7), no: Number.isSafeInteger(b.finance.no) ? b.finance.no : null } : null; }
+        if (to === "saved") { patch.saved_at = now(); patch.finance = b.finance && typeof b.finance === "object" ? { tab: t(b.finance.tab, 80), month: t(b.finance.month, 7), no: Number.isSafeInteger(b.finance.no) ? b.finance.no : null, checked: b.finance.checked !== false } : null; }
         // A receipt Rico filled in always waits for a person to approve it (the database insists too).
       }
       if (["saved", "problem", "cancelled"].includes(String(patch.status ?? r.status))) await rr(db, "helper").update({ busy_with: null }).eq("id", true);

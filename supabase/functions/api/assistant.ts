@@ -669,17 +669,47 @@ async function findRicoRecords(db: any, w: World, a: any) {
     .filter((r: any) => (!day || r.day === day) && (has(r.from, a.storage) || has(r.to, a.storage)));
   return { transfers: list.slice(0, 40), count: list.length };
 }
+/* Admin, for Rozha only: open problems (and today's), sign-in security, devices, time in the app, the
+   database's size and Rico's receipts and transfers this month. Yunis gets no admin answers. */
+async function adminOverview(db: any, w: World) {
+  if (w.account !== "rozha") return { error: "no_access", note: "Admin questions are only for Rozha's account. Say so kindly." };
+  const day = new Date(Date.now() - 86400_000).toISOString(), month = new Date(Date.now() - 30 * 86400_000).toISOString();
+  const q = (p: Promise<any>) => withTimeout<any>(p, DB_TIMEOUT_MS, "admin").then((r: any) => r.data ?? []).catch(() => []);
+  const [problems, events, devices, usage, recs, moves, size] = await Promise.all([
+    q(db.from("app_problem_reports").select("message,screen,count,last_at,device_label").is("resolved_at", null).order("last_at", { ascending: false }).limit(20)),
+    q(db.from("app_security_events").select("kind,occurred_at,account").gte("occurred_at", day).limit(200)),
+    q(db.from("app_devices").select("label,account,logged_in,last_seen,app_version").limit(50)),
+    q(db.from("app_usage_time").select("account,day,seconds").gte("day", month.slice(0, 10)).limit(500)),
+    q(db.from("app_rr_receipts").select("status,total,currency,rate").gte("created_at", month).neq("status", "draft").limit(500)),
+    q(db.from("app_rr_transfers").select("status,lines").gte("created_at", month).neq("status", "draft").limit(500)),
+    withTimeout<any>(db.rpc("app_internal_db_size"), DB_TIMEOUT_MS, "size").then((r: any) => r.data ?? null).catch(() => null),
+  ]);
+  const secs = (a: string) => usage.filter((u: any) => u.account === a).reduce((n: number, u: any) => n + Number(u.seconds || 0), 0);
+  return {
+    problems_open: problems.length, problems_today: problems.filter((p: any) => p.last_at >= day).length, latest_problems: problems.slice(0, 5).map((p: any) => ({ message: p.message, screen: p.screen, times: p.count, last: p.last_at })),
+    security_24h: { wrong_pins: events.filter((e: any) => /wrong_pin/.test(e.kind)).length, sign_ins: events.filter((e: any) => /signin/.test(e.kind)).length },
+    devices: devices.map((d: any) => ({ device: d.label, account: d.account, signed_in: d.logged_in, last_seen: d.last_seen, version: d.app_version })),
+    minutes_in_app_30_days: { rozha: Math.round(secs("rozha") / 60), yunis: Math.round(secs("yunis") / 60) },
+    receipts_30_days: { saved: recs.filter((r: any) => r.status === "saved").length, stopped: recs.filter((r: any) => r.status === "problem").length },
+    transfers_30_days: { moved: moves.filter((r: any) => r.status === "moved").length, items: moves.reduce((n: number, r: any) => n + (r.lines ?? []).length, 0) },
+    database_mb: size ? Math.round(Number(size) / 1048576) : null,
+  };
+}
 /* A file of receipts or transfers, made on the person's phone when they tap the button in the chat. */
 function proposeFile(w: World, a: any, emit: Emit) {
-  const what = ["day", "transfers_day", "receipts_day", "receipt"].includes(a.what) ? a.what : null;
-  const format = a.format === "excel" ? "excel" : a.format === "pdf" ? "pdf" : null;
-  const day = typeof a.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(a.day) ? a.day : null;
-  if (!what || !format) return { error: "Say what file (day, transfers_day, receipts_day or receipt) and which format (pdf or excel)." };
-  if (what === "receipt" && !/^[0-9a-f-]{36}$/.test(String(a.receipt_id ?? ""))) return { error: "Find the receipt first with find_rico_records and pass its receipt_id." };
-  if (what !== "receipt" && !day) return { error: "Which day? Pass day as YYYY-MM-DD (Erbil)." };
+  const what = ["day", "transfers_day", "receipts_day", "receipt", "photos", "zip"].includes(a.what) ? a.what : null;
+  const isDay = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const format = what === "photos" || what === "zip" ? what : a.format === "excel" ? "excel" : a.format === "pdf" ? "pdf" : null;
+  const day = isDay(a.day) ? a.day : null, to = isDay(a.to) ? a.to : null;
+  const one = /^[0-9a-f-]{36}$/.test(String(a.receipt_id ?? "")) ? { receiptId: String(a.receipt_id) } : /^[0-9a-f-]{36}$/.test(String(a.transfer_id ?? "")) ? { transferId: String(a.transfer_id) } : {};
+  if (!what || !format) return { error: "Say what file (day, transfers_day, receipts_day, receipt, photos or zip) and, for a document, pdf or excel." };
+  if (what === "receipt" && !one.receiptId) return { error: "Find the receipt first with find_rico_records and pass its receipt_id." };
+  if (what === "photos" && !one.receiptId && !one.transferId && !day) return { error: "Photos of which receipt or transfer (its id from find_rico_records), or which day?" };
+  if (what !== "receipt" && what !== "photos" && !day) return { error: "Which day? Pass day as YYYY-MM-DD (Erbil); for a ZIP of several days also pass to." };
+  if (what === "zip" && to && (to < day || (Date.parse(to) - Date.parse(day)) > 31 * 86400_000)) return { error: "A ZIP covers at most 31 days." };
   if ((what === "receipt" || what === "receipts_day") && !w.can.receipts) return { error: "no_access", note: "This person can't open Receipts." };
   if (what === "transfers_day" && !w.can.transfers) return { error: "no_access", note: "This person can't open Transfers." };
-  emit({ type: "proposal", proposal: { id: pid(), kind: "file", what, format, day, receiptId: what === "receipt" ? String(a.receipt_id) : null, label: text(a.label, 80) } });
+  emit({ type: "proposal", proposal: { id: pid(), kind: "file", what, format, day, to: what === "zip" ? to : null, receiptId: one.receiptId ?? null, transferId: one.transferId ?? null, label: text(a.label, 80) } });
   return { shown: true, note: "The download button is in the chat; the file is made on their phone when they tap it." };
 }
 
@@ -723,10 +753,12 @@ const TOOLS = [
       items: { type: "array", items: { type: "object", properties: { item_id: { type: "string" }, qty: { type: "number" } }, required: ["item_id", "qty"] }, description: "Only the amounts the person named (item_id from find_items)" },
       language: { type: "string", enum: ["en", "ku", "ar"], description: "Language of the message: the person's language" },
     }, required: ["suppliers"] } },
+  { name: "admin_overview", description: "Rozha only: what Admin shows (open problems and today's, sign-in security, devices, time in the app, receipts and transfers this month, database size). Use it for any Admin question from Rozha; for Yunis it answers no_access.",
+    input_schema: { type: "object", properties: {} } },
   { name: "find_rico_records", description: "Receipts or transfers that Rico entered in Ricotta Restaurant (last 60 days), to find the ones someone means: receipts by day, supplier name (part of it is fine) or invoice number; transfers by day or storage. Use it before make_file when it isn't clear which receipt, supplier or day they mean, and ask them if there is more than one.",
     input_schema: { type: "object", properties: { kind: { type: "string", enum: ["receipts", "transfers"] }, day: { type: "string", description: "YYYY-MM-DD (Erbil)" }, supplier: { type: "string" }, invoice: { type: "string" }, storage: { type: "string" } }, required: ["kind"] } },
-  { name: "make_file", description: "Show a button in the chat that downloads a PDF or Excel file: what='transfers_day' (one day's transfers), 'receipts_day' (one day's receipts), 'day' (one day's receipts and transfers together, with totals) or 'receipt' (one receipt: pass receipt_id from find_rico_records). If they didn't say the day, the receipt (supplier or invoice) or PDF/Excel, ask first in one short question; 'today' and 'yesterday' are Erbil days.",
-    input_schema: { type: "object", properties: { what: { type: "string", enum: ["day", "transfers_day", "receipts_day", "receipt"] }, format: { type: "string", enum: ["pdf", "excel"] }, day: { type: "string", description: "YYYY-MM-DD (Erbil)" }, receipt_id: { type: "string" }, label: { type: "string", description: "Short button text, in their language" } }, required: ["what", "format"] } },
+  { name: "make_file", description: "Show a button in the chat that downloads a file: what='transfers_day' (one day's transfers), 'receipts_day' (one day's receipts), 'day' (one day's receipts and transfers together, with totals) or 'receipt' (one receipt: receipt_id from find_rico_records), each as pdf or excel; what='photos' (Rico's photos of one receipt or transfer by its id, or of a whole day); what='zip' (everything for a day, or from day to 'to' up to 31 days: PDF, Excel and all the photos in one ZIP). If they didn't say the day, which one or the format, ask first in one short question; 'today' and 'yesterday' are Erbil days.",
+    input_schema: { type: "object", properties: { what: { type: "string", enum: ["day", "transfers_day", "receipts_day", "receipt", "photos", "zip"] }, format: { type: "string", enum: ["pdf", "excel"] }, day: { type: "string", description: "YYYY-MM-DD (Erbil); the first day of a ZIP" }, to: { type: "string", description: "YYYY-MM-DD, the last day of a ZIP (optional)" }, receipt_id: { type: "string" }, transfer_id: { type: "string" }, label: { type: "string", description: "Short button text, in their language" } }, required: ["what"] } },
   { name: "open_screen", description: "Show a button that opens a screen of the app (order, manage, send, history, suppliers, itemsAdmin, units, record, admin, settings). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
     input_schema: { type: "object", properties: { screen: { type: "string" }, supplier_id: { type: "string" }, label: { type: "string" } }, required: ["screen"] } },
 ];
@@ -1663,6 +1695,7 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
     case "propose_notification": return proposeNotification(a, emit);
     case "open_screen": return proposeOpen(a, emit);
     case "find_rico_records": return await findRicoRecords(db, w, a);
+    case "admin_overview": return await adminOverview(db, w);
     case "make_file": return proposeFile(w, a, emit);
     case "recover_streak": return proposeStreakRecover(w, emit);
     case "send_test_order": return sendTestOrder(db, w, a);

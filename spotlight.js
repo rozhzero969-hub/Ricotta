@@ -427,7 +427,7 @@ const SHORTCUTS = [
   ['Enter', 'shortRrSend', true], ['Enter', 'shortRrApprove'], ['Esc', 'shortRrBack'],
 ];
 /* The Receipts and Transfers line shortcuts, which can be changed (RR_KEYS in receipts.js). */
-const RR_KEY_LABELS = {add:'shortRrAdd', dup:'shortRrDup', del:'shortRrDel', unit:'shortRrUnit', up:'shortRrUp', down:'shortRrDown', yest:'shortRrYest'};
+const RR_KEY_LABELS = {unit_menu:'shortRrUnitMenu', next:'shortRrNext', add:'shortRrAdd', dup:'shortRrDup', del:'shortRrDel', unit:'shortRrUnit', up:'shortRrUp', down:'shortRrDown', yest:'shortRrYest'};
 function keyCaps(combo){
   const name = c=> c.startsWith('Key') ? c.slice(3) : c.startsWith('Digit') ? c.slice(5) : {ArrowUp:'↑', ArrowDown:'↓', ArrowLeft:'←', ArrowRight:'→', Backspace:'⌫', Enter:'↵', Space:'Space', Slash:'/', Period:'.', Comma:',', Minus:'-', Equal:'='}[c] || c;
   return combo.split('+').map(p=>`<kbd>${esc(p === 'Mod' ? (isMac ? '⌘' : 'Ctrl') : p === 'Alt' ? (isMac ? '⌥' : 'Alt') : p === 'Shift' ? '⇧' : name(p))}</kbd>`).join('');
@@ -458,8 +458,10 @@ function openShortcuts(){
       removeEventListener('keydown', grab, true);
       if(e.key === 'Escape'){ openShortcuts(); return; }
       const combo = rrCombo_(e), taken = Object.keys(RR_KEYS).find(k=>k !== act && rrKeyOf(k) === combo);
-      // Needs ⌥, ⌘ or Ctrl (plain keys are for typing), and not ⌘↵ (send) or ⌘K (search).
-      if(!(e.altKey || e.metaKey || e.ctrlKey) || ['Mod+Enter', 'Mod+KeyK', 'Mod+KeyC', 'Mod+KeyV', 'Mod+KeyX', 'Mod+KeyZ', 'Mod+KeyA'].includes(combo)){ toast(t('shortNeedsMod'), 'warn'); openShortcuts(); return; }
+      // Needs ⌥, ⌘ or Ctrl (plain keys are for typing), and not ⌘↵ (send) or ⌘K (search). The amount
+      // keys (unit menu, next item) may be plain keys such as Tab or Enter.
+      const plainOk = act === 'unit_menu' || act === 'next';
+      if((!plainOk && !(e.altKey || e.metaKey || e.ctrlKey)) || (plainOk && /^(Key|Digit)/.test(e.code) && !(e.altKey || e.metaKey || e.ctrlKey)) || ['Mod+Enter', 'Mod+KeyK', 'Mod+KeyC', 'Mod+KeyV', 'Mod+KeyX', 'Mod+KeyZ', 'Mod+KeyA'].includes(combo)){ toast(t('shortNeedsMod'), 'warn'); openShortcuts(); return; }
       if(taken){ toast(t('shortTaken')(t(RR_KEY_LABELS[taken])), 'warn'); openShortcuts(); return; }
       const keys = {...(state.settings?.keys || {}), [act]:combo};
       Object.keys(keys).forEach(k=>{ if(keys[k] === RR_KEYS[k]) delete keys[k]; });

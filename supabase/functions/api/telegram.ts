@@ -63,6 +63,37 @@ export async function telegramLink(d: any, account: string, apiUrl: string) {
   await db(d, "codes").insert({ code, account, expires_at: new Date(Date.now() + 15 * 60_000).toISOString() });
   return { link: `https://t.me/${me.username}?start=${code}`, bot: me.username };
 }
+/* Rico's evening check (asked for by Rico on the Mac after 22:00 Erbil, once a day): today's receipts
+   and transfers, whether each was confirmed in Ricotta Restaurant's own record, and anything that
+   stopped or still waits, so nothing wrong goes unnoticed. */
+export async function dailySummary(d: any) {
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baghdad", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const { data: h } = await d.from("app_rr_helper").select("summary_day").eq("id", true).maybeSingle();
+  if (h?.summary_day === day) return { sent: false, already: true };
+  if (!telegramReady()) return { sent: false };
+  const chat = await chatOf(d);
+  if (!chat) return { sent: false };
+  const since = new Date(`${day}T00:00:00+03:00`).toISOString();
+  const [{ data: recs }, { data: moves }] = await Promise.all([
+    d.from("app_rr_receipts").select("status,supplier,invoice,total,currency,rate,finance,mode,problem").gte("updated_at", since).in("status", ["saved", "problem", "review", "queued", "filling", "approved", "saving"]),
+    d.from("app_rr_transfers").select("status,from_zone,to_zone,lines,result,mode,problem").gte("updated_at", since).in("status", ["moved", "problem", "review", "queued", "filling", "approved", "moving"]),
+  ]);
+  const real = (x: any) => x.mode !== "practice" && !/^Practice run/.test(x.problem ?? "");
+  const r = (recs ?? []).filter(real), t = (moves ?? []).filter(real);
+  const saved = r.filter((x: any) => x.status === "saved"), moved = t.filter((x: any) => x.status === "moved");
+  const iqd = saved.reduce((s: number, x: any) => s + (x.currency === "USD" ? Math.round(Number(x.total) * Number(x.rate || 0)) : Number(x.total || 0)), 0);
+  const check = [
+    ...saved.filter((x: any) => x.finance?.checked === false).map((x: any) => `Receipt ${esc(x.supplier)} #${esc(x.invoice ?? "")}: not found in the stock record`),
+    ...moved.filter((x: any) => x.result?.checked === false).map((x: any) => `Transfer ${esc(x.from_zone)} → ${esc(x.to_zone)}: ${esc(x.result?.note ?? "not confirmed")}`),
+    ...r.filter((x: any) => x.status === "problem").map((x: any) => `Receipt ${esc(x.supplier)} #${esc(x.invoice ?? "")} stopped`),
+    ...t.filter((x: any) => x.status === "problem").map((x: any) => `Transfer ${esc(x.from_zone)} → ${esc(x.to_zone)} stopped`),
+    ...[...r, ...t].filter((x: any) => !["saved", "moved", "problem"].includes(x.status)).map((x: any) => `${x.supplier ? "Receipt " + esc(x.supplier) : "Transfer " + esc(x.from_zone) + " → " + esc(x.to_zone)}: still ${x.status === "review" ? "waiting for approval" : "on its way"}`),
+  ];
+  const head = `<b>Today with Rico</b>\n${saved.length} receipt(s) saved, IQD ${num(iqd)}\n${moved.length} transfer(s) moved, ${moved.reduce((n: number, x: any) => n + (x.lines ?? []).length, 0)} item(s)`;
+  await say(chat, head + "\n\n" + (check.length ? "Check these:\n" + check.slice(0, 20).map((c) => "• " + c).join("\n") : "Everything was confirmed in Ricotta Restaurant's record."));
+  await d.from("app_rr_helper").update({ summary_day: day }).eq("id", true);
+  return { sent: true };
+}
 export async function telegramStatus(d: any, account = "rozha") {
   return { ready: telegramReady(), connected: !!(await chatOf(d, account)) };
 }
