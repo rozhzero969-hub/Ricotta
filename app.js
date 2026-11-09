@@ -1492,13 +1492,19 @@ const TEXT_ENTRY = 'input:not([type=checkbox]):not([type=radio]):not([type=range
   if(!vv) return;
   // The keyboard opening fires a burst of viewport events. Following each one made the whole app shake,
   // so the frame is resized once the burst settles, and the field is brought into sight only if it is hidden.
-  let fitTimer = 0, lastH = 0;
+  // While a box is being typed in, a drag on the screen can move the visible part of the page itself
+  // (iOS lets it slide over the frame while the keyboard is up) instead of the list. The frame then
+  // follows it, and the screen used to jump back to where it was: the list "would not scroll". Now the
+  // list is scrolled by the same distance at the same moment, so what the finger moved stays where it went.
+  let fitTimer = 0, lastH = 0, lastTop = 0;
   const fit = ()=>{
     const root = document.documentElement.style;
-    root.setProperty('--vv-top', vv.offsetTop + 'px');
-    root.setProperty('--vv-height', vv.height + 'px');
+    const top = vv.offsetTop, slid = top - lastTop; lastTop = top;
     const resized = Math.abs(vv.height - lastH) > 40; lastH = vv.height;
     const field = document.activeElement;
+    if(slid && !resized && inAppFrame() && field?.matches?.(TEXT_ENTRY) && field.closest('.content')) scrollBox().scrollTop += slid;
+    root.setProperty('--vv-top', top + 'px');
+    root.setProperty('--vv-height', vv.height + 'px');
     if(!resized || !inAppFrame() || !field?.matches?.(TEXT_ENTRY) || !field.closest('.content')) return;
     requestAnimationFrame(()=>{
       const r = field.getBoundingClientRect(), box = scrollBox().getBoundingClientRect();
@@ -1743,6 +1749,10 @@ function updateTopbar(){
   if(titled && title) placeTopbarTitle(bar, title);
   bar.classList.toggle('titled', titled);
 }
+/* Scrolling sends many events a frame (and every box or list that scrolls sends its own): the top bar is
+   brought up to date once a frame, not once an event. */
+let topbarFrame = 0;
+function updateTopbarSoon(){ if(!topbarFrame) topbarFrame = requestAnimationFrame(()=>{ topbarFrame = 0; updateTopbar(); }); }
 /* The screen's name sits in the middle of the bar when there is room on both sides; when the buttons
    beside it (the streak, Offline, Rico, the account) take that room, it moves into the free space
    between them instead of sliding under them. */
@@ -1753,11 +1763,14 @@ function placeTopbarTitle(bar, title){
   const lo = isRtl() ? a.right - b.left + gap : pad, hi = isRtl() ? b.width - pad : a.left - b.left - gap;
   const mid = b.width / 2, half = Math.min(mid - lo, hi - mid);
   const centered = half * 2 >= Math.min(title.scrollWidth, 150);
-  title.style.left = (centered ? mid : (lo + hi) / 2) + 'px';
-  title.style.maxWidth = Math.max(0, centered ? half * 2 : hi - lo) + 'px';
+  // Written only when it moved: writing it on every scroll made the browser lay the whole page out again
+  // for each scroll event (the lag while scrolling a long form).
+  const left = (centered ? mid : (lo + hi) / 2) + 'px', max = Math.max(0, centered ? half * 2 : hi - lo) + 'px';
+  if(title.style.left !== left) title.style.left = left;
+  if(title.style.maxWidth !== max) title.style.maxWidth = max;
 }
 // Capturing: in the app frame it is the content, not the page, that scrolls.
-document.addEventListener('scroll', updateTopbar, {passive:true, capture:true});
+document.addEventListener('scroll', updateTopbarSoon, {passive:true, capture:true});
 /* Restarts a CSS "bump" animation on an element (used for changing numbers). */
 /* A number rolls to its new value, up or down. */
 function rollNumber(el, to, up = true){
