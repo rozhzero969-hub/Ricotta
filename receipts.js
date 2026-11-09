@@ -275,6 +275,13 @@ const RR_KEYS = {unit_menu:'Tab', next:'Enter', add:'Alt+KeyN', dup:'Alt+KeyD', 
 const rrKeyOf = act=> (state.settings?.keys && state.settings.keys[act]) || RR_KEYS[act];
 /* An event as "Mod+Alt+Shift+KeyN" (Mod is ⌘ on a Mac, Ctrl elsewhere). */
 const rrCombo_ = e=> [(e.metaKey || e.ctrlKey) ? 'Mod' : '', e.altKey ? 'Alt' : '', e.shiftKey ? 'Shift' : '', e.code].filter(Boolean).join('+');
+/* On an amount box (Receipts and Transfers): the unit-menu key (Tab unless changed under ?) opens that
+   line's unit menu; the key again moves through the units and Enter picks one, then the amount has the
+   focus again. Shift+Tab still goes back a box. True when the menu opened. */
+function rrUnitMenuKey(e, sel, before){
+  if(e.isComposing || rrCombo_(e) !== rrKeyOf('unit_menu') || !sel || sel.disabled || sel.options.length < 2) return false;
+  e.preventDefault(); before?.(); openSelPop(sel); return true;
+}
 function rrLineKeys(e, a){
   if(document.querySelector('.modal-overlay') || !(e.altKey || e.metaKey || e.ctrlKey)) return false;
   const combo = rrCombo_(e), act = Object.keys(RR_KEYS).find(k=>k !== 'unit_menu' && k !== 'next' && rrKeyOf(k) === combo);
@@ -509,6 +516,8 @@ function attachReceiptEdit(){
     judgeOnLeave(el, i);
     el.oninput = ()=>{ if(!r.lines[i] || rrFind(rr.id) !== r) return; const v = rrOnlyNum(el, true); r.lines[i].qty = v; el.classList.toggle('bad', Number.isNaN(v)); changed(); autoLine(el); };
     enter(el, ()=>go('rrCost' + i));
+    // Tab opens the line's unit menu, as on Transfers; Enter still goes on to the unit cost.
+    el.addEventListener('keydown', e=>rrUnitMenuKey(e, document.getElementById('rrUnit' + i)));
   });
   // Enter in the unit cost opens the next item (a new one after the last), already on its search box.
   const addLine = ()=>{ r.lines.push({item:'', unit:'', qty:null, cost:null}); repaint(); go('rrItem' + (r.lines.length - 1)); };
