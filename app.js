@@ -1738,7 +1738,8 @@ new MutationObserver(muts=>{ if(PAD_TOUCH.matches && muts.some(m=>[...m.addedNod
 
 /* The top bar gains depth once the page scrolls under it, and (like an iOS
    large title) the ricotta mark gives way to the screen's name. */
-function updateTopbar(){
+let topbarFrame = 0;
+function updateTopbar(fromScroll = false){
   const bar = document.querySelector('.topbar');
   if(!bar) return;
   const y = scrollBox().scrollTop;
@@ -1746,13 +1747,12 @@ function updateTopbar(){
   const title = bar.querySelector('.topbar-title');
   if(title){ const label = viewLabel(state.view); if(title.textContent !== label) title.textContent = label; }
   const titled = y > 64;
-  if(titled && title) placeTopbarTitle(bar, title);
+  // Scrolling sends many events a frame (and every box or list that scrolls sends its own): the title,
+  // which needs the bar measured, is placed once a frame, not once an event.
+  if(titled && title){ if(!fromScroll) placeTopbarTitle(bar, title); else if(!topbarFrame) topbarFrame = requestAnimationFrame(()=>{ topbarFrame = 0; placeTopbarTitle(bar, title); }); }
   bar.classList.toggle('titled', titled);
 }
-/* Scrolling sends many events a frame (and every box or list that scrolls sends its own): the top bar is
-   brought up to date once a frame, not once an event. */
-let topbarFrame = 0;
-function updateTopbarSoon(){ if(!topbarFrame) topbarFrame = requestAnimationFrame(()=>{ topbarFrame = 0; updateTopbar(); }); }
+const updateTopbarOnScroll = ()=> updateTopbar(true);
 /* The screen's name sits in the middle of the bar when there is room on both sides; when the buttons
    beside it (the streak, Offline, Rico, the account) take that room, it moves into the free space
    between them instead of sliding under them. */
@@ -1770,7 +1770,7 @@ function placeTopbarTitle(bar, title){
   if(title.style.maxWidth !== max) title.style.maxWidth = max;
 }
 // Capturing: in the app frame it is the content, not the page, that scrolls.
-document.addEventListener('scroll', updateTopbarSoon, {passive:true, capture:true});
+document.addEventListener('scroll', updateTopbarOnScroll, {passive:true, capture:true});
 /* Restarts a CSS "bump" animation on an element (used for changing numbers). */
 /* A number rolls to its new value, up or down. */
 function rollNumber(el, to, up = true){
