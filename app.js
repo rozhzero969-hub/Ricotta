@@ -8,14 +8,14 @@
 
    Two accounts sign in with their own PIN:
      rozha  every screen and every action, Admin included
-     yunis  Order, plus what Rozha gives him in Admin -> Access (screens and actions)
+     yunis  Order, plus what Rozh gives him in Admin -> Access (screens and actions)
    The server decides which screens an account may open (bootstrap.views) and what it may do
    (bootstrap.roles), and enforces the same rules on every request. */
 /* ============ State ============ */
 const state = {
   lang: 'en',
   account: null,        // 'rozha' | 'yunis' | null (signed out)
-  name: '',             // "Rozha" / "Yunis"
+  name: '',             // "Rozh" / "Yunis"
   tabs: ['order','history','manage'],   // the tab-bar screens (at most four; the rest go into More)
   views: [],            // every screen this account may open
   roles: [],            // what this account may do (Rozha: everything)
@@ -169,9 +169,9 @@ document.addEventListener('visibilitychange', ()=>{
 
 /* ============ Devices ============
    The server keeps one row per device. This device reports "still here"
-   every couple of minutes while the app is open (so Rozha can tell "active
+   every couple of minutes while the app is open (so Rozh can tell "active
    now" from "signed in but idle") and polls for remote commands from
-   Rozha's Admin screen (log out / refresh). */
+   Rozh's Admin screen (log out / refresh). */
 const HEARTBEAT_MS = 60*1000;         /* how often an open app reports "still here" */
 const ACTIVE_WINDOW_MS = 150*1000;    /* seen within this long ago = "active now" (a missed "still here" is allowed for) */
 const FALLBACK_POLL_MS = 15*1000;     /* checks when the live connection is down (see Live changes) */
@@ -338,13 +338,13 @@ function restoreCartDraft(){
   persistCartDraft();
 }
 
-/* Rozha's Admin screen: tell other devices to log out or refresh. */
+/* Rozh's Admin screen: tell other devices to log out or refresh. */
 async function sendDeviceCommand(type, ids){
   const r = await api('devices/command', {method:'POST', body:{type, ids}});
   if(!r.ok){ await showAlert(t('saveFailed')); return; }
   await refreshDevices();
 }
-/* Device side: pick up a command aimed at this device. Rozha also gets the
+/* Device side: pick up a command aimed at this device. Rozh also gets the
    fresh device list for the Admin screen from the same request. */
 let commandCheckBusy = false;
 let forcedRefreshOpen = false;
@@ -496,7 +496,7 @@ const tabsFor = ()=> navScreens().length ? navScreens().slice(0, 4) : ['order'];
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
 function applyAccount(a){
   state.account = a.account === 'rozha' || a.account === 'yunis' ? a.account : null;
-  state.name = a.name || ({rozha:'Rozha', yunis:'Yunis'})[state.account] || '';
+  state.name = a.name || ({rozha:'Rozh', yunis:'Yunis'})[state.account] || '';
   const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
   state.views = state.account ? [...new Set([...views, 'settings'])] : [];
   const roles = Array.isArray(a.roles) ? a.roles : (ACCOUNT_ROLES[state.account] || []);
@@ -993,7 +993,7 @@ const managedView=v=>['manage','itemsAdmin','suppliers','units'].includes(v);
 const moreViews=()=>navScreens().slice(4);
 const mainView=v=>managedView(v)?'manage':v;
 function viewIndex(v){ const i = navOrder().indexOf(v); return i >= 0 ? i : navOrder().length; }
-/* Rozha chose (2026-11-03) to keep every animation even when a phone has Reduce Motion on, so the app
+/* Rozh chose (2026-11-03) to keep every animation even when a phone has Reduce Motion on, so the app
    moves the same way everywhere. Kept as one switch in case that changes. */
 const reducedMotion = ()=> window.__ricottaStillForTests === true;   // only the automated screen tests set this
 
@@ -1068,7 +1068,7 @@ function setLensPosition(pos){
 }
 /* Hold the tab bar and slide (phones), like iOS 26: the pill lifts into clear glass a little bigger
    than a tab, follows the finger exactly and stays inside the bar; each tab it passes opens behind it.
-   Letting go settles it back into the pill in 100 ms. Letting go on More opens More. Tuned by Rozha
+   Letting go settles it back into the pill in 100 ms. Letting go on More opens More. Tuned by Rozh
    in the Tab Motion Lab (2026-11-03); GLASS_SCALE matches .bottomnav.held .nav-indicator. */
 const GLASS_SCALE = 1.2;
 (function initBarSlide(){
@@ -1244,7 +1244,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLangMenu(); 
    Like an iPhone's tab bar, tapping a screen cross-fades to it quickly; only a finger swiping the
    page slides it. Redrawing the same screen never plays an entrance animation. */
 /* Tapping a tab, sliding the glass along the bar and swiping the page all move the pages the same way,
-   like the iPhone Home Screen (Rozha, 2026-11-04): the two pages sit side by side and slide together,
+   like the iPhone Home Screen (Rozh, 2026-11-04): the two pages sit side by side and slide together,
    nothing else. They finish on a soft spring (0.5 s, no bounce) that starts at the finger's own speed.
    Only a transform moves, so phones draw it on the GPU without lag. Sections inside Manage still fade. */
 const CARD = {settle:.5, turnAt:.35, flick:1.4, maxSpeed:5};
@@ -2413,7 +2413,7 @@ function sendMeta(){
 }
 function renderOrderBottomBar(){
   const c = cartCount();
-  // Without the send role the draft is still made here and shared; Rozha sends it.
+  // Without the send role the draft is still made here and shared; Rozh sends it.
   const label = canDo('send') ? t('sendOrders') : t('sendNoAccess');
   return `<div class="bottom-bar ${c>0?'show':''}">
     <button class="send-btn" id="sendOrdersBtn" ${c===0 || !canDo('send')?'disabled':''}>
@@ -3006,7 +3006,7 @@ async function maybeFinishQueue(){
     state.queue = null;
     if(state.view === 'queue') goView('order');
     if(result === 'saved'){
-      // Rozha can undo for 15 minutes (also from History); the streak may light up.
+      // Rozh can undo for 15 minutes (also from History); the streak may light up.
       toast(t('orderSavedToHistory'), 'ok', isRozha() ? {undo:()=>undoOrder(record.id)} : {});
       try{ refreshStreak({celebrate:true, before:streakBefore}); }
       catch(error){ console.error('After-order extras failed', error); }   // the order is already saved
@@ -3111,7 +3111,7 @@ function attachHistoryEvents(){
     goView('order');
     toast(t('reorderReady')(cartCount()), 'ok', {undo:()=>{ state.cart = before; persistCartDraft(); if(state.view === 'order') refreshOrderView(); }});
   });
-  // Only Rozha can delete an order, and only with her PIN (the server checks it); Yunis asks her.
+  // Only Rozh can delete an order, and only with her PIN (the server checks it); Yunis asks her.
   document.querySelectorAll('[data-delhist]').forEach(b=>b.onclick=()=>{
     const id = b.dataset.delhist;
     showFormModal({
@@ -3764,7 +3764,7 @@ function fmtDateTime(iso){
 }
 /* ============ Settings (every account) ============
    Appearance, the Order screen's display choices, sounds and notifications,
-   all kept on this device. Rozha's tools (PINs, devices, the connection) are
+   all kept on this device. Rozh's tools (PINs, devices, the connection) are
    in Admin. */
 function renderAppearanceRow(){
   const dm=darkMode();
@@ -3785,7 +3785,7 @@ function versionCmp(a, b){
 function renderSettings(){
   return `${renderPendingSync()}${renderNotifSettings()}${renderRicoReceiptSettings()}${renderFeatureSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
 }
-/* Help: tell Rozha about a problem (it arrives in Admin, Problems), and the keyboard shortcuts. */
+/* Help: tell Rozh about a problem (it arrives in Admin, Problems), and the keyboard shortcuts. */
 function renderHelpSettings(){
   return `<div class="section-title">${esc(t('settingsHelp'))}</div><div class="form-card settings-rows">
     <button type="button" class="settings-row" id="reportProblemBtn">${setIcon('report')}<span>${esc(t('reportProblem'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>

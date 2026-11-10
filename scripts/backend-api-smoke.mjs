@@ -12,7 +12,7 @@ let tables, errors, calls, reservation, match, saved, pinResult;
 function reset() {
   tables = {
     app_sessions: [{ id: 'session', token_hash: tokenHash, account: 'rozha', device_id: 'device-1', expires_at: new Date(Date.now() + 60000).toISOString(), last_seen_at: new Date().toISOString(), revoked_at: null }],
-    app_accounts: [{ id: 'rozha', name: 'Rozha' }],
+    app_accounts: [{ id: 'rozha', name: 'Rozh' }],
     app_items: [{ id: 'tomato', name: 'Tomatoes' }], app_suppliers: [{ id: 'supplier', name: 'Supplier' }],
     app_push_subscriptions: [], app_login_attempts: [], app_devices: [{id:"device-1",account:"rozha"}], app_rico_inbox: [], app_audit_events: [],
   };
@@ -148,7 +148,7 @@ try {
     assert.equal((await call(path,body,method)).status,403,`without the role, staff cannot use ${method} ${path}`);
   assert.equal((await call('months',null,'GET')).status,200,'the history role still opens the month archive');
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';
-  const yunisBoot=await call('bootstrap',null,'GET');assert.deepEqual((await yunisBoot.json()).roles,['history','manage','catalog','record','assistant','send','exports','notify'],'Yunis has the standard set until Rozha changes it');
+  const yunisBoot=await call('bootstrap',null,'GET');assert.deepEqual((await yunisBoot.json()).roles,['history','manage','catalog','record','assistant','send','exports','notify'],'Yunis has the standard set until Rozh changes it');
   assert.equal((await call('problems',{reports:[{fingerprint:'0123456789abcdef',kind:'error',message:'boom'}]},'POST')).status,200,'any signed-in phone can report a problem');
   assert.equal((await call('problems',{reports:[{fingerprint:'nothex',kind:'error',message:'boom'}]},'POST')).status,400,'problem reports are validated');
   // A long message is cut at 500 characters without splitting an emoji, and control characters are dropped.
@@ -259,30 +259,30 @@ try {
   assert.equal(largeBoot.units.length,1001);
 
 
-  // History: only Rozha removes orders. Her own for 15 minutes; any other takes her PIN, and a wrong
+  // History: only Rozh removes orders. Her own for 15 minutes; any other takes her PIN, and a wrong
   // PIN counts as a failed sign-in. Yunis cannot remove any (he asks her).
   const fresh = new Date().toISOString(), old = new Date(Date.now() - 3600_000).toISOString();
   const deletes = () => calls.filter(c => c.name === 'app_internal_delete_order');
   reset(); tables.app_orders = [{ id: 'fresh', created_by: 'rozha', created_at: fresh }, { id: 'old', created_by: 'rozha', created_at: old }];
-  assert.equal((await call('orders/fresh', {}, 'DELETE')).status, 200, 'Rozha can undo her fresh order');
-  assert.equal((await call('orders/old', {}, 'DELETE')).status, 403, 'an older order needs Rozha\u2019s PIN');
+  assert.equal((await call('orders/fresh', {}, 'DELETE')).status, 200, 'Rozh can undo her fresh order');
+  assert.equal((await call('orders/old', {}, 'DELETE')).status, 403, 'an older order needs Rozh\u2019s PIN');
   assert.equal(deletes().length, 1);
   assert.equal((await call('orders/old', { pin: '111111' }, 'DELETE')).status, 403, 'a wrong PIN deletes nothing');
   assert.equal(deletes().length, 1);
   assert.ok(calls.some(c => c.name === 'app_internal_reserve_login'), 'a wrong PIN counts as a failed sign-in');
-  assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 200, 'Rozha\u2019s PIN deletes it');
+  assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 200, 'Rozh\u2019s PIN deletes it');
   assert.equal(deletes().at(-1).args.p_actor, 'rozha');
   reset(); tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis';
   tables.app_orders = [{ id: 'mine', created_by: 'yunis', created_at: fresh }, { id: 'old', created_by: 'yunis', created_at: old }];
   assert.equal((await call('orders/mine', {}, 'DELETE')).status, 403, 'Yunis cannot undo even his own fresh order');
-  assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 403, 'not even with Rozha\u2019s PIN');
+  assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 403, 'not even with Rozh\u2019s PIN');
   assert.equal(deletes().length, 0);
   assert.equal(calls.some(c => c.name === 'app_internal_check_account_pin'), false, 'and no PIN is checked for him');
   reset(); reservation = null; tables.app_orders = [{ id: 'old', created_by: 'rozha', created_at: old }];
   assert.equal((await call('orders/old', { pin: '482916' }, 'DELETE')).status, 429, 'after too many wrong PINs deleting waits too');
   assert.equal(deletes().length, 0);
 
-  // Admin -> PINs: Rozha's current PIN first (a wrong one counts as a failed sign-in), no weak PINs.
+  // Admin -> PINs: Rozh's current PIN first (a wrong one counts as a failed sign-in), no weak PINs.
   reset();
   assert.equal((await call('admin/pin',{account:'yunis',currentPin:'000000',newPin:'591837'},'PUT')).status,403,'a wrong current PIN changes nothing');
   assert.equal(calls.some(c=>c.name==='app_internal_set_pin'),false);
@@ -297,7 +297,7 @@ try {
   reset();
   assert.equal((await call('admin/pin',{account:'yunis',currentPin:'482916',newPin:'591837'},'PUT')).status,200);
   assert.deepEqual(calls.find(c=>c.name==='app_internal_set_pin').args,{p_account:'yunis',p_pin:'591837',p_keep_session:'session'},'this session stays signed in');
-  assert.equal(calls.find(c=>c.name==='app_internal_check_account_pin').args.p_account,'rozha','the current PIN checked is always Rozha\'s');
+  assert.equal(calls.find(c=>c.name==='app_internal_check_account_pin').args.p_account,'rozha','the current PIN checked is always Rozh\'s');
   assert.equal(calls.some(c=>c.table==='app_audit_events' && c.action==='insert'),false,'the PIN function records its audit event atomically');
   reset(); pinResult='forbidden';
   assert.equal((await call('admin/pin',{account:'yunis',currentPin:'482916',newPin:'591837'},'PUT')).status,403,'a session revoked before the commit cannot change a PIN');
@@ -369,8 +369,8 @@ try {
   assert.deepEqual((await (await call('rico-rules', null, 'GET')).json()).map(r => r.rule), ['Never order fish on Friday']);
   assert.equal((await call('admin/backups/restore', { day: 'yesterday', pin: '123456' })).status, 400);
   reset(); tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis'; tables.app_sessions[0].app_accounts = { roles: ['send', 'history'] };
-  assert.equal((await call('admin/ai/groq', { enabled: false }, 'PUT')).status, 403, 'only Rozha switches an AI');
-  assert.equal((await call('admin/backups', null, 'GET')).status, 403, 'backups are Rozha\'s');
+  assert.equal((await call('admin/ai/groq', { enabled: false }, 'PUT')).status, 403, 'only Rozh switches an AI');
+  assert.equal((await call('admin/backups', null, 'GET')).status, 403, 'backups are Rozh\'s');
   assert.equal((await call('admin/backups/restore', { day: '2026-11-01', pin: '123456' })).status, 403);
   // Rico's cheer goes only to someone who has Rico.
   for (const [roles, cheers] of [[['send', 'history'], 0], [['send', 'history', 'assistant'], 1]]) {

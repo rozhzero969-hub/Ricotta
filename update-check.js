@@ -14,7 +14,7 @@
    supplier or item form), so a half-filled form is never wiped or covered
    -- it simply tries again on the next check.
 
-   hardReload() is also what Rozha's "Refresh" command uses (see app.js,
+   hardReload() is also what Rozh's "Refresh" command uses (see app.js,
    Remote commands): it re-downloads every app file first, so the reload
    really does pick up the newest version instead of a cached one.
 

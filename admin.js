@@ -1,4 +1,4 @@
-/* Ricotta Orders -- Admin (Rozha only).
+/* Ricotta Orders -- Admin (Rozh only).
    The dashboard: a headline (what needs a look, or All good), today's orders, receipts and transfers,
    a status row for each part of the app, real orders over time, then the pages to manage. A row opens its page, which slides in like a page on iPhone and has
    Admin's back button at the top:
@@ -6,7 +6,7 @@
      Security          wrong PINs, the sign-in lock (with Unlock), new phones and the sign-in log
      Health Check      the server, the database and the scheduled jobs, in plain words
      Yunis's Access    which screens Yunis can open and what he can do (the server checks it too)
-     PINs              a new PIN for Rozha or Yunis
+     PINs              a new PIN for Rozh or Yunis
      Devices           signed-in phones: Refresh or Log Out
      Time in the App   per person and phone, adding up every day and never reset
      Rico              what Rico did this month and the tokens it used
@@ -92,7 +92,6 @@ function attachAdminBodyEvents(){
   slot.querySelectorAll('[data-admin-open]').forEach(b=>b.onclick = ()=>openAdminPage(b.dataset.adminOpen));
   slot.querySelectorAll('[data-admin-jump]').forEach(b=>b.onclick = ()=>openAdminPage(b.dataset.adminJump));
   slot.querySelectorAll('[data-admin-go]').forEach(b=>b.onclick = ()=>openAdminGo(b.dataset.adminGo, b.dataset.adminId || ''));
-  slot.querySelector('#adServer')?.addEventListener('click', openAdServer);
   slot.querySelectorAll('[data-admin-refresh]').forEach(b=>b.onclick = ()=>spinRefresh(b, async()=>{
     const keys = ADMIN_NEEDS[state.adminPage || 'home'];
     if(state.adminPage === 'devices') await refreshDevices();
@@ -159,7 +158,7 @@ function adminDeviceLine(label){
 const viewName = v=>VIEW_LABEL_KEYS[v] ? viewLabel(v) : v;
 
 /* ---------- The list ---------- */
-/* Everything that needs Rozha's attention right now, for the summary at the top. */
+/* Everything that needs Rozh's attention right now, for the summary at the top. */
 function adminIssues(){
   const out = [];
   // Only problems seen in the last 24 hours need a look; older ones wait quietly in Problems.
@@ -171,7 +170,7 @@ function adminIssues(){
   if(bad) out.push({page:'health', text:t('adIssueHealth')(bad)});
   return out;
 }
-/* The dashboard, in three parts (Rozha chose them from five designs):
+/* The dashboard, in three parts (Rozh chose them from five designs):
      1. One glance: a headline that says how many things need her, or "All good" only when every source
         loaded and nothing is wrong, with what was read and when; then today's orders, receipts, transfers.
      2. Control room: one row per part of the app with what is true now and its last activity.
@@ -257,14 +256,14 @@ function renderAdminHome(){
       now:health ? (bad || warn ? t('hcWarnShort')(bad + warn) : t('adHealthSub')) : adminData.failed.health ? cant : t('loading'), last:health?.checkedAt ? t('checkedAt')(timeAgo(health.checkedAt)) : ''})
     + row({open:'rico', icon:ICON_SPARKLE, value:ricoMonth === null ? (adminData.failed.rico ? '–' : wait) : adNum(ricoMonth),
       now:rico ? t('adRicoSub')(t('adTokens')(fmtTokens(ricoTokenTotal(rico), true))) : adminData.failed.rico ? cant : t('loading')})
-    + row({open:'devices', icon:ADMIN_ICONS.devices, value:String(signedIn.length), now:t('adDevicesSub')(active)})
-    + adServerRow();
+    + row({open:'devices', icon:ADMIN_ICONS.devices, value:String(signedIn.length), now:t('adDevicesSub')(active)});
 
   // 3. Orders over time.
   const charts = ov ? adminCharts(ov) : `<div class="ad-chart-card">${ovFailed ? `<p class="ad-foot">${esc(cant)}</p>` : loadingLines(2)}</div>`;
 
   return head + issueRows + trio
     + `<div class="section-title">${esc(t('adGroupStatus'))}</div><div class="ad-list">${business}${system}</div>`
+    + adServerCard()
     + `<div class="section-title">${esc(t('adGroupOverTime'))}</div>${charts}`
     + `<div class="section-title">${esc(t('adGroupManage'))}</div><div class="ad-list">`
       + row({open:'time', icon:ADMIN_ICONS.time, value:usage ? fmtDuration(today) : adminData.failed.usage ? '–' : wait,
@@ -321,23 +320,21 @@ function openAdminGo(view, id){
   const tick = ()=>{ if(state.view !== view) return; if(find()) open(id); else if(--tries > 0) setTimeout(tick, 300); };
   tick();
 }
-/* Admin > Server: how full the database and the photo storage are (live), each explained in one sentence. */
+/* Admin > Server, always on the home page (no tapping): how full the free server plan is, as two bars,
+   each with one plain sentence. Read again when the page is drawn and more than a minute old. */
 let adServer = null, adServerAt = 0;
-function adServerRow(){
-  if(Date.now() - adServerAt > 60000){ adServerAt = Date.now(); api('admin/server', {quiet:true}).then(r=>{ if(r.ok){ adServer = r.data; if(state.view === 'admin' && !state.adminPage) render(); } }); }
-  const mb = b=> b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : Math.round(b / 1048576) + ' MB';
-  const v = adServer ? `${mb(adServer.dbBytes)} / ${mb(adServer.dbLimit)}` : '·';
-  return `<button type="button" class="ad-row" id="adServer"><span class="ad-row-ico" aria-hidden="true">${ADMIN_ICONS.health}</span>
-    <span class="ad-row-main"><b>${esc(t('adServer'))}</b><small>${esc(adServer ? t('adServerSub')(mb(adServer.filesBytes), mb(adServer.filesLimit)) : t('loading'))}</small></span>
-    <span class="ad-row-val" dir="ltr">${esc(v)}</span><span class="ad-row-go" aria-hidden="true">›</span></button>`;
+const adSize = b=> b >= 1073741824 ? (b / 1073741824).toFixed(2).replace(/\.?0+$/, '') + ' GB' : Math.max(1, Math.round(b / 1048576)) + ' MB';
+function adMeter(label, used, limit, hint){
+  const pct = Math.min(100, (used / limit) * 100), tone = pct >= 90 ? 'full' : pct >= 70 ? 'warn' : 'ok';
+  return `<div class="ad-srv"><div class="ad-srv-top"><b>${esc(label)}</b><span dir="ltr">${esc(t('adSrvOf')(adSize(used), adSize(limit)))}</span></div>
+    <div class="ad-srv-bar ${tone}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><i style="width:${Math.max(pct, used ? 1.5 : 0).toFixed(1)}%"></i></div>
+    <div class="ad-srv-foot"><span class="ad-srv-state ${tone}">${esc(t(tone === 'ok' ? 'adSrvOk' : tone === 'warn' ? 'adSrvWarn' : 'adSrvFull'))}</span><span dir="ltr">${esc(t('adSrvRoom')(adSize(Math.max(0, limit - used))))}</span></div>
+    <p>${esc(hint)}</p></div>`;
 }
-function openAdServer(){
-  if(!adServer) return;
-  const mb = b=> b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : Math.round(b / 1048576) + ' MB';
-  showAlert(`<div class="rs-form" style="text-align:start">
-    <div><b>${esc(t('adSrvDb'))}: ${esc(mb(adServer.dbBytes))} / ${esc(mb(adServer.dbLimit))}</b><p class="field-hint">${esc(t('adSrvDbHint'))}</p></div>
-    <div><b>${esc(t('adSrvFiles'))}: ${esc(mb(adServer.filesBytes))} / ${esc(mb(adServer.filesLimit))}</b><p class="field-hint">${esc(t('adSrvFilesHint'))}</p></div>
-    <p class="field-hint">${esc(t('adSrvMore'))}</p></div>`, {title:t('adServer')});
+function adServerCard(){
+  if(Date.now() - adServerAt > 60000){ adServerAt = Date.now(); api('admin/server', {quiet:true}).then(r=>{ if(r.ok){ adServer = r.data; if(state.view === 'admin' && !state.adminPage) render(); } }); }
+  return `<div class="section-title">${esc(t('adServer'))}</div>
+    <div class="ad-chart-card ad-srv-card">${adServer ? adMeter(t('adSrvDb'), adServer.dbBytes, adServer.dbLimit, t('adSrvDbHint')) + adMeter(t('adSrvFiles'), adServer.filesBytes, adServer.filesLimit, t('adSrvFilesHint')) : loadingLines(3)}</div>`;
 }
 const ADMIN_ICONS = {
   restore:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4 4.5v3.7h3.7"/><path d="M12 8v4l2.6 1.6"/></svg>`,
@@ -470,7 +467,7 @@ function attachAdminSecurity(slot){
 }
 
 /* ---------- Health Check ---------- */
-/* Rozha's health check in plain words: each row says what it is, how it is, and what to do when it isn't
+/* Rozh's health check in plain words: each row says what it is, how it is, and what to do when it isn't
    right. Read only; it runs when Admin opens (at most once a minute) and with Check Now. */
 const HEALTH_JOBS = [['ricotta-reminder-tick','jobReminder', 10], ['ricotta-monthly-history','jobHistory', 45*24*60], ['ricotta-daily-cleanup','jobCleanup', 26*60], ['ricotta-cron-history','jobLogs', 26*60]];
 function waitingToSave(){ return currentOutbox().length + (state.queue?.record && state.queue.saveState === 'failed' ? 1 : 0); }

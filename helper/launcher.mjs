@@ -1,4 +1,4 @@
-// Rico's launcher on Rozha's Mac: started by macOS when she logs in (see setup.mjs --launcher), it waits
+// Rico's launcher on Rozh's Mac: started by macOS when she logs in (see setup.mjs --launcher), it waits
 // for "Start Rico", "Practice mode" or "Stop Rico" from the app or Telegram, starts or stops Rico
 // (rico-helper.mjs) in that mode, and reports how it went. No Terminal window is needed.
 // What Rico prints goes to ~/Library/Logs/Rico.log.

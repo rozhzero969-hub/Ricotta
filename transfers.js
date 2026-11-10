@@ -1,5 +1,5 @@
 /* ============ Transfers ============
-   Moving stock from one storage to another in Ricotta Restaurant, done by Rico from Rozha's Mac (like
+   Moving stock from one storage to another in Ricotta Restaurant, done by Rico from Rozh's Mac (like
    receipts, receipts.js). Three pages in one tab: the list, a transfer being written (laid out like
    Ricotta Restaurant's "Move stock between storages") and one that was sent (Rico's photo to approve,
    then moved). Storages, items and units are named exactly as there; the rules are shared with the API

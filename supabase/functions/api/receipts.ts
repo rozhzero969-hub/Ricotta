@@ -1,11 +1,11 @@
-// Receipts for Ricotta Restaurant, entered there by Rico on Rozha's Mac (helper/).
+// Receipts for Ricotta Restaurant, entered there by Rico on Rozh's Mac (helper/).
 //
 // The app writes a receipt here (a draft, then "send"); Rico on the Mac takes it, fills in Ricotta
 // Restaurant's New receipt page, photographs it and stops before saving. Someone approves the photo
 // (or, with "Rico saves by himself" on, it is approved at once when nothing about it is unusual), Rico
 // presses "Receive & send to finance", finds it in Invoices and reports the finance number back.
 //
-// Routes, with a session (Receipts is Rozha's, and Yunis's when given in Admin > Access):
+// Routes, with a session (Receipts is Rozh's, and Yunis's when given in Admin > Access):
 //   GET    receipts                                  receipts of the last 60 days, the lists, Rico's state
 //   PUT    receipts/:id        {draft fields}        create or change a draft
 //   DELETE receipts/:id                              delete a draft
@@ -199,7 +199,7 @@ export const logEntry = (text: string, who = "rico") => ({ at: now(), who, text:
 
 /* ---------- What a person does to a receipt (the app and Telegram share these) ---------- */
 type Done = { row?: any; error?: string; status?: number; extra?: Record<string, unknown> };
-export const nameOf = (who: string) => who === "rozha" ? "Rozha" : who === "yunis" ? "Yunis" : who;
+export const nameOf = (who: string) => who === "rozha" ? "Rozh" : who === "yunis" ? "Yunis" : who;
 /* Anything about a receipt that someone should hear about on Telegram (see telegram.ts). */
 let notify: (db: any, r: any, event: string) => Promise<void> = async () => {};
 export function onReceiptEvent(fn: typeof notify) { notify = fn; }

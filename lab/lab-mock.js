@@ -14,7 +14,7 @@
   const can = (account, role) => account === 'rozha' || (rolesOf(account).includes(role) && (role !== 'catalog' || rolesOf(account).includes('manage')));
   const viewsFor = a => ['order', ...(can(a,'assistant') ? ['assistant'] : []), ...(can(a,'history') ? ['history'] : []),
     ...(can(a,'manage') ? ['manage','suppliers','itemsAdmin','units'] : []), ...(can(a,'receipts') ? ['receipts'] : []), ...(can(a,'transfers') ? ['transfers'] : []), ...(can(a,'record') ? ['record'] : []), ...(a === 'rozha' ? ['admin'] : []), 'settings'];
-  const NAMES = {rozha:{en:'Rozha',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}};
+  const NAMES = {rozha:{en:'Rozh',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}};
 
   const lsGet = k => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(_){ return null; } };
   const lsSet = (k, v) => { try{ localStorage.setItem(k, JSON.stringify(v)); }catch(_){} };
@@ -90,7 +90,7 @@
     const morning = atBaghdad(now.y, now.m, now.d, Math.min(9, now.h), 0);
     const inbox = [
       {id:1, kind:'cheer', mood:'excited', read:false, at:morning,
-       en:'Good morning, Rozha! 3 suppliers are due today: Zakho Dairy, Erbil Veg Market, Ankawa Bakery. Let’s get the orders out on time.',
+       en:'Good morning, Rozh! 3 suppliers are due today: Zakho Dairy, Erbil Veg Market, Ankawa Bakery. Let’s get the orders out on time.',
        ku:'بەیانیت باش ڕۆژا! ئەمڕۆ کاتی داواکاریی 3 دابینکەرە: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. با بە کاتی خۆی بینێرین.',
        ar:'صباح الخير يا روژا! اليوم موعد 3 من المورّدين: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. لنرسل الطلبات في وقتها.'}
     ];
@@ -142,7 +142,7 @@
   window.labResetData = () => { db = seed(); save(); };
   window.labDb = () => db;
 
-  /* Signed in as Rozha when the Lab opens, so the real Order screen shows first. */
+  /* Signed in as Rozh when the Lab opens, so the real Order screen shows first. */
   /* After a sign-out the Lab shows the real sign-in keypad instead. */
   const sess = lsGet(LS+'apiSession');
   if(!db.signedOut && (!sess || String(sess.token||'').startsWith('lab-'))){
@@ -482,13 +482,13 @@
       {id:'anthropic', connected:true, state:'working', at:new Date(Date.now() - 4*60000).toISOString(), calls:41, input:236000, output:18400, enabled:!db.aiOff?.anthropic},
       {id:'gemini', connected:true, state:'working', at:new Date(Date.now() - 3600000).toISOString(), calls:30, input:142000, output:25100, enabled:!db.aiOff?.gemini},
       {id:'groq', connected:true, state:'busy', at:new Date(Date.now() - 86400000).toISOString(), calls:15, input:34000, output:7500, enabled:!db.aiOff?.groq}]});
-    // Rico's orders (TEST): what Rico sent by himself over WhatsApp, Rozha only (like the server).
+    // Rico's orders (TEST): what Rico sent by himself over WhatsApp, Rozh only (like the server).
     if(method === 'GET' && path === 'rico/orders'){
       if(account !== 'rozha') return fail('forbidden', 403);
       const at = m=>new Date(Date.now() - m*60000).toISOString();
       return json({ready:true, orders:[
         {id:2, created_at:at(12), supplier_name:'Bakery', status:'sent', error:null, test:true, reason:'usual amounts: ordered on 3 of the last 4 Tuesdays', lines:[{name:'Burger bread', qty:24, unit:'piece'},{name:'Toast bread', qty:6, unit:'pack'}]},
-        {id:1, created_at:at(60*26), supplier_name:'Vegetables', status:'failed', error:'window_closed', test:true, reason:'the amounts Rozha named', lines:[{name:'Tomato', qty:5, unit:'kg'}]}]});
+        {id:1, created_at:at(60*26), supplier_name:'Vegetables', status:'failed', error:'window_closed', test:true, reason:'the amounts Rozh named', lines:[{name:'Tomato', qty:5, unit:'kg'}]}]});
     }
     if(method === 'GET' && path === 'admin/roles') return json({roles:ROLES, yunis:rolesOf('yunis'), standard:!Array.isArray(db.roles?.yunis)});
     if(method === 'PUT' && path === 'admin/roles'){
@@ -522,6 +522,8 @@
       db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:'add', type:'item', name:r.item.name, fields:[{k:'name', to:r.item.name}]});
       save(); return json({ok:true, itemId:r.item.id});
     }
+    // Admin > Server: how full the free plan is (the real numbers: 32 MB of 500 MB, 27 MB of 1 GB).
+    if(method === 'GET' && path === 'admin/server') return json({dbBytes:32077491, filesBytes:27532729, dbLimit:500 * 1048576, filesLimit:1073741824});
     if(method === 'GET' && path === 'admin/diagnostics'){
       if(account !== 'rozha') return fail('forbidden', 403);
       const ran = name => new Date(Date.now() - ({'ricotta-reminder-tick':1, 'ricotta-monthly-history':60*24*25, 'ricotta-daily-cleanup':60*7, 'ricotta-cron-history':60*7})[name]*60000).toISOString();
@@ -580,7 +582,7 @@
     if(method === 'DELETE' && (m = path.match(/^orders\/(.+)$/))){
       const o = db.history.find(x=>x.id === decodeURIComponent(m[1]));
       if(!o) return json({ok:true, streak:streakView()});
-      // As on the server: only Rozha removes orders; her own for 15 minutes, any other with her PIN (any 6 digits in the Lab).
+      // As on the server: only Rozh removes orders; her own for 15 minutes, any other with her PIN (any 6 digits in the Lab).
       if(account !== 'rozha') return fail('forbidden', 403);
       if(body.pin !== undefined){ if(!/^\d{6}$/.test(String(body.pin))) return fail('wrong_pin', 403); }
       else if(o.by !== account || Date.now() - Date.parse(o.date) > 15*60000) return fail('pin_required', 403);
@@ -599,7 +601,7 @@
     }
     if(path === 'devices/me' || path === 'devices/me/ack' || path === 'devices/command') return ok();
     /* Admin -> PINs. The Lab keeps no PINs: 000000 stands for a wrong current PIN, and Yunis's Lab PIN (222222)
-       can't be given to Rozha. */
+       can't be given to Rozh. */
     if(method === 'PUT' && path === 'admin/pin'){
       if(account !== 'rozha') return fail('forbidden', 403);
       const pin = String(body.newPin || ''), digits = [...pin].map(Number);

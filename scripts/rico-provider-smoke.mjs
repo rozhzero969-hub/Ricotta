@@ -190,7 +190,7 @@ assert.equal(geminiEvents[1].proposal.kind, 'open');
 assert.equal(requests[0].body.tools[0].functionDeclarations.some(t => t.name === 'open_screen'), true);
 assert.equal(requests[0].body.generationConfig.thinkingConfig.thinkingLevel, 'minimal');
 assert.match(requests[0].body.systemInstruction.parts[0].text, /You are Rico/);
-assert.match(requests[0].body.systemInstruction.parts[0].text, /Talking to: Rozha/);
+assert.match(requests[0].body.systemInstruction.parts[0].text, /Talking to: Rozh/);
 assert.equal(requests[1].body.contents[1].parts[0].thoughtSignature, 'keep-this');
 assert.equal(requests[1].body.contents[2].role, 'user');
 assert.equal(requests[1].body.contents[2].parts[0].functionResponse.id, 'call-1');
@@ -303,7 +303,7 @@ assert.equal(ai.brains[0].state, 'busy', 'the last answer state is kept');
 assert.deepEqual(Object.keys(ai.brains[0]).sort(), ['at', 'calls', 'connected', 'enabled', 'id', 'input', 'output', 'state'], 'no keys and no bill go to the app');
 assert.equal(JSON.stringify(ai).includes('sk-ant') || JSON.stringify(ai).includes('gsk_'), false, 'keys never go back to the app');
 
-// Rico orders by himself (TEST): usual amounts plus the ones Rozha named, sent by WhatsApp only to her number.
+// Rico orders by himself (TEST): usual amounts plus the ones Rozh named, sent by WhatsApp only to her number.
 const ago = m => new Date(Date.now() - m * 60000).toISOString();
 kitchen = {
   app_suppliers: [{ id: 'sup-bakery', name: 'Bakery', phone: '', reminder: null }, { id: 'sup-veg', name: 'Vegetables', phone: '', reminder: null }],
@@ -326,22 +326,22 @@ assert.equal(sentEvents.some(e => e.type === 'status' && e.tool === 'send_test_o
 assert.equal(whatsappCalls.length, 1);
 assert.equal(whatsappCalls[0].url, 'https://graph.facebook.com/v26.0/1370871979449071/messages');
 assert.equal(whatsappCalls[0].auth, 'Bearer EAA' + 'T'.repeat(40));
-assert.equal(whatsappCalls[0].body.to, '9647500000000', 'only Rozha\'s own number, digits only');
+assert.equal(whatsappCalls[0].body.to, '9647500000000', 'only Rozh\'s own number, digits only');
 assert.equal(whatsappCalls[0].body.type, 'text');
 assert.equal(whatsappCalls[0].body.text.body, '[TEST] Bakery\nNew order from Ricotta:\n• Burger bread: 24 piece\n• Toast bread: 2 piece', 'usual amounts plus the named one');
 assert.equal(ricoOrders.length, 1);
 assert.equal(ricoOrders[0].status, 'sent');
 assert.equal(ricoOrders[0].message_id, 'wamid.test1');
-assert.match(ricoOrders[0].reason, /usual amounts .*based on the last 3 orders.*with the amounts Rozha named/);
+assert.match(ricoOrders[0].reason, /usual amounts .*based on the last 3 orders.*with the amounts Rozh named/);
 const toolResult = JSON.parse(requests.filter(r => r.url === 'https://api.anthropic.com/v1/messages').at(-1).body.messages.at(-1).content[0].content);
 assert.deepEqual(toolResult.results[0].lines, ['Burger bread: 24 piece', 'Toast bread: 2 piece']);
-assert.match(toolResult.note, /only to Rozha's own WhatsApp/);
+assert.match(toolResult.note, /only to Rozh's own WhatsApp/);
 whatsappWindowClosed = true;
 orderTool({ suppliers: ['Vegetables', 'Bakery'], items: [{ item_id: 'it-tomato', qty: 5 }, { item_id: 'it-burger', qty: 0 }] });
 await chat('Rico, send tomatoes 5 and the bakery order yourself');
 assert.equal(whatsappCalls.length, 2, 'a closed WhatsApp window stops the rest');
 assert.equal(whatsappCalls[1].body.text.body, '[TEST] Vegetables\nNew order from Ricotta:\n• Tomato: 5 kg');
-assert.deepEqual([ricoOrders[1].status, ricoOrders[1].error, ricoOrders[1].reason], ['failed', 'window_closed', 'the amounts Rozha named']);
+assert.deepEqual([ricoOrders[1].status, ricoOrders[1].error, ricoOrders[1].reason], ['failed', 'window_closed', 'the amounts Rozh named']);
 whatsappWindowClosed = false;
 orderTool({ suppliers: ['Bakery'] });
 const yunisChat = await handleChat(db, { id: 'y', account: 'yunis', deviceId: null }, { messages: [{ role: 'user', content: 'order bakery' }], lang: 'en' }, {}, new AbortController().signal);
@@ -441,4 +441,4 @@ assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname ===
   assert.equal(full.can.history && full.can.record, true);
 }
 
-console.log('Rico provider smoke: PASS (History and Record roles inside Rico; Rico sends test orders by WhatsApp to Rozha only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');
+console.log('Rico provider smoke: PASS (History and Record roles inside Rico; Rico sends test orders by WhatsApp to Rozh only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');
