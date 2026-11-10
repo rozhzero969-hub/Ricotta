@@ -1,6 +1,6 @@
 /* Ricotta Orders -- Admin (Rozha only).
-   A dashboard that fits on one screen (phone and computer): a status line, then a tile for each page
-   with the number that matters. A tile opens its page, which slides in like a page on iPhone and has
+   The dashboard: a headline (what needs a look, or All good), today's orders, receipts and transfers,
+   a status row for each part of the app, real orders over time, then the pages to manage. A row opens its page, which slides in like a page on iPhone and has
    Admin's back button at the top:
      Problems          errors any phone ran into, and what people reported from Settings
      Security          wrong PINs, the sign-in lock (with Unlock), new phones and the sign-in log
@@ -20,9 +20,9 @@
    refreshDevices, deviceParts, deviceTitle, otherDevices, commandIsPending, versionCmp. Load before app.js. */
 
 const ADMIN_PAGES = ['problems','security','health','access','pins','devices','time','rico','catalog','restore'];
-const ADMIN_SOURCES = {backups:'admin/backups', health:'admin/diagnostics', security:'admin/security', problems:'admin/problems', usage:'admin/usage', rico:'admin/rico', ai:'admin/ai', roles:'admin/roles'};
+const ADMIN_SOURCES = {overview:'admin/overview', backups:'admin/backups', health:'admin/diagnostics', security:'admin/security', problems:'admin/problems', usage:'admin/usage', rico:'admin/rico', ai:'admin/ai', roles:'admin/roles'};
 /* What each page needs (the list itself shows a value from most of them). */
-const ADMIN_NEEDS = {restore:['backups'], home:['health','security','problems','usage','rico','roles'], problems:['problems'], security:['security'], health:['health','problems','security'],
+const ADMIN_NEEDS = {restore:['backups'], home:['overview','health','security','problems','usage','rico','roles'], problems:['problems'], security:['security'], health:['health','problems','security'],
   access:['roles'], pins:[], devices:[], time:['usage'], rico:['rico','ai'], catalog:[]};
 let adminData = {account:null, busy:{}, failed:{}};
 let adminFilter = {problems:'open', security:'all', time:'day'};
@@ -57,7 +57,8 @@ setInterval(()=>{
   if(!state.adminPage || state.adminPage === 'devices') checkCommands();
 }, 30000);
 const isAdminObject = v=>!!v && typeof v === 'object' && !Array.isArray(v);
-const ADMIN_SHAPES = {backups:Array.isArray, problems:Array.isArray, health:isAdminObject, rico:isAdminObject, ai:d=>isAdminObject(d) && Array.isArray(d.brains),
+const ADMIN_SHAPES = {overview:d=>isAdminObject(d) && isAdminObject(d.orders) && Array.isArray(d.orders.perDay) && Array.isArray(d.orders.suppliers) && isAdminObject(d.receipts) && Array.isArray(d.receipts.problems) && isAdminObject(d.transfers) && Array.isArray(d.transfers.problems),
+  backups:Array.isArray, problems:Array.isArray, health:isAdminObject, rico:isAdminObject, ai:d=>isAdminObject(d) && Array.isArray(d.brains),
   security:d=>isAdminObject(d) && Array.isArray(d.events), usage:d=>isAdminObject(d) && Array.isArray(d.people),
   roles:d=>isAdminObject(d) && Array.isArray(d.yunis) && Array.isArray(d.roles)};
 const adminValue = key=>adminData.account === state.account ? adminData[key]?.data : null;
@@ -89,6 +90,8 @@ function attachAdminBodyEvents(){
   const slot = document.getElementById('adminSlot');
   if(!slot) return;
   slot.querySelectorAll('[data-admin-open]').forEach(b=>b.onclick = ()=>openAdminPage(b.dataset.adminOpen));
+  slot.querySelectorAll('[data-admin-jump]').forEach(b=>b.onclick = ()=>openAdminPage(b.dataset.adminJump));
+  slot.querySelectorAll('[data-admin-go]').forEach(b=>b.onclick = ()=>openAdminGo(b.dataset.adminGo, b.dataset.adminId || ''));
   slot.querySelector('#adServer')?.addEventListener('click', openAdServer);
   slot.querySelectorAll('[data-admin-refresh]').forEach(b=>b.onclick = ()=>spinRefresh(b, async()=>{
     const keys = ADMIN_NEEDS[state.adminPage || 'home'];
@@ -168,16 +171,40 @@ function adminIssues(){
   if(bad) out.push({page:'health', text:t('adIssueHealth')(bad)});
   return out;
 }
-/* The dashboard: a short status line, then one tile per page with its number that matters, sized so
-   the whole board fits on one screen (two columns on a phone, three on a computer). A tile that needs
-   attention is tinted red. */
+/* The dashboard, in three parts (Rozha chose them from five designs):
+     1. One glance: a headline that says how many things need her, or "All good" only when every source
+        loaded and nothing is wrong, with what was read and when; then today's orders, receipts, transfers.
+     2. Control room: one row per part of the app with what is true now and its last activity.
+     3. Orders over time: real orders per Baghdad day for 14 days and items per supplier for 30 days.
+   Then the pages to manage, and where every number comes from. Only real rows are counted: a number that
+   could not be read says so and is never shown as 0; a real 0 is grey. No trends, targets or forecasts. */
+const adNum = n=>Number(n || 0).toLocaleString('en-US');
+const adMoney = totals=>{
+  const parts = [];
+  if(totals?.IQD != null) parts.push(adNum(totals.IQD) + ' IQD');
+  if(totals?.USD != null) parts.push('$' + Number(totals.USD).toLocaleString('en-US', {maximumFractionDigits:3}));
+  return parts.join(' + ');
+};
+/* "Today 16:33 · Yunis": when something last happened and who did it. */
+function adWhen(at, by){
+  if(!at) return t('adNeverYet');
+  const time = formatIraqDateTime(at, {hour:'numeric', minute:'2-digit'});
+  return [t('adLastAt')(`${dayLabel(at)} ${time}`), accountLabel(by)].filter(Boolean).join(' · ');
+}
 function renderAdminHome(){
-  const loading = ['health','problems','security'].some(k=>adminData.busy[k] && !adminValue(k));
+  const ov = adminValue('overview'), ovFailed = adminData.failed.overview && !ov;
+  const loading = ['health','problems','security','overview'].some(k=>!adminValue(k) && !adminData.failed[k]);
+  const failedKeys = ['health','problems','security','overview'].filter(k=>adminData.failed[k] && !adminValue(k));
   const issues = adminIssues();
+  const views = state.views || [];
+  if(ov){
+    if(views.includes('receipts')) ov.receipts.problems.forEach(p=>issues.push({go:'receipts', id:p.id, text:t('adIssueReceipt')(p.supplier), sub:p.problem || adWhen(p.at, p.by)}));
+    if(views.includes('transfers')) ov.transfers.problems.forEach(p=>issues.push({go:'transfers', id:p.id, text:t('adIssueTransfer')(p.to), sub:p.problem || adWhen(p.at, p.by)}));
+  }
   const health = adminValue('health');
   const problems = (adminValue('problems') || []).filter(p=>!p.resolvedAt);
   const openProblems = new Set(problems.map(p=>p.fingerprint)).size;
-  const recent = problems.filter(p=>Date.now() - Date.parse(p.lastAt) < 86400000).length;
+  const recent = new Set(problems.filter(p=>Date.now() - Date.parse(p.lastAt) < 86400000).map(p=>p.fingerprint)).size;
   const sec = adminValue('security'), locked = !!(sec?.lockedUntil && Date.parse(sec.lockedUntil) > Date.now());
   const rows = healthRows(), bad = rows.filter(r=>r.tone === 'bad').length, warn = rows.filter(r=>r.tone === 'warn').length;
   const roles = adminValue('roles');
@@ -186,34 +213,113 @@ function renderAdminHome(){
   const rico = adminValue('rico'), ricoMonth = rico ? Object.values(rico.kinds || {}).reduce((n, k)=>n + Number(k || 0), 0) : null;
   const signedIn = state.devices.filter(isLoggedIn), active = signedIn.filter(d=>deviceStatus(d) === 'active').length;
   const toReview = catalogCheckup().reduce((n, g)=>n + g.items.length, 0);
-  const wait = '·';
-  // A plain list in three groups (like a phone's Settings): a quiet icon, the name, what matters on the
-  // right, and red only for what needs a look today.
-  const row = (page, icon, value, sub, alert)=>`<button type="button" class="ad-row${alert ? ' alert' : ''}" data-admin-open="${page}">
+  const wait = '·', cant = t('adCouldntLoad');
+  const readAt = ov?.readAt || health?.checkedAt;
+
+  // 1. One glance.
+  const title = issues.length ? t('adNeedsYou')(issues.length) : loading ? t('checking') : failedKeys.length ? t('adCouldntCheck') : t('adAllGoodShort');
+  const sub = issues.length ? t('adNeedsYouSub') : loading ? '' : failedKeys.length ? t('adCouldntCheckSub')(failedKeys.map(k=>t('adSrc_' + k)).join(', ')) : t('adAllGoodSub');
+  const head = `<section class="ad-glance${issues.length ? ' attention' : failedKeys.length && !loading ? ' unsure' : ''}" aria-live="polite">
+      <div class="ad-glance-text"><h2>${esc(title)}</h2><p>${esc([sub, readAt ? t('adReadAt')(formatIraqDateTime(readAt, {hour:'numeric', minute:'2-digit'})) : ''].filter(Boolean).join(' · '))}</p></div>
+      ${adminRefresh()}</section>`;
+  const issueRows = issues.length ? `<div class="ad-list ad-issues">${issues.map(i=>`<button type="button" class="ad-row alert" ${i.page ? `data-admin-jump="${i.page}"` : `data-admin-go="${i.go}" data-admin-id="${esc(i.id || '')}"`}>
+      <span class="ad-dot bad" aria-hidden="true"></span><span class="ad-row-main"><b dir="auto">${esc(i.text)}</b>${i.sub ? `<small dir="auto">${esc(i.sub)}</small>` : ''}</span><span class="ad-row-go" aria-hidden="true">›</span></button>`).join('')}</div>` : '';
+  const cell = (n, label)=>`<div class="ad-trio-cell"><b class="${ov && !n ? 'zero' : ''}">${ov ? adNum(n) : ovFailed ? '–' : wait}</b><span>${esc(label)}</span></div>`;
+  const trio = `<div class="ad-trio" role="group" aria-label="${esc(t('today'))}">${cell(ov?.orders.today, t('adOrdersToday'))}${views.includes('receipts') ? cell(ov?.receipts.today, t('adReceiptsToday')) : ''}${views.includes('transfers') ? cell(ov?.transfers.today, t('adTransfersToday')) : ''}</div>`;
+
+  // 2. Control room: a status dot, the name, what is true now, and when it last happened.
+  const row = ({open, go, icon, tone = '', value = '', now = '', last = '', alert = false})=>`<button type="button" class="ad-row ad-status-row${alert ? ' alert' : ''}" ${open ? `data-admin-open="${open}"` : `data-admin-go="${go}"`}>
       <span class="ad-row-ico" aria-hidden="true">${icon}</span>
-      <span class="ad-row-main"><b>${esc(t('adminPage_' + page))}</b><small dir="auto">${esc(sub)}</small></span>
-      <span class="ad-row-val" dir="auto">${esc(value)}</span><span class="ad-row-go" aria-hidden="true">›</span></button>`;
-  const group = (title, rows)=>`<div class="section-title">${esc(title)}</div><div class="ad-list">${rows}</div>`;
-  const status = issues.length ? `<section class="ad-strip attention" aria-live="polite">
-      <span class="ad-strip-mark" aria-hidden="true">!</span>
-      <span class="ad-strip-text"><b>${esc(t('adAttention')(issues.length))}</b><span>${esc(issues.map(i=>i.text).join(' · '))}</span></span>
-      ${adminRefresh()}</section>`
-    : `<p class="ad-quiet" aria-live="polite"><i class="rr-dot ok" aria-hidden="true"></i>${esc(loading ? t('checking') : t('adAllGood'))}${health?.checkedAt && !loading ? ' · ' + esc(t('checkedAt')(timeAgo(health.checkedAt))) : ''}${adminRefresh()}</p>`;
-  return status
-    + group(t('adGroupNow'),
-      row('problems', ADMIN_ICONS.problems, adminValue('problems') ? (openProblems ? String(openProblems) : t('adNone')) : wait, adminValue('problems') ? (openProblems ? t('adProblemsSub')(recent) : t('adProblemsClear')) : t('loading'), recent > 0)
-      + row('security', ADMIN_ICONS.security, sec ? (locked ? t('adLocked') : t('adSigninOpenShort')) : wait, sec ? t('adWrongPins')(Number(sec.wrongPins24h) || 0) : t('loading'), locked)
-      + row('health', ADMIN_ICONS.health, health ? (bad ? t('adNeedsLook') : t('adWorking')) : adminData.failed.health ? t('adNeedsLook') : wait, health ? (bad || warn ? t('hcWarnShort')(bad + warn) : t('checkedAt')(timeAgo(health.checkedAt))) : t('loading'), bad > 0 || (!health && adminData.failed.health)))
-    + group(t('adGroupActivity'),
-      row('time', ADMIN_ICONS.time, usage ? fmtDuration(today) : wait, usage ? people.map(p=>`${accountLabel(p.account)} ${fmtDuration(p.today)}`).join(' · ') : t('loading'))
-      + row('rico', ICON_SPARKLE, ricoMonth === null ? wait : String(ricoMonth), rico ? t('adRicoSub')(t('adTokens')(fmtTokens(ricoTokenTotal(rico), true))) : t('loading'))
-      + row('devices', ADMIN_ICONS.devices, String(signedIn.length), t('adDevicesSub')(active))
-      + adServerRow())
-    + group(t('adGroupManage'),
-      row('access', ADMIN_ICONS.access, roles ? t('adOfTotal')(roles.yunis.length, roles.roles.length) : wait, t('adAccessSub'))
-      + row('catalog', ADMIN_ICONS.catalog, toReview ? String(toReview) : t('adNone'), toReview ? t('adCatalogSub') : t('adCatalogClear'))
-      + row('restore', ADMIN_ICONS.restore, '', t('adRestoreSub'))
-      + row('pins', ADMIN_ICONS.pins, '', `${accountLabel('rozha')} · ${accountLabel('yunis')}`));
+      <span class="ad-row-main"><b>${esc(t(open ? 'adminPage_' + open : 'adRow_' + go))}</b><small dir="auto">${esc(now)}</small>${last ? `<small class="ad-row-last" dir="auto">${esc(last)}</small>` : ''}</span>
+      <span class="ad-row-val" dir="auto">${tone ? `<i class="ad-dot ${tone}" aria-hidden="true"></i>` : ''}${esc(value)}</span><span class="ad-row-go" aria-hidden="true">›</span></button>`;
+  const ovNow = fn=>ov ? fn(ov) : ovFailed ? cant : t('loading');
+  const ovVal = fn=>ov ? fn(ov) : ovFailed ? '–' : wait;
+  const rProblems = ov?.receipts.problems.length || 0, tProblems = ov?.transfers.problems.length || 0;
+  const business = row({go:'history', icon:ICON_ORDERS_ROW, tone:ov ? 'ok' : '', value:ovVal(o=>adNum(o.orders.last7)),
+      now:ovNow(o=>t('adOrders7')(o.orders.last7)), last:ov ? adWhen(ov.orders.last?.at, ov.orders.last?.by) : ''})
+    + (views.includes('receipts') ? row({go:'receipts', icon:ICON_RECEIPTS_ROW, tone:ov ? (rProblems ? 'bad' : 'ok') : '', alert:rProblems > 0,
+      value:ovVal(o=>rProblems ? t('adProblemsN')(rProblems) : adNum(o.receipts.last7)),
+      now:ovNow(o=>[t('adReceipts7')(o.receipts.last7), adMoney(o.receipts.last7Totals), o.receipts.active ? t('adInProgress')(o.receipts.active) : ''].filter(Boolean).join(' · ')),
+      last:ov ? adWhen(ov.receipts.last?.at, ov.receipts.last?.by) : ''}) : '')
+    + (views.includes('transfers') ? row({go:'transfers', icon:ICON_TRANSFERS_ROW, tone:ov ? (tProblems ? 'bad' : 'ok') : '', alert:tProblems > 0,
+      value:ovVal(o=>tProblems ? t('adProblemsN')(tProblems) : adNum(o.transfers.last7)),
+      now:ovNow(o=>[t('adTransfers7')(o.transfers.last7), o.transfers.active ? t('adInProgress')(o.transfers.active) : ''].filter(Boolean).join(' · ')),
+      last:ov ? adWhen(ov.transfers.last?.at, ov.transfers.last?.by) : ''}) : '');
+  const pr = adminValue('problems'), lastProblem = problems.map(p=>p.lastAt).sort().pop();
+  const system = row({open:'problems', icon:ADMIN_ICONS.problems, tone:pr ? (recent ? 'bad' : openProblems ? 'warn' : 'ok') : '', alert:recent > 0,
+      value:pr ? (openProblems ? String(openProblems) : t('adNone')) : adminData.failed.problems ? '–' : wait,
+      now:pr ? (openProblems ? t('adProblemsSub')(recent) : t('adProblemsClear')) : adminData.failed.problems ? cant : t('loading'), last:lastProblem ? adWhen(lastProblem) : ''})
+    + row({open:'security', icon:ADMIN_ICONS.security, tone:sec ? (locked ? 'bad' : 'ok') : '', alert:locked,
+      value:sec ? (locked ? t('adLocked') : t('adSigninOpenShort')) : adminData.failed.security ? '–' : wait,
+      now:sec ? [t('adSignins24')(Number(sec.signins24h) || 0), t('adWrongPins')(Number(sec.wrongPins24h) || 0)].join(' · ') : adminData.failed.security ? cant : t('loading')})
+    + row({open:'health', icon:ADMIN_ICONS.health, tone:health ? (bad ? 'bad' : warn ? 'warn' : 'ok') : adminData.failed.health ? 'bad' : '', alert:bad > 0 || (!health && adminData.failed.health),
+      value:health ? (bad ? t('adNeedsLook') : t('adWorking')) : adminData.failed.health ? t('adNeedsLook') : wait,
+      now:health ? (bad || warn ? t('hcWarnShort')(bad + warn) : t('adHealthSub')) : adminData.failed.health ? cant : t('loading'), last:health?.checkedAt ? t('checkedAt')(timeAgo(health.checkedAt)) : ''})
+    + row({open:'rico', icon:ICON_SPARKLE, value:ricoMonth === null ? (adminData.failed.rico ? '–' : wait) : adNum(ricoMonth),
+      now:rico ? t('adRicoSub')(t('adTokens')(fmtTokens(ricoTokenTotal(rico), true))) : adminData.failed.rico ? cant : t('loading')})
+    + row({open:'devices', icon:ADMIN_ICONS.devices, value:String(signedIn.length), now:t('adDevicesSub')(active)})
+    + adServerRow();
+
+  // 3. Orders over time.
+  const charts = ov ? adminCharts(ov) : `<div class="ad-chart-card">${ovFailed ? `<p class="ad-foot">${esc(cant)}</p>` : loadingLines(2)}</div>`;
+
+  return head + issueRows + trio
+    + `<div class="section-title">${esc(t('adGroupStatus'))}</div><div class="ad-list">${business}${system}</div>`
+    + `<div class="section-title">${esc(t('adGroupOverTime'))}</div>${charts}`
+    + `<div class="section-title">${esc(t('adGroupManage'))}</div><div class="ad-list">`
+      + row({open:'time', icon:ADMIN_ICONS.time, value:usage ? fmtDuration(today) : adminData.failed.usage ? '–' : wait,
+        now:usage ? people.map(p=>`${accountLabel(p.account)} ${fmtDuration(p.today)}`).join(' · ') : adminData.failed.usage ? cant : t('loading')})
+      + row({open:'access', icon:ADMIN_ICONS.access, value:roles ? t('adOfTotal')(roles.yunis.length, roles.roles.length) : wait, now:t('adAccessSub')})
+      + row({open:'catalog', icon:ADMIN_ICONS.catalog, value:toReview ? String(toReview) : t('adNone'), now:toReview ? t('adCatalogSub') : t('adCatalogClear')})
+      + row({open:'restore', icon:ADMIN_ICONS.restore, now:t('adRestoreSub')})
+      + row({open:'pins', icon:ADMIN_ICONS.pins, now:`${accountLabel('rozha')} · ${accountLabel('yunis')}`})
+    + `</div><details class="ad-sources"><summary>${esc(t('adSourcesTitle'))}</summary><p>${esc(t('adSourcesBody'))}</p></details>`;
+}
+/* Orders sent per Baghdad day (14 days, today last and darker) and items ordered per supplier (30 days),
+   both to scale from the real counts; plus two totals. */
+function adminCharts(ov){
+  const days = ov.orders.perDay, max = Math.max(1, ...days.map(d=>d.n));
+  const W = 300, H = 120, left = 22, base = 96, top = 14, step = (W - left - 4) / days.length, bw = Math.max(4, step * .64);
+  const y = n=>base - (n / max) * (base - top);
+  const bars = days.map((d, i)=>{
+    const x = left + i * step + (step - bw) / 2, h = Math.max(d.n ? 2 : 0, base - y(d.n));
+    return `<rect class="${i === days.length - 1 ? 'today' : ''}" x="${x.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5"><title>${esc(formatIraqDateTime(d.day + 'T12:00:00Z', {day:'numeric', month:'short'}))}: ${d.n}</title></rect>`;
+  }).join('');
+  const label = (i, text)=>`<text x="${(left + i * step + step / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${esc(text)}</text>`;
+  const dayText = d=>formatIraqDateTime(d.day + 'T12:00:00Z', {day:'numeric', month:'short'});
+  const mid = Math.floor((days.length - 1) / 2);
+  const svg = `<svg class="ad-bars" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('adChartDays') + ': ' + days.map(d=>`${dayText(d)} ${d.n}`).join(', '))}">
+      <line x1="${left}" y1="${base}" x2="${W - 2}" y2="${base}"/><line x1="${left}" y1="${top}" x2="${W - 2}" y2="${top}" class="faint"/>
+      <text x="${left - 6}" y="${base + 3}" text-anchor="end">0</text><text x="${left - 6}" y="${top + 3}" text-anchor="end">${max}</text>
+      ${bars}${label(0, dayText(days[0]))}${label(mid, dayText(days[mid]))}${label(days.length - 1, t('today'))}</svg>`;
+  const sup = ov.orders.suppliers, top5 = sup.slice(0, 5), rest = sup.slice(5), supMax = Math.max(1, ...top5.map(s=>s.n));
+  const supRows = top5.map(s=>`<div class="ad-hbar"><span class="ad-hbar-name" dir="auto">${esc(s.name)}</span><span class="ad-hbar-n">${adNum(s.n)}</span>
+      <span class="ad-hbar-track"><span style="width:${(s.n / supMax * 100).toFixed(1)}%"></span></span></div>`).join('');
+  const perOrder = ov.orders.last30 ? Math.round(ov.orders.items30 / ov.orders.last30) : 0;
+  return `<div class="ad-chart-card">
+      <div class="ad-kpis">
+        <div><span>${esc(t('adKpiOrders30'))}</span><b>${adNum(ov.orders.last30)}</b><small>${esc(ov.orders.last30 ? t('adItemsEach')(perOrder) : t('adNoneYet'))}</small></div>
+        ${(state.views || []).includes('receipts') ? `<div><span>${esc(t('adKpiReceipts7'))}</span><b>${adNum(ov.receipts.last7)}</b><small dir="ltr">${esc(adMoney(ov.receipts.last7Totals) || t('adNoneYet'))}</small></div>` : ''}
+      </div>
+      <div class="ad-chart-title">${esc(t('adChartDays'))}</div>${svg}
+      <div class="ad-chart-title">${esc(t('adChartSuppliers'))}</div>
+      ${supRows || `<p class="ad-foot">${esc(t('adNoneYet'))}</p>`}
+      ${rest.length ? `<p class="ad-hbar-more">${esc(t('adMoreSuppliers')(rest.length, adNum(rest.reduce((n, s)=>n + s.n, 0))))}</p>` : ''}
+    </div>`;
+}
+const ICON_ORDERS_ROW = `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l-1 18H7Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>`;
+const ICON_RECEIPTS_ROW = `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h12v19l-3-2-3 2-3-2-3 2Z"/><path d="M9 8h6M9 12h6"/></svg>`;
+const ICON_TRANSFERS_ROW = `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h14l-4-4"/><path d="M20 16H6l4 4"/></svg>`;
+/* A business row or a receipt/transfer that needs a look opens its own screen (and that receipt or
+   transfer once the list has loaded). */
+function openAdminGo(view, id){
+  goView(view);
+  if(!id) return;
+  let tries = 20;
+  const find = view === 'receipts' ? ()=>typeof rrFind === 'function' && rrFind(id) : ()=>typeof tfFind === 'function' && tfFind(id);
+  const open = view === 'receipts' ? rrOpen : tfOpen;
+  const tick = ()=>{ if(state.view !== view) return; if(find()) open(id); else if(--tries > 0) setTimeout(tick, 300); };
+  tick();
 }
 /* Admin > Server: how full the database and the photo storage are (live), each explained in one sentence. */
 let adServer = null, adServerAt = 0;

@@ -12,6 +12,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const os=require('node:os');
 const http=require('node:http');
+require('../supabase/functions/_shared/overview.js');
 const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
 const siteRoot=process.env.UI_SITE_DIR?path.resolve(process.env.UI_SITE_DIR):root;
@@ -107,12 +108,18 @@ const server=http.createServer((req,res)=>{
         await route.fulfill({status:200,contentType:'application/x-ndjson',body:events.map(e=>JSON.stringify(e)).join('\n')+'\n'});
         return;
       }
+      // Admin's overview, built by the server's own counter from a few real-shaped rows.
+      const overviewFixture=globalThis.RicottaOverview.summarize({now:new Date(),
+        orders:[{id:'o1',sent_at:new Date().toISOString(),sent_by:'yunis'}],lines:[{order_id:'o1',supplier_name:'Bakery'},{order_id:'o1',supplier_name:'Bakery'}],
+        receipts:[{id:'r1',status:'problem',supplier:'Mukhtar store',problem:'Invoice not found',created_by:'rozha',updated_at:new Date().toISOString()}],
+        transfers:[]});
       let status=200, data={};
       if(endpoint==='bootstrap') data={...fixtureFor(signedIn),...over};
       else if(endpoint==='auth/security')data={required:false,siteKey:null};
       else if(endpoint==='devices') data=[];
       else if(endpoint==='activity') data=recordActivity;
       else if(endpoint==='admin/usage') data=usageFixture;
+      else if(endpoint==='admin/overview') data=overviewFixture;
       else if(endpoint==='admin/ai' && req.method()==='GET') data={from:'2026-10-01T00:00:00Z',brains:[
         {id:'anthropic',connected:true,state:'no_funds',at:new Date().toISOString(),calls:12,input:52000,output:4100},
         {id:'gemini',connected:true,state:'working',at:new Date().toISOString(),calls:30,input:142000,output:25100},
@@ -348,6 +355,13 @@ const server=http.createServer((req,res)=>{
     // Admin: one screen of tiles, each opening its page. PINs: Rozha's current PIN first, the new one typed twice.
     await openView(page,'admin');
     assert.equal(await page.locator('.ad-list [data-admin-open]').count(),10,'Admin lists every page');
+    // The dashboard: the headline counts only real problems, today's orders come from the overview, and the
+    // chart has a bar for each of the last 14 days.
+    await page.waitForFunction(()=>/need/.test(document.querySelector('.ad-glance h2')?.textContent||''));
+    assert.match(await page.locator('.ad-issues').textContent(),/Mukhtar store/,'a receipt with a problem is listed by name');
+    assert.equal((await page.locator('.ad-trio-cell b').first().textContent()).trim(),'1','one order sent today');
+    assert.equal(await page.locator('.ad-bars rect').count(),14,'14 days of orders');
+    assert.match(await page.locator('.ad-hbar').first().textContent(),/Bakery\s*2/,'items per supplier are counted from the order lines');
     await page.locator('[data-admin-open="pins"]').click();await settle(page);
     assert.equal(await page.locator('.admin-heading h1').textContent(),'PINs');
     assert.equal(await page.locator('[data-pin-change]').count(),2,'Admin changes both PINs');
