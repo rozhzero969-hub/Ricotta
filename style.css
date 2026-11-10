@@ -2163,6 +2163,9 @@ html.dark .rr-line-warn,html.dark .rr-warns p{color:#FDBA74}
 .rr-ctl.stop{color:var(--red)}
 .rr-ctl:disabled{opacity:.45}
 .rr-ctl-note{margin:-4px 0 0;font-size:.8125rem;color:var(--ink-soft)}
+.rr-ctl-note.warn{color:#9A5B00}
+html.dark .rr-ctl-note.warn{color:#FCD34D}
+.rr-ricobar .rr-ctl-note+.rr-ctl-note{margin-top:2px}
 .rr-card-title{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 14px;font-size:1rem;font-weight:600;letter-spacing:-.01em}
 .rr-count{font-size:.8125rem;font-weight:500;color:var(--ink-soft)}
 .rr-combo{position:relative}

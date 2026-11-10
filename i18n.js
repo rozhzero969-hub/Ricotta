@@ -3,6 +3,12 @@
 const T = {
   en:{
     rrStartRico:'Start Rico', rrPractice:'Practice mode', rrStopRicoNow:'Stop Rico', rrPracticeShort:'practice', rrLauncherOff:'The Mac is off, or Rico’s launcher is not set up on it.', rrLauncherWorking:'Telling the Mac...',
+    rrCheckNow:'Check now', rrChecking:'Checking...', rrCheckAsked:'Rico is about to read Ricotta Restaurant’s suppliers, storages, items and units.', rrCheckAfterJob:'Rico will check Ricotta Restaurant as soon as he finishes what he is doing.', rrCheckRunning:'Rico is reading Ricotta Restaurant’s suppliers, storages, items and units...',
+    rrCheckNoAnswer:'Rico didn’t answer the check. Try again, or make sure he is running on the Mac.', rrCheckRicoOff:'Rico is off. Start him on the Mac first.', rrCheckOld:'To use Check now, update Rico on the Mac and start him again.',
+    rrCheckFailed:(w,e)=>'Rico couldn’t check Ricotta Restaurant at '+w+(e?': '+e:'.'), rrCheckDone:w=>'Checked Ricotta Restaurant at '+w+'. The lists are up to date.', rrCheckNothing:w=>'Checked at '+w+': nothing changed in Ricotta Restaurant.', rrCheckFound:(w,p)=>'Checked at '+w+': '+p+'.',
+    rrCheckItemsNew:n=>n===1?'1 new item':n+' new items', rrCheckItemsChanged:n=>n===1?'1 item’s units changed':n+' items’ units changed', rrCheckItemsGone:n=>n===1?'1 item removed':n+' items removed',
+    rrCheckSupNew:n=>n===1?'1 new supplier':n+' new suppliers', rrCheckSupGone:n=>n===1?'1 supplier removed':n+' suppliers removed', rrCheckZoneNew:n=>n===1?'1 new storage':n+' new storages', rrCheckZoneGone:n=>n===1?'1 storage removed':n+' storages removed',
+    rrCheckNewLabel:'New', rrCheckChangedLabel:'Changed', rrListSep:', ',
     rrLimBig:'Ask twice above (IQD)', rrLimJump:'Price change warning (%)', rrLimRateMin:'Lowest dollar rate', rrLimRateMax:'Highest dollar rate', rrLimSave:'Save limits', rrLimBad:'Check the limits: whole numbers, and the highest rate not below the lowest.',
     rrTelegram:'Telegram (Ricotta Helper)', rrTgConnected:'Connected: Rico sends receipts to approve and reports there', rrTgNotConnected:'Not connected yet', rrTgNotSetUp:'The bot token is not set on the server yet', rrTgConnect:'Connect Telegram', rrTgReconnect:'Connect again',
     rrPartOf:(a,b)=>a+' of '+b,
@@ -202,6 +208,12 @@ const T = {
   },
   ku:{
     rrStartRico:'دەستپێکردنی ریکۆ', rrPractice:'دۆخی تاقیکردنەوە', rrStopRicoNow:'وەستاندنی ریکۆ', rrPracticeShort:'تاقیکردنەوە', rrLauncherOff:'ماکەکە کوژاوەتەوە، یان دەستپێکەری ریکۆ لەسەری دانەمەزراوە.', rrLauncherWorking:'بە ماکەکە دەڵێین...',
+    rrCheckNow:'ئێستا بپشکنە', rrChecking:'دەپشکنێت...', rrCheckAsked:'ریکۆ خەریکە دابینکەران، شوێنەکان، کاڵاکان و یەکەکانی ریکۆتا ڕێستۆرانت دەخوێنێتەوە.', rrCheckAfterJob:'ریکۆ هەر کە کارەکەی تەواو کرد ریکۆتا ڕێستۆرانت دەپشکنێت.', rrCheckRunning:'ریکۆ دابینکەران، شوێنەکان، کاڵاکان و یەکەکانی ریکۆتا ڕێستۆرانت دەخوێنێتەوە...',
+    rrCheckNoAnswer:'ریکۆ وەڵامی پشکنینەکەی نەدایەوە. دووبارە هەوڵ بدەرەوە، یان دڵنیابە لەسەر ماک کار دەکات.', rrCheckRicoOff:'ریکۆ کوژاوەتەوە. سەرەتا لەسەر ماک دایبگیرسێنە.', rrCheckOld:'بۆ بەکارهێنانی «ئێستا بپشکنە»، ریکۆ لەسەر ماک نوێ بکەرەوە و دووبارە دایبگیرسێنە.',
+    rrCheckFailed:(w,e)=>'ریکۆ نەیتوانی ریکۆتا ڕێستۆرانت بپشکنێت لە '+w+(e?': '+e:'.'), rrCheckDone:w=>'ریکۆتا ڕێستۆرانت پشکنرا لە '+w+'. لیستەکان نوێن.', rrCheckNothing:w=>'پشکنرا لە '+w+': هیچ لە ریکۆتا ڕێستۆرانت نەگۆڕاوە.', rrCheckFound:(w,p)=>'پشکنرا لە '+w+': '+p+'.',
+    rrCheckItemsNew:n=>n+' کاڵای نوێ', rrCheckItemsChanged:n=>'یەکەی '+n+' کاڵا گۆڕا', rrCheckItemsGone:n=>n+' کاڵا لابرا',
+    rrCheckSupNew:n=>n+' دابینکەری نوێ', rrCheckSupGone:n=>n+' دابینکەر لابرا', rrCheckZoneNew:n=>n+' شوێنی نوێ', rrCheckZoneGone:n=>n+' شوێن لابرا',
+    rrCheckNewLabel:'نوێ', rrCheckChangedLabel:'گۆڕاو', rrListSep:'، ',
     rrLimBig:'لە سەرووی ئەمە دووجار بپرسە (دینار)', rrLimJump:'ئاگادارکردنەوە لە گۆڕانی نرخی (%)', rrLimRateMin:'کەمترین نرخی دۆلار', rrLimRateMax:'زۆرترین نرخی دۆلار', rrLimSave:'پاشەکەوتکردنی سنوورەکان', rrLimBad:'سنوورەکان بپشکنە: ژمارەی تەواو، و زۆرترین نرخ کەمتر نەبێت لە کەمترین.',
     rrTelegram:'تێلیگرام (Ricotta Helper)', rrTgConnected:'پەیوەستە: ریکۆ وەسڵەکان بۆ پەسەندکردن و ڕاپۆرتەکان لەوێ دەنێرێت', rrTgNotConnected:'هێشتا پەیوەست نییە', rrTgNotSetUp:'کلیلی بۆتەکە هێشتا لەسەر سێرڤەر دانەنراوە', rrTgConnect:'پەیوەستکردنی تێلیگرام', rrTgReconnect:'دووبارە پەیوەستکردن',
     rrPartOf:(a,b)=>a+' لە '+b,
@@ -401,6 +413,12 @@ const T = {
   },
   ar:{
     rrStartRico:'تشغيل ريكو', rrPractice:'وضع التجربة', rrStopRicoNow:'إيقاف ريكو', rrPracticeShort:'تجربة', rrLauncherOff:'الماك مطفأ، أو مشغّل ريكو غير مثبت عليه.', rrLauncherWorking:'جارٍ إبلاغ الماك...',
+    rrCheckNow:'افحص الآن', rrChecking:'جارٍ الفحص...', rrCheckAsked:'سيقرأ ريكو الآن الموردين والمخازن والمواد والوحدات من ريكوتا ريستورانت.', rrCheckAfterJob:'سيفحص ريكو ريكوتا ريستورانت فور انتهائه مما يعمل عليه.', rrCheckRunning:'يقرأ ريكو الموردين والمخازن والمواد والوحدات من ريكوتا ريستورانت...',
+    rrCheckNoAnswer:'لم يرد ريكو على الفحص. حاول مرة أخرى، أو تأكد أنه يعمل على الماك.', rrCheckRicoOff:'ريكو متوقف. شغّله على الماك أولاً.', rrCheckOld:'لاستخدام «افحص الآن»، حدّث ريكو على الماك ثم شغّله من جديد.',
+    rrCheckFailed:(w,e)=>'لم يتمكن ريكو من فحص ريكوتا ريستورانت عند '+w+(e?': '+e:'.'), rrCheckDone:w=>'تم فحص ريكوتا ريستورانت عند '+w+'. القوائم محدّثة.', rrCheckNothing:w=>'تم الفحص عند '+w+': لم يتغير شيء في ريكوتا ريستورانت.', rrCheckFound:(w,p)=>'تم الفحص عند '+w+': '+p+'.',
+    rrCheckItemsNew:n=>n===1?'مادة جديدة واحدة':n+' مواد جديدة', rrCheckItemsChanged:n=>n===1?'تغيّرت وحدات مادة واحدة':'تغيّرت وحدات '+n+' مواد', rrCheckItemsGone:n=>n===1?'أزيلت مادة واحدة':'أزيلت '+n+' مواد',
+    rrCheckSupNew:n=>n===1?'مورد جديد واحد':n+' موردين جدد', rrCheckSupGone:n=>n===1?'أزيل مورد واحد':'أزيل '+n+' موردين', rrCheckZoneNew:n=>n===1?'مخزن جديد واحد':n+' مخازن جديدة', rrCheckZoneGone:n=>n===1?'أزيل مخزن واحد':'أزيلت '+n+' مخازن',
+    rrCheckNewLabel:'جديد', rrCheckChangedLabel:'تغيّر', rrListSep:'، ',
     rrLimBig:'اسأل مرتين فوق (دينار)', rrLimJump:'نبّه عند تغير السعر بنسبة (%)', rrLimRateMin:'أدنى سعر للدولار', rrLimRateMax:'أعلى سعر للدولار', rrLimSave:'حفظ الحدود', rrLimBad:'تحقق من الحدود: أرقام صحيحة، وأعلى سعر ليس أقل من الأدنى.',
     rrTelegram:'تيليغرام (Ricotta Helper)', rrTgConnected:'متصل: يرسل ريكو الإيصالات للموافقة والتقارير هناك', rrTgNotConnected:'غير متصل بعد', rrTgNotSetUp:'لم يُضبط مفتاح البوت على الخادم بعد', rrTgConnect:'ربط تيليغرام', rrTgReconnect:'ربط مرة أخرى',
     rrPartOf:(a,b)=>a+' من '+b,

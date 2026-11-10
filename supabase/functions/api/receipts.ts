@@ -19,7 +19,9 @@
 //   POST   helper/recover                            Rico started: what he left half way is sorted out
 //   POST   helper/launcher     {running, result}     the launcher on the Mac; answers {command}
 //   POST   receipts-settings/rico {action}           (session, rozha) start Rico (real | practice) or stop him
-//   PUT    helper/catalog      {suppliers, zones, items}
+//   PUT    helper/catalog      {suppliers, zones, items, titems, history, sync}   sync: the read for Check now
+//   POST   helper/sync/done   {ok, error}           Check now finished; heartbeat and claim answer checkNow when asked
+//   POST   rico/check-now                           (session, Receipts or Transfers) ask Rico to read the lists now
 //   POST   helper/claim       {wait, mode}          the next receipt to work on; waits up to {wait} s for one
 // Waiting on the server (instead of asking every few seconds) is what makes Rico start, stop and take
 // a new receipt within a second or two.
@@ -101,9 +103,78 @@ export function view(r: any, withLog = true) {
 export function helperView(h: any) {
   const seen = h.last_seen ? Date.parse(h.last_seen) : 0;
   const ls = h.launcher_seen ? Date.parse(h.launcher_seen) : 0;
-  return { online: !!seen && Date.now() - seen < 90_000, lastSeen: h.last_seen ?? null, signedIn: !!h.signed_in, busyWith: h.busy_with ?? null,
+  const online = !!seen && Date.now() - seen < 90_000;
+  return { online, lastSeen: h.last_seen ?? null, signedIn: !!h.signed_in, busyWith: h.busy_with ?? null,
     stopped: !!h.stopped, limits: limitsOf(h), version: h.version ?? null, mode: h.mode ?? null,
-    launcher: { online: !!ls && Date.now() - ls < LAUNCHER_FRESH, command: h.command ?? null, result: h.launch_result ?? null, at: h.launch_at ?? null } };
+    launcher: { online: !!ls && Date.now() - ls < LAUNCHER_FRESH, command: h.command ?? null, result: h.launch_result ?? null, at: h.launch_at ?? null },
+    sync: syncView(h), canSync: online && String(h.version ?? "") >= SYNC_VERSION };
+}
+
+/* ---------- Check now: Rico reads Ricotta Restaurant's lists straight away ----------
+   Rico reads the suppliers, zones, items and units every 10 minutes by himself. "Check now" asks him
+   to do it at once: the request waits on his row, he takes it between jobs (a receipt or transfer he is
+   in the middle of comes first), reads everything and says how it went. Only one at a time. A request
+   nobody took in 10 minutes, or a check that never finished in 3, counts as not answered. */
+const SYNC_ASK_STALE = 10 * 60_000, SYNC_RUN_STALE = 3 * 60_000;
+// The first Rico on the Mac that knows "Check now" (older ones never take the request).
+export const SYNC_VERSION = "2026-11-15";
+function syncPending(h: any) {
+  if (h.sync_state === "asked") return !!h.sync_asked_at && Date.now() - Date.parse(h.sync_asked_at) < SYNC_ASK_STALE;
+  if (h.sync_state === "running") return !!h.sync_started_at && Date.now() - Date.parse(h.sync_started_at) < SYNC_RUN_STALE;
+  return false;
+}
+export function syncView(h: any) {
+  const pending = syncPending(h);
+  return { state: pending ? h.sync_state : null, timedOut: !!h.sync_state && !pending, by: h.sync_by ?? null,
+    askedAt: h.sync_asked_at ?? null, startedAt: h.sync_started_at ?? null, doneAt: h.sync_done_at ?? null, result: h.sync_result ?? null };
+}
+/* Someone pressed Check now. */
+export async function askSync(db: any, by: string) {
+  const h = await helperRow(db);
+  const v = helperView(h);
+  if (!v.online) return { error: "rico_off", helper: v };
+  if (!v.canSync) return { error: "rico_old", helper: v };
+  if (syncPending(h)) return { error: "already_checking", helper: v };
+  // Asked once: of two presses at the same moment, only one asks (the other sees it already asked).
+  let q = rr(db, "helper").update({ sync_state: "asked", sync_by: by === "yunis" ? "yunis" : "rozha", sync_asked_at: now(), sync_started_at: null }).eq("id", true);
+  q = h.sync_state ? q.eq("sync_state", h.sync_state).eq(h.sync_state === "asked" ? "sync_asked_at" : "sync_started_at", h.sync_state === "asked" ? h.sync_asked_at : h.sync_started_at) : q.is("sync_state", null);
+  const { data, error } = await q.select("id");
+  if (error) throw error;
+  const after = helperView(await helperRow(db));
+  return data?.length ? { helper: after } : { error: "already_checking", helper: after };
+}
+/* Rico takes the request (once). */
+async function takeSync(db: any) {
+  const { data } = await rr(db, "helper").select("sync_state,sync_asked_at").eq("id", true).maybeSingle();
+  if (data?.sync_state !== "asked" || !data.sync_asked_at || Date.now() - Date.parse(data.sync_asked_at) >= SYNC_ASK_STALE) return false;
+  const { data: took } = await rr(db, "helper").update({ sync_state: "running", sync_started_at: now(), sync_result: null })
+    .eq("id", true).eq("sync_state", "asked").eq("sync_asked_at", data.sync_asked_at).select("id");
+  return !!took?.length;
+}
+/* What changed between two reads of the lists: new and removed suppliers, zones and items, and items
+   whose units changed (their base unit, counting or buying unit, or a unit's size). Up to 30 names each. */
+const NAMES = 30;
+export function catalogChanges(prev: any, next: any) {
+  const diff = (a: string[] = [], b: string[] = []) => {
+    const A = new Set(a), B = new Set(b);
+    const added = b.filter((x) => !A.has(x)), removed = a.filter((x) => !B.has(x));
+    return { added: added.length, removed: removed.length, addedNames: added.slice(0, NAMES), removedNames: removed.slice(0, NAMES) };
+  };
+  const u = (x: any) => (x ? `${x.name}=${x.factor}` : "");
+  const sig = (cat: any) => {
+    const m = new Map<string, string>();
+    for (const i of cat?.items ?? []) m.set(i.name, `${i.base}|${(i.units ?? []).map(u).sort().join(",")}`);
+    for (const i of cat?.titems ?? []) m.set(i.name, `${m.get(i.name) ?? i.base}|${u(i.count)}|${u(i.buy)}`);
+    return m;
+  };
+  const a = sig(prev), b = sig(next);
+  const changed = [...b.keys()].filter((n) => a.has(n) && a.get(n) !== b.get(n));
+  return {
+    first: !(prev?.items ?? []).length,
+    suppliers: diff(prev?.suppliers, next?.suppliers),
+    zones: diff(prev?.zones, next?.zones),
+    items: { ...diff([...a.keys()], [...b.keys()]), changed: changed.length, changedNames: changed.slice(0, NAMES) },
+  };
 }
 /* Only these draft fields, in these shapes, are kept. */
 function cleanDraft(b: any) {
@@ -289,7 +360,9 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     if (b.idle === true) patch.busy_with = null;
     await rr(db, "helper").update(patch).eq("id", true);
     await cleanOldPhotos(db, h);
-    return json(helperView({ ...h, ...patch }));
+    // Check now: while free (or stopped, when he takes no receipts) Rico takes a waiting request here.
+    const sync = b.sync === true && b.idle === true && (await takeSync(db));
+    return json({ ...helperView({ ...h, ...patch }), ...(sync ? { checkNow: true } : {}) });
   }
   // The launcher on the Mac checks in every few seconds: whether Rico is running and in which mode, and
   // how the last start or stop went. It gets the command waiting for it, once.
@@ -387,13 +460,32 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     } : ((await catalogOf(db)) as any).history ?? null;
     const data = { suppliers: strings(b.suppliers, 500), zones: strings(b.zones, 50), items, titems, history, stockAt: titems.length ? now() : null };
     if (!data.suppliers.length || !data.zones.length || !items.length) return fail("invalid_catalog");
+    const before = b.sync === true ? await catalogOf(db) : null;
     const { error } = await rr(db, "catalog").upsert({ id: true, data, updated_at: now() });
-    return error ? fail("save_failed", 503) : json({ ok: true, items: items.length });
+    if (error) return fail("save_failed", 503);
+    // The read for Check now: what changed is kept for the button's answer.
+    if (before) {
+      const changes = catalogChanges(before, data);
+      await rr(db, "helper").update({ sync_result: { changes } }).eq("id", true).eq("sync_state", "running");
+      return json({ ok: true, items: items.length, changes });
+    }
+    return json({ ok: true, items: items.length });
+  }
+  // Check now finished (or failed): {ok, error}. What changed was kept when the lists came in.
+  if (M === "POST" && path === "helper/sync/done") {
+    const h = await helperRow(db);
+    if (h.sync_state !== "running") return json({ ok: true, late: true });
+    const ok = b.ok === true;
+    const result = { ok, error: ok ? null : t(b.error, 300) || "Rico could not read Ricotta Restaurant", changes: ok ? h.sync_result?.changes ?? null : null };
+    await rr(db, "helper").update({ sync_state: null, sync_done_at: now(), sync_result: result }).eq("id", true).eq("sync_state", "running");
+    return json({ ok: true });
   }
   if (M === "POST" && path === "helper/claim") {
     const mode = b.mode === "practice" ? "practice" : b.mode === "real" ? "real" : null;
     // Receipts first, then transfers; waits up to {wait} s for either.
     const got = await poll(waitFor(b.wait), async () => {
+      // Check now comes first: it takes a few seconds, and the receipts are checked against the lists.
+      if (b.sync === true && (await takeSync(db))) return { checkNow: true };
       const { data, error } = await db.rpc("app_internal_rr_claim", { p_mode: mode });
       if (error) throw error;
       const r = (Array.isArray(data) ? data[0] : data) ?? null;
