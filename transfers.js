@@ -157,7 +157,7 @@ function renderTransferEdit(){
     const have = item ? TF().available(item, r.from) : 0, short = item && need.get(l.item) > have + 1e-9;
     return `<div class="rr-line tf-line${short ? ' warn' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="tfItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('tfItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
-      <div class="rr-field"><label for="tfQty${i}">${esc(t('tfAmount'))}</label><input id="tfQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${rrShowNum(l.qty)}" placeholder="${esc(t('tfAmountHint'))}"></div>
+      <div class="rr-field"><label for="tfQty${i}">${esc(t('tfAmount'))}</label><input id="tfQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${esc(rrBoxText(l, 'qty', true))}" placeholder="${esc(t('tfAmountHint'))}"></div>
       <div class="rr-field rr-f-unit"><label for="tfUnit${i}">${esc(t('rrUnit'))}</label><select id="tfUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${units.length ? units.map(u=>opt(u.name, u.name + (u.unclear ? ' (?)' : ''), u.name === l.unit)).join('') : opt('', t('rrUnit'), true)}</select></div>
       <button type="button" class="rr-del" data-l-del="${i}" tabindex="-1" aria-label="${esc(t('rrRemoveItem')(i + 1))}">${ICON_DELETE}</button>
       ${item ? `<p class="tf-avail${short ? ' short' : ''}">${tfAvailHtml(item, r.from, short, l.unit)}${tfUsualNote(item, r)}</p>` : ''}
@@ -242,7 +242,8 @@ function attachTransferEdit(){
   document.querySelectorAll('[data-l-qty]').forEach(el=>{
     const i = +el.dataset.lQty;
     // A box from a form that was just redrawn (a line removed, another one opened) does nothing.
-    el.oninput = ()=>{ if(!r.lines[i] || tfFind(tf.id) !== r) return; r.lines[i].qty = rrOnlyNum(el, true, true); tfSaveSoon(r); tfPaintStock(r); autoLine(el); };
+    el.oninput = ()=>{ if(!r.lines[i] || tfFind(tf.id) !== r) return; r.lines[i].qty = rrOnlyNum(el, true, true); rrKeepTyped(r.lines[i], 'qty', el); tfSaveSoon(r); tfPaintStock(r); autoLine(el); };
+    el.addEventListener('blur', ()=>rrTidyTyped(r.lines[i], 'qty', el));
     // On an amount (keys can be changed under ?): Enter goes to the next item; Tab opens the line's unit
     // menu, Tab again moves through the units and Enter picks one.
     el.addEventListener('keydown', e=>{
