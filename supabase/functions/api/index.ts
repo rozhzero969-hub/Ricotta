@@ -63,9 +63,10 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   GET    auth/security              (public)                  whether sign-in needs the bot check, and its site key
 //   receipts, receipts/:id[/send|approve|cancel|photos], receipts-settings, and helper/* for Rico on
 //   the Mac: see receipts.ts; receipts-settings/telegram and telegram/webhook for the bot: telegram.ts
+//   POST   rico/check-now             (receipts or transfers)   Rico reads Ricotta Restaurant's lists now
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { adminAi, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
-import { helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
+import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
 import { transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
 import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
@@ -850,6 +851,14 @@ Deno.serve(async (req) => {
       const limited = await requestLimit(["scan:" + s.account], [30]); if (limited) return limited;
       const r = await scanReceipt(db, b.image);
       return (r as any).error ? fail((r as any).error, 422) : json(r);
+    }
+    // Check now: Rico reads Ricotta Restaurant's suppliers, zones, items and units straight away (the
+    // same read he makes every 10 minutes). Only reads; one at a time.
+    if (M === "POST" && path === "rico/check-now") {
+      if (!can(s, "receipts") && !can(s, "transfers")) return fail("forbidden", 403);
+      const limited = await requestLimit(["check-now:" + s.account], [30]); if (limited) return limited;
+      const r = await askSync(db, s.account);
+      return r.error ? json({ error: r.error, helper: r.helper }, 409) : json(r.helper);
     }
     if (path === "receipts" || path === "receipts-settings" || path === "receipts-settings/rico" || path === "receipts-activity" || path.startsWith("receipts/")) {
       if (!can(s, "receipts")) return fail("forbidden", 403);

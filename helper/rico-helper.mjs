@@ -20,7 +20,7 @@ import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-14.1";
+const VERSION = "2026-11-15.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -266,7 +266,7 @@ function learnSoon() {
     .catch((e) => log("Could not learn from the stock record:", e.message))
     .finally(() => { historyBusy = false; });
 }
-async function readCatalog() {
+async function readCatalog({ sync = false } = {}) {
   // The unit names (غرام, کیلۆ, ...) load on the Units page; everything else on New receipt.
   const waitUnits = capture(["/api/v1/inventory/units"]);
   await go("/inventory/units");
@@ -304,7 +304,8 @@ async function readCatalog() {
   // The usual amounts and routes go with the lists (the server keeps the last ones until Rico has
   // learnt them); they are learnt again once a day, in the background.
   lastCatalogBody = { suppliers, zones: allZones.filter((n) => !/breakfast|بەیانی/i.test(n)), items, titems };
-  await api("helper/catalog", { method: "PUT", body: { ...lastCatalogBody, history: historyNow } });
+  // sync: this read is for "Check now" in the app, so the server keeps what changed for its answer.
+  await api("helper/catalog", { method: "PUT", body: { ...lastCatalogBody, history: historyNow, ...(sync ? { sync: true } : {}) } });
   catalogNow = { suppliers, zones, items, titems, history: historyNow, at: Date.now() };
   learnSoon();
   log(`read ${items.length} items, ${suppliers.length} suppliers, ${zones.length} zones`);
@@ -827,7 +828,7 @@ async function waitForApproval(r) {
 
 /* ---------- Main loop ---------- */
 async function heartbeat(idle) {
-  try { return await api("helper/heartbeat", { method: "POST", body: { version: VERSION, signedIn, idle, mode: PRACTICE ? "practice" : "real" } }); } catch (e) { log("heartbeat:", e.message); return null; }
+  try { return await api("helper/heartbeat", { method: "POST", body: { version: VERSION, signedIn, idle, mode: PRACTICE ? "practice" : "real", sync: true } }); } catch (e) { log("heartbeat:", e.message); return null; }
 }
 await openBrowser();
 // Stopped (Stop Rico, Ctrl+C or closing Terminal): his browser windows close with him.
@@ -836,6 +837,19 @@ log(`Rico ${VERSION}${PRACTICE ? " (practice: nothing is saved)" : ""}`);
 // Anything left half way when Rico last stopped is sorted out first (see the API's helper/recover).
 await api("helper/recover", { method: "POST" }).then((x) => { if (x?.recovered) log(`picked up ${x.recovered} receipt(s) left half way`); }, (e) => log("recover:", e.message));
 let lastCatalog = 0, summaryDay = null;
+/* "Check now" in the app: the same read as every 10 minutes, straight away, and how it went. */
+async function checkNow() {
+  log("Check now: reading the lists from Ricotta Restaurant");
+  try {
+    await readCatalog({ sync: true });
+    lastCatalog = Date.now();
+    await api("helper/sync/done", { method: "POST", body: { ok: true } });
+  } catch (e) {
+    log("Check now failed:", e.message);
+    await api("helper/sync/done", { method: "POST", body: { ok: false, error: String(e.message).split("\n")[0] } }).catch((x) => log("check now report:", x.message));
+  }
+  await restHome();
+}
 /* Between jobs Rico rests on Ricotta Restaurant's Inventory home page (as Rozha prefers). */
 async function restHome() {
   if (new URL(page.url()).pathname === "/inventory") return;
@@ -860,9 +874,11 @@ await restHome();
 for (;;) {
   const h = await heartbeat(true);
   let waited = false;
+  if (h?.checkNow) { await checkNow(); continue; }
   if (h && !h.stopped) {
-    // Waits up to 20 s on the server for a receipt, so a new one starts within a second or two.
-    const { receipt, transfer } = await api("helper/claim", { method: "POST", body: { wait: 50, mode: PRACTICE ? "practice" : "real", transfers: true } }).catch((e) => { log("claim:", e.message); return {}; });
+    // Waits up to 20 s on the server for a receipt (or a Check now), so it starts within a second or two.
+    const { receipt, transfer, checkNow: check } = await api("helper/claim", { method: "POST", body: { wait: 50, mode: PRACTICE ? "practice" : "real", transfers: true, sync: true } }).catch((e) => { log("claim:", e.message); return {}; });
+    if (check) { await checkNow(); continue; }
     if (receipt) { await work(receipt); await restHome(); continue; }
     if (transfer) { await workTransfer(transfer); await restHome(); continue; }
     waited = true;

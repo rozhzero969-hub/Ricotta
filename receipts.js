@@ -143,9 +143,50 @@ function rrStockNote(at, learntAt){
 function rrRicoBar(h, copyAt){
   if(!h) return '';
   const on = h.online && !h.stopped && !rrOffline();
-  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrOffline() ? t('rrOfflineShort') : rrHelperLine(h))}</span>${isRozha() && !rrOffline() ? rrRicoControls(h) : ''}</div>${isRozha() && !rrOffline() ? rrRicoNote(h) : ''}${h.online && h.signedIn === false ? `<p class="rr-offline">${esc(t('rrNotSignedIn'))}</p>` : ''}${rrOfflineNote(copyAt)}</section>`;
+  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrOffline() ? t('rrOfflineShort') : rrHelperLine(h))}</span>${!rrOffline() ? rrCheckBtn(h) : ''}${isRozha() && !rrOffline() ? rrRicoControls(h) : ''}</div>${isRozha() && !rrOffline() ? rrRicoNote(h) : ''}${!rrOffline() ? rrCheckNote(h) : ''}${h.online && h.signedIn === false ? `<p class="rr-offline">${esc(t('rrNotSignedIn'))}</p>` : ''}${rrOfflineNote(copyAt)}</section>`;
+}
+/* Check now: Rico reads Ricotta Restaurant's suppliers, zones, items and units straight away (he also
+   does it by himself every 10 minutes). Only while he is on; one check at a time. */
+const rrChecking = h=> h?.sync?.state === 'asked' || h?.sync?.state === 'running';
+function rrCheckBtn(h){
+  if(!h.online || !h.canSync) return '';
+  const busy = rrChecking(h);
+  return `<button type="button" class="rr-ctl rr-check" data-rr-check ${busy ? 'disabled aria-busy="true"' : ''}>${esc(busy ? t('rrChecking') : t('rrCheckNow'))}</button>`;
+}
+/* What the last Check now found, said in one line (shown for 15 minutes), or where it stands. */
+function rrCheckNote(h){
+  const s = h.sync || {};
+  if(h.online && !h.canSync) return `<p class="rr-ctl-note">${esc(t('rrCheckOld'))}</p>`;
+  if(s.state === 'asked') return `<p class="rr-ctl-note">${esc(h.busyWith ? t('rrCheckAfterJob') : t('rrCheckAsked'))}</p>`;
+  if(s.state === 'running') return `<p class="rr-ctl-note">${esc(t('rrCheckRunning'))}</p>`;
+  if(s.timedOut && s.askedAt && Date.now() - Date.parse(s.askedAt) < 30 * 60000) return `<p class="rr-ctl-note warn">${esc(t('rrCheckNoAnswer'))}</p>`;
+  if(!s.doneAt || !s.result || Date.now() - Date.parse(s.doneAt) > 15 * 60000) return '';
+  const when = formatIraqDateTime(new Date(s.doneAt), {hour:'numeric', minute:'2-digit'});
+  if(!s.result.ok) return `<p class="rr-ctl-note warn">${esc(t('rrCheckFailed')(when, s.result.error || ''))}</p>`;
+  return `<p class="rr-ctl-note ok">${esc(rrCheckSummary(s.result.changes, when))}</p>`;
+}
+function rrCheckSummary(c, when){
+  if(!c || c.first) return t('rrCheckDone')(when);
+  const it = c.items || {}, su = c.suppliers || {}, zo = c.zones || {};
+  const parts = [
+    it.added && t('rrCheckItemsNew')(it.added), it.changed && t('rrCheckItemsChanged')(it.changed), it.removed && t('rrCheckItemsGone')(it.removed),
+    su.added && t('rrCheckSupNew')(su.added), su.removed && t('rrCheckSupGone')(su.removed),
+    zo.added && t('rrCheckZoneNew')(zo.added), zo.removed && t('rrCheckZoneGone')(zo.removed),
+  ].filter(Boolean);
+  if(!parts.length) return t('rrCheckNothing')(when);
+  const sep = t('rrListSep');
+  const names = (label, list)=> list?.length ? ` ${label}: ${list.slice(0, 5).join(sep)}${list.length > 5 ? '…' : ''}.` : '';
+  return t('rrCheckFound')(when, parts.join(sep)) + names(t('rrCheckNewLabel'), it.addedNames) + names(t('rrCheckChangedLabel'), it.changedNames);
 }
 function attachRicoBar(){
+  document.querySelectorAll('[data-rr-check]').forEach(b=>b.onclick = ()=>withBusy(b, async ()=>{
+    const res = await api('rico/check-now', {method:'POST', body:{}});
+    const h = res.data?.helper || (res.ok ? res.data : null);
+    if(h){ if(rr.data) rr.data.helper = h; if(typeof tf !== 'undefined' && tf.data) tf.data.helper = h; }
+    const err = res.data?.error;
+    if(!res.ok && err !== 'already_checking') toast(err === 'rico_off' ? t('rrCheckRicoOff') : err === 'rico_old' ? t('rrCheckOld') : t('saveFailed'), 'error');
+    rrRepaintKeep();
+  }));
   document.querySelectorAll('[data-rico]').forEach(b=>b.onclick = async ()=>{
     b.disabled = true;
     const res = await api('receipts-settings/rico', {method:'POST', body:{action:b.dataset.rico}});
