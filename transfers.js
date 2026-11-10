@@ -250,9 +250,7 @@ function attachTransferEdit(){
       if(e.isComposing) return;
       const combo = rrCombo_(e);
       if(combo === rrKeyOf('next')){ e.preventDefault(); tfSaveSoon(r); if(i < r.lines.length - 1) go('tfItem' + (i + 1)); else addLine(); return; }
-      const sel = document.getElementById('tfUnit' + i);
-      if(combo !== rrKeyOf('unit_menu') || !sel || sel.disabled || sel.options.length < 2) return;
-      e.preventDefault(); tfSaveSoon(r); openSelPop(sel);
+      rrUnitMenuKey(e, document.getElementById('tfUnit' + i), ()=>tfSaveSoon(r));
     });
   });
   document.querySelectorAll('[data-l-del]').forEach(b=>b.onclick = ()=>{ r.lines.splice(+b.dataset.lDel, 1); if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null}); changed(true); });
