@@ -12,40 +12,46 @@ const from = src.indexOf("async function findInInvoices(r) {"), to = src.indexOf
 assert.ok(from > 0 && to > from, "findInInvoices is in the helper");
 const code = src.slice(from, to);
 
-// A page like Invoices: "Purchases" appears at once, a supplier's own tab appears after `lateMs`; each tab
-// lists its receipts after a click; the three suppliers' receipts are only in their own tab.
-const pageHtml = (own, lateMs) => `<!doctype html><meta charset=utf-8><main>
-<div id=bar></div><div id=list></div></main><script>
-const tabs = { Purchases: ['#3673 Bread House Bakery', '#013 Gomrg'], ${own ? `"${own.name}": ['${own.rows.join("', '")}']` : ""} };
+// A page like Invoices: "Purchases" appears at once, a supplier's own tab appears after `late` ms; each tab
+// lists its receipts after a click; the three suppliers' receipts are only in their own tab. The page is
+// built from this test's own settings (never from the request), as JSON with "<" escaped.
+let setup = { own: null, late: 0 };
+const pageHtml = () => {
+  const cfg = JSON.stringify({ own: setup.own && { name: setup.own, rows: [`#98875 ${setup.own}`, `#98698 ${setup.own}`] }, late: setup.late }).replace(/</g, "\\u003c");
+  return `<!doctype html><meta charset=utf-8><main><div id=bar></div><div id=list></div></main><script>
+const cfg = ${cfg};
+const tabs = { Purchases: ['#3673 Bread House Bakery', '#013 Gomrg'] }; if (cfg.own) tabs[cfg.own.name] = cfg.own.rows;
 const bar = document.getElementById('bar'), list = document.getElementById('list');
-function show(name){ list.innerHTML = tabs[name].map(t => '<div role=row>' + t + '</div>').join(''); }
+function show(name){ list.textContent = ''; for (const t of tabs[name]) { const d = document.createElement('div'); d.setAttribute('role', 'row'); d.textContent = t; list.appendChild(d); } }
 function add(name){ const b = document.createElement('button'); b.textContent = name; b.onclick = () => show(name); bar.appendChild(b); }
 setTimeout(() => { add('Purchases'); show('Purchases'); }, 150);
-${own ? `setTimeout(() => add("${own.name}"), ${lateMs});` : ""}
+if (cfg.own) setTimeout(() => add(cfg.own.name), cfg.late);
 </script>`;
+};
 
-const server = http.createServer((req, res) => { const u = new URL(req.url, "http://x"); res.setHeader("content-type", "text/html; charset=utf-8"); res.end(pageHtml(u.searchParams.get("own") ? { name: u.searchParams.get("own"), rows: ["#98875 " + u.searchParams.get("own"), "#98698 " + u.searchParams.get("own")] } : null, +(u.searchParams.get("late") || 0))); });
+const server = http.createServer((_req, res) => { res.setHeader("content-type", "text/html; charset=utf-8"); res.end(pageHtml()); });
 await new Promise((r) => server.listen(0, r));
 const base = `http://localhost:${server.address().port}`;
 const browser = await chromium.launch(), page = await browser.newPage();
 
-async function run(receipt, query) {
+async function run(receipt, opts) {
+  setup = { own: opts?.own ?? null, late: opts?.late ?? 0 };
   const stub = { page, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), capture: () => Promise.resolve({}), photo: async () => {},
-    go: async () => { await page.goto(`${base}/?${query}`); }, exact: (s) => new RegExp(`^\\s*${String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`), stop: (m) => { throw new Error(m); } };
+    go: async () => { await page.goto(base); }, exact: (s) => new RegExp(`^\\s*${String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`), stop: (m) => { throw new Error(m); } };
   const fn = new Function(...Object.keys(stub), `${code}; return findInInvoices;`)(...Object.values(stub));
   return fn(receipt);
 }
 const base_ = { id: "r1", supplier: "کۆگای مختار", invoice: "98875" };
 try {
   // 1. The supplier's own tab is drawn 2 seconds after the page (the bug: Rico looked in Purchases only).
-  let f = await run(base_, `own=${encodeURIComponent("کۆگای مختار")}&late=2000`);
+  let f = await run(base_, { own: "کۆگای مختار", late: 2000 });
   assert.equal(f.tab, "کۆگای مختار", "found in the own tab even though it was drawn late");
   assert.equal(f.missing, undefined);
   // 2. A supplier without an own tab: found in Purchases.
-  f = await run({ id: "r2", supplier: "Bread House Bakery", invoice: "3673" }, "");
+  f = await run({ id: "r2", supplier: "Bread House Bakery", invoice: "3673" });
   assert.equal(f.tab, "Purchases", "no own tab: Purchases");
   // 3. An invoice that isn't there: reported, not thrown (the receipt stays saved).
-  f = await run({ id: "r3", supplier: "Bread House Bakery", invoice: "999999" }, "");
+  f = await run({ id: "r3", supplier: "Bread House Bakery", invoice: "999999" });
   assert.ok(Array.isArray(f.missing) && f.missing.includes("Purchases") && f.tab === "", "not found: reported with where he looked");
   console.log("Rico invoices PASS: the supplier's own tab drawn late is still used, Purchases otherwise, and a missing invoice is reported instead of stopping the receipt");
 } finally { await browser.close(); server.close(); }
