@@ -532,7 +532,9 @@ async function receiptEvent(d: any, r: any, event: string) {
   if (event === "saved") {
     const f = r.finance ?? {};
     const photos = await photoLinks(d, r, ["after", "invoices"]);
-    await say(chat, `Saved in Invoices, <b>${esc(f.tab ?? "Purchases")}</b> tab (look for invoice #${esc(r.invoice)}).\n${head}\nReceived · sent to finance`);
+    await say(chat, f.tab
+      ? `Saved in Invoices, <b>${esc(f.tab)}</b> tab (look for invoice #${esc(r.invoice)}).\n${head}\nReceived · sent to finance`
+      : `Saved, and confirmed in Ricotta Restaurant's stock record, but Rico couldn't find invoice #${esc(r.invoice)} in Invoices. Please look for it there (Purchases, or the supplier's own tab).\n${head}`);
     if (photos.length) await sendPhotos(chat, photos.map((p) => p.url));
     return;
   }

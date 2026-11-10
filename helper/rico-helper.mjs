@@ -20,7 +20,7 @@ import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-15.1";
+const VERSION = "2026-11-15.3";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -470,22 +470,41 @@ async function save(r) {
   lastSaveChecked = rec.ok === true;   // not found in the record: shown as "Check this" in the app
   return text;
 }
-/* Finds the saved receipt in Invoices (its supplier's own tab, or Purchases) and reads its number. */
+/* Finds the saved receipt in Invoices and reads its number. Invoices has a "Purchases" tab with every
+   receipt, and three suppliers (the butchers and the storekeeper) have a tab of their own where their
+   receipts are listed instead. Which suppliers have one is Ricotta Restaurant's to decide and it has
+   changed (removed, then added back), so Rico never assumes: he waits for the tab bar to be drawn (it
+   appears a moment after the data), looks in the supplier's own tab first when there is one, then in
+   Purchases, and tries the whole page once more before giving up.
+   If the invoice still can't be found it is NOT a failed receipt (it was saved, and the stock record
+   confirmed it): the receipt is reported as saved, marked "Check this", and says where to look. */
 async function findInInvoices(r) {
-  const wait = capture(["/api/v1/purchasing/receipts/summary"]);
-  await go("/inventory/invoices", r.id);
-  await wait;
-  const own = page.getByRole("button", { name: exact(r.supplier) });
-  const tab = (await own.count()) ? r.supplier : "Purchases";
-  if (tab !== "Purchases") await own.first().click();
-  await page.getByText(`#${r.invoice}`).first().waitFor({ timeout: 20_000 }).catch(() => stop(`Saved, but invoice ${r.invoice} was not found in Invoices (${tab}). Check it there.`));
-  const row = page.locator("tr, [role=row], li, div").filter({ hasText: `#${r.invoice}` }).filter({ hasText: r.supplier.slice(0, 10) }).last();
-  const first = (await row.innerText()).trim().match(/^(\d+)/);
-  await row.click().catch(() => {});
-  await sleep(800);
-  await photo(page, r.id, "invoices");
   const month = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baghdad", year: "numeric", month: "2-digit" }).format(new Date());
-  return { tab, month, no: first ? Number(first[1]) : null };
+  const tried = [];
+  for (let pass = 1; pass <= 2; pass++) {
+    const wait = capture(["/api/v1/purchasing/receipts/summary"]);
+    await go("/inventory/invoices", r.id);
+    await wait;
+    // The tab bar is drawn after the data: wait for it, then give the supplier's own tab a few seconds to show.
+    await page.getByRole("button", { name: exact("Purchases") }).first().waitFor({ timeout: 15_000 }).catch(() => {});
+    const own = page.getByRole("button", { name: exact(r.supplier) });
+    for (let i = 0; i < 8 && !(await own.count()); i++) await sleep(500);
+    const candidates = (await own.count()) ? [r.supplier, "Purchases"] : ["Purchases"];
+    for (const tab of candidates) {
+      if (!tried.includes(tab)) tried.push(tab);
+      const button = page.getByRole("button", { name: exact(tab) }).first();
+      if (await button.count()) await button.click().catch(() => {});
+      const seen = await page.getByText(`#${r.invoice}`).first().waitFor({ timeout: 12_000 }).then(() => true, () => false);
+      if (!seen) continue;
+      const row = page.locator("tr, [role=row], li, div").filter({ hasText: `#${r.invoice}` }).filter({ hasText: r.supplier.slice(0, 10) }).last();
+      const first = (await row.innerText().catch(() => "")).trim().match(/^(\d+)/);
+      await row.click().catch(() => {});
+      await sleep(800);
+      await photo(page, r.id, "invoices");
+      return { tab, month, no: first ? Number(first[1]) : null };
+    }
+  }
+  return { tab: "", month, no: null, missing: tried };
 }
 
 /* ---------- One transfer between storages ---------- */
@@ -793,11 +812,15 @@ async function work(r) {
     }
     if (r.status === "saving" || r.status === "approved") {
       const text = await save(r);
-      const finance = { ...(await findInInvoices(r)), checked: lastSaveChecked };
+      const found = await findInInvoices(r);
       // The row number in Invoices is only its place in the list (it moves when Ricotta Restaurant changes its
-      // tabs), so the receipt is known by its tab, its invoice number and the day.
-      await report(r.id, { status: "saved", finance, log: [`Saved: "${text}"`, `Found in Invoices, ${finance.tab} tab, invoice #${r.invoice} (row ${finance.no ?? "?"} today)`] });
-      log(`saved ${finance.tab} invoice #${r.invoice}`);
+      // tabs), so the receipt is known by its tab, its invoice number and the day. Saved but not found in
+      // Invoices is still a saved receipt (it was confirmed in the stock record): it just shows "Check this".
+      const finance = { tab: found.tab, month: found.month, no: found.no, checked: lastSaveChecked && !found.missing };
+      await report(r.id, { status: "saved", finance, log: [`Saved: "${text}"`, found.missing
+        ? `Saved, but invoice #${r.invoice} wasn't found in Invoices (looked in: ${found.missing.join(", ")}). Please look for it there.`
+        : `Found in Invoices, ${found.tab} tab, invoice #${r.invoice} (row ${found.no ?? "?"} today)`] });
+      log(found.missing ? `saved invoice #${r.invoice} (not found in Invoices)` : `saved ${found.tab} invoice #${r.invoice}`);
     }
   } catch (e) {
     const msg = e instanceof Stop ? e.message : `Rico ran into an error: ${e.message}`;
