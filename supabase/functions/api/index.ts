@@ -8,8 +8,8 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //
 // There are two accounts, each with its own PIN:
 //   rozha  full access
-//   yunis  what Rozha gives him in Admin -> Access (ROLES below); every route checks it here
-// Rozha's Admin screen changes either PIN (with her current PIN); there is no other way to change one.
+//   yunis  what Rozh gives him in Admin -> Access (ROLES below); every route checks it here
+// Rozh's Admin screen changes either PIN (with her current PIN); there is no other way to change one.
 //
 // Routes (all JSON):
 //   POST   login                      {pin}                     -> {token, account, name, expiresAt}
@@ -34,7 +34,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   devices/me/ack             {commandId}               a remote command was carried out
 //   POST   devices/command            {ids, type} (rozha)       remote log out / refresh
 //   GET    signals?since=n&wait=s                               waits (up to 25 s) until something changes; kinds and counters only
-//   PUT    admin/pin                  {account, currentPin, newPin} (rozha)  a new PIN for Rozha or Yunis
+//   PUT    admin/pin                  {account, currentPin, newPin} (rozha)  a new PIN for Rozh or Yunis
 //   GET    admin/diagnostics          (rozha)                   Health Check: database, scheduled jobs and counts (summaries only)
 //   GET    admin/security             (rozha)                   wrong PINs, the sign-in lock, new phones, the security log
 //   POST   admin/security/unlock      (rozha)                   wrong tries in the window stop counting
@@ -87,19 +87,19 @@ const PAGE = 1000;                        // PostgREST returns at most 1000 rows
 const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
 const LANGS = ["en", "ku", "ar"];
-/* What Rozha can give Yunis in Admin -> Access. Screens: history, manage (Items, Suppliers, Units),
+/* What Rozh can give Yunis in Admin -> Access. Screens: history, manage (Items, Suppliers, Units),
    record, assistant (Rico). Features: catalog (add, change and delete items, suppliers and
    units; needs manage), send (send orders to suppliers), exports (Excel and PDF files), notify (send a
    notification to every phone through Rico), receipts (Receipts, entered in Ricotta Restaurant by Rico).
-   Rozha always has all. */
+   Rozh always has all. */
 const ROLES = ["history", "manage", "catalog", "record", "assistant", "send", "exports", "notify", "receipts", "transfers"];
-const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers");   // Receipts and Transfers only when Rozha gives them
+const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers");   // Receipts and Transfers only when Rozh gives them
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
   : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : [...DEFAULT_ROLES];
 // Account settings the app may save (Settings), and the ones with a list of choices.
 const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "ricoBriefing", "ricoMood", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto", "ricoLively"]);
 const SETTING_CHOICES: Record<string, string[]> = { darkMode: ["auto", "on", "off"], ricoStyle: ["normal", "short", "warm"] };
-// Rozha may undo an order she sent this long without typing her PIN.
+// Rozh may undo an order she sent this long without typing her PIN.
 const UNDO_MS = 15 * 60_000;
 // Allowed browser origin for this app. Set ALLOWED_ORIGIN if the production
 // site ever moves to another origin.
@@ -197,10 +197,10 @@ async function authenticate(req: Request): Promise<Session | null | "unavailable
   }
   return { id: data.id, account: data.account, deviceId: data.device_id, roles: rolesOf(data.account, (data as any).app_accounts?.roles) };
 }
-const accountName = (a: string) => (a === "rozha" ? "Rozha" : a === "yunis" ? "Yunis" : a);
+const accountName = (a: string) => (a === "rozha" ? "Rozh" : a === "yunis" ? "Yunis" : a);
 /* Each name in the script of each language, for Rico's messages. */
 const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
-  rozha: { en: "Rozha", ku: "ڕۆژا", ar: "روژا" },
+  rozha: { en: "Rozh", ku: "ڕۆژا", ar: "روژا" },
   yunis: { en: "Yunis", ku: "یونس", ar: "يونس" },
 };
 
@@ -427,7 +427,7 @@ function later(work: Promise<unknown>) {
   const done = work.catch(() => console.error("background_work_failed"));
   (globalThis as any).EdgeRuntime?.waitUntil?.(done);
 }
-/* A phone that has never signed in to this account: Rozha hears about it at once (Rico's inbox and a
+/* A phone that has never signed in to this account: Rozh hears about it at once (Rico's inbox and a
    notification on her other signed-in phones), whoever it was. */
 async function alertNewDevice(req: Request, account: Account, deviceId: string | null) {
   const [kind, how] = (deviceLabel(req) ?? "").split("|");
@@ -467,8 +467,8 @@ async function startSession(req: Request, pin: string, attempt: number[]) {
   return json({ token, account: data.account, name: data.name ?? accountName(data.account), expiresAt: data.expiresAt });
 }
 
-/* ---------- PINs (Admin, Rozha only) ----------
-   Rozha gives herself or Yunis a new PIN after typing her current one. A wrong
+/* ---------- PINs (Admin, Rozh only) ----------
+   Rozh gives herself or Yunis a new PIN after typing her current one. A wrong
    current PIN counts as a failed sign-in (the same limits), so a phone left
    signed in can't be used to guess it. The new PIN signs that account out
    everywhere except the device making the change. */
@@ -659,7 +659,7 @@ async function sendCommand(b: any) {
 
 /* ---------- Push ----------
    A test of the daily reminder needs the reminders role, a test of a supplier's reminder the catalog
-   role, and a notification written through Rico the notify role (Rozha has all three). */
+   role, and a notification written through Rico the notify role (Rozh has all three). */
 const PUSH_ROLES: Record<string, string> = { "supplier-test": "catalog", "assistant": "notify" };
 async function forwardPush(s: Session, b: any) {
   const type = text(b.type, 30);
@@ -679,7 +679,7 @@ async function forwardPush(s: Session, b: any) {
   return json(data, res.status);
 }
 
-/* Rico's chat history: one shared list. Rozha and Yunis can read and delete every chat (the app shows
+/* Rico's chat history: one shared list. Rozh and Yunis can read and delete every chat (the app shows
    whose each one is); each person only ever writes their own. */
 const CHAT_MAX_MESSAGES = 200, CHAT_MAX_CHARS = 200_000;
 const uuid = (v: unknown) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -738,7 +738,7 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
   return fail("Unknown route", 404);
 }
 
-/* ---------- Admin (Rozha only) ---------- */
+/* ---------- Admin (Rozh only) ---------- */
 /* Rico's tokens this month, as Google and Groq counted them in their own replies. No cost is worked out:
    the real bill depends on the account's plan, which the app cannot see. */
 function ricoTokens(models: any[]) {
@@ -842,7 +842,7 @@ Deno.serve(async (req) => {
       const limited = await requestLimit(["telegram"], [600]); if (limited) return limited;
       return (await telegramWebhook(db, req, await readBody(req, MAX_BODY_BYTES))) ? ok() : fail("forbidden", 403);
     }
-    // Rico on Rozha's Mac has his own door (receipts.ts), with its own secret instead of a session.
+    // Rico on Rozh's Mac has his own door (receipts.ts), with its own secret instead of a session.
     if (path.startsWith("helper/")) {
       if (!(await helperAllowed(req))) return fail("unauthorized", 401);
       const limited = await requestLimit(["helper"], [900]); if (limited) return limited;
@@ -1028,7 +1028,7 @@ Deno.serve(async (req) => {
     // Orders
     if (M === "POST" && path === "orders") return await saveOrder(s, b);
     if (M === "DELETE" && (m = path.match(/^orders\/([^/]{1,160})$/))) {
-      // Sent orders are the kitchen's paper trail, and only Rozha removes them (Yunis asks her). She
+      // Sent orders are the kitchen's paper trail, and only Rozh removes them (Yunis asks her). She
       // may undo her own for 15 minutes; any other takes her PIN. A wrong PIN counts as a failed
       // sign-in (the same limits), and the database checks the rules again.
       if (!rozha) return fail("forbidden", 403);
@@ -1156,7 +1156,7 @@ Deno.serve(async (req) => {
     if (path === "push/subscription") {
       const endpoint = b.endpoint;
       if (!isPushEndpoint(endpoint)) return fail("invalid_endpoint");
-      // A device may only remove its own subscription (Rozha may remove any).
+      // A device may only remove its own subscription (Rozh may remove any).
       if (M === "DELETE") {
         if(!rozha && !s.deviceId)return fail("device_required",403);
         let q = app("push_subscriptions").delete().eq("endpoint", endpoint);

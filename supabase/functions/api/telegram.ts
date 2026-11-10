@@ -1,4 +1,4 @@
-// Ricotta Helper on Telegram: Rico's own bot, for Rozha only.
+// Ricotta Helper on Telegram: Rico's own bot, for Rozh only.
 //
 // It answers only the chat linked from Settings > Connect Telegram (a one-time code in the link);
 // everyone else gets one line saying the bot is private. It sends:
@@ -463,7 +463,7 @@ const STEP: Record<string, string> = { queued: "sent to Rico", filling: "filling
   saved: "saved", problem: "stopped", cancelled: "cancelled" };
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { timeZone: "Asia/Baghdad", hour: "numeric", minute: "2-digit" });
 function eventLine(e: any) {
-  const who = e.by === "rozha" ? "Rozha" : e.by === "yunis" ? "Yunis" : e.by === "telegram" ? "Telegram" : e.by === "auto" ? "himself" : null;
+  const who = e.by === "rozha" ? "Rozh" : e.by === "yunis" ? "Yunis" : e.by === "telegram" ? "Telegram" : e.by === "auto" ? "himself" : null;
   if (e.kind === "command") return `${timeOf(e.at)} ${e.status === "stop" ? "Stop" : e.status === "practice" ? "Practice mode" : "Start"} pressed${who ? " on " + who : ""}`;
   if (e.kind === "launch") return `${timeOf(e.at)} ${esc(e.text)}`;
   const practice = e.mode === "practice" || /^Practice run/.test(e.text ?? "");
@@ -486,7 +486,7 @@ async function ricoDoing(d: any, chat: number) {
   await say(chat, now, h.online ? [[{ text: "Live screenshot", data: "rs" }, { text: "Refresh", data: "rw" }]] : [[{ text: "Rico on the Mac", data: "rico" }]]);
 }
 async function ricoCmd(d: any, chat: number, who: string, action: string) {
-  if (who !== "rozha") { await say(chat, "Only Rozha can start or stop Rico."); return; }
+  if (who !== "rozha") { await say(chat, "Only Rozh can start or stop Rico."); return; }
   const res = await ricoCommand(d, action, "telegram");
   await say(chat, res.error === "launcher_off" ? "The Mac is off, or Rico's launcher isn't set up on it, so Rico can't be started from here."
     : action === "stop" ? "Stopping Rico on the Mac..." : `Starting Rico${action === "practice" ? " in practice mode (nothing is saved)" : ""} on the Mac... I'll tell you when he's ready.`);
@@ -498,7 +498,7 @@ async function ricoShot(d: any, chat: number) {
 onShot(async (_d, chat, url, caption) => { if (telegramReady() && url) await tg("sendPhoto", { chat_id: chat, photo: url, caption: caption || "Rico's screen right now" }); });
 onLaunchEvent(async (d, text) => { if (!telegramReady()) return; const chat = await chatOf(d); if (chat) await say(chat, esc(text)); });
 
-/* ---------- Telling Rozha what happened ---------- */
+/* ---------- Telling Rozh what happened ---------- */
 async function sendPhotos(chat: number, urls: string[], caption?: string) {
   for (let i = 0; i < urls.length; i += 10) {
     const group = urls.slice(i, i + 10).map((u, k) => ({ type: "photo", media: u, ...(i + k === 0 && caption ? { caption, parse_mode: "HTML" } : {}) }));

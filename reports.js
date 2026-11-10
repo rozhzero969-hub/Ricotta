@@ -1,6 +1,6 @@
 /* Ricotta Orders -- problem reports and time in the app.
    Problems: whatever goes wrong on a phone (an error in the page, a promise nobody caught, an error
-   the app writes to its log, a server error answer) is reported quietly to Rozha's Admin, with the
+   the app writes to its log, a server error answer) is reported quietly to Rozh's Admin, with the
    phone, the app version and the screen it happened on. Each problem is kept on this phone first (at
    most 20, the same one only once with a count) and sent when the phone is signed in and online, so
    errors at start-up or offline still arrive. People can also write one themselves: Settings, Report a

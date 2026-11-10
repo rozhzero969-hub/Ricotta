@@ -2533,3 +2533,17 @@ html.rtl .cf-list li{padding:9px 16px 9px 0}
 .chip{border-radius:10px}
 .rr-ricobar .rr-ctl-note:empty{display:none}
 .rr-ricobar{padding:10px 16px}
+
+/* Admin > Server: two bars, each with its size, how much room is left and one sentence. */
+.ad-srv-card{gap:18px}
+.ad-srv{display:flex;flex-direction:column;gap:7px}
+.ad-srv-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.ad-srv-top b{font-size:1rem;font-weight:600}
+.ad-srv-top span{font-size:.9375rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.ad-srv-bar{height:10px;border-radius:5px;background:var(--fill);overflow:hidden}
+.ad-srv-bar i{display:block;height:100%;border-radius:5px;background:var(--accent-strong);transition:width .5s ease}
+.ad-srv-bar.warn i{background:#F59E0B}.ad-srv-bar.full i{background:var(--red)}
+.ad-srv-foot{display:flex;justify-content:space-between;gap:10px;font-size:.8125rem;color:var(--ink-soft)}
+.ad-srv-state{font-weight:600}
+.ad-srv-state.ok{color:var(--accent-strong)}.ad-srv-state.warn{color:#B45309}.ad-srv-state.full{color:var(--red)}
+.ad-srv p{margin:0;font-size:.8125rem;line-height:1.45;color:var(--ink-soft)}

@@ -3,7 +3,7 @@
    supabase/functions/api/assistant.ts). Rico PROPOSES changes: each proposal is
    a card here, and nothing happens until the person taps it; the change is then
    made through the normal API with this person's session. The one exception is
-   the WhatsApp TEST: when Rozha asks, Rico sends an order to her own WhatsApp
+   the WhatsApp TEST: when Rozh asks, Rico sends an order to her own WhatsApp
    himself (History › Rico's orders).
    Every reply carries a mood, which Rico's face and colour show. Rico also
    writes first sometimes (a morning cheer, a thank-you after an order, a
@@ -799,7 +799,7 @@ async function ricoLoadChats(){
     if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats;
   }finally{ rico.chatsBusy = false; }
 }
-/* Whose chat it is: the person's initial in a small circle (green for Rozha, gray for Yunis). */
+/* Whose chat it is: the person's initial in a small circle (green for Rozh, gray for Yunis). */
 function chatOwnerMark(c){
   const who = c.account || state.account;
   return `<span class="chat-owner ${who === 'rozha' ? 'r' : 'y'}" title="${esc(accountLabel(who))}" aria-label="${esc(accountLabel(who))}">${esc(accountLabel(who).trim().charAt(0).toUpperCase())}</span>`;
@@ -831,7 +831,7 @@ async function ricoOpenChat(id){
   ricoScroll(false);
   return true;
 }
-/* Chat history: a sheet from the bottom with one list of every chat, Rozha's and Yunis's, newest first
+/* Chat history: a sheet from the bottom with one list of every chat, Rozh's and Yunis's, newest first
    and grouped by day; each shows whose it is. Both can open any chat (the other person's opens read only)
    and delete it; Delete All asks once more before it removes every chat. */
 function ricoOpenHistory(){

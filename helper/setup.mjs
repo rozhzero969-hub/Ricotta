@@ -1,5 +1,5 @@
-// One-time setup on Rozha's Mac: `node helper/setup.mjs`.
-// Asks for the Ricotta Restaurant sign-in (typed by Rozha, never shown) and keeps it in the Keychain,
+// One-time setup on Rozh's Mac: `node helper/setup.mjs`.
+// Asks for the Ricotta Restaurant sign-in (typed by Rozh, never shown) and keeps it in the Keychain,
 // makes Rico's own API token, keeps it in the Keychain and gives it to the Ricotta Orders API as the
 // RICO_HELPER_TOKEN secret (with the Supabase command line, which must already be signed in).
 import { randomBytes } from "node:crypto";

@@ -129,7 +129,7 @@ async function apiOnce(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepal
     const data = await res.json().catch(()=>null);
     if(!sessionCurrent()) return staleApiReply();
     setApiHealth(true);
-    // A server error is a problem for Rozha's Admin too (never the report itself, and never a busy limit).
+    // A server error is a problem for Rozh's Admin too (never the report itself, and never a busy limit).
     if(res.status >= 500 && !(retrying && res.status === 503) && path !== 'problems' && data?.error !== 'rate_limit_unavailable') globalThis.reportProblem?.('server', `${method} ${path.split('?')[0].replace(/\/[^/]{16,}$/, '/…')} ${res.status} ${data?.error || ''}`.trim());
     if(res.status === 401 && s && !apiPathIsPublic(path)){ clearApiSession(); onSessionExpired(); }
     return {ok:res.ok, status:res.status, data};

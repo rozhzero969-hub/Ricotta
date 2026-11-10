@@ -44,7 +44,7 @@ const CHEER_WINDOW_MIN = 2 * 60;        // still sent if the tick was missed, un
 const ACCOUNTS = ["rozha", "yunis"];
 /* Each name in the script of each language. */
 const NAMES: Record<string, Record<"en" | "ku" | "ar", string>> = {
-  rozha: { en: "Rozha", ku: "ڕۆژا", ar: "روژا" },
+  rozha: { en: "Rozh", ku: "ڕۆژا", ar: "روژا" },
   yunis: { en: "Yunis", ku: "یونس", ar: "يونس" },
 };
 
@@ -188,7 +188,7 @@ async function claimAlert(id: string, kind: string, supplierId: string | null) {
   return !!data?.length;
 }
 type Words = { mood: string; en: (n: string) => string; ku: (n: string) => string; ar: (n: string) => string };
-/* Who has Rico: Rozha always, Yunis while his access includes Rico (no saved list = the standard set, which does).
+/* Who has Rico: Rozh always, Yunis while his access includes Rico (no saved list = the standard set, which does).
    A read that fails sends nothing. Turning his access on again brings the messages back. */
 async function ricoAccounts() {
   const rows = must(await sb.from("app_accounts").select("id,roles"), "accounts") as any[];
@@ -211,7 +211,7 @@ async function ricoSays(kind: string, key: string, words: Words, extra: Record<s
     ...(extra.supplierId ? { actionTitle: lang === "ku" ? "ئامادەی بکە" : lang === "ar" ? "جهّزه" : "Prepare it" } : {}), ...extra,
   }), allowed);
 }
-/* "Hey Rozha!" when the name is known, "Hey!" when it isn't. */
+/* "Hey Rozh!" when the name is known, "Hey!" when it isn't. */
 const hi = (word: string, n: string, sep = " ") => (n ? `${word}${sep}${n}` : word);
 /* Arabic "يا" needs a name after it; without one, a plain "Hey" (مرحبًا). */
 const ya = (n: string) => (n ? `يا ${n}` : "مرحبًا");
@@ -367,7 +367,7 @@ async function letterTick() {
   }, { view: "history" })) ?? { skipped: "already sent" };
 }
 
-/* ---- Each morning: one quiet line for Rozha in Rico's messages, no notification ---- */
+/* ---- Each morning: one quiet line for Rozh in Rico's messages, no notification ---- */
 async function healthTick() {
   const now = erbilNow();
   if (now.minutes < 8 * 60) return { skipped: "before 8:00" };

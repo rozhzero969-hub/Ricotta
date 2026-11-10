@@ -7,7 +7,7 @@
    - Rico's monthly report card in History, with "Save this month" (an Excel
      file and a printable report) before History is cleared.
    - Rico's fun facts from this month's orders.
-   - Undo: Rozha can take back an order she sent for 15 minutes. Only she
+   - Undo: Rozh can take back an order she sent for 15 minutes. Only she
      removes orders; Yunis asks her.
    The server keeps the streak; this file only shows it.
    Depends on (runtime only): state, t, esc, api, render, goView, toast,
@@ -230,7 +230,7 @@ function openReportSheet(){
     catch(e){ console.error('Month file failed', e); await showAlert(esc(t('exportFailed'))); }
   }));
 }
-/* ---------- Undo a just-sent order (Rozha's own, for 15 minutes) ---------- */
+/* ---------- Undo a just-sent order (Rozh's own, for 15 minutes) ---------- */
 const UNDO_MS = 15 * 60 * 1000;
 const canUndoOrder = rec => isRozha() && rec && rec.by === state.account && Date.now() - Date.parse(rec.date) < UNDO_MS;
 async function undoOrder(id){
@@ -292,7 +292,7 @@ function openMonthsSheet(){
 }
 
 /* Rico's orders (TEST): orders Rico sent by himself over WhatsApp, kept apart from the kitchen's own
-   History. While testing they go only to Rozha's own WhatsApp. Rozha only. */
+   History. While testing they go only to Rozh's own WhatsApp. Rozh only. */
 async function openRicoOrdersSheet(){
   const r = await api('rico/orders');
   const orders = r.ok && Array.isArray(r.data?.orders) ? r.data.orders : null;

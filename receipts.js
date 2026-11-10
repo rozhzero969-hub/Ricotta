@@ -1,5 +1,5 @@
 /* ============ Receipts ============
-   Receipts for Ricotta Restaurant, which Rico enters there from Rozha's Mac (helper/ and the API's
+   Receipts for Ricotta Restaurant, which Rico enters there from Rozh's Mac (helper/ and the API's
    receipts.ts). Three pages in one tab: the list, a receipt being written (laid out like Ricotta
    Restaurant's own New receipt page: Receipt details, then Items received, then the total) and one
    that was sent (Rico's photo to approve, or the saved receipt with its finance number). Names are the
@@ -781,7 +781,7 @@ async function rrRetry(r){
   Object.assign(r, res.data); toast(t('rrSent')); render();
 }
 
-/* Setting "Start Rico when the app opens" (Rozha, off unless she turns it on): each time the app opens
+/* Setting "Start Rico when the app opens" (Rozh, off unless she turns it on): each time the app opens
    or comes back to the front, Rico is started if he is off, the Mac's launcher is on and he isn't
    stopped in Settings. At most every 2 minutes. */
 let rrAutoAt = 0;

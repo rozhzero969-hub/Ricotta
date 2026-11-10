@@ -4,7 +4,7 @@ const {pgcrypto}=require('@electric-sql/pglite/contrib/pgcrypto');
 const source=fs.readFileSync('app.js','utf8');
 const tools=fs.readFileSync('ordering-tools.js','utf8');
 const quantityCode=tools.slice(tools.indexOf('function roundQuantity('),tools.indexOf('function parseAliases('));
-const code=quantityCode+source.slice(source.indexOf('let sharedDraft ='),source.indexOf('/* Rozha\'s Admin screen:'));
+const code=quantityCode+source.slice(source.indexOf('let sharedDraft ='),source.indexOf('/* Rozh\'s Admin screen:'));
 const clone=x=>JSON.parse(JSON.stringify(x));
 (async()=>{
  const db=new PGlite({extensions:{pgcrypto}});

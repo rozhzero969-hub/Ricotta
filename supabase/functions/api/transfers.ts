@@ -1,9 +1,9 @@
-// Transfers between storages, moved in Ricotta Restaurant by Rico on Rozha's Mac (helper/), the same
+// Transfers between storages, moved in Ricotta Restaurant by Rico on Rozh's Mac (helper/), the same
 // way as receipts (receipts.ts): made in the app or on Telegram, checked against the stock Rico last
 // read, filled in and photographed by Rico, moved only after a person approves, then checked in
 // Ricotta Restaurant's "Recent transfers".
 //
-// Routes, with a session (Transfers is Rozha's, and Yunis's only when given in Admin > Access):
+// Routes, with a session (Transfers is Rozh's, and Yunis's only when given in Admin > Access):
 //   GET    transfers                              transfers of the last 60 days, storages, stock, Rico's state
 //   PUT    transfers/:id     {from,to,yesterday,lines}   create or change a draft
 //   DELETE transfers/:id                          delete a draft

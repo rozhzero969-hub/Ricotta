@@ -1,4 +1,4 @@
-// Rico on Rozha's Mac: enters receipts from Ricotta Orders into Ricotta Restaurant.
+// Rico on Rozh's Mac: enters receipts from Ricotta Orders into Ricotta Restaurant.
 //   node helper/rico-helper.mjs              work: take receipts, fill them in, wait for approval, save
 //   node helper/rico-helper.mjs --practice   fill in each receipt, photograph it, then discard it
 //
@@ -873,7 +873,7 @@ async function checkNow() {
   }
   await restHome();
 }
-/* Between jobs Rico rests on Ricotta Restaurant's Inventory home page (as Rozha prefers). */
+/* Between jobs Rico rests on Ricotta Restaurant's Inventory home page (as Rozh prefers). */
 async function restHome() {
   if (new URL(page.url()).pathname === "/inventory") return;
   await go("/inventory").catch((e) => log("home:", e.message));
