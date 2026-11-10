@@ -5,7 +5,8 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const src=fs.readFileSync('receipts.js','utf8');
 const code=src.slice(src.indexOf('function rrOnlyNum('),src.indexOf('const RR_MOD'));
-const ctx={document:{activeElement:null}};
+const queue=[],flush=()=>queue.splice(0).forEach(f=>f());
+const ctx={document:{activeElement:null},setTimeout:f=>queue.push(f)};
 vm.createContext(ctx);vm.runInContext(code,ctx);
 const {rrOnlyNum,rrBoxText,rrKeepTyped,rrTidyTyped}=ctx;
 // A box the person types into: value, cursor, and whether it is still on the page.
@@ -35,14 +36,23 @@ assert.equal(rrBoxText(l,'cost',true),'300');
 // A box that can't be read keeps its text (in red), never "NaN".
 type(l,'qty','.',false);
 assert.ok(Number.isNaN(l.qty));assert.equal(rrBoxText(l,'qty'),'.');
-rrTidyTyped(l,'qty',box('.'));assert.equal(rrBoxText(l,'qty'),'.','a box that cannot be read stays as typed after leaving it');
+rrTidyTyped(l,'qty',box('.'));flush();assert.equal(rrBoxText(l,'qty'),'.','a box that cannot be read stays as typed after leaving it');
 assert.equal(rrBoxText({qty:Number.NaN},'qty'),'','no text kept: an empty box, not NaN');
 // Leaving the box tidies it; a box taken away by a redraw has not been left.
 const el=type(l,'qty','7.',false);
-el.isConnected=false;rrTidyTyped(l,'qty',el);
+el.isConnected=false;rrTidyTyped(l,'qty',el);flush();
 assert.equal(rrBoxText(l,'qty'),'7.','a redraw is not leaving the box');
-el.isConnected=true;rrTidyTyped(l,'qty',el);
-assert.equal(rrBoxText(l,'qty'),'7','leaving the box shows the number');
+// The redraw's blur arrives while the old box is still attached, and the box is gone a moment later.
+el.isConnected=true;rrTidyTyped(l,'qty',el);el.isConnected=false;flush();
+assert.equal(rrBoxText(l,'qty'),'7.','a box removed right after its blur has not been left');
+ctx.document.activeElement=el;el.isConnected=true;rrTidyTyped(l,'qty',el);flush();
+assert.equal(rrBoxText(l,'qty'),'7.','a box that has the focus again has not been left');
+ctx.document.activeElement=null;rrTidyTyped(l,'qty',el);flush();
+assert.equal(rrBoxText(l,'qty'),'7','leaving the box drops a dot left at the end');
+type(l,'qty','2.100',false);rrTidyTyped(l,'qty',box('2.100'));flush();
+assert.equal(rrBoxText(l,'qty'),'2.100','leaving the box keeps 2.100 as typed');
+type(l,'qty','.010',false);rrTidyTyped(l,'qty',box('.010'));flush();
+assert.equal(rrBoxText(l,'qty'),'.010','leaving the box keeps .010 as typed');
 // Empty and new boxes.
 assert.equal(rrBoxText({qty:null},'qty'),'');
 assert.equal(rrBoxText({cost:38578.5},'cost',true),'38,578.5');
