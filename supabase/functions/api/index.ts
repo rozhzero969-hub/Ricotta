@@ -39,6 +39,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   GET    admin/security             (rozha)                   wrong PINs, the sign-in lock, new phones, the security log
 //   POST   admin/security/unlock      (rozha)                   wrong tries in the window stop counting
 //   GET    admin/problems             (rozha)                   problem reports from every phone
+//   GET    admin/overview             (rozha)                   real orders, receipts and transfers by Baghdad day (read only)
 //   POST   admin/problems/resolve     {ids} (rozha)             mark problems fixed
 //   DELETE admin/problems             (rozha)                   remove the fixed ones
 //   GET    admin/usage                (rozha)                   time spent in the app per person and phone
@@ -71,6 +72,7 @@ import { transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
 import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
+import "../_shared/overview.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -780,6 +782,29 @@ function cleanProblems(v: unknown) {
   }
   return out;
 }
+/* Admin's overview: real orders, receipts and transfers of the last 31 days (and the newest of each, any
+   age), counted by Baghdad day in _shared/overview.js. Read only. */
+const OPEN_STATES = "(queued,filling,review,approved,saving,moving,problem)";
+async function adminOverview() {
+  const since = new Date(Date.now() - 31 * 86400_000).toISOString();
+  const newest = async (table: string, cols: string, key: string, status: string) => {
+    const { data, error } = await app(table).select(cols).eq("status", status).not(key, "is", null).order(key, { ascending: false }).limit(1);
+    if (error) throw error;
+    return data?.[0] ?? null;
+  };
+  const [orders, lastOrder, receipts, lastReceipt, transfers, lastTransfer] = await Promise.all([
+    readAll(() => app("orders").select("id,sent_at,sent_by").eq("status", "sent").gte("sent_at", since).order("sent_at").order("id")),
+    newest("orders", "id,sent_at,sent_by", "sent_at", "sent"),
+    readAll(() => app("rr_receipts").select("id,status,supplier,total,currency,created_by,saved_at,updated_at,problem")
+      .or(`saved_at.gte.${since},status.in.${OPEN_STATES}`).order("id")),
+    newest("rr_receipts", "saved_at,created_by,supplier", "saved_at", "saved"),
+    readAll(() => app("rr_transfers").select("id,status,from_zone,to_zone,created_by,moved_at,updated_at,problem")
+      .or(`moved_at.gte.${since},status.in.${OPEN_STATES}`).order("id")),
+    newest("rr_transfers", "moved_at,created_by,to_zone", "moved_at", "moved"),
+  ]);
+  const lines = await orderLinesFor(orders);
+  return (globalThis as any).RicottaOverview.summarize({ now: new Date(), orders, lines, lastOrder, receipts, lastReceipt, transfers, lastTransfer });
+}
 async function adminProblems() {
   const since = new Date(Date.now() - 7 * 86400_000).toISOString();
   const { data, error } = await app("problem_reports")
@@ -910,6 +935,9 @@ Deno.serve(async (req) => {
       return error ? fail("save_failed", 500) : json({ ok: true, cleared: data });
     }
     if (M === "GET" && path === "admin/problems") return json(await adminProblems());
+    if (M === "GET" && path === "admin/overview") {
+      try { return json(await adminOverview()); } catch { return fail("overview_unavailable", 503); }
+    }
     if (M === "POST" && path === "admin/problems/resolve") {
       const ids = Array.isArray(b.ids) ? [...new Set(b.ids.filter((x: unknown) => Number.isSafeInteger(x) && Number(x) > 0))] : [];
       if (!ids.length || ids.length > 300) return fail("invalid_input");
