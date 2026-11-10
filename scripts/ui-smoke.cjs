@@ -357,11 +357,15 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('.ad-list [data-admin-open]').count(),10,'Admin lists every page');
     // The dashboard: the headline counts only real problems, today's orders come from the overview, and the
     // chart has a bar for each of the last 14 days.
-    await page.waitForFunction(()=>/need/.test(document.querySelector('.ad-glance h2')?.textContent||''));
-    assert.match(await page.locator('.ad-issues').textContent(),/Mukhtar store/,'a receipt with a problem is listed by name');
+    // Receipt problems show only to someone who can open Receipts, as Rozha can in the app.
+    const viewsBefore=await page.evaluate(()=>{ const was=state.views; state.views=[...new Set([...(was||[]),'receipts'])]; render(); return was; });
+    await page.waitForFunction(()=>/Mukhtar store/.test(document.querySelector('.ad-issues')?.textContent||''),null,{timeout:10000})
+      .catch(async ()=>assert.fail('a receipt with a problem is listed by name; issues read: '+await page.locator('.ad-issues').textContent()));
+    assert.match(await page.locator('.ad-glance h2').textContent(),/need/,'the headline counts what needs you');
     assert.equal((await page.locator('.ad-trio-cell b').first().textContent()).trim(),'1','one order sent today');
     assert.equal(await page.locator('.ad-bars rect').count(),14,'14 days of orders');
     assert.match(await page.locator('.ad-hbar').first().textContent(),/Bakery\s*2/,'items per supplier are counted from the order lines');
+    await page.evaluate(was=>{ state.views=was; render(); },viewsBefore);
     await page.locator('[data-admin-open="pins"]').click();await settle(page);
     assert.equal(await page.locator('.admin-heading h1').textContent(),'PINs');
     assert.equal(await page.locator('[data-pin-change]').count(),2,'Admin changes both PINs');
