@@ -424,10 +424,14 @@ function rrBoxText(o, key, commas = false){
   if(Number.isNaN(v)) return '';
   return commas ? rrShowNum(v) : v == null ? '' : String(v);
 }
-/* Typing keeps the text; leaving the box tidies it ("12." shows as 12), unless it can't be read (that
+/* Typing keeps the text, and so does leaving the box (2.100 stays 2.100); only a dot left at the end goes ("12." shows as 12), unless it can't be read (that
    box stays as typed, in red). A box taken away by a redraw has not been left: its new copy keeps it. */
 function rrKeepTyped(o, key, el){ o[key + 'Text'] = el.value; }
-function rrTidyTyped(o, key, el){ if(!o || el?.isConnected === false || Number.isNaN(o[key])) return; delete o[key + 'Text']; }
+function rrTidyTyped(o, key, el){
+  // A box taken off the page by a redraw also fires blur (while still attached), so wait a tick: only a box
+  // still on the page and no longer focused has really been left.
+  setTimeout(()=>{ if(!o || !el?.isConnected || document.activeElement === el || Number.isNaN(o[key])) return; const x = o[key + 'Text']; if(typeof x === 'string' && x.endsWith('.')) o[key + 'Text'] = x.slice(0, -1); }, 0);
+}
 const RR_MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';
 function renderReceiptEdit(){
   const r = rrFind(rr.id); if(!r){ rr.page = 'edit'; rr.formId = null; return renderReceipts(); }
