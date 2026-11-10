@@ -2547,3 +2547,6 @@ html.rtl .cf-list li{padding:9px 16px 9px 0}
 .ad-srv-state{font-weight:600}
 .ad-srv-state.ok{color:var(--accent-strong)}.ad-srv-state.warn{color:#B45309}.ad-srv-state.full{color:var(--red)}
 .ad-srv p{margin:0;font-size:.8125rem;line-height:1.45;color:var(--ink-soft)}
+
+/* Item search boxes: no blinking text cursor (search still works). */
+.rr-edit [data-l-item]{caret-color:transparent}
