@@ -42,6 +42,16 @@ async function rrLoad(quiet = false){
   if((state.view === 'receipts' && !document.activeElement?.closest?.('.rr-edit')) || (state.view === 'settings' && !document.activeElement?.closest?.('.rr-limits'))
     || (state.view === 'history' && ['receipts', 'days'].includes(state.histMode) && !document.activeElement?.closest?.('.search-wrap'))) render();
 }
+/* Runs fn once no finger or mouse button is down (right away otherwise): a redraw in the middle of a
+   press moves the page under it and the press is lost. */
+let rrPressing = false;
+addEventListener('pointerdown', ()=>{ rrPressing = true; }, true);
+for(const ev of ['pointerup', 'pointercancel']) addEventListener(ev, ()=>setTimeout(()=>{ rrPressing = false; }, 0), true);
+function rrAfterPress(fn){
+  if(!rrPressing) return void setTimeout(fn, 0);
+  const go = ()=>{ removeEventListener('pointerup', go, true); removeEventListener('pointercancel', go, true); setTimeout(fn, 0); };
+  addEventListener('pointerup', go, true); addEventListener('pointercancel', go, true);
+}
 /* Redraws even while a box is being typed in, keeping that box, its cursor and the scroll place. */
 function rrRepaintKeepFocus(){
   const a = document.activeElement, id = a?.id, s = a?.selectionStart, e = a?.selectionEnd, top = scrollBox().scrollTop;
@@ -623,11 +633,13 @@ function attachReceiptEdit(){
     el.addEventListener('focus', ()=>{ rr.typingLine = i; });
     // A box taken off the page by a redraw also fires blur: only a box still there and no longer focused
     // has really been left (otherwise the form redrew itself over and over and clicks were lost).
-    el.addEventListener('blur', ()=>setTimeout(()=>{
+    // Left by pressing a button (Add item, Send, another line): the warning shows only once the press
+    // is over, so the button doesn't move away under the finger and the tap is never lost.
+    el.addEventListener('blur', ()=>rrAfterPress(()=>{
       if(!el.isConnected || document.activeElement === el || rr.typingLine !== i) return;
       rr.typingLine = null;
       if(state.view === 'receipts' && rr.page === 'edit' && rrFind(rr.id) === r) rrRepaintKeepFocus();
-    }, 0));
+    }));
   };
   document.querySelectorAll('[data-l-qty]').forEach(el=>{
     const i = +el.dataset.lQty;
