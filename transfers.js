@@ -157,11 +157,10 @@ function renderTransferEdit(){
   const ready = r.from && r.to;
   const lines = r.lines.map((l, i)=>{
     const item = tfItem(l.item), units = item ? TF().unitOptions(item) : [];
-    // An item with no unit yet gets its counting unit at once. A unit it no longer has (changed in
-    // Ricotta Restaurant) is cleared to be picked again: swapping it would keep the amount in another
-    // unit (2 cartons becoming 2 kilos).
-    if(item && units.length && !l.unit){ l.unit = units[0].name; tfSaveSoon(r); }
-    else if(item && units.length && !units.some(u=>u.name === l.unit)){ l.unit = ''; tfSaveSoon(r); }
+    // Picking an item gives its counting unit (see the item box below). A unit it no longer has (changed
+    // in Ricotta Restaurant) is cleared to be picked again, never swapped: swapping would keep the amount
+    // in another unit (2 cartons becoming 2 kilos).
+    if(item && units.length && l.unit && !units.some(u=>u.name === l.unit)){ l.unit = ''; tfSaveSoon(r); }
     const have = item ? TF().available(item, r.from) : 0, short = item && need.get(l.item) > have + 1e-9;
     return `<div class="rr-line tf-line${short ? ' warn' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="tfItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('tfItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>

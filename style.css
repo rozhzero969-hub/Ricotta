@@ -2131,7 +2131,10 @@ html.dark .rr-line-warn{color:#FDBA74}
 .tf-yest.on i{background:#F59E0B}
 .tf-yest.on i::after{transform:translateX(18px)}
 html[dir=rtl] .tf-yest.on i::after{transform:translateX(-18px)}
-html.dark .tf-yest.on b{color:#FBBF24}
+/* Dark: a calm card, the same as the others; only a soft edge and the switch say it is on. */
+html.dark .tf-yest.on{background:var(--surface);border-color:rgba(255,184,77,.32)}
+html.dark .tf-yest.on b{color:var(--ink)}
+html.dark .tf-yest.on i{background:#C98A2E}
 .tf-day{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .tf-export{display:flex;gap:6px;text-transform:none;letter-spacing:0}
 .tf-export button{height:30px;padding:0 12px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;font-size:.8125rem;font-weight:600}
