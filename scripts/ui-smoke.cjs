@@ -316,6 +316,19 @@ const server=http.createServer((req,res)=>{
       else assert.equal(await page.locator('.bottomnav [aria-current="page"]').getAttribute('data-view'),['manage','itemsAdmin','suppliers','units'].includes(view)?'manage':view);
     }
     await openView(page,'order');await page.locator('[data-ordertab="all"]').click();await snapshot(page,'desktop-order.png');
+    // Nothing on the page moves when an amount goes up or down, the first item and the last one included
+    // (a line appearing in the Order card pushed everything down, 2026-11-12).
+    const moved=await page.evaluate(async()=>{
+      const was={...state.cart}; state.cart={}; refreshOrderView();
+      const row=document.querySelector('#orderResults .item-row'), top=()=>row.getBoundingClientRect().top, out=[];
+      for(const dir of ['inc','inc','dec','dec']){
+        const t0=top(); let most=0; stepQty(row.querySelector(`[data-${dir}]`));
+        for(let i=0;i<20;i++){ await new Promise(r=>requestAnimationFrame(r)); most=Math.max(most,Math.abs(top()-t0)); }
+        out.push(most);
+      }
+      state.cart=was; refreshOrderView(); return out;
+    });
+    assert.deepEqual(moved,[0,0,0,0],'the list stays still while amounts change');
     await page.evaluate(()=>{
       const event=new Event('beforeinstallprompt',{cancelable:true});
       event.prompt=async()=>{window.installPromptCalled=true;};

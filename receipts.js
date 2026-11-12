@@ -529,7 +529,27 @@ function rrWarnText(w){
   return '';
 }
 const RR_ERR_KEYS = {supplier:'rrErrSupplier', supplierUnknown:'rrErrSupplier', invoice:'rrErrInvoice', zone:'rrErrZone', currency:'rrErrRate', rate:'rrErrRate', deliveryUsd:'rrErrDelivery', delivery:'rrErrDelivery', noLines:'rrErrNoLines', tooManyLines:'rrErrNoLines', itemUnknown:'rrErrItem', unitUnknown:'rrErrUnit', qty:'rrErrQty', cost:'rrErrCost'};
-function rrErrText(e){ const s = t(RR_ERR_KEYS[e.code] || 'rrErrItem'); return e.line ? t('rrLineN')(e.line) + ': ' + s : s; }
+function rrErrText(e, lines){
+  const s = t(RR_ERR_KEYS[e.code] || 'rrErrItem');
+  const name = e.line && lines?.[e.line - 1]?.item;
+  return e.line ? t('rrLineN')(e.line) + (name ? ' · ' + name : '') + ': ' + s : s;
+}
+/* "Fix these first" shows on the form too: every box it names is outlined in red, and the first one is
+   opened for typing, so nobody has to hunt for it. The red goes as soon as the box is typed in. */
+const RR_ERR_BOX = {supplier:'rrSupplier', supplierUnknown:'rrSupplier', invoice:'rrInvoice', zone:'rrZone', currency:'rrRate', rate:'rrRate', deliveryUsd:'rrDelivery', delivery:'rrDelivery',
+  noLines:'rrItem0', itemUnknown:'rrItem', unitUnknown:'rrUnit', qty:'rrQty', cost:'rrCost',
+  from:'tfFrom', fromUnknown:'tfFrom', to:'tfTo', toUnknown:'tfTo', sameZone:'tfTo', unitUnclear:'tfUnit', notEnough:'tfQty'};
+function rrMarkErrors(errors, tfForm = false){
+  const boxes = errors.map(e=>{
+    let id = RR_ERR_BOX[e.code];
+    if(!id) return null;
+    if(tfForm) id = id.replace(/^rr(Item|Unit|Qty)$/, 'tf$1').replace('rrItem0', 'tfItem0');
+    return document.getElementById(/^(rr|tf)(Item|Unit|Qty|Cost)$/.test(id) ? id + ((e.line || 1) - 1) : id);
+  }).filter(Boolean).map(b=>b.tagName === 'SELECT' ? (b.parentElement.querySelector('.sel-btn') || b) : b);
+  boxes.forEach(b=>{ b.classList.add('bad'); b.addEventListener('input', ()=>b.classList.remove('bad'), {once:true}); b.addEventListener('change', ()=>b.classList.remove('bad'), {once:true}); if(b.classList.contains('sel-btn')) b.addEventListener('click', ()=>b.classList.remove('bad'), {once:true}); });
+  const first = boxes[0];
+  if(first){ first.scrollIntoView({block:'center', behavior:reducedMotion() ? 'auto' : 'smooth'}); first.focus({preventScroll:true}); }
+}
 /* A number typed with Arabic or Kurdish digits, or a comma, still reads right. */
 function rrParse(v, decimals){
   const s = String(v).replace(/[٠-٩]/g, d=>d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d=>d.charCodeAt(0) - 0x6f0).replace(/[,\s]/g, '').replace('٫', '.');
@@ -673,7 +693,8 @@ async function rrSendNow(r, keepForm){
   if(c.errors.length){
     if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null, cost:null});
     render();
-    await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li>${esc(rrErrText(e))}</li>`).join('')}</ul>`, {title:t('rrFixFirst')});
+    await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li dir="auto">${esc(rrErrText(e, r.lines))}</li>`).join('')}</ul>`, {title:t('rrFixFirst')});
+    rrMarkErrors(c.errors);
     return;
   }
   // Every warning is read and confirmed before Rico gets the receipt.

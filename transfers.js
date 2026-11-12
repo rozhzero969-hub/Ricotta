@@ -301,9 +301,10 @@ function tfPaintStock(r){
 }
 const TF_ERR = {from:'tfErrFrom', fromUnknown:'tfErrFrom', to:'tfErrTo', toUnknown:'tfErrTo', sameZone:'tfErrSame', noLines:'rrErrNoLines', tooManyLines:'rrErrNoLines',
   itemUnknown:'tfErrItem', unitUnknown:'rrErrUnit', unitUnclear:'tfErrUnitUnclear', qty:'tfErrQty'};
-function tfErrText(e){
-  if(e.code === 'notEnough') return t('rrLineN')(e.line) + ': ' + t('tfErrNotEnough')(tfQty(e.need.qty) + ' ' + e.need.unit, tfQty(e.have.qty) + ' ' + e.have.unit);
-  const s = t(TF_ERR[e.code] || 'tfErrItem'); return e.line ? t('rrLineN')(e.line) + ': ' + s : s;
+function tfErrText(e, lines){
+  const head = e.line ? t('rrLineN')(e.line) + (lines?.[e.line - 1]?.item ? ' · ' + lines[e.line - 1].item : '') + ': ' : '';
+  if(e.code === 'notEnough') return head + t('tfErrNotEnough')(tfQty(e.need.qty) + ' ' + e.need.unit, tfQty(e.have.qty) + ' ' + e.have.unit);
+  return head + t(TF_ERR[e.code] || 'tfErrItem');
 }
 /* "Item 3 · Lettuce": the line number with the item's short name, so a question says what it is about. */
 function tfLineLabel(w, r){
@@ -338,7 +339,8 @@ async function tfSendNow(r, keepForm){
   if(c.errors.length){
     if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null});
     render();
-    await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li>${esc(tfErrText(e))}</li>`).join('')}</ul>`, {title:t('rrFixFirst')});
+    await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li dir="auto">${esc(tfErrText(e, r.lines))}</li>`).join('')}</ul>`, {title:t('rrFixFirst')});
+    rrMarkErrors(c.errors, true);
     return;
   }
   // Written on an earlier day (with no connection, or a draft kept overnight): which day it counts on is

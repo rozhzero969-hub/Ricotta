@@ -250,7 +250,7 @@ function paintDraftStatus(){
   if(!el) return;
   el.innerHTML=draftStatusHtml();
   const caption=document.querySelector('.draft-state');
-  if(caption) caption.textContent=cartCount()?draftProgressLabel():'';
+  if(caption) caption.textContent=cartCount()?draftProgressLabel():t('heroNothingYet');
   el.querySelectorAll('[data-draft-choice]').forEach(b=>b.onclick=()=>resolveDraftConflict(b.dataset.draftChoice));
 }
 function receiveSharedDraft(data, base=sharedDraft.base){
@@ -2206,7 +2206,7 @@ function renderOrderHero(itemCount=state.items.length, supplierCount=new Set(sta
     <div class="hero-copy"><div class="hero-eyebrow">${t('heroEyebrow')}</div>
     <div class="hero-stat" aria-live="polite" aria-label="${esc(t('heroStat')(selCount))}"><span class="hero-count">${selCount}</span><span class="hero-word">${t('heroStatWord')(selCount)}</span></div>
     <div class="hero-sub">${t('heroSub')(itemCount, supplierCount)}</div></div>
-    <div class="hero-footer"><span class="draft-state">${selCount?draftProgressLabel():''}</span></div>
+    <div class="hero-footer"><span class="draft-state">${selCount?draftProgressLabel():t('heroNothingYet')}</span></div>
   </div>`;
 }
 function renderOrderArrangeControl(){
@@ -2361,7 +2361,7 @@ function refreshCartSummary(){
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.hidden = c===0;
   const draft=document.querySelector('.draft-state');
-  if(draft) draft.textContent=c?draftProgressLabel():'';
+  if(draft) draft.textContent=c?draftProgressLabel():t('heroNothingYet');
   paintRicoSuggestion();
 }
 /* The most of one item a single order can hold (the server refuses more). */

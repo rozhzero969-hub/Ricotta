@@ -148,13 +148,22 @@ export async function transfersRoute(ctx: Ctx, M: string, path: string, b: any):
     const { data: r, error } = await tt(db).select("*").eq("id", id).maybeSingle();
     if (error) throw error;
     if (M === "PUT" && !action) {
-      if (r && (r.status !== "draft" || r.created_by !== ctx.account)) return fail(r.status !== "draft" ? "not_a_draft" : "forbidden", r.status !== "draft" ? 409 : 403);
       const d = cleanDraft(b);
-      const q = r ? tt(db).update({ ...d, version: r.version + 1, updated_at: now() }).eq("id", id).eq("version", r.version)
-        : tt(db).insert({ id, created_by: ctx.account, source: "app", status: "draft", ...d });
-      const { data: saved, error: e2 } = await q.select("*").maybeSingle();
-      if (e2) return fail("save_failed", 503);
-      return saved ? json(tview(saved)) : fail("changed_elsewhere", 409);
+      // As for receipts: the owner's newest save wins, and two saves arriving together are retried on the
+      // row as it is now instead of failing with "Save failed".
+      let cur = r;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (cur && (cur.status !== "draft" || cur.created_by !== ctx.account)) return fail(cur.status !== "draft" ? "not_a_draft" : "forbidden", cur.status !== "draft" ? 409 : 403);
+        const q = cur ? tt(db).update({ ...d, version: cur.version + 1, updated_at: now() }).eq("id", id).eq("version", cur.version)
+          : tt(db).insert({ id, created_by: ctx.account, source: "app", status: "draft", ...d });
+        const { data: saved, error: e2 } = await q.select("*").maybeSingle();
+        if (saved) return json(tview(saved));
+        if (e2 && e2.code !== "23505") return fail("save_failed", 503);
+        const again = await tt(db).select("*").eq("id", id).maybeSingle();
+        if (again.error) return fail("save_failed", 503);
+        cur = again.data;
+      }
+      return fail("changed_elsewhere", 409);
     }
     if (!r) return fail("not_found", 404);
     if (M === "DELETE" && !action) {

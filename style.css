@@ -2332,7 +2332,6 @@ html.rtl .cf-list li{padding:9px 16px 9px 0}
 .toast{border-radius:16px}
 .send-btn{border-radius:16px;border:0;background:var(--accent-strong);box-shadow:0 8px 24px -10px rgba(var(--deepd-rgb),.45)}
 .supplier-item-count,.queue-count{background:none;padding:0 2px;min-width:0;color:var(--ink-faint);font-weight:500}
-.hero-footer:has(.draft-state:empty){display:none}
 .wipe-banner{background:var(--fill);font-size:.875rem;color:var(--ink-soft)}
 .wipe-banner svg{color:var(--ink-soft)}
 .streak-chip.lit .flame{animation:none}
@@ -2417,3 +2416,7 @@ button.adh-card{cursor:pointer}
 @media (hover:hover){.adh-today-cell:hover,button.adh-row:hover,.adh-tool:hover,button.adh-card:hover{background-color:var(--surface-2)}}
 .adh-today-cell:active,button.adh-row:active,.adh-tool:active,button.adh-card:active{transform:scale(.985);transition:transform .12s ease}
 @media (max-width:520px){.adh-dev{flex-wrap:wrap}.adh-dev .adh-main{flex:1 1 calc(100% - 44px)}.adh-dev .adh-act{flex:1}}
+
+/* "Fix these first": the boxes it names are outlined in red until they are typed in. */
+.rr-field .sel-btn.bad,.rr-field select.bad{box-shadow:inset 0 0 0 1.5px var(--red)}
+.rr-input.bad:focus{outline-color:var(--red)}
