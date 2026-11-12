@@ -1885,7 +1885,7 @@ function renderTopbar(){
       ${renderStreakChip()}
       <div class="chip conn-chip" id="connectionStatus" role="status"${state.apiOnline?' hidden':''}><span></span><em>${esc(t('offline'))}</em></div>
       ${canOpen('assistant') ? `<button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${ricoFace('', 'rico-top-face')}<i class="rico-badge" hidden></i></button>` : ''}
-      <button type="button" class="account-btn" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
+      <button type="button" class="account-btn${typeof newsUnread === 'function' && newsUnread() ? ' has-news' : ''}" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
     </div>
   </header>`;
 }
@@ -1899,6 +1899,7 @@ function openAccountSheet(){
     <div class="sheet-group">
       <button type="button" class="sheet-row" id="langBtn" aria-haspopup="dialog">${ICON_GLOBE}<span>${esc(t('language'))}</span><em>${esc(LANG_NAMES[state.lang])}</em>${chevron}</button>
       ${canOpen('settings') ? `<button type="button" class="sheet-row" data-account-go="settings">${NAV_ICONS.settings || ''}<span>${esc(t('settings'))}</span>${chevron}</button>` : ''}
+      <button type="button" class="sheet-row" id="newsBtn">${ICON_SPARKLE}<span>${esc(t('whatsNew'))}</span>${newsUnread() ? '<i class="news-dot" aria-hidden="true"></i>' : ''}${chevron}</button>
       <a class="sheet-row" href="${esc(privacyHref())}">${ICON_SHIELD}<span>${esc(t('privacyPolicy'))}</span>${chevron}</a>
     </div>
     <div class="sheet-group"><button type="button" class="sheet-row danger" id="logoutBtn">${ICON_LOGOUT}<span>${esc(t('logout'))}</span></button></div>`, t('accountMenu')(accountLabel(state.account)));
@@ -1906,6 +1907,7 @@ function openAccountSheet(){
   el.querySelector('#langBtn').onclick = ()=>{ sheet.close(); openLangMenu(document.getElementById('accountBtn')); };
   el.querySelector('[data-account-go]')?.addEventListener('click', ()=>{ sheet.close(); goView('settings'); });
   el.querySelector('#logoutBtn').onclick = ()=>{ sheet.close(); doLogout(); };
+  el.querySelector('#newsBtn').onclick = ()=>{ sheet.close(); openWhatsNew(); };
   requestAnimationFrame(()=>el.querySelector('#langBtn')?.focus({preventScroll:true}));
 }
 
