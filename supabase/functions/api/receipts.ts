@@ -258,7 +258,9 @@ export async function sendReceipt(db: any, r: any, who: string, confirm: unknown
   }).eq("id", r.id).eq("version", r.version).select("*").maybeSingle();
   if (error?.code === "23505") return { error: "invoice_already_sent" };
   if (error || !sent) return { error: error ? "send_failed" : "changed_elsewhere", status: error ? 503 : 409 };
-  await tell(db, sent, "queued");
+  // The Telegram message goes after the answer: Send never waits for Telegram.
+  const told = tell(db, sent, "queued");
+  if ((globalThis as any).EdgeRuntime?.waitUntil) (globalThis as any).EdgeRuntime.waitUntil(told); else await told;
   return { row: sent };
 }
 export async function approveReceipt(db: any, r: any, who: string): Promise<Done> {

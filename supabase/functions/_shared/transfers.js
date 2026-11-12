@@ -24,14 +24,17 @@
     return out;
   }
   const round3 = (n) => Math.round(n * 1000) / 1000;
+  /* Rounded down to 3 decimals: a stock amount shown this way can always be typed back and moved. */
+  const floor3 = (n) => Math.floor(n * 1000 + 1e-6) / 1000;
   /* How much of an item is in a storage, in its base unit. */
   const available = (item, zone) => Math.max(0, Number(item && item.stock && item.stock[zone]) || 0);
   /* An amount in base units shown in the counting unit ("3.2 کیلۆ"). */
-  function inCounting(item, base) {
-    const c = unitOptions(item)[0];
-    return c ? { qty: round3(base / c.factor), unit: c.name } : { qty: round3(base), unit: (item && item.base) || '' };
+  function inCounting(item, base, down) {
+    const c = unitOptions(item)[0], r = down ? floor3 : round3;
+    return c ? { qty: r(base / c.factor), unit: c.name } : { qty: r(base), unit: (item && item.base) || '' };
   }
-  const qtyOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 999999 && Math.abs(Math.round(v * 1000) - v * 1000) < 1e-6;
+  /* At most 3 decimals: 65.4 * 1000 is 65400.00000000001 in floating point, so it is compared as written. */
+  const qtyOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 999999 && Number(v.toFixed(3)) === v;
   /* The storages a transfer can use: Ricotta Restaurant's, without the two Breakfast ones. */
   /* One route's numbers ("Main Storage>Pizza"): {n, q, hi}; an older plain count is {n} only. */
   const routeCount = (v) => (v && typeof v === 'object' ? Number(v.n) || 0 : Number(v) || 0);
@@ -65,7 +68,7 @@
       if (opt.unclear) errors.push({ code: 'unitUnclear', line: n, unit: opt.name });
       if (!qtyOk(l.qty)) { errors.push({ code: 'qty', line: n }); return; }
       const base = round3(l.qty * opt.factor);
-      totalByItem.set(l.item, round3((totalByItem.get(l.item) || 0) + base));
+      totalByItem.set(l.item, (totalByItem.get(l.item) || 0) + l.qty * opt.factor);
       // The same item on two lines is normal (someone came back for more): no warning, the
       // lines are added together for the stock check below.
       if (!seen.has(l.item)) seen.set(l.item, n);
@@ -96,10 +99,10 @@
     });
     // Never more than the storage has (all lines of the same item together): Ricotta Restaurant would
     // move the rest and leave this one behind.
-    for (const [name, base] of totalByItem) {
-      const item = items.get(name), have = available(item, t.from), line = lines.findIndex((l) => l.item === name) + 1;
-      if (t.from && base > have + 1e-9) errors.push({ code: 'notEnough', line, have: inCounting(item, have), need: inCounting(item, base) });
-      else if (t.from && have > 0 && base >= have - 1e-9) warnings.push({ code: 'allStock', line, have: inCounting(item, have) });
+    for (const [name, sum] of totalByItem) {
+      const base = round3(sum), item = items.get(name), have = available(item, t.from), line = lines.findIndex((l) => l.item === name) + 1;
+      if (t.from && base > have + 1e-9) errors.push({ code: 'notEnough', line, have: inCounting(item, have, true), need: inCounting(item, base) });
+      else if (t.from && have > 0 && base >= have - 1e-9) warnings.push({ code: 'allStock', line, have: inCounting(item, have, true) });
     }
     if (t.yesterday) warnings.push({ code: 'yesterday' });
     return { errors, warnings, count: lines.filter((l) => l && l.item).length };

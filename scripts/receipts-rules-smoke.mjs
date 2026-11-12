@@ -183,3 +183,57 @@ assert.ok(R.check({ ...base, lines: [{ item: "Frozen Peas - بزالیا ساد�
   assert.equal(pushed.length, 1); assert.equal(onScreen.lines[0].qty, 7);
 }
 console.log("receipt send checks ok");
+
+// Amounts are taken as written with at most 3 decimals: more is refused, never rounded away.
+{
+  const one = (qty, cost) => R.check({ ...base, lines: [{ item: "Frozen Peas - بزالیا سادە", unit: "دانە (400×)", qty, cost }] }, cat, {}, {}).errors.filter((e) => e.code === "qty" || e.code === "cost").map((e) => e.code);
+  assert.deepEqual(one(65.4, 1697.247), []);
+  assert.deepEqual(one(21, 523.809), []);
+  assert.deepEqual(one(1.0000000001, 2000), ["qty"]);
+  for (let k = 1; k <= 2000000; k += 7) assert.deepEqual(one(k / 1000, (k * 13) / 1000), [], `qty ${k / 1000}`);
+}
+
+// Saving, refreshing and merging on this device (receipts.js, shared by Transfers).
+{
+  const fs = await import("node:fs"), vm = await import("node:vm");
+  const src = fs.readFileSync(new URL("../receipts.js", import.meta.url), "utf8");
+  const pick = (start) => { const i = src.indexOf(start); return src.slice(i, src.indexOf("\n}\n", i) + 2); };
+  const store = {};
+  const ctx = { state: { account: "a" }, lget: (k) => store[k], rr: { formId: "open" }, tf: { formId: null }, Promise, Map };
+  vm.createContext(ctx);
+  vm.runInContext(pick("function rrNewest(") + "const rrSaving = new Map();\n" + pick("function rrOneAtATime(") + pick("function rrMergeDrafts("), ctx);
+
+  // The form open on the screen is never replaced by the device copy (a just-added empty row stayed on
+  // screen but was gone underneath); it is saved as it is.
+  const open = { id: "open", status: "draft", version: 4, lines: [{ qty: 5, cost: 400 }, { qty: null, cost: null }] };
+  store["rrDrafts:a"] = [{ id: "open", status: "draft", version: 4, dirty: true, lines: [{ qty: 5, cost: 400 }] }];
+  const pushed = ctx.rrMergeDrafts("rr", [open]);
+  assert.equal(open.lines.length, 2); assert.equal(pushed.length, 1); assert.equal(pushed[0], open);
+
+  // A list read before a send landed never brings the sent receipt back as a draft.
+  const mine = [{ id: "x", status: "queued", version: 9 }], fresh = [{ id: "x", status: "draft", version: 8 }, { id: "y", version: 1 }];
+  assert.equal(ctx.rrNewest(mine, fresh).map((x) => x.status || "-").join(), "queued,-");
+
+  // Saves of one draft run one after the other, never at the same time.
+  let running = 0, most = 0;
+  const save = () => ctx.rrOneAtATime("open", async () => { running++; most = Math.max(most, running); await new Promise((r) => setTimeout(r, 5)); running--; return true; });
+  assert.equal((await Promise.all([save(), save(), save()])).join(), "true,true,true");
+  assert.equal(most, 1);
+  // A failed save doesn't block the next one.
+  await ctx.rrOneAtATime("open", async () => { throw new Error("net"); }).catch(() => {});
+  assert.equal(await save(), true);
+}
+
+// Transfers: the stock shown is rounded down, so typing what is shown never says "not enough".
+{
+  await import("../supabase/functions/_shared/transfers.js");
+  const T = globalThis.RicottaTransfers;
+  const item = { name: "Cups", base: "دانە", count: { name: "سیت", factor: 3 }, stock: { "Main Storage": 2 } };
+  const tcat = { titems: [item], tzones: ["Main Storage", "Kebab"], zones: ["Main Storage", "Kebab"] };
+  const shown = T.inCounting(item, T.available(item, "Main Storage"), true);
+  assert.equal(shown.qty, 0.666);
+  const unit = T.unitOptions(item)[0].name;
+  const c2 = T.check({ from: "Main Storage", to: "Kebab", lines: [{ item: "Cups", unit, qty: shown.qty }] }, tcat, {});
+  assert.ok(!c2.errors.some((e) => e.code === "notEnough"), JSON.stringify(c2.errors));
+}
+console.log("Receipts and Transfers safety PASS: amounts as written, open form kept, newest copy kept, saves one at a time, stock shown can be moved");
