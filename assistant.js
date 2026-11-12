@@ -180,6 +180,13 @@ function renderRicoSide(){
       </div>
     </aside>`;
 }
+/* Letting Rico fill the order on this device: asked once when turned on. */
+async function ricoSetAuto(on){
+  if(on && !(await showConfirm(t('ricoAutoOrderConfirm'), {okLabel:t('ricoAllow'), okClass:'btn-primary'}))){ render(); return; }
+  lset('ricoAutoOrder', on || null);
+  toast(on ? t('ricoAutoOn') : t('ricoAutoOff'));
+  render();
+}
 /* A small date and time line where a chat starts, a new day begins, or after a half-hour pause. */
 function ricoTimeDivider(prev, m){
   if(!m.ts) return '';
@@ -769,13 +776,6 @@ async function ricoLoadChats(){
 function chatOwnerMark(c){
   const who = c.account || state.account;
   return `<span class="chat-owner ${who === 'rozha' ? 'r' : 'y'}" title="${esc(accountLabel(who))}" aria-label="${esc(accountLabel(who))}">${esc(accountLabel(who).trim().charAt(0).toUpperCase())}</span>`;
-}
-/* Letting Rico fill the order on this device: asked once when turned on. */
-async function ricoSetAuto(on){
-  if(on && !(await showConfirm(t('ricoAutoOrderConfirm'), {okLabel:t('ricoAllow'), okClass:'btn-primary'}))){ render(); return; }
-  lset('ricoAutoOrder', on || null);
-  toast(on ? t('ricoAutoOn') : t('ricoAutoOff'));
-  render();
 }
 /* A new chat: the current one stays in Chat history. */
 function ricoNewChat(){
