@@ -14,16 +14,22 @@ function rrFind(id){ return rr.data?.receipts.find(r=>r.id === id) || null; }
 function rrLimits(){ return rr.data?.helper?.limits || {}; }
 
 async function rrLoad(quiet = false){
-  if(rr.loading) return;
+  // Asked again while one is on its way (a save or a send just happened): read once more after it,
+  // so an answer from before the change never stays on the screen.
+  if(rr.loading){ rr.loadAgain = true; return; }
   rr.loading = true;
   const r = await api('receipts', {quiet});
   rr.loading = false;
+  if(rr.loadAgain){ rr.loadAgain = false; setTimeout(()=>rrLoad(true), 0); }
   if(r.ok && r.data && Array.isArray(r.data.receipts)){
     // A draft being typed keeps what is on the screen until it is saved.
     const editing = rrFind(rr.formId)?.status === 'draft' ? rrFind(rr.formId) : null;
+    const mine = rr.data?.receipts || [];
     rr.data = r.data;
+    rr.data.receipts = rrNewest(mine, rr.data.receipts);
     if(editing && !rrFind(editing.id)) rr.data.receipts.unshift(editing);
-    else if(editing) rr.data.receipts = rr.data.receipts.map(x=>x.id === editing.id ? editing : x);
+    // Sent, cancelled or taken by Rico elsewhere: the server's copy shows (saving over it would only fail).
+    else if(editing) rr.data.receipts = rr.data.receipts.map(x=>x.id === editing.id && x.status === 'draft' ? editing : x);
     rr.copyAt = null; rr.failed = false;
     rrKeepCopy('rr', rr.data);
     rrMergeDrafts('rr', rr.data.receipts).forEach(d=>rrSaveDraft(d));
@@ -47,6 +53,21 @@ function rrRepaintKeepFocus(){
 addEventListener('online', async ()=>{ if(!rr.data) return; await rrLoad(true); if(state.view === 'receipts' && rr.page === 'edit') rrRepaintKeepFocus(); });
 addEventListener('offline', ()=>{ if(state.view === 'receipts' && rr.page === 'edit') rrRepaintKeepFocus(); });
 const rrKeep = ()=> rr.data && rrKeepDrafts('rr', rr.data.receipts, rrIsEmpty);
+/* An answer read before a save or a send landed is older than what this device already has: the newer
+   copy stays (a receipt just sent never comes back as a draft). */
+function rrNewest(mine, list){
+  const had = new Map(mine.map(x=>[x.id, x]));
+  return list.map(x=>{ const m = had.get(x.id); return m && (m.version || 0) > (x.version || 0) ? m : x; });
+}
+/* One save at a time for each receipt or transfer. Two at once (the 600 ms timer, a refresh after another
+   save, Send) made one of them fail ("Save failed" on Send), and an older one landing last could win. */
+const rrSaving = new Map();
+function rrOneAtATime(id, fn){
+  const run = (rrSaving.get(id) || Promise.resolve()).catch(()=>{}).then(fn);
+  rrSaving.set(id, run);
+  run.finally(()=>{ if(rrSaving.get(id) === run) rrSaving.delete(id); }).catch(()=>{});
+  return run;
+}
 
 /* ---------- Working offline (Receipts and Transfers) ----------
    The last lists, stock, receipts and transfers are kept on this device, and so is every draft, even
@@ -67,10 +88,14 @@ function rrKeepDrafts(kind, list, isEmpty){
 /* The device's drafts merged into the server's list: one changed here (or waiting to send) wins and is
    saved there; one the server no longer has and that wasn't changed here was removed elsewhere. */
 function rrMergeDrafts(kind, list){
+  const openId = kind === 'rr' ? (typeof rr === 'object' ? rr.formId : null) : (typeof tf === 'object' ? tf.formId : null);
   const push = [];
   for(const d of lget(kind + 'Drafts:' + state.account) || []){
     const s = list.find(x=>x.id === d.id);
     if(!s){ if(d.dirty || d.pendingSend || !d.version){ list.unshift(d); if(d.dirty || !d.version) push.push(d); } }
+    // The form open on the screen already holds everything typed: it is saved as it is, never replaced by the
+    // device copy (that dropped a just-added empty row, and typing into it was lost).
+    else if(s.status === 'draft' && s.id === openId){ if(d.dirty) push.push(s); if(d.pendingSend) s.pendingSend = true; }
     else if(s.status === 'draft'){ if(d.dirty && (d.version || 0) >= (s.version || 0)){ Object.assign(s, d); push.push(s); } else if(d.pendingSend) s.pendingSend = true; }
   }
   return push;
@@ -440,8 +465,9 @@ function renderReceiptEdit(){
   const usd = r.currency === 'USD';
   const lines = r.lines.map((l, i)=>{
     const item = rrItem(l.item), units = item ? globalThis.RicottaReceipts.unitOptions(item) : [];
-    // A unit the item no longer has (changed in Ricotta Restaurant) is replaced by its usual one.
-    if(item && l.unit && !units.some(u=>u.label === l.unit)){ l.unit = globalThis.RicottaReceipts.defaultUnit(item, []) || ''; rrSaveSoon(r); }
+    // A unit the item no longer has (changed in Ricotta Restaurant) is cleared, so it is picked again: put in
+    // quietly, the quantity typed would count a different unit.
+    if(item && l.unit && !units.some(u=>u.label === l.unit)){ l.unit = ''; rrSaveSoon(r); }
     const lineTotal = globalThis.RicottaReceipts.lineTotal(l, r.currency);
     // The line being typed in isn't judged until its box is left (8 on the way to 800 is not "price down").
     const warn = rr.typingLine === i ? '' : c.warnings.filter(w=>w.line === i + 1).map(w=>rrWarnText(w)).join(' ');
@@ -513,18 +539,22 @@ function rrParse(v, decimals){
 }
 const rrIsEmpty = r=> !r.supplier && !r.invoice && r.delivery == null && r.rate == null && !r.lines.some(l=>l.item || l.qty || l.cost);
 function rrSaveSoon(r){
-  r.dirty = true; rrKeep();
+  r.dirty = true; r.edits = (r.edits || 0) + 1; rrKeep();
   clearTimeout(rr.saveTimer);
   rr.saveTimer = setTimeout(()=>rrSaveDraft(r), 600);
 }
-async function rrSaveDraft(r){
+function rrSaveDraft(r){
   clearTimeout(rr.saveTimer);
+  return rrOneAtATime(r.id, async()=>{
+  // Typing that goes on while this save is on its way keeps the draft unsaved on this device.
+  const edits = r.edits || 0;
   const body = {supplier:r.supplier || null, invoice:r.invoice || null, zone:r.zone, currency:r.currency, rate:Number.isFinite(r.rate) ? r.rate : null,
     delivery:Number.isFinite(r.delivery) ? r.delivery : null, lines:r.lines.filter(l=>l.item).map(l=>({item:l.item, unit:l.unit, qty:Number.isFinite(l.qty) ? l.qty : null, cost:Number.isFinite(l.cost) ? l.cost : null}))};
   const res = await api('receipts/' + r.id, {method:'PUT', body, quiet:true});
-  if(res.ok && res.data?.id){ r.version = res.data.version; r.dirty = false; rrKeep(); }
+  if(res.ok && res.data?.id){ r.version = res.data.version; if((r.edits || 0) === edits) r.dirty = false; rrKeep(); }
   rr.netDown = res.status === 0;
   return res.ok;
+  });
 }
 function attachReceiptEdit(){
   const r = rrFind(rr.id); if(!r) return;
@@ -627,9 +657,18 @@ function rrPaintTotals(r){
   const sum = document.querySelector('.rr-sum-total b'); if(sum) sum.textContent = rrMoney(c.total, r.currency);
   const small = document.querySelector('.rr-sum-total small'); if(small) small.textContent = r.currency === 'USD' ? (c.iqd ? '= IQD ' + rrNum(c.iqd) : '') : (c.delivery ? t('rrPlusDelivery')(rrNum(c.items), rrNum(c.delivery)) : '');
 }
+/* One Send at a time, from the first press: a second press (or Cmd+Enter held down) while the first one
+   is still asking used to start a second send and show "Save failed" after the first went through. */
 async function rrSend(r, keepForm = false){
-  if(rr.sending) return false;
+  if(rr.sending || rr.asking) return false;
+  rr.asking = true;
+  try{ return await rrSendNow(r, keepForm); } finally { rr.asking = false; }
+}
+async function rrSendNow(r, keepForm){
+  const before = r.lines.length;
   r.lines = r.lines.filter(l=>l.item || l.qty || l.cost);
+  // Empty rows taken out: the screen is redrawn now, so each row on it is the line it edits and line numbers match.
+  if(r.lines.length !== before && r.lines.length) render();
   const c = globalThis.RicottaReceipts.check(r, rr.data.catalog, rrLimits(), rr.data.last);
   if(c.errors.length){
     if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null, cost:null});
@@ -723,9 +762,11 @@ function attachReceiptView(){
   const act = async (action)=>{
     // Approving shows the receipt once more (and anything to check), and Enter approves; cancelling asks plainly.
     const ws = (r.warnings || []).map(w=>rrWarnLine(w, r)).filter(Boolean);
-    const big = r.total >= (rrLimits().bigTotal || Infinity);
+    // The limit is in dinars: a dollar receipt is compared at its rate.
+    const iqd = r.currency === 'USD' ? (Number(r.total) || 0) * (Number(r.rate) || 0) : Number(r.total) || 0;
+    const big = iqd >= (rrLimits().bigTotal || Infinity);
     const ok = action === 'approve'
-      ? await showConfirm(rrSummary(r, ws) + (big ? `<p class="cf-alert">${esc(t('rrBigAgain')(rrNum(r.total)))}</p>` : ''), {title:t('rrApproveTitle'), okLabel:t('rrApprove'), okClass:'btn-primary', enter:true, wide:true})
+      ? await showConfirm(rrSummary(r, ws) + (big ? `<p class="cf-alert">${esc(t('rrBigAgain')(rrNum(Math.round(iqd))))}</p>` : ''), {title:t('rrApproveTitle'), okLabel:t('rrApprove'), okClass:'btn-primary', enter:true, wide:true})
       : await showConfirm(esc(t('rrCancelAsk')), {okLabel:t('rrCancelReceipt'), okClass:'btn-danger'});
     if(!ok) return;
     const res = await api(`receipts/${r.id}/${action}`, {method:'POST', body:{}});

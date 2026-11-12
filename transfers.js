@@ -13,7 +13,7 @@ const tfQty = q=> rrNum(q, 3);
 /* "Available: 9 سیت in Main Storage", the amount in bold in a small box (red when there isn't enough). */
 function tfAvailHtml(item, zone, short, unit){
   const have = TF().available(item, zone), o = TF().unitOptions(item).find(u=>u.name === unit);
-  const c = o ? {qty:Math.round((have / o.factor) * 10000) / 10000, unit:o.name} : TF().inCounting(item, have);
+  const c = o ? {qty:Math.floor((have / o.factor) * 1000 + 1e-6) / 1000, unit:o.name} : TF().inCounting(item, have, true);
   return `<span class="tf-have${short ? ' short' : ''}">${esc(short ? t('tfOnlyHave') : t('tfAvailLabel'))} <b dir="ltr">${esc(tfQty(c.qty))} <bdi>${esc(c.unit)}</bdi></b> ${esc(t('tfInZone')(zone))}</span>`;
 }
 /* The day a transfer counts on: today, or yesterday with Record for yesterday on. */
@@ -23,16 +23,21 @@ const tfDayBefore = day=>{ const d = new Date(day + 'T12:00:00Z'); d.setUTCDate(
 const tfYesterday = ()=> tfDayBefore(tfToday());
 
 async function tfLoad(quiet = false){
-  if(tf.loading) return;
+  // Asked again while one is on its way: read once more after it (see rrLoad).
+  if(tf.loading){ tf.loadAgain = true; return; }
   tf.loading = true;
   const r = await api('transfers', {quiet});
   tf.loading = false;
+  if(tf.loadAgain){ tf.loadAgain = false; setTimeout(()=>tfLoad(true), 0); }
   if(r.ok && r.data && Array.isArray(r.data.transfers)){
     // A draft being typed keeps what is on the screen until it is saved.
     const editing = tfFind(tf.formId)?.status === 'draft' ? tfFind(tf.formId) : null;
+    const mine = tf.data?.transfers || [];
     tf.data = r.data;
+    tf.data.transfers = rrNewest(mine, tf.data.transfers);
     if(editing && !tfFind(editing.id)) tf.data.transfers.unshift(editing);
-    else if(editing) tf.data.transfers = tf.data.transfers.map(x=>x.id === editing.id ? editing : x);
+    // Sent or cancelled elsewhere: the server's copy shows (saving over it would only fail).
+    else if(editing) tf.data.transfers = tf.data.transfers.map(x=>x.id === editing.id && x.status === 'draft' ? editing : x);
     tf.failed = false; tf.copyAt = null;
     rrKeepCopy('tf', tf.data);
     rrMergeDrafts('tf', tf.data.transfers).forEach(d=>tfSaveDraft(d));
@@ -186,15 +191,19 @@ function renderTransferEdit(){
   </div>`;
 }
 const tfIsEmpty = r=> !r.to && !r.yesterday && !r.lines.some(l=>l.item || l.qty);
-function tfSaveSoon(r){ r.dirty = true; tfKeep(); clearTimeout(tf.saveTimer); tf.saveTimer = setTimeout(()=>tfSaveDraft(r), 600); }
-async function tfSaveDraft(r){
+function tfSaveSoon(r){ r.dirty = true; r.edits = (r.edits || 0) + 1; tfKeep(); clearTimeout(tf.saveTimer); tf.saveTimer = setTimeout(()=>tfSaveDraft(r), 600); }
+function tfSaveDraft(r){
   clearTimeout(tf.saveTimer);
+  // One save at a time; typing during a save keeps the draft unsaved on this device (see rrSaveDraft).
+  return rrOneAtATime(r.id, async()=>{
+  const edits = r.edits || 0;
   const body = {from:r.from || null, to:r.to || null, yesterday:!!r.yesterday,
     lines:r.lines.filter(l=>l.item).map(l=>({item:l.item, unit:l.unit, qty:Number.isFinite(l.qty) ? l.qty : null}))};
   const res = await api('transfers/' + r.id, {method:'PUT', body, quiet:true});
-  if(res.ok && res.data?.id){ r.version = res.data.version; r.dirty = false; tfKeep(); }
+  if(res.ok && res.data?.id){ r.version = res.data.version; if((r.edits || 0) === edits) r.dirty = false; tfKeep(); }
   tf.netDown = res.status === 0;
   return res.ok;
+  });
 }
 function attachTransferEdit(){
   const r = tfFind(tf.id); if(!r) return;
@@ -215,7 +224,7 @@ function attachTransferEdit(){
   });
   // Items: only what the From storage has, with how much it has.
   const names = r.from ? TF().itemsIn(cat, r.from).map(i=>i.name).sort((a, b)=>a.localeCompare(b)) : [];
-  const stockOf = n=>{ const it = tfItem(n); if(!it) return ''; const c = TF().inCounting(it, TF().available(it, r.from)); return tfQty(c.qty) + ' ' + c.unit; };
+  const stockOf = n=>{ const it = tfItem(n); if(!it) return ''; const c = TF().inCounting(it, TF().available(it, r.from), true); return tfQty(c.qty) + ' ' + c.unit; };
   document.querySelectorAll('[data-l-item]').forEach(inp=>{
     const i = +inp.dataset.lItem;
     rrComboBind(inp, names, (v, again)=>{
@@ -284,7 +293,7 @@ function tfPaintStock(r){
   const need = tfNeedByItem(r);
   r.lines.forEach((l, i)=>{
     const p = document.querySelector(`[data-line="${i}"] .tf-avail`), item = tfItem(l.item); if(!p || !item) return;
-    const have = TF().available(item, r.from), short = need.get(l.item) > have + 1e-9, c = TF().inCounting(item, have);
+    const have = TF().available(item, r.from), short = need.get(l.item) > have + 1e-9, c = TF().inCounting(item, have, true);
     p.classList.toggle('short', short); p.closest('.tf-line')?.classList.toggle('warn', short);
     const first = r.lines.findIndex(x=>x.item === l.item), again = first > -1 && first < i ? ' · ' + t('rrWarnDuplicate')(first + 1) : '';
     p.innerHTML = tfAvailHtml(item, r.from, short, l.unit) + (again ? `<span class="tf-usual">${esc(again)}</span>` : '') + tfUsualNote(item, r);
@@ -314,9 +323,17 @@ function tfWarnText(w, r){
   if(w.code === 'yesterday') return t('tfYesterdayOn')(tfDayLabel(tfYesterday()));
   return '';
 }
+/* One Send at a time, from the first press (see rrSend). */
 async function tfSend(r, keepForm = false){
-  if(tf.sending) return false;
+  if(tf.sending || tf.asking) return false;
+  tf.asking = true;
+  try{ return await tfSendNow(r, keepForm); } finally { tf.asking = false; }
+}
+async function tfSendNow(r, keepForm){
+  const before = r.lines.length;
   r.lines = r.lines.filter(l=>l.item || l.qty);
+  // Empty rows taken out: the screen is redrawn now, so each row on it is the line it edits and line numbers match.
+  if(r.lines.length !== before && r.lines.length) render();
   const c = TF().check({from:r.from, to:r.to, yesterday:r.yesterday, lines:r.lines}, tf.data.catalog, tf.data.usual);
   if(c.errors.length){
     if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null});

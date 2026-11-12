@@ -272,7 +272,7 @@ async function startDraft(d: any, chat: number) {
   st.draft = { step: "supplier", supplier: null, invoice: null, zone: "Main Storage", currency: "IQD", rate: null, delivery: null, lines: [], cur: null };
   await showList(d, chat, st, "s", 0, supplierNames(await catalogOf(d)), "New receipt. Which supplier? Pick one, or type a few letters to search.\n\nSend /cancel to stop at any time.");
 }
-const digitsOf = (s: string) => s.replace(/[٠-٩]/g, (x) => String(x.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (x) => String(x.charCodeAt(0) - 0x6f0)).replace(/[,\s]/g, "");
+const digitsOf = (s: string) => s.replace(/[٠-٩]/g, (x) => String(x.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (x) => String(x.charCodeAt(0) - 0x6f0)).replace(/٫/g, ".").replace(/[,٬\s]/g, "");
 async function onText(d: any, chat: number, who: string, text: string) {
   const st = await stateOf(d, chat), dr = st.draft;
   if (st.tdraft) return tText(d, chat, who, text, st);
@@ -560,7 +560,7 @@ async function canTransfer(d: any, who: string) {
   return Array.isArray(data?.roles) && data.roles.includes("transfers");
 }
 const tItemOf = (cat: any, name: string) => (cat.titems ?? []).find((i: any) => i.name === name) ?? null;
-const tStock = (item: any, zone: string) => { const c = TT.inCounting(item, TT.available(item, zone)); return `${num(c.qty, 3)} ${c.unit}`; };
+const tStock = (item: any, zone: string) => { const c = TT.inCounting(item, TT.available(item, zone), true); return `${num(c.qty, 3)} ${c.unit}`; };
 async function tList(d: any, chat: number, st: any, kind: "z" | "i", page: number, names: string[], title: string) {
   const pages = Math.max(1, Math.ceil(names.length / PAGE)), p = Math.min(Math.max(0, page), pages - 1);
   const shown = names.slice(p * PAGE, p * PAGE + PAGE);
