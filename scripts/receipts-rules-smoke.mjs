@@ -159,3 +159,27 @@ console.log("Receipt totals PASS: each line rounded to the dinar like Ricotta Re
   }
   console.log("Transfer rules PASS: stock never exceeded (same item added up), counting unit first, unclear units refused, all-of-it / unusual / yesterday asked, no Breakfast storages");
 }
+
+// Amounts with up to three decimals are whole thousandths even when floating point says otherwise (1.005 * 1000 is 1004.9999...).
+c = R.check({ ...base, lines: [{ item: "Frozen Peas - بزالیا سادە", unit: "دانە (400×)", qty: 1.005, cost: 2.01 }, { item: "Frozen Peas - بزالیا سادە", unit: "دانە (400×)", qty: 2.3, cost: 1500 }] }, cat, {}, {});
+assert.ok(!c.errors.some((e) => e.code === "qty" || e.code === "cost"), JSON.stringify(c.errors));
+assert.ok(R.check({ ...base, lines: [{ item: "Frozen Peas - بزالیا سادە", unit: "دانە (400×)", qty: 1.0005, cost: 2000 }] }, cat, {}, {}).errors.some((e) => e.line === 1));
+
+// An old unsaved copy kept on this device never overwrites a newer draft from the server (that blanked typed lines and gave "Fix these first").
+{
+  const fs = await import("node:fs"), vm = await import("node:vm");
+  const src = fs.readFileSync(new URL("../receipts.js", import.meta.url), "utf8");
+  const fn = src.slice(src.indexOf("function rrMergeDrafts("), src.indexOf("\n}\n", src.indexOf("function rrMergeDrafts(")) + 2);
+  const store = {};
+  const ctx = { state: { account: "a" }, lget: (k) => store[k] };
+  vm.createContext(ctx); vm.runInContext(fn, ctx);
+  const onScreen = { id: "r1", status: "draft", version: 125, lines: [{ qty: 5, cost: 400 }, { qty: 3, cost: 2000 }] };
+  store["rrDrafts:a"] = [{ id: "r1", status: "draft", version: 120, dirty: true, lines: [{ qty: null, cost: 400 }] }];
+  let pushed = ctx.rrMergeDrafts("rr", [onScreen]);
+  assert.equal(pushed.length, 0); assert.equal(onScreen.lines.length, 2); assert.equal(onScreen.lines[0].qty, 5);
+  // A copy typed offline on top of the same version still wins and is saved.
+  store["rrDrafts:a"] = [{ id: "r1", status: "draft", version: 125, dirty: true, lines: [{ qty: 7, cost: 400 }] }];
+  pushed = ctx.rrMergeDrafts("rr", [onScreen]);
+  assert.equal(pushed.length, 1); assert.equal(onScreen.lines[0].qty, 7);
+}
+console.log("receipt send checks ok");

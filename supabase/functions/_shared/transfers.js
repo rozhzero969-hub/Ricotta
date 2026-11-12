@@ -31,7 +31,7 @@
     const c = unitOptions(item)[0];
     return c ? { qty: round3(base / c.factor), unit: c.name } : { qty: round3(base), unit: (item && item.base) || '' };
   }
-  const qtyOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 999999 && Math.round(v * 1000) === v * 1000;
+  const qtyOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 999999 && Math.abs(Math.round(v * 1000) - v * 1000) < 1e-6;
   /* The storages a transfer can use: Ricotta Restaurant's, without the two Breakfast ones. */
   /* One route's numbers ("Main Storage>Pizza"): {n, q, hi}; an older plain count is {n} only. */
   const routeCount = (v) => (v && typeof v === 'object' ? Number(v.n) || 0 : Number(v) || 0);

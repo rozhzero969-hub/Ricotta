@@ -71,7 +71,7 @@ function rrMergeDrafts(kind, list){
   for(const d of lget(kind + 'Drafts:' + state.account) || []){
     const s = list.find(x=>x.id === d.id);
     if(!s){ if(d.dirty || d.pendingSend || !d.version){ list.unshift(d); if(d.dirty || !d.version) push.push(d); } }
-    else if(s.status === 'draft'){ if(d.dirty){ Object.assign(s, d); push.push(s); } else if(d.pendingSend) s.pendingSend = true; }
+    else if(s.status === 'draft'){ if(d.dirty && (d.version || 0) >= (s.version || 0)){ Object.assign(s, d); push.push(s); } else if(d.pendingSend) s.pendingSend = true; }
   }
   return push;
 }

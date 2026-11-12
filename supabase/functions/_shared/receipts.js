@@ -41,10 +41,10 @@
     return pool.length ? pool.reduce((a, b) => (b.factor > a.factor ? b : a)).label : '';
   }
   const wholePositive = (v) => Number.isSafeInteger(v) && v > 0;
-  const qtyOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 99999 && Math.round(v * 1000) === v * 1000;
+  const qtyOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 99999 && Math.abs(Math.round(v * 1000) - v * 1000) < 1e-6;
   // A unit cost may have a dot (up to 3 decimals), in dinars or dollars.
-  const costOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 1e10 && Math.round(v * 1000) === v * 1000;
-  const rateOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 100000 && Math.round(v * 1000) === v * 1000;
+  const costOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 1e10 && Math.abs(Math.round(v * 1000) - v * 1000) < 1e-6;
+  const rateOk = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 100000 && Math.abs(Math.round(v * 1000) - v * 1000) < 1e-6;
   /* Money the way Ricotta Restaurant adds it up: each line qty × cost, rounded to the dinar (10.4 ×
      1,057.692 is IQD 11,000 there, not 10,999.997), then the delivery. Dollars keep their cents. */
   function lineTotal(l, currency) {
