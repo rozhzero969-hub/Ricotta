@@ -586,7 +586,7 @@ function attachReceiptEdit(){
   // being typed in keeps its place.
   const autoLine = el=>{
     const last = r.lines[r.lines.length - 1];
-    if(!(last.item && last.qty > 0 && last.cost > 0)) return;
+    if(!(last && last.item && last.qty > 0 && last.cost > 0)) return;
     const id = el.id, at = el.selectionStart;
     r.lines.push({item:'', unit:'', qty:null, cost:null}); repaint();
     const again = document.getElementById(id); if(again){ again.focus({preventScroll:true}); try{ again.setSelectionRange(at, at); }catch(_){} }
