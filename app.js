@@ -1785,21 +1785,6 @@ function rollInput(input, up){
   if(reducedMotion() || !input.animate) return;
   input.animate([{transform:`translateY(${up ? 55 : -55}%)`, opacity:0}, {transform:'none', opacity:1}], {duration:260, easing:'cubic-bezier(.32,.72,0,1)'});
 }
-/* A small green dot flies from the + to the Send bar, which answers with a little nod. */
-function flyToSend(from){
-  const bar = document.querySelector('.bottom-bar.show .send-btn');
-  if(!bar || !from?.isConnected || reducedMotion()) return;
-  const a = from.getBoundingClientRect(), b = bar.getBoundingClientRect();
-  if(!a.width || b.top < a.top) return;
-  const dot = document.createElement('i'); dot.className = 'fly-dot'; dot.setAttribute('aria-hidden', 'true');
-  document.body.appendChild(dot);
-  const x0 = a.left + a.width / 2 - 6, y0 = a.top + a.height / 2 - 6, x1 = b.left + b.width / 2 - 6, y1 = b.top + 10;
-  const fly = dot.animate([
-    {transform:`translate(${x0}px,${y0}px) scale(1)`, opacity:1},
-    {transform:`translate(${(x0 + x1) / 2}px,${Math.min(y0, y1) - 40}px) scale(1.1)`, opacity:1, offset:.45},
-    {transform:`translate(${x1}px,${y1}px) scale(.5)`, opacity:.5}], {duration:560, easing:'cubic-bezier(.45,0,.25,1)'});
-  fly.finished.catch(()=>{}).then(()=>{ dot.remove(); bar.animate?.([{transform:'scale(1)'}, {transform:'scale(1.03)'}, {transform:'scale(1)'}], {duration:300, easing:'cubic-bezier(.32,.72,0,1)'}); });
-}
 function bump(el){
   if(!el) return;
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
@@ -2650,10 +2635,8 @@ function stepQty(btn){
   if(next === (state.cart[id]||0)) return;
   haptic('selection');
   const first = next > 0 && !cartCount();
-  const up = next > (state.cart[id]||0);
   state.cart[id] = next;
   refreshOrderView(id);
-  if(up && !stepHold?.n) flyToSend(btn);
   if(first) ricoReact();
 }
 /* Hold + or − and the number keeps going, faster the longer it's held. */
