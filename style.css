@@ -151,11 +151,8 @@ body.page-swiping *{transition:none!important}
   transition:transform .14s var(--ease-out);-webkit-tap-highlight-color:transparent}
 .rico-top .rico-bot{--size:36px}
 .rico-top:active{transform:scale(.92);transition-duration:.06s}
-.rico-top.reacting{animation:ricoBounce .5s var(--ease-out)}
-.rico-top.reacting[data-react="down"]{animation:ricoDip .45s var(--ease-out)}
+
 .rico-badge{position:absolute;top:3px;inset-inline-end:2px;width:10px;height:10px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px var(--bg)}
-@keyframes ricoBounce{30%{transform:scale(1.08)}60%{transform:scale(.98)}}
-@keyframes ricoDip{45%{transform:scale(.85)}}
 
 /* ---------- Refresh: the arrows turn while it works ---------- */
 .refreshing svg{animation:refreshTurn .75s var(--ease-out) infinite}
@@ -799,78 +796,7 @@ html.rtl .install-prompt{right:auto;left:22px}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .rico-bot{--size:44px;display:inline-block;flex-shrink:0;width:var(--size);height:calc(var(--size)*1.06);line-height:0}
 .rico-bot svg{width:100%;height:100%;overflow:visible}
-.rico-bot stop{transition:stop-color .5s ease}
 .rico-xs{--size:34px}.rico-sm{--size:32px;margin-top:2px}.rico-md{--size:48px}.rico-xl{--size:104px}
-/* Each feeling has its own soft pastel: body, and the glow of eyes and spark. */
-.mood-happy{--rb-c1:#D4F7E3;--rb-c2:#8EDDB2;--rb-c3:#3F9A6E;--rb-eye:#9CF7C6;--rb-glow:rgba(156,247,198,.55)}
-.mood-excited{--rb-c1:#FFF6CF;--rb-c2:#FFD978;--rb-c3:#C28F22;--rb-eye:#FFE89A;--rb-glow:rgba(255,232,154,.6)}
-.mood-grateful{--rb-c1:#FFE3EB;--rb-c2:#F6AFC6;--rb-c3:#B85C7C;--rb-eye:#FFC3D5;--rb-glow:rgba(255,195,213,.6)}
-.mood-calm{--rb-c1:#DDF4F6;--rb-c2:#9BD7DF;--rb-c3:#43919B;--rb-eye:#B5F1F7;--rb-glow:rgba(181,241,247,.55)}
-.mood-thinking{--rb-c1:#ECE6FF;--rb-c2:#BCAEF3;--rb-c3:#6A57B5;--rb-eye:#D3C8FF;--rb-glow:rgba(211,200,255,.6)}
-.mood-worried{--rb-c1:#FFE9D2;--rb-c2:#FFC08A;--rb-c3:#C0743A;--rb-eye:#FFD0A0;--rb-glow:rgba(255,208,160,.6)}
-.mood-sad{--rb-c1:#DDE9FF;--rb-c2:#A3BFF0;--rb-c3:#4C6BA6;--rb-eye:#B7D2FF;--rb-glow:rgba(183,210,255,.6)}
-.mood-angry{--rb-c1:#FFDAD6;--rb-c2:#F4A19B;--rb-c3:#B84A45;--rb-eye:#FFA8A1;--rb-glow:rgba(255,168,161,.65)}
-.rb-all{transform-box:fill-box;transform-origin:50% 100%;animation:rbBob 3.6s ease-in-out infinite}
-.rb-shadow{fill:rgba(16,41,31,.18)}
-.rb-head{transform-box:fill-box;transform-origin:50% 90%;transition:transform .5s cubic-bezier(.34,1.4,.5,1)}
-
-.rb-e,.rb-mo,.rb-brow{fill:none;stroke:var(--rb-eye);stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 2px var(--rb-glow));opacity:0;transition:opacity .22s ease,stroke .3s ease,fill .3s ease}
-.e-pill,.e-heart{fill:var(--rb-eye);stroke:none}
-.mo-open{fill:var(--rb-eye);stroke-width:2}
-.rb-mo,.rb-brow{stroke-width:2.6}
-.rb-eye{transform-box:fill-box;transform-origin:center;animation:rbBlink 5.2s infinite;transition:transform .45s cubic-bezier(.34,1.4,.5,1)}
-.rb-dots circle{fill:#fff;opacity:0}
-.rb-tear,.rb-drop{fill:#BFE6FF;opacity:0}
-.rb-steam path{fill:none;stroke:rgba(255,255,255,.9);stroke-width:3.4;stroke-linecap:round;opacity:0}
-.rb-heart{fill:#FF6F8E;opacity:0;transform-box:fill-box;transform-origin:center}
-/* which face shows */
-.mood-happy .e-pill,.mood-calm .e-pill,.mood-thinking .e-pill,.mood-worried .e-pill,.mood-sad .e-pill,.mood-excited .e-chev,.mood-grateful .e-arc,.mood-angry .e-bar,.mood-happy .mo-smile,.mood-grateful .mo-smile,.mood-excited .mo-open,.mood-calm .mo-flat,.mood-thinking .mo-flat,.mood-worried .mo-frown,.mood-sad .mo-frown{opacity:1}
-.mood-grateful .rb-heart{opacity:1;animation:rbHeart 2.6s ease-out infinite}
-.mood-grateful .rb-eye,.mood-excited .rb-eye,.mood-angry .rb-eye{animation:none}
-.mood-calm .rb-eye{transform:scaleY(.72)}
-.mood-excited .rb-all{animation:rbJump .9s cubic-bezier(.34,1.5,.5,1) infinite}
-
-.mood-thinking .rb-eye{transform:translate(2.5px,-3px) scaleY(.9)}
-.mood-thinking .rb-head{transform:rotate(-7deg)}
-
-.mood-thinking .rb-dots circle{opacity:.8;animation:rbDots 1.5s ease-in-out infinite}
-.mood-thinking .rb-dots circle:nth-child(2){animation-delay:.2s}
-.mood-thinking .rb-dots circle:nth-child(3){animation-delay:.4s}
-.mood-worried .rb-brow,.mood-sad .rb-brow{opacity:1;transform-box:fill-box;transform-origin:center}
-.mood-worried .rb-brow.l{transform:rotate(-12deg)}
-.mood-worried .rb-brow.r{transform:rotate(12deg)}
-.mood-worried .rb-eye{transform:scale(.85)}
-.mood-worried .rb-drop{opacity:1;animation:rbDrop 2.2s ease-in infinite}
-.mood-worried .rb-all{animation:rbShiver 2.6s ease-in-out infinite}
-.mood-sad .rb-eye{transform:translateY(2px) scaleY(.7)}
-.mood-sad .rb-brow.l{transform:translateY(1px) rotate(-14deg)}
-.mood-sad .rb-brow.r{transform:translateY(1px) rotate(14deg)}
-.mood-sad .rb-head{transform:translateY(3px) rotate(4deg)}
-
-.mood-sad .rb-tear{opacity:1;animation:rbTear 2.4s ease-in infinite}
-
-.mood-sad .rb-all{animation:rbSag 4s ease-in-out infinite}
-.mood-angry .rb-all{animation:rbShake .45s ease-in-out infinite}
-
-.mood-angry .rb-steam path{opacity:.9;animation:rbSteam 1.3s ease-out infinite}
-.mood-angry .rb-steam path:nth-child(2){animation-delay:.65s}
-@keyframes rbBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2.5%)}}
-@keyframes rbBlink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
-@keyframes rbSpark{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(.8) rotate(22deg)}}
-@keyframes rbSparkle{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.4) rotate(45deg)}}
-@keyframes rbJump{0%,100%{transform:translateY(0) scale(1)}30%{transform:translateY(-9%) scale(1.03,.97)}60%{transform:translateY(0) scale(.97,1.03)}}
-@keyframes rbWave{from{transform:rotate(-165deg)}to{transform:rotate(-130deg)}}
-@keyframes rbWaveSoft{0%,70%,100%{transform:rotate(0)}78%,92%{transform:rotate(-40deg)}85%{transform:rotate(-20deg)}}
-@keyframes rbDots{0%,100%{opacity:.2}50%{opacity:.95}}
-@keyframes rbShiver{0%,86%,100%{transform:translateX(0)}88%,92%,96%{transform:translateX(-1.5%)}90%,94%,98%{transform:translateX(1.5%)}}
-@keyframes rbSag{0%,100%{transform:translateY(0)}50%{transform:translateY(3%)}}
-@keyframes rbShake{0%,100%{transform:translateX(0) rotate(0)}25%{transform:translateX(-2.5%) rotate(-3deg)}75%{transform:translateX(2.5%) rotate(3deg)}}
-@keyframes rbSteam{0%{opacity:0;transform:translateY(4px)}30%{opacity:.9}100%{opacity:0;transform:translateY(-8px)}}
-@keyframes rbDrop{0%{opacity:0;transform:translateY(-3px)}20%,70%{opacity:1}100%{opacity:0;transform:translateY(8px)}}
-@keyframes rbTear{0%{opacity:0;transform:translateY(-2px)}25%,75%{opacity:1}100%{opacity:0;transform:translateY(10px)}}
-@keyframes rbHeart{0%{opacity:0;transform:translateY(4px) scale(.5)}30%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-12px) scale(1.1)}}
-
-/* Rico's screen */
 .rico-head{position:relative;display:flex;align-items:center;gap:12px;padding:12px;padding-inline:12px 10px;border-radius:var(--r-card);margin-bottom:14px}
 .rico-head-text{flex:1;min-width:0}
 .rico-name{display:flex;align-items:center;gap:8px;font-size:1.25rem;font-weight:600;line-height:1.2}
@@ -888,8 +814,7 @@ html.rtl .install-prompt{right:auto;left:22px}
 .rico-note-body{flex:1;min-width:0}
 .rico-note-meta{font-size:.75rem;font-weight:500;color:var(--ink-soft);margin-bottom:2px}
 .rico-note-text{font-size:.9375rem;font-weight:500;line-height:1.55;overflow-wrap:anywhere}
-.mood-tint-happy{--rb-c2:#8EDDB2}.mood-tint-excited{--rb-c2:#FFD978}.mood-tint-grateful{--rb-c2:#F6AFC6}.mood-tint-calm{--rb-c2:#9BD7DF}
-.mood-tint-thinking{--rb-c2:#BCAEF3}.mood-tint-worried{--rb-c2:#FFC08A}.mood-tint-sad{--rb-c2:#A3BFF0}.mood-tint-angry{--rb-c2:#F4A19B}
+
 .rico-thread{display:flex;flex-direction:column;gap:14px;max-width:820px;margin-inline:auto}
 .rico-intro{display:flex;flex-direction:column;align-items:flex-start;text-align:start;gap:10px;padding:18px 4px 6px}
 
@@ -1779,9 +1704,6 @@ kbd{min-width:26px;height:26px;padding:0 7px;border-radius:7px;display:inline-gr
 .wipe-banner svg{flex:none;width:20px;height:20px;margin-top:1px}
 
 /* Rico as a spark: his eyes and mouth are dark on the pastel star, in every mood. */
-.rico-bot[class*="mood-"]{--rb-eye:#14382C;--rb-glow:transparent}
-.rb-star{stroke:rgba(16,41,31,.14);stroke-width:1}
-.rb-head{transform-origin:50% 50%}
 
 /* The Rico tab */
 .rico-intro{align-items:stretch}
@@ -1800,7 +1722,7 @@ html.rtl .p-eyebrow{letter-spacing:0}
 .rico-why summary{cursor:pointer;color:var(--tint);font-weight:500}
 
 .quick-btn .rico-bot{--size:20px;margin:0}
-.rico-top .rb-shadow,.quick-btn .rb-shadow{display:none}
+
 .mem-add{display:flex;gap:8px;margin-top:10px}
 .mem-add input{flex:1;min-width:0;min-height:44px;padding:0 14px;border:0;border-radius:22px;background:var(--fill);font-size:1rem}
 .mem-rule{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:.9375rem}
@@ -2282,7 +2204,6 @@ html.dark .st-busy{background:rgba(59,130,246,.18);color:#93C5FD}html.dark .st-b
 /* Rico without animations and expressions (Settings): a plain star, nothing moves. */
 .rico-plain{display:inline-grid;place-items:center;color:var(--accent-strong)}
 .rico-plain svg{width:100%;height:100%}
-html.rico-still .rico-bot,html.rico-still .rico-bot *{animation:none!important;transition:none!important}
 
 /* The form's foot: count and route on the left; Cancel as red text, Keep as draft, Send on the right. */
 .rr-edit .rr-sum{flex-wrap:wrap;gap:12px}

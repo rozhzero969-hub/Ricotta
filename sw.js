@@ -57,9 +57,7 @@ self.addEventListener('push', event => {
   catch (e) { data = { body: event.data ? event.data.text() : '' }; }
 
   const kind = data.kind || 'general';   /* 'reminder' | 'supplier' | 'assistant' | 'security' | 'general' */
-  /* Rico's own messages carry his mood and show his face for it, not the app icon. */
-  const RICO_MOODS = ['happy', 'excited', 'grateful', 'calm', 'thinking', 'worried', 'sad', 'angry'];
-  const icon = kind === 'assistant' ? 'rico-' + (RICO_MOODS.includes(data.mood) ? data.mood : 'happy') + '.png' : 'icon-192.png';
+  const icon = 'icon-192.png';
   const title = data.title || 'Ricotta Orders';
   const supplierId = data.supplierId || '';
   /* Some messages belong to a screen: 'history' (save the month), 'admin' (a new device signed in). */

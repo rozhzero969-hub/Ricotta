@@ -13,8 +13,6 @@ const SETTINGS = [
   {id:'soundMilestone', group:'sound', on:true},
   {id:'soundUndo', group:'sound', on:true},
   {id:'ricoSheet', group:'rico', on:true, role:'assistant'},
-  {id:'ricoMood', group:'rico', on:true, role:'assistant'},
-  {id:'ricoLively', group:'rico', on:true},
   {id:'ricoAutoStart', group:'rico', on:false, role:'receipts', rozha:true},
   {id:'tfAuto', group:'none', on:false},
   {id:'tables', group:'look', on:false},
@@ -40,8 +38,6 @@ const SETTING_ICONS = {
   soundMilestone:['#FF2D55', SF('<path d="m12 3.3 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.6l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z"/>', true)],
   soundUndo:['#FF2D55', SF('<path d="M8.6 5.4 4.4 9.6l4.2 4.2"/><path d="M4.6 9.6H15a4.6 4.6 0 0 1 0 9.2h-3"/>')],
   ricoSheet:['#1F7A4D', SF('<path d="M12 3.4c.7 4.9 3.7 7.9 8.6 8.6-4.9.7-7.9 3.7-8.6 8.6-.7-4.9-3.7-7.9-8.6-8.6 4.9-.7 7.9-3.7 8.6-8.6Z"/>', true)],
-  ricoLively:['#34C759', SF('<path d="M12 3.4c.7 4.9 3.7 7.9 8.6 8.6-4.9.7-7.9 3.7-8.6 8.6-.7-4.9-3.7-7.9-8.6-8.6 4.9-.7 7.9-3.7 8.6-8.6Z"/>', true)],
-  ricoMood:['#AF52DE', SF('<circle cx="12" cy="12" r="8.4"/><path d="M8.4 13.6a4.4 4.4 0 0 0 7.2 0"/><circle cx="9.2" cy="9.9" r="1.15" fill="#fff" stroke="none"/><circle cx="14.8" cy="9.9" r="1.15" fill="#fff" stroke="none"/>')],
   ricoAutoStart:['#34C759', SF('<path d="M12 3.4v7.4"/><path d="M7.1 6.6a7.2 7.2 0 1 0 9.8 0"/>')],
   ricoStyle:['#30B0C7', SF('<path d="M5.4 4.6h13.2a2.2 2.2 0 0 1 2.2 2.2v7.6a2.2 2.2 0 0 1-2.2 2.2H12l-4.4 3.3a.5.5 0 0 1-.8-.4V16.6H5.4a2.2 2.2 0 0 1-2.2-2.2V6.8a2.2 2.2 0 0 1 2.2-2.2Z"/>', true)],
   ricoMac:['#1F7A4D', SF('<rect x="4" y="5" width="16" height="10.6" rx="1.8"/><path d="M2.6 18.6h18.8"/>')],
@@ -100,7 +96,6 @@ async function carryOverLocalSettings(){
 function applyFeatures(){
   document.documentElement.classList.toggle('kitchen-mode', featureOn('kitchenMode'));
   document.documentElement.classList.toggle('compact-rows', featureOn('compactRows'));
-  document.documentElement.classList.toggle('rico-still', !featureOn('ricoLively'));
 }
 function renderFeatureSettings(){
   const row = f=>`<label class="check-row preference-row has-ico"><input type="checkbox" data-feature="${f.id}" ${featureOn(f.id) ? 'checked' : ''}>${setIcon(f.id)}<span>${esc(t('feat_' + f.id))}<small>${esc(t('feat_' + f.id + '_hint'))}</small></span></label>`;

@@ -968,12 +968,6 @@ function updateRicoBadge(){
 setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
 /* Rico answers what just happened: the pill gives one small bounce and its sparkle a quick turn (a small
    dip when the order was cleared). Calling it again restarts the motion from the start. */
-function ricoReact(kind = 'up'){
-  const btn = document.getElementById('ricoTopBtn');
-  if(!btn || reducedMotion()) return;
-  btn.dataset.react = kind;
-  btn.classList.remove('reacting'); void btn.offsetWidth; btn.classList.add('reacting');
-}
 
 /* ============ Navigation ============
    Phones: up to four tabs (Order, History, Manage, Record, Admin, whichever this person may
@@ -1878,7 +1872,7 @@ function renderTopbar(){
     <div class="topbar-actions">
       ${renderStreakChip()}
       <div class="chip conn-chip" id="connectionStatus" role="status"${state.apiOnline?' hidden':''}><span></span><em>${esc(t('offline'))}</em></div>
-      ${canOpen('assistant') ? `<button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${ricoFace(kitchenMood(), 'rico-top-face')}<i class="rico-badge" hidden></i></button>` : ''}
+      ${canOpen('assistant') ? `<button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${ricoFace('', 'rico-top-face')}<i class="rico-badge" hidden></i></button>` : ''}
       <button type="button" class="account-btn" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
     </div>
   </header>`;
@@ -2503,7 +2497,6 @@ function attachOrderEvents(){
     const before = {...state.cart};
     state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id && i.available!==false) && qty>0));
     refreshOrderView();
-    ricoReact();
     toast(t('sameAsLastFilled'), 'ok', {undo:()=>{ state.cart = before; refreshOrderView(); }});
   };
   const clear=document.getElementById('clearOrderBtn');
@@ -2516,7 +2509,6 @@ function attachOrderEvents(){
     const rows=[...document.querySelectorAll('#orderResults .item-row.has-qty')].slice(0,14);
     rows.forEach((row,i)=>row.animate?.([{transform:'none',opacity:1},{transform:'translateX(-14px) scale(.98)',opacity:.35,offset:.5},{transform:'none',opacity:1}],{duration:420,delay:i*40,easing:'cubic-bezier(.32,.72,0,1)'}));
     state.cart={};persistCartDraft();if(queue){state.queue=null;persistQueue();}refreshOrderView();paintDraftStatus();
-    ricoReact('down');
     toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before;persistCartDraft();paintDraftStatus(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
   };
   const send = document.getElementById('sendOrdersBtn');
@@ -2637,7 +2629,6 @@ function stepQty(btn){
   const first = next > 0 && !cartCount();
   state.cart[id] = next;
   refreshOrderView(id);
-  if(first) ricoReact();
 }
 /* Hold + or − and the number keeps going, faster the longer it's held. */
 let stepHold = null;
@@ -2935,7 +2926,7 @@ async function maybeFinishQueue(){
         items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
       }))
     };
-    if(!queue.record){try{playOrdersSent();haptic('success');ricoReact();}catch(_){/* Audio must never interrupt saving. */}}
+    if(!queue.record){try{playOrdersSent();haptic('success');}catch(_){/* Audio must never interrupt saving. */}}
     queue.record = record;
     queue.saveState = 'saving';
     persistQueue();   // the same order id after a restart, so it is never saved twice

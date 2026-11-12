@@ -38,43 +38,10 @@ const rico = {
   viewing: null,       // the other person's account while one of their chats is open (read only)
 };
 
-/* Rico: a four-point spark with a face. The mood class on the root picks which eyes and mouth show,
-   their colour and how he moves (see .rb-* in style.css). Each mood has its own pastel. The gradient
-   needs an id, so each drawing gets its own. */
+/* Rico is a plain green sparkle everywhere (Rozh's choice, 2026-11-13): no face, no moods, no
+   animations. The mood words below are only taken out of older replies that still carry them. */
 const RICO_MOODS = ['happy','excited','grateful','calm','thinking','worried','sad','angry'];
-let ricoBotSeq = 0;
-function ricoFace(mood = 'happy', cls = ''){
-  // Settings: with Rico's animations and expressions off he is just the plain star.
-  if(typeof featureOn === 'function' && !featureOn('ricoLively')) return `<span class="rico-bot rico-plain ${cls}" aria-hidden="true">${ICON_SPARKLE}</span>`;
-  const m = RICO_MOODS.includes(mood) ? mood : 'happy';
-  const g = 'rbg' + (++ricoBotSeq);
-  const eye = (x, flip) => `
-      <rect class="rb-e e-pill" x="${x-3.6}" y="47" width="7.2" height="12" rx="3.6"/>
-      <path class="rb-e e-arc" d="M${x-5} 56 Q${x} 47 ${x+5} 56"/>
-      <path class="rb-e e-chev" d="${flip ? `M${x+4} 48 L${x-3} 53 L${x+4} 58` : `M${x-4} 48 L${x+3} 53 L${x-4} 58`}"/>
-      <path class="rb-e e-heart" d="M${x} 58 C${x-7} 53 ${x-5} 46 ${x} 50 C${x+5} 46 ${x+7} 53 ${x} 58 Z"/>
-      <path class="rb-e e-bar" d="${flip ? `M${x+5} 48 L${x-4} 53` : `M${x-5} 48 L${x+4} 53`}"/>
-      <path class="rb-e e-line" d="M${x-4.5} 53 L${x+4.5} 53"/>`;
-  return `<span class="rico-bot mood-${m} ${cls}" aria-hidden="true"><svg viewBox="0 0 100 106">
-    <defs><radialGradient id="${g}" gradientUnits="userSpaceOnUse" cx="38" cy="26" r="78">
-      <stop offset="0" stop-color="var(--rb-c1)"/><stop offset=".5" stop-color="var(--rb-c2)"/><stop offset="1" stop-color="var(--rb-c3)"/></radialGradient></defs>
-    <g class="rb-all">
-      <ellipse class="rb-shadow" cx="50" cy="103" rx="16" ry="2.4"/>
-      <g class="rb-head">
-        <path class="rb-star" fill="url(#${g})" d="M50 3c3.6 27 19.200 43.400 47 47.500-27.800 4.100-43.400 20.500-47 47.500-3.600-27-19.200-43.400-47-47.500C30.800 46.400 46.400 30 50 3z"/>
-        <g transform="translate(50 50) scale(.7) translate(-50 -55)">
-          <g class="rb-eyes"><g class="rb-eye l">${eye(39,false)}</g><g class="rb-eye r">${eye(61,true)}</g></g>
-          <g class="rb-brows"><path class="rb-brow l" d="M34 44 L44 42.5"/><path class="rb-brow r" d="M66 44 L56 42.5"/></g>
-          <g class="rb-mouths"><path class="rb-mo mo-smile" d="M45 61.5 Q50 65 55 61.5"/><path class="rb-mo mo-open" d="M44.5 60.5 Q50 67 55.5 60.5 Z"/><path class="rb-mo mo-flat" d="M46 62.5 L54 62.5"/><path class="rb-mo mo-frown" d="M45 64 Q50 60 55 64"/></g>
-        </g>
-        <g class="rb-dots"><circle cx="76" cy="20" r="2.2"/><circle cx="83" cy="14" r="2.8"/><circle cx="91" cy="8" r="3.4"/></g>
-        <path class="rb-tear" d="M38 62 c0 0 -3 4 -3 6 a3 3 0 0 0 6 0 c0 -2 -3 -6 -3 -6z"/>
-        <path class="rb-drop" d="M78 30 c0 0 -4 5 -4 8 a4 4 0 0 0 8 0 c0 -3 -4 -8 -4 -8z"/>
-        <g class="rb-steam"><path d="M22 28 c-3 -3 3 -5 0 -9"/><path d="M78 28 c3 -3 -3 -5 0 -9"/></g>
-        <path class="rb-heart" d="M84 26 c-2 -4 -9 -3 -9 2 c0 4 9 9 9 9 s9 -5 9 -9 c0 -5 -7 -6 -9 -2z"/>
-      </g>
-    </g></svg></span>`;
-}
+function ricoFace(_mood, cls = ''){ return `<span class="rico-bot rico-plain ${cls}" aria-hidden="true">${ICON_SPARKLE}</span>`; }
 
 function ricoAutoOrder(){ return !!lget('ricoAutoOrder'); }
 /* Apple's rule (App Review 5.1.2): before anything goes to an AI service, the person is told where it
@@ -124,18 +91,6 @@ async function ricoRefreshInbox(){
 }
 setInterval(()=>{ if(document.visibilityState === 'visible') ricoRefreshInbox(); }, 3*60*1000);
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') ricoRefreshInbox(); });
-/* How Rico feels right now: the mood of his latest reply (thinking while he works). */
-function ricoCurrentMood(){
-  for(let i = rico.messages.length - 1; i >= 0; i--){
-    const m = rico.messages[i];
-    if(m.role !== 'assistant') continue;
-    if(m.streaming && !m.mood) return 'thinking';
-    if(m.error) return 'sad';
-    if(RICO_MOODS.includes(m.mood)) return m.mood;
-  }
-  const last = rico.inbox[rico.inbox.length - 1];
-  return last && !last.read ? last.mood : typeof kitchenMood === 'function' ? kitchenMood() : 'happy';
-}
 
 /* ---------- Late orders (same rule as the server's push alert) ---------- */
 function erbilNow(){
@@ -184,7 +139,7 @@ function ricoGreeting(){
 }
 function renderAssistant(){
   const head = `<header class="rico-head">
-      ${ricoFace(ricoCurrentMood(), 'rico-md')}
+      ${ricoFace('', 'rico-md')}
       <div class="rico-head-text">
         <div class="rico-name">${esc(t('ricoName'))}<span class="rico-online" aria-hidden="true"></span></div>
         <div class="rico-who">${esc(t('ricoTalkingWith')(accountLabel(state.account)))}</div>
@@ -213,8 +168,8 @@ function renderRicoInbox(){
   const list = rico.inbox.slice(-1);
   if(!list.length) return '';
   return `<div class="rico-inbox">${list.map(m=>`
-    <div class="rico-note mood-tint-${esc(m.mood)} ${m.read?'':'unread'}">
-      ${ricoFace(m.mood, 'rico-sm')}
+    <div class="rico-note ${m.read?'':'unread'}">
+      ${ricoFace('', 'rico-sm')}
       <div class="rico-note-body"><div class="rico-note-meta">${esc(t('ricoWroteFirst'))} · ${esc(timeAgo(m.at))}</div><div class="rico-note-text" dir="auto">${esc(ricoInboxText(m))}</div></div>
     </div>`).join('')}${rico.inbox.length > 1 ? `<button type="button" class="rico-link rico-inbox-more" id="ricoInboxAll">${esc(t('inboxSeeAll')(rico.inbox.length))}</button>` : ''}</div>`;
 }
@@ -244,11 +199,10 @@ function renderRicoMessage(m, i){
   const status = m.streaming && m.text && m.statusKey && m.stepsDone ? `<div class="rico-status-line"><i></i>${esc(ricoStatusLabel(m.statusKey))}</div>` : '';
   const cards = (m.proposals||[]).map(p=>renderRicoProposal(p, i)).join('');
   const picker = m.picker ? renderRicoSupplierPicker(m.picker, i) : '';
-  const mood = m.error ? 'sad' : RICO_MOODS.includes(m.mood) ? m.mood : (m.streaming ? 'thinking' : 'happy');
   return `<div class="rico-msg bot${m.streaming?' streaming':''}" id="rico-m-${i}">
-    ${ricoFace(mood, 'rico-sm')}
+    ${ricoFace('', 'rico-sm')}
     <div class="rico-col">
-      ${stepsHtml}${typing}${body ? `<div class="rico-bubble mood-tint-${mood}" dir="auto"><div class="rico-text">${body}</div></div>` : ''}${status}${picker}${cards}${renderRicoReceipt(m, i)}${err}
+      ${stepsHtml}${typing}${body ? `<div class="rico-bubble" dir="auto"><div class="rico-text">${body}</div></div>` : ''}${status}${picker}${cards}${renderRicoReceipt(m, i)}${err}
     </div>
   </div>`;
 }
@@ -575,7 +529,7 @@ async function ricoAsk(text, options = {}){
       if(p.kind === 'order' && ricoAutoOrder()){ ricoApplyOrder(p, true); }
       paint();
     }
-    else if(ev.type === 'mood'){ bot.mood = ev.mood; paint(); ricoPaintHeadFace(); }
+    else if(ev.type === 'mood'){ /* older servers: moods are no longer shown */ }
     else if(ev.type === 'error'){ bot.error = ev.code; bot.retry = ['offline','busy','failed'].includes(ev.code); paint(); }
   }, controller.signal);
   cancelAnimationFrame(frame);
@@ -589,16 +543,8 @@ async function ricoAsk(text, options = {}){
   if(state.view === 'assistant'){
     ricoPaintMessage(idx);
     ricoRefreshComposer();
-    ricoPaintHeadFace();
     document.getElementById('ricoNewBtn')?.removeAttribute('disabled');
   }
-}
-/* Rico's face in the header follows his latest mood (without re-drawing the page). */
-function ricoPaintHeadFace(){
-  const face = document.querySelector('.rico-head .rico-bot');
-  if(!face) return;
-  const mood = ricoCurrentMood();
-  RICO_MOODS.forEach(m=>face.classList.toggle('mood-'+m, m === mood));
 }
 /* Repaints one message in place (no full re-render while text streams in). */
 function ricoPaintMessage(i){
