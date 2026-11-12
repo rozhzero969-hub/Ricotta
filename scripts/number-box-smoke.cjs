@@ -64,3 +64,11 @@ const tf=fs.readFileSync('transfers.js','utf8');
 for(const [file,text,needles] of [['receipts.js',src,["rrBoxText(l, 'qty')","rrBoxText(l, 'cost', true)","rrBoxText(r, 'rate')","rrBoxText(r, 'delivery', true)"]],['transfers.js',tf,["rrBoxText(l, 'qty', true)"]]])
   for(const n of needles) assert.ok(text.includes(n),file+' draws its box with '+n);
 console.log('number boxes ok');
+// A comma with one or two digits after it is the decimal mark in a quantity (2,5 = 2.5), with three it
+// stays a thousands mark (1,480); money boxes keep their own thousands commas.
+{ const el=box('2,5'); assert.equal(rrOnlyNum(el,true,false),2.5); assert.equal(el.value,'2.5'); }
+{ const el=box('٢،٥'); assert.equal(rrOnlyNum(el,true,false),2.5); }
+{ const el=box('1,480'); assert.equal(rrOnlyNum(el,true,false),1480); }
+{ const el=box('1,250'); assert.equal(rrOnlyNum(el,true,true),1250); assert.equal(el.value,'1,250'); }
+{ const el=box('12,'); assert.equal(rrOnlyNum(el,true,false),12); }
+console.log('comma decimals ok');

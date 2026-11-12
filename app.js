@@ -1549,7 +1549,7 @@ function openSelPop(sel){
   closeSelSheet();
   document.querySelector('.sel-pop')?.remove();
   const btn = sel._selBtn, r = btn.getBoundingClientRect();
-  const opts = [...sel.options].map(o=>({value:o.value, label:o.textContent, on:o.selected}));
+  const opts = [...sel.options].filter(o=>!o.hidden).map(o=>({value:o.value, label:o.textContent, on:o.selected}));
   const pop = document.createElement('div');
   pop.className = 'sel-pop'; pop.setAttribute('role', 'listbox');
   pop.innerHTML = opts.map(o=>`<button type="button" class="sel-pop-opt${o.on ? ' on' : ''}" role="option" aria-selected="${o.on}" data-v="${esc(o.value)}"><span dir="auto">${esc(o.label)}</span>${o.on ? ICON_CHECK : ''}</button>`).join('');

@@ -66,7 +66,9 @@
     const errors = [], warnings = [];
     const lim = Object.assign({ bigTotal: 1000000, priceJump: 30, rateMin: 1500, rateMax: 1800 }, limits || {});
     const cat = catalog || {};
-    const items = new Map((cat.items || []).map((i) => [i.name, i]));
+    // Two items with one name: the first one, as the form picks it (a Map keeps the last).
+    const items = new Map();
+    for (const i of cat.items || []) if (!items.has(i.name)) items.set(i.name, i);
     if (!r.supplier) errors.push({ code: 'supplier' });
     else if (!(cat.suppliers || []).includes(r.supplier)) errors.push({ code: 'supplierUnknown' });
     if (!/^[0-9]{1,30}$/.test(String(r.invoice || ''))) errors.push({ code: 'invoice' });
@@ -86,7 +88,7 @@
       if (!item) { errors.push({ code: 'itemUnknown', line: n }); return; }
       const opt = unitOptions(item).find((o) => o.label === l.unit);
       if (!opt) errors.push({ code: 'unitUnknown', line: n });
-      if (!qtyOk(l.qty)) errors.push({ code: 'qty', line: n });
+      if (!qtyOk(l.qty)) errors.push({ code: typeof l.qty === 'number' && l.qty > 99999 ? 'qtyTooBig' : 'qty', line: n });
       if (!costOk(l.cost)) errors.push({ code: 'cost', line: n });
       if (seen.has(l.item)) warnings.push({ code: 'duplicate', line: n, first: seen.get(l.item) });
       else seen.set(l.item, n);

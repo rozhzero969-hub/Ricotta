@@ -302,7 +302,7 @@ function rrNewDraft(copyOf, draw = true){
   if(!rr.data?.catalog?.items?.length){ if(draw) toast(t('rrNoCatalog'), 'error'); return; }
   rrDropBlankForm();
   const src = copyOf || {};
-  const r = {id:crypto.randomUUID(), by:state.account, source:'app', status:'draft', supplier:src.supplier || '', invoice:copyOf ? '' : '',
+  const r = {id:crypto.randomUUID(), by:state.account, source:'app', status:'draft', supplier:src.supplier || '', invoice:'',
     zone:src.zone || 'Main Storage', currency:src.currency || 'IQD', rate:src.rate ?? null, delivery:src.delivery ?? null,
     lines:(src.lines || []).map(l=>({...l})), total:null, warnings:[], log:[], photos:[], version:0, createdAt:new Date().toISOString()};
   if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null, cost:null});
@@ -420,7 +420,11 @@ function rrComboBind(input, names, onPick, extra){
    where it was. */
 function rrOnlyNum(el, dec, commas = false){
   const raw = String(el.value), at = el.selectionStart ?? raw.length;
-  const clean = x=> x.replace(/[٠-٩]/g, d=>d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d=>d.charCodeAt(0) - 0x6f0).replace(/٫/g, '.').replace(dec ? /[^\d.]/g : /\D/g, '');
+  // In a box without thousands commas (quantities, the rate) a comma, Arabic comma or Arabic thousands
+  // mark with one or two digits after it, at the end, is the decimal mark: 2,5 is two and a half, not 25.
+  // With three digits after it (1,480) it stays a thousands mark.
+  const decComma = x=> dec && !commas && !x.includes('.') ? x.replace(/^(\d+)[,٬،](\d{1,2})$/, '$1.$2') : x;
+  const clean = x=> decComma(x.replace(/[٠-٩]/g, d=>d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d=>d.charCodeAt(0) - 0x6f0).replace(/٫/g, '.').trim()).replace(dec ? /[^\d.]/g : /\D/g, '');
   let v = clean(raw);
   if(dec){ const i = v.indexOf('.'); if(i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '').slice(0, 3); }
   const shown = commas ? rrCommas(v) : v;
@@ -473,7 +477,7 @@ function renderReceiptEdit(){
     const warn = rr.typingLine === i ? '' : c.warnings.filter(w=>w.line === i + 1).map(w=>rrWarnText(w)).join(' ');
     return `<div class="rr-line${warn ? ' warn' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="rrItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('rrItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
-      <div class="rr-field rr-f-unit"><label for="rrUnit${i}">${esc(t('rrUnit'))}</label><select id="rrUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${opt('', t('rrBaseUnit'), !l.unit)}${units.map(u=>opt(u.label, rrUnitShow(u.label), u.label === l.unit)).join('')}</select></div>
+      <div class="rr-field rr-f-unit"><label for="rrUnit${i}">${esc(t('rrUnit'))}</label><select id="rrUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${!l.unit ? `<option value="" selected hidden>${esc(t(item ? 'rrErrUnit' : 'rrBaseUnit'))}</option>` : ''}${units.map(u=>opt(u.label, rrUnitShow(u.label), u.label === l.unit)).join('')}</select></div>
       <div class="rr-field"><label for="rrQty${i}">${esc(t('rrQty'))}</label><input id="rrQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${esc(rrBoxText(l, 'qty'))}" placeholder="0"></div>
       <div class="rr-field"><label for="rrCost${i}">${esc(t('rrUnitCost'))}${usd ? ' ($)' : ''}</label><input id="rrCost${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-cost="${i}" value="${esc(rrBoxText(l, 'cost', true))}" placeholder="0"></div>
       <div class="rr-field rr-total"><span>${esc(t('rrTotal'))}</span><b>${lineTotal ? esc(rrMoney(lineTotal, r.currency)) : '—'}</b></div>
@@ -484,7 +488,7 @@ function renderReceiptEdit(){
     <section class="rr-card"><h2 class="rr-card-title"><span>${esc(t('rrDetails'))}</span><button type="button" class="rr-scan" id="rrScan">${ICON_CAMERA || ''}<span>${esc(t('rrScan'))}</span></button></h2>
       <div class="rr-grid">
         <div class="rr-field"><label for="rrSupplier">${esc(t('rrSupplier'))}</label>${rrCombo('rrSupplier', r.supplier, t('rrSearchSupplier'))}</div>
-        <div class="rr-field"><label for="rrZone">${esc(t('rrZone'))}</label><select id="rrZone">${cat.zones.map(z=>opt(z, z, z === r.zone)).join('')}</select></div>
+        <div class="rr-field"><label for="rrZone">${esc(t('rrZone'))}</label><select id="rrZone">${cat.zones.includes(r.zone) ? '' : `<option value="" selected hidden>${esc(t('rrErrZone'))}</option>`}${cat.zones.map(z=>opt(z, z, z === r.zone)).join('')}</select></div>
         <div class="rr-field"><label for="rrInvoice">${esc(t('rrInvoice'))}</label><input id="rrInvoice" class="rr-input rr-n" inputmode="numeric" autocomplete="off" maxlength="30" value="${esc(r.invoice || '')}" placeholder="${esc(t('rrInvoiceHint'))}"></div>
         <div class="rr-field"><span class="rr-label">${esc(t('rrCurrency'))}</span><div class="pill-seg rr-cur" role="radiogroup" aria-label="${esc(t('rrCurrency'))}">
           <button type="button" class="pill-seg-btn" role="radio" aria-checked="${!usd}" data-cur="IQD">IQD</button><button type="button" class="pill-seg-btn" role="radio" aria-checked="${usd}" data-cur="USD">USD $</button></div></div>
@@ -528,7 +532,7 @@ function rrWarnText(w){
   if(w.code === 'unitPriceOdd') return t('rrWarnUnitPrice')(rrNum(w.times, 1), w.more, w.base);
   return '';
 }
-const RR_ERR_KEYS = {supplier:'rrErrSupplier', supplierUnknown:'rrErrSupplier', invoice:'rrErrInvoice', zone:'rrErrZone', currency:'rrErrRate', rate:'rrErrRate', deliveryUsd:'rrErrDelivery', delivery:'rrErrDelivery', noLines:'rrErrNoLines', tooManyLines:'rrErrNoLines', itemUnknown:'rrErrItem', unitUnknown:'rrErrUnit', qty:'rrErrQty', cost:'rrErrCost'};
+const RR_ERR_KEYS = {qtyTooBig:'rrErrQtyBig', supplier:'rrErrSupplier', supplierUnknown:'rrErrSupplier', invoice:'rrErrInvoice', zone:'rrErrZone', currency:'rrErrRate', rate:'rrErrRate', deliveryUsd:'rrErrDelivery', delivery:'rrErrDelivery', noLines:'rrErrNoLines', tooManyLines:'rrErrNoLines', itemUnknown:'rrErrItem', unitUnknown:'rrErrUnit', qty:'rrErrQty', cost:'rrErrCost'};
 function rrErrText(e, lines){
   const s = t(RR_ERR_KEYS[e.code] || 'rrErrItem');
   const name = e.line && lines?.[e.line - 1]?.item;
@@ -537,7 +541,7 @@ function rrErrText(e, lines){
 /* "Fix these first" shows on the form too: every box it names is outlined in red, and the first one is
    opened for typing, so nobody has to hunt for it. The red goes as soon as the box is typed in. */
 const RR_ERR_BOX = {supplier:'rrSupplier', supplierUnknown:'rrSupplier', invoice:'rrInvoice', zone:'rrZone', currency:'rrRate', rate:'rrRate', deliveryUsd:'rrDelivery', delivery:'rrDelivery',
-  noLines:'rrItem0', itemUnknown:'rrItem', unitUnknown:'rrUnit', qty:'rrQty', cost:'rrCost',
+  noLines:'rrItem0', itemUnknown:'rrItem', unitUnknown:'rrUnit', qty:'rrQty', qtyTooBig:'rrQty', cost:'rrCost',
   from:'tfFrom', fromUnknown:'tfFrom', to:'tfTo', toUnknown:'tfTo', sameZone:'tfTo', unitUnclear:'tfUnit', notEnough:'tfQty'};
 function rrMarkErrors(errors, tfForm = false){
   const boxes = errors.map(e=>{
@@ -604,8 +608,6 @@ function attachReceiptEdit(){
       const l = r.lines[i]; if(!l) return;   // the line went away while the list was open
       if(!again && v !== l.item){
         l.item = v;
-        const units = rrItem(v) ? globalThis.RicottaReceipts.unitOptions(rrItem(v)) : [];
-        // The unit it was bought in last time comes first, else the biggest one; a click changes it.
         // The unit bought last time, else the biggest one whose name agrees with its size (never a
         // "gram" that counts 1000 grams); a click changes it.
         const lastLabels = Object.keys(rr.data.last || {}).filter(k=>k.startsWith(v + '|') && k.endsWith('|' + r.currency)).map(k=>k.slice(v.length + 1, k.lastIndexOf('|')));
@@ -619,7 +621,13 @@ function attachReceiptEdit(){
   // Typing an amount or a price: that line's question waits; leaving the box shows it at once (or clears it).
   const judgeOnLeave = (el, i)=>{
     el.addEventListener('focus', ()=>{ rr.typingLine = i; });
-    el.addEventListener('blur', ()=>{ if(rr.typingLine !== i) return; rr.typingLine = null; setTimeout(()=>{ if(state.view === 'receipts' && rr.page === 'edit' && rrFind(rr.id) === r) rrRepaintKeepFocus(); }, 0); });
+    // A box taken off the page by a redraw also fires blur: only a box still there and no longer focused
+    // has really been left (otherwise the form redrew itself over and over and clicks were lost).
+    el.addEventListener('blur', ()=>setTimeout(()=>{
+      if(!el.isConnected || document.activeElement === el || rr.typingLine !== i) return;
+      rr.typingLine = null;
+      if(state.view === 'receipts' && rr.page === 'edit' && rrFind(rr.id) === r) rrRepaintKeepFocus();
+    }, 0));
   };
   document.querySelectorAll('[data-l-qty]').forEach(el=>{
     const i = +el.dataset.lQty;
@@ -692,10 +700,11 @@ async function rrSendNow(r, keepForm){
   const c = globalThis.RicottaReceipts.check(r, rr.data.catalog, rrLimits(), rr.data.last);
   if(c.errors.length){
     if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null, cost:null});
-    render();
+    // Sent from the list (Waiting to send): it opens on the form, so the boxes marked are its own.
+    if(rr.id !== r.id || rr.page !== 'edit') rrOpen(r.id); else render();
     await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li dir="auto">${esc(rrErrText(e, r.lines))}</li>`).join('')}</ul>`, {title:t('rrFixFirst')});
     rrMarkErrors(c.errors);
-    return;
+    return false;
   }
   // Every warning is read and confirmed before Rico gets the receipt.
   if(c.warnings.length && !await showConfirm(rrSummary(r, c.warnings.map(w=>rrWarnLine(w, r))), {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary', enter:true, wide:true})) return;
@@ -709,7 +718,7 @@ async function rrSendNow(r, keepForm){
     const res = await rrPost(r, c.warnings.map(w=>w.code));
     if(!res) return;
     if(!res.ok){
-      const msg = res.data?.error === 'invoice_already_sent' ? t('rrErrAlreadySent') : res.data?.errors ? res.data.errors.map(rrErrText).join(' · ') : t('saveFailed');
+      const msg = res.data?.error === 'invoice_already_sent' ? t('rrErrAlreadySent') : res.data?.errors ? res.data.errors.map(e=>rrErrText(e, r.lines)).join(' · ') : t('saveFailed');
       toast(msg, 'error'); return;
     }
     Object.assign(r, res.data); delete r.pendingSend; delete r.dirty; rrKeep();
@@ -825,7 +834,8 @@ function rrScanPhoto(r, btn){
     if(d.supplier) r.supplier = d.supplier;
     if(d.invoice) r.invoice = d.invoice;
     r.currency = d.currency || r.currency;
-    if(d.delivery != null && r.currency === 'IQD') r.delivery = d.delivery;
+    if(r.currency === 'USD') r.delivery = null; else r.rate = null;
+    if(d.delivery != null && r.currency === 'IQD') r.delivery = Math.round(d.delivery);
     if(d.lines?.length) r.lines = [...d.lines.map(l=>({item:l.item, unit:l.unit, qty:l.qty, cost:l.cost})), {item:'', unit:'', qty:null, cost:null}];
     rrSaveSoon(r); render();
     toast(t('rrScanned')(d.lines?.length || 0), 'warn', {ms:5000});
@@ -842,7 +852,7 @@ async function rrRetry(r){
   if(!await showConfirm(msg, {title:t('rrRetry'), okLabel:t('rrRetry'), okClass:'btn-primary', wide:true, enter:!(r.pressedAt || r.approvedAt)})) return;
   const res = await rrPost(r, c.warnings.map(w=>w.code));
   if(!res) return;
-  if(!res.ok){ toast(res.data?.error === 'invoice_already_sent' ? t('rrErrAlreadySent') : res.data?.errors ? res.data.errors.map(rrErrText).join(' · ') : t('saveFailed'), 'error'); rrLoad(true); return; }
+  if(!res.ok){ toast(res.data?.error === 'invoice_already_sent' ? t('rrErrAlreadySent') : res.data?.errors ? res.data.errors.map(e=>rrErrText(e, r.lines)).join(' · ') : t('saveFailed'), 'error'); rrLoad(true); return; }
   Object.assign(r, res.data); toast(t('rrSent')); render();
 }
 

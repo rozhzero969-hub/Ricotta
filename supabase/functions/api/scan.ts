@@ -3,6 +3,8 @@
    the form and sends it as usual. Keys stay on the server. */
 import { config } from "./assistant.ts";
 import { catalogOf } from "./receipts.ts";
+import "../_shared/receipts.js";
+const R = (globalThis as any).RicottaReceipts;
 
 const GEMINI_MODEL = "gemini-3.5-flash-lite", CLAUDE_MODEL = "claude-haiku-5-5";
 
@@ -10,7 +12,8 @@ export async function scanReceipt(db: any, image: string) {
   if (typeof image !== "string" || image.length < 1000 || image.length > 4_000_000) return { error: "invalid_photo" };
   const cat: any = await catalogOf(db);
   const items = (cat.items ?? []) as any[];
-  const unitsOf = (i: any) => [i.base, ...(i.units ?? []).map((u: any) => `${u.name} (${Number(u.factor)}×)`)].join(" | ");
+  // The same unit names the form shows (and the Send check accepts), base unit included.
+  const unitsOf = (i: any) => R.unitOptions(i).map((o: any) => o.label).join(" | ");
   const prompt = `Read this photo of a supplier's receipt (Kurdish, Arabic or English) for the restaurant "Ricotta" in Erbil.
 Return JSON only: {"supplier": string|null, "invoice": string|null, "currency": "IQD"|"USD", "delivery": number|null, "lines": [{"item": string, "unit": string, "qty": number, "cost": number}]}
 - supplier: exactly one name from SUPPLIERS that matches, or null.
@@ -47,7 +50,7 @@ ${items.map((i) => `${i.name} => ${unitsOf(i)}`).join("\n")}`;
   const lines = (Array.isArray(got.lines) ? got.lines : []).slice(0, 60).map((l: any) => {
     const item = byName.get(String(l?.item ?? ""));
     if (!item) return null;
-    const label = item.base === l.unit ? "" : (item.units ?? []).map((u: any) => `${u.name} (${Number(u.factor)}×)`).find((x: string) => x === l.unit) ?? "";
+    const label = R.unitOptions(item).map((o: any) => o.label).find((x: string) => x === l.unit) ?? "";
     return { item: item.name, unit: label, qty: num(l.qty), cost: num(l.cost) };
   }).filter(Boolean);
   return {
