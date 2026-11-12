@@ -812,20 +812,20 @@ function renderRicoReceiptSettings(){
   if(!h){ if(!rr.loading) rrLoad(true); return ''; }
   if(!rr.tg && !rr.tgLoading){ rr.tgLoading = true; api('receipts-settings/telegram', {quiet:true}).then(r=>{ rr.tgLoading = false; if(r.ok){ rr.tg = r.data; if(state.view === 'settings') render(); } }); }
   const L = h.limits, on = h.online && !h.stopped;
-  const row = (label, value)=>`<div class="rs-row"><span>${esc(label)}</span><b dir="ltr">${esc(value)}</b></div>`;
+  const row = (icon, label, value)=>`<div class="rs-row has-ico">${setIcon(icon)}<span>${esc(label)}</span><b dir="ltr">${esc(value)}</b></div>`;
   return `<div class="section-title">${esc(t('rrSettingsTitle'))}</div>
     <div class="form-card rs-card">
-      <div class="rs-row rs-status"><span><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i>${esc(t('rrRicoMac'))}</span><b>${esc(rrHelperLine(h))}</b></div>
-      <div class="rs-row"><span>${esc(t('rrTitle'))}</span><b>${esc(t('rsAlwaysYou'))}</b></div>
-      <label class="check-row preference-row rs-switch"><input type="checkbox" id="tfAutoSet" ${featureOn('tfAuto') ? 'checked' : ''}><span>${esc(t('tfTitle'))}: ${esc(t('rsTfAuto'))}<small>${esc(t('rsTfAutoShort'))}</small></span></label>
-      <label class="check-row preference-row rs-switch"><input type="checkbox" id="rrStop" ${h.stopped ? 'checked' : ''}><span>${esc(t('rrStop'))}<small>${esc(t('rrStopHint'))}</small></span></label>
+      <div class="rs-row has-ico rs-status">${setIcon('ricoMac')}<span>${esc(t('rrRicoMac'))}</span><b><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i>${esc(rrHelperLine(h))}</b></div>
+      <div class="rs-row has-ico">${setIcon('ricoReceipts')}<span>${esc(t('rrTitle'))}</span><b>${esc(t('rsAlwaysYou'))}</b></div>
+      <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" id="tfAutoSet" ${featureOn('tfAuto') ? 'checked' : ''}>${setIcon('tfAuto')}<span>${esc(t('tfTitle'))}: ${esc(t('rsTfAuto'))}<small>${esc(t('rsTfAutoShort'))}</small></span></label>
+      <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" id="rrStop" ${h.stopped ? 'checked' : ''}>${setIcon('ricoStop')}<span>${esc(t('rrStop'))}<small>${esc(t('rrStopHint'))}</small></span></label>
     </div>
     <div class="section-title rs-sub"><span>${esc(t('rsLimits'))}</span><button type="button" class="rs-edit" id="rrLimEdit">${esc(t('rsEdit'))}</button></div>
     <div class="form-card rs-card">
-      ${row(t('rrLimBig'), 'IQD ' + rrNum(L.bigTotal))}${row(t('rrLimJump'), L.priceJump + '%')}${row(t('rsRate'), rrNum(L.rateMin) + ' – ' + rrNum(L.rateMax))}
+      ${row('limBig', t('rrLimBig'), 'IQD ' + rrNum(L.bigTotal))}${row('limJump', t('rrLimJump'), L.priceJump + '%')}${row('limRate', t('rsRate'), rrNum(L.rateMin) + ' – ' + rrNum(L.rateMax))}
     </div>
     <div class="form-card rs-card">
-      <div class="rs-row"><span>${esc(t('rrTelegram'))}<small>${esc(!rr.tg ? '' : !rr.tg.ready ? t('rrTgNotSetUp') : rr.tg.connected ? t('rrTgConnected') : t('rrTgNotConnected'))}</small></span>
+      <div class="rs-row has-ico">${setIcon('telegram')}<span>${esc(t('rrTelegram'))}<small>${esc(!rr.tg ? '' : !rr.tg.ready ? t('rrTgNotSetUp') : rr.tg.connected ? t('rrTgConnected') : t('rrTgNotConnected'))}</small></span>
         ${rr.tg?.ready ? `<button type="button" class="rs-edit" id="rrTgConnect">${esc(rr.tg.connected ? t('rrTgReconnect') : t('rrTgConnect'))}</button>` : ''}</div>
     </div>`;
 }

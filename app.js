@@ -250,7 +250,7 @@ function paintDraftStatus(){
   if(!el) return;
   el.innerHTML=draftStatusHtml();
   const caption=document.querySelector('.draft-state');
-  if(caption) caption.textContent=cartCount()?draftProgressLabel():t('selectToStart');
+  if(caption) caption.textContent=cartCount()?draftProgressLabel():'';
   el.querySelectorAll('[data-draft-choice]').forEach(b=>b.onclick=()=>resolveDraftConflict(b.dataset.draftChoice));
 }
 function receiveSharedDraft(data, base=sharedDraft.base){
@@ -1859,7 +1859,7 @@ function lastQtyMap(){
 /* A screen's large title, under the date, with Search beside it (it finds anything in the app). */
 function renderPageHeading(){
   const now = new Date(), date = formatIraqDateTime(now, {weekday:'long', day:'numeric', month:'long'});
-  return `<header class="page-heading"><time class="page-eyebrow page-date" datetime="${erbilDate(now)}">${esc(date)}</time><div class="page-title-row"><h1>${esc(viewLabel(state.view))}</h1><button type="button" class="heading-search" data-spotlight aria-label="${esc(t('spotTitle'))}" aria-keyshortcuts="Control+K Meta+K /">${ICON_SEARCH}</button></div></header>`;
+  return `<header class="page-heading">${state.view === 'order' ? `<time class="page-eyebrow page-date" datetime="${erbilDate(now)}">${esc(date)}</time>` : ''}<div class="page-title-row"><h1>${esc(viewLabel(state.view))}</h1><button type="button" class="heading-search" data-spotlight aria-label="${esc(t('spotTitle'))}" aria-keyshortcuts="Control+K Meta+K /">${ICON_SEARCH}</button></div></header>`;
 }
 
 /* ============ Notifications: banner ============ */
@@ -2213,34 +2213,14 @@ function lastOrderMap(){
   last.entries.forEach(e=>e.items.forEach(it=>{ map[it.itemId] = it.qty; }));
   return map;
 }
-/* Suppliers the current tab covers, and how many of them have something picked. */
-function supplierCoverage(){
-  const scope = state.orderTab==='all' ? state.items : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab);
-  // Items with no supplier are ordered too, but only real suppliers count here
-  // (so the ring agrees with "N items across M suppliers" under it).
-  const all = new Set(scope.map(i=>i.supplierId).filter(Boolean));
-  const picked = new Set(scope.filter(i=>i.supplierId && (state.cart[i.id]||0)>0).map(i=>i.supplierId));
-  return {total:all.size, picked:picked.size};
-}
-const RING_C = 2*Math.PI*26;
-function ringOffset(){ const c=supplierCoverage(); return c.total ? RING_C*(1-c.picked/c.total) : RING_C; }
 function renderOrderHero(itemCount=state.items.length, supplierCount=new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size){
   const selCount = cartCount();
-  const cov = supplierCoverage();
   return `<div class="hero-card order-hero">
     <div class="hero-copy"><div class="hero-eyebrow">${t('heroEyebrow')}</div>
     <div class="hero-stat" aria-live="polite" aria-label="${esc(t('heroStat')(selCount))}"><span class="hero-count">${selCount}</span><span class="hero-word">${t('heroStatWord')(selCount)}</span></div>
     <div class="hero-sub">${t('heroSub')(itemCount, supplierCount)}</div></div>
-    <div class="hero-ring" role="img" aria-label="${esc(t('suppliersCovered')(cov.picked, cov.total))}">
-      <svg viewBox="0 0 68 68" aria-hidden="true"><circle cx="34" cy="34" r="26" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="7"/><circle class="arc" cx="34" cy="34" r="26" fill="none" stroke="#6FCF9A" stroke-width="7" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${ringOffset().toFixed(2)}"/></svg>
-      <b>${cov.picked}/${cov.total}</b></div>
-    <div class="hero-footer"><span class="draft-state">${selCount?draftProgressLabel():t('selectToStart')}</span></div>
+    <div class="hero-footer"><span class="draft-state">${selCount?draftProgressLabel():''}</span></div>
   </div>`;
-}
-/* A small monogram tile for a supplier (first letter, deep green). */
-function supplierMono(name){
-  const ch = Array.from(String(name||'').trim())[0] || '·';
-  return `<span class="supplier-mono" aria-hidden="true">${esc(ch.toLocaleUpperCase())}</span>`;
 }
 function renderOrderArrangeControl(){
   return canDo('catalog') && state.orderTab!=='all' && state.orderTab!=='__none'
@@ -2319,13 +2299,13 @@ function renderOrderResults(){
     if(!shown.length) return '';
     const rows = shown.map(i=>itemRowHtml(i, lastQty)).join('');
     return state.orderTab==='all' ? `<div class="supplier-group">
-      <div class="supplier-head"><span class="supplier-heading-name">${supplierMono(label)}${esc(label)}<span class="supplier-item-count">${shown.length}</span></span></div>
+      <div class="supplier-head"><span class="supplier-heading-name">${esc(label)}<span class="supplier-item-count">${shown.length}</span></span></div>
       <div class="supplier-items-grid">${rows}</div>
     </div>` : `<div class="supplier-items-grid standalone">${rows}</div>`;
   }).join('');
 
   const pinnedHtml = pinned.length ? `<div class="supplier-group pinned-group">
-      <div class="supplier-head"><span class="supplier-heading-name"><span class="supplier-mono pin-mono" aria-hidden="true">${ICON_PIN}</span>${esc(t('pinnedTitle'))}<span class="supplier-item-count">${pinned.length}</span></span></div>
+      <div class="supplier-head"><span class="supplier-heading-name">${esc(t('pinnedTitle'))}<span class="supplier-item-count">${pinned.length}</span></span></div>
       <div class="supplier-items-grid">${pinned.map(i=>itemRowHtml(i, lastQty)).join('')}</div>
     </div>` : '';
   return groupHtml || pinnedHtml ? pinnedHtml + groupHtml : groupHtml;
@@ -2382,12 +2362,6 @@ function refreshCartSummary(){
     hero.querySelector('.hero-word').textContent = t('heroStatWord')(c);
     if(stat) stat.setAttribute('aria-label', t('heroStat')(c));
     if(sub) sub.textContent = t('heroSub')(selectedCount, selectedSupplierCount);
-    const cov = supplierCoverage(), ring = hero.querySelector('.hero-ring');
-    if(ring){
-      ring.querySelector('.arc').setAttribute('stroke-dashoffset', ringOffset().toFixed(2));
-      ring.querySelector('b').textContent = `${cov.picked}/${cov.total}`;
-      ring.setAttribute('aria-label', t('suppliersCovered')(cov.picked, cov.total));
-    }
   }
   // Floating send bar: springs in with the first picked item, away with the last.
   const bar = document.querySelector('.bottom-bar');
@@ -2400,7 +2374,7 @@ function refreshCartSummary(){
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.hidden = c===0;
   const draft=document.querySelector('.draft-state');
-  if(draft) draft.textContent=c?draftProgressLabel():t('selectToStart');
+  if(draft) draft.textContent=c?draftProgressLabel():'';
   paintRicoSuggestion();
 }
 /* The most of one item a single order can hold (the server refuses more). */
@@ -2911,7 +2885,7 @@ function renderQueue(){
       ? `<a class="wa-btn ${e.sent?'done':''}" data-send="${idx}" href="${esc(waLink(sup.phone, buildMessage(e)))}"${waOpensApp() ? '' : ' target="_blank" rel="noopener noreferrer"'}>${ICON_CHAT}${e.sent?t('sentSendAgain'):t('sendVia')}</a>`
       : `<button class="wa-btn ${e.sent?'done':''}" data-marksent="${idx}" ${e.sent?'disabled':''}>${e.sent?t('sent'):t('markSent')}</button>`;
     return `<div class="queue-card ${e.sent?'sent':''}">
-      <div class="queue-top"><span class="queue-name">${supplierMono(name)}${esc(name)}</span>${e.sent?`<span class="queue-badge">${ICON_CHECK}${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
+      <div class="queue-top"><span class="queue-name">${esc(name)}</span>${e.sent?`<span class="queue-badge">${ICON_CHECK}${t('sent')}</span>`:`<span class="queue-count">${t('itemCount')(e.items.length)}</span>`}</div>
       <div class="queue-items">${itemsLine}</div>
       ${canWhatsApp ? '' : `<div class="queue-note">${esc(!sup ? t('noSupplier') : t('noPhoneOnFile'))} · ${esc(t('markSentHint'))}</div>`}
       <div class="queue-actions">${sendBtn}<button class="pdf-btn" data-pdf="${idx}" aria-label="${esc(t('orderSheet'))}">${NAV_ICONS.record}<span>PDF</span></button></div>
@@ -3043,7 +3017,7 @@ function orderHistoryCard(rec){
     const live = state.suppliers.find(s=>s.id===e.supplierId);
     const name = live ? live.name : (e.supplierName || t('noSupplier'));
     const lines = e.items.map(i=>`<li><span dir="auto">${esc(i.name)}</span><b dir="auto">${i.qty} ${esc(unitLabel(i.unit))}</b></li>`).join('');
-    return `<section class="hist-entry"><div class="hist-supplier">${supplierMono(name)}<span dir="auto">${esc(name)}</span></div><ul class="hist-lines">${lines}</ul></section>`;
+    return `<section class="hist-entry"><div class="hist-supplier"><span dir="auto">${esc(name)}</span></div><ul class="hist-lines">${lines}</ul></section>`;
   }).join('');
   return `<article class="hist-card" data-order-id="${esc(rec.id)}" data-search-row data-search-text="${esc([rec.date,...rec.entries.flatMap(e=>[state.suppliers.find(s=>s.id===e.supplierId)?.name||e.supplierName||'',...e.items.flatMap(l=>[l.name,...(state.items.find(i=>i.id===l.itemId)?.aliases||[])])])].join(' '))}">
     <div class="hist-top">

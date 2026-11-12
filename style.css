@@ -50,7 +50,7 @@
   --bar:rgba(242,242,247,.8);       /* the translucent top bar */
   --menu:rgba(250,250,252,.94);     /* menus and sheets: translucent, still readable at a glance */
   --float-shadow:0 12px 40px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.06);
-  --hero:linear-gradient(160deg,#1D4E3C,#14382C 55%,#0D281F);
+  --hero:#16402F;
   /* Apple's motion: quick to respond, settling without a bounce. */
   --ease:cubic-bezier(.25,.1,.25,1);
   --ease-out:cubic-bezier(.23,1,.32,1);
@@ -410,11 +410,6 @@ html.rtl .hero-eyebrow{letter-spacing:0}
 @keyframes countBump{from{transform:translateY(4px);opacity:.4}to{transform:none;opacity:1}}
 .hero-word{font-size:1.0625rem;font-weight:500;color:var(--t-word)}
 .hero-sub{margin-top:8px;font-size:.8125rem;font-weight:400;color:var(--t-sub);line-height:1.5}
-.hero-ring{position:relative;width:72px;height:72px;flex-shrink:0}
-.hero-ring svg{width:72px;height:72px;transform:rotate(-90deg)}
-html.rtl .hero-ring svg{transform:rotate(-90deg) scaleY(-1)}
-.hero-ring .arc{stroke:var(--on-dark);transition:stroke-dashoffset 200ms var(--ease-out)}
-.hero-ring b{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--font-round);font-size:.9375rem;font-weight:600;font-variant-numeric:tabular-nums;direction:ltr}
 .hero-footer{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:12px;border-top:1px solid rgba(255,255,255,.12);padding-top:12px;color:var(--t-foot);font-size:.75rem;font-weight:500}
 .draft-state{display:flex;align-items:center;gap:8px}
 .draft-state::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--on-dark);flex-shrink:0}
@@ -458,7 +453,6 @@ html.rtl .hero-ring svg{transform:rotate(-90deg) scaleY(-1)}
 .supplier-head{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:14px 16px 6px;font-size:1.0625rem;font-weight:600}
 .supplier-heading-name{display:flex;align-items:center;gap:10px;min-width:0;overflow-wrap:anywhere}
 /* A supplier's initial in Apple's gray monogram, as in Contacts. */
-.supplier-mono{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:linear-gradient(180deg,#A5ABB8,#858994);color:#fff;font-family:var(--font-round);font-size:.8125rem;font-weight:600}
 .supplier-item-count{font-size:.75rem;min-width:24px;height:22px;padding:0 8px;border-radius:999px;display:inline-grid;place-items:center;background:var(--fill);color:var(--ink-soft);font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0}
 .supplier-items-grid{display:grid;grid-template-columns:1fr;gap:0}
 .item-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;padding:8px 12px;padding-inline:16px 12px;background:transparent;border:0;border-radius:0;transition:background-color .2s ease}
@@ -690,7 +684,6 @@ html.rtl .hist-day{letter-spacing:0}
 .hist-count{font-size:.8125rem;color:var(--ink-soft);white-space:nowrap}
 .hist-entry{padding:12px 0 4px;border-top:.5px solid var(--line)}
 .hist-supplier{display:flex;align-items:center;gap:9px;font-size:.9375rem;font-weight:600;min-width:0}
-.hist-supplier .supplier-mono{width:24px;height:24px;font-size:.75rem}
 .hist-lines{list-style:none;margin:2px 0 0;padding:0 0 0 33px;padding-inline:33px 0}
 .hist-lines li{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 0;font-size:1rem;line-height:1.3}
 .hist-lines li+li{border-top:.5px solid var(--line)}
@@ -995,7 +988,6 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 .rico-card-tag{margin-inline-start:auto;font-size:.75rem;font-weight:500;padding:3px 8px;border-radius:999px;background:var(--fill);color:var(--ink-soft)}
 .rico-card-group+.rico-card-group{margin-top:10px;padding-top:10px;border-top:.5px solid var(--line-strong)}
 .rico-card-sup{display:flex;align-items:center;gap:8px;font-size:.8125rem;font-weight:600;margin-bottom:6px}
-.rico-card-sup .supplier-mono{width:22px;height:22px;border-radius:7px;font-size:.6875rem}
 .rico-card-line{display:flex;justify-content:space-between;gap:12px;font-size:.9375rem;font-weight:400;padding:4px 0}
 .rico-card-line b{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
 .rico-card-line small{display:block;font-size:.75rem;font-weight:400;color:var(--ink-soft);margin-top:2px}
@@ -1145,7 +1137,6 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .topbar{padding-inline:14px 12px}
   .brand{font-size:1.3125rem}
   .hero-count{font-size:2.5rem}
-  .hero-ring,.hero-ring svg{width:60px;height:60px}
   .order-quick-actions .quick-btn svg{display:none}
   .item-row{padding-inline:14px 10px}
   .step-btn{width:40px}
@@ -1319,7 +1310,6 @@ html.rtl .report-sheet .report-bar i::after{transform-origin:right}
 .report-bar b{font-variant-numeric:tabular-nums;color:var(--ink-soft);font-size:.8125rem}
 .report-chips{display:flex;flex-wrap:wrap;gap:6px}
 .report-chips span{display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 4px;border-radius:999px;background:var(--fill);font-size:.8125rem;font-weight:400}
-.report-chips .supplier-mono{width:22px;height:22px;font-size:.6875rem}
 .report-two{display:grid;grid-template-columns:1fr 1.4fr;gap:14px}
 .report-day{font-size:1.0625rem}
 .report-who{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--fill)}
@@ -1330,8 +1320,6 @@ html.rtl .report-sheet .report-bar i::after{transform-origin:right}
 .report-save p{margin:4px 0 10px;font-size:.8125rem;line-height:1.5;color:var(--ink-soft)}
 
 /* ---------- Order screen: pinned items, item notes ---------- */
-.pinned-group .pin-mono{background:var(--accent-strong);color:#fff}
-.pinned-group .pin-mono svg{width:14px;height:14px}
 .item-pin{display:inline-flex;margin-inline-end:5px;color:var(--tint);vertical-align:-1px}
 .item-pin svg{width:12px;height:12px}
 .item-note{color:var(--tint);font-weight:400}
@@ -2201,7 +2189,6 @@ html.dark .rr-ctl-note.warn{color:#FCD34D}
    the selected currency filled green, and the total with Cancel and Receive at the bottom. */
 .rr-edit .rr-card{padding:0;border:1px solid var(--line-strong);box-shadow:0 1px 3px rgba(15,23,42,.06);overflow:visible}
 .rr-edit .rr-card-title{margin:0;padding:14px 20px;border-bottom:1px solid var(--line-strong);border-radius:var(--r-card) var(--r-card) 0 0;background:var(--rr-strip);display:flex;align-items:center;justify-content:flex-start;gap:12px;font-size:1rem;font-weight:600}
-.rr-edit .rr-card-title::before{content:"";width:4px;height:20px;border-radius:2px;background:#F59E0B;flex:none}
 .rr-edit .rr-card-title .rr-count{margin-inline-start:auto}
 .rr-edit .rr-card>.rr-grid{padding:20px 20px 4px;row-gap:18px}
 .rr-edit .rr-card>.rr-lines{padding:20px 20px 4px}
@@ -2524,7 +2511,6 @@ html.rtl .cf-list li{padding:9px 16px 9px 0}
 /* Calm, consistent look (no "AI made" feel): flat colours instead of gradients, and rounded-square
    action buttons everywhere (the tab bar and segmented switches keep their shape). */
 .grade-Ap,.grade-A{background:#1F8A52}.grade-B{background:#2873B8}.grade-C{background:#C27A12}.grade-D{background:#C2483F}
-.supplier-mono,.who-badge s{background:#8E8E93}
 .account-btn,.account-mono{background:#6B7280}
 .streak-bar i{background:#F2780F}
 .modal-symbol{background:rgba(var(--accent-rgb),.12)!important;box-shadow:none!important}
@@ -2550,3 +2536,35 @@ html.rtl .cf-list li{padding:9px 16px 9px 0}
 
 /* Item search boxes: no blinking text cursor (search still works). */
 .rr-edit [data-l-item]{caret-color:transparent}
+
+/* Clean-up (2026-11-12): rounded squares instead of pills, quieter labels and banners.
+   The floating tab bar and the switches stay round. */
+.chip,.quick-btn,.tab-pill,.item-sort-trigger,.pdf-btn,.rico-open,.map-directions,.lang-actions .btn,.toast-undo,.wa-btn{border-radius:12px}
+.rico-chip{border-radius:12px}
+.stepper,.step-btn{border-radius:12px}
+.search-input{border-radius:12px}
+.manage-sections,.record-filters,.pill-seg{border-radius:11px}
+.manage-section,.record-filters .tab-pill,.pill-seg-btn,.seg-lens{border-radius:8px}
+.day-chip{border-radius:10px}
+.queue-badge,.rec-badge,.dev-badge,.dev-how,.rico-card-tag,.login-date{border-radius:7px}
+.toast{border-radius:16px}
+.send-btn{border-radius:16px;border:0;background:var(--accent-strong);box-shadow:0 8px 24px -10px rgba(var(--deepd-rgb),.45)}
+.supplier-item-count,.queue-count{background:none;padding:0 2px;min-width:0;color:var(--ink-faint);font-weight:500}
+.hero-footer:has(.draft-state:empty){display:none}
+.wipe-banner{background:var(--fill);font-size:.875rem;color:var(--ink-soft)}
+.wipe-banner svg{color:var(--ink-soft)}
+.streak-chip.lit .flame{animation:none}
+@media (min-width:1024px){.navbtn,.nav-indicator{border-radius:10px}}
+/* An open list reads as floating above the form: a clear edge and shadow, so the field under it
+   doesn't look mixed into the list. */
+.rr-pop{box-shadow:0 0 0 1px var(--line-strong),0 18px 44px rgba(0,0,0,.2)}
+/* Counts in the supplier filters: plain numbers, not bubbles. */
+.tab-count,.tab-pill.active .tab-count{background:none;min-width:0;padding:0;color:inherit;opacity:.6;font-weight:500}
+
+/* Settings icons: a soft light-to-shade finish like the iPhone's own, and an icon on every row. */
+.set-ico{border-radius:7px;background-image:linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,0) 55%,rgba(0,0,0,.08));box-shadow:inset 0 0 0 .5px rgba(0,0,0,.08),0 1px 1.5px rgba(0,0,0,.08)}
+.set-ico svg{width:18px;height:18px}
+.rs-row.has-ico{justify-content:flex-start;gap:12px}
+.rs-row.has-ico>span{flex:1}
+.rs-row.has-ico>.set-ico{align-self:center;margin-top:0}
+.rs-status b{display:inline-flex;align-items:center;gap:6px}
