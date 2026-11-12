@@ -615,11 +615,12 @@ html.rtl .check-row input[type=checkbox]:checked::after{transform:translateX(-20
 .app-version{margin:26px 0 8px;text-align:center;font-size:.8125rem;font-weight:400;color:var(--ink-soft)}
 
 /* Units */
-.unit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
-.unit-chip{min-width:0;display:flex;align-items:center;gap:6px;border-radius:var(--r);padding:8px;padding-inline:14px 6px;font-size:.8125rem;font-weight:600}
+.unit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.unit-chip{min-width:0;display:flex;align-items:center;gap:4px;border-radius:14px;padding:10px;padding-inline:14px 6px;font-size:.9375rem;font-weight:600}
 .unit-names{flex:1;min-width:0;display:grid;gap:2px;line-height:1.25;padding-inline-end:4px}
 .unit-names small{color:var(--ink-soft);font-size:.75rem;font-weight:400}
-.unit-chip button{border:0;background:transparent;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--tint)}
+.unit-chip button{border:0;background:transparent;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--ink-soft)}
+@media (hover:hover){.unit-chip button:hover{background:var(--fill)}}
 .unit-chip button.danger{color:var(--red)}
 .unit-chip button svg{width:16px;height:16px}
 
@@ -2346,3 +2347,65 @@ button.adh-card{cursor:pointer}
 /* "Fix these first": the boxes it names are outlined in red until they are typed in. */
 .rr-field .sel-btn.bad,.rr-field select.bad{box-shadow:inset 0 0 0 1.5px var(--red)}
 .rr-input.bad:focus{outline-color:var(--red)}
+
+/* Simple view (Settings > Look, off by default): the small explanations, tips and extras most days don't
+   need are hidden; everything still works the same. */
+html.simple-view .page-eyebrow,html.simple-view .rr-keys,html.simple-view .preference-row small,html.simple-view .hero-sub,
+html.simple-view .streak-chip,html.simple-view .report-card,html.simple-view .fun-fact,html.simple-view .ad-sources,
+html.simple-view .ad-foot,html.simple-view .dev-hint,html.simple-view .rr-ctl-note:not(.warn),html.simple-view .rr-foot:not(.warn),
+html.simple-view .rico-who,html.simple-view .rico-side-foot,html.simple-view .notif-sub{display:none}
+
+/* Rico's screen: the chats on the left on a computer (like a chat app), named buttons on a phone. */
+.rico-head-actions{display:flex;gap:6px;flex-shrink:0}
+.rico-head-btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--ink);font:500 .875rem var(--font);cursor:pointer}
+.rico-head-btn svg{width:17px;height:17px;color:var(--tint)}
+.rico-head-btn:disabled{opacity:.45}
+.rico-online{display:none}
+.rico-side{display:none}
+.rico-side-foot{display:flex;flex-direction:column;border-top:.5px solid var(--line);margin-top:8px;padding-top:6px}
+.rico-side-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;padding:0 6px;border:0;background:none;color:var(--ink);font:400 .9375rem var(--font);text-align:start;cursor:pointer}
+.rico-side-row input[type=checkbox]{appearance:none;-webkit-appearance:none;flex:none;width:42px;height:26px;margin:0;border-radius:13px;background:rgba(120,120,128,.2);position:relative;cursor:pointer;transition:background-color .2s ease}
+.rico-side-row input[type=checkbox]::after{content:'';position:absolute;top:2px;inset-inline-start:2px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s ease}
+.rico-side-row input[type=checkbox]:checked{background:var(--ok)}
+.rico-side-row input[type=checkbox]:checked::after{transform:translateX(16px)}
+html.rtl .rico-side-row input[type=checkbox]:checked::after{transform:translateX(-16px)}
+.rico-hist-foot{margin:6px 4px 0}
+@media (min-width:960px){
+  .rico-page{display:grid;grid-template-columns:240px minmax(0,1fr);gap:28px;align-items:start}
+  .rico-side{display:flex;flex-direction:column;gap:6px;position:sticky;top:12px;max-height:calc(100dvh - 140px)}
+  .rico-head-actions{display:none}
+  .rico-side-new{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:0;border-radius:10px;background:var(--surface);color:var(--ink);font:600 .9375rem var(--font);cursor:pointer;box-shadow:inset 0 0 0 .5px var(--line-strong)}
+  .rico-side-new svg{width:17px;height:17px;color:var(--tint)}
+  .rico-side-new:disabled{opacity:.5;cursor:default}
+  .rico-side-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1px;margin-top:6px;scrollbar-width:thin}
+  .rico-side-day{padding:12px 10px 4px;font-size:.75rem;font-weight:600;color:var(--ink-faint)}
+  .rico-side-chat{display:flex;align-items:baseline;gap:6px;width:100%;min-height:34px;padding:7px 10px;border:0;border-radius:9px;background:none;color:var(--ink);font:400 .9063rem var(--font);text-align:start;cursor:pointer}
+  .rico-side-chat span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rico-side-chat small{flex:none;font-size:.75rem;color:var(--ink-faint)}
+  .rico-side-chat.on{background:var(--fill);font-weight:500}
+  .rico-side-chat:hover:not(.on){background:var(--surface-2)}
+  .rico-side-empty{margin:8px 10px;font-size:.8125rem;color:var(--ink-soft)}
+  .rico-side-link{align-self:flex-start;margin:2px 4px;padding:4px 6px;border:0;background:none;color:var(--tint);font:500 .8125rem var(--font);cursor:pointer}
+  body:has(.rico-side) .rico-composer{translate:134px 0}
+  html.rtl body:has(.rico-side) .rico-composer{translate:-134px 0}
+}
+
+/* Manage: the Add button is a normal button on a computer, not a full-width bar. */
+@media (min-width:600px){.action-row .add-btn{flex:0 0 auto;min-height:44px;padding:0 20px}}
+
+/* Hide or show the sidebar (computers). Phones never show these buttons. */
+.side-toggle{display:none}
+@media (min-width:960px){
+  #app{transition:grid-template-columns .32s var(--ease-out)}
+  .side-toggle{display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:9px;background:none;color:var(--ink-soft);cursor:pointer}
+  @media (hover:hover){.side-toggle:hover{background:var(--fill);color:var(--ink)}}
+  .bottomnav>.side-toggle{position:absolute;top:24px;inset-inline-end:12px}
+  .side-show{display:none}
+  html.side-hidden #app{grid-template-columns:0 minmax(0,1fr)}
+  html.side-hidden .bottomnav{visibility:hidden;overflow:hidden;padding-inline:0;transition:visibility 0s .32s}
+  html.side-hidden .side-show{display:grid}
+  html.side-hidden .topbar .brand-slot{display:flex;align-items:center;gap:10px}
+}
+@media (min-width:960px) and (prefers-reduced-motion:reduce){#app{transition:none}}
+/* The Order card has one column now: no divider line left beside it. */
+.order-hero .hero-copy{border-inline-end:0!important;padding-inline-end:0!important}

@@ -996,11 +996,23 @@ function renderBottomNav(){
   const more = moreViews();
   // On a computer the tab bar is the sidebar, with the ricotta mark at its top. More exists only when
   // there are more than four screens.
-  return `<nav class="bottomnav" style="--n:${state.tabs.length + (more.length ? 1 : 0)}" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}${more.length ? `<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${more.map(button).join('')}</div>` : ''}</nav>`;
+  return `<nav class="bottomnav" style="--n:${state.tabs.length + (more.length ? 1 : 0)}" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><button type="button" class="side-toggle" data-side-toggle aria-label="${esc(t('sideHide'))}" title="${esc(t('sideHide'))} (${SIDE_KEYS})">${ICON_SIDEBAR}</button><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}${more.length ? `<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${more.map(button).join('')}</div>` : ''}</nav>`;
 }
 function renderManageNav(){
   return `<div class="manage-nav"><nav class="manage-sections" aria-label="${esc(t('catalog'))}">${[['manage','items'],['suppliers','suppliers'],['units','units']].filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav></div>`;
 }
+/* Computers: the sidebar can be hidden (the page then uses the whole width) and shown again, with its
+   button or with Cmd/Ctrl + \. The choice is remembered on this device. */
+const ICON_SIDEBAR = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2.6"/><path d="M9 4.5v15"/></svg>`;
+const SIDE_KEYS = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘\\' : 'Ctrl+\\';
+function setSidebarHidden(hide){
+  document.documentElement.classList.toggle('side-hidden', hide);
+  lset('sideHidden', hide || null);
+  setTimeout(()=>placeNavIndicator(), 320);
+}
+if(lget('sideHidden')) document.documentElement.classList.add('side-hidden');
+document.addEventListener('click', e=>{ if(e.target.closest('[data-side-toggle]')) setSidebarHidden(!document.documentElement.classList.contains('side-hidden')); });
+document.addEventListener('keydown', e=>{ if((e.metaKey || e.ctrlKey) && !e.altKey && e.key === '\\' && !isPhoneLayout()){ e.preventDefault(); setSidebarHidden(!document.documentElement.classList.contains('side-hidden')); } });
 function setMoreOpen(open){
   const nav=document.querySelector('.bottomnav'),button=document.getElementById('navMoreBtn');
   if(!nav||!button)return;
@@ -1867,7 +1879,7 @@ const accountInitial = ()=>accountLabel(state.account).trim().charAt(0).toUpperC
 function renderTopbar(){
   return `
   <header class="topbar">
-    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div></div>
+    <div class="brand-slot"><button type="button" class="side-toggle side-show" data-side-toggle aria-label="${esc(t('sideShow'))}" title="${esc(t('sideShow'))} (${SIDE_KEYS})">${ICON_SIDEBAR}</button><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div></div>
     <span class="topbar-title" aria-hidden="true"></span>
     <div class="topbar-actions">
       ${renderStreakChip()}
@@ -3513,7 +3525,8 @@ function openItemModal(id){
   const existing = id ? state.items.find(i=>i.id===id) : null;
   if(id && !existing) return;
   const opened = existing ? structuredClone(existing) : null;   // what the form shows; changes are measured from it
-  const unitOptions = state.units.map(u=>`<option value="${esc(u.id)}" ${existing?.unit===u.id?'selected':''}>${esc(unitName(u))}</option>`).join('');
+  // A new item starts with no unit picked (like its supplier): nothing is chosen for the person.
+  const unitOptions = (existing?.unit ? '' : `<option value="" selected disabled>${esc(t('chooseUnit'))}</option>`) + state.units.map(u=>`<option value="${esc(u.id)}" ${existing?.unit===u.id?'selected':''}>${esc(unitName(u))}</option>`).join('');
   // While adding a fresh item, the last supplier picked stays selected so
   // bulk-adding items for one supplier doesn't need reselecting each time.
   const currentSupplierId = existing ? existing.supplierId : state.itemFormSupplierId;
@@ -3527,10 +3540,10 @@ function openItemModal(id){
     banner,
     bodyHtml: `
       <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
-      <div class="field"><label>${t('unit')}</label><select id="mfUnit">${unitOptions}</select></div>
+      <div class="field"><label>${t('unit')}</label><select id="mfUnit" data-clear="1">${unitOptions}</select></div>
       <div class="field">
         <label>${t('supplier')}</label>
-        <select id="mfSupplier">${supOptions}</select>
+        <select id="mfSupplier" data-clear="1">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
       <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
@@ -3551,6 +3564,7 @@ function openItemModal(id){
       const supplierId = document.getElementById('mfSupplier').value || null;
       const note = document.getElementById('mfNote').value.trim().slice(0, 120), aliases=parseAliases(document.getElementById('mfAliases').value), available=document.getElementById('mfAvailable').checked;
       if(!name) return {error: t('nameRequired')};
+      if(!unit) return {error: t('chooseUnit')};
       if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
       const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
       const editing = existing;
@@ -3637,7 +3651,9 @@ function attachItemEvents(){
 /* A unit has one name, written in whatever language suits it (کیلۆ, box, ...). Units used to have
    English, Kurdish and Arabic names; Record still shows those older changes. */
 function renderUnits(){
-  const chips = state.units.map(u=>`<span class="unit-chip" data-search-row data-unit-id="${esc(u.id)}"><span class="unit-names"><strong dir="auto">${esc(unitName(u))}</strong></span>
+  // Each unit with how many items use it, so it's clear which ones matter before editing or deleting.
+  const uses = id=>state.items.filter(i=>i.unit === id).length;
+  const chips = state.units.map(u=>`<span class="unit-chip" data-search-row data-unit-id="${esc(u.id)}"><span class="unit-names"><strong dir="auto">${esc(unitName(u))}</strong><small>${esc(t('itemCount')(uses(u.id)))}</small></span>
       ${canDo('catalog') ? `<button data-editunit="${esc(u.id)}" aria-label="${esc(t('editUnit'))}">${ICON_EDIT}</button>
       <button class="danger" data-delunit="${esc(u.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
     </span>`).join('');

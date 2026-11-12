@@ -137,25 +137,48 @@ function ricoGreeting(){
   const part = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
   return t('ricoGreeting')(part, accountLabel(state.account));
 }
+/* Rico's screen (2026-11-13), like a chat app: on a computer the chats are listed on the left (New chat
+   on top, then the chats by day, then two plain settings rows: letting Rico fill the order, and what he
+   remembers); the chat is on the right. On a phone the header has two named buttons, Chats and New
+   chat, and the same list opens as a sheet. */
 function renderAssistant(){
   const head = `<header class="rico-head">
       ${ricoFace('', 'rico-md')}
       <div class="rico-head-text">
-        <div class="rico-name">${esc(t('ricoName'))}<span class="rico-online" aria-hidden="true"></span></div>
+        <div class="rico-name">${esc(t('ricoName'))}</div>
         <div class="rico-who">${esc(t('ricoTalkingWith')(accountLabel(state.account)))}</div>
       </div>
       <div class="rico-head-actions">
-        <button class="icon-btn rico-auto ${ricoAutoOrder()?'on':''}" id="ricoAutoBtn" aria-pressed="${ricoAutoOrder()}" title="${esc(t('ricoAutoOrderLabel'))}" aria-label="${esc(t('ricoAutoOrderLabel'))}">${NAV_ICONS.order}</button>
-        <button class="icon-btn" id="ricoMemoryBtn" title="${esc(t('memoryTitle'))}" aria-label="${esc(t('memoryTitle'))}">${ICON_NOTE}</button>
-        <button class="icon-btn" id="ricoHistBtn" title="${esc(t('ricoHistory'))}" aria-label="${esc(t('ricoHistory'))}">${NAV_ICONS.history}</button>
-        <button class="icon-btn" id="ricoNewBtn" title="${esc(t('ricoNewChat'))}" aria-label="${esc(t('ricoNewChat'))}" ${rico.messages.length?'':'disabled'}>${ICON_NEW_CHAT}</button>
+        <button type="button" class="rico-head-btn" id="ricoHistBtn">${NAV_ICONS.history}<span>${esc(t('ricoChats'))}</span></button>
+        <button type="button" class="rico-head-btn" id="ricoNewBtn" ${rico.messages.length?'':'disabled'}>${ICON_NEW_CHAT}<span>${esc(t('ricoNewChat'))}</span></button>
       </div>
     </header>`;
   const thread = rico.messages.length
     ? rico.messages.map((m,i)=>ricoTimeDivider(rico.messages[i-1], m) + renderRicoMessage(m,i)).join('')
     : renderRicoIntro();
   const viewing = rico.viewing ? `<div class="rico-viewing" role="status"><span>${esc(t('ricoReadOnly')(accountLabel(rico.viewing)))}</span></div>` : '';
-  return `${head}${viewing}${rico.viewing ? '' : renderRicoInbox()}<div class="rico-thread${rico.viewing ? ' read-only' : ''}" id="ricoThread" aria-live="polite">${thread}</div>`;
+  return `<div class="rico-page">${renderRicoSide()}<div class="rico-main">${head}${viewing}${rico.viewing ? '' : renderRicoInbox()}<div class="rico-thread${rico.viewing ? ' read-only' : ''}" id="ricoThread" aria-live="polite">${thread}</div></div></div>`;
+}
+/* The chats on the left (computers only; CSS hides it on phones). */
+function renderRicoSide(){
+  let lastDay = '';
+  const rows = !rico.chats ? loadingLines(4) : !rico.chats.length ? `<p class="rico-side-empty">${esc(t('ricoNoChatsYet'))}</p>`
+    : rico.chats.slice(0, 40).map(c=>{
+      const day = dayLabel(c.updatedAt), head = day !== lastDay ? `<div class="rico-side-day">${esc(day)}</div>` : '';
+      lastDay = day;
+      const on = c.id === rico.chatId || c.id === rico.viewedId;
+      const other = c.account && c.account !== state.account;
+      return `${head}<button type="button" class="rico-side-chat${on ? ' on' : ''}" data-side-open="${esc(c.id)}"${on ? ' aria-current="true"' : ''}><span dir="auto">${esc(c.title || t('ricoUntitled'))}</span>${other ? `<small>${esc(accountLabel(c.account))}</small>` : ''}</button>`;
+    }).join('');
+  return `<aside class="rico-side" aria-label="${esc(t('ricoChats'))}">
+      <button type="button" class="rico-side-new" data-side-new ${rico.messages.length ? '' : 'disabled'}>${ICON_NEW_CHAT}<span>${esc(t('ricoNewChat'))}</span></button>
+      <div class="rico-side-list">${rows}</div>
+      ${rico.chats?.length ? `<button type="button" class="rico-side-link" data-side-all>${esc(t('ricoManageChats'))}</button>` : ''}
+      <div class="rico-side-foot">
+        <label class="rico-side-row"><span>${esc(t('ricoAutoOrderLabel'))}</span><input type="checkbox" role="switch" id="ricoAutoSwitch" ${ricoAutoOrder() ? 'checked' : ''}></label>
+        <button type="button" class="rico-side-row" id="ricoMemoryBtn"><span>${esc(t('memoryTitle'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
+      </div>
+    </aside>`;
 }
 /* A small date and time line where a chat starts, a new day begins, or after a half-hour pause. */
 function ricoTimeDivider(prev, m){
@@ -393,13 +416,10 @@ function attachAssistantEvents(){
   document.getElementById('ricoHistBtn')?.addEventListener('click', ()=>ricoOpenHistory());
   document.getElementById('ricoMemoryBtn')?.addEventListener('click', openRicoMemory);
   if(rico.chats === null) ricoLoadChats().then(()=>{ if(state.view === 'assistant' && !rico.messages.length && rico.chats?.length && !refreshBlocked()) render(); });
-  document.getElementById('ricoAutoBtn')?.addEventListener('click', async ()=>{
-    const on = !ricoAutoOrder();
-    if(on && !(await showConfirm(t('ricoAutoOrderConfirm'), {okLabel:t('ricoAllow'), okClass:'btn-primary'}))) return;
-    lset('ricoAutoOrder', on || null);
-    toast(on ? t('ricoAutoOn') : t('ricoAutoOff'));
-    render();
-  });
+  document.getElementById('ricoAutoSwitch')?.addEventListener('change', e=>ricoSetAuto(e.currentTarget.checked));
+  document.querySelector('[data-side-new]')?.addEventListener('click', ()=>ricoNewChat());
+  document.querySelector('[data-side-all]')?.addEventListener('click', ()=>ricoOpenHistory());
+  document.querySelectorAll('[data-side-open]').forEach(b=>b.onclick = ()=>ricoOpenChat(b.dataset.sideOpen));
   attachRicoThreadEvents(document.getElementById('mainContent') || document);
   if(rico.messages.length) ricoScroll(false);
   ricoMarkInboxRead();
@@ -543,7 +563,7 @@ async function ricoAsk(text, options = {}){
   if(state.view === 'assistant'){
     ricoPaintMessage(idx);
     ricoRefreshComposer();
-    document.getElementById('ricoNewBtn')?.removeAttribute('disabled');
+    document.getElementById('ricoNewBtn')?.removeAttribute('disabled'); document.querySelector('[data-side-new]')?.removeAttribute('disabled');
   }
 }
 /* Repaints one message in place (no full re-render while text streams in). */
@@ -750,6 +770,13 @@ function chatOwnerMark(c){
   const who = c.account || state.account;
   return `<span class="chat-owner ${who === 'rozha' ? 'r' : 'y'}" title="${esc(accountLabel(who))}" aria-label="${esc(accountLabel(who))}">${esc(accountLabel(who).trim().charAt(0).toUpperCase())}</span>`;
 }
+/* Letting Rico fill the order on this device: asked once when turned on. */
+async function ricoSetAuto(on){
+  if(on && !(await showConfirm(t('ricoAutoOrderConfirm'), {okLabel:t('ricoAllow'), okClass:'btn-primary'}))){ render(); return; }
+  lset('ricoAutoOrder', on || null);
+  toast(on ? t('ricoAutoOn') : t('ricoAutoOff'));
+  render();
+}
 /* A new chat: the current one stays in Chat history. */
 function ricoNewChat(){
   if(rico.streaming) ricoStop();
@@ -788,7 +815,11 @@ function ricoOpenHistory(){
   wrap.innerHTML = `<div class="sel-scrim"></div><div class="sel-panel" role="dialog" aria-modal="true" aria-label="${esc(t('ricoHistory'))}">
     <div class="sel-grab"></div>
     <div class="rico-hist-top"><div class="sel-title">${esc(t('ricoHistory'))}</div><button type="button" class="btn btn-primary" data-hist-new>${ICON_NEW_CHAT}<span>${esc(t('ricoNewChat'))}</span></button></div>
-    <div class="sel-list rico-hist-list"></div></div>`;
+    <div class="sel-list rico-hist-list"></div>
+    <div class="rico-side-foot rico-hist-foot">
+      <label class="rico-side-row"><span>${esc(t('ricoAutoOrderLabel'))}</span><input type="checkbox" role="switch" data-hist-auto ${ricoAutoOrder() ? 'checked' : ''}></label>
+      <button type="button" class="rico-side-row" data-hist-memory><span>${esc(t('memoryTitle'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
+    </div></div>`;
   document.body.appendChild(wrap);
   const list = wrap.querySelector('.rico-hist-list');
   let confirming = null;   // the chat id (or 'all') waiting for a second tap on Delete
@@ -822,6 +853,8 @@ function ricoOpenHistory(){
   wrap.querySelector('.sel-scrim').onclick = ()=>close();
   attachSheetDrag(wrap, close);
   wrap.querySelector('[data-hist-new]').onclick = ()=>{ close(); ricoNewChat(); };
+  wrap.querySelector('[data-hist-auto]').onchange = e=>{ const on = e.currentTarget.checked; close(); ricoSetAuto(on); };
+  wrap.querySelector('[data-hist-memory]').onclick = ()=>{ close(); openRicoMemory(); };
   list.onclick = async e=>{
     const open = e.target.closest('[data-hist-open]'), del = e.target.closest('[data-hist-del]'), yes = e.target.closest('[data-hist-yes]'), all = e.target.closest('[data-hist-all]');
     if(open){ if(await ricoOpenChat(open.dataset.histOpen)) close(); return; }
