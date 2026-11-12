@@ -93,7 +93,7 @@ function tfBelow(){
   const moved = done.filter(r=>r.status === 'moved');
   return `<div class="rr-below">${rrWaitingHtml(waiting, tfRow, 'tf')}${tfFilterBar(list)}
     ${needs.length ? `<div class="section-title">${esc(t('rrNeedsYou'))}</div><div class="rr-list rr-needs">${needs.map(tfRow).join('')}</div>` : ''}
-    ${drafts.length ? `<div class="section-title">${esc(t('rrDrafts'))}</div><div class="rr-list">${drafts.map(tfRow).join('')}</div>` : ''}
+    ${drafts.length ? `<div class="section-title rr-today-title"><span>${esc(t('rrDrafts'))}</span>${drafts.length > 1 && !rrOffline() ? `<button type="button" class="rr-send-all" data-tf-senddrafts>${esc(t('tfSendAllDrafts')(drafts.length))}</button>` : ''}</div><div class="rr-list">${drafts.map(tfRow).join('')}</div>` : ''}
     <div class="section-title rr-today-title"><span>${esc(t('rrToday'))}</span>${moved.length ? `<small>${esc(t('tfMovedToday')(moved.length))} · ${esc(t('tfItemsMoved')(moved.reduce((n, r)=>n + r.lines.length, 0)))}</small>` : ''}</div>
     ${done.length ? `<div class="rr-list">${done.map(tfRow).join('')}</div>` : `<p class="rr-none">${esc(t('tfNoneToday'))}</p>`}
     <button type="button" class="rr-to-history" data-to-history="transfers">${esc(t('rrSeeHistory'))}</button>
@@ -113,6 +113,7 @@ function attachTfFilters(){
 function attachTransfersEvents(){
   if(tf.page === 'view') return attachTransferView();
   document.querySelectorAll('[data-tf-open]').forEach(b=>b.onclick = ()=>tfOpen(b.dataset.tfOpen));
+  document.querySelector('[data-tf-senddrafts]')?.addEventListener('click', e=>withBusy(e.currentTarget, tfSendAllDrafts));
   attachTfFilters();
   attachRicoBar();
   if(tf.page === 'edit' && tfFind(tf.id)) attachTransferEdit();
@@ -323,6 +324,26 @@ function tfWarnText(w, r){
   if(w.code === 'newRoute') return tfLineLabel(w, r) + ': ' + t('tfWarnRoute')(w.from, w.to) + (w.usualTo?.length ? ' ' + t('tfUsuallyTo')(w.usualTo.join(', ')) : '');
   if(w.code === 'yesterday') return t('tfYesterdayOn')(tfDayLabel(tfYesterday()));
   return '';
+}
+/* Send all drafts: every draft in the list goes to Rico one after another, the one written first going
+   first. Each is opened on the form and gets exactly the checks a single Send gives (Fix these first,
+   anything unusual, the day it counts on); if one needs fixing or is not confirmed, it stays open there
+   and the rest wait. Receipts never do this: each receipt is filled and approved on its own. */
+async function tfSendAllDrafts(){
+  const drafts = tf.data.transfers.filter(r=>r.status === 'draft' && !r.pendingSend && r.id !== tf.id && !tfIsEmpty(r) && !tfIsPractice(r))
+    .sort((a, b)=>Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0));
+  if(drafts.length < 2) return;
+  const list = `<ol class="cf-list">${drafts.map(r=>`<li dir="auto">${esc(tfRoute(r))} · ${esc(t('rrItemCount')(r.lines.filter(l=>l.item).length))}</li>`).join('')}</ol>`;
+  if(!await showConfirm(`<p>${esc(t('tfSendAllAsk'))}</p>${list}`, {title:t('tfSendAllDrafts')(drafts.length), okLabel:t('tfSendAllGo'), okClass:'btn-primary', enter:true, wide:true})) return;
+  let sent = 0;
+  for(const r of drafts){
+    if(!tfFind(r.id) || r.status !== 'draft') continue;
+    tfOpen(r.id);
+    if(await tfSend(r, true) !== true){ toast(t('tfSendAllStopped')(sent, drafts.length), 'warn'); return; }
+    sent++;
+  }
+  toast(t('tfSendAllDone')(sent));
+  tfNewDraft();
 }
 /* One Send at a time, from the first press (see rrSend). */
 async function tfSend(r, keepForm = false){

@@ -223,8 +223,8 @@ function attachRicoBar(){
   // Waiting to send: one, or all of them one after another (each still asks what it needs to).
   document.querySelectorAll('[data-rr-send]').forEach(b=>b.onclick = ()=>{ const r = rrFind(b.dataset.rrSend); if(r) withBusy(b, ()=>rrSend(r, true)); });
   document.querySelectorAll('[data-tf-send]').forEach(b=>b.onclick = ()=>{ const r = tfFind(b.dataset.tfSend); if(r) withBusy(b, ()=>tfSend(r, true)); });
-  document.querySelector('[data-rr-sendall]')?.addEventListener('click', e=>withBusy(e.currentTarget, async ()=>{ for(const r of rr.data.receipts.filter(x=>x.status === 'draft' && x.pendingSend && x.id !== rr.id)){ if(await rrSend(r, true) === false) break; } }));
-  document.querySelector('[data-tf-sendall]')?.addEventListener('click', e=>withBusy(e.currentTarget, async ()=>{ for(const r of tf.data.transfers.filter(x=>x.status === 'draft' && x.pendingSend && x.id !== tf.id)){ if(await tfSend(r, true) === false) break; } }));
+  document.querySelector('[data-rr-sendall]')?.addEventListener('click', e=>withBusy(e.currentTarget, async ()=>{ for(const r of rr.data.receipts.filter(x=>x.status === 'draft' && x.pendingSend && x.id !== rr.id)){ if(await rrSend(r, true) !== true) break; } }));
+  document.querySelector('[data-tf-sendall]')?.addEventListener('click', e=>withBusy(e.currentTarget, async ()=>{ for(const r of tf.data.transfers.filter(x=>x.status === 'draft' && x.pendingSend && x.id !== tf.id)){ if(await tfSend(r, true) !== true) break; } }));
 }
 /* Redraws without losing the place on the page (a form being typed keeps its scroll). */
 function rrRepaintKeep(){ const top = scrollBox().scrollTop; render(); scrollBox().scrollTop = top; }
