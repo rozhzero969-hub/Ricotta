@@ -352,23 +352,24 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#pushSwitch, .form-card .notif-sub').count()>=1,true,'notifications live in Settings');
     assert.equal(await page.locator('#reminderEnabled').count(),0,'there is no daily reminder');
     assert.equal(await page.locator('[data-pin-change], .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
-    // Admin: one screen of tiles, each opening its page. PINs: Rozha's current PIN first, the new one typed twice.
+    // Admin: one calm dashboard. Six tools, two people (each with their own page) and All devices.
     await openView(page,'admin');
-    assert.equal(await page.locator('.ad-list [data-admin-open]').count(),10,'Admin lists every page');
-    // The dashboard: the headline counts only real problems, today's orders come from the overview, and the
-    // chart has a bar for each of the last 14 days.
+    assert.equal(await page.locator('.adh-tools [data-admin-open]').count(),6,'Admin has six tools');
+    assert.equal(await page.locator('[data-admin-person]').count(),2,'one row per person');
+    // The status line counts only real problems, today's numbers come from the overview, each with a bar
+    // for each of the last 14 days.
     // Receipt problems show only to someone who can open Receipts, as Rozha can in the app.
     const viewsBefore=await page.evaluate(()=>{ const was=state.views; state.views=[...new Set([...(was||[]),'receipts'])]; render(); return was; });
-    await page.waitForFunction(()=>/Mukhtar store/.test(document.querySelector('.ad-issues')?.textContent||''),null,{timeout:10000})
-      .catch(async ()=>assert.fail('a receipt with a problem is listed by name; issues read: '+await page.locator('.ad-issues').textContent()));
-    assert.match(await page.locator('.ad-glance h2').textContent(),/need/,'the headline counts what needs you');
-    assert.equal((await page.locator('.ad-trio-cell b').first().textContent()).trim(),'1','one order sent today');
-    assert.equal(await page.locator('.ad-bars rect').count(),14,'14 days of orders');
-    assert.match(await page.locator('.ad-hbar').first().textContent(),/Bakery\s*2/,'items per supplier are counted from the order lines');
+    await page.waitForFunction(()=>/Mukhtar store/.test(document.querySelector('.adh-needs')?.textContent||''),null,{timeout:10000})
+      .catch(async ()=>assert.fail('a receipt with a problem is listed by name; issues read: '+await page.locator('.adh-needs').textContent()));
+    assert.match(await page.locator('.adh-status').textContent(),/need/,'the status line counts what needs you');
+    assert.equal((await page.locator('.adh-today-cell b').first().textContent()).trim(),'1','one order sent today');
+    assert.equal(await page.locator('.adh-today-cell').first().locator('.adh-spark i').count(),14,'14 days of orders');
     await page.evaluate(was=>{ state.views=was; render(); },viewsBefore);
-    await page.locator('[data-admin-open="pins"]').click();await settle(page);
-    assert.equal(await page.locator('.admin-heading h1').textContent(),'PINs');
-    assert.equal(await page.locator('[data-pin-change]').count(),2,'Admin changes both PINs');
+    // A person's page: PIN change there (Rozha's current PIN first, the new one typed twice).
+    await page.locator('[data-admin-person="yunis"]').click();await settle(page);
+    assert.equal(await page.locator('.admin-heading h1').textContent(),'Yunis');
+    assert.equal(await page.locator('[data-pin-change]').count(),1,'the person page changes that person’s PIN');
     await page.locator('[data-pin-change="yunis"]').click();
     assert.equal(await page.locator('#pinNew').getAttribute('type'),'password','PINs are hidden while typed');
     await page.locator('#pinCurrent').fill('471906');await page.locator('#pinNew').fill('591837');await page.locator('#pinNewAgain').fill('591838');
@@ -383,8 +384,8 @@ const server=http.createServer((req,res)=>{
     await page.waitForFunction(()=>!document.querySelector('.modal-form'));
     assert.deepEqual(calls.filter(c=>c.endpoint==='admin/pin').at(-1).body,{account:'yunis',currentPin:'471906',newPin:'591837'},'the change goes out once it is right');
     await page.locator('.admin-heading .page-back').click();await settle(page);
-    assert.equal(await page.locator('.ad-list').count(),3,'Back returns to the Admin list');
-    await page.locator('[data-admin-open="rico"]').click();await settle(page);
+    assert.equal(await page.locator('.adh-tools').count(),1,'Back returns to the Admin dashboard');
+    await page.locator('.adh-tools [data-admin-open="rico"]').click();await settle(page);
     // Rico's AI: each AI with its state, replies and tokens. Keys are never typed or shown in the app.
     await page.waitForSelector('.ad-ai-list .ad-ai');
     assert.equal(await page.locator('.ad-ai').count(),3,'Haiku, Gemini and Groq');
@@ -397,6 +398,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('.ad-ai-list [data-ai-switch]').count(),3,'each AI has an on/off switch');
     // Time in the app: Daily, Weekly and Monthly, each with the time and the average per day, and its chart.
     await page.locator('.admin-heading .page-back').click();await settle(page);
+    await page.locator('[data-admin-person="rozha"]').click();await settle(page);
     await page.locator('[data-admin-open="time"]').click();await settle(page);
     await page.waitForSelector('[data-time-period]');
     const timeCard=async()=>page.locator('.ad-time').first().locator('.ad-stats b').allTextContents();

@@ -68,8 +68,8 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
 
  // The Health Check runs by itself when Admin opens, and its page says in plain words what works.
  await page.waitForFunction(()=>!sharedDraft.enabled || (!sharedDraft.busy && !draftChanges(sharedDraft.base,state.cart).length));
- await view('admin');await page.waitForFunction(()=>/Working/.test(document.querySelector('[data-admin-open="health"]')?.textContent||''));
- await page.locator('[data-admin-open="health"]').click();await page.waitForFunction(()=>document.querySelectorAll('.ad-health').length>=10);
+ await view('admin');await page.waitForFunction(()=>/OK/.test(document.querySelector('.adh-tools [data-admin-open="health"]')?.textContent||''));
+ await page.locator('.adh-tools [data-admin-open="health"]').click();await page.waitForFunction(()=>document.querySelectorAll('.ad-health').length>=10);
  assert.match(await page.locator('.ad-status').textContent(),/Everything is working/);
  assert.equal(await page.locator('.ad-health.bad, .ad-health.warn').count(),0,'every row is green');
  assert.deepEqual(await page.locator('.ad-stats b').allTextContents(),['42','2','1'],'counts come from the database');

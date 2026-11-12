@@ -1043,7 +1043,9 @@ function placeNavIndicator(){
   if(first) ind.style.transition = 'none';
   nav.classList.add('has-indicator');
   if(!phone){
-    ind.style.setProperty('--iy', active.offsetTop+'px');
+    // Measured against the bar itself: rows inside the "more" group have another offset parent, so
+    // offsetTop put the highlight at the top when a screen was opened from search, Rico or Admin.
+    ind.style.setProperty('--iy', (active.getBoundingClientRect().top - nav.getBoundingClientRect().top + nav.scrollTop)+'px');
     ind.style.setProperty('--ih', active.offsetHeight+'px');
   }else{
     // The tabs share the bar equally, so the lens is placed by its position (see .nav-indicator): it
