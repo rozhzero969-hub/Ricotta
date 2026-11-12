@@ -2197,7 +2197,9 @@ html.dark .rr-offline{background:rgba(251,146,60,.14);color:#FED7AA}
 .rr-row-send{flex:none;height:36px;padding:0 14px;border:0;border-radius:10px;background:var(--tint);color:#fff;font:inherit;font-size:.875rem;font-weight:600}
 .rr-send-all{height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600;text-transform:none;letter-spacing:0}
 .rr-keep{height:48px;padding:0 16px;border:0;border-radius:12px;background:var(--fill);color:var(--ink);font:inherit;font-size:.9375rem;font-weight:600;white-space:nowrap}
-@media (max-width:560px){.rr-sum-acts{grid-template-columns:auto auto minmax(0,1fr)!important}.rr-keep{padding:0 12px}}
+/* Phones: Cancel and Keep as draft side by side, then the Send button across the whole width, so its
+   name (Receive & send to finance) is never cut off. */
+@media (max-width:560px){.rr-sum-acts{grid-template-columns:1fr 1fr!important}.rr-sum-acts>.btn-primary{grid-column:1/-1;order:2}.rr-keep{padding:0 12px}}
 /* History > By day: each day with its totals, then its receipts and transfers. */
 .day-list{display:flex;flex-direction:column;gap:14px;margin-top:12px}
 .day-card{background:var(--surface);border-radius:var(--r-card);padding:14px 16px}
