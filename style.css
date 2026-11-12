@@ -658,7 +658,6 @@ a.wa-btn:active{transform:scale(.97)}
 @keyframes queueDoneIn{from{transform:translateY(10px) scale(.98);opacity:0}}
 .pull-spark{position:fixed;left:50%;top:calc(var(--safe-top) + 58px);z-index:35;width:34px;height:34px;opacity:0;pointer-events:none;transform:translate(-50%,0)}
 .pull-spark .pull-face{width:34px;height:34px}
-.fly-dot{position:fixed;left:0;top:0;z-index:600;width:12px;height:12px;border-radius:50%;background:var(--accent);pointer-events:none;box-shadow:0 2px 8px rgba(var(--accent-rgb),.5)}
 .queue-done b{display:block;font-size:1.0625rem}
 .queue-done small{font-size:.8125rem;color:var(--t-foot);font-weight:500}
 
