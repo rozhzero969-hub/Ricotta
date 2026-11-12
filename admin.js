@@ -727,7 +727,6 @@ function attachAdminTime(slot){
 }
 
 /* ---------- Rico ---------- */
-const ricoTokenTotal = r=>(Number(r?.tokens?.input) || 0) + (Number(r?.tokens?.output) || 0);
 /* A token count, exact with its digits grouped, or short (463K) where there is little room. */
 function fmtTokens(n, short = false){
   return new Intl.NumberFormat('en-US', short ? {notation:'compact', maximumFractionDigits:1} : {}).format(Math.max(0, Math.round(Number(n) || 0)));
