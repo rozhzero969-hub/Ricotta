@@ -117,7 +117,8 @@ async function loadWorld(db: any, s: Session) {
       .order("occurred_at", { ascending: false }).limit(40),
     app("streak").select("count,best,last_day,lost_count,lost_day").eq("id", true).maybeSingle(),
     app("month_summaries").select("month,data").order("month", { ascending: false }).limit(3),
-    app("rico_rules").select("id,rule").order("created_at").limit(30),
+    // The kitchen's rules from Rozh, plus this person's own: one person's rules never steer another's Rico.
+    app("rico_rules").select("id,rule").in("account", [...new Set(["rozha", s.account])]).order("created_at").limit(30),
   ]), DB_TIMEOUT_MS, "load_world");
   for (const result of [sup, items, units, orders, devices, activity, streak, months, rules]) {
     if (result.error) throw new Error("kitchen_data_unavailable");

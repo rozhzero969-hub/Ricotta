@@ -33,6 +33,14 @@ const vapidReady = !!(VAPID_PUBLIC && VAPID_PRIVATE);
 if (vapidReady) {
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.com", VAPID_PUBLIC!, VAPID_PRIVATE!);
 }
+/* Secrets are compared as SHA-256 digests, so the comparison takes the same time whatever was sent. */
+async function sameSecret(a: string, b: string): Promise<boolean> {
+  const h = async (x: string) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(x)));
+  const [x, y] = await Promise.all([h(a), h(b)]);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
 const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
 const TZ = "Asia/Baghdad";              // Erbil, UTC+3 all year
 const ERBIL_OFFSET = "+03:00";
@@ -496,7 +504,7 @@ function written(body: any) {
 }
 
 Deno.serve(async (req) => {
-  if (!CRON_SECRET || req.headers.get("x-cron-secret") !== CRON_SECRET) return json({ error: "forbidden" }, 403);
+  if (!CRON_SECRET || !(await sameSecret(req.headers.get("x-cron-secret") ?? "", CRON_SECRET))) return json({ error: "forbidden" }, 403);
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   try {
     const body = await readJsonBody(req, 16 * 1024);
