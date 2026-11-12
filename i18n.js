@@ -1,5 +1,8 @@
 /* English, Kurdish (Sorani) and Arabic text. Every language has every key
    (scripts/ui-smoke.cjs checks that). Numbers are always written 1 2 3. */
+/* Arabic counts: 1 and 2 have their own words (مادة واحدة, مادتان), 3 to 10 take the plural (3 مواد)
+   and 11 up the singular (11 مادة). */
+const AR_N = (n, one, two, few, many) => n === 1 ? one : n === 2 ? two : (n % 100 >= 3 && n % 100 <= 10) ? n + ' ' + few : n + ' ' + many;
 const T = {
   en:{
     rrStartRico:'Start Rico', rrPractice:'Practice mode', rrStopRicoNow:'Stop Rico', rrPracticeShort:'practice', rrLauncherOff:'The Mac is off, or Rico’s launcher is not set up on it.', rrLauncherWorking:'Telling the Mac...',
@@ -12,12 +15,12 @@ const T = {
     rrLimBig:'Ask twice above (IQD)', rrLimJump:'Price change warning (%)', rrLimRateMin:'Lowest dollar rate', rrLimRateMax:'Highest dollar rate', rrLimSave:'Save limits', rrLimBad:'Check the limits: whole numbers, and the highest rate not below the lowest.',
     rrTelegram:'Telegram (Ricotta Helper)', rrTgConnected:'Connected: Rico sends receipts to approve and reports there', rrTgNotConnected:'Not connected yet', rrTgNotSetUp:'The bot token is not set on the server yet', rrTgConnect:'Connect Telegram', rrTgReconnect:'Connect again',
     rrPartOf:(a,b)=>a+' of '+b,
-    rrWarnPressed:'Rico already pressed Save for this receipt (or one with the same invoice) in Ricotta Restaurant. Check Invoices there first: send it only if it is not there.', tfWarnPressed:'Rico already pressed Move it for this transfer. Check Recent transfers in Ricotta Restaurant first: send it only if it did not move.', tfWarnRepeat:at=>'The same transfer (same storages, day, items and amounts) was already sent at '+at+'. Send it again only if it really happened twice.', tfUsually:q=>'(usually about '+q+')', tfWarnLow:q=>'far less than usually moved (usually about '+q+'). A typo?', tfWarnRoute:(f,to)=>'never went from '+f+' to '+to+' in the last 3 weeks. The right storage?', rrWarnQtyHigh:(x,q)=>x+' times the usual delivery (usually about '+q+'). A typo?', rrWarnQtyLow:q=>'far less than usually arrives (usually about '+q+'). A typo?', tfUsuallyZone:(z,q)=>'('+z+' usually gets about '+q+')', tfWarnLowZone:(z,q)=>'far less than '+z+' usually gets (about '+q+'). A typo?', tfUsuallyTo:z=>'It usually goes to '+z+'.', tfUsuallyGets:(z,q)=>z+' usually gets about '+q, tfNeverTo:z=>'never goes to '+z, tfAvailLabel:'Available', tfOnlyHave:'Only', tfInZone:z=>'in '+z, tfForDay:d=>'For yesterday, '+d, tfToday:'For today', tfApproveTitle:n=>'Move '+n+(n===1?' item?':' items?'), rrApproveTitle:'Approve this receipt?', shortRrSend:'Receipts, Transfers: send to Rico', shortRrAdd:'Receipts, Transfers: new line', shortRrDup:'Same item again on a new line', shortRrDel:'Remove this line', shortRrUnit:'Open this line\'s unit', shortRrYest:'Transfers: Record for yesterday', shortRrApprove:'A sent one: approve', shortRrBack:'A sent one: back to the form', rrOfflineShort:'No connection', rrOfflineNote:'You can keep writing. What you send waits on this phone and goes once you are online.', rrCopyFrom:d=>'Lists and stock as of '+d+'.', rrWaitingToSend:'Waiting to send', rrSendNow:'Send', rrSendAll:'Send all', rrSavedOffline:'No connection: kept on this phone. Send it from Waiting to send when you are online.', rrKeepDraft:'Keep as draft', rrKeepDraftHint:'Keep this one in Drafts and start a new one', rrDraftKept:'Kept in Drafts', tfWhichDay:'Which day is it for?', tfWrittenEarlier:d=>'This was written for '+d+'. Record it for yesterday, or for today?', tfForYesterdayBtn:'For yesterday', tfForTodayBtn:'For today', tfTooOld:d=>'This was written for '+d+'. Ricotta Restaurant can only record today or yesterday. Record it for today?', histDays:'By day', daysEmpty:'No receipts or transfers yet.', dayReceipts:n=>n===1?'receipt':'receipts', dayTransfers:n=>n===1?'transfer':'transfers', daySaved:n=>n+' saved', dayMoved:n=>n+' moved', rsTfAuto:'Move without asking again', rsTfAutoAsk:'Transfers you send will move without a second approval. You still see what will move before sending, and Rico still stops if anything is wrong.', rsTurnOn:'Turn on', rsLimits:'Receipt limits', rsEdit:'Edit', rsStandard:'Standard', rsRate:'Dollar rate', tfSendMove:'Send and move', tfApproval:'Approval', tfApprovalAuto:w=>'When sent'+(w?' by '+w:'')+', no second approval', tfNoSecond:'No second approval', shortRrTitle:'Receipts and Transfers lines', shortRrUp:'Same box on the line above', shortRrDown:'Same box on the line below', shortChange:'Change', shortChangeHint:'Change, then press the new keys with ⌥, ⌘ or Ctrl. Esc keeps the old ones. Standard puts them all back.', shortPress:'Press the keys…', shortNeedsMod:'Use ⌥, ⌘ or Ctrl with a key, so it never gets in the way of typing.', shortTaken:a=>'Those keys are already used for: '+a, shortStdDone:'Shortcuts are back to standard', fileCompany:'Ricotta Restaurant', fileInternal:'Internal document', fileCheckedBy:'Checked by', fileApprovedBy:'Approved by', fileDateLine:'Date: ____________', dayFileTitle:d=>'Receipts and transfers, '+d, dayFileSub:(r,s,t,i)=>r+(r===1?' receipt':' receipts')+' saved (IQD '+s+') · '+t+(t===1?' transfer':' transfers')+' moved ('+i+(i===1?' item)':' items)'), dayFileName:'Ricotta day', dayFileReceipts:'Receipts', dayFileSpent:'Received, IQD', dayFileTransfers:'Transfers', ricoFileDay:'Receipts and transfers', ricoFileTransfers:'Transfers', ricoFileReceipts:'Receipts', ricoFileReceipt:'Receipt', ricoFileNone:'Nothing to put in this file.', rrFileOne:(s,i)=>s+(i?' · #'+i:''), rrFileDay:d=>'Receipts, '+d, rrFileDaySub:(n,s)=>n+(n===1?' receipt':' receipts')+' saved · IQD '+s, rrItemsLabel:'Items', rsAlwaysYou:'You approve each one', rsTfAutoShort:'Send to Rico is the approval. He stops if anything is wrong.', adGroupNow:'Now', adGroupActivity:'Activity', adGroupManage:'Manage', stCheckThis:'Check this', feat_ricoLively:'Rico\'s animations and expressions', feat_ricoLively_hint:'Off: Rico is a plain star that never moves.', shortRrUnitMenu:'On an amount: unit menu, then the next unit', shortRrNext:'On an amount: the next item', rrStockOld:d=>'Stock last read '+d+'. Start Rico to read it again; the amounts may be out of date.', rrNotLearnt:'Rico hasn\'t learnt the usual amounts lately.', rrNotSignedIn:'Rico is on but not signed in to Ricotta Restaurant. Sign him in on the Mac.', ricoFilePhotos:'Photos', adServer:'Server', adSrvDb:'Database', adSrvFiles:'Photos', rrScan:'From a photo', rrScanFailed:'The photo couldn\'t be read. Try a clearer photo, or type it in.', rrScanned:n=>n+' lines read from the photo. Check every line before sending.', adSrvDbHint:'All your orders, receipts, transfers and settings.', adSrvFilesHint:'Rico\'s photos of receipts and transfers, kept 60 days.', adSrvOf:(a,b)=>a+' of '+b, adSrvRoom:a=>a+' free', adSrvOk:'Plenty of room', adSrvWarn:'Getting full', adSrvFull:'Almost full', rrNoneToday:'Nothing sent today yet.', tfNoneToday:'No transfers today yet.', rrSeeHistory:'See all in History', rrRetry:'Retry', rrRetryCheckFirst:'This was approved, so Rico may already have pressed Save. Check Ricotta Restaurant first so it is not saved twice.', tfRetryCheckFirst:'This was approved, so Rico may already have pressed Move it. Check Recent transfers in Ricotta Restaurant first so nothing moves twice.', rrRetryCopy:'Use Copy to fix it and send it as a new one.', rrAutoStarting:'Starting Rico', feat_ricoAutoStart:'Start Rico when the app opens', feat_ricoAutoStart_hint:'If Rico is off and the Mac is on, he starts by himself when you open the app.', rrPracticeRun:'Practice run, nothing saved', rrKeysHint:m=>'Tab goes through the matches and Enter picks one. Enter moves to the next box. '+m+' + Enter sends. Tab from an amount goes to its unit (Enter opens it). Press ? for all shortcuts.', rrNoMatch:'No matches', rrSearchSupplier:'Search supplier', rrMadeIn:'Made in', rrMadeAt:'Made', rrSentAt:'Sent to Rico', rrApprovedAt:'Approved', rrSavedAt:'Saved', rrSource_app:'Ricotta Orders app', rrSource_telegram:'Telegram', rrSource_rico:'Rico chat', rrFilter_src:'Made in', rrFilter_mode:'Real or practice', rrFilter_by:'Made by', rrAllPlaces:'App and Telegram', rrModeReal:'Real', rrModePractice:'Practice', rrModePracticeLong:'Practice (nothing saved)', rrClearFilters:'Clear', rrNoMatchFilter:'No receipts match these filters.', rrRicoMode:'Rico ran it', rrRicoActivity:'What Rico did', rrNoActivity:'Nothing yet. Rico\'s work shows here.', rrByHimself:'Rico by himself', rrEvPressed:'Pressed', rrEvReceipt:'Receipt', histOrders:'Orders', rrHistEmpty:'No receipts yet. Receipts show here once they are sent to Rico.', rrOpenReceipt:'Open receipt', rrPrevPhoto:'Previous photo', rrNextPhoto:'Next photo', rrClosePhoto:'Close', rrInInvoices:tab=>'In Invoices · '+tab, rrFindIt:(inv,when)=>'Invoice #'+inv+(when?' · saved '+when:''), rrWarnUnitName:(u,f,b)=>'The unit "'+u+'" counts as '+f+' '+b+'. Its name doesn\'t match its size: check it\'s the unit you meant.', rrWarnGramPrice:(m,u)=>m+' per '+u+' is far too expensive or odd. Are you sure?', rrWarnUnitPrice:(x,more,b)=>x+' times '+(more?'more':'less')+' per '+b+' than last time. Check the unit.', tfTitle:'Transfers', tfTitleOne:'Transfer', tfStorages:'Storages', tfFrom:'From storage', tfTo:'To storage', tfChoose:'Choose', tfWhat:'What to move', tfPickFrom:'Pick a From storage to choose what to move.', tfPickTo:'Pick a To storage to add items.', tfAmount:'Amount', tfAmountHint:'amount', tfYesterday:'Record for yesterday', tfYesterdayHint:'Counts on the previous day in reports. The stock still moves now.', tfYesterdayOn:d=>'Recorded for yesterday, '+d+'. The stock still moves now.', tfYesterdayAsk:d=>'Record this transfer for yesterday ('+d+')? It will count on that day in reports.', tfYesterdayYes:'Yes, for yesterday', tfForYesterday:'For yesterday', tfItemsLabel:'Items', tfSend:'Send to Rico', tfDiscardAsk:'Delete this transfer? Nothing has been sent.', tfMovedToday:n=>n===1?'1 transfer moved':n+' transfers moved', tfItemsMoved:n=>n===1?'1 item':n+' items', tfStockAt:w=>'Stock from Ricotta Restaurant, read '+w+'. Rico checks it live again before moving.', tfNoStock:'Rico has not read the stock from Ricotta Restaurant yet. Start Rico on the Mac.', tfPracticeRun:'Practice run, nothing moved', tfNoFrom:'From', tfNoTo:'To', tfErrFrom:'Choose the From storage', tfErrTo:'Choose the To storage', tfErrSame:'From and To must be different storages', tfErrItem:'Choose an item that is in the From storage', tfErrUnitUnclear:'This unit name is used twice in Ricotta Restaurant: choose another unit', tfErrQty:'Type the amount', tfErrNotEnough:(n,h)=>'asks for '+n+' but only '+h+' is there', tfWarnAll:(h,z)=>'all of it ('+h+'), nothing left'+(z?' in '+z:''), tfWarnUnusual:x=>x+' times more than usually moved. Check the amount', tfPhoto_before:'Before moving', tfPhoto_after:'After moving', tfPhoto_problem:'Where Rico stopped', tfSeenRecent:'Ricotta Restaurant confirmed the move', tfNotConfirmed:'Moved. Check Recent transfers in Ricotta Restaurant', tfDay:'Counts on', tfMovedAt:'Moved', tfCancelOne:'Cancel transfer', tfApprove:'Approve and move', tfTooLate:'Too late: Rico already moved it.', tfCancelAsk:'Cancel this transfer? Rico clears the form; nothing moves.', tfHistEmpty:'No transfers yet.', tfOpenOne:'Open transfer', tfFileTitle:d=>'Transfers · '+d, tfFileSub:(n,i,w)=>n+' transfers, '+i+' items · '+w, tfFileName:'Transfers', role_transfers:'Transfers', role_transfersHint:'Make transfers between storages and approve Rico\'s photos', rrEvTransfer:'Transfer', tfStatus_draft:'Draft', tfStatusHint_draft:'', tfStatus_queued:'Waiting for Rico', tfStatusHint_queued:'Rico takes it as soon as the Mac is on.', tfStatus_filling:'Rico is filling it in', tfStatusHint_filling:'Rico is filling it in on Move between storages.', tfStatus_review:'Photo ready to check', tfStatusHint_review:'Rico filled it in Ricotta Restaurant. Nothing has moved yet. Check the photo, then approve.', tfStatus_approved:'Approved, Rico is moving it', tfStatusHint_approved:'Rico checks the stock again, then presses Move it.', tfStatus_moving:'Rico is moving it', tfStatusHint_moving:'Rico is moving it and checking Recent transfers.', tfStatus_moved:'Moved', tfStatusHint_moved:'', tfStatus_problem:'Stopped', tfStatusHint_problem:'', tfStatus_cancelled:'Cancelled', tfStatusHint_cancelled:'Nothing was moved in Ricotta Restaurant.', rrTitle:'Receipts', rrToday:'Today', rrSavedToday:n=>n===1?'1 receipt saved':n+' receipts saved', rrNeedsYou:'Needs you', rrDrafts:'Drafts', rrNoCatalog:'Rico has not read the lists from Ricotta Restaurant yet. Start Rico on the Mac.', rrRicoStopped:'Rico is stopped', rrRicoOff:'Rico is off (Mac closed)', rrRicoBusy:'Rico is working', rrRicoOn:'Rico is on', rrNoSupplier:'No supplier yet', rrBack:'Back to receipts', rrStatus_draft:'Draft', rrStatus_queued:'Waiting for Rico', rrStatus_filling:'Rico is filling it in', rrStatus_review:'Photo ready to check', rrStatus_approved:'Approved, Rico is saving it', rrStatus_saving:'Rico is saving it', rrStatus_saved:'Saved', rrStatus_problem:'Stopped', rrStatus_cancelled:'Cancelled', rrStatusHint_draft:'', rrStatusHint_queued:'Rico takes it as soon as the Mac is on.', rrStatusHint_filling:'Rico is typing it into Ricotta Restaurant.', rrStatusHint_review:'Rico filled it in Ricotta Restaurant. Nothing is saved yet. Check the photo, then approve.', rrStatusHint_approved:'Rico presses Receive & send to finance next.', rrStatusHint_saving:'Rico is saving it and checking Invoices.', rrStatusHint_cancelled:'Nothing was saved in Ricotta Restaurant.', rrStatusHint_saved:'', rrStatusHint_problem:'', rrItem:'Item', rrSearchItem:'Search item', rrRemoveItem:n=>'Remove item '+n, rrUnit:'Unit', rrBaseUnit:'Base unit', rrQty:'Qty', rrUnitCost:'Unit cost', rrTotal:'Total', rrDetails:'Receipt details', rrSupplier:'Supplier', rrZone:'Zone', rrInvoice:'Invoice number', rrInvoiceHint:'e.g. 1024', rrCurrency:'Currency', rrRate:'Rate: $1 = IQD', rrDelivery:'Delivery fee', rrNoDelivery:'No delivery', rrItems:'Items received', rrItemCount:n=>n===1?'1 item':n+' items', rrAddItem:'Add item', rrPlusDelivery:(a,b)=>a+' + '+b+' delivery', rrSend:'Receive & send to finance', rrWarnPrice:(p,b)=>(p>0?'Price up ':'Price down ')+Math.abs(p)+'% (last time '+b+')', rrWarnDuplicate:n=>'Same item as item '+n, rrWarnTinyUnit:'This unit counts as only 1 gram or piece. Check it is the right one.', rrWarnRate:(a,b)=>'The rate is outside '+a+' to '+b, rrWarnBig:x=>'A big receipt: IQD '+x, rrErrSupplier:'Choose a supplier', rrErrInvoice:'Type the invoice number (numbers only)', rrErrZone:'Choose a zone', rrErrRate:'Type the dollar rate', rrErrDelivery:'Check the delivery fee', rrErrNoLines:'Add at least one item', rrErrItem:'Choose an item', rrErrUnit:'Choose a unit', rrErrQty:'Type the quantity', rrErrCost:'Type the unit cost', rrLineN:n=>'Item '+n, rrDiscardAsk:'Delete this receipt? Nothing has been sent.', rrDiscard:'Delete', rrFixFirst:'Fix these first', rrCheckThese:'Check these before sending', rrSendAnyway:'Send anyway', rrBigAgain:x=>'This receipt is IQD '+x+'. Send it?', rrSureTitle:'Are you sure?', rrErrAlreadySent:'This invoice from this supplier was already sent.', rrSent:'Sent to Rico', rrPhoto_before:'Before saving', rrPhoto_after:'After saving', rrPhoto_invoices:'In Invoices', rrPhoto_problem:'Where Rico stopped', rrPhotos:'Photos', rrWhatRicoDid:'What Rico did', rrCancelReceipt:'Cancel receipt', rrApprove:'Approve and save', rrCopy:'Make a copy', rrTooLate:'Too late: Rico already saved it in Ricotta Restaurant.', rrCancelAsk:'Cancel this receipt? Rico discards what he filled in.', rrSettingsTitle:'Rico in Ricotta Restaurant', rrRicoMac:'Rico on your Mac', rrStop:'Stop Rico', rrStopHint:'Rico takes no new receipts until you turn this off.', rrSettingsSaved:'Saved', role_receipts:'Receipts', role_receiptsHint:'Make receipts and approve Rico’s photos',
+    rrWarnPressed:'Rico already pressed Save for this receipt (or one with the same invoice) in Ricotta Restaurant. Check Invoices there first: send it only if it is not there.', tfWarnPressed:'Rico already pressed Move it for this transfer. Check Recent transfers in Ricotta Restaurant first: send it only if it did not move.', tfWarnRepeat:at=>'The same transfer (same storages, day, items and amounts) was already sent at '+at+'. Send it again only if it really happened twice.', tfUsually:q=>'(usually about '+q+')', tfWarnLow:q=>'far less than usually moved (usually about '+q+'). A typo?', tfWarnRoute:(f,to)=>'never went from '+f+' to '+to+' in the last 3 weeks. The right storage?', rrWarnQtyHigh:(x,q)=>x+' times the usual delivery (usually about '+q+'). A typo?', rrWarnQtyLow:q=>'far less than usually arrives (usually about '+q+'). A typo?', tfUsuallyZone:(z,q)=>'('+z+' usually gets about '+q+')', tfWarnLowZone:(z,q)=>'far less than '+z+' usually gets (about '+q+'). A typo?', tfUsuallyTo:z=>'It usually goes to '+z+'.', tfUsuallyGets:(z,q)=>z+' usually gets about '+q, tfNeverTo:z=>'never goes to '+z, tfAvailLabel:'Available', tfOnlyHave:'Only', tfInZone:z=>'in '+z, tfForDay:d=>'For yesterday, '+d, tfToday:'For today', tfApproveTitle:n=>'Move '+n+(n===1?' item?':' items?'), rrApproveTitle:'Approve this receipt?', shortRrSend:'Receipts, Transfers: send to Rico', shortRrAdd:'Receipts, Transfers: new line', shortRrDup:'Same item again on a new line', shortRrDel:'Remove this line', shortRrUnit:'Open this line\'s unit', shortRrYest:'Transfers: Record for yesterday', shortRrApprove:'A sent one: approve', shortRrBack:'A sent one: back to the form', rrOfflineShort:'No connection', rrOfflineNote:'You can keep writing. What you send waits on this phone and goes once you are online.', rrCopyFrom:d=>'Lists and stock as of '+d+'.', rrWaitingToSend:'Waiting to send', rrSendNow:'Send', rrSendAll:'Send all', rrSavedOffline:'No connection: kept on this phone. Send it from Waiting to send when you are online.', rrKeepDraft:'Keep as draft', rrKeepDraftHint:'Keep this one in Drafts and start a new one', rrDraftKept:'Kept in Drafts', tfWhichDay:'Which day is it for?', tfWrittenEarlier:d=>'This was written for '+d+'. Record it for yesterday, or for today?', tfForYesterdayBtn:'For yesterday', tfForTodayBtn:'For today', tfTooOld:d=>'This was written for '+d+'. Ricotta Restaurant can only record today or yesterday. Record it for today?', histDays:'By day', daysEmpty:'No receipts or transfers yet.', dayReceipts:n=>n===1?'receipt':'receipts', dayTransfers:n=>n===1?'transfer':'transfers', daySaved:n=>n+' saved', dayMoved:n=>n+' moved', rsTfAuto:'Move without asking again', rsTfAutoAsk:'Transfers you send will move without a second approval. You still see what will move before sending, and Rico still stops if anything is wrong.', rsTurnOn:'Turn on', rsLimits:'Receipt limits', rsEdit:'Edit', rsStandard:'Standard', rsRate:'Dollar rate', tfSendMove:'Send and move', tfApproval:'Approval', tfApprovalAuto:w=>'When sent'+(w?' by '+w:'')+', no second approval', tfNoSecond:'No second approval', shortRrTitle:'Receipts and Transfers lines', shortRrUp:'Same box on the line above', shortRrDown:'Same box on the line below', shortChange:'Change', shortChangeHint:'Change, then press the new keys with ⌥, ⌘ or Ctrl. Esc keeps the old ones. Standard puts them all back.', shortPress:'Press the keys…', shortNeedsMod:'Use ⌥, ⌘ or Ctrl with a key, so it never gets in the way of typing.', shortTaken:a=>'Those keys are already used for: '+a, shortStdDone:'Shortcuts are back to standard', fileCompany:'Ricotta Restaurant', fileInternal:'Internal document', fileCheckedBy:'Checked by', fileApprovedBy:'Approved by', fileDateLine:'Date: ____________', dayFileTitle:d=>'Receipts and transfers, '+d, dayFileSub:(r,s,t,i)=>r+(r===1?' receipt':' receipts')+' saved (IQD '+s+') · '+t+(t===1?' transfer':' transfers')+' moved ('+i+(i===1?' item)':' items)'), dayFileName:'Ricotta day', dayFileReceipts:'Receipts', dayFileSpent:'Received, IQD', dayFileTransfers:'Transfers', ricoFileDay:'Receipts and transfers', ricoFileTransfers:'Transfers', ricoFileReceipts:'Receipts', ricoFileReceipt:'Receipt', ricoFileNone:'Nothing to put in this file.', rrFileOne:(s,i)=>s+(i?' · #'+i:''), rrFileDay:d=>'Receipts, '+d, rrFileDaySub:(n,s)=>n+(n===1?' receipt':' receipts')+' saved · IQD '+s, rrItemsLabel:'Items', rsAlwaysYou:'You approve each one', rsTfAutoShort:'Send to Rico is the approval. He stops if anything is wrong.', stCheckThis:'Check this', feat_ricoLively:'Rico\'s animations and expressions', feat_ricoLively_hint:'Off: Rico is a plain star that never moves.', shortRrUnitMenu:'On an amount: unit menu, then the next unit', shortRrNext:'On an amount: the next item', rrStockOld:d=>'Stock last read '+d+'. Start Rico to read it again; the amounts may be out of date.', rrNotLearnt:'Rico hasn\'t learnt the usual amounts lately.', rrNotSignedIn:'Rico is on but not signed in to Ricotta Restaurant. Sign him in on the Mac.', ricoFilePhotos:'Photos', adServer:'Server', adSrvDb:'Database', adSrvFiles:'Photos', rrScan:'From a photo', rrScanFailed:'The photo couldn\'t be read. Try a clearer photo, or type it in.', rrScanned:n=>n+' lines read from the photo. Check every line before sending.', adSrvDbHint:'All your orders, receipts, transfers and settings.', adSrvFilesHint:'Rico\'s photos of receipts and transfers, kept 60 days.', adSrvOf:(a,b)=>a+' of '+b, adSameAsLast:d=>'Same as last '+d, adVsLast:(x,d)=>x+' vs last '+d, adOpenIt:'Open', adOldPhone:(who,kind)=>who+'’s '+kind+' is out of date', adOldPhoneSub:(v,l)=>'On '+v+', newest is '+l, adRicoSaved:'receipts saved', adRicoMoved:'transfers moved', adRicoStopped:'stopped', adRicoChatsMonth:'chats this month', adScreens:(n,m)=>n+' of '+m+' screens', adPeople:'People', adTools:'Tools', adOk:'OK', adProblemsOpen:n=>n===1?'1 open':n+' open', adAiSub:'Haiku first, 2 backups', adTimeBoth:'Both people, by day, week and month', adAllDevices:'All devices', rrNoneToday:'Nothing sent today yet.', tfNoneToday:'No transfers today yet.', rrSeeHistory:'See all in History', rrRetry:'Retry', rrRetryCheckFirst:'This was approved, so Rico may already have pressed Save. Check Ricotta Restaurant first so it is not saved twice.', tfRetryCheckFirst:'This was approved, so Rico may already have pressed Move it. Check Recent transfers in Ricotta Restaurant first so nothing moves twice.', rrRetryCopy:'Use Copy to fix it and send it as a new one.', rrAutoStarting:'Starting Rico', feat_ricoAutoStart:'Start Rico when the app opens', feat_ricoAutoStart_hint:'If Rico is off and the Mac is on, he starts by himself when you open the app.', rrPracticeRun:'Practice run, nothing saved', rrKeysHint:m=>'Tab goes through the matches and Enter picks one. Enter moves to the next box. '+m+' + Enter sends. Tab from an amount goes to its unit (Enter opens it). Press ? for all shortcuts.', rrNoMatch:'No matches', rrSearchSupplier:'Search supplier', rrMadeIn:'Made in', rrMadeAt:'Made', rrSentAt:'Sent to Rico', rrApprovedAt:'Approved', rrSavedAt:'Saved', rrSource_app:'Ricotta Orders app', rrSource_telegram:'Telegram', rrSource_rico:'Rico chat', rrFilter_src:'Made in', rrFilter_mode:'Real or practice', rrFilter_by:'Made by', rrAllPlaces:'App and Telegram', rrModeReal:'Real', rrModePractice:'Practice', rrModePracticeLong:'Practice (nothing saved)', rrClearFilters:'Clear', rrNoMatchFilter:'No receipts match these filters.', rrRicoMode:'Rico ran it', rrRicoActivity:'What Rico did', rrNoActivity:'Nothing yet. Rico\'s work shows here.', rrByHimself:'Rico by himself', rrEvPressed:'Pressed', rrEvReceipt:'Receipt', histOrders:'Orders', rrHistEmpty:'No receipts yet. Receipts show here once they are sent to Rico.', rrOpenReceipt:'Open receipt', rrPrevPhoto:'Previous photo', rrNextPhoto:'Next photo', rrClosePhoto:'Close', rrInInvoices:tab=>'In Invoices · '+tab, rrFindIt:(inv,when)=>'Invoice #'+inv+(when?' · saved '+when:''), rrWarnUnitName:(u,f,b)=>'The unit "'+u+'" counts as '+f+' '+b+'. Its name doesn\'t match its size: check it\'s the unit you meant.', rrWarnGramPrice:(m,u)=>m+' per '+u+' is far too expensive or odd. Are you sure?', rrWarnUnitPrice:(x,more,b)=>x+' times '+(more?'more':'less')+' per '+b+' than last time. Check the unit.', tfTitle:'Transfers', tfTitleOne:'Transfer', tfStorages:'Storages', tfFrom:'From storage', tfTo:'To storage', tfChoose:'Choose', tfWhat:'What to move', tfPickFrom:'Pick a From storage to choose what to move.', tfPickTo:'Pick a To storage to add items.', tfAmount:'Amount', tfAmountHint:'amount', tfYesterday:'Record for yesterday', tfYesterdayHint:'Counts on the previous day in reports. The stock still moves now.', tfYesterdayOn:d=>'Recorded for yesterday, '+d+'. The stock still moves now.', tfYesterdayAsk:d=>'Record this transfer for yesterday ('+d+')? It will count on that day in reports.', tfYesterdayYes:'Yes, for yesterday', tfForYesterday:'For yesterday', tfItemsLabel:'Items', tfSend:'Send to Rico', tfDiscardAsk:'Delete this transfer? Nothing has been sent.', tfMovedToday:n=>n===1?'1 transfer moved':n+' transfers moved', tfItemsMoved:n=>n===1?'1 item':n+' items', tfStockAt:w=>'Stock from Ricotta Restaurant, read '+w+'. Rico checks it live again before moving.', tfNoStock:'Rico has not read the stock from Ricotta Restaurant yet. Start Rico on the Mac.', tfPracticeRun:'Practice run, nothing moved', tfNoFrom:'From', tfNoTo:'To', tfErrFrom:'Choose the From storage', tfErrTo:'Choose the To storage', tfErrSame:'From and To must be different storages', tfErrItem:'Choose an item that is in the From storage', tfErrUnitUnclear:'This unit name is used twice in Ricotta Restaurant: choose another unit', tfErrQty:'Type the amount', tfErrNotEnough:(n,h)=>'asks for '+n+' but only '+h+' is there', tfWarnAll:(h,z)=>'all of it ('+h+'), nothing left'+(z?' in '+z:''), tfWarnUnusual:x=>x+' times more than usually moved. Check the amount', tfPhoto_before:'Before moving', tfPhoto_after:'After moving', tfPhoto_problem:'Where Rico stopped', tfSeenRecent:'Ricotta Restaurant confirmed the move', tfNotConfirmed:'Moved. Check Recent transfers in Ricotta Restaurant', tfDay:'Counts on', tfMovedAt:'Moved', tfCancelOne:'Cancel transfer', tfApprove:'Approve and move', tfTooLate:'Too late: Rico already moved it.', tfCancelAsk:'Cancel this transfer? Rico clears the form; nothing moves.', tfHistEmpty:'No transfers yet.', tfOpenOne:'Open transfer', tfFileTitle:d=>'Transfers · '+d, tfFileSub:(n,i,w)=>n+' transfers, '+i+' items · '+w, tfFileName:'Transfers', role_transfers:'Transfers', role_transfersHint:'Make transfers between storages and approve Rico\'s photos', rrEvTransfer:'Transfer', tfStatus_draft:'Draft', tfStatusHint_draft:'', tfStatus_queued:'Waiting for Rico', tfStatusHint_queued:'Rico takes it as soon as the Mac is on.', tfStatus_filling:'Rico is filling it in', tfStatusHint_filling:'Rico is filling it in on Move between storages.', tfStatus_review:'Photo ready to check', tfStatusHint_review:'Rico filled it in Ricotta Restaurant. Nothing has moved yet. Check the photo, then approve.', tfStatus_approved:'Approved, Rico is moving it', tfStatusHint_approved:'Rico checks the stock again, then presses Move it.', tfStatus_moving:'Rico is moving it', tfStatusHint_moving:'Rico is moving it and checking Recent transfers.', tfStatus_moved:'Moved', tfStatusHint_moved:'', tfStatus_problem:'Stopped', tfStatusHint_problem:'', tfStatus_cancelled:'Cancelled', tfStatusHint_cancelled:'Nothing was moved in Ricotta Restaurant.', rrTitle:'Receipts', rrToday:'Today', rrSavedToday:n=>n===1?'1 receipt saved':n+' receipts saved', rrNeedsYou:'Needs you', rrDrafts:'Drafts', rrNoCatalog:'Rico has not read the lists from Ricotta Restaurant yet. Start Rico on the Mac.', rrRicoStopped:'Rico is stopped', rrRicoOff:'Rico is off (Mac closed)', rrRicoBusy:'Rico is working', rrRicoOn:'Rico is on', rrNoSupplier:'No supplier yet', rrBack:'Back to receipts', rrStatus_draft:'Draft', rrStatus_queued:'Waiting for Rico', rrStatus_filling:'Rico is filling it in', rrStatus_review:'Photo ready to check', rrStatus_approved:'Approved, Rico is saving it', rrStatus_saving:'Rico is saving it', rrStatus_saved:'Saved', rrStatus_problem:'Stopped', rrStatus_cancelled:'Cancelled', rrStatusHint_draft:'', rrStatusHint_queued:'Rico takes it as soon as the Mac is on.', rrStatusHint_filling:'Rico is typing it into Ricotta Restaurant.', rrStatusHint_review:'Rico filled it in Ricotta Restaurant. Nothing is saved yet. Check the photo, then approve.', rrStatusHint_approved:'Rico presses Receive & send to finance next.', rrStatusHint_saving:'Rico is saving it and checking Invoices.', rrStatusHint_cancelled:'Nothing was saved in Ricotta Restaurant.', rrStatusHint_saved:'', rrStatusHint_problem:'', rrItem:'Item', rrSearchItem:'Search item', rrRemoveItem:n=>'Remove item '+n, rrUnit:'Unit', rrBaseUnit:'Base unit', rrQty:'Qty', rrUnitCost:'Unit cost', rrTotal:'Total', rrDetails:'Receipt details', rrSupplier:'Supplier', rrZone:'Zone', rrInvoice:'Invoice number', rrInvoiceHint:'e.g. 1024', rrCurrency:'Currency', rrRate:'Rate: $1 = IQD', rrDelivery:'Delivery fee', rrNoDelivery:'No delivery', rrItems:'Items received', rrItemCount:n=>n===1?'1 item':n+' items', rrAddItem:'Add item', rrPlusDelivery:(a,b)=>a+' + '+b+' delivery', rrSend:'Receive & send to finance', rrWarnPrice:(p,b)=>(p>0?'Price up ':'Price down ')+Math.abs(p)+'% (last time '+b+')', rrWarnDuplicate:n=>'Same item as item '+n, rrWarnTinyUnit:'This unit counts as only 1 gram or piece. Check it is the right one.', rrWarnRate:(a,b)=>'The rate is outside '+a+' to '+b, rrWarnBig:x=>'A big receipt: IQD '+x, rrErrSupplier:'Choose a supplier', rrErrInvoice:'Type the invoice number (numbers only)', rrErrZone:'Choose a zone', rrErrRate:'Type the dollar rate', rrErrDelivery:'Check the delivery fee', rrErrNoLines:'Add at least one item', rrErrItem:'Choose an item', rrErrUnit:'Choose a unit', rrErrQty:'Type the quantity', rrErrCost:'Type the unit cost', rrLineN:n=>'Item '+n, rrDiscardAsk:'Delete this receipt? Nothing has been sent.', rrDiscard:'Delete', rrFixFirst:'Fix these first', rrCheckThese:'Check these before sending', rrSendAnyway:'Send anyway', rrBigAgain:x=>'This receipt is IQD '+x+'. Send it?', rrSureTitle:'Are you sure?', rrErrAlreadySent:'This invoice from this supplier was already sent.', rrSent:'Sent to Rico', rrPhoto_before:'Before saving', rrPhoto_after:'After saving', rrPhoto_invoices:'In Invoices', rrPhoto_problem:'Where Rico stopped', rrPhotos:'Photos', rrWhatRicoDid:'What Rico did', rrCancelReceipt:'Cancel receipt', rrApprove:'Approve and save', rrCopy:'Make a copy', rrTooLate:'Too late: Rico already saved it in Ricotta Restaurant.', rrCancelAsk:'Cancel this receipt? Rico discards what he filled in.', rrSettingsTitle:'Rico in Ricotta Restaurant', rrRicoMac:'Rico on your Mac', rrStop:'Stop Rico', rrStopHint:'Rico takes no new receipts until you turn this off.', rrSettingsSaved:'Saved', role_receipts:'Receipts', role_receiptsHint:'Make receipts and approve Rico’s photos',
     draftSynced:'Draft synced across your devices', draftWaiting:'Draft saved here · waiting to sync', draftConflict:'This item changed on another device. Choose which quantity to keep.', draftUseOther:'Use other device’s quantities', draftKeepMine:'Keep my quantities',
     pendingSync:'Orders waiting to sync', pendingSyncHint:'These orders are saved on this device. Retry syncing or export a copy. Orders from a previous month need to be exported.', syncRetry:'Retry sync', syncExport:'Export copy',
     accountName:a=>({rozha:'Rozh', yunis:'Yunis'})[a] || a,
     workspaceLabel:'Your kitchen, organised', welcomeName:n=>'Welcome back, '+n,
-    draftLocal:'Draft on this device', selectToStart:'Choose your essentials to get started',
+    draftLocal:'Draft on this device', 
     increaseQty:name=>'Increase quantity for '+name, decreaseQty:name=>'Decrease quantity for '+name, quantityFor:name=>'Quantity for '+name,
     offline:'Offline', language:'Language', apply:'Apply', ok:'OK',
     sessionEnded:'Your session ended. Sign in again to continue.',
@@ -26,7 +29,7 @@ const T = {
     saveFailed:'Couldn’t save. Check the connection and try again.',
     orderSavedOffline:'Order kept on this device. It will sync automatically when the connection is back.',
     loadFailed:'Couldn’t reach the server. Check the connection.', retry:'Try again',
-    splashLoading:'Getting your kitchen ready…',
+
     wrongPin:'Wrong PIN, try again', clear:'Clear',
     order:'Order', history:'History', settings:'Settings', logout:'Sign Out',
     searchPlaceholder:'Search items…', sameAsLastTime:'Same as last time', clearOrder:'Clear order', previousSuppliers:'Previous suppliers', nextSuppliers:'More suppliers',
@@ -57,7 +60,7 @@ const T = {
     heroEyebrow:"Today's order", heroStat:n=>n+' item'+(n===1?'':'s')+' selected',
     heroSub:(items,sups)=>items+' items across '+sups+' supplier'+(sups===1?'':'s'),
     heroStatWord:n=>n===1?'item selected':'items selected',
-    suppliersCovered:(a,b)=>a+' of '+b+' suppliers have items picked',
+
     allSuppliers:'All',
     updateNow:'Update Now', later:'Later', updateTitle:'New Version Ready', updateReadyMsg:'A new version of the app is ready. Update now? Your order is kept.',
     noSearchResults:'No items match here',
@@ -96,19 +99,14 @@ const T = {
     notifEnabledMsg:'Notifications are on for this device.',
     notifDeniedMsg:'Notifications are blocked. Turn them on for Ricotta Orders in your phone Settings, under Notifications.',
     notifFailedMsg:'Could not turn on notifications. Please try again.',
-    
-    
 
-    
-    
     lastQty:n=>'Last: '+n,
     notifOn:'On', notifOff:'Off', 
     notifUnsupported:'This browser can’t receive notifications. On iPhone, add the app to your Home Screen and open it from there.',
     notifNotConfigured:'Notifications aren’t set up yet.',
-    
+
     reminderTimeLabel:'Reminder time (Erbil time)', 
-    
-    
+
     reminderOff:'Off', everyDay:'Every day', daysShort:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
     reminderShort:'Reminder',
     supplierReminderLabel:'Order reminder for this supplier',
@@ -118,7 +116,7 @@ const T = {
     reminderDaysRequired:'Pick at least one day for the reminder.',
     testSupplierReminder:'Send a test reminder',
     confirmTestSupplier:'Send a test reminder for this supplier to every signed-in device that has notifications on?',
-    
+
     notifPartialMsg:(s,f)=>'Sent to '+s+' device'+(s===1?'':'s')+'; '+f+' could not be reached.',
     notifDeliveryFailed:'The notification could not be delivered to any device. On that device, turn notifications off and on again.',
     notifNoDevicesLoggedOut:'Only signed-out devices have notifications on. Reminders go to signed-in devices.',
@@ -143,10 +141,8 @@ const T = {
     cmAdd:n=>'Add '+n, cmType:'Type a quantity', cmRemove:'Remove from order',
     weekdays:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
 
-
-    
     adminTitle:'Admin', adminPinChange:'Change',
-    adminPinsHint:'A new PIN signs that person out on their other devices.', pinChangeTitle:n=>'New PIN for '+n,
+    pinChangeTitle:n=>'New PIN for '+n,
     pinCurrentLabel:'Your current PIN', pinNewLabel:'New PIN (6 digits)', pinRepeatLabel:'New PIN again',
     pinMismatch:'The two new PINs don’t match.', pinCurrentWrong:'Your current PIN isn’t right.',
     pinChangedSelf:'Your PIN is changed. Your other devices were signed out.', pinChangedOther:n=>n+'’s PIN is changed. '+n+' signs in again with the new one.',
@@ -156,10 +152,10 @@ const T = {
     ricoName:'Rico', ricoTalkingWith:n=>'Talking with '+n, ricoWroteFirst:'Rico wrote',
     ricoAutoOrderLabel:'Let Rico fill my order', ricoNewChat:'New chat',
     ricoLateSub:(time,h,m)=>'Due at '+time+' · not sent yet ('+[h?h+' h':'',m||!h?m+' min':''].filter(Boolean).join(' ')+')',
-    
+
     ricoGreeting:(part,name)=>'Good '+part+(name?', '+name:'')+'.',
     ricoSuggestions:['Prepare today’s order','Check my order','How was this week?','What did we order last time?','Add a new item','Are any orders late today?'],
-    
+
     ricoStatus:{thinking:'Thinking…', find_items:'Looking through your items…', list_suppliers:'Checking your suppliers…', order_history:'Reading order history…',
       ordering_patterns:'Working out your busy days…', suggest_order:'Preparing a suggestion…', recent_changes:'Checking recent changes…',
       propose_order_draft:'Getting the order ready…', propose_new_item:'Preparing the new item…', propose_edit_item:'Preparing the change…',
@@ -174,7 +170,7 @@ const T = {
     ricoCardNewItem:'New item', ricoCardEditItem:'Change item', ricoCardNewSupplier:'New supplier', ricoCardNotify:'Notification to every device',
     ricoOpenScreen:n=>'Open '+n, ricoAutoTag:'Filled by Rico',
     ricoPlaceholder:'Message Rico…', ricoStop:'Stop', ricoSend:'Send',
-    ricoHistory:'Chat history', ricoRecentChats:'Recent chats', ricoUntitled:'Chat',
+    ricoHistory:'Chat history', ricoUntitled:'Chat',
     ricoHistoryEmpty:'No saved chats yet. Your chats with Rico are kept here for 90 days.',
     ricoDeleteChat:'Delete this chat', ricoDeleteAll:'Delete all chats', ricoDeleteAllConfirm:'Tap again to delete all your chats',
     ricoChatLoadFailed:'Could not open this chat. Check the connection and try again.', ricoCardOld:'From an earlier chat',
@@ -192,12 +188,7 @@ const T = {
     ricoSuggestDue:(sup,time)=>sup+' was due at '+time+' and hasn’t been sent yet.',
     ricoSuggestAdd:n=>'Add '+n+' item'+(n===1?'':'s'), ricoSuggestAdded:(n,sup)=>n+' item'+(n===1?'':'s')+' from '+sup+' added', ricoSuggestDismiss:'Hide suggestion',
     ricoWorkedSteps:n=>'Worked through '+n+' step'+(n===1?'':'s'),
-    
-    
-    
-    
-    
-    
+
     ricoSetsDraft:'Only these items change; the rest of your draft stays as it is.', ricoApplyChanges:'Apply changes',
     ricoOpenSend:'Open Send to suppliers',
     chooseSupplier:'Choose a supplier',
@@ -208,21 +199,21 @@ const T = {
   },
   ku:{
     rrStartRico:'دەستپێکردنی ریکۆ', rrPractice:'دۆخی تاقیکردنەوە', rrStopRicoNow:'وەستاندنی ریکۆ', rrPracticeShort:'تاقیکردنەوە', rrLauncherOff:'ماکەکە کوژاوەتەوە، یان دەستپێکەری ریکۆ لەسەری دانەمەزراوە.', rrLauncherWorking:'بە ماکەکە دەڵێین...',
-    rrCheckNow:'ئێستا بپشکنە', rrChecking:'دەپشکنێت...', rrCheckAsked:'ریکۆ خەریکە دابینکەران، شوێنەکان، کاڵاکان و یەکەکانی ریکۆتا ڕێستۆرانت دەخوێنێتەوە.', rrCheckAfterJob:'ریکۆ هەر کە کارەکەی تەواو کرد ریکۆتا ڕێستۆرانت دەپشکنێت.', rrCheckRunning:'ریکۆ دابینکەران، شوێنەکان، کاڵاکان و یەکەکانی ریکۆتا ڕێستۆرانت دەخوێنێتەوە...',
+    rrCheckNow:'ئێستا بپشکنە', rrChecking:'دەپشکنێت...', rrCheckAsked:"ریکۆ خەریکە دابینکەران، کۆگاکان، کاڵاکان و یەکەکانی ریکۆتا ڕێستۆرانت دەخوێنێتەوە.", rrCheckAfterJob:'ریکۆ هەر کە کارەکەی تەواو کرد ریکۆتا ڕێستۆرانت دەپشکنێت.', rrCheckRunning:"ریکۆ دابینکەران، کۆگاکان، کاڵاکان و یەکەکانی ریکۆتا ڕێستۆرانت دەخوێنێتەوە...",
     rrCheckNoAnswer:'ریکۆ وەڵامی پشکنینەکەی نەدایەوە. دووبارە هەوڵ بدەرەوە، یان دڵنیابە لەسەر ماک کار دەکات.', rrCheckRicoOff:'ریکۆ کوژاوەتەوە. سەرەتا لەسەر ماک دایبگیرسێنە.', rrCheckOld:'بۆ بەکارهێنانی «ئێستا بپشکنە»، ریکۆ لەسەر ماک نوێ بکەرەوە و دووبارە دایبگیرسێنە.',
     rrCheckFailed:(w,e)=>'ریکۆ نەیتوانی ریکۆتا ڕێستۆرانت بپشکنێت لە '+w+(e?': '+e:'.'), rrCheckDone:w=>'ریکۆتا ڕێستۆرانت پشکنرا لە '+w+'. لیستەکان نوێن.', rrCheckNothing:w=>'پشکنرا لە '+w+': هیچ لە ریکۆتا ڕێستۆرانت نەگۆڕاوە.', rrCheckFound:(w,p)=>'پشکنرا لە '+w+': '+p+'.',
     rrCheckItemsNew:n=>n+' کاڵای نوێ', rrCheckItemsChanged:n=>'یەکەی '+n+' کاڵا گۆڕا', rrCheckItemsGone:n=>n+' کاڵا لابرا',
-    rrCheckSupNew:n=>n+' دابینکەری نوێ', rrCheckSupGone:n=>n+' دابینکەر لابرا', rrCheckZoneNew:n=>n+' شوێنی نوێ', rrCheckZoneGone:n=>n+' شوێن لابرا',
+    rrCheckSupNew:n=>n+' دابینکەری نوێ', rrCheckSupGone:n=>n+' دابینکەر لابرا', rrCheckZoneNew:n=>n+' کۆگای نوێ', rrCheckZoneGone:n=>n+' کۆگا لابرا',
     rrCheckNewLabel:'نوێ', rrCheckChangedLabel:'گۆڕاو', rrListSep:'، ',
     rrLimBig:'لە سەرووی ئەمە دووجار بپرسە (دینار)', rrLimJump:'ئاگادارکردنەوە لە گۆڕانی نرخی (%)', rrLimRateMin:'کەمترین نرخی دۆلار', rrLimRateMax:'زۆرترین نرخی دۆلار', rrLimSave:'پاشەکەوتکردنی سنوورەکان', rrLimBad:'سنوورەکان بپشکنە: ژمارەی تەواو، و زۆرترین نرخ کەمتر نەبێت لە کەمترین.',
     rrTelegram:'تێلیگرام (Ricotta Helper)', rrTgConnected:'پەیوەستە: ریکۆ وەسڵەکان بۆ پەسەندکردن و ڕاپۆرتەکان لەوێ دەنێرێت', rrTgNotConnected:'هێشتا پەیوەست نییە', rrTgNotSetUp:'کلیلی بۆتەکە هێشتا لەسەر سێرڤەر دانەنراوە', rrTgConnect:'پەیوەستکردنی تێلیگرام', rrTgReconnect:'دووبارە پەیوەستکردن',
     rrPartOf:(a,b)=>a+' لە '+b,
-    rrWarnPressed:'ریکۆ پێشتر Save ی بۆ ئەم پسوولەیە (یان یەکێک بە هەمان ژمارەی پسوولە) لە ریکۆتا ڕێستۆرانت داگرتووە. سەرەتا Invoices لەوێ بپشکنە: تەنها ئەگەر لەوێ نەبوو بینێرە.', tfWarnPressed:'ریکۆ پێشتر Move it ی بۆ ئەم گواستنەوەیە داگرتووە. سەرەتا Recent transfers لە ریکۆتا ڕێستۆرانت بپشکنە: تەنها ئەگەر نەگوازرابووەوە بینێرە.', tfWarnRepeat:at=>'هەمان گواستنەوە (هەمان کۆگاکان، ڕۆژ، کاڵاکان و بڕەکان) پێشتر لە '+at+' نێردراوە. تەنها ئەگەر بەڕاستی دووجار ڕوویدا دووبارە بینێرە.', tfUsually:q=>'(بەزۆری نزیکەی '+q+')', tfWarnLow:q=>'زۆر کەمترە لەوەی بەزۆری دەگوازرێتەوە (بەزۆری نزیکەی '+q+'). هەڵەی نووسینە؟', tfWarnRoute:(f,to)=>'لە 3 هەفتەی ڕابردوودا هەرگیز لە '+f+' بۆ '+to+' نەگوازراوەتەوە. کۆگاکە دروستە؟', rrWarnQtyHigh:(x,q)=>x+' هێندەی هاتنی ئاسایی (بەزۆری نزیکەی '+q+'). هەڵەی نووسینە؟', rrWarnQtyLow:q=>'زۆر کەمترە لەوەی بەزۆری دێت (بەزۆری نزیکەی '+q+'). هەڵەی نووسینە؟', tfUsuallyZone:(z,q)=>'('+z+' بەزۆری نزیکەی '+q+' وەردەگرێت)', tfWarnLowZone:(z,q)=>'زۆر کەمترە لەوەی '+z+' بەزۆری وەریدەگرێت (نزیکەی '+q+'). هەڵەی نووسینە؟', tfUsuallyTo:z=>'بەزۆری دەچێت بۆ '+z+'.', tfUsuallyGets:(z,q)=>z+' بەزۆری نزیکەی '+q+' وەردەگرێت', tfNeverTo:z=>'هەرگیز ناچێت بۆ '+z, tfAvailLabel:'هەیە', tfOnlyHave:'تەنها', tfInZone:z=>'لە '+z, tfForDay:d=>'بۆ دوێنێ، '+d, tfToday:'بۆ ئەمڕۆ', tfApproveTitle:n=>n+' کاڵا بگوازرێتەوە؟', rrApproveTitle:'ئەم پسوولەیە پەسەند دەکەیت؟', shortRrSend:'پسوولە، گواستنەوە: بۆ ریکۆ بنێرە', shortRrAdd:'پسوولە، گواستنەوە: هێڵی نوێ', shortRrDup:'هەمان کاڵا لە هێڵێکی نوێدا', shortRrDel:'ئەم هێڵە لابە', shortRrUnit:'یەکەی ئەم هێڵە بکەرەوە', shortRrYest:'گواستنەوە: بۆ دوێنێ تۆمار بکە', shortRrApprove:'نێردراوێک: پەسەند بکە', shortRrBack:'نێردراوێک: بگەڕێوە بۆ فۆرمەکە', rrOfflineShort:'هێڵ نییە', rrOfflineNote:'دەتوانیت بەردەوام بنووسیت. ئەوەی دەینێریت لەسەر ئەم مۆبایلە دەمێنێتەوە و کە هێڵ هاتەوە دەنێردرێت.', rrCopyFrom:d=>'لیست و کاڵاکان وەک '+d+'.', rrWaitingToSend:'چاوەڕێی ناردن', rrSendNow:'بنێرە', rrSendAll:'هەمووی بنێرە', rrSavedOffline:'هێڵ نییە: لەسەر ئەم مۆبایلە هەڵگیرا. کە هێڵ هاتەوە لە چاوەڕێی ناردنەوە بینێرە.', rrKeepDraft:'وەک ڕەشنووس هەڵیبگرە', rrKeepDraftHint:'ئەمە لە ڕەشنووسەکان هەڵبگرە و یەکێکی نوێ دەست پێبکە', rrDraftKept:'لە ڕەشنووسەکان هەڵگیرا', tfWhichDay:'بۆ کام ڕۆژە؟', tfWrittenEarlier:d=>'ئەمە بۆ '+d+' نووسرابوو. بۆ دوێنێ تۆماری بکەیت یان بۆ ئەمڕۆ؟', tfForYesterdayBtn:'بۆ دوێنێ', tfForTodayBtn:'بۆ ئەمڕۆ', tfTooOld:d=>'ئەمە بۆ '+d+' نووسرابوو. ریکۆتا ڕێستۆرانت تەنها ئەمڕۆ یان دوێنێ تۆمار دەکات. بۆ ئەمڕۆ تۆماری بکەیت؟', histDays:'بەپێی ڕۆژ', daysEmpty:'هێشتا هیچ پسوولە یان گواستنەوەیەک نییە.', dayReceipts:n=>'پسوولە', dayTransfers:n=>'گواستنەوە', daySaved:n=>n+' پاشەکەوتکراو', dayMoved:n=>n+' گوازراوە', rsTfAuto:'بەبێ پرسیاری دووەم بگوازرێتەوە', rsTfAutoAsk:'ئەو گواستنەوانەی دەینێریت بەبێ پەسەندکردنی دووەم دەگوازرێنەوە. هێشتا پێش ناردن دەبینیت چی دەگوازرێتەوە، و ریکۆ هێشتا دەوەستێت ئەگەر شتێک هەڵە بێت.', rsTurnOn:'دایبگیرسێنە', rsLimits:'سنووری پسوولەکان', rsEdit:'دەستکاری', rsStandard:'ستاندارد', rsRate:'نرخی دۆلار', tfSendMove:'بنێرە و بیگوازەرەوە', tfApproval:'پەسەندکردن', tfApprovalAuto:w=>'کاتی ناردن'+(w?' لەلایەن '+w:'')+'، بەبێ پەسەندکردنی دووەم', tfNoSecond:'بەبێ پەسەندکردنی دووەم', shortRrTitle:'هێڵەکانی پسوولە و گواستنەوە', shortRrUp:'هەمان خانە لە هێڵی سەرەوە', shortRrDown:'هەمان خانە لە هێڵی خوارەوە', shortChange:'گۆڕین', shortChangeHint:'گۆڕین دابگرە، پاشان دوگمە نوێیەکان لەگەڵ ⌥ یان ⌘ یان Ctrl دابگرە. Esc کۆنەکان دەهێڵێتەوە. ستاندارد هەموویان دەگەڕێنێتەوە.', shortPress:'دوگمەکان دابگرە…', shortNeedsMod:'⌥ یان ⌘ یان Ctrl لەگەڵ دوگمەیەک بەکاربهێنە، بۆ ئەوەی هەرگیز ڕێگری لە نووسین نەکات.', shortTaken:a=>'ئەم دوگمانە پێشتر بەکارهاتوون بۆ: '+a, shortStdDone:'کورتەڕێگاکان گەڕانەوە بۆ ستاندارد', fileCompany:'Ricotta Restaurant', fileInternal:'بەڵگەنامەی ناوخۆیی', fileCheckedBy:'پشکنرا لەلایەن', fileApprovedBy:'پەسەندکرا لەلایەن', fileDateLine:'بەروار: ____________', dayFileTitle:d=>'پسوولە و گواستنەوەکان، '+d, dayFileSub:(r,s,t,i)=>r+' پسوولە پاشەکەوتکرا (IQD '+s+') · '+t+' گواستنەوە ('+i+' کاڵا)', dayFileName:'ڕۆژی ریکۆتا', dayFileReceipts:'پسوولەکان', dayFileSpent:'وەرگیراو، IQD', dayFileTransfers:'گواستنەوەکان', ricoFileDay:'پسوولە و گواستنەوەکان', ricoFileTransfers:'گواستنەوەکان', ricoFileReceipts:'پسوولەکان', ricoFileReceipt:'پسوولە', ricoFileNone:'هیچ نییە بۆ ئەم فایلە.', rrFileOne:(s,i)=>s+(i?' · #'+i:''), rrFileDay:d=>'پسوولەکان، '+d, rrFileDaySub:(n,s)=>n+' پسوولە پاشەکەوتکرا · IQD '+s, rrItemsLabel:'کاڵاکان', rsAlwaysYou:'هەموویان تۆ پەسەندیان دەکەیت', rsTfAutoShort:'ناردن بۆ ریکۆ خۆی پەسەندکردنە. ئەگەر هەڵەیەک هەبێت دەوەستێت.', adGroupNow:'ئێستا', adGroupActivity:'چالاکی', adGroupManage:'بەڕێوەبردن', stCheckThis:'ئەمە بپشکنە', feat_ricoLively:'جووڵە و دەربڕینەکانی ریکۆ', feat_ricoLively_hint:'کوژاوە: ریکۆ ئەستێرەیەکی سادەیە و هەرگیز ناجووڵێت.', shortRrUnitMenu:'لەسەر بڕ: لیستی یەکە، پاشان یەکەی دواتر', shortRrNext:'لەسەر بڕ: کاڵای دواتر', rrStockOld:d=>'کاڵاکان دواجار لە '+d+' خوێندرانەوە. ریکۆ دابگیرسێنە بۆ خوێندنەوەی نوێ؛ لەوانەیە بڕەکان کۆن بن.', rrNotLearnt:'ریکۆ لەم دواییانەدا بڕە ئاساییەکانی فێر نەبووە.', rrNotSignedIn:'ریکۆ داگیرساوە بەڵام نەچووەتە ناو ریکۆتا ڕێستۆرانت. لەسەر ماکەکە بیخەرە ژوورەوە.', ricoFilePhotos:'وێنەکان', adServer:'سێرڤەر', adSrvDb:'داتابەیس', adSrvFiles:'وێنەکان', rrScan:'لە وێنەوە', rrScanFailed:'وێنەکە نەخوێندرایەوە. وێنەیەکی ڕوونتر بگرە، یان بینووسە.', rrScanned:n=>n+' هێڵ لە وێنەکەوە خوێندرایەوە. پێش ناردن هەموو هێڵێک بپشکنە.', adSrvDbHint:'هەموو داواکاری، پسوولە، گواستنەوە و ڕێکخستنەکانت.', adSrvFilesHint:'وێنەکانی ریکۆ بۆ پسوولە و گواستنەوەکان، 60 ڕۆژ دەمێننەوە.', adSrvOf:(a,b)=>a+' لە '+b, adSrvRoom:a=>a+' ماوە', adSrvOk:'جێگای زۆرە', adSrvWarn:'نزیکە پڕ ببێت', adSrvFull:'بەنزیکی پڕە', rrNoneToday:'ئەمڕۆ هێشتا هیچ نەنێردراوە.', tfNoneToday:'ئەمڕۆ هێشتا هیچ گواستنەوەیەک نییە.', rrSeeHistory:'هەمووی لە مێژوو ببینە', rrRetry:'دووبارە هەوڵبدەرەوە', rrRetryCheckFirst:'ئەمە پەسەند کرابوو، لەوانەیە ریکۆ Save ی داگرتبێت. سەرەتا Ricotta Restaurant بپشکنە بۆ ئەوەی دووجار پاشەکەوت نەکرێت.', tfRetryCheckFirst:'ئەمە پەسەند کرابوو، لەوانەیە ریکۆ Move it ی داگرتبێت. سەرەتا Recent transfers لە Ricotta Restaurant بپشکنە بۆ ئەوەی هیچ دووجار نەگوازرێتەوە.', rrRetryCopy:'Copy بەکاربهێنە بۆ چاککردنی و ناردنی وەک دانەیەکی نوێ.', rrAutoStarting:'ریکۆ دەست پێدەکات', feat_ricoAutoStart:'ریکۆ کاتی کردنەوەی ئەپ دەست پێبکات', feat_ricoAutoStart_hint:'ئەگەر ریکۆ کوژاوە بێت و ماک داگیرسابێت، کاتێک ئەپەکە دەکەیتەوە خۆی دەست پێدەکات.', rrPracticeRun:'تاقیکردنەوە، هیچ پاشەکەوت نەکرا', rrKeysHint:m=>'Tab لە نێوان ئەنجامەکاندا دەگەڕێت و Enter یەکێکیان هەڵدەبژێرێت. Enter دەچێتە خانەی دواتر. '+m+' + Enter دەینێرێت. Tab لە بڕەوە دەچێتە یەکە. ? دابگرە بۆ هەموو کورتەڕێگاکان.', rrNoMatch:'هیچ نەدۆزرایەوە', rrSearchSupplier:'گەڕان بۆ دابینکەر', rrMadeIn:'دروستکرا لە', rrMadeAt:'کاتی دروستکردن', rrSentAt:'نێردرا بۆ ریکۆ', rrApprovedAt:'پەسەند کرا', rrSavedAt:'پاشەکەوت کرا', rrSource_app:'ئەپی ریکۆتا ئۆردەرز', rrSource_telegram:'تێلێگرام', rrSource_rico:'چاتی ریکۆ', rrFilter_src:'دروستکرا لە', rrFilter_mode:'ڕاستەقینە یان تاقیکردنەوە', rrFilter_by:'دروستکراوە لەلایەن', rrAllPlaces:'ئەپ و تێلێگرام', rrModeReal:'ڕاستەقینە', rrModePractice:'تاقیکردنەوە', rrModePracticeLong:'تاقیکردنەوە (هیچ پاشەکەوت نەکرا)', rrClearFilters:'پاککردنەوە', rrNoMatchFilter:'هیچ وەسڵێک لەگەڵ ئەم فلتەرانە ناگونجێت.', rrRicoMode:'ریکۆ کردی بە', rrRicoActivity:'ریکۆ چی کرد', rrNoActivity:'هێشتا هیچ. کارەکانی ریکۆ لێرە دەردەکەون.', rrByHimself:'ریکۆ خۆی', rrEvPressed:'داگیرا', rrEvReceipt:'وەسڵ', histOrders:'داواکارییەکان', rrHistEmpty:'هێشتا هیچ وەسڵێک نییە. وەسڵەکان دوای ناردنیان بۆ ریکۆ لێرە دەردەکەون.', rrOpenReceipt:'کردنەوەی وەسڵ', rrPrevPhoto:'وێنەی پێشوو', rrNextPhoto:'وێنەی دواتر', rrClosePhoto:'داخستن', rrInInvoices:tab=>'لە Invoices · '+tab, rrFindIt:(inv,when)=>'پسوولەی #'+inv+(when?' · پاشەکەوت کرا '+when:''), rrWarnUnitName:(u,f,b)=>'یەکەی "'+u+'" بە '+f+' '+b+' دەژمێردرێت. ناوەکەی لەگەڵ قەبارەکەی ناگونجێت: دڵنیابە ئەمە ئەو یەکەیەیە کە مەبەستتە.', rrWarnGramPrice:(m,u)=>m+' بۆ هەر '+u+' زۆر گرانە یان نامۆیە. دڵنیایت؟', rrWarnUnitPrice:(x,more,b)=>x+' هێندە '+(more?'زیاتر':'کەمتر')+' بۆ هەر '+b+' لە جاری پێشوو. یەکەکە بپشکنە.', tfTitle:'گواستنەوەکان', tfTitleOne:'گواستنەوە', tfStorages:'کۆگاکان', tfFrom:'لە کۆگای', tfTo:'بۆ کۆگای', tfChoose:'هەڵبژێرە', tfWhat:'چی بگوازرێتەوە', tfPickFrom:'سەرەتا کۆگای سەرچاوە هەڵبژێرە.', tfPickTo:'کۆگای مەبەست هەڵبژێرە بۆ زیادکردنی کاڵا.', tfAmount:'بڕ', tfAmountHint:'بڕ', tfYesterday:'تۆمارکردن بۆ دوێنێ', tfYesterdayHint:'لە ڕاپۆرتەکان لەسەر ڕۆژی پێشوو دەژمێردرێت. کاڵاکە ئێستا دەگوازرێتەوە.', tfYesterdayOn:d=>'بۆ دوێنێ تۆمار دەکرێت، '+d+'. کاڵاکە ئێستا دەگوازرێتەوە.', tfYesterdayAsk:d=>'ئەم گواستنەوەیە بۆ دوێنێ ('+d+') تۆمار بکرێت؟ لە ڕاپۆرتەکان لەسەر ئەو ڕۆژە دەژمێردرێت.', tfYesterdayYes:'بەڵێ، بۆ دوێنێ', tfForYesterday:'بۆ دوێنێ', tfItemsLabel:'کاڵاکان', tfSend:'ناردن بۆ ریکۆ', tfDiscardAsk:'ئەم گواستنەوەیە بسڕدرێتەوە؟ هیچ نەنێردراوە.', tfMovedToday:n=>n+' گواستنەوە کرا', tfItemsMoved:n=>n+' کاڵا', tfStockAt:w=>'کۆگا لە ریکۆتا ڕێستۆرانت، خوێندرایەوە '+w+'. ریکۆ پێش گواستنەوە جارێکی تر ڕاستەوخۆ دەیپشکنێت.', tfNoStock:'ریکۆ هێشتا کۆگای ریکۆتا ڕێستۆرانتی نەخوێندووەتەوە. ریکۆ لەسەر ماک دابگیرسێنە.', tfPracticeRun:'تاقیکردنەوە، هیچ نەگوازرایەوە', tfNoFrom:'لە', tfNoTo:'بۆ', tfErrFrom:'کۆگای سەرچاوە هەڵبژێرە', tfErrTo:'کۆگای مەبەست هەڵبژێرە', tfErrSame:'دەبێت دوو کۆگای جیاواز بن', tfErrItem:'کاڵایەک هەڵبژێرە کە لە کۆگای سەرچاوە هەیە', tfErrUnitUnclear:'ئەم ناوی یەکەیە دوو جار لە ریکۆتا ڕێستۆرانت هەیە: یەکەیەکی تر هەڵبژێرە', tfErrQty:'بڕەکە بنووسە', tfErrNotEnough:(n,h)=>n+' داوا کراوە بەڵام تەنها '+h+' هەیە', tfWarnAll:(h,z)=>'هەمووی ('+h+')، هیچ نامێنێتەوە'+(z?' لە '+z:''), tfWarnUnusual:x=>x+' هێندە زیاترە لە ئەوەی هەمیشە دەگوازرێتەوە. بڕەکە بپشکنە', tfPhoto_before:'پێش گواستنەوە', tfPhoto_after:'دوای گواستنەوە', tfPhoto_problem:'ئەو شوێنەی ریکۆ وەستا', tfSeenRecent:'ریکۆتا ڕێستۆرانت گواستنەوەکەی پشتڕاست کردەوە', tfNotConfirmed:'گوازرایەوە. Recent transfers لە ریکۆتا ڕێستۆرانت بپشکنە', tfDay:'دەژمێردرێت لەسەر', tfMovedAt:'گوازرایەوە', tfCancelOne:'هەڵوەشاندنەوەی گواستنەوە', tfApprove:'پەسەندکردن و گواستنەوە', tfTooLate:'درەنگە: ریکۆ پێشتر گواستیەوە.', tfCancelAsk:'ئەم گواستنەوەیە هەڵبوەشێنرێتەوە؟ ریکۆ فۆڕمەکە پاک دەکاتەوە؛ هیچ ناگوازرێتەوە.', tfHistEmpty:'هێشتا هیچ گواستنەوەیەک نییە.', tfOpenOne:'کردنەوەی گواستنەوە', tfFileTitle:d=>'گواستنەوەکان · '+d, tfFileSub:(n,i,w)=>n+' گواستنەوە، '+i+' کاڵا · '+w, tfFileName:'گواستنەوەکان', role_transfers:'گواستنەوەکان', role_transfersHint:'گواستنەوە لە نێوان کۆگاکان و پەسەندکردنی وێنەکانی ریکۆ', rrEvTransfer:'گواستنەوە', tfStatus_draft:'ڕەشنووس', tfStatusHint_draft:'', tfStatus_queued:'چاوەڕێی ریکۆ', tfStatusHint_queued:'ریکۆ هەر کە ماک داگیرسا وەریدەگرێت.', tfStatus_filling:'ریکۆ پڕی دەکاتەوە', tfStatusHint_filling:'ریکۆ لە Move between storages پڕی دەکاتەوە.', tfStatus_review:'وێنە ئامادەیە بۆ پشکنین', tfStatusHint_review:'ریکۆ لە ریکۆتا ڕێستۆرانت پڕی کردەوە. هێشتا هیچ نەگوازراوەتەوە. وێنەکە بپشکنە و پاشان پەسەندی بکە.', tfStatus_approved:'پەسەند کرا، ریکۆ دەیگوازێتەوە', tfStatusHint_approved:'ریکۆ جارێکی تر کۆگاکە دەپشکنێت، پاشان Move it دادەگرێت.', tfStatus_moving:'ریکۆ دەیگوازێتەوە', tfStatusHint_moving:'ریکۆ دەیگوازێتەوە و Recent transfers دەپشکنێت.', tfStatus_moved:'گوازرایەوە', tfStatusHint_moved:'', tfStatus_problem:'وەستا', tfStatusHint_problem:'', tfStatus_cancelled:'هەڵوەشێنرایەوە', tfStatusHint_cancelled:'هیچ لە ریکۆتا ڕێستۆرانت نەگوازرایەوە.', rrTitle:'وەسڵەکان', rrToday:'ئەمڕۆ', rrSavedToday:n=>n+' وەسڵ پاشەکەوت کرا', rrNeedsYou:'چاوەڕێی تۆیە', rrDrafts:'ڕەشنووسەکان', rrNoCatalog:'ریکۆ هێشتا لیستەکانی ریکۆتا ڕێستۆرانتی نەخوێندووەتەوە. ریکۆ لەسەر ماک دابگیرسێنە.', rrRicoStopped:'ریکۆ وەستێنراوە', rrRicoOff:'ریکۆ کوژاوەتەوە (ماک داخراوە)', rrRicoBusy:'ریکۆ کار دەکات', rrRicoOn:'ریکۆ ئامادەیە', rrNoSupplier:'هێشتا دابینکەر نییە', rrBack:'گەڕانەوە بۆ وەسڵەکان', rrStatus_draft:'ڕەشنووس', rrStatus_queued:'چاوەڕێی ریکۆ', rrStatus_filling:'ریکۆ پڕی دەکاتەوە', rrStatus_review:'وێنە ئامادەیە بۆ پشکنین', rrStatus_approved:'پەسەند کرا، ریکۆ پاشەکەوتی دەکات', rrStatus_saving:'ریکۆ پاشەکەوتی دەکات', rrStatus_saved:'پاشەکەوت کرا', rrStatus_problem:'وەستا', rrStatus_cancelled:'هەڵوەشێنرایەوە', rrStatusHint_draft:'', rrStatusHint_queued:'ریکۆ هەر کە ماک داگیرسا وەریدەگرێت.', rrStatusHint_filling:'ریکۆ لە ریکۆتا ڕێستۆرانت دەینووسێت.', rrStatusHint_review:'ریکۆ لە ریکۆتا ڕێستۆرانت پڕی کردەوە. هێشتا هیچ پاشەکەوت نەکراوە. وێنەکە بپشکنە و پاشان پەسەندی بکە.', rrStatusHint_approved:'ریکۆ دواتر Receive & send to finance دادەگرێت.', rrStatusHint_saving:'ریکۆ پاشەکەوتی دەکات و Invoices دەپشکنێت.', rrStatusHint_cancelled:'هیچ لە ریکۆتا ڕێستۆرانت پاشەکەوت نەکرا.', rrStatusHint_saved:'', rrStatusHint_problem:'', rrItem:'کاڵا', rrSearchItem:'گەڕان بۆ کاڵا', rrRemoveItem:n=>'لابردنی کاڵای '+n, rrUnit:'یەکە', rrBaseUnit:'یەکەی بنەڕەت', rrQty:'بڕ', rrUnitCost:'نرخی یەکە', rrTotal:'کۆ', rrDetails:'زانیاری وەسڵ', rrSupplier:'دابینکەر', rrZone:'شوێن', rrInvoice:'ژمارەی پسوولە', rrInvoiceHint:'بۆ نموونە 1024', rrCurrency:'دراو', rrRate:'نرخ: $1 = دینار', rrDelivery:'کرێی گەیاندن', rrNoDelivery:'بێ گەیاندن', rrItems:'کاڵا وەرگیراوەکان', rrItemCount:n=>n+' کاڵا', rrAddItem:'زیادکردنی کاڵا', rrPlusDelivery:(a,b)=>a+' + '+b+' گەیاندن', rrSend:'وەرگرتن و ناردن بۆ دارایی', rrWarnPrice:(p,b)=>(p>0?'نرخ بەرز بووەتەوە ':'نرخ دابەزیوە ')+Math.abs(p)+'% (جاری پێشوو '+b+')', rrWarnDuplicate:n=>'هەمان کاڵای ژمارە '+n, rrWarnTinyUnit:'ئەم یەکەیە تەنها 1 گرام یان دانەیەکە. دڵنیابە دروستە.', rrWarnRate:(a,b)=>'نرخی دۆلار لە دەرەوەی '+a+' تا '+b+'یە', rrWarnBig:x=>'وەسڵێکی گەورە: IQD '+x, rrErrSupplier:'دابینکەرێک هەڵبژێرە', rrErrInvoice:'ژمارەی پسوولە بنووسە (تەنها ژمارە)', rrErrZone:'شوێنێک هەڵبژێرە', rrErrRate:'نرخی دۆلار بنووسە', rrErrDelivery:'کرێی گەیاندن بپشکنە', rrErrNoLines:'لانیکەم یەک کاڵا زیاد بکە', rrErrItem:'کاڵایەک هەڵبژێرە', rrErrUnit:'یەکەیەک هەڵبژێرە', rrErrQty:'بڕەکە بنووسە', rrErrCost:'نرخی یەکە بنووسە', rrLineN:n=>'کاڵای '+n, rrDiscardAsk:'ئەم وەسڵە بسڕدرێتەوە؟ هیچ نەنێردراوە.', rrDiscard:'سڕینەوە', rrFixFirst:'سەرەتا ئەمانە چاک بکە', rrCheckThese:'پێش ناردن ئەمانە بپشکنە', rrSendAnyway:'هەر بینێرە', rrBigAgain:x=>'ئەم وەسڵە IQD '+x+'یە. بینێرێت؟', rrSureTitle:'دڵنیایت؟', rrErrAlreadySent:'ئەم پسوولەیەی ئەم دابینکەرە پێشتر نێردراوە.', rrSent:'نێردرا بۆ ریکۆ', rrPhoto_before:'پێش پاشەکەوت', rrPhoto_after:'دوای پاشەکەوت', rrPhoto_invoices:'لە Invoices', rrPhoto_problem:'ئەو شوێنەی ریکۆ وەستا', rrPhotos:'وێنەکان', rrWhatRicoDid:'ریکۆ چی کرد', rrCancelReceipt:'هەڵوەشاندنەوەی وەسڵ', rrApprove:'پەسەندکردن و پاشەکەوت', rrCopy:'کۆپییەک دروست بکە', rrTooLate:'درەنگە: ریکۆ پێشتر لە ریکۆتا ڕێستۆرانت پاشەکەوتی کردووە.', rrCancelAsk:'ئەم وەسڵە هەڵبوەشێنرێتەوە؟ ریکۆ ئەوەی پڕی کردووەتەوە لای دەبات.', rrSettingsTitle:'ریکۆ لە ریکۆتا ڕێستۆرانت', rrRicoMac:'ریکۆ لەسەر ماکەکەت', rrStop:'ریکۆ بوەستێنە', rrStopHint:'ریکۆ هیچ وەسڵێکی نوێ وەرناگرێت تا ئەمە بکوژێنیتەوە.', rrSettingsSaved:'پاشەکەوت کرا', role_receipts:'وەسڵەکان', role_receiptsHint:'دروستکردنی وەسڵ و پەسەندکردنی وێنەکانی ریکۆ',
+    rrWarnPressed:"ریکۆ پێشتر Save ی بۆ ئەم وەسڵە (یان یەکێک بە هەمان ژمارەی پسوولە) لە ریکۆتا ڕێستۆرانت داگرتووە. سەرەتا Invoices لەوێ بپشکنە: تەنها ئەگەر لەوێ نەبوو بینێرە.", tfWarnPressed:'ریکۆ پێشتر Move it ی بۆ ئەم گواستنەوەیە داگرتووە. سەرەتا Recent transfers لە ریکۆتا ڕێستۆرانت بپشکنە: تەنها ئەگەر نەگوازرابووەوە بینێرە.', tfWarnRepeat:at=>'هەمان گواستنەوە (هەمان کۆگاکان، ڕۆژ، کاڵاکان و بڕەکان) پێشتر لە '+at+' نێردراوە. تەنها ئەگەر بەڕاستی دووجار ڕوویدا دووبارە بینێرە.', tfUsually:q=>'(بەزۆری نزیکەی '+q+')', tfWarnLow:q=>'زۆر کەمترە لەوەی بەزۆری دەگوازرێتەوە (بەزۆری نزیکەی '+q+'). هەڵەی نووسینە؟', tfWarnRoute:(f,to)=>'لە 3 هەفتەی ڕابردوودا هەرگیز لە '+f+' بۆ '+to+' نەگوازراوەتەوە. کۆگاکە دروستە؟', rrWarnQtyHigh:(x,q)=>x+' هێندەی هاتنی ئاسایی (بەزۆری نزیکەی '+q+'). هەڵەی نووسینە؟', rrWarnQtyLow:q=>'زۆر کەمترە لەوەی بەزۆری دێت (بەزۆری نزیکەی '+q+'). هەڵەی نووسینە؟', tfUsuallyZone:(z,q)=>'('+z+' بەزۆری نزیکەی '+q+' وەردەگرێت)', tfWarnLowZone:(z,q)=>'زۆر کەمترە لەوەی '+z+' بەزۆری وەریدەگرێت (نزیکەی '+q+'). هەڵەی نووسینە؟', tfUsuallyTo:z=>'بەزۆری دەچێت بۆ '+z+'.', tfUsuallyGets:(z,q)=>z+' بەزۆری نزیکەی '+q+' وەردەگرێت', tfNeverTo:z=>'هەرگیز ناچێت بۆ '+z, tfAvailLabel:'هەیە', tfOnlyHave:'تەنها', tfInZone:z=>'لە '+z, tfForDay:d=>'بۆ دوێنێ، '+d, tfToday:'بۆ ئەمڕۆ', tfApproveTitle:n=>n+' کاڵا بگوازرێتەوە؟', rrApproveTitle:"ئەم وەسڵە پەسەند دەکەیت؟", shortRrSend:"وەسڵ، گواستنەوە: بۆ ریکۆ بنێرە", shortRrAdd:"وەسڵ، گواستنەوە: هێڵی نوێ", shortRrDup:'هەمان کاڵا لە هێڵێکی نوێدا', shortRrDel:'ئەم هێڵە لابە', shortRrUnit:'یەکەی ئەم هێڵە بکەرەوە', shortRrYest:'گواستنەوە: بۆ دوێنێ تۆمار بکە', shortRrApprove:'نێردراوێک: پەسەند بکە', shortRrBack:'نێردراوێک: بگەڕێوە بۆ فۆرمەکە', rrOfflineShort:'هێڵ نییە', rrOfflineNote:'دەتوانیت بەردەوام بنووسیت. ئەوەی دەینێریت لەسەر ئەم مۆبایلە دەمێنێتەوە و کە هێڵ هاتەوە دەنێردرێت.', rrCopyFrom:d=>'لیست و بڕی کۆگا وەک '+d+'.', rrWaitingToSend:'چاوەڕێی ناردن', rrSendNow:'بنێرە', rrSendAll:'هەمووی بنێرە', rrSavedOffline:'هێڵ نییە: لەسەر ئەم مۆبایلە هەڵگیرا. کە هێڵ هاتەوە لە چاوەڕێی ناردنەوە بینێرە.', rrKeepDraft:'وەک ڕەشنووس هەڵیبگرە', rrKeepDraftHint:'ئەمە لە ڕەشنووسەکان هەڵبگرە و یەکێکی نوێ دەست پێبکە', rrDraftKept:'لە ڕەشنووسەکان هەڵگیرا', tfWhichDay:'بۆ کام ڕۆژە؟', tfWrittenEarlier:d=>'ئەمە بۆ '+d+' نووسرابوو. بۆ دوێنێ تۆماری بکەیت یان بۆ ئەمڕۆ؟', tfForYesterdayBtn:'بۆ دوێنێ', tfForTodayBtn:'بۆ ئەمڕۆ', tfTooOld:d=>'ئەمە بۆ '+d+' نووسرابوو. ریکۆتا ڕێستۆرانت تەنها ئەمڕۆ یان دوێنێ تۆمار دەکات. بۆ ئەمڕۆ تۆماری بکەیت؟', histDays:'بەپێی ڕۆژ', daysEmpty:"هێشتا هیچ وەسڵ یان گواستنەوەیەک نییە.", dayReceipts:n=>'وەسڵ', dayTransfers:n=>'گواستنەوە', daySaved:n=>n+' پاشەکەوتکراو', dayMoved:n=>n+' گوازراوە', rsTfAuto:'بەبێ پرسیاری دووەم بگوازرێتەوە', rsTfAutoAsk:'ئەو گواستنەوانەی دەینێریت بەبێ پەسەندکردنی دووەم دەگوازرێنەوە. هێشتا پێش ناردن دەبینیت چی دەگوازرێتەوە، و ریکۆ هێشتا دەوەستێت ئەگەر شتێک هەڵە بێت.', rsTurnOn:'دایبگیرسێنە', rsLimits:"سنووری وەسڵەکان", rsEdit:'دەستکاری', rsStandard:'ستاندارد', rsRate:'نرخی دۆلار', tfSendMove:'بنێرە و بیگوازەرەوە', tfApproval:'پەسەندکردن', tfApprovalAuto:w=>'کاتی ناردن'+(w?' لەلایەن '+w:'')+'، بەبێ پەسەندکردنی دووەم', tfNoSecond:'بەبێ پەسەندکردنی دووەم', shortRrTitle:"هێڵەکانی وەسڵ و گواستنەوە", shortRrUp:'هەمان خانە لە هێڵی سەرەوە', shortRrDown:'هەمان خانە لە هێڵی خوارەوە', shortChange:'گۆڕین', shortChangeHint:'گۆڕین دابگرە، پاشان دوگمە نوێیەکان لەگەڵ ⌥ یان ⌘ یان Ctrl دابگرە. Esc کۆنەکان دەهێڵێتەوە. ستاندارد هەموویان دەگەڕێنێتەوە.', shortPress:'دوگمەکان دابگرە…', shortNeedsMod:'⌥ یان ⌘ یان Ctrl لەگەڵ دوگمەیەک بەکاربهێنە، بۆ ئەوەی هەرگیز ڕێگری لە نووسین نەکات.', shortTaken:a=>'ئەم دوگمانە پێشتر بەکارهاتوون بۆ: '+a, shortStdDone:'کورتەڕێگاکان گەڕانەوە بۆ ستاندارد', fileCompany:'Ricotta Restaurant', fileInternal:'بەڵگەنامەی ناوخۆیی', fileCheckedBy:'پشکنرا لەلایەن', fileApprovedBy:'پەسەندکرا لەلایەن', fileDateLine:'بەروار: ____________', dayFileTitle:d=>'وەسڵ و گواستنەوەکان، '+d, dayFileSub:(r,s,t,i)=>r+' وەسڵ پاشەکەوتکرا ('+s+' دینار) · '+t+' گواستنەوە ('+i+' کاڵا)', dayFileName:'ڕۆژی ریکۆتا', dayFileReceipts:"وەسڵەکان", dayFileSpent:"وەرگیراو، دینار", dayFileTransfers:'گواستنەوەکان', ricoFileDay:"وەسڵ و گواستنەوەکان", ricoFileTransfers:'گواستنەوەکان', ricoFileReceipts:"وەسڵەکان", ricoFileReceipt:"وەسڵ", ricoFileNone:'هیچ نییە بۆ ئەم فایلە.', rrFileOne:(s,i)=>s+(i?' · #'+i:''), rrFileDay:d=>'وەسڵەکان، '+d, rrFileDaySub:(n,s)=>n+' وەسڵ پاشەکەوتکرا · '+s+' دینار', rrItemsLabel:'کاڵاکان', rsAlwaysYou:'هەموویان تۆ پەسەندیان دەکەیت', rsTfAutoShort:'ناردن بۆ ریکۆ خۆی پەسەندکردنە. ئەگەر هەڵەیەک هەبێت دەوەستێت.', stCheckThis:'ئەمە بپشکنە', feat_ricoLively:'جووڵە و دەربڕینەکانی ریکۆ', feat_ricoLively_hint:'کوژاوە: ریکۆ ئەستێرەیەکی سادەیە و هەرگیز ناجووڵێت.', shortRrUnitMenu:'لەسەر بڕ: لیستی یەکە، پاشان یەکەی دواتر', shortRrNext:'لەسەر بڕ: کاڵای دواتر', rrStockOld:d=>'بڕی کۆگا دواجار لە '+d+' خوێندرایەوە. ریکۆ دابگیرسێنە بۆ خوێندنەوەی نوێ؛ لەوانەیە بڕەکان کۆن بن.', rrNotLearnt:'ریکۆ لەم دواییانەدا بڕە ئاساییەکانی فێر نەبووە.', rrNotSignedIn:'ریکۆ داگیرساوە بەڵام نەچووەتە ناو ریکۆتا ڕێستۆرانت. لەسەر ماکەکە بیخەرە ژوورەوە.', ricoFilePhotos:'وێنەکان', adServer:'سێرڤەر', adSrvDb:'داتابەیس', adSrvFiles:'وێنەکان', rrScan:'لە وێنەوە', rrScanFailed:'وێنەکە نەخوێندرایەوە. وێنەیەکی ڕوونتر بگرە، یان بینووسە.', rrScanned:n=>n+' هێڵ لە وێنەکەوە خوێندرایەوە. پێش ناردن هەموو هێڵێک بپشکنە.', adSrvDbHint:"هەموو داواکاری، وەسڵ، گواستنەوە و ڕێکخستنەکانت.", adSrvFilesHint:"وێنەکانی ریکۆ بۆ وەسڵ و گواستنەوەکان، 60 ڕۆژ دەمێننەوە.", adSrvOf:(a,b)=>a+' لە '+b, adSameAsLast:d=>'وەک '+d+'ی پێشوو', adVsLast:(x,d)=>x+' بە بەراورد بە '+d+'ی پێشوو', adOpenIt:'کردنەوە', adOldPhone:(who,kind)=>kind+'ی '+who+' کۆنە', adOldPhoneSub:(v,l)=>'وەشانی '+v+'، نوێترین '+l, adRicoSaved:"وەسڵی پاشەکەوتکراو", adRicoMoved:'گواستنەوەی ئەنجامدراو', adRicoStopped:'وەستاو', adRicoChatsMonth:'گفتوگۆ ئەم مانگە', adScreens:(n,m)=>n+' لە '+m+' شاشە', adPeople:'کەسەکان', adTools:'ئامرازەکان', adOk:'باشە', adProblemsOpen:n=>n+' چارەسەرنەکراو', adAiSub:'سەرەتا Haiku، دوو یەدەگ', adTimeBoth:'هەردووکیان، بە ڕۆژ و هەفتە و مانگ', adAllDevices:'هەموو ئامێرەکان', rrNoneToday:'ئەمڕۆ هێشتا هیچ نەنێردراوە.', tfNoneToday:'ئەمڕۆ هێشتا هیچ گواستنەوەیەک نییە.', rrSeeHistory:'هەمووی لە مێژوو ببینە', rrRetry:'دووبارە هەوڵبدەرەوە', rrRetryCheckFirst:"ئەمە پەسەند کرابوو، لەوانەیە ریکۆ Save ی داگرتبێت. سەرەتا ریکۆتا ڕێستۆرانت بپشکنە بۆ ئەوەی دووجار پاشەکەوت نەکرێت.", tfRetryCheckFirst:"ئەمە پەسەند کرابوو، لەوانەیە ریکۆ Move it ی داگرتبێت. سەرەتا Recent transfers لە ریکۆتا ڕێستۆرانت بپشکنە بۆ ئەوەی هیچ دووجار نەگوازرێتەوە.", rrRetryCopy:'Copy بەکاربهێنە بۆ چاککردنی و ناردنی وەک دانەیەکی نوێ.', rrAutoStarting:'ریکۆ دەست پێدەکات', feat_ricoAutoStart:'ریکۆ کاتی کردنەوەی ئەپ دەست پێبکات', feat_ricoAutoStart_hint:'ئەگەر ریکۆ کوژاوە بێت و ماک داگیرسابێت، کاتێک ئەپەکە دەکەیتەوە خۆی دەست پێدەکات.', rrPracticeRun:'تاقیکردنەوە، هیچ پاشەکەوت نەکرا', rrKeysHint:m=>'Tab لە نێوان ئەنجامەکاندا دەگەڕێت و Enter یەکێکیان هەڵدەبژێرێت. Enter دەچێتە خانەی دواتر. '+m+' + Enter دەینێرێت. Tab لە بڕەوە دەچێتە یەکە. ? دابگرە بۆ هەموو کورتەڕێگاکان.', rrNoMatch:'هیچ نەدۆزرایەوە', rrSearchSupplier:'گەڕان بۆ دابینکەر', rrMadeIn:'دروستکرا لە', rrMadeAt:'کاتی دروستکردن', rrSentAt:'نێردرا بۆ ریکۆ', rrApprovedAt:'پەسەند کرا', rrSavedAt:'پاشەکەوت کرا', rrSource_app:'ئەپی ریکۆتا ئۆردەرز', rrSource_telegram:"تێلیگرام", rrSource_rico:'چاتی ریکۆ', rrFilter_src:'دروستکرا لە', rrFilter_mode:'ڕاستەقینە یان تاقیکردنەوە', rrFilter_by:'دروستکراوە لەلایەن', rrAllPlaces:"ئەپ و تێلیگرام", rrModeReal:'ڕاستەقینە', rrModePractice:'تاقیکردنەوە', rrModePracticeLong:'تاقیکردنەوە (هیچ پاشەکەوت نەکرا)', rrClearFilters:'پاککردنەوە', rrNoMatchFilter:'هیچ وەسڵێک لەگەڵ ئەم فلتەرانە ناگونجێت.', rrRicoMode:"ریکۆ ئەنجامی دا", rrRicoActivity:'ریکۆ چی کرد', rrNoActivity:'هێشتا هیچ. کارەکانی ریکۆ لێرە دەردەکەون.', rrByHimself:'ریکۆ خۆی', rrEvPressed:'داگیرا', rrEvReceipt:'وەسڵ', histOrders:'داواکارییەکان', rrHistEmpty:'هێشتا هیچ وەسڵێک نییە. وەسڵەکان دوای ناردنیان بۆ ریکۆ لێرە دەردەکەون.', rrOpenReceipt:'کردنەوەی وەسڵ', rrPrevPhoto:'وێنەی پێشوو', rrNextPhoto:'وێنەی دواتر', rrClosePhoto:'داخستن', rrInInvoices:tab=>'لە Invoices · '+tab, rrFindIt:(inv,when)=>'پسوولەی #'+inv+(when?' · پاشەکەوت کرا '+when:''), rrWarnUnitName:(u,f,b)=>'یەکەی "'+u+'" بە '+f+' '+b+' دەژمێردرێت. ناوەکەی لەگەڵ قەبارەکەی ناگونجێت: دڵنیابە ئەمە ئەو یەکەیەیە کە مەبەستتە.', rrWarnGramPrice:(m,u)=>m+' بۆ هەر '+u+' زۆر گرانە یان نامۆیە. دڵنیایت؟', rrWarnUnitPrice:(x,more,b)=>x+' هێندە '+(more?'زیاتر':'کەمتر')+' بۆ هەر '+b+' لە جاری پێشوو. یەکەکە بپشکنە.', tfTitle:'گواستنەوەکان', tfTitleOne:'گواستنەوە', tfStorages:'کۆگاکان', tfFrom:'لە کۆگای', tfTo:'بۆ کۆگای', tfChoose:'هەڵبژێرە', tfWhat:'چی بگوازرێتەوە', tfPickFrom:'سەرەتا کۆگای سەرچاوە هەڵبژێرە.', tfPickTo:'کۆگای مەبەست هەڵبژێرە بۆ زیادکردنی کاڵا.', tfAmount:'بڕ', tfAmountHint:'بڕ', tfYesterday:'تۆمارکردن بۆ دوێنێ', tfYesterdayHint:'لە ڕاپۆرتەکان لەسەر ڕۆژی پێشوو دەژمێردرێت. کاڵاکە ئێستا دەگوازرێتەوە.', tfYesterdayOn:d=>'بۆ دوێنێ تۆمار دەکرێت، '+d+'. کاڵاکە ئێستا دەگوازرێتەوە.', tfYesterdayAsk:d=>'ئەم گواستنەوەیە بۆ دوێنێ ('+d+') تۆمار بکرێت؟ لە ڕاپۆرتەکان لەسەر ئەو ڕۆژە دەژمێردرێت.', tfYesterdayYes:'بەڵێ، بۆ دوێنێ', tfForYesterday:'بۆ دوێنێ', tfItemsLabel:'کاڵاکان', tfSend:'ناردن بۆ ریکۆ', tfDiscardAsk:'ئەم گواستنەوەیە بسڕدرێتەوە؟ هیچ نەنێردراوە.', tfMovedToday:n=>n+' گواستنەوە کرا', tfItemsMoved:n=>n+' کاڵا', tfStockAt:w=>'بڕی کۆگا لە ریکۆتا ڕێستۆرانت، خوێندرایەوە '+w+'. ریکۆ پێش گواستنەوە جارێکی تر ڕاستەوخۆ دەیپشکنێت.', tfNoStock:'ریکۆ هێشتا کۆگای ریکۆتا ڕێستۆرانتی نەخوێندووەتەوە. ریکۆ لەسەر ماک دابگیرسێنە.', tfPracticeRun:'تاقیکردنەوە، هیچ نەگوازرایەوە', tfNoFrom:'لە', tfNoTo:'بۆ', tfErrFrom:'کۆگای سەرچاوە هەڵبژێرە', tfErrTo:'کۆگای مەبەست هەڵبژێرە', tfErrSame:'دەبێت دوو کۆگای جیاواز بن', tfErrItem:'کاڵایەک هەڵبژێرە کە لە کۆگای سەرچاوە هەیە', tfErrUnitUnclear:'ئەم ناوی یەکەیە دوو جار لە ریکۆتا ڕێستۆرانت هەیە: یەکەیەکی تر هەڵبژێرە', tfErrQty:'بڕەکە بنووسە', tfErrNotEnough:(n,h)=>n+' داوا کراوە بەڵام تەنها '+h+' هەیە', tfWarnAll:(h,z)=>'هەمووی ('+h+')، هیچ نامێنێتەوە'+(z?' لە '+z:''), tfWarnUnusual:x=>x+' هێندە زیاترە لەوەی بەزۆری دەگوازرێتەوە. بڕەکە بپشکنە', tfPhoto_before:'پێش گواستنەوە', tfPhoto_after:'دوای گواستنەوە', tfPhoto_problem:'ئەو شوێنەی ریکۆ وەستا', tfSeenRecent:'ریکۆتا ڕێستۆرانت گواستنەوەکەی پشتڕاست کردەوە', tfNotConfirmed:'گوازرایەوە. Recent transfers لە ریکۆتا ڕێستۆرانت بپشکنە', tfDay:'دەژمێردرێت لەسەر', tfMovedAt:'گوازرایەوە', tfCancelOne:'هەڵوەشاندنەوەی گواستنەوە', tfApprove:'پەسەندکردن و گواستنەوە', tfTooLate:'درەنگە: ریکۆ پێشتر گواستیەوە.', tfCancelAsk:'ئەم گواستنەوەیە هەڵبوەشێنرێتەوە؟ ریکۆ فۆڕمەکە پاک دەکاتەوە؛ هیچ ناگوازرێتەوە.', tfHistEmpty:'هێشتا هیچ گواستنەوەیەک نییە.', tfOpenOne:'کردنەوەی گواستنەوە', tfFileTitle:d=>'گواستنەوەکان · '+d, tfFileSub:(n,i,w)=>n+' گواستنەوە، '+i+' کاڵا · '+w, tfFileName:'گواستنەوەکان', role_transfers:'گواستنەوەکان', role_transfersHint:'گواستنەوە لە نێوان کۆگاکان و پەسەندکردنی وێنەکانی ریکۆ', rrEvTransfer:'گواستنەوە', tfStatus_draft:'ڕەشنووس', tfStatusHint_draft:'', tfStatus_queued:'چاوەڕێی ریکۆ', tfStatusHint_queued:'ریکۆ هەر کە ماک داگیرسا وەریدەگرێت.', tfStatus_filling:'ریکۆ پڕی دەکاتەوە', tfStatusHint_filling:'ریکۆ لە Move between storages پڕی دەکاتەوە.', tfStatus_review:'وێنە ئامادەیە بۆ پشکنین', tfStatusHint_review:'ریکۆ لە ریکۆتا ڕێستۆرانت پڕی کردەوە. هێشتا هیچ نەگوازراوەتەوە. وێنەکە بپشکنە و پاشان پەسەندی بکە.', tfStatus_approved:'پەسەند کرا، ریکۆ دەیگوازێتەوە', tfStatusHint_approved:'ریکۆ جارێکی تر کۆگاکە دەپشکنێت، پاشان Move it دادەگرێت.', tfStatus_moving:'ریکۆ دەیگوازێتەوە', tfStatusHint_moving:'ریکۆ دەیگوازێتەوە و Recent transfers دەپشکنێت.', tfStatus_moved:'گوازرایەوە', tfStatusHint_moved:'', tfStatus_problem:'وەستا', tfStatusHint_problem:'', tfStatus_cancelled:'هەڵوەشێنرایەوە', tfStatusHint_cancelled:'هیچ لە ریکۆتا ڕێستۆرانت نەگوازرایەوە.', rrTitle:'وەسڵەکان', rrToday:'ئەمڕۆ', rrSavedToday:n=>n+' وەسڵ پاشەکەوت کرا', rrNeedsYou:'چاوەڕێی تۆیە', rrDrafts:'ڕەشنووسەکان', rrNoCatalog:'ریکۆ هێشتا لیستەکانی ریکۆتا ڕێستۆرانتی نەخوێندووەتەوە. ریکۆ لەسەر ماک دابگیرسێنە.', rrRicoStopped:'ریکۆ وەستێنراوە', rrRicoOff:'ریکۆ کوژاوەتەوە (ماک داخراوە)', rrRicoBusy:'ریکۆ کار دەکات', rrRicoOn:'ریکۆ ئامادەیە', rrNoSupplier:'هێشتا دابینکەر نییە', rrBack:'گەڕانەوە بۆ وەسڵەکان', rrStatus_draft:'ڕەشنووس', rrStatus_queued:'چاوەڕێی ریکۆ', rrStatus_filling:'ریکۆ پڕی دەکاتەوە', rrStatus_review:'وێنە ئامادەیە بۆ پشکنین', rrStatus_approved:'پەسەند کرا، ریکۆ پاشەکەوتی دەکات', rrStatus_saving:'ریکۆ پاشەکەوتی دەکات', rrStatus_saved:'پاشەکەوت کرا', rrStatus_problem:'وەستا', rrStatus_cancelled:'هەڵوەشێنرایەوە', rrStatusHint_draft:'', rrStatusHint_queued:'ریکۆ هەر کە ماک داگیرسا وەریدەگرێت.', rrStatusHint_filling:'ریکۆ لە ریکۆتا ڕێستۆرانت دەینووسێت.', rrStatusHint_review:'ریکۆ لە ریکۆتا ڕێستۆرانت پڕی کردەوە. هێشتا هیچ پاشەکەوت نەکراوە. وێنەکە بپشکنە و پاشان پەسەندی بکە.', rrStatusHint_approved:'ریکۆ دواتر Receive & send to finance دادەگرێت.', rrStatusHint_saving:'ریکۆ پاشەکەوتی دەکات و Invoices دەپشکنێت.', rrStatusHint_cancelled:'هیچ لە ریکۆتا ڕێستۆرانت پاشەکەوت نەکرا.', rrStatusHint_saved:'', rrStatusHint_problem:'', rrItem:'کاڵا', rrSearchItem:'گەڕان بۆ کاڵا', rrRemoveItem:n=>'لابردنی کاڵای '+n, rrUnit:'یەکە', rrBaseUnit:'یەکەی بنەڕەت', rrQty:'بڕ', rrUnitCost:'نرخی یەکە', rrTotal:'کۆ', rrDetails:'زانیاری وەسڵ', rrSupplier:'دابینکەر', rrZone:"کۆگا", rrInvoice:'ژمارەی پسوولە', rrInvoiceHint:'بۆ نموونە 1024', rrCurrency:'دراو', rrRate:'نرخ: $1 = دینار', rrDelivery:'کرێی گەیاندن', rrNoDelivery:'بێ گەیاندن', rrItems:'کاڵا وەرگیراوەکان', rrItemCount:n=>n+' کاڵا', rrAddItem:'زیادکردنی کاڵا', rrPlusDelivery:(a,b)=>a+' + '+b+' گەیاندن', rrSend:'وەرگرتن و ناردن بۆ دارایی', rrWarnPrice:(p,b)=>(p>0?'نرخ بەرز بووەتەوە ':'نرخ دابەزیوە ')+Math.abs(p)+'% (جاری پێشوو '+b+')', rrWarnDuplicate:n=>'هەمان کاڵای ژمارە '+n, rrWarnTinyUnit:'ئەم یەکەیە تەنها 1 گرام یان دانەیەکە. دڵنیابە دروستە.', rrWarnRate:(a,b)=>'نرخی دۆلار لە دەرەوەی '+a+' تا '+b+'یە', rrWarnBig:x=>'وەسڵێکی گەورە: '+x+' دینار', rrErrSupplier:'دابینکەرێک هەڵبژێرە', rrErrInvoice:'ژمارەی پسوولە بنووسە (تەنها ژمارە)', rrErrZone:"کۆگایەک هەڵبژێرە", rrErrRate:'نرخی دۆلار بنووسە', rrErrDelivery:'کرێی گەیاندن بپشکنە', rrErrNoLines:'لانیکەم یەک کاڵا زیاد بکە', rrErrItem:'کاڵایەک هەڵبژێرە', rrErrUnit:'یەکەیەک هەڵبژێرە', rrErrQty:'بڕەکە بنووسە', rrErrCost:'نرخی یەکە بنووسە', rrLineN:n=>'کاڵای '+n, rrDiscardAsk:'ئەم وەسڵە بسڕدرێتەوە؟ هیچ نەنێردراوە.', rrDiscard:'سڕینەوە', rrFixFirst:'سەرەتا ئەمانە چاک بکە', rrCheckThese:'پێش ناردن ئەمانە بپشکنە', rrSendAnyway:'هەر بینێرە', rrBigAgain:x=>'ئەم وەسڵە '+x+' دینارە. بینێریت؟', rrSureTitle:'دڵنیایت؟', rrErrAlreadySent:'ئەم پسوولەیەی ئەم دابینکەرە پێشتر نێردراوە.', rrSent:'نێردرا بۆ ریکۆ', rrPhoto_before:'پێش پاشەکەوت', rrPhoto_after:'دوای پاشەکەوت', rrPhoto_invoices:'لە Invoices', rrPhoto_problem:'ئەو شوێنەی ریکۆ وەستا', rrPhotos:'وێنەکان', rrWhatRicoDid:'ریکۆ چی کرد', rrCancelReceipt:'هەڵوەشاندنەوەی وەسڵ', rrApprove:'پەسەندکردن و پاشەکەوت', rrCopy:'کۆپییەک دروست بکە', rrTooLate:'درەنگە: ریکۆ پێشتر لە ریکۆتا ڕێستۆرانت پاشەکەوتی کردووە.', rrCancelAsk:'ئەم وەسڵە هەڵبوەشێنرێتەوە؟ ریکۆ ئەوەی پڕی کردووەتەوە لای دەبات.', rrSettingsTitle:'ریکۆ لە ریکۆتا ڕێستۆرانت', rrRicoMac:'ریکۆ لەسەر ماکەکەت', rrStop:'ریکۆ بوەستێنە', rrStopHint:'ریکۆ هیچ وەسڵێکی نوێ وەرناگرێت تا ئەمە بکوژێنیتەوە.', rrSettingsSaved:'پاشەکەوت کرا', role_receipts:'وەسڵەکان', role_receiptsHint:'دروستکردنی وەسڵ و پەسەندکردنی وێنەکانی ریکۆ',
     draftSynced:'ڕەشنووسەکە لە نێوان ئامێرەکانت هاوکات کرا', draftWaiting:'ڕەشنووسەکە لێرە پاشەکەوت کرا · چاوەڕێی هاوکاتکردنە', draftConflict:'ئەم کاڵایە لە ئامێرێکی تر گۆڕدراوە. بڕێک هەڵبژێرە بۆ هێشتنەوە.', draftUseOther:'بڕەکانی ئامێری تر بەکاربهێنە', draftKeepMine:'بڕەکانی من بهێڵەوە',
     pendingSync:'داواکارییە چاوەڕوانەکان', pendingSyncHint:'ئەم داواکارییانە لەم ئامێرە پاشەکەوت کراون. دووبارە هەوڵ بدە یان کۆپی هەناردە بکە. داواکاری مانگی پێشوو هەناردە بکە.', syncRetry:'دووبارە هەوڵدان', syncExport:'هەناردەی کۆپی',
     accountName:a=>({rozha:'ڕۆژ', yunis:'یونس'})[a] || a,
     workspaceLabel:'چێشتخانەکەت بە ڕێکوپێکی', welcomeName:n=>'بەخێربێیتەوە، '+n,
-    draftLocal:'ڕەشنووس لەسەر ئەم ئامێرە', selectToStart:'بۆ دەستپێکردن پێداویستییەکانت هەڵبژێرە',
+    draftLocal:'ڕەشنووس لەسەر ئەم ئامێرە', 
     increaseQty:name=>'زیادکردنی بڕی '+name, decreaseQty:name=>'کەمکردنەوەی بڕی '+name, quantityFor:name=>'بڕی '+name,
     offline:'ئۆفلاین', language:'زمان', apply:'جێبەجێکردن', ok:'باشە',
     sessionEnded:'دانیشتنەکەت کۆتایی هات. دووبارە بچۆ ژوورەوە بۆ بەردەوامبوون.',
@@ -231,13 +222,13 @@ const T = {
     saveFailed:'پاشەکەوت نەکرا. پەیوەندییەکە بپشکنە و دووبارە هەوڵ بدەرەوە.',
     orderSavedOffline:'داواکارییەکە لەسەر ئەم ئامێرە هەڵگیرا و خۆکارانە هاوکات دەکرێت کاتێک پەیوەندی گەڕایەوە.',
     loadFailed:'نەگەیشتە سێرڤەر. پەیوەندییەکە بپشکنە.', retry:'دووبارە هەوڵ بدەرەوە',
-    splashLoading:'ئامادەکردنی چێشتخانەکەت…',
+
     wrongPin:'کۆدی نهێنی هەڵەیە، دووبارە هەوڵبدەرەوە', clear:'سڕینەوە',
     order:'داواکاری', history:'مێژوو', settings:'ڕێکخستن', logout:'چوونەدەرەوە',
     searchPlaceholder:'گەڕان بۆ کاڵا…', sameAsLastTime:'وەک جاری پێشوو', clearOrder:'پاککردنەوەی داواکاری', previousSuppliers:'دابینکەرەکانی پێشوو', nextSuppliers:'دابینکەرەکانی زیاتر',
     noItemsYet:'هیچ کاڵایەک نییە. لە بەشی کاڵاکان زیادی بکە',
     itemsSelected:i=>i+' کاڵا هەڵبژێردراوە', sendOrders:'ناردنی داواکاریی ئەمڕۆ',
-    sendQueueTitle:'ناردن بۆ دابینکەران', sendVia:'ناردن لە ڕێگەی واتساپ', sent:'نێردرا',
+    sendQueueTitle:'ناردن بۆ دابینکەران', sendVia:"ناردن لە ڕێگەی واتسئاپ", sent:'نێردرا',
     suppliers:'دابینکەران', items:'کاڵاکان', units:'یەکەکان', addSupplier:'زیادکردنی دابینکەر', editSupplier:'دەستکاریکردنی دابینکەر',
     name:'ناو', phone:'ژمارەی مۆبایل', save:'پاشەکەوتکردن', cancel:'پاشگەزبوونەوە', delete:'سڕینەوە',
     addItem:'زیادکردنی کاڵا', editItem:'دەستکاریکردنی کاڵا', unit:'یەکە', supplier:'دابینکەر', noSupplier:'دابینکەر نییە',
@@ -253,16 +244,16 @@ const T = {
     itemDeleted:n=>n+' سڕایەوە', itemRestored:'کاڵاکە گەڕێندرایەوە', undoExpired:'ئیتر ناتوانرێت ئەم کاڵایە بگەڕێنرێتەوە. لە بەڕێوەبردن دووبارە زیادی بکە.',
     ricoQuantityLimit:'کاڵایەک گۆڕاوە یان ئیتر بەردەست نییە، یان بڕەکە لە 99,999 زیاتر دەبێت. پێشبینینێکی نوێ لە ریکۆ بخوازە.',
     ricoReviewChanges:'پشکنینی گۆڕانکاری', currentQuantity:'ئێستا', newQuantity:'دواتر', ricoDraftChanged:'داواکارییەکەت لەدوای ئەم پێشبینینە گۆڕاوە. بڕە نوێیەکان ببینە و دووبارە پەسەندی بکە.',
-    diagnosticsHint:'تەنها پشکنینە: سێرڤەر، بنکەدراوە و ئەرکە خۆکارەکان. داواکارییە چاوەڕوانەکان ئەوانەن کە لەم مۆبایلەدان.', checkNow:'ئێستا بپشکنە', checking:'پشکنین…',
-    apiDatabase:'سێرڤەر و بنکەدراوە', needsAttention:'پێویستی بە سەرنجە', notChecked:'هێشتا نەپشکنراوە',
-    jobReminder:'بیرهێنانەوەی دابینکەر', jobHistory:'نوێکردنەوەی مێژووی مانگانە', jobCleanup:'پاککردنەوەی شەوانە', jobLogs:'پاککردنەوەی تۆماری ئەرکەکان',
+    diagnosticsHint:"تەنها پشکنینە: سێرڤەر، داتابەیس و ئەرکە خۆکارەکان. داواکارییە چاوەڕوانەکان ئەوانەن کە لەم مۆبایلەدان.", checkNow:'ئێستا بپشکنە', checking:'پشکنین…',
+    apiDatabase:"سێرڤەر و داتابەیس", needsAttention:'پێویستی بە سەرنجە', notChecked:'هێشتا نەپشکنراوە',
+    jobReminder:"بیرخەرەوەی دابینکەر", jobHistory:'نوێکردنەوەی مێژووی مانگانە', jobCleanup:'پاککردنەوەی شەوانە', jobLogs:'پاککردنەوەی تۆماری ئەرکەکان',
     jobLastRun:x=>'دوایین جار '+x, jobFailed:'بەم دواییە شکستی هێنا', jobDisabled:'ناچالاکە یان نییە', checkedAt:x=>'پشکنرا '+x+'.',
     deviceSaves:'داواکاریی چاوەڕوان لەم مۆبایلە', draftSaveState:'داواکاریی هاوبەش', retryDraft:'دووبارە پاشەکەوت بکە',
     orderAgain:'دیسان بنێرە', sentBy:n=>'لەلایەن '+n,
     heroEyebrow:'داواکاریی ئەمڕۆ', heroStat:n=>n+' کاڵا هەڵبژێردراوە',
     heroSub:(items,sups)=>items+' کاڵا لە '+sups+' دابینکەردا',
     heroStatWord:n=>'کاڵا هەڵبژێردراوە',
-    suppliersCovered:(a,b)=>a+' لە '+b+' دابینکەر کاڵایان بۆ هەڵبژێردراوە',
+
     allSuppliers:'هەموو',
     updateNow:'ئێستا نوێی بکەرەوە', later:'دواتر', updateTitle:'وەشانی نوێ ئامادەیە', updateReadyMsg:'وەشانێکی نوێی ئەپەکە ئامادەیە. ئێستا نوێی بکەیتەوە؟ داواکارییەکەت دەمێنێتەوە.',
     noSearchResults:'هیچ کاڵایەک لێرە نییە',
@@ -301,20 +292,15 @@ const T = {
     notifEnabledMsg:'ئاگادارکردنەوەکان بۆ ئەم ئامێرە چالاک کران.',
     notifDeniedMsg:'ئاگادارکردنەوەکان بلۆک کراون. لە ڕێکخستنەکانی مۆبایلەکەت، بەشی Notifications، بۆ Ricotta Orders چالاکیان بکە.',
     notifFailedMsg:'نەتوانرا ئاگادارکردنەوەکان چالاک بکرێن. تکایە دووبارە هەوڵبدەرەوە.',
-    
-    
 
-    
-    
     lastQty:n=>'دوایین: '+n,
     notifOn:'چالاکە', notifOff:'ناچالاکە', 
     notifUnsupported:'ئەم وێبگەڕە ناتوانێت ئاگادارکردنەوە وەربگرێت. لە ئایفۆن، ئەپەکە زیاد بکە بۆ Home Screen و لەوێوە بیکەرەوە.',
     notifNotConfigured:'ئاگادارکردنەوەکان هێشتا ڕێک نەخراون.',
-    
+
     reminderTimeLabel:'کاتی بیرخەرەوە (کاتی هەولێر)', 
-    
-    
-    reminderOff:'ناچالاک', everyDay:'هەموو ڕۆژێک', daysShort:['یەک','دوو','سێ','چوار','پێنج','هەینی','شەم'],
+
+    reminderOff:'ناچالاک', everyDay:'هەموو ڕۆژێک', daysShort:['یەکشەم','دووشەم','سێشەم','چوارشەم','پێنجشەم','هەینی','شەممە'],
     reminderShort:'بیرخەرەوە',
     supplierReminderLabel:'بیرخەرەوەی داواکاری بۆ ئەم دابینکەرە',
     reminderDaysLabel:'ڕۆژەکان',
@@ -323,7 +309,7 @@ const T = {
     reminderDaysRequired:'لانیکەم یەک ڕۆژ بۆ بیرخەرەوەکە هەڵبژێرە.',
     testSupplierReminder:'ناردنی بیرخەرەوەی تاقیکاری',
     confirmTestSupplier:'بیرخەرەوەی تاقیکاری بۆ ئەم دابینکەرە بنێردرێت بۆ هەموو ئامێرێکی چووەتە ژوورەوە کە ئاگادارکردنەوەی چالاکە؟',
-    
+
     notifPartialMsg:(s,f)=>'بۆ '+s+' ئامێر نێردرا؛ '+f+' نەگەیشت.',
     notifDeliveryFailed:'ئاگادارکردنەوەکە نەگەیشتە هیچ ئامێرێک. لەسەر ئەو ئامێرە ئاگادارکردنەوەکان ناچالاک بکە و دووبارە چالاکیان بکەوە.',
     notifNoDevicesLoggedOut:'تەنها ئەو ئامێرانەی چوونەتە دەرەوە ئاگادارکردنەوەیان چالاکە. بیرخەرەوەکان بۆ ئامێری چووەتە ژوورەوە دەنێردرێن.',
@@ -348,10 +334,8 @@ const T = {
     cmAdd:n=>n+' زیاد بکە', cmType:'بڕێک بنووسە', cmRemove:'لابردن لە داواکاری',
     weekdays:['یەکشەممە','دووشەممە','سێشەممە','چوارشەممە','پێنجشەممە','هەینی','شەممە'],
 
-
-    
     adminTitle:'ئەدمین', adminPinChange:'گۆڕین',
-    adminPinsHint:'کۆدی نوێ ئەو کەسە لە ئامێرەکانی تری دەباتە دەرەوە.', pinChangeTitle:n=>'کۆدی نوێ بۆ '+n,
+    pinChangeTitle:n=>'کۆدی نوێ بۆ '+n,
     pinCurrentLabel:'کۆدی ئێستای خۆت', pinNewLabel:'کۆدی نوێ (6 ژمارە)', pinRepeatLabel:'دووبارە کۆدی نوێ',
     pinMismatch:'دوو کۆدە نوێیەکە وەک یەک نین.', pinCurrentWrong:'کۆدی ئێستات هەڵەیە.',
     pinChangedSelf:'کۆدەکەت گۆڕدرا. ئامێرەکانی ترت چوونە دەرەوە.', pinChangedOther:n=>'کۆدی '+n+' گۆڕدرا. '+n+' بە کۆدە نوێیەکە دەچێتەوە ژوورەوە.',
@@ -361,10 +345,10 @@ const T = {
     ricoName:'ریکۆ', ricoTalkingWith:n=>'قسەکردن لەگەڵ '+n, ricoWroteFirst:'ریکۆ نووسی',
     ricoAutoOrderLabel:'با ریکۆ داواکارییەکەم پڕ بکاتەوە', ricoNewChat:'گفتوگۆی نوێ',
     ricoLateSub:(time,h,m)=>'کاتی '+time+' بوو · هێشتا نەنێردراوە ('+[h?h+' کاتژمێر':'',m||!h?m+' خولەک':''].filter(Boolean).join(' و ')+')',
-    
+
     ricoGreeting:(part,name)=>({morning:'بەیانیت باش',afternoon:'ڕۆژت باش',evening:'ئێوارەت باش'})[part]+(name?'، '+name:'')+'.',
     ricoSuggestions:['داواکاریی ئەمڕۆ ئامادە بکە','داواکارییەکەم بپشکنە','ئەم هەفتەیە چۆن بوو؟','جاری پێشوو چیمان داوا کرد؟','کاڵایەکی نوێ زیاد بکە','ئەمڕۆ هیچ داواکارییەک دواکەوتووە؟'],
-    
+
     ricoStatus:{thinking:'بیر دەکاتەوە…', find_items:'سەیری کاڵاکانت دەکات…', list_suppliers:'دابینکەرەکانت دەپشکنێت…', order_history:'مێژووی داواکارییەکان دەخوێنێتەوە…',
       ordering_patterns:'ڕۆژە قەرەباڵغەکانت هەژمار دەکات…', suggest_order:'پێشنیارێک ئامادە دەکات…', recent_changes:'دوایین گۆڕانکارییەکان دەپشکنێت…',
       propose_order_draft:'داواکارییەکە ئامادە دەکات…', propose_new_item:'کاڵا نوێیەکە ئامادە دەکات…', propose_edit_item:'گۆڕانکارییەکە ئامادە دەکات…',
@@ -379,10 +363,10 @@ const T = {
     ricoCardNewItem:'کاڵای نوێ', ricoCardEditItem:'گۆڕینی کاڵا', ricoCardNewSupplier:'دابینکەری نوێ', ricoCardNotify:'ئاگادارکردنەوە بۆ هەموو ئامێرەکان',
     ricoOpenScreen:n=>'کردنەوەی '+n, ricoAutoTag:'ریکۆ پڕی کردەوە',
     ricoPlaceholder:'نامەیەک بۆ ریکۆ بنووسە…', ricoStop:'ڕاگرتن', ricoSend:'ناردن',
-    ricoHistory:'مێژووی گفتوگۆ', ricoRecentChats:'دوایین گفتوگۆکان', ricoUntitled:'گفتوگۆ',
+    ricoHistory:'مێژووی گفتوگۆ', ricoUntitled:'گفتوگۆ',
     ricoHistoryEmpty:'هێشتا هیچ گفتوگۆیەک پاشەکەوت نەکراوە. گفتوگۆکانت لەگەڵ ریکۆ بۆ 90 ڕۆژ لێرە دەمێننەوە.',
     ricoDeleteChat:'سڕینەوەی ئەم گفتوگۆیە', ricoDeleteAll:'سڕینەوەی هەموو گفتوگۆکان', ricoDeleteAllConfirm:'دووبارە دابگرە بۆ سڕینەوەی هەموو گفتوگۆکانت',
-    ricoChatLoadFailed:'نەتوانرا ئەم گفتوگۆیە بکرێتەوە. هێڵەکە بپشکنە و دووبارە هەوڵ بدەوە.', ricoCardOld:'لە گفتوگۆیەکی پێشوو',
+    ricoChatLoadFailed:"نەتوانرا ئەم گفتوگۆیە بکرێتەوە. هێڵەکە بپشکنە و دووبارە هەوڵ بدەرەوە.", ricoCardOld:'لە گفتوگۆیەکی پێشوو',
     ricoAutoOrderConfirm:'ڕێگە بە ریکۆ دەدەیت خۆی داواکاریی ئەمڕۆ لەم ئامێرە پڕ بکاتەوە؟ ریکۆ هەرگیز هیچ شتێک بۆ دابینکەران نانێرێت. تۆ دەیپشکنیت و دەینێریت. دەتوانیت هەر پڕکردنەوەیەک بگەڕێنیتەوە.',
     ricoAllow:'ڕێگەدان', ricoAutoOn:'ئێستا ریکۆ دەتوانێت داواکارییەکەت پڕ بکاتەوە', ricoAutoOff:'ریکۆ پێش پڕکردنەوەی داواکاری لێت دەپرسێت',
     ricoPreparePrompt:n=>'داواکاریی ئەمڕۆی '+n+' ئامادە بکە.',
@@ -397,12 +381,7 @@ const T = {
     ricoSuggestDue:(sup,time)=>'کاتی '+sup+' '+time+' بوو و هێشتا نەنێردراوە.',
     ricoSuggestAdd:n=>'زیادکردنی '+n+' کاڵا', ricoSuggestAdded:(n,sup)=>n+' کاڵا لە '+sup+' زیادکرا', ricoSuggestDismiss:'شاردنەوەی پێشنیار',
     ricoWorkedSteps:n=>n+' هەنگاو تەواو کرا',
-    
-    
-    
-    
-    
-    
+
     ricoSetsDraft:'تەنها ئەم کاڵایانە دەگۆڕێن؛ باقی ڕەشنووسەکەت وەک خۆی دەمێنێتەوە.', ricoApplyChanges:'جێبەجێکردنی گۆڕانکارییەکان',
     ricoOpenSend:'کردنەوەی ناردن بۆ دابینکەران',
     chooseSupplier:'دابینکەرێک هەڵبژێرە',
@@ -416,18 +395,18 @@ const T = {
     rrCheckNow:'افحص الآن', rrChecking:'جارٍ الفحص...', rrCheckAsked:'سيقرأ ريكو الآن الموردين والمخازن والمواد والوحدات من ريكوتا ريستورانت.', rrCheckAfterJob:'سيفحص ريكو ريكوتا ريستورانت فور انتهائه مما يعمل عليه.', rrCheckRunning:'يقرأ ريكو الموردين والمخازن والمواد والوحدات من ريكوتا ريستورانت...',
     rrCheckNoAnswer:'لم يرد ريكو على الفحص. حاول مرة أخرى، أو تأكد أنه يعمل على الماك.', rrCheckRicoOff:'ريكو متوقف. شغّله على الماك أولاً.', rrCheckOld:'لاستخدام «افحص الآن»، حدّث ريكو على الماك ثم شغّله من جديد.',
     rrCheckFailed:(w,e)=>'لم يتمكن ريكو من فحص ريكوتا ريستورانت عند '+w+(e?': '+e:'.'), rrCheckDone:w=>'تم فحص ريكوتا ريستورانت عند '+w+'. القوائم محدّثة.', rrCheckNothing:w=>'تم الفحص عند '+w+': لم يتغير شيء في ريكوتا ريستورانت.', rrCheckFound:(w,p)=>'تم الفحص عند '+w+': '+p+'.',
-    rrCheckItemsNew:n=>n===1?'مادة جديدة واحدة':n+' مواد جديدة', rrCheckItemsChanged:n=>n===1?'تغيّرت وحدات مادة واحدة':'تغيّرت وحدات '+n+' مواد', rrCheckItemsGone:n=>n===1?'أزيلت مادة واحدة':'أزيلت '+n+' مواد',
-    rrCheckSupNew:n=>n===1?'مورد جديد واحد':n+' موردين جدد', rrCheckSupGone:n=>n===1?'أزيل مورد واحد':'أزيل '+n+' موردين', rrCheckZoneNew:n=>n===1?'مخزن جديد واحد':n+' مخازن جديدة', rrCheckZoneGone:n=>n===1?'أزيل مخزن واحد':'أزيلت '+n+' مخازن',
+    rrCheckItemsNew:n=>AR_N(n,'مادة جديدة واحدة','مادتان جديدتان','مواد جديدة','مادة جديدة'), rrCheckItemsChanged:n=>'تغيّرت وحدات '+AR_N(n,'مادة واحدة','مادتين','مواد','مادة'), rrCheckItemsGone:n=>'أُزيلت '+AR_N(n,'مادة واحدة','مادتان','مواد','مادة'),
+    rrCheckSupNew:n=>AR_N(n,'مورّد جديد واحد','مورّدان جديدان','مورّدين جدد','مورّدًا جديدًا'), rrCheckSupGone:n=>'أُزيل '+AR_N(n,'مورّد واحد','مورّدان','مورّدين','مورّدًا'), rrCheckZoneNew:n=>AR_N(n,'مخزن جديد واحد','مخزنان جديدان','مخازن جديدة','مخزنًا جديدًا'), rrCheckZoneGone:n=>'أُزيل '+AR_N(n,'مخزن واحد','مخزنان','مخازن','مخزنًا'),
     rrCheckNewLabel:'جديد', rrCheckChangedLabel:'تغيّر', rrListSep:'، ',
-    rrLimBig:'اسأل مرتين فوق (دينار)', rrLimJump:'نبّه عند تغير السعر بنسبة (%)', rrLimRateMin:'أدنى سعر للدولار', rrLimRateMax:'أعلى سعر للدولار', rrLimSave:'حفظ الحدود', rrLimBad:'تحقق من الحدود: أرقام صحيحة، وأعلى سعر ليس أقل من الأدنى.',
+    rrLimBig:"تأكيد ثانٍ فوق (دينار)", rrLimJump:'نبّه عند تغير السعر بنسبة (%)', rrLimRateMin:'أدنى سعر للدولار', rrLimRateMax:'أعلى سعر للدولار', rrLimSave:'حفظ الحدود', rrLimBad:'تحقق من الحدود: أرقام صحيحة، وأعلى سعر ليس أقل من الأدنى.',
     rrTelegram:'تيليغرام (Ricotta Helper)', rrTgConnected:'متصل: يرسل ريكو الإيصالات للموافقة والتقارير هناك', rrTgNotConnected:'غير متصل بعد', rrTgNotSetUp:'لم يُضبط مفتاح البوت على الخادم بعد', rrTgConnect:'ربط تيليغرام', rrTgReconnect:'ربط مرة أخرى',
     rrPartOf:(a,b)=>a+' من '+b,
-    rrWarnPressed:'ضغط ريكو Save لهذا الإيصال (أو لإيصال بنفس رقم الفاتورة) في ريكوتا ريستورانت. تحقق من Invoices هناك أولاً: أرسله فقط إذا لم يكن موجوداً.', tfWarnPressed:'ضغط ريكو Move it لهذا التحويل. تحقق من Recent transfers في ريكوتا ريستورانت أولاً: أرسله فقط إذا لم يُنقل.', tfWarnRepeat:at=>'نفس التحويل (نفس المخازن واليوم والمواد والكميات) أُرسل سابقاً في '+at+'. أرسله مرة أخرى فقط إذا حدث فعلاً مرتين.', tfUsually:q=>'(عادةً حوالي '+q+')', tfWarnLow:q=>'أقل بكثير مما يُنقل عادةً (عادةً حوالي '+q+'). خطأ في الكتابة؟', tfWarnRoute:(f,to)=>'لم يُنقل أبداً من '+f+' إلى '+to+' خلال آخر 3 أسابيع. هل المخزن صحيح؟', rrWarnQtyHigh:(x,q)=>x+' أضعاف الكمية المعتادة (عادةً حوالي '+q+'). خطأ في الكتابة؟', rrWarnQtyLow:q=>'أقل بكثير مما يصل عادةً (عادةً حوالي '+q+'). خطأ في الكتابة؟', tfUsuallyZone:(z,q)=>'('+z+' يأخذ عادةً حوالي '+q+')', tfWarnLowZone:(z,q)=>'أقل بكثير مما يأخذه '+z+' عادةً (حوالي '+q+'). خطأ في الكتابة؟', tfUsuallyTo:z=>'يذهب عادةً إلى '+z+'.', tfUsuallyGets:(z,q)=>z+' يأخذ عادةً حوالي '+q, tfNeverTo:z=>'لا يذهب أبداً إلى '+z, tfAvailLabel:'متوفر', tfOnlyHave:'فقط', tfInZone:z=>'في '+z, tfForDay:d=>'لليوم السابق، '+d, tfToday:'لليوم', tfApproveTitle:n=>'نقل '+n+' مادة؟', rrApproveTitle:'الموافقة على هذا الإيصال؟', shortRrSend:'الإيصالات، التحويلات: أرسل إلى ريكو', shortRrAdd:'الإيصالات، التحويلات: سطر جديد', shortRrDup:'نفس المادة في سطر جديد', shortRrDel:'احذف هذا السطر', shortRrUnit:'افتح وحدة هذا السطر', shortRrYest:'التحويلات: سجل لليوم السابق', shortRrApprove:'المرسل: وافق', shortRrBack:'المرسل: عد إلى النموذج', rrOfflineShort:'لا يوجد اتصال', rrOfflineNote:'يمكنك متابعة الكتابة. ما ترسله ينتظر على هذا الهاتف ويُرسل عند عودة الاتصال.', rrCopyFrom:d=>'القوائم والمخزون حتى '+d+'.', rrWaitingToSend:'بانتظار الإرسال', rrSendNow:'أرسل', rrSendAll:'أرسل الكل', rrSavedOffline:'لا يوجد اتصال: حُفظ على هذا الهاتف. أرسله من بانتظار الإرسال عند عودة الاتصال.', rrKeepDraft:'احفظ كمسودة', rrKeepDraftHint:'احفظ هذا في المسودات وابدأ واحداً جديداً', rrDraftKept:'حُفظ في المسودات', tfWhichDay:'لأي يوم هذا؟', tfWrittenEarlier:d=>'كُتب هذا ليوم '+d+'. سجله لليوم السابق أم لليوم؟', tfForYesterdayBtn:'لليوم السابق', tfForTodayBtn:'لليوم', tfTooOld:d=>'كُتب هذا ليوم '+d+'. ريكوتا ريستورانت يسجل فقط اليوم أو اليوم السابق. سجله لليوم؟', histDays:'حسب اليوم', daysEmpty:'لا توجد إيصالات أو تحويلات بعد.', dayReceipts:n=>n===1?'إيصال':'إيصالات', dayTransfers:n=>n===1?'تحويل':'تحويلات', daySaved:n=>n+' محفوظ', dayMoved:n=>n+' منقول', rsTfAuto:'النقل دون سؤال ثانٍ', rsTfAutoAsk:'التحويلات التي ترسلها ستُنقل دون موافقة ثانية. ستظل ترى ما سيُنقل قبل الإرسال، وسيظل ريكو يتوقف إذا كان هناك أي خطأ.', rsTurnOn:'تشغيل', rsLimits:'حدود الإيصالات', rsEdit:'تعديل', rsStandard:'القياسي', rsRate:'سعر الدولار', tfSendMove:'أرسل وانقل', tfApproval:'الموافقة', tfApprovalAuto:w=>'عند الإرسال'+(w?' من '+w:'')+'، دون موافقة ثانية', tfNoSecond:'دون موافقة ثانية', shortRrTitle:'أسطر الإيصالات والتحويلات', shortRrUp:'نفس الخانة في السطر الأعلى', shortRrDown:'نفس الخانة في السطر الأسفل', shortChange:'تغيير', shortChangeHint:'اضغط تغيير، ثم اضغط المفاتيح الجديدة مع ⌥ أو ⌘ أو Ctrl. Esc يبقي القديمة. القياسي يعيدها كلها.', shortPress:'اضغط المفاتيح…', shortNeedsMod:'استخدم ⌥ أو ⌘ أو Ctrl مع مفتاح، حتى لا يعيق الكتابة أبداً.', shortTaken:a=>'هذه المفاتيح مستخدمة بالفعل لـ: '+a, shortStdDone:'عادت الاختصارات إلى القياسي', fileCompany:'Ricotta Restaurant', fileInternal:'وثيقة داخلية', fileCheckedBy:'دقق بواسطة', fileApprovedBy:'اعتمد بواسطة', fileDateLine:'التاريخ: ____________', dayFileTitle:d=>'الإيصالات والتحويلات، '+d, dayFileSub:(r,s,t,i)=>r+' إيصالات محفوظة (IQD '+s+') · '+t+' تحويلات ('+i+' مواد)', dayFileName:'يوم ريكوتا', dayFileReceipts:'الإيصالات', dayFileSpent:'المستلم، IQD', dayFileTransfers:'التحويلات', ricoFileDay:'الإيصالات والتحويلات', ricoFileTransfers:'التحويلات', ricoFileReceipts:'الإيصالات', ricoFileReceipt:'إيصال', ricoFileNone:'لا يوجد شيء لهذا الملف.', rrFileOne:(s,i)=>s+(i?' · #'+i:''), rrFileDay:d=>'الإيصالات، '+d, rrFileDaySub:(n,s)=>n+' إيصالات محفوظة · IQD '+s, rrItemsLabel:'المواد', rsAlwaysYou:'توافق على كل واحد', rsTfAutoShort:'الإرسال إلى ريكو هو الموافقة. يتوقف إذا كان هناك خطأ.', adGroupNow:'الآن', adGroupActivity:'النشاط', adGroupManage:'الإدارة', stCheckThis:'تحقق من هذا', feat_ricoLively:'حركات وتعابير ريكو', feat_ricoLively_hint:'عند الإيقاف: ريكو نجمة بسيطة لا تتحرك.', shortRrUnitMenu:'على الكمية: قائمة الوحدة ثم الوحدة التالية', shortRrNext:'على الكمية: المادة التالية', rrStockOld:d=>'آخر قراءة للمخزون '+d+'. شغّل ريكو لقراءته من جديد؛ قد تكون الكميات قديمة.', rrNotLearnt:'لم يتعلم ريكو الكميات المعتادة مؤخراً.', rrNotSignedIn:'ريكو يعمل لكنه غير مسجل الدخول في ريكوتا ريستورانت. سجّل دخوله على الماك.', ricoFilePhotos:'الصور', adServer:'الخادم', adSrvDb:'قاعدة البيانات', adSrvFiles:'الصور', rrScan:'من صورة', rrScanFailed:'لم تُقرأ الصورة. التقط صورة أوضح، أو اكتبها.', rrScanned:n=>'قُرئ '+n+' أسطر من الصورة. تحقق من كل سطر قبل الإرسال.', adSrvDbHint:'كل طلباتك وإيصالاتك وتحويلاتك وإعداداتك.', adSrvFilesHint:'صور ريكو للإيصالات والتحويلات، تبقى 60 يوماً.', adSrvOf:(a,b)=>a+' من '+b, adSrvRoom:a=>'متبقي '+a, adSrvOk:'مساحة واسعة', adSrvWarn:'يمتلئ قريباً', adSrvFull:'شبه ممتلئ', rrNoneToday:'لم يُرسل شيء اليوم بعد.', tfNoneToday:'لا توجد تحويلات اليوم بعد.', rrSeeHistory:'عرض الكل في السجل', rrRetry:'إعادة المحاولة', rrRetryCheckFirst:'تمت الموافقة على هذا، لذلك ربما ضغط ريكو Save. تحقق من Ricotta Restaurant أولاً حتى لا يُحفظ مرتين.', tfRetryCheckFirst:'تمت الموافقة على هذا، لذلك ربما ضغط ريكو Move it. تحقق من Recent transfers في Ricotta Restaurant أولاً حتى لا يُنقل شيء مرتين.', rrRetryCopy:'استخدم Copy لإصلاحه وإرساله كواحد جديد.', rrAutoStarting:'يتم تشغيل ريكو', feat_ricoAutoStart:'تشغيل ريكو عند فتح التطبيق', feat_ricoAutoStart_hint:'إذا كان ريكو متوقفاً والماك يعمل، يبدأ من تلقاء نفسه عند فتح التطبيق.', rrPracticeRun:'تجربة، لم يُحفظ شيء', rrKeysHint:m=>'Tab يتنقل بين النتائج وEnter يختار واحدة. Enter ينتقل إلى الحقل التالي. '+m+' + Enter للإرسال. Tab من الكمية ينتقل إلى الوحدة. اضغط ? لكل الاختصارات.', rrNoMatch:'لا توجد نتائج', rrSearchSupplier:'ابحث عن مورّد', rrMadeIn:'أُنشئ في', rrMadeAt:'وقت الإنشاء', rrSentAt:'أُرسل إلى ريكو', rrApprovedAt:'تمت الموافقة', rrSavedAt:'حُفظ', rrSource_app:'تطبيق ريكوتا أوردرز', rrSource_telegram:'تيليجرام', rrSource_rico:'دردشة ريكو', rrFilter_src:'أُنشئ في', rrFilter_mode:'حقيقي أو تجربة', rrFilter_by:'أنشأه', rrAllPlaces:'التطبيق وتيليجرام', rrModeReal:'حقيقي', rrModePractice:'تجربة', rrModePracticeLong:'تجربة (لم يُحفظ شيء)', rrClearFilters:'مسح', rrNoMatchFilter:'لا توجد إيصالات تطابق هذه الفلاتر.', rrRicoMode:'نفّذه ريكو', rrRicoActivity:'ماذا فعل ريكو', rrNoActivity:'لا شيء بعد. يظهر عمل ريكو هنا.', rrByHimself:'ريكو بنفسه', rrEvPressed:'ضُغط', rrEvReceipt:'إيصال', histOrders:'الطلبات', rrHistEmpty:'لا توجد إيصالات بعد. تظهر الإيصالات هنا بعد إرسالها إلى ريكو.', rrOpenReceipt:'فتح الإيصال', rrPrevPhoto:'الصورة السابقة', rrNextPhoto:'الصورة التالية', rrClosePhoto:'إغلاق', rrInInvoices:tab=>'في Invoices · '+tab, rrFindIt:(inv,when)=>'فاتورة #'+inv+(when?' · حُفظت '+when:''), rrWarnUnitName:(u,f,b)=>'الوحدة "'+u+'" تُحسب '+f+' '+b+'. اسمها لا يطابق حجمها: تأكد أنها الوحدة المقصودة.', rrWarnGramPrice:(m,u)=>m+' لكل '+u+' سعر مرتفع جداً أو غريب. هل أنت متأكد؟', rrWarnUnitPrice:(x,more,b)=>x+' مرة '+(more?'أكثر':'أقل')+' لكل '+b+' من المرة السابقة. تحقق من الوحدة.', tfTitle:'التحويلات', tfTitleOne:'تحويل', tfStorages:'المخازن', tfFrom:'من مخزن', tfTo:'إلى مخزن', tfChoose:'اختر', tfWhat:'ما الذي يُنقل', tfPickFrom:'اختر مخزن المصدر لاختيار ما يُنقل.', tfPickTo:'اختر مخزن الوجهة لإضافة المواد.', tfAmount:'الكمية', tfAmountHint:'الكمية', tfYesterday:'تسجيل لليوم السابق', tfYesterdayHint:'يُحتسب في التقارير على اليوم السابق. المخزون يُنقل الآن.', tfYesterdayOn:d=>'مسجل لليوم السابق، '+d+'. المخزون يُنقل الآن.', tfYesterdayAsk:d=>'تسجيل هذا التحويل لليوم السابق ('+d+')؟ سيُحتسب على ذلك اليوم في التقارير.', tfYesterdayYes:'نعم، لليوم السابق', tfForYesterday:'لليوم السابق', tfItemsLabel:'المواد', tfSend:'إرسال إلى ريكو', tfDiscardAsk:'حذف هذا التحويل؟ لم يُرسل شيء.', tfMovedToday:n=>'تم نقل '+n+' تحويل', tfItemsMoved:n=>n+' مادة', tfStockAt:w=>'المخزون من ريكوتا ريستورانت، قُرئ '+w+'. يتحقق ريكو منه مباشرة قبل النقل.', tfNoStock:'لم يقرأ ريكو المخزون من ريكوتا ريستورانت بعد. شغّل ريكو على الماك.', tfPracticeRun:'تجربة، لم يُنقل شيء', tfNoFrom:'من', tfNoTo:'إلى', tfErrFrom:'اختر مخزن المصدر', tfErrTo:'اختر مخزن الوجهة', tfErrSame:'يجب أن يكون المخزنان مختلفين', tfErrItem:'اختر مادة موجودة في مخزن المصدر', tfErrUnitUnclear:'اسم هذه الوحدة مكرر في ريكوتا ريستورانت: اختر وحدة أخرى', tfErrQty:'اكتب الكمية', tfErrNotEnough:(n,h)=>'يطلب '+n+' والمتوفر '+h+' فقط', tfWarnAll:(h,z)=>'الكمية كلها ('+h+')، لن يبقى شيء'+(z?' في '+z:''), tfWarnUnusual:x=>'أكثر بـ '+x+' مرة من المعتاد. تحقق من الكمية', tfPhoto_before:'قبل النقل', tfPhoto_after:'بعد النقل', tfPhoto_problem:'حيث توقف ريكو', tfSeenRecent:'أكد ريكوتا ريستورانت النقل', tfNotConfirmed:'تم النقل. تحقق من Recent transfers في ريكوتا ريستورانت', tfDay:'يُحتسب في', tfMovedAt:'تم النقل', tfCancelOne:'إلغاء التحويل', tfApprove:'الموافقة والنقل', tfTooLate:'فات الأوان: نقله ريكو بالفعل.', tfCancelAsk:'إلغاء هذا التحويل؟ يمسح ريكو النموذج ولا يُنقل شيء.', tfHistEmpty:'لا توجد تحويلات بعد.', tfOpenOne:'فتح التحويل', tfFileTitle:d=>'التحويلات · '+d, tfFileSub:(n,i,w)=>n+' تحويل، '+i+' مادة · '+w, tfFileName:'التحويلات', role_transfers:'التحويلات', role_transfersHint:'إنشاء التحويلات بين المخازن والموافقة على صور ريكو', rrEvTransfer:'تحويل', tfStatus_draft:'مسودة', tfStatusHint_draft:'', tfStatus_queued:'بانتظار ريكو', tfStatusHint_queued:'يأخذه ريكو فور تشغيل الماك.', tfStatus_filling:'ريكو يعبئه', tfStatusHint_filling:'ريكو يعبئه في Move between storages.', tfStatus_review:'الصورة جاهزة للتحقق', tfStatusHint_review:'عبّأه ريكو في ريكوتا ريستورانت. لم يُنقل شيء بعد. تحقق من الصورة ثم وافق.', tfStatus_approved:'تمت الموافقة، ريكو ينقله', tfStatusHint_approved:'يتحقق ريكو من المخزون مرة أخرى ثم يضغط Move it.', tfStatus_moving:'ريكو ينقله', tfStatusHint_moving:'ريكو ينقله ويتحقق من Recent transfers.', tfStatus_moved:'تم النقل', tfStatusHint_moved:'', tfStatus_problem:'توقف', tfStatusHint_problem:'', tfStatus_cancelled:'أُلغي', tfStatusHint_cancelled:'لم يُنقل شيء في ريكوتا ريستورانت.', rrTitle:'الإيصالات', rrToday:'اليوم', rrSavedToday:n=>'تم حفظ '+n+' إيصال', rrNeedsYou:'بانتظارك', rrDrafts:'المسودات', rrNoCatalog:'لم يقرأ ريكو قوائم ريكوتا ريستورانت بعد. شغّل ريكو على الماك.', rrRicoStopped:'ريكو متوقف', rrRicoOff:'ريكو مطفأ (الماك مغلق)', rrRicoBusy:'ريكو يعمل', rrRicoOn:'ريكو جاهز', rrNoSupplier:'لا يوجد مورد بعد', rrBack:'العودة إلى الإيصالات', rrStatus_draft:'مسودة', rrStatus_queued:'بانتظار ريكو', rrStatus_filling:'ريكو يملؤه', rrStatus_review:'الصورة جاهزة للتحقق', rrStatus_approved:'تمت الموافقة، ريكو يحفظه', rrStatus_saving:'ريكو يحفظه', rrStatus_saved:'محفوظ', rrStatus_problem:'توقف', rrStatus_cancelled:'ملغى', rrStatusHint_draft:'', rrStatusHint_queued:'يأخذه ريكو فور تشغيل الماك.', rrStatusHint_filling:'ريكو يكتبه في ريكوتا ريستورانت.', rrStatusHint_review:'ملأه ريكو في ريكوتا ريستورانت. لم يُحفظ شيء بعد. تحقق من الصورة ثم وافق.', rrStatusHint_approved:'سيضغط ريكو Receive & send to finance.', rrStatusHint_saving:'ريكو يحفظه ويتحقق من Invoices.', rrStatusHint_cancelled:'لم يُحفظ شيء في ريكوتا ريستورانت.', rrStatusHint_saved:'', rrStatusHint_problem:'', rrItem:'المادة', rrSearchItem:'ابحث عن مادة', rrRemoveItem:n=>'إزالة المادة '+n, rrUnit:'الوحدة', rrBaseUnit:'الوحدة الأساسية', rrQty:'الكمية', rrUnitCost:'سعر الوحدة', rrTotal:'المجموع', rrDetails:'تفاصيل الإيصال', rrSupplier:'المورد', rrZone:'المخزن', rrInvoice:'رقم الفاتورة', rrInvoiceHint:'مثلاً 1024', rrCurrency:'العملة', rrRate:'السعر: $1 = دينار', rrDelivery:'أجرة التوصيل', rrNoDelivery:'بدون توصيل', rrItems:'المواد المستلمة', rrItemCount:n=>n+' مادة', rrAddItem:'إضافة مادة', rrPlusDelivery:(a,b)=>a+' + '+b+' توصيل', rrSend:'استلام وإرسال إلى المالية', rrWarnPrice:(p,b)=>(p>0?'ارتفع السعر ':'انخفض السعر ')+Math.abs(p)+'% (آخر مرة '+b+')', rrWarnDuplicate:n=>'نفس المادة رقم '+n, rrWarnTinyUnit:'هذه الوحدة تساوي غراماً أو قطعة واحدة فقط. تأكد أنها الصحيحة.', rrWarnRate:(a,b)=>'سعر الدولار خارج '+a+' إلى '+b, rrWarnBig:x=>'إيصال كبير: IQD '+x, rrErrSupplier:'اختر مورداً', rrErrInvoice:'اكتب رقم الفاتورة (أرقام فقط)', rrErrZone:'اختر مخزناً', rrErrRate:'اكتب سعر الدولار', rrErrDelivery:'تحقق من أجرة التوصيل', rrErrNoLines:'أضف مادة واحدة على الأقل', rrErrItem:'اختر مادة', rrErrUnit:'اختر وحدة', rrErrQty:'اكتب الكمية', rrErrCost:'اكتب سعر الوحدة', rrLineN:n=>'المادة '+n, rrDiscardAsk:'حذف هذا الإيصال؟ لم يُرسل شيء.', rrDiscard:'حذف', rrFixFirst:'صحّح هذه أولاً', rrCheckThese:'تحقق من هذه قبل الإرسال', rrSendAnyway:'أرسل على أي حال', rrBigAgain:x=>'هذا الإيصال IQD '+x+'. هل ترسله؟', rrSureTitle:'هل أنت متأكد؟', rrErrAlreadySent:'هذه الفاتورة من هذا المورد أُرسلت سابقاً.', rrSent:'أُرسل إلى ريكو', rrPhoto_before:'قبل الحفظ', rrPhoto_after:'بعد الحفظ', rrPhoto_invoices:'في Invoices', rrPhoto_problem:'حيث توقف ريكو', rrPhotos:'الصور', rrWhatRicoDid:'ما فعله ريكو', rrCancelReceipt:'إلغاء الإيصال', rrApprove:'موافقة وحفظ', rrCopy:'إنشاء نسخة', rrTooLate:'فات الأوان: حفظه ريكو في ريكوتا ريستورانت.', rrCancelAsk:'إلغاء هذا الإيصال؟ سيتجاهل ريكو ما ملأه.', rrSettingsTitle:'ريكو في ريكوتا ريستورانت', rrRicoMac:'ريكو على الماك', rrStop:'إيقاف ريكو', rrStopHint:'لا يأخذ ريكو إيصالات جديدة حتى تطفئ هذا.', rrSettingsSaved:'تم الحفظ', role_receipts:'الإيصالات', role_receiptsHint:'إنشاء الإيصالات والموافقة على صور ريكو',
+    rrWarnPressed:'ضغط ريكو Save لهذا الإيصال (أو لإيصال بنفس رقم الفاتورة) في ريكوتا ريستورانت. تحقق من Invoices هناك أولاً: أرسله فقط إذا لم يكن موجوداً.', tfWarnPressed:'ضغط ريكو Move it لهذا التحويل. تحقق من Recent transfers في ريكوتا ريستورانت أولاً: أرسله فقط إذا لم يُنقل.', tfWarnRepeat:at=>'نفس التحويل (نفس المخازن واليوم والمواد والكميات) أُرسل سابقاً في '+at+'. أرسله مرة أخرى فقط إذا حدث فعلاً مرتين.', tfUsually:q=>'(عادةً حوالي '+q+')', tfWarnLow:q=>'أقل بكثير مما يُنقل عادةً (عادةً حوالي '+q+'). خطأ في الكتابة؟', tfWarnRoute:(f,to)=>'لم يُنقل أبداً من '+f+' إلى '+to+' خلال آخر 3 أسابيع. هل المخزن صحيح؟', rrWarnQtyHigh:(x,q)=>x+' أضعاف الكمية المعتادة (عادةً حوالي '+q+'). خطأ في الكتابة؟', rrWarnQtyLow:q=>'أقل بكثير مما يصل عادةً (عادةً حوالي '+q+'). خطأ في الكتابة؟', tfUsuallyZone:(z,q)=>'('+z+' يأخذ عادةً حوالي '+q+')', tfWarnLowZone:(z,q)=>'أقل بكثير مما يأخذه '+z+' عادةً (حوالي '+q+'). خطأ في الكتابة؟', tfUsuallyTo:z=>'يذهب عادةً إلى '+z+'.', tfUsuallyGets:(z,q)=>z+' يأخذ عادةً حوالي '+q, tfNeverTo:z=>'لا يذهب أبداً إلى '+z, tfAvailLabel:'متوفر', tfOnlyHave:'فقط', tfInZone:z=>'في '+z, tfForDay:d=>'لأمس، '+d, tfToday:'لليوم', tfApproveTitle:n=>'نقل '+AR_N(n,'مادة واحدة','مادتين','مواد','مادة')+'؟', rrApproveTitle:'الموافقة على هذا الإيصال؟', shortRrSend:'الإيصالات، التحويلات: أرسل إلى ريكو', shortRrAdd:'الإيصالات، التحويلات: سطر جديد', shortRrDup:'نفس المادة في سطر جديد', shortRrDel:'احذف هذا السطر', shortRrUnit:'افتح وحدة هذا السطر', shortRrYest:"التحويلات: سجل لأمس", shortRrApprove:'المرسل: وافق', shortRrBack:'المرسل: عد إلى النموذج', rrOfflineShort:'لا يوجد اتصال', rrOfflineNote:'يمكنك متابعة الكتابة. ما ترسله ينتظر على هذا الهاتف ويُرسل عند عودة الاتصال.', rrCopyFrom:d=>'القوائم والمخزون حتى '+d+'.', rrWaitingToSend:'بانتظار الإرسال', rrSendNow:'أرسل', rrSendAll:'أرسل الكل', rrSavedOffline:'لا يوجد اتصال: حُفظ على هذا الهاتف. أرسله من بانتظار الإرسال عند عودة الاتصال.', rrKeepDraft:'احفظ كمسودة', rrKeepDraftHint:'احفظ هذا في المسودات وابدأ واحداً جديداً', rrDraftKept:'حُفظ في المسودات', tfWhichDay:'لأي يوم هذا؟', tfWrittenEarlier:d=>'كُتب هذا ليوم '+d+'. أسجله لأمس أم لليوم؟', tfForYesterdayBtn:"لأمس", tfForTodayBtn:'لليوم', tfTooOld:d=>'كُتب هذا ليوم '+d+'. ريكوتا ريستورانت يسجل اليوم أو أمس فقط. أسجله لليوم؟', histDays:'حسب اليوم', daysEmpty:'لا توجد إيصالات أو تحويلات بعد.', dayReceipts:n=>n===1?'إيصال':'إيصالات', dayTransfers:n=>n===1?'تحويل':'تحويلات', daySaved:n=>n+' محفوظ', dayMoved:n=>n+' منقول', rsTfAuto:'النقل دون سؤال ثانٍ', rsTfAutoAsk:'التحويلات التي ترسلها ستُنقل دون موافقة ثانية. ستظل ترى ما سيُنقل قبل الإرسال، وسيظل ريكو يتوقف إذا كان هناك أي خطأ.', rsTurnOn:'تشغيل', rsLimits:'حدود الإيصالات', rsEdit:'تعديل', rsStandard:'القياسي', rsRate:'سعر الدولار', tfSendMove:'أرسل وانقل', tfApproval:'الموافقة', tfApprovalAuto:w=>'عند الإرسال'+(w?' من '+w:'')+'، دون موافقة ثانية', tfNoSecond:'دون موافقة ثانية', shortRrTitle:'أسطر الإيصالات والتحويلات', shortRrUp:'نفس الخانة في السطر الأعلى', shortRrDown:'نفس الخانة في السطر الأسفل', shortChange:'تغيير', shortChangeHint:'اضغط تغيير، ثم اضغط المفاتيح الجديدة مع ⌥ أو ⌘ أو Ctrl. Esc يبقي القديمة. القياسي يعيدها كلها.', shortPress:'اضغط المفاتيح…', shortNeedsMod:'استخدم ⌥ أو ⌘ أو Ctrl مع مفتاح، حتى لا يعيق الكتابة أبداً.', shortTaken:a=>'هذه المفاتيح مستخدمة بالفعل لـ: '+a, shortStdDone:'عادت الاختصارات إلى القياسي', fileCompany:'Ricotta Restaurant', fileInternal:'وثيقة داخلية', fileCheckedBy:'دقق بواسطة', fileApprovedBy:'اعتمد بواسطة', fileDateLine:'التاريخ: ____________', dayFileTitle:d=>'الإيصالات والتحويلات، '+d, dayFileSub:(r,s,t,i)=>AR_N(r,'إيصال واحد محفوظ','إيصالان محفوظان','إيصالات محفوظة','إيصالًا محفوظًا')+' ('+s+' دينار) · '+AR_N(t,'تحويل واحد','تحويلان','تحويلات','تحويلًا')+' ('+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+')', dayFileName:'يوم ريكوتا', dayFileReceipts:'الإيصالات', dayFileSpent:'المستلم، دينار', dayFileTransfers:'التحويلات', ricoFileDay:'الإيصالات والتحويلات', ricoFileTransfers:'التحويلات', ricoFileReceipts:'الإيصالات', ricoFileReceipt:'إيصال', ricoFileNone:'لا يوجد شيء لهذا الملف.', rrFileOne:(s,i)=>s+(i?' · #'+i:''), rrFileDay:d=>'الإيصالات، '+d, rrFileDaySub:(n,s)=>AR_N(n,'إيصال واحد محفوظ','إيصالان محفوظان','إيصالات محفوظة','إيصالًا محفوظًا')+' · '+s+' دينار', rrItemsLabel:'المواد', rsAlwaysYou:'توافق على كل واحد', rsTfAutoShort:'الإرسال إلى ريكو هو الموافقة. يتوقف إذا كان هناك خطأ.', stCheckThis:'تحقق من هذا', feat_ricoLively:'حركات وتعابير ريكو', feat_ricoLively_hint:'عند الإيقاف: ريكو نجمة بسيطة لا تتحرك.', shortRrUnitMenu:'على الكمية: قائمة الوحدة ثم الوحدة التالية', shortRrNext:'على الكمية: المادة التالية', rrStockOld:d=>'آخر قراءة للمخزون '+d+'. شغّل ريكو لقراءته من جديد؛ قد تكون الكميات قديمة.', rrNotLearnt:'لم يتعلم ريكو الكميات المعتادة مؤخراً.', rrNotSignedIn:'ريكو يعمل لكنه غير مسجل الدخول في ريكوتا ريستورانت. سجّل دخوله على الماك.', ricoFilePhotos:'الصور', adServer:'الخادم', adSrvDb:'قاعدة البيانات', adSrvFiles:'الصور', rrScan:'من صورة', rrScanFailed:'لم تُقرأ الصورة. التقط صورة أوضح، أو اكتبها.', rrScanned:n=>'قُرئ من الصورة '+AR_N(n,'سطر واحد','سطران','أسطر','سطرًا')+'. تحقق من كل سطر قبل الإرسال.', adSrvDbHint:'كل طلباتك وإيصالاتك وتحويلاتك وإعداداتك.', adSrvFilesHint:'صور ريكو للإيصالات والتحويلات، تبقى 60 يوماً.', adSrvOf:(a,b)=>a+' من '+b, adSameAsLast:d=>'مثل '+d+' الماضي', adVsLast:(x,d)=>x+' مقارنة بـ'+d+' الماضي', adOpenIt:'فتح', adOldPhone:(who,kind)=>kind+' '+who+' قديم', adOldPhoneSub:(v,l)=>'الإصدار '+v+'، والأحدث '+l, adRicoSaved:'إيصالات محفوظة', adRicoMoved:'تحويلات منجزة', adRicoStopped:'متوقفة', adRicoChatsMonth:'محادثات هذا الشهر', adScreens:(n,m)=>'الشاشات: '+n+' من '+m, adPeople:'الأشخاص', adTools:'الأدوات', adOk:'سليم', adProblemsOpen:n=>n+' دون حل', adAiSub:'Haiku أولًا، واحتياطيان', adTimeBoth:'كلاهما، باليوم والأسبوع والشهر', adAllDevices:'كل الأجهزة', rrNoneToday:'لم يُرسل شيء اليوم بعد.', tfNoneToday:'لا توجد تحويلات اليوم بعد.', rrSeeHistory:'عرض الكل في السجل', rrRetry:'إعادة المحاولة', rrRetryCheckFirst:"تمت الموافقة على هذا، لذلك ربما ضغط ريكو Save. تحقق من ريكوتا ريستورانت أولاً حتى لا يُحفظ مرتين.", tfRetryCheckFirst:"تمت الموافقة على هذا، لذلك ربما ضغط ريكو Move it. تحقق من Recent transfers في ريكوتا ريستورانت أولاً حتى لا يُنقل شيء مرتين.", rrRetryCopy:'استخدم Copy لإصلاحه وإرساله كواحد جديد.', rrAutoStarting:'يتم تشغيل ريكو', feat_ricoAutoStart:'تشغيل ريكو عند فتح التطبيق', feat_ricoAutoStart_hint:'إذا كان ريكو متوقفاً والماك يعمل، يبدأ من تلقاء نفسه عند فتح التطبيق.', rrPracticeRun:'تجربة، لم يُحفظ شيء', rrKeysHint:m=>'Tab يتنقل بين النتائج وEnter يختار واحدة. Enter ينتقل إلى الحقل التالي. '+m+' + Enter للإرسال. Tab من الكمية ينتقل إلى الوحدة. اضغط ? لكل الاختصارات.', rrNoMatch:'لا توجد نتائج', rrSearchSupplier:'ابحث عن مورّد', rrMadeIn:'أُنشئ في', rrMadeAt:'وقت الإنشاء', rrSentAt:'أُرسل إلى ريكو', rrApprovedAt:'تمت الموافقة', rrSavedAt:'حُفظ', rrSource_app:'تطبيق ريكوتا أوردرز', rrSource_telegram:"تيليغرام", rrSource_rico:'دردشة ريكو', rrFilter_src:'أُنشئ في', rrFilter_mode:'حقيقي أو تجربة', rrFilter_by:'أنشأه', rrAllPlaces:"التطبيق وتيليغرام", rrModeReal:'حقيقي', rrModePractice:'تجربة', rrModePracticeLong:'تجربة (لم يُحفظ شيء)', rrClearFilters:'مسح', rrNoMatchFilter:'لا توجد إيصالات تطابق هذه الفلاتر.', rrRicoMode:'نفّذه ريكو', rrRicoActivity:'ماذا فعل ريكو', rrNoActivity:'لا شيء بعد. يظهر عمل ريكو هنا.', rrByHimself:'ريكو بنفسه', rrEvPressed:'ضُغط', rrEvReceipt:'إيصال', histOrders:'الطلبات', rrHistEmpty:'لا توجد إيصالات بعد. تظهر الإيصالات هنا بعد إرسالها إلى ريكو.', rrOpenReceipt:'فتح الإيصال', rrPrevPhoto:'الصورة السابقة', rrNextPhoto:'الصورة التالية', rrClosePhoto:'إغلاق', rrInInvoices:tab=>'في Invoices · '+tab, rrFindIt:(inv,when)=>'فاتورة #'+inv+(when?' · حُفظت '+when:''), rrWarnUnitName:(u,f,b)=>'الوحدة "'+u+'" تُحسب '+f+' '+b+'. اسمها لا يطابق حجمها: تأكد أنها الوحدة المقصودة.', rrWarnGramPrice:(m,u)=>m+' لكل '+u+' سعر مرتفع جداً أو غريب. هل أنت متأكد؟', rrWarnUnitPrice:(x,more,b)=>x+' مرة '+(more?'أكثر':'أقل')+' لكل '+b+' من المرة السابقة. تحقق من الوحدة.', tfTitle:'التحويلات', tfTitleOne:'تحويل', tfStorages:'المخازن', tfFrom:'من مخزن', tfTo:'إلى مخزن', tfChoose:'اختر', tfWhat:'ما الذي يُنقل', tfPickFrom:'اختر مخزن المصدر لاختيار ما يُنقل.', tfPickTo:'اختر مخزن الوجهة لإضافة المواد.', tfAmount:'الكمية', tfAmountHint:'الكمية', tfYesterday:"تسجيل لأمس", tfYesterdayHint:"يُحتسب في التقارير على يوم أمس. المخزون يُنقل الآن.", tfYesterdayOn:d=>'مسجل لأمس، '+d+'. المخزون يُنقل الآن.', tfYesterdayAsk:d=>'تسجيل هذا التحويل لأمس ('+d+')؟ سيُحتسب على ذلك اليوم في التقارير.', tfYesterdayYes:"نعم، لأمس", tfForYesterday:"لأمس", tfItemsLabel:'المواد', tfSend:'إرسال إلى ريكو', tfDiscardAsk:'حذف هذا التحويل؟ لم يُرسل شيء.', tfMovedToday:n=>'تم نقل '+AR_N(n,'تحويل واحد','تحويلين','تحويلات','تحويلًا'), tfItemsMoved:n=>AR_N(n,'مادة واحدة','مادتان','مواد','مادة'), tfStockAt:w=>'المخزون من ريكوتا ريستورانت، قُرئ '+w+'. يتحقق ريكو منه مباشرة قبل النقل.', tfNoStock:'لم يقرأ ريكو المخزون من ريكوتا ريستورانت بعد. شغّل ريكو على الماك.', tfPracticeRun:'تجربة، لم يُنقل شيء', tfNoFrom:'من', tfNoTo:'إلى', tfErrFrom:'اختر مخزن المصدر', tfErrTo:'اختر مخزن الوجهة', tfErrSame:'يجب أن يكون المخزنان مختلفين', tfErrItem:'اختر مادة موجودة في مخزن المصدر', tfErrUnitUnclear:'اسم هذه الوحدة مكرر في ريكوتا ريستورانت: اختر وحدة أخرى', tfErrQty:'اكتب الكمية', tfErrNotEnough:(n,h)=>'يطلب '+n+' والمتوفر '+h+' فقط', tfWarnAll:(h,z)=>'الكمية كلها ('+h+')، لن يبقى شيء'+(z?' في '+z:''), tfWarnUnusual:x=>'أكثر بـ '+x+' مرات مما يُنقل عادةً. تحقق من الكمية', tfPhoto_before:'قبل النقل', tfPhoto_after:'بعد النقل', tfPhoto_problem:'حيث توقف ريكو', tfSeenRecent:'أكد ريكوتا ريستورانت النقل', tfNotConfirmed:'تم النقل. تحقق من Recent transfers في ريكوتا ريستورانت', tfDay:'يُحتسب في', tfMovedAt:'تم النقل', tfCancelOne:'إلغاء التحويل', tfApprove:'الموافقة والنقل', tfTooLate:'فات الأوان: نقله ريكو بالفعل.', tfCancelAsk:'إلغاء هذا التحويل؟ يمسح ريكو النموذج ولا يُنقل شيء.', tfHistEmpty:'لا توجد تحويلات بعد.', tfOpenOne:'فتح التحويل', tfFileTitle:d=>'التحويلات · '+d, tfFileSub:(n,i,w)=>AR_N(n,'تحويل واحد','تحويلان','تحويلات','تحويلًا')+'، '+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+' · '+w, tfFileName:'التحويلات', role_transfers:'التحويلات', role_transfersHint:'إنشاء التحويلات بين المخازن والموافقة على صور ريكو', rrEvTransfer:'تحويل', tfStatus_draft:'مسودة', tfStatusHint_draft:'', tfStatus_queued:'بانتظار ريكو', tfStatusHint_queued:'يأخذه ريكو فور تشغيل الماك.', tfStatus_filling:'ريكو يعبئه', tfStatusHint_filling:'ريكو يعبئه في Move between storages.', tfStatus_review:'الصورة جاهزة للتحقق', tfStatusHint_review:'عبّأه ريكو في ريكوتا ريستورانت. لم يُنقل شيء بعد. تحقق من الصورة ثم وافق.', tfStatus_approved:'تمت الموافقة، ريكو ينقله', tfStatusHint_approved:'يتحقق ريكو من المخزون مرة أخرى ثم يضغط Move it.', tfStatus_moving:'ريكو ينقله', tfStatusHint_moving:'ريكو ينقله ويتحقق من Recent transfers.', tfStatus_moved:'تم النقل', tfStatusHint_moved:'', tfStatus_problem:'توقف', tfStatusHint_problem:'', tfStatus_cancelled:'أُلغي', tfStatusHint_cancelled:'لم يُنقل شيء في ريكوتا ريستورانت.', rrTitle:'الإيصالات', rrToday:'اليوم', rrSavedToday:n=>'تم حفظ '+AR_N(n,'إيصال واحد','إيصالين','إيصالات','إيصالًا'), rrNeedsYou:'بانتظارك', rrDrafts:'المسودات', rrNoCatalog:'لم يقرأ ريكو قوائم ريكوتا ريستورانت بعد. شغّل ريكو على الماك.', rrRicoStopped:'ريكو متوقف', rrRicoOff:'ريكو مطفأ (الماك مغلق)', rrRicoBusy:'ريكو يعمل', rrRicoOn:'ريكو جاهز', rrNoSupplier:'لا يوجد مورد بعد', rrBack:'العودة إلى الإيصالات', rrStatus_draft:'مسودة', rrStatus_queued:'بانتظار ريكو', rrStatus_filling:'ريكو يملؤه', rrStatus_review:'الصورة جاهزة للتحقق', rrStatus_approved:'تمت الموافقة، ريكو يحفظه', rrStatus_saving:'ريكو يحفظه', rrStatus_saved:'محفوظ', rrStatus_problem:'توقف', rrStatus_cancelled:'ملغى', rrStatusHint_draft:'', rrStatusHint_queued:'يأخذه ريكو فور تشغيل الماك.', rrStatusHint_filling:'ريكو يكتبه في ريكوتا ريستورانت.', rrStatusHint_review:'ملأه ريكو في ريكوتا ريستورانت. لم يُحفظ شيء بعد. تحقق من الصورة ثم وافق.', rrStatusHint_approved:'سيضغط ريكو Receive & send to finance.', rrStatusHint_saving:'ريكو يحفظه ويتحقق من Invoices.', rrStatusHint_cancelled:'لم يُحفظ شيء في ريكوتا ريستورانت.', rrStatusHint_saved:'', rrStatusHint_problem:'', rrItem:'المادة', rrSearchItem:'ابحث عن مادة', rrRemoveItem:n=>'إزالة المادة '+n, rrUnit:'الوحدة', rrBaseUnit:'الوحدة الأساسية', rrQty:'الكمية', rrUnitCost:'سعر الوحدة', rrTotal:'المجموع', rrDetails:'تفاصيل الإيصال', rrSupplier:'المورد', rrZone:'المخزن', rrInvoice:'رقم الفاتورة', rrInvoiceHint:'مثلاً 1024', rrCurrency:'العملة', rrRate:'السعر: $1 = دينار', rrDelivery:'أجرة التوصيل', rrNoDelivery:'بدون توصيل', rrItems:'المواد المستلمة', rrItemCount:n=>AR_N(n,'مادة واحدة','مادتان','مواد','مادة'), rrAddItem:'إضافة مادة', rrPlusDelivery:(a,b)=>a+' + '+b+' توصيل', rrSend:'استلام وإرسال إلى المالية', rrWarnPrice:(p,b)=>(p>0?'ارتفع السعر ':'انخفض السعر ')+Math.abs(p)+'% (آخر مرة '+b+')', rrWarnDuplicate:n=>'نفس المادة رقم '+n, rrWarnTinyUnit:'هذه الوحدة تساوي غراماً أو قطعة واحدة فقط. تأكد أنها الصحيحة.', rrWarnRate:(a,b)=>'سعر الدولار خارج '+a+' إلى '+b, rrWarnBig:x=>'إيصال كبير: '+x+' دينار', rrErrSupplier:'اختر مورداً', rrErrInvoice:'اكتب رقم الفاتورة (أرقام فقط)', rrErrZone:'اختر مخزناً', rrErrRate:'اكتب سعر الدولار', rrErrDelivery:'تحقق من أجرة التوصيل', rrErrNoLines:'أضف مادة واحدة على الأقل', rrErrItem:'اختر مادة', rrErrUnit:'اختر وحدة', rrErrQty:'اكتب الكمية', rrErrCost:'اكتب سعر الوحدة', rrLineN:n=>'المادة '+n, rrDiscardAsk:'حذف هذا الإيصال؟ لم يُرسل شيء.', rrDiscard:'حذف', rrFixFirst:'صحّح هذه أولاً', rrCheckThese:'تحقق من هذه قبل الإرسال', rrSendAnyway:'أرسل على أي حال', rrBigAgain:x=>'قيمة هذا الإيصال '+x+' دينار. هل ترسله؟', rrSureTitle:'هل أنت متأكد؟', rrErrAlreadySent:'هذه الفاتورة من هذا المورد أُرسلت سابقاً.', rrSent:'أُرسل إلى ريكو', rrPhoto_before:'قبل الحفظ', rrPhoto_after:'بعد الحفظ', rrPhoto_invoices:'في Invoices', rrPhoto_problem:'حيث توقف ريكو', rrPhotos:'الصور', rrWhatRicoDid:'ما فعله ريكو', rrCancelReceipt:'إلغاء الإيصال', rrApprove:'موافقة وحفظ', rrCopy:'إنشاء نسخة', rrTooLate:'فات الأوان: حفظه ريكو في ريكوتا ريستورانت.', rrCancelAsk:'إلغاء هذا الإيصال؟ سيتجاهل ريكو ما ملأه.', rrSettingsTitle:'ريكو في ريكوتا ريستورانت', rrRicoMac:'ريكو على الماك', rrStop:'إيقاف ريكو', rrStopHint:'لا يأخذ ريكو إيصالات جديدة حتى تطفئ هذا.', rrSettingsSaved:'تم الحفظ', role_receipts:'الإيصالات', role_receiptsHint:'إنشاء الإيصالات والموافقة على صور ريكو',
     draftSynced:'تمت مزامنة المسودة بين أجهزتك', draftWaiting:'المسودة محفوظة هنا · بانتظار المزامنة', draftConflict:'تغيّر هذا الصنف على جهاز آخر. اختر الكمية التي تريد الاحتفاظ بها.', draftUseOther:'استخدام كميات الجهاز الآخر', draftKeepMine:'الاحتفاظ بكمياتي',
     pendingSync:'طلبات بانتظار المزامنة', pendingSyncHint:'هذه الطلبات محفوظة على هذا الجهاز. أعد المزامنة أو صدّر نسخة. يجب تصدير طلبات الشهر السابق.', syncRetry:'إعادة المزامنة', syncExport:'تصدير نسخة',
     accountName:a=>({rozha:'روژ', yunis:'يونس'})[a] || a,
     workspaceLabel:'مطبخك، منظّم', welcomeName:n=>'أهلًا بعودتك يا '+n,
-    draftLocal:'مسودة على هذا الجهاز', selectToStart:'اختر احتياجاتك للبدء',
+    draftLocal:'مسودة على هذا الجهاز', 
     increaseQty:name=>'زيادة كمية '+name, decreaseQty:name=>'تقليل كمية '+name, quantityFor:name=>'كمية '+name,
     offline:'غير متصل', language:'اللغة', apply:'تطبيق', ok:'حسنًا',
     sessionEnded:'انتهت جلستك. سجّل الدخول مرة أخرى للمتابعة.',
@@ -436,12 +415,12 @@ const T = {
     saveFailed:'تعذّر الحفظ. تحقّق من الاتصال وحاول مرة أخرى.',
     orderSavedOffline:'تم حفظ الطلب على هذا الجهاز، وسيُزامَن تلقائيًا عند عودة الاتصال.',
     loadFailed:'تعذّر الوصول إلى الخادم. تحقّق من الاتصال.', retry:'حاول مرة أخرى',
-    splashLoading:'نجهّز مطبخك…',
+
     wrongPin:'رمز خاطئ، حاول مرة أخرى', clear:'مسح',
     order:'الطلب', history:'السجل', settings:'الإعدادات', logout:'تسجيل الخروج',
     searchPlaceholder:'ابحث عن مادة…', sameAsLastTime:'مثل المرة السابقة', clearOrder:'مسح الطلب', previousSuppliers:'المورّدون السابقون', nextSuppliers:'مورّدون آخرون',
     noItemsYet:'لا توجد مواد بعد. أضفها من قسم المواد',
-    itemsSelected:i=>i+' مادة مختارة', sendOrders:'إرسال طلبات اليوم',
+    itemsSelected:i=>AR_N(i,'مادة واحدة مختارة','مادتان مختارتان','مواد مختارة','مادة مختارة'), sendOrders:'إرسال طلبات اليوم',
     sendQueueTitle:'الإرسال إلى المورّدين', sendVia:'إرسال عبر واتساب', sent:'أُرسل',
     suppliers:'المورّدون', items:'المواد', units:'الوحدات', addSupplier:'إضافة مورّد', editSupplier:'تعديل المورّد',
     name:'الاسم', phone:'رقم الهاتف', save:'حفظ', cancel:'إلغاء', delete:'حذف',
@@ -464,10 +443,10 @@ const T = {
     jobLastRun:x=>'آخر تشغيل '+x, jobFailed:'فشل مؤخرًا', jobDisabled:'متوقف أو مفقود', checkedAt:x=>'آخر فحص '+x+'.',
     deviceSaves:'طلبات تنتظر على هذا الهاتف', draftSaveState:'الطلب المشترك', retryDraft:'إعادة محاولة الحفظ',
     orderAgain:'أرسل مجددًا', sentBy:n=>'بواسطة '+n,
-    heroEyebrow:'طلب اليوم', heroStat:n=>n+' مادة مختارة',
-    heroSub:(items,sups)=>items+' مادة من '+sups+' مورّد',
-    heroStatWord:n=>'مادة مختارة',
-    suppliersCovered:(a,b)=>a+' من '+b+' مورّدين لديهم مواد مختارة',
+    heroEyebrow:'طلب اليوم', heroStat:n=>AR_N(n,'مادة واحدة مختارة','مادتان مختارتان','مواد مختارة','مادة مختارة'),
+    heroSub:(items,sups)=>AR_N(items,'مادة واحدة','مادتان','مواد','مادة')+' من '+AR_N(sups,'مورّد واحد','مورّدين','مورّدين','مورّدًا'),
+    heroStatWord:n=>n===2?'مادتان مختارتان':(n%100>=3&&n%100<=10)?'مواد مختارة':'مادة مختارة',
+
     allSuppliers:'الكل',
     updateNow:'حدّث الآن', later:'لاحقًا', updateTitle:'نسخة جديدة جاهزة', updateReadyMsg:'نسخة جديدة من التطبيق جاهزة. هل تريد التحديث الآن؟ سيبقى طلبك محفوظًا.',
     noSearchResults:'لا توجد مواد مطابقة هنا',
@@ -481,17 +460,17 @@ const T = {
     saveAndAddAnother:'حفظ وإضافة أخرى',
     savedMsg:name=>'تم حفظ "'+name+'"',
     nameRequired:'يرجى إدخال اسم.',
-    itemsUnassigned:n=>n+' مادة أصبحت بدون مورّد',
+    itemsUnassigned:n=>AR_N(n,'مادة واحدة أصبحت','مادتان أصبحتا','مواد أصبحت','مادة أصبحت')+' بدون مورّد',
     statusActive:'نشط الآن', statusLoggedIn:'مسجّل الدخول', statusLoggedOut:'خارج الجلسة',
-    lastLoginLabel:'آخر دخول', lastSeenLabel:'آخر ظهور', versionLabel:'الإصدار', versionCurrent:'محدّث', versionOld:'يحتاج تحديثًا', versionUnknown:'لم يُرسل بعد (التطبيق القديم)', appVersionLine:v=>'Ricotta Orders · الإصدار '+v, agoNow:'الآن', agoMin:n=>'قبل '+n+' دقيقة', agoHour:n=>'قبل '+n+' ساعة', agoDay:n=>'قبل '+n+' يوم',
+    lastLoginLabel:'آخر دخول', lastSeenLabel:'آخر ظهور', versionLabel:'الإصدار', versionCurrent:'محدّث', versionOld:'يحتاج تحديثًا', versionUnknown:'لم يُرسل بعد (التطبيق القديم)', appVersionLine:v=>'Ricotta Orders · الإصدار '+v, agoNow:'الآن', agoMin:n=>'قبل '+AR_N(n,'دقيقة','دقيقتين','دقائق','دقيقة'), agoHour:n=>'قبل '+AR_N(n,'ساعة','ساعتين','ساعات','ساعة'), agoDay:n=>'قبل '+AR_N(n,'يوم','يومين','أيام','يومًا'),
     devicesLoggedInEyebrow:'مسجّل الدخول الآن',
     devicesHint:'نشط الآن = استخدم التطبيق خلال آخر 5 دقائق. مسجّل الدخول = مسجّل لكن التطبيق مغلق أو خامل. الجهاز الذي يخرج، أو تُخرجه أنت، يختفي من هذه القائمة.',
     logoutDevice:'إخراج', refreshDevice:'تحديث',
     logoutAllOthers:'إخراج كل الأجهزة الأخرى', refreshAllDevices:'تحديث كل الأجهزة',
     confirmLogoutDevice:'إخراج هذا الجهاز؟ سيحتاج إلى الرمز مرة أخرى.',
     confirmRefreshDevice:'إرسال نافذة تحديث إلى هذا الجهاز؟ يجب الضغط على تحديث للمتابعة.',
-    confirmRefreshAll:n=>'إرسال نافذة تحديث إلى '+n+' جهاز آخر؟ يجب الضغط على تحديث للمتابعة.',
-    confirmLogoutAll:n=>'إخراج '+n+' جهاز آخر؟ ستحتاج إلى الرمز مرة أخرى.',
+    confirmRefreshAll:n=>'إرسال نافذة تحديث إلى '+AR_N(n,'جهاز آخر','جهازين آخرين','أجهزة أخرى','جهازًا آخر')+'؟ يجب الضغط على تحديث للمتابعة.',
+    confirmLogoutAll:n=>'إخراج '+AR_N(n,'جهاز آخر','جهازين آخرين','أجهزة أخرى','جهازًا آخر')+'؟ سيحتاج كل منها إلى الرمز مرة أخرى.',
     cmdLogoutPending:'أُرسل الإخراج. بانتظار الجهاز', cmdRefreshPending:'أُرسل التحديث. بانتظار الجهاز',
     forcedLogoutMsg:'تم إخراج هذا الجهاز من قسم الأجهزة. أدخل رمزك لتسجيل الدخول مجددًا.',
     refreshRequiredTitle:'التحديث مطلوب',
@@ -506,19 +485,14 @@ const T = {
     notifEnabledMsg:'الإشعارات مفعّلة على هذا الجهاز.',
     notifDeniedMsg:'الإشعارات محظورة. فعّلها لـ Ricotta Orders من إعدادات الهاتف، ضمن الإشعارات.',
     notifFailedMsg:'تعذّر تفعيل الإشعارات. حاول مرة أخرى.',
-    
-    
 
-    
-    
     lastQty:n=>'آخر مرة: '+n,
     notifOn:'مفعّلة', notifOff:'متوقفة', 
     notifUnsupported:'هذا المتصفح لا يستقبل الإشعارات. على الآيفون، أضف التطبيق إلى الشاشة الرئيسية وافتحه من هناك.',
     notifNotConfigured:'الإشعارات غير مُعدّة بعد.',
-    
+
     reminderTimeLabel:'وقت التذكير (بتوقيت أربيل)', 
-    
-    
+
     reminderOff:'متوقف', everyDay:'كل يوم', daysShort:['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت'],
     reminderShort:'تذكير',
     supplierReminderLabel:'تذكير طلب لهذا المورّد',
@@ -528,23 +502,23 @@ const T = {
     reminderDaysRequired:'اختر يومًا واحدًا على الأقل للتذكير.',
     testSupplierReminder:'إرسال تذكير تجريبي',
     confirmTestSupplier:'إرسال تذكير تجريبي لهذا المورّد إلى كل جهاز مسجّل مفعّلة فيه الإشعارات؟',
-    
-    notifPartialMsg:(s,f)=>'أُرسل إلى '+s+' جهاز؛ تعذّر الوصول إلى '+f+'.',
+
+    notifPartialMsg:(s,f)=>'أُرسل إلى '+AR_N(s,'جهاز واحد','جهازين','أجهزة','جهازًا')+'؛ تعذّر الوصول إلى '+AR_N(f,'جهاز واحد','جهازين','أجهزة','جهازًا')+'.',
     notifDeliveryFailed:'تعذّر إيصال الإشعار إلى أي جهاز. على ذلك الجهاز، أوقف الإشعارات ثم فعّلها مجددًا.',
     notifNoDevicesLoggedOut:'الإشعارات مفعّلة فقط على أجهزة خارج الجلسة. التذكيرات تُرسل إلى الأجهزة المسجّلة.',
     notifSend:'إرسال',
-    notifSentMsg:n=>'أُرسل إلى '+n+' جهاز.',
+    notifSentMsg:n=>'أُرسل إلى '+AR_N(n,'جهاز واحد','جهازين','أجهزة','جهازًا')+'.',
     notifNoDevices:'لم يفعّل أي جهاز الإشعارات بعد.',
     notifSendFailed:'تعذّر إرسال الإشعار. حاول مرة أخرى.',
     deleteDigit:'حذف آخر رقم',
-    supplierCount:n=>n+' مورّد',
-    itemCount:n=>n+' مادة',
+    supplierCount:n=>AR_N(n,'مورّد واحد','مورّدان','مورّدين','مورّدًا'),
+    itemCount:n=>AR_N(n,'مادة واحدة','مادتان','مواد','مادة'),
     sentSendAgain:'أُرسل · أرسل مجددًا', markSent:'تعليم كمُرسل',
     markSentHint:'أرسله بطريقتك المعتادة ثم علّمه', backToOrder:'العودة إلى الطلب',
     sentProgress:(a,b)=>a+' من '+b+' أُرسلت', allSentTitle:'أُرسلت كل الطلبات', allSentSub:'حُفظت في السجل · مُسحت مسودتك',
     orderSavedToHistory:'حُفظ الطلب في السجل', today:'اليوم', yesterday:'أمس',
     orderRetrySaveHint:'أُرسلت الطلبات إلى الموردين، لكن تعذّر حفظ السجل. حاول مجددًا لحفظه دون إرسال الطلبات مرة أخرى.',
-    reorderReady:n=>'أُضيفت '+n+' مادة. راجعها وأرسلها',
+    reorderReady:n=>'أُضيفت '+AR_N(n,'مادة واحدة','مادتان','مواد','مادة')+'. راجعها وأرسلها',
     confirmDoubleOrder:names=>'أُرسل طلب إلى '+names+' اليوم مسبقًا. هل ترسل طلبًا آخر؟',
 
     sendAnother:'أرسل مرة أخرى',
@@ -553,10 +527,8 @@ const T = {
     cmAdd:n=>'أضف '+n, cmType:'اكتب الكمية', cmRemove:'إزالة من الطلب',
     weekdays:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],
 
-
-    
     adminTitle:'المشرف', adminPinChange:'تغيير',
-    adminPinsHint:'الرمز الجديد يُخرج صاحبه من أجهزته الأخرى.', pinChangeTitle:n=>'رمز جديد لـ'+n,
+    pinChangeTitle:n=>'رمز جديد لـ'+n,
     pinCurrentLabel:'رمزك الحالي', pinNewLabel:'الرمز الجديد (6 أرقام)', pinRepeatLabel:'الرمز الجديد مرة أخرى',
     pinMismatch:'الرمزان الجديدان غير متطابقين.', pinCurrentWrong:'رمزك الحالي غير صحيح.',
     pinChangedSelf:'تم تغيير رمزك. خرجت أجهزتك الأخرى.', pinChangedOther:n=>'تم تغيير رمز '+n+'. يسجّل '+n+' الدخول من جديد بالرمز الجديد.',
@@ -566,10 +538,10 @@ const T = {
     ricoName:'ريكو', ricoTalkingWith:n=>'تتحدث مع '+n, ricoWroteFirst:'كتب ريكو',
     ricoAutoOrderLabel:'دع ريكو يملأ طلبي', ricoNewChat:'محادثة جديدة',
     ricoLateSub:(time,h,m)=>'موعده '+time+' · لم يُرسل بعد ('+[h?h+' ساعة':'',m||!h?m+' دقيقة':''].filter(Boolean).join(' و')+')',
-    
+
     ricoGreeting:(part,name)=>({morning:'صباح الخير',afternoon:'نهارك سعيد',evening:'مساء الخير'})[part]+(name?' يا '+name:'')+'.',
     ricoSuggestions:['جهّز طلب اليوم','راجع طلبي','كيف كان هذا الأسبوع؟','ماذا طلبنا آخر مرة؟','أضف مادة جديدة','هل هناك طلبات متأخرة اليوم؟'],
-    
+
     ricoStatus:{thinking:'يفكّر…', find_items:'يبحث في موادك…', list_suppliers:'يتحقق من مورّديك…', order_history:'يقرأ سجل الطلبات…',
       ordering_patterns:'يحسب أيام الازدحام…', suggest_order:'يجهّز اقتراحًا…', recent_changes:'يتحقق من آخر التغييرات…',
       propose_order_draft:'يجهّز الطلب…', propose_new_item:'يجهّز المادة الجديدة…', propose_edit_item:'يجهّز التعديل…',
@@ -584,7 +556,7 @@ const T = {
     ricoCardNewItem:'مادة جديدة', ricoCardEditItem:'تعديل مادة', ricoCardNewSupplier:'مورّد جديد', ricoCardNotify:'إشعار إلى كل الأجهزة',
     ricoOpenScreen:n=>'فتح '+n, ricoAutoTag:'ملأه ريكو',
     ricoPlaceholder:'اكتب رسالة إلى ريكو…', ricoStop:'إيقاف', ricoSend:'إرسال',
-    ricoHistory:'سجل المحادثات', ricoRecentChats:'آخر المحادثات', ricoUntitled:'محادثة',
+    ricoHistory:'سجل المحادثات', ricoUntitled:'محادثة',
     ricoHistoryEmpty:'لا توجد محادثات محفوظة بعد. تُحفظ محادثاتك مع ريكو هنا لمدة 90 يومًا.',
     ricoDeleteChat:'حذف هذه المحادثة', ricoDeleteAll:'حذف كل المحادثات', ricoDeleteAllConfirm:'اضغط مرة أخرى لحذف كل محادثاتك',
     ricoChatLoadFailed:'تعذّر فتح هذه المحادثة. تحقق من الاتصال وحاول مرة أخرى.', ricoCardOld:'من محادثة سابقة',
@@ -592,22 +564,17 @@ const T = {
     ricoAllow:'سماح', ricoAutoOn:'يمكن لريكو الآن ملء طلبك', ricoAutoOff:'سيسألك ريكو قبل ملء طلبك',
     ricoPreparePrompt:n=>'جهّز طلب '+n+' لليوم.',
     ricoChooseSuppliers:'لأي مورّدين أجهّز طلب اليوم؟ اختر واحدًا أو عدة مورّدين أو الكل.',
-    ricoAllSuppliers:'كل المورّدين', ricoPrepareSelected:n=>n ? 'تجهيز '+n+' مورّد مختار' : 'اختر المورّدين',
+    ricoAllSuppliers:'كل المورّدين', ricoPrepareSelected:n=>n ? 'تجهيز '+AR_N(n,'مورّد واحد مختار','مورّدين مختارين','مورّدين مختارين','مورّدًا مختارًا') : 'اختر المورّدين',
     ricoScopedPrompt:n=>'جهّز طلب اليوم لـ '+n.join('، ')+'.',
-    ricoOrderApplied:n=>'وُضعت '+n+' مادة في طلب اليوم',
+    ricoOrderApplied:n=>'وُضعت '+AR_N(n,'مادة واحدة','مادتان','مواد','مادة')+' في طلب اليوم',
     ricoNotificationSent:'أُرسل الإشعار', ricoUndoneToast:'عادت مسودة طلبك السابقة',
-    ricoNavLate:n=>'ريكو: '+n+' طلب متأخر', ricoNavUnread:'ريكو: رسالة جديدة',
+    ricoNavLate:n=>'ريكو: '+AR_N(n,'طلب متأخر','طلبان متأخران','طلبات متأخرة','طلبًا متأخرًا'), ricoNavUnread:'ريكو: رسالة جديدة',
     ricoSuggestsLabel:'يقترح ريكو',
     ricoSuggestUsual:(sup,day)=>'طلبك المعتاد يوم '+day+' من '+sup+'.',
     ricoSuggestDue:(sup,time)=>'موعد '+sup+' كان '+time+' ولم يُرسل بعد.',
-    ricoSuggestAdd:n=>'أضف '+n+' مادة', ricoSuggestAdded:(n,sup)=>'أُضيفت '+n+' مادة من '+sup, ricoSuggestDismiss:'إخفاء الاقتراح',
-    ricoWorkedSteps:n=>'أنهى '+n+' خطوة',
-    
-    
-    
-    
-    
-    
+    ricoSuggestAdd:n=>'أضف '+AR_N(n,'مادة واحدة','مادتين','مواد','مادة'), ricoSuggestAdded:(n,sup)=>'أُضيفت '+AR_N(n,'مادة واحدة','مادتان','مواد','مادة')+' من '+sup, ricoSuggestDismiss:'إخفاء الاقتراح',
+    ricoWorkedSteps:n=>'أنهى '+AR_N(n,'خطوة واحدة','خطوتين','خطوات','خطوة'),
+
     ricoSetsDraft:'تتغير هذه المواد فقط، ويبقى باقي المسودة كما هو.', ricoApplyChanges:'تطبيق التغييرات',
     ricoOpenSend:'فتح الإرسال إلى المورّدين',
     chooseSupplier:'اختر مورّداً',
@@ -621,9 +588,8 @@ const T = {
 /* The kitchen: the streak, the monthly report card, pinned items, item
    notes, undo, dark mode and shared Rico chats. Same rule as
    above: every language has every key. */
-const AR_DAYS = n => n + (n === 1 ? ' يوم' : n === 2 ? ' يومان' : n <= 10 ? ' أيام' : ' يومًا');
+const AR_DAYS = n => AR_N(n, 'يوم واحد', 'يومان', 'أيام', 'يومًا');
 Object.assign(T.en, {
-
   darkLabel:'Light or Dark', darkHint:'Automatic follows your phone.', darkOff:'Light', darkOn:'Dark', darkAuto:'Automatic',
 
   streakTitle:'Kitchen streak', streakDays:n=>n+' day'+(n===1?'':'s'), streakChip:n=>'Kitchen streak: '+n+' day'+(n===1?'':'s'),
@@ -648,7 +614,6 @@ Object.assign(T.en, {
   ricoReadOnly:n=>n+'’s chat with Rico · read only', ricoBackToMine:'Back to my chat',
   });
 Object.assign(T.ku, {
-
   darkLabel:'ڕووناک یان تاریک', darkHint:'خۆکار وەک ڕێکخستنی مۆبایلەکەت دەبێت.', darkOff:'ڕووناک', darkOn:'تاریک', darkAuto:'خۆکار',
 
   streakTitle:'زنجیرەی چێشتخانە', streakDays:n=>n+' ڕۆژ', streakChip:n=>'زنجیرەی چێشتخانە: '+n+' ڕۆژ',
@@ -662,34 +627,33 @@ Object.assign(T.ku, {
   funFactTitle:'زانیاریی خۆشی ریکۆ', factTop:(item,n)=>item+' ئەم مانگە لە هەموو شتێک زیاتر داواکراوە: '+n+' جار.',
   factLeast:item=>item+' ئەم مانگە تەنها یەک جار داواکراوە. هێشتا پێویستە؟', factBusiest:day=>day+' ئەم مانگە قەرەباڵغترین ڕۆژی داواکارییە.',
   factQty:(qty,unit,item)=>qty+' '+unit+' '+item+' ئەم مانگە نێردرا.', factOrders:n=>'تا ئێستا ئەم مانگە '+n+' داواکاری نێردراوە.',
-  reportOpen:'کارتی ڕاپۆرت', reportTitle:m=>'کارتی ڕاپۆرتی '+m, reportOrders:'داواکاری', reportDays:'ڕۆژنی داواکاری', reportStreak:'زنجیرە',
+  reportOpen:'کارتی ڕاپۆرت', reportTitle:m=>'کارتی ڕاپۆرتی '+m, reportOrders:'داواکاری', reportDays:"ڕۆژانی داواکاری", reportStreak:'زنجیرە',
   reportLines:'کاڵای نێردراو', reportTop:'زۆرترین داواکراو', reportSuppliers:'دابینکەرە سەرەکییەکان', reportBusiest:'قەرەباڵغترین ڕۆژ', reportWho:'کێ ناردی',
   reportGrade:'نمرە', reportGradeHint:(d,n)=>d+' لە '+n+' ڕۆژ داواکارییان تێدا بوو', reportTimes:n=>n+'×',
   reportSave:'پاشەکەوتکردنی ئەم مانگە', reportSaveHint:'مێژوو لانیکەم 60 ڕۆژ دەهێڵێتەوە. فایلی ئێکسڵ پاشەکەوت بکە یان ڕاپۆرتەکە چاپ بکە بۆ ئەوەی ئەم مانگە زیاتر بهێڵیتەوە.',
   reportExcel:'فایلی ئێکسڵ', reportPrint:'چاپ یان PDF',
   orderUndone:'داواکارییەکە گەڕێندرایەوە. دیسان لە ڕەشنووسەکەتدایە.', undoFailed:'زۆر درەنگە بۆ گەڕاندنەوەی ئەم داواکارییە.',
-  pinItem:'هەڵواسین لە سەرەوە', unpinItem:'لابردنی هەڵواسین', pinnedTitle:'هەڵواسراو',
+  pinItem:"چەسپاندن لە سەرەوە", unpinItem:"لابردنی چەسپاندن", pinnedTitle:"چەسپێنراو",
   itemNoteLabel:'تێبینی بۆ دابینکەر', itemNoteHint:'دەچێتە ناو نامەی واتسئاپەکەوە، بۆ نموونە «پێگەیشتوو، نەرم نەبێت».', itemNoteEdit:'تێبینی', recordNote:'تێبینی',
   ricoReadOnly:n=>'گفتوگۆی '+n+' لەگەڵ ریکۆ · تەنها خوێندنەوە', ricoBackToMine:'گەڕانەوە بۆ گفتوگۆکەی خۆم',
   });
 Object.assign(T.ar, {
-
   darkLabel:'فاتح أو داكن', darkHint:'التلقائي يتبع إعداد هاتفك.', darkOff:'فاتح', darkOn:'داكن', darkAuto:'تلقائي',
 
   streakTitle:'سلسلة المطبخ', streakDays:n=>AR_DAYS(n), streakChip:n=>'سلسلة المطبخ: '+AR_DAYS(n),
   streakLit:'طلب اليوم أُرسل. النار مشتعلة!', streakNotYet:'أرسل طلبًا واحدًا اليوم لإشعال النار.',
-  streakBroken:n=>'انطفأت سلسلة الـ'+n+' يومًا.', streakNone:'أرسل طلبًا اليوم لبدء سلسلة.',
+  streakBroken:n=>'انطفأت السلسلة بعد '+AR_N(n,'يوم واحد','يومين','أيام','يومًا')+'.', streakNone:'أرسل طلبًا اليوم لبدء سلسلة.',
   streakAskRico:'اطلب من ريكو إعادتها', streakAskPrompt:'من فضلك أعد سلسلة مطبخنا', streakBest:n=>'الأفضل: '+n, streakNext:n=>'الهدف التالي: '+AR_DAYS(n),
   streakHow:'كل يوم فيه طلب واحد على الأقل، من روژ أو يونس، يضيف يومًا. يوم كامل بلا طلب يطفئ النار.',
-  streakMilestone:n=>'سلسلة '+AR_DAYS(n)+'!', streakMilestoneSub:'لم يفوّت المطبخ يومًا. ريكو فخور بكم.',
+  streakMilestone:n=>'السلسلة: '+AR_DAYS(n)+'!', streakMilestoneSub:'لم يفوّت المطبخ يومًا. ريكو فخور بكم.',
   streakRecovered:n=>'عادت السلسلة: '+AR_DAYS(n), streakRecoverFailed:'لم يستطع ريكو إعادة هذه السلسلة.',
-  ricoCardStreak:n=>'إعادة سلسلة الـ'+n+' يومًا', ricoStreakBtn:'أعدها',
-  funFactTitle:'معلومة ريكو الطريفة', factTop:(item,n)=>'طُلب '+item+' أكثر من أي شيء هذا الشهر: '+n+' مرة.',
+  ricoCardStreak:n=>'إعادة السلسلة ('+AR_DAYS(n)+')', ricoStreakBtn:'أعدها',
+  funFactTitle:'معلومة ريكو الطريفة', factTop:(item,n)=>'طُلب '+item+' أكثر من أي شيء هذا الشهر: '+AR_N(n,'مرة واحدة','مرتين','مرات','مرة')+'.',
   factLeast:item=>'طُلب '+item+' مرة واحدة فقط هذا الشهر. هل ما زال مطلوبًا؟', factBusiest:day=>day+' هو أكثر الأيام طلبًا هذا الشهر.',
-  factQty:(qty,unit,item)=>'خرج '+qty+' '+unit+' من '+item+' هذا الشهر.', factOrders:n=>'أُرسل '+n+' طلبًا حتى الآن هذا الشهر.',
+  factQty:(qty,unit,item)=>'خرج '+qty+' '+unit+' من '+item+' هذا الشهر.', factOrders:n=>'أُرسل حتى الآن هذا الشهر '+AR_N(n,'طلب واحد','طلبان','طلبات','طلبًا')+'.',
   reportOpen:'بطاقة التقرير', reportTitle:m=>'بطاقة تقرير '+m, reportOrders:'الطلبات', reportDays:'أيام فيها طلبات', reportStreak:'السلسلة',
   reportLines:'المواد المرسلة', reportTop:'الأكثر طلبًا', reportSuppliers:'أبرز المورّدين', reportBusiest:'أكثر الأيام ازدحامًا', reportWho:'من أرسل',
-  reportGrade:'التقدير', reportGradeHint:(d,n)=>d+' من '+n+' أيام فيها طلبات', reportTimes:n=>n+'×',
+  reportGrade:'التقدير', reportGradeHint:(d,n)=>'أيام فيها طلبات: '+d+' من '+n, reportTimes:n=>n+'×',
   reportSave:'حفظ هذا الشهر', reportSaveHint:'يحتفظ السجل بما لا يقل عن 60 يومًا. احفظ ملف إكسل أو اطبع التقرير للاحتفاظ بهذا الشهر مدة أطول.',
   reportExcel:'ملف إكسل', reportPrint:'طباعة أو PDF',
   orderUndone:'استُرجع الطلب. عاد إلى مسودتك.', undoFailed:'فات الأوان للتراجع عن هذا الطلب.',
@@ -700,28 +664,19 @@ Object.assign(T.ar, {
 
 /* Order cut-offs and the month archive. */
 Object.assign(T.en, {
-  
-  
   ricoOrdersTitle:"Rico's orders", ricoOrdersHint:"Orders Rico sent by himself. Test: they go only to your own WhatsApp, not to suppliers, and are not in History, the report or the streak.", ricoOrdersNone:'Rico has not sent any orders yet. Ask him: "Rico, order from the bakery".', ricoOrdersNotReady:'WhatsApp is not set up on the server yet.', ricoOrderSent:'Sent', ricoOrderFailed:e=>'Not sent'+({window_closed:': send "hi" to the test number first', recipient_not_allowed:': your number is not on the test list', token_rejected:': the WhatsApp token needs renewing', busy:': WhatsApp was busy'}[e]||''), ricoOrderWhy:'Why', monthsTitle:'Past months', monthsHint:'History is cleared every month; a summary of each finished month stays here.',
   monthsNone:'Nothing here yet. The first summary is saved when this month ends.', monthsLastLine:(o,d)=>'Last month: '+o+' orders on '+d+' days',
   monthsTimes:n=>n+'×', monthsOrders:n=>n+(n===1?' order':' orders'),
-
   });
 Object.assign(T.ku, {
-  
-  
   ricoOrdersTitle:'داواکارییەکانی ریکۆ', ricoOrdersHint:'ئەو داواکارییانەی ریکۆ خۆی ناردوونی. تاقیکردنەوە: تەنها بۆ واتسئاپی خۆت دەچن، نەک بۆ دابینکەران، و لە مێژوو و ڕاپۆرت و زنجیرەدا نین.', ricoOrdersNone:'ریکۆ هێشتا هیچ داواکارییەکی نەناردووە. پێی بڵێ: «ریکۆ، لە نانەواخانە داوا بکە».', ricoOrdersNotReady:'واتسئاپ هێشتا لە سێرڤەر ڕێک نەخراوە.', ricoOrderSent:'نێردرا', ricoOrderFailed:e=>'نەنێردرا'+({window_closed:': سەرەتا «hi» بۆ ژمارەی تاقیکردنەوە بنێرە', recipient_not_allowed:': ژمارەکەت لە لیستی تاقیکردنەوەدا نییە', token_rejected:': تۆکنی واتسئاپ پێویستی بە نوێکردنەوەیە', busy:': واتسئاپ سەرقاڵ بوو'}[e]||''), ricoOrderWhy:'بۆچی', monthsTitle:'مانگەکانی پێشوو', monthsHint:'مێژوو هەموو مانگێک دەسڕدرێتەوە؛ کورتەی هەر مانگێکی تەواوبوو لێرە دەمێنێتەوە.',
   monthsNone:'هێشتا هیچ شتێک لێرە نییە. یەکەم کورتە کاتێک ئەم مانگە تەواو دەبێت پاشەکەوت دەکرێت.', monthsLastLine:(o,d)=>'مانگی پێشوو: '+o+' داواکاری لە '+d+' ڕۆژدا',
   monthsTimes:n=>n+'×', monthsOrders:n=>n+' داواکاری',
-
   });
 Object.assign(T.ar, {
-  
-  
   ricoOrdersTitle:'طلبات ريكو', ricoOrdersHint:'الطلبات التي أرسلها ريكو بنفسه. تجربة: تصل إلى واتساب الخاص بك فقط، لا إلى المورّدين، ولا تظهر في السجل أو التقرير أو السلسلة.', ricoOrdersNone:'لم يرسل ريكو أي طلب بعد. اطلب منه: «ريكو، اطلب من المخبز».', ricoOrdersNotReady:'واتساب غير مُعدّ على الخادم بعد.', ricoOrderSent:'أُرسل', ricoOrderFailed:e=>'لم يُرسل'+({window_closed:': أرسل «hi» إلى رقم التجربة أولًا', recipient_not_allowed:': رقمك ليس في قائمة التجربة', token_rejected:': رمز واتساب يحتاج إلى تجديد', busy:': واتساب كان مشغولًا'}[e]||''), ricoOrderWhy:'السبب', monthsTitle:'الأشهر السابقة', monthsHint:'يُمسح السجل كل شهر، ويبقى هنا ملخص كل شهر منتهٍ.',
-  monthsNone:'لا شيء هنا بعد. يُحفظ أول ملخص عند انتهاء هذا الشهر.', monthsLastLine:(o,d)=>'الشهر الماضي: '+o+' طلب في '+d+' يوم',
-  monthsTimes:n=>n+'×', monthsOrders:n=>n+' طلب',
-
+  monthsNone:'لا شيء هنا بعد. يُحفظ أول ملخص عند انتهاء هذا الشهر.', monthsLastLine:(o,d)=>'الشهر الماضي: '+AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+' في '+AR_N(d,'يوم واحد','يومين','أيام','يومًا'),
+  monthsTimes:n=>n+'×', monthsOrders:n=>AR_N(n,'طلب واحد','طلبان','طلبات','طلبًا'),
   });
 
 /* The Apple-quality pass: the account button, the privacy policy and Rico's AI permission
@@ -735,7 +690,7 @@ Object.assign(T.en, {
 Object.assign(T.ku, {
   accountMenu:n=>'هەژمار: '+n, privacyPolicy:'سیاسەتی تایبەتمەندی', settingsPrivacy:'تایبەتمەندی',
   aiTitle:'ریکۆ زیرەکی دەستکرد بەکاردەهێنێت', aiAllow:'ڕێگە بدە', aiNotNow:'ئێستا نا',
-  aiBody:'بۆ وەڵامدانەوەت، ریکۆ ئەوەی دەینووسیت، لەگەڵ ئەو زانیارییانەی داواکاری کە پێویستیەتی (کاڵاکان، دابینکەران و بڕەکان)، دەنێرێت بۆ Anthropic (Claude)، Google Gemini یان Groq. تەنها بۆ نووسینی وەڵامەکەی بەکاری دەهێنن. PIN ـەکەت هەرگیز نانێردرێت.',
+  aiBody:"بۆ وەڵامدانەوەت، ریکۆ ئەوەی دەینووسیت، لەگەڵ ئەو زانیارییانەی داواکاری کە پێویستیەتی (کاڵاکان، دابینکەران و بڕەکان)، دەنێرێت بۆ Anthropic (Claude)، Google Gemini یان Groq. تەنها بۆ نووسینی وەڵامەکەی بەکاری دەهێنن. کۆدی نهێنییەکەت هەرگیز نانێردرێت.",
   aiSettingLabel:'زیرەکی دەستکردی ریکۆ', aiSettingHint:'نامەکانت دەنێرێت بۆ Claude Haiku، Google Gemini یان Groq تا ریکۆ وەڵام بداتەوە. کە کوژاوە بێت، ریکۆ پێش وەڵامدانەوە دووبارە دەپرسێت.',
 });
 Object.assign(T.ar, {
@@ -757,15 +712,15 @@ Object.assign(T.en, {
   ricoAbout:'Rico is the assistant built into Ricotta. He works from the kitchen’s own data (the items, the suppliers and the orders kept in History) to prepare order drafts, check an order before it goes out, point out late suppliers and answer questions in Kurdish, Arabic and English. He only suggests: nothing is saved or sent until someone taps to confirm. Built on Claude Haiku by Anthropic, with Google Gemini and Groq as backups.',
   ricoAboutPrivacy:'Rico only receives what he needs to answer. PINs are never sent.',
   // Admin
-  adminPage_problems:'Problems', adminPage_security:'Security', adminPage_health:'Health Check', adminPage_access:'Yunis’s Access', adminPage_pins:'PINs',
+  adminPage_problems:'Problems', adminPage_security:'Security', adminPage_health:'Health Check', adminPage_access:'Yunis’s Access', 
   adminPage_devices:'Devices', adminPage_time:'Time in the App', adminPage_rico:'Rico', adminPage_catalog:'Catalog Check‑up',
-  adAllGood:'Everything is working', adAttention:n=>n===1?'1 thing needs a look':n+' things need a look', 
+
   adIssueProblems:n=>n===1?'1 problem reported':n+' problems reported', adIssueLocked:'Sign-in is locked', adIssueHealth:n=>'Health Check: '+n+' to fix',
-  adNone:'None', adLocked:'Locked', adSigninOpenShort:'Open', adWorking:'Working', adNeedsLook:'Needs a look',
-  adWrongPins:n=>n===1?'1 wrong PIN in 24 h':n+' wrong PINs in 24 h', adOfTotal:(n,m)=>n+' of '+m, adToday:x=>'Today · '+x,
-  adProblemsSub:n=>n+' in the last 24 hours', adProblemsClear:'All clear', adRicoSub:c=>'this month · '+c, adDevicesSub:n=>n+' active now',
-  adAccessSub:'screens and actions', adCatalogSub:'items to review', adCatalogClear:'nothing to review',
-  adOpen:n=>n?'Open · '+n:'Open', adFixed:'Fixed', adReported:'Reported by a person', adOnScreen:s=>'on '+s,
+  adNone:'None', adLocked:'Locked', adNeedsLook:'Needs a look',
+  adWrongPins:n=>n===1?'1 wrong PIN in 24 h':n+' wrong PINs in 24 h', adToday:x=>'Today · '+x,
+  adProblemsClear:'All clear', adDevicesSub:n=>n+' active now',
+  adCatalogSub:'items to review', adCatalogClear:'nothing to review',
+  adFixed:'Fixed', adReported:'Reported by a person', adOnScreen:s=>'on '+s,
   adProblemKind_error:'App error', adProblemKind_rejection:'Unfinished task', adProblemKind_console:'Error in the log', adProblemKind_server:'Server error',
   adProblemMeta:(n,d)=>n+(n===1?' time':' times')+' · '+d+(d===1?' device':' devices'), adLastSeen:x=>'last seen '+x, adTimes:n=>n+'×',
   adTechnical:'Technical details', adMarkFixed:'Mark as Fixed', adMarkedFixed:'Marked as fixed', adFixedAgo:x=>'Fixed '+x,
@@ -784,7 +739,7 @@ Object.assign(T.en, {
   adThisMonthLabel:'This month', adSince:x=>'since '+x, adAllTime:'All time', adLast14:'Last 14 days', adByDevice:'By device',
   adLastActive:x=>'active '+x, adNoTimeYet:'No time counted yet. It starts adding up with this update.',
   adTimeFoot:'Counted while the app is on the screen and someone used it in the last 5 minutes. It keeps adding up every day and never resets, not even when someone signs out.',
-  adRicoChats:'Chats', adRicoTokens:'Tokens used', adTokens:n=>n+' tokens', adTokensInOut:(i,o)=>i+' read · '+o+' written', adRicoWho:'Who used Rico', adRicoHour:'This hour',
+  adRicoChats:'Chats', adRicoTokens:'Tokens used', adTokensInOut:(i,o)=>i+' read · '+o+' written', adRicoWho:'Who used Rico', adRicoHour:'This hour',
   adRicoHourValue:(n,m)=>n+' of '+m, adRicoTotal:n=>n+' this month', adRicoFoot:'Tokens are counted by Anthropic, Google and Groq in every reply Rico gets. Usage is kept for 90 days.',
   adLastOrdered:x=>'last ordered '+x, adNeverOrdered:'never ordered', adNothingHere:'Nothing here.',
   hcAnswered:ms=>'Answered in '+ms+' ms', hcServerHint:'Saves the orders and the catalog. Every phone uses it.', hcServerFix:'The app can’t reach the server. Check the connection, then Check Now.',
@@ -798,7 +753,7 @@ Object.assign(T.en, {
   hcSavesHint:'Orders on this phone that haven’t reached the server yet.', hcWaiting:n=>n+' waiting', hcNothingWaiting:'Nothing waiting',
   hcDraftHint:'The order being made, shared between this account’s phones.', hcOrdersMonth:'Orders this month', hcLastOrder:x=>'Last order saved: '+x,
   hcGood:'Everything is working', hcBad:n=>n===1?'1 thing needs fixing':n+' things need fixing', hcWarn:n=>n===1?'1 thing to keep an eye on':n+' things to keep an eye on',
-  hcWarnShort:n=>n+' to check',
+
   accessIntro:'Choose what Yunis can open and do. His phone follows within a minute, and the server checks it on every request.',
   accessScreens:'Screens', accessActions:'What he can do', accessOrderAlways:'Always on.', accessSaved:'Yunis’s access saved', accessStandard:'Use the Standard Set',
   accessFoot:'The standard set turns everything on. Rozh always has everything.', roleNeedsManage:'Turn on Manage first.',
@@ -846,15 +801,15 @@ Object.assign(T.ku, {
   ricoNoAccess:'ئەمە بۆ تۆ چالاک نییە. لە ڕۆژ بپرسە.', ricoChatDeleted:'گفتوگۆکە سڕایەوە', ricoChatsDeleted:'هەموو گفتوگۆکان سڕانەوە',
   ricoAbout:'ریکۆ یاریدەدەری ناو ریکۆتایە. لەسەر زانیارییەکانی خودی چێشتخانەکە کار دەکات (کاڵاکان، دابینکەران و ئەو داواکارییانەی لە مێژوودا هەڵگیراون) بۆ ئامادەکردنی ڕەشنووسی داواکاری، پشکنینی داواکاری پێش ناردن، ئاماژەکردن بە دابینکەرە دواکەوتووەکان و وەڵامدانەوەی پرسیار بە کوردی، عەرەبی و ئینگلیزی. تەنها پێشنیار دەکات: هیچ شتێک پاشەکەوت یان نانێردرێت تا کەسێک بۆ دڵنیابوونەوە دایبگرێت. لەسەر Claude Haiku ی Anthropic دروستکراوە، لەگەڵ Google Gemini و Groq وەک یەدەگ.',
   ricoAboutPrivacy:'ریکۆ تەنها ئەوە وەردەگرێت کە بۆ وەڵامدانەوە پێویستیەتی. کۆدەکان هەرگیز نانێردرێن.',
-  adminPage_problems:'کێشەکان', adminPage_security:'ئاسایش', adminPage_health:'پشکنینی تەندروستی', adminPage_access:'دەسەڵاتەکانی یونس', adminPage_pins:'کۆدەکان',
+  adminPage_problems:'کێشەکان', adminPage_security:'ئاسایش', adminPage_health:'پشکنینی تەندروستی', adminPage_access:'دەسەڵاتەکانی یونس', 
   adminPage_devices:'ئامێرەکان', adminPage_time:'کات لە ئەپەکەدا', adminPage_rico:'ریکۆ', adminPage_catalog:'پشکنینی لیستی کاڵا',
-  adAllGood:'هەموو شتێک کار دەکات', adAttention:n=>n+' شت پێویستی بە سەیرکردنە', 
+
   adIssueProblems:n=>n+' کێشە ڕاپۆرت کراوە', adIssueLocked:'چوونەژوورەوە داخراوە', adIssueHealth:n=>'پشکنینی تەندروستی: '+n+' بۆ چاککردن',
-  adNone:'هیچ', adLocked:'داخراوە', adSigninOpenShort:'کراوەیە', adWorking:'کار دەکات', adNeedsLook:'پێویستی بە سەیرکردنە',
-  adWrongPins:n=>n+' کۆدی هەڵە لە 24 کاتژمێردا', adOfTotal:(n,m)=>n+' لە '+m, adToday:x=>'ئەمڕۆ · '+x,
-  adProblemsSub:n=>n+' لە 24 کاتژمێری ڕابردوودا', adProblemsClear:'هیچ کێشەیەک نییە', adRicoSub:c=>'ئەم مانگە · '+c, adDevicesSub:n=>n+' ئێستا چالاکن',
-  adAccessSub:'شاشەکان و کارەکان', adCatalogSub:'کاڵا بۆ پێداچوونەوە', adCatalogClear:'هیچ شتێک بۆ پێداچوونەوە نییە',
-  adOpen:n=>n?'کراوە · '+n:'کراوە', adFixed:'چاککراو', adReported:'کەسێک ڕاپۆرتی کردووە', adOnScreen:s=>'لە '+s,
+  adNone:'هیچ', adLocked:'داخراوە', adNeedsLook:'پێویستی بە سەیرکردنە',
+  adWrongPins:n=>n+' کۆدی هەڵە لە 24 کاتژمێردا', adToday:x=>'ئەمڕۆ · '+x,
+  adProblemsClear:'هیچ کێشەیەک نییە', adDevicesSub:n=>n+' ئێستا چالاکن',
+  adCatalogSub:'کاڵا بۆ پێداچوونەوە', adCatalogClear:'هیچ شتێک بۆ پێداچوونەوە نییە',
+  adFixed:'چاککراو', adReported:'کەسێک ڕاپۆرتی کردووە', adOnScreen:s=>'لە '+s,
   adProblemKind_error:'هەڵەی ئەپ', adProblemKind_rejection:'کارێکی تەواونەکراو', adProblemKind_console:'هەڵە لە تۆمارەکەدا', adProblemKind_server:'هەڵەی سێرڤەر',
   adProblemMeta:(n,d)=>n+' جار · '+d+' ئامێر', adLastSeen:x=>'دوایین جار '+x, adTimes:n=>n+'×',
   adTechnical:'وردەکاریی تەکنیکی', adMarkFixed:'وەک چاککراو دیاری بکە', adMarkedFixed:'وەک چاککراو دیاری کرا', adFixedAgo:x=>'چاککرا '+x,
@@ -873,21 +828,21 @@ Object.assign(T.ku, {
   adThisMonthLabel:'ئەم مانگە', adSince:x=>'لە '+x+'ەوە', adAllTime:'هەموو کات', adLast14:'14 ڕۆژی ڕابردوو', adByDevice:'بەپێی ئامێر',
   adLastActive:x=>'چالاک '+x, adNoTimeYet:'هێشتا هیچ کاتێک نەژمێردراوە. لەگەڵ ئەم نوێکردنەوەیەدا دەست پێ دەکات.',
   adTimeFoot:'کاتێک دەژمێردرێت کە ئەپەکە لەسەر شاشەیە و کەسێک لە 5 خولەکی ڕابردوودا بەکاری هێنابێت. هەموو ڕۆژێک زیاد دەبێت و هەرگیز سفر نابێتەوە، تەنانەت کاتێک کەسێک دەچێتە دەرەوەش.',
-  adRicoChats:'گفتوگۆکان', adRicoTokens:'تۆکنی بەکارهاتوو', adTokens:n=>n+' تۆکن', adTokensInOut:(i,o)=>i+' خوێندراو · '+o+' نووسراو', adRicoWho:'کێ ریکۆی بەکارهێنا', adRicoHour:'ئەم کاتژمێرە',
+  adRicoChats:'گفتوگۆکان', adRicoTokens:'تۆکنی بەکارهاتوو', adTokensInOut:(i,o)=>i+' خوێندراو · '+o+' نووسراو', adRicoWho:'کێ ریکۆی بەکارهێنا', adRicoHour:'ئەم کاتژمێرە',
   adRicoHourValue:(n,m)=>n+' لە '+m, adRicoTotal:n=>n+' ئەم مانگە', adRicoFoot:'تۆکنەکان لە هەر وەڵامێکی ریکۆدا لەلایەن Anthropic، Google و Groq ەوە دەژمێردرێن. بەکارهێنان بۆ 90 ڕۆژ دەهێڵرێتەوە.',
   adLastOrdered:x=>'دوایین داواکردن '+x, adNeverOrdered:'هەرگیز داوا نەکراوە', adNothingHere:'هیچ شتێک لێرە نییە.',
   hcAnswered:ms=>'لە '+ms+' میلیچرکەدا وەڵامی دایەوە', hcServerHint:'داواکارییەکان و لیستی کاڵا پاشەکەوت دەکات. هەموو مۆبایلێک بەکاری دەهێنێت.', hcServerFix:'ئەپەکە ناگاتە سێرڤەر. پەیوەندییەکە بپشکنە، پاشان دووبارە بپشکنە.',
-  hcSpace:'شوێنی بنکەدراوە', hcSpaceHint:'چەند لە 500 مێگابایتی پلانی بێبەرامبەر بەکارهاتووە.', hcSpaceValue:mb=>mb+' مێگابایت لە 500', hcSpaceFix:'خەریکە پڕ دەبێت. ئەگەر هەر زیاد بوو، پرسیاری پلانێکی گەورەتر بکە.',
-  jobReminderHint:'هەموو خولەکێک: بیرهێنانەوەکان و نامەکانی ریکۆ.', jobHistoryHint:'لە یەکی مانگدا: کورتەی مانگی پێشوو پاشەکەوت دەکات و مێژوو پاک دەکاتەوە.',
+  hcSpace:"شوێنی داتابەیس", hcSpaceHint:'چەند لە 500 مێگابایتی پلانی بێبەرامبەر بەکارهاتووە.', hcSpaceValue:mb=>mb+' مێگابایت لە 500', hcSpaceFix:'خەریکە پڕ دەبێت. ئەگەر هەر زیاد بوو، پرسیاری پلانێکی گەورەتر بکە.',
+  jobReminderHint:"هەموو خولەکێک: بیرخەرەوەکان و نامەکانی ریکۆ.", jobHistoryHint:'لە یەکی مانگدا: کورتەی مانگی پێشوو پاشەکەوت دەکات و مێژوو پاک دەکاتەوە.',
   jobCleanupHint:'هەموو شەوێک: چوونەژوورەوە و تۆمارە کۆنەکان پاک دەکاتەوە.', jobLogsHint:'هەموو شەوێک: تۆماری خودی ئەرکەکان بچووک دەهێڵێتەوە.',
   hcJobFix:'ئەمە خۆکارانە لەسەر سێرڤەر کار دەکات. ئەگەر بەم شێوەیە مایەوە، سێرڤەرەکە پێویستی بە چاککردنە.',
-  hcPush:'ئاگادارکردنەوەکان', hcPushHint:'ئەو مۆبایلانەی دەتوانن بیرهێنانەوە و نامەکانی ریکۆ وەربگرن.', hcPushValue:n=>n+' مۆبایل', hcPushFix:'لە ڕێکخستنی هەر مۆبایلێکدا ئاگادارکردنەوە چالاک بکە.',
+  hcPush:'ئاگادارکردنەوەکان', hcPushHint:"ئەو مۆبایلانەی دەتوانن بیرخەرەوە و نامەکانی ریکۆ وەربگرن.", hcPushValue:n=>n+' مۆبایل', hcPushFix:'لە ڕێکخستنی هەر مۆبایلێکدا ئاگادارکردنەوە چالاک بکە.',
   hcProblems:'کێشەکان', hcProblemsHint:'ئەو هەڵانەی مۆبایلەکان لە 24 کاتژمێری ڕابردوودا ڕاپۆرتیان کردووە.', hcProblemsValue:n=>n+' نوێ',
   hcWrongPins:'کۆدی هەڵە', hcWrongPinsHint:'ئەو کۆدە هەڵانەی لە 24 کاتژمێری ڕابردوودا نووسراون.',
   hcSavesHint:'ئەو داواکارییانەی لەم مۆبایلەدان و هێشتا نەگەیشتوونەتە سێرڤەر.', hcWaiting:n=>n+' چاوەڕوان', hcNothingWaiting:'هیچ شتێک چاوەڕوان نییە',
   hcDraftHint:'ئەو داواکارییەی ئامادە دەکرێت، هاوبەش لە نێوان مۆبایلەکانی ئەم هەژمارەدا.', hcOrdersMonth:'داواکارییەکانی ئەم مانگە', hcLastOrder:x=>'دوایین داواکاریی پاشەکەوتکراو: '+x,
   hcGood:'هەموو شتێک کار دەکات', hcBad:n=>n+' شت پێویستی بە چاککردنە', hcWarn:n=>n+' شت پێویستی بە چاودێرییە',
-  hcWarnShort:n=>n+' بۆ پشکنین',
+
   accessIntro:'هەڵبژێرە یونس چی بکاتەوە و چی بکات. مۆبایلەکەی لە ماوەی یەک خولەکدا جێبەجێی دەکات، و سێرڤەرەکە لە هەموو داواکارییەکدا دەیپشکنێت.',
   accessScreens:'شاشەکان', accessActions:'ئەوەی دەتوانێت بیکات', accessOrderAlways:'هەمیشە چالاکە.', accessSaved:'دەسەڵاتەکانی یونس پاشەکەوت کران', accessStandard:'بەکارهێنانی کۆمەڵە ئاساییەکە',
   accessFoot:'کۆمەڵە ئاساییەکە هەموو شتێک دادەگیرسێنێت. ڕۆژ هەمیشە هەموو شتێکی هەیە.', roleNeedsManage:'سەرەتا بەڕێوەبردن چالاک بکە.',
@@ -899,19 +854,19 @@ Object.assign(T.ku, {
   check_noSupplier:'بێ دابینکەر', check_noSupplierHint:'بۆ کەس نانێردرێن.', check_noUnit:'بێ یەکە', check_noUnitHint:'داواکارییەکە ناتوانێت بڵێت چەند.',
   check_unavailable:'بەردەست نییە', check_unavailableHint:'لە داواکاری شاراوەیە تا دووبارە چالاک دەکرێتەوە.', check_quiet:'30 ڕۆژە داوا نەکراوە', check_quietHint:'هێشتا پێویستە؟ وەک بەردەست نییە دیاری بکە یان بیسڕەوە.',
   checkFoot:'کاڵایەک دابگرە بۆ چاککردنی.',
-  durLessMin:'کەمتر لە 1 خولەک', durMin:m=>m+' خولەک', durHour:h=>h+' کاتژمێر', durHourMin:(h,m)=>h+' کاتژمێر و '+m+' خولەک',
+  durLessMin:"کەمتر لە خولەکێک", durMin:m=>m+' خولەک', durHour:h=>h+' کاتژمێر', durHourMin:(h,m)=>h+' کاتژمێر و '+m+' خولەک',
   exportBtn:'هەناردەکردن', exportItemsTitle:'هەناردەکردنی کاڵاکان', exportSuppliersTitle:'هەناردەکردنی دابینکەران', exportMonthTitle:'پاشەکەوتکردنی ئەم مانگە',
   exportHint:'لەگەڵ ژمارەی داواکارییەکانی ئەم مانگە.', exportMonthHint:'هەموو داواکارییەکانی ئەم مانگە. مێژوو لانیکەم 60 ڕۆژ دەهێڵێتەوە.',
   exportExcel:'Excel', exportExcelHint:'خشتەیەک بۆ ڕیزکردن، فلتەرکردن و هەڵگرتن', exportPdf:'PDF', exportPdfHint:'بەڵگەنامەیەک بۆ چاپکردن یان ناردن',
   exportFailed:'فایلەکە دروست نەکرا. تکایە دووبارە هەوڵ بدەرەوە.', fileExcelReady:'فایلی Excel ئامادەیە', filePdfReady:'PDF ئامادەیە',
   fileItemsTitle:'کاڵاکان', fileSuppliersTitle:'دابینکەران', fileItemsSub:(n,m,at)=>n+' کاڵا · داواکارییەکانی '+m+' · دروستکرا '+at, fileSuppliersSub:(n,m,at)=>n+' دابینکەر · داواکارییەکانی '+m+' · دروستکرا '+at,
   fileItem:'کاڵا', fileAvailable:'بەردەستە', fileYes:'بەڵێ', fileNo:'نەخێر', fileOrdersMonth:'داواکاریی ئەم مانگە', fileQtyMonth:'بڕی ئەم مانگە', fileLastOrdered:'دوایین داواکردن',
-  fileOrderedMonth:'ئەم مانگە داواکراون', fileUnavailable:'بەردەست نین', fileReminder:'بیرهێنانەوە', fileLinesMonth:'کاڵای نێردراوی ئەم مانگە', fileLastOrder:'دوایین داواکاری', fileTotal:'کۆی گشتی',
+  fileOrderedMonth:'ئەم مانگە داواکراون', fileUnavailable:'بەردەست نین', fileReminder:"بیرخەرەوە", fileLinesMonth:'کاڵای نێردراوی ئەم مانگە', fileLastOrder:'دوایین داواکاری', fileTotal:'کۆی گشتی',
   fileOrderTitle:'داواکاریی کڕین', fileOrderSub:n=>'بۆ '+n, fileDate:'بەروار', fileTime:'کات', fileQty:'بڕ', fileOrderNote:'تکایە ئەم داواکارییە بەپێی ئەو بڕانەی سەرەوە ئامادە بکەن. سوپاس.',
   fileMonthTitle:m=>'داواکارییەکانی '+m, fileMonthSub:(o,d,at)=>o+' داواکاری لە '+d+' ڕۆژدا · دروستکرا '+at, fileMonthFile:'داواکارییەکانی ریکۆتا', fileOrdersSheet:'داواکارییەکان', fileSummarySheet:'کورتە',
   fileSentBy:'نێردراو لەلایەن', fileTimes:'جار', fileWhat:'چی', fileValue:'بەها', pdfPage:(n,m)=>'لاپەڕەی '+n+' لە '+m,
   tableFilter:'پیشاندان', tableSort:'ڕیزکردن بەپێی', tableSortBy:c=>'ڕیزکردن: '+c, tableColumns:'ستوونەکان', tableOrders:n=>n+' داواکاری',
-  tableWithReminder:'بیرهێنانەوەیان هەیە', tableNoPhone:'بێ ژمارەی تەلەفۆن', tableNoneHere:'هیچ شتێک لەگەڵ ئەم فلتەرەدا ناگونجێت.', tableAddToOrder:'1 بۆ داواکاری زیاد بکە', tableAdded:n=>n+' بۆ داواکاری زیاد کرا',
+  tableWithReminder:"بیرخەرەوەیان هەیە", tableNoPhone:"بێ ژمارەی مۆبایل", tableNoneHere:'هیچ شتێک لەگەڵ ئەم فلتەرەدا ناگونجێت.', tableAddToOrder:'1 بۆ داواکاری زیاد بکە', tableAdded:n=>n+' بۆ داواکاری زیاد کرا',
   spotTitle:'گەڕان', spotNone:'هیچ ئەنجامێک نییە. وشەیەکی تر تاقی بکەرەوە یان ڕێنووسەکەی بپشکنە.', spotSuggestions:'پێشنیارەکان', spotActions:'کارەکان', spotOrders:'داواکارییەکانی ئەم مانگە', spotScreen:'شاشە',
   spotQtyInvalid:'بڕ دەتوانێت تا 99999 بێت، بە زۆرترین 3 ژمارە دوای خاڵ', spotSet:(n,q,u)=>n+' بکە بە '+q+(u?' '+u:''), spotSetDone:(n,q)=>n+': '+q, spotInOrder:q=>q+' لە داواکارییەکەدا',
   keyboardShortcuts:'کورتەڕێکانی تەختەکلیل', shortIntro:'لە کۆمپیوتەردا ئەم کلیلانە لە هەموو شوێنێکی ئەپەکەدا کار دەکەن، جگە لە کاتی نووسین لە خانەیەکدا.',
@@ -931,23 +886,23 @@ Object.assign(T.ar, {
   ricoNoAccess:'هذا غير مفعّل لك. اسأل روژ.', ricoChatDeleted:'حُذفت المحادثة', ricoChatsDeleted:'حُذفت كل المحادثات',
   ricoAbout:'ريكو هو المساعد المدمج في ريكوتا. يعمل من بيانات المطبخ نفسه (المواد والموردين والطلبات المحفوظة في السجل) ليجهّز مسودات الطلبات، ويراجع الطلب قبل إرساله، وينبّه إلى الموردين المتأخرين، ويجيب عن الأسئلة بالكردية والعربية والإنجليزية. هو يقترح فقط: لا يُحفظ أو يُرسل أي شيء حتى يضغط أحد للتأكيد. مبني على Claude Haiku من Anthropic، مع Google Gemini وGroq احتياطيًا.',
   ricoAboutPrivacy:'لا يتلقى ريكو إلا ما يحتاجه للإجابة. لا تُرسل الرموز أبدًا.',
-  adminPage_problems:'المشكلات', adminPage_security:'الأمان', adminPage_health:'فحص الحالة', adminPage_access:'صلاحيات يونس', adminPage_pins:'الرموز',
+  adminPage_problems:'المشكلات', adminPage_security:'الأمان', adminPage_health:'فحص الحالة', adminPage_access:'صلاحيات يونس', 
   adminPage_devices:'الأجهزة', adminPage_time:'الوقت في التطبيق', adminPage_rico:'ريكو', adminPage_catalog:'مراجعة القائمة',
-  adAllGood:'كل شيء يعمل', adAttention:n=>n===1?'شيء واحد يحتاج إلى مراجعة':n+' أشياء تحتاج إلى مراجعة', 
-  adIssueProblems:n=>n===1?'مشكلة واحدة مُبلّغ عنها':n+' مشكلات مُبلّغ عنها', adIssueLocked:'تسجيل الدخول مقفل', adIssueHealth:n=>'فحص الحالة: '+n+' للإصلاح',
-  adNone:'لا شيء', adLocked:'مقفل', adSigninOpenShort:'مفتوح', adWorking:'يعمل', adNeedsLook:'يحتاج إلى مراجعة',
-  adWrongPins:n=>n+' رمز خاطئ خلال 24 ساعة', adOfTotal:(n,m)=>n+' من '+m, adToday:x=>'اليوم · '+x,
-  adProblemsSub:n=>n+' خلال آخر 24 ساعة', adProblemsClear:'لا مشكلات', adRicoSub:c=>'هذا الشهر · '+c, adDevicesSub:n=>n+' نشطة الآن',
-  adAccessSub:'الشاشات والإجراءات', adCatalogSub:'مواد للمراجعة', adCatalogClear:'لا شيء للمراجعة',
-  adOpen:n=>n?'مفتوحة · '+n:'مفتوحة', adFixed:'تم إصلاحها', adReported:'أبلغ عنها شخص', adOnScreen:s=>'في '+s,
+
+  adIssueProblems:n=>AR_N(n,'مشكلة واحدة مُبلّغ عنها','مشكلتان مُبلّغ عنهما','مشكلات مُبلّغ عنها','مشكلة مُبلّغًا عنها'), adIssueLocked:'تسجيل الدخول مقفل', adIssueHealth:n=>'فحص الحالة: '+n+' للإصلاح',
+  adNone:'لا شيء', adLocked:'مقفل', adNeedsLook:'يحتاج إلى مراجعة',
+  adWrongPins:n=>AR_N(n,'رمز خاطئ واحد','رمزان خاطئان','رموز خاطئة','رمزًا خاطئًا')+' خلال 24 ساعة', adToday:x=>'اليوم · '+x,
+  adProblemsClear:'لا مشكلات', adDevicesSub:n=>n+' نشطة الآن',
+  adCatalogSub:'مواد للمراجعة', adCatalogClear:'لا شيء للمراجعة',
+  adFixed:'تم إصلاحها', adReported:'أبلغ عنها شخص', adOnScreen:s=>'في '+s,
   adProblemKind_error:'خطأ في التطبيق', adProblemKind_rejection:'مهمة لم تكتمل', adProblemKind_console:'خطأ في السجل', adProblemKind_server:'خطأ في الخادم',
-  adProblemMeta:(n,d)=>n+' مرة · '+d+' جهاز', adLastSeen:x=>'آخر ظهور '+x, adTimes:n=>n+'×',
+  adProblemMeta:(n,d)=>AR_N(n,'مرة واحدة','مرتان','مرات','مرة')+' · '+AR_N(d,'جهاز واحد','جهازان','أجهزة','جهازًا'), adLastSeen:x=>'آخر ظهور '+x, adTimes:n=>n+'×',
   adTechnical:'تفاصيل تقنية', adMarkFixed:'تعليم كمُصلَحة', adMarkedFixed:'عُلّمت كمُصلَحة', adFixedAgo:x=>'أُصلحت '+x,
   adNoProblems:'لا مشكلات', adNoFixed:'لم يُصلَح شيء هذا الأسبوع', adProblemsHint:'تظهر هنا أخطاء كل هاتف تلقائيًا.',
   adRemoveFixed:'إزالة المشكلات المُصلَحة', adRemoveFixedAsk:'إزالة كل المشكلات المُعلّمة كمُصلَحة؟',
   adProblemsFoot:'يبلّغ كل هاتف هنا عن أخطائه تلقائيًا، مع الجهاز وإصدار التطبيق. ويمكن لأي شخص أيضًا كتابة واحدة من الإعدادات، الإبلاغ عن مشكلة.',
   adSigninOpen:'تسجيل الدخول مفتوح', adSigninLocked:x=>'تسجيل الدخول مقفل حتى '+x, adSigninLockedHint:'رموز خاطئة كثيرة. افتحه إذا كان شخصًا من المطبخ.',
-  adSigninOpenHint:(n,m)=>n?n+' رموز خاطئة خلال آخر 10 دقائق. يُقفل عند '+m+'.':'لا رموز خاطئة خلال آخر 10 دقائق.',
+  adSigninOpenHint:(n,m)=>n?AR_N(n,'رمز خاطئ واحد','رمزان خاطئان','رموز خاطئة','رمزًا خاطئًا')+' خلال آخر 10 دقائق. يُقفل عند '+m+'.':'لا رموز خاطئة خلال آخر 10 دقائق.',
   adUnlock:'فتح', adUnlockAsk:'فتح تسجيل الدخول الآن؟ لن تُحسب الرموز الخاطئة من آخر 10 دقائق.', adUnlocked:'فُتح تسجيل الدخول',
   adStatWrong:'رموز خاطئة، 24 ساعة', adStatSignins:'تسجيلات دخول، 24 ساعة', adStatNew:'أجهزة جديدة، 7 أيام',
   adNewPhoneNote:'تتلقى روژ إشعارًا كلما سجّل جهاز الدخول لأول مرة.',
@@ -958,7 +913,7 @@ Object.assign(T.ar, {
   adThisMonthLabel:'هذا الشهر', adSince:x=>'منذ '+x, adAllTime:'كل الوقت', adLast14:'آخر 14 يومًا', adByDevice:'حسب الجهاز',
   adLastActive:x=>'نشط '+x, adNoTimeYet:'لم يُحسب أي وقت بعد. يبدأ الحساب مع هذا التحديث.',
   adTimeFoot:'يُحسب ما دام التطبيق على الشاشة واستخدمه أحد خلال آخر 5 دقائق. يزداد كل يوم ولا يُصفّر أبدًا، حتى عند تسجيل الخروج.',
-  adRicoChats:'المحادثات', adRicoTokens:'الرموز المستخدمة', adTokens:n=>n+' رمز', adTokensInOut:(i,o)=>i+' مقروء · '+o+' مكتوب', adRicoWho:'من استخدم ريكو', adRicoHour:'هذه الساعة',
+  adRicoChats:'المحادثات', adRicoTokens:'الرموز المستخدمة', adTokensInOut:(i,o)=>i+' مقروء · '+o+' مكتوب', adRicoWho:'من استخدم ريكو', adRicoHour:'هذه الساعة',
   adRicoHourValue:(n,m)=>n+' من '+m, adRicoTotal:n=>n+' هذا الشهر', adRicoFoot:'تحسب Anthropic وGoogle وGroq الرموز في كل رد يتلقاه ريكو. يُحتفظ بالاستخدام 90 يومًا.',
   adLastOrdered:x=>'آخر طلب '+x, adNeverOrdered:'لم يُطلب أبدًا', adNothingHere:'لا شيء هنا.',
   hcAnswered:ms=>'أجاب خلال '+ms+' ملّي ثانية', hcServerHint:'يحفظ الطلبات والقائمة. يستخدمه كل هاتف.', hcServerFix:'لا يصل التطبيق إلى الخادم. تحقق من الاتصال، ثم افحص الآن.',
@@ -966,13 +921,13 @@ Object.assign(T.ar, {
   jobReminderHint:'كل دقيقة: التذكيرات ورسائل ريكو.', jobHistoryHint:'في أول الشهر: يحفظ ملخص الشهر الماضي ويمسح السجل.',
   jobCleanupHint:'كل ليلة: يمسح تسجيلات الدخول والسجلات القديمة.', jobLogsHint:'كل ليلة: يبقي سجل المجدول نفسه صغيرًا.',
   hcJobFix:'يعمل هذا تلقائيًا على الخادم. إذا بقي هكذا فالخادم يحتاج إلى إصلاح.',
-  hcPush:'الإشعارات', hcPushHint:'الهواتف التي يمكنها تلقي التذكيرات ورسائل ريكو.', hcPushValue:n=>n+' هاتف', hcPushFix:'فعّل الإشعارات من الإعدادات على كل هاتف.',
+  hcPush:'الإشعارات', hcPushHint:'الهواتف التي يمكنها تلقي التذكيرات ورسائل ريكو.', hcPushValue:n=>AR_N(n,'هاتف واحد','هاتفان','هواتف','هاتفًا'), hcPushFix:'فعّل الإشعارات من الإعدادات على كل هاتف.',
   hcProblems:'المشكلات', hcProblemsHint:'الأخطاء التي أبلغت عنها الهواتف خلال آخر 24 ساعة.', hcProblemsValue:n=>n+' جديدة',
   hcWrongPins:'رموز خاطئة', hcWrongPinsHint:'الرموز الخاطئة المكتوبة خلال آخر 24 ساعة.',
   hcSavesHint:'طلبات على هذا الهاتف لم تصل إلى الخادم بعد.', hcWaiting:n=>n+' بالانتظار', hcNothingWaiting:'لا شيء بالانتظار',
   hcDraftHint:'الطلب قيد التحضير، مشترك بين هواتف هذا الحساب.', hcOrdersMonth:'طلبات هذا الشهر', hcLastOrder:x=>'آخر طلب محفوظ: '+x,
-  hcGood:'كل شيء يعمل', hcBad:n=>n===1?'شيء واحد يحتاج إلى إصلاح':n+' أشياء تحتاج إلى إصلاح', hcWarn:n=>n===1?'شيء واحد للمتابعة':n+' أشياء للمتابعة',
-  hcWarnShort:n=>n+' للفحص',
+  hcGood:'كل شيء يعمل', hcBad:n=>AR_N(n,'شيء واحد يحتاج إلى إصلاح','شيئان يحتاجان إلى إصلاح','أشياء تحتاج إلى إصلاح','شيئًا يحتاج إلى إصلاح'), hcWarn:n=>AR_N(n,'شيء واحد للمتابعة','شيئان للمتابعة','أشياء للمتابعة','شيئًا للمتابعة'),
+
   accessIntro:'اختر ما يمكن ليونس فتحه وفعله. يتبع هاتفه ذلك خلال دقيقة، ويتحقق الخادم منه في كل طلب.',
   accessScreens:'الشاشات', accessActions:'ما يمكنه فعله', accessOrderAlways:'مفعّل دائمًا.', accessSaved:'حُفظت صلاحيات يونس', accessStandard:'استخدام المجموعة القياسية',
   accessFoot:'المجموعة القياسية تشغّل كل شيء. لدى روژ كل شيء دائمًا.', roleNeedsManage:'فعّل الإدارة أولًا.',
@@ -984,18 +939,18 @@ Object.assign(T.ar, {
   check_noSupplier:'بدون مورّد', check_noSupplierHint:'لا يمكن إرسالها إلى أحد.', check_noUnit:'بدون وحدة', check_noUnitHint:'لا يستطيع الطلب أن يقول الكمية.',
   check_unavailable:'غير متوفرة', check_unavailableHint:'مخفية في الطلب حتى تُفعّل مجددًا.', check_quiet:'لم تُطلب منذ 30 يومًا', check_quietHint:'ما زالت مطلوبة؟ اجعلها غير متوفرة أو احذفها.',
   checkFoot:'اضغط على مادة لإصلاحها.',
-  durLessMin:'أقل من دقيقة', durMin:m=>m+' د', durHour:h=>h+' س', durHourMin:(h,m)=>h+' س '+m+' د',
+  durLessMin:'أقل من دقيقة', durMin:m=>m+' د', durHour:h=>h+' س', durHourMin:(h,m)=>h+' س و'+m+' د',
   exportBtn:'تصدير', exportItemsTitle:'تصدير المواد', exportSuppliersTitle:'تصدير الموردين', exportMonthTitle:'حفظ هذا الشهر',
   exportHint:'مع عدد طلبات هذا الشهر.', exportMonthHint:'كل طلبات هذا الشهر. يحتفظ السجل بما لا يقل عن 60 يومًا.',
   exportExcel:'Excel', exportExcelHint:'جدول للفرز والتصفية والحفظ', exportPdf:'PDF', exportPdfHint:'مستند للطباعة أو الإرسال',
   exportFailed:'تعذّر إنشاء الملف. حاول مرة أخرى.', fileExcelReady:'ملف Excel جاهز', filePdfReady:'ملف PDF جاهز',
-  fileItemsTitle:'المواد', fileSuppliersTitle:'الموردون', fileItemsSub:(n,m,at)=>n+' مادة · طلبات '+m+' · أُنشئ '+at, fileSuppliersSub:(n,m,at)=>n+' مورّد · طلبات '+m+' · أُنشئ '+at,
+  fileItemsTitle:'المواد', fileSuppliersTitle:'الموردون', fileItemsSub:(n,m,at)=>AR_N(n,'مادة واحدة','مادتان','مواد','مادة')+' · طلبات '+m+' · أُنشئ '+at, fileSuppliersSub:(n,m,at)=>AR_N(n,'مورّد واحد','مورّدان','مورّدين','مورّدًا')+' · طلبات '+m+' · أُنشئ '+at,
   fileItem:'المادة', fileAvailable:'متوفرة', fileYes:'نعم', fileNo:'لا', fileOrdersMonth:'طلبات هذا الشهر', fileQtyMonth:'كمية هذا الشهر', fileLastOrdered:'آخر طلب',
   fileOrderedMonth:'طُلبت هذا الشهر', fileUnavailable:'غير متوفرة', fileReminder:'التذكير', fileLinesMonth:'مواد أُرسلت هذا الشهر', fileLastOrder:'آخر طلب', fileTotal:'المجموع',
   fileOrderTitle:'طلب شراء', fileOrderSub:n=>'إلى '+n, fileDate:'التاريخ', fileTime:'الوقت', fileQty:'الكمية', fileOrderNote:'يرجى تجهيز هذا الطلب بالكميات المذكورة أعلاه. شكرًا لكم.',
-  fileMonthTitle:m=>'طلبات '+m, fileMonthSub:(o,d,at)=>o+' طلب في '+d+' يوم · أُنشئ '+at, fileMonthFile:'طلبات ريكوتا', fileOrdersSheet:'الطلبات', fileSummarySheet:'الملخص',
+  fileMonthTitle:m=>'طلبات '+m, fileMonthSub:(o,d,at)=>AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+' في '+AR_N(d,'يوم واحد','يومين','أيام','يومًا')+' · أُنشئ '+at, fileMonthFile:'طلبات ريكوتا', fileOrdersSheet:'الطلبات', fileSummarySheet:'الملخص',
   fileSentBy:'أرسله', fileTimes:'مرات', fileWhat:'البند', fileValue:'القيمة', pdfPage:(n,m)=>'صفحة '+n+' من '+m,
-  tableFilter:'عرض', tableSort:'الفرز حسب', tableSortBy:c=>'الفرز: '+c, tableColumns:'الأعمدة', tableOrders:n=>n+' طلب',
+  tableFilter:'عرض', tableSort:'الفرز حسب', tableSortBy:c=>'الفرز: '+c, tableColumns:'الأعمدة', tableOrders:n=>AR_N(Number(n),'طلب واحد','طلبان','طلبات','طلبًا'),
   tableWithReminder:'لها تذكير', tableNoPhone:'بدون رقم هاتف', tableNoneHere:'لا شيء يطابق هذا العرض.', tableAddToOrder:'إضافة 1 إلى الطلب', tableAdded:n=>'أُضيفت '+n+' إلى الطلب',
   spotTitle:'بحث', spotNone:'لا توجد نتائج. جرّب كلمة أخرى أو تحقّق من الإملاء.', spotSuggestions:'اقتراحات', spotActions:'إجراءات', spotOrders:'طلبات هذا الشهر', spotScreen:'شاشة',
   spotQtyInvalid:'الكمية حتى 99999، وبثلاث خانات عشرية كحد أقصى', spotSet:(n,q,u)=>'اجعل '+n+' '+q+(u?' '+u:''), spotSetDone:(n,q)=>n+': '+q, spotInOrder:q=>q+' في الطلب',
@@ -1023,12 +978,12 @@ Object.assign(T.en, {
   welcomeBackLine:'Welcome back,', welcomeOpening:'Opening Ricotta',
 });
 Object.assign(T.ku, {
-  adPeriod_day:'ڕۆژنە', adPeriod_week:'هەفتانە', adPeriod_month:'مانگانە',
+  adPeriod_day:"ڕۆژانە", adPeriod_week:'هەفتانە', adPeriod_month:'مانگانە',
   adTimeIn_day:'ئەمڕۆ', adTimeIn_week:'7 ڕۆژی ڕابردوو', adTimeIn_month:'ئەم مانگە',
   adTimeAvg_day:'تێکڕای ڕۆژێک، 30 ڕۆژی ڕابردوو', adTimeAvg_week:'تێکڕای ڕۆژێک، 7 ڕۆژی ڕابردوو', adTimeAvg_month:'تێکڕای ڕۆژێک، ئەم مانگە',
   adChart_day:'14 ڕۆژی ڕابردوو', adChart_week:'8 هەفتەی ڕابردوو', adChart_month:'6 مانگی ڕابردوو',
   loginTitle:'چوونەژوورەوە', loginPinSub:'کۆدە 6 ژمارەییەکەت بنووسە.', loginKeysHint:'تەنها دەست بە نووسین بکە. Esc دەیسڕێتەوە.',
-  loginTagline:'داواکاری ڕۆژنە بۆ چێشتخانەی ریکۆتا.', ricottaPlace:'چێشتخانەی ریکۆتا · هەولێر',
+  loginTagline:"داواکاری ڕۆژانە بۆ چێشتخانەی ریکۆتا.", ricottaPlace:'چێشتخانەی ریکۆتا · هەولێر',
   directions:'ڕێنوێنی', mapPinLabel:'ریکۆتا',
   mapLabel:'نەخشەی دەوروبەری ریکۆتا. ڕایبکێشە بۆ سەیرکردنی دەوروبەر.', mapRecenter:'گەڕانەوە بۆ ریکۆتا',
   welcomeBackLine:'بەخێربێیتەوە،', welcomeOpening:'ریکۆتا دەکرێتەوە',
@@ -1091,7 +1046,7 @@ Object.assign(T.ar, {
   aiBrainsTitle:'ذكاء ريكو', aiRoleMain:'يجيب أولًا', aiRoleBackup1:'احتياطي عندما لا يستطيع Haiku الإجابة', aiRoleBackup2:'احتياطي عندما يكون Gemini مشغولًا',
   aiNotConnected:'غير متصل', aiNotUsedYet:'متصل، لم يُستخدم بعد', aiState_working:'يعمل', aiState_key_rejected:'المفتاح مرفوض', aiState_no_funds:'نفد الرصيد',
   aiState_busy:'مشغول', aiState_failed:'مشكلة', aiState_model_unavailable:'النموذج غير متاح', aiState_not_configured:'غير متصل',
-  aiReplies:n=>n+' رد هذا الشهر', aiFreePlan:'خطة مجانية',
+  aiReplies:n=>AR_N(n,'رد واحد','ردّان','ردود','ردًا')+' هذا الشهر', aiFreePlan:'خطة مجانية',
   aiBrainsFoot:'يجيب Haiku أولًا. إن لم يستطع (نفد الرصيد، أو رُفض المفتاح، أو مشغول، أو بطيء) يجيب Gemini، ثم Groq عندما يكون Gemini مشغولًا.',
 });
 
@@ -1099,138 +1054,108 @@ Object.assign(T.ar, {
 Object.assign(T.en, {
   wipeWarnToday:'History older than 60 days will be deleted tonight: orders, Records and Rico\'s chats. Save anything you need first.',
   wipeWarnSoon:n=>'History older than 60 days will be deleted in '+n+' day'+(n===1?'':'s')+': orders, Records and Rico\'s chats. Save anything you need first.',
-  
+
   feat_tables:'Interactive tables', feat_tables_hint:'Sorting, filters and columns in Items and Suppliers. Off shows a plain list.',
   feat_swipe:'Swipe for the usual', feat_swipe_hint:'Swipe an item on the Order screen to add its usual amount.',
-  
-  
-  
-  
-  
-  
+
   feat_kitchenMode:'Kitchen mode', feat_kitchenMode_hint:'Larger text and buttons, for a shared tablet.',
-  
+
   feat_ricoSheet:'Rico on the Order screen', feat_ricoSheet_hint:'A button on the Order screen that opens Rico over your order.',
-  
+
   feat_ricoMood:'Rico\'s mood follows the kitchen', feat_ricoMood_hint:'Worried when something is late, happy when all is sent.',
   feat_milestones:'Kitchen milestones', feat_milestones_hint:'Small awards, like 30 days in a row.',
 });
 Object.assign(T.ku, {
   wipeWarnToday:'مێژووی کۆنتر لە 60 ڕۆژ ئەمشەو دەسڕدرێتەوە: داواکارییەکان، تۆمارەکان و گفتوگۆکانی ریکۆ. پێشتر ئەوەی پێویستتە پاشەکەوتی بکە.',
   wipeWarnSoon:n=>'مێژووی کۆنتر لە 60 ڕۆژ دوای '+n+' ڕۆژ دەسڕدرێتەوە: داواکارییەکان، تۆمارەکان و گفتوگۆکانی ریکۆ. پێشتر ئەوەی پێویستتە پاشەکەوتی بکە.',
-  
+
   feat_tables:'خشتەی کارلێکەر', feat_tables_hint:'ڕیزکردن، پاڵێوەر و ستوون لە کاڵاکان و دابینکەران. کوژاندنەوە لیستێکی سادە پیشان دەدات.',
   feat_swipe:'ڕاکێشان بۆ بڕی ئاسایی', feat_swipe_hint:'کاڵایەک لە شاشەی داواکاری ڕابکێشە بۆ زیادکردنی بڕی ئاسایی.',
-  
-  
-  
-  
-  
-  
+
   feat_kitchenMode:'شێوازی چێشتخانە', feat_kitchenMode_hint:'نووسین و دوگمەی گەورەتر، بۆ تابلێتی هاوبەش.',
-  
+
   feat_ricoSheet:'ریکۆ لە شاشەی داواکاری', feat_ricoSheet_hint:'دوگمەیەک لە شاشەی داواکاری کە ریکۆ لەسەر داواکارییەکەت دەکاتەوە.',
-  
+
   feat_ricoMood:'مەزاجی ریکۆ لەگەڵ چێشتخانە', feat_ricoMood_hint:'نیگەران کاتێک شتێک دواکەوتووە، دڵخۆش کاتێک هەموو نێردراوە.',
-  feat_milestones:'خاڵەکانی چێشتخانە', feat_milestones_hint:'خەڵاتی بچووک، وەک 30 ڕۆژ لەسەریەک.',
+  feat_milestones:"دەستکەوتەکانی چێشتخانە", feat_milestones_hint:'خەڵاتی بچووک، وەک 30 ڕۆژ لەسەریەک.',
 });
 Object.assign(T.ar, {
   wipeWarnToday:'سيُحذف السجل الأقدم من 60 يومًا الليلة: الطلبات والسجلات ومحادثات ريكو. احفظ ما تحتاجه أولًا.',
-  wipeWarnSoon:n=>'سيُحذف السجل الأقدم من 60 يومًا بعد '+AR_DAYS(n)+': الطلبات والسجلات ومحادثات ريكو. احفظ ما تحتاجه أولًا.',
-  
+  wipeWarnSoon:n=>'سيُحذف السجل الأقدم من 60 يومًا بعد '+AR_N(n,'يوم واحد','يومين','أيام','يومًا')+': الطلبات والسجلات ومحادثات ريكو. احفظ ما تحتاجه أولًا.',
+
   feat_tables:'جداول تفاعلية', feat_tables_hint:'الفرز والتصفية والأعمدة في الأصناف والموردين. الإيقاف يعرض قائمة بسيطة.',
   feat_swipe:'اسحب للكمية المعتادة', feat_swipe_hint:'اسحب صنفًا في شاشة الطلب لإضافة كميته المعتادة.',
-  
-  
-  
-  
-  
-  
+
   feat_kitchenMode:'وضع المطبخ', feat_kitchenMode_hint:'نص وأزرار أكبر لجهاز لوحي مشترك.',
-  
+
   feat_ricoSheet:'ريكو في شاشة الطلب', feat_ricoSheet_hint:'زر في شاشة الطلب يفتح ريكو فوق طلبك.',
-  
+
   feat_ricoMood:'مزاج ريكو يتبع المطبخ', feat_ricoMood_hint:'قلق عند تأخر شيء، وسعيد عند إرسال كل شيء.',
   feat_milestones:'إنجازات المطبخ', feat_milestones_hint:'جوائز صغيرة، مثل 30 يومًا متتاليًا.',
 });
 
 Object.assign(T.en, {
   dayOrderBtn:d=>'Usual '+d, dayOrderLoaded:n=>n+' usual items added',
-  
-  
-  
+
   swipeNoUsual:'No usual amount yet for this item', swipeAdded:(q,u)=>'Added '+q+' '+u,
-  
-  
-  
+
   chartPerDay:'Orders each day', chartPerDayAlt:(n,d)=>n+' orders over '+d+' days', trendsTitle:'Changing the most', trendUp:p=>'Up '+p+'%', trendDown:p=>'Down '+p+'%', trendSteady:'About the same',
   compareBtn:'Compare two months', compareTitle:'Compare two months', compareFirst:'First month', compareSecond:'Second month', compareChange:'Change', monthPdf:'Save as PDF',
   yearBtn:'Your year', yearTitle:y=>'Your '+y+' in the kitchen', yearStreak:'Longest streak', yearBest:m=>'Best month: '+m, yearHint:'From each finished month\'s summary and this month so far.',
   milestonesTitle:'Milestones', ms_streak7:'7 days in a row', ms_streak30:'30 days in a row', ms_streak100:'100 days in a row', ms_orders100:'100 orders', ms_orders500:'500 orders', ms_orders1000:'1,000 orders', milestoneNew:n=>'New milestone: '+n,
   nextLate:n=>n+' is late', nextDue:n=>n+' is due today', nextUsualAt:h=>'Usually around '+h, nextDone:'All done for now', nextDoneSub:'Nothing is due right now.', 
-  
-  
+
   receiptIntro:'Here is your last order.', receiptNone:'There are no orders in History yet.', receiptSame:'Order the same',
   whyLabel:'Why these amounts?',
   styleLabel:'How Rico talks', style_normal:'Normal', style_short:'Short and direct', style_warm:'Warm and chatty',
   memoryTitle:'What Rico remembers', memoryHint:'Rules you teach Rico stay until you delete them. His usual amounts come from History.', memoryRules:'Rules', memoryLoading:'Loading...', memoryNone:'No rules yet.', memoryAddLabel:'A new rule', memoryAddHint:'Never order fish on Friday', memoryAdd:'Add', memoryUsual:'Usual amounts', memoryNoOrders:'No orders yet.',
   sheetOpen:'Ask Rico', sheetEmpty:'Your order is empty. Ask me anything.', sheetAsk:'Ask Rico about this order',
   inboxTitle:'Rico\'s messages', inboxNone:'No messages.', inboxSeeAll:n=>'See all '+n,
-  
+
   tourBtn:'Show the tour', tourNext:'Next', tourDone:'Start', tour1T:'Make an order', tour1:'Choose amounts on the Order screen. Swipe an item to add its usual amount.', tour2T:'Send it', tour2:'Send opens WhatsApp with each supplier\'s order, ready to go.', tour3T:'Meet Rico', tour3:'Tap the spark at the top. He prepares orders, checks them and answers questions.', tour4T:'You\'re ready', tour4:'Everything you send is saved in History.',
   adminPage_restore:'Restore', adRestoreSub:'The last 7 days', restoreHint:'The server keeps a copy of the kitchen\'s data each day for 7 days. Restoring brings back what was deleted since that day. Nothing that exists now is changed.', restoreBtn:'Restore', restoreNone:'The first copy is made tonight.', restoreCounts:(o,i,s)=>o+' orders, '+i+' items, '+s+' suppliers', restoreConfirm:'This brings back anything deleted since this day. Enter your PIN to continue.', restorePin:'Your PIN', restoreDone:(o,i,s)=>'Brought back '+o+' orders, '+i+' items and '+s+' suppliers',
 });
 Object.assign(T.ku, {
   dayOrderBtn:d=>'ئاسایی '+d, dayOrderLoaded:n=>n+' کاڵای ئاسایی زیاد کرا',
-  
-  
-  
+
   swipeNoUsual:'هێشتا بڕی ئاسایی بۆ ئەم کاڵایە نییە', swipeAdded:(q,u)=>q+' '+u+' زیاد کرا',
-  
-  
-  
+
   chartPerDay:'داواکاری هەر ڕۆژێک', chartPerDayAlt:(n,d)=>n+' داواکاری لە '+d+' ڕۆژدا', trendsTitle:'زۆرترین گۆڕانکاری', trendUp:p=>p+'% زیادی کردووە', trendDown:p=>p+'% کەمی کردووە', trendSteady:'نزیکەی وەک خۆی',
   compareBtn:'بەراوردی دوو مانگ', compareTitle:'بەراوردی دوو مانگ', compareFirst:'مانگی یەکەم', compareSecond:'مانگی دووەم', compareChange:'گۆڕان', monthPdf:'وەک PDF پاشەکەوت بکە',
   yearBtn:'ساڵەکەت', yearTitle:y=>'ساڵی '+y+' لە چێشتخانە', yearStreak:'درێژترین زنجیرە', yearBest:m=>'باشترین مانگ: '+m, yearHint:'لە پوختەی هەر مانگێکی تەواوبوو و ئەم مانگە تا ئێستا.',
-  milestonesTitle:'خاڵەکان', ms_streak7:'7 ڕۆژ لەسەریەک', ms_streak30:'30 ڕۆژ لەسەریەک', ms_streak100:'100 ڕۆژ لەسەریەک', ms_orders100:'100 داواکاری', ms_orders500:'500 داواکاری', ms_orders1000:'1,000 داواکاری', milestoneNew:n=>'خاڵێکی نوێ: '+n,
+  milestonesTitle:"دەستکەوتەکان", ms_streak7:'7 ڕۆژ لەسەریەک', ms_streak30:'30 ڕۆژ لەسەریەک', ms_streak100:'100 ڕۆژ لەسەریەک', ms_orders100:'100 داواکاری', ms_orders500:'500 داواکاری', ms_orders1000:'1,000 داواکاری', milestoneNew:n=>'دەستکەوتێکی نوێ: '+n,
   nextLate:n=>n+' دواکەوتووە', nextDue:n=>n+' ئەمڕۆ کاتی هاتووە', nextUsualAt:h=>'زۆرجار نزیکەی '+h, nextDone:'ئێستا هەمووی تەواوە', nextDoneSub:'ئێستا هیچ کاتی نەهاتووە.', 
-  
-  
+
   receiptIntro:'ئەمە دوایین داواکاریتە.', receiptNone:'هێشتا داواکاری لە مێژوودا نییە.', receiptSame:'هەمان داواکاری',
   whyLabel:'بۆچی ئەم بڕانە؟',
   styleLabel:'ریکۆ چۆن قسە دەکات', style_normal:'ئاسایی', style_short:'کورت و ڕاستەوخۆ', style_warm:'گەرم و قسەخۆش',
   memoryTitle:'ریکۆ چی لەبیرە', memoryHint:'ئەو یاسایانەی فێری ریکۆی دەکەیت دەمێننەوە تا دەیانسڕیتەوە. بڕە ئاساییەکانی لە مێژووەوەن.', memoryRules:'یاساکان', memoryLoading:'بارکردن...', memoryNone:'هێشتا یاسا نییە.', memoryAddLabel:'یاسایەکی نوێ', memoryAddHint:'هەرگیز ڕۆژی هەینی ماسی داوا مەکە', memoryAdd:'زیادکردن', memoryUsual:'بڕە ئاساییەکان', memoryNoOrders:'هێشتا داواکاری نییە.',
   sheetOpen:'لە ریکۆ بپرسە', sheetEmpty:'داواکارییەکەت بەتاڵە. هەر شتێکم لێ بپرسە.', sheetAsk:'دەربارەی ئەم داواکارییە لە ریکۆ بپرسە',
   inboxTitle:'نامەکانی ریکۆ', inboxNone:'هیچ نامەیەک نییە.', inboxSeeAll:n=>'هەر '+n+' نامە ببینە',
-  
+
   tourBtn:'گەشتەکە پیشان بدە', tourNext:'دواتر', tourDone:'دەستپێک', tour1T:'داواکارییەک دروست بکە', tour1:'بڕەکان لە شاشەی داواکاری هەڵبژێرە. کاڵایەک ڕابکێشە بۆ زیادکردنی بڕی ئاسایی.', tour2T:'بینێرە', tour2:'ناردن واتسئاپ دەکاتەوە بە داواکاری هەر دابینکەرێک، ئامادە.', tour3T:'ریکۆ بناسە', tour3:'لەسەرەوە دەست لە ئەستێرەکە بدە. داواکاری ئامادە دەکات، دەیپشکنێت و وەڵام دەداتەوە.', tour4T:'ئامادەیت', tour4:'هەرچی دەینێریت لە مێژوودا پاشەکەوت دەکرێت.',
-  adminPage_restore:'گەڕاندنەوە', adRestoreSub:'7 ڕۆژی ڕابردوو', restoreHint:'سێرڤەر هەر ڕۆژێک کۆپییەک لە داتای چێشتخانە بۆ 7 ڕۆژ هەڵدەگرێت. گەڕاندنەوە ئەوە دەهێنێتەوە کە لەو ڕۆژەوە سڕاوەتەوە. هیچ شتێکی ئێستا ناگۆڕێت.', restoreBtn:'گەڕاندنەوە', restoreNone:'یەکەم کۆپی ئەمشەو دروست دەکرێت.', restoreCounts:(o,i,s)=>o+' داواکاری، '+i+' کاڵا، '+s+' دابینکەر', restoreConfirm:'ئەمە هەرچی لەم ڕۆژەوە سڕاوەتەوە دەیهێنێتەوە. PIN ەکەت بنووسە بۆ بەردەوامبوون.', restorePin:'PIN ەکەت', restoreDone:(o,i,s)=>o+' داواکاری، '+i+' کاڵا و '+s+' دابینکەر گەڕێندرانەوە',
+  adminPage_restore:'گەڕاندنەوە', adRestoreSub:'7 ڕۆژی ڕابردوو', restoreHint:'سێرڤەر هەر ڕۆژێک کۆپییەک لە داتای چێشتخانە بۆ 7 ڕۆژ هەڵدەگرێت. گەڕاندنەوە ئەوە دەهێنێتەوە کە لەو ڕۆژەوە سڕاوەتەوە. هیچ شتێکی ئێستا ناگۆڕێت.', restoreBtn:'گەڕاندنەوە', restoreNone:'یەکەم کۆپی ئەمشەو دروست دەکرێت.', restoreCounts:(o,i,s)=>o+' داواکاری، '+i+' کاڵا، '+s+' دابینکەر', restoreConfirm:"ئەمە هەرچی لەم ڕۆژەوە سڕاوەتەوە دەیهێنێتەوە. کۆدی نهێنییەکەت بنووسە بۆ بەردەوامبوون.", restorePin:"کۆدی نهێنییەکەت", restoreDone:(o,i,s)=>o+' داواکاری، '+i+' کاڵا و '+s+' دابینکەر گەڕێندرانەوە',
 });
 Object.assign(T.ar, {
-  dayOrderBtn:d=>'المعتاد ليوم '+d, dayOrderLoaded:n=>'أُضيف '+n+' من الأصناف المعتادة',
-  
-  
-  
+  dayOrderBtn:d=>'المعتاد ليوم '+d, dayOrderLoaded:n=>'أُضيفت '+AR_N(n,'مادة معتادة واحدة','مادتان معتادتان','مواد معتادة','مادة معتادة'),
+
   swipeNoUsual:'لا توجد كمية معتادة لهذا الصنف بعد', swipeAdded:(q,u)=>'أُضيف '+q+' '+u,
-  
-  
-  
-  chartPerDay:'الطلبات كل يوم', chartPerDayAlt:(n,d)=>n+' طلبًا خلال '+d+' يومًا', trendsTitle:'الأكثر تغيرًا', trendUp:p=>'زاد '+p+'%', trendDown:p=>'نقص '+p+'%', trendSteady:'كما هو تقريبًا',
+
+  chartPerDay:'الطلبات كل يوم', chartPerDayAlt:(n,d)=>AR_N(n,'طلب واحد','طلبان','طلبات','طلبًا')+' خلال '+AR_N(d,'يوم واحد','يومين','أيام','يومًا'), trendsTitle:'الأكثر تغيرًا', trendUp:p=>'زاد '+p+'%', trendDown:p=>'نقص '+p+'%', trendSteady:'كما هو تقريبًا',
   compareBtn:'قارن شهرين', compareTitle:'قارن شهرين', compareFirst:'الشهر الأول', compareSecond:'الشهر الثاني', compareChange:'التغير', monthPdf:'احفظ بصيغة PDF',
   yearBtn:'سنتك', yearTitle:y=>'سنة '+y+' في المطبخ', yearStreak:'أطول سلسلة', yearBest:m=>'أفضل شهر: '+m, yearHint:'من ملخص كل شهر منتهٍ وهذا الشهر حتى الآن.',
   milestonesTitle:'الإنجازات', ms_streak7:'7 أيام متتالية', ms_streak30:'30 يومًا متتاليًا', ms_streak100:'100 يوم متتالٍ', ms_orders100:'100 طلب', ms_orders500:'500 طلب', ms_orders1000:'1,000 طلب', milestoneNew:n=>'إنجاز جديد: '+n,
   nextLate:n=>n+' متأخر', nextDue:n=>'حان موعد '+n+' اليوم', nextUsualAt:h=>'عادةً حوالي '+h, nextDone:'انتهى كل شيء الآن', nextDoneSub:'لا شيء مستحق الآن.', 
-  
-  
+
   receiptIntro:'هذا طلبك الأخير.', receiptNone:'لا توجد طلبات في السجل بعد.', receiptSame:'اطلب نفسه',
   whyLabel:'لماذا هذه الكميات؟',
   styleLabel:'كيف يتحدث ريكو', style_normal:'عادي', style_short:'قصير ومباشر', style_warm:'ودود ومتحدث',
   memoryTitle:'ما يتذكره ريكو', memoryHint:'القواعد التي تعلّمها لريكو تبقى حتى تحذفها. كمياته المعتادة من السجل.', memoryRules:'القواعد', memoryLoading:'جارٍ التحميل...', memoryNone:'لا توجد قواعد بعد.', memoryAddLabel:'قاعدة جديدة', memoryAddHint:'لا تطلب السمك يوم الجمعة أبدًا', memoryAdd:'إضافة', memoryUsual:'الكميات المعتادة', memoryNoOrders:'لا توجد طلبات بعد.',
   sheetOpen:'اسأل ريكو', sheetEmpty:'طلبك فارغ. اسألني أي شيء.', sheetAsk:'اسأل ريكو عن هذا الطلب',
   inboxTitle:'رسائل ريكو', inboxNone:'لا توجد رسائل.', inboxSeeAll:n=>'عرض الكل ('+n+')',
-  
+
   tourBtn:'اعرض الجولة', tourNext:'التالي', tourDone:'ابدأ', tour1T:'أنشئ طلبًا', tour1:'اختر الكميات في شاشة الطلب. اسحب صنفًا لإضافة كميته المعتادة.', tour2T:'أرسله', tour2:'يفتح الإرسال واتساب بطلب كل مورد جاهزًا.', tour3T:'تعرّف على ريكو', tour3:'اضغط النجمة في الأعلى. يجهّز الطلبات ويفحصها ويجيب عن الأسئلة.', tour4T:'أنت جاهز', tour4:'كل ما ترسله يُحفظ في السجل.',
-  adminPage_restore:'الاستعادة', adRestoreSub:'آخر 7 أيام', restoreHint:'يحتفظ الخادم بنسخة من بيانات المطبخ كل يوم لمدة 7 أيام. تعيد الاستعادة ما حُذف منذ ذلك اليوم، ولا تغيّر شيئًا موجودًا.', restoreBtn:'استعادة', restoreNone:'تُنشأ أول نسخة الليلة.', restoreCounts:(o,i,s)=>o+' طلبًا، '+i+' صنفًا، '+s+' موردًا', restoreConfirm:'سيعيد هذا كل ما حُذف منذ هذا اليوم. أدخل رمزك للمتابعة.', restorePin:'رمزك', restoreDone:(o,i,s)=>'أُعيد '+o+' طلبًا و'+i+' صنفًا و'+s+' موردًا',
+  adminPage_restore:'الاستعادة', adRestoreSub:'آخر 7 أيام', restoreHint:'يحتفظ الخادم بنسخة من بيانات المطبخ كل يوم لمدة 7 أيام. تعيد الاستعادة ما حُذف منذ ذلك اليوم، ولا تغيّر شيئًا موجودًا.', restoreBtn:'استعادة', restoreNone:'تُنشأ أول نسخة الليلة.', restoreCounts:(o,i,s)=>AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+'، '+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+'، '+AR_N(s,'مورّد واحد','مورّدان','مورّدين','مورّدًا'), restoreConfirm:'سيعيد هذا كل ما حُذف منذ هذا اليوم. أدخل رمزك للمتابعة.', restorePin:'رمزك', restoreDone:(o,i,s)=>'أُعيد: '+AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+'، '+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+'، '+AR_N(s,'مورّد واحد','مورّدان','مورّدين','مورّدًا'),
 });
 
 /* The clean-up: settings in sections, one notification switch, AI switches, pinned suppliers. */
@@ -1260,7 +1185,7 @@ Object.assign(T.ku, {
   feat_soundMilestone:'دەستکەوتەکان', feat_soundMilestone_hint:'دەنگێکی کورتی ئاهەنگ بۆ ئامانجی زنجیرە یان خەڵاتی چێشتخانە.',
   feat_soundUndo:'گەڕاندنەوە', feat_soundUndo_hint:'زەنگی داواکاری بە پێچەوانە کاتێک دەیگەڕێنیتەوە.',
   settingsGroup_notif:'ئاگادارکردنەوەکان', settingsGroup_order:'داواکاری', settingsGroup_rico:'ریکۆ', settingsGroup_look:'شێوە',
-  notifSwitch:'ئاگادارکردنەوە لەم مۆبایلەدا', notifSwitchHint:'نامەکانی ریکۆ و بیرخستنەوەی دابینکەران. ئەم دوگمەیە تەنها بۆ ئەم مۆبایلەیە.',
+  notifSwitch:'ئاگادارکردنەوە لەم مۆبایلەدا', notifSwitchHint:"نامەکانی ریکۆ و بیرخەرەوەی دابینکەران. ئەم دوگمەیە تەنها بۆ ئەم مۆبایلەیە.",
   feat_showLastQty:'دوایین بڕ پیشان بدە', feat_showLastQty_hint:'هەر کاڵایەک پیشانی دەدات دوایین جار چەندت داوا کرد.',
   feat_compactRows:'ڕیزی بچووکتر', feat_compactRows_hint:'کاڵای زیاتر لەسەر شاشە جێ دەبێتەوە.',
   feat_soundQty:'دەنگ کاتێک بڕێک دەگۆڕیت', feat_soundQty_hint:'لێدانێکی نەرم هەر جارێک + یان − دادەگریت.',
@@ -1288,59 +1213,44 @@ Object.assign(T.ar, {
 
 /* Admin's dashboard: the headline, today's counts, the status rows and the real orders charts. */
 Object.assign(T.en, {
-  adNeedsYou:n=>n===1?'1 thing needs you':n+' things need you', adNeedsYouSub:'Tap one to open it',
-  adAllGoodShort:'All good', adAllGoodSub:'Nothing needs you', adCouldntCheck:'Couldn’t check everything',
+  adNeedsYou:n=>n===1?'1 thing needs you':n+' things need you', 
+  adAllGoodShort:'All good', 
   adCouldntCheckSub:list=>'Not loaded: '+list, adCouldntLoad:'Couldn’t load', adReadAt:time=>'Read at '+time,
   adSrc_health:'Health Check', adSrc_problems:'Problems', adSrc_security:'Security', adSrc_overview:'orders, receipts and transfers',
   adIssueReceipt:s=>s?'Receipt with a problem: '+s:'Receipt with a problem', adIssueTransfer:z=>z?'Transfer with a problem: to '+z:'Transfer with a problem',
-  adOrdersToday:'Orders today', adReceiptsToday:'Receipts today', adTransfersToday:'Transfers today',
+
   adRow_history:'Orders', adRow_receipts:'Receipts', adRow_transfers:'Transfers',
-  adOrders7:n=>(n===1?'1 order':n+' orders')+' sent in the last 7 days', adReceipts7:n=>(n===1?'1 receipt':n+' receipts')+' saved in the last 7 days',
-  adTransfers7:n=>(n===1?'1 transfer':n+' transfers')+' moved in the last 7 days', adInProgress:n=>n+' in progress', adProblemsN:n=>n===1?'1 problem':n+' problems',
-  adSignins24:n=>(n===1?'1 sign-in':n+' sign-ins')+' in 24 h', adHealthSub:'Server, database and scheduled jobs',
+
   adLastAt:when=>'Last: '+when, adNeverYet:'None yet',
-  adGroupStatus:'Status', adGroupOverTime:'Orders over time',
-  adKpiOrders30:'Orders, last 30 days', adKpiReceipts7:'Receipts, last 7 days', adItemsEach:n=>'About '+n+' items each', adNoneYet:'None yet',
-  adChartDays:'Orders sent per day, last 14 days', adChartSuppliers:'Items ordered per supplier, last 30 days',
-  adMoreSuppliers:(n,items)=>'+ '+n+' more '+(n===1?'supplier':'suppliers')+', '+items+' items in all',
+
   adSourcesTitle:'Where these numbers come from',
   adSourcesBody:'Every number is counted from real records in the database, by Baghdad day: sent orders and their items, receipts Rico saved in Ricotta Restaurant, and transfers that moved. Nothing is estimated or filled in. A number that could not be read shows “Couldn’t load”, never 0. The numbers are read again every 30 seconds while Admin is open.',
 });
 Object.assign(T.ku, {
-  adNeedsYou:n=>n+' شت پێویستی بە تۆیە', adNeedsYouSub:'دەستی لێ بدە بۆ کردنەوەی',
-  adAllGoodShort:'هەموو شتێک باشە', adAllGoodSub:'هیچ شتێک پێویستی بە تۆ نییە', adCouldntCheck:'نەتوانرا هەموو شتێک بپشکنرێت',
+  adNeedsYou:n=>n+' شت پێویستی بە تۆیە', 
+  adAllGoodShort:'هەموو شتێک باشە', 
   adCouldntCheckSub:list=>'بار نەکرا: '+list, adCouldntLoad:'بار نەکرا', adReadAt:time=>'خوێندرایەوە '+time,
   adSrc_health:'پشکنینی تەندروستی', adSrc_problems:'کێشەکان', adSrc_security:'ئاسایش', adSrc_overview:'داواکاری، وەسڵ و گواستنەوەکان',
   adIssueReceipt:s=>s?'وەسڵێک کێشەی هەیە: '+s:'وەسڵێک کێشەی هەیە', adIssueTransfer:z=>z?'گواستنەوەیەک کێشەی هەیە: بۆ '+z:'گواستنەوەیەک کێشەی هەیە',
-  adOrdersToday:'داواکاریی ئەمڕۆ', adReceiptsToday:'وەسڵی ئەمڕۆ', adTransfersToday:'گواستنەوەی ئەمڕۆ',
+
   adRow_history:'داواکارییەکان', adRow_receipts:'وەسڵەکان', adRow_transfers:'گواستنەوەکان',
-  adOrders7:n=>n+' داواکاری لە 7 ڕۆژی ڕابردوودا نێردرا', adReceipts7:n=>n+' وەسڵ لە 7 ڕۆژی ڕابردوودا پاشەکەوت کرا',
-  adTransfers7:n=>n+' گواستنەوە لە 7 ڕۆژی ڕابردوودا کرا', adInProgress:n=>n+' لە کاردایە', adProblemsN:n=>n+' کێشە',
-  adSignins24:n=>n+' چوونەژوورەوە لە 24 کاتژمێردا', adHealthSub:'سێرڤەر، داتابەیس و کارە خشتەکراوەکان',
+
   adLastAt:when=>'دوایین: '+when, adNeverYet:'هێشتا هیچ',
-  adGroupStatus:'دۆخ', adGroupOverTime:'داواکارییەکان بە درێژایی کات',
-  adKpiOrders30:'داواکاری، 30 ڕۆژی ڕابردوو', adKpiReceipts7:'وەسڵ، 7 ڕۆژی ڕابردوو', adItemsEach:n=>'نزیکەی '+n+' کاڵا بۆ هەریەکە', adNoneYet:'هێشتا هیچ',
-  adChartDays:'داواکاریی نێردراو بۆ هەر ڕۆژێک، 14 ڕۆژی ڕابردوو', adChartSuppliers:'کاڵای داواکراو بۆ هەر دابینکەرێک، 30 ڕۆژی ڕابردوو',
-  adMoreSuppliers:(n,items)=>'+ '+n+' دابینکەری تر، بە گشتی '+items+' کاڵا',
+
   adSourcesTitle:'ئەم ژمارانە لە کوێوە دێن',
-  adSourcesBody:'هەموو ژمارەیەک لە تۆمارە ڕاستەقینەکانی داتابەیس دەژمێردرێت، بە ڕۆژی بەغدا: داواکارییە نێردراوەکان و کاڵاکانیان، ئەو وەسڵانەی ریکۆ لە Ricotta Restaurant پاشەکەوتی کردوون، و ئەو گواستنەوانەی کراون. هیچ شتێک خەمڵاندن نییە. ژمارەیەک کە نەخوێندرایەوە «بار نەکرا» پیشان دەدات، هەرگیز 0 نا. تا ئەدمین کراوە بێت، ژمارەکان هەر 30 چرکە جارێک دووبارە دەخوێندرێنەوە.',
+  adSourcesBody:"هەموو ژمارەیەک لە تۆمارە ڕاستەقینەکانی داتابەیس دەژمێردرێت، بە ڕۆژی بەغدا: داواکارییە نێردراوەکان و کاڵاکانیان، ئەو وەسڵانەی ریکۆ لە ریکۆتا ڕێستۆرانت پاشەکەوتی کردوون، و ئەو گواستنەوانەی کراون. هیچ شتێک خەمڵاندن نییە. ژمارەیەک کە نەخوێندرایەوە «بار نەکرا» پیشان دەدات، هەرگیز 0 نا. تا ئەدمین کراوە بێت، ژمارەکان هەر 30 چرکە جارێک دووبارە دەخوێندرێنەوە.",
 });
 Object.assign(T.ar, {
-  adNeedsYou:n=>n===1?'أمر واحد يحتاج إليك':n===2?'أمران يحتاجان إليك':n+' أمور تحتاج إليك', adNeedsYouSub:'اضغط على أحدها لفتحه',
-  adAllGoodShort:'كل شيء على ما يرام', adAllGoodSub:'لا شيء يحتاج إليك', adCouldntCheck:'تعذّر فحص كل شيء',
+  adNeedsYou:n=>n===1?'أمر واحد يحتاج إليك':n===2?'أمران يحتاجان إليك':n+' أمور تحتاج إليك', 
+  adAllGoodShort:'كل شيء على ما يرام', 
   adCouldntCheckSub:list=>'لم يُحمَّل: '+list, adCouldntLoad:'تعذّر التحميل', adReadAt:time=>'قُرئ في '+time,
   adSrc_health:'فحص السلامة', adSrc_problems:'المشكلات', adSrc_security:'الأمان', adSrc_overview:'الطلبات والإيصالات والتحويلات',
   adIssueReceipt:s=>s?'إيصال فيه مشكلة: '+s:'إيصال فيه مشكلة', adIssueTransfer:z=>z?'تحويل فيه مشكلة: إلى '+z:'تحويل فيه مشكلة',
-  adOrdersToday:'طلبات اليوم', adReceiptsToday:'إيصالات اليوم', adTransfersToday:'تحويلات اليوم',
+
   adRow_history:'الطلبات', adRow_receipts:'الإيصالات', adRow_transfers:'التحويلات',
-  adOrders7:n=>n+' طلب أُرسل خلال آخر 7 أيام', adReceipts7:n=>n+' إيصال حُفظ خلال آخر 7 أيام',
-  adTransfers7:n=>n+' تحويل تمّ خلال آخر 7 أيام', adInProgress:n=>n+' قيد التنفيذ', adProblemsN:n=>n===1?'مشكلة واحدة':n+' مشكلات',
-  adSignins24:n=>n+' تسجيل دخول خلال 24 ساعة', adHealthSub:'الخادم وقاعدة البيانات والمهام المجدولة',
+
   adLastAt:when=>'آخرها: '+when, adNeverYet:'لا شيء بعد',
-  adGroupStatus:'الحالة', adGroupOverTime:'الطلبات عبر الوقت',
-  adKpiOrders30:'الطلبات، آخر 30 يومًا', adKpiReceipts7:'الإيصالات، آخر 7 أيام', adItemsEach:n=>'نحو '+n+' مواد لكل طلب', adNoneYet:'لا شيء بعد',
-  adChartDays:'الطلبات المرسلة يوميًا، آخر 14 يومًا', adChartSuppliers:'المواد المطلوبة لكل مورّد، آخر 30 يومًا',
-  adMoreSuppliers:(n,items)=>'+ '+n+' مورّدين آخرين، '+items+' مادة في المجموع',
+
   adSourcesTitle:'من أين تأتي هذه الأرقام',
-  adSourcesBody:'كل رقم يُحسب من سجلات حقيقية في قاعدة البيانات، حسب يوم بغداد: الطلبات المرسلة وموادها، والإيصالات التي حفظها ريكو في Ricotta Restaurant، والتحويلات التي تمّت. لا شيء مُقدَّر أو مُضاف. الرقم الذي تعذّرت قراءته يظهر «تعذّر التحميل»، وليس 0 أبدًا. تُقرأ الأرقام من جديد كل 30 ثانية ما دامت الإدارة مفتوحة.',
+  adSourcesBody:"كل رقم يُحسب من سجلات حقيقية في قاعدة البيانات، حسب يوم بغداد: الطلبات المرسلة وموادها، والإيصالات التي حفظها ريكو في ريكوتا ريستورانت، والتحويلات التي تمّت. لا شيء مُقدَّر أو مُضاف. الرقم الذي تعذّرت قراءته يظهر «تعذّر التحميل»، وليس 0 أبدًا. تُقرأ الأرقام من جديد كل 30 ثانية ما دامت الإدارة مفتوحة.",
 });

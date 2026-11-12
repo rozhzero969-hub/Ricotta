@@ -331,7 +331,7 @@ function renderRicoProposalCard(p, mi){
     const groups=new Map();
     for(const id of ids){const item=state.items.find(i=>i.id===id);if(!item)continue;const supplier=supplierName(item.supplierId)||t('noSupplier');if(!groups.has(supplier))groups.set(supplier,[]);groups.get(supplier).push(item);}
     icon=NAV_ICONS.order;title=t('ricoReviewChanges');
-    body=[...groups].map(([supplier,items])=>`<div class="rico-card-group"><div class="rico-card-sup">${supplierMono(supplier)}${esc(supplier)}</div>${items.map(item=>`<div class="rico-card-line"><span dir="auto">${esc(item.name)}<small>${esc(unitLabel(item.unit))}</small></span><b class="rico-quantity-change"><span aria-label="${esc(t('currentQuantity'))}">${esc(before[item.id]||0)}</span><i aria-hidden="true">→</i><span aria-label="${esc(t('newQuantity'))}">${esc(after?.[item.id]||0)}</span></b></div>`).join('')}</div>`).join('')
+    body=[...groups].map(([supplier,items])=>`<div class="rico-card-group"><div class="rico-card-sup">${esc(supplier)}</div>${items.map(item=>`<div class="rico-card-line"><span dir="auto">${esc(item.name)}<small>${esc(unitLabel(item.unit))}</small></span><b class="rico-quantity-change"><span aria-label="${esc(t('currentQuantity'))}">${esc(before[item.id]||0)}</span><i aria-hidden="true">→</i><span aria-label="${esc(t('newQuantity'))}">${esc(after?.[item.id]||0)}</span></b></div>`).join('')}</div>`).join('')
       +(p.note?`<div class="rico-card-note">${esc(p.note)}</div>`:'')
       +(p.why?`<details class="rico-why"><summary>${esc(t('whyLabel'))}</summary><span dir="auto">${esc(p.why)}</span></details>`:'')
       +`<div class="rico-card-note">${esc(t(p.mode==='add'?'ricoAddsToDraft':'ricoSetsDraft'))}</div>`;

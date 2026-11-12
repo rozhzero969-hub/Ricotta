@@ -19,15 +19,15 @@
    draftProgressLabel, flushOutbox, syncSharedDraft, maybeFinishQueue, currentOutbox, sendDeviceCommand,
    refreshDevices, deviceParts, deviceTitle, otherDevices, commandIsPending, versionCmp. Load before app.js. */
 
-const ADMIN_PAGES = ['problems','security','health','access','pins','devices','time','rico','catalog','restore'];
+const ADMIN_PAGES = ['problems','security','health','access','devices','time','rico','catalog','restore','person'];
 const ADMIN_SOURCES = {overview:'admin/overview', backups:'admin/backups', health:'admin/diagnostics', security:'admin/security', problems:'admin/problems', usage:'admin/usage', rico:'admin/rico', ai:'admin/ai', roles:'admin/roles'};
 /* What each page needs (the list itself shows a value from most of them). */
 const ADMIN_NEEDS = {restore:['backups'], home:['overview','health','security','problems','usage','rico','roles'], problems:['problems'], security:['security'], health:['health','problems','security'],
-  access:['roles'], pins:[], devices:[], time:['usage'], rico:['rico','ai'], catalog:[]};
+  access:['roles'], devices:[], time:['usage'], rico:['rico','ai'], catalog:[], person:['usage','roles']};
 let adminData = {account:null, busy:{}, failed:{}};
-let adminFilter = {problems:'open', security:'all', time:'day'};
+let adminFilter = {problems:'open', security:'all', time:'day', person:'rozha'};
 let adminListTop = 0;
-function resetAdmin(){ adminData = {account:null, busy:{}, failed:{}}; adminFilter = {problems:'open', security:'all', time:'day'}; adminListTop = 0; }
+function resetAdmin(){ adminData = {account:null, busy:{}, failed:{}}; adminFilter = {problems:'open', security:'all', time:'day', person:'rozha'}; adminListTop = 0; }
 function adminLoad(page, force = false){
   if(!isRozha()) return;
   if(adminData.account !== state.account){ resetAdmin(); adminData.account = state.account; }
@@ -71,8 +71,8 @@ function renderAdmin(){
 function renderAdminBody(){
   const page = ADMIN_PAGES.includes(state.adminPage) ? state.adminPage : null;
   if(!page) return renderAdminHome();
-  return ({problems:renderAdminProblems, security:renderAdminSecurity, health:renderAdminHealth, access:renderAdminAccess, pins:renderAdminPins,
-    devices:renderAdminDevices, time:renderAdminTime, rico:renderAdminRico, catalog:renderAdminCatalog, restore:renderAdminRestore})[page]();
+  return ({problems:renderAdminProblems, security:renderAdminSecurity, health:renderAdminHealth, access:renderAdminAccess,
+    devices:renderAdminDevices, time:renderAdminTime, rico:renderAdminRico, catalog:renderAdminCatalog, restore:renderAdminRestore, person:renderAdminPerson})[page]();
 }
 /* Redraws only Admin's own part (the heading stays), when new data arrives. */
 function paintAdmin(){
@@ -92,13 +92,19 @@ function attachAdminBodyEvents(){
   slot.querySelectorAll('[data-admin-open]').forEach(b=>b.onclick = ()=>openAdminPage(b.dataset.adminOpen));
   slot.querySelectorAll('[data-admin-jump]').forEach(b=>b.onclick = ()=>openAdminPage(b.dataset.adminJump));
   slot.querySelectorAll('[data-admin-go]').forEach(b=>b.onclick = ()=>openAdminGo(b.dataset.adminGo, b.dataset.adminId || ''));
+  slot.querySelectorAll('[data-admin-person]').forEach(b=>b.onclick = ()=>{ adminFilter.person = b.dataset.adminPerson; openAdminPage('person'); });
+  slot.querySelectorAll('[data-adh-refresh]').forEach(b=>b.onclick = async()=>{
+    const d = state.devices.find(x=>x.id === b.dataset.adhRefresh);
+    if(!d || !(await showConfirm(`<b>${esc(deviceTitle(d))}</b><br>${t('confirmRefreshDevice')}`, {okLabel:t('refreshDevice'), okClass:'btn-primary'}))) return;
+    await sendDeviceCommand('refresh', [d.id]);
+  });
   slot.querySelectorAll('[data-admin-refresh]').forEach(b=>b.onclick = ()=>spinRefresh(b, async()=>{
     const keys = ADMIN_NEEDS[state.adminPage || 'home'];
     if(state.adminPage === 'devices') await refreshDevices();
     await Promise.all(keys.map(k=>adminFetch(k, true)));
   }));
-  ({restore:attachAdminRestore, problems:attachAdminProblems, security:attachAdminSecurity, health:attachAdminHealth, access:attachAdminAccess, pins:attachAdminPins,
-    devices:attachAdminDevices, catalog:attachAdminCatalog, time:attachAdminTime, rico:attachAdminAiSwitches})[state.adminPage]?.(slot);
+  ({restore:attachAdminRestore, problems:attachAdminProblems, security:attachAdminSecurity, health:attachAdminHealth, access:attachAdminAccess,
+    devices:attachAdminDevices, catalog:attachAdminCatalog, time:attachAdminTime, rico:attachAdminAiSwitches, person:attachAdminPerson})[state.adminPage]?.(slot);
 }
 /* Opens a page (or goes back to the list) with the iPhone's push: the new page slides in from the side
    while the list moves a little the other way and dims; Back reverses it. */
@@ -135,7 +141,7 @@ function openAdminPage(page){
 }
 /* The heading of an Admin page: Admin's back button, then the page's name. */
 function adminHeading(){
-  const refresh = ['pins','catalog','health'].includes(state.adminPage) ? '' : adminRefresh();
+  const refresh = ['catalog','health'].includes(state.adminPage) ? '' : adminRefresh();
   return `<header class="page-heading admin-heading"><button type="button" class="page-back" data-admin-open="">${ICON_BACK}<span>${esc(t('adminTitle'))}</span></button><div class="page-title-row"><h1>${esc(t('adminPage_' + state.adminPage))}</h1>${refresh}</div></header>`;
 }
 const adminRefresh = ()=>`<button type="button" class="icon-btn admin-refresh" data-admin-refresh id="adminRefresh" aria-label="${esc(t('refresh'))}">${ICON_REFRESH}</button>`;
@@ -170,145 +176,152 @@ function adminIssues(){
   if(bad) out.push({page:'health', text:t('adIssueHealth')(bad)});
   return out;
 }
-/* The dashboard, in three parts (Rozh chose them from five designs):
-     1. One glance: a headline that says how many things need her, or "All good" only when every source
-        loaded and nothing is wrong, with what was read and when; then today's orders, receipts, transfers.
-     2. Control room: one row per part of the app with what is true now and its last activity.
-     3. Orders over time: real orders per Baghdad day for 14 days and items per supplier for 30 days.
-   Then the pages to manage, and where every number comes from. Only real rows are counted: a number that
-   could not be read says so and is never shown as 0; a real 0 is grey. No trends, targets or forecasts. */
+/* The dashboard (the design Rozh approved on 2026-11-12), calm and in this order:
+     1. One line under the title: All good, or how many things need a look, and when it was read.
+     2. Today: orders, receipts and transfers, each with small bars for the last days and a plain
+        comparison with the same weekday last week.
+     3. Needs you: only real things, each with one button (Open, Refresh).
+     4. Rico: is he running, and what he did today.
+     5. People: Rozh and Yunis, one row each; a row opens that person's page (time, phones, PIN, access).
+     6. Tools: Problems, Security, Health, Catalog, Restore, Rico's AI.
+     7. Server: how full the database and the photos are.
+   Only real rows are counted: a number that could not be read says so and is never shown as 0. */
 const adNum = n=>Number(n || 0).toLocaleString('en-US');
-const adMoney = totals=>{
-  const parts = [];
-  if(totals?.IQD != null) parts.push(adNum(totals.IQD) + ' IQD');
-  if(totals?.USD != null) parts.push('$' + Number(totals.USD).toLocaleString('en-US', {maximumFractionDigits:3}));
-  return parts.join(' + ');
-};
 /* "Today 16:33 · Yunis": when something last happened and who did it. */
 function adWhen(at, by){
   if(!at) return t('adNeverYet');
   const time = formatIraqDateTime(at, {hour:'numeric', minute:'2-digit'});
   return [t('adLastAt')(`${dayLabel(at)} ${time}`), accountLabel(by)].filter(Boolean).join(' · ');
 }
+/* Phones signed in on an older version than the newest one any phone runs. */
+function adOldPhones(){
+  const latest = latestVersion();
+  return state.devices.filter(d=>isLoggedIn(d) && d.id !== state.deviceId && d.appVersion && versionCmp(d.appVersion, latest) < 0);
+}
+/* The small bars under a number: the last 14 days (7 on a phone), today darkest. */
+function adSpark(days){
+  if(!Array.isArray(days) || !days.length) return '';
+  const max = Math.max(1, ...days.map(d=>Number(d.n) || 0));
+  return `<span class="adh-spark" aria-hidden="true">${days.map((d, i)=>`<i class="${i === days.length - 1 ? 'today' : ''}" style="height:${Math.max(3, Math.round((Number(d.n) || 0) / max * 100))}%"></i>`).join('')}</span>`;
+}
+/* "+2 vs last Thursday", "Same as last Thursday": today against the same weekday a week ago. */
+function adVsLastWeek(days){
+  if(!Array.isArray(days) || days.length < 8) return '';
+  const now = Number(days[days.length - 1].n) || 0, then = Number(days[days.length - 8].n) || 0;
+  const day = formatIraqDateTime(days[days.length - 8].day + 'T12:00:00Z', {weekday:'short'});
+  return now === then ? t('adSameAsLast')(day) : t('adVsLast')((now > then ? '+' : '−') + Math.abs(now - then), day);
+}
 function renderAdminHome(){
   const ov = adminValue('overview'), ovFailed = adminData.failed.overview && !ov;
   const loading = ['health','problems','security','overview'].some(k=>!adminValue(k) && !adminData.failed[k]);
   const failedKeys = ['health','problems','security','overview'].filter(k=>adminData.failed[k] && !adminValue(k));
-  const issues = adminIssues();
   const views = state.views || [];
+  const issues = adminIssues().map(i=>({...i, action:t('adOpenIt')}));
   if(ov){
-    if(views.includes('receipts')) ov.receipts.problems.forEach(p=>issues.push({go:'receipts', id:p.id, text:t('adIssueReceipt')(p.supplier), sub:p.problem || adWhen(p.at, p.by)}));
-    if(views.includes('transfers')) ov.transfers.problems.forEach(p=>issues.push({go:'transfers', id:p.id, text:t('adIssueTransfer')(p.to), sub:p.problem || adWhen(p.at, p.by)}));
+    if(views.includes('receipts')) ov.receipts.problems.forEach(p=>issues.push({go:'receipts', id:p.id, text:t('adIssueReceipt')(p.supplier), sub:p.problem || adWhen(p.at, p.by), action:t('adOpenIt')}));
+    if(views.includes('transfers')) ov.transfers.problems.forEach(p=>issues.push({go:'transfers', id:p.id, text:t('adIssueTransfer')(p.to), sub:p.problem || adWhen(p.at, p.by), action:t('adOpenIt')}));
   }
+  const latest = latestVersion();
+  adOldPhones().forEach(d=>issues.push({device:d.id, text:t('adOldPhone')(accountLabel(d.account) || t('unnamedDevice'), deviceParts(d).kind), sub:t('adOldPhoneSub')(d.appVersion, latest), action:t('refreshDevice'), tone:'gray'}));
   const health = adminValue('health');
-  const problems = (adminValue('problems') || []).filter(p=>!p.resolvedAt);
-  const openProblems = new Set(problems.map(p=>p.fingerprint)).size;
-  const recent = new Set(problems.filter(p=>Date.now() - Date.parse(p.lastAt) < 86400000).map(p=>p.fingerprint)).size;
-  const sec = adminValue('security'), locked = !!(sec?.lockedUntil && Date.parse(sec.lockedUntil) > Date.now());
-  const rows = healthRows(), bad = rows.filter(r=>r.tone === 'bad').length, warn = rows.filter(r=>r.tone === 'warn').length;
-  const roles = adminValue('roles');
-  const usage = adminValue('usage'), people = ['rozha','yunis'].map(a=>(usage?.people || []).find(p=>p.account === a) || {account:a, today:0});
-  const today = people.reduce((n, p)=>n + Number(p.today || 0), 0);
-  const rico = adminValue('rico'), ricoMonth = rico ? Object.values(rico.kinds || {}).reduce((n, k)=>n + Number(k || 0), 0) : null;
-  const signedIn = state.devices.filter(isLoggedIn), active = signedIn.filter(d=>deviceStatus(d) === 'active').length;
-  const toReview = catalogCheckup().reduce((n, g)=>n + g.items.length, 0);
-  const wait = '·', cant = t('adCouldntLoad');
   const readAt = ov?.readAt || health?.checkedAt;
 
-  // 1. One glance.
-  const title = issues.length ? t('adNeedsYou')(issues.length) : loading ? t('checking') : failedKeys.length ? t('adCouldntCheck') : t('adAllGoodShort');
-  const sub = issues.length ? t('adNeedsYouSub') : loading ? '' : failedKeys.length ? t('adCouldntCheckSub')(failedKeys.map(k=>t('adSrc_' + k)).join(', ')) : t('adAllGoodSub');
-  const head = `<section class="ad-glance${issues.length ? ' attention' : failedKeys.length && !loading ? ' unsure' : ''}" aria-live="polite">
-      <div class="ad-glance-text"><h2>${esc(title)}</h2><p>${esc([sub, readAt ? t('adReadAt')(formatIraqDateTime(readAt, {hour:'numeric', minute:'2-digit'})) : ''].filter(Boolean).join(' · '))}</p></div>
-      ${adminRefresh()}</section>`;
-  const issueRows = issues.length ? `<div class="ad-list ad-issues">${issues.map(i=>`<button type="button" class="ad-row alert" ${i.page ? `data-admin-jump="${i.page}"` : `data-admin-go="${i.go}" data-admin-id="${esc(i.id || '')}"`}>
-      <span class="ad-dot bad" aria-hidden="true"></span><span class="ad-row-main"><b dir="auto">${esc(i.text)}</b>${i.sub ? `<small dir="auto">${esc(i.sub)}</small>` : ''}</span><span class="ad-row-go" aria-hidden="true">›</span></button>`).join('')}</div>` : '';
-  const cell = (n, label)=>`<div class="ad-trio-cell"><b class="${ov && !n ? 'zero' : ''}">${ov ? adNum(n) : ovFailed ? '–' : wait}</b><span>${esc(label)}</span></div>`;
-  const trio = `<div class="ad-trio" role="group" aria-label="${esc(t('today'))}">${cell(ov?.orders.today, t('adOrdersToday'))}${views.includes('receipts') ? cell(ov?.receipts.today, t('adReceiptsToday')) : ''}${views.includes('transfers') ? cell(ov?.transfers.today, t('adTransfersToday')) : ''}</div>`;
+  // 1. The status line.
+  const tone = issues.length ? 'warn' : loading ? '' : failedKeys.length ? 'bad' : 'ok';
+  const line = issues.length ? t('adNeedsYou')(issues.length) : loading ? t('checking') : failedKeys.length ? t('adCouldntCheckSub')(failedKeys.map(k=>t('adSrc_' + k)).join(', ')) : t('adAllGoodShort');
+  const status = `<section class="adh-status" aria-live="polite"><p><i class="ad-dot ${tone}" aria-hidden="true"></i><span>${esc([line, readAt ? t('adReadAt')(formatIraqDateTime(readAt, {hour:'numeric', minute:'2-digit'})) : ''].filter(Boolean).join(' · '))}</span></p>${adminRefresh()}</section>`;
 
-  // 2. Control room: a status dot, the name, what is true now, and when it last happened.
-  const row = ({open, go, icon, tone = '', value = '', now = '', last = '', alert = false})=>`<button type="button" class="ad-row ad-status-row${alert ? ' alert' : ''}" ${open ? `data-admin-open="${open}"` : `data-admin-go="${go}"`}>
-      <span class="ad-row-ico" aria-hidden="true">${icon}</span>
-      <span class="ad-row-main"><b>${esc(t(open ? 'adminPage_' + open : 'adRow_' + go))}</b><small dir="auto">${esc(now)}</small>${last ? `<small class="ad-row-last" dir="auto">${esc(last)}</small>` : ''}</span>
-      <span class="ad-row-val" dir="auto">${tone ? `<i class="ad-dot ${tone}" aria-hidden="true"></i>` : ''}${esc(value)}</span><span class="ad-row-go" aria-hidden="true">›</span></button>`;
-  const ovNow = fn=>ov ? fn(ov) : ovFailed ? cant : t('loading');
-  const ovVal = fn=>ov ? fn(ov) : ovFailed ? '–' : wait;
-  const rProblems = ov?.receipts.problems.length || 0, tProblems = ov?.transfers.problems.length || 0;
-  const business = row({go:'history', icon:ICON_ORDERS_ROW, tone:ov ? 'ok' : '', value:ovVal(o=>adNum(o.orders.last7)),
-      now:ovNow(o=>t('adOrders7')(o.orders.last7)), last:ov ? adWhen(ov.orders.last?.at, ov.orders.last?.by) : ''})
-    + (views.includes('receipts') ? row({go:'receipts', icon:ICON_RECEIPTS_ROW, tone:ov ? (rProblems ? 'bad' : 'ok') : '', alert:rProblems > 0,
-      value:ovVal(o=>rProblems ? t('adProblemsN')(rProblems) : adNum(o.receipts.last7)),
-      now:ovNow(o=>[t('adReceipts7')(o.receipts.last7), adMoney(o.receipts.last7Totals), o.receipts.active ? t('adInProgress')(o.receipts.active) : ''].filter(Boolean).join(' · ')),
-      last:ov ? adWhen(ov.receipts.last?.at, ov.receipts.last?.by) : ''}) : '')
-    + (views.includes('transfers') ? row({go:'transfers', icon:ICON_TRANSFERS_ROW, tone:ov ? (tProblems ? 'bad' : 'ok') : '', alert:tProblems > 0,
-      value:ovVal(o=>tProblems ? t('adProblemsN')(tProblems) : adNum(o.transfers.last7)),
-      now:ovNow(o=>[t('adTransfers7')(o.transfers.last7), o.transfers.active ? t('adInProgress')(o.transfers.active) : ''].filter(Boolean).join(' · ')),
-      last:ov ? adWhen(ov.transfers.last?.at, ov.transfers.last?.by) : ''}) : '');
-  const pr = adminValue('problems'), lastProblem = problems.map(p=>p.lastAt).sort().pop();
-  const system = row({open:'problems', icon:ADMIN_ICONS.problems, tone:pr ? (recent ? 'bad' : openProblems ? 'warn' : 'ok') : '', alert:recent > 0,
-      value:pr ? (openProblems ? String(openProblems) : t('adNone')) : adminData.failed.problems ? '–' : wait,
-      now:pr ? (openProblems ? t('adProblemsSub')(recent) : t('adProblemsClear')) : adminData.failed.problems ? cant : t('loading'), last:lastProblem ? adWhen(lastProblem) : ''})
-    + row({open:'security', icon:ADMIN_ICONS.security, tone:sec ? (locked ? 'bad' : 'ok') : '', alert:locked,
-      value:sec ? (locked ? t('adLocked') : t('adSigninOpenShort')) : adminData.failed.security ? '–' : wait,
-      now:sec ? [t('adSignins24')(Number(sec.signins24h) || 0), t('adWrongPins')(Number(sec.wrongPins24h) || 0)].join(' · ') : adminData.failed.security ? cant : t('loading')})
-    + row({open:'health', icon:ADMIN_ICONS.health, tone:health ? (bad ? 'bad' : warn ? 'warn' : 'ok') : adminData.failed.health ? 'bad' : '', alert:bad > 0 || (!health && adminData.failed.health),
-      value:health ? (bad ? t('adNeedsLook') : t('adWorking')) : adminData.failed.health ? t('adNeedsLook') : wait,
-      now:health ? (bad || warn ? t('hcWarnShort')(bad + warn) : t('adHealthSub')) : adminData.failed.health ? cant : t('loading'), last:health?.checkedAt ? t('checkedAt')(timeAgo(health.checkedAt)) : ''})
-    + row({open:'rico', icon:ICON_SPARKLE, value:ricoMonth === null ? (adminData.failed.rico ? '–' : wait) : adNum(ricoMonth),
-      now:rico ? t('adRicoSub')(t('adTokens')(fmtTokens(ricoTokenTotal(rico), true))) : adminData.failed.rico ? cant : t('loading')})
-    + row({open:'devices', icon:ADMIN_ICONS.devices, value:String(signedIn.length), now:t('adDevicesSub')(active)});
+  // 2. Today.
+  const cell = (go, label, part)=>{
+    const n = ov ? part.today : null;
+    return `<button type="button" class="adh-today-cell" data-admin-go="${go}"><span class="adh-label">${esc(label)}</span>
+      <b class="${ov && !n ? 'zero' : ''}">${ov ? adNum(n) : ovFailed ? '–' : '·'}</b>${ov ? adSpark(part.perDay) : ''}<small>${esc(ov ? adVsLastWeek(part.perDay) : ovFailed ? t('adCouldntLoad') : '')}</small></button>`;
+  };
+  const today = `<div class="section-title">${esc(t('today'))}</div><div class="adh-today">${cell('history', t('adRow_history'), ov?.orders)}${views.includes('receipts') ? cell('receipts', t('rrTitle'), ov?.receipts) : ''}${views.includes('transfers') ? cell('transfers', t('tfTitle'), ov?.transfers) : ''}</div>`;
 
-  // 3. Orders over time.
-  const charts = ov ? adminCharts(ov) : `<div class="ad-chart-card">${ovFailed ? `<p class="ad-foot">${esc(cant)}</p>` : loadingLines(2)}</div>`;
+  // 3. Needs you.
+  const needs = issues.length ? `<div class="section-title">${esc(t('rrNeedsYou'))}</div><div class="adh-list adh-needs">${issues.map(i=>`<div class="adh-row">
+      <span class="adh-ico ${i.tone || 'warn'}" aria-hidden="true">${i.device ? ADMIN_ICONS.devices : ADMIN_ICONS.problems}</span>
+      <span class="adh-main"><b dir="auto">${esc(i.text)}</b>${i.sub ? `<small dir="auto">${esc(i.sub)}</small>` : ''}</span>
+      <button type="button" class="adh-act" ${i.device ? `data-adh-refresh="${esc(i.device)}"` : i.page ? `data-admin-jump="${i.page}"` : `data-admin-go="${i.go}" data-admin-id="${esc(i.id || '')}"`}>${esc(i.action)}</button></div>`).join('')}</div>` : '';
 
-  return head + issueRows + trio
-    + `<div class="section-title">${esc(t('adGroupStatus'))}</div><div class="ad-list">${business}${system}</div>`
-    + adServerCard()
-    + `<div class="section-title">${esc(t('adGroupOverTime'))}</div>${charts}`
-    + `<div class="section-title">${esc(t('adGroupManage'))}</div><div class="ad-list">`
-      + row({open:'time', icon:ADMIN_ICONS.time, value:usage ? fmtDuration(today) : adminData.failed.usage ? '–' : wait,
-        now:usage ? people.map(p=>`${accountLabel(p.account)} ${fmtDuration(p.today)}`).join(' · ') : adminData.failed.usage ? cant : t('loading')})
-      + row({open:'access', icon:ADMIN_ICONS.access, value:roles ? t('adOfTotal')(roles.yunis.length, roles.roles.length) : wait, now:t('adAccessSub')})
-      + row({open:'catalog', icon:ADMIN_ICONS.catalog, value:toReview ? String(toReview) : t('adNone'), now:toReview ? t('adCatalogSub') : t('adCatalogClear')})
-      + row({open:'restore', icon:ADMIN_ICONS.restore, now:t('adRestoreSub')})
-      + row({open:'pins', icon:ADMIN_ICONS.pins, now:`${accountLabel('rozha')} · ${accountLabel('yunis')}`})
-    + `</div><details class="ad-sources"><summary>${esc(t('adSourcesTitle'))}</summary><p>${esc(t('adSourcesBody'))}</p></details>`;
+  // 4. Rico.
+  const helper = typeof rr !== 'undefined' ? rr.data?.helper : null;
+  if(!helper && views.includes('receipts') && typeof rrLoad === 'function' && !rr.loading && !rr.data) rrLoad(true);
+  const rico = adminValue('rico'), chats = rico ? Object.values(rico.kinds || {}).reduce((n, k)=>n + Number(k || 0), 0) : null;
+  const stopped = ov ? (ov.receipts.problems.length + ov.transfers.problems.length) : null;
+  const on = helper && helper.online && !helper.stopped;
+  const stat = (n, label)=>`<div><b>${n === null || n === undefined ? '·' : adNum(n)}</b><span>${esc(label)}</span></div>`;
+  const ricoCard = `<div class="section-title">${esc(t('adminPage_rico'))}</div><button type="button" class="adh-card adh-rico" data-admin-open="rico">
+      <span class="adh-rico-top"><span class="adh-rico-face" aria-hidden="true">${ICON_SPARKLE}</span><span class="adh-main"><b>${esc(helper ? rrHelperLine(helper) : t('loading'))}</b><small>${esc(helper ? [on ? t('statusActive') : '', helper.lastSeen ? t('lastSeenLabel') + ' ' + timeAgo(helper.lastSeen) : ''].filter(Boolean).join(' · ') : '')}</small></span><i class="ad-dot ${helper ? (on ? 'ok' : 'warn') : ''}" aria-hidden="true"></i></span>
+      <span class="adh-stats">${views.includes('receipts') ? stat(ov?.receipts.today, t('adRicoSaved')) : ''}${views.includes('transfers') ? stat(ov?.transfers.today, t('adRicoMoved')) : ''}${stat(stopped, t('adRicoStopped'))}${stat(chats, t('adRicoChatsMonth'))}</span></button>`;
+
+  // 5. People.
+  const usage = adminValue('usage'), roles = adminValue('roles');
+  const person = a=>{
+    const p = (usage?.people || []).find(x=>x.account === a) || {today:0};
+    const mine = state.devices.filter(d=>d.account === a && isLoggedIn(d));
+    const activeNow = mine.find(d=>deviceStatus(d) === 'active');
+    const lastSeen = mine.map(d=>d.lastSeen).filter(Boolean).sort().pop();
+    const where = activeNow ? `${t('statusActive')} · ${deviceParts(activeNow).kind}` : lastSeen ? timeAgo(lastSeen) : t('statusLoggedOut');
+    const extra = a === 'yunis' && roles ? t('adScreens')(roles.yunis.length, roles.roles.length) : '';
+    return `<button type="button" class="adh-row adh-person" data-admin-person="${a}">${whoBadge(a)}<span class="adh-main"><small>${esc([where, extra].filter(Boolean).join(' · '))}</small></span>
+      <span class="adh-val"><b>${usage ? esc(fmtDuration(p.today)) : '·'}</b><small>${esc(t('today'))}</small></span><span class="ad-row-go" aria-hidden="true">›</span></button>`;
+  };
+  const signedIn = state.devices.filter(isLoggedIn).length;
+  const people = `<div class="section-title">${esc(t('adPeople'))}</div><div class="adh-list">${person('rozha')}${person('yunis')}
+    <button type="button" class="adh-row" data-admin-open="devices"><span class="adh-ico gray" aria-hidden="true">${ADMIN_ICONS.devices}</span><span class="adh-main"><b>${esc(t('adAllDevices'))}</b><small>${esc(t('adDevicesSub')(state.devices.filter(d=>deviceStatus(d) === 'active').length))}</small></span><span class="adh-val"><b>${signedIn}</b></span><span class="ad-row-go" aria-hidden="true">›</span></button></div>`;
+
+  // 6. Tools.
+  const pr = adminValue('problems'), open = new Set((pr || []).filter(p=>!p.resolvedAt).map(p=>p.fingerprint)).size;
+  const sec = adminValue('security'), locked = !!(sec?.lockedUntil && Date.parse(sec.lockedUntil) > Date.now());
+  const rows = healthRows(), bad = rows.filter(r=>r.tone === 'bad').length;
+  const toReview = catalogCheckup().reduce((n, g)=>n + g.items.length, 0);
+  const tool = (page, icon, value, sub, alert = false)=>`<button type="button" class="adh-tool" data-admin-open="${page}"><span class="adh-tool-top"><span class="adh-tool-ico" aria-hidden="true">${icon}</span><span class="adh-tool-val${alert ? ' alert' : ''}">${esc(value)}</span></span><span class="adh-tool-name">${esc(t('adminPage_' + page))}</span><small>${esc(sub)}</small></button>`;
+  const tools = `<div class="section-title">${esc(t('adTools'))}</div><div class="adh-tools">
+      ${tool('problems', ADMIN_ICONS.problems, pr ? (open ? String(open) : t('adOk')) : '·', pr ? (open ? t('adProblemsOpen')(open) : t('adProblemsClear')) : '', open > 0)}
+      ${tool('security', ADMIN_ICONS.security, sec ? (locked ? t('adLocked') : t('adOk')) : '·', sec ? t('adWrongPins')(Number(sec.wrongPins24h) || 0) : '', locked)}
+      ${tool('health', ADMIN_ICONS.health, health ? (bad ? t('adNeedsLook') : t('adOk')) : '·', health ? t('checkedAt')(timeAgo(health.checkedAt)) : '', bad > 0)}
+      ${tool('catalog', ADMIN_ICONS.catalog, toReview ? String(toReview) : t('adOk'), toReview ? t('adCatalogSub') : t('adCatalogClear'))}
+      ${tool('restore', ADMIN_ICONS.restore, '', t('adRestoreSub'))}
+      ${tool('rico', ICON_SPARKLE, '', t('adAiSub'))}
+    </div>`;
+
+  return status + today + needs + ricoCard + people + tools + adServerCard()
+    + `<details class="ad-sources"><summary>${esc(t('adSourcesTitle'))}</summary><p>${esc(t('adSourcesBody'))}</p></details>`;
 }
-/* Orders sent per Baghdad day (14 days, today last and darker) and items ordered per supplier (30 days),
-   both to scale from the real counts; plus two totals. */
-function adminCharts(ov){
-  const days = ov.orders.perDay, max = Math.max(1, ...days.map(d=>d.n));
-  const W = 300, H = 120, left = 22, base = 96, top = 14, step = (W - left - 4) / days.length, bw = Math.max(4, step * .64);
-  const y = n=>base - (n / max) * (base - top);
-  const bars = days.map((d, i)=>{
-    const x = left + i * step + (step - bw) / 2, h = Math.max(d.n ? 2 : 0, base - y(d.n));
-    return `<rect class="${i === days.length - 1 ? 'today' : ''}" x="${x.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5"><title>${esc(formatIraqDateTime(d.day + 'T12:00:00Z', {day:'numeric', month:'short'}))}: ${d.n}</title></rect>`;
+/* A person's page: their time today and on average, their phones (Refresh or Log out), their PIN, and
+   for Yunis what he can open. */
+function renderAdminPerson(){
+  const a = adminFilter.person === 'yunis' ? 'yunis' : 'rozha';
+  const usage = adminValue('usage'), p = (usage?.people || []).find(x=>x.account === a);
+  const today = /^\d{4}-\d{2}-\d{2}$/.test(String(usage?.today)) ? usage.today : new Date().toISOString().slice(0,10);
+  const latest = latestVersion();
+  const phones = state.devices.filter(d=>d.account === a && isLoggedIn(d)).map(d=>{
+    const parts = deviceParts(d), isThis = d.id === state.deviceId, old = d.appVersion && versionCmp(d.appVersion, latest) < 0;
+    return `<div class="adh-row adh-dev"><span class="adh-ico gray" aria-hidden="true">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : ICON_MOBILE}</span>
+      <span class="adh-main"><b>${esc(parts.kind)}${parts.how ? ` · ${esc(parts.how)}` : ''}${isThis ? ` · ${esc(t('thisDevice'))}` : ''}</b><small>${esc([deviceStatus(d) === 'active' ? t('statusActive') : d.lastSeen ? timeAgo(d.lastSeen) : '', d.appVersion ? (old ? t('versionOld') : d.appVersion) : ''].filter(Boolean).join(' · '))}</small></span>
+      ${isThis ? '' : `<button type="button" class="adh-act" data-devrefresh="${esc(d.id)}">${esc(t('refreshDevice'))}</button><button type="button" class="adh-act danger" data-devlogout="${esc(d.id)}">${esc(t('logoutDevice'))}</button>`}</div>`;
   }).join('');
-  const label = (i, text)=>`<text x="${(left + i * step + step / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${esc(text)}</text>`;
-  const dayText = d=>formatIraqDateTime(d.day + 'T12:00:00Z', {day:'numeric', month:'short'});
-  const mid = Math.floor((days.length - 1) / 2);
-  const svg = `<svg class="ad-bars" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('adChartDays') + ': ' + days.map(d=>`${dayText(d)} ${d.n}`).join(', '))}">
-      <line x1="${left}" y1="${base}" x2="${W - 2}" y2="${base}"/><line x1="${left}" y1="${top}" x2="${W - 2}" y2="${top}" class="faint"/>
-      <text x="${left - 6}" y="${base + 3}" text-anchor="end">0</text><text x="${left - 6}" y="${top + 3}" text-anchor="end">${max}</text>
-      ${bars}${label(0, dayText(days[0]))}${label(mid, dayText(days[mid]))}${label(days.length - 1, t('today'))}</svg>`;
-  const sup = ov.orders.suppliers, top5 = sup.slice(0, 5), rest = sup.slice(5), supMax = Math.max(1, ...top5.map(s=>s.n));
-  const supRows = top5.map(s=>`<div class="ad-hbar"><span class="ad-hbar-name" dir="auto">${esc(s.name)}</span><span class="ad-hbar-n">${adNum(s.n)}</span>
-      <span class="ad-hbar-track"><span style="width:${(s.n / supMax * 100).toFixed(1)}%"></span></span></div>`).join('');
-  const perOrder = ov.orders.last30 ? Math.round(ov.orders.items30 / ov.orders.last30) : 0;
-  return `<div class="ad-chart-card">
-      <div class="ad-kpis">
-        <div><span>${esc(t('adKpiOrders30'))}</span><b>${adNum(ov.orders.last30)}</b><small>${esc(ov.orders.last30 ? t('adItemsEach')(perOrder) : t('adNoneYet'))}</small></div>
-        ${(state.views || []).includes('receipts') ? `<div><span>${esc(t('adKpiReceipts7'))}</span><b>${adNum(ov.receipts.last7)}</b><small dir="ltr">${esc(adMoney(ov.receipts.last7Totals) || t('adNoneYet'))}</small></div>` : ''}
-      </div>
-      <div class="ad-chart-title">${esc(t('adChartDays'))}</div>${svg}
-      <div class="ad-chart-title">${esc(t('adChartSuppliers'))}</div>
-      ${supRows || `<p class="ad-foot">${esc(t('adNoneYet'))}</p>`}
-      ${rest.length ? `<p class="ad-hbar-more">${esc(t('adMoreSuppliers')(rest.length, adNum(rest.reduce((n, s)=>n + s.n, 0))))}</p>` : ''}
+  const roles = adminValue('roles');
+  return `<header class="page-heading admin-heading"><button type="button" class="page-back" data-admin-open="">${ICON_BACK}<span>${esc(t('adminTitle'))}</span></button><div class="page-title-row"><h1>${esc(accountLabel(a))}</h1>${adminRefresh()}</div></header>
+    <div class="adh-stats adh-card">
+      <div><b>${p ? esc(fmtDuration(p.today)) : '·'}</b><span>${esc(t('today'))}</span></div>
+      <div><b>${p ? esc(fmtDuration(timeAverage(p, 'day', today))) : '·'}</b><span>${esc(t('adTimeAvg_day'))}</span></div>
+      <div><b>${p ? esc(fmtDuration(p.total)) : '·'}</b><span>${esc(t('adAllTime'))}</span></div>
+    </div>
+    <div class="section-title">${esc(t('adminPage_devices'))}</div>
+    <div class="adh-list">${phones || `<div class="adh-row"><span class="adh-main"><small>${esc(t('noDevicesYet'))}</small></span></div>`}</div>
+    <div class="adh-list adh-links">
+      <div class="adh-row"><span class="adh-ico gray" aria-hidden="true">${ADMIN_ICONS.pins}</span><span class="adh-main"><b>PIN</b><small aria-hidden="true">••••••</small></span><button type="button" class="adh-act" data-pin-change="${a}">${esc(t('adminPinChange'))}</button></div>
+      ${a === 'yunis' ? `<button type="button" class="adh-row" data-admin-open="access"><span class="adh-ico gray" aria-hidden="true">${ADMIN_ICONS.access}</span><span class="adh-main"><b>${esc(t('adminPage_access'))}</b><small>${esc(roles ? t('adScreens')(roles.yunis.length, roles.roles.length) : '')}</small></span><span class="ad-row-go" aria-hidden="true">›</span></button>` : ''}
+      <button type="button" class="adh-row" data-admin-open="time"><span class="adh-ico gray" aria-hidden="true">${ADMIN_ICONS.time}</span><span class="adh-main"><b>${esc(t('adminPage_time'))}</b><small>${esc(t('adTimeBoth'))}</small></span><span class="ad-row-go" aria-hidden="true">›</span></button>
     </div>`;
 }
-const ICON_ORDERS_ROW = `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l-1 18H7Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>`;
-const ICON_RECEIPTS_ROW = `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h12v19l-3-2-3 2-3-2-3 2Z"/><path d="M9 8h6M9 12h6"/></svg>`;
-const ICON_TRANSFERS_ROW = `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h14l-4-4"/><path d="M20 16H6l4 4"/></svg>`;
+function attachAdminPerson(slot){
+  attachAdminDevices(slot);
+  attachAdminPins(slot);
+}
 /* A business row or a receipt/transfer that needs a look opens its own screen (and that receipt or
    transfer once the list has loaded). */
 function openAdminGo(view, id){
@@ -326,15 +339,14 @@ let adServer = null, adServerAt = 0;
 const adSize = b=> b >= 1073741824 ? (b / 1073741824).toFixed(2).replace(/\.?0+$/, '') + ' GB' : Math.max(1, Math.round(b / 1048576)) + ' MB';
 function adMeter(label, used, limit, hint){
   const pct = Math.min(100, (used / limit) * 100), tone = pct >= 90 ? 'full' : pct >= 70 ? 'warn' : 'ok';
-  return `<div class="ad-srv"><div class="ad-srv-top"><b>${esc(label)}</b><span dir="ltr">${esc(t('adSrvOf')(adSize(used), adSize(limit)))}</span></div>
-    <div class="ad-srv-bar ${tone}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><i style="width:${Math.max(pct, used ? 1.5 : 0).toFixed(1)}%"></i></div>
-    <div class="ad-srv-foot"><span class="ad-srv-state ${tone}">${esc(t(tone === 'ok' ? 'adSrvOk' : tone === 'warn' ? 'adSrvWarn' : 'adSrvFull'))}</span><span dir="ltr">${esc(t('adSrvRoom')(adSize(Math.max(0, limit - used))))}</span></div>
-    <p>${esc(hint)}</p></div>`;
+  return `<div class="ad-srv"><span class="ad-srv-label">${esc(label)}</span><b dir="ltr">${esc(t('adSrvOf')(adSize(used), adSize(limit)))}</b>
+    <div class="ad-srv-bar ${tone}" role="progressbar" aria-label="${esc(label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><i style="width:${Math.max(pct, used ? 1.5 : 0).toFixed(1)}%"></i></div>
+    <small>${esc(hint)}</small></div>`;
 }
 function adServerCard(){
-  if(Date.now() - adServerAt > 60000){ adServerAt = Date.now(); api('admin/server', {quiet:true}).then(r=>{ if(r.ok){ adServer = r.data; if(state.view === 'admin' && !state.adminPage) render(); } }); }
+  if(Date.now() - adServerAt > 60000){ adServerAt = Date.now(); api('admin/server', {quiet:true}).then(r=>{ if(r.ok){ adServer = r.data; paintAdmin(); } }); }
   return `<div class="section-title">${esc(t('adServer'))}</div>
-    <div class="ad-chart-card ad-srv-card">${adServer ? adMeter(t('adSrvDb'), adServer.dbBytes, adServer.dbLimit, t('adSrvDbHint')) + adMeter(t('adSrvFiles'), adServer.filesBytes, adServer.filesLimit, t('adSrvFilesHint')) : loadingLines(3)}</div>`;
+    <div class="adh-card ad-srv-card">${adServer ? adMeter(t('adSrvDb'), adServer.dbBytes, adServer.dbLimit, t('adSrvDbHint')) + adMeter(t('adSrvFiles'), adServer.filesBytes, adServer.filesLimit, t('adSrvFilesHint')) : loadingLines(2)}</div>`;
 }
 const ADMIN_ICONS = {
   restore:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4 4.5v3.7h3.7"/><path d="M12 8v4l2.6 1.6"/></svg>`,
@@ -390,7 +402,7 @@ function renderAdminProblems(){
   }).join('');
   const empty = adminValue('problems') ? `<div class="ad-empty">${adminTile(ICON_CHECK, 'green')}<b>${esc(t(adminFilter.problems === 'fixed' ? 'adNoFixed' : 'adNoProblems'))}</b><p>${esc(t('adProblemsHint'))}</p></div>` : (adminData.failed.problems ? `<div class="ad-empty"><p>${esc(t('loadFailed'))}</p></div>` : loadingLines());
   return `${adminHeading()}
-    <div class="ad-toolbar"><div class="pill-seg" role="tablist" aria-label="${esc(t('adminPage_problems'))}">${[['open', t('adOpen')(new Set(open.map(p=>p.fingerprint)).size)], ['fixed', t('adFixed')]].map(([v, l])=>`<button type="button" role="tab" class="pill-seg-btn" data-problem-filter="${v}" aria-selected="${adminFilter.problems === v}">${esc(l)}</button>`).join('')}</div></div>
+    <div class="ad-toolbar"><div class="pill-seg" role="tablist" aria-label="${esc(t('adminPage_problems'))}">${[['open', t('adOpenIt')(new Set(open.map(p=>p.fingerprint)).size)], ['fixed', t('adFixed')]].map(([v, l])=>`<button type="button" role="tab" class="pill-seg-btn" data-problem-filter="${v}" aria-selected="${adminFilter.problems === v}">${esc(l)}</button>`).join('')}</div></div>
     ${cards || empty}
     ${fixed.length && adminFilter.problems === 'fixed' ? `<button type="button" class="btn btn-ghost ad-wide" id="problemsClear">${esc(t('adRemoveFixed'))}</button>` : ''}
     <p class="ad-foot">${esc(t('adProblemsFoot'))}</p>`;
@@ -566,11 +578,7 @@ function attachAdminAccess(slot){
   });
 }
 
-/* ---------- PINs ---------- */
-function renderAdminPins(){
-  const row = a=>`<div class="admin-pin-row">${whoBadge(a)}<span class="admin-pin-dots" aria-hidden="true">••••••</span><button type="button" class="btn btn-ghost" data-pin-change="${a}" aria-label="${esc(t('pinChangeTitle')(accountLabel(a)))}">${ICON_KEY} ${esc(t('adminPinChange'))}</button></div>`;
-  return `${adminHeading()}<div class="form-card admin-pins">${row('rozha')}${row('yunis')}<div class="notif-sub">${esc(t('adminPinsHint'))}</div></div>`;
-}
+/* ---------- PINs (on each person's page) ---------- */
 function attachAdminPins(slot){
   slot.querySelectorAll('[data-pin-change]').forEach(b=>b.onclick = ()=>openPinChange(b.dataset.pinChange));
 }
@@ -719,7 +727,6 @@ function attachAdminTime(slot){
 }
 
 /* ---------- Rico ---------- */
-const ricoTokenTotal = r=>(Number(r?.tokens?.input) || 0) + (Number(r?.tokens?.output) || 0);
 /* A token count, exact with its digits grouped, or short (463K) where there is little room. */
 function fmtTokens(n, short = false){
   return new Intl.NumberFormat('en-US', short ? {notation:'compact', maximumFractionDigits:1} : {}).format(Math.max(0, Math.round(Number(n) || 0)));

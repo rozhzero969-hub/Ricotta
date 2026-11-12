@@ -217,7 +217,7 @@ function openReportSheet(){
     </div>
     ${monthChartHtml()}${trendsHtml()}${milestonesHtml()}
     ${d.top.length ? `<div class="report-sec"><div class="report-sec-title">${esc(t('reportTop'))}</div>${d.top.map(x=>`<div class="report-bar"><span dir="auto">${esc(x.name)}</span><i style="--w:${Math.round(x.times/maxTop*100)}%"></i><b>${esc(t('reportTimes')(x.times))}</b></div>`).join('')}</div>` : ''}
-    ${d.suppliers.length ? `<div class="report-sec"><div class="report-sec-title">${esc(t('reportSuppliers'))}</div><div class="report-chips">${d.suppliers.map(x=>`<span>${supplierMono(x.name)}${esc(x.name)} <b>${x.n}</b></span>`).join('')}</div></div>` : ''}
+    ${d.suppliers.length ? `<div class="report-sec"><div class="report-sec-title">${esc(t('reportSuppliers'))}</div><div class="report-chips">${d.suppliers.map(x=>`<span>${esc(x.name)} <b>${x.n}</b></span>`).join('')}</div></div>` : ''}
     <div class="report-sec report-two">
       ${d.busiest >= 0 ? `<div><div class="report-sec-title">${esc(t('reportBusiest'))}</div><b class="report-day">${esc(weekdayName(d.busiest))}</b></div>` : ''}
       <div><div class="report-sec-title">${esc(t('reportWho'))}</div><div class="report-who"><i class="r" style="--w:${Math.round(d.who.rozha/total*100)}%"></i><i class="y" style="--w:${Math.round(d.who.yunis/total*100)}%"></i></div><div class="report-who-names"><span>${esc(accountLabel('rozha'))} ${d.who.rozha}</span><span>${esc(accountLabel('yunis'))} ${d.who.yunis}</span></div></div>

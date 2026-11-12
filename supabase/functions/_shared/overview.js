@@ -69,6 +69,7 @@
       },
       receipts: {
         today: savedToday.length, todayTotals: totals(savedToday),
+        perDay: days14.map(day=>({day, n:saved.filter(r=>r.day === day).length})),
         last7: saved7.length, last7Totals: totals(saved7),
         active: receipts.filter(r=>ACTIVE.includes(r.status)).length,
         problems: receipts.filter(r=>r.status === 'problem').map(r=>({...problemOf(r), supplier:r.supplier || null})),
@@ -76,6 +77,7 @@
       },
       transfers: {
         today: moved.filter(r=>r.day === today).length,
+        perDay: days14.map(day=>({day, n:moved.filter(r=>r.day === day).length})),
         last7: moved.filter(r=>in7.has(r.day)).length,
         active: transfers.filter(r=>ACTIVE.includes(r.status)).length,
         problems: transfers.filter(r=>r.status === 'problem').map(r=>({...problemOf(r), to:r.to_zone || null})),

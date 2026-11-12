@@ -523,6 +523,17 @@
       save(); return json({ok:true, itemId:r.item.id});
     }
     // Admin > Server: how full the free plan is (the real numbers: 32 MB of 500 MB, 27 MB of 1 GB).
+    // Admin's overview: practice numbers in the same shape as the server's (14 Baghdad days each).
+    if(method === 'GET' && path === 'admin/overview'){
+      const days = Array.from({length:14}, (_, i)=>new Date(Date.now() - (13 - i) * 86400000).toISOString().slice(0, 10));
+      const per = ns=>days.map((day, i)=>({day, n:ns[i]}));
+      const orders = per([5,7,4,8,6,3,5,7,4,9,6,3,5,7]), receipts = per([3,5,4,2,6,3,4,4,3,6,5,3,2,3]), transfers = per([6,8,7,5,9,6,8,7,9,6,8,10,5,12]);
+      const at = new Date(Date.now() - 3600000).toISOString();
+      return json({readAt:new Date().toISOString(), today:days[13],
+        orders:{today:7, todayItems:22, last7:41, last30:160, items30:620, perDay:orders, suppliers:[{name:'Erbil Veg Market', n:80}], last:{at, by:'yunis'}},
+        receipts:{today:3, todayTotals:{IQD:1204000}, last7:26, last7Totals:{IQD:9800000}, perDay:receipts, active:0, problems:[], last:{at, by:'rozha', supplier:'Bread House Bakery'}},
+        transfers:{today:12, last7:55, perDay:transfers, active:0, problems:[], last:{at, by:'rozha', to:'Pizza'}}});
+    }
     if(method === 'GET' && path === 'admin/server') return json({dbBytes:32077491, filesBytes:27532729, dbLimit:500 * 1048576, filesLimit:1073741824});
     if(method === 'GET' && path === 'admin/diagnostics'){
       if(account !== 'rozha') return fail('forbidden', 403);
