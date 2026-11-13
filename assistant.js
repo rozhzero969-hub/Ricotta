@@ -356,6 +356,12 @@ function renderRicoProposalCard(p, mi){
     const when = p.day ? formatIraqDateTime(new Date(p.day + 'T12:00:00+03:00'), {weekday:'short', day:'numeric', month:'short'}) : '';
     return `<button class="rico-open rico-file" data-rico-file="${esc(p.id)}" data-what="${esc(p.what)}" data-format="${esc(p.format)}" data-day="${esc(p.day || '')}" data-to="${esc(p.to || '')}" data-receipt="${esc(p.receiptId || '')}" data-transfer="${esc(p.transferId || '')}">${ICON_DOWNLOAD}<span>${esc(p.label || (({excel:'Excel', pdf:'PDF', photos:t('ricoFilePhotos'), zip:'ZIP'})[p.format] + ' · ' + what + (when ? ' · ' + when : '') + (p.to ? ' – ' + formatIraqDateTime(new Date(p.to + 'T12:00:00+03:00'), {day:'numeric', month:'short'}) : '')))}</span></button>`;
   }
+  // A transfer draft Rico prepared (saved on the server as this person's draft): it only opens it in Transfers.
+  if(p.kind === 'transfer_draft'){
+    if(!canOpen('transfers')) return '';
+    body = `<div class="rico-card-note" dir="auto">${esc(p.from)} → ${esc(p.to)}</div>${(p.lines||[]).map(l=>`<div class="rico-card-line"><span dir="auto">${esc(l.item)}</span><b dir="auto">${esc(l.qty)} ${esc(l.unit)}</b></div>`).join('')}${(p.warnings||[]).map(x=>`<div class="rico-card-note" dir="auto">${esc(x)}</div>`).join('')}`;
+    return ricoCard(NAV_ICONS.transfers, viewLabel('transfers'), body, `<div class="rico-card-actions"><button class="btn btn-primary" data-rico-transfer="${esc(p.transferId)}">${esc(t('ricoOpenScreen')(viewLabel('transfers')))}</button></div>`, p);
+  }
   if(p.kind === 'open'){
     if(p.screen !== 'send' && !canOpen(p.screen)) return '';
     if(p.screen === 'send' && !canDo('send')) return '';
@@ -467,6 +473,14 @@ function attachRicoThreadEvents(root){
     if(screen === 'order' && sup && state.suppliers.some(s=>s.id===sup)) state.orderTab = sup;
     goView(screen);
   });
+  root.querySelectorAll('[data-rico-transfer]').forEach(b=>b.onclick=async()=>{
+    const id = b.dataset.ricoTransfer;
+    if(!canOpen('transfers')) return;
+    goView('transfers');
+    // Transfers reads its list again when it opens; the draft opens once it is there.
+    for(let i=0; i<40 && !tfFind(id); i++) await new Promise(r=>setTimeout(r, 250));
+    if(state.view === 'transfers' && tfFind(id)) tfOpen(id);
+  });
   root.querySelectorAll('[data-rico-settings]').forEach(b=>b.onclick=()=>{ goView('settings'); requestAnimationFrame(()=>document.querySelector('.rico-status-card')?.scrollIntoView({block:'center'})); });
   root.querySelectorAll('[data-rico-retry]').forEach(b=>b.onclick=()=>{
     const i = +b.dataset.ricoRetry;
@@ -497,7 +511,7 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
       content += `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};

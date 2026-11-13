@@ -13,7 +13,7 @@
 //
 // Every tick also runs Rico's own messages: a cheer at 09:00 Erbil time (with
 // the day's weather), an hour after a supplier's reminder time with nothing
-// sent, a telling-off, at 20:00 a warning when the
+// sent, a plain reminder, at 20:00 a warning when the
 // kitchen streak would end at midnight, on the last day of the month a
 // reminder to save the month's report card, and a weekly summary on
 // Friday evening -- each once, in the app (Rico's inbox) and as a
@@ -66,9 +66,9 @@ type Payload = (lang: Lang, name: string | null) => Record<string, unknown>;
 const asLang = (l: string | null | undefined): Lang => (l === "ku" || l === "ar" ? l : "en");
 const L = (lang: Lang, en: string, ku: string, ar: string) => (lang === "ku" ? ku : lang === "ar" ? ar : en);
 const RICO: Record<Lang, string> = { en: "Rico", ku: "ریکۆ", ar: "ريكو" };
-/* Rico's feelings. His notifications carry the mood so the phone shows his face for it (rico-<mood>.png). */
-const RICO_MOODS = ["happy", "excited", "grateful", "calm", "thinking", "worried", "sad", "angry"];
-const moodOf = (m: unknown) => (RICO_MOODS.includes(String(m)) ? String(m) : "happy");
+/* Rico is a calm, plain assistant: no moods. The inbox row and older phones still read a mood field,
+   so every message carries the one neutral face ("calm"). */
+const RICO_MOOD = "calm";
 
 function supplierPayload(s: any, test = false): Payload {
   const name = String(s?.name ?? "").slice(0, 60);
@@ -195,7 +195,7 @@ async function claimAlert(id: string, kind: string, supplierId: string | null) {
   if (error) throw error;
   return !!data?.length;
 }
-type Words = { mood: string; en: (n: string) => string; ku: (n: string) => string; ar: (n: string) => string };
+type Words = { en: (n: string) => string; ku: (n: string) => string; ar: (n: string) => string };
 /* Who has Rico: Rozh always, Yunis while his access includes Rico (no saved list = the standard set, which does).
    A read that fails sends nothing. Turning his access on again brings the messages back. */
 async function ricoAccounts() {
@@ -208,14 +208,14 @@ async function ricoAccounts() {
 async function ricoSays(kind: string, key: string, words: Words, extra: Record<string, unknown> = {}) {
   const allowed = await ricoAccounts();
   const { error } = await sb.from("app_rico_inbox").upsert(ACCOUNTS.filter((a) => allowed.has(a)).map((a) => ({
-    account: a, kind, mood: words.mood, body_en: words.en(NAMES[a].en), body_ku: words.ku(NAMES[a].ku), body_ar: words.ar(NAMES[a].ar),
+    account: a, kind, mood: RICO_MOOD, body_en: words.en(NAMES[a].en), body_ku: words.ku(NAMES[a].ku), body_ar: words.ar(NAMES[a].ar),
     dedupe_key: `${key}|${a}`,
   })), { onConflict: "dedupe_key", ignoreDuplicates: true });
   if (error) throw error;
   return await sendReminder((lang, name) => ({
     title: RICO[lang],
     body: lang === "ku" ? words.ku(name ?? "") : lang === "ar" ? words.ar(name ?? "") : words.en(name ?? ""),
-    kind: "assistant", mood: moodOf(words.mood), tag: `ricotta-rico-${key}`,
+    kind: "assistant", mood: RICO_MOOD, tag: `ricotta-rico-${key}`,
     ...(extra.supplierId ? { actionTitle: lang === "ku" ? "ئامادەی بکە" : lang === "ar" ? "جهّزه" : "Prepare it" } : {}), ...extra,
   }), allowed);
 }
@@ -275,10 +275,9 @@ async function overdueTick() {
     if (sentSince(s.date, s.id)) continue;
     const name = String(s.name).slice(0, 60), time = s.reminder.time;
     const said = await saysOnce(`overdue|${s.id}|${s.date}`, "overdue", s.id, () => ricoSays("overdue", `overdue|${s.id}|${s.date}`, {
-      mood: "angry",
-      en: (n) => `${hi("Hey", n)}! ${name} was due at ${time} and still isn't sent. Tomatoes don't order themselves. Want me to prepare it?`,
-      ku: (n) => `${hi("هەی", n)}! داواکاریی ${name} کاتژمێر ${time} بوو و هێشتا نەنێردراوە. تەماتە خۆی داوا ناکات. با ئێستا ئامادەی بکەم؟`,
-      ar: (n) => `${ya(n)}! طلب ${name} كان موعده ${time} ولم يُرسل بعد. الطماطم لا تطلب نفسها. هل أجهّزه لك الآن؟`,
+      en: () => `${name}'s order was due at ${time} and isn't sent yet. Want me to prepare it?`,
+      ku: () => `داواکاریی ${name} کاتژمێر ${time} بوو و هێشتا نەنێردراوە. ئامادەی بکەم؟`,
+      ar: () => `طلب ${name} كان موعده ${time} ولم يُرسل بعد. هل أجهّزه؟`,
     }, { supplierId: String(s.id) }));
     if (said) out.push({ supplier: name, ...said });
   }
@@ -334,7 +333,6 @@ async function streakTick() {
   if (!(await claimAlert(`streak-risk|${now.date}`, "streak-risk", null))) return { skipped: "already sent today" };
   const k = Number(st.count);
   return await ricoSays("streak", `streak-risk|${now.date}`, {
-    mood: "worried",
     en: (n) => `${hi("Hey", n)}! Our ${k}-day streak ends at midnight. One order today keeps it going.`,
     ku: (n) => `${hi("هەی", n)}! زنجیرەی ${k} ڕۆژەمان نیوەشەو کۆتایی دێت. تەنها یەک داواکاری ئەمڕۆ بەردەوامی دەکات.`,
     ar: (n) => `${ya(n)}! سلسلة الـ${k} يومًا تنتهي عند منتصف الليل. طلب واحد اليوم يبقيها مستمرة.`,
@@ -348,7 +346,6 @@ async function reportTick() {
   if (t.getUTCDate() !== 1 || now.minutes < 17 * 60 || now.minutes >= 21 * 60) return { skipped: "not the time" };
   const month = now.date.slice(0, 7);
   return await saysOnce(`report|${month}`, "report", null, () => ricoSays("report", `report|${month}`, {
-    mood: "excited",
     en: (n) => `${hi("Hey", n)}! This month's report card is ready in History, with its Excel file and PDF.`,
     ku: (n) => `${hi("هەی", n)}! کارتی ڕاپۆرتی ئەم مانگە لە مێژوودا ئامادەیە، لەگەڵ فایلی ئێکسڵ و PDF.`,
     ar: (n) => `${ya(n)}! بطاقة تقرير هذا الشهر جاهزة في السجل، مع ملف إكسل وملف PDF.`,
@@ -368,7 +365,6 @@ async function letterTick() {
   const change = (more: string, fewer: string, same: string) => before === null ? "" : n > before ? more.replace("#", String(n - before)) : n < before ? fewer.replace("#", String(before - n)) : same;
   const key = `letter|${last.month}`;
   return await saysOnce(key, "report", null, () => ricoSays("report", key, {
-    mood: "happy",
     en: (name) => `${hi("Hi", name, " ")}, here's ${last.month}: ${n} orders${change(", # more than the month before", ", # fewer than the month before", ", the same as the month before")}${top ? `. Most ordered: ${top}` : ""}. The full report is in History, Past months.`,
     ku: (name) => `${hi("سڵاو", name)}، ئەمە ${last.month}: ${n} داواکاری${before === null ? "" : n > before ? `، ${n - before} زیاتر لە مانگی پێشوو` : n < before ? `، ${before - n} کەمتر لە مانگی پێشوو` : `، وەک مانگی پێشوو`}${top ? `. زۆرترین داواکراو: ${top}` : ""}. ڕاپۆرتی تەواو لە مێژوو، مانگەکانی ڕابردوو.`,
     ar: (name) => `${ya(name)}، هذا ${last.month}: ${n} طلبًا${before === null ? "" : n > before ? `، بزيادة ${n - before} عن الشهر السابق` : n < before ? `، بنقص ${before - n} عن الشهر السابق` : `، مثل الشهر السابق`}${top ? `. الأكثر طلبًا: ${top}` : ""}. التقرير الكامل في السجل، الأشهر الماضية.`,
@@ -389,7 +385,7 @@ async function healthTick() {
   const allOk = backupOk && aiOk && pushOk;
   const say = (ok: boolean, good: string, bad: string) => ok ? good : bad;
   const { error } = await sb.from("app_rico_inbox").upsert([{
-    account: "rozha", kind: "health", mood: allOk ? "calm" : "worried", dedupe_key: `health|${now.date}|rozha`,
+    account: "rozha", kind: "health", mood: RICO_MOOD, dedupe_key: `health|${now.date}|rozha`,
     body_en: `Daily check: backup ${say(backupOk, "OK", "missing")}, Rico ${say(aiOk, "OK", "having trouble")}, notifications ${say(pushOk, "OK", "no phones signed up")}.`,
     body_ku: `پشکنینی ڕۆژانە: پاشەکەوت ${say(backupOk, "باشە", "نییە")}، ریکۆ ${say(aiOk, "باشە", "کێشەی هەیە")}، ئاگادارکردنەوەکان ${say(pushOk, "باشە", "هیچ ئامێرێک تۆمار نەکراوە")}.`,
     body_ar: `الفحص اليومي: النسخة الاحتياطية ${say(backupOk, "سليمة", "غير موجودة")}، ريكو ${say(aiOk, "سليم", "به مشكلة")}، الإشعارات ${say(pushOk, "سليمة", "لا أجهزة مسجلة")}.`,
@@ -408,7 +404,6 @@ async function wipeTick() {
   if (left !== 2) return { skipped: "not yet" };
   const key = `wipe|${row.next_wipe}`;
   return await saysOnce(key, "wipe", null, () => ricoSays("wipe", key, {
-    mood: "worried",
     en: (n) => `${hi("Heads up", n, ", ")}: in 2 days, history older than 60 days will be deleted. That means old orders, Records and my chats. Save anything you need first.`,
     ku: (n) => `${hi("ئاگاداربە", n)}: دوای 2 ڕۆژ مێژووی کۆنتر لە 60 ڕۆژ دەسڕدرێتەوە. واتە داواکارییە کۆنەکان، تۆمارەکان و گفتوگۆکانم. پێشتر ئەوەی پێویستتە پاشەکەوتی بکە.`,
     ar: (n) => `${ya(n)}، بعد يومين سيُحذف السجل الأقدم من 60 يومًا: الطلبات القديمة والسجلات ومحادثاتي. احفظ ما تحتاجه أولًا.`,
@@ -435,7 +430,6 @@ async function weeklyTick() {
     ku: k > p ? `زیاتر لە ${p}ی هەفتەی پێشوو` : k < p ? `کەمتر لە ${p}ی هەفتەی پێشوو` : "وەک هەفتەی پێشوو",
     ar: k > p ? `أكثر من ${p} في الأسبوع الماضي` : k < p ? `أقل من ${p} في الأسبوع الماضي` : "مثل الأسبوع الماضي" };
   return await saysOnce(`weekly|${now.date}`, "weekly", null, () => ricoSays("weekly", `weekly|${now.date}`, {
-    mood: k >= p && k > 0 ? "excited" : "calm",
     en: (n) => `${hi("Happy Friday", n, ", ")}! This week: ${k} order${k === 1 ? "" : "s"}, ${trend.en}.${top ? ` Most ordered: ${top}.` : ""}${streak ? ` Streak: ${streak} days.` : ""} Have a good weekend!`,
     ku: (n) => `${hi("هەینیت باش", n)}! ئەم هەفتەیە: ${k} داواکاری، ${trend.ku}.${top ? ` زۆرترین داواکراو: ${top}.` : ""}${streak ? ` زنجیرە: ${streak} ڕۆژ.` : ""} پشووی خۆش!`,
     ar: (n) => `${hi("جمعة مباركة", n, " يا ")}! هذا الأسبوع: ${k} طلب، ${trend.ar}.${top ? ` الأكثر طلبًا: ${top}.` : ""}${streak ? ` السلسلة: ${streak} يومًا.` : ""} عطلة سعيدة!`,
@@ -458,12 +452,10 @@ async function cheerTick() {
   const k = dueToday.length;
   const wx = await weatherWords().catch(() => ({ en: "", ku: "", ar: "" }));
   return await saysOnce(`cheer|${now.date}`, "cheer", null, () => ricoSays("cheer", `cheer|${now.date}`, k ? {
-    mood: "excited",
     en: (n) => `${hi("Good morning", n, ", ")}! ${k} supplier${k === 1 ? " is" : "s are"} due today: ${listEn}.${wx.en} Let's get the orders out on time.`,
     ku: (n) => `${hi("بەیانیت باش", n)}! ئەمڕۆ کاتی داواکاریی ${k} دابینکەرە: ${list}.${wx.ku} با بە کاتی خۆی بینێرین.`,
     ar: (n) => `${hi("صباح الخير", n, " يا ")}! اليوم موعد ${k} من المورّدين: ${list}.${wx.ar} لنرسل الطلبات في وقتها.`,
   } : {
-    mood: "happy",
     en: (n) => `${hi("Good morning", n, ", ")}! No supplier is scheduled today.${wx.en} Have a great shift.`,
     ku: (n) => `${hi("بەیانیت باش", n)}! ئەمڕۆ هیچ دابینکەرێک کاتی داواکاریی نییە.${wx.ku} ڕۆژێکی خۆش.`,
     ar: (n) => `${hi("صباح الخير", n, " يا ")}! لا يوجد مورّد مجدول اليوم.${wx.ar} يومًا موفقًا.`,
@@ -540,7 +532,7 @@ Deno.serve(async (req) => {
         const title = String(body.title || "").slice(0, 80);
         // Without its own title this message comes from Rico, so it follows who has Rico.
         return json(await sendReminder((lang) => ({
-          title: title || RICO[lang], body: w.pick(lang), kind: "assistant", mood: moodOf(body.mood), tag: `ricotta-assistant-${Date.now()}`,
+          title: title || RICO[lang], body: w.pick(lang), kind: "assistant", mood: RICO_MOOD, tag: `ricotta-assistant-${Date.now()}`,
         }), title ? undefined : await ricoAccounts()));
       }
       case "supplier-test": {
