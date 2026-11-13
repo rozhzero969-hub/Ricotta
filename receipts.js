@@ -346,7 +346,7 @@ function rrReveal(el){
    same box on the line above or below, ⌥Y Record for yesterday (Transfers). Keys are matched by
    position, so a Mac's ⌥ letters don't matter. */
 // unit: on an amount, opens the unit menu and then moves through the units; next: from an amount to the next item.
-const RR_KEYS = {unit_menu:'Tab', next:'Enter', add:'Alt+KeyN', dup:'Alt+KeyD', del:'Alt+KeyX', unit:'Alt+KeyU', up:'Alt+ArrowUp', down:'Alt+ArrowDown', yest:'Alt+KeyY'};
+const RR_KEYS = {sidebar:'Mod+Backslash', unit_menu:'Tab', next:'Enter', add:'Alt+KeyN', dup:'Alt+KeyD', del:'Alt+KeyX', unit:'Alt+KeyU', up:'Alt+ArrowUp', down:'Alt+ArrowDown', yest:'Alt+KeyY'};
 const rrKeyOf = act=> (state.settings?.keys && state.settings.keys[act]) || RR_KEYS[act];
 /* An event as "Mod+Alt+Shift+KeyN" (Mod is ⌘ on a Mac, Ctrl elsewhere). */
 const rrCombo_ = e=> [(e.metaKey || e.ctrlKey) ? 'Mod' : '', e.altKey ? 'Alt' : '', e.shiftKey ? 'Shift' : '', e.code].filter(Boolean).join('+');
@@ -359,7 +359,7 @@ function rrUnitMenuKey(e, sel, before){
 }
 function rrLineKeys(e, a){
   if(document.querySelector('.modal-overlay') || !(e.altKey || e.metaKey || e.ctrlKey)) return false;
-  const combo = rrCombo_(e), act = Object.keys(RR_KEYS).find(k=>k !== 'unit_menu' && k !== 'next' && rrKeyOf(k) === combo);
+  const combo = rrCombo_(e), act = Object.keys(RR_KEYS).find(k=>k !== 'unit_menu' && k !== 'next' && k !== 'sidebar' && rrKeyOf(k) === combo);
   if(!act) return false;
   const line = document.activeElement?.closest?.('.rr-line'), i = line ? +line.dataset.line : -1;
   const kind = el=> el?.matches?.('[data-l-item]') ? 'item' : el?.matches?.('[data-l-qty]') ? 'qty' : el?.matches?.('[data-l-cost]') ? 'cost' : el?.classList?.contains('sel-btn') ? 'unit' : 'item';
