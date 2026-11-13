@@ -288,7 +288,7 @@ function renderAdminHome(){
     </div>`;
 
   return status + today + needs + ricoCard + people + tools + adServerCard()
-    + `<details class="ad-sources"><summary>${esc(t('adSourcesTitle'))}</summary><p>${esc(t('adSourcesBody'))}</p></details>`;
+    + `<p class="ad-sources">${esc(t('adSourcesNote'))}</p>`;
 }
 /* A person's page: their time today and on average, their phones (Refresh or Log out), their PIN, and
    for Yunis what he can open. */

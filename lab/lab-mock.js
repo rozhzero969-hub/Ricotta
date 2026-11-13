@@ -186,7 +186,27 @@
     const events = [];
     const say = (mood, en, ku, ar) => { events.push({type:'mood', mood}); events.push({type:'text', text:({en, ku, ar})[L]}); };
     const wantsOrder = /order|prepar|suggest|usual|داواکاری|ئامادە|طلب|جهز|veg|tomato/.test(q) || body.quickAction;
-    if(/streak|زنجیرە|سلسلة/.test(q)){
+    const pid = k=>k+Date.now().toString(36);
+    if(/is low|low in|کەمە|ينقص/.test(q)){
+      say('calm', 'Two items are low in Main Storage. Faheta Bread is empty and Mozzarella has about a day left.', 'دوو کاڵا لە کۆگای سەرەکی کەمن.', 'مادتان ناقصتان في المخزن الرئيسي.');
+      events.push({type:'proposal', proposal:{id:pid('s'), kind:'stock_list', storage:'Main Storage', at:new Date(Date.now()-6*60000).toISOString(), more:0,
+        rows:[{item:'Faheta Bread - صمونى فاهيتا', qty:0, unit:'دانە', days:null, empty:true},{item:'Mozzarella - پەنیری مۆزارێلا', qty:2, unit:'کیلۆ', days:0.8, empty:false},{item:'Lemon - لیمۆ', qty:1.5, unit:'کیلۆ', days:2.4, empty:false}]}});
+    } else if(/needs me|پێویستی بە|يحتاج/.test(q)){
+      say('calm', 'Three things need you. The stopped receipt first.', 'سێ شت پێویستیان بە تۆیە.', 'ثلاثة أشياء تحتاجك.');
+      events.push({type:'proposal', proposal:{id:pid('n'), kind:'needs_list', rows:[
+        {type:'receipt', id:'00000000-0000-4000-8000-000000000001', title:'Veg Market #4', why:'Stopped: Rico could not find the supplier', level:'stop'},
+        {type:'transfer', id:'00000000-0000-4000-8000-000000000002', title:'Main Storage > Pizza', why:'Waiting for a person to check Rico\'s photo and approve it (12 min).', level:'wait'},
+        {type:'transfer', id:'00000000-0000-4000-8000-000000000003', title:'Main Storage > Minibar', why:'A draft not sent since 2026-11-12.', level:'old'}]}});
+    } else if(/price|نرخ|سعار/.test(q)){
+      say('calm', 'Two prices changed by more than 10 percent this month.', 'دوو نرخ گۆڕاون.', 'تغيّر سعران.');
+      events.push({type:'proposal', proposal:{id:pid('p'), kind:'price_list', more:0, rows:[
+        {item:'Mozzarella - پەنیری مۆزارێلا', supplier:'Dairy Co', unit:'کیلۆ', currency:'IQD', from:10000, to:12000, pct:20},
+        {item:'Tomato - تەماتە', supplier:'Erbil Veg Market', unit:'کیلۆ', currency:'IQD', from:1500, to:1250, pct:-16.7}]}});
+    } else if(/spend|خەرج|أنفق/.test(q)){
+      say('calm', 'You spent 1,240,000 IQD this week, most of it at Dairy Co.', 'ئەم هەفتەیە 1,240,000 دینارت خەرج کرد.', 'أنفقت 1,240,000 دينار هذا الأسبوع.');
+      events.push({type:'proposal', proposal:{id:pid('m'), kind:'spend', period:'2026-11-08 to 2026-11-14', by:'supplier', receipts:9, IQD:1240000, USD:0,
+        rows:[{name:'Dairy Co', receipts:4, IQD:720000, USD:0},{name:'Erbil Veg Market', receipts:5, IQD:520000, USD:0}]}});
+    } else if(/streak|زنجیرە|سلسلة/.test(q)){
       const st = streakView();
       if(st.recoverable){
         say('excited', `Of course! Tap the card and your ${st.recoverable}-day streak is back. It's free.`, `بێگومان! کارتەکە دابگرە و زنجیرەی ${st.recoverable} ڕۆژەکەت دەگەڕێتەوە. بەخۆڕاییە.`, `بالتأكيد! اضغط البطاقة وتعود سلسلة الـ${st.recoverable} يومًا. مجانًا.`);

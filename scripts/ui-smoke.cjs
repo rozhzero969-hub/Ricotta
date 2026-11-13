@@ -161,6 +161,11 @@ const server=http.createServer((req,res)=>{
       await page.locator('[data-account-go="settings"]').click();
       await page.waitForSelector('.account-sheet',{state:'detached'});
     }else{
+      // On a computer Rico hides the app's tabs: his back arrow brings them back first.
+      if(await page.evaluate(()=>document.documentElement.classList.contains('rico-mode') && innerWidth>=960)){
+        await page.locator('[data-rico-leave]').click(); await settle(page);
+        if(await page.evaluate(()=>state.view)===destination) return;
+      }
       // More exists only with more than four screens, and only holds the ones that are not tabs.
       if(await page.locator(`#navMore [data-view="${destination}"]`).count() && await page.evaluate(()=>innerWidth<960)){
         if(await page.locator('#navMoreBtn').getAttribute('aria-expanded')!=='true')await page.locator('#navMoreBtn').click();
@@ -446,8 +451,8 @@ const server=http.createServer((req,res)=>{
     // Rico: moods, inbox, the robot.
     await openView(page,'assistant');
     assert.equal(await page.locator('.rico-note').count(),1,'Rico\u2019s own message is at the top');
-    assert.equal(await page.locator('.rico-hello, .rico-week, .rico-next, .rico-recent').count(),0,'a quiet first screen: his message and the shortcuts only');
-    assert.ok(await page.locator('.rico-chip').count()>=4,'the shortcuts are there');
+    assert.equal(await page.locator('.rico-week, .rico-next, .rico-recent').count(),0,'a quiet first screen: a greeting, his message and the shortcuts only');
+    assert.ok(await page.locator('.rico-tile').count()>=4,'the shortcuts are there');
     assert.equal(await page.locator('#ricoNameForm').count(),0,'Rico never asks for a name');
     assert.ok(calls.some(c=>c.endpoint==='assistant/inbox/read'),'opening Rico reads his messages');
     // Clicking into Rico's message box must not resize the page (the body once picked up the typing-bubble style).

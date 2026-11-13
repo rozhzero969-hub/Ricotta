@@ -15,10 +15,15 @@ const R = (globalThis as any).RicottaReceipts;
 const T = (globalThis as any).RicottaTransfers;
 
 type Emit = (event: Record<string, unknown>) => void;
+const noEmit: Emit = () => {};
 const DB_TIMEOUT_MS = 12_000;
 const MAX_DAYS = 60;
 const STUCK_MINUTES = 15;
 const DRAFTS_PER_REPLY = 2;
+const LOW_DAYS = 3, USE_DAYS = 14;
+/* A card id, like the other proposals' ids. */
+const cardId = (k: string) => `${k}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const CARD_NOTE = "The app already shows these as a card under your reply. Say it in one or two short lines; never list every row again.";
 export const NO_RECEIPTS = { error: "no_access", note: "This person can't open Receipts. Say so briefly." };
 export const NO_TRANSFERS = { error: "no_access", note: "This person can't open Transfers. Say so briefly." };
 
@@ -125,6 +130,63 @@ export async function stockLevels(db: any, w: any, a: any) {
   };
 }
 
+/* ---------- low_stock ---------- */
+/* What is running low in one storage (Main Storage unless named): items that are empty, or have less
+   than LOW_DAYS days left at the pace they left that storage in moved transfers over the last USE_DAYS
+   days. Items never kept there, and empty ones nobody used lately, are left out. Shown as a card. */
+export async function lowStock(db: any, w: any, a: any, emit: Emit = noEmit) {
+  if (!w.can.transfers) return NO_TRANSFERS;
+  const cat: any = await withTimeout(catalogOf(db), "catalog");
+  const titems: any[] = cat.titems ?? [];
+  if (!titems.length) return { error: "no_stock", note: "Rico has not read the stock from Ricotta Restaurant yet. Say so." };
+  const zones: string[] = T.zonesOf(cat);
+  let zone = zones.includes("Main Storage") ? "Main Storage" : zones[0];
+  if (a?.storage) {
+    const z: any = pickName(zones, a.storage);
+    if (!z.name) return { ...notFound("storage", a.storage, z), storages: zones };
+    zone = z.name;
+  }
+  const since = new Date(Date.now() - USE_DAYS * 86400_000).toISOString();
+  const { data, error } = await withTimeout<any>(db.from("app_rr_transfers").select("from_zone,lines,moved_at,mode")
+    .eq("status", "moved").eq("from_zone", zone).gte("moved_at", since).limit(1500), "transfers");
+  if (error) throw new Error("records_unavailable");
+  const byName = new Map(titems.map((i) => [i.name, i]));
+  const used = new Map<string, { base: number; n: number }>();
+  for (const r of (data ?? []) as any[]) {
+    if (r.mode === "practice") continue;
+    for (const l of r.lines ?? []) {
+      const it = byName.get(l?.item);
+      if (!it) continue;
+      const f = T.unitOptions(it).find((u: any) => u.name === l.unit)?.factor ?? (l.unit === it.base ? 1 : 0);
+      const q = Number(l.qty) * f;
+      if (!(q > 0)) continue;
+      const u = used.get(it.name) ?? { base: 0, n: 0 };
+      u.base += q; u.n++; used.set(it.name, u);
+    }
+  }
+  const rows: any[] = [];
+  for (const it of titems) {
+    if (!it.stock || !(zone in it.stock)) continue;
+    const have = T.available(it, zone), u = used.get(it.name);
+    const perDay = u && u.n >= 2 ? u.base / USE_DAYS : 0;
+    const days = perDay > 0 ? have / perDay : null;
+    const empty = have <= 0;
+    if (empty ? !u : !(days !== null && days < LOW_DAYS)) continue;
+    const c = T.inCounting(it, have, true);
+    rows.push({ item: it.name, qty: c.qty, unit: c.unit, days_left: days === null ? null : Math.round(days * 10) / 10, empty });
+  }
+  rows.sort((x, y) => Number(y.empty) - Number(x.empty) || (x.days_left ?? 0) - (y.days_left ?? 0));
+  const shown = rows.slice(0, 15), at = cat.stockAt ?? cat.at ?? null;
+  if (shown.length) emit({ type: "proposal", proposal: { id: cardId("s"), kind: "stock_list", storage: zone, at,
+    rows: shown.map((r) => ({ item: r.item, qty: r.qty, unit: r.unit, days: r.days_left, empty: r.empty })), more: Math.max(0, rows.length - 15) } });
+  return {
+    storage: zone, low: shown, more: rows.length > 15 ? rows.length - 15 : undefined,
+    stock_read_at: erbilTime(at), read_minutes_ago: minutesSince(at),
+    how: `Low means empty, or less than ${LOW_DAYS} days left at the pace it left ${zone} over the last ${USE_DAYS} days.`,
+    note: shown.length ? CARD_NOTE + " You may offer a transfer draft for one of them." : `Nothing is low in ${zone}.`,
+  };
+}
+
 /* ---------- price_history ---------- */
 export async function priceHistory(db: any, w: any, a: any) {
   if (!w.can.receipts) return NO_RECEIPTS;
@@ -163,7 +225,7 @@ export async function priceHistory(db: any, w: any, a: any) {
 }
 
 /* ---------- spending_summary ---------- */
-export async function spendingSummary(db: any, w: any, a: any) {
+export async function spendingSummary(db: any, w: any, a: any, emit: Emit = noEmit) {
   if (!w.can.receipts) return NO_RECEIPTS;
   const per: any = periodOf(a);
   if (per.error) return { error: per.error };
@@ -194,12 +256,15 @@ export async function spendingSummary(db: any, w: any, a: any) {
     ...(g.IQD ? { IQD: money(g.IQD, "IQD") } : {}), ...(g.USD ? { USD: money(g.USD, "USD") } : {}),
     ...(by === "item" ? { qty: g.qty } : {}),
   }));
+  if (rows.length) emit({ type: "proposal", proposal: { id: cardId("m"), kind: "spend", period: per.label, by, receipts: rows.length,
+    IQD: money(total.IQD, "IQD"), USD: money(total.USD, "USD"),
+    rows: by === "none" ? [] : list.slice(0, 6).map((g) => ({ name: g.name, receipts: g.receipts.size, IQD: money(g.IQD, "IQD"), USD: money(g.USD, "USD") })) } });
   return {
     period: per.label, receipts: rows.length,
     total_IQD: money(total.IQD, "IQD"), total_USD: money(total.USD, "USD"),
     ...(delivery.IQD ? { of_which_delivery_IQD: money(delivery.IQD, "IQD") } : {}),
     ...(by === "none" ? {} : { [`by_${by}`]: shown, more: list.length > 15 ? list.length - 15 : undefined }),
-    note: rows.length ? "IQD and USD are separate; never add them together." : "No saved receipts in that period.",
+    note: rows.length ? "IQD and USD are separate; never add them together. " + CARD_NOTE : "No saved receipts in that period.",
   };
 }
 
@@ -247,7 +312,7 @@ export async function transfersSummary(db: any, w: any, a: any) {
 }
 
 /* ---------- price_changes ---------- */
-export async function priceChanges(db: any, w: any, a: any) {
+export async function priceChanges(db: any, w: any, a: any, emit: Emit = noEmit) {
   if (!w.can.receipts) return NO_RECEIPTS;
   const days = Math.max(1, Math.min(Math.floor(Number(a.days) || 30), MAX_DAYS));
   const pct = Number(a.threshold_pct);
@@ -273,9 +338,11 @@ export async function priceChanges(db: any, w: any, a: any) {
     changes.push({ item: last.item, supplier: last.supplier, unit: last.unit, currency: last.currency, previous_price: prev.cost, previous_day: prev.day, latest_price: last.cost, latest_day: last.day, change_pct: Math.round(change * 10) / 10 });
   }
   changes.sort((x, y) => Math.abs(y.change_pct) - Math.abs(x.change_pct));
+  if (changes.length) emit({ type: "proposal", proposal: { id: cardId("p"), kind: "price_list",
+    rows: changes.slice(0, 10).map((c) => ({ item: c.item, supplier: c.supplier, unit: c.unit, currency: c.currency, from: c.previous_price, to: c.latest_price, pct: c.change_pct })), more: Math.max(0, changes.length - 10) } });
   return {
     period: `${from} to ${today}`, threshold_pct: threshold, found: changes.length, changes: changes.slice(0, 20),
-    note: changes.length ? (changes.length > 20 ? "Only the 20 biggest changes are listed." : undefined) : `No price changed by more than ${threshold}% in that time.`,
+    note: changes.length ? CARD_NOTE + (changes.length > 20 ? "Only the 20 biggest changes are listed." : undefined) : `No price changed by more than ${threshold}% in that time.`,
   };
 }
 
@@ -290,7 +357,7 @@ function attentionReason(r: any, running: string[], who: string) {
     return `A draft not sent since ${dayOf(r.created_at)}.`;
   return null;
 }
-export async function needsAttention(db: any, w: any) {
+export async function needsAttention(db: any, w: any, emit: Emit = noEmit) {
   if (!w.can.receipts && !w.can.transfers) return { error: "no_access", note: "This person can't open Receipts or Transfers. Say so briefly." };
   const since = new Date(Date.now() - MAX_DAYS * 86400_000).toISOString();
   const open = ["draft", "queued", "filling", "review", "approved", "saving", "moving", "problem"];
@@ -313,7 +380,14 @@ export async function needsAttention(db: any, w: any) {
     if (list.length > 15) out.more_transfers = list.length - 15;
   }
   const n = (out.receipts?.length ?? 0) + (out.transfers?.length ?? 0);
-  out.note = n ? "Say what needs doing, most important first (stopped, then waiting for approval, then stuck, then old drafts)." : "Nothing needs attention right now.";
+  const level = (why: string) => why.startsWith("Stopped") ? "stop" : why.startsWith("Waiting for a person") ? "wait" : why.startsWith("A draft") ? "old" : "stuck";
+  const rank: Record<string, number> = { stop: 0, wait: 1, stuck: 2, old: 3 };
+  const rows = [
+    ...(out.receipts ?? []).map((r: any) => ({ type: "receipt", id: r.receipt_id, title: [r.supplier, r.invoice ? `#${r.invoice}` : ""].filter(Boolean).join(" "), why: r.why, level: level(r.why) })),
+    ...(out.transfers ?? []).map((r: any) => ({ type: "transfer", id: r.transfer_id, title: `${r.from ?? ""} > ${r.to ?? ""}`, why: r.why, level: level(r.why) })),
+  ].sort((x, y) => rank[x.level] - rank[y.level]).slice(0, 12);
+  if (n) emit({ type: "proposal", proposal: { id: cardId("n"), kind: "needs_list", rows } });
+  out.note = n ? CARD_NOTE + " Say what needs doing, most important first (stopped, then waiting for approval, then stuck, then old drafts)." : "Nothing needs attention right now.";
   return out;
 }
 
@@ -392,6 +466,8 @@ export async function proposeTransferDraft(db: any, w: any, a: any, emit: Emit) 
 }
 
 export const RICO_RR_TOOLS = [
+  { name: "low_stock", description: "What is running low in one storage (Main Storage unless named): empty items and items with less than 3 days left at their usual pace. Shows a card with the list.",
+    input_schema: { type: "object", properties: { storage: { type: "string", description: "Optional: one storage" } } } },
   { name: "stock_levels", description: "How much of an item is in each storage (or one storage) in Ricotta Restaurant, from the stock Rico last read, and when it was read. Item name in any language; typos are fine.",
     input_schema: { type: "object", properties: { item: { type: "string" }, storage: { type: "string", description: "Optional: one storage" } }, required: ["item"] } },
   { name: "price_history", description: "An item's unit cost over time from saved receipts: per supplier and unit the last price, previous price, change, min and max, plus the latest receipts.",
@@ -408,7 +484,8 @@ export const RICO_RR_TOOLS = [
     input_schema: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, lines: { type: "array", items: { type: "object", properties: { item: { type: "string" }, qty: { type: "number" }, unit: { type: "string", description: "Optional; default is the item's counting unit" } }, required: ["item", "qty"] } }, yesterday: { type: "boolean", description: "Record it for yesterday" } }, required: ["from", "to", "lines"] } },
 ];
 
-export const RICO_RR_MANUAL = `- Stock: "how much X is in Pizza/Main Storage" -> stock_levels. Say when the stock was read.
+export const RICO_RR_MANUAL = `- "What is low / running out / what should I move" -> low_stock (a card lists the items).
+- Stock: "how much X is in Pizza/Main Storage" -> stock_levels. Say when the stock was read.
 - Prices: "what did we pay for X", "has X gone up" -> price_history. "which prices went up/changed" -> price_changes.
 - Spending: "how much did we spend today/this week/this month, by supplier or item" -> spending_summary. Give IQD and USD separately, never added together.
 - Transfers: "what went to Pizza this week", "how much X was moved" -> transfers_summary.
@@ -418,12 +495,13 @@ export const RICO_RR_MANUAL = `- Stock: "how much X is in Pizza/Main Storage" ->
 
 export async function runRrTool(db: any, w: any, name: string, a: any, emit: Emit): Promise<unknown> {
   switch (name) {
+    case "low_stock": return await lowStock(db, w, a, emit);
     case "stock_levels": return await stockLevels(db, w, a);
     case "price_history": return await priceHistory(db, w, a);
-    case "spending_summary": return await spendingSummary(db, w, a);
+    case "spending_summary": return await spendingSummary(db, w, a, emit);
     case "transfers_summary": return await transfersSummary(db, w, a);
-    case "price_changes": return await priceChanges(db, w, a);
-    case "needs_attention": return await needsAttention(db, w);
+    case "price_changes": return await priceChanges(db, w, a, emit);
+    case "needs_attention": return await needsAttention(db, w, emit);
     case "propose_transfer_draft": return await proposeTransferDraft(db, w, a, emit);
   }
   return undefined;

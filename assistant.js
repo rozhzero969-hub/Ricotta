@@ -148,6 +148,7 @@ function renderAssistant(){
         <div class="rico-name">${esc(t('ricoName'))}</div>
         <div class="rico-who">${esc(t('ricoTalkingWith')(accountLabel(state.account)))}</div>
       </div>
+      <div class="rico-head-title" dir="auto">${esc(ricoHeadTitle())}</div>
       <div class="rico-head-actions">
         <button type="button" class="rico-head-btn" id="ricoHistBtn">${NAV_ICONS.history}<span>${esc(t('ricoChats'))}</span></button>
         <button type="button" class="rico-head-btn" id="ricoNewBtn" ${rico.messages.length?'':'disabled'}>${ICON_NEW_CHAT}<span>${esc(t('ricoNewChat'))}</span></button>
@@ -157,7 +158,18 @@ function renderAssistant(){
     ? rico.messages.map((m,i)=>ricoTimeDivider(rico.messages[i-1], m) + renderRicoMessage(m,i)).join('')
     : renderRicoIntro();
   const viewing = rico.viewing ? `<div class="rico-viewing" role="status"><span>${esc(t('ricoReadOnly')(accountLabel(rico.viewing)))}</span></div>` : '';
-  return `<div class="rico-page">${renderRicoSide()}<div class="rico-main">${head}${viewing}${rico.viewing ? '' : renderRicoInbox()}<div class="rico-thread${rico.viewing ? ' read-only' : ''}" id="ricoThread" aria-live="polite">${thread}</div></div></div>`;
+  const empty = !rico.messages.length;
+  return `<div class="rico-page${empty ? ' empty' : ''}">${renderRicoSide()}<div class="rico-main">${head}${viewing}${rico.viewing || empty ? '' : renderRicoInbox()}<div class="rico-thread${rico.viewing ? ' read-only' : ''}" id="ricoThread" aria-live="polite">${thread}</div></div></div>`;
+}
+/* The open chat's name, shown above it on a computer (like a chat app). */
+function ricoHeadTitle(){
+  const id = rico.viewedId || rico.chatId, c = id && rico.chats?.find(x=>x.id === id);
+  return (c && c.title) || ricoChatTitle() || t('ricoNewChat');
+}
+/* Leaving Rico on a computer: back to the screen it was opened from. */
+function ricoLeave(){
+  const back = state.ricoBack && state.ricoBack !== 'assistant' && canOpen(state.ricoBack) ? state.ricoBack : (state.tabs.find(v=>v !== 'assistant') || 'order');
+  goView(back);
 }
 /* The chats on the left (computers only; CSS hides it on phones). */
 function renderRicoSide(){
@@ -171,7 +183,12 @@ function renderRicoSide(){
       return `${head}<button type="button" class="rico-side-chat${on ? ' on' : ''}" data-side-open="${esc(c.id)}"${on ? ' aria-current="true"' : ''}><span dir="auto">${esc(c.title || t('ricoUntitled'))}</span>${other ? `<small>${esc(accountLabel(c.account))}</small>` : ''}</button>`;
     }).join('');
   return `<aside class="rico-side" aria-label="${esc(t('ricoChats'))}">
+      <div class="rico-side-top">
+        <button type="button" class="rico-back" data-rico-leave aria-label="${esc(t('ricoBack'))}" title="${esc(t('ricoBack'))}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span class="brand-mark">ricotta</span><span class="dot"></span></button>
+        <button type="button" class="side-toggle" data-side-toggle aria-label="${esc(t('sideHide'))}" title="${esc(t('sideHide'))}">${ICON_SIDEBAR}</button>
+      </div>
       <button type="button" class="rico-side-new" data-side-new ${rico.messages.length ? '' : 'disabled'}>${ICON_NEW_CHAT}<span>${esc(t('ricoNewChat'))}</span></button>
+      ${rico.chats?.length > 6 ? `<label class="rico-side-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input type="search" data-side-search placeholder="${esc(t('ricoSearchChats'))}" aria-label="${esc(t('ricoSearchChats'))}" autocomplete="off"></label>` : ''}
       <div class="rico-side-list">${rows}</div>
       ${rico.chats?.length ? `<button type="button" class="rico-side-link" data-side-all>${esc(t('ricoManageChats'))}</button>` : ''}
       <div class="rico-side-foot">
@@ -204,14 +221,34 @@ function renderRicoInbox(){
     </div>`).join('')}${rico.inbox.length > 1 ? `<button type="button" class="rico-link rico-inbox-more" id="ricoInboxAll">${esc(t('inboxSeeAll')(rico.inbox.length))}</button>` : ''}</div>`;
 }
 function renderRicoIntro(){
-  const chips = t('ricoSuggestions');
-  const actions = ['prepare_order','check_order','week_insights','last_order','add_item','late_orders'];
-  // A quiet first screen: Rico's latest message sits above, and these shortcuts. Chats and What Rico
-  // remembers are in the header.
+  // A calm first screen, like a chat app's: a greeting, Rico's latest note, and a few things to ask.
+  // Stock, what needs you and prices come first for people who use Receipts or Transfers.
+  const chips = t('ricoSuggestions'), rr = t('ricoTilesRR');
+  const base = [['prepare_order',chips[0],'order'],['week_insights',chips[2],'reports'],['late_orders',chips[5],'late'],['check_order',chips[1],'check'],['last_order',chips[3],'history'],['add_item',chips[4],'add']];
+  const extra = [
+    ...(canOpen('transfers') ? [['', rr[0], 'stock']] : []),
+    ...(canOpen('transfers') || canOpen('receipts') ? [['', rr[1], 'needs']] : []),
+    ...(canOpen('receipts') ? [['', rr[2], 'price']] : []),
+  ];
+  const tiles = [...extra, ...base].slice(0, 6);
   return `<div class="rico-intro">
-    <div class="rico-chips">${chips.map((c,i)=>`<button class="rico-chip" data-rico-ask="${esc(c)}" data-rico-action="${actions[i]}">${esc(c)}</button>`).join('')}</div>
+    <div class="rico-hello">${ricoFace('', 'rico-lg')}<h2>${esc(ricoGreeting())}</h2><p>${esc(t('ricoIntroSub'))}</p></div>
+    ${renderRicoInbox()}
+    <div class="rico-tiles">${tiles.map(([action, text, icon])=>`<button type="button" class="rico-tile" data-rico-ask="${esc(text)}"${action ? ` data-rico-action="${action}"` : ''}>${RICO_TILE_ICONS[icon] || ''}<span>${esc(text)}</span></button>`).join('')}</div>
   </div>`;
 }
+const RICO_TILE_ICON = d=>`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const RICO_TILE_ICONS = {
+  stock: RICO_TILE_ICON('<path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/>'),
+  needs: RICO_TILE_ICON('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5M12 16h.01"/>'),
+  price: RICO_TILE_ICON('<path d="M4 17l6-6 4 4 6-7"/><path d="M15 8h5v5"/>'),
+  order: RICO_TILE_ICON('<path d="M6 6h15l-2 8H8z"/><path d="M6 6L5 3H3"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/>'),
+  reports: RICO_TILE_ICON('<path d="M5 20V10M12 20V4M19 20v-7"/>'),
+  late: RICO_TILE_ICON('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+  check: RICO_TILE_ICON('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+  history: RICO_TILE_ICON('<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/>'),
+  add: RICO_TILE_ICON('<path d="M12 5v14M5 12h14"/>'),
+};
 function renderRicoMessage(m, i){
   if(m.role === 'user'){
     return `<div class="rico-msg me" id="rico-m-${i}"><div class="rico-bubble" dir="auto">${esc(m.text)}</div></div>`;
@@ -362,11 +399,43 @@ function renderRicoProposalCard(p, mi){
     body = `<div class="rico-card-note" dir="auto">${esc(p.from)} → ${esc(p.to)}</div>${(p.lines||[]).map(l=>`<div class="rico-card-line"><span dir="auto">${esc(l.item)}</span><b dir="auto">${esc(l.qty)} ${esc(l.unit)}</b></div>`).join('')}${(p.warnings||[]).map(x=>`<div class="rico-card-note" dir="auto">${esc(x)}</div>`).join('')}`;
     return ricoCard(NAV_ICONS.transfers, viewLabel('transfers'), body, `<div class="rico-card-actions"><button class="btn btn-primary" data-rico-transfer="${esc(p.transferId)}">${esc(t('ricoOpenScreen')(viewLabel('transfers')))}</button></div>`, p);
   }
+  if(['stock_list','needs_list','price_list','spend'].includes(p.kind)) return renderRicoData(p);
   if(p.kind === 'open'){
     if(p.screen !== 'send' && !canOpen(p.screen)) return '';
     if(p.screen === 'send' && !canDo('send')) return '';
     if(p.screen === 'send') return `<button class="rico-open" data-rico-open="send">${ICON_CHAT}<span>${esc(p.label || t('ricoOpenSend'))}</span></button>`;
     return `<button class="rico-open" data-rico-open="${esc(p.screen)}" data-rico-sup="${esc(p.supplierId||'')}">${NAV_ICONS[p.screen]||NAV_ICONS.order}<span>${esc(p.label || t('ricoOpenScreen')(viewLabel(p.screen)))}</span></button>`;
+  }
+  return '';
+}
+/* Cards with numbers Rico read (low stock, what needs you, price changes, spending): a short list
+   with one or two buttons, so nothing has to be copied out of his text. Only shown, never applied. */
+const ricoNum = n=>Number(n || 0).toLocaleString('en-US', {maximumFractionDigits:3});
+function renderRicoData(p){
+  const rows = Array.isArray(p.rows) ? p.rows : [];
+  const more = p.more > 0 ? `<div class="rico-data-more">${esc(t('ricoMoreRows')(p.more))}</div>` : '';
+  const card = (icon, title, meta, body, foot='')=>`<div class="rico-data" data-card="${esc(p.id)}"><div class="rico-data-head"><span class="rico-card-icon">${icon}</span><span class="rico-data-title" dir="auto">${esc(title)}</span>${meta ? `<small dir="auto">${esc(meta)}</small>` : ''}</div><div class="rico-data-rows">${body}</div>${more}${foot ? `<div class="rico-data-foot">${foot}</div>` : ''}</div>`;
+  if(p.kind === 'stock_list'){
+    if(!canOpen('transfers') && !canOpen('stock')) return '';
+    const body = rows.map(r=>`<div class="rico-data-row"><i class="rico-dot ${r.empty ? 'red' : 'amber'}"></i><span class="rico-data-name" dir="auto">${esc(r.item)}<small>${esc(r.empty ? t('ricoEmptyNow') : r.days != null ? t('ricoDaysLeft')(r.days) : '')}</small></span><b dir="auto">${esc(ricoNum(r.qty))} ${esc(r.unit)}</b></div>`).join('');
+    const foot = `${canOpen('stock') ? `<button type="button" class="btn btn-ghost" data-rico-open="stock">${esc(t('ricoOpenScreen')(viewLabel('stock')))}</button>` : ''}${canOpen('transfers') ? `<button type="button" class="btn btn-primary" data-rico-ask="${esc(t('ricoMoveLowAsk')(p.storage || ''))}">${esc(t('ricoMoveLow'))}</button>` : ''}`;
+    return card(RICO_TILE_ICONS.stock, t('ricoCardLow')(p.storage || ''), p.at ? timeAgo(p.at) : '', body, foot);
+  }
+  if(p.kind === 'needs_list'){
+    const body = rows.filter(r=>canOpen(r.type === 'receipt' ? 'receipts' : 'transfers')).map(r=>`<button type="button" class="rico-data-row link" data-rico-need="${esc(r.type)}|${esc(r.id)}"><i class="rico-dot ${r.level === 'stop' ? 'red' : r.level === 'old' ? 'gray' : 'amber'}"></i><span class="rico-data-name" dir="auto">${esc(viewLabel(r.type === 'receipt' ? 'receipts' : 'transfers'))}: ${esc(r.title)}<small dir="auto">${esc(r.why)}</small></span><i class="sheet-chevron" aria-hidden="true"></i></button>`).join('');
+    return body ? card(RICO_TILE_ICONS.needs, t('ricoCardNeeds'), '', body) : '';
+  }
+  if(p.kind === 'price_list'){
+    if(!canOpen('receipts')) return '';
+    const body = rows.map(r=>`<div class="rico-data-row"><span class="rico-data-name" dir="auto">${esc(r.item)}<small dir="auto">${esc(r.supplier)} · ${esc(r.unit)}</small></span><span class="rico-data-price" dir="ltr">${esc(ricoNum(r.from))} → <b>${esc(ricoNum(r.to))}</b> ${esc(r.currency)}</span><span class="rico-pct ${r.pct > 0 ? 'up' : 'down'}" dir="ltr">${r.pct > 0 ? '+' : ''}${esc(r.pct)}%</span></div>`).join('');
+    return card(RICO_TILE_ICONS.price, t('ricoCardPrices'), '', body);
+  }
+  if(p.kind === 'spend'){
+    if(!canOpen('receipts')) return '';
+    const money = r=>[r.IQD ? `${ricoNum(r.IQD)} IQD` : '', r.USD ? `${ricoNum(r.USD)} USD` : ''].filter(Boolean).join(' · ') || '0 IQD';
+    const total = `<div class="rico-data-total"><b dir="ltr">${esc(money(p))}</b><small>${esc(t('ricoReceiptsN')(p.receipts || 0))}</small></div>`;
+    const body = total + rows.map(r=>`<div class="rico-data-row"><span class="rico-data-name" dir="auto">${esc(r.name)}<small>${esc(t('ricoReceiptsN')(r.receipts || 0))}</small></span><b dir="ltr">${esc(money(r))}</b></div>`).join('');
+    return card(RICO_TILE_ICONS.reports, t('ricoCardSpend'), p.period || '', body);
   }
   return '';
 }
@@ -433,6 +502,19 @@ function attachAssistantEvents(){
   document.querySelector('[data-side-new]')?.addEventListener('click', ()=>ricoNewChat());
   document.querySelector('[data-side-all]')?.addEventListener('click', ()=>ricoOpenHistory());
   document.querySelectorAll('[data-side-open]').forEach(b=>b.onclick = ()=>ricoOpenChat(b.dataset.sideOpen));
+  document.querySelector('[data-rico-leave]')?.addEventListener('click', ricoLeave);
+  // Search: hides the chats (and day lines) that don't match, without drawing the list again.
+  document.querySelector('[data-side-search]')?.addEventListener('input', e=>{
+    const q = e.currentTarget.value.trim().toLocaleLowerCase();
+    let day = null, any = false;
+    const flush = ()=>{ if(day) day.hidden = !any; };
+    document.querySelectorAll('.rico-side-list > *').forEach(el=>{
+      if(el.classList.contains('rico-side-day')){ flush(); day = el; any = false; return; }
+      const hit = !q || el.textContent.toLocaleLowerCase().includes(q);
+      el.hidden = !hit; if(hit) any = true;
+    });
+    flush();
+  });
   attachRicoThreadEvents(document.getElementById('mainContent') || document);
   if(rico.messages.length) ricoScroll(false);
   ricoMarkInboxRead();
@@ -481,6 +563,15 @@ function attachRicoThreadEvents(root){
     for(let i=0; i<40 && !tfFind(id); i++) await new Promise(r=>setTimeout(r, 250));
     if(state.view === 'transfers' && tfFind(id)) tfOpen(id);
   });
+  // A row of "Needs you": opens that receipt or transfer (each screen reads its list as it opens).
+  root.querySelectorAll('[data-rico-need]').forEach(b=>b.onclick=async()=>{
+    const [type, id] = b.dataset.ricoNeed.split('|'), view = type === 'receipt' ? 'receipts' : 'transfers';
+    if(!canOpen(view)) return;
+    goView(view);
+    const find = type === 'receipt' ? rrFind : tfFind, open = type === 'receipt' ? rrOpen : tfOpen;
+    for(let i=0; i<40 && !find(id); i++) await new Promise(r=>setTimeout(r, 250));
+    if(state.view === view && find(id)) open(id);
+  });
   root.querySelectorAll('[data-rico-settings]').forEach(b=>b.onclick=()=>{ goView('settings'); requestAnimationFrame(()=>document.querySelector('.rico-status-card')?.scrollIntoView({block:'center'})); });
   root.querySelectorAll('[data-rico-retry]').forEach(b=>b.onclick=()=>{
     const i = +b.dataset.ricoRetry;
@@ -511,8 +602,8 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
-      content += `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, stock_list:`list of what is low in ${p.storage}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
+      content += ['stock_list','needs_list','price_list','spend'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};
   });

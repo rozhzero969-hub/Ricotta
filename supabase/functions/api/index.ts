@@ -83,6 +83,7 @@ const LOGIN_WINDOW_MS = 10 * 60_000;
 const MAX_FAILED_LOGINS = 8;              // per network address, per window (spoofable -- see MAX_GLOBAL_FAILED_LOGINS)
 const MAX_GLOBAL_FAILED_LOGINS = 40;      // per window, across ALL claimed IPs -- not spoofable via headers
 const SEEN_WRITE_EVERY_MS = 5 * 60_000;   // throttle session last_seen_at writes
+const SESSION_IDLE_MS = 30 * 86400_000;    // a sign-in ends after 30 days without use
 const PAGE = 1000;                        // PostgREST returns at most 1000 rows per request
 const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
@@ -188,7 +189,8 @@ async function authenticate(req: Request): Promise<Session | null | "unavailable
   if (!data || data.revoked_at || !Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()) return null;
   if (data.account !== "rozha" && data.account !== "yunis") return null;
   if (Date.now() - new Date(data.last_seen_at).getTime() > SEEN_WRITE_EVERY_MS) {
-    await app("sessions").update({ last_seen_at: nowIso() }).eq("id", data.id);
+    // Used devices stay signed in: 30 days from the last use (a phone used every day never signs out).
+    await app("sessions").update({ last_seen_at: nowIso(), expires_at: new Date(Date.now() + SESSION_IDLE_MS).toISOString() }).eq("id", data.id).is("revoked_at", null);
   }
   if(data.device_id){
     const {data:device,error}=await app("devices").select("account").eq("id",data.device_id).maybeSingle();

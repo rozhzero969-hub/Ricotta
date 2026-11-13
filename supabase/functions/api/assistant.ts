@@ -1666,7 +1666,7 @@ async function sendTestOrder(db: any, w: World, a: any) {
 // Tools that read past orders or the change log follow the person's roles, whatever the model asks.
 const HISTORY_TOOLS = new Set(["order_history", "ordering_patterns", "suggest_order", "insights", "review_draft", "send_test_order"]);
 const RECEIPT_TOOLS = new Set(["price_history", "spending_summary", "price_changes"]);
-const TRANSFER_TOOLS = new Set(["stock_levels", "transfers_summary", "propose_transfer_draft"]);
+const TRANSFER_TOOLS = new Set(["low_stock", "stock_levels", "transfers_summary", "propose_transfer_draft"]);
 const RR_TOOLS = new Set(RICO_RR_TOOLS.map((t) => t.name));
 async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto: boolean): Promise<unknown> {
   if (!STATUS_TOOLS.has(name)) return { error: "Unknown tool." };

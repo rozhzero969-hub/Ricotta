@@ -2181,9 +2181,7 @@ html.dark .rr-offline{background:rgba(251,146,60,.14);color:#FED7AA}
 
 .ad-bars text{fill:var(--ink-soft);font-size:9px;font-family:var(--font)}
 
-.ad-sources{margin:14px 16px 0;font-size:.8125rem;color:var(--ink-soft)}
-.ad-sources summary{cursor:pointer;color:var(--tint)}
-.ad-sources p{margin:6px 0 0;line-height:1.45}
+.ad-sources{margin:10px 16px 0;font-size:.75rem;line-height:1.4;color:var(--ink-faint);text-align:center}
 
 /* Quiet icons on the Admin pages: no coloured squares, red only for trouble. */
 .ad-tile,.ad-tile.green,.ad-tile.gray{background:none;color:var(--ink-soft)}
@@ -2449,3 +2447,80 @@ html.rtl .nav-brand,[dir=rtl] .nav-brand{justify-content:flex-end}
 /* Record filters scroll sideways on a narrow phone instead of running off the edge. */
 .record-filters{overflow-x:auto;scrollbar-width:none;max-width:100%}
 .record-filters::-webkit-scrollbar{display:none}
+
+/* Rico, like a chat app (2026-11-14). His answers are plain text on the page (no grey bubble), your
+   messages stay green bubbles, and numbers he read come as small cards with a button or two. */
+.rico-msg.bot .rico-bubble{background:none;padding:2px 0;border-radius:0}
+.rico-head-title{display:none}
+.rico-intro{align-items:stretch;gap:18px;padding:12px 0 8px}
+.rico-hello{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:8px 0 2px}
+.rico-hello .rico-bot{--size:40px;margin-bottom:8px}
+.rico-hello h2{margin:0;font-size:1.625rem;font-weight:700;letter-spacing:-.02em}
+.rico-hello p{margin:0;font-size:1rem;color:var(--ink-soft)}
+.rico-intro .rico-inbox{margin:0}
+.rico-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.rico-tile{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:10px;min-height:84px;padding:13px 14px;border:0;border-radius:14px;background:var(--surface);color:var(--ink);font:500 .9375rem/1.3 var(--font);text-align:start;cursor:pointer;box-shadow:inset 0 0 0 .5px var(--line)}
+.rico-tile svg{color:var(--tint)}
+@media (hover:hover){.rico-tile:hover{background:var(--surface-2)}}
+.rico-tile:active{transform:scale(.98)}
+.rico-data{width:100%;max-width:560px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 .5px var(--line);overflow:hidden;margin-top:4px}
+.rico-data-head{display:flex;align-items:center;gap:10px;padding:12px 14px 8px}
+.rico-data-head .rico-card-icon svg{width:16px;height:16px;color:#fff}
+/* The header: just the name and the two buttons (the sparkle and greeting are on the page itself). */
+.rico-head>.rico-bot,.rico-head .rico-who{display:none}
+.rico-head .rico-name{font-size:1.25rem;font-weight:700}
+.rico-data-title{flex:1;min-width:0;font-weight:600;font-size:.9688rem}
+.rico-data-head small{font-size:.8125rem;color:var(--ink-soft)}
+.rico-data-rows{display:flex;flex-direction:column}
+.rico-data-row{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:8px 14px;border:0;border-top:.5px solid var(--line);background:none;color:var(--ink);font:400 .9688rem var(--font);text-align:start}
+.rico-data-row.link{cursor:pointer}
+@media (hover:hover){.rico-data-row.link:hover{background:var(--surface-2)}}
+.rico-data-row b{font-weight:600;white-space:nowrap}
+.rico-data-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;overflow-wrap:anywhere}
+.rico-data-name small{font-size:.8125rem;color:var(--ink-soft)}
+.rico-data-price{font-size:.875rem;color:var(--ink-soft);white-space:nowrap}
+.rico-data-price b{color:var(--ink)}
+.rico-pct{min-width:58px;text-align:end;font-weight:600;font-size:.875rem}
+.rico-pct.up{color:var(--clay-ink)}.rico-pct.down{color:var(--ok-ink)}
+html.dark .rico-pct.up{color:#FF6961}html.dark .rico-pct.down{color:#30D158}
+.rico-data-total{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:4px 14px 12px}
+.rico-data-total b{font-size:1.375rem;font-weight:700}
+.rico-data-total small{color:var(--ink-soft);font-size:.8125rem}
+.rico-data-more{padding:8px 14px;border-top:.5px solid var(--line);font-size:.8125rem;color:var(--ink-soft)}
+.rico-data-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding:10px 14px;border-top:.5px solid var(--line)}
+.rico-data-foot .btn{min-height:38px;padding:0 14px;border-radius:10px;font-size:.9063rem}
+.rico-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.rico-dot.red{background:var(--red)}.rico-dot.amber{background:#FF9F0A}.rico-dot.gray{background:var(--ink-faint)}
+.rico-side-top,.rico-side-search{display:none}
+
+@media (min-width:960px){
+  /* Rico takes the window: his chats sit where the app's tabs were. The back arrow returns to the app. */
+  html.rico-mode .bottomnav{display:none}
+  html.rico-mode .rico-page{display:block}
+  html.rico-mode .rico-side{position:fixed;top:0;bottom:0;inset-inline-start:0;width:256px;max-height:none;box-sizing:border-box;z-index:31;gap:8px;
+    padding:calc(18px + var(--safe-top)) 12px 14px;background:var(--surface);border-inline-end:.5px solid var(--line-strong)}
+  html.rico-mode.rico-enter .rico-side{animation:ricoSideIn .26s var(--ease-out) both}
+  html.rico-mode.side-hidden .rico-side{display:none}
+  html.rico-mode body:has(.rico-side) .rico-composer{translate:none}
+  html.rico-mode .rico-side-top{display:flex;align-items:center;justify-content:space-between;padding:0 2px 10px}
+  html.rico-mode .rico-side-top .side-toggle{position:static}
+  .rico-back{display:flex;align-items:center;gap:4px;height:36px;padding:0 8px 0 4px;border:0;border-radius:9px;background:none;color:var(--ink-soft);cursor:pointer;font-size:1.375rem}
+  .rico-back .brand-mark{color:var(--ink)}
+  .rico-back .dot{width:.24em;height:.24em;border-radius:50%;background:var(--accent);align-self:flex-end;margin-bottom:.3em}
+  @media (hover:hover){.rico-back:hover{background:var(--fill)}}
+  html.rtl .rico-back svg{transform:scaleX(-1)}
+  html.rico-mode .rico-side-search{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:10px;background:var(--fill);color:var(--ink-faint)}
+  .rico-side-search input{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--ink);font:400 .9375rem var(--font)}
+  .rico-side-search input::-webkit-search-cancel-button{display:none}
+  html.rico-mode .rico-head{justify-content:center;padding:0 0 10px;margin:-8px 0 14px;border-bottom:.5px solid var(--line);border-radius:0}
+  html.rico-mode .rico-head>.rico-bot,html.rico-mode .rico-head-text{display:none}
+  html.rico-mode .rico-head-title{display:block;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;font-size:1.0625rem}
+  html.rico-mode .rico-page.empty .rico-head{display:none}
+  html.rico-mode .rico-thread{max-width:760px}
+  html.rico-mode .rico-page.empty .rico-intro{padding-top:min(9vh,90px)}
+  html.rico-mode .rico-hello .rico-bot{--size:48px}
+  html.rico-mode .rico-hello h2{font-size:2rem}
+  html.rico-mode .rico-tiles{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+}
+@keyframes ricoSideIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){html.rico-mode.rico-enter .rico-side{animation:none}}

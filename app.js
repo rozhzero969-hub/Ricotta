@@ -908,6 +908,11 @@ function render(){
   document.getElementById('stkTip')?.remove();
   applyLangClasses();
   applyPrefs();
+  // On a computer Rico takes the whole window: his chats replace the app's tabs (see style.css).
+  const html = document.documentElement, ricoWas = html.classList.contains('rico-mode');
+  html.classList.toggle('rico-mode', !!state.account && state.view === 'assistant');
+  // His chats slide in once, when Rico opens; a redraw never plays it again.
+  if(!ricoWas && html.classList.contains('rico-mode')){ html.classList.add('rico-enter'); setTimeout(()=>html.classList.remove('rico-enter'), 400); }
   syncAppearance();
   const app = document.getElementById('app');
   if(!state.account){
@@ -1342,6 +1347,7 @@ function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
   viewMemory.set(state.view, {query:state.catalogQuery || '', top:scrollBox().scrollTop});
   const ghost = frames?.out ? pageGhost(old) : null;
   const remembered = viewMemory.get(view);
+  if(view === 'assistant') state.ricoBack = state.view;   // Rico's back button returns here
   state.catalogQuery = remembered?.query || ''; state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
   // Receipts and Transfers open on their form (what was being typed stays in it).
