@@ -3,6 +3,19 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-14', date:'2026-11-14', notes:{
+    en:['Rico can now tell you what is in stock, what you paid for an item and how its price changed, what you spent by supplier or item, and what went to each storage.',
+      'Ask Rico what needs you: stopped, waiting or stuck receipts and transfers, most important first.',
+      'Rico can prepare a transfer for you as a draft. You open it in Transfers, check it and send it yourself. He never makes receipts.',
+      'Rico is calm now: plain reminders, no moods.'],
+    ku:['ریکۆ ئێستا دەتوانێت پێت بڵێت چی لە کۆگا هەیە، نرخی کاڵایەک چەند بووە و چۆن گۆڕاوە، چەندت خەرج کردووە بە پێی دابینکەر یان کاڵا، و چی چووە بۆ هەر کۆگایەک.',
+      'لە ریکۆ بپرسە چی چاوەڕێی تۆیە: پسوولە و گواستنەوەی وەستاو، چاوەڕوان یان گیراو، گرنگترینیان یەکەم.',
+      'ریکۆ دەتوانێت گواستنەوەیەک وەک ڕەشنووس ئامادە بکات. خۆت لە گواستنەوەدا دەیکەیتەوە، دەیپشکنیت و دەینێریت. هەرگیز پسوولە دروست ناکات.',
+      'ریکۆ ئێستا ئارامە: بیرخستنەوەی سادە، بێ هەست و سۆز.'],
+    ar:['يستطيع ريكو الآن أن يخبرك بما في المخزون، وبكم اشتريت مادة وكيف تغيّر سعرها، وبما أنفقت حسب المورد أو المادة، وبما ذهب إلى كل مخزن.',
+      'اسأل ريكو عمّا يحتاجك: الإيصالات والتحويلات المتوقفة أو المنتظرة أو العالقة، الأهم أولًا.',
+      'يستطيع ريكو تجهيز تحويل لك كمسودة. تفتحها أنت في التحويلات وتراجعها وترسلها بنفسك. لا ينشئ إيصالات أبدًا.',
+      'ريكو هادئ الآن: تذكيرات بسيطة، بلا مزاج.']}},
   {id:'2026-11-13', date:'2026-11-13', notes:{
     en:['Transfers show what is really left: amounts already being moved, and the same item on lines above, are taken off.',
       'New Stock screen: what is left in Main Storage, read only, with Excel, PDF and Numbers.',

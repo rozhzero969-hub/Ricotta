@@ -183,8 +183,7 @@ const chat = async (content = 'Hello', lang = 'en') => {
 };
 
 const geminiEvents = await chat();
-assert.deepEqual(geminiEvents.map(e => e.type), ['status', 'proposal', 'text', 'mood', 'text', 'done']);
-assert.equal(geminiEvents[3].mood, 'happy');
+assert.deepEqual(geminiEvents.map(e => e.type), ['status', 'proposal', 'text', 'text', 'done'], 'Rico has no moods: a stray mood tag is dropped, no mood event');
 assert.equal(geminiEvents.filter(e => e.type === 'text').map(e => e.text).join(''), '\n\nAll set.', 'the mood tag never reaches the text');
 assert.equal(geminiEvents[1].proposal.kind, 'open');
 assert.equal(requests[0].body.tools[0].functionDeclarations.some(t => t.name === 'open_screen'), true);
@@ -197,10 +196,10 @@ assert.equal(requests[1].body.contents[2].parts[0].functionResponse.id, 'call-1'
 assert.equal(usage[0].model, 'gemini-3.5-flash-lite');
 const beforeQuick = requests.length;
 const quick = await handleChat(db, session, { messages: [{role:'user',content:'What did we order last time?'}], lang:'en', quickAction:'last_order' }, {}, new AbortController().signal);
-assert.deepEqual((await quick.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['mood','text','done']);
+assert.deepEqual((await quick.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['text','done']);
 for(const quickAction of ['prepare_order','add_item','late_orders','check_order','week_insights']){
   const response = await handleChat(db, session, { messages: [{role:'user',content:'Shortcut'}], lang:'en', quickAction }, {}, new AbortController().signal);
-  assert.deepEqual((await response.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['mood','text','done'], quickAction);
+  assert.deepEqual((await response.text()).trim().split('\n').map(JSON.parse).map(e=>e.type), ['text','done'], quickAction);
 }
 assert.equal(requests.length, beforeQuick, 'quick suggestions do not call Gemini');
 emptyReply = true;
@@ -209,9 +208,8 @@ emptyReply = false;
 secrets.set('groq_api_key', 'gsk_' + 'B'.repeat(30)); // keys are set on the server only, never from the app
 const beforeGroq = requests.length;
 const groqEvents = await chat();
-assert.deepEqual(groqEvents.map(e => e.type), ['status', 'proposal', 'mood', 'text', 'done'], 'a mood tag split across chunks is still found');
-assert.equal(groqEvents[2].mood, 'excited');
-assert.equal(groqEvents[3].text, 'Groq is ready.');
+assert.deepEqual(groqEvents.map(e => e.type), ['status', 'proposal', 'text', 'done'], 'a mood tag split across chunks is still taken out');
+assert.equal(groqEvents[2].text, 'Groq is ready.');
 assert.equal(new URL(requests[beforeGroq].url).hostname, 'api.groq.com');
 assert.equal(requests[beforeGroq].body.model, 'openai/gpt-oss-120b');
 assert.equal(requests[beforeGroq].body.reasoning_effort, 'low');
@@ -223,13 +221,13 @@ assert.equal(usage.at(-1).input_tokens, 30, 'token use includes both Groq tool r
 assert.equal(usage.at(-1).output_tokens, 7);
 groqReply = ['[hap', 'py] Hi ', '[[calm]] there, [1] box'];
 const strayEvents = await chat();
-assert.deepEqual(strayEvents.filter(e => e.type === 'mood').map(e => e.mood), ['happy', 'calm'], 'moods in other shapes are still read');
+assert.equal(strayEvents.some(e => e.type === 'mood'), false, 'moods in other shapes are dropped too');
 assert.equal(strayEvents.filter(e => e.type === 'text').map(e => e.text).join(''), 'Hi there, [1] box', 'no mood word is shown as text');
 groqReply = null;
 strongModelMissing = true; geminiTurn = 1;
 const beforeKurdish = requests.length;
 const kurdishEvents = await chat('سڵاو ریکۆ', 'en');
-assert.equal(kurdishEvents.find(e => e.type === 'mood')?.mood, 'happy');
+assert.equal(kurdishEvents.filter(e => e.type === 'text').map(e => e.text).join(''), 'All set.');
 assert.deepEqual(requests.slice(beforeKurdish).map(r => r.url.match(/models\/([^:]+)/)?.[1] ?? 'groq'), ['gemini-3.5-flash', 'gemini-3.5-flash-lite'], 'Kurdish goes to Gemini first, and to flash-lite if the stronger model is missing');
 assert.match(requests.at(-1).body.systemInstruction.parts[0].text, /KURDISH \(SORANI\)/);
 strongModelMissing = false; geminiTurn = 1;
@@ -239,7 +237,7 @@ assert.equal(requests[beforeKu].url.includes('/gemini-3.5-flash:'), true, 'the K
 strongModelSlow = true; geminiTurn = 1;
 const slowStart = Date.now();
 const slowEvents = await chat('سڵاو', 'ku');
-assert.equal(slowEvents.find(e => e.type === 'mood')?.mood, 'happy', 'a busy stronger model hands over to flash-lite');
+assert.equal(slowEvents.filter(e => e.type === 'text').map(e => e.text).join(''), 'All set.', 'a busy stronger model hands over to flash-lite');
 assert.ok(Date.now() - slowStart < 15000);
 assert.equal(requests.at(-1).url.includes('gemini-3.5-flash-lite'), true);
 strongModelSlow = false;
@@ -257,7 +255,7 @@ assert.deepEqual(usage.at(-1).attempts.map(t => [t.provider, t.answered, t.outco
 assert.equal(requests.slice(beforeHalfway).some(r => r.url.includes('streamGenerateContent')), false, 'no second model starts the reply again');
 groqTurn = 0; groqTool = 'list_suppliers'; geminiTurn = 1; const beforeLookup = requests.length;
 const lookupEvents = await chat();
-assert.deepEqual(lookupEvents.map(e => e.type), ['status', 'mood', 'text', 'done'], 'after a lookup with nothing on screen, Gemini still answers');
+assert.deepEqual(lookupEvents.map(e => e.type), ['status', 'text', 'done'], 'after a lookup with nothing on screen, Gemini still answers');
 assert.equal(requests.slice(beforeLookup).some(r => r.url.includes('streamGenerateContent')), true);
 groqSecondTurnDown = false; groqTool = 'open_screen';
 
@@ -265,7 +263,7 @@ groqSecondTurnDown = false; groqTool = 'open_screen';
 secrets.set('anthropic_api_key', anthropicKey);
 const beforeHaiku = requests.length;
 const haikuEvents = await chat();
-assert.deepEqual(haikuEvents.map(e => e.type), ['status', 'proposal', 'text', 'mood', 'text', 'text', 'done']);
+assert.deepEqual(haikuEvents.map(e => e.type), ['status', 'proposal', 'text', 'text', 'text', 'done']);
 assert.equal(haikuEvents.filter(e => e.type === 'text').map(e => e.text).join(''), '\n\nHaiku is here.');
 const haikuCalls = requests.slice(beforeHaiku);
 assert.equal(haikuCalls.length, 2, 'Haiku did the tool round itself; no other AI was asked');
@@ -441,4 +439,4 @@ assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname ===
   assert.equal(full.can.history && full.can.record, true);
 }
 
-console.log('Rico provider smoke: PASS (History and Record roles inside Rico; Rico sends test orders by WhatsApp to Rozh only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), moods (any tag shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');
+console.log('Rico provider smoke: PASS (History and Record roles inside Rico; Rico sends test orders by WhatsApp to Rozh only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), mood tags dropped (any shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');

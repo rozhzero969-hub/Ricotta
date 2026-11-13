@@ -52,7 +52,8 @@ export async function usualAmounts(db: any) {
   return out;
 }
 const asCheck = (r: any) => ({ from: r.from_zone, to: r.to_zone, yesterday: !!r.yesterday, lines: r.lines ?? [] });
-function cleanDraft(b: any) {
+/* Only these draft fields, in these shapes, are kept (also used by Rico when he prepares a draft). */
+export function cleanDraft(b: any) {
   const lines = (Array.isArray(b.lines) ? b.lines : []).slice(0, T.MAX_LINES).map((l: any) => ({
     item: tx(l?.item, 200), unit: tx(l?.unit, 80), qty: typeof l?.qty === "number" && Number.isFinite(l.qty) ? l.qty : null,
   }));

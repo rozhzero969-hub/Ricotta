@@ -235,7 +235,8 @@ const toActivity = (a: any) => ({
   ...(a.payload ?? {}), id: a.id, ts: a.occurred_at, actor: a.actor,
   action: a.action, type: a.entity_type, name: a.entity_name,
 });
-const toInbox = (m: any) => ({ id: m.id, kind: m.kind, mood: m.mood, en: m.body_en, ku: m.body_ku, ar: m.body_ar, at: m.created_at, read: !!m.read_at });
+// Rico has no moods any more: older rows still hold one, so every message reads as the neutral face.
+const toInbox = (m: any) => ({ id: m.id, kind: m.kind, mood: "calm", en: m.body_en, ku: m.body_ku, ar: m.body_ar, at: m.created_at, read: !!m.read_at });
 /* Reads every row of a query, 1000 at a time (a single request silently stops
    at 1000 rows, which used to cut long order histories short). */
 async function readAll(build: () => any): Promise<any[]> {
@@ -440,7 +441,7 @@ async function alertNewDevice(req: Request, account: Account, deviceId: string |
     ku: `چوونەژوورەوەی نوێ: ${n.ku} لەسەر ${device.ku}${via.ku} کاتژمێر ${time}. ئەگەر چاوەڕێی نەبوویت، ئەو کۆدە لە ئەدمین، کۆدەکان بگۆڕە.`,
     ar: `تسجيل دخول جديد: ${n.ar} على ${device.ar}${via.ar} الساعة ${time}. إذا لم تكن تتوقعه، غيّر ذلك الرمز من المشرف، الرموز.`,
   };
-  const { error } = await app("rico_inbox").insert({ account: "rozha", kind: "security", mood: "worried", body_en: words.en, body_ku: words.ku, body_ar: words.ar });
+  const { error } = await app("rico_inbox").insert({ account: "rozha", kind: "security", mood: "calm", body_en: words.en, body_ku: words.ku, body_ar: words.ar });
   if (error) console.error("security_inbox_failed");
   if (!CRON_SECRET) return;
   await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
@@ -533,9 +534,9 @@ function catalogRow(table: string, id: string, b: any) {
 /* Rico's short note after an order goes out (first one each day per
    account). The words live here so every language matches. */
 const CHEERS = [
-  { mood: "happy", en: (n: string) => `Nice one, ${n}! The order is out.`, ku: (n: string) => `دەستت خۆش بێت ${n}! داواکارییەکە نێردرا.`, ar: (n: string) => `أحسنت يا ${n}! تم إرسال الطلب.` },
-  { mood: "excited", en: (n: string) => `Order sent, ${n}! The kitchen is in good hands today.`, ku: (n: string) => `داواکارییەکە نێردرا ${n}! ئەمڕۆ چێشتخانەکە لە دەستی باشدایە.`, ar: (n: string) => `تم إرسال الطلب يا ${n}! المطبخ بأيدٍ أمينة اليوم.` },
-  { mood: "grateful", en: (n: string) => `Thanks, ${n}. Today's order is done. One less thing to worry about.`, ku: (n: string) => `سوپاس ${n}. داواکاریی ئەمڕۆ تەواو بوو. شتێکی کەمتر بۆ خەمخواردن.`, ar: (n: string) => `شكرًا يا ${n}. طلب اليوم جاهز، هم أقل.` },
+  { en: (n: string) => `Nice one, ${n}! The order is out.`, ku: (n: string) => `دەستت خۆش بێت ${n}! داواکارییەکە نێردرا.`, ar: (n: string) => `أحسنت يا ${n}! تم إرسال الطلب.` },
+  { en: (n: string) => `Order sent, ${n}! The kitchen is in good hands today.`, ku: (n: string) => `داواکارییەکە نێردرا ${n}! ئەمڕۆ چێشتخانەکە لە دەستی باشدایە.`, ar: (n: string) => `تم إرسال الطلب يا ${n}! المطبخ بأيدٍ أمينة اليوم.` },
+  { en: (n: string) => `Thanks, ${n}. Today's order is done. One less thing to worry about.`, ku: (n: string) => `سوپاس ${n}. داواکاریی ئەمڕۆ تەواو بوو. شتێکی کەمتر بۆ خەمخواردن.`, ar: (n: string) => `شكرًا يا ${n}. طلب اليوم جاهز، هم أقل.` },
 ];
 async function cheerAfterOrder(s: Session) {
   if (!can(s, "assistant")) return;   // Rico is off for this person: no message from him
@@ -543,7 +544,7 @@ async function cheerAfterOrder(s: Session) {
   const c = CHEERS[Math.floor(Math.random() * CHEERS.length)];
   const n = LOCAL_NAMES[s.account];
   // dedupe_key is unique: the second order of the day adds nothing.
-  const { error } = await app("rico_inbox").upsert({ account: s.account, kind: "cheer", mood: c.mood, body_en: c.en(n.en), body_ku: c.ku(n.ku), body_ar: c.ar(n.ar), dedupe_key: `sent|${s.account}|${date}` }, { onConflict: "dedupe_key", ignoreDuplicates: true });
+  const { error } = await app("rico_inbox").upsert({ account: s.account, kind: "cheer", mood: "calm", body_en: c.en(n.en), body_ku: c.ku(n.ku), body_ar: c.ar(n.ar), dedupe_key: `sent|${s.account}|${date}` }, { onConflict: "dedupe_key", ignoreDuplicates: true });
   if (error) throw error;
 }
 
@@ -557,7 +558,7 @@ async function streakMilestone(count: number) {
   const rows = (["rozha", "yunis"] as const).filter(hasRico).map((a) => {
     const n = LOCAL_NAMES[a];
     return {
-      account: a, kind: "streak", mood: "excited", dedupe_key: `streak|${count}|${day}|${a}`,
+      account: a, kind: "streak", mood: "calm", dedupe_key: `streak|${count}|${day}|${a}`,
       body_en: `${count} days in a row! The kitchen hasn't missed a single day. Keep it going, ${n.en}.`,
       body_ku: `${count} ڕۆژ لەسەر یەک! چێشتخانەکە تەنانەت یەک ڕۆژیشی لەدەست نەداوە. بەردەوام بە، ${n.ku}.`,
       body_ar: `${count} يومًا متتاليًا! لم يفوّت المطبخ يومًا واحدًا. استمر يا ${n.ar}.`,

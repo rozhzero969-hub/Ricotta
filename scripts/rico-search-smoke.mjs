@@ -50,7 +50,7 @@ const streamed=[],filter=rico.moodFilter(e=>streamed.push(e));
 for(const text of ['[[mood:happy]] Name: <','<DA','TA>>Banana<','</DATA','>>.'])filter.emit({type:'text',text});
 filter.flush();
 assert.equal(streamed.filter(e=>e.type==='text').map(e=>e.text).join(''),'Name: Banana.','split internal markers never reach the person');
-assert.equal(streamed.filter(e=>e.type==='mood')[0].mood,'happy');
+assert.equal(streamed.some(e=>e.type==='mood'),false,'Rico has no moods: the tag is dropped');
 const db=new PGlite({extensions:{pgcrypto}});
 try{
  await db.exec('create role anon;create role authenticated;create role service_role;');
