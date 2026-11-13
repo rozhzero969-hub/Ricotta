@@ -473,8 +473,8 @@ const server=http.createServer((req,res)=>{
     assert.ok(calls.filter(c=>c.endpoint==='assistant/chat').length>chatsBefore,'Allow sends the question to Rico');
     await page.waitForFunction(()=>!rico.streaming);
     assert.equal(await page.evaluate(()=>aiConsented()),true,'Allow is remembered');
-    assert.equal(await page.locator('.rico-msg.bot .rico-bot').last().evaluate(el=>el.classList.contains('mood-angry')),true,'Rico\u2019s face shows his mood');
-    assert.equal(await page.locator('.rico-head .rico-bot').evaluate(el=>el.classList.contains('mood-angry')),true,'the header face follows');
+    assert.equal(await page.locator('.rico-msg.bot .rico-bot').last().evaluate(el=>el.classList.contains('rico-plain') && ![...el.classList].some(c=>c.startsWith('mood-'))),true,'Rico is a plain sparkle: no mood face');
+    assert.equal(await page.locator('.rico-head .rico-bot.rico-plain').count(),1,'the header shows the plain sparkle');
     assert.equal(await page.evaluate(()=>ricoFormat('[[data:Mam Fakhir]] has <<DATA>>9<</DATA>> items')),'<p>Mam Fakhir has 9 items</p>','data markers the AI copies are never shown');
     assert.equal(await page.evaluate(()=>ricoFormat('[happy] Hi [[calm]] there [[mood:sad]], [1] box')),'<p>Hi there , [1] box</p>','a mood written in any shape is never shown as text');
     await page.locator('[data-rico-action]').count();
@@ -507,8 +507,8 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#navEditTabs').count(),0);
     await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
     await page.locator('[data-inc]').first().click();
-    assert.equal(await page.locator('#ricoTopBtn.reacting').count(),1,'Rico reacts to the first item');
-    assert.equal(await page.locator('#ricoTopBtn .rico-bot').count(),1,'the top bar shows the Spark with his face');
+    assert.equal(await page.locator('#ricoTopBtn.reacting').count(),0,'Rico stays still when an item is added');
+    assert.equal(await page.locator('#ricoTopBtn .rico-bot.rico-plain').count(),1,'the top bar shows the plain sparkle');
     await page.evaluate(()=>{state.cart={};persistCartDraft();refreshOrderView();});
     const q5=page.locator('[data-qty="i5"]');
     await q5.focus();
