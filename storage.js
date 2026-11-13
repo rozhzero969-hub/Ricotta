@@ -199,7 +199,9 @@ async function apiStream(path, body, onEvent, signal){
 /* Returns {account, name} on success, or {error:'wrong'|'locked'|'network'|...}. */
 async function apiLogin(pin, freshDevice = false){
   const proof=await authBotProof();if(proof.error)return {error:proof.error};
-  const r = await api('login', {method:'POST', body:{pin,turnstileToken:proof.token}});
+  // The phone's own time zone: Admin compares it with the sign-in address's to spot a VPN.
+  let tz = ''; try{ tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; }catch(_){}
+  const r = await api('login', {method:'POST', body:{pin,turnstileToken:proof.token,tz}});
   if(r.status===403 && r.data?.error==='verification_failed'){resetAuthSecurityConfig();return {error:'verification'};}
   if(r.ok && r.data && r.data.token){
     const d = r.data;

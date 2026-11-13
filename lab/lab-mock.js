@@ -159,10 +159,14 @@
   const deviceId = () => { try{ return JSON.parse(localStorage.getItem(LS+'deviceId')); }catch(_){ return null; } };
   const devices = account => {
     const now = new Date().toISOString(), earlier = new Date(Date.now()-2*3600000).toISOString();
+    const ends = ms => new Date(Date.now() + ms).toISOString();
     const list = [
-      {id:deviceId() || 'this-device', account, label:'Mac|Website', loggedIn:true, lastLogin:earlier, lastSeen:now, command:null, handledCommand:null, appVersion:APP_VERSION, push:true},
-      {id:'lab-phone-yunis', account:'yunis', label:'iPhone 16 Pro|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-6*60000).toISOString(), command:null, handledCommand:null, appVersion:'2026-10-09.1'},
-      {id:'lab-phone-rozha', account:'rozha', label:'iPhone 16/17 Pro Max|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-40*60000).toISOString(), command:null, handledCommand:null}
+      {id:deviceId() || 'this-device', account, label:'Mac|Website', loggedIn:true, lastLogin:earlier, lastSeen:now, command:null, handledCommand:null, appVersion:APP_VERSION, push:true,
+        sessionEnds:ends(30*86400000), signin:{ip:'185.12.40.7', city:'Erbil', region:'Erbil', country:'IQ', org:'AS206206 Korek Telecom', ipTz:'Asia/Baghdad', deviceTz:'Asia/Baghdad', vpn:false, vpnReason:null, at:earlier}},
+      {id:'lab-phone-yunis', account:'yunis', label:'iPhone 16 Pro|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-6*60000).toISOString(), command:null, handledCommand:null, appVersion:'2026-10-09.1',
+        sessionEnds:ends(30*86400000 - 6*60000), signin:{ip:'185.12.41.22', city:'Erbil', region:'Erbil', country:'IQ', org:'AS59588 Fastlink', ipTz:'Asia/Baghdad', deviceTz:'Asia/Baghdad', vpn:false, vpnReason:null, at:earlier}},
+      {id:'lab-phone-rozha', account:'rozha', label:'iPhone 16/17 Pro Max|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-40*60000).toISOString(), command:null, handledCommand:null,
+        sessionEnds:ends(29*86400000), signin:{ip:'185.213.155.10', city:'Frankfurt am Main', region:'Hesse', country:'DE', org:'AS3320 Deutsche Telekom AG', ipTz:'Europe/Berlin', deviceTz:'Asia/Baghdad', vpn:true, vpnReason:'tz', at:earlier}}
     ];
     return account === 'rozha' ? list : list.slice(0,1);
   };
@@ -619,7 +623,8 @@
       if(row) row.seconds = Math.min(86400, row.seconds + Math.min(1800, Math.floor(body.seconds))); else db.usage.push({account, deviceId:id, label:'Mac|Website', day, seconds:Math.min(1800, Math.floor(body.seconds))});
       save();
     }
-    if(path === 'devices/me' || path === 'devices/me/ack' || path === 'devices/command') return ok();
+    if(path === 'devices/me') return json({ok:true, sessionEnds:new Date(Date.now() + 30*86400000).toISOString()});
+    if(path === 'devices/me/ack' || path === 'devices/command') return ok();
     /* Admin -> PINs. The Lab keeps no PINs: 000000 stands for a wrong current PIN, and Yunis's Lab PIN (222222)
        can't be given to Rozh. */
     if(method === 'PUT' && path === 'admin/pin'){

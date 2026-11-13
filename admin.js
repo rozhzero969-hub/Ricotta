@@ -606,13 +606,15 @@ function openPinChange(account){
 }
 
 /* ---------- Devices ---------- */
-/* Which phones are signed in right now, to which account, when each one last signed in and was last
-   seen, and which version it runs. Logged in = signed in, no log-out waiting for it, and seen within
-   one session length (a sign-in expires after 18 hours even if nobody logs out). */
-const SESSION_MS = 18*60*60*1000;
+/* Which devices are signed in right now, to which account, what they are, when each was last seen,
+   which version it runs, when its sign-in ends and where it last signed in from. A sign-in
+   lasts 30 days from the last use; the server sends when each one ends (sessionEnds). */
+const SESSION_MS = 30*24*60*60*1000;
 function isLoggedIn(d){
+  if(commandIsPending(d) && d.command.type === 'logout') return false;
+  if(d.sessionEnds) return !!d.loggedIn && Date.parse(d.sessionEnds) > Date.now();
   const seen = Date.parse(d.lastSeen || d.lastLogin || 0) || 0;
-  return !!d.loggedIn && Date.now() - seen < SESSION_MS && !(commandIsPending(d) && d.command.type === 'logout');
+  return !!d.loggedIn && Date.now() - seen < SESSION_MS;
 }
 function deviceStatus(d){
   if(!isLoggedIn(d)) return 'out';
@@ -622,6 +624,23 @@ function deviceStatus(d){
 /* The newest version any phone runs (this one included). */
 function latestVersion(){
   return (state.devices || []).map(d=>d.appVersion).filter(Boolean).reduce((m, v)=>versionCmp(v, m) > 0 ? v : m, APP_VERSION);
+}
+const devDay = iso=>formatIraqDateTime(iso, {day:'numeric', month:'short'});
+/* Where the device was when it last signed in: city and country (or the address when no place is
+   known) and when, with a plain red note when it looks like a VPN (see supabase/functions/api/geo.ts). */
+function devPlace(c){
+  if(!c) return '';
+  try{ return new Intl.DisplayNames([state.lang === 'ku' ? 'ckb' : state.lang, 'en'], {type:'region'}).of(c) || c; }catch(_){ return c; }
+}
+function devSignInLine(d){
+  const si = d.signin;
+  if(!si || !si.at) return '';
+  const country = si.country ? devPlace(si.country) : '';
+  const place = [si.city, country].filter(Boolean).join(', ') || si.ip;
+  if(!place) return '';
+  const when = formatIraqDateTime(si.at, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+  const vpn = si.vpn === true ? (si.vpnReason === 'org' && si.org ? t('devVpnOrg')(si.org.replace(/^AS\d+\s+/, '')) : t('devVpnTz')(si.deviceTz || '', country || si.ipTz || '')) : '';
+  return `<span dir="auto">${esc(t('devSignedInFrom')(place, when))}</span>${si.ip && place !== si.ip ? `<span class="dev-faint" dir="ltr">${esc(si.ip)}</span>` : ''}${vpn ? `<span class="dev-vpn" dir="auto">${esc(vpn)}</span>` : ''}`;
 }
 function renderAdminDevices(){
   const visible = state.devices.filter(isLoggedIn);
@@ -633,23 +652,36 @@ function renderAdminDevices(){
   const cards = sorted.map(d=>{
     const st = deviceStatus(d), isThis = d.id === state.deviceId, parts = deviceParts(d);
     const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
+    const current = d.appVersion && versionCmp(d.appVersion, latest) >= 0;
+    const facts = [
+      d.lastSeen ? esc(t('devSeen')(timeAgo(d.lastSeen))) : '',
+      d.appVersion ? `<bdi dir="ltr">${esc(d.appVersion)}</bdi> <span class="dev-ver ${current ? 'ok' : 'old'}">${esc(t(current ? 'versionCurrent' : 'versionOld'))}</span>` : esc(t('versionUnknown')),
+      d.sessionEnds ? esc(t(Date.parse(d.sessionEnds) > Date.now() ? 'devSignedInUntil' : 'devSignInEnded')(devDay(d.sessionEnds))) : '',
+      esc(t(d.push ? 'devNotifOn' : 'devNotifOff')),
+    ].filter(Boolean).map(f=>`<span>${f}</span>`).join('');
     return `<div class="dev-card">
-      <div class="dev-top"><div class="dev-name">${accountLabel(d.account) ? whoBadge(d.account) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">· ${esc(t('thisDevice'))}</span>` : ''}</div><span class="dev-badge dev-${st}">${badge}</span></div>
-      <div class="dev-kind">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : ICON_MOBILE} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
-      <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
-      ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
-      <div class="rec-line"><span class="rec-k">${t('settingsGroup_notif')}</span> <span class="dev-notif ${d.push ? 'on' : 'off'}">${esc(t(d.push ? 'notifOn' : 'notifOff'))}</span></div>
-      <div class="rec-line"><span class="rec-k">${t('versionLabel')}</span> ${d.appVersion ? `<bdi dir="ltr">${esc(d.appVersion)}</bdi> <span class="dev-ver ${versionCmp(d.appVersion, latest) >= 0 ? 'ok' : 'old'}">${esc(t(versionCmp(d.appVersion, latest) >= 0 ? 'versionCurrent' : 'versionOld'))}</span>` : esc(t('versionUnknown'))}</div>
+      <div class="dev-head">
+        <span class="dev-ic">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : ICON_MOBILE}</span>
+        <div class="dev-id">
+          <div class="dev-title" dir="auto">${esc(parts.kind)}${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
+          <div class="dev-who">${accountLabel(d.account) ? esc(accountLabel(d.account)) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">· ${esc(t('thisDevice'))}</span>` : ''} <span class="dev-faint">· ${esc(t('lastLoginLabel'))} ${esc(timeAgo(d.lastLogin))}</span></div>
+        </div>
+        <span class="dev-badge dev-${st}">${badge}</span>
+      </div>
+      <div class="dev-facts">${facts}</div>
+      <div class="dev-foot">
+        <div class="dev-loc">${devSignInLine(d)}</div>
+        ${isThis ? '' : `<div class="dev-actions">
+          <button class="btn btn-ghost" data-devrefresh="${esc(d.id)}">${ICON_REFRESH}<span>${t('refreshDevice')}</span></button>
+          ${isLoggedIn(d) ? `<button class="btn btn-danger" data-devlogout="${esc(d.id)}">${t('logoutDevice')}</button>` : ''}
+        </div>`}
+      </div>
       ${commandIsPending(d) ? `<div class="dev-pending">${d.command.type==='logout'?t('cmdLogoutPending'):t('cmdRefreshPending')} · ${timeAgo(d.command.ts)}</div>` : ''}
-      ${isThis ? '' : `<div class="dev-actions">
-        <button class="btn btn-ghost" data-devrefresh="${esc(d.id)}">${ICON_REFRESH} ${t('refreshDevice')}</button>
-        ${isLoggedIn(d) ? `<button class="btn btn-danger" data-devlogout="${esc(d.id)}">${t('logoutDevice')}</button>` : ''}
-      </div>`}
     </div>`;
   }).join('');
   return `${adminHeading()}
-    <div class="ad-stats"><div><b>${visible.length}</b><span>${esc(t('devicesLoggedInEyebrow'))}</span></div><div><b>${activeCount}</b><span>${esc(t('adActiveNow'))}</span></div><div><b class="ad-small">${esc(String(latest).replace(/^\d{4}-/, ''))}</b><span>${esc(t('adNewestVersion'))}</span></div></div>
-    ${others.length ? `<div class="dev-bulk"><button class="btn btn-ghost" id="devRefreshAllBtn">${ICON_REFRESH} ${t('refreshAllDevices')}</button><button class="btn btn-danger" id="devLogoutAllBtn">${t('logoutAllOthers')}</button></div>` : ''}
+    <div class="ad-stats dev-stats"><div><b>${visible.length}</b><span>${esc(t('devicesLoggedInEyebrow'))}</span></div><div><b>${activeCount}</b><span>${esc(t('adActiveNow'))}</span></div><div><b class="ad-small">${esc(String(latest).replace(/^\d{4}-/, ''))}</b><span>${esc(t('adNewestVersion'))}</span></div></div>
+    ${others.length ? `<div class="dev-bulk"><button class="btn btn-ghost" id="devRefreshAllBtn">${ICON_REFRESH}<span>${t('refreshAllDevices')}</span></button><button class="btn btn-danger" id="devLogoutAllBtn">${t('logoutAllOthers')}</button></div>` : ''}
     ${cards || emptyState(t('noDevicesYet'))}<div class="dev-hint">${t('devicesHint')}</div>`;
 }
 function attachAdminDevices(slot){

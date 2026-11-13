@@ -201,10 +201,17 @@ function heartbeat(){
   if(!state.account) return;
   // "Still here", with the time spent in the app since the last one (sent again if it doesn't arrive).
   const batch = takeUsage();
-  api('devices/me', {method:'POST', body:usageBody(batch)}).then(r=>settleUsage(batch, r));
+  api('devices/me', {method:'POST', body:usageBody(batch)}).then(r=>{ settleUsage(batch, r); keepSessionEnd(r); });
   flushOutbox();
   flushProblems();
   syncSharedDraft();
+}
+/* A sign-in lasts 30 days from the last use: the server moves its end forward, and each heartbeat tells
+   this phone the new end so its own copy (which signs it out locally) moves too. */
+function keepSessionEnd(r){
+  const end = r && r.ok && r.data && r.data.sessionEnds, cur = lget('apiSession');
+  if(!end || !cur?.token || !Number.isFinite(Date.parse(end))) return;
+  if(Date.parse(end) > (Date.parse(cur.expiresAt) || 0)) lset('apiSession', {...cur, expiresAt:end});
 }
 /* Shared drafts keep local edits durable while merging other devices' changes.
    The base quantities are persisted too: reconnecting never blindly replaces
