@@ -13,7 +13,7 @@
   const rolesOf = account => account === 'rozha' ? [...ROLES] : Array.isArray(db.roles?.yunis) ? ROLES.filter(r=>db.roles.yunis.includes(r)) : [...DEFAULT_ROLES];
   const can = (account, role) => account === 'rozha' || (rolesOf(account).includes(role) && (role !== 'catalog' || rolesOf(account).includes('manage')));
   const viewsFor = a => ['order', ...(can(a,'assistant') ? ['assistant'] : []), ...(can(a,'history') ? ['history'] : []),
-    ...(can(a,'manage') ? ['manage','suppliers','itemsAdmin','units'] : []), ...(can(a,'receipts') ? ['receipts'] : []), ...(can(a,'transfers') ? ['transfers'] : []), ...(can(a,'record') ? ['record'] : []), ...(a === 'rozha' ? ['admin'] : []), 'settings'];
+    ...(can(a,'manage') ? ['manage','suppliers','itemsAdmin','units'] : []), ...(can(a,'receipts') ? ['receipts'] : []), ...(can(a,'transfers') ? ['transfers'] : []), ...(can(a,'transfers') || can(a,'receipts') ? ['stock'] : []), ...(can(a,'record') ? ['record'] : []), ...(a === 'rozha' ? ['admin'] : []), 'settings'];
   const NAMES = {rozha:{en:'Rozh',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}};
 
   const lsGet = k => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(_){ return null; } };
@@ -294,6 +294,15 @@
         pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
         months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
       });
+    }
+    // Stock (read only): Main Storage, with practice last-bought and last-moved notes.
+    if(method === 'GET' && path === 'stock'){
+      if(!can(account, 'transfers') && !can(account, 'receipts')) return fail('forbidden', 403);
+      const day = d=>new Date(Date.now() - d * 86400000).toISOString();
+      const items = [['Aleppo Pepper - پول بیبەر', 'غرام', {name:'کیلۆ', factor:1000}, {name:'فەردە', factor:25000}, 3200], ['White Toast - توست أبيض', 'دانە', {name:'سیت', factor:25}, {name:'کارتۆن', factor:250}, 250],
+        ['Lemon - لیمۆ', 'غرام', {name:'کیلۆ', factor:1000}, null, 12500], ['Oil 1L - زەیتی 1 لیتری', 'مل', {name:'دانە', factor:1000}, {name:'کارتۆن', factor:12000}, 40000], ['Faheta Bread - صمونی فاهیتا', 'دانە', {name:'دانە', factor:1}, null, 0]]
+        .map(([name, base, count, buy, main], k)=>({name, base, count, buy, main, inMain:true, lastBought:k % 2 ? null : {at:day(k + 1), supplier:'Bread House Bakery', qty:2, unit:buy?.name || base, cost:8500, currency:'IQD'}, lastMoved:{at:day(k), from:'Main Storage', to:['Pizza','Minibar','Kebab'][k % 3], qty:1, unit:count.name}}));
+      return json({at:Date.now(), zone:'Main Storage', items});
     }
     // Transfers: the stock Rico reads, and a Rico who fills a transfer in two seconds and moves it once approved.
     if(path === 'transfers' || path.startsWith('transfers/')){

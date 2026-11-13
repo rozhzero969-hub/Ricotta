@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
 const ctx = {}; vm.createContext(ctx); vm.runInContext(fs.readFileSync('i18n.js', 'utf8') + '\n' + fs.readFileSync('ordering-tools.js', 'utf8') + ';globalThis.T = T;', ctx);
 const T = ctx.T, langs = ['en', 'ku', 'ar'];
-const files = fs.readdirSync('.').filter(f => f.endsWith('.js') && !['i18n.js', 'sw.js', 'eslint.config.js'].includes(f));
+const files = fs.readdirSync('.').filter(f => f.endsWith('.js') && !f.startsWith('.') && !['i18n.js', 'sw.js', 'eslint.config.js'].includes(f));
 const bad = [];
 for (const f of files) {
   const src = fs.readFileSync(f, 'utf8');

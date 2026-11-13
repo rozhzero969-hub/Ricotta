@@ -483,14 +483,14 @@ function accountLabel(a){ return a === 'rozha' || a === 'yunis' ? t('accountName
    an offline start before that answer arrives. */
 const ALL_ROLES = ['history','manage','catalog','record','assistant','send','exports','notify','receipts','transfers'];
 const ACCOUNT_VIEWS = {
-  rozha: ['order','assistant','history','manage','suppliers','itemsAdmin','units','receipts','transfers','record','admin','settings'],
+  rozha: ['order','assistant','history','manage','suppliers','itemsAdmin','units','receipts','transfers','stock','record','admin','settings'],
   yunis: ['order','assistant','history','manage','suppliers','itemsAdmin','units','record','settings']
 };
 const ACCOUNT_ROLES = {rozha:ALL_ROLES, yunis:ALL_ROLES};
 /* The screens of the tab bar, in order, for whoever is signed in. With four or fewer they are all
    tabs; with more, the first four are and the rest are under More. Rico lives in the top bar and
    Settings in the account sheet. */
-const NAV_SCREENS = ['order','history','receipts','transfers','manage','record','admin'];
+const NAV_SCREENS = ['order','history','receipts','transfers','stock','manage','record','admin'];
 const navScreens = ()=> NAV_SCREENS.filter(v=>state.views.includes(v));
 const tabsFor = ()=> navScreens().length ? navScreens().slice(0, 4) : ['order'];
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
@@ -885,7 +885,8 @@ const RENDERERS = {
   manage:[()=>renderItemsAdmin(),()=>attachItemEvents()],
   settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()],
   receipts:[()=>renderReceipts(),()=>attachReceiptsEvents()],
-  transfers:[()=>renderTransfers(),()=>attachTransfersEvents()]
+  transfers:[()=>renderTransfers(),()=>attachTransfersEvents()],
+  stock:[()=>renderStock(),()=>attachStockEvents()]
 };
 const shellKey = ()=>[state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
 /* One screen's page, without its events (render() attaches them). */
@@ -974,7 +975,7 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
    open); with more than four, the rest are under More. Computers: a sidebar with every screen. Rico
    opens from the top bar and Settings from the account sheet. A lens glides to the current tab, the
    page can be swiped between the tabs, and the bar shrinks to its icons while you scroll down. */
-const VIEW_LABEL_KEYS = {receipts:'rrTitle', transfers:'tfTitle', manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {receipts:'rrTitle', transfers:'tfTitle', stock:'stockTitle', manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
