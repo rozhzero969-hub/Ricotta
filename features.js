@@ -13,10 +13,9 @@ const SETTINGS = [
   {id:'soundMilestone', group:'sound', on:true},
   {id:'soundUndo', group:'sound', on:true},
   {id:'ricoSheet', group:'rico', on:true, role:'assistant'},
-  {id:'ricoMood', group:'rico', on:true, role:'assistant'},
-  {id:'ricoLively', group:'rico', on:true},
   {id:'ricoAutoStart', group:'rico', on:false, role:'receipts', rozha:true},
   {id:'tfAuto', group:'none', on:false},
+  {id:'simpleView', group:'look', on:false},
   {id:'tables', group:'look', on:false},
   {id:'kitchenMode', group:'look', on:false},
   {id:'milestones', group:'look', on:true},
@@ -40,8 +39,6 @@ const SETTING_ICONS = {
   soundMilestone:['#FF2D55', SF('<path d="m12 3.3 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.6l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z"/>', true)],
   soundUndo:['#FF2D55', SF('<path d="M8.6 5.4 4.4 9.6l4.2 4.2"/><path d="M4.6 9.6H15a4.6 4.6 0 0 1 0 9.2h-3"/>')],
   ricoSheet:['#1F7A4D', SF('<path d="M12 3.4c.7 4.9 3.7 7.9 8.6 8.6-4.9.7-7.9 3.7-8.6 8.6-.7-4.9-3.7-7.9-8.6-8.6 4.9-.7 7.9-3.7 8.6-8.6Z"/>', true)],
-  ricoLively:['#34C759', SF('<path d="M12 3.4c.7 4.9 3.7 7.9 8.6 8.6-4.9.7-7.9 3.7-8.6 8.6-.7-4.9-3.7-7.9-8.6-8.6 4.9-.7 7.9-3.7 8.6-8.6Z"/>', true)],
-  ricoMood:['#AF52DE', SF('<circle cx="12" cy="12" r="8.4"/><path d="M8.4 13.6a4.4 4.4 0 0 0 7.2 0"/><circle cx="9.2" cy="9.9" r="1.15" fill="#fff" stroke="none"/><circle cx="14.8" cy="9.9" r="1.15" fill="#fff" stroke="none"/>')],
   ricoAutoStart:['#34C759', SF('<path d="M12 3.4v7.4"/><path d="M7.1 6.6a7.2 7.2 0 1 0 9.8 0"/>')],
   ricoStyle:['#30B0C7', SF('<path d="M5.4 4.6h13.2a2.2 2.2 0 0 1 2.2 2.2v7.6a2.2 2.2 0 0 1-2.2 2.2H12l-4.4 3.3a.5.5 0 0 1-.8-.4V16.6H5.4a2.2 2.2 0 0 1-2.2-2.2V6.8a2.2 2.2 0 0 1 2.2-2.2Z"/>', true)],
   ricoMac:['#1F7A4D', SF('<rect x="4" y="5" width="16" height="10.6" rx="1.8"/><path d="M2.6 18.6h18.8"/>')],
@@ -52,6 +49,7 @@ const SETTING_ICONS = {
   limJump:['#FF9500', SF('<path d="M3.8 16.6 9.4 11l3.4 3.4 7.4-7.4"/><path d="M15 7h5.2v5.2"/>')],
   limRate:['#34C759', SF('<path d="M12 3.6v16.8M16.2 7.4c-.6-1.4-2.2-2.2-4.2-2.2-2.5 0-4.2 1.2-4.2 3.1 0 4.3 8.6 2.4 8.6 6.8 0 1.9-1.8 3.2-4.4 3.2-2.2 0-3.9-.9-4.5-2.5"/>')],
   telegram:['#2AABEE', SF('<path d="M20.6 4.4 3.4 11.2c-.6.2-.6 1.1 0 1.3l4.2 1.4 1.6 5c.2.5.8.6 1.2.3l2.4-2 4.4 3.2c.5.3 1.1.1 1.2-.5l3-14.6c.1-.6-.4-1-1-.9Z"/>', true)],
+  simpleView:['#8E8E93', SF('<rect x="4" y="5" width="16" height="14" rx="2.6"/><path d="M8 10h8M8 14h5"/>')],
   darkMode:['#007AFF', SF('<circle cx="12" cy="12" r="8.2"/><path d="M12 3.8a8.2 8.2 0 0 1 0 16.4Z" fill="#fff" stroke="none"/>')],
   tables:['#32ADE6', SF('<rect x="3.6" y="4.8" width="16.8" height="14.4" rx="2.4"/><path d="M3.6 10h16.8M10 10v9.2"/>')],
   kitchenMode:['#5E5CE6', SF('<path d="M3.4 18.6 8.3 5.6h1.4l4.9 13M5.3 14h7.4"/><path d="M15.6 18.6l2.5-6.5h.8l2.5 6.5M16.6 16.2h3.8" stroke-width="1.7"/>')],
@@ -100,7 +98,7 @@ async function carryOverLocalSettings(){
 function applyFeatures(){
   document.documentElement.classList.toggle('kitchen-mode', featureOn('kitchenMode'));
   document.documentElement.classList.toggle('compact-rows', featureOn('compactRows'));
-  document.documentElement.classList.toggle('rico-still', !featureOn('ricoLively'));
+  document.documentElement.classList.toggle('simple-view', featureOn('simpleView'));
 }
 function renderFeatureSettings(){
   const row = f=>`<label class="check-row preference-row has-ico"><input type="checkbox" data-feature="${f.id}" ${featureOn(f.id) ? 'checked' : ''}>${setIcon(f.id)}<span>${esc(t('feat_' + f.id))}<small>${esc(t('feat_' + f.id + '_hint'))}</small></span></label>`;

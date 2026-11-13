@@ -12,13 +12,6 @@ function ricoNextStep(){
   if(due) return {supplierId:due.id, title:t('nextDue')(due.name), sub:t('nextUsualAt')(reminderTimeLabel(due.reminder.time))};
   return {done:true, title:t('nextDone'), sub:t('nextDoneSub')};
 }
-/* What the kitchen's state says about Rico's face. */
-function kitchenMood(){
-  if(!featureOn('ricoMood') || !canOpen('order') || !state.account) return 'happy';
-  if(ricoLateOrders().length) return 'worried';
-  const n = ricoNextStep();
-  return n?.urgent ? 'worried' : n?.done ? 'happy' : 'calm';
-}
 
 /* ---------- Answers worked out on this phone: no AI needed ---------- */
 function ricoLocalAnswer(question, answer){
@@ -81,11 +74,11 @@ function memoryUsualHtml(){
 /* ---------- Rico on the Order screen ---------- */
 function renderRicoOrderButton(){
   if(!featureOn('ricoSheet') || !canOpen('assistant')) return '';
-  return `<button class="quick-btn" id="ricoFloat">${ricoFace(kitchenMood())}<span>${esc(t('sheetOpen'))}</span></button>`;
+  return `<button class="quick-btn" id="ricoFloat">${ricoFace('')}<span>${esc(t('sheetOpen'))}</span></button>`;
 }
 function openRicoOrderSheet(){
   const n = ricoNextStep();
-  const {el, close} = openKitchenSheet('rico-order-sheet', `<div class="check-head">${ricoFace(kitchenMood(), 'rico-md')}<div><div class="sel-title">${esc(t('ricoName'))}</div><div class="notif-sub" dir="auto">${esc(!cartCount() ? t('sheetEmpty') : n && !n.done ? n.title : t('sheetAskAbout'))}</div></div></div>
+  const {el, close} = openKitchenSheet('rico-order-sheet', `<div class="check-head">${ricoFace('', 'rico-md')}<div><div class="sel-title">${esc(t('ricoName'))}</div><div class="notif-sub" dir="auto">${esc(!cartCount() ? t('sheetEmpty') : n && !n.done ? n.title : t('sheetAskAbout'))}</div></div></div>
     <form id="sheetAsk" class="mem-add"><label class="sr-only" for="sheetInput">${esc(t('sheetAsk'))}</label><input id="sheetInput" maxlength="2000" dir="auto" placeholder="${esc(t('sheetAsk'))}"><button type="submit" class="btn btn-primary">${esc(t('ricoSend'))}</button></form>`, t('ricoName'));
   el.querySelector('#sheetAsk').onsubmit = e=>{
     e.preventDefault();

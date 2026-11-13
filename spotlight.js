@@ -18,7 +18,7 @@
    supplierName, unitLabel, unitName, accountLabel, formatIraqDateTime, erbilDate, dayLabel, timeAgo, cartCount,
    refreshOrderView, startSendQueue, openItemModal, openSupplierModal, openUnitModal, openExportSheet,
    openLangMenu, openReportProblem, doLogout, applyPrefs, syncAppearance, lget, lset, prefOn, soundOn, setSoundOn,
-   playQtyTick, haptic, ricoReact, openKitchenSheet, openAdminPage, openReportSheet, ricoNewChat, ricoOpenChat,
+   playQtyTick, haptic, openKitchenSheet, openAdminPage, openReportSheet, ricoNewChat, ricoOpenChat,
    ricoLoadChats, rico, chatOwnerMark, waLink, waOpensApp, privacyHref, scrollToTop, toast, render, isRozha,
    KU_MONTHS. Load before app.js. */
 
@@ -276,7 +276,6 @@ function spotStep(id, delta){
   const first = next > 0 && !cartCount();
   state.cart[id] = next;
   refreshOrderView(id);
-  if(first) ricoReact();
 }
 function spotRun(r){
   if(r.kind === 'command'){ r.c.run(); return; }

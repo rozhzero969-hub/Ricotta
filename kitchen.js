@@ -12,7 +12,7 @@
    The server keeps the streak; this file only shows it.
    Depends on (runtime only): state, t, esc, api, render, goView, toast,
    showConfirm, showAlert, ricoFace, ricoAsk, formatIraqDateTime, timeAgo,
-   accountLabel, unitLabel, supplierName, isRozha, ricoReact. */
+   accountLabel, unitLabel, supplierName, isRozha. */
 
 /* ---------- The streak ---------- */
 const STREAK_GOALS = [7,14,30,60,100,150,200,300,365,500,1000];
@@ -31,7 +31,6 @@ function paintStreakChip(pop){
   old.outerHTML = renderStreakChip();
   const chip = document.getElementById('streakChip');
   chip.onclick = openStreakSheet;
-  if(pop) ricoReact();
   if(pop && !reducedMotion()){
     chip.classList.add('ignite'); setTimeout(()=>chip.classList.remove('ignite'), 1200);
     // The flame flares up and the new count rolls in from below.

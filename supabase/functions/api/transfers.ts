@@ -130,6 +130,36 @@ export async function transferPhotoLinks(db: any, r: any, kinds?: string[]) {
   return out;
 }
 
+/* The Stock screen (read only): every item Ricotta Restaurant stocks, how much is in Main Storage (as
+   Rico last read it), its usage, buying and counting units, and when it was last bought (a saved
+   receipt) and last moved out (a moved transfer), from the last 60 days. Nothing here can be changed:
+   items and units are edited in Ricotta Restaurant. */
+export const MAIN_STORAGE = "Main Storage";
+export async function stockView(db: any) {
+  const since = new Date(Date.now() - 60 * 86400_000).toISOString();
+  const [cat, recs, moves] = await Promise.all([
+    catalogOf(db),
+    db.from("app_rr_receipts").select("supplier,currency,lines,saved_at").eq("status", "saved").gte("saved_at", since).order("saved_at", { ascending: false }).limit(800),
+    tt(db).select("from_zone,to_zone,lines,moved_at").eq("status", "moved").gte("moved_at", since).order("moved_at", { ascending: false }).limit(1500),
+  ]);
+  if (recs.error) throw recs.error;
+  if (moves.error) throw moves.error;
+  const bought = new Map<string, any>(), moved = new Map<string, any>();
+  for (const r of recs.data ?? []) for (const l of r.lines ?? []) {
+    if (l?.item && !bought.has(l.item)) bought.set(l.item, { at: r.saved_at, supplier: r.supplier, qty: l.qty, unit: l.unit, cost: l.cost, currency: r.currency });
+  }
+  for (const r of moves.data ?? []) for (const l of r.lines ?? []) {
+    if (l?.item && !moved.has(l.item)) moved.set(l.item, { at: r.moved_at, from: r.from_zone, to: r.to_zone, qty: l.qty, unit: l.unit });
+  }
+  const c = cat as any;
+  const items = (c.titems ?? []).map((i: any) => ({
+    name: i.name, base: i.base ?? "", count: i.count ?? null, buy: i.buy ?? null,
+    main: Number(i.stock?.[MAIN_STORAGE]) || 0, inMain: i.stock ? MAIN_STORAGE in i.stock : false,
+    lastBought: bought.get(i.name) ?? null, lastMoved: moved.get(i.name) ?? null,
+  }));
+  return { at: c.at ?? null, zone: MAIN_STORAGE, items };
+}
+
 export async function transfersRoute(ctx: Ctx, M: string, path: string, b: any): Promise<Response | null> {
   const { db, json, fail } = ctx;
   let m: RegExpMatchArray | null;

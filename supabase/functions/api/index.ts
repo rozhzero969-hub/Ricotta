@@ -68,7 +68,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { adminAi, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
 import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
-import { transfersRoute } from "./transfers.ts";
+import { stockView, transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
 import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
@@ -97,7 +97,7 @@ const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers")
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
   : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : [...DEFAULT_ROLES];
 // Account settings the app may save (Settings), and the ones with a list of choices.
-const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "ricoBriefing", "ricoMood", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto", "ricoLively"]);
+const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "simpleView", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto"]);
 const SETTING_CHOICES: Record<string, string[]> = { darkMode: ["auto", "on", "off"], ricoStyle: ["normal", "short", "warm"] };
 // Rozh may undo an order she sent this long without typing her PIN.
 const UNDO_MS = 15 * 60_000;
@@ -173,7 +173,7 @@ const can = (s: Session, role: string) => isRozha(s) || (s.roles.includes(role) 
 function viewsFor(s: Session) {
   return ["order", ...(can(s, "assistant") ? ["assistant"] : []), ...(can(s, "history") ? ["history"] : []),
     ...(can(s, "manage") ? ["manage", "suppliers", "itemsAdmin", "units"] : []),
-    ...(can(s, "receipts") ? ["receipts"] : []), ...(can(s, "transfers") ? ["transfers"] : []), ...(can(s, "record") ? ["record"] : []), ...(isRozha(s) ? ["admin"] : []), "settings"];
+    ...(can(s, "receipts") ? ["receipts"] : []), ...(can(s, "transfers") ? ["transfers"] : []), ...(can(s, "transfers") || can(s, "receipts") ? ["stock"] : []), ...(can(s, "record") ? ["record"] : []), ...(isRozha(s) ? ["admin"] : []), "settings"];
 }
 
 /* null: no valid session (401, the phone signs in again). "unavailable": the check itself could not run
@@ -888,6 +888,11 @@ Deno.serve(async (req) => {
     if (path === "receipts" || path === "receipts-settings" || path === "receipts-settings/rico" || path === "receipts-activity" || path.startsWith("receipts/")) {
       if (!can(s, "receipts")) return fail("forbidden", 403);
       return (await receiptsRoute({ db, json, fail, account: s.account, rozha }, M, path, b)) ?? fail("not_found", 404);
+    }
+    // Stock (read only): for whoever makes receipts or transfers.
+    if (M === "GET" && path === "stock") {
+      if (!can(s, "transfers") && !can(s, "receipts")) return fail("forbidden", 403);
+      return json(await stockView(db));
     }
     if (path === "transfers" || path.startsWith("transfers/")) {
       if (!can(s, "transfers")) return fail("forbidden", 403);

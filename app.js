@@ -483,14 +483,14 @@ function accountLabel(a){ return a === 'rozha' || a === 'yunis' ? t('accountName
    an offline start before that answer arrives. */
 const ALL_ROLES = ['history','manage','catalog','record','assistant','send','exports','notify','receipts','transfers'];
 const ACCOUNT_VIEWS = {
-  rozha: ['order','assistant','history','manage','suppliers','itemsAdmin','units','receipts','transfers','record','admin','settings'],
+  rozha: ['order','assistant','history','manage','suppliers','itemsAdmin','units','receipts','transfers','stock','record','admin','settings'],
   yunis: ['order','assistant','history','manage','suppliers','itemsAdmin','units','record','settings']
 };
 const ACCOUNT_ROLES = {rozha:ALL_ROLES, yunis:ALL_ROLES};
 /* The screens of the tab bar, in order, for whoever is signed in. With four or fewer they are all
    tabs; with more, the first four are and the rest are under More. Rico lives in the top bar and
    Settings in the account sheet. */
-const NAV_SCREENS = ['order','history','receipts','transfers','manage','record','admin'];
+const NAV_SCREENS = ['order','history','receipts','transfers','stock','manage','record','admin'];
 const navScreens = ()=> NAV_SCREENS.filter(v=>state.views.includes(v));
 const tabsFor = ()=> navScreens().length ? navScreens().slice(0, 4) : ['order'];
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
@@ -885,7 +885,8 @@ const RENDERERS = {
   manage:[()=>renderItemsAdmin(),()=>attachItemEvents()],
   settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()],
   receipts:[()=>renderReceipts(),()=>attachReceiptsEvents()],
-  transfers:[()=>renderTransfers(),()=>attachTransfersEvents()]
+  transfers:[()=>renderTransfers(),()=>attachTransfersEvents()],
+  stock:[()=>renderStock(),()=>attachStockEvents()]
 };
 const shellKey = ()=>[state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
 /* One screen's page, without its events (render() attaches them). */
@@ -968,19 +969,13 @@ function updateRicoBadge(){
 setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
 /* Rico answers what just happened: the pill gives one small bounce and its sparkle a quick turn (a small
    dip when the order was cleared). Calling it again restarts the motion from the start. */
-function ricoReact(kind = 'up'){
-  const btn = document.getElementById('ricoTopBtn');
-  if(!btn || reducedMotion()) return;
-  btn.dataset.react = kind;
-  btn.classList.remove('reacting'); void btn.offsetWidth; btn.classList.add('reacting');
-}
 
 /* ============ Navigation ============
    Phones: up to four tabs (Order, History, Manage, Record, Admin, whichever this person may
    open); with more than four, the rest are under More. Computers: a sidebar with every screen. Rico
    opens from the top bar and Settings from the account sheet. A lens glides to the current tab, the
    page can be swiped between the tabs, and the bar shrinks to its icons while you scroll down. */
-const VIEW_LABEL_KEYS = {receipts:'rrTitle', transfers:'tfTitle', manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {receipts:'rrTitle', transfers:'tfTitle', stock:'stockTitle', manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
@@ -1002,11 +997,23 @@ function renderBottomNav(){
   const more = moreViews();
   // On a computer the tab bar is the sidebar, with the ricotta mark at its top. More exists only when
   // there are more than four screens.
-  return `<nav class="bottomnav" style="--n:${state.tabs.length + (more.length ? 1 : 0)}" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}${more.length ? `<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${more.map(button).join('')}</div>` : ''}</nav>`;
+  return `<nav class="bottomnav" style="--n:${state.tabs.length + (more.length ? 1 : 0)}" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><button type="button" class="side-toggle" data-side-toggle aria-label="${esc(t('sideHide'))}" title="${esc(t('sideHide'))} (${SIDE_KEYS})">${ICON_SIDEBAR}</button><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}${more.length ? `<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${more.map(button).join('')}</div>` : ''}</nav>`;
 }
 function renderManageNav(){
   return `<div class="manage-nav"><nav class="manage-sections" aria-label="${esc(t('catalog'))}">${[['manage','items'],['suppliers','suppliers'],['units','units']].filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav></div>`;
 }
+/* Computers: the sidebar can be hidden (the page then uses the whole width) and shown again, with its
+   button or with Cmd/Ctrl + \. The choice is remembered on this device. */
+const ICON_SIDEBAR = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2.6"/><path d="M9 4.5v15"/></svg>`;
+const SIDE_KEYS = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘\\' : 'Ctrl+\\';
+function setSidebarHidden(hide){
+  document.documentElement.classList.toggle('side-hidden', hide);
+  lset('sideHidden', hide || null);
+  setTimeout(()=>placeNavIndicator(), 320);
+}
+if(lget('sideHidden')) document.documentElement.classList.add('side-hidden');
+document.addEventListener('click', e=>{ if(e.target.closest('[data-side-toggle]')) setSidebarHidden(!document.documentElement.classList.contains('side-hidden')); });
+document.addEventListener('keydown', e=>{ if((e.metaKey || e.ctrlKey) && !e.altKey && e.key === '\\' && !isPhoneLayout()){ e.preventDefault(); setSidebarHidden(!document.documentElement.classList.contains('side-hidden')); } });
 function setMoreOpen(open){
   const nav=document.querySelector('.bottomnav'),button=document.getElementById('navMoreBtn');
   if(!nav||!button)return;
@@ -1873,13 +1880,13 @@ const accountInitial = ()=>accountLabel(state.account).trim().charAt(0).toUpperC
 function renderTopbar(){
   return `
   <header class="topbar">
-    <div class="brand-slot"><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div></div>
+    <div class="brand-slot"><button type="button" class="side-toggle side-show" data-side-toggle aria-label="${esc(t('sideShow'))}" title="${esc(t('sideShow'))} (${SIDE_KEYS})">${ICON_SIDEBAR}</button><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div></div>
     <span class="topbar-title" aria-hidden="true"></span>
     <div class="topbar-actions">
       ${renderStreakChip()}
       <div class="chip conn-chip" id="connectionStatus" role="status"${state.apiOnline?' hidden':''}><span></span><em>${esc(t('offline'))}</em></div>
-      ${canOpen('assistant') ? `<button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${ricoFace(kitchenMood(), 'rico-top-face')}<i class="rico-badge" hidden></i></button>` : ''}
-      <button type="button" class="account-btn" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
+      ${canOpen('assistant') ? `<button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${ricoFace('', 'rico-top-face')}<i class="rico-badge" hidden></i></button>` : ''}
+      <button type="button" class="account-btn${typeof newsUnread === 'function' && newsUnread() ? ' has-news' : ''}" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
     </div>
   </header>`;
 }
@@ -1893,6 +1900,7 @@ function openAccountSheet(){
     <div class="sheet-group">
       <button type="button" class="sheet-row" id="langBtn" aria-haspopup="dialog">${ICON_GLOBE}<span>${esc(t('language'))}</span><em>${esc(LANG_NAMES[state.lang])}</em>${chevron}</button>
       ${canOpen('settings') ? `<button type="button" class="sheet-row" data-account-go="settings">${NAV_ICONS.settings || ''}<span>${esc(t('settings'))}</span>${chevron}</button>` : ''}
+      <button type="button" class="sheet-row" id="newsBtn">${ICON_SPARKLE}<span>${esc(t('whatsNew'))}</span>${newsUnread() ? '<i class="news-dot" aria-hidden="true"></i>' : ''}${chevron}</button>
       <a class="sheet-row" href="${esc(privacyHref())}">${ICON_SHIELD}<span>${esc(t('privacyPolicy'))}</span>${chevron}</a>
     </div>
     <div class="sheet-group"><button type="button" class="sheet-row danger" id="logoutBtn">${ICON_LOGOUT}<span>${esc(t('logout'))}</span></button></div>`, t('accountMenu')(accountLabel(state.account)));
@@ -1900,6 +1908,7 @@ function openAccountSheet(){
   el.querySelector('#langBtn').onclick = ()=>{ sheet.close(); openLangMenu(document.getElementById('accountBtn')); };
   el.querySelector('[data-account-go]')?.addEventListener('click', ()=>{ sheet.close(); goView('settings'); });
   el.querySelector('#logoutBtn').onclick = ()=>{ sheet.close(); doLogout(); };
+  el.querySelector('#newsBtn').onclick = ()=>{ sheet.close(); openWhatsNew(); };
   requestAnimationFrame(()=>el.querySelector('#langBtn')?.focus({preventScroll:true}));
 }
 
@@ -2503,7 +2512,6 @@ function attachOrderEvents(){
     const before = {...state.cart};
     state.cart = Object.fromEntries(Object.entries(m).filter(([id,qty])=>state.items.some(i=>i.id===id && i.available!==false) && qty>0));
     refreshOrderView();
-    ricoReact();
     toast(t('sameAsLastFilled'), 'ok', {undo:()=>{ state.cart = before; refreshOrderView(); }});
   };
   const clear=document.getElementById('clearOrderBtn');
@@ -2516,7 +2524,6 @@ function attachOrderEvents(){
     const rows=[...document.querySelectorAll('#orderResults .item-row.has-qty')].slice(0,14);
     rows.forEach((row,i)=>row.animate?.([{transform:'none',opacity:1},{transform:'translateX(-14px) scale(.98)',opacity:.35,offset:.5},{transform:'none',opacity:1}],{duration:420,delay:i*40,easing:'cubic-bezier(.32,.72,0,1)'}));
     state.cart={};persistCartDraft();if(queue){state.queue=null;persistQueue();}refreshOrderView();paintDraftStatus();
-    ricoReact('down');
     toast(t('orderCleared'),'ok',{undo:()=>{ state.cart=before;persistCartDraft();paintDraftStatus(); if(queue&&!state.queue){state.queue=queue;persistQueue();} refreshOrderView(); }});
   };
   const send = document.getElementById('sendOrdersBtn');
@@ -2637,7 +2644,6 @@ function stepQty(btn){
   const first = next > 0 && !cartCount();
   state.cart[id] = next;
   refreshOrderView(id);
-  if(first) ricoReact();
 }
 /* Hold + or − and the number keeps going, faster the longer it's held. */
 let stepHold = null;
@@ -2935,7 +2941,7 @@ async function maybeFinishQueue(){
         items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
       }))
     };
-    if(!queue.record){try{playOrdersSent();haptic('success');ricoReact();}catch(_){/* Audio must never interrupt saving. */}}
+    if(!queue.record){try{playOrdersSent();haptic('success');}catch(_){/* Audio must never interrupt saving. */}}
     queue.record = record;
     queue.saveState = 'saving';
     persistQueue();   // the same order id after a restart, so it is never saved twice
@@ -3522,7 +3528,8 @@ function openItemModal(id){
   const existing = id ? state.items.find(i=>i.id===id) : null;
   if(id && !existing) return;
   const opened = existing ? structuredClone(existing) : null;   // what the form shows; changes are measured from it
-  const unitOptions = state.units.map(u=>`<option value="${esc(u.id)}" ${existing?.unit===u.id?'selected':''}>${esc(unitName(u))}</option>`).join('');
+  // A new item starts with no unit picked (like its supplier): nothing is chosen for the person.
+  const unitOptions = (existing?.unit ? '' : `<option value="" selected disabled>${esc(t('chooseUnit'))}</option>`) + state.units.map(u=>`<option value="${esc(u.id)}" ${existing?.unit===u.id?'selected':''}>${esc(unitName(u))}</option>`).join('');
   // While adding a fresh item, the last supplier picked stays selected so
   // bulk-adding items for one supplier doesn't need reselecting each time.
   const currentSupplierId = existing ? existing.supplierId : state.itemFormSupplierId;
@@ -3536,10 +3543,10 @@ function openItemModal(id){
     banner,
     bodyHtml: `
       <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
-      <div class="field"><label>${t('unit')}</label><select id="mfUnit">${unitOptions}</select></div>
+      <div class="field"><label>${t('unit')}</label><select id="mfUnit" data-clear="1">${unitOptions}</select></div>
       <div class="field">
         <label>${t('supplier')}</label>
-        <select id="mfSupplier">${supOptions}</select>
+        <select id="mfSupplier" data-clear="1">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
       <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
@@ -3560,6 +3567,7 @@ function openItemModal(id){
       const supplierId = document.getElementById('mfSupplier').value || null;
       const note = document.getElementById('mfNote').value.trim().slice(0, 120), aliases=parseAliases(document.getElementById('mfAliases').value), available=document.getElementById('mfAvailable').checked;
       if(!name) return {error: t('nameRequired')};
+      if(!unit) return {error: t('chooseUnit')};
       if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
       const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
       const editing = existing;
@@ -3646,7 +3654,9 @@ function attachItemEvents(){
 /* A unit has one name, written in whatever language suits it (کیلۆ, box, ...). Units used to have
    English, Kurdish and Arabic names; Record still shows those older changes. */
 function renderUnits(){
-  const chips = state.units.map(u=>`<span class="unit-chip" data-search-row data-unit-id="${esc(u.id)}"><span class="unit-names"><strong dir="auto">${esc(unitName(u))}</strong></span>
+  // Each unit with how many items use it, so it's clear which ones matter before editing or deleting.
+  const uses = id=>state.items.filter(i=>i.unit === id).length;
+  const chips = state.units.map(u=>`<span class="unit-chip" data-search-row data-unit-id="${esc(u.id)}"><span class="unit-names"><strong dir="auto">${esc(unitName(u))}</strong><small>${esc(t('itemCount')(uses(u.id)))}</small></span>
       ${canDo('catalog') ? `<button data-editunit="${esc(u.id)}" aria-label="${esc(t('editUnit'))}">${ICON_EDIT}</button>
       <button class="danger" data-delunit="${esc(u.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}
     </span>`).join('');
