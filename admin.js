@@ -222,7 +222,7 @@ function renderAdminHome(){
     if(views.includes('transfers')) ov.transfers.problems.forEach(p=>issues.push({go:'transfers', id:p.id, text:t('adIssueTransfer')(p.to), sub:p.problem || adWhen(p.at, p.by), action:t('adOpenIt')}));
   }
   const latest = latestVersion();
-  adOldPhones().forEach(d=>issues.push({device:d.id, text:t('adOldPhone')(accountLabel(d.account) || t('unnamedDevice'), deviceParts(d).kind), sub:t('adOldPhoneSub')(d.appVersion, latest), action:t('refreshDevice'), tone:'gray'}));
+  adOldPhones().forEach(d=>issues.push({device:d.id, text:t('adOldPhone')(accountLabel(d.account) || t('unnamedDevice'), deviceParts(d).kind), sub:t('adOldPhoneSub')('\u2066' + d.appVersion + '\u2069', '\u2066' + latest + '\u2069'), action:t('refreshDevice'), tone:'gray'}));
   const health = adminValue('health');
   const readAt = ov?.readAt || health?.checkedAt;
 
@@ -300,7 +300,7 @@ function renderAdminPerson(){
   const phones = state.devices.filter(d=>d.account === a && isLoggedIn(d)).map(d=>{
     const parts = deviceParts(d), isThis = d.id === state.deviceId, old = d.appVersion && versionCmp(d.appVersion, latest) < 0;
     return `<div class="adh-row adh-dev"><span class="adh-ico gray" aria-hidden="true">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : ICON_MOBILE}</span>
-      <span class="adh-main"><b>${esc(parts.kind)}${parts.how ? ` · ${esc(parts.how)}` : ''}${isThis ? ` · ${esc(t('thisDevice'))}` : ''}</b><small>${esc([deviceStatus(d) === 'active' ? t('statusActive') : d.lastSeen ? timeAgo(d.lastSeen) : '', d.appVersion ? (old ? t('versionOld') : d.appVersion) : ''].filter(Boolean).join(' · '))}</small></span>
+      <span class="adh-main"><b>${esc(parts.kind)}${parts.how ? ` · ${esc(parts.how)}` : ''}${isThis ? ` · ${esc(t('thisDevice'))}` : ''}</b><small>${esc([deviceStatus(d) === 'active' ? t('statusActive') : d.lastSeen ? timeAgo(d.lastSeen) : '', d.appVersion ? (old ? t('versionOld') : '\u2066' + d.appVersion + '\u2069') : ''].filter(Boolean).join(' · '))}</small></span>
       ${isThis ? '' : `<button type="button" class="adh-act" data-devrefresh="${esc(d.id)}">${esc(t('refreshDevice'))}</button><button type="button" class="adh-act danger" data-devlogout="${esc(d.id)}">${esc(t('logoutDevice'))}</button>`}</div>`;
   }).join('');
   const roles = adminValue('roles');
@@ -389,7 +389,7 @@ function renderAdminProblems(){
   const kindIcon = k=>k === 'manual' ? ADMIN_ICONS.bubble : ADMIN_ICONS.problems;
   const cards = groups.map(g=>{
     const phones = new Set(g.rows.map(r=>r.deviceId + r.account)).size;
-    const rows = g.rows.map(r=>`<li>${whoBadge(r.account)}<span class="ad-dev">${esc(adminDeviceLine(r.label))}</span>${r.version ? `<span class="dev-ver ${versionCmp(r.version, latest) >= 0 ? 'ok' : 'old'}">${esc(r.version)}</span>` : ''}<b>${esc(t('adTimes')(r.count))}</b></li>`).join('');
+    const rows = g.rows.map(r=>`<li>${whoBadge(r.account)}<span class="ad-dev">${esc(adminDeviceLine(r.label))}</span>${r.version ? `<span class="dev-ver ${versionCmp(r.version, latest) >= 0 ? 'ok' : 'old'}"><bdi dir="ltr">${esc(r.version)}</bdi></span>` : ''}<b>${esc(t('adTimes')(r.count))}</b></li>`).join('');
     const details = [g.source, g.stack].filter(Boolean).join('\n');
     return `<article class="ad-card problem${g.kind === 'manual' ? ' manual' : ''}">
       <div class="ad-card-head">${adminTile(kindIcon(g.kind), g.kind === 'manual' ? 'green' : adminFilter.problems === 'fixed' ? 'gray' : 'red')}<div class="ad-card-title"><b dir="auto">${esc(g.message)}</b>
@@ -518,7 +518,7 @@ function renderAdminHealth(){
   const summary = !h && !adminData.failed.health ? t('checking') : bad ? t('hcBad')(bad) : warn ? t('hcWarn')(warn) : t('hcGood');
   const counts = Number.isFinite(h?.items) ? `<div class="ad-stats"><div><b>${h.items}</b><span>${esc(t('items'))}</span></div><div><b>${Number(h.suppliers) || 0}</b><span>${esc(t('suppliers'))}</span></div><div><b>${Number(h.ordersThisMonth) || 0}</b><span>${esc(t('hcOrdersMonth'))}</span></div></div>` : '';
   return `${adminHeading()}
-    <section class="ad-status ${bad ? 'bad' : warn ? 'warn' : 'good'}">${adminTile(bad || warn ? '!' : ICON_CHECK, bad ? 'red' : warn ? 'gray' : 'green')}
+    <section class="ad-status ${bad ? 'bad' : warn ? 'warn' : 'good'}">${adminTile(bad || warn ? ADMIN_ICONS.problems : ICON_CHECK, bad ? 'red' : warn ? 'gray' : 'green')}
       <div><b>${esc(summary)}</b><span>${esc(h?.checkedAt ? t('checkedAt')(timeAgo(h.checkedAt)) : t('diagnosticsHint'))}</span></div>
       <button type="button" class="btn btn-ghost" data-admin-refresh id="healthCheck" ${busy ? 'disabled' : ''}>${ICON_REFRESH}<span>${esc(t(busy ? 'checking' : 'checkNow'))}</span></button></section>
     ${counts}
@@ -639,7 +639,7 @@ function renderAdminDevices(){
       <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
       ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
       <div class="rec-line"><span class="rec-k">${t('settingsGroup_notif')}</span> <span class="dev-notif ${d.push ? 'on' : 'off'}">${esc(t(d.push ? 'notifOn' : 'notifOff'))}</span></div>
-      <div class="rec-line"><span class="rec-k">${t('versionLabel')}</span> ${d.appVersion ? `${esc(d.appVersion)} <span class="dev-ver ${versionCmp(d.appVersion, latest) >= 0 ? 'ok' : 'old'}">${esc(t(versionCmp(d.appVersion, latest) >= 0 ? 'versionCurrent' : 'versionOld'))}</span>` : esc(t('versionUnknown'))}</div>
+      <div class="rec-line"><span class="rec-k">${t('versionLabel')}</span> ${d.appVersion ? `<bdi dir="ltr">${esc(d.appVersion)}</bdi> <span class="dev-ver ${versionCmp(d.appVersion, latest) >= 0 ? 'ok' : 'old'}">${esc(t(versionCmp(d.appVersion, latest) >= 0 ? 'versionCurrent' : 'versionOld'))}</span>` : esc(t('versionUnknown'))}</div>
       ${commandIsPending(d) ? `<div class="dev-pending">${d.command.type==='logout'?t('cmdLogoutPending'):t('cmdRefreshPending')} · ${timeAgo(d.command.ts)}</div>` : ''}
       ${isThis ? '' : `<div class="dev-actions">
         <button class="btn btn-ghost" data-devrefresh="${esc(d.id)}">${ICON_REFRESH} ${t('refreshDevice')}</button>

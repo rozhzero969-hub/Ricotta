@@ -801,12 +801,8 @@ html.rtl .install-prompt{right:auto;left:22px}
 .rico-head{position:relative;display:flex;align-items:center;gap:12px;padding:12px;padding-inline:12px 10px;border-radius:var(--r-card);margin-bottom:14px}
 .rico-head-text{flex:1;min-width:0}
 .rico-name{display:flex;align-items:center;gap:8px;font-size:1.25rem;font-weight:600;line-height:1.2}
-.rico-online{width:8px;height:8px;border-radius:50%;background:var(--ok)}
-.rico-who{margin-top:3px;color:var(--ink-soft);font-size:.8125rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rico-who{margin-top:3px;color:var(--ink-soft);font-size:.8125rem;font-weight:500;overflow-wrap:anywhere}
 .rico-head-actions{display:flex;gap:2px;flex-shrink:0}
-.rico-auto{position:relative}
-.rico-auto.on{background:var(--accent-strong);color:#fff}
-.rico-auto.on::after{content:'';position:absolute;top:6px;inset-inline-end:6px;width:7px;height:7px;border-radius:50%;background:var(--t-bright);box-shadow:0 0 0 2px var(--accent-strong)}
 
 /* Messages Rico wrote first, tinted with his mood */
 .rico-inbox{display:grid;gap:8px;margin-bottom:16px}
@@ -1004,7 +1000,8 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .supplier-items-grid{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
   .supplier-group{padding:16px}
   .step-btn{width:40px;height:36px}
-  .form-card,.list-row,.section-title{max-width:720px}
+  .form-card,.list-row{max-width:720px}
+  .section-title{max-width:688px}
   /* Rows inside a list card fill the card, and a heading with a button beside it keeps the button at the end. */
   .plain-list>.list-row,.table-list>.list-row,.section-title.grow{max-width:none}
   .modal-box{max-width:480px;padding:28px 26px 24px}
@@ -1207,7 +1204,7 @@ html.rtl .report-sheet .report-bar i::after{transform-origin:right}
 @keyframes voicePulse{0%,100%{box-shadow:0 0 0 0 rgba(var(--accent-rgb),.5)}50%{box-shadow:0 0 0 10px rgba(var(--accent-rgb),0)}}
 
 /* ---------- History: send again, undo ---------- */
-.hist-again,.hist-undo{min-height:36px;padding:0 14px;font-size:.9375rem;border-radius:999px;background:var(--fill)}
+.hist-again,.hist-undo{min-height:36px;padding:0 14px;font-size:.9375rem;border-radius:12px;background:var(--fill)}
 .hist-again svg{width:14px;height:14px}
 .hist-undo{color:var(--clay-ink)}
 
@@ -1414,7 +1411,6 @@ html.dark .ad-tile.green{background:#1F7A4D}
   
   
   
-  .admin-page{max-width:980px}
 }
 @media (hover:hover) and (pointer:fine){.ad-tile-card:hover{box-shadow:0 6px 22px rgba(0,0,0,.08)}.ad-tile-card.alert:hover{box-shadow:inset 0 0 0 1.5px rgba(255,59,48,.55),0 6px 22px rgba(0,0,0,.08)}}
 /* The pages */
@@ -1450,7 +1446,7 @@ html.dark .ad-tile.green{background:#1F7A4D}
 .ad-status{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;margin-bottom:12px;border-radius:var(--r-card);background:var(--surface)}
 .ad-status>div{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;gap:2px}
 .ad-status b{font-size:1rem;font-weight:600}
-.ad-status span{font-size:.8125rem;color:var(--ink-soft);line-height:1.4}
+.ad-status>div>span{font-size:.8125rem;color:var(--ink-soft);line-height:1.4}
 .ad-status.bad{box-shadow:inset 0 0 0 1.5px rgba(255,59,48,.45)}
 .ad-status .btn{min-height:40px;padding:0 16px}
 .ad-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
@@ -2004,7 +2000,9 @@ html.dark .rr-line-warn{color:#FDBA74}
 :where(html[dir=rtl]) :where([dir=auto]){text-align:right}
 
 /* History: Orders | Receipts, two separate groups. */
-.hist-switch{display:flex;width:max-content;max-width:100%;margin:0 0 16px}
+.hist-switch{display:flex;width:max-content;max-width:100%;margin:0 0 16px;overflow-x:auto;scrollbar-width:none}
+.hist-switch::-webkit-scrollbar{display:none}
+.hist-switch>*{flex:0 0 auto}
 .rr-hist .hist-date{display:flex;align-items:center;gap:10px}
 
 .rr-hist-total{font-weight:700;font-variant-numeric:tabular-nums}
@@ -2360,7 +2358,6 @@ html.simple-view .rico-who,html.simple-view .rico-side-foot,html.simple-view .no
 .rico-head-btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--ink);font:500 .875rem var(--font);cursor:pointer}
 .rico-head-btn svg{width:17px;height:17px;color:var(--tint)}
 .rico-head-btn:disabled{opacity:.45}
-.rico-online{display:none}
 .rico-side{display:none}
 .rico-side-foot{display:flex;flex-direction:column;border-top:.5px solid var(--line);margin-top:8px;padding-top:6px}
 .rico-side-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;padding:0 6px;border:0;background:none;color:var(--ink);font:400 .9375rem var(--font);text-align:start;cursor:pointer}
@@ -2446,3 +2443,9 @@ html.rtl .rico-side-row input[type=checkbox]:checked::after{transform:translateX
 .stk-d-row span{color:var(--ink-soft);font-size:.875rem}.stk-d-row b{font-weight:500;text-align:end}
 .stk-sort{flex:none}
 @media (max-width:599px){.stk-tools>.list-search{flex:1 1 100%}.stk-exports{width:100%}.stk-exports .btn{flex:1}.stk-row{flex-wrap:wrap}.stk-more{order:3}}
+
+/* Right to left: the ricotta mark stays clear of the sidebar's hide button. */
+html.rtl .nav-brand,[dir=rtl] .nav-brand{justify-content:flex-end}
+/* Record filters scroll sideways on a narrow phone instead of running off the edge. */
+.record-filters{overflow-x:auto;scrollbar-width:none;max-width:100%}
+.record-filters::-webkit-scrollbar{display:none}
