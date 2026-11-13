@@ -905,6 +905,7 @@ function peekHtml(view){
   finally{ state.view = was.view; state.catalogQuery = was.query; }
 }
 function render(){
+  document.getElementById('stkTip')?.remove();
   applyLangClasses();
   applyPrefs();
   syncAppearance();
@@ -3161,7 +3162,7 @@ function renderRecord(){
     {id:'supplier', label:t('suppliers')},
     {id:'item', label:t('items')},
     {id:'unit', label:t('units')},
-    ...(state.views.includes('receipts') || state.views.includes('transfers') ? [{id:'rico', label:'Rico'}] : [])
+    ...(state.views.includes('receipts') || state.views.includes('transfers') ? [{id:'rico', label:t('ricoName')}] : [])
   ];
   const filterHtml = `<div class="record-filters glass" role="group">${filters.map(f=>`
     <button class="tab-pill ${state.recordFilter===f.id?'active':''}" aria-pressed="${state.recordFilter===f.id}" data-recfilter="${f.id}">${f.label}</button>`).join('')}</div>`;

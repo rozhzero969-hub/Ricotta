@@ -11,8 +11,41 @@ const tfFind = id=> tf.data?.transfers.find(r=>r.id === id) || null;
 const tfItem = name=> (tf.data?.catalog?.titems || []).find(i=>i.name === name) || null;
 const tfQty = q=> rrNum(q, 3);
 /* "Available: 9 سیت in Main Storage", the amount in bold in a small box (red when there isn't enough). */
-function tfAvailHtml(item, zone, short, unit){
-  const have = TF().available(item, zone), o = TF().unitOptions(item).find(u=>u.name === unit);
+/* How much of an item is really left to move from a storage, in its base unit: the stock Rico last read,
+   less what other transfers from there are already taking (sent and waiting for Rico, being moved, or
+   moved after the stock was read, and ones waiting to send on this device). The form being written is
+   left out: its own lines are counted where they are typed. */
+const TF_TAKING = ['queued', 'filling', 'review', 'approved', 'moving'];
+function tfTakenElsewhere(item, zone, formId){
+  const readAt = (v=>typeof v === 'number' ? v : Date.parse(v || 0) || 0)(tf.data?.catalog?.at);
+  let sum = 0;
+  for(const x of tf.data?.transfers || []){
+    if(x.id === formId || x.from !== zone || tfIsPractice(x)) continue;
+    const taking = TF_TAKING.includes(x.status) || (x.status === 'draft' && x.pendingSend) || (x.status === 'moved' && Date.parse(x.movedAt || 0) > readAt);
+    if(!taking) continue;
+    for(const l of x.lines || []){
+      if(l.item !== item.name || !(l.qty > 0)) continue;
+      const o = TF().unitOptions(item).find(u=>u.name === l.unit);
+      if(o) sum += l.qty * o.factor;
+    }
+  }
+  return sum;
+}
+function tfLeft(item, zone, formId){ return Math.max(0, TF().available(item, zone) - tfTakenElsewhere(item, zone, formId)); }
+/* What a line shows as available: what is left, less the same item on the lines above it in this form
+   (10 kg carrots, 3 kg on item 1: item 2 shows 7 kg). */
+function tfLeftForLine(item, r, i){
+  let before = 0;
+  r.lines.slice(0, i).forEach(l=>{ if(l.item !== item.name || !(l.qty > 0)) return; const o = TF().unitOptions(item).find(u=>u.name === l.unit); if(o) before += l.qty * o.factor; });
+  return Math.max(0, tfLeft(item, r.from, r.id) - before);
+}
+/* The catalog as the Send check should see it: From's stock less what other transfers are taking. */
+function tfCatalogLeft(r){
+  const cat = tf.data.catalog;
+  return {...cat, titems:(cat.titems || []).map(i=>i.stock && r.from in i.stock ? {...i, stock:{...i.stock, [r.from]:tfLeft(i, r.from, r.id)}} : i)};
+}
+function tfAvailHtml(item, zone, short, unit, left){
+  const have = left ?? TF().available(item, zone), o = TF().unitOptions(item).find(u=>u.name === unit);
   const c = o ? {qty:Math.floor((have / o.factor) * 1000 + 1e-6) / 1000, unit:o.name} : TF().inCounting(item, have, true);
   return `<span class="tf-have${short ? ' short' : ''}">${esc(short ? t('tfOnlyHave') : t('tfAvailLabel'))} <b dir="ltr">${esc(tfQty(c.qty))} <bdi>${esc(c.unit)}</bdi></b> ${esc(t('tfInZone')(zone))}</span>`;
 }
@@ -161,13 +194,13 @@ function renderTransferEdit(){
     // in Ricotta Restaurant) is cleared to be picked again, never swapped: swapping would keep the amount
     // in another unit (2 cartons becoming 2 kilos).
     if(item && units.length && l.unit && !units.some(u=>u.name === l.unit)){ l.unit = ''; tfSaveSoon(r); }
-    const have = item ? TF().available(item, r.from) : 0, short = item && need.get(l.item) > have + 1e-9;
+    const have = item ? tfLeft(item, r.from, r.id) : 0, short = item && need.get(l.item) > have + 1e-9;
     return `<div class="rr-line tf-line${short ? ' warn' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="tfItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('tfItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
       <div class="rr-field"><label for="tfQty${i}">${esc(t('tfAmount'))}</label><input id="tfQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${esc(rrBoxText(l, 'qty', true))}" placeholder="${esc(t('tfAmountHint'))}"></div>
       <div class="rr-field rr-f-unit"><label for="tfUnit${i}">${esc(t('rrUnit'))}</label><select id="tfUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${units.length ? (l.unit ? '' : `<option value="" selected hidden>${esc(t('rrErrUnit'))}</option>`) + units.map(u=>opt(u.name, u.name + (u.unclear ? ' (?)' : ''), u.name === l.unit)).join('') : opt('', t('rrUnit'), true)}</select></div>
       <button type="button" class="rr-del" data-l-del="${i}" tabindex="-1" aria-label="${esc(t('rrRemoveItem')(i + 1))}">${ICON_DELETE}</button>
-      ${item ? `<p class="tf-avail${short ? ' short' : ''}">${tfAvailHtml(item, r.from, short, l.unit)}${tfUsualNote(item, r)}</p>` : ''}
+      ${item ? `<p class="tf-avail${short ? ' short' : ''}">${tfAvailHtml(item, r.from, short, l.unit, tfLeftForLine(item, r, i))}${tfUsualNote(item, r)}</p>` : ''}
     </div>`;
   }).join('');
   return `<div class="rr-page rr-edit tf-edit">${rrRicoBar(tf.data.helper, tf.copyAt)}
@@ -288,17 +321,17 @@ function attachTransferEdit(){
     rrLineKeys(e, {add:()=>addLine(), yesterday:()=>document.getElementById('tfYest')?.click(),
       dup:i=>{ const l = r.lines[i]; if(!l) return; r.lines.splice(i + 1, 0, {item:l.item, unit:l.unit, qty:null}); changed(true); go('tfQty' + (i + 1)); }});
   };
-  if(tf.fresh){ tf.fresh = false; if(!matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>go(r.from ? 'tfTo' : 'tfFrom')); }
+  if(tf.fresh){ tf.fresh = false; scrollBox().scrollTo({top:0}); if(!matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>go(r.from ? 'tfTo' : 'tfFrom')); }
 }
 /* While an amount is typed, only the "available" lines change (the box keeps its focus). */
 function tfPaintStock(r){
   const need = tfNeedByItem(r);
   r.lines.forEach((l, i)=>{
     const p = document.querySelector(`[data-line="${i}"] .tf-avail`), item = tfItem(l.item); if(!p || !item) return;
-    const have = TF().available(item, r.from), short = need.get(l.item) > have + 1e-9, c = TF().inCounting(item, have, true);
+    const have = tfLeft(item, r.from, r.id), short = need.get(l.item) > have + 1e-9;
     p.classList.toggle('short', short); p.closest('.tf-line')?.classList.toggle('warn', short);
     const first = r.lines.findIndex(x=>x.item === l.item), again = first > -1 && first < i ? ' · ' + t('rrWarnDuplicate')(first + 1) : '';
-    p.innerHTML = tfAvailHtml(item, r.from, short, l.unit) + (again ? `<span class="tf-usual">${esc(again)}</span>` : '') + tfUsualNote(item, r);
+    p.innerHTML = tfAvailHtml(item, r.from, short, l.unit, tfLeftForLine(item, r, i)) + (again ? `<span class="tf-usual">${esc(again)}</span>` : '') + tfUsualNote(item, r);
   });
 }
 const TF_ERR = {from:'tfErrFrom', fromUnknown:'tfErrFrom', to:'tfErrTo', toUnknown:'tfErrTo', sameZone:'tfErrSame', noLines:'rrErrNoLines', tooManyLines:'rrErrNoLines',
@@ -357,7 +390,8 @@ async function tfSendNow(r, keepForm){
   r.lines = r.lines.filter(l=>l.item || l.qty);
   // Empty rows taken out: the screen is redrawn now, so each row on it is the line it edits and line numbers match.
   if(r.lines.length !== before && r.lines.length) render();
-  const c = TF().check({from:r.from, to:r.to, yesterday:r.yesterday, lines:r.lines}, tf.data.catalog, tf.data.usual);
+  // Checked against what is really left: other transfers already taking from the same storage count.
+  const c = TF().check({from:r.from, to:r.to, yesterday:r.yesterday, lines:r.lines}, tfCatalogLeft(r), tf.data.usual);
   if(c.errors.length){
     if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null});
     // Sent from the list (Waiting to send, Send all): it opens on the form, so the boxes marked are its own.
