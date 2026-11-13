@@ -57,7 +57,7 @@ function fixture() {
   assert.equal(consent.saved.has('aiConsent2:yunis'),false);
 
   const stream=fixture(), done=deferred(); let event;
-  vm.runInContext(part('async function ricoAsk(', '/* Rico\'s face in the header'),stream.c);
+  vm.runInContext(part('async function ricoAsk(', '/* Repaints one message in place'),stream.c);
   stream.c.apiStream=(_path,_body,onEvent)=>{event=onEvent; return done.promise;};
   const replying=stream.c.ricoAsk('Hello'); await turn();
   stream.c.ricoNewChat(); stream.c.rico.streaming=true;
