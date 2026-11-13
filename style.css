@@ -152,7 +152,7 @@ body.page-swiping *{transition:none!important}
 .rico-top .rico-bot{--size:36px}
 .rico-top:active{transform:scale(.92);transition-duration:.06s}
 
-.rico-badge{position:absolute;bottom:5px;inset-inline-end:3px;width:10px;height:10px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px var(--bg)}
+.rico-badge{position:absolute;top:3px;left:3px;width:10px;height:10px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px var(--bg)}
 
 /* ---------- Refresh: the arrows turn while it works ---------- */
 .refreshing svg{animation:refreshTurn .75s var(--ease-out) infinite}
