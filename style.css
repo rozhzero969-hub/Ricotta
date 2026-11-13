@@ -2131,7 +2131,10 @@ html.dark .rr-line-warn{color:#FDBA74}
 .tf-yest.on i{background:#F59E0B}
 .tf-yest.on i::after{transform:translateX(18px)}
 html[dir=rtl] .tf-yest.on i::after{transform:translateX(-18px)}
-html.dark .tf-yest.on b{color:#FBBF24}
+/* Dark: a calm card, the same as the others; only a soft edge and the switch say it is on. */
+html.dark .tf-yest.on{background:var(--surface);border-color:rgba(255,184,77,.32)}
+html.dark .tf-yest.on b{color:var(--ink)}
+html.dark .tf-yest.on i{background:#C98A2E}
 .tf-day{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .tf-export{display:flex;gap:6px;text-transform:none;letter-spacing:0}
 .tf-export button{height:30px;padding:0 12px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;font-size:.8125rem;font-weight:600}
@@ -2197,7 +2200,9 @@ html.dark .rr-offline{background:rgba(251,146,60,.14);color:#FED7AA}
 .rr-row-send{flex:none;height:36px;padding:0 14px;border:0;border-radius:10px;background:var(--tint);color:#fff;font:inherit;font-size:.875rem;font-weight:600}
 .rr-send-all{height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600;text-transform:none;letter-spacing:0}
 .rr-keep{height:48px;padding:0 16px;border:0;border-radius:12px;background:var(--fill);color:var(--ink);font:inherit;font-size:.9375rem;font-weight:600;white-space:nowrap}
-@media (max-width:560px){.rr-sum-acts{grid-template-columns:auto auto minmax(0,1fr)!important}.rr-keep{padding:0 12px}}
+/* Phones: Cancel and Keep as draft side by side, then the Send button across the whole width, so its
+   name (Receive & send to finance) is never cut off. */
+@media (max-width:560px){.rr-sum-acts{grid-template-columns:1fr 1fr!important}.rr-sum-acts>.btn-primary{grid-column:1/-1;order:2}.rr-keep{padding:0 12px}}
 /* History > By day: each day with its totals, then its receipts and transfers. */
 .day-list{display:flex;flex-direction:column;gap:14px;margin-top:12px}
 .day-card{background:var(--surface);border-radius:var(--r-card);padding:14px 16px}
@@ -2332,7 +2337,6 @@ html.rtl .cf-list li{padding:9px 16px 9px 0}
 .toast{border-radius:16px}
 .send-btn{border-radius:16px;border:0;background:var(--accent-strong);box-shadow:0 8px 24px -10px rgba(var(--deepd-rgb),.45)}
 .supplier-item-count,.queue-count{background:none;padding:0 2px;min-width:0;color:var(--ink-faint);font-weight:500}
-.hero-footer:has(.draft-state:empty){display:none}
 .wipe-banner{background:var(--fill);font-size:.875rem;color:var(--ink-soft)}
 .wipe-banner svg{color:var(--ink-soft)}
 .streak-chip.lit .flame{animation:none}
@@ -2417,3 +2421,7 @@ button.adh-card{cursor:pointer}
 @media (hover:hover){.adh-today-cell:hover,button.adh-row:hover,.adh-tool:hover,button.adh-card:hover{background-color:var(--surface-2)}}
 .adh-today-cell:active,button.adh-row:active,.adh-tool:active,button.adh-card:active{transform:scale(.985);transition:transform .12s ease}
 @media (max-width:520px){.adh-dev{flex-wrap:wrap}.adh-dev .adh-main{flex:1 1 calc(100% - 44px)}.adh-dev .adh-act{flex:1}}
+
+/* "Fix these first": the boxes it names are outlined in red until they are typed in. */
+.rr-field .sel-btn.bad,.rr-field select.bad{box-shadow:inset 0 0 0 1.5px var(--red)}
+.rr-input.bad:focus{outline-color:var(--red)}

@@ -1084,6 +1084,9 @@ Deno.serve(async (req) => {
       const { error } = await app("ai_switches").upsert({ provider: m[1], enabled: b.enabled, updated_at: nowIso() });
       return error ? fail("save_failed", 500) : ok();
     }
+    // Rico's rules: only someone Rico is on for. Each person deletes only their own (Rozh any), and a
+    // rule reaches only its writer's Rico and, for Rozh's rules, everyone's (see assistant.ts).
+    if (path.startsWith("rico-rules") && !can(s, "assistant")) return fail("forbidden", 403);
     if (path === "rico-rules" && M === "GET") {
       const { data, error } = await app("rico_rules").select("id,account,rule,created_at").order("created_at");
       return error ? fail("load_failed", 500) : json(data ?? []);
@@ -1098,7 +1101,9 @@ Deno.serve(async (req) => {
       return error ? fail("save_failed", 500) : ok();
     }
     if ((m = path.match(/^rico-rules\/([0-9a-f-]{36})$/)) && M === "DELETE") {
-      const { error } = await app("rico_rules").delete().eq("id", m[1]);
+      let q = app("rico_rules").delete().eq("id", m[1]);
+      if (!isRozha(s)) q = q.eq("account", s.account);
+      const { error } = await q;
       return error ? fail("delete_failed", 500) : ok();
     }
     if (path === "admin/backups" && M === "GET") {
@@ -1110,9 +1115,15 @@ Deno.serve(async (req) => {
       if (!isRozha(s)) return fail("forbidden", 403);
       const day = String(b.day ?? "");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return fail("invalid_input");
-      const { data: good, error: pinError } = await db.rpc("app_internal_check_account_pin", { p_account: "rozha", p_pin: String(b.pin ?? "") });
+      // Her PIN is asked here, so a wrong one counts as a failed sign-in (the same limits as deleting an
+      // order): a phone left signed in can't be used to guess it.
+      if (!/^\d{6}$/.test(String(b.pin ?? ""))) return fail("wrong_pin", 403);
+      const attempt = await reserveLogin(await loginFingerprints(req));
+      if (!attempt) return fail("too_many_attempts", 429);
+      const { data: good, error: pinError } = await db.rpc("app_internal_check_account_pin", { p_account: "rozha", p_pin: String(b.pin) });
       if (pinError) throw new Error("credential_check_unavailable");
       if (good !== true) return fail("wrong_pin", 403);
+      await completeAttempt(attempt);
       const { data, error } = await db.rpc("app_internal_restore_backup", { p_day: day, p_actor: s.account, p_device: s.deviceId });
       if (error) return fail("save_failed", 500);
       return json(data, data?.error ? 404 : 200);

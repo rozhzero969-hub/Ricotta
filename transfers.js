@@ -93,7 +93,7 @@ function tfBelow(){
   const moved = done.filter(r=>r.status === 'moved');
   return `<div class="rr-below">${rrWaitingHtml(waiting, tfRow, 'tf')}${tfFilterBar(list)}
     ${needs.length ? `<div class="section-title">${esc(t('rrNeedsYou'))}</div><div class="rr-list rr-needs">${needs.map(tfRow).join('')}</div>` : ''}
-    ${drafts.length ? `<div class="section-title">${esc(t('rrDrafts'))}</div><div class="rr-list">${drafts.map(tfRow).join('')}</div>` : ''}
+    ${drafts.length ? `<div class="section-title rr-today-title"><span>${esc(t('rrDrafts'))}</span>${drafts.length > 1 && !rrOffline() ? `<button type="button" class="rr-send-all" data-tf-senddrafts>${esc(t('tfSendAllDrafts')(drafts.length))}</button>` : ''}</div><div class="rr-list">${drafts.map(tfRow).join('')}</div>` : ''}
     <div class="section-title rr-today-title"><span>${esc(t('rrToday'))}</span>${moved.length ? `<small>${esc(t('tfMovedToday')(moved.length))} · ${esc(t('tfItemsMoved')(moved.reduce((n, r)=>n + r.lines.length, 0)))}</small>` : ''}</div>
     ${done.length ? `<div class="rr-list">${done.map(tfRow).join('')}</div>` : `<p class="rr-none">${esc(t('tfNoneToday'))}</p>`}
     <button type="button" class="rr-to-history" data-to-history="transfers">${esc(t('rrSeeHistory'))}</button>
@@ -113,6 +113,7 @@ function attachTfFilters(){
 function attachTransfersEvents(){
   if(tf.page === 'view') return attachTransferView();
   document.querySelectorAll('[data-tf-open]').forEach(b=>b.onclick = ()=>tfOpen(b.dataset.tfOpen));
+  document.querySelector('[data-tf-senddrafts]')?.addEventListener('click', e=>withBusy(e.currentTarget, tfSendAllDrafts));
   attachTfFilters();
   attachRicoBar();
   if(tf.page === 'edit' && tfFind(tf.id)) attachTransferEdit();
@@ -156,14 +157,15 @@ function renderTransferEdit(){
   const ready = r.from && r.to;
   const lines = r.lines.map((l, i)=>{
     const item = tfItem(l.item), units = item ? TF().unitOptions(item) : [];
-    // An item with no unit, or a unit it no longer has (changed in Ricotta Restaurant), gets its
-    // counting unit at once: a line never shows without a unit.
-    if(item && units.length && !units.some(u=>u.name === l.unit)){ l.unit = units[0].name; tfSaveSoon(r); }
+    // Picking an item gives its counting unit (see the item box below). A unit it no longer has (changed
+    // in Ricotta Restaurant) is cleared to be picked again, never swapped: swapping would keep the amount
+    // in another unit (2 cartons becoming 2 kilos).
+    if(item && units.length && l.unit && !units.some(u=>u.name === l.unit)){ l.unit = ''; tfSaveSoon(r); }
     const have = item ? TF().available(item, r.from) : 0, short = item && need.get(l.item) > have + 1e-9;
     return `<div class="rr-line tf-line${short ? ' warn' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="tfItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('tfItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
       <div class="rr-field"><label for="tfQty${i}">${esc(t('tfAmount'))}</label><input id="tfQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${esc(rrBoxText(l, 'qty', true))}" placeholder="${esc(t('tfAmountHint'))}"></div>
-      <div class="rr-field rr-f-unit"><label for="tfUnit${i}">${esc(t('rrUnit'))}</label><select id="tfUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${units.length ? units.map(u=>opt(u.name, u.name + (u.unclear ? ' (?)' : ''), u.name === l.unit)).join('') : opt('', t('rrUnit'), true)}</select></div>
+      <div class="rr-field rr-f-unit"><label for="tfUnit${i}">${esc(t('rrUnit'))}</label><select id="tfUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${units.length ? (l.unit ? '' : `<option value="" selected hidden>${esc(t('rrErrUnit'))}</option>`) + units.map(u=>opt(u.name, u.name + (u.unclear ? ' (?)' : ''), u.name === l.unit)).join('') : opt('', t('rrUnit'), true)}</select></div>
       <button type="button" class="rr-del" data-l-del="${i}" tabindex="-1" aria-label="${esc(t('rrRemoveItem')(i + 1))}">${ICON_DELETE}</button>
       ${item ? `<p class="tf-avail${short ? ' short' : ''}">${tfAvailHtml(item, r.from, short, l.unit)}${tfUsualNote(item, r)}</p>` : ''}
     </div>`;
@@ -300,10 +302,11 @@ function tfPaintStock(r){
   });
 }
 const TF_ERR = {from:'tfErrFrom', fromUnknown:'tfErrFrom', to:'tfErrTo', toUnknown:'tfErrTo', sameZone:'tfErrSame', noLines:'rrErrNoLines', tooManyLines:'rrErrNoLines',
-  itemUnknown:'tfErrItem', unitUnknown:'rrErrUnit', unitUnclear:'tfErrUnitUnclear', qty:'tfErrQty'};
-function tfErrText(e){
-  if(e.code === 'notEnough') return t('rrLineN')(e.line) + ': ' + t('tfErrNotEnough')(tfQty(e.need.qty) + ' ' + e.need.unit, tfQty(e.have.qty) + ' ' + e.have.unit);
-  const s = t(TF_ERR[e.code] || 'tfErrItem'); return e.line ? t('rrLineN')(e.line) + ': ' + s : s;
+  itemUnknown:'tfErrItem', unitUnknown:'rrErrUnit', unitUnclear:'tfErrUnitUnclear', qty:'tfErrQty', qtyTooBig:'rrErrQtyBig'};
+function tfErrText(e, lines){
+  const head = e.line ? t('rrLineN')(e.line) + (lines?.[e.line - 1]?.item ? ' · ' + lines[e.line - 1].item : '') + ': ' : '';
+  if(e.code === 'notEnough') return head + t('tfErrNotEnough')(tfQty(e.need.qty) + ' ' + e.need.unit, tfQty(e.have.qty) + ' ' + e.have.unit);
+  return head + t(TF_ERR[e.code] || 'tfErrItem');
 }
 /* "Item 3 · Lettuce": the line number with the item's short name, so a question says what it is about. */
 function tfLineLabel(w, r){
@@ -323,6 +326,26 @@ function tfWarnText(w, r){
   if(w.code === 'yesterday') return t('tfYesterdayOn')(tfDayLabel(tfYesterday()));
   return '';
 }
+/* Send all drafts: every draft in the list goes to Rico one after another, the one written first going
+   first. Each is opened on the form and gets exactly the checks a single Send gives (Fix these first,
+   anything unusual, the day it counts on); if one needs fixing or is not confirmed, it stays open there
+   and the rest wait. Receipts never do this: each receipt is filled and approved on its own. */
+async function tfSendAllDrafts(){
+  const drafts = tf.data.transfers.filter(r=>r.status === 'draft' && !r.pendingSend && r.id !== tf.id && !tfIsEmpty(r) && !tfIsPractice(r))
+    .sort((a, b)=>Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0));
+  if(drafts.length < 2) return;
+  const list = `<ol class="cf-list">${drafts.map(r=>`<li dir="auto">${esc(tfRoute(r))} · ${esc(t('rrItemCount')(r.lines.filter(l=>l.item).length))}</li>`).join('')}</ol>`;
+  if(!await showConfirm(`<p>${esc(t('tfSendAllAsk'))}</p>${list}`, {title:t('tfSendAllDrafts')(drafts.length), okLabel:t('tfSendAllGo'), okClass:'btn-primary', enter:true, wide:true})) return;
+  let sent = 0;
+  for(const r of drafts){
+    if(!tfFind(r.id) || r.status !== 'draft') continue;
+    tfOpen(r.id);
+    if(await tfSend(r, true) !== true){ toast(t('tfSendAllStopped')(sent, drafts.length), 'warn'); return; }
+    sent++;
+  }
+  toast(t('tfSendAllDone')(sent));
+  tfNewDraft();
+}
 /* One Send at a time, from the first press (see rrSend). */
 async function tfSend(r, keepForm = false){
   if(tf.sending || tf.asking) return false;
@@ -337,9 +360,11 @@ async function tfSendNow(r, keepForm){
   const c = TF().check({from:r.from, to:r.to, yesterday:r.yesterday, lines:r.lines}, tf.data.catalog, tf.data.usual);
   if(c.errors.length){
     if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null});
-    render();
-    await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li>${esc(tfErrText(e))}</li>`).join('')}</ul>`, {title:t('rrFixFirst')});
-    return;
+    // Sent from the list (Waiting to send, Send all): it opens on the form, so the boxes marked are its own.
+    if(tf.id !== r.id || tf.page !== 'edit') tfOpen(r.id); else render();
+    await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li dir="auto">${esc(tfErrText(e, r.lines))}</li>`).join('')}</ul>`, {title:t('rrFixFirst')});
+    rrMarkErrors(c.errors, true);
+    return false;
   }
   // Written on an earlier day (with no connection, or a draft kept overnight): which day it counts on is
   // asked, because Ricotta Restaurant can record only today or yesterday.
@@ -366,7 +391,7 @@ async function tfSendNow(r, keepForm){
     if(!await tfSaveDraft(r)){ if(tf.netDown) return parkIt(); toast(t('saveFailed'), 'error'); return false; }
     const res = await tfPost(r, c.warnings.map(w=>w.code));
     if(!res) return false;
-    if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(tfErrText).join(' · ') : t('saveFailed'), 'error'); return false; }
+    if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(e=>tfErrText(e, r.lines)).join(' · ') : t('saveFailed'), 'error'); return false; }
     Object.assign(r, res.data); delete r.pendingSend; delete r.dirty; tfKeep();
     tf.lastFrom = r.from;
     toast(t('rrSent'));
@@ -481,7 +506,7 @@ async function tfRetry(r){
   if(!await showConfirm(msg, {title:t('rrRetry'), okLabel:t('rrRetry'), okClass:'btn-primary', wide:true, enter:!(r.pressedAt || r.approvedAt)})) return;
   const res = await tfPost(r, c.warnings.map(w=>w.code));
   if(!res) return;
-  if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(tfErrText).join(' · ') : t('saveFailed'), 'error'); tfLoad(true); return; }
+  if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(e=>tfErrText(e, r.lines)).join(' · ') : t('saveFailed'), 'error'); tfLoad(true); return; }
   Object.assign(r, res.data); toast(t('rrSent')); render();
 }
 

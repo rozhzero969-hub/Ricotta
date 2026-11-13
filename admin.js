@@ -402,7 +402,7 @@ function renderAdminProblems(){
   }).join('');
   const empty = adminValue('problems') ? `<div class="ad-empty">${adminTile(ICON_CHECK, 'green')}<b>${esc(t(adminFilter.problems === 'fixed' ? 'adNoFixed' : 'adNoProblems'))}</b><p>${esc(t('adProblemsHint'))}</p></div>` : (adminData.failed.problems ? `<div class="ad-empty"><p>${esc(t('loadFailed'))}</p></div>` : loadingLines());
   return `${adminHeading()}
-    <div class="ad-toolbar"><div class="pill-seg" role="tablist" aria-label="${esc(t('adminPage_problems'))}">${[['open', t('adOpenIt')(new Set(open.map(p=>p.fingerprint)).size)], ['fixed', t('adFixed')]].map(([v, l])=>`<button type="button" role="tab" class="pill-seg-btn" data-problem-filter="${v}" aria-selected="${adminFilter.problems === v}">${esc(l)}</button>`).join('')}</div></div>
+    <div class="ad-toolbar"><div class="pill-seg" role="tablist" aria-label="${esc(t('adminPage_problems'))}">${[['open', t('adOpenN')(new Set(open.map(p=>p.fingerprint)).size)], ['fixed', t('adFixed')]].map(([v, l])=>`<button type="button" role="tab" class="pill-seg-btn" data-problem-filter="${v}" aria-selected="${adminFilter.problems === v}">${esc(l)}</button>`).join('')}</div></div>
     ${cards || empty}
     ${fixed.length && adminFilter.problems === 'fixed' ? `<button type="button" class="btn btn-ghost ad-wide" id="problemsClear">${esc(t('adRemoveFixed'))}</button>` : ''}
     <p class="ad-foot">${esc(t('adProblemsFoot'))}</p>`;

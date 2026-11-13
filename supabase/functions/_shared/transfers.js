@@ -49,7 +49,9 @@
   function check(t, cat, usual) {
     const errors = [], warnings = [];
     const zones = zonesOf(cat);
-    const items = new Map(((cat && cat.titems) || []).map((i) => [i.name, i]));
+    // Two items with one name: the first one, as the form picks it (a Map keeps the last).
+    const items = new Map();
+    for (const i of (cat && cat.titems) || []) if (!items.has(i.name)) items.set(i.name, i);
     if (!t.from) errors.push({ code: 'from' });
     else if (!zones.includes(t.from)) errors.push({ code: 'fromUnknown' });
     if (!t.to) errors.push({ code: 'to' });
@@ -66,7 +68,7 @@
       const opt = unitOptions(item).find((o) => o.name === l.unit);
       if (!opt) { errors.push({ code: 'unitUnknown', line: n }); return; }
       if (opt.unclear) errors.push({ code: 'unitUnclear', line: n, unit: opt.name });
-      if (!qtyOk(l.qty)) { errors.push({ code: 'qty', line: n }); return; }
+      if (!qtyOk(l.qty)) { errors.push({ code: typeof l.qty === 'number' && l.qty > 99999 ? 'qtyTooBig' : 'qty', line: n }); return; }
       const base = round3(l.qty * opt.factor);
       totalByItem.set(l.item, (totalByItem.get(l.item) || 0) + l.qty * opt.factor);
       // The same item on two lines is normal (someone came back for more): no warning, the

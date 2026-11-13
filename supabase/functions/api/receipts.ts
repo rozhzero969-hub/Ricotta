@@ -327,10 +327,21 @@ export async function receiptsRoute(ctx: Ctx, M: string, path: string, b: any): 
     if (M === "PUT" && !action) {
       if (r && (r.status !== "draft" || r.created_by !== ctx.account)) return fail("not_a_draft", 409);
       const row = { id, created_by: ctx.account, ...cleanDraft(b), updated_at: now() };
-      const q = r ? rr(db, "receipts").update({ ...row, version: r.version + 1 }).eq("id", id).eq("version", r.version) : rr(db, "receipts").insert({ ...row, status: "draft" });
-      const { data: saved, error: e2 } = await q.select("*").maybeSingle();
-      if (e2 || !saved) return fail(e2 ? "save_failed" : "changed_elsewhere", e2 ? 503 : 409);
-      return json(view(saved));
+      // A draft is only ever saved by the person who made it, so the newest save wins. Two saves arriving
+      // together (a new draft created twice, or one landing between our read and write) are retried once
+      // on the row as it is now, instead of failing with "Save failed".
+      let cur = r;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (cur && (cur.status !== "draft" || cur.created_by !== ctx.account)) return fail("not_a_draft", 409);
+        const q = cur ? rr(db, "receipts").update({ ...row, version: cur.version + 1 }).eq("id", id).eq("version", cur.version) : rr(db, "receipts").insert({ ...row, status: "draft" });
+        const { data: saved, error: e2 } = await q.select("*").maybeSingle();
+        if (saved) return json(view(saved));
+        if (e2 && e2.code !== "23505") return fail("save_failed", 503);
+        const again = await rr(db, "receipts").select("*").eq("id", id).maybeSingle();
+        if (again.error) return fail("save_failed", 503);
+        cur = again.data;
+      }
+      return fail("changed_elsewhere", 409);
     }
     if (!r) return fail("not_found", 404);
     if (M === "DELETE" && !action) {

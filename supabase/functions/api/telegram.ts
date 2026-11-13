@@ -48,6 +48,18 @@ async function stateOf(d: any, chat: number) {
   const { data } = await db(d, "state").select("data").eq("chat_id", chat).maybeSingle();
   return data?.data ?? {};
 }
+/* A Telegram draft is saved as new, or over the same draft only while it is still that person's draft: an
+   old "Send" button pressed after the receipt or transfer was already sent elsewhere never turns it back
+   into a draft (which could make Rico enter it twice). */
+async function saveTgDraft(d: any, table: string, row: any, who: string): Promise<any> {
+  const { data: made, error } = await d.from(table).insert(row).select("*").maybeSingle();
+  if (made) return made;
+  if (error && error.code !== "23505") return null;
+  const { id, created_by: _by, status: _status, ...changes } = row;
+  const { data: upd, error: e2 } = await d.from(table).update(changes).eq("id", id).eq("status", "draft").eq("created_by", who).select("*").maybeSingle();
+  if (e2) return null;
+  return upd ?? "gone";
+}
 const saveState = (d: any, chat: number, data: any) => db(d, "state").upsert({ chat_id: chat, data, updated_at: new Date().toISOString() });
 const say = (chat: number, text: string, buttons?: { text: string; data: string }[][]) =>
   tg("sendMessage", { chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true, ...(buttons ? { reply_markup: { inline_keyboard: buttons.map((row) => row.map((b) => ({ text: b.text, callback_data: b.data }))) } } : {}) });
@@ -431,8 +443,9 @@ async function onButton(d: any, chat: number, who: string, cb: any) {
     const row = { id: dr.id || crypto.randomUUID(), created_by: who, source: "telegram", status: "draft", supplier: dr.supplier, invoice: dr.invoice, zone: dr.zone,
       currency: dr.currency, rate: dr.currency === "USD" ? dr.rate : null, delivery: dr.currency === "USD" ? null : dr.delivery, lines: dr.lines };
     dr.id = row.id;
-    const { data: saved, error } = await d.from("app_rr_receipts").upsert(row).select("*").maybeSingle();
-    if (error || !saved) { await say(chat, "That didn't save. Try again in a moment."); return; }
+    const saved = await saveTgDraft(d, "app_rr_receipts", row, who);
+    if (saved === "gone") { delete st.draft; await saveState(d, chat, st); await say(chat, "This receipt was already sent, so it can't be sent again from here.", MENU); return; }
+    if (!saved) { await say(chat, "That didn't save. Try again in a moment."); return; }
     const res = await sendReceipt(d, saved, who, data === "sendok" ? (dr.confirm ?? []) : [], "telegram");
     if (res.error === "needs_confirmation") {
       const ws = (res.extra?.warnings as any[]) ?? [];
@@ -660,8 +673,9 @@ async function tButton(d: any, chat: number, who: string, data: string, cb: any)
   if ((data === "tsend" || data === "tsendok") && dr.step === "more") {
     const row = { id: dr.id || crypto.randomUUID(), created_by: who, source: "telegram", status: "draft", from_zone: dr.from, to_zone: dr.to, yesterday: !!dr.yesterday, lines: dr.lines };
     dr.id = row.id;
-    const { data: saved, error } = await d.from("app_rr_transfers").upsert(row).select("*").maybeSingle();
-    if (error || !saved) { await say(chat, "That didn't save. Try again in a moment."); return; }
+    const saved = await saveTgDraft(d, "app_rr_transfers", row, who);
+    if (saved === "gone") { delete st.draft; await saveState(d, chat, st); await say(chat, "This transfer was already sent, so it can't be sent again from here.", MENU); return; }
+    if (!saved) { await say(chat, "That didn't save. Try again in a moment."); return; }
     // Record for yesterday was confirmed when it was turned on; anything else is confirmed here.
     const confirm = data === "tsendok" ? (dr.confirm ?? []) : dr.yesterday ? ["yesterday"] : [];
     const res = await sendTransfer(d, saved, who, confirm, "telegram");
