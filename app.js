@@ -998,7 +998,7 @@ function renderBottomNav(){
   const more = moreViews();
   // On a computer the tab bar is the sidebar, with the ricotta mark at its top. More exists only when
   // there are more than four screens.
-  return `<nav class="bottomnav" style="--n:${state.tabs.length + (more.length ? 1 : 0)}" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><button type="button" class="side-toggle" data-side-toggle aria-label="${esc(t('sideHide'))}" title="${esc(t('sideHide'))} (${SIDE_KEYS})">${ICON_SIDEBAR}</button><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}${more.length ? `<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${more.map(button).join('')}</div>` : ''}</nav>`;
+  return `<nav class="bottomnav" style="--n:${state.tabs.length + (more.length ? 1 : 0)}" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">ricotta</span><span class="dot"></span></div><button type="button" class="side-toggle" data-side-toggle aria-label="${esc(t('sideHide'))}" title="${esc(t('sideHide'))} (${sideKeysText()})">${ICON_SIDEBAR}</button><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}${more.length ? `<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${more.map(button).join('')}</div>` : ''}</nav>`;
 }
 function renderManageNav(){
   return `<div class="manage-nav"><nav class="manage-sections" aria-label="${esc(t('catalog'))}">${[['manage','items'],['suppliers','suppliers'],['units','units']].filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav></div>`;
@@ -1006,7 +1006,8 @@ function renderManageNav(){
 /* Computers: the sidebar can be hidden (the page then uses the whole width) and shown again, with its
    button or with Cmd/Ctrl + \. The choice is remembered on this device. */
 const ICON_SIDEBAR = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2.6"/><path d="M9 4.5v15"/></svg>`;
-const SIDE_KEYS = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘\\' : 'Ctrl+\\';
+/* The sidebar key as words for a tooltip (⌘\\ on a Mac, Ctrl+\\ elsewhere, or the key chosen in Settings). */
+const sideKeysText = ()=>{ const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent); return rrKeyOf('sidebar').split('+').map(p=>p === 'Mod' ? (mac ? '⌘' : 'Ctrl') : p === 'Alt' ? (mac ? '⌥' : 'Alt') : p === 'Shift' ? '⇧' : p === 'Backslash' ? '\\' : p.replace(/^(Key|Digit)/, '')).join(mac ? '' : '+'); };
 function setSidebarHidden(hide){
   document.documentElement.classList.toggle('side-hidden', hide);
   lset('sideHidden', hide || null);
@@ -1014,7 +1015,7 @@ function setSidebarHidden(hide){
 }
 if(lget('sideHidden')) document.documentElement.classList.add('side-hidden');
 document.addEventListener('click', e=>{ if(e.target.closest('[data-side-toggle]')) setSidebarHidden(!document.documentElement.classList.contains('side-hidden')); });
-document.addEventListener('keydown', e=>{ if((e.metaKey || e.ctrlKey) && !e.altKey && e.key === '\\' && !isPhoneLayout()){ e.preventDefault(); setSidebarHidden(!document.documentElement.classList.contains('side-hidden')); } });
+document.addEventListener('keydown', e=>{ if(!isPhoneLayout() && rrCombo_(e) === rrKeyOf('sidebar') && (e.metaKey || e.ctrlKey || e.altKey || !e.target.closest?.('input, textarea, select, [contenteditable]'))){ e.preventDefault(); setSidebarHidden(!document.documentElement.classList.contains('side-hidden')); } });
 function setMoreOpen(open){
   const nav=document.querySelector('.bottomnav'),button=document.getElementById('navMoreBtn');
   if(!nav||!button)return;
@@ -1347,6 +1348,7 @@ function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
   // Receipts and Transfers open on their form (what was being typed stays in it).
   if(view === 'receipts'){ rr.page = 'edit'; rr.id = null; rrLoad(true); }
   if(view === 'transfers'){ tf.page = 'edit'; tf.id = null; tfLoad(true); }
+  if(view === 'stock') stockLoad();
   render();
   scrollBox().scrollTo({top:remembered?.top || 0});
   // The swipe's preview of this page is replaced by the page itself, in the same place.
@@ -1540,8 +1542,9 @@ function enhanceSelects(root = document){
     if(sel.getAttribute('aria-label')) btn.setAttribute('aria-label', sel.getAttribute('aria-label'));
     sel._selBtn = btn; sel.after(btn);
     btn.addEventListener('pointerdown', e=>{ if(document.activeElement?.matches?.('input,textarea')) e.preventDefault(); });
-    // data-inline (the unit of a receipt or transfer line): a small menu right under the box instead of a sheet.
-    btn.onclick = ()=>sel.hasAttribute('data-inline') ? openSelPop(sel) : openSelSheet(sel);
+    // A computer (and the unit of a receipt or transfer line anywhere): a neat menu right under the box,
+    // like a Mac's. A phone gets the sheet from the bottom, easy to reach with a thumb.
+    btn.onclick = ()=>sel.hasAttribute('data-inline') || !isPhoneLayout() ? openSelPop(sel) : openSelSheet(sel);
     sel.addEventListener('change', ()=>selSync(sel));
     new MutationObserver(()=>selSync(sel)).observe(sel, {childList:true, subtree:true, attributes:true, attributeFilter:['disabled']});
     selSync(sel);
@@ -1881,7 +1884,7 @@ const accountInitial = ()=>accountLabel(state.account).trim().charAt(0).toUpperC
 function renderTopbar(){
   return `
   <header class="topbar">
-    <div class="brand-slot"><button type="button" class="side-toggle side-show" data-side-toggle aria-label="${esc(t('sideShow'))}" title="${esc(t('sideShow'))} (${SIDE_KEYS})">${ICON_SIDEBAR}</button><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div></div>
+    <div class="brand-slot"><button type="button" class="side-toggle side-show" data-side-toggle aria-label="${esc(t('sideShow'))}" title="${esc(t('sideShow'))} (${sideKeysText()})">${ICON_SIDEBAR}</button><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div></div>
     <span class="topbar-title" aria-hidden="true"></span>
     <div class="topbar-actions">
       ${renderStreakChip()}

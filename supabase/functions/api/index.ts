@@ -1076,7 +1076,7 @@ Deno.serve(async (req) => {
         : key === "pinnedSuppliers" ? Array.isArray(value) && value.length <= 30 && value.every((v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 120)
         // Her own keys for the Receipts and Transfers line shortcuts ({add:"Alt+KeyN", ...}); {} is the standard ones.
         : key === "keys" ? !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length <= 12
-          && Object.entries(value).every(([k, v]) => ["unit_menu", "next", "add", "dup", "del", "unit", "up", "down", "yest"].includes(k) && typeof v === "string" && /^(Mod\+)?(Alt\+)?(Shift\+)?[A-Za-z0-9]{1,20}$/.test(v) && (k === "unit_menu" || k === "next" || /^(Mod|Alt)/.test(v)))
+          && Object.entries(value).every(([k, v]) => ["sidebar", "unit_menu", "next", "add", "dup", "del", "unit", "up", "down", "yest"].includes(k) && typeof v === "string" && /^(Mod\+)?(Alt\+)?(Shift\+)?[A-Za-z0-9]{1,20}$/.test(v) && (k === "unit_menu" || k === "next" || /^(Mod|Alt)/.test(v)))
         : (SETTING_CHOICES[key] ?? []).includes(value);
       if (!ok_) return fail("invalid_input");
       const { data: me, error: readError } = await app("accounts").select("settings").eq("id", s.account).maybeSingle();

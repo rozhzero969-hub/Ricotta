@@ -19,6 +19,7 @@ function stkAmount(i){
   const f = Number(i.count?.factor) || 1, unit = i.count?.name || i.base;
   return {main:stkNum(i.main / f) + ' ' + unit, base:i.count && f !== 1 ? stkNum(i.main) + ' ' + i.base : ''};
 }
+const stkLine = i=>{ const a = stkAmount(i); return a.main + (a.base ? ' (' + a.base + ')' : ''); };
 function stkWhen(at){ return at ? formatIraqDateTime(at, {day:'numeric', month:'short'}) : ''; }
 function stkBoughtLine(b){ return b ? t('stockBoughtLine')(stkWhen(b.at), b.supplier || '', stkNum(b.qty) + ' ' + (b.unit || '')) : t('stockNotIn60'); }
 function stkMovedLine(m){ return m ? t('stockMovedLine')(stkWhen(m.at), m.to || '', stkNum(m.qty) + ' ' + (m.unit || '')) : t('stockNotIn60'); }
@@ -36,12 +37,15 @@ function renderStock(){
       <button type="button" class="btn btn-ghost" data-stk-export="excel">${ICON_SHEET}<span>Excel</span></button>
       <button type="button" class="btn btn-ghost" data-stk-export="pdf">${NAV_ICONS.record}<span>PDF</span></button>
       <button type="button" class="btn btn-ghost" data-stk-export="numbers">${ICON_SHEET}<span>Numbers</span></button></div>` : '';
+  // One line per item, like Ricotta Restaurant's Stock page: a dot (green: some left, red: none), the
+  // name, the amount with its usage unit, and an eye that opens the details.
   const rows = list.map(i=>{
-    const a = stkAmount(i), none = i.main <= 0;
+    const none = i.main <= 0;
     return `<div class="stk-row${none ? ' none' : ''}" data-search-row data-stk="${esc(i.name)}">
+      <i class="stk-dot" aria-hidden="true"></i>
       <span class="stk-name" dir="auto">${esc(i.name)}</span>
-      <span class="stk-amt">${none ? `<em>${esc(t('stockEmpty'))}</em>` : `<b dir="auto">${esc(a.main)}</b>${a.base ? `<small dir="auto">${esc(a.base)}</small>` : ''}`}</span>
-      <button type="button" class="stk-more" data-stk-details="${esc(i.name)}">${esc(t('stockDetails'))}</button></div>`;
+      <b class="stk-amt" dir="auto">${esc(stkLine(i))}</b>
+      <button type="button" class="stk-eye" data-stk-details="${esc(i.name)}" aria-label="${esc(t('stockDetails'))}" title="${esc(t('stockDetails'))}">${ICON_EYE}</button></div>`;
   }).join('');
   return `<div class="stk-tools">${renderCatalogSearch()}
       <div class="pill-seg stk-sort" role="radiogroup" aria-label="${esc(t('stockSort'))}">
@@ -56,19 +60,21 @@ function renderStock(){
 function attachStockEvents(){
   document.querySelectorAll('[data-stk-sort]').forEach(b=>b.onclick = ()=>{ stk.sort = b.dataset.stkSort; render(); });
   document.querySelectorAll('[data-stk-details]').forEach(b=>b.onclick = e=>{ e.stopPropagation(); stockDetails(b.dataset.stkDetails); });
+  // A row opens its details too (a phone has no hover).
+  document.querySelectorAll('.stk-row').forEach(row=>row.onclick = ()=>stockDetails(row.dataset.stk));
   document.querySelectorAll('[data-stk-export]').forEach(b=>b.onclick = ()=>withBusy(b, ()=>stockExport(b.dataset.stkExport)));
   // A computer: resting the pointer on an item shows its last purchase and last transfer.
   if(matchMedia('(hover: hover)').matches) document.querySelectorAll('.stk-row').forEach(row=>{
-    row.onmouseenter = ()=>stockTip(row); row.onmouseleave = ()=>document.getElementById('stkTip')?.remove();
+    row.onmouseenter = ()=>{ clearTimeout(stk.tipTimer); stk.tipTimer = setTimeout(()=>{ if(row.isConnected && row.matches(':hover')) stockTip(row); }, 1000); };
+    row.onmouseleave = ()=>{ clearTimeout(stk.tipTimer); document.getElementById('stkTip')?.remove(); };
   });
-  stockLoad();
 }
 function stockTip(row){
   const i = stk.data?.items.find(x=>x.name === row.dataset.stk); if(!i) return;
   document.getElementById('stkTip')?.remove();
   const tip = document.createElement('div');
   tip.id = 'stkTip'; tip.className = 'stk-tip'; tip.setAttribute('role', 'tooltip');
-  tip.innerHTML = `<div><span>${esc(t('stockLastBought'))}</span><b dir="auto">${esc(stkBoughtLine(i.lastBought))}</b></div><div><span>${esc(t('stockLastMoved'))}</span><b dir="auto">${esc(stkMovedLine(i.lastMoved))}</b></div>`;
+  tip.innerHTML = `<b class="stk-tip-name" dir="auto">${esc(i.name)}</b><div><span>${esc(t('stockInMain'))}</span><b dir="auto">${esc(i.main <= 0 ? t('stockEmpty') : stkLine(i))}</b></div><div><span>${esc(t('stockLastBought'))}</span><b dir="auto">${esc(stkBoughtLine(i.lastBought))}</b></div><div><span>${esc(t('stockLastMoved'))}</span><b dir="auto">${esc(stkMovedLine(i.lastMoved))}</b></div>`;
   document.body.appendChild(tip);
   const r = row.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
   const below = r.bottom + 8 + h < innerHeight;
