@@ -100,13 +100,14 @@ function applyFeatures(){
   document.documentElement.classList.toggle('compact-rows', featureOn('compactRows'));
   document.documentElement.classList.toggle('simple-view', featureOn('simpleView'));
 }
+const RICO_TAB_SETTINGS = ['ricoSheet'];
 function renderFeatureSettings(){
   const row = f=>`<label class="check-row preference-row has-ico"><input type="checkbox" data-feature="${f.id}" ${featureOn(f.id) ? 'checked' : ''}>${setIcon(f.id)}<span>${esc(t('feat_' + f.id))}<small>${esc(t('feat_' + f.id + '_hint'))}</small></span></label>`;
   return SETTING_GROUPS.map(group=>{
-    const rows = SETTINGS.filter(f=>f.group === group && (!f.role || canOpen(f.role)) && (!f.rozha || isRozha())).map(row).join('');
-    const extra = group === 'rico' && canOpen('assistant') ? `<div class="field feature-select"><div class="set-head">${setIcon('ricoStyle')}<label for="ricoStyleSel">${esc(t('styleLabel'))}</label></div><select id="ricoStyleSel">${CHOICES.ricoStyle.map(v=>`<option value="${v}" ${ricoStyle() === v ? 'selected' : ''}>${esc(t('style_' + v))}</option>`).join('')}</select></div>` : '';
-    if(!rows && !extra) return '';
-    return `<div class="section-title">${esc(t('settingsGroup_' + group))}</div><div class="form-card">${group === 'look' ? renderAppearanceRow() : ''}${rows}${extra}</div>`;
+    // The chat Rico's settings are in his own tab (the sliders button); Rico the helper stays here.
+    const rows = SETTINGS.filter(f=>f.group === group && !RICO_TAB_SETTINGS.includes(f.id) && (!f.role || canOpen(f.role)) && (!f.rozha || isRozha())).map(row).join('');
+    if(!rows && group !== 'look') return '';
+    return `<div class="section-title">${esc(t('settingsGroup_' + group))}</div><div class="form-card">${group === 'look' ? renderAppearanceRow() : ''}${rows}</div>`;
   }).join('');
 }
 function attachFeatureSettings(){
@@ -114,8 +115,6 @@ function attachFeatureSettings(){
     if(!(await setFeature(box.dataset.feature, box.checked))) box.checked = !box.checked;
     if(box.dataset.feature === 'tables' && state.view !== 'settings') render();
   });
-  const style = document.getElementById('ricoStyleSel');
-  if(style) style.onchange = ()=>setSetting('ricoStyle', style.value);
 }
 /* The warning before the wipe day: shown from 2 days before, on History and Record. */
 function wipeDaysLeft(){

@@ -2524,3 +2524,18 @@ html.dark .rico-pct.up{color:#FF6961}html.dark .rico-pct.down{color:#30D158}
 }
 @keyframes ricoSideIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){html.rico-mode.rico-enter .rico-side{animation:none}}
+/* Rico's settings: a sliders button at the foot of his chats (computer) or in his header (phone). */
+.rico-side-set{display:flex;align-items:center;gap:10px;height:40px;margin-top:6px;padding:0 10px;border:0;border-top:.5px solid var(--line);border-radius:0;background:none;color:var(--ink);font:400 .9375rem var(--font);text-align:start;cursor:pointer}
+.rico-side-set svg{width:17px;height:17px;flex:none;color:var(--ink-soft)}
+@media (hover:hover){.rico-side-set:hover{color:var(--tint)}}
+.rico-head-btn.icon{width:36px;padding:0;justify-content:center}
+.rico-set-sheet .sel-title{margin-bottom:14px}
+.rico-set-group{display:flex;flex-direction:column;margin-bottom:14px;padding:2px 12px;border-radius:14px;background:var(--surface-2)}
+.rico-set-row{min-height:52px;padding:8px 0}
+.rico-set-group>.rico-set-row+.rico-set-row,.rico-style-opt+.rico-style-opt{border-top:.5px solid var(--line)}
+.rico-set-row span{display:flex;flex-direction:column;gap:2px}
+.rico-set-row small{font-size:.8125rem;line-height:1.35;color:var(--ink-soft)}
+.rico-set-label{margin:0 4px 6px;font-size:.8125rem;font-weight:600;color:var(--ink-soft)}
+.rico-style-opt{display:flex;align-items:center;justify-content:space-between;min-height:46px;cursor:pointer;font-size:.9375rem}
+.rico-style-opt input{order:2;appearance:none;-webkit-appearance:none;width:18px;height:18px;margin:0;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--line-strong)}
+.rico-style-opt input:checked{box-shadow:inset 0 0 0 5.5px var(--accent-strong)}

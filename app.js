@@ -3787,7 +3787,6 @@ function openReportProblem(){
    the privacy policy, and Sign Out at the very end, like the iPhone's Settings. */
 function renderPrivacySettings(){
   return `<div class="section-title">${esc(t('settingsPrivacy'))}</div><div class="form-card">
-    <label class="check-row preference-row has-ico"><input type="checkbox" id="aiConsent" ${aiConsented()?'checked':''}>${setIcon('ai')}<span>${esc(t('aiSettingLabel'))}<small>${esc(t('aiSettingHint'))}</small></span></label>
     <a class="settings-link" href="${esc(privacyHref())}">${setIcon('privacy')}<span>${esc(t('privacyPolicy'))}</span><i class="sheet-chevron" aria-hidden="true"></i></a></div>
     <div class="form-card settings-signout-card"><button type="button" class="settings-signout" id="settingsSignOut">${esc(t('logout'))}</button></div>`;
 }
@@ -3835,11 +3834,6 @@ function attachSettingsEvents(){
  if(exp) exp.onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(currentOutbox(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ricotta-pending-orders.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   bindAppearance();
   attachFeatureSettings();
-  const ai = document.getElementById('aiConsent');
-  if(ai) ai.onchange = async ()=>{
-    if(!ai.checked){ setAiConsent(false); return; }
-    ai.checked = await aiConsent();
-  };
   document.getElementById('settingsSignOut').onclick = ()=>doLogout();
   document.getElementById('reportProblemBtn').onclick = openReportProblem;
   document.getElementById('shortcutsBtn').onclick = openShortcuts;

@@ -659,8 +659,8 @@ const server=http.createServer((req,res)=>{
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await featureBox('showLastQty').click();
     assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('[data-feature]')].map(i=>i.dataset.feature+':'+i.checked)),
-      ['swipe:true','showLastQty:false','compactRows:false','soundQty:true','soundSent:true','soundRico:true','soundError:true','soundMilestone:true','soundUndo:true','ricoSheet:true','simpleView:false','tables:false','kitchenMode:false','milestones:true'],'the defaults, in their sections');
-    assert.deepEqual(await y.page.locator('.content .section-title').evaluateAll(els=>els.map(e=>e.textContent)),['Notifications','Ordering','Sounds','Rico','Look','Help','Privacy'],'settings are in sections');
+      ['swipe:true','showLastQty:false','compactRows:false','soundQty:true','soundSent:true','soundRico:true','soundError:true','soundMilestone:true','soundUndo:true','simpleView:false','tables:false','kitchenMode:false','milestones:true'],'the defaults, in their sections (the chat Rico settings are in his tab)');
+    assert.deepEqual(await y.page.locator('.content .section-title').evaluateAll(els=>els.map(e=>e.textContent)),['Notifications','Ordering','Sounds','Look','Help','Privacy'],'settings are in sections (the chat Rico settings are in his tab)');
     assert.equal(await y.page.locator('#reminderEnabled,#reminderTime').count(),0,'no daily reminder');
     assert.equal(await y.page.locator('#settingsSignOut').count(),1,'Sign Out is at the end of Settings');
     assert.match(await y.page.locator('.settings-link').getAttribute('href'),/^privacy\.html#en$/,'Settings links to the privacy policy');
