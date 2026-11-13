@@ -2539,3 +2539,38 @@ html.dark .rico-pct.up{color:#FF6961}html.dark .rico-pct.down{color:#30D158}
 .rico-style-opt{display:flex;align-items:center;justify-content:space-between;min-height:46px;cursor:pointer;font-size:.9375rem}
 .rico-style-opt input{order:2;appearance:none;-webkit-appearance:none;width:18px;height:18px;margin:0;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--line-strong)}
 .rico-style-opt input:checked{box-shadow:inset 0 0 0 5.5px var(--accent-strong)}
+/* Admin › Devices (2026-11-14): one calm card per device. What it is and whose on top with its status,
+   one line of facts, then where it signed in from with small Refresh and Log out buttons on the right. */
+.dev-stats{margin-bottom:10px}
+.dev-stats>div{padding:10px 12px}
+.dev-bulk{margin-bottom:12px}
+.dev-bulk .btn{flex:0 1 auto;min-height:38px;padding:0 14px;border-radius:10px;font-size:.9063rem;gap:6px}
+.dev-bulk .btn svg{width:16px;height:16px}
+.dev-card{padding:14px 16px;margin-bottom:10px}
+.dev-head{display:flex;align-items:flex-start;gap:12px}
+.dev-ic{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--fill);color:var(--tint)}
+.dev-id{flex:1;min-width:0}
+.dev-title{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:1rem;font-weight:600;overflow-wrap:anywhere}
+.dev-title .dev-how{font-size:.75rem;padding:2px 7px}
+.dev-who{margin-top:2px;font-size:.875rem;color:var(--ink)}
+.dev-faint{color:var(--ink-soft)}
+.dev-head .dev-badge{flex:none}
+.dev-facts{display:flex;flex-wrap:wrap;gap:4px 0;margin:10px 0 0 48px;font-size:.875rem;color:var(--ink-soft)}
+.dev-facts>span:not(:last-child)::after{content:'·';margin:0 8px;color:var(--ink-faint)}
+.dev-facts .dev-ver{margin-inline-start:4px}
+html.rtl .dev-facts{margin:10px 48px 0 0}
+.dev-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:10px 0 0 48px;padding-top:10px;border-top:.5px solid var(--line)}
+html.rtl .dev-foot{margin:10px 48px 0 0}
+.dev-loc{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:.875rem;min-width:0}
+.dev-vpn{flex-basis:100%;color:var(--clay-ink);font-size:.8125rem}
+html.dark .dev-vpn{color:#FF6961}
+.dev-card .dev-actions{display:flex;gap:8px;margin:0;padding:0;border:0;margin-inline-start:auto}
+.dev-card .dev-actions .btn{flex:0 0 auto;min-height:34px;padding:0 12px;border-radius:9px;font-size:.875rem;gap:6px}
+.dev-card .dev-actions .btn svg{width:15px;height:15px}
+.dev-card .dev-pending{margin:10px 0 0 48px}
+@media (max-width:599px){
+  .dev-facts,.dev-foot,.dev-card .dev-pending{margin-inline-start:0}
+  html.rtl .dev-facts,html.rtl .dev-foot{margin:10px 0 0}
+  .dev-card .dev-actions{width:100%;margin-inline-start:0}
+  .dev-card .dev-actions .btn{flex:1}
+}

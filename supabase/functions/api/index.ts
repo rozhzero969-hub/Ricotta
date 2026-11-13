@@ -1,3 +1,4 @@
+import { cleanTimeZone, clientIp, placeOf } from "./geo.ts";
 import { turnstileConfig, verifyTurnstile } from "../_shared/turnstile.ts";
 import { monthStart, monthKey } from "../_shared/month.ts";
 // Ricotta Orders API -- the only door between the browser and the database.
@@ -231,7 +232,9 @@ async function readStreak() {
 const toDevice = (d: any) => ({
   id: d.id, account: d.account ?? null, label: d.label ?? null, loggedIn: d.logged_in,
   lastLogin: d.last_login, lastSeen: d.last_seen, command: d.command, handledCommand: d.handled_command,
-  appVersion: d.app_version ?? null, push: !!d.push,
+  appVersion: d.app_version ?? null, push: !!d.push, sessionEnds: d.session_ends ?? null,
+  signin: d.signin_at_place ? { ip: d.signin_ip ?? null, city: d.signin_city ?? null, region: d.signin_region ?? null, country: d.signin_country ?? null,
+    org: d.signin_org ?? null, ipTz: d.signin_ip_tz ?? null, deviceTz: d.signin_device_tz ?? null, vpn: d.signin_vpn ?? null, vpnReason: d.signin_vpn_reason ?? null, at: d.signin_at_place } : null,
 });
 const toActivity = (a: any) => ({
   ...(a.payload ?? {}), id: a.id, ts: a.occurred_at, actor: a.actor,
@@ -268,20 +271,23 @@ function groupHistory(orders: any[], lines: any[]) {
 }
 
 async function listDevices(s: Session) {
-  let q = app("devices").select("id,account,label,logged_in,last_login,last_seen,command,handled_command,app_version");
+  let q = app("devices").select("id,account,label,logged_in,last_login,last_seen,command,handled_command,app_version,signin_ip,signin_city,signin_region,signin_country,signin_org,signin_ip_tz,signin_device_tz,signin_vpn,signin_vpn_reason,signin_at_place");
   if (!isRozha(s)) q = q.eq("id", s.deviceId ?? "").eq("account",s.account);
   const { data, error } = await q;
   if (error) throw error;
   // "Signed in" means a session that still works now, not just the last thing the phone reported.
   const ids = (data ?? []).map((d: any) => d.id);
-  const { data: live, error: liveError } = ids.length ? await app("sessions").select("device_id")
+  const { data: live, error: liveError } = ids.length ? await app("sessions").select("device_id,expires_at")
     .in("device_id", ids).is("revoked_at", null).gt("expires_at", nowIso()) : { data: [], error: null };
   if (liveError) throw liveError;
-  const signedIn = new Set((live ?? []).map((r: any) => r.device_id));
+  // When each device's sign-in ends: its latest working session (used devices keep moving it forward).
+  const ends = new Map<string, string>();
+  for (const r of (live ?? []) as any[]) if (!ends.has(r.device_id) || Date.parse(r.expires_at) > Date.parse(ends.get(r.device_id)!)) ends.set(r.device_id, r.expires_at);
+  const signedIn = new Set(ends.keys());
   const { data: subs, error: subsError } = ids.length ? await app("push_subscriptions").select("device_id").in("device_id", ids) : { data: [], error: null };
   if (subsError) throw subsError;
   const notified = new Set((subs ?? []).map((r: any) => r.device_id));
-  return (data ?? []).map((d: any) => toDevice({ ...d, logged_in: !!d.logged_in && signedIn.has(d.id), push: notified.has(d.id) }));
+  return (data ?? []).map((d: any) => toDevice({ ...d, logged_in: !!d.logged_in && signedIn.has(d.id), push: notified.has(d.id), session_ends: ends.get(d.id) ?? null }));
 }
 async function listActivity() {
   const rows = await readAll(() => app("audit_events")
@@ -399,7 +405,7 @@ async function requestLimit(keys: string[], limits: number[]): Promise<Response 
 }
 
 async function login(req: Request) {
-  const { pin, turnstileToken } = await readBody(req);
+  const { pin, turnstileToken, tz } = await readBody(req);
   const prints = await loginFingerprints(req);
   const limited=await requestLimit(["public:login",`login:${prints[0]}`],[300,60]);
   if(limited)return limited;
@@ -411,7 +417,7 @@ async function login(req: Request) {
   // A lock is written to the security log once per phone per lock, not once per refused try.
   if (!attempt) { await securityEvent(req, "locked", null, {}, LOGIN_WINDOW_MS / 1000); return fail("too_many_attempts", 429); }
 
-  return await startSession(req, String(pin), attempt);
+  return await startSession(req, String(pin), attempt, cleanTimeZone(tz));
 }
 
 /* ---------- The security log ---------- */
@@ -453,9 +459,20 @@ async function alertNewDevice(req: Request, account: Account, deviceId: string |
   }).catch(() => console.error("security_push_failed"));
 }
 
+/* Where this sign-in came from, for Admin's device list (geo.ts): looked up after the reply, so it
+   never slows or stops a sign-in. Only the latest sign-in's place is kept. */
+async function noteSignInPlace(req: Request, account: string, deviceId: string | null, deviceTz: string | null) {
+  if (!deviceId) return;
+  const p = await placeOf(clientIp(req), deviceTz);
+  const { error } = await app("devices").update({
+    signin_ip: p.ip, signin_city: p.city, signin_region: p.region, signin_country: p.country, signin_org: p.org,
+    signin_ip_tz: p.ipTz, signin_device_tz: p.deviceTz, signin_vpn: p.vpn, signin_vpn_reason: p.vpnReason, signin_at_place: nowIso(),
+  }).eq("id", deviceId).eq("account", account);
+  if (error) console.error("signin_place_failed");
+}
 /* The database checks the PIN under the same account locks as PIN changes.
    It commits attempts, session and device together; no orphan token or device takeover on a race. */
-async function startSession(req: Request, pin: string, attempt: number[]) {
+async function startSession(req: Request, pin: string, attempt: number[], deviceTz: string | null = null) {
   const token = randomToken();
   const { data, error } = await db.rpc("app_internal_start_session", {
     p_code: pin, p_token_hash: await hash(token),
@@ -467,6 +484,7 @@ async function startSession(req: Request, pin: string, attempt: number[]) {
   if (data?.error === "device_in_use") return fail("device_in_use", 409);
   if (!["rozha", "yunis"].includes(data?.account) || !Number.isFinite(Date.parse(data?.expiresAt))) return fail("login_failed", 503);
   if (data.newDevice) later(alertNewDevice(req, data.account, text(req.headers.get("x-device-id"), 120) || null));
+  later(noteSignInPlace(req, data.account, text(req.headers.get("x-device-id"), 120) || null, deviceTz));
   return json({ token, account: data.account, name: data.name ?? accountName(data.account), expiresAt: data.expiresAt });
 }
 
@@ -621,14 +639,17 @@ async function heartbeat(s: Session, label: string | null, version: string | nul
     if (error) { console.error("usage_failed"); return fail("usage_unavailable", 503); }
     credited = Number(data) || 0;
   }
-  if (!s.deviceId) return json({ ok: true, credited });
+  // When this sign-in ends now, so the phone keeps its own copy in step (it moves forward with use).
+  const { data: me } = await app("sessions").select("expires_at").eq("id", s.id).maybeSingle();
+  const sessionEnds = me?.expires_at ?? undefined;
+  if (!s.deviceId) return json({ ok: true, credited, sessionEnds });
   const { data: d, error: readError } = await app("devices").select("command,handled_command").eq("id", s.deviceId).eq("account",s.account).maybeSingle();
   if (readError) throw readError;
   const pendingLogout = d?.command?.type === "logout" && d.command.id !== d.handled_command;
-  if (pendingLogout) return json({ ok: true, device: null, credited });   // don't flip it back to "logged in"
+  if (pendingLogout) return json({ ok: true, device: null, credited, sessionEnds });   // don't flip it back to "logged in"
   const { error } = await app("devices").update({ ...(label ? { label } : {}), ...(version ? { app_version: version } : {}), logged_in: true, last_seen: nowIso(), updated_at: nowIso() }).eq("id",s.deviceId).eq("account",s.account);
   if (error) throw error;
-  return json({ ok: true, credited });
+  return json({ ok: true, credited, sessionEnds });
 }
 
 /* ---------- Live changes ----------

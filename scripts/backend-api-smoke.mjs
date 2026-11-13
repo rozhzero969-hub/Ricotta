@@ -5,6 +5,7 @@ import {monthKey,monthStart} from '../supabase/functions/_shared/month.ts';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from '../supabase/functions/_shared/security.ts';
+import { cleanTimeZone, clientIp, placeOf } from '../supabase/functions/api/geo.ts';
 
 const digest = async value => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
 const token = 'test-session-token', tokenHash = await digest(token);
@@ -92,7 +93,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile );
+const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'cleanTimeZone', 'clientIp', 'placeOf', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile,cleanTimeZone,clientIp,placeOf );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
