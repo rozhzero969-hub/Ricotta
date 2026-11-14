@@ -2407,8 +2407,8 @@ html.rtl .rico-side-row input[type=checkbox]:checked::after{transform:translateX
 
 /* What's new: a dot on the account button until read, and a quiet list in a sheet. */
 .account-btn{position:relative}
-.account-btn.has-news::after{content:'';position:absolute;top:1px;inset-inline-end:1px;width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--bg)}
-.news-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);margin-inline-start:auto;margin-inline-end:6px}
+.account-btn.has-news::after{content:'';position:absolute;top:1px;inset-inline-end:1px;width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px var(--bg)}
+.news-dot{width:8px;height:8px;border-radius:50%;background:var(--red);margin-inline-start:auto;margin-inline-end:6px}
 .news-list{display:flex;flex-direction:column;gap:18px;padding:4px 4px 12px;max-height:60vh;overflow-y:auto}
 .news-entry h3{margin:0 0 8px;font-size:.8125rem;font-weight:600;color:var(--ink-soft)}
 .news-entry ul{margin:0;padding-inline-start:18px;display:flex;flex-direction:column;gap:8px;font-size:.9375rem;line-height:1.45}
