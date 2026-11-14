@@ -97,4 +97,12 @@ await rt.proposeTransferDraft(db, w, { from: 'Main Storage', to: 'Minibar', line
 assert.equal((await rt.proposeTransferDraft(db, w, { from: 'Main Storage', to: 'Pizza', lines: [{ item: 'Carrot', qty: 1 }] }, () => {})).error, 'limit', 'at most 2 drafts in one reply');
 // Receipts are never made by Rico.
 assert.ok(!rt.RICO_RR_TOOLS.some(t => /receipt/i.test(t.name) && /propose|create|make/i.test(t.name)), 'no tool makes a receipt');
+// Opening Ricotta Restaurant: only its own pages, only for people with Receipts or Transfers.
+const rrEv = [];
+const op = rt.openRicottaRestaurant(rozha(), { page: 'ledger' }, e => rrEv.push(e));
+assert.equal(op.shown, true);
+assert.equal(rrEv[0].proposal.url, 'https://pos.shaydattendance.com/inventory/ledger');
+rt.openRicottaRestaurant(rozha(), { page: 'https://evil.example' }, e => rrEv.push(e));
+assert.equal(rrEv[1].proposal.url, 'https://pos.shaydattendance.com/inventory', 'an unknown page opens the home page, never another site');
+assert.equal(rt.openRicottaRestaurant(yunis(), { page: 'stock' }, () => {}).error, 'no_access');
 console.log('Rico tools PASS: stock, prices, spending, transfers, price changes and what needs a person from real rows; no_access without the role; transfer drafts are checked first and only ever saved as drafts');

@@ -391,6 +391,23 @@ export async function needsAttention(db: any, w: any, emit: Emit = noEmit) {
   return out;
 }
 
+/* ---------- open_ricotta_restaurant ---------- */
+/* A link to one page of Ricotta Restaurant, shown as a button in the chat. It only opens the page in the
+   browser (or the Dock web app on a Mac); nothing is read or changed there. */
+export const RR_SITE = "https://pos.shaydattendance.com";
+export const RR_PAGES: Record<string, string> = {
+  home: "/inventory", stock: "/inventory/stock", new_receipt: "/inventory/new-receipt", my_receipts: "/inventory/buy",
+  invoices: "/inventory/invoices", transfer: "/inventory/transfer", ledger: "/inventory/ledger", activity: "/inventory/activity",
+  check: "/inventory/check", threw_away: "/inventory/threw-away", give_back: "/inventory/give-back", staff_meals: "/inventory/staff-meals",
+  units: "/inventory/units", zones: "/inventory/zones", prep: "/inventory/prep", all: "/inventory/all",
+};
+export function openRicottaRestaurant(w: any, a: any, emit: Emit = noEmit) {
+  if (!w.can.receipts && !w.can.transfers) return { error: "no_access", note: "This person can't open Ricotta Restaurant from here. Say so briefly." };
+  const page = Object.hasOwn(RR_PAGES, a?.page) ? a.page : "home";
+  emit({ type: "proposal", proposal: { id: cardId("r"), kind: "rr_link", page, url: RR_SITE + RR_PAGES[page] } });
+  return { shown: true, page, note: "A button that opens it is under your reply. Say one short line." };
+}
+
 /* ---------- propose_transfer_draft ---------- */
 /* What a transfer check code means, in plain words. */
 function checkWords(c: any, lines: any[], from: string) {
@@ -466,6 +483,8 @@ export async function proposeTransferDraft(db: any, w: any, a: any, emit: Emit) 
 }
 
 export const RICO_RR_TOOLS = [
+  { name: "open_ricotta_restaurant", description: "Shows a button that opens a page of the Ricotta Restaurant web app (the restaurant's own system) in the browser: home, stock, new_receipt (enter a receipt), my_receipts, invoices, transfer (move between storages), ledger, activity, check (stock check), threw_away, give_back, staff_meals, units, zones, prep, all. Use it whenever someone asks to open Ricotta Restaurant or one of its tabs.",
+    input_schema: { type: "object", properties: { page: { type: "string", enum: Object.keys(RR_PAGES) } }, required: ["page"] } },
   { name: "low_stock", description: "What is running low in one storage (Main Storage unless named): empty items and items with less than 3 days left at their usual pace. Shows a card with the list.",
     input_schema: { type: "object", properties: { storage: { type: "string", description: "Optional: one storage" } } } },
   { name: "stock_levels", description: "How much of an item is in each storage (or one storage) in Ricotta Restaurant, from the stock Rico last read, and when it was read. Item name in any language; typos are fine.",
@@ -484,7 +503,8 @@ export const RICO_RR_TOOLS = [
     input_schema: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, lines: { type: "array", items: { type: "object", properties: { item: { type: "string" }, qty: { type: "number" }, unit: { type: "string", description: "Optional; default is the item's counting unit" } }, required: ["item", "qty"] } }, yesterday: { type: "boolean", description: "Record it for yesterday" } }, required: ["from", "to", "lines"] } },
 ];
 
-export const RICO_RR_MANUAL = `- "What is low / running out / what should I move" -> low_stock (a card lists the items).
+export const RICO_RR_MANUAL = `- "Open Ricotta Restaurant / its ledger / invoices / stock..." -> open_ricotta_restaurant with that page (a button opens it).
+- "What is low / running out / what should I move" -> low_stock (a card lists the items).
 - Stock: "how much X is in Pizza/Main Storage" -> stock_levels. Say when the stock was read.
 - Prices: "what did we pay for X", "has X gone up" -> price_history. "which prices went up/changed" -> price_changes.
 - Spending: "how much did we spend today/this week/this month, by supplier or item" -> spending_summary. Give IQD and USD separately, never added together.
@@ -495,6 +515,7 @@ export const RICO_RR_MANUAL = `- "What is low / running out / what should I move
 
 export async function runRrTool(db: any, w: any, name: string, a: any, emit: Emit): Promise<unknown> {
   switch (name) {
+    case "open_ricotta_restaurant": return openRicottaRestaurant(w, a, emit);
     case "low_stock": return await lowStock(db, w, a, emit);
     case "stock_levels": return await stockLevels(db, w, a);
     case "price_history": return await priceHistory(db, w, a);
