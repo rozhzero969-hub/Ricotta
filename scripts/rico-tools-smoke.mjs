@@ -97,6 +97,15 @@ await rt.proposeTransferDraft(db, w, { from: 'Main Storage', to: 'Minibar', line
 assert.equal((await rt.proposeTransferDraft(db, w, { from: 'Main Storage', to: 'Pizza', lines: [{ item: 'Carrot', qty: 1 }] }, () => {})).error, 'limit', 'at most 2 drafts in one reply');
 // Receipts are never made by Rico.
 assert.ok(!rt.RICO_RR_TOOLS.some(t => /receipt/i.test(t.name) && /propose|create|make/i.test(t.name)), 'no tool makes a receipt');
+// Stock search: every matching item as a card, the amount in Main Storage and where else there is some.
+const ssEv = [];
+const ss = await rt.stockSearch(db, rozha(), { query: 'mozzarella' }, e => ssEv.push(e));
+assert.equal(ss.found, 1);
+assert.equal(ssEv[0].proposal.kind, 'stock_list');
+assert.equal(ssEv[0].proposal.mode, 'search');
+assert.deepEqual([ssEv[0].proposal.rows[0].qty, ssEv[0].proposal.rows[0].unit], [10, 'کیلۆ']);
+assert.match(ssEv[0].proposal.rows[0].other, /Pizza 2/);
+assert.equal((await rt.stockSearch(db, yunis(), { query: 'carrot' }, () => {})).error, 'no_access');
 // Opening Ricotta Restaurant: only its own pages, only for people with Receipts or Transfers.
 const rrEv = [];
 const op = rt.openRicottaRestaurant(rozha(), { page: 'ledger' }, e => rrEv.push(e));

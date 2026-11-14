@@ -457,9 +457,13 @@ function renderRicoData(p){
   const card = (icon, title, meta, body, foot='')=>`<div class="rico-data" data-card="${esc(p.id)}"><div class="rico-data-head"><span class="rico-card-icon">${icon}</span><span class="rico-data-title" dir="auto">${esc(title)}</span>${meta ? `<small dir="auto">${esc(meta)}</small>` : ''}</div><div class="rico-data-rows">${body}</div>${more}${foot ? `<div class="rico-data-foot">${foot}</div>` : ''}</div>`;
   if(p.kind === 'stock_list'){
     if(!canOpen('transfers') && !canOpen('stock')) return '';
-    const body = rows.map(r=>`<div class="rico-data-row"><i class="rico-dot ${r.empty ? 'red' : 'amber'}"></i><span class="rico-data-name" dir="auto">${esc(r.item)}<small>${esc(r.empty ? t('ricoEmptyNow') : r.days != null ? t('ricoDaysLeft')(r.days) : '')}</small></span><b dir="auto">${esc(ricoNum(r.qty))} ${esc(r.unit)}</b></div>`).join('');
-    const foot = `${canOpen('stock') ? `<button type="button" class="btn btn-ghost" data-rico-open="stock">${esc(t('ricoOpenScreen')(viewLabel('stock')))}</button>` : ''}${canOpen('transfers') ? `<button type="button" class="btn btn-primary" data-rico-ask="${esc(t('ricoMoveLowAsk')(p.storage || ''))}">${esc(t('ricoMoveLow'))}</button>` : ''}`;
-    return card(RICO_TILE_ICONS.stock, t('ricoCardLow')(p.storage || ''), p.at ? timeAgo(p.at) : '', body, foot);
+    // Two kinds: what is low (amber, days left, a Prepare a transfer button) and a search ("all cheese":
+    // green when there is some, red when empty, other storages under the name).
+    const search = p.mode === 'search';
+    const sub = r=> r.empty ? t('ricoEmptyNow') : search ? (r.other ? t('ricoAlsoIn')(r.other) : '') : r.days != null ? t('ricoDaysLeft')(r.days) : '';
+    const body = rows.map(r=>`<div class="rico-data-row"><i class="rico-dot ${r.empty ? 'red' : search ? '' : 'amber'}"></i><span class="rico-data-name" dir="auto">${esc(r.item)}<small dir="auto">${esc(sub(r))}</small></span><b dir="ltr">${esc(ricoNum(r.qty))} <bdi>${esc(r.unit)}</bdi></b></div>`).join('');
+    const foot = `${canOpen('stock') ? `<button type="button" class="btn btn-ghost" data-rico-open="stock">${esc(t('ricoOpenScreen')(viewLabel('stock')))}</button>` : ''}${!search && canOpen('transfers') ? `<button type="button" class="btn btn-primary" data-rico-ask="${esc(t('ricoMoveLowAsk')(p.storage || ''))}">${esc(t('ricoMoveLow'))}</button>` : ''}`;
+    return card(RICO_TILE_ICONS.stock, search ? t('ricoCardStockOf')(p.query || '', p.storage || '') : t('ricoCardLow')(p.storage || ''), p.at ? timeAgo(p.at) : '', body, foot);
   }
   if(p.kind === 'needs_list'){
     const body = rows.filter(r=>canOpen(r.type === 'receipt' ? 'receipts' : 'transfers')).map(r=>`<button type="button" class="rico-data-row link" data-rico-need="${esc(r.type)}|${esc(r.id)}"><i class="rico-dot ${r.level === 'stop' ? 'red' : r.level === 'old' ? 'gray' : 'amber'}"></i><span class="rico-data-name" dir="auto">${esc(viewLabel(r.type === 'receipt' ? 'receipts' : 'transfers'))}: ${esc(r.title)}<small dir="auto">${esc(r.why)}</small></span><i class="sheet-chevron" aria-hidden="true"></i></button>`).join('');
@@ -642,7 +646,7 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:`list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:p.mode === 'search' ? `stock of "${p.query}" in ${p.storage}` : `list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
       content += ['stock_list','needs_list','price_list','spend','rr_link'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};
@@ -702,7 +706,7 @@ async function ricoAsk(text, options = {}){
       paint();
     }
     else if(ev.type === 'mood'){ /* older servers: moods are no longer shown */ }
-    else if(ev.type === 'error'){ bot.error = ev.code; bot.retry = ['offline','busy','failed'].includes(ev.code); paint(); }
+    else if(ev.type === 'error'){ bot.error = ev.code; bot.retry = ['offline','busy','failed','model_unavailable','bad_request'].includes(ev.code); paint(); }
   }, controller.signal);
   cancelAnimationFrame(frame);
   if(!ricoContextCurrent(context)) return;

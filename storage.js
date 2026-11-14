@@ -160,7 +160,13 @@ async function apiStream(path, body, onEvent, signal){
     if(!sessionCurrent()){ stop(); return; }
     setApiHealth(true);
     if(res.status === 401 && s && !apiPathIsPublic(path)){ clearApiSession(); onSessionExpired(); return; }
-    if(!res.ok){ onEvent({type:'error', code:res.status===429?'busy':'failed'}); return; }
+    // The server says why in the body ({"type":"error","code":"rate_limited"}); the status is only a fallback.
+    if(!res.ok){
+      let said = null;
+      try{ said = String(await res.text()).split('\n').map(l=>{ try{ return JSON.parse(l); }catch(_){ return null; } }).find(e=>e && e.type === 'error' && typeof e.code === 'string') || null; }catch(_){ said = null; }
+      onEvent({type:'error', code:said?.code || (res.status===429?'busy':'failed')});
+      return;
+    }
     const handle = line=>{
       if(!sessionCurrent()){ stop(); return false; }
       line = line.trim();

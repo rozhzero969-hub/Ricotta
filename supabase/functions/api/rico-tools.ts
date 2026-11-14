@@ -187,6 +187,39 @@ export async function lowStock(db: any, w: any, a: any, emit: Emit = noEmit) {
   };
 }
 
+/* ---------- stock_search ---------- */
+/* Every stock item matching a word or name ("cheese", "پەنیر", "milk"), with how much is in one storage
+   (Main Storage unless named) and where else there is some. Shown as a card. */
+export async function stockSearch(db: any, w: any, a: any, emit: Emit = noEmit) {
+  if (!w.can.transfers && !w.can.receipts) return NO_TRANSFERS;
+  const query = str(a?.query, 80);
+  if (!query) return { error: "Ask which item or kind of item." };
+  const cat: any = await withTimeout(catalogOf(db), "catalog");
+  const titems: any[] = cat.titems ?? [];
+  if (!titems.length) return { error: "no_stock", note: "Rico has not read the stock from Ricotta Restaurant yet. Say so." };
+  const zones: string[] = T.zonesOf(cat);
+  let zone = zones.includes("Main Storage") ? "Main Storage" : zones[0];
+  if (a?.storage) {
+    const z: any = pickName(zones, a.storage);
+    if (!z.name) return { ...notFound("storage", a.storage, z), storages: zones };
+    zone = z.name;
+  }
+  const aliases = aliasMap(w);
+  const hits = titems.filter((i) => i?.name && i.name.trim() !== "-" && (has(i.name, query)
+    || Number.isFinite(search.score(query, [i.name, ...(aliases.get(search.normalize(i.name)) ?? [])], false))));
+  if (!hits.length) return { error: "not_found", note: `No stock item matches "${query}". Say so.` };
+  const rows = hits.map((i) => {
+    const here = T.available(i, zone), c = T.inCounting(i, here, true);
+    const other = zones.filter((z) => z !== zone && T.available(i, z) > 0).map((z) => { const o = T.inCounting(i, T.available(i, z), true); return { storage: z, qty: o.qty, unit: o.unit }; });
+    return { item: i.name, qty: c.qty, unit: c.unit, empty: here <= 0, other };
+  }).sort((x, y) => Number(x.empty) - Number(y.empty) || x.item.localeCompare(y.item));
+  const shown = rows.slice(0, 30), at = cat.stockAt ?? cat.at ?? null;
+  emit({ type: "proposal", proposal: { id: cardId("s"), kind: "stock_list", mode: "search", query, storage: zone, at,
+    rows: shown.map((r) => ({ item: r.item, qty: r.qty, unit: r.unit, empty: r.empty, days: null,
+      other: r.other.slice(0, 4).map((o) => `${o.storage} ${o.qty} ${o.unit}`).join(" · ") })), more: Math.max(0, rows.length - 30) } });
+  return { storage: zone, found: rows.length, items: shown, stock_read_at: erbilTime(at), note: CARD_NOTE };
+}
+
 /* ---------- price_history ---------- */
 export async function priceHistory(db: any, w: any, a: any) {
   if (!w.can.receipts) return NO_RECEIPTS;
@@ -485,6 +518,8 @@ export async function proposeTransferDraft(db: any, w: any, a: any, emit: Emit) 
 export const RICO_RR_TOOLS = [
   { name: "open_ricotta_restaurant", description: "Shows a button that opens a page of the Ricotta Restaurant web app (the restaurant's own system) in the browser: home, stock, new_receipt (enter a receipt), my_receipts, invoices, transfer (move between storages), ledger, activity, check (stock check), threw_away, give_back, staff_meals, units, zones, prep, all. Use it whenever someone asks to open Ricotta Restaurant or one of its tabs.",
     input_schema: { type: "object", properties: { page: { type: "string", enum: Object.keys(RR_PAGES) } }, required: ["page"] } },
+  { name: "stock_search", description: "Stock of every item matching a word or name in English, Kurdish or Arabic (e.g. all cheese, milk, tomato): how much is in one storage (Main Storage unless named) and where else there is some. Shows a card with the list. Use it for any 'show me the stock of ...' or 'how much ... do we have' about several items.",
+    input_schema: { type: "object", properties: { query: { type: "string" }, storage: { type: "string", description: "Optional: one storage" } }, required: ["query"] } },
   { name: "low_stock", description: "What is running low in one storage (Main Storage unless named): empty items and items with less than 3 days left at their usual pace. Shows a card with the list.",
     input_schema: { type: "object", properties: { storage: { type: "string", description: "Optional: one storage" } } } },
   { name: "stock_levels", description: "How much of an item is in each storage (or one storage) in Ricotta Restaurant, from the stock Rico last read, and when it was read. Item name in any language; typos are fine.",
@@ -503,7 +538,8 @@ export const RICO_RR_TOOLS = [
     input_schema: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, lines: { type: "array", items: { type: "object", properties: { item: { type: "string" }, qty: { type: "number" }, unit: { type: "string", description: "Optional; default is the item's counting unit" } }, required: ["item", "qty"] } }, yesterday: { type: "boolean", description: "Record it for yesterday" } }, required: ["from", "to", "lines"] } },
 ];
 
-export const RICO_RR_MANUAL = `- "Open Ricotta Restaurant / its ledger / invoices / stock..." -> open_ricotta_restaurant with that page (a button opens it).
+export const RICO_RR_MANUAL = `- Lists of stock ("show me the stock of all cheese", "how much milk do we have") -> stock_search (a card lists them). Always prefer the card tools for lists; never write long lists in text.
+- "Open Ricotta Restaurant / its ledger / invoices / stock..." -> open_ricotta_restaurant with that page (a button opens it).
 - "What is low / running out / what should I move" -> low_stock (a card lists the items).
 - Stock: "how much X is in Pizza/Main Storage" -> stock_levels. Say when the stock was read.
 - Prices: "what did we pay for X", "has X gone up" -> price_history. "which prices went up/changed" -> price_changes.
@@ -516,6 +552,7 @@ export const RICO_RR_MANUAL = `- "Open Ricotta Restaurant / its ledger / invoice
 export async function runRrTool(db: any, w: any, name: string, a: any, emit: Emit): Promise<unknown> {
   switch (name) {
     case "open_ricotta_restaurant": return openRicottaRestaurant(w, a, emit);
+    case "stock_search": return await stockSearch(db, w, a, emit);
     case "low_stock": return await lowStock(db, w, a, emit);
     case "stock_levels": return await stockLevels(db, w, a);
     case "price_history": return await priceHistory(db, w, a);

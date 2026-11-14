@@ -3,6 +3,13 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-14d', date:'2026-11-14', notes:{
+    en:['Rico answers "show me the stock of all cheese" (or any kind of item) with a card: each item, how much is in Main Storage and where else there is some.',
+      'Rico no longer fails on longer questions, tries once more by himself when the AI is busy, and Retry always asks your question again.'],
+    ku:['ریکۆ وەڵامی «بڕی هەموو پەنیرەکانم پیشان بدە» (یان هەر جۆرە کاڵایەک) بە کارتێک دەداتەوە: هەر کاڵایەک، چەند لە کۆگای سەرەکی هەیە و لە کوێی تر هەیە.',
+      'ریکۆ ئیتر لە پرسیارە درێژەکاندا شکست ناهێنێت، کاتێک زیرەکی دەستکرد سەرقاڵە خۆی جارێکی تر هەوڵ دەداتەوە، و دووبارەکردنەوە هەمیشە پرسیارەکەت دەپرسێتەوە.'],
+    ar:['يجيب ريكو عن «أرني مخزون كل الأجبان» (أو أي نوع من المواد) ببطاقة: كل مادة، وكم منها في المخزن الرئيسي، وأين توجد أيضًا.',
+      'لم يعد ريكو يفشل في الأسئلة الطويلة، ويحاول مرة أخرى بنفسه عندما يكون الذكاء الاصطناعي مشغولًا، وزر إعادة المحاولة يعيد سؤالك دائمًا.']}},
   {id:'2026-11-14c', date:'2026-11-14', notes:{
     en:['Rico looks like a chat app now. On a computer his chats replace the tabs, with a back arrow to the app.',
       'Ask Rico what is low, what needs you, which prices went up or what you spent: he answers with a clear card and a button to act.',

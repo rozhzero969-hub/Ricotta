@@ -143,7 +143,7 @@ let anthropicTurn = 0;
 const whatsappCalls = [];
 let whatsappWindowClosed = false;
 let whatsappThrows = false;
-let anthropicSecondTurnDown = false;
+let anthropicSecondTurnDown = 0; // how many 529s in a row after the first round
 let anthropicFail = null; // { status, type, message } or 'slow'
 let anthropicTool = { name: 'open_screen', json: ['{"screen":', '"order"}'] };
 const anthropicKey = 'sk-ant-api03-' + 'C'.repeat(40);
@@ -152,7 +152,7 @@ const sse = events => new Response(new ReadableStream({ start(controller) {
 } }), { headers: { 'content-type': 'text/event-stream' } });
 async function anthropic(url, options) {
   assert.equal(options.headers['x-api-key'], anthropicKey);
-  if (anthropicSecondTurnDown && anthropicTurn === 1) { anthropicTurn++; return new Response('{"type":"error","error":{"type":"overloaded_error"}}', { status: 529 }); }
+  if (anthropicSecondTurnDown > 0 && anthropicTurn >= 1) { anthropicSecondTurnDown--; return new Response('{"type":"error","error":{"type":"overloaded_error"}}', { status: 529 }); }
   if (anthropicFail === 'slow') return new Promise((_, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
   if (anthropicFail) return new Response(JSON.stringify({ type: 'error', error: { type: anthropicFail.type, message: anthropicFail.message ?? '' } }), { status: anthropicFail.status });
   if (anthropicTurn++ === 0) return sse([
@@ -352,11 +352,18 @@ await chat('Rico, order from the bakery, and 2 toast bread');
 assert.equal(whatsappCalls.length, 2, 'a repeated order is not sent twice');
 assert.equal(lastToolResult().results[0].status, 'already_sent');
 // F09: once a message went out, a failing AI is not replaced by a backup that would send it again.
-orderTool({ suppliers: ['Vegetables'], items: [{ item_id: 'it-tomato', qty: 3 }] }); anthropicSecondTurnDown = true;
-const beforeFallback = requests.length;
-const afterSend = await chat('Rico, send 3 tomatoes yourself');
-anthropicSecondTurnDown = false;
+// One overloaded answer is asked again and the reply finishes (no backup, no error).
+orderTool({ suppliers: ['Vegetables'], items: [{ item_id: 'it-tomato', qty: 3 }] }); anthropicSecondTurnDown = 1;
+const blip = await chat('Rico, send 3 tomatoes yourself');
+assert.equal(anthropicSecondTurnDown, 0);
+assert.equal(blip.some(e => e.type === 'error'), false, 'a single overloaded answer is retried');
+assert.ok(blip.some(e => e.type === 'text'), 'and Rico still answers');
 assert.equal(whatsappCalls.length, 3);
+orderTool({ suppliers: ['Vegetables'], items: [{ item_id: 'it-tomato', qty: 4 }] }); anthropicSecondTurnDown = 2;
+const beforeFallback = requests.length;
+const afterSend = await chat('Rico, send 4 tomatoes yourself');
+anthropicSecondTurnDown = 0;
+assert.equal(whatsappCalls.length, 4);
 assert.equal(requests.slice(beforeFallback).some(r => !['api.anthropic.com', 'graph.facebook.com'].includes(new URL(r.url).hostname)), false, 'no backup AI starts the reply again');
 assert.equal(afterSend.find(e => e.type === 'error')?.code, 'busy');
 // F12: named items are checked like a normal order; one problem and nothing is sent.
@@ -364,13 +371,13 @@ for (const [items, problem] of [[[{ item_id: 'it-tomato', qty: 100000 }], /not a
   [[{ item_id: 'it-nope', qty: 1 }], /unknown item_id/], [[{ item_id: 'it-burger', qty: 1 }], /belongs to Bakery, which was not named/]]) {
   orderTool({ suppliers: ['Vegetables'], items });
   await chat('send it');
-  assert.equal(whatsappCalls.length, 3, `nothing sent for ${JSON.stringify(items)}`);
+  assert.equal(whatsappCalls.length, 4, `nothing sent for ${JSON.stringify(items)}`);
   assert.match(lastToolResult().problems.join(' '), problem);
 }
 kitchen.app_items.find(i => i.id === 'it-tomato').available = false;
 orderTool({ suppliers: ['Vegetables'], items: [{ item_id: 'it-tomato', qty: 2 }] });
 await chat('send it');
-assert.equal(whatsappCalls.length, 3); assert.match(lastToolResult().problems[0], /not available/);
+assert.equal(whatsappCalls.length, 4); assert.match(lastToolResult().problems[0], /not available/);
 kitchen.app_items.find(i => i.id === 'it-tomato').available = true;
 // F11: a long order goes as numbered parts, every line whole; nothing is cut off.
 kitchen.app_suppliers.push({ id: 'sup-big', name: 'Big market', phone: '', reminder: null });
