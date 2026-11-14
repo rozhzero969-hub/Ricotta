@@ -3,6 +3,28 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-14e', date:'2026-11-14', notes:{
+    en:['Rico opens without any jump, with a calmer sidebar: New chat, Search, your chats and a small settings button.',
+      'Right-click a chat (or hold it on a phone) to rename or delete it. Rico names each chat by its topic.',
+      'Right-click an item on the Order screen (or hold it on a phone) to edit it or link it to its stock item.',
+      'Linking is quicker: the best stock items are suggested right away, and Manage, Items has a list of everything not linked yet.',
+      'The stock line under an item is green when there is enough, yellow when it is running low and red when it is empty.',
+      'Check now updates the app the moment Rico has read Ricotta Restaurant.',
+      'Rest the pointer on a setting (or tap its i on a phone) to see what it does.'],
+    ku:['ریکۆ بێ هیچ جووڵەیەک دەکرێتەوە، لەگەڵ لیستێکی لاتەنیشتی ئارامتر: گفتوگۆی نوێ، گەڕان، گفتوگۆکانت و دوگمەیەکی بچووکی ڕێکخستن.',
+      'کلیکی ڕاست لە گفتوگۆیەک بکە (یان لە مۆبایل دایبگرە) بۆ ناوگۆڕین یان سڕینەوە. ریکۆ هەر گفتوگۆیەک بە بابەتەکەی ناو دەنێت.',
+      'کلیکی ڕاست لە کاڵایەک لە شاشەی داواکاری بکە (یان لە مۆبایل دایبگرە) بۆ دەستکاریکردن یان بەستنەوەی بە کاڵای کۆگا.',
+      'بەستنەوە خێراترە: باشترین کاڵاکانی کۆگا ڕاستەوخۆ پێشنیار دەکرێن، و بەڕێوەبردن، کاڵاکان لیستێکی هەموو ئەوانەی نەبەستراون هەیە.',
+      'دێڕی کۆگا لە ژێر کاڵادا سەوزە کاتێک بەس هەیە، زەردە کاتێک کەم دەبێتەوە و سوورە کاتێک بەتاڵە.',
+      'پشکنینی ئێستا ئەپەکە نوێ دەکاتەوە هەر کە ریکۆ ریکۆتا ڕێستۆرانتی خوێندەوە.',
+      'نیشاندەر لەسەر ڕێکخستنێک ڕابگرە (یان لە مۆبایل i ـەکەی دابگرە) بۆ بینینی ئەوەی چی دەکات.'],
+    ar:['يفتح ريكو دون أي اهتزاز، مع شريط جانبي أهدأ: محادثة جديدة، بحث، محادثاتك وزر إعدادات صغير.',
+      'انقر بزر الفأرة الأيمن على محادثة (أو اضغط عليها مطولًا في الهاتف) لإعادة تسميتها أو حذفها. يسمّي ريكو كل محادثة بموضوعها.',
+      'انقر بزر الفأرة الأيمن على مادة في شاشة الطلب (أو اضغط عليها مطولًا في الهاتف) لتعديلها أو ربطها بمادة المخزون.',
+      'الربط أسرع: تُقترح أفضل مواد المخزون فورًا، وفي الإدارة، المواد قائمة بكل ما لم يُربط بعد.',
+      'سطر المخزون تحت المادة أخضر عندما يكفي، وأصفر عندما يقل، وأحمر عندما يكون فارغًا.',
+      'زر الفحص الآن يحدّث التطبيق فور أن يقرأ ريكو ريكوتا ريستورانت.',
+      'أبقِ المؤشر على إعداد (أو اضغط i في الهاتف) لترى ما يفعله.']}},
   {id:'2026-11-14d', date:'2026-11-14', notes:{
     en:['Rico answers "show me the stock of all cheese" (or any kind of item) with a card: each item, how much is in Main Storage and where else there is some.',
       'Rico no longer fails on longer questions, tries once more by himself when the AI is busy, and Retry always asks your question again.'],
