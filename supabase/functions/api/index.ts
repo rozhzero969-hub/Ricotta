@@ -332,10 +332,9 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
 
 /* Ricotta Restaurant's stock as Rico last read it (app_rr_catalog), or null when not read yet. */
 async function readStockCatalog() {
-  // Only the stock items (not the whole catalog Rico keeps).
-  const { data, error } = await app("rr_catalog").select("titems:data->titems,updated_at").eq("id", true).maybeSingle();
+  const { data, error } = await app("rr_catalog").select("data,updated_at").eq("id", true).maybeSingle();
   if (error) throw error;
-  return data ? { titems: (Array.isArray((data as any).titems) ? (data as any).titems : []) as any[], at: data.updated_at ?? null } : null;
+  return data ? { titems: (data.data?.titems ?? []) as any[], at: data.updated_at ?? null } : null;
 }
 /* Linked items get how much is in Main Storage (only theirs: no other stock goes to the phone, so
    people without Receipts or Transfers see just this). A link whose stock item is gone says so. */
