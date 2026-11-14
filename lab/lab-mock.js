@@ -205,13 +205,17 @@
     {name:'Lemon - لیمۆ', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:null, stock:{'Main Storage':12500}},
     {name:'Banana - مۆز', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':5000}},
     {name:'Akkawi Cheese - پەنیری عەکاوی', base:'دانە', count:{name:'دانە', factor:1}, buy:{name:'کارتۆن', factor:24}, stock:{'Main Storage':0}},
+    {name:'Mozzarella Block - پەنیری مۆزارێلای پارچە', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کارتۆن', factor:10000}, stock:{'Main Storage':20000}},
     {name:'Olive Oil - زەیتی زەیتوون', base:'مل', count:{name:'دانە', factor:1000}, buy:{name:'کارتۆن', factor:12000}, stock:{'Main Storage':24000}},
   ];
   const labStockAt = ()=>new Date(Date.now() - 6 * 60000).toISOString();
+  // Sample use over the last 14 days, so the Order screen shows each colour: Parmesan is low.
+  const LAB_USE = new Map([['Parmesan - پەنیری پارمیزان', {base:280, n:6}], ['Lemon - لیمۆ', {base:14000, n:4}]]);
+  const labLevel = t=>globalThis.RicottaStockLink.level(t, LAB_USE).level;
   const withLabStock = i=>{
     if(!i.stockItem) return i;
     const t = LAB_STOCK.find(x=>x.name === i.stockItem);
-    return {...i, stock:t ? {...globalThis.RicottaStockLink.amount(t), at:labStockAt()} : {missing:true}};
+    return {...i, stock:t ? {...globalThis.RicottaStockLink.amount(t), level:labLevel(t), at:labStockAt()} : {missing:true}};
   };
   function ricoReply(account, body){
     const L = lang(body.lang);
@@ -386,7 +390,7 @@
         if(want && !t) return fail('stock_item_unknown', 422);
         if(want && !globalThis.RicottaStockLink.matches(it, want)) return fail('names_dont_match', 422);
         it.stockItem = want; save();
-        return json({ok:true, stockItem:want, stock:t ? {...globalThis.RicottaStockLink.amount(t), at:labStockAt()} : null});
+        return json({ok:true, stockItem:want, stock:t ? {...globalThis.RicottaStockLink.amount(t), level:labLevel(t), at:labStockAt()} : null});
       }
     }
     // Stock (read only): Main Storage, with practice last-bought and last-moved notes.

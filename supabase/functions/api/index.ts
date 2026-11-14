@@ -336,16 +336,28 @@ async function readStockCatalog() {
 }
 /* Linked items get how much is in Main Storage (only theirs: no other stock goes to the phone, so
    people without Receipts or Transfers see just this). A link whose stock item is gone says so. */
+/* With each amount comes its level for the colour on the Order screen (empty, low, ok), worked out here
+   from moved transfers so phones without Receipts or Transfers need nothing more. */
+async function stockUsage(titems: any[]) {
+  const L = (globalThis as any).RicottaStockLink;
+  const since = new Date(Date.now() - L.USE_DAYS * 86400_000).toISOString();
+  const { data, error } = await db.from("app_rr_transfers").select("from_zone,lines,mode").eq("status", "moved").eq("from_zone", L.MAIN).gte("moved_at", since).limit(1500);
+  return error ? new Map() : L.usage(data ?? [], titems, L.MAIN);   // no usage: just in stock or empty
+}
+const stockOf = (t: any, used: Map<string, any>, at: string | null) => {
+  const L = (globalThis as any).RicottaStockLink;
+  return { ...L.amount(t), level: L.level(t, used).level, at };
+};
 async function withStock(items: any[]) {
   if (!items.some((i) => i.stockItem)) return items;
   const cat = await readStockCatalog().catch(() => null);
   if (!cat) return items;
   const byName = new Map(cat.titems.map((t: any) => [t.name, t]));
-  const L = (globalThis as any).RicottaStockLink;
+  const used = await stockUsage(cat.titems).catch(() => new Map());
   return items.map((i) => {
     if (!i.stockItem) return i;
     const t = byName.get(i.stockItem);
-    return { ...i, stock: t ? { ...L.amount(t), at: cat.at } : { missing: true, at: cat.at } };
+    return { ...i, stock: t ? stockOf(t, used, cat.at) : { missing: true, at: cat.at } };
   });
 }
 async function bootstrap(s: Session) {
@@ -1101,7 +1113,7 @@ Deno.serve(async (req) => {
         if (!t) return fail("stock_item_unknown", 422);
         const L = (globalThis as any).RicottaStockLink;
         if (!L.matches({ name: item.name, aliases: item.aliases ?? [] }, want)) return fail("names_dont_match", 422);
-        stock = { ...L.amount(t), at: cat?.at ?? null };
+        stock = stockOf(t, await stockUsage(cat?.titems ?? []).catch(() => new Map()), cat?.at ?? null);
       }
       if ((item.stock_item ?? null) !== want) {
         const { error: upError } = await app("items").update({ stock_item: want, updated_at: nowIso() }).eq("id", id);

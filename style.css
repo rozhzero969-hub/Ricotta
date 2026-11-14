@@ -2620,3 +2620,35 @@ html.dark .nm-tag.spacing{color:#64AFFF}html.dark .nm-tag.letters{color:#FFB340}
 
 /* Admin pages use the full width of the page, like their other cards (forms elsewhere stay narrower). */
 .admin-page .form-card{max-width:none}
+
+/* Order screen: the linked stock line in the state's colour (only that line). Amber is the app's warning
+   colour, darker in light mode so it stays readable. */
+.item-stock.lvl-ok{color:var(--ok-ink)}
+html.dark .item-stock.lvl-ok{color:#30D158}
+.item-stock.lvl-low{color:#B45309}
+html.dark .item-stock.lvl-low{color:#FDBA74}
+.item-stock.lvl-empty{color:var(--clay-ink)}
+html.dark .item-stock.lvl-empty{color:#FF6961}
+.item-stock-tag{font-weight:600}
+/* Stock link suggestions: the best matches, one tap each, Link on the right. */
+.stock-sug{margin-top:8px;border-radius:12px;background:var(--surface-2);overflow:hidden}
+.stock-sug-title{padding:8px 12px 2px;font-size:.75rem;font-weight:600;color:var(--ink-soft)}
+.stock-sug .stock-opt{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;align-items:center}
+.stock-sug .stock-opt>span,.stock-sug .stock-opt>small{grid-column:1}
+.stock-sug-link{grid-column:2;grid-row:1/span 2;color:var(--tint);font-weight:600;font-size:.9375rem}
+@media (hover:hover){.stock-sug .stock-opt:hover{background:var(--fill)}}
+/* Link many (Manage, Items): one row per item not linked yet. */
+.stock-many-hint{margin:-4px 0 12px;font-size:.875rem;color:var(--ink-soft)}
+.stock-many-list{display:flex;flex-direction:column;max-height:62vh;overflow-y:auto;border-radius:14px;background:var(--surface-2)}
+.stock-many-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 12px}
+.stock-many-row+.stock-many-row{border-top:.5px solid var(--line)}
+.stock-many-names{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.stock-many-names b{font-weight:500;overflow-wrap:anywhere}
+.stock-many-names small{font-size:.8125rem;color:var(--ink-soft);overflow-wrap:anywhere}
+.stock-many-btns{display:flex;gap:6px;flex:none}
+.stock-many-btns .btn{min-height:36px;padding:0 14px;border-radius:10px;font-size:.875rem}
+.stock-many-ok{display:inline-flex;align-items:center;gap:6px;font-size:.875rem;font-weight:600;color:var(--ok-ink)}
+html.dark .stock-many-ok{color:#30D158}
+.stock-many-row.done .stock-many-names{opacity:.6}
+.stock-many-more{margin:8px auto}
+.btn-count{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;margin-inline-start:4px;border-radius:6px;background:var(--fill-strong);font-size:.75rem;font-weight:600}
