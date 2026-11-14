@@ -92,7 +92,14 @@
       {id:1, kind:'cheer', mood:'excited', read:false, at:morning,
        en:'Good morning, Rozh! 3 suppliers are due today: Zakho Dairy, Erbil Veg Market, Ankawa Bakery. Let’s get the orders out on time.',
        ku:'بەیانیت باش ڕۆژا! ئەمڕۆ کاتی داواکاریی 3 دابینکەرە: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. با بە کاتی خۆی بینێرین.',
-       ar:'صباح الخير يا روژا! اليوم موعد 3 من المورّدين: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. لنرسل الطلبات في وقتها.'}
+       ar:'صباح الخير يا روژا! اليوم موعد 3 من المورّدين: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. لنرسل الطلبات في وقتها.'},
+      // A routine Rico ran this morning: today's usual order for Erbil Veg Market, waiting for a tap.
+      {id:2, kind:'routine_order', mood:'calm', read:false, at:new Date(Date.now() - 20*60000).toISOString(),
+       en:'I prepared today’s order for Erbil Veg Market (3 items). Open it, check it and send it.',
+       ku:'داواکاریی ئەمڕۆی Erbil Veg Marketم ئامادە کرد (3 کاڵا). بیکەرەوە، بیپشکنە و بینێرە.',
+       ar:'جهّزت طلب اليوم من Erbil Veg Market (3 مواد). افتحه وراجعه وأرسله.',
+       order:{supplierId:'sup-veg', supplier:'Erbil Veg Market', day:new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Baghdad'}).format(new Date()),
+         lines:[{itemId:'it-tom', qty:12}, {itemId:'it-basil', qty:6}, {itemId:'it-onion', qty:1}]}}
     ];
     items.find(i=>i.id==='it-tom').note = 'Ripe, not soft';
     const today = bag(new Date());
@@ -123,7 +130,7 @@
       usage.push({account:'yunis', deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', day, seconds:2400 + ((d*911) % 3600)});
       if(d % 3 === 0) usage.push({account:'rozha', deviceId:'lab-phone-rozha', label:'iPhone 16/17 Pro Max|App', day, seconds:600 + d*40});
     }
-    return {v:7, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, seq:100, said:{},
+    return {v:8, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, seq:100, said:{},
       roles:{yunis:null}, security, problems, usage};
   }
   /* Two finished months for the archive (History itself only keeps this month). */
@@ -136,7 +143,7 @@
       topItems:[{name:'Tomatoes', unit:'kg', times:13, qty:80}, {name:'Mozzarella', unit:'kg', times:12, qty:52}]}
   ];
   let db = lsGet(DB_KEY);
-  if(!db || db.v !== 7) db = seed();
+  if(!db || db.v !== 8) db = seed();
   const save = () => lsSet(DB_KEY, db);
   save();
   window.labResetData = () => { db = seed(); save(); };
@@ -191,7 +198,21 @@
     const say = (mood, en, ku, ar) => { events.push({type:'mood', mood}); events.push({type:'text', text:({en, ku, ar})[L]}); };
     const wantsOrder = /order|prepar|suggest|usual|داواکاری|ئامادە|طلب|جهز|veg|tomato/.test(q) || body.quickAction;
     const pid = k=>k+Date.now().toString(36);
-    if(/is low|low in|کەمە|ينقص/.test(q)){
+    const inMatch = q.match(/in (\d+) ?(second|sec|minute|min)/);
+    if(inMatch){
+      const secs = Number(inMatch[1]) * (/^min/.test(inMatch[2]) ? 60 : 1), at = new Date(Date.now() + secs * 1000);
+      db.routines ||= [];
+      db.routines.push({id:crypto.randomUUID(), account, kind:'remind', text:'Do the transfers', supplierIds:[], time:at.toTimeString().slice(0,5), days:[0,1,2,3,4,5,6], enabled:true, lastRunDay:null, runAt:at.toISOString()});
+      save();
+      const when = secs < 120 ? 'in about a minute' : 'at ' + at.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', timeZone:'Asia/Baghdad'});
+      say('calm', `I’ll remind you ${when} to do your transfers.`, `${when === 'in about a minute' ? 'نزیکەی یەک خولەکی تر' : when} بیرت دەخەمەوە گواستنەوەکان بکەیت.`, `سأذكّرك ${when} بالتحويلات.`);
+    } else if(/remind me|بیرم بخەرەوە|ذكّرني|ذكرني/.test(q)){
+      say('calm', 'I can remind you every day at 9:00. Tap Save to keep it.', 'دەتوانم هەموو ڕۆژێک کاتژمێر 9:00 بیرت بخەمەوە. پاشەکەوتکردن دابگرە.', 'أستطيع تذكيرك كل يوم الساعة 9:00. اضغط حفظ.');
+      events.push({type:'proposal', proposal:{id:pid('r'), kind:'routine', routine:{kind:'remind', text:'Do the transfers', time:'09:00', days:[0,1,2,3,4,5,6], supplierIds:[], suppliers:[]}}});
+    } else if(/every morning|by yourself|هەموو بەیانییەک|كل صباح/.test(q)){
+      say('calm', 'Every morning at 7:00 I will prepare the usual order for Erbil Veg Market and leave it for you to check and send. Nothing goes to the supplier until you send it.', 'هەموو بەیانییەک کاتژمێر 7:00 داواکارییە ئاساییەکەی Erbil Veg Market ئامادە دەکەم.', 'كل صباح الساعة 7:00 سأجهّز طلب Erbil Veg Market المعتاد.');
+      events.push({type:'proposal', proposal:{id:pid('r'), kind:'routine', routine:{kind:'prepare_order', text:'Veg order', time:'07:00', days:[0,1,2,3,4,5,6], supplierIds:['sup-veg'], suppliers:['Erbil Veg Market']}}});
+    } else if(/is low|low in|کەمە|ينقص/.test(q)){
       say('calm', 'Two items are low in Main Storage. Faheta Bread is empty and Mozzarella has about a day left.', 'دوو کاڵا لە کۆگای سەرەکی کەمن.', 'مادتان ناقصتان في المخزن الرئيسي.');
       events.push({type:'proposal', proposal:{id:pid('s'), kind:'stock_list', storage:'Main Storage', at:new Date(Date.now()-6*60000).toISOString(), more:0,
         rows:[{item:'Faheta Bread - صمونى فاهيتا', qty:0, unit:'دانە', days:null, empty:true},{item:'Mozzarella - پەنیری مۆزارێلا', qty:2, unit:'کیلۆ', days:0.8, empty:false},{item:'Lemon - لیمۆ', qty:1.5, unit:'کیلۆ', days:2.4, empty:false}]}});
@@ -430,9 +451,30 @@
       return fail('not_found', 404);
     }
     if(path === 'rico-rules'){
-      db.rules ||= [{id:'11111111-1111-4111-8111-111111111111', account:'rozha', rule:'Never order fish on Friday', created_at:new Date().toISOString()}];
-      if(method === 'POST'){ db.rules.push({id:crypto.randomUUID(), account, rule:String(body.rule).slice(0, 300), created_at:new Date().toISOString()}); return json({ok:true}); }
+      db.rules ||= [{id:'11111111-1111-4111-8111-111111111111', account:'rozha', rule:'Never order fish on Friday', source:'taught', created_at:new Date().toISOString()},
+        {id:'11111111-1111-4111-8111-111111111112', account:'rozha', rule:'Likes short answers', source:'learned', created_at:new Date().toISOString()}];
+      if(method === 'POST'){
+        if(/\b(pin|password|code)\b/i.test(String(body.rule))) return json({error:'secret'}, 422);
+        db.rules.push({id:crypto.randomUUID(), account, rule:String(body.rule).slice(0, 300), source:'taught', created_at:new Date().toISOString()}); return json({ok:true});
+      }
       return json(db.rules);
+    }
+    if(path === 'rico-routines'){
+      db.routines ||= [{id:'22222222-2222-4222-8222-222222222221', account:'rozha', kind:'remind', text:'Do the transfers', supplierIds:[], time:'09:00', days:[0,1,2,3,4,5,6], enabled:true, lastRunDay:null}];
+      if(method === 'POST'){
+        if(!['remind','prepare_order'].includes(body.kind) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.time || '')) return json({error:'invalid_input'}, 400);
+        const same = db.routines.find(x=>x.account === account && x.kind === body.kind && x.time === body.time && x.text === body.text);
+        if(same) return json({routine:same});
+        const r = {id:crypto.randomUUID(), account, kind:body.kind, text:String(body.text || '').slice(0, 200), supplierIds:body.supplierIds || [], time:body.time, days:body.days || [0,1,2,3,4,5,6], enabled:true, lastRunDay:null};
+        db.routines.push(r); save(); return json({routine:r});
+      }
+      return json(db.routines.filter(r=>account === 'rozha' || r.account === account));
+    }
+    if(path.startsWith('rico-routines/')){
+      const id = path.split('/')[1], r = (db.routines || []).find(x=>x.id === id);
+      if(!r) return json({error:'not_found'}, 404);
+      if(method === 'PUT'){ r.enabled = !!body.enabled; save(); return json({ok:true}); }
+      if(method === 'DELETE'){ db.routines = db.routines.filter(x=>x.id !== id); save(); return json({ok:true}); }
     }
     if(path.startsWith('rico-rules/') && method === 'DELETE'){ db.rules = (db.rules || []).filter(r=>r.id !== path.split('/')[1]); return json({ok:true}); }
     if(path === 'admin/backups' && method === 'GET') return json(Array.from({length:7}, (_, i)=>({day:new Date(Date.now() - i * 86400000).toISOString().slice(0, 10), suppliers:db.suppliers.length, items:db.items.length, orders:db.history.length, at:new Date().toISOString()})));

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders } from '../supabase/functions/_shared/security.ts';
+import { runRoutines } from '../supabase/functions/_shared/routines.ts';
 
 let tables, queryError = '', rpcCalls, rowPages, recoveryCalls, weatherCalls;
 function reset() {
@@ -90,8 +91,8 @@ const fetchStub = async (url) => {
   weatherCalls.push(String(url));
   return new Response(JSON.stringify(weather), { status: 200, headers: { 'content-type': 'application/json' } });
 };
-const { loadSubs, claimAlert, ricoSays, saysOnce, overdueTick, linesFor } = new Function('createClient', 'Deno', 'webpush', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'fetch', stripTypeScriptTypes(source) + '\nreturn { loadSubs, claimAlert, ricoSays, saysOnce, overdueTick, linesFor };')(
-  () => db, deno, { setVapidDetails() {}, sendNotification() { assert.fail('push must stay disabled without VAPID'); } }, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, fetchStub,
+const { loadSubs, claimAlert, ricoSays, saysOnce, overdueTick, linesFor } = new Function('createClient', 'Deno', 'webpush', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'fetch', 'runRoutines', stripTypeScriptTypes(source) + '\nreturn { loadSubs, claimAlert, ricoSays, saysOnce, overdueTick, linesFor };')(
+  () => db, deno, { setVapidDetails() {}, sendNotification() { assert.fail('push must stay disabled without VAPID'); } }, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, fetchStub, runRoutines,
 );
 reset();
 assert.deepEqual(await Promise.all([claimAlert('fixture-alert','cheer',null),claimAlert('fixture-alert','cheer',null)]),[true,false],'one alert claim wins concurrent retries');

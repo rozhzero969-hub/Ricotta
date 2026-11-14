@@ -19,12 +19,16 @@
 // Friday evening -- each once, in the app (Rico's inbox) and as a
 // notification. Erbil's weather is refreshed every hour.
 //
+// Every tick also runs the routines people set up with Rico (app_rico_routines): a reminder, or
+// an order he prepares by himself and leaves in their inbox to check and send. Never sent to a supplier.
+//
 // Every push is sent in the recipient phone's own language (English, Kurdish
 // or Arabic), and addresses the person signed in there by name when known.
 // Reminders only go to phones that are signed in.
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders } from "../_shared/security.ts";
+import { type PastOrder, type RoutineKind, runRoutines } from "../_shared/routines.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const VAPID_PUBLIC = Deno.env.get("VAPID_PUBLIC_KEY");
@@ -284,6 +288,41 @@ async function overdueTick() {
   return out;
 }
 
+/* ---- Rico's routines (see ../_shared/routines.ts) ----
+   Who may still use one: Rico on for that account (as ricoAccounts), and History too for a prepared
+   order (it is worked out from past orders). A saved list without the role stops the routine quietly. */
+const STANDARD_ROLES = ["history", "assistant"];
+async function routineTick() {
+  const rows = must(await sb.from("app_accounts").select("id,roles"), "accounts") as any[];
+  const has = (account: string, role: string) => {
+    if (account === "rozha") return true;
+    const roles = (rows ?? []).find((r: any) => r.id === account)?.roles;
+    return Array.isArray(roles) ? roles.includes(role) : STANDARD_ROLES.includes(role);
+  };
+  return await runRoutines(sb, {
+    now: erbilNow(),
+    canUse: (account: string, kind: RoutineKind) => ACCOUNTS.includes(account) && has(account, "assistant") && (kind !== "prepare_order" || has(account, "history")),
+    history: async () => {
+      const since = new Date(Date.now() - 60 * 86400_000).toISOString();
+      const orders = must(await sb.from("app_orders").select("id,sent_at").eq("status", "sent").gte("sent_at", since)
+        .order("sent_at", { ascending: false }).limit(600), "orders") as any[];
+      const lines = await linesFor((orders ?? []).map((o: any) => o.id), "order_id,item_id,supplier_id,qty");
+      const byOrder = new Map<string, any[]>();
+      for (const l of lines) (byOrder.get(l.order_id) ?? byOrder.set(l.order_id, []).get(l.order_id)!).push(l);
+      const weekdayOf = (iso: string) => new Date(`${new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(iso))}T12:00:00Z`).getUTCDay();
+      const past: PastOrder[] = (orders ?? []).map((o: any) => ({ weekday: weekdayOf(o.sent_at), lines: byOrder.get(o.id) ?? [] }));
+      const items = await readAll(() => sb.from("app_items").select("id,available").order("id"));
+      const sups = await readAll(() => sb.from("app_suppliers").select("id,name").order("id"));
+      return { orders: past, available: new Set(items.filter((i: any) => i.available !== false).map((i: any) => String(i.id))),
+        suppliers: new Map(sups.map((x: any) => [String(x.id), String(x.name ?? "")])) };
+    },
+    notify: (account, words, tag) => sendReminder((lang) => ({
+      title: RICO[lang], body: lang === "ku" ? words.ku : lang === "ar" ? words.ar : words.en,
+      kind: "assistant", mood: RICO_MOOD, tag,
+    }), new Set([account])),
+  });
+}
+
 /* ---- Erbil weather (Open-Meteo, no key), kept in app_weather for the app and Rico ---- */
 const RAIN_CODES = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
 const SNOW_CODES = [71, 73, 75, 77, 85, 86];
@@ -515,6 +554,7 @@ Deno.serve(async (req) => {
         try { result.health = await healthTick(); } catch (e) { console.error("health tick failed", e); result.health = { error: "failed" }; }
         try { result.wipe = await wipeTick(); } catch (e) { console.error("wipe tick failed", e); result.wipe = { error: "failed" }; }
         try { result.weekly = await weeklyTick(); } catch (e) { console.error("weekly tick failed", e); result.weekly = { error: true }; }
+        try { result.routines = await routineTick(); } catch (e) { console.error("routine tick failed", e); result.routines = { error: true }; }
         return json(result);
       }
       case "security": {

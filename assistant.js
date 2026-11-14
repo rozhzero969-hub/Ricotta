@@ -69,7 +69,7 @@ function ricoReset(){
 }
 
 /* ---------- Rico's inbox ---------- */
-function ricoSetInbox(list){ rico.inbox = Array.isArray(list) ? list : []; }
+function ricoSetInbox(list){ rico.inbox = Array.isArray(list) ? list : []; if(typeof ricoAutoFillRoutines === 'function') ricoAutoFillRoutines(); }
 function ricoUnread(){ return rico.inbox.filter(m=>!m.read).length; }
 function ricoInboxText(m){ return (state.lang === 'ku' ? m.ku : state.lang === 'ar' ? m.ar : m.en) || m.en; }
 /* Opening Rico reads his messages. */
@@ -238,8 +238,13 @@ function renderRicoInbox(){
   return `<div class="rico-inbox">${list.map(m=>`
     <div class="rico-note ${m.read?'':'unread'}">
       ${ricoFace('', 'rico-sm')}
-      <div class="rico-note-body"><div class="rico-note-meta">${esc(t('ricoWroteFirst'))} · ${esc(timeAgo(m.at))}</div><div class="rico-note-text" dir="auto">${esc(ricoInboxText(m))}</div></div>
+      <div class="rico-note-body"><div class="rico-note-meta">${esc(t('ricoWroteFirst'))} · ${esc(timeAgo(m.at))}</div><div class="rico-note-text" dir="auto">${esc(ricoInboxText(m))}</div>${ricoNoteAction(m)}</div>
     </div>`).join('')}${rico.inbox.length > 1 ? `<button type="button" class="rico-link rico-inbox-more" id="ricoInboxAll">${esc(t('inboxSeeAll')(rico.inbox.length))}</button>` : ''}</div>`;
+}
+/* A prepared order (from a routine) carries its own button that fills the Order screen. */
+function ricoNoteAction(m){
+  return m.kind === 'routine_order' && Array.isArray(m.order?.lines) && canOpen('order')
+    ? `<button type="button" class="btn btn-primary rico-note-btn" data-routine-fill="${esc(m.id)}">${esc(t('inboxOpenOrder'))}</button>` : '';
 }
 function renderRicoIntro(){
   // A calm first screen, like a chat app's: a greeting, Rico's latest note, and a few things to ask.
@@ -421,6 +426,12 @@ function renderRicoProposalCard(p, mi){
     return ricoCard(NAV_ICONS.transfers, viewLabel('transfers'), body, `<div class="rico-card-actions"><button class="btn btn-primary" data-rico-transfer="${esc(p.transferId)}">${esc(t('ricoOpenScreen')(viewLabel('transfers')))}</button></div>`, p);
   }
   if(['stock_list','needs_list','price_list','spend'].includes(p.kind)) return renderRicoData(p);
+  // A routine Rico offers to keep: saved only when the person taps Save.
+  if(p.kind === 'routine' && p.routine){
+    const r = p.routine;
+    body = `<div class="rico-card-note" dir="auto"><b>${esc(r.text)}</b></div><div class="rico-card-note">${esc(routineLabel({...r, supplierIds:r.supplierIds || []}))}</div>`;
+    return ricoCard(ICON_BELL, t('routineCard'), body, actions(t('routineSave')), p);
+  }
   if(p.kind === 'open'){
     if(p.screen !== 'send' && !canOpen(p.screen)) return '';
     if(p.screen === 'send' && !canDo('send')) return '';
@@ -592,6 +603,7 @@ function attachRicoThreadEvents(root){
     for(let i=0; i<40 && !find(id); i++) await new Promise(r=>setTimeout(r, 250));
     if(state.view === view && find(id)) open(id);
   });
+  root.querySelectorAll('[data-routine-fill]').forEach(b=>b.onclick=()=>{ const m = rico.inbox.find(x=>String(x.id) === b.dataset.routineFill); if(!ricoFillRoutineOrder(m)) toast(t('saveFailed'), 'warn'); });
   root.querySelectorAll('[data-rico-settings]').forEach(b=>b.onclick=()=>{ goView('settings'); requestAnimationFrame(()=>document.querySelector('.rico-status-card')?.scrollIntoView({block:'center'})); });
   root.querySelectorAll('[data-rico-retry]').forEach(b=>b.onclick=()=>{
     const i = +b.dataset.ricoRetry;
@@ -622,7 +634,7 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, stock_list:`list of what is low in ${p.storage}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:`list of what is low in ${p.storage}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
       content += ['stock_list','needs_list','price_list','spend'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};
@@ -820,6 +832,13 @@ async function ricoApply(mi, id, btn){
       state.streak = r.data.streak;
       paintStreakChip(true);
       p.doneLabel = t('streakRecovered')(r.data.streak.count);
+      return true;
+    }
+    if(p.kind === 'routine' && p.routine){
+      const r = p.routine;
+      const res = await api('rico-routines', {method:'POST', body:{kind:r.kind, text:r.text, time:r.time, days:r.days, supplierIds:r.supplierIds || []}});
+      if(!res.ok){ await showAlert(t(res.status === 409 ? 'routineTooMany' : 'saveFailed')); return false; }
+      p.doneLabel = t('routineSaved');
       return true;
     }
     if(p.kind === 'notify'){
