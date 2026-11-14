@@ -2620,3 +2620,71 @@ html.dark .nm-tag.spacing{color:#64AFFF}html.dark .nm-tag.letters{color:#FFB340}
 
 /* Admin pages use the full width of the page, like their other cards (forms elsewhere stay narrower). */
 .admin-page .form-card{max-width:none}
+/* Check now: a small spinner while Rico reads, "Checked just now" in green for a minute after. */
+.rr-check{display:inline-flex;align-items:center;gap:7px}
+.rr-check:disabled{opacity:.7}
+.rr-check.done{color:var(--ok-ink)}
+html.dark .rr-check.done{color:#30D158}
+.rr-spin{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite}
+@media (prefers-reduced-motion:reduce){.rr-spin{animation:none;border-right-color:currentColor;opacity:.5}}
+/* Stock: the read time with Check now beside it. */
+.stk-meta-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.stk-meta-row .stk-meta{margin:0}
+/* What a setting does: a small card beside the row (computer) or a sheet (phone), with a picture. */
+.help-pop{position:fixed;z-index:400;width:280px;display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:14px;background:var(--surface);box-shadow:0 10px 30px rgba(0,0,0,.18),inset 0 0 0 .5px var(--line-strong);pointer-events:none;animation:helpIn .16s var(--ease-out) both}
+html.dark .help-pop{box-shadow:0 10px 30px rgba(0,0,0,.55),inset 0 0 0 .5px rgba(255,255,255,.12)}
+@keyframes helpIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.help-pic{display:block;width:100%;height:auto;max-height:110px;border-radius:10px;background:var(--surface-2)}
+.help-text b{display:block;font-size:.9375rem;font-weight:600;margin-bottom:3px}
+.help-text p{margin:0;font-size:.875rem;line-height:1.45;color:var(--ink-soft)}
+.help-sheet-body{display:flex;flex-direction:column;gap:14px;padding:4px 2px 12px}
+.help-sheet-body .help-pic{max-height:150px}
+.help-sheet-body .help-text b{font-size:1.0625rem}
+.help-sheet-body .help-text p{font-size:.9688rem}
+.help-btn{flex:none;align-self:center;display:grid;place-items:center;width:24px;height:24px;margin-inline-start:auto;padding:0;border:0;border-radius:7px;background:var(--fill);color:var(--ink-soft);font:600 .8125rem/1 var(--font);cursor:pointer}
+.check-row .help-btn+input[type=checkbox],.help-btn~input[type=checkbox]{margin-inline-start:10px}
+.help-btn::before{content:'';position:absolute;inset:-10px}
+.help-btn{position:relative}
+/* The pictures: the app's own colours, quiet motion that stops with Reduce Motion. */
+.help-pic .hp-card{fill:var(--surface);stroke:var(--line-strong);stroke-width:1}
+.help-pic .hp-line{fill:var(--fill-strong)}
+.help-pic .hp-strong{fill:var(--ink-faint)}
+.help-pic .hp-ink{fill:var(--ink-soft)}
+.help-pic .hp-acc{fill:var(--accent)}
+.help-pic .hp-soft{opacity:.35}
+.help-pic .hp-ok{fill:var(--ok)}
+.help-pic .hp-red{fill:var(--red)}
+.help-pic .hp-white{fill:#fff}
+.help-pic .hp-grid{fill:none;stroke:var(--line-strong);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.help-pic .hp-wave{fill:none;stroke:var(--accent);stroke-width:3;stroke-linecap:round}
+.help-pic .hp-num{fill:var(--accent);font:700 13px var(--font)}
+.help-pic .hp-aa{fill:var(--ink);font:700 22px var(--font);transform-origin:66px 40px;animation:hpGrow 2.4s ease-in-out infinite}
+.help-pic .hp-night{fill:#1c1c1e;animation:hpNight 3s ease-in-out infinite}
+.help-pic .hp-slide{animation:hpSlide 2.4s ease-in-out infinite}
+.help-pic .hp-finger{animation:hpFinger 2.2s ease-in-out infinite}
+.help-pic .hp-fadein{animation:hpFadeIn 2.2s ease-in-out infinite}
+.help-pic .hp-fadeout{animation:hpFadeOut 2.6s ease-in-out infinite}
+.help-pic .hp-pulse{animation:hpPulse 1.8s ease-in-out infinite}
+.help-pic .hp-pop{transform-origin:66px 34px;animation:hpPop 2.4s ease-in-out infinite}
+.help-pic .hp-travel{animation:hpTravel 2.4s ease-in-out infinite}
+.help-pic .hp-r2{animation:hpRow2 2.6s ease-in-out infinite}
+.help-pic .hp-r3{animation:hpRow3 2.6s ease-in-out infinite}
+.help-pic .hp-w1{animation:hpPulse 1.6s ease-in-out infinite}
+.help-pic .hp-w2{animation:hpPulse 1.6s ease-in-out .2s infinite}
+.help-pic .hp-w3{animation:hpPulse 1.6s ease-in-out .4s infinite}
+.help-pic .hp-fill1{animation:hpFill 2.4s ease-in-out infinite}
+.help-pic .hp-fill2{animation:hpFill 2.4s ease-in-out .3s infinite}
+@keyframes hpGrow{0%,30%{transform:scale(.8)}60%,100%{transform:scale(1.25)}}
+@keyframes hpNight{0%,35%{opacity:0}55%,90%{opacity:1}100%{opacity:0}}
+@keyframes hpSlide{0%{transform:translateY(-14px);opacity:0}25%,80%{transform:none;opacity:1}100%{opacity:0}}
+@keyframes hpFinger{0%{transform:translateX(0);opacity:0}15%{opacity:1}60%{transform:translateX(50px);opacity:1}80%,100%{transform:translateX(50px);opacity:0}}
+@keyframes hpFadeIn{0%,45%{opacity:0}65%,100%{opacity:1}}
+@keyframes hpFadeOut{0%,30%{opacity:1}60%,100%{opacity:.08}}
+@keyframes hpPulse{0%,100%{opacity:.45}50%{opacity:1}}
+@keyframes hpPop{0%,20%{transform:scale(.7)}40%{transform:scale(1.08)}55%,100%{transform:scale(1)}}
+@keyframes hpTravel{0%,15%{transform:none}55%,85%{transform:translateX(62px)}100%{transform:translateX(62px);opacity:0}}
+@keyframes hpRow2{0%,30%{transform:none}60%,100%{transform:translateY(-4px)}}
+@keyframes hpRow3{0%,30%{transform:none}60%,100%{transform:translateY(-8px)}}
+@keyframes hpFill{0%{transform:scaleX(0)}50%,100%{transform:scaleX(1)}}
+.help-pic .hp-fill1,.help-pic .hp-fill2{transform-origin:64px 0;transform-box:fill-box}
+@media (prefers-reduced-motion:reduce){.help-pop{animation:none}.help-pic *{animation:none!important}.help-pic .hp-night{opacity:.5}}

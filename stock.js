@@ -51,12 +51,23 @@ function renderStock(){
         <button type="button" class="pill-seg-btn" role="radio" aria-checked="${stk.sort === 'name'}" data-stk-sort="name">${esc(t('stockSortName'))}</button>
         <button type="button" class="pill-seg-btn" role="radio" aria-checked="${stk.sort === 'low'}" data-stk-sort="low">${esc(t('stockSortLow'))}</button></div>
       ${exp}</div>
-    <p class="stk-meta">${esc(t('stockMeta')(stk.data.zone ? t('stockMain') : '', all.length, empty, stk.data.at ? timeAgo(new Date(stk.data.at).toISOString()) : ''))}</p>
+    <div class="stk-meta-row"><p class="stk-meta">${esc(t('stockMeta')(stk.data.zone ? t('stockMain') : '', all.length, empty, stk.data.at ? timeAgo(new Date(stk.data.at).toISOString()) : ''))}</p>${stk.data.helper ? rrCheckBtn(stk.data.helper) : ''}</div>
+    ${stk.data.helper ? rrCheckNote(stk.data.helper) : ''}
     ${!stk.data.at ? `<p class="rr-foot warn">${esc(t('rrNoCatalog'))}</p>` : ''}
     ${rows ? `<div class="stk-list">${rows}</div>` : emptyState(t('rrNoMatch'))}
     <p class="stk-note">${esc(t('stockReadOnly'))}</p>`;
 }
 function attachStockEvents(){
+  // Check now, as on Receipts and Transfers: Rico reads Ricotta Restaurant at once, and this list
+  // reloads by itself the moment the new lists arrive (see liveChanged in app.js).
+  document.querySelectorAll('.stk-meta-row [data-rr-check]').forEach(b=>b.onclick = ()=>withBusy(b, async ()=>{
+    const res = await api('rico/check-now', {method:'POST', body:{}});
+    const h = res.data?.helper || (res.ok ? res.data : null);
+    if(h && stk.data){ stk.data.helper = h; if(typeof rr !== 'undefined' && rr.data) rr.data.helper = h; if(typeof tf !== 'undefined' && tf.data) tf.data.helper = h; }
+    const err = res.data?.error;
+    if(!res.ok && err !== 'already_checking') toast(err === 'rico_off' ? t('rrCheckRicoOff') : err === 'rico_old' ? t('rrCheckOld') : t('saveFailed'), 'error');
+    if(state.view === 'stock') render();
+  }));
   document.querySelectorAll('[data-stk-sort]').forEach(b=>b.onclick = ()=>{ stk.sort = b.dataset.stkSort; render(); });
   // A row opens its details too (a phone has no hover).
   document.querySelectorAll('.stk-row').forEach(row=>{

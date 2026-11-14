@@ -184,8 +184,10 @@ function rrRicoBar(h, copyAt){
 const rrChecking = h=> h?.sync?.state === 'asked' || h?.sync?.state === 'running';
 function rrCheckBtn(h){
   if(!h.online || !h.canSync) return '';
-  const busy = rrChecking(h);
-  return `<button type="button" class="rr-ctl rr-check" data-rr-check ${busy ? 'disabled aria-busy="true"' : ''}>${esc(busy ? t('rrChecking') : t('rrCheckNow'))}</button>`;
+  const busy = rrChecking(h), s = h.sync || {};
+  // For a minute after a check that went well the button says so (it can still be pressed again).
+  const just = !busy && s.doneAt && s.result?.ok && Date.now() - Date.parse(s.doneAt) < 60000;
+  return `<button type="button" class="rr-ctl rr-check${just ? ' done' : ''}" data-rr-check ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? `<i class="rr-spin" aria-hidden="true"></i>` : ''}${esc(busy ? t('rrChecking') : just ? t('rrCheckedNow') : t('rrCheckNow'))}</button>`;
 }
 /* What the last Check now found, said in one line (shown for 15 minutes), or where it stands. */
 function rrCheckNote(h){
