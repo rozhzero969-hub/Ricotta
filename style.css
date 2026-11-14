@@ -2601,3 +2601,9 @@ label.preference-row:has(input[type=checkbox]),label.rico-set-row{cursor:default
 html.rtl .mem-switch:checked::after{transform:translateX(-16px)}
 .mem-hint{margin-top:10px;font-size:.8125rem;line-height:1.4;color:var(--ink-soft)}
 .rico-note-btn{margin-top:10px;min-height:36px;padding:0 14px;border-radius:10px;font-size:.9063rem}
+/* Transfers: an item that is also in another draft from this storage has its own colour (indigo), next to
+   yellow (price/usual warnings) and red (not enough), with how much is drafted and to where. */
+.rr-line.drafted{border-color:rgba(88,86,214,.65)}
+html.dark .rr-line.drafted{background:rgba(94,92,230,.08)}
+.tf-drafted-note{color:#5856D6;font-weight:600}
+html.dark .tf-drafted-note{color:#A5A3FF}

@@ -8,7 +8,7 @@ const code = src.slice(src.indexOf('const TF_TAKING'), src.indexOf('function tfA
 const read = Date.parse('2026-11-13T08:00:00Z');
 const carrot = {name:'Carrot', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:null, stock:{'Main Storage':10000}};
 const ctx = {tf:{data:{catalog:{at:read, titems:[carrot]}, transfers:[]}}, tfIsPractice:x=>x.mode === 'practice'};
-vm.createContext(ctx); vm.runInContext(shared + ';globalThis.TF=()=>globalThis.RicottaTransfers;' + code + ';globalThis.tfLeft=tfLeft;globalThis.tfLeftForLine=tfLeftForLine;globalThis.tfCatalogLeft=tfCatalogLeft;', ctx);
+vm.createContext(ctx); vm.runInContext(shared + ';globalThis.TF=()=>globalThis.RicottaTransfers;' + code + ';globalThis.tfLeft=tfLeft;globalThis.tfLeftForLine=tfLeftForLine;globalThis.tfCatalogLeft=tfCatalogLeft;globalThis.tfDrafted=tfDrafted;', ctx);
 const kg = n=>n * 1000, line = qty=>({item:'Carrot', unit:'کیلۆ', qty});
 const form = {id:'form', from:'Main Storage', lines:[line(3), line(null)]};
 assert.equal(ctx.tfLeftForLine(carrot, form, 0), kg(10), 'item 1 sees all 10 kg');
@@ -26,4 +26,14 @@ list.push({id:'form', from:'Main Storage', status:'draft', lines:[line(3)]});
 assert.equal(ctx.tfLeft(carrot, 'Main Storage', 'form'), kg(4), 'the form itself is counted on its lines, not twice');
 assert.equal(ctx.tfCatalogLeft(form).titems[0].stock['Main Storage'], kg(4), 'Send is checked against what is left');
 assert.equal(ctx.tf.data.catalog.titems[0].stock['Main Storage'], kg(10), 'the stock read from Ricotta Restaurant is not changed');
-console.log('Transfer stock left PASS: other transfers and lines above are taken off, the read stock stays as read');
+// Rozh's example: 10 kg carrots, 5 kg in a draft (not sent) to Appetizers: another transfer sees 5 kg,
+// and is told where the other 5 kg are. A draft from another storage, or one waiting to send, is not a draft here.
+ctx.tf.data.transfers = [{id:'g', from:'Main Storage', to:'Appetizers', status:'draft', lines:[line(5)]}];
+const form2 = {id:'form2', from:'Main Storage', lines:[line(null)]};
+assert.equal(ctx.tfLeft(carrot, 'Main Storage', 'form2'), kg(5), 'a draft holds its 5 kg');
+assert.deepEqual(JSON.parse(JSON.stringify(ctx.tfDrafted(carrot, 'Main Storage', 'form2'))), [{zone:'Appetizers', base:kg(5)}], 'and says where');
+assert.equal(ctx.tfCatalogLeft(form2).titems[0].stock['Main Storage'], kg(5), 'Send allows 5 kg, not 10');
+assert.equal(ctx.tfLeft(carrot, 'Main Storage', 'g'), kg(10), 'the draft itself still sees all 10 kg');
+ctx.tf.data.transfers.push({id:'h', from:'Minibar', to:'Pizza', status:'draft', lines:[line(5)]});
+assert.equal(ctx.tfLeft(carrot, 'Main Storage', 'form2'), kg(5), 'a draft from another storage does not count here');
+console.log('Transfer stock left PASS: other transfers, this person\'s drafts and lines above are taken off, the read stock stays as read');
