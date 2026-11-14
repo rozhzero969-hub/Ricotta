@@ -324,6 +324,11 @@ test('stream 429 reports busy and a current 401 expires the session', async()=>{
   const events = []; c.fetch = async()=>response(429);
   await c.apiStream('assistant/chat', {}, event=>events.push(plain(event)));
   assert.deepEqual(events, [{type:'error', code:'busy'}]);
+  // The server's own reason in the body wins over the status (rate_limited is not "busy").
+  events.length = 0;
+  c.fetch = async()=>({ok:false, status:429, text:async()=>'{"type":"error","code":"rate_limited"}\n'});
+  await c.apiStream('assistant/chat', {}, event=>events.push(plain(event)));
+  assert.deepEqual(events, [{type:'error', code:'rate_limited'}]);
   c.fetch = async()=>response(401);
   await c.apiStream('assistant/chat', {}, event=>events.push(plain(event)));
   assert.equal(c.apiSession(), null); assert.equal(expired(), 1);
