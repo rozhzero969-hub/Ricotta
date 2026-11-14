@@ -193,7 +193,7 @@ const T = {
     ricoNavLate:n=>'Rico: '+n+' late order'+(n===1?'':'s'), ricoNavUnread:'Rico: a new message',
     ricoSuggestsLabel:'Rico suggests',
     ricoSuggestUsual:(sup,day)=>'Your usual '+day+' order from '+sup+'.',
-    ricoSuggestDue:(sup,time)=>sup+' was due at '+time+' and hasn’t been sent yet.',
+    ricoSuggestDue:(sup,time)=>'\u2068'+sup+'\u2069: not sent yet, due at '+time+'.',
     ricoSuggestAdd:n=>'Add '+n+' item'+(n===1?'':'s'), ricoSuggestAdded:(n,sup)=>n+' item'+(n===1?'':'s')+' from '+sup+' added', ricoSuggestDismiss:'Hide suggestion',
     ricoWorkedSteps:n=>'Worked through '+n+' step'+(n===1?'':'s'),
 
@@ -394,7 +394,7 @@ const T = {
     ricoNavLate:n=>'ریکۆ: '+n+' داواکاریی دواکەوتوو', ricoNavUnread:'ریکۆ: نامەیەکی نوێ',
     ricoSuggestsLabel:'پێشنیاری ریکۆ',
     ricoSuggestUsual:(sup,day)=>'داواکاریی ئاسایی ڕۆژی '+day+' لە '+sup+'.',
-    ricoSuggestDue:(sup,time)=>'کاتی '+sup+' '+time+' بوو و هێشتا نەنێردراوە.',
+    ricoSuggestDue:(sup,time)=>'\u2068'+sup+'\u2069: هێشتا نەنێردراوە، کاتەکەی '+time+' بوو.',
     ricoSuggestAdd:n=>'زیادکردنی '+n+' کاڵا', ricoSuggestAdded:(n,sup)=>n+' کاڵا لە '+sup+' زیادکرا', ricoSuggestDismiss:'شاردنەوەی پێشنیار',
     ricoWorkedSteps:n=>n+' هەنگاو تەواو کرا',
 
@@ -595,7 +595,7 @@ const T = {
     ricoNavLate:n=>'ريكو: '+AR_N(n,'طلب متأخر','طلبان متأخران','طلبات متأخرة','طلبًا متأخرًا'), ricoNavUnread:'ريكو: رسالة جديدة',
     ricoSuggestsLabel:'يقترح ريكو',
     ricoSuggestUsual:(sup,day)=>'طلبك المعتاد يوم '+day+' من '+sup+'.',
-    ricoSuggestDue:(sup,time)=>'موعد '+sup+' كان '+time+' ولم يُرسل بعد.',
+    ricoSuggestDue:(sup,time)=>'\u2068'+sup+'\u2069: لم يُرسل بعد، موعده '+time+'.',
     ricoSuggestAdd:n=>'أضف '+AR_N(n,'مادة واحدة','مادتين','مواد','مادة'), ricoSuggestAdded:(n,sup)=>'أُضيفت '+AR_N(n,'مادة واحدة','مادتان','مواد','مادة')+' من '+sup, ricoSuggestDismiss:'إخفاء الاقتراح',
     ricoWorkedSteps:n=>'أنهى '+AR_N(n,'خطوة واحدة','خطوتين','خطوات','خطوة'),
 

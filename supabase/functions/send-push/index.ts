@@ -74,11 +74,15 @@ const RICO: Record<Lang, string> = { en: "Rico", ku: "ریکۆ", ar: "ريكو" 
    so every message carries the one neutral face ("calm"). */
 const RICO_MOOD = "calm";
 
+/* A name kept as one piece inside a sentence: an Arabic or Kurdish supplier name in English text (or
+   the other way round) no longer flips the line or moves its punctuation. */
+const iso = (s: string) => `\u2068${s}\u2069`;
+/* Supplier notifications: the supplier is the title (its own line), the body is one short sentence. */
 function supplierPayload(s: any, test = false): Payload {
   const name = String(s?.name ?? "").slice(0, 60);
   return (lang) => ({
-    title: test ? L(lang, "Ricotta Orders (test)", "Ricotta Orders (تاقیکاری)", "Ricotta Orders (تجربة)") : "Ricotta Orders",
-    body: L(lang, `Time to order from ${name}.`, `کاتی داواکردنە لە ${name}.`, `حان وقت الطلب من ${name}.`),
+    title: test ? `${name} ${L(lang, "(test)", "(تاقیکاری)", "(تجربة)")}` : name,
+    body: L(lang, "Time to order.", "کاتی داواکردنە.", "حان وقت الطلب."),
     kind: "supplier",
     supplierId: String(s?.id ?? ""),
     tag: `ricotta-supplier-${s?.id}`,
@@ -216,17 +220,15 @@ async function ricoSays(kind: string, key: string, words: Words, extra: Record<s
     dedupe_key: `${key}|${a}`,
   })), { onConflict: "dedupe_key", ignoreDuplicates: true });
   if (error) throw error;
+  // extra.title / extra.push: a notification shorter than the inbox message (the supplier as the title).
+  const { title, push, ...rest } = extra as { title?: string; push?: Record<Lang, string> } & Record<string, unknown>;
   return await sendReminder((lang, name) => ({
-    title: RICO[lang],
-    body: lang === "ku" ? words.ku(name ?? "") : lang === "ar" ? words.ar(name ?? "") : words.en(name ?? ""),
+    title: title || RICO[lang],
+    body: push ? push[lang] : lang === "ku" ? words.ku(name ?? "") : lang === "ar" ? words.ar(name ?? "") : words.en(name ?? ""),
     kind: "assistant", mood: RICO_MOOD, tag: `ricotta-rico-${key}`,
-    ...(extra.supplierId ? { actionTitle: lang === "ku" ? "ئامادەی بکە" : lang === "ar" ? "جهّزه" : "Prepare it" } : {}), ...extra,
+    ...(rest.supplierId ? { actionTitle: lang === "ku" ? "ئامادەی بکە" : lang === "ar" ? "جهّزه" : "Prepare it" } : {}), ...rest,
   }), allowed);
 }
-/* "Hey Rozh!" when the name is known, "Hey!" when it isn't. */
-const hi = (word: string, n: string, sep = " ") => (n ? `${word}${sep}${n}` : word);
-/* Arabic "يا" needs a name after it; without one, a plain "Hey" (مرحبًا). */
-const ya = (n: string) => (n ? `يا ${n}` : "مرحبًا");
 
 type Day = { date: string; weekday: number };
 /* Today and yesterday (Erbil), so a late reminder near midnight (e.g. 23:00)
@@ -279,10 +281,12 @@ async function overdueTick() {
     if (sentSince(s.date, s.id)) continue;
     const name = String(s.name).slice(0, 60), time = s.reminder.time;
     const said = await saysOnce(`overdue|${s.id}|${s.date}`, "overdue", s.id, () => ricoSays("overdue", `overdue|${s.id}|${s.date}`, {
-      en: () => `${name}'s order was due at ${time} and isn't sent yet. Want me to prepare it?`,
-      ku: () => `داواکاریی ${name} کاتژمێر ${time} بوو و هێشتا نەنێردراوە. ئامادەی بکەم؟`,
-      ar: () => `طلب ${name} كان موعده ${time} ولم يُرسل بعد. هل أجهّزه؟`,
-    }, { supplierId: String(s.id) }));
+      en: () => `${iso(name)}: not sent yet, due at ${time}.`,
+      ku: () => `${iso(name)}: هێشتا نەنێردراوە، کاتەکەی ${time} بوو.`,
+      ar: () => `${iso(name)}: لم يُرسل بعد، موعده ${time}.`,
+    }, { supplierId: String(s.id), title: name, push: {
+      en: `Not sent yet, due at ${time}.`, ku: `هێشتا نەنێردراوە، کاتەکەی ${time} بوو.`, ar: `لم يُرسل بعد، موعده ${time}.`,
+    } }));
     if (said) out.push({ supplier: name, ...said });
   }
   return out;
@@ -372,9 +376,9 @@ async function streakTick() {
   if (!(await claimAlert(`streak-risk|${now.date}`, "streak-risk", null))) return { skipped: "already sent today" };
   const k = Number(st.count);
   return await ricoSays("streak", `streak-risk|${now.date}`, {
-    en: (n) => `${hi("Hey", n)}! Our ${k}-day streak ends at midnight. One order today keeps it going.`,
-    ku: (n) => `${hi("هەی", n)}! زنجیرەی ${k} ڕۆژەمان نیوەشەو کۆتایی دێت. تەنها یەک داواکاری ئەمڕۆ بەردەوامی دەکات.`,
-    ar: (n) => `${ya(n)}! سلسلة الـ${k} يومًا تنتهي عند منتصف الليل. طلب واحد اليوم يبقيها مستمرة.`,
+    en: () => `Send one order today to keep the ${k}-day streak.`,
+    ku: () => `ئەمڕۆ یەک داواکاری بنێرە بۆ ئەوەی زنجیرەی ${k} ڕۆژە بمێنێت.`,
+    ar: () => `أرسل طلبًا واحدًا اليوم لتبقى سلسلة الـ${k} يومًا.`,
   });
 }
 
@@ -385,9 +389,9 @@ async function reportTick() {
   if (t.getUTCDate() !== 1 || now.minutes < 17 * 60 || now.minutes >= 21 * 60) return { skipped: "not the time" };
   const month = now.date.slice(0, 7);
   return await saysOnce(`report|${month}`, "report", null, () => ricoSays("report", `report|${month}`, {
-    en: (n) => `${hi("Hey", n)}! This month's report card is ready in History, with its Excel file and PDF.`,
-    ku: (n) => `${hi("هەی", n)}! کارتی ڕاپۆرتی ئەم مانگە لە مێژوودا ئامادەیە، لەگەڵ فایلی ئێکسڵ و PDF.`,
-    ar: (n) => `${ya(n)}! بطاقة تقرير هذا الشهر جاهزة في السجل، مع ملف إكسل وملف PDF.`,
+    en: () => `This month's report is ready in History.`,
+    ku: () => `ڕاپۆرتی ئەم مانگە لە مێژوودا ئامادەیە.`,
+    ar: () => `تقرير هذا الشهر جاهز في السجل.`,
   }, { view: "history" })) ?? { skipped: "already sent" };
 }
 
@@ -404,9 +408,9 @@ async function letterTick() {
   const change = (more: string, fewer: string, same: string) => before === null ? "" : n > before ? more.replace("#", String(n - before)) : n < before ? fewer.replace("#", String(before - n)) : same;
   const key = `letter|${last.month}`;
   return await saysOnce(key, "report", null, () => ricoSays("report", key, {
-    en: (name) => `${hi("Hi", name, " ")}, here's ${last.month}: ${n} orders${change(", # more than the month before", ", # fewer than the month before", ", the same as the month before")}${top ? `. Most ordered: ${top}` : ""}. The full report is in History, Past months.`,
-    ku: (name) => `${hi("سڵاو", name)}، ئەمە ${last.month}: ${n} داواکاری${before === null ? "" : n > before ? `، ${n - before} زیاتر لە مانگی پێشوو` : n < before ? `، ${before - n} کەمتر لە مانگی پێشوو` : `، وەک مانگی پێشوو`}${top ? `. زۆرترین داواکراو: ${top}` : ""}. ڕاپۆرتی تەواو لە مێژوو، مانگەکانی ڕابردوو.`,
-    ar: (name) => `${ya(name)}، هذا ${last.month}: ${n} طلبًا${before === null ? "" : n > before ? `، بزيادة ${n - before} عن الشهر السابق` : n < before ? `، بنقص ${before - n} عن الشهر السابق` : `، مثل الشهر السابق`}${top ? `. الأكثر طلبًا: ${top}` : ""}. التقرير الكامل في السجل، الأشهر الماضية.`,
+    en: () => `${last.month}: ${n} orders${change(", # more than the month before", ", # fewer than the month before", ", the same as the month before")}${top ? `. Most ordered: ${top}` : ""}. The full report is in History, Past months.`,
+    ku: () => `${last.month}: ${n} داواکاری${before === null ? "" : n > before ? `، ${n - before} زیاتر لە مانگی پێشوو` : n < before ? `، ${before - n} کەمتر لە مانگی پێشوو` : `، وەک مانگی پێشوو`}${top ? `. زۆرترین داواکراو: ${top}` : ""}. ڕاپۆرتی تەواو لە مێژوو، مانگەکانی ڕابردوو.`,
+    ar: () => `${last.month}: ${n} طلبًا${before === null ? "" : n > before ? `، بزيادة ${n - before} عن الشهر السابق` : n < before ? `، بنقص ${before - n} عن الشهر السابق` : `، مثل الشهر السابق`}${top ? `. الأكثر طلبًا: ${top}` : ""}. التقرير الكامل في السجل، الأشهر الماضية.`,
   }, { view: "history" })) ?? { skipped: "already sent" };
 }
 
@@ -443,9 +447,9 @@ async function wipeTick() {
   if (left !== 2) return { skipped: "not yet" };
   const key = `wipe|${row.next_wipe}`;
   return await saysOnce(key, "wipe", null, () => ricoSays("wipe", key, {
-    en: (n) => `${hi("Heads up", n, ", ")}: in 2 days, history older than 60 days will be deleted. That means old orders, Records and my chats. Save anything you need first.`,
-    ku: (n) => `${hi("ئاگاداربە", n)}: دوای 2 ڕۆژ مێژووی کۆنتر لە 60 ڕۆژ دەسڕدرێتەوە. واتە داواکارییە کۆنەکان، تۆمارەکان و گفتوگۆکانم. پێشتر ئەوەی پێویستتە پاشەکەوتی بکە.`,
-    ar: (n) => `${ya(n)}، بعد يومين سيُحذف السجل الأقدم من 60 يومًا: الطلبات القديمة والسجلات ومحادثاتي. احفظ ما تحتاجه أولًا.`,
+    en: () => `In 2 days, orders, Records and chats older than 60 days are deleted, so save what you need.`,
+    ku: () => `دوای 2 ڕۆژ داواکاری، تۆمار و گفتوگۆی کۆنتر لە 60 ڕۆژ دەسڕدرێنەوە، ئەوەی پێویستتە پاشەکەوتی بکە.`,
+    ar: () => `بعد يومين تُحذف الطلبات والسجلات والمحادثات الأقدم من 60 يومًا، فاحفظ ما تحتاجه.`,
   }));
 }
 
@@ -469,10 +473,12 @@ async function weeklyTick() {
     ku: k > p ? `زیاتر لە ${p}ی هەفتەی پێشوو` : k < p ? `کەمتر لە ${p}ی هەفتەی پێشوو` : "وەک هەفتەی پێشوو",
     ar: k > p ? `أكثر من ${p} في الأسبوع الماضي` : k < p ? `أقل من ${p} في الأسبوع الماضي` : "مثل الأسبوع الماضي" };
   return await saysOnce(`weekly|${now.date}`, "weekly", null, () => ricoSays("weekly", `weekly|${now.date}`, {
-    en: (n) => `${hi("Happy Friday", n, ", ")}! This week: ${k} order${k === 1 ? "" : "s"}, ${trend.en}.${top ? ` Most ordered: ${top}.` : ""}${streak ? ` Streak: ${streak} days.` : ""} Have a good weekend!`,
-    ku: (n) => `${hi("هەینیت باش", n)}! ئەم هەفتەیە: ${k} داواکاری، ${trend.ku}.${top ? ` زۆرترین داواکراو: ${top}.` : ""}${streak ? ` زنجیرە: ${streak} ڕۆژ.` : ""} پشووی خۆش!`,
-    ar: (n) => `${hi("جمعة مباركة", n, " يا ")}! هذا الأسبوع: ${k} طلب، ${trend.ar}.${top ? ` الأكثر طلبًا: ${top}.` : ""}${streak ? ` السلسلة: ${streak} يومًا.` : ""} عطلة سعيدة!`,
-  }, { view: "history" }));
+    en: () => `This week: ${k} order${k === 1 ? "" : "s"}, ${trend.en}.${top ? ` Most ordered: ${iso(top)}.` : ""}${streak ? ` Streak: ${streak} days.` : ""}`,
+    ku: () => `ئەم هەفتەیە: ${k} داواکاری، ${trend.ku}.${top ? ` زۆرترین داواکراو: ${iso(top)}.` : ""}${streak ? ` زنجیرە: ${streak} ڕۆژ.` : ""}`,
+    ar: () => `هذا الأسبوع: ${k} طلب، ${trend.ar}.${top ? ` الأكثر طلبًا: ${iso(top)}.` : ""}${streak ? ` السلسلة: ${streak} يومًا.` : ""}`,
+  }, { view: "history", push: {
+    en: `This week: ${k} order${k === 1 ? "" : "s"}, ${trend.en}.`, ku: `ئەم هەفتەیە: ${k} داواکاری، ${trend.ku}.`, ar: `هذا الأسبوع: ${k} طلب، ${trend.ar}.`,
+  } }));
 }
 
 /* Rico's good-morning message: which suppliers are due today. */
@@ -486,18 +492,18 @@ async function cheerTick() {
     const days = Array.isArray(r.days) && r.days.length ? r.days.map(Number) : ALL_DAYS;
     return days.includes(now.weekday);
   }).map((s: any) => String(s.name).slice(0, 40));
-  const list = dueToday.slice(0, 6).join("، ");
-  const listEn = dueToday.slice(0, 6).join(", ");
+  const list = dueToday.slice(0, 6).map(iso).join("، ");
+  const listEn = dueToday.slice(0, 6).map(iso).join(", ");
   const k = dueToday.length;
   const wx = await weatherWords().catch(() => ({ en: "", ku: "", ar: "" }));
   return await saysOnce(`cheer|${now.date}`, "cheer", null, () => ricoSays("cheer", `cheer|${now.date}`, k ? {
-    en: (n) => `${hi("Good morning", n, ", ")}! ${k} supplier${k === 1 ? " is" : "s are"} due today: ${listEn}.${wx.en} Let's get the orders out on time.`,
-    ku: (n) => `${hi("بەیانیت باش", n)}! ئەمڕۆ کاتی داواکاریی ${k} دابینکەرە: ${list}.${wx.ku} با بە کاتی خۆی بینێرین.`,
-    ar: (n) => `${hi("صباح الخير", n, " يا ")}! اليوم موعد ${k} من المورّدين: ${list}.${wx.ar} لنرسل الطلبات في وقتها.`,
+    en: () => `Due today: ${listEn}.${wx.en}`,
+    ku: () => `کاتی داواکاریی ئەمڕۆ: ${list}.${wx.ku}`,
+    ar: () => `موعد الطلب اليوم: ${list}.${wx.ar}`,
   } : {
-    en: (n) => `${hi("Good morning", n, ", ")}! No supplier is scheduled today.${wx.en} Have a great shift.`,
-    ku: (n) => `${hi("بەیانیت باش", n)}! ئەمڕۆ هیچ دابینکەرێک کاتی داواکاریی نییە.${wx.ku} ڕۆژێکی خۆش.`,
-    ar: (n) => `${hi("صباح الخير", n, " يا ")}! لا يوجد مورّد مجدول اليوم.${wx.ar} يومًا موفقًا.`,
+    en: () => `No suppliers due today.${wx.en}`,
+    ku: () => `ئەمڕۆ هیچ دابینکەرێک کاتی داواکاریی نییە.${wx.ku}`,
+    ar: () => `لا يوجد مورّد موعده اليوم.${wx.ar}`,
   })) ?? { skipped: "already sent today" };
 }
 

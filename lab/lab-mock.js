@@ -90,9 +90,9 @@
     const morning = atBaghdad(now.y, now.m, now.d, Math.min(9, now.h), 0);
     const inbox = [
       {id:1, kind:'cheer', mood:'excited', read:false, at:morning,
-       en:'Good morning, Rozh! 3 suppliers are due today: Zakho Dairy, Erbil Veg Market, Ankawa Bakery. Let’s get the orders out on time.',
-       ku:'بەیانیت باش ڕۆژا! ئەمڕۆ کاتی داواکاریی 3 دابینکەرە: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. با بە کاتی خۆی بینێرین.',
-       ar:'صباح الخير يا روژا! اليوم موعد 3 من المورّدين: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. لنرسل الطلبات في وقتها.'},
+       en:'Due today: Zakho Dairy, Erbil Veg Market, Ankawa Bakery.',
+       ku:'کاتی داواکاریی ئەمڕۆ: Zakho Dairy، Erbil Veg Market، Ankawa Bakery.',
+       ar:'موعد الطلب اليوم: Zakho Dairy، Erbil Veg Market، Ankawa Bakery.'},
       // A routine Rico ran this morning: today's usual order for Erbil Veg Market, waiting for a tap.
       {id:2, kind:'routine_order', mood:'calm', read:false, at:new Date(Date.now() - 20*60000).toISOString(),
        en:'I prepared today’s order for Erbil Veg Market (3 items). Open it, check it and send it.',
@@ -247,7 +247,7 @@
     } else if(/thank|سوپاس|شكر|merci/.test(q)){
       say('grateful', `Any time, ${name}! That’s what I’m here for.`, `هەر کاتێک ${name}! بۆ ئەوە لێرەم.`, `في أي وقت يا ${name}! هذا ما أنا هنا من أجله.`);
     } else if(/late|due|forgot|دواکەوت|متأخر/.test(q)){
-      say('worried', 'Zakho Dairy was due at 10:00 and hasn’t gone out yet. Want me to prepare it?', 'Zakho Dairy کاتژمێر ١٠:٠٠ بوو و هێشتا نەنێردراوە. با ئامادەی بکەم؟', 'طلب Zakho Dairy كان موعده 10:00 ولم يُرسل بعد. هل أجهّزه؟');
+      say('calm', 'Zakho Dairy: not sent yet, due at 10:00. Want me to prepare it?', 'Zakho Dairy: هێشتا نەنێردراوە، کاتەکەی 10:00 بوو. ئامادەی بکەم؟', 'Zakho Dairy: لم يُرسل بعد، موعده 10:00. هل أجهّزه؟');
     } else if(/angry|mad|تووڕە|غاضب/.test(q)){
       say('angry', 'Grr! Don’t make me angry, I’ll hide the basil. Just kidding.', 'گڕڕ! تووڕەم مەکە، ڕەیحانەکە دەشارمەوە. گاڵتە دەکەم.', 'غرر! لا تغضبني، سأخبئ الريحان. أمزح فقط.');
     } else {
