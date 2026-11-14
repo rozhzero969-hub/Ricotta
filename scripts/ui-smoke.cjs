@@ -647,7 +647,10 @@ const server=http.createServer((req,res)=>{
     await y.page.locator('[data-dark="off"]').click();
     assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('dark')),false);
     // Settings belong to the account: each switch saves on the server for him.
-    const featureBox=id=>y.page.locator(`label:has([data-feature="${id}"])`);
+    const featureBox=id=>y.page.locator(`[data-feature="${id}"]`);
+    // Only the switch itself flips a setting: a tap on the row's words changes nothing.
+    await y.page.locator('label:has([data-feature="compactRows"]) span').first().click();
+    assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('compact-rows')),false,'tapping the row text does not flip the switch');
     await featureBox('compactRows').click();
     assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('compact-rows')),true,'Compact rows switch works');
     assert.deepEqual(y.calls.filter(c=>c.endpoint==='settings').at(-1).body,{key:'compactRows',value:true},'saved on his account');

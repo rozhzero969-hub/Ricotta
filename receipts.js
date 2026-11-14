@@ -892,13 +892,15 @@ async function ricoAutoStart(){
 function renderRicoReceiptSettings(){
   if(!isRozha() || !canOpen('receipts')) return '';
   const h = rr.data?.helper;
-  if(!h){ if(!rr.loading) rrLoad(true); return ''; }
+  // While it loads, the section keeps its place (nothing below it jumps when it arrives).
+  if(!h){ if(!rr.loading) rrLoad(true); return `<div class="section-title">${esc(t('rrSettingsTitle'))}</div><div class="form-card rs-card rs-loading">${loadingLines(4)}</div>`; }
   if(!rr.tg && !rr.tgLoading){ rr.tgLoading = true; api('receipts-settings/telegram', {quiet:true}).then(r=>{ rr.tgLoading = false; if(r.ok){ rr.tg = r.data; if(state.view === 'settings') render(); } }); }
   const L = h.limits, on = h.online && !h.stopped;
   const row = (icon, label, value)=>`<div class="rs-row has-ico">${setIcon(icon)}<span>${esc(label)}</span><b dir="ltr">${esc(value)}</b></div>`;
   return `<div class="section-title">${esc(t('rrSettingsTitle'))}</div>
     <div class="form-card rs-card">
       <div class="rs-row has-ico rs-status">${setIcon('ricoMac')}<span>${esc(t('rrRicoMac'))}</span><b><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i>${esc(rrHelperLine(h))}</b></div>
+      <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" data-feature="ricoAutoStart" ${featureOn('ricoAutoStart') ? 'checked' : ''}>${setIcon('ricoAutoStart')}<span>${esc(t('feat_ricoAutoStart'))}<small>${esc(t('feat_ricoAutoStart_hint'))}</small></span></label>
       <div class="rs-row has-ico">${setIcon('ricoReceipts')}<span>${esc(t('rrTitle'))}</span><b>${esc(t('rsAlwaysYou'))}</b></div>
       <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" id="tfAutoSet" ${featureOn('tfAuto') ? 'checked' : ''}>${setIcon('tfAuto')}<span>${esc(t('tfTitle'))}: ${esc(t('rsTfAuto'))}<small>${esc(t('rsTfAutoShort'))}</small></span></label>
       <label class="check-row preference-row rs-switch has-ico"><input type="checkbox" id="rrStop" ${h.stopped ? 'checked' : ''}>${setIcon('ricoStop')}<span>${esc(t('rrStop'))}<small>${esc(t('rrStopHint'))}</small></span></label>

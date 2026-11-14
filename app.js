@@ -3769,7 +3769,9 @@ function versionCmp(a, b){
   return 0;
 }
 function renderSettings(){
-  return `${renderPendingSync()}${renderNotifSettings()}${renderRicoReceiptSettings()}${renderFeatureSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  // Everyday choices first (notifications, ordering, sounds, look), then Rico the helper (Rozh), then
+  // help and privacy. Rico the chat assistant has his own settings in his tab.
+  return `<div class="settings-page">${renderPendingSync()}${renderNotifSettings()}${renderFeatureSettings()}${renderRicoReceiptSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div></div>`;
 }
 /* Help: tell Rozh about a problem (it arrives in Admin, Problems), and the keyboard shortcuts. */
 function renderHelpSettings(){
@@ -3796,7 +3798,7 @@ function openReportProblem(){
 /* Privacy: Rico's AI permission (asked the first time Rico is used, and taken back here),
    the privacy policy, and Sign Out at the very end, like the iPhone's Settings. */
 function renderPrivacySettings(){
-  return `<div class="section-title">${esc(t('settingsPrivacy'))}</div><div class="form-card">
+  return `<div class="section-title">${esc(t('settingsPrivacy'))}</div><div class="form-card settings-rows">
     <a class="settings-link" href="${esc(privacyHref())}">${setIcon('privacy')}<span>${esc(t('privacyPolicy'))}</span><i class="sheet-chevron" aria-hidden="true"></i></a></div>
     <div class="form-card settings-signout-card"><button type="button" class="settings-signout" id="settingsSignOut">${esc(t('logout'))}</button></div>`;
 }
