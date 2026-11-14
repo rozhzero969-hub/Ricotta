@@ -426,9 +426,10 @@ const SHORTCUTS = [
   ['Enter', 'shortRrSend', true], ['Enter', 'shortRrApprove'], ['Esc', 'shortRrBack'],
 ];
 /* The Receipts and Transfers line shortcuts, which can be changed (RR_KEYS in receipts.js). */
+const APP_KEY_LABELS = {sidebar:'shortSidebar'};
 const RR_KEY_LABELS = {unit_menu:'shortRrUnitMenu', next:'shortRrNext', add:'shortRrAdd', dup:'shortRrDup', del:'shortRrDel', unit:'shortRrUnit', up:'shortRrUp', down:'shortRrDown', yest:'shortRrYest'};
 function keyCaps(combo){
-  const name = c=> c.startsWith('Key') ? c.slice(3) : c.startsWith('Digit') ? c.slice(5) : {ArrowUp:'↑', ArrowDown:'↓', ArrowLeft:'←', ArrowRight:'→', Backspace:'⌫', Enter:'↵', Space:'Space', Slash:'/', Period:'.', Comma:',', Minus:'-', Equal:'='}[c] || c;
+  const name = c=> c.startsWith('Key') ? c.slice(3) : c.startsWith('Digit') ? c.slice(5) : {ArrowUp:'↑', ArrowDown:'↓', ArrowLeft:'←', ArrowRight:'→', Backspace:'⌫', Enter:'↵', Space:'Space', Slash:'/', Backslash:'\\', Period:'.', Comma:',', Minus:'-', Equal:'='}[c] || c;
   return combo.split('+').map(p=>`<kbd>${esc(p === 'Mod' ? (isMac ? '⌘' : 'Ctrl') : p === 'Alt' ? (isMac ? '⌥' : 'Alt') : p === 'Shift' ? '⇧' : name(p))}</kbd>`).join('');
 }
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -438,6 +439,7 @@ function openShortcuts(){
   const html = `<div class="sel-title">${esc(t('keyboardShortcuts'))}</div>
     <p class="notif-sub">${esc(t('shortIntro'))}</p>
     <div class="short-list">${SHORTCUTS.map(([k, label, mod])=>`<div class="short-row"><span>${esc(t(label))}</span><span class="short-keys" dir="ltr">${key(k, mod)}</span></div>`).join('')}</div>
+    <div class="short-list">${Object.keys(APP_KEY_LABELS).map(a=>`<div class="short-row"><span>${esc(t(APP_KEY_LABELS[a]))}</span><span class="short-keys" dir="ltr" data-keys="${a}">${keyCaps(rrKeyOf(a))}</span><button type="button" class="short-change" data-change="${a}">${esc(t('shortChange'))}</button></div>`).join('')}</div>
     <div class="short-sub"><b>${esc(t('shortRrTitle'))}</b><button type="button" class="short-std" id="shortStd">${esc(t('rsStandard'))}</button></div>
     <div class="short-list">${Object.keys(RR_KEY_LABELS).map(a=>`<div class="short-row"><span>${esc(t(RR_KEY_LABELS[a]))}</span><span class="short-keys" dir="ltr" data-keys="${a}">${keyCaps(rrKeyOf(a))}</span><button type="button" class="short-change" data-change="${a}">${esc(t('shortChange'))}</button></div>`).join('')}</div>
     <p class="notif-sub">${esc(t('shortChangeHint'))}</p>
@@ -461,7 +463,7 @@ function openShortcuts(){
       // keys (unit menu, next item) may be plain keys such as Tab or Enter.
       const plainOk = act === 'unit_menu' || act === 'next';
       if((!plainOk && !(e.altKey || e.metaKey || e.ctrlKey)) || (plainOk && /^(Key|Digit)/.test(e.code) && !(e.altKey || e.metaKey || e.ctrlKey)) || ['Mod+Enter', 'Mod+KeyK', 'Mod+KeyC', 'Mod+KeyV', 'Mod+KeyX', 'Mod+KeyZ', 'Mod+KeyA'].includes(combo)){ toast(t('shortNeedsMod'), 'warn'); openShortcuts(); return; }
-      if(taken){ toast(t('shortTaken')(t(RR_KEY_LABELS[taken])), 'warn'); openShortcuts(); return; }
+      if(taken){ toast(t('shortTaken')(t(RR_KEY_LABELS[taken] || APP_KEY_LABELS[taken])), 'warn'); openShortcuts(); return; }
       const keys = {...(state.settings?.keys || {}), [act]:combo};
       Object.keys(keys).forEach(k=>{ if(keys[k] === RR_KEYS[k]) delete keys[k]; });
       await setSetting('keys', keys); openShortcuts();

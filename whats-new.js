@@ -3,6 +3,19 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-14b', date:'2026-11-14', notes:{
+    en:['Stock is easier to read: each item on one line with its amount, like 12 kg (12,000 g), and an eye button for details.',
+      'Hold the pointer on an item for a second to see a bigger card with last bought and last moved.',
+      'Choices in Settings open as a small menu right under the box on a computer.',
+      'Hide or show the sidebar with Cmd/Ctrl + \\. You can change this key in Shortcuts.'],
+    ku:['کۆگا ئاسانتر دەخوێندرێتەوە: هەر کاڵایەک لە یەک دێڕدا لەگەڵ بڕەکەی، وەک 12 کیلۆ (12,000 غرام)، و دوگمەی چاو بۆ وردەکاری.',
+      'ماوەی یەک چرکە نیشاندەر لەسەر کاڵایەک ڕابگرە بۆ بینینی کارتێکی گەورەتر لەگەڵ دوایین کڕین و دوایین گواستنەوە.',
+      'هەڵبژاردنەکانی ڕێکخستنەکان لە کۆمپیوتەر وەک لیستێکی بچووک ڕاست لە ژێر خانەکە دەکرێنەوە.',
+      'لیستی لاتەنیشت بە Cmd/Ctrl + \\ بشارەوە یان پیشانی بدە. دەتوانیت ئەم دوگمەیە لە کورتەڕێگاکان بگۆڕیت.'],
+    ar:['المخزون أسهل قراءة: كل مادة في سطر واحد مع كميتها، مثل 12 كغ (12,000 غرام)، وزر عين للتفاصيل.',
+      'أبقِ المؤشر على مادة ثانية واحدة لترى بطاقة أكبر فيها آخر شراء وآخر نقل.',
+      'الخيارات في الإعدادات تفتح كقائمة صغيرة تحت الخانة مباشرة على الكمبيوتر.',
+      'أخفِ الشريط الجانبي أو أظهره بـ Cmd/Ctrl + \\. يمكنك تغيير هذا المفتاح في الاختصارات.']}},
   {id:'2026-11-14', date:'2026-11-14', notes:{
     en:['Rico can now tell you what is in stock, what you paid for an item and how its price changed, what you spent by supplier or item, and what went to each storage.',
       'Ask Rico what needs you: stopped, waiting or stuck receipts and transfers, most important first.',

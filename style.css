@@ -2106,7 +2106,9 @@ html.dark .cf-alert{background:rgba(248,113,113,.14);color:#FECACA}
 /* Lines come into view whole, below the top bar. */
 .rr-line{scroll-margin-top:96px;scroll-margin-bottom:24px}
 /* The unit menu: a small list right under its box. */
-.sel-pop{position:fixed;z-index:1200;max-height:min(320px,60vh);overflow:auto;padding:6px;border-radius:14px;background:var(--surface);border:1px solid var(--line-strong);box-shadow:0 12px 32px rgba(15,23,42,.16)}
+.sel-pop{position:fixed;z-index:1200;max-height:min(360px,60vh);overflow:auto;padding:6px;border-radius:14px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);border:.5px solid var(--line-strong);box-shadow:var(--float-shadow);animation:selPopIn .16s var(--ease-out)}
+@keyframes selPopIn{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.sel-pop{animation:none}}
 .sel-pop-opt{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:10px;background:none;color:var(--ink);font:inherit;font-size:1rem;text-align:start}
 .sel-pop-opt svg{width:18px;height:18px;color:var(--tint);flex:none}
 .sel-pop-opt:hover,.sel-pop-opt.kb{background:var(--fill)}
@@ -2422,25 +2424,13 @@ html.rtl .rico-side-row input[type=checkbox]:checked::after{transform:translateX
 .stk-exports .btn svg{width:16px;height:16px}
 .stk-meta{margin:8px 4px 10px;font-size:.8125rem;color:var(--ink-soft)}
 .stk-list{background:var(--surface);border-radius:var(--r-card);overflow:hidden}
-.stk-row{display:flex;align-items:center;gap:12px;min-height:54px;padding:8px 14px}
-.stk-row+.stk-row{border-top:.5px solid var(--line)}
-@media (hover:hover){.stk-row:hover{background:var(--surface-2)}}
-.stk-name{flex:1;min-width:0;font-size:.9688rem;font-weight:500;overflow-wrap:anywhere}
-.stk-amt{display:flex;flex-direction:column;align-items:flex-end;text-align:end;font-variant-numeric:tabular-nums}
-.stk-amt b{font-size:.9688rem;font-weight:600}
-.stk-amt small{font-size:.75rem;color:var(--ink-soft)}
-.stk-amt em{font-style:normal;font-size:.8125rem;font-weight:600;color:var(--clay-ink)}
-.stk-row.none .stk-name{color:var(--ink-soft)}
-.stk-more{flex:none;height:32px;padding:0 12px;border:0;border-radius:9px;background:var(--fill);color:var(--ink);font:500 .8125rem var(--font);cursor:pointer}
 .stk-note{margin:12px 4px;font-size:.8125rem;color:var(--ink-faint)}
-.stk-tip{position:fixed;z-index:400;max-width:360px;display:grid;gap:8px;padding:12px 14px;border-radius:14px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--float-shadow);pointer-events:none;font-size:.8125rem;animation:fadeIn .12s ease-out}
-.stk-tip div{display:grid;gap:2px}.stk-tip span{color:var(--ink-soft)}.stk-tip b{font-weight:500}
 .stk-d{display:grid;background:var(--surface-2);border-radius:14px;margin:10px 0}
 .stk-d-row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:11px 14px}
 .stk-d-row+.stk-d-row{border-top:.5px solid var(--line)}
 .stk-d-row span{color:var(--ink-soft);font-size:.875rem}.stk-d-row b{font-weight:500;text-align:end}
 .stk-sort{flex:none}
-@media (max-width:599px){.stk-tools>.list-search{flex:1 1 100%}.stk-exports{width:100%}.stk-exports .btn{flex:1}.stk-row{flex-wrap:wrap}.stk-more{order:3}}
+@media (max-width:599px){.stk-tools>.list-search{flex:1 1 100%}.stk-exports{width:100%}.stk-exports .btn{flex:1}}
 
 /* Right to left: the ricotta mark stays clear of the sidebar's hide button. */
 html.rtl .nav-brand,[dir=rtl] .nav-brand{justify-content:flex-end}
@@ -2574,3 +2564,18 @@ html.dark .dev-vpn{color:#FF6961}
   .dev-card .dev-actions{width:100%;margin-inline-start:0}
   .dev-card .dev-actions .btn{flex:1}
 }
+/* Stock rows, like Ricotta Restaurant's Stock page but calmer: a dot, the name, the amount in bold. */
+.stk-row{display:flex;align-items:center;gap:12px;min-height:58px;padding:8px 10px 8px 16px;padding-inline:16px 10px;cursor:pointer}
+.stk-row+.stk-row{border-top:.5px solid var(--line)}
+@media (hover:hover){.stk-row:hover{background:var(--surface-2)}}
+.stk-dot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--ok)}
+.stk-row.none .stk-dot{background:var(--red)}
+.stk-name{flex:1;min-width:0;font-size:1.0313rem;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.stk-amt{flex:none;font-size:1.0313rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink);text-align:end}
+.stk-row.none .stk-amt{color:var(--clay-ink)}
+.stk-eye{flex:none;display:grid;place-items:center;width:38px;height:38px;border:0;border-radius:10px;background:none;color:var(--ink-soft);cursor:pointer}
+@media (hover:hover){.stk-eye:hover{background:var(--fill);color:var(--ink)}}
+.stk-tip{position:fixed;z-index:400;width:min(440px,calc(100vw - 24px));display:grid;gap:10px;padding:16px 18px;border-radius:16px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--float-shadow);pointer-events:none;font-size:.9688rem;animation:fadeIn .15s ease-out}
+.stk-tip-name{font-size:1.0625rem;font-weight:600}
+.stk-tip div{display:flex;justify-content:space-between;gap:16px}.stk-tip span{color:var(--ink-soft);flex:none}.stk-tip div b{font-weight:600;text-align:end}
+@media (max-width:599px){.stk-row{flex-wrap:wrap;row-gap:2px}.stk-name{flex:1 1 calc(100% - 80px)}.stk-amt{margin-inline-start:21px;flex:1;text-align:start}}
