@@ -138,10 +138,11 @@ export async function transferPhotoLinks(db: any, r: any, kinds?: string[]) {
 export const MAIN_STORAGE = "Main Storage";
 export async function stockView(db: any) {
   const since = new Date(Date.now() - 60 * 86400_000).toISOString();
-  const [cat, recs, moves] = await Promise.all([
+  const [cat, recs, moves, h] = await Promise.all([
     catalogOf(db),
     db.from("app_rr_receipts").select("supplier,currency,lines,saved_at").eq("status", "saved").gte("saved_at", since).order("saved_at", { ascending: false }).limit(800),
     tt(db).select("from_zone,to_zone,lines,moved_at").eq("status", "moved").gte("moved_at", since).order("moved_at", { ascending: false }).limit(1500),
+    helperRow(db),
   ]);
   if (recs.error) throw recs.error;
   if (moves.error) throw moves.error;
@@ -158,7 +159,8 @@ export async function stockView(db: any) {
     main: Number(i.stock?.[MAIN_STORAGE]) || 0, inMain: i.stock ? MAIN_STORAGE in i.stock : false,
     lastBought: bought.get(i.name) ?? null, lastMoved: moved.get(i.name) ?? null,
   }));
-  return { at: c.at ?? null, zone: MAIN_STORAGE, items };
+  // Rico's state, for the Check now button on the Stock tab (the same as on Receipts and Transfers).
+  return { at: c.at ?? null, zone: MAIN_STORAGE, items, helper: helperView(h) };
 }
 
 export async function transfersRoute(ctx: Ctx, M: string, path: string, b: any): Promise<Response | null> {

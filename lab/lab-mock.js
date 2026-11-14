@@ -205,13 +205,17 @@
     {name:'Lemon - لیمۆ', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:null, stock:{'Main Storage':12500}},
     {name:'Banana - مۆز', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':5000}},
     {name:'Akkawi Cheese - پەنیری عەکاوی', base:'دانە', count:{name:'دانە', factor:1}, buy:{name:'کارتۆن', factor:24}, stock:{'Main Storage':0}},
+    {name:'Mozzarella Block - پەنیری مۆزارێلای پارچە', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کارتۆن', factor:10000}, stock:{'Main Storage':20000}},
     {name:'Olive Oil - زەیتی زەیتوون', base:'مل', count:{name:'دانە', factor:1000}, buy:{name:'کارتۆن', factor:12000}, stock:{'Main Storage':24000}},
   ];
   const labStockAt = ()=>new Date(Date.now() - 6 * 60000).toISOString();
+  // Sample use over the last 14 days, so the Order screen shows each colour: Parmesan is low.
+  const LAB_USE = new Map([['Parmesan - پەنیری پارمیزان', {base:280, n:6}], ['Lemon - لیمۆ', {base:14000, n:4}]]);
+  const labLevel = t=>globalThis.RicottaStockLink.level(t, LAB_USE).level;
   const withLabStock = i=>{
     if(!i.stockItem) return i;
     const t = LAB_STOCK.find(x=>x.name === i.stockItem);
-    return {...i, stock:t ? {...globalThis.RicottaStockLink.amount(t), at:labStockAt()} : {missing:true}};
+    return {...i, stock:t ? {...globalThis.RicottaStockLink.amount(t), level:labLevel(t), at:labStockAt()} : {missing:true}};
   };
   function ricoReply(account, body){
     const L = lang(body.lang);
@@ -344,6 +348,11 @@
   /* ---- the router ---- */
   let query = new URLSearchParams();
   const labUndo = new Map();
+  // Live signals in the Lab: a counter per kind that moves like the server's (Check now moves 'receipts'
+  // while Rico reads, and 'data' and 'receipts' when the new lists arrive), waking the open wait at once.
+  const labSig = {n:1, kinds:{data:1, draft:1, devices:1, admin:1, inbox:1, receipts:1}}, labSigWait = new Set();
+  const labBump = (...ks)=>{ labSig.n++; ks.forEach(k=>{ labSig.kinds[k] = labSig.n; }); labSigWait.forEach(f=>f()); labSigWait.clear(); };
+  const labHelper = ()=>{ db.rr ||= {receipts:[], helper:{online:true, lastSeen:new Date().toISOString(), signedIn:true, busyWith:null, stopped:false, limits:{bigTotal:1000000, priceJump:30, rateMin:1500, rateMax:1800}, version:'lab', mode:'real', launcher:{online:true, command:null, result:null, at:null}}, next:28}; return Object.assign(db.rr.helper, {online:true, canSync:true}); };
   async function handle(path, method, headers, body){
     await new Promise(r=>setTimeout(r, 120 + Math.random()*180));   // a little network time
     if(method === 'POST' && path === 'login'){
@@ -386,8 +395,19 @@
         if(want && !t) return fail('stock_item_unknown', 422);
         if(want && !globalThis.RicottaStockLink.matches(it, want)) return fail('names_dont_match', 422);
         it.stockItem = want; save();
-        return json({ok:true, stockItem:want, stock:t ? {...globalThis.RicottaStockLink.amount(t), at:labStockAt()} : null});
+        return json({ok:true, stockItem:want, stock:t ? {...globalThis.RicottaStockLink.amount(t), level:labLevel(t), at:labStockAt()} : null});
       }
+    }
+    // Check now: Rico "reads" Ricotta Restaurant in about two seconds and finds one new item.
+    if(method === 'POST' && path === 'rico/check-now'){
+      if(!can(account, 'transfers') && !can(account, 'receipts')) return fail('forbidden', 403);
+      const h = labHelper();
+      if(h.sync?.state) return json({error:'already_checking', helper:h}, 409);
+      const askedAt = new Date().toISOString();
+      h.sync = {state:'asked', askedAt}; save(); labBump('receipts');
+      setTimeout(()=>{ h.sync = {state:'running', askedAt, startedAt:new Date().toISOString()}; save(); labBump('receipts'); }, 900);
+      setTimeout(()=>{ db.labCheckItem = true; h.sync = {state:null, askedAt, doneAt:new Date().toISOString(), result:{ok:true, changes:{items:{added:1, addedNames:['Lab Check Item - کاڵای تاقیکردنەوە']}}}}; save(); labBump('receipts', 'data'); }, 2600);
+      return json(h);
     }
     // Stock (read only): Main Storage, with practice last-bought and last-moved notes.
     if(method === 'GET' && path === 'stock'){
@@ -396,7 +416,8 @@
       const items = [['Aleppo Pepper - پول بیبەر', 'غرام', {name:'کیلۆ', factor:1000}, {name:'فەردە', factor:25000}, 3200], ['White Toast - توست أبيض', 'دانە', {name:'سیت', factor:25}, {name:'کارتۆن', factor:250}, 250],
         ['Lemon - لیمۆ', 'غرام', {name:'کیلۆ', factor:1000}, null, 12500], ['Oil 1L - زەیتی 1 لیتری', 'مل', {name:'دانە', factor:1000}, {name:'کارتۆن', factor:12000}, 40000], ['Faheta Bread - صمونی فاهیتا', 'دانە', {name:'دانە', factor:1}, null, 0]]
         .map(([name, base, count, buy, main], k)=>({name, base, count, buy, main, inMain:true, lastBought:k % 2 ? null : {at:day(k + 1), supplier:'Bread House Bakery', qty:2, unit:buy?.name || base, cost:8500, currency:'IQD'}, lastMoved:{at:day(k), from:'Main Storage', to:['Pizza','Minibar','Kebab'][k % 3], qty:1, unit:count.name}}));
-      return json({at:Date.now(), zone:'Main Storage', items});
+      if(db.labCheckItem) items.push({name:'Lab Check Item - کاڵای تاقیکردنەوە', base:'دانە', count:null, buy:null, main:6, inMain:true, lastBought:null, lastMoved:null});
+      return json({at:Date.now(), zone:'Main Storage', items, helper:labHelper()});
     }
     // Transfers: the stock Rico reads, and a Rico who fills a transfer in two seconds and moves it once approved.
     if(path === 'transfers' || path.startsWith('transfers/')){
@@ -764,6 +785,17 @@
       if(body.account === 'rozha' && pin === '222222') return fail('duplicate_pin');
       return ok();
     }
+    if(method === 'PUT' && (m = path.match(/^rico-chats\/([^/]+)\/title$/))){
+      const c = db.chats.find(x=>x.id === decodeURIComponent(m[1]));
+      if(!c || (c.account !== account && account !== 'rozha')) return fail('not_found', 404);
+      c.title = String(body.title || '').slice(0, 80); save(); return ok();
+    }
+    if(method === 'POST' && path === 'assistant/title'){
+      // The Lab names a chat from its question (the real app asks the AI for 2 to 5 words).
+      const q = String(body.question || '').toLowerCase();
+      const title = /cheese|پەنیر|جبن/.test(q) ? 'Cheese stock' : /low|کەم|ينقص/.test(q) ? 'Low stock today' : /needs|پێویستی|يحتاج/.test(q) ? 'What needs attention' : /price|نرخ|سعر/.test(q) ? 'Price changes' : /late|دوا|تأخر/.test(q) ? 'Late orders today' : 'Kitchen questions';
+      return json({title});
+    }
     if((m = path.match(/^rico-chats(?:\/(.+))?$/))){
       const id = m[1] ? decodeURIComponent(m[1]) : null;
       if(method === 'GET' && !id) return json({chats:[...db.chats].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).map(c=>({id:c.id, account:c.account, title:c.title, createdAt:c.createdAt, updatedAt:c.updatedAt}))});
@@ -809,10 +841,15 @@
     if(init.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     // Live changes: the Lab is one browser, so nothing changes anywhere else and the wait simply ends.
     if(method === 'GET' && path === 'signals'){
-      const wait = Math.min(25, Math.max(0, Number(query.get('wait')) || 0)) * 1000;
-      await new Promise(done=>{ const timer = setTimeout(done, wait); init.signal?.addEventListener('abort', ()=>{ clearTimeout(timer); done(); }, {once:true}); });
+      const wait = Math.min(25, Math.max(0, Number(query.get('wait')) || 0)) * 1000, since = Number(query.get('since'));
+      await new Promise(done=>{
+        if(since !== labSig.n){ done(); return; }
+        const fin = ()=>{ clearTimeout(timer); labSigWait.delete(fin); done(); };
+        const timer = setTimeout(fin, wait); labSigWait.add(fin);
+        init.signal?.addEventListener('abort', fin, {once:true});
+      });
       if(init.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-      return new Response(JSON.stringify({n:1, kinds:{data:1, draft:1, devices:1, admin:1, inbox:1}}), {status:200, headers:{'Content-Type':'application/json'}});
+      return new Response(JSON.stringify({n:labSig.n, kinds:{...labSig.kinds}}), {status:200, headers:{'Content-Type':'application/json'}});
     }
     return handle(path, method, headers, body || {});
   };

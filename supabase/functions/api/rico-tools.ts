@@ -8,11 +8,13 @@
 import "../_shared/search.js";
 import "../_shared/receipts.js";
 import "../_shared/transfers.js";
+import "../_shared/stock-link.js";
 import { catalogOf, logEntry } from "./receipts.ts";
 import { cleanDraft, erbilDay, usualAmounts } from "./transfers.ts";
 const search = (globalThis as any).RicottaSearch;
 const R = (globalThis as any).RicottaReceipts;
 const T = (globalThis as any).RicottaTransfers;
+const SL = (globalThis as any).RicottaStockLink;
 
 type Emit = (event: Record<string, unknown>) => void;
 const noEmit: Emit = () => {};
@@ -20,7 +22,7 @@ const DB_TIMEOUT_MS = 12_000;
 const MAX_DAYS = 60;
 const STUCK_MINUTES = 15;
 const DRAFTS_PER_REPLY = 2;
-const LOW_DAYS = 3, USE_DAYS = 14;
+const LOW_DAYS = SL.LOW_DAYS, USE_DAYS = SL.USE_DAYS;   // the same rule as the Order screen (stock-link.js)
 /* A card id, like the other proposals' ids. */
 const cardId = (k: string) => `${k}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const CARD_NOTE = "The app already shows these as a card under your reply. Say it in one or two short lines; never list every row again.";
@@ -148,30 +150,16 @@ export async function lowStock(db: any, w: any, a: any, emit: Emit = noEmit) {
   }
   const since = new Date(Date.now() - USE_DAYS * 86400_000).toISOString();
   const { data, error } = await withTimeout<any>(db.from("app_rr_transfers").select("from_zone,lines,moved_at,mode")
-    .eq("status", "moved").eq("from_zone", zone).gte("moved_at", since).limit(1500), "transfers");
+    .eq("status", "moved").eq("from_zone", zone).gte("moved_at", since).order("moved_at", { ascending: false }).limit(1500), "transfers");
   if (error) throw new Error("records_unavailable");
-  const byName = new Map(titems.map((i) => [i.name, i]));
-  const used = new Map<string, { base: number; n: number }>();
-  for (const r of (data ?? []) as any[]) {
-    if (r.mode === "practice") continue;
-    for (const l of r.lines ?? []) {
-      const it = byName.get(l?.item);
-      if (!it) continue;
-      const f = T.unitOptions(it).find((u: any) => u.name === l.unit)?.factor ?? (l.unit === it.base ? 1 : 0);
-      const q = Number(l.qty) * f;
-      if (!(q > 0)) continue;
-      const u = used.get(it.name) ?? { base: 0, n: 0 };
-      u.base += q; u.n++; used.set(it.name, u);
-    }
-  }
+  const used: Map<string, { base: number; n: number }> = SL.usage(data ?? [], titems, zone);
   const rows: any[] = [];
   for (const it of titems) {
     if (!it.stock || !(zone in it.stock)) continue;
     const have = T.available(it, zone), u = used.get(it.name);
-    const perDay = u && u.n >= 2 ? u.base / USE_DAYS : 0;
-    const days = perDay > 0 ? have / perDay : null;
-    const empty = have <= 0;
-    if (empty ? !u : !(days !== null && days < LOW_DAYS)) continue;
+    const { days, level } = SL.level(it, used, zone);
+    const empty = level === "empty";
+    if (empty ? !u : level !== "low") continue;
     const c = T.inCounting(it, have, true);
     rows.push({ item: it.name, qty: c.qty, unit: c.unit, days_left: days === null ? null : Math.round(days * 10) / 10, empty });
   }

@@ -26,7 +26,19 @@
 
   /* The meaningful words of a name: normalized, stemmed, without numbers, sizes (20*225, 1l) or unit
      words, and with the Kurdish linking ending ی taken off (پەنیری مۆزارێلا is "mozzarella cheese"). */
+  /* The words of a name are worked out once and kept (the link list compares every item with every stock
+     item, so the same names come up thousands of times). */
+  const WORDS = new Map();
   function words(name) {
+    const key = String(name ?? '');
+    const hit = WORDS.get(key);
+    if (hit) return hit;
+    const out = wordsOf(key);
+    if (WORDS.size > 5000) WORDS.clear();
+    WORDS.set(key, out);
+    return out;
+  }
+  function wordsOf(name) {
     const out = [];
     for (let w of S().normalize(name).split(' ')) {
       if (!w || /\d/.test(w)) continue;
@@ -77,6 +89,16 @@
     return false;
   }
 
+  /* The stock items that can be linked to this ordering item, best first (at most n). Both kinds are
+     offered when there are two (two mozzarellas). Names that don't match are never suggested. */
+  function suggest(item, options, n = 4) {
+    if (!item) return [];
+    const names = [item.name, ...(Array.isArray(item.aliases) ? item.aliases : [])].filter(Boolean);
+    const best = (o) => Math.min(...names.map((nm) => { const v = S().score(nm, [o.name], true); return Number.isFinite(v) ? v : 1e9; }));
+    return (options || []).filter((o) => o && o.name && matches(item, o.name))
+      .map((o) => ({ o, s: best(o) })).sort((a, b) => a.s - b.s || String(a.o.name).localeCompare(String(b.o.name))).slice(0, n).map((x) => x.o);
+  }
+
   /* How much of a stock item is in Main Storage, for the Order screen: a whole number (1 or more) of
      buying units shows in the buying unit, anything else in the counting unit (rounded down to 3
      decimals, like Stock). {qty, unit, empty} */
@@ -91,5 +113,35 @@
     return { qty: c.qty, unit: c.unit, empty: !(base > 0) };
   }
 
-  globalThis.RicottaStockLink = Object.freeze({ MAIN, words, matches, amount });
+  /* Low stock, one rule for the Order screen and Rico's low_stock: empty, or less than LOW_DAYS days
+     left at the pace it left the storage in moved transfers over the last USE_DAYS days (at least 2
+     moves; without them it is just in stock). */
+  const LOW_DAYS = 3, USE_DAYS = 14;
+  /* How much of each item left a storage: {name: {base, n}} from moved transfer rows (practice runs
+     never count). */
+  function usage(rows, titems, zone) {
+    const byName = new Map((titems || []).map((i) => [i.name, i])), used = new Map();
+    for (const r of rows || []) {
+      if (!r || r.mode === 'practice' || (zone && r.from_zone !== zone)) continue;
+      for (const l of r.lines || []) {
+        const it = byName.get(l && l.item);
+        if (!it) continue;
+        const o = T().unitOptions(it).find((u) => u.name === l.unit);
+        const q = Number(l.qty) * (o ? o.factor : l.unit === it.base ? 1 : 0);
+        if (!(q > 0)) continue;
+        const u = used.get(it.name) || { base: 0, n: 0 };
+        u.base += q; u.n++; used.set(it.name, u);
+      }
+    }
+    return used;
+  }
+  /* Days left (null without enough usage) and the level: 'empty', 'low' or 'ok'. */
+  function level(titem, used, zone = MAIN) {
+    const have = T().available(titem, zone), u = used && used.get(titem && titem.name);
+    const perDay = u && u.n >= 2 ? u.base / USE_DAYS : 0;
+    const days = perDay > 0 ? have / perDay : null;
+    return { days, level: have <= 0 ? 'empty' : days !== null && days < LOW_DAYS ? 'low' : 'ok' };
+  }
+
+  globalThis.RicottaStockLink = Object.freeze({ MAIN, LOW_DAYS, USE_DAYS, words, matches, amount, usage, level, suggest });
 })();

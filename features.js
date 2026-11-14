@@ -126,3 +126,90 @@ function wipeBanner(){
   if(left === null || left > 2 || left < 0) return '';
   return `<div class="wipe-banner" role="status">${ICON_BELL}<span>${esc(left === 0 ? t('wipeWarnToday') : t('wipeWarnSoon')(left))}</span></div>`;
 }
+
+/* ============ What a setting does ============
+   A computer: resting the pointer on a setting for a moment shows a small card with what it does, in a
+   sentence or two and a small picture of it. A phone: the round "i" button on the row opens the same in
+   a sheet. Only explains: the switch itself is still the only thing that changes a setting. Works on the
+   Settings page and in Rico's settings. */
+const HELP_PIC = {
+  bell:'<rect x="8" y="10" width="116" height="56" rx="10" class="hp-card"/><path d="M58 46h16l-2-3v-7a6 6 0 0 0-12 0v7z" class="hp-ink"/><rect x="40" y="16" width="52" height="12" rx="6" class="hp-acc hp-slide"/>',
+  swipe:'<rect x="10" y="24" width="112" height="28" rx="8" class="hp-card"/><rect x="20" y="34" width="44" height="8" rx="4" class="hp-line"/><text x="104" y="43" class="hp-num hp-fadein">+5</text><circle cx="40" cy="38" r="7" class="hp-acc hp-finger"/>',
+  last:'<rect x="10" y="20" width="112" height="36" rx="8" class="hp-card"/><rect x="20" y="28" width="50" height="8" rx="4" class="hp-line"/><rect x="20" y="41" width="26" height="7" rx="3.5" class="hp-acc hp-pulse"/><rect x="88" y="30" width="24" height="16" rx="5" class="hp-line"/>',
+  compact:'<g class="hp-rows"><rect x="14" y="8" width="104" height="16" rx="6" class="hp-card"/><rect x="14" y="30" width="104" height="16" rx="6" class="hp-card hp-r2"/><rect x="14" y="52" width="104" height="16" rx="6" class="hp-card hp-r3"/></g>',
+  sound:'<path d="M40 30h10l12-10v36L50 46H40z" class="hp-ink"/><path d="M72 30a10 10 0 0 1 0 16" class="hp-wave hp-w1"/><path d="M78 24a18 18 0 0 1 0 28" class="hp-wave hp-w2"/><path d="M84 18a26 26 0 0 1 0 40" class="hp-wave hp-w3"/>',
+  dark:'<rect x="26" y="10" width="80" height="56" rx="9" class="hp-card"/><rect x="26" y="10" width="80" height="56" rx="9" class="hp-night"/><circle cx="66" cy="38" r="9" class="hp-acc"/>',
+  simple:'<rect x="14" y="12" width="104" height="52" rx="9" class="hp-card"/><rect x="24" y="22" width="60" height="8" rx="4" class="hp-line hp-strong"/><rect x="24" y="36" width="84" height="6" rx="3" class="hp-line hp-fadeout"/><rect x="24" y="48" width="66" height="6" rx="3" class="hp-line hp-fadeout"/>',
+  table:'<rect x="14" y="12" width="104" height="52" rx="8" class="hp-card"/><path d="M14 26h104M14 40h104M14 52h104M50 12v52M86 12v52" class="hp-grid"/><rect x="14" y="12" width="104" height="14" rx="8" class="hp-acc hp-soft"/>',
+  big:'<text x="66" y="48" text-anchor="middle" class="hp-aa">Aa</text>',
+  award:'<circle cx="66" cy="34" r="18" class="hp-acc hp-pop"/><path d="m66 24 3 6 6 1-4.5 4 1 6-5.5-3-5.5 3 1-6-4.5-4 6-1z" class="hp-white"/><path d="m56 50-4 14 14-6 14 6-4-14" class="hp-acc hp-soft"/>',
+  mac:'<rect x="30" y="14" width="72" height="44" rx="5" class="hp-card"/><path d="M22 62h88" class="hp-grid"/><circle cx="66" cy="36" r="6" class="hp-ok hp-pulse"/>',
+  move:'<rect x="10" y="22" width="38" height="32" rx="7" class="hp-card"/><rect x="84" y="22" width="38" height="32" rx="7" class="hp-card"/><rect x="22" y="32" width="12" height="12" rx="3" class="hp-acc hp-travel"/>',
+  stop:'<circle cx="66" cy="38" r="22" class="hp-card"/><rect x="56" y="28" width="20" height="20" rx="4" class="hp-red"/>',
+  rico:'<path d="M30 20c1 7 5 11 12 12-7 1-11 5-12 12-1-7-5-11-12-12 7-1 11-5 12-12z" class="hp-acc"/><rect x="56" y="18" width="62" height="40" rx="8" class="hp-card"/><rect x="64" y="27" width="40" height="6" rx="3" class="hp-line hp-fill1"/><rect x="64" y="38" width="30" height="6" rx="3" class="hp-line hp-fill2"/>',
+  ask:'<rect x="30" y="8" width="72" height="60" rx="9" class="hp-card"/><rect x="38" y="18" width="40" height="6" rx="3" class="hp-line"/><rect x="38" y="30" width="56" height="6" rx="3" class="hp-line"/><rect x="44" y="50" width="44" height="12" rx="6" class="hp-acc hp-pulse"/>',
+  ai:'<rect x="14" y="16" width="56" height="22" rx="9" class="hp-card"/><rect x="62" y="40" width="56" height="22" rx="9" class="hp-acc hp-soft hp-fadein"/><path d="M70 27h24l-6-5m6 5-6 5" class="hp-grid"/>',
+};
+const HELP_OF = {notif:'bell', swipe:'swipe', showLastQty:'last', compactRows:'compact', soundQty:'sound', soundSent:'sound', soundRico:'sound', soundError:'sound',
+  soundMilestone:'sound', soundUndo:'sound', darkMode:'dark', simpleView:'simple', tables:'table', kitchenMode:'big', milestones:'award', ricoAutoStart:'mac',
+  tfAuto:'move', rrStop:'stop', ricoAutoOrder:'rico', ricoSheet:'ask', ai:'ai'};
+/* Which setting a row is about (from its switch), or null. */
+function helpIdOf(row){
+  if(!row) return null;
+  if(row.classList.contains('dark-row')) return 'darkMode';
+  const box = row.querySelector('input[type=checkbox]');
+  if(!box) return null;
+  const id = box.dataset.feature || ({pushSwitch:'notif', tfAutoSet:'tfAuto', rrStop:'rrStop'})[box.id]
+    || (box.hasAttribute('data-set-auto') ? 'ricoAutoOrder' : box.hasAttribute('data-set-sheet') ? 'ricoSheet' : box.hasAttribute('data-set-ai') ? 'ai' : null);
+  return id && HELP_OF[id] && (t('settingHelp') || {})[id] ? id : null;
+}
+const helpTitleOf = row=> row.querySelector('span')?.childNodes[0]?.textContent?.trim() || '';
+function helpBody(id, title){
+  return `<svg class="help-pic" viewBox="0 0 132 76" aria-hidden="true">${HELP_PIC[HELP_OF[id]]}</svg><div class="help-text"><b dir="auto">${esc(title)}</b><p dir="auto">${esc(t('settingHelp')[id])}</p></div>`;
+}
+const HELP_ROWS = 'label.preference-row, label.rico-set-row, .dark-row';
+let helpTimer = 0, helpRow = null;
+function hideSettingHelp(){ clearTimeout(helpTimer); helpRow = null; document.getElementById('settingHelp')?.remove(); }
+function showSettingHelp(row){
+  const id = helpIdOf(row); if(!id || !row.isConnected) return;
+  hideSettingHelp(); helpRow = row;
+  const tip = document.createElement('div');
+  tip.id = 'settingHelp'; tip.className = 'help-pop'; tip.setAttribute('role', 'tooltip');
+  tip.innerHTML = helpBody(id, helpTitleOf(row));
+  document.body.appendChild(tip);
+  // Beside the row (the side with room, the reading side first), else under it; never off screen.
+  const r = row.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight, gap = 12, rtl = isRtl();
+  let x = rtl ? r.left - w - gap : r.right + gap;
+  if(x < 8 || x + w > innerWidth - 8) x = rtl ? r.right + gap : r.left - w - gap;
+  let y = r.top + r.height / 2 - h / 2;
+  if(x < 8 || x + w > innerWidth - 8){ x = Math.min(Math.max(8, r.left + 24), innerWidth - w - 8); y = r.bottom + 8; if(y + h > innerHeight - 8) y = r.top - h - 8; }
+  tip.style.left = Math.round(x) + 'px'; tip.style.top = Math.round(Math.min(Math.max(8, y), innerHeight - h - 8)) + 'px';
+}
+if(matchMedia('(hover: hover) and (pointer: fine)').matches){
+  document.addEventListener('mouseover', e=>{
+    const row = e.target.closest?.(HELP_ROWS);
+    if(row === helpRow || (row && row.contains(e.relatedTarget) && helpTimer)) return;
+    if(!row || !helpIdOf(row)){ if(helpRow || document.getElementById('settingHelp')) hideSettingHelp(); return; }
+    hideSettingHelp(); helpRow = row;
+    helpTimer = setTimeout(()=>{ if(row.matches(':hover')) showSettingHelp(row); }, 600);
+  });
+  document.addEventListener('mouseout', e=>{ if(helpRow && !helpRow.contains(e.relatedTarget)) hideSettingHelp(); });
+  ['scroll', 'pointerdown', 'keydown'].forEach(ev=>document.addEventListener(ev, ()=>{ if(helpRow) hideSettingHelp(); }, true));
+}
+/* Phones: an "i" button on each row that has an explanation (Settings page only). */
+function addSettingHelpButtons(root = document){
+  if(matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  root.querySelectorAll(HELP_ROWS).forEach(row=>{
+    const id = helpIdOf(row); if(!id || row.querySelector('.help-btn')) return;
+    const title = helpTitleOf(row), span = row.querySelector('span'); if(!span) return;
+    // Between the words and the switch, small and quiet.
+    span.insertAdjacentHTML('afterend', `<button type="button" class="help-btn" data-help="${esc(id)}" aria-label="${esc(t('settingHelpBtn')(title))}">i</button>`);
+  });
+}
+document.addEventListener('click', e=>{
+  const b = e.target.closest?.('[data-help]'); if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const row = b.closest(HELP_ROWS), id = b.dataset.help;
+  if(!HELP_OF[id]) return;
+  openKitchenSheet('help-sheet', `<div class="help-sheet-body">${helpBody(id, row ? helpTitleOf(row) : '')}</div>`, row ? helpTitleOf(row) : '');
+}, true);

@@ -465,6 +465,12 @@ function liveChanged(kinds, reset){
   if(moved('inbox')) ricoRefreshInbox();
   if(moved('receipts') && rr.data) rrLoad(true);
   if(moved('receipts') && tf.data) tfLoad(true);
+  // New lists from Ricotta Restaurant (Check now, or Rico's own read) or Rico's state changed: the Stock
+  // list reloads at once too.
+  if(moved('receipts') && stk.data && state.view === 'stock') stockLoad();   // opening Stock reloads it anyway
+  // The stock items offered for linking (cached for the session where that exists) are read again too;
+  // the items with their linked stock lines come back with 'data' (moved too when the lists change).
+  if(moved('data') || moved('receipts')){ try{ if(typeof stockOptions !== 'undefined') stockOptions = null; }catch(_){} }
   if(moved('receipts') && state.view === 'record' && state.recordFilter === 'rico') rrLoadActivity();
 }
 window.addEventListener('online', ()=>liveStart());
@@ -953,6 +959,7 @@ function render(){
   }
   app.classList.remove('static-update');
   app.dataset.shell = shellKey(); app.dataset.screen = state.view;
+  syncRicoSide();   // Rico's own sidebar sits in the shell, beside the app's (never inside the sliding page)
   attachContentEvents();
   attach();
   if(state.view !== 'assistant') document.body.classList.remove('rico-composing');
@@ -2353,8 +2360,11 @@ function stockHtml(st){
 function itemStockLine(i){
   const st = i.stockItem && i.stock;
   if(!st || st.missing) return '';
-  const when = st.at ? t('stockReadAgo')(timeAgo(st.at)) : '';
-  return `<div class="item-stock${st.empty ? ' none' : ''}"${when ? ` title="${esc(when)}"` : ''}>${stockHtml(st)}</div>`;
+  // The colour says the state at a glance: red empty, amber low (under 3 days at the usual pace), green
+  // in stock. The words say the same for anyone who can't tell the colours apart ("None", "Low").
+  const lvl = st.empty ? 'empty' : ['low', 'ok'].includes(st.level) ? st.level : '';
+  const when = [st.at ? t('stockReadAgo')(timeAgo(st.at)) : '', lvl === 'low' ? t('stockLowHint') : ''].filter(Boolean).join(' · ');
+  return `<div class="item-stock${lvl ? ' lvl-' + lvl : ''}${st.empty ? ' none' : ''}"${when ? ` title="${esc(when)}"` : ''}>${stockHtml(st)}${lvl === 'low' ? ` <span class="item-stock-tag">${esc(t('stockLowTag'))}</span>` : ''}</div>`;
 }
 // On a phone (no hover), a tap on the stock line says how old the reading is.
 document.addEventListener('click', e=>{ const el = e.target.closest?.('.item-stock[title]'); if(el && matchMedia('(hover: none)').matches) toast(el.title); });
@@ -2653,7 +2663,15 @@ function attachOrderResultEvents(root){
     inp.onblur=()=>{ if(inp.value===''){ inp.value='0'; } };
     inp.onkeydown=e=>{ if(e.key==='Enter') inp.blur(); };
   });
-  root.querySelectorAll('.item-row').forEach(row=>{ row.onpointerdown=e=>startRowPress(row,e); });
+  // Hold on a phone, right-click on a computer: the item's menu (a text box keeps its own menu).
+  root.querySelectorAll('.item-row').forEach(row=>{
+    row.onpointerdown=e=>startRowPress(row,e);
+    // Android sends this on every long press too: never from + / - (hold-to-repeat), and never a second time
+    // when the hold timer already opened the menu.
+    row.oncontextmenu=e=>{ if(e.target.closest('input,textarea')) return; e.preventDefault();
+      if(e.target.closest('.stepper,button') || document.getElementById('ctxLayer')) return;
+      rowPress?.cancel(); openItemMenu(row); };
+  });
   root.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
     const id=inp.dataset.qty; const v=Math.min(MAX_QTY, Math.max(0, readQuantity(inp.value))); state.cart[id]=v; refreshOrderView(id);
   });
@@ -2751,7 +2769,8 @@ function openItemMenu(row){
   layer.id = 'ctxLayer'; layer.className = 'ctx-layer';
   const actions = [[1,t('cmAdd')(1),ICON_PLUS],[5,t('cmAdd')(5),ICON_PLUS],[10,t('cmAdd')(10),ICON_PLUS],['type',t('cmType'),ICON_EDIT],
     ['pin', state.pins.includes(id) ? t('unpinItem') : t('pinItem'), ICON_PIN]];
-  if(canDo('catalog')) actions.push(['note', t('itemNoteEdit'), ICON_NOTE], ['edit', t('editItem'), ICON_EDIT_ITEM]);
+  if(canDo('catalog')) actions.push(['note', t('itemNoteEdit'), ICON_NOTE], ['edit', t('editItem'), ICON_EDIT_ITEM], ['link', item.stockItem ? t('cmChangeStock') : t('cmLinkStock'), ICON_LINK]);
+  actions.push(['copy', t('cmCopyName'), ICON_COPY]);
   if(qty) actions.push(['remove',t('cmRemove'),ICON_DELETE]);
   haptic('medium');
   const menuH = actions.length*44 + 16, below = rect.bottom + 12 + menuH < window.innerHeight - 90;
@@ -2776,6 +2795,8 @@ function openItemMenu(row){
     if(a === 'pin'){ togglePin(id); return; }
     if(a === 'note'){ editItemNote(id); return; }
     if(a === 'edit'){ openItemModal(id); return; }
+    if(a === 'link'){ openStockLinkSheet(id); return; }
+    if(a === 'copy'){ copyItemName(item.name); return; }
     if(a === 'remove'){
       state.cart[id] = 0; refreshOrderView(id);
       toast(t('itemRemoved'), 'ok', {undo:()=>{ state.cart[id] = before; refreshOrderView(id); }});
@@ -2785,6 +2806,15 @@ function openItemMenu(row){
   });
 }
 
+/* The item's stock link on its own, from the item menu: suggestions first, search for anything else. */
+function openStockLinkSheet(id){
+  const {el} = openKitchenSheet('stock-link-sheet', `<div class="sel-title" dir="auto">${esc(state.items.find(i=>i.id === id)?.name || '')}</div><div class="field stock-link" id="ctxStock"></div>`, t('cmLinkStock'));
+  mountStockLink(el.querySelector('#ctxStock'), id);
+}
+async function copyItemName(name){
+  try{ await navigator.clipboard.writeText(name); toast(t('cmCopied')); }
+  catch(_){ toast(t('cmCopyFailed'), 'warn'); }
+}
 /* Pinned items sit at the top of the Order screen (kept per account on the server). */
 async function togglePin(id){
   const before = state.pins.slice();
@@ -3444,7 +3474,8 @@ function renderItemsAdmin(){
   return `
     <div class="action-row">
       ${edit ? `<button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
-      <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button>` : ''}
+      <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button>
+      <button class="btn btn-ghost" id="itemLinkAllBtn">${ICON_LINK} ${esc(t('stockLinkMany'))}${(n=>n ? ` <span class="btn-count">${n}</span>` : '')(state.items.filter(i=>!i.stockItem).length)}</button>` : ''}
       ${canDo('exports') ? `<button class="btn btn-ghost" data-export="items">${ICON_SHEET} ${esc(t('exportBtn'))}</button>` : ''}
     </div>${edit ? '' : `<p class="readonly-note">${esc(t('catalogReadOnly'))}</p>`}
     ${renderCatalogSearch()}<div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${renderDataTable('items')}</div>`;
@@ -3655,12 +3686,15 @@ function openItemModal(id){
    (the server checks the same rule). It saves on its own, apart from the form's Save. */
 let stockOptions = null;   // {at, items:[{name, qty?, unit?, empty?}]}, read once per session (amounts only with Stock)
 let stockOptionsFailed = false;
-async function loadStockOptions(){
-  if(stockOptions) return stockOptions;
-  const r = await api('items/stock-options', {quiet:true});
-  stockOptionsFailed = !(r.ok && Array.isArray(r.data?.items));
-  if(!stockOptionsFailed) stockOptions = r.data;
-  return stockOptions;
+let stockOptionsLoading = null;   // one read at a time, shared by everyone who asks meanwhile
+function loadStockOptions(){
+  if(stockOptions) return Promise.resolve(stockOptions);
+  return stockOptionsLoading ??= api('items/stock-options', {quiet:true}).then(r=>{
+    stockOptionsFailed = !(r.ok && Array.isArray(r.data?.items));
+    if(!stockOptionsFailed) stockOptions = r.data;
+    stockOptionsLoading = null;
+    return stockOptions;
+  });
 }
 function mountStockLink(box, itemId){
   if(!box) return;
@@ -3672,7 +3706,11 @@ function mountStockLink(box, itemId){
     const cur = i.stockItem;
     const st = cur && i.stock;
     const now = cur ? `<div class="stock-link-now"><span class="stock-link-name" dir="auto">${esc(cur)}</span><small>${st?.missing ? esc(t('stockLinkMissing')) : st ? stockHtml(st) : ''}</small></div>` : `<div class="field-hint">${esc(t('stockLinkNone'))}</div>`;
-    box.innerHTML = `<label${open ? ' for="mfStockSearch"' : ''}>${esc(t('stockLinkLabel'))}</label>${now}
+    // Not linked yet: the best matches are shown right away, one tap each (both kinds when there are two).
+    if(!cur && !open && !stockOptions && !stockOptionsFailed) loadStockOptions().then(()=>{ if(box.isConnected && !open && stockOptions) paint(); });
+    const sug = !cur && !open && stockOptions?.items?.length ? L.suggest(i, stockOptions.items, 4) : [];
+    const sugHtml = sug.length ? `<div class="stock-sug" role="group" aria-label="${esc(t('stockLinkSuggested'))}"><div class="stock-sug-title">${esc(t('stockLinkSuggested'))}</div>${sug.map(o=>`<button type="button" class="stock-opt" data-stock-pick="${esc(o.name)}"><span dir="auto">${esc(o.name)}</span>${o.unit == null ? '' : `<small>${stockHtml(o)}</small>`}<b class="stock-sug-link">${esc(t('stockLinkDo'))}</b></button>`).join('')}</div>` : '';
+    box.innerHTML = `<label${open ? ' for="mfStockSearch"' : ''}>${esc(t('stockLinkLabel'))}</label>${now}${sugHtml}
       <div class="stock-link-actions">${open ? '' : `<button type="button" class="btn btn-ghost" data-stock-open>${esc(cur ? t('stockLinkChange') : t('stockLinkChoose'))}</button>`}${cur && !open ? `<button type="button" class="btn btn-ghost danger-text" data-stock-unlink>${esc(t('stockLinkRemove'))}</button>` : ''}</div>
       ${open ? `<div class="stock-pick"><input id="mfStockSearch" class="stock-pick-input" type="search" autocomplete="off" dir="auto" placeholder="${esc(t('stockLinkSearch'))}" value="${esc(query)}"><div class="stock-pick-list" role="listbox" aria-label="${esc(t('stockLinkLabel'))}"></div><button type="button" class="btn btn-ghost" data-stock-cancel>${esc(t('cancel'))}</button></div>` : ''}`;
     if(open){ paintList(); const input = box.querySelector('#mfStockSearch'); input.oninput = ()=>{ query = input.value; paintList(); }; input.onkeydown = e=>{ if(e.key === 'Enter') e.preventDefault(); }; }
@@ -3708,7 +3746,49 @@ function mountStockLink(box, itemId){
     const pick = e.target.closest('[data-stock-pick]:not([disabled])');
     if(pick) await save(pick.dataset.stockPick);
   };
-  paint();
+  paint();   // suggestions need the list of stock items: paint() reads it once when needed
+}
+/* Link many items quickly (Manage, Items): every item not linked yet with its best match and a Link
+   button, so Rozh can go down the list. Nothing is linked until she taps; Choose opens the item for
+   another stock item. */
+function openStockLinkMany(){
+  const {el, close} = openKitchenSheet('stock-many-sheet', `<div class="sel-title">${esc(t('stockLinkMany'))}</div><p class="stock-many-hint">${esc(t('stockLinkManyHint'))}</p><div class="stock-many-list">${loadingLines(5)}</div>`, t('stockLinkMany'));
+  const list = el.querySelector('.stock-many-list');
+  const L = globalThis.RicottaStockLink;
+  let shown = 60, todo = null;   // the matches are worked out once per opening ("Show more" reuses them)
+  const paint = ()=>{
+    if(!stockOptions){ list.innerHTML = stockOptionsFailed ? `<div class="field-hint">${esc(t('loadFailed'))}</div>` : loadingLines(5); return; }
+    if(!stockOptions.items.length){ list.innerHTML = `<div class="field-hint">${esc(t('stockLinkNoStock'))}</div>`; return; }
+    // Items with a match first (one tap each), then the ones to choose by hand, each group by name.
+    todo ??= state.items.filter(i=>!i.stockItem).map(i=>({i, best:L.suggest(i, stockOptions.items, 2)}))
+      .sort((a, b)=>Number(!a.best.length) - Number(!b.best.length) || a.i.name.localeCompare(b.i.name));
+    if(!todo.length){ list.innerHTML = `<div class="empty-mini">${esc(t('stockLinkAllDone'))}</div>`; return; }
+    list.innerHTML = todo.slice(0, shown).map(({i, best})=>{
+      return `<div class="stock-many-row" data-many="${esc(i.id)}">
+        <div class="stock-many-names"><b dir="auto">${esc(i.name)}</b><small dir="auto">${best.length ? esc(best[0].name) + (best.length > 1 ? ' · ' + esc(t('stockLinkMore')(best.length - 1)) : '') : esc(t('stockLinkNoSuggestShort'))}</small></div>
+        <div class="stock-many-btns">${best.length ? `<button type="button" class="btn btn-primary" data-many-link="${esc(i.id)}" data-name="${esc(best[0].name)}">${esc(t('stockLinkDo'))}</button>` : ''}<button type="button" class="btn btn-ghost" data-many-choose="${esc(i.id)}">${esc(t('stockLinkChooseShort'))}</button></div>
+      </div>`;
+    }).join('') + (todo.length > shown ? `<button type="button" class="btn btn-ghost stock-many-more" data-many-more>${esc(t('stockLinkShowMore')(todo.length - shown))}</button>` : '');
+  };
+  list.onclick = async e=>{
+    if(e.target.closest('[data-many-more]')){ shown += 60; paint(); return; }
+    const choose = e.target.closest('[data-many-choose]');
+    if(choose){ close(); openItemModal(choose.dataset.manyChoose); return; }
+    const b = e.target.closest('[data-many-link]'); if(!b) return;
+    const i = state.items.find(x=>x.id === b.dataset.manyLink); if(!i) return;
+    b.disabled = true;
+    const r = await api(`items/${encodeURIComponent(i.id)}/stock`, {method:'PUT', body:{stockItem:b.dataset.name}});
+    if(!r.ok){ b.disabled = false; toast(r.data?.error === 'names_dont_match' ? t('stockLinkNoMatch') : t('saveFailed'), 'error'); return; }
+    i.stockItem = r.data.stockItem; if(r.data.stock) i.stock = r.data.stock; else delete i.stock;
+    const row = b.closest('.stock-many-row');
+    row.classList.add('done');
+    row.querySelector('.stock-many-btns').innerHTML = `<span class="stock-many-ok">${ICON_CHECK}${esc(t('stockLinkSaved'))}</span>`;
+    // The count on the Manage button follows (the Order screen reads the link when it is drawn next).
+    const n = state.items.filter(x=>!x.stockItem).length, count = document.querySelector('#itemLinkAllBtn .btn-count');
+    if(count){ if(n) count.textContent = n; else count.remove(); }
+  };
+  // Drawn once: at once when the stock list is already here, otherwise when it arrives.
+  if(stockOptions) paint(); else { paint(); loadStockOptions().then(()=>{ if(el.isConnected) paint(); }); }
 }
 /* Deleting an item asks first, then offers Undo. The server keeps a copy for 10 minutes that only
    this account on this device can bring back; it comes back with its amount in the order. */
@@ -3744,6 +3824,8 @@ async function deleteItemWithUndo(id){
 function attachItemEvents(){
   const add = document.getElementById('itemAddBtn');
   if(add) add.onclick = ()=> openItemModal(null);
+  const linkAll = document.getElementById('itemLinkAllBtn');
+  if(linkAll) linkAll.onclick = openStockLinkMany;
   attachDataTable('items', document.getElementById('itemsAdminList'));
 }
 
@@ -3939,6 +4021,7 @@ function attachSettingsEvents(){
  if(exp) exp.onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(currentOutbox(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ricotta-pending-orders.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   bindAppearance();
   attachFeatureSettings();
+  addSettingHelpButtons(document.getElementById('mainContent') || document);
   document.getElementById('settingsSignOut').onclick = ()=>doLogout();
   document.getElementById('reportProblemBtn').onclick = openReportProblem;
   document.getElementById('shortcutsBtn').onclick = openShortcuts;
