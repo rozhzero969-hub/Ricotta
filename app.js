@@ -467,7 +467,7 @@ function liveChanged(kinds, reset){
   if(moved('receipts') && tf.data) tfLoad(true);
   // New lists from Ricotta Restaurant (Check now, or Rico's own read) or Rico's state changed: the Stock
   // list reloads at once too.
-  if(moved('receipts') && stk.data) stockLoad();
+  if(moved('receipts') && stk.data && state.view === 'stock') stockLoad();   // opening Stock reloads it anyway
   // The stock items offered for linking (cached for the session where that exists) are read again too;
   // the items with their linked stock lines come back with 'data' (moved too when the lists change).
   if(moved('data') || moved('receipts')){ try{ if(typeof stockOptions !== 'undefined') stockOptions = null; }catch(_){} }
@@ -2666,7 +2666,11 @@ function attachOrderResultEvents(root){
   // Hold on a phone, right-click on a computer: the item's menu (a text box keeps its own menu).
   root.querySelectorAll('.item-row').forEach(row=>{
     row.onpointerdown=e=>startRowPress(row,e);
-    row.oncontextmenu=e=>{ if(e.target.closest('input,textarea')) return; e.preventDefault(); rowPress?.cancel(); openItemMenu(row); };
+    // Android sends this on every long press too: never from + / - (hold-to-repeat), and never a second time
+    // when the hold timer already opened the menu.
+    row.oncontextmenu=e=>{ if(e.target.closest('input,textarea')) return; e.preventDefault();
+      if(e.target.closest('.stepper,button') || document.getElementById('ctxLayer')) return;
+      rowPress?.cancel(); openItemMenu(row); };
   });
   root.querySelectorAll('[data-qty]').forEach(inp=>inp.onchange=()=>{
     const id=inp.dataset.qty; const v=Math.min(MAX_QTY, Math.max(0, readQuantity(inp.value))); state.cart[id]=v; refreshOrderView(id);
@@ -2809,7 +2813,7 @@ function openStockLinkSheet(id){
 }
 async function copyItemName(name){
   try{ await navigator.clipboard.writeText(name); toast(t('cmCopied')); }
-  catch(_){ toast(t('saveFailed'), 'warn'); }
+  catch(_){ toast(t('cmCopyFailed'), 'warn'); }
 }
 /* Pinned items sit at the top of the Order screen (kept per account on the server). */
 async function togglePin(id){
@@ -3751,12 +3755,12 @@ function openStockLinkMany(){
   const {el, close} = openKitchenSheet('stock-many-sheet', `<div class="sel-title">${esc(t('stockLinkMany'))}</div><p class="stock-many-hint">${esc(t('stockLinkManyHint'))}</p><div class="stock-many-list">${loadingLines(5)}</div>`, t('stockLinkMany'));
   const list = el.querySelector('.stock-many-list');
   const L = globalThis.RicottaStockLink;
-  let shown = 60;
+  let shown = 60, todo = null;   // the matches are worked out once per opening ("Show more" reuses them)
   const paint = ()=>{
     if(!stockOptions){ list.innerHTML = stockOptionsFailed ? `<div class="field-hint">${esc(t('loadFailed'))}</div>` : loadingLines(5); return; }
     if(!stockOptions.items.length){ list.innerHTML = `<div class="field-hint">${esc(t('stockLinkNoStock'))}</div>`; return; }
     // Items with a match first (one tap each), then the ones to choose by hand, each group by name.
-    const todo = state.items.filter(i=>!i.stockItem).map(i=>({i, best:L.suggest(i, stockOptions.items, 2)}))
+    todo ??= state.items.filter(i=>!i.stockItem).map(i=>({i, best:L.suggest(i, stockOptions.items, 2)}))
       .sort((a, b)=>Number(!a.best.length) - Number(!b.best.length) || a.i.name.localeCompare(b.i.name));
     if(!todo.length){ list.innerHTML = `<div class="empty-mini">${esc(t('stockLinkAllDone'))}</div>`; return; }
     list.innerHTML = todo.slice(0, shown).map(({i, best})=>{
@@ -3783,8 +3787,8 @@ function openStockLinkMany(){
     const n = state.items.filter(x=>!x.stockItem).length, count = document.querySelector('#itemLinkAllBtn .btn-count');
     if(count){ if(n) count.textContent = n; else count.remove(); }
   };
-  loadStockOptions().then(()=>{ if(el.isConnected) paint(); });
-  paint();
+  // Drawn once: at once when the stock list is already here, otherwise when it arrives.
+  if(stockOptions) paint(); else { paint(); loadStockOptions().then(()=>{ if(el.isConnected) paint(); }); }
 }
 /* Deleting an item asks first, then offers Undo. The server keeps a copy for 10 minutes that only
    this account on this device can bring back; it comes back with its amount in the order. */

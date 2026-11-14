@@ -2673,7 +2673,6 @@ html.dark .help-pop{box-shadow:0 10px 30px rgba(0,0,0,.55),inset 0 0 0 .5px rgba
 .help-sheet-body .help-text b{font-size:1.0625rem}
 .help-sheet-body .help-text p{font-size:.9688rem}
 .help-btn{flex:none;align-self:center;display:grid;place-items:center;width:24px;height:24px;margin-inline-start:auto;padding:0;border:0;border-radius:7px;background:var(--fill);color:var(--ink-soft);font:600 .8125rem/1 var(--font);cursor:pointer}
-.check-row .help-btn+input[type=checkbox],.help-btn~input[type=checkbox]{margin-inline-start:10px}
 .help-btn::before{content:'';position:absolute;inset:-10px}
 .help-btn{position:relative}
 /* The pictures: the app's own colours, quiet motion that stops with Reduce Motion. */
@@ -2719,3 +2718,5 @@ html.dark .help-pop{box-shadow:0 10px 30px rgba(0,0,0,.55),inset 0 0 0 .5px rgba
 @keyframes hpFill{0%{transform:scaleX(0)}50%,100%{transform:scaleX(1)}}
 .help-pic .hp-fill1,.help-pic .hp-fill2{transform-origin:64px 0;transform-box:fill-box}
 @media (prefers-reduced-motion:reduce){.help-pop{animation:none}.help-pic *{animation:none!important}.help-pic .hp-night{opacity:.5}}
+/* A long menu (an item with many actions) scrolls instead of running off a short screen. */
+.ctx-menu{max-height:calc(var(--vv-height,100dvh) - 24px);overflow-y:auto}

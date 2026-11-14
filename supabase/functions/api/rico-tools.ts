@@ -150,7 +150,7 @@ export async function lowStock(db: any, w: any, a: any, emit: Emit = noEmit) {
   }
   const since = new Date(Date.now() - USE_DAYS * 86400_000).toISOString();
   const { data, error } = await withTimeout<any>(db.from("app_rr_transfers").select("from_zone,lines,moved_at,mode")
-    .eq("status", "moved").eq("from_zone", zone).gte("moved_at", since).limit(1500), "transfers");
+    .eq("status", "moved").eq("from_zone", zone).gte("moved_at", since).order("moved_at", { ascending: false }).limit(1500), "transfers");
   if (error) throw new Error("records_unavailable");
   const used: Map<string, { base: number; n: number }> = SL.usage(data ?? [], titems, zone);
   const rows: any[] = [];

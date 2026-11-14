@@ -26,7 +26,19 @@
 
   /* The meaningful words of a name: normalized, stemmed, without numbers, sizes (20*225, 1l) or unit
      words, and with the Kurdish linking ending ی taken off (پەنیری مۆزارێلا is "mozzarella cheese"). */
+  /* The words of a name are worked out once and kept (the link list compares every item with every stock
+     item, so the same names come up thousands of times). */
+  const WORDS = new Map();
   function words(name) {
+    const key = String(name ?? '');
+    const hit = WORDS.get(key);
+    if (hit) return hit;
+    const out = wordsOf(key);
+    if (WORDS.size > 5000) WORDS.clear();
+    WORDS.set(key, out);
+    return out;
+  }
+  function wordsOf(name) {
     const out = [];
     for (let w of S().normalize(name).split(' ')) {
       if (!w || /\d/.test(w)) continue;

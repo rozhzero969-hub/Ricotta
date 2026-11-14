@@ -1886,14 +1886,14 @@ export async function chatTitle(db: any, body: any) {
   if (k.geminiKey) tries.push(async () => {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent`, {
       method: "POST", signal: AbortSignal.timeout(TITLE_TIMEOUT_MS), headers: { "content-type": "application/json", "x-goog-api-key": k.geminiKey },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 30 } }),
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 200, thinkingConfig: { thinkingLevel: "minimal" } } }),
     });
     return r.ok ? ((await r.json())?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? "").join("") : null;
   });
   if (k.groqKey) tries.push(async () => {
     const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST", signal: AbortSignal.timeout(TITLE_TIMEOUT_MS), headers: { "content-type": "application/json", "authorization": `Bearer ${k.groqKey}` },
-      body: JSON.stringify({ model: DEFAULT_GROQ_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.2, max_tokens: 200 }),
+      body: JSON.stringify({ model: DEFAULT_GROQ_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.2, max_tokens: 300, reasoning_effort: "low", reasoning_format: "hidden" }),
     });
     return r.ok ? (await r.json())?.choices?.[0]?.message?.content ?? null : null;
   });

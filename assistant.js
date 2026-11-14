@@ -70,7 +70,7 @@ function ricoReset(){
   rico.epoch++; rico.chatRequest++;
   ricoStop(); clearTimeout(ricoSaveTimer);
   rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.chatsBusy = false; rico.viewing = null; rico.viewedId = null;
-  rico.chatTitle = null; rico.titleManual = false; rico.sideSearch = false; rico.sideQuery = '';
+  rico.chatTitle = null; rico.titleManual = false; rico.titleLoaded = false; rico.sideSearch = false; rico.sideQuery = '';
 }
 
 /* ---------- Rico's inbox ---------- */
@@ -189,7 +189,8 @@ const ICON_RS_GEAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 function ricoSideRows(){
   if(!rico.chats) return loadingLines(4);
   const q = (rico.sideQuery || '').trim().toLocaleLowerCase();
-  const list = rico.chats.slice(0, 60).filter(c=>!q || String(c.title || '').toLocaleLowerCase().includes(q));
+  // Search looks through every chat, then the first 60 matches are shown.
+  const list = rico.chats.filter(c=>!q || String(c.title || '').toLocaleLowerCase().includes(q)).slice(0, 60);
   if(!list.length) return `<p class="rico-side-empty">${esc(q ? t('rrNoMatch') : t('ricoNoChatsYet'))}</p>`;
   return list.map(c=>{
     const on = c.id === rico.chatId || c.id === rico.viewedId, other = c.account && c.account !== state.account;
@@ -217,7 +218,7 @@ function syncRicoSide(){
   const top = old?.querySelector('.rico-side-list')?.scrollTop || 0, typing = document.activeElement?.matches?.('[data-side-search]');
   const tmp = document.createElement('div'); tmp.innerHTML = renderRicoSide();
   const side = tmp.firstElementChild;
-  if(old) old.replaceWith(side); else app.appendChild(side);
+  if(old) old.replaceWith(side); else app.insertBefore(side, app.firstChild);   // first in reading and Tab order
   side.querySelector('.rico-side-list').scrollTop = top;
   if(typing){ const i = side.querySelector('[data-side-search]'); i?.focus(); i?.setSelectionRange(i.value.length, i.value.length); }
   attachRicoSideEvents(side);
@@ -261,20 +262,24 @@ function openRicoChatMenu(id, row, e){
   closeContextMenu();
   haptic('medium');
   const mine = !c.account || c.account === state.account || isRozha();
-  const rect = row.getBoundingClientRect(), W = 220, H = (mine ? 2 : 1) * 44;
-  const left = e ? Math.min(e.clientX, innerWidth - W - 12) : Math.min(Math.max(12, rect.left), innerWidth - W - 12);
-  const top = e ? Math.min(e.clientY, innerHeight - H - 12) : (rect.bottom + 8 + H < innerHeight ? rect.bottom + 8 : Math.max(12, rect.top - 8 - H));
+  if(!mine) return;   // someone else's chat: nothing to rename or delete (the server refuses it too)
+  // The keyboard's Menu key gives no pointer position: the menu then opens at the row.
+  const at = e && (e.clientX || e.clientY) ? e : null;
+  const rect = row.getBoundingClientRect(), W = 220, H = 2 * 44;
+  const left = at ? Math.min(at.clientX, innerWidth - W - 12) : Math.min(Math.max(12, rect.left), innerWidth - W - 12);
+  const top = at ? Math.min(at.clientY, innerHeight - H - 12) : (rect.bottom + 8 + H < innerHeight ? rect.bottom + 8 : Math.max(12, rect.top - 8 - H));
   const layer = document.createElement('div');
   layer.id = 'ctxLayer'; layer.className = 'ctx-layer rico-chat-ctx';
   layer.innerHTML = `<div class="ctx-scrim"></div><div class="ctx-menu small" role="menu" style="top:${top}px;left:${left}px;width:${W}px">
-      ${mine ? `<button type="button" role="menuitem" data-ctx="rename"><span>${esc(t('ricoRename'))}</span>${ICON_EDIT}</button>` : ''}
+      <button type="button" role="menuitem" data-ctx="rename"><span>${esc(t('ricoRename'))}</span>${ICON_EDIT}</button>
       <button type="button" role="menuitem" class="danger" data-ctx="delete"><span>${esc(t('delete'))}</span>${ICON_DELETE}</button></div>`;
   document.body.appendChild(layer);
   layer.querySelector('.ctx-scrim').onclick = closeContextMenu;
   layer.querySelector('.ctx-scrim').oncontextmenu = ev=>{ ev.preventDefault(); closeContextMenu(); };
   layer.addEventListener('keydown', ev=>{ if(ev.key === 'Escape') closeContextMenu(); });
   layer.querySelector('[data-ctx]')?.focus({preventScroll:true});
-  layer.querySelectorAll('[data-ctx]').forEach(b=>b.onclick = ()=>{ closeContextMenu(); b.dataset.ctx === 'rename' ? ricoRenameChat(id) : ricoDeleteChat(id); });
+  // The phone's Chats sheet closes first: the rename box and the delete question must not open behind it.
+  layer.querySelectorAll('[data-ctx]').forEach(b=>b.onclick = ()=>{ closeContextMenu(); if(document.getElementById('ricoHistSheet')) closeSelSheet(); b.dataset.ctx === 'rename' ? ricoRenameChat(id) : ricoDeleteChat(id); });
 }
 function ricoRenameChat(id){
   const c = rico.chats?.find(x=>x.id === id); if(!c) return;
@@ -287,9 +292,8 @@ function ricoRenameChat(id){
       const r = await api('rico-chats/' + id + '/title', {method:'PUT', body:{title}});
       if(!r.ok) return {error:t('saveFailed')};
       c.title = title;
-      if(rico.chatId === id){ rico.chatTitle = title; rico.titleManual = true; }
+      if(rico.chatId === id){ rico.chatTitle = title; rico.titleManual = true; rico.titleLoaded = false; }
       if(state.view === 'assistant'){ syncRicoSide(); const h = document.querySelector('.rico-head-title'); if(h) h.textContent = ricoHeadTitle(); }
-      document.getElementById('ricoHistSheet')?.ricoRepaint?.();
       return {};
     }
   });
@@ -297,15 +301,15 @@ function ricoRenameChat(id){
 }
 /* Deletes one chat (id) or every chat (null), after asking once. */
 async function ricoDeleteChat(id){
-  if(!(await showConfirm(esc(id ? t('ricoDeleteChatAsk') : t('ricoDeleteAllAsk')), {okLabel:t('delete'), okClass:'btn-danger'}))) return false;
+  // Delete all: Rozh's removes both people's chats (and says so); anyone else's removes only their own.
+  if(!(await showConfirm(esc(id ? t('ricoDeleteChatAsk') : isRozha() ? t('ricoDeleteAllAskBoth') : t('ricoDeleteAllAsk')), {okLabel:t('delete'), okClass:'btn-danger'}))) return false;
   clearTimeout(ricoSaveTimer);
   const r = await api(id ? 'rico-chats/' + id : 'rico-chats?account=all', {method:'DELETE'});
   if(!r.ok){ toast(t('saveFailed'), 'error'); return false; }
-  rico.chats = id ? (rico.chats || []).filter(c=>c.id !== id) : [];
+  rico.chats = id ? (rico.chats || []).filter(c=>c.id !== id) : isRozha() ? [] : (rico.chats || []).filter(c=>c.account && c.account !== state.account);
   if(!id || rico.chatId === id){ rico.chatId = null; rico.chatTitle = null; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }
   if(rico.viewing && (!id || id === rico.viewedId)){ rico.viewing = null; rico.viewedId = null; rico.messages = []; }
   toast(id ? t('ricoChatDeleted') : t('ricoChatsDeleted'));
-  document.getElementById('ricoHistSheet')?.ricoRepaint?.();
   if(state.view === 'assistant') render();
   return true;
 }
@@ -655,7 +659,8 @@ function attachAssistantEvents(){
   document.querySelectorAll('[data-rico-mine]').forEach(b=>b.onclick=()=>ricoNewChat());
   document.getElementById('ricoHistBtn')?.addEventListener('click', ()=>ricoOpenHistory());
   document.querySelectorAll('.rico-head [data-rico-settings-open]').forEach(b=>b.onclick = openRicoSettings);
-  if(rico.chats === null) ricoLoadChats().then(()=>{ if(state.view === 'assistant' && !refreshBlocked()) syncRicoSide(); });
+  // The sidebar never touches the page or the focus, so it fills in even while someone is typing.
+  if(rico.chats === null) ricoLoadChats().then(()=>{ if(state.view === 'assistant') syncRicoSide(); });
   attachRicoThreadEvents(document.getElementById('mainContent') || document);
   if(rico.messages.length) ricoScroll(false);
   ricoMarkInboxRead();
@@ -1014,7 +1019,7 @@ async function ricoSave(){
   if(!messages.some(m=>m.role === 'user')) return;
   if(!rico.chatId) rico.chatId = crypto.randomUUID();
   const id = rico.chatId, account = state.account, title = rico.chatTitle || ricoChatTitle();
-  const r = await api('rico-chats/' + id, {method:'PUT', body:{title, messages}});
+  const r = await api('rico-chats/' + id, {method:'PUT', body:{title, messages, keepTitle:!!rico.titleLoaded}});
   if(!r.ok || state.account !== account || !rico.chats) return;
   rico.chats = [{id, account, title, updatedAt:new Date().toISOString()}, ...rico.chats.filter(c=>c.id !== id)].slice(0, 120);
   if(state.view === 'assistant') syncRicoSide();   // the new chat shows in the sidebar at once
@@ -1026,7 +1031,7 @@ async function ricoNameChat(question, answer){
   const r = await api('assistant/title', {method:'POST', body:{question:String(question).slice(0, 500), answer:ricoClean(answer).slice(0, 600), lang:state.lang}, quiet:true});
   const title = r.ok && typeof r.data?.title === 'string' ? r.data.title.trim().slice(0, 80) : '';
   if(!title || !ricoContextCurrent(context) || rico.messages[0] !== before || rico.chatTitle || rico.titleManual) return;
-  rico.chatTitle = title;
+  rico.chatTitle = title; rico.titleLoaded = false;
   const c = rico.chats?.find(x=>x.id === rico.chatId); if(c) c.title = title;
   if(state.view === 'assistant'){ syncRicoSide(); const h = document.querySelector('.rico-head-title'); if(h) h.textContent = ricoHeadTitle(); }
   ricoSaveSoon();
@@ -1052,7 +1057,7 @@ function ricoNewChat(){
   if(rico.messages.length) ricoSave();
   rico.epoch++; rico.chatRequest++;
   rico.streaming = false;
-  rico.messages = []; rico.chatId = null; rico.viewing = null; rico.viewedId = null; rico.chatTitle = null; rico.titleManual = false;
+  rico.messages = []; rico.chatId = null; rico.viewing = null; rico.viewedId = null; rico.chatTitle = null; rico.titleManual = false; rico.titleLoaded = false;
   render();
 }
 async function ricoOpenChat(id){
@@ -1069,14 +1074,15 @@ async function ricoOpenChat(id){
   rico.chatId = rico.viewing ? null : id;
   rico.viewedId = rico.viewing ? id : null;
   rico.chatTitle = r.data.title || null; rico.titleManual = !!r.data.title;   // a saved name stays
+  rico.titleLoaded = true;   // saving this chat keeps the name the server has (a rename on another phone wins)
   rico.messages = r.data.messages.map(m=>({...m, proposals:(m.proposals||[]).map(p=>({...p, undo:undefined, status: !p.status || p.status === 'pending' || p.status === 'saving' ? 'expired' : p.status}))}));
   if(state.view !== 'assistant') goView('assistant'); else render();
   ricoScroll(false);
   return true;
 }
 /* Chat history: a sheet from the bottom with one list of every chat, Rozh's and Yunis's, newest first
-   and grouped by day; each shows whose it is. Both can open any chat (the other person's opens read only)
-   and delete it; Delete All asks once more before it removes every chat. */
+   and grouped by day; each shows whose it is. Both can open any chat (the other person's opens read only).
+   Hold a chat to rename or delete one of your own; Delete all is in Rico settings. */
 function ricoOpenHistory(){
   closeSelSheet();
   document.activeElement?.blur?.();
@@ -1120,7 +1126,5 @@ function ricoOpenHistory(){
     const open = e.target.closest('[data-hist-open]');
     if(open && await ricoOpenChat(open.dataset.histOpen)) close();
   };
-  // After a rename or delete from the long-press menu, the list shows it.
-  wrap.ricoRepaint = paint;
   requestAnimationFrame(()=>{ if(!closed) list.querySelector('button')?.focus({preventScroll:true}); });
 }

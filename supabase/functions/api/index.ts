@@ -332,19 +332,27 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
 
 /* Ricotta Restaurant's stock as Rico last read it (app_rr_catalog), or null when not read yet. */
 async function readStockCatalog() {
-  const { data, error } = await app("rr_catalog").select("data,updated_at").eq("id", true).maybeSingle();
+  // Only the stock items (not the whole catalog Rico keeps).
+  const { data, error } = await app("rr_catalog").select("titems:data->titems,updated_at").eq("id", true).maybeSingle();
   if (error) throw error;
-  return data ? { titems: (data.data?.titems ?? []) as any[], at: data.updated_at ?? null } : null;
+  return data ? { titems: (Array.isArray((data as any).titems) ? (data as any).titems : []) as any[], at: data.updated_at ?? null } : null;
 }
 /* Linked items get how much is in Main Storage (only theirs: no other stock goes to the phone, so
    people without Receipts or Transfers see just this). A link whose stock item is gone says so. */
 /* With each amount comes its level for the colour on the Order screen (empty, low, ok), worked out here
    from moved transfers so phones without Receipts or Transfers need nothing more. */
-async function stockUsage(titems: any[]) {
+/* The moved transfers out of Main Storage in the last USE_DAYS days, newest first (read alongside the catalog). */
+async function stockMoves() {
   const L = (globalThis as any).RicottaStockLink;
   const since = new Date(Date.now() - L.USE_DAYS * 86400_000).toISOString();
-  const { data, error } = await db.from("app_rr_transfers").select("from_zone,lines,mode").eq("status", "moved").eq("from_zone", L.MAIN).gte("moved_at", since).limit(1500);
-  return error ? new Map() : L.usage(data ?? [], titems, L.MAIN);   // no usage: just in stock or empty
+  const { data, error } = await db.from("app_rr_transfers").select("from_zone,lines,mode").eq("status", "moved").eq("from_zone", L.MAIN)
+    .gte("moved_at", since).order("moved_at", { ascending: false }).limit(1500);
+  return error ? null : (data ?? []);
+}
+async function stockUsage(titems: any[], moves?: any[] | null) {
+  const L = (globalThis as any).RicottaStockLink;
+  const rows = moves === undefined ? await stockMoves() : moves;
+  return rows ? L.usage(rows, titems, L.MAIN) : new Map();   // no usage: just in stock or empty
 }
 const stockOf = (t: any, used: Map<string, any>, at: string | null) => {
   const L = (globalThis as any).RicottaStockLink;
@@ -352,10 +360,11 @@ const stockOf = (t: any, used: Map<string, any>, at: string | null) => {
 };
 async function withStock(items: any[]) {
   if (!items.some((i) => i.stockItem)) return items;
-  const cat = await readStockCatalog().catch(() => null);
+  // The catalog and the moves are read at the same time.
+  const [cat, moves] = await Promise.all([readStockCatalog().catch(() => null), stockMoves().catch(() => null)]);
   if (!cat) return items;
   const byName = new Map(cat.titems.map((t: any) => [t.name, t]));
-  const used = await stockUsage(cat.titems).catch(() => new Map());
+  const used = await stockUsage(cat.titems, moves).catch(() => new Map());
   return items.map((i) => {
     if (!i.stockItem) return i;
     const t = byName.get(i.stockItem);
@@ -786,7 +795,14 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
     const b = body;
     const messages = cleanChatMessages(b.messages);
     if (!messages || !messages.length) return fail("Invalid chat");
-    const {data:saved,error}=await db.rpc("app_internal_save_chat",{p_id:id,p_account:actor,p_title:text(b.title,120),p_messages:messages});
+    // keepTitle: this phone opened a saved chat and did not rename it, so the name already saved stays
+    // (a rename made on the other phone in the meantime is not undone).
+    let title = text(b.title, 120);
+    if (b.keepTitle === true) {
+      const { data: cur } = await db.from("app_rico_chats").select("title").eq("id", id).maybeSingle();
+      if (cur?.title) title = cur.title;
+    }
+    const {data:saved,error}=await db.rpc("app_internal_save_chat",{p_id:id,p_account:actor,p_title:title,p_messages:messages});
     if(error) return fail("Save failed",500);
     if(!saved) return fail("Chat not found",404);
     const { error: pruneError } = await db.rpc("app_rico_chats_prune", { p_account: actor });
@@ -794,10 +810,11 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
     return json({ ok: true });
   }
   if (req.method === "DELETE") {
+    // Each person deletes their own chats; only Rozh may delete Yunis's or everyone's.
     let q = db.from("app_rico_chats").delete();
-    if (id !== null) q = q.eq("id", id);
-    else if (whose === "all") q = q.not("id", "is", null);
-    else q = q.eq("account", whose === "rozha" || whose === "yunis" ? whose : actor);
+    if (id !== null) { q = q.eq("id", id); if (actor !== "rozha") q = q.eq("account", actor); }
+    else if (whose === "all" && actor === "rozha") q = q.not("id", "is", null);
+    else q = q.eq("account", actor === "rozha" && (whose === "rozha" || whose === "yunis") ? whose : actor);
     const { error } = await q;
     if (error) throw error;
     return json({ ok: true });
