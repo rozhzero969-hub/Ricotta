@@ -2565,7 +2565,8 @@ html.dark .dev-vpn{color:#FF6961}
   .dev-card .dev-actions .btn{flex:1}
 }
 /* Stock rows, like Ricotta Restaurant's Stock page but calmer: a dot, the name, the amount in bold. */
-.stk-row{display:flex;align-items:center;gap:12px;min-height:58px;padding:8px 10px 8px 16px;padding-inline:16px 10px;cursor:pointer}
+.stk-row{display:flex;align-items:center;gap:12px;min-height:58px;padding:8px 16px;cursor:pointer}
+.stk-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .stk-row+.stk-row{border-top:.5px solid var(--line)}
 @media (hover:hover){.stk-row:hover{background:var(--surface-2)}}
 .stk-dot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--ok)}
@@ -2573,8 +2574,6 @@ html.dark .dev-vpn{color:#FF6961}
 .stk-name{flex:1;min-width:0;font-size:1.0313rem;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
 .stk-amt{flex:none;font-size:1.0313rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink);text-align:end}
 .stk-row.none .stk-amt{color:var(--clay-ink)}
-.stk-eye{flex:none;display:grid;place-items:center;width:38px;height:38px;border:0;border-radius:10px;background:none;color:var(--ink-soft);cursor:pointer}
-@media (hover:hover){.stk-eye:hover{background:var(--fill);color:var(--ink)}}
 .stk-tip{position:fixed;z-index:400;width:min(440px,calc(100vw - 24px));display:grid;gap:10px;padding:16px 18px;border-radius:16px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--float-shadow);pointer-events:none;font-size:.9688rem;animation:fadeIn .15s ease-out}
 .stk-tip-name{font-size:1.0625rem;font-weight:600}
 .stk-tip div{display:flex;justify-content:space-between;gap:16px}.stk-tip span{color:var(--ink-soft);flex:none}.stk-tip div b{font-weight:600;text-align:end}
