@@ -86,7 +86,7 @@ input:not([type=checkbox]):focus,select:focus,textarea:focus{border-color:var(--
 .glass,.supplier-group,.list-row,.hist-card,.rec-card,.dev-card,.queue-card,.form-card,.unit-chip,.rico-head,.rico-card,.rico-note,.rico-supplier-picker,.push-banner,.month-card,.report-card{
   background:var(--surface);border:1px solid transparent}
 /* Gray-filled controls: search fields, quick buttons, chips and plain buttons. */
-.search-input,.quick-btn,.tab-pill,.btn-ghost,.rico-chip,.rico-open,.tab-scroll,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip{
+.search-input,.quick-btn,.tab-pill,.btn-ghost,.rico-open,.tab-scroll,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip{
   background:var(--fill);border:1px solid transparent}
 
 /* ---------- App shell ---------- */
@@ -608,10 +608,6 @@ html.rtl .check-row input[type=checkbox]:checked::after{transform:translateX(-20
 .day-chips{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
 .day-chip{min-width:0;height:40px;padding:0 2px;border-radius:999px;color:var(--tab-ink2);font-size:.8125rem;font-weight:600}
 .day-chip.on{background:var(--accent-strong);color:#fff}
-/* Admin -> PINs: one row per person{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:.5px solid var(--line-strong)}
-
-@media(min-width:960px){.admin-page{max-width:720px}}
-
 .app-version{margin:26px 0 8px;text-align:center;font-size:.8125rem;font-weight:400;color:var(--ink-soft)}
 
 /* Units */
@@ -698,19 +694,12 @@ html.rtl .hist-day{letter-spacing:0}
 .rec-old{color:var(--clay-ink);text-decoration:line-through}
 .rec-new{color:var(--tint);font-weight:600}
 .rec-meta{font-size:.8125rem;color:var(--ink-soft);font-weight:400;margin-top:10px;padding-top:10px;border-top:.5px solid var(--line-strong)}
-
-/* ---------- Devices ---------- */
-.dev-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.dev-name{font-size:1.0625rem;font-weight:600;overflow-wrap:anywhere}
-.dev-kind{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-2px 0 10px;font-size:.9375rem;font-weight:600;color:var(--ink)}
-.dev-kind svg{color:var(--tint);flex-shrink:0}
 .dev-how{font-size:.8125rem;font-weight:500;color:var(--ink-soft);padding:3px 9px;border-radius:999px;background:var(--fill)}
 .dev-this{color:var(--tint);font-weight:600;font-size:.8125rem}
 .dev-badge::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
 .dev-active{background:rgba(var(--ok-rgb),.16);color:var(--ok-ink)}
 .dev-idle{background:var(--fill);color:var(--ink)}
 .dev-out{background:var(--fill);color:var(--ink-soft)}
-.dev-ago{color:var(--ink-soft);font-weight:400}
 .dev-hint{font-size:.8125rem;color:var(--ink-soft);line-height:1.55;margin:8px 6px 0;font-weight:400}
 .dev-bulk{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
 .dev-bulk .btn{flex:1 1 170px}
@@ -814,9 +803,6 @@ html.rtl .install-prompt{right:auto;left:22px}
 
 .rico-thread{display:flex;flex-direction:column;gap:14px;max-width:820px;margin-inline:auto}
 .rico-intro{display:flex;flex-direction:column;align-items:flex-start;text-align:start;gap:10px;padding:18px 4px 6px}
-
-.rico-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;width:100%}
-.rico-chip{padding:10px 16px;border-radius:999px;display:inline-flex;align-items:center;font-size:.9375rem;font-weight:500;color:var(--ink);text-align:start;min-height:40px}
 .rico-msg{display:flex;gap:10px;align-items:flex-start}
 .rico-msg:not(.painted){animation:msgIn 300ms var(--ease-out) both}
 @keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -1021,7 +1007,7 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 }
 /* Hover tints, only for a mouse or trackpad (a finger would leave them stuck on). */
 @media (hover:hover) and (pointer:fine){
-  .icon-btn:hover,.chip:hover,.rico-chip:hover,.quick-btn:not(:disabled):hover,.btn-ghost:not(:disabled):hover,.tab-pill:not(.active):hover,.step-btn:not(:disabled):hover,.sheet-row:hover,.settings-link:hover,.sel-opt:hover{background:var(--fill-strong)}
+  .icon-btn:hover,.chip:hover,.quick-btn:not(:disabled):hover,.btn-ghost:not(:disabled):hover,.tab-pill:not(.active):hover,.step-btn:not(:disabled):hover,.sheet-row:hover,.settings-link:hover,.sel-opt:hover{background:var(--fill-strong)}
   .list-row.tappable:hover,.item-row:not(.has-qty):hover{background-color:var(--fill)}
   .btn-primary:not(:disabled):hover,.wa-btn:not(.done):hover,.rico-send:hover{filter:brightness(1.08)}
 }
@@ -1099,7 +1085,6 @@ html.compact-rows .item-row{min-height:48px;padding-block:4px}
 /* A person's badge: the colours of the theme they use. */
 .who-badge{--ws:var(--fill);--wi:var(--ink);display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:2px 10px 2px 2px;border-radius:999px;background:var(--ws);color:var(--wi);font-size:.8125rem;font-weight:500;vertical-align:middle}
 .who-badge s{text-decoration:none;flex:none;width:20px;height:20px;border-radius:50%;background:linear-gradient(180deg,#A5ABB8,#858994);color:#fff;display:grid;place-items:center;font-family:var(--font-round);font-size:.6875rem;font-weight:600}
-.dev-name .who-badge{font-size:.9375rem}
 
 .dark-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:4px 0}
 .dark-row > span{display:flex;flex-direction:column;font-size:1.0625rem;font-weight:400}
@@ -1509,7 +1494,8 @@ html.dark .ad-tile.green{background:#1F7A4D}
 .ad-check{padding:0}
 .ad-check summary{list-style:none;display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer}
 .ad-check summary::-webkit-details-marker{display:none}
-.ad-check[open] summary .sheet-chevron{transform:rotate(90deg)}
+.ad-check[open] summary .sheet-chevron{transform:rotate(135deg)}
+html.rtl .ad-check[open] summary .sheet-chevron{transform:rotate(135deg)}
 /* Admin › Rico › Rico's AI: one row per AI with its state, this month's numbers and the bill. */
 .ad-ai-list{padding:4px 16px}
 .ad-ai{padding:14px 0}
@@ -2164,28 +2150,10 @@ html.dark .rr-offline{background:rgba(251,146,60,.14);color:#FED7AA}
 .day-files{display:flex;gap:6px}
 .day-file{height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600}
 
-/* Admin home: a quiet status line{background:var(--surface);border-radius:var(--r-card);overflow:hidden}
-.ad-row{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;padding:10px 16px;border:0;background:none;color:var(--ink);font:inherit;text-align:start;border-bottom:.5px solid var(--line)}
-
-.ad-row:active{background:var(--fill)}
-
+/* Admin home: the arrow at the end of a row, the status dot, and the line about where the numbers come from. */
 .ad-row-go{flex:none;color:var(--ink-faint);font-size:1.25rem;line-height:1}
-/* Admin home: the one-glance headline,today's three counts,status rows with their last activity{display:flex;align-items:center;gap:12px;padding:6px 4px 12px 16px}
-
-.ad-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-inline-end:6px;vertical-align:1px;background:var(--ok)}
-.ad-dot.warn{background:#FF9500}
-.ad-dot.bad{background:var(--red)}
-
-.ad-bars{display:block;width:100%;height:auto;max-width:560px}
-.ad-bars rect{fill:var(--accent)}
-.ad-bars rect.today{fill:var(--accent-strong)}
-.ad-bars line{stroke:var(--line-strong);stroke-width:1}
-
-.ad-bars text{fill:var(--ink-soft);font-size:9px;font-family:var(--font)}
-
-.ad-sources{margin:14px 16px 0;font-size:.8125rem;color:var(--ink-soft)}
-.ad-sources summary{cursor:pointer;color:var(--tint)}
-.ad-sources p{margin:6px 0 0;line-height:1.45}
+.ad-dot{display:inline-block;flex:none;width:8px;height:8px;border-radius:50%;margin-inline-end:6px;vertical-align:1px;background:var(--ink-faint)}
+.ad-sources{margin:14px 16px 0;font-size:.75rem;line-height:1.4;color:var(--ink-faint);text-align:center}
 
 /* Quiet icons on the Admin pages: no coloured squares, red only for trouble. */
 .ad-tile,.ad-tile.green,.ad-tile.gray{background:none;color:var(--ink-soft)}
@@ -2249,7 +2217,6 @@ html.rtl .cf-list li{padding:9px 16px 9px 0}
 /* Clean-up (2026-11-12): rounded squares instead of pills, quieter labels and banners.
    The floating tab bar and the switches stay round. */
 .chip,.quick-btn,.tab-pill,.item-sort-trigger,.pdf-btn,.rico-open,.map-directions,.lang-actions .btn,.toast-undo,.wa-btn{border-radius:12px}
-.rico-chip{border-radius:12px}
 .stepper,.step-btn{border-radius:12px}
 .search-input{border-radius:12px}
 .manage-sections,.record-filters,.pill-seg{border-radius:11px}
@@ -2350,10 +2317,7 @@ button.adh-card{cursor:pointer}
 
 /* Simple view (Settings > Look, off by default): the small explanations, tips and extras most days don't
    need are hidden; everything still works the same. */
-html.simple-view .page-eyebrow,html.simple-view .rr-keys,html.simple-view .preference-row small,html.simple-view .hero-sub,
-html.simple-view .streak-chip,html.simple-view .report-card,html.simple-view .fun-fact,html.simple-view .ad-sources,
-html.simple-view .ad-foot,html.simple-view .dev-hint,html.simple-view .rr-ctl-note:not(.warn),html.simple-view .rr-foot:not(.warn),
-html.simple-view .rico-who,html.simple-view .rico-side-foot,html.simple-view .notif-sub{display:none}
+html.simple-view .page-eyebrow,html.simple-view .rr-keys,html.simple-view .preference-row small,html.simple-view .hero-sub,html.simple-view .streak-chip,html.simple-view .report-card,html.simple-view .fun-fact,html.simple-view .ad-sources,html.simple-view .ad-foot,html.simple-view .dev-hint,html.simple-view .rr-ctl-note:not(.warn),html.simple-view .rr-foot:not(.warn),html.simple-view .rico-who,html.simple-view .notif-sub{display:none}
 
 /* Rico's screen: the chats on the left on a computer (like a chat app), named buttons on a phone. */
 .rico-head-actions{display:flex;gap:6px;flex-shrink:0}
@@ -2361,14 +2325,12 @@ html.simple-view .rico-who,html.simple-view .rico-side-foot,html.simple-view .no
 .rico-head-btn svg{width:17px;height:17px;color:var(--tint)}
 .rico-head-btn:disabled{opacity:.45}
 .rico-side{display:none}
-.rico-side-foot{display:flex;flex-direction:column;border-top:.5px solid var(--line);margin-top:8px;padding-top:6px}
 .rico-side-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;padding:0 6px;border:0;background:none;color:var(--ink);font:400 .9375rem var(--font);text-align:start;cursor:pointer}
 .rico-side-row input[type=checkbox]{appearance:none;-webkit-appearance:none;flex:none;width:42px;height:26px;margin:0;border-radius:13px;background:rgba(120,120,128,.2);position:relative;cursor:pointer;transition:background-color .2s ease}
 .rico-side-row input[type=checkbox]::after{content:'';position:absolute;top:2px;inset-inline-start:2px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s ease}
 .rico-side-row input[type=checkbox]:checked{background:var(--ok)}
 .rico-side-row input[type=checkbox]:checked::after{transform:translateX(16px)}
 html.rtl .rico-side-row input[type=checkbox]:checked::after{transform:translateX(-16px)}
-.rico-hist-foot{margin:6px 4px 0}
 @media (min-width:960px){
   .rico-page{display:grid;grid-template-columns:240px minmax(0,1fr);gap:28px;align-items:start}
   .rico-side{display:flex;flex-direction:column;gap:6px;position:sticky;top:12px;max-height:calc(100dvh - 140px)}
@@ -2411,8 +2373,8 @@ html.rtl .rico-side-row input[type=checkbox]:checked::after{transform:translateX
 
 /* What's new: a dot on the account button until read, and a quiet list in a sheet. */
 .account-btn{position:relative}
-.account-btn.has-news::after{content:'';position:absolute;top:1px;inset-inline-end:1px;width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--bg)}
-.news-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);margin-inline-start:auto;margin-inline-end:6px}
+.account-btn.has-news::after{content:'';position:absolute;top:1px;inset-inline-end:1px;width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px var(--bg)}
+.news-dot{width:8px;height:8px;border-radius:50%;background:var(--red);margin-inline-start:auto;margin-inline-end:6px}
 .news-list{display:flex;flex-direction:column;gap:18px;padding:4px 4px 12px;max-height:60vh;overflow-y:auto}
 .news-entry h3{margin:0 0 8px;font-size:.8125rem;font-weight:600;color:var(--ink-soft)}
 .news-entry ul{margin:0;padding-inline-start:18px;display:flex;flex-direction:column;gap:8px;font-size:.9375rem;line-height:1.45}
@@ -2440,8 +2402,136 @@ html.rtl .nav-brand,[dir=rtl] .nav-brand{justify-content:flex-end}
 .record-filters{overflow-x:auto;scrollbar-width:none;max-width:100%}
 .record-filters::-webkit-scrollbar{display:none}
 
+/* Rico, like a chat app (2026-11-14). His answers are plain text on the page (no grey bubble), your
+   messages stay green bubbles, and numbers he read come as small cards with a button or two. */
+.rico-msg.bot .rico-bubble{background:none;padding:2px 0;border-radius:0}
+.rico-head-title{display:none}
+.rico-intro{align-items:stretch;gap:18px;padding:12px 0 8px}
+.rico-hello{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:8px 0 2px}
+.rico-hello .rico-bot{--size:40px;margin-bottom:8px}
+.rico-hello h2{margin:0;font-size:1.625rem;font-weight:700;letter-spacing:-.02em}
+.rico-hello p{margin:0;font-size:1rem;color:var(--ink-soft)}
+.rico-intro .rico-inbox{margin:0}
+.rico-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.rico-tile{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:10px;min-height:84px;padding:13px 14px;border:0;border-radius:14px;background:var(--surface);color:var(--ink);font:500 .9375rem/1.3 var(--font);text-align:start;cursor:pointer;box-shadow:inset 0 0 0 .5px var(--line)}
+.rico-tile svg{color:var(--tint)}
+@media (hover:hover){.rico-tile:hover{background:var(--surface-2)}}
+.rico-tile:active{transform:scale(.98)}
+.rico-data{width:100%;max-width:560px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 .5px var(--line);overflow:hidden;margin-top:4px}
+.rico-data-head{display:flex;align-items:center;gap:10px;padding:12px 14px 8px}
+.rico-data-head .rico-card-icon svg{width:16px;height:16px;color:#fff}
+/* The header: just the name and the two buttons (the sparkle and greeting are on the page itself). */
+.rico-head>.rico-bot,.rico-head .rico-who{display:none}
+.rico-head .rico-name{font-size:1.25rem;font-weight:700}
+.rico-data-title{flex:1;min-width:0;font-weight:600;font-size:.9688rem}
+.rico-data-head small{font-size:.8125rem;color:var(--ink-soft)}
+.rico-data-rows{display:flex;flex-direction:column}
+.rico-data-row{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:8px 14px;border:0;border-top:.5px solid var(--line);background:none;color:var(--ink);font:400 .9688rem var(--font);text-align:start}
+.rico-data-row.link{cursor:pointer}
+@media (hover:hover){.rico-data-row.link:hover{background:var(--surface-2)}}
+.rico-data-row b{font-weight:600;white-space:nowrap}
+.rico-data-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;overflow-wrap:anywhere}
+.rico-data-name small{font-size:.8125rem;color:var(--ink-soft)}
+.rico-data-price{font-size:.875rem;color:var(--ink-soft);white-space:nowrap}
+.rico-data-price b{color:var(--ink)}
+.rico-pct{min-width:58px;text-align:end;font-weight:600;font-size:.875rem}
+.rico-pct.up{color:var(--clay-ink)}.rico-pct.down{color:var(--ok-ink)}
+html.dark .rico-pct.up{color:#FF6961}html.dark .rico-pct.down{color:#30D158}
+.rico-data-total{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:4px 14px 12px}
+.rico-data-total b{font-size:1.375rem;font-weight:700}
+.rico-data-total small{color:var(--ink-soft);font-size:.8125rem}
+.rico-data-more{padding:8px 14px;border-top:.5px solid var(--line);font-size:.8125rem;color:var(--ink-soft)}
+.rico-data-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding:10px 14px;border-top:.5px solid var(--line)}
+.rico-data-foot .btn{min-height:38px;padding:0 14px;border-radius:10px;font-size:.9063rem}
+.rico-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.rico-dot.red{background:var(--red)}.rico-dot.amber{background:#FF9F0A}.rico-dot.gray{background:var(--ink-faint)}
+.rico-side-top,.rico-side-search{display:none}
+
+@media (min-width:960px){
+  /* Rico takes the window: his chats sit where the app's tabs were. The back arrow returns to the app. */
+  html.rico-mode .bottomnav{display:none}
+  html.rico-mode .rico-page{display:block}
+  html.rico-mode .rico-side{position:fixed;top:0;bottom:0;inset-inline-start:0;width:256px;max-height:none;box-sizing:border-box;z-index:31;gap:8px;
+    padding:calc(18px + var(--safe-top)) 12px 14px;background:var(--surface);border-inline-end:.5px solid var(--line-strong)}
+  html.rico-mode.rico-enter .rico-side{animation:ricoSideIn .26s var(--ease-out) both}
+  html.rico-mode.side-hidden .rico-side{display:none}
+  html.rico-mode body:has(.rico-side) .rico-composer{translate:none}
+  html.rico-mode .rico-side-top{display:flex;align-items:center;justify-content:space-between;padding:0 2px 10px}
+  html.rico-mode .rico-side-top .side-toggle{position:static}
+  .rico-back{display:flex;align-items:center;gap:4px;height:36px;padding:0 8px 0 4px;border:0;border-radius:9px;background:none;color:var(--ink-soft);cursor:pointer;font-size:1.375rem}
+  .rico-back .brand-mark{color:var(--ink)}
+  .rico-back .dot{width:.24em;height:.24em;border-radius:50%;background:var(--accent);align-self:flex-end;margin-bottom:.3em}
+  @media (hover:hover){.rico-back:hover{background:var(--fill)}}
+  html.rtl .rico-back svg{transform:scaleX(-1)}
+  html.rico-mode .rico-side-search{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:10px;background:var(--fill);color:var(--ink-faint)}
+  .rico-side-search input{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--ink);font:400 .9375rem var(--font)}
+  .rico-side-search input::-webkit-search-cancel-button{display:none}
+  html.rico-mode .rico-head{justify-content:center;padding:0 0 10px;margin:-8px 0 14px;border-bottom:.5px solid var(--line);border-radius:0}
+  html.rico-mode .rico-head>.rico-bot,html.rico-mode .rico-head-text{display:none}
+  html.rico-mode .rico-head-title{display:block;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;font-size:1.0625rem}
+  html.rico-mode .rico-page.empty .rico-head{display:none}
+  html.rico-mode .rico-thread{max-width:760px}
+  html.rico-mode .rico-page.empty .rico-intro{padding-top:min(9vh,90px)}
+  html.rico-mode .rico-hello .rico-bot{--size:48px}
+  html.rico-mode .rico-hello h2{font-size:2rem}
+  html.rico-mode .rico-tiles{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+}
+@keyframes ricoSideIn{from{opacity:0;transform:translateX(var(--side-from,-12px))}to{opacity:1;transform:none}}
+html.rtl{--side-from:12px}
+@media (prefers-reduced-motion:reduce){html.rico-mode.rico-enter .rico-side{animation:none}}
+/* Rico's settings: a sliders button at the foot of his chats (computer) or in his header (phone). */
+.rico-side-set{display:flex;align-items:center;gap:10px;height:40px;margin-top:6px;padding:0 10px;border:0;border-top:.5px solid var(--line);border-radius:0;background:none;color:var(--ink);font:400 .9375rem var(--font);text-align:start;cursor:pointer}
+.rico-side-set svg{width:17px;height:17px;flex:none;color:var(--ink-soft)}
+@media (hover:hover){.rico-side-set:hover{color:var(--tint)}}
+.rico-head-btn.icon{width:36px;padding:0;justify-content:center}
+.rico-set-sheet .sel-title{margin-bottom:14px}
+.rico-set-group{display:flex;flex-direction:column;margin-bottom:14px;padding:2px 12px;border-radius:14px;background:var(--surface-2)}
+.rico-set-row{min-height:52px;padding:8px 0}
+.rico-set-group>.rico-set-row+.rico-set-row,.rico-style-opt+.rico-style-opt{border-top:.5px solid var(--line)}
+.rico-set-row span{display:flex;flex-direction:column;gap:2px}
+.rico-set-row small{font-size:.8125rem;line-height:1.35;color:var(--ink-soft)}
+.rico-set-label{margin:0 4px 6px;font-size:.8125rem;font-weight:600;color:var(--ink-soft)}
+.rico-style-opt{display:flex;align-items:center;justify-content:space-between;min-height:46px;cursor:pointer;font-size:.9375rem}
+.rico-style-opt input{order:2;appearance:none;-webkit-appearance:none;width:18px;height:18px;margin:0;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--line-strong)}
+.rico-style-opt input:checked{box-shadow:inset 0 0 0 5.5px var(--accent-strong)}
+/* Admin › Devices (2026-11-14): one calm card per device. What it is and whose on top with its status,
+   one line of facts, then where it signed in from with small Refresh and Log out buttons on the right. */
+.dev-stats{margin-bottom:10px}
+.dev-stats>div{padding:10px 12px}
+.dev-bulk{margin-bottom:12px}
+.dev-bulk .btn{flex:0 1 auto;min-height:38px;padding:0 14px;border-radius:10px;font-size:.9063rem;gap:6px}
+.dev-bulk .btn svg{width:16px;height:16px}
+.dev-card{padding:14px 16px;margin-bottom:10px}
+.dev-head{display:flex;align-items:flex-start;gap:12px}
+.dev-ic{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--fill);color:var(--tint)}
+.dev-id{flex:1;min-width:0}
+.dev-title{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:1rem;font-weight:600;overflow-wrap:anywhere}
+.dev-title .dev-how{font-size:.75rem;padding:2px 7px}
+.dev-who{margin-top:2px;font-size:.875rem;color:var(--ink)}
+.dev-faint{color:var(--ink-soft)}
+.dev-head .dev-badge{flex:none}
+.dev-facts{display:flex;flex-wrap:wrap;gap:4px 0;margin:10px 0 0 48px;font-size:.875rem;color:var(--ink-soft)}
+.dev-facts>span:not(:last-child)::after{content:'·';margin:0 8px;color:var(--ink-faint)}
+.dev-facts .dev-ver{margin-inline-start:4px}
+html.rtl .dev-facts{margin:10px 48px 0 0}
+.dev-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:10px 0 0 48px;padding-top:10px;border-top:.5px solid var(--line)}
+html.rtl .dev-foot{margin:10px 48px 0 0}
+.dev-loc{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:.875rem;min-width:0}
+.dev-vpn{flex-basis:100%;color:var(--clay-ink);font-size:.8125rem}
+html.dark .dev-vpn{color:#FF6961}
+.dev-card .dev-actions{display:flex;gap:8px;margin:0;padding:0;border:0;margin-inline-start:auto}
+.dev-card .dev-actions .btn{flex:0 0 auto;min-height:34px;padding:0 12px;border-radius:9px;font-size:.875rem;gap:6px}
+.dev-card .dev-actions .btn svg{width:15px;height:15px}
+.dev-card .dev-pending{margin:10px 0 0 48px}
+@media (max-width:599px){
+  .dev-facts,.dev-foot,.dev-card .dev-pending{margin-inline-start:0}
+  html.rtl .dev-facts,html.rtl .dev-foot{margin:10px 0 0}
+  .dev-card .dev-actions{width:100%;margin-inline-start:0}
+  .dev-card .dev-actions .btn{flex:1}
+}
 /* Stock rows, like Ricotta Restaurant's Stock page but calmer: a dot, the name, the amount in bold. */
-.stk-row{display:flex;align-items:center;gap:12px;min-height:58px;padding:8px 10px 8px 16px;padding-inline:16px 10px;cursor:pointer}
+.stk-row{display:flex;align-items:center;gap:12px;min-height:58px;padding:8px 16px;cursor:pointer}
+.stk-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .stk-row+.stk-row{border-top:.5px solid var(--line)}
 @media (hover:hover){.stk-row:hover{background:var(--surface-2)}}
 .stk-dot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--ok)}
@@ -2449,9 +2539,84 @@ html.rtl .nav-brand,[dir=rtl] .nav-brand{justify-content:flex-end}
 .stk-name{flex:1;min-width:0;font-size:1.0313rem;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
 .stk-amt{flex:none;font-size:1.0313rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink);text-align:end}
 .stk-row.none .stk-amt{color:var(--clay-ink)}
-.stk-eye{flex:none;display:grid;place-items:center;width:38px;height:38px;border:0;border-radius:10px;background:none;color:var(--ink-soft);cursor:pointer}
-@media (hover:hover){.stk-eye:hover{background:var(--fill);color:var(--ink)}}
 .stk-tip{position:fixed;z-index:400;width:min(440px,calc(100vw - 24px));display:grid;gap:10px;padding:16px 18px;border-radius:16px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--float-shadow);pointer-events:none;font-size:.9688rem;animation:fadeIn .15s ease-out}
 .stk-tip-name{font-size:1.0625rem;font-weight:600}
 .stk-tip div{display:flex;justify-content:space-between;gap:16px}.stk-tip span{color:var(--ink-soft);flex:none}.stk-tip div b{font-weight:600;text-align:end}
 @media (max-width:599px){.stk-row{flex-wrap:wrap;row-gap:2px}.stk-name{flex:1 1 calc(100% - 80px)}.stk-amt{margin-inline-start:21px;flex:1;text-align:start}}
+/* Only the switch flips a setting: the row itself is not a button. */
+label.preference-row:has(input[type=checkbox]),label.rico-set-row{cursor:default}
+/* Settings: one calm column, like the iPhone's Settings. */
+.settings-page{max-width:760px}
+.settings-page .section-title{margin-top:26px}
+.settings-page .section-title:first-child{margin-top:4px}
+.rs-loading{min-height:200px;padding:14px 16px}
+.rs-card .rs-switch{margin:0;min-height:48px;padding:10px 0;align-items:center}
+.rs-card>.rs-switch:last-child{border-bottom:0!important}
+.settings-rows>.settings-link{margin:0;width:100%;border-top:0;border-radius:0}
+
+/* What Rico remembers: memories (taught or learned) and routines, each a plain row. */
+.mem-add input{border-radius:12px}
+.mem-rule>span{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}
+.mem-rule small{font-size:.8125rem;color:var(--ink-soft)}
+.mem-routine.off>span{opacity:.5}
+.mem-switch{appearance:none;-webkit-appearance:none;flex:none;width:42px;height:26px;margin:0;border-radius:13px;background:rgba(120,120,128,.2);position:relative;cursor:pointer;transition:background-color .2s ease}
+.mem-switch::after{content:'';position:absolute;top:2px;inset-inline-start:2px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s ease}
+.mem-switch:checked{background:var(--ok)}
+.mem-switch:checked::after{transform:translateX(16px)}
+html.rtl .mem-switch:checked::after{transform:translateX(-16px)}
+.mem-hint{margin-top:10px;font-size:.8125rem;line-height:1.4;color:var(--ink-soft)}
+.rico-note-btn{margin-top:10px;min-height:36px;padding:0 14px;border-radius:10px;font-size:.9063rem}
+/* Transfers: an item that is also in another draft from this storage has its own colour (indigo), next to
+   yellow (price/usual warnings) and red (not enough), with how much is drafted and to where. */
+.rr-line.drafted{border-color:rgba(88,86,214,.65)}
+html.dark .rr-line.drafted{background:rgba(94,92,230,.08)}
+.tf-drafted-note{color:#5856D6;font-weight:600}
+html.dark .tf-drafted-note{color:#A5A3FF}
+/* Linked stock: a small calm line under the item on the Order screen, and the picker in its form. */
+.item-stock{margin-top:2px;font-size:.8125rem;color:var(--ink-soft);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.item-stock.none{color:var(--clay-ink)}
+.stock-link-now{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:12px;background:var(--surface-2)}
+.stock-link-name{font-weight:500;overflow-wrap:anywhere}
+.stock-link-now small{font-size:.8125rem;color:var(--ink-soft)}
+.stock-link-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.stock-link-actions .btn{min-height:38px;padding:0 14px;border-radius:10px;font-size:.9375rem}
+.stock-pick{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.stock-pick-input{width:100%;min-height:42px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--ink);font:400 1rem var(--font);outline:none}
+.stock-pick-input:focus-visible{box-shadow:0 0 0 2px var(--accent)}
+.stock-pick-list{display:flex;flex-direction:column;max-height:300px;overflow-y:auto;border-radius:12px;background:var(--surface-2)}
+.stock-opt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:48px;padding:8px 12px;border:0;background:none;color:var(--ink);font:400 .9375rem var(--font);text-align:start;cursor:pointer}
+.stock-opt+.stock-opt{border-top:.5px solid var(--line)}
+.stock-opt small{font-size:.8125rem;color:var(--ink-soft)}
+.stock-opt.on{background:var(--accent-soft)}
+.stock-opt:disabled{cursor:not-allowed;opacity:.5}
+@media (hover:hover){.stock-opt:not(:disabled):hover{background:var(--fill)}}
+.stock-pick>.btn{align-self:flex-start;min-height:38px;border-radius:10px}
+
+/* Admin, Stock names: one quiet card per name, the problem as small tags, the name now and the correct
+   name (with Copy) one under the other. Double spaces are shown as a soft mark so they can be seen. */
+.ad-toolbar:has(.nm-filters){min-width:0;max-width:100%}
+.nm-filters{flex-wrap:nowrap;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.nm-filters::-webkit-scrollbar{display:none}
+.nm-filters .pill-seg-btn{flex:none;white-space:nowrap;padding-inline:14px}
+.nm-filters .pill-seg-btn small{margin-inline-start:6px;font-size:.75rem;font-weight:500;color:var(--ink-soft)}
+.nm-list{display:flex;flex-direction:column;gap:10px}
+.nm-row{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-radius:var(--r-card);background:var(--surface);box-shadow:inset 0 0 0 .5px var(--line)}
+.nm-tags{display:flex;flex-wrap:wrap;gap:6px}
+.nm-tag{padding:3px 8px;border-radius:7px;font-size:.75rem;font-weight:600;background:var(--fill);color:var(--ink-soft)}
+.nm-tag.spacing{background:rgba(0,122,255,.12);color:#0A64C8}
+.nm-tag.letters{background:rgba(255,149,0,.14);color:#B35F00}
+.nm-tag.missing{background:rgba(142,142,147,.16);color:var(--ink-soft)}
+.nm-tag.spelling{background:rgba(var(--accent-rgb),.16);color:var(--tint)}
+html.dark .nm-tag.spacing{color:#64AFFF}html.dark .nm-tag.letters{color:#FFB340}
+.nm-line{display:flex;align-items:center;gap:12px;min-height:30px}
+.nm-label{flex:none;width:64px;font-size:.8125rem;color:var(--ink-faint)}
+.nm-name{flex:1;min-width:0;font-size:1rem;overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
+.nm-fix .nm-name{font-weight:600}
+.nm-space{background:rgba(255,59,48,.22);border-radius:3px;color:inherit}
+.nm-copy{flex:none;min-height:34px;padding:0 14px;border-radius:9px;font-size:.875rem}
+.nm-copy.done{color:var(--tint)}
+.nm-hint,.nm-why{margin:0;font-size:.8125rem;color:var(--ink-soft)}
+@media (max-width:599px){.nm-line{flex-wrap:wrap;gap:4px 10px}.nm-label{width:auto}.nm-name{flex-basis:100%}.nm-copy{margin-inline-start:auto}}
+
+/* Admin pages use the full width of the page, like their other cards (forms elsewhere stay narrower). */
+.admin-page .form-card{max-width:none}

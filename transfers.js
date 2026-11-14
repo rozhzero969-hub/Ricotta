@@ -13,7 +13,8 @@ const tfQty = q=> rrNum(q, 3);
 /* "Available: 9 سیت in Main Storage", the amount in bold in a small box (red when there isn't enough). */
 /* How much of an item is really left to move from a storage, in its base unit: the stock Rico last read,
    less what other transfers from there are already taking (sent and waiting for Rico, being moved, or
-   moved after the stock was read, and ones waiting to send on this device). The form being written is
+   moved after the stock was read, and ones waiting to send on this device), and less this person's
+   other drafts from there (see tfDrafted). The form being written is
    left out: its own lines are counted where they are typed. */
 const TF_TAKING = ['queued', 'filling', 'review', 'approved', 'moving'];
 function tfTakenElsewhere(item, zone, formId){
@@ -31,7 +32,32 @@ function tfTakenElsewhere(item, zone, formId){
   }
   return sum;
 }
-function tfLeft(item, zone, formId){ return Math.max(0, TF().available(item, zone) - tfTakenElsewhere(item, zone, formId)); }
+/* This person's other drafts from the same storage hold their amounts too (Rozh, 2026-11-14): 10 kg of
+   carrots with 5 kg in a draft to Appetizers leaves 5 kg here. Per destination, in base units. */
+function tfDrafted(item, zone, formId){
+  const to = new Map();
+  for(const x of tf.data?.transfers || []){
+    if(x.id === formId || x.from !== zone || x.status !== 'draft' || x.pendingSend || tfIsPractice(x)) continue;
+    for(const l of x.lines || []){
+      if(l.item !== item.name || !(l.qty > 0)) continue;
+      const o = TF().unitOptions(item).find(u=>u.name === l.unit);
+      if(o) to.set(x.to || '', (to.get(x.to || '') || 0) + l.qty * o.factor);
+    }
+  }
+  return [...to].map(([zone, base])=>({zone, base}));
+}
+const tfDraftedSum = (item, zone, formId)=> tfDrafted(item, zone, formId).reduce((a, d)=>a + d.base, 0);
+function tfLeft(item, zone, formId){ return Math.max(0, TF().available(item, zone) - tfTakenElsewhere(item, zone, formId) - tfDraftedSum(item, zone, formId)); }
+/* "5 کیلۆ in a draft to Appetizers" for each draft holding this item; when the line wants more than is
+   left because of them, it says to cancel that draft first. */
+function tfDraftNote(item, r, unit, short){
+  const list = tfDrafted(item, r.from, r.id);
+  if(!list.length) return '';
+  const o = TF().unitOptions(item).find(u=>u.name === unit);
+  const amt = base=>{ const c = o ? {qty:Math.floor((base / o.factor) * 1000 + 1e-6) / 1000, unit:o.name} : TF().inCounting(item, base, true); return `\u2066${tfQty(c.qty)} ${c.unit}\u2069`; };   // "1 کیلۆ" in this order, in one piece, in any language
+  const words = list.map(d=>t('tfInDraftTo')(amt(d.base), '\u2068' + (d.zone || t('tfNoStorage')) + '\u2069')).join(' · ');
+  return `<span class="tf-drafted-note">${esc(words)}${short ? ' · ' + esc(t('tfCancelDraftFirst')) : ''}</span>`;
+}
 /* What a line shows as available: what is left, less the same item on the lines above it in this form
    (10 kg carrots, 3 kg on item 1: item 2 shows 7 kg). */
 function tfLeftForLine(item, r, i){
@@ -195,12 +221,13 @@ function renderTransferEdit(){
     // in another unit (2 cartons becoming 2 kilos).
     if(item && units.length && l.unit && !units.some(u=>u.name === l.unit)){ l.unit = ''; tfSaveSoon(r); }
     const have = item ? tfLeft(item, r.from, r.id) : 0, short = item && need.get(l.item) > have + 1e-9;
-    return `<div class="rr-line tf-line${short ? ' warn' : ''}" data-line="${i}">
+    const drafted = !!item && tfDrafted(item, r.from, r.id).length > 0;
+    return `<div class="rr-line tf-line${short ? ' warn' : ''}${drafted ? ' drafted' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="tfItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('tfItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
       <div class="rr-field"><label for="tfQty${i}">${esc(t('tfAmount'))}</label><input id="tfQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${esc(rrBoxText(l, 'qty', true))}" placeholder="${esc(t('tfAmountHint'))}"></div>
       <div class="rr-field rr-f-unit"><label for="tfUnit${i}">${esc(t('rrUnit'))}</label><select id="tfUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${units.length ? (l.unit ? '' : `<option value="" selected hidden>${esc(t('rrErrUnit'))}</option>`) + units.map(u=>opt(u.name, u.name + (u.unclear ? ' (?)' : ''), u.name === l.unit)).join('') : opt('', t('rrUnit'), true)}</select></div>
       <button type="button" class="rr-del" data-l-del="${i}" tabindex="-1" aria-label="${esc(t('rrRemoveItem')(i + 1))}">${ICON_DELETE}</button>
-      ${item ? `<p class="tf-avail${short ? ' short' : ''}">${tfAvailHtml(item, r.from, short, l.unit, tfLeftForLine(item, r, i))}${tfUsualNote(item, r)}</p>` : ''}
+      ${item ? `<p class="tf-avail${short ? ' short' : ''}">${tfAvailHtml(item, r.from, short, l.unit, tfLeftForLine(item, r, i))}${tfDraftNote(item, r, l.unit, short)}${tfUsualNote(item, r)}</p>` : ''}
     </div>`;
   }).join('');
   return `<div class="rr-page rr-edit tf-edit">${rrRicoBar(tf.data.helper, tf.copyAt)}
@@ -330,8 +357,9 @@ function tfPaintStock(r){
     const p = document.querySelector(`[data-line="${i}"] .tf-avail`), item = tfItem(l.item); if(!p || !item) return;
     const have = tfLeft(item, r.from, r.id), short = need.get(l.item) > have + 1e-9;
     p.classList.toggle('short', short); p.closest('.tf-line')?.classList.toggle('warn', short);
+    p.closest('.tf-line')?.classList.toggle('drafted', tfDrafted(item, r.from, r.id).length > 0);
     const first = r.lines.findIndex(x=>x.item === l.item), again = first > -1 && first < i ? ' · ' + t('rrWarnDuplicate')(first + 1) : '';
-    p.innerHTML = tfAvailHtml(item, r.from, short, l.unit, tfLeftForLine(item, r, i)) + (again ? `<span class="tf-usual">${esc(again)}</span>` : '') + tfUsualNote(item, r);
+    p.innerHTML = tfAvailHtml(item, r.from, short, l.unit, tfLeftForLine(item, r, i)) + tfDraftNote(item, r, l.unit, short) + (again ? `<span class="tf-usual">${esc(again)}</span>` : '') + tfUsualNote(item, r);
   });
 }
 const TF_ERR = {from:'tfErrFrom', fromUnknown:'tfErrFrom', to:'tfErrTo', toUnknown:'tfErrTo', sameZone:'tfErrSame', noLines:'rrErrNoLines', tooManyLines:'rrErrNoLines',

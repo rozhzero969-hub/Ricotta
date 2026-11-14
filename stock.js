@@ -38,14 +38,13 @@ function renderStock(){
       <button type="button" class="btn btn-ghost" data-stk-export="pdf">${NAV_ICONS.record}<span>PDF</span></button>
       <button type="button" class="btn btn-ghost" data-stk-export="numbers">${ICON_SHEET}<span>Numbers</span></button></div>` : '';
   // One line per item, like Ricotta Restaurant's Stock page: a dot (green: some left, red: none), the
-  // name, the amount with its usage unit, and an eye that opens the details.
+  // name and the amount with its usage unit. Clicking (or Enter on) a row opens its details.
   const rows = list.map(i=>{
     const none = i.main <= 0;
-    return `<div class="stk-row${none ? ' none' : ''}" data-search-row data-stk="${esc(i.name)}">
+    return `<div class="stk-row${none ? ' none' : ''}" data-search-row data-stk="${esc(i.name)}" role="button" tabindex="0" aria-label="${esc(i.name)}, ${esc(stkLine(i))}">
       <i class="stk-dot" aria-hidden="true"></i>
       <span class="stk-name" dir="auto">${esc(i.name)}</span>
-      <b class="stk-amt" dir="auto">${esc(stkLine(i))}</b>
-      <button type="button" class="stk-eye" data-stk-details="${esc(i.name)}" aria-label="${esc(t('stockDetails'))}" title="${esc(t('stockDetails'))}">${ICON_EYE}</button></div>`;
+      <b class="stk-amt" dir="auto">${esc(stkLine(i))}</b></div>`;
   }).join('');
   return `<div class="stk-tools">${renderCatalogSearch()}
       <div class="pill-seg stk-sort" role="radiogroup" aria-label="${esc(t('stockSort'))}">
@@ -59,9 +58,11 @@ function renderStock(){
 }
 function attachStockEvents(){
   document.querySelectorAll('[data-stk-sort]').forEach(b=>b.onclick = ()=>{ stk.sort = b.dataset.stkSort; render(); });
-  document.querySelectorAll('[data-stk-details]').forEach(b=>b.onclick = e=>{ e.stopPropagation(); stockDetails(b.dataset.stkDetails); });
   // A row opens its details too (a phone has no hover).
-  document.querySelectorAll('.stk-row').forEach(row=>row.onclick = ()=>stockDetails(row.dataset.stk));
+  document.querySelectorAll('.stk-row').forEach(row=>{
+    row.onclick = ()=>stockDetails(row.dataset.stk);
+    row.onkeydown = e=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); stockDetails(row.dataset.stk); } };
+  });
   document.querySelectorAll('[data-stk-export]').forEach(b=>b.onclick = ()=>withBusy(b, ()=>stockExport(b.dataset.stkExport)));
   // A computer: resting the pointer on an item shows its last purchase and last transfer.
   if(matchMedia('(hover: hover)').matches) document.querySelectorAll('.stk-row').forEach(row=>{

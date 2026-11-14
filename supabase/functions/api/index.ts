@@ -1,3 +1,4 @@
+import { cleanTimeZone, clientIp, placeOf } from "./geo.ts";
 import { turnstileConfig, verifyTurnstile } from "../_shared/turnstile.ts";
 import { monthStart, monthKey } from "../_shared/month.ts";
 // Ricotta Orders API -- the only door between the browser and the database.
@@ -28,6 +29,8 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   streak/recover                                       Rico brings a broken kitchen streak back
 //   GET    rico-chats                                           one shared list of both accounts' Rico chats
 //   DELETE rico-chats[/:id][?account=all]                       delete one chat, or all of them
+//   GET    rico-routines | POST rico-routines {kind,text,time,days,supplierIds,runAt}   Rico's routines (runAt: a one-off reminder)
+//   PUT    rico-routines/:id {enabled} | DELETE rico-routines/:id                  switch one on or off, delete
 //   GET    activity                                             the Record
 //   GET    devices                    rozha: all, yunis: own row
 //   POST   devices/me                 {seconds?}                heartbeat ("still here") and time spent in the app
@@ -67,12 +70,18 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   rico/check-now             (receipts or transfers)   Rico reads Ricotta Restaurant's lists now
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { adminAi, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
+import { saveMemory, saveRoutine, toRoutine } from "./rico-memory.ts";
+import { cleanRoutine } from "../_shared/routines.ts";
 import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
 import { stockView, transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
+import { checkStockNames, stockNames } from "./stock-names.ts";
 import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 import "../_shared/overview.js";
+import "../_shared/search.js";
+import "../_shared/transfers.js";
+import "../_shared/stock-link.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -83,6 +92,7 @@ const LOGIN_WINDOW_MS = 10 * 60_000;
 const MAX_FAILED_LOGINS = 8;              // per network address, per window (spoofable -- see MAX_GLOBAL_FAILED_LOGINS)
 const MAX_GLOBAL_FAILED_LOGINS = 40;      // per window, across ALL claimed IPs -- not spoofable via headers
 const SEEN_WRITE_EVERY_MS = 5 * 60_000;   // throttle session last_seen_at writes
+const SESSION_IDLE_MS = 30 * 86400_000;    // a sign-in ends after 30 days without use
 const PAGE = 1000;                        // PostgREST returns at most 1000 rows per request
 const RECORD_TYPES = ["supplier", "item", "unit"];
 const RECORD_ACTIONS = ["add", "edit", "delete"];
@@ -188,7 +198,8 @@ async function authenticate(req: Request): Promise<Session | null | "unavailable
   if (!data || data.revoked_at || !Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()) return null;
   if (data.account !== "rozha" && data.account !== "yunis") return null;
   if (Date.now() - new Date(data.last_seen_at).getTime() > SEEN_WRITE_EVERY_MS) {
-    await app("sessions").update({ last_seen_at: nowIso() }).eq("id", data.id);
+    // Used devices stay signed in: 30 days from the last use (a phone used every day never signs out).
+    await app("sessions").update({ last_seen_at: nowIso(), expires_at: new Date(Date.now() + SESSION_IDLE_MS).toISOString() }).eq("id", data.id).is("revoked_at", null);
   }
   if(data.device_id){
     const {data:device,error}=await app("devices").select("account").eq("id",data.device_id).maybeSingle();
@@ -206,7 +217,7 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 
 /* ---------- Shapes the browser uses ---------- */
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder });
-const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false,
+const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false, stockItem: i.stock_item ?? null,
   createdAt: i.created_at ?? null, lastOrderedAt: i.last_ordered_at ?? null });
 /* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
    had one; recoverable: how many days Rico can bring back after it broke. */
@@ -229,14 +240,17 @@ async function readStreak() {
 const toDevice = (d: any) => ({
   id: d.id, account: d.account ?? null, label: d.label ?? null, loggedIn: d.logged_in,
   lastLogin: d.last_login, lastSeen: d.last_seen, command: d.command, handledCommand: d.handled_command,
-  appVersion: d.app_version ?? null, push: !!d.push,
+  appVersion: d.app_version ?? null, push: !!d.push, sessionEnds: d.session_ends ?? null,
+  signin: d.signin_at_place ? { ip: d.signin_ip ?? null, city: d.signin_city ?? null, region: d.signin_region ?? null, country: d.signin_country ?? null,
+    org: d.signin_org ?? null, ipTz: d.signin_ip_tz ?? null, deviceTz: d.signin_device_tz ?? null, vpn: d.signin_vpn ?? null, vpnReason: d.signin_vpn_reason ?? null, at: d.signin_at_place } : null,
 });
 const toActivity = (a: any) => ({
   ...(a.payload ?? {}), id: a.id, ts: a.occurred_at, actor: a.actor,
   action: a.action, type: a.entity_type, name: a.entity_name,
 });
 // Rico has no moods any more: older rows still hold one, so every message reads as the neutral face.
-const toInbox = (m: any) => ({ id: m.id, kind: m.kind, mood: "calm", en: m.body_en, ku: m.body_ku, ar: m.body_ar, at: m.created_at, read: !!m.read_at });
+const toInbox = (m: any) => ({ id: m.id, kind: m.kind, mood: "calm", en: m.body_en, ku: m.body_ku, ar: m.body_ar, at: m.created_at, read: !!m.read_at,
+  ...(m.kind === "routine_order" && m.payload ? { order: m.payload } : {}) });
 /* Reads every row of a query, 1000 at a time (a single request silently stops
    at 1000 rows, which used to cut long order histories short). */
 async function readAll(build: () => any): Promise<any[]> {
@@ -266,20 +280,23 @@ function groupHistory(orders: any[], lines: any[]) {
 }
 
 async function listDevices(s: Session) {
-  let q = app("devices").select("id,account,label,logged_in,last_login,last_seen,command,handled_command,app_version");
+  let q = app("devices").select("id,account,label,logged_in,last_login,last_seen,command,handled_command,app_version,signin_ip,signin_city,signin_region,signin_country,signin_org,signin_ip_tz,signin_device_tz,signin_vpn,signin_vpn_reason,signin_at_place");
   if (!isRozha(s)) q = q.eq("id", s.deviceId ?? "").eq("account",s.account);
   const { data, error } = await q;
   if (error) throw error;
   // "Signed in" means a session that still works now, not just the last thing the phone reported.
   const ids = (data ?? []).map((d: any) => d.id);
-  const { data: live, error: liveError } = ids.length ? await app("sessions").select("device_id")
+  const { data: live, error: liveError } = ids.length ? await app("sessions").select("device_id,expires_at")
     .in("device_id", ids).is("revoked_at", null).gt("expires_at", nowIso()) : { data: [], error: null };
   if (liveError) throw liveError;
-  const signedIn = new Set((live ?? []).map((r: any) => r.device_id));
+  // When each device's sign-in ends: its latest working session (used devices keep moving it forward).
+  const ends = new Map<string, string>();
+  for (const r of (live ?? []) as any[]) if (!ends.has(r.device_id) || Date.parse(r.expires_at) > Date.parse(ends.get(r.device_id)!)) ends.set(r.device_id, r.expires_at);
+  const signedIn = new Set(ends.keys());
   const { data: subs, error: subsError } = ids.length ? await app("push_subscriptions").select("device_id").in("device_id", ids) : { data: [], error: null };
   if (subsError) throw subsError;
   const notified = new Set((subs ?? []).map((r: any) => r.device_id));
-  return (data ?? []).map((d: any) => toDevice({ ...d, logged_in: !!d.logged_in && signedIn.has(d.id), push: notified.has(d.id) }));
+  return (data ?? []).map((d: any) => toDevice({ ...d, logged_in: !!d.logged_in && signedIn.has(d.id), push: notified.has(d.id), session_ends: ends.get(d.id) ?? null }));
 }
 async function listActivity() {
   const rows = await readAll(() => app("audit_events")
@@ -289,7 +306,7 @@ async function listActivity() {
   return rows.map(toActivity);
 }
 async function listInbox(s: Session) {
-  const { data, error } = await app("rico_inbox").select("id,kind,mood,body_en,body_ku,body_ar,created_at,read_at")
+  const { data, error } = await app("rico_inbox").select("id,kind,mood,body_en,body_ku,body_ar,payload,created_at,read_at")
     .eq("account", s.account).order("created_at", { ascending: false }).limit(20);
   if (error) throw error;
   return (data ?? []).reverse().map(toInbox);
@@ -311,11 +328,31 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
   return lines;
 }
 
+/* Ricotta Restaurant's stock as Rico last read it (app_rr_catalog), or null when not read yet. */
+async function readStockCatalog() {
+  const { data, error } = await app("rr_catalog").select("data,updated_at").eq("id", true).maybeSingle();
+  if (error) throw error;
+  return data ? { titems: (data.data?.titems ?? []) as any[], at: data.updated_at ?? null } : null;
+}
+/* Linked items get how much is in Main Storage (only theirs: no other stock goes to the phone, so
+   people without Receipts or Transfers see just this). A link whose stock item is gone says so. */
+async function withStock(items: any[]) {
+  if (!items.some((i) => i.stockItem)) return items;
+  const cat = await readStockCatalog().catch(() => null);
+  if (!cat) return items;
+  const byName = new Map(cat.titems.map((t: any) => [t.name, t]));
+  const L = (globalThis as any).RicottaStockLink;
+  return items.map((i) => {
+    if (!i.stockItem) return i;
+    const t = byName.get(i.stockItem);
+    return { ...i, stock: t ? { ...L.amount(t), at: cat.at } : { missing: true, at: cat.at } };
+  });
+}
 async function bootstrap(s: Session) {
   const [me, suppliers, items, units, orders, devices, activity, inbox, streak, months, draft, wipe] = await Promise.all([
     readAccount(s.account),
     readAll(() => app("suppliers").select("id,name,phone,reminder").order("name").order("id")),
-    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at").order("name").order("id")),
+    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at,stock_item").order("name").order("id")),
     readAll(() => app("units").select("id,en,ku,ar").order("id")),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")),
     listDevices(s),
@@ -339,7 +376,7 @@ async function bootstrap(s: Session) {
     views: viewsFor(s), roles: s.roles,
     pins: me?.pins ?? [], streak,
     suppliers: suppliers.map(toSupplier),
-    items: items.map(toItem),
+    items: await withStock(items.map(toItem)),
     units,
     history,
     historyMonth: monthKey(),
@@ -397,7 +434,7 @@ async function requestLimit(keys: string[], limits: number[]): Promise<Response 
 }
 
 async function login(req: Request) {
-  const { pin, turnstileToken } = await readBody(req);
+  const { pin, turnstileToken, tz } = await readBody(req);
   const prints = await loginFingerprints(req);
   const limited=await requestLimit(["public:login",`login:${prints[0]}`],[300,60]);
   if(limited)return limited;
@@ -409,7 +446,7 @@ async function login(req: Request) {
   // A lock is written to the security log once per phone per lock, not once per refused try.
   if (!attempt) { await securityEvent(req, "locked", null, {}, LOGIN_WINDOW_MS / 1000); return fail("too_many_attempts", 429); }
 
-  return await startSession(req, String(pin), attempt);
+  return await startSession(req, String(pin), attempt, cleanTimeZone(tz));
 }
 
 /* ---------- The security log ---------- */
@@ -451,9 +488,20 @@ async function alertNewDevice(req: Request, account: Account, deviceId: string |
   }).catch(() => console.error("security_push_failed"));
 }
 
+/* Where this sign-in came from, for Admin's device list (geo.ts): looked up after the reply, so it
+   never slows or stops a sign-in. Only the latest sign-in's place is kept. */
+async function noteSignInPlace(req: Request, account: string, deviceId: string | null, deviceTz: string | null) {
+  if (!deviceId) return;
+  const p = await placeOf(clientIp(req), deviceTz);
+  const { error } = await app("devices").update({
+    signin_ip: p.ip, signin_city: p.city, signin_region: p.region, signin_country: p.country, signin_org: p.org,
+    signin_ip_tz: p.ipTz, signin_device_tz: p.deviceTz, signin_vpn: p.vpn, signin_vpn_reason: p.vpnReason, signin_at_place: nowIso(),
+  }).eq("id", deviceId).eq("account", account);
+  if (error) console.error("signin_place_failed");
+}
 /* The database checks the PIN under the same account locks as PIN changes.
    It commits attempts, session and device together; no orphan token or device takeover on a race. */
-async function startSession(req: Request, pin: string, attempt: number[]) {
+async function startSession(req: Request, pin: string, attempt: number[], deviceTz: string | null = null) {
   const token = randomToken();
   const { data, error } = await db.rpc("app_internal_start_session", {
     p_code: pin, p_token_hash: await hash(token),
@@ -465,6 +513,7 @@ async function startSession(req: Request, pin: string, attempt: number[]) {
   if (data?.error === "device_in_use") return fail("device_in_use", 409);
   if (!["rozha", "yunis"].includes(data?.account) || !Number.isFinite(Date.parse(data?.expiresAt))) return fail("login_failed", 503);
   if (data.newDevice) later(alertNewDevice(req, data.account, text(req.headers.get("x-device-id"), 120) || null));
+  later(noteSignInPlace(req, data.account, text(req.headers.get("x-device-id"), 120) || null, deviceTz));
   return json({ token, account: data.account, name: data.name ?? accountName(data.account), expiresAt: data.expiresAt });
 }
 
@@ -619,14 +668,17 @@ async function heartbeat(s: Session, label: string | null, version: string | nul
     if (error) { console.error("usage_failed"); return fail("usage_unavailable", 503); }
     credited = Number(data) || 0;
   }
-  if (!s.deviceId) return json({ ok: true, credited });
+  // When this sign-in ends now, so the phone keeps its own copy in step (it moves forward with use).
+  const { data: me } = await app("sessions").select("expires_at").eq("id", s.id).maybeSingle();
+  const sessionEnds = me?.expires_at ?? undefined;
+  if (!s.deviceId) return json({ ok: true, credited, sessionEnds });
   const { data: d, error: readError } = await app("devices").select("command,handled_command").eq("id", s.deviceId).eq("account",s.account).maybeSingle();
   if (readError) throw readError;
   const pendingLogout = d?.command?.type === "logout" && d.command.id !== d.handled_command;
-  if (pendingLogout) return json({ ok: true, device: null, credited });   // don't flip it back to "logged in"
+  if (pendingLogout) return json({ ok: true, device: null, credited, sessionEnds });   // don't flip it back to "logged in"
   const { error } = await app("devices").update({ ...(label ? { label } : {}), ...(version ? { app_version: version } : {}), logged_in: true, last_seen: nowIso(), updated_at: nowIso() }).eq("id",s.deviceId).eq("account",s.account);
   if (error) throw error;
-  return json({ ok: true, credited });
+  return json({ ok: true, credited, sessionEnds });
 }
 
 /* ---------- Live changes ----------
@@ -958,6 +1010,13 @@ Deno.serve(async (req) => {
       const { data, error } = await db.rpc("app_internal_usage_summary", { p_actor: s.account });
       return error ? fail("usage_unavailable", 503) : json(data);
     }
+    // Admin, Stock names: problems in Ricotta Restaurant's item names and the names to copy (stock-names.ts).
+    if (M === "GET" && path === "admin/stock-names") return json(await stockNames(db));
+    if (M === "POST" && path === "admin/stock-names/check") {
+      const limited = await requestLimit([`account:${s.account}:stocknames`], [3]); if (limited) return limited;
+      const r: any = await checkStockNames(db);
+      return r.error ? fail(r.error, r.error === "no_names" ? 409 : 503) : json(r);
+    }
     if (M === "GET" && path === "admin/rico") return json(await adminRico());
     if (M === "GET" && path === "admin/ai") return json(await adminAi(db));
     if (M === "GET" && path === "rico/orders") {
@@ -1015,6 +1074,43 @@ Deno.serve(async (req) => {
       const {data,error}=await db.rpc("app_internal_set_aliases",{p_entries:entries,p_actor:s.account,p_device:s.deviceId});
       if(error)return fail("save_failed",500);
       return data?.conflicts?.length ? json(data,409) : json(data);
+    }
+    // Linking ordering items to stock items (Manage, edit an item). The list of stock items to choose
+    // from, with Main Storage amounts; and saving one link, only when the names really match (the same
+    // rule the app uses, _shared/stock-link.js). Never linked by anyone but a person, one at a time.
+    if (M === "GET" && path === "items/stock-options") {
+      if (!can(s, "catalog")) return fail("forbidden", 403);
+      const cat = await readStockCatalog();
+      const L = (globalThis as any).RicottaStockLink;
+      // Amounts only for people who can open Stock; everyone else who edits items gets the names.
+      const amounts = can(s, "transfers") || can(s, "receipts");
+      return json({ at: cat?.at ?? null, items: (cat?.titems ?? []).filter((t: any) => t?.name && String(t.name).trim() !== "-").map((t: any) => amounts ? { name: t.name, ...L.amount(t) } : { name: t.name }) });
+    }
+    if (M === "PUT" && (m = path.match(/^items\/([^/]{1,120})\/stock$/))) {
+      if (!can(s, "catalog")) return fail("forbidden", 403);
+      const id = decodeURIComponent(m[1]);
+      const want = b.stockItem === null ? null : typeof b.stockItem === "string" && b.stockItem.length >= 1 && b.stockItem.length <= 200 ? b.stockItem : undefined;
+      if (want === undefined) return fail("invalid_input");
+      const { data: item, error } = await app("items").select("id,name,aliases,stock_item").eq("id", id).maybeSingle();
+      if (error) return fail("save_failed", 500);
+      if (!item) return fail("gone", 409);
+      let stock: any = null;
+      if (want !== null) {
+        const cat = await readStockCatalog();
+        const t = (cat?.titems ?? []).find((x: any) => x?.name === want);
+        if (!t) return fail("stock_item_unknown", 422);
+        const L = (globalThis as any).RicottaStockLink;
+        if (!L.matches({ name: item.name, aliases: item.aliases ?? [] }, want)) return fail("names_dont_match", 422);
+        stock = { ...L.amount(t), at: cat?.at ?? null };
+      }
+      if ((item.stock_item ?? null) !== want) {
+        const { error: upError } = await app("items").update({ stock_item: want, updated_at: nowIso() }).eq("id", id);
+        if (upError) return fail("save_failed", 500);
+        const { error: logError } = await app("audit_events").insert({ id: crypto.randomUUID(), actor: s.account, device_id: s.deviceId, action: "edit", entity_type: "item", entity_name: item.name,
+          payload: { by: accountName(s.account), fields: [{ k: "stock", from: item.stock_item ?? "", to: want ?? "" }], source: "server" } });
+        if (logError) console.error("stock_link_audit_failed");
+      }
+      return json({ ok: true, stockItem: want, stock });
     }
     if ((m = path.match(/^(suppliers|items|units)\/([^/]{1,120})$/))) {
       const table = m[1], id = decodeURIComponent(m[2]);
@@ -1093,24 +1189,49 @@ Deno.serve(async (req) => {
     // Rico's rules: only someone Rico is on for. Each person deletes only their own (Rozh any), and a
     // rule reaches only its writer's Rico and, for Rozh's rules, everyone's (see assistant.ts).
     if (path.startsWith("rico-rules") && !can(s, "assistant")) return fail("forbidden", 403);
+    // Memories: taught (written by the person) or learned (Rico picked it up). Each person sees their own,
+    // and Rozh's taught ones, which reach everyone's Rico; Rozh sees all.
     if (path === "rico-rules" && M === "GET") {
-      const { data, error } = await app("rico_rules").select("id,account,rule,created_at").order("created_at");
-      return error ? fail("load_failed", 500) : json(data ?? []);
+      const { data, error } = await app("rico_rules").select("id,account,rule,source,created_at").order("created_at");
+      return error ? fail("load_failed", 500)
+        : json((data ?? []).filter((r: any) => isRozha(s) || r.account === s.account || (r.account === "rozha" && r.source !== "learned")));
     }
     if (path === "rico-rules" && M === "POST") {
       const rule = text(b.rule, 300);
       if (!rule) return fail("invalid_input");
-      const { count, error: countError } = await app("rico_rules").select("id", { count: "exact", head: true });
-      if (countError) return fail("save_failed", 500);
-      if ((count ?? 0) >= 30) return fail("too_many", 409);
-      const { error } = await app("rico_rules").insert({ account: s.account, rule });
-      return error ? fail("save_failed", 500) : ok();
+      const saved = await saveMemory(db, s.account, rule, "taught");
+      return saved.error === "too_many" ? fail("too_many", 409) : saved.error === "secret" ? fail("secret", 422) : saved.error ? fail("save_failed", 500) : ok();
+    }
+    // Routines: reminders and orders Rico prepares by himself (see _shared/routines.ts). Each person
+    // manages their own; Rozh sees and can change all.
+    if (path.startsWith("rico-routines") && !can(s, "assistant")) return fail("forbidden", 403);
+    if (path === "rico-routines" && M === "GET") {
+      let q = app("rico_routines").select("id,account,kind,text,supplier_ids,time,days,enabled,last_run_day,run_at,created_at").order("created_at");
+      if (!isRozha(s)) q = q.eq("account", s.account);
+      const { data, error } = await q;
+      return error ? fail("load_failed", 500) : json((data ?? []).map(toRoutine));
+    }
+    if (path === "rico-routines" && M === "POST") {
+      const c = cleanRoutine({ kind: b.kind, text: b.text, time: b.time, days: b.days, supplier_ids: b.supplierIds, run_at: b.runAt });
+      if ("error" in c) return fail("invalid_input");
+      if (c.value.kind === "prepare_order" && !can(s, "history")) return fail("forbidden", 403);
+      const r = await saveRoutine(db, s.account, c.value);
+      return r.error === "too_many" ? fail("too_many", 409) : r.error === "invalid_input" ? fail("invalid_input") : r.error ? fail("save_failed", 500) : json({ routine: r.routine });
+    }
+    if ((m = path.match(/^rico-routines\/([0-9a-f-]{36})$/)) && (M === "PUT" || M === "DELETE")) {
+      if (M === "PUT" && typeof b.enabled !== "boolean") return fail("invalid_input");
+      let q = M === "DELETE" ? app("rico_routines").delete().eq("id", m[1])
+        : app("rico_routines").update({ enabled: b.enabled, updated_at: nowIso() }).eq("id", m[1]);
+      if (!isRozha(s)) q = q.eq("account", s.account);
+      const { data, error } = await q.select("id");
+      return error ? fail("save_failed", 500) : data?.length ? ok() : fail("not_found", 404);
     }
     if ((m = path.match(/^rico-rules\/([0-9a-f-]{36})$/)) && M === "DELETE") {
       let q = app("rico_rules").delete().eq("id", m[1]);
       if (!isRozha(s)) q = q.eq("account", s.account);
-      const { error } = await q;
-      return error ? fail("delete_failed", 500) : ok();
+      const { data: gone, error } = await q.select("id");
+      // Someone else's rule (or one already gone) is not deleted, and says so.
+      return error ? fail("delete_failed", 500) : !gone?.length ? fail("not_found", 404) : ok();
     }
     if (path === "admin/backups" && M === "GET") {
       if (!isRozha(s)) return fail("forbidden", 403);

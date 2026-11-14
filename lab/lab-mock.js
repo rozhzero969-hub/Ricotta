@@ -53,6 +53,12 @@
       I('it-chick','Chicken breast','kg','sup-meat',0), I('it-beef','Minced beef','kg','sup-meat',1),
       I('it-flour','Flour (00)','bag','sup-dry',0), I('it-oil','Olive oil','bottle','sup-dry',1), I('it-penne','Penne','pack','sup-dry',2), I('it-cantom','Canned tomatoes','can','sup-dry',3)
     ];
+    // Sample links (Manage, edit an item, Stock item); in the real app Rozh links each one herself.
+    Object.assign(items.find(i=>i.id==='it-mozz'), {stockItem:'Mozzarella - پەنیری مۆزارێلا'});
+    Object.assign(items.find(i=>i.id==='it-parm'), {stockItem:'Parmesan - پەنیری پارمیزان'});
+    Object.assign(items.find(i=>i.id==='it-ric'), {stockItem:'Ricotta Cheese - پەنیری ریکۆتا'});
+    Object.assign(items.find(i=>i.id==='it-tom'), {stockItem:'Tomato - تەماتە'});
+    Object.assign(items.find(i=>i.id==='it-lemon'), {stockItem:'Lemon - لیمۆ'});
     const byId = Object.fromEntries(items.map(i=>[i.id,i]));
     const supName = id => suppliers.find(s=>s.id===id).name;
     const order = (day, h, mi, by, lines) => {
@@ -90,9 +96,16 @@
     const morning = atBaghdad(now.y, now.m, now.d, Math.min(9, now.h), 0);
     const inbox = [
       {id:1, kind:'cheer', mood:'excited', read:false, at:morning,
-       en:'Good morning, Rozh! 3 suppliers are due today: Zakho Dairy, Erbil Veg Market, Ankawa Bakery. Let’s get the orders out on time.',
-       ku:'بەیانیت باش ڕۆژا! ئەمڕۆ کاتی داواکاریی 3 دابینکەرە: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. با بە کاتی خۆی بینێرین.',
-       ar:'صباح الخير يا روژا! اليوم موعد 3 من المورّدين: Zakho Dairy، Erbil Veg Market، Ankawa Bakery. لنرسل الطلبات في وقتها.'}
+       en:'Due today: Zakho Dairy, Erbil Veg Market, Ankawa Bakery.',
+       ku:'کاتی داواکاریی ئەمڕۆ: Zakho Dairy، Erbil Veg Market، Ankawa Bakery.',
+       ar:'موعد الطلب اليوم: Zakho Dairy، Erbil Veg Market، Ankawa Bakery.'},
+      // A routine Rico ran this morning: today's usual order for Erbil Veg Market, waiting for a tap.
+      {id:2, kind:'routine_order', mood:'calm', read:false, at:new Date(Date.now() - 20*60000).toISOString(),
+       en:'I prepared today’s order for Erbil Veg Market (3 items). Open it, check it and send it.',
+       ku:'داواکاریی ئەمڕۆی Erbil Veg Marketم ئامادە کرد (3 کاڵا). بیکەرەوە، بیپشکنە و بینێرە.',
+       ar:'جهّزت طلب اليوم من Erbil Veg Market (3 مواد). افتحه وراجعه وأرسله.',
+       order:{supplierId:'sup-veg', supplier:'Erbil Veg Market', day:new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Baghdad'}).format(new Date()),
+         lines:[{itemId:'it-tom', qty:12}, {itemId:'it-basil', qty:6}, {itemId:'it-onion', qty:1}]}}
     ];
     items.find(i=>i.id==='it-tom').note = 'Ripe, not soft';
     const today = bag(new Date());
@@ -123,7 +136,7 @@
       usage.push({account:'yunis', deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', day, seconds:2400 + ((d*911) % 3600)});
       if(d % 3 === 0) usage.push({account:'rozha', deviceId:'lab-phone-rozha', label:'iPhone 16/17 Pro Max|App', day, seconds:600 + d*40});
     }
-    return {v:7, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, seq:100, said:{},
+    return {v:9, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, seq:100, said:{},
       roles:{yunis:null}, security, problems, usage};
   }
   /* Two finished months for the archive (History itself only keeps this month). */
@@ -136,7 +149,7 @@
       topItems:[{name:'Tomatoes', unit:'kg', times:13, qty:80}, {name:'Mozzarella', unit:'kg', times:12, qty:52}]}
   ];
   let db = lsGet(DB_KEY);
-  if(!db || db.v !== 7) db = seed();
+  if(!db || db.v !== 9) db = seed();
   const save = () => lsSet(DB_KEY, db);
   save();
   window.labResetData = () => { db = seed(); save(); };
@@ -159,10 +172,14 @@
   const deviceId = () => { try{ return JSON.parse(localStorage.getItem(LS+'deviceId')); }catch(_){ return null; } };
   const devices = account => {
     const now = new Date().toISOString(), earlier = new Date(Date.now()-2*3600000).toISOString();
+    const ends = ms => new Date(Date.now() + ms).toISOString();
     const list = [
-      {id:deviceId() || 'this-device', account, label:'Mac|Website', loggedIn:true, lastLogin:earlier, lastSeen:now, command:null, handledCommand:null, appVersion:APP_VERSION, push:true},
-      {id:'lab-phone-yunis', account:'yunis', label:'iPhone 16 Pro|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-6*60000).toISOString(), command:null, handledCommand:null, appVersion:'2026-10-09.1'},
-      {id:'lab-phone-rozha', account:'rozha', label:'iPhone 16/17 Pro Max|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-40*60000).toISOString(), command:null, handledCommand:null}
+      {id:deviceId() || 'this-device', account, label:'Mac|Website', loggedIn:true, lastLogin:earlier, lastSeen:now, command:null, handledCommand:null, appVersion:APP_VERSION, push:true,
+        sessionEnds:ends(30*86400000), signin:{ip:'185.12.40.7', city:'Erbil', region:'Erbil', country:'IQ', org:'AS206206 Korek Telecom', ipTz:'Asia/Baghdad', deviceTz:'Asia/Baghdad', vpn:false, vpnReason:null, at:earlier}},
+      {id:'lab-phone-yunis', account:'yunis', label:'iPhone 16 Pro|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-6*60000).toISOString(), command:null, handledCommand:null, appVersion:'2026-10-09.1',
+        sessionEnds:ends(30*86400000 - 6*60000), signin:{ip:'185.12.41.22', city:'Erbil', region:'Erbil', country:'IQ', org:'AS59588 Fastlink', ipTz:'Asia/Baghdad', deviceTz:'Asia/Baghdad', vpn:false, vpnReason:null, at:earlier}},
+      {id:'lab-phone-rozha', account:'rozha', label:'iPhone 16/17 Pro Max|App', loggedIn:true, lastLogin:earlier, lastSeen:new Date(Date.now()-40*60000).toISOString(), command:null, handledCommand:null,
+        sessionEnds:ends(29*86400000), signin:{ip:'185.213.155.10', city:'Frankfurt am Main', region:'Hesse', country:'DE', org:'AS3320 Deutsche Telekom AG', ipTz:'Europe/Berlin', deviceTz:'Asia/Baghdad', vpn:true, vpnReason:'tz', at:earlier}}
     ];
     return account === 'rozha' ? list : list.slice(0,1);
   };
@@ -178,6 +195,24 @@
   };
 
   /* Rico's chat, streamed line by line like the real server. */
+  /* A sample of Ricotta Restaurant's stock for linked items (Manage, edit an item, Stock item). Parmesan is
+     bought by the carton (30 pieces): 31 pieces shows as pieces, 60 as 2 cartons. */
+  const LAB_STOCK = [
+    {name:'Mozzarella - پەنیری مۆزارێلا', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':5000}},
+    {name:'Parmesan - پەنیری پارمیزان', base:'دانە', count:{name:'دانە', factor:1}, buy:{name:'کارتۆن', factor:30}, stock:{'Main Storage':31}},
+    {name:'Ricotta Cheese - پەنیری ریکۆتا', base:'دانە', count:{name:'دانە', factor:1}, buy:{name:'کارتۆن', factor:30}, stock:{'Main Storage':60}},
+    {name:'Tomato - تەماتە', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':0}},
+    {name:'Lemon - لیمۆ', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:null, stock:{'Main Storage':12500}},
+    {name:'Banana - مۆز', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':5000}},
+    {name:'Akkawi Cheese - پەنیری عەکاوی', base:'دانە', count:{name:'دانە', factor:1}, buy:{name:'کارتۆن', factor:24}, stock:{'Main Storage':0}},
+    {name:'Olive Oil - زەیتی زەیتوون', base:'مل', count:{name:'دانە', factor:1000}, buy:{name:'کارتۆن', factor:12000}, stock:{'Main Storage':24000}},
+  ];
+  const labStockAt = ()=>new Date(Date.now() - 6 * 60000).toISOString();
+  const withLabStock = i=>{
+    if(!i.stockItem) return i;
+    const t = LAB_STOCK.find(x=>x.name === i.stockItem);
+    return {...i, stock:t ? {...globalThis.RicottaStockLink.amount(t), at:labStockAt()} : {missing:true}};
+  };
   function ricoReply(account, body){
     const L = lang(body.lang);
     const last = [...(body.messages||[])].reverse().find(m=>m.role==='user');
@@ -186,7 +221,41 @@
     const events = [];
     const say = (mood, en, ku, ar) => { events.push({type:'mood', mood}); events.push({type:'text', text:({en, ku, ar})[L]}); };
     const wantsOrder = /order|prepar|suggest|usual|داواکاری|ئامادە|طلب|جهز|veg|tomato/.test(q) || body.quickAction;
-    if(/streak|زنجیرە|سلسلة/.test(q)){
+    const pid = k=>k+Date.now().toString(36);
+    const inMatch = q.match(/in (\d+) ?(second|sec|minute|min)/);
+    if(inMatch){
+      const secs = Number(inMatch[1]) * (/^min/.test(inMatch[2]) ? 60 : 1), at = new Date(Date.now() + secs * 1000);
+      db.routines ||= [];
+      db.routines.push({id:crypto.randomUUID(), account, kind:'remind', text:'Do the transfers', supplierIds:[], time:at.toTimeString().slice(0,5), days:[0,1,2,3,4,5,6], enabled:true, lastRunDay:null, runAt:at.toISOString()});
+      save();
+      const when = secs < 120 ? 'in about a minute' : 'at ' + at.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', timeZone:'Asia/Baghdad'});
+      say('calm', `I’ll remind you ${when} to do your transfers.`, `${when === 'in about a minute' ? 'نزیکەی یەک خولەکی تر' : when} بیرت دەخەمەوە گواستنەوەکان بکەیت.`, `سأذكّرك ${when} بالتحويلات.`);
+    } else if(/remind me|بیرم بخەرەوە|ذكّرني|ذكرني/.test(q)){
+      say('calm', 'I can remind you every day at 9:00. Tap Save to keep it.', 'دەتوانم هەموو ڕۆژێک کاتژمێر 9:00 بیرت بخەمەوە. پاشەکەوتکردن دابگرە.', 'أستطيع تذكيرك كل يوم الساعة 9:00. اضغط حفظ.');
+      events.push({type:'proposal', proposal:{id:pid('r'), kind:'routine', routine:{kind:'remind', text:'Do the transfers', time:'09:00', days:[0,1,2,3,4,5,6], supplierIds:[], suppliers:[]}}});
+    } else if(/every morning|by yourself|هەموو بەیانییەک|كل صباح/.test(q)){
+      say('calm', 'Every morning at 7:00 I will prepare the usual order for Erbil Veg Market and leave it for you to check and send. Nothing goes to the supplier until you send it.', 'هەموو بەیانییەک کاتژمێر 7:00 داواکارییە ئاساییەکەی Erbil Veg Market ئامادە دەکەم.', 'كل صباح الساعة 7:00 سأجهّز طلب Erbil Veg Market المعتاد.');
+      events.push({type:'proposal', proposal:{id:pid('r'), kind:'routine', routine:{kind:'prepare_order', text:'Veg order', time:'07:00', days:[0,1,2,3,4,5,6], supplierIds:['sup-veg'], suppliers:['Erbil Veg Market']}}});
+    } else if(/is low|low in|کەمە|ينقص/.test(q)){
+      say('calm', 'Two items are low in Main Storage. Faheta Bread is empty and Mozzarella has about a day left.', 'دوو کاڵا لە کۆگای سەرەکی کەمن.', 'مادتان ناقصتان في المخزن الرئيسي.');
+      events.push({type:'proposal', proposal:{id:pid('s'), kind:'stock_list', storage:'Main Storage', at:new Date(Date.now()-6*60000).toISOString(), more:0,
+        rows:[{item:'Faheta Bread - صمونى فاهيتا', qty:0, unit:'دانە', days:null, empty:true},{item:'Mozzarella - پەنیری مۆزارێلا', qty:2, unit:'کیلۆ', days:0.8, empty:false},{item:'Lemon - لیمۆ', qty:1.5, unit:'کیلۆ', days:2.4, empty:false}]}});
+    } else if(/needs me|پێویستی بە|يحتاج/.test(q)){
+      say('calm', 'Three things need you. The stopped receipt first.', 'سێ شت پێویستیان بە تۆیە.', 'ثلاثة أشياء تحتاجك.');
+      events.push({type:'proposal', proposal:{id:pid('n'), kind:'needs_list', rows:[
+        {type:'receipt', id:'00000000-0000-4000-8000-000000000001', title:'Veg Market #4', why:'Stopped: Rico could not find the supplier', level:'stop'},
+        {type:'transfer', id:'00000000-0000-4000-8000-000000000002', title:'Main Storage > Pizza', why:'Waiting for a person to check Rico\'s photo and approve it (12 min).', level:'wait'},
+        {type:'transfer', id:'00000000-0000-4000-8000-000000000003', title:'Main Storage > Minibar', why:'A draft not sent since 2026-11-12.', level:'old'}]}});
+    } else if(/price|نرخ|سعار/.test(q)){
+      say('calm', 'Two prices changed by more than 10 percent this month.', 'دوو نرخ گۆڕاون.', 'تغيّر سعران.');
+      events.push({type:'proposal', proposal:{id:pid('p'), kind:'price_list', more:0, rows:[
+        {item:'Mozzarella - پەنیری مۆزارێلا', supplier:'Dairy Co', unit:'کیلۆ', currency:'IQD', from:10000, to:12000, pct:20},
+        {item:'Tomato - تەماتە', supplier:'Erbil Veg Market', unit:'کیلۆ', currency:'IQD', from:1500, to:1250, pct:-16.7}]}});
+    } else if(/spend|خەرج|أنفق/.test(q)){
+      say('calm', 'You spent 1,240,000 IQD this week, most of it at Dairy Co.', 'ئەم هەفتەیە 1,240,000 دینارت خەرج کرد.', 'أنفقت 1,240,000 دينار هذا الأسبوع.');
+      events.push({type:'proposal', proposal:{id:pid('m'), kind:'spend', period:'2026-11-08 to 2026-11-14', by:'supplier', receipts:9, IQD:1240000, USD:0,
+        rows:[{name:'Dairy Co', receipts:4, IQD:720000, USD:0},{name:'Erbil Veg Market', receipts:5, IQD:520000, USD:0}]}});
+    } else if(/streak|زنجیرە|سلسلة/.test(q)){
       const st = streakView();
       if(st.recoverable){
         say('excited', `Of course! Tap the card and your ${st.recoverable}-day streak is back. It's free.`, `بێگومان! کارتەکە دابگرە و زنجیرەی ${st.recoverable} ڕۆژەکەت دەگەڕێتەوە. بەخۆڕاییە.`, `بالتأكيد! اضغط البطاقة وتعود سلسلة الـ${st.recoverable} يومًا. مجانًا.`);
@@ -202,7 +271,7 @@
     } else if(/thank|سوپاس|شكر|merci/.test(q)){
       say('grateful', `Any time, ${name}! That’s what I’m here for.`, `هەر کاتێک ${name}! بۆ ئەوە لێرەم.`, `في أي وقت يا ${name}! هذا ما أنا هنا من أجله.`);
     } else if(/late|due|forgot|دواکەوت|متأخر/.test(q)){
-      say('worried', 'Zakho Dairy was due at 10:00 and hasn’t gone out yet. Want me to prepare it?', 'Zakho Dairy کاتژمێر ١٠:٠٠ بوو و هێشتا نەنێردراوە. با ئامادەی بکەم؟', 'طلب Zakho Dairy كان موعده 10:00 ولم يُرسل بعد. هل أجهّزه؟');
+      say('calm', 'Zakho Dairy: not sent yet, due at 10:00. Want me to prepare it?', 'Zakho Dairy: هێشتا نەنێردراوە، کاتەکەی 10:00 بوو. ئامادەی بکەم؟', 'Zakho Dairy: لم يُرسل بعد، موعده 10:00. هل أجهّزه؟');
     } else if(/angry|mad|تووڕە|غاضب/.test(q)){
       say('angry', 'Grr! Don’t make me angry, I’ll hide the basil. Just kidding.', 'گڕڕ! تووڕەم مەکە، ڕەیحانەکە دەشارمەوە. گاڵتە دەکەم.', 'غرر! لا تغضبني، سأخبئ الريحان. أمزح فقط.');
     } else {
@@ -288,12 +357,31 @@
       const me = account;
       return json({
         account:me, name:NAMES[me].en, views:viewsFor(me), roles:rolesOf(me),
-        suppliers:db.suppliers, items:db.items.map(i=>({...i, createdAt:i.createdAt || '2026-08-01T09:00:00.000Z', lastOrderedAt:history().filter(o=>o.entries.some(e=>e.items.some(x=>x.itemId === i.id))).map(o=>o.date).sort().pop() || null})), units:db.units,
+        suppliers:db.suppliers, items:db.items.map(i=>withLabStock({...i, createdAt:i.createdAt || '2026-08-01T09:00:00.000Z', lastOrderedAt:history().filter(o=>o.entries.some(e=>e.items.some(x=>x.itemId === i.id))).map(o=>o.date).sort().pop() || null})), units:db.units,
         history:db.history, historyMonth:monthStartIso().slice(0,7), settings:(db.settings ||= {})[me] || {}, devices:devices(me),
         activity:can(me,'record') ? db.activity : [], inbox:can(me,'assistant') ? db.inbox.slice(-20) : [],
         pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
         months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
       });
+    }
+    // Linking ordering items to stock items: the choices, and one link (only when the names match).
+    if(method === 'GET' && path === 'items/stock-options'){
+      if(!can(account, 'catalog')) return fail('forbidden', 403);
+      const amounts = can(account, 'transfers') || can(account, 'receipts');
+      return json({at:labStockAt(), items:LAB_STOCK.map(t=>amounts ? {name:t.name, ...globalThis.RicottaStockLink.amount(t)} : {name:t.name})});
+    }
+    {
+      const m = path.match(/^items\/([^/]+)\/stock$/);
+      if(method === 'PUT' && m){
+        if(!can(account, 'catalog')) return fail('forbidden', 403);
+        const it = db.items.find(x=>x.id === decodeURIComponent(m[1]));
+        if(!it) return fail('gone', 409);
+        const want = body.stockItem ?? null, t = want && LAB_STOCK.find(x=>x.name === want);
+        if(want && !t) return fail('stock_item_unknown', 422);
+        if(want && !globalThis.RicottaStockLink.matches(it, want)) return fail('names_dont_match', 422);
+        it.stockItem = want; save();
+        return json({ok:true, stockItem:want, stock:t ? {...globalThis.RicottaStockLink.amount(t), at:labStockAt()} : null});
+      }
     }
     // Stock (read only): Main Storage, with practice last-bought and last-moved notes.
     if(method === 'GET' && path === 'stock'){
@@ -406,9 +494,30 @@
       return fail('not_found', 404);
     }
     if(path === 'rico-rules'){
-      db.rules ||= [{id:'11111111-1111-4111-8111-111111111111', account:'rozha', rule:'Never order fish on Friday', created_at:new Date().toISOString()}];
-      if(method === 'POST'){ db.rules.push({id:crypto.randomUUID(), account, rule:String(body.rule).slice(0, 300), created_at:new Date().toISOString()}); return json({ok:true}); }
+      db.rules ||= [{id:'11111111-1111-4111-8111-111111111111', account:'rozha', rule:'Never order fish on Friday', source:'taught', created_at:new Date().toISOString()},
+        {id:'11111111-1111-4111-8111-111111111112', account:'rozha', rule:'Likes short answers', source:'learned', created_at:new Date().toISOString()}];
+      if(method === 'POST'){
+        if(/\b(pin|password|code)\b/i.test(String(body.rule))) return json({error:'secret'}, 422);
+        db.rules.push({id:crypto.randomUUID(), account, rule:String(body.rule).slice(0, 300), source:'taught', created_at:new Date().toISOString()}); return json({ok:true});
+      }
       return json(db.rules);
+    }
+    if(path === 'rico-routines'){
+      db.routines ||= [{id:'22222222-2222-4222-8222-222222222221', account:'rozha', kind:'remind', text:'Do the transfers', supplierIds:[], time:'09:00', days:[0,1,2,3,4,5,6], enabled:true, lastRunDay:null}];
+      if(method === 'POST'){
+        if(!['remind','prepare_order'].includes(body.kind) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.time || '')) return json({error:'invalid_input'}, 400);
+        const same = db.routines.find(x=>x.account === account && x.kind === body.kind && x.time === body.time && x.text === body.text);
+        if(same) return json({routine:same});
+        const r = {id:crypto.randomUUID(), account, kind:body.kind, text:String(body.text || '').slice(0, 200), supplierIds:body.supplierIds || [], time:body.time, days:body.days || [0,1,2,3,4,5,6], enabled:true, lastRunDay:null};
+        db.routines.push(r); save(); return json({routine:r});
+      }
+      return json(db.routines.filter(r=>account === 'rozha' || r.account === account));
+    }
+    if(path.startsWith('rico-routines/')){
+      const id = path.split('/')[1], r = (db.routines || []).find(x=>x.id === id);
+      if(!r) return json({error:'not_found'}, 404);
+      if(method === 'PUT'){ r.enabled = !!body.enabled; save(); return json({ok:true}); }
+      if(method === 'DELETE'){ db.routines = db.routines.filter(x=>x.id !== id); save(); return json({ok:true}); }
     }
     if(path.startsWith('rico-rules/') && method === 'DELETE'){ db.rules = (db.rules || []).filter(r=>r.id !== path.split('/')[1]); return json({ok:true}); }
     if(path === 'admin/backups' && method === 'GET') return json(Array.from({length:7}, (_, i)=>({day:new Date(Date.now() - i * 86400000).toISOString().slice(0, 10), suppliers:db.suppliers.length, items:db.items.length, orders:db.history.length, at:new Date().toISOString()})));
@@ -543,6 +652,23 @@
         receipts:{today:3, todayTotals:{IQD:1204000}, last7:26, last7Totals:{IQD:9800000}, perDay:receipts, active:0, problems:[], last:{at, by:'rozha', supplier:'Bread House Bakery'}},
         transfers:{today:12, last7:55, perDay:transfers, active:0, problems:[], last:{at, by:'rozha', to:'Pizza'}}});
     }
+    // Admin, Stock names: sample names with each kind of problem (Lab only; the real list comes from
+    // Ricotta Restaurant's stock and the rules in supabase/functions/api/stock-names.ts).
+    if(path === 'admin/stock-names' || path === 'admin/stock-names/check'){
+      const checked = method === 'POST' || db.namesChecked;
+      if(method === 'POST') db.namesChecked = true;
+      const rows = [
+        {name:'Akkawi  Cheese - پەنیری عەکاوی', problems:[{kind:'spacing', code:'double'}], fixed:'Akkawi Cheese - پەنیری عەکاوی', why:''},
+        {name:'Lemon -لیمۆ', problems:[{kind:'spacing', code:'separator'}], fixed:'Lemon - لیمۆ', why:''},
+        {name:'Almonds - باوي', problems:[{kind:'letters', code:'mixedLetters'}], fixed:'Almonds - باوی', why:''},
+        {name:'Pepsi 330ml - پێپسی ٣٣٠', problems:[{kind:'letters', code:'digits'}], fixed:'Pepsi 330ml - پێپسی 330', why:''},
+        {name:'Parsleyجەعفەری', problems:[{kind:'letters', code:'glued'}, {kind:'spacing', code:'separator'}], fixed:'Parsley - جەعفەری', why:''},
+        {name:'تەماتە', problems:[{kind:'missing', code:'noEnglish'}], fixed:checked ? 'Tomato - تەماتە' : null, why:checked ? 'Added the English name' : ''},
+        {name:'Basil', problems:[{kind:'missing', code:'noLocal'}], fixed:null, why:''},
+        ...(checked ? [{name:'Mozarella - پەنیری مۆزارێلا', problems:[{kind:'spelling', code:'spelling'}], fixed:'Mozzarella - پەنیری مۆزارێلا', why:'Misspelled: Mozarella'}] : []),
+      ];
+      return json({readAt:new Date(Date.now() - 6*60000).toISOString(), total:321, checkedAt:checked ? new Date().toISOString() : null, provider:checked ? 'anthropic' : null, stale:false, aiReady:true, rows});
+    }
     if(method === 'GET' && path === 'admin/server') return json({dbBytes:32077491, filesBytes:27532729, dbLimit:500 * 1048576, filesLimit:1073741824});
     if(method === 'GET' && path === 'admin/diagnostics'){
       if(account !== 'rozha') return fail('forbidden', 403);
@@ -619,7 +745,8 @@
       if(row) row.seconds = Math.min(86400, row.seconds + Math.min(1800, Math.floor(body.seconds))); else db.usage.push({account, deviceId:id, label:'Mac|Website', day, seconds:Math.min(1800, Math.floor(body.seconds))});
       save();
     }
-    if(path === 'devices/me' || path === 'devices/me/ack' || path === 'devices/command') return ok();
+    if(path === 'devices/me') return json({ok:true, sessionEnds:new Date(Date.now() + 30*86400000).toISOString()});
+    if(path === 'devices/me/ack' || path === 'devices/command') return ok();
     /* Admin -> PINs. The Lab keeps no PINs: 000000 stands for a wrong current PIN, and Yunis's Lab PIN (222222)
        can't be given to Rozh. */
     if(method === 'PUT' && path === 'admin/pin'){

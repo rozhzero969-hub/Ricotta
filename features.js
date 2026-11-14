@@ -12,8 +12,8 @@ const SETTINGS = [
   {id:'soundError', group:'sound', on:true},
   {id:'soundMilestone', group:'sound', on:true},
   {id:'soundUndo', group:'sound', on:true},
-  {id:'ricoSheet', group:'rico', on:true, role:'assistant'},
-  {id:'ricoAutoStart', group:'rico', on:false, role:'receipts', rozha:true},
+  {id:'ricoSheet', group:'ricoTab', on:true, role:'assistant'},             // in Rico's own settings
+  {id:'ricoAutoStart', group:'helper', on:false, role:'receipts', rozha:true}, // in Rico the helper
   {id:'tfAuto', group:'none', on:false},
   {id:'simpleView', group:'look', on:false},
   {id:'tables', group:'look', on:false},
@@ -21,7 +21,7 @@ const SETTINGS = [
   {id:'milestones', group:'look', on:true},
 ];
 const CHOICES = {darkMode:['auto', 'on', 'off'], ricoStyle:['normal', 'short', 'warm']};
-const SETTING_GROUPS = ['order', 'sound', 'rico', 'look'];
+const SETTING_GROUPS = ['order', 'sound', 'look'];
 
 /* Settings icons, like the iPhone's Settings: a white symbol on a coloured rounded square. Drawn on a
    24 grid, filled where Apple fills them, 2px lines otherwise, centred by eye. Each group has its
@@ -40,7 +40,6 @@ const SETTING_ICONS = {
   soundUndo:['#FF2D55', SF('<path d="M8.6 5.4 4.4 9.6l4.2 4.2"/><path d="M4.6 9.6H15a4.6 4.6 0 0 1 0 9.2h-3"/>')],
   ricoSheet:['#1F7A4D', SF('<path d="M12 3.4c.7 4.9 3.7 7.9 8.6 8.6-4.9.7-7.9 3.7-8.6 8.6-.7-4.9-3.7-7.9-8.6-8.6 4.9-.7 7.9-3.7 8.6-8.6Z"/>', true)],
   ricoAutoStart:['#34C759', SF('<path d="M12 3.4v7.4"/><path d="M7.1 6.6a7.2 7.2 0 1 0 9.8 0"/>')],
-  ricoStyle:['#30B0C7', SF('<path d="M5.4 4.6h13.2a2.2 2.2 0 0 1 2.2 2.2v7.6a2.2 2.2 0 0 1-2.2 2.2H12l-4.4 3.3a.5.5 0 0 1-.8-.4V16.6H5.4a2.2 2.2 0 0 1-2.2-2.2V6.8a2.2 2.2 0 0 1 2.2-2.2Z"/>', true)],
   ricoMac:['#1F7A4D', SF('<rect x="4" y="5" width="16" height="10.6" rx="1.8"/><path d="M2.6 18.6h18.8"/>')],
   ricoReceipts:['#FF9500', SF('<path d="M6.4 3.4h11.2v17.2l-2.8-1.8-2.8 1.8-2.8-1.8-2.8 1.8Z"/><path d="M9.2 8.4h5.6M9.2 12h5.6" stroke="#FF9500" stroke-width="1.9"/>', true)],
   tfAuto:['#30B0C7', SF('<path d="M4.4 8.6h13.2l-3.2-3.2M19.6 15.4H6.4l3.2 3.2"/>')],
@@ -48,7 +47,8 @@ const SETTING_ICONS = {
   limBig:['#34C759', SF('<rect x="3" y="6.4" width="18" height="11.2" rx="2"/><circle cx="12" cy="12" r="2.4"/><path d="M6.2 9.6v4.8M17.8 9.6v4.8"/>')],
   limJump:['#FF9500', SF('<path d="M3.8 16.6 9.4 11l3.4 3.4 7.4-7.4"/><path d="M15 7h5.2v5.2"/>')],
   limRate:['#34C759', SF('<path d="M12 3.6v16.8M16.2 7.4c-.6-1.4-2.2-2.2-4.2-2.2-2.5 0-4.2 1.2-4.2 3.1 0 4.3 8.6 2.4 8.6 6.8 0 1.9-1.8 3.2-4.4 3.2-2.2 0-3.9-.9-4.5-2.5"/>')],
-  telegram:['#2AABEE', SF('<path d="M20.6 4.4 3.4 11.2c-.6.2-.6 1.1 0 1.3l4.2 1.4 1.6 5c.2.5.8.6 1.2.3l2.4-2 4.4 3.2c.5.3 1.1.1 1.2-.5l3-14.6c.1-.6-.4-1-1-.9Z"/>', true)],
+  // Telegram's own app icon: the white paper plane on its blue gradient.
+  telegram:['linear-gradient(180deg,#37AEE2,#1E96C8)', '<svg viewBox="4.2 4.2 15.6 15.6" aria-hidden="true"><path fill="#fff" d="M5.2 11.6c3.8-1.66 6.33-2.75 7.6-3.28 3.62-1.5 4.37-1.77 4.86-1.78.11 0 .35.03.5.15.13.1.17.25.18.35.02.1.04.33.02.51-.2 2.06-1.04 7.06-1.47 9.37-.18.98-.54 1.3-.88 1.34-.75.07-1.32-.5-2.05-.97-1.13-.74-1.77-1.2-2.87-1.93-1.27-.84-.45-1.3.28-2.05.19-.2 3.48-3.19 3.55-3.46 0-.04.02-.16-.06-.23-.07-.06-.18-.04-.26-.02-.11.03-1.89 1.2-5.33 3.53-.5.35-.96.52-1.37.51-.45-.01-1.32-.26-1.97-.47-.79-.26-1.42-.4-1.37-.84.03-.23.34-.47.94-.71Z"/></svg>'],
   simpleView:['#8E8E93', SF('<rect x="4" y="5" width="16" height="14" rx="2.6"/><path d="M8 10h8M8 14h5"/>')],
   darkMode:['#007AFF', SF('<circle cx="12" cy="12" r="8.2"/><path d="M12 3.8a8.2 8.2 0 0 1 0 16.4Z" fill="#fff" stroke="none"/>')],
   tables:['#32ADE6', SF('<rect x="3.6" y="4.8" width="16.8" height="14.4" rx="2.4"/><path d="M3.6 10h16.8M10 10v9.2"/>')],
@@ -103,10 +103,10 @@ function applyFeatures(){
 function renderFeatureSettings(){
   const row = f=>`<label class="check-row preference-row has-ico"><input type="checkbox" data-feature="${f.id}" ${featureOn(f.id) ? 'checked' : ''}>${setIcon(f.id)}<span>${esc(t('feat_' + f.id))}<small>${esc(t('feat_' + f.id + '_hint'))}</small></span></label>`;
   return SETTING_GROUPS.map(group=>{
+    // The chat Rico's settings are in his own tab (the sliders button); Rico the helper has his own section.
     const rows = SETTINGS.filter(f=>f.group === group && (!f.role || canOpen(f.role)) && (!f.rozha || isRozha())).map(row).join('');
-    const extra = group === 'rico' && canOpen('assistant') ? `<div class="field feature-select"><div class="set-head">${setIcon('ricoStyle')}<label for="ricoStyleSel">${esc(t('styleLabel'))}</label></div><select id="ricoStyleSel">${CHOICES.ricoStyle.map(v=>`<option value="${v}" ${ricoStyle() === v ? 'selected' : ''}>${esc(t('style_' + v))}</option>`).join('')}</select></div>` : '';
-    if(!rows && !extra) return '';
-    return `<div class="section-title">${esc(t('settingsGroup_' + group))}</div><div class="form-card">${group === 'look' ? renderAppearanceRow() : ''}${rows}${extra}</div>`;
+    if(!rows && group !== 'look') return '';
+    return `<div class="section-title">${esc(t('settingsGroup_' + group))}</div><div class="form-card">${group === 'look' ? renderAppearanceRow() : ''}${rows}</div>`;
   }).join('');
 }
 function attachFeatureSettings(){
@@ -114,8 +114,6 @@ function attachFeatureSettings(){
     if(!(await setFeature(box.dataset.feature, box.checked))) box.checked = !box.checked;
     if(box.dataset.feature === 'tables' && state.view !== 'settings') render();
   });
-  const style = document.getElementById('ricoStyleSel');
-  if(style) style.onchange = ()=>setSetting('ricoStyle', style.value);
 }
 /* The warning before the wipe day: shown from 2 days before, on History and Record. */
 function wipeDaysLeft(){

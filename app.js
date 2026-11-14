@@ -201,10 +201,17 @@ function heartbeat(){
   if(!state.account) return;
   // "Still here", with the time spent in the app since the last one (sent again if it doesn't arrive).
   const batch = takeUsage();
-  api('devices/me', {method:'POST', body:usageBody(batch)}).then(r=>settleUsage(batch, r));
+  api('devices/me', {method:'POST', body:usageBody(batch)}).then(r=>{ settleUsage(batch, r); keepSessionEnd(r); });
   flushOutbox();
   flushProblems();
   syncSharedDraft();
+}
+/* A sign-in lasts 30 days from the last use: the server moves its end forward, and each heartbeat tells
+   this phone the new end so its own copy (which signs it out locally) moves too. */
+function keepSessionEnd(r){
+  const end = r && r.ok && r.data && r.data.sessionEnds, cur = lget('apiSession');
+  if(!end || !cur?.token || !Number.isFinite(Date.parse(end))) return;
+  if(Date.parse(end) > (Date.parse(cur.expiresAt) || 0)) lset('apiSession', {...cur, expiresAt:end});
 }
 /* Shared drafts keep local edits durable while merging other devices' changes.
    The base quantities are persisted too: reconnecting never blindly replaces
@@ -908,6 +915,11 @@ function render(){
   document.getElementById('stkTip')?.remove();
   applyLangClasses();
   applyPrefs();
+  // On a computer Rico takes the whole window: his chats replace the app's tabs (see style.css).
+  const html = document.documentElement, ricoWas = html.classList.contains('rico-mode');
+  html.classList.toggle('rico-mode', !!state.account && state.view === 'assistant');
+  // His chats slide in once, when Rico opens; a redraw never plays it again.
+  if(!ricoWas && html.classList.contains('rico-mode')){ html.classList.add('rico-enter'); setTimeout(()=>html.classList.remove('rico-enter'), 400); }
   syncAppearance();
   const app = document.getElementById('app');
   if(!state.account){
@@ -1271,7 +1283,7 @@ function endGlide(){
 const FADE_FRAMES = {inn:[{opacity:0, transform:'translate3d(0,6px,0)'},{opacity:1, transform:'none'}], out:[{opacity:1},{opacity:0}]};
 /* The first time a page opens, its rows fade up one after another, quickly; never again after, so it
    never slows anyone down. */
-const LIST_ROWS = '.item-row,.hist-card,.rec-card,.ad-tile-card,.list-row,.unit-chip,.rico-chip,.form-card';
+const LIST_ROWS = '.item-row,.hist-card,.rec-card,.ad-tile-card,.list-row,.unit-chip,.form-card';
 function listsComeIn(content){
   if(reducedMotion()) return;
   [...content.querySelectorAll(LIST_ROWS)].slice(0, 12).forEach((row, i)=>{
@@ -1343,6 +1355,7 @@ function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
   viewMemory.set(state.view, {query:state.catalogQuery || '', top:scrollBox().scrollTop});
   const ghost = frames?.out ? pageGhost(old) : null;
   const remembered = viewMemory.get(view);
+  if(view === 'assistant') state.ricoBack = state.view;   // Rico's back button returns here
   state.catalogQuery = remembered?.query || ''; state.view = view;
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
   // Receipts and Transfers open on their form (what was being typed stays in it).
@@ -2320,6 +2333,7 @@ function itemRowHtml(i, lastQty){
           <div class="item-name">${state.pins.includes(i.id) ? `<span class="item-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(i.name)}</div>
 
           <div class="item-unit">${esc(unitLabel(i.unit))}${lastQty && lastQty[i.id] ? ` · <span class="item-last">${esc(t('lastQty')(lastQty[i.id]))}</span>` : ''}${i.note ? ` · <span class="item-note" dir="auto">“${esc(i.note)}”</span>` : ''}</div>
+          ${itemStockLine(i)}
         </div>
         <div class="stepper">
           <button class="step-btn" data-dec="${esc(i.id)}" aria-label="${esc(t('decreaseQty')(i.name))}" ${qty>0?'':'disabled'}>−</button>
@@ -2328,6 +2342,22 @@ function itemRowHtml(i, lastQty){
         </div>
       </div>`;
 }
+/* An item linked to a stock item (Manage, edit the item): how much is in Main Storage, under its unit.
+   How old the reading is shows on hover (or a long press) only. */
+const stockQty = n=>Number(n || 0).toLocaleString('en-US', {maximumFractionDigits:3});
+/* The same words as HTML, the amount kept apart (<bdi>) so a Kurdish unit never turns the line around. */
+function stockHtml(st){
+  if(st.empty) return esc(t('stockNoneMain'));
+  return esc(t('stockLineMain')('\u2063')).replace('\u2063', `<bdi dir="${isRtl() ? 'rtl' : 'ltr'}">${esc(stockQty(st.qty))} ${esc(st.unit)}</bdi>`);
+}
+function itemStockLine(i){
+  const st = i.stockItem && i.stock;
+  if(!st || st.missing) return '';
+  const when = st.at ? t('stockReadAgo')(timeAgo(st.at)) : '';
+  return `<div class="item-stock${st.empty ? ' none' : ''}"${when ? ` title="${esc(when)}"` : ''}>${stockHtml(st)}</div>`;
+}
+// On a phone (no hover), a tap on the stock line says how old the reading is.
+document.addEventListener('click', e=>{ const el = e.target.closest?.('.item-stock[title]'); if(el && matchMedia('(hover: none)').matches) toast(el.title); });
 function refreshOrderResults(){
   const results = document.getElementById('orderResults');
   if(!results) return;
@@ -3145,7 +3175,7 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), cutoff:t('cutoffShort')})[k] || k;
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), stock:t('stockLinkLabel'), cutoff:t('cutoffShort')})[k] || k;
 }
 function recordValue(k, v){
   if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||t('noValue');}catch(_){} }
@@ -3554,10 +3584,12 @@ function openItemModal(id){
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
       <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
+      ${existing ? `<div class="field stock-link" id="mfStock"></div>` : `<div class="field"><label>${esc(t('stockLinkLabel'))}</label><div class="field-hint">${esc(t('stockLinkAfterSave'))}</div></div>`}
       `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
     onOpen: (box)=>{
+      if(existing) mountStockLink(box.querySelector('#mfStock'), existing.id);
       const sel = box.querySelector('#mfSupplier');
       const hint = box.querySelector('#mfSupHint');
       if(sel && hint) sel.onchange = ()=>{
@@ -3616,6 +3648,67 @@ function openItemModal(id){
       return {};
     }
   });
+}
+/* The Stock item setting in an item's form: which Ricotta Restaurant stock item it is, so the Order
+   screen can show how much is in Main Storage. Rozh picks it herself with a smart search (English,
+   Kurdish or Arabic, typos fine). A stock item whose name doesn't match this item can't be chosen
+   (the server checks the same rule). It saves on its own, apart from the form's Save. */
+let stockOptions = null;   // {at, items:[{name, qty?, unit?, empty?}]}, read once per session (amounts only with Stock)
+let stockOptionsFailed = false;
+async function loadStockOptions(){
+  if(stockOptions) return stockOptions;
+  const r = await api('items/stock-options', {quiet:true});
+  stockOptionsFailed = !(r.ok && Array.isArray(r.data?.items));
+  if(!stockOptionsFailed) stockOptions = r.data;
+  return stockOptions;
+}
+function mountStockLink(box, itemId){
+  if(!box) return;
+  let open = false, query = '';
+  const item = ()=>state.items.find(x=>x.id === itemId);
+  const L = globalThis.RicottaStockLink, S = globalThis.RicottaSearch;
+  const paint = ()=>{
+    const i = item(); if(!i){ box.innerHTML = ''; return; }
+    const cur = i.stockItem;
+    const st = cur && i.stock;
+    const now = cur ? `<div class="stock-link-now"><span class="stock-link-name" dir="auto">${esc(cur)}</span><small>${st?.missing ? esc(t('stockLinkMissing')) : st ? stockHtml(st) : ''}</small></div>` : `<div class="field-hint">${esc(t('stockLinkNone'))}</div>`;
+    box.innerHTML = `<label${open ? ' for="mfStockSearch"' : ''}>${esc(t('stockLinkLabel'))}</label>${now}
+      <div class="stock-link-actions">${open ? '' : `<button type="button" class="btn btn-ghost" data-stock-open>${esc(cur ? t('stockLinkChange') : t('stockLinkChoose'))}</button>`}${cur && !open ? `<button type="button" class="btn btn-ghost danger-text" data-stock-unlink>${esc(t('stockLinkRemove'))}</button>` : ''}</div>
+      ${open ? `<div class="stock-pick"><input id="mfStockSearch" class="stock-pick-input" type="search" autocomplete="off" dir="auto" placeholder="${esc(t('stockLinkSearch'))}" value="${esc(query)}"><div class="stock-pick-list" role="listbox" aria-label="${esc(t('stockLinkLabel'))}"></div><button type="button" class="btn btn-ghost" data-stock-cancel>${esc(t('cancel'))}</button></div>` : ''}`;
+    if(open){ paintList(); const input = box.querySelector('#mfStockSearch'); input.oninput = ()=>{ query = input.value; paintList(); }; input.onkeydown = e=>{ if(e.key === 'Enter') e.preventDefault(); }; }
+  };
+  const paintList = ()=>{
+    const list = box.querySelector('.stock-pick-list'); if(!list) return;
+    const i = item();
+    if(!stockOptions){ list.innerHTML = stockOptionsFailed ? `<div class="field-hint">${esc(t('loadFailed'))}</div>` : loadingLines(3); return; }
+    if(!stockOptions.items.length){ list.innerHTML = `<div class="field-hint">${esc(t('stockLinkNoStock'))}</div>`; return; }
+    const all = stockOptions.items;
+    // Typed words search every stock item; with nothing typed, the item's own names suggest matches.
+    const ranked = query.trim() ? S.rank(all, query, o=>[o.name]) : all.filter(o=>L.matches(i, o.name)).sort((a, b)=>S.score(i.name, [a.name]) - S.score(i.name, [b.name]));
+    // Ones that can be linked come first; the rest stay visible, greyed, with the reason.
+    const rows = ranked.slice(0, 20).map(o=>({o, ok:L.matches(i, o.name)})).sort((a, b)=>Number(b.ok) - Number(a.ok)).slice(0, 12);
+    list.innerHTML = rows.length ? rows.map(({o, ok})=>{
+      const on = o.name === i.stockItem;
+      return `<button type="button" class="stock-opt${on ? ' on' : ''}" role="option" aria-selected="${on}" data-stock-pick="${esc(o.name)}" ${ok ? '' : 'disabled aria-disabled="true"'}><span dir="auto">${esc(o.name)}</span>${ok && o.unit == null ? '' : `<small>${ok ? stockHtml(o) : esc(t('stockLinkNoMatch'))}</small>`}</button>`;
+    }).join('') : `<div class="field-hint">${esc(query.trim() ? t('rrNoMatch') : t('stockLinkNoSuggest'))}</div>`;
+  };
+  const save = async name=>{
+    const i = item(); if(!i) return;
+    const r = await api(`items/${encodeURIComponent(i.id)}/stock`, {method:'PUT', body:{stockItem:name}});
+    if(!r.ok){ toast(r.data?.error === 'names_dont_match' ? t('stockLinkNoMatch') : t('saveFailed'), 'error'); return; }
+    i.stockItem = r.data.stockItem; if(r.data.stock) i.stock = r.data.stock; else delete i.stock;
+    open = false; query = ''; paint();
+    toast(name ? t('stockLinkSaved') : t('stockLinkRemoved'));
+    if(state.view === 'order') refreshOrderResults?.();
+  };
+  box.onclick = async e=>{
+    if(e.target.closest('[data-stock-open]')){ open = true; paint(); box.querySelector('#mfStockSearch')?.focus(); await loadStockOptions(); paintList(); return; }
+    if(e.target.closest('[data-stock-cancel]')){ open = false; query = ''; paint(); return; }
+    if(e.target.closest('[data-stock-unlink]')){ await save(null); return; }
+    const pick = e.target.closest('[data-stock-pick]:not([disabled])');
+    if(pick) await save(pick.dataset.stockPick);
+  };
+  paint();
 }
 /* Deleting an item asks first, then offers Undo. The server keeps a copy for 10 minutes that only
    this account on this device can bring back; it comes back with its amount in the order. */
@@ -3756,7 +3849,9 @@ function versionCmp(a, b){
   return 0;
 }
 function renderSettings(){
-  return `${renderPendingSync()}${renderNotifSettings()}${renderRicoReceiptSettings()}${renderFeatureSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div>`;
+  // Everyday choices first (notifications, ordering, sounds, look), then Rico the helper (Rozh), then
+  // help and privacy. Rico the chat assistant has his own settings in his tab.
+  return `<div class="settings-page">${renderPendingSync()}${renderNotifSettings()}${renderFeatureSettings()}${renderRicoReceiptSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div></div>`;
 }
 /* Help: tell Rozh about a problem (it arrives in Admin, Problems), and the keyboard shortcuts. */
 function renderHelpSettings(){
@@ -3783,8 +3878,7 @@ function openReportProblem(){
 /* Privacy: Rico's AI permission (asked the first time Rico is used, and taken back here),
    the privacy policy, and Sign Out at the very end, like the iPhone's Settings. */
 function renderPrivacySettings(){
-  return `<div class="section-title">${esc(t('settingsPrivacy'))}</div><div class="form-card">
-    <label class="check-row preference-row has-ico"><input type="checkbox" id="aiConsent" ${aiConsented()?'checked':''}>${setIcon('ai')}<span>${esc(t('aiSettingLabel'))}<small>${esc(t('aiSettingHint'))}</small></span></label>
+  return `<div class="section-title">${esc(t('settingsPrivacy'))}</div><div class="form-card settings-rows">
     <a class="settings-link" href="${esc(privacyHref())}">${setIcon('privacy')}<span>${esc(t('privacyPolicy'))}</span><i class="sheet-chevron" aria-hidden="true"></i></a></div>
     <div class="form-card settings-signout-card"><button type="button" class="settings-signout" id="settingsSignOut">${esc(t('logout'))}</button></div>`;
 }
@@ -3798,13 +3892,26 @@ function renderNotifSettings(){
   const note = !pushConfigured() ? t('notifNotConfigured') : !pushStatus.supported ? t('notifUnsupported') : '';
   return `<div class="section-title">${esc(t('settingsGroup_notif'))}</div><div class="form-card">${note ? `<div class="notif-sub">${esc(note)}</div>` : `<label class="check-row preference-row has-ico"><input type="checkbox" id="pushSwitch" ${pushStatus.subscribed ? 'checked' : ''}>${setIcon('notif')}<span>${esc(t('notifSwitch'))}<small>${esc(t('notifSwitchHint'))}</small></span></label>`}</div>`;
 }
+/* A redraw that keeps one row exactly where it was on the screen (nothing jumps under the finger). */
+function keepRowInPlace(sel, redraw){
+  const top = document.querySelector(sel)?.getBoundingClientRect().top;
+  redraw();
+  const el = document.querySelector(sel);
+  if(top != null && el) scrollBox().scrollTop += el.getBoundingClientRect().top - top;
+}
+/* Switches change only when the switch itself is pressed, not anywhere on its row (Settings and Rico's
+   settings). The row's words still name the switch for screen readers. */
+document.addEventListener('click', e=>{
+  const row = e.target.closest?.('label.preference-row, label.rico-set-row');
+  if(row && row.querySelector('input[type=checkbox]') && !e.target.closest('input')) e.preventDefault();
+}, true);
 function attachNotifEvents(){
   const box = document.getElementById('pushSwitch');
   if(box) box.onchange = async ()=>{
     box.disabled = true;
-    if(!box.checked){ await disablePush(); render(); return; }
+    if(!box.checked){ await disablePush(); keepRowInPlace('#pushSwitch', render); return; }
     const res = await enablePush();
-    render();
+    keepRowInPlace('#pushSwitch', render);
     // Turned on: the bell rings twice.
     if(pushStatus.subscribed) document.querySelector('#pushSwitch ~ .set-ico svg')?.animate?.([0,16,-14,10,-6,3,0].map(r=>({transform:`rotate(${r}deg)`})), {duration:800, easing:'cubic-bezier(.25,.1,.25,1)'});
     await showPushEnableResult(res);
@@ -3832,11 +3939,6 @@ function attachSettingsEvents(){
  if(exp) exp.onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(currentOutbox(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ricotta-pending-orders.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   bindAppearance();
   attachFeatureSettings();
-  const ai = document.getElementById('aiConsent');
-  if(ai) ai.onchange = async ()=>{
-    if(!ai.checked){ setAiConsent(false); return; }
-    ai.checked = await aiConsent();
-  };
   document.getElementById('settingsSignOut').onclick = ()=>doLogout();
   document.getElementById('reportProblemBtn').onclick = openReportProblem;
   document.getElementById('shortcutsBtn').onclick = openShortcuts;

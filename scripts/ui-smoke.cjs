@@ -161,6 +161,11 @@ const server=http.createServer((req,res)=>{
       await page.locator('[data-account-go="settings"]').click();
       await page.waitForSelector('.account-sheet',{state:'detached'});
     }else{
+      // On a computer Rico hides the app's tabs: his back arrow brings them back first.
+      if(await page.evaluate(()=>document.documentElement.classList.contains('rico-mode') && innerWidth>=960)){
+        await page.locator('[data-rico-leave]').click(); await settle(page);
+        if(await page.evaluate(()=>state.view)===destination) return;
+      }
       // More exists only with more than four screens, and only holds the ones that are not tabs.
       if(await page.locator(`#navMore [data-view="${destination}"]`).count() && await page.evaluate(()=>innerWidth<960)){
         if(await page.locator('#navMoreBtn').getAttribute('aria-expanded')!=='true')await page.locator('#navMoreBtn').click();
@@ -365,9 +370,13 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#pushSwitch, .form-card .notif-sub').count()>=1,true,'notifications live in Settings');
     assert.equal(await page.locator('#reminderEnabled').count(),0,'there is no daily reminder');
     assert.equal(await page.locator('[data-pin-change], .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
-    // Admin: one calm dashboard. Six tools, two people (each with their own page) and All devices.
+    // Admin: one calm dashboard. Its tools (Stock names only for someone with Receipts or Transfers;
+    // Rico's page opens from his card), two people (each with their own page) and All devices.
     await openView(page,'admin');
-    assert.equal(await page.locator('.adh-tools [data-admin-open]').count(),6,'Admin has six tools');
+    const tools=await page.locator('.adh-tools [data-admin-open]').evaluateAll(els=>els.map(e=>e.dataset.adminOpen));
+    const rrViews=await page.evaluate(()=>state.views.includes('receipts') || state.views.includes('transfers'));
+    assert.deepEqual(tools,['problems','security','health','catalog',...(rrViews ? ['names'] : []),'restore'],'Admin tools');
+    assert.equal(await page.locator('.adh-rico[data-admin-open="rico"]').count(),1,'Rico\u2019s card opens his page');
     assert.equal(await page.locator('[data-admin-person]').count(),2,'one row per person');
     // The status line counts only real problems, today's numbers come from the overview, each with a bar
     // for each of the last 14 days.
@@ -398,7 +407,7 @@ const server=http.createServer((req,res)=>{
     assert.deepEqual(calls.filter(c=>c.endpoint==='admin/pin').at(-1).body,{account:'yunis',currentPin:'471906',newPin:'591837'},'the change goes out once it is right');
     await page.locator('.admin-heading .page-back').click();await settle(page);
     assert.equal(await page.locator('.adh-tools').count(),1,'Back returns to the Admin dashboard');
-    await page.locator('.adh-tools [data-admin-open="rico"]').click();await settle(page);
+    await page.locator('.adh-rico[data-admin-open="rico"]').click();await settle(page);
     // Rico's AI: each AI with its state, replies and tokens. Keys are never typed or shown in the app.
     await page.waitForSelector('.ad-ai-list .ad-ai');
     assert.equal(await page.locator('.ad-ai').count(),3,'Haiku, Gemini and Groq');
@@ -446,8 +455,8 @@ const server=http.createServer((req,res)=>{
     // Rico: moods, inbox, the robot.
     await openView(page,'assistant');
     assert.equal(await page.locator('.rico-note').count(),1,'Rico\u2019s own message is at the top');
-    assert.equal(await page.locator('.rico-hello, .rico-week, .rico-next, .rico-recent').count(),0,'a quiet first screen: his message and the shortcuts only');
-    assert.ok(await page.locator('.rico-chip').count()>=4,'the shortcuts are there');
+    assert.equal(await page.locator('.rico-week, .rico-next, .rico-recent').count(),0,'a quiet first screen: a greeting, his message and the shortcuts only');
+    assert.ok(await page.locator('.rico-tile').count()>=4,'the shortcuts are there');
     assert.equal(await page.locator('#ricoNameForm').count(),0,'Rico never asks for a name');
     assert.ok(calls.some(c=>c.endpoint==='assistant/inbox/read'),'opening Rico reads his messages');
     // Clicking into Rico's message box must not resize the page (the body once picked up the typing-bubble style).
@@ -642,7 +651,10 @@ const server=http.createServer((req,res)=>{
     await y.page.locator('[data-dark="off"]').click();
     assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('dark')),false);
     // Settings belong to the account: each switch saves on the server for him.
-    const featureBox=id=>y.page.locator(`label:has([data-feature="${id}"])`);
+    const featureBox=id=>y.page.locator(`[data-feature="${id}"]`);
+    // Only the switch itself flips a setting: a tap on the row's words changes nothing.
+    await y.page.locator('label:has([data-feature="compactRows"]) span').first().click();
+    assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('compact-rows')),false,'tapping the row text does not flip the switch');
     await featureBox('compactRows').click();
     assert.equal(await y.page.evaluate(()=>document.documentElement.classList.contains('compact-rows')),true,'Compact rows switch works');
     assert.deepEqual(y.calls.filter(c=>c.endpoint==='settings').at(-1).body,{key:'compactRows',value:true},'saved on his account');
@@ -654,8 +666,8 @@ const server=http.createServer((req,res)=>{
     await y.page.evaluate(()=>goView('settings')); await settle(y.page);
     await featureBox('showLastQty').click();
     assert.deepEqual(await y.page.evaluate(()=>[...document.querySelectorAll('[data-feature]')].map(i=>i.dataset.feature+':'+i.checked)),
-      ['swipe:true','showLastQty:false','compactRows:false','soundQty:true','soundSent:true','soundRico:true','soundError:true','soundMilestone:true','soundUndo:true','ricoSheet:true','simpleView:false','tables:false','kitchenMode:false','milestones:true'],'the defaults, in their sections');
-    assert.deepEqual(await y.page.locator('.content .section-title').evaluateAll(els=>els.map(e=>e.textContent)),['Notifications','Ordering','Sounds','Rico','Look','Help','Privacy'],'settings are in sections');
+      ['swipe:true','showLastQty:false','compactRows:false','soundQty:true','soundSent:true','soundRico:true','soundError:true','soundMilestone:true','soundUndo:true','simpleView:false','tables:false','kitchenMode:false','milestones:true'],'the defaults, in their sections (the chat Rico settings are in his tab)');
+    assert.deepEqual(await y.page.locator('.content .section-title').evaluateAll(els=>els.map(e=>e.textContent)),['Notifications','Ordering','Sounds','Look','Help','Privacy'],'settings are in sections (the chat Rico settings are in his tab)');
     assert.equal(await y.page.locator('#reminderEnabled,#reminderTime').count(),0,'no daily reminder');
     assert.equal(await y.page.locator('#settingsSignOut').count(),1,'Sign Out is at the end of Settings');
     assert.match(await y.page.locator('.settings-link').getAttribute('href'),/^privacy\.html#en$/,'Settings links to the privacy policy');

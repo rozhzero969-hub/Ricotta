@@ -19,15 +19,15 @@
    draftProgressLabel, flushOutbox, syncSharedDraft, maybeFinishQueue, currentOutbox, sendDeviceCommand,
    refreshDevices, deviceParts, deviceTitle, otherDevices, commandIsPending, versionCmp. Load before app.js. */
 
-const ADMIN_PAGES = ['problems','security','health','access','devices','time','rico','catalog','restore','person'];
-const ADMIN_SOURCES = {overview:'admin/overview', backups:'admin/backups', health:'admin/diagnostics', security:'admin/security', problems:'admin/problems', usage:'admin/usage', rico:'admin/rico', ai:'admin/ai', roles:'admin/roles'};
+const ADMIN_PAGES = ['problems','security','health','access','devices','time','rico','catalog','names','restore','person'];
+const ADMIN_SOURCES = {overview:'admin/overview', backups:'admin/backups', health:'admin/diagnostics', security:'admin/security', problems:'admin/problems', usage:'admin/usage', rico:'admin/rico', ai:'admin/ai', roles:'admin/roles', names:'admin/stock-names'};
 /* What each page needs (the list itself shows a value from most of them). */
-const ADMIN_NEEDS = {restore:['backups'], home:['overview','health','security','problems','usage','rico','roles'], problems:['problems'], security:['security'], health:['health','problems','security'],
-  access:['roles'], devices:[], time:['usage'], rico:['rico','ai'], catalog:[], person:['usage','roles']};
+const ADMIN_NEEDS = {restore:['backups'], home:['overview','health','security','problems','usage','rico','roles','names'], problems:['problems'], security:['security'], health:['health','problems','security'],
+  access:['roles'], devices:[], time:['usage'], rico:['rico','ai'], catalog:[], names:['names'], person:['usage','roles']};
 let adminData = {account:null, busy:{}, failed:{}};
-let adminFilter = {problems:'open', security:'all', time:'day', person:'rozha'};
+let adminFilter = {problems:'open', security:'all', time:'day', person:'rozha', names:'all'};
 let adminListTop = 0;
-function resetAdmin(){ adminData = {account:null, busy:{}, failed:{}}; adminFilter = {problems:'open', security:'all', time:'day', person:'rozha'}; adminListTop = 0; }
+function resetAdmin(){ adminData = {account:null, busy:{}, failed:{}}; adminFilter = {problems:'open', security:'all', time:'day', person:'rozha', names:'all'}; adminListTop = 0; }
 function adminLoad(page, force = false){
   if(!isRozha()) return;
   if(adminData.account !== state.account){ resetAdmin(); adminData.account = state.account; }
@@ -60,7 +60,7 @@ const isAdminObject = v=>!!v && typeof v === 'object' && !Array.isArray(v);
 const ADMIN_SHAPES = {overview:d=>isAdminObject(d) && isAdminObject(d.orders) && Array.isArray(d.orders.perDay) && Array.isArray(d.orders.suppliers) && isAdminObject(d.receipts) && Array.isArray(d.receipts.problems) && isAdminObject(d.transfers) && Array.isArray(d.transfers.problems),
   backups:Array.isArray, problems:Array.isArray, health:isAdminObject, rico:isAdminObject, ai:d=>isAdminObject(d) && Array.isArray(d.brains),
   security:d=>isAdminObject(d) && Array.isArray(d.events), usage:d=>isAdminObject(d) && Array.isArray(d.people),
-  roles:d=>isAdminObject(d) && Array.isArray(d.yunis) && Array.isArray(d.roles)};
+  roles:d=>isAdminObject(d) && Array.isArray(d.yunis) && Array.isArray(d.roles), names:d=>isAdminObject(d) && Array.isArray(d.rows)};
 const adminValue = key=>adminData.account === state.account ? adminData[key]?.data : null;
 
 /* ---------- The Admin screen ---------- */
@@ -72,7 +72,7 @@ function renderAdminBody(){
   const page = ADMIN_PAGES.includes(state.adminPage) ? state.adminPage : null;
   if(!page) return renderAdminHome();
   return ({problems:renderAdminProblems, security:renderAdminSecurity, health:renderAdminHealth, access:renderAdminAccess,
-    devices:renderAdminDevices, time:renderAdminTime, rico:renderAdminRico, catalog:renderAdminCatalog, restore:renderAdminRestore, person:renderAdminPerson})[page]();
+    devices:renderAdminDevices, time:renderAdminTime, rico:renderAdminRico, catalog:renderAdminCatalog, names:renderAdminNames, restore:renderAdminRestore, person:renderAdminPerson})[page]();
 }
 /* Redraws only Admin's own part (the heading stays), when new data arrives. */
 function paintAdmin(){
@@ -104,7 +104,7 @@ function attachAdminBodyEvents(){
     await Promise.all(keys.map(k=>adminFetch(k, true)));
   }));
   ({restore:attachAdminRestore, problems:attachAdminProblems, security:attachAdminSecurity, health:attachAdminHealth, access:attachAdminAccess,
-    devices:attachAdminDevices, catalog:attachAdminCatalog, time:attachAdminTime, rico:attachAdminAiSwitches, person:attachAdminPerson})[state.adminPage]?.(slot);
+    devices:attachAdminDevices, catalog:attachAdminCatalog, names:attachAdminNames, time:attachAdminTime, rico:attachAdminAiSwitches, person:attachAdminPerson})[state.adminPage]?.(slot);
 }
 /* Opens a page (or goes back to the list) with the iPhone's push: the new page slides in from the side
    while the list moves a little the other way and dims; Back reverses it. */
@@ -141,7 +141,7 @@ function openAdminPage(page){
 }
 /* The heading of an Admin page: Admin's back button, then the page's name. */
 function adminHeading(){
-  const refresh = ['catalog','health'].includes(state.adminPage) ? '' : adminRefresh();
+  const refresh = ['catalog','health','names'].includes(state.adminPage) ? '' : adminRefresh();
   return `<header class="page-heading admin-heading"><button type="button" class="page-back" data-admin-open="">${ICON_BACK}<span>${esc(t('adminTitle'))}</span></button><div class="page-title-row"><h1>${esc(t('adminPage_' + state.adminPage))}</h1>${refresh}</div></header>`;
 }
 const adminRefresh = ()=>`<button type="button" class="icon-btn admin-refresh" data-admin-refresh id="adminRefresh" aria-label="${esc(t('refresh'))}">${ICON_REFRESH}</button>`;
@@ -183,7 +183,7 @@ function adminIssues(){
      3. Needs you: only real things, each with one button (Open, Refresh).
      4. Rico: is he running, and what he did today.
      5. People: Rozh and Yunis, one row each; a row opens that person's page (time, phones, PIN, access).
-     6. Tools: Problems, Security, Health, Catalog, Restore, Rico's AI.
+     6. Tools: Problems, Security, Health, Catalog, Stock names, Restore (Rico's page opens from his card).
      7. Server: how full the database and the photos are.
    Only real rows are counted: a number that could not be read says so and is never shown as 0. */
 const adNum = n=>Number(n || 0).toLocaleString('en-US');
@@ -277,18 +277,19 @@ function renderAdminHome(){
   const sec = adminValue('security'), locked = !!(sec?.lockedUntil && Date.parse(sec.lockedUntil) > Date.now());
   const rows = healthRows(), bad = rows.filter(r=>r.tone === 'bad').length;
   const toReview = catalogCheckup().reduce((n, g)=>n + g.items.length, 0);
+  const names = adminValue('names');
   const tool = (page, icon, value, sub, alert = false)=>`<button type="button" class="adh-tool" data-admin-open="${page}"><span class="adh-tool-top"><span class="adh-tool-ico" aria-hidden="true">${icon}</span><span class="adh-tool-val${alert ? ' alert' : ''}">${esc(value)}</span></span><span class="adh-tool-name">${esc(t('adminPage_' + page))}</span><small>${esc(sub)}</small></button>`;
   const tools = `<div class="section-title">${esc(t('adTools'))}</div><div class="adh-tools">
       ${tool('problems', ADMIN_ICONS.problems, pr ? (open ? String(open) : t('adOk')) : '·', pr ? (open ? t('adProblemsOpen')(open) : t('adProblemsClear')) : '', open > 0)}
       ${tool('security', ADMIN_ICONS.security, sec ? (locked ? t('adLocked') : t('adOk')) : '·', sec ? t('adWrongPins')(Number(sec.wrongPins24h) || 0) : '', locked)}
       ${tool('health', ADMIN_ICONS.health, health ? (bad ? t('adNeedsLook') : t('adOk')) : '·', health ? t('checkedAt')(timeAgo(health.checkedAt)) : '', bad > 0)}
       ${tool('catalog', ADMIN_ICONS.catalog, toReview ? String(toReview) : t('adOk'), toReview ? t('adCatalogSub') : t('adCatalogClear'))}
+      ${views.includes('receipts') || views.includes('transfers') ? tool('names', ADMIN_ICONS.names, names ? (names.rows.length ? String(names.rows.length) : t('adOk')) : '·', names ? t('adNamesSub')(names.rows.length) : '') : ''}
       ${tool('restore', ADMIN_ICONS.restore, '', t('adRestoreSub'))}
-      ${tool('rico', ICON_SPARKLE, '', t('adAiSub'))}
     </div>`;
 
   return status + today + needs + ricoCard + people + tools + adServerCard()
-    + `<details class="ad-sources"><summary>${esc(t('adSourcesTitle'))}</summary><p>${esc(t('adSourcesBody'))}</p></details>`;
+    + `<p class="ad-sources">${esc(t('adSourcesNote'))}</p>`;
 }
 /* A person's page: their time today and on average, their phones (Refresh or Log out), their PIN, and
    for Yunis what he can open. */
@@ -357,6 +358,7 @@ const ADMIN_ICONS = {
   pins:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 20 3"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg>`,
   devices:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>`,
   time:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>`,
+  names:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17 7.5 6l4 11"/><path d="M5 13h5"/><path d="m14 14 2.5 2.5L21 11"/></svg>`,
   catalog:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.2 1.2L7 5"/><path d="m3.5 12 1.2 1.2L7 11"/><path d="m3.5 18 1.2 1.2L7 17"/></svg>`,
   person:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>`,
   lock:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>`,
@@ -606,13 +608,15 @@ function openPinChange(account){
 }
 
 /* ---------- Devices ---------- */
-/* Which phones are signed in right now, to which account, when each one last signed in and was last
-   seen, and which version it runs. Logged in = signed in, no log-out waiting for it, and seen within
-   one session length (a sign-in expires after 18 hours even if nobody logs out). */
-const SESSION_MS = 18*60*60*1000;
+/* Which devices are signed in right now, to which account, what they are, when each was last seen,
+   which version it runs, when its sign-in ends and where it last signed in from. A sign-in
+   lasts 30 days from the last use; the server sends when each one ends (sessionEnds). */
+const SESSION_MS = 30*24*60*60*1000;
 function isLoggedIn(d){
+  if(commandIsPending(d) && d.command.type === 'logout') return false;
+  if(d.sessionEnds) return !!d.loggedIn && Date.parse(d.sessionEnds) > Date.now();
   const seen = Date.parse(d.lastSeen || d.lastLogin || 0) || 0;
-  return !!d.loggedIn && Date.now() - seen < SESSION_MS && !(commandIsPending(d) && d.command.type === 'logout');
+  return !!d.loggedIn && Date.now() - seen < SESSION_MS;
 }
 function deviceStatus(d){
   if(!isLoggedIn(d)) return 'out';
@@ -622,6 +626,23 @@ function deviceStatus(d){
 /* The newest version any phone runs (this one included). */
 function latestVersion(){
   return (state.devices || []).map(d=>d.appVersion).filter(Boolean).reduce((m, v)=>versionCmp(v, m) > 0 ? v : m, APP_VERSION);
+}
+const devDay = iso=>formatIraqDateTime(iso, {day:'numeric', month:'short'});
+/* Where the device was when it last signed in: city and country (or the address when no place is
+   known) and when, with a plain red note when it looks like a VPN (see supabase/functions/api/geo.ts). */
+function devPlace(c){
+  if(!c) return '';
+  try{ return new Intl.DisplayNames([state.lang === 'ku' ? 'ckb' : state.lang, 'en'], {type:'region'}).of(c) || c; }catch(_){ return c; }
+}
+function devSignInLine(d){
+  const si = d.signin;
+  if(!si || !si.at) return '';
+  const country = si.country ? devPlace(si.country) : '';
+  const place = [si.city, country].filter(Boolean).join(', ') || si.ip;
+  if(!place) return '';
+  const when = formatIraqDateTime(si.at, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+  const vpn = si.vpn === true ? (si.vpnReason === 'org' && si.org ? t('devVpnOrg')(si.org.replace(/^AS\d+\s+/, '')) : t('devVpnTz')(si.deviceTz || '', country || si.ipTz || '')) : '';
+  return `<span dir="auto">${esc(t('devSignedInFrom')(place, when))}</span>${si.ip && place !== si.ip ? `<span class="dev-faint" dir="ltr">${esc(si.ip)}</span>` : ''}${vpn ? `<span class="dev-vpn" dir="auto">${esc(vpn)}</span>` : ''}`;
 }
 function renderAdminDevices(){
   const visible = state.devices.filter(isLoggedIn);
@@ -633,23 +654,36 @@ function renderAdminDevices(){
   const cards = sorted.map(d=>{
     const st = deviceStatus(d), isThis = d.id === state.deviceId, parts = deviceParts(d);
     const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
+    const current = d.appVersion && versionCmp(d.appVersion, latest) >= 0;
+    const facts = [
+      d.lastSeen ? esc(t('devSeen')(timeAgo(d.lastSeen))) : '',
+      d.appVersion ? `<bdi dir="ltr">${esc(d.appVersion)}</bdi> <span class="dev-ver ${current ? 'ok' : 'old'}">${esc(t(current ? 'versionCurrent' : 'versionOld'))}</span>` : esc(t('versionUnknown')),
+      d.sessionEnds ? esc(t(Date.parse(d.sessionEnds) > Date.now() ? 'devSignedInUntil' : 'devSignInEnded')(devDay(d.sessionEnds))) : '',
+      esc(t(d.push ? 'devNotifOn' : 'devNotifOff')),
+    ].filter(Boolean).map(f=>`<span>${f}</span>`).join('');
     return `<div class="dev-card">
-      <div class="dev-top"><div class="dev-name">${accountLabel(d.account) ? whoBadge(d.account) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">· ${esc(t('thisDevice'))}</span>` : ''}</div><span class="dev-badge dev-${st}">${badge}</span></div>
-      <div class="dev-kind">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : ICON_MOBILE} <span>${esc(parts.kind)}</span>${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
-      <div class="rec-line"><span class="rec-k">${t('lastLoginLabel')}</span> ${fmtDateTime(d.lastLogin)}${d.lastLogin ? ` <span class="dev-ago">(${timeAgo(d.lastLogin)})</span>` : ''}</div>
-      ${d.lastSeen ? `<div class="rec-line"><span class="rec-k">${t('lastSeenLabel')}</span> ${timeAgo(d.lastSeen)}</div>` : ''}
-      <div class="rec-line"><span class="rec-k">${t('settingsGroup_notif')}</span> <span class="dev-notif ${d.push ? 'on' : 'off'}">${esc(t(d.push ? 'notifOn' : 'notifOff'))}</span></div>
-      <div class="rec-line"><span class="rec-k">${t('versionLabel')}</span> ${d.appVersion ? `<bdi dir="ltr">${esc(d.appVersion)}</bdi> <span class="dev-ver ${versionCmp(d.appVersion, latest) >= 0 ? 'ok' : 'old'}">${esc(t(versionCmp(d.appVersion, latest) >= 0 ? 'versionCurrent' : 'versionOld'))}</span>` : esc(t('versionUnknown'))}</div>
+      <div class="dev-head">
+        <span class="dev-ic">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : ICON_MOBILE}</span>
+        <div class="dev-id">
+          <div class="dev-title" dir="auto">${esc(parts.kind)}${parts.how ? `<span class="dev-how">${esc(parts.how)}</span>` : ''}</div>
+          <div class="dev-who">${accountLabel(d.account) ? esc(accountLabel(d.account)) : esc(t('unnamedDevice'))}${isThis ? ` <span class="dev-this">· ${esc(t('thisDevice'))}</span>` : ''} <span class="dev-faint">· ${esc(t('lastLoginLabel'))} ${esc(timeAgo(d.lastLogin))}</span></div>
+        </div>
+        <span class="dev-badge dev-${st}">${badge}</span>
+      </div>
+      <div class="dev-facts">${facts}</div>
+      <div class="dev-foot">
+        <div class="dev-loc">${devSignInLine(d)}</div>
+        ${isThis ? '' : `<div class="dev-actions">
+          <button class="btn btn-ghost" data-devrefresh="${esc(d.id)}">${ICON_REFRESH}<span>${t('refreshDevice')}</span></button>
+          ${isLoggedIn(d) ? `<button class="btn btn-danger" data-devlogout="${esc(d.id)}">${t('logoutDevice')}</button>` : ''}
+        </div>`}
+      </div>
       ${commandIsPending(d) ? `<div class="dev-pending">${d.command.type==='logout'?t('cmdLogoutPending'):t('cmdRefreshPending')} · ${timeAgo(d.command.ts)}</div>` : ''}
-      ${isThis ? '' : `<div class="dev-actions">
-        <button class="btn btn-ghost" data-devrefresh="${esc(d.id)}">${ICON_REFRESH} ${t('refreshDevice')}</button>
-        ${isLoggedIn(d) ? `<button class="btn btn-danger" data-devlogout="${esc(d.id)}">${t('logoutDevice')}</button>` : ''}
-      </div>`}
     </div>`;
   }).join('');
   return `${adminHeading()}
-    <div class="ad-stats"><div><b>${visible.length}</b><span>${esc(t('devicesLoggedInEyebrow'))}</span></div><div><b>${activeCount}</b><span>${esc(t('adActiveNow'))}</span></div><div><b class="ad-small">${esc(String(latest).replace(/^\d{4}-/, ''))}</b><span>${esc(t('adNewestVersion'))}</span></div></div>
-    ${others.length ? `<div class="dev-bulk"><button class="btn btn-ghost" id="devRefreshAllBtn">${ICON_REFRESH} ${t('refreshAllDevices')}</button><button class="btn btn-danger" id="devLogoutAllBtn">${t('logoutAllOthers')}</button></div>` : ''}
+    <div class="ad-stats dev-stats"><div><b>${visible.length}</b><span>${esc(t('devicesLoggedInEyebrow'))}</span></div><div><b>${activeCount}</b><span>${esc(t('adActiveNow'))}</span></div><div><b class="ad-small">${esc(String(latest).replace(/^\d{4}-/, ''))}</b><span>${esc(t('adNewestVersion'))}</span></div></div>
+    ${others.length ? `<div class="dev-bulk"><button class="btn btn-ghost" id="devRefreshAllBtn">${ICON_REFRESH}<span>${t('refreshAllDevices')}</span></button><button class="btn btn-danger" id="devLogoutAllBtn">${t('logoutAllOthers')}</button></div>` : ''}
     ${cards || emptyState(t('noDevicesYet'))}<div class="dev-hint">${t('devicesHint')}</div>`;
 }
 function attachAdminDevices(slot){
@@ -804,6 +838,64 @@ function renderAdminCatalog(){
 }
 function attachAdminCatalog(slot){
   slot.querySelectorAll('[data-check-item]').forEach(b=>b.onclick = ()=>openItemModal(b.dataset.checkItem));
+}
+
+/* ---------- Stock names ---------- */
+/* Ricotta Restaurant's stock item names with a problem, each with the corrected name to copy (Rozh fixes
+   them there; nothing is renamed from here). The rules run on every read; spelling is Rico's AI, kept on
+   the server until Check again (supabase/functions/api/stock-names.ts). */
+const NAME_FILTERS = ['all', 'spacing', 'letters', 'missing', 'spelling'];
+let adNamesBusy = false, adNamesNote = '';
+function renderAdminNames(){
+  const d = adminValue('names');
+  if(!d) return `${adminHeading()}${adminData.failed.names ? `<div class="ad-empty"><p>${esc(t('loadFailed'))}</p></div>` : loadingLines()}`;
+  const filter = NAME_FILTERS.includes(adminFilter.names) ? adminFilter.names : 'all';
+  const has = (r, k)=>r.problems.some(p=>p.kind === k);
+  const counts = Object.fromEntries(NAME_FILTERS.map(k=>[k, k === 'all' ? d.rows.length : d.rows.filter(r=>has(r, k)).length]));
+  const rows = d.rows.filter(r=>filter === 'all' || has(r, filter));
+  const show = n=>esc(n).replace(/ {2,}/g, m=>'<mark class="nm-space">' + '&nbsp;'.repeat(m.length) + '</mark>').replace(/^ | $/g, '<mark class="nm-space">&nbsp;</mark>');
+  const sub = adNamesNote || (!d.aiReady ? t('adNamesAiOff') : d.checkedAt ? [t('adNamesChecked')(timeAgo(d.checkedAt)), d.stale ? t('adNamesStale') : ''].filter(Boolean).join(' ') : t('adNamesNotChecked'));
+  const list = rows.map(r=>`<article class="nm-row">
+      <div class="nm-tags">${[...new Set(r.problems.map(p=>p.code))].map(c=>`<span class="nm-tag ${esc(r.problems.find(p=>p.code === c).kind)}">${esc(t('adNameCode_' + c))}</span>`).join('')}</div>
+      <div class="nm-line"><span class="nm-label">${esc(t('adNameNow'))}</span><span class="nm-name" dir="auto">${show(r.name)}</span></div>
+      ${r.fixed ? `<div class="nm-line nm-fix"><span class="nm-label">${esc(t('adNameUse'))}</span><span class="nm-name" dir="auto">${esc(r.fixed)}</span><button type="button" class="btn btn-ghost nm-copy" data-name-copy="${esc(r.fixed)}">${esc(t('adNameCopy'))}</button></div>` : `<p class="nm-hint">${esc(t('adNameNoFix'))}</p>`}
+      ${r.why ? `<p class="nm-why" dir="auto">${esc(r.why)}</p>` : ''}
+    </article>`).join('');
+  return `${adminHeading()}
+    <section class="ad-status ${d.rows.length ? 'warn' : 'good'}">${adminTile(d.rows.length ? ADMIN_ICONS.names : ICON_CHECK, d.rows.length ? 'gray' : 'green')}
+      <div><b>${esc(d.rows.length ? t('adNamesNeed')(d.rows.length) : t('adNamesClean'))}</b><span>${esc(sub)}</span></div>
+      ${d.aiReady ? `<button type="button" class="btn btn-ghost" id="namesCheck" ${adNamesBusy ? 'disabled aria-busy="true"' : ''}>${ICON_REFRESH}<span>${esc(t(adNamesBusy ? 'adNamesChecking' : d.checkedAt ? 'adNamesCheckAgain' : 'adNamesCheck'))}</span></button>` : ''}</section>
+    <div class="ad-toolbar"><div class="pill-seg nm-filters" role="tablist" aria-label="${esc(t('adminPage_names'))}">${NAME_FILTERS.map(k=>`<button type="button" role="tab" class="pill-seg-btn" data-names-filter="${k}" aria-selected="${filter === k}">${esc(t('adNamesFilter_' + k))}<small>${counts[k]}</small></button>`).join('')}</div></div>
+    ${list ? `<div class="nm-list">${list}</div>` : `<div class="ad-empty">${adminTile(ICON_CHECK, 'green')}<b>${esc(t('adNamesNone'))}</b></div>`}
+    <p class="ad-foot">${esc(t('adNamesCount')(d.rows.length, d.total))} · ${esc(t('adNamesFoot'))}</p>`;
+}
+async function copyText(text){
+  try{ await navigator.clipboard.writeText(text); return true; }
+  catch(_){
+    const box = Object.assign(document.createElement('textarea'), {value:text});
+    box.setAttribute('readonly', ''); box.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(box); box.select();
+    let ok = false; try{ ok = document.execCommand('copy'); }catch(_){}
+    box.remove(); return ok;
+  }
+}
+function attachAdminNames(slot){
+  slot.querySelectorAll('[data-names-filter]').forEach(b=>b.onclick = ()=>{ adminFilter.names = b.dataset.namesFilter; paintAdmin(); });
+  slot.querySelectorAll('[data-name-copy]').forEach(b=>b.onclick = async()=>{
+    if(!(await copyText(b.dataset.nameCopy))){ toast(t('saveFailed'), 'error'); return; }
+    const label = b.textContent; b.textContent = t('adNameCopied'); b.classList.add('done');
+    setTimeout(()=>{ if(b.isConnected){ b.textContent = label; b.classList.remove('done'); } }, 1600);
+  });
+  const check = slot.querySelector('#namesCheck');
+  if(check) check.onclick = async()=>{
+    if(adNamesBusy) return;
+    adNamesBusy = true; adNamesNote = ''; paintAdmin();
+    const r = await api('admin/stock-names/check', {method:'POST', body:{}});
+    adNamesBusy = false;
+    if(r.ok && ADMIN_SHAPES.names(r.data)){ adminData.names = {at:Date.now(), data:r.data}; adNamesNote = r.data.partial ? t('adNamesPartial') : ''; }
+    else adNamesNote = r.status === 429 ? t('tooManyAttempts') : t('adNamesFailed');
+    paintAdmin();
+  };
 }
 
 /* Admin, Restore: the server keeps a copy of the kitchen's data for 7 days. Restoring brings back what was

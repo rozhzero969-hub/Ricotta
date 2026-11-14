@@ -17,6 +17,15 @@ const {PGlite}=require('@electric-sql/pglite'),{pgcrypto}=require('@electric-sql
  await db.exec("insert into app_accounts(id,name,pin_hash,pins) values('rozha','Rozha','test','{}'),('yunis','Yunis','test','{}');insert into app_units(id,en) values('kg','kg');insert into app_suppliers(id,name) values('s','Market');");
  await db.query("select app_internal_catalog_change('suppliers','s',$1::jsonb,'rozha','device')",[JSON.stringify({name:'Market renamed',phone:'07501112233'})]);
  assert.deepEqual((await q("select name,phone from app_suppliers where id='s'"))[0],{name:'Market renamed',phone:'07501112233'},'suppliers still save');
+ // An item's stock link survives a delete and its Undo (the row comes back as it was), and an edit that
+ // doesn't mention it keeps it.
+ await db.query("select app_internal_catalog_change('items','lnk',$1::jsonb,'rozha','device')",[JSON.stringify({name:'Carrot',unit_id:'kg',supplier_id:'s',sort_order:1,aliases:[],available:true,stock_item:'Carrot - گێزەر'})]);
+ await db.query("select app_internal_catalog_change('items','lnk',$1::jsonb,'rozha','device')",[JSON.stringify({name:'Carrots',partial:true})]);
+ assert.equal((await q("select stock_item from app_items where id='lnk'"))[0].stock_item,'Carrot - گێزەر','an edit keeps the link');
+ const snap=(await q("select to_jsonb(t) r from app_items t where id='lnk'"))[0].r;
+ await db.query("select app_internal_catalog_change('items','lnk',null,'rozha','device')");
+ await db.query("select app_internal_catalog_change('items','lnk',$1::jsonb,'rozha','device')",[JSON.stringify(snap)]);
+ assert.equal((await q("select stock_item from app_items where id='lnk'"))[0].stock_item,'Carrot - گێزەر','Undo of a delete brings the link back');
  const audit=(await q("select payload from app_audit_events where entity_type='supplier' order by occurred_at desc limit 1"))[0].payload;
  assert.deepEqual(audit.fields.map(f=>f.k).sort(),['name','phone'],'the Record shows only real supplier fields');
 
