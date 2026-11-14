@@ -66,7 +66,9 @@ const migrations=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sq
  assert.equal((await q("select count(*)::int as n from information_schema.columns where (table_name,column_name) in (('app_suppliers','cutoff'),('app_items','place'),('app_items','photo_url'))"))[0].n,0,'cut-offs, places and pictures are gone');
  assert.equal((await q("select to_regclass('public.app_reminder_settings') as t"))[0].t,null,'the daily reminder is gone');
  // The per-item stock fields from the earlier Excel attempt are gone; items still save and record as before.
- assert.equal((await q("select count(*)::int as n from information_schema.columns where table_name='app_items' and column_name like 'stock%'"))[0].n,0);
+ assert.equal((await q("select count(*)::int as n from information_schema.columns where table_name='app_items' and column_name like 'stock%' and column_name<>'stock_item'"))[0].n,0);
+ // The one stock column left is the link to a Ricotta Restaurant stock item (Manage, edit an item): empty until someone links it.
+ assert.equal((await q("select count(*)::int as n from app_items where stock_item is not null"))[0].n,0,'nothing is linked by a migration');
  await db.exec(`select app_internal_catalog_change('units','kg','{"en":"kg","ku":"کیلۆ"}','rozha','device');
   select app_internal_catalog_change('items','basil','{"name":"Basil","unit_id":"kg","note":"fresh"}','rozha','device');`);
  assert.deepEqual((await q("select payload from app_audit_events where entity_name='Basil'"))[0].payload.fields.map(f=>f.k).sort(),['aliases','available','name','note','supplier','unit'],'an item records the same fields as before');

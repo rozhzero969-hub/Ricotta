@@ -1,4 +1,6 @@
 import "../_shared/search.js";
+import "../_shared/transfers.js";
+import "../_shared/stock-link.js";
 const search = (globalThis as any).RicottaSearch;
 import { monthStart } from "../_shared/month.ts";
 import { NO_RECEIPTS, NO_TRANSFERS, RICO_RR_MANUAL, RICO_RR_TOOLS, runRrTool } from "./rico-tools.ts";
@@ -111,7 +113,7 @@ async function loadWorld(db: any, s: Session) {
   const full = s.account === "rozha";
   const [sup, items, units, orders, devices, activity, streak, months, rules, routines] = await withTimeout(Promise.all([
     catalogRows(() => app("suppliers").select("id,name,phone,reminder,created_at").order("id")),
-    catalogRows(() => app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available").order("id")),
+    catalogRows(() => app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available,stock_item").order("id")),
     catalogRows(() => app("units").select("id,en,ku,ar").order("id")),
     app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").order("sent_at", { ascending: false }).limit(600),
     full ? app("devices").select("account,label,logged_in,last_seen").order("last_seen", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
@@ -127,6 +129,18 @@ async function loadWorld(db: any, s: Session) {
   ]), DB_TIMEOUT_MS, "load_world");
   for (const result of [sup, items, units, orders, devices, activity, streak, months, rules, routines]) {
     if (result.error) throw new Error("kitchen_data_unavailable");
+  }
+  // Items linked to a stock item (Manage): how much of it is in Main Storage, from the stock Rico last read.
+  const linked = (items.data ?? []).filter((i: any) => i.stock_item);
+  const stockOf = new Map<string, any>();
+  if (linked.length) {
+    const { data: cat } = await withTimeout<any>(app("rr_catalog").select("data,updated_at").eq("id", true).maybeSingle(), DB_TIMEOUT_MS, "stock");
+    const byName = new Map(((cat?.data?.titems ?? []) as any[]).map((t: any) => [t.name, t]));
+    const L = (globalThis as any).RicottaStockLink;
+    for (const i of linked) {
+      const t = byName.get(i.stock_item);
+      stockOf.set(i.id, t ? { stock_item: i.stock_item, ...L.amount(t), read_at: cat?.updated_at ?? null } : { stock_item: i.stock_item, missing: true });
+    }
   }
   const orderRows = (orders.data ?? []).reverse();
   const lines: any[] = [];
@@ -170,6 +184,7 @@ async function loadWorld(db: any, s: Session) {
     transferDrafts: 0,                  // transfer drafts Rico saved in this reply (propose_transfer_draft)
     suppliers: (sup.data ?? []) as any[],
     items: (items.data ?? []) as any[],
+    stockOf,                            // linked items: Main Storage amount {stock_item, qty, unit, empty, read_at}
     units: (units.data ?? []) as any[],
     history: seen,
     devices: (devices.data ?? []) as any[],
@@ -243,6 +258,7 @@ function toolFindItems(w: World, a: any) {
       item_id: i.id, name: i.name, aliases: i.aliases||[], available: i.available!==false, unit_id: i.unit_id, unit: unitName(w, i.unit_id),
       supplier_id: i.supplier_id, supplier: supplierName(w, i.supplier_id),
       added: i.created_at ? String(i.created_at).slice(0, 10) : null, ...itemStats(w, i.id),
+      ...(w.stockOf?.get(i.id) ? { in_main_storage: w.stockOf.get(i.id) } : {}),
     })),
   };
 }
@@ -781,7 +797,7 @@ function proposeFile(w: World, a: any, emit: Emit) {
 
 /* ---------------- tool definitions ---------------- */
 const TOOLS = [
-  { name: "find_items", description: "Search the item catalog. Returns item_id, name, unit, supplier, when it was added, how often it was ordered, usual quantity. Use newest:true to list the most recently added items. Leave query empty to list all (capped by limit).",
+  { name: "find_items", description: "Search the item catalog. Returns item_id, name, unit, supplier, when it was added, how often it was ordered, usual quantity. Use newest:true to list the most recently added items. Leave query empty to list all (capped by limit). An item linked to a stock item also has in_main_storage (how much is in Main Storage, in its buying unit when whole, else its counting unit, and when the stock was read): use it for \"how much X do we have\".",
     input_schema: { type: "object", properties: { query: { type: "string", description: "Item name or alias, any language; words can be in any order and minor typos are supported" }, supplier: { type: "string", description: "Supplier name or id" }, newest: { type: "boolean" }, limit: { type: "integer" }, offset: { type: "integer" } } } },
   { name: "list_suppliers", description: "All suppliers with item counts, reminder schedule, usual order days, days between orders, last order and whether they were sent today.",
     input_schema: { type: "object", properties: {} } },
