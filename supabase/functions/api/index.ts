@@ -78,6 +78,9 @@ import { scanReceipt } from "./scan.ts";
 import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 import "../_shared/overview.js";
+import "../_shared/search.js";
+import "../_shared/transfers.js";
+import "../_shared/stock-link.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -213,7 +216,7 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 
 /* ---------- Shapes the browser uses ---------- */
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder });
-const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false,
+const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false, stockItem: i.stock_item ?? null,
   createdAt: i.created_at ?? null, lastOrderedAt: i.last_ordered_at ?? null });
 /* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
    had one; recoverable: how many days Rico can bring back after it broke. */
@@ -324,11 +327,31 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
   return lines;
 }
 
+/* Ricotta Restaurant's stock as Rico last read it (app_rr_catalog), or null when not read yet. */
+async function readStockCatalog() {
+  const { data, error } = await app("rr_catalog").select("data,updated_at").eq("id", true).maybeSingle();
+  if (error) throw error;
+  return data ? { titems: (data.data?.titems ?? []) as any[], at: data.updated_at ?? null } : null;
+}
+/* Linked items get how much is in Main Storage (only theirs: no other stock goes to the phone, so
+   people without Receipts or Transfers see just this). A link whose stock item is gone says so. */
+async function withStock(items: any[]) {
+  if (!items.some((i) => i.stockItem)) return items;
+  const cat = await readStockCatalog().catch(() => null);
+  if (!cat) return items;
+  const byName = new Map(cat.titems.map((t: any) => [t.name, t]));
+  const L = (globalThis as any).RicottaStockLink;
+  return items.map((i) => {
+    if (!i.stockItem) return i;
+    const t = byName.get(i.stockItem);
+    return { ...i, stock: t ? { ...L.amount(t), at: cat.at } : { missing: true, at: cat.at } };
+  });
+}
 async function bootstrap(s: Session) {
   const [me, suppliers, items, units, orders, devices, activity, inbox, streak, months, draft, wipe] = await Promise.all([
     readAccount(s.account),
     readAll(() => app("suppliers").select("id,name,phone,reminder").order("name").order("id")),
-    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at").order("name").order("id")),
+    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at,stock_item").order("name").order("id")),
     readAll(() => app("units").select("id,en,ku,ar").order("id")),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")),
     listDevices(s),
@@ -352,7 +375,7 @@ async function bootstrap(s: Session) {
     views: viewsFor(s), roles: s.roles,
     pins: me?.pins ?? [], streak,
     suppliers: suppliers.map(toSupplier),
-    items: items.map(toItem),
+    items: await withStock(items.map(toItem)),
     units,
     history,
     historyMonth: monthKey(),
@@ -1043,6 +1066,43 @@ Deno.serve(async (req) => {
       const {data,error}=await db.rpc("app_internal_set_aliases",{p_entries:entries,p_actor:s.account,p_device:s.deviceId});
       if(error)return fail("save_failed",500);
       return data?.conflicts?.length ? json(data,409) : json(data);
+    }
+    // Linking ordering items to stock items (Manage, edit an item). The list of stock items to choose
+    // from, with Main Storage amounts; and saving one link, only when the names really match (the same
+    // rule the app uses, _shared/stock-link.js). Never linked by anyone but a person, one at a time.
+    if (M === "GET" && path === "items/stock-options") {
+      if (!can(s, "catalog")) return fail("forbidden", 403);
+      const cat = await readStockCatalog();
+      const L = (globalThis as any).RicottaStockLink;
+      // Amounts only for people who can open Stock; everyone else who edits items gets the names.
+      const amounts = can(s, "transfers") || can(s, "receipts");
+      return json({ at: cat?.at ?? null, items: (cat?.titems ?? []).filter((t: any) => t?.name && String(t.name).trim() !== "-").map((t: any) => amounts ? { name: t.name, ...L.amount(t) } : { name: t.name }) });
+    }
+    if (M === "PUT" && (m = path.match(/^items\/([^/]{1,120})\/stock$/))) {
+      if (!can(s, "catalog")) return fail("forbidden", 403);
+      const id = decodeURIComponent(m[1]);
+      const want = b.stockItem === null ? null : typeof b.stockItem === "string" && b.stockItem.length >= 1 && b.stockItem.length <= 200 ? b.stockItem : undefined;
+      if (want === undefined) return fail("invalid_input");
+      const { data: item, error } = await app("items").select("id,name,aliases,stock_item").eq("id", id).maybeSingle();
+      if (error) return fail("save_failed", 500);
+      if (!item) return fail("gone", 409);
+      let stock: any = null;
+      if (want !== null) {
+        const cat = await readStockCatalog();
+        const t = (cat?.titems ?? []).find((x: any) => x?.name === want);
+        if (!t) return fail("stock_item_unknown", 422);
+        const L = (globalThis as any).RicottaStockLink;
+        if (!L.matches({ name: item.name, aliases: item.aliases ?? [] }, want)) return fail("names_dont_match", 422);
+        stock = { ...L.amount(t), at: cat?.at ?? null };
+      }
+      if ((item.stock_item ?? null) !== want) {
+        const { error: upError } = await app("items").update({ stock_item: want, updated_at: nowIso() }).eq("id", id);
+        if (upError) return fail("save_failed", 500);
+        const { error: logError } = await app("audit_events").insert({ id: crypto.randomUUID(), actor: s.account, device_id: s.deviceId, action: "edit", entity_type: "item", entity_name: item.name,
+          payload: { by: accountName(s.account), fields: [{ k: "stock", from: item.stock_item ?? "", to: want ?? "" }], source: "server" } });
+        if (logError) console.error("stock_link_audit_failed");
+      }
+      return json({ ok: true, stockItem: want, stock });
     }
     if ((m = path.match(/^(suppliers|items|units)\/([^/]{1,120})$/))) {
       const table = m[1], id = decodeURIComponent(m[2]);

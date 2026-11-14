@@ -2333,6 +2333,7 @@ function itemRowHtml(i, lastQty){
           <div class="item-name">${state.pins.includes(i.id) ? `<span class="item-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(i.name)}</div>
 
           <div class="item-unit">${esc(unitLabel(i.unit))}${lastQty && lastQty[i.id] ? ` · <span class="item-last">${esc(t('lastQty')(lastQty[i.id]))}</span>` : ''}${i.note ? ` · <span class="item-note" dir="auto">“${esc(i.note)}”</span>` : ''}</div>
+          ${itemStockLine(i)}
         </div>
         <div class="stepper">
           <button class="step-btn" data-dec="${esc(i.id)}" aria-label="${esc(t('decreaseQty')(i.name))}" ${qty>0?'':'disabled'}>−</button>
@@ -2341,6 +2342,22 @@ function itemRowHtml(i, lastQty){
         </div>
       </div>`;
 }
+/* An item linked to a stock item (Manage, edit the item): how much is in Main Storage, under its unit.
+   How old the reading is shows on hover (or a long press) only. */
+const stockQty = n=>Number(n || 0).toLocaleString('en-US', {maximumFractionDigits:3});
+/* The same words as HTML, the amount kept apart (<bdi>) so a Kurdish unit never turns the line around. */
+function stockHtml(st){
+  if(st.empty) return esc(t('stockNoneMain'));
+  return esc(t('stockLineMain')('\u2063')).replace('\u2063', `<bdi dir="${isRtl() ? 'rtl' : 'ltr'}">${esc(stockQty(st.qty))} ${esc(st.unit)}</bdi>`);
+}
+function itemStockLine(i){
+  const st = i.stockItem && i.stock;
+  if(!st || st.missing) return '';
+  const when = st.at ? t('stockReadAgo')(timeAgo(st.at)) : '';
+  return `<div class="item-stock${st.empty ? ' none' : ''}"${when ? ` title="${esc(when)}"` : ''}>${stockHtml(st)}</div>`;
+}
+// On a phone (no hover), a tap on the stock line says how old the reading is.
+document.addEventListener('click', e=>{ const el = e.target.closest?.('.item-stock[title]'); if(el && matchMedia('(hover: none)').matches) toast(el.title); });
 function refreshOrderResults(){
   const results = document.getElementById('orderResults');
   if(!results) return;
@@ -3158,7 +3175,7 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), cutoff:t('cutoffShort')})[k] || k;
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), stock:t('stockLinkLabel'), cutoff:t('cutoffShort')})[k] || k;
 }
 function recordValue(k, v){
   if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||t('noValue');}catch(_){} }
@@ -3567,10 +3584,12 @@ function openItemModal(id){
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
       <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
+      ${existing ? `<div class="field stock-link" id="mfStock"></div>` : `<div class="field"><label>${esc(t('stockLinkLabel'))}</label><div class="field-hint">${esc(t('stockLinkAfterSave'))}</div></div>`}
       `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
     onOpen: (box)=>{
+      if(existing) mountStockLink(box.querySelector('#mfStock'), existing.id);
       const sel = box.querySelector('#mfSupplier');
       const hint = box.querySelector('#mfSupHint');
       if(sel && hint) sel.onchange = ()=>{
@@ -3629,6 +3648,67 @@ function openItemModal(id){
       return {};
     }
   });
+}
+/* The Stock item setting in an item's form: which Ricotta Restaurant stock item it is, so the Order
+   screen can show how much is in Main Storage. Rozh picks it herself with a smart search (English,
+   Kurdish or Arabic, typos fine). A stock item whose name doesn't match this item can't be chosen
+   (the server checks the same rule). It saves on its own, apart from the form's Save. */
+let stockOptions = null;   // {at, items:[{name, qty?, unit?, empty?}]}, read once per session (amounts only with Stock)
+let stockOptionsFailed = false;
+async function loadStockOptions(){
+  if(stockOptions) return stockOptions;
+  const r = await api('items/stock-options', {quiet:true});
+  stockOptionsFailed = !(r.ok && Array.isArray(r.data?.items));
+  if(!stockOptionsFailed) stockOptions = r.data;
+  return stockOptions;
+}
+function mountStockLink(box, itemId){
+  if(!box) return;
+  let open = false, query = '';
+  const item = ()=>state.items.find(x=>x.id === itemId);
+  const L = globalThis.RicottaStockLink, S = globalThis.RicottaSearch;
+  const paint = ()=>{
+    const i = item(); if(!i){ box.innerHTML = ''; return; }
+    const cur = i.stockItem;
+    const st = cur && i.stock;
+    const now = cur ? `<div class="stock-link-now"><span class="stock-link-name" dir="auto">${esc(cur)}</span><small>${st?.missing ? esc(t('stockLinkMissing')) : st ? stockHtml(st) : ''}</small></div>` : `<div class="field-hint">${esc(t('stockLinkNone'))}</div>`;
+    box.innerHTML = `<label${open ? ' for="mfStockSearch"' : ''}>${esc(t('stockLinkLabel'))}</label>${now}
+      <div class="stock-link-actions">${open ? '' : `<button type="button" class="btn btn-ghost" data-stock-open>${esc(cur ? t('stockLinkChange') : t('stockLinkChoose'))}</button>`}${cur && !open ? `<button type="button" class="btn btn-ghost danger-text" data-stock-unlink>${esc(t('stockLinkRemove'))}</button>` : ''}</div>
+      ${open ? `<div class="stock-pick"><input id="mfStockSearch" class="stock-pick-input" type="search" autocomplete="off" dir="auto" placeholder="${esc(t('stockLinkSearch'))}" value="${esc(query)}"><div class="stock-pick-list" role="listbox" aria-label="${esc(t('stockLinkLabel'))}"></div><button type="button" class="btn btn-ghost" data-stock-cancel>${esc(t('cancel'))}</button></div>` : ''}`;
+    if(open){ paintList(); const input = box.querySelector('#mfStockSearch'); input.oninput = ()=>{ query = input.value; paintList(); }; input.onkeydown = e=>{ if(e.key === 'Enter') e.preventDefault(); }; }
+  };
+  const paintList = ()=>{
+    const list = box.querySelector('.stock-pick-list'); if(!list) return;
+    const i = item();
+    if(!stockOptions){ list.innerHTML = stockOptionsFailed ? `<div class="field-hint">${esc(t('loadFailed'))}</div>` : loadingLines(3); return; }
+    if(!stockOptions.items.length){ list.innerHTML = `<div class="field-hint">${esc(t('stockLinkNoStock'))}</div>`; return; }
+    const all = stockOptions.items;
+    // Typed words search every stock item; with nothing typed, the item's own names suggest matches.
+    const ranked = query.trim() ? S.rank(all, query, o=>[o.name]) : all.filter(o=>L.matches(i, o.name)).sort((a, b)=>S.score(i.name, [a.name]) - S.score(i.name, [b.name]));
+    // Ones that can be linked come first; the rest stay visible, greyed, with the reason.
+    const rows = ranked.slice(0, 20).map(o=>({o, ok:L.matches(i, o.name)})).sort((a, b)=>Number(b.ok) - Number(a.ok)).slice(0, 12);
+    list.innerHTML = rows.length ? rows.map(({o, ok})=>{
+      const on = o.name === i.stockItem;
+      return `<button type="button" class="stock-opt${on ? ' on' : ''}" role="option" aria-selected="${on}" data-stock-pick="${esc(o.name)}" ${ok ? '' : 'disabled aria-disabled="true"'}><span dir="auto">${esc(o.name)}</span>${ok && o.unit == null ? '' : `<small>${ok ? stockHtml(o) : esc(t('stockLinkNoMatch'))}</small>`}</button>`;
+    }).join('') : `<div class="field-hint">${esc(query.trim() ? t('rrNoMatch') : t('stockLinkNoSuggest'))}</div>`;
+  };
+  const save = async name=>{
+    const i = item(); if(!i) return;
+    const r = await api(`items/${encodeURIComponent(i.id)}/stock`, {method:'PUT', body:{stockItem:name}});
+    if(!r.ok){ toast(r.data?.error === 'names_dont_match' ? t('stockLinkNoMatch') : t('saveFailed'), 'error'); return; }
+    i.stockItem = r.data.stockItem; if(r.data.stock) i.stock = r.data.stock; else delete i.stock;
+    open = false; query = ''; paint();
+    toast(name ? t('stockLinkSaved') : t('stockLinkRemoved'));
+    if(state.view === 'order') refreshOrderResults?.();
+  };
+  box.onclick = async e=>{
+    if(e.target.closest('[data-stock-open]')){ open = true; paint(); box.querySelector('#mfStockSearch')?.focus(); await loadStockOptions(); paintList(); return; }
+    if(e.target.closest('[data-stock-cancel]')){ open = false; query = ''; paint(); return; }
+    if(e.target.closest('[data-stock-unlink]')){ await save(null); return; }
+    const pick = e.target.closest('[data-stock-pick]:not([disabled])');
+    if(pick) await save(pick.dataset.stockPick);
+  };
+  paint();
 }
 /* Deleting an item asks first, then offers Undo. The server keeps a copy for 10 minutes that only
    this account on this device can bring back; it comes back with its amount in the order. */

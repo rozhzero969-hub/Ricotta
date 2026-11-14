@@ -2601,3 +2601,22 @@ label.preference-row:has(input[type=checkbox]),label.rico-set-row{cursor:default
 html.rtl .mem-switch:checked::after{transform:translateX(-16px)}
 .mem-hint{margin-top:10px;font-size:.8125rem;line-height:1.4;color:var(--ink-soft)}
 .rico-note-btn{margin-top:10px;min-height:36px;padding:0 14px;border-radius:10px;font-size:.9063rem}
+/* Linked stock: a small calm line under the item on the Order screen, and the picker in its form. */
+.item-stock{margin-top:2px;font-size:.8125rem;color:var(--ink-soft);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.item-stock.none{color:var(--clay-ink)}
+.stock-link-now{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:12px;background:var(--surface-2)}
+.stock-link-name{font-weight:500;overflow-wrap:anywhere}
+.stock-link-now small{font-size:.8125rem;color:var(--ink-soft)}
+.stock-link-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.stock-link-actions .btn{min-height:38px;padding:0 14px;border-radius:10px;font-size:.9375rem}
+.stock-pick{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.stock-pick-input{width:100%;min-height:42px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--ink);font:400 1rem var(--font);outline:none}
+.stock-pick-input:focus-visible{box-shadow:0 0 0 2px var(--accent)}
+.stock-pick-list{display:flex;flex-direction:column;max-height:300px;overflow-y:auto;border-radius:12px;background:var(--surface-2)}
+.stock-opt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:48px;padding:8px 12px;border:0;background:none;color:var(--ink);font:400 .9375rem var(--font);text-align:start;cursor:pointer}
+.stock-opt+.stock-opt{border-top:.5px solid var(--line)}
+.stock-opt small{font-size:.8125rem;color:var(--ink-soft)}
+.stock-opt.on{background:var(--accent-soft)}
+.stock-opt:disabled{cursor:not-allowed;opacity:.5}
+@media (hover:hover){.stock-opt:not(:disabled):hover{background:var(--fill)}}
+.stock-pick>.btn{align-self:flex-start;min-height:38px;border-radius:10px}

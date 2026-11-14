@@ -53,6 +53,12 @@
       I('it-chick','Chicken breast','kg','sup-meat',0), I('it-beef','Minced beef','kg','sup-meat',1),
       I('it-flour','Flour (00)','bag','sup-dry',0), I('it-oil','Olive oil','bottle','sup-dry',1), I('it-penne','Penne','pack','sup-dry',2), I('it-cantom','Canned tomatoes','can','sup-dry',3)
     ];
+    // Sample links (Manage, edit an item, Stock item); in the real app Rozh links each one herself.
+    Object.assign(items.find(i=>i.id==='it-mozz'), {stockItem:'Mozzarella - پەنیری مۆزارێلا'});
+    Object.assign(items.find(i=>i.id==='it-parm'), {stockItem:'Parmesan - پەنیری پارمیزان'});
+    Object.assign(items.find(i=>i.id==='it-ric'), {stockItem:'Ricotta Cheese - پەنیری ریکۆتا'});
+    Object.assign(items.find(i=>i.id==='it-tom'), {stockItem:'Tomato - تەماتە'});
+    Object.assign(items.find(i=>i.id==='it-lemon'), {stockItem:'Lemon - لیمۆ'});
     const byId = Object.fromEntries(items.map(i=>[i.id,i]));
     const supName = id => suppliers.find(s=>s.id===id).name;
     const order = (day, h, mi, by, lines) => {
@@ -130,7 +136,7 @@
       usage.push({account:'yunis', deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', day, seconds:2400 + ((d*911) % 3600)});
       if(d % 3 === 0) usage.push({account:'rozha', deviceId:'lab-phone-rozha', label:'iPhone 16/17 Pro Max|App', day, seconds:600 + d*40});
     }
-    return {v:8, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, seq:100, said:{},
+    return {v:9, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, seq:100, said:{},
       roles:{yunis:null}, security, problems, usage};
   }
   /* Two finished months for the archive (History itself only keeps this month). */
@@ -143,7 +149,7 @@
       topItems:[{name:'Tomatoes', unit:'kg', times:13, qty:80}, {name:'Mozzarella', unit:'kg', times:12, qty:52}]}
   ];
   let db = lsGet(DB_KEY);
-  if(!db || db.v !== 8) db = seed();
+  if(!db || db.v !== 9) db = seed();
   const save = () => lsSet(DB_KEY, db);
   save();
   window.labResetData = () => { db = seed(); save(); };
@@ -189,6 +195,24 @@
   };
 
   /* Rico's chat, streamed line by line like the real server. */
+  /* A sample of Ricotta Restaurant's stock for linked items (Manage, edit an item, Stock item). Parmesan is
+     bought by the carton (30 pieces): 31 pieces shows as pieces, 60 as 2 cartons. */
+  const LAB_STOCK = [
+    {name:'Mozzarella - پەنیری مۆزارێلا', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':5000}},
+    {name:'Parmesan - پەنیری پارمیزان', base:'دانە', count:{name:'دانە', factor:1}, buy:{name:'کارتۆن', factor:30}, stock:{'Main Storage':31}},
+    {name:'Ricotta Cheese - پەنیری ریکۆتا', base:'دانە', count:{name:'دانە', factor:1}, buy:{name:'کارتۆن', factor:30}, stock:{'Main Storage':60}},
+    {name:'Tomato - تەماتە', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':0}},
+    {name:'Lemon - لیمۆ', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:null, stock:{'Main Storage':12500}},
+    {name:'Banana - مۆز', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':5000}},
+    {name:'Akkawi Cheese - پەنیری عەکاوی', base:'دانە', count:{name:'دانە', factor:1}, buy:{name:'کارتۆن', factor:24}, stock:{'Main Storage':0}},
+    {name:'Olive Oil - زەیتی زەیتوون', base:'مل', count:{name:'دانە', factor:1000}, buy:{name:'کارتۆن', factor:12000}, stock:{'Main Storage':24000}},
+  ];
+  const labStockAt = ()=>new Date(Date.now() - 6 * 60000).toISOString();
+  const withLabStock = i=>{
+    if(!i.stockItem) return i;
+    const t = LAB_STOCK.find(x=>x.name === i.stockItem);
+    return {...i, stock:t ? {...globalThis.RicottaStockLink.amount(t), at:labStockAt()} : {missing:true}};
+  };
   function ricoReply(account, body){
     const L = lang(body.lang);
     const last = [...(body.messages||[])].reverse().find(m=>m.role==='user');
@@ -333,12 +357,31 @@
       const me = account;
       return json({
         account:me, name:NAMES[me].en, views:viewsFor(me), roles:rolesOf(me),
-        suppliers:db.suppliers, items:db.items.map(i=>({...i, createdAt:i.createdAt || '2026-08-01T09:00:00.000Z', lastOrderedAt:history().filter(o=>o.entries.some(e=>e.items.some(x=>x.itemId === i.id))).map(o=>o.date).sort().pop() || null})), units:db.units,
+        suppliers:db.suppliers, items:db.items.map(i=>withLabStock({...i, createdAt:i.createdAt || '2026-08-01T09:00:00.000Z', lastOrderedAt:history().filter(o=>o.entries.some(e=>e.items.some(x=>x.itemId === i.id))).map(o=>o.date).sort().pop() || null})), units:db.units,
         history:db.history, historyMonth:monthStartIso().slice(0,7), settings:(db.settings ||= {})[me] || {}, devices:devices(me),
         activity:can(me,'record') ? db.activity : [], inbox:can(me,'assistant') ? db.inbox.slice(-20) : [],
         pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
         months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
       });
+    }
+    // Linking ordering items to stock items: the choices, and one link (only when the names match).
+    if(method === 'GET' && path === 'items/stock-options'){
+      if(!can(account, 'catalog')) return fail('forbidden', 403);
+      const amounts = can(account, 'transfers') || can(account, 'receipts');
+      return json({at:labStockAt(), items:LAB_STOCK.map(t=>amounts ? {name:t.name, ...globalThis.RicottaStockLink.amount(t)} : {name:t.name})});
+    }
+    {
+      const m = path.match(/^items\/([^/]+)\/stock$/);
+      if(method === 'PUT' && m){
+        if(!can(account, 'catalog')) return fail('forbidden', 403);
+        const it = db.items.find(x=>x.id === decodeURIComponent(m[1]));
+        if(!it) return fail('gone', 409);
+        const want = body.stockItem ?? null, t = want && LAB_STOCK.find(x=>x.name === want);
+        if(want && !t) return fail('stock_item_unknown', 422);
+        if(want && !globalThis.RicottaStockLink.matches(it, want)) return fail('names_dont_match', 422);
+        it.stockItem = want; save();
+        return json({ok:true, stockItem:want, stock:t ? {...globalThis.RicottaStockLink.amount(t), at:labStockAt()} : null});
+      }
     }
     // Stock (read only): Main Storage, with practice last-bought and last-moved notes.
     if(method === 'GET' && path === 'stock'){
