@@ -74,7 +74,7 @@ const order = db.writes.find((w) => w.rows?.[0]?.kind === 'routine_order').rows[
 assert.equal(order.account, 'rozha');
 assert.deepEqual(order.payload.lines, [{ itemId: 'basil', qty: 3 }, { itemId: 'tom', qty: 12 }], 'the usual lines ride with the message');
 assert.ok(db.writes.every((w) => ['app_rico_routines', 'app_rico_inbox'].includes(w.table)), 'nothing but the routine and the inbox is written: no order, nothing to a supplier');
-assert.match(pushes.find((p) => p.account === 'rozha').words.en, /Check it and send it/);
+assert.match(pushes.find((p) => p.account === 'rozha').words.en, /today's order is ready to check/);
 const again = await R.runRoutines(db, deps({ now: now(9 * 60 + 3) }));
 assert.deepEqual(again, { skipped: 'nothing due' }, 'a second tick the same day does nothing');
 assert.equal(pushes.length, 2);

@@ -134,14 +134,31 @@ export async function runRoutines(db: any, deps: RunDeps) {
   const { data, error } = await db.from("app_rico_routines").select("*").eq("enabled", true).limit(400);
   if (error) throw new Error("routines_unavailable");
   const nowMs = deps.nowMs ?? Date.now();
-  const due = ((data ?? []) as Routine[]).filter((r) => isDue(r, deps.now, nowMs) && deps.canUse(r.account, r.kind));
+  // One-off reminders that can never come any more (already sent, or missed by more than the window,
+  // or switched off) are removed, so they don't fill the list or count toward the limit.
+  const stale = ((data ?? []) as Routine[]).filter((r) => r.run_at && (r.last_run_day != null || nowMs - Date.parse(r.run_at) >= RUN_WINDOW_MIN * 60_000));
+  for (const r of stale) await db.from("app_rico_routines").delete().eq("id", r.id);
+  const due = ((data ?? []) as Routine[]).filter((r) => !stale.includes(r) && isDue(r, deps.now, nowMs) && deps.canUse(r.account, r.kind));
   if (!due.length) return { skipped: "nothing due" };
-  let past: Awaited<ReturnType<RunDeps["history"]>> | null = null;
+  let pastP: ReturnType<RunDeps["history"]> | null = null;   // read once, only if a prepared order runs
   const out: unknown[] = [];
   for (const r of due) {
     const claim = await db.from("app_rico_routines").update({ last_run_day: deps.now.date })
       .eq("id", r.id).or(`last_run_day.is.null,last_run_day.neq.${deps.now.date}`).select("id");
     if (claim.error || !claim.data?.length) continue;
+    // One routine failing (a write that did not go through) never stops the others.
+    try { out.push(...await runOne(db, deps, r, () => (pastP ??= deps.history()))); }
+    catch (e) { out.push({ id: r.id, kind: r.kind, error: String((e as Error)?.message ?? e).slice(0, 80) }); }
+  }
+  return out;
+}
+
+/* A name kept as one piece inside a sentence (an Arabic or Kurdish name in English text, or the other way). */
+const iso = (s: string) => `\u2068${s}\u2069`;
+
+async function runOne(db: any, deps: RunDeps, r: Routine, history: () => ReturnType<RunDeps["history"]>) {
+  const out: unknown[] = [];
+  {
     const key = `routine|${r.id}|${deps.now.date}`;
     if (r.kind === "remind") {
       const words = { en: `Reminder: ${r.text}`, ku: `بیرخستنەوە: ${r.text}`, ar: `تذكير: ${r.text}` };
@@ -150,9 +167,9 @@ export async function runRoutines(db: any, deps: RunDeps) {
       // A one-off reminder is done once it has come.
       if (r.run_at) await db.from("app_rico_routines").delete().eq("id", r.id);
       out.push({ id: r.id, kind: r.kind, once: !!r.run_at });
-      continue;
+      return out;
     }
-    past ??= await deps.history();
+    const past = await history();
     for (const sid of r.supplier_ids) {
       const name = (past.suppliers.get(sid) ?? "").slice(0, 60);
       if (!name) continue;   // the supplier was deleted
@@ -160,22 +177,22 @@ export async function runRoutines(db: any, deps: RunDeps) {
       const k = `${key}|${sid}`;
       if (!lines.length) {
         await inbox(db, r.account, "routine", {
-          en: `I could not prepare today's order for ${name}: there are no past orders to go on.`,
-          ku: `نەمتوانی داواکاریی ئەمڕۆی ${name} ئامادە بکەم: هیچ داواکارییەکی پێشووی نییە.`,
-          ar: `لم أستطع تجهيز طلب اليوم من ${name}: لا توجد طلبات سابقة أعتمد عليها.`,
+          en: `${iso(name)}: no past orders to prepare today's order from.`,
+          ku: `${iso(name)}: هیچ داواکارییەکی پێشوو نییە بۆ ئامادەکردنی داواکاریی ئەمڕۆ.`,
+          ar: `${iso(name)}: لا توجد طلبات سابقة لتجهيز طلب اليوم.`,
         }, k, null);
         continue;
       }
       const n = lines.length;
       await inbox(db, r.account, "routine_order", {
-        en: `I prepared today's order for ${name} (${n} ${n === 1 ? "item" : "items"}). Open it, check it and send it.`,
-        ku: `داواکاریی ئەمڕۆی ${name}م ئامادە کرد (${n} کاڵا). بیکەرەوە، بیپشکنە و بینێرە.`,
-        ar: `جهّزت طلب اليوم من ${name} (${n} مواد). افتحه وراجعه وأرسله.`,
+        en: `${iso(name)}: today's order is ready to check (${n} ${n === 1 ? "item" : "items"}).`,
+        ku: `${iso(name)}: داواکاریی ئەمڕۆ ئامادەیە بۆ پشکنین (${n} کاڵا).`,
+        ar: `${iso(name)}: طلب اليوم جاهز للمراجعة (${n} مواد).`,
       }, k, { supplierId: sid, supplier: name, day: deps.now.date, lines });
       await deps.notify(r.account, {
-        en: `Rico prepared today's order for ${name}. Check it and send it.`,
-        ku: `ریکۆ داواکاریی ئەمڕۆی ${name}ی ئامادە کرد. بیپشکنە و بینێرە.`,
-        ar: `جهّز ريكو طلب اليوم من ${name}. راجعه وأرسله.`,
+        en: `${iso(name)}: today's order is ready to check.`,
+        ku: `${iso(name)}: داواکاریی ئەمڕۆ ئامادەیە بۆ پشکنین.`,
+        ar: `${iso(name)}: طلب اليوم جاهز للمراجعة.`,
       }, `ricotta-${k}`);
       out.push({ id: r.id, kind: r.kind, supplier: sid, lines: n });
     }

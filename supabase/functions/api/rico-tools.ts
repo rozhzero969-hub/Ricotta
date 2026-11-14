@@ -342,7 +342,7 @@ export async function priceChanges(db: any, w: any, a: any, emit: Emit = noEmit)
     rows: changes.slice(0, 10).map((c) => ({ item: c.item, supplier: c.supplier, unit: c.unit, currency: c.currency, from: c.previous_price, to: c.latest_price, pct: c.change_pct })), more: Math.max(0, changes.length - 10) } });
   return {
     period: `${from} to ${today}`, threshold_pct: threshold, found: changes.length, changes: changes.slice(0, 20),
-    note: changes.length ? CARD_NOTE + (changes.length > 20 ? "Only the 20 biggest changes are listed." : undefined) : `No price changed by more than ${threshold}% in that time.`,
+    note: changes.length ? CARD_NOTE + (changes.length > 20 ? " Only the 20 biggest changes are listed." : "") : `No price changed by more than ${threshold}% in that time.`,
   };
 }
 

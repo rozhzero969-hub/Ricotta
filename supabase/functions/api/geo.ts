@@ -43,7 +43,7 @@ export function isPublicIp(ip: string | null): boolean {
 }
 
 /* Networks that belong to hosting or VPN companies: a person at a phone is almost never on one. */
-const VPN_ORG = /hosting|datacenter|data center|cloud|vpn|proxy|m247|digitalocean|amazon|google cloud|google llc|microsoft|ovh|hetzner|linode|akamai|vultr|choopa|leaseweb|datacamp|proton|nord|mullvad|surfshark|express ?vpn|cloudflare/i;
+const VPN_ORG = /hosting|datacenter|data center|vpn|proxy|m247|digitalocean|amazon|google cloud|microsoft azure|ovh|hetzner|linode|akamai|vultr|choopa|leaseweb|datacamp|proton|nordvpn|mullvad|surfshark|express ?vpn|cloudflare|fastly/i;
 
 export async function placeOf(ip: string | null, deviceTz: string | null): Promise<Place> {
   const place: Place = { ip, city: null, region: null, country: null, org: null, ipTz: null, deviceTz, vpn: null, vpnReason: null };
@@ -59,8 +59,23 @@ export async function placeOf(ip: string | null, deviceTz: string | null): Promi
     place.country = /^[A-Z]{2}$/.test(String(d?.country ?? "")) ? d.country : null;
     place.org = str(d?.org, 120); place.ipTz = cleanTimeZone(d?.timezone);
   } catch { return place; }
-  if (place.org && VPN_ORG.test(place.org)) { place.vpn = true; place.vpnReason = "org"; }
-  else if (deviceTz && place.ipTz) { place.vpn = deviceTz !== place.ipTz; place.vpnReason = place.vpn ? "tz" : null; }
+  // Time zones are compared by their clock offset now, not their names: Asia/Riyadh and Europe/Istanbul
+  // are the same time as Asia/Baghdad, and that is not a VPN.
+  const sameClock = deviceTz && place.ipTz ? offsetMin(deviceTz) === offsetMin(place.ipTz) : null;
+  // iPhones with iCloud Private Relay come through Akamai, Cloudflare or Fastly but keep the real region.
+  const relay = !!place.org && RELAY_ORG.test(place.org) && sameClock !== false;
+  if (place.org && VPN_ORG.test(place.org) && !relay) { place.vpn = true; place.vpnReason = "org"; }
+  else if (sameClock !== null) { place.vpn = !sameClock; place.vpnReason = place.vpn ? "tz" : null; }
   else if (place.org || place.ipTz) place.vpn = false;
   return place;
+}
+const RELAY_ORG = /akamai|cloudflare|fastly/i;
+/* Minutes ahead of UTC in that time zone right now (null if unknown). */
+export function offsetMin(tz: string, at = new Date()): number | null {
+  try {
+    const name = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longOffset" }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? "";
+    const m = name.match(/GMT(?:([+-])(\d{1,2})(?::(\d{2}))?)?$/);
+    if (!m) return null;
+    return m[1] ? (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] ?? 0)) : 0;
+  } catch { return null; }
 }

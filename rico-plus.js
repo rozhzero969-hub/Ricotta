@@ -110,11 +110,13 @@ function ricoRoutineFilled(id){ lset('ricoRoutineFilled:' + state.account, [...n
 /* With "Let Rico fill my order" on, today's prepared orders go into the order by themselves (once each,
    and never over amounts already in the order for that supplier). Otherwise they wait for a tap. */
 function ricoAutoFillRoutines(){
-  if(!state.account || !ricoAutoOrder()) return;
+  if(!state.account || !ricoAutoOrder() || !canOpen('order')) return;
   const today = erbilNow().date, done = new Set(ricoRoutineFilledIds());
   rico.inbox.filter(m=>m.kind === 'routine_order' && m.order?.day === today && !done.has(m.id)).forEach(m=>{
     const mine = state.items.filter(i=>i.supplierId === m.order.supplierId).some(i=>(state.cart[i.id] || 0) > 0);
-    if(mine){ ricoRoutineFilled(m.id); return; }
+    // Already sent today (perhaps from the other phone): never put it back in the draft.
+    const sent = state.history.some(o=>erbilDate(o.date) === today && o.entries.some(e=>e.supplierId === m.order.supplierId));
+    if(mine || sent){ ricoRoutineFilled(m.id); return; }
     ricoFillRoutineOrder(m, true);
   });
 }

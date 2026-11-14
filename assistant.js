@@ -45,7 +45,8 @@ const rico = {
 const RICO_MOODS = ['happy','excited','grateful','calm','thinking','worried','sad','angry'];
 function ricoFace(_mood, cls = ''){ return `<span class="rico-bot rico-plain ${cls}" aria-hidden="true">${ICON_SPARKLE}</span>`; }
 
-function ricoAutoOrder(){ return !!lget('ricoAutoOrder'); }
+/* Per account on this device: Rozh turning it on never turns it on for Yunis. Off unless turned on. */
+function ricoAutoOrder(){ return !!state.account && !!lget('ricoAutoOrder:' + state.account); }
 /* Apple's rule (App Review 5.1.2): before anything goes to an AI service, the person is told where it
    goes and says yes. Asked the first time Rico (or reading a list) is used, kept per person on this
    device, and taken back with the switch in Settings. Not Now simply asks again next time. */
@@ -200,7 +201,7 @@ function renderRicoSide(){
 /* Letting Rico fill the order on this device: asked once when turned on. */
 async function ricoSetAuto(on){
   if(on && !(await showConfirm(t('ricoAutoOrderConfirm'), {okLabel:t('ricoAllow'), okClass:'btn-primary'}))){ render(); return; }
-  lset('ricoAutoOrder', on || null);
+  lset('ricoAutoOrder:' + state.account, on || null);
   toast(on ? t('ricoAutoOn') : t('ricoAutoOff'));
   render();
 }
@@ -224,7 +225,8 @@ function openRicoSettings(){
   el.querySelector('[data-set-memory]').onclick = ()=>{ close(); openRicoMemory(); };
   el.querySelectorAll('input[name=ricoStyle]').forEach(r=>r.onchange = ()=>setSetting('ricoStyle', r.value));
   el.querySelector('[data-set-sheet]').onchange = async e=>{ const box = e.currentTarget; if(!(await setFeature('ricoSheet', box.checked))) box.checked = !box.checked; };
-  el.querySelector('[data-set-ai]').onchange = async e=>{ const box = e.currentTarget; if(!box.checked){ setAiConsent(false); return; } box.checked = await aiConsent(); };
+  // Turning the AI on asks first, in a box that must not sit behind this sheet: the sheet closes.
+  el.querySelector('[data-set-ai]').onchange = async e=>{ const box = e.currentTarget; if(!box.checked){ setAiConsent(false); return; } close(); await aiConsent(); };
 }
 /* A small date and time line where a chat starts, a new day begins, or after a half-hour pause. */
 function ricoTimeDivider(prev, m){

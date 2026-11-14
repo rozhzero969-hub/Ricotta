@@ -922,7 +922,12 @@ function attachRicoReceiptSettings(){
     if(redraw) render();
     return res.ok;
   };
-  const s = document.getElementById('rrStop'); if(s) s.onchange = async ()=>{ if(!(await put({stopped:s.checked}, false))) s.checked = !s.checked; };
+  const s = document.getElementById('rrStop'); if(s) s.onchange = async ()=>{
+    if(!(await put({stopped:s.checked}, false))){ s.checked = !s.checked; return; }
+    // The status line follows at once (the page itself is not drawn again).
+    const h = rr.data?.helper, b = document.querySelector('.rs-status b');
+    if(h && b) b.innerHTML = `<i class="rr-dot ${h.online && !h.stopped ? 'ok' : ''}" aria-hidden="true"></i>${esc(rrHelperLine(h))}`;
+  };
   // Transfers without a second approval: asked once more when it is turned on.
   const au = document.getElementById('tfAutoSet'); if(au) au.onchange = async ()=>{
     if(au.checked && !await showConfirm(esc(t('rsTfAutoAsk')), {title:t('rsTfAuto'), okLabel:t('rsTurnOn'), okClass:'btn-primary'})){ au.checked = false; return; }

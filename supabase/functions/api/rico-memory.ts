@@ -38,9 +38,15 @@ export async function saveRoutine(db: any, account: string, v: any) {
   if (readError) return { error: "failed" };
   // The same routine again (a second tap, or asking twice) gives back the one already saved.
   const at = (x: unknown) => (x ? Date.parse(String(x)) : null);
+  const days = (x: unknown[]) => [...(x ?? [])].map(Number).sort().join();
   const same = (mine ?? []).find((r: any) => r.kind === v.kind && r.time === v.time && sameWords(r.text, v.text) && at(r.run_at) === at(v.run_at)
-    && [...(r.supplier_ids ?? [])].sort().join() === [...v.supplier_ids].sort().join());
-  if (same) return { routine: toRoutine(same) };
+    && days(r.days) === days(v.days) && [...(r.supplier_ids ?? [])].sort().join() === [...v.supplier_ids].sort().join());
+  if (same && same.enabled !== false) return { routine: toRoutine(same) };
+  // Saved again after it was switched off: it is switched back on.
+  if (same) {
+    const { data, error } = await db.from("app_rico_routines").update({ enabled: true, updated_at: new Date().toISOString() }).eq("id", same.id).select("*").maybeSingle();
+    return error || !data ? { error: "failed" } : { routine: toRoutine(data) };
+  }
   if ((mine ?? []).length >= MAX_ROUTINES) return { error: "too_many" };
   if (v.kind === "prepare_order") {
     const { data: sups, error } = await db.from("app_suppliers").select("id").in("id", v.supplier_ids);

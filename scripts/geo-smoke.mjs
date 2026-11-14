@@ -41,4 +41,8 @@ assert.equal(p.city, null); assert.equal(p.vpn, null); assert.equal(p.ip, '91.0.
 globalThis.fetch = async () => new Response('nope', { status: 429 });
 p = await geo.placeOf('91.0.0.1', null);
 assert.equal(p.country, null);
+// Same clock, different name (Riyadh vs Baghdad, both UTC+3): not a VPN. Private Relay (Akamai etc.) in
+// the same clock: not a VPN. A real offset difference still is.
+assert.equal(geo.offsetMin('Asia/Baghdad'), 180);
+assert.equal(geo.offsetMin('Asia/Riyadh'), 180);
 console.log('Sign-in places PASS: private addresses skipped, token never returned, VPN by network or time zone, failures leave the place empty');

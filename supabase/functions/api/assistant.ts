@@ -588,7 +588,8 @@ function proposeRoutine(w: World, a: any, emit: Emit) {
   const c: any = cleanRoutine({ kind: a.kind, text: a.text, time: a.time, days: a.days, supplier_ids: sups.map((x) => x.id) });
   if (c.error) return { error: c.error === "time" ? "Ask what time (HH:MM, Erbil time)." : c.error === "suppliers" ? "Ask which supplier(s), at most 5." : c.error === "days" ? "Days must be 0-6 (0 = Sunday)." : "Ask what the routine should say or do." };
   const v = c.value;
-  if (w.routines.some((r) => r.kind === v.kind && r.time === v.time && sameWords(r.text, v.text))) return { error: "exists", note: "That routine is already saved. Say so." };
+  const dayKey = (x: unknown) => [...((x as unknown[]) ?? [])].map(Number).sort().join();
+  if (w.routines.some((r: any) => r.kind === v.kind && r.time === v.time && sameWords(r.text, v.text) && dayKey(r.days) === dayKey(v.days) && r.enabled !== false && !r.run_at)) return { error: "exists", note: "That routine is already saved. Say so." };
   emit({ type: "proposal", proposal: { id: pid(), kind: "routine", routine: { kind: v.kind, text: v.text, time: v.time, days: v.days, supplierIds: v.supplier_ids, suppliers: sups.map((x) => x.name) } } });
   return { shown: true, when: whenWords(v.time, v.days), what_happens: v.kind === "remind"
     ? "A card with Save. Once saved, at that time Rico sends this person a notification and a message with the reminder."
