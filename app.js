@@ -465,6 +465,12 @@ function liveChanged(kinds, reset){
   if(moved('inbox')) ricoRefreshInbox();
   if(moved('receipts') && rr.data) rrLoad(true);
   if(moved('receipts') && tf.data) tfLoad(true);
+  // New lists from Ricotta Restaurant (Check now, or Rico's own read) or Rico's state changed: the Stock
+  // list reloads at once too.
+  if(moved('receipts') && stk.data) stockLoad();
+  // The stock items offered for linking (cached for the session where that exists) are read again too;
+  // the items with their linked stock lines come back with 'data' (moved too when the lists change).
+  if(moved('data') || moved('receipts')){ try{ if(typeof stockOptions !== 'undefined') stockOptions = null; }catch(_){} }
   if(moved('receipts') && state.view === 'record' && state.recordFilter === 'rico') rrLoadActivity();
 }
 window.addEventListener('online', ()=>liveStart());
@@ -4011,6 +4017,7 @@ function attachSettingsEvents(){
  if(exp) exp.onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(currentOutbox(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ricotta-pending-orders.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   bindAppearance();
   attachFeatureSettings();
+  addSettingHelpButtons(document.getElementById('mainContent') || document);
   document.getElementById('settingsSignOut').onclick = ()=>doLogout();
   document.getElementById('reportProblemBtn').onclick = openReportProblem;
   document.getElementById('shortcutsBtn').onclick = openShortcuts;
