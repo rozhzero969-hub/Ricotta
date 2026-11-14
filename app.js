@@ -3810,13 +3810,26 @@ function renderNotifSettings(){
   const note = !pushConfigured() ? t('notifNotConfigured') : !pushStatus.supported ? t('notifUnsupported') : '';
   return `<div class="section-title">${esc(t('settingsGroup_notif'))}</div><div class="form-card">${note ? `<div class="notif-sub">${esc(note)}</div>` : `<label class="check-row preference-row has-ico"><input type="checkbox" id="pushSwitch" ${pushStatus.subscribed ? 'checked' : ''}>${setIcon('notif')}<span>${esc(t('notifSwitch'))}<small>${esc(t('notifSwitchHint'))}</small></span></label>`}</div>`;
 }
+/* A redraw that keeps one row exactly where it was on the screen (nothing jumps under the finger). */
+function keepRowInPlace(sel, redraw){
+  const top = document.querySelector(sel)?.getBoundingClientRect().top;
+  redraw();
+  const el = document.querySelector(sel);
+  if(top != null && el) scrollBox().scrollTop += el.getBoundingClientRect().top - top;
+}
+/* Switches change only when the switch itself is pressed, not anywhere on its row (Settings and Rico's
+   settings). The row's words still name the switch for screen readers. */
+document.addEventListener('click', e=>{
+  const row = e.target.closest?.('label.preference-row, label.rico-set-row');
+  if(row && row.querySelector('input[type=checkbox]') && !e.target.closest('input')) e.preventDefault();
+}, true);
 function attachNotifEvents(){
   const box = document.getElementById('pushSwitch');
   if(box) box.onchange = async ()=>{
     box.disabled = true;
-    if(!box.checked){ await disablePush(); render(); return; }
+    if(!box.checked){ await disablePush(); keepRowInPlace('#pushSwitch', render); return; }
     const res = await enablePush();
-    render();
+    keepRowInPlace('#pushSwitch', render);
     // Turned on: the bell rings twice.
     if(pushStatus.subscribed) document.querySelector('#pushSwitch ~ .set-ico svg')?.animate?.([0,16,-14,10,-6,3,0].map(r=>({transform:`rotate(${r}deg)`})), {duration:800, easing:'cubic-bezier(.25,.1,.25,1)'});
     await showPushEnableResult(res);

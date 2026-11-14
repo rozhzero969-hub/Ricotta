@@ -2578,3 +2578,5 @@ html.dark .dev-vpn{color:#FF6961}
 .stk-tip-name{font-size:1.0625rem;font-weight:600}
 .stk-tip div{display:flex;justify-content:space-between;gap:16px}.stk-tip span{color:var(--ink-soft);flex:none}.stk-tip div b{font-weight:600;text-align:end}
 @media (max-width:599px){.stk-row{flex-wrap:wrap;row-gap:2px}.stk-name{flex:1 1 calc(100% - 80px)}.stk-amt{margin-inline-start:21px;flex:1;text-align:start}}
+/* Only the switch flips a setting: the row itself is not a button. */
+label.preference-row:has(input[type=checkbox]),label.rico-set-row{cursor:default}

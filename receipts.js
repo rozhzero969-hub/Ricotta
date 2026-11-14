@@ -913,12 +913,14 @@ function renderRicoReceiptSettings(){
     </div>`;
 }
 function attachRicoReceiptSettings(){
-  const put = async body=>{
+  // redraw: only when the numbers on the page change (the limits). A switch keeps the page as it is.
+  const put = async (body, redraw = true)=>{
     const res = await api('receipts-settings', {method:'PUT', body});
     if(res.ok && rr.data){ rr.data.helper = res.data; toast(t('rrSettingsSaved')); } else toast(t('saveFailed'), 'error');
-    render(); return res.ok;
+    if(redraw) render();
+    return res.ok;
   };
-  const s = document.getElementById('rrStop'); if(s) s.onchange = ()=>put({stopped:s.checked});
+  const s = document.getElementById('rrStop'); if(s) s.onchange = async ()=>{ if(!(await put({stopped:s.checked}, false))) s.checked = !s.checked; };
   // Transfers without a second approval: asked once more when it is turned on.
   const au = document.getElementById('tfAutoSet'); if(au) au.onchange = async ()=>{
     if(au.checked && !await showConfirm(esc(t('rsTfAutoAsk')), {title:t('rsTfAuto'), okLabel:t('rsTurnOn'), okClass:'btn-primary'})){ au.checked = false; return; }
