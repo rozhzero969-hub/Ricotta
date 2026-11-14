@@ -236,6 +236,12 @@
     } else if(/every morning|by yourself|هەموو بەیانییەک|كل صباح/.test(q)){
       say('calm', 'Every morning at 7:00 I will prepare the usual order for Erbil Veg Market and leave it for you to check and send. Nothing goes to the supplier until you send it.', 'هەموو بەیانییەک کاتژمێر 7:00 داواکارییە ئاساییەکەی Erbil Veg Market ئامادە دەکەم.', 'كل صباح الساعة 7:00 سأجهّز طلب Erbil Veg Market المعتاد.');
       events.push({type:'proposal', proposal:{id:pid('r'), kind:'routine', routine:{kind:'prepare_order', text:'Veg order', time:'07:00', days:[0,1,2,3,4,5,6], supplierIds:['sup-veg'], suppliers:['Erbil Veg Market']}}});
+    } else if(/stock of|cheese|پەنیر|جبن/.test(q)){
+      say('calm', 'Here is the cheese in Main Storage.', 'ئەمە پەنیرەکانی کۆگای سەرەکییە.', 'هذه الأجبان في المخزن الرئيسي.');
+      events.push({type:'proposal', proposal:{id:pid('s'), kind:'stock_list', mode:'search', query:'cheese', storage:'Main Storage', at:new Date(Date.now()-6*60000).toISOString(), more:0,
+        rows:[{item:'Mozzarella - پەنیری مۆزارێلا', qty:5, unit:'کیلۆ', empty:false, days:null, other:'Pizza 2 کیلۆ'},
+          {item:'Parmesan - پەنیری پارمیزان', qty:31, unit:'دانە', empty:false, days:null, other:''},
+          {item:'Akkawi Cheese - پەنیری عەکاوی', qty:0, unit:'دانە', empty:true, days:null, other:'Appetizers 4 دانە'}]}});
     } else if(/is low|low in|کەمە|ينقص/.test(q)){
       say('calm', 'Two items are low in Main Storage. Faheta Bread is empty and Mozzarella has about a day left.', 'دوو کاڵا لە کۆگای سەرەکی کەمن.', 'مادتان ناقصتان في المخزن الرئيسي.');
       events.push({type:'proposal', proposal:{id:pid('s'), kind:'stock_list', storage:'Main Storage', at:new Date(Date.now()-6*60000).toISOString(), more:0,
