@@ -953,6 +953,7 @@ function render(){
   }
   app.classList.remove('static-update');
   app.dataset.shell = shellKey(); app.dataset.screen = state.view;
+  syncRicoSide();   // Rico's own sidebar sits in the shell, beside the app's (never inside the sliding page)
   attachContentEvents();
   attach();
   if(state.view !== 'assistant') document.body.classList.remove('rico-composing');

@@ -764,6 +764,17 @@
       if(body.account === 'rozha' && pin === '222222') return fail('duplicate_pin');
       return ok();
     }
+    if(method === 'PUT' && (m = path.match(/^rico-chats\/([^/]+)\/title$/))){
+      const c = db.chats.find(x=>x.id === decodeURIComponent(m[1]));
+      if(!c || (c.account !== account && account !== 'rozha')) return fail('not_found', 404);
+      c.title = String(body.title || '').slice(0, 80); save(); return ok();
+    }
+    if(method === 'POST' && path === 'assistant/title'){
+      // The Lab names a chat from its question (the real app asks the AI for 2 to 5 words).
+      const q = String(body.question || '').toLowerCase();
+      const title = /cheese|پەنیر|جبن/.test(q) ? 'Cheese stock' : /low|کەم|ينقص/.test(q) ? 'Low stock today' : /needs|پێویستی|يحتاج/.test(q) ? 'What needs attention' : /price|نرخ|سعر/.test(q) ? 'Price changes' : /late|دوا|تأخر/.test(q) ? 'Late orders today' : 'Kitchen questions';
+      return json({title});
+    }
     if((m = path.match(/^rico-chats(?:\/(.+))?$/))){
       const id = m[1] ? decodeURIComponent(m[1]) : null;
       if(method === 'GET' && !id) return json({chats:[...db.chats].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).map(c=>({id:c.id, account:c.account, title:c.title, createdAt:c.createdAt, updatedAt:c.updatedAt}))});
