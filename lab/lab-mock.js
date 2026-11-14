@@ -652,6 +652,23 @@
         receipts:{today:3, todayTotals:{IQD:1204000}, last7:26, last7Totals:{IQD:9800000}, perDay:receipts, active:0, problems:[], last:{at, by:'rozha', supplier:'Bread House Bakery'}},
         transfers:{today:12, last7:55, perDay:transfers, active:0, problems:[], last:{at, by:'rozha', to:'Pizza'}}});
     }
+    // Admin, Stock names: sample names with each kind of problem (Lab only; the real list comes from
+    // Ricotta Restaurant's stock and the rules in supabase/functions/api/stock-names.ts).
+    if(path === 'admin/stock-names' || path === 'admin/stock-names/check'){
+      const checked = method === 'POST' || db.namesChecked;
+      if(method === 'POST') db.namesChecked = true;
+      const rows = [
+        {name:'Akkawi  Cheese - پەنیری عەکاوی', problems:[{kind:'spacing', code:'double'}], fixed:'Akkawi Cheese - پەنیری عەکاوی', why:''},
+        {name:'Lemon -لیمۆ', problems:[{kind:'spacing', code:'separator'}], fixed:'Lemon - لیمۆ', why:''},
+        {name:'Almonds - باوي', problems:[{kind:'letters', code:'mixedLetters'}], fixed:'Almonds - باوی', why:''},
+        {name:'Pepsi 330ml - پێپسی ٣٣٠', problems:[{kind:'letters', code:'digits'}], fixed:'Pepsi 330ml - پێپسی 330', why:''},
+        {name:'Parsleyجەعفەری', problems:[{kind:'letters', code:'glued'}, {kind:'spacing', code:'separator'}], fixed:'Parsley - جەعفەری', why:''},
+        {name:'تەماتە', problems:[{kind:'missing', code:'noEnglish'}], fixed:checked ? 'Tomato - تەماتە' : null, why:checked ? 'Added the English name' : ''},
+        {name:'Basil', problems:[{kind:'missing', code:'noLocal'}], fixed:null, why:''},
+        ...(checked ? [{name:'Mozarella - پەنیری مۆزارێلا', problems:[{kind:'spelling', code:'spelling'}], fixed:'Mozzarella - پەنیری مۆزارێلا', why:'Misspelled: Mozarella'}] : []),
+      ];
+      return json({readAt:new Date(Date.now() - 6*60000).toISOString(), total:321, checkedAt:checked ? new Date().toISOString() : null, provider:checked ? 'anthropic' : null, stale:false, aiReady:true, rows});
+    }
     if(method === 'GET' && path === 'admin/server') return json({dbBytes:32077491, filesBytes:27532729, dbLimit:500 * 1048576, filesLimit:1073741824});
     if(method === 'GET' && path === 'admin/diagnostics'){
       if(account !== 'rozha') return fail('forbidden', 403);

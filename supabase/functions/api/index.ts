@@ -75,6 +75,7 @@ import { cleanRoutine } from "../_shared/routines.ts";
 import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
 import { stockView, transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
+import { checkStockNames, stockNames } from "./stock-names.ts";
 import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 import "../_shared/overview.js";
@@ -1008,6 +1009,13 @@ Deno.serve(async (req) => {
     if (M === "GET" && path === "admin/usage") {
       const { data, error } = await db.rpc("app_internal_usage_summary", { p_actor: s.account });
       return error ? fail("usage_unavailable", 503) : json(data);
+    }
+    // Admin, Stock names: problems in Ricotta Restaurant's item names and the names to copy (stock-names.ts).
+    if (M === "GET" && path === "admin/stock-names") return json(await stockNames(db));
+    if (M === "POST" && path === "admin/stock-names/check") {
+      const limited = await requestLimit([`account:${s.account}:stocknames`], [3]); if (limited) return limited;
+      const r: any = await checkStockNames(db);
+      return r.error ? fail(r.error, r.error === "no_names" ? 409 : 503) : json(r);
     }
     if (M === "GET" && path === "admin/rico") return json(await adminRico());
     if (M === "GET" && path === "admin/ai") return json(await adminAi(db));

@@ -370,9 +370,13 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#pushSwitch, .form-card .notif-sub').count()>=1,true,'notifications live in Settings');
     assert.equal(await page.locator('#reminderEnabled').count(),0,'there is no daily reminder');
     assert.equal(await page.locator('[data-pin-change], .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
-    // Admin: one calm dashboard. Six tools, two people (each with their own page) and All devices.
+    // Admin: one calm dashboard. Its tools (Stock names only for someone with Receipts or Transfers;
+    // Rico's page opens from his card), two people (each with their own page) and All devices.
     await openView(page,'admin');
-    assert.equal(await page.locator('.adh-tools [data-admin-open]').count(),6,'Admin has six tools');
+    const tools=await page.locator('.adh-tools [data-admin-open]').evaluateAll(els=>els.map(e=>e.dataset.adminOpen));
+    const rrViews=await page.evaluate(()=>state.views.includes('receipts') || state.views.includes('transfers'));
+    assert.deepEqual(tools,['problems','security','health','catalog',...(rrViews ? ['names'] : []),'restore'],'Admin tools');
+    assert.equal(await page.locator('.adh-rico[data-admin-open="rico"]').count(),1,'Rico\u2019s card opens his page');
     assert.equal(await page.locator('[data-admin-person]').count(),2,'one row per person');
     // The status line counts only real problems, today's numbers come from the overview, each with a bar
     // for each of the last 14 days.
@@ -403,7 +407,7 @@ const server=http.createServer((req,res)=>{
     assert.deepEqual(calls.filter(c=>c.endpoint==='admin/pin').at(-1).body,{account:'yunis',currentPin:'471906',newPin:'591837'},'the change goes out once it is right');
     await page.locator('.admin-heading .page-back').click();await settle(page);
     assert.equal(await page.locator('.adh-tools').count(),1,'Back returns to the Admin dashboard');
-    await page.locator('.adh-tools [data-admin-open="rico"]').click();await settle(page);
+    await page.locator('.adh-rico[data-admin-open="rico"]').click();await settle(page);
     // Rico's AI: each AI with its state, replies and tokens. Keys are never typed or shown in the app.
     await page.waitForSelector('.ad-ai-list .ad-ai');
     assert.equal(await page.locator('.ad-ai').count(),3,'Haiku, Gemini and Groq');
