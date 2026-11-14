@@ -23,7 +23,6 @@ const RICO_LATE_WINDOW_MIN = 4*60;
 NAV_ICONS.assistant = ricoSparkSvg('currentColor');
 const ICON_SEND_UP = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>`;
 const ICON_STOP = `<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor"/></svg>`;
-const ICON_RICO_SETTINGS = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>`;
 const ICON_RR_OPEN = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>`;
 const ICON_NEW_CHAT = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
 
@@ -38,6 +37,9 @@ const rico = {
   chats: null,         // one shared list of both accounts' saved chats {id, account, title, updatedAt}, newest first (null until loaded)
   chatsBusy: false,
   viewing: null,       // the other person's account while one of their chats is open (read only)
+  chatTitle: null,     // the chat's name: made by the AI after the first answer, or typed with Rename
+  titleManual: false,  // a name typed with Rename (never replaced by the AI's)
+  sideSearch: false, sideQuery: '',   // the sidebar's search, while it is open
 };
 
 /* Rico is a plain green sparkle everywhere (Rozh's choice, 2026-11-13): no face, no moods, no
@@ -68,6 +70,7 @@ function ricoReset(){
   rico.epoch++; rico.chatRequest++;
   ricoStop(); clearTimeout(ricoSaveTimer);
   rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.chatsBusy = false; rico.viewing = null; rico.viewedId = null;
+  rico.chatTitle = null; rico.titleManual = false; rico.sideSearch = false; rico.sideQuery = '';
 }
 
 /* ---------- Rico's inbox ---------- */
@@ -154,7 +157,7 @@ function renderAssistant(){
       <div class="rico-head-actions">
         <button type="button" class="rico-head-btn" id="ricoHistBtn">${NAV_ICONS.history}<span>${esc(t('ricoChats'))}</span></button>
         <button type="button" class="rico-head-btn" id="ricoNewBtn" ${rico.messages.length?'':'disabled'}>${ICON_NEW_CHAT}<span>${esc(t('ricoNewChat'))}</span></button>
-        <button type="button" class="rico-head-btn icon" data-rico-settings-open aria-label="${esc(t('ricoSettings'))}">${ICON_RICO_SETTINGS}</button>
+        <button type="button" class="rico-head-btn icon" data-rico-settings-open aria-label="${esc(t('ricoSettings'))}" title="${esc(t('ricoSettings'))}">${ICON_RS_GEAR}</button>
       </div>
     </header>`;
   const thread = rico.messages.length
@@ -162,40 +165,149 @@ function renderAssistant(){
     : renderRicoIntro();
   const viewing = rico.viewing ? `<div class="rico-viewing" role="status"><span>${esc(t('ricoReadOnly')(accountLabel(rico.viewing)))}</span></div>` : '';
   const empty = !rico.messages.length;
-  return `<div class="rico-page${empty ? ' empty' : ''}">${renderRicoSide()}<div class="rico-main">${head}${viewing}${rico.viewing || empty ? '' : renderRicoInbox()}<div class="rico-thread${rico.viewing ? ' read-only' : ''}" id="ricoThread" aria-live="polite">${thread}</div></div></div>`;
+  return `<div class="rico-page${empty ? ' empty' : ''}"><div class="rico-main">${head}${viewing}${rico.viewing || empty ? '' : renderRicoInbox()}<div class="rico-thread${rico.viewing ? ' read-only' : ''}" id="ricoThread" aria-live="polite">${thread}</div></div></div>`;
 }
 /* The open chat's name, shown above it on a computer (like a chat app). */
 function ricoHeadTitle(){
   const id = rico.viewedId || rico.chatId, c = id && rico.chats?.find(x=>x.id === id);
-  return (c && c.title) || ricoChatTitle() || t('ricoNewChat');
+  return (!rico.viewing && rico.chatTitle) || (c && c.title) || ricoChatTitle() || t('ricoNewChat');
 }
 /* Leaving Rico on a computer: back to the screen it was opened from. */
 function ricoLeave(){
   const back = state.ricoBack && state.ricoBack !== 'assistant' && canOpen(state.ricoBack) ? state.ricoBack : (state.tabs.find(v=>v !== 'assistant') || 'order');
   goView(back);
 }
-/* The chats on the left (computers only; CSS hides it on phones). */
+/* Rico's sidebar on a computer, like Claude's: the back arrow and "ricotta." (as the app's sidebar),
+   the hide button, New chat and Search as small rows, the chats as plain one-line rows, and a small gear
+   at the foot for Rico settings. It lives in the shell (beside the app's own sidebar, see syncRicoSide),
+   not inside the page, so opening Rico never slides it in with the page. Phones use the Chats sheet. */
+const ICON_RS_NEW = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
+const ICON_RS_SEARCH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>`;
+const ICON_RS_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>`;
+const ICON_RS_GEAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>`;
+/* The chats as rows (shared by the sidebar and its search). */
+function ricoSideRows(){
+  if(!rico.chats) return loadingLines(4);
+  const q = (rico.sideQuery || '').trim().toLocaleLowerCase();
+  const list = rico.chats.slice(0, 60).filter(c=>!q || String(c.title || '').toLocaleLowerCase().includes(q));
+  if(!list.length) return `<p class="rico-side-empty">${esc(q ? t('rrNoMatch') : t('ricoNoChatsYet'))}</p>`;
+  return list.map(c=>{
+    const on = c.id === rico.chatId || c.id === rico.viewedId, other = c.account && c.account !== state.account;
+    return `<button type="button" class="rico-side-chat${on ? ' on' : ''}" data-side-open="${esc(c.id)}"${on ? ' aria-current="true"' : ''}><span dir="auto">${esc(c.title || t('ricoUntitled'))}</span>${other ? `<small>${esc(accountLabel(c.account))}</small>` : ''}</button>`;
+  }).join('');
+}
 function renderRicoSide(){
-  let lastDay = '';
-  const rows = !rico.chats ? loadingLines(4) : !rico.chats.length ? `<p class="rico-side-empty">${esc(t('ricoNoChatsYet'))}</p>`
-    : rico.chats.slice(0, 40).map(c=>{
-      const day = dayLabel(c.updatedAt), head = day !== lastDay ? `<div class="rico-side-day">${esc(day)}</div>` : '';
-      lastDay = day;
-      const on = c.id === rico.chatId || c.id === rico.viewedId;
-      const other = c.account && c.account !== state.account;
-      return `${head}<button type="button" class="rico-side-chat${on ? ' on' : ''}" data-side-open="${esc(c.id)}"${on ? ' aria-current="true"' : ''}><span dir="auto">${esc(c.title || t('ricoUntitled'))}</span>${other ? `<small>${esc(accountLabel(c.account))}</small>` : ''}</button>`;
-    }).join('');
-  return `<aside class="rico-side" aria-label="${esc(t('ricoChats'))}">
-      <div class="rico-side-top">
-        <button type="button" class="rico-back" data-rico-leave aria-label="${esc(t('ricoBack'))}" title="${esc(t('ricoBack'))}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span class="brand-mark">ricotta</span><span class="dot"></span></button>
-        <button type="button" class="side-toggle" data-side-toggle aria-label="${esc(t('sideHide'))}" title="${esc(t('sideHide'))}">${ICON_SIDEBAR}</button>
+  return `<aside class="rico-side" id="ricoSide" aria-label="${esc(t('ricoChats'))}">
+      <button type="button" class="rico-back" data-rico-leave aria-label="${esc(t('ricoBack'))}" title="${esc(t('ricoBack'))}">${ICON_RS_BACK}<span class="brand"><span class="brand-mark">ricotta</span><span class="dot"></span></span></button>
+      <button type="button" class="side-toggle" data-side-toggle aria-label="${esc(t('sideHide'))}" title="${esc(t('sideHide'))}">${ICON_SIDEBAR}</button>
+      <div class="rico-side-actions">
+        <button type="button" class="rico-side-item" data-side-new>${ICON_RS_NEW}<span>${esc(t('ricoNewChat'))}</span></button>
+        ${rico.sideSearch ? `<label class="rico-side-search">${ICON_RS_SEARCH}<input type="search" data-side-search value="${esc(rico.sideQuery || '')}" placeholder="${esc(t('ricoSearchChats'))}" aria-label="${esc(t('ricoSearchChats'))}" autocomplete="off"></label>`
+          : `<button type="button" class="rico-side-item" data-side-find>${ICON_RS_SEARCH}<span>${esc(t('spotTitle'))}</span></button>`}
       </div>
-      <button type="button" class="rico-side-new" data-side-new ${rico.messages.length ? '' : 'disabled'}>${ICON_NEW_CHAT}<span>${esc(t('ricoNewChat'))}</span></button>
-      ${rico.chats?.length > 6 ? `<label class="rico-side-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input type="search" data-side-search placeholder="${esc(t('ricoSearchChats'))}" aria-label="${esc(t('ricoSearchChats'))}" autocomplete="off"></label>` : ''}
-      <div class="rico-side-list">${rows}</div>
-      ${rico.chats?.length ? `<button type="button" class="rico-side-link" data-side-all>${esc(t('ricoManageChats'))}</button>` : ''}
-      <button type="button" class="rico-side-set" data-rico-settings-open>${ICON_RICO_SETTINGS}<span>${esc(t('ricoSettings'))}</span></button>
+      <div class="rico-side-label">${esc(t('ricoChats'))}</div>
+      <div class="rico-side-list" id="ricoSideList">${ricoSideRows()}</div>
+      <div class="rico-side-foot"><button type="button" class="rico-gear" data-rico-settings-open aria-label="${esc(t('ricoSettings'))}" title="${esc(t('ricoSettings'))}">${ICON_RS_GEAR}</button></div>
     </aside>`;
+}
+/* Puts Rico's sidebar in the shell while Rico is open (and takes it away after), keeping its scroll. */
+function syncRicoSide(){
+  const app = document.getElementById('app'), old = document.getElementById('ricoSide');
+  if(!app || !state.account || state.view !== 'assistant'){ old?.remove(); return; }
+  const top = old?.querySelector('.rico-side-list')?.scrollTop || 0, typing = document.activeElement?.matches?.('[data-side-search]');
+  const tmp = document.createElement('div'); tmp.innerHTML = renderRicoSide();
+  const side = tmp.firstElementChild;
+  if(old) old.replaceWith(side); else app.appendChild(side);
+  side.querySelector('.rico-side-list').scrollTop = top;
+  if(typing){ const i = side.querySelector('[data-side-search]'); i?.focus(); i?.setSelectionRange(i.value.length, i.value.length); }
+  attachRicoSideEvents(side);
+}
+function attachRicoSideEvents(side){
+  side.querySelector('[data-side-new]').onclick = ()=>ricoNewChat();
+  side.querySelector('[data-rico-leave]').onclick = ricoLeave;
+  side.querySelector('[data-rico-settings-open]').onclick = openRicoSettings;
+  const find = side.querySelector('[data-side-find]');
+  if(find) find.onclick = ()=>{ rico.sideSearch = true; syncRicoSide(); document.querySelector('#ricoSide [data-side-search]')?.focus(); };
+  const input = side.querySelector('[data-side-search]');
+  if(input){
+    input.oninput = ()=>{ rico.sideQuery = input.value; const list = side.querySelector('#ricoSideList'); list.innerHTML = ricoSideRows(); attachRicoChatRows(list); };
+    input.onkeydown = e=>{ if(e.key === 'Escape'){ rico.sideSearch = false; rico.sideQuery = ''; syncRicoSide(); } };
+    input.onblur = ()=>{ if(!input.value.trim()) setTimeout(()=>{ if(rico.sideSearch && !rico.sideQuery){ rico.sideSearch = false; syncRicoSide(); } }, 150); };
+  }
+  attachRicoChatRows(side);
+}
+/* A chat row opens the chat; right-click (computer) or a long press (phone) opens Rename and Delete. */
+function attachRicoChatRows(root){
+  root.querySelectorAll('[data-side-open], [data-hist-open]').forEach(row=>{
+    const id = row.dataset.sideOpen || row.dataset.histOpen;
+    let timer = 0, held = false, x = 0, y = 0;
+    const stop = ()=>{ clearTimeout(timer); document.removeEventListener('pointermove', move); };
+    const move = e=>{ if(Math.abs(e.clientX - x) > 8 || Math.abs(e.clientY - y) > 8) stop(); };
+    row.addEventListener('pointerdown', e=>{
+      if(e.button > 0 || e.pointerType === 'mouse') return;
+      held = false; x = e.clientX; y = e.clientY;
+      timer = setTimeout(()=>{ held = true; stop(); openRicoChatMenu(id, row); }, 480);
+      document.addEventListener('pointermove', move, {passive:true});
+    });
+    ['pointerup', 'pointercancel'].forEach(type=>row.addEventListener(type, stop));
+    row.addEventListener('contextmenu', e=>{ e.preventDefault(); if(!held) openRicoChatMenu(id, row, e); });
+    row.addEventListener('click', e=>{ if(held){ e.preventDefault(); e.stopImmediatePropagation(); held = false; } }, true);
+    if(row.dataset.sideOpen) row.onclick = ()=>ricoOpenChat(id);
+  });
+}
+function openRicoChatMenu(id, row, e){
+  const c = rico.chats?.find(x=>x.id === id);
+  if(!c) return;
+  closeContextMenu();
+  haptic('medium');
+  const mine = !c.account || c.account === state.account || isRozha();
+  const rect = row.getBoundingClientRect(), W = 220, H = (mine ? 2 : 1) * 44;
+  const left = e ? Math.min(e.clientX, innerWidth - W - 12) : Math.min(Math.max(12, rect.left), innerWidth - W - 12);
+  const top = e ? Math.min(e.clientY, innerHeight - H - 12) : (rect.bottom + 8 + H < innerHeight ? rect.bottom + 8 : Math.max(12, rect.top - 8 - H));
+  const layer = document.createElement('div');
+  layer.id = 'ctxLayer'; layer.className = 'ctx-layer rico-chat-ctx';
+  layer.innerHTML = `<div class="ctx-scrim"></div><div class="ctx-menu small" role="menu" style="top:${top}px;left:${left}px;width:${W}px">
+      ${mine ? `<button type="button" role="menuitem" data-ctx="rename"><span>${esc(t('ricoRename'))}</span>${ICON_EDIT}</button>` : ''}
+      <button type="button" role="menuitem" class="danger" data-ctx="delete"><span>${esc(t('delete'))}</span>${ICON_DELETE}</button></div>`;
+  document.body.appendChild(layer);
+  layer.querySelector('.ctx-scrim').onclick = closeContextMenu;
+  layer.querySelector('.ctx-scrim').oncontextmenu = ev=>{ ev.preventDefault(); closeContextMenu(); };
+  layer.addEventListener('keydown', ev=>{ if(ev.key === 'Escape') closeContextMenu(); });
+  layer.querySelector('[data-ctx]')?.focus({preventScroll:true});
+  layer.querySelectorAll('[data-ctx]').forEach(b=>b.onclick = ()=>{ closeContextMenu(); b.dataset.ctx === 'rename' ? ricoRenameChat(id) : ricoDeleteChat(id); });
+}
+function ricoRenameChat(id){
+  const c = rico.chats?.find(x=>x.id === id); if(!c) return;
+  showFormModal({
+    title: esc(t('ricoRename')),
+    bodyHtml: `<div class="field"><label for="ricoChatName">${esc(t('ricoChatName'))}</label><input id="ricoChatName" maxlength="80" dir="auto" autocomplete="off" value="${esc(c.title || '')}"></div>`,
+    onSubmit: async ()=>{
+      const title = document.getElementById('ricoChatName').value.trim();
+      if(!title) return {error:t('ricoChatName')};
+      const r = await api('rico-chats/' + id + '/title', {method:'PUT', body:{title}});
+      if(!r.ok) return {error:t('saveFailed')};
+      c.title = title;
+      if(rico.chatId === id){ rico.chatTitle = title; rico.titleManual = true; }
+      if(state.view === 'assistant'){ syncRicoSide(); const h = document.querySelector('.rico-head-title'); if(h) h.textContent = ricoHeadTitle(); }
+      document.getElementById('ricoHistSheet')?.ricoRepaint?.();
+      return {};
+    }
+  });
+  requestAnimationFrame(()=>{ const i = document.getElementById('ricoChatName'); i?.focus(); i?.select(); });
+}
+/* Deletes one chat (id) or every chat (null), after asking once. */
+async function ricoDeleteChat(id){
+  if(!(await showConfirm(esc(id ? t('ricoDeleteChatAsk') : t('ricoDeleteAllAsk')), {okLabel:t('delete'), okClass:'btn-danger'}))) return false;
+  clearTimeout(ricoSaveTimer);
+  const r = await api(id ? 'rico-chats/' + id : 'rico-chats?account=all', {method:'DELETE'});
+  if(!r.ok){ toast(t('saveFailed'), 'error'); return false; }
+  rico.chats = id ? (rico.chats || []).filter(c=>c.id !== id) : [];
+  if(!id || rico.chatId === id){ rico.chatId = null; rico.chatTitle = null; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }
+  if(rico.viewing && (!id || id === rico.viewedId)){ rico.viewing = null; rico.viewedId = null; rico.messages = []; }
+  toast(id ? t('ricoChatDeleted') : t('ricoChatsDeleted'));
+  document.getElementById('ricoHistSheet')?.ricoRepaint?.();
+  if(state.view === 'assistant') render();
+  return true;
 }
 /* Letting Rico fill the order on this device: asked once when turned on. */
 async function ricoSetAuto(on){
@@ -219,9 +331,11 @@ function openRicoSettings(){
     <div class="rico-set-group">
       ${sw('data-set-sheet', featureOn('ricoSheet'), t('feat_ricoSheet'), t('feat_ricoSheet_hint'))}
       ${sw('data-set-ai', aiConsented(), t('aiSettingLabel'), t('aiSettingHint'))}
-    </div>`, t('ricoSettings'));
+    </div>
+    <div class="rico-set-group"><button type="button" class="rico-side-row rico-set-row rico-set-danger" data-set-delall><span>${esc(t('ricoDeleteAll'))}</span></button></div>`, t('ricoSettings'));
   el.querySelector('[data-set-auto]').onchange = e=>{ const on = e.currentTarget.checked; close(); ricoSetAuto(on); };
   el.querySelector('[data-set-memory]').onclick = ()=>{ close(); openRicoMemory(); };
+  el.querySelector('[data-set-delall]').onclick = ()=>{ close(); ricoDeleteChat(null); };
   el.querySelectorAll('input[name=ricoStyle]').forEach(r=>r.onchange = ()=>setSetting('ricoStyle', r.value));
   el.querySelector('[data-set-sheet]').onchange = async e=>{ const box = e.currentTarget; if(!(await setFeature('ricoSheet', box.checked))) box.checked = !box.checked; };
   // Turning the AI on asks first, in a box that must not sit behind this sheet: the sheet closes.
@@ -540,24 +654,8 @@ function attachAssistantEvents(){
   document.getElementById('ricoNewBtn')?.addEventListener('click', ()=>ricoNewChat());
   document.querySelectorAll('[data-rico-mine]').forEach(b=>b.onclick=()=>ricoNewChat());
   document.getElementById('ricoHistBtn')?.addEventListener('click', ()=>ricoOpenHistory());
-  document.querySelectorAll('[data-rico-settings-open]').forEach(b=>b.onclick = openRicoSettings);
-  if(rico.chats === null) ricoLoadChats().then(()=>{ if(state.view === 'assistant' && !rico.messages.length && rico.chats?.length && !refreshBlocked()) render(); });
-  document.querySelector('[data-side-new]')?.addEventListener('click', ()=>ricoNewChat());
-  document.querySelector('[data-side-all]')?.addEventListener('click', ()=>ricoOpenHistory());
-  document.querySelectorAll('[data-side-open]').forEach(b=>b.onclick = ()=>ricoOpenChat(b.dataset.sideOpen));
-  document.querySelector('[data-rico-leave]')?.addEventListener('click', ricoLeave);
-  // Search: hides the chats (and day lines) that don't match, without drawing the list again.
-  document.querySelector('[data-side-search]')?.addEventListener('input', e=>{
-    const q = e.currentTarget.value.trim().toLocaleLowerCase();
-    let day = null, any = false;
-    const flush = ()=>{ if(day) day.hidden = !any; };
-    document.querySelectorAll('.rico-side-list > *').forEach(el=>{
-      if(el.classList.contains('rico-side-day')){ flush(); day = el; any = false; return; }
-      const hit = !q || el.textContent.toLocaleLowerCase().includes(q);
-      el.hidden = !hit; if(hit) any = true;
-    });
-    flush();
-  });
+  document.querySelectorAll('.rico-head [data-rico-settings-open]').forEach(b=>b.onclick = openRicoSettings);
+  if(rico.chats === null) ricoLoadChats().then(()=>{ if(state.view === 'assistant' && !refreshBlocked()) syncRicoSide(); });
   attachRicoThreadEvents(document.getElementById('mainContent') || document);
   if(rico.messages.length) ricoScroll(false);
   ricoMarkInboxRead();
@@ -715,11 +813,13 @@ async function ricoAsk(text, options = {}){
   if(!controller.signal.aborted && !bot.text && !bot.proposals.length && !bot.error){ bot.error = 'failed'; bot.retry = true; }
   rico.streaming = false; rico.abort = null;
   if(bot.text && !bot.error) playRicoReply();
+  // The first answer in a new chat: the AI gives the chat a short name about its topic.
+  if(bot.text && !bot.error && !rico.chatTitle && !rico.viewing && rico.messages.filter(m=>m.role === 'user').length === 1) ricoNameChat(text, bot.text);
   ricoSaveSoon();
   if(state.view === 'assistant'){
     ricoPaintMessage(idx);
     ricoRefreshComposer();
-    document.getElementById('ricoNewBtn')?.removeAttribute('disabled'); document.querySelector('[data-side-new]')?.removeAttribute('disabled');
+    document.getElementById('ricoNewBtn')?.removeAttribute('disabled');
   }
 }
 /* Repaints one message in place (no full re-render while text streams in). */
@@ -913,10 +1013,23 @@ async function ricoSave(){
   const messages = ricoSerialize();
   if(!messages.some(m=>m.role === 'user')) return;
   if(!rico.chatId) rico.chatId = crypto.randomUUID();
-  const id = rico.chatId, account = state.account, title = ricoChatTitle();
+  const id = rico.chatId, account = state.account, title = rico.chatTitle || ricoChatTitle();
   const r = await api('rico-chats/' + id, {method:'PUT', body:{title, messages}});
   if(!r.ok || state.account !== account || !rico.chats) return;
   rico.chats = [{id, account, title, updatedAt:new Date().toISOString()}, ...rico.chats.filter(c=>c.id !== id)].slice(0, 120);
+  if(state.view === 'assistant') syncRicoSide();   // the new chat shows in the sidebar at once
+}
+/* A short topic name for a new chat, like other AI apps ("Cheese stock"). If the AI can't, the chat keeps
+   the first words of the question. A name typed with Rename always wins. */
+async function ricoNameChat(question, answer){
+  const context = ricoContext(), before = rico.messages[0];
+  const r = await api('assistant/title', {method:'POST', body:{question:String(question).slice(0, 500), answer:ricoClean(answer).slice(0, 600), lang:state.lang}, quiet:true});
+  const title = r.ok && typeof r.data?.title === 'string' ? r.data.title.trim().slice(0, 80) : '';
+  if(!title || !ricoContextCurrent(context) || rico.messages[0] !== before || rico.chatTitle || rico.titleManual) return;
+  rico.chatTitle = title;
+  const c = rico.chats?.find(x=>x.id === rico.chatId); if(c) c.title = title;
+  if(state.view === 'assistant'){ syncRicoSide(); const h = document.querySelector('.rico-head-title'); if(h) h.textContent = ricoHeadTitle(); }
+  ricoSaveSoon();
 }
 async function ricoLoadChats(){
   if(rico.chatsBusy) return;
@@ -939,7 +1052,7 @@ function ricoNewChat(){
   if(rico.messages.length) ricoSave();
   rico.epoch++; rico.chatRequest++;
   rico.streaming = false;
-  rico.messages = []; rico.chatId = null; rico.viewing = null; rico.viewedId = null;
+  rico.messages = []; rico.chatId = null; rico.viewing = null; rico.viewedId = null; rico.chatTitle = null; rico.titleManual = false;
   render();
 }
 async function ricoOpenChat(id){
@@ -955,6 +1068,7 @@ async function ricoOpenChat(id){
   rico.viewing = r.data.account && r.data.account !== state.account ? r.data.account : null;
   rico.chatId = rico.viewing ? null : id;
   rico.viewedId = rico.viewing ? id : null;
+  rico.chatTitle = r.data.title || null; rico.titleManual = !!r.data.title;   // a saved name stays
   rico.messages = r.data.messages.map(m=>({...m, proposals:(m.proposals||[]).map(p=>({...p, undo:undefined, status: !p.status || p.status === 'pending' || p.status === 'saving' ? 'expired' : p.status}))}));
   if(state.view !== 'assistant') goView('assistant'); else render();
   ricoScroll(false);
@@ -971,10 +1085,11 @@ function ricoOpenHistory(){
   wrap.innerHTML = `<div class="sel-scrim"></div><div class="sel-panel" role="dialog" aria-modal="true" aria-label="${esc(t('ricoHistory'))}">
     <div class="sel-grab"></div>
     <div class="rico-hist-top"><div class="sel-title">${esc(t('ricoHistory'))}</div><button type="button" class="btn btn-primary" data-hist-new>${ICON_NEW_CHAT}<span>${esc(t('ricoNewChat'))}</span></button></div>
-    <div class="sel-list rico-hist-list"></div></div>`;
+    <div class="sel-list rico-hist-list"></div>
+    <p class="rico-hist-hint">${esc(t('ricoHoldHint'))}</p></div>`;
   document.body.appendChild(wrap);
   const list = wrap.querySelector('.rico-hist-list');
-  let confirming = null;   // the chat id (or 'all') waiting for a second tap on Delete
+  // One list of every chat, newest first and grouped by day. A tap opens it; a long press offers Rename and Delete.
   const paint = ()=>{
     if(!rico.chats){ list.innerHTML = loadingLines(4); return; }
     if(!rico.chats.length){ list.innerHTML = `<div class="field-hint rico-hist-empty">${esc(t('ricoHistoryEmpty'))}</div>`; return; }
@@ -982,13 +1097,9 @@ function ricoOpenHistory(){
     list.innerHTML = rico.chats.map(c=>{
       const day = dayLabel(c.updatedAt), head = day !== lastDay ? `<div class="rico-hist-day">${esc(day)}</div>` : '';
       lastDay = day;
-      const asking = confirming === c.id;
-      return `${head}<div class="rico-hist-row${c.id === rico.chatId || c.id === rico.viewedId ? ' on' : ''}${asking ? ' asking' : ''}">
-        <button type="button" class="rico-hist-open" data-hist-open="${esc(c.id)}">${chatOwnerMark(c)}<span class="rico-hist-title" dir="auto">${esc(c.title || t('ricoUntitled'))}</span><small>${esc(accountLabel(c.account || state.account))} · ${esc(formatIraqDateTime(c.updatedAt,{hour:'numeric',minute:'2-digit'}))}</small></button>
-        ${asking ? `<button type="button" class="btn btn-danger rico-hist-yes" data-hist-yes="${esc(c.id)}">${esc(t('delete'))}</button>`
-          : `<button type="button" class="icon-btn danger" data-hist-del="${esc(c.id)}" aria-label="${esc(t('ricoDeleteChat'))}">${ICON_DELETE}</button>`}
-      </div>`;
-    }).join('') + `<button type="button" class="rico-hist-all${confirming === 'all' ? ' asking' : ''}" data-hist-all>${esc(confirming === 'all' ? t('ricoDeleteAllConfirm') : t('ricoDeleteAll'))}</button>`;
+      return `${head}<button type="button" class="rico-hist-open${c.id === rico.chatId || c.id === rico.viewedId ? ' on' : ''}" data-hist-open="${esc(c.id)}">${chatOwnerMark(c)}<span class="rico-hist-title" dir="auto">${esc(c.title || t('ricoUntitled'))}</span><small>${esc(accountLabel(c.account || state.account))} · ${esc(formatIraqDateTime(c.updatedAt,{hour:'numeric',minute:'2-digit'}))}</small></button>`;
+    }).join('');
+    attachRicoChatRows(list);
   };
   paint();
   if(!rico.chats) ricoLoadChats().then(paint);
@@ -1000,27 +1111,16 @@ function ricoOpenHistory(){
     sheetLeave(wrap, velocity);
   };
   activeSelSheet = close;
-  const onKey = e=>{ if(e.key === 'Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); } };
+  const onKey = e=>{ if(e.key === 'Escape' && !document.getElementById('ctxLayer')){ e.preventDefault(); e.stopImmediatePropagation(); close(); } };
   document.addEventListener('keydown', onKey, true);
   wrap.querySelector('.sel-scrim').onclick = ()=>close();
   attachSheetDrag(wrap, close);
   wrap.querySelector('[data-hist-new]').onclick = ()=>{ close(); ricoNewChat(); };
   list.onclick = async e=>{
-    const open = e.target.closest('[data-hist-open]'), del = e.target.closest('[data-hist-del]'), yes = e.target.closest('[data-hist-yes]'), all = e.target.closest('[data-hist-all]');
-    if(open){ if(await ricoOpenChat(open.dataset.histOpen)) close(); return; }
-    if(del){ confirming = del.dataset.histDel; paint(); return; }
-    if(all && confirming !== 'all'){ confirming = 'all'; paint(); return; }
-    if(!yes && !all) return;
-    const id = yes ? yes.dataset.histYes : null;
-    clearTimeout(ricoSaveTimer);
-    const r = await api(id ? 'rico-chats/' + id : 'rico-chats?account=all', {method:'DELETE'});
-    if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
-    rico.chats = id ? rico.chats.filter(c=>c.id !== id) : [];
-    if(!id || rico.chatId === id){ rico.chatId = null; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }
-    if(rico.viewing && (!id || id === rico.viewedId)){ rico.viewing = null; rico.viewedId = null; rico.messages = []; }
-    confirming = null; paint();
-    toast(id ? t('ricoChatDeleted') : t('ricoChatsDeleted'));
-    if(state.view === 'assistant') render();
+    const open = e.target.closest('[data-hist-open]');
+    if(open && await ricoOpenChat(open.dataset.histOpen)) close();
   };
+  // After a rename or delete from the long-press menu, the list shows it.
+  wrap.ricoRepaint = paint;
   requestAnimationFrame(()=>{ if(!closed) list.querySelector('button')?.focus({preventScroll:true}); });
 }

@@ -1862,3 +1862,52 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
 
 /* For local tests only (not used by the app). */
 export const _internals = { streamAnthropic, streamGemini, loadWorld, runTool, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, proposeEditItem, proposeItemAliases, MANUAL, TOOLS, moodFilter, erbilParts };
+
+/* ---------- A chat's name ----------
+   After the first answer in a new chat the app asks for a short name for it (like other AI apps):
+   2 to 5 words about the topic, in the person's language. The cheapest model answers first (Gemini
+   Flash Lite, then Groq, then Haiku); the AI switches in Admin apply. Nothing is saved here: the app
+   keeps the name with the chat, and a name the person typed always wins. */
+const TITLE_TIMEOUT_MS = 8_000;
+export function cleanTitle(raw: unknown): string | null {
+  let s = String(raw ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+  s = s.replace(/^(title|name|عنوان|ناونیشان)\s*[:：]\s*/i, "").replace(/[\p{Extended_Pictographic}️]/gu, "")
+    .replace(/[—–]/g, " ").replace(/^["'«»“”‘’`*#\s]+|["'«»“”‘’`*#\s.!?؟،,;:]+$/g, "").replace(/\s+/g, " ").trim();
+  if (!s || s.length > 48 || s.split(" ").length > 7) return null;
+  return s;
+}
+export async function chatTitle(db: any, body: any) {
+  const question = String(body?.question ?? "").trim().slice(0, 500), answer = String(body?.answer ?? "").trim().slice(0, 600);
+  if (!question) return { title: null };
+  const lang = body?.lang === "ku" ? "Kurdish (Sorani, Arabic script)" : body?.lang === "ar" ? "Arabic" : "English";
+  const k = await config(db, true);
+  const prompt = `Name this chat like a chat app does: 2 to 5 words about its topic, in ${lang}. Only the name: no quotes, no full stop, no emoji.\n\nQuestion: ${question}\n\nAnswer: ${answer}`;
+  const tries: (() => Promise<string | null>)[] = [];
+  if (k.geminiKey) tries.push(async () => {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent`, {
+      method: "POST", signal: AbortSignal.timeout(TITLE_TIMEOUT_MS), headers: { "content-type": "application/json", "x-goog-api-key": k.geminiKey },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 30 } }),
+    });
+    return r.ok ? ((await r.json())?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? "").join("") : null;
+  });
+  if (k.groqKey) tries.push(async () => {
+    const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST", signal: AbortSignal.timeout(TITLE_TIMEOUT_MS), headers: { "content-type": "application/json", "authorization": `Bearer ${k.groqKey}` },
+      body: JSON.stringify({ model: DEFAULT_GROQ_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.2, max_tokens: 200 }),
+    });
+    return r.ok ? (await r.json())?.choices?.[0]?.message?.content ?? null : null;
+  });
+  if (k.anthropicKey) tries.push(async () => {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", signal: AbortSignal.timeout(TITLE_TIMEOUT_MS),
+      headers: { "content-type": "application/json", "x-api-key": k.anthropicKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 30, messages: [{ role: "user", content: prompt }] }),
+    });
+    return r.ok ? ((await r.json())?.content ?? []).map((c: any) => c.text ?? "").join("") : null;
+  });
+  for (const tryOne of tries) {
+    const title = cleanTitle(await tryOne().catch(() => null));
+    if (title) return { title };
+  }
+  return { title: null };
+}

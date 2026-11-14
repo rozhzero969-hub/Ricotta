@@ -29,6 +29,8 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   streak/recover                                       Rico brings a broken kitchen streak back
 //   GET    rico-chats                                           one shared list of both accounts' Rico chats
 //   DELETE rico-chats[/:id][?account=all]                       delete one chat, or all of them
+//   PUT    rico-chats/:id/title {title}                          rename a chat (own; Rozh any)
+//   POST   assistant/title {question, answer, lang}              a short topic name for a new chat
 //   GET    rico-routines | POST rico-routines {kind,text,time,days,supplierIds,runAt}   Rico's routines (runAt: a one-off reminder)
 //   PUT    rico-routines/:id {enabled} | DELETE rico-routines/:id                  switch one on or off, delete
 //   GET    activity                                             the Record
@@ -69,7 +71,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   the Mac: see receipts.ts; receipts-settings/telegram and telegram/webhook for the bot: telegram.ts
 //   POST   rico/check-now             (receipts or transfers)   Rico reads Ricotta Restaurant's lists now
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
-import { adminAi, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
+import { adminAi, chatTitle, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
 import { saveMemory, saveRoutine, toRoutine } from "./rico-memory.ts";
 import { cleanRoutine } from "../_shared/routines.ts";
 import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
@@ -925,6 +927,7 @@ Deno.serve(async (req) => {
     if(path==="push/send"){keys.push(`account:${s.account}:push`);limits.push(6);}
     if(path==="problems"){keys.push(`account:${s.account}:problems`);limits.push(20);}
     if(path.startsWith("rico-chats") && M!=="GET"){keys.push(`account:${s.account}:chats`);limits.push(40);}
+    if(path==="assistant/title"){keys.push(`account:${s.account}:title`);limits.push(30);}
     const limited=path==="logout"?null:await requestLimit(keys,limits);if(limited)return limited;
     const b = M === "GET" ? {} : await readBody(req, path === "receipts/scan" ? 4_400_000 : MAX_BODY_BYTES);
     let m: RegExpMatchArray | null;
@@ -1291,7 +1294,17 @@ Deno.serve(async (req) => {
     // Admin
     if (M === "PUT" && path === "admin/pin") return rozha ? await changePin(req, s, b) : fail("forbidden", 403);
 
+    // Renaming a chat: the person's own (Rozh: any). A name typed here is kept (the app sends it with each save).
+    if ((m = path.match(/^rico-chats\/([0-9a-f-]{36})\/title$/)) && M === "PUT") {
+      const title = plain(b?.title, 80);
+      if (!title) return fail("invalid_input");
+      let q = db.from("app_rico_chats").update({ title }).eq("id", m[1]);
+      if (!isRozha(s)) q = q.eq("account", s.account);
+      const { data: done, error } = await q.select("id");
+      return error ? fail("save_failed", 500) : !done?.length ? fail("not_found", 404) : ok();
+    }
     if (/^rico-chats(?:\/[^/]+)?$/.test(path)) return await ricoChats(req, s.account, path.split("/")[1] ?? null, b);
+    if (M === "POST" && path === "assistant/title") return json(await chatTitle(db, b));
 
     // Rico, the assistant
     if (M === "POST" && path === "assistant/chat") return await handleChat(db, s, b, cors, req.signal);
