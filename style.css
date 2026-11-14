@@ -608,10 +608,6 @@ html.rtl .check-row input[type=checkbox]:checked::after{transform:translateX(-20
 .day-chips{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
 .day-chip{min-width:0;height:40px;padding:0 2px;border-radius:999px;color:var(--tab-ink2);font-size:.8125rem;font-weight:600}
 .day-chip.on{background:var(--accent-strong);color:#fff}
-/* Admin -> PINs: one row per person{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:.5px solid var(--line-strong)}
-
-@media(min-width:960px){.admin-page{max-width:720px}}
-
 .app-version{margin:26px 0 8px;text-align:center;font-size:.8125rem;font-weight:400;color:var(--ink-soft)}
 
 /* Units */
@@ -1509,7 +1505,8 @@ html.dark .ad-tile.green{background:#1F7A4D}
 .ad-check{padding:0}
 .ad-check summary{list-style:none;display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer}
 .ad-check summary::-webkit-details-marker{display:none}
-.ad-check[open] summary .sheet-chevron{transform:rotate(90deg)}
+.ad-check[open] summary .sheet-chevron{transform:rotate(135deg)}
+html.rtl .ad-check[open] summary .sheet-chevron{transform:rotate(135deg)}
 /* Admin › Rico › Rico's AI: one row per AI with its state, this month's numbers and the bill. */
 .ad-ai-list{padding:4px 16px}
 .ad-ai{padding:14px 0}
@@ -2164,26 +2161,10 @@ html.dark .rr-offline{background:rgba(251,146,60,.14);color:#FED7AA}
 .day-files{display:flex;gap:6px}
 .day-file{height:30px;padding:0 12px;border:0;border-radius:10px;background:var(--fill);color:var(--tint);font:inherit;font-size:.8125rem;font-weight:600}
 
-/* Admin home: a quiet status line{background:var(--surface);border-radius:var(--r-card);overflow:hidden}
-.ad-row{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;padding:10px 16px;border:0;background:none;color:var(--ink);font:inherit;text-align:start;border-bottom:.5px solid var(--line)}
-
-.ad-row:active{background:var(--fill)}
-
+/* Admin home: the arrow at the end of a row, the status dot, and the line about where the numbers come from. */
 .ad-row-go{flex:none;color:var(--ink-faint);font-size:1.25rem;line-height:1}
-/* Admin home: the one-glance headline,today's three counts,status rows with their last activity{display:flex;align-items:center;gap:12px;padding:6px 4px 12px 16px}
-
-.ad-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-inline-end:6px;vertical-align:1px;background:var(--ok)}
-.ad-dot.warn{background:#FF9500}
-.ad-dot.bad{background:var(--red)}
-
-.ad-bars{display:block;width:100%;height:auto;max-width:560px}
-.ad-bars rect{fill:var(--accent)}
-.ad-bars rect.today{fill:var(--accent-strong)}
-.ad-bars line{stroke:var(--line-strong);stroke-width:1}
-
-.ad-bars text{fill:var(--ink-soft);font-size:9px;font-family:var(--font)}
-
-.ad-sources{margin:10px 16px 0;font-size:.75rem;line-height:1.4;color:var(--ink-faint);text-align:center}
+.ad-dot{display:inline-block;flex:none;width:8px;height:8px;border-radius:50%;margin-inline-end:6px;vertical-align:1px;background:var(--ink-faint)}
+.ad-sources{margin:14px 16px 0;font-size:.75rem;line-height:1.4;color:var(--ink-faint);text-align:center}
 
 /* Quiet icons on the Admin pages: no coloured squares, red only for trouble. */
 .ad-tile,.ad-tile.green,.ad-tile.gray{background:none;color:var(--ink-soft)}
@@ -2601,3 +2582,32 @@ label.preference-row:has(input[type=checkbox]),label.rico-set-row{cursor:default
 html.rtl .mem-switch:checked::after{transform:translateX(-16px)}
 .mem-hint{margin-top:10px;font-size:.8125rem;line-height:1.4;color:var(--ink-soft)}
 .rico-note-btn{margin-top:10px;min-height:36px;padding:0 14px;border-radius:10px;font-size:.9063rem}
+
+/* Admin, Stock names: one quiet card per name, the problem as small tags, the name now and the correct
+   name (with Copy) one under the other. Double spaces are shown as a soft mark so they can be seen. */
+.ad-toolbar:has(.nm-filters){min-width:0;max-width:100%}
+.nm-filters{flex-wrap:nowrap;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.nm-filters::-webkit-scrollbar{display:none}
+.nm-filters .pill-seg-btn{flex:none;white-space:nowrap;padding-inline:14px}
+.nm-filters .pill-seg-btn small{margin-inline-start:6px;font-size:.75rem;font-weight:500;color:var(--ink-soft)}
+.nm-list{display:flex;flex-direction:column;gap:10px}
+.nm-row{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-radius:var(--r-card);background:var(--surface);box-shadow:inset 0 0 0 .5px var(--line)}
+.nm-tags{display:flex;flex-wrap:wrap;gap:6px}
+.nm-tag{padding:3px 8px;border-radius:7px;font-size:.75rem;font-weight:600;background:var(--fill);color:var(--ink-soft)}
+.nm-tag.spacing{background:rgba(0,122,255,.12);color:#0A64C8}
+.nm-tag.letters{background:rgba(255,149,0,.14);color:#B35F00}
+.nm-tag.missing{background:rgba(142,142,147,.16);color:var(--ink-soft)}
+.nm-tag.spelling{background:rgba(var(--accent-rgb),.16);color:var(--tint)}
+html.dark .nm-tag.spacing{color:#64AFFF}html.dark .nm-tag.letters{color:#FFB340}
+.nm-line{display:flex;align-items:center;gap:12px;min-height:30px}
+.nm-label{flex:none;width:64px;font-size:.8125rem;color:var(--ink-faint)}
+.nm-name{flex:1;min-width:0;font-size:1rem;overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
+.nm-fix .nm-name{font-weight:600}
+.nm-space{background:rgba(255,59,48,.22);border-radius:3px;color:inherit}
+.nm-copy{flex:none;min-height:34px;padding:0 14px;border-radius:9px;font-size:.875rem}
+.nm-copy.done{color:var(--tint)}
+.nm-hint,.nm-why{margin:0;font-size:.8125rem;color:var(--ink-soft)}
+@media (max-width:599px){.nm-line{flex-wrap:wrap;gap:4px 10px}.nm-label{width:auto}.nm-name{flex-basis:100%}.nm-copy{margin-inline-start:auto}}
+
+/* Admin pages use the full width of the page, like their other cards (forms elsewhere stay narrower). */
+.admin-page .form-card{max-width:none}
