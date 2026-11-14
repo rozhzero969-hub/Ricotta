@@ -1283,7 +1283,7 @@ function endGlide(){
 const FADE_FRAMES = {inn:[{opacity:0, transform:'translate3d(0,6px,0)'},{opacity:1, transform:'none'}], out:[{opacity:1},{opacity:0}]};
 /* The first time a page opens, its rows fade up one after another, quickly; never again after, so it
    never slows anyone down. */
-const LIST_ROWS = '.item-row,.hist-card,.rec-card,.ad-tile-card,.list-row,.unit-chip,.rico-chip,.form-card';
+const LIST_ROWS = '.item-row,.hist-card,.rec-card,.ad-tile-card,.list-row,.unit-chip,.form-card';
 function listsComeIn(content){
   if(reducedMotion()) return;
   [...content.querySelectorAll(LIST_ROWS)].slice(0, 12).forEach((row, i)=>{

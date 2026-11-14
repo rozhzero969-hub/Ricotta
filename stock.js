@@ -41,7 +41,7 @@ function renderStock(){
   // name and the amount with its usage unit. Clicking (or Enter on) a row opens its details.
   const rows = list.map(i=>{
     const none = i.main <= 0;
-    return `<div class="stk-row${none ? ' none' : ''}" data-search-row data-stk="${esc(i.name)}" role="button" tabindex="0" aria-label="${esc(t('stockDetails'))}: ${esc(i.name)}">
+    return `<div class="stk-row${none ? ' none' : ''}" data-search-row data-stk="${esc(i.name)}" role="button" tabindex="0" aria-label="${esc(i.name)}, ${esc(stkLine(i))}">
       <i class="stk-dot" aria-hidden="true"></i>
       <span class="stk-name" dir="auto">${esc(i.name)}</span>
       <b class="stk-amt" dir="auto">${esc(stkLine(i))}</b></div>`;

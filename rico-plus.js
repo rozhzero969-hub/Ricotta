@@ -51,12 +51,12 @@ async function openRicoMemory(){
   const box = el.querySelector('#memRules'), rbox = el.querySelector('#memRoutines');
   const paint = rows=>{
     box.className = '';
-    box.innerHTML = rows.length ? rows.map(r=>`<div class="mem-rule"><span dir="auto">${esc(r.rule)}<small>${esc(r.source === 'learned' ? t('memLearned') : t('memTaught'))}${r.account && r.account !== state.account ? ' · ' + esc(accountLabel(r.account)) : ''}</small></span><button type="button" class="icon-btn" data-mem-del="${esc(r.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button></div>`).join('') : `<div class="empty-mini">${esc(t('memoryNone'))}</div>`;
+    box.innerHTML = rows.length ? rows.map(r=>`<div class="mem-rule"><span dir="auto">${esc(r.rule)}<small>${esc(r.source === 'learned' ? t('memLearned') : t('memTaught'))}${r.account && r.account !== state.account ? ' · ' + esc(accountLabel(r.account)) : ''}</small></span>${!r.account || r.account === state.account || isRozha() ? `<button type="button" class="icon-btn" data-mem-del="${esc(r.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}</div>`).join('') : `<div class="empty-mini">${esc(t('memoryNone'))}</div>`;
     box.querySelectorAll('[data-mem-del]').forEach(b=>b.onclick = async ()=>{ const r = await api('rico-rules/' + b.dataset.memDel, {method:'DELETE'}); if(r.ok) load(); else toast(t('saveFailed'), 'warn'); });
   };
   const paintRoutines = rows=>{
     rbox.className = '';
-    rbox.innerHTML = rows.length ? rows.map(r=>`<div class="mem-rule mem-routine${r.enabled ? '' : ' off'}"><span dir="auto">${esc(r.text)}<small>${esc(routineLabel(r))}</small></span>
+    rbox.innerHTML = rows.length ? rows.map(r=>`<div class="mem-rule mem-routine${r.enabled ? '' : ' off'}"><span dir="auto">${esc(r.text)}<small>${esc(routineLabel(r))}${r.account && r.account !== state.account ? ' · ' + esc(accountLabel(r.account)) : ''}</small></span>
       ${r.runAt ? '' : `<input type="checkbox" role="switch" class="mem-switch" data-routine-on="${esc(r.id)}" ${r.enabled ? 'checked' : ''} aria-label="${esc(r.text)}">`}
       <button type="button" class="icon-btn" data-routine-del="${esc(r.id)}" aria-label="${esc(t('routineDelete'))}">${ICON_DELETE}</button></div>`).join('') : `<div class="empty-mini">${esc(t('routinesNone'))}</div>`;
     rbox.querySelectorAll('[data-routine-on]').forEach(b=>b.onchange = async ()=>{
@@ -84,7 +84,7 @@ async function openRicoMemory(){
 /* "Reminder · Every day 09:00", "Prepares the order for Dairy Co · Sun, Mon 07:00", "Reminder · Once, Nov 14, 2:05 PM". */
 function routineLabel(r){
   if(r.runAt) return `${t('routineRemind')} · ${t('routineOnce')}, ${formatIraqDateTime(r.runAt, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'})}`;
-  const days = r.days?.length === 7 ? t('routineEvery') : (r.days || []).map(d=>t('routineDays')[d]).join(', ');
+  const days = r.days?.length === 7 ? t('routineEvery') : (r.days || []).map(d=>t('routineDays')[d]).join(state.lang === 'en' ? ', ' : '، ');
   const what = r.kind === 'prepare_order' ? t('routinePrepareFor')((r.supplierIds || []).map(id=>supplierName(id) || '').filter(Boolean).join(', ') || r.suppliers?.join(', ') || '') : t('routineRemind');
   return `${what} · ${days} ${r.time}`;
 }

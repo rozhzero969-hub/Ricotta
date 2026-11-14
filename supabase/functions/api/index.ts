@@ -1229,8 +1229,9 @@ Deno.serve(async (req) => {
     if ((m = path.match(/^rico-rules\/([0-9a-f-]{36})$/)) && M === "DELETE") {
       let q = app("rico_rules").delete().eq("id", m[1]);
       if (!isRozha(s)) q = q.eq("account", s.account);
-      const { error } = await q;
-      return error ? fail("delete_failed", 500) : ok();
+      const { data: gone, error } = await q.select("id");
+      // Someone else's rule (or one already gone) is not deleted, and says so.
+      return error ? fail("delete_failed", 500) : !gone?.length ? fail("not_found", 404) : ok();
     }
     if (path === "admin/backups" && M === "GET") {
       if (!isRozha(s)) return fail("forbidden", 403);

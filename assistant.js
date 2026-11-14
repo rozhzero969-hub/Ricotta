@@ -140,10 +140,9 @@ function ricoGreeting(){
   const part = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
   return t('ricoGreeting')(part, accountLabel(state.account));
 }
-/* Rico's screen (2026-11-13), like a chat app: on a computer the chats are listed on the left (New chat
-   on top, then the chats by day, then two plain settings rows: letting Rico fill the order, and what he
-   remembers); the chat is on the right. On a phone the header has two named buttons, Chats and New
-   chat, and the same list opens as a sheet. */
+/* Rico's screen (2026-11-14), like a chat app: on a computer his own sidebar replaces the app's tabs
+   (back to the app, New chat, search, the chats by day, Rico settings at the foot); the chat is on the
+   right. On a phone the header has Chats, New chat and a settings button, and the chats open as a sheet. */
 function renderAssistant(){
   const head = `<header class="rico-head">
       ${ricoFace('', 'rico-md')}
