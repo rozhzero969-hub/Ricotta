@@ -1108,6 +1108,7 @@ async function streamGemini(db: any, w: World, cfg: ProviderCfg,
   const call = new AbortController();
   if (signal.aborted) call.abort();
   else signal.addEventListener("abort", () => call.abort(), { once: true });
+  let shownAny = false;   // words of this reply already on the screen
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const slow = turn === 0 && firstWaitMs ? setTimeout(() => call.abort(), firstWaitMs) : 0;
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:streamGenerateContent?alt=sse`, {
@@ -1118,23 +1119,30 @@ async function streamGemini(db: any, w: World, cfg: ProviderCfg,
         tools: [{ functionDeclarations: declarations }],
         generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "minimal" } },
       }),
-    }).catch((e) => { if (turn === 0 && call.signal.aborted && !signal.aborted) return null; throw e; })
+    }).catch((e) => { if (turn === 0 && call.signal.aborted && !signal.aborted) return null; if (call.signal.aborted) throw e; return "network" as const; })
       .finally(() => clearTimeout(slow));
     if (!res) { console.error("gemini", cfg.model, "slow"); return "busy"; }
+    if (res === "network") {
+      console.error("gemini", cfg.model, "network");
+      if (!shownAny && !w.acted) return "busy";
+      emit({ type: "error", code: "busy" });
+      return true;
+    }
     if (!res.ok) {
       console.error("gemini", cfg.model, res.status);
       const code = res.status === 401 || res.status === 403 ? "key_rejected"
-        : res.status === 429 || res.status === 503 ? "busy" : res.status === 404 ? "model_unavailable" : "failed";
-      if (turn === 0) return code;
+        : res.status === 429 || res.status >= 500 ? "busy" : res.status === 404 ? "model_unavailable" : "failed";
+      // Nothing shown yet: the next AI answers instead of an error.
+      if (!shownAny && !w.acted) return code;
       emit({ type: "error", code });
       return true;
     }
     const parts: any[] = [];
     const calls: any[] = [];
     let sawText = false;
-    let inputTokens = 0, outputTokens = 0;
-    for await (const chunk of readSSE(res)) {
-      if (chunk.error) throw new Error("gemini_stream_error");
+    let inputTokens = 0, outputTokens = 0, broke = false;
+    try { for await (const chunk of readSSE(res)) {
+      if (chunk.error) { console.error("gemini", cfg.model, "stream error"); broke = true; break; }
       const candidate = chunk.candidates?.[0];
       inputTokens = Math.max(inputTokens, chunk.usageMetadata?.promptTokenCount ?? 0);
       outputTokens = Math.max(outputTokens, chunk.usageMetadata?.candidatesTokenCount ?? 0);
@@ -1144,20 +1152,23 @@ async function streamGemini(db: any, w: World, cfg: ProviderCfg,
         if (typeof part.text === "string" && !part.thought && part.text) {
           if (turn > 0 && !sawText) emit({ type: "text", text: "\n\n" });
           emit({ type: "text", text: noPictures(part.text) });
-          sawText = true;
+          sawText = true; shownAny = true;
         }
         if (part.functionCall) {
           calls.push(part.functionCall);
           emit({ type: "status", tool: part.functionCall.name });
         }
       }
-    }
+    } } catch (e) { if (signal.aborted) throw e; console.error("gemini", cfg.model, "stream dropped"); broke = true; }
     usage.input += inputTokens;
     usage.output += outputTokens;
-    if (!calls.length) {
-      if (!sawText) emit({ type: "error", code: "failed" });
+    // Cut off, or an empty answer: the next AI answers if nothing was shown yet.
+    if (broke || !calls.length && !sawText) {
+      if (!shownAny && !w.acted) return broke ? "busy" : "failed";
+      emit({ type: "error", code: broke ? "busy" : "failed" });
       return true;
     }
+    if (!calls.length) return true;
     contents.push({ role: "model", parts });
     const results: any[] = [];
     for (const call of calls) {
@@ -1179,6 +1190,8 @@ async function streamGemini(db: any, w: World, cfg: ProviderCfg,
    price. Thinking stays adaptive at low effort: quick replies, deeper only when a question needs it.
    Returns true once it has answered (or shown an error), or the error code when nothing was shown yet
    (no reply within firstWaitMs, a rejected key, no credit, busy), so the caller can ask Gemini. */
+/* A short wait that ends early when the reply is stopped. */
+const pause = (ms: number, signal: AbortSignal) => new Promise<void>((r) => { const t = setTimeout(r, ms); signal.addEventListener("abort", () => { clearTimeout(t); r(); }, { once: true }); });
 async function streamAnthropic(db: any, w: World, key: string,
   messages: any[], system: { text: string }[], emit: Emit, auto: boolean, signal: AbortSignal,
   usage: { input: number; output: number }, firstWaitMs = 0): Promise<true | string> {
@@ -1191,8 +1204,18 @@ async function streamAnthropic(db: any, w: World, key: string,
   const call = new AbortController();
   if (signal.aborted) call.abort();
   else signal.addEventListener("abort", () => call.abort(), { once: true });
+  // One retry per reply for a passing problem (busy, overloaded, a dropped connection, or a thinking block
+  // Anthropic no longer accepts), before the backup AIs are asked.
+  let retries = 1, toldToAnswer = false;
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    if (turn === MAX_TURNS - 1) blocks.push({ type: "text", text: "- You have used many lookups: answer now with what you have." });
+    // The last round is told to answer now. It is added to the end of the conversation, never to the
+    // system prompt: changing anything before the newest message makes Anthropic refuse the thinking
+    // blocks it wrote earlier in this reply ("bound to a different conversation", seen in the logs).
+    if (turn === MAX_TURNS - 1 && turn > 0 && !toldToAnswer) {
+      toldToAnswer = true;
+      const last = conversation[conversation.length - 1];
+      if (last?.role === "user" && Array.isArray(last.content)) last.content.push({ type: "text", text: "You have used many lookups: answer now with what you have." });
+    }
     const slow = turn === 0 && firstWaitMs ? setTimeout(() => call.abort(), firstWaitMs) : 0;
     const res = await fetch(`${ANTHROPIC_URL}/messages`, {
       method: "POST", signal: call.signal,
@@ -1201,9 +1224,19 @@ async function streamAnthropic(db: any, w: World, key: string,
         model: ANTHROPIC_MODEL, max_tokens: MAX_OUTPUT_TOKENS, stream: true,
         system: blocks, tools, messages: conversation, output_config: { effort: "low" },
       }),
-    }).catch((e) => { if (turn === 0 && call.signal.aborted && !signal.aborted) return null; throw e; })
-      .finally(() => clearTimeout(slow));
+    }).catch((e) => {
+      if (turn === 0 && call.signal.aborted && !signal.aborted) return null;
+      if (call.signal.aborted) throw e;
+      return "network" as const;   // a dropped connection: tried once more below
+    }).finally(() => clearTimeout(slow));
     if (!res) { console.error("anthropic slow"); return "busy"; }
+    if (res === "network") {
+      console.error("anthropic network");
+      if (retries-- > 0) { await pause(700, signal); turn--; continue; }
+      if (!shown && !w.acted) return "busy";
+      emit({ type: "error", code: "busy" });
+      return true;
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => null);
       // Anthropic's own words say what was wrong with the request; keys and long numbers are taken out first.
@@ -1213,6 +1246,12 @@ async function streamAnthropic(db: any, w: World, key: string,
         : res.status === 402 || err?.error?.type === "billing_error" || /credit balance/i.test(message) ? "no_funds"
         : res.status === 429 || res.status === 529 || res.status >= 500 ? "busy"
         : res.status === 404 ? "model_unavailable" : "failed";
+      // A thinking block Anthropic won't take back: the same round again without the thinking blocks.
+      if (res.status === 400 && /thinking|signature/i.test(message) && retries-- > 0) {
+        for (const m of conversation) if (m.role === "assistant" && Array.isArray(m.content)) m.content = m.content.filter((b: any) => b?.type !== "thinking" && b?.type !== "redacted_thinking");
+        turn--; continue;
+      }
+      if (code === "busy" && retries-- > 0) { await pause(900, signal); turn--; continue; }
       if (!shown && !w.acted) return code;
       emit({ type: "error", code });
       return true;
@@ -1223,36 +1262,52 @@ async function streamAnthropic(db: any, w: World, key: string,
     const json: string[] = [];
     let stop = "";
     let sawText = false;
-    for await (const event of readSSE(res)) {
-      if (event.type === "message_start") {
-        const u = event.message?.usage ?? {};
-        usage.input += (Number(u.input_tokens) || 0) + (Number(u.cache_read_input_tokens) || 0) + (Number(u.cache_creation_input_tokens) || 0);
-      } else if (event.type === "content_block_start") {
-        content[event.index] = { ...event.content_block };
-        json[event.index] = "";
-        if (event.content_block?.type === "tool_use") emit({ type: "status", tool: event.content_block.name });
-      } else if (event.type === "content_block_delta") {
-        const block = content[event.index], d = event.delta ?? {};
-        if (!block) continue;
-        if (d.type === "text_delta" && d.text) {
-          block.text = (block.text ?? "") + d.text;
-          if (turn > 0 && !sawText) show({ type: "text", text: "\n\n" });
-          show({ type: "text", text: noPictures(d.text) });
-          sawText = true;
-        } else if (d.type === "input_json_delta") json[event.index] += d.partial_json ?? "";
-        else if (d.type === "thinking_delta") block.thinking = (block.thinking ?? "") + (d.thinking ?? "");
-        else if (d.type === "signature_delta") block.signature = (block.signature ?? "") + (d.signature ?? "");
-      } else if (event.type === "content_block_stop") {
-        const block = content[event.index];
-        if (block?.type === "tool_use") {
-          try { block.input = json[event.index] ? JSON.parse(json[event.index]) : {}; } catch { block.input = {}; }
+    let broke = false;
+    try {
+      for await (const event of readSSE(res)) {
+        if (event.type === "message_start") {
+          const u = event.message?.usage ?? {};
+          usage.input += (Number(u.input_tokens) || 0) + (Number(u.cache_read_input_tokens) || 0) + (Number(u.cache_creation_input_tokens) || 0);
+        } else if (event.type === "content_block_start") {
+          content[event.index] = { ...event.content_block };
+          json[event.index] = "";
+          if (event.content_block?.type === "tool_use") emit({ type: "status", tool: event.content_block.name });
+        } else if (event.type === "content_block_delta") {
+          const block = content[event.index], d = event.delta ?? {};
+          if (!block) continue;
+          if (d.type === "text_delta" && d.text) {
+            block.text = (block.text ?? "") + d.text;
+            if (turn > 0 && !sawText) show({ type: "text", text: "\n\n" });
+            show({ type: "text", text: noPictures(d.text) });
+            sawText = true;
+          } else if (d.type === "input_json_delta") json[event.index] += d.partial_json ?? "";
+          else if (d.type === "thinking_delta") block.thinking = (block.thinking ?? "") + (d.thinking ?? "");
+          else if (d.type === "signature_delta") block.signature = (block.signature ?? "") + (d.signature ?? "");
+        } else if (event.type === "content_block_stop") {
+          const block = content[event.index];
+          if (block?.type === "tool_use") {
+            try { block.input = json[event.index] ? JSON.parse(json[event.index]) : {}; } catch { block.input = {}; }
+          }
+        } else if (event.type === "message_delta") {
+          if (event.delta?.stop_reason) stop = event.delta.stop_reason;
+          if (event.usage?.output_tokens !== undefined) usage.output += Number(event.usage.output_tokens) || 0;
+        } else if (event.type === "error") {
+          console.error("anthropic stream", String(event.error?.type ?? "error"));
+          broke = true; break;
         }
-      } else if (event.type === "message_delta") {
-        if (event.delta?.stop_reason) stop = event.delta.stop_reason;
-        if (event.usage?.output_tokens !== undefined) usage.output += Number(event.usage.output_tokens) || 0;
-      } else if (event.type === "error") {
-        throw new Error("anthropic_stream_error");
       }
+    } catch (e) {
+      if (signal.aborted) throw e;
+      console.error("anthropic stream dropped");
+      broke = true;
+    }
+    // Overloaded or cut off part-way: nothing of this round was shown yet, so it is asked again (or the
+    // backups answer); once words were shown, the person sees a short error with Retry.
+    if (broke) {
+      if (!sawText && retries-- > 0) { await pause(900, signal); turn--; continue; }
+      if (!shown && !w.acted) return "busy";
+      emit({ type: "error", code: "busy" });
+      return true;
     }
     if (stop === "refusal") { emit({ type: "error", code: "failed" }); return true; }
     const calls = content.filter((b) => b?.type === "tool_use");
@@ -1542,6 +1597,9 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
       const send: Emit = (e) => { if (!open) return; try { controller.enqueue(enc.encode(nd(e))); } catch { open = false; } };
       const moods = moodFilter(send);
       const emit = moods.emit;
+      // A small "still here" line every 10 seconds while lookups run, so a phone or a network in between
+      // never drops a quiet connection (the app ignores it).
+      const beat = setInterval(() => send({ type: "ping" }), 10_000);
       try {
         // One try of one AI. "true" from a streamer means "handled, don't ask another AI", which includes
         // replies that ended in an error: Admin's health shows that error, not "working".
@@ -1597,6 +1655,7 @@ export async function handleChat(db: any, s: Session, body: any, cors: Record<st
         if (timedOut) emit({ type: "error", code: "busy" });
         else if (!upstream.signal.aborted) { console.error("assistant", e); emit({ type: "error", code: "failed" }); }
       } finally {
+        clearInterval(beat);
         clearTimeout(deadline);
         open = false;
         try { controller.close(); } catch { /* already closed */ }
@@ -1802,4 +1861,4 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
 }
 
 /* For local tests only (not used by the app). */
-export const _internals = { loadWorld, runTool, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, proposeEditItem, proposeItemAliases, MANUAL, TOOLS, moodFilter, erbilParts };
+export const _internals = { streamAnthropic, streamGemini, loadWorld, runTool, toolFindItems, toolListSuppliers, toolOrderHistory, toolPatterns, toolSuggestOrder, toolReviewDraft, toolInsights, contextBlock, proposeOrder, proposeNewItem, proposeEditItem, proposeItemAliases, MANUAL, TOOLS, moodFilter, erbilParts };

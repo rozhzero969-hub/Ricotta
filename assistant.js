@@ -702,7 +702,7 @@ async function ricoAsk(text, options = {}){
       paint();
     }
     else if(ev.type === 'mood'){ /* older servers: moods are no longer shown */ }
-    else if(ev.type === 'error'){ bot.error = ev.code; bot.retry = ['offline','busy','failed'].includes(ev.code); paint(); }
+    else if(ev.type === 'error'){ bot.error = ev.code; bot.retry = ['offline','busy','failed','model_unavailable','bad_request'].includes(ev.code); paint(); }
   }, controller.signal);
   cancelAnimationFrame(frame);
   if(!ricoContextCurrent(context)) return;
