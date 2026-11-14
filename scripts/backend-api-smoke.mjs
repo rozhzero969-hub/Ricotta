@@ -5,6 +5,8 @@ import {monthKey,monthStart} from '../supabase/functions/_shared/month.ts';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from '../supabase/functions/_shared/security.ts';
+import { saveMemory, saveRoutine, toRoutine } from '../supabase/functions/api/rico-memory.ts';
+import { cleanRoutine } from '../supabase/functions/_shared/routines.ts';
 
 const digest = async value => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
 const token = 'test-session-token', tokenHash = await digest(token);
@@ -57,7 +59,8 @@ const db = {
       if (errors.has(`${table}:${action}`)) return { data: null, error: { message: 'offline' } };
       const rows = tables[table] ?? [];
       const matching = rows.filter(row => filters.every(filter => filter(row)));
-      if (action === 'insert') { rows.push(...(Array.isArray(change) ? change : [change])); tables[table] = rows; }
+      // An insert with .select() gives back the new rows, as the real database does.
+      if (action === 'insert') { const added = Array.isArray(change) ? change : [change]; rows.push(...added); tables[table] = rows; if (selected) return { data: added.map(row => ({ ...row })), count: added.length, error: null }; }
       if (action === 'update') for (const row of matching) Object.assign(row, change);
       if (action === 'delete') tables[table] = rows.filter(row => !matching.includes(row));
       if (action === 'upsert') for (const row of Array.isArray(change) ? change : [change]) {
@@ -92,7 +95,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile );
+const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -367,6 +370,28 @@ try {
   assert.equal(tables.app_rico_rules[0].rule, 'Never order fish on Friday');
   assert.equal((await call('rico-rules', { rule: ' ' })).status, 400, 'an empty rule is refused');
   assert.deepEqual((await (await call('rico-rules', null, 'GET')).json()).map(r => r.rule), ['Never order fish on Friday']);
+  assert.equal((await call('rico-rules', { rule: 'Never order fish on Friday.' })).status, 200, 'the same words again');
+  assert.equal(tables.app_rico_rules.length, 1, 'are not saved twice');
+  assert.equal((await call('rico-rules', { rule: 'My PIN is 111111' })).status, 422, 'a PIN is never kept');
+  assert.equal(tables.app_rico_rules[0].source, 'taught');
+  // Rico's routines: checked, each person's own, and no kind that sends anything.
+  tables.app_rico_routines = [];
+  assert.equal((await call('rico-routines', { kind: 'remind', text: 'Do the transfers', time: '09:00' })).status, 200);
+  assert.equal(tables.app_rico_routines[0].account, 'rozha');
+  assert.deepEqual(tables.app_rico_routines[0].days, [0, 1, 2, 3, 4, 5, 6]);
+  assert.equal((await call('rico-routines', { kind: 'remind', text: 'Do the transfers.', time: '09:00' })).status, 200);
+  assert.equal(tables.app_rico_routines.length, 1, 'the same routine twice is kept once');
+  for (const bad of [{ kind: 'remind', text: 'x', time: '9am' }, { kind: 'send_order', text: 'x', time: '09:00' }, { kind: 'prepare_order', text: 'x', time: '07:00', supplierIds: [] }, { kind: 'prepare_order', text: 'x', time: '07:00', supplierIds: ['nope'] }])
+    assert.equal((await call('rico-routines', bad)).status, 400, 'refused: ' + JSON.stringify(bad));
+  assert.equal((await call('rico-routines', { kind: 'prepare_order', text: 'Veg order', time: '07:00', supplierIds: ['supplier'] })).status, 200);
+  tables.app_rico_routines[0].id = '00000000-0000-4000-8000-000000000001';
+  assert.equal((await call('rico-routines/00000000-0000-4000-8000-000000000001', { enabled: false }, 'PUT')).status, 200);
+  assert.equal(tables.app_rico_routines[0].enabled, false, 'switched off');
+  tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis'; tables.app_sessions[0].app_accounts = { roles: ['send', 'assistant'] };
+  assert.deepEqual(await (await call('rico-routines', null, 'GET')).json(), [], 'Yunis sees only his own');
+  assert.equal((await call('rico-routines/00000000-0000-4000-8000-000000000001', {}, 'DELETE')).status, 404, 'and cannot delete Rozh\'s');
+  assert.equal((await call('rico-routines', { kind: 'prepare_order', text: 'x', time: '07:00', supplierIds: ['supplier'] })).status, 403, 'preparing orders needs History');
+  tables.app_sessions[0].account = 'rozha'; tables.app_devices[0].account = 'rozha'; delete tables.app_sessions[0].app_accounts;
   assert.equal((await call('admin/backups/restore', { day: 'yesterday', pin: '123456' })).status, 400);
   reset(); tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis'; tables.app_sessions[0].app_accounts = { roles: ['send', 'history'] };
   assert.equal((await call('admin/ai/groq', { enabled: false }, 'PUT')).status, 403, 'only Rozh switches an AI');

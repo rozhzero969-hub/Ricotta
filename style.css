@@ -2524,3 +2524,16 @@ html.dark .rico-pct.up{color:#FF6961}html.dark .rico-pct.down{color:#30D158}
 }
 @keyframes ricoSideIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){html.rico-mode.rico-enter .rico-side{animation:none}}
+
+/* What Rico remembers: memories (taught or learned) and routines, each a plain row. */
+.mem-add input{border-radius:12px}
+.mem-rule>span{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}
+.mem-rule small{font-size:.8125rem;color:var(--ink-soft)}
+.mem-routine.off>span{opacity:.5}
+.mem-switch{appearance:none;-webkit-appearance:none;flex:none;width:42px;height:26px;margin:0;border-radius:13px;background:rgba(120,120,128,.2);position:relative;cursor:pointer;transition:background-color .2s ease}
+.mem-switch::after{content:'';position:absolute;top:2px;inset-inline-start:2px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s ease}
+.mem-switch:checked{background:var(--ok)}
+.mem-switch:checked::after{transform:translateX(16px)}
+html.rtl .mem-switch:checked::after{transform:translateX(-16px)}
+.mem-hint{margin-top:10px;font-size:.8125rem;line-height:1.4;color:var(--ink-soft)}
+.rico-note-btn{margin-top:10px;min-height:36px;padding:0 14px;border-radius:10px;font-size:.9063rem}

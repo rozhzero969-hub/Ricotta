@@ -28,6 +28,8 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   streak/recover                                       Rico brings a broken kitchen streak back
 //   GET    rico-chats                                           one shared list of both accounts' Rico chats
 //   DELETE rico-chats[/:id][?account=all]                       delete one chat, or all of them
+//   GET    rico-routines | POST rico-routines {kind,text,time,days,supplierIds,runAt}   Rico's routines (runAt: a one-off reminder)
+//   PUT    rico-routines/:id {enabled} | DELETE rico-routines/:id                  switch one on or off, delete
 //   GET    activity                                             the Record
 //   GET    devices                    rozha: all, yunis: own row
 //   POST   devices/me                 {seconds?}                heartbeat ("still here") and time spent in the app
@@ -67,6 +69,8 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   POST   rico/check-now             (receipts or transfers)   Rico reads Ricotta Restaurant's lists now
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { adminAi, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
+import { saveMemory, saveRoutine, toRoutine } from "./rico-memory.ts";
+import { cleanRoutine } from "../_shared/routines.ts";
 import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
 import { stockView, transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
@@ -238,7 +242,8 @@ const toActivity = (a: any) => ({
   action: a.action, type: a.entity_type, name: a.entity_name,
 });
 // Rico has no moods any more: older rows still hold one, so every message reads as the neutral face.
-const toInbox = (m: any) => ({ id: m.id, kind: m.kind, mood: "calm", en: m.body_en, ku: m.body_ku, ar: m.body_ar, at: m.created_at, read: !!m.read_at });
+const toInbox = (m: any) => ({ id: m.id, kind: m.kind, mood: "calm", en: m.body_en, ku: m.body_ku, ar: m.body_ar, at: m.created_at, read: !!m.read_at,
+  ...(m.kind === "routine_order" && m.payload ? { order: m.payload } : {}) });
 /* Reads every row of a query, 1000 at a time (a single request silently stops
    at 1000 rows, which used to cut long order histories short). */
 async function readAll(build: () => any): Promise<any[]> {
@@ -291,7 +296,7 @@ async function listActivity() {
   return rows.map(toActivity);
 }
 async function listInbox(s: Session) {
-  const { data, error } = await app("rico_inbox").select("id,kind,mood,body_en,body_ku,body_ar,created_at,read_at")
+  const { data, error } = await app("rico_inbox").select("id,kind,mood,body_en,body_ku,body_ar,payload,created_at,read_at")
     .eq("account", s.account).order("created_at", { ascending: false }).limit(20);
   if (error) throw error;
   return (data ?? []).reverse().map(toInbox);
@@ -1095,18 +1100,42 @@ Deno.serve(async (req) => {
     // Rico's rules: only someone Rico is on for. Each person deletes only their own (Rozh any), and a
     // rule reaches only its writer's Rico and, for Rozh's rules, everyone's (see assistant.ts).
     if (path.startsWith("rico-rules") && !can(s, "assistant")) return fail("forbidden", 403);
+    // Memories: taught (written by the person) or learned (Rico picked it up). Each person sees their own,
+    // and Rozh's taught ones, which reach everyone's Rico; Rozh sees all.
     if (path === "rico-rules" && M === "GET") {
-      const { data, error } = await app("rico_rules").select("id,account,rule,created_at").order("created_at");
-      return error ? fail("load_failed", 500) : json(data ?? []);
+      const { data, error } = await app("rico_rules").select("id,account,rule,source,created_at").order("created_at");
+      return error ? fail("load_failed", 500)
+        : json((data ?? []).filter((r: any) => isRozha(s) || r.account === s.account || (r.account === "rozha" && r.source !== "learned")));
     }
     if (path === "rico-rules" && M === "POST") {
       const rule = text(b.rule, 300);
       if (!rule) return fail("invalid_input");
-      const { count, error: countError } = await app("rico_rules").select("id", { count: "exact", head: true });
-      if (countError) return fail("save_failed", 500);
-      if ((count ?? 0) >= 30) return fail("too_many", 409);
-      const { error } = await app("rico_rules").insert({ account: s.account, rule });
-      return error ? fail("save_failed", 500) : ok();
+      const saved = await saveMemory(db, s.account, rule, "taught");
+      return saved.error === "too_many" ? fail("too_many", 409) : saved.error === "secret" ? fail("secret", 422) : saved.error ? fail("save_failed", 500) : ok();
+    }
+    // Routines: reminders and orders Rico prepares by himself (see _shared/routines.ts). Each person
+    // manages their own; Rozh sees and can change all.
+    if (path.startsWith("rico-routines") && !can(s, "assistant")) return fail("forbidden", 403);
+    if (path === "rico-routines" && M === "GET") {
+      let q = app("rico_routines").select("id,account,kind,text,supplier_ids,time,days,enabled,last_run_day,run_at,created_at").order("created_at");
+      if (!isRozha(s)) q = q.eq("account", s.account);
+      const { data, error } = await q;
+      return error ? fail("load_failed", 500) : json((data ?? []).map(toRoutine));
+    }
+    if (path === "rico-routines" && M === "POST") {
+      const c = cleanRoutine({ kind: b.kind, text: b.text, time: b.time, days: b.days, supplier_ids: b.supplierIds, run_at: b.runAt });
+      if ("error" in c) return fail("invalid_input");
+      if (c.value.kind === "prepare_order" && !can(s, "history")) return fail("forbidden", 403);
+      const r = await saveRoutine(db, s.account, c.value);
+      return r.error === "too_many" ? fail("too_many", 409) : r.error === "invalid_input" ? fail("invalid_input") : r.error ? fail("save_failed", 500) : json({ routine: r.routine });
+    }
+    if ((m = path.match(/^rico-routines\/([0-9a-f-]{36})$/)) && (M === "PUT" || M === "DELETE")) {
+      if (M === "PUT" && typeof b.enabled !== "boolean") return fail("invalid_input");
+      let q = M === "DELETE" ? app("rico_routines").delete().eq("id", m[1])
+        : app("rico_routines").update({ enabled: b.enabled, updated_at: nowIso() }).eq("id", m[1]);
+      if (!isRozha(s)) q = q.eq("account", s.account);
+      const { data, error } = await q.select("id");
+      return error ? fail("save_failed", 500) : data?.length ? ok() : fail("not_found", 404);
     }
     if ((m = path.match(/^rico-rules\/([0-9a-f-]{36})$/)) && M === "DELETE") {
       let q = app("rico_rules").delete().eq("id", m[1]);
