@@ -63,7 +63,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.evaluate(()=>openItemModal('mozz'));
  await page.locator('#mfLow [data-low-level]').waitFor();
  assert.equal(await page.locator('#mfLow [data-low-level]').inputValue(),'4');
- await page.evaluate(()=>closeModal?.());
+ await page.evaluate(()=>closeModal(document.querySelector('#mfLow').closest('.modal-overlay')));
  await page.waitForFunction(()=>!document.querySelector('#mfLow'));
  await page.evaluate(()=>openItemModal('milk'));
  await page.locator('#mfLow').waitFor();
