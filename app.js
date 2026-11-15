@@ -31,6 +31,8 @@ const state = {
   cart: {},              // itemId -> qty
   search: '',
   orderTab: 'all',        // 'all' | supplierId | '__none'
+  orderKind: 'food',      // the Order screen's tab: 'food' or 'expense' (pull down to switch)
+  expensesReady: false,  // the server saves suppliers' food/expenses and items' kind
   itemFormSupplierId: null, // supplier "locked in" for the add-item form
   queue: null,           // array of {supplierId, items, sent} while sending
   activity: [],          // the Record: [{id, ts, action, type, name, fields, by, role}]
@@ -124,7 +126,7 @@ function loadingLines(n = 3){
   return `<div class="skel" role="status" aria-label="${esc(t('loading'))}">${Array.from({length:n}, (_, i)=>`<div class="skel-row"><i style="width:${[62, 78, 54, 70][i % 4]}%"></i><i style="width:${[34, 26, 40, 30][i % 4]}%"></i></div>`).join('')}</div>`;
 }
 /* An empty page: Spark, one line, and the one button that fills it (when there is one). */
-const EMPTY_ACTIONS = {order:['emptyStartOrder', ()=>goView('order')], item:['addItem', ()=>openItemModal(null)], supplier:['addSupplier', ()=>openSupplierModal(null)]};
+const EMPTY_ACTIONS = {order:['emptyStartOrder', ()=>goView('order')], item:['addItem', ()=>openItemModal(null)], expense:['addExpenseItem', ()=>openItemModal(null, {kind:'expense'})], supplier:['addSupplier', ()=>openSupplierModal(null)]};
 function emptyState(msg, action){
   const a = EMPTY_ACTIONS[action];
   return `<div class="empty">${typeof ricoFace === 'function' ? ricoFace('calm', 'empty-spark') : ICON_EMPTY}<div class="empty-text">${msg}</div>${a ? `<button type="button" class="btn btn-primary empty-go" data-empty-go="${action}">${esc(t(a[0]))}</button>` : ''}</div>`;
@@ -543,6 +545,7 @@ function applyData(d){
   saveSessionAccount();
   state.suppliers = d.suppliers || [];
   state.items = d.items || [];
+  state.expensesReady = d.expenses === true;
   state.units = (d.units && d.units.length) ? d.units : DEFAULT_UNITS;
   state.history = d.history || [];
   state.devices = d.devices || [];
@@ -2205,6 +2208,15 @@ function supplierName(id){
   const s = state.suppliers.find(x=>x.id===id);
   return s ? s.name : t('noSupplier');
 }
+/* Food and Expenses. Every item is food or an expense (tea, paper cups, towels, tissues); a supplier says
+   what we buy from them (food, expenses or both) and is offered only for those items. The Order screen
+   shows one at a time: pull down (or tap the switch) to go to the other. Older data is all food. */
+const itemKind = i=>i?.kind === 'expense' ? 'expense' : 'food';
+const supplierBuys = s=>s?.buys === 'expenses' || s?.buys === 'both' ? s.buys : 'food';
+const supplierSells = (s, kind)=>{ const b = supplierBuys(s); return b === 'both' || b === (kind === 'expense' ? 'expenses' : 'food'); };
+const orderKind = ()=>state.orderKind === 'expense' ? 'expense' : 'food';
+const kindItems = (kind = orderKind())=>state.items.filter(i=>itemKind(i) === kind);
+const kindLabel = kind=>t(kind === 'expense' ? 'kindExpenses' : 'kindFood');
 const nameCollators = new Map();
 function nameCollator(){
   const lang = LANGS.includes(state.lang) ? state.lang : 'en';
@@ -2236,10 +2248,15 @@ function lastOrderMap(){
   last.entries.forEach(e=>e.items.forEach(it=>{ map[it.itemId] = it.qty; }));
   return map;
 }
-function renderOrderHero(itemCount=state.items.length, supplierCount=new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size){
-  const selCount = cartCount();
-  return `<div class="hero-card order-hero">
-    <div class="hero-copy"><div class="hero-eyebrow">${t('heroEyebrow')}</div>
+function orderTabCounts(){
+  const items = kindItems();
+  const shown = state.orderTab==='all' ? items : items.filter(i=>(i.supplierId||'__none')===state.orderTab);
+  return [shown.length, state.orderTab==='all' ? new Set(items.map(i=>i.supplierId).filter(Boolean)).size : (shown.length ? 1 : 0)];
+}
+function renderOrderHero(itemCount=kindItems().length, supplierCount=new Set(kindItems().map(i=>i.supplierId).filter(Boolean)).size){
+  const selCount = cartCount(), exp = orderKind() === 'expense';
+  return `<div class="hero-card order-hero${exp ? ' hero-expenses' : ''}">
+    <div class="hero-copy"><div class="hero-eyebrow">${t(exp ? 'heroEyebrowExpenses' : 'heroEyebrow')}</div>
     <div class="hero-stat" aria-live="polite" aria-label="${esc(t('heroStat')(selCount))}"><span class="hero-count">${selCount}</span><span class="hero-word">${t('heroStatWord')(selCount)}</span></div>
     <div class="hero-sub">${t('heroSub')(itemCount, supplierCount)}</div></div>
     <div class="hero-footer"><span class="draft-state">${selCount?draftProgressLabel():t('heroNothingYet')}</span></div>
@@ -2250,36 +2267,74 @@ function renderOrderArrangeControl(){
     ? `<button class="item-sort-trigger" data-sort-supplier="${esc(state.orderTab)}">${t('sortSupplierItems')}</button>` : '';
 }
 function orderTabs(){
-  const tabs = [{id:'all', label:t('allSuppliers')}];
-  // Pinned suppliers come first (hold a supplier's tab to pin it), the rest by name.
+  const tabs = [{id:'all', label:t('allSuppliers')}], items = kindItems();
+  // Pinned suppliers come first (hold a supplier's tab to pin it), the rest by name. A supplier shows in
+  // Food or Expenses only when it has items there.
   const pinned = pinnedSuppliers();
   [...sortedByName(state.suppliers)].sort((a,b)=>(pinned.includes(a.id) ? 0 : 1) - (pinned.includes(b.id) ? 0 : 1) || pinned.indexOf(a.id) - pinned.indexOf(b.id)).forEach(s=>{
-    if(state.items.some(i=>i.supplierId===s.id)) tabs.push({id:s.id, label:s.name, pinned:pinned.includes(s.id)});
+    if(items.some(i=>i.supplierId===s.id)) tabs.push({id:s.id, label:s.name, pinned:pinned.includes(s.id)});
   });
-  if(state.items.some(i=>!i.supplierId)) tabs.push({id:'__none', label:t('noSupplier')});
+  if(items.some(i=>!i.supplierId)) tabs.push({id:'__none', label:t('noSupplier')});
   return tabs;
 }
+/* The Food / Expenses switch at the top of Order. The other side shows how many of its items are picked,
+   since one Send sends both. */
+const kindPicked = k=>Object.keys(state.cart).filter(id=>state.cart[id] > 0 && itemKind(state.items.find(i=>i.id===id)) === k).length;
+function renderKindSwitch(){
+  const kind = orderKind(), other = kind === 'expense' ? 'food' : 'expense';
+  const pill = k=>{ const n = k === kind ? 0 : kindPicked(k);
+    return `<button type="button" class="kind-pill${k===kind?' on':''}" data-kind="${k}" role="tab" aria-selected="${k===kind}">${k === 'expense' ? ICON_EXPENSE : ICON_FOOD}<span>${esc(kindLabel(k))}</span>${n ? `<span class="kind-badge">${n}</span>` : ''}</button>`; };
+  return `<div class="kind-switch-row"><div class="kind-switch ${kind}" role="tablist" aria-label="${esc(t('orderKindSwitch'))}"><span class="kind-thumb" aria-hidden="true"></span>${pill('food')}${pill('expense')}</div>
+    <span class="kind-hint">${esc(t(other === 'expense' ? 'pullHintToExpenses' : 'pullHintToFood'))}</span></div>`;
+}
+/* Goes to Food or Expenses: the switch's thumb slides across, the summary card changes colour and the page
+   below drops in. A pull-down calls this while Spark turns and the app refreshes (see initPullRefresh). */
+function switchOrderKind(kind){
+  if(state.view !== 'order' || (kind !== 'food' && kind !== 'expense') || kind === orderKind()) return false;
+  const heroBefore = document.querySelector('.order-hero'), bgBefore = heroBefore ? getComputedStyle(heroBefore).backgroundColor : null;
+  state.orderKind = kind; state.orderTab = 'all';
+  haptic('light');
+  render();
+  scrollBox().scrollTop = 0;
+  if(reducedMotion()) return true;
+  const thumb = document.querySelector('.kind-thumb');
+  const side = isRtl() ? -100 : 100, at = k=>`translateX(${k === 'expense' ? side : 0}%)`;
+  thumb?.animate?.([{transform:at(kind === 'expense' ? 'food' : 'expense')}, {transform:at(kind)}], {duration:380, easing:'cubic-bezier(.32,.72,0,1)'});
+  const hero = document.querySelector('.order-hero');
+  if(hero && bgBefore) hero.animate?.([{backgroundColor:bgBefore, transform:'scale(.97)'}, {backgroundColor:getComputedStyle(hero).backgroundColor, transform:'none'}], {duration:460, easing:'cubic-bezier(.32,.72,0,1)'});
+  [...document.querySelectorAll('.kind-switch-row ~ *')].slice(0, 6).forEach((el, n)=>el.animate?.(
+    [{opacity:0, transform:'translate3d(0,-18px,0)'}, {opacity:1, transform:'none'}],
+    {duration:420, delay:n * 35, easing:'cubic-bezier(.23,1,.32,1)', fill:'backwards'}));
+  return true;
+}
+document.addEventListener('click', e=>{
+  const b = e.target.closest?.('.kind-switch [data-kind]');
+  if(b) switchOrderKind(b.dataset.kind);
+});
 function renderOrder(){
-  if(!state.items.length){
-    return emptyState(t('noItemsYet'), canDo('catalog') ? 'item' : null);
+  const kind = orderKind(), items = kindItems(kind);
+  if(!items.length){
+    if(kind === 'expense') return renderKindSwitch() + emptyState(esc(t(state.expensesReady ? 'noExpenseItemsYet' : 'expensesNotReady')), canDo('catalog') && state.expensesReady ? 'expense' : null);
+    if(!state.items.length) return emptyState(t('noItemsYet'), canDo('catalog') ? 'item' : null);
+    return renderKindSwitch() + emptyState(t('noItemsYet'), canDo('catalog') ? 'item' : null);
   }
   const tabs = orderTabs();
   if(!tabs.some(tb=>tb.id===state.orderTab)) state.orderTab = 'all';
 
   const groupHtml = renderOrderResults();
-  const selectedCount = state.orderTab==='all' ? state.items.length : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab).length;
-  const selectedSupplierCount = state.orderTab==='all' ? new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size : (selectedCount ? 1 : 0);
+  const [selectedCount, selectedSupplierCount] = orderTabCounts();
 
   const tabsHtml = `<div class="order-tabs-shell">
     <button class="tab-scroll tab-scroll-prev" id="orderTabsPrev" aria-label="${t('previousSuppliers')}">‹</button>
     <div class="order-tabs" id="orderTabs">${tabs.map(tb=>`
-      <button class="tab-pill ${state.orderTab===tb.id?'active':''}" aria-pressed="${state.orderTab===tb.id}" data-ordertab="${esc(tb.id)}">${tb.pinned ? `<span class="tab-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(tb.label)}<span class="tab-count">${tb.id==='all'?state.items.length:state.items.filter(i=>(i.supplierId||'__none')===tb.id).length}</span></button>
+      <button class="tab-pill ${state.orderTab===tb.id?'active':''}" aria-pressed="${state.orderTab===tb.id}" data-ordertab="${esc(tb.id)}">${tb.pinned ? `<span class="tab-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(tb.label)}<span class="tab-count">${tb.id==='all'?items.length:items.filter(i=>(i.supplierId||'__none')===tb.id).length}</span></button>
     `).join('')}</div>
     <button class="tab-scroll tab-scroll-next" id="orderTabsNext" aria-label="${t('nextSuppliers')}">›</button>
   </div>`;
 
   const lastMap = lastOrderMap();
   return `
+    ${renderKindSwitch()}
     <div id="sharedDraftStatus">${draftStatusHtml()}</div>
     ${renderOrderHero(selectedCount, selectedSupplierCount)}
     <div id="ricoSuggest">${renderRicoSuggestion()}</div>
@@ -2302,9 +2357,10 @@ function renderOrder(){
 function renderOrderResults(){
   const lastQty = prefOn('showLastQty') ? lastQtyMap() : null;
   const q = foldText(state.search.trim());
+  const kindList = kindItems();
   const tabFiltered = state.orderTab==='all'
-    ? state.items
-    : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab);
+    ? kindList
+    : kindList.filter(i=>(i.supplierId||'__none')===state.orderTab);
   const availableItems = tabFiltered.filter(i=>i.available!==false);
   const visibleItems = q ? globalThis.RicottaSearch.rank(availableItems,state.search,itemSearchFields) : availableItems;
   // Favourites lead the list (in a supplier's tab too) and are not repeated in their supplier's group.
@@ -2406,8 +2462,7 @@ function refreshCartSummary(){
   // Hero stat
   const hero = document.querySelector('.hero-card');
   if(hero){
-    const selectedCount = state.orderTab==='all' ? state.items.length : state.items.filter(i=>(i.supplierId||'__none')===state.orderTab).length;
-    const selectedSupplierCount = state.orderTab==='all' ? new Set(state.items.map(i=>i.supplierId).filter(Boolean)).size : (selectedCount ? 1 : 0);
+    const [selectedCount, selectedSupplierCount] = orderTabCounts();
     const stat = hero.querySelector('.hero-stat');
     const count = hero.querySelector('.hero-count');
     const sub = hero.querySelector('.hero-sub');
@@ -2426,6 +2481,14 @@ function refreshCartSummary(){
   }
   const clear=document.getElementById('clearOrderBtn');
   if(clear) clear.hidden = c===0;
+  // The other tab's count of picked items (one Send sends both).
+  document.querySelectorAll('.kind-switch [data-kind]').forEach(pill=>{
+    const n = pill.dataset.kind === orderKind() ? 0 : kindPicked(pill.dataset.kind);
+    let badge = pill.querySelector('.kind-badge');
+    if(!n){ badge?.remove(); return; }
+    if(!badge){ badge = document.createElement('span'); badge.className = 'kind-badge'; pill.appendChild(badge); }
+    badge.textContent = String(n);
+  });
   const draft=document.querySelector('.draft-state');
   if(draft) draft.textContent=c?draftProgressLabel():t('heroNothingYet');
   paintRicoSuggestion();
@@ -3218,11 +3281,13 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), stock:t('stockLinkLabel'), cutoff:t('cutoffShort')})[k] || k;
+  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), buys:t('recordBuys'), kind:t('itemKindLabel'), stock:t('stockLinkLabel'), cutoff:t('cutoffShort')})[k] || k;
 }
 function recordValue(k, v){
   if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||t('noValue');}catch(_){} }
   if(k==='available')return t(v==='false'?'unavailable':'availableToOrder');
+  if(k==='buys')return t('buys_'+(['expenses','both'].includes(v)?v:'food'));
+  if(k==='kind')return t(v==='expense'?'kindExpense':'kindFood');
   if(k === 'reminder') return reminderText(reminderFromCode(v));
   if(k === 'supplier' && !v) return t('noSupplier');
   if(!v) return t('noValue');
@@ -3406,10 +3471,11 @@ function openSupplierModal(id){
     bodyHtml: `
       <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
       <div class="field"><label>${t('phone')}</label><input id="mfPhone" data-clear="1" inputmode="tel" placeholder="07xxxxxxxxx" value="${esc(existing?.phone||'')}"></div>
+      ${buysFieldHtml(existing ? supplierBuys(existing) : (state.view === 'order' && orderKind() === 'expense' ? 'expenses' : 'food'))}
       ${reminderFieldsHtml(existing?.reminder)}`,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
-    onOpen: (box)=> attachReminderFields(box),
+    onOpen: (box)=>{ attachReminderFields(box); attachBuysField(box, existing); },
     onSubmit: async (again)=>{
       const name = document.getElementById('mfName').value.trim();
       const phone = document.getElementById('mfPhone').value.trim();
@@ -3423,15 +3489,17 @@ function openSupplierModal(id){
       const newRem = rem.on ? {enabled:true, time:rem.time, days:remDays} : null;
       const newCode = reminderCode(newRem);
       const now = new Date().toISOString();
+      const buys = readBuysField() || (existing ? supplierBuys(existing) : 'food');
       if(existing){
         const s = state.suppliers.find(x=>x.id===existing.id);
         if(!s) return {};
         const o = opened, oldCode = reminderCode(o.reminder);
-        const fields = diffFields([['name', o.name, name], ['phone', o.phone, phone], ['reminder', oldCode, newCode]]);
+        const fields = diffFields([['name', o.name, name], ['phone', o.phone, phone], ['reminder', oldCode, newCode], ['buys', supplierBuys(o), buys]]);
         if(!fields.length) return {};   // nothing changed -- nothing to save or record
         const changes = {};
         if(name !== o.name) changes.name = name;
         if(phone !== (o.phone || '')) changes.phone = phone;
+        if(buys !== supplierBuys(o)) changes.buys = buys;
         // updatedAt tells the server when the reminder was last changed, so a time that
         // has already passed today starts tomorrow instead of firing the moment you save.
         if(oldCode !== newCode) changes.reminder = rem.on ? {...newRem, updatedAt: now} : {...(o.reminder||{}), enabled:false, updatedAt: now};
@@ -3440,12 +3508,12 @@ function openSupplierModal(id){
         Object.assign(s, changes);
         logActivity({action:'edit', type:'supplier', name, fields});
       } else {
-        const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null};
+        const next = {id:'s'+outboxJobId(), name, phone, reminder: rem.on ? {...newRem, updatedAt: now} : null, buys};
         if(!(await saveRecord('suppliers', next))) return {error: t('saveFailed')};
         state.suppliers.push(next);
         logActivity({action:'add', type:'supplier', name,
           fields:[{k:'name', to:name}].concat(phone ? [{k:'phone', to:phone}] : [])
-                 .concat(rem.on ? [{k:'reminder', to:newCode}] : [])});
+                 .concat(rem.on ? [{k:'reminder', to:newCode}] : []).concat(buys !== 'food' ? [{k:'buys', to:buys}] : [])});
       }
       render();
       if(again){ resetReminderFields(); return {keepOpen:true, message:t('savedMsg')(name)}; }
@@ -3454,6 +3522,26 @@ function openSupplierModal(id){
     }
   });
 }
+/* What we buy from a supplier: Food, Expenses or Both. Shown once the server saves it. */
+function buysFieldHtml(cur){
+  if(!state.expensesReady) return '';
+  return `<div class="field"><label id="mfBuysLabel">${esc(t('supplierBuysLabel'))}</label>
+    <div class="pill-seg buys-seg" role="radiogroup" aria-labelledby="mfBuysLabel" id="mfBuys">${['food','expenses','both'].map(b=>`<button type="button" class="pill-seg-btn" role="radio" data-buys="${b}" aria-checked="${b===cur}">${b === 'food' ? ICON_FOOD : b === 'expenses' ? ICON_EXPENSE : ''}<span>${esc(t('buys_'+b))}</span></button>`).join('')}</div>
+    <div class="field-hint" id="mfBuysHint">${esc(t('buysHint'))}</div></div>`;
+}
+function attachBuysField(box, existing){
+  const seg = box.querySelector('#mfBuys'), hint = box.querySelector('#mfBuysHint');
+  if(!seg) return;
+  seg.addEventListener('click', e=>{
+    const b = e.target.closest('[data-buys]'); if(!b) return;
+    seg.querySelectorAll('[data-buys]').forEach(x=>x.setAttribute('aria-checked', String(x === b)));
+    // Narrowing a supplier never hides its items: they stay where they are until moved.
+    const left = existing ? ['food','expense'].filter(k=>!supplierSells({buys:b.dataset.buys}, k))
+      .map(k=>[k, state.items.filter(i=>i.supplierId === existing.id && itemKind(i) === k).length]).find(([, n])=>n) : null;
+    if(hint) hint.textContent = left ? t('supplierKeepsItems')(left[1], kindLabel(left[0])) : t('buysHint');
+  });
+}
+const readBuysField = ()=>document.querySelector('#mfBuys [data-buys][aria-checked="true"]')?.dataset.buys || null;
 function attachSupplierEvents(){
   const add = document.getElementById('supAddBtn');
   if(add) add.onclick = ()=> openSupplierModal(null);
@@ -3487,6 +3575,7 @@ function renderItemsAdmin(){
   return `
     <div class="action-row">
       ${edit ? `<button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
+      ${state.expensesReady ? `<button class="btn btn-ghost add-expense-btn" id="itemAddExpenseBtn">${ICON_EXPENSE} ${esc(t('addExpenseItem'))}</button>` : ''}
       <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button>
       <button class="btn btn-ghost" id="itemLinkAllBtn">${ICON_LINK} ${esc(t('stockLinkMany'))}${(n=>n ? ` <span class="btn-count">${n}</span>` : '')(state.items.filter(i=>!i.stockItem).length + (stockOptions ? state.items.filter(i=>stockDoubt(i)).length : 0))}</button>` : ''}
       ${canDo('exports') ? `<button class="btn btn-ghost" data-export="items">${ICON_SHEET} ${esc(t('exportBtn'))}</button>` : ''}
@@ -3602,30 +3691,39 @@ function openSupplierItemOrder(supplierId){
     }
   });
 }
-function openItemModal(id){
+function openItemModal(id, opts = {}){
   const existing = id ? state.items.find(i=>i.id===id) : null;
   if(id && !existing) return;
+  // Food or an expense: a new one starts as the button said (Add expense) or as the Order tab that is open.
+  const startKind = existing ? itemKind(existing) : opts.kind === 'expense' || (!opts.kind && state.view === 'order' && orderKind() === 'expense') ? 'expense' : 'food';
   const opened = existing ? structuredClone(existing) : null;   // what the form shows; changes are measured from it
   // A new item starts with no unit picked (like its supplier): nothing is chosen for the person.
   const unitOptions = (existing?.unit ? '' : `<option value="" selected disabled>${esc(t('chooseUnit'))}</option>`) + state.units.map(u=>`<option value="${esc(u.id)}" ${existing?.unit===u.id?'selected':''}>${esc(unitName(u))}</option>`).join('');
   // While adding a fresh item, the last supplier picked stays selected so
   // bulk-adding items for one supplier doesn't need reselecting each time.
-  const currentSupplierId = existing ? existing.supplierId : state.itemFormSupplierId;
-  const supOptions = `<option value="">${existing ? t('noSupplier') : t('chooseSupplier')}</option>` + state.suppliers.map(s=>`<option value="${esc(s.id)}" ${currentSupplierId===s.id?'selected':''}>${esc(s.name)}</option>`).join('');
-  const lockedSupplier = !existing && state.itemFormSupplierId ? state.suppliers.find(s=>s.id===state.itemFormSupplierId) : null;
+  // Only suppliers we buy this kind from are offered (and the item's own supplier, whatever it sells).
+  const lockedId = state.itemFormSupplierId && supplierSells(state.suppliers.find(s=>s.id===state.itemFormSupplierId), startKind) ? state.itemFormSupplierId : null;
+  const currentSupplierId = existing ? existing.supplierId : lockedId;
+  const supOptionsFor = (kind, picked)=>`<option value="">${existing ? t('noSupplier') : t('chooseSupplier')}</option>` + state.suppliers.filter(s=>!state.expensesReady || supplierSells(s, kind) || s.id === existing?.supplierId).map(s=>`<option value="${esc(s.id)}" ${picked===s.id?'selected':''}>${esc(s.name)}</option>`).join('');
+  const supOptions = supOptionsFor(startKind, currentSupplierId);
+  const noneSell = kind=>state.expensesReady && !state.suppliers.some(s=>supplierSells(s, kind));
+  const lockedSupplier = !existing && lockedId ? state.suppliers.find(s=>s.id===lockedId) : null;
+  const kindField = state.expensesReady ? `<div class="field"><label id="mfKindLabel">${esc(t('itemKindLabel'))}</label><div class="pill-seg kind-seg" role="radiogroup" aria-labelledby="mfKindLabel" id="mfKind">${['food','expense'].map(k=>`<button type="button" class="pill-seg-btn" role="radio" data-itemkind="${k}" aria-checked="${k===startKind}">${k === 'expense' ? ICON_EXPENSE : ICON_FOOD}<span>${esc(t(k === 'expense' ? 'kindExpense' : 'kindFood'))}</span></button>`).join('')}</div></div>` : '';
   const banner = existing
     ? editingBanner(existing.name, `${unitLabel(existing.unit)} \u00b7 ${existing.supplierId ? supplierName(existing.supplierId) : t('noSupplier')}`)
     : '';
   showFormModal({
-    title: existing ? t('editItem') : t('addItem'),
+    title: existing ? t('editItem') : t(startKind === 'expense' ? 'addExpenseItem' : 'addItem'),
     banner,
     bodyHtml: `
+      ${kindField}
       <div class="field"><label>${t('name')}</label><input id="mfName" data-clear="1" autocomplete="off" value="${esc(existing?.name||'')}"></div>
       <div class="field"><label>${t('unit')}</label><select id="mfUnit" data-clear="1">${unitOptions}</select></div>
       <div class="field">
         <label>${t('supplier')}</label>
         <select id="mfSupplier" data-clear="1">${supOptions}</select>
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
+        <div class="field-hint warn" id="mfKindNone" ${noneSell(startKind) ? '' : 'hidden'}>${esc(t('noSupplierForKind'))}</div>
       </div>
       <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
       ${existing ? `<div class="field stock-link" id="mfStock"></div><div class="field low-alert" id="mfLow"></div>` : `<div class="field"><label>${esc(t('stockLinkLabel'))}</label><div class="field-hint">${esc(t('stockLinkAfterSave'))}</div></div>`}
@@ -3640,12 +3738,23 @@ function openItemModal(id){
         const s = state.suppliers.find(x=>x.id===sel.value);
         hint.textContent = s ? t('supplierStaysSelected')(s.name) : '';
       };
+      const kindSeg = box.querySelector('#mfKind');
+      if(kindSeg) kindSeg.addEventListener('click', e=>{
+        const b = e.target.closest('[data-itemkind]'); if(!b || b.getAttribute('aria-checked') === 'true') return;
+        kindSeg.querySelectorAll('[data-itemkind]').forEach(x=>x.setAttribute('aria-checked', String(x === b)));
+        const kind = b.dataset.itemkind, keep = state.suppliers.find(x=>x.id===sel.value);
+        sel.innerHTML = supOptionsFor(kind, keep && (supplierSells(keep, kind) || keep.id === existing?.supplierId) ? keep.id : null);
+        if(hint && !sel.value) hint.textContent = '';
+        const none = box.querySelector('#mfKindNone'); if(none) none.hidden = !noneSell(kind);
+        if(!existing){ const title = box.querySelector('.modal-title'); if(title) title.textContent = t(kind === 'expense' ? 'addExpenseItem' : 'addItem'); }
+      });
     },
     onSubmit: async (again)=>{
       const name = document.getElementById('mfName').value.trim();
       const unit = document.getElementById('mfUnit').value;
       const supplierId = document.getElementById('mfSupplier').value || null;
       const note = document.getElementById('mfNote').value.trim().slice(0, 120), aliases=parseAliases(document.getElementById('mfAliases').value), available=document.getElementById('mfAvailable').checked;
+      const kind = document.querySelector('#mfKind [data-itemkind][aria-checked="true"]')?.dataset.itemkind || startKind;
       if(!name) return {error: t('nameRequired')};
       if(!unit) return {error: t('chooseUnit')};
       if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
@@ -3660,7 +3769,8 @@ function openItemModal(id){
           ['name', o.name, name],
           ['unit', unitEn(o.unit), unitEn(unit)],
           ['supplier', oldSupName, newSupName],
-          ['note', o.note || '', note],['aliases',(o.aliases||[]).join(', '),aliases.join(', ')],['available',String(o.available!==false),String(available)]
+          ['note', o.note || '', note],['aliases',(o.aliases||[]).join(', '),aliases.join(', ')],['available',String(o.available!==false),String(available)],
+          ['kind', itemKind(o), kind]
         ]);
         if(fields.length){
           const changes = {};
@@ -3670,6 +3780,7 @@ function openItemModal(id){
           if(note !== (o.note || '')) changes.note = note;
           if(aliases.join('\n') !== (o.aliases || []).join('\n')) changes.aliases = aliases;
           if(available !== (o.available !== false)) changes.available = available;
+          if(kind !== itemKind(o)) changes.kind = kind;
           const saved = await saveChanges('items', i.id, changes);
           if(saved !== true) return {error: saveError(saved)};
           Object.assign(i, changes);if(changes.available === false){delete state.cart[i.id];persistCartDraft();}
@@ -3678,13 +3789,13 @@ function openItemModal(id){
       } else {
         const supplierItems=state.items.filter(i=>i.supplierId===supplierId);
         const maxSort=supplierItems.reduce((max,i)=>Number.isInteger(i.sortOrder)?Math.max(max,i.sortOrder):max,-1);
-        const next = {id:'i'+outboxJobId(), name, unit, supplierId, note, aliases, available, sortOrder:maxSort>=0?maxSort+1:null};
+        const next = {id:'i'+outboxJobId(), name, kind, unit, supplierId, note, aliases, available, sortOrder:maxSort>=0?maxSort+1:null};
         if(!(await saveRecord('items', next))) return {error: t('saveFailed')};
         state.items.push(next);
         state.itemFormSupplierId = supplierId; // keep it locked in for the next item
         logActivity({action:'add', type:'item', name, fields:[
           {k:'name', to:name}, {k:'unit', to:unitEn(unit)}, {k:'supplier', to:newSupName}
-        ]});
+        ].concat(kind === 'expense' ? [{k:'kind', to:kind}] : [])});
       }
       render();
       if(again) return {keepOpen:true, message:t('savedMsg')(name)};
@@ -3996,7 +4107,9 @@ async function deleteItemWithUndo(id){
 }
 function attachItemEvents(){
   const add = document.getElementById('itemAddBtn');
-  if(add) add.onclick = ()=> openItemModal(null);
+  if(add) add.onclick = ()=> openItemModal(null, {kind:'food'});
+  const addExpense = document.getElementById('itemAddExpenseBtn');
+  if(addExpense) addExpense.onclick = ()=> openItemModal(null, {kind:'expense'});
   const linkAll = document.getElementById('itemLinkAllBtn');
   if(linkAll){
     linkAll.onclick = openStockLinkMany;
@@ -4211,7 +4324,9 @@ boot();
 /* ============ Pull to refresh (phones) ============
    At the top of a page, pull down: the page follows with growing resistance and Spark appears above it.
    Let go past the line and Spark turns once while the newest orders, items and suppliers load; then the
-   page settles back. Inputs, sheets and the tab bar are left alone. */
+   page settles back. On Order the same pull also goes to the other tab (Food or Expenses): a line under
+   Spark says where, and the new tab drops in while the app refreshes. Inputs, sheets and the tab bar are
+   left alone. */
 (function initPullRefresh(){
   const LINE = 72;
   let p = null;
@@ -4220,11 +4335,17 @@ boot();
     if(!el){ el = document.createElement('div'); el.id = 'pullSpark'; el.className = 'pull-spark'; el.setAttribute('aria-hidden', 'true'); el.innerHTML = typeof ricoFace === 'function' ? ricoFace('happy', 'pull-face') : ''; document.body.appendChild(el); }
     return el;
   };
+  const label = ()=>{
+    let el = document.getElementById('pullLabel');
+    if(!el){ el = document.createElement('div'); el.id = 'pullLabel'; el.className = 'pull-label'; el.setAttribute('aria-hidden', 'true'); document.body.appendChild(el); }
+    return el;
+  };
+  const otherKind = ()=>orderKind() === 'expense' ? 'food' : 'expense';
   document.addEventListener('touchstart', e=>{
     if(!state.account || !inAppFrame() || e.touches.length !== 1) return;
     const content = document.querySelector('.content');
     if(!content || scrollBox().scrollTop > 0 || refreshBlocked() || e.target.closest('.bottom-stack,.topbar,input,textarea,select,.sel-sheet,.rico-composer,.rico-chips,.rico-drawer,.data-table-scroll')) return;
-    p = {y:e.touches[0].clientY, x:e.touches[0].clientX, d:0, content, on:false};
+    p = {y:e.touches[0].clientY, x:e.touches[0].clientX, d:0, content, on:false, kinds:state.view === 'order' && state.items.length > 0};
   }, {passive:true});
   document.addEventListener('touchmove', e=>{
     if(!p) return;
@@ -4237,23 +4358,36 @@ boot();
     p.content.style.transform = `translate3d(0,${p.d}px,0)`;
     const s = spark(), k = Math.min(1, p.d / LINE);
     s.style.opacity = String(k); s.style.transform = `translate(-50%, ${p.d * .45}px) scale(${.6 + k * .4}) rotate(${k * 180}deg)`;
+    if(p.kinds){
+      const l = label(), ready = k >= 1, to = otherKind();
+      const text = t(ready ? (to === 'expense' ? 'pullToExpenses' : 'pullToFood') : (to === 'expense' ? 'pullHintToExpenses' : 'pullHintToFood'));
+      if(l.textContent !== text) l.textContent = text;
+      if(ready !== p.ready){ p.ready = ready; l.classList.toggle('ready', ready); l.dataset.to = to; if(ready) haptic('light'); }
+      l.style.opacity = String(Math.max(0, k * 1.4 - .4)); l.style.transform = `translate(-50%, ${p.d * .45}px)`;
+    }
   }, {passive:true});
   const end = async ()=>{
     if(!p) return;
-    const {d, content, on} = p; p = null;
+    const {d, content, on, kinds} = p; p = null;
     if(!on) return;
-    const s = spark(), back = ()=>{
+    const s = spark(), l = document.getElementById('pullLabel'), back = ()=>{
       content.animate?.([{transform:content.style.transform || 'none'}, {transform:'none'}], {duration:420, easing:'cubic-bezier(.32,.72,0,1)'});
       content.style.transform = '';
       s.animate?.([{opacity:s.style.opacity || 1}, {opacity:0}], {duration:240, fill:'forwards'}).finished.then(()=>s.remove(), ()=>s.remove());
+      if(l) l.animate?.([{opacity:l.style.opacity || 1}, {opacity:0}], {duration:200, fill:'forwards'}).finished.then(()=>l.remove(), ()=>l.remove());
+      else document.getElementById('pullLabel')?.remove();
     };
     if(d < LINE){ back(); return; }
     haptic('light');
     content.style.transform = `translate3d(0,${LINE * .8}px,0)`;
     s.style.transform = `translate(-50%, ${LINE * .36}px) scale(1)`;
+    if(l) l.style.transform = `translate(-50%, ${LINE * .36}px)`;
     const turn = s.animate?.([{rotate:'0deg'}, {rotate:'360deg'}], {duration:800, iterations:Infinity, easing:'cubic-bezier(.45,0,.25,1)'});
     const started = performance.now();
-    try{ await refreshData(true); }catch(_){ /* the page simply settles back */ }
+    // On Order: the other tab first (it shows straight away), then the refresh fills in anything new.
+    if(kinds && state.view === 'order') switchOrderKind(otherKind());
+    // A pull is asked for, so it always loads, even right after another load (no 15 second wait).
+    try{ await refreshData('live'); }catch(_){ /* the page simply settles back */ }
     await new Promise(r=>setTimeout(r, Math.max(0, 700 - (performance.now() - started))));
     turn?.cancel(); back();
   };

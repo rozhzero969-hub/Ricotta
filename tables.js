@@ -9,7 +9,8 @@
    Depends on (runtime only): state, t, esc, lget, lset, canDo, canOpen, isPhoneLayout, unitLabel,
    supplierName, sortedByName, nameCollator, formatIraqDateTime, timeAgo, reminderText, reminderTimeLabel,
    openKitchenSheet, openItemModal, openSupplierModal, deleteItemWithUndo, deleteSupplier, supplierContactLinks,
-   testSupplierReminder, refreshOrderView, persistCartDraft, toast, attachCatalogSearch, render. */
+   testSupplierReminder, refreshOrderView, persistCartDraft, toast, attachCatalogSearch, render, itemKind,
+   supplierBuys, supplierSells. */
 
 const TABLE_KEY = 'tables';
 const tablePrefs = kind=>({sort:'name', dir:1, filter:'all', cols:null, ...(lget(TABLE_KEY)?.[kind] || {})});
@@ -39,15 +40,18 @@ const TABLES = {
       {id:'month', label:()=>t('fileOrdersMonth'), value:i=>String(tableStats().items[i.id]?.orders.size || 0), sort:i=>tableStats().items[i.id]?.orders.size || 0, end:true, short:n=>t('tableOrders')(n)},
       {id:'last', label:()=>t('fileLastOrdered'), value:i=>itemLast(i) ? timeAgo(itemLast(i)) : t('never'), sort:i=>itemLast(i) || '', short:v=>v},
       {id:'available', label:()=>t('fileAvailable'), value:i=>i.available === false ? t('fileNo') : t('fileYes'), sort:i=>i.available === false ? 1 : 0},
+      {id:'kind', label:()=>t('itemKindLabel'), value:i=>t(itemKind(i) === 'expense' ? 'kindExpense' : 'kindFood'), sort:i=>itemKind(i), text:true, hidden:true},
       {id:'note', label:()=>t('itemNoteLabel'), value:i=>i.note || '', sort:i=>i.note || '', text:true, hidden:true},
     ],
-    filters:[
+    // A getter, so the Food and Expenses chips follow what the server and the catalog say now.
+    get filters(){ return [
       {id:'all', label:()=>t('filterAll'), test:()=>true},
+      ...(state.expensesReady || state.items.some(i=>itemKind(i) === 'expense') ? [{id:'food', label:()=>t('kindFood'), test:i=>itemKind(i) === 'food'}, {id:'expense', label:()=>t('kindExpenses'), test:i=>itemKind(i) === 'expense'}] : []),
       {id:'unavailable', label:()=>t('fileUnavailable'), test:i=>i.available === false},
       {id:'noSupplier', label:()=>t('noSupplier'), test:i=>!i.supplierId || !state.suppliers.some(s=>s.id === i.supplierId)},
       {id:'quiet', label:()=>t('check_quiet'), test:i=>i.available !== false && (itemLast(i) ? Date.now() - Date.parse(itemLast(i)) > QUIET_MS : !!i.createdAt && Date.now() - Date.parse(i.createdAt) > QUIET_MS)},
       {id:'ordered', label:()=>t('fileOrderedMonth'), test:i=>!!tableStats().items[i.id]},
-    ],
+    ]; },
   },
   suppliers:{
     rows:()=>state.suppliers,
@@ -55,16 +59,19 @@ const TABLES = {
       {id:'name', label:()=>t('supplier'), value:s=>s.name, sort:s=>s.name, text:true, fixed:true},
       {id:'phone', label:()=>t('phone'), value:s=>s.phone || '·', sort:s=>s.phone || '', text:true},
       {id:'items', label:()=>t('items'), value:s=>String(state.items.filter(i=>i.supplierId === s.id).length), sort:s=>state.items.filter(i=>i.supplierId === s.id).length, end:true, short:n=>t('itemCount')(Number(n))},
+      {id:'buys', label:()=>t('supplierBuysLabel'), value:s=>t('buys_'+supplierBuys(s)), sort:s=>supplierBuys(s), text:true, hidden:true},
       {id:'reminder', label:()=>t('fileReminder'), value:s=>s.reminder?.enabled ? reminderText(s.reminder) : t('reminderOff'), sort:s=>s.reminder?.enabled ? s.reminder.time : '￿', text:true},
       {id:'month', label:()=>t('fileOrdersMonth'), value:s=>String(tableStats().suppliers[s.id]?.orders.size || 0), sort:s=>tableStats().suppliers[s.id]?.orders.size || 0, end:true, short:n=>t('tableOrders')(n)},
       {id:'last', label:()=>t('fileLastOrder'), value:s=>tableStats().suppliers[s.id]?.last ? timeAgo(tableStats().suppliers[s.id].last) : t('never'), sort:s=>tableStats().suppliers[s.id]?.last || '', short:v=>v},
     ],
-    filters:[
+    // A getter, so the Food and Expenses chips follow what the server and the catalog say now.
+    get filters(){ return [
       {id:'all', label:()=>t('filterAll'), test:()=>true},
+      ...(state.expensesReady || state.suppliers.some(s=>supplierBuys(s) !== 'food') ? [{id:'food', label:()=>t('kindFood'), test:s=>supplierSells(s, 'food')}, {id:'expense', label:()=>t('kindExpenses'), test:s=>supplierSells(s, 'expense')}] : []),
       {id:'reminder', label:()=>t('tableWithReminder'), test:s=>!!s.reminder?.enabled},
       {id:'noPhone', label:()=>t('tableNoPhone'), test:s=>!String(s.phone || '').trim()},
       {id:'ordered', label:()=>t('fileOrderedMonth'), test:s=>!!tableStats().suppliers[s.id]},
-    ],
+    ]; },
   },
 };
 function tableColumns(kind){
@@ -87,8 +94,8 @@ function tableRows(kind){
 /* A row's second line: the unit and the supplier (or the phone), each in its own direction, so a
    Kurdish unit never turns the whole line around. */
 function rowMeta(kind, r){
-  if(kind !== 'items') return `<span dir="ltr">${esc(r.phone || t('noPhoneOnFile'))}</span>`;
-  return `<span dir="auto">${esc(r.supplierId ? supplierName(r.supplierId) : t('noSupplier'))}</span> · <span dir="auto">${esc(unitLabel(r.unit) || '·')}</span>`;
+  if(kind !== 'items') return `<span dir="ltr">${esc(r.phone || t('noPhoneOnFile'))}</span>${supplierBuys(r) !== 'food' ? ` · <span>${esc(t('buys_'+supplierBuys(r)))}</span>` : ''}`;
+  return `${itemKind(r) === 'expense' ? `<span class="kind-tag">${esc(t('kindExpense'))}</span> ` : ''}<span dir="auto">${esc(r.supplierId ? supplierName(r.supplierId) : t('noSupplier'))}</span> · <span dir="auto">${esc(unitLabel(r.unit) || '·')}</span>`;
 }
 /* Settings > Look can turn the tables off: a plain list by name, and a tap opens the form. */
 function renderPlainList(kind){

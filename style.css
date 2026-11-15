@@ -410,6 +410,40 @@ html.rtl .hero-eyebrow{letter-spacing:0}
 .draft-state{display:flex;align-items:center;gap:8px}
 .draft-state::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--on-dark);flex-shrink:0}
 
+/* ---------- Food and Expenses ----------
+   Food keeps the deep green card; Expenses (tea, paper cups, tissues) has a white one, so a glance tells
+   which tab is open. The switch above it has a thumb in the same colour as the card below. */
+.order-hero.hero-expenses{--hero-ink:#1C1C1E;color:var(--hero-ink);background:#FFFFFF;box-shadow:0 0 0 1px rgba(0,0,0,.06),0 10px 30px -14px rgba(0,0,0,.22)}
+html.dark .order-hero.hero-expenses{background:#F2F2F7;box-shadow:none}
+.hero-expenses .hero-eyebrow{color:var(--accent-strong)}
+.hero-expenses .hero-word{color:#3C3C43}
+.hero-expenses .hero-sub{color:#6E6E73}
+.hero-expenses .hero-footer{border-top-color:rgba(0,0,0,.08);color:#6E6E73}
+.hero-expenses .draft-state::before{background:var(--accent-strong)}
+.kind-switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.kind-switch{position:relative;display:grid;grid-template-columns:1fr 1fr;padding:3px;border-radius:999px;background:var(--fill);min-width:min(260px,100%)}
+.kind-thumb{position:absolute;top:3px;bottom:3px;inset-inline-start:3px;width:calc(50% - 3px);border-radius:999px;background:var(--hero);box-shadow:var(--lift)}
+.kind-switch.expense .kind-thumb{transform:translateX(100%);background:#FFFFFF;box-shadow:0 0 0 .5px rgba(0,0,0,.08),var(--lift)}
+html.rtl .kind-switch.expense .kind-thumb{transform:translateX(-100%)}
+html.dark .kind-switch.expense .kind-thumb{background:#F2F2F7}
+.kind-pill{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:0 16px;border:0;border-radius:999px;background:transparent;font:600 .9375rem var(--font);color:var(--ink-soft);transition:color .25s ease}
+.kind-pill.on{color:#fff}
+.kind-switch.expense .kind-pill.on{color:#1C1C1E}
+.kind-pill:not(.on):active{opacity:.6}
+.kind-badge{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:var(--accent-strong);color:#fff;font-size:.6875rem;font-weight:700;font-variant-numeric:tabular-nums}
+.kind-hint{display:inline-flex;align-items:center;gap:5px;font-size:.75rem;font-weight:500;color:var(--ink-faint)}
+.kind-hint::before{content:'';width:7px;height:7px;border-inline-end:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(45deg) translateY(-2px)}
+html:not(.app-shell) .kind-hint{display:none}
+@media (min-width:960px){.kind-hint{display:none}}
+/* Under Spark while pulling on Order: where letting go takes you. */
+.pull-label{position:fixed;left:50%;top:calc(var(--safe-top) + 100px);z-index:35;padding:6px 13px;border-radius:999px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--lift);font:600 .8125rem var(--font);color:var(--ink);white-space:nowrap;opacity:0;pointer-events:none;transform:translate(-50%,0);transition:background-color .2s ease,color .2s ease}
+.pull-label.ready{background:var(--hero);color:#fff}
+.pull-label.ready[data-to="expense"]{background:#FFFFFF;color:#1C1C1E}
+.kind-tag{display:inline-block;padding:1px 7px;border-radius:999px;background:var(--fill);color:var(--ink-soft);font-size:.6875rem;font-weight:600}
+.field-hint.warn{color:var(--clay-ink)}
+.buys-seg .pill-seg-btn,.kind-seg .pill-seg-btn{gap:6px}
+.buys-seg .pill-seg-btn svg,.kind-seg .pill-seg-btn svg{flex:none}
+
 /* ---------- Order toolbar ---------- */
 .search-row{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;align-items:center}
 .search-wrap{position:relative;flex:1 1 250px;min-width:0;display:flex;align-items:center;scroll-margin-top:96px}
