@@ -570,7 +570,7 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('.topbar:not(.rico-topbar)').isVisible(),false,'the app bar steps aside for it');
     assert.equal(await page.locator('#ricoChips').evaluate(el=>getComputedStyle(el).overflowY),'auto','the chips scroll');
     await snapshot(page,'phone-rico-en.png');
-    await openView(page,'settings');await snapshot(page,'phone-settings-en.png');
+    await openView(page,'order');await openView(page,'settings');await snapshot(page,'phone-settings-en.png');
     assert.equal(await page.locator('#ricoTopbar').count(),0,'Rico\u2019s bar leaves with him');
     await ctx.close();
 
