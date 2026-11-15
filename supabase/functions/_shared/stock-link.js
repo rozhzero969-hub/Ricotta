@@ -258,6 +258,24 @@
     return !!a && a.matches && !a.warn.length && a.score >= 0.72 && (!b || a.score - b.score >= 0.15);
   }
 
+  /* An item that is already linked: what speaks against its link, so a wrong one can be put right.
+     warn holds 'size' (another size), 'name' (the names don't match), 'taken' (another item is linked to
+     the same stock item) and 'better' (another stock item fits clearly better by name and nothing speaks
+     against it, while the linked one isn't even another kind of the same thing; it is in better). null when the link looks right, and when its stock item is no longer
+     in the list (the app says that on its own). */
+  const BETTER = 0.15;
+  function doubt(item, options, ctx = {}) {
+    const name = item && item.stockItem;
+    if (!name || !Array.isArray(options) || !options.some((o) => o && o.name === name)) return null;
+    const ranked = rank(item, options, ctx);
+    const cur = ranked.find((r) => r.o.name === name) || null;
+    const warn = cur ? cur.warn.slice() : ['name'];
+    const next = ranked.find((r) => r.o.name !== name && r.name >= MIN_NAME && r.score >= MIN_SCORE);
+    const better = next && next.matches && !next.warn.length && !(cur && cur.kind) && next.score - (cur ? cur.score : 0) >= BETTER ? next : null;
+    if (better) warn.push('better');
+    return warn.length ? { warn, taken: cur ? cur.taken : null, better, cur } : null;
+  }
+
   /* How much of a stock item is in Main Storage, for the Order screen: a whole number (1 or more) of
      buying units shows in the buying unit, anything else in the counting unit (rounded down to 3
      decimals, like Stock). {qty, unit, empty} */
@@ -302,5 +320,5 @@
     return { days, level: have <= 0 ? 'empty' : days !== null && days < LOW_DAYS ? 'low' : 'ok' };
   }
 
-  globalThis.RicottaStockLink = Object.freeze({ MAIN, LOW_DAYS, USE_DAYS, words, matches, rank, suggest, sure, sameSupplier, amount, usage, level });
+  globalThis.RicottaStockLink = Object.freeze({ MAIN, LOW_DAYS, USE_DAYS, words, matches, rank, suggest, sure, doubt, sameSupplier, amount, usage, level });
 })();

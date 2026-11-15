@@ -108,6 +108,18 @@ assert.ok(sz.warn.includes('size'), '1 liter and 18L are different sizes');
 assert.ok(L.sure(L.suggest(it('عصير سن ایچ خۆخ', ['Sunich peach juice']), live, 4, {}, true)), 'peach nectar is sure');
 assert.ok(!L.sure(L.suggest(it('Rice'), rices, 4, {}, true)), 'three rices: not sure');
 assert.ok(!L.sure(L.suggest(rice, rices, 4, { taken }, true).filter(r => /Kalasher/.test(r.o.name))), 'linked to another item: not sure');
+// Links already made that may be wrong: the wrong Sunich juice (names pass matches()), another size, an
+// item on the same stock item; never a right one, nor another kind of the same thing.
+const linked = (x, stockItem) => ({ ...x, stockItem });
+const peachItem = it('عصير سن ایچ خۆخ', ['Sunich peach juice']);
+const dw = L.doubt(linked(peachItem, 'Sunich Mango Juice - شەربەتی سن ئیچ مەنگۆ'), live);
+assert.ok(dw && dw.warn.includes('better') && /Peach Nectar/.test(dw.better.o.name), 'mango for peach: the peach nectar is closer');
+assert.equal(L.doubt(linked(peachItem, 'Sunich Peach Nectar - شەربەتی سن ئیچ خۆخ'), live), null, 'the right one: nothing to say');
+assert.ok(L.doubt(linked(it('Cooking oil 1 liter'), 'Cooking Oil 18L - زەیتی 18 لیتری'), live).warn.includes('size'), 'another size');
+assert.ok(L.doubt(linked(rice, 'Kalasher Rice - برنجی کەلەشیر'), rices, { taken }).warn.includes('taken'), 'another item on it');
+assert.ok(L.doubt(linked(rice, 'Banana - مۆز'), [...rices, { name: 'Banana - مۆز' }]).warn.includes('name'), 'a name that does not match');
+assert.equal(L.doubt(linked(rice, 'Nawras Rice - برنجی نەورەس'), rices), null, 'another kind of rice: left alone');
+assert.equal(L.doubt(linked(rice, 'Gone Rice'), rices), null, 'no longer in the list: said elsewhere');
 
 // Level for the Order screen colour: empty, low (less than 3 days at the pace of the last 14 days, at
 // least 2 moves) or ok; without usage it is ok.
@@ -118,4 +130,4 @@ assert.equal(L.level(carrot, L.usage(moves(7), [carrot], L.MAIN)).level, 'low', 
 assert.equal(L.level(carrot, L.usage(moves(1), [carrot], L.MAIN)).level, 'ok', 'one move is not enough to judge');
 assert.equal(L.level({ ...carrot, stock: { 'Main Storage': 0 } }, new Map()).level, 'empty');
 assert.equal(L.level(carrot, L.usage([{ ...moves(1)[0], mode: 'practice' }, ...moves(1)], [carrot], L.MAIN)).level, 'ok', 'practice runs never count');
-console.log('Stock links PASS: suggestions (both kinds, never a wrong one; rare words, extra words, sizes, supplier, unit, links already made; sure matches), empty/low/ok levels, real names link (typos, plurals, Kurdish, search names), wrong ones are blocked, buying unit only for whole numbers of it');
+console.log('Stock links PASS: suggestions (both kinds, never a wrong one; rare words, extra words, sizes, supplier, unit, links already made; sure matches; links that may be wrong), empty/low/ok levels, real names link (typos, plurals, Kurdish, search names), wrong ones are blocked, buying unit only for whole numbers of it');

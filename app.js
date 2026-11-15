@@ -3478,7 +3478,7 @@ function renderItemsAdmin(){
     <div class="action-row">
       ${edit ? `<button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
       <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button>
-      <button class="btn btn-ghost" id="itemLinkAllBtn">${ICON_LINK} ${esc(t('stockLinkMany'))}${(n=>n ? ` <span class="btn-count">${n}</span>` : '')(state.items.filter(i=>!i.stockItem).length)}</button>` : ''}
+      <button class="btn btn-ghost" id="itemLinkAllBtn">${ICON_LINK} ${esc(t('stockLinkMany'))}${(n=>n ? ` <span class="btn-count">${n}</span>` : '')(state.items.filter(i=>!i.stockItem).length + (stockOptions ? state.items.filter(i=>stockDoubt(i)).length : 0))}</button>` : ''}
       ${canDo('exports') ? `<button class="btn btn-ghost" data-export="items">${ICON_SHEET} ${esc(t('exportBtn'))}</button>` : ''}
     </div>${edit ? '' : `<p class="readonly-note">${esc(t('catalogReadOnly'))}</p>`}
     ${renderCatalogSearch()}<div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${renderDataTable('items')}</div>`;
@@ -3714,6 +3714,27 @@ function stockWhyHtml(r){
   const why = r.why.map(w=>w === 'size' ? t('stockLinkWhySize') : w === 'supplier' ? t('stockLinkWhySupplier') : w === 'unit' ? t('stockLinkWhyUnit') : '').filter(Boolean);
   return [...warn.map(x=>`<span class="stock-warn" dir="auto">${esc(x)}</span>`), ...why.map(x=>`<span class="stock-why">${esc(x)}</span>`)].join(' · ');
 }
+/* A link already made that may be wrong (stock-link.js doubt(): another size, names that don't match,
+   another item on the same stock item, or a clearly closer stock item), unless Rozh chose Keep for this
+   very link on this device. Needs the list of stock items; without it nothing is said. */
+function stockDoubt(i){
+  if(!i?.stockItem || !stockOptions?.items?.length) return null;
+  if((lget('stockLinkKept') || {})[i.id] === i.stockItem) return null;
+  return globalThis.RicottaStockLink.doubt(i, stockOptions.items, stockCtx(i));
+}
+function keepStockLink(i){ const kept = lget('stockLinkKept') || {}; kept[i.id] = i.stockItem; lset('stockLinkKept', kept); }
+function stockDoubtWords(d){
+  return d.warn.map(w=>w === 'taken' ? t('stockLinkWarnTaken')(d.taken) : w === 'size' ? t('stockLinkWarnSize') : w === 'name' ? t('stockLinkWarnName') : '').filter(Boolean);
+}
+/* The number on Manage's "Link stock items": items not linked yet and links to check. */
+function updateLinkAllCount(){
+  const b = document.getElementById('itemLinkAllBtn'); if(!b) return;
+  const n = state.items.filter(x=>!x.stockItem).length + (stockOptions ? state.items.filter(x=>stockDoubt(x)).length : 0);
+  let c = b.querySelector('.btn-count');
+  if(!n){ c?.remove(); return; }
+  if(!c){ c = document.createElement('span'); c.className = 'btn-count'; b.append(' ', c); }
+  c.textContent = n;
+}
 /* Saving one link. A stock item whose name doesn't match the item asks first and links only after
    "Link anyway". Resolves to the server's answer, or null when nothing was saved. */
 async function saveStockLink(i, name){
@@ -3724,6 +3745,7 @@ async function saveStockLink(i, name){
   if(!r.ok){ toast(r.data?.error === 'names_dont_match' ? t('stockLinkNoMatch') : t('saveFailed'), 'error'); return null; }
   i.stockItem = r.data.stockItem; if(r.data.stock) i.stock = r.data.stock; else delete i.stock;
   if(state.view === 'order') refreshOrderResults?.();
+  updateLinkAllCount();
   return r.data;
 }
 function stockOptHtml(r, {on = false, link = false} = {}){
@@ -3745,8 +3767,11 @@ function mountStockLink(box, itemId, opts = {}){
     // Not linked yet: the best matches are shown right away, one tap each (both kinds when there are two).
     if(!stockOptions && !stockOptionsFailed) loadStockOptions().then(()=>{ if(box.isConnected && stockOptions) paint(); });
     const sug = !cur && !open && stockOptions?.items?.length ? L.suggest(i, stockOptions.items, 4, stockCtx(i), true) : [];
+    // Linked already, but it may be the wrong one: say why, offer the closer one, or keep it.
+    const d = cur && !open ? stockDoubt(i) : null;
+    const doubtHtml = d ? `<div class="stock-doubt" role="note"><div class="stock-warn" dir="auto">${esc([t('stockLinkDoubt'), ...stockDoubtWords(d)].join(' · '))}</div><div class="stock-doubt-btns">${d.better ? `<button type="button" class="stock-chip first" data-stock-pick="${esc(d.better.o.name)}"><span dir="auto">${esc(t('stockLinkCloser')(d.better.o.name))}</span></button>` : ''}<button type="button" class="stock-chip" data-stock-keep>${esc(t('stockLinkKeep'))}</button></div></div>` : '';
     const sugHtml = sug.length ? `<div class="stock-sug" role="group" aria-label="${esc(t('stockLinkSuggested'))}"><div class="stock-sug-title">${esc(t('stockLinkSuggested'))}</div>${sug.map(r=>stockOptHtml(r, {link:true})).join('')}</div>` : '';
-    box.innerHTML = `<label${open ? ' for="mfStockSearch"' : ''}>${esc(t('stockLinkLabel'))}</label>${now}${sugHtml}
+    box.innerHTML = `<label${open ? ' for="mfStockSearch"' : ''}>${esc(t('stockLinkLabel'))}</label>${now}${doubtHtml}${sugHtml}
       <div class="stock-link-actions">${open ? '' : `<button type="button" class="btn btn-ghost" data-stock-open>${esc(cur ? t('stockLinkChange') : t('stockLinkChoose'))}</button>`}${cur && !open ? `<button type="button" class="btn btn-ghost danger-text" data-stock-unlink>${esc(t('stockLinkRemove'))}</button>` : ''}</div>
       ${open ? `<div class="stock-pick"><input id="mfStockSearch" class="stock-pick-input" type="search" autocomplete="off" dir="auto" placeholder="${esc(t('stockLinkSearch'))}" value="${esc(query)}"><div class="stock-pick-list" role="listbox" aria-label="${esc(t('stockLinkLabel'))}"></div><button type="button" class="btn btn-ghost" data-stock-cancel>${esc(t('cancel'))}</button></div>` : ''}`;
     if(open){ paintList(); const input = box.querySelector('#mfStockSearch'); input.oninput = ()=>{ query = input.value; paintList(); }; input.onkeydown = e=>{ if(e.key === 'Enter') e.preventDefault(); }; }
@@ -3776,14 +3801,16 @@ function mountStockLink(box, itemId, opts = {}){
     if(e.target.closest('[data-stock-open]')){ open = true; paint(); box.querySelector('#mfStockSearch')?.focus(); await loadStockOptions(); paintList(); return; }
     if(e.target.closest('[data-stock-cancel]')){ open = false; query = ''; paint(); opts.onCancel?.(); return; }
     if(e.target.closest('[data-stock-unlink]')){ await save(null); return; }
+    if(e.target.closest('[data-stock-keep]')){ const i = item(); if(i){ keepStockLink(i); paint(); toast(t('stockLinkKept')); updateLinkAllCount(); } return; }
     const pick = e.target.closest('[data-stock-pick]');
     if(pick) await save(pick.dataset.stockPick);
   };
   paint();   // suggestions need the list of stock items: paint() reads it once when needed
   if(open) box.querySelector('#mfStockSearch')?.focus();
 }
-/* Link many items quickly (Manage, Items): every item not linked yet with its best matches, one tap
-   each, and a search for any other stock item right in the row. "Link sure matches" links, after one
+/* Link many items quickly (Manage, Items): first the links that may be wrong (stockDoubt()), then every
+   item not linked yet, each with its best matches, one tap each, and a search for any other stock item
+   right in the row; a link to check can also be kept as it is. "Link sure matches" links, after one
    question, the items whose best match is clear (stock-link.js sure()). Every link here can be undone
    from its row. Nothing is linked until Rozh taps. */
 function openStockLinkMany(){
@@ -3791,22 +3818,22 @@ function openStockLinkMany(){
   const list = el.querySelector('.stock-many-list'), top = el.querySelector('.stock-many-top');
   const L = globalThis.RicottaStockLink;
   let shown = 60, todo = null;   // the matches are worked out once per opening ("Show more" reuses them)
-  const linkedHere = new Map();  // item id -> stock name, linked in this sheet (for Undo)
-  const countOnButton = ()=>{
-    // The count on the Manage button follows (the Order screen reads the link when it is drawn next).
-    const n = state.items.filter(x=>!x.stockItem).length, count = document.querySelector('#itemLinkAllBtn .btn-count');
-    if(count){ if(n) count.textContent = n; else count.remove(); }
-  };
+  const linkedHere = new Map();  // item id -> {name, before}, linked in this sheet (Undo puts back before)
+  // The count on the Manage button follows (the Order screen reads the link when it is drawn next).
+  const countOnButton = updateLinkAllCount;
   const sureOnes = ()=>todo ? todo.filter(x=>!x.i.stockItem && L.sure(x.best)) : [];
   const paintTop = ()=>{
     const n = sureOnes().length;
     top.innerHTML = n ? `<button type="button" class="btn btn-primary stock-many-sure" data-many-sure>${ICON_CHECK} ${esc(t('stockLinkSure')(n))}</button>` : '';
   };
-  const rowHtml = ({i, best})=>{
-    const linked = i.stockItem && linkedHere.get(i.id) === i.stockItem;
-    const chips = linked ? `<div class="stock-many-done"><span class="stock-many-ok">${ICON_CHECK}<span dir="auto">${esc(i.stockItem)}</span></span><button type="button" class="btn btn-ghost" data-many-undo="${esc(i.id)}">${esc(t('undo'))}</button></div>`
-      : `<div class="stock-many-chips">${best.map((r, k)=>`<button type="button" class="stock-chip${k ? '' : ' first'}${r.warn.length ? ' warn' : ''}" data-many-link="${esc(i.id)}" data-name="${esc(r.o.name)}"><span dir="auto">${esc(r.o.name)}</span>${stockWhyHtml(r) ? `<small>${stockWhyHtml(r)}</small>` : ''}</button>`).join('')}${best.length ? '' : `<span class="stock-many-none">${esc(t('stockLinkNoSuggestShort'))}</span>`}<button type="button" class="stock-chip search" data-many-search="${esc(i.id)}">${ICON_SEARCH}<span>${esc(t('stockLinkSearchShort'))}</span></button></div>`;
-    return `<div class="stock-many-row${linked ? ' done' : ''}" data-many="${esc(i.id)}"><div class="stock-many-names"><b dir="auto">${esc(i.name)}</b></div>${chips}<div class="stock-many-pick" hidden></div></div>`;
+  const rowHtml = ({i, best, doubt, kept})=>{
+    const linked = i.stockItem && linkedHere.get(i.id)?.name === i.stockItem;
+    const chips = kept ? `<div class="stock-many-done"><span class="stock-many-ok">${ICON_CHECK}<span>${esc(t('stockLinkKept'))}</span></span></div>`
+      : linked ? `<div class="stock-many-done"><span class="stock-many-ok">${ICON_CHECK}<span dir="auto">${esc(i.stockItem)}</span></span><button type="button" class="btn btn-ghost" data-many-undo="${esc(i.id)}">${esc(t('undo'))}</button></div>`
+      : `<div class="stock-many-chips">${best.map((r, k)=>`<button type="button" class="stock-chip${k ? '' : ' first'}${r.warn.length ? ' warn' : ''}" data-many-link="${esc(i.id)}" data-name="${esc(r.o.name)}"><span dir="auto">${esc(r.o.name)}</span>${stockWhyHtml(r) ? `<small>${stockWhyHtml(r)}</small>` : ''}</button>`).join('')}${best.length || doubt ? '' : `<span class="stock-many-none">${esc(t('stockLinkNoSuggestShort'))}</span>`}<button type="button" class="stock-chip search" data-many-search="${esc(i.id)}">${ICON_SEARCH}<span>${esc(t('stockLinkSearchShort'))}</span></button>${doubt ? `<button type="button" class="stock-chip" data-many-keep="${esc(i.id)}">${esc(t('stockLinkKeep'))}</button>` : ''}</div>`;
+    // A link to check says what it is linked to now and what speaks against it.
+    const now = doubt && !linked && !kept ? `<small class="stock-warn" dir="auto">${esc([t('stockLinkNowShort')(i.stockItem), ...stockDoubtWords(doubt)].join(' · '))}</small>` : '';
+    return `<div class="stock-many-row${linked || kept ? ' done' : ''}${doubt ? ' doubt' : ''}" data-many="${esc(i.id)}"><div class="stock-many-names"><b dir="auto">${esc(i.name)}</b>${now}</div>${chips}<div class="stock-many-pick" hidden></div></div>`;
   };
   const paintRow = id=>{
     const x = todo.find(y=>y.i.id === id), row = list.querySelector(`[data-many="${CSS.escape(id)}"]`);
@@ -3816,17 +3843,27 @@ function openStockLinkMany(){
   const paint = ()=>{
     if(!stockOptions){ list.innerHTML = stockOptionsFailed ? `<div class="field-hint">${esc(t('loadFailed'))}</div>` : loadingLines(5); return; }
     if(!stockOptions.items.length){ list.innerHTML = `<div class="field-hint">${esc(t('stockLinkNoStock'))}</div>`; return; }
-    // Items with a match first, then the ones to search for by hand, each group by name.
-    todo ??= state.items.filter(i=>!i.stockItem).map(i=>({i, best:L.suggest(i, stockOptions.items, 3, stockCtx(i), true)}))
-      .sort((a, b)=>Number(!a.best.length) - Number(!b.best.length) || a.i.name.localeCompare(b.i.name));
+    // Links to check first (with the closer one first among their matches), then the items not linked
+    // yet: those with a match first, then the ones to search for by hand, each group by name.
+    todo ??= [
+      ...state.items.filter(i=>i.stockItem).map(i=>({i, doubt:stockDoubt(i)})).filter(x=>x.doubt).map(({i, doubt})=>{
+        const best = L.suggest(i, stockOptions.items, 3, stockCtx(i), true).filter(r=>r.o.name !== i.stockItem && r.o.name !== doubt.better?.o.name);
+        return {i, doubt, best:(doubt.better ? [doubt.better, ...best] : best).slice(0, 3)};
+      }).sort((a, b)=>a.i.name.localeCompare(b.i.name)),
+      ...state.items.filter(i=>!i.stockItem).map(i=>({i, best:L.suggest(i, stockOptions.items, 3, stockCtx(i), true)}))
+        .sort((a, b)=>Number(!a.best.length) - Number(!b.best.length) || a.i.name.localeCompare(b.i.name))
+    ];
     paintTop();
     if(!todo.length){ list.innerHTML = `<div class="empty-mini">${esc(t('stockLinkAllDone'))}</div>`; return; }
-    list.innerHTML = todo.slice(0, shown).map(rowHtml).join('') + (todo.length > shown ? `<button type="button" class="btn btn-ghost stock-many-more" data-many-more>${esc(t('stockLinkShowMore')(todo.length - shown))}</button>` : '');
+    const checks = todo.filter(x=>x.doubt).length, group = (x, k, a)=>!k || !!a[k - 1].doubt !== !!x.doubt
+      ? `<div class="stock-many-group">${esc(x.doubt ? t('stockLinkCheckTitle')(checks) : t('stockLinkTodoTitle')(todo.length - checks))}</div>` : '';
+    list.innerHTML = todo.slice(0, shown).map((x, k, a)=>group(x, k, a) + rowHtml(x)).join('') + (todo.length > shown ? `<button type="button" class="btn btn-ghost stock-many-more" data-many-more>${esc(t('stockLinkShowMore')(todo.length - shown))}</button>` : '');
   };
   const link = async (i, name, quiet)=>{
+    const before = i.stockItem || null;
     const done = await saveStockLink(i, name);
     if(!done) return false;
-    if(name) linkedHere.set(i.id, name); else linkedHere.delete(i.id);
+    if(name) linkedHere.set(i.id, {name, before}); else linkedHere.delete(i.id);
     // Another item may now show "Already linked to" on the same stock item when it is drawn next.
     if(!quiet) paintRow(i.id);
     return true;
@@ -3845,12 +3882,20 @@ function openStockLinkMany(){
     if(search){
       // The search opens in the row itself; a link there closes it again.
       const id = search.dataset.manySearch, row = search.closest('.stock-many-row'), box = row.querySelector('.stock-many-pick');
+      const before = state.items.find(x=>x.id === id)?.stockItem || null;
       row.querySelector('.stock-many-chips').hidden = true; box.hidden = false; box.classList.add('field', 'stock-link');
-      mountStockLink(box, id, {open:true, onSaved:name=>{ const i = state.items.find(x=>x.id === id); if(i && name) linkedHere.set(id, name); paintRow(id); }, onCancel:()=>paintRow(id)});
+      mountStockLink(box, id, {open:true, onSaved:name=>{ if(name) linkedHere.set(id, {name, before}); paintRow(id); }, onCancel:()=>paintRow(id)});
       return;
     }
     const undo = e.target.closest('[data-many-undo]');
-    if(undo){ const i = state.items.find(x=>x.id === undo.dataset.manyUndo); if(i){ undo.disabled = true; if(await link(i, null)) toast(t('stockLinkRemoved')); else undo.disabled = false; } return; }
+    if(undo){
+      // Undo puts back what was there before: nothing, or the link that was being checked.
+      const i = state.items.find(x=>x.id === undo.dataset.manyUndo), was = i && linkedHere.get(i.id);
+      if(i){ undo.disabled = true; if(await saveStockLink(i, was?.before || null)){ linkedHere.delete(i.id); paintRow(i.id); toast(was?.before ? t('stockLinkSaved') : t('stockLinkRemoved')); } else undo.disabled = false; }
+      return;
+    }
+    const keep = e.target.closest('[data-many-keep]');
+    if(keep){ const x = todo.find(y=>y.i.id === keep.dataset.manyKeep); if(x){ keepStockLink(x.i); x.kept = true; paintRow(x.i.id); toast(t('stockLinkKept')); } return; }
     const b = e.target.closest('[data-many-link]'); if(!b) return;
     const i = state.items.find(x=>x.id === b.dataset.manyLink); if(!i) return;
     b.disabled = true;
@@ -3894,7 +3939,11 @@ function attachItemEvents(){
   const add = document.getElementById('itemAddBtn');
   if(add) add.onclick = ()=> openItemModal(null);
   const linkAll = document.getElementById('itemLinkAllBtn');
-  if(linkAll) linkAll.onclick = openStockLinkMany;
+  if(linkAll){
+    linkAll.onclick = openStockLinkMany;
+    // Links that may be wrong count too, once the list of stock items is here.
+    if(!stockOptions && !stockOptionsFailed) loadStockOptions().then(()=>{ if(stockOptions) updateLinkAllCount(); });
+  }
   attachDataTable('items', document.getElementById('itemsAdminList'));
 }
 

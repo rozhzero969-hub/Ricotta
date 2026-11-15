@@ -1,8 +1,9 @@
 /* Browser checks for linking ordering items to stock items (Manage, Link stock items, and one item's
    link): the best match is one tap, other matches sit next to it, a search opens in the row, a name
    that doesn't match warns and links only after "Link anyway", "Link sure matches" links the clear
-   ones after one question, and every link made in the sheet can be undone there. All API calls are
-   local fixtures. */
+   ones after one question, and every link made in the sheet can be undone there. A link already made
+   that may be wrong is listed first with what speaks against it and the closer match, and can be kept.
+   All API calls are local fixtures. */
 const {chromium}=require('playwright'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const root=process.env.UI_SITE_DIR?path.resolve(process.env.UI_SITE_DIR):path.resolve(__dirname,'..');
 const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);return res.end();}res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.woff2':'font/woff2','.png':'image/png','.webp':'image/webp','.json':'application/json'})[path.extname(file)]||'application/octet-stream');res.end(data);});});
@@ -15,7 +16,9 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
    {id:'rice',name:'برنج',aliases:['Rice'],unit:'kg',supplierId:'m'},
    {id:'fries',name:'فنگر باتوو',aliases:['French fries'],unit:'c',supplierId:'m'},
    {id:'oil',name:'زيت ١٨ لتری',aliases:['Cooking oil 18 liters'],unit:'c',supplierId:'m'},
-   {id:'mozz',name:'Mozzarella',unit:'kg',supplierId:'d',stockItem:'Mozzarella - پەنیری مۆزارێلا'}],
+   {id:'mozz',name:'Mozzarella',unit:'kg',supplierId:'d',stockItem:'Mozzarella - پەنیری مۆزارێلا'},
+   // Linked to the wrong Sunich juice: the names share enough words to pass, so only the closer match tells.
+   {id:'mango',name:'عصير سن ايچ مەنگۆ',aliases:['Sunich mango juice'],unit:'c',supplierId:'m',stockItem:'Sunich Pineapple Juice - شەربەتی سن ئیچ ئەناناس'}],
   pins:[],history:[],devices:[],activity:[],inbox:[]};
  const stock=['Sunich Mango Juice - شەربەتی سن ئیچ مەنگۆ','Sunich Peach Nectar - شەربەتی سن ئیچ خۆخ','Sunich Pineapple Juice - شەربەتی سن ئیچ ئەناناس',
   'Bato Fries - فینگر باتۆ','French Lettuce - خاس لولو','Cooking Cream - كريم طبخ','Cooking Oil 18L - زەیتی 18 لیتری','Banana - مۆز','Mozzarella - پەنیری مۆزارێلا',
@@ -40,7 +43,22 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.evaluate(()=>openStockLinkMany());
  const row=id=>page.locator(`.stock-many-row[data-many="${id}"]`);
  await row('peach').waitFor();
- assert.equal(await page.locator('.stock-many-row').count(),4,'only the items not linked yet');
+ assert.equal(await page.locator('.stock-many-row:not(.doubt)').count(),4,'the items not linked yet');
+ assert.equal(await page.locator('.stock-many-row.doubt').count(),1,'and the one link to check (not the right Mozzarella)');
+ assert.equal(await page.locator('.stock-many-row').first().getAttribute('data-many'),'mango','links to check come first');
+ assert.match(await page.locator('.stock-many-group').first().innerText(),/Check these links \(1\)/);
+ assert.match(await row('mango').locator('.stock-many-names').innerText(),/Linked to Sunich Pineapple Juice/);
+ assert.match(await row('mango').locator('.stock-chip.first').innerText(),/Sunich Mango Juice/,'the closer match first, one tap');
+
+ // A link to check: the closer one replaces it in one tap, Undo puts the old one back, Keep leaves it.
+ await row('mango').locator('.stock-chip.first').click();
+ await row('mango').locator('[data-many-undo]').waitFor();
+ assert.deepEqual(puts.at(-1),{id:'mango',stockItem:'Sunich Mango Juice - شەربەتی سن ئیچ مەنگۆ'});
+ await row('mango').locator('[data-many-undo]').click();await row('mango').locator('[data-many-keep]').waitFor();
+ assert.deepEqual(puts.at(-1),{id:'mango',stockItem:'Sunich Pineapple Juice - شەربەتی سن ئیچ ئەناناس'},'undo puts back the link that was there');
+ await row('mango').locator('[data-many-keep]').click();await row('mango').locator('.stock-many-done').waitFor();
+ assert.match(await row('mango').innerText(),/Kept as it is/);
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('ricottaOrders:stockLinkKept')).mango),'Sunich Pineapple Juice - شەربەتی سن ئیچ ئەناناس');
  assert.match(await row('peach').locator('.stock-chip.first').innerText(),/Peach Nectar/,'peach, not the first Sunich juice');
  assert.equal(await row('fries').locator('.stock-chip:not(.search)').count(),1,'French fries: no French Lettuce next to Bato Fries');
  assert.match(await row('oil').locator('.stock-chip.first').innerText(),/Cooking Oil 18L[\s\S]*Same size/,'the oil, with why');
@@ -81,7 +99,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  assert.match(await sure.innerText(),/Link 3 sure matches/);
  await sure.click();await page.locator('#modalOkBtn').waitFor();await page.locator('#modalOkBtn').click();
  await row('oil').locator('[data-many-undo]').waitFor();
- await page.waitForFunction(()=>document.querySelectorAll('.stock-many-row.done').length===3);
+ await page.waitForFunction(()=>document.querySelectorAll('.stock-many-row.done:not(.doubt)').length===3);
  assert.deepEqual(puts.slice(-3).map(p=>p.id).sort(),['fries','oil','peach']);
  assert.equal(await row('rice').locator('[data-many-undo]').count(),0,'the rice waits for a tap');
  assert.equal(await page.locator('[data-many-sure]').count(),0,'nothing sure is left');
@@ -91,6 +109,20 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.evaluate(()=>openStockLinkSheet('rice'));
  await page.locator('#ctxStock .stock-sug [data-stock-pick]').first().waitFor();
  assert.match(await page.locator('#ctxStock .stock-sug [data-stock-pick]').first().innerText(),/Mahmood Rice[\s\S]*From this supplier/);
+
+ // One item's own link that may be wrong says so, with the closer one and Keep (not once kept).
+ const gone=()=>page.waitForFunction(()=>!document.querySelector('.stock-link-sheet'));
+ await page.evaluate(()=>closeSelSheet?.());await gone();
+ await page.evaluate(()=>openStockLinkSheet('mango'));await page.locator('#ctxStock .stock-link-now').waitFor();
+ assert.equal(await page.locator('#ctxStock .stock-doubt').count(),0,'kept on this device: no warning');
+ await page.evaluate(()=>{closeSelSheet?.();localStorage.removeItem('ricottaOrders:stockLinkKept');});await gone();
+ await page.evaluate(()=>openStockLinkSheet('mango'));
+ await page.locator('#ctxStock .stock-doubt').waitFor();
+ assert.match(await page.locator('#ctxStock .stock-doubt').innerText(),/may be wrong[\s\S]*Closer match: Sunich Mango Juice/);
+ await page.locator('#ctxStock .stock-doubt [data-stock-pick]').click();
+ await page.locator('#ctxStock .stock-doubt').waitFor({state:'detached'});
+ assert.deepEqual(puts.at(-1),{id:'mango',stockItem:'Sunich Mango Juice - شەربەتی سن ئیچ مەنگۆ'});
+ assert.match(await page.locator('#ctxStock .stock-link-name').innerText(),/Sunich Mango Juice/);
  assert.deepEqual(errors,[]);
- console.log('Stock link UI PASS: best match one tap with why, cousins left out, search in the row, mismatch warns then links anyway, sure matches after one question, undo per row');
+ console.log('Stock link UI PASS: best match one tap with why, cousins left out, search in the row, mismatch warns then links anyway, sure matches after one question, undo per row, links to check first with the closer match and Keep');
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exit(1);});
