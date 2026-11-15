@@ -34,6 +34,7 @@
 //   POST   helper/receipts/:id/photo  {kind, image (base64 JPEG)}
 import "../_shared/receipts.js";
 import { claimTransfer, transferHelperRoute, tview } from "./transfers.ts";
+import { checkLowStock } from "./low-stock.ts";
 const R = (globalThis as any).RicottaReceipts;
 
 type Ctx = {
@@ -476,6 +477,12 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     const before = b.sync === true ? await catalogOf(db) : null;
     const { error } = await rr(db, "catalog").upsert({ id: true, data, updated_at: now() });
     if (error) return fail("save_failed", 503);
+    // New stock: items that dropped to their low stock level alert Rozh and Yunis (once per drop).
+    // Done after the answer, so Rico never waits for it.
+    if (titems.length) {
+      const low = checkLowStock(db);
+      if ((globalThis as any).EdgeRuntime?.waitUntil) (globalThis as any).EdgeRuntime.waitUntil(low); else low.catch(() => {});
+    }
     // The read for Check now: what changed is kept for the button's answer.
     if (before) {
       const changes = catalogChanges(before, data);

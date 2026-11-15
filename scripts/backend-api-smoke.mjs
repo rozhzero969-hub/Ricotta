@@ -8,6 +8,10 @@ import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeader
 import { cleanTimeZone, clientIp, placeOf } from '../supabase/functions/api/geo.ts';
 import { saveMemory, saveRoutine, toRoutine } from '../supabase/functions/api/rico-memory.ts';
 import { cleanRoutine } from '../supabase/functions/_shared/routines.ts';
+import { checkLowStock, relinkedLowStock } from '../supabase/functions/api/low-stock.ts';
+import '../supabase/functions/_shared/search.js';
+import '../supabase/functions/_shared/transfers.js';
+import '../supabase/functions/_shared/stock-link.js';
 
 const digest = async value => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
 const token = 'test-session-token', tokenHash = await digest(token);
@@ -96,7 +100,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf );
+const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', 'checkLowStock', 'relinkedLowStock', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf, checkLowStock, relinkedLowStock );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -121,6 +125,20 @@ try {
   assert.equal(calls.filter(c=>c.name==='app_internal_item_undo').at(-1).args.p_restore,true);
   newResult={error:'undo_expired'};assert.equal((await call('items/restore',{undoId:'12345678-1234-1234-1234-123456789abc'},'POST')).status,409);
   errors.set('app_internal_item_undo',true);assert.equal((await call('items/tomato',{},'DELETE')).status,503);
+  // Low stock alert of one item: a level for a linked item, null for none; never for an unlinked one.
+  reset();
+  tables.app_items=[{id:'cups',name:'Paper cups',stock_item:'Paper Cups',low_alert:null,low_alerted_at:null},{id:'plain',name:'Plain',stock_item:null,low_alert:null}];
+  let low=await call('items/cups/low-alert',{level:4},'PUT');assert.equal(low.status,200);assert.deepEqual(await low.json(),{ok:true,lowAlert:4});
+  assert.equal(tables.app_items[0].low_alert,4);assert.equal(tables.app_items[0].low_alerted_at,null);
+  assert.ok(tables.app_audit_events.some(e=>e.payload?.fields?.[0]?.k==='lowAlert'),'the change is in the Record');
+  assert.equal((await call('items/cups/low-alert',{level:-1},'PUT')).status,400);
+  assert.equal((await call('items/cups/low-alert',{level:'x'},'PUT')).status,400);
+  assert.equal((await call('items/cups/low-alert',{},'PUT')).status,400);
+  assert.equal((await call('items/plain/low-alert',{level:4},'PUT')).status,422,'not linked: no level');
+  assert.equal((await call('items/gone/low-alert',{level:4},'PUT')).status,409);
+  low=await call('items/cups/low-alert',{level:null},'PUT');assert.equal(low.status,200);assert.equal(tables.app_items[0].low_alert,null);
+  tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';tables.app_sessions[0].app_accounts={roles:['history']};
+  assert.equal((await call('items/cups/low-alert',{level:4},'PUT')).status,403,'without Manage items: no');
   reset();newResult={ok:true};
   assert.equal((await call('items/merge',{keepId:'a',removeId:'b'})).status,404,'item merging was removed');
   const history = groupHistory([{ id: 'archived', sent_at: '2026-10-01T12:00:00Z' }], [
