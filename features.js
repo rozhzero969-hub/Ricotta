@@ -136,7 +136,7 @@ function wipeBanner(){
    being swiped, the row with last time's amount, the rows before and after, each sound's own moment. */
 const HP_WAVES = '<path d="M92 30a10 10 0 0 1 0 16" class="hp-wave hp-w1"/><path d="M99 23a19 19 0 0 1 0 30" class="hp-wave hp-w2"/><path d="M106 16a28 28 0 0 1 0 44" class="hp-wave hp-w3"/>';
 const HELP_PIC = {
-  bell:'<rect x="36" y="4" width="60" height="80" rx="11" class="hp-card"/><rect x="54" y="44" width="24" height="7" rx="3.5" class="hp-line"/><rect x="58" y="55" width="16" height="4" rx="2" class="hp-line"/><g class="hp-slide"><rect x="41" y="11" width="50" height="20" rx="6" class="hp-card hp-lift"/><rect x="45" y="15" width="12" height="12" rx="3.5" class="hp-acc"/><rect x="61" y="16" width="25" height="4" rx="2" class="hp-strong"/><rect x="61" y="23" width="18" height="3.5" rx="1.75" class="hp-line"/></g>',
+  bell:'<rect x="38" y="3" width="56" height="70" rx="11" class="hp-card"/><text x="66" y="22" text-anchor="middle" class="hp-clock">9:41</text><rect x="56" y="62" width="20" height="3" rx="1.5" class="hp-line"/><g class="hp-slide"><rect x="42" y="31" width="48" height="20" rx="6" class="hp-card hp-lift"/><rect x="45.5" y="35" width="12" height="12" rx="3.5" class="hp-acc"/><path d="M51.5 38c.4 2.4 1.6 3.6 4 4-2.4.4-3.6 1.6-4 4-.4-2.4-1.6-3.6-4-4 2.4-.4 3.6-1.6 4-4Z" class="hp-white" transform="translate(0 -1)"/><rect x="61" y="36" width="24" height="4" rx="2" class="hp-strong"/><rect x="61" y="43" width="17" height="3.5" rx="1.75" class="hp-line"/></g>',
   swipe:'<rect x="10" y="20" width="112" height="30" rx="9" class="hp-card"/><rect x="20" y="28" width="40" height="6" rx="3" class="hp-strong"/><rect x="20" y="38" width="26" height="4" rx="2" class="hp-line"/><rect x="88" y="26" width="24" height="18" rx="6" class="hp-line"/><text x="100" y="39.5" text-anchor="middle" class="hp-num hp-fadein">5</text><circle cx="36" cy="35" r="8" class="hp-acc hp-soft hp-finger"/><path d="M30 62h44m-6-5 6 5-6 5" class="hp-grid hp-arrow"/>',
   last:'<rect x="10" y="18" width="112" height="40" rx="9" class="hp-card"/><rect x="20" y="27" width="46" height="6" rx="3" class="hp-strong"/><g class="hp-pulse"><rect x="20" y="38" width="34" height="12" rx="6" class="hp-acc hp-soft"/><path d="M27.5 44a3.5 3.5 0 1 0 1-2.5" class="hp-mini"/><path d="M27.2 40.6v2h2" class="hp-mini"/><text x="44" y="47.5" text-anchor="middle" class="hp-small">4</text></g><rect x="88" y="28" width="24" height="20" rx="6" class="hp-line"/>',
   compact:'<rect x="10" y="8" width="50" height="60" rx="8" class="hp-card"/><rect x="16" y="14" width="38" height="14" rx="4" class="hp-line"/><rect x="16" y="31" width="38" height="14" rx="4" class="hp-line"/><rect x="16" y="48" width="38" height="14" rx="4" class="hp-line"/><path d="M62 38h8m-4-4 4 4-4 4" class="hp-grid"/><rect x="72" y="8" width="50" height="60" rx="8" class="hp-card"/><rect x="78" y="13" width="38" height="8" rx="3" class="hp-acc hp-soft"/><rect x="78" y="23" width="38" height="8" rx="3" class="hp-acc hp-soft"/><rect x="78" y="33" width="38" height="8" rx="3" class="hp-acc hp-soft"/><rect x="78" y="43" width="38" height="8" rx="3" class="hp-acc hp-soft"/><rect x="78" y="53" width="38" height="8" rx="3" class="hp-acc hp-soft"/>',
@@ -172,8 +172,13 @@ function helpIdOf(row){
   return id && HELP_OF[id] && (t('settingHelp') || {})[id] ? id : null;
 }
 const helpTitleOf = row=> (row.querySelector('.set-title')?.firstChild || row.querySelector('span')?.childNodes[0])?.textContent?.trim() || '';
+/* The card or sheet: the picture on a soft panel in the setting's own colour, then the setting's icon and
+   name, then what it does. */
+const HELP_ICON = {rrStop:'ricoStop', ricoAutoOrder:'ricoSheet', darkMode:'darkMode'};
 function helpBody(id, title){
-  return `<svg class="help-pic" viewBox="0 0 132 76" aria-hidden="true">${HELP_PIC[HELP_OF[id]]}</svg><div class="help-text"><b dir="auto">${esc(title)}</b><p dir="auto">${esc(t('settingHelp')[id])}</p></div>`;
+  const icon = HELP_ICON[id] || id, colour = SETTING_ICONS[icon]?.[0];
+  const tint = /^#[0-9a-f]{6}$/i.test(colour || '') ? ` style="--hc:${colour}"` : '';
+  return `<div class="help-hero"${tint}><svg class="help-pic" viewBox="0 0 132 76" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${HELP_PIC[HELP_OF[id]]}</svg></div><div class="help-text"><div class="help-name">${setIcon(icon)}<b dir="auto">${esc(title)}</b></div><p dir="auto">${esc(t('settingHelp')[id])}</p></div>`;
 }
 const HELP_ROWS = 'label.preference-row, label.rico-set-row, .dark-row';
 let helpTimer = 0, helpRow = null;

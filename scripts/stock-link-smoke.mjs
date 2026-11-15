@@ -130,4 +130,34 @@ assert.equal(L.level(carrot, L.usage(moves(7), [carrot], L.MAIN)).level, 'low', 
 assert.equal(L.level(carrot, L.usage(moves(1), [carrot], L.MAIN)).level, 'ok', 'one move is not enough to judge');
 assert.equal(L.level({ ...carrot, stock: { 'Main Storage': 0 } }, new Map()).level, 'empty');
 assert.equal(L.level(carrot, L.usage([{ ...moves(1)[0], mode: 'practice' }, ...moves(1)], [carrot], L.MAIN)).level, 'ok', 'practice runs never count');
-console.log('Stock links PASS: suggestions (both kinds, never a wrong one; rare words, extra words, sizes, supplier, unit, links already made; sure matches; links that may be wrong), empty/low/ok levels, real names link (typos, plurals, Kurdish, search names), wrong ones are blocked, buying unit only for whole numbers of it');
+// Low stock alerts: the level is counted in the counting format (the first unit Ricotta Restaurant counts
+// it in), so 4 means 4 kilos for Banana, 4 pieces for Parmesan, 4 cartons for an item counted in cartons.
+assert.deepEqual(L.counted(banana(5300)), { qty: 5.3, unit: 'کیلۆ' });
+assert.deepEqual(L.counted(parm(60)), { qty: 60, unit: 'دانە' }, 'Parmesan is counted in pieces, not the cartons it is bought in');
+const cartons = (n) => ({ name: 'Cups', base: 'دانە', count: { name: 'کارتۆن', factor: 50 }, buy: { name: 'کارتۆن', factor: 50 }, stock: { 'Main Storage': n } });
+assert.deepEqual(L.counted(cartons(200)), { qty: 4, unit: 'کارتۆن' });
+const noCount = { name: 'Mushroom', base: 'غرام', count: null, buy: { name: 'کارتۆن', factor: 2000 }, stock: { 'Main Storage': 6000 } };
+assert.deepEqual(L.counted(noCount), { qty: 3, unit: 'کارتۆن' }, 'no counting unit: counted in its buying unit, as Ricotta Restaurant does');
+assert.equal(L.atOrBelow(cartons(200), 4), true, 'equal to the level is low');
+assert.equal(L.atOrBelow(cartons(199), 4), true);
+assert.equal(L.atOrBelow(cartons(201), 4), false, '4.02 cartons is above 4');
+assert.equal(L.atOrBelow(banana(4000), 4), true);
+assert.equal(L.atOrBelow(banana(4001), 4), false);
+assert.equal(L.atOrBelow(parm(4), 4), true);
+assert.equal(L.atOrBelow(parm(5), 4), false);
+assert.equal(L.atOrBelow(parm(0), 0), true, 'a level of 0 alerts when it is empty');
+assert.equal(L.atOrBelow(parm(0), null), false, 'no level: never');
+for (const bad of [null, undefined, '', -1, 'abc', true, 1e9]) assert.equal(L.lowLevel(bad), null, `${bad} is no level`);
+assert.equal(L.lowLevel('4'), 4); assert.equal(L.lowLevel(2.5), 2.5); assert.equal(L.lowLevel(0), 0);
+// Once per drop: alerted when it reaches the level, not again while it stays low, again after it was back above.
+const tcups = cartons(150), rowsOf = (alertedAt) => [{ id: 'cups', stock_item: 'Cups', low_alert: 4, low_alerted_at: alertedAt }];
+let ch = L.lowChanges(rowsOf(null), [tcups]);
+assert.deepEqual(ch.alert.map(r => [r.id, r.count]), [['cups', { qty: 3, unit: 'کارتۆن' }]]); assert.deepEqual(ch.clear, []);
+ch = L.lowChanges(rowsOf('2026-11-15T10:00:00Z'), [tcups]);
+assert.deepEqual([ch.alert.length, ch.clear.length], [0, 0], 'still low and already alerted: nothing');
+ch = L.lowChanges(rowsOf('2026-11-15T10:00:00Z'), [cartons(500)]);
+assert.deepEqual([ch.alert.length, ch.clear], [0, ['cups']], 'back above: ready to alert again');
+assert.deepEqual(L.lowChanges(rowsOf(null), [cartons(500)]), { alert: [], clear: [] });
+assert.deepEqual(L.lowChanges(rowsOf(null), []), { alert: [], clear: [] }, 'stock item not in the list: nothing changes');
+assert.deepEqual(L.lowChanges([{ id: 'x', stock_item: 'Cups', low_alert: null, low_alerted_at: null }], [tcups]), { alert: [], clear: [] });
+console.log('Stock links PASS: low stock levels (counted in cartons, pieces or kilos as counted; at or below; once per drop); suggestions (both kinds, never a wrong one; rare words, extra words, sizes, supplier, unit, links already made; sure matches; links that may be wrong), empty/low/ok levels, real names link (typos, plurals, Kurdish, search names), wrong ones are blocked, buying unit only for whole numbers of it');

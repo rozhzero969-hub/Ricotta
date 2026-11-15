@@ -78,6 +78,7 @@ import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.t
 import { stockView, transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
 import { checkStockNames, stockNames } from "./stock-names.ts";
+import { checkLowStock, relinkedLowStock } from "./low-stock.ts";
 import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 import "../_shared/overview.js";
@@ -374,14 +375,25 @@ async function stockUsage(titems: any[], moves?: any[] | null) {
   const rows = moves === undefined ? await stockMoves() : moves;
   return rows ? L.usage(rows, titems, L.MAIN) : new Map();   // no usage: just in stock or empty
 }
+/* count: the amount in the stock item's counting format, which a low stock level is counted in. */
 const stockOf = (t: any, used: Map<string, any>, at: string | null) => {
   const L = (globalThis as any).RicottaStockLink;
-  return { ...L.amount(t), level: L.level(t, used).level, at };
+  return { ...L.amount(t), level: L.level(t, used).level, count: L.counted(t), at };
 };
+/* Each item's low stock level (Manage), {id: level}. Read on its own, so the items still load before the
+   low stock migration (20261115120000) has been run. */
+async function lowLevels(): Promise<Map<string, number>> {
+  try {
+    const { data, error } = await app("items").select("id,low_alert").not("low_alert", "is", null).limit(5000);
+    if (error) return new Map();
+    return new Map((data ?? []).map((r: any) => [r.id, Number(r.low_alert)]));
+  } catch { return new Map(); }
+}
 async function withStock(items: any[]) {
   if (!items.some((i) => i.stockItem)) return items;
-  // The catalog and the moves are read at the same time.
-  const [cat, moves] = await Promise.all([readStockCatalog().catch(() => null), stockMoves().catch(() => null)]);
+  // The catalog, the moves and the low stock levels are read at the same time.
+  const [cat, moves, lows] = await Promise.all([readStockCatalog().catch(() => null), stockMoves().catch(() => null), lowLevels()]);
+  for (const i of items) if (lows.has(i.id)) i.lowAlert = lows.get(i.id);
   if (!cat) return items;
   const byName = new Map(cat.titems.map((t: any) => [t.name, t]));
   const used = await stockUsage(cat.titems, moves).catch(() => new Map());
@@ -1173,8 +1185,34 @@ Deno.serve(async (req) => {
         const { error: logError } = await app("audit_events").insert({ id: crypto.randomUUID(), actor: s.account, device_id: s.deviceId, action: "edit", entity_type: "item", entity_name: item.name,
           payload: { by: accountName(s.account), fields: [{ k: "stock", from: item.stock_item ?? "", to: want ?? "" }], source: "server", ...(mismatch ? { mismatch: true } : {}) } });
         if (logError) console.error("stock_link_audit_failed");
+        // Another stock item: its low stock alert starts over (and alerts now if it is already low).
+        later(relinkedLowStock(db, id));
       }
       return json({ ok: true, stockItem: want, stock });
+    }
+    // Low stock alert of one item (Manage): {level} in the linked stock item's counting format, or null
+    // for none. At or below it, the item shows yellow and Rozh and Yunis get one alert (low-stock.ts).
+    if (M === "PUT" && (m = path.match(/^items\/([^/]{1,120})\/low-alert$/))) {
+      if (!can(s, "catalog")) return fail("forbidden", 403);
+      const id = decodeURIComponent(m[1]);
+      const L = (globalThis as any).RicottaStockLink;
+      const level = b.level === null ? null : L.lowLevel(b.level);
+      if (level === null && b.level !== null) return fail("invalid_input");
+      const { data: item, error } = await app("items").select("id,name,stock_item,low_alert").eq("id", id).maybeSingle();
+      if (error) return fail(error.code === "42703" ? "not_ready" : "save_failed", 503);
+      if (!item) return fail("gone", 409);
+      if (level !== null && !item.stock_item) return fail("not_linked", 422);
+      const before = item.low_alert === null || item.low_alert === undefined ? null : Number(item.low_alert);
+      if (before !== level) {
+        // A new level starts over: it alerts again (at once when the stock is already that low).
+        const { error: upError } = await app("items").update({ low_alert: level, low_alerted_at: null }).eq("id", id);
+        if (upError) return fail("save_failed", 503);
+        const { error: logError } = await app("audit_events").insert({ id: crypto.randomUUID(), actor: s.account, device_id: s.deviceId, action: "edit", entity_type: "item", entity_name: item.name,
+          payload: { by: accountName(s.account), fields: [{ k: "lowAlert", from: before === null ? "" : String(before), to: level === null ? "" : String(level) }], source: "server" } });
+        if (logError) console.error("low_alert_audit_failed");
+        if (level !== null) later(checkLowStock(db, { ids: [id] }));
+      }
+      return json({ ok: true, lowAlert: level });
     }
     if ((m = path.match(/^(suppliers|items|units)\/([^/]{1,120})$/))) {
       const table = m[1], id = decodeURIComponent(m[2]);

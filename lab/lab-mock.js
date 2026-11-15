@@ -59,6 +59,8 @@
     Object.assign(items.find(i=>i.id==='it-ric'), {stockItem:'Ricotta Cheese - پەنیری ریکۆتا'});
     Object.assign(items.find(i=>i.id==='it-tom'), {stockItem:'Tomato - تەماتە'});
     Object.assign(items.find(i=>i.id==='it-lemon'), {stockItem:'Lemon - لیمۆ'});
+    // A low stock alert at 6 kilos (Manage): Mozzarella has 5, so it shows yellow on the Order screen.
+    Object.assign(items.find(i=>i.id==='it-mozz'), {lowAlert:6});
     const byId = Object.fromEntries(items.map(i=>[i.id,i]));
     const supName = id => suppliers.find(s=>s.id===id).name;
     const order = (day, h, mi, by, lines) => {
@@ -215,8 +217,9 @@
   const withLabStock = i=>{
     if(!i.stockItem) return i;
     const t = LAB_STOCK.find(x=>x.name === i.stockItem);
-    return {...i, stock:t ? {...globalThis.RicottaStockLink.amount(t), level:labLevel(t), at:labStockAt()} : {missing:true}};
+    return {...i, stock:t ? labStockOf(t) : {missing:true}};
   };
+  const labStockOf = t=>({...globalThis.RicottaStockLink.amount(t), level:labLevel(t), count:globalThis.RicottaStockLink.counted(t), at:labStockAt()});
   function ricoReply(account, body){
     const L = lang(body.lang);
     const last = [...(body.messages||[])].reverse().find(m=>m.role==='user');
@@ -398,7 +401,22 @@
         if(want && !t) return fail('stock_item_unknown', 422);
         if(want && !globalThis.RicottaStockLink.matches(it, want) && body.anyway !== true) return fail('names_dont_match', 422);
         it.stockItem = want; save();
-        return json({ok:true, stockItem:want, stock:t ? {...globalThis.RicottaStockLink.amount(t), level:labLevel(t), at:labStockAt()} : null});
+        return json({ok:true, stockItem:want, stock:t ? labStockOf(t) : null});
+      }
+    }
+    // Low stock alert of one item: a level in its stock item's counting format, or null for none.
+    {
+      const m = path.match(/^items\/([^/]+)\/low-alert$/);
+      if(method === 'PUT' && m){
+        if(!can(account, 'catalog')) return fail('forbidden', 403);
+        const it = db.items.find(x=>x.id === decodeURIComponent(m[1]));
+        if(!it) return fail('gone', 409);
+        const level = body.level === null ? null : globalThis.RicottaStockLink.lowLevel(body.level);
+        if(level === null && body.level !== null) return fail('invalid_input');
+        if(level !== null && !it.stockItem) return fail('not_linked', 422);
+        if(level === null) delete it.lowAlert; else it.lowAlert = level;
+        save();
+        return json({ok:true, lowAlert:level});
       }
     }
     // Check now: Rico "reads" Ricotta Restaurant in about two seconds and finds one new item.

@@ -570,6 +570,13 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('.topbar:not(.rico-topbar)').isVisible(),false,'the app bar steps aside for it');
     assert.equal(await page.locator('#ricoChips').evaluate(el=>getComputedStyle(el).overflowY),'auto','the chips scroll');
     await snapshot(page,'phone-rico-en.png');
+    // The two-line button slides out a side menu of recent chats, like ChatGPT's; Escape puts it away.
+    await page.locator('#ricoTopbar [data-rt-chats]').click();
+    await page.locator('#ricoDrawer .rd-new').waitFor();
+    assert.equal(await page.locator('#ricoDrawer .rd-item').count(),3,'the side menu has Settings, Memory and All chats');
+    await page.waitForTimeout(400);await snapshot(page,'phone-rico-menu-en.png');
+    await page.keyboard.press('Escape');
+    await page.locator('#ricoDrawer').waitFor({state:'detached'});
     await openView(page,'order');await openView(page,'settings');await snapshot(page,'phone-settings-en.png');
     assert.equal(await page.locator('#ricoTopbar').count(),0,'Rico\u2019s bar leaves with him');
     await ctx.close();

@@ -187,14 +187,124 @@ function renderRicoTopbar(){
 }
 function syncRicoTopbar(){
   const app = document.getElementById('app'), old = document.getElementById('ricoTopbar');
-  if(!app || !state.account || state.view !== 'assistant'){ old?.remove(); return; }
+  if(!app || !state.account || state.view !== 'assistant'){ old?.remove(); rico.drawerClose?.(); return; }
+  if(rico.drawerClose) ricoDrawerShade(app);
   const tmp = document.createElement('div'); tmp.innerHTML = renderRicoTopbar();
   const bar = tmp.firstElementChild;
   if(old){ bar.classList.toggle('scrolled', old.classList.contains('scrolled')); old.replaceWith(bar); }
   else{ const top = app.querySelector('.topbar'); if(top) top.after(bar); else app.insertBefore(bar, app.firstChild); }
-  bar.querySelector('[data-rt-chats]').onclick = ()=>ricoOpenHistory();
+  bar.querySelector('[data-rt-chats]').onclick = ()=>ricoOpenDrawer();
   bar.querySelector('[data-rt-settings]').onclick = openRicoSettings;
   bar.querySelector('[data-rt-new]').onclick = ()=>ricoNewChat();
+}
+/* Rico's side menu on a phone, like ChatGPT's (2026-11-15): the two-line button slides the whole screen
+   aside and shows the menu under it. His name and Search on top, Rico settings, What Rico remembers and
+   Chat history, then the latest chats as plain lines, and at the foot New chat and your account. A tap on
+   the screen beside it, a swipe back or Escape closes it. */
+const ICON_RD_REMEMBER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4.5h10.5a1.5 1.5 0 0 1 1.5 1.5v14l-3.5-2.4L11 20l-3.5-2.4L4 20V6.5a2 2 0 0 1 2-2Z"/><path d="M8 9h6M8 12.5h4"/></svg>`;
+const ICON_RD_HISTORY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.6 12.4A7.4 7.4 0 1 0 6.8 6.8"/><path d="M4.4 4.6v3.6H8"/><path d="M12 8.2v4l2.6 1.6"/></svg>`;
+const ICON_RD_NEW = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V12"/><path d="M17.6 3.9a1.9 1.9 0 0 1 2.7 2.7L12.6 14.3l-3.4.7.7-3.4Z"/></svg>`;
+const RD_RECENT = 12;
+function ricoDrawerRows(){
+  if(!rico.chats) return loadingLines(5);
+  const q = (rico.drawerQuery || '').trim().toLocaleLowerCase();
+  const list = rico.chats.filter(c=>!q || String(c.title || '').toLocaleLowerCase().includes(q)).slice(0, q ? 60 : RD_RECENT);
+  if(!list.length) return `<p class="rd-empty">${esc(q ? t('rrNoMatch') : t('ricoNoChatsYet'))}</p>`;
+  return list.map(c=>{
+    const on = c.id === rico.chatId || c.id === rico.viewedId, other = c.account && c.account !== state.account;
+    return `<button type="button" class="rd-chat${on ? ' on' : ''}" data-side-open="${esc(c.id)}"${on ? ' aria-current="true"' : ''}><span dir="auto">${esc(c.title || t('ricoUntitled'))}</span>${other ? `<small>${esc(accountLabel(c.account))}</small>` : ''}</button>`;
+  }).join('') + (!q && rico.chats.length > RD_RECENT ? `<button type="button" class="rd-all" data-rd-all>${esc(t('inboxSeeAll')(rico.chats.length))}</button>` : '');
+}
+/* The dimmed screen beside the open menu: a tap on it closes the menu. Put back if a redraw dropped it. */
+function ricoDrawerShade(app){
+  let shade = app.querySelector(':scope > .rd-shade');
+  if(shade) return shade;
+  shade = document.createElement('div');
+  shade.className = 'rd-shade'; shade.setAttribute('aria-hidden', 'true');
+  shade.onclick = e=>{ e.preventDefault(); e.stopPropagation(); rico.drawerClose?.(); };
+  if(rico.drawerSwipe) shade.addEventListener('pointerdown', rico.drawerSwipe, {passive:true});
+  app.appendChild(shade);
+  return shade;
+}
+function ricoOpenDrawer(){
+  if(document.getElementById('ricoDrawer')) return;
+  const app = document.getElementById('app');
+  if(!app) return;
+  closeSelSheet?.();
+  document.activeElement?.blur?.();
+  rico.drawerQuery = '';
+  const wrap = document.createElement('div');
+  wrap.id = 'ricoDrawer'; wrap.className = 'rico-drawer';
+  wrap.innerHTML = `<nav class="rd-panel" role="dialog" aria-modal="true" aria-label="${esc(t('ricoChats'))}">
+      <div class="rd-head"><span class="rd-title">${esc(t('ricoName'))}</span><button type="button" class="rico-round" data-rd-find aria-label="${esc(t('ricoSearchChats'))}" title="${esc(t('ricoSearchChats'))}">${ICON_RS_SEARCH}</button></div>
+      <label class="rd-search" hidden>${ICON_RS_SEARCH}<input type="search" data-rd-search placeholder="${esc(t('ricoSearchChats'))}" aria-label="${esc(t('ricoSearchChats'))}" autocomplete="off"></label>
+      <div class="rd-menu">
+        <button type="button" class="rd-item" data-rd-settings>${ICON_RS_GEAR}<span>${esc(t('ricoSettings'))}</span></button>
+        <button type="button" class="rd-item" data-rd-memory>${ICON_RD_REMEMBER}<span>${esc(t('memoryTitle'))}</span></button>
+        <button type="button" class="rd-item" data-rd-history>${ICON_RD_HISTORY}<span>${esc(t('ricoHistory'))}</span></button>
+      </div>
+      <div class="rd-list" id="rdList">${ricoDrawerRows()}</div>
+      <div class="rd-foot"><button type="button" class="rd-new" data-rd-new>${ICON_RD_NEW}<span>${esc(t('ricoNewChat'))}</span></button><button type="button" class="rd-me" data-rd-me aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button></div>
+    </nav>`;
+  document.body.appendChild(wrap);
+  const shade = ricoDrawerShade(app);
+  const html = document.documentElement, list = wrap.querySelector('#rdList');
+  const bind = ()=>{
+    attachRicoChatRows(list);
+    list.querySelectorAll('[data-side-open]').forEach(row=>{ row.onclick = ()=>{ close(); ricoOpenChat(row.dataset.sideOpen); }; });
+    const all = list.querySelector('[data-rd-all]'); if(all) all.onclick = ()=>{ close(); ricoOpenHistory(); };
+  };
+  const paint = ()=>{ if(wrap.isConnected){ list.innerHTML = ricoDrawerRows(); bind(); } };
+  bind();
+  if(!rico.chats) ricoLoadChats().then(paint);
+  let closed = false;
+  const onKey = e=>{ if(e.key === 'Escape' && !document.getElementById('ctxLayer')){ e.preventDefault(); e.stopImmediatePropagation(); close(); } };
+  function close(){
+    if(closed) return; closed = true;
+    document.removeEventListener('keydown', onKey, true);
+    html.classList.remove('rico-drawer-open');
+    rico.drawerClose = null;
+    const done = ()=>{ wrap.remove(); document.querySelector('.rd-shade')?.remove(); app.style.transform = ''; html.classList.remove('rico-drawer-on'); };
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches) done(); else setTimeout(done, 360);
+  }
+  document.addEventListener('keydown', onKey, true);
+  rico.drawerClose = close;
+  wrap.querySelector('[data-rd-settings]').onclick = ()=>{ close(); openRicoSettings(); };
+  wrap.querySelector('[data-rd-memory]').onclick = ()=>{ close(); openRicoMemory(); };
+  wrap.querySelector('[data-rd-history]').onclick = ()=>{ close(); ricoOpenHistory(); };
+  wrap.querySelector('[data-rd-new]').onclick = ()=>{ close(); ricoNewChat(); };
+  wrap.querySelector('[data-rd-me]').onclick = ()=>{ close(); openAccountSheet(); };
+  const box = wrap.querySelector('.rd-search'), input = wrap.querySelector('[data-rd-search]');
+  wrap.querySelector('[data-rd-find]').onclick = ()=>{ box.hidden = !box.hidden; if(!box.hidden) input.focus(); else { input.value = ''; rico.drawerQuery = ''; paint(); } };
+  input.oninput = ()=>{ rico.drawerQuery = input.value; paint(); };
+  // A swipe back toward the menu's side closes it, following the finger.
+  let sw = null;
+  const width = ()=>wrap.querySelector('.rd-panel').getBoundingClientRect().width;
+  const startSwipe = e=>{ if(e.pointerType === 'mouse') return; sw = {x:e.clientX, y:e.clientY, id:e.pointerId, dx:0, on:false}; };
+  const moveSwipe = e=>{
+    if(!sw || e.pointerId !== sw.id) return;
+    const dir = isRtl() ? 1 : -1, dx = (e.clientX - sw.x) * dir, dy = e.clientY - sw.y;
+    if(!sw.on){ if(Math.abs(dx) < 10) return; if(Math.abs(dy) > Math.abs(dx) || dx < 0){ sw = null; return; } sw.on = true; html.classList.add('rico-drawer-drag'); }
+    sw.dx = Math.max(0, dx);
+    app.style.transform = `translate3d(${-dir * Math.max(0, width() - sw.dx)}px,0,0)`;
+  };
+  const endSwipe = e=>{
+    if(!sw || e.pointerId !== sw.id) return;
+    const s = sw; sw = null;
+    html.classList.remove('rico-drawer-drag');
+    if(!s.on) return;
+    if(s.dx > width() * .3) close(); else app.style.transform = '';
+  };
+  rico.drawerSwipe = startSwipe;
+  [wrap, shade].forEach(el=>{ el.addEventListener('pointerdown', startSwipe, {passive:true}); });
+  document.addEventListener('pointermove', moveSwipe, {passive:true});
+  ['pointerup', 'pointercancel'].forEach(type=>document.addEventListener(type, endSwipe));
+  const off = ()=>{ document.removeEventListener('pointermove', moveSwipe); ['pointerup', 'pointercancel'].forEach(type=>document.removeEventListener(type, endSwipe)); };
+  const obs = new MutationObserver(()=>{ if(!wrap.isConnected){ off(); obs.disconnect(); } });
+  obs.observe(document.body, {childList:true});
+  html.classList.add('rico-drawer-on');
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{ if(!closed){ html.classList.add('rico-drawer-open'); wrap.querySelector('[data-rd-settings]')?.focus({preventScroll:true}); } }));
+  haptic?.('light');
 }
 /* The chat's name and New chat follow the chat (the computer's header and the phone's bar). */
 function ricoRefreshHead(){
