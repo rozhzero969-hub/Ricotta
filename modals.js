@@ -41,7 +41,13 @@ function modalFocusable(box) {
 /* The app's searchable select sheet lives outside the form's overlay. Its
    own keyboard handler takes over until it closes; forced updates stay above it. */
 function modalSelectSheetOpen(dialog) {
-  return dialog.root.id !== 'forceRoot' && !!document.querySelector('.sel-sheet:not(.out)');
+  return dialog.root.id !== 'forceRoot' && !dialog.overSheet && !!document.querySelector('.sel-sheet:not(.out)');
+}
+
+/* A question asked from inside a bottom sheet (Link anyway, Link the sure matches) sits above that
+   sheet and keeps the keyboard; the sheet's own keys wait until it is answered. */
+function modalAboveSheet() {
+  return !!document.querySelector('#modalRoot .modal-overlay.over-sheet:not(.closing)');
 }
 
 function handleModalKey(event) {
@@ -215,11 +221,13 @@ function showConfirm(message, opts = {}) {
   // enter: Enter presses the main button (approving, sending); otherwise Enter stays on Cancel.
   const okHtml = `<button type="button" class="btn ${okClass}" id="modalOkBtn">${esc(okLabel)}${opts.enter ? '<span class="kbd" aria-hidden="true">↵</span>' : ''}</button>`;
   const cancelHtml = `<button type="button" class="btn btn-ghost" id="modalCancelBtn">${esc(cancelLabel)}</button>`;
+  const overSheet = !!document.querySelector('.sel-sheet:not(.out)');
   const dialog = createModal(ensureModalRoot(), `
-    <div class="modal-overlay"><div class="modal-box modal-alert${hero ? ' modal-hero' : ''}${opts.wide ? ' modal-wide' : ''}">
+    <div class="modal-overlay${overSheet ? ' over-sheet' : ''}"><div class="modal-box modal-alert${hero ? ' modal-hero' : ''}${opts.wide ? ' modal-wide' : ''}">
       ${modalSymbol(opts.icon, opts.tone)}${title}<div class="modal-msg">${message}</div>
       <div class="modal-actions${hero ? ' stacked' : ''}">${hero ? okHtml + cancelHtml : cancelHtml + okHtml}</div>
     </div></div>`, {role: 'alertdialog', cancelValue: false});
+  dialog.overSheet = overSheet;
   dialog.onCancel = () => dialog.finish(false);
   dialog.box.querySelector('#modalOkBtn').onclick = () => dialog.finish(true);
   const cancel = dialog.box.querySelector('#modalCancelBtn');

@@ -1,5 +1,6 @@
 // Linking ordering items to stock items (supabase/functions/_shared/stock-link.js): real matches pass,
-// wrong ones are blocked, and the Main Storage amount uses the buying unit only for whole numbers of it.
+// wrong ones don't (the app warns before linking them), suggestions pick the right one, and the Main
+// Storage amount uses the buying unit only for whole numbers of it.
 import assert from 'node:assert/strict';
 import '../supabase/functions/_shared/search.js';
 import '../supabase/functions/_shared/transfers.js';
@@ -62,6 +63,64 @@ assert.deepEqual(L.suggest(it('Mozzarella'), opts).map(o => o.name).sort(), ['Mo
 assert.equal(L.suggest(it('Mozzarella'), opts)[0].name, 'Mozzarella - پەنیری مۆزارێلا', 'the closer name first');
 assert.deepEqual(L.suggest(it('Pineapple'), opts), [], 'nothing that does not match');
 
+// Smarter suggestions (live cases from Ricotta Restaurant, 15 Nov): rarer words count for more, the
+// stock name's extra words count against it, sizes, supplier, unit, deliveries and links already made.
+const live = ['Sunich Mango Juice - شەربەتی سن ئیچ مەنگۆ', 'Sunich Peach Nectar - شەربەتی سن ئیچ خۆخ', 'Sunich Pineapple Juice - شەربەتی سن ئیچ ئەناناس',
+  'Sunich Pomegranate Juice - شەربەتی سن ئیچ هەنار', 'Bato Fries - فینگر باتۆ', 'French Lettuce - خاس لولو', 'French Mozzarella', 'Lettuce - خاس',
+  'Cooking Cream - كريم طبخ', 'Cooking Oil 18L - زەیتی 18 لیتری', 'Tomato - تەماتە', 'Altunsa Tomato Paste - دۆشاوی تەماتەی ئەلتونسا', 'Altunsa Tuna - تونای ئەلتونسا',
+  'Cherry Tomatoes - تەماتە کرزی', 'Strawberries - فراولە', 'Strawberry Ice Cream - ئایس کریمی فراولە', 'Frozen Strawberry - فراولەی بەستوو', 'Vanilla Ice Cream - ئایس کریمی ڤانیلا',
+  'Onion Powder - پیاز بۆدرە', 'Garlic Powder - سیر بۆدرە', 'Al Mudhish Milk Powder - شیری بۆدرەی ئەلمودهیش', 'Japanese Panko Breadcrumbs - پانکۆی یابانی', 'Mango Juice - شەربەتی مانگۆ',
+  'HP Sauce - سۆسی ئێچ پی', 'Brownies - براونیس', 'Mixed Spices - بەهاراتی تێکەڵ', 'Mixed Frozen Peas - بزالیای تێکەڵ', 'Pepperoni - پیپەرونی', 'Green Pepper - بیبەری سەوز',
+  'Bawadi Chicken 1.2Kg - مریشکی بەوادی', 'Bawadi Chicken 1.6Kg - مریشکی بەوادی', 'Kalasher Rice - برنجی کەلەشیر', 'Nawras Rice - برنجی نەورەس', 'Mahmood Rice - برنجی مەحمود',
+  'Penne Pasta - پاستای پێنی', 'Almarai Barista Milk - شیری بارستای ئەلمەراعی', 'Turkish Delight - لوقمی تورکی', 'Mersin Labneh Bucket - لەبنەی مێرسین سەتڵ'].map(name => ({ name }));
+const first = (i, o = live, ctx) => L.suggest(i, o, 4, ctx)[0]?.name;
+const all = (i, o = live, ctx) => L.suggest(i, o, 4, ctx).map(x => x.name);
+assert.equal(first(it('عصير سن ایچ خۆخ', ['Sunich peach juice'])), 'Sunich Peach Nectar - شەربەتی سن ئیچ خۆخ', 'peach, not the first Sunich juice');
+assert.deepEqual(all(it('فنگر باتوو', ['French fries', 'Frozen fries'])), ['Bato Fries - فینگر باتۆ'], 'French fries are not French lettuce');
+assert.equal(first(it('زيت ١٨ لتری', ['Cooking oil 18 liters'])), 'Cooking Oil 18L - زەیتی 18 لیتری', 'oil, not cooking cream');
+assert.equal(first(it('معجون طماطه', ['Tomato paste'])), 'Altunsa Tomato Paste - دۆشاوی تەماتەی ئەلتونسا', 'tomato paste is not tomato');
+assert.equal(first(it('ئایسکرێمی فراولە', ['Strawberry ice cream', 'Strawberry'])), 'Strawberry Ice Cream - ئایس کریمی فراولە', 'a short search name does not win over the full name');
+assert.deepEqual(all(it('حليب مدهش بودرە', ['Mudheesh milk powder', 'Powdered milk'])), ['Al Mudhish Milk Powder - شیری بۆدرەی ئەلمودهیش'], 'Mudheesh is Mudhish; powder alone is not enough');
+assert.deepEqual(all(it('خبز بانکۆ')), ['Japanese Panko Breadcrumbs - پانکۆی یابانی'], 'Panko is not Mango');
+assert.deepEqual(all(it('(٢٥٥مل) HPصاص', ['HP sauce 255ml', 'Brown sauce'])), ['HP Sauce - سۆسی ئێچ پی'], 'brown sauce is not brownies');
+assert.equal(first(it('بزالیا کۆکتیل', ['Mixed vegetables', 'Vegetable cocktail'])), 'Mixed Frozen Peas - بزالیای تێکەڵ', 'mixed alone is not enough');
+assert.deepEqual(all(it('بیبەری سەوز', ['Green pepper'])), ['Green Pepper - بیبەری سەوز'], 'pepper is not pepperoni');
+assert.equal(first(it('مریشک بوادی ١.٦٠٠ کیلۆ', ['Bawadi chicken 1.6kg'])), 'Bawadi Chicken 1.6Kg - مریشکی بەوادی', 'the same size first (1.600 is 1.6)');
+assert.equal(first(it('مریشک بوادی ١.٢٠٠ کیلۆ', ['Bawadi chicken 1.2kg'])), 'Bawadi Chicken 1.2Kg - مریشکی بەوادی');
+assert.equal(first(it('برنج نەورەس 5 کیلۆیی', ['Nawras rice 5kg', 'Rice'])), 'Nawras Rice - برنجی نەورەس', 'the brand, not the first rice');
+assert.deepEqual(all(it('بێنی پاستا', ['Penne pasta'])), ['Penne Pasta - پاستای پێنی'], 'pasta is not barista');
+assert.equal(first(it('لبنە تورکیە', ['Turkish labneh', 'Labneh'])), 'Mersin Labneh Bucket - لەبنەی مێرسین سەتڵ', 'لبنە and لەبنە are one word');
+// Signals: who delivered it, the unit, and a link already made.
+const rice = it('برنج', ['Rice']), rices = live.filter(o => /Rice/.test(o.name));
+const withFrom = rices.map(o => /Mahmood/.test(o.name) ? { ...o, from: ['کۆگای مختار'] } : o);
+assert.equal(first(rice, withFrom, { supplier: 'شرکە مختار' }), 'Mahmood Rice - برنجی مەحمود', 'the supplier on its receipts picks it');
+assert.ok(L.rank(rice, withFrom, { supplier: 'شرکە مختار' }).find(r => /Mahmood/.test(r.o.name)).why.includes('supplier'));
+assert.ok(!L.rank(rice, withFrom, { supplier: 'Kale Company' }).find(r => /Mahmood/.test(r.o.name)).why.includes('supplier'), 'another supplier does not');
+assert.ok(L.sameSupplier('صمون گۆلدن برید', 'Golden Bread Bakery · صەمونی گۆڵدن برێد') && L.sameSupplier('ابو ابراهیم قصاب', 'قصاب أبو إبراهيم') && !L.sameSupplier('شرکە مختار', 'شرکە کۆکەکۆلا'), 'supplier names as written on receipts');
+const withUnits = rices.map(o => /Nawras/.test(o.name) ? { ...o, units: ['کیس', 'کیلۆ'] } : { ...o, units: ['کارتۆن'] });
+assert.ok(L.rank(rice, withUnits, { unit: 'kg' }).find(r => /Nawras/.test(r.o.name)).why.includes('unit'), 'kg is کیلۆ');
+const taken = new Map([['Kalasher Rice - برنجی کەلەشیر', 'Kalasher rice']]);
+const tk = L.rank(rice, rices, { taken }).find(r => /Kalasher/.test(r.o.name));
+assert.ok(tk.warn.includes('taken') && tk.taken === 'Kalasher rice', 'linked already: said, and ranked lower');
+const sz = L.rank(it('Cooking oil 1 liter'), live).find(r => /18L/.test(r.o.name));
+assert.ok(sz.warn.includes('size'), '1 liter and 18L are different sizes');
+// Sure: a clear best match with nothing against it; never when two are close.
+assert.ok(L.sure(L.suggest(it('عصير سن ایچ خۆخ', ['Sunich peach juice']), live, 4, {}, true)), 'peach nectar is sure');
+assert.ok(!L.sure(L.suggest(it('Rice'), rices, 4, {}, true)), 'three rices: not sure');
+assert.ok(!L.sure(L.suggest(rice, rices, 4, { taken }, true).filter(r => /Kalasher/.test(r.o.name))), 'linked to another item: not sure');
+// Links already made that may be wrong: the wrong Sunich juice (names pass matches()), another size, an
+// item on the same stock item; never a right one, nor another kind of the same thing.
+const linked = (x, stockItem) => ({ ...x, stockItem });
+const peachItem = it('عصير سن ایچ خۆخ', ['Sunich peach juice']);
+const dw = L.doubt(linked(peachItem, 'Sunich Mango Juice - شەربەتی سن ئیچ مەنگۆ'), live);
+assert.ok(dw && dw.warn.includes('better') && /Peach Nectar/.test(dw.better.o.name), 'mango for peach: the peach nectar is closer');
+assert.equal(L.doubt(linked(peachItem, 'Sunich Peach Nectar - شەربەتی سن ئیچ خۆخ'), live), null, 'the right one: nothing to say');
+assert.ok(L.doubt(linked(it('Cooking oil 1 liter'), 'Cooking Oil 18L - زەیتی 18 لیتری'), live).warn.includes('size'), 'another size');
+assert.ok(L.doubt(linked(rice, 'Kalasher Rice - برنجی کەلەشیر'), rices, { taken }).warn.includes('taken'), 'another item on it');
+assert.ok(L.doubt(linked(rice, 'Banana - مۆز'), [...rices, { name: 'Banana - مۆز' }]).warn.includes('name'), 'a name that does not match');
+assert.equal(L.doubt(linked(rice, 'Nawras Rice - برنجی نەورەس'), rices), null, 'another kind of rice: left alone');
+assert.equal(L.doubt(linked(rice, 'Gone Rice'), rices), null, 'no longer in the list: said elsewhere');
+
 // Level for the Order screen colour: empty, low (less than 3 days at the pace of the last 14 days, at
 // least 2 moves) or ok; without usage it is ok.
 const carrot = { name: 'Carrot - گێزەر', base: 'غرام', count: { name: 'کیلۆ', factor: 1000 }, buy: null, stock: { 'Main Storage': 2000 } };
@@ -71,4 +130,4 @@ assert.equal(L.level(carrot, L.usage(moves(7), [carrot], L.MAIN)).level, 'low', 
 assert.equal(L.level(carrot, L.usage(moves(1), [carrot], L.MAIN)).level, 'ok', 'one move is not enough to judge');
 assert.equal(L.level({ ...carrot, stock: { 'Main Storage': 0 } }, new Map()).level, 'empty');
 assert.equal(L.level(carrot, L.usage([{ ...moves(1)[0], mode: 'practice' }, ...moves(1)], [carrot], L.MAIN)).level, 'ok', 'practice runs never count');
-console.log('Stock links PASS: suggestions (both kinds, never a wrong one), empty/low/ok levels, real names link (typos, plurals, Kurdish, search names), wrong ones are blocked, buying unit only for whole numbers of it');
+console.log('Stock links PASS: suggestions (both kinds, never a wrong one; rare words, extra words, sizes, supplier, unit, links already made; sure matches; links that may be wrong), empty/low/ok levels, real names link (typos, plurals, Kurdish, search names), wrong ones are blocked, buying unit only for whole numbers of it');

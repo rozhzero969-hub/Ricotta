@@ -379,11 +379,14 @@
         months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
       });
     }
-    // Linking ordering items to stock items: the choices, and one link (only when the names match).
+    // Linking ordering items to stock items: the choices, and one link (a name that doesn't match only
+    // with {anyway: true}, after the app warned).
     if(method === 'GET' && path === 'items/stock-options'){
       if(!can(account, 'catalog')) return fail('forbidden', 403);
       const amounts = can(account, 'transfers') || can(account, 'receipts');
-      return json({at:labStockAt(), items:LAB_STOCK.map(t=>amounts ? {name:t.name, ...globalThis.RicottaStockLink.amount(t)} : {name:t.name})});
+      // The same hints as the server: units, deliveries and who delivered it (Mozzarella from Zakho Dairy).
+      const hints = t=>({units:[t.buy?.name, t.count?.name].filter(Boolean), bought:/Mozzarella|Parmesan|Tomato/.test(t.name) ? 3 : 0, ...(/Mozzarella/.test(t.name) ? {from:['Zakho Dairy · Kak Ahmad']} : {})});
+      return json({at:labStockAt(), items:LAB_STOCK.map(t=>amounts ? {name:t.name, ...globalThis.RicottaStockLink.amount(t), ...hints(t)} : {name:t.name, ...hints(t)})});
     }
     {
       const m = path.match(/^items\/([^/]+)\/stock$/);
@@ -393,7 +396,7 @@
         if(!it) return fail('gone', 409);
         const want = body.stockItem ?? null, t = want && LAB_STOCK.find(x=>x.name === want);
         if(want && !t) return fail('stock_item_unknown', 422);
-        if(want && !globalThis.RicottaStockLink.matches(it, want)) return fail('names_dont_match', 422);
+        if(want && !globalThis.RicottaStockLink.matches(it, want) && body.anyway !== true) return fail('names_dont_match', 422);
         it.stockItem = want; save();
         return json({ok:true, stockItem:want, stock:t ? {...globalThis.RicottaStockLink.amount(t), level:labLevel(t), at:labStockAt()} : null});
       }
