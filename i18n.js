@@ -1359,3 +1359,37 @@ Object.assign(T.ar, {
   adNamesCount:(n,total)=>n+' من '+total+' اسمًا', adNamesNone:'لا شيء هنا.', adNamesFoot:'صحّح الأسماء في ريكوتا ريستورانت. تظهر الأسماء الجديدة هنا بعد أن يقرأ ريكو المخزون مرة أخرى.',
   adSourcesNote:"محسوبة من سجلات حقيقية، حسب يوم بغداد. تُحدَّث كل 30 ثانية.",
 });
+/* The Expenses tab: things Ricotta buys that aren't food (tea, paper cups, towels, tissues). */
+Object.assign(T.en, {
+  kindFood:'Food', kindExpenses:'Expenses', kindExpense:'Expense', orderKindSwitch:'Food or expenses',
+  heroEyebrowExpenses:"Today's expenses", pullToFood:'Release for Food', pullToExpenses:'Release for Expenses',
+  pullHintToExpenses:'Pull down for Expenses', pullHintToFood:'Pull down for Food',
+  noExpenseItemsYet:'No expense items yet. Add things like tea, paper cups, towels or tissues.', addExpenseItem:'Add expense',
+  supplierBuysLabel:'What we buy here', buys_food:'Food', buys_expenses:'Expenses', buys_both:'Both',
+  buysHint:'This supplier shows only in the tabs you pick.', itemKindLabel:'Type',
+  noSupplierForKind:'No supplier sells expenses yet. Mark one as Expenses or Both in Suppliers.',
+  supplierKeepsItems:(n,kind)=>n+(n===1?' item stays':' items stay')+' in '+kind+' until you move '+(n===1?'it':'them')+'.',
+  expensesNotReady:'Expenses can be added once the server update is in.', recordBuys:'Buys',
+});
+Object.assign(T.ku, {
+  kindFood:'خواردن', kindExpenses:'خەرجییەکان', kindExpense:'خەرجی', orderKindSwitch:'خواردن یان خەرجی',
+  heroEyebrowExpenses:'خەرجییەکانی ئەمڕۆ', pullToFood:'بەریبدە بۆ خواردن', pullToExpenses:'بەریبدە بۆ خەرجییەکان',
+  pullHintToExpenses:'بۆ خەرجییەکان ڕایبکێشە خوارەوە', pullHintToFood:'بۆ خواردن ڕایبکێشە خوارەوە',
+  noExpenseItemsYet:'هێشتا هیچ کاڵایەکی خەرجی نییە. شتی وەک چا، کوپی کاغەز، خاولی یان کلینێکس زیاد بکە.', addExpenseItem:'خەرجی زیاد بکە',
+  supplierBuysLabel:'چی لێرە دەکڕین', buys_food:'خواردن', buys_expenses:'خەرجی', buys_both:'هەردووکیان',
+  buysHint:'ئەم دابینکەرە تەنها لەو بەشانەدا دەردەکەوێت کە هەڵیدەبژێریت.', itemKindLabel:'جۆر',
+  noSupplierForKind:'هێشتا هیچ دابینکەرێک خەرجی نافرۆشێت. لە دابینکەرەکان یەکێک بکە بە خەرجی یان هەردووکیان.',
+  supplierKeepsItems:(n,kind)=>n+' کاڵا لە '+kind+' دەمێنێتەوە تا دەیگوازیتەوە.',
+  expensesNotReady:'زیادکردنی خەرجی دوای نوێکردنەوەی سێرڤەر کار دەکات.', recordBuys:'دەکڕدرێت',
+});
+Object.assign(T.ar, {
+  kindFood:'طعام', kindExpenses:'مصاريف', kindExpense:'مصروف', orderKindSwitch:'طعام أو مصاريف',
+  heroEyebrowExpenses:'مصاريف اليوم', pullToFood:'اترك للانتقال إلى الطعام', pullToExpenses:'اترك للانتقال إلى المصاريف',
+  pullHintToExpenses:'اسحب للأسفل للمصاريف', pullHintToFood:'اسحب للأسفل للطعام',
+  noExpenseItemsYet:'لا توجد مواد مصاريف بعد. أضف أشياء مثل الشاي والأكواب الورقية والمناشف والمناديل.', addExpenseItem:'أضف مصروفًا',
+  supplierBuysLabel:'ماذا نشتري من هنا', buys_food:'طعام', buys_expenses:'مصاريف', buys_both:'كلاهما',
+  buysHint:'يظهر هذا المورّد في الأقسام التي تختارها فقط.', itemKindLabel:'النوع',
+  noSupplierForKind:'لا يوجد مورّد للمصاريف بعد. اجعل أحد المورّدين «مصاريف» أو «كلاهما» في المورّدين.',
+  supplierKeepsItems:(n,kind)=>AR_N(n,'تبقى مادة واحدة','تبقى مادتان','مواد تبقى','مادة تبقى')+' في '+kind+' حتى تنقلها.',
+  expensesNotReady:'يمكن إضافة المصاريف بعد تحديث الخادم.', recordBuys:'نشتري',
+});

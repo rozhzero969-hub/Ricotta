@@ -218,8 +218,10 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 };
 
 /* ---------- Shapes the browser uses ---------- */
-const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder });
-const toItem = (i: any) => ({ id: i.id, name: i.name, unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false, stockItem: i.stock_item ?? null,
+// What is bought from a supplier: food, expenses (tea, paper cups, tissues...) or both. An item is food or an expense.
+const SUPPLIER_BUYS = ["food", "expenses", "both"];
+const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, buys: SUPPLIER_BUYS.includes(s.buys) ? s.buys : "food" });
+const toItem = (i: any) => ({ id: i.id, name: i.name, kind: i.kind === "expense" ? "expense" : "food", unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false, stockItem: i.stock_item ?? null,
   createdAt: i.created_at ?? null, lastOrderedAt: i.last_ordered_at ?? null });
 /* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
    had one; recoverable: how many days Rico can bring back after it broke. */
@@ -392,8 +394,8 @@ async function withStock(items: any[]) {
 async function bootstrap(s: Session) {
   const [me, suppliers, items, units, orders, devices, activity, inbox, streak, months, draft, wipe] = await Promise.all([
     readAccount(s.account),
-    readAll(() => app("suppliers").select("id,name,phone,reminder").order("name").order("id")),
-    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at,stock_item").order("name").order("id")),
+    readAll(() => app("suppliers").select("id,name,phone,reminder,buys").order("name").order("id")),
+    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at,stock_item,kind").order("name").order("id")),
     readAll(() => app("units").select("id,en,ku,ar").order("id")),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")),
     listDevices(s),
@@ -422,6 +424,8 @@ async function bootstrap(s: Session) {
     history,
     historyMonth: monthKey(),
     settings: me?.settings ?? {}, devices, activity, inbox, months, draft, nextWipe: wipe.data?.next_wipe ?? null,
+    // This server saves what each supplier sells (food, expenses or both) and each item's kind.
+    expenses: true,
   };
 }
 async function readDraft(account: Account) {
@@ -588,11 +592,11 @@ function validQuantity(q: number,zero=false){return Number.isFinite(q) && q>=(ze
 const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | null> = {
   suppliers: (id, b) => text(b.name) ? {
     id, name: text(b.name), phone: text(b.phone, 40) || null,
-    reminder: cleanReminder(b.reminder), updated_at: nowIso(),
+    reminder: cleanReminder(b.reminder), buys: SUPPLIER_BUYS.includes(b.buys) ? b.buys : "food", updated_at: nowIso(),
   } : null,
   items: (id, b) => text(b.name) ? {
     id, name: text(b.name), unit_id: text(b.unit, 120) || null,
-    supplier_id: text(b.supplierId, 120) || null,
+    supplier_id: text(b.supplierId, 120) || null, kind: b.kind === "expense" ? "expense" : "food",
     ...(Object.hasOwn(b,"aliases") ? {aliases:Array.isArray(b.aliases) ? [...new Set(b.aliases.map((a: unknown)=>text(a,120)).filter(Boolean))].slice(0,12) : []} : {}),
     ...(Object.hasOwn(b,"available") ? {available:b.available!==false} : {}),
     ...(Object.hasOwn(b, "note") ? { note: text(b.note, 120) } : {}),
@@ -607,8 +611,8 @@ const CATALOG: Record<string, (id: string, b: any) => Record<string, unknown> | 
    another phone saved something newer never puts the old values back (the database keeps what isn't sent).
    A new record, or a client without b.only, sends everything as before. */
 const CATALOG_FIELDS: Record<string, Record<string, string[]>> = {
-  suppliers: { name: ["name"], phone: ["phone"], reminder: ["reminder"] },
-  items: { name: ["name"], unit: ["unit_id"], supplierId: ["supplier_id", "sort_order"], note: ["note"], aliases: ["aliases"], available: ["available"], sortOrder: ["sort_order"] },
+  suppliers: { name: ["name"], phone: ["phone"], reminder: ["reminder"], buys: ["buys"] },
+  items: { name: ["name"], kind: ["kind"], unit: ["unit_id"], supplierId: ["supplier_id", "sort_order"], note: ["note"], aliases: ["aliases"], available: ["available"], sortOrder: ["sort_order"] },
 };
 function catalogRow(table: string, id: string, b: any) {
   if (!Array.isArray(b.only) || !CATALOG_FIELDS[table]) return CATALOG[table](id, b);

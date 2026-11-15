@@ -376,7 +376,7 @@
         history:db.history, historyMonth:monthStartIso().slice(0,7), settings:(db.settings ||= {})[me] || {}, devices:devices(me),
         activity:can(me,'record') ? db.activity : [], inbox:can(me,'assistant') ? db.inbox.slice(-20) : [],
         pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
-        months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
+        expenses:true, months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
       });
     }
     // Linking ordering items to stock items: the choices, and one link (a name that doesn't match only
@@ -721,15 +721,15 @@
         return fail('gone', 409);
       } else if(Array.isArray(body.only) && prev && table !== 'units'){
         // Like the server: an edit that names its fields changes only those.
-        const allowed = table === 'suppliers' ? ['name','phone','reminder'] : ['name','unit','supplierId','note','aliases','available','sortOrder'];
+        const allowed = table === 'suppliers' ? ['name','phone','reminder','buys'] : ['name','kind','unit','supplierId','note','aliases','available','sortOrder'];
         if(body.only.some(k=>!allowed.includes(k)) || (body.only.includes('name') && !String(body.name||'').trim())) return fail('invalid_input');
         for(const k of body.only) prev[k] = body[k] ?? (k === 'note' ? '' : null);
         if(body.only.includes('supplierId') && !body.only.includes('sortOrder')) prev.sortOrder = 'sortOrder' in body ? body.sortOrder : null;
         db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:'edit', type, name:prev.name, fields:[]});
       } else {
         let row;
-        if(table === 'suppliers') row = {id, name:String(body.name||'').slice(0,160), phone:body.phone || null, reminder:body.reminder || null};
-        else if(table === 'items') row = {id, name:String(body.name||'').slice(0,160), unit:body.unit || null, supplierId:body.supplierId || null, note:'note' in body ? String(body.note||'').slice(0,120) : (prev ? prev.note || '' : ''), sortOrder:'sortOrder' in body ? body.sortOrder : (prev ? prev.sortOrder : null), aliases:'aliases' in body ? body.aliases : (prev ? prev.aliases || [] : []), available:'available' in body ? body.available !== false : (prev ? prev.available !== false : true)};
+        if(table === 'suppliers') row = {id, name:String(body.name||'').slice(0,160), phone:body.phone || null, reminder:body.reminder || null, buys:['expenses','both'].includes(body.buys) ? body.buys : 'food'};
+        else if(table === 'items') row = {id, name:String(body.name||'').slice(0,160), kind:body.kind === 'expense' ? 'expense' : 'food', unit:body.unit || null, supplierId:body.supplierId || null, note:'note' in body ? String(body.note||'').slice(0,120) : (prev ? prev.note || '' : ''), sortOrder:'sortOrder' in body ? body.sortOrder : (prev ? prev.sortOrder : null), aliases:'aliases' in body ? body.aliases : (prev ? prev.aliases || [] : []), available:'available' in body ? body.available !== false : (prev ? prev.available !== false : true)};
         else row = {id, en:String(body.en||'').slice(0,80), ku:body.ku || null, ar:body.ar || null};
         if(idx >= 0) list[idx] = row; else list.push(row);
         db.activity.unshift({id:'aud-'+(++db.seq), ts:new Date().toISOString(), actor:account, action:prev ? 'edit' : 'add', type, name:row.name || row.en, fields:prev ? [] : [{k:'name', to:row.name || row.en}]});
