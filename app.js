@@ -1422,7 +1422,7 @@ function pagePeek(view, content){
 }
 (function initPageSwipe(){
   let g = null;
-  const blocked = el=>(typeof featureOn === 'function' && featureOn('swipe') && el.closest('.item-row')) || el.closest('.order-quick-actions,input,textarea,select,.stepper,.order-tabs,.record-filters,.manage-sections,.pill-seg,.rico-composer,.bottom-stack,.item-sort-list,.day-chips,.unit-grid,.rico-picker-list,.data-table-scroll,#modalRoot .modal-overlay,.ctx-layer,.lang-layer');
+  const blocked = el=>(typeof featureOn === 'function' && featureOn('swipe') && el.closest('.item-row')) || el.closest('.order-quick-actions,input,textarea,select,.stepper,.order-tabs,.record-filters,.manage-sections,.pill-seg,.rico-composer,.bottom-stack,.item-sort-list,.day-chips,.unit-grid,.rico-picker-list,.rico-chips,.data-table-scroll,#modalRoot .modal-overlay,.ctx-layer,.lang-layer');
   const dropPeek = s=>{ s.peek?.layer.remove(); s.peek = null; };
   document.addEventListener('pointerdown', e=>{
     if(!isPhoneLayout() || e.pointerType==='mouse' || !state.account) return;
@@ -4164,7 +4164,7 @@ boot();
   document.addEventListener('touchstart', e=>{
     if(!state.account || !inAppFrame() || e.touches.length !== 1) return;
     const content = document.querySelector('.content');
-    if(!content || scrollBox().scrollTop > 0 || refreshBlocked() || e.target.closest('.bottom-stack,.topbar,input,textarea,select,.sel-sheet,.rico-composer,.data-table-scroll')) return;
+    if(!content || scrollBox().scrollTop > 0 || refreshBlocked() || e.target.closest('.bottom-stack,.topbar,input,textarea,select,.sel-sheet,.rico-composer,.rico-chips,.rico-drawer,.data-table-scroll')) return;
     p = {y:e.touches[0].clientY, x:e.touches[0].clientX, d:0, content, on:false};
   }, {passive:true});
   document.addEventListener('touchmove', e=>{
