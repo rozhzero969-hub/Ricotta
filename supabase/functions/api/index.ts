@@ -334,7 +334,26 @@ async function orderLinesFor(orderRows: any[]): Promise<any[]> {
 async function readStockCatalog() {
   const { data, error } = await app("rr_catalog").select("data,updated_at").eq("id", true).maybeSingle();
   if (error) throw error;
-  return data ? { titems: (data.data?.titems ?? []) as any[], at: data.updated_at ?? null } : null;
+  return data ? { titems: (data.data?.titems ?? []) as any[], history: data.data?.history ?? null, at: data.updated_at ?? null } : null;
+}
+/* Who delivered each stock item, from saved receipts (practice runs never count): {stock name: [supplier
+   as written on the receipt, most often first]}, at most 4 each. Helps suggest the right stock item
+   for an ordering item from that supplier. */
+async function stockSuppliers() {
+  const { data, error } = await db.from("app_rr_receipts").select("supplier,lines,mode").eq("status", "saved")
+    .order("created_at", { ascending: false }).limit(1000);
+  if (error) return new Map<string, string[]>();
+  const seen = new Map<string, Map<string, number>>();
+  for (const r of data ?? []) {
+    if (!r || r.mode === "practice" || typeof r.supplier !== "string" || !r.supplier.trim()) continue;
+    for (const l of Array.isArray(r.lines) ? r.lines : []) {
+      if (!l || typeof l.item !== "string") continue;
+      const m = seen.get(l.item) ?? new Map<string, number>();
+      m.set(r.supplier, (m.get(r.supplier) ?? 0) + 1);
+      seen.set(l.item, m);
+    }
+  }
+  return new Map([...seen].map(([k, m]) => [k, [...m].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n)]));
 }
 /* Linked items get how much is in Main Storage (only theirs: no other stock goes to the phone, so
    people without Receipts or Transfers see just this). A link whose stock item is gone says so. */
@@ -1107,15 +1126,24 @@ Deno.serve(async (req) => {
       return data?.conflicts?.length ? json(data,409) : json(data);
     }
     // Linking ordering items to stock items (Manage, edit an item). The list of stock items to choose
-    // from, with Main Storage amounts; and saving one link, only when the names really match (the same
-    // rule the app uses, _shared/stock-link.js). Never linked by anyone but a person, one at a time.
+    // from, with Main Storage amounts; and saving one link. When the names don't match (the same rule
+    // the app uses, _shared/stock-link.js) the link is refused unless the person was warned and said
+    // link anyway ({anyway: true}). Never linked by anyone but a person.
     if (M === "GET" && path === "items/stock-options") {
       if (!can(s, "catalog")) return fail("forbidden", 403);
       const cat = await readStockCatalog();
       const L = (globalThis as any).RicottaStockLink;
       // Amounts only for people who can open Stock; everyone else who edits items gets the names.
       const amounts = can(s, "transfers") || can(s, "receipts");
-      return json({ at: cat?.at ?? null, items: (cat?.titems ?? []).filter((t: any) => t?.name && String(t.name).trim() !== "-").map((t: any) => amounts ? { name: t.name, ...L.amount(t) } : { name: t.name }) });
+      // What helps pick the right one besides the name: its units, whether it is ever delivered, and
+      // who delivered it (stock-link.js rank()).
+      const from = cat ? await stockSuppliers() : new Map();
+      const bought = cat?.history?.p ?? {};
+      return json({ at: cat?.at ?? null, items: (cat?.titems ?? []).filter((t: any) => t?.name && String(t.name).trim() !== "-").map((t: any) => {
+        const hints: any = { units: [t.buy?.name, t.count?.name].filter((u: any) => typeof u === "string" && u), bought: Number(bought?.[t.name]?.n) || 0 };
+        if (from.has(t.name)) hints.from = from.get(t.name);
+        return amounts ? { name: t.name, ...L.amount(t), ...hints } : { name: t.name, ...hints };
+      }) });
     }
     if (M === "PUT" && (m = path.match(/^items\/([^/]{1,120})\/stock$/))) {
       if (!can(s, "catalog")) return fail("forbidden", 403);
@@ -1125,20 +1153,21 @@ Deno.serve(async (req) => {
       const { data: item, error } = await app("items").select("id,name,aliases,stock_item").eq("id", id).maybeSingle();
       if (error) return fail("save_failed", 500);
       if (!item) return fail("gone", 409);
-      let stock: any = null;
+      let stock: any = null, mismatch = false;
       if (want !== null) {
         const cat = await readStockCatalog();
         const t = (cat?.titems ?? []).find((x: any) => x?.name === want);
         if (!t) return fail("stock_item_unknown", 422);
         const L = (globalThis as any).RicottaStockLink;
-        if (!L.matches({ name: item.name, aliases: item.aliases ?? [] }, want)) return fail("names_dont_match", 422);
+        mismatch = !L.matches({ name: item.name, aliases: item.aliases ?? [] }, want);
+        if (mismatch && b.anyway !== true) return fail("names_dont_match", 422);
         stock = stockOf(t, await stockUsage(cat?.titems ?? []).catch(() => new Map()), cat?.at ?? null);
       }
       if ((item.stock_item ?? null) !== want) {
         const { error: upError } = await app("items").update({ stock_item: want, updated_at: nowIso() }).eq("id", id);
         if (upError) return fail("save_failed", 500);
         const { error: logError } = await app("audit_events").insert({ id: crypto.randomUUID(), actor: s.account, device_id: s.deviceId, action: "edit", entity_type: "item", entity_name: item.name,
-          payload: { by: accountName(s.account), fields: [{ k: "stock", from: item.stock_item ?? "", to: want ?? "" }], source: "server" } });
+          payload: { by: accountName(s.account), fields: [{ k: "stock", from: item.stock_item ?? "", to: want ?? "" }], source: "server", ...(mismatch ? { mismatch: true } : {}) } });
         if (logError) console.error("stock_link_audit_failed");
       }
       return json({ ok: true, stockItem: want, stock });

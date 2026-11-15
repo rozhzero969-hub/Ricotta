@@ -2587,16 +2587,30 @@ html.dark .item-stock.lvl-empty{color:#FF6961}
 /* Link many (Manage, Items): one row per item not linked yet. */
 .stock-many-hint{margin:-4px 0 12px;font-size:.875rem;color:var(--ink-soft)}
 .stock-many-list{display:flex;flex-direction:column;max-height:62vh;overflow-y:auto;border-radius:14px;background:var(--surface-2)}
-.stock-many-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 12px}
+.stock-many-row{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:10px 12px}
 .stock-many-row+.stock-many-row{border-top:.5px solid var(--line)}
-.stock-many-names{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.stock-many-names{min-width:0;display:flex;flex-direction:column;gap:2px}
 .stock-many-names b{font-weight:500;overflow-wrap:anywhere}
-.stock-many-names small{font-size:.8125rem;color:var(--ink-soft);overflow-wrap:anywhere}
-.stock-many-btns{display:flex;gap:6px;flex:none}
-.stock-many-btns .btn{min-height:36px;padding:0 14px;border-radius:10px;font-size:.875rem}
-.stock-many-ok{display:inline-flex;align-items:center;gap:6px;font-size:.875rem;font-weight:600;color:var(--ok-ink)}
+.stock-many-ok{display:inline-flex;align-items:center;gap:6px;min-width:0;font-size:.875rem;font-weight:600;color:var(--ok-ink);overflow-wrap:anywhere}
 html.dark .stock-many-ok{color:#30D158}
 .stock-many-row.done .stock-many-names{opacity:.6}
+/* Each match is one tap: the best one in the accent colour, the rest plain, Search last. */
+.stock-many-chips{display:flex;flex-wrap:wrap;gap:6px}
+.stock-chip{display:flex;flex-direction:column;align-items:flex-start;gap:1px;max-width:100%;min-height:40px;padding:6px 12px;border:.5px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:500 .875rem var(--font);text-align:start;cursor:pointer;overflow-wrap:anywhere}
+.stock-chip small{font-size:.75rem;font-weight:400;color:var(--ink-soft)}
+.stock-chip.first{border-color:transparent;background:var(--accent-soft);color:var(--tint)}
+.stock-chip.search{flex-direction:row;align-items:center;gap:6px;color:var(--ink-soft)}
+.stock-chip:disabled{opacity:.5;cursor:default}
+@media (hover:hover){.stock-chip:not(:disabled):hover{background:var(--fill)}.stock-chip.first:not(:disabled):hover{background:var(--accent-soft);filter:brightness(.97)}}
+.stock-many-none{align-self:center;font-size:.8125rem;color:var(--ink-soft)}
+.stock-many-done{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.stock-many-done .btn{min-height:36px;padding:0 14px;border-radius:10px;font-size:.875rem}
+.stock-many-pick{margin:0}
+.stock-many-top:not(:empty){margin:0 0 12px}
+.stock-many-sure{width:100%;justify-content:center;gap:6px}
+/* Why a match is suggested, and what speaks against it (in the warning colour). */
+.stock-warn{color:#B45309}
+html.dark .stock-warn{color:#FDBA74}
 .stock-many-more{margin:8px auto}
 .btn-count{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;margin-inline-start:4px;border-radius:6px;background:var(--fill-strong);font-size:.75rem;font-weight:600}
 /* Rico's sidebar on a computer, like Claude's (2026-11-14): it sits in the shell exactly where the app's
