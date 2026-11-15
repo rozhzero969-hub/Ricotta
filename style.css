@@ -2383,11 +2383,6 @@ html.rtl .nav-brand,[dir=rtl] .nav-brand{justify-content:flex-end}
 .rico-hello h2{margin:0;font-size:1.625rem;font-weight:700;letter-spacing:-.02em}
 .rico-hello p{margin:0;font-size:1rem;color:var(--ink-soft)}
 .rico-intro .rico-inbox{margin:0}
-.rico-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.rico-tile{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:10px;min-height:84px;padding:13px 14px;border:0;border-radius:14px;background:var(--surface);color:var(--ink);font:500 .9375rem/1.3 var(--font);text-align:start;cursor:pointer;box-shadow:inset 0 0 0 .5px var(--line)}
-.rico-tile svg{color:var(--tint)}
-@media (hover:hover){.rico-tile:hover{background:var(--surface-2)}}
-.rico-tile:active{transform:scale(.98)}
 .rico-data{width:100%;max-width:560px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 .5px var(--line);overflow:hidden;margin-top:4px}
 .rico-data-head{display:flex;align-items:center;gap:10px;padding:12px 14px 8px}
 .rico-data-head .rico-card-icon svg{width:16px;height:16px;color:#fff}
@@ -2429,7 +2424,6 @@ html.dark .rico-pct.up{color:#FF6961}html.dark .rico-pct.down{color:#30D158}
   html.rico-mode .rico-page.empty .rico-intro{padding-top:min(9vh,90px)}
   html.rico-mode .rico-hello .rico-bot{--size:48px}
   html.rico-mode .rico-hello h2{font-size:2rem}
-  html.rico-mode .rico-tiles{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 }
 .rico-set-sheet .sel-title{margin-bottom:14px}
 .rico-set-group{display:flex;flex-direction:column;margin-bottom:14px;padding:2px 12px;border-radius:14px;background:var(--surface-2)}
@@ -2712,7 +2706,7 @@ html.dark .help-pop{box-shadow:0 10px 30px rgba(0,0,0,.55),inset 0 0 0 .5px rgba
 @keyframes hpFadeOut{0%,30%{opacity:1}60%,100%{opacity:.08}}
 @keyframes hpPulse{0%,100%{opacity:.45}50%{opacity:1}}
 @keyframes hpPop{0%,20%{transform:scale(.7)}40%{transform:scale(1.08)}55%,100%{transform:scale(1)}}
-@keyframes hpTravel{0%,15%{transform:none}55%,85%{transform:translateX(62px)}100%{transform:translateX(62px);opacity:0}}
+@keyframes hpTravel{0%,15%{transform:none}55%,85%{transform:translateX(70px)}100%{transform:translateX(70px);opacity:0}}
 @keyframes hpRow2{0%,30%{transform:none}60%,100%{transform:translateY(-4px)}}
 @keyframes hpRow3{0%,30%{transform:none}60%,100%{transform:translateY(-8px)}}
 @keyframes hpFill{0%{transform:scaleX(0)}50%,100%{transform:scaleX(1)}}
@@ -2720,3 +2714,130 @@ html.dark .help-pop{box-shadow:0 10px 30px rgba(0,0,0,.55),inset 0 0 0 .5px rgba
 @media (prefers-reduced-motion:reduce){.help-pop{animation:none}.help-pic *{animation:none!important}.help-pic .hp-night{opacity:.5}}
 /* A long menu (an item with many actions) scrolls instead of running off a short screen. */
 .ctx-menu{max-height:calc(var(--vv-height,100dvh) - 24px);overflow-y:auto}
+
+/* Rico's first screen (2026-11-15): small pill-shaped questions instead of big tiles, like ChatGPT's.
+   On a computer they sit centred under the greeting; on a phone they stack above the message box and
+   scroll smoothly, fading out at the edge that has more. Each has a small coloured symbol. */
+.rico-intro>.rico-hello{order:1}.rico-intro>.rico-inbox{order:2}.rico-intro>.rico-chips{order:3}
+.rico-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.rico-chip{display:inline-flex;align-items:center;gap:10px;flex:none;max-width:100%;min-height:44px;padding:10px 18px;padding-inline-start:14px;border:0;border-radius:999px;
+  background:var(--surface);color:var(--ink);font:500 .9688rem/1.25 var(--font);text-align:start;cursor:pointer;box-shadow:inset 0 0 0 1px var(--line);
+  transition:background-color .15s ease,transform .14s var(--ease-out);-webkit-tap-highlight-color:transparent}
+.rico-chip>span:last-child{min-width:0;overflow-wrap:anywhere}
+.rico-chip:active{transform:scale(.97);transition-duration:.06s}
+.rico-chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (hover:hover){.rico-chip:hover{background:var(--surface-2)}}
+.rico-chip-ic{display:grid;place-items:center;flex:none;width:20px;height:20px;color:var(--c,var(--tint))}
+.rico-chip-ic svg{width:18px;height:18px}
+.ic-stock{--c:#0A84FF}.ic-needs{--c:#FF9F0A}.ic-price{--c:#FF453A}.ic-order{--c:#30B15A}.ic-reports{--c:#AF52DE}
+.ic-late{--c:#FF7A00}.ic-check{--c:#30B0C7}.ic-history{--c:#8E8E93}.ic-add{--c:#34C759}
+@media (min-width:960px){html.rico-mode .rico-chips{max-width:640px;margin-inline:auto}}
+
+/* Rico on a phone, after ChatGPT's app (2026-11-15). */
+.rico-topbar{display:none}
+@media (max-width:959px){
+  /* His own bar in the app's top bar's place: round Chats, his name in a pill (his settings), round New chat. */
+  html.rico-mode .topbar:not(.rico-topbar){display:none}
+  html.rico-mode .rico-topbar{display:flex}
+  .rico-head{display:none}
+  .rico-round{display:grid;place-items:center;flex:none;width:40px;height:40px;padding:0;border:0;border-radius:50%;background:var(--fill);color:var(--ink);cursor:pointer;
+    transition:transform .14s var(--ease-out),opacity .2s ease;-webkit-tap-highlight-color:transparent}
+  .rico-round svg{width:20px;height:20px}
+  .rico-round:disabled{opacity:.35;cursor:default}
+  .rico-round:not(:disabled):active{transform:scale(.92);transition-duration:.06s}
+  html.rtl .rt-menu svg{transform:scaleX(-1)}
+  .rico-pill{display:inline-flex;align-items:center;gap:7px;min-width:0;max-width:calc(100% - 112px);height:40px;padding:0 12px 0 14px;border:0;border-radius:999px;
+    background:var(--fill);color:var(--ink);font:600 1rem/1 var(--font);cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .rico-pill:active{transform:scale(.97)}
+  .rico-pill-ic{display:grid;place-items:center;flex:none;color:var(--accent)}
+  .rico-pill-ic svg{width:16px;height:16px}
+  .rico-pill-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
+  .rico-pill-down{display:grid;place-items:center;flex:none;color:var(--ink-faint)}
+  .rico-pill-down svg{width:14px;height:14px}
+  .rico-round:focus-visible,.rico-pill:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  /* The first screen: his latest note on top; the greeting and the questions just above the message box. */
+  #app[data-screen="assistant"] .content:has(.rico-page.empty){padding-bottom:calc(150px + var(--safe-bottom))}
+  .rico-page.empty{display:flex;flex-direction:column;min-height:calc(var(--vv-height,100dvh) - var(--safe-top) - var(--safe-bottom) - 68px - 150px)}
+  .rico-page.empty>.rico-main,.rico-page.empty .rico-thread,.rico-page.empty .rico-intro{flex:1;display:flex;flex-direction:column}
+  .rico-page.empty .rico-intro{gap:0;padding:4px 0 0}
+  .rico-intro>.rico-inbox{order:0;margin:0 0 20px}
+  .rico-intro>.rico-hello{order:1;margin-top:auto;align-items:flex-start;text-align:start;padding:0 6px 14px}
+  .rico-hello .rico-bot,.rico-hello p{display:none}
+  .rico-hello h2{font-size:1.5rem;font-weight:600;letter-spacing:-.01em;line-height:1.25}
+  .rico-intro>.rico-chips{order:2;flex-direction:column;flex-wrap:nowrap;align-items:flex-start;justify-content:flex-start;gap:8px;
+    max-height:min(214px,34vh);overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;scroll-snap-type:y proximity;
+    scrollbar-width:none;padding:2px 2px 6px;margin:0 -2px;
+    --fade-top:24px;--fade-bottom:44px;
+    -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 var(--fade-top),#000 calc(100% - var(--fade-bottom)),transparent 100%);
+    mask-image:linear-gradient(to bottom,transparent 0,#000 var(--fade-top),#000 calc(100% - var(--fade-bottom)),transparent 100%)}
+  .rico-intro>.rico-chips.at-start{--fade-top:0px}
+  .rico-intro>.rico-chips.at-end{--fade-bottom:0px}
+  .rico-intro>.rico-chips::-webkit-scrollbar{display:none}
+  .rico-chip{scroll-snap-align:start;min-height:46px;font-size:1rem;padding:11px 18px;padding-inline-start:14px}
+
+  /* His note: a quiet line of grey, not a card. */
+  .rico-note{padding:12px 14px;border-radius:18px;background:var(--surface);box-shadow:none}
+  .rico-note .rico-bot{--size:22px;margin-top:1px}
+  .rico-note-text{font-weight:400}
+
+  /* The chat: your messages in a grey bubble on the end side, his answers as plain text across the
+     screen with no picture beside them, more room between turns. */
+  .rico-thread{gap:22px}
+  .rico-msg.bot>.rico-bot{display:none}
+  .rico-msg.me .rico-bubble{max-width:82%;padding:10px 16px;border-radius:22px;background:#E5E5EA;color:var(--ink);font-size:1.0625rem;line-height:1.4}
+  html.dark .rico-msg.me .rico-bubble{background:#2C2C2E}
+  .rico-msg.bot .rico-bubble{font-size:1.0625rem;line-height:1.55}
+  .rico-msg.bot .rico-text p+p,.rico-msg.bot .rico-text p+ul,.rico-msg.bot .rico-text p+ol,.rico-msg.bot .rico-text ul+p,.rico-msg.bot .rico-text ol+p{margin-top:12px}
+  .rico-time span{font-size:.75rem;color:var(--ink-faint)}
+  .rico-card,.rico-data,.rico-supplier-picker{border-radius:18px}
+
+  /* The message box: a plain rounded field with the send button inside; the button is grey until there
+     is something to send, then black (white in dark mode), like ChatGPT's. */
+  html .rico-composer{max-width:none;min-height:54px;padding:6px;padding-inline:18px 7px;border-radius:28px;background:var(--surface);
+    border:1px solid var(--line);box-shadow:0 6px 24px rgba(0,0,0,.08);-webkit-backdrop-filter:none;backdrop-filter:none}
+  html.dark .rico-composer{background:#2C2C2E;border-color:rgba(255,255,255,.06);box-shadow:0 6px 24px rgba(0,0,0,.5)}
+  .rico-composer textarea{padding:9px 0}
+  .rico-send{width:40px;height:40px;background:var(--ink);color:var(--bg);transition:background-color .2s ease,color .2s ease,transform .14s var(--ease-out)}
+  .rico-composer:not(.has-text) .rico-send:not(.stop){background:var(--fill-strong);color:var(--ink-faint)}
+  .rico-send:active{transform:scale(.92)}
+  .rico-send.stop{background:var(--ink);color:var(--bg)}
+  .bottom-stack:has(.rico-composer){gap:8px}
+}
+@media (max-width:959px) and (prefers-reduced-motion:reduce){.rico-intro>.rico-chips{scroll-behavior:auto}}
+
+/* Settings pictures, redrawn (2026-11-15): each is a small drawing of the thing it explains. */
+.help-pic .hp-lift{filter:drop-shadow(0 2px 3px rgba(0,0,0,.12))}
+.help-pic .hp-mini{fill:none;stroke:var(--accent);stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.help-pic .hp-small{fill:var(--accent);font:700 9px var(--font)}
+.help-pic .hp-stroke{fill:none;stroke:var(--ink-soft);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.help-pic .hp-bold{stroke:var(--accent);stroke-width:4}
+.help-pic .hp-onacc{stroke:#fff}
+.help-pic .hp-onred{stroke:#fff;stroke-width:3.4}
+.help-pic .hp-gold{fill:#FFB800}
+.help-pic .hp-darkside{fill:#1C1C1E}
+.help-pic .hp-sunray{fill:none;stroke:#FFB800;stroke-width:2;stroke-linecap:round}
+.help-pic .hp-nightline{fill:rgba(255,255,255,.22)}
+.help-pic .hp-accline{stroke:var(--accent);stroke-width:1.6}
+.help-pic .hp-aa-sm{fill:var(--ink-soft);font:600 14px var(--font)}
+.help-pic .hp-aa{font-size:30px;animation:none}
+.help-pic .hp-medal{fill:#fff;font:800 15px var(--font)}
+.help-pic .hp-dimmed{opacity:.55}
+.help-pic .hp-pop{transform-box:fill-box;transform-origin:center}
+.help-pic .hp-fill1,.help-pic .hp-fill2{transform-box:fill-box;transform-origin:0 50%}
+.help-pic .hp-arrow{stroke:var(--ink-faint)}
+.help-pic .hp-slide,.help-pic g.hp-pulse,.help-pic g.hp-fadein{transform-box:view-box}
+
+/* Settings rows (2026-11-15): every icon sits in the middle of its row, rows in a card are split by a
+   thin line that starts after the icon (like the iPhone's Settings), and the "i" for what a setting
+   does sits right after its name instead of looking like a second button beside the switch. */
+.settings-page .preference-row>.set-ico,.settings-page .set-head>.set-ico,.rico-set-row>.set-ico{align-self:center;margin-top:0}
+.settings-page .set-head{align-items:center}
+.settings-page .form-card:not(.rs-card){padding-block:6px}
+.settings-page .form-card:not(.rs-card)>.check-row,.settings-page .form-card:not(.rs-card)>.dark-row{position:relative;margin:0;min-height:52px;padding:10px 0}
+.settings-page .form-card:not(.rs-card)>:is(.check-row,.dark-row)+:is(.check-row,.dark-row)::before{content:'';position:absolute;top:0;inset-inline:42px 0;border-top:.5px solid var(--line)}
+.settings-page .form-card:not(.rs-card)>.dark-row{padding-bottom:12px}
+.set-title{display:block}
+.set-title>.help-btn{display:inline-grid;vertical-align:-2px;width:17px;height:17px;margin:0;margin-inline-start:6px;border-radius:50%;background:none;
+  box-shadow:inset 0 0 0 1.3px currentColor;color:var(--ink-faint);font:700 .6875rem/1 Georgia,'Times New Roman',serif;font-style:italic}
+.set-title>.help-btn:active{color:var(--accent)}
