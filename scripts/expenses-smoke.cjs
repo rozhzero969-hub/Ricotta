@@ -10,7 +10,7 @@ const {PGlite}=require('@electric-sql/pglite'),{pgcrypto}=require('@electric-sql
  await db.exec('create role anon;create role authenticated;create role service_role;');
  await db.exec(fs.readFileSync('supabase/baseline.sql','utf8'));
  const files=fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sql')).sort();
- const at=files.indexOf('20261115120000_expenses_tab.sql');assert.ok(at>=0,'the migration is there');
+ const at=files.indexOf('20261115130000_expenses_tab.sql');assert.ok(at>=0,'the migration is there');
  for(const f of files.slice(0,at))await db.exec(fs.readFileSync('supabase/migrations/'+f,'utf8'));
  const q=async(sql,args=[])=>(await db.query(sql,args)).rows;
  const change=(table,id,row)=>db.query("select app_internal_catalog_change($1,$2,$3::jsonb,'rozha','device')",[table,id,row===null?null:JSON.stringify(row)]);
