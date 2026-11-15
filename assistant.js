@@ -172,6 +172,37 @@ function ricoHeadTitle(){
   const id = rico.viewedId || rico.chatId, c = id && rico.chats?.find(x=>x.id === id);
   return (!rico.viewing && rico.chatTitle) || (c && c.title) || ricoChatTitle() || t('ricoNewChat');
 }
+/* Rico's bar on a phone, like ChatGPT's (2026-11-15): it takes the app's top bar's place while Rico is
+   open. A round Chats button on the reading side, Rico's name (or the open chat's) in a small pill that opens
+   his settings, and a round New chat button. It lives in the shell, next to the app's own top bar. */
+const ICON_RT_MENU = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" aria-hidden="true"><path d="M4.5 8.5h15M4.5 15.5h9"/></svg>`;
+const ICON_RT_DOWN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>`;
+function renderRicoTopbar(){
+  const title = rico.messages.length || rico.viewing ? ricoHeadTitle() : t('ricoName');
+  return `<header class="topbar rico-topbar" id="ricoTopbar">
+      <button type="button" class="rico-round rt-menu" data-rt-chats aria-label="${esc(t('ricoChats'))}" title="${esc(t('ricoChats'))}">${ICON_RT_MENU}</button>
+      <button type="button" class="rico-pill" data-rt-settings aria-label="${esc(t('ricoSettings'))}" title="${esc(t('ricoSettings'))}"><span class="rico-pill-ic">${ICON_SPARKLE}</span><span class="rico-pill-name" dir="auto">${esc(title)}</span><span class="rico-pill-down">${ICON_RT_DOWN}</span></button>
+      <button type="button" class="rico-round" data-rt-new aria-label="${esc(t('ricoNewChat'))}" title="${esc(t('ricoNewChat'))}" ${rico.messages.length ? '' : 'disabled'}>${ICON_NEW_CHAT}</button>
+    </header>`;
+}
+function syncRicoTopbar(){
+  const app = document.getElementById('app'), old = document.getElementById('ricoTopbar');
+  if(!app || !state.account || state.view !== 'assistant'){ old?.remove(); return; }
+  const tmp = document.createElement('div'); tmp.innerHTML = renderRicoTopbar();
+  const bar = tmp.firstElementChild;
+  if(old){ bar.classList.toggle('scrolled', old.classList.contains('scrolled')); old.replaceWith(bar); }
+  else{ const top = app.querySelector('.topbar'); if(top) top.after(bar); else app.insertBefore(bar, app.firstChild); }
+  bar.querySelector('[data-rt-chats]').onclick = ()=>ricoOpenHistory();
+  bar.querySelector('[data-rt-settings]').onclick = openRicoSettings;
+  bar.querySelector('[data-rt-new]').onclick = ()=>ricoNewChat();
+}
+/* The chat's name and New chat follow the chat (the computer's header and the phone's bar). */
+function ricoRefreshHead(){
+  if(state.view !== 'assistant') return;
+  const h = document.querySelector('.rico-head-title'); if(h) h.textContent = ricoHeadTitle();
+  if(rico.messages.length) document.getElementById('ricoNewBtn')?.removeAttribute('disabled');
+  syncRicoTopbar();
+}
 /* Leaving Rico on a computer: back to the screen it was opened from. */
 function ricoLeave(){
   const back = state.ricoBack && state.ricoBack !== 'assistant' && canOpen(state.ricoBack) ? state.ricoBack : (state.tabs.find(v=>v !== 'assistant') || 'order');
@@ -293,7 +324,7 @@ function ricoRenameChat(id){
       if(!r.ok) return {error:t('saveFailed')};
       c.title = title;
       if(rico.chatId === id){ rico.chatTitle = title; rico.titleManual = true; rico.titleLoaded = false; }
-      if(state.view === 'assistant'){ syncRicoSide(); const h = document.querySelector('.rico-head-title'); if(h) h.textContent = ricoHeadTitle(); }
+      if(state.view === 'assistant'){ syncRicoSide(); ricoRefreshHead(); }
       return {};
     }
   });
@@ -367,8 +398,9 @@ function ricoNoteAction(m){
     ? `<button type="button" class="btn btn-primary rico-note-btn" data-routine-fill="${esc(m.id)}">${esc(t('inboxOpenOrder'))}</button>` : '';
 }
 function renderRicoIntro(){
-  // A calm first screen, like a chat app's: a greeting, Rico's latest note, and a few things to ask.
-  // Stock, what needs you and prices come first for people who use Receipts or Transfers.
+  // A calm first screen, like ChatGPT's on a phone (2026-11-15): Rico's latest note at the top, then near
+  // the message box a greeting and small pill-shaped questions to tap, which scroll smoothly when there are
+  // more than fit. Stock, what needs you and prices come first for people who use Receipts or Transfers.
   const chips = t('ricoSuggestions'), rr = t('ricoTilesRR');
   const base = [['prepare_order',chips[0],'order'],['week_insights',chips[2],'reports'],['late_orders',chips[5],'late'],['check_order',chips[1],'check'],['last_order',chips[3],'history'],['add_item',chips[4],'add']];
   const extra = [
@@ -376,12 +408,20 @@ function renderRicoIntro(){
     ...(canOpen('transfers') || canOpen('receipts') ? [['', rr[1], 'needs']] : []),
     ...(canOpen('receipts') ? [['', rr[2], 'price']] : []),
   ];
-  const tiles = [...extra, ...base].slice(0, 6);
+  const list = [...extra, ...base];
   return `<div class="rico-intro">
-    <div class="rico-hello">${ricoFace('', 'rico-lg')}<h2>${esc(ricoGreeting())}</h2><p>${esc(t('ricoIntroSub'))}</p></div>
     ${renderRicoInbox()}
-    <div class="rico-tiles">${tiles.map(([action, text, icon])=>`<button type="button" class="rico-tile" data-rico-ask="${esc(text)}"${action ? ` data-rico-action="${action}"` : ''}>${RICO_TILE_ICONS[icon] || ''}<span>${esc(text)}</span></button>`).join('')}</div>
+    <div class="rico-hello">${ricoFace('', 'rico-lg')}<h2>${esc(ricoGreeting())}</h2><p>${esc(t('ricoIntroSub'))}</p></div>
+    <div class="rico-chips at-start" id="ricoChips">${list.map(([action, text, icon])=>`<button type="button" class="rico-chip" data-rico-ask="${esc(text)}"${action ? ` data-rico-action="${action}"` : ''}><span class="rico-chip-ic ic-${icon}">${RICO_TILE_ICONS[icon] || ''}</span><span dir="auto">${esc(text)}</span></button>`).join('')}</div>
   </div>`;
+}
+/* The questions fade out at the edge that has more to scroll to (and not at an edge that has none). */
+function attachRicoChips(){
+  const box = document.getElementById('ricoChips');
+  if(!box) return;
+  const edges = ()=>{ box.classList.toggle('at-start', box.scrollTop < 4); box.classList.toggle('at-end', box.scrollTop + box.clientHeight >= box.scrollHeight - 4); };
+  box.addEventListener('scroll', edges, {passive:true});
+  requestAnimationFrame(edges);
 }
 const RICO_TILE_ICON = d=>`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const RICO_TILE_ICONS = {
@@ -633,7 +673,8 @@ function attachAssistantEvents(){
   const input = document.getElementById('ricoInput');
   const form = document.getElementById('ricoComposer');
   if(input){
-    const grow = ()=>{ input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; };
+    // The send button lights up once there is something to send (like ChatGPT's).
+    const grow = ()=>{ input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; form?.classList.toggle('has-text', !!input.value.trim()); };
     input.addEventListener('input', grow);
     input.addEventListener('keydown', e=>{
       if(e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); form.requestSubmit(); }
@@ -652,7 +693,7 @@ function attachAssistantEvents(){
     if(!text) return;
     const context = ricoContext();
     if(!(await aiConsent()) || !ricoContextCurrent(context)) return;   // the message stays in the box
-    input.value = ''; input.style.height = 'auto'; lset(ricoDraftKey(), null);
+    input.value = ''; input.style.height = 'auto'; form.classList.remove('has-text'); lset(ricoDraftKey(), null);
     ricoAsk(text);
   };
   document.getElementById('ricoNewBtn')?.addEventListener('click', ()=>ricoNewChat());
@@ -662,6 +703,7 @@ function attachAssistantEvents(){
   // The sidebar never touches the page or the focus, so it fills in even while someone is typing.
   if(rico.chats === null) ricoLoadChats().then(()=>{ if(state.view === 'assistant') syncRicoSide(); });
   attachRicoThreadEvents(document.getElementById('mainContent') || document);
+  attachRicoChips();
   if(rico.messages.length) ricoScroll(false);
   ricoMarkInboxRead();
 }
@@ -824,7 +866,7 @@ async function ricoAsk(text, options = {}){
   if(state.view === 'assistant'){
     ricoPaintMessage(idx);
     ricoRefreshComposer();
-    document.getElementById('ricoNewBtn')?.removeAttribute('disabled');
+    ricoRefreshHead();
   }
 }
 /* Repaints one message in place (no full re-render while text streams in). */
@@ -1033,7 +1075,7 @@ async function ricoNameChat(question, answer){
   if(!title || !ricoContextCurrent(context) || rico.messages[0] !== before || rico.chatTitle || rico.titleManual) return;
   rico.chatTitle = title; rico.titleLoaded = false;
   const c = rico.chats?.find(x=>x.id === rico.chatId); if(c) c.title = title;
-  if(state.view === 'assistant'){ syncRicoSide(); const h = document.querySelector('.rico-head-title'); if(h) h.textContent = ricoHeadTitle(); }
+  if(state.view === 'assistant'){ syncRicoSide(); ricoRefreshHead(); }
   ricoSaveSoon();
 }
 async function ricoLoadChats(){

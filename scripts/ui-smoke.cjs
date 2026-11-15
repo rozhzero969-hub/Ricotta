@@ -456,7 +456,7 @@ const server=http.createServer((req,res)=>{
     await openView(page,'assistant');
     assert.equal(await page.locator('.rico-note').count(),1,'Rico\u2019s own message is at the top');
     assert.equal(await page.locator('.rico-week, .rico-next, .rico-recent').count(),0,'a quiet first screen: a greeting, his message and the shortcuts only');
-    assert.ok(await page.locator('.rico-tile').count()>=4,'the shortcuts are there');
+    assert.ok(await page.locator('.rico-chip').count()>=4,'the shortcuts are small chips');
     assert.equal(await page.locator('#ricoNameForm').count(),0,'Rico never asks for a name');
     assert.ok(calls.some(c=>c.endpoint==='assistant/inbox/read'),'opening Rico reads his messages');
     // Clicking into Rico's message box must not resize the page (the body once picked up the typing-bubble style).
@@ -564,6 +564,14 @@ const server=http.createServer((req,res)=>{
     await snapshot(page,'phone-order-ku.png');
     await page.evaluate(()=>setLang('ar'));await snapshot(page,'phone-order-ar.png');
     await openView(page,'assistant');await snapshot(page,'phone-rico-ar.png');
+    // Rico on a phone looks like ChatGPT's app: his own round-button bar, small chips that scroll, a pill message box.
+    await page.evaluate(()=>{ setLang('en'); rico.messages=[]; render(); });
+    assert.equal(await page.locator('#ricoTopbar').isVisible(),true,'Rico has his own top bar on a phone');
+    assert.equal(await page.locator('.topbar:not(.rico-topbar)').isVisible(),false,'the app bar steps aside for it');
+    assert.equal(await page.locator('#ricoChips').evaluate(el=>getComputedStyle(el).overflowY),'auto','the chips scroll');
+    await snapshot(page,'phone-rico-en.png');
+    await openView(page,'order');await openView(page,'settings');await snapshot(page,'phone-settings-en.png');
+    assert.equal(await page.locator('#ricoTopbar').count(),0,'Rico\u2019s bar leaves with him');
     await ctx.close();
 
     /* ---------- A phone with a touch screen ---------- */

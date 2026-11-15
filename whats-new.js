@@ -3,6 +3,16 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-15a', date:'2026-11-15', notes:{
+    en:['On a phone, Rico looks like ChatGPT: a round Chats button, his name at the top (tap it for his settings) and a rounder message box.',
+      'The questions on Rico\u2019s first screen are small buttons now. Scroll them up and down just above the message box.',
+      'Settings: clearer pictures of what each setting does (each sound has its own), icons in the middle of their rows, and the i right after the setting\u2019s name.'],
+    ku:['لە مۆبایل، ریکۆ وەک ChatGPT دەردەکەوێت: دوگمەیەکی خڕی گفتوگۆکان، ناوی لە سەرەوە (دایبگرە بۆ ڕێکخستنەکانی) و سندوقی نامەی خڕتر.',
+      'پرسیارەکانی شاشەی یەکەمی ریکۆ ئێستا دوگمەی بچووکن. لە سەرووی سندوقی نامەکە بەرەو سەرەوە و خوارەوە بیانجووڵێنە.',
+      'ڕێکخستنەکان: وێنەی ڕوونتر بۆ ئەوەی هەر ڕێکخستنێک چی دەکات (هەر دەنگێک وێنەی خۆی هەیە)، ئایکۆنەکان لە ناوەڕاستی دێڕەکانیانن، و i ڕاستەوخۆ دوای ناوی ڕێکخستنەکەیە.'],
+    ar:['في الهاتف يبدو ريكو مثل ChatGPT: زر دائري للمحادثات، واسمه في الأعلى (اضغطه لإعداداته) ومربع رسائل أكثر استدارة.',
+      'الأسئلة في شاشة ريكو الأولى أصبحت أزرارًا صغيرة. مرّرها للأعلى والأسفل فوق مربع الرسائل مباشرة.',
+      'الإعدادات: صور أوضح لما يفعله كل إعداد (ولكل صوت صورته)، والأيقونات في وسط صفوفها، وزر i بعد اسم الإعداد مباشرة.']}},
   {id:'2026-11-14e', date:'2026-11-14', notes:{
     en:['Rico opens without any jump, with a calmer sidebar: New chat, Search, your chats and a small settings button.',
       'Right-click a chat (or hold it on a phone) to rename or delete it. Rico names each chat by its topic.',

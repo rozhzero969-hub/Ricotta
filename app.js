@@ -960,6 +960,7 @@ function render(){
   app.classList.remove('static-update');
   app.dataset.shell = shellKey(); app.dataset.screen = state.view;
   syncRicoSide();   // Rico's own sidebar sits in the shell, beside the app's (never inside the sliding page)
+  syncRicoTopbar(); // and on a phone his own top bar takes the app's top bar's place
   attachContentEvents();
   attach();
   if(state.view !== 'assistant') document.body.classList.remove('rico-composing');
@@ -1777,6 +1778,7 @@ function updateTopbar(fromScroll = false){
   if(!bar) return;
   const y = scrollBox().scrollTop;
   bar.classList.toggle('scrolled', y > 6);
+  document.getElementById('ricoTopbar')?.classList.toggle('scrolled', y > 6);
   const title = bar.querySelector('.topbar-title');
   if(title){ const label = viewLabel(state.view); if(title.textContent !== label) title.textContent = label; }
   const titled = y > 64;
