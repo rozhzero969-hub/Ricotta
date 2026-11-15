@@ -8,6 +8,8 @@
 //   - the api function, for a signed-in person:
 //       {type:"supplier-test", supplierId}        test of one supplier's reminder
 //       {type:"assistant", title, bodyEn, bodyKu, bodyAr}  a message sent through Rico
+//   - the api function, when items drop to their low stock level (api low-stock.ts):
+//       {type:"low-stock", bodyEn, bodyKu, bodyAr}  to Rozh's and Yunis's signed-in phones
 //   - the api function, after a sign-in from a phone never seen before:
 //       {type:"security", account, excludeDevice, bodyEn, bodyKu, bodyAr}  to that account's other phones
 //
@@ -580,6 +582,14 @@ Deno.serve(async (req) => {
         return json(await sendReminder((lang) => ({
           title: title || RICO[lang], body: w.pick(lang), kind: "assistant", mood: RICO_MOOD, tag: `ricotta-assistant-${Date.now()}`,
         }), title ? undefined : await ricoAccounts()));
+      }
+      case "low-stock": {
+        // Items at or below their low stock level (api low-stock.ts): Rozh's and Yunis's signed-in phones.
+        const w = written(body);
+        if (!w.any) return json({ error: "empty message" }, 400);
+        return json(await sendReminder((lang) => ({
+          title: L(lang, "Low stock", "کاڵا کەمە", "مخزون منخفض"), body: w.pick(lang), kind: "low-stock", tag: `ricotta-low-stock-${Date.now()}`,
+        }), new Set(ACCOUNTS)));
       }
       case "supplier-test": {
         const { data: s } = await sb.from("app_suppliers").select("id,name").eq("id", String(body.supplierId ?? "")).maybeSingle();

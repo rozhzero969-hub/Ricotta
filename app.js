@@ -2338,7 +2338,7 @@ function renderOrderResults(){
 function itemRowHtml(i, lastQty){
   const qty = state.cart[i.id] || 0;
   return `
-      <div class="item-row ${qty>0?'has-qty':''}" data-item-id="${esc(i.id)}">
+      <div class="item-row ${qty>0?'has-qty':''}${itemLowAlert(i) ? ' low-alert' : ''}" data-item-id="${esc(i.id)}">
         <div class="item-info">
           <div class="item-name">${state.pins.includes(i.id) ? `<span class="item-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(i.name)}</div>
 
@@ -2360,14 +2360,24 @@ function stockHtml(st){
   if(st.empty) return esc(t('stockNoneMain'));
   return esc(t('stockLineMain')('\u2063')).replace('\u2063', `<bdi dir="${isRtl() ? 'rtl' : 'ltr'}">${esc(stockQty(st.qty))} ${esc(st.unit)}</bdi>`);
 }
+/* Low stock alert (Manage): the item is at or below its own level, counted in its stock item's counting
+   format (4 cartons, 4 pieces, 4 kilos). The server alerts Rozh and Yunis once; the Order screen shows
+   the item yellow for as long as it stays that low. */
+function itemLowAlert(i){
+  const st = i.stockItem && i.stock, n = i.lowAlert;
+  return n !== null && n !== undefined && !!st && !st.missing && !!st.count && Number(st.count.qty) <= Number(n) + 1e-9;
+}
 function itemStockLine(i){
   const st = i.stockItem && i.stock;
   if(!st || st.missing) return '';
-  // The colour says the state at a glance: red empty, amber low (under 3 days at the usual pace), green
-  // in stock. The words say the same for anyone who can't tell the colours apart ("None", "Low").
-  const lvl = st.empty ? 'empty' : ['low', 'ok'].includes(st.level) ? st.level : '';
-  const when = [st.at ? t('stockReadAgo')(timeAgo(st.at)) : '', lvl === 'low' ? t('stockLowHint') : ''].filter(Boolean).join(' · ');
-  return `<div class="item-stock${lvl ? ' lvl-' + lvl : ''}${st.empty ? ' none' : ''}"${when ? ` title="${esc(when)}"` : ''}>${stockHtml(st)}${lvl === 'low' ? ` <span class="item-stock-tag">${esc(t('stockLowTag'))}</span>` : ''}</div>`;
+  // The colour says the state at a glance: red empty, amber low (at or below its alert level, or under
+  // 3 days at the usual pace), green in stock. The words say the same for anyone who can't tell the
+  // colours apart ("None", "Low").
+  const alerted = itemLowAlert(i);
+  const lvl = st.empty ? 'empty' : alerted ? 'low' : ['low', 'ok'].includes(st.level) ? st.level : '';
+  const when = [st.at ? t('stockReadAgo')(timeAgo(st.at)) : '', lvl === 'low' && !alerted ? t('stockLowHint') : ''].filter(Boolean).join(' · ');
+  const tag = lvl !== 'low' ? '' : alerted ? t('lowAlertTag')(stockQty(i.lowAlert), st.count.unit || '') : t('stockLowTag');
+  return `<div class="item-stock${lvl ? ' lvl-' + lvl : ''}${st.empty ? ' none' : ''}"${when ? ` title="${esc(when)}"` : ''}>${stockHtml(st)}${tag ? ` <span class="item-stock-tag" dir="auto">${esc(tag)}</span>` : ''}</div>`;
 }
 // On a phone (no hover), a tap on the stock line says how old the reading is.
 document.addEventListener('click', e=>{ const el = e.target.closest?.('.item-stock[title]'); if(el && matchMedia('(hover: none)').matches) toast(el.title); });
@@ -2811,8 +2821,8 @@ function openItemMenu(row){
 
 /* The item's stock link on its own, from the item menu: suggestions first, search for anything else. */
 function openStockLinkSheet(id){
-  const {el} = openKitchenSheet('stock-link-sheet', `<div class="sel-title" dir="auto">${esc(state.items.find(i=>i.id === id)?.name || '')}</div><div class="field stock-link" id="ctxStock"></div>`, t('cmLinkStock'));
-  mountStockLink(el.querySelector('#ctxStock'), id);
+  const {el} = openKitchenSheet('stock-link-sheet', `<div class="sel-title" dir="auto">${esc(state.items.find(i=>i.id === id)?.name || '')}</div><div class="field stock-link" id="ctxStock"></div><div class="field low-alert" id="ctxLow"></div>`, t('cmLinkStock'));
+  mountStockLink(el.querySelector('#ctxStock'), id, {onSaved:mountLowAlert(el.querySelector('#ctxLow'), id)});
 }
 async function copyItemName(name){
   try{ await navigator.clipboard.writeText(name); toast(t('cmCopied')); }
@@ -3618,12 +3628,12 @@ function openItemModal(id){
         ${existing ? '' : `<div class="field-hint" id="mfSupHint">${lockedSupplier ? esc(t('supplierStaysSelected')(lockedSupplier.name)) : ''}</div>`}
       </div>
       <label class="check-row"><input type="checkbox" id="mfAvailable" ${existing?.available===false?'':'checked'}>${esc(t('availableToOrder'))}</label><div class="field"><label for="mfAliases">${esc(t('searchAliases'))}</label><input id="mfAliases" value="${esc((existing?.aliases||[]).join(', '))}" maxlength="1440" dir="auto"><small class="field-hint">${esc(t('aliasesHint'))}</small></div><div class="field"><label for="mfNote">${esc(t('itemNoteLabel'))}</label><input id="mfNote" maxlength="120" autocomplete="off" dir="auto" value="${esc(existing?.note||'')}"><div class="field-hint">${esc(t('itemNoteHint'))}</div></div>
-      ${existing ? `<div class="field stock-link" id="mfStock"></div>` : `<div class="field"><label>${esc(t('stockLinkLabel'))}</label><div class="field-hint">${esc(t('stockLinkAfterSave'))}</div></div>`}
+      ${existing ? `<div class="field stock-link" id="mfStock"></div><div class="field low-alert" id="mfLow"></div>` : `<div class="field"><label>${esc(t('stockLinkLabel'))}</label><div class="field-hint">${esc(t('stockLinkAfterSave'))}</div></div>`}
       `,
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
     onOpen: (box)=>{
-      if(existing) mountStockLink(box.querySelector('#mfStock'), existing.id);
+      if(existing){ const low = mountLowAlert(box.querySelector('#mfLow'), existing.id); mountStockLink(box.querySelector('#mfStock'), existing.id, {onSaved:low}); }
       const sel = box.querySelector('#mfSupplier');
       const hint = box.querySelector('#mfSupHint');
       if(sel && hint) sel.onchange = ()=>{
@@ -3807,6 +3817,55 @@ function mountStockLink(box, itemId, opts = {}){
   };
   paint();   // suggestions need the list of stock items: paint() reads it once when needed
   if(open) box.querySelector('#mfStockSearch')?.focus();
+}
+/* The low stock alert of one item: on or off, and the level, in its stock item's counting format (the
+   unit Ricotta Restaurant counts it in: cartons, pieces, kilos). It saves on its own, apart from the
+   form's Save. Returns a function that paints it again (after the stock link changed). */
+function mountLowAlert(box, itemId){
+  if(!box) return ()=>{};
+  let on = null;   // switched on, level not saved yet
+  const item = ()=>state.items.find(x=>x.id === itemId);
+  const paint = ()=>{
+    const i = item(); if(!i || !box.isConnected){ return; }
+    const st = i.stockItem && i.stock && !i.stock.missing ? i.stock : null, unit = st?.count?.unit || '';
+    if(!i.stockItem){ box.innerHTML = `<label>${esc(t('lowAlertLabel'))}</label><div class="field-hint">${esc(t('lowAlertNeedsLink'))}</div>`; return; }
+    const isOn = on ?? (i.lowAlert !== null && i.lowAlert !== undefined);
+    const now = st?.count ? `${stockQty(st.count.qty)} ${unit}`.trim() : '';
+    box.innerHTML = `<label>${esc(t('lowAlertLabel'))}</label>
+      <label class="check-row low-alert-on"><input type="checkbox" data-low-on ${isOn ? 'checked' : ''}><span>${esc(t('lowAlertOn'))}</span></label>
+      ${isOn ? `<div class="low-alert-level"><label for="lowLevel${esc(i.id)}">${esc(t('lowAlertAt'))}</label><input id="lowLevel${esc(i.id)}" type="number" inputmode="decimal" min="0" max="999999" step="any" placeholder="4" value="${i.lowAlert ?? ''}" data-low-level><b dir="auto">${esc(unit)}</b><button type="button" class="btn btn-primary" data-low-save>${esc(t('save'))}</button></div>
+      ${now ? `<div class="field-hint" dir="auto">${esc(t('lowAlertHint')(unit, now))}</div>` : ''}` : ''}`;
+  };
+  const save = async level=>{
+    const i = item(); if(!i) return;
+    const r = await api(`items/${encodeURIComponent(i.id)}/low-alert`, {method:'PUT', body:{level}});
+    if(!r.ok){
+      const e = r.data?.error;
+      toast(e === 'not_ready' || e === 'not_found' ? t('lowAlertNotReady') : e === 'not_linked' ? t('lowAlertNeedsLink') : e === 'invalid_input' ? t('lowAlertInvalid') : t('saveFailed'), 'error');
+      return;
+    }
+    if(r.data.lowAlert === null || r.data.lowAlert === undefined) delete i.lowAlert; else i.lowAlert = r.data.lowAlert;
+    on = null; paint();
+    if(state.view === 'order') refreshOrderResults?.();
+    toast(level === null ? t('lowAlertOff') : t('lowAlertSaved'));
+  };
+  const saveTyped = ()=>{
+    const input = box.querySelector('[data-low-level]'); if(!input) return;
+    const level = input.value.trim() === '' ? null : globalThis.RicottaStockLink.lowLevel(input.value);
+    if(level === null){ toast(t('lowAlertInvalid'), 'error'); input.focus(); return; }
+    return save(level);
+  };
+  box.onchange = e=>{
+    const cb = e.target.closest?.('[data-low-on]'); if(!cb) return;
+    const i = item(); if(!i) return;
+    if(cb.checked){ on = true; paint(); box.querySelector('[data-low-level]')?.focus(); return; }
+    on = false;
+    if(i.lowAlert !== null && i.lowAlert !== undefined) save(null); else paint();
+  };
+  box.onclick = e=>{ const b = e.target.closest('[data-low-save]'); if(b) withBusy(b, saveTyped); };
+  box.onkeydown = e=>{ if(e.key === 'Enter' && e.target.matches?.('[data-low-level]')){ e.preventDefault(); saveTyped(); } };
+  paint();
+  return ()=>{ on = null; paint(); };
 }
 /* Link many items quickly (Manage, Items): first the links that may be wrong (stockDoubt()), then every
    item not linked yet, each with its best matches, one tap each, and a search for any other stock item

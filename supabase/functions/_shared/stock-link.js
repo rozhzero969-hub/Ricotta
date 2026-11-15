@@ -320,5 +320,40 @@
     return { days, level: have <= 0 ? 'empty' : days !== null && days < LOW_DAYS ? 'low' : 'ok' };
   }
 
-  globalThis.RicottaStockLink = Object.freeze({ MAIN, LOW_DAYS, USE_DAYS, words, matches, rank, suggest, sure, doubt, sameSupplier, amount, usage, level });
+  /* Low stock alerts. Rozh sets a level per ordering item (Manage); it is counted in the stock item's
+     counting format, the first unit Ricotta Restaurant counts it in (its counting unit, else its buying
+     unit, else its usage unit): 4 is 4 cartons for an item counted in cartons, 4 pieces, 4 kilos.
+     counted(): how much is in the storage in that unit, rounded down to 3 decimals. {qty, unit} */
+  function counted(titem, zone = MAIN) {
+    return T().inCounting(titem, T().available(titem, zone), true);
+  }
+  /* A level that means something: a number from 0 to 999999 (at most 3 decimals), else null (no alert). */
+  function lowLevel(v) {
+    if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 && n <= 999999 ? Math.round(n * 1000) / 1000 : null;
+  }
+  /* At or below the level (no level: never). */
+  function atOrBelow(titem, low, zone = MAIN) {
+    const n = lowLevel(low);
+    return n !== null && !!titem && counted(titem, zone).qty <= n + 1e-9;
+  }
+  /* What a new read of the stock means for the items with a level: rows [{id, stock_item, low_alert,
+     low_alerted_at}] -> {alert: rows now at or below that have not been alerted, clear: ids back above
+     their level that were}. An alert goes once per drop: the item has to go back above the level before
+     it can alert again. An item whose stock item is not in the list changes nothing. */
+  function lowChanges(rows, titems) {
+    const byName = new Map((titems || []).map((t) => [t && t.name, t]));
+    const alert = [], clear = [];
+    for (const r of rows || []) {
+      const t = r && r.stock_item && byName.get(r.stock_item);
+      if (!t || lowLevel(r.low_alert) === null) continue;
+      const low = atOrBelow(t, r.low_alert);
+      if (low && !r.low_alerted_at) alert.push({ ...r, count: counted(t) });
+      else if (!low && r.low_alerted_at) clear.push(r.id);
+    }
+    return { alert, clear };
+  }
+
+  globalThis.RicottaStockLink = Object.freeze({ MAIN, LOW_DAYS, USE_DAYS, words, matches, rank, suggest, sure, doubt, sameSupplier, amount, usage, level, counted, lowLevel, atOrBelow, lowChanges });
 })();
