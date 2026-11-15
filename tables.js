@@ -43,14 +43,15 @@ const TABLES = {
       {id:'kind', label:()=>t('itemKindLabel'), value:i=>t(itemKind(i) === 'expense' ? 'kindExpense' : 'kindFood'), sort:i=>itemKind(i), text:true, hidden:true},
       {id:'note', label:()=>t('itemNoteLabel'), value:i=>i.note || '', sort:i=>i.note || '', text:true, hidden:true},
     ],
-    filters:[
+    // A getter, so the Food and Expenses chips follow what the server and the catalog say now.
+    get filters(){ return [
       {id:'all', label:()=>t('filterAll'), test:()=>true},
       ...(state.expensesReady || state.items.some(i=>itemKind(i) === 'expense') ? [{id:'food', label:()=>t('kindFood'), test:i=>itemKind(i) === 'food'}, {id:'expense', label:()=>t('kindExpenses'), test:i=>itemKind(i) === 'expense'}] : []),
       {id:'unavailable', label:()=>t('fileUnavailable'), test:i=>i.available === false},
       {id:'noSupplier', label:()=>t('noSupplier'), test:i=>!i.supplierId || !state.suppliers.some(s=>s.id === i.supplierId)},
       {id:'quiet', label:()=>t('check_quiet'), test:i=>i.available !== false && (itemLast(i) ? Date.now() - Date.parse(itemLast(i)) > QUIET_MS : !!i.createdAt && Date.now() - Date.parse(i.createdAt) > QUIET_MS)},
       {id:'ordered', label:()=>t('fileOrderedMonth'), test:i=>!!tableStats().items[i.id]},
-    ],
+    ]; },
   },
   suppliers:{
     rows:()=>state.suppliers,
@@ -63,13 +64,14 @@ const TABLES = {
       {id:'month', label:()=>t('fileOrdersMonth'), value:s=>String(tableStats().suppliers[s.id]?.orders.size || 0), sort:s=>tableStats().suppliers[s.id]?.orders.size || 0, end:true, short:n=>t('tableOrders')(n)},
       {id:'last', label:()=>t('fileLastOrder'), value:s=>tableStats().suppliers[s.id]?.last ? timeAgo(tableStats().suppliers[s.id].last) : t('never'), sort:s=>tableStats().suppliers[s.id]?.last || '', short:v=>v},
     ],
-    filters:[
+    // A getter, so the Food and Expenses chips follow what the server and the catalog say now.
+    get filters(){ return [
       {id:'all', label:()=>t('filterAll'), test:()=>true},
       ...(state.expensesReady || state.suppliers.some(s=>supplierBuys(s) !== 'food') ? [{id:'food', label:()=>t('kindFood'), test:s=>supplierSells(s, 'food')}, {id:'expense', label:()=>t('kindExpenses'), test:s=>supplierSells(s, 'expense')}] : []),
       {id:'reminder', label:()=>t('tableWithReminder'), test:s=>!!s.reminder?.enabled},
       {id:'noPhone', label:()=>t('tableNoPhone'), test:s=>!String(s.phone || '').trim()},
       {id:'ordered', label:()=>t('fileOrderedMonth'), test:s=>!!tableStats().suppliers[s.id]},
-    ],
+    ]; },
   },
 };
 function tableColumns(kind){
