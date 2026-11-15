@@ -4327,7 +4327,8 @@ boot();
     const started = performance.now();
     // On Order: the other tab first (it shows straight away), then the refresh fills in anything new.
     if(kinds && state.view === 'order') switchOrderKind(otherKind());
-    try{ await refreshData(true); }catch(_){ /* the page simply settles back */ }
+    // A pull is asked for, so it always loads, even right after another load (no 15 second wait).
+    try{ await refreshData('live'); }catch(_){ /* the page simply settles back */ }
     await new Promise(r=>setTimeout(r, Math.max(0, 700 - (performance.now() - started))));
     turn?.cancel(); back();
   };
