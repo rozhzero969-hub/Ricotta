@@ -748,6 +748,7 @@ html.rtl .modal-banner-label{letter-spacing:0}
 @keyframes statusIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .force-title{font-size:1.25rem;font-weight:700;margin-bottom:8px}
 #forceRoot .modal-overlay{z-index:400;background:rgba(0,0,0,.4)}
+#modalRoot .modal-overlay.over-sheet{z-index:310}
 .item-sort-hint{margin-bottom:12px;color:var(--ink-soft);font-size:.8125rem;line-height:1.5;font-weight:400}
 .item-sort-list{display:grid;gap:8px;max-height:min(56vh,540px);overflow-y:auto;overscroll-behavior:contain;padding:2px 3px 4px}
 .item-sort-row{display:grid;grid-template-columns:28px minmax(0,1fr) 40px;align-items:center;gap:10px;min-height:54px;padding:7px 9px;border:0;border-radius:14px;background:var(--fill)}

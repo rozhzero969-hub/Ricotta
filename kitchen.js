@@ -11,7 +11,7 @@
      removes orders; Yunis asks her.
    The server keeps the streak; this file only shows it.
    Depends on (runtime only): state, t, esc, api, render, goView, toast,
-   showConfirm, showAlert, ricoFace, ricoAsk, formatIraqDateTime, timeAgo,
+   showConfirm, showAlert, modalAboveSheet, ricoFace, ricoAsk, formatIraqDateTime, timeAgo,
    accountLabel, unitLabel, supplierName, isRozha. */
 
 /* ---------- The streak ---------- */
@@ -55,7 +55,7 @@ function openKitchenSheet(cls, html, label){
     sheetLeave(wrap, velocity);
   };
   activeSelSheet = close;
-  const onKey = e=>{ if(e.key === 'Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); } };
+  const onKey = e=>{ if(e.key === 'Escape' && !modalAboveSheet()){ e.preventDefault(); e.stopImmediatePropagation(); close(); } };
   document.addEventListener('keydown', onKey, true);
   wrap.querySelector('.sel-scrim').onclick = ()=>close();
   attachSheetDrag(wrap, close);

@@ -1642,6 +1642,7 @@ function openSelSheet(sel){
   };
   activeSelSheet = close;
   const onKey = e=>{
+    if(modalAboveSheet()) return;
     if(e.key === 'Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); return; }
     if(e.key !== 'Tab') return;
     const buttons = [...wrap.querySelectorAll('input,button')].filter(el=>!el.disabled);

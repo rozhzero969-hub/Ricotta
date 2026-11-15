@@ -66,6 +66,11 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await opt.click();await page.locator('#modalOkBtn').waitFor();
  assert.match(await page.locator('.modal-box').innerText(),/does not match[\s\S]*Link anyway/);
  assert.equal(puts.length,n,'nothing saved before the answer');
+ // The question sits above the sheet: Escape answers it (no link) and leaves the sheet open.
+ await page.keyboard.press('Escape');await page.locator('#modalOkBtn').waitFor({state:'detached'});
+ assert.equal(await page.locator('.stock-many-sheet:not(.out)').count(),1,'sheet still open after Escape on the question');
+ assert.equal(puts.length,n,'Escape links nothing');
+ await opt.click();await page.locator('#modalOkBtn').waitFor();
  await page.locator('#modalOkBtn').click();
  await row('fries').locator('[data-many-undo]').waitFor();
  assert.deepEqual(puts.at(-1),{id:'fries',stockItem:'Banana - مۆز',anyway:true});
