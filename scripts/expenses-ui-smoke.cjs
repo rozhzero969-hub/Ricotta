@@ -73,14 +73,14 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.evaluate(()=>openSupplierModal(null));await page.locator('#mfBuys').waitFor();
  assert.equal(await page.locator('#mfBuys [aria-checked="true"]').getAttribute('data-buys'),'food','a new supplier starts as Food');
  await page.locator('#mfName').fill('Cleaning Supplies');await page.locator('#mfBuys [data-buys="expenses"]').click();
- await page.locator('#modalOkBtn').click();await page.waitForSelector('.modal-overlay',{state:'detached'});
+ await page.locator('#modalFormOk').click();await page.locator('#mfName').waitFor({state:'detached'});
  const put=calls.find(c=>c.method==='PUT'&&c.endpoint.startsWith('suppliers/'));
  assert.equal(put?.body?.buys,'expenses','the supplier is saved as Expenses');
  // An edit sends only the change.
  await page.evaluate(()=>openSupplierModal('w'));await page.locator('#mfBuys').waitFor();
  await page.locator('#mfBuys [data-buys="food"]').click();
  assert.match(await page.locator('#mfBuysHint').textContent(),/1 item stays in Expenses/,'narrowing says the items stay');
- await page.locator('#modalOkBtn').click();await page.waitForSelector('.modal-overlay',{state:'detached'});
+ await page.locator('#modalFormOk').click();await page.locator('#mfName').waitFor({state:'detached'});
  const edit=calls.filter(c=>c.method==='PUT'&&c.endpoint==='suppliers/w').pop();
  assert.deepEqual(edit.body,{buys:'food',only:['buys']});
  await page.evaluate(()=>{state.suppliers.find(s=>s.id==='w').buys='both';});
@@ -94,7 +94,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  const foodOpts=await options();assert.ok(foodOpts.includes('s')&&foodOpts.includes('w')&&!foodOpts.includes('c'),'food suppliers only: '+foodOpts);
  await page.locator('#mfKind [data-itemkind="expense"]').click();
  await page.locator('#mfName').fill('Paper cups');await page.locator('#mfUnit').selectOption('ct');await page.locator('#mfSupplier').selectOption('c');
- await page.locator('#modalOkBtn').click();await page.waitForSelector('.modal-overlay',{state:'detached'});
+ await page.locator('#modalFormOk').click();await page.locator('#mfName').waitFor({state:'detached'});
  const item=calls.find(c=>c.method==='PUT'&&c.endpoint.startsWith('items/')&&c.body?.name==='Paper cups');
  assert.equal(item?.body?.kind,'expense','the item is saved as an expense');
  assert.equal(item.body.unit,'ct','with a unit from Units');
