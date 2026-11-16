@@ -3,6 +3,16 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-16e', date:'2026-11-16', notes:{
+    en:['Recipes is simpler: one switch for Recipes and Items and ingredients. Each ingredient shows its last price, like 1 kg = 4,000 IQD, with the day and the supplier.',
+      'Costs, profit and suggested prices are rounded to the nearest 250 IQD. A recipe with an ingredient that has no price yet says which one instead of showing a cost. Where do these numbers come from? shows the working.',
+      'Hold a recipe or an ingredient (right-click on a computer) to edit or delete it. Rico can read the recipes too.'],
+    ku:['ڕەچەتەکان سادەترن: یەک سویچ بۆ ڕەچەتەکان و کاڵا و پێکهاتەکان. هەر پێکهاتەیەک دوایین نرخەکەی پیشان دەدات، وەک 1 کیلۆ = 4,000 IQD، لەگەڵ ڕۆژ و دابینکەر.',
+      'تێچوو، قازانج و نرخی پێشنیارکراو بۆ نزیکترین 250 دینار خڕ دەکرێنەوە. ڕەچەتەیەک کە پێکهاتەیەکی بێ نرخی هەبێت دەڵێت کامەیە لە جیاتی پیشاندانی تێچوو. ئەم ژمارانە لە کوێوە دێن؟ حسابەکە پیشان دەدات.',
+      'پەنجە لەسەر ڕەچەتەیەک یان پێکهاتەیەک ڕابگرە (کلیکی ڕاست لە کۆمپیوتەر) بۆ دەستکاری یان سڕینەوە. ریکۆش دەتوانێت ڕەچەتەکان بخوێنێتەوە.'],
+    ar:['أصبحت الوصفات أبسط: مفتاح واحد للوصفات والمواد والمكونات. يعرض كل مكوّن آخر سعر له، مثل 1 كغ = 4,000 IQD، مع اليوم والمورّد.',
+      'تُقرَّب التكلفة والربح والسعر المقترح إلى أقرب 250 دينارًا. الوصفة التي فيها مكوّن بلا سعر بعد تذكر أي مكوّن هو بدل عرض تكلفة. من أين تأتي هذه الأرقام؟ يعرض الحساب.',
+      'اضغط مطولًا على وصفة أو مكوّن (أو انقر بالزر الأيمن على الكمبيوتر) لتعديله أو حذفه. ويستطيع ريكو قراءة الوصفات أيضًا.']}},
   {id:'2026-11-16d', date:'2026-11-16', notes:{
     en:['Admin tells you when Ricotta Restaurant\u2019s item names have mistakes: a line under Needs you, and a message when a new one appears. Fix them there little by little; Admin, Stock names shows what is left and how many you fixed.'],
     ku:['ئەدمین پێت دەڵێت کاتێک ناوی کاڵاکانی ریکۆتا ڕێستۆرانت هەڵەیان تێدایە: دێڕێک لە ژێر چاوەڕێی تۆیە، و نامەیەک کاتێک هەڵەیەکی نوێ دەردەکەوێت. وردە وردە لەوێ ڕاستیان بکەرەوە؛ ئەدمین، ناوی کاڵاکانی کۆگا پیشان دەدات چی ماوە و چەندت ڕاستکردۆتەوە.'],

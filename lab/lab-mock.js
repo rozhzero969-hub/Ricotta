@@ -171,21 +171,26 @@
     lsSet(LS+'apiSession', {token:'lab-'+account, account, name:NAMES[account].en, expiresAt:new Date(Date.now()+18*3600000).toISOString()});
   }
 
-  /* Recipes practice data: Manage's units, two ingredients linked to stock, one recipe and an alert. */
+  /* Recipes practice data: Manage's units, five ingredients linked to stock in three categories (Tomato
+     has never been bought, so it has no price), three recipes (Margherita uses Tomato, so it has no
+     cost yet) and an alert. */
   const LAB_UNITS = [{id:'g', en:'گرام'}, {id:'kg', en:'کیلۆگرام'}, {id:'ml', en:'مل'}, {id:'l', en:'لیتر'}, {id:'piece', en:'دانە'}];
-  const LAB_PRICES = [['Mozzarella - پەنیری مۆزارێلا', 9000, 'کیلۆ'], ['Ricotta Cheese - پەنیری ریکۆتا', 1500, 'دانە'], ['Banana - مۆز', 1500, 'کیلۆ'], ['Olive Oil - زەیتی زەیتوون', 60000, 'کارتۆن']];
+  const LAB_PRICES = [['Mozzarella - پەنیری مۆزارێلا', 9000, 'کیلۆ', 'Zakho Dairy'], ['Ricotta Cheese - پەنیری ریکۆتا', 45000, 'کارتۆن', 'Zakho Dairy'], ['Banana - مۆز', 1500, 'کیلۆ', 'Erbil Fruit'], ['Olive Oil - زەیتی زەیتوون', 60000, 'کارتۆن', 'Golden Oils'], ['Lemon - لیمۆ', 2000, 'کیلۆ', 'Erbil Fruit']];
   function labRecipes(){
-    if(db.recipes) return db.recipes;
-    const ing = [['00000000-0000-4000-8000-00000000a001', 'Mozzarella', 'Mozzarella - پەنیری مۆزارێلا', 'g'], ['00000000-0000-4000-8000-00000000a002', 'Ricotta', 'Ricotta Cheese - پەنیری ریکۆتا', 'piece'],
-      ['00000000-0000-4000-8000-00000000a003', 'Olive oil', 'Olive Oil - زەیتی زەیتوون', 'ml'], ['00000000-0000-4000-8000-00000000a004', 'Tomato', 'Tomato - تەماتە', 'g']].map(([id, name, stock_item, unit])=>({id, name, stock_item, unit, version:1}));
+    if(db.recipeBook2) return db.recipeBook2;
+    const ing = [['00000000-0000-4000-8000-00000000a001', 'Mozzarella', 'Mozzarella - پەنیری مۆزارێلا', 'g', 'Dairy'], ['00000000-0000-4000-8000-00000000a002', 'Ricotta', 'Ricotta Cheese - پەنیری ریکۆتا', 'piece', 'Dairy'],
+      ['00000000-0000-4000-8000-00000000a003', 'Olive oil', 'Olive Oil - زەیتی زەیتوون', 'ml', 'Dry goods'], ['00000000-0000-4000-8000-00000000a004', 'Tomato', 'Tomato - تەماتە', 'g', 'Vegetables'],
+      ['00000000-0000-4000-8000-00000000a005', 'Banana', 'Banana - مۆز', 'g', 'Fruit'], ['00000000-0000-4000-8000-00000000a006', 'Lemon', 'Lemon - لیمۆ', 'g', 'Fruit']].map(([id, name, stock_item, unit, category])=>({id, name, stock_item, unit, category, version:1}));
     const at = new Date(Date.now() - 86400000).toISOString();
-    db.recipes = {ingredients:ing, photos:{}, alerts:[{id:'00000000-0000-4000-8000-00000000b001', at, read:false, en:'Tomato is out in Main Storage. Margherita uses it.', ku:'تەماتە لە کۆگای سەرەکی نەماوە. مارگەریتا بەکاری دەهێنێت.', ar:'نفدت الطماطم في المخزن الرئيسي. مارغريتا تستخدمها.'}],
-      recipes:[{id:'00000000-0000-4000-8000-00000000c001', name:'Margherita', version:1, archived:false, updated_by:'ahmad', updated_at:at,
-        data:{status:'ready', category:'Pizza', yield:1, yieldUnit:'', prep:15, cook:8, price:9000, currency:'IQD', notes:'',
-          lines:[{ingredient:ing[0].id, qty:200, unit:'g'}, {ingredient:ing[2].id, qty:20, unit:'ml'}, {ingredient:ing[3].id, qty:150, unit:'g'}],
-          steps:['Spread the tomato on the dough.', 'Add the mozzarella and a little olive oil.', 'Bake for 8 minutes.']}}]};
+    const recipe = (id, name, category, price, lines, steps, notes = '')=>({id, name, version:1, archived:false, updated_by:'ahmad', updated_at:at,
+      data:{category, price, currency:'IQD', notes, lines:lines.map(([i, qty, unit])=>({ingredient:ing[i].id, qty, unit})), steps}});
+    db.recipeBook2 = {ingredients:ing, photos:{}, alerts:[{id:'00000000-0000-4000-8000-00000000b001', at, read:false, en:'Tomato is out in Main Storage. Margherita uses it.', ku:'تەماتە لە کۆگای سەرەکی نەماوە. مارگەریتا بەکاری دەهێنێت.', ar:'نفدت الطماطم في المخزن الرئيسي. مارغريتا تستخدمها.'}],
+      recipes:[
+        recipe('00000000-0000-4000-8000-00000000c001', 'Margherita', 'Pizza', 9000, [[0, 200, 'g'], [2, 20, 'ml'], [3, 150, 'g']], ['Spread the tomato on the dough.', 'Add the mozzarella and a little olive oil.', 'Bake for 8 minutes.']),
+        recipe('00000000-0000-4000-8000-00000000c002', 'Banana smoothie', 'Drinks', 3000, [[4, 250, 'g'], [5, 20, 'g']], ['Peel the banana.', 'Blend with ice and a squeeze of lemon.'], 'Serve cold in a tall glass.'),
+        recipe('00000000-0000-4000-8000-00000000c003', 'Ricotta toast', 'Breakfast', 4500, [[1, 1, 'piece'], [2, 10, 'ml']], ['Toast the bread.', 'Spread the ricotta and add a little olive oil.'])]};
     save();
-    return db.recipes;
+    return db.recipeBook2;
   }
 
   /* ---- helpers ---- */
@@ -446,7 +451,7 @@
       const R = labRecipes(), RC = globalThis.RicottaRecipeCost;
       if(method === 'GET' && path === 'recipes'){
         const day = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
-        const prices = {}; for(const [name, cost, unit] of LAB_PRICES){ const t = LAB_STOCK.find(x=>x.name === name); const p = RC.priceOf(t, {item:name, unit, cost, currency:'IQD', day, supplier:'Zakho Dairy'}); if(p) prices[name] = p; }
+        const prices = {}; for(const [name, cost, unit, supplier] of LAB_PRICES){ const t = LAB_STOCK.find(x=>x.name === name); const p = RC.priceOf(t, {item:name, unit, cost, currency:'IQD', day, supplier}); if(p) prices[name] = p; }
         return json({recipes:R.recipes, ingredients:R.ingredients, units:LAB_UNITS, stock:LAB_STOCK.map(t=>({name:t.name, base:t.base, count:t.count, buy:t.buy, state:RC.stockState(t, new Set())})),
           prices, pricesReady:true, stockAt:labStockAt(), marginMin:RC.MARGIN_MIN, covers:Object.fromEntries(Object.entries(R.photos).filter(([, l])=>l.length).map(([id, l])=>[id, l[0].url])), alerts:account === 'ahmad' ? R.alerts : []});
       }
@@ -462,15 +467,22 @@
       if(m && method === 'PUT'){
         const i = R.recipes.findIndex(x=>x.id === m[1]), old = R.recipes[i];
         if((old?.version || 0) !== (body.version || 0)) return fail('recipe_conflict', 409);
-        const saved = {id:m[1], name:String(body.name || '').slice(0, 120), data:body.data, archived:!!body.archived, version:(old?.version || 0) + 1, updated_by:account, updated_at:new Date().toISOString()};
+        const d = body.data || {};
+        const saved = {id:m[1], name:String(body.name || '').slice(0, 120), data:{category:String(d.category || '').trim(), price:d.price ?? null, currency:'IQD', lines:d.lines || [], steps:d.steps || [], notes:d.notes || ''}, archived:false, version:(old?.version || 0) + 1, updated_by:account, updated_at:new Date().toISOString()};
         if(i < 0) R.recipes.unshift(saved); else R.recipes[i] = saved; save();
         return json(saved);
+      }
+      // A recipe and its photos, for good (the same as the server).
+      if(m && method === 'DELETE'){
+        if(!R.recipes.some(x=>x.id === m[1])) return fail('not_found', 404);
+        R.recipes = R.recipes.filter(x=>x.id !== m[1]); delete R.photos[m[1]]; save();
+        return ok();
       }
       m = path.match(/^recipe-ingredients\/([^/]+)$/);
       if(m && method === 'PUT'){
         const i = R.ingredients.findIndex(x=>x.id === m[1]), old = R.ingredients[i];
         if(!LAB_STOCK.some(x=>x.name === body.stock_item)) return fail('stock_item_unknown', 422);
-        const saved = {id:m[1], name:String(body.name || '').slice(0, 120), stock_item:body.stock_item, unit:body.unit, version:(old?.version || 0) + 1};
+        const saved = {id:m[1], name:String(body.name || '').slice(0, 120), stock_item:body.stock_item, unit:body.unit, category:String(body.category || '').trim().slice(0, 60), version:(old?.version || 0) + 1};
         if(i < 0) R.ingredients.push(saved); else R.ingredients[i] = saved; save();
         return json(saved);
       }

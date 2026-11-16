@@ -4365,7 +4365,7 @@ function reminderTimeLabel(time){
 /* Notifications are this phone's: one switch. On, it gets Rico's messages and the suppliers' reminders. */
 function renderNotifSettings(){
   const note = !pushConfigured() ? t('notifNotConfigured') : !pushStatus.supported ? t('notifUnsupported') : '';
-  return `<div class="section-title">${esc(t('settingsGroup_notif'))}</div><div class="form-card">${note ? `<div class="notif-sub">${esc(note)}</div>` : `<label class="check-row preference-row has-ico"><input type="checkbox" id="pushSwitch" ${pushStatus.subscribed ? 'checked' : ''}>${setIcon('notif')}<span>${esc(t('notifSwitch'))}<small>${esc(t('notifSwitchHint'))}</small></span></label>`}</div>`;
+  return `<div class="section-title">${esc(t('settingsGroup_notif'))}</div><div class="form-card">${note ? `<div class="notif-sub">${esc(note)}</div>` : `<label class="check-row preference-row has-ico"><input type="checkbox" id="pushSwitch" ${pushStatus.subscribed ? 'checked' : ''}>${setIcon('notif')}<span>${esc(t('notifSwitch'))}<small>${esc(state.account === 'ahmad' && !canOpen('order') ? t('notifSwitchHintRecipes') : t('notifSwitchHint'))}</small></span></label>`}</div>`;
 }
 /* A redraw that keeps one row exactly where it was on the screen (nothing jumps under the finger). */
 function keepRowInPlace(sel, redraw){
