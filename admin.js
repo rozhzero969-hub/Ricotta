@@ -264,12 +264,12 @@ function renderAdminHome(){
     const activeNow = mine.find(d=>deviceStatus(d) === 'active');
     const lastSeen = mine.map(d=>d.lastSeen).filter(Boolean).sort().pop();
     const where = activeNow ? `${t('statusActive')} · ${deviceParts(activeNow).kind}` : lastSeen ? timeAgo(lastSeen) : t('statusLoggedOut');
-    const extra = a === 'yunis' && roles ? t('adScreens')(roles.yunis.length, roles.roles.length) : '';
+    const extra = a === 'yunis' && roles ? t('adScreens')((roles[a] || []).length, roles.roles.length) : '';
     return `<button type="button" class="adh-row adh-person" data-admin-person="${a}">${whoBadge(a)}<span class="adh-main"><small>${esc([where, extra].filter(Boolean).join(' · '))}</small></span>
       <span class="adh-val"><b>${usage ? esc(fmtDuration(p.today)) : '·'}</b><small>${esc(t('today'))}</small></span><span class="ad-row-go" aria-hidden="true">›</span></button>`;
   };
   const signedIn = state.devices.filter(isLoggedIn).length;
-  const people = `<div class="section-title">${esc(t('adPeople'))}</div><div class="adh-list">${person('rozha')}${person('yunis')}
+  const people = `<div class="section-title">${esc(t('adPeople'))}</div><div class="adh-list">${person('rozha')}${person('yunis')}${person('ahmad')}
     <button type="button" class="adh-row" data-admin-open="devices"><span class="adh-ico gray" aria-hidden="true">${ADMIN_ICONS.devices}</span><span class="adh-main"><b>${esc(t('adAllDevices'))}</b><small>${esc(t('adDevicesSub')(state.devices.filter(d=>deviceStatus(d) === 'active').length))}</small></span><span class="adh-val"><b>${signedIn}</b></span><span class="ad-row-go" aria-hidden="true">›</span></button></div>`;
 
   // 6. Tools.
@@ -294,7 +294,7 @@ function renderAdminHome(){
 /* A person's page: their time today and on average, their phones (Refresh or Log out), their PIN, and
    for Yunis what he can open. */
 function renderAdminPerson(){
-  const a = adminFilter.person === 'yunis' ? 'yunis' : 'rozha';
+  const a = ['yunis','ahmad'].includes(adminFilter.person) ? adminFilter.person : 'rozha';
   const usage = adminValue('usage'), p = (usage?.people || []).find(x=>x.account === a);
   const today = /^\d{4}-\d{2}-\d{2}$/.test(String(usage?.today)) ? usage.today : new Date().toISOString().slice(0,10);
   const latest = latestVersion();
@@ -315,7 +315,7 @@ function renderAdminPerson(){
     <div class="adh-list">${phones || `<div class="adh-row"><span class="adh-main"><small>${esc(t('noDevicesYet'))}</small></span></div>`}</div>
     <div class="adh-list adh-links">
       <div class="adh-row"><span class="adh-ico gray" aria-hidden="true">${ADMIN_ICONS.pins}</span><span class="adh-main"><b>PIN</b><small aria-hidden="true">••••••</small></span><button type="button" class="adh-act" data-pin-change="${a}">${esc(t('adminPinChange'))}</button></div>
-      ${a === 'yunis' ? `<button type="button" class="adh-row" data-admin-open="access"><span class="adh-ico gray" aria-hidden="true">${ADMIN_ICONS.access}</span><span class="adh-main"><b>${esc(t('adminPage_access'))}</b><small>${esc(roles ? t('adScreens')(roles.yunis.length, roles.roles.length) : '')}</small></span><span class="ad-row-go" aria-hidden="true">›</span></button>` : ''}
+      ${a !== 'rozha' ? `<button type="button" class="adh-row" data-admin-open="access"><span class="adh-ico gray" aria-hidden="true">${ADMIN_ICONS.access}</span><span class="adh-main"><b>${esc(t('adminPage_access'))}</b><small>${esc(roles ? t('adScreens')((roles[a] || []).length, roles.roles.length) : '')}</small></span><span class="ad-row-go" aria-hidden="true">›</span></button>` : ''}
       <button type="button" class="adh-row" data-admin-open="time"><span class="adh-ico gray" aria-hidden="true">${ADMIN_ICONS.time}</span><span class="adh-main"><b>${esc(t('adminPage_time'))}</b><small>${esc(t('adTimeBoth'))}</small></span><span class="ad-row-go" aria-hidden="true">›</span></button>
     </div>`;
 }
@@ -545,30 +545,33 @@ const ACCESS_ACTIONS = ['catalog', 'send', 'exports', 'notify'];
 function renderAdminAccess(){
   const r = adminValue('roles');
   if(!r) return `${adminHeading()}${adminData.failed.roles ? `<div class="ad-empty"><p>${esc(t('loadFailed'))}</p></div>` : loadingLines()}`;
-  const on = new Set(r.yunis);
+  const target = adminFilter.person === 'ahmad' ? 'ahmad' : 'yunis';
+  const on = new Set(r[target] || []);
   const row = (role, icon)=>{
     const needsManage = role === 'catalog' && !on.has('manage');
     return `<label class="check-row preference-row ad-switch">${icon ? `<span class="ad-switch-icon" aria-hidden="true">${icon}</span>` : ''}<input type="checkbox" data-role="${role}" ${on.has(role) && !needsManage ? 'checked' : ''} ${needsManage ? 'disabled' : ''}><span>${esc(t('role_' + role))}<small>${esc(needsManage ? t('roleNeedsManage') : t('role_' + role + 'Hint'))}</small></span></label>`;
   };
   return `${adminHeading()}
-    <section class="ad-person">${whoBadge('yunis')}<p>${esc(t('accessIntro'))}</p></section>
+    <div class="pill-seg"><button type="button" class="pill-seg-btn" aria-pressed="${target === 'yunis'}" data-access-person="yunis">Yunis</button><button type="button" class="pill-seg-btn" aria-pressed="${target === 'ahmad'}" data-access-person="ahmad">Ahmad</button></div><section class="ad-person">${whoBadge(target)}<p>${esc(target === 'ahmad' ? t('recipe_accessIntro') : t('accessIntro'))}</p></section>
     <div class="section-title">${esc(t('accessScreens'))}</div>
-    <div class="form-card ad-switches"><label class="check-row preference-row ad-switch"><span class="ad-switch-icon" aria-hidden="true">${NAV_ICONS.order}</span><input type="checkbox" checked disabled><span>${esc(t('order'))}<small>${esc(t('accessOrderAlways'))}</small></span></label>${ACCESS_SCREENS.map(([role, icon])=>row(role, icon)).join('')}</div>
+    <div class="form-card ad-switches"><label class="check-row preference-row ad-switch"><span class="ad-switch-icon" aria-hidden="true">${NAV_ICONS.order}</span><input type="checkbox" checked disabled><span>${esc(target === 'ahmad' ? t('recipesTitle') : t('order'))}<small>${esc(t('recipeAlways'))}</small></span></label>${[[target === 'ahmad'?'order':'recipes',NAV_ICONS.recipes],...ACCESS_SCREENS].map(([role, icon])=>row(role, icon)).join('')}</div>
     <div class="section-title">${esc(t('accessActions'))}</div>
     <div class="form-card ad-switches">${ACCESS_ACTIONS.map(role=>row(role)).join('')}</div>
     ${r.standard ? '' : `<button type="button" class="btn btn-ghost ad-wide" id="accessStandard">${esc(t('accessStandard'))}</button>`}
     <p class="ad-foot">${esc(t('accessFoot'))}</p>`;
 }
 function attachAdminAccess(slot){
+  slot.querySelectorAll('[data-access-person]').forEach(b=>b.onclick=()=>{adminFilter.person=b.dataset.accessPerson;paintAdmin();});
+  const target=adminFilter.person==='ahmad'?'ahmad':'yunis';
   const save = async roles=>{
-    const r = await api('admin/roles', {method:'PUT', body:{account:'yunis', roles}});
+    const r = await api('admin/roles', {method:'PUT', body:{account:target, roles}});
     if(!r.ok || !Array.isArray(r.data?.roles)){ toast(t('saveFailed'), 'error'); paintAdmin(); return false; }
-    adminData.roles = {at:Date.now(), data:{...adminData.roles.data, yunis:r.data.roles, standard:false}};
+    adminData.roles = {at:Date.now(), data:{...adminData.roles.data, [target]:r.data.roles, standard:false}};
     paintAdmin();
     return true;
   };
   slot.querySelectorAll('[data-role]').forEach(box=>box.onchange = async()=>{
-    const current = new Set(adminValue('roles').yunis);
+    const current = new Set(adminValue('roles')[target] || []);
     if(box.checked) current.add(box.dataset.role); else current.delete(box.dataset.role);
     if(box.dataset.role === 'manage' && !box.checked) current.delete('catalog');
     slot.querySelectorAll('[data-role]').forEach(b=>{ b.disabled = true; });
@@ -576,7 +579,7 @@ function attachAdminAccess(slot){
   });
   const standard = slot.querySelector('#accessStandard');
   if(standard) standard.onclick = ()=>withBusy(standard, async()=>{
-    if(await save(ALL_ROLES)) toast(t('accessSaved'));
+    if(await save(target === 'ahmad' ? [] : ALL_ROLES.filter(r=>!['recipes','order','receipts','transfers'].includes(r)))) toast(t('accessSaved'));
   });
 }
 

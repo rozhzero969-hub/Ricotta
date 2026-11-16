@@ -163,7 +163,7 @@ function funFact(){
    whenever it comes back to the screen, so an order from the other phone lights the fire here too. */
 let kitchenCheckedAt = 0;
 async function kitchenCheck(){
-  if(!state.account || document.visibilityState !== 'visible' || Date.now() - kitchenCheckedAt < 15000) return;
+  if(!state.account || (state.account === 'ahmad' && !canOpen('order') && !canOpen('history')) || document.visibilityState !== 'visible' || Date.now() - kitchenCheckedAt < 15000) return;
   kitchenCheckedAt = Date.now();
   const st = await api('streak');
   if(st.ok && st.data && typeof st.data.count === 'number') streakArrived(st.data);

@@ -54,7 +54,7 @@ const isRtl = ()=> state.lang !== 'en';
 const isRozha = ()=> state.account === 'rozha';
 /* What this account may do (the server checks the same roles on every request). Changing the catalog
    also needs Manage. */
-const canDo = role=> isRozha() || (state.roles.includes(role) && (role !== 'catalog' || state.roles.includes('manage')));
+const canDo = role=> isRozha() || (role === 'recipes' && state.account === 'ahmad') || (role === 'order' && state.account === 'yunis') || (state.roles.includes(role) && (role !== 'catalog' || state.roles.includes('manage')));
 const canOpen = view=> view === 'queue' ? canDo('send') : state.views.includes(view);
 /* Dates and times always use the digits 1 2 3, in every language. */
 function intlLocale(){ return ({en:'en-US', ku:'ckb-IQ', ar:'ar-IQ'})[state.lang] + '-u-nu-latn'; }
@@ -492,26 +492,29 @@ window.addEventListener('offline', ()=> setApiHealth(false));
 
 /* ============ Session ============ */
 /* An account's name written in the current language's script. */
-function accountLabel(a){ return a === 'rozha' || a === 'yunis' ? t('accountName')(a) : ''; }
+function accountLabel(a){ return ['rozha','yunis','ahmad'].includes(a) ? t('accountName')(a) : ''; }
 /* Screens each account may open. The server sends the real list with every
    start (bootstrap.views) and checks every request; this copy only covers
    an offline start before that answer arrives. */
-const ALL_ROLES = ['history','manage','catalog','record','assistant','send','exports','notify','receipts','transfers'];
+const ALL_ROLES = ['order','recipes','history','manage','catalog','record','assistant','send','exports','notify','receipts','transfers'];
 const ACCOUNT_VIEWS = {
-  rozha: ['order','assistant','history','manage','suppliers','itemsAdmin','units','receipts','transfers','stock','record','admin','settings'],
+  ahmad: ['recipes','settings'],
+  rozha: ['recipes','order','assistant','history','manage','suppliers','itemsAdmin','units','receipts','transfers','stock','record','admin','settings'],
   yunis: ['order','assistant','history','manage','suppliers','itemsAdmin','units','record','settings']
 };
-const ACCOUNT_ROLES = {rozha:ALL_ROLES, yunis:ALL_ROLES};
+const ACCOUNT_ROLES = {rozha:ALL_ROLES, yunis:ALL_ROLES.filter(r=>r!=='recipes'), ahmad:[]};
 /* The screens of the tab bar, in order, for whoever is signed in. With four or fewer they are all
    tabs; with more, the first four are and the rest are under More. Rico lives in the top bar and
    Settings in the account sheet. */
-const NAV_SCREENS = ['order','history','receipts','transfers','stock','manage','record','admin'];
-const navScreens = ()=> NAV_SCREENS.filter(v=>state.views.includes(v));
+const NAV_SCREENS = ['order','recipes','history','receipts','transfers','stock','manage','record','admin'];
+const navScreens = ()=> (state.account === 'ahmad' ? ['recipes',...NAV_SCREENS.filter(v=>v!=='recipes')] : NAV_SCREENS).filter(v=>state.views.includes(v));
 const tabsFor = ()=> navScreens().length ? navScreens().slice(0, 4) : ['order'];
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
 function applyAccount(a){
-  state.account = a.account === 'rozha' || a.account === 'yunis' ? a.account : null;
-  state.name = a.name || ({rozha:'Rozh', yunis:'Yunis'})[state.account] || '';
+  const previousAccount=state.account;
+  state.account = ['rozha','yunis','ahmad'].includes(a.account) ? a.account : null;
+  if(state.account === 'ahmad' && previousAccount !== 'ahmad')state.view='recipes';
+  state.name = a.name || ({rozha:'Rozh', yunis:'Yunis', ahmad:'Ahmad'})[state.account] || '';
   const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
   state.views = state.account ? [...new Set([...views, 'settings'])] : [];
   const roles = Array.isArray(a.roles) ? a.roles : (ACCOUNT_ROLES[state.account] || []);
@@ -604,6 +607,7 @@ window.addEventListener('appinstalled',()=>{
 document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
 /* Clears this device's sign-in and returns to the PIN pad. */
 function signOut(reason, {preserveSession = false} = {}){
+  recipeReset();
   liveStop();
   if(state.account) lset('bootCache:' + state.account, null);   // the kitchen's data does not stay on a signed-out phone
   resetSharedDraft(); state.sharedDraft=null;
@@ -724,7 +728,7 @@ async function boot(){
     const savedLang = lget('lang');
     state.lang = LANGS.includes(savedLang) ? savedLang : 'en';
     const session = apiSession();
-    if(session && (session.account === 'rozha' || session.account === 'yunis')){
+    if(session && (['rozha','yunis','ahmad'].includes(session.account))){
       applyAccount(session);
       loadedOk = await loadData();
       if(!loadedOk && !apiSession()) state.account = null;   // the session was rejected
@@ -902,6 +906,7 @@ const RENDERERS = {
   settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()],
   receipts:[()=>renderReceipts(),()=>attachReceiptsEvents()],
   transfers:[()=>renderTransfers(),()=>attachTransfersEvents()],
+  recipes:[()=>renderRecipes(),()=>attachRecipeEvents()],
   stock:[()=>renderStock(),()=>attachStockEvents()]
 };
 const shellKey = ()=>[state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
@@ -999,7 +1004,7 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
    open); with more than four, the rest are under More. Computers: a sidebar with every screen. Rico
    opens from the top bar and Settings from the account sheet. A lens glides to the current tab, the
    page can be swiped between the tabs, and the bar shrinks to its icons while you scroll down. */
-const VIEW_LABEL_KEYS = {receipts:'rrTitle', transfers:'tfTitle', stock:'stockTitle', manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {recipes:'recipesTitle',receipts:'rrTitle', transfers:'tfTitle', stock:'stockTitle', manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
@@ -1351,6 +1356,8 @@ function pageGhost(content){
   return {layer, copy};
 }
 function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
+  if(state.view==='recipes' && view!==state.view && recipeBook.dirty){peek?.layer.remove();recipeSave().then(ok=>{if(ok&&!recipeBook.dirty)goView(view);});return;}
+  if(state.view==='recipes' && view!=='recipes'){recipeBook.wake?.release().catch(()=>{});recipeBook.cooking=false;}
   closeLangMenu();setMoreOpen(false);
   if(!view || view === state.view || !canOpen(view)){ peek?.layer.remove(); return; }
   if(view !== 'admin') state.adminPage = null;
@@ -1368,6 +1375,7 @@ function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
   const remembered = viewMemory.get(view);
   if(view === 'assistant') state.ricoBack = state.view;   // Rico's back button returns here
   state.catalogQuery = remembered?.query || ''; state.view = view;
+  if(view === 'recipes' && recipeBook.data && !recipeBook.editing)setTimeout(recipeLoad,0);
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
   // Receipts and Transfers open on their form (what was being typed stays in it).
   if(view === 'receipts'){ rr.page = 'edit'; rr.id = null; rrLoad(true); }
@@ -1913,7 +1921,7 @@ function renderTopbar(){
     <div class="brand-slot"><button type="button" class="side-toggle side-show" data-side-toggle aria-label="${esc(t('sideShow'))}" title="${esc(t('sideShow'))} (${sideKeysText()})">${ICON_SIDEBAR}</button><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div></div>
     <span class="topbar-title" aria-hidden="true"></span>
     <div class="topbar-actions">
-      ${renderStreakChip()}
+      ${state.account !== 'ahmad' || canOpen('order') || canOpen('history') ? renderStreakChip() : ''}
       <div class="chip conn-chip" id="connectionStatus" role="status"${state.apiOnline?' hidden':''}><span></span><em>${esc(t('offline'))}</em></div>
       ${canOpen('assistant') ? `<button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${ricoFace('', 'rico-top-face')}<i class="rico-badge" hidden></i></button>` : ''}
       <button type="button" class="account-btn${typeof newsUnread === 'function' && newsUnread() ? ' has-news' : ''}" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
@@ -1993,7 +2001,7 @@ function attachShellEvents(){
     ricoBtn.onclick = ()=>goView('assistant');
     ricoBtn.addEventListener('animationend', e=>{ if(e.target === ricoBtn) ricoBtn.classList.remove('reacting'); });
   }
-  document.getElementById('streakChip').onclick = openStreakSheet;
+  const streakChip=document.getElementById('streakChip');if(streakChip)streakChip.onclick = openStreakSheet;
 }
 function attachNavEvents(){
   const nav = document.querySelector('.bottomnav');
@@ -4221,6 +4229,7 @@ function versionCmp(a, b){
   return 0;
 }
 function renderSettings(){
+  if(state.account === 'ahmad') return renderRecipeSettings();
   // Everyday choices first (notifications, ordering, sounds, look), then Rico the helper (Rozh), then
   // help and privacy. Rico the chat assistant has his own settings in his tab.
   return `<div class="settings-page">${renderPendingSync()}${renderNotifSettings()}${renderFeatureSettings()}${renderRicoReceiptSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div></div>`;
