@@ -562,7 +562,7 @@ function applyData(d){
   applyFeatures();
   carryOverLocalSettings();
   ricoAutoStart();
-  setTimeout(()=>{ checkMilestones(); maybeShowTour(); maybeShowExpensesTour(); }, 800);
+  setTimeout(()=>{ checkMilestones(); maybeShowTour(); maybeShowExpensesTour(); maybeShowRecipesTour(); }, 800);
   state.sharedDraft = d.draft || null;
   ricoSetInbox(d.inbox || []);
   paintStreakChip(false);
@@ -1357,7 +1357,7 @@ function pageGhost(content){
   return {layer, copy};
 }
 function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
-  if(state.view==='recipes' && view!==state.view && recipeBook.dirty){peek?.layer.remove();recipeSave().then(ok=>{if(ok&&!recipeBook.dirty)goView(view);});return;}
+  if(state.view==='recipes' && view!==state.view && recipeBook.dirty){peek?.layer.remove();recipeLeave().then(ok=>{if(ok)goView(view);});return;}
   if(state.view==='recipes' && view!=='recipes'){recipeBook.wake?.release().catch(()=>{});recipeBook.cooking=false;}
   closeLangMenu();setMoreOpen(false);
   if(!view || view === state.view || !canOpen(view)){ peek?.layer.remove(); return; }
@@ -4329,7 +4329,8 @@ function renderSettings(){
 function renderHelpSettings(){
   return `<div class="section-title">${esc(t('settingsHelp'))}</div><div class="form-card settings-rows">
     <button type="button" class="settings-row" id="reportProblemBtn">${setIcon('report')}<span>${esc(t('reportProblem'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
-    <button type="button" class="settings-row" id="tourBtn">${setIcon('tour')}<span>${esc(t('tourBtn'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
+    ${canOpen('order') ? `<button type="button" class="settings-row" id="tourBtn">${setIcon('tour')}<span>${esc(t('tourBtn'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>` : ''}
+    ${canOpen('recipes') ? `<button type="button" class="settings-row" id="rcTourBtn">${setIcon('rcTour')}<span>${esc(t('recipe_tourTitle'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>` : ''}
     ${state.expensesReady && canOpen('order') ? `<button type="button" class="settings-row" id="xtTourBtn">${setIcon('xtTour')}<span>${esc(t('xtTitle'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>` : ''}
     <button type="button" class="settings-row" id="shortcutsBtn">${setIcon('shortcuts')}<span>${esc(t('keyboardShortcuts'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button></div>`;
 }
@@ -4424,8 +4425,9 @@ function attachSettingsEvents(){
   document.getElementById('settingsSignOut').onclick = ()=>doLogout();
   document.getElementById('reportProblemBtn').onclick = openReportProblem;
   document.getElementById('shortcutsBtn').onclick = openShortcuts;
-  document.getElementById('tourBtn').onclick = openTour;
+  document.getElementById('tourBtn')?.addEventListener('click', openTour);
   document.getElementById('xtTourBtn')?.addEventListener('click', openExpensesTour);
+  document.getElementById('rcTourBtn')?.addEventListener('click', openRecipesTour);
   attachNotifEvents();
 }
 

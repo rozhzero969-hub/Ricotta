@@ -103,7 +103,8 @@ function checkMilestones(){
 
 /* ---------- A short tour, once for someone new ---------- */
 function maybeShowTour(){
-  if(!state.account) return;
+  // The Order tour is about ordering: an account without Order (Ahmad) never sees it.
+  if(!state.account || !canOpen('order')) return;
   const key = 'toured:' + state.account;
   if(lget(key)) return;
   lset(key, true);

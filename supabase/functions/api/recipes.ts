@@ -1,7 +1,7 @@
 // The shared recipe book (Recipes tab), for whoever can open Recipes (index.ts checks the role first).
-//   GET    recipes                         recipes, ingredients, Manage's units, stock items, last prices,
-//                                          each recipe's cost (_shared/recipe-cost.js) and this account's
-//                                          recipe alerts
+//   GET    recipes                         recipes, ingredients, Manage's units, stock items, last prices
+//                                          (the app works each cost out with _shared/recipe-cost.js) and
+//                                          this account's recipe alerts
 //   PUT    recipes/:id                     {name, data, archived, version}   one recipe (versions stop
 //                                          one cook overwriting another's edits)
 //   PUT    recipe-ingredients/:id          {name, stock_item, unit, version} an ingredient, linked to a
@@ -98,7 +98,6 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
       stock: book.titems.map((t: any) => ({ name: t.name, base: t.base, count: t.count ?? null, buy: t.buy ?? null, state: RC().stockState(t, book.lowNames) })),
       prices, pricesReady: book.pricesReady, stockAt: book.stockAt, marginMin: RC().MARGIN_MIN,
       covers,
-      costs: Object.fromEntries(book.recipes.map((x: any) => [x.id, RC().recipeCost(x, book.ctx)])),
       alerts: alerts.error ? [] : (alerts.data ?? []).map((a: any) => ({ id: a.id, en: a.body_en, ku: a.body_ku, ar: a.body_ar, at: a.created_at, read: !!a.read_at })),
     });
   }
