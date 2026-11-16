@@ -28,7 +28,12 @@ delete local['xtSeen:yunis']; ctx.state.expensesReady = false; ctx.maybe();
 assert.equal(opened.length, 1, 'not before the server has Expenses');
 ctx.state.expensesReady = true; sheetOpen = true; ctx.maybe();
 assert.equal(opened.length, 1, 'waits while another sheet is open');
-sheetOpen = false; ctx.open();
+sheetOpen = false;
+// An account without the Order screen (Ahmad, Recipes only) never gets it.
+ctx.state.account = 'ahmad'; ctx.canOpen = ()=>false; ctx.maybe();
+assert.equal(opened.length, 1, 'not for an account without the Order screen');
+ctx.state.account = 'yunis'; ctx.canOpen = v=>v === 'order';
+ctx.open();
 assert.equal(opened.length, 2, 'Settings, Help opens it again any time');
 // The server keeps the "seen" mark on the account.
 const api = fs.readFileSync('supabase/functions/api/index.ts', 'utf8');
@@ -38,4 +43,4 @@ const css = fs.readFileSync('style.css', 'utf8'), app = fs.readFileSync('app.js'
 assert.ok(!/check-row input\[type=checkbox\]:active::after/.test(css), 'no :active stretch (a tap on the row gave the switch :active)');
 assert.match(css, /check-row input\[type=checkbox\]\.pressing::after/, 'the stretch follows .pressing');
 assert.match(app, /closest\?\.\('\.check-row input\[type=checkbox\]'\)/, 'pressing is set only by a press on the switch');
-console.log('Expenses tour PASS: once per account and device, saved on the server, waits for other sheets, replay from Help; switches only react to a press on the switch');
+console.log('Expenses tour PASS: once per account and device, saved on the server, waits for other sheets, not for Ahmad (no Order screen), replay from Help; switches only react to a press on the switch');
