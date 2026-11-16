@@ -1530,7 +1530,7 @@ Object.assign(T.en, {
 
   adLastAt:when=>'Last: '+when, adNeverYet:'None yet',
 
-  adminPage_names:'Stock names', adNamesSub:n=>n?n+' to fix':'All look right', adNamesNeed:n=>n===1?'1 name needs a look':n+' names need a look', adNamesClean:'Every name looks right',
+  adIssueNames:n=>n===1?'1 name in Ricotta Restaurant to fix':n+' names in Ricotta Restaurant to fix', adNamesFixedSub:n=>n?n+' fixed so far':'Fix them there little by little', adminPage_names:'Stock names', adNamesSub:n=>n?n+' to fix':'All look right', adNamesNeed:n=>n===1?'1 name needs a look':n+' names need a look', adNamesClean:'Every name looks right',
   adNamesChecked:when=>'Spelling checked '+when, adNamesNotChecked:'Spelling not checked yet', adNamesStale:'Some names changed since the spelling check.',
   adNamesCheck:'Check spelling', adNamesCheckAgain:'Check again', adNamesChecking:'Checking', adNamesAiOff:'Rico\u2019s AI is off, so spelling is not checked.',
   adNamesFailed:'Rico could not check the spelling right now. Try again in a minute.', adNamesPartial:'Some names could not be checked. Try again later.',
@@ -1553,7 +1553,7 @@ Object.assign(T.ku, {
 
   adLastAt:when=>'دوایین: '+when, adNeverYet:'هێشتا هیچ',
 
-  adminPage_names:'ناوی کاڵاکانی کۆگا', adNamesSub:n=>n?n+' بۆ چاککردن':'هەموو ڕاستن', adNamesNeed:n=>n+' ناو پێویستی بە سەیرکردنە', adNamesClean:'هەموو ناوەکان ڕاستن',
+  adIssueNames:n=>n+' ناو لە ریکۆتا ڕێستۆرانت بۆ ڕاستکردنەوە', adNamesFixedSub:n=>n?n+' تا ئێستا ڕاستکراونەتەوە':'وردە وردە لەوێ ڕاستیان بکەرەوە', adminPage_names:'ناوی کاڵاکانی کۆگا', adNamesSub:n=>n?n+' بۆ چاککردن':'هەموو ڕاستن', adNamesNeed:n=>n+' ناو پێویستی بە سەیرکردنە', adNamesClean:'هەموو ناوەکان ڕاستن',
   adNamesChecked:when=>'ڕێنووس پشکنرا '+when, adNamesNotChecked:'ڕێنووس هێشتا نەپشکنراوە', adNamesStale:'هەندێک ناو لە دوای پشکنینی ڕێنووسەوە گۆڕاون.',
   adNamesCheck:'پشکنینی ڕێنووس', adNamesCheckAgain:'دووبارە بپشکنە', adNamesChecking:'دەپشکنێت', adNamesAiOff:'AI ـی ریکۆ کوژاوەیە، بۆیە ڕێنووس ناپشکنرێت.',
   adNamesFailed:'ریکۆ ئێستا نەیتوانی ڕێنووس بپشکنێت. دوای خولەکێک دووبارە هەوڵ بدەوە.', adNamesPartial:'هەندێک ناو نەپشکنران. دواتر دووبارە هەوڵ بدەوە.',
@@ -1576,7 +1576,7 @@ Object.assign(T.ar, {
 
   adLastAt:when=>'آخرها: '+when, adNeverYet:'لا شيء بعد',
 
-  adminPage_names:'أسماء مواد المخزون', adNamesSub:n=>n?n+' للتصحيح':'كلها صحيحة', adNamesNeed:n=>n+' أسماء تحتاج نظرة', adNamesClean:'كل الأسماء صحيحة',
+  adIssueNames:n=>n===1?'اسم واحد في ريكوتا ريستورانت للتصحيح':n+' أسماء في ريكوتا ريستورانت للتصحيح', adNamesFixedSub:n=>n?'صُحّح '+n+' حتى الآن':'صحّحها هناك شيئًا فشيئًا', adminPage_names:'أسماء مواد المخزون', adNamesSub:n=>n?n+' للتصحيح':'كلها صحيحة', adNamesNeed:n=>n+' أسماء تحتاج نظرة', adNamesClean:'كل الأسماء صحيحة',
   adNamesChecked:when=>'فُحص الإملاء '+when, adNamesNotChecked:'لم يُفحص الإملاء بعد', adNamesStale:'تغيّرت بعض الأسماء منذ فحص الإملاء.',
   adNamesCheck:'افحص الإملاء', adNamesCheckAgain:'افحص مجددًا', adNamesChecking:'يفحص', adNamesAiOff:'ذكاء ريكو مطفأ، لذلك لا يُفحص الإملاء.',
   adNamesFailed:'تعذّر على ريكو فحص الإملاء الآن. حاول بعد دقيقة.', adNamesPartial:'تعذّر فحص بعض الأسماء. حاول لاحقًا.',

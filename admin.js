@@ -222,6 +222,9 @@ function renderAdminHome(){
     if(views.includes('receipts')) ov.receipts.problems.forEach(p=>issues.push({go:'receipts', id:p.id, text:t('adIssueReceipt')(p.supplier), sub:p.problem || adWhen(p.at, p.by), action:t('adOpenIt')}));
     if(views.includes('transfers')) ov.transfers.problems.forEach(p=>issues.push({go:'transfers', id:p.id, text:t('adIssueTransfer')(p.to), sub:p.problem || adWhen(p.at, p.by), action:t('adOpenIt')}));
   }
+  // Mistakes in Ricotta Restaurant's item names: Rozh fixes them there, little by little.
+  const nm = views.includes('receipts') || views.includes('transfers') ? adminValue('names') : null;
+  if(nm?.rows?.length) issues.push({page:'names', text:t('adIssueNames')(nm.rows.length), sub:t('adNamesFixedSub')(nm.fixed || 0), action:t('adOpenIt')});
   const latest = latestVersion();
   adOldPhones().forEach(d=>issues.push({device:d.id, text:t('adOldPhone')(accountLabel(d.account) || t('unnamedDevice'), deviceParts(d).kind), sub:t('adOldPhoneSub')('\u2066' + d.appVersion + '\u2069', '\u2066' + latest + '\u2069'), action:t('refreshDevice'), tone:'gray'}));
   const health = adminValue('health');
@@ -285,7 +288,7 @@ function renderAdminHome(){
       ${tool('security', ADMIN_ICONS.security, sec ? (locked ? t('adLocked') : t('adOk')) : '·', sec ? t('adWrongPins')(Number(sec.wrongPins24h) || 0) : '', locked)}
       ${tool('health', ADMIN_ICONS.health, health ? (bad ? t('adNeedsLook') : t('adOk')) : '·', health ? t('checkedAt')(timeAgo(health.checkedAt)) : '', bad > 0)}
       ${tool('catalog', ADMIN_ICONS.catalog, toReview ? String(toReview) : t('adOk'), toReview ? t('adCatalogSub') : t('adCatalogClear'))}
-      ${views.includes('receipts') || views.includes('transfers') ? tool('names', ADMIN_ICONS.names, names ? (names.rows.length ? String(names.rows.length) : t('adOk')) : '·', names ? t('adNamesSub')(names.rows.length) : '') : ''}
+      ${views.includes('receipts') || views.includes('transfers') ? tool('names', ADMIN_ICONS.names, names ? (names.rows.length ? String(names.rows.length) : t('adOk')) : '·', names ? t('adNamesSub')(names.rows.length) : '', !!names?.rows.length) : ''}
       ${tool('cloud', ADMIN_ICONS.cloud, cloud ? (!cloud.ready ? t('adCloudSetUp') : cloud.problem ? t('adNeedsLook') : t('adOk')) : '·', cloud ? cloudSub(cloud) : '', !!cloud && (!cloud.ready || !!cloud.problem))}
       ${tool('restore', ADMIN_ICONS.restore, '', t('adRestoreSub'))}
     </div>`;
@@ -873,7 +876,7 @@ function renderAdminNames(){
       ${d.aiReady ? `<button type="button" class="btn btn-ghost" id="namesCheck" ${adNamesBusy ? 'disabled aria-busy="true"' : ''}>${ICON_REFRESH}<span>${esc(t(adNamesBusy ? 'adNamesChecking' : d.checkedAt ? 'adNamesCheckAgain' : 'adNamesCheck'))}</span></button>` : ''}</section>
     <div class="ad-toolbar"><div class="pill-seg nm-filters" role="tablist" aria-label="${esc(t('adminPage_names'))}">${NAME_FILTERS.map(k=>`<button type="button" role="tab" class="pill-seg-btn" data-names-filter="${k}" aria-selected="${filter === k}">${esc(t('adNamesFilter_' + k))}<small>${counts[k]}</small></button>`).join('')}</div></div>
     ${list ? `<div class="nm-list">${list}</div>` : `<div class="ad-empty">${adminTile(ICON_CHECK, 'green')}<b>${esc(t('adNamesNone'))}</b></div>`}
-    <p class="ad-foot">${esc(t('adNamesCount')(d.rows.length, d.total))} · ${esc(t('adNamesFoot'))}</p>`;
+    <p class="ad-foot">${esc(t('adNamesCount')(d.rows.length, d.total))}${d.fixed ? ' · ' + esc(t('adNamesFixedSub')(d.fixed)) : ''} · ${esc(t('adNamesFoot'))}</p>`;
 }
 /* ---------- Cloud Rico: the server's own reader of Ricotta Restaurant ---------- */
 const cloudSub = c=> !c.ready ? t('adCloudMissing') : c.catalogAt ? t('adCloudRead')(timeAgo(c.catalogAt)) : t('adCloudNotYet');

@@ -10,6 +10,7 @@
 //       {type:"assistant", title, bodyEn, bodyKu, bodyAr}  a message sent through Rico
 //   - the api function, when items drop to their low stock level (api low-stock.ts):
 //       {type:"low-stock", bodyEn, bodyKu, bodyAr}  to Rozh's and Yunis's signed-in phones
+//       {type:"stock-names", bodyEn, bodyKu, bodyAr}  new mistakes in Ricotta Restaurant item names, to Rozh
 //   - the api function, after a sign-in from a phone never seen before:
 //       {type:"security", account, excludeDevice, bodyEn, bodyKu, bodyAr}  to that account's other phones
 //
@@ -619,6 +620,14 @@ Deno.serve(async (req) => {
         if (!w.any) return json({ error: "empty message" }, 400);
         return json(await sendReminder((lang) => ({
           title: L(lang, "Cloud Rico", "ریکۆی هەور", "ريكو السحابي"), body: w.pick(lang), kind: "assistant", view: "admin", tag: "ricotta-rr-reader",
+        }), new Set(["rozha"])));
+      }
+      case "stock-names": {
+        // New mistakes in Ricotta Restaurant's item names (api stock-names.ts): Rozh's signed-in phones only.
+        const w = written(body);
+        if (!w.any) return json({ error: "empty message" }, 400);
+        return json(await sendReminder((lang) => ({
+          title: L(lang, "Stock names", "ناوی کاڵاکانی کۆگا", "أسماء مواد المخزون"), body: w.pick(lang), kind: "assistant", view: "admin", tag: "ricotta-stock-names",
         }), new Set(["rozha"])));
       }
       case "low-stock": {

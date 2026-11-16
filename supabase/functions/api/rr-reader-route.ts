@@ -8,6 +8,7 @@
 import { saveCatalog, catalogOf } from "./receipts.ts";
 import { readerTick, readerView, readMonthNow, erbilDay, readerConfig } from "./rr-reader.ts";
 import { checkRecipeAlerts } from "./recipe-alerts.ts";
+import { autoCheckNames } from "./stock-names.ts";
 import { pricesView, askPrices } from "./rr-prices.ts";
 
 type Ctx = { db: any; json: (b: unknown, s?: number) => Response; fail: (e: string, s?: number) => Response };
@@ -34,6 +35,8 @@ async function alertRozh(db: any, kind: string, w: { en: string; ku: string; ar:
 }
 const tickDeps = (db: any, force: "all" | "invoices" | null = null) => ({ db, saveCatalog, catalogOf, force, alert: (kind: string, w: any) => alertRozh(db, kind, w) });
 
+const later = (p: Promise<unknown>) => { const w = (globalThis as any).EdgeRuntime?.waitUntil; if (w) w.call((globalThis as any).EdgeRuntime, p); else p.catch(() => {}); };
+
 export async function rrReaderRoute(ctx: Ctx, req: Request, M: string, path: string, who: Who): Promise<Response | null> {
   const { db, json, fail } = ctx;
   if (M === "POST" && path === "rr-reader/tick") {
@@ -43,6 +46,8 @@ export async function rrReaderRoute(ctx: Ctx, req: Request, M: string, path: str
     // New prices: Ahmad hears about recipes they change (recipe-alerts.ts, never fails). New stock is
     // checked where the lists are saved (receipts.ts saveCatalog).
     if ((r.did as string[]).includes("invoices")) await checkRecipeAlerts(db);
+    // New or changed names: new mistakes are found and Rozh hears about them (after the answer).
+    if ((r.did as string[]).includes("catalog")) later(autoCheckNames(db));
     return json(r);
   }
   if (!who) return null;

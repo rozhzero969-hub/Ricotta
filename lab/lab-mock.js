@@ -844,7 +844,7 @@
         {name:'Basil', problems:[{kind:'missing', code:'noLocal'}], fixed:null, why:''},
         ...(checked ? [{name:'Mozarella - پەنیری مۆزارێلا', problems:[{kind:'spelling', code:'spelling'}], fixed:'Mozzarella - پەنیری مۆزارێلا', why:'Misspelled: Mozarella'}] : []),
       ];
-      return json({readAt:new Date(Date.now() - 6*60000).toISOString(), total:321, checkedAt:checked ? new Date().toISOString() : null, provider:checked ? 'anthropic' : null, stale:false, aiReady:true, rows});
+      return json({readAt:new Date(Date.now() - 6*60000).toISOString(), total:321, checkedAt:checked ? new Date().toISOString() : null, provider:checked ? 'anthropic' : null, stale:false, aiReady:true, rows, fixed:4});
     }
     if(method === 'GET' && path === 'admin/server') return json({dbBytes:32077491, filesBytes:27532729, dbLimit:500 * 1048576, filesLimit:1073741824});
     if(method === 'GET' && path === 'admin/diagnostics'){

@@ -3,6 +3,10 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-16d', date:'2026-11-16', notes:{
+    en:['Admin tells you when Ricotta Restaurant\u2019s item names have mistakes: a line under Needs you, and a message when a new one appears. Fix them there little by little; Admin, Stock names shows what is left and how many you fixed.'],
+    ku:['ئەدمین پێت دەڵێت کاتێک ناوی کاڵاکانی ریکۆتا ڕێستۆرانت هەڵەیان تێدایە: دێڕێک لە ژێر چاوەڕێی تۆیە، و نامەیەک کاتێک هەڵەیەکی نوێ دەردەکەوێت. وردە وردە لەوێ ڕاستیان بکەرەوە؛ ئەدمین، ناوی کاڵاکانی کۆگا پیشان دەدات چی ماوە و چەندت ڕاستکردۆتەوە.'],
+    ar:['تخبرك الإدارة عندما تكون في أسماء مواد ريكوتا ريستورانت أخطاء: سطر تحت بانتظارك، ورسالة عند ظهور خطأ جديد. صحّحها هناك شيئًا فشيئًا؛ وتعرض الإدارة، أسماء مواد المخزون ما تبقى وكم صحّحت.']}},
   {id:'2026-11-16c', date:'2026-11-16', notes:{
     en:['Recipes has a Check all last prices button. Rico reads Ricotta Restaurant\u2019s invoices and the costs update with the last price paid. He also reads them by himself every 15 minutes.',
       'Rico on the Mac reads the stock every 5 minutes instead of every 10.'],
