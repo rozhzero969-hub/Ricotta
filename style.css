@@ -2977,3 +2977,46 @@ html.dark.app-shell.rico-drawer-on,html.dark.app-shell.rico-drawer-on body{backg
 .help-sheet-body .help-hero{max-width:420px;margin:0 auto;border-radius:18px}
 .help-sheet-body .help-text{padding:0 4px}
 .help-pic .hp-clock{fill:var(--ink);font:600 11px var(--font);letter-spacing:-.02em}
+/* Several stock items linked to one item: each one with its amount and a small remove button, the total
+   under them; in the item menu a card beside it lists each linked stock item's stock. */
+.stock-links{display:flex;flex-direction:column;gap:6px}
+.stock-links .stock-link-now{position:relative;padding-inline-end:44px}
+.stock-link-x{position:absolute;top:50%;inset-inline-end:6px;transform:translateY(-50%);width:32px;height:32px;border-radius:9px;color:var(--ink-soft)}
+.stock-links-total{padding:2px 12px;font-size:.8125rem;font-weight:600;color:var(--ink-soft)}
+.stock-sug-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.stock-sug-head .stock-sug-title{padding-inline-end:0}
+.stock-sug-all{margin:6px 8px 0;padding:6px 10px;border:0;border-radius:9px;background:none;color:var(--tint);font:600 .8125rem var(--font);cursor:pointer}
+@media (hover:hover){.stock-sug-all:hover{background:var(--fill)}}
+.ctx-parts{position:fixed;width:min(280px,calc(100vw - 24px));border-radius:16px;padding:6px 0;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--float-shadow);animation:ctxIn .3s var(--ease-out) both}
+.ctx-parts-title{padding:8px 16px 4px;font-size:.75rem;font-weight:600;color:var(--ink-soft)}
+.ctx-part{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 16px;font-size:.9375rem}
+.ctx-part+.ctx-part{box-shadow:inset 0 .5px 0 var(--line-strong)}
+.ctx-part span{flex:1;min-width:0;overflow-wrap:anywhere}
+.ctx-part b{flex:none;font-weight:600;white-space:nowrap}
+.ctx-part.none b,.ctx-part.gone b{color:var(--clay-ink)}
+html.dark .ctx-part.none b,html.dark .ctx-part.gone b{color:#FF6961}
+.ctx-part.total{flex-direction:column;align-items:flex-start;gap:2px;font-size:.875rem;color:var(--ink-soft)}
+.ctx-part.total b{white-space:normal}
+.ctx-part.total b{color:var(--ink)}
+/* Manage, Items: the Food / Expenses switch on its own line, then one row of actions: Add (the widest),
+   Link stock items with its count, and More. Labels never wrap. */
+.manage-kind{display:flex;width:100%;max-width:420px;margin-bottom:12px}
+.manage-kind .pill-seg-btn{flex:1 1 0;gap:6px}
+.manage-kind .pill-seg-btn svg{width:16px;height:16px;flex:none}
+.seg-count{font-size:.75rem;font-weight:600;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.manage-actions{flex-wrap:nowrap}
+.manage-actions>.btn{white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.manage-actions>.btn svg{flex:none}
+.manage-actions>.add-btn{flex:1 1 auto;min-width:0}
+.manage-actions>.manage-link-btn{flex:0 1 auto;min-width:0}
+.manage-actions>.manage-link-btn span:not(.btn-count){overflow:hidden;text-overflow:ellipsis}
+.manage-actions .btn-count{margin-inline-start:0}
+.manage-actions>.manage-more-btn{flex:none;width:48px;padding:0}
+@media (max-width:600px){
+  .manage-kind{max-width:none}
+  .manage-actions{flex-wrap:wrap}
+  .manage-actions>.add-btn{flex:1 1 100%}
+  .manage-actions>.manage-link-btn{flex:1 1 0}
+  .manage-actions>.btn-ghost{flex:0 1 auto;font-size:.875rem;padding-inline:12px}
+  .manage-actions>.manage-more-btn{flex:none;width:44px;padding:0}
+}

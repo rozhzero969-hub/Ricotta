@@ -113,7 +113,7 @@ async function loadWorld(db: any, s: Session) {
   const full = s.account === "rozha";
   const [sup, items, units, orders, devices, activity, streak, months, rules, routines] = await withTimeout(Promise.all([
     catalogRows(() => app("suppliers").select("id,name,phone,reminder,created_at").order("id")),
-    catalogRows(() => app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available,stock_item").order("id")),
+    catalogRows(() => app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available,stock_item,stock_items").order("id")),
     catalogRows(() => app("units").select("id,en,ku,ar").order("id")),
     app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").order("sent_at", { ascending: false }).limit(600),
     full ? app("devices").select("account,label,logged_in,last_seen").order("last_seen", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
@@ -138,8 +138,12 @@ async function loadWorld(db: any, s: Session) {
     const byName = new Map(((cat?.data?.titems ?? []) as any[]).map((t: any) => [t.name, t]));
     const L = (globalThis as any).RicottaStockLink;
     for (const i of linked) {
-      const t = byName.get(i.stock_item);
-      stockOf.set(i.id, t ? { stock_item: i.stock_item, ...L.amount(t), read_at: cat?.updated_at ?? null } : { stock_item: i.stock_item, missing: true });
+      // Several linked stock items: added together (stock-link.js combine()), with each part for Rico to list.
+      const names: string[] = L.linksOf(i), found = names.map((n) => byName.get(n)).filter(Boolean);
+      const read_at = cat?.updated_at ?? null;
+      if (!found.length) stockOf.set(i.id, { stock_item: i.stock_item, missing: true });
+      else if (names.length === 1) stockOf.set(i.id, { stock_item: i.stock_item, ...L.amount(found[0]), read_at });
+      else { const c = L.combine(found); stockOf.set(i.id, { stock_items: names, kinds: c.kinds, parts: c.parts, empty: c.empty, read_at }); }
     }
   }
   const orderRows = (orders.data ?? []).reverse();
@@ -797,7 +801,7 @@ function proposeFile(w: World, a: any, emit: Emit) {
 
 /* ---------------- tool definitions ---------------- */
 const TOOLS = [
-  { name: "find_items", description: "Search the item catalog. Returns item_id, name, unit, supplier, when it was added, how often it was ordered, usual quantity. Use newest:true to list the most recently added items. Leave query empty to list all (capped by limit). An item linked to a stock item also has in_main_storage (how much is in Main Storage, in its buying unit when whole, else its counting unit, and when the stock was read): use it for \"how much X do we have\".",
+  { name: "find_items", description: "Search the item catalog. Returns item_id, name, unit, supplier, when it was added, how often it was ordered, usual quantity. Use newest:true to list the most recently added items. Leave query empty to list all (capped by limit). An item linked to a stock item also has in_main_storage (how much is in Main Storage, in its buying unit when whole, else its counting unit, and when the stock was read): use it for \"how much X do we have\". An item linked to several stock items has kinds (the amounts added together per unit, e.g. 20 pieces + 3 kilos) and parts (each linked stock item with its own amount): give the total, and the parts when asked.",
     input_schema: { type: "object", properties: { query: { type: "string", description: "Item name or alias, any language; words can be in any order and minor typos are supported" }, supplier: { type: "string", description: "Supplier name or id" }, newest: { type: "boolean" }, limit: { type: "integer" }, offset: { type: "integer" } } } },
   { name: "list_suppliers", description: "All suppliers with item counts, reminder schedule, usual order days, days between orders, last order and whether they were sent today.",
     input_schema: { type: "object", properties: {} } },

@@ -327,6 +327,51 @@
   function counted(titem, zone = MAIN) {
     return T().inCounting(titem, T().available(titem, zone), true);
   }
+  /* The stock items an ordering item is linked to, first one first: stock_items (or stockItems), else the
+     single stock_item of older rows. Each name once. */
+  function linksOf(row) {
+    if (!row) return [];
+    const many = Array.isArray(row.stockItems) ? row.stockItems : Array.isArray(row.stock_items) ? row.stock_items : [];
+    const one = row.stockItem ?? row.stock_item ?? null;
+    const out = [];
+    for (const n of (many.length ? many : one ? [one] : [])) if (typeof n === 'string' && n && !out.includes(n)) out.push(n);
+    return out;
+  }
+  /* How much there is of several linked stock items together (Soy sauce linked to three soy sauces).
+     Each part in its counting format; parts counted the same way are added together, never in cartons
+     (each carton holds a different number); other kinds stand beside them ("20 pieces + 3 kilos").
+     kinds: [{qty, unit}], the first link's kind first. count: the first kind's total, which a low stock
+     level is counted in. level: empty when there is none of any, low when a kind has under LOW_DAYS days
+     left at the pace its parts left the storage (added together), else ok. */
+  function combine(titems, used, zone = MAIN) {
+    const list = (titems || []).filter(Boolean);
+    // Each part in its counting unit, or its usage unit (pieces, grams) when it has none: never in its
+    // buying unit, since cartons differ from one stock item to the next.
+    const parts = list.map((t) => {
+      const have = T().available(t, zone);
+      const c = t.count && t.count.name ? T().inCounting(t, have, true) : { qty: Math.floor(have * 1000 + 1e-6) / 1000, unit: t.base || '' };
+      return { name: t.name, qty: c.qty, unit: c.unit, empty: !(have > 0) };
+    });
+    const kinds = [];
+    for (const p of parts) {
+      const k = kinds.find((x) => x.unit === p.unit);
+      if (k) k.qty = Math.round((k.qty + p.qty) * 1000) / 1000; else kinds.push({ qty: p.qty, unit: p.unit });
+    }
+    const empty = parts.every((p) => p.empty);
+    // Days left per base unit (parts in grams together, parts in pieces together).
+    const groups = new Map();
+    for (const t of list) {
+      const g = groups.get(t.base || '') || { have: 0, perDay: 0 };
+      const u = used && used.get(t.name);
+      g.have += T().available(t, zone);
+      if (u && u.n >= 2) g.perDay += u.base / USE_DAYS;
+      groups.set(t.base || '', g);
+    }
+    const low = [...groups.values()].some((g) => g.perDay > 0 && g.have / g.perDay < LOW_DAYS);
+    return { multi: true, kinds, parts, empty, qty: kinds[0] ? kinds[0].qty : 0, unit: kinds[0] ? kinds[0].unit : '',
+      count: kinds[0] || { qty: 0, unit: '' }, level: empty ? 'empty' : low ? 'low' : 'ok' };
+  }
+
   /* A level that means something: a number from 0 to 999999 (at most 3 decimals), else null (no alert). */
   function lowLevel(v) {
     if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
@@ -346,14 +391,18 @@
     const byName = new Map((titems || []).map((t) => [t && t.name, t]));
     const alert = [], clear = [];
     for (const r of rows || []) {
-      const t = r && r.stock_item && byName.get(r.stock_item);
-      if (!t || lowLevel(r.low_alert) === null) continue;
-      const low = atOrBelow(t, r.low_alert);
-      if (low && !r.low_alerted_at) alert.push({ ...r, count: counted(t) });
+      const n = lowLevel(r && r.low_alert);
+      if (n === null) continue;
+      // Several links: the level is counted in the first link's kind, on all parts of that kind added up.
+      const ts = linksOf(r).map((x) => byName.get(x)).filter(Boolean);
+      if (!ts.length) continue;
+      const count = ts.length === 1 ? counted(ts[0]) : combine(ts).count;
+      const low = count.qty <= n + 1e-9;
+      if (low && !r.low_alerted_at) alert.push({ ...r, count });
       else if (!low && r.low_alerted_at) clear.push(r.id);
     }
     return { alert, clear };
   }
 
-  globalThis.RicottaStockLink = Object.freeze({ MAIN, LOW_DAYS, USE_DAYS, words, matches, rank, suggest, sure, doubt, sameSupplier, amount, usage, level, counted, lowLevel, atOrBelow, lowChanges });
+  globalThis.RicottaStockLink = Object.freeze({ MAIN, LOW_DAYS, USE_DAYS, words, matches, rank, suggest, sure, doubt, sameSupplier, amount, usage, level, counted, lowLevel, atOrBelow, lowChanges, linksOf, combine });
 })();

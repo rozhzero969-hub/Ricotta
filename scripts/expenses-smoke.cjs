@@ -63,7 +63,7 @@ const {PGlite}=require('@electric-sql/pglite'),{pgcrypto}=require('@electric-sql
  // The api: what it reads, keeps and saves.
  const api=fs.readFileSync('supabase/functions/api/index.ts','utf8');
  assert.match(api,/select\("id,name,phone,reminder,buys"\)/,'bootstrap reads what each supplier sells');
- assert.match(api,/stock_item,kind"\)/,'bootstrap reads each item\'s kind');
+ assert.match(api,/stock_item,(stock_items,)?kind"\)/,'bootstrap reads each item\'s kind');
  assert.match(api,/buys: SUPPLIER_BUYS\.includes\(b\.buys\) \? b\.buys : "food"/,'an unknown value saves as food');
  assert.match(api,/kind: b\.kind === "expense" \? "expense" : "food"/);
  assert.match(api,/buys: \["buys"\]/);assert.match(api,/kind: \["kind"\]/);

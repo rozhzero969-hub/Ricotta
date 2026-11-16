@@ -222,7 +222,9 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 // What is bought from a supplier: food, expenses (tea, paper cups, tissues...) or both. An item is food or an expense.
 const SUPPLIER_BUYS = ["food", "expenses", "both"];
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, buys: SUPPLIER_BUYS.includes(s.buys) ? s.buys : "food" });
-const toItem = (i: any) => ({ id: i.id, name: i.name, kind: i.kind === "expense" ? "expense" : "food", unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false, stockItem: i.stock_item ?? null,
+const toItem = (i: any) => ({ id: i.id, name: i.name, kind: i.kind === "expense" ? "expense" : "food", unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false,
+  // The linked stock items, first one first (stockItem is the first, for everything that reads one link).
+  ...((links: string[]) => ({ stockItem: links[0] ?? null, stockItems: links }))((globalThis as any).RicottaStockLink.linksOf(i)),
   createdAt: i.created_at ?? null, lastOrderedAt: i.last_ordered_at ?? null });
 /* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
    had one; recoverable: how many days Rico can bring back after it broke. */
@@ -380,6 +382,15 @@ const stockOf = (t: any, used: Map<string, any>, at: string | null) => {
   const L = (globalThis as any).RicottaStockLink;
   return { ...L.amount(t), level: L.level(t, used).level, count: L.counted(t), at };
 };
+/* The stock of an item's links: one link as before; several added together (stock-link.js combine()),
+   with each part and the names of any linked stock item that is no longer in Ricotta Restaurant. */
+function stockFor(names: string[], byName: Map<string, any>, used: Map<string, any>, at: string | null) {
+  const L = (globalThis as any).RicottaStockLink;
+  const found = names.map((n) => byName.get(n)).filter(Boolean), gone = names.filter((n) => !byName.has(n));
+  if (!found.length) return { missing: true, at };
+  if (names.length === 1) return stockOf(found[0], used, at);
+  return { ...L.combine(found, used), at, ...(gone.length ? { gone } : {}) };
+}
 /* Each item's low stock level (Manage), {id: level}. Read on its own, so the items still load before the
    low stock migration (20261115120000) has been run. */
 async function lowLevels(): Promise<Map<string, number>> {
@@ -397,17 +408,13 @@ async function withStock(items: any[]) {
   if (!cat) return items;
   const byName = new Map(cat.titems.map((t: any) => [t.name, t]));
   const used = await stockUsage(cat.titems, moves).catch(() => new Map());
-  return items.map((i) => {
-    if (!i.stockItem) return i;
-    const t = byName.get(i.stockItem);
-    return { ...i, stock: t ? stockOf(t, used, cat.at) : { missing: true, at: cat.at } };
-  });
+  return items.map((i) => ({ ...i, ...(i.stockItem ? { stock: stockFor(i.stockItems?.length ? i.stockItems : [i.stockItem], byName, used, cat.at) } : {}) }));
 }
 async function bootstrap(s: Session) {
   const [me, suppliers, items, units, orders, devices, activity, inbox, streak, months, draft, wipe] = await Promise.all([
     readAccount(s.account),
     readAll(() => app("suppliers").select("id,name,phone,reminder,buys").order("name").order("id")),
-    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at,stock_item,kind").order("name").order("id")),
+    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at,stock_item,stock_items,kind").order("name").order("id")),
     readAll(() => app("units").select("id,en,ku,ar").order("id")),
     readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")),
     listDevices(s),
@@ -1164,31 +1171,37 @@ Deno.serve(async (req) => {
     if (M === "PUT" && (m = path.match(/^items\/([^/]{1,120})\/stock$/))) {
       if (!can(s, "catalog")) return fail("forbidden", 403);
       const id = decodeURIComponent(m[1]);
-      const want = b.stockItem === null ? null : typeof b.stockItem === "string" && b.stockItem.length >= 1 && b.stockItem.length <= 200 ? b.stockItem : undefined;
-      if (want === undefined) return fail("invalid_input");
-      const { data: item, error } = await app("items").select("id,name,aliases,stock_item").eq("id", id).maybeSingle();
-      if (error) return fail("save_failed", 500);
+      // {stockItems: [names]} (several, first one first) or the older {stockItem: name | null}.
+      const raw = Array.isArray(b.stockItems) ? b.stockItems : b.stockItem === null ? [] : typeof b.stockItem === "string" ? [b.stockItem] : null;
+      if (!raw || raw.length > 20 || raw.some((n: unknown) => typeof n !== "string" || !n.length || n.length > 200)) return fail("invalid_input");
+      const want: string[] = [...new Set(raw as string[])];
+      const { data: item, error } = await app("items").select("id,name,aliases,stock_item,stock_items").eq("id", id).maybeSingle();
+      if (error) return fail(error.code === "42703" ? "not_ready" : "save_failed", error.code === "42703" ? 503 : 500);
       if (!item) return fail("gone", 409);
+      const L = (globalThis as any).RicottaStockLink;
+      const before: string[] = L.linksOf(item);
       let stock: any = null, mismatch = false;
-      if (want !== null) {
+      if (want.length) {
         const cat = await readStockCatalog();
-        const t = (cat?.titems ?? []).find((x: any) => x?.name === want);
-        if (!t) return fail("stock_item_unknown", 422);
-        const L = (globalThis as any).RicottaStockLink;
-        mismatch = !L.matches({ name: item.name, aliases: item.aliases ?? [] }, want);
-        if (mismatch && b.anyway !== true) return fail("names_dont_match", 422);
-        stock = stockOf(t, await stockUsage(cat?.titems ?? []).catch(() => new Map()), cat?.at ?? null);
+        const byName = new Map((cat?.titems ?? []).map((t: any) => [t?.name, t]));
+        if (want.some((n) => !byName.has(n))) return fail("stock_item_unknown", 422);
+        // A name that doesn't match is linked only after the app warned (anyway: true, or the list of those names).
+        const odd = want.filter((n) => !before.includes(n) && !L.matches({ name: item.name, aliases: item.aliases ?? [] }, n));
+        const ok = b.anyway === true || (Array.isArray(b.anyway) && odd.every((n) => b.anyway.includes(n)));
+        mismatch = odd.length > 0;
+        if (mismatch && !ok) return fail("names_dont_match", 422);
+        stock = stockFor(want, byName as Map<string, any>, await stockUsage(cat?.titems ?? []).catch(() => new Map()), cat?.at ?? null);
       }
-      if ((item.stock_item ?? null) !== want) {
-        const { error: upError } = await app("items").update({ stock_item: want, updated_at: nowIso() }).eq("id", id);
+      if (before.join("\n") !== want.join("\n")) {
+        const { error: upError } = await app("items").update({ stock_item: want[0] ?? null, stock_items: want, updated_at: nowIso() }).eq("id", id);
         if (upError) return fail("save_failed", 500);
         const { error: logError } = await app("audit_events").insert({ id: crypto.randomUUID(), actor: s.account, device_id: s.deviceId, action: "edit", entity_type: "item", entity_name: item.name,
-          payload: { by: accountName(s.account), fields: [{ k: "stock", from: item.stock_item ?? "", to: want ?? "" }], source: "server", ...(mismatch ? { mismatch: true } : {}) } });
+          payload: { by: accountName(s.account), fields: [{ k: "stock", from: before.join(" + "), to: want.join(" + ") }], source: "server", ...(mismatch ? { mismatch: true } : {}) } });
         if (logError) console.error("stock_link_audit_failed");
-        // Another stock item: its low stock alert starts over (and alerts now if it is already low).
+        // Other stock items: the low stock alert starts over (and alerts now if it is already low).
         later(relinkedLowStock(db, id));
       }
-      return json({ ok: true, stockItem: want, stock });
+      return json({ ok: true, stockItem: want[0] ?? null, stockItems: want, stock });
     }
     // Low stock alert of one item (Manage): {level} in the linked stock item's counting format, or null
     // for none. At or below it, the item shows yellow and Rozh and Yunis get one alert (low-stock.ts).
