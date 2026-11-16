@@ -4,16 +4,16 @@
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
   {id:'2026-11-16b', date:'2026-11-16', notes:{
-    en:['Recipes work out their own cost from the last price paid for each ingredient, with the profit and margin next to the menu price. A missing amount or price says so.',
-      'Recipes has a cleaner list, a one-page editor that saves as you type, an ingredients page linked to stock, and a cooking view that keeps the screen on.',
+    en:['Recipes work out their own cost from the last price paid for each ingredient, with the profit and margin next to the menu price, all in IQD. A missing amount or price says so.',
+      'Recipes has a cleaner list grouped by category (Cakes, Drinks and so on), a one-page editor that saves as you type, an ingredients page linked to stock, and a cooking view that keeps the screen on.',
       'An ordering item can be linked to several stock items, each with its own amount. Manage, Items has a Food and Expenses switch.',
       'Rico can read Ricotta Restaurant from the server every few minutes, without the Mac. In Rico\u2019s menu you can pin chats and see scheduled tasks.'],
-    ku:['ڕەچەتەکان خۆیان تێچوویان لە دوایین نرخی پێدراوی هەر پێکهاتەیەک دەردەهێنن، لەگەڵ قازانج و ڕێژەی قازانج لە تەنیشت نرخی مینیو. ئەگەر بڕێک یان نرخێک نەبێت، دەیڵێت.',
-      'ڕەچەتەکان لیستێکی ڕێکتری هەیە، دەستکارییەک لە یەک پەڕەدا کە لە کاتی نووسیندا پاشەکەوت دەکات، پەڕەی پێکهاتەکان کە بە کۆگاوە بەستراوە، و شاشەی چێشتلێنان کە شاشەکە بە کراوەیی دەهێڵێتەوە.',
+    ku:['ڕەچەتەکان خۆیان تێچوویان لە دوایین نرخی پێدراوی هەر پێکهاتەیەک دەردەهێنن، لەگەڵ قازانج و ڕێژەی قازانج لە تەنیشت نرخی مینیو، هەمووی بە دینار. ئەگەر بڕێک یان نرخێک نەبێت، دەیڵێت.',
+      'ڕەچەتەکان لیستێکی ڕێکتری هەیە کە بە پۆل ڕیز کراوە (کێک، خواردنەوە و هتد)، دەستکارییەک لە یەک پەڕەدا کە لە کاتی نووسیندا پاشەکەوت دەکات، پەڕەی پێکهاتەکان کە بە کۆگاوە بەستراوە، و شاشەی چێشتلێنان کە شاشەکە بە کراوەیی دەهێڵێتەوە.',
       'کاڵایەکی داواکاری دەتوانرێت بە چەند کاڵایەکی کۆگاوە ببەسترێت، هەر یەکە بە بڕی خۆی. بەڕێوەبردن، کاڵاکان گۆڕینێکی خواردن و خەرجییەکانی هەیە.',
       'ریکۆ دەتوانێت هەموو چەند خولەکێک لە سێرڤەرەوە ریکۆتا ڕێستۆرانت بخوێنێتەوە، بێ ماک. لە لیستی ریکۆ دەتوانیت گفتوگۆکان هەڵبواسیت و ئەرکە خشتەکراوەکان ببینیت.'],
-    ar:['تحسب الوصفات تكلفتها بنفسها من آخر سعر مدفوع لكل مكوّن، مع الربح وهامش الربح بجانب سعر القائمة. وإذا نقصت كمية أو سعر تقول ذلك.',
-      'للوصفات قائمة أنظف، ومحرر في صفحة واحدة يحفظ أثناء الكتابة، وصفحة مكونات مرتبطة بالمخزون، وعرض للطهي يبقي الشاشة مضاءة.',
+    ar:['تحسب الوصفات تكلفتها بنفسها من آخر سعر مدفوع لكل مكوّن، مع الربح وهامش الربح بجانب سعر القائمة، وكلها بالدينار. وإذا نقصت كمية أو سعر تقول ذلك.',
+      'للوصفات قائمة أنظف مرتبة حسب الفئة (كيك، مشروبات وغيرها)، ومحرر في صفحة واحدة يحفظ أثناء الكتابة، وصفحة مكونات مرتبطة بالمخزون، وعرض للطهي يبقي الشاشة مضاءة.',
       'يمكن ربط مادة الطلب بعدة مواد في المخزون، لكل منها كميته. وفي الإدارة، المواد، يوجد مفتاح للطعام والمصاريف.',
       'يستطيع ريكو قراءة ريكوتا ريستورانت من الخادم كل بضع دقائق، دون الماك. وفي قائمة ريكو يمكنك تثبيت المحادثات ورؤية المهام المجدولة.']}},
   {id:'2026-11-15a', date:'2026-11-15', notes:{
