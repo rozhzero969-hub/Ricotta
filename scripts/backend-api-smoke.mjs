@@ -503,7 +503,7 @@ try {
   assert.equal((await call('recipes/'+rid,{...recipe,version:2,data:{...recipe.data,lines:[{ingredient:iid,qty:-1,unit:'pcs'}]}},'PUT')).status,422);
   // Rico reads the recipe book with the same cost rules and rounding as the app.
   tables.app_rr_invoices=[{entry_date:'2026-11-10',read_at:'2026-11-10T10:00:00Z',invoice_number:'1',supplier_name:'Farm',currency:'IQD',lines:[{item:'Eggs',unit:'pcs',unit_cost:1060}]}];
-  const ricoList=await ricoRecipes(db,{});assert.deepEqual(ricoList.recipes.map(r=>[r.name,r.category,r.cost_to_make_iqd,r.menu_price_iqd,r.profit_iqd]),[['Cake','Cakes',2000,9000,7000]],'2 eggs at 1,060 = 2,120, shown as 2,000');
+  const ricoList=await ricoRecipes(db,{});assert.deepEqual(ricoList.recipes.map(r=>[r.name,r.group,r.cost_to_make_iqd,r.menu_price_iqd,r.profit_iqd]),[['Cake','Cakes',2000,9000,7000]],'2 eggs at 1,060 = 2,120, shown as 2,000');
   const ricoRead=await ricoRecipes(db,{action:'read',recipe:'cak'});assert.equal(ricoRead.name,'Cake');assert.equal(ricoRead.exact_cost_iqd,2120);assert.deepEqual(ricoRead.steps,['Mix']);
   assert.equal(ricoRead.ingredients[0].line_cost_iqd,2120);assert.equal(ricoRead.ingredients[0].last_price.supplier,'Farm');assert.deepEqual(ricoRead.ingredients[0].last_price.price_per_unit,['1 piece = 1060 IQD']);
   tables.app_rr_invoices=[];

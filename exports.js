@@ -476,7 +476,7 @@ async function exportMonth(format){
   const title = t('fileMonthTitle')(month), subtitle = t('fileMonthSub')(d.orders, d.days, fileStamp(at));
   if(format === 'excel'){
     const rows = [];
-    orders.forEach(h=>(h.entries || []).forEach(e=>(e.items || []).forEach(it=>rows.push([erbilDate(h.date), formatIraqDateTime(h.date, {hour:'2-digit', minute:'2-digit', hour12:false}),
+    orders.forEach(h=>(h.entries || []).forEach(e=>(e.items || []).forEach(it=>rows.push([erbilDate(h.date), formatIraqDateTime(h.date, {hour:'numeric', minute:'2-digit'}),
       accountLabel(h.by) || '', e.supplierId ? supplierName(e.supplierId) : (e.supplierName || t('noSupplier')), it.name, Number(it.qty), unitLabel(it.unit)]))));
     const summary = [[t('reportOrders'), d.orders], [t('reportDays'), d.days], [t('reportLines'), d.lines], [t('reportGrade'), d.grade],
       ...d.top.map((x, i)=>[i ? '' : t('reportTop'), `${x.name} · ${t('reportTimes')(x.times)}`]), ...(d.busiest >= 0 ? [[t('reportBusiest'), weekdayName(d.busiest)]] : []),

@@ -557,10 +557,12 @@ function renderRicoIntro(){
     ...(canOpen('transfers') || canOpen('receipts') ? [['', rr[1], 'needs']] : []),
     ...(canOpen('receipts') ? [['', rr[2], 'price']] : []),
   ];
-  const list = [...extra, ...base];
+  // Ahmad (Recipes only): questions about his recipes, prices and the minibar, never about ordering.
+  const recipeOnly = !canOpen('order') && canOpen('recipes');
+  const list = recipeOnly ? [...t('recipe_ricoChips'), ...t('recipe_ricoItemChips').slice(0, 1)].map((q, i)=>['', q, ['reports', 'late', 'price', 'stock', 'price'][i] || 'check']) : [...extra, ...base];
   return `<div class="rico-intro">
     ${renderRicoInbox()}
-    <div class="rico-hello">${ricoFace('', 'rico-lg')}<h2>${esc(ricoGreeting())}</h2><p>${esc(t('ricoIntroSub'))}</p></div>
+    <div class="rico-hello">${ricoFace('', 'rico-lg')}<h2>${esc(ricoGreeting())}</h2><p>${esc(recipeOnly ? t('ricoIntroSubRecipes') : t('ricoIntroSub'))}</p></div>
     <div class="rico-chips at-start" id="ricoChips">${list.map(([action, text, icon])=>`<button type="button" class="rico-chip" data-rico-ask="${esc(text)}"${action ? ` data-rico-action="${action}"` : ''}><span class="rico-chip-ic ic-${icon}">${RICO_TILE_ICONS[icon] || ''}</span><span dir="auto">${esc(text)}</span></button>`).join('')}</div>
   </div>`;
 }

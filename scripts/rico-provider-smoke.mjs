@@ -455,7 +455,7 @@ assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname ===
   assert.equal(yunis.can.recipes, false);
   assert.equal((await _internals.runTool(db, yunis, 'recipes', {}, () => {}, false)).error, 'no_access', 'Yunis needs Recipes access');
   assert.ok(_internals.TOOLS.some(t => t.name === 'recipes'));
-  assert.match(_internals.MANUAL, /Ahmad, the cook/);
+  assert.match(_internals.MANUAL, /Ahmad \(who runs the minibar/); assert.ok(_internals.TOOLS.some(t => t.name === 'minibar_stock'), 'Rico reads Ahmad\'s minibar stock');
 }
 
 console.log('Rico provider smoke: PASS (History and Record roles inside Rico; Rico sends test orders by WhatsApp to Rozh only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), mood tags dropped (any shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');

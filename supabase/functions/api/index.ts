@@ -76,6 +76,7 @@ import { adminAi, chatTitle, handleChat, orderSuggestion, whatsappReady } from "
 import { saveMemory, saveRoutine, toRoutine } from "./rico-memory.ts";
 import { cleanRoutine } from "../_shared/routines.ts";
 import { recipesRoute } from "./recipes.ts";
+import { MINIBAR_MAX, minibarStock, saveMinibar } from "./minibar.ts";
 import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
 import { stockView, transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
@@ -100,7 +101,7 @@ const MAX_GLOBAL_FAILED_LOGINS = 40;      // per window, across ALL claimed IPs 
 const SEEN_WRITE_EVERY_MS = 5 * 60_000;   // throttle session last_seen_at writes
 const SESSION_IDLE_MS = 30 * 86400_000;    // a sign-in ends after 30 days without use
 const PAGE = 1000;                        // PostgREST returns at most 1000 rows per request
-const RECORD_TYPES = ["supplier", "item", "unit"];
+const RECORD_TYPES = ["supplier", "item", "unit", "recipe", "ingredient"];   // recipe, ingredient: Ahmad's Recipes (recipes.ts)
 const RECORD_ACTIONS = ["add", "edit", "delete"];
 const LANGS = ["en", "ku", "ar"];
 /* What Rozh can give Yunis in Admin -> Access. Screens: history, manage (Items, Suppliers, Units),
@@ -113,7 +114,7 @@ const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers" 
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
   : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : account === "ahmad" ? [] : [...DEFAULT_ROLES];
 // Account settings the app may save (Settings), and the ones with a list of choices.
-const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "simpleView", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto", "tourExpenses", "tourRecipes", "recipeAlerts"]);
+const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "simpleView", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto", "tourExpenses", "tourRecipes", "tourRecipes2", "recipeAlerts"]);
 const SETTING_CHOICES: Record<string, string[]> = { darkMode: ["auto", "on", "off"], ricoStyle: ["normal", "short", "warm"] };
 // Rozh may undo an order she sent this long without typing her PIN.
 const UNDO_MS = 15 * 60_000;
@@ -539,14 +540,18 @@ function later(work: Promise<unknown>) {
    notification on her other signed-in phones), whoever it was. */
 async function alertNewDevice(req: Request, account: Account, deviceId: string | null) {
   const [kind, how] = (deviceLabel(req) ?? "").split("|");
-  const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Baghdad", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
+  // The 12-hour clock, as Erbil reads it: 3:30 PM, 3:30 د.ن, 3:30 م.
+  const hm = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Baghdad", hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(new Date());
+  const clock = hm.filter((p) => p.type === "hour" || p.type === "minute" || (p.type === "literal" && p.value.includes(":"))).map((p) => p.value).join("");
+  const pm = /p/i.test(hm.find((p) => p.type === "dayPeriod")?.value ?? "");
+  const times = { en: `${clock} ${pm ? "PM" : "AM"}`, ku: `${clock} ${pm ? "د.ن" : "پ.ن"}`, ar: `${clock} ${pm ? "م" : "ص"}` };
   const n = LOCAL_NAMES[account];
   const device = { en: kind || "a new device", ku: kind || "ئامێرێکی نوێ", ar: kind || "جهاز جديد" };
   const via = how === "App" ? { en: " (app)", ku: " (ئەپ)", ar: " (التطبيق)" } : { en: "", ku: "", ar: "" };
   const words = {
-    en: `New sign-in: ${n.en} on ${device.en}${via.en} at ${time}. If you didn't expect it, change that PIN in Admin, PINs.`,
-    ku: `چوونەژوورەوەی نوێ: ${n.ku} لەسەر ${device.ku}${via.ku} کاتژمێر ${time}. ئەگەر چاوەڕێی نەبوویت، ئەو کۆدە لە ئەدمین، کۆدەکان بگۆڕە.`,
-    ar: `تسجيل دخول جديد: ${n.ar} على ${device.ar}${via.ar} الساعة ${time}. إذا لم تكن تتوقعه، غيّر ذلك الرمز من المشرف، الرموز.`,
+    en: `New sign-in: ${n.en} on ${device.en}${via.en} at ${times.en}. If you didn't expect it, change that PIN in Admin, PINs.`,
+    ku: `چوونەژوورەوەی نوێ: ${n.ku} لەسەر ${device.ku}${via.ku} کاتژمێر ${times.ku}. ئەگەر چاوەڕێی نەبوویت، ئەو کۆدە لە ئەدمین، کۆدەکان بگۆڕە.`,
+    ar: `تسجيل دخول جديد: ${n.ar} على ${device.ar}${via.ar} الساعة ${times.ar}. إذا لم تكن تتوقعه، غيّر ذلك الرمز من المشرف، الرموز.`,
   };
   const { error } = await app("rico_inbox").insert({ account: "rozha", kind: "security", mood: "calm", body_en: words.en, body_ku: words.ku, body_ar: words.ar });
   if (error) console.error("security_inbox_failed");
@@ -1008,7 +1013,24 @@ Deno.serve(async (req) => {
 
     if (path === "recipes" || path.startsWith("recipes/") || path === "recipe-ingredients" || path.startsWith("recipe-ingredients/")) {
       if (!can(s,"recipes")) return fail("forbidden",403);
-      return await recipesRoute({db,json,fail,account:s.account},M,path,b);
+      return await recipesRoute({db,json,fail,account:s.account,device:s.deviceId},M,path,b);
+    }
+    // Ahmad's Stock tab (minibar.ts): the items Rozh picked for him, with what is in Main Storage.
+    if (path === "minibar") {
+      if (M === "GET") {
+        if (s.account !== "ahmad" && !rozha) return fail("forbidden", 403);
+        try { return json(await minibarStock(db)); } catch { return fail("load_failed", 503); }
+      }
+      if (M === "PUT") {
+        if (!rozha) return fail("forbidden", 403);
+        const ids = Array.isArray(b.itemIds) ? [...new Set(b.itemIds.filter((x: unknown) => typeof x === "string" && x.length > 0 && x.length <= 120))] as string[] : null;
+        if (!ids || ids.length > MINIBAR_MAX) return fail("invalid_input");
+        const known = ids.length ? await app("items").select("id").in("id", ids) : { data: [], error: null };
+        if (known.error) return fail("load_failed", 503);
+        const keep = new Set((known.data ?? []).map((r: any) => r.id));
+        return (await saveMinibar(db, ids.filter((x) => keep.has(x)))) ? json(await minibarStock(db).catch(() => ({ items: [], at: null }))) : fail("save_failed", 500);
+      }
+      return fail("not_found", 404);
     }
     if (s.account === "ahmad" && !can(s,"order") && /^(draft|orders|me\/pins)(\/|$)/.test(path)) return fail("forbidden",403);
     if (s.account === "ahmad" && !can(s,"order") && !can(s,"history") && path.startsWith("streak")) return fail("forbidden",403);
