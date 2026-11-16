@@ -507,7 +507,8 @@ const ACCOUNT_ROLES = {rozha:ALL_ROLES, yunis:ALL_ROLES.filter(r=>r!=='recipes')
 /* The screens of the tab bar, in order, for whoever is signed in. With four or fewer they are all
    tabs; with more, the first four are and the rest are under More. Rico lives in the top bar and
    Settings in the account sheet. */
-const NAV_SCREENS = ['order','recipes','history','receipts','transfers','stock','manage','record','admin'];
+// Recipes is Ahmad's screen: first for him, after the daily ones (Transfers) for everyone else.
+const NAV_SCREENS = ['order','history','receipts','transfers','recipes','stock','manage','record','admin'];
 const navScreens = ()=> (state.account === 'ahmad' ? ['recipes',...NAV_SCREENS.filter(v=>v!=='recipes')] : NAV_SCREENS).filter(v=>state.views.includes(v));
 const tabsFor = ()=> navScreens().length ? navScreens().slice(0, 4) : ['order'];
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
