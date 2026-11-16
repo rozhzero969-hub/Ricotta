@@ -49,7 +49,8 @@ const recipeUnit = id=>recipeCtx().unit(id) || '';
 function recipeMoney(n){
   if(n === null || n === undefined || !Number.isFinite(Number(n))) return '';
   const v = Number(n);
-  return v.toLocaleString('en-US', {maximumFractionDigits:Math.abs(v) < 10 && v % 1 ? 1 : 0}) + ' IQD';
+  // Kept left to right inside Kurdish and Arabic text, so it reads 6,000 IQD and never IQD 6,000.
+  return '\u2066' + v.toLocaleString('en-US', {maximumFractionDigits:Math.abs(v) < 10 && v % 1 ? 1 : 0}) + ' IQD\u2069';
 }
 /* The stock items a recipe uses that are out or low in Main Storage. */
 function recipeStockIssues(r){
@@ -168,7 +169,7 @@ function renderRecipes(){
   return recipeListPage();
 }
 function recipeSearchBox(id, value, label){
-  return `<div class="list-search rc-search"><div class="search-wrap">${ICON_SEARCH}<input id="${id}" type="search" aria-label="${esc(label)}" placeholder="${esc(label)}" value="${esc(value)}" autocomplete="off"></div></div>`;
+  return `<div class="list-search rc-search"><div class="search-wrap">${ICON_SEARCH}<input id="${id}" class="search-input" type="search" aria-label="${esc(label)}" placeholder="${esc(label)}" value="${esc(value)}" autocomplete="off"></div></div>`;
 }
 function recipeAlerts(){
   const list = (recipeBook.data.alerts || []).filter(a=>!a.read);
@@ -257,7 +258,7 @@ function recipeLineHtml(l, i, scale){
 }
 function recipeDetailPage(r){
   const d = r.data, c = recipeCostOf(r), scale = recipeBook.scale, cook = recipeBook.cooking;
-  const meta = [d.yield ? `${recipeQty(d.yield * scale)} ${d.yieldUnit || rt('servings')}` : '', d.prep ? rt('prepMin')(d.prep) : '', d.cook ? rt('cookMin')(d.cook) : ''].filter(Boolean);
+  const meta = [d.yield ? `${recipeQty(d.yield * scale)} ${d.yieldUnit || rt('servings')(d.yield * scale)}` : '', d.prep ? rt('prepMin')(d.prep) : '', d.cook ? rt('cookMin')(d.cook) : ''].filter(Boolean);
   const photos = recipeBook.photos?.id === r.id ? recipeBook.photos : null;
   const steps = d.steps.filter(s=>s.trim());
   return `<div class="rc-page rc-detail${cook ? ' is-cooking' : ''}">

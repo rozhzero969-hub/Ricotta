@@ -3173,6 +3173,7 @@ html.dark .rc-warn-hint{color:#FF9F0A}
   .rc-head{gap:12px}.rc-hero{width:64px;height:64px;border-radius:14px}.rc-head h2{font-size:1.4375rem}
   .rc-line{grid-template-columns:minmax(0,1fr) auto;row-gap:2px}
   .rc-line-cost{grid-column:2;text-align:end}
+  .rc-line-main{grid-row:span 2}.rc-line-qty{text-align:end}
   .rc-eline{grid-template-columns:minmax(0,1fr) auto;row-gap:8px}
   .rc-eline-amt{grid-column:1}.rc-eline-cost{grid-column:2;grid-row:1}.rc-eline-btns{grid-column:2;grid-row:2;justify-self:end}
   .rc-two{grid-template-columns:1fr}
