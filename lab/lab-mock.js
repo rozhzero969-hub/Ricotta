@@ -107,7 +107,11 @@
        ku:'داواکاریی ئەمڕۆی Erbil Veg Marketم ئامادە کرد (3 کاڵا). بیکەرەوە، بیپشکنە و بینێرە.',
        ar:'جهّزت طلب اليوم من Erbil Veg Market (3 مواد). افتحه وراجعه وأرسله.',
        order:{supplierId:'sup-veg', supplier:'Erbil Veg Market', day:new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Baghdad'}).format(new Date()),
-         lines:[{itemId:'it-tom', qty:12}, {itemId:'it-basil', qty:6}, {itemId:'it-onion', qty:1}]}}
+         lines:[{itemId:'it-tom', qty:12}, {itemId:'it-basil', qty:6}, {itemId:'it-onion', qty:1}]}},
+      // A scheduled question (kind ask): Rico shows it with an "Ask now" button.
+      {id:3, kind:'routine_ask', mood:'calm', read:false, at:new Date(Date.now() - 5*60000).toISOString(),
+       en:'Scheduled: Which items are running low?', ku:'خشتەکراو: Which items are running low?', ar:'مجدول: Which items are running low?',
+       question:'Which items are running low?'}
     ];
     items.find(i=>i.id==='it-tom').note = 'Ripe, not soft';
     const today = bag(new Date());
@@ -553,10 +557,15 @@
     if(path === 'rico-routines'){
       db.routines ||= [{id:'22222222-2222-4222-8222-222222222221', account:'rozha', kind:'remind', text:'Do the transfers', supplierIds:[], time:'09:00', days:[0,1,2,3,4,5,6], enabled:true, lastRunDay:null}];
       if(method === 'POST'){
-        if(!['remind','prepare_order'].includes(body.kind) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.time || '')) return json({error:'invalid_input'}, 400);
-        const same = db.routines.find(x=>x.account === account && x.kind === body.kind && x.time === body.time && x.text === body.text);
+        const at = body.runAt ? Date.parse(body.runAt) : NaN;
+        if(!['remind','prepare_order','ask'].includes(body.kind) || !String(body.text || '').trim()) return json({error:'invalid_input'}, 400);
+        if(body.runAt ? body.kind === 'prepare_order' || !Number.isFinite(at) : !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.time || '')) return json({error:'invalid_input'}, 400);
+        if(body.kind === 'prepare_order' && !(body.supplierIds || []).length) return json({error:'invalid_input'}, 400);
+        if(db.routines.filter(x=>x.account === account).length >= 20) return json({error:'too_many'}, 409);
+        const time = body.runAt ? new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Baghdad', hour:'2-digit', minute:'2-digit', hourCycle:'h23'}).format(at) : body.time;
+        const same = !body.runAt && db.routines.find(x=>x.account === account && x.kind === body.kind && x.time === body.time && x.text === body.text);
         if(same) return json({routine:same});
-        const r = {id:crypto.randomUUID(), account, kind:body.kind, text:String(body.text || '').slice(0, 200), supplierIds:body.supplierIds || [], time:body.time, days:body.days || [0,1,2,3,4,5,6], enabled:true, lastRunDay:null};
+        const r = {id:crypto.randomUUID(), account, kind:body.kind, text:String(body.text || '').slice(0, 200), supplierIds:body.kind === 'prepare_order' ? body.supplierIds : [], time, days:body.runAt ? [0,1,2,3,4,5,6] : body.days || [0,1,2,3,4,5,6], enabled:true, lastRunDay:null, runAt:body.runAt ? new Date(at).toISOString() : null};
         db.routines.push(r); save(); return json({routine:r});
       }
       return json(db.routines.filter(r=>account === 'rozha' || r.account === account));
@@ -806,6 +815,12 @@
       if(body.account === 'rozha' && pin === '222222') return fail('duplicate_pin');
       return ok();
     }
+    if(method === 'PUT' && (m = path.match(/^rico-chats\/([^/]+)\/pin$/))){
+      const c = db.chats.find(x=>x.id === decodeURIComponent(m[1]));
+      if(typeof body.pinned !== 'boolean') return fail('invalid_input');
+      if(!c || (c.account !== account && account !== 'rozha')) return fail('not_found', 404);
+      c.pinned = body.pinned; save(); return ok();
+    }
     if(method === 'PUT' && (m = path.match(/^rico-chats\/([^/]+)\/title$/))){
       const c = db.chats.find(x=>x.id === decodeURIComponent(m[1]));
       if(!c || (c.account !== account && account !== 'rozha')) return fail('not_found', 404);
@@ -819,7 +834,7 @@
     }
     if((m = path.match(/^rico-chats(?:\/(.+))?$/))){
       const id = m[1] ? decodeURIComponent(m[1]) : null;
-      if(method === 'GET' && !id) return json({chats:[...db.chats].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).map(c=>({id:c.id, account:c.account, title:c.title, createdAt:c.createdAt, updatedAt:c.updatedAt}))});
+      if(method === 'GET' && !id) return json({chats:[...db.chats].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).map(c=>({id:c.id, account:c.account, title:c.title, pinned:!!c.pinned, createdAt:c.createdAt, updatedAt:c.updatedAt}))});
       if(method === 'GET'){ const c = db.chats.find(x=>x.id===id); return c ? json(c) : fail('Chat not found', 404); }
       if(method === 'PUT'){
         const now = new Date().toISOString();

@@ -30,6 +30,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   GET    rico-chats                                           one shared list of both accounts' Rico chats
 //   DELETE rico-chats[/:id][?account=all]                       delete one chat, or all of them
 //   PUT    rico-chats/:id/title {title}                          rename a chat (own; Rozh any)
+//   PUT    rico-chats/:id/pin {pinned}                           pin a chat to the top (own; Rozh any)
 //   POST   assistant/title {question, answer, lang}              a short topic name for a new chat
 //   GET    rico-routines | POST rico-routines {kind,text,time,days,supplierIds,runAt}   Rico's routines (runAt: a one-off reminder)
 //   PUT    rico-routines/:id {enabled} | DELETE rico-routines/:id                  switch one on or off, delete
@@ -257,7 +258,8 @@ const toActivity = (a: any) => ({
 });
 // Rico has no moods any more: older rows still hold one, so every message reads as the neutral face.
 const toInbox = (m: any) => ({ id: m.id, kind: m.kind, mood: "calm", en: m.body_en, ku: m.body_ku, ar: m.body_ar, at: m.created_at, read: !!m.read_at,
-  ...(m.kind === "routine_order" && m.payload ? { order: m.payload } : {}) });
+  ...(m.kind === "routine_order" && m.payload ? { order: m.payload } : {}),
+  ...(m.kind === "routine_ask" && typeof m.payload?.question === "string" ? { question: m.payload.question } : {}) });
 /* Reads every row of a query, 1000 at a time (a single request silently stops
    at 1000 rows, which used to cut long order histories short). */
 async function readAll(build: () => any): Promise<any[]> {
@@ -816,10 +818,10 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
   if (id !== null && !uuid(id)) return fail("Chat not found", 404);
   const whose = new URL(req.url).searchParams.get("account");
   if (req.method === "GET" && id === null) {
-    const { data, error } = await db.from("app_rico_chats").select("id,account,title,created_at,updated_at")
+    const { data, error } = await db.from("app_rico_chats").select("id,account,title,pinned,created_at,updated_at")
       .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString()).order("updated_at", { ascending: false }).limit(120);
     if (error) throw error;
-    return json({ chats: (data ?? []).map((c: any) => ({ id: c.id, account: c.account, title: c.title, createdAt: c.created_at, updatedAt: c.updated_at })) });
+    return json({ chats: (data ?? []).map((c: any) => ({ id: c.id, account: c.account, title: c.title, pinned: !!c.pinned, createdAt: c.created_at, updatedAt: c.updated_at })) });
   }
   if (req.method === "GET") {
     // Saved chats last 90 days (the nightly clean-up removes older ones); an older one is gone here too.
@@ -1400,6 +1402,14 @@ Deno.serve(async (req) => {
       const title = plain(b?.title, 80);
       if (!title) return fail("invalid_input");
       let q = db.from("app_rico_chats").update({ title }).eq("id", m[1]);
+      if (!isRozha(s)) q = q.eq("account", s.account);
+      const { data: done, error } = await q.select("id");
+      return error ? fail("save_failed", 500) : !done?.length ? fail("not_found", 404) : ok();
+    }
+    // Pinning a chat (it stays at the top of the list): the person's own (Rozh: any).
+    if ((m = path.match(/^rico-chats\/([0-9a-f-]{36})\/pin$/)) && M === "PUT") {
+      if (typeof b?.pinned !== "boolean") return fail("invalid_input");
+      let q = db.from("app_rico_chats").update({ pinned: b.pinned }).eq("id", m[1]);
       if (!isRozha(s)) q = q.eq("account", s.account);
       const { data: done, error } = await q.select("id");
       return error ? fail("save_failed", 500) : !done?.length ? fail("not_found", 404) : ok();

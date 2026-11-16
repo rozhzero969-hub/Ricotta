@@ -573,7 +573,9 @@ const server=http.createServer((req,res)=>{
     // The two-line button slides out a side menu of recent chats, like ChatGPT's; Escape puts it away.
     await page.locator('#ricoTopbar [data-rt-chats]').click();
     await page.locator('#ricoDrawer .rd-new').waitFor();
-    assert.equal(await page.locator('#ricoDrawer .rd-item').count(),3,'the side menu has Settings, Memory and All chats');
+    assert.equal(await page.locator('#ricoDrawer .rd-item').count(),2,'the side menu has Settings and Scheduled (no Chat history or Memory rows)');
+    assert.equal(await page.locator('#ricoDrawer [data-rd-scheduled]').count(),1,'Scheduled is in the side menu');
+    assert.equal(await page.locator('#ricoDrawer .rd-foot').evaluate(f=>f.firstElementChild.classList.contains('rd-me')&&f.lastElementChild.classList.contains('rd-new')),true,'the profile comes first, New chat last');
     await page.waitForTimeout(400);await snapshot(page,'phone-rico-menu-en.png');
     await page.keyboard.press('Escape');
     await page.locator('#ricoDrawer').waitFor({state:'detached'});
