@@ -377,7 +377,7 @@ const server=http.createServer((req,res)=>{
     const rrViews=await page.evaluate(()=>state.views.includes('receipts') || state.views.includes('transfers'));
     assert.deepEqual(tools,['problems','security','health','catalog',...(rrViews ? ['names'] : []),'restore'],'Admin tools');
     assert.equal(await page.locator('.adh-rico[data-admin-open="rico"]').count(),1,'Rico\u2019s card opens his page');
-    assert.equal(await page.locator('[data-admin-person]').count(),2,'one row per person');
+    assert.equal(await page.locator('[data-admin-person]').count(),3,'one row per person');
     // The status line counts only real problems, today's numbers come from the overview, each with a bar
     // for each of the last 14 days.
     // Receipt problems show only to someone who can open Receipts, as Rozha can in the app.
