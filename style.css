@@ -631,9 +631,11 @@ html.rtl .field select{background-position:left 14px center}
 .check-row input[type=checkbox]:checked::after{transform:translateX(20px)}
 /* Pressed, the knob stretches toward where it is going, like the iPhone's switches. */
 .check-row input[type=checkbox]::after{transition:transform 300ms cubic-bezier(.32,.72,0,1),width 220ms cubic-bezier(.32,.72,0,1)}
-.check-row input[type=checkbox]:active::after{width:34px}
-.check-row input[type=checkbox]:checked:active::after{transform:translateX(13px)}
-html.rtl .check-row input[type=checkbox]:checked:active::after{transform:translateX(-13px)}
+/* The knob stretches only while the switch itself is pressed (.pressing, set in app.js). A tap on the
+   row's icon or words also gives the switch :active (it is the label's control), which made it twitch. */
+.check-row input[type=checkbox].pressing::after{width:34px}
+.check-row input[type=checkbox].pressing:checked::after{transform:translateX(13px)}
+html.rtl .check-row input[type=checkbox].pressing:checked::after{transform:translateX(-13px)}
 html.rtl .check-row input[type=checkbox]::after{left:auto;right:2px}
 html.rtl .check-row input[type=checkbox]:checked::after{transform:translateX(-20px)}
 .notif-sub{font-size:.8125rem;color:var(--ink-soft);line-height:1.55;margin:0 0 12px;font-weight:400}
@@ -2923,10 +2925,12 @@ html.dark .help-pop{box-shadow:0 10px 30px rgba(0,0,0,.55),inset 0 0 0 .5px rgba
 .settings-page .form-card:not(.rs-card)>.check-row,.settings-page .form-card:not(.rs-card)>.dark-row{position:relative;margin:0;min-height:52px;padding:10px 0}
 .settings-page .form-card:not(.rs-card)>:is(.check-row,.dark-row)+:is(.check-row,.dark-row)::before{content:'';position:absolute;top:0;inset-inline:42px 0;border-top:.5px solid var(--line)}
 .settings-page .form-card:not(.rs-card)>.dark-row{padding-bottom:12px}
-.set-title{display:block}
-.set-title>.help-btn{display:inline-grid;vertical-align:-2px;width:17px;height:17px;margin:0;margin-inline-start:6px;border-radius:50%;background:none;
+/* The name with its small "i" right after it, on the same line (the row's spans are flex columns). */
+.preference-row .set-title,.set-title{display:block}
+.preference-row .set-tail{display:inline;white-space:nowrap}
+.set-tail>.help-btn,.set-title>.help-btn{display:inline-grid;vertical-align:-2px;width:17px;height:17px;margin:0;margin-inline-start:6px;border-radius:50%;background:none;
   box-shadow:inset 0 0 0 1.3px currentColor;color:var(--ink-faint);font:700 .6875rem/1 Georgia,'Times New Roman',serif;font-style:italic}
-.set-title>.help-btn:active{color:var(--accent)}
+.set-tail>.help-btn:active,.set-title>.help-btn:active{color:var(--accent)}
 
 /* Rico's side menu on a phone, like ChatGPT's (2026-11-15). In the Home Screen app the whole screen slides
    aside (with rounded corners) and the menu is under it; in a browser tab the menu slides over the page. */
@@ -3034,3 +3038,56 @@ html.dark .sched-seg input:checked+span{background:#636366}
 .sched-error{font-size:.8125rem;color:var(--red)}
 .sched-error:empty{display:none}
 .sched-actions{justify-content:flex-end}
+
+/* How Expenses work: four short steps, each with a small moving picture in the app's own look. */
+.xt-step{display:grid;justify-items:center;gap:10px;text-align:center;padding:6px 4px 4px}
+.xt-step .sel-title{margin:2px 0 0}
+.xt-text{margin:0;max-width:340px;font-size:.9688rem;line-height:1.45;color:var(--ink-soft)}
+.xt-btns{display:flex;gap:10px;justify-content:center;width:100%;margin-top:8px}
+.xt-btns .btn{min-width:120px;min-height:46px;border-radius:12px}
+.xt-dots{display:flex;gap:6px}
+.xt-dots i{width:6px;height:6px;border-radius:3px;background:var(--fill-strong);transition:width .25s var(--ease-out),background-color .25s}
+.xt-dots i.on{width:18px;background:var(--accent)}
+.xt-pic{position:relative;width:min(300px,100%);height:150px;border-radius:16px;background:var(--surface-2);overflow:hidden;display:grid;place-items:center}
+/* 1. The two tabs: the thumb slides from Food to Expenses and back, the rows below change. */
+.xt-seg{position:relative;display:grid;grid-template-columns:1fr 1fr;width:200px;height:36px;padding:3px;border-radius:11px;background:var(--fill);box-sizing:border-box}
+.xt-seg i{position:absolute;top:3px;bottom:3px;inset-inline-start:3px;width:calc(50% - 3px);border-radius:8px;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12);animation:xtThumb 3.2s var(--ease-out) infinite}
+.xt-seg b{position:relative;display:grid;place-items:center;font-size:.8125rem;font-weight:600;color:var(--ink)}
+.xt-tabs{grid-template-rows:auto auto;align-content:center;gap:14px}
+.xt-rows{display:grid;gap:6px;width:200px}
+.xt-rows span{height:10px;border-radius:5px;background:var(--fill-strong);animation:xtRows 3.2s ease-in-out infinite}
+.xt-rows span:nth-child(2){width:80%;animation-delay:.08s}.xt-rows span:nth-child(3){width:60%;animation-delay:.16s}
+@keyframes xtThumb{0%,35%{transform:none}50%,85%{transform:translateX(100%)}100%{transform:none}}
+html.rtl .xt-seg i{animation-name:xtThumbRtl}
+@keyframes xtThumbRtl{0%,35%{transform:none}50%,85%{transform:translateX(-100%)}100%{transform:none}}
+@keyframes xtRows{0%,38%{opacity:1;transform:none}44%{opacity:0;transform:translateY(4px)}52%,82%{opacity:1;transform:none;background:rgba(var(--accent-rgb),.35)}100%{opacity:1}}
+/* 2. Switching: a finger pulls the page down, Spark appears, the tab changes (computers: the switch is tapped). */
+.xt-phone{position:relative;width:120px;height:132px;border-radius:16px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.xt-page{position:absolute;inset:8px 8px auto;display:grid;gap:7px;animation:xtPull 3s var(--ease-out) infinite}
+.xt-switch:not(.touch) .xt-page{animation:none}
+.xt-page span{height:9px;border-radius:5px;background:var(--fill-strong)}
+.xt-seg.small{width:100%;height:24px;border-radius:8px}
+.xt-seg.small i{border-radius:6px}
+.xt-spark{position:absolute;top:6px;left:50%;translate:-50% 0;opacity:0;animation:xtSpark 3s var(--ease-out) infinite}
+.xt-switch:not(.touch) .xt-spark{display:none}
+.xt-finger{position:absolute;top:26px;left:50%;width:22px;height:22px;margin-left:-11px;border-radius:50%;background:rgba(var(--accent-rgb),.35);box-shadow:0 0 0 6px rgba(var(--accent-rgb),.12);animation:xtFinger 3s var(--ease-out) infinite}
+@keyframes xtPull{0%,10%{transform:none}35%,45%{transform:translateY(30px)}60%,100%{transform:none}}
+@keyframes xtSpark{0%,20%{opacity:0}35%,50%{opacity:1}62%,100%{opacity:0}}
+@keyframes xtFinger{0%,8%{opacity:0;transform:none}14%{opacity:1}35%,45%{opacity:1;transform:translateY(32px)}55%,100%{opacity:0;transform:translateY(32px)}}
+/* 3. Add expense: the button is tapped and three items pop in. */
+.xt-add{align-content:center;gap:12px}
+.xt-btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:10px;background:var(--accent-strong);color:#fff;font-size:.8125rem;font-weight:600;animation:xtPress 3s ease-in-out infinite}
+.xt-btn svg{width:14px;height:14px}
+.xt-items{display:flex;gap:6px}
+.xt-items span{padding:6px 10px;border-radius:9px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);font-size:.75rem;color:var(--ink);opacity:0;animation:xtPop 3s var(--ease-out) infinite}
+.xt-items span:nth-child(2){animation-delay:.15s}.xt-items span:nth-child(3){animation-delay:.3s}
+@keyframes xtPress{0%,15%,30%,100%{transform:none}22%{transform:scale(.94)}}
+@keyframes xtPop{0%,25%{opacity:0;transform:translateY(8px) scale(.9)}38%,85%{opacity:1;transform:none}100%{opacity:0}}
+/* 4. Who sells what: the supplier's choice moves Food, Expenses, Both. */
+.xt-sup{align-content:center;gap:12px}
+.xt-sup-name{font-size:.875rem;font-weight:600;color:var(--ink)}
+.xt-chips{display:flex;gap:6px}
+.xt-chips span{padding:7px 12px;border-radius:9px;background:var(--fill);font-size:.75rem;font-weight:600;color:var(--ink-soft);animation:xtChip 4.5s step-end infinite}
+.xt-chips span:nth-child(2){animation-delay:1.5s}.xt-chips span:nth-child(3){animation-delay:3s}
+@keyframes xtChip{0%{background:var(--accent-strong);color:#fff}33.3%,100%{background:var(--fill);color:var(--ink-soft)}}
+@media (prefers-reduced-motion:reduce){.xt-pic *{animation:none!important}.xt-items span{opacity:1}.xt-chips span:first-child{background:var(--accent-strong);color:#fff}}

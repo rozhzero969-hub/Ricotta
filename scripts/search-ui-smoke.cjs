@@ -16,7 +16,7 @@ const server=http.createServer((req,res)=>{
  try{
   const page=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
-  await page.addInitScript(()=>{localStorage.setItem('ricottaOrders:lang','"en"');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:toured:'+a,'true');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:ricoBriefing:'+a,JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));});
+  await page.addInitScript(()=>{localStorage.setItem('ricottaOrders:lang','"en"');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:toured:'+a,'true');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:xtSeen:'+a,'true');for(const a of ['rozha','yunis'])localStorage.setItem('ricottaOrders:ricoBriefing:'+a,JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));});
   // Pages change at once in this test, so each step finds one page (the app itself always animates).
   await page.addInitScript(()=>{ window.__ricottaStillForTests=true; });
   await page.goto('http://127.0.0.1:'+server.address().port);

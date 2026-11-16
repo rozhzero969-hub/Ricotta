@@ -55,6 +55,7 @@ const SETTING_ICONS = {
   kitchenMode:['#5E5CE6', SF('<path d="M3.4 18.6 8.3 5.6h1.4l4.9 13M5.3 14h7.4"/><path d="M15.6 18.6l2.5-6.5h.8l2.5 6.5M16.6 16.2h3.8" stroke-width="1.7"/>')],
   milestones:['#FFB800', SF('<circle cx="12" cy="9.2" r="5.6"/><path d="M8.6 13.6 7.4 21l4.6-2.4 4.6 2.4-1.2-7.4"/>', true)],
   report:['#FF3B30', SF('<path d="M5.4 21V4.4"/><path d="M5.4 4.6h11.4l-2.4 4 2.4 4H5.4" fill="#fff"/>')],
+  xtTour:['#5856D6', SF('<path d="M21 8 12 3 3 8v8l9 5 9-5Z"/><path d="M3 8l9 5 9-5M12 13v8"/>')],
   tour:['#34C759', SF('<path d="M12 3.2a6.2 6.2 0 0 0-3.6 11.3c.6.4.9 1 .9 1.7v.6h5.4v-.6c0-.7.3-1.3.9-1.7A6.2 6.2 0 0 0 12 3.2Z"/><path d="M9.5 19h5M10.3 21.2h3.4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>', true)],
   shortcuts:['#8E8E93', SF('<rect x="2.8" y="6" width="18.4" height="12" rx="2.4"/><path d="M6.6 9.8h.01M10.2 9.8h.01M13.8 9.8h.01M17.4 9.8h.01M8 14.2h8" stroke-width="2.2"/>')],
   ai:['#5E5CE6', SF('<rect x="6.6" y="6.6" width="10.8" height="10.8" rx="2.4"/><path d="M9.8 3.4v3.2M14.2 3.4v3.2M9.8 17.4v3.2M14.2 17.4v3.2M3.4 9.8h3.2M3.4 14.2h3.2M17.4 9.8h3.2M17.4 14.2h3.2"/>')],
@@ -171,7 +172,12 @@ function helpIdOf(row){
     || (box.hasAttribute('data-set-auto') ? 'ricoAutoOrder' : box.hasAttribute('data-set-sheet') ? 'ricoSheet' : box.hasAttribute('data-set-ai') ? 'ai' : null);
   return id && HELP_OF[id] && (t('settingHelp') || {})[id] ? id : null;
 }
-const helpTitleOf = row=> (row.querySelector('.set-title')?.firstChild || row.querySelector('span')?.childNodes[0])?.textContent?.trim() || '';
+// The setting's name (on phones it sits in .set-title with the "i" button, whose text is left out).
+const helpTitleOf = row=>{
+  const head = row.querySelector('.set-title');
+  if(head) return [...head.childNodes].map(n=>n.nodeType === 3 ? n.textContent : n.classList?.contains('set-tail') ? n.firstChild?.textContent || '' : '').join('').trim();
+  return row.querySelector('span')?.childNodes[0]?.textContent?.trim() || '';
+};
 /* The card or sheet: the picture on a soft panel in the setting's own colour, then the setting's icon and
    name, then what it does. */
 const HELP_ICON = {rrStop:'ricoStop', ricoAutoOrder:'ricoSheet', darkMode:'darkMode'};
@@ -220,8 +226,16 @@ function addSettingHelpButtons(root = document){
     // as a second control beside the switch.
     const head = document.createElement('span');
     head.className = 'set-title';
-    span.insertBefore(head, words); head.appendChild(words);
-    head.insertAdjacentHTML('beforeend', `<button type="button" class="help-btn" data-help="${esc(id)}" aria-label="${esc(t('settingHelpBtn')(title))}">i</button>`);
+    span.insertBefore(head, words);
+    // The last word and the "i" never break apart, so the "i" never sits alone on a line.
+    const text = words.textContent.replace(/\s+$/, ''), cut = text.lastIndexOf(' ');
+    words.remove();
+    head.textContent = cut > 0 ? text.slice(0, cut + 1) : '';
+    const tail = document.createElement('span');
+    tail.className = 'set-tail';
+    tail.textContent = cut > 0 ? text.slice(cut + 1) : text;
+    head.appendChild(tail);
+    tail.insertAdjacentHTML('beforeend', `<button type="button" class="help-btn" data-help="${esc(id)}" aria-label="${esc(t('settingHelpBtn')(title))}">i</button>`);
   });
 }
 document.addEventListener('click', e=>{
@@ -231,3 +245,48 @@ document.addEventListener('click', e=>{
   if(!HELP_OF[id]) return;
   openKitchenSheet('help-sheet', `<div class="help-sheet-body">${helpBody(id, row ? helpTitleOf(row) : '')}</div>`, row ? helpTitleOf(row) : '');
 }, true);
+
+/* ============ How Expenses work: a short one-time tour (2026-11-15) ============
+   Everyone sees it once after the Expenses update, on whichever device they open first: Done or Skip
+   saves "seen" on their account (settings.tourExpenses), so it never shows again anywhere. Four short
+   steps with small moving pictures in the app's look; Settings, Help can show it again. */
+const XT_STEPS = ['tabs', 'switch', 'add', 'suppliers'];
+function xtPic(step){
+  const touch = !matchMedia('(hover: hover) and (pointer: fine)').matches;
+  if(step === 'tabs') return `<div class="xt-pic xt-tabs" aria-hidden="true"><div class="xt-seg"><i></i><b>${esc(kindLabel('food'))}</b><b>${esc(kindLabel('expense'))}</b></div>
+    <div class="xt-rows"><span></span><span></span><span></span></div></div>`;
+  if(step === 'switch') return `<div class="xt-pic xt-switch${touch ? ' touch' : ''}" aria-hidden="true"><div class="xt-phone"><div class="xt-spark">${typeof ricoFace === 'function' ? ricoFace('', 'rico-xs') : ''}</div>
+    <div class="xt-page"><div class="xt-seg small"><i></i><b></b><b></b></div><span></span><span></span></div>${touch ? '<div class="xt-finger"></div>' : ''}</div></div>`;
+  if(step === 'add') return `<div class="xt-pic xt-add" aria-hidden="true"><div class="xt-btn">${ICON_PLUS}<span>${esc(t('addExpenseItem'))}</span></div>
+    <div class="xt-items"><span>${esc(t('xtTea'))}</span><span>${esc(t('xtCups'))}</span><span>${esc(t('xtTissues'))}</span></div></div>`;
+  return `<div class="xt-pic xt-sup" aria-hidden="true"><div class="xt-sup-name">${esc(t('xtSupplier'))}</div>
+    <div class="xt-chips"><span>${esc(t('buys_food'))}</span><span>${esc(t('buys_expenses'))}</span><span>${esc(t('buys_both'))}</span></div></div>`;
+}
+function openExpensesTour(){
+  let i = 0;
+  const touch = !matchMedia('(hover: hover) and (pointer: fine)').matches;
+  const {el, close} = openKitchenSheet('xt-sheet', '<div id="xtStep"></div>', t('xtTitle'));
+  const seen = ()=>{ if(state.settings?.tourExpenses !== true) setSetting('tourExpenses', true); lset('xtSeen:' + state.account, true); };
+  const paint = ()=>{
+    const s = XT_STEPS[i], last = i === XT_STEPS.length - 1;
+    el.querySelector('#xtStep').innerHTML = `<div class="xt-step">${xtPic(s)}
+      <div class="xt-dots" aria-hidden="true">${XT_STEPS.map((_, n)=>`<i class="${n === i ? 'on' : ''}"></i>`).join('')}</div>
+      <div class="sel-title">${esc(t('xt_' + s + 'T'))}</div>
+      <p class="xt-text">${esc(t('xt_' + s + (s === 'switch' && touch ? 'Touch' : '')))}</p>
+      <div class="xt-btns">${last ? '' : `<button type="button" class="btn btn-ghost" data-xt-skip>${esc(t('xtSkip'))}</button>`}<button type="button" class="btn btn-primary" data-xt-next>${esc(t(last ? 'xtDone' : 'xtNext'))}</button></div>
+      <span class="sr-only" aria-live="polite">${esc(t('xtStepOf')(i + 1, XT_STEPS.length))}</span></div>`;
+    el.querySelector('[data-xt-next]').onclick = ()=>{ if(last){ seen(); close(); } else { i++; paint(); } };
+    el.querySelector('[data-xt-skip]')?.addEventListener('click', ()=>{ seen(); close(); });
+  };
+  paint();
+  // Closing it any other way (Escape, the backdrop, dragging it down) also counts as seen: it never nags.
+  const gone = new MutationObserver(()=>{ if(!el.isConnected){ gone.disconnect(); seen(); } });
+  gone.observe(document.body, {childList:true});
+}
+/* Shown once, when Expenses are on, after any other first-time sheet has closed. */
+function maybeShowExpensesTour(tries = 0){
+  if(!state.account || !state.expensesReady || !canOpen('order')) return;
+  if(state.settings?.tourExpenses === true || lget('xtSeen:' + state.account)) return;
+  if(document.querySelector('.sel-sheet, .modal-overlay') || state.view === 'login'){ if(tries < 20) setTimeout(()=>maybeShowExpensesTour(tries + 1), 1500); return; }
+  openExpensesTour();
+}

@@ -561,7 +561,7 @@ function applyData(d){
   applyFeatures();
   carryOverLocalSettings();
   ricoAutoStart();
-  setTimeout(()=>{ checkMilestones(); maybeShowTour(); }, 800);
+  setTimeout(()=>{ checkMilestones(); maybeShowTour(); maybeShowExpensesTour(); }, 800);
   state.sharedDraft = d.draft || null;
   ricoSetInbox(d.inbox || []);
   paintStreakChip(false);
@@ -4239,6 +4239,7 @@ function renderHelpSettings(){
   return `<div class="section-title">${esc(t('settingsHelp'))}</div><div class="form-card settings-rows">
     <button type="button" class="settings-row" id="reportProblemBtn">${setIcon('report')}<span>${esc(t('reportProblem'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
     <button type="button" class="settings-row" id="tourBtn">${setIcon('tour')}<span>${esc(t('tourBtn'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
+    ${state.expensesReady && canOpen('order') ? `<button type="button" class="settings-row" id="xtTourBtn">${setIcon('xtTour')}<span>${esc(t('xtTitle'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>` : ''}
     <button type="button" class="settings-row" id="shortcutsBtn">${setIcon('shortcuts')}<span>${esc(t('keyboardShortcuts'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button></div>`;
 }
 function openReportProblem(){
@@ -4286,6 +4287,14 @@ document.addEventListener('click', e=>{
   const row = e.target.closest?.('label.preference-row, label.rico-set-row');
   if(row && row.querySelector('input[type=checkbox]') && !e.target.closest('input')) e.preventDefault();
 }, true);
+// The switch's pressed look follows a press on the switch itself only.
+document.addEventListener('pointerdown', e=>{
+  const box = e.target.closest?.('.check-row input[type=checkbox]');
+  if(!box) return;
+  box.classList.add('pressing');
+  const done = ()=>{ box.classList.remove('pressing'); ['pointerup', 'pointercancel', 'pointerleave'].forEach(t=>box.removeEventListener(t, done)); };
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t=>box.addEventListener(t, done));
+}, true);
 function attachNotifEvents(){
   const box = document.getElementById('pushSwitch');
   if(box) box.onchange = async ()=>{
@@ -4325,6 +4334,7 @@ function attachSettingsEvents(){
   document.getElementById('reportProblemBtn').onclick = openReportProblem;
   document.getElementById('shortcutsBtn').onclick = openShortcuts;
   document.getElementById('tourBtn').onclick = openTour;
+  document.getElementById('xtTourBtn')?.addEventListener('click', openExpensesTour);
   attachNotifEvents();
 }
 
