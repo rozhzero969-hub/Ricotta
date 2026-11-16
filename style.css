@@ -597,9 +597,9 @@ html.rtl .field select{background-position:left 14px center}
    lights up as it passes. Until then the chosen part draws its own thumb. */
 .manage-sections,.record-filters,.pill-seg{position:relative;display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--fill);border:0}
 .manage-section,.record-filters .tab-pill,.pill-seg-btn{position:relative;z-index:1;flex:1 0 auto;display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 14px;border:0;border-radius:999px;background:transparent;font:500 .875rem var(--font);color:var(--ink);transition:color .2s ease}
-:is(.manage-section,.record-filters .tab-pill,.pill-seg-btn):is(.active,[aria-checked="true"],[aria-selected="true"]){background:var(--seg-on);color:var(--ink);font-weight:600;box-shadow:var(--lift)}
+:is(.manage-section,.record-filters .tab-pill,.pill-seg-btn):is(.active,[aria-checked="true"],[aria-selected="true"],[aria-pressed="true"]){background:var(--seg-on);color:var(--ink);font-weight:600;box-shadow:var(--lift)}
 .manage-section:not(:disabled):active,.record-filters .tab-pill:not(:disabled):active,.pill-seg-btn:not(:disabled):active{transform:none}
-.seg :is(.manage-section,.tab-pill,.pill-seg-btn):is(.active,[aria-checked="true"],[aria-selected="true"]){background:transparent;box-shadow:none;animation:none}
+.seg :is(.manage-section,.tab-pill,.pill-seg-btn):is(.active,[aria-checked="true"],[aria-selected="true"],[aria-pressed="true"]){background:transparent;box-shadow:none;animation:none}
 .seg{touch-action:pan-y;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .seg-lens{position:absolute;top:3px;bottom:3px;left:0;border-radius:999px;background:var(--seg-on);box-shadow:var(--lift);width:var(--lw,0);transform:translateX(var(--lx,0));pointer-events:none;z-index:0;will-change:transform,width}
 .seg.seg-ready .seg-lens{transition:transform 300ms var(--ease-out),width 300ms var(--ease-out),scale 250ms var(--ease-out)}
