@@ -19,10 +19,10 @@
    draftProgressLabel, flushOutbox, syncSharedDraft, maybeFinishQueue, currentOutbox, sendDeviceCommand,
    refreshDevices, deviceParts, deviceTitle, otherDevices, commandIsPending, versionCmp. Load before app.js. */
 
-const ADMIN_PAGES = ['problems','security','health','access','devices','time','rico','catalog','names','restore','person'];
-const ADMIN_SOURCES = {overview:'admin/overview', backups:'admin/backups', health:'admin/diagnostics', security:'admin/security', problems:'admin/problems', usage:'admin/usage', rico:'admin/rico', ai:'admin/ai', roles:'admin/roles', names:'admin/stock-names'};
+const ADMIN_PAGES = ['problems','security','health','access','devices','time','rico','catalog','names','cloud','restore','person'];
+const ADMIN_SOURCES = {overview:'admin/overview', backups:'admin/backups', health:'admin/diagnostics', security:'admin/security', problems:'admin/problems', usage:'admin/usage', rico:'admin/rico', ai:'admin/ai', roles:'admin/roles', names:'admin/stock-names', cloud:'admin/rr-reader'};
 /* What each page needs (the list itself shows a value from most of them). */
-const ADMIN_NEEDS = {restore:['backups'], home:['overview','health','security','problems','usage','rico','roles','names'], problems:['problems'], security:['security'], health:['health','problems','security'],
+const ADMIN_NEEDS = {restore:['backups'], home:['overview','health','security','problems','usage','rico','roles','names','cloud'], cloud:['cloud'], problems:['problems'], security:['security'], health:['health','problems','security'],
   access:['roles'], devices:[], time:['usage'], rico:['rico','ai'], catalog:[], names:['names'], person:['usage','roles']};
 let adminData = {account:null, busy:{}, failed:{}};
 let adminFilter = {problems:'open', security:'all', time:'day', person:'rozha', names:'all'};
@@ -60,7 +60,8 @@ const isAdminObject = v=>!!v && typeof v === 'object' && !Array.isArray(v);
 const ADMIN_SHAPES = {overview:d=>isAdminObject(d) && isAdminObject(d.orders) && Array.isArray(d.orders.perDay) && Array.isArray(d.orders.suppliers) && isAdminObject(d.receipts) && Array.isArray(d.receipts.problems) && isAdminObject(d.transfers) && Array.isArray(d.transfers.problems),
   backups:Array.isArray, problems:Array.isArray, health:isAdminObject, rico:isAdminObject, ai:d=>isAdminObject(d) && Array.isArray(d.brains),
   security:d=>isAdminObject(d) && Array.isArray(d.events), usage:d=>isAdminObject(d) && Array.isArray(d.people),
-  roles:d=>isAdminObject(d) && Array.isArray(d.yunis) && Array.isArray(d.roles), names:d=>isAdminObject(d) && Array.isArray(d.rows)};
+  roles:d=>isAdminObject(d) && Array.isArray(d.yunis) && Array.isArray(d.roles), names:d=>isAdminObject(d) && Array.isArray(d.rows),
+  cloud:d=>isAdminObject(d) && Array.isArray(d.log) && Array.isArray(d.missing)};
 const adminValue = key=>adminData.account === state.account ? adminData[key]?.data : null;
 
 /* ---------- The Admin screen ---------- */
@@ -72,7 +73,7 @@ function renderAdminBody(){
   const page = ADMIN_PAGES.includes(state.adminPage) ? state.adminPage : null;
   if(!page) return renderAdminHome();
   return ({problems:renderAdminProblems, security:renderAdminSecurity, health:renderAdminHealth, access:renderAdminAccess,
-    devices:renderAdminDevices, time:renderAdminTime, rico:renderAdminRico, catalog:renderAdminCatalog, names:renderAdminNames, restore:renderAdminRestore, person:renderAdminPerson})[page]();
+    devices:renderAdminDevices, time:renderAdminTime, rico:renderAdminRico, catalog:renderAdminCatalog, names:renderAdminNames, cloud:renderAdminCloud, restore:renderAdminRestore, person:renderAdminPerson})[page]();
 }
 /* Redraws only Admin's own part (the heading stays), when new data arrives. */
 function paintAdmin(){
@@ -104,7 +105,7 @@ function attachAdminBodyEvents(){
     await Promise.all(keys.map(k=>adminFetch(k, true)));
   }));
   ({restore:attachAdminRestore, problems:attachAdminProblems, security:attachAdminSecurity, health:attachAdminHealth, access:attachAdminAccess,
-    devices:attachAdminDevices, catalog:attachAdminCatalog, names:attachAdminNames, time:attachAdminTime, rico:attachAdminAiSwitches, person:attachAdminPerson})[state.adminPage]?.(slot);
+    devices:attachAdminDevices, catalog:attachAdminCatalog, names:attachAdminNames, cloud:attachAdminCloud, time:attachAdminTime, rico:attachAdminAiSwitches, person:attachAdminPerson})[state.adminPage]?.(slot);
 }
 /* Opens a page (or goes back to the list) with the iPhone's push: the new page slides in from the side
    while the list moves a little the other way and dims; Back reverses it. */
@@ -277,7 +278,7 @@ function renderAdminHome(){
   const sec = adminValue('security'), locked = !!(sec?.lockedUntil && Date.parse(sec.lockedUntil) > Date.now());
   const rows = healthRows(), bad = rows.filter(r=>r.tone === 'bad').length;
   const toReview = catalogCheckup().reduce((n, g)=>n + g.items.length, 0);
-  const names = adminValue('names');
+  const names = adminValue('names'), cloud = adminValue('cloud');
   const tool = (page, icon, value, sub, alert = false)=>`<button type="button" class="adh-tool" data-admin-open="${page}"><span class="adh-tool-top"><span class="adh-tool-ico" aria-hidden="true">${icon}</span><span class="adh-tool-val${alert ? ' alert' : ''}">${esc(value)}</span></span><span class="adh-tool-name">${esc(t('adminPage_' + page))}</span><small>${esc(sub)}</small></button>`;
   const tools = `<div class="section-title">${esc(t('adTools'))}</div><div class="adh-tools">
       ${tool('problems', ADMIN_ICONS.problems, pr ? (open ? String(open) : t('adOk')) : '·', pr ? (open ? t('adProblemsOpen')(open) : t('adProblemsClear')) : '', open > 0)}
@@ -285,6 +286,7 @@ function renderAdminHome(){
       ${tool('health', ADMIN_ICONS.health, health ? (bad ? t('adNeedsLook') : t('adOk')) : '·', health ? t('checkedAt')(timeAgo(health.checkedAt)) : '', bad > 0)}
       ${tool('catalog', ADMIN_ICONS.catalog, toReview ? String(toReview) : t('adOk'), toReview ? t('adCatalogSub') : t('adCatalogClear'))}
       ${views.includes('receipts') || views.includes('transfers') ? tool('names', ADMIN_ICONS.names, names ? (names.rows.length ? String(names.rows.length) : t('adOk')) : '·', names ? t('adNamesSub')(names.rows.length) : '') : ''}
+      ${tool('cloud', ADMIN_ICONS.cloud, cloud ? (!cloud.ready ? t('adCloudSetUp') : cloud.problem ? t('adNeedsLook') : t('adOk')) : '·', cloud ? cloudSub(cloud) : '', !!cloud && (!cloud.ready || !!cloud.problem))}
       ${tool('restore', ADMIN_ICONS.restore, '', t('adRestoreSub'))}
     </div>`;
 
@@ -358,6 +360,7 @@ const ADMIN_ICONS = {
   pins:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 20 3"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg>`,
   devices:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>`,
   time:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>`,
+  cloud:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18.5h10.5a4 4 0 0 0 .5-8 6 6 0 0 0-11.6-1.5A4.5 4.5 0 0 0 7 18.5Z"/></svg>`,
   names:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17 7.5 6l4 11"/><path d="M5 13h5"/><path d="m14 14 2.5 2.5L21 11"/></svg>`,
   catalog:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.2 1.2L7 5"/><path d="m3.5 12 1.2 1.2L7 11"/><path d="m3.5 18 1.2 1.2L7 17"/></svg>`,
   person:`<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>`,
@@ -868,6 +871,46 @@ function renderAdminNames(){
     <div class="ad-toolbar"><div class="pill-seg nm-filters" role="tablist" aria-label="${esc(t('adminPage_names'))}">${NAME_FILTERS.map(k=>`<button type="button" role="tab" class="pill-seg-btn" data-names-filter="${k}" aria-selected="${filter === k}">${esc(t('adNamesFilter_' + k))}<small>${counts[k]}</small></button>`).join('')}</div></div>
     ${list ? `<div class="nm-list">${list}</div>` : `<div class="ad-empty">${adminTile(ICON_CHECK, 'green')}<b>${esc(t('adNamesNone'))}</b></div>`}
     <p class="ad-foot">${esc(t('adNamesCount')(d.rows.length, d.total))} · ${esc(t('adNamesFoot'))}</p>`;
+}
+/* ---------- Cloud Rico: the server's own reader of Ricotta Restaurant ---------- */
+const cloudSub = c=> !c.ready ? t('adCloudMissing') : c.catalogAt ? t('adCloudRead')(timeAgo(c.catalogAt)) : t('adCloudNotYet');
+let adCloudBusy = false;
+function renderAdminCloud(){
+  const c = adminValue('cloud');
+  if(!c) return `${adminHeading()}${adminData.failed.cloud ? `<div class="ad-empty"><p>${esc(t('loadFailed'))}</p></div>` : loadingLines()}`;
+  const when = at=>at ? `${formatIraqDateTime(at, {hour:'numeric', minute:'2-digit'})} · ${timeAgo(at)}` : t('adCloudNever');
+  const tone = !c.ready || c.problem ? 'warn' : c.on ? 'good' : 'warn';
+  const head = !c.ready ? t('adCloudOffSetup') : c.problem ? t('adCloudProblem') : c.on ? t('adCloudOn') : t('adCloudIdle');
+  const sub = !c.ready ? t('adCloudMissingNames')(c.missing.join(', ')) : c.problem ? `${c.problem.cause} ${t('adCloudSince')(timeAgo(c.problem.since))}` : cloudSub(c);
+  const fact = (label, value)=>`<div class="cl-fact"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
+  const facts = `<div class="form-card cl-facts">
+      ${fact(t('adCloudStock'), when(c.catalogAt))}
+      ${fact(t('adCloudInvoices'), when(c.invoicesAt))}
+      ${fact(t('adCloudNext'), c.nextCatalog ? formatIraqDateTime(c.nextCatalog, {hour:'numeric', minute:'2-digit'}) : '·')}
+      ${fact(t('adCloudCounts'), c.counts?.items ? t('adCloudCountsVal')(c.counts.items, c.counts.invoices || 0) : '·')}
+    </div>`;
+  const setup = !c.ready ? `<div class="form-card cl-setup"><b>${esc(t('adCloudHowTitle'))}</b><ol>${['adCloudHow1', 'adCloudHow2', 'adCloudHow3'].map(k=>`<li>${esc(t(k))}</li>`).join('')}</ol>
+      <div class="cl-secrets">${['RR_PIN', 'RR_BRANCH', 'RR_DEVICE_ID'].map(n=>`<code class="${c.missing.includes(n) ? 'miss' : ''}">${n}</code>`).join('')}</div><p class="ad-foot">${esc(t('adCloudHowFoot'))}</p></div>` : '';
+  const log = c.log.length ? `<div class="section-title">${esc(t('adCloudLog'))}</div><div class="form-card cl-log">${c.log.slice(0, 50).map(e=>`<div class="cl-row ${e.ok ? 'ok' : 'bad'}"><i class="cl-dot" aria-hidden="true"></i>
+      <div class="cl-main"><b>${esc(e.ok ? (e.did || []).map(k=>t('adCloudDid_' + k)).join(' · ') || t('adCloudNothing') : t('adCloudKind_' + (e.kind || 'changed')))}</b>${e.ok ? '' : `<small dir="auto">${esc(e.cause || '')}</small>`}</div>
+      <span class="cl-when">${esc(formatIraqDateTime(e.at, {hour:'numeric', minute:'2-digit'}))}<small>${esc(t('adCloudMs')(e.ms))}</small></span></div>`).join('')}</div>` : '';
+  return `${adminHeading()}
+    <section class="ad-status ${tone}">${adminTile(tone === 'good' ? ICON_CHECK : ADMIN_ICONS.cloud, tone === 'good' ? 'green' : 'gray')}
+      <div><b>${esc(head)}</b><span dir="auto">${esc(sub)}</span></div>
+      ${c.ready ? `<button type="button" class="btn btn-ghost" id="cloudRun" ${adCloudBusy ? 'disabled aria-busy="true"' : ''}>${ICON_REFRESH}<span>${esc(t(adCloudBusy ? 'adCloudReading' : 'adCloudReadNow'))}</span></button>` : ''}</section>
+    ${setup}${facts}${log}
+    <p class="ad-foot">${esc(t('adCloudFoot'))}</p>`;
+}
+function attachAdminCloud(slot){
+  const b = slot.querySelector('#cloudRun');
+  if(b) b.onclick = async()=>{
+    adCloudBusy = true; paintAdmin();
+    const r = await api('admin/rr-reader/run', {method:'POST'});
+    adCloudBusy = false;
+    if(r.ok && ADMIN_SHAPES.cloud(r.data)) adminData.cloud = {at:Date.now(), data:r.data};
+    else toast(t('loadFailed'), 'error');
+    paintAdmin();
+  };
 }
 async function copyText(text){
   try{ await navigator.clipboard.writeText(text); return true; }

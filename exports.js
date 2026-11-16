@@ -248,6 +248,27 @@ async function brandedPdf(doc){
     y += 66;
   }
   for(const section of doc.sections){
+    // A bar chart: one row per label, the bar to scale with the largest value, the value at the end.
+    if(section.bars){
+      const width = PDF_W - 2 * PDF_M, labelW = width * .34, valueW = width * .2, barW = width - labelW - valueW - 16;
+      const max = Math.max(1, ...section.bars.map(b=>Number(b.value) || 0));
+      if(section.heading){
+        room(60);
+        ctx.fillStyle = PDF_COLORS.accent; ctx.fillRect(rtl ? PDF_W - PDF_M - 3 : PDF_M, y + 2, 3, 13);
+        text(section.heading, PDF_M + 10, y + 13, {size:12.5, weight:800, color:PDF_COLORS.deep}); y += 24;
+      }
+      section.bars.forEach(b=>{
+        room(20);
+        text(wrap(b.label, labelW - 8, 9, 600)[0], PDF_M, y + 12, {size:9, weight:600, color:PDF_COLORS.ink});
+        const w = Math.max(2, (Number(b.value) || 0) / max * barW), bx = PDF_M + labelW;
+        ctx.fillStyle = PDF_COLORS.band; pdfRound(ctx, rtl ? PDF_W - bx - barW : bx, y + 4, barW, 11, 3); ctx.fill();
+        ctx.fillStyle = PDF_COLORS.green; pdfRound(ctx, rtl ? PDF_W - bx - w : bx, y + 4, w, 11, 3); ctx.fill();
+        text(b.display ?? String(b.value), PDF_W - PDF_M, y + 12, {size:9, weight:700, color:PDF_COLORS.deep, align:'end'});
+        y += 18;
+      });
+      y += 14;
+      continue;
+    }
     const cols = section.columns, width = PDF_W - 2 * PDF_M;
     const total = cols.reduce((n, c)=>n + c.w, 0);
     const xs = []; let acc = PDF_M;
@@ -472,6 +493,78 @@ async function exportMonth(format){
     sections:[...(d.top.length ? [{heading:t('reportTop'), columns:[{label:t('fileItem'), w:60, bold:true}, {label:t('fileTimes'), w:20, align:'end'}], rows:d.top.map(x=>[x.name, String(x.times)])}] : []),
       {heading:t('fileOrdersSheet'), columns:[{label:t('supplier'), w:30}, {label:t('fileItem'), w:40, bold:true}, {label:t('fileQty'), w:12, align:'end'}, {label:t('unit'), w:18}], rows}]},
     `${t('fileMonthFile')} ${fileDay(at).slice(0, 7)}`);
+}
+/* ---------- Ricotta Restaurant's invoices (Rico's Invoices skill) ---------- */
+const invNum = n=>Number(n || 0).toLocaleString('en-US', {maximumFractionDigits:2});
+const invMoney = (n, cur)=>`${invNum(n)} ${cur}`;
+/* A month's invoices, every supplier (or one): supplier totals, every receipt with its lines, the item
+   prices (last price and its unit, times bought, cheapest and dearest in that unit) and, in the PDF,
+   charts of spending per supplier and per week. */
+async function exportInvoices(month, supplier, format){
+  const r = await api(`rr-invoices?month=${encodeURIComponent(month)}${supplier ? '&supplier=' + encodeURIComponent(supplier) : ''}`);
+  if(!r.ok || !Array.isArray(r.data?.invoices)){ toast(t('loadFailed'), 'error'); return false; }
+  const rows = r.data.invoices, at = new Date();
+  if(!rows.length){ toast(t('invNone'), 'warn'); return false; }
+  const monthLabel = invMonthName(month);
+  const title = supplier ? t('invCardSupplier')(supplier, monthLabel) : t('invCardTitle')(monthLabel);
+  const sup = new Map(), tot = {IQD:0, USD:0, unpaid:0};
+  rows.forEach(x=>{ const c = x.currency === 'USD' ? 'USD' : 'IQD'; tot[c] += Number(x.total) || 0; if(!x.paid) tot.unpaid++;
+    const s = sup.get(x.supplier_name) || {name:x.supplier_name || t('noSupplier'), n:0, IQD:0, USD:0, delivery:0}; s.n++; s[c] += Number(x.total) || 0; s.delivery += Number(x.delivery_fee) || 0; sup.set(x.supplier_name, s); });
+  const suppliers = [...sup.values()].sort((a, b)=>b.IQD - a.IQD || b.USD - a.USD);
+  // Items: newest invoice first, so the first line seen of an item is its last price.
+  const newest = [...rows].sort((a, b)=>String(b.entry_date).localeCompare(String(a.entry_date)) || String(b.invoice_number).localeCompare(String(a.invoice_number), undefined, {numeric:true}));
+  const items = new Map();
+  newest.forEach(x=>(x.lines || []).forEach(l=>{
+    if(!l.item || !(Number(l.unit_cost) > 0)) return;
+    const cur = x.currency === 'USD' ? 'USD' : 'IQD', it = items.get(l.item);
+    if(!it) items.set(l.item, {item:l.item, unit:l.unit, cur, last:Number(l.unit_cost), day:x.entry_date, supplier:x.supplier_name, times:1, lo:Number(l.unit_cost), hi:Number(l.unit_cost)});
+    else { it.times++; if(l.unit === it.unit && cur === it.cur){ it.lo = Math.min(it.lo, Number(l.unit_cost)); it.hi = Math.max(it.hi, Number(l.unit_cost)); } }
+  }));
+  const itemList = [...items.values()].sort((a, b)=>a.item.localeCompare(b.item));
+  const byDate = [...rows].sort((a, b)=>String(a.entry_date).localeCompare(String(b.entry_date)) || String(a.invoice_number).localeCompare(String(b.invoice_number), undefined, {numeric:true}));
+  const subtitle = t('invFileSub')(rows.length, fileStamp(at));
+  const file = `${t('invFileName')} ${month}${supplier ? ' ' + supplier : ''}`;
+  if(format === 'excel'){
+    const lineRows = [];
+    byDate.forEach(x=>(x.lines || []).forEach(l=>lineRows.push([x.entry_date, x.invoice_number, x.supplier_name, l.item, Number(l.qty) || 0, l.unit || '', Number(l.unit_cost) || 0, Number(l.line_total) || 0, x.currency, x.paid ? t('invPaid') : t('invUnpaid')])));
+    return deliverExcel(brandedWorkbook({title, subtitle, at, sheets:[
+      {name:t('invSheetSuppliers'), columns:[{label:t('supplier'), width:30}, {label:t('invReceipts'), width:10, type:'number'}, {label:'IQD', width:16, type:'number'}, {label:'USD', width:12, type:'number'}, {label:t('invDelivery'), width:12, type:'number'}],
+        rows:suppliers.map(s=>[s.name, s.n, Math.round(s.IQD), Math.round(s.USD * 100) / 100, Math.round(s.delivery)]), totals:[t('invTotal'), rows.length, Math.round(tot.IQD), Math.round(tot.USD * 100) / 100, '']},
+      {name:t('invSheetLines'), title:t('invSheetLines'), columns:[{label:t('fileDate'), width:12}, {label:t('invInvoice'), width:12}, {label:t('supplier'), width:24}, {label:t('fileItem'), width:30}, {label:t('fileQty'), width:9, type:'number'}, {label:t('unit'), width:10}, {label:t('invUnitPrice'), width:13, type:'number'}, {label:t('invLineTotal'), width:14, type:'number'}, {label:t('invCurrency'), width:8}, {label:t('invPaidCol'), width:10}], rows:lineRows},
+      {name:t('invSheetPrices'), title:t('invSheetPrices'), columns:[{label:t('fileItem'), width:32}, {label:t('invLastPrice'), width:13, type:'number'}, {label:t('invPer'), width:10}, {label:t('invCurrency'), width:8}, {label:t('invWhen'), width:12}, {label:t('supplier'), width:24}, {label:t('invTimesCol'), width:8, type:'number'}, {label:t('invLow'), width:12, type:'number'}, {label:t('invHigh'), width:12, type:'number'}],
+        rows:itemList.map(i=>[i.item, i.last, i.unit || '', i.cur, i.day, i.supplier, i.times, i.lo, i.hi])},
+    ]}), file);
+  }
+  // Spending per week of the month (1 to 7, 8 to 14...), in IQD.
+  const weeks = [0, 0, 0, 0, 0];
+  rows.forEach(x=>{ if(x.currency !== 'USD') weeks[Math.min(4, Math.floor((Number(String(x.entry_date).slice(8, 10)) - 1) / 7))] += Number(x.total) || 0; });
+  return deliverPdf({title, subtitle, stamp:fileStamp(at),
+    info:[[t('invReceipts'), String(rows.length)], ['IQD', invNum(Math.round(tot.IQD))], ['USD', invNum(Math.round(tot.USD * 100) / 100)], [t('invUnpaid'), String(tot.unpaid)]],
+    sections:[
+      ...(suppliers.some(s=>s.IQD > 0) ? [{heading:t('invChartSuppliers'), bars:suppliers.filter(s=>s.IQD > 0).slice(0, 12).map(s=>({label:s.name, value:s.IQD, display:invMoney(Math.round(s.IQD), 'IQD')}))}] : []),
+      ...(weeks.some(Boolean) ? [{heading:t('invChartWeeks'), bars:weeks.map((v, i)=>({label:t('invWeekN')(i * 7 + 1, Math.min(i * 7 + 7, 31)), value:v, display:invMoney(Math.round(v), 'IQD')})).filter(b=>b.value > 0)}] : []),
+      {heading:t('invSheetSuppliers'), columns:[{label:t('supplier'), w:44, bold:true}, {label:t('invReceipts'), w:14, align:'end'}, {label:'IQD', w:24, align:'end'}, {label:'USD', w:18, align:'end'}],
+        rows:suppliers.map(s=>[s.name, String(s.n), invNum(Math.round(s.IQD)), s.USD ? invNum(Math.round(s.USD * 100) / 100) : '·']), totals:[t('invTotal'), String(rows.length), invNum(Math.round(tot.IQD)), tot.USD ? invNum(Math.round(tot.USD * 100) / 100) : '·']},
+      {heading:t('invSheetPrices'), columns:[{label:t('fileItem'), w:38, bold:true}, {label:t('invLastPrice'), w:22, align:'end'}, {label:t('invWhen'), w:14}, {label:t('invTimesCol'), w:10, align:'end'}, {label:t('invRange'), w:22, align:'end'}],
+        rows:itemList.map(i=>[i.item, `${invMoney(i.last, i.cur)} / ${i.unit || ''}`, invDay(i.day), String(i.times), i.lo === i.hi ? '·' : t('invRangeVal')(invNum(i.lo), invNum(i.hi))])},
+      {heading:t('invSheetLines'), columns:[{label:t('fileItem'), w:40, bold:true}, {label:t('fileQty'), w:16, align:'end'}, {label:t('invUnitPrice'), w:20, align:'end'}, {label:t('invLineTotal'), w:24, align:'end'}],
+        rows:byDate.flatMap(x=>[{group:`${invDay(x.entry_date)} · ${x.supplier_name} · #${x.invoice_number} · ${invMoney(x.total, x.currency)}${x.paid ? '' : ' · ' + t('invUnpaid')}`},
+          ...(x.lines || []).map(l=>[l.item, `${invNum(l.qty)} ${l.unit || ''}`, invNum(l.unit_cost), invNum(l.line_total)])])},
+    ]}, file);
+}
+/* Rico's last prices (price_lookup card) as Excel or PDF. */
+async function exportPriceLookup(p, format){
+  const at = new Date(), rows = Array.isArray(p.rows) ? p.rows : [];
+  const title = p.storage && !p.query ? t('invPricesFor')(p.storage) : t('invPricesTitle');
+  const subtitle = t('invPricesSub')((p.months || []).map(invMonthName).join(', '), fileStamp(at));
+  const file = `${t('invPricesFile')} ${fileDay(at)}`;
+  const found = r=>p.storage ? (r.source === 'moved' ? t('invMovedTo')(p.storage) : t('invByName')) : '';
+  if(format === 'excel') return deliverExcel(brandedWorkbook({title, subtitle, at, sheets:[{name:t('invSheetPrices'),
+    columns:[{label:t('fileItem'), width:32}, {label:t('invLastPrice'), width:13, type:'number'}, {label:t('invPer'), width:10}, {label:t('invCurrency'), width:8}, {label:t('invWhen'), width:12}, {label:t('supplier'), width:24}, {label:t('invTimesCol'), width:8, type:'number'}, ...(p.storage ? [{label:t('invFoundBy'), width:16}] : [])],
+    rows:rows.map(r=>[r.item, Number(r.price) || 0, r.unit || '', r.currency, r.day, r.supplier, Number(r.times) || 0, ...(p.storage ? [found(r)] : [])])}]}), file);
+  return deliverPdf({title, subtitle, stamp:fileStamp(at), info:[[t('items'), String(rows.length)], ...(p.storage ? [[t('invStorage'), p.storage]] : [])],
+    sections:[{columns:[{label:t('fileItem'), w:40, bold:true}, {label:t('invLastPrice'), w:26, align:'end'}, {label:t('invWhen'), w:14}, {label:t('supplier'), w:20}],
+      rows:rows.map(r=>[r.item + (p.storage ? ` (${found(r)})` : ''), `${invMoney(r.price, r.currency)} / ${r.unit || ''}`, invDay(r.day), `${r.supplier} · ${t('invTimes')(r.times)}`])}]}, file);
 }
 async function deliverExcel(bytes, name){
   const done = await deliverFile(new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `${safeFileName(name)}.xlsx`);

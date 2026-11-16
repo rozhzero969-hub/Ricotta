@@ -210,7 +210,9 @@
     {name:'Mozzarella Block - پەنیری مۆزارێلای پارچە', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کارتۆن', factor:10000}, stock:{'Main Storage':20000}},
     {name:'Olive Oil - زەیتی زەیتوون', base:'مل', count:{name:'دانە', factor:1000}, buy:{name:'کارتۆن', factor:12000}, stock:{'Main Storage':24000}},
   ];
-  const labStockAt = ()=>new Date(Date.now() - 6 * 60000).toISOString();
+  // Open the Lab with ?stale to see stock read long ago (Cloud Rico stuck for 42 minutes) until Read now.
+  const LAB_STALE = ()=>/[?&]stale\b/.test(location.search) && !(db.cloud && db.cloud.fixedAt);
+  const labStockAt = ()=>new Date(Date.now() - (LAB_STALE() ? 42 : 6) * 60000).toISOString();
   // Sample use over the last 14 days, so the Order screen shows each colour: Parmesan is low.
   const LAB_USE = new Map([['Parmesan - پەنیری پارمیزان', {base:280, n:6}], ['Lemon - لیمۆ', {base:14000, n:4}]]);
   const labLevel = t=>globalThis.RicottaStockLink.level(t, LAB_USE).level;
@@ -259,6 +261,19 @@
         {type:'receipt', id:'00000000-0000-4000-8000-000000000001', title:'Veg Market #4', why:'Stopped: Rico could not find the supplier', level:'stop'},
         {type:'transfer', id:'00000000-0000-4000-8000-000000000002', title:'Main Storage > Pizza', why:'Waiting for a person to check Rico\'s photo and approve it (12 min).', level:'wait'},
         {type:'transfer', id:'00000000-0000-4000-8000-000000000003', title:'Main Storage > Minibar', why:'A draft not sent since 2026-11-12.', level:'old'}]}});
+    } else if(/invoice|پسوول|فاتور/.test(q)){
+      const month = new Date().toISOString().slice(0, 7);
+      say('calm', 'Here are this month\'s invoices. Download the PDF or Excel for every receipt with its lines.', 'ئەمە پسوولەکانی ئەم مانگەن.', 'هذه فواتير هذا الشهر.');
+      events.push({type:'proposal', proposal:{id:pid('i'), kind:'invoice_report', month, supplier:null, receipts:14, IQD:1386500, USD:0, deliveryIQD:25000, unpaid:3, more:0,
+        suppliers:[{name:'Dairy Co', receipts:4, IQD:512000, USD:0}, {name:'Coffee Supply', receipts:3, IQD:448000, USD:0}, {name:'Erbil Veg Market', receipts:4, IQD:262500, USD:0}, {name:'Bread House Bakery', receipts:3, IQD:164000, USD:0}]}});
+    } else if(/last price|آخر سعر|دوایین نرخ/.test(q)){
+      const m0 = new Date().toISOString().slice(0, 7), d = n=>new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+      say('calm', 'These are the last prices paid, from the invoices in Ricotta Restaurant. Items moved to Pizza come first.', 'ئەمانە دوایین نرخەکانن.', 'هذه آخر الأسعار المدفوعة.');
+      events.push({type:'proposal', proposal:{id:pid('l'), kind:'price_lookup', query:'', storage:'Pizza', months:[m0], more:0, rows:[
+        {item:'Mozzarella - پەنیری مۆزارێلا', price:13200, unit:'کیلۆ', currency:'IQD', day:d(2), supplier:'Dairy Co', times:4, source:'moved'},
+        {item:'Tomato - تەماتە', price:1375, unit:'کیلۆ', currency:'IQD', day:d(3), supplier:'Erbil Veg Market', times:4, source:'moved'},
+        {item:'Faheta Bread - صمونى فاهيتا', price:250, unit:'دانە', currency:'IQD', day:d(1), supplier:'Bread House Bakery', times:3, source:'moved'},
+        {item:'Pizza Box - قوتووی پیتزا', price:42, unit:'دانە', currency:'USD', day:d(9), supplier:'Coffee Supply', times:1, source:'name'}]}});
     } else if(/price|نرخ|سعار/.test(q)){
       say('calm', 'Two prices changed by more than 10 percent this month.', 'دوو نرخ گۆڕاون.', 'تغيّر سعران.');
       events.push({type:'proposal', proposal:{id:pid('p'), kind:'price_list', more:0, rows:[
@@ -438,7 +453,7 @@
         ['Lemon - لیمۆ', 'غرام', {name:'کیلۆ', factor:1000}, null, 12500], ['Oil 1L - زەیتی 1 لیتری', 'مل', {name:'دانە', factor:1000}, {name:'کارتۆن', factor:12000}, 40000], ['Faheta Bread - صمونی فاهیتا', 'دانە', {name:'دانە', factor:1}, null, 0]]
         .map(([name, base, count, buy, main], k)=>({name, base, count, buy, main, inMain:true, lastBought:k % 2 ? null : {at:day(k + 1), supplier:'Bread House Bakery', qty:2, unit:buy?.name || base, cost:8500, currency:'IQD'}, lastMoved:{at:day(k), from:'Main Storage', to:['Pizza','Minibar','Kebab'][k % 3], qty:1, unit:count.name}}));
       if(db.labCheckItem) items.push({name:'Lab Check Item - کاڵای تاقیکردنەوە', base:'دانە', count:null, buy:null, main:6, inMain:true, lastBought:null, lastMoved:null});
-      return json({at:Date.now(), zone:'Main Storage', items, helper:labHelper()});
+      return json({at:Date.now() - (LAB_STALE() ? 42 : 0) * 60000, zone:'Main Storage', items, helper:labHelper()});
     }
     // Transfers: the stock Rico reads, and a Rico who fills a transfer in two seconds and moves it once approved.
     if(path === 'transfers' || path.startsWith('transfers/')){
@@ -616,6 +631,30 @@
         newDevices7d:ev.filter(e=>e.kind==='new_device' && Date.parse(e.at) > week).length, failuresInWindow:db.lockFailures || 0, lockLimit:40, lockedUntil:db.lockedUntil || null, events:ev.slice(0, 60)});
     }
     if(method === 'POST' && path === 'admin/security/unlock'){ db.lockFailures = 0; db.lockedUntil = null; (db.security ||= []).unshift({id:++db.seq, at:new Date().toISOString(), kind:'unlocked', account:'rozha', deviceId:deviceId(), label:null, detail:{}}); save(); return json({ok:true, cleared:0}); }
+    // Admin > Cloud Rico: the server's reader of Ricotta Restaurant, in the same shape as the server.
+    if(path === 'admin/rr-reader' || path === 'admin/rr-reader/run'){
+      if(account !== 'rozha') return fail('forbidden', 403);
+      db.cloud ||= {};
+      if(method === 'POST'){ db.cloud.fixedAt = new Date().toISOString(); save(); }   // Read now: works again, then the same view as GET
+      const ago = m=>new Date(Date.now() - m * 60000).toISOString(), stuck = LAB_STALE();
+      const log = [];
+      if(db.cloud.fixedAt) log.push({at:db.cloud.fixedAt, ms:3400, ok:true, did:['catalog', 'invoices']});
+      for(let k = 0; k < 8; k++) log.push(stuck && k < 5 ? {at:ago(k * 5 + 2), ms:20000, ok:false, kind:'down', cause:'Ricotta Restaurant did not answer (HTTP 502).'} : {at:ago(k * 5 + 2), ms:2100 + k * 90, ok:true, did:k % 3 ? ['catalog'] : ['catalog', 'invoices']});
+      return json({ready:true, missing:[], on:true, lastRun:ago(2), catalogAt:labStockAt(), invoicesAt:stuck ? ago(44) : ago(9), stockAt:labStockAt(), nextCatalog:ago(-3), nextInvoices:ago(-6),
+        counts:{items:317, zones:12, suppliers:57, invoices:64}, problem:stuck ? {kind:'down', cause:'Ricotta Restaurant did not answer (HTTP 502).', since:ago(42)} : null, log});
+    }
+    if(method === 'GET' && path === 'rr-invoices'){
+      if(!can(account, 'receipts') && !can(account, 'transfers')) return fail('forbidden', 403);
+      const month = query.get('month') || new Date().toISOString().slice(0, 7), sup = query.get('supplier') || '';
+      const sups = ['Dairy Co', 'Erbil Veg Market', 'Bread House Bakery', 'Coffee Supply'];
+      const items = [['Mozzarella - پەنیری مۆزارێلا', 'کیلۆ', 12000], ['Tomato - تەماتە', 'کیلۆ', 1250], ['Faheta Bread - صمونى فاهيتا', 'دانە', 250], ['Espresso Beans - قاوە', 'کیلۆ', 28000], ['Lemon - لیمۆ', 'کیلۆ', 2000]];
+      const rows = Array.from({length:14}, (_, k)=>{
+        const s = sups[k % 4], day = String(1 + k * 2).padStart(2, '0'), lines = items.filter((_, j)=>(j + k) % 2 === 0).map(([item, unit, price], j)=>({item, unit, qty:2 + (j + k) % 5, unit_cost:price + (k > 7 ? Math.round(price * .1) : 0)}));
+        lines.forEach(l=>{ l.line_total = l.qty * l.unit_cost; });
+        return {id:'lab-inv-' + k, entry_date:month + '-' + day, invoice_number:String(2600 + k), supplier_name:s, status:'open', currency:'IQD', total:lines.reduce((a, l)=>a + l.line_total, 0), delivery_fee:k % 3 ? 0 : 5000, paid:k % 4 !== 1, line_count:lines.length, lines};
+      }).filter(r=>!sup || r.supplier_name.toLowerCase().includes(sup.toLowerCase()));
+      return json({month, supplier:sup || null, at:new Date().toISOString(), invoices:rows});
+    }
     if(method === 'GET' && path === 'admin/problems') return json((db.problems || []).filter(p=>!p.resolvedAt || Date.parse(p.resolvedAt) > Date.now() - 7*86400000));
     if(method === 'POST' && path === 'admin/problems/resolve'){ const ids = new Set(body.ids || []); (db.problems || []).forEach(p=>{ if(ids.has(p.id) && !p.resolvedAt) p.resolvedAt = new Date().toISOString(); }); save(); return ok(); }
     if(method === 'DELETE' && path === 'admin/problems'){ db.problems = (db.problems || []).filter(p=>!p.resolvedAt); save(); return ok(); }

@@ -2977,3 +2977,30 @@ html.dark.app-shell.rico-drawer-on,html.dark.app-shell.rico-drawer-on body{backg
 .help-sheet-body .help-hero{max-width:420px;margin:0 auto;border-radius:18px}
 .help-sheet-body .help-text{padding:0 4px}
 .help-pic .hp-clock{fill:var(--ink);font:600 11px var(--font);letter-spacing:-.02em}
+/* Admin, Cloud Rico: the server's own reader of Ricotta Restaurant. */
+.cl-facts{padding:4px 16px!important;margin-bottom:12px}
+.cl-fact{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;border-bottom:.5px solid var(--line)}
+.cl-fact:last-child{border-bottom:0}
+.cl-fact span{color:var(--ink-soft);font-size:.9375rem}
+.cl-fact b{font-weight:600;font-size:.9375rem;text-align:end}
+.cl-setup{padding:14px 16px!important;margin-bottom:12px}
+.cl-setup ol{margin:8px 0 10px;padding-inline-start:20px;display:flex;flex-direction:column;gap:6px;font-size:.9375rem;line-height:1.4}
+.cl-secrets{display:flex;flex-wrap:wrap;gap:8px}
+.cl-secrets code{padding:4px 8px;border-radius:7px;background:var(--fill);font-size:.8438rem}
+.cl-secrets code.miss{background:rgba(255,59,48,.12);color:var(--clay-ink)}
+html.dark .cl-secrets code.miss{color:#FF6961}
+.cl-log{padding:0!important}
+.cl-row{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:.5px solid var(--line)}
+.cl-row:last-child{border-bottom:0}
+.cl-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.cl-row.bad .cl-dot{background:var(--red)}
+.cl-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.cl-main b{font-weight:600;font-size:.9375rem}
+.cl-main small{color:var(--ink-soft);font-size:.8125rem;line-height:1.35}
+.cl-when{flex:none;display:flex;flex-direction:column;align-items:flex-end;font-size:.8125rem;color:var(--ink-soft)}
+.cl-when small{font-size:.75rem;color:var(--ink-faint)}
+/* Stock read long ago: a calm note, never alarming. */
+.stock-old{color:#B45309}
+.item-stock .stock-old{display:block;font-weight:400}
+html.dark .stock-old{color:#FDBA74}
+.inv-per{font-weight:500;color:var(--ink-soft);font-size:.8125rem}

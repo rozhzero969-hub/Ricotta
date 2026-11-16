@@ -365,6 +365,60 @@ export async function receiptsRoute(ctx: Ctx, M: string, path: string, b: any): 
 /* ---------- Rico on the Mac ---------- */
 const HELPER_NEXT: Record<string, string[]> = { filling: ["review", "problem"], approved: ["saving", "saved", "problem"], saving: ["saved", "problem"], cancelled: ["cancelled"], review: ["problem"] };
 
+/* Saves Ricotta Restaurant's lists (app_rr_catalog), from Rico on the Mac (PUT helper/catalog) or from
+   the server's own reader (rr-reader.ts). Same checks and the same shape either way, so the app, Rico's
+   tools, stock links, low stock alerts and the catalog signals all work the same. */
+export async function saveCatalog(db: any, b: any): Promise<{ error?: string; ok?: boolean; items?: number; changes?: unknown; skipped?: boolean }> {
+  const strings = (v: unknown, n: number) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.length && x.length <= 200).slice(0, n) : []);
+  const items = (Array.isArray(b.items) ? b.items : []).slice(0, 2000).map((i: any) => ({
+    name: t(i?.name, 200), base: t(i?.base, 40),
+    units: (Array.isArray(i?.units) ? i.units : []).slice(0, 20).map((u: any) => ({ name: t(u?.name, 40), factor: Number(u?.factor) })).filter((u: any) => u.name && Number.isFinite(u.factor) && u.factor > 0),
+  })).filter((i: any) => i.name && i.base);
+  // Everything that can be moved between storages: each item's counting, base and buying units and
+  // its stock in each storage (base units), exactly as Ricotta Restaurant has it.
+  const unit = (u: any) => (u && t(u.name, 40) && Number(u.factor) > 0 ? { name: t(u.name, 40), factor: Number(u.factor) } : null);
+  const titems = (Array.isArray(b.titems) ? b.titems : []).slice(0, 3000).map((i: any) => ({
+    name: t(i?.name, 200), base: t(i?.base, 40), count: unit(i?.count), buy: unit(i?.buy),
+    stock: Object.fromEntries(Object.entries(i?.stock && typeof i.stock === "object" ? i.stock : {}).slice(0, 40)
+      .map(([z, q]) => [t(z, 80), Number(q)]).filter(([z, q]) => z && Number.isFinite(q as number))),
+  })).filter((i: any) => i.name && i.base);
+  // What usually happens (Rico reads Ricotta Restaurant's stock record of the last weeks once a day):
+  // per item the number of moves or deliveries, the usual and the largest amount (base units), and
+  // for moves how often each route ("Main Storage>Appetizers") was used.
+  const num = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 0);
+  const stat = (v: any) => ({ n: Math.min(99999, Math.floor(num(v?.n))), q: num(v?.q), hi: num(v?.hi) || num(v?.q) });
+  const hb = b.history && typeof b.history === "object" ? b.history : null;
+  const history = hb ? {
+    at: t(hb.at, 40), days: Math.floor(num(hb.days)),
+    t: Object.fromEntries(Object.entries(hb.t && typeof hb.t === "object" ? hb.t : {}).slice(0, 3000).map(([k, v]: [string, any]): [string, any] => [t(k, 200), {
+      ...stat(v), r: Object.fromEntries(Object.entries(v?.r && typeof v.r === "object" ? v.r : {}).slice(0, 80).map(([rk, c]: [string, any]) => [t(rk, 170), typeof c === "object" ? stat(c) : { n: Math.floor(num(c)), q: 0, hi: 0 }])),
+    }]).filter(([k, v]: [string, any]) => k && v.n && v.q)),
+    p: Object.fromEntries(Object.entries(hb.p && typeof hb.p === "object" ? hb.p : {}).slice(0, 3000).map(([k, v]: [string, any]): [string, any] => [t(k, 200), stat(v)]).filter(([k, v]: [string, any]) => k && v.n && v.q)),
+  } : ((await catalogOf(db)) as any).history ?? null;
+  const data = { suppliers: strings(b.suppliers, 500), zones: strings(b.zones, 50), items, titems, history, stockAt: titems.length ? now() : null };
+  if (!data.suppliers.length || !data.zones.length || !items.length) return { error: "invalid_catalog" };
+  const before = b.sync === true ? await catalogOf(db) : null;
+  const { error } = await rr(db, "catalog").upsert({ id: true, data, updated_at: now() });
+  if (error) return { error: "save_failed" };
+  // New stock: items that dropped to their low stock level alert Rozh and Yunis (once per drop).
+  // Done after the answer, so Rico never waits for it.
+  if (titems.length) {
+    const low = checkLowStock(db);
+    if ((globalThis as any).EdgeRuntime?.waitUntil) (globalThis as any).EdgeRuntime.waitUntil(low); else low.catch(() => {});
+  }
+  // The read for Check now: what changed is kept for the button's answer.
+  if (before) {
+    const changes = catalogChanges(before, data);
+    await rr(db, "helper").update({ sync_result: { changes } }).eq("id", true).eq("sync_state", "running");
+    return { ok: true, items: items.length, changes };
+  }
+  return { ok: true, items: items.length };
+}
+/* Whether the server's reader saved the lists in the last 10 minutes. */
+async function readerFresh(db: any) {
+  const { data } = await db.from("app_rr_reader").select("catalog_ok_at").eq("id", true).maybeSingle().then((x: any) => x, () => ({ data: null }));
+  return !!data?.catalog_ok_at && Date.now() - Date.parse(data.catalog_ok_at) < 10 * 60_000;
+}
 export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Promise<Response> {
   const { db, json, fail } = ctx;
   let m: RegExpMatchArray | null;
@@ -446,50 +500,12 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     return json({ ok: true, recovered: (stuck ?? []).length + (tstuck ?? []).length });
   }
   if (M === "PUT" && path === "helper/catalog") {
-    const strings = (v: unknown, n: number) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.length && x.length <= 200).slice(0, n) : []);
-    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 2000).map((i: any) => ({
-      name: t(i?.name, 200), base: t(i?.base, 40),
-      units: (Array.isArray(i?.units) ? i.units : []).slice(0, 20).map((u: any) => ({ name: t(u?.name, 40), factor: Number(u?.factor) })).filter((u: any) => u.name && Number.isFinite(u.factor) && u.factor > 0),
-    })).filter((i: any) => i.name && i.base);
-    // Everything that can be moved between storages: each item's counting, base and buying units and
-    // its stock in each storage (base units), exactly as Ricotta Restaurant has it.
-    const unit = (u: any) => (u && t(u.name, 40) && Number(u.factor) > 0 ? { name: t(u.name, 40), factor: Number(u.factor) } : null);
-    const titems = (Array.isArray(b.titems) ? b.titems : []).slice(0, 3000).map((i: any) => ({
-      name: t(i?.name, 200), base: t(i?.base, 40), count: unit(i?.count), buy: unit(i?.buy),
-      stock: Object.fromEntries(Object.entries(i?.stock && typeof i.stock === "object" ? i.stock : {}).slice(0, 40)
-        .map(([z, q]) => [t(z, 80), Number(q)]).filter(([z, q]) => z && Number.isFinite(q as number))),
-    })).filter((i: any) => i.name && i.base);
-    // What usually happens (Rico reads Ricotta Restaurant's stock record of the last weeks once a day):
-    // per item the number of moves or deliveries, the usual and the largest amount (base units), and
-    // for moves how often each route ("Main Storage>Appetizers") was used.
-    const num = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 0);
-    const stat = (v: any) => ({ n: Math.min(99999, Math.floor(num(v?.n))), q: num(v?.q), hi: num(v?.hi) || num(v?.q) });
-    const hb = b.history && typeof b.history === "object" ? b.history : null;
-    const history = hb ? {
-      at: t(hb.at, 40), days: Math.floor(num(hb.days)),
-      t: Object.fromEntries(Object.entries(hb.t && typeof hb.t === "object" ? hb.t : {}).slice(0, 3000).map(([k, v]: [string, any]): [string, any] => [t(k, 200), {
-        ...stat(v), r: Object.fromEntries(Object.entries(v?.r && typeof v.r === "object" ? v.r : {}).slice(0, 80).map(([rk, c]: [string, any]) => [t(rk, 170), typeof c === "object" ? stat(c) : { n: Math.floor(num(c)), q: 0, hi: 0 }])),
-      }]).filter(([k, v]: [string, any]) => k && v.n && v.q)),
-      p: Object.fromEntries(Object.entries(hb.p && typeof hb.p === "object" ? hb.p : {}).slice(0, 3000).map(([k, v]: [string, any]): [string, any] => [t(k, 200), stat(v)]).filter(([k, v]: [string, any]) => k && v.n && v.q)),
-    } : ((await catalogOf(db)) as any).history ?? null;
-    const data = { suppliers: strings(b.suppliers, 500), zones: strings(b.zones, 50), items, titems, history, stockAt: titems.length ? now() : null };
-    if (!data.suppliers.length || !data.zones.length || !items.length) return fail("invalid_catalog");
-    const before = b.sync === true ? await catalogOf(db) : null;
-    const { error } = await rr(db, "catalog").upsert({ id: true, data, updated_at: now() });
-    if (error) return fail("save_failed", 503);
-    // New stock: items that dropped to their low stock level alert Rozh and Yunis (once per drop).
-    // Done after the answer, so Rico never waits for it.
-    if (titems.length) {
-      const low = checkLowStock(db);
-      if ((globalThis as any).EdgeRuntime?.waitUntil) (globalThis as any).EdgeRuntime.waitUntil(low); else low.catch(() => {});
-    }
-    // The read for Check now: what changed is kept for the button's answer.
-    if (before) {
-      const changes = catalogChanges(before, data);
-      await rr(db, "helper").update({ sync_result: { changes } }).eq("id", true).eq("sync_state", "running");
-      return json({ ok: true, items: items.length, changes });
-    }
-    return json({ ok: true, items: items.length });
+    // The server reads the lists itself every 5 minutes (rr-reader.ts): while its read is fresh, Rico on
+    // the Mac does not write them too (the two never take turns overwriting each other). Check now
+    // (sync) always goes through.
+    if (b.sync !== true && await readerFresh(db)) return json({ ok: true, skipped: true });
+    const r = await saveCatalog(db, b);
+    return r.error ? fail(r.error, r.error === "save_failed" ? 503 : 400) : json(r);
   }
   // Check now finished (or failed): {ok, error}. What changed was kept when the lists came in.
   if (M === "POST" && path === "helper/sync/done") {
