@@ -423,7 +423,7 @@ function recipeWhySheet(r){
    carton, ml...), so a wrong one can't be picked. Without a stock item (or when Manage has none of
    them) every unit is offered. */
 function recipeUnitsFor(stockItem){
-  const units = recipeBook.data.units, titem = stockItem ? recipeCtx().titem(stockItem) : null;
+  const d = recipeBook.data, units = d.units, titem = stockItem ? d.stock.find(x=>x.name === stockItem) || recipeCtx().titem(stockItem) : null;
   if(!titem) return units;
   const fit = units.filter(u=>RC().factor(titem, u.en) > 0);
   return fit.length ? fit : units;
