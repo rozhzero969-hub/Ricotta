@@ -171,18 +171,21 @@ export async function stockNames(db: any) {
   const cat: any = await catalogOf(db);
   const names = catalogNames(cat);
   const [{ data: saved, error }, k] = await Promise.all([
-    db.from("app_stock_names").select("names_hash,results,provider,checked_at").eq("id", true).maybeSingle(),
+    db.from("app_stock_names").select("names_hash,results,provider,checked_at,alerted").eq("id", true).maybeSingle(),
     config(db, true),
   ]);
   if (error) throw new Error("stock_names_unavailable");
   const here = new Set(names);
-  const spelling = (Array.isArray(saved?.results) ? saved.results : []).filter((s: any) => here.has(s?.name) && typeof s?.fixed === "string");
+  const rows = rowsFor(names, (Array.isArray(saved?.results) ? saved.results : []).filter((s: any) => here.has(s?.name) && typeof s?.fixed === "string"));
+  const listed = new Set(rows.map((r) => r.name));
+  // Fixed: names that were on the list and are no longer (renamed in Ricotta Restaurant, or the mistake is gone).
+  const fixed = (Array.isArray(saved?.alerted) ? saved.alerted : []).filter((n: unknown) => typeof n === "string" && !listed.has(n)).length;
   return {
     readAt: cat.at ?? null, total: names.length,
     checkedAt: saved?.checked_at ?? null, provider: saved?.provider ?? null,
     stale: !!saved?.checked_at && saved.names_hash !== await hashNames(names),
     aiReady: !!(k.anthropicKey || k.geminiKey || k.groqKey),
-    rows: rowsFor(names, spelling),
+    rows, fixed,
   };
 }
 
@@ -205,7 +208,79 @@ export async function checkStockNames(db: any) {
   const provider = answers.find(Boolean)!.provider;
   const { error } = await db.from("app_stock_names").upsert({
     id: true, names_hash: await hashNames(names), results: [...results, ...kept], provider, checked_at: new Date().toISOString(),
+    checked_names: names.filter((n) => !missed.has(n)),
   });
   if (error) throw new Error("stock_names_unavailable");
   return { ...(await stockNames(db)), partial: missed.size > 0 };
+}
+
+/* ---------- Alerts: Rozh hears about new mistakes ----------
+   Runs after Ricotta Restaurant's lists are saved (Cloud Rico every 5 minutes, or Rico on the Mac).
+   Nothing happens while the names are the same. When they change, only names the AI hasn't seen go to
+   it (so a fixed name is checked once, and the rest of the list stays as it was), then Rozh hears once
+   about the mistakes she hasn't heard about yet. Never fails the save that called it. */
+const env = (k: string) => (globalThis as any).Deno?.env?.get?.(k) ?? "";
+async function tellRozh(db: any, w: { en: string; ku: string; ar: string }) {
+  await db.from("app_rico_inbox").insert({ account: "rozha", kind: "stock_names", mood: "calm", body_en: w.en, body_ku: w.ku, body_ar: w.ar });
+  const url = env("SUPABASE_URL"), anon = env("SUPABASE_ANON_KEY"), secret = env("CRON_SECRET");
+  if (!url || !secret) return;
+  await fetch(`${url}/functions/v1/send-push`, {
+    method: "POST", signal: AbortSignal.timeout(15_000),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, apikey: anon, "x-cron-secret": secret },
+    body: JSON.stringify({ type: "stock-names", bodyEn: w.en, bodyKu: w.ku, bodyAr: w.ar }),
+  }).catch(() => console.error("stock_names_push_failed"));
+}
+export function alertWords(fresh: string[], total: number) {
+  const n = fresh.length, one = n === 1;
+  const name = one ? `"${fresh[0].slice(0, 80)}"` : "";
+  return {
+    en: one ? `A name in Ricotta Restaurant has a mistake: ${name}. ${total} to fix in all. See Admin, Stock names.`
+      : `${n} names in Ricotta Restaurant have mistakes. ${total} to fix in all. See Admin, Stock names.`,
+    ku: one ? `ناوێکی ریکۆتا ڕێستۆرانت هەڵەی تێدایە: ${name}. بە گشتی ${total} بۆ ڕاستکردنەوە. بڕوانە ئەدمین، ناوی کاڵاکانی کۆگا.`
+      : `${n} ناوی ریکۆتا ڕێستۆرانت هەڵەیان تێدایە. بە گشتی ${total} بۆ ڕاستکردنەوە. بڕوانە ئەدمین، ناوی کاڵاکانی کۆگا.`,
+    ar: one ? `اسم في ريكوتا ريستورانت فيه خطأ: ${name}. ${total} للتصحيح في المجموع. راجع الإدارة، أسماء مواد المخزون.`
+      : `${n} أسماء في ريكوتا ريستورانت فيها أخطاء. ${total} للتصحيح في المجموع. راجع الإدارة، أسماء مواد المخزون.`,
+  };
+}
+export async function autoCheckNames(db: any, deps: { ask?: typeof askAi; tell?: typeof tellRozh; keys?: () => Promise<any> } = {}) {
+  try {
+    const names = catalogNames(await catalogOf(db));
+    if (!names.length) return { did: false };
+    const { data: saved, error } = await db.from("app_stock_names").select("names_hash,results,provider,checked_at,checked_names,alerted").eq("id", true).maybeSingle();
+    if (error) return { did: false };
+    const hash = await hashNames(names);
+    if (saved?.names_hash === hash) return { did: false };
+    const here = new Set(names);
+    const seen = new Set(Array.isArray(saved?.checked_names) ? saved.checked_names : []);
+    let results = (Array.isArray(saved?.results) ? saved.results : []).filter((s: any) => here.has(s?.name));
+    let provider = saved?.provider ?? null, checked = names.filter((n) => seen.has(n));
+    const fresh = names.filter((n) => !seen.has(n));
+    const k = deps.keys ? await deps.keys() : await config(db, true);
+    if (fresh.length && (k.anthropicKey || k.geminiKey || k.groqKey)) {
+      const ask = deps.ask ?? askAi;
+      for (let i = 0; i < fresh.length; i += BATCH) {
+        const batch = fresh.slice(i, i + BATCH), a = await ask(k, batch);
+        if (!a) continue;   // tried again with the next change, or Check again
+        const got = cleanFixes(a.reply, new Set(batch));
+        results = [...results.filter((s: any) => !batch.includes(s.name)), ...got];
+        checked = [...checked, ...batch]; provider = a.provider;
+      }
+    }
+    const rows = rowsFor(names, results.filter((s: any) => typeof s?.fixed === "string"));
+    const alerted = new Set(Array.isArray(saved?.alerted) ? saved.alerted : []);
+    const news = rows.map((r) => r.name).filter((n) => !alerted.has(n));
+    news.forEach((n) => alerted.add(n));
+    const allChecked = checked.length === names.length;
+    const { error: upError } = await db.from("app_stock_names").upsert({
+      id: true, names_hash: allChecked ? hash : (saved?.names_hash ?? ""), results, provider,
+      checked_at: fresh.length && checked.length > (saved?.checked_names?.length ?? 0) ? new Date().toISOString() : (saved?.checked_at ?? null),
+      checked_names: checked, alerted: [...alerted].slice(-3000),
+    });
+    if (upError) return { did: false };
+    if (news.length) await (deps.tell ?? tellRozh)(db, alertWords(news, rows.length)).catch(() => {});
+    return { did: true, fresh: fresh.length, news: news.length, left: rows.length };
+  } catch (e) {
+    console.error("stock_names_auto_failed", (e as Error)?.message);
+    return { did: false };
+  }
 }

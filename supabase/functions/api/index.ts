@@ -79,7 +79,7 @@ import { recipesRoute } from "./recipes.ts";
 import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
 import { stockView, transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
-import { checkStockNames, stockNames } from "./stock-names.ts";
+import { autoCheckNames, checkStockNames, stockNames } from "./stock-names.ts";
 import { checkLowStock, relinkedLowStock } from "./low-stock.ts";
 import { rrReaderRoute } from "./rr-reader-route.ts";
 import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
@@ -987,7 +987,10 @@ Deno.serve(async (req) => {
       const hb = M === "GET" ? {} : await readBody(req, path.endsWith("/photo") || path === "helper/shot" ? 4_400_000 : MAX_BODY_BYTES);
       // Rico's evening check on Telegram (once a day; he asks after 22:00 Erbil).
       if (M === "POST" && path === "helper/daily-summary") return json(await dailySummary(db));
-      return await helperRoute({ db, json, fail, account: null, rozha: false }, M, path, hb);
+      const res = await helperRoute({ db, json, fail, account: null, rozha: false }, M, path, hb);
+      // Rico on the Mac saved new lists: new name mistakes are found and Rozh hears (after the answer).
+      if (M === "PUT" && path === "helper/catalog" && res.ok) { const p = autoCheckNames(db); (globalThis as any).EdgeRuntime?.waitUntil ? (globalThis as any).EdgeRuntime.waitUntil(p) : p.catch(() => {}); }
+      return res;
     }
 
     const s = await authenticate(req);
