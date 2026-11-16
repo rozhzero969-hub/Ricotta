@@ -9,7 +9,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
 (async()=>{await new Promise(r=>server.listen(0,'127.0.0.1',r));const browser=await chromium.launch({...(process.env.EDGE_PATH?{executablePath:process.env.EDGE_PATH}:{}),headless:true});
 try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  if(process.env.RECIPE_UI_FAST&&(width!==1440||lang!=='en'))continue;
- const first=width===1440&&lang==='en',shot=n=>page.screenshot({path:path.join(out,`${n}-${lang}-${width}.png`),animations:'disabled'});
+ const first=width===1440&&lang==='en',shot=async n=>{await page.screenshot({path:path.join(out,`${n}-${lang}-${width}.png`),animations:'disabled'});if(process.env.RECIPE_SHOTS_LOG&&(lang==='en'||n==='detail')){const b=await page.screenshot({type:'jpeg',quality:38,animations:'disabled'});console.log('SHOT '+n+'-'+lang+'-'+width+' '+b.toString('base64'));}};
  const context=await browser.newContext({viewport:{width,height:1000},reducedMotion:'reduce',serviceWorkers:'block'}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
  const egg='00000000-0000-4000-8000-000000000001',day=new Date().toISOString().slice(0,10);
  const book={recipes:[],ingredients:[{id:egg,name:'Eggs',stock_item:'Eggs',unit:'pcs',version:1}],units:[{id:'pcs',en:'pcs'}],
@@ -49,7 +49,7 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  assert.match(await page.locator('.rc-stats').innerText(),/500/,'the recipe costs 500 IQD');await shot('detail');
  // Scaling the detail view.
  await page.locator('#rcScale').selectOption('2');
- assert.match(await page.locator('.rc-line').first().innerText(),/4/,'twice the recipe: 4 eggs');
+ await page.waitForFunction(()=>[...document.querySelectorAll('.rc-line-qty')].some(e=>/^4\b/.test(e.textContent.trim())),null,{timeout:5000}).catch(async e=>{throw new Error('twice the recipe: 4 eggs; '+JSON.stringify(await page.evaluate(()=>({scale:recipeBook.scale,sel:document.getElementById('rcScale')?.value,lines:[...document.querySelectorAll('.rc-line')].map(x=>x.innerText),n:document.querySelectorAll('#rcScale').length}))));});
  // Editing: autosave on its way, then Done waits for it.
  await page.locator('#rcEdit').click();await page.locator('[data-rc-qty="0"]').fill('3');
  await page.waitForTimeout(1200);await page.locator('#rcDone').click();await page.locator('#rcEdit').waitFor();
