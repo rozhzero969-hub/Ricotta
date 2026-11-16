@@ -2,10 +2,13 @@
 //   POST rr-reader/tick          send-push's tick, every minute (cron secret)       does what is due
 //   GET  admin/rr-reader         Rozh: Cloud Rico's state for Admin
 //   POST admin/rr-reader/run     Rozh: read the lists and this month's invoices now
+//   GET  rico-prices             Recipes, Receipts or Transfers: when the last prices were read (rr-prices.ts)
+//   POST rico-prices             the same: read them now (Cloud Rico when set up, otherwise Rico on the Mac)
 //   GET  rr-invoices?month=YYYY-MM[&supplier=]   whoever makes receipts or transfers: that month's invoices
 import { saveCatalog, catalogOf } from "./receipts.ts";
-import { readerTick, readerView, readMonthNow, erbilDay } from "./rr-reader.ts";
+import { readerTick, readerView, readMonthNow, erbilDay, readerConfig } from "./rr-reader.ts";
 import { checkRecipeAlerts } from "./recipe-alerts.ts";
+import { pricesView, askPrices } from "./rr-prices.ts";
 
 type Ctx = { db: any; json: (b: unknown, s?: number) => Response; fail: (e: string, s?: number) => Response };
 type Who = { account: string; rozha: boolean; can: (role: string) => boolean } | null;
@@ -29,7 +32,7 @@ async function alertRozh(db: any, kind: string, w: { en: string; ku: string; ar:
     body: JSON.stringify({ type: "rr-reader", kind, bodyEn: w.en, bodyKu: w.ku, bodyAr: w.ar }),
   }).catch(() => console.error("rr_reader_push_failed"));
 }
-const tickDeps = (db: any, force: "all" | null = null) => ({ db, saveCatalog, catalogOf, force, alert: (kind: string, w: any) => alertRozh(db, kind, w) });
+const tickDeps = (db: any, force: "all" | "invoices" | null = null) => ({ db, saveCatalog, catalogOf, force, alert: (kind: string, w: any) => alertRozh(db, kind, w) });
 
 export async function rrReaderRoute(ctx: Ctx, req: Request, M: string, path: string, who: Who): Promise<Response | null> {
   const { db, json, fail } = ctx;
@@ -50,6 +53,20 @@ export async function rrReaderRoute(ctx: Ctx, req: Request, M: string, path: str
       const r = await readerTick(tickDeps(db, "all"));
       if ((r.did as string[]).includes("invoices")) await checkRecipeAlerts(db);
       return json(await readerView(db));
+    }
+  }
+  if (path === "rico-prices") {
+    if (!who.can("recipes") && !who.can("receipts") && !who.can("transfers")) return fail("forbidden", 403);
+    if (M === "GET") return json(await pricesView(db));
+    if (M === "POST") {
+      // Cloud Rico is set up: the server reads this month's and last month's invoices now.
+      if (readerConfig().ready) {
+        const r = await readerTick(tickDeps(db, "invoices"));
+        if ((r.did as string[]).includes("invoices")) await checkRecipeAlerts(db);
+        return json({ prices: await pricesView(db), ...(r.problem ? { error: "cloud_failed", cause: r.problem.cause } : {}) });
+      }
+      const r = await askPrices(db);
+      return json(r);
     }
   }
   if (M === "GET" && path === "rr-invoices") {
