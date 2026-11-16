@@ -51,7 +51,7 @@
       I('it-garlic','Garlic','kg','sup-veg',3), I('it-lettuce','Lettuce','piece','sup-veg',4), I('it-lemon','Lemons','kg','sup-veg',5), I('it-mush','Mushrooms','kg','sup-veg',6),
       I('it-ciab','Ciabatta','piece','sup-bakery',0), I('it-dough','Pizza dough','box','sup-bakery',1), I('it-buns','Burger buns','pack','sup-bakery',2),
       I('it-chick','Chicken breast','kg','sup-meat',0), I('it-beef','Minced beef','kg','sup-meat',1),
-      I('it-flour','Flour (00)','bag','sup-dry',0), I('it-oil','Olive oil','bottle','sup-dry',1), I('it-penne','Penne','pack','sup-dry',2), I('it-cantom','Canned tomatoes','can','sup-dry',3)
+      I('it-flour','Flour (00)','bag','sup-dry',0), I('it-oil','Olive oil','bottle','sup-dry',1), I('it-penne','Penne','pack','sup-dry',2), I('it-cantom','Canned tomatoes','can','sup-dry',3), I('it-soy','Soy sauce','bottle','sup-dry',4)
     ];
     // Sample links (Manage, edit an item, Stock item); in the real app Rozh links each one herself.
     Object.assign(items.find(i=>i.id==='it-mozz'), {stockItem:'Mozzarella - پەنیری مۆزارێلا'});
@@ -59,6 +59,8 @@
     Object.assign(items.find(i=>i.id==='it-ric'), {stockItem:'Ricotta Cheese - پەنیری ریکۆتا'});
     Object.assign(items.find(i=>i.id==='it-tom'), {stockItem:'Tomato - تەماتە'});
     Object.assign(items.find(i=>i.id==='it-lemon'), {stockItem:'Lemon - لیمۆ'});
+    // Several links: one Soy sauce to three soy sauce stock items (two counted in pieces, one in kilos).
+    Object.assign(items.find(i=>i.id==='it-soy'), {stockItem:'Soy Sauce Kikkoman - سۆیای کیکۆمان', stockItems:['Soy Sauce Kikkoman - سۆیای کیکۆمان', 'Soy Sauce Lee Kum Kee - سۆیای لی کوم کی', 'Soy Sauce Bulk - سۆیای کیلۆ']});
     // A low stock alert at 6 kilos (Manage): Mozzarella has 5, so it shows yellow on the Order screen.
     Object.assign(items.find(i=>i.id==='it-mozz'), {lowAlert:6});
     const byId = Object.fromEntries(items.map(i=>[i.id,i]));
@@ -142,7 +144,7 @@
       usage.push({account:'yunis', deviceId:'lab-phone-yunis', label:'iPhone 16 Pro|App', day, seconds:2400 + ((d*911) % 3600)});
       if(d % 3 === 0) usage.push({account:'rozha', deviceId:'lab-phone-rozha', label:'iPhone 16/17 Pro Max|App', day, seconds:600 + d*40});
     }
-    return {v:9, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, seq:100, said:{},
+    return {v:10, units, suppliers, items, history, activity, inbox, chats, pins:{rozha:['it-tom','it-mozz'], yunis:[]}, streak, weather, seq:100, said:{},
       roles:{yunis:null}, security, problems, usage};
   }
   /* Two finished months for the archive (History itself only keeps this month). */
@@ -155,7 +157,7 @@
       topItems:[{name:'Tomatoes', unit:'kg', times:13, qty:80}, {name:'Mozzarella', unit:'kg', times:12, qty:52}]}
   ];
   let db = lsGet(DB_KEY);
-  if(!db || db.v !== 9) db = seed();
+  if(!db || db.v !== 10) db = seed();
   const save = () => lsSet(DB_KEY, db);
   save();
   window.labResetData = () => { db = seed(); save(); };
@@ -213,15 +215,25 @@
     {name:'Akkawi Cheese - پەنیری عەکاوی', base:'دانە', count:{name:'دانە', factor:1}, buy:{name:'کارتۆن', factor:24}, stock:{'Main Storage':0}},
     {name:'Mozzarella Block - پەنیری مۆزارێلای پارچە', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:{name:'کارتۆن', factor:10000}, stock:{'Main Storage':20000}},
     {name:'Olive Oil - زەیتی زەیتوون', base:'مل', count:{name:'دانە', factor:1000}, buy:{name:'کارتۆن', factor:12000}, stock:{'Main Storage':24000}},
+    {name:'Soy Sauce Kikkoman - سۆیای کیکۆمان', base:'دانە', count:{name:'دانە', factor:1}, buy:{name:'کارتۆن', factor:12}, stock:{'Main Storage':15}},
+    {name:'Soy Sauce Lee Kum Kee - سۆیای لی کوم کی', base:'دانە', count:{name:'دانە', factor:1}, buy:{name:'کارتۆن', factor:24}, stock:{'Main Storage':5}},
+    {name:'Soy Sauce Bulk - سۆیای کیلۆ', base:'غرام', count:{name:'کیلۆ', factor:1000}, buy:null, stock:{'Main Storage':3000}},
   ];
   const labStockAt = ()=>new Date(Date.now() - 6 * 60000).toISOString();
   // Sample use over the last 14 days, so the Order screen shows each colour: Parmesan is low.
   const LAB_USE = new Map([['Parmesan - پەنیری پارمیزان', {base:280, n:6}], ['Lemon - لیمۆ', {base:14000, n:4}]]);
   const labLevel = t=>globalThis.RicottaStockLink.level(t, LAB_USE).level;
+  // Same as the server: one link as before, several added together (stock-link.js combine()).
+  const labStockFor = names=>{
+    const L = globalThis.RicottaStockLink, found = names.map(n=>LAB_STOCK.find(x=>x.name === n)).filter(Boolean);
+    if(!found.length) return {missing:true};
+    if(names.length === 1) return labStockOf(found[0]);
+    return {...L.combine(found, LAB_USE), at:labStockAt()};
+  };
   const withLabStock = i=>{
-    if(!i.stockItem) return i;
-    const t = LAB_STOCK.find(x=>x.name === i.stockItem);
-    return {...i, stock:t ? labStockOf(t) : {missing:true}};
+    const links = globalThis.RicottaStockLink.linksOf(i);
+    if(!links.length) return i;
+    return {...i, stockItem:links[0], stockItems:links, stock:labStockFor(links)};
   };
   const labStockOf = t=>({...globalThis.RicottaStockLink.amount(t), level:labLevel(t), count:globalThis.RicottaStockLink.counted(t), at:labStockAt()});
   function ricoReply(account, body){
@@ -401,11 +413,13 @@
         if(!can(account, 'catalog')) return fail('forbidden', 403);
         const it = db.items.find(x=>x.id === decodeURIComponent(m[1]));
         if(!it) return fail('gone', 409);
-        const want = body.stockItem ?? null, t = want && LAB_STOCK.find(x=>x.name === want);
-        if(want && !t) return fail('stock_item_unknown', 422);
-        if(want && !globalThis.RicottaStockLink.matches(it, want) && body.anyway !== true) return fail('names_dont_match', 422);
-        it.stockItem = want; save();
-        return json({ok:true, stockItem:want, stock:t ? labStockOf(t) : null});
+        const L = globalThis.RicottaStockLink, before = L.linksOf(it);
+        const want = [...new Set(Array.isArray(body.stockItems) ? body.stockItems : body.stockItem ? [body.stockItem] : [])];
+        if(want.some(n=>!LAB_STOCK.some(x=>x.name === n))) return fail('stock_item_unknown', 422);
+        const odd = want.filter(n=>!before.includes(n) && !L.matches(it, n));
+        if(odd.length && !(body.anyway === true || (Array.isArray(body.anyway) && odd.every(n=>body.anyway.includes(n))))) return fail('names_dont_match', 422);
+        it.stockItem = want[0] || null; it.stockItems = want; save();
+        return json({ok:true, stockItem:want[0] || null, stockItems:want, stock:want.length ? labStockFor(want) : null});
       }
     }
     // Low stock alert of one item: a level in its stock item's counting format, or null for none.

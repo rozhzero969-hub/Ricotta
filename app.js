@@ -32,6 +32,7 @@ const state = {
   search: '',
   orderTab: 'all',        // 'all' | supplierId | '__none'
   orderKind: 'food',      // the Order screen's tab: 'food' or 'expense' (pull down to switch)
+  manageKind: lget('manageKind') === 'expense' ? 'expense' : 'food',   // Manage, Items: food or expense items
   expensesReady: false,  // the server saves suppliers' food/expenses and items' kind
   itemFormSupplierId: null, // supplier "locked in" for the add-item form
   queue: null,           // array of {supplierId, items, sent} while sending
@@ -2422,7 +2423,10 @@ const stockQty = n=>Number(n || 0).toLocaleString('en-US', {maximumFractionDigit
 /* The same words as HTML, the amount kept apart (<bdi>) so a Kurdish unit never turns the line around. */
 function stockHtml(st){
   if(st.empty) return esc(t('stockNoneMain'));
-  return esc(t('stockLineMain')('\u2063')).replace('\u2063', `<bdi dir="${isRtl() ? 'rtl' : 'ltr'}">${esc(stockQty(st.qty))} ${esc(st.unit)}</bdi>`);
+  // Several linked stock items: each kind added up, side by side ("20 pieces + 3 kilos in Main Storage").
+  const kinds = st.multi && Array.isArray(st.kinds) && st.kinds.length ? st.kinds : [{qty:st.qty, unit:st.unit}];
+  const amounts = kinds.map(k=>`<bdi dir="${isRtl() ? 'rtl' : 'ltr'}">${esc(stockQty(k.qty))} ${esc(k.unit)}</bdi>`).join(' + ');
+  return esc(t('stockLineMain')('\u2063')).replace('\u2063', amounts);
 }
 /* Low stock alert (Manage): the item is at or below its own level, counted in its stock item's counting
    format (4 cartons, 4 pieces, 4 kilos). The server alerts Rozh and Yunis once; the Order screen shows
@@ -2869,6 +2873,7 @@ function openItemMenu(row){
   clone.querySelectorAll('button,input').forEach(el=>{ el.tabIndex=-1; el.setAttribute('aria-hidden','true'); });
   layer.querySelector('.ctx-preview').appendChild(clone);
   document.body.appendChild(layer);
+  placeStockParts(layer, item);
   layer.querySelector('.ctx-scrim').onclick = closeContextMenu;
   layer.addEventListener('keydown', e=>{ if(e.key==='Escape') closeContextMenu(); });
   layer.querySelector('[data-ctx]')?.focus({preventScroll:true});
@@ -2890,6 +2895,36 @@ function openItemMenu(row){
   });
 }
 
+/* An item linked to several stock items: next to its menu, each linked stock item with its own amount in
+   Main Storage (which okra has 15, which has 5). Beside the menu when there is room, otherwise above or
+   below it. One link shows nothing extra. */
+function placeStockParts(layer, item){
+  const parts = itemLinks(item).length > 1 && Array.isArray(item.stock?.parts) ? item.stock.parts : null;
+  const menu = layer.querySelector('.ctx-menu');
+  if(!parts || !menu) return;
+  const card = document.createElement('div');
+  card.className = 'ctx-parts';
+  card.setAttribute('role', 'group');
+  card.setAttribute('aria-label', t('stockPartsTitle'));
+  card.innerHTML = `<div class="ctx-parts-title">${esc(t('stockPartsTitle'))}</div>${parts.map(p=>`<div class="ctx-part${p.empty ? ' none' : ''}"><span dir="auto">${esc(p.name)}</span><b>${p.empty ? esc(t('stockPartNone')) : `<bdi dir="${isRtl() ? 'rtl' : 'ltr'}">${esc(stockQty(p.qty))} ${esc(p.unit)}</bdi>`}</b></div>`).join('')}${(item.stock.gone || []).map(n=>`<div class="ctx-part gone"><span dir="auto">${esc(n)}</span><b>${esc(t('stockLinkMissing'))}</b></div>`).join('')}<div class="ctx-part total"><span>${esc(t('stockLinkTotal'))}</span><b>${stockHtml(item.stock)}</b></div>`;
+  layer.appendChild(card);
+  // The menu is still growing in (its opening animation): measure where it ends up, not where it starts.
+  const anim = menu.style.animation; menu.style.animation = 'none';
+  const m = menu.getBoundingClientRect(); menu.style.animation = anim;
+  const c = {width:card.offsetWidth, height:card.offsetHeight}, gap = 10, W = innerWidth, H = innerHeight;   // the card grows in too
+  let left, top;
+  if(m.left - gap - c.width >= 12){ left = m.left - gap - c.width; top = m.top; }
+  else if(m.right + gap + c.width <= W - 12){ left = m.right + gap; top = m.top; }
+  else {
+    // No room beside it (phones): below or above the menu and the held row together, never over them.
+    const p = layer.querySelector('.ctx-preview')?.getBoundingClientRect() || m;
+    const low = Math.max(m.bottom, p.bottom) + gap, high = Math.min(m.top, p.top) - gap - c.height;
+    left = Math.min(Math.max(12, m.left), W - c.width - 12);
+    top = low + c.height <= H - 12 ? low : high >= 12 ? high : Math.min(low, H - c.height - 12);
+  }
+  card.style.left = Math.round(left) + 'px';
+  card.style.top = Math.round(Math.max(12, Math.min(top, H - c.height - 12))) + 'px';
+}
 /* The item's stock link on its own, from the item menu: suggestions first, search for anything else. */
 function openStockLinkSheet(id){
   const {el} = openKitchenSheet('stock-link-sheet', `<div class="sel-title" dir="auto">${esc(state.items.find(i=>i.id === id)?.name || '')}</div><div class="field stock-link" id="ctxStock"></div><div class="field low-alert" id="ctxLow"></div>`, t('cmLinkStock'));
@@ -3578,17 +3613,32 @@ async function deleteSupplier(id){
 }
 
 /* ============ Items ============ */
+/* Manage, Items: food and expense items apart (a Food / Expenses switch like the Order screen's), one
+   clear Add for the side that is showing, Link stock items with its count, and the rest (import, export)
+   in one More menu, so nothing squeezes onto two lines. */
+const manageSplit = ()=> state.expensesReady || state.items.some(i=>itemKind(i) === 'expense');
+const manageKind = ()=> state.manageKind === 'expense' && manageSplit() ? 'expense' : 'food';
 function renderItemsAdmin(){
-  const edit = canDo('catalog');
-  return `
-    <div class="action-row">
-      ${edit ? `<button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS} ${t('addItem')}</button>
-      ${state.expensesReady ? `<button class="btn btn-ghost add-expense-btn" id="itemAddExpenseBtn">${ICON_EXPENSE} ${esc(t('addExpenseItem'))}</button>` : ''}
-      <button class="btn btn-ghost" id="itemImportBtn">${ICON_DOWNLOAD} ${esc(t('importItems'))}</button>
-      <button class="btn btn-ghost" id="itemLinkAllBtn">${ICON_LINK} ${esc(t('stockLinkMany'))}${(n=>n ? ` <span class="btn-count">${n}</span>` : '')(state.items.filter(i=>!i.stockItem).length + (stockOptions ? state.items.filter(i=>stockDoubt(i)).length : 0))}</button>` : ''}
-      ${canDo('exports') ? `<button class="btn btn-ghost" data-export="items">${ICON_SHEET} ${esc(t('exportBtn'))}</button>` : ''}
+  const edit = canDo('catalog'), split = manageSplit(), kind = manageKind(), exp = kind === 'expense';
+  const shown = TABLES.items.rows();
+  const count = k=> state.items.filter(i=>itemKind(i) === k).length;
+  const sw = split ? `<div class="pill-seg manage-kind" role="radiogroup" aria-label="${esc(t('itemKindLabel'))}">${['food','expense'].map(k=>`<button type="button" class="pill-seg-btn" role="radio" aria-checked="${k === kind}" data-mkind="${k}">${k === 'expense' ? ICON_EXPENSE : ICON_FOOD}<span>${esc(t(k === 'expense' ? 'kindExpenses' : 'kindFood'))}</span><span class="seg-count">${count(k)}</span></button>`).join('')}</div>` : '';
+  const toLink = state.items.filter(i=>!i.stockItem).length + (stockOptions ? state.items.filter(i=>stockDoubt(i)).length : 0);
+  const more = [...(edit ? ['import'] : []), ...(canDo('exports') ? ['export'] : [])];
+  return `${sw}
+    <div class="action-row manage-actions">
+      ${edit ? `<button class="btn btn-primary add-btn" id="itemAddBtn">${ICON_PLUS}<span>${esc(t(exp ? 'addExpenseItem' : 'addItem'))}</span></button>
+      <button class="btn btn-ghost manage-link-btn" id="itemLinkAllBtn">${ICON_LINK}<span>${esc(t('stockLinkMany'))}</span>${toLink ? `<span class="btn-count">${toLink}</span>` : ''}</button>` : ''}
+      ${more.length === 1 && more[0] === 'export' ? `<button class="btn btn-ghost" data-export="items">${ICON_SHEET}<span>${esc(t('exportBtn'))}</span></button>`
+        : more.length ? `<button class="btn btn-ghost manage-more-btn" id="itemMoreBtn" aria-haspopup="true" aria-label="${esc(t('more'))}" title="${esc(t('more'))}">${ICON_MORE}</button>` : ''}
     </div>${edit ? '' : `<p class="readonly-note">${esc(t('catalogReadOnly'))}</p>`}
-    ${renderCatalogSearch()}<div class="section-title">${t('items')} (${state.items.length})</div><div id="itemsAdminList">${renderDataTable('items')}</div>`;
+    ${renderCatalogSearch()}<div class="section-title">${esc(t(exp ? 'kindExpenses' : 'items'))} (${shown.length})</div><div id="itemsAdminList">${renderDataTable('items')}</div>`;
+}
+/* More, in Manage, Items: Import from Excel / CSV and Export, in a small sheet. */
+function openItemsMore(){
+  const rows = [...(canDo('catalog') ? [['import', ICON_DOWNLOAD, t('importItems')]] : []), ...(canDo('exports') ? [['export', ICON_SHEET, t('exportBtn')]] : [])];
+  const {el, close} = openKitchenSheet('items-more-sheet', `<div class="sel-title">${esc(t('more'))}</div><div class="sel-list">${rows.map(([a, icon, label])=>`<button type="button" class="sheet-row" data-more="${a}">${icon}<span>${esc(label)}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`).join('')}</div>`, t('more'));
+  el.querySelectorAll('[data-more]').forEach(b=>b.onclick = ()=>{ close(); b.dataset.more === 'import' ? openItemImport() : openExportSheet('items'); });
 }
 function openSupplierItemOrder(supplierId){
   const supplier=state.suppliers.find(s=>s.id===supplierId);
@@ -3816,6 +3866,8 @@ function openItemModal(id, opts = {}){
    screen can show how much is in Main Storage. Rozh picks it herself with a smart search (English,
    Kurdish or Arabic, typos fine). A stock item whose name doesn't match this item can't be chosen
    (the server checks the same rule). It saves on its own, apart from the form's Save. */
+/* The stock items an item is linked to, first one first (older data: just stockItem). */
+const itemLinks = i=> Array.isArray(i?.stockItems) && i.stockItems.length ? i.stockItems : i?.stockItem ? [i.stockItem] : [];
 let stockOptions = null;   // {at, items:[{name, qty?, unit?, empty?}]}, read once per session (amounts only with Stock)
 let stockOptionsFailed = false;
 let stockOptionsLoading = null;   // one read at a time, shared by everyone who asks meanwhile
@@ -3832,7 +3884,7 @@ function loadStockOptions(){
    rank()): its supplier and unit, and the stock items other items are linked to already. */
 function stockCtx(i){
   const taken = new Map();
-  for(const x of state.items) if(x.stockItem && x.id !== i.id && !taken.has(x.stockItem)) taken.set(x.stockItem, x.name);
+  for(const x of state.items) if(x.id !== i.id) for(const n of itemLinks(x)) if(!taken.has(n)) taken.set(n, x.name);
   return {supplier:state.suppliers.find(s=>s.id === i.supplierId)?.name || '', unit:unitLabel(i.unit), taken};
 }
 /* Why a stock item is suggested, or what speaks against it, in a few words ("Same size · From this
@@ -3848,6 +3900,7 @@ function stockWhyHtml(r){
    very link on this device. Needs the list of stock items; without it nothing is said. */
 function stockDoubt(i){
   if(!i?.stockItem || !stockOptions?.items?.length) return null;
+  if(itemLinks(i).length > 1) return null;   // several linked on purpose (all the soy sauces)
   if((lget('stockLinkKept') || {})[i.id] === i.stockItem) return null;
   return globalThis.RicottaStockLink.doubt(i, stockOptions.items, stockCtx(i));
 }
@@ -3864,75 +3917,108 @@ function updateLinkAllCount(){
   if(!c){ c = document.createElement('span'); c.className = 'btn-count'; b.append(' ', c); }
   c.textContent = n;
 }
-/* Saving one link. A stock item whose name doesn't match the item asks first and links only after
-   "Link anyway". Resolves to the server's answer, or null when nothing was saved. */
-async function saveStockLink(i, name){
-  const L = globalThis.RicottaStockLink;
-  const anyway = !!name && !L.matches(i, name);
-  if(anyway && !(await showConfirm(`<b dir="auto">${esc(name)}</b><br>${esc(t('stockLinkAnyway'))}`, {okLabel:t('stockLinkAnywayOk'), okClass:'btn-primary'}))) return null;
-  const r = await api(`items/${encodeURIComponent(i.id)}/stock`, {method:'PUT', body:anyway ? {stockItem:name, anyway:true} : {stockItem:name}});
+/* Saving the links of an item (several allowed, first one first). A stock item whose name doesn't match
+   the item asks first and is linked only after "Link anyway". Resolves to the server's answer, or null
+   when nothing was saved. */
+/* One link (or none) goes in the old shape, so it saves the same on a server from before several links. */
+const linkBody = (names, odd)=> names.length > 1
+  ? (odd.length ? {stockItems:names, anyway:odd} : {stockItems:names})
+  : (odd.length ? {stockItem:names[0] ?? null, anyway:true} : {stockItem:names[0] ?? null});
+async function saveStockLinks(i, names){
+  const L = globalThis.RicottaStockLink, before = itemLinks(i);
+  const odd = names.filter(n=>!before.includes(n) && !L.matches(i, n));
+  if(odd.length && !(await showConfirm(`${odd.map(n=>`<b dir="auto">${esc(n)}</b>`).join('<br>')}<br>${esc(t('stockLinkAnyway'))}`, {okLabel:t('stockLinkAnywayOk'), okClass:'btn-primary'}))) return null;
+  const r = await api(`items/${encodeURIComponent(i.id)}/stock`, {method:'PUT', body:linkBody(names, odd)});
   if(!r.ok){ toast(r.data?.error === 'names_dont_match' ? t('stockLinkNoMatch') : t('saveFailed'), 'error'); return null; }
-  i.stockItem = r.data.stockItem; if(r.data.stock) i.stock = r.data.stock; else delete i.stock;
+  i.stockItem = r.data.stockItem; i.stockItems = Array.isArray(r.data.stockItems) ? r.data.stockItems : (r.data.stockItem ? [r.data.stockItem] : []);
+  if(r.data.stock) i.stock = r.data.stock; else delete i.stock;
   if(state.view === 'order') refreshOrderResults?.();
   updateLinkAllCount();
   return r.data;
 }
+/* One link for the item (Link stock items list, a closer match): replaces what it was linked to. */
+const saveStockLink = (i, name)=> saveStockLinks(i, name ? [name] : []);
 function stockOptHtml(r, {on = false, link = false} = {}){
   const o = r.o, amount = o.unit == null ? '' : stockHtml(o), why = stockWhyHtml(r);
   return `<button type="button" class="stock-opt${on ? ' on' : ''}${r.warn.length ? ' warn' : ''}" ${link ? '' : `role="option" aria-selected="${on}"`} data-stock-pick="${esc(o.name)}"><span dir="auto">${esc(o.name)}</span>${amount || why ? `<small>${[amount, why].filter(Boolean).join(' · ')}</small>` : ''}${link ? `<b class="stock-sug-link">${esc(t('stockLinkDo'))}</b>` : ''}</button>`;
 }
-/* The stock link of one item: what it is linked to, the best matches one tap each, and a search for any
-   other stock item. opts.open starts with the search open; opts.onSaved(name) after a link is saved. */
+/* The stock links of one item: what it is linked to (several allowed: one Soy sauce to all three soy
+   sauces, each with its own amount and a remove button), the best matches one tap each with "Link all"
+   when there are several, and a search for any other stock item. opts.open starts with the search open;
+   opts.onSaved(names) after the links are saved; opts.single makes a pick replace the link. */
 function mountStockLink(box, itemId, opts = {}){
   if(!box) return;
   let open = !!opts.open, query = '';
   const item = ()=>state.items.find(x=>x.id === itemId);
   const L = globalThis.RicottaStockLink, S = globalThis.RicottaSearch;
+  const optOf = name=> stockOptions?.items?.find(o=>o.name === name) || null;
+  const partOf = (i, name)=> i.stock?.parts?.find(p=>p.name === name) || null;
   const paint = ()=>{
     const i = item(); if(!i){ box.innerHTML = ''; return; }
-    const cur = i.stockItem;
-    const st = cur && i.stock;
-    const now = cur ? `<div class="stock-link-now"><span class="stock-link-name" dir="auto">${esc(cur)}</span><small>${st?.missing ? esc(t('stockLinkMissing')) : st ? stockHtml(st) : ''}</small></div>` : `<div class="field-hint">${esc(t('stockLinkNone'))}</div>`;
-    // Not linked yet: the best matches are shown right away, one tap each (both kinds when there are two).
+    const links = itemLinks(i), st = links.length && i.stock;
     if(!stockOptions && !stockOptionsFailed) loadStockOptions().then(()=>{ if(box.isConnected && stockOptions) paint(); });
-    const sug = !cur && !open && stockOptions?.items?.length ? L.suggest(i, stockOptions.items, 4, stockCtx(i), true) : [];
-    // Linked already, but it may be the wrong one: say why, offer the closer one, or keep it.
-    const d = cur && !open ? stockDoubt(i) : null;
-    const doubtHtml = d ? `<div class="stock-doubt" role="note"><div class="stock-warn" dir="auto">${esc([t('stockLinkDoubt'), ...stockDoubtWords(d)].join(' · '))}</div><div class="stock-doubt-btns">${d.better ? `<button type="button" class="stock-chip first" data-stock-pick="${esc(d.better.o.name)}"><span dir="auto">${esc(t('stockLinkCloser')(d.better.o.name))}</span></button>` : ''}<button type="button" class="stock-chip" data-stock-keep>${esc(t('stockLinkKeep'))}</button></div></div>` : '';
-    const sugHtml = sug.length ? `<div class="stock-sug" role="group" aria-label="${esc(t('stockLinkSuggested'))}"><div class="stock-sug-title">${esc(t('stockLinkSuggested'))}</div>${sug.map(r=>stockOptHtml(r, {link:true})).join('')}</div>` : '';
-    box.innerHTML = `<label${open ? ' for="mfStockSearch"' : ''}>${esc(t('stockLinkLabel'))}</label>${now}${doubtHtml}${sugHtml}
-      <div class="stock-link-actions">${open ? '' : `<button type="button" class="btn btn-ghost" data-stock-open>${esc(cur ? t('stockLinkChange') : t('stockLinkChoose'))}</button>`}${cur && !open ? `<button type="button" class="btn btn-ghost danger-text" data-stock-unlink>${esc(t('stockLinkRemove'))}</button>` : ''}</div>
-      ${open ? `<div class="stock-pick"><input id="mfStockSearch" class="stock-pick-input" type="search" autocomplete="off" dir="auto" placeholder="${esc(t('stockLinkSearch'))}" value="${esc(query)}"><div class="stock-pick-list" role="listbox" aria-label="${esc(t('stockLinkLabel'))}"></div><button type="button" class="btn btn-ghost" data-stock-cancel>${esc(t('cancel'))}</button></div>` : ''}`;
+    // What it is linked to: each stock item with its own amount (from this item's stock, or the stock list).
+    const now = links.length ? `<div class="stock-links">${links.map(n=>{
+      const p = links.length > 1 ? partOf(i, n) : null, o = optOf(n);
+      const amount = links.length === 1 ? (st?.missing ? esc(t('stockLinkMissing')) : st ? stockHtml(st) : '') : p ? stockHtml(p) : (st?.gone || []).includes(n) ? esc(t('stockLinkMissing')) : o && o.unit != null ? stockHtml(o) : '';
+      return `<div class="stock-link-now"><span class="stock-link-name" dir="auto">${esc(n)}</span>${amount ? `<small>${amount}</small>` : ''}${links.length > 1 ? `<button type="button" class="icon-btn stock-link-x" data-stock-remove="${esc(n)}" aria-label="${esc(t('stockLinkRemoveOne')(n))}" title="${esc(t('stockLinkRemoveOne')(n))}">${ICON_CLOSE_SM}</button>` : ''}</div>`;
+    }).join('')}${links.length > 1 && st && !st.missing ? `<div class="stock-links-total">${esc(t('stockLinkTotal'))} ${stockHtml(st)}</div>` : ''}</div>` : `<div class="field-hint">${esc(t('stockLinkNone'))}</div>`;
+    // The best matches not linked yet, one tap each (all the soy sauces); Link all when there are several.
+    const sug = !open && stockOptions?.items?.length ? L.suggest(i, stockOptions.items, 6, stockCtx(i), true).filter(r=>!links.includes(r.o.name)).slice(0, links.length ? 4 : 6) : [];
+    const clean = sug.filter(r=>!r.warn.length);
+    const d = links.length === 1 && !open ? stockDoubt(i) : null;
+    const doubtHtml = d ? `<div class="stock-doubt" role="note"><div class="stock-warn" dir="auto">${esc([t('stockLinkDoubt'), ...stockDoubtWords(d)].join(' · '))}</div><div class="stock-doubt-btns">${d.better ? `<button type="button" class="stock-chip first" data-stock-swap="${esc(d.better.o.name)}"><span dir="auto">${esc(t('stockLinkCloser')(d.better.o.name))}</span></button>` : ''}<button type="button" class="stock-chip" data-stock-keep>${esc(t('stockLinkKeep'))}</button></div></div>` : '';
+    const sugHtml = sug.length ? `<div class="stock-sug" role="group" aria-label="${esc(t('stockLinkSuggested'))}"><div class="stock-sug-head"><span class="stock-sug-title">${esc(links.length ? t('stockLinkAlsoMatches') : t('stockLinkSuggested'))}</span>${clean.length > 1 ? `<button type="button" class="stock-sug-all" data-stock-all>${esc(t('stockLinkAll')(clean.length))}</button>` : ''}</div>${sug.map(r=>stockOptHtml(r, {link:true})).join('')}</div>` : '';
+    box.innerHTML = `<label${open ? ' for="mfStockSearch"' : ''}>${esc(links.length > 1 ? t('stockLinkLabelMany') : t('stockLinkLabel'))}</label>${now}${doubtHtml}${sugHtml}
+      <div class="stock-link-actions">${open ? '' : `<button type="button" class="btn btn-ghost" data-stock-open>${esc(links.length ? t('stockLinkAddAnother') : t('stockLinkChoose'))}</button>`}${links.length && !open ? `<button type="button" class="btn btn-ghost danger-text" data-stock-unlink>${esc(links.length > 1 ? t('stockLinkRemoveAll') : t('stockLinkRemove'))}</button>` : ''}</div>
+      ${open ? `<div class="stock-pick"><input id="mfStockSearch" class="stock-pick-input" type="search" autocomplete="off" dir="auto" placeholder="${esc(t('stockLinkSearch'))}" value="${esc(query)}"><div class="stock-pick-list" role="listbox" aria-multiselectable="true" aria-label="${esc(t('stockLinkLabel'))}"></div><button type="button" class="btn btn-ghost" data-stock-cancel>${esc(t('stockLinkDone'))}</button></div>` : ''}`;
     if(open){ paintList(); const input = box.querySelector('#mfStockSearch'); input.oninput = ()=>{ query = input.value; paintList(); }; input.onkeydown = e=>{ if(e.key === 'Enter') e.preventDefault(); }; }
   };
   const paintList = ()=>{
     const list = box.querySelector('.stock-pick-list'); if(!list) return;
-    const i = item();
+    const i = item(), links = itemLinks(i);
     if(!stockOptions){ list.innerHTML = stockOptionsFailed ? `<div class="field-hint">${esc(t('loadFailed'))}</div>` : loadingLines(3); return; }
     if(!stockOptions.items.length){ list.innerHTML = `<div class="field-hint">${esc(t('stockLinkNoStock'))}</div>`; return; }
     const ctx = stockCtx(i), byName = new Map(L.rank(i, stockOptions.items, ctx).map(r=>[r.o.name, r]));
-    // Typed words search every stock item; with nothing typed, the best matches for the item. Any of
-    // them can be linked: one whose name doesn't match says so and asks first.
+    // Typed words search every stock item; with nothing typed, the best matches for the item. A tap adds
+    // it (a linked one is taken off again). One whose name doesn't match says so and asks first.
     const rows = query.trim() ? S.rank(stockOptions.items, query, o=>[o.name]).slice(0, 12).map(o=>byName.get(o.name) || {o, why:[], warn:L.matches(i, o.name) ? [] : ['name'], taken:ctx.taken.get(o.name) || null})
       : L.suggest(i, stockOptions.items, 12, ctx, true);
-    list.innerHTML = rows.length ? rows.map(r=>stockOptHtml(r, {on:r.o.name === i.stockItem})).join('')
+    list.innerHTML = rows.length ? rows.map(r=>stockOptHtml(r, {on:links.includes(r.o.name)})).join('')
       : `<div class="field-hint">${esc(query.trim() ? t('rrNoMatch') : t('stockLinkNoSuggest'))}</div>`;
   };
-  const save = async name=>{
-    const i = item(); if(!i) return;
-    const done = await saveStockLink(i, name);
-    if(!done) return;
-    open = false; query = ''; paint();
-    toast(name ? t('stockLinkSaved') : t('stockLinkRemoved'));
-    opts.onSaved?.(name);
+  const save = async (names, msg)=>{
+    const i = item(); if(!i) return false;
+    const done = await saveStockLinks(i, names);
+    if(!done) return false;
+    paint();
+    toast(msg || (names.length ? t('stockLinkSaved') : t('stockLinkRemoved')));
+    opts.onSaved?.(names);
+    return true;
   };
   box.onclick = async e=>{
+    const i = item(); if(!i) return;
+    const links = itemLinks(i);
     if(e.target.closest('[data-stock-open]')){ open = true; paint(); box.querySelector('#mfStockSearch')?.focus(); await loadStockOptions(); paintList(); return; }
     if(e.target.closest('[data-stock-cancel]')){ open = false; query = ''; paint(); opts.onCancel?.(); return; }
-    if(e.target.closest('[data-stock-unlink]')){ await save(null); return; }
-    if(e.target.closest('[data-stock-keep]')){ const i = item(); if(i){ keepStockLink(i); paint(); toast(t('stockLinkKept')); updateLinkAllCount(); } return; }
+    if(e.target.closest('[data-stock-unlink]')){ await save([]); return; }
+    if(e.target.closest('[data-stock-keep]')){ keepStockLink(i); paint(); toast(t('stockLinkKept')); updateLinkAllCount(); return; }
+    const rm = e.target.closest('[data-stock-remove]');
+    if(rm){ await save(links.filter(n=>n !== rm.dataset.stockRemove), t('stockLinkRemoved')); return; }
+    const swap = e.target.closest('[data-stock-swap]');
+    if(swap){ await save([swap.dataset.stockSwap]); return; }
+    if(e.target.closest('[data-stock-all]')){
+      const add = L.suggest(i, stockOptions?.items || [], 6, stockCtx(i), true).filter(r=>!r.warn.length && !links.includes(r.o.name)).map(r=>r.o.name);
+      if(add.length) await save([...links, ...add]);
+      return;
+    }
     const pick = e.target.closest('[data-stock-pick]');
-    if(pick) await save(pick.dataset.stockPick);
+    if(pick){
+      const n = pick.dataset.stockPick;
+      // opts.single (Link stock items list): a pick replaces the link; elsewhere it adds or removes one.
+      const ok = await save(opts.single ? [n] : links.includes(n) ? links.filter(x=>x !== n) : [...links, n]);
+      if(ok && open) paintList();
+    }
   };
   paint();   // suggestions need the list of stock items: paint() reads it once when needed
   if(open) box.querySelector('#mfStockSearch')?.focus();
@@ -4062,7 +4148,7 @@ function openStockLinkMany(){
       const id = search.dataset.manySearch, row = search.closest('.stock-many-row'), box = row.querySelector('.stock-many-pick');
       const before = state.items.find(x=>x.id === id)?.stockItem || null;
       row.querySelector('.stock-many-chips').hidden = true; box.hidden = false; box.classList.add('field', 'stock-link');
-      mountStockLink(box, id, {open:true, onSaved:name=>{ if(name) linkedHere.set(id, {name, before}); paintRow(id); }, onCancel:()=>paintRow(id)});
+      mountStockLink(box, id, {open:true, single:true, onSaved:([name])=>{ if(name) linkedHere.set(id, {name, before}); paintRow(id); }, onCancel:()=>paintRow(id)});
       return;
     }
     const undo = e.target.closest('[data-many-undo]');
@@ -4115,9 +4201,10 @@ async function deleteItemWithUndo(id){
 }
 function attachItemEvents(){
   const add = document.getElementById('itemAddBtn');
-  if(add) add.onclick = ()=> openItemModal(null, {kind:'food'});
-  const addExpense = document.getElementById('itemAddExpenseBtn');
-  if(addExpense) addExpense.onclick = ()=> openItemModal(null, {kind:'expense'});
+  if(add) add.onclick = ()=> openItemModal(null, {kind:manageKind()});
+  document.querySelectorAll('[data-mkind]').forEach(b=>b.onclick = ()=>{ if(b.dataset.mkind === manageKind()) return; state.manageKind = b.dataset.mkind; lset('manageKind', state.manageKind); render(); });
+  const more = document.getElementById('itemMoreBtn');
+  if(more) more.onclick = openItemsMore;
   const linkAll = document.getElementById('itemLinkAllBtn');
   if(linkAll){
     linkAll.onclick = openStockLinkMany;

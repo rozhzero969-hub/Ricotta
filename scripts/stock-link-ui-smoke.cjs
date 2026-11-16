@@ -119,7 +119,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.evaluate(()=>openStockLinkSheet('mango'));
  await page.locator('#ctxStock .stock-doubt').waitFor();
  assert.match(await page.locator('#ctxStock .stock-doubt').innerText(),/may be wrong[\s\S]*Closer match: Sunich Mango Juice/);
- await page.locator('#ctxStock .stock-doubt [data-stock-pick]').click();
+ await page.locator('#ctxStock .stock-doubt [data-stock-swap]').click();
  await page.locator('#ctxStock .stock-doubt').waitFor({state:'detached'});
  assert.deepEqual(puts.at(-1),{id:'mango',stockItem:'Sunich Mango Juice - شەربەتی سن ئیچ مەنگۆ'});
  assert.match(await page.locator('#ctxStock .stock-link-name').innerText(),/Sunich Mango Juice/);

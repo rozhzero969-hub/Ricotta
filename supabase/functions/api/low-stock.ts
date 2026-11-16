@@ -37,7 +37,7 @@ export async function checkLowStock(db: any, opts: { ids?: string[] } = {}): Pro
   try {
     const L = (globalThis as any).RicottaStockLink;
     if (!L?.lowChanges) return 0;
-    let q = db.from("app_items").select("id,name,stock_item,low_alert,low_alerted_at").not("low_alert", "is", null).not("stock_item", "is", null);
+    let q = db.from("app_items").select("id,name,stock_item,stock_items,low_alert,low_alerted_at").not("low_alert", "is", null).not("stock_item", "is", null);
     if (opts.ids) {
       if (!opts.ids.length) return 0;
       q = q.in("id", opts.ids);
