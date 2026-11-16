@@ -1011,7 +1011,7 @@ Deno.serve(async (req) => {
     if (s.account === "ahmad" && !can(s,"order") && !can(s,"history") && path.startsWith("streak")) return fail("forbidden",403);
     if (s.account === "ahmad" && !can(s,"order") && !can(s,"manage") && /^(items|suppliers|units)(\/|$)/.test(path)) return fail("forbidden",403);
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
-    if (path === "rr-invoices" || path.startsWith("admin/rr-reader")) {
+    if (path === "rr-invoices" || path === "rico-prices" || path.startsWith("admin/rr-reader")) {
       return (await rrReaderRoute({ db, json, fail }, req, M, path, { account: s.account, rozha, can: (role: string) => can(s, role) })) ?? fail("not_found", 404);
     }
     if (path === "receipts-settings/telegram") {

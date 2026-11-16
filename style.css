@@ -3040,6 +3040,10 @@ html.rtl .rc-row{padding:10px 16px 10px 12px}
 .rc-badge{display:inline-block;margin-inline-start:6px;padding:1px 7px;border-radius:999px;font-size:.6875rem;font-weight:600;vertical-align:1px}
 .rc-badge.red{background:var(--rc-red-fill);color:var(--clay-ink)}
 .rc-badge.amber{background:var(--rc-amber-fill);color:var(--rc-amber)}
+.rc-prices{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 12px;flex-wrap:wrap}
+.rc-prices-when{font-size:.8125rem;color:var(--ink-soft);min-width:0}
+.rc-prices .btn{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.rc-prices .btn svg{width:14px;height:14px;flex:none}
 .rc-note{margin:12px 4px;font-size:.8125rem;line-height:1.4;color:var(--ink-faint)}
 .rc-center{display:flex;justify-content:center;margin:16px 0}
 .rc-danger{color:var(--red)}

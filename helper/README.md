@@ -20,7 +20,7 @@ node helper/rico-helper.mjs
 ```
 
 A full-screen window opens on Ricotta Restaurant. Rico reads its suppliers, zones and purchased items
-for the app (again every 10 minutes, and straight away when someone presses Check now in the app),
+for the app (again every 5 minutes, and straight away when someone presses Check now in the app),
 then takes receipts one at a time: fills in New receipt, reads every box back, checks the
 totals, photographs it and waits for approval in the app (or saves by himself when Settings says so),
 presses Receive & send to finance, and finds the receipt in Invoices for its finance number. Close the

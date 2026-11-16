@@ -36,6 +36,7 @@ import "../_shared/receipts.js";
 import { claimTransfer, transferHelperRoute, tview } from "./transfers.ts";
 import { checkRecipeAlerts } from "./recipe-alerts.ts";
 import { checkLowStock } from "./low-stock.ts";
+import { pricesHelperRoute, takePrices } from "./rr-prices.ts";
 const R = (globalThis as any).RicottaReceipts;
 
 type Ctx = {
@@ -113,7 +114,7 @@ export function helperView(h: any) {
 }
 
 /* ---------- Check now: Rico reads Ricotta Restaurant's lists straight away ----------
-   Rico reads the suppliers, zones, items and units every 10 minutes by himself. "Check now" asks him
+   Rico reads the suppliers, zones, items and units every 5 minutes by himself. "Check now" asks him
    to do it at once: the request waits on his row, he takes it between jobs (a receipt or transfer he is
    in the middle of comes first), reads everything and says how it went. Only one at a time. A request
    nobody took in 10 minutes, or a check that never finished in 3, counts as not answered. */
@@ -432,7 +433,9 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     await cleanOldPhotos(db, h);
     // Check now: while free (or stopped, when he takes no receipts) Rico takes a waiting request here.
     const sync = b.sync === true && b.idle === true && (await takeSync(db));
-    return json({ ...helperView({ ...h, ...patch }), ...(sync ? { checkNow: true } : {}) });
+    // Check all last prices: the same, once Check now isn't waiting.
+    const prices = !sync && b.prices === true && b.idle === true && (await takePrices(db));
+    return json({ ...helperView({ ...h, ...patch }), ...(sync ? { checkNow: true } : {}), ...(prices ? { pricesNow: true } : {}) });
   }
   // The launcher on the Mac checks in every few seconds: whether Rico is running and in which mode, and
   // how the last start or stop went. It gets the command waiting for it, once.
@@ -524,6 +527,7 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     const got = await poll(waitFor(b.wait), async () => {
       // Check now comes first: it takes a few seconds, and the receipts are checked against the lists.
       if (b.sync === true && (await takeSync(db))) return { checkNow: true };
+      if (b.prices === true && (await takePrices(db))) return { pricesNow: true };
       const { data, error } = await db.rpc("app_internal_rr_claim", { p_mode: mode });
       if (error) throw error;
       const r = (Array.isArray(data) ? data[0] : data) ?? null;
@@ -535,6 +539,7 @@ export async function helperRoute(ctx: Ctx, M: string, path: string, b: any): Pr
     return json({ receipt: null, transfer: null, ...(got ?? {}), helper: helperView(await helperRow(db)) });
   }
 
+  if (path.startsWith("helper/invoices/")) return (await pricesHelperRoute(db, M, path, b, json, fail)) ?? fail("not_found", 404);
   if (path.startsWith("helper/transfers/")) return (await transferHelperRoute(ctx, M, path, b)) ?? fail("not_found", 404);
   if ((m = path.match(/^helper\/receipts\/([0-9a-f-]{36})\/wait$/)) && M === "POST") {
     const id = m[1];

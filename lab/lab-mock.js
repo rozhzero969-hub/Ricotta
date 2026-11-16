@@ -430,6 +430,15 @@
         expenses:true, months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
       });
     }
+    // Check all last prices: Rico "reads" the invoices in about 4 seconds.
+    if(path === 'rico-prices'){
+      const P = db.labPrices ||= {at:new Date(Date.now() - 12 * 60000).toISOString(), askedAt:null, doneAt:null};
+      const view = ()=>{ const busy = P.askedAt && Date.now() - Date.parse(P.askedAt) < 4000;
+        if(P.askedAt && !busy && (!P.doneAt || P.doneAt < P.askedAt)){ P.doneAt = P.at = new Date().toISOString(); save(); }
+        return {by:'mac', at:P.at, ricoOn:true, ricoOld:false, state:busy ? 'running' : null, timedOut:false, askedAt:P.askedAt, doneAt:P.doneAt, result:{ok:true, receipts:48, read:3}}; };
+      if(method === 'POST'){ P.askedAt = new Date().toISOString(); save(); }
+      return json(method === 'POST' ? {prices:view()} : view());
+    }
     // Recipes (Ahmad and Rozh): the book with Manage's units, the stock items and practice last prices,
     // so costs work out the same way as on the server (supabase/functions/api/recipes.ts).
     if(path === 'recipes' || path.startsWith('recipes/') || path.startsWith('recipe-ingredients/')){

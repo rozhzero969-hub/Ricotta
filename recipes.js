@@ -6,13 +6,14 @@
    or a price is shown as missing, never as 0. Everything is in IQD.
    Saves carry a version, so one cook can't overwrite another cook's edits. Nothing here changes stock. */
 const recipeBook = {account:null, data:null, ctx:null, stockBy:null, loading:false, error:false, page:'list', id:null,
-  editing:null, dirty:false, saving:false, saveJob:null, timer:null, query:'', ingQuery:'', filter:'all', scale:1,
+  editing:null, dirty:false, saving:false, saveJob:null, prices:null, pricesBusy:false, pricesPoll:null, timer:null, query:'', ingQuery:'', filter:'all', scale:1,
   cooking:false, wake:null, photos:null};
 const rt = k=>t('recipe_' + k);
 const RC = ()=>globalThis.RicottaRecipeCost;
 
 function recipeReset(){
   clearTimeout(recipeBook.timer);
+  clearTimeout(recipeBook.pricesPoll);
   recipeBook.wake?.release().catch(()=>{});
   Object.assign(recipeBook, {account:state.account, data:null, ctx:null, stockBy:null, loading:false, error:false, page:'list', id:null,
     editing:null, dirty:false, saving:false, saveJob:null, query:'', ingQuery:'', filter:'all', scale:1, cooking:false, wake:null, photos:null});
@@ -26,6 +27,7 @@ async function recipeLoad(){
   recipeBook.loading = false;
   recipeBook.error = !r.ok && !recipeBook.data;
   if(r.ok){ recipeBook.data = r.data; recipeBook.ctx = null; recipeBook.stockBy = null; }
+  if(r.ok && !recipeBook.prices) recipePricesLoad();
   // While a recipe is being written the page is not drawn again (that would take the cursor away):
   // the new costs show as soon as it is saved or left.
   if(state.view === 'recipes' && !recipeBook.editing) render();
@@ -238,6 +240,7 @@ function recipeListPage(){
       <div class="rc-tool-btns"><button type="button" class="btn btn-ghost" id="rcIngredients">${esc(rt('ingredients'))}</button><button type="button" class="btn btn-primary" id="rcNew">${ICON_PLUS}<span>${esc(rt('new'))}</span></button></div></div>
     <div class="pill-seg rc-filter" role="radiogroup" aria-label="${esc(rt('show'))}">${seg('all', rt('all'))}${seg('look', look ? rt('needsLook') + ' (' + look + ')' : rt('needsLook'))}${seg('archived', rt('archived'))}</div>
     ${!d.pricesReady ? `<p class="rr-foot warn">${esc(rt('pricesOff'))}</p>` : ''}
+    ${recipePricesBar()}
     <div id="rcList">${recipeListHtml()}</div>
     <p class="rc-note">${esc(rt('stockNote'))}</p></div>`;
 }
@@ -494,6 +497,65 @@ function recipeOpen(id){
 function recipeBindThumbs(root){
   root.querySelectorAll('img.rc-thumb, img.rc-hero').forEach(img=>{ img.onerror = ()=>{ const s = document.createElement('span'); s.className = img.className + ' rc-letter'; s.setAttribute('aria-hidden', 'true'); s.textContent = img.dataset.letter || '?'; img.replaceWith(s); }; });
 }
+/* ---------- Check all last prices ----------
+   The last price paid for every ingredient comes from Ricotta Restaurant's invoices: Rico on the Mac
+   reads them every 15 minutes (Cloud Rico on the server, once it is set up). The button reads them now;
+   while Rico reads, the page asks every few seconds how it is going, then shows the new costs. */
+async function recipePricesLoad(){
+  const account = state.account, r = await api('rico-prices');
+  if(account !== state.account || !r.ok) return;
+  recipeBook.prices = r.data;
+  recipePricesFollow();
+  recipePricesDraw();
+}
+function recipePricesDraw(){
+  const bar = document.getElementById('rcPricesBar');
+  if(bar) bar.outerHTML = recipePricesBar();
+  const b = document.getElementById('rcPrices');
+  if(b) b.onclick = recipePricesCheck;
+}
+function recipePricesBar(){
+  const p = recipeBook.prices, busy = recipeBook.pricesBusy || !!p?.state;
+  const when = p?.at ? rt('pricesAt')(timeAgo(p.at)) : p ? rt('pricesNever') : '';
+  return `<div class="rc-prices" id="rcPricesBar"><span class="rc-prices-when" dir="auto">${esc(busy ? rt('pricesReading') : when)}</span>
+    <button type="button" class="btn btn-ghost rc-small" id="rcPrices" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? '<i class="rr-spin" aria-hidden="true"></i>' : ICON_REFRESH}<span>${esc(rt('pricesCheck'))}</span></button></div>`;
+}
+async function recipePricesCheck(){
+  if(recipeBook.pricesBusy || recipeBook.prices?.state) return;
+  recipeBook.pricesBusy = true; recipePricesDraw();
+  const account = state.account, r = await api('rico-prices', {method:'POST', body:{}});
+  if(account !== state.account) return;
+  recipeBook.pricesBusy = false;
+  if(!r.ok){ toast(t('loadFailed'), 'error'); recipePricesDraw(); return; }
+  if(r.data.prices) recipeBook.prices = r.data.prices;
+  const err = r.data.error;
+  if(err === 'rico_off') toast(rt('pricesRicoOff'), 'error');
+  else if(err === 'rico_old') toast(rt('pricesRicoOld'), 'error');
+  else if(err === 'cloud_failed') toast(rt('pricesFailed'), 'error');
+  else if(!recipeBook.prices?.state){ toast(rt('pricesDone')); recipeBook.data = null; recipeLoad(); }
+  recipePricesFollow();
+  recipePricesDraw();
+}
+/* While Rico reads (asked or running), asks again every 3 seconds; when he is done, the costs load again. */
+function recipePricesFollow(){
+  clearTimeout(recipeBook.pricesPoll);
+  if(!recipeBook.prices?.state) return;
+  const askedAt = recipeBook.prices.askedAt;
+  recipeBook.pricesPoll = setTimeout(async ()=>{
+    const account = state.account, r = await api('rico-prices');
+    if(account !== state.account) return;
+    if(r.ok) recipeBook.prices = r.data;
+    if(r.ok && !r.data.state){
+      const res = r.data.result;
+      if(r.data.timedOut) toast(rt('pricesRicoOff'), 'error');
+      else if(res && res.ok === false) toast(rt('pricesFailed'), 'error');
+      else if(r.data.doneAt && (!askedAt || r.data.doneAt >= askedAt)){ toast(rt('pricesDone')); recipeLoad(); }
+    }
+    recipePricesFollow();
+    recipePricesDraw();
+  }, 3000);
+}
+
 function attachRecipeEvents(){
   const on = (id, fn)=>{ const el = document.getElementById(id); if(el) el.onclick = fn; };
   const all = (sel, fn)=>document.querySelectorAll(sel).forEach(fn);
@@ -501,6 +563,7 @@ function attachRecipeEvents(){
   on('rcRetry', ()=>{ recipeBook.error = false; recipeLoad(); render(); });
   on('rcNew', recipeNew);
   on('rcIngredients', ()=>{ recipeBook.page = 'ingredients'; render(); });
+  on('rcPrices', recipePricesCheck);
   on('rcBack', ()=>{ recipeBook.page = 'list'; recipeBook.cooking = false; recipeBook.wake?.release().catch(()=>{}); recipeBook.wake = null; render(); });
   on('rcAlertsRead', async ()=>{
     const r = await api('recipes/alerts/read', {method:'POST', body:{}});

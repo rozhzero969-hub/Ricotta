@@ -189,30 +189,47 @@ const monthRange = (month: string) => {
 };
 export const prevMonth = (day: string) => { const [y, m] = day.split("-").map(Number); const d = new Date(Date.UTC(y, m - 2, 1)); return d.toISOString().slice(0, 7); };
 
+/* One month's invoice list compared with what is kept: the receipts whose lines must be read (new or
+   changed) and the ones no longer there (cancelled), which are removed. Used by Cloud Rico here and by
+   Rico on the Mac (helper/invoices/plan), who reads the list and the lines with his own sign-in. */
+export async function planInvoiceMonth(db: any, month: string, list: any) {
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new ReaderError("changed", "That is not a month.");
+  if (!Array.isArray(list)) throw new ReaderError("changed", "Ricotta Restaurant's invoice list came back in a shape Rico does not know (its API may have changed).");
+  const { from, to } = monthRange(month);
+  const pairs = list.slice(0, 2000).map((raw: any) => ({ raw, row: invoiceRow(raw) })).filter(({ row: r }) => r.id && r.entry_date >= from && r.entry_date <= to);
+  const rows = pairs.map((p) => p.row);
+  const { data: kept, error } = await db.from("app_rr_invoices").select("id,total,line_count,status,paid,delivery_fee").gte("entry_date", from).lte("entry_date", to);
+  if (error) throw new ReaderError("write", "Could not read the kept invoices from the app's database.");
+  const keptBy = new Map((kept ?? []).map((k: any) => [k.id, k]));
+  const todo = pairs.filter((p) => invoiceChanged(keptBy.get(p.row.id), p.row));
+  const ids = new Set(rows.map((r) => r.id));
+  const gone = (kept ?? []).map((k: any) => k.id).filter((id: string) => !ids.has(id));
+  if (gone.length) await db.from("app_rr_invoices").delete().in("id", gone);
+  return { month, rows, todo, removed: gone.length };
+}
+/* Saves receipts with their lines (each: the summary row from Ricotta Restaurant and its lines). */
+export async function saveInvoices(db: any, got: { row: any; lines: any }[], baseOf: (item: string) => string | undefined) {
+  const rows = got.map(({ row, lines }) => ({ ...invoiceRow(row), lines: invoiceLines(lines, baseOf), read_at: nowIso() })).filter((r) => r.id && r.entry_date);
+  if (!rows.length) return 0;
+  const { error } = await db.from("app_rr_invoices").upsert(rows);
+  if (error) throw new ReaderError("write", "Could not save the invoices in the app's database.");
+  return rows.length;
+}
+
 /* Reads one month of invoices: the list, then the lines of receipts that are new or changed; receipts
    no longer in the list (cancelled) are removed. Returns counts. */
 export async function readInvoiceMonth(db: any, get: (p: string, ms?: number) => Promise<any>, month: string, baseOf: (item: string) => string | undefined) {
   if (!/^\d{4}-\d{2}$/.test(month)) throw new ReaderError("changed", "That is not a month.");
   const { from, to } = monthRange(month);
   const j = await get(`/purchasing/receipts/summary?status=open&date_from=${from}&date_to=${to}&limit=2000`, 30_000);
-  const list: any[] = Array.isArray(j?.rows) ? j.rows : null as any;
-  if (!list) throw new ReaderError("changed", "Ricotta Restaurant's invoice list came back in a shape Rico does not know (its API may have changed).");
-  const rows = list.map(invoiceRow).filter((r) => r.id && r.entry_date >= from && r.entry_date <= to);
-  const { data: kept, error } = await db.from("app_rr_invoices").select("id,total,line_count,status,paid,delivery_fee").gte("entry_date", from).lte("entry_date", to);
-  if (error) throw new ReaderError("write", "Could not read the kept invoices from the app's database.");
-  const keptBy = new Map((kept ?? []).map((k: any) => [k.id, k]));
-  const todo = rows.filter((r) => invoiceChanged(keptBy.get(r.id), r));
+  const plan = await planInvoiceMonth(db, month, Array.isArray(j?.rows) ? j.rows : null);
   let read = 0;
-  for (let i = 0; i < todo.length; i += LINES_AT_ONCE) {
-    const batch = todo.slice(i, i + LINES_AT_ONCE);
-    const got = await Promise.all(batch.map(async (r) => ({ ...r, lines: invoiceLines(await get(`/purchasing/receipts/${encodeURIComponent(r.id)}/lines`), baseOf), read_at: nowIso() })));
-    const { error: upError } = await db.from("app_rr_invoices").upsert(got);
-    if (upError) throw new ReaderError("write", "Could not save the invoices in the app's database.");
-    read += got.length;
+  for (let i = 0; i < plan.todo.length; i += LINES_AT_ONCE) {
+    const batch = plan.todo.slice(i, i + LINES_AT_ONCE);
+    const got = await Promise.all(batch.map(async (p) => ({ row: p.raw, lines: await get(`/purchasing/receipts/${encodeURIComponent(p.row.id)}/lines`) })));
+    read += await saveInvoices(db, got, baseOf);
   }
-  const gone = (kept ?? []).map((k: any) => k.id).filter((id: string) => !rows.some((r) => r.id === id));
-  if (gone.length) await db.from("app_rr_invoices").delete().in("id", gone);
-  return { month, receipts: rows.length, read, removed: gone.length };
+  return { month, receipts: plan.rows.length, read, removed: plan.removed };
 }
 
 /* ---------- The tick ---------- */
@@ -227,7 +244,7 @@ async function status(db: any): Promise<Status> {
 async function setStatus(db: any, patch: Partial<Status>) {
   await db.from("app_rr_reader").upsert({ id: true, ...patch, updated_at: nowIso() });
 }
-const baseOfFrom = (cat: any) => { const m = new Map((cat?.titems ?? []).map((i: any) => [i.name, i.base])); return (item: string) => m.get(item) as string | undefined; };
+export const baseOfFrom = (cat: any) => { const m = new Map((cat?.titems ?? []).map((i: any) => [i.name, i.base])); return (item: string) => m.get(item) as string | undefined; };
 
 export type TickDeps = {
   db: any; fetch?: Fetch; now?: number; get?: (k: string) => string;

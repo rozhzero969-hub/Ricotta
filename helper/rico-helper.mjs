@@ -20,7 +20,7 @@ import { readSecret } from "./keychain.mjs";
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-15.3";
+const VERSION = "2026-11-16.1";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -849,9 +849,54 @@ async function waitForApproval(r) {
   }
 }
 
+/* ---------- Last prices: Ricotta Restaurant's invoices ----------
+   This month's invoices every 15 minutes, last month's once a day, and both at once when someone
+   presses "Check all last prices" in Recipes. Rico reads the list, the server says which receipts are
+   new or changed, and only their lines are read. Read only: nothing is changed in Ricotta Restaurant. */
+const monthOf = (day) => day.slice(0, 7);
+const prevMonthOf = (month) => { const [y, m] = month.split("-").map(Number); return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7); };
+async function readInvoiceMonth(month, auto) {
+  const [y, m] = month.split("-").map(Number);
+  const to = `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+  const j = await rrGet(`/api/v1/purchasing/receipts/summary?status=open&date_from=${month}-01&date_to=${to}&limit=2000`);
+  if (!Array.isArray(j?.rows)) throw new Error("Ricotta Restaurant's invoice list came back in a shape Rico does not know");
+  const plan = await api("helper/invoices/plan", { method: "POST", body: { month, rows: j.rows, auto } });
+  if (plan?.skip) return { skipped: true, receipts: 0, read: 0 };
+  const byId = new Map(j.rows.map((r) => [String(r.id), r]));
+  let read = 0;
+  for (let i = 0; i < plan.need.length; i += 10) {
+    const got = [];
+    for (const id of plan.need.slice(i, i + 10)) {
+      const lines = await rrGet(`/api/v1/purchasing/receipts/${encodeURIComponent(id)}/lines`);
+      got.push({ row: byId.get(id), lines: Array.isArray(lines) ? lines : lines?.lines ?? [] });
+    }
+    await api("helper/invoices/save", { method: "POST", body: { invoices: got } });
+    read += got.length;
+  }
+  return { receipts: plan.receipts ?? j.rows.length, read };
+}
+let lastPrices = 0, pricesDay = null;
+async function readPrices({ auto }) {
+  const month = monthOf(erbilDay()), both = !auto || pricesDay !== erbilDay();
+  try {
+    const a = await readInvoiceMonth(month, auto);
+    if (a.skipped) { lastPrices = Date.now(); return; }
+    let receipts = a.receipts, read = a.read;
+    if (both) { const b = await readInvoiceMonth(prevMonthOf(month), auto); receipts += b.receipts; read += b.read; pricesDay = erbilDay(); }
+    lastPrices = Date.now();
+    await api("helper/invoices/done", { method: "POST", body: { ok: true, receipts, read, auto } });
+    log(`read the invoices: ${receipts} receipts${both ? " (this month and last)" : ""}, ${read} new or changed`);
+  } catch (e) {
+    log("Could not read the invoices:", e.message);
+    // After a failed automatic read, again in 5 minutes.
+    if (auto) lastPrices = Date.now() - 10 * 60_000;
+    await api("helper/invoices/done", { method: "POST", body: { ok: false, error: String(e.message).split("\n")[0], auto } }).catch((x) => log("prices report:", x.message));
+  }
+}
+
 /* ---------- Main loop ---------- */
 async function heartbeat(idle) {
-  try { return await api("helper/heartbeat", { method: "POST", body: { version: VERSION, signedIn, idle, mode: PRACTICE ? "practice" : "real", sync: true } }); } catch (e) { log("heartbeat:", e.message); return null; }
+  try { return await api("helper/heartbeat", { method: "POST", body: { version: VERSION, signedIn, idle, mode: PRACTICE ? "practice" : "real", sync: true, prices: true } }); } catch (e) { log("heartbeat:", e.message); return null; }
 }
 await openBrowser();
 // Stopped (Stop Rico, Ctrl+C or closing Terminal): his browser windows close with him.
@@ -860,7 +905,8 @@ log(`Rico ${VERSION}${PRACTICE ? " (practice: nothing is saved)" : ""}`);
 // Anything left half way when Rico last stopped is sorted out first (see the API's helper/recover).
 await api("helper/recover", { method: "POST" }).then((x) => { if (x?.recovered) log(`picked up ${x.recovered} receipt(s) left half way`); }, (e) => log("recover:", e.message));
 let lastCatalog = 0, summaryDay = null;
-/* "Check now" in the app: the same read as every 10 minutes, straight away, and how it went. */
+const started = Date.now();
+/* "Check now" in the app: the same read as every 5 minutes, straight away, and how it went. */
 async function checkNow() {
   log("Check now: reading the lists from Ricotta Restaurant");
   try {
@@ -898,16 +944,20 @@ for (;;) {
   const h = await heartbeat(true);
   let waited = false;
   if (h?.checkNow) { await checkNow(); continue; }
+  if (h?.pricesNow) { await readPrices({ auto: false }); await restHome(); continue; }
   if (h && !h.stopped) {
     // Waits up to 20 s on the server for a receipt (or a Check now), so it starts within a second or two.
-    const { receipt, transfer, checkNow: check } = await api("helper/claim", { method: "POST", body: { wait: 50, mode: PRACTICE ? "practice" : "real", transfers: true, sync: true } }).catch((e) => { log("claim:", e.message); return {}; });
+    const { receipt, transfer, checkNow: check, pricesNow } = await api("helper/claim", { method: "POST", body: { wait: 50, mode: PRACTICE ? "practice" : "real", transfers: true, sync: true, prices: true } }).catch((e) => { log("claim:", e.message); return {}; });
     if (check) { await checkNow(); continue; }
+    if (pricesNow) { await readPrices({ auto: false }); await restHome(); continue; }
     if (receipt) { await work(receipt); await restHome(); continue; }
     if (transfer) { await workTransfer(transfer); await restHome(); continue; }
     waited = true;
   }
-  // Every 10 minutes (new items, suppliers and unit changes show up soon); after a failed read, again a minute later.
-  if (Date.now() - lastCatalog > (lastCatalog ? 10 * 60_000 : 60_000)) { await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => { log("Could not read the lists yet:", e.message); lastCatalog = Date.now() - 9 * 60_000; }); await restHome(); }
+  // Every 5 minutes (new stock, items, suppliers and unit changes show up soon); after a failed read, again a minute later.
+  if (Date.now() - lastCatalog > (lastCatalog ? 5 * 60_000 : 60_000)) { await readCatalog().then(() => { lastCatalog = Date.now(); }, (e) => { log("Could not read the lists yet:", e.message); lastCatalog = Date.now() - 4 * 60_000; }); await restHome(); }
+  // The invoices every 15 minutes, for the last prices (a minute after starting, then on time).
+  if (Date.now() - lastPrices > (lastPrices ? 15 * 60_000 : 0) && Date.now() - started > 60_000) await readPrices({ auto: true });
   // After 22:00 Erbil, once a day: the evening check on Telegram (the server sends it only once).
   if (!PRACTICE && summaryDay !== erbilDay() && +new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Baghdad", hour: "2-digit", hourCycle: "h23" }).format(new Date()) >= 22) {
     summaryDay = erbilDay();

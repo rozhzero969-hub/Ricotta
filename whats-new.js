@@ -3,6 +3,13 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-16c', date:'2026-11-16', notes:{
+    en:['Recipes has a Check all last prices button. Rico reads Ricotta Restaurant\u2019s invoices and the costs update with the last price paid. He also reads them by himself every 15 minutes.',
+      'Rico on the Mac reads the stock every 5 minutes instead of every 10.'],
+    ku:['ڕەچەتەکان دوگمەی پشکنینی هەموو دوایین نرخەکانی هەیە. ریکۆ وەسڵەکانی ریکۆتا ڕێستۆرانت دەخوێنێتەوە و تێچووەکان بە دوایین نرخی پێدراو نوێ دەبنەوە. هەروەها خۆی هەموو 15 خولەک جارێک دەیانخوێنێتەوە.',
+      'ریکۆ لەسەر ماک هەموو 5 خولەک جارێک کۆگا دەخوێنێتەوە لە جیاتی 10.'],
+    ar:['في الوصفات زر لفحص كل آخر الأسعار. يقرأ ريكو فواتير ريكوتا ريستورانت وتتحدّث التكاليف بآخر سعر مدفوع. ويقرأها بنفسه كل 15 دقيقة أيضًا.',
+      'يقرأ ريكو على الماك المخزون كل 5 دقائق بدلًا من 10.']}},
   {id:'2026-11-16b', date:'2026-11-16', notes:{
     en:['Recipes work out their own cost from the last price paid for each ingredient, with the profit and margin next to the menu price, all in IQD. A missing amount or price says so.',
       'Recipes has a cleaner list grouped by category (Cakes, Drinks and so on), a one-page editor that saves as you type, an ingredients page linked to stock, and a cooking view that keeps the screen on.',
