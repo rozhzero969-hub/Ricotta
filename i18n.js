@@ -1426,3 +1426,9 @@ Object.assign(T.en, {"recipe_archived": "Archived recipes", "recipe_restore": "R
 Object.assign(T.ku, {"recipe_archived": "ڕەچەتە ئەرشیفکراوەکان", "recipe_restore": "گەڕاندنەوە"});
 
 Object.assign(T.ar, {"recipe_archived": "الوصفات المؤرشفة", "recipe_restore": "استعادة"});
+
+Object.assign(T.en, {"adminPage_access": "Access", "recipe_accessIntro": "Choose what Ahmad can use. Recipes is always available."});
+
+Object.assign(T.ku, {"adminPage_access": "دەسەڵات", "recipe_accessIntro": "دیاری بکە ئەحمەد چی بەکاربهێنێت. ڕەچەتەکان هەمیشە بەردەستن."});
+
+Object.assign(T.ar, {"adminPage_access": "الصلاحيات", "recipe_accessIntro": "اختر ما يمكن لأحمد استخدامه. الوصفات متاحة دائمًا."});

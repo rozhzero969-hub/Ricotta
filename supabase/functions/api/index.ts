@@ -990,7 +990,8 @@ Deno.serve(async (req) => {
       if (!can(s,"recipes")) return fail("forbidden",403);
       return await recipesRoute({db,json,fail,account:s.account},M,path,b);
     }
-    if (s.account === "ahmad" && !can(s,"order") && /^(draft|orders|me\/pins|streak)(\/|$)/.test(path)) return fail("forbidden",403);
+    if (s.account === "ahmad" && !can(s,"order") && /^(draft|orders|me\/pins)(\/|$)/.test(path)) return fail("forbidden",403);
+    if (s.account === "ahmad" && !can(s,"order") && !can(s,"history") && path.startsWith("streak")) return fail("forbidden",403);
     if (s.account === "ahmad" && !can(s,"order") && !can(s,"manage") && /^(items|suppliers|units)(\/|$)/.test(path)) return fail("forbidden",403);
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
     if (path === "receipts-settings/telegram") {
@@ -1282,6 +1283,7 @@ Deno.serve(async (req) => {
       if(s.account === "ahmad" && !can(s,"order") && ["showLastQty","compactRows","soundQty","soundSent","soundMilestone","soundUndo","milestones","pinnedSuppliers","swipe"].includes(key)) return fail("forbidden",403);
       if(s.account === "ahmad" && !can(s,"assistant") && ["ricoSheet","ricoStyle","ricoAutoStart","soundRico"].includes(key)) return fail("forbidden",403);
       if(s.account === "ahmad" && !can(s,"transfers") && key === "tfAuto") return fail("forbidden",403);
+      if(s.account === "ahmad" && !can(s,"manage") && key === "tables") return fail("forbidden",403);
       const ok_ = SETTING_KEYS.has(key) ? typeof value === "boolean"
         : key === "pinnedSuppliers" ? Array.isArray(value) && value.length <= 30 && value.every((v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 120)
         // Her own keys for the Receipts and Transfers line shortcuts ({add:"Alt+KeyN", ...}); {} is the standard ones.

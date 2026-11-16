@@ -101,7 +101,7 @@ function applyFeatures(){
   document.documentElement.classList.toggle('simple-view', featureOn('simpleView'));
 }
 function renderFeatureSettings(){
-  const row = f=>{ const locked=state.account === 'ahmad' && ((!canOpen('order') && ['swipe','showLastQty','compactRows','soundQty','soundSent','milestones','soundMilestone','soundUndo'].includes(f.id)) || (f.role && !canOpen(f.role))); return `<label class="check-row preference-row has-ico ${locked?'is-locked':''}"><input type="checkbox" data-feature="${f.id}" ${locked?'disabled':''} ${featureOn(f.id) ? 'checked' : ''}>${setIcon(f.id)}<span>${esc(t('feat_' + f.id))}<small>${esc(locked ? rt('lockedHint') : t('feat_' + f.id + '_hint'))}</small></span></label>`; };
+  const row = f=>{ const locked=state.account === 'ahmad' && ((f.id === 'tables' && !canOpen('manage')) || (!canOpen('order') && ['swipe','showLastQty','compactRows','soundQty','soundSent','milestones','soundMilestone','soundUndo'].includes(f.id)) || (f.role && !canOpen(f.role))); return `<label class="check-row preference-row has-ico ${locked?'is-locked':''}"><input type="checkbox" data-feature="${f.id}" ${locked?'disabled':''} ${featureOn(f.id) ? 'checked' : ''}>${setIcon(f.id)}<span>${esc(t('feat_' + f.id))}<small>${esc(locked ? rt('lockedHint') : t('feat_' + f.id + '_hint'))}</small></span></label>`; };
   return SETTING_GROUPS.map(group=>{
     // The chat Rico's settings are in his own tab (the sliders button); Rico the helper has his own section.
     const rows = SETTINGS.filter(f=>f.group === group && (!f.role || canOpen(f.role) || state.account === 'ahmad') && (!f.rozha || isRozha())).map(row).join('');

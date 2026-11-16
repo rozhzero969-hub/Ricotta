@@ -54,7 +54,7 @@ const isRtl = ()=> state.lang !== 'en';
 const isRozha = ()=> state.account === 'rozha';
 /* What this account may do (the server checks the same roles on every request). Changing the catalog
    also needs Manage. */
-const canDo = role=> isRozha() || (state.roles.includes(role) && (role !== 'catalog' || state.roles.includes('manage')));
+const canDo = role=> isRozha() || (role === 'recipes' && state.account === 'ahmad') || (role === 'order' && state.account === 'yunis') || (state.roles.includes(role) && (role !== 'catalog' || state.roles.includes('manage')));
 const canOpen = view=> view === 'queue' ? canDo('send') : state.views.includes(view);
 /* Dates and times always use the digits 1 2 3, in every language. */
 function intlLocale(){ return ({en:'en-US', ku:'ckb-IQ', ar:'ar-IQ'})[state.lang] + '-u-nu-latn'; }
@@ -1921,7 +1921,7 @@ function renderTopbar(){
     <div class="brand-slot"><button type="button" class="side-toggle side-show" data-side-toggle aria-label="${esc(t('sideShow'))}" title="${esc(t('sideShow'))} (${sideKeysText()})">${ICON_SIDEBAR}</button><div class="brand" aria-label="Ricotta Orders"><span class="brand-mark">ricotta</span><span class="dot"></span></div></div>
     <span class="topbar-title" aria-hidden="true"></span>
     <div class="topbar-actions">
-      ${renderStreakChip()}
+      ${state.account !== 'ahmad' || canOpen('order') || canOpen('history') ? renderStreakChip() : ''}
       <div class="chip conn-chip" id="connectionStatus" role="status"${state.apiOnline?' hidden':''}><span></span><em>${esc(t('offline'))}</em></div>
       ${canOpen('assistant') ? `<button type="button" class="rico-top" id="ricoTopBtn" aria-label="${esc(t('ricoName'))}">${ricoFace('', 'rico-top-face')}<i class="rico-badge" hidden></i></button>` : ''}
       <button type="button" class="account-btn${typeof newsUnread === 'function' && newsUnread() ? ' has-news' : ''}" id="accountBtn" aria-haspopup="dialog" aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button>
@@ -2001,7 +2001,7 @@ function attachShellEvents(){
     ricoBtn.onclick = ()=>goView('assistant');
     ricoBtn.addEventListener('animationend', e=>{ if(e.target === ricoBtn) ricoBtn.classList.remove('reacting'); });
   }
-  document.getElementById('streakChip').onclick = openStreakSheet;
+  const streakChip=document.getElementById('streakChip');if(streakChip)streakChip.onclick = openStreakSheet;
 }
 function attachNavEvents(){
   const nav = document.querySelector('.bottomnav');
