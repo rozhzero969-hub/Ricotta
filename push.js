@@ -185,7 +185,8 @@ async function reportSendResult(res){
 /* ---------- Notification taps ---------- */
 /* kind: 'supplier' (a supplier's reminder -> Order on that
    supplier's tab), 'assistant' (Rico; his month-end message opens History) and 'security' (a sign-in
-   from a new device -> Admin, Security), 'low-stock' (items at their low stock level -> Order). */
+   from a new device -> Admin, Security), 'low-stock' (items at their low stock level -> Order),
+   'recipe' (a recipe alert -> Recipes). */
 function handlePushIntent(kind, supplierId, message, view){
   if(!state.account) return;
   if(kind === 'security'){ if(canOpen('admin')){ goView('admin'); openAdminPage('security'); } return; }
@@ -200,6 +201,7 @@ function handlePushIntent(kind, supplierId, message, view){
   }
   // Items at or below their low stock level: the Order screen, where they show yellow.
   else if(kind === 'low-stock'){ if(state.view === 'order') render(); else goView('order'); }
+  else if(kind === 'recipe'){ if(!canOpen('recipes')) return; if(typeof recipeLoad === 'function') recipeLoad(); if(state.view !== 'recipes') goView('recipes'); }
   else if(kind === 'reminder' || kind === 'supplier'){
     if(kind === 'supplier' && supplierId && state.suppliers.some(s => s.id === supplierId)) state.orderTab = supplierId;
     if(state.view === 'order') render(); else goView('order');

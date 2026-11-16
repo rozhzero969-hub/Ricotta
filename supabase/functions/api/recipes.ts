@@ -66,13 +66,29 @@ function cleanLine(l: any) {
 }
 const qtyOk = (q: any) => q === null || (Number.isFinite(q) && q > 0 && q <= 999999 && Number(q.toFixed(3)) === q);
 
+/* The first photo of each recipe, for its tile in the list: {recipeId: signed url}, valid 15 minutes.
+   One signed-url call for all of them; a recipe without a photo gets a plain tile in the app. */
+async function coverPhotos(db: any, ids: string[]) {
+  if (!ids.length) return {};
+  const r = await db.from("app_recipe_photos").select("recipe_id,path,created_at").in("recipe_id", ids).order("created_at").limit(4000);
+  if (r.error || !r.data?.length) return {};
+  const first = new Map<string, string>();
+  for (const p of r.data) if (!first.has(p.recipe_id)) first.set(p.recipe_id, p.path);
+  const signed = await db.storage.from(bucket).createSignedUrls([...first.values()], 900).catch(() => null);
+  if (!signed || signed.error || !Array.isArray(signed.data)) return {};
+  const url = new Map(signed.data.filter((x: any) => x?.signedUrl && !x.error).map((x: any) => [x.path, x.signedUrl]));
+  return Object.fromEntries([...first].filter(([, path]) => url.has(path)).map(([id, path]) => [id, url.get(path)]));
+}
+
 export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
   const { db, json, fail } = c, table = (s: string) => db.from("app_" + s);
   if (M === "GET" && path === "recipes") {
     let book;
     try { book = await loadBook(db); } catch { return fail("load_failed", 503); }
-    const alerts = await table("rico_inbox").select("id,body_en,body_ku,body_ar,created_at,read_at").eq("account", c.account).eq("kind", "recipe")
-      .order("created_at", { ascending: false }).limit(20);
+    const [alerts, covers] = await Promise.all([
+      table("rico_inbox").select("id,body_en,body_ku,body_ar,created_at,read_at").eq("account", c.account).eq("kind", "recipe").order("created_at", { ascending: false }).limit(20),
+      coverPhotos(db, book.recipes.map((x: any) => x.id)),
+    ]);
     const used = new Set(book.ingredients.map((x: any) => x.stock_item));
     const prices: Record<string, unknown> = {};
     for (const [name, p] of book.ctx.prices) if (used.has(name)) prices[name] = p;
@@ -81,6 +97,7 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
       // Ricotta Restaurant's items for linking: names, units, and how each stands in Main Storage.
       stock: book.titems.map((t: any) => ({ name: t.name, base: t.base, count: t.count ?? null, buy: t.buy ?? null, state: RC().stockState(t, book.lowNames) })),
       prices, pricesReady: book.pricesReady, stockAt: book.stockAt, marginMin: RC().MARGIN_MIN,
+      covers,
       costs: Object.fromEntries(book.recipes.map((x: any) => [x.id, RC().recipeCost(x, book.ctx)])),
       alerts: alerts.error ? [] : (alerts.data ?? []).map((a: any) => ({ id: a.id, en: a.body_en, ku: a.body_ku, ar: a.body_ar, at: a.created_at, read: !!a.read_at })),
     });

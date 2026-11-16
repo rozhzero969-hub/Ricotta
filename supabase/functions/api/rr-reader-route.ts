@@ -5,6 +5,7 @@
 //   GET  rr-invoices?month=YYYY-MM[&supplier=]   whoever makes receipts or transfers: that month's invoices
 import { saveCatalog, catalogOf } from "./receipts.ts";
 import { readerTick, readerView, readMonthNow, erbilDay } from "./rr-reader.ts";
+import { checkRecipeAlerts } from "./recipe-alerts.ts";
 
 type Ctx = { db: any; json: (b: unknown, s?: number) => Response; fail: (e: string, s?: number) => Response };
 type Who = { account: string; rozha: boolean; can: (role: string) => boolean } | null;
@@ -35,14 +36,19 @@ export async function rrReaderRoute(ctx: Ctx, req: Request, M: string, path: str
   if (M === "POST" && path === "rr-reader/tick") {
     const secret = env("CRON_SECRET");
     if (!secret || !(await sameSecret(req.headers.get("x-cron-secret") ?? "", secret))) return fail("forbidden", 403);
-    return json(await readerTick(tickDeps(db)));
+    const r = await readerTick(tickDeps(db));
+    // New prices: Ahmad hears about recipes they change (recipe-alerts.ts, never fails). New stock is
+    // checked where the lists are saved (receipts.ts saveCatalog).
+    if ((r.did as string[]).includes("invoices")) await checkRecipeAlerts(db);
+    return json(r);
   }
   if (!who) return null;
   if (path === "admin/rr-reader" || path === "admin/rr-reader/run") {
     if (!who.rozha) return fail("forbidden", 403);
     if (M === "GET") return json(await readerView(db));
     if (M === "POST") {
-      await readerTick(tickDeps(db, "all"));
+      const r = await readerTick(tickDeps(db, "all"));
+      if ((r.did as string[]).includes("invoices")) await checkRecipeAlerts(db);
       return json(await readerView(db));
     }
   }

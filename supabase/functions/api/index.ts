@@ -113,7 +113,7 @@ const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers" 
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
   : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : account === "ahmad" ? [] : [...DEFAULT_ROLES];
 // Account settings the app may save (Settings), and the ones with a list of choices.
-const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "simpleView", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto", "tourExpenses"]);
+const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "simpleView", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto", "tourExpenses", "tourRecipes"]);
 const SETTING_CHOICES: Record<string, string[]> = { darkMode: ["auto", "on", "off"], ricoStyle: ["normal", "short", "warm"] };
 // Rozh may undo an order she sent this long without typing her PIN.
 const UNDO_MS = 15 * 60_000;
@@ -826,8 +826,12 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
   if (id !== null && !uuid(id)) return fail("Chat not found", 404);
   const whose = new URL(req.url).searchParams.get("account");
   if (req.method === "GET" && id === null) {
-    const { data, error } = await db.from("app_rico_chats").select("id,account,title,pinned,created_at,updated_at")
-      .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString()).order("updated_at", { ascending: false }).limit(120);
+    // Rozh and Yunis share one list; Ahmad (when Rozh gave him Rico) sees only his own chats, and his are
+    // not in theirs: the recipe book's chats are his.
+    let q = db.from("app_rico_chats").select("id,account,title,pinned,created_at,updated_at")
+      .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString());
+    q = actor === "ahmad" ? q.eq("account", "ahmad") : actor === "yunis" ? q.neq("account", "ahmad") : q;
+    const { data, error } = await q.order("updated_at", { ascending: false }).limit(120);
     if (error) throw error;
     return json({ chats: (data ?? []).map((c: any) => ({ id: c.id, account: c.account, title: c.title, pinned: !!c.pinned, createdAt: c.created_at, updatedAt: c.updated_at })) });
   }
@@ -836,7 +840,8 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
     const { data, error } = await db.from("app_rico_chats").select("id,account,title,messages,created_at,updated_at").eq("id", id)
       .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString()).maybeSingle();
     if (error) throw error;
-    return data ? json({ id: data.id, account: data.account, title: data.title, messages: data.messages, createdAt: data.created_at, updatedAt: data.updated_at }) : fail("Chat not found", 404);
+    const mine = data && (actor === "rozha" || (actor === "ahmad" ? data.account === "ahmad" : data.account !== "ahmad"));
+    return mine ? json({ id: data.id, account: data.account, title: data.title, messages: data.messages, createdAt: data.created_at, updatedAt: data.updated_at }) : fail("Chat not found", 404);
   }
   if (req.method === "PUT" && id !== null) {
     const b = body;
@@ -1247,6 +1252,8 @@ Deno.serve(async (req) => {
     }
     if ((m = path.match(/^(suppliers|items|units)\/([^/]{1,120})$/))) {
       const table = m[1], id = decodeURIComponent(m[2]);
+      // Units are shared by Order and Recipes: only Rozh and Yunis add, change or delete them.
+      if ((M === "PUT" || M === "DELETE") && table === "units" && s.account !== "rozha" && s.account !== "yunis") return fail("forbidden", 403);
       if (M === "PUT" || M === "DELETE") {
         if (M === "DELETE" && table === "items") {
           const {data,error}=await db.rpc("app_internal_item_undo",{p_id:id,p_actor:s.account,p_device:s.deviceId,p_restore:false});

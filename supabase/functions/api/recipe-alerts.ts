@@ -1,5 +1,4 @@
-/* Recipe alerts, for everyone who can open Recipes (Rozh and Ahmad always, Yunis when Rozh gave him
-   Recipes): one short message in the inbox and one notification, at most, each time it runs. Each
+/* Recipe alerts, for Ahmad (Rozh's decision: the recipe book is his): one short message in the inbox and one notification, at most, each time it runs. Each
    alert goes once per change (app_recipe_alert_state keeps what was said):
      price   a stock item's last price rose: the recipes using it cost more (was and now)
      margin  a recipe now loses money (its cost reaches its menu price) or its margin fell under 60%
@@ -69,7 +68,7 @@ export function alertEvents(changes: { alert_key: string; was: string | null; is
       events.push({ kind: ch.is_now === "loss" ? "loss" : "low", name: r.name, cost: cost.perServing, price: cost.price, margin: cost.margin, currency: cost.currency, min: RC().MARGIN_MIN });
     } else if (kind === "stock" && RANK[ch.is_now] > RANK[ch.was ?? "ok"]) {
       const ing = book.ingredients.find((i: any) => i.stock_item === id);
-      events.push({ kind: ch.is_now, name: ing?.name || id, recipes: recipesUsing(id).map((r: any) => r.name) });
+      events.push({ kind: ch.is_now === "empty" ? "empty" : "stockLow", name: ing?.name || id, recipes: recipesUsing(id).map((r: any) => r.name) });
     } else if (kind === "link" && ch.is_now === "gone") {
       const i: any = byIng.get(id);
       if (!i) continue;
@@ -94,8 +93,6 @@ function line(e: any, lang: Lang): string {
     : lang === "ku" ? `${n} زیان دەکات: تێچووی ${money(e.cost, e.currency)}، نرخی فرۆشتنی ${money(e.price, e.currency)}.` : `${n} يخسر: تكلفته ${money(e.cost, e.currency)} وسعر بيعه ${money(e.price, e.currency)}.`;
   if (e.kind === "low") return lang === "en" ? `${n} margin is ${e.margin}%, under ${e.min}%.` : lang === "ku" ? `ڕێژەی قازانجی ${n}: ${e.margin}%، کەمتر لە ${e.min}%.` : `هامش ربح ${n}: ${e.margin}%، أقل من ${e.min}%.`;
   if (e.kind === "empty") return lang === "en" ? `${n} is out in Main Storage (used in ${names(e.recipes, lang)}).` : lang === "ku" ? `${n} لە کۆگای سەرەکی نەماوە (لە ${names(e.recipes, lang)} بەکاردێت).` : `نفد ${n} من المخزن الرئيسي (يُستخدم في ${names(e.recipes, lang)}).`;
-  if (e.kind === "low_stock" || e.kind === "low" + "Stock") return "";
-  if (e.kind === "lowstock") return "";
   if (e.kind === "gone") {
     const maybe = e.maybe ? (lang === "en" ? ` It may now be called ${iso(e.maybe)}.` : lang === "ku" ? ` لەوانەیە ئێستا ناوی ${iso(e.maybe)} بێت.` : ` ربما أصبح اسمه ${iso(e.maybe)}.`) : "";
     return (lang === "en" ? `${iso(e.stock)} is no longer in Ricotta Restaurant. Link ${n} again.` : lang === "ku" ? `${iso(e.stock)} لە ریکۆتا ڕێستۆرانت نەماوە. ${n} دووبارە ببەستەوە.` : `لم يعد ${iso(e.stock)} موجودًا في ريكوتا ريستورانت. اربط ${n} من جديد.`) + maybe;
@@ -111,7 +108,7 @@ function stockLine(e: any, lang: Lang) {
 export function alertWords(events: any[]): Words | null {
   if (!events.length) return null;
   const order = ["loss", "price", "low", "empty", "stockLow", "gone", "missing"];
-  const list = events.map((e) => (e.kind === "low" && e.recipes ? { ...e, kind: "stockLow" } : e)).sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+  const list = [...events].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
   const say = (lang: Lang) => {
     const shown = list.slice(0, MAX_LINES).map((e) => e.kind === "stockLow" ? stockLine(e, lang) : line(e, lang)).filter(Boolean);
     const more = list.length - Math.min(list.length, MAX_LINES);
@@ -120,11 +117,8 @@ export function alertWords(events: any[]): Words | null {
   return { en: say("en"), ku: say("ku"), ar: say("ar") };
 }
 
-/* Who can open Recipes: Rozh and Ahmad always, Yunis when Rozh gave him Recipes. */
-export function recipeAccounts(rows: any[]) {
-  const roles = (id: string) => (rows ?? []).find((r: any) => r.id === id)?.roles;
-  return ["rozha", "ahmad", "yunis"].filter((a) => a !== "yunis" || (Array.isArray(roles(a)) && roles(a).includes("recipes")));
-}
+/* Who gets recipe alerts: Ahmad, who keeps the recipe book. */
+export const RECIPE_ALERT_ACCOUNTS = ["ahmad"];
 
 /* Returns how many events were sent. */
 export async function checkRecipeAlerts(db: any): Promise<number> {
@@ -140,9 +134,7 @@ export async function checkRecipeAlerts(db: any): Promise<number> {
     const events = alertEvents(changes, book);
     const w = alertWords(events);
     if (!w) return 0;
-    const { data: people } = await db.from("app_accounts").select("id,roles");
-    const to = recipeAccounts(people ?? []);
-    const { error: inboxError } = await db.from("app_rico_inbox").insert(to.map((account) => ({ account, kind: "recipe", mood: "calm", body_en: w.en, body_ku: w.ku, body_ar: w.ar })));
+    const { error: inboxError } = await db.from("app_rico_inbox").insert(RECIPE_ALERT_ACCOUNTS.map((account) => ({ account, kind: "recipe", mood: "calm", body_en: w.en, body_ku: w.ku, body_ar: w.ar })));
     if (inboxError) console.error("recipe_alert_inbox_failed");
     const url = env("SUPABASE_URL"), anon = env("SUPABASE_ANON_KEY"), secret = env("CRON_SECRET");
     if (url && secret) {

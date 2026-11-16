@@ -178,6 +178,10 @@ async function loadWorld(db: any, s: Session) {
   const now = erbilParts();
   const can = { history: full || (s.roles ?? []).includes("history"), record: full || (s.roles ?? []).includes("record"),
     receipts: full || (s.roles ?? []).includes("receipts"), transfers: full || (s.roles ?? []).includes("transfers") };
+  // Ahmad's account is the recipe book: without Order or Manage, Rico sees no suppliers, items, stock,
+  // orders or phones (bootstrap sends him none either), only what he asks about recipes and the app.
+  const catalog = full || s.account !== "ahmad" || ["order", "manage"].some((r) => (s.roles ?? []).includes(r));
+  if (!catalog) { history.length = 0; stockOf.clear(); }
   const seen: Order[] = can.history ? history : history.filter((o) => o.date === now.date).map((o) => ({
     ...o, lines: o.lines.map((l) => ({ supplierId: l.supplierId, supplierName: l.supplierName, itemId: "", name: "", unitId: null, qty: 0 })),
   }));
@@ -186,12 +190,12 @@ async function loadWorld(db: any, s: Session) {
     acted: false,                       // a tool did something outside the chat (a WhatsApp send): never start the reply again
     signal: null as AbortSignal | null, // the chat's own signal: a stopped chat sends nothing new
     transferDrafts: 0,                  // transfer drafts Rico saved in this reply (propose_transfer_draft)
-    suppliers: (sup.data ?? []) as any[],
-    items: (items.data ?? []) as any[],
+    suppliers: (catalog ? sup.data ?? [] : []) as any[],
+    items: (catalog ? items.data ?? [] : []) as any[],
     stockOf,                            // linked items: Main Storage amount {stock_item, qty, unit, empty, read_at}
-    units: (units.data ?? []) as any[],
+    units: (catalog ? units.data ?? [] : []) as any[],
     history: seen,
-    devices: (devices.data ?? []) as any[],
+    devices: (catalog ? devices.data ?? [] : []) as any[],
     activity: can.record ? (activity.data ?? []) as any[] : [],
     streak: streak.data ?? null,
     months: can.history ? (months.data ?? []) as any[] : [],

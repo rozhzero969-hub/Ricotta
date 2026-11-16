@@ -34,6 +34,7 @@
 //   POST   helper/receipts/:id/photo  {kind, image (base64 JPEG)}
 import "../_shared/receipts.js";
 import { claimTransfer, transferHelperRoute, tview } from "./transfers.ts";
+import { checkRecipeAlerts } from "./recipe-alerts.ts";
 import { checkLowStock } from "./low-stock.ts";
 const R = (globalThis as any).RicottaReceipts;
 
@@ -402,8 +403,9 @@ export async function saveCatalog(db: any, b: any): Promise<{ error?: string; ok
   if (error) return { error: "save_failed" };
   // New stock: items that dropped to their low stock level alert Rozh and Yunis (once per drop).
   // Done after the answer, so Rico never waits for it.
+  // The recipes using that stock may change too (recipe-alerts.ts: Ahmad hears once per change).
   if (titems.length) {
-    const low = checkLowStock(db);
+    const low = checkLowStock(db).then(() => checkRecipeAlerts(db));
     if ((globalThis as any).EdgeRuntime?.waitUntil) (globalThis as any).EdgeRuntime.waitUntil(low); else low.catch(() => {});
   }
   // The read for Check now: what changed is kept for the button's answer.

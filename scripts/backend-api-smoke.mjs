@@ -485,8 +485,12 @@ try {
   assert.equal((await call('settings',{key:'soundSent',value:true},'PUT')).status,403);
   assert.equal((await call('settings',{key:'darkMode',value:'on'},'PUT')).status,200);
   tables.app_rr_catalog=[{id:true,data:{titems:[{name:'Eggs',base:'pcs'}]},updated_at:new Date().toISOString()}];
-  tables.app_recipe_ingredients=[];tables.app_recipes=[];
+  tables.app_recipe_ingredients=[];tables.app_recipes=[];tables.app_units=[{id:'pcs',en:'دانە'}];tables.app_rr_invoices=[];tables.app_items=[];tables.app_rico_inbox=[];tables.app_recipe_photos=[];
   assert.equal((await call('recipes',null,'GET')).status,200);
+  // Units only come from Manage, Units: Ahmad can not add one, even with Manage.
+  assert.equal((await call('units/u-new',{en:'cup'},'PUT')).status,403,'Ahmad can not create units');
+  assert.equal((await call('recipe-ingredients/00000000-0000-4000-8000-000000000012',{name:'Eggs',stock_item:'Eggs',unit:'cup',version:0},'PUT')).status,422,'an unknown unit is refused, never created');
+  for(const p of ['admin/roles','rico-routines','rico-chats'])assert.equal((await call(p,null,'GET')).status,403,p+' denied to Ahmad');
   const iid='00000000-0000-4000-8000-000000000010',rid='00000000-0000-4000-8000-000000000011';
   assert.equal((await call('recipe-ingredients/'+iid,{name:'Eggs',stock_item:'Missing',unit:'pcs',version:0},'PUT')).status,422);
   assert.equal((await call('recipe-ingredients/'+iid,{name:'Eggs',stock_item:'Eggs',unit:'pcs',version:0},'PUT')).status,200);
