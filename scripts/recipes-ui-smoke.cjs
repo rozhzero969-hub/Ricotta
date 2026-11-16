@@ -22,7 +22,7 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
   else if(p==='settings'&&req.method()==='PUT')settingsPuts.push(req.postDataJSON());
   else if(p==='admin/roles'){if(req.method()==='PUT'){const b=req.postDataJSON();access[b.account]=b.roles;data={roles:b.roles};}else data=access;}
   else if(p==='recipes')data=book;
-  else if(/^recipes\/[^/]+\/photos$/.test(p))data={photos:[]};
+  else if(/^recipes\/[^/]+\/photos$/.test(p))data=[];
   else if(p.startsWith('recipes/')&&req.method()==='PUT'){const b=req.postDataJSON();await new Promise(r=>setTimeout(r,900));data={...b,version:b.version+1,updated_by:'ahmad',updated_at:new Date().toISOString()};const i=book.recipes.findIndex(x=>x.id===data.id);if(i<0)book.recipes.push(data);else book.recipes[i]=data;}
   await route.fulfill({contentType:'application/json',body:JSON.stringify(data)}).catch(()=>{});});
  await context.addInitScript(({lang,first})=>{const prefix='ricottaOrders:';localStorage.setItem(prefix+'apiSession',JSON.stringify({token:'fixture',account:'ahmad',name:'Ahmad',expiresAt:'2099-01-01T00:00:00Z'}));localStorage.setItem(prefix+'lang',JSON.stringify(lang));localStorage.setItem(prefix+'pushBannerSnoozedAt',String(Date.now()));if(!first)localStorage.setItem(prefix+'rcSeen:ahmad','true');},{lang,first});

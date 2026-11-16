@@ -10,11 +10,11 @@
   /* The same roles and screens as the server (supabase/functions/api/index.ts). */
   const ROLES = ['history','manage','catalog','record','assistant','send','exports','notify','receipts','transfers'];
   const DEFAULT_ROLES = ROLES.filter(r=>r !== 'receipts' && r !== 'transfers');
-  const rolesOf = account => account === 'rozha' ? [...ROLES] : Array.isArray(db.roles?.yunis) ? ROLES.filter(r=>db.roles.yunis.includes(r)) : [...DEFAULT_ROLES];
+  const rolesOf = account => account === 'rozha' ? [...ROLES] : account === 'ahmad' ? ROLES.filter(r=>(db.roles?.ahmad || []).includes(r)) : Array.isArray(db.roles?.yunis) ? ROLES.filter(r=>db.roles.yunis.includes(r)) : [...DEFAULT_ROLES];
   const can = (account, role) => account === 'rozha' || (rolesOf(account).includes(role) && (role !== 'catalog' || rolesOf(account).includes('manage')));
-  const viewsFor = a => ['order', ...(can(a,'assistant') ? ['assistant'] : []), ...(can(a,'history') ? ['history'] : []),
+  const viewsFor = a => [...(a === 'ahmad' ? [] : ['order']), ...(a !== 'yunis' ? ['recipes'] : []), ...(can(a,'assistant') ? ['assistant'] : []), ...(can(a,'history') ? ['history'] : []),
     ...(can(a,'manage') ? ['manage','suppliers','itemsAdmin','units'] : []), ...(can(a,'receipts') ? ['receipts'] : []), ...(can(a,'transfers') ? ['transfers'] : []), ...(can(a,'transfers') || can(a,'receipts') ? ['stock'] : []), ...(can(a,'record') ? ['record'] : []), ...(a === 'rozha' ? ['admin'] : []), 'settings'];
-  const NAMES = {rozha:{en:'Rozh',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}};
+  const NAMES = {rozha:{en:'Rozh',ku:'ڕۆژا',ar:'روژا'}, yunis:{en:'Yunis',ku:'یونس',ar:'يونس'}, ahmad:{en:'Ahmad',ku:'ئەحمەد',ar:'أحمد'}};
 
   const lsGet = k => { try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(_){ return null; } };
   const lsSet = (k, v) => { try{ localStorage.setItem(k, JSON.stringify(v)); }catch(_){} };
@@ -167,8 +167,25 @@
   /* After a sign-out the Lab shows the real sign-in keypad instead. */
   const sess = lsGet(LS+'apiSession');
   if(!db.signedOut && (!sess || String(sess.token||'').startsWith('lab-'))){
-    const account = sess?.account === 'yunis' ? 'yunis' : 'rozha';
+    const account = ['yunis', 'ahmad'].includes(sess?.account) ? sess.account : 'rozha';
     lsSet(LS+'apiSession', {token:'lab-'+account, account, name:NAMES[account].en, expiresAt:new Date(Date.now()+18*3600000).toISOString()});
+  }
+
+  /* Recipes practice data: Manage's units, two ingredients linked to stock, one recipe and an alert. */
+  const LAB_UNITS = [{id:'g', en:'گرام'}, {id:'kg', en:'کیلۆگرام'}, {id:'ml', en:'مل'}, {id:'l', en:'لیتر'}, {id:'piece', en:'دانە'}];
+  const LAB_PRICES = [['Mozzarella - پەنیری مۆزارێلا', 9000, 'کیلۆ'], ['Ricotta Cheese - پەنیری ریکۆتا', 1500, 'دانە'], ['Banana - مۆز', 1500, 'کیلۆ'], ['Olive Oil - زەیتی زەیتوون', 60000, 'کارتۆن']];
+  function labRecipes(){
+    if(db.recipes) return db.recipes;
+    const ing = [['00000000-0000-4000-8000-00000000a001', 'Mozzarella', 'Mozzarella - پەنیری مۆزارێلا', 'g'], ['00000000-0000-4000-8000-00000000a002', 'Ricotta', 'Ricotta Cheese - پەنیری ریکۆتا', 'piece'],
+      ['00000000-0000-4000-8000-00000000a003', 'Olive oil', 'Olive Oil - زەیتی زەیتوون', 'ml'], ['00000000-0000-4000-8000-00000000a004', 'Tomato', 'Tomato - تەماتە', 'g']].map(([id, name, stock_item, unit])=>({id, name, stock_item, unit, version:1}));
+    const at = new Date(Date.now() - 86400000).toISOString();
+    db.recipes = {ingredients:ing, photos:{}, alerts:[{id:'00000000-0000-4000-8000-00000000b001', at, read:false, en:'Tomato is out in Main Storage. Margherita uses it.', ku:'تەماتە لە کۆگای سەرەکی نەماوە. مارگەریتا بەکاری دەهێنێت.', ar:'نفدت الطماطم في المخزن الرئيسي. مارغريتا تستخدمها.'}],
+      recipes:[{id:'00000000-0000-4000-8000-00000000c001', name:'Margherita', version:1, archived:false, updated_by:'ahmad', updated_at:at,
+        data:{status:'ready', category:'Pizza', yield:1, yieldUnit:'', prep:15, cook:8, price:9000, currency:'IQD', notes:'',
+          lines:[{ingredient:ing[0].id, qty:200, unit:'g'}, {ingredient:ing[2].id, qty:20, unit:'ml'}, {ingredient:ing[3].id, qty:150, unit:'g'}],
+          steps:['Spread the tomato on the dough.', 'Add the mozzarella and a little olive oil.', 'Bake for 8 minutes.']}}]};
+    save();
+    return db.recipes;
   }
 
   /* ---- helpers ---- */
@@ -176,7 +193,7 @@
   const ok = () => json({ok:true});
   const fail = (error, status = 400) => json({error}, status);
   const monthStartIso = () => { const n = bag(new Date()); return atBaghdad(n.y, n.m, 1, 0, 0); };
-  const tokenAccount = h => { const t = h['x-session-token'] || ''; return t === 'lab-rozha' ? 'rozha' : t === 'lab-yunis' ? 'yunis' : null; };
+  const tokenAccount = h => { const t = h['x-session-token'] || ''; return t === 'lab-rozha' ? 'rozha' : t === 'lab-yunis' ? 'yunis' : t === 'lab-ahmad' ? 'ahmad' : null; };
   const deviceId = () => { try{ return JSON.parse(localStorage.getItem(LS+'deviceId')); }catch(_){ return null; } };
   const devices = account => {
     const now = new Date().toISOString(), earlier = new Date(Date.now()-2*3600000).toISOString();
@@ -392,7 +409,7 @@
     if(method === 'POST' && path === 'login'){
       const pin = String(body.pin || '');
       if(!/^\d{6}$/.test(pin)) return fail('invalid_credentials', 401);
-      const account = pin === '222222' ? 'yunis' : 'rozha';
+      const account = pin === '222222' ? 'yunis' : pin === '333333' ? 'ahmad' : 'rozha';
       db.signedOut = false; save();
       return json({token:'lab-'+account, account, name:NAMES[account].en, expiresAt:new Date(Date.now()+18*3600000).toISOString()});
     }
@@ -412,6 +429,47 @@
         pins:db.pins[me] || [], streak:streakView(), weather:db.weather,
         expenses:true, months:LAB_MONTHS, nextWipe:new Date(Date.now() + 86400000).toISOString().slice(0, 10), draft:db.drafts?.[account] || {cart:{},revision:0}
       });
+    }
+    // Recipes (Ahmad and Rozh): the book with Manage's units, the stock items and practice last prices,
+    // so costs work out the same way as on the server (supabase/functions/api/recipes.ts).
+    if(path === 'recipes' || path.startsWith('recipes/') || path.startsWith('recipe-ingredients/')){
+      if(account === 'yunis') return fail('forbidden', 403);
+      const R = labRecipes(), RC = globalThis.RicottaRecipeCost;
+      if(method === 'GET' && path === 'recipes'){
+        const day = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+        const prices = {}; for(const [name, cost, unit] of LAB_PRICES){ const t = LAB_STOCK.find(x=>x.name === name); const p = RC.priceOf(t, {item:name, unit, cost, currency:'IQD', day, supplier:'Zakho Dairy'}); if(p) prices[name] = p; }
+        return json({recipes:R.recipes, ingredients:R.ingredients, units:LAB_UNITS, stock:LAB_STOCK.map(t=>({name:t.name, base:t.base, count:t.count, buy:t.buy, state:RC.stockState(t, new Set())})),
+          prices, pricesReady:true, stockAt:labStockAt(), marginMin:RC.MARGIN_MIN, covers:Object.fromEntries(Object.entries(R.photos).filter(([, l])=>l.length).map(([id, l])=>[id, l[0].url])), alerts:account === 'ahmad' ? R.alerts : []});
+      }
+      if(method === 'POST' && path === 'recipes/alerts/read'){ R.alerts.forEach(a=>{ a.read = true; }); save(); return ok(); }
+      let m = path.match(/^recipes\/([^/]+)\/photos(?:\/([^/]+))?$/);
+      if(m){
+        R.photos[m[1]] ||= [];
+        if(method === 'GET') return json(R.photos[m[1]]);
+        if(method === 'POST'){ if(R.photos[m[1]].length >= 8) return fail('too_many_photos', 422); R.photos[m[1]].push({id:crypto.randomUUID(), caption:null, url:body.image, created_at:new Date().toISOString()}); save(); return ok(); }
+        if(method === 'DELETE'){ R.photos[m[1]] = R.photos[m[1]].filter(x=>x.id !== m[2]); save(); return ok(); }
+      }
+      m = path.match(/^recipes\/([^/]+)$/);
+      if(m && method === 'PUT'){
+        const i = R.recipes.findIndex(x=>x.id === m[1]), old = R.recipes[i];
+        if((old?.version || 0) !== (body.version || 0)) return fail('recipe_conflict', 409);
+        const saved = {id:m[1], name:String(body.name || '').slice(0, 120), data:body.data, archived:!!body.archived, version:(old?.version || 0) + 1, updated_by:account, updated_at:new Date().toISOString()};
+        if(i < 0) R.recipes.unshift(saved); else R.recipes[i] = saved; save();
+        return json(saved);
+      }
+      m = path.match(/^recipe-ingredients\/([^/]+)$/);
+      if(m && method === 'PUT'){
+        const i = R.ingredients.findIndex(x=>x.id === m[1]), old = R.ingredients[i];
+        if(!LAB_STOCK.some(x=>x.name === body.stock_item)) return fail('stock_item_unknown', 422);
+        const saved = {id:m[1], name:String(body.name || '').slice(0, 120), stock_item:body.stock_item, unit:body.unit, version:(old?.version || 0) + 1};
+        if(i < 0) R.ingredients.push(saved); else R.ingredients[i] = saved; save();
+        return json(saved);
+      }
+      if(m && method === 'DELETE'){
+        if(R.recipes.some(r=>r.data?.lines?.some(l=>l.ingredient === m[1]))) return fail('ingredient_in_use', 409);
+        R.ingredients = R.ingredients.filter(x=>x.id !== m[1]); save(); return ok();
+      }
+      return fail('not_found', 404);
     }
     // Linking ordering items to stock items: the choices, and one link (a name that doesn't match only
     // with {anyway: true}, after the app warned).
