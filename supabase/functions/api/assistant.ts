@@ -1888,14 +1888,16 @@ export async function chatTitle(db: any, body: any) {
       method: "POST", signal: AbortSignal.timeout(TITLE_TIMEOUT_MS), headers: { "content-type": "application/json", "x-goog-api-key": k.geminiKey },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 200, thinkingConfig: { thinkingLevel: "minimal" } } }),
     });
-    return r.ok ? ((await r.json())?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? "").join("") : null;
+    if (!r.ok) { console.error("chat title: gemini", r.status); return null; }
+    return ((await r.json())?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? "").join("");
   });
   if (k.groqKey) tries.push(async () => {
     const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST", signal: AbortSignal.timeout(TITLE_TIMEOUT_MS), headers: { "content-type": "application/json", "authorization": `Bearer ${k.groqKey}` },
       body: JSON.stringify({ model: DEFAULT_GROQ_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.2, max_tokens: 300, reasoning_effort: "low", reasoning_format: "hidden" }),
     });
-    return r.ok ? (await r.json())?.choices?.[0]?.message?.content ?? null : null;
+    if (!r.ok) { console.error("chat title: groq", r.status); return null; }
+    return (await r.json())?.choices?.[0]?.message?.content ?? null;
   });
   if (k.anthropicKey) tries.push(async () => {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1903,11 +1905,14 @@ export async function chatTitle(db: any, body: any) {
       headers: { "content-type": "application/json", "x-api-key": k.anthropicKey, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 30, messages: [{ role: "user", content: prompt }] }),
     });
-    return r.ok ? ((await r.json())?.content ?? []).map((c: any) => c.text ?? "").join("") : null;
+    if (!r.ok) { console.error("chat title: anthropic", r.status); return null; }
+    return ((await r.json())?.content ?? []).map((c: any) => c.text ?? "").join("");
   });
   for (const tryOne of tries) {
-    const title = cleanTitle(await tryOne().catch(() => null));
+    const raw = await tryOne().catch((e) => { console.error("chat title: failed", String((e as Error)?.name ?? "error")); return null; });
+    const title = cleanTitle(raw);
     if (title) return { title };
+    if (raw) console.error("chat title: answer not usable");
   }
   return { title: null };
 }
