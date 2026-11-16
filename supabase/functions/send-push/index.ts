@@ -412,6 +412,28 @@ async function streakTick() {
   });
 }
 
+/* ---- Ahmad's minibar: every day at 3:30 PM Erbil, a nudge to fetch the day's supplies from Main
+   Storage. His phones only, in his app language; it also lands in his Rico inbox. Sent once a day, still
+   sent if a tick was missed, until 5:30 PM. ---- */
+const MINIBAR_AT_MIN = 15 * 60 + 30;
+const MINIBAR_WINDOW_MIN = 2 * 60;
+async function minibarTick() {
+  const now = erbilNow();
+  if (now.minutes < MINIBAR_AT_MIN || now.minutes >= MINIBAR_AT_MIN + MINIBAR_WINDOW_MIN) return { skipped: "not the time" };
+  const key = `minibar|${now.date}`;
+  const words = {
+    en: "Hey Ahmad, Rozh is waiting for you. Go to Main Storage and get your minibar supplies for today.",
+    ku: "سڵاو ئەحمەد، ڕۆژا چاوەڕێتە. بڕۆ بۆ کۆگای سەرەکی و پێداویستییەکانی مینیبارەکەت بۆ ئەمڕۆ وەربگرە.",
+    ar: "مرحبًا أحمد، روژا بانتظارك. اذهب إلى المخزن الرئيسي وخذ مستلزمات الميني بار لليوم.",
+  };
+  return await saysOnce(key, "minibar", null, async () => {
+    const { error } = await sb.from("app_rico_inbox").upsert([{ account: "ahmad", kind: "minibar", mood: RICO_MOOD,
+      body_en: words.en, body_ku: words.ku, body_ar: words.ar, dedupe_key: `${key}|ahmad` }], { onConflict: "dedupe_key", ignoreDuplicates: true });
+    if (error) console.error("minibar inbox failed");
+    return await sendReminder((lang) => ({ title: RICO[lang], body: words[lang], kind: "minibar", view: "minibar", mood: RICO_MOOD, tag: `ricotta-minibar-${now.date}` }), new Set(["ahmad"]));
+  });
+}
+
 /* ---- Last day of the month: save the report card before History is cleared ---- */
 async function reportTick() {
   const now = erbilNow();
@@ -589,6 +611,7 @@ Deno.serve(async (req) => {
         try { result.letter = await letterTick(); } catch (e) { console.error("letter tick failed", e); result.letter = { error: "failed" }; }
         try { result.health = await healthTick(); } catch (e) { console.error("health tick failed", e); result.health = { error: "failed" }; }
         try { result.wipe = await wipeTick(); } catch (e) { console.error("wipe tick failed", e); result.wipe = { error: "failed" }; }
+        try { result.minibar = await minibarTick(); } catch (e) { console.error("minibar tick failed", e); result.minibar = { error: true }; }
         try { result.weekly = await weeklyTick(); } catch (e) { console.error("weekly tick failed", e); result.weekly = { error: true }; }
         try { result.routines = await routineTick(); } catch (e) { console.error("routine tick failed", e); result.routines = { error: true }; }
         // The server's own reader of Ricotta Restaurant (api rr-reader.ts) decides what is due; this tick

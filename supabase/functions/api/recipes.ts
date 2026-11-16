@@ -11,6 +11,9 @@
 //   DELETE recipe-ingredients/:id          one no recipe uses
 //   POST   recipes/alerts/read             this account's recipe alerts are read
 //   GET|POST recipes/:id/photos, DELETE recipes/:id/photos/:photo
+//   PUT    recipes/:id/photos/order        {ids} the photos in Ahmad's order (the first is the tile)
+// Each new recipe and each new item, and each one deleted, goes in the Record (app_audit_events, types
+// "recipe" and "ingredient"), so Rozh sees what Ahmad did.
 // Ahmad adds every recipe himself (nothing is imported). Units only come from Manage, Units: this route
 // never creates one. Costs are worked out here, from the last price paid in Ricotta Restaurant.
 import "../_shared/search.js";
@@ -19,7 +22,18 @@ import "../_shared/stock-link.js";
 import "../_shared/recipe-cost.js";
 import { catalogOf } from "./receipts.ts";
 
-type Ctx = { db: any; json: (v: unknown, s?: number) => Response; fail: (v: string, s?: number) => Response; account: string };
+type Ctx = { db: any; json: (v: unknown, s?: number) => Response; fail: (v: string, s?: number) => Response; account: string; device?: string | null };
+const WHO: Record<string, string> = { rozha: "Rozh", yunis: "Yunis", ahmad: "Ahmad" };
+/* One line in the Record. Never fails the save that called it. A new recipe's line uses the recipe's own
+   id, so its name follows the next saves (it is saved as it is typed, and its first save can hold half
+   a name). */
+async function audit(c: Ctx, action: "add" | "delete", type: "recipe" | "ingredient", name: string, fields: { k: string; from?: string; to?: string }[] = [], id?: string) {
+  try {
+    const { error } = await c.db.from("app_audit_events").insert({ id: id ?? crypto.randomUUID(), actor: c.account, device_id: c.device ?? null, action, entity_type: type, entity_name: name,
+      payload: { by: WHO[c.account] ?? c.account, fields, source: "server" } });
+    if (error) console.error("recipe_audit_failed");
+  } catch { console.error("recipe_audit_failed"); }
+}
 const RC = () => (globalThis as any).RicottaRecipeCost;
 const SL = () => (globalThis as any).RicottaStockLink;
 const uuid = (v: any) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -72,7 +86,7 @@ const qtyOk = (q: any) => q === null || (Number.isFinite(q) && q > 0 && q <= 999
    One signed-url call for all of them; a recipe without a photo gets a plain tile in the app. */
 async function coverPhotos(db: any, ids: string[]) {
   if (!ids.length) return {};
-  const r = await db.from("app_recipe_photos").select("recipe_id,path,created_at").in("recipe_id", ids).order("created_at").limit(4000);
+  const r = await db.from("app_recipe_photos").select("recipe_id,path,created_at,sort_order").in("recipe_id", ids).order("sort_order").order("created_at").limit(4000);
   if (r.error || !r.data?.length) return {};
   const first = new Map<string, string>();
   for (const p of r.data) if (!first.has(p.recipe_id)) first.set(p.recipe_id, p.path);
@@ -119,17 +133,22 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
     if (!(cat.titems || []).some((x: any) => x.name === stock)) return fail("invalid_stock_link", 422);
     const row = { name, stock_item: stock, unit, category, updated_at: new Date().toISOString() };
     const r = await (b.version === 0 ? table("recipe_ingredients").insert({ id, ...row }) : table("recipe_ingredients").update({ ...row, version: b.version + 1 }).eq("id", id).eq("version", b.version)).select();
-    return r.error || !r.data?.length ? fail("recipe_conflict", 409) : json(r.data[0]);
+    if (r.error || !r.data?.length) return fail("recipe_conflict", 409);
+    if (b.version === 0) await audit(c, "add", "ingredient", name, [{ k: "stock", to: stock }]);
+    return json(r.data[0]);
   }
   if (ing && M === "DELETE") {
     const id = ing[1];
     const { data: rows, error } = await table("recipes").select("id,data").limit(500);
     if (error) return fail("load_failed", 503);
     if ((rows ?? []).some((r: any) => (r.data?.lines ?? []).some((l: any) => l?.ingredient === id))) return fail("ingredient_in_use", 409);
+    const old = await table("recipe_ingredients").select("name,stock_item").eq("id", id).maybeSingle();
     const r = await table("recipe_ingredients").delete().eq("id", id);
-    return r.error ? fail("save_failed", 503) : json({ ok: true });
+    if (r.error) return fail("save_failed", 503);
+    if (old.data) await audit(c, "delete", "ingredient", old.data.name, [{ k: "stock", from: old.data.stock_item }]);
+    return json({ ok: true });
   }
-  const match = path.match(/^recipes\/([0-9a-f-]+)(?:\/(photos)(?:\/([0-9a-f-]+))?)?$/i);
+  const match = path.match(/^recipes\/([0-9a-f-]+)(?:\/(photos)(?:\/([0-9a-f-]+|order))?)?$/i);
   if (!match || !uuid(match[1])) return fail("not_found", 404);
   const id = match[1];
   if (!match[2] && M === "PUT") {
@@ -155,9 +174,17 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
     const clean = { lines, steps: d.steps, notes, category: category.trim(), price, currency: "IQD" };   // recipes are in IQD only
     const row = { name, data: clean, archived: false, updated_by: c.account, updated_at: new Date().toISOString() };
     const r = await (b.version === 0 ? table("recipes").insert({ id, ...row }) : table("recipes").update({ ...row, version: b.version + 1 }).eq("id", id).eq("version", b.version)).select();
-    return r.error || !r.data?.length ? fail("recipe_conflict", 409) : json(r.data[0]);
+    if (r.error || !r.data?.length) return fail("recipe_conflict", 409);
+    if (b.version === 0) await audit(c, "add", "recipe", name, clean.category ? [{ k: "recipeGroup", to: clean.category }] : [], id);
+    else if (b.version < 40) {
+      // The Record line of a recipe added a moment ago follows its name and group as Ahmad types them.
+      const { error } = await table("audit_events").update({ entity_name: name, payload: { by: WHO[c.account] ?? c.account, fields: clean.category ? [{ k: "recipeGroup", to: clean.category }] : [], source: "server" } })
+        .eq("id", id).eq("action", "add").gte("occurred_at", new Date(Date.now() - 3 * 3600_000).toISOString());
+      if (error) console.error("recipe_audit_name_failed");
+    }
+    return json(r.data[0]);
   }
-  const recipe = await table("recipes").select("id").eq("id", id).maybeSingle();
+  const recipe = await table("recipes").select("id,name").eq("id", id).maybeSingle();
   if (recipe.error) return fail("load_failed", 503);
   if (!recipe.data) return fail("not_found", 404);
   if (!match[2] && M === "DELETE") {
@@ -172,10 +199,12 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
       if (gone.error) return fail("save_failed", 503);
     }
     const r = await table("recipes").delete().eq("id", id);
-    return r.error ? fail("save_failed", 503) : json({ ok: true });
+    if (r.error) return fail("save_failed", 503);
+    await audit(c, "delete", "recipe", recipe.data.name);
+    return json({ ok: true });
   }
   if (match[2] && !match[3] && M === "GET") {
-    const r = await table("recipe_photos").select("*").eq("recipe_id", id).order("created_at");
+    const r = await table("recipe_photos").select("*").eq("recipe_id", id).order("sort_order").order("created_at");
     if (r.error) return fail("load_failed", 503);
     const photos = await Promise.all(r.data.map(async (p: any) => { const signed = await db.storage.from(bucket).createSignedUrl(p.path, 900); return { id: p.id, caption: p.caption, created_at: p.created_at, url: signed.data?.signedUrl || null }; }));
     return json(photos);
@@ -191,9 +220,22 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
     const photo = crypto.randomUUID(), key = id + "/" + photo + ".jpg", store = db.storage.from(bucket);
     const upload = await store.upload(key, bytes, { contentType: "image/jpeg", upsert: false });
     if (upload.error) return fail("upload_failed", 503);
-    const r = await table("recipe_photos").insert({ id: photo, recipe_id: id, path: key, caption: str(b.caption, 200) });
+    // A new photo goes last.
+    const last = await table("recipe_photos").select("sort_order").eq("recipe_id", id).order("sort_order", { ascending: false }).limit(1);
+    const r = await table("recipe_photos").insert({ id: photo, recipe_id: id, path: key, caption: str(b.caption, 200), sort_order: (Number(last.data?.[0]?.sort_order) || 0) + 1 });
     if (r.error) { await store.remove([key]); return fail("save_failed", 503); }
     return json({ ok: true });
+  }
+  if (match[3] === "order" && M === "PUT") {
+    // Ahmad dragged the photos into a new order: ids, first one first (it becomes the recipe's tile).
+    const ids = Array.isArray(b.ids) ? b.ids.filter(uuid) : null;
+    if (!ids || !ids.length || ids.length > 8 || new Set(ids).size !== ids.length) return fail("invalid_input");
+    const have = await table("recipe_photos").select("id").eq("recipe_id", id);
+    if (have.error) return fail("load_failed", 503);
+    const mine = new Set((have.data ?? []).map((p: any) => p.id));
+    if (ids.some((x: string) => !mine.has(x))) return fail("invalid_input");
+    const results = await Promise.all(ids.map((x: string, n: number) => table("recipe_photos").update({ sort_order: n + 1 }).eq("id", x).eq("recipe_id", id)));
+    return results.some((x: any) => x.error) ? fail("save_failed", 503) : json({ ok: true });
   }
   if (match[3] && uuid(match[3]) && M === "DELETE") {
     const p = await table("recipe_photos").select("*").eq("recipe_id", id).eq("id", match[3]).maybeSingle();
@@ -224,12 +266,25 @@ export async function ricoRecipes(db: any, a: any) {
   const fold = (s: unknown) => String(s ?? "").toLowerCase().normalize("NFKC").replace(/[يى]/g, "ی").replace(/ك/g, "ک").replace(/\s+/g, " ").trim();
   const q = fold(a?.recipe ?? a?.query ?? "");
   const rules = "Costs, profit and suggested prices are rounded to the nearest 250 IQD; the margin comes from the rounded numbers. A recipe with any ingredient without a price has no cost, profit or margin: say which ingredient has no price yet instead of guessing.";
-  if (a?.action !== "read") {
-    const list = recipes.filter((r: any) => !q || fold(r.name + " " + (r.data?.category ?? "")).includes(q)).slice(0, 80).map((r: any) => {
-      const c = RC().recipeCost(r, ctx);
-      return { name: r.name, category: r.data?.category || null, ingredients: (r.data?.lines ?? []).length, ...costWords(c) };
+  if (a?.action === "ingredients") {
+    // Every item and ingredient: its stock item, last price paid (per kg, g, L, ml or piece) and the
+    // recipes it is in. query narrows by name or stock item.
+    const list = book.ingredients.filter((i: any) => !q || fold(i.name + " " + i.stock_item).includes(q)).slice(0, 120).map((i: any) => {
+      const p = ctx.price(i.stock_item), ok = p && !p.error && p.currency === "IQD";
+      return { name: i.name, stock_item: i.stock_item, last_price: ok ? { paid_iqd: p.cost, per: p.unit, day: p.day, supplier: p.supplier || null,
+          price_per_unit: RC().unitPrices(p).map((u: any) => `${u.unit === "other" ? "1 " + u.name : unitWords[u.unit]} = ${Number(u.amount.toPrecision(6))} IQD`) } : null,
+        no_price: ok ? null : "no purchase found yet", used_in: recipes.filter((r: any) => (r.data?.lines ?? []).some((l: any) => l?.ingredient === i.id)).map((r: any) => r.name) };
     });
-    return { recipes: list, total: recipes.length, rules };
+    return { ingredients: list, total: book.ingredients.length, rules };
+  }
+  if (a?.action !== "read") {
+    const list = recipes.filter((r: any) => !q || fold(r.name + " " + (r.data?.category ?? "")).includes(q)
+      || (r.data?.lines ?? []).some((l: any) => fold(book.ingredients.find((i: any) => i.id === l?.ingredient)?.name ?? "").includes(q))).slice(0, 80).map((r: any) => {
+      const c = RC().recipeCost(r, ctx);
+      return { name: r.name, group: r.data?.category || null, ingredients: (r.data?.lines ?? []).length, ...costWords(c) };
+    });
+    const groups = [...new Set(recipes.map((r: any) => String(r.data?.category ?? "").trim()).filter(Boolean))].sort();
+    return { recipes: list, total: recipes.length, groups, rules };
   }
   let r = recipes.find((x: any) => fold(x.name) === q);
   if (!r && q) r = L.rank(recipes, q, (x: any) => [x.name, x.data?.category ?? ""])[0];
@@ -242,6 +297,6 @@ export async function ricoRecipes(db: any, a: any) {
       last_price: p && !p.error && p.currency === "IQD" ? { paid_iqd: p.cost, per: p.unit, day: p.day, supplier: p.supplier || null, price_per_unit: per } : null,
       problem: l.status === "ok" ? null : l.status };
   });
-  return { name: r.name, category: r.data?.category || null, ingredients: lines, steps: (r.data?.steps ?? []).filter((s: string) => s.trim()), notes: r.data?.notes || "",
+  return { name: r.name, group: r.data?.category || null, ingredients: lines, steps: (r.data?.steps ?? []).filter((s: string) => s.trim()), notes: r.data?.notes || "",
     exact_cost_iqd: c.total, ...costWords(c), last_edited: r.updated_at, rules };
 }

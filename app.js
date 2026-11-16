@@ -74,7 +74,7 @@ function kurdishDates(options){
   const base = new Intl.DateTimeFormat('en-GB-u-nu-latn', options.hour && options.hour12 === undefined ? {...options, hour12:true} : options);
   if(!kuDateWords){
     const en = o=>new Intl.DateTimeFormat('en-GB', {...o, timeZone:'UTC'});
-    kuDateWords = {am:'ب.ن', pm:'د.ن'};
+    kuDateWords = {am:'پ.ن', pm:'د.ن', AM:'پ.ن', PM:'د.ن'};
     KU_MONTHS.forEach((m, i)=>{
       const d = new Date(Date.UTC(2026, i, 15));
       kuDateWords[en({month:'long'}).format(d)] = kuDateWords[en({month:'short'}).format(d)] = m;
@@ -94,10 +94,17 @@ function kurdishDates(options){
     }).join('');
   }};
 }
+/* Erbil reads the 12-hour clock (Rozh, 2026-11-16): every time in the app has AM and PM, in each
+   language's own words (3:30 PM, ٣:٣٠ د.ن in Kurdish with Latin digits, 3:30 م in Arabic). */
+const KU_DAY_PERIOD = v=>/^(pm|د)/i.test(String(v).trim()) ? 'د.ن' : 'پ.ن';
+function kurdishPeriods(formatter){
+  return {format(date){ return formatter.formatToParts(date).map(p=>p.type === 'dayPeriod' ? KU_DAY_PERIOD(p.value) : p.value).join(''); }};
+}
 function dateFormatter(options){
+  if(options.hour && options.hour12 === undefined && !options.hourCycle) options = {...options, hour12:true};
   const locale = intlLocale(), key = JSON.stringify([locale, options]);
   if(!dateFormatters.has(key)){
-    const formatter = locale.startsWith('ckb') && !KU_DATES_NATIVE ? kurdishDates(options) : new Intl.DateTimeFormat(locale, options);
+    const formatter = locale.startsWith('ckb') ? (KU_DATES_NATIVE ? kurdishPeriods(new Intl.DateTimeFormat(locale, options)) : kurdishDates(options)) : new Intl.DateTimeFormat(locale, options);
     if(dateFormatters.size >= 12) dateFormatters.delete(dateFormatters.keys().next().value);
     dateFormatters.set(key, formatter);
   }
@@ -508,8 +515,13 @@ const ACCOUNT_ROLES = {rozha:ALL_ROLES, yunis:ALL_ROLES.filter(r=>r!=='recipes')
    tabs; with more, the first four are and the rest are under More. Rico lives in the top bar and
    Settings in the account sheet. */
 // Recipes is Ahmad's screen: first for him, after the daily ones (Transfers) for everyone else.
-const NAV_SCREENS = ['order','history','receipts','transfers','recipes','stock','manage','record','admin'];
-const navScreens = ()=> (state.account === 'ahmad' ? ['recipes',...NAV_SCREENS.filter(v=>v!=='recipes')] : NAV_SCREENS).filter(v=>state.views.includes(v));
+// Recipes and Items (the recipe book's ingredients) are two tabs side by side; Stock (minibar) is Ahmad's
+// own list of what is in Main Storage. The three come first for him.
+const NAV_SCREENS = ['order','history','receipts','transfers','recipes','recipeItems','stock','manage','record','admin','minibar'];
+const AHMAD_FIRST = ['recipes','recipeItems','minibar'];
+const navScreens = ()=> (state.account === 'ahmad' ? [...AHMAD_FIRST,...NAV_SCREENS.filter(v=>!AHMAD_FIRST.includes(v))] : NAV_SCREENS).filter(v=>state.views.includes(v));
+// The recipe book's screens (one recipe book, two tabs).
+const recipeView = v=>v === 'recipes' || v === 'recipeItems';
 const tabsFor = ()=> navScreens().length ? navScreens().slice(0, 4) : ['order'];
 /* Who is signed in (from the sign-in answer, the saved session or bootstrap). */
 function applyAccount(a){
@@ -518,7 +530,8 @@ function applyAccount(a){
   if(state.account === 'ahmad' && previousAccount !== 'ahmad')state.view='recipes';
   state.name = a.name || ({rozha:'Rozh', yunis:'Yunis', ahmad:'Ahmad'})[state.account] || '';
   const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
-  state.views = state.account ? [...new Set([...views, 'settings'])] : [];
+  // Items comes with Recipes, and Ahmad has his minibar Stock tab: both are screens of this app only.
+  state.views = state.account ? [...new Set([...views, ...(views.includes('recipes') ? ['recipeItems'] : []), ...(state.account === 'ahmad' ? ['minibar'] : []), 'settings'])] : [];
   const roles = Array.isArray(a.roles) ? a.roles : (ACCOUNT_ROLES[state.account] || []);
   state.roles = state.account ? roles.filter(r=>ALL_ROLES.includes(r)) : [];
   state.tabs = tabsFor();
@@ -563,7 +576,7 @@ function applyData(d){
   applyFeatures();
   carryOverLocalSettings();
   ricoAutoStart();
-  setTimeout(()=>{ checkMilestones(); maybeShowTour(); maybeShowExpensesTour(); maybeShowRecipesTour(); }, 800);
+  setTimeout(()=>{ checkMilestones(); maybeShowTour(); maybeShowExpensesTour(); maybeShowRecipesTour(); if(state.account === 'rozha' && typeof minibarLoad === 'function') minibarLoad(); }, 800);
   state.sharedDraft = d.draft || null;
   ricoSetInbox(d.inbox || []);
   paintStreakChip(false);
@@ -609,7 +622,7 @@ window.addEventListener('appinstalled',()=>{
 document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
 /* Clears this device's sign-in and returns to the PIN pad. */
 function signOut(reason, {preserveSession = false} = {}){
-  recipeReset();
+  recipeReset(); minibarReset();
   liveStop();
   if(state.account) lset('bootCache:' + state.account, null);   // the kitchen's data does not stay on a signed-out phone
   resetSharedDraft(); state.sharedDraft=null;
@@ -908,7 +921,8 @@ const RENDERERS = {
   settings:[()=>renderSettings(),()=>attachSettingsEvents()], assistant:[()=>renderAssistant(),()=>attachAssistantEvents()],
   receipts:[()=>renderReceipts(),()=>attachReceiptsEvents()],
   transfers:[()=>renderTransfers(),()=>attachTransfersEvents()],
-  recipes:[()=>renderRecipes(),()=>attachRecipeEvents()],
+  recipes:[()=>renderRecipes(),()=>attachRecipeEvents()], recipeItems:[()=>renderRecipes(),()=>attachRecipeEvents()],
+  minibar:[()=>renderMinibar(),()=>attachMinibarEvents()],
   stock:[()=>renderStock(),()=>attachStockEvents()]
 };
 const shellKey = ()=>[state.account, state.lang, state.tabs.join(','), state.views.join(',')].join('|');
@@ -1006,7 +1020,7 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
    open); with more than four, the rest are under More. Computers: a sidebar with every screen. Rico
    opens from the top bar and Settings from the account sheet. A lens glides to the current tab, the
    page can be swiped between the tabs, and the bar shrinks to its icons while you scroll down. */
-const VIEW_LABEL_KEYS = {recipes:'recipesTitle',receipts:'rrTitle', transfers:'tfTitle', stock:'stockTitle', manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
+const VIEW_LABEL_KEYS = {recipes:'recipesTitle', recipeItems:'recipe_tabItems', minibar:'mb_tab',receipts:'rrTitle', transfers:'tfTitle', stock:'stockTitle', manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
 function isPhoneLayout(){ return window.innerWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
@@ -1358,8 +1372,8 @@ function pageGhost(content){
   return {layer, copy};
 }
 function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
-  if(state.view==='recipes' && view!==state.view && recipeBook.dirty){peek?.layer.remove();recipeLeave().then(ok=>{if(ok)goView(view);});return;}
-  if(state.view==='recipes' && view!=='recipes'){recipeBook.wake?.release().catch(()=>{});recipeBook.cooking=false;}
+  if(recipeView(state.view) && view!==state.view && recipeBook.dirty){peek?.layer.remove();recipeLeave().then(ok=>{if(ok)goView(view);});return;}
+  if(recipeView(state.view) && view!==state.view) recipeBook.page = recipeBook.editing ? recipeBook.page : 'list';
   closeLangMenu();setMoreOpen(false);
   if(!view || view === state.view || !canOpen(view)){ peek?.layer.remove(); return; }
   if(view !== 'admin') state.adminPage = null;
@@ -1377,7 +1391,8 @@ function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
   const remembered = viewMemory.get(view);
   if(view === 'assistant') state.ricoBack = state.view;   // Rico's back button returns here
   state.catalogQuery = remembered?.query || ''; state.view = view;
-  if(view === 'recipes' && recipeBook.data && !recipeBook.editing)setTimeout(recipeLoad,0);
+  if(recipeView(view) && recipeBook.data && !recipeBook.editing)setTimeout(recipeLoad,0);
+  if(view === 'minibar') minibarLoad();
   if(view === 'record'){ state.recordFilter = 'all'; state.recordLimit = RECORD_PAGE_SIZE; }
   // Receipts and Transfers open on their form (what was being typed stays in it).
   if(view === 'receipts'){ rr.page = 'edit'; rr.id = null; rrLoad(true); }
@@ -2864,6 +2879,8 @@ function openItemMenu(row){
     ['pin', state.pins.includes(id) ? t('unpinItem') : t('pinItem'), ICON_PIN]];
   if(canDo('catalog')) actions.push(['note', t('itemNoteEdit'), ICON_NOTE], ['edit', t('editItem'), ICON_EDIT_ITEM], ['link', item.stockItem ? t('cmChangeStock') : t('cmLinkStock'), ICON_LINK]);
   actions.push(['copy', t('cmCopyName'), ICON_COPY]);
+  // Ahmad's Stock tab (minibar.js): only Rozh picks what he sees.
+  if(state.account === 'rozha' && typeof minibarToggle === 'function') actions.push(['minibar', minibarHas(id) ? t('mb_takeOff') : t('mb_putOn'), NAV_ICONS.minibar], ['minibarList', t('mb_manageT'), ICON_SHEET]);
   if(qty) actions.push(['remove',t('cmRemove'),ICON_DELETE]);
   haptic('medium');
   const menuH = actions.length*44 + 16, below = rect.bottom + 12 + menuH < window.innerHeight - 90;
@@ -2891,6 +2908,8 @@ function openItemMenu(row){
     if(a === 'edit'){ openItemModal(id); return; }
     if(a === 'link'){ openStockLinkSheet(id); return; }
     if(a === 'copy'){ copyItemName(item.name); return; }
+    if(a === 'minibar'){ minibarToggle(id); return; }
+    if(a === 'minibarList'){ openMinibarManager(); return; }
     if(a === 'remove'){
       state.cart[id] = 0; refreshOrderView(id);
       toast(t('itemRemoved'), 'ok', {undo:()=>{ state.cart[id] = before; refreshOrderView(id); }});
@@ -3329,7 +3348,7 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), buys:t('recordBuys'), kind:t('itemKindLabel'), stock:t('stockLinkLabel'), cutoff:t('cutoffShort')})[k] || k;
+  return ({recipeGroup:t('recipe_group'), stock:t('recipe_stockItem'), name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), buys:t('recordBuys'), kind:t('itemKindLabel'), stock:t('stockLinkLabel'), cutoff:t('cutoffShort')})[k] || k;
 }
 function recordValue(k, v){
   if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||t('noValue');}catch(_){} }
@@ -3351,6 +3370,7 @@ function renderRecord(){
     {id:'supplier', label:t('suppliers')},
     {id:'item', label:t('items')},
     {id:'unit', label:t('units')},
+    ...(state.views.includes('recipes') ? [{id:'recipes', label:t('recipesTitle')}] : []),
     ...(state.views.includes('receipts') || state.views.includes('transfers') ? [{id:'rico', label:t('ricoName')}] : [])
   ];
   const filterHtml = `<div class="record-filters glass" role="group">${filters.map(f=>`
@@ -3358,10 +3378,10 @@ function renderRecord(){
   if(state.recordFilter === 'rico') return `<div class="action-row"><div class="section-title grow" id="recordCount">${esc(t('rrRicoActivity'))}</div>
       <button class="btn btn-ghost" id="recRefreshBtn">${ICON_REFRESH} ${esc(t('refresh'))}</button></div>${filterHtml}<div id="recordResults">${renderRicoActivity()}</div>`;
   const rows = state.activity
-    .filter(a => (state.recordFilter==='all' || a.type===state.recordFilter) && catalogMatches(recordSearchFields(a)))
+    .filter(a => (state.recordFilter==='all' || a.type===state.recordFilter || (state.recordFilter==='recipes' && (a.type==='recipe' || a.type==='ingredient'))) && catalogMatches(recordSearchFields(a)))
     .sort((a,b)=> new Date(b.ts) - new Date(a.ts));
   const cards = rows.slice(0, state.recordLimit).map(a=>{
-    const typeLabel = ({supplier:t('typeSupplier'), item:t('typeItem'), unit:t('typeUnit')})[a.type] || a.type;
+    const typeLabel = ({supplier:t('typeSupplier'), item:t('typeItem'), unit:t('typeUnit'), recipe:t('recipe_typeRecipe'), ingredient:t('recipe_typeIngredient')})[a.type] || a.type;
     const actLabel = ({add:t('actionAdded'), edit:t('actionEdited'), delete:t('actionDeleted')})[a.action] || a.action;
     const dt = formatIraqDateTime(a.ts,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
     // Older entries (before the two accounts) may only have a device name, or nothing.

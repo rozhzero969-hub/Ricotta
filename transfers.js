@@ -609,7 +609,7 @@ async function tfExportDay(day, format){
     .sort((a, b)=>Date.parse(a.movedAt || a.sentAt) - Date.parse(b.movedAt || b.sentAt));
   const at = new Date(), title = t('tfFileTitle')(tfDayLabel(day)), subtitle = t('tfFileSub')(list.length, list.reduce((n, r)=>n + r.lines.length, 0), fileStamp(at));
   if(format === 'excel'){
-    const rows = list.flatMap(r=>r.lines.map((l, i)=>[day, formatIraqDateTime(new Date(r.movedAt || r.sentAt), {hour:'2-digit', minute:'2-digit', hour12:false}), r.from, r.to, i + 1, l.item, Number(l.qty), l.unit, tfApprovalText(r), r.yesterday ? t('tfForYesterday') : '']));
+    const rows = list.flatMap(r=>r.lines.map((l, i)=>[day, formatIraqDateTime(new Date(r.movedAt || r.sentAt), {hour:'numeric', minute:'2-digit'}), r.from, r.to, i + 1, l.item, Number(l.qty), l.unit, tfApprovalText(r), r.yesterday ? t('tfForYesterday') : '']));
     return deliverExcel(brandedWorkbook({title, subtitle, at, sheets:[{name:t('tfTitle'), columns:[
       {label:t('fileDate'), width:12}, {label:t('fileTime'), width:8}, {label:t('tfFrom'), width:18}, {label:t('tfTo'), width:18}, {label:'#', width:5, type:'number'},
       {label:t('fileItem'), width:34}, {label:t('fileQty'), width:10, type:'number'}, {label:t('unit'), width:10}, {label:t('tfApproval'), width:24}, {label:t('tfDay'), width:14}], rows}]}),
@@ -632,7 +632,7 @@ async function dayExport(day, format){
   const iqd = r=> r.currency === 'USD' ? Math.round((r.total || 0) * (r.rate || 0)) : (r.total || 0);
   const sum = recs.reduce((s, r)=>s + iqd(r), 0), items = moves.reduce((n, r)=>n + r.lines.length, 0);
   const at = new Date(), label = tfDayLabel(day), title = t('dayFileTitle')(label), subtitle = t('dayFileSub')(recs.length, rrNum(sum), moves.length, items);
-  const time = d=>formatIraqDateTime(new Date(d), {hour:'2-digit', minute:'2-digit', hour12:false});
+  const time = d=>formatIraqDateTime(new Date(d), {hour:'numeric', minute:'2-digit'});
   if(format === 'excel'){
     const lineTotal = (l, r)=>globalThis.RicottaReceipts.lineTotal(l, r.currency);
     return deliverExcel(brandedWorkbook({title, subtitle, at, sheets:[

@@ -456,7 +456,12 @@
           prices, pricesReady:true, stockAt:labStockAt(), marginMin:RC.MARGIN_MIN, covers:Object.fromEntries(Object.entries(R.photos).filter(([, l])=>l.length).map(([id, l])=>[id, l[0].url])), alerts:account === 'ahmad' ? R.alerts : []});
       }
       if(method === 'POST' && path === 'recipes/alerts/read'){ R.alerts.forEach(a=>{ a.read = true; }); save(); return ok(); }
-      let m = path.match(/^recipes\/([^/]+)\/photos(?:\/([^/]+))?$/);
+      let m = path.match(/^recipes\/([^/]+)\/photos\/order$/);
+      if(m && method === 'PUT'){
+        const list = R.photos[m[1]] || [], ids = Array.isArray(body.ids) ? body.ids : [];
+        R.photos[m[1]] = [...ids.map(id=>list.find(x=>x.id === id)).filter(Boolean), ...list.filter(x=>!ids.includes(x.id))]; save(); return ok();
+      }
+      m = path.match(/^recipes\/([^/]+)\/photos(?:\/([^/]+))?$/);
       if(m){
         R.photos[m[1]] ||= [];
         if(method === 'GET') return json(R.photos[m[1]]);
@@ -491,6 +496,20 @@
         R.ingredients = R.ingredients.filter(x=>x.id !== m[1]); save(); return ok();
       }
       return fail('not_found', 404);
+    }
+    // Ahmad's Stock tab: the items Rozh picked for him with how much is in Main Storage (minibar.ts).
+    if(path === 'minibar'){
+      if(account !== 'ahmad' && account !== 'rozha') return fail('forbidden', 403);
+      if(method === 'PUT'){
+        if(account !== 'rozha') return fail('forbidden', 403);
+        db.minibar = (Array.isArray(body.itemIds) ? body.itemIds : []).filter(x=>typeof x === 'string').slice(0, 300); save(); return ok();
+      }
+      const ids = db.minibar ?? ['it-lemon', 'it-mozz', 'it-ric'];   // a few to start, until Rozh picks her own
+      const items = (db.items || []).filter(i=>ids.includes(i.id)).map(i=>{
+        const w = withLabStock(i);
+        return {id:i.id, name:i.name, stock:w.stockItem && w.stock ? w.stock : {missing:true}};
+      }).sort((a, b)=>a.name.localeCompare(b.name));
+      return json({items, at:labStockAt(), picked:ids.length});
     }
     // Linking ordering items to stock items: the choices, and one link (a name that doesn't match only
     // with {anyway: true}, after the app warned).

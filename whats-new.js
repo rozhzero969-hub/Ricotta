@@ -3,6 +3,19 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-16f', date:'2026-11-16', notes:{
+    en:['Ahmad\u2019s screens are new and brighter: Recipes and Items are two tabs, like Order and History. Recipes sit in groups Ahmad makes himself, A to Z inside each group; Items are one A to Z list.',
+      'A recipe shows its cost, menu price and what we keep at the top, with a clear sheet for where the numbers come from. Done saves it at the end. Tap a photo to view or delete it, and hold and drag to change the order.',
+      'Ahmad has a Stock tab: the minibar items Rozh picks, with how much is in Main Storage. Rozh picks them by holding an item on the Order screen. At 3:30 PM Rico reminds Ahmad to get his minibar supplies.',
+      'Every time in the app is on the 12-hour clock.'],
+    ku:['شاشەکانی ئەحمەد نوێ و گەشترن: ڕەچەتەکان و کاڵاکان دوو تابی جیان، وەک داواکردن و مێژوو. ڕەچەتەکان لە ناو ئەو گروپانەدان کە ئەحمەد خۆی دروستیان دەکات، لە ناو هەر گروپێک بە ڕیزی ئەلفوبێ؛ کاڵاکان یەک لیستی ئەلفوبێن.',
+      'هەر ڕەچەتەیەک لە سەرەوە تێچوو، نرخی مینیو و ئەوەی بۆمان دەمێنێتەوە پیشان دەدات، لەگەڵ پەڕەیەکی ڕوون بۆ ئەوەی ژمارەکان لە کوێوە دێن. تەواو لە کۆتاییدا هەڵیدەگرێت. دەست لە وێنەیەک بدە بۆ بینین یان سڕینەوە، و ڕایبگرە و ڕایبکێشە بۆ گۆڕینی ڕیزبەندی.',
+      'ئەحمەد تابی کۆگای هەیە: ئەو کاڵایانەی مینیبار کە ڕۆژ هەڵیاندەبژێرێت، لەگەڵ ئەوەی چەندیان لە کۆگای سەرەکی ماوە. ڕۆژ بە ڕاگرتنی کاڵایەک لە شاشەی داواکردن هەڵیاندەبژێرێت. کاتژمێر 3:30ی دوای نیوەڕۆ ریکۆ بیری ئەحمەد دەخاتەوە کە کەلوپەلی مینیبار بهێنێت.',
+      'هەموو کاتەکانی ناو ئەپەکە بە کاتژمێری 12 کاتژمێرین.'],
+    ar:['شاشات أحمد جديدة وأكثر إشراقًا: الوصفات والمواد تبويبان منفصلان، مثل الطلب والسجل. الوصفات في مجموعات يصنعها أحمد بنفسه، أبجديًا داخل كل مجموعة؛ والمواد قائمة أبجدية واحدة.',
+      'تعرض كل وصفة في أعلاها التكلفة وسعر القائمة وما يبقى لنا، مع صفحة واضحة لمصدر الأرقام. زر تم في النهاية يحفظها. اضغط على صورة لعرضها أو حذفها، واضغط مطولًا واسحب لتغيير الترتيب.',
+      'لأحمد تبويب المخزون: مواد الميني بار التي يختارها روژ، مع الكمية الموجودة في المخزن الرئيسي. يختارها روژ بالضغط المطوّل على مادة في شاشة الطلب. وفي الساعة 3:30 مساءً يذكّر ريكو أحمد بجلب مستلزمات الميني بار.',
+      'كل الأوقات في التطبيق بنظام 12 ساعة.']}},
   {id:'2026-11-16e', date:'2026-11-16', notes:{
     en:['Recipes is simpler: one switch for Recipes and Items and ingredients. Each ingredient shows its last price, like 1 kg = 4,000 IQD, with the day and the supplier.',
       'Costs, profit and suggested prices are rounded to the nearest 250 IQD. A recipe with an ingredient that has no price yet says which one instead of showing a cost. Where do these numbers come from? shows the working.',
