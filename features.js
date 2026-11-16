@@ -15,6 +15,7 @@ const SETTINGS = [
   {id:'ricoSheet', group:'ricoTab', on:true, role:'assistant'},             // in Rico's own settings
   {id:'ricoAutoStart', group:'helper', on:false, role:'receipts', rozha:true}, // in Rico the helper
   {id:'tfAuto', group:'none', on:false},
+  {id:'recipeAlerts', group:'none', on:true},                              // Ahmad's Settings, Recipes
   {id:'simpleView', group:'look', on:false},
   {id:'tables', group:'look', on:false},
   {id:'kitchenMode', group:'look', on:false},
@@ -55,6 +56,7 @@ const SETTING_ICONS = {
   kitchenMode:['#5E5CE6', SF('<path d="M3.4 18.6 8.3 5.6h1.4l4.9 13M5.3 14h7.4"/><path d="M15.6 18.6l2.5-6.5h.8l2.5 6.5M16.6 16.2h3.8" stroke-width="1.7"/>')],
   milestones:['#FFB800', SF('<circle cx="12" cy="9.2" r="5.6"/><path d="M8.6 13.6 7.4 21l4.6-2.4 4.6 2.4-1.2-7.4"/>', true)],
   report:['#FF3B30', SF('<path d="M5.4 21V4.4"/><path d="M5.4 4.6h11.4l-2.4 4 2.4 4H5.4" fill="#fff"/>')],
+  recipeAlerts:['#FF9500', SF('<path d="M12 3.2a6 6 0 0 0-6 6v3.3l-1.6 2.6A1 1 0 0 0 5.3 16.6h13.4a1 1 0 0 0 .9-1.5L18 12.5V9.2a6 6 0 0 0-6-6Z"/><path d="M9.6 18.2h4.8a2.4 2.4 0 0 1-4.8 0Z"/>', true)],
   rcTour:['#FF9500', SF('<path d="M5 4.5h10.5A2.5 2.5 0 0 1 18 7v12.5H7.5A2.5 2.5 0 0 1 5 17Z"/><path d="M5 17a2.5 2.5 0 0 1 2.5-2.5H18M9 8.5h5"/>')],
   xtTour:['#5856D6', SF('<path d="M21 8 12 3 3 8v8l9 5 9-5Z"/><path d="M3 8l9 5 9-5M12 13v8"/>')],
   tour:['#34C759', SF('<path d="M12 3.2a6.2 6.2 0 0 0-3.6 11.3c.6.4.9 1 .9 1.7v.6h5.4v-.6c0-.7.3-1.3.9-1.7A6.2 6.2 0 0 0 12 3.2Z"/><path d="M9.5 19h5M10.3 21.2h3.4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>', true)],
@@ -103,10 +105,13 @@ function applyFeatures(){
   document.documentElement.classList.toggle('simple-view', featureOn('simpleView'));
 }
 function renderFeatureSettings(){
-  const row = f=>{ const locked=state.account === 'ahmad' && ((f.id === 'tables' && !canOpen('manage')) || (!canOpen('order') && ['swipe','showLastQty','compactRows','soundQty','soundSent','milestones','soundMilestone','soundUndo'].includes(f.id)) || (f.role && !canOpen(f.role))); return `<label class="check-row preference-row has-ico ${locked?'is-locked':''}"><input type="checkbox" data-feature="${f.id}" ${locked?'disabled':''} ${featureOn(f.id) ? 'checked' : ''}>${setIcon(f.id)}<span>${esc(t('feat_' + f.id))}<small>${esc(locked ? rt('lockedHint') : t('feat_' + f.id + '_hint'))}</small></span></label>`; };
+  // Ahmad (the recipe book) sees only the settings that apply to him: ordering, stock, Rico and
+  // Interactive tables only once Rozh gives him those screens.
+  const hidden = f=>state.account === 'ahmad' && ((f.id === 'tables' && !canOpen('manage')) || (!canOpen('order') && ['swipe','showLastQty','compactRows','soundQty','soundSent','milestones','soundMilestone','soundUndo'].includes(f.id)) || (f.role && !canOpen(f.role)));
+  const row = f=>`<label class="check-row preference-row has-ico"><input type="checkbox" data-feature="${f.id}" ${featureOn(f.id) ? 'checked' : ''}>${setIcon(f.id)}<span>${esc(t('feat_' + f.id))}<small>${esc(t('feat_' + f.id + '_hint'))}</small></span></label>`;
   return SETTING_GROUPS.map(group=>{
     // The chat Rico's settings are in his own tab (the sliders button); Rico the helper has his own section.
-    const rows = SETTINGS.filter(f=>f.group === group && (!f.role || canOpen(f.role) || state.account === 'ahmad') && (!f.rozha || isRozha())).map(row).join('');
+    const rows = SETTINGS.filter(f=>f.group === group && (!f.role || canOpen(f.role) || state.account === 'ahmad') && (!f.rozha || isRozha()) && !hidden(f)).map(row).join('');
     if(!rows && group !== 'look') return '';
     return `<div class="section-title">${esc(t('settingsGroup_' + group))}</div><div class="form-card">${group === 'look' ? renderAppearanceRow() : ''}${rows}</div>`;
   }).join('');
@@ -160,7 +165,7 @@ const HELP_PIC = {
   ask:'<rect x="30" y="6" width="72" height="64" rx="10" class="hp-card"/><rect x="38" y="15" width="36" height="5" rx="2.5" class="hp-strong"/><rect x="38" y="26" width="56" height="5" rx="2.5" class="hp-line"/><rect x="38" y="36" width="44" height="5" rx="2.5" class="hp-line"/><g class="hp-pulse"><rect x="46" y="50" width="40" height="13" rx="6.5" class="hp-acc"/><path d="M56 52.5c.4 2.4 1.7 3.7 4.1 4.1-2.4.4-3.7 1.7-4.1 4.1-.4-2.4-1.7-3.7-4.1-4.1 2.4-.4 3.7-1.7 4.1-4.1Z" class="hp-white"/><rect x="63" y="55" width="16" height="3" rx="1.5" class="hp-white"/></g>',
   ai:'<path d="M14 18h40a8 8 0 0 1 8 8v12a8 8 0 0 1-8 8H30l-8 7v-7h-8a8 8 0 0 1-8-8V26a8 8 0 0 1 8-8Z" class="hp-card"/><rect x="18" y="27" width="30" height="4" rx="2" class="hp-line"/><rect x="18" y="35" width="20" height="4" rx="2" class="hp-line"/><path d="M68 32h14m-5-5 5 5-5 5" class="hp-grid hp-arrow"/><rect x="92" y="18" width="28" height="28" rx="6" class="hp-acc hp-soft"/><rect x="98" y="24" width="16" height="16" rx="3" class="hp-acc"/><path d="M101 18v-4M106 18v-4M111 18v-4M101 46v4M106 46v4M111 46v4M92 27h-4M92 37h-4M120 27h4M120 37h4" class="hp-grid"/>',
 };
-const HELP_OF = {notif:'bell', swipe:'swipe', showLastQty:'last', compactRows:'compact', soundQty:'soundTap', soundSent:'soundSent', soundRico:'soundRico', soundError:'soundError',
+const HELP_OF = {notif:'bell', recipeAlerts:'bell', swipe:'swipe', showLastQty:'last', compactRows:'compact', soundQty:'soundTap', soundSent:'soundSent', soundRico:'soundRico', soundError:'soundError',
   soundMilestone:'soundFanfare', soundUndo:'soundUndo', darkMode:'dark', simpleView:'simple', tables:'table', kitchenMode:'big', milestones:'award', ricoAutoStart:'mac',
   tfAuto:'move', rrStop:'stop', ricoAutoOrder:'rico', ricoSheet:'ask', ai:'ai'};
 /* Which setting a row is about (from its switch), or null. */

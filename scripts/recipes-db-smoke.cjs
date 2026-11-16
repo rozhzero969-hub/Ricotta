@@ -13,6 +13,13 @@ await db.exec("insert into app_recipes(id,name,data,updated_by) values('00000000
 assert.equal((await q("update app_recipes set version=2 where id='00000000-0000-4000-8000-000000000002' and version=1 returning id")).length,1);assert.equal((await q("update app_recipes set version=2 where id='00000000-0000-4000-8000-000000000002' and version=1 returning id")).length,0);
 
 await db.exec("insert into app_recipe_ingredients(id,name,stock_item,unit) values('00000000-0000-4000-8000-000000000003','Eggs','Eggs','pcs'); update app_recipes set data='{\"lines\":[{\"ingredient\":\"00000000-0000-4000-8000-000000000003\",\"qty\":1,\"unit\":\"pcs\"}]}' where id='00000000-0000-4000-8000-000000000002';");
+// Ingredients have a category (2026-11-16), empty unless Ahmad picks one, at most 60 letters.
+assert.equal((await q("select category from app_recipe_ingredients where id='00000000-0000-4000-8000-000000000003'"))[0].category,'');
+await assert.rejects(()=>db.exec("update app_recipe_ingredients set category=repeat('x',61) where id='00000000-0000-4000-8000-000000000003';"));
+// The clean-up migration runs again without harm (it only deletes the recipe book's own rows).
+await db.exec(fs.readFileSync('supabase/migrations/20261116220000_recipes_simple.sql','utf8'));
+assert.equal((await q("select count(*)::int as n from app_recipes"))[0].n,0);assert.equal((await q("select count(*)::int as n from app_recipe_ingredients"))[0].n,0);
+await db.exec("insert into app_recipes(id,name,data,updated_by) values('00000000-0000-4000-8000-000000000002','Cake','{}','ahmad'); insert into app_recipe_ingredients(id,name,stock_item,unit,category) values('00000000-0000-4000-8000-000000000003','Eggs','Eggs','pcs','Dairy');");
 // An ingredient's unit is only where new lines start (recipe costs): changing it is allowed now.
 assert.equal((await q("update app_recipe_ingredients set unit='g' where id='00000000-0000-4000-8000-000000000003' returning id")).length,1);
 // Recipe alerts go once per change: the first take notes everything, the same value again says nothing.
@@ -24,4 +31,4 @@ assert.equal((await q("select has_table_privilege('anon','app_recipe_alert_state
 assert.equal((await q("select has_function_privilege('anon','app_internal_recipe_alert_take(jsonb)','execute') as allowed"))[0].allowed,false);
 for(let i=0;i<8;i++)await db.exec(`insert into app_recipe_photos(id,recipe_id,path) values(gen_random_uuid(),'00000000-0000-4000-8000-000000000002','photo-${i}');`);
 await assert.rejects(()=>db.exec("insert into app_recipe_photos(id,recipe_id,path) values(gen_random_uuid(),'00000000-0000-4000-8000-000000000002','photo-9');"));
-await db.close();console.log('Recipes DB PASS: disabled initial PIN, Admin PIN setup, roles, table privacy, RLS, stale version refusal, recipe alerts once per change');})().catch(e=>{console.error(e);process.exit(1);});
+await db.close();console.log('Recipes DB PASS: disabled initial PIN, Admin PIN setup, roles, table privacy, RLS, stale version refusal, recipe alerts once per change, ingredient categories, the clean-up migration');})().catch(e=>{console.error(e);process.exit(1);});

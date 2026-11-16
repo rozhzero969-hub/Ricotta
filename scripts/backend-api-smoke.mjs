@@ -1,4 +1,4 @@
-import { recipesRoute } from '../supabase/functions/api/recipes.ts';
+import { recipesRoute, ricoRecipes } from '../supabase/functions/api/recipes.ts';
 import {turnstileConfig,verifyTurnstile} from '../supabase/functions/_shared/turnstile.ts';
 // Node 24+: execute the API handler with an in-memory database and no network.
 import assert from 'node:assert/strict';
@@ -495,12 +495,34 @@ try {
   assert.equal((await call('recipe-ingredients/'+iid,{name:'Eggs',stock_item:'Missing',unit:'pcs',version:0},'PUT')).status,422);
   assert.equal((await call('recipe-ingredients/'+iid,{name:'Eggs',stock_item:'Eggs',unit:'pcs',version:0},'PUT')).status,200);
   tables.app_recipe_ingredients[0].version=1;
-  const recipe={name:'Cake',archived:false,version:0,data:{status:'ready',lines:[{ingredient:iid,qty:2,unit:'pcs'}],steps:['Mix'],notes:'',category:'Cakes',yield:4,yieldUnit:'slices',prep:10,cook:20}};
+  const recipe={name:'Cake',archived:false,version:0,data:{status:'ready',lines:[{ingredient:iid,qty:2,unit:'pcs'}],steps:['Mix'],notes:'',category:'Cakes',price:9000,yield:4,yieldUnit:'slices',prep:10,cook:20}};
   assert.equal((await call('recipes/'+rid,recipe,'PUT')).status,200);
   tables.app_recipes[0].version=1;
   assert.equal((await call('recipes/'+rid,{...recipe,version:1},'PUT')).status,200);
   assert.equal((await call('recipes/'+rid,{...recipe,version:1},'PUT')).status,409,'stale version cannot overwrite');
   assert.equal((await call('recipes/'+rid,{...recipe,version:2,data:{...recipe.data,lines:[{ingredient:iid,qty:-1,unit:'pcs'}]}},'PUT')).status,422);
+  // Rico reads the recipe book with the same cost rules and rounding as the app.
+  tables.app_rr_invoices=[{entry_date:'2026-11-10',read_at:'2026-11-10T10:00:00Z',invoice_number:'1',supplier_name:'Farm',currency:'IQD',lines:[{item:'Eggs',unit:'pcs',unit_cost:1060}]}];
+  const ricoList=await ricoRecipes(db,{});assert.deepEqual(ricoList.recipes.map(r=>[r.name,r.category,r.cost_to_make_iqd,r.menu_price_iqd,r.profit_iqd]),[['Cake','Cakes',2000,9000,7000]],'2 eggs at 1,060 = 2,120, shown as 2,000');
+  const ricoRead=await ricoRecipes(db,{action:'read',recipe:'cak'});assert.equal(ricoRead.name,'Cake');assert.equal(ricoRead.exact_cost_iqd,2120);assert.deepEqual(ricoRead.steps,['Mix']);
+  assert.equal(ricoRead.ingredients[0].line_cost_iqd,2120);assert.equal(ricoRead.ingredients[0].last_price.supplier,'Farm');assert.deepEqual(ricoRead.ingredients[0].last_price.price_per_unit,['1 piece = 1060 IQD']);
+  tables.app_rr_invoices=[];
+  const ricoMissing=await ricoRecipes(db,{action:'read',recipe:'Cake'});assert.equal(ricoMissing.cost_to_make_iqd,null);assert.equal(ricoMissing.profit_iqd,null);assert.match(ricoMissing.no_cost_because[0],/Eggs: no price yet/);
+  // Only what the simple form has is kept: old fields (servings, times, draft or ready) are dropped, never required.
+  const keptRecipe=tables.app_recipes.find(r=>r.id===rid).data;assert.deepEqual(Object.keys(keptRecipe).sort(),['category','currency','lines','notes','price','steps']);
+  assert.equal((await call('recipes/'+rid,{name:'Cake',version:2,data:{category:'',price:9000,lines:[{ingredient:iid,qty:null,unit:'pcs'}],steps:[''],notes:''}},'PUT')).status,200,'no Ready check: a line without its amount yet is fine');
+  assert.equal((await call('recipe-ingredients/'+iid,{name:'Eggs',stock_item:'Eggs',unit:'pcs',category:'Dairy',version:1},'PUT')).status,200,'an ingredient keeps its category');
+  assert.equal(tables.app_recipe_ingredients[0].category,'Dairy');
+  assert.equal((await call('recipe-ingredients/'+iid,{name:'Eggs',stock_item:'Eggs',unit:'pcs',category:'x'.repeat(61),version:2},'PUT')).status,400);
+  // Deleting a recipe takes its photos with it (the files in the bucket, then the rows).
+  const removed=[];db.storage={from:bucket=>({remove:async paths=>{removed.push(bucket+':'+paths.join(','));return {error:null};}})};
+  tables.app_recipe_photos=[{id:'00000000-0000-4000-8000-000000000020',recipe_id:rid,path:rid+'/p.jpg'}];
+  assert.equal((await call('recipe-ingredients/'+iid,{},'DELETE')).status,409,'an ingredient a recipe uses is not deleted');
+  assert.equal((await call('recipes/'+rid,{},'DELETE')).status,200);
+  assert.deepEqual(removed,['recipe-photos:'+rid+'/p.jpg']);assert.equal(tables.app_recipes.length,0);assert.equal(tables.app_recipe_photos.length,0);
+  assert.equal((await call('recipes/'+rid,{},'DELETE')).status,404,'deleted once');
+  assert.equal((await call('recipe-ingredients/'+iid,{},'DELETE')).status,200,'unused now, so it can go');
+  assert.equal((await call('settings',{key:'recipeAlerts',value:false},'PUT')).status,200,'Ahmad can turn recipe alerts off');
   reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';tables.app_sessions[0].app_accounts={roles:[]};assert.equal((await call('recipes',null,'GET')).status,403,'Yunis needs Recipes access');
 } finally { console.error = mute; }
 console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, Admin PIN change, live change signals, locked Transfers, retired endpoints, edits that change only the fields they name, usage batches, redacted problem reports, real signed-in devices, History and Record roles in the start-up data, 503 when the session check cannot run)');
