@@ -611,7 +611,8 @@ function recipeIngredientForm(id, onSaved){
     nameEl.addEventListener('input', suggest);
     sel.addEventListener('change', ()=>{ fillUnits(sel.value); suggest(); });
     unitEl?.addEventListener('change', ()=>{ if(!auto) unitTouched = true; });
-    if(old) fillUnits(old.stock_item);
+    // A stock item may already be chosen by the time this runs (a fast tap, or the item being edited).
+    if(sel.value) fillUnits(sel.value);
     suggest();
     if(!old) nameEl.focus({preventScroll:true});
   }, 0);

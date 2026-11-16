@@ -65,7 +65,7 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
   assert.equal(await page.locator('[data-rc-icat]').count(),0,'no category picker');
   await page.locator('#rcIngStock').selectOption('Milk');await page.locator('#rcIngPrice b').waitFor();
   assert.match(await page.locator('#rcIngPrice').innerText(),/2,000/,'1 L = 2,000 IQD');
-  assert.deepEqual(await page.locator('#rcIngUnit option:not([disabled])').evaluateAll(o=>o.map(x=>x.value)),['ml'],'only the units Milk comes in: '+JSON.stringify(await page.evaluate(()=>({fit:recipeUnitsFor('Milk'),stock:recipeBook.data.stock,units:recipeBook.data.units,f:recipeBook.data.units.map(u=>RicottaRecipeCost.factor(recipeBook.data.stock.find(x=>x.name==='Milk'),u.en))}))));
+  assert.deepEqual(await page.locator('#rcIngUnit option:not([disabled])').evaluateAll(o=>o.map(x=>x.value)),['ml'],'only the units Milk comes in');
   assert.equal(await page.locator('#rcIngUnit').inputValue(),'ml');
   await shot('ingredient-form');
   await page.locator('#modalFormOk').click();await page.waitForFunction(()=>!document.querySelector('.modal-overlay'));
