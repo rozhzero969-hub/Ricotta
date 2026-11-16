@@ -445,5 +445,17 @@ assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname ===
   const full = await _internals.loadWorld(db, { id: 'r', account: 'rozha', deviceId: null });
   assert.equal(full.can.history && full.can.record, true);
 }
+// Ahmad's Rico is the recipe book only: no ordering, catalog, stock or invoice tools, whatever the model asks.
+{
+  const ahmad = await _internals.loadWorld(db, { id: 'a', account: 'ahmad', deviceId: null, roles: ['assistant'] });
+  assert.equal(ahmad.catalog, false); assert.equal(ahmad.can.recipes, true);
+  for (const tool of ['find_items', 'list_suppliers', 'propose_order_draft', 'price_history', 'stock_levels', 'make_file', 'admin_overview'])
+    assert.equal((await _internals.runTool(db, ahmad, tool, {}, () => {}, false)).error, 'no_access', tool + ' is closed to Ahmad');
+  const yunis = await _internals.loadWorld(db, { id: 'y3', account: 'yunis', deviceId: null, roles: ['assistant'] });
+  assert.equal(yunis.can.recipes, false);
+  assert.equal((await _internals.runTool(db, yunis, 'recipes', {}, () => {}, false)).error, 'no_access', 'Yunis needs Recipes access');
+  assert.ok(_internals.TOOLS.some(t => t.name === 'recipes'));
+  assert.match(_internals.MANUAL, /Ahmad, the cook/);
+}
 
 console.log('Rico provider smoke: PASS (History and Record roles inside Rico; Rico sends test orders by WhatsApp to Rozh only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), mood tags dropped (any shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');

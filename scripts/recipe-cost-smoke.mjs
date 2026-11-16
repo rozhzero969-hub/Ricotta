@@ -63,30 +63,63 @@ const recipe = (lines, extra = {}) => ({ id: 'r', data: { yield: 1, lines, ...ex
 // The owner's example: milk 10 per 1000 ml, 500 ml used = 5; banana 4 per kg, 250 g = 1; recipe 6.
 const shake = C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 500, unit: 'ml' }, { ingredient: 'i-banana', qty: 250, unit: 'g' }], { price: 20, currency: 'IQD' }), ctx);
 assert.deepEqual(shake.lines.map((l) => [l.status, l.cost]), [['ok', 5], ['ok', 1]]);
-assert.equal(shake.total, 6);
+assert.equal(shake.total, 6, 'the exact total stays exact');
 assert.equal(shake.complete, true);
-assert.equal(shake.profit, 14);
-assert.equal(shake.margin, 70);
-assert.equal(shake.state, 'ok');
-assert.equal(shake.suggested, 250, '3 times 6 IQD, rounded up to 250');
+assert.equal(shake.cost, 250, 'a cost above 0 is never shown as 0: at least 250 IQD');
+assert.equal(shake.suggested, 250, '3 times 6 IQD, at least 250');
 // Litres and kilos give the same cost as millilitres and grams.
 assert.equal(C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 0.5, unit: 'l' }, { ingredient: 'i-banana', qty: 0.25, unit: 'kg' }]), ctx).total, 6);
 // Pieces from a carton: 3 eggs at 2 each.
 assert.equal(C.recipeCost(recipe([{ ingredient: 'i-eggs', qty: 3, unit: 'pc' }]), ctx).total, 6);
 
-// Per serving: a recipe for 4 is priced per serving.
-const cake = C.recipeCost(recipe([{ ingredient: 'i-eggs', qty: 8, unit: 'pc' }], { yield: 4, price: 10, currency: 'IQD' }), ctx);
-assert.equal(cake.total, 16);
-assert.equal(cake.perServing, 4);
-assert.equal(cake.margin, 60);
-assert.equal(cake.state, 'ok', '60% is not under 60%');
-assert.equal(C.recipeCost(recipe([{ ingredient: 'i-eggs', qty: 8, unit: 'pc' }], { yield: 4, price: 9, currency: 'IQD' }), ctx).state, 'low');
+// Rounding to the nearest 250 IQD (Rozh's choice): costs, profit and the suggested price.
+assert.equal(C.ROUND_TO, 250);
+assert.deepEqual([0, 100, 124, 125, 374, 375, 6120, 6125, 6380].map(C.roundMoney), [0, 0, 0, 250, 250, 500, 6000, 6250, 6500]);
+assert.deepEqual([0, 1, 124, 6120].map(C.roundCost), [0, 250, 250, 6000]);
+assert.equal(C.roundMoney(-380), -500, 'a loss rounds the same way');
+// Eggs at 2 each (a carton of 24 at 48): 3,060 eggs cost 6,120, shown as 6,000; menu price 9,000.
+const big = C.recipeCost(recipe([{ ingredient: 'i-eggs', qty: 3060, unit: 'pc' }], { price: 9000 }), ctx);
+assert.equal(big.total, 6120);
+assert.equal(big.cost, 6000);
+assert.equal(big.profit, 3000, 'profit from the rounded cost');
+assert.equal(big.margin, 33.3, 'margin from the rounded numbers: 3,000 of 9,000');
+assert.equal(big.suggested, 18250, '3 times 6,120 = 18,360, to the nearest 250');
+assert.equal(big.state, 'low');
+// One recipe is one dish: an old servings number is ignored (old saved data stays harmless).
+const old = C.recipeCost(recipe([{ ingredient: 'i-eggs', qty: 5000, unit: 'pc' }], { yield: 4, price: 25000, status: 'ready', prep: 10 }), ctx);
+assert.equal(old.cost, 10000);
+assert.equal(old.profit, 15000);
+assert.equal(old.margin, 60);
+assert.equal(old.state, 'ok', '60% is not under 60%');
+assert.equal(C.recipeCost(recipe([{ ingredient: 'i-eggs', qty: 5000, unit: 'pc' }], { price: 24000 }), ctx).state, 'low');
 
-// Losing money: the cost reaches the price, even before every price is known.
-const loss = C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 500, unit: 'ml' }, { ingredient: 'i-eggs', qty: null, unit: 'pc' }], { price: 5, currency: 'IQD' }), ctx);
+// Losing money: the rounded cost reaches the menu price.
+const loss = C.recipeCost(recipe([{ ingredient: 'i-eggs', qty: 4500, unit: 'pc' }], { price: 9000 }), ctx);
+assert.equal(loss.cost, 9000);
+assert.equal(loss.profit, 0);
 assert.equal(loss.losing, true);
 assert.equal(loss.state, 'loss');
-assert.equal(loss.profit, null, 'no profit while a line is missing');
+
+// A missing price: no cost, no profit, no margin, no suggested price, even when the rest is priced, and
+// the problem names the ingredient without a price.
+const half = C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 500, unit: 'ml' }, { ingredient: 'i-eggs', qty: null, unit: 'pc' }, { ingredient: 'i-vanilla', qty: 4, unit: 'g' }], { price: 5 }), ctx);
+assert.equal(half.complete, false);
+assert.equal(half.total, null);
+assert.equal(half.cost, null, 'no cost while an ingredient has no price');
+assert.equal(half.profit, null);
+assert.equal(half.margin, null);
+assert.equal(half.suggested, null);
+assert.equal(half.losing, false, 'never called losing money without a full cost');
+assert.equal(half.state, 'none');
+assert.deepEqual(half.problems, [{ name: 'Eggs', status: 'amount' }, { name: 'Vanilla', status: 'usd' }]);
+
+// Prices in plain sizes for the Items and ingredients tab.
+const per = (t, last) => C.unitPrices(C.priceOf(t, last)).map((u) => [u.unit, Number(u.amount.toFixed(4))]);
+assert.deepEqual(per(titems[1], { unit: 'کیلۆ', cost: 4000, currency: 'IQD' }), [['kg', 4000], ['g', 4]], '1 kg = 4,000 IQD, per gram 4 IQD');
+assert.deepEqual(per(titems[0], { unit: 'لیتر', cost: 2000, currency: 'IQD' }), [['l', 2000], ['ml', 2]]);
+assert.deepEqual(per(titems[2], { unit: 'کارتۆن', cost: 6000, currency: 'IQD' }), [['piece', 250]], 'a carton of 24 at 6,000 is 250 a piece');
+assert.deepEqual(C.unitPrices(null), []);
+assert.deepEqual(C.unitPrices({ perBase: 5, base: 'سندوق' }), [{ unit: 'other', name: 'سندوق', amount: 5 }]);
 
 // Missing: never 0. Each kind of missing is named.
 const missing = C.recipeCost(recipe([
@@ -104,6 +137,7 @@ assert.equal(missing.complete, false);
 assert.equal(missing.total, null);
 assert.equal(missing.state, 'none');
 assert.equal(missing.suggested, null);
+assert.equal(missing.cost, null);
 // A stock item never bought in the kept invoices: missing price.
 const neverBought = C.context({ ingredients, titems, units, invoices: [] });
 assert.equal(C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 5, unit: 'ml' }]), neverBought).lines[0].status, 'price');
@@ -113,7 +147,8 @@ assert.equal(C.recipeCost(recipe([{ ingredient: 'i-gone', qty: 5, unit: 'ml' }])
 // Recipes are in IQD only: a USD price is never used. Vanilla was bought only in USD, so it has no cost.
 const withUsd = C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 500, unit: 'ml' }, { ingredient: 'i-vanilla', qty: 4, unit: 'g' }], { price: 20 }), ctx);
 assert.equal(withUsd.lines[1].status, 'usd');
-assert.equal(withUsd.total, 5, 'only the IQD line counts');
+assert.equal(withUsd.total, null, 'no total while a line has no IQD price');
+assert.equal(withUsd.cost, null);
 assert.equal(withUsd.missing, 1);
 assert.equal(withUsd.profit, null);
 assert.equal(withUsd.currency, 'IQD');
@@ -128,4 +163,4 @@ assert.equal(C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 1, unit: 'لیت�
 assert.equal(C.stockState(titems[1], new Set()), 'empty');
 assert.equal(C.stockState(titems[0], new Set(['Milk - شیر'])), 'low');
 assert.equal(C.stockState(titems[2], new Set()), 'ok');
-console.log('Recipe cost PASS: g/kg and ml/L, cartons to pieces, last price wins, IQD only, per serving, profit, margin, suggested price, every kind of missing line');
+console.log('Recipe cost PASS: g/kg and ml/L, cartons to pieces, last price wins, IQD only, rounding to the nearest 250 IQD, profit and margin from the rounded numbers, no cost while a price is missing, prices in plain sizes, every kind of missing line');

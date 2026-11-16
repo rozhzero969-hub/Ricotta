@@ -18,7 +18,8 @@ type Words = Record<Lang, string>;
 const MISSING_AFTER_MS = 6 * 3600_000;
 const MAX_LINES = 4;
 const iso = (s: string) => `⁨${s}⁩`;
-const money = (n: number, _cur?: string) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 }) + " IQD";
+// Costs are said rounded to the nearest 250 IQD, the same as the app shows them.
+const money = (n: number, _cur?: string) => Number(RC().roundMoney(n) || 0).toLocaleString("en-US", { maximumFractionDigits: 0 }) + " IQD";
 const RANK: Record<string, number> = { none: 0, ok: 0, low: 1, loss: 2, empty: 2 };
 const names = (list: string[], lang: Lang) => list.slice(0, 3).map(iso).join(lang === "en" ? ", " : "، ") + (list.length > 3 ? (lang === "en" ? ` and ${list.length - 3} more` : lang === "ku" ? ` و ${list.length - 3} ی تر` : ` و${list.length - 3} أخرى`) : "");
 
@@ -57,15 +58,16 @@ export function alertEvents(changes: { alert_key: string; was: string | null; is
       if (cw !== cn || !(Number(vn) > Number(vw) * (1 + 1e-6))) continue;
       const oldCtx = { ...book.ctx, price: (n: string) => n === id ? { ...book.ctx.price(n), perBase: Number(vw) } : book.ctx.price(n) };
       const recipes = recipesUsing(id).map((r: any) => ({ name: r.name, was: RC().recipeCost(r, oldCtx), now: RC().recipeCost(r, book.ctx) }))
-        .filter((x: any) => x.now.perServing && x.was.perServing && x.now.perServing > x.was.perServing)
-        .map((x: any) => ({ name: x.name, was: x.was.perServing, now: x.now.perServing, currency: x.now.currency }));
+        // Compared exactly, said in the rounded costs the app shows (to the nearest 250 IQD).
+        .filter((x: any) => x.now.total && x.was.total && x.now.total > x.was.total && x.now.cost > x.was.cost)
+        .map((x: any) => ({ name: x.name, was: x.was.cost, now: x.now.cost, currency: x.now.currency }));
       const ing = book.ingredients.find((i: any) => i.stock_item === id);
       if (recipes.length) events.push({ kind: "price", name: ing?.name || id, recipes });
     } else if (kind === "margin" && RANK[ch.is_now] > RANK[ch.was ?? "none"]) {
       const r = live.find((x: any) => x.id === id);
       if (!r) continue;
       const cost = RC().recipeCost(r, book.ctx);
-      events.push({ kind: ch.is_now === "loss" ? "loss" : "low", name: r.name, cost: cost.perServing, price: cost.price, margin: cost.margin, currency: cost.currency, min: RC().MARGIN_MIN });
+      events.push({ kind: ch.is_now === "loss" ? "loss" : "low", name: r.name, cost: cost.cost, price: cost.price, margin: cost.margin, currency: cost.currency, min: RC().MARGIN_MIN });
     } else if (kind === "stock" && RANK[ch.is_now] > RANK[ch.was ?? "ok"]) {
       const ing = book.ingredients.find((i: any) => i.stock_item === id);
       events.push({ kind: ch.is_now === "empty" ? "empty" : "stockLow", name: ing?.name || id, recipes: recipesUsing(id).map((r: any) => r.name) });
@@ -76,7 +78,9 @@ export function alertEvents(changes: { alert_key: string; was: string | null; is
       events.push({ kind: "gone", name: i.name, stock: i.stock_item, maybe: better?.name || null });
     } else if (kind === "missing" && ch.is_now === "missing") {
       const r = live.find((x: any) => x.id === id);
-      if (r) events.push({ kind: "missing", name: r.name, count: RC().recipeCost(r, book.ctx).missing });
+      if (!r) continue;
+      const cost = RC().recipeCost(r, book.ctx);
+      events.push({ kind: "missing", name: r.name, count: cost.missing, names: cost.problems.filter((p: any) => p.status !== "amount" && p.name).map((p: any) => p.name) });
     }
   }
   return events;
@@ -87,7 +91,7 @@ function line(e: any, lang: Lang): string {
   const n = iso(e.name);
   if (e.kind === "price") {
     const list = e.recipes.slice(0, 3).map((r: any) => lang === "en" ? `${iso(r.name)} ${money(r.was, r.currency)} to ${money(r.now, r.currency)}` : lang === "ku" ? `${iso(r.name)} لە ${money(r.was, r.currency)} بۆ ${money(r.now, r.currency)}` : `${iso(r.name)} من ${money(r.was, r.currency)} إلى ${money(r.now, r.currency)}`).join(lang === "en" ? "; " : "؛ ");
-    return lang === "en" ? `${n} went up. Cost per serving: ${list}.` : lang === "ku" ? `نرخی ${n} بەرز بووەوە. تێچووی هەر بەشێک: ${list}.` : `ارتفع سعر ${n}. تكلفة الحصة: ${list}.`;
+    return lang === "en" ? `${n} went up. Cost to make: ${list}.` : lang === "ku" ? `نرخی ${n} بەرز بووەوە. تێچووی دروستکردن: ${list}.` : `ارتفع سعر ${n}. تكلفة التحضير: ${list}.`;
   }
   if (e.kind === "loss") return lang === "en" ? `${n} is losing money: it costs ${money(e.cost, e.currency)} and sells for ${money(e.price, e.currency)}.`
     : lang === "ku" ? `${n} زیان دەکات: تێچووی ${money(e.cost, e.currency)}، نرخی فرۆشتنی ${money(e.price, e.currency)}.` : `${n} يخسر: تكلفته ${money(e.cost, e.currency)} وسعر بيعه ${money(e.price, e.currency)}.`;
@@ -97,7 +101,11 @@ function line(e: any, lang: Lang): string {
     const maybe = e.maybe ? (lang === "en" ? ` It may now be called ${iso(e.maybe)}.` : lang === "ku" ? ` لەوانەیە ئێستا ناوی ${iso(e.maybe)} بێت.` : ` ربما أصبح اسمه ${iso(e.maybe)}.`) : "";
     return (lang === "en" ? `${iso(e.stock)} is no longer in Ricotta Restaurant. Link ${n} again.` : lang === "ku" ? `${iso(e.stock)} لە ریکۆتا ڕێستۆرانت نەماوە. ${n} دووبارە ببەستەوە.` : `لم يعد ${iso(e.stock)} موجودًا في ريكوتا ريستورانت. اربط ${n} من جديد.`) + maybe;
   }
-  if (e.kind === "missing") return lang === "en" ? `${n}: ${e.count} ${e.count === 1 ? "ingredient has" : "ingredients have"} no cost yet.` : lang === "ku" ? `${n}: ${e.count} پێکهاتە هێشتا تێچوویان نییە.` : `${n}: ${e.count} من المكونات بلا تكلفة بعد.`;
+  if (e.kind === "missing") {
+    const who = e.names?.length ? e.names.slice(0, 3).map(iso).join(lang === "en" ? ", " : "، ") : "";
+    if (who) return lang === "en" ? `${n} has no cost yet: no price for ${who}.` : lang === "ku" ? `${n} هێشتا تێچووی نییە: ${who} نرخی نییە.` : `${n} بلا تكلفة بعد: لا يوجد سعر لـ ${who}.`;
+    return lang === "en" ? `${n}: ${e.count} ${e.count === 1 ? "ingredient has" : "ingredients have"} no cost yet.` : lang === "ku" ? `${n}: ${e.count} پێکهاتە هێشتا تێچوویان نییە.` : `${n}: ${e.count} من المكونات بلا تكلفة بعد.`;
+  }
   return "";
 }
 function stockLine(e: any, lang: Lang) {
@@ -136,8 +144,11 @@ export async function checkRecipeAlerts(db: any): Promise<number> {
     if (!w) return 0;
     const { error: inboxError } = await db.from("app_rico_inbox").insert(RECIPE_ALERT_ACCOUNTS.map((account) => ({ account, kind: "recipe", mood: "calm", body_en: w.en, body_ku: w.ku, body_ar: w.ar })));
     if (inboxError) console.error("recipe_alert_inbox_failed");
+    // Ahmad can turn the notification off in Settings (recipeAlerts): the note still waits in Recipes.
+    const people = await db.from("app_accounts").select("id,settings").in("id", RECIPE_ALERT_ACCOUNTS);
+    const wantsPush = !!people.error || (people.data ?? []).some((p: any) => p?.settings?.recipeAlerts !== false);
     const url = env("SUPABASE_URL"), anon = env("SUPABASE_ANON_KEY"), secret = env("CRON_SECRET");
-    if (url && secret) {
+    if (url && secret && wantsPush) {
       await fetch(`${url}/functions/v1/send-push`, {
         method: "POST", signal: AbortSignal.timeout(15_000),
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, apikey: anon, "x-cron-secret": secret },

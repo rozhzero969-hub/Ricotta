@@ -14,7 +14,7 @@
   const MAIN = 'Main Storage';
   /* Under this margin (profit as a share of the menu price) a recipe is "low margin". */
   const MARGIN_MIN = 60;
-  /* The suggested price is this many times the cost of one serving (a suggestion only). */
+  /* The suggested price is this many times the cost of making it (a suggestion only). */
   const SUGGEST_TIMES = 3;
   const CURRENCIES = ['IQD'];
 
@@ -79,8 +79,31 @@
   }
 
   const round = (n) => Math.round(n * 100) / 100;
-  /* A price worth putting on a menu, rounded up to 250 IQD. */
-  const nice = (n) => Math.ceil(n / 250) * 250;
+  /* Costs, profit and the suggested price are shown to the nearest 250 IQD (Rozh's choice, 2026-11-16).
+     A cost above 0 is never shown as 0: it is at least 250. The breakdown keeps the exact prices. */
+  const ROUND_TO = 250;
+  const roundMoney = (n) => {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return null;
+    const r = Math.round(Math.abs(v) / ROUND_TO) * ROUND_TO;
+    return v < 0 ? -r : r;
+  };
+  const roundCost = (n) => {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return null;
+    return v > 0 ? Math.max(ROUND_TO, roundMoney(v)) : 0;
+  };
+
+  /* A price per base unit in plain sizes: grams also per kilo, millilitres also per litre, pieces per
+     piece, any other base unit per one of it. [{size, unit, amount}]: size 1000 g is shown as 1 kg. */
+  function unitPrices(p) {
+    if (!p || !(p.perBase > 0)) return [];
+    const m = measure(p.base);
+    if (m && m.kind === 'g') return [{ unit: 'kg', amount: p.perBase * 1000 / m.f }, { unit: 'g', amount: p.perBase / m.f }];
+    if (m && m.kind === 'ml') return [{ unit: 'l', amount: p.perBase * 1000 / m.f }, { unit: 'ml', amount: p.perBase / m.f }];
+    if (m && m.kind === 'piece') return [{ unit: 'piece', amount: p.perBase }];
+    return [{ unit: 'other', name: p.base || '', amount: p.perBase }];
+  }
 
   /* One line's cost. ctx: {ingredient(id), titem(name), price(name) -> priceOf result, unit(id) -> unit
      name, catalog: true when Ricotta Restaurant's list is known}. status: ok, amount (no amount), link
@@ -105,30 +128,30 @@
     return { ...out, status: 'ok', base: titem.base, baseQty, cost: round(baseQty * p.perBase), currency: 'IQD', perBase: p.perBase, day: p.day };
   }
 
-  /* A recipe's cost in IQD: the total of the lines that have a cost; missing: how many lines have
-     none. The menu price (data.price) is for one serving (data.yield servings per recipe). Profit
-     and margin only when every line has a cost. Losing money as soon as the costs known already
-     reach the price. state: loss, low (margin under
-     MARGIN_MIN), ok, or none (no price, or nothing to compare). */
+  /* A recipe's cost in IQD. One recipe is one dish: its menu price (data.price) is compared with the cost
+     of making it. total: the exact cost, only when every line has a cost (an ingredient with no price
+     yet means the recipe has no cost at all, never a cost that is too low). cost, profit and suggested
+     are rounded to the nearest 250 IQD, and the margin comes from those rounded numbers. problems: the
+     lines without a cost, {name, status}, so the app can say which one. state: loss (the cost reaches
+     the menu price), low (margin under MARGIN_MIN), ok, or none (no price, or no cost yet). */
   function recipeCost(recipe, ctx, marginMin = MARGIN_MIN) {
     const d = (recipe && recipe.data) || {};
     const lines = (Array.isArray(d.lines) ? d.lines : []).map((l) => lineCost(l, ctx));
-    let total = 0;
-    for (const l of lines) if (l.status === 'ok') total += l.cost;
-    total = round(total);
-    const missing = lines.filter((l) => l.status !== 'ok').length;
+    let sum = 0;
+    for (const l of lines) if (l.status === 'ok') sum += l.cost;
+    const problems = lines.filter((l) => l.status !== 'ok').map((l) => ({ name: l.name, status: l.status }));
+    const missing = problems.length;
     const complete = lines.length > 0 && missing === 0;
-    const servings = Number(d.yield) > 0 ? Number(d.yield) : 1;
     const price = Number(d.price) > 0 ? Number(d.price) : null;
-    const perServing = round(total / servings);
-    const priced = price !== null;
-    const losing = priced && total > 0 && perServing >= price;
-    const profit = priced && complete ? round(price - perServing) : null;
+    const total = complete ? round(sum) : null;
+    const cost = complete ? roundCost(total) : null;
+    const profit = complete && price !== null ? roundMoney(price - cost) : null;
     const margin = profit !== null ? Math.round((profit / price) * 1000) / 10 : null;
+    const losing = profit !== null && profit <= 0;
     const low = !losing && margin !== null && margin < marginMin;
-    const suggested = complete && perServing > 0 ? nice(perServing * SUGGEST_TIMES) : null;
-    return { lines, missing, complete, servings, currency: 'IQD', total: complete || total ? total : null, perServing: total ? perServing : null,
-      price, profit, margin, losing, low, suggested, state: losing ? 'loss' : low ? 'low' : priced && complete ? 'ok' : 'none' };
+    const suggested = complete && total > 0 ? roundCost(total * SUGGEST_TIMES) : null;
+    return { lines, missing, problems, complete, currency: 'IQD', total, cost, price, profit, margin, losing, low, suggested,
+      state: losing ? 'loss' : low ? 'low' : profit !== null ? 'ok' : 'none' };
   }
 
   /* The context recipeCost() needs, from the lists the API keeps: ingredients, Ricotta Restaurant's
@@ -156,5 +179,5 @@
     return lowNames && lowNames.has(titem.name) ? 'low' : 'ok';
   }
 
-  globalThis.RicottaRecipeCost = Object.freeze({ MARGIN_MIN, SUGGEST_TIMES, CURRENCIES, MAIN, measure, factor, lastPrices, priceOf, lineCost, recipeCost, context, stockState, nice });
+  globalThis.RicottaRecipeCost = Object.freeze({ MARGIN_MIN, SUGGEST_TIMES, ROUND_TO, CURRENCIES, MAIN, measure, factor, lastPrices, priceOf, lineCost, recipeCost, context, stockState, roundMoney, roundCost, unitPrices });
 })();
