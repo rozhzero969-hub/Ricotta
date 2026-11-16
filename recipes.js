@@ -36,7 +36,17 @@ function recipeCtx(){
   const d = recipeBook.data;
   return recipeBook.ctx ||= RC().context({ingredients:d.ingredients, titems:d.stock, units:d.units, prices:d.prices, catalog:d.stock.length > 0});
 }
-const recipeCostOf = r=>RC().recipeCost(r, recipeCtx(), recipeBook.data.marginMin ?? RC().MARGIN_MIN);
+/* A saved recipe's cost is worked out once per load (the list, its filters and search reuse it); the
+   recipe being written changes as it is typed, so it is always worked out again. */
+let recipeCostCache = {ctx:null, map:new WeakMap()};
+function recipeCostOf(r){
+  const ctx = recipeCtx();
+  if(recipeCostCache.ctx !== ctx) recipeCostCache = {ctx, map:new WeakMap()};
+  if(r === recipeBook.editing) return RC().recipeCost(r, ctx, recipeBook.data.marginMin ?? RC().MARGIN_MIN);
+  let c = recipeCostCache.map.get(r);
+  if(!c){ c = RC().recipeCost(r, ctx, recipeBook.data.marginMin ?? RC().MARGIN_MIN); recipeCostCache.map.set(r, c); }
+  return c;
+}
 const recipeIngredient = id=>recipeBook.data?.ingredients.find(x=>x.id === id);
 const recipeCurrent = ()=>recipeBook.data?.recipes.find(x=>x.id === recipeBook.id);
 function recipeStock(name){
@@ -480,11 +490,14 @@ function recipeOpen(id){
   document.getElementById('mainContent')?.scrollTo?.({top:0});
   window.scrollTo({top:0});
 }
+/* A tile whose photo link ran out (after 15 minutes) shows its letter instead. */
+function recipeBindThumbs(root){
+  root.querySelectorAll('img.rc-thumb, img.rc-hero').forEach(img=>{ img.onerror = ()=>{ const s = document.createElement('span'); s.className = img.className + ' rc-letter'; s.setAttribute('aria-hidden', 'true'); s.textContent = img.dataset.letter || '?'; img.replaceWith(s); }; });
+}
 function attachRecipeEvents(){
   const on = (id, fn)=>{ const el = document.getElementById(id); if(el) el.onclick = fn; };
   const all = (sel, fn)=>document.querySelectorAll(sel).forEach(fn);
-  // A tile whose photo link ran out (after 15 minutes) shows its letter instead.
-  all('img.rc-thumb, img.rc-hero', img=>{ img.onerror = ()=>{ const s = document.createElement('span'); s.className = img.className + ' rc-letter'; s.setAttribute('aria-hidden', 'true'); s.textContent = img.dataset.letter || '?'; img.replaceWith(s); }; });
+  recipeBindThumbs(document);
   on('rcRetry', ()=>{ recipeBook.error = false; recipeLoad(); render(); });
   on('rcNew', recipeNew);
   on('rcIngredients', ()=>{ recipeBook.page = 'ingredients'; render(); });
@@ -501,7 +514,7 @@ function attachRecipeEvents(){
   if(search) search.oninput = ()=>{
     recipeBook.query = search.value;
     const list = document.getElementById('rcList');
-    if(list){ list.innerHTML = recipeListHtml(); list.querySelectorAll('[data-rc-open]').forEach(b=>b.onclick = ()=>recipeOpen(b.dataset.rcOpen)); }
+    if(list){ list.innerHTML = recipeListHtml(); list.querySelectorAll('[data-rc-open]').forEach(b=>b.onclick = ()=>recipeOpen(b.dataset.rcOpen)); recipeBindThumbs(list); }
   };
   const ingSearch = document.getElementById('rcIngSearch');
   if(ingSearch) ingSearch.oninput = ()=>{ recipeBook.ingQuery = ingSearch.value; render(); const el = document.getElementById('rcIngSearch'); if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); } };
