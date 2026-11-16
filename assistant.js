@@ -70,7 +70,7 @@ function ricoReset(){
   rico.epoch++; rico.chatRequest++;
   ricoStop(); clearTimeout(ricoSaveTimer);
   rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.chatsBusy = false; rico.viewing = null; rico.viewedId = null;
-  rico.chatTitle = null; rico.titleManual = false; rico.titleLoaded = false; rico.sideSearch = false; rico.sideQuery = '';
+  rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; rico.titleLoaded = false; rico.sideSearch = false; rico.sideQuery = '';
 }
 
 /* ---------- Rico's inbox ---------- */
@@ -198,22 +198,27 @@ function syncRicoTopbar(){
   bar.querySelector('[data-rt-new]').onclick = ()=>ricoNewChat();
 }
 /* Rico's side menu on a phone, like ChatGPT's (2026-11-15): the two-line button slides the whole screen
-   aside and shows the menu under it. His name and Search on top, Rico settings, What Rico remembers and
-   Chat history, then the latest chats as plain lines, and at the foot New chat and your account. A tap on
-   the screen beside it, a swipe back or Escape closes it. */
-const ICON_RD_REMEMBER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4.5h10.5a1.5 1.5 0 0 1 1.5 1.5v14l-3.5-2.4L11 20l-3.5-2.4L4 20V6.5a2 2 0 0 1 2-2Z"/><path d="M8 9h6M8 12.5h4"/></svg>`;
-const ICON_RD_HISTORY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.6 12.4A7.4 7.4 0 1 0 6.8 6.8"/><path d="M4.4 4.6v3.6H8"/><path d="M12 8.2v4l2.6 1.6"/></svg>`;
+   aside and shows the menu under it. His name and Search on top, Rico settings and Scheduled, then the
+   chats as plain lines (pinned ones first), and at the foot your account and New chat. A tap on the screen
+   beside it, a swipe back or Escape closes it. */
+const ICON_RD_SCHEDULED = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12.5" r="7.5"/><path d="M12 8.5v4.2l2.8 1.7"/><path d="M8.5 2.8h7"/></svg>`;
+/* Chats in the order the lists show them: pinned ones first (each group newest first). */
+function ricoChatGroups(list){ return {pinned:list.filter(c=>c.pinned), rest:list.filter(c=>!c.pinned)}; }
 const ICON_RD_NEW = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V12"/><path d="M17.6 3.9a1.9 1.9 0 0 1 2.7 2.7L12.6 14.3l-3.4.7.7-3.4Z"/></svg>`;
 const RD_RECENT = 12;
 function ricoDrawerRows(){
   if(!rico.chats) return loadingLines(5);
   const q = (rico.drawerQuery || '').trim().toLocaleLowerCase();
-  const list = rico.chats.filter(c=>!q || String(c.title || '').toLocaleLowerCase().includes(q)).slice(0, q ? 60 : RD_RECENT);
+  const all = rico.chats.filter(c=>!q || String(c.title || '').toLocaleLowerCase().includes(q));
+  const list = [...all.filter(c=>c.pinned), ...all.filter(c=>!c.pinned)].slice(0, q ? 60 : RD_RECENT + all.filter(c=>c.pinned).length);
   if(!list.length) return `<p class="rd-empty">${esc(q ? t('rrNoMatch') : t('ricoNoChatsYet'))}</p>`;
-  return list.map(c=>{
+  const row = c=>{
     const on = c.id === rico.chatId || c.id === rico.viewedId, other = c.account && c.account !== state.account;
     return `<button type="button" class="rd-chat${on ? ' on' : ''}" data-side-open="${esc(c.id)}"${on ? ' aria-current="true"' : ''}><span dir="auto">${esc(c.title || t('ricoUntitled'))}</span>${other ? `<small>${esc(accountLabel(c.account))}</small>` : ''}</button>`;
-  }).join('') + (!q && rico.chats.length > RD_RECENT ? `<button type="button" class="rd-all" data-rd-all>${esc(t('inboxSeeAll')(rico.chats.length))}</button>` : '');
+  };
+  const g = ricoChatGroups(list);
+  return (g.pinned.length ? `<div class="rd-label">${esc(t('ricoPinned'))}</div>${g.pinned.map(row).join('')}${g.rest.length ? `<div class="rd-label">${esc(t('ricoChats'))}</div>` : ''}` : '')
+    + g.rest.map(row).join('') + (!q && rico.chats.length > RD_RECENT ? `<button type="button" class="rd-all" data-rd-all>${esc(t('inboxSeeAll')(rico.chats.length))}</button>` : '');
 }
 /* The dimmed screen beside the open menu: a tap on it closes the menu. Put back if a redraw dropped it. */
 function ricoDrawerShade(app){
@@ -240,11 +245,10 @@ function ricoOpenDrawer(){
       <label class="rd-search" hidden>${ICON_RS_SEARCH}<input type="search" data-rd-search placeholder="${esc(t('ricoSearchChats'))}" aria-label="${esc(t('ricoSearchChats'))}" autocomplete="off"></label>
       <div class="rd-menu">
         <button type="button" class="rd-item" data-rd-settings>${ICON_RS_GEAR}<span>${esc(t('ricoSettings'))}</span></button>
-        <button type="button" class="rd-item" data-rd-memory>${ICON_RD_REMEMBER}<span>${esc(t('memoryTitle'))}</span></button>
-        <button type="button" class="rd-item" data-rd-history>${ICON_RD_HISTORY}<span>${esc(t('ricoHistory'))}</span></button>
+        <button type="button" class="rd-item" data-rd-scheduled>${ICON_RD_SCHEDULED}<span>${esc(t('schedTitle'))}</span></button>
       </div>
       <div class="rd-list" id="rdList">${ricoDrawerRows()}</div>
-      <div class="rd-foot"><button type="button" class="rd-new" data-rd-new>${ICON_RD_NEW}<span>${esc(t('ricoNewChat'))}</span></button><button type="button" class="rd-me" data-rd-me aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button></div>
+      <div class="rd-foot"><button type="button" class="rd-me" data-rd-me aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}">${esc(accountInitial())}</button><button type="button" class="rd-new" data-rd-new>${ICON_RD_NEW}<span>${esc(t('ricoNewChat'))}</span></button></div>
     </nav>`;
   document.body.appendChild(wrap);
   const shade = ricoDrawerShade(app);
@@ -270,8 +274,7 @@ function ricoOpenDrawer(){
   document.addEventListener('keydown', onKey, true);
   rico.drawerClose = close;
   wrap.querySelector('[data-rd-settings]').onclick = ()=>{ close(); openRicoSettings(); };
-  wrap.querySelector('[data-rd-memory]').onclick = ()=>{ close(); openRicoMemory(); };
-  wrap.querySelector('[data-rd-history]').onclick = ()=>{ close(); ricoOpenHistory(); };
+  wrap.querySelector('[data-rd-scheduled]').onclick = ()=>{ close(); openRicoScheduled(); };
   wrap.querySelector('[data-rd-new]').onclick = ()=>{ close(); ricoNewChat(); };
   wrap.querySelector('[data-rd-me]').onclick = ()=>{ close(); openAccountSheet(); };
   const box = wrap.querySelector('.rd-search'), input = wrap.querySelector('[data-rd-search]');
@@ -333,10 +336,13 @@ function ricoSideRows(){
   // Search looks through every chat, then the first 60 matches are shown.
   const list = rico.chats.filter(c=>!q || String(c.title || '').toLocaleLowerCase().includes(q)).slice(0, 60);
   if(!list.length) return `<p class="rico-side-empty">${esc(q ? t('rrNoMatch') : t('ricoNoChatsYet'))}</p>`;
-  return list.map(c=>{
+  const row = c=>{
     const on = c.id === rico.chatId || c.id === rico.viewedId, other = c.account && c.account !== state.account;
     return `<button type="button" class="rico-side-chat${on ? ' on' : ''}" data-side-open="${esc(c.id)}"${on ? ' aria-current="true"' : ''}><span dir="auto">${esc(c.title || t('ricoUntitled'))}</span>${other ? `<small>${esc(accountLabel(c.account))}</small>` : ''}</button>`;
-  }).join('');
+  };
+  const g = ricoChatGroups(list);
+  return (g.pinned.length ? `<div class="rico-side-label">${esc(t('ricoPinned'))}</div>${g.pinned.map(row).join('')}` : '')
+    + (g.rest.length ? `<div class="rico-side-label">${esc(t('ricoChats'))}</div>${g.rest.map(row).join('')}` : '');
 }
 function renderRicoSide(){
   return `<aside class="rico-side" id="ricoSide" aria-label="${esc(t('ricoChats'))}">
@@ -346,10 +352,13 @@ function renderRicoSide(){
         <button type="button" class="rico-side-item" data-side-new>${ICON_RS_NEW}<span>${esc(t('ricoNewChat'))}</span></button>
         ${rico.sideSearch ? `<label class="rico-side-search">${ICON_RS_SEARCH}<input type="search" data-side-search value="${esc(rico.sideQuery || '')}" placeholder="${esc(t('ricoSearchChats'))}" aria-label="${esc(t('ricoSearchChats'))}" autocomplete="off"></label>`
           : `<button type="button" class="rico-side-item" data-side-find>${ICON_RS_SEARCH}<span>${esc(t('spotTitle'))}</span></button>`}
+        <button type="button" class="rico-side-item" data-side-scheduled>${ICON_RD_SCHEDULED}<span>${esc(t('schedTitle'))}</span></button>
       </div>
-      <div class="rico-side-label">${esc(t('ricoChats'))}</div>
       <div class="rico-side-list" id="ricoSideList">${ricoSideRows()}</div>
-      <div class="rico-side-foot"><button type="button" class="rico-gear" data-rico-settings-open aria-label="${esc(t('ricoSettings'))}" title="${esc(t('ricoSettings'))}">${ICON_RS_GEAR}</button></div>
+      <div class="rico-side-foot">
+        <button type="button" class="rico-side-me" data-side-me aria-label="${esc(t('accountMenu')(accountLabel(state.account)))}"><span class="rico-side-avatar" aria-hidden="true">${esc(accountInitial())}</span><span class="rico-side-name" dir="auto">${esc(accountLabel(state.account))}</span></button>
+        <button type="button" class="rico-gear" data-rico-settings-open aria-label="${esc(t('ricoSettings'))}" title="${esc(t('ricoSettings'))}">${ICON_RS_GEAR}</button>
+      </div>
     </aside>`;
 }
 /* Puts Rico's sidebar in the shell while Rico is open (and takes it away after), keeping its scroll. */
@@ -368,6 +377,8 @@ function attachRicoSideEvents(side){
   side.querySelector('[data-side-new]').onclick = ()=>ricoNewChat();
   side.querySelector('[data-rico-leave]').onclick = ricoLeave;
   side.querySelector('[data-rico-settings-open]').onclick = openRicoSettings;
+  side.querySelector('[data-side-scheduled]').onclick = openRicoScheduled;
+  side.querySelector('[data-side-me]').onclick = ()=>openAccountSheet();
   const find = side.querySelector('[data-side-find]');
   if(find) find.onclick = ()=>{ rico.sideSearch = true; syncRicoSide(); document.querySelector('#ricoSide [data-side-search]')?.focus(); };
   const input = side.querySelector('[data-side-search]');
@@ -406,12 +417,13 @@ function openRicoChatMenu(id, row, e){
   if(!mine) return;   // someone else's chat: nothing to rename or delete (the server refuses it too)
   // The keyboard's Menu key gives no pointer position: the menu then opens at the row.
   const at = e && (e.clientX || e.clientY) ? e : null;
-  const rect = row.getBoundingClientRect(), W = 220, H = 2 * 44;
+  const rect = row.getBoundingClientRect(), W = 220, H = 3 * 44;
   const left = at ? Math.min(at.clientX, innerWidth - W - 12) : Math.min(Math.max(12, rect.left), innerWidth - W - 12);
   const top = at ? Math.min(at.clientY, innerHeight - H - 12) : (rect.bottom + 8 + H < innerHeight ? rect.bottom + 8 : Math.max(12, rect.top - 8 - H));
   const layer = document.createElement('div');
   layer.id = 'ctxLayer'; layer.className = 'ctx-layer rico-chat-ctx';
   layer.innerHTML = `<div class="ctx-scrim"></div><div class="ctx-menu small" role="menu" style="top:${top}px;left:${left}px;width:${W}px">
+      <button type="button" role="menuitem" data-ctx="pin"><span>${esc(c.pinned ? t('ricoUnpin') : t('ricoPin'))}</span>${ICON_PIN}</button>
       <button type="button" role="menuitem" data-ctx="rename"><span>${esc(t('ricoRename'))}</span>${ICON_EDIT}</button>
       <button type="button" role="menuitem" class="danger" data-ctx="delete"><span>${esc(t('delete'))}</span>${ICON_DELETE}</button></div>`;
   document.body.appendChild(layer);
@@ -420,7 +432,26 @@ function openRicoChatMenu(id, row, e){
   layer.addEventListener('keydown', ev=>{ if(ev.key === 'Escape') closeContextMenu(); });
   layer.querySelector('[data-ctx]')?.focus({preventScroll:true});
   // The phone's Chats sheet closes first: the rename box and the delete question must not open behind it.
-  layer.querySelectorAll('[data-ctx]').forEach(b=>b.onclick = ()=>{ closeContextMenu(); if(document.getElementById('ricoHistSheet')) closeSelSheet(); b.dataset.ctx === 'rename' ? ricoRenameChat(id) : ricoDeleteChat(id); });
+  layer.querySelectorAll('[data-ctx]').forEach(b=>b.onclick = ()=>{
+    closeContextMenu();
+    if(b.dataset.ctx === 'pin') return ricoPinChat(id, !c.pinned);
+    if(document.getElementById('ricoHistSheet')) closeSelSheet();
+    b.dataset.ctx === 'rename' ? ricoRenameChat(id) : ricoDeleteChat(id);
+  });
+}
+/* Pins a chat to the top of the lists (or takes it off). Shown at once; put back if the server refuses. */
+async function ricoPinChat(id, pinned){
+  const c = rico.chats?.find(x=>x.id === id); if(!c) return;
+  c.pinned = pinned; ricoRepaintChats();
+  const r = await api('rico-chats/' + id + '/pin', {method:'PUT', body:{pinned}});
+  if(!r.ok){ c.pinned = !pinned; ricoRepaintChats(); toast(t('saveFailed'), 'warn'); return; }
+  toast(pinned ? t('ricoPinnedDone') : t('ricoUnpinnedDone'));
+}
+/* The open lists of chats (computer sidebar, phone menu) draw again after a change. */
+function ricoRepaintChats(){
+  if(state.view === 'assistant') syncRicoSide();
+  const list = document.getElementById('rdList');
+  if(list){ list.innerHTML = ricoDrawerRows(); attachRicoChatRows(list); list.querySelectorAll('[data-side-open]').forEach(row=>{ row.onclick = ()=>{ rico.drawerClose?.(); ricoOpenChat(row.dataset.sideOpen); }; }); }
 }
 function ricoRenameChat(id){
   const c = rico.chats?.find(x=>x.id === id); if(!c) return;
@@ -448,7 +479,7 @@ async function ricoDeleteChat(id){
   const r = await api(id ? 'rico-chats/' + id : 'rico-chats?account=all', {method:'DELETE'});
   if(!r.ok){ toast(t('saveFailed'), 'error'); return false; }
   rico.chats = id ? (rico.chats || []).filter(c=>c.id !== id) : isRozha() ? [] : (rico.chats || []).filter(c=>c.account && c.account !== state.account);
-  if(!id || rico.chatId === id){ rico.chatId = null; rico.chatTitle = null; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }
+  if(!id || rico.chatId === id){ rico.chatId = null; rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }
   if(rico.viewing && (!id || id === rico.viewedId)){ rico.viewing = null; rico.viewedId = null; rico.messages = []; }
   toast(id ? t('ricoChatDeleted') : t('ricoChatsDeleted'));
   if(state.view === 'assistant') render();
@@ -499,13 +530,21 @@ function renderRicoInbox(){
   return `<div class="rico-inbox">${list.map(m=>`
     <div class="rico-note ${m.read?'':'unread'}">
       ${ricoFace('', 'rico-sm')}
-      <div class="rico-note-body"><div class="rico-note-meta">${esc(t('ricoWroteFirst'))} · ${esc(timeAgo(m.at))}</div><div class="rico-note-text" dir="auto">${esc(ricoInboxText(m))}</div>${ricoNoteAction(m)}</div>
+      <div class="rico-note-body"><div class="rico-note-meta">${esc(t('ricoWroteFirst'))} · ${esc(timeAgo(m.at))}</div><div class="rico-note-text">${esc(ricoInboxText(m))}</div>${ricoNoteAction(m)}</div>
     </div>`).join('')}${rico.inbox.length > 1 ? `<button type="button" class="rico-link rico-inbox-more" id="ricoInboxAll">${esc(t('inboxSeeAll')(rico.inbox.length))}</button>` : ''}</div>`;
 }
 /* A prepared order (from a routine) carries its own button that fills the Order screen. */
 function ricoNoteAction(m){
+  if(m.kind === 'routine_ask' && typeof m.question === 'string' && m.question) return `<button type="button" class="btn btn-primary rico-note-btn" data-routine-ask="${esc(m.id)}">${esc(t('schedAskNow'))}</button>`;
   return m.kind === 'routine_order' && Array.isArray(m.order?.lines) && canOpen('order')
     ? `<button type="button" class="btn btn-primary rico-note-btn" data-routine-fill="${esc(m.id)}">${esc(t('inboxOpenOrder'))}</button>` : '';
+}
+/* A scheduled question: asked in a new chat with one tap. */
+function ricoAskScheduled(id){
+  const m = rico.inbox.find(x=>String(x.id) === String(id));
+  if(!m || !m.question) return;
+  if(rico.messages.length && !rico.streaming) ricoNewChat();
+  ricoAsk(m.question);
 }
 function renderRicoIntro(){
   // A calm first screen, like ChatGPT's on a phone (2026-11-15): Rico's latest note at the top, then near
@@ -695,7 +734,7 @@ function renderRicoProposalCard(p, mi){
     body = `<div class="rico-card-note" dir="auto">${esc(p.from)} → ${esc(p.to)}</div>${(p.lines||[]).map(l=>`<div class="rico-card-line"><span dir="auto">${esc(l.item)}</span><b dir="auto">${esc(l.qty)} ${esc(l.unit)}</b></div>`).join('')}${(p.warnings||[]).map(x=>`<div class="rico-card-note" dir="auto">${esc(x)}</div>`).join('')}`;
     return ricoCard(NAV_ICONS.transfers, viewLabel('transfers'), body, `<div class="rico-card-actions"><button class="btn btn-primary" data-rico-transfer="${esc(p.transferId)}">${esc(t('ricoOpenScreen')(viewLabel('transfers')))}</button></div>`, p);
   }
-  if(['stock_list','needs_list','price_list','spend'].includes(p.kind)) return renderRicoData(p);
+  if(['stock_list','needs_list','price_list','spend','invoice_report','price_lookup'].includes(p.kind)) return renderRicoData(p);
   // A page of Ricotta Restaurant Rico was asked to open: a plain link (only to that site).
   if(p.kind === 'rr_link'){
     if(typeof p.url !== 'string' || !p.url.startsWith('https://pos.shaydattendance.com/')) return '';
@@ -749,8 +788,26 @@ function renderRicoData(p){
     const body = total + rows.map(r=>`<div class="rico-data-row"><span class="rico-data-name" dir="auto">${esc(r.name)}<small>${esc(t('ricoReceiptsN')(r.receipts || 0))}</small></span><b dir="ltr">${esc(money(r))}</b></div>`).join('');
     return card(RICO_TILE_ICONS.reports, t('ricoCardSpend'), p.period || '', body);
   }
+  // Every invoice in Ricotta Restaurant for a month: totals and the suppliers; the files are made here.
+  if(p.kind === 'invoice_report'){
+    if(!canOpen('receipts') && !canOpen('transfers')) return '';
+    const money = r=>[r.IQD ? `${ricoNum(r.IQD)} IQD` : '', r.USD ? `${ricoNum(r.USD)} USD` : ''].filter(Boolean).join(' · ') || '0 IQD';
+    const total = `<div class="rico-data-total"><b dir="ltr">${esc(money(p))}</b><small>${esc(t('ricoReceiptsN')(p.receipts || 0))}${p.unpaid ? ' · ' + esc(t('invUnpaidN')(p.unpaid)) : ''}</small></div>`;
+    const body = total + (p.suppliers || []).map(r=>`<div class="rico-data-row"><span class="rico-data-name" dir="auto">${esc(r.name)}<small>${esc(t('ricoReceiptsN')(r.receipts || 0))}</small></span><b dir="ltr">${esc(money(r))}</b></div>`).join('');
+    const foot = `<button type="button" class="btn btn-ghost" data-inv-file="excel" data-inv-card="${esc(p.id)}">${esc(t('invExcel'))}</button><button type="button" class="btn btn-primary" data-inv-file="pdf" data-inv-card="${esc(p.id)}">${esc(t('invPdf'))}</button>`;
+    return card(RICO_TILE_ICONS.reports, p.supplier ? t('invCardSupplier')(p.supplier, invMonthName(p.month)) : t('invCardTitle')(invMonthName(p.month)), '', body, foot);
+  }
+  // The last price paid per item, with the unit it was bought in; items moved to the storage first.
+  if(p.kind === 'price_lookup'){
+    if(!canOpen('receipts') && !canOpen('transfers')) return '';
+    const body = rows.map(r=>`<div class="rico-data-row"><span class="rico-data-name" dir="auto">${esc(r.item)}<small dir="auto">${esc(r.supplier)} · ${esc(invDay(r.day))} · ${esc(t('invTimes')(r.times))}${p.storage ? ' · ' + esc(r.source === 'moved' ? t('invMovedTo')(p.storage) : t('invByName')) : ''}</small></span><b dir="ltr">${esc(ricoNum(r.price))} ${esc(r.currency)}<small class="inv-per"> / <bdi>${esc(r.unit)}</bdi></small></b></div>`).join('');
+    const foot = `<button type="button" class="btn btn-ghost" data-inv-file="excel" data-inv-card="${esc(p.id)}">${esc(t('invExcel'))}</button><button type="button" class="btn btn-primary" data-inv-file="pdf" data-inv-card="${esc(p.id)}">${esc(t('invPdf'))}</button>`;
+    return card(RICO_TILE_ICONS.price, p.storage && !p.query ? t('invPricesFor')(p.storage) : t('invPricesTitle'), (p.months || []).map(invMonthName).join(' · '), body, foot);
+  }
   return '';
 }
+const invMonthName = m=>{ if(!/^\d{4}-\d{2}$/.test(String(m || ''))) return String(m || ''); return formatIraqDateTime(new Date(m + '-15T12:00:00+03:00'), {month:'long', year:'numeric'}); };
+const invDay = d=>/^\d{4}-\d{2}-\d{2}$/.test(String(d || '')) ? formatIraqDateTime(new Date(d + 'T12:00:00+03:00'), {day:'numeric', month:'short'}) : '';
 function ricoFields(rows){
   return `<dl class="rico-fields">${rows.map(([k,v,raw])=>`<div><dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd></div>`).join('')}</dl>`;
 }
@@ -862,6 +919,12 @@ function attachRicoThreadEvents(root){
     if(state.view === 'transfers' && tfFind(id)) tfOpen(id);
   });
   // A row of "Needs you": opens that receipt or transfer (each screen reads its list as it opens).
+  // Invoice files (a month's report, or the last prices): made here, then handed over.
+  root.querySelectorAll('[data-inv-file]').forEach(b=>b.onclick=()=>{
+    const p = rico.messages.flatMap(m=>m.proposals || []).find(x=>x.id === b.dataset.invCard);
+    if(!p) return;
+    withBusy(b, ()=>p.kind === 'invoice_report' ? exportInvoices(p.month, p.supplier, b.dataset.invFile) : exportPriceLookup(p, b.dataset.invFile));
+  });
   root.querySelectorAll('[data-rico-need]').forEach(b=>b.onclick=async()=>{
     const [type, id] = b.dataset.ricoNeed.split('|'), view = type === 'receipt' ? 'receipts' : 'transfers';
     if(!canOpen(view)) return;
@@ -871,6 +934,7 @@ function attachRicoThreadEvents(root){
     if(state.view === view && find(id)) open(id);
   });
   root.querySelectorAll('[data-routine-fill]').forEach(b=>b.onclick=()=>{ const m = rico.inbox.find(x=>String(x.id) === b.dataset.routineFill); if(!ricoFillRoutineOrder(m)) toast(t('saveFailed'), 'warn'); });
+  root.querySelectorAll('[data-routine-ask]').forEach(b=>b.onclick=()=>ricoAskScheduled(b.dataset.routineAsk));
   root.querySelectorAll('[data-rico-settings]').forEach(b=>b.onclick=()=>{ goView('settings'); requestAnimationFrame(()=>document.querySelector('.rico-status-card')?.scrollIntoView({block:'center'})); });
   root.querySelectorAll('[data-rico-retry]').forEach(b=>b.onclick=()=>{
     const i = +b.dataset.ricoRetry;
@@ -901,8 +965,8 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:p.mode === 'search' ? `stock of "${p.query}" in ${p.storage}` : `list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
-      content += ['stock_list','needs_list','price_list','spend','rr_link'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:p.mode === 'search' ? `stock of "${p.query}" in ${p.storage}` : `list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, invoice_report:`invoice report for ${p.month}${p.supplier ? ' (' + p.supplier + ')' : ''} with PDF and Excel`, price_lookup:`last prices${p.query ? ' for "' + p.query + '"' : ''}${p.storage ? ' of items going to ' + p.storage : ''} with PDF and Excel`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
+      content += ['stock_list','needs_list','price_list','spend','rr_link','invoice_report','price_lookup'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};
   });
@@ -971,7 +1035,12 @@ async function ricoAsk(text, options = {}){
   rico.streaming = false; rico.abort = null;
   if(bot.text && !bot.error) playRicoReply();
   // The first answer in a new chat: the AI gives the chat a short name about its topic.
-  if(bot.text && !bot.error && !rico.chatTitle && !rico.viewing && rico.messages.filter(m=>m.role === 'user').length === 1) ricoNameChat(text, bot.text);
+  // The chat gets its topic name after the first answer; if that failed (or the first turn had no answer,
+  // like choosing suppliers), the next answers try again, twice at most.
+  if(bot.text && !bot.error && !rico.chatTitle && !rico.titleManual && !rico.viewing && (rico.titleTries || 0) < 2){
+    rico.titleTries = (rico.titleTries || 0) + 1;
+    ricoNameChat(rico.messages.filter(m=>m.role === 'user').map(m=>m.text).join(' / '), bot.text);
+  }
   ricoSaveSoon();
   if(state.view === 'assistant'){
     ricoPaintMessage(idx);
@@ -1173,7 +1242,8 @@ async function ricoSave(){
   const id = rico.chatId, account = state.account, title = rico.chatTitle || ricoChatTitle();
   const r = await api('rico-chats/' + id, {method:'PUT', body:{title, messages, keepTitle:!!rico.titleLoaded}});
   if(!r.ok || state.account !== account || !rico.chats) return;
-  rico.chats = [{id, account, title, updatedAt:new Date().toISOString()}, ...rico.chats.filter(c=>c.id !== id)].slice(0, 120);
+  const pinned = !!rico.chats.find(c=>c.id === id)?.pinned;   // saving a chat keeps it pinned
+  rico.chats = [{id, account, title, pinned, updatedAt:new Date().toISOString()}, ...rico.chats.filter(c=>c.id !== id)].slice(0, 120);
   if(state.view === 'assistant') syncRicoSide();   // the new chat shows in the sidebar at once
 }
 /* A short topic name for a new chat, like other AI apps ("Cheese stock"). If the AI can't, the chat keeps
@@ -1209,7 +1279,7 @@ function ricoNewChat(){
   if(rico.messages.length) ricoSave();
   rico.epoch++; rico.chatRequest++;
   rico.streaming = false;
-  rico.messages = []; rico.chatId = null; rico.viewing = null; rico.viewedId = null; rico.chatTitle = null; rico.titleManual = false; rico.titleLoaded = false;
+  rico.messages = []; rico.chatId = null; rico.viewing = null; rico.viewedId = null; rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; rico.titleLoaded = false;
   render();
 }
 async function ricoOpenChat(id){

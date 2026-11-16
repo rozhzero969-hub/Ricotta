@@ -109,4 +109,14 @@ await R.runRoutines(db4, deps({ now: now(14 * 60 + 1), nowMs: T0 + 31000 }));
 assert.equal(pushes.length - p0, 1, 'the one-off reminder came');
 assert.ok(db4.writes.some((w) => w.deleted), 'and was removed');
 assert.deepEqual(await R.runRoutines(db4, deps({ now: now(14 * 60 + 2), nowMs: T0 + 91000 })), { skipped: 'nothing due' }, 'never twice');
-console.log('Rico routines PASS: one-off reminders (in seconds, at a time, tomorrow) fire once and go, checked input, due within 3 hours once a day, roles, usual order from real orders, only the person\'s own inbox and push, never sent to a supplier');
+// The 'ask' kind: a question Rico asks for you at its time; it lands in your own inbox as routine_ask.
+assert.equal(R.cleanRoutine({ kind: 'ask', text: 'Which items are low?', time: '08:00' }).value.kind, 'ask');
+assert.equal(R.cleanRoutine({ kind: 'ask', text: 'x', run_at: T0 + 60000 }, T0).value.run_at, new Date(T0 + 60000).toISOString(), 'an ask can be one-off');
+const askDb = fakeDb([{ ...base, id: 'a1', kind: 'ask', text: 'Which items are low?' }]);
+const p1 = pushes.length;
+await R.runRoutines(askDb, deps());
+const askNote = askDb.writes.find((w) => w.table === 'app_rico_inbox').rows[0];
+assert.equal(askNote.kind, 'routine_ask'); assert.equal(askNote.account, 'yunis');
+assert.deepEqual(askNote.payload, { question: 'Which items are low?' }, 'the question rides with the message');
+assert.equal(pushes.length - p1, 1, 'and a push');
+console.log('Rico routines PASS: ask kind writes routine_ask with its question, one-off reminders (in seconds, at a time, tomorrow) fire once and go, checked input, due within 3 hours once a day, roles, usual order from real orders, only the person\'s own inbox and push, never sent to a supplier');

@@ -23,7 +23,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  const stock=['Sunich Mango Juice - شەربەتی سن ئیچ مەنگۆ','Sunich Peach Nectar - شەربەتی سن ئیچ خۆخ','Sunich Pineapple Juice - شەربەتی سن ئیچ ئەناناس',
   'Bato Fries - فینگر باتۆ','French Lettuce - خاس لولو','Cooking Cream - كريم طبخ','Cooking Oil 18L - زەیتی 18 لیتری','Banana - مۆز','Mozzarella - پەنیری مۆزارێلا',
   'Kalasher Rice - برنجی کەلەشیر','Nawras Rice - برنجی نەورەس','Mahmood Rice - برنجی مەحمود'].map(name=>({name,qty:2,unit:'کارتۆن',empty:false,units:['کارتۆن'],bought:1,...(/Mahmood/.test(name)?{from:['کۆگای مختار']}:{})}));
- await ctx.addInitScript(()=>{localStorage.setItem('ricottaOrders:toured:rozha','true');localStorage.setItem('ricottaOrders:ricoBriefing:rozha',JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));localStorage.setItem('ricottaOrders:apiSession',JSON.stringify({token:'link-fixture',account:'rozha',name:'Rozha',expiresAt:'2099-01-01T00:00:00Z'}));localStorage.setItem('ricottaOrders:lang','"en"');localStorage.setItem('ricottaOrders:aiConsent2:rozha','true');localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',String(Date.now()));});
+ await ctx.addInitScript(()=>{localStorage.setItem('ricottaOrders:toured:rozha','true');localStorage.setItem('ricottaOrders:xtSeen:rozha','true');localStorage.setItem('ricottaOrders:ricoBriefing:rozha',JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));localStorage.setItem('ricottaOrders:apiSession',JSON.stringify({token:'link-fixture',account:'rozha',name:'Rozha',expiresAt:'2099-01-01T00:00:00Z'}));localStorage.setItem('ricottaOrders:lang','"en"');localStorage.setItem('ricottaOrders:aiConsent2:rozha','true');localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',String(Date.now()));});
  await ctx.route('**/functions/v1/api/**',async route=>{const req=route.request(),endpoint=new URL(req.url()).pathname.split('/api/')[1],method=req.method(),body=method==='GET'?null:req.postDataJSON();let data={ok:true},status=200;
   if(endpoint==='bootstrap')data={...fixture,draft:{cart:{},revision:0}};
   else if(endpoint==='draft')data={cart:{},revision:0,conflicts:[]};
@@ -119,7 +119,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.evaluate(()=>openStockLinkSheet('mango'));
  await page.locator('#ctxStock .stock-doubt').waitFor();
  assert.match(await page.locator('#ctxStock .stock-doubt').innerText(),/may be wrong[\s\S]*Closer match: Sunich Mango Juice/);
- await page.locator('#ctxStock .stock-doubt [data-stock-pick]').click();
+ await page.locator('#ctxStock .stock-doubt [data-stock-swap]').click();
  await page.locator('#ctxStock .stock-doubt').waitFor({state:'detached'});
  assert.deepEqual(puts.at(-1),{id:'mango',stockItem:'Sunich Mango Juice - شەربەتی سن ئیچ مەنگۆ'});
  assert.match(await page.locator('#ctxStock .stock-link-name').innerText(),/Sunich Mango Juice/);

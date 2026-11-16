@@ -101,7 +101,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory } = new Function('recipesRoute', 'createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', 'checkLowStock', 'relinkedLowStock', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( recipesRoute, () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf, checkLowStock, relinkedLowStock );
+const { groupHistory } = new Function('recipesRoute', 'createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', 'checkLowStock', 'relinkedLowStock', 'rrReaderRoute', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( recipesRoute, () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf, checkLowStock, relinkedLowStock, async () => null );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -485,8 +485,12 @@ try {
   assert.equal((await call('settings',{key:'soundSent',value:true},'PUT')).status,403);
   assert.equal((await call('settings',{key:'darkMode',value:'on'},'PUT')).status,200);
   tables.app_rr_catalog=[{id:true,data:{titems:[{name:'Eggs',base:'pcs'}]},updated_at:new Date().toISOString()}];
-  tables.app_recipe_ingredients=[];tables.app_recipes=[];
+  tables.app_recipe_ingredients=[];tables.app_recipes=[];tables.app_units=[{id:'pcs',en:'دانە'}];tables.app_rr_invoices=[];tables.app_items=[];tables.app_rico_inbox=[];tables.app_recipe_photos=[];
   assert.equal((await call('recipes',null,'GET')).status,200);
+  // Units only come from Manage, Units: Ahmad can not add one, even with Manage.
+  assert.equal((await call('units/u-new',{en:'cup'},'PUT')).status,403,'Ahmad can not create units');
+  assert.equal((await call('recipe-ingredients/00000000-0000-4000-8000-000000000012',{name:'Eggs',stock_item:'Eggs',unit:'cup',version:0},'PUT')).status,422,'an unknown unit is refused, never created');
+  for(const p of ['admin/roles','rico-routines','rico-chats'])assert.equal((await call(p,null,'GET')).status,403,p+' denied to Ahmad');
   const iid='00000000-0000-4000-8000-000000000010',rid='00000000-0000-4000-8000-000000000011';
   assert.equal((await call('recipe-ingredients/'+iid,{name:'Eggs',stock_item:'Missing',unit:'pcs',version:0},'PUT')).status,422);
   assert.equal((await call('recipe-ingredients/'+iid,{name:'Eggs',stock_item:'Eggs',unit:'pcs',version:0},'PUT')).status,200);

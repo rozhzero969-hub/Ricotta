@@ -16,7 +16,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
   items:[{id:'tom',name:'Tomatoes',unit:'kg',supplierId:'s',kind:'food'},{id:'rice',name:'Rice',unit:'kg',supplierId:'w'},
    {id:'tea',name:'Tea',unit:'ct',supplierId:'c',kind:'expense'},{id:'tis',name:'Tissues',unit:'pc',supplierId:'w',kind:'expense'}],
   pins:[],history:[],devices:[],activity:[],inbox:[]};
- await ctx.addInitScript(()=>{localStorage.setItem('ricottaOrders:toured:rozha','true');localStorage.setItem('ricottaOrders:ricoBriefing:rozha',JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));localStorage.setItem('ricottaOrders:apiSession',JSON.stringify({token:'exp-fixture',account:'rozha',name:'Rozha',expiresAt:'2099-01-01T00:00:00Z'}));localStorage.setItem('ricottaOrders:lang','"en"');localStorage.setItem('ricottaOrders:aiConsent2:rozha','true');localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',String(Date.now()));});
+ await ctx.addInitScript(()=>{localStorage.setItem('ricottaOrders:toured:rozha','true');localStorage.setItem('ricottaOrders:xtSeen:rozha','true');localStorage.setItem('ricottaOrders:ricoBriefing:rozha',JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));localStorage.setItem('ricottaOrders:apiSession',JSON.stringify({token:'exp-fixture',account:'rozha',name:'Rozha',expiresAt:'2099-01-01T00:00:00Z'}));localStorage.setItem('ricottaOrders:lang','"en"');localStorage.setItem('ricottaOrders:aiConsent2:rozha','true');localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',String(Date.now()));});
  await ctx.route('**/functions/v1/api/**',async route=>{const req=route.request(),endpoint=new URL(req.url()).pathname.split('/api/')[1],method=req.method(),body=method==='GET'?null:req.postDataJSON();calls.push({endpoint,method,body});let data={ok:true};
   if(endpoint==='bootstrap'){boots++;data={...fixture,draft:{cart,revision}};}
   else if(endpoint==='draft'){if(method==='PUT'){for(const c of body.changes){if(c.after)cart[c.itemId]=c.after;else delete cart[c.itemId];}revision++;}data={cart:{...cart},revision,conflicts:[]};}
@@ -99,9 +99,19 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  assert.equal(item?.body?.kind,'expense','the item is saved as an expense');
  assert.equal(item.body.unit,'ct','with a unit from Units');
 
- // Manage has its own Add expense button.
- await page.evaluate(()=>goView('itemsAdmin'));await page.locator('#itemAddExpenseBtn').waitFor();
+ // Manage: a Food / Expenses switch, and one Add button that follows it.
+ await page.evaluate(()=>goView('itemsAdmin'));await page.locator('.manage-kind [data-mkind="expense"]').waitFor();
+ assert.equal(await page.locator('#itemAddExpenseBtn').count(),0,'no second Add button');
+ assert.match(await page.locator('#itemAddBtn').innerText(),/Add item/i);
+ await page.locator('.manage-kind [data-mkind="expense"]').click();
+ await page.waitForFunction(()=>document.querySelector('.manage-kind [data-mkind="expense"]')?.getAttribute('aria-checked')==='true');
+ assert.match(await page.locator('#itemAddBtn').innerText(),/expense/i,'Add follows the switch');
+ await page.locator('#app').getByText('Paper cups',{exact:true}).first().waitFor();
+ assert.equal(await page.locator('#app').getByText('Tea',{exact:true}).count()>0,true,'the Expenses list shows the expense items');
  await page.screenshot({path:path.join(out,'expenses.png')});
+ await page.locator('#itemAddBtn').click();await page.locator('#mfKind [data-itemkind="expense"][aria-checked="true"]').waitFor();
+ await page.keyboard.press('Escape');await page.locator('#mfName').waitFor({state:'detached'});
+ await page.locator('.manage-kind [data-mkind="food"]').click();
  assert.deepEqual(errors,[]);await ctx.close();
- console.log(JSON.stringify({result:'PASS',checks:'Food first, switch and pull-down to Expenses and back with a refresh, items and suppliers per tab, white Expenses card, counts on the other tab, supplier buys saved, item form suppliers per kind, Add expense in Manage',artifacts:out}));
+ console.log(JSON.stringify({result:'PASS',checks:'Food first, switch and pull-down to Expenses and back with a refresh, items and suppliers per tab, white Expenses card, counts on the other tab, supplier buys saved, item form suppliers per kind, Manage switch with one Add button that follows it',artifacts:out}));
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);server.close();process.exitCode=1;});

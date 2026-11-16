@@ -1,4 +1,5 @@
-// Rico's routines: a reminder, or an order he prepares by himself, at a time on some weekdays
+// Rico's routines: a reminder, a question for Rico (ask: the person taps once to get his answer), or an
+// order he prepares by himself, at a time on some weekdays
 // (Baghdad time). Used by the api (checking what a person asks for) and by send-push (running them
 // from its every-minute tick). Each routine runs at most once a Baghdad day (last_run_day).
 //
@@ -6,7 +7,7 @@
 // its lines, and the app offers it as a card that fills the Order screen when they tap it. Sending
 // stays on the Order screen, by a person.
 
-export type RoutineKind = "remind" | "prepare_order";
+export type RoutineKind = "remind" | "prepare_order" | "ask";
 export type Routine = {
   id: string; account: string; kind: RoutineKind; text: string; supplier_ids: string[];
   time: string; days: number[]; enabled: boolean; last_run_day: string | null;
@@ -55,13 +56,13 @@ export function whenOnce(a: any, nowMs = Date.now()): number | { error: string }
 /* What a person (or Rico on their behalf) asked for, checked. Days default to every day. A one-off
    reminder carries run_at (ms or ISO) instead; its time is kept too, for showing. */
 export function cleanRoutine(a: any, nowMs = Date.now()): { value: Omit<Routine, "id" | "account" | "enabled" | "last_run_day"> } | { error: string } {
-  const kind = a?.kind === "prepare_order" ? "prepare_order" : a?.kind === "remind" ? "remind" : null;
+  const kind = a?.kind === "prepare_order" ? "prepare_order" : a?.kind === "remind" ? "remind" : a?.kind === "ask" ? "ask" : null;
   if (!kind) return { error: "kind" };
   const text = String(a?.text ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
   if (!text) return { error: "text" };
   if (a?.run_at !== undefined && a?.run_at !== null) {
     const at = typeof a.run_at === "number" ? a.run_at : Date.parse(String(a.run_at));
-    if (kind !== "remind" || !Number.isFinite(at) || at < nowMs - 60_000 || at > nowMs + ONCE_MAX_DAYS * 86400_000) return { error: "when" };
+    if (kind === "prepare_order" || !Number.isFinite(at) || at < nowMs - 60_000 || at > nowMs + ONCE_MAX_DAYS * 86400_000) return { error: "when" };
     return { value: { kind, text, time: baghdadTime(at), days: ALL_DAYS, supplier_ids: [], run_at: new Date(at).toISOString() } };
   }
   const time = String(a?.time ?? "").trim();
@@ -160,9 +161,12 @@ async function runOne(db: any, deps: RunDeps, r: Routine, history: () => ReturnT
   const out: unknown[] = [];
   {
     const key = `routine|${r.id}|${deps.now.date}`;
-    if (r.kind === "remind") {
-      const words = { en: `Reminder: ${r.text}`, ku: `بیرخستنەوە: ${r.text}`, ar: `تذكير: ${r.text}` };
-      await inbox(db, r.account, "routine", words, key, null);
+    if (r.kind === "remind" || r.kind === "ask") {
+      // A question for Rico: the message holds it, and the app asks him with one tap ("Ask now").
+      const ask = r.kind === "ask";
+      const words = ask ? { en: `Scheduled: ${r.text}`, ku: `خشتەکراو: ${r.text}`, ar: `مجدول: ${r.text}` }
+        : { en: `Reminder: ${r.text}`, ku: `بیرخستنەوە: ${r.text}`, ar: `تذكير: ${r.text}` };
+      await inbox(db, r.account, ask ? "routine_ask" : "routine", words, key, ask ? { question: r.text } : null);
       await deps.notify(r.account, words, `ricotta-${key}`);
       // A one-off reminder is done once it has come.
       if (r.run_at) await db.from("app_rico_routines").delete().eq("id", r.id);

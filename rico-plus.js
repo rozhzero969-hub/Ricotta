@@ -83,10 +83,124 @@ async function openRicoMemory(){
 }
 /* "Reminder · Every day 09:00", "Prepares the order for Dairy Co · Sun, Mon 07:00", "Reminder · Once, Nov 14, 2:05 PM". */
 function routineLabel(r){
-  if(r.runAt) return `${t('routineRemind')} · ${t('routineOnce')}, ${formatIraqDateTime(r.runAt, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'})}`;
+  if(r.runAt) return `${r.kind === 'ask' ? t('schedKindAsk') : t('routineRemind')} · ${t('routineOnce')}, ${formatIraqDateTime(r.runAt, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'})}`;
   const days = r.days?.length === 7 ? t('routineEvery') : (r.days || []).map(d=>t('routineDays')[d]).join(state.lang === 'en' ? ', ' : '، ');
-  const what = r.kind === 'prepare_order' ? t('routinePrepareFor')((r.supplierIds || []).map(id=>supplierName(id) || '').filter(Boolean).join(', ') || r.suppliers?.join(', ') || '') : t('routineRemind');
+  const what = r.kind === 'ask' ? t('schedKindAsk') : r.kind === 'prepare_order' ? t('routinePrepareFor')((r.supplierIds || []).map(id=>supplierName(id) || '').filter(Boolean).join(', ') || r.suppliers?.join(', ') || '') : t('routineRemind');
   return `${what} · ${days} ${r.time}`;
+}
+/* ---------- Scheduled (from the Rico menu) ----------
+   Like a tasks list: what Rico does by himself and when. Each task can be paused or deleted, and
+   "New task" adds one without asking in the chat. Kinds: ask (a question Rico asks for you at that
+   time; you tap "Ask now" on his message), remind, and prepare an order (needs History). Times are
+   Baghdad time, the same as the server's routine runner. */
+function openRicoScheduled(){
+  const canOrder = canOpen('history') && state.suppliers.length > 0;
+  const days = t('routineDays');
+  const {el, close} = openKitchenSheet('sched-sheet', `<div class="sched-head"><div class="sel-title">${esc(t('schedTitle'))}</div><button type="button" class="btn btn-primary sched-new" data-sched-new>${esc(t('schedNew'))}</button></div>
+    <div class="notif-sub">${esc(t('schedHint'))}</div>
+    <div class="sched-list status-line" id="schedList">${esc(t('memoryLoading'))}</div>
+    <form class="sched-form" id="schedForm" hidden novalidate>
+      <div class="sel-title sched-form-title">${esc(t('schedNew'))}</div>
+      <div class="sched-seg" role="radiogroup" aria-label="${esc(t('schedWhat'))}">
+        ${[['ask', t('schedKindAsk')], ['remind', t('schedKindRemind')], ...(canOrder ? [['prepare_order', t('schedKindOrder')]] : [])].map(([v, l], i)=>`<label><input type="radio" name="schedKind" value="${v}"${i ? '' : ' checked'}><span>${esc(l)}</span></label>`).join('')}
+      </div>
+      <div class="field"><label for="schedText">${esc(t('schedWhat'))}</label><input id="schedText" maxlength="200" dir="auto" autocomplete="off" placeholder="${esc(t('schedWhatAsk'))}"></div>
+      ${canOrder ? `<div class="field" id="schedSupWrap" hidden><label for="schedSup">${esc(t('schedSupplier'))}</label><select id="schedSup">${state.suppliers.map(x=>`<option value="${esc(x.id)}">${esc(supplierName(x.id) || x.name || '')}</option>`).join('')}</select></div>` : ''}
+      <div class="sched-seg" role="radiogroup" aria-label="${esc(t('schedRepeat'))}">
+        ${[['daily', t('schedRepeatDaily')], ['days', t('schedRepeatDays')], ['once', t('schedRepeatOnce')]].map(([v, l], i)=>`<label><input type="radio" name="schedRepeat" value="${v}"${i ? '' : ' checked'}><span>${esc(l)}</span></label>`).join('')}
+      </div>
+      <div class="sched-days" id="schedDays" hidden>${days.map((d, i)=>`<label><input type="checkbox" value="${i}" checked><span>${esc(d)}</span></label>`).join('')}</div>
+      <div class="field" id="schedTimeWrap"><label for="schedTime">${esc(t('schedTime'))}</label><input id="schedTime" type="time" value="09:00" required></div>
+      <div class="field" id="schedWhenWrap" hidden><label for="schedWhen">${esc(t('schedWhen'))}</label><input id="schedWhen" type="datetime-local"></div>
+      <div class="sched-error" id="schedErr" role="alert"></div>
+      <div class="form-actions sched-actions"><button type="button" class="btn btn-ghost" data-sched-cancel>${esc(t('schedCancel'))}</button><button type="submit" class="btn btn-primary">${esc(t('schedSave'))}</button></div>
+    </form>`, t('schedTitle'));
+  const list = el.querySelector('#schedList'), form = el.querySelector('#schedForm'), newBtn = el.querySelector('[data-sched-new]');
+  const err = el.querySelector('#schedErr');
+  const val = name=>form.querySelector(`input[name=${name}]:checked`)?.value;
+  const paint = rows=>{
+    list.className = 'sched-list';
+    list.innerHTML = rows.length ? rows.map(r=>`<div class="mem-rule mem-routine${r.enabled ? '' : ' off'}"><span><b dir="auto">${esc(r.text)}</b><small>${esc(routineLabel(r))}${r.account && r.account !== state.account ? ' · ' + esc(accountLabel(r.account)) : ''}</small></span>
+      ${r.runAt ? '' : `<input type="checkbox" role="switch" class="mem-switch" data-sched-on="${esc(r.id)}" ${r.enabled ? 'checked' : ''} aria-label="${esc(r.text)}">`}
+      <button type="button" class="icon-btn" data-sched-del="${esc(r.id)}" aria-label="${esc(t('routineDelete'))}">${ICON_DELETE}</button></div>`).join('') : `<div class="empty-mini">${esc(t('schedNone'))}</div>`;
+    list.querySelectorAll('[data-sched-on]').forEach(b=>b.onchange = async ()=>{
+      const on = b.checked; b.disabled = true;
+      const r = await api('rico-routines/' + b.dataset.schedOn, {method:'PUT', body:{enabled:on}});
+      b.disabled = false;
+      if(!r.ok){ b.checked = !on; toast(t('saveFailed'), 'warn'); return; }
+      b.closest('.mem-routine')?.classList.toggle('off', !on);
+      haptic('selection');
+    });
+    list.querySelectorAll('[data-sched-del]').forEach(b=>b.onclick = async ()=>{
+      b.disabled = true;
+      const r = await api('rico-routines/' + b.dataset.schedDel, {method:'DELETE'});
+      if(r.ok) load(); else { b.disabled = false; toast(t('saveFailed'), 'warn'); }
+    });
+  };
+  const load = async ()=>{ const r = await api('rico-routines'); if(el.isConnected){ if(r.ok) paint(r.data || []); else list.textContent = t('saveFailed'); } };
+  const sync = ()=>{
+    const kind = val('schedKind'), rep = val('schedRepeat');
+    // A prepared order repeats (the server never runs it once), so "Once" is not offered for it.
+    const onceInput = form.querySelector('input[name=schedRepeat][value=once]');
+    onceInput.closest('label').hidden = kind === 'prepare_order';
+    if(kind === 'prepare_order' && rep === 'once'){ form.querySelector('input[name=schedRepeat][value=daily]').checked = true; return sync(); }
+    form.querySelector('#schedText').placeholder = t(kind === 'ask' ? 'schedWhatAsk' : kind === 'remind' ? 'schedWhatRemind' : 'schedWhatOrder');
+    const sup = form.querySelector('#schedSupWrap'); if(sup) sup.hidden = kind !== 'prepare_order';
+    form.querySelector('#schedDays').hidden = rep !== 'days';
+    form.querySelector('#schedTimeWrap').hidden = rep === 'once';
+    form.querySelector('#schedWhenWrap').hidden = rep !== 'once';
+    err.textContent = '';
+  };
+  const showForm = on=>{
+    form.hidden = !on; list.hidden = on; newBtn.hidden = on;
+    if(on){
+      const n = erbilNow(), when = form.querySelector('#schedWhen');
+      const hh = String(Math.floor(n.minutes / 60)).padStart(2, '0'), mm = String(n.minutes % 60).padStart(2, '0');
+      when.min = `${n.date}T${hh}:${mm}`;
+      if(!when.value) when.value = `${n.date}T${String(Math.min(23, Math.floor(n.minutes / 60) + 1)).padStart(2, '0')}:00`;
+      sync();
+      form.querySelector('#schedText').focus({preventScroll:true});
+    }
+  };
+  newBtn.onclick = ()=>showForm(true);
+  el.querySelector('[data-sched-cancel]').onclick = ()=>showForm(false);
+  form.addEventListener('change', e=>{ if(e.target.name === 'schedKind' || e.target.name === 'schedRepeat') sync(); });
+  form.onsubmit = async e=>{
+    e.preventDefault();
+    const kind = val('schedKind'), rep = val('schedRepeat');
+    const text = form.querySelector('#schedText').value.trim();
+    const say = k=>{ err.textContent = t(k); };
+    if(!text){ say('schedNeedText'); return; }
+    const body = {kind, text};
+    if(rep === 'once'){
+      const v = form.querySelector('#schedWhen').value;
+      const at = v ? Date.parse(v + ':00+03:00') : NaN;
+      if(!Number.isFinite(at) || at < Date.now() - 60_000 || at > Date.now() + 60 * 86400_000){ say('schedBadWhen'); return; }
+      body.runAt = new Date(at).toISOString();
+    } else {
+      body.time = form.querySelector('#schedTime').value;
+      if(!/^\d{2}:\d{2}$/.test(body.time || '')){ say('schedBadWhen'); return; }
+      body.days = rep === 'days' ? [...form.querySelectorAll('#schedDays input:checked')].map(x=>Number(x.value)) : [0, 1, 2, 3, 4, 5, 6];
+      if(!body.days.length){ say('schedNeedDay'); return; }
+    }
+    if(kind === 'prepare_order'){
+      const id = form.querySelector('#schedSup')?.value;
+      if(!id){ say('schedNeedSupplier'); return; }
+      body.supplierIds = [id];
+    }
+    const btn = form.querySelector('[type=submit]');
+    btn.classList.add('is-busy');
+    const r = await api('rico-routines', {method:'POST', body});
+    btn.classList.remove('is-busy');
+    if(!el.isConnected) return;
+    if(!r.ok){ toast(t(r.status === 409 ? 'routineTooMany' : 'saveFailed'), 'warn'); return; }
+    toast(t('schedSaved'), 'ok');
+    form.reset(); form.querySelector('#schedWhen').value = '';
+    showForm(false);
+    load();
+  };
+  load();
+  return close;
 }
 /* A prepared order from a routine (in Rico's messages): its lines go into today's order on a tap, for
    that supplier only; nothing else in the order changes. Undo puts it back. Never sent by itself. */
@@ -139,6 +253,7 @@ function openRicoOrderSheet(){
 }
 /* All of Rico's messages, from the "See all" link. */
 function openRicoInboxSheet(){
-  const {el, close} = openKitchenSheet('inbox-sheet', `<div class="sel-title">${esc(t('inboxTitle'))}</div><div class="rico-inbox-all">${[...rico.inbox].reverse().map(m=>`<div class="rico-note mood-tint-${esc(m.mood)}">${ricoFace(m.mood, 'rico-sm')}<div class="rico-note-body"><div class="rico-note-meta">${esc(timeAgo(m.at))}</div><div class="rico-note-text" dir="auto">${esc(ricoInboxText(m))}</div>${ricoNoteAction(m)}</div></div>`).join('') || `<div class="empty-mini">${esc(t('inboxNone'))}</div>`}</div>`, t('inboxTitle'));
+  const {el, close} = openKitchenSheet('inbox-sheet', `<div class="sel-title">${esc(t('inboxTitle'))}</div><div class="rico-inbox-all">${[...rico.inbox].reverse().map(m=>`<div class="rico-note mood-tint-${esc(m.mood)}">${ricoFace(m.mood, 'rico-sm')}<div class="rico-note-body"><div class="rico-note-meta">${esc(timeAgo(m.at))}</div><div class="rico-note-text">${esc(ricoInboxText(m))}</div>${ricoNoteAction(m)}</div></div>`).join('') || `<div class="empty-mini">${esc(t('inboxNone'))}</div>`}</div>`, t('inboxTitle'));
   el.querySelectorAll('[data-routine-fill]').forEach(b=>b.onclick=()=>{ const m = rico.inbox.find(x=>String(x.id) === b.dataset.routineFill); close(); if(!ricoFillRoutineOrder(m)) toast(t('saveFailed'), 'warn'); });
+  el.querySelectorAll('[data-routine-ask]').forEach(b=>b.onclick=()=>{ close(); goView('assistant'); ricoAskScheduled(b.dataset.routineAsk); });
 }

@@ -216,8 +216,22 @@ async function ricoAccounts() {
     return a === "rozha" || (Array.isArray(roles) ? roles.includes("assistant") : a === "yunis");
   }));
 }
+/* Who orders from suppliers (as api can(s, "order")): Rozh and Yunis always, Ahmad only when Rozh gave
+   him Order. Supplier reminders and Rico's ordering messages go to them, never to the recipe book only. */
+async function orderAccounts() {
+  const rows = must(await sb.from("app_accounts").select("id,roles"), "accounts") as any[];
+  return new Set(ACCOUNTS.filter((a) => {
+    const roles = (rows ?? []).find((r: any) => r.id === a)?.roles;
+    return a === "rozha" || a === "yunis" || (Array.isArray(roles) && roles.includes("order"));
+  }));
+}
+/* Rico's own messages about ordering: Rico on, and Order too. */
+async function ricoOrderAccounts() {
+  const [rico, order] = await Promise.all([ricoAccounts(), orderAccounts()]);
+  return new Set([...rico].filter((a) => order.has(a)));
+}
 async function ricoSays(kind: string, key: string, words: Words, extra: Record<string, unknown> = {}) {
-  const allowed = await ricoAccounts();
+  const allowed = await ricoOrderAccounts();
   const { error } = await sb.from("app_rico_inbox").upsert(ACCOUNTS.filter((a) => allowed.has(a)).map((a) => ({
     account: a, kind, mood: RICO_MOOD, body_en: words.en(NAMES[a].en), body_ku: words.ku(NAMES[a].ku), body_ar: words.ar(NAMES[a].ar),
     dedupe_key: `${key}|${a}`,
@@ -328,6 +342,18 @@ async function routineTick() {
       kind: "assistant", mood: RICO_MOOD, tag,
     }), new Set([account])),
   });
+}
+
+/* ---- The server's reader of Ricotta Restaurant: woken every minute (it works out itself what is due) ---- */
+async function rrReaderTick() {
+  const url = Deno.env.get("SUPABASE_URL"), anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  if (!url || !CRON_SECRET) return { skipped: "not set up" };
+  const r = await fetch(`${url}/functions/v1/api/rr-reader/tick`, {
+    method: "POST", signal: AbortSignal.timeout(55_000),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, apikey: anon, "x-cron-secret": CRON_SECRET },
+    body: "{}",
+  });
+  return r.ok ? await r.json().catch(() => ({ ok: true })) : { error: r.status };
 }
 
 /* ---- Erbil weather (Open-Meteo, no key), kept in app_weather for the app and Rico ---- */
@@ -530,7 +556,7 @@ async function supplierTick() {
     const { data: claimed, error } = await sb.rpc("app_internal_claim_supplier", { p_supplier_id: String(s.id), p_key: `${today.date}|${r.time}` });
     if (error) { console.error("claim failed", s.id, error.message); continue; }
     if (claimed !== true) continue;
-    out.push({ supplier: s.name, ...(await sendReminder(supplierPayload(s))) });
+    out.push({ supplier: s.name, ...(await sendReminder(supplierPayload(s), await orderAccounts())) });
   }
   return out;
 }
@@ -564,6 +590,9 @@ Deno.serve(async (req) => {
         try { result.wipe = await wipeTick(); } catch (e) { console.error("wipe tick failed", e); result.wipe = { error: "failed" }; }
         try { result.weekly = await weeklyTick(); } catch (e) { console.error("weekly tick failed", e); result.weekly = { error: true }; }
         try { result.routines = await routineTick(); } catch (e) { console.error("routine tick failed", e); result.routines = { error: true }; }
+        // The server's own reader of Ricotta Restaurant (api rr-reader.ts) decides what is due; this tick
+        // only wakes it and waits at most 55 seconds for it.
+        try { result.rrReader = await rrReaderTick(); } catch (_) { result.rrReader = { error: true }; }
         return json(result);
       }
       case "security": {
@@ -584,18 +613,34 @@ Deno.serve(async (req) => {
           title: title || RICO[lang], body: w.pick(lang), kind: "assistant", mood: RICO_MOOD, tag: `ricotta-assistant-${Date.now()}`,
         }), title ? undefined : await ricoAccounts()));
       }
+      case "rr-reader": {
+        // Cloud Rico can't read Ricotta Restaurant (or reads again): Rozh's signed-in phones only.
+        const w = written(body);
+        if (!w.any) return json({ error: "empty message" }, 400);
+        return json(await sendReminder((lang) => ({
+          title: L(lang, "Cloud Rico", "ریکۆی هەور", "ريكو السحابي"), body: w.pick(lang), kind: "assistant", view: "admin", tag: "ricotta-rr-reader",
+        }), new Set(["rozha"])));
+      }
       case "low-stock": {
         // Items at or below their low stock level (api low-stock.ts): Rozh's and Yunis's signed-in phones.
         const w = written(body);
         if (!w.any) return json({ error: "empty message" }, 400);
         return json(await sendReminder((lang) => ({
           title: L(lang, "Low stock", "کاڵا کەمە", "مخزون منخفض"), body: w.pick(lang), kind: "low-stock", tag: `ricotta-low-stock-${Date.now()}`,
-        }), new Set(ACCOUNTS)));
+        }), new Set(["rozha", "yunis"])));
+      }
+      case "recipe": {
+        // Recipe alerts (api recipe-alerts.ts): Ahmad's signed-in phones, opening Recipes.
+        const w = written(body);
+        if (!w.any) return json({ error: "empty message" }, 400);
+        return json(await sendReminder((lang) => ({
+          title: L(lang, "Recipes", "ڕەچەتەکان", "الوصفات"), body: w.pick(lang), kind: "recipe", view: "recipes", tag: `ricotta-recipe-${Date.now()}`,
+        }), new Set(["ahmad"])));
       }
       case "supplier-test": {
         const { data: s } = await sb.from("app_suppliers").select("id,name").eq("id", String(body.supplierId ?? "")).maybeSingle();
         if (!s) return json({ error: "supplier not found" }, 404);
-        return json(await sendReminder(supplierPayload(s, true)));
+        return json(await sendReminder(supplierPayload(s, true), await orderAccounts()));
       }
       default:
         return json({ error: "unknown type" }, 400);

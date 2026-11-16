@@ -11,6 +11,7 @@ import "../_shared/transfers.js";
 import "../_shared/stock-link.js";
 import { catalogOf, logEntry } from "./receipts.ts";
 import { cleanDraft, erbilDay, usualAmounts } from "./transfers.ts";
+import { INVOICE_MANUAL, INVOICE_TOOLS, invoiceReport, priceLookup } from "./rico-invoices.ts";
 const search = (globalThis as any).RicottaSearch;
 const R = (globalThis as any).RicottaReceipts;
 const T = (globalThis as any).RicottaTransfers;
@@ -504,6 +505,7 @@ export async function proposeTransferDraft(db: any, w: any, a: any, emit: Emit) 
 }
 
 export const RICO_RR_TOOLS = [
+  ...INVOICE_TOOLS,
   { name: "open_ricotta_restaurant", description: "Shows a button that opens a page of the Ricotta Restaurant web app (the restaurant's own system) in the browser: home, stock, new_receipt (enter a receipt), my_receipts, invoices, transfer (move between storages), ledger, activity, check (stock check), threw_away, give_back, staff_meals, units, zones, prep, all. Use it whenever someone asks to open Ricotta Restaurant or one of its tabs.",
     input_schema: { type: "object", properties: { page: { type: "string", enum: Object.keys(RR_PAGES) } }, required: ["page"] } },
   { name: "stock_search", description: "Stock of every item matching a word or name in English, Kurdish or Arabic (e.g. all cheese, milk, tomato): how much is in one storage (Main Storage unless named) and where else there is some. Shows a card with the list. Use it for any 'show me the stock of ...' or 'how much ... do we have' about several items.",
@@ -535,10 +537,13 @@ export const RICO_RR_MANUAL = `- Lists of stock ("show me the stock of all chees
 - Transfers: "what went to Pizza this week", "how much X was moved" -> transfers_summary.
 - "What needs me", "anything stuck or waiting" -> needs_attention. Most important first, one line each.
 - "Move 5 kg X from Main Storage to Pizza" -> propose_transfer_draft. It only saves a draft; the person opens it in Transfers, sends it and approves. Never say it was moved or sent.
-- Receipts are never made by you: they are filled and approved by a person, one at a time, in Receipts.`;
+- Receipts are never made by you: they are filled and approved by a person, one at a time, in Receipts.
+${INVOICE_MANUAL}`;
 
 export async function runRrTool(db: any, w: any, name: string, a: any, emit: Emit): Promise<unknown> {
   switch (name) {
+    case "invoice_report": return await invoiceReport(db, w, a, emit);
+    case "price_lookup": return await priceLookup(db, w, a, emit);
     case "open_ricotta_restaurant": return openRicottaRestaurant(w, a, emit);
     case "stock_search": return await stockSearch(db, w, a, emit);
     case "low_stock": return await lowStock(db, w, a, emit);

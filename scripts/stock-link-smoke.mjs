@@ -160,4 +160,40 @@ assert.deepEqual([ch.alert.length, ch.clear], [0, ['cups']], 'back above: ready 
 assert.deepEqual(L.lowChanges(rowsOf(null), [cartons(500)]), { alert: [], clear: [] });
 assert.deepEqual(L.lowChanges(rowsOf(null), []), { alert: [], clear: [] }, 'stock item not in the list: nothing changes');
 assert.deepEqual(L.lowChanges([{ id: 'x', stock_item: 'Cups', low_alert: null, low_alerted_at: null }], [tcups]), { alert: [], clear: [] });
-console.log('Stock links PASS: low stock levels (counted in cartons, pieces or kilos as counted; at or below; once per drop); suggestions (both kinds, never a wrong one; rare words, extra words, sizes, supplier, unit, links already made; sure matches; links that may be wrong), empty/low/ok levels, real names link (typos, plurals, Kurdish, search names), wrong ones are blocked, buying unit only for whole numbers of it');
+// Several stock items for one ordering item (Soy sauce linked to three soy sauces).
+{
+  const soyA = { name: 'Soy Sauce A', base: 'دانە', count: { name: 'دانە', factor: 1 }, buy: { name: 'کارتۆن', factor: 12 }, stock: { 'Main Storage': 15 } };
+  const soyB = { name: 'Soy Sauce B', base: 'دانە', count: { name: 'دانە', factor: 1 }, buy: { name: 'کارتۆن', factor: 24 }, stock: { 'Main Storage': 5 } };
+  const soyKg = { name: 'Soy Sauce Bulk', base: 'غرام', count: { name: 'کیلۆ', factor: 1000 }, buy: null, stock: { 'Main Storage': 3000 } };
+  const noCount = { name: 'Okra Box', base: 'دانە', count: null, buy: { name: 'کارتۆن', factor: 30 }, stock: { 'Main Storage': 30 } };
+  // linksOf: the list first, else the single older link; each name once.
+  assert.deepEqual(L.linksOf({ stockItems: ['A', 'B', 'A'] }), ['A', 'B']);
+  assert.deepEqual(L.linksOf({ stock_items: [], stock_item: 'Old' }), ['Old'], 'older rows: the single link');
+  assert.deepEqual(L.linksOf({}), []);
+  // Same kind: added together in pieces, never cartons (15 + 5 = 20 pieces, though 12 or 24 would be a carton each).
+  let c = L.combine([soyA, soyB], new Map());
+  assert.deepEqual(c.kinds, [{ qty: 20, unit: 'دانە' }]);
+  assert.equal(c.multi, true); assert.equal(c.level, 'ok'); assert.equal(c.empty, false);
+  assert.deepEqual(c.parts.map((p) => [p.name, p.qty, p.unit]), [['Soy Sauce A', 15, 'دانە'], ['Soy Sauce B', 5, 'دانە']], 'each part with its own amount');
+  // Mixed kinds stand side by side, the first link's kind first: "20 pieces + 3 kilos".
+  c = L.combine([soyA, soyB, soyKg], new Map());
+  assert.deepEqual(c.kinds, [{ qty: 20, unit: 'دانە' }, { qty: 3, unit: 'کیلۆ' }]);
+  assert.deepEqual(c.count, { qty: 20, unit: 'دانە' }, 'a low level counts the first kind');
+  // An item with no counting unit is counted in its usage unit, never its cartons (30 pieces, not 1 carton).
+  assert.deepEqual(L.combine([noCount, soyB], new Map()).kinds, [{ qty: 35, unit: 'دانە' }]);
+  // Empty only when all are empty; low on the parts' added pace.
+  assert.equal(L.combine([{ ...soyA, stock: { 'Main Storage': 0 } }, { ...soyB, stock: { 'Main Storage': 0 } }], new Map()).level, 'empty');
+  const fast = new Map([['Soy Sauce A', { base: 140, n: 5 }], ['Soy Sauce B', { base: 0, n: 0 }]]);   // 10 a day: 20 left is 2 days
+  assert.equal(L.combine([soyA, soyB], fast).level, 'low');
+  const slow = new Map([['Soy Sauce A', { base: 28, n: 3 }]]);   // 2 a day: 10 days
+  assert.equal(L.combine([soyA, soyB], slow).level, 'ok');
+  // Low stock alerts on the combined amount: 20 pieces, level 25 alerts; level 10 doesn't.
+  const row = (low) => ({ id: 'soy', stock_item: 'Soy Sauce A', stock_items: ['Soy Sauce A', 'Soy Sauce B'], low_alert: low, low_alerted_at: null });
+  let ch2 = L.lowChanges([row(25)], [soyA, soyB]);
+  assert.equal(ch2.alert.length, 1); assert.deepEqual(ch2.alert[0].count, { qty: 20, unit: 'دانە' });
+  ch2 = L.lowChanges([row(10)], [soyA, soyB]);
+  assert.equal(ch2.alert.length, 0, 'one part alone (5) is low, but together they are not');
+  // A linked stock item no longer in the list: the others still count.
+  assert.equal(L.lowChanges([row(25)], [soyA]).alert[0].count.qty, 15);
+}
+console.log('Stock links PASS: several stock items for one item (added in pieces, mixed kinds side by side, low and alerts on the total); low stock levels (counted in cartons, pieces or kilos as counted; at or below; once per drop); suggestions (both kinds, never a wrong one; rare words, extra words, sizes, supplier, unit, links already made; sure matches; links that may be wrong), empty/low/ok levels, real names link (typos, plurals, Kurdish, search names), wrong ones are blocked, buying unit only for whole numbers of it');

@@ -29,10 +29,15 @@ function tableStats(){
   return tableStatsCache;
 }
 const QUIET_MS = 30 * 86400000;
+/* Manage showing expense items: the empty list says so and its button adds an expense item. */
+const expenseList = kind=> kind === 'items' && typeof manageSplit === 'function' && manageSplit() && manageKind() === 'expense';
+const emptyRows = (kind, all)=> expenseList(kind) ? emptyState(t(all ? 'noExpenseItemsYet' : 'tableNoneHere'), all && canDo('catalog') ? 'expense' : null)
+  : emptyState(t(all ? (kind === 'items' ? 'noItemsYet' : 'noSuppliersYet') : 'tableNoneHere'), all && canDo('catalog') ? (kind === 'items' ? 'item' : 'supplier') : null);
 const itemLast = i=>tableStats().items[i.id]?.last || i.lastOrderedAt || '';
 const TABLES = {
   items:{
-    rows:()=>state.items,
+    // Manage shows food and expense items apart (its Food / Expenses switch).
+    rows:()=> typeof manageSplit === 'function' && manageSplit() ? state.items.filter(i=>itemKind(i) === manageKind()) : state.items,
     columns:[
       {id:'name', label:()=>t('fileItem'), value:i=>i.name, sort:i=>i.name, text:true, fixed:true},
       {id:'supplier', label:()=>t('supplier'), value:i=>i.supplierId ? supplierName(i.supplierId) : t('noSupplier'), sort:i=>i.supplierId ? supplierName(i.supplierId) : '￿', text:true},
@@ -46,7 +51,6 @@ const TABLES = {
     // A getter, so the Food and Expenses chips follow what the server and the catalog say now.
     get filters(){ return [
       {id:'all', label:()=>t('filterAll'), test:()=>true},
-      ...(state.expensesReady || state.items.some(i=>itemKind(i) === 'expense') ? [{id:'food', label:()=>t('kindFood'), test:i=>itemKind(i) === 'food'}, {id:'expense', label:()=>t('kindExpenses'), test:i=>itemKind(i) === 'expense'}] : []),
       {id:'unavailable', label:()=>t('fileUnavailable'), test:i=>i.available === false},
       {id:'noSupplier', label:()=>t('noSupplier'), test:i=>!i.supplierId || !state.suppliers.some(s=>s.id === i.supplierId)},
       {id:'quiet', label:()=>t('check_quiet'), test:i=>i.available !== false && (itemLast(i) ? Date.now() - Date.parse(itemLast(i)) > QUIET_MS : !!i.createdAt && Date.now() - Date.parse(i.createdAt) > QUIET_MS)},
@@ -100,7 +104,7 @@ function rowMeta(kind, r){
 /* Settings > Look can turn the tables off: a plain list by name, and a tap opens the form. */
 function renderPlainList(kind){
   const rows = [...TABLES[kind].rows()].sort((a, b)=>nameCollator().compare(a.name || '', b.name || ''));
-  if(!rows.length) return emptyState(t(kind === 'items' ? 'noItemsYet' : 'noSuppliersYet'), canDo('catalog') ? (kind === 'items' ? 'item' : 'supplier') : null);
+  if(!rows.length) return emptyRows(kind, true);
   return `<div class="plain-list">${rows.map(r=>{
     return `<button type="button" class="list-row tappable" data-search-row data-table-row="${esc(r.id)}" ${kind === 'items' ? `data-edititem="${esc(r.id)}"` : `data-search-text="${esc([r.name, r.phone || ''].join(' '))}"`}><div><div class="name" dir="auto">${esc(r.name)}${r.available === false ? ` <span class="availability-badge">${esc(t('unavailable'))}</span>` : ''}</div><div class="meta">${rowMeta(kind, r)}</div></div><i class="sheet-chevron" aria-hidden="true"></i></button>`;
   }).join('')}</div>`;
@@ -113,7 +117,7 @@ function renderDataTable(kind){
   const tools = `<div class="table-tools">${chips}<div class="table-buttons">
       <button type="button" class="btn btn-ghost table-sort-btn" data-table-sort-menu>${ICON_SORT}<span>${esc(t('tableSortBy')(col.label()))}</span></button>
       <button type="button" class="btn btn-ghost table-cols-btn" data-table-cols>${ICON_COLUMNS}<span>${esc(t('tableColumns'))}</span></button></div></div>`;
-  if(!rows.length) return tools + emptyState(t(prefs.filter === 'all' ? (kind === 'items' ? 'noItemsYet' : 'noSuppliersYet') : 'tableNoneHere'), prefs.filter === 'all' && canDo('catalog') ? (kind === 'items' ? 'item' : 'supplier') : null);
+  if(!rows.length) return tools + emptyRows(kind, prefs.filter === 'all');
   const cols = tableColumns(kind);
   const head = cols.map(c=>`<th scope="col" class="${c.end ? 'end' : ''}"${prefs.sort === c.id ? ` aria-sort="${prefs.dir > 0 ? 'ascending' : 'descending'}"` : ''}><button type="button" data-table-sort="${c.id}">${esc(c.label())}${prefs.sort === c.id ? `<i class="sort-arrow${prefs.dir < 0 ? ' down' : ''}" aria-hidden="true"></i>` : ''}</button></th>`).join('');
   const rowAttr = r=>`data-search-row data-table-row="${esc(r.id)}" ${kind === 'items' ? `data-edititem="${esc(r.id)}"` : `data-search-text="${esc([r.name, r.phone || ''].join(' '))}"`}`;

@@ -30,6 +30,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   GET    rico-chats                                           one shared list of both accounts' Rico chats
 //   DELETE rico-chats[/:id][?account=all]                       delete one chat, or all of them
 //   PUT    rico-chats/:id/title {title}                          rename a chat (own; Rozh any)
+//   PUT    rico-chats/:id/pin {pinned}                           pin a chat to the top (own; Rozh any)
 //   POST   assistant/title {question, answer, lang}              a short topic name for a new chat
 //   GET    rico-routines | POST rico-routines {kind,text,time,days,supplierIds,runAt}   Rico's routines (runAt: a one-off reminder)
 //   PUT    rico-routines/:id {enabled} | DELETE rico-routines/:id                  switch one on or off, delete
@@ -80,6 +81,7 @@ import { stockView, transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
 import { checkStockNames, stockNames } from "./stock-names.ts";
 import { checkLowStock, relinkedLowStock } from "./low-stock.ts";
+import { rrReaderRoute } from "./rr-reader-route.ts";
 import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 import "../_shared/overview.js";
@@ -111,7 +113,7 @@ const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers" 
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
   : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : account === "ahmad" ? [] : [...DEFAULT_ROLES];
 // Account settings the app may save (Settings), and the ones with a list of choices.
-const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "simpleView", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto"]);
+const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "simpleView", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto", "tourExpenses", "tourRecipes"]);
 const SETTING_CHOICES: Record<string, string[]> = { darkMode: ["auto", "on", "off"], ricoStyle: ["normal", "short", "warm"] };
 // Rozh may undo an order she sent this long without typing her PIN.
 const UNDO_MS = 15 * 60_000;
@@ -224,7 +226,9 @@ const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
 // What is bought from a supplier: food, expenses (tea, paper cups, tissues...) or both. An item is food or an expense.
 const SUPPLIER_BUYS = ["food", "expenses", "both"];
 const toSupplier = (s: any) => ({ id: s.id, name: s.name, phone: s.phone, reminder: s.reminder, buys: SUPPLIER_BUYS.includes(s.buys) ? s.buys : "food" });
-const toItem = (i: any) => ({ id: i.id, name: i.name, kind: i.kind === "expense" ? "expense" : "food", unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false, stockItem: i.stock_item ?? null,
+const toItem = (i: any) => ({ id: i.id, name: i.name, kind: i.kind === "expense" ? "expense" : "food", unit: i.unit_id, supplierId: i.supplier_id, sortOrder: i.sort_order, note: i.note ?? "", aliases: i.aliases ?? [], available: i.available !== false,
+  // The linked stock items, first one first (stockItem is the first, for everything that reads one link).
+  ...((links: string[]) => ({ stockItem: links[0] ?? null, stockItems: links }))((globalThis as any).RicottaStockLink.linksOf(i)),
   createdAt: i.created_at ?? null, lastOrderedAt: i.last_ordered_at ?? null });
 /* The kitchen streak as the app shows it. lit: today already has an order; alive: yesterday or today
    had one; recoverable: how many days Rico can bring back after it broke. */
@@ -257,7 +261,8 @@ const toActivity = (a: any) => ({
 });
 // Rico has no moods any more: older rows still hold one, so every message reads as the neutral face.
 const toInbox = (m: any) => ({ id: m.id, kind: m.kind, mood: "calm", en: m.body_en, ku: m.body_ku, ar: m.body_ar, at: m.created_at, read: !!m.read_at,
-  ...(m.kind === "routine_order" && m.payload ? { order: m.payload } : {}) });
+  ...(m.kind === "routine_order" && m.payload ? { order: m.payload } : {}),
+  ...(m.kind === "routine_ask" && typeof m.payload?.question === "string" ? { question: m.payload.question } : {}) });
 /* Reads every row of a query, 1000 at a time (a single request silently stops
    at 1000 rows, which used to cut long order histories short). */
 async function readAll(build: () => any): Promise<any[]> {
@@ -382,6 +387,15 @@ const stockOf = (t: any, used: Map<string, any>, at: string | null) => {
   const L = (globalThis as any).RicottaStockLink;
   return { ...L.amount(t), level: L.level(t, used).level, count: L.counted(t), at };
 };
+/* The stock of an item's links: one link as before; several added together (stock-link.js combine()),
+   with each part and the names of any linked stock item that is no longer in Ricotta Restaurant. */
+function stockFor(names: string[], byName: Map<string, any>, used: Map<string, any>, at: string | null) {
+  const L = (globalThis as any).RicottaStockLink;
+  const found = names.map((n) => byName.get(n)).filter(Boolean), gone = names.filter((n) => !byName.has(n));
+  if (!found.length) return { missing: true, at };
+  if (names.length === 1) return stockOf(found[0], used, at);
+  return { ...L.combine(found, used), at, ...(gone.length ? { gone } : {}) };
+}
 /* Each item's low stock level (Manage), {id: level}. Read on its own, so the items still load before the
    low stock migration (20261115120000) has been run. */
 async function lowLevels(): Promise<Map<string, number>> {
@@ -399,18 +413,14 @@ async function withStock(items: any[]) {
   if (!cat) return items;
   const byName = new Map(cat.titems.map((t: any) => [t.name, t]));
   const used = await stockUsage(cat.titems, moves).catch(() => new Map());
-  return items.map((i) => {
-    if (!i.stockItem) return i;
-    const t = byName.get(i.stockItem);
-    return { ...i, stock: t ? stockOf(t, used, cat.at) : { missing: true, at: cat.at } };
-  });
+  return items.map((i) => ({ ...i, ...(i.stockItem ? { stock: stockFor(i.stockItems?.length ? i.stockItems : [i.stockItem], byName, used, cat.at) } : {}) }));
 }
 async function bootstrap(s: Session) {
   const catalogAccess=can(s,"order") || can(s,"manage");
   const [me, suppliers, items, units, orders, devices, activity, inbox, streak, months, draft, wipe] = await Promise.all([
     readAccount(s.account),
     catalogAccess ? readAll(() => app("suppliers").select("id,name,phone,reminder,buys").order("name").order("id")) : Promise.resolve([]),
-    catalogAccess ? readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at,stock_item,kind").order("name").order("id")) : Promise.resolve([]),
+    catalogAccess ? readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at,stock_item,stock_items,kind").order("name").order("id")) : Promise.resolve([]),
     catalogAccess ? readAll(() => app("units").select("id,en,ku,ar").order("id")) : Promise.resolve([]),
     (can(s,"order") || can(s,"history")) ? readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")) : Promise.resolve([]),
     listDevices(s),
@@ -816,17 +826,22 @@ async function ricoChats(req: Request, actor: Account, id: string | null, body: 
   if (id !== null && !uuid(id)) return fail("Chat not found", 404);
   const whose = new URL(req.url).searchParams.get("account");
   if (req.method === "GET" && id === null) {
-    const { data, error } = await db.from("app_rico_chats").select("id,account,title,created_at,updated_at")
-      .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString()).order("updated_at", { ascending: false }).limit(120);
+    // Rozh and Yunis share one list; Ahmad (when Rozh gave him Rico) sees only his own chats, and his are
+    // not in theirs: the recipe book's chats are his.
+    let q = db.from("app_rico_chats").select("id,account,title,pinned,created_at,updated_at")
+      .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString());
+    q = actor === "ahmad" ? q.eq("account", "ahmad") : actor === "yunis" ? q.neq("account", "ahmad") : q;
+    const { data, error } = await q.order("updated_at", { ascending: false }).limit(120);
     if (error) throw error;
-    return json({ chats: (data ?? []).map((c: any) => ({ id: c.id, account: c.account, title: c.title, createdAt: c.created_at, updatedAt: c.updated_at })) });
+    return json({ chats: (data ?? []).map((c: any) => ({ id: c.id, account: c.account, title: c.title, pinned: !!c.pinned, createdAt: c.created_at, updatedAt: c.updated_at })) });
   }
   if (req.method === "GET") {
     // Saved chats last 90 days (the nightly clean-up removes older ones); an older one is gone here too.
     const { data, error } = await db.from("app_rico_chats").select("id,account,title,messages,created_at,updated_at").eq("id", id)
       .gte("updated_at", new Date(Date.now() - 90 * 86400_000).toISOString()).maybeSingle();
     if (error) throw error;
-    return data ? json({ id: data.id, account: data.account, title: data.title, messages: data.messages, createdAt: data.created_at, updatedAt: data.updated_at }) : fail("Chat not found", 404);
+    const mine = data && (actor === "rozha" || (actor === "ahmad" ? data.account === "ahmad" : data.account !== "ahmad"));
+    return mine ? json({ id: data.id, account: data.account, title: data.title, messages: data.messages, createdAt: data.created_at, updatedAt: data.updated_at }) : fail("Chat not found", 404);
   }
   if (req.method === "PUT" && id !== null) {
     const b = body;
@@ -963,6 +978,8 @@ Deno.serve(async (req) => {
       const limited = await requestLimit(["telegram"], [600]); if (limited) return limited;
       return (await telegramWebhook(db, req, await readBody(req, MAX_BODY_BYTES))) ? ok() : fail("forbidden", 403);
     }
+    // The server's own reader of Ricotta Restaurant, run by send-push's tick (cron secret).
+    if (path === "rr-reader/tick") return (await rrReaderRoute({ db, json, fail }, req, M, path, null)) ?? fail("not_found", 404);
     // Rico on Rozh's Mac has his own door (receipts.ts), with its own secret instead of a session.
     if (path.startsWith("helper/")) {
       if (!(await helperAllowed(req))) return fail("unauthorized", 401);
@@ -994,6 +1011,9 @@ Deno.serve(async (req) => {
     if (s.account === "ahmad" && !can(s,"order") && !can(s,"history") && path.startsWith("streak")) return fail("forbidden",403);
     if (s.account === "ahmad" && !can(s,"order") && !can(s,"manage") && /^(items|suppliers|units)(\/|$)/.test(path)) return fail("forbidden",403);
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
+    if (path === "rr-invoices" || path.startsWith("admin/rr-reader")) {
+      return (await rrReaderRoute({ db, json, fail }, req, M, path, { account: s.account, rozha, can: (role: string) => can(s, role) })) ?? fail("not_found", 404);
+    }
     if (path === "receipts-settings/telegram") {
       if (!rozha) return fail("forbidden", 403);
       if (M === "GET") return json(await telegramStatus(db));
@@ -1174,31 +1194,37 @@ Deno.serve(async (req) => {
     if (M === "PUT" && (m = path.match(/^items\/([^/]{1,120})\/stock$/))) {
       if (!can(s, "catalog")) return fail("forbidden", 403);
       const id = decodeURIComponent(m[1]);
-      const want = b.stockItem === null ? null : typeof b.stockItem === "string" && b.stockItem.length >= 1 && b.stockItem.length <= 200 ? b.stockItem : undefined;
-      if (want === undefined) return fail("invalid_input");
-      const { data: item, error } = await app("items").select("id,name,aliases,stock_item").eq("id", id).maybeSingle();
-      if (error) return fail("save_failed", 500);
+      // {stockItems: [names]} (several, first one first) or the older {stockItem: name | null}.
+      const raw = Array.isArray(b.stockItems) ? b.stockItems : b.stockItem === null ? [] : typeof b.stockItem === "string" ? [b.stockItem] : null;
+      if (!raw || raw.length > 20 || raw.some((n: unknown) => typeof n !== "string" || !n.length || n.length > 200)) return fail("invalid_input");
+      const want: string[] = [...new Set(raw as string[])];
+      const { data: item, error } = await app("items").select("id,name,aliases,stock_item,stock_items").eq("id", id).maybeSingle();
+      if (error) return fail(error.code === "42703" ? "not_ready" : "save_failed", error.code === "42703" ? 503 : 500);
       if (!item) return fail("gone", 409);
+      const L = (globalThis as any).RicottaStockLink;
+      const before: string[] = L.linksOf(item);
       let stock: any = null, mismatch = false;
-      if (want !== null) {
+      if (want.length) {
         const cat = await readStockCatalog();
-        const t = (cat?.titems ?? []).find((x: any) => x?.name === want);
-        if (!t) return fail("stock_item_unknown", 422);
-        const L = (globalThis as any).RicottaStockLink;
-        mismatch = !L.matches({ name: item.name, aliases: item.aliases ?? [] }, want);
-        if (mismatch && b.anyway !== true) return fail("names_dont_match", 422);
-        stock = stockOf(t, await stockUsage(cat?.titems ?? []).catch(() => new Map()), cat?.at ?? null);
+        const byName = new Map((cat?.titems ?? []).map((t: any) => [t?.name, t]));
+        if (want.some((n) => !byName.has(n))) return fail("stock_item_unknown", 422);
+        // A name that doesn't match is linked only after the app warned (anyway: true, or the list of those names).
+        const odd = want.filter((n) => !before.includes(n) && !L.matches({ name: item.name, aliases: item.aliases ?? [] }, n));
+        const ok = b.anyway === true || (Array.isArray(b.anyway) && odd.every((n) => b.anyway.includes(n)));
+        mismatch = odd.length > 0;
+        if (mismatch && !ok) return fail("names_dont_match", 422);
+        stock = stockFor(want, byName as Map<string, any>, await stockUsage(cat?.titems ?? []).catch(() => new Map()), cat?.at ?? null);
       }
-      if ((item.stock_item ?? null) !== want) {
-        const { error: upError } = await app("items").update({ stock_item: want, updated_at: nowIso() }).eq("id", id);
+      if (before.join("\n") !== want.join("\n")) {
+        const { error: upError } = await app("items").update({ stock_item: want[0] ?? null, stock_items: want, updated_at: nowIso() }).eq("id", id);
         if (upError) return fail("save_failed", 500);
         const { error: logError } = await app("audit_events").insert({ id: crypto.randomUUID(), actor: s.account, device_id: s.deviceId, action: "edit", entity_type: "item", entity_name: item.name,
-          payload: { by: accountName(s.account), fields: [{ k: "stock", from: item.stock_item ?? "", to: want ?? "" }], source: "server", ...(mismatch ? { mismatch: true } : {}) } });
+          payload: { by: accountName(s.account), fields: [{ k: "stock", from: before.join(" + "), to: want.join(" + ") }], source: "server", ...(mismatch ? { mismatch: true } : {}) } });
         if (logError) console.error("stock_link_audit_failed");
-        // Another stock item: its low stock alert starts over (and alerts now if it is already low).
+        // Other stock items: the low stock alert starts over (and alerts now if it is already low).
         later(relinkedLowStock(db, id));
       }
-      return json({ ok: true, stockItem: want, stock });
+      return json({ ok: true, stockItem: want[0] ?? null, stockItems: want, stock });
     }
     // Low stock alert of one item (Manage): {level} in the linked stock item's counting format, or null
     // for none. At or below it, the item shows yellow and Rozh and Yunis get one alert (low-stock.ts).
@@ -1226,6 +1252,8 @@ Deno.serve(async (req) => {
     }
     if ((m = path.match(/^(suppliers|items|units)\/([^/]{1,120})$/))) {
       const table = m[1], id = decodeURIComponent(m[2]);
+      // Units are shared by Order and Recipes: only Rozh and Yunis add, change or delete them.
+      if ((M === "PUT" || M === "DELETE") && table === "units" && s.account !== "rozha" && s.account !== "yunis") return fail("forbidden", 403);
       if (M === "PUT" || M === "DELETE") {
         if (M === "DELETE" && table === "items") {
           const {data,error}=await db.rpc("app_internal_item_undo",{p_id:id,p_actor:s.account,p_device:s.deviceId,p_restore:false});
@@ -1400,6 +1428,14 @@ Deno.serve(async (req) => {
       const title = plain(b?.title, 80);
       if (!title) return fail("invalid_input");
       let q = db.from("app_rico_chats").update({ title }).eq("id", m[1]);
+      if (!isRozha(s)) q = q.eq("account", s.account);
+      const { data: done, error } = await q.select("id");
+      return error ? fail("save_failed", 500) : !done?.length ? fail("not_found", 404) : ok();
+    }
+    // Pinning a chat (it stays at the top of the list): the person's own (Rozh: any).
+    if ((m = path.match(/^rico-chats\/([0-9a-f-]{36})\/pin$/)) && M === "PUT") {
+      if (typeof b?.pinned !== "boolean") return fail("invalid_input");
+      let q = db.from("app_rico_chats").update({ pinned: b.pinned }).eq("id", m[1]);
       if (!isRozha(s)) q = q.eq("account", s.account);
       const { data: done, error } = await q.select("id");
       return error ? fail("save_failed", 500) : !done?.length ? fail("not_found", 404) : ok();

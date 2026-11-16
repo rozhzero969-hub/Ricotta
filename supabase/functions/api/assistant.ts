@@ -113,7 +113,7 @@ async function loadWorld(db: any, s: Session) {
   const full = s.account === "rozha";
   const [sup, items, units, orders, devices, activity, streak, months, rules, routines] = await withTimeout(Promise.all([
     catalogRows(() => app("suppliers").select("id,name,phone,reminder,created_at").order("id")),
-    catalogRows(() => app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available,stock_item").order("id")),
+    catalogRows(() => app("items").select("id,name,unit_id,supplier_id,created_at,sort_order,note,aliases,available,stock_item,stock_items").order("id")),
     catalogRows(() => app("units").select("id,en,ku,ar").order("id")),
     app("orders").select("id,sent_at,created_at,sent_by").eq("status", "sent").order("sent_at", { ascending: false }).limit(600),
     full ? app("devices").select("account,label,logged_in,last_seen").order("last_seen", { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
@@ -138,8 +138,12 @@ async function loadWorld(db: any, s: Session) {
     const byName = new Map(((cat?.data?.titems ?? []) as any[]).map((t: any) => [t.name, t]));
     const L = (globalThis as any).RicottaStockLink;
     for (const i of linked) {
-      const t = byName.get(i.stock_item);
-      stockOf.set(i.id, t ? { stock_item: i.stock_item, ...L.amount(t), read_at: cat?.updated_at ?? null } : { stock_item: i.stock_item, missing: true });
+      // Several linked stock items: added together (stock-link.js combine()), with each part for Rico to list.
+      const names: string[] = L.linksOf(i), found = names.map((n) => byName.get(n)).filter(Boolean);
+      const read_at = cat?.updated_at ?? null;
+      if (!found.length) stockOf.set(i.id, { stock_item: i.stock_item, missing: true });
+      else if (names.length === 1) stockOf.set(i.id, { stock_item: i.stock_item, ...L.amount(found[0]), read_at });
+      else { const c = L.combine(found); stockOf.set(i.id, { stock_items: names, kinds: c.kinds, parts: c.parts, empty: c.empty, read_at }); }
     }
   }
   const orderRows = (orders.data ?? []).reverse();
@@ -174,6 +178,10 @@ async function loadWorld(db: any, s: Session) {
   const now = erbilParts();
   const can = { history: full || (s.roles ?? []).includes("history"), record: full || (s.roles ?? []).includes("record"),
     receipts: full || (s.roles ?? []).includes("receipts"), transfers: full || (s.roles ?? []).includes("transfers") };
+  // Ahmad's account is the recipe book: without Order or Manage, Rico sees no suppliers, items, stock,
+  // orders or phones (bootstrap sends him none either), only what he asks about recipes and the app.
+  const catalog = full || s.account !== "ahmad" || ["order", "manage"].some((r) => (s.roles ?? []).includes(r));
+  if (!catalog) { history.length = 0; stockOf.clear(); }
   const seen: Order[] = can.history ? history : history.filter((o) => o.date === now.date).map((o) => ({
     ...o, lines: o.lines.map((l) => ({ supplierId: l.supplierId, supplierName: l.supplierName, itemId: "", name: "", unitId: null, qty: 0 })),
   }));
@@ -182,12 +190,12 @@ async function loadWorld(db: any, s: Session) {
     acted: false,                       // a tool did something outside the chat (a WhatsApp send): never start the reply again
     signal: null as AbortSignal | null, // the chat's own signal: a stopped chat sends nothing new
     transferDrafts: 0,                  // transfer drafts Rico saved in this reply (propose_transfer_draft)
-    suppliers: (sup.data ?? []) as any[],
-    items: (items.data ?? []) as any[],
+    suppliers: (catalog ? sup.data ?? [] : []) as any[],
+    items: (catalog ? items.data ?? [] : []) as any[],
     stockOf,                            // linked items: Main Storage amount {stock_item, qty, unit, empty, read_at}
-    units: (units.data ?? []) as any[],
+    units: (catalog ? units.data ?? [] : []) as any[],
     history: seen,
-    devices: (devices.data ?? []) as any[],
+    devices: (catalog ? devices.data ?? [] : []) as any[],
     activity: can.record ? (activity.data ?? []) as any[] : [],
     streak: streak.data ?? null,
     months: can.history ? (months.data ?? []) as any[] : [],
@@ -797,7 +805,7 @@ function proposeFile(w: World, a: any, emit: Emit) {
 
 /* ---------------- tool definitions ---------------- */
 const TOOLS = [
-  { name: "find_items", description: "Search the item catalog. Returns item_id, name, unit, supplier, when it was added, how often it was ordered, usual quantity. Use newest:true to list the most recently added items. Leave query empty to list all (capped by limit). An item linked to a stock item also has in_main_storage (how much is in Main Storage, in its buying unit when whole, else its counting unit, and when the stock was read): use it for \"how much X do we have\".",
+  { name: "find_items", description: "Search the item catalog. Returns item_id, name, unit, supplier, when it was added, how often it was ordered, usual quantity. Use newest:true to list the most recently added items. Leave query empty to list all (capped by limit). An item linked to a stock item also has in_main_storage (how much is in Main Storage, in its buying unit when whole, else its counting unit, and when the stock was read): use it for \"how much X do we have\". An item linked to several stock items has kinds (the amounts added together per unit, e.g. 20 pieces + 3 kilos) and parts (each linked stock item with its own amount): give the total, and the parts when asked.",
     input_schema: { type: "object", properties: { query: { type: "string", description: "Item name or alias, any language; words can be in any order and minor typos are supported" }, supplier: { type: "string", description: "Supplier name or id" }, newest: { type: "boolean" }, limit: { type: "integer" }, offset: { type: "integer" } } } },
   { name: "list_suppliers", description: "All suppliers with item counts, reminder schedule, usual order days, days between orders, last order and whether they were sent today.",
     input_schema: { type: "object", properties: {} } },
@@ -1888,14 +1896,16 @@ export async function chatTitle(db: any, body: any) {
       method: "POST", signal: AbortSignal.timeout(TITLE_TIMEOUT_MS), headers: { "content-type": "application/json", "x-goog-api-key": k.geminiKey },
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 200, thinkingConfig: { thinkingLevel: "minimal" } } }),
     });
-    return r.ok ? ((await r.json())?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? "").join("") : null;
+    if (!r.ok) { console.error("chat title: gemini", r.status); return null; }
+    return ((await r.json())?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? "").join("");
   });
   if (k.groqKey) tries.push(async () => {
     const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST", signal: AbortSignal.timeout(TITLE_TIMEOUT_MS), headers: { "content-type": "application/json", "authorization": `Bearer ${k.groqKey}` },
       body: JSON.stringify({ model: DEFAULT_GROQ_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.2, max_tokens: 300, reasoning_effort: "low", reasoning_format: "hidden" }),
     });
-    return r.ok ? (await r.json())?.choices?.[0]?.message?.content ?? null : null;
+    if (!r.ok) { console.error("chat title: groq", r.status); return null; }
+    return (await r.json())?.choices?.[0]?.message?.content ?? null;
   });
   if (k.anthropicKey) tries.push(async () => {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1903,11 +1913,14 @@ export async function chatTitle(db: any, body: any) {
       headers: { "content-type": "application/json", "x-api-key": k.anthropicKey, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 30, messages: [{ role: "user", content: prompt }] }),
     });
-    return r.ok ? ((await r.json())?.content ?? []).map((c: any) => c.text ?? "").join("") : null;
+    if (!r.ok) { console.error("chat title: anthropic", r.status); return null; }
+    return ((await r.json())?.content ?? []).map((c: any) => c.text ?? "").join("");
   });
   for (const tryOne of tries) {
-    const title = cleanTitle(await tryOne().catch(() => null));
+    const raw = await tryOne().catch((e) => { console.error("chat title: failed", String((e as Error)?.name ?? "error")); return null; });
+    const title = cleanTitle(raw);
     if (title) return { title };
+    if (raw) console.error("chat title: answer not usable");
   }
   return { title: null };
 }

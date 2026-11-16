@@ -13,7 +13,15 @@ await db.exec("insert into app_recipes(id,name,data,updated_by) values('00000000
 assert.equal((await q("update app_recipes set version=2 where id='00000000-0000-4000-8000-000000000002' and version=1 returning id")).length,1);assert.equal((await q("update app_recipes set version=2 where id='00000000-0000-4000-8000-000000000002' and version=1 returning id")).length,0);
 
 await db.exec("insert into app_recipe_ingredients(id,name,stock_item,unit) values('00000000-0000-4000-8000-000000000003','Eggs','Eggs','pcs'); update app_recipes set data='{\"lines\":[{\"ingredient\":\"00000000-0000-4000-8000-000000000003\",\"qty\":1,\"unit\":\"pcs\"}]}' where id='00000000-0000-4000-8000-000000000002';");
-await assert.rejects(()=>db.exec("update app_recipe_ingredients set unit='g' where id='00000000-0000-4000-8000-000000000003';"));
+// An ingredient's unit is only where new lines start (recipe costs): changing it is allowed now.
+assert.equal((await q("update app_recipe_ingredients set unit='g' where id='00000000-0000-4000-8000-000000000003' returning id")).length,1);
+// Recipe alerts go once per change: the first take notes everything, the same value again says nothing.
+const take=async items=>(await q(`select * from app_internal_recipe_alert_take('${JSON.stringify(items)}'::jsonb)`));
+assert.equal((await take([{k:'margin:a',v:'ok'},{k:'stock:Eggs',v:'ok'}])).length,2);
+assert.equal((await take([{k:'margin:a',v:'ok'},{k:'stock:Eggs',v:'ok'}])).length,0,'nothing changed');
+assert.deepEqual((await take([{k:'margin:a',v:'loss'}])).map(r=>[r.alert_key,r.was,r.is_now]),[['margin:a','ok','loss']]);
+assert.equal((await q("select has_table_privilege('anon','app_recipe_alert_state','select') as allowed"))[0].allowed,false);
+assert.equal((await q("select has_function_privilege('anon','app_internal_recipe_alert_take(jsonb)','execute') as allowed"))[0].allowed,false);
 for(let i=0;i<8;i++)await db.exec(`insert into app_recipe_photos(id,recipe_id,path) values(gen_random_uuid(),'00000000-0000-4000-8000-000000000002','photo-${i}');`);
 await assert.rejects(()=>db.exec("insert into app_recipe_photos(id,recipe_id,path) values(gen_random_uuid(),'00000000-0000-4000-8000-000000000002','photo-9');"));
-await db.close();console.log('Recipes DB PASS: disabled initial PIN, Admin PIN setup, roles, table privacy, RLS, stale version refusal');})().catch(e=>{console.error(e);process.exit(1);});
+await db.close();console.log('Recipes DB PASS: disabled initial PIN, Admin PIN setup, roles, table privacy, RLS, stale version refusal, recipe alerts once per change');})().catch(e=>{console.error(e);process.exit(1);});

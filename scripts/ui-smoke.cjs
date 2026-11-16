@@ -137,7 +137,7 @@ const server=http.createServer((req,res)=>{
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
     await ctx.addInitScript(({loggedIn,s})=>{
-      for(const a of ['rozha','yunis']){localStorage.setItem('ricottaOrders:toured:'+a,'true');localStorage.setItem('ricottaOrders:ricoBriefing:'+a,JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));}
+      for(const a of ['rozha','yunis']){localStorage.setItem('ricottaOrders:toured:'+a,'true');localStorage.setItem('ricottaOrders:xtSeen:'+a,'true');localStorage.setItem('ricottaOrders:ricoBriefing:'+a,JSON.stringify(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Baghdad',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())));}
       window.RICOTTA_TODAY='2026-06-10';   // a fixed day, so the test does not depend on the date
       localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',JSON.stringify(Date.now()));
       // Both people already allowed Rico's AI (the permission itself is checked on Rico's screen below).
@@ -375,7 +375,7 @@ const server=http.createServer((req,res)=>{
     await openView(page,'admin');
     const tools=await page.locator('.adh-tools [data-admin-open]').evaluateAll(els=>els.map(e=>e.dataset.adminOpen));
     const rrViews=await page.evaluate(()=>state.views.includes('receipts') || state.views.includes('transfers'));
-    assert.deepEqual(tools,['problems','security','health','catalog',...(rrViews ? ['names'] : []),'restore'],'Admin tools');
+    assert.deepEqual(tools,['problems','security','health','catalog',...(rrViews ? ['names'] : []),'cloud','restore'],'Admin tools');
     assert.equal(await page.locator('.adh-rico[data-admin-open="rico"]').count(),1,'Rico\u2019s card opens his page');
     assert.equal(await page.locator('[data-admin-person]').count(),3,'one row per person');
     // The status line counts only real problems, today's numbers come from the overview, each with a bar
@@ -573,7 +573,9 @@ const server=http.createServer((req,res)=>{
     // The two-line button slides out a side menu of recent chats, like ChatGPT's; Escape puts it away.
     await page.locator('#ricoTopbar [data-rt-chats]').click();
     await page.locator('#ricoDrawer .rd-new').waitFor();
-    assert.equal(await page.locator('#ricoDrawer .rd-item').count(),3,'the side menu has Settings, Memory and All chats');
+    assert.equal(await page.locator('#ricoDrawer .rd-item').count(),2,'the side menu has Settings and Scheduled (no Chat history or Memory rows)');
+    assert.equal(await page.locator('#ricoDrawer [data-rd-scheduled]').count(),1,'Scheduled is in the side menu');
+    assert.equal(await page.locator('#ricoDrawer .rd-foot').evaluate(f=>f.firstElementChild.classList.contains('rd-me')&&f.lastElementChild.classList.contains('rd-new')),true,'the profile comes first, New chat last');
     await page.waitForTimeout(400);await snapshot(page,'phone-rico-menu-en.png');
     await page.keyboard.press('Escape');
     await page.locator('#ricoDrawer').waitFor({state:'detached'});
