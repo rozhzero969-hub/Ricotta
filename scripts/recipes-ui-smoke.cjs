@@ -1,5 +1,5 @@
 /* Browser checks for Recipes (Ahmad): he sees Recipes and Settings only, gets the Recipes tour once and
-   never the Order tour, writes a recipe from a linked ingredient in a category (the list groups by it), sees its cost from the last price paid,
+   never the Order tour, writes a recipe from a linked ingredient in a category, adds its photo while writing (the list groups by it), sees its cost from the last price paid,
    scales it, edits with autosave (Done waits for a save on its way), and his Settings are locked. Rozh
    opens Ahmad's access in Admin. EN/KU/AR at phone and desktop widths. API calls are fixtures. */
 const {chromium}=require('playwright'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
@@ -22,7 +22,7 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
   else if(p==='settings'&&req.method()==='PUT')settingsPuts.push(req.postDataJSON());
   else if(p==='admin/roles'){if(req.method()==='PUT'){const b=req.postDataJSON();access[b.account]=b.roles;data={roles:b.roles};}else data=access;}
   else if(p==='recipes')data=book;
-  else if(/^recipes\/[^/]+\/photos$/.test(p))data=[];
+  else if(/^recipes\/[^/]+\/photos$/.test(p)){if(req.method()==='POST'){const id=p.split('/')[1];assert.ok(book.recipes.some(x=>x.id===id),'saved before its photo');assert.match(req.postDataJSON().image,/^data:image\/jpeg;base64,/);book.covers[id]=req.postDataJSON().image;data={ok:true};}else data=[];}
   else if(p.startsWith('recipes/')&&req.method()==='PUT'){const b=req.postDataJSON();await new Promise(r=>setTimeout(r,900));data={...b,version:b.version+1,updated_by:'ahmad',updated_at:new Date().toISOString()};const i=book.recipes.findIndex(x=>x.id===data.id);if(i<0)book.recipes.push(data);else book.recipes[i]=data;}
   await route.fulfill({contentType:'application/json',body:JSON.stringify(data)}).catch(()=>{});});
  await context.addInitScript(({lang,first})=>{const prefix='ricottaOrders:';localStorage.setItem(prefix+'apiSession',JSON.stringify({token:'fixture',account:'ahmad',name:'Ahmad',expiresAt:'2099-01-01T00:00:00Z'}));localStorage.setItem(prefix+'lang',JSON.stringify(lang));localStorage.setItem(prefix+'pushBannerSnoozedAt',String(Date.now()));if(!first)localStorage.setItem(prefix+'rcSeen:ahmad','true');},{lang,first});
@@ -43,7 +43,15 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  await page.locator('#rcAddLine').selectOption(egg);await page.locator('[data-rc-qty="0"]').waitFor();
  await page.locator('[data-rc-qty="0"]').fill('2');
  assert.match(await page.locator('[data-rc-linecost="0"]').innerText(),/500/,'2 eggs at the last price of 250 IQD');
- await page.locator('[data-rc-step="0"]').fill('Beat the eggs.');await shot('editor');
+ await page.locator('[data-rc-step="0"]').fill('Beat the eggs.');
+ if(first){
+  // A photo while writing: the new recipe is saved first, then its photo shows as the tile.
+  const jpg=await page.screenshot({type:'jpeg',quality:60,clip:{x:0,y:0,width:60,height:60}});
+  await page.locator('#rcEditPhotoFile').setInputFiles({name:'cake.jpg',mimeType:'image/jpeg',buffer:jpg});
+  await page.locator('img.rc-pick-thumb').waitFor({timeout:8000});
+  assert.equal(await page.locator('[data-rc-step="0"]').inputValue(),'Beat the eggs.','the editor keeps what was written');
+ }
+ await shot('editor');
  await page.locator('#rcDone').click();await page.locator('#rcEdit').waitFor();
  assert.equal(book.recipes.length,1);assert.equal(book.recipes[0].data.lines[0].ingredient,egg);assert.equal(book.recipes[0].data.lines[0].qty,2);
  assert.equal(book.recipes[0].data.price,null,'no menu price until he gives one');assert.equal(book.recipes[0].data.category,catName,'the category picked is saved');
@@ -58,12 +66,12 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  assert.equal(book.recipes[0].data.lines[0].qty,3,'Done waits for the save on its way');
  // Back to the list: the recipe with its letter tile (no photo).
  await page.locator('#rcBack').click();await page.locator('.rc-row[data-rc-open]').first().waitFor();
- assert.equal(await page.locator('.rc-row[data-rc-open] .rc-letter').first().innerText(),'V');assert.equal((await page.locator('.rc-group span[dir]').first().textContent()).trim(),catName,'the list is grouped by category');await shot('list');if(first){await page.evaluate(()=>{state.settings.darkMode='off';applyFeatures();});await shot('list-light');await page.locator('.rc-row[data-rc-open]').first().click();await page.locator('#rcEdit').waitFor();await shot('detail-light');await page.locator('#rcBack').click();await page.locator('.rc-row[data-rc-open]').first().waitFor();}
+ if(first)assert.equal(await page.locator('.rc-row[data-rc-open] img.rc-thumb').count(),1,'the photo is the tile');else assert.equal(await page.locator('.rc-row[data-rc-open] .rc-letter').first().innerText(),'V');assert.equal((await page.locator('.rc-group span[dir]').first().textContent()).trim(),catName,'the list is grouped by category');await shot('list');if(first){await page.evaluate(()=>{state.settings.darkMode='off';applyFeatures();});await shot('list-light');await page.locator('.rc-row[data-rc-open]').first().click();await page.locator('#rcEdit').waitFor();await shot('detail-light');await page.locator('#rcBack').click();await page.locator('.rc-row[data-rc-open]').first().waitFor();}
  await page.evaluate(()=>goView('settings'));await page.locator('.settings-page').waitFor();
  assert.ok(await page.locator('[data-feature="soundSent"]').isDisabled());
  assert.equal(await page.locator('#tourBtn').count(),0,'no Order tour in Help');
  assert.equal(await page.locator('#rcTourBtn').count(),1,'the Recipes tour in Help');
  if(first){await page.evaluate(()=>{lset('apiSession',{...apiSession(),account:'rozha'});state.account='rozha';state.name='Rozh';state.views=['order','recipes','admin','settings'];state.tabs=['order','recipes','admin'];state.view='admin';state.adminPage='access';resetAdmin();render();});await page.locator('[data-access-person="ahmad"]').waitFor({timeout:10000});await page.locator('[data-access-person="ahmad"]').click();assert.equal(await page.locator('[data-access-person="ahmad"]').getAttribute('aria-pressed'),'true');await page.locator('[data-role="manage"]').check();await page.waitForFunction(()=>adminData.roles?.data?.ahmad?.includes('manage'));assert.deepEqual(access.ahmad,['manage']);assert.deepEqual(access.yunis,['history']);await page.evaluate(()=>{adminFilter.person='ahmad';state.adminPage='person';render();});assert.equal(await page.locator('[data-pin-change="ahmad"]').count(),1);}
  assert.deepEqual(errors,[]);await context.close();}
- console.log('Recipes UI PASS: Ahmad sees Recipes only, gets the Recipes tour once, writes a recipe with its cost from the last price, scales it, autosave before Done, letter tile, locked settings, EN/KU/AR at phone and desktop widths');
+ console.log('Recipes UI PASS: Ahmad sees Recipes only, gets the Recipes tour once, writes a recipe with its cost from the last price, scales it, autosave before Done, photo or letter tile, categories, locked settings, EN/KU/AR at phone and desktop widths');
 }finally{await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);process.exit(1);});

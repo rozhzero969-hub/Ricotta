@@ -306,6 +306,8 @@ function recipeEditorPage(){
     <div class="rc-bar"><button type="button" class="rc-back" id="rcEditBack">${ICON_BACK}<span>${esc(r.version ? r.name || rt('edit') : rt('new'))}</span></button>
       <span class="rc-bar-end"><span class="rc-save-state" id="rcSaveState" role="status">${esc(recipeBook.dirty ? rt('unsaved') : r.version ? rt('saved') : '')}</span><button type="button" class="btn btn-primary" id="rcDone">${esc(t('done'))}</button></span></div>
     <section class="rc-card rc-form">
+      <div class="rc-photo-pick">${recipeThumb(r, 'rc-thumb rc-pick-thumb')}<span class="rc-pick-text"><b>${esc(rt('photos'))}</b><small>${esc(rt('photoHint'))}</small></span>
+        <button type="button" class="btn btn-ghost rc-small" id="rcEditPhoto">${ICON_CAMERA}<span>${esc(rt('addPhoto'))}</span></button><input type="file" id="rcEditPhotoFile" accept="image/*" hidden></div>
       ${recipeField(rt('menuName'), `<input id="rcName" maxlength="120" value="${esc(r.name)}" dir="auto" autocomplete="off">`)}
       <div class="field"><span class="rc-label" id="rcCatLabel">${esc(rt('category'))}</span>
         <div class="rc-chips" role="group" aria-labelledby="rcCatLabel">${cats.map(x=>`<button type="button" class="rc-chip" data-rc-cat="${esc(x)}" aria-pressed="${recipeCatKey(x) === recipeCatKey(d.category)}" dir="auto">${esc(x)}</button>`).join('')}</div>
@@ -428,23 +430,24 @@ async function recipePhotos(){
   recipeBook.photos = {id, list:r.ok ? r.data : null, failed:!r.ok, loading:false};
   if(state.view === 'recipes' && recipeBook.page === 'detail' && !recipeBook.editing) render();
 }
-async function recipeUpload(file){
-  if(!file) return;
-  if(file.size > 20_000_000){ toast(rt('photoTooBig'), 'error'); return; }
-  const id = recipeBook.id, account = state.account;
+async function recipeUpload(file, id = recipeBook.id){
+  if(!file) return false;
+  if(file.size > 20_000_000){ toast(rt('photoTooBig'), 'error'); return false; }
+  const account = state.account;
   try{
     const bmp = await window.createImageBitmap(file), ratio = Math.min(1, 1600 / Math.max(bmp.width, bmp.height)), canvas = document.createElement('canvas');
     canvas.width = Math.round(bmp.width * ratio); canvas.height = Math.round(bmp.height * ratio);
     canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
     bmp.close();
     const image = canvas.toDataURL('image/jpeg', .82);
-    if(account !== state.account) return;
+    if(account !== state.account) return false;
     const r = await api('recipes/' + id + '/photos', {method:'POST', body:{image}});
-    if(!r.ok){ toast(r.data?.error === 'too_many_photos' ? rt('tooManyPhotos') : rt('photoFailed'), 'error'); return; }
+    if(!r.ok){ toast(r.data?.error === 'too_many_photos' ? rt('tooManyPhotos') : rt('photoFailed'), 'error'); return false; }
     // The list's tile and the photos both come again (the first photo becomes the tile).
     recipeBook.photos = null;
-    recipeLoad();
-  }catch{ toast(rt('photoFailed'), 'error'); }
+    await recipeLoad();
+    return true;
+  }catch{ toast(rt('photoFailed'), 'error'); return false; }
 }
 async function recipeCooking(){
   recipeBook.cooking = !recipeBook.cooking;
@@ -543,6 +546,19 @@ function attachRecipeEvents(){
     recipeBook.page = r.version && recipeBook.data.recipes.some(x=>x.id === r.id) ? 'detail' : 'list';
     render();
   });
+  // A photo while writing: a new recipe is saved first, so the photo has a recipe to belong to.
+  on('rcEditPhoto', ()=>document.getElementById('rcEditPhotoFile')?.click());
+  const editPhoto = document.getElementById('rcEditPhotoFile'), photoBtn = document.getElementById('rcEditPhoto');
+  if(editPhoto) editPhoto.onchange = async ()=>{
+    const file = editPhoto.files[0];
+    editPhoto.value = '';
+    if(!file) return;
+    if(!r.name.trim()){ toast(rt('required'), 'error'); document.getElementById('rcName')?.focus(); return; }
+    if(!r.version) recipeBook.dirty = true;
+    if(photoBtn){ photoBtn.disabled = true; photoBtn.querySelector('span').textContent = rt('saving'); }
+    const ok = (recipeBook.dirty || !r.version ? await recipeSave(true) : true) && await recipeUpload(file, r.id);
+    if(recipeBook.editing === r){ if(ok) render(); else if(photoBtn){ photoBtn.disabled = false; photoBtn.querySelector('span').textContent = rt('addPhoto'); } }
+  };
   const name = document.getElementById('rcName');
   if(name){ name.oninput = ()=>{ r.name = name.value; recipeChange(); }; if(!r.version && !r.name) setTimeout(()=>name.focus({preventScroll:true}), 0); }
   all('[data-rc-field]', el=>el.oninput = ()=>{
