@@ -136,8 +136,7 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
       || !Array.isArray(d.lines) || d.lines.length > 100 || !Array.isArray(d.steps) || d.steps.length > 60 || d.steps.some((s: any) => typeof s !== "string" || s.length > 3000)
       || typeof d.notes !== "string" || d.notes.length > 8000 || typeof d.category !== "string" || d.category.length > 60 || typeof d.yieldUnit !== "string" || d.yieldUnit.length > 60
       || !Number.isFinite(d.yield) || d.yield <= 0 || d.yield > 100000 || ![d.prep, d.cook].every((n) => Number.isInteger(n) && n >= 0 && n <= 100000)
-      || (price !== null && (!Number.isFinite(price) || price <= 0 || price > MAX_PRICE || Number(price.toFixed(2)) !== price))
-      || !RC().CURRENCIES.includes(d.currency ?? "IQD")) return fail("invalid_input");
+      || (price !== null && (!Number.isFinite(price) || price <= 0 || price > MAX_PRICE || Number(price.toFixed(2)) !== price))) return fail("invalid_input");
     const lines = d.lines.map(cleanLine);
     const [ingredients, units] = await Promise.all([table("recipe_ingredients").select("id,unit").limit(2000), table("units").select("id").limit(1000)]);
     if (ingredients.error || units.error) return fail("load_failed", 503);
@@ -150,7 +149,7 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
     if (lines.some((l: any) => !uuid(l.ingredient) || !ingredients.data.some((i: any) => i.id === l.ingredient) || !qtyOk(l.qty) || !l.unit || !known(l))) return fail("invalid_ingredients", 422);
     if (d.status === "ready" && (!lines.length || lines.some((l: any) => l.qty === null) || !d.steps.some((s: string) => s.trim()))) return fail("incomplete_recipe", 422);
     const clean = { status: d.status, lines, steps: d.steps, notes: d.notes, category: d.category.trim(), yield: d.yield, yieldUnit: d.yieldUnit.trim(), prep: d.prep, cook: d.cook,
-      price, currency: d.currency === "USD" ? "USD" : "IQD" };
+      price, currency: "IQD" };   // recipes are in IQD only
     const row = { name, data: clean, archived: b.archived, updated_by: c.account, updated_at: new Date().toISOString() };
     const r = await (b.version === 0 ? table("recipes").insert({ id, ...row }) : table("recipes").update({ ...row, version: b.version + 1 }).eq("id", id).eq("version", b.version)).select();
     return r.error || !r.data?.length ? fail("recipe_conflict", 409) : json(r.data[0]);

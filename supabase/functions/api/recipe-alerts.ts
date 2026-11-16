@@ -18,7 +18,7 @@ type Words = Record<Lang, string>;
 const MISSING_AFTER_MS = 6 * 3600_000;
 const MAX_LINES = 4;
 const iso = (s: string) => `⁨${s}⁩`;
-const money = (n: number, cur: string) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: cur === "USD" ? 2 : 0 }) + " " + cur;
+const money = (n: number, _cur?: string) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 }) + " IQD";
 const RANK: Record<string, number> = { none: 0, ok: 0, low: 1, loss: 2, empty: 2 };
 const names = (list: string[], lang: Lang) => list.slice(0, 3).map(iso).join(lang === "en" ? ", " : "، ") + (list.length > 3 ? (lang === "en" ? ` and ${list.length - 3} more` : lang === "ku" ? ` و ${list.length - 3} ی تر` : ` و${list.length - 3} أخرى`) : "");
 
@@ -31,7 +31,7 @@ export function alertInputs(book: any, now = Date.now()) {
   for (const i of book.ingredients) if (usedIngredients.has(i.id) && i.stock_item) stockUsed.add(i.stock_item);
   for (const name of stockUsed) {
     const p = book.ctx.price(name);
-    if (p && p.perBase > 0) items.push({ k: `price:${name}`, v: `${p.currency}:${Number(p.perBase.toPrecision(10))}` });
+    if (p && p.perBase > 0 && p.currency === "IQD") items.push({ k: `price:${name}`, v: `${p.currency}:${Number(p.perBase.toPrecision(10))}` });
     const t = book.ctx.titem(name);
     if (t) items.push({ k: `stock:${name}`, v: RC().stockState(t, book.lowNames) });
   }

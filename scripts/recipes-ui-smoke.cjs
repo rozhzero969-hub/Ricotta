@@ -1,5 +1,5 @@
 /* Browser checks for Recipes (Ahmad): he sees Recipes and Settings only, gets the Recipes tour once and
-   never the Order tour, writes a recipe from a linked ingredient, sees its cost from the last price paid,
+   never the Order tour, writes a recipe from a linked ingredient in a category (the list groups by it), sees its cost from the last price paid,
    scales it, edits with autosave (Done waits for a save on its way), and his Settings are locked. Rozh
    opens Ahmad's access in Admin. EN/KU/AR at phone and desktop widths. API calls are fixtures. */
 const {chromium}=require('playwright'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
@@ -38,13 +38,15 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  }
  // A new recipe from a linked ingredient.
  await page.locator('#rcNew').click();await page.locator('#rcName').fill('Vanilla cake');
+ // A category from the chips (a few to start with when none is in use yet); picking it again clears it.
+ const cat=page.locator('.rc-chip').first(),catName=(await cat.innerText()).trim();await cat.click();assert.equal(await cat.getAttribute('aria-pressed'),'true');assert.equal(await page.locator('[data-rc-field="category"]').inputValue(),catName);
  await page.locator('#rcAddLine').selectOption(egg);await page.locator('[data-rc-qty="0"]').waitFor();
  await page.locator('[data-rc-qty="0"]').fill('2');
  assert.match(await page.locator('[data-rc-linecost="0"]').innerText(),/500/,'2 eggs at the last price of 250 IQD');
  await page.locator('[data-rc-step="0"]').fill('Beat the eggs.');await shot('editor');
  await page.locator('#rcDone').click();await page.locator('#rcEdit').waitFor();
  assert.equal(book.recipes.length,1);assert.equal(book.recipes[0].data.lines[0].ingredient,egg);assert.equal(book.recipes[0].data.lines[0].qty,2);
- assert.equal(book.recipes[0].data.price,null,'no menu price until he gives one');
+ assert.equal(book.recipes[0].data.price,null,'no menu price until he gives one');assert.equal(book.recipes[0].data.category,catName,'the category picked is saved');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'no horizontal overflow');
  assert.match(await page.locator('.rc-stats').innerText(),/500/,'the recipe costs 500 IQD');await shot('detail');
  // Scaling the detail view.
@@ -56,7 +58,7 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  assert.equal(book.recipes[0].data.lines[0].qty,3,'Done waits for the save on its way');
  // Back to the list: the recipe with its letter tile (no photo).
  await page.locator('#rcBack').click();await page.locator('.rc-row[data-rc-open]').first().waitFor();
- assert.equal(await page.locator('.rc-row[data-rc-open] .rc-letter').first().innerText(),'V');await shot('list');if(first){await page.evaluate(()=>{state.settings.darkMode='off';applyFeatures();});await shot('list-light');await page.locator('.rc-row[data-rc-open]').first().click();await page.locator('#rcEdit').waitFor();await shot('detail-light');await page.locator('#rcBack').click();await page.locator('.rc-row[data-rc-open]').first().waitFor();}
+ assert.equal(await page.locator('.rc-row[data-rc-open] .rc-letter').first().innerText(),'V');assert.equal((await page.locator('.rc-group span[dir]').first().textContent()).trim(),catName,'the list is grouped by category');await shot('list');if(first){await page.evaluate(()=>{state.settings.darkMode='off';applyFeatures();});await shot('list-light');await page.locator('.rc-row[data-rc-open]').first().click();await page.locator('#rcEdit').waitFor();await shot('detail-light');await page.locator('#rcBack').click();await page.locator('.rc-row[data-rc-open]').first().waitFor();}
  await page.evaluate(()=>goView('settings'));await page.locator('.settings-page').waitFor();
  assert.ok(await page.locator('[data-feature="soundSent"]').isDisabled());
  assert.equal(await page.locator('#tourBtn').count(),0,'no Order tour in Help');

@@ -4,8 +4,9 @@
    Manage, Units). Each ingredient is linked to a stock item in Ricotta Restaurant; its price is the LAST
    price paid for that stock item on an invoice there (the newest receipt wins), turned into the stock
    item's base unit: bought per carton of 24 at 48 is 2 per piece, 10 per 1000 ml is 0.01 per ml. Then
-   500 ml of it costs 5. IQD and USD are never added together. A line without an amount, a price, or a
-   unit that can be turned into the stock item's unit has no cost: it is "missing", never 0.
+   500 ml of it costs 5. Recipes are in IQD only: a price paid in USD is never used (the last IQD price
+   is, and an item bought only in USD has no cost). A line without an amount, a price, or a unit that
+   can be turned into the stock item's unit has no cost: it is "missing", never 0.
    Needs RicottaSearch (search.js) and RicottaTransfers (transfers.js) loaded first. */
 (function () {
   const S = () => globalThis.RicottaSearch;
@@ -15,7 +16,7 @@
   const MARGIN_MIN = 60;
   /* The suggested price is this many times the cost of one serving (a suggestion only). */
   const SUGGEST_TIMES = 3;
-  const CURRENCIES = ['IQD', 'USD'];
+  const CURRENCIES = ['IQD'];
 
   /* The sizes recipes are measured in: grams, millilitres and pieces, each with its bigger size
      (1 kg is 1000 g, 1 L is 1000 ml). {kind, f}: f is how many of the kind one of it is. */
@@ -50,17 +51,20 @@
 
   /* The newest invoice line of each stock item, from invoices {entry_date, read_at, invoice_number,
      supplier_name, currency, lines:[{item, unit, unit_cost}]}: the latest receipt date wins (then the
-     one read last, then the higher invoice number). Lines without a price are skipped. */
+     one read last, then the higher invoice number). Lines without a price are skipped. The newest IQD
+     price wins over a newer USD one; an item bought only in USD keeps its USD line (shown as missing). */
   function lastPrices(invoices, want) {
     const keep = want ? new Set(want) : null;
     const sorted = [...(invoices || [])].sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date))
       || String(b.read_at ?? '').localeCompare(String(a.read_at ?? ''))
       || String(b.invoice_number ?? '').localeCompare(String(a.invoice_number ?? ''), undefined, { numeric: true }));
-    const by = new Map();
+    const by = new Map(), usd = new Map();
     for (const r of sorted) for (const l of (r && r.lines) || []) {
       if (!l || !l.item || by.has(l.item) || (keep && !keep.has(l.item)) || !(Number(l.unit_cost) > 0)) continue;
-      by.set(l.item, { item: l.item, unit: String(l.unit || ''), cost: Number(l.unit_cost), currency: r.currency === 'USD' ? 'USD' : 'IQD', day: String(r.entry_date || '').slice(0, 10), supplier: r.supplier_name || '' });
+      const currency = r.currency === 'USD' ? 'USD' : 'IQD', at = currency === 'USD' ? usd : by;
+      if (!at.has(l.item)) at.set(l.item, { item: l.item, unit: String(l.unit || ''), cost: Number(l.unit_cost), currency, day: String(r.entry_date || '').slice(0, 10), supplier: r.supplier_name || '' });
     }
+    for (const [item, p] of usd) if (!by.has(item)) by.set(item, p);
     return by;
   }
   /* A stock item's last price in its base unit: {perBase, base, currency, day, supplier, unit, cost},
@@ -75,14 +79,14 @@
   }
 
   const round = (n) => Math.round(n * 100) / 100;
-  /* A price worth putting on a menu, rounded up: IQD to 250, USD to 0.50. */
-  const nice = (n, currency) => (currency === 'USD' ? Math.ceil(n * 2) / 2 : Math.ceil(n / 250) * 250);
+  /* A price worth putting on a menu, rounded up to 250 IQD. */
+  const nice = (n) => Math.ceil(n / 250) * 250;
 
   /* One line's cost. ctx: {ingredient(id), titem(name), price(name) -> priceOf result, unit(id) -> unit
      name, catalog: true when Ricotta Restaurant's list is known}. status: ok, amount (no amount), link
      (no ingredient or stock item), gone (stock item no longer in Ricotta Restaurant), price (never
-     bought), unit (the recipe's unit can't be turned into the stock item's), buyUnit (the unit it was
-     bought in can't be). */
+     bought), usd (bought only in USD), unit (the recipe's unit can't be turned into the stock
+     item's), buyUnit (the unit it was bought in can't be). */
   function lineCost(line, ctx) {
     const ing = line && ctx.ingredient(line.ingredient);
     const unitName = line ? ctx.unit(line.unit) || '' : '';
@@ -96,37 +100,34 @@
     const baseQty = Number(line.qty) * f;
     const p = ctx.price(ing.stock_item);
     if (!p) return { ...out, status: 'price', base: titem.base, baseQty };
+    if (p.currency !== 'IQD') return { ...out, status: 'usd', base: titem.base, baseQty, day: p.day };
     if (p.error) return { ...out, status: 'buyUnit', base: titem.base, baseQty, boughtIn: p.unit };
-    return { ...out, status: 'ok', base: titem.base, baseQty, cost: round(baseQty * p.perBase), currency: p.currency, perBase: p.perBase, day: p.day };
+    return { ...out, status: 'ok', base: titem.base, baseQty, cost: round(baseQty * p.perBase), currency: 'IQD', perBase: p.perBase, day: p.day };
   }
 
-  /* A recipe's cost. Totals per currency of the lines that have a cost; missing: how many lines have
-     none. The menu price (data.price, data.currency) is for one serving (data.yield servings per
-     recipe). Profit and margin only when every line has a cost, in the menu price's currency. Losing
-     money as soon as the costs known already reach the price. state: loss, low (margin under
+  /* A recipe's cost in IQD: the total of the lines that have a cost; missing: how many lines have
+     none. The menu price (data.price) is for one serving (data.yield servings per recipe). Profit
+     and margin only when every line has a cost. Losing money as soon as the costs known already
+     reach the price. state: loss, low (margin under
      MARGIN_MIN), ok, or none (no price, or nothing to compare). */
   function recipeCost(recipe, ctx, marginMin = MARGIN_MIN) {
     const d = (recipe && recipe.data) || {};
     const lines = (Array.isArray(d.lines) ? d.lines : []).map((l) => lineCost(l, ctx));
-    const totals = {};
-    for (const l of lines) if (l.status === 'ok') totals[l.currency] = (totals[l.currency] || 0) + l.cost;
-    for (const c of Object.keys(totals)) totals[c] = round(totals[c]);
+    let total = 0;
+    for (const l of lines) if (l.status === 'ok') total += l.cost;
+    total = round(total);
     const missing = lines.filter((l) => l.status !== 'ok').length;
     const complete = lines.length > 0 && missing === 0;
     const servings = Number(d.yield) > 0 ? Number(d.yield) : 1;
     const price = Number(d.price) > 0 ? Number(d.price) : null;
-    const currency = CURRENCIES.includes(d.currency) ? d.currency : (Object.keys(totals)[0] || 'IQD');
-    const used = Object.keys(totals);
-    const mixed = used.length > 1 || (used.length === 1 && used[0] !== currency);
-    const total = totals[currency] || 0;
     const perServing = round(total / servings);
-    const priced = price !== null && !mixed;
+    const priced = price !== null;
     const losing = priced && total > 0 && perServing >= price;
     const profit = priced && complete ? round(price - perServing) : null;
     const margin = profit !== null ? Math.round((profit / price) * 1000) / 10 : null;
     const low = !losing && margin !== null && margin < marginMin;
-    const suggested = complete && !mixed && perServing > 0 ? nice(perServing * SUGGEST_TIMES, currency) : null;
-    return { lines, totals, missing, complete, mixed, servings, currency, total: complete || total ? total : null, perServing: total ? perServing : null,
+    const suggested = complete && perServing > 0 ? nice(perServing * SUGGEST_TIMES) : null;
+    return { lines, missing, complete, servings, currency: 'IQD', total: complete || total ? total : null, perServing: total ? perServing : null,
       price, profit, margin, losing, low, suggested, state: losing ? 'loss' : low ? 'low' : priced && complete ? 'ok' : 'none' };
   }
 

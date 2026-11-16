@@ -3,7 +3,7 @@
    Restaurant, and each recipe line says how much of it the recipe uses (grams, millilitres, pieces or
    any unit from Manage, Units). The cost then works itself out from the last price paid for that stock
    item (_shared/recipe-cost.js, the same rules the API uses for the alerts). A line without an amount
-   or a price is shown as missing, never as 0. IQD and USD are never added together.
+   or a price is shown as missing, never as 0. Everything is in IQD.
    Saves carry a version, so one cook can't overwrite another cook's edits. Nothing here changes stock. */
 const recipeBook = {account:null, data:null, ctx:null, stockBy:null, loading:false, error:false, page:'list', id:null,
   editing:null, dirty:false, saving:false, saveJob:null, timer:null, query:'', ingQuery:'', filter:'all', scale:1,
@@ -45,12 +45,11 @@ function recipeStock(name){
 }
 const recipeQty = n=>Number(Number(n).toFixed(3)).toLocaleString('en-US', {maximumFractionDigits:3});
 const recipeUnit = id=>recipeCtx().unit(id) || '';
-/* 6,000 IQD or 6.50 USD. A cost under 10 IQD keeps one decimal, so a pinch of salt isn't shown as 0. */
-function recipeMoney(n, cur){
+/* 6,000 IQD. A cost under 10 IQD keeps one decimal, so a pinch of salt isn't shown as 0. */
+function recipeMoney(n){
   if(n === null || n === undefined || !Number.isFinite(Number(n))) return '';
-  const usd = cur === 'USD', v = Number(n);
-  const max = usd ? 2 : (Math.abs(v) < 10 && v % 1 ? 1 : 0);
-  return v.toLocaleString('en-US', {minimumFractionDigits:usd ? 2 : 0, maximumFractionDigits:max}) + ' ' + (usd ? 'USD' : 'IQD');
+  const v = Number(n);
+  return v.toLocaleString('en-US', {maximumFractionDigits:Math.abs(v) < 10 && v % 1 ? 1 : 0}) + ' IQD';
 }
 /* The stock items a recipe uses that are out or low in Main Storage. */
 function recipeStockIssues(r){
@@ -68,7 +67,6 @@ function recipeState(c){
   if(c.state === 'low') return {tone:'amber', text:rt('stLow')(c.margin)};
   if(c.missing) return {tone:'gray', text:rt('stMissing')(c.missing)};
   if(c.state === 'ok') return {tone:'green', text:rt('stMargin')(c.margin)};
-  if(c.mixed) return {tone:'gray', text:rt('stMixed')};
   return {tone:'gray', text:rt('stNoPrice')};
 }
 const recipeNeedsLook = (r, c)=>c.state === 'loss' || c.state === 'low' || c.missing > 0 || recipeStockIssues(r).length > 0;
@@ -79,6 +77,7 @@ function recipeWhy(l){
   if(l.status === 'gone') return rt('whyGone');
   if(l.status === 'unit') return rt('whyUnit')(l.unit, l.base);
   if(l.status === 'buyUnit') return rt('whyBuyUnit')(l.boughtIn, l.base);
+  if(l.status === 'usd') return rt('whyUsd');
   return rt('whyPrice');
 }
 function recipeLetter(name){ return ([...String(name || '').trim()][0] || '?').toLocaleUpperCase(); }
@@ -187,16 +186,35 @@ function recipeRow({r, c}){
   if(st.text) sub.push(`<span class="rc-state"><i class="rc-dot ${st.tone}" aria-hidden="true"></i>${esc(st.text)}</span>`);
   if(stock.length) sub.push(`<span class="rc-warn">${esc(rt('stockIssues')(stock.length))}</span>`);
   if(r.data.status === 'draft' && !r.archived) sub.push(esc(rt('draft')));
-  const per = c.perServing !== null && !c.mixed ? recipeMoney(c.perServing, c.currency) : '';
+  const per = c.perServing !== null ? recipeMoney(c.perServing) : '';
   return `<button type="button" class="rc-row" data-rc-open="${esc(r.id)}">
     ${recipeThumb(r, 'rc-thumb')}
     <span class="rc-row-main"><span class="rc-row-name" dir="auto">${esc(r.name)}</span><span class="rc-row-sub">${sub.join('<span class="rc-sep" aria-hidden="true">·</span>')}</span></span>
     ${per ? `<span class="rc-row-end"><b>${esc(per)}</b><small>${esc(c.missing ? rt('soFar') : rt('perServing'))}</small></span>` : ''}
     <i class="sheet-chevron" aria-hidden="true"></i></button>`;
 }
+/* Recipes in groups by category (Cakes, Drinks...), A to Z, with recipes that have none last. One
+   spelling per group: "cakes" and "Cakes " are the same group. */
+const recipeCatKey = c=>foldText(String(c || '').trim());
+function recipeGroups(rows){
+  const by = new Map();
+  for(const row of rows){
+    const k = recipeCatKey(row.r.data.category);
+    if(!by.has(k)) by.set(k, {name:String(row.r.data.category || '').trim(), rows:[]});
+    by.get(k).rows.push(row);
+  }
+  return [...by.entries()].sort(([a, x], [b, y])=>!a - !b || x.name.localeCompare(y.name, state.lang)).map(([, g])=>g);
+}
+function recipeCategories(){
+  return recipeGroups(recipeBook.data.recipes.filter(r=>!r.archived).map(r=>({r}))).map(g=>g.name).filter(Boolean);
+}
 function recipeListHtml(){
   const rows = recipeRowsFor();
-  if(rows.length) return `<div class="rc-list">${rows.map(recipeRow).join('')}</div>`;
+  if(rows.length){
+    const groups = recipeGroups(rows);
+    if(groups.length === 1 && !groups[0].name) return `<div class="rc-list">${rows.map(recipeRow).join('')}</div>`;
+    return groups.map(g=>`<div class="section-title rc-group"><span dir="auto">${esc(g.name || rt('noCategory'))}</span><span class="rc-group-n">${g.rows.length}</span></div><div class="rc-list">${g.rows.map(recipeRow).join('')}</div>`).join('');
+  }
   if(recipeBook.query.trim()) return emptyState(esc(rt('noMatch')));
   return emptyState(esc(recipeBook.filter === 'archived' ? rt('noArchived') : recipeBook.filter === 'look' ? rt('allGood') : rt('empty')));
 }
@@ -214,26 +232,25 @@ function recipeListPage(){
 }
 
 function recipeCostCard(c, live){
-  const cur = c.currency, tone = c.state === 'loss' ? 'red' : c.state === 'low' ? 'amber' : c.state === 'ok' ? 'green' : '';
+  const tone = c.state === 'loss' ? 'red' : c.state === 'low' ? 'amber' : c.state === 'ok' ? 'green' : '';
   const miss = `<em>${esc(rt('missingShort'))}</em>`;
   const cell = (label, html, cls = '')=>`<div class="rc-stat${cls ? ' ' + cls : ''}"><span>${esc(label)}</span><b>${html || miss}</b></div>`;
-  const per = c.perServing !== null && !c.mixed ? esc(recipeMoney(c.perServing, cur)) : '';
+  const per = c.perServing !== null ? esc(recipeMoney(c.perServing)) : '';
   const notes = [];
   if(!c.lines.length) notes.push(rt('noLines'));
   if(c.missing) notes.push(rt('missingNote')(c.missing));
-  if(c.mixed) notes.push(rt('mixedNote')(Object.entries(c.totals).map(([k, v])=>recipeMoney(v, k)).join(', ')));
   if(c.losing) notes.push(rt('lossNote'));
   if(c.low) notes.push(rt('lowNote')(recipeBook.data.marginMin ?? RC().MARGIN_MIN));
-  if(c.servings > 1 && c.total && !c.mixed) notes.push(rt('wholeRecipe')(recipeMoney(c.total, cur), c.servings));
-  if(c.suggested) notes.push(rt('suggested')(recipeMoney(c.suggested, cur), RC().SUGGEST_TIMES));
+  if(c.servings > 1 && c.total) notes.push(rt('wholeRecipe')(recipeMoney(c.total), c.servings));
+  if(c.suggested) notes.push(rt('suggested')(recipeMoney(c.suggested), RC().SUGGEST_TIMES));
   return `<section class="rc-card rc-cost${tone ? ' ' + tone : ''}"${live ? ' id="rcLive" aria-live="polite"' : ''}>
-    <div class="rc-stats">${cell(c.missing && per ? rt('costSoFar') : rt('costServing'), per)}${cell(rt('menuPrice'), c.price ? esc(recipeMoney(c.price, cur)) : '')}${cell(rt('profit'), c.profit !== null ? esc(recipeMoney(c.profit, cur)) : '', c.profit !== null && c.profit < 0 ? 'neg' : '')}${cell(rt('margin'), c.margin !== null ? esc(c.margin + '%') : '', tone)}</div>
+    <div class="rc-stats">${cell(c.missing && per ? rt('costSoFar') : rt('costServing'), per)}${cell(rt('menuPrice'), c.price ? esc(recipeMoney(c.price)) : '')}${cell(rt('profit'), c.profit !== null ? esc(recipeMoney(c.profit)) : '', c.profit !== null && c.profit < 0 ? 'neg' : '')}${cell(rt('margin'), c.margin !== null ? esc(c.margin + '%') : '', tone)}</div>
     ${notes.length ? `<ul class="rc-cost-notes">${notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>` : ''}</section>`;
 }
 function recipeLineHtml(l, i, scale){
   const s = l.stockItem ? recipeStock(l.stockItem) : null;
   const qty = Number(l.qty) > 0 ? `${recipeQty(l.qty * scale)} ${l.unit}` : '';
-  const cost = l.status === 'ok' ? `<b>${esc(recipeMoney(l.cost * scale, l.currency))}</b>` : `<em class="rc-why">${esc(recipeWhy(l))}</em>`;
+  const cost = l.status === 'ok' ? `<b>${esc(recipeMoney(l.cost * scale))}</b>` : `<em class="rc-why">${esc(recipeWhy(l))}</em>`;
   return `<div class="rc-line"><span class="rc-line-main"><span dir="auto">${esc(l.name || rt('missing'))}</span>
       <small dir="auto">${l.stockItem ? esc(l.stockItem) : ''}${recipeStockBadge(s?.state)}</small></span>
     <span class="rc-line-qty" dir="auto">${esc(qty)}</span><span class="rc-line-cost" data-rc-linecost="${i}">${cost}</span></div>`;
@@ -278,21 +295,24 @@ function recipeEditLine(l, i, cost){
     <span class="rc-eline-cost" data-rc-linecost="${i}">${cost}</span>
     <span class="rc-eline-btns"><button type="button" class="icon-btn" data-rc-up="${i}" aria-label="${esc(rt('moveUp'))}" ${i ? '' : 'disabled'}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button><button type="button" class="icon-btn danger" data-rc-remove="${i}" aria-label="${esc(rt('removeLine'))}">${ICON_DELETE}</button></span></div>`;
 }
-const recipeLineCost = l=>l.status === 'ok' ? `<b>${esc(recipeMoney(l.cost, l.currency))}</b>` : `<em class="rc-why">${esc(recipeWhy(l))}</em>`;
+const recipeLineCost = l=>l.status === 'ok' ? `<b>${esc(recipeMoney(l.cost))}</b>` : `<em class="rc-why">${esc(recipeWhy(l))}</em>`;
+function recipeSyncCats(cat){ document.querySelectorAll('[data-rc-cat]').forEach(x=>x.setAttribute('aria-pressed', String(!!cat.trim() && recipeCatKey(x.dataset.rcCat) === recipeCatKey(cat)))); }
 function recipeEditorPage(){
   const r = recipeBook.editing, d = r.data, c = recipeCostOf(r), used = new Set(d.lines.map(l=>l.ingredient));
-  const cats = [...new Set(recipeBook.data.recipes.map(x=>x.data.category).filter(Boolean))].sort();
+  const known = recipeCategories(), cats = known.length ? known : rt('starterCats').split(',');
+  if(d.category.trim() && !cats.some(x=>recipeCatKey(x) === recipeCatKey(d.category))) cats.push(d.category.trim());
   const seg = (attr, value, on, label)=>`<button type="button" class="pill-seg-btn" role="radio" aria-checked="${on}" ${attr}="${value}">${esc(label)}</button>`;
   return `<div class="rc-page rc-editor">
     <div class="rc-bar"><button type="button" class="rc-back" id="rcEditBack">${ICON_BACK}<span>${esc(r.version ? r.name || rt('edit') : rt('new'))}</span></button>
       <span class="rc-bar-end"><span class="rc-save-state" id="rcSaveState" role="status">${esc(recipeBook.dirty ? rt('unsaved') : r.version ? rt('saved') : '')}</span><button type="button" class="btn btn-primary" id="rcDone">${esc(t('done'))}</button></span></div>
     <section class="rc-card rc-form">
       ${recipeField(rt('menuName'), `<input id="rcName" maxlength="120" value="${esc(r.name)}" dir="auto" autocomplete="off">`)}
-      ${recipeField(rt('category'), `<input data-rc-field="category" maxlength="60" value="${esc(d.category)}" dir="auto" list="rcCats" autocomplete="off">`)}<datalist id="rcCats">${cats.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
+      <div class="field"><span class="rc-label" id="rcCatLabel">${esc(rt('category'))}</span>
+        <div class="rc-chips" role="group" aria-labelledby="rcCatLabel">${cats.map(x=>`<button type="button" class="rc-chip" data-rc-cat="${esc(x)}" aria-pressed="${recipeCatKey(x) === recipeCatKey(d.category)}" dir="auto">${esc(x)}</button>`).join('')}</div>
+        <input data-rc-field="category" maxlength="60" value="${esc(d.category)}" dir="auto" autocomplete="off" aria-labelledby="rcCatLabel" placeholder="${esc(rt('newCategory'))}"></div>
       <div class="rc-two">${recipeField(rt('servingsCount'), `<input data-rc-field="yield" type="number" inputmode="decimal" min="0.001" step="any" value="${d.yield}">`)}${recipeField(rt('yieldUnit'), `<input data-rc-field="yieldUnit" maxlength="60" value="${esc(d.yieldUnit)}" dir="auto">`)}</div>
       <div class="rc-two">${recipeField(rt('prep'), `<input data-rc-field="prep" type="number" inputmode="numeric" min="0" max="100000" value="${d.prep}">`)}${recipeField(rt('cook'), `<input data-rc-field="cook" type="number" inputmode="numeric" min="0" max="100000" value="${d.cook}">`)}</div>
-      <div class="rc-two">${recipeField(rt('menuPriceOne'), `<input id="rcPrice" type="number" inputmode="decimal" min="0" step="any" value="${d.price ?? ''}" placeholder="${esc(rt('noPrice'))}">`)}
-        <div class="field"><span class="rc-label">${esc(rt('currency'))}</span><div class="pill-seg" role="radiogroup" aria-label="${esc(rt('currency'))}">${RC().CURRENCIES.map(x=>seg('data-rc-cur', x, d.currency === x, x)).join('')}</div></div></div>
+      ${recipeField(rt('menuPriceIqd'), `<input id="rcPrice" type="number" inputmode="numeric" min="0" step="250" value="${d.price ?? ''}" placeholder="${esc(rt('noPrice'))}">`)}
       <div class="field"><span class="rc-label">${esc(rt('status'))}</span><div class="pill-seg" role="radiogroup" aria-label="${esc(rt('status'))}">${seg('data-rc-status', 'draft', d.status === 'draft', rt('draft'))}${seg('data-rc-status', 'ready', d.status === 'ready', rt('ready'))}</div><p class="field-hint">${esc(rt('readyHint'))}</p></div>
     </section>
     <div class="section-title">${esc(rt('ingredients'))}</div>
@@ -322,7 +342,7 @@ function recipeIngredientsPage(){
   const uses = id=>d.recipes.filter(r=>!r.archived && (r.data.lines || []).some(l=>l.ingredient === id)).length;
   const rows = d.ingredients.filter(i=>!q || foldText(i.name + ' ' + i.stock_item).includes(q)).map(i=>{
     const s = recipeStock(i.stock_item), p = ctx.price(i.stock_item), n = uses(i.id);
-    const price = !s && d.stock.length ? `<em class="rc-why">${esc(rt('whyGone'))}</em>` : p && !p.error ? `<b>${esc(recipeMoney(p.cost, p.currency))}</b><small dir="auto">${esc(rt('per')(p.unit || p.base))}</small>` : `<em class="rc-why">${esc(p?.error ? rt('whyBuyUnit')(p.unit, p.base) : rt('whyPrice'))}</em>`;
+    const price = !s && d.stock.length ? `<em class="rc-why">${esc(rt('whyGone'))}</em>` : p && !p.error && p.currency === 'IQD' ? `<b>${esc(recipeMoney(p.cost))}</b><small dir="auto">${esc(rt('per')(p.unit || p.base))}</small>` : `<em class="rc-why">${esc(p && p.currency !== 'IQD' ? rt('whyUsd') : p?.error ? rt('whyBuyUnit')(p.unit, p.base) : rt('whyPrice'))}</em>`;
     return `<button type="button" class="rc-row" data-rc-ingredient="${esc(i.id)}"><span class="rc-row-main"><span class="rc-row-name" dir="auto">${esc(i.name)}</span>
       <span class="rc-row-sub"><span dir="auto">${esc(i.stock_item)}</span>${recipeStockBadge(s?.state)}<span class="rc-sep" aria-hidden="true">·</span>${esc(rt('usedIn')(n))}</span></span>
       <span class="rc-row-end">${price}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
@@ -530,18 +550,24 @@ function attachRecipeEvents(){
     if(k === 'yield'){ const v = Number(el.value); d.yield = v > 0 ? v : 1; }
     else if(k === 'prep' || k === 'cook'){ const v = Math.round(Number(el.value)); d[k] = v >= 0 && v <= 100000 ? v : 0; }
     else d[k] = el.value;
+    if(k === 'category') recipeSyncCats(d.category);
     recipeChange();
     if(k === 'yield') recipeRefreshLive();
   });
   const price = document.getElementById('rcPrice');
-  if(price) price.oninput = ()=>{ const v = Number(price.value); d.price = price.value.trim() && v > 0 ? Math.round(v * 100) / 100 : null; recipeChange(); recipeRefreshLive(); };
+  if(price) price.oninput = ()=>{ const v = Number(price.value); d.price = price.value.trim() && v > 0 ? Math.round(v) : null; recipeChange(); recipeRefreshLive(); };
   const seg = (attr, key)=>all(`[${attr}]`, b=>b.onclick = ()=>{
     d[key] = b.getAttribute(attr);
     all(`[${attr}]`, x=>x.setAttribute('aria-checked', String(x === b)));
     recipeChange(); recipeRefreshLive();
   });
-  seg('data-rc-cur', 'currency');
   seg('data-rc-status', 'status');
+  all('[data-rc-cat]', b=>b.onclick = ()=>{
+    d.category = b.getAttribute('aria-pressed') === 'true' ? '' : b.dataset.rcCat;
+    const box = document.querySelector('[data-rc-field="category"]');
+    if(box) box.value = d.category;
+    recipeSyncCats(d.category); recipeChange();
+  });
   all('[data-rc-qty]', el=>el.oninput = ()=>{
     const v = Number(el.value);
     d.lines[Number(el.dataset.rcQty)].qty = el.value.trim() && v > 0 ? Math.round(v * 1000) / 1000 : null;

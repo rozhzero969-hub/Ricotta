@@ -1,5 +1,5 @@
 // Recipe costs (supabase/functions/_shared/recipe-cost.js): unit conversions to the stock item's base
-// unit, the last price paid wins, IQD and USD kept apart, missing lines shown as missing (never 0),
+// unit, the last price paid wins, IQD only (a USD price is never used), missing lines shown as missing (never 0),
 // profit, margin and the suggested price. Run: node scripts/recipe-cost-smoke.mjs
 import assert from 'node:assert/strict';
 import '../supabase/functions/_shared/search.js';
@@ -110,16 +110,17 @@ assert.equal(C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 5, unit: 'ml' }])
 // Before Ricotta Restaurant's list is known, a link is not called gone.
 assert.equal(C.recipeCost(recipe([{ ingredient: 'i-gone', qty: 5, unit: 'ml' }]), C.context({ ingredients, titems: [], units, invoices })).lines[0].status, 'price');
 
-// IQD and USD are never added: vanilla is in USD.
-const mixed = C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 500, unit: 'ml' }, { ingredient: 'i-vanilla', qty: 4, unit: 'g' }], { price: 20, currency: 'IQD' }), ctx);
-assert.deepEqual(mixed.totals, { IQD: 5, USD: 2 });
-assert.equal(mixed.mixed, true);
-assert.equal(mixed.profit, null);
-assert.equal(mixed.state, 'none');
-// A price in USD with only USD costs works.
-const usd = C.recipeCost(recipe([{ ingredient: 'i-vanilla', qty: 4, unit: 'g' }], { price: 10, currency: 'USD' }), ctx);
-assert.equal(usd.profit, 8);
-assert.equal(usd.suggested, 6, '3 times 2 USD');
+// Recipes are in IQD only: a USD price is never used. Vanilla was bought only in USD, so it has no cost.
+const withUsd = C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 500, unit: 'ml' }, { ingredient: 'i-vanilla', qty: 4, unit: 'g' }], { price: 20 }), ctx);
+assert.equal(withUsd.lines[1].status, 'usd');
+assert.equal(withUsd.total, 5, 'only the IQD line counts');
+assert.equal(withUsd.missing, 1);
+assert.equal(withUsd.profit, null);
+assert.equal(withUsd.currency, 'IQD');
+// The newest IQD price wins over a newer USD one.
+const both = C.lastPrices([inv('2026-11-12', '2026-11-12T10:00:00Z', '16', 'USD', [{ item: 'Milk - شیر', unit: 'لیتر', unit_cost: 1 }]), ...invoices]);
+assert.equal(both.get('Milk - شیر').cost, 10);
+assert.equal(both.get('Milk - شیر').currency, 'IQD');
 // A unit saved by name before units came from Manage, Units still works.
 assert.equal(C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 1, unit: 'لیتر' }]), ctx).total, 10);
 
@@ -127,4 +128,4 @@ assert.equal(C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 1, unit: 'لیت�
 assert.equal(C.stockState(titems[1], new Set()), 'empty');
 assert.equal(C.stockState(titems[0], new Set(['Milk - شیر'])), 'low');
 assert.equal(C.stockState(titems[2], new Set()), 'ok');
-console.log('Recipe cost PASS: g/kg and ml/L, cartons to pieces, last price wins, IQD and USD apart, per serving, profit, margin, suggested price, every kind of missing line');
+console.log('Recipe cost PASS: g/kg and ml/L, cartons to pieces, last price wins, IQD only, per serving, profit, margin, suggested price, every kind of missing line');
