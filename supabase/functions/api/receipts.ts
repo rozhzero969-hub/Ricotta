@@ -39,7 +39,7 @@ const R = (globalThis as any).RicottaReceipts;
 
 type Ctx = {
   db: any; json: (b: unknown, s?: number) => Response; fail: (e: string, s?: number) => Response;
-  account: "rozha" | "yunis" | null; rozha: boolean;
+  account: "rozha" | "yunis" | "ahmad" | null; rozha: boolean;
 };
 export const BUCKET = "receipt-photos";
 const PHOTO_KINDS = ["before", "after", "invoices", "problem"];

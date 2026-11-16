@@ -74,6 +74,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { adminAi, chatTitle, handleChat, orderSuggestion, whatsappReady } from "./assistant.ts";
 import { saveMemory, saveRoutine, toRoutine } from "./rico-memory.ts";
 import { cleanRoutine } from "../_shared/routines.ts";
+import { recipesRoute } from "./recipes.ts";
 import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
 import { stockView, transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
@@ -105,10 +106,10 @@ const LANGS = ["en", "ku", "ar"];
    units; needs manage), send (send orders to suppliers), exports (Excel and PDF files), notify (send a
    notification to every phone through Rico), receipts (Receipts, entered in Ricotta Restaurant by Rico).
    Rozh always has all. */
-const ROLES = ["history", "manage", "catalog", "record", "assistant", "send", "exports", "notify", "receipts", "transfers"];
-const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers");   // Receipts and Transfers only when Rozh gives them
+const ROLES = ["order", "recipes", "history", "manage", "catalog", "record", "assistant", "send", "exports", "notify", "receipts", "transfers"];
+const DEFAULT_ROLES = ROLES.filter((r) => r !== "receipts" && r !== "transfers" && r !== "recipes" && r !== "order");   // Receipts and Transfers only when Rozh gives them
 const rolesOf = (account: string, saved: unknown) => account === "rozha" ? [...ROLES]
-  : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : [...DEFAULT_ROLES];
+  : Array.isArray(saved) ? ROLES.filter((r) => saved.includes(r)) : account === "ahmad" ? [] : [...DEFAULT_ROLES];
 // Account settings the app may save (Settings), and the ones with a list of choices.
 const SETTING_KEYS = new Set(["swipe", "showLastQty", "compactRows", "soundQty", "soundSent", "soundRico", "soundError", "soundMilestone", "soundUndo", "ricoSheet", "simpleView", "tables", "kitchenMode", "milestones", "ricoAutoStart", "tfAuto"]);
 const SETTING_CHOICES: Record<string, string[]> = { darkMode: ["auto", "on", "off"], ricoStyle: ["normal", "short", "warm"] };
@@ -178,13 +179,13 @@ function isWeakPin(pin: string): boolean {
   return up || down;
 }
 
-type Account = "rozha" | "yunis";
+type Account = "rozha" | "yunis" | "ahmad";
 type Session = { id: string; account: Account; deviceId: string | null; roles: string[] };
 const isRozha = (s: Session) => s.account === "rozha";
-const can = (s: Session, role: string) => isRozha(s) || (s.roles.includes(role) && (role !== "catalog" || s.roles.includes("manage")));
+const can = (s: Session, role: string) => isRozha(s) || (role === "recipes" && s.account === "ahmad") || (role === "order" && s.account === "yunis") || (s.roles.includes(role) && (role !== "catalog" || s.roles.includes("manage")));
 /* The screens an account may open, in the app's order. Settings is on every device. */
 function viewsFor(s: Session) {
-  return ["order", ...(can(s, "assistant") ? ["assistant"] : []), ...(can(s, "history") ? ["history"] : []),
+  return [...(can(s, "order") ? ["order"] : []), ...(can(s, "recipes") ? ["recipes"] : []), ...(can(s, "assistant") ? ["assistant"] : []), ...(can(s, "history") ? ["history"] : []),
     ...(can(s, "manage") ? ["manage", "suppliers", "itemsAdmin", "units"] : []),
     ...(can(s, "receipts") ? ["receipts"] : []), ...(can(s, "transfers") ? ["transfers"] : []), ...(can(s, "transfers") || can(s, "receipts") ? ["stock"] : []), ...(can(s, "record") ? ["record"] : []), ...(isRozha(s) ? ["admin"] : []), "settings"];
 }
@@ -199,7 +200,7 @@ async function authenticate(req: Request): Promise<Session | null | "unavailable
     .eq("token_hash", await hash(raw)).maybeSingle();
   if (lookupError) return "unavailable";
   if (!data || data.revoked_at || !Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()) return null;
-  if (data.account !== "rozha" && data.account !== "yunis") return null;
+  if (!["rozha", "yunis", "ahmad"].includes(data.account)) return null;
   if (Date.now() - new Date(data.last_seen_at).getTime() > SEEN_WRITE_EVERY_MS) {
     // Used devices stay signed in: 30 days from the last use (a phone used every day never signs out).
     await app("sessions").update({ last_seen_at: nowIso(), expires_at: new Date(Date.now() + SESSION_IDLE_MS).toISOString() }).eq("id", data.id).is("revoked_at", null);
@@ -211,9 +212,10 @@ async function authenticate(req: Request): Promise<Session | null | "unavailable
   }
   return { id: data.id, account: data.account, deviceId: data.device_id, roles: rolesOf(data.account, (data as any).app_accounts?.roles) };
 }
-const accountName = (a: string) => (a === "rozha" ? "Rozh" : a === "yunis" ? "Yunis" : a);
+const accountName = (a: string) => (a === "rozha" ? "Rozh" : a === "yunis" ? "Yunis" : a === "ahmad" ? "Ahmad" : a);
 /* Each name in the script of each language, for Rico's messages. */
 const LOCAL_NAMES: Record<string, { en: string; ku: string; ar: string }> = {
+  ahmad: { en: "Ahmad", ku: "ئەحمەد", ar: "أحمد" },
   rozha: { en: "Rozh", ku: "ڕۆژا", ar: "روژا" },
   yunis: { en: "Yunis", ku: "یونس", ar: "يونس" },
 };
@@ -404,18 +406,19 @@ async function withStock(items: any[]) {
   });
 }
 async function bootstrap(s: Session) {
+  const catalogAccess=can(s,"order") || can(s,"manage");
   const [me, suppliers, items, units, orders, devices, activity, inbox, streak, months, draft, wipe] = await Promise.all([
     readAccount(s.account),
-    readAll(() => app("suppliers").select("id,name,phone,reminder,buys").order("name").order("id")),
-    readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at,stock_item,kind").order("name").order("id")),
-    readAll(() => app("units").select("id,en,ku,ar").order("id")),
-    readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")),
+    catalogAccess ? readAll(() => app("suppliers").select("id,name,phone,reminder,buys").order("name").order("id")) : Promise.resolve([]),
+    catalogAccess ? readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at,stock_item,kind").order("name").order("id")) : Promise.resolve([]),
+    catalogAccess ? readAll(() => app("units").select("id,en,ku,ar").order("id")) : Promise.resolve([]),
+    (can(s,"order") || can(s,"history")) ? readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")) : Promise.resolve([]),
     listDevices(s),
     can(s, "record") ? listActivity() : Promise.resolve([]),
     can(s, "assistant") ? listInbox(s) : Promise.resolve([]),
-    readStreak(),
+    (can(s,"order") || can(s,"history")) ? readStreak() : Promise.resolve(null),
     can(s, "history") ? listMonths(12) : Promise.resolve([]),
-    readDraft(s.account),
+    can(s,"order") ? readDraft(s.account) : Promise.resolve(null),
     app("wipe").select("next_wipe").eq("id", true).maybeSingle(),
   ]);
   if (wipe.error) throw wipe.error;
@@ -568,7 +571,7 @@ async function startSession(req: Request, pin: string, attempt: number[], device
   if (error) return fail("login_failed", 503);
   if (data?.error === "invalid_credentials") { await securityEvent(req, "wrong_pin", null); return fail("invalid_credentials", 401); }
   if (data?.error === "device_in_use") return fail("device_in_use", 409);
-  if (!["rozha", "yunis"].includes(data?.account) || !Number.isFinite(Date.parse(data?.expiresAt))) return fail("login_failed", 503);
+  if (!["rozha", "yunis", "ahmad"].includes(data?.account) || !Number.isFinite(Date.parse(data?.expiresAt))) return fail("login_failed", 503);
   if (data.newDevice) later(alertNewDevice(req, data.account, text(req.headers.get("x-device-id"), 120) || null));
   later(noteSignInPlace(req, data.account, text(req.headers.get("x-device-id"), 120) || null, deviceTz));
   return json({ token, account: data.account, name: data.name ?? accountName(data.account), expiresAt: data.expiresAt });
@@ -580,7 +583,7 @@ async function startSession(req: Request, pin: string, attempt: number[], device
    signed in can't be used to guess it. The new PIN signs that account out
    everywhere except the device making the change. */
 async function changePin(req: Request, s: Session, b: any) {
-  const account = b.account === "rozha" || b.account === "yunis" ? b.account as Account : null;
+  const account = b.account === "rozha" || b.account === "yunis" || b.account === "ahmad" ? b.account as Account : null;
   const newPin = String(b.newPin ?? "");
   if (!account || !/^\d{6}$/.test(newPin)) return fail("invalid_pin");
   if (isWeakPin(newPin)) return fail("weak_pin");
@@ -660,8 +663,8 @@ async function streakMilestone(count: number) {
   // Only people who have Rico get his message.
   const { data: people, error: peopleError } = await app("accounts").select("id,roles");
   if (peopleError) throw peopleError;
-  const hasRico = (a: "rozha" | "yunis") => a === "rozha" || rolesOf(a, (people ?? []).find((p: any) => p.id === a)?.roles).includes("assistant");
-  const rows = (["rozha", "yunis"] as const).filter(hasRico).map((a) => {
+  const hasRico = (a: "rozha" | "yunis" | "ahmad") => a === "rozha" || rolesOf(a, (people ?? []).find((p: any) => p.id === a)?.roles).includes("assistant");
+  const rows = (["rozha", "yunis", "ahmad"] as const).filter(hasRico).map((a) => {
     const n = LOCAL_NAMES[a];
     return {
       account: a, kind: "streak", mood: "calm", dedupe_key: `streak|${count}|${day}|${a}`,
@@ -980,9 +983,15 @@ Deno.serve(async (req) => {
     if(path.startsWith("rico-chats") && M!=="GET"){keys.push(`account:${s.account}:chats`);limits.push(40);}
     if(path==="assistant/title"){keys.push(`account:${s.account}:title`);limits.push(30);}
     const limited=path==="logout"?null:await requestLimit(keys,limits);if(limited)return limited;
-    const b = M === "GET" ? {} : await readBody(req, path === "receipts/scan" ? 4_400_000 : MAX_BODY_BYTES);
+    const b = M === "GET" ? {} : await readBody(req, (path === "receipts/scan" || /^recipes\/[0-9a-f-]+\/photos$/.test(path)) ? 4_400_000 : MAX_BODY_BYTES);
     let m: RegExpMatchArray | null;
 
+    if (path === "recipes" || path.startsWith("recipes/") || path === "recipe-ingredients" || path.startsWith("recipe-ingredients/")) {
+      if (!can(s,"recipes")) return fail("forbidden",403);
+      return await recipesRoute({db,json,fail,account:s.account},M,path,b);
+    }
+    if (s.account === "ahmad" && !can(s,"order") && /^(draft|orders|me\/pins|streak)(\/|$)/.test(path)) return fail("forbidden",403);
+    if (s.account === "ahmad" && !can(s,"order") && !can(s,"manage") && /^(items|suppliers|units)(\/|$)/.test(path)) return fail("forbidden",403);
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
     if (path === "receipts-settings/telegram") {
       if (!rozha) return fail("forbidden", 403);
@@ -1092,14 +1101,14 @@ Deno.serve(async (req) => {
       return error ? fail("rico_orders_unavailable", 503) : json({ ready: whatsappReady(), orders: data ?? [] });
     }
     if (M === "GET" && path === "admin/roles") {
-      const { data, error } = await app("accounts").select("roles").eq("id", "yunis").maybeSingle();
-      return error ? fail("roles_unavailable", 503) : json({ roles: ROLES, yunis: rolesOf("yunis", data?.roles), standard: data?.roles == null });
+      const { data, error } = await app("accounts").select("id,roles").in("id",["yunis","ahmad"]);
+      return error ? fail("roles_unavailable",503) : json({roles:ROLES,yunis:rolesOf("yunis",data?.find((a:any)=>a.id==="yunis")?.roles),ahmad:rolesOf("ahmad",data?.find((a:any)=>a.id==="ahmad")?.roles),standard:false});
     }
     if (M === "PUT" && path === "admin/roles") {
       const roles = Array.isArray(b.roles) ? b.roles : null;
-      if (b.account !== "yunis" || !roles || roles.length > ROLES.length || roles.some((r: unknown) => typeof r !== "string" || !ROLES.includes(r)) || new Set(roles).size !== roles.length) return fail("invalid_input");
-      const { data, error } = await db.rpc("app_internal_set_roles", { p_actor: s.account, p_account: "yunis", p_roles: roles, p_device: s.deviceId });
-      return error ? fail("save_failed", 500) : json({ roles: rolesOf("yunis", data) });
+      if (!["yunis","ahmad"].includes(b.account) || !roles || roles.length > ROLES.length || roles.some((r: unknown) => typeof r !== "string" || !ROLES.includes(r)) || new Set(roles).size !== roles.length) return fail("invalid_input");
+      const { data, error } = await db.rpc("app_internal_set_roles", { p_actor: s.account, p_account: b.account, p_roles: roles, p_device: s.deviceId });
+      return error ? fail("save_failed", 500) : json({ roles: rolesOf(b.account, data) });
     }
     if (M === "POST" && path === "problems") {
       const reports = cleanProblems(b.reports);
@@ -1270,6 +1279,9 @@ Deno.serve(async (req) => {
     // Settings are the account's own: both of its phones share them.
     if (M === "PUT" && path === "settings") {
       const key = String(b.key ?? ""), value = b.value;
+      if(s.account === "ahmad" && !can(s,"order") && ["showLastQty","compactRows","soundQty","soundSent","soundMilestone","soundUndo","milestones","pinnedSuppliers","swipe"].includes(key)) return fail("forbidden",403);
+      if(s.account === "ahmad" && !can(s,"assistant") && ["ricoSheet","ricoStyle","ricoAutoStart","soundRico"].includes(key)) return fail("forbidden",403);
+      if(s.account === "ahmad" && !can(s,"transfers") && key === "tfAuto") return fail("forbidden",403);
       const ok_ = SETTING_KEYS.has(key) ? typeof value === "boolean"
         : key === "pinnedSuppliers" ? Array.isArray(value) && value.length <= 30 && value.every((v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 120)
         // Her own keys for the Receipts and Transfers line shortcuts ({add:"Alt+KeyN", ...}); {} is the standard ones.

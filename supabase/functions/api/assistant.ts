@@ -47,10 +47,10 @@ const REPLIES_PER_HOUR_TOTAL = 400; // whole restaurant, all devices combined
 const TZ = "Asia/Baghdad";         // Erbil
 // Mood words a model might still write as a tag; they are only taken out of the text (see moodFilter).
 const MOODS = ["happy", "excited", "grateful", "calm", "thinking", "worried", "sad", "angry"];
-const NAMES: Record<string, string> = { rozha: "Rozh", yunis: "Yunis" };
+const NAMES: Record<string, string> = { rozha: "Rozh", yunis: "Yunis", ahmad: "Ahmad" };
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-type Session = { id: string; account: "rozha" | "yunis"; deviceId: string | null; roles?: string[] };
+type Session = { id: string; account: "rozha" | "yunis" | "ahmad"; deviceId: string | null; roles?: string[] };
 /* What each role lets a person do, for CONTEXT (the api checks the same roles on every request). */
 const ROLE_WORDS: Record<string, string> = {
   history: "History", manage: "Manage (items, suppliers, units, read only without catalog)", catalog: "add, change and delete items, suppliers and units",

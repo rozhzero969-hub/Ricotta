@@ -1,3 +1,4 @@
+import { recipesRoute } from '../supabase/functions/api/recipes.ts';
 import {turnstileConfig,verifyTurnstile} from '../supabase/functions/_shared/turnstile.ts';
 // Node 24+: execute the API handler with an in-memory database and no network.
 import assert from 'node:assert/strict';
@@ -100,7 +101,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory } = new Function('createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', 'checkLowStock', 'relinkedLowStock', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf, checkLowStock, relinkedLowStock );
+const { groupHistory } = new Function('recipesRoute', 'createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', 'checkLowStock', 'relinkedLowStock', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( recipesRoute, () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf, checkLowStock, relinkedLowStock );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -477,5 +478,25 @@ try {
   tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';
   assert.equal((await call('signals?since=-1&wait=0',null,'GET')).status,200,'Yunis waits too');
   errors.set('app_signals:read',true);assert.equal((await call('signals?since=-1&wait=0',null,'GET')).status,500);
+
+  reset();tables.app_sessions[0].account='ahmad';tables.app_devices[0].account='ahmad';tables.app_sessions[0].app_accounts={roles:[]};tables.app_accounts=[{id:'ahmad',name:'Ahmad',roles:[],settings:{}}];
+  const ahmadBoot=await call('bootstrap',null,'GET');assert.equal(ahmadBoot.status,200);const ab=await ahmadBoot.json();assert.deepEqual(ab.views,['recipes','settings']);assert.deepEqual(ab.items,[]);assert.deepEqual(ab.suppliers,[]);assert.deepEqual(ab.history,[]);
+  for(const p of ['admin/roles','draft','orders','items','suppliers','stock','receipts','transfers'])assert.equal((await call(p,null,'GET')).status,403,p+' denied to recipe-only account');
+  assert.equal((await call('settings',{key:'soundSent',value:true},'PUT')).status,403);
+  assert.equal((await call('settings',{key:'darkMode',value:'on'},'PUT')).status,200);
+  tables.app_rr_catalog=[{id:true,data:{titems:[{name:'Eggs',base:'pcs'}]},updated_at:new Date().toISOString()}];
+  tables.app_recipe_ingredients=[];tables.app_recipes=[];
+  assert.equal((await call('recipes',null,'GET')).status,200);
+  const iid='00000000-0000-4000-8000-000000000010',rid='00000000-0000-4000-8000-000000000011';
+  assert.equal((await call('recipe-ingredients/'+iid,{name:'Eggs',stock_item:'Missing',unit:'pcs',version:0},'PUT')).status,422);
+  assert.equal((await call('recipe-ingredients/'+iid,{name:'Eggs',stock_item:'Eggs',unit:'pcs',version:0},'PUT')).status,200);
+  tables.app_recipe_ingredients[0].version=1;
+  const recipe={name:'Cake',archived:false,version:0,data:{status:'ready',lines:[{ingredient:iid,qty:2,unit:'pcs'}],steps:['Mix'],notes:'',category:'Cakes',yield:4,yieldUnit:'slices',prep:10,cook:20}};
+  assert.equal((await call('recipes/'+rid,recipe,'PUT')).status,200);
+  tables.app_recipes[0].version=1;
+  assert.equal((await call('recipes/'+rid,{...recipe,version:1},'PUT')).status,200);
+  assert.equal((await call('recipes/'+rid,{...recipe,version:1},'PUT')).status,409,'stale version cannot overwrite');
+  assert.equal((await call('recipes/'+rid,{...recipe,version:2,data:{...recipe.data,lines:[{ingredient:iid,qty:-1,unit:'pcs'}]}},'PUT')).status,422);
+  reset();tables.app_sessions[0].account='yunis';tables.app_devices[0].account='yunis';tables.app_sessions[0].app_accounts={roles:[]};assert.equal((await call('recipes',null,'GET')).status,403,'Yunis needs Recipes access');
 } finally { console.error = mute; }
 console.log('Backend API smoke: PASS (fail-closed login, session persistence, atomic orders, strict quantities, subscription ownership, Admin PIN change, live change signals, locked Transfers, retired endpoints, edits that change only the fields they name, usage batches, redacted problem reports, real signed-in devices, History and Record roles in the start-up data, 503 when the session check cannot run)');

@@ -55,10 +55,11 @@ const EDIT_GRACE_MS = 60 * 1000;
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const CHEER_AT_MIN = 9 * 60;            // Rico's morning message, 09:00 Erbil
 const CHEER_WINDOW_MIN = 2 * 60;        // still sent if the tick was missed, until 11:00
-const ACCOUNTS = ["rozha", "yunis"];
+const ACCOUNTS = ["rozha", "yunis", "ahmad"];
 /* Each name in the script of each language. */
 const NAMES: Record<string, Record<"en" | "ku" | "ar", string>> = {
   rozha: { en: "Rozh", ku: "ڕۆژا", ar: "روژا" },
+  ahmad: { en: "Ahmad", ku: "ئەحمەد", ar: "أحمد" },
   yunis: { en: "Yunis", ku: "یونس", ar: "يونس" },
 };
 
@@ -212,7 +213,7 @@ async function ricoAccounts() {
   const rows = must(await sb.from("app_accounts").select("id,roles"), "accounts") as any[];
   return new Set(ACCOUNTS.filter((a) => {
     const roles = (rows ?? []).find((r: any) => r.id === a)?.roles;
-    return a === "rozha" || !Array.isArray(roles) || roles.includes("assistant");
+    return a === "rozha" || (Array.isArray(roles) ? roles.includes("assistant") : a === "yunis");
   }));
 }
 async function ricoSays(kind: string, key: string, words: Words, extra: Record<string, unknown> = {}) {
@@ -303,7 +304,7 @@ async function routineTick() {
   const has = (account: string, role: string) => {
     if (account === "rozha") return true;
     const roles = (rows ?? []).find((r: any) => r.id === account)?.roles;
-    return Array.isArray(roles) ? roles.includes(role) : STANDARD_ROLES.includes(role);
+    return Array.isArray(roles) ? roles.includes(role) : account === "yunis" && STANDARD_ROLES.includes(role);
   };
   return await runRoutines(sb, {
     now: erbilNow(),

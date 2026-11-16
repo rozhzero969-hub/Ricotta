@@ -19,7 +19,7 @@ import "../_shared/transfers.js";
 import { BUCKET, catalogOf, helperRow, helperView, logEntry, nameOf, poll, waitFor } from "./receipts.ts";
 const T = (globalThis as any).RicottaTransfers;
 
-type Ctx = { db: any; json: (b: unknown, s?: number) => Response; fail: (e: string, s?: number) => Response; account: "rozha" | "yunis" | null; rozha: boolean };
+type Ctx = { db: any; json: (b: unknown, s?: number) => Response; fail: (e: string, s?: number) => Response; account: "rozha" | "yunis" | "ahmad" | null; rozha: boolean };
 type Done = { row?: any; error?: string; status?: number; extra?: Record<string, unknown> };
 const tx = (v: unknown, max = 200) => String(v ?? "").slice(0, max);
 const now = () => new Date().toISOString();

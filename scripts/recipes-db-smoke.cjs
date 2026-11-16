@@ -1,0 +1,19 @@
+const fs=require('node:fs'),assert=require('node:assert/strict');const {PGlite}=require('@electric-sql/pglite');const {pgcrypto}=require('@electric-sql/pglite/contrib/pgcrypto');
+(async()=>{const db=new PGlite({extensions:{pgcrypto}});await db.exec('create role anon;create role authenticated;create role service_role;');await db.exec(fs.readFileSync('supabase/baseline.sql','utf8'));for(const f of fs.readdirSync('supabase/migrations').filter(f=>f.endsWith('.sql')).sort())await db.exec(fs.readFileSync('supabase/migrations/'+f,'utf8'));const q=async s=>(await db.query(s)).rows;
+assert.deepEqual((await q("select roles from app_accounts where id='ahmad'"))[0].roles,[]);
+for(const table of ['app_recipes','app_recipe_ingredients','app_recipe_photos']){assert.equal((await q(`select has_table_privilege('anon','${table}','select') as allowed`))[0].allowed,false);assert.equal((await q(`select relrowsecurity from pg_class where oid='${table}'::regclass`))[0].relrowsecurity,true);}
+assert.equal((await q("select app_internal_check_account_pin('ahmad','123456') as ok"))[0].ok,false);
+await db.exec("insert into app_accounts(id,name,pin_hash) values('rozha','Rozh',extensions.crypt('482916',extensions.gen_salt('bf',4))); insert into app_sessions(id,token_hash,account,expires_at) values('00000000-0000-4000-8000-000000000001',repeat('a',64),'rozha',now()+interval '1 day');");
+assert.equal((await q("select app_internal_set_pin('ahmad','638295','00000000-0000-4000-8000-000000000001') as result"))[0].result,'ok');
+assert.equal((await q("select app_internal_check_account_pin('ahmad','638295') as ok"))[0].ok,true);
+assert.equal((await q("select app_internal_match_code('638295') as who"))[0].who,'ahmad');
+assert.deepEqual((await q("select app_internal_set_roles('rozha','ahmad',array['history'],'test') as roles"))[0].roles,['history']);
+await assert.rejects(()=>db.exec("select app_internal_set_roles('ahmad','ahmad',array['manage'],'test');"));
+await db.exec("insert into app_recipes(id,name,data,updated_by) values('00000000-0000-4000-8000-000000000002','Cake','{}','ahmad');");
+assert.equal((await q("update app_recipes set version=2 where id='00000000-0000-4000-8000-000000000002' and version=1 returning id")).length,1);assert.equal((await q("update app_recipes set version=2 where id='00000000-0000-4000-8000-000000000002' and version=1 returning id")).length,0);
+
+await db.exec("insert into app_recipe_ingredients(id,name,stock_item,unit) values('00000000-0000-4000-8000-000000000003','Eggs','Eggs','pcs'); update app_recipes set data='{\"lines\":[{\"ingredient\":\"00000000-0000-4000-8000-000000000003\",\"qty\":1,\"unit\":\"pcs\"}]}' where id='00000000-0000-4000-8000-000000000002';");
+await assert.rejects(()=>db.exec("update app_recipe_ingredients set unit='g' where id='00000000-0000-4000-8000-000000000003';"));
+for(let i=0;i<8;i++)await db.exec(`insert into app_recipe_photos(id,recipe_id,path) values(gen_random_uuid(),'00000000-0000-4000-8000-000000000002','photo-${i}');`);
+await assert.rejects(()=>db.exec("insert into app_recipe_photos(id,recipe_id,path) values(gen_random_uuid(),'00000000-0000-4000-8000-000000000002','photo-9');"));
+await db.close();console.log('Recipes DB PASS: disabled initial PIN, Admin PIN setup, roles, table privacy, RLS, stale version refusal');})().catch(e=>{console.error(e);process.exit(1);});
