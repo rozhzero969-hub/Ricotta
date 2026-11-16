@@ -1,7 +1,7 @@
 /* Shared recipe book. Server versions prevent one cook from overwriting another cook's edits. */
-const recipeBook={account:null,data:null,loading:false,error:false,id:null,tab:'recipes',editing:null,dirty:false,saving:false,timer:null,query:'',showArchived:false,scale:1,photos:[],cooking:false,wake:null};
+const recipeBook={account:null,data:null,loading:false,error:false,id:null,tab:'recipes',editing:null,dirty:false,saving:false,saveJob:null,timer:null,query:'',showArchived:false,scale:1,photos:[],cooking:false,wake:null};
 const rt=k=>t('recipe_'+k);
-function recipeReset(){clearTimeout(recipeBook.timer);recipeBook.wake?.release().catch(()=>{});Object.assign(recipeBook,{account:state.account,data:null,loading:false,error:false,id:null,editing:null,dirty:false,saving:false,photos:[],cooking:false,wake:null});}
+function recipeReset(){clearTimeout(recipeBook.timer);recipeBook.wake?.release().catch(()=>{});Object.assign(recipeBook,{account:state.account,data:null,loading:false,error:false,id:null,editing:null,dirty:false,saving:false,saveJob:null,photos:[],cooking:false,wake:null});}
 async function recipeLoad(){
  if(recipeBook.account!==state.account)recipeReset();if(recipeBook.loading)return;
  recipeBook.loading=true;const account=state.account,r=await api('recipes');if(account!==state.account)return;
@@ -14,8 +14,13 @@ const recipeCurrent=()=>recipeBook.data?.recipes.find(x=>x.id===recipeBook.id);
 const recipeQty=n=>Number(n.toFixed(3)).toLocaleString('en-US',{maximumFractionDigits:3});
 function recipeNew(){recipeBook.showArchived=false;recipeBook.editing={id:crypto.randomUUID(),name:'',version:0,archived:false,data:{status:'draft',category:'',yield:1,yieldUnit:'',prep:0,cook:0,lines:[],steps:[''],notes:''}};recipeBook.dirty=false;render();}
 async function recipeSave(){
+ if(recipeBook.saveJob){const ok=await recipeBook.saveJob;if(!ok)return false;return recipeBook.dirty?recipeSave():true;}
+ const job=recipePerformSave();recipeBook.saveJob=job;
+ try{return await job;}finally{if(recipeBook.saveJob===job)recipeBook.saveJob=null;}
+}
+async function recipePerformSave(){
  const r=recipeBook.editing;if(!r||!recipeBook.dirty)return true;if(recipeBook.saving)return false;
- if(!r.name.trim())return false;
+ if(!r.name.trim()){toast(rt('required'),'error');return false;}
  recipeBook.saving=true;const account=state.account,answer=await api('recipes/'+r.id,{method:'PUT',body:r});
  if(account!==state.account)return false;recipeBook.saving=false;
  if(!answer.ok){toast(answer.data?.error==='recipe_conflict'?rt('conflict'):t('saveFailed'),'error');recipeSaveLabel(rt('unsaved'));return false;}
@@ -51,7 +56,7 @@ function attachRecipeEvents(){
  const on=(id,fn)=>{const el=document.getElementById(id);if(el)el.onclick=fn;};
  on('recipeArchiveList',()=>{recipeBook.showArchived=!recipeBook.showArchived;recipeBook.id=recipeBook.data.recipes.find(r=>r.archived===recipeBook.showArchived)?.id||null;render();});on('recipeRestore',async()=>{recipeBook.editing=structuredClone(recipeCurrent());recipeBook.editing.archived=false;recipeBook.dirty=true;if(await recipeSave()){recipeBook.editing=null;recipeBook.showArchived=false;render();}});
  on('recipeRetry',()=>{recipeBook.error=false;recipeLoad();});on('recipeNew',recipeNew);on('recipeEdit',()=>{recipeBook.editing=structuredClone(recipeCurrent());recipeBook.dirty=false;render();});
- on('recipeDone',async()=>{if(await recipeSave()){recipeBook.editing=null;render();}else toast(rt('required'),'error');});on('recipeBack',async()=>{if(recipeBook.dirty&&!(await showConfirm(rt('discard'))))return;clearTimeout(recipeBook.timer);recipeBook.editing=null;recipeBook.dirty=false;render();});
+ on('recipeDone',async()=>{if(await recipeSave()){recipeBook.editing=null;render();}});on('recipeBack',async()=>{if(recipeBook.dirty&&!(await showConfirm(rt('discard'))))return;clearTimeout(recipeBook.timer);recipeBook.editing=null;recipeBook.dirty=false;render();});
  document.querySelectorAll('[data-rp-tab]').forEach(b=>b.onclick=()=>{recipeBook.tab=b.dataset.rpTab;render();});document.querySelectorAll('[data-rp-open]').forEach(b=>b.onclick=()=>{recipeBook.id=b.dataset.rpOpen;recipeBook.scale=1;recipeBook.cooking=false;recipeBook.wake?.release().catch(()=>{});render();});
  const search=document.getElementById('recipeSearch');if(search)search.oninput=()=>{recipeBook.query=search.value;const rows=recipeBook.data.recipes.filter(r=>r.archived===recipeBook.showArchived&&foldText(r.name+' '+r.data.category).includes(foldText(recipeBook.query)));document.getElementById('recipeList').innerHTML=recipeListHtml(rows);document.querySelectorAll('[data-rp-open]').forEach(b=>b.onclick=()=>{recipeBook.id=b.dataset.rpOpen;render();});};
  const scale=document.getElementById('recipeScale');if(scale)scale.onchange=()=>{recipeBook.scale=Number(scale.value);render();};on('recipeCook',recipeCooking);on('recipeLoadPhotos',recipePhotos);
@@ -67,7 +72,7 @@ function attachRecipeEvents(){
  document.querySelectorAll('[data-rp-stepup]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.rpStepup);[d.steps[i-1],d.steps[i]]=[d.steps[i],d.steps[i-1]];update();});
  document.querySelectorAll('[data-rp-delstep]').forEach(b=>b.onclick=()=>{d.steps.splice(Number(b.dataset.rpDelstep),1);update();});on('recipeAddStep',()=>{if(d.steps.length<60){d.steps.push('');update();}});
  const add=document.getElementById('recipeAddLine');add.onchange=()=>{const ing=recipeIngredient(add.value);if(ing&&d.lines.length<100){d.lines.push({ingredient:ing.id,qty:1,unit:ing.unit});update();}};
- on('recipeManageIngredients',async()=>{if(recipeBook.dirty&&!(await recipeSave())){toast(rt('required'),'error');return;}recipeBook.editing=null;recipeBook.tab='ingredients';render();});
+ on('recipeManageIngredients',async()=>{if(recipeBook.dirty&&!(await recipeSave()))return;recipeBook.editing=null;recipeBook.tab='ingredients';render();});
  on('recipeArchive',async()=>{if(await showConfirm(rt('archiveConfirm'))){recipeBook.editing.archived=true;recipeBook.dirty=true;if(await recipeSave()){recipeBook.editing=null;recipeBook.id=null;render();}}});
 }
 function renderRecipeSettings(){const locked=(label,allowed)=>`<div class="settings-row"><span>${esc(label)}<small>${esc(allowed?rt('available'):rt('lockedHint'))}</small></span><span>${esc(allowed?rt('available'):rt('locked'))}</span></div>`;return `<div class="settings-page">${canOpen('order')?renderPendingSync():''}${canOpen('assistant')||canOpen('order')?renderNotifSettings():''}${renderFeatureSettings()}<div class="section-title">${esc(rt('access'))}</div><div class="form-card settings-rows">${locked(t('order'),canOpen('order'))}${locked(t('ricoName'),canOpen('assistant'))}${locked(t('rrTitle'),canOpen('receipts'))}${locked(t('tfTitle'),canOpen('transfers'))}</div>${renderHelpSettings()}${renderPrivacySettings()}</div>`;}

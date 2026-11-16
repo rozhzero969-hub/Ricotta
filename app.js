@@ -1356,7 +1356,7 @@ function pageGhost(content){
   return {layer, copy};
 }
 function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
-  if(state.view==='recipes' && view!==state.view && recipeBook.dirty){peek?.layer.remove();recipeSave().then(ok=>{if(ok&&!recipeBook.dirty)goView(view);else toast(rt('required'),'error');});return;}
+  if(state.view==='recipes' && view!==state.view && recipeBook.dirty){peek?.layer.remove();recipeSave().then(ok=>{if(ok&&!recipeBook.dirty)goView(view);});return;}
   if(state.view==='recipes' && view!=='recipes'){recipeBook.wake?.release().catch(()=>{});recipeBook.cooking=false;}
   closeLangMenu();setMoreOpen(false);
   if(!view || view === state.view || !canOpen(view)){ peek?.layer.remove(); return; }
