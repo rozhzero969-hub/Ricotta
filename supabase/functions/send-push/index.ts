@@ -330,6 +330,18 @@ async function routineTick() {
   });
 }
 
+/* ---- The server's reader of Ricotta Restaurant: woken every minute (it works out itself what is due) ---- */
+async function rrReaderTick() {
+  const url = Deno.env.get("SUPABASE_URL"), anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  if (!url || !CRON_SECRET) return { skipped: "not set up" };
+  const r = await fetch(`${url}/functions/v1/api/rr-reader/tick`, {
+    method: "POST", signal: AbortSignal.timeout(55_000),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, apikey: anon, "x-cron-secret": CRON_SECRET },
+    body: "{}",
+  });
+  return r.ok ? await r.json().catch(() => ({ ok: true })) : { error: r.status };
+}
+
 /* ---- Erbil weather (Open-Meteo, no key), kept in app_weather for the app and Rico ---- */
 const RAIN_CODES = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
 const SNOW_CODES = [71, 73, 75, 77, 85, 86];
@@ -564,6 +576,9 @@ Deno.serve(async (req) => {
         try { result.wipe = await wipeTick(); } catch (e) { console.error("wipe tick failed", e); result.wipe = { error: "failed" }; }
         try { result.weekly = await weeklyTick(); } catch (e) { console.error("weekly tick failed", e); result.weekly = { error: true }; }
         try { result.routines = await routineTick(); } catch (e) { console.error("routine tick failed", e); result.routines = { error: true }; }
+        // The server's own reader of Ricotta Restaurant (api rr-reader.ts) decides what is due; this tick
+        // only wakes it and waits at most 55 seconds for it.
+        try { result.rrReader = await rrReaderTick(); } catch (_) { result.rrReader = { error: true }; }
         return json(result);
       }
       case "security": {
@@ -583,6 +598,14 @@ Deno.serve(async (req) => {
         return json(await sendReminder((lang) => ({
           title: title || RICO[lang], body: w.pick(lang), kind: "assistant", mood: RICO_MOOD, tag: `ricotta-assistant-${Date.now()}`,
         }), title ? undefined : await ricoAccounts()));
+      }
+      case "rr-reader": {
+        // Cloud Rico can't read Ricotta Restaurant (or reads again): Rozh's signed-in phones only.
+        const w = written(body);
+        if (!w.any) return json({ error: "empty message" }, 400);
+        return json(await sendReminder((lang) => ({
+          title: L(lang, "Cloud Rico", "ریکۆی هەور", "ريكو السحابي"), body: w.pick(lang), kind: "assistant", view: "admin", tag: "ricotta-rr-reader",
+        }), new Set(["rozha"])));
       }
       case "low-stock": {
         // Items at or below their low stock level (api low-stock.ts): Rozh's and Yunis's signed-in phones.

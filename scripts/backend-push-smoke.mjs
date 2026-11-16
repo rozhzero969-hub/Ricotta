@@ -86,8 +86,14 @@ const source = (await readFile(new URL('../supabase/functions/send-push/index.ts
 // Erbil's weather comes from Open-Meteo: answered here, so the test never reaches the internet.
 const weather = { current: { temperature_2m: 12.4, weather_code: 61, precipitation: 0.4 },
   daily: { temperature_2m_max: [15], temperature_2m_min: [8], precipitation_probability_max: [80], weather_code: [61] } };
-const fetchStub = async (url) => {
-  assert.match(String(url), /^https:\/\/api\.open-meteo\.com\//, 'the push function only fetches the weather');
+// Cloud Rico: the minute tick wakes the api's reader of Ricotta Restaurant, with the cron secret.
+const readerCalls = [];
+const fetchStub = async (url, init = {}) => {
+  if (/\/functions\/v1\/api\/rr-reader\/tick$/.test(String(url))) {
+    readerCalls.push(new Headers(init.headers).get('x-cron-secret'));
+    return new Response(JSON.stringify({ did: ['catalog'], problem: null }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  assert.match(String(url), /^https:\/\/api\.open-meteo\.com\//, 'the push function only fetches the weather and wakes Cloud Rico');
   weatherCalls.push(String(url));
   return new Response(JSON.stringify(weather), { status: 200, headers: { 'content-type': 'application/json' } });
 };
@@ -134,6 +140,7 @@ const tick = await handler(req({ type: 'reminder-tick' }));
 assert.equal(tick.status, 200);
 for (const [part, result] of Object.entries(await tick.json())) assert.ok(!result?.error, `the ${part} part of the minute tick runs without an error`);
 assert.equal(weatherCalls.length, 1, 'the weather is fetched once');
+assert.deepEqual(readerCalls, [environment.CRON_SECRET], 'Cloud Rico is woken once per tick, with the cron secret');
 assert.deepEqual([tables.app_weather?.[0]?.data?.rain, tables.app_weather?.[0]?.data?.max], [true, 15], 'Erbil\'s weather is kept for the app and Rico');
 const again = await (await handler(req({ type: 'reminder-tick' }))).json();
 assert.deepEqual([again.weather, weatherCalls.length], [{ skipped: 'fresh' }, 1], 'fresh weather is not fetched again on the next tick');

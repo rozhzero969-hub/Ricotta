@@ -375,7 +375,7 @@ const server=http.createServer((req,res)=>{
     await openView(page,'admin');
     const tools=await page.locator('.adh-tools [data-admin-open]').evaluateAll(els=>els.map(e=>e.dataset.adminOpen));
     const rrViews=await page.evaluate(()=>state.views.includes('receipts') || state.views.includes('transfers'));
-    assert.deepEqual(tools,['problems','security','health','catalog',...(rrViews ? ['names'] : []),'restore'],'Admin tools');
+    assert.deepEqual(tools,['problems','security','health','catalog',...(rrViews ? ['names'] : []),'cloud','restore'],'Admin tools');
     assert.equal(await page.locator('.adh-rico[data-admin-open="rico"]').count(),1,'Rico\u2019s card opens his page');
     assert.equal(await page.locator('[data-admin-person]').count(),3,'one row per person');
     // The status line counts only real problems, today's numbers come from the overview, each with a bar

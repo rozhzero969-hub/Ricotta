@@ -2435,6 +2435,8 @@ function itemLowAlert(i){
   const st = i.stockItem && i.stock, n = i.lowAlert;
   return n !== null && n !== undefined && !!st && !st.missing && !!st.count && Number(st.count.qty) <= Number(n) + 1e-9;
 }
+// Stock read more than 30 minutes ago: the numbers may be behind what is really on the shelf.
+function stockIsOld(at){ const ms = at ? Date.parse(at) : NaN; return Number.isFinite(ms) && Date.now() - ms > 30 * 60 * 1000; }
 function itemStockLine(i){
   const st = i.stockItem && i.stock;
   if(!st || st.missing) return '';
@@ -2445,7 +2447,9 @@ function itemStockLine(i){
   const lvl = st.empty ? 'empty' : alerted ? 'low' : ['low', 'ok'].includes(st.level) ? st.level : '';
   const when = [st.at ? t('stockReadAgo')(timeAgo(st.at)) : '', lvl === 'low' && !alerted ? t('stockLowHint') : ''].filter(Boolean).join(' · ');
   const tag = lvl !== 'low' ? '' : alerted ? t('lowAlertTag')(stockQty(i.lowAlert), st.count.unit || '') : t('stockLowTag');
-  return `<div class="item-stock${lvl ? ' lvl-' + lvl : ''}${st.empty ? ' none' : ''}"${when ? ` title="${esc(when)}"` : ''}>${stockHtml(st)}${tag ? ` <span class="item-stock-tag" dir="auto">${esc(tag)}</span>` : ''}</div>`;
+  // Read more than 30 minutes ago (the reader is behind): say so calmly next to the number.
+  const stale = stockIsOld(st.at) ? ` <span class="stock-old" dir="auto">${esc(t('stockOld')(timeAgo(st.at)))}</span>` : '';
+  return `<div class="item-stock${lvl ? ' lvl-' + lvl : ''}${st.empty ? ' none' : ''}"${when ? ` title="${esc(when)}"` : ''}>${stockHtml(st)}${tag ? ` <span class="item-stock-tag" dir="auto">${esc(tag)}</span>` : ''}${stale}</div>`;
 }
 // On a phone (no hover), a tap on the stock line says how old the reading is.
 document.addEventListener('click', e=>{ const el = e.target.closest?.('.item-stock[title]'); if(el && matchMedia('(hover: none)').matches) toast(el.title); });

@@ -734,7 +734,7 @@ function renderRicoProposalCard(p, mi){
     body = `<div class="rico-card-note" dir="auto">${esc(p.from)} → ${esc(p.to)}</div>${(p.lines||[]).map(l=>`<div class="rico-card-line"><span dir="auto">${esc(l.item)}</span><b dir="auto">${esc(l.qty)} ${esc(l.unit)}</b></div>`).join('')}${(p.warnings||[]).map(x=>`<div class="rico-card-note" dir="auto">${esc(x)}</div>`).join('')}`;
     return ricoCard(NAV_ICONS.transfers, viewLabel('transfers'), body, `<div class="rico-card-actions"><button class="btn btn-primary" data-rico-transfer="${esc(p.transferId)}">${esc(t('ricoOpenScreen')(viewLabel('transfers')))}</button></div>`, p);
   }
-  if(['stock_list','needs_list','price_list','spend'].includes(p.kind)) return renderRicoData(p);
+  if(['stock_list','needs_list','price_list','spend','invoice_report','price_lookup'].includes(p.kind)) return renderRicoData(p);
   // A page of Ricotta Restaurant Rico was asked to open: a plain link (only to that site).
   if(p.kind === 'rr_link'){
     if(typeof p.url !== 'string' || !p.url.startsWith('https://pos.shaydattendance.com/')) return '';
@@ -788,8 +788,26 @@ function renderRicoData(p){
     const body = total + rows.map(r=>`<div class="rico-data-row"><span class="rico-data-name" dir="auto">${esc(r.name)}<small>${esc(t('ricoReceiptsN')(r.receipts || 0))}</small></span><b dir="ltr">${esc(money(r))}</b></div>`).join('');
     return card(RICO_TILE_ICONS.reports, t('ricoCardSpend'), p.period || '', body);
   }
+  // Every invoice in Ricotta Restaurant for a month: totals and the suppliers; the files are made here.
+  if(p.kind === 'invoice_report'){
+    if(!canOpen('receipts') && !canOpen('transfers')) return '';
+    const money = r=>[r.IQD ? `${ricoNum(r.IQD)} IQD` : '', r.USD ? `${ricoNum(r.USD)} USD` : ''].filter(Boolean).join(' · ') || '0 IQD';
+    const total = `<div class="rico-data-total"><b dir="ltr">${esc(money(p))}</b><small>${esc(t('ricoReceiptsN')(p.receipts || 0))}${p.unpaid ? ' · ' + esc(t('invUnpaidN')(p.unpaid)) : ''}</small></div>`;
+    const body = total + (p.suppliers || []).map(r=>`<div class="rico-data-row"><span class="rico-data-name" dir="auto">${esc(r.name)}<small>${esc(t('ricoReceiptsN')(r.receipts || 0))}</small></span><b dir="ltr">${esc(money(r))}</b></div>`).join('');
+    const foot = `<button type="button" class="btn btn-ghost" data-inv-file="excel" data-inv-card="${esc(p.id)}">${esc(t('invExcel'))}</button><button type="button" class="btn btn-primary" data-inv-file="pdf" data-inv-card="${esc(p.id)}">${esc(t('invPdf'))}</button>`;
+    return card(RICO_TILE_ICONS.reports, p.supplier ? t('invCardSupplier')(p.supplier, invMonthName(p.month)) : t('invCardTitle')(invMonthName(p.month)), '', body, foot);
+  }
+  // The last price paid per item, with the unit it was bought in; items moved to the storage first.
+  if(p.kind === 'price_lookup'){
+    if(!canOpen('receipts') && !canOpen('transfers')) return '';
+    const body = rows.map(r=>`<div class="rico-data-row"><span class="rico-data-name" dir="auto">${esc(r.item)}<small dir="auto">${esc(r.supplier)} · ${esc(invDay(r.day))} · ${esc(t('invTimes')(r.times))}${p.storage ? ' · ' + esc(r.source === 'moved' ? t('invMovedTo')(p.storage) : t('invByName')) : ''}</small></span><b dir="ltr">${esc(ricoNum(r.price))} ${esc(r.currency)}<small class="inv-per"> / <bdi>${esc(r.unit)}</bdi></small></b></div>`).join('');
+    const foot = `<button type="button" class="btn btn-ghost" data-inv-file="excel" data-inv-card="${esc(p.id)}">${esc(t('invExcel'))}</button><button type="button" class="btn btn-primary" data-inv-file="pdf" data-inv-card="${esc(p.id)}">${esc(t('invPdf'))}</button>`;
+    return card(RICO_TILE_ICONS.price, p.storage && !p.query ? t('invPricesFor')(p.storage) : t('invPricesTitle'), (p.months || []).map(invMonthName).join(' · '), body, foot);
+  }
   return '';
 }
+const invMonthName = m=>{ if(!/^\d{4}-\d{2}$/.test(String(m || ''))) return String(m || ''); return formatIraqDateTime(new Date(m + '-15T12:00:00+03:00'), {month:'long', year:'numeric'}); };
+const invDay = d=>/^\d{4}-\d{2}-\d{2}$/.test(String(d || '')) ? formatIraqDateTime(new Date(d + 'T12:00:00+03:00'), {day:'numeric', month:'short'}) : '';
 function ricoFields(rows){
   return `<dl class="rico-fields">${rows.map(([k,v,raw])=>`<div><dt>${esc(k)}</dt><dd>${raw ? v : esc(v)}</dd></div>`).join('')}</dl>`;
 }
@@ -901,6 +919,12 @@ function attachRicoThreadEvents(root){
     if(state.view === 'transfers' && tfFind(id)) tfOpen(id);
   });
   // A row of "Needs you": opens that receipt or transfer (each screen reads its list as it opens).
+  // Invoice files (a month's report, or the last prices): made here, then handed over.
+  root.querySelectorAll('[data-inv-file]').forEach(b=>b.onclick=()=>{
+    const p = rico.messages.flatMap(m=>m.proposals || []).find(x=>x.id === b.dataset.invCard);
+    if(!p) return;
+    withBusy(b, ()=>p.kind === 'invoice_report' ? exportInvoices(p.month, p.supplier, b.dataset.invFile) : exportPriceLookup(p, b.dataset.invFile));
+  });
   root.querySelectorAll('[data-rico-need]').forEach(b=>b.onclick=async()=>{
     const [type, id] = b.dataset.ricoNeed.split('|'), view = type === 'receipt' ? 'receipts' : 'transfers';
     if(!canOpen(view)) return;
@@ -941,8 +965,8 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:p.mode === 'search' ? `stock of "${p.query}" in ${p.storage}` : `list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
-      content += ['stock_list','needs_list','price_list','spend','rr_link'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:p.mode === 'search' ? `stock of "${p.query}" in ${p.storage}` : `list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, invoice_report:`invoice report for ${p.month}${p.supplier ? ' (' + p.supplier + ')' : ''} with PDF and Excel`, price_lookup:`last prices${p.query ? ' for "' + p.query + '"' : ''}${p.storage ? ' of items going to ' + p.storage : ''} with PDF and Excel`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
+      content += ['stock_list','needs_list','price_list','spend','rr_link','invoice_report','price_lookup'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};
   });

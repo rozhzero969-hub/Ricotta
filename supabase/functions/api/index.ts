@@ -81,6 +81,7 @@ import { stockView, transfersRoute } from "./transfers.ts";
 import { scanReceipt } from "./scan.ts";
 import { checkStockNames, stockNames } from "./stock-names.ts";
 import { checkLowStock, relinkedLowStock } from "./low-stock.ts";
+import { rrReaderRoute } from "./rr-reader-route.ts";
 import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 import "../_shared/overview.js";
@@ -972,6 +973,8 @@ Deno.serve(async (req) => {
       const limited = await requestLimit(["telegram"], [600]); if (limited) return limited;
       return (await telegramWebhook(db, req, await readBody(req, MAX_BODY_BYTES))) ? ok() : fail("forbidden", 403);
     }
+    // The server's own reader of Ricotta Restaurant, run by send-push's tick (cron secret).
+    if (path === "rr-reader/tick") return (await rrReaderRoute({ db, json, fail }, req, M, path, null)) ?? fail("not_found", 404);
     // Rico on Rozh's Mac has his own door (receipts.ts), with its own secret instead of a session.
     if (path.startsWith("helper/")) {
       if (!(await helperAllowed(req))) return fail("unauthorized", 401);
@@ -1003,6 +1006,9 @@ Deno.serve(async (req) => {
     if (s.account === "ahmad" && !can(s,"order") && !can(s,"history") && path.startsWith("streak")) return fail("forbidden",403);
     if (s.account === "ahmad" && !can(s,"order") && !can(s,"manage") && /^(items|suppliers|units)(\/|$)/.test(path)) return fail("forbidden",403);
     if (M === "GET" && path === "bootstrap") return json(await bootstrap(s));
+    if (path === "rr-invoices" || path.startsWith("admin/rr-reader")) {
+      return (await rrReaderRoute({ db, json, fail }, req, M, path, { account: s.account, rozha, can: (role: string) => can(s, role) })) ?? fail("not_found", 404);
+    }
     if (path === "receipts-settings/telegram") {
       if (!rozha) return fail("forbidden", 403);
       if (M === "GET") return json(await telegramStatus(db));

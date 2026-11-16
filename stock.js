@@ -54,6 +54,7 @@ function renderStock(){
     <div class="stk-meta-row"><p class="stk-meta">${esc(t('stockMeta')(stk.data.zone ? t('stockMain') : '', all.length, empty, stk.data.at ? timeAgo(new Date(stk.data.at).toISOString()) : ''))}</p>${stk.data.helper ? rrCheckBtn(stk.data.helper) : ''}</div>
     ${stk.data.helper ? rrCheckNote(stk.data.helper) : ''}
     ${!stk.data.at ? `<p class="rr-foot warn">${esc(t('rrNoCatalog'))}</p>` : ''}
+    ${stk.data.at && stockIsOld(new Date(stk.data.at).toISOString()) ? `<p class="rr-foot stock-old">${esc(t('stockOldNote')(timeAgo(new Date(stk.data.at).toISOString())))}</p>` : ''}
     ${rows ? `<div class="stk-list">${rows}</div>` : emptyState(t('rrNoMatch'))}
     <p class="stk-note">${esc(t('stockReadOnly'))}</p>`;
 }
