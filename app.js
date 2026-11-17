@@ -131,7 +131,6 @@ function formatStoredIraqTime(value){
     timeZone:'UTC', hour:'numeric', minute:'2-digit', hour12:true
   }).format(date);
 }
-/* Consistent "nothing here yet" block, used for every empty list. */
 /* While something loads: gray lines where the rows will be, breathing softly; the rows then fade in
    in the same place, so nothing jumps. */
 function loadingLines(n = 3){
@@ -1843,7 +1842,6 @@ function placeTopbarTitle(bar, title){
 }
 // Capturing: in the app frame it is the content, not the page, that scrolls.
 document.addEventListener('scroll', updateTopbarOnScroll, {passive:true, capture:true});
-/* Restarts a CSS "bump" animation on an element (used for changing numbers). */
 /* A number rolls to its new value, up or down. */
 function rollNumber(el, to, up = true){
   el.textContent = to;
@@ -1855,6 +1853,7 @@ function rollInput(input, up){
   if(reducedMotion() || !input.animate) return;
   input.animate([{transform:`translateY(${up ? 55 : -55}%)`, opacity:0}, {transform:'none', opacity:1}], {duration:260, easing:'cubic-bezier(.32,.72,0,1)'});
 }
+/* Restarts a CSS "bump" animation on an element (used for changing numbers). */
 function bump(el){
   if(!el) return;
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
