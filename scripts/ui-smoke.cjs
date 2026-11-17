@@ -370,23 +370,24 @@ const server=http.createServer((req,res)=>{
     assert.equal(await page.locator('#pushSwitch, .form-card .notif-sub').count()>=1,true,'notifications live in Settings');
     assert.equal(await page.locator('#reminderEnabled').count(),0,'there is no daily reminder');
     assert.equal(await page.locator('[data-pin-change], .cloud-state').count(),0,'PINs and connections live in Admin, not Settings');
-    // Admin: one calm dashboard. Its tools (Stock names only for someone with Receipts or Transfers;
-    // Rico's page opens from his card), two people (each with their own page) and All devices.
+    // Admin: one plain sentence, what needs Rozh with one button each, today's numbers, then the pages as
+    // rows under three headings (Stock names only for someone with Receipts or Transfers), each with a
+    // plain line saying what it is. Three people, each with their own page.
     await openView(page,'admin');
-    const tools=await page.locator('.adh-tools [data-admin-open]').evaluateAll(els=>els.map(e=>e.dataset.adminOpen));
+    const pagesListed=await page.locator('.adh-list [data-admin-open]').evaluateAll(els=>els.map(e=>e.dataset.adminOpen));
     const rrViews=await page.evaluate(()=>state.views.includes('receipts') || state.views.includes('transfers'));
-    assert.deepEqual(tools,['problems','security','health','catalog',...(rrViews ? ['names'] : []),'cloud','restore'],'Admin tools');
-    assert.equal(await page.locator('.adh-rico[data-admin-open="rico"]').count(),1,'Rico\u2019s card opens his page');
+    assert.deepEqual(pagesListed,['devices','access','time','rico','cloud',...(rrViews ? ['names'] : []),'problems','security','health','catalog','restore'],'every Admin page is a row');
+    assert.equal(await page.locator('.adh-list [data-admin-open] .adh-main small').count(),pagesListed.length,'each row says what it is');
+    assert.equal(await page.locator('.adh-spark, .adh-tools, .ad-srv-card').count(),0,'no small charts, tiles or server bytes on the home');
     assert.equal(await page.locator('[data-admin-person]').count(),3,'one row per person');
-    // The status line counts only real problems, today's numbers come from the overview, each with a bar
-    // for each of the last 14 days.
+    // The sentence counts only real problems; today's numbers come from the overview.
     // Receipt problems show only to someone who can open Receipts, as Rozha can in the app.
     const viewsBefore=await page.evaluate(()=>{ const was=state.views; state.views=[...new Set([...(was||[]),'receipts'])]; render(); return was; });
     await page.waitForFunction(()=>/Mukhtar store/.test(document.querySelector('.adh-needs')?.textContent||''),null,{timeout:10000})
       .catch(async ()=>assert.fail('a receipt with a problem is listed by name; issues read: '+await page.locator('.adh-needs').textContent()));
-    assert.match(await page.locator('.adh-status').textContent(),/need/,'the status line counts what needs you');
-    assert.equal((await page.locator('.adh-today-cell b').first().textContent()).trim(),'1','one order sent today');
-    assert.equal(await page.locator('.adh-today-cell').first().locator('.adh-spark i').count(),14,'14 days of orders');
+    assert.match(await page.locator('.adh-status h2').textContent(),/need/,'the sentence counts what needs you');
+    assert.ok(await page.locator('.adh-needs .adh-row').evaluateAll(rows=>rows.every(r=>r.querySelectorAll('button').length===1)),'each thing that needs you has one button');
+    assert.equal((await page.locator('.adh-today-row .adh-num').first().textContent()).trim(),'1','one order sent today');
     await page.evaluate(was=>{ state.views=was; render(); },viewsBefore);
     // A person's page: PIN change there (Rozha's current PIN first, the new one typed twice).
     await page.locator('[data-admin-person="yunis"]').click();await settle(page);
@@ -406,8 +407,9 @@ const server=http.createServer((req,res)=>{
     await page.waitForFunction(()=>!document.querySelector('.modal-form'));
     assert.deepEqual(calls.filter(c=>c.endpoint==='admin/pin').at(-1).body,{account:'yunis',currentPin:'471906',newPin:'591837'},'the change goes out once it is right');
     await page.locator('.admin-heading .page-back').click();await settle(page);
-    assert.equal(await page.locator('.adh-tools').count(),1,'Back returns to the Admin dashboard');
-    await page.locator('.adh-rico[data-admin-open="rico"]').click();await settle(page);
+    assert.equal(await page.locator('.adh-status').count(),1,'Back returns to the Admin home');
+    await page.locator('.adh-list [data-admin-open="rico"]').click();await settle(page);
+    assert.ok((await page.locator('.ad-intro').textContent()).length>20,'each Admin page says what it is for');
     // Rico's AI: each AI with its state, replies and tokens. Keys are never typed or shown in the app.
     await page.waitForSelector('.ad-ai-list .ad-ai');
     assert.equal(await page.locator('.ad-ai').count(),3,'Haiku, Gemini and Groq');
@@ -470,13 +472,13 @@ const server=http.createServer((req,res)=>{
     // Apple's rule 5.1.2: before anything goes to an AI service, Rico says where it goes and asks.
     await page.evaluate(()=>localStorage.removeItem('ricottaOrders:aiConsent2:rozha'));
     const chatsBefore=calls.filter(c=>c.endpoint==='assistant/chat').length;
-    await page.locator('[data-rico-action="late_orders"]').click();
+    await page.locator('#ricoChips .rico-chip').first().click();
     await page.locator('.modal-alert-title').waitFor();
     assert.match(await page.locator('.modal-alert').textContent(),/Google Gemini or Groq/,'the permission names the AI services');
     await page.locator('#modalCancelBtn').click();
     await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal-overlay'));
     assert.equal(calls.filter(c=>c.endpoint==='assistant/chat').length,chatsBefore,'Not Now sends nothing to the AI');
-    await page.locator('[data-rico-action="late_orders"]').click();
+    await page.locator('#ricoChips .rico-chip').first().click();
     await page.locator('#modalOkBtn').click();
     for(let i=0;i<200 && calls.filter(c=>c.endpoint==='assistant/chat').length<=chatsBefore;i++) await page.waitForTimeout(25);
     assert.ok(calls.filter(c=>c.endpoint==='assistant/chat').length>chatsBefore,'Allow sends the question to Rico');
