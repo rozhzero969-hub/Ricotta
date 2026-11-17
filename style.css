@@ -457,11 +457,6 @@ html:not(.app-shell) .kind-hint{display:none}
 .search-input[dir=auto]{padding-left:40px;padding-right:16px}
 html.rtl .search-input[dir=auto]{padding-left:16px;padding-right:40px}
 .order-quick-actions{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
-/* Phones: Same as last time and Clear order share one row as two equal round buttons. */
-@media (max-width:700px){
-  .order-quick-actions{flex-wrap:nowrap}
-  .order-quick-actions .quick-btn{flex:1 1 0;min-width:0;justify-content:center;padding:0 12px;white-space:normal;text-align:center;line-height:1.2}
-}
 .quick-btn{min-height:44px;padding:0 16px;border-radius:999px;font-size:.9375rem;font-weight:500;color:var(--tint);display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
 .quick-btn svg{width:16px;height:16px}
 .quick-btn.clear-order-btn:not(:disabled){color:var(--clay-ink)}
@@ -1045,7 +1040,6 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
   .topbar{padding-inline:14px 12px}
   .brand{font-size:1.3125rem}
   .hero-count{font-size:2.5rem}
-  .order-quick-actions .quick-btn svg{display:none}
   .item-row{padding-inline:14px 10px}
   .step-btn{width:40px}
 }
@@ -1810,13 +1804,10 @@ body.lang-ku small,body.lang-ar small,body.lang-ku .notif-sub,body.lang-ar .noti
 body.lang-ku .section-title,body.lang-ar .section-title,body.lang-ku .hero-eyebrow,body.lang-ar .hero-eyebrow{letter-spacing:0;text-transform:none}
 body.lang-ku .rico-note-text,body.lang-ar .rico-note-text,body.lang-ku .rico-text,body.lang-ar .rico-text{line-height:1.7}
 
-/* The paper order sheet */
-
 /* The Order screen's shortcuts scroll sideways in one line, so their words stay readable. */
 .order-quick-actions{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
 .order-quick-actions::-webkit-scrollbar{display:none}
-.order-quick-actions .quick-btn{flex:0 0 auto!important;white-space:nowrap!important;padding:0 14px}
-.order-quick-actions .quick-btn svg{display:block!important}
+.order-quick-actions .quick-btn{flex:0 0 auto;white-space:nowrap;padding:0 14px}
 .year-sheet .report-stats{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}
 
 .tab-pill .tab-pin{display:inline-flex;margin-inline-end:5px}
