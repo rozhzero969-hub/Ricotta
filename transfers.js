@@ -6,11 +6,16 @@
    and Rico (RicottaTransfers). Stock is Ricotta Restaurant's, as Rico last read it, and Rico checks the
    live stock again on their page right before moving. */
 const tf = {data:null, loading:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false, lastFrom:null, failed:false};
+/* Signing out keeps nothing of that account on the screen (see rrReset). */
+function tfReset(){
+  clearTimeout(tf.saveTimer);
+  Object.assign(tf, {data:null, loading:false, loadAgain:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false, lastFrom:null,
+    failed:false, copyAt:null, netDown:false, asking:false});
+}
 const TF = ()=> globalThis.RicottaTransfers;
 const tfFind = id=> tf.data?.transfers.find(r=>r.id === id) || null;
 const tfItem = name=> (tf.data?.catalog?.titems || []).find(i=>i.name === name) || null;
 const tfQty = q=> rrNum(q, 3);
-/* "Available: 9 سیت in Main Storage", the amount in bold in a small box (red when there isn't enough). */
 /* How much of an item is really left to move from a storage, in its base unit: the stock Rico last read,
    less what other transfers from there are already taking (sent and waiting for Rico, being moved, or
    moved after the stock was read, and ones waiting to send on this device), and less this person's
@@ -70,6 +75,7 @@ function tfCatalogLeft(r){
   const cat = tf.data.catalog;
   return {...cat, titems:(cat.titems || []).map(i=>i.stock && r.from in i.stock ? {...i, stock:{...i.stock, [r.from]:tfLeft(i, r.from, r.id)}} : i)};
 }
+/* "Available: 9 سیت in Main Storage", the amount in bold in a small box (red when there isn't enough). */
 function tfAvailHtml(item, zone, short, unit, left){
   const have = left ?? TF().available(item, zone), o = TF().unitOptions(item).find(u=>u.name === unit);
   const c = o ? {qty:Math.floor((have / o.factor) * 1000 + 1e-6) / 1000, unit:o.name} : TF().inCounting(item, have, true);

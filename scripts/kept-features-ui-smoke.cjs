@@ -19,6 +19,8 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
   if(endpoint==='bootstrap')data={...fixture,draft:{cart,revision}};
   else if(endpoint==='draft'){if(method==='PUT'){for(const c of body.changes){if(c.after)cart[c.itemId]=c.after;else delete cart[c.itemId];}revision++;}data={cart:{...cart},revision,conflicts:[]};}
   else if(endpoint==='auth/security')data={required:false};
+  else if(endpoint==='rico-chats')data={chats:fixture.chats||[]};
+  else if(endpoint.startsWith('rico-chats/')&&method==='DELETE'){fixture.chats=(fixture.chats||[]).filter(c=>c.id!==endpoint.split('/')[1]);}
   else if(endpoint==='devices'||endpoint==='activity'||endpoint==='assistant/inbox')data=[];
   else if(endpoint==='items/restore'){const item=receipts.get(body.undoId);assert.ok(item);fixture.items.push(item);receipts.delete(body.undoId);}
   else if(endpoint.startsWith('items/')&&method==='DELETE'){const id=endpoint.split('/')[1],item=fixture.items.find(i=>i.id===id);assert.ok(item);const token='12345678-1234-1234-1234-123456789abc';receipts.set(token,item);fixture.items=fixture.items.filter(i=>i.id!==id);data={ok:true,undoId:token};}
@@ -68,8 +70,8 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
 
  // The Health Check runs by itself when Admin opens, and its page says in plain words what works.
  await page.waitForFunction(()=>!sharedDraft.enabled || (!sharedDraft.busy && !draftChanges(sharedDraft.base,state.cart).length));
- await view('admin');await page.waitForFunction(()=>/OK/.test(document.querySelector('.adh-tools [data-admin-open="health"]')?.textContent||''));
- await page.locator('.adh-tools [data-admin-open="health"]').click();await page.waitForFunction(()=>document.querySelectorAll('.ad-health').length>=10);
+ await view('admin');await page.waitForFunction(()=>!!adminValue('health') && !!document.querySelector('.adh-list [data-admin-open="health"]') && !document.querySelector('.adh-list [data-admin-open="health"] .adh-val'));
+ await page.locator('.adh-list [data-admin-open="health"]').click();await page.waitForFunction(()=>document.querySelectorAll('.ad-health').length>=10);
  assert.match(await page.locator('.ad-status').textContent(),/Everything is working/);
  assert.equal(await page.locator('.ad-health.bad, .ad-health.warn').count(),0,'every row is green');
  assert.deepEqual(await page.locator('.ad-stats b').allTextContents(),['42','2','1'],'counts come from the database');
@@ -102,6 +104,23 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  assert.ok(pdfCheck.size>1000,'a PDF is made');
  assert.ok(pdfCheck.pieces>=2,'the long name is split into lines');
  assert.ok(pdfCheck.widest<=(595.28-80)*3/4,'no line is wider than its column');
+ // Deleting a chat from Rico's side menu on a phone asks first, naming the chat, and the question is on top
+ // (it once opened behind the menu, where the tap that closed the menu could land on Delete).
+ fixture.chats=[{id:'c1',title:'Bread for Friday',account:'rozha',updatedAt:now}];
+ await view('assistant');await page.evaluate(()=>ricoLoadChats());await page.waitForFunction(()=>rico.chats?.length===1);
+ await page.evaluate(()=>ricoOpenDrawer());await page.locator('#ricoDrawer [data-side-open="c1"]').waitFor();
+ await page.locator('#ricoDrawer [data-side-open="c1"]').dispatchEvent('contextmenu');
+ await page.locator('#ctxLayer [data-ctx="delete"]').click();await page.locator('#modalOkBtn').waitFor();
+ assert.match(await page.locator('.modal-overlay .modal-msg').innerText(),/Bread for Friday/,'the question names the chat');
+ assert.equal(await page.evaluate(()=>{const b=document.getElementById('modalOkBtn'),r=b.getBoundingClientRect(),el=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !!el&&b.contains(el);}),true,'the question is on top, not behind the menu');
+ await page.locator('#modalCancelBtn').click();await page.waitForTimeout(300);
+ assert.equal(await page.evaluate(()=>rico.chats.length),1,'Cancel keeps the chat');
+ assert.equal(calls.filter(c=>c.endpoint==='rico-chats/c1'&&c.method==='DELETE').length,0,'nothing is deleted before Delete is pressed');
+ // Rico's place button opens Settings at that row and lights it.
+ await page.evaluate(()=>{rico.messages=[{role:'assistant',text:'It is in Settings.',ts:Date.now(),proposals:[{id:'p1',kind:'open',screen:'settings',place:'setDark'}]}];render();});
+ assert.match(await page.locator('.rico-place').innerText(),/Settings, Light or Dark/);
+ await page.locator('.rico-place').click();await page.waitForSelector('.dark-row.spot-flash');
+ assert.equal(await page.evaluate(()=>state.view),'settings');
  await page.screenshot({path:path.join(out,'kept-features.png')});assert.deepEqual(errors,[]);await ctx.close();
- console.log(JSON.stringify({result:'PASS',checks:'long names wrap inside their PDF column, saved design, favourites per supplier, remembered places per tab and screen, no send warnings, item delete Undo, Health Check, Rico spark button, reviewed Rico cards',artifacts:out}));
+ console.log(JSON.stringify({result:'PASS',checks:'long names wrap inside their PDF column, saved design, favourites per supplier, remembered places per tab and screen, no send warnings, item delete Undo, Health Check, Rico spark button, reviewed Rico cards, deleting a chat asks first and on top, Rico\'s place button opens the setting',artifacts:out}));
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);server.close();process.exitCode=1;});

@@ -29,6 +29,21 @@ assert.equal((await take([{k:'margin:a',v:'ok'},{k:'stock:Eggs',v:'ok'}])).lengt
 assert.deepEqual((await take([{k:'margin:a',v:'loss'}])).map(r=>[r.alert_key,r.was,r.is_now]),[['margin:a','ok','loss']]);
 assert.equal((await q("select has_table_privilege('anon','app_recipe_alert_state','select') as allowed"))[0].allowed,false);
 assert.equal((await q("select has_function_privilege('anon','app_internal_recipe_alert_take(jsonb)','execute') as allowed"))[0].allowed,false);
+// Categories from a prepared list (2026-11-17): the typed groups in use become rows (one per spelling), each
+// recipe points at its row and the typed word leaves its data; running the migration again changes nothing.
+await db.exec("insert into app_recipes(id,name,data,updated_by) values('00000000-0000-4000-8000-000000000010','Banana shake','{\"category\":\"Smoothies\"}','ahmad'),('00000000-0000-4000-8000-000000000011','Mango shake','{\"category\":\" smoothies \"}','ahmad'),('00000000-0000-4000-8000-000000000012','Brownie','{\"category\":\"Cakes\"}','ahmad');");
+const catMig=fs.readFileSync('supabase/migrations/20261117100000_recipe_categories.sql','utf8');
+await db.exec(catMig);await db.exec(catMig);
+const cats=await q("select name,color from app_recipe_categories order by sort");
+assert.deepEqual(cats.map(c=>c.name),['Cakes','Smoothies'],'one row per spelling, A to Z');
+assert.deepEqual(cats.map(c=>c.color),['mint','butter'],'the next colour each');
+assert.equal((await q("select count(distinct category_id)::int as n from app_recipes where id in ('00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000011')"))[0].n,1,'both shakes in Smoothies');
+assert.equal((await q("select count(*)::int as n from app_recipes where data ? 'category'"))[0].n,0,'the typed word is gone');
+await assert.rejects(()=>db.exec("insert into app_recipe_categories(name,color) values('CAKES','sky');"),'one spelling per category');
+await assert.rejects(()=>db.exec("insert into app_recipe_categories(name,color) values('Juices','neon');"),'only the ten colours');
+assert.equal((await q("select has_table_privilege('anon','app_recipe_categories','select') as allowed"))[0].allowed,false);
+await db.exec("delete from app_recipe_categories where name='Cakes';");
+assert.equal((await q("select category_id from app_recipes where id='00000000-0000-4000-8000-000000000012'"))[0].category_id,null,'deleting a category keeps its recipes');
 for(let i=0;i<8;i++)await db.exec(`insert into app_recipe_photos(id,recipe_id,path) values(gen_random_uuid(),'00000000-0000-4000-8000-000000000002','photo-${i}');`);
 await assert.rejects(()=>db.exec("insert into app_recipe_photos(id,recipe_id,path) values(gen_random_uuid(),'00000000-0000-4000-8000-000000000002','photo-9');"));
-await db.close();console.log('Recipes DB PASS: disabled initial PIN, Admin PIN setup, roles, table privacy, RLS, stale version refusal, recipe alerts once per change, ingredient categories, the clean-up migration');})().catch(e=>{console.error(e);process.exit(1);});
+await db.close();console.log('Recipes DB PASS: disabled initial PIN, Admin PIN setup, roles, table privacy, RLS, stale version refusal, recipe alerts once per change, ingredient categories, the clean-up migration, recipe categories with colours');})().catch(e=>{console.error(e);process.exit(1);});

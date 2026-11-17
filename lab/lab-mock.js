@@ -177,14 +177,22 @@
   const LAB_UNITS = [{id:'g', en:'گرام'}, {id:'kg', en:'کیلۆگرام'}, {id:'ml', en:'مل'}, {id:'l', en:'لیتر'}, {id:'piece', en:'دانە'}];
   const LAB_PRICES = [['Mozzarella - پەنیری مۆزارێلا', 9000, 'کیلۆ', 'Zakho Dairy'], ['Ricotta Cheese - پەنیری ریکۆتا', 45000, 'کارتۆن', 'Zakho Dairy'], ['Banana - مۆز', 1500, 'کیلۆ', 'Erbil Fruit'], ['Olive Oil - زەیتی زەیتوون', 60000, 'کارتۆن', 'Golden Oils'], ['Lemon - لیمۆ', 2000, 'کیلۆ', 'Erbil Fruit']];
   function labRecipes(){
-    if(db.recipeBook2) return db.recipeBook2;
+    if(db.recipeBook2){
+      // Categories from a prepared list (2026-11-17): a Lab saved before then gets them now.
+      if(!db.recipeBook2.categories){ db.recipeBook2 = null; return labRecipes(); }
+      return db.recipeBook2;
+    }
     const ing = [['00000000-0000-4000-8000-00000000a001', 'Mozzarella', 'Mozzarella - پەنیری مۆزارێلا', 'g', 'Dairy'], ['00000000-0000-4000-8000-00000000a002', 'Ricotta', 'Ricotta Cheese - پەنیری ریکۆتا', 'piece', 'Dairy'],
       ['00000000-0000-4000-8000-00000000a003', 'Olive oil', 'Olive Oil - زەیتی زەیتوون', 'ml', 'Dry goods'], ['00000000-0000-4000-8000-00000000a004', 'Tomato', 'Tomato - تەماتە', 'g', 'Vegetables'],
       ['00000000-0000-4000-8000-00000000a005', 'Banana', 'Banana - مۆز', 'g', 'Fruit'], ['00000000-0000-4000-8000-00000000a006', 'Lemon', 'Lemon - لیمۆ', 'g', 'Fruit']].map(([id, name, stock_item, unit, category])=>({id, name, stock_item, unit, category, version:1}));
     const at = new Date(Date.now() - 86400000).toISOString();
+    // Categories with their soft colours (the palette in _shared/recipe-colors.js); Rico adds more.
+    const categories = [['00000000-0000-4000-8000-00000000d001', 'Pizza', 'peach'], ['00000000-0000-4000-8000-00000000d002', 'Drinks', 'sky'], ['00000000-0000-4000-8000-00000000d003', 'Breakfast', 'butter']]
+      .map(([id, name, color], i)=>({id, name, color, sort:i + 1}));
+    const catId = n=>categories.find(c=>c.name === n)?.id || '';
     const recipe = (id, name, category, price, lines, steps, notes = '')=>({id, name, version:1, archived:false, updated_by:'ahmad', updated_at:at,
-      data:{category, price, currency:'IQD', notes, lines:lines.map(([i, qty, unit])=>({ingredient:ing[i].id, qty, unit})), steps}});
-    db.recipeBook2 = {ingredients:ing, photos:{}, alerts:[{id:'00000000-0000-4000-8000-00000000b001', at, read:false, en:'Tomato is out in Main Storage. Margherita uses it.', ku:'تەماتە لە کۆگای سەرەکی نەماوە. مارگەریتا بەکاری دەهێنێت.', ar:'نفدت الطماطم في المخزن الرئيسي. مارغريتا تستخدمها.'}],
+      data:{category:catId(category), price, currency:'IQD', notes, lines:lines.map(([i, qty, unit])=>({ingredient:ing[i].id, qty, unit})), steps}});
+    db.recipeBook2 = {categories, ingredients:ing, photos:{}, alerts:[{id:'00000000-0000-4000-8000-00000000b001', at, read:false, en:'Tomato is out in Main Storage. Margherita uses it.', ku:'تەماتە لە کۆگای سەرەکی نەماوە. مارگەریتا بەکاری دەهێنێت.', ar:'نفدت الطماطم في المخزن الرئيسي. مارغريتا تستخدمها.'}],
       recipes:[
         recipe('00000000-0000-4000-8000-00000000c001', 'Margherita', 'Pizza', 9000, [[0, 200, 'g'], [2, 20, 'ml'], [3, 150, 'g']], ['Spread the tomato on the dough.', 'Add the mozzarella and a little olive oil.', 'Bake for 8 minutes.']),
         recipe('00000000-0000-4000-8000-00000000c002', 'Banana smoothie', 'Drinks', 3000, [[4, 250, 'g'], [5, 20, 'g']], ['Peel the banana.', 'Blend with ice and a squeeze of lemon.'], 'Serve cold in a tall glass.'),
@@ -270,7 +278,33 @@
     const wantsOrder = /order|prepar|suggest|usual|داواکاری|ئامادە|طلب|جهز|veg|tomato/.test(q) || body.quickAction;
     const pid = k=>k+Date.now().toString(36);
     const inMatch = q.match(/in (\d+) ?(second|sec|minute|min)/);
-    if(inMatch){
+    // Recipe categories (recipe-categories.ts): "Add a recipe category called Cakes", "colours for Drinks".
+    const catAsk = account !== 'yunis' && /categor|colou?r|جۆر|ڕەنگ|فئة|لون/.test(q);
+    // "Where is dark mode?", "How do I change my PIN?": the same app map Rico's find_in_app searches,
+    // filtered by what this account can use, and a button that takes them there.
+    const findsPlace = /\bwhere\b|how do i|how can i|turn (on|off)|\bsetting|dark mode|کوێ|چۆن|ڕێکخستن|أين|كيف|إعداد/.test(q);
+    if(catAsk){
+      const R = labRecipes(), C = globalThis.RicottaRecipeColors, raw = String(last?.text || last?.content || '');
+      const named = raw.match(/(?:called|named|بە ناوی|اسمها)\s+(.+?)[.?!؟]*\s*$/i)?.[1]?.trim();
+      if(named && /add|زیاد|أضف/.test(q)){
+        const had = R.categories.find(c=>c.name.toLowerCase() === named.toLowerCase());
+        if(!had){ R.categories.push({id:crypto.randomUUID(), name:named.slice(0, 60), color:C.next(R.categories.map(c=>c.color)), sort:R.categories.length + 1}); save(); }
+        say('calm', had ? `"${named}" is already a category.` : `Done. "${named}" is in the category list now.`, had ? `«${named}» پێشتر هەیە.` : `تەواو. «${named}» ئێستا لە لیستی جۆرەکاندایە.`, had ? `«${named}» موجودة مسبقًا.` : `تم. «${named}» الآن في قائمة الفئات.`);
+      } else {
+        const c = R.categories.find(x=>q.includes(x.name.toLowerCase())) || R.categories[0];
+        if(c){
+          say('calm', `Here are the colours for ${c.name}. Tap one to use it.`, `ئەمە ڕەنگەکانی ${c.name}ن. دەست لە یەکێکیان بدە.`, `هذه ألوان ${c.name}. اضغط على لون لاستخدامه.`);
+          events.push({type:'proposal', proposal:{id:pid('rc'), kind:'recipe_colors', categoryId:c.id, category:c.name, color:c.color}});
+        } else say('calm', 'There are no categories yet. Tell me the name of one to add.', 'هێشتا هیچ جۆرێک نییە. ناوی یەکێکم پێ بڵێ بۆ زیادکردن.', 'لا توجد فئات بعد. أخبرني باسم فئة لإضافتها.');
+      }
+    } else if(findsPlace){
+      const M = globalThis.RicottaAppMap, found = M ? M.find(q, {account, roles:rolesOf(account)}, 3) : [];
+      if(found.length){
+        const p = found[0];
+        say('calm', `It is in ${M.pathOf(p, 'en')}. Tap the button to go there.`, `ئەمە لە «${M.pathOf(p, 'ku')}» دایە. دوگمەکە دابگرە بۆ ئەوەی بچیتە ئەوێ.`, `إنه في «${M.pathOf(p, 'ar')}». اضغط الزر للذهاب إليه.`);
+        events.push({type:'proposal', proposal:{id:pid('o'), kind:'open', screen:p.go.view || 'settings', place:p.id}});
+      } else say('calm', 'I couldn’t find that in the app for you.', 'ئەوەم لە ئەپەکەدا بۆت نەدۆزییەوە.', 'لم أجد ذلك في التطبيق لك.');
+    } else if(inMatch){
       const secs = Number(inMatch[1]) * (/^min/.test(inMatch[2]) ? 60 : 1), at = new Date(Date.now() + secs * 1000);
       db.routines ||= [];
       db.routines.push({id:crypto.randomUUID(), account, kind:'remind', text:'Do the transfers', supplierIds:[], time:at.toTimeString().slice(0,5), days:[0,1,2,3,4,5,6], enabled:true, lastRunDay:null, runAt:at.toISOString()});
@@ -446,13 +480,23 @@
     }
     // Recipes (Ahmad and Rozh): the book with Manage's units, the stock items and practice last prices,
     // so costs work out the same way as on the server (supabase/functions/api/recipes.ts).
+    // A colour tapped on Rico's colour card (recipe-categories.ts).
+    if(path.startsWith('recipe-categories/')){
+      if(account === 'yunis') return fail('forbidden', 403);
+      const R = labRecipes(), c = R.categories.find(x=>x.id === path.split('/')[1]);
+      if(method !== 'PUT' || !c) return fail('not_found', 404);
+      if(!globalThis.RicottaRecipeColors.KEYS.includes(body.color)) return fail('invalid_input');
+      c.color = body.color; save(); return json(c);
+    }
     if(path === 'recipes' || path.startsWith('recipes/') || path.startsWith('recipe-ingredients/')){
       if(account === 'yunis') return fail('forbidden', 403);
       const R = labRecipes(), RC = globalThis.RicottaRecipeCost;
       if(method === 'GET' && path === 'recipes'){
         const day = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
         const prices = {}; for(const [name, cost, unit, supplier] of LAB_PRICES){ const t = LAB_STOCK.find(x=>x.name === name); const p = RC.priceOf(t, {item:name, unit, cost, currency:'IQD', day, supplier}); if(p) prices[name] = p; }
-        return json({recipes:R.recipes, ingredients:R.ingredients, units:LAB_UNITS, stock:LAB_STOCK.map(t=>({name:t.name, base:t.base, count:t.count, buy:t.buy, state:RC.stockState(t, new Set())})),
+        // The other names a stock item goes by: the ordering items linked to it and their search names.
+        const aka = t=>[...new Set((db.items || []).filter(i=>i.stockItem === t.name || (i.stockItems || []).includes(t.name)).flatMap(i=>[i.name, ...(i.aliases || [])]))];
+        return json({recipes:R.recipes, categories:R.categories, ingredients:R.ingredients, units:LAB_UNITS, stock:LAB_STOCK.map(t=>({name:t.name, base:t.base, count:t.count, buy:t.buy, state:RC.stockState(t, new Set()), ...(aka(t).length ? {aka:aka(t)} : {})})),
           prices, pricesReady:true, stockAt:labStockAt(), marginMin:RC.MARGIN_MIN, covers:Object.fromEntries(Object.entries(R.photos).filter(([, l])=>l.length).map(([id, l])=>[id, l[0].url])), alerts:account === 'ahmad' ? R.alerts : []});
       }
       if(method === 'POST' && path === 'recipes/alerts/read'){ R.alerts.forEach(a=>{ a.read = true; }); save(); return ok(); }
@@ -473,7 +517,11 @@
         const i = R.recipes.findIndex(x=>x.id === m[1]), old = R.recipes[i];
         if((old?.version || 0) !== (body.version || 0)) return fail('recipe_conflict', 409);
         const d = body.data || {};
-        const saved = {id:m[1], name:String(body.name || '').slice(0, 120), data:{category:String(d.category || '').trim(), price:d.price ?? null, currency:'IQD', lines:d.lines || [], steps:d.steps || [], notes:d.notes || ''}, archived:false, version:(old?.version || 0) + 1, updated_by:account, updated_at:new Date().toISOString()};
+        // The category is one from the list, by its id (a name from an older app finds its row); a name
+        // not on the list is refused, as on the server: categories are made by asking Rico.
+        const want = String(d.category || '').trim(), cat = !want ? null : R.categories.find(c=>c.id === want) ?? (/^[0-9a-f-]{36}$/i.test(want) ? null : R.categories.find(c=>c.name.toLowerCase() === want.toLowerCase()));
+        if(cat === undefined) return fail('unknown_category', 422);
+        const saved = {id:m[1], name:String(body.name || '').slice(0, 120), data:{category:cat?.id || '', price:d.price ?? null, currency:'IQD', lines:d.lines || [], steps:d.steps || [], notes:d.notes || ''}, archived:false, version:(old?.version || 0) + 1, updated_by:account, updated_at:new Date().toISOString()};
         if(i < 0) R.recipes.unshift(saved); else R.recipes[i] = saved; save();
         return json(saved);
       }
@@ -492,7 +540,8 @@
         return json(saved);
       }
       if(m && method === 'DELETE'){
-        if(R.recipes.some(r=>r.data?.lines?.some(l=>l.ingredient === m[1]))) return fail('ingredient_in_use', 409);
+        const users = R.recipes.filter(r=>r.data?.lines?.some(l=>l.ingredient === m[1])).map(r=>r.name);
+        if(users.length) return json({error:'ingredient_in_use', recipes:users, count:users.length}, 409);
         R.ingredients = R.ingredients.filter(x=>x.id !== m[1]); save(); return ok();
       }
       return fail('not_found', 404);
@@ -509,7 +558,9 @@
         const w = withLabStock(i);
         return {id:i.id, name:i.name, stock:w.stockItem && w.stock ? w.stock : {missing:true}};
       }).sort((a, b)=>a.name.localeCompare(b.name));
-      return json({items, at:labStockAt(), picked:ids.length});
+      // Rozh's list gets hints: what usually goes to the Minibar, and what Ahmad's recipes use.
+      const hints = account === 'rozha' ? {moved:{'Lemon - لیمۆ':14, 'Banana - مۆز':9, 'Ricotta Cheese - پەنیری ریکۆتا':3}, recipes:[...new Set(labRecipes().ingredients.map(i=>i.stock_item))]} : undefined;
+      return json({items, at:labStockAt(), picked:ids.length, ...(hints ? {hints} : {})});
     }
     // Linking ordering items to stock items: the choices, and one link (a name that doesn't match only
     // with {anyway: true}, after the app warned).

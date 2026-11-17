@@ -4,11 +4,15 @@
 //                                          this account's recipe alerts
 //   PUT    recipes/:id                     {name, data, version}   one recipe (versions stop one cook
 //                                          overwriting another's edits). data: {category, price, lines,
-//                                          steps, notes}; nothing else is needed or kept
+//                                          steps, notes}; nothing else is needed or kept. category is
+//                                          the id of one of the prepared categories (or empty): a recipe
+//                                          never makes a category. They are made by asking Rico
+//                                          (recipe-categories.ts), and GET recipes lists them
 //   DELETE recipes/:id                     one recipe and its photos, for good
 //   PUT    recipe-ingredients/:id          {name, stock_item, unit, category, version} an ingredient,
 //                                          linked to a stock item in Ricotta Restaurant
-//   DELETE recipe-ingredients/:id          one no recipe uses
+//   DELETE recipe-ingredients/:id          one no recipe uses; while a recipe uses it the answer is
+//                                          409 {error: "ingredient_in_use", recipes: [their names]}
 //   POST   recipes/alerts/read             this account's recipe alerts are read
 //   GET|POST recipes/:id/photos, DELETE recipes/:id/photos/:photo
 //   PUT    recipes/:id/photos/order        {ids} the photos in Ahmad's order (the first is the tile)
@@ -56,21 +60,36 @@ export function lowStockNames(rows: any[], titems: any[]) {
   return out;
 }
 
-/* Everything a recipe's cost needs, read once: the recipes, ingredients, units, Ricotta Restaurant's
-   items, the invoices kept (the last 60 days) and the low stock levels. */
+/* A recipe as the app gets it: its category (a column, so deleting a category empties it by itself) sits
+   in data.category as the category's id, or "" for none. */
+export function shapeRecipe(row: any) {
+  const { category_id, ...rest } = row ?? {};
+  return { ...rest, data: { ...(rest.data ?? {}), category: category_id ?? "" } };
+}
+export const CATEGORY_COLUMNS = "id,name,color,sort";
+export async function loadCategories(db: any) {
+  const r = await db.from("app_recipe_categories").select(CATEGORY_COLUMNS).order("sort").order("name").limit(200);
+  if (r.error) throw new Error("load_failed");
+  return r.data ?? [];
+}
+
+/* Everything a recipe's cost needs, read once: the recipes, their categories, ingredients, units,
+   Ricotta Restaurant's items, the invoices kept (the last 60 days) and the low stock levels. */
 export async function loadBook(db: any) {
-  const [r, i, u, cat, inv, low] = await Promise.all([
+  const [r, i, u, cat, inv, low, categories] = await Promise.all([
     db.from("app_recipes").select("*").order("updated_at", { ascending: false }).limit(500),
     db.from("app_recipe_ingredients").select("*").order("name").limit(2000),
     db.from("app_units").select("id,en").order("id").limit(1000),
     catalogOf(db),
     db.from("app_rr_invoices").select("entry_date,read_at,invoice_number,supplier_name,currency,lines").order("entry_date", { ascending: false }).limit(3000),
     db.from("app_items").select("stock_item,stock_items,low_alert").not("low_alert", "is", null).limit(5000),
+    loadCategories(db),
   ]);
   if (r.error || i.error || u.error) throw new Error("load_failed");
   const titems = (cat?.titems ?? []).filter((t: any) => t?.name && String(t.name).trim() !== "-");
   const ctx = RC().context({ ingredients: i.data, titems, units: u.data, invoices: inv.error ? [] : inv.data });
-  return { recipes: r.data ?? [], ingredients: i.data ?? [], units: u.data ?? [], titems, stockAt: cat?.at ?? null, ctx,
+  const catNames = new Map<string, string>(categories.map((c: any) => [c.id, c.name]));
+  return { recipes: (r.data ?? []).map(shapeRecipe), categories, catName: (x: any) => catNames.get(x?.data?.category) ?? "", ingredients: i.data ?? [], units: u.data ?? [], titems, stockAt: cat?.at ?? null, ctx,
     pricesReady: !inv.error, lowNames: lowStockNames(low.error ? [] : low.data, titems) };
 }
 
@@ -101,17 +120,26 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
   if (M === "GET" && path === "recipes") {
     let book;
     try { book = await loadBook(db); } catch { return fail("load_failed", 503); }
-    const [alerts, covers] = await Promise.all([
+    const [alerts, covers, named] = await Promise.all([
       table("rico_inbox").select("id,body_en,body_ku,body_ar,created_at,read_at").eq("account", c.account).eq("kind", "recipe").order("created_at", { ascending: false }).limit(20),
       coverPhotos(db, book.recipes.map((x: any) => x.id)),
+      table("items").select("name,aliases,stock_item,stock_items").limit(5000),
     ]);
+    // The other names each stock item goes by (the ordering items linked to it and their search names),
+    // only as words to find it by when an item is linked: Arabic or a short name finds "Almarai Milk".
+    const aka = new Map<string, Set<string>>();
+    for (const it of named.error ? [] : named.data ?? []) for (const n of SL().linksOf(it)) {
+      const words = aka.get(n) ?? new Set<string>();
+      for (const w of [it.name, ...(Array.isArray(it.aliases) ? it.aliases : [])]) if (typeof w === "string" && w.trim() && w.length <= 120 && words.size < 12) words.add(w.trim());
+      aka.set(n, words);
+    }
     const used = new Set(book.ingredients.map((x: any) => x.stock_item));
     const prices: Record<string, unknown> = {};
     for (const [name, p] of book.ctx.prices) if (used.has(name)) prices[name] = p;
     return json({
-      recipes: book.recipes, ingredients: book.ingredients, units: book.units,
+      recipes: book.recipes, categories: book.categories, ingredients: book.ingredients, units: book.units,
       // Ricotta Restaurant's items for linking: names, units, and how each stands in Main Storage.
-      stock: book.titems.map((t: any) => ({ name: t.name, base: t.base, count: t.count ?? null, buy: t.buy ?? null, state: RC().stockState(t, book.lowNames) })),
+      stock: book.titems.map((t: any) => ({ name: t.name, base: t.base, count: t.count ?? null, buy: t.buy ?? null, state: RC().stockState(t, book.lowNames), ...(aka.has(t.name) ? { aka: [...aka.get(t.name)!] } : {}) })),
       prices, pricesReady: book.pricesReady, stockAt: book.stockAt, marginMin: RC().MARGIN_MIN,
       covers,
       alerts: alerts.error ? [] : (alerts.data ?? []).map((a: any) => ({ id: a.id, en: a.body_en, ku: a.body_ku, ar: a.body_ar, at: a.created_at, read: !!a.read_at })),
@@ -139,9 +167,11 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
   }
   if (ing && M === "DELETE") {
     const id = ing[1];
-    const { data: rows, error } = await table("recipes").select("id,data").limit(500);
+    const { data: rows, error } = await table("recipes").select("id,name,data").order("name").limit(500);
     if (error) return fail("load_failed", 503);
-    if ((rows ?? []).some((r: any) => (r.data?.lines ?? []).some((l: any) => l?.ingredient === id))) return fail("ingredient_in_use", 409);
+    // An item a recipe uses can't be deleted: the answer names the recipes, so the app can say which.
+    const users = (rows ?? []).filter((r: any) => (r.data?.lines ?? []).some((l: any) => l?.ingredient === id)).map((r: any) => r.name);
+    if (users.length) return json({ error: "ingredient_in_use", recipes: users.slice(0, 20), count: users.length }, 409);
     const old = await table("recipe_ingredients").select("name,stock_item").eq("id", id).maybeSingle();
     const r = await table("recipe_ingredients").delete().eq("id", id);
     if (r.error) return fail("save_failed", 503);
@@ -162,8 +192,14 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
       || typeof notes !== "string" || notes.length > 8000 || typeof category !== "string" || category.length > 60
       || (price !== null && (!Number.isFinite(price) || price <= 0 || price > MAX_PRICE || Number(price.toFixed(2)) !== price))) return fail("invalid_input");
     const lines = d.lines.map(cleanLine);
-    const [ingredients, units] = await Promise.all([table("recipe_ingredients").select("id,unit").limit(2000), table("units").select("id").limit(1000)]);
-    if (ingredients.error || units.error) return fail("load_failed", 503);
+    const [ingredients, units, cats] = await Promise.all([table("recipe_ingredients").select("id,unit").limit(2000), table("units").select("id").limit(1000), table("recipe_categories").select("id,name").limit(200)]);
+    if (ingredients.error || units.error || cats.error) return fail("load_failed", 503);
+    // The category is one of the prepared ones, by its id. One deleted a moment ago leaves the recipe
+    // without a category; a name is still understood (an app from before this update sends names), but
+    // a name that is not on the list is refused: categories are only made by asking Rico.
+    const want = category.trim();
+    const cat = !want ? null : (cats.data ?? []).find((x: any) => x.id === want) ?? (uuid(want) ? null : (cats.data ?? []).find((x: any) => String(x.name).toLowerCase() === want.toLowerCase()));
+    if (cat === undefined) return fail("unknown_category", 422);
     const unitIds = new Set((units.data ?? []).map((u: any) => u.id));
     const before = b.version ? await table("recipes").select("data").eq("id", id).maybeSingle() : { data: null, error: null };
     if (before.error) return fail("load_failed", 503);
@@ -171,18 +207,19 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
     const kept = new Set(((before.data?.data?.lines) ?? []).map((l: any) => `${l?.ingredient}|${l?.unit}`));
     const known = (l: any) => unitIds.has(l.unit) || kept.has(`${l.ingredient}|${l.unit}`) || ingredients.data.some((i: any) => i.id === l.ingredient && i.unit === l.unit);
     if (lines.some((l: any) => !uuid(l.ingredient) || !ingredients.data.some((i: any) => i.id === l.ingredient) || !qtyOk(l.qty) || !l.unit || !known(l))) return fail("invalid_ingredients", 422);
-    const clean = { lines, steps: d.steps, notes, category: category.trim(), price, currency: "IQD" };   // recipes are in IQD only
-    const row = { name, data: clean, archived: false, updated_by: c.account, updated_at: new Date().toISOString() };
+    const clean = { lines, steps: d.steps, notes, price, currency: "IQD" };   // recipes are in IQD only
+    const group = cat ? [{ k: "recipeGroup", to: cat.name }] : [];
+    const row = { name, data: clean, category_id: cat?.id ?? null, archived: false, updated_by: c.account, updated_at: new Date().toISOString() };
     const r = await (b.version === 0 ? table("recipes").insert({ id, ...row }) : table("recipes").update({ ...row, version: b.version + 1 }).eq("id", id).eq("version", b.version)).select();
     if (r.error || !r.data?.length) return fail("recipe_conflict", 409);
-    if (b.version === 0) await audit(c, "add", "recipe", name, clean.category ? [{ k: "recipeGroup", to: clean.category }] : [], id);
+    if (b.version === 0) await audit(c, "add", "recipe", name, group, id);
     else if (b.version < 40) {
       // The Record line of a recipe added a moment ago follows its name and group as Ahmad types them.
-      const { error } = await table("audit_events").update({ entity_name: name, payload: { by: WHO[c.account] ?? c.account, fields: clean.category ? [{ k: "recipeGroup", to: clean.category }] : [], source: "server" } })
+      const { error } = await table("audit_events").update({ entity_name: name, payload: { by: WHO[c.account] ?? c.account, fields: group, source: "server" } })
         .eq("id", id).eq("action", "add").gte("occurred_at", new Date(Date.now() - 3 * 3600_000).toISOString());
       if (error) console.error("recipe_audit_name_failed");
     }
-    return json(r.data[0]);
+    return json(shapeRecipe(r.data[0]));
   }
   const recipe = await table("recipes").select("id,name").eq("id", id).maybeSingle();
   if (recipe.error) return fail("load_failed", 503);
@@ -278,16 +315,15 @@ export async function ricoRecipes(db: any, a: any) {
     return { ingredients: list, total: book.ingredients.length, rules };
   }
   if (a?.action !== "read") {
-    const list = recipes.filter((r: any) => !q || fold(r.name + " " + (r.data?.category ?? "")).includes(q)
+    const list = recipes.filter((r: any) => !q || fold(r.name + " " + book.catName(r)).includes(q)
       || (r.data?.lines ?? []).some((l: any) => fold(book.ingredients.find((i: any) => i.id === l?.ingredient)?.name ?? "").includes(q))).slice(0, 80).map((r: any) => {
       const c = RC().recipeCost(r, ctx);
-      return { name: r.name, group: r.data?.category || null, ingredients: (r.data?.lines ?? []).length, ...costWords(c) };
+      return { name: r.name, category: book.catName(r) || null, ingredients: (r.data?.lines ?? []).length, ...costWords(c) };
     });
-    const groups = [...new Set(recipes.map((r: any) => String(r.data?.category ?? "").trim()).filter(Boolean))].sort();
-    return { recipes: list, total: recipes.length, groups, rules };
+    return { recipes: list, total: recipes.length, categories: book.categories.map((x: any) => x.name), rules };
   }
   let r = recipes.find((x: any) => fold(x.name) === q);
-  if (!r && q) r = L.rank(recipes, q, (x: any) => [x.name, x.data?.category ?? ""])[0];
+  if (!r && q) r = L.rank(recipes, q, (x: any) => [x.name, book.catName(x)])[0];
   if (!r) return { error: "not_found", recipes: recipes.map((x: any) => x.name).slice(0, 80), note: "No recipe has that name. Offer the closest names from this list." };
   const c = RC().recipeCost(r, ctx);
   const lines = c.lines.map((l: any) => {
@@ -297,6 +333,6 @@ export async function ricoRecipes(db: any, a: any) {
       last_price: p && !p.error && p.currency === "IQD" ? { paid_iqd: p.cost, per: p.unit, day: p.day, supplier: p.supplier || null, price_per_unit: per } : null,
       problem: l.status === "ok" ? null : l.status };
   });
-  return { name: r.name, group: r.data?.category || null, ingredients: lines, steps: (r.data?.steps ?? []).filter((s: string) => s.trim()), notes: r.data?.notes || "",
+  return { name: r.name, category: book.catName(r) || null, ingredients: lines, steps: (r.data?.steps ?? []).filter((s: string) => s.trim()), notes: r.data?.notes || "",
     exact_cost_iqd: c.total, ...costWords(c), last_edited: r.updated_at, rules };
 }

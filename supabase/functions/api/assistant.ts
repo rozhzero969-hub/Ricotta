@@ -1,11 +1,13 @@
 import "../_shared/search.js";
 import "../_shared/transfers.js";
 import "../_shared/stock-link.js";
+import "../_shared/app-map.js";
 const search = (globalThis as any).RicottaSearch;
 import { monthStart } from "../_shared/month.ts";
 import { NO_RECEIPTS, NO_TRANSFERS, RICO_RR_MANUAL, RICO_RR_TOOLS, runRrTool } from "./rico-tools.ts";
 import { ricoRecipes } from "./recipes.ts";
 import { minibarStock } from "./minibar.ts";
+import { RECIPE_CATEGORY_MANUAL, RECIPE_CATEGORY_TOOLS, RECIPE_CATEGORY_TOOL_NAMES, runRecipeCategoryTool } from "./recipe-categories.ts";
 import { baghdadTime, cleanRoutine, MAX_ROUTINES, whenOnce, whenWords } from "../_shared/routines.ts";
 import { MEMORY_CAP, sameWords, saveMemory, saveRoutine } from "./rico-memory.ts";
 // Rico -- the Ricotta Orders AI assistant (server side).
@@ -191,7 +193,7 @@ async function loadWorld(db: any, s: Session) {
     ...o, lines: o.lines.map((l) => ({ supplierId: l.supplierId, supplierName: l.supplierName, itemId: "", name: "", unitId: null, qty: 0 })),
   }));
   return {
-    full, account: s.account, now, can, catalog,
+    full, account: s.account, roles: (s.roles ?? []) as string[], now, can, catalog,
     acted: false,                       // a tool did something outside the chat (a WhatsApp send): never start the reply again
     signal: null as AbortSignal | null, // the chat's own signal: a stopped chat sends nothing new
     transferDrafts: 0,                  // transfer drafts Rico saved in this reply (propose_transfer_draft)
@@ -735,12 +737,39 @@ function proposeStreakRecover(w: World, emit: Emit) {
   return { shown: true, days: st.recoverable, what_happens: "The person taps the card and the streak comes back. It is free." };
 }
 
-function proposeOpen(a: any, emit: Emit) {
+/* The app map (_shared/app-map.js): every tab, page, setting and thing to do, filtered by what this
+   person can use. */
+const appMap = () => (globalThis as any).RicottaAppMap;
+const appWho = (w: World) => ({ account: w.account, roles: w.roles });
+function proposeOpen(w: World, a: any, emit: Emit) {
+  // A place from find_in_app: the button opens exactly that tab, page or setting (Settings scrolls to it).
+  const placeId = text(a.place, 40);
+  if (placeId) {
+    const place = appMap().byId(placeId);
+    if (!place) return { error: "unknown_place", note: "Use an id from find_in_app." };
+    if (!appMap().allowed(place, appWho(w))) return { error: "no_access", note: "This person can't use that. Say so briefly and say who can (Rozh, in Admin)." };
+    emit({ type: "proposal", proposal: { id: pid(), kind: "open", screen: place.go.view || "settings", place: place.id, label: text(a.label, 60) } });
+    return { shown: true, what_happens: "A button that opens it. Say in one short line where it is." };
+  }
   // "send" opens Send to suppliers with the current draft (the person still taps each WhatsApp send).
   const screens = ["order", "manage", "send", "history", "suppliers", "itemsAdmin", "units", "record", "admin", "settings", "recipes"];
   const screen = screens.includes(a.screen) ? a.screen : "order";
+  // Only a screen this person has (Yunis and Ahmad never get an Admin button, Ahmad no Order one).
+  const mine = screen === "send" ? appMap().can(appWho(w), "send") && appMap().can(appWho(w), "order") : appMap().viewsOf(w.account, w.roles).includes(screen);
+  if (!mine) return { error: "no_access", note: "This person can't open that screen. Say so briefly." };
   emit({ type: "proposal", proposal: { id: pid(), kind: "open", screen, supplierId: text(a.supplier_id, 120) || null, label: text(a.label, 60) } });
   return { shown: true };
+}
+/* Where something is in the app, among only what this person can use. Something that exists but is not
+   theirs is named, so Rico can say who can open it instead of saying it doesn't exist. */
+function findInApp(w: World, a: any) {
+  const M = appMap(), q = text(a.query, 120);
+  const row = (p: any) => ({ id: p.id, kind: p.kind, where: M.pathOf(p, "en"), where_ku: M.pathOf(p, "ku"), where_ar: M.pathOf(p, "ar") });
+  const found = M.find(q, appWho(w), 5);
+  if (found.length) return { found: found.map(row), next: "Show the one they mean with open_screen and place set to its id. Then say in one short line where it is, in their language." };
+  const others = M.find(q, { account: "rozha", roles: [] }, 3);
+  if (others.length) return { found: [], not_for_this_person: others.map((p: any) => M.pathOf(p, "en")), note: "It exists, but this person can't open it. Say so plainly: only Rozh can, or Rozh can give access in Admin, Who can open what." };
+  return { found: [], note: "Nothing in the app matches. Say so in one line and ask what they want to do." };
 }
 
 /* Receipts and transfers Rico entered in Ricotta Restaurant (last 60 days), to find the one(s) someone
@@ -862,13 +891,16 @@ const TOOLS = [
     input_schema: { type: "object", properties: { kind: { type: "string", enum: ["receipts", "transfers"] }, day: { type: "string", description: "YYYY-MM-DD (Erbil)" }, supplier: { type: "string" }, invoice: { type: "string" }, storage: { type: "string" } }, required: ["kind"] } },
   { name: "make_file", description: "Show a button in the chat that downloads a file: what='transfers_day' (one day's transfers), 'receipts_day' (one day's receipts), 'day' (one day's receipts and transfers together, with totals) or 'receipt' (one receipt: receipt_id from find_rico_records), each as pdf or excel; what='photos' (Rico's photos of one receipt or transfer by its id, or of a whole day); what='zip' (everything for a day, or from day to 'to' up to 31 days: PDF, Excel and all the photos in one ZIP). If they didn't say the day, which one or the format, ask first in one short question; 'today' and 'yesterday' are Erbil days.",
     input_schema: { type: "object", properties: { what: { type: "string", enum: ["day", "transfers_day", "receipts_day", "receipt", "photos", "zip"] }, format: { type: "string", enum: ["pdf", "excel"] }, day: { type: "string", description: "YYYY-MM-DD (Erbil); the first day of a ZIP" }, to: { type: "string", description: "YYYY-MM-DD, the last day of a ZIP (optional)" }, receipt_id: { type: "string" }, transfer_id: { type: "string" }, label: { type: "string", description: "Short button text, in their language" } }, required: ["what"] } },
-  { name: "open_screen", description: "Show a button that opens a screen of the app (order, manage, send, history, suppliers, itemsAdmin, units, record, admin, settings, recipes). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab.",
-    input_schema: { type: "object", properties: { screen: { type: "string" }, supplier_id: { type: "string" }, label: { type: "string" } }, required: ["screen"] } },
-  { name: "recipes", description: "The recipe book (Recipes tab, written by Ahmad, who makes the minibar's cakes, smoothies and iced coffees). action 'list' (default): every recipe with its group (Ahmad's own groups, like Cakes or Smoothies), how many ingredients, its cost to make, menu price, profit and margin, and the list of groups (query narrows by name, group or an ingredient in it). action 'read' with recipe (its name, any language, typos are fine): one recipe with each ingredient (its stock item, amount, unit, line cost, last price paid with the day and supplier, and the price per kg, gram, litre, ml or piece), the steps and notes. action 'ingredients': every item and ingredient with its stock item, last price paid and the recipes it is in (query narrows). Costs are already rounded the way the app shows them.",
+  { name: "open_screen", description: "Show a button that opens a screen of the app (order, manage, send, history, suppliers, itemsAdmin, units, record, admin, settings, recipes). 'send' opens Send to suppliers with the current draft, ready for WhatsApp. For order you can pass a supplier_id to open that supplier's tab. Or pass place (an id from find_in_app) instead of screen: the button then opens exactly that tab, page or setting.",
+    input_schema: { type: "object", properties: { screen: { type: "string" }, place: { type: "string", description: "An id from find_in_app" }, supplier_id: { type: "string" }, label: { type: "string" } } } },
+  { name: "find_in_app", description: "Find where something is in the app: any tab, page, setting or thing to do (for example dark mode, bigger text, notifications, sounds, language, a PIN, who can open what, sign-in safety, restoring something deleted, Rico's settings, adding an item, downloading a list). It only finds what this person can use. Use it whenever someone asks where something is, how to change a setting or how to do something in the app, then show the match with open_screen and place.",
+    input_schema: { type: "object", properties: { query: { type: "string", description: "What they are looking for, in their own words (any language)" } }, required: ["query"] } },
+  { name: "recipes", description: "The recipe book (Recipes tab, written by Ahmad, who makes the minibar's cakes, smoothies and iced coffees). action 'list' (default): every recipe with its category (from the prepared list, like Cakes or Smoothies; see recipe_categories), how many ingredients, its cost to make, menu price, profit and margin, and the list of categories (query narrows by name, category or an ingredient in it). action 'read' with recipe (its name, any language, typos are fine): one recipe with each ingredient (its stock item, amount, unit, line cost, last price paid with the day and supplier, and the price per kg, gram, litre, ml or piece), the steps and notes. action 'ingredients': every item and ingredient with its stock item, last price paid and the recipes it is in (query narrows). Costs are already rounded the way the app shows them.",
     input_schema: { type: "object", properties: { action: { type: "string", enum: ["list", "read", "ingredients"] }, recipe: { type: "string" }, query: { type: "string" } } } },
   { name: "minibar_stock", description: "Ahmad's Stock tab: the items Rozh picked for the minibar and how much of each is in Main Storage now (empty, low or ok), with when the stock was last read. Use it when Ahmad asks what is in Main Storage, what he can take, or whether something is there.",
     input_schema: { type: "object", properties: { query: { type: "string", description: "Optional: part of an item name" } } } },
   ...RICO_RR_TOOLS,
+  ...RECIPE_CATEGORY_TOOLS,
 ];
 const STATUS_TOOLS = new Set(TOOLS.map((t) => t.name));
 
@@ -905,6 +937,7 @@ WHAT YOU CAN DO NOW (never say you can't do one of these; only what CONTEXT says
 - Notifications to the team (a card). Files: Excel, PDF and photo files of a day, receipts or transfers.
 - Stock in each storage, what is low, prices and price changes, spending, transfers summaries, transfer drafts, and what needs the person (stopped or waiting receipts and transfers).
 - Reminders: one-off ("in 30 seconds", "at 5 pm", "tomorrow at 9") with set_reminder, saved at once; repeating ones and orders you prepare by yourself every day with propose_routine (a card). Memories: save_rule when they ask you to remember, remember for what you learn.
+- Show where anything is in the app (a tab, a page, a setting or a thing to do), with a button that opens it (find_in_app, then open_screen with place).
 - If something really is not possible here, say what you can do instead in one line.
 - Answer anything about the kitchen's data with the read tools: items (count, newest, units, suppliers), suppliers (schedules, usual days), order history, patterns (busy and quiet days) and the change log (who added or edited what).
 - Prepare orders: use suggest_order (history of the same weekday) and then propose_order_draft. Mention in one line why (e.g. "you ordered these on 3 of the last 4 Mondays"). Adjust quantities if the person asks (busy weekend, event, etc.).
@@ -916,9 +949,10 @@ WHAT YOU CAN DO NOW (never say you can't do one of these; only what CONTEXT says
 - Notifications: propose_notification with English, Kurdish and Arabic text, e.g. to remind the team about a late order.
 - Files: when someone asks for a PDF or Excel of receipts or transfers (a day's transfers, a day's receipts, a whole day, or one receipt by supplier or invoice), use make_file. If the day, the receipt or PDF/Excel isn't clear, ask in one short question; use find_rico_records to find the receipt (and ask which one if there are several). Then say the button is ready.
 ${RICO_RR_MANUAL}
-- Recipes: the recipe book Ahmad writes for the minibar (Rozh can open it too). It is two bottom tabs: Recipes (each in a group Ahmad makes himself, like Cakes or Smoothies, with a menu price, ingredients with amounts, steps and notes; listed by group, A to Z) and Items (every ingredient, A to Z, each linked to a stock item in Ricotta Restaurant with its last price paid per kg, gram, litre, ml or piece). Ahmad also has a Stock tab: the items Rozh picked for him, with how much is in Main Storage (use the minibar_stock tool). Every day at 3:30 PM Rico reminds Ahmad to get his minibar supplies from Main Storage. Use the recipes tool for any question about a recipe, its ingredients, steps, cost, profit or margin. The cost of making a recipe comes from the last price paid for each stock item; costs, profit and suggested prices are rounded to the nearest 250 IQD; a recipe with an ingredient that has no price yet has no cost, profit or margin, so say which ingredient is missing its price. Check all last prices (on Items and ingredients) asks Rico on the Mac to read the newest invoices now. Hold a recipe or ingredient (right-click on a computer) to edit or delete it. "Where do these numbers come from?" on a recipe shows the working.
+${RECIPE_CATEGORY_MANUAL}
+- Recipes: the recipe book Ahmad writes for the minibar (Rozh can open it too). It is two bottom tabs: Recipes (each in a category from a prepared list, like Cakes or Smoothies, with a menu price, ingredients with amounts, steps and notes; listed by group, A to Z) and Items (every ingredient, A to Z, each linked to a stock item in Ricotta Restaurant with its last price paid per kg, gram, litre, ml or piece). Ahmad also has a Stock tab: the items Rozh picked for him, with how much is in Main Storage (use the minibar_stock tool). Every day at 3:30 PM Rico reminds Ahmad to get his minibar supplies from Main Storage. Use the recipes tool for any question about a recipe, its ingredients, steps, cost, profit or margin. The cost of making a recipe comes from the last price paid for each stock item; costs, profit and suggested prices are rounded to the nearest 250 IQD; a recipe with an ingredient that has no price yet has no cost, profit or margin, so say which ingredient is missing its price. Check all last prices (on Items and ingredients) asks Rico on the Mac to read the newest invoices now. Hold a recipe or ingredient (right-click on a computer) to edit or delete it. "Where do these numbers come from?" on a recipe shows the working.
 - Ahmad's account (the minibar): he sees Recipes, Items, his Stock tab, Rico (when Rozh gives it) and Settings only, never ordering, invoices, History or Admin. With Ahmad, talk only about recipes, his items, his minibar stock and the app, and never offer anything else. Keep it short and friendly; in Kurdish use everyday Sorani.
-- Guide people through the app and use open_screen for a one-tap shortcut. Yunis's account has no Admin screen, so never offer it to Yunis.
+- Finding things in the app: when someone asks where something is, how to change a setting or how to do something in the app (dark mode, sounds, language, notifications, a PIN, who can open what, a tab or a page), use find_in_app, then open_screen with place set to the best match's id. That shows a button that takes them straight there; Settings scrolls to the setting and lights it up. Say in one short line where it is, like "Settings, Light or Dark". find_in_app only finds what this person can use; when it says something is not for them, say plainly that only Rozh can open it, or that Rozh can give access in Admin. Yunis and Ahmad have no Admin screen, so never offer it to them.
 - A proposal only shows a card; the person must tap to confirm. After proposing, say in one sentence what the card does. Never claim something was saved, added or sent until the conversation shows it was confirmed ("[card ... : applied]").
 - Nothing is ever sent to a supplier automatically: sending always happens from Send to suppliers via WhatsApp, and the person taps it. The one exception is the TEST below.
 - TEST, Rozh only: when Rozh clearly asks you to order or send by yourself ("Rico, order from X and Y", "send the bakery order yourself"), use send_test_order. It sends at once, without a card. While testing, the messages go only to Rozh's own WhatsApp, never to suppliers, and they are not in History, the report or the streak. Afterwards tell her in a few short lines what you sent to whom and why (the reason each result gives). If it says the WhatsApp window is closed, ask her to send "hi" to the Ricotta test number on WhatsApp and then ask you again. Never use it for Yunis.
@@ -1844,11 +1878,12 @@ const TRANSFER_TOOLS = new Set(["low_stock", "stock_levels", "transfers_summary"
 const RR_TOOLS = new Set(RICO_RR_TOOLS.map((t) => t.name));
 // Ahmad's account is the recipe book: without Order or Manage he gets only the recipes, the app and his
 // own reminders and memories, never ordering, catalog, stock, invoices or files.
-const RECIPE_ONLY_TOOLS = new Set(["recipes", "minibar_stock", "save_rule", "remember", "set_reminder", "list_routines", "open_screen"]);
+const RECIPE_ONLY_TOOLS = new Set(["recipes", "recipe_categories", "minibar_stock", "save_rule", "remember", "set_reminder", "list_routines", "open_screen", "find_in_app"]);
 async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto: boolean): Promise<unknown> {
   if (!STATUS_TOOLS.has(name)) return { error: "Unknown tool." };
   if (w.catalog === false && !RECIPE_ONLY_TOOLS.has(name)) return { error: "no_access", note: "This account is the recipe book only. Say briefly that you can help with recipes here." };
   if (name === "recipes") return w.can.recipes ? await ricoRecipes(db, a) : { error: "no_access", note: "This person has no Recipes access. Say so briefly." };
+  if (RECIPE_CATEGORY_TOOL_NAMES.has(name)) return w.can.recipes ? await runRecipeCategoryTool(db, w.account, a, emit) : { error: "no_access", note: "This person has no Recipes access. Say so briefly." };
   if (name === "minibar_stock") {
     if (w.account !== "ahmad" && w.account !== "rozha") return { error: "no_access", note: "The minibar stock list is Ahmad's. Say so briefly." };
     try {
@@ -1885,7 +1920,8 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
     case "propose_item_aliases": return proposeItemAliases(w,a,emit);
     case "propose_new_supplier": return proposeNewSupplier(w, a, emit);
     case "propose_notification": return proposeNotification(a, emit);
-    case "open_screen": return proposeOpen(a, emit);
+    case "open_screen": return proposeOpen(w, a, emit);
+    case "find_in_app": return findInApp(w, a);
     case "find_rico_records": return await findRicoRecords(db, w, a);
     case "admin_overview": return await adminOverview(db, w);
     case "make_file": return proposeFile(w, a, emit);

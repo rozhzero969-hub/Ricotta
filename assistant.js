@@ -69,7 +69,7 @@ async function aiConsent(){
 function ricoReset(){
   rico.epoch++; rico.chatRequest++;
   ricoStop(); clearTimeout(ricoSaveTimer);
-  rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.chatsBusy = false; rico.viewing = null; rico.viewedId = null;
+  rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.chatsBusy = false; rico.chatsFailed = false; rico.viewing = null; rico.viewedId = null;
   rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; rico.titleLoaded = false; rico.sideSearch = false; rico.sideQuery = '';
 }
 
@@ -77,6 +77,13 @@ function ricoReset(){
 function ricoSetInbox(list){ rico.inbox = Array.isArray(list) ? list : []; if(typeof ricoAutoFillRoutines === 'function') ricoAutoFillRoutines(); }
 function ricoUnread(){ return rico.inbox.filter(m=>!m.read).length; }
 function ricoInboxText(m){ return (state.lang === 'ku' ? m.ku : state.lang === 'ar' ? m.ar : m.en) || m.en; }
+/* A note as HTML: a scheduled question is the person's own words, kept as one piece (an English question
+   in a Kurdish line keeps its "?" at its end). */
+function ricoInboxHtml(m){
+  const text = String(ricoInboxText(m) || ''), q = typeof m.question === 'string' ? m.question : '';
+  const at = q ? text.lastIndexOf(q) : -1;
+  return at < 0 ? esc(text) : `${esc(text.slice(0, at))}<bdi>${esc(q)}</bdi>${esc(text.slice(at + q.length))}`;
+}
 /* Opening Rico reads his messages. */
 function ricoMarkInboxRead(){
   if(!ricoUnread()) return;
@@ -207,7 +214,7 @@ function ricoChatGroups(list){ return {pinned:list.filter(c=>c.pinned), rest:lis
 const ICON_RD_NEW = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V12"/><path d="M17.6 3.9a1.9 1.9 0 0 1 2.7 2.7L12.6 14.3l-3.4.7.7-3.4Z"/></svg>`;
 const RD_RECENT = 12;
 function ricoDrawerRows(){
-  if(!rico.chats) return loadingLines(5);
+  if(!rico.chats) return rico.chatsFailed ? `<p class="rd-empty">${esc(t('loadFailed'))}</p>` : loadingLines(5);
   const q = (rico.drawerQuery || '').trim().toLocaleLowerCase();
   const all = rico.chats.filter(c=>!q || String(c.title || '').toLocaleLowerCase().includes(q));
   const list = [...all.filter(c=>c.pinned), ...all.filter(c=>!c.pinned)].slice(0, q ? 60 : RD_RECENT + all.filter(c=>c.pinned).length);
@@ -331,7 +338,7 @@ const ICON_RS_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 const ICON_RS_GEAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>`;
 /* The chats as rows (shared by the sidebar and its search). */
 function ricoSideRows(){
-  if(!rico.chats) return loadingLines(4);
+  if(!rico.chats) return rico.chatsFailed ? `<p class="rico-side-empty">${esc(t('loadFailed'))}</p>` : loadingLines(4);
   const q = (rico.sideQuery || '').trim().toLocaleLowerCase();
   // Search looks through every chat, then the first 60 matches are shown.
   const list = rico.chats.filter(c=>!q || String(c.title || '').toLocaleLowerCase().includes(q)).slice(0, 60);
@@ -431,11 +438,13 @@ function openRicoChatMenu(id, row, e){
   layer.querySelector('.ctx-scrim').oncontextmenu = ev=>{ ev.preventDefault(); closeContextMenu(); };
   layer.addEventListener('keydown', ev=>{ if(ev.key === 'Escape') closeContextMenu(); });
   layer.querySelector('[data-ctx]')?.focus({preventScroll:true});
-  // The phone's Chats sheet closes first: the rename box and the delete question must not open behind it.
+  // The phone's Chats sheet and side menu close first: the rename box and the delete question must not open
+  // behind them (behind the side menu, the tap that closed it could land on Delete, 2026-11-17).
   layer.querySelectorAll('[data-ctx]').forEach(b=>b.onclick = ()=>{
     closeContextMenu();
     if(b.dataset.ctx === 'pin') return ricoPinChat(id, !c.pinned);
     if(document.getElementById('ricoHistSheet')) closeSelSheet();
+    if(document.getElementById('ricoDrawer')) rico.drawerClose?.();
     b.dataset.ctx === 'rename' ? ricoRenameChat(id) : ricoDeleteChat(id);
   });
 }
@@ -474,9 +483,13 @@ function ricoRenameChat(id){
 /* Deletes one chat (id) or every chat (null), after asking once. */
 async function ricoDeleteChat(id){
   // Delete all: Rozh's removes both people's chats (and says so); anyone else's removes only their own.
-  if(!(await showConfirm(esc(id ? t('ricoDeleteChatAsk') : isRozha() ? t('ricoDeleteAllAskBoth') : t('ricoDeleteAllAsk')), {okLabel:t('delete'), okClass:'btn-danger'}))) return false;
+  // One chat is named, so the right one goes (the title it shows in the list).
+  const chat = id ? (rico.chats || []).find(c=>c.id === id) : null;
+  const ask = id ? t('ricoDeleteChatNamed')(chat?.title || (rico.chatId === id && rico.chatTitle) || t('ricoUntitled')) : isRozha() ? t('ricoDeleteAllAskBoth') : t('ricoDeleteAllAsk');
+  if(!(await showConfirm(esc(ask), {title:id ? t('ricoDeleteChatTitle') : '', okLabel:t('delete'), okClass:'btn-danger'}))) return false;
   clearTimeout(ricoSaveTimer);
-  const r = await api(id ? 'rico-chats/' + id : 'rico-chats?account=all', {method:'DELETE'});
+  const account = state.account, r = await api(id ? 'rico-chats/' + id : 'rico-chats?account=all', {method:'DELETE'});
+  if(account !== state.account) return false;   // signed out meanwhile: the next person's list stays as it is
   if(!r.ok){ toast(t('saveFailed'), 'error'); return false; }
   rico.chats = id ? (rico.chats || []).filter(c=>c.id !== id) : isRozha() ? [] : (rico.chats || []).filter(c=>c.account && c.account !== state.account);
   if(!id || rico.chatId === id){ rico.chatId = null; rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }
@@ -496,24 +509,27 @@ async function ricoSetAuto(on){
    about the chat Rico lives here; Rico the helper on the Mac stays in Settings. */
 function openRicoSettings(){
   const sw = (attr, on, label, hint)=>`<label class="rico-side-row rico-set-row"><span>${esc(label)}${hint ? `<small>${esc(hint)}</small>` : ''}</span><input type="checkbox" role="switch" ${attr} ${on ? 'checked' : ''}></label>`;
+  // Filling the order and Rico's button on the Order screen are for whoever has the Order screen (not Ahmad).
+  const order = canOpen('order');
   const styles = CHOICES.ricoStyle.map(v=>`<label class="rico-style-opt"><input type="radio" name="ricoStyle" value="${v}" ${ricoStyle() === v ? 'checked' : ''}><span>${esc(t('style_' + v))}</span></label>`).join('');
   const {el, close} = openKitchenSheet('rico-set-sheet', `<div class="sel-title">${esc(t('ricoSettings'))}</div>
     <div class="rico-set-group">
-      ${sw('data-set-auto', ricoAutoOrder(), t('ricoAutoOrderLabel'), t('ricoAutoOrderHint'))}
+      ${order ? sw('data-set-auto', ricoAutoOrder(), t('ricoAutoOrderLabel'), t('ricoAutoOrderHint')) : ''}
       <button type="button" class="rico-side-row rico-set-row" data-set-memory><span>${esc(t('memoryTitle'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
     </div>
     <div class="rico-set-label">${esc(t('styleLabel'))}</div>
     <div class="rico-set-group rico-style">${styles}</div>
     <div class="rico-set-group">
-      ${sw('data-set-sheet', featureOn('ricoSheet'), t('feat_ricoSheet'), t('feat_ricoSheet_hint'))}
+      ${order ? sw('data-set-sheet', featureOn('ricoSheet'), t('feat_ricoSheet'), t('feat_ricoSheet_hint')) : ''}
       ${sw('data-set-ai', aiConsented(), t('aiSettingLabel'), t('aiSettingHint'))}
     </div>
     <div class="rico-set-group"><button type="button" class="rico-side-row rico-set-row rico-set-danger" data-set-delall><span>${esc(t('ricoDeleteAll'))}</span></button></div>`, t('ricoSettings'));
-  el.querySelector('[data-set-auto]').onchange = e=>{ const on = e.currentTarget.checked; close(); ricoSetAuto(on); };
+  const auto = el.querySelector('[data-set-auto]'), sheet = el.querySelector('[data-set-sheet]');
+  if(auto) auto.onchange = e=>{ const on = e.currentTarget.checked; close(); ricoSetAuto(on); };
   el.querySelector('[data-set-memory]').onclick = ()=>{ close(); openRicoMemory(); };
   el.querySelector('[data-set-delall]').onclick = ()=>{ close(); ricoDeleteChat(null); };
   el.querySelectorAll('input[name=ricoStyle]').forEach(r=>r.onchange = ()=>setSetting('ricoStyle', r.value));
-  el.querySelector('[data-set-sheet]').onchange = async e=>{ const box = e.currentTarget; if(!(await setFeature('ricoSheet', box.checked))) box.checked = !box.checked; };
+  if(sheet) sheet.onchange = async e=>{ const box = e.currentTarget; if(!(await setFeature('ricoSheet', box.checked))) box.checked = !box.checked; };
   // Turning the AI on asks first, in a box that must not sit behind this sheet: the sheet closes.
   el.querySelector('[data-set-ai]').onchange = async e=>{ const box = e.currentTarget; if(!box.checked){ setAiConsent(false); return; } close(); await aiConsent(); };
 }
@@ -530,7 +546,7 @@ function renderRicoInbox(){
   return `<div class="rico-inbox">${list.map(m=>`
     <div class="rico-note ${m.read?'':'unread'}">
       ${ricoFace('', 'rico-sm')}
-      <div class="rico-note-body"><div class="rico-note-meta">${esc(t('ricoWroteFirst'))} · ${esc(timeAgo(m.at))}</div><div class="rico-note-text">${esc(ricoInboxText(m))}</div>${ricoNoteAction(m)}</div>
+      <div class="rico-note-body"><div class="rico-note-meta">${esc(t('ricoWroteFirst'))} · ${esc(timeAgo(m.at))}</div><div class="rico-note-text">${ricoInboxHtml(m)}</div>${ricoNoteAction(m)}</div>
     </div>`).join('')}${rico.inbox.length > 1 ? `<button type="button" class="rico-link rico-inbox-more" id="ricoInboxAll">${esc(t('inboxSeeAll')(rico.inbox.length))}</button>` : ''}</div>`;
 }
 /* A prepared order (from a routine) carries its own button that fills the Order screen. */
@@ -546,23 +562,43 @@ function ricoAskScheduled(id){
   if(rico.messages.length && !rico.streaming) ricoNewChat();
   ricoAsk(m.question);
 }
+/* Rico's first questions are different for each account (2026-11-17): Rozh runs the business (what is
+   due, spending, prices, invoices, stock, problems), Yunis orders (today's order, what is low, what is
+   late), Ahmad runs the minibar (recipes, costs, prices to sell at, his stock) and never orders. Each
+   list keeps only what that person can open. [quick action, question, icon] */
+function ricoStarterChips(){
+  const q = t('ricoChips');
+  if(!canOpen('order') && canOpen('recipes'))
+    return [['', q.mbProfit, 'reports'], ['', q.mbSell, 'price'], ['', q.mbCost, 'needs'], ['', q.mbNoPrice, 'check'], ...(canOpen('minibar') ? [['', q.mbStock, 'stock']] : [])];
+  const receipts = canOpen('receipts'), stock = canOpen('transfers') || canOpen('stock');
+  const past = canOpen('history');
+  if(isRozha()) return [
+    ['', q.ownDue, 'late'],
+    ...(receipts ? [['', q.ownSpend, 'reports'], ['', q.ownPrices, 'price'], ['', q.ownInvoices, 'history']] : []),
+    ...(stock ? [['', q.ownLow, 'stock']] : []),
+    ...(receipts || stock ? [['', q.ownNeeds, 'needs']] : []),
+    ['', q.ownProblems, 'check'],
+    // Without Receipts or Stock (an older set-up) her list still has the day's order.
+    ...(!receipts && !stock && past ? [['prepare_order', q.ordPrepare, 'order'], ['check_order', q.ordCheck, 'check']] : []),
+  ];
+  return [
+    ...(past ? [['prepare_order', q.ordPrepare, 'order']] : []),
+    ['', q.ordToday, 'late'],
+    ['', q.ordLow, 'stock'],
+    ...(past ? [['check_order', q.ordCheck, 'check'], ['last_order', q.ordLast, 'history']] : []),
+    ['late_orders', q.ordLate, 'late'],
+    ...(canDo('catalog') ? [['add_item', q.ordAdd, 'add']] : []),
+  ];
+}
 function renderRicoIntro(){
   // A calm first screen, like ChatGPT's on a phone (2026-11-15): Rico's latest note at the top, then near
   // the message box a greeting and small pill-shaped questions to tap, which scroll smoothly when there are
-  // more than fit. Stock, what needs you and prices come first for people who use Receipts or Transfers.
-  const chips = t('ricoSuggestions'), rr = t('ricoTilesRR');
-  const base = [['prepare_order',chips[0],'order'],['week_insights',chips[2],'reports'],['late_orders',chips[5],'late'],['check_order',chips[1],'check'],['last_order',chips[3],'history'],['add_item',chips[4],'add']];
-  const extra = [
-    ...(canOpen('transfers') ? [['', rr[0], 'stock']] : []),
-    ...(canOpen('transfers') || canOpen('receipts') ? [['', rr[1], 'needs']] : []),
-    ...(canOpen('receipts') ? [['', rr[2], 'price']] : []),
-  ];
-  // Ahmad (Recipes only): questions about his recipes, prices and the minibar, never about ordering.
-  const recipeOnly = !canOpen('order') && canOpen('recipes');
-  const list = recipeOnly ? [...t('recipe_ricoChips'), ...t('recipe_ricoItemChips').slice(0, 1)].map((q, i)=>['', q, ['reports', 'late', 'price', 'stock', 'price'][i] || 'check']) : [...extra, ...base];
+  // more than fit.
+  const list = ricoStarterChips();
+  const sub = !canOpen('order') && canOpen('recipes') ? t('ricoIntroSubRecipes') : isRozha() ? t('ricoIntroSub') : t('ricoIntroSubOrders');
   return `<div class="rico-intro">
     ${renderRicoInbox()}
-    <div class="rico-hello">${ricoFace('', 'rico-lg')}<h2>${esc(ricoGreeting())}</h2><p>${esc(recipeOnly ? t('ricoIntroSubRecipes') : t('ricoIntroSub'))}</p></div>
+    <div class="rico-hello">${ricoFace('', 'rico-lg')}<h2>${esc(ricoGreeting())}</h2><p>${esc(sub)}</p></div>
     <div class="rico-chips at-start" id="ricoChips">${list.map(([action, text, icon])=>`<button type="button" class="rico-chip" data-rico-ask="${esc(text)}"${action ? ` data-rico-action="${action}"` : ''}><span class="rico-chip-ic ic-${icon}">${RICO_TILE_ICONS[icon] || ''}</span><span dir="auto">${esc(text)}</span></button>`).join('')}</div>
   </div>`;
 }
@@ -666,6 +702,54 @@ function ricoFormat(src){
   return out.join('');
 }
 
+/* ---------- Places in the app (find_in_app) ----------
+   A place from the app map (_shared/app-map.js) this person can use, and opening it: the tab, then the
+   Admin page or a person's page, then the Settings row (or the row in Rico's settings) scrolled to the
+   middle and lit for a moment, or the thing to do (a sheet or a form). */
+function appPlace(id){
+  const M = globalThis.RicottaAppMap, place = M?.byId(id);
+  return place && state.account && M.allowed(place, {account:state.account, roles:state.roles || [], views:state.views || []}) ? place : null;
+}
+function appPlaceIcon(p){
+  const g = p.go || {};
+  if(g.admin || g.person || g.view === 'admin') return NAV_ICONS.admin;
+  if(g.rico || g.view === 'assistant') return ICON_SPARKLE;
+  if(p.kind === 'setting' || g.view === 'settings' || g.run === 'language') return NAV_ICONS.settings;
+  return NAV_ICONS[g.view] || ICON_SEARCH;
+}
+const APP_PLACE_RUN = {
+  send:()=>startSendQueue().then(ok=>{ if(!ok) goView('order'); }),
+  monthReport:()=>openReportSheet(), addItem:()=>openItemModal(null), addSupplier:()=>openSupplierModal(null), addUnit:()=>openUnitModal(null),
+  importItems:()=>openItemImport(), exportItems:()=>openExportSheet('items'), exportSuppliers:()=>openExportSheet('suppliers'),
+  ricoNewChat:()=>ricoNewChat(), ricoChats:()=>ricoOpenHistory(), ricoScheduled:()=>openRicoScheduled(), ricoMemory:()=>openRicoMemory(),
+  language:()=>openLangMenu(document.getElementById('accountBtn') || document.body), search:()=>openSpotlight(),
+};
+/* Lights up a row once it is on the screen (a section that is still loading gets a few seconds). */
+function flashPlace(sel, within = document){
+  let tries = 25;
+  const tick = ()=>{
+    const el = (within.isConnected === false ? document : within).querySelector(sel);
+    const row = el?.closest('.preference-row, .rico-set-row, .settings-row, .settings-link, .dark-row, .rs-row, .rico-set-group, .settings-signout-card') || el;
+    if(row){ spotFlash(row); return; }
+    if(--tries > 0) setTimeout(tick, 200);
+  };
+  requestAnimationFrame(tick);
+}
+function openAppPlace(id){
+  const place = appPlace(id);
+  if(!place) return false;
+  const g = place.go;
+  if(g.view && g.view !== state.view) goView(g.view);
+  if(g.view && state.view !== g.view) return false;
+  if(g.admin) openAdminPage(g.admin);
+  else if(g.person){ adminFilter.person = g.person; openAdminPage('person'); }
+  else if(g.view === 'admin' && state.adminPage) openAdminPage(null);
+  if(g.sel) flashPlace(g.sel);
+  if(g.rico){ openRicoSettings(); flashPlace(g.rico, document.querySelector('.rico-set-sheet') || document); }
+  if(g.run) APP_PLACE_RUN[g.run]?.();
+  return true;
+}
+
 /* ---------- Proposal cards ---------- */
 function renderRicoProposal(p, mi){
   if(!p || typeof p!=='object' || Array.isArray(p) || (p.kind==='order' && !Array.isArray(p.lines)))return '';
@@ -737,6 +821,8 @@ function renderRicoProposalCard(p, mi){
     return ricoCard(NAV_ICONS.transfers, viewLabel('transfers'), body, `<div class="rico-card-actions"><button class="btn btn-primary" data-rico-transfer="${esc(p.transferId)}">${esc(t('ricoOpenScreen')(viewLabel('transfers')))}</button></div>`, p);
   }
   if(['stock_list','needs_list','price_list','spend','invoice_report','price_lookup'].includes(p.kind)) return renderRicoData(p);
+  // A recipe category's colours (recipes.js draws it; a tap sets the colour).
+  if(p.kind === 'recipe_colors') return typeof recipeColorCard === 'function' ? recipeColorCard(p) : '';
   // A page of Ricotta Restaurant Rico was asked to open: a plain link (only to that site).
   if(p.kind === 'rr_link'){
     if(typeof p.url !== 'string' || !p.url.startsWith('https://pos.shaydattendance.com/')) return '';
@@ -750,6 +836,12 @@ function renderRicoProposalCard(p, mi){
     return ricoCard(ICON_BELL, t('routineCard'), body, actions(t('routineSave')), p);
   }
   if(p.kind === 'open'){
+    // A place in the app Rico found (find_in_app): opens exactly that tab, page or setting.
+    if(p.place){
+      const place = appPlace(p.place);
+      if(!place) return '';
+      return `<button class="rico-open rico-place" data-rico-place="${esc(place.id)}">${appPlaceIcon(place)}<span><small>${esc(t('ricoPlaceKind_' + place.kind))}</small>${esc(globalThis.RicottaAppMap.pathOf(place, state.lang))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
+    }
     if(p.screen !== 'send' && !canOpen(p.screen)) return '';
     if(p.screen === 'send' && !canDo('send')) return '';
     if(p.screen === 'send') return `<button class="rico-open" data-rico-open="send">${ICON_CHAT}<span>${esc(p.label || t('ricoOpenSend'))}</span></button>`;
@@ -912,6 +1004,7 @@ function attachRicoThreadEvents(root){
     if(screen === 'order' && sup && state.suppliers.some(s=>s.id===sup)) state.orderTab = sup;
     goView(screen);
   });
+  root.querySelectorAll('[data-rico-place]').forEach(b=>b.onclick=()=>openAppPlace(b.dataset.ricoPlace));
   root.querySelectorAll('[data-rico-transfer]').forEach(b=>b.onclick=async()=>{
     const id = b.dataset.ricoTransfer;
     if(!canOpen('transfers')) return;
@@ -967,8 +1060,8 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:p.mode === 'search' ? `stock of "${p.query}" in ${p.storage}` : `list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, invoice_report:`invoice report for ${p.month}${p.supplier ? ' (' + p.supplier + ')' : ''} with PDF and Excel`, price_lookup:`last prices${p.query ? ' for "' + p.query + '"' : ''}${p.storage ? ' of items going to ' + p.storage : ''} with PDF and Excel`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
-      content += ['stock_list','needs_list','price_list','spend','rr_link','invoice_report','price_lookup'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:p.place ? `open ${p.place} (find_in_app)` : `open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:p.mode === 'search' ? `stock of "${p.query}" in ${p.storage}` : `list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, invoice_report:`invoice report for ${p.month}${p.supplier ? ' (' + p.supplier + ')' : ''} with PDF and Excel`, price_lookup:`last prices${p.query ? ' for "' + p.query + '"' : ''}${p.storage ? ' of items going to ' + p.storage : ''} with PDF and Excel`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
+      content += p.kind === 'recipe_colors' ? `\n[card colours for the category "${p.category}": shown]` : ['stock_list','needs_list','price_list','spend','rr_link','invoice_report','price_lookup'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};
   });
@@ -1262,12 +1355,14 @@ async function ricoNameChat(question, answer){
 }
 async function ricoLoadChats(){
   if(rico.chatsBusy) return;
-  rico.chatsBusy = true;
+  rico.chatsBusy = true; rico.chatsFailed = false;
   const account = state.account;
   try{
     let r = await api('rico-chats');
     if(r.stale && state.account === account) r = await api('rico-chats');   // a save happened at the same moment
     if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats;
+    // Offline or refused: say so instead of gray lines that never fill in (opening the list again retries).
+    else if(state.account === account) rico.chatsFailed = true;
   }finally{ rico.chatsBusy = false; }
 }
 /* Whose chat it is: the person's initial in a small circle (green for Rozh, gray for Yunis). */

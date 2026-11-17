@@ -94,17 +94,17 @@ function line(e: any, lang: Lang): string {
     return lang === "en" ? `${n} went up. Cost to make: ${list}.` : lang === "ku" ? `نرخی ${n} بەرز بووەوە. تێچووی دروستکردن: ${list}.` : `ارتفع سعر ${n}. تكلفة التحضير: ${list}.`;
   }
   if (e.kind === "loss") return lang === "en" ? `${n} is losing money: it costs ${money(e.cost, e.currency)} and sells for ${money(e.price, e.currency)}.`
-    : lang === "ku" ? `${n} زیان دەکات: تێچووی ${money(e.cost, e.currency)}، نرخی فرۆشتنی ${money(e.price, e.currency)}.` : `${n} يخسر: تكلفته ${money(e.cost, e.currency)} وسعر بيعه ${money(e.price, e.currency)}.`;
+    : lang === "ku" ? `${n} زەرەر دەکات: تێچووی ${money(e.cost, e.currency)}، نرخی فرۆشتنی ${money(e.price, e.currency)}.` : `${n} يخسر: تكلفته ${money(e.cost, e.currency)} وسعر بيعه ${money(e.price, e.currency)}.`;
   if (e.kind === "low") return lang === "en" ? `${n} margin is ${e.margin}%, under ${e.min}%.` : lang === "ku" ? `ڕێژەی قازانجی ${n}: ${e.margin}%، کەمتر لە ${e.min}%.` : `هامش ربح ${n}: ${e.margin}%، أقل من ${e.min}%.`;
   if (e.kind === "empty") return lang === "en" ? `${n} is out in Main Storage (used in ${names(e.recipes, lang)}).` : lang === "ku" ? `${n} لە کۆگای سەرەکی نەماوە (لە ${names(e.recipes, lang)} بەکاردێت).` : `نفد ${n} من المخزن الرئيسي (يُستخدم في ${names(e.recipes, lang)}).`;
   if (e.kind === "gone") {
     const maybe = e.maybe ? (lang === "en" ? ` It may now be called ${iso(e.maybe)}.` : lang === "ku" ? ` لەوانەیە ئێستا ناوی ${iso(e.maybe)} بێت.` : ` ربما أصبح اسمه ${iso(e.maybe)}.`) : "";
-    return (lang === "en" ? `${iso(e.stock)} is no longer in Ricotta Restaurant. Link ${n} again.` : lang === "ku" ? `${iso(e.stock)} لە ریکۆتا ڕێستۆرانت نەماوە. ${n} دووبارە ببەستەوە.` : `لم يعد ${iso(e.stock)} موجودًا في ريكوتا ريستورانت. اربط ${n} من جديد.`) + maybe;
+    return (lang === "en" ? `${iso(e.stock)} is no longer in Ricotta Restaurant. Link ${n} again.` : lang === "ku" ? `${iso(e.stock)} لە ڕیکۆتا ڕێستۆرانت نەماوە. ${n} بە کاڵایەکی تری کۆگا ببەستەوە.` : `لم يعد ${iso(e.stock)} موجودًا في ريكوتا ريستورانت. اربط ${n} من جديد.`) + maybe;
   }
   if (e.kind === "missing") {
     const who = e.names?.length ? e.names.slice(0, 3).map(iso).join(lang === "en" ? ", " : "، ") : "";
     if (who) return lang === "en" ? `${n} has no cost yet: no price for ${who}.` : lang === "ku" ? `${n} هێشتا تێچووی نییە: ${who} نرخی نییە.` : `${n} بلا تكلفة بعد: لا يوجد سعر لـ ${who}.`;
-    return lang === "en" ? `${n}: ${e.count} ${e.count === 1 ? "ingredient has" : "ingredients have"} no cost yet.` : lang === "ku" ? `${n}: ${e.count} پێکهاتە هێشتا تێچوویان نییە.` : `${n}: ${e.count} من المكونات بلا تكلفة بعد.`;
+    return lang === "en" ? `${n}: ${e.count} ${e.count === 1 ? "ingredient has" : "ingredients have"} no cost yet.` : lang === "ku" ? `${n}: ${e.count} کاڵا هێشتا تێچوویان نییە.` : `${n}: ${e.count} من المكونات بلا تكلفة بعد.`;
   }
   return "";
 }
@@ -120,7 +120,7 @@ export function alertWords(events: any[]): Words | null {
   const say = (lang: Lang) => {
     const shown = list.slice(0, MAX_LINES).map((e) => e.kind === "stockLow" ? stockLine(e, lang) : line(e, lang)).filter(Boolean);
     const more = list.length - Math.min(list.length, MAX_LINES);
-    return shown.join(" ") + (more > 0 ? (lang === "en" ? ` And ${more} more in Recipes.` : lang === "ku" ? ` و ${more} ی تر لە ڕەچەتەکان.` : ` و${more} أخرى في الوصفات.`) : "");
+    return shown.join(" ") + (more > 0 ? (lang === "en" ? ` And ${more} more in Recipes.` : lang === "ku" ? ` و ${more} ی تر لە ڕێسیپییەکان.` : ` و${more} أخرى في الوصفات.`) : "");
   };
   return { en: say("en"), ku: say("ku"), ar: say("ar") };
 }

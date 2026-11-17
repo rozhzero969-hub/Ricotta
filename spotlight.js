@@ -50,7 +50,7 @@ function spotCommands(){
     {id:'report', icon:ICON_REPORT, label:t('reportProblem'), words:['report problem bug help'], run:()=>openReportProblem()},
     {id:'shortcuts', icon:ICON_KEYBOARD, label:t('keyboardShortcuts'), words:['keyboard shortcuts keys'], run:()=>openShortcuts()},
     {id:'privacy', icon:ICON_SHIELD, label:t('privacyPolicy'), words:['privacy policy data'], run:()=>{ location.href = privacyHref(); }},
-    ...(isRozha() ? ADMIN_PAGES.map(p=>({id:'admin-' + p, icon:NAV_ICONS.admin, label:t('adminPage_' + p), sub:t('adminTitle'), words:['admin ' + p], run:()=>{ goView('admin'); openAdminPage(p); }})) : []),
+    ...(isRozha() ? ADMIN_PAGES.filter(p=>p !== 'person').map(p=>({id:'admin-' + p, icon:NAV_ICONS.admin, label:t('adminPage_' + p), sub:t('adminTitle'), words:['admin ' + p], run:()=>{ goView('admin'); openAdminPage(p); }})) : []),
     {id:'signout', icon:ICON_LOGOUT, label:t('logout'), words:['sign out log out exit'], run:()=>doLogout()},
   ];
   return list.filter(c=>!c.when || c.when());
@@ -226,7 +226,7 @@ function spotMark(text, q){
 const spotWhen = iso=>iso ? formatIraqDateTime(iso, {day:'numeric', month:'short'}) : '';
 function spotRowHtml(r, i, q){
   const at = `data-spot="${i}" role="${r.kind === 'toggle' ? 'switch' : 'option'}" id="spotOpt${i}"`;
-  const text = (title, sub, dirTitle = 'auto')=>`<span class="spot-text"><b dir="${dirTitle}">${title}</b>${sub ? `<small dir="auto">${sub}</small>` : ''}</span>`;
+  const text = (title, sub, dirTitle = 'auto')=>`<span class="spot-text"><b dir="${dirTitle}">${title}</b>${sub ? `<small>${sub}</small>` : ''}</span>`;
   if(r.kind === 'command'){
     const sub = typeof r.c.sub === 'function' ? r.c.sub() : r.c.sub;
     return `<button type="button" class="spot-row" ${at}><span class="spot-ic">${r.c.icon || ''}</span>${text(spotMark(r.c.label, q), sub ? esc(sub) : '')}</button>`;
@@ -238,7 +238,9 @@ function spotRowHtml(r, i, q){
   if(r.kind === 'badqty') return `<div class="spot-row spot-note" ${at} aria-disabled="true"><span class="spot-ic">${ICON_PLUS}</span>${text(esc(t('spotQtyInvalid')), '')}</div>`;
   if(r.kind === 'set') return `<button type="button" class="spot-row spot-set" ${at}><span class="spot-ic">${ICON_PLUS}</span>${text(esc(t('spotSet')(r.item.name, r.qty, unitLabel(r.item.unit))), esc(r.item.supplierId ? supplierName(r.item.supplierId) : t('noSupplier')))}</button>`;
   if(r.kind === 'item'){
-    const sub = [spotMark(r.item.supplierId ? supplierName(r.item.supplierId) : t('noSupplier'), q), esc(unitLabel(r.item.unit)), r.item.lastOrderedAt ? esc(t('spotLastOrdered')(spotWhen(r.item.lastOrderedAt))) : ''].filter(Boolean).join(' · ');
+    // Each part kept whole (an English supplier, a Kurdish unit), in the page's own direction, so a cut
+    // line loses its end, not its middle.
+    const sub = [spotMark(r.item.supplierId ? supplierName(r.item.supplierId) : t('noSupplier'), q), esc(unitLabel(r.item.unit)), r.item.lastOrderedAt ? esc(t('spotLastOrdered')(spotWhen(r.item.lastOrderedAt))) : ''].filter(Boolean).map(x=>`<bdi>${x}</bdi>`).join(' · ');
     return `<div class="spot-row-wrap" data-spot-item="${esc(r.item.id)}"><button type="button" class="spot-row" ${at}><span class="spot-ic">${NAV_ICONS.order}</span>${text(spotMark(r.item.name, q), sub)}</button>${canOpen('order') ? spotStepHtml(r.item) : ''}</div>`;
   }
   if(r.kind === 'supplier'){
@@ -258,9 +260,9 @@ function spotRowHtml(r, i, q){
   // An order: when, who and how much, or the line that matched what was typed.
   const lines = (r.o.entries || []).flatMap(e=>(e.items || []).map(i=>({...i, supplier:e.supplierId ? supplierName(e.supplierId) : e.supplierName || ''})));
   const hit = r.q ? lines.find(l=>Number.isFinite(globalThis.RicottaSearch.score(r.q, [l.name, l.supplier]))) : null;
-  const sub = hit ? `${spotMark(hit.name, r.q)} ${esc(String(hit.qty))}${hit.unit ? ' ' + esc(unitLabel(hit.unit)) : ''} · ${esc(hit.supplier)}`
-    : esc([accountLabel(r.o.by), t('itemCount')(lines.length), [...new Set(lines.map(l=>l.supplier).filter(Boolean))].join(', ')].filter(Boolean).join(' · '));
-  return `<button type="button" class="spot-row" ${at}><span class="spot-ic">${NAV_ICONS.history}</span><span class="spot-text"><b>${esc(dayLabel(r.o.date))} · ${esc(formatIraqDateTime(r.o.date, {hour:'numeric', minute:'2-digit'}))}${hit ? ` · ${esc(accountLabel(r.o.by))}` : ''}</b><small dir="auto">${sub}</small></span></button>`;
+  const sub = hit ? `<bdi>${spotMark(hit.name, r.q)} ${esc(String(hit.qty))}${hit.unit ? ' ' + esc(unitLabel(hit.unit)) : ''}</bdi> · <bdi>${esc(hit.supplier)}</bdi>`
+    : [accountLabel(r.o.by), t('itemCount')(lines.length), [...new Set(lines.map(l=>l.supplier).filter(Boolean))].join(', ')].filter(Boolean).map(x=>`<bdi>${esc(x)}</bdi>`).join(' · ');
+  return `<button type="button" class="spot-row" ${at}><span class="spot-ic">${NAV_ICONS.history}</span><span class="spot-text"><b>${esc(dayLabel(r.o.date))} · ${esc(formatIraqDateTime(r.o.date, {hour:'numeric', minute:'2-digit'}))}${hit ? ` · ${esc(accountLabel(r.o.by))}` : ''}</b><small>${sub}</small></span></button>`;
 }
 /* − and + for an item, right in the results; − shows once it is in the order, with the amount between. */
 function spotStepHtml(item){

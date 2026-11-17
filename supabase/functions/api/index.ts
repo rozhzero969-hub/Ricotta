@@ -76,6 +76,7 @@ import { adminAi, chatTitle, handleChat, orderSuggestion, whatsappReady } from "
 import { saveMemory, saveRoutine, toRoutine } from "./rico-memory.ts";
 import { cleanRoutine } from "../_shared/routines.ts";
 import { recipesRoute } from "./recipes.ts";
+import { recipeCategoryRoute } from "./recipe-categories.ts";
 import { MINIBAR_MAX, minibarStock, saveMinibar } from "./minibar.ts";
 import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
 import { stockView, transfersRoute } from "./transfers.ts";
@@ -1015,11 +1016,16 @@ Deno.serve(async (req) => {
       if (!can(s,"recipes")) return fail("forbidden",403);
       return await recipesRoute({db,json,fail,account:s.account,device:s.deviceId},M,path,b);
     }
+    // A colour tapped on Rico's colour card (recipe-categories.ts); everything else about categories is Rico's tool.
+    if (path.startsWith("recipe-categories/")) {
+      if (!can(s,"recipes")) return fail("forbidden",403);
+      return await recipeCategoryRoute({db,json,fail,account:s.account,device:s.deviceId},M,path,b);
+    }
     // Ahmad's Stock tab (minibar.ts): the items Rozh picked for him, with what is in Main Storage.
     if (path === "minibar") {
       if (M === "GET") {
         if (s.account !== "ahmad" && !rozha) return fail("forbidden", 403);
-        try { return json(await minibarStock(db)); } catch { return fail("load_failed", 503); }
+        try { return json(await minibarStock(db, { hints: rozha })); } catch { return fail("load_failed", 503); }
       }
       if (M === "PUT") {
         if (!rozha) return fail("forbidden", 403);
@@ -1028,7 +1034,7 @@ Deno.serve(async (req) => {
         const known = ids.length ? await app("items").select("id").in("id", ids) : { data: [], error: null };
         if (known.error) return fail("load_failed", 503);
         const keep = new Set((known.data ?? []).map((r: any) => r.id));
-        return (await saveMinibar(db, ids.filter((x) => keep.has(x)))) ? json(await minibarStock(db).catch(() => ({ items: [], at: null }))) : fail("save_failed", 500);
+        return (await saveMinibar(db, ids.filter((x) => keep.has(x)))) ? json(await minibarStock(db, { hints: true }).catch(() => ({ items: [], at: null }))) : fail("save_failed", 500);
       }
       return fail("not_found", 404);
     }

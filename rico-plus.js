@@ -51,14 +51,14 @@ async function openRicoMemory(){
   const box = el.querySelector('#memRules'), rbox = el.querySelector('#memRoutines');
   const paint = rows=>{
     box.className = '';
-    box.innerHTML = rows.length ? rows.map(r=>`<div class="mem-rule"><span dir="auto">${esc(r.rule)}<small>${esc(r.source === 'learned' ? t('memLearned') : t('memTaught'))}${r.account && r.account !== state.account ? ' · ' + esc(accountLabel(r.account)) : ''}</small></span>${!r.account || r.account === state.account || isRozha() ? `<button type="button" class="icon-btn" data-mem-del="${esc(r.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}</div>`).join('') : `<div class="empty-mini">${esc(t('memoryNone'))}</div>`;
+    box.innerHTML = rows.length ? rows.map(r=>`<div class="mem-rule"><span dir="auto">${esc(r.rule)}<small>${esc(r.source === 'learned' ? t('memLearned') : t('memTaught'))}${r.account && r.account !== state.account ? ' · ' + esc(accountLabel(r.account)) : ''}</small></span>${!r.account || r.account === state.account || isRozha() ? `<button type="button" class="icon-btn danger" data-mem-del="${esc(r.id)}" aria-label="${esc(t('delete'))}">${ICON_DELETE}</button>` : ''}</div>`).join('') : `<div class="empty-mini">${esc(t('memoryNone'))}</div>`;
     box.querySelectorAll('[data-mem-del]').forEach(b=>b.onclick = async ()=>{ const r = await api('rico-rules/' + b.dataset.memDel, {method:'DELETE'}); if(r.ok) load(); else toast(t('saveFailed'), 'warn'); });
   };
   const paintRoutines = rows=>{
     rbox.className = '';
     rbox.innerHTML = rows.length ? rows.map(r=>`<div class="mem-rule mem-routine${r.enabled ? '' : ' off'}"><span dir="auto">${esc(r.text)}<small>${esc(routineLabel(r))}${r.account && r.account !== state.account ? ' · ' + esc(accountLabel(r.account)) : ''}</small></span>
       ${r.runAt ? '' : `<input type="checkbox" role="switch" class="mem-switch" data-routine-on="${esc(r.id)}" ${r.enabled ? 'checked' : ''} aria-label="${esc(r.text)}">`}
-      <button type="button" class="icon-btn" data-routine-del="${esc(r.id)}" aria-label="${esc(t('routineDelete'))}">${ICON_DELETE}</button></div>`).join('') : `<div class="empty-mini">${esc(t('routinesNone'))}</div>`;
+      <button type="button" class="icon-btn danger" data-routine-del="${esc(r.id)}" aria-label="${esc(t('routineDelete'))}">${ICON_DELETE}</button></div>`).join('') : `<div class="empty-mini">${esc(t('routinesNone'))}</div>`;
     rbox.querySelectorAll('[data-routine-on]').forEach(b=>b.onchange = async ()=>{
       const on = b.checked; b.disabled = true;
       const r = await api('rico-routines/' + b.dataset.routineOn, {method:'PUT', body:{enabled:on}});
@@ -122,7 +122,7 @@ function openRicoScheduled(){
     list.className = 'sched-list';
     list.innerHTML = rows.length ? rows.map(r=>`<div class="mem-rule mem-routine${r.enabled ? '' : ' off'}"><span><b dir="auto">${esc(r.text)}</b><small>${esc(routineLabel(r))}${r.account && r.account !== state.account ? ' · ' + esc(accountLabel(r.account)) : ''}</small></span>
       ${r.runAt ? '' : `<input type="checkbox" role="switch" class="mem-switch" data-sched-on="${esc(r.id)}" ${r.enabled ? 'checked' : ''} aria-label="${esc(r.text)}">`}
-      <button type="button" class="icon-btn" data-sched-del="${esc(r.id)}" aria-label="${esc(t('routineDelete'))}">${ICON_DELETE}</button></div>`).join('') : `<div class="empty-mini">${esc(t('schedNone'))}</div>`;
+      <button type="button" class="icon-btn danger" data-sched-del="${esc(r.id)}" aria-label="${esc(t('routineDelete'))}">${ICON_DELETE}</button></div>`).join('') : `<div class="empty-mini">${esc(t('schedNone'))}</div>`;
     list.querySelectorAll('[data-sched-on]').forEach(b=>b.onchange = async ()=>{
       const on = b.checked; b.disabled = true;
       const r = await api('rico-routines/' + b.dataset.schedOn, {method:'PUT', body:{enabled:on}});
@@ -253,7 +253,7 @@ function openRicoOrderSheet(){
 }
 /* All of Rico's messages, from the "See all" link. */
 function openRicoInboxSheet(){
-  const {el, close} = openKitchenSheet('inbox-sheet', `<div class="sel-title">${esc(t('inboxTitle'))}</div><div class="rico-inbox-all">${[...rico.inbox].reverse().map(m=>`<div class="rico-note mood-tint-${esc(m.mood)}">${ricoFace(m.mood, 'rico-sm')}<div class="rico-note-body"><div class="rico-note-meta">${esc(timeAgo(m.at))}</div><div class="rico-note-text">${esc(ricoInboxText(m))}</div>${ricoNoteAction(m)}</div></div>`).join('') || `<div class="empty-mini">${esc(t('inboxNone'))}</div>`}</div>`, t('inboxTitle'));
+  const {el, close} = openKitchenSheet('inbox-sheet', `<div class="sel-title">${esc(t('inboxTitle'))}</div><div class="rico-inbox-all">${[...rico.inbox].reverse().map(m=>`<div class="rico-note">${ricoFace(m.mood, 'rico-sm')}<div class="rico-note-body"><div class="rico-note-meta">${esc(timeAgo(m.at))}</div><div class="rico-note-text">${ricoInboxHtml(m)}</div>${ricoNoteAction(m)}</div></div>`).join('') || `<div class="empty-mini">${esc(t('inboxNone'))}</div>`}</div>`, t('inboxTitle'));
   el.querySelectorAll('[data-routine-fill]').forEach(b=>b.onclick=()=>{ const m = rico.inbox.find(x=>String(x.id) === b.dataset.routineFill); close(); if(!ricoFillRoutineOrder(m)) toast(t('saveFailed'), 'warn'); });
   el.querySelectorAll('[data-routine-ask]').forEach(b=>b.onclick=()=>{ close(); goView('assistant'); ricoAskScheduled(b.dataset.routineAsk); });
 }
