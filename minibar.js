@@ -56,7 +56,7 @@ function renderMinibar(){
   return `<div class="rc-page mb-page">
     <div class="rc-tools">${recipeSearchBox('mbSearch', minibar.query, t('mb_search'))}
       <button type="button" class="queue-back mb-refresh" id="mbRefresh" aria-label="${esc(t('mb_refresh'))}" title="${esc(t('mb_refresh'))}">${ICON_REFRESH}</button></div>
-    <p class="mb-when${old ? ' old' : ''}" dir="auto">${esc(d.at ? t('mb_readAt')(timeAgo(d.at), formatIraqDateTime(d.at, {hour:'numeric', minute:'2-digit'})) : t('mb_readNever'))}</p>
+    <p class="mb-when${old ? ' old' : ''}">${esc(d.at ? t('mb_readAt')(timeAgo(d.at), formatIraqDateTime(d.at, {hour:'numeric', minute:'2-digit'})) : t('mb_readNever'))}</p>
     <div id="mbList">${minibarListHtml()}</div>
     <p class="rc-hint">${esc(t('mb_note'))}</p></div>`;
 }
@@ -128,7 +128,7 @@ async function openMinibarManager(){
   const items = state.items.filter(i=>itemKind(i) !== 'expense' || picked.has(i.id)).sort((a, b)=>String(a.name).localeCompare(String(b.name), state.lang));
   const scored = items.map(i=>({i, ...minibarWhy(i, hints)}));
   const tick = x=>`<label class="mb-pick${picked.has(x.i.id) ? ' on' : ''}"><input type="checkbox" data-mb-id="${esc(x.i.id)}" ${picked.has(x.i.id) ? 'checked' : ''}>
-    <span class="mb-pick-text"><span dir="auto">${esc(x.i.name)}</span>${x.why ? `<small dir="auto">${esc(x.why)}</small>` : ''}</span><i class="mb-tick" aria-hidden="true">${ICON_CHECK}</i></label>`;
+    <span class="mb-pick-text"><span dir="auto">${esc(x.i.name)}</span>${x.why ? `<small>${esc(x.why)}</small>` : ''}</span><i class="mb-tick" aria-hidden="true">${ICON_CHECK}</i></label>`;
   const section = (title, list)=>list.length ? `<div class="mb-sec">${esc(title)}</div><div class="rc-list mb-picks">${list.map(tick).join('')}</div>` : '';
   const body = q=>{
     if(q.trim()){

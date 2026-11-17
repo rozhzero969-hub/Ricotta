@@ -11,7 +11,7 @@
    Hold a recipe or an item (right-click on a computer) for its menu: edit or delete. Photos: tap or hold
    one to view or delete it, hold and drag to change their order (the first is the cover).
    Saves carry a version, so one phone can't overwrite another one's edits. Nothing here changes stock. */
-const recipeBook = {account:null, data:null, loadedAt:0, ctx:null, stockBy:null, loading:false, error:false, page:'list', id:null,
+const recipeBook = {account:null, data:null, raw:null, loadedAt:0, ctx:null, stockBy:null, loading:false, error:false, page:'list', id:null,
   editing:null, dirty:false, saving:false, saveJob:null, prices:null, pricesBusy:false, pricesPoll:null, timer:null, query:'', ingQuery:'',
   group:'', photos:null, fresh:new Set()};
 const rt = k=>t('recipe_' + k);
@@ -20,7 +20,7 @@ const RC = ()=>globalThis.RicottaRecipeCost;
 function recipeReset(){
   clearTimeout(recipeBook.timer);
   clearTimeout(recipeBook.pricesPoll);
-  Object.assign(recipeBook, {account:state.account, data:null, loadedAt:0, ctx:null, stockBy:null, loading:false, error:false, page:'list', id:null,
+  Object.assign(recipeBook, {account:state.account, data:null, raw:null, loadedAt:0, ctx:null, stockBy:null, loading:false, error:false, page:'list', id:null,
     editing:null, dirty:false, saving:false, saveJob:null, query:'', ingQuery:'', group:'', photos:null, fresh:new Set()});
 }
 const recipeOnScreen = ()=>state.view === 'recipes' || state.view === 'recipeItems';
@@ -33,7 +33,10 @@ async function recipeLoad(){
   recipeBook.loading = false;
   recipeBook.error = !r.ok && !recipeBook.data;
   recipeBook.loadedAt = Date.now();
-  if(r.ok){ recipeBook.data = {...r.data, categories:Array.isArray(r.data.categories) ? r.data.categories : []}; recipeBook.ctx = null; recipeBook.stockBy = null; }
+  // A quiet reload that brings nothing new leaves the page alone (a hold or a scroll is not interrupted).
+  const raw = r.ok ? JSON.stringify(r.data) : null, same = r.ok && !!recipeBook.data && raw === recipeBook.raw;
+  if(r.ok && !same){ recipeBook.raw = raw; recipeBook.data = {...r.data, categories:Array.isArray(r.data.categories) ? r.data.categories : []}; recipeBook.ctx = null; recipeBook.stockBy = null; }
+  if(same) return;
   if(r.ok && !recipeBook.prices) recipePricesLoad();
   // While a recipe is being written the page is not drawn again (that would take the cursor away):
   // the new costs show as soon as it is saved or left.
@@ -275,14 +278,14 @@ function recipeSearchBox(id, value, label){
 const recipeAddBtn = (id, label)=>`<button type="button" class="btn btn-primary rc-add" id="${id}">${ICON_PLUS}<span>${esc(label)}</span></button>`;
 /* An empty page: a title, one line and the one button that fills it. */
 function recipeEmpty(title, text, id, label, second = ''){
-  return `<section class="rc-empty"><h2 dir="auto">${esc(title)}</h2>${text ? `<p dir="auto">${esc(text)}</p>` : ''}
+  return `<section class="rc-empty"><h2>${esc(title)}</h2>${text ? `<p>${esc(text)}</p>` : ''}
     ${id ? `<button type="button" class="btn btn-primary" id="${id}">${/Retry$/.test(id) ? '' : ICON_PLUS}<span>${esc(label)}</span></button>` : ''}${second}</section>`;
 }
 function recipeAlerts(){
   const list = (recipeBook.data.alerts || []).filter(a=>!a.read);
   if(!list.length) return '';
   return `<section class="rc-alerts" aria-label="${esc(rt('alerts'))}"><div class="rc-alerts-head"><b>${esc(rt('alerts'))}</b><button type="button" class="rc-link" id="rcAlertsRead">${esc(rt('markRead'))}</button></div>
-    ${list.slice(0, 6).map(a=>`<div class="rc-alert"><p dir="auto">${esc(a[state.lang] || a.en || '')}</p><small>${esc(timeAgo(a.at))}</small></div>`).join('')}</section>`;
+    ${list.slice(0, 6).map(a=>`<div class="rc-alert"><p>${esc(a[state.lang] || a.en || '')}</p><small>${esc(timeAgo(a.at))}</small></div>`).join('')}</section>`;
 }
 function recipeRowsFor(){
   const q = foldText(recipeBook.query.trim()), g = recipeBook.group;
@@ -293,8 +296,8 @@ function recipeRowsFor(){
 function recipeCard({r, c}){
   const st = recipeState(c), stock = recipeStockIssues(r).length;
   return `<button type="button" class="rc-li rc-rrow" data-rc-open="${esc(r.id)}" aria-haspopup="menu">${recipePic(r, 'rc-thumb')}
-    <span class="rc-li-main"><span class="rc-rrow-name" dir="auto">${esc(r.name)}</span><small class="rc-tile-state ${st.tone}" dir="auto">${esc(st.text)}</small>
-      ${stock ? `<small class="rc-tile-state red" dir="auto">${esc(rt('stockIssues')(stock))}</small>` : ''}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
+    <span class="rc-li-main"><span class="rc-rrow-name" dir="auto">${esc(r.name)}</span><small class="rc-tile-state ${st.tone}">${esc(st.text)}</small>
+      ${stock ? `<small class="rc-tile-state red">${esc(rt('stockIssues')(stock))}</small>` : ''}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
 }
 function recipeListHtml(){
   const rows = recipeRowsFor();
@@ -340,7 +343,7 @@ function recipeCostCard(c, live){
   const why = `<button type="button" class="rc-why-row" data-rc-why><span>${esc(rt('whyNumbers'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
   const row = (k, v, cls = '')=>`<div class="rc-mrow${cls ? ' ' + cls : ''}"><span>${esc(k)}</span><b dir="auto">${v}</b></div>`;
   const none = `<em>${esc(rt('noPriceShort'))}</em>`;
-  if(!c.complete) return `<section class="rc-money"${attrs}><p class="rc-missing" dir="auto">${esc(recipeMissingNote(c))}</p>${c.price ? row(rt('sellsFor'), esc(recipeMoney(c.price))) : ''}${why}</section>`;
+  if(!c.complete) return `<section class="rc-money"${attrs}><p class="rc-missing">${esc(recipeMissingNote(c))}</p>${c.price ? row(rt('sellsFor'), esc(recipeMoney(c.price))) : ''}${why}</section>`;
   const tone = c.state === 'loss' ? 'red' : c.state === 'low' ? 'amber' : c.state === 'ok' ? 'green' : '';
   const pct = c.margin !== null ? Math.max(0, Math.min(100, c.margin)) : 0;
   const notes = [];
@@ -352,7 +355,7 @@ function recipeCostCard(c, live){
     ${row(rt('costs'), esc(recipeMoney(c.cost)))}${row(rt('sellsFor'), c.price ? esc(recipeMoney(c.price)) : none)}
     ${row(rt('weKeep'), c.profit !== null ? esc(recipeMoney(c.profit)) : none, 'strong ' + tone)}
     ${c.margin !== null ? `<div class="rc-mrow rc-margin ${tone}"><span>${esc(rt('margin'))}</span><span class="rc-meter" role="img" aria-label="${esc(rt('marginIs')(c.margin + '%'))}"><i style="width:${pct}%"></i></span><b>${esc(recipeLtr(c.margin + '%'))}</b></div>` : ''}
-    ${notes.length ? `<div class="rc-mnotes">${notes.map(n=>`<p dir="auto">${esc(n)}</p>`).join('')}</div>` : ''}${why}</section>`;
+    ${notes.length ? `<div class="rc-mnotes">${notes.map(n=>`<p>${esc(n)}</p>`).join('')}</div>` : ''}${why}</section>`;
 }
 const recipeLineCost = l=>l.status === 'ok' ? `<b>${esc(recipeExact(l.cost))}</b>` : `<em class="rc-why">${esc(recipeWhy(l))}</em>`;
 function recipeLineHtml(l){
@@ -402,14 +405,14 @@ function recipeWhySheet(r){
     return `<div class="rc-why-card">
       <div class="rc-why-top"><b dir="auto">${esc(l.name || rt('missing'))}</b>${l.status === 'ok' ? `<span class="rc-why-cost">${esc(recipeExact(l.cost))}</span>` : `<em class="rc-why">${esc(recipeWhy(l))}</em>`}</div>
       ${used ? `<p class="rc-why-math"><bdi dir="ltr">${esc(used)}</bdi>${ok && sizes.length ? ` × <bdi dir="ltr">${esc(sizes[sizes.length - 1])}</bdi>` : ''}</p>` : ''}
-      ${ok ? `<p class="rc-why-paid" dir="auto">${esc(rt('paidLine')(recipeExact(p.cost), p.unit || p.base, recipeDay(p.day), p.supplier || ''))}</p>` : ''}</div>`;
+      ${ok ? `<p class="rc-why-paid">${esc(rt('paidLine')(recipeExact(p.cost), p.unit || p.base, recipeDay(p.day), p.supplier || ''))}</p>` : ''}</div>`;
   }).join('') || `<p class="rc-quiet">${esc(rt('noLines'))}</p>`;
   const step = (k, v, cls = '')=>`<div class="rc-sum-row ${cls}"><span>${esc(k)}</span><b dir="auto">${v}</b></div>`;
   const sum = c.complete ? `<div class="rc-sum">${step(rt('total'), esc(recipeExact(c.total)))}${step(rt('rounded'), esc(recipeMoney(c.cost)), 'strong')}
       ${c.price ? step(rt('sellsFor'), esc(recipeMoney(c.price))) + step(rt('weKeep'), esc(rt('minus')(recipeMoney(c.price), recipeMoney(c.cost), recipeMoney(c.profit))), 'strong') + step(rt('margin'), esc(rt('divide')(recipeMoney(c.profit), recipeMoney(c.price), recipeLtr(c.margin + '%')))) : ''}</div>
       <p class="rc-hint">${esc(rt('roundNote'))}</p>`
-    : `<p class="rc-missing rc-missing-box" dir="auto">${esc(recipeMissingNote(c))}</p>`;
-  openKitchenSheet('rc-why-sheet', `<div class="rc-work"><div class="sel-title">${esc(rt('whyNumbers'))}</div><p class="rc-why-intro" dir="auto">${esc(rt('whyIntro'))}</p><div class="rc-why-list">${lines}</div>${sum}</div>`, rt('whyNumbers'));
+    : `<p class="rc-missing rc-missing-box">${esc(recipeMissingNote(c))}</p>`;
+  openKitchenSheet('rc-why-sheet', `<div class="rc-work"><div class="sel-title">${esc(rt('whyNumbers'))}</div><p class="rc-why-intro">${esc(rt('whyIntro'))}</p><div class="rc-why-list">${lines}</div>${sum}</div>`, rt('whyNumbers'));
 }
 
 /* ---------- Writing a recipe ---------- */
@@ -449,7 +452,7 @@ function recipeCategoryField(value){
   const cats = recipeCats(), rico = canOpen('assistant') && typeof ricoAsk === 'function';
   const ask = rico ? `<button type="button" class="rc-link" data-rc-ask-cat>${esc(rt('askRicoCat'))}</button>` : '';
   if(!cats.length) return `<div class="field rc-field" id="rcCatField"><span class="rc-label">${esc(rt('category'))}</span>
-    <div class="rc-cat-empty"><p dir="auto">${esc(rico ? rt('noCatsRico') : rt('noCatsRozh'))}</p>${rico ? `<button type="button" class="btn btn-ghost" data-rc-ask-cat>${esc(rt('askRicoCat'))}</button>` : ''}</div></div>`;
+    <div class="rc-cat-empty"><p>${esc(rico ? rt('noCatsRico') : rt('noCatsRozh'))}</p>${rico ? `<button type="button" class="btn btn-ghost" data-rc-ask-cat>${esc(rt('askRicoCat'))}</button>` : ''}</div></div>`;
   const known = !value || cats.some(c=>c.id === value);
   return `<div id="rcCatField">${recipeField(rt('category'), `<select id="rcCategory"><option value="">${esc(rt('noCategory'))}</option>${cats.map(c=>`<option value="${esc(c.id)}" ${c.id === value ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}${known ? '' : `<option value="${esc(value)}" selected>${esc(rt('noCategory'))}</option>`}</select>`,
     `${esc(rico ? rt('catHintRico') : rt('catHintRozh'))} ${ask}`)}</div>`;
@@ -532,7 +535,7 @@ function recipeIngredientPrice(i){
 function recipeIngredientRow(i){
   const s = recipeStock(i.stock_item), price = recipeIngredientPrice(i), word = recipeStockWord(s?.state);
   return `<button type="button" class="rc-li rc-irow" data-rc-ingredient="${esc(i.id)}" aria-haspopup="menu">
-    <span class="rc-li-main"><span dir="auto">${esc(i.name)}</span><small dir="auto">${esc(rt('usedIn')(recipeUses(i.id)))}${word ? ' · ' + word : ''}</small></span>
+    <span class="rc-li-main"><span class="rc-irow-name" dir="auto">${esc(i.name)}</span><small>${esc(rt('usedIn')(recipeUses(i.id)))}${word ? ' · ' + word : ''}</small></span>
     <span class="rc-price${price.ok ? '' : ' none'}" dir="auto">${esc(price.text)}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
 }
 function recipeIngRows(){
@@ -566,7 +569,7 @@ function recipeIngredientForm(id, onSaved){
     bodyHtml:recipeField(rt('ingredientName'), `<input id="rcIngName" maxlength="120" value="${esc(old?.name || '')}" dir="auto" autocomplete="off" placeholder="${esc(rt('ingredientNameHint'))}">`)
       + `<div class="field rc-field rc-stock-field" id="rcIngStockBox"></div>`
       + recipeField(rt('usualUnit'), `<select id="rcIngUnit">${recipeUnitOptions(old?.unit || '', old?.stock_item)}</select>`, esc(rt('unitsHint')))
-      + (users.length ? `<p class="field-hint rc-used-note" dir="auto">${esc(rt('usedBy')(recipeNameList(users)))}</p>` : ''),
+      + (users.length ? `<p class="field-hint rc-used-note">${esc(rt('usedBy')(recipeNameList(users)))}</p>` : ''),
     okLabel:t('save'),
     againLabel:old && !users.length ? t('delete') : '',
     onSubmit:async again=>{
@@ -619,8 +622,8 @@ function recipeIngredientForm(id, onSaved){
     const paint = ()=>{
       const p = chosen ? recipeIngredientPrice({stock_item:chosen}) : null, warn = warnText();
       box.innerHTML = `<label for="${picking ? 'rcIngStockSearch' : 'rcIngStockChange'}">${esc(rt('stockItem'))}</label>
-        ${chosen ? `<div class="stock-link-now"><span class="stock-link-name" dir="auto">${esc(chosen)}</span><small dir="auto">${esc(rt('lastPrice'))}: <b class="rc-tone${p.ok ? '' : ' amber'}">${esc(p.text)}</b></small></div>` : ''}
-        <p class="field-hint warn" id="rcIngWarn" dir="auto">${esc(warn)}</p>
+        ${chosen ? `<div class="stock-link-now"><span class="stock-link-name" dir="auto">${esc(chosen)}</span><small>${esc(rt('lastPrice'))}: <b class="rc-tone${p.ok ? '' : ' amber'}">${esc(p.text)}</b></small></div>` : ''}
+        <p class="field-hint warn" id="rcIngWarn">${esc(warn)}</p>
         ${picking ? `<div class="stock-pick"><input id="rcIngStockSearch" class="stock-pick-input" type="search" autocomplete="off" dir="auto" placeholder="${esc(rt('searchStock'))}" value="${esc(query)}"><div class="stock-pick-list" role="listbox" id="rcIngStockList" aria-label="${esc(rt('stockItem'))}"></div></div>`
           : `<div class="stock-link-actions"><button type="button" class="btn btn-ghost" id="rcIngStockChange">${esc(rt('changeStock'))}</button></div>`}`;
       if(picking){ paintList(); const input = box.querySelector('#rcIngStockSearch'); input.oninput = ()=>{ query = input.value; paintList(); }; input.onkeydown = e=>{ if(e.key === 'Enter') e.preventDefault(); }; }
@@ -768,7 +771,7 @@ async function recipeUpload(file, id = recipeBook.id){
     if(!r.ok){ toast(r.data?.error === 'too_many_photos' ? rt('tooManyPhotos') : rt('photoFailed'), 'error'); return false; }
     toast(rt('photoAdded'));
     // The list's tile and the photos both come again (the first photo becomes the tile).
-    recipeBook.photos = null;
+    recipeBook.photos = null; recipeBook.raw = null;
     await recipeLoad();
     return true;
   }catch{ toast(rt('photoFailed'), 'error'); return false; }
@@ -802,7 +805,7 @@ async function recipePhotoDelete(id){
   const r = await api('recipes/' + recipeBook.id + '/photos/' + id, {method:'DELETE'});
   if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
   toast(rt('photoDeleted'));
-  recipeBook.photos = null;
+  recipeBook.photos = null; recipeBook.raw = null;
   recipeLoad();
 }
 function recipePhotoMenu(el){
@@ -914,7 +917,7 @@ function recipePricesDraw(){
 function recipePricesBar(){
   const p = recipeBook.prices, busy = recipeBook.pricesBusy || !!p?.state;
   const when = p?.at ? rt('pricesAt')(timeAgo(p.at)) : p ? rt('pricesNever') : '';
-  return `<div class="rc-prices" id="rcPricesBar"><span class="rc-prices-when" dir="auto">${esc(busy ? rt('pricesReading') : when)}</span>
+  return `<div class="rc-prices" id="rcPricesBar"><span class="rc-prices-when">${esc(busy ? rt('pricesReading') : when)}</span>
     <button type="button" class="rr-ctl" id="rcPrices" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? '<i class="rr-spin" aria-hidden="true"></i>' : ''}${esc(rt('pricesCheck'))}</button></div>`;
 }
 async function recipePricesCheck(){

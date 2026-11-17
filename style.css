@@ -3184,7 +3184,7 @@ html.rtl .rc-viewer-nav.prev svg{transform:scaleX(-1)}html.rtl .rc-viewer-nav.ne
 .rc-eline-cost b{font-weight:500}
 .rc-eline .rc-x{grid-area:x}
 .rc-qty{width:100%;min-width:90px;height:40px;padding:0 12px;border:1px solid transparent;border-radius:10px;background:var(--fill);color:var(--ink);font:inherit;font-size:1.0625rem;font-variant-numeric:tabular-nums;outline:none}
-html.rtl .rc-qty{text-align:right}
+html.rtl :is(.rc-qty,#rcPrice){text-align:right}
 .rc-qty:focus{border-color:var(--accent)}
 .rc-unit .sel-btn,.rc-unit select{min-height:40px;height:40px;padding:0 12px;border-radius:10px;font-size:.9375rem}
 .rc-x{flex:none;width:32px;height:32px;border:0;border-radius:50%;background:var(--fill);color:var(--ink-soft);display:grid;place-items:center}

@@ -16,8 +16,8 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  if(process.env.RECIPE_UI_FAST&&(width!==1440||lang!=='en'))continue;
  const first=width===1440&&lang==='en',shot=async n=>{await page.screenshot({path:path.join(out,`${n}-${lang}-${width}.png`),animations:'disabled'});};
  const context=await browser.newContext({viewport:{width,height:1000},reducedMotion:'reduce',serviceWorkers:'block',hasTouch:width<600}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
- const egg='00000000-0000-4000-8000-000000000001',flour='00000000-0000-4000-8000-000000000002',day=new Date().toISOString().slice(0,10);
- const book={recipes:[],ingredients:[{id:egg,name:'Eggs',stock_item:'Eggs',unit:'pcs',category:'Dairy',version:1},{id:flour,name:'Flour',stock_item:'Flour',unit:'g',category:'',version:1}],units:[{id:'pcs',en:'pcs'},{id:'g',en:'g'},{id:'ml',en:'ml'}],
+ const egg='00000000-0000-4000-8000-000000000001',flour='00000000-0000-4000-8000-000000000002',cakes='00000000-0000-4000-8000-0000000000c1',day=new Date().toISOString().slice(0,10);
+ const book={recipes:[],categories:[{id:cakes,name:'Cakes',color:'butter',sort:1}],ingredients:[{id:egg,name:'Eggs',stock_item:'Eggs',unit:'pcs',category:'Dairy',version:1},{id:flour,name:'Flour',stock_item:'Flour',unit:'g',category:'',version:1}],units:[{id:'pcs',en:'pcs'},{id:'g',en:'g'},{id:'ml',en:'ml'}],
   stock:[{name:'Eggs',base:'pcs',count:null,buy:null,state:'ok'},{name:'Flour',base:'g',count:null,buy:null,state:'ok'},{name:'Milk',base:'ml',count:null,buy:null,state:'ok'}],
   prices:{Eggs:{perBase:250,base:'pcs',currency:'IQD',day,supplier:'Farm',unit:'pcs',cost:250},Milk:{perBase:2,base:'ml',currency:'IQD',day,supplier:'Dairy',unit:'L',cost:2000}},pricesReady:true,stockAt:new Date().toISOString(),marginMin:60,covers:{},alerts:[]};
  const access={roles:['order','recipes','history','manage'],yunis:['history'],ahmad:[]},settingsPuts=[],deleted=[];
@@ -31,6 +31,7 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
   else if(p==='minibar')data={items:[{id:'i1',name:'Banana',stock:{qty:12,unit:'kg',empty:false,level:'ok'}},{id:'i2',name:'Almarai Milk',stock:{qty:0,unit:'carton',empty:true,level:'empty'}}],at:new Date().toISOString(),picked:2};
   else if(/^recipes\/[^/]+\/photos$/.test(p))data=[];
   else if(p.startsWith('recipe-ingredients/')&&req.method()==='PUT'){const b=req.postDataJSON();data={id:p.split('/')[1],...b,version:b.version+1};const i=book.ingredients.findIndex(x=>x.id===data.id);if(i<0)book.ingredients.push(data);else book.ingredients[i]=data;}
+  else if(p.startsWith('recipe-ingredients/')&&req.method()==='DELETE'){const id=p.split('/')[1];const users=book.recipes.filter(r=>r.data.lines.some(l=>l.ingredient===id)).map(r=>r.name);if(users.length){await route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({error:'ingredient_in_use',recipes:users})});return;}deleted.push(id);book.ingredients=book.ingredients.filter(x=>x.id!==id);}
   else if(p.startsWith('recipes/')&&req.method()==='DELETE'){const id=p.split('/')[1];deleted.push(id);book.recipes=book.recipes.filter(x=>x.id!==id);}
   else if(p.startsWith('recipes/')&&req.method()==='PUT'){const b=req.postDataJSON();await new Promise(r=>setTimeout(r,900));data={id:p.split('/')[1],...b,version:b.version+1,updated_by:'ahmad',updated_at:new Date().toISOString()};const i=book.recipes.findIndex(x=>x.id===data.id);if(i<0)book.recipes.push(data);else book.recipes[i]=data;}
   await route.fulfill({contentType:'application/json',body:JSON.stringify(data)}).catch(()=>{});});
@@ -63,10 +64,16 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
   // A new item: no category; its last price shows when the stock item is chosen; only that stock item's units.
   await page.locator('#rcIngredientNew').click();await page.locator('#rcIngName').fill('Milk');
   assert.equal(await page.locator('[data-rc-icat]').count(),0,'no category picker');
-  await page.locator('#rcIngStock').selectOption('Milk');await page.locator('#rcIngPrice b').waitFor();
-  assert.match(await page.locator('#rcIngPrice').innerText(),/2,000/,'1 L = 2,000 IQD');
+  // The stock item is picked from a search: the best match for the typed name is offered first, one tap links it.
+  assert.equal(await page.locator('#rcIngStock').count(),0,'no long dropdown of stock items');
+  await page.locator('#rcIngStockList [data-rc-stock="Milk"]').click();await page.locator('.rc-stock-field .stock-link-now').waitFor();
+  assert.match(await page.locator('.rc-stock-field .stock-link-now').innerText(),/2,000/,'1 L = 2,000 IQD');
+  await page.locator('#rcIngStockChange').click();await page.locator('#rcIngStockSearch').fill('fl');
+  assert.deepEqual(await page.locator('#rcIngStockList [data-rc-stock]').evaluateAll(b=>b.map(x=>x.dataset.rcStock)),['Flour'],'searching finds any stock item');
+  await page.locator('#rcIngStockSearch').fill('');await page.locator('#rcIngStockList [data-rc-stock="Milk"]').click();
   assert.deepEqual(await page.locator('#rcIngUnit option:not([disabled])').evaluateAll(o=>o.map(x=>x.value)),['ml'],'only the units Milk comes in');
   assert.equal(await page.locator('#rcIngUnit').inputValue(),'ml');
+  assert.equal(await page.locator('.rc-items-page .rc-irow .rc-letter-sm, .rc-items-page .rc-pic').count(),0,'items have no letter tiles');
   await shot('ingredient-form');
   await page.locator('#modalFormOk').click();await page.waitForFunction(()=>!document.querySelector('.modal-overlay'));
   const milk=book.ingredients.find(i=>i.name==='Milk');assert.equal(milk.category,'');assert.equal(milk.stock_item,'Milk');assert.equal(milk.unit,'ml');
@@ -74,11 +81,16 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  // A new recipe: name, a new group typed by Ahmad, menu price, items from the sheet, steps; Done at the bottom.
  await page.locator('.navbtn[data-view="recipes"]').click();await page.locator('#rcNew').click();await page.locator('#rcName').fill('Vanilla cake');
  for(const gone of ['[data-rc-field="yield"]','[data-rc-field="prep"]','[data-rc-status]','[data-rc-up]','[data-rc-stepup]','#rcEditPhoto'])assert.equal(await page.locator(gone).count(),0,gone+' is not in the form');
- assert.equal(await page.locator('[data-rc-cat]').count(),0,'no ready-made groups');
- await page.locator('#rcNewGroup').fill('Cakes');
+ // The category comes from the prepared list: nothing to type.
+ assert.equal(await page.locator('#rcNewGroup, input[name="category"]').count(),0,'no typed categories');
+ assert.equal(await page.locator('#rcCategory option').count(),2,'No category, and the prepared ones');
+ assert.equal(await page.locator('#rcCategory option[value="'+cakes+'"]').count(),1,'Cakes is offered');
+ await page.evaluate(id=>{const s=document.getElementById('rcCategory');s.value=id;s.dispatchEvent(new Event('change',{bubbles:true}));},cakes);
  await page.locator('#rcPrice').fill('1000');
  await page.locator('#rcAddLine').click();await page.locator(`.rc-pick-sheet [data-rc-pick="${egg}"]`).click();await page.locator('[data-rc-qty="0"]').waitFor();
  assert.deepEqual(await page.locator('[data-rc-unit="0"] option:not([disabled])').evaluateAll(o=>o.map(x=>x.value)),['pcs'],'eggs only in pieces');
+ assert.equal(await page.locator('.rc-editor input[type="number"]').count(),0,'no up and down arrows anywhere');
+ const qtyBox=await page.locator('[data-rc-qty="0"]').boundingBox();assert.ok(qtyBox.width>=90,'the amount box is wide enough to read: '+qtyBox.width);
  await page.locator('[data-rc-qty="0"]').fill('2');
  assert.match(await page.locator('[data-rc-linecost="0"]').innerText(),/500/,'2 eggs at the last price of 250 IQD');
  await page.locator('[data-rc-step="0"]').fill('Beat the eggs.');
@@ -88,10 +100,10 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  await page.locator('#rcDone').click();await page.locator('#rcEdit').waitFor();
  assert.equal(book.recipes.length,1);const saved=book.recipes[0];assert.equal(saved.data.lines[0].ingredient,egg);assert.equal(saved.data.lines[0].qty,2);
  assert.deepEqual(Object.keys(saved.data).sort(),['category','currency','lines','notes','price','steps'],'only what the form has');
- assert.equal(saved.data.price,1000);assert.equal(saved.data.category,'Cakes','the group he typed is saved');
+ assert.equal(saved.data.price,1000);assert.equal(saved.data.category,cakes,'the category picked from the list is saved');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'no horizontal overflow');
  assert.match(await page.locator('.rc-money').innerText(),/500/,'the recipe costs 500 IQD');
- assert.equal(await page.locator('.rc-line-name').first().innerText(),'Eggs','the item name shows once');
+ assert.equal(await page.locator('.rc-detail .rc-li-main>span').first().innerText(),'Eggs','the item name shows once');
  assert.equal(await page.locator('#rcCook, [data-rc-cook]').count(),0,'no Cooking view');
  await shot('detail');
  // See how it adds up: each item's working, the total and the rounding.
@@ -102,19 +114,31 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  await page.locator('#rcEdit').click();await page.locator('#rcAddLine').click();await page.locator(`.rc-pick-sheet [data-rc-pick="${flour}"]`).click();await page.locator('[data-rc-qty="1"]').fill('100');
  await page.waitForTimeout(1200);await page.locator('#rcDone').click();await page.locator('#rcEdit').waitFor();
  assert.equal(book.recipes[0].data.lines[1].qty,100,'Done waits for the save on its way');
- assert.equal(await page.locator('.rc-money .rc-ring').count(),0,'no profit without every price');
- assert.match(await page.locator('.rc-money-missing').innerText(),/Flour/,'the note names the item without a price');
+ assert.equal(await page.locator('.rc-money .rc-margin').count(),0,'no profit without every price');
+ assert.match(await page.locator('.rc-missing').innerText(),/Flour/,'the note names the item without a price');
  await shot('detail-missing');
  // Back to the list: grouped by his groups; the card says which price is missing; hold or right-click deletes.
- await page.locator('#rcBack').click();const row=page.locator('.rc-tile[data-rc-open]').first();await row.waitFor();
- assert.match(await page.locator('.rc-group-head h2').first().innerText(),/Cakes/,'the list is grouped by his groups');
+ // An item a recipe uses can't be deleted: the message names the recipe.
+ await page.locator('.navbtn[data-view="recipeItems"]').click();const eggRow=page.locator(`[data-rc-ingredient="${egg}"]`);await eggRow.waitFor();await page.waitForTimeout(600);
+ if(width<600){const b=await eggRow.boundingBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();await page.waitForTimeout(700);await page.mouse.up();}else await eggRow.click({button:'right'});
+ await page.locator('.ctx-menu [data-ctx="delete"]').click();await page.locator('.modal-alert').waitFor();
+ assert.match(await page.locator('.modal-alert').innerText(),/Vanilla cake/,'says which recipe uses it');await page.locator('#modalAlertOkBtn').click();
+ assert.ok(book.ingredients.some(i=>i.id===egg),'still there');
+ await page.locator('.navbtn[data-view="recipes"]').click();await page.waitForTimeout(400);if(await page.locator('#rcBack').count())await page.locator('#rcBack').click();const row=page.locator('[data-rc-open]').first();await row.waitFor();
+ assert.match(await page.locator('.rc-group .section-title').first().innerText(),/Cakes/i,'the list is grouped by category');
+ assert.equal(await page.locator('[data-rc-open] .rc-pic.tinted').count(),1,'the category colour behind the picture');
  assert.match(await row.innerText(),/Flour/);await shot('list');
  if(first){await page.evaluate(()=>{state.settings.darkMode='off';applyFeatures();});await shot('list-light');}
  if(width<600){const b=await row.boundingBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();await page.waitForTimeout(700);await page.mouse.up();}
  else await row.click({button:'right'});
  await page.locator('.ctx-menu [data-ctx="delete"]').waitFor();await shot('menu');
  await page.locator('.ctx-menu [data-ctx="delete"]').click();await page.locator('#modalOkBtn').click();
- await page.waitForFunction(()=>!document.querySelector('.rc-tile[data-rc-open]'));assert.deepEqual(deleted,[saved.id],'deleted on the server');
+ await page.waitForFunction(()=>!document.querySelector('[data-rc-open]'));assert.deepEqual(deleted,[saved.id],'deleted on the server');
+ // No recipe uses Eggs any more: now it can be deleted.
+ await page.locator('.navbtn[data-view="recipeItems"]').click();await eggRow.waitFor();await page.waitForTimeout(600);
+ if(width<600){const b=await eggRow.boundingBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();await page.waitForTimeout(700);await page.mouse.up();}else await eggRow.click({button:'right'});
+ await page.locator('.ctx-menu [data-ctx="delete"]').click();await page.locator('#modalOkBtn').click();
+ await page.waitForFunction(id=>!document.querySelector(`[data-rc-ingredient="${id}"]`),egg);assert.deepEqual(deleted,[saved.id,egg],'unused now, so it is deleted');
  // Stock: the items Rozh picked, A to Z, the amount in Main Storage, and a search box.
  await page.locator('.navbtn[data-view="minibar"]').click();await page.locator('.mb-row').first().waitFor();
  assert.deepEqual(await page.locator('.mb-name').allInnerTexts(),['Almarai Milk','Banana'],'A to Z');
@@ -133,5 +157,5 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  await shot('settings');
  if(first){await page.evaluate(()=>{lset('apiSession',{...apiSession(),account:'rozha'});state.account='rozha';state.name='Rozh';state.views=['order','recipes','admin','settings'];state.tabs=['order','recipes','admin'];state.view='admin';state.adminPage='access';resetAdmin();render();});await page.locator('[data-access-person="ahmad"]').waitFor({timeout:10000});await page.locator('[data-access-person="ahmad"]').click();assert.equal(await page.locator('[data-access-person="ahmad"]').getAttribute('aria-pressed'),'true');await page.locator('[data-role="manage"]').check();await page.waitForFunction(()=>adminData.roles?.data?.ahmad?.includes('manage'));assert.deepEqual(access.ahmad,['manage']);assert.deepEqual(access.yunis,['history']);await page.evaluate(()=>{adminFilter.person='ahmad';state.adminPage='person';render();});assert.equal(await page.locator('[data-pin-change="ahmad"]').count(),1);}
  assert.deepEqual(errors,[]);await context.close();}
- console.log('Recipes UI PASS: Ahmad sees Recipes, Items and Stock tabs, the tour once, items A to Z with last prices and only their own units, his own groups, Done at the end, costs to the nearest 250 IQD with the working, no cost while a price is missing, delete from the hold menu, his Stock list, his own Settings, EN/KU/AR at phone and desktop widths');
+ console.log('Recipes UI PASS: Ahmad sees Recipes, Items and Stock tabs, the tour once, items A to Z with last prices and only their own units, a stock item picked by search, categories from a list with their colour, no number arrows, an item in use not deleted (the message names the recipe), Done at the end, costs to the nearest 250 IQD with the working, no cost while a price is missing, delete from the hold menu, his Stock list, his own Settings, EN/KU/AR at phone and desktop widths');
 }finally{await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);process.exit(1);});
