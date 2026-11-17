@@ -1495,6 +1495,7 @@ html.dark .ad-tile.green{background:#1F7A4D}
 .ad-health.bad .ad-health-value>span{color:var(--clay-ink);font-weight:600}
 .ad-person{display:flex;align-items:flex-start;gap:12px;margin:0 4px 6px}
 .ad-person p{margin:0;font-size:.875rem;line-height:1.45;color:var(--ink-soft)}
+.pill-seg+.ad-person{margin-top:12px}
 .ad-switches{padding-block:6px}
 /* The screen's symbol beside each switch: a centred square, not one of the row's text lines. */
 .preference-row .ad-switch-icon{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--fill);color:var(--tint)}
@@ -2328,7 +2329,8 @@ button.adh-row{cursor:pointer}
 .ad-intro{margin:6px 0 0;font-size:.9375rem;line-height:1.45;color:var(--ink-soft);max-width:640px}
 .ad-stats.two{grid-template-columns:repeat(2,minmax(0,1fr))}
 .ad-more{margin-top:14px;border-top:.5px solid var(--line);padding-top:10px}
-@media (min-width:960px){.adh-status,.adh-list,.adh-card,.ad-status,.admin-page .ad-group{max-width:720px}}
+/* On a computer Admin is one calm column, as wide as Settings. */
+@media (min-width:960px){#adminSlot{max-width:720px}}
 .ad-srv-card{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px}
 .ad-srv{display:flex;flex-direction:column;gap:6px}
 .ad-srv-label{font-size:.8125rem;color:var(--ink-soft)}

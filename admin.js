@@ -266,7 +266,7 @@ function renderAdminHome(){
     const mine = state.devices.filter(d=>d.account === a && isLoggedIn(d));
     const activeNow = mine.find(d=>deviceStatus(d) === 'active');
     const lastSeen = mine.map(d=>d.lastSeen).filter(Boolean).sort().pop();
-    const where = activeNow ? t('adUsingNow')(deviceParts(activeNow).kind) : lastSeen ? t('adLastUsed')(timeAgo(lastSeen)) : t('adNotSignedIn');
+    const where = activeNow ? t('adUsingNow')('\u2068' + deviceParts(activeNow).kind + '\u2069') : lastSeen ? t('adLastUsed')(timeAgo(lastSeen)) : t('adNotSignedIn');
     const name = accountLabel(a);
     return `<button type="button" class="adh-row adh-person" data-admin-person="${a}"><span class="adh-avatar${activeNow ? ' on' : ''}" aria-hidden="true">${esc(name.trim().charAt(0).toUpperCase())}</span><span class="adh-main"><b>${esc(name)}</b><small>${esc([where, usage ? t('adTodayTime')(fmtDuration(p?.today || 0)) : ''].filter(Boolean).join(' · '))}</small></span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
   };
@@ -557,7 +557,7 @@ function renderAdminAccess(){
     return `<label class="check-row preference-row ad-switch">${icon ? `<span class="ad-switch-icon" aria-hidden="true">${icon}</span>` : ''}<input type="checkbox" data-role="${role}" ${on.has(role) && !needsManage ? 'checked' : ''} ${needsManage ? 'disabled' : ''}><span>${esc(t('role_' + role))}<small>${esc(needsManage ? t('roleNeedsManage') : t('role_' + role + 'Hint'))}</small></span></label>`;
   };
   return `${adminHeading()}
-    <div class="pill-seg"><button type="button" class="pill-seg-btn" aria-pressed="${target === 'yunis'}" data-access-person="yunis">Yunis</button><button type="button" class="pill-seg-btn" aria-pressed="${target === 'ahmad'}" data-access-person="ahmad">Ahmad</button></div><section class="ad-person">${whoBadge(target)}<p>${esc(target === 'ahmad' ? t('recipe_accessIntro') : t('accessIntro'))}</p></section>
+    <div class="pill-seg"><button type="button" class="pill-seg-btn" aria-pressed="${target === 'yunis'}" data-access-person="yunis">Yunis</button><button type="button" class="pill-seg-btn" aria-pressed="${target === 'ahmad'}" data-access-person="ahmad">Ahmad</button></div><section class="ad-person"><p>${esc(target === 'ahmad' ? t('recipe_accessIntro') : t('accessIntro'))}</p></section>
     <div class="section-title">${esc(t('accessScreens'))}</div>
     <div class="form-card ad-switches"><label class="check-row preference-row ad-switch"><span class="ad-switch-icon" aria-hidden="true">${NAV_ICONS.order}</span><input type="checkbox" checked disabled><span>${esc(target === 'ahmad' ? t('recipesTitle') : t('order'))}<small>${esc(t('recipeAlways'))}</small></span></label>${[[target === 'ahmad'?'order':'recipes',NAV_ICONS.recipes],...ACCESS_SCREENS].map(([role, icon])=>row(role, icon)).join('')}</div>
     <div class="section-title">${esc(t('accessActions'))}</div>

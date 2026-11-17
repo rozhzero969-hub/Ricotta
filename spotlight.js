@@ -50,7 +50,7 @@ function spotCommands(){
     {id:'report', icon:ICON_REPORT, label:t('reportProblem'), words:['report problem bug help'], run:()=>openReportProblem()},
     {id:'shortcuts', icon:ICON_KEYBOARD, label:t('keyboardShortcuts'), words:['keyboard shortcuts keys'], run:()=>openShortcuts()},
     {id:'privacy', icon:ICON_SHIELD, label:t('privacyPolicy'), words:['privacy policy data'], run:()=>{ location.href = privacyHref(); }},
-    ...(isRozha() ? ADMIN_PAGES.map(p=>({id:'admin-' + p, icon:NAV_ICONS.admin, label:t('adminPage_' + p), sub:t('adminTitle'), words:['admin ' + p], run:()=>{ goView('admin'); openAdminPage(p); }})) : []),
+    ...(isRozha() ? ADMIN_PAGES.filter(p=>p !== 'person').map(p=>({id:'admin-' + p, icon:NAV_ICONS.admin, label:t('adminPage_' + p), sub:t('adminTitle'), words:['admin ' + p], run:()=>{ goView('admin'); openAdminPage(p); }})) : []),
     {id:'signout', icon:ICON_LOGOUT, label:t('logout'), words:['sign out log out exit'], run:()=>doLogout()},
   ];
   return list.filter(c=>!c.when || c.when());

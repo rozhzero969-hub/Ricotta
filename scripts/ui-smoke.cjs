@@ -472,13 +472,13 @@ const server=http.createServer((req,res)=>{
     // Apple's rule 5.1.2: before anything goes to an AI service, Rico says where it goes and asks.
     await page.evaluate(()=>localStorage.removeItem('ricottaOrders:aiConsent2:rozha'));
     const chatsBefore=calls.filter(c=>c.endpoint==='assistant/chat').length;
-    await page.locator('[data-rico-action="late_orders"]').click();
+    await page.locator('#ricoChips .rico-chip').first().click();
     await page.locator('.modal-alert-title').waitFor();
     assert.match(await page.locator('.modal-alert').textContent(),/Google Gemini or Groq/,'the permission names the AI services');
     await page.locator('#modalCancelBtn').click();
     await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal-overlay'));
     assert.equal(calls.filter(c=>c.endpoint==='assistant/chat').length,chatsBefore,'Not Now sends nothing to the AI');
-    await page.locator('[data-rico-action="late_orders"]').click();
+    await page.locator('#ricoChips .rico-chip').first().click();
     await page.locator('#modalOkBtn').click();
     for(let i=0;i<200 && calls.filter(c=>c.endpoint==='assistant/chat').length<=chatsBefore;i++) await page.waitForTimeout(25);
     assert.ok(calls.filter(c=>c.endpoint==='assistant/chat').length>chatsBefore,'Allow sends the question to Rico');
