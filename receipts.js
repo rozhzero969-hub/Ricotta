@@ -5,6 +5,13 @@
    that was sent (Rico's photo to approve, or the saved receipt with its finance number). Names are the
    exact ones Rico read from Ricotta Restaurant; the rules are shared with the API (RicottaReceipts). */
 const rr = {data:null, loading:false, page:'edit', id:null, formId:null, saveTimer:0, photos:{}, sending:false, filter:{src:'all'}, fresh:false};
+/* Signing out keeps nothing of that account on the screen: its drafts stay on this device under its own
+   name (rrKeepDrafts) and come back when it signs in again, never into the next person's list. */
+function rrReset(){
+  clearTimeout(rr.saveTimer);
+  Object.assign(rr, {data:null, loading:false, loadAgain:false, page:'edit', id:null, formId:null, saveTimer:0, photos:{}, sending:false, filter:{src:'all'}, fresh:false,
+    copyAt:null, failed:false, netDown:false, asking:false, typingLine:null, tg:null, tgLoading:false});
+}
 const rrNum = (n, d = 0)=> Number(n || 0).toLocaleString('en-US', {maximumFractionDigits:d});
 const rrMoney = (n, cur)=> cur === 'USD' ? '$' + rrNum(n, 3) : 'IQD ' + rrNum(n, 3);
 /* A unit as Ricotta Restaurant shows it: the size written "(×1000)" (the value stays "(1000×)"). */

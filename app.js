@@ -629,7 +629,8 @@ window.addEventListener('appinstalled',()=>{
 document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
 /* Clears this device's sign-in and returns to the PIN pad. */
 function signOut(reason, {preserveSession = false} = {}){
-  recipeReset(); minibarReset();
+  recipeReset(); minibarReset(); rrReset(); tfReset();
+  stk.data = null; stk.failed = false;
   liveStop();
   if(state.account) lset('bootCache:' + state.account, null);   // the kitchen's data does not stay on a signed-out phone
   resetSharedDraft(); state.sharedDraft=null;

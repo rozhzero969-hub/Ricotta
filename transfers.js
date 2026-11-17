@@ -6,6 +6,12 @@
    and Rico (RicottaTransfers). Stock is Ricotta Restaurant's, as Rico last read it, and Rico checks the
    live stock again on their page right before moving. */
 const tf = {data:null, loading:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false, lastFrom:null, failed:false};
+/* Signing out keeps nothing of that account on the screen (see rrReset). */
+function tfReset(){
+  clearTimeout(tf.saveTimer);
+  Object.assign(tf, {data:null, loading:false, loadAgain:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false, lastFrom:null,
+    failed:false, copyAt:null, netDown:false, asking:false});
+}
 const TF = ()=> globalThis.RicottaTransfers;
 const tfFind = id=> tf.data?.transfers.find(r=>r.id === id) || null;
 const tfItem = name=> (tf.data?.catalog?.titems || []).find(i=>i.name === name) || null;

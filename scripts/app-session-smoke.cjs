@@ -92,7 +92,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
     rowPress:null, toastTimer:null, reminderDraft:{time:'09:00'},
     viewMemory:new Map(), tabMemory:new Map(), diagnosticState:{}, drafts:{}, listeners:{}, modalResets:0, streamResets:0, liveStops:0, sessionClears:0,
     document:{getElementById:()=>null}, clearTimeout:()=>{},
-    recipeReset:()=>{}, minibarReset:()=>{}, ricoReset:()=>crossTab.streamResets++, liveStop:()=>crossTab.liveStops++, resetAdmin:()=>{},
+    recipeReset:()=>{}, minibarReset:()=>{}, rrReset:()=>crossTab.workResets.push('receipts'), tfReset:()=>crossTab.workResets.push('transfers'), workResets:[], stk:{data:{items:['old stock']}, failed:true}, ricoReset:()=>crossTab.streamResets++, liveStop:()=>crossTab.liveStops++, resetAdmin:()=>{},
     stopStepHold:()=>{}, dismissAllModals:()=>crossTab.modalResets++,
     closeSelSheet:()=>{}, closeContextMenu:()=>{}, closeLangMenu:()=>{},
     window:{addEventListener:(name,handler)=>{crossTab.listeners[name]=handler;}},
@@ -120,6 +120,9 @@ const json = value=>JSON.parse(JSON.stringify(value));
   assert.equal(crossTab.state.queue,null);
   assert.equal(crossTab.state.pinError,'session');
   assert.equal(crossTab.modalResets,1); assert.equal(crossTab.streamResets,1); assert.equal(crossTab.liveStops,1,'signing out ends the live-changes wait');
+  // Receipts, Transfers and Stock keep nothing of the account that left (its drafts stay on the device under its own name).
+  assert.deepEqual(crossTab.workResets,['receipts','transfers'],'Receipts and Transfers start empty for the next person');
+  assert.equal(crossTab.stk.data,null,'Stock starts empty for the next person'); assert.equal(crossTab.stk.failed,false);
   crossTab.state.account='yunis'; crossTab.state.cart={i2:3}; crossTab.session=null;
   crossTab.listeners.storage({key:'ricottaOrders:apiSession',oldValue:JSON.stringify(nextSession),newValue:null});
   assert.equal(crossTab.state.account,null,'logout in another tab clears this workspace');
