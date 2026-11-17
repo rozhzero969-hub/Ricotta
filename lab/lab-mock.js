@@ -270,7 +270,17 @@
     const wantsOrder = /order|prepar|suggest|usual|داواکاری|ئامادە|طلب|جهز|veg|tomato/.test(q) || body.quickAction;
     const pid = k=>k+Date.now().toString(36);
     const inMatch = q.match(/in (\d+) ?(second|sec|minute|min)/);
-    if(inMatch){
+    // "Where is dark mode?", "How do I change my PIN?": the same app map Rico's find_in_app searches,
+    // filtered by what this account can use, and a button that takes them there.
+    const findsPlace = /\bwhere\b|how do i|how can i|turn (on|off)|\bsetting|dark mode|کوێ|چۆن|ڕێکخستن|أين|كيف|إعداد/.test(q);
+    if(findsPlace){
+      const M = globalThis.RicottaAppMap, found = M ? M.find(q, {account, roles:rolesOf(account)}, 3) : [];
+      if(found.length){
+        const p = found[0];
+        say('calm', `It is in ${M.pathOf(p, 'en')}. Tap the button to go there.`, `ئەمە لە «${M.pathOf(p, 'ku')}» دایە. دوگمەکە دابگرە بۆ ئەوەی بچیتە ئەوێ.`, `إنه في «${M.pathOf(p, 'ar')}». اضغط الزر للذهاب إليه.`);
+        events.push({type:'proposal', proposal:{id:pid('o'), kind:'open', screen:p.go.view || 'settings', place:p.id}});
+      } else say('calm', 'I couldn’t find that in the app for you.', 'ئەوەم لە ئەپەکەدا بۆت نەدۆزییەوە.', 'لم أجد ذلك في التطبيق لك.');
+    } else if(inMatch){
       const secs = Number(inMatch[1]) * (/^min/.test(inMatch[2]) ? 60 : 1), at = new Date(Date.now() + secs * 1000);
       db.routines ||= [];
       db.routines.push({id:crypto.randomUUID(), account, kind:'remind', text:'Do the transfers', supplierIds:[], time:at.toTimeString().slice(0,5), days:[0,1,2,3,4,5,6], enabled:true, lastRunDay:null, runAt:at.toISOString()});

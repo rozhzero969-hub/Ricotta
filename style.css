@@ -785,6 +785,8 @@ html.rtl .modal-banner-label{letter-spacing:0}
 .force-title{font-size:1.25rem;font-weight:700;margin-bottom:8px}
 #forceRoot .modal-overlay{z-index:400;background:rgba(0,0,0,.4)}
 #modalRoot .modal-overlay.over-sheet{z-index:310}
+/* A question asked from Rico's side menu shows above the menu, even while the menu slides away. */
+html.rico-drawer-on #modalRoot .modal-overlay{z-index:1001}
 .item-sort-hint{margin-bottom:12px;color:var(--ink-soft);font-size:.8125rem;line-height:1.5;font-weight:400}
 .item-sort-list{display:grid;gap:8px;max-height:min(56vh,540px);overflow-y:auto;overscroll-behavior:contain;padding:2px 3px 4px}
 .item-sort-row{display:grid;grid-template-columns:28px minmax(0,1fr) 40px;align-items:center;gap:10px;min-height:54px;padding:7px 9px;border:0;border-radius:14px;background:var(--fill)}
@@ -2278,70 +2280,70 @@ html.rtl .cf-list li{padding:9px 16px 9px 0}
 
 /* Admin home (approved 2026-11-12): a status line, Today with small bars, Needs you, Rico, People,
    Tools and Server. Plain white cards on the grey page, one green for "today", amber only for a look. */
-.adh-status{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-6px 0 14px}
-.adh-status p{margin:0;display:flex;align-items:center;gap:8px;font-size:.9375rem;color:var(--ink-soft)}
-.adh-status .ad-dot{flex:none}
+/* Admin's home (2026-11-17): one sentence on a card, then grouped rows like the iPhone's Settings. */
+.adh-status{display:flex;align-items:center;gap:14px;margin:0 0 6px;padding:16px;border-radius:var(--r-card);background:var(--surface)}
+.adh-status-ico{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--fill);color:var(--ink-soft)}
+.adh-status-ico svg{width:22px;height:22px}
+.adh-status.ok .adh-status-ico{background:rgba(var(--ok-rgb),.16);color:var(--ok-ink)}
+.adh-status.warn .adh-status-ico{background:rgba(255,149,0,.16);color:#B45309}
+.adh-status.bad .adh-status-ico{background:rgba(255,59,48,.14);color:var(--clay-ink)}
+.adh-status-text{flex:1;min-width:0}
+.adh-status-text h2{margin:0;font-size:1.25rem;font-weight:600;letter-spacing:-.01em;line-height:1.25}
+.adh-status-text p{margin:3px 0 0;font-size:.875rem;color:var(--ink-soft)}
+.adh-status .admin-refresh{align-self:center}
 .ad-dot.ok{background:var(--ok)}
 .ad-dot.warn{background:#FF9500}
 .ad-dot.bad{background:var(--red)}
-.adh-today{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));background:var(--surface);border-radius:var(--r-card);overflow:hidden}
-.adh-today-cell{display:flex;flex-direction:column;gap:6px;padding:14px;border:0;background:none;text-align:start;color:var(--ink);font:inherit;cursor:pointer;min-width:0}
-.adh-today-cell+.adh-today-cell{border-inline-start:.5px solid var(--line)}
-.adh-label{font-size:.8125rem;color:var(--ink-soft)}
-.adh-today-cell>b{font-family:var(--font-round);font-size:1.75rem;font-weight:700;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums}
-.adh-today-cell>b.zero{color:var(--ink-faint)}
-.adh-today-cell small{font-size:.75rem;color:var(--ink-soft);min-height:1em}
-.adh-spark{display:flex;align-items:flex-end;gap:3px;height:28px}
-.adh-spark i{flex:1;min-width:0;border-radius:2px;background:rgba(var(--accent-rgb),.28)}
-.adh-spark i.today{background:var(--accent-strong)}
-@media (max-width:700px){.adh-spark i:nth-child(-n+7){display:none}}
 .adh-list,.adh-card{background:var(--surface);border-radius:var(--r-card)}
-.adh-list+.adh-list{margin-top:12px}
-.adh-row{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:10px 14px;border:0;background:none;color:var(--ink);font:inherit;text-align:start;box-sizing:border-box}
+.adh-list{overflow:hidden}
+.adh-row{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;padding:9px 16px;border:0;background:none;color:var(--ink);font:inherit;text-align:start;box-sizing:border-box}
 button.adh-row{cursor:pointer}
 .adh-row+.adh-row{border-top:.5px solid var(--line)}
-.adh-ico{flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center}
+.adh-row .set-ico.adh-sq{align-self:center;margin-top:0;color:#fff}
+.adh-row .set-ico.adh-sq svg{width:18px;height:18px}
+.adh-ico{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center}
 .adh-ico svg{width:17px;height:17px}
-.adh-ico.warn{background:rgba(255,149,0,.14);color:#B45309}
 .adh-ico.gray{background:var(--fill);color:var(--ink-soft)}
 .adh-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.adh-main b{font-size:.9375rem;font-weight:500}
-.adh-main small{font-size:.8125rem;color:var(--ink-soft);overflow-wrap:anywhere}
-.adh-act{flex:none;height:32px;padding:0 12px;border:0;border-radius:9px;background:var(--fill);color:var(--ink);font:500 .875rem var(--font);cursor:pointer}
+.adh-main b{font-size:1rem;font-weight:500;line-height:1.3}
+.adh-main small{font-size:.8125rem;line-height:1.35;color:var(--ink-soft);overflow-wrap:anywhere}
+.adh-act{flex:none;min-height:34px;padding:0 14px;border:0;border-radius:999px;background:var(--fill);color:var(--tint);font:600 .875rem var(--font);cursor:pointer;white-space:nowrap}
 .adh-act.danger{color:var(--clay-ink)}
-.adh-val{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
-.adh-val b{font-size:.9375rem;font-weight:600;font-variant-numeric:tabular-nums}
-.adh-val small{font-size:.75rem;color:var(--ink-soft)}
-.adh-person .who-badge{flex:none}
+.adh-need .adh-act{background:rgba(var(--accent-rgb),.16)}
+.adh-acts{flex:none;display:flex;gap:6px}
+.adh-val{flex:none;max-width:40%;display:flex;flex-direction:column;align-items:flex-end;gap:1px;font-size:.9375rem;color:var(--ink-soft);text-align:end}
+.adh-val.alert{color:var(--clay-ink);font-weight:600}
+.adh-val small{font-size:.8125rem;color:var(--ink-soft)}
+.adh-num{font-size:1.0625rem;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.adh-avatar{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(180deg,#A5ABB8,#858994);color:#fff;font:600 .875rem var(--font-round);position:relative}
+.adh-avatar.on::after{content:'';position:absolute;inset-inline-end:-1px;bottom:-1px;width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 2px var(--surface)}
+.adh-row>.sheet-chevron{margin-inline-start:2px}
 .adh-card{display:block;width:100%;border:0;padding:14px;color:var(--ink);font:inherit;text-align:start;box-sizing:border-box}
-button.adh-card{cursor:pointer}
-.adh-rico-top{display:flex;align-items:center;gap:12px}
-.adh-rico-face{flex:none;width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:rgba(var(--accent-rgb),.14);color:var(--accent-strong)}
-.adh-rico-face svg{width:20px;height:20px}
 .adh-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:8px;margin-top:12px}
 .adh-stats>div{background:var(--surface-2);border-radius:10px;padding:10px}
 .adh-stats b{display:block;font-size:1.125rem;font-weight:600;font-variant-numeric:tabular-nums}
 .adh-stats span{display:block;font-size:.75rem;color:var(--ink-soft);margin-top:2px}
 .adh-card.adh-stats{margin-top:0;padding:8px}
-.adh-tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-@media (max-width:520px){.adh-tools{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.adh-tool{display:flex;flex-direction:column;gap:4px;min-height:88px;padding:12px;border:0;border-radius:14px;background:var(--surface);color:var(--ink);font:inherit;text-align:start;cursor:pointer}
-.adh-tool-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:auto}
-.adh-tool-ico{color:var(--ink-soft);display:grid}
-.adh-tool-ico svg{width:20px;height:20px}
-.adh-tool-val{font-size:.8125rem;color:var(--ink-soft)}
-.adh-tool-val.alert{color:#B45309;font-weight:600}
-.adh-tool-name{font-size:.9375rem;font-weight:500}
-.adh-tool small{font-size:.75rem;color:var(--ink-soft)}
+/* Each Admin page says in one line what it is for. */
+.ad-intro{margin:6px 0 0;font-size:.9375rem;line-height:1.45;color:var(--ink-soft);max-width:640px}
+.ad-stats.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ad-more{margin-top:14px;border-top:.5px solid var(--line);padding-top:10px}
+@media (min-width:960px){.adh-status,.adh-list,.adh-card,.ad-status,.admin-page .ad-group{max-width:720px}}
 .ad-srv-card{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px}
 .ad-srv{display:flex;flex-direction:column;gap:6px}
 .ad-srv-label{font-size:.8125rem;color:var(--ink-soft)}
 .ad-srv>b{font-size:1rem;font-weight:600}
 .ad-srv small{font-size:.75rem;color:var(--ink-soft);line-height:1.4}
-.adh-today-cell:focus-visible,.adh-tool:focus-visible,.adh-card:focus-visible,.adh-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-@media (hover:hover){.adh-today-cell:hover,button.adh-row:hover,.adh-tool:hover,button.adh-card:hover{background-color:var(--surface-2)}}
-.adh-today-cell:active,button.adh-row:active,.adh-tool:active,button.adh-card:active{transform:scale(.985);transition:transform .12s ease}
-@media (max-width:520px){.adh-dev{flex-wrap:wrap}.adh-dev .adh-main{flex:1 1 calc(100% - 44px)}.adh-dev .adh-act{flex:1}}
+.adh-row:focus-visible,.adh-act:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+@media (hover:hover){button.adh-row:hover{background-color:var(--surface-2)}}
+button.adh-row:active{background-color:var(--fill-strong);transition:background-color .1s ease}
+/* Something that needs Rozh, and a phone with two buttons, put their buttons on a line of their own on a phone. */
+@media (max-width:520px){.adh-need,.adh-dev{flex-wrap:wrap}.adh-need .adh-main,.adh-dev .adh-main{flex:1 1 calc(100% - 44px)}.adh-need .adh-act{margin-inline-start:42px}.adh-dev .adh-acts{flex:1 1 100%;padding-inline-start:42px}.adh-dev .adh-act{flex:1}}
+/* A place in the app Rico found: one button with what it is and where. */
+.rico-open.rico-place{display:flex;width:100%;max-width:420px;min-height:56px;padding:10px 14px;gap:12px;border-radius:16px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);color:var(--ink);text-align:start}
+.rico-place>svg{flex:none;width:20px;height:20px;color:var(--tint)}
+.rico-place>span{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;font-size:.9375rem;font-weight:500;line-height:1.3}
+.rico-place>span>small{margin:0;opacity:1;font-size:.75rem;font-weight:500;color:var(--ink-soft)}
 
 /* "Fix these first": the boxes it names are outlined in red until they are typed in. */
 .rr-field .sel-btn.bad,.rr-field select.bad{box-shadow:inset 0 0 0 1.5px var(--red)}
