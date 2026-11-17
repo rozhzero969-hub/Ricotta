@@ -6,6 +6,7 @@ import { monthStart } from "../_shared/month.ts";
 import { NO_RECEIPTS, NO_TRANSFERS, RICO_RR_MANUAL, RICO_RR_TOOLS, runRrTool } from "./rico-tools.ts";
 import { ricoRecipes } from "./recipes.ts";
 import { minibarStock } from "./minibar.ts";
+import { RECIPE_CATEGORY_MANUAL, RECIPE_CATEGORY_TOOLS, RECIPE_CATEGORY_TOOL_NAMES, runRecipeCategoryTool } from "./recipe-categories.ts";
 import { baghdadTime, cleanRoutine, MAX_ROUTINES, whenOnce, whenWords } from "../_shared/routines.ts";
 import { MEMORY_CAP, sameWords, saveMemory, saveRoutine } from "./rico-memory.ts";
 // Rico -- the Ricotta Orders AI assistant (server side).
@@ -869,6 +870,7 @@ const TOOLS = [
   { name: "minibar_stock", description: "Ahmad's Stock tab: the items Rozh picked for the minibar and how much of each is in Main Storage now (empty, low or ok), with when the stock was last read. Use it when Ahmad asks what is in Main Storage, what he can take, or whether something is there.",
     input_schema: { type: "object", properties: { query: { type: "string", description: "Optional: part of an item name" } } } },
   ...RICO_RR_TOOLS,
+  ...RECIPE_CATEGORY_TOOLS,
 ];
 const STATUS_TOOLS = new Set(TOOLS.map((t) => t.name));
 
@@ -916,7 +918,8 @@ WHAT YOU CAN DO NOW (never say you can't do one of these; only what CONTEXT says
 - Notifications: propose_notification with English, Kurdish and Arabic text, e.g. to remind the team about a late order.
 - Files: when someone asks for a PDF or Excel of receipts or transfers (a day's transfers, a day's receipts, a whole day, or one receipt by supplier or invoice), use make_file. If the day, the receipt or PDF/Excel isn't clear, ask in one short question; use find_rico_records to find the receipt (and ask which one if there are several). Then say the button is ready.
 ${RICO_RR_MANUAL}
-- Recipes: the recipe book Ahmad writes for the minibar (Rozh can open it too). It is two bottom tabs: Recipes (each in a group Ahmad makes himself, like Cakes or Smoothies, with a menu price, ingredients with amounts, steps and notes; listed by group, A to Z) and Items (every ingredient, A to Z, each linked to a stock item in Ricotta Restaurant with its last price paid per kg, gram, litre, ml or piece). Ahmad also has a Stock tab: the items Rozh picked for him, with how much is in Main Storage (use the minibar_stock tool). Every day at 3:30 PM Rico reminds Ahmad to get his minibar supplies from Main Storage. Use the recipes tool for any question about a recipe, its ingredients, steps, cost, profit or margin. The cost of making a recipe comes from the last price paid for each stock item; costs, profit and suggested prices are rounded to the nearest 250 IQD; a recipe with an ingredient that has no price yet has no cost, profit or margin, so say which ingredient is missing its price. Check all last prices (on Items and ingredients) asks Rico on the Mac to read the newest invoices now. Hold a recipe or ingredient (right-click on a computer) to edit or delete it. "Where do these numbers come from?" on a recipe shows the working.
+${RECIPE_CATEGORY_MANUAL}
+- Recipes: the recipe book Ahmad writes for the minibar (Rozh can open it too). It is two bottom tabs: Recipes (each in a category from a prepared list, like Cakes or Smoothies, with a menu price, ingredients with amounts, steps and notes; listed by group, A to Z) and Items (every ingredient, A to Z, each linked to a stock item in Ricotta Restaurant with its last price paid per kg, gram, litre, ml or piece). Ahmad also has a Stock tab: the items Rozh picked for him, with how much is in Main Storage (use the minibar_stock tool). Every day at 3:30 PM Rico reminds Ahmad to get his minibar supplies from Main Storage. Use the recipes tool for any question about a recipe, its ingredients, steps, cost, profit or margin. The cost of making a recipe comes from the last price paid for each stock item; costs, profit and suggested prices are rounded to the nearest 250 IQD; a recipe with an ingredient that has no price yet has no cost, profit or margin, so say which ingredient is missing its price. Check all last prices (on Items and ingredients) asks Rico on the Mac to read the newest invoices now. Hold a recipe or ingredient (right-click on a computer) to edit or delete it. "Where do these numbers come from?" on a recipe shows the working.
 - Ahmad's account (the minibar): he sees Recipes, Items, his Stock tab, Rico (when Rozh gives it) and Settings only, never ordering, invoices, History or Admin. With Ahmad, talk only about recipes, his items, his minibar stock and the app, and never offer anything else. Keep it short and friendly; in Kurdish use everyday Sorani.
 - Guide people through the app and use open_screen for a one-tap shortcut. Yunis's account has no Admin screen, so never offer it to Yunis.
 - A proposal only shows a card; the person must tap to confirm. After proposing, say in one sentence what the card does. Never claim something was saved, added or sent until the conversation shows it was confirmed ("[card ... : applied]").
@@ -1844,11 +1847,12 @@ const TRANSFER_TOOLS = new Set(["low_stock", "stock_levels", "transfers_summary"
 const RR_TOOLS = new Set(RICO_RR_TOOLS.map((t) => t.name));
 // Ahmad's account is the recipe book: without Order or Manage he gets only the recipes, the app and his
 // own reminders and memories, never ordering, catalog, stock, invoices or files.
-const RECIPE_ONLY_TOOLS = new Set(["recipes", "minibar_stock", "save_rule", "remember", "set_reminder", "list_routines", "open_screen"]);
+const RECIPE_ONLY_TOOLS = new Set(["recipes", "recipe_categories", "minibar_stock", "save_rule", "remember", "set_reminder", "list_routines", "open_screen"]);
 async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto: boolean): Promise<unknown> {
   if (!STATUS_TOOLS.has(name)) return { error: "Unknown tool." };
   if (w.catalog === false && !RECIPE_ONLY_TOOLS.has(name)) return { error: "no_access", note: "This account is the recipe book only. Say briefly that you can help with recipes here." };
   if (name === "recipes") return w.can.recipes ? await ricoRecipes(db, a) : { error: "no_access", note: "This person has no Recipes access. Say so briefly." };
+  if (RECIPE_CATEGORY_TOOL_NAMES.has(name)) return w.can.recipes ? await runRecipeCategoryTool(db, w.account, a, emit) : { error: "no_access", note: "This person has no Recipes access. Say so briefly." };
   if (name === "minibar_stock") {
     if (w.account !== "ahmad" && w.account !== "rozha") return { error: "no_access", note: "The minibar stock list is Ahmad's. Say so briefly." };
     try {
