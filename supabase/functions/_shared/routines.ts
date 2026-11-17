@@ -164,8 +164,10 @@ async function runOne(db: any, deps: RunDeps, r: Routine, history: () => ReturnT
     if (r.kind === "remind" || r.kind === "ask") {
       // A question for Rico: the message holds it, and the app asks him with one tap ("Ask now").
       const ask = r.kind === "ask";
-      const words = ask ? { en: `Scheduled: ${r.text}`, ku: `خشتەکراو: ${r.text}`, ar: `مجدول: ${r.text}` }
-        : { en: `Reminder: ${r.text}`, ku: `بیرخستنەوە: ${r.text}`, ar: `تذكير: ${r.text}` };
+      // The person's own words kept as one piece, so an English question in a Kurdish line keeps its "?".
+      const said = iso(r.text);
+      const words = ask ? { en: `Scheduled: ${said}`, ku: `خشتەکراو: ${said}`, ar: `مجدول: ${said}` }
+        : { en: `Reminder: ${said}`, ku: `بیرخستنەوە: ${said}`, ar: `تذكير: ${said}` };
       await inbox(db, r.account, ask ? "routine_ask" : "routine", words, key, ask ? { question: r.text } : null);
       await deps.notify(r.account, words, `ricotta-${key}`);
       // A one-off reminder is done once it has come.

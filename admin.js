@@ -336,11 +336,11 @@ function openAdminGo(view, id){
   const tick = ()=>{ if(state.view !== view) return; if(find()) open(id); else if(--tries > 0) setTimeout(tick, 300); };
   tick();
 }
-/* The server's space as two bars, each with one plain sentence (on the App check page). */
 const adSize = b=> b >= 1073741824 ? (b / 1073741824).toFixed(2).replace(/\.?0+$/, '') + ' GB' : Math.max(1, Math.round(b / 1048576)) + ' MB';
+/* The server's space as two bars, each with one plain sentence (on the App check page). */
 function adMeter(label, used, limit, hint){
   const pct = Math.min(100, (used / limit) * 100), tone = pct >= 90 ? 'full' : pct >= 70 ? 'warn' : 'ok';
-  return `<div class="ad-srv"><span class="ad-srv-label">${esc(label)}</span><b dir="ltr">${esc(t('adSrvOf')(adSize(used), adSize(limit)))}</b>
+  return `<div class="ad-srv"><span class="ad-srv-label">${esc(label)}</span><b>${esc(t('adSrvOf')(ltrPiece(adSize(used)), ltrPiece(adSize(limit))))}</b>
     <div class="ad-srv-bar ${tone}" role="progressbar" aria-label="${esc(label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><i style="width:${Math.max(pct, used ? 1.5 : 0).toFixed(1)}%"></i></div>
     <small>${esc(hint)}</small></div>`;
 }
@@ -557,7 +557,7 @@ function renderAdminAccess(){
     return `<label class="check-row preference-row ad-switch">${icon ? `<span class="ad-switch-icon" aria-hidden="true">${icon}</span>` : ''}<input type="checkbox" data-role="${role}" ${on.has(role) && !needsManage ? 'checked' : ''} ${needsManage ? 'disabled' : ''}><span>${esc(t('role_' + role))}<small>${esc(needsManage ? t('roleNeedsManage') : t('role_' + role + 'Hint'))}</small></span></label>`;
   };
   return `${adminHeading()}
-    <div class="pill-seg"><button type="button" class="pill-seg-btn" aria-pressed="${target === 'yunis'}" data-access-person="yunis">Yunis</button><button type="button" class="pill-seg-btn" aria-pressed="${target === 'ahmad'}" data-access-person="ahmad">Ahmad</button></div><section class="ad-person"><p>${esc(target === 'ahmad' ? t('recipe_accessIntro') : t('accessIntro'))}</p></section>
+    <div class="pill-seg"><button type="button" class="pill-seg-btn" aria-pressed="${target === 'yunis'}" data-access-person="yunis">${esc(accountLabel('yunis'))}</button><button type="button" class="pill-seg-btn" aria-pressed="${target === 'ahmad'}" data-access-person="ahmad">${esc(accountLabel('ahmad'))}</button></div><section class="ad-person"><p>${esc(target === 'ahmad' ? t('recipe_accessIntro') : t('accessIntro'))}</p></section>
     <div class="section-title">${esc(t('accessScreens'))}</div>
     <div class="form-card ad-switches"><label class="check-row preference-row ad-switch"><span class="ad-switch-icon" aria-hidden="true">${NAV_ICONS.order}</span><input type="checkbox" checked disabled><span>${esc(target === 'ahmad' ? t('recipesTitle') : t('order'))}<small>${esc(t('recipeAlways'))}</small></span></label>${[[target === 'ahmad'?'order':'recipes',NAV_ICONS.recipes],...ACCESS_SCREENS].map(([role, icon])=>row(role, icon)).join('')}</div>
     <div class="section-title">${esc(t('accessActions'))}</div>
@@ -663,12 +663,16 @@ function renderAdminDevices(){
     const st = deviceStatus(d), isThis = d.id === state.deviceId, parts = deviceParts(d);
     const badge = ({active:t('statusActive'), idle:t('statusLoggedIn'), out:t('statusLoggedOut')})[st];
     const current = d.appVersion && versionCmp(d.appVersion, latest) >= 0;
-    const facts = [
+    // Two short lines (when it was seen and its version; its sign-in and notifications), so a dot
+    // never ends a line.
+    const line = list=>{ const l = list.filter(Boolean); return l.length ? `<p>${l.map(f=>`<span>${f}</span>`).join('')}</p>` : ''; };
+    const facts = line([
       d.lastSeen ? esc(t('devSeen')(timeAgo(d.lastSeen))) : '',
       d.appVersion ? `<span class="dev-ver ${current ? 'ok' : 'old'}">${esc(t(current ? 'versionCurrent' : 'versionOld'))}</span>` : esc(t('versionUnknown')),
+    ]) + line([
       d.sessionEnds ? esc(t(Date.parse(d.sessionEnds) > Date.now() ? 'devSignedInUntil' : 'devSignInEnded')(devDay(d.sessionEnds))) : '',
       esc(t(d.push ? 'devNotifOn' : 'devNotifOff')),
-    ].filter(Boolean).map(f=>`<span>${f}</span>`).join('');
+    ]);
     return `<div class="dev-card">
       <div class="dev-head">
         <span class="dev-ic">${/PC|Mac|Chromebook/.test(parts.kind) ? ICON_COMPUTER : ICON_MOBILE}</span>

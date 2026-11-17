@@ -69,7 +69,7 @@ async function aiConsent(){
 function ricoReset(){
   rico.epoch++; rico.chatRequest++;
   ricoStop(); clearTimeout(ricoSaveTimer);
-  rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.chatsBusy = false; rico.viewing = null; rico.viewedId = null;
+  rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.chatsBusy = false; rico.chatsFailed = false; rico.viewing = null; rico.viewedId = null;
   rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; rico.titleLoaded = false; rico.sideSearch = false; rico.sideQuery = '';
 }
 
@@ -77,6 +77,13 @@ function ricoReset(){
 function ricoSetInbox(list){ rico.inbox = Array.isArray(list) ? list : []; if(typeof ricoAutoFillRoutines === 'function') ricoAutoFillRoutines(); }
 function ricoUnread(){ return rico.inbox.filter(m=>!m.read).length; }
 function ricoInboxText(m){ return (state.lang === 'ku' ? m.ku : state.lang === 'ar' ? m.ar : m.en) || m.en; }
+/* A note as HTML: a scheduled question is the person's own words, kept as one piece (an English question
+   in a Kurdish line keeps its "?" at its end). */
+function ricoInboxHtml(m){
+  const text = String(ricoInboxText(m) || ''), q = typeof m.question === 'string' ? m.question : '';
+  const at = q ? text.lastIndexOf(q) : -1;
+  return at < 0 ? esc(text) : `${esc(text.slice(0, at))}<bdi>${esc(q)}</bdi>${esc(text.slice(at + q.length))}`;
+}
 /* Opening Rico reads his messages. */
 function ricoMarkInboxRead(){
   if(!ricoUnread()) return;
@@ -207,7 +214,7 @@ function ricoChatGroups(list){ return {pinned:list.filter(c=>c.pinned), rest:lis
 const ICON_RD_NEW = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V12"/><path d="M17.6 3.9a1.9 1.9 0 0 1 2.7 2.7L12.6 14.3l-3.4.7.7-3.4Z"/></svg>`;
 const RD_RECENT = 12;
 function ricoDrawerRows(){
-  if(!rico.chats) return loadingLines(5);
+  if(!rico.chats) return rico.chatsFailed ? `<p class="rd-empty">${esc(t('loadFailed'))}</p>` : loadingLines(5);
   const q = (rico.drawerQuery || '').trim().toLocaleLowerCase();
   const all = rico.chats.filter(c=>!q || String(c.title || '').toLocaleLowerCase().includes(q));
   const list = [...all.filter(c=>c.pinned), ...all.filter(c=>!c.pinned)].slice(0, q ? 60 : RD_RECENT + all.filter(c=>c.pinned).length);
@@ -331,7 +338,7 @@ const ICON_RS_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 const ICON_RS_GEAR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>`;
 /* The chats as rows (shared by the sidebar and its search). */
 function ricoSideRows(){
-  if(!rico.chats) return loadingLines(4);
+  if(!rico.chats) return rico.chatsFailed ? `<p class="rico-side-empty">${esc(t('loadFailed'))}</p>` : loadingLines(4);
   const q = (rico.sideQuery || '').trim().toLocaleLowerCase();
   // Search looks through every chat, then the first 60 matches are shown.
   const list = rico.chats.filter(c=>!q || String(c.title || '').toLocaleLowerCase().includes(q)).slice(0, 60);
@@ -501,24 +508,27 @@ async function ricoSetAuto(on){
    about the chat Rico lives here; Rico the helper on the Mac stays in Settings. */
 function openRicoSettings(){
   const sw = (attr, on, label, hint)=>`<label class="rico-side-row rico-set-row"><span>${esc(label)}${hint ? `<small>${esc(hint)}</small>` : ''}</span><input type="checkbox" role="switch" ${attr} ${on ? 'checked' : ''}></label>`;
+  // Filling the order and Rico's button on the Order screen are for whoever has the Order screen (not Ahmad).
+  const order = canOpen('order');
   const styles = CHOICES.ricoStyle.map(v=>`<label class="rico-style-opt"><input type="radio" name="ricoStyle" value="${v}" ${ricoStyle() === v ? 'checked' : ''}><span>${esc(t('style_' + v))}</span></label>`).join('');
   const {el, close} = openKitchenSheet('rico-set-sheet', `<div class="sel-title">${esc(t('ricoSettings'))}</div>
     <div class="rico-set-group">
-      ${sw('data-set-auto', ricoAutoOrder(), t('ricoAutoOrderLabel'), t('ricoAutoOrderHint'))}
+      ${order ? sw('data-set-auto', ricoAutoOrder(), t('ricoAutoOrderLabel'), t('ricoAutoOrderHint')) : ''}
       <button type="button" class="rico-side-row rico-set-row" data-set-memory><span>${esc(t('memoryTitle'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>
     </div>
     <div class="rico-set-label">${esc(t('styleLabel'))}</div>
     <div class="rico-set-group rico-style">${styles}</div>
     <div class="rico-set-group">
-      ${sw('data-set-sheet', featureOn('ricoSheet'), t('feat_ricoSheet'), t('feat_ricoSheet_hint'))}
+      ${order ? sw('data-set-sheet', featureOn('ricoSheet'), t('feat_ricoSheet'), t('feat_ricoSheet_hint')) : ''}
       ${sw('data-set-ai', aiConsented(), t('aiSettingLabel'), t('aiSettingHint'))}
     </div>
     <div class="rico-set-group"><button type="button" class="rico-side-row rico-set-row rico-set-danger" data-set-delall><span>${esc(t('ricoDeleteAll'))}</span></button></div>`, t('ricoSettings'));
-  el.querySelector('[data-set-auto]').onchange = e=>{ const on = e.currentTarget.checked; close(); ricoSetAuto(on); };
+  const auto = el.querySelector('[data-set-auto]'), sheet = el.querySelector('[data-set-sheet]');
+  if(auto) auto.onchange = e=>{ const on = e.currentTarget.checked; close(); ricoSetAuto(on); };
   el.querySelector('[data-set-memory]').onclick = ()=>{ close(); openRicoMemory(); };
   el.querySelector('[data-set-delall]').onclick = ()=>{ close(); ricoDeleteChat(null); };
   el.querySelectorAll('input[name=ricoStyle]').forEach(r=>r.onchange = ()=>setSetting('ricoStyle', r.value));
-  el.querySelector('[data-set-sheet]').onchange = async e=>{ const box = e.currentTarget; if(!(await setFeature('ricoSheet', box.checked))) box.checked = !box.checked; };
+  if(sheet) sheet.onchange = async e=>{ const box = e.currentTarget; if(!(await setFeature('ricoSheet', box.checked))) box.checked = !box.checked; };
   // Turning the AI on asks first, in a box that must not sit behind this sheet: the sheet closes.
   el.querySelector('[data-set-ai]').onchange = async e=>{ const box = e.currentTarget; if(!box.checked){ setAiConsent(false); return; } close(); await aiConsent(); };
 }
@@ -535,7 +545,7 @@ function renderRicoInbox(){
   return `<div class="rico-inbox">${list.map(m=>`
     <div class="rico-note ${m.read?'':'unread'}">
       ${ricoFace('', 'rico-sm')}
-      <div class="rico-note-body"><div class="rico-note-meta">${esc(t('ricoWroteFirst'))} · ${esc(timeAgo(m.at))}</div><div class="rico-note-text">${esc(ricoInboxText(m))}</div>${ricoNoteAction(m)}</div>
+      <div class="rico-note-body"><div class="rico-note-meta">${esc(t('ricoWroteFirst'))} · ${esc(timeAgo(m.at))}</div><div class="rico-note-text">${ricoInboxHtml(m)}</div>${ricoNoteAction(m)}</div>
     </div>`).join('')}${rico.inbox.length > 1 ? `<button type="button" class="rico-link rico-inbox-more" id="ricoInboxAll">${esc(t('inboxSeeAll')(rico.inbox.length))}</button>` : ''}</div>`;
 }
 /* A prepared order (from a routine) carries its own button that fills the Order screen. */
@@ -1344,12 +1354,14 @@ async function ricoNameChat(question, answer){
 }
 async function ricoLoadChats(){
   if(rico.chatsBusy) return;
-  rico.chatsBusy = true;
+  rico.chatsBusy = true; rico.chatsFailed = false;
   const account = state.account;
   try{
     let r = await api('rico-chats');
     if(r.stale && state.account === account) r = await api('rico-chats');   // a save happened at the same moment
     if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats;
+    // Offline or refused: say so instead of gray lines that never fill in (opening the list again retries).
+    else if(state.account === account) rico.chatsFailed = true;
   }finally{ rico.chatsBusy = false; }
 }
 /* Whose chat it is: the person's initial in a small circle (green for Rozh, gray for Yunis). */

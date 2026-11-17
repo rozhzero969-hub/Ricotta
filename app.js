@@ -71,7 +71,10 @@ const KU_DATES_NATIVE = (()=>{ try{ return Intl.DateTimeFormat.supportedLocalesO
 let kuDateWords = null;
 function kurdishDates(options){
   // Kurdish times are 12-hour, like the app's other languages.
-  const base = new Intl.DateTimeFormat('en-GB-u-nu-latn', options.hour && options.hour12 === undefined ? {...options, hour12:true} : options);
+  // A one-letter day (charts) is read as the whole English day, then shortened to the Kurdish day's first
+  // letter (English "T" could be Tuesday or Thursday).
+  const narrow = options.weekday === 'narrow', opts = narrow ? {...options, weekday:'long'} : options;
+  const base = new Intl.DateTimeFormat('en-GB-u-nu-latn', opts.hour && opts.hour12 === undefined ? {...opts, hour12:true} : opts);
   if(!kuDateWords){
     const en = o=>new Intl.DateTimeFormat('en-GB', {...o, timeZone:'UTC'});
     kuDateWords = {am:'پ.ن', pm:'د.ن', AM:'پ.ن', PM:'د.ن'};
@@ -87,6 +90,7 @@ function kurdishDates(options){
   return {format(date){
     const parts = base.formatToParts(date);
     return parts.map((p, i)=>{
+      if(p.type === 'weekday' && narrow) return (kuDateWords[p.value] || p.value).charAt(0);
       if(p.type === 'weekday' || p.type === 'month' || p.type === 'dayPeriod') return kuDateWords[p.value] || kuDateWords[p.value.toLowerCase()] || p.value;
       const next = parts.slice(i + 1).find(x=>x.type !== 'literal');
       if(p.type === 'day' && next?.type === 'month' && kuDateWords[next.value]) return p.value + 'ی';
@@ -148,6 +152,9 @@ document.addEventListener('click', e=>{
 function esc(s){
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+/* A number with its unit ("31 MB") or a version ("2026-11-16.6") kept as one left-to-right piece inside a
+   sentence, so it reads right in Kurdish and Arabic (without it the version showed as 16.6-11-2026). */
+const ltrPiece = s=>'\u2066' + s + '\u2069';
 /* Small, self-dismissing confirmation at the bottom of the screen -- used for
    successes, so they don't need an extra tap like a popup does. */
 let toastTimer = null;
@@ -1187,7 +1194,7 @@ const GLASS_SCALE = 1.2;
    level, so a row redrawn meanwhile continues it. */
 const SEG_ROWS = '.record-filters,.manage-sections,.pill-seg';
 const segPills = seg=>[...seg.querySelectorAll('.tab-pill,.manage-section,.pill-seg-btn')];
-const segIsOn = el=>el.classList.contains('active') || el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-selected') === 'true';
+const segIsOn = el=>el.classList.contains('active') || el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-selected') === 'true' || el.getAttribute('aria-pressed') === 'true';
 const segLive = seg=>!seg.classList.contains('dark-seg');
 const segs = ()=>[...document.querySelectorAll(SEG_ROWS)].filter(seg=>seg.classList.contains('seg'));
 /* Where x falls along a row of buttons: the nearest one, and a fractional
@@ -1236,7 +1243,7 @@ function enhanceSegments(){
     seg.dataset.lens = '1'; seg.classList.add('seg');
     const lens = document.createElement('span'); lens.className = 'seg-lens'; lens.setAttribute('aria-hidden', 'true');
     seg.prepend(lens);
-    new MutationObserver(()=>segPlace(seg)).observe(seg, {subtree:true, attributes:true, attributeFilter:['class','aria-checked','aria-selected']});
+    new MutationObserver(()=>segPlace(seg)).observe(seg, {subtree:true, attributes:true, attributeFilter:['class','aria-checked','aria-selected','aria-pressed']});
     segPlace(seg);
     if(segDrag && segDrag.moved && segs().indexOf(seg) === segDrag.index) segAdopt(seg);
   });
@@ -2647,6 +2654,15 @@ function attachOrderEvents(){
     const next=document.getElementById('orderTabsNext');
     if(prev) prev.onclick=()=>scrollTabs(-1);
     if(next) next.onclick=()=>scrollTabs(1);
+    // The arrows (computers) only when the tabs don't all fit, each faded at its own end.
+    const arrows=()=>{
+      const max=tabs.scrollWidth-tabs.clientWidth, x=Math.abs(tabs.scrollLeft);
+      tabs.parentElement?.classList.toggle('fits', max<=1);
+      if(prev) prev.disabled=x<=1;
+      if(next) next.disabled=x>=max-1;
+    };
+    tabs.addEventListener('scroll',arrows,{passive:true});
+    if(typeof ResizeObserver === 'function') new ResizeObserver(arrows).observe(tabs); else requestAnimationFrame(arrows);
     tabs.addEventListener('wheel',e=>{
       if(Math.abs(e.deltaY)<=Math.abs(e.deltaX)) return;
       e.preventDefault();
@@ -4344,7 +4360,7 @@ function renderSettings(){
   if(state.account === 'ahmad') return renderRecipeSettings();
   // Everyday choices first (notifications, ordering, sounds, look), then Rico the helper (Rozh), then
   // help and privacy. Rico the chat assistant has his own settings in his tab.
-  return `<div class="settings-page">${renderPendingSync()}${renderNotifSettings()}${renderFeatureSettings()}${renderRicoReceiptSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div></div>`;
+  return `<div class="settings-page">${renderPendingSync()}${renderNotifSettings()}${renderFeatureSettings()}${renderRicoReceiptSettings()}${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(ltrPiece(APP_VERSION)))}</div></div>`;
 }
 /* Help: tell Rozh about a problem (it arrives in Admin, Problems), and the keyboard shortcuts. */
 function renderHelpSettings(){
