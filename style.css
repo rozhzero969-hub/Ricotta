@@ -713,7 +713,7 @@ html.rtl .hist-day{letter-spacing:0}
 .record-filters{margin-bottom:14px;overflow-x:auto;scrollbar-width:none}
 /* On a phone every filter shows (Record has six for Rozh, and Kurdish names are longer): the parts share
    the width with less padding instead of the last ones sitting out of sight. */
-@media (max-width:480px){.record-filters .tab-pill{flex:1 1 auto;padding:0 8px}}
+@media (max-width:540px){.record-filters .tab-pill{flex:1 1 auto;padding:0 8px}}
 @media (max-width:400px){.record-filters .tab-pill{padding:0 6px;font-size:.8125rem}}
 /* Repeated cards use the existing soft surface without allocating a blur
    layer for every audit entry. Glass remains on the header and controls. */
@@ -2022,7 +2022,7 @@ html.dark .rr-line-warn{color:#FDBA74}
 .hist-switch::-webkit-scrollbar{display:none}
 .hist-switch>*{flex:0 0 auto}
 /* On a phone the four parts share the whole width (Kurdish and Arabic names are longer), so none is cut off. */
-@media (max-width:480px){.hist-switch{width:100%}.hist-switch>.pill-seg-btn{flex:1 1 auto;padding:0 8px}}
+@media (max-width:540px){.hist-switch{width:100%}.hist-switch>.pill-seg-btn{flex:1 1 auto;padding:0 8px}}
 .rr-hist .hist-date{display:flex;align-items:center;gap:10px}
 
 .rr-hist-total{font-weight:700;font-variant-numeric:tabular-nums}
