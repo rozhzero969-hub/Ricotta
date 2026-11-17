@@ -488,7 +488,8 @@ async function ricoDeleteChat(id){
   const ask = id ? t('ricoDeleteChatNamed')(chat?.title || (rico.chatId === id && rico.chatTitle) || t('ricoUntitled')) : isRozha() ? t('ricoDeleteAllAskBoth') : t('ricoDeleteAllAsk');
   if(!(await showConfirm(esc(ask), {title:id ? t('ricoDeleteChatTitle') : '', okLabel:t('delete'), okClass:'btn-danger'}))) return false;
   clearTimeout(ricoSaveTimer);
-  const r = await api(id ? 'rico-chats/' + id : 'rico-chats?account=all', {method:'DELETE'});
+  const account = state.account, r = await api(id ? 'rico-chats/' + id : 'rico-chats?account=all', {method:'DELETE'});
+  if(account !== state.account) return false;   // signed out meanwhile: the next person's list stays as it is
   if(!r.ok){ toast(t('saveFailed'), 'error'); return false; }
   rico.chats = id ? (rico.chats || []).filter(c=>c.id !== id) : isRozha() ? [] : (rico.chats || []).filter(c=>c.account && c.account !== state.account);
   if(!id || rico.chatId === id){ rico.chatId = null; rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }

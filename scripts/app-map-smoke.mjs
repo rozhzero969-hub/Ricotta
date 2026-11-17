@@ -106,6 +106,15 @@ assert.equal(res.out[0].proposal.place, 'setDark');
 assert.equal(res.out[0].proposal.screen, 'settings');
 res = await run(world('yunis', yunis.roles), 'open_screen', { screen: 'history' });
 assert.equal(res.out[0].proposal.screen, 'history', 'open_screen still opens a screen');
+// A plain screen button is only for someone who has that screen: no Admin for Yunis, no Order for Ahmad.
+res = await run(world('yunis', yunis.roles), 'open_screen', { screen: 'admin' });
+assert.equal(res.r.error, 'no_access', 'no Admin button for Yunis'); assert.equal(res.out.length, 0);
+res = await run(world('ahmad', ['assistant']), 'open_screen', { screen: 'order' });
+assert.equal(res.r.error, 'no_access', 'no Order button for Ahmad'); assert.equal(res.out.length, 0);
+res = await run(world('ahmad', ['assistant']), 'open_screen', { screen: 'recipes' });
+assert.equal(res.out[0].proposal.screen, 'recipes', 'Ahmad gets his Recipes button');
+res = await run(world('rozha', []), 'open_screen', { screen: 'send' });
+assert.equal(res.out[0].proposal.screen, 'send', 'Rozh gets Send to suppliers');
 assert.match(_internals.MANUAL, /find_in_app/, 'Rico\'s notes say he can show where things are');
 assert.ok(_internals.TOOLS.some(t => t.name === 'find_in_app'));
 
