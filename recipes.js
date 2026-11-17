@@ -75,8 +75,6 @@ function recipeMoney(n){
   if(n === null || n === undefined || !Number.isFinite(Number(n))) return '';
   return recipeLtr(Math.round(Number(n)).toLocaleString('en-US') + ' IQD');
 }
-/* A plain number, no currency (the big numbers on a recipe's card). */
-const recipeNum = n=>recipeLtr(Math.round(Number(n) || 0).toLocaleString('en-US'));
 /* An exact amount for the breakdown: small prices keep their decimals (0.45 IQD a gram). */
 function recipeExact(n){
   if(n === null || n === undefined || !Number.isFinite(Number(n))) return '';
