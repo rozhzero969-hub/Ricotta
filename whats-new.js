@@ -3,6 +3,25 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-17a', date:'2026-11-17', notes:{
+    en:['Recipes, Items and Ahmad\u2019s Stock now look like the rest of the app: plain lists, normal buttons, no bright tiles. The amount box is easy to read and has no arrows.',
+      'Recipe categories come from a list. Ask Rico to add, rename or delete one, or to change its soft colour; he can show you the colours to pick from.',
+      'Adding an item: search the Ricotta Restaurant stock by name or other names. An item can\u2019t be deleted while a recipe uses it.',
+      'Admin is simpler: one line says if everything is working, then what needs you, then the pages in plain words.',
+      'Rico asks each person their own kind of questions, can find any screen or setting and take you there, and asks before deleting a chat.',
+      'Many small fixes on every screen, in all three languages.'],
+    ku:['ڕێسیپییەکان، کاڵاکان و کۆگای ئەحمەد ئێستا وەک باقی ئەپەکە دەردەکەون: لیستی سادە، دوگمەی ئاسایی، بێ چوارگۆشەی ڕەنگاوڕەنگ. خانەی بڕ ئاسان دەخوێندرێتەوە و تیری تێدا نییە.',
+      'جۆرەکانی ڕێسیپی لە لیستێکەوە دێن. بە ریکۆ بڵێ یەکێک زیاد بکات، ناوی بگۆڕێت، بیسڕێتەوە یان ڕەنگە نەرمەکەی بگۆڕێت؛ دەتوانێت ڕەنگەکانت نیشان بدات بۆ هەڵبژاردن.',
+      'زیادکردنی کاڵا: لە کۆگای ریکۆتا ڕێستۆرانت بە ناو یان ناوەکانی تر بگەڕێ. کاڵایەک ناسڕدرێتەوە کاتێک ڕێسیپییەک بەکاری دەهێنێت.',
+      'ئەدمین سادەترە: دێڕێک دەڵێت هەموو شت کار دەکات یان نا، پاشان ئەوەی چاوەڕێی تۆیە، پاشان پەڕەکان بە وشەی سادە.',
+      'ریکۆ پرسیاری تایبەت بە هەر کەسێک دەکات، دەتوانێت هەر شاشە یان ڕێکخستنێک بدۆزێتەوە و بتباتە ئەوێ، و پێش سڕینەوەی گفتوگۆیەک دەپرسێت.',
+      'چەندین چاککردنی بچووک لە هەموو شاشەکان، بە هەر سێ زمانەکە.'],
+    ar:['تبدو الوصفات والمواد ومخزون أحمد الآن مثل بقية التطبيق: قوائم بسيطة وأزرار عادية بلا مربعات ملونة. خانة الكمية سهلة القراءة وبلا أسهم.',
+      'فئات الوصفات تأتي من قائمة. اطلب من ريكو إضافة فئة أو إعادة تسميتها أو حذفها أو تغيير لونها الهادئ؛ ويمكنه أن يريك الألوان لتختار.',
+      'إضافة مادة: ابحث في مخزون ريكوتا ريستورانت بالاسم أو بالأسماء الأخرى. لا تُحذف مادة ما دامت وصفة تستخدمها.',
+      'الإدارة أبسط: سطر يقول إن كان كل شيء يعمل، ثم ما ينتظرك، ثم الصفحات بكلمات بسيطة.',
+      'يسأل ريكو كل شخص أسئلته الخاصة، ويجد أي شاشة أو إعداد ويأخذك إليه، ويسأل قبل حذف محادثة.',
+      'إصلاحات صغيرة كثيرة في كل الشاشات وباللغات الثلاث.']}},
   {id:'2026-11-16f', date:'2026-11-16', notes:{
     en:['Ahmad\u2019s screens are new and brighter: Recipes and Items are two tabs, like Order and History. Recipes sit in groups Ahmad makes himself, A to Z inside each group; Items are one A to Z list.',
       'A recipe shows its cost, menu price and what we keep at the top, with a clear sheet for where the numbers come from. Done saves it at the end. Tap a photo to view or delete it, and hold and drag to change the order.',
