@@ -120,17 +120,26 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
   if (M === "GET" && path === "recipes") {
     let book;
     try { book = await loadBook(db); } catch { return fail("load_failed", 503); }
-    const [alerts, covers] = await Promise.all([
+    const [alerts, covers, named] = await Promise.all([
       table("rico_inbox").select("id,body_en,body_ku,body_ar,created_at,read_at").eq("account", c.account).eq("kind", "recipe").order("created_at", { ascending: false }).limit(20),
       coverPhotos(db, book.recipes.map((x: any) => x.id)),
+      table("items").select("name,aliases,stock_item,stock_items").limit(5000),
     ]);
+    // The other names each stock item goes by (the ordering items linked to it and their search names),
+    // only as words to find it by when an item is linked: Arabic or a short name finds "Almarai Milk".
+    const aka = new Map<string, Set<string>>();
+    for (const it of named.error ? [] : named.data ?? []) for (const n of SL().linksOf(it)) {
+      const words = aka.get(n) ?? new Set<string>();
+      for (const w of [it.name, ...(Array.isArray(it.aliases) ? it.aliases : [])]) if (typeof w === "string" && w.trim() && w.length <= 120 && words.size < 12) words.add(w.trim());
+      aka.set(n, words);
+    }
     const used = new Set(book.ingredients.map((x: any) => x.stock_item));
     const prices: Record<string, unknown> = {};
     for (const [name, p] of book.ctx.prices) if (used.has(name)) prices[name] = p;
     return json({
       recipes: book.recipes, categories: book.categories, ingredients: book.ingredients, units: book.units,
       // Ricotta Restaurant's items for linking: names, units, and how each stands in Main Storage.
-      stock: book.titems.map((t: any) => ({ name: t.name, base: t.base, count: t.count ?? null, buy: t.buy ?? null, state: RC().stockState(t, book.lowNames) })),
+      stock: book.titems.map((t: any) => ({ name: t.name, base: t.base, count: t.count ?? null, buy: t.buy ?? null, state: RC().stockState(t, book.lowNames), ...(aka.has(t.name) ? { aka: [...aka.get(t.name)!] } : {}) })),
       prices, pricesReady: book.pricesReady, stockAt: book.stockAt, marginMin: RC().MARGIN_MIN,
       covers,
       alerts: alerts.error ? [] : (alerts.data ?? []).map((a: any) => ({ id: a.id, en: a.body_en, ku: a.body_ku, ar: a.body_ar, at: a.created_at, read: !!a.read_at })),

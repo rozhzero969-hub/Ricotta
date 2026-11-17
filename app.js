@@ -3348,7 +3348,7 @@ function unitEn(unitId){
   return u ? u.en : '';
 }
 function recordFieldLabel(k){
-  return ({recipeGroup:t('recipe_group'), stock:t('recipe_stockItem'), name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), buys:t('recordBuys'), kind:t('itemKindLabel'), stock:t('stockLinkLabel'), cutoff:t('cutoffShort')})[k] || k;
+  return ({recipeGroup:t('recipe_category'), color:t('recipe_colorWord'), stock:t('recipe_stockItem'), name:t('name'), phone:t('phone'), unit:t('unit'), supplier:t('supplier'), nameKu:t('kurdishLabel'), nameAr:t('arabicLabel'), reminder:t('reminderShort'), note:t('recordNote'), aliases:t('searchAliases'), available:t('availableToOrder'), buys:t('recordBuys'), kind:t('itemKindLabel'), stock:t('stockLinkLabel'), cutoff:t('cutoffShort')})[k] || k;
 }
 function recordValue(k, v){
   if(k==='aliases'){try{const aliases=JSON.parse(v);if(Array.isArray(aliases))return aliases.join(', ')||t('noValue');}catch(_){} }
@@ -3381,7 +3381,7 @@ function renderRecord(){
     .filter(a => (state.recordFilter==='all' || a.type===state.recordFilter || (state.recordFilter==='recipes' && (a.type==='recipe' || a.type==='ingredient'))) && catalogMatches(recordSearchFields(a)))
     .sort((a,b)=> new Date(b.ts) - new Date(a.ts));
   const cards = rows.slice(0, state.recordLimit).map(a=>{
-    const typeLabel = ({supplier:t('typeSupplier'), item:t('typeItem'), unit:t('typeUnit'), recipe:t('recipe_typeRecipe'), ingredient:t('recipe_typeIngredient')})[a.type] || a.type;
+    const typeLabel = ({supplier:t('typeSupplier'), item:t('typeItem'), unit:t('typeUnit'), recipe:t('recipe_typeRecipe'), ingredient:t('recipe_typeIngredient'), recipeCategory:t('recipe_typeCategory')})[a.type] || a.type;
     const actLabel = ({add:t('actionAdded'), edit:t('actionEdited'), delete:t('actionDeleted')})[a.action] || a.action;
     const dt = formatIraqDateTime(a.ts,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
     // Older entries (before the two accounts) may only have a device name, or nothing.

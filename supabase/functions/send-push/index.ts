@@ -666,7 +666,7 @@ Deno.serve(async (req) => {
         const w = written(body);
         if (!w.any) return json({ error: "empty message" }, 400);
         return json(await sendReminder((lang) => ({
-          title: L(lang, "Recipes", "ڕەچەتەکان", "الوصفات"), body: w.pick(lang), kind: "recipe", view: "recipes", tag: `ricotta-recipe-${Date.now()}`,
+          title: L(lang, "Recipes", "ڕێسیپییەکان", "الوصفات"), body: w.pick(lang), kind: "recipe", view: "recipes", tag: `ricotta-recipe-${Date.now()}`,
         }), new Set(["ahmad"])));
       }
       case "supplier-test": {

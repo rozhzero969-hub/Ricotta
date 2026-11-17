@@ -737,6 +737,8 @@ function renderRicoProposalCard(p, mi){
     return ricoCard(NAV_ICONS.transfers, viewLabel('transfers'), body, `<div class="rico-card-actions"><button class="btn btn-primary" data-rico-transfer="${esc(p.transferId)}">${esc(t('ricoOpenScreen')(viewLabel('transfers')))}</button></div>`, p);
   }
   if(['stock_list','needs_list','price_list','spend','invoice_report','price_lookup'].includes(p.kind)) return renderRicoData(p);
+  // A recipe category's colours (recipes.js draws it; a tap sets the colour).
+  if(p.kind === 'recipe_colors') return typeof recipeColorCard === 'function' ? recipeColorCard(p) : '';
   // A page of Ricotta Restaurant Rico was asked to open: a plain link (only to that site).
   if(p.kind === 'rr_link'){
     if(typeof p.url !== 'string' || !p.url.startsWith('https://pos.shaydattendance.com/')) return '';
@@ -968,7 +970,7 @@ function ricoHistoryForServer(){
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
       const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:`open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:p.mode === 'search' ? `stock of "${p.query}" in ${p.storage}` : `list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, invoice_report:`invoice report for ${p.month}${p.supplier ? ' (' + p.supplier + ')' : ''} with PDF and Excel`, price_lookup:`last prices${p.query ? ' for "' + p.query + '"' : ''}${p.storage ? ' of items going to ' + p.storage : ''} with PDF and Excel`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
-      content += ['stock_list','needs_list','price_list','spend','rr_link','invoice_report','price_lookup'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
+      content += p.kind === 'recipe_colors' ? `\n[card colours for the category "${p.category}": shown]` : ['stock_list','needs_list','price_list','spend','rr_link','invoice_report','price_lookup'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     return {role:m.role, content: content.trim() || '…'};
   });
