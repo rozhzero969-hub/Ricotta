@@ -338,7 +338,7 @@ const recipeTouch = ()=>!matchMedia('(hover: hover) and (pointer: fine)').matche
    bar (it fits at any width and in any language), the notes, and See how it adds up. */
 function recipeCostCard(c, live){
   const attrs = live ? ' id="rcLive" aria-live="polite"' : '';
-  const why = `<button type="button" class="rc-why-row" data-rc-why><span>${esc(rt('whyNumbers'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
+  const why = !c.lines.length ? '' : `<button type="button" class="rc-why-row" data-rc-why><span>${esc(rt('whyNumbers'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
   const row = (k, v, cls = '')=>`<div class="rc-mrow${cls ? ' ' + cls : ''}"><span>${esc(k)}</span><b dir="auto">${v}</b></div>`;
   const none = `<em>${esc(rt('noPriceShort'))}</em>`;
   if(!c.complete) return `<section class="rc-money"${attrs}><p class="rc-missing">${esc(recipeMissingNote(c))}</p>${c.price ? row(rt('sellsFor'), esc(recipeMoney(c.price))) : ''}${why}</section>`;
@@ -459,7 +459,7 @@ function recipeEditorPage(){
   const r = recipeBook.editing, d = r.data, c = recipeCostOf(r);
   const html = `<div class="rc-page rc-editor">
     <div class="rc-bar"><button type="button" class="queue-back" id="rcEditBack" aria-label="${esc(rt('back'))}">${ICON_BACK}</button>
-      <h2 dir="auto">${esc(r.version ? rt('editRecipe') : rt('new'))}</h2><span class="rc-save-state" id="rcSaveState" role="status" data-tone="${recipeBook.dirty ? '' : r.version ? 'done' : ''}">${esc(recipeBook.dirty ? rt('unsaved') : r.version ? rt('saved') : '')}</span></div>
+      <h2 dir="auto">${esc(r.version ? rt('editRecipe') : rt('new'))}</h2><span class="rc-save-state" id="rcSaveState" role="status" data-tone="${recipeBook.dirty ? '' : r.version ? 'done' : ''}">${esc(recipeBook.dirty ? rt('unsaved') : r.version ? rt('saved') : '')}</span><button type="button" class="btn btn-primary rc-bar-btn" id="rcDone">${esc(rt('doneSave'))}</button></div>
     <section class="form-card rc-form">
       ${recipeField(rt('menuName'), `<input id="rcName" class="rc-name" maxlength="120" value="${esc(r.name)}" dir="auto" autocomplete="off" enterkeyhint="next" placeholder="${esc(rt('menuNameHint'))}">`)}
       ${recipeCategoryField(d.category)}
@@ -471,15 +471,21 @@ function recipeEditorPage(){
     <h3 class="section-title">${esc(rt('cost'))}</h3>
     ${recipeCostCard(c, true)}
     <h3 class="section-title">${esc(rt('steps'))}</h3>
-    <section class="rc-list">${d.steps.map((s, i)=>`<div class="rc-estep"><span class="rc-step-n" aria-hidden="true">${i + 1}</span><textarea id="rcStep${i}" data-rc-step="${i}" maxlength="3000" rows="2" dir="auto" aria-label="${esc(rt('stepN')(i + 1))}" placeholder="${esc(rt('stepHint'))}">${esc(s)}</textarea>
+    <section class="rc-list">${d.steps.map((s, i)=>`<div class="rc-estep"><span class="rc-step-n" aria-hidden="true">${i + 1}</span><textarea class="rc-grow" id="rcStep${i}" data-rc-step="${i}" maxlength="3000" rows="1" dir="auto" aria-label="${esc(rt('stepN')(i + 1))}" placeholder="${esc(rt('stepHint'))}">${esc(s)}</textarea>
         <button type="button" class="rc-x" data-rc-delstep="${i}" aria-label="${esc(rt('removeStep'))}">${ICON_CLOSE_SM}</button></div>`).join('')}
       <button type="button" class="rc-add-row" id="rcAddStep">${ICON_PLUS}<span>${esc(rt('addStep'))}</span></button></section>
     <h3 class="section-title">${esc(rt('notes'))}</h3>
-    <section class="rc-list rc-notes-card"><textarea class="rc-notes-box" data-rc-field="notes" maxlength="8000" rows="3" dir="auto" aria-label="${esc(rt('notes'))}" placeholder="${esc(rt('notesHint'))}">${esc(d.notes)}</textarea></section>
-    <div class="rc-done-wrap"><button type="button" class="btn btn-primary rc-done" id="rcDone">${esc(rt('doneSave'))}</button>
-      ${r.version ? `<button type="button" class="rc-link rc-danger" id="rcDeleteRecipe">${esc(rt('deleteRecipe'))}</button>` : ''}</div></div>`;
+    <section class="rc-list rc-notes-card"><textarea class="rc-notes-box rc-grow" data-rc-field="notes" maxlength="8000" rows="2" dir="auto" aria-label="${esc(rt('notes'))}" placeholder="${esc(rt('notesHint'))}">${esc(d.notes)}</textarea></section>
+    ${r.version ? `<section class="rc-list rc-delete-card"><button type="button" class="rc-delete-row" id="rcDeleteRecipe">${esc(rt('deleteRecipe'))}</button></section>` : ''}</div>`;
   recipeBook.fresh.clear();
   return html;
+}
+/* Steps and notes grow with what is written, so the whole text always shows (no scrolling inside the
+   box, no dragging its corner). */
+function recipeGrow(el){
+  if(!el?.isConnected) return;
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
 }
 /* While typing: the line costs and the cost card change in place (the page isn't drawn again). */
 function recipeRefreshLive(){
@@ -1025,7 +1031,7 @@ function attachRecipeEvents(){
   if(name){ name.oninput = ()=>{ r.name = name.value; recipeChange(); }; if(!r.version && !r.name) setTimeout(()=>name.focus({preventScroll:true}), 0); }
   recipeBindCategory();
   const notes = document.querySelector('[data-rc-field="notes"]');
-  if(notes) notes.oninput = ()=>{ d.notes = notes.value; recipeChange(); };
+  if(notes) notes.oninput = ()=>{ d.notes = notes.value; recipeGrow(notes); recipeChange(); };
   const price = document.getElementById('rcPrice');
   if(price) price.oninput = ()=>{ const v = recipeNumber(price.value); d.price = v ? Math.round(v) : null; recipeChange(); recipeRefreshLive(); };
   all('[data-rc-qty]', el=>el.oninput = ()=>{
@@ -1034,7 +1040,8 @@ function attachRecipeEvents(){
     recipeChange(); recipeRefreshLive();
   });
   all('[data-rc-unit]', el=>el.onchange = ()=>{ d.lines[Number(el.dataset.rcUnit)].unit = el.value; recipeChange(); recipeRefreshLive(); });
-  all('[data-rc-step]', el=>el.oninput = ()=>{ d.steps[Number(el.dataset.rcStep)] = el.value; recipeChange(); });
+  all('[data-rc-step]', el=>el.oninput = ()=>{ d.steps[Number(el.dataset.rcStep)] = el.value; recipeGrow(el); recipeChange(); });
+  all('textarea.rc-grow', recipeGrow);
   all('[data-rc-remove]', b=>b.onclick = ()=>{
     const line = b.closest('.rc-eline'), go = ()=>{ d.lines.splice(Number(b.dataset.rcRemove), 1); redraw(); };
     if(line?.animate && !reducedMotion()) line.animate([{opacity:1}, {opacity:0}], {duration:140, easing:'ease-in'}).onfinish = go; else go();
