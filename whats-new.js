@@ -3,6 +3,25 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-18a', date:'2026-11-18', notes:{
+    en:['A recipe\u2019s page has a soft coloured banner at the top, in the colours of its photo or its category, with the photo or letter on it.',
+      'Writing a recipe: Save and Delete recipe sit side by side at the end. Steps and notes grow as you write, so the whole text always shows.',
+      'Items: prices are in plain gray, with small Out, Low and No price yet labels. A price paid in USD now shows in IQD, at the rate on its receipt.',
+      'Adding an item: choose its unit any time, and the stock item list opens as soon as you tap its search box.',
+      'On the Order screen, Food and Expenses have the same green card, and it turns over like a card when you switch.',
+      'Text is no longer selected by mistake when you hold something. Rico\u2019s answers can still be copied.'],
+    ku:['پەڕەی هەر ڕێسیپییەک لە سەرەوە بەنەرێکی ڕەنگی نەرمی هەیە، بە ڕەنگی وێنەکەی یان جۆرەکەی، و وێنەکە یان پیتەکەی لەسەرە.',
+      'نووسینی ڕێسیپی: پاشەکەوتکردن و سڕینەوەی ڕێسیپی لە کۆتاییدا لە تەنیشت یەکترن. هەنگاوەکان و تێبینییەکان لەگەڵ نووسیندا گەورە دەبن، بۆیە هەموو دەقەکە هەمیشە دیارە.',
+      'کاڵاکان: نرخەکان بە خۆڵەمێشی سادەن، لەگەڵ نیشانەی بچووکی نەماوە، کەمە و هێشتا نرخی نییە. نرخێک کە بە دۆلار دراوە ئێستا بە دینار پیشان دەدرێت، بە نرخی دۆلاری سەر پسوولەکەی.',
+      'زیادکردنی کاڵا: هەر کاتێک یەکەکەی هەڵبژێرە، و لیستی کاڵاکانی کۆگا هەر کە دەست لە خانەی گەڕانەکەی دەدەیت دەکرێتەوە.',
+      'لە شاشەی داواکردن، خواردن و خەرجییەکان هەمان کارتی سەوزیان هەیە، و کاتێک دەیگۆڕیت وەک کارتێک وەردەگەڕێت.',
+      'ئیتر کاتێک شتێک ڕادەگریت دەق بە هەڵە هەڵنابژێردرێت. وەڵامەکانی ریکۆ هێشتا کۆپی دەکرێن.'],
+    ar:['لصفحة كل وصفة شريط ملوّن هادئ في أعلاها، بألوان صورتها أو فئتها، وعليه الصورة أو الحرف.',
+      'كتابة وصفة: زرّا حفظ وحذف الوصفة متجاوران في النهاية. الخطوات والملاحظات تكبر مع الكتابة، فيظهر النص كله دائمًا.',
+      'المواد: الأسعار بالرمادي العادي، مع علامات صغيرة: نفد، قليل، لا سعر بعد. السعر المدفوع بالدولار يظهر الآن بالدينار، بسعر الصرف المكتوب على فاتورته.',
+      'إضافة مادة: اختر وحدتها في أي وقت، وتفتح قائمة مواد المخزن بمجرد الضغط على خانة البحث.',
+      'في شاشة الطلب، للطعام والمصاريف البطاقة الخضراء نفسها، وتنقلب مثل بطاقة عند التبديل.',
+      'لم يعد النص يُحدَّد بالخطأ عند الضغط المطوّل. ويمكن نسخ إجابات ريكو كما كان.']}},
   {id:'2026-11-17a', date:'2026-11-17', notes:{
     en:['Recipes, Items and Ahmad\u2019s Stock now look like the rest of the app: plain lists, normal buttons, no bright tiles. The amount box is easy to read and has no arrows.',
       'Recipe categories come from a list. Ask Rico to add, rename or delete one, or to change its soft colour; he can show you the colours to pick from.',

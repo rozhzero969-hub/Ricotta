@@ -2319,24 +2319,48 @@ function renderKindSwitch(){
   return `<div class="kind-switch-row"><div class="kind-switch ${kind}" role="tablist" aria-label="${esc(t('orderKindSwitch'))}"><span class="kind-thumb" aria-hidden="true"></span>${pill('food')}${pill('expense')}</div>
     <span class="kind-hint">${esc(t(other === 'expense' ? 'pullHintToExpenses' : 'pullHintToFood'))}</span></div>`;
 }
-/* Goes to Food or Expenses: the switch's thumb slides across, the summary card changes colour and the page
-   below drops in. A pull-down calls this while Spark turns and the app refreshes (see initPullRefresh). */
+/* Goes to Food or Expenses: the switch's thumb slides across, the summary card turns over like a card
+   (the old side turns away while the new tab's numbers come round on the back, about 460 ms, transform
+   and opacity only) and the page below drops in. With less motion the card simply crossfades. A
+   pull-down calls this while Spark turns and the app refreshes (see initPullRefresh). */
+let heroFlipGhost = null;
 function switchOrderKind(kind){
   if(state.view !== 'order' || (kind !== 'food' && kind !== 'expense') || kind === orderKind()) return false;
-  const heroBefore = document.querySelector('.order-hero'), bgBefore = heroBefore ? getComputedStyle(heroBefore).backgroundColor : null;
+  heroFlipGhost?.remove(); heroFlipGhost = null;
+  const before = document.querySelector('.order-hero'), rect = before?.getBoundingClientRect();
+  const ghost = before && rect.width ? before.cloneNode(true) : null;
   state.orderKind = kind; state.orderTab = 'all';
   haptic('light');
   render();
   scrollBox().scrollTop = 0;
+  const hero = document.querySelector('.order-hero');
+  if(ghost && hero){
+    // The old side stays where the card was, above the new one, and turns away.
+    const at = hero.getBoundingClientRect();
+    ghost.removeAttribute('id'); ghost.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+    ghost.setAttribute('aria-hidden', 'true'); ghost.classList.add('hero-flip-ghost');
+    Object.assign(ghost.style, {top:at.top + 'px', left:at.left + 'px', width:at.width + 'px', height:rect.height + 'px'});
+    document.body.appendChild(ghost);
+    heroFlipGhost = ghost;
+    const done = ()=>{ ghost.remove(); if(heroFlipGhost === ghost) heroFlipGhost = null; hero.classList.remove('flipping'); };
+    if(reducedMotion() || !ghost.animate){
+      const a = ghost.animate?.([{opacity:1}, {opacity:0}], {duration:180, easing:'ease-out', fill:'forwards'});
+      if(a) a.onfinish = done; else done();
+    }else{
+      // To Expenses it turns towards the start side, back to Food the other way (mirrored in Kurdish and Arabic).
+      const dir = (kind === 'expense' ? -1 : 1) * (isRtl() ? -1 : 1), ease = 'cubic-bezier(.45,.05,.25,1)';
+      hero.classList.add('flipping');
+      ghost.animate([{transform:'perspective(1100px) rotateY(0deg)'}, {transform:`perspective(1100px) rotateY(${dir * 180}deg)`}], {duration:460, easing:ease, fill:'forwards'}).onfinish = done;
+      hero.animate([{transform:`perspective(1100px) rotateY(${-dir * 180}deg)`}, {transform:'perspective(1100px) rotateY(0deg)'}], {duration:460, easing:ease});
+    }
+  }
   if(reducedMotion()) return true;
   const thumb = document.querySelector('.kind-thumb');
-  const side = isRtl() ? -100 : 100, at = k=>`translateX(${k === 'expense' ? side : 0}%)`;
-  thumb?.animate?.([{transform:at(kind === 'expense' ? 'food' : 'expense')}, {transform:at(kind)}], {duration:380, easing:'cubic-bezier(.32,.72,0,1)'});
-  const hero = document.querySelector('.order-hero');
-  if(hero && bgBefore) hero.animate?.([{backgroundColor:bgBefore, transform:'scale(.97)'}, {backgroundColor:getComputedStyle(hero).backgroundColor, transform:'none'}], {duration:460, easing:'cubic-bezier(.32,.72,0,1)'});
-  [...document.querySelectorAll('.kind-switch-row ~ *')].slice(0, 6).forEach((el, n)=>el.animate?.(
+  const side = isRtl() ? -100 : 100, pos = k=>`translateX(${k === 'expense' ? side : 0}%)`;
+  thumb?.animate?.([{transform:pos(kind === 'expense' ? 'food' : 'expense')}, {transform:pos(kind)}], {duration:380, easing:'cubic-bezier(.32,.72,0,1)'});
+  [...document.querySelectorAll(hero ? '.order-hero ~ *' : '.kind-switch-row ~ *')].slice(0, 6).forEach((el, n)=>el.animate?.(
     [{opacity:0, transform:'translate3d(0,-18px,0)'}, {opacity:1, transform:'none'}],
-    {duration:420, delay:n * 35, easing:'cubic-bezier(.23,1,.32,1)', fill:'backwards'}));
+    {duration:420, delay:120 + n * 35, easing:'cubic-bezier(.23,1,.32,1)', fill:'backwards'}));
   return true;
 }
 document.addEventListener('click', e=>{
