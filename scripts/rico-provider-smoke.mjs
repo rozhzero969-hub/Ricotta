@@ -449,7 +449,7 @@ assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname ===
   const events = await photoChat(photo);
   assert.equal(events.some(e => e.type === 'text'), true);
   const asked = requests.slice(before);
-  assert.equal(asked.some(r => r.url.includes('api.groq.com')), false, 'Groq is never sent a photo');
+  assert.equal(asked.some(r => new URL(r.url).hostname === 'api.groq.com'), false, 'Groq is never sent a photo');
   const g = asked.find(r => r.url.includes('streamGenerateContent')).body;
   assert.deepEqual(g.contents.at(-1).parts[0], { inline_data: { mime_type: 'image/jpeg', data: photo } });
   assert.equal(g.contents[0].parts.length, 1);
