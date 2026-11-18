@@ -35,15 +35,16 @@ const run = async (replies) => {
   return { out, bodies, events };
 };
 
-// 1. Four rounds of lookups: the system prompt and every earlier message stay exactly the same; the
-//    "answer now" line goes at the end of the newest message.
+// 1. Five rounds (four lookups, then the answer): the system prompt and every earlier message stay exactly
+//    the same; the "answer now" line goes at the end of the newest message, in the last round.
 {
-  const { out, bodies, events } = await run([toolRound(1), toolRound(2), toolRound(3), answer('Here it is.')]);
+  const { out, bodies, events } = await run([toolRound(1), toolRound(2), toolRound(3), toolRound(4), answer('Here it is.')]);
   assert.equal(out, true);
-  assert.equal(bodies.length, 4);
+  assert.equal(bodies.length, 5);
   for (const b of bodies) assert.deepEqual(b.system, bodies[0].system, 'the system prompt never changes between rounds');
   for (let i = 1; i < bodies.length; i++) assert.deepEqual(bodies[i].messages.slice(0, bodies[i - 1].messages.length), bodies[i - 1].messages, 'earlier messages are only ever added to');
-  const last = bodies[3].messages.at(-1);
+  for (const b of bodies.slice(0, 4)) assert.doesNotMatch(JSON.stringify(b.messages.at(-1)), /answer now/, 'only the last round is told to answer');
+  const last = bodies[4].messages.at(-1);
   assert.equal(last.role, 'user');
   assert.equal(last.content[0].type, 'tool_result', 'tool results stay first');
   assert.match(last.content.at(-1).text, /answer now/);

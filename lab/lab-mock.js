@@ -175,7 +175,7 @@
      has never been bought, so it has no price), three recipes (Margherita uses Tomato, so it has no
      cost yet) and an alert. */
   const LAB_UNITS = [{id:'g', en:'گرام'}, {id:'kg', en:'کیلۆگرام'}, {id:'ml', en:'مل'}, {id:'l', en:'لیتر'}, {id:'piece', en:'دانە'}];
-  const LAB_PRICES = [['Mozzarella - پەنیری مۆزارێلا', 9000, 'کیلۆ', 'Zakho Dairy'], ['Ricotta Cheese - پەنیری ریکۆتا', 45000, 'کارتۆن', 'Zakho Dairy'], ['Banana - مۆز', 1500, 'کیلۆ', 'Erbil Fruit'], ['Olive Oil - زەیتی زەیتوون', 60000, 'کارتۆن', 'Golden Oils'], ['Lemon - لیمۆ', 2000, 'کیلۆ', 'Erbil Fruit']];
+  const LAB_PRICES = [['Mozzarella - پەنیری مۆزارێلا', 9000, 'کیلۆ', 'Zakho Dairy'], ['Ricotta Cheese - پەنیری ریکۆتا', 45000, 'کارتۆن', 'Zakho Dairy'], ['Banana - مۆز', 1500, 'کیلۆ', 'Erbil Fruit'], ['Olive Oil - زەیتی زەیتوون', 60000, 'کارتۆن', 'Golden Oils'], ['Lemon - لیمۆ', 2000, 'کیلۆ', 'Erbil Fruit', 1480]];
   function labRecipes(){
     if(db.recipeBook2){
       // Categories from a prepared list (2026-11-17): a Lab saved before then gets them now.
@@ -283,7 +283,52 @@
     // "Where is dark mode?", "How do I change my PIN?": the same app map Rico's find_in_app searches,
     // filtered by what this account can use, and a button that takes them there.
     const findsPlace = /\bwhere\b|how do i|how can i|turn (on|off)|\bsetting|dark mode|کوێ|چۆن|ڕێکخستن|أين|كيف|إعداد/.test(q);
-    if(catAsk){
+    // The newer abilities (rico-abilities.ts), answered from the sample data: a photo, two periods compared,
+    // one item's picture, a supplier's Call and WhatsApp card, and exact sums.
+    const isAhmad = account === 'ahmad', d0 = new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10);
+    const dayBack = n=>new Date(Date.now() + 3 * 3600000 - n * 86400000).toISOString().slice(0, 10);
+    const sup = db.suppliers.find(x=>q.includes(x.name.toLowerCase().split(' ')[0].toLowerCase())) || null;
+    if(body.image){
+      say('calm', isAhmad ? 'It is a handwritten recipe: 2 cups of milk, 1 banana, 2 spoons of honey and ice. I can check what each one costs in your Items if you like.'
+          : 'It is a price list from Zakho Dairy. Three things stand out:\n- Mozzarella 13,500 IQD a kilo (you last paid 13,200, so 2% more)\n- Milk 1,500 IQD a litre (the same as last time)\n- Labneh 4,000 IQD a box (you have not bought it before)\n\nWant me to compare the rest with the last prices?',
+        isAhmad ? 'ڕەچەتەیەکی دەستنووسە: 2 کوپ شیر، 1 مۆز، 2 کەوچک هەنگوین و سەهۆڵ. ئەگەر بتەوێت نرخی هەر یەکێکیان لە کاڵاکانتدا دەپشکنم.'
+          : 'لیستی نرخی Zakho Dairyیە. سێ شت دیارن:\n- مۆزارێلا کیلۆی 13,500 دینار (دوایین جار 13,200 بوو، واتە 2% زیاتر)\n- شیر لیتری 1,500 دینار (وەک جاری پێشوو)\n- لەبنە سندوقی 4,000 دینار (پێشتر نەکڕدراوە)\n\nدەتەوێت ئەوانی تریش لەگەڵ دوایین نرخەکان بەراورد بکەم؟',
+        isAhmad ? 'إنها وصفة مكتوبة باليد: كوبان من الحليب، موزة، ملعقتان من العسل وثلج. أستطيع التحقق من سعر كل منها في موادك إن أردت.'
+          : 'إنها قائمة أسعار من Zakho Dairy. ثلاثة أمور واضحة:\n- موزاريلا 13,500 دينار للكيلو (آخر مرة 13,200، أي أكثر بـ2%)\n- حليب 1,500 دينار للتر (كالمرة السابقة)\n- لبنة 4,000 دينار للصندوق (لم تُشترَ من قبل)\n\nهل أقارن الباقي بآخر الأسعار؟');
+    } else if(/compare|vs |versus|than last|بەراورد|مقارنة|قارن/.test(q)){
+      if(isAhmad) say('calm', 'Comparing orders and spending is for the ordering accounts. I can help with your recipes and their costs.', 'بەراوردی داواکاری و خەرجی بۆ هەژمارەکانی داواکارییە. دەتوانم یارمەتیت بدەم لە ڕەچەتەکانت و تێچوونیان.', 'مقارنة الطلبات والمصروف لحسابات الطلب. أستطيع مساعدتك في وصفاتك وتكلفتها.');
+      else {
+        const m0 = d0.slice(0, 7), dd = Number(d0.slice(8, 10)), prev = new Date(Date.UTC(Number(m0.slice(0, 4)), Number(m0.slice(5)) - 2, 15)).toISOString().slice(0, 7);
+        const spend = can(account, 'receipts');
+        say('calm', spend ? 'You spent 1,386,500 IQD so far this month, 12% more than the same days of last month. Most of the rise is Zakho Dairy (+38%); vegetables went down a little.'
+            : 'There were 14 orders so far this month, 2 more than the same days of last month. Tomatoes went up the most.',
+          spend ? 'ئەم مانگە تا ئێستا 1,386,500 دینارت خەرج کردووە، 12% زیاتر لە هەمان ڕۆژەکانی مانگی ڕابردوو. زۆربەی زیادبوونەکە Zakho Dairyیە (+38%)؛ سەوزە کەمێک کەم بووەتەوە.'
+            : 'ئەم مانگە تا ئێستا 14 داواکاری هەبووە، 2 زیاتر لە هەمان ڕۆژەکانی مانگی ڕابردوو. تەماتە زۆرترین زیادبوونی هەبوو.',
+          spend ? 'أنفقت 1,386,500 دينار هذا الشهر حتى الآن، أكثر بـ12% من الأيام نفسها من الشهر الماضي. معظم الزيادة من Zakho Dairy (+38%)، والخضار انخفضت قليلًا.'
+            : 'كان هناك 14 طلبًا هذا الشهر حتى الآن، أكثر بـ2 من الأيام نفسها من الشهر الماضي. الطماطم ارتفعت أكثر.');
+        events.push({type:'proposal', proposal:{id:pid('c'), kind:'compare', preset:'this_month_vs_last_month', a:{from:m0 + '-01', to:d0}, b:{from:prev + '-01', to:prev + '-' + String(Math.min(dd, 28)).padStart(2, '0')},
+          main:spend ? 'spending' : 'orders', by:spend ? 'supplier' : 'item', supplier:null, item:null, more:0,
+          totals:spend ? [{key:'iqd', a:1386500, b:1238000, pct:12}, {key:'invoices', a:14, b:13, pct:7.7}, {key:'orders', a:14, b:12, pct:16.7}, {key:'lines', a:96, b:88, pct:9.1}] : [{key:'orders', a:14, b:12, pct:16.7}, {key:'lines', a:96, b:88, pct:9.1}],
+          rows:spend ? [{name:'Zakho Dairy', a:512000, b:371000, pct:38, unit:'IQD'}, {name:'Coffee Supply', a:448000, b:420000, pct:6.7, unit:'IQD'}, {name:'Erbil Veg Market', a:262500, b:289000, pct:-9.2, unit:'IQD'}, {name:'Ankawa Bakery', a:164000, b:158000, pct:3.8, unit:'IQD'}]
+            : [{name:'Tomatoes', a:46, b:38, pct:21.1, unit:'kg'}, {name:'Milk', a:60, b:54, pct:11.1, unit:'L'}, {name:'Bread', a:120, b:130, pct:-7.7, unit:'piece'}]}});
+      }
+    } else if(/how often|last order|for \d+ days|to last|چەند جار|بۆ \d+ ڕۆژ|كم مرة|لمدة \d+ أيام/.test(q) && !isAhmad){
+      const it = db.items.find(x=>q.includes(x.name.toLowerCase().replace(/s$/, ''))) || db.items.find(x=>x.id === 'it-tom');
+      say('calm', `${it.name} was ordered 9 times in the last 8 weeks, usually 12 ${it.unit} each time, about every 6 days. The last order was ${dayBack(2)} (12 ${it.unit}). Main Storage has 8 ${it.unit}.\n\nFor 5 days you need about 10 ${it.unit} (2 a day x 5), so with what is in Main Storage, order **2 ${it.unit}**.`,
+        `${it.name} لە 8 هەفتەی ڕابردوودا 9 جار داوا کراوە، بەزۆری هەر جارێک 12 ${it.unit}، نزیکەی هەر 6 ڕۆژ جارێک. دوایین داواکاری ${dayBack(2)} بوو (12 ${it.unit}). لە کۆگای سەرەکی 8 ${it.unit} هەیە.\n\nبۆ 5 ڕۆژ نزیکەی 10 ${it.unit}ت پێویستە (ڕۆژی 2 × 5)، کەواتە لەگەڵ ئەوەی لە کۆگادایە **2 ${it.unit}** داوا بکە.`,
+        `طُلبت ${it.name} 9 مرات في آخر 8 أسابيع، عادةً 12 ${it.unit} كل مرة، تقريبًا كل 6 أيام. آخر طلب كان ${dayBack(2)} (12 ${it.unit}). في المخزن الرئيسي 8 ${it.unit}.\n\nلـ5 أيام تحتاج نحو 10 ${it.unit} (2 يوميًا × 5)، فمع ما في المخزن اطلب **2 ${it.unit}**.`);
+      events.push({type:'proposal', proposal:{id:pid('o'), kind:'order', mode:'add', note:'', why:'2 a day over the last 8 weeks, for 5 days, minus the 8 in Main Storage.', lines:[{itemId:it.id, name:it.name, unitId:it.unit, supplierId:it.supplierId, supplier:'Erbil Veg Market', qty:2}]}});
+    } else if(/\bcall\b|whatsapp|message the|پەیوەندی|نامە بنێرە|اتصل|راسل/.test(q) && !isAhmad){
+      const s2 = sup || db.suppliers[0];
+      if(!(can(account, 'manage') || can(account, 'send'))) say('calm', 'You can\'t see suppliers\' numbers. Rozh can give that in Admin.', 'ژمارەی دابینکەرەکان بۆ تۆ دیار نییە. ڕۆژا دەتوانێت لە ئەدمین ڕێگەت بدات.', 'لا تظهر لك أرقام المورّدين. يمكن لروژا منحك ذلك من الإدارة.');
+      else {
+        const msg = /early|زوو|مبكر/.test(q) ? ({en:'Hello, can you bring tomorrow\'s order early, before 9 AM? Thank you.', ku:'سڵاو، دەتوانن داواکاریی سبەی زوو بهێنن، پێش کاتژمێر 9ی بەیانی؟ سوپاس.', ar:'مرحبًا، هل يمكنكم إحضار طلب الغد مبكرًا، قبل 9 صباحًا؟ شكرًا.'})[L] : '';
+        say('calm', `Here is ${s2.name}. ${msg ? 'WhatsApp opens with the message typed in; you press send there.' : 'Tap Call or WhatsApp.'}`, `ئەمە ${s2.name}ە. ${msg ? 'واتسئاپ بە نامەکەوە دەکرێتەوە؛ لەوێ ناردن دابگرە.' : 'پەیوەندی یان واتسئاپ دابگرە.'}`, `هذا ${s2.name}. ${msg ? 'يفتح واتساب والرسالة مكتوبة؛ اضغط إرسال هناك.' : 'اضغط اتصال أو واتساب.'}`);
+        events.push({type:'proposal', proposal:{id:pid('k'), kind:'contact', supplierId:s2.id, name:s2.name, phone:s2.phone, message:msg}});
+      }
+    } else if(/calculate|margin|profit|\d\s*[x×*]\s*\d|حیساب|قازانج|احسب|ربح/.test(q)){
+      say('calm', 'A smoothie that costs 1,750 IQD to make and sells for 5,000 IQD makes **3,250 IQD**, a 65% margin ((5,000 - 1,750) / 5,000).', 'سموزییەک کە تێچوونی 1,750 دینارە و بە 5,000 دینار دەفرۆشرێت، **3,250 دینار** قازانج دەکات، واتە 65% ((5,000 - 1,750) / 5,000).', 'سموذي تكلفته 1,750 دينار ويُباع بـ5,000 دينار يربح **3,250 دينار**، أي هامش 65% ((5,000 - 1,750) / 5,000).');
+    } else if(catAsk){
       const R = labRecipes(), C = globalThis.RicottaRecipeColors, raw = String(last?.text || last?.content || '');
       const named = raw.match(/(?:called|named|بە ناوی|اسمها)\s+(.+?)[.?!؟]*\s*$/i)?.[1]?.trim();
       if(named && /add|زیاد|أضف/.test(q)){
@@ -493,7 +538,7 @@
       const R = labRecipes(), RC = globalThis.RicottaRecipeCost;
       if(method === 'GET' && path === 'recipes'){
         const day = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
-        const prices = {}; for(const [name, cost, unit, supplier] of LAB_PRICES){ const t = LAB_STOCK.find(x=>x.name === name); const p = RC.priceOf(t, {item:name, unit, cost, currency:'IQD', day, supplier}); if(p) prices[name] = p; }
+        const prices = {}; for(const [name, cost, unit, supplier, rate] of LAB_PRICES){ const t = LAB_STOCK.find(x=>x.name === name); const p = RC.priceOf(t, {item:name, unit, cost, currency:'IQD', day, supplier, ...(rate ? {paid:'USD', rate} : {})}); if(p) prices[name] = p; }
         // The other names a stock item goes by: the ordering items linked to it and their search names.
         const aka = t=>[...new Set((db.items || []).filter(i=>i.stockItem === t.name || (i.stockItems || []).includes(t.name)).flatMap(i=>[i.name, ...(i.aliases || [])]))];
         return json({recipes:R.recipes, categories:R.categories, ingredients:R.ingredients, units:LAB_UNITS, stock:LAB_STOCK.map(t=>({name:t.name, base:t.base, count:t.count, buy:t.buy, state:RC.stockState(t, new Set()), ...(aka(t).length ? {aka:aka(t)} : {})})),

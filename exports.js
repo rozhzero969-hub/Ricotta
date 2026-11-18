@@ -566,6 +566,23 @@ async function exportPriceLookup(p, format){
     sections:[{columns:[{label:t('fileItem'), w:40, bold:true}, {label:t('invLastPrice'), w:26, align:'end'}, {label:t('invWhen'), w:14}, {label:t('supplier'), w:20}],
       rows:rows.map(r=>[r.item + (p.storage ? ` (${found(r)})` : ''), `${invMoney(r.price, r.currency)} / ${r.unit || ''}`, invDay(r.day), `${r.supplier} · ${t('invTimes')(r.times)}`])}]}, file);
 }
+/* Rico's comparison of two periods (compare_periods): the totals, then every row he read, as Excel or PDF. */
+async function exportRicoCompare(p, format){
+  const at = new Date(), rows = Array.isArray(p.rows) ? p.rows : [], totals = Array.isArray(p.totals) ? p.totals : [];
+  const title = ricoCmpTitle(p), older = ricoCmpRange(p.b), newer = ricoCmpRange(p.a);
+  const subtitle = `${older} ${state.lang === 'en' ? '→' : '←'} ${newer} · ${fileStamp(at)}`;
+  const file = `${t('ricoCmpFile')} ${fileDay(at)}`;
+  const names = t('ricoCmpTotals') || {}, cur = x=>x.key === 'iqd' ? 'IQD' : x.key === 'usd' ? 'USD' : '';
+  const change = r=>r.pct == null ? (Number(r.a) > 0 && !Number(r.b) ? t('ricoCmpNew') : '') : `${r.pct > 0 ? '+' : ''}${r.pct}%`;
+  const unitOf = r=>r.unit || '';
+  const all = [...totals.map(x=>({name:names[x.key] || x.key, unit:cur(x), a:x.a, b:x.b, pct:x.pct, total:true})), ...rows.map(r=>({...r, unit:unitOf(r)}))];
+  if(format === 'excel') return deliverExcel(brandedWorkbook({title, subtitle, at, sheets:[{name:t('ricoCmpFile'),
+    columns:[{label:t('ricoCmpName'), width:32}, {label:t('ricoCmpUnit'), width:12}, {label:older, width:16, type:'number'}, {label:newer, width:16, type:'number'}, {label:t('ricoCmpChange'), width:10}],
+    rows:all.map(r=>[r.name, r.unit, Number(r.b) || 0, Number(r.a) || 0, change(r)])}]}), file);
+  return deliverPdf({title, subtitle, stamp:fileStamp(at), info:[[t('ricoCmpEarlier'), older], [t('ricoCmpLater'), newer]],
+    sections:[{columns:[{label:t('ricoCmpName'), w:40, bold:true}, {label:older, w:20, align:'end'}, {label:newer, w:20, align:'end'}, {label:t('ricoCmpChange'), w:20, align:'end'}],
+      rows:all.map(r=>[r.name + (r.unit ? ` (${r.unit})` : ''), invNum(r.b), invNum(r.a), change(r)])}]}, file);
+}
 async function deliverExcel(bytes, name){
   const done = await deliverFile(new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `${safeFileName(name)}.xlsx`);
   if(done) toast(t('fileExcelReady'));

@@ -118,7 +118,6 @@ function recipeWhy(l){
   if(l.status === 'gone') return rt('whyGone');
   if(l.status === 'unit') return rt('whyUnit')(l.unit, l.base);
   if(l.status === 'buyUnit') return rt('whyBuyUnit')(l.boughtIn, l.base);
-  if(l.status === 'usd') return rt('whyUsd');
   return rt('whyPrice');
 }
 const recipeNoPrice = p=>!['amount', 'unit'].includes(p.status);
@@ -160,8 +159,8 @@ function recipePic(r, cls){
   const cat = recipeCat(r.data?.category), url = recipeBook.data.covers?.[r.id], letter = recipeLetter(r.name);
   return `<span class="rc-pic ${cls}${cat ? ' tinted' : ''}"${recipeTint(cat)} aria-hidden="true">${url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" draggable="false" data-letter="${esc(letter)}">` : `<b>${esc(letter)}</b>`}</span>`;
 }
-/* Out or low in Main Storage, as a short coloured word. */
-const recipeStockWord = st=>st === 'empty' ? `<span class="rc-tone red">${esc(rt('out'))}</span>` : st === 'low' ? `<span class="rc-tone amber">${esc(rt('low'))}</span>` : '';
+/* Out or low in Main Storage, as the app's small status label (the same as on Receipts and Admin). */
+const recipeStockWord = st=>st === 'empty' ? `<span class="st st-bad rc-st">${esc(rt('out'))}</span>` : st === 'low' ? `<span class="st st-wait rc-st">${esc(rt('low'))}</span>` : '';
 /* Numbers as people type them: Kurdish and Arabic digits, and a comma for the decimal point (1,000 with
    three digits after the comma is a thousand). null when it is not a number above 0. */
 function recipeNumber(v){
@@ -200,7 +199,7 @@ async function recipeSave(loud = false){
   try{ return await job; } finally { if(recipeBook.saveJob === job) recipeBook.saveJob = null; }
 }
 const recipeEditable = r=>JSON.stringify({name:r.name, data:r.data});
-/* Saving while typing stays quiet; loud (Done, leaving) says what is wrong. */
+/* Saving while typing stays quiet; loud (Save, leaving) says what is wrong. */
 async function recipePerformSave(loud = false){
   const r = recipeBook.editing;
   if(!r || !recipeBook.dirty) return true;
@@ -338,7 +337,7 @@ const recipeTouch = ()=>!matchMedia('(hover: hover) and (pointer: fine)').matche
    bar (it fits at any width and in any language), the notes, and See how it adds up. */
 function recipeCostCard(c, live){
   const attrs = live ? ' id="rcLive" aria-live="polite"' : '';
-  const why = `<button type="button" class="rc-why-row" data-rc-why><span>${esc(rt('whyNumbers'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
+  const why = !c.lines.length ? '' : `<button type="button" class="rc-why-row" data-rc-why><span>${esc(rt('whyNumbers'))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
   const row = (k, v, cls = '')=>`<div class="rc-mrow${cls ? ' ' + cls : ''}"><span>${esc(k)}</span><b dir="auto">${v}</b></div>`;
   const none = `<em>${esc(rt('noPriceShort'))}</em>`;
   if(!c.complete) return `<section class="rc-money"${attrs}><p class="rc-missing">${esc(recipeMissingNote(c))}</p>${c.price ? row(rt('sellsFor'), esc(recipeMoney(c.price))) : ''}${why}</section>`;
@@ -359,7 +358,7 @@ const recipeLineCost = l=>l.status === 'ok' ? `<b>${esc(recipeExact(l.cost))}</b
 function recipeLineHtml(l){
   const ing = recipeIngredient(l.ingredient), s = ing ? recipeStock(ing.stock_item) : null;
   const qty = Number(l.qty) > 0 ? esc(recipeLtr(`${recipeQty(l.qty)} ${l.unit}`)) : '', word = recipeStockWord(s?.state);
-  return `<div class="rc-li"><span class="rc-li-main"><span dir="auto">${esc(l.name || rt('missing'))}</span>${qty || word ? `<small>${[qty, word].filter(Boolean).join(' · ')}</small>` : ''}</span>
+  return `<div class="rc-li"><span class="rc-li-main"><span dir="auto">${esc(l.name || rt('missing'))}</span>${qty || word ? `<small class="rc-li-sub">${qty ? `<span>${qty}</span>` : ''}${word}</small>` : ''}</span>
     <span class="rc-li-end">${recipeLineCost(l)}</span></div>`;
 }
 function recipePhotosHtml(r, photos){
@@ -374,9 +373,7 @@ function recipeDetailPage(r){
   const photos = recipeBook.photos?.id === r.id ? recipeBook.photos : null;
   const steps = (d.steps || []).filter(s=>s.trim());
   return `<div class="rc-page rc-detail">
-    <div class="rc-bar"><button type="button" class="queue-back" id="rcBack" aria-label="${esc(rt('backToRecipes'))}">${ICON_BACK}</button>
-      <button type="button" class="btn btn-ghost rc-bar-btn" id="rcEdit">${ICON_EDIT}<span>${esc(rt('edit'))}</span></button></div>
-    <header class="rc-head">${recipePic(r, 'rc-hero')}<div class="rc-head-text">
+    <header class="rc-head">${recipeBanner(r, cat)}${recipePic(r, 'rc-avatar')}<div class="rc-head-text">
       ${cat ? `<span class="rc-cat"${recipeTint(cat)} dir="auto">${esc(cat.name)}</span>` : ''}<h2 dir="auto">${esc(r.name)}</h2>
       ${d.price ? `<p>${esc(rt('onMenuFor')(recipeMoney(d.price)))}</p>` : ''}</div></header>
     ${recipeCostCard(c)}
@@ -391,6 +388,87 @@ function recipeDetailPage(r){
     <p class="rc-hint">${esc(rt('edited')(accountLabel(r.updated_by) || '', formatIraqDateTime(r.updated_at, {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'})))}</p></div>`;
 }
 
+/* ---------- The banner at the top of a recipe's page ----------
+   A soft blend of two pastels of one colour: the photo's own background colour when the recipe has a
+   photo (read from the photo's edges once, then kept on this device), else its category's colour (the
+   two tones in _shared/recipe-colors.js). Back and Edit sit on it as small pills. */
+const recipeBannerVars = (b1, b2, d1, d2)=>`--rb1:${b1};--rb2:${b2};--rb1d:${d1};--rb2d:${d2}`;
+function recipeCatBanner(cat){
+  const C = globalThis.RicottaRecipeColors, c = (cat && C?.get(cat.color)) || C?.get('mist');
+  return c ? recipeBannerVars(c.bg, c.bg2, c.bgDark, c.bg2Dark) : '';
+}
+/* A photo's two tones from its hue and saturation: pastel in light mode, deep and quiet in dark mode. */
+function recipeToneVars([h, s]){
+  const sat = Math.round(Math.min(62, Math.max(s, 6))), h2 = Math.round((h + 14) % 360);
+  return recipeBannerVars(`hsl(${h} ${sat}% 87%)`, `hsl(${h2} ${Math.round(sat * .8)}% 95%)`, `hsl(${h} ${Math.round(Math.min(sat, 46))}% 24%)`, `hsl(${h2} ${Math.round(Math.min(sat, 34))}% 15%)`);
+}
+/* The same photo has a new signed link every time: it is known by its path (or, for a picture kept in the
+   page, by its length and end). */
+const recipeToneKey = url=>/^data:/.test(url) ? 'd' + url.length + url.slice(-48) : String(url).split('?')[0].replace(/^https?:\/\/[^/]+/, '');
+function recipeToneCached(url){
+  try{ const all = lget('rcTones') || {}; return Array.isArray(all[recipeToneKey(url)]) ? all[recipeToneKey(url)] : null; }catch{ return null; }
+}
+function recipeToneKeep(url, tone){
+  try{
+    const all = lget('rcTones') || {}, keys = Object.keys(all);
+    if(keys.length > 200) keys.slice(0, keys.length - 150).forEach(k=>delete all[k]);
+    all[recipeToneKey(url)] = tone; lset('rcTones', all);
+  }catch{ /* storage full or blocked: worked out again next time */ }
+}
+/* The photo's background colour: its outer ring of pixels, grouped by hue (grays apart), the biggest
+   group wins, then that group's average hue and saturation. null when the photo can't be read (a link
+   from another site without permission taints the canvas): the category's colour stays. */
+function recipeToneRead(url){
+  return new Promise(done=>{
+    const img = new Image();
+    img.crossOrigin = 'anonymous'; img.decoding = 'async';
+    img.onerror = ()=>done(null);
+    img.onload = ()=>{
+      try{
+        const n = 40, c = document.createElement('canvas'); c.width = n; c.height = n;
+        const g = c.getContext('2d', {willReadFrequently:true}); g.drawImage(img, 0, 0, n, n);
+        const px = g.getImageData(0, 0, n, n).data, groups = new Map();
+        for(let y = 0; y < n; y++) for(let x = 0; x < n; x++){
+          if(x > 4 && x < n - 5 && y > 4 && y < n - 5) continue;
+          const i = (y * n + x) * 4, r = px[i] / 255, gr = px[i + 1] / 255, b = px[i + 2] / 255;
+          const max = Math.max(r, gr, b), min = Math.min(r, gr, b), l = (max + min) / 2, d = max - min;
+          const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+          let h = 0;
+          if(d){ h = max === r ? ((gr - b) / d) % 6 : max === gr ? (b - r) / d + 2 : (r - gr) / d + 4; h = (h * 60 + 360) % 360; }
+          const key = s < .12 || l < .08 || l > .96 ? 'gray' : Math.round(h / 30) % 12;
+          const e = groups.get(key) || {n:0, x:0, y:0, s:0};
+          e.n++; e.x += Math.cos(h * Math.PI / 180); e.y += Math.sin(h * Math.PI / 180); e.s += s;
+          groups.set(key, e);
+        }
+        const [key, best] = [...groups].sort((a, b)=>b[1].n - a[1].n)[0] || [];
+        if(!best) return done(null);
+        const hue = Math.round((Math.atan2(best.y, best.x) * 180 / Math.PI + 360) % 360);
+        done(key === 'gray' ? [hue, 4] : [hue, Math.round(best.s / best.n * 100)]);
+      }catch{ done(null); }
+    };
+    img.src = url;
+  });
+}
+function recipeBanner(r, cat){
+  const url = recipeBook.data.covers?.[r.id], tone = url && recipeToneCached(url);
+  return `<div class="rc-banner" style="${recipeCatBanner(cat)}">${url ? `<i class="rc-banner-tone${tone ? ' on' : ''}" data-rc-tone="${esc(url)}"${tone ? ` style="${recipeToneVars(tone)}"` : ''} aria-hidden="true"></i>` : ''}
+    <button type="button" class="rc-pill-btn" id="rcBack" aria-label="${esc(rt('backToRecipes'))}">${ICON_BACK}</button>
+    <button type="button" class="rc-pill-btn" id="rcEdit">${ICON_EDIT}<span>${esc(rt('edit'))}</span></button></div>`;
+}
+/* A photo seen for the first time: its colour is read, kept, and the banner fades to it. */
+function recipeBindBanner(){
+  const layer = document.querySelector('[data-rc-tone]:not(.on)');
+  if(!layer) return;
+  const url = layer.dataset.rcTone;
+  recipeToneRead(url).then(tone=>{
+    if(!tone) return;
+    recipeToneKeep(url, tone);
+    if(!layer.isConnected) return;
+    layer.setAttribute('style', recipeToneVars(tone));
+    requestAnimationFrame(()=>layer.classList.add('on'));
+  });
+}
+
 /* ---------- How it adds up (Where do these numbers come from?) ----------
    One small card per item: what was used, the price per gram, millilitre or piece, and what it costs,
    with the last price paid under it. Then the sum, step by step, down to what we keep. */
@@ -403,7 +481,7 @@ function recipeWhySheet(r){
     return `<div class="rc-why-card">
       <div class="rc-why-top"><b dir="auto">${esc(l.name || rt('missing'))}</b>${l.status === 'ok' ? `<span class="rc-why-cost">${esc(recipeExact(l.cost))}</span>` : `<em class="rc-why">${esc(recipeWhy(l))}</em>`}</div>
       ${used ? `<p class="rc-why-math"><bdi dir="ltr">${esc(used)}</bdi>${ok && sizes.length ? ` × <bdi dir="ltr">${esc(sizes[sizes.length - 1])}</bdi>` : ''}</p>` : ''}
-      ${ok ? `<p class="rc-why-paid">${esc(rt('paidLine')(recipeExact(p.cost), p.unit || p.base, recipeDay(p.day), p.supplier || ''))}</p>` : ''}</div>`;
+      ${ok ? `<p class="rc-why-paid">${esc(rt('paidLine')(recipeExact(p.cost), p.unit || p.base, recipeDay(p.day), p.supplier || ''))}${p.paid === 'USD' && p.rate ? ' ' + esc(rt('paidUsdAt')(recipeLtr(Number(p.rate).toLocaleString('en-US')))) : ''}</p>` : ''}</div>`;
   }).join('') || `<p class="rc-quiet">${esc(rt('noLines'))}</p>`;
   const step = (k, v, cls = '')=>`<div class="rc-sum-row ${cls}"><span>${esc(k)}</span><b dir="auto">${v}</b></div>`;
   const sum = c.complete ? `<div class="rc-sum">${step(rt('total'), esc(recipeExact(c.total)))}${step(rt('rounded'), esc(recipeMoney(c.cost)), 'strong')}
@@ -428,6 +506,16 @@ function recipeUnitOptions(selected, stockItem){
   return (has || !selected ? '' : `<option value="${esc(selected)}" selected>${esc(recipeUnit(selected))}</option>`)
     + (selected ? '' : `<option value="" selected disabled>${esc(rt('chooseUnit'))}</option>`)
     + units.map(u=>`<option value="${esc(u.id)}" ${u.id === selected ? 'selected' : ''}>${esc(u.en)}</option>`).join('');
+}
+/* The item form's units: every unit from Manage, Units, any time (also before a stock item is
+   picked). Once one is picked, the units it comes in come first. */
+function recipeItemUnitOptions(selected, stockItem){
+  const all = recipeBook.data.units, fit = stockItem ? recipeUnitsFor(stockItem) : [];
+  const first = fit.length < all.length ? fit : [], ids = new Set(first.map(u=>u.id));
+  const list = [...first, ...all.filter(u=>!ids.has(u.id))], has = list.some(u=>u.id === selected);
+  return (has || !selected ? '' : `<option value="${esc(selected)}" selected>${esc(recipeUnit(selected))}</option>`)
+    + (selected ? '' : `<option value="" selected disabled>${esc(rt('chooseUnit'))}</option>`)
+    + list.map(u=>`<option value="${esc(u.id)}" ${u.id === selected ? 'selected' : ''}>${esc(u.en)}</option>`).join('');
 }
 /* The unit a new line starts with: the item's usual one when it fits, else the first that does. */
 function recipeStartUnit(ing){
@@ -471,15 +559,22 @@ function recipeEditorPage(){
     <h3 class="section-title">${esc(rt('cost'))}</h3>
     ${recipeCostCard(c, true)}
     <h3 class="section-title">${esc(rt('steps'))}</h3>
-    <section class="rc-list">${d.steps.map((s, i)=>`<div class="rc-estep"><span class="rc-step-n" aria-hidden="true">${i + 1}</span><textarea id="rcStep${i}" data-rc-step="${i}" maxlength="3000" rows="2" dir="auto" aria-label="${esc(rt('stepN')(i + 1))}" placeholder="${esc(rt('stepHint'))}">${esc(s)}</textarea>
+    <section class="rc-list">${d.steps.map((s, i)=>`<div class="rc-estep"><span class="rc-step-n" aria-hidden="true">${i + 1}</span><textarea class="rc-grow" id="rcStep${i}" data-rc-step="${i}" maxlength="3000" rows="1" dir="auto" aria-label="${esc(rt('stepN')(i + 1))}" placeholder="${esc(rt('stepHint'))}">${esc(s)}</textarea>
         <button type="button" class="rc-x" data-rc-delstep="${i}" aria-label="${esc(rt('removeStep'))}">${ICON_CLOSE_SM}</button></div>`).join('')}
       <button type="button" class="rc-add-row" id="rcAddStep">${ICON_PLUS}<span>${esc(rt('addStep'))}</span></button></section>
     <h3 class="section-title">${esc(rt('notes'))}</h3>
-    <section class="rc-list rc-notes-card"><textarea class="rc-notes-box" data-rc-field="notes" maxlength="8000" rows="3" dir="auto" aria-label="${esc(rt('notes'))}" placeholder="${esc(rt('notesHint'))}">${esc(d.notes)}</textarea></section>
-    <div class="rc-done-wrap"><button type="button" class="btn btn-primary rc-done" id="rcDone">${esc(rt('doneSave'))}</button>
-      ${r.version ? `<button type="button" class="rc-link rc-danger" id="rcDeleteRecipe">${esc(rt('deleteRecipe'))}</button>` : ''}</div></div>`;
+    <section class="rc-list rc-notes-card"><textarea class="rc-notes-box rc-grow" data-rc-field="notes" maxlength="8000" rows="2" dir="auto" aria-label="${esc(rt('notes'))}" placeholder="${esc(rt('notesHint'))}">${esc(d.notes)}</textarea></section>
+    <div class="rc-actions"><button type="button" class="btn btn-primary rc-act" id="rcDone">${esc(t('save'))}</button>
+      ${r.version ? `<button type="button" class="btn rc-act rc-act-delete" id="rcDeleteRecipe">${esc(rt('deleteRecipe'))}</button>` : ''}</div></div>`;
   recipeBook.fresh.clear();
   return html;
+}
+/* Steps and notes grow with what is written, so the whole text always shows (no scrolling inside the
+   box, no dragging its corner). */
+function recipeGrow(el){
+  if(!el?.isConnected) return;
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
 }
 /* While typing: the line costs and the cost card change in place (the page isn't drawn again). */
 function recipeRefreshLive(){
@@ -506,7 +601,7 @@ function recipePickItem(onPick){
   const S = globalThis.RicottaSearch;
   const rows = q=>{ const list = q.trim() && S ? S.rank(all, q, i=>[i.name, i.stock_item]) : all;
     return list.map(i=>{ const p = recipeIngredientPrice(i);
-      return `<button type="button" class="rc-li rc-pick-row" data-rc-pick="${esc(i.id)}"><span class="rc-li-main"><span dir="auto">${esc(i.name)}</span>${foldText(recipeStockName(i.stock_item)) !== foldText(i.name) ? `<small dir="auto">${esc(recipeStockName(i.stock_item))}</small>` : ''}</span><span class="rc-price${p.ok ? '' : ' none'}" dir="auto">${esc(p.text)}</span></button>`; }).join('')
+      return `<button type="button" class="rc-li rc-pick-row" data-rc-pick="${esc(i.id)}"><span class="rc-li-main"><span dir="auto">${esc(i.name)}</span>${foldText(recipeStockName(i.stock_item)) !== foldText(i.name) ? `<small dir="auto">${esc(recipeStockName(i.stock_item))}</small>` : ''}</span>${recipePriceEnd(p)}</button>`; }).join('')
       || `<p class="rc-quiet">${esc(all.length ? rt('noMatch') : rt('allUsed'))}</p>`; };
   const {el, close} = openKitchenSheet('rc-pick-sheet', `<div class="rc-pick"><div class="sel-title">${esc(rt('addIngredient'))}</div>
     ${recipeSearchBox('rcPickSearch', '', rt('searchIngredients'))}<div class="rc-list rc-pick-list" id="rcPickList">${rows('')}</div>
@@ -527,14 +622,24 @@ const recipeNameList = names=>{ const list = names.slice(0, 4).map(n=>recipeLtr(
 function recipeIngredientPrice(i){
   const d = recipeBook.data, s = recipeStock(i.stock_item), p = recipeCtx().price(i.stock_item);
   if(!s && d.stock.length) return {ok:false, text:rt('whyGone')};
-  if(p && !p.error && p.currency === 'IQD' && p.perBase > 0) return {ok:true, p, text:recipePriceShort(p)};
-  return {ok:false, text:p && p.currency !== 'IQD' ? rt('whyUsd') : p?.error ? rt('whyBuyUnit')(p.unit, p.base) : rt('noPriceYet')};
+  if(p && !p.error && p.currency === 'IQD' && p.perBase > 0) return {ok:true, p, usd:p.paid === 'USD', text:recipePriceShort(p)};
+  return {ok:false, text:p?.error ? rt('whyBuyUnit')(p.unit, p.base) : rt('noPriceYet')};
 }
+/* The price on the right in plain gray (with a small "Paid in USD" under it when it was), or the app's
+   small gray label when there is none yet. */
+function recipePriceEnd(price){
+  if(price.ok) return `<span class="rc-price" dir="auto"><span>${esc(price.text)}</span>${price.usd ? `<small>${esc(rt('paidUsd'))}</small>` : ''}</span>`;
+  return `<span class="rc-price"><span class="st st-off rc-st">${esc(rt('noPriceYet'))}</span></span>`;
+}
+/* One item: its name, which recipes use it and, when it needs a look, a small Out or Low label; the
+   price on the right. Why there is no price (no longer in Ricotta Restaurant, a unit that can't be
+   turned) is said in gray under the name. */
 function recipeIngredientRow(i){
   const s = recipeStock(i.stock_item), price = recipeIngredientPrice(i), word = recipeStockWord(s?.state);
+  const why = !price.ok && price.text !== rt('noPriceYet') ? price.text : '';
   return `<button type="button" class="rc-li rc-irow" data-rc-ingredient="${esc(i.id)}" aria-haspopup="menu">
-    <span class="rc-li-main"><span class="rc-irow-name" dir="auto">${esc(i.name)}</span><small>${esc(rt('usedIn')(recipeUses(i.id)))}${word ? ' · ' + word : ''}</small></span>
-    <span class="rc-price${price.ok ? '' : ' none'}" dir="auto">${esc(price.text)}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
+    <span class="rc-li-main"><span class="rc-irow-name" dir="auto">${esc(i.name)}</span><small class="rc-li-sub"><span>${esc(why || rt('usedIn')(recipeUses(i.id)))}</span>${word}</small></span>
+    ${recipePriceEnd(price)}<i class="sheet-chevron" aria-hidden="true"></i></button>`;
 }
 function recipeIngRows(){
   const q = recipeBook.ingQuery.trim(), S = globalThis.RicottaSearch, all = [...recipeBook.data.ingredients].sort((a, b)=>a.name.localeCompare(b.name, state.lang));
@@ -554,11 +659,12 @@ function recipeIngredientsPage(){
     ${recipeAskRico(t('recipe_ricoItemChips'))}
     <p class="rc-hint">${esc(rt('ingredientsNote'))} ${esc(rt('holdHintIng')(recipeTouch()))}</p>${foot}`;
 }
-/* Add or change an item: its name, the stock item it is, and the unit new lines start with (only the
-   stock item's own units). The stock item is picked from a search: with nothing typed in it, the best
-   matches for the item's name come first; typing searches every stock item by its name in any language
-   and by the names the ordering items linked to it go by. One tap links it; a name that doesn't look
-   like the stock item gets a warning only (Ahmad decides). Its last price shows straight away. */
+/* Add or change an item: its name, the stock item it is, and the unit new lines start with (any unit,
+   any time; the stock item's own units first). The stock item is picked from a list that opens as soon
+   as its search box is tapped: the best matches for the item's name first, then every stock item A to Z;
+   typing searches them by their name in any language and by the names the ordering items linked to them
+   go by. One tap links it; a name that doesn't look like the stock item gets a warning only (Ahmad
+   decides). Its last price shows straight away. */
 function recipeIngredientForm(id, onSaved){
   const d = recipeBook.data, old = recipeIngredient(id), stock = [...d.stock].sort((a, b)=>a.name.localeCompare(b.name));
   const users = old ? recipeUsers(old.id).map(r=>r.name) : [];
@@ -566,7 +672,7 @@ function recipeIngredientForm(id, onSaved){
   showFormModal({title:esc(old ? rt('editIngredient') : rt('newIngredient')),
     bodyHtml:recipeField(rt('ingredientName'), `<input id="rcIngName" maxlength="120" value="${esc(old?.name || '')}" dir="auto" autocomplete="off" placeholder="${esc(rt('ingredientNameHint'))}">`)
       + `<div class="field rc-field rc-stock-field" id="rcIngStockBox"></div>`
-      + recipeField(rt('usualUnit'), `<select id="rcIngUnit">${recipeUnitOptions(old?.unit || '', old?.stock_item)}</select>`, esc(rt('unitsHint')))
+      + recipeField(rt('usualUnit'), `<select id="rcIngUnit">${recipeItemUnitOptions(old?.unit || '', old?.stock_item)}</select>`, esc(rt('unitsHint')))
       + (users.length ? `<p class="field-hint rc-used-note">${esc(rt('usedBy')(recipeNameList(users)))}</p>` : ''),
     okLabel:t('save'),
     againLabel:old && !users.length ? t('delete') : '',
@@ -596,35 +702,53 @@ function recipeIngredientForm(id, onSaved){
     if(!nameEl || !box) return;
     const L = globalThis.RicottaStockLink, S = globalThis.RicottaSearch;
     let unitTouched = !!old, auto = false;
-    // Only the stock item's own units; the usual unit starts as its base unit when Manage has it.
+    // The stock item's own units come first. A unit the person chose stays; otherwise it starts as the
+    // stock item's base unit when Manage has it (or the only unit it comes in).
     const fillUnits = ()=>{
       if(!unitEl) return;
       const keep = unitEl.value, fit = recipeUnitsFor(chosen);
-      unitEl.innerHTML = recipeUnitOptions(fit.some(u=>u.id === keep) ? keep : '', chosen);
+      unitEl.innerHTML = recipeItemUnitOptions(keep && (unitTouched || fit.some(u=>u.id === keep)) ? keep : '', chosen);
       const s = stock.find(x=>x.name === chosen);
       if(!unitTouched && s && S){ const m = S.unit(fit.map(u=>u.en), s.base); const u = m && fit.find(x=>x.en === m); if(u){ auto = true; unitEl.value = u.id; auto = false; } }
       if(!unitEl.value && fit.length === 1) unitEl.value = fit[0].id;
-      unitEl.dispatchEvent(new Event('change', {bubbles:true}));
+      auto = true; unitEl.dispatchEvent(new Event('change', {bubbles:true})); auto = false;
     };
     const warnText = ()=>{ const name = nameEl.value.trim(); return name && chosen && L && !L.matches({name}, chosen) ? rt('nameWarn') : ''; };
     const opt = s=>{ const p = recipeIngredientPrice({stock_item:s.name});
       return `<button type="button" class="stock-opt${s.name === chosen ? ' on' : ''}" role="option" aria-selected="${s.name === chosen}" data-rc-stock="${esc(s.name)}"><span dir="auto">${esc(s.name)}</span><small dir="auto">${esc(p.text)}</small></button>`; };
+    // The list: with nothing typed, the best matches for the item's name, then all of them A to Z.
     const paintList = ()=>{
-      const list = box.querySelector('#rcIngStockList'); if(!list) return;
+      const list = box.querySelector('#rcIngStockList'); if(!list || list.hidden) return;
       const q = query.trim(), name = nameEl.value.trim();
       if(!stock.length){ list.innerHTML = `<div class="field-hint">${esc(t('rrNoCatalog'))}</div>`; return; }
-      const rows = q && S ? S.rank(stock, q, s=>[s.name, ...(s.aka || [])]).slice(0, 12) : name && L ? L.suggest({name}, stock, 8) : [];
-      list.innerHTML = (!q && rows.length ? `<div class="rc-pick-head">${esc(rt('suggestedStock'))}</div>` : '') + (rows.map(opt).join('')
-        || `<div class="field-hint">${esc(q ? t('rrNoMatch') : name ? rt('noStockMatch') : rt('typeToFind'))}</div>`);
+      const head = k=>`<div class="rc-pick-head">${esc(rt(k))}</div>`;
+      if(q){ const rows = S ? S.rank(stock, q, s=>[s.name, ...(s.aka || [])]).slice(0, 60) : stock.filter(s=>foldText(s.name).includes(foldText(q)));
+        list.innerHTML = rows.map(opt).join('') || `<div class="field-hint">${esc(t('rrNoMatch'))}</div>`; return; }
+      const best = name && L ? L.suggest({name}, stock, 6) : [], seen = new Set(best.map(s=>s.name));
+      list.innerHTML = (best.length ? head('suggestedStock') + best.map(opt).join('') : '') + head('allStock') + stock.filter(s=>!seen.has(s.name)).map(opt).join('');
+    };
+    const openList = open=>{
+      const list = box.querySelector('#rcIngStockList'); if(!list || list.hidden === !open) return;
+      list.hidden = !open; box.querySelector('#rcIngStockSearch')?.setAttribute('aria-expanded', String(open));
+      if(open){ paintList(); list.scrollTop = 0; }
     };
     const paint = ()=>{
       const p = chosen ? recipeIngredientPrice({stock_item:chosen}) : null, warn = warnText();
       box.innerHTML = `<label for="${picking ? 'rcIngStockSearch' : 'rcIngStockChange'}">${esc(rt('stockItem'))}</label>
-        ${chosen ? `<div class="stock-link-now"><span class="stock-link-name" dir="auto">${esc(chosen)}</span><small>${esc(rt('lastPrice'))}: <b class="rc-tone${p.ok ? '' : ' amber'}">${esc(p.text)}</b></small></div>` : ''}
+        ${chosen ? `<div class="stock-link-now"><span class="stock-link-name" dir="auto">${esc(chosen)}</span><small>${esc(rt('lastPrice'))}: <b>${esc(p.text)}</b>${p.usd ? ` <span class="rc-usd">${esc(rt('paidUsd'))}</span>` : ''}</small></div>` : ''}
         <p class="field-hint warn" id="rcIngWarn">${esc(warn)}</p>
-        ${picking ? `<div class="stock-pick"><input id="rcIngStockSearch" class="stock-pick-input" type="search" autocomplete="off" dir="auto" placeholder="${esc(rt('searchStock'))}" value="${esc(query)}"><div class="stock-pick-list" role="listbox" id="rcIngStockList" aria-label="${esc(rt('stockItem'))}"></div></div>`
+        ${picking ? `<div class="stock-pick"><div class="search-wrap rc-stock-search">${ICON_SEARCH}<input id="rcIngStockSearch" class="search-input" type="search" role="combobox" aria-expanded="false" aria-controls="rcIngStockList" autocomplete="off" dir="auto" placeholder="${esc(rt('searchStock'))}" value="${esc(query)}"></div><div class="stock-pick-list rc-stock-drop" role="listbox" id="rcIngStockList" aria-label="${esc(rt('stockItem'))}" hidden></div></div>`
           : `<div class="stock-link-actions"><button type="button" class="btn btn-ghost" id="rcIngStockChange">${esc(rt('changeStock'))}</button></div>`}`;
-      if(picking){ paintList(); const input = box.querySelector('#rcIngStockSearch'); input.oninput = ()=>{ query = input.value; paintList(); }; input.onkeydown = e=>{ if(e.key === 'Enter') e.preventDefault(); }; }
+      if(picking){
+        const input = box.querySelector('#rcIngStockSearch'), list = box.querySelector('#rcIngStockList');
+        input.onfocus = ()=>openList(true);
+        input.onclick = ()=>openList(true);
+        input.oninput = ()=>{ query = input.value; openList(true); paintList(); };
+        input.onkeydown = e=>{ if(e.key === 'Enter') e.preventDefault(); if(e.key === 'Escape' && !list.hidden){ e.preventDefault(); e.stopPropagation(); openList(false); } };
+        // A tap in the list keeps the box focused (the list stays open while it scrolls).
+        list.addEventListener('pointerdown', e=>{ if(e.target.closest('[data-rc-stock]') || e.target === list) e.preventDefault(); });
+        box.querySelector('.stock-pick').addEventListener('focusout', e=>{ if(!e.currentTarget.contains(e.relatedTarget)) setTimeout(()=>{ if(!box.contains(document.activeElement)) openList(false); }, 120); });
+      }
     };
     box.addEventListener('click', e=>{
       const b = e.target.closest('[data-rc-stock]');
@@ -1002,6 +1126,7 @@ function attachRecipeEvents(){
   const current = recipeBook.page === 'detail' && !recipeBook.editing ? recipeCurrent() : null;
   if(current && recipeBook.photos?.id !== current.id) recipePhotos();
   on('rcEdit', ()=>{ const r = recipeCurrent(); if(r) recipeEdit(r); });
+  if(current) recipeBindBanner();
   const photo = document.getElementById('rcPhoto');
   if(photo) photo.onchange = ()=>{ recipeUpload(photo.files[0]); photo.value = ''; };
   recipeBindPhotos();
@@ -1025,7 +1150,7 @@ function attachRecipeEvents(){
   if(name){ name.oninput = ()=>{ r.name = name.value; recipeChange(); }; if(!r.version && !r.name) setTimeout(()=>name.focus({preventScroll:true}), 0); }
   recipeBindCategory();
   const notes = document.querySelector('[data-rc-field="notes"]');
-  if(notes) notes.oninput = ()=>{ d.notes = notes.value; recipeChange(); };
+  if(notes) notes.oninput = ()=>{ d.notes = notes.value; recipeGrow(notes); recipeChange(); };
   const price = document.getElementById('rcPrice');
   if(price) price.oninput = ()=>{ const v = recipeNumber(price.value); d.price = v ? Math.round(v) : null; recipeChange(); recipeRefreshLive(); };
   all('[data-rc-qty]', el=>el.oninput = ()=>{
@@ -1034,7 +1159,8 @@ function attachRecipeEvents(){
     recipeChange(); recipeRefreshLive();
   });
   all('[data-rc-unit]', el=>el.onchange = ()=>{ d.lines[Number(el.dataset.rcUnit)].unit = el.value; recipeChange(); recipeRefreshLive(); });
-  all('[data-rc-step]', el=>el.oninput = ()=>{ d.steps[Number(el.dataset.rcStep)] = el.value; recipeChange(); });
+  all('[data-rc-step]', el=>el.oninput = ()=>{ d.steps[Number(el.dataset.rcStep)] = el.value; recipeGrow(el); recipeChange(); });
+  all('textarea.rc-grow', recipeGrow);
   all('[data-rc-remove]', b=>b.onclick = ()=>{
     const line = b.closest('.rc-eline'), go = ()=>{ d.lines.splice(Number(b.dataset.rcRemove), 1); redraw(); };
     if(line?.animate && !reducedMotion()) line.animate([{opacity:1}, {opacity:0}], {duration:140, easing:'ease-in'}).onfinish = go; else go();

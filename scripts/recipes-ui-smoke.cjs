@@ -1,8 +1,9 @@
 /* Browser checks for Recipes (Ahmad, the minibar): he sees Recipes, Items, his Stock tab and Settings, gets
    the tour once and never the Order tour. Items: A to Z, one row each with its name once and its last price
    ("250 / piece"), Check prices now, no category; a new item only offers its stock item's units. A recipe:
-   name, a group he types himself, menu price, items picked from a sheet with amounts, steps, notes; Done at
-   the bottom saves. Its cost is rounded to the nearest 250 IQD with the working behind it, and there is no
+   name, a category from a list, menu price, items picked from a sheet with amounts, steps and notes that
+   grow with the text; Save and Delete recipe side by side at the bottom. A recipe's page opens with a banner
+   in its category's colours. Items show Out, Low and No price yet as small labels. Its cost is rounded to the nearest 250 IQD with the working behind it, and there is no
    cost at all once an item without a price is added (with a note naming it). The list is grouped by his
    groups; hold or right-click deletes. Stock: the items Rozh picked, A to Z, with a search box. His
    Settings show only what is his. Rozh opens Ahmad's access in Admin. EN/KU/AR at phone and desktop
@@ -56,7 +57,8 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  await page.locator('.navbtn[data-view="recipeItems"]').click();await page.locator('#rcIngredientNew').waitFor();
  assert.equal(await page.locator('#rcPrices').count(),1,'Check prices now');
  assert.match(await page.locator(`[data-rc-ingredient="${egg}"] .rc-price`).innerText(),/250/,'250 IQD a piece');
- assert.equal(await page.locator(`[data-rc-ingredient="${flour}"] .rc-price.none`).count(),1,'Flour has no price yet');
+ assert.equal(await page.locator(`[data-rc-ingredient="${flour}"] .rc-price .st.st-off`).count(),1,'Flour has no price yet, as a small label');
+ assert.equal(await page.locator('.rc-items-page .rc-tone, .rc-items-page .rc-price.none').count(),0,'no amber or red words');
  assert.deepEqual(await page.locator('.rc-irow-name').allInnerTexts(),['Eggs','Flour'],'A to Z, no groups');
  assert.equal(await page.locator('.rc-items-page .rc-group').count(),0,'items are not grouped');
  await shot('ingredients');
@@ -64,21 +66,26 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
   // A new item: no category; its last price shows when the stock item is chosen; only that stock item's units.
   await page.locator('#rcIngredientNew').click();await page.locator('#rcIngName').fill('Milk');
   assert.equal(await page.locator('[data-rc-icat]').count(),0,'no category picker');
-  // The stock item is picked from a search: the best match for the typed name is offered first, one tap links it.
-  assert.equal(await page.locator('#rcIngStock').count(),0,'no long dropdown of stock items');
+  // A unit can be chosen before the stock item: every unit from Manage.
+  assert.deepEqual(await page.locator('#rcIngUnit option:not([disabled])').evaluateAll(o=>o.map(x=>x.value)),['pcs','g','ml'],'all units, any time');
+  // The stock item list opens as soon as its search box is tapped: the best match for the typed name first, then all A to Z.
+  assert.equal(await page.locator('#rcIngStockList').isVisible(),false,'closed until tapped');
+  await page.locator('#rcIngStockSearch').click();await page.locator('#rcIngStockList').waitFor();
+  assert.deepEqual(await page.locator('#rcIngStockList [data-rc-stock]').evaluateAll(b=>b.map(x=>x.dataset.rcStock)),['Milk','Eggs','Flour'],'best match, then the rest A to Z');
+  await shot('ingredient-form-list');
   await page.locator('#rcIngStockList [data-rc-stock="Milk"]').click();await page.locator('.rc-stock-field .stock-link-now').waitFor();
   assert.match(await page.locator('.rc-stock-field .stock-link-now').innerText(),/2,000/,'1 L = 2,000 IQD');
-  await page.locator('#rcIngStockChange').click();await page.locator('#rcIngStockSearch').fill('fl');
+  await page.locator('#rcIngStockChange').click();await page.locator('#rcIngStockList').waitFor();await page.locator('#rcIngStockSearch').fill('fl');
   assert.deepEqual(await page.locator('#rcIngStockList [data-rc-stock]').evaluateAll(b=>b.map(x=>x.dataset.rcStock)),['Flour'],'searching finds any stock item');
   await page.locator('#rcIngStockSearch').fill('');await page.locator('#rcIngStockList [data-rc-stock="Milk"]').click();
-  assert.deepEqual(await page.locator('#rcIngUnit option:not([disabled])').evaluateAll(o=>o.map(x=>x.value)),['ml'],'only the units Milk comes in');
+  assert.deepEqual(await page.locator('#rcIngUnit option:not([disabled])').evaluateAll(o=>o.map(x=>x.value)),['ml','pcs','g'],'the units Milk comes in first, then the rest');
   assert.equal(await page.locator('#rcIngUnit').inputValue(),'ml');
   assert.equal(await page.locator('.rc-items-page .rc-irow .rc-letter-sm, .rc-items-page .rc-pic').count(),0,'items have no letter tiles');
   await shot('ingredient-form');
   await page.locator('#modalFormOk').click();await page.waitForFunction(()=>!document.querySelector('.modal-overlay'));
   const milk=book.ingredients.find(i=>i.name==='Milk');assert.equal(milk.category,'');assert.equal(milk.stock_item,'Milk');assert.equal(milk.unit,'ml');
  }
- // A new recipe: name, a new group typed by Ahmad, menu price, items from the sheet, steps; Done at the bottom.
+ // A new recipe: name, a category from the list, menu price, items from the sheet, steps; Save at the bottom.
  await page.locator('.navbtn[data-view="recipes"]').click();await page.locator('#rcNew').click();await page.locator('#rcName').fill('Vanilla cake');
  for(const gone of ['[data-rc-field="yield"]','[data-rc-field="prep"]','[data-rc-status]','[data-rc-up]','[data-rc-stepup]','#rcEditPhoto'])assert.equal(await page.locator(gone).count(),0,gone+' is not in the form');
  // The category comes from the prepared list: nothing to type.
@@ -94,8 +101,16 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  await page.locator('[data-rc-qty="0"]').fill('2');
  assert.match(await page.locator('[data-rc-linecost="0"]').innerText(),/500/,'2 eggs at the last price of 250 IQD');
  await page.locator('[data-rc-step="0"]').fill('Beat the eggs.');
- const done=await page.evaluate(()=>{const d=document.getElementById('rcDone'),n=document.getElementById('rcName');return !!d&&!!n&&!!(n.compareDocumentPosition(d)&Node.DOCUMENT_POSITION_FOLLOWING);});
- assert.ok(done,'Done is at the end of the form');
+ // Save is at the end of the form, after the notes, not in the top bar, and says Save.
+ const done=await page.evaluate(()=>{const d=document.getElementById('rcDone'),n=document.querySelector('[data-rc-field="notes"]');return !!d&&!!n&&!!(n.compareDocumentPosition(d)&Node.DOCUMENT_POSITION_FOLLOWING)&&!d.closest('.rc-bar');});
+ assert.ok(done,'Save is at the end of the form');
+ assert.equal(await page.locator('#rcDone').innerText(),{en:'Save',ku:'پاشەکەوتکردن',ar:'حفظ'}[lang]);
+ assert.equal(await page.locator('#rcDeleteRecipe').count(),0,'a new recipe has nothing to delete');
+ // Steps and notes grow with the text: never a scroll inside, never a corner to drag.
+ const long='Mix it well. '.repeat(40);await page.locator('[data-rc-step="0"]').fill(long);
+ const grow=await page.evaluate(()=>{const e=document.querySelector('[data-rc-step="0"]');return {fits:e.scrollHeight<=e.clientHeight+1,resize:getComputedStyle(e).resize,tall:e.clientHeight>60};});
+ assert.ok(grow.fits&&grow.tall,'the step shows its whole text: '+JSON.stringify(grow));assert.equal(grow.resize,'none');
+ await page.locator('[data-rc-step="0"]').fill('Beat the eggs.');
  await shot('editor');
  await page.locator('#rcDone').click();await page.locator('#rcEdit').waitFor();
  assert.equal(book.recipes.length,1);const saved=book.recipes[0];assert.equal(saved.data.lines[0].ingredient,egg);assert.equal(saved.data.lines[0].qty,2);
@@ -105,6 +120,9 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  assert.match(await page.locator('.rc-money').innerText(),/500/,'the recipe costs 500 IQD');
  assert.equal(await page.locator('.rc-detail .rc-li-main>span').first().innerText(),'Eggs','the item name shows once');
  assert.equal(await page.locator('#rcCook, [data-rc-cook]').count(),0,'no Cooking view');
+ // The banner: the category's two tones, Back and Edit on it, the letter tile overlapping its bottom edge.
+ const ban=await page.evaluate(()=>{const b=document.querySelector('.rc-banner'),a=document.querySelector('.rc-avatar'),B=b.getBoundingClientRect(),A=a.getBoundingClientRect();return {bg:getComputedStyle(b).backgroundImage,over:A.top<B.bottom&&A.bottom>B.bottom,pills:b.querySelectorAll('#rcBack,#rcEdit').length,size:Math.round(A.width)};});
+ assert.match(ban.bg,/gradient/,'a soft blend');assert.ok(ban.over,'the tile overlaps the banner');assert.equal(ban.pills,2);assert.equal(ban.size,84);
  await shot('detail');
  // See how it adds up: each item's working, the total and the rounding.
  await page.locator('[data-rc-why]').click();await page.locator('.rc-why-sheet .rc-why-card').waitFor();
@@ -112,8 +130,11 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  await shot('why');await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('.rc-why-sheet:not(.out)'));
  // Flour has no price yet: no cost, no profit, no margin, and a note that names it.
  await page.locator('#rcEdit').click();await page.locator('#rcAddLine').click();await page.locator(`.rc-pick-sheet [data-rc-pick="${flour}"]`).click();await page.locator('[data-rc-qty="1"]').fill('100');
+ // Editing a saved recipe: Save and Delete recipe side by side, the same height.
+ const acts=await page.evaluate(()=>{const s=document.getElementById('rcDone').getBoundingClientRect(),d=document.getElementById('rcDeleteRecipe').getBoundingClientRect();return {row:Math.abs(s.top-d.top)<1,h:Math.abs(s.height-d.height)<1};});
+ assert.ok(acts.row&&acts.h,'Save and Delete side by side: '+JSON.stringify(acts));
  await page.waitForTimeout(1200);await page.locator('#rcDone').click();await page.locator('#rcEdit').waitFor();
- assert.equal(book.recipes[0].data.lines[1].qty,100,'Done waits for the save on its way');
+ assert.equal(book.recipes[0].data.lines[1].qty,100,'Save waits for the save on its way');
  assert.equal(await page.locator('.rc-money .rc-margin').count(),0,'no profit without every price');
  assert.match(await page.locator('.rc-missing').innerText(),/Flour/,'the note names the item without a price');
  await shot('detail-missing');
@@ -157,5 +178,5 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  await shot('settings');
  if(first){await page.evaluate(()=>{lset('apiSession',{...apiSession(),account:'rozha'});state.account='rozha';state.name='Rozh';state.views=['order','recipes','admin','settings'];state.tabs=['order','recipes','admin'];state.view='admin';state.adminPage='access';resetAdmin();render();});await page.locator('[data-access-person="ahmad"]').waitFor({timeout:10000});await page.locator('[data-access-person="ahmad"]').click();assert.equal(await page.locator('[data-access-person="ahmad"]').getAttribute('aria-pressed'),'true');await page.locator('[data-role="manage"]').check();await page.waitForFunction(()=>adminData.roles?.data?.ahmad?.includes('manage'));assert.deepEqual(access.ahmad,['manage']);assert.deepEqual(access.yunis,['history']);await page.evaluate(()=>{adminFilter.person='ahmad';state.adminPage='person';render();});assert.equal(await page.locator('[data-pin-change="ahmad"]').count(),1);}
  assert.deepEqual(errors,[]);await context.close();}
- console.log('Recipes UI PASS: Ahmad sees Recipes, Items and Stock tabs, the tour once, items A to Z with last prices and only their own units, a stock item picked by search, categories from a list with their colour, no number arrows, an item in use not deleted (the message names the recipe), Done at the end, costs to the nearest 250 IQD with the working, no cost while a price is missing, delete from the hold menu, his Stock list, his own Settings, EN/KU/AR at phone and desktop widths');
+ console.log('Recipes UI PASS: Ahmad sees Recipes, Items and Stock tabs, the tour once, items A to Z with last prices and only their own units, a stock item picked by search, categories from a list with their colour, no number arrows, an item in use not deleted (the message names the recipe), Save and Delete at the end, steps that grow, the banner, small status labels, units any time, a stock list that opens on tap, costs to the nearest 250 IQD with the working, no cost while a price is missing, delete from the hold menu, his Stock list, his own Settings, EN/KU/AR at phone and desktop widths');
 }finally{await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);process.exit(1);});

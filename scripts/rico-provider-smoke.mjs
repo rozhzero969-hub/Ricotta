@@ -298,6 +298,23 @@ const ai = await adminAi(db);
 assert.deepEqual(ai.brains.map(b => [b.id, b.connected]), [['anthropic', true], ['gemini', true], ['groq', true]]);
 assert.equal(ai.brains[0].calls >= 1 && ai.brains[0].input >= 232, true);
 assert.equal(ai.brains[0].state, 'busy', 'the last answer state is kept');
+// A photo goes to Haiku with the latest message only, before its words; a file that isn't a JPEG is refused.
+const photo = '/9j/' + 'A'.repeat(400);
+const photoChat = async (image, content = 'What is on this price list?') => (await (await handleChat(db, session, { messages: [{ role: 'user', content: 'Earlier' }, { role: 'assistant', content: 'Yes.' }, { role: 'user', content }], lang: 'en', image }, {}, new AbortController().signal)).text()).trim().split('\n').map(JSON.parse);
+{
+  const before = requests.length;
+  const events = await photoChat(photo);
+  assert.equal(events.at(-1).type, 'done');
+  const sent = requests.slice(before).find(r => new URL(r.url).hostname === 'api.anthropic.com').body;
+  assert.deepEqual(sent.messages.at(-1).content[0], { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: photo } });
+  assert.equal(sent.messages.at(-1).content[1].text, 'What is on this price list?');
+  assert.equal(typeof sent.messages[0].content, 'string', 'the photo is only with the latest message');
+  assert.match(sent.system[1].text, /attached a PHOTO/);
+  assert.match(sent.system[0].text, /PHOTOS/);
+  const bad = await handleChat(db, session, { messages: [{ role: 'user', content: 'x' }], lang: 'en', image: 'iVBORw0KGgo' + 'A'.repeat(400) }, {}, new AbortController().signal);
+  assert.equal(bad.status, 400); assert.equal(JSON.parse(await bad.text()).code, 'bad_photo');
+  anthropicTurn = 0;
+}
 assert.deepEqual(Object.keys(ai.brains[0]).sort(), ['at', 'calls', 'connected', 'enabled', 'id', 'input', 'output', 'state'], 'no keys and no bill go to the app');
 assert.equal(JSON.stringify(ai).includes('sk-ant') || JSON.stringify(ai).includes('gsk_'), false, 'keys never go back to the app');
 
@@ -426,6 +443,17 @@ secrets.delete('anthropic_api_key');
 const beforeNoHaiku = requests.length;
 await chat();
 assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname === 'api.anthropic.com'), false, 'without its key Haiku is skipped');
+// Without Haiku a photo goes to Gemini (which can see it), never to Groq (which can't).
+{
+  geminiTurn = 1; const before = requests.length;
+  const events = await photoChat(photo);
+  assert.equal(events.some(e => e.type === 'text'), true);
+  const asked = requests.slice(before);
+  assert.equal(asked.some(r => new URL(r.url).hostname === 'api.groq.com'), false, 'Groq is never sent a photo');
+  const g = asked.find(r => r.url.includes('streamGenerateContent')).body;
+  assert.deepEqual(g.contents.at(-1).parts[0], { inline_data: { mime_type: 'image/jpeg', data: photo } });
+  assert.equal(g.contents[0].parts.length, 1);
+}
 
 // F01: Rico follows the same roles. Without History he can't read or reveal past orders (tools and the
 // instant answers alike); without Record, no change log.
@@ -458,4 +486,4 @@ assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname ===
   assert.match(_internals.MANUAL, /Ahmad \(who runs the minibar/); assert.ok(_internals.TOOLS.some(t => t.name === 'minibar_stock'), 'Rico reads Ahmad\'s minibar stock');
 }
 
-console.log('Rico provider smoke: PASS (History and Record roles inside Rico; Rico sends test orders by WhatsApp to Rozh only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), mood tags dropped (any shape), Kurdish to Gemini, quick answers, draft check, insights, empty response)');
+console.log('Rico provider smoke: PASS (History and Record roles inside Rico; Rico sends test orders by WhatsApp to Rozh only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), mood tags dropped (any shape), Kurdish to Gemini, a photo to Haiku or Gemini but never Groq, quick answers, draft check, insights, empty response)');

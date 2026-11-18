@@ -438,8 +438,8 @@ function openRicoChatMenu(id, row, e){
   layer.querySelector('.ctx-scrim').oncontextmenu = ev=>{ ev.preventDefault(); closeContextMenu(); };
   layer.addEventListener('keydown', ev=>{ if(ev.key === 'Escape') closeContextMenu(); });
   layer.querySelector('[data-ctx]')?.focus({preventScroll:true});
-  // The phone's Chats sheet and side menu close first: the rename box and the delete question must not open
-  // behind them (behind the side menu, the tap that closed it could land on Delete, 2026-11-17).
+  // The phone's Chats sheet and side menu close first: the rename box must not open behind them, and a
+  // stray tap after Delete must not land on something under the menu (2026-11-17).
   layer.querySelectorAll('[data-ctx]').forEach(b=>b.onclick = ()=>{
     closeContextMenu();
     if(b.dataset.ctx === 'pin') return ricoPinChat(id, !c.pinned);
@@ -480,21 +480,72 @@ function ricoRenameChat(id){
   });
   requestAnimationFrame(()=>{ const i = document.getElementById('ricoChatName'); i?.focus(); i?.select(); });
 }
-/* Deletes one chat (id) or every chat (null), after asking once. */
-async function ricoDeleteChat(id){
-  // Delete all: Rozh's removes both people's chats (and says so); anyone else's removes only their own.
-  // One chat is named, so the right one goes (the title it shows in the list).
-  const chat = id ? (rico.chats || []).find(c=>c.id === id) : null;
-  const ask = id ? t('ricoDeleteChatNamed')(chat?.title || (rico.chatId === id && rico.chatTitle) || t('ricoUntitled')) : isRozha() ? t('ricoDeleteAllAskBoth') : t('ricoDeleteAllAsk');
-  if(!(await showConfirm(esc(ask), {title:id ? t('ricoDeleteChatTitle') : '', okLabel:t('delete'), okClass:'btn-danger'}))) return false;
+/* Deletes one chat at once, from the menu (the phone's side menu or Chats sheet, or the computer's
+   sidebar), with no question first: it leaves the list straight away and a short message offers Undo.
+   The server is told when that message has gone (or at once when the app goes to the background), so
+   Undo truly brings the chat back as it was, with its name, pin and messages. Delete all (Rico settings)
+   still asks once: it removes every chat. */
+let ricoPendingDelete = null;
+const RICO_UNDO_MS = 4800;
+function ricoDeleteChat(id){
+  if(!id) return ricoDeleteAllChats();
+  ricoFlushDelete();   // an earlier one goes now
+  const list = rico.chats || [], at = list.findIndex(c=>c.id === id), chat = list[at] || null;
+  // What was on screen, if this chat was the one open (put back by Undo, unless a new chat began since).
+  const open = (rico.chatId === id || rico.viewedId === id) && !rico.streaming ? {chatId:rico.chatId, chatTitle:rico.chatTitle, titleTries:rico.titleTries, titleManual:rico.titleManual, titleLoaded:rico.titleLoaded,
+    viewing:rico.viewing, viewedId:rico.viewedId, messages:rico.messages} : null;
+  if(rico.chatId === id || rico.viewedId === id) clearTimeout(ricoSaveTimer);
+  rico.chats = list.filter(c=>c.id !== id);
+  if(rico.chatId === id){ rico.chatId = null; rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }
+  if(rico.viewing && id === rico.viewedId){ rico.viewing = null; rico.viewedId = null; rico.messages = []; }
+  const pending = {id, chat, at, open, account:state.account};
+  pending.timer = setTimeout(()=>ricoFlushDelete(), RICO_UNDO_MS + 200);
+  ricoPendingDelete = pending;
+  ricoAfterChatsChange();
+  toast(t('ricoChatDeleted'), 'ok', {undo:()=>ricoUndoDelete(pending), ms:RICO_UNDO_MS});
+  return true;
+}
+function ricoUndoDelete(pending){
+  if(ricoPendingDelete !== pending) return;
+  clearTimeout(pending.timer); ricoPendingDelete = null;
+  if(pending.account !== state.account) return;
+  if(pending.chat && rico.chats && !rico.chats.some(c=>c.id === pending.id)) rico.chats.splice(Math.min(Math.max(pending.at, 0), rico.chats.length), 0, pending.chat);
+  // The open chat comes back only if nothing new was started meanwhile.
+  if(pending.open && !rico.streaming && !rico.chatId && !rico.viewing && !rico.messages.length) Object.assign(rico, pending.open);
+  ricoAfterChatsChange();
+}
+/* The server deletes it now: when the Undo time is over, before another delete, or when the app goes to
+   the background. If that fails, the chat comes back in the list. */
+async function ricoFlushDelete(){
+  const pending = ricoPendingDelete;
+  if(!pending) return;
+  clearTimeout(pending.timer); ricoPendingDelete = null;
+  if(pending.account !== state.account) return;   // signed out meanwhile: nothing is deleted for the next person
+  const r = await api('rico-chats/' + pending.id, {method:'DELETE'});
+  if(r.ok || pending.account !== state.account) return;
+  if(pending.chat && rico.chats && !rico.chats.some(c=>c.id === pending.id)) rico.chats.splice(Math.min(pending.at, rico.chats.length), 0, pending.chat);
+  ricoAfterChatsChange();
+  toast(t('saveFailed'), 'error');
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'hidden') ricoFlushDelete(); });
+addEventListener('pagehide', ()=>ricoFlushDelete());
+function ricoAfterChatsChange(){
+  ricoRepaintChats();
+  if(state.view === 'assistant') render();
+}
+/* Delete all (Rico settings): asked once. Rozh's removes both people's chats (and says so); anyone else's
+   removes only their own. */
+async function ricoDeleteAllChats(){
+  if(!(await showConfirm(esc(isRozha() ? t('ricoDeleteAllAskBoth') : t('ricoDeleteAllAsk')), {okLabel:t('delete'), okClass:'btn-danger'}))) return false;
+  ricoFlushDelete();
   clearTimeout(ricoSaveTimer);
-  const account = state.account, r = await api(id ? 'rico-chats/' + id : 'rico-chats?account=all', {method:'DELETE'});
+  const account = state.account, r = await api('rico-chats?account=all', {method:'DELETE'});
   if(account !== state.account) return false;   // signed out meanwhile: the next person's list stays as it is
   if(!r.ok){ toast(t('saveFailed'), 'error'); return false; }
-  rico.chats = id ? (rico.chats || []).filter(c=>c.id !== id) : isRozha() ? [] : (rico.chats || []).filter(c=>c.account && c.account !== state.account);
-  if(!id || rico.chatId === id){ rico.chatId = null; rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }
-  if(rico.viewing && (!id || id === rico.viewedId)){ rico.viewing = null; rico.viewedId = null; rico.messages = []; }
-  toast(id ? t('ricoChatDeleted') : t('ricoChatsDeleted'));
+  rico.chats = isRozha() ? [] : (rico.chats || []).filter(c=>c.account && c.account !== state.account);
+  rico.chatId = null; rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = [];
+  if(rico.viewing){ rico.viewing = null; rico.viewedId = null; rico.messages = []; }
+  toast(t('ricoChatsDeleted'));
   if(state.view === 'assistant') render();
   return true;
 }
@@ -624,7 +675,12 @@ const RICO_TILE_ICONS = {
 };
 function renderRicoMessage(m, i){
   if(m.role === 'user'){
-    return `<div class="rico-msg me" id="rico-m-${i}"><div class="rico-bubble" dir="auto">${esc(m.text)}</div></div>`;
+    // A photo sent with the message: its small picture while this chat is open; a reopened chat only
+    // says a photo was there (the photo itself is never kept).
+    const photo = m.photoThumb && /^data:image\/jpeg;base64,/.test(m.photoThumb)
+      ? `<div class="rico-photo"><img src="${esc(m.photoThumb)}" alt="${esc(t('ricoPhotoLabel'))}"></div>`
+      : m.photo ? `<span class="rico-photo-tag">${ICON_CAMERA}${esc(t('ricoPhotoLabel'))}</span>` : '';
+    return `<div class="rico-msg me" id="rico-m-${i}">${photo}<div class="rico-bubble" dir="auto">${esc(m.text)}</div></div>`;
   }
   const body = m.text ? ricoFormat(m.text) : '';
   const steps = m.steps || [];
@@ -820,7 +876,16 @@ function renderRicoProposalCard(p, mi){
     body = `<div class="rico-card-note" dir="auto">${esc(p.from)} → ${esc(p.to)}</div>${(p.lines||[]).map(l=>`<div class="rico-card-line"><span dir="auto">${esc(l.item)}</span><b dir="auto">${esc(l.qty)} ${esc(l.unit)}</b></div>`).join('')}${(p.warnings||[]).map(x=>`<div class="rico-card-note" dir="auto">${esc(x)}</div>`).join('')}`;
     return ricoCard(NAV_ICONS.transfers, viewLabel('transfers'), body, `<div class="rico-card-actions"><button class="btn btn-primary" data-rico-transfer="${esc(p.transferId)}">${esc(t('ricoOpenScreen')(viewLabel('transfers')))}</button></div>`, p);
   }
-  if(['stock_list','needs_list','price_list','spend','invoice_report','price_lookup'].includes(p.kind)) return renderRicoData(p);
+  if(['stock_list','needs_list','price_list','spend','invoice_report','price_lookup','compare'].includes(p.kind)) return renderRicoData(p);
+  // A supplier's Call and WhatsApp (contact_supplier). A message is only typed into WhatsApp; the person sends it there.
+  if(p.kind === 'contact'){
+    if(!canOpen('suppliers') && !canDo('send')) return '';
+    const chat = waLink(p.phone, p.message || ''), num = chat.match(/(?:phone=|wa\.me\/)(\d+)/)?.[1];
+    if(!num || num.length < 7) return '';
+    const out = waOpensApp() ? '' : ' target="_blank" rel="noopener noreferrer"';
+    body = `<div class="rico-card-note" dir="ltr">+${esc(num)}</div>${p.message ? `<div class="rico-card-msg" dir="auto">${esc(p.message)}</div><div class="rico-card-note">${esc(t('ricoContactTyped'))}</div>` : ''}`;
+    return ricoCard(ICON_PHONE, p.name, body, `<div class="rico-card-actions"><a class="btn btn-primary" href="${esc(chat)}"${out}>${ICON_CHAT}<span>${esc(t('contactSupplier'))}</span></a><a class="btn btn-ghost" href="tel:+${esc(num)}">${ICON_PHONE}<span>${esc(t('callSupplier'))}</span></a></div>`, p);
+  }
   // A recipe category's colours (recipes.js draws it; a tap sets the colour).
   if(p.kind === 'recipe_colors') return typeof recipeColorCard === 'function' ? recipeColorCard(p) : '';
   // A page of Ricotta Restaurant Rico was asked to open: a plain link (only to that site).
@@ -891,6 +956,18 @@ function renderRicoData(p){
     const foot = `<button type="button" class="btn btn-ghost" data-inv-file="excel" data-inv-card="${esc(p.id)}">${esc(t('invExcel'))}</button><button type="button" class="btn btn-primary" data-inv-file="pdf" data-inv-card="${esc(p.id)}">${esc(t('invPdf'))}</button>`;
     return card(RICO_TILE_ICONS.reports, p.supplier ? t('invCardSupplier')(p.supplier, invMonthName(p.month)) : t('invCardTitle')(invMonthName(p.month)), '', body, foot);
   }
+  // Two periods side by side (compare_periods): the totals, then what changed most, with Excel and PDF.
+  if(p.kind === 'compare'){
+    if(p.main === 'spending' ? !canOpen('receipts') : !canOpen('history')) return '';
+    const shown = rows.slice(0, 8), left = rows.length - shown.length + (p.more || 0);
+    const body = (p.totals || []).map(x=>ricoCmpRow((t('ricoCmpTotals') || {})[x.key] || x.key, x, x.key === 'iqd' ? 'IQD' : x.key === 'usd' ? 'USD' : '')).join('')
+      + (shown.length ? `<div class="rico-data-sub">${esc((t('ricoCmpBy') || {})[p.main + '_' + p.by] || '')}</div>` : '')
+      + shown.map(r=>ricoCmpRow(r.name, r, r.unit || '')).join('')
+      + (left > 0 ? `<div class="rico-data-more">${esc(t('ricoMoreRows')(left))}</div>` : '');
+    const foot = `<button type="button" class="btn btn-ghost" data-inv-file="excel" data-inv-card="${esc(p.id)}">${esc(t('invExcel'))}</button><button type="button" class="btn btn-primary" data-inv-file="pdf" data-inv-card="${esc(p.id)}">${esc(t('invPdf'))}</button>`;
+    const fair = p.preset === 'this_month_vs_last_month' ? `<div class="rico-data-more">${esc(t('ricoCmpFair'))}</div>` : '';
+    return `<div class="rico-data" data-card="${esc(p.id)}"><div class="rico-data-head"><span class="rico-card-icon">${RICO_TILE_ICONS.reports}</span><span class="rico-data-title" dir="auto">${esc(ricoCmpTitle(p))}<small class="rico-cmp-range">${esc('\u2068' + ricoCmpRange(p.b) + '\u2069')} ${state.lang === 'en' ? '→' : '←'} ${esc('\u2068' + ricoCmpRange(p.a) + '\u2069')}</small></span></div><div class="rico-data-rows">${body}</div>${fair}<div class="rico-data-foot">${foot}</div></div>`;
+  }
   // The last price paid per item, with the unit it was bought in; items moved to the storage first.
   if(p.kind === 'price_lookup'){
     if(!canOpen('receipts') && !canOpen('transfers')) return '';
@@ -900,6 +977,18 @@ function renderRicoData(p){
   }
   return '';
 }
+/* compare_periods: one row: the name with the earlier value under it, the newer value, and the change. */
+function ricoCmpRow(name, r, unit){
+  const v = n=>`${ricoNum(n)}${unit ? ' ' + unit : ''}`;
+  const pill = r.pct == null ? (Number(r.a) > 0 && !Number(r.b) ? `<span class="rico-pct up">${esc(t('ricoCmpNew'))}</span>` : '<span class="rico-pct"></span>') : `<span class="rico-pct ${r.pct > 0 ? 'up' : r.pct < 0 ? 'down' : ''}" dir="ltr">${r.pct > 0 ? '+' : ''}${esc(r.pct)}%</span>`;
+  return `<div class="rico-data-row"><span class="rico-data-name" dir="auto">${esc(name)}<small>${esc(t('ricoCmpWas')(ltrPiece(v(r.b))))}</small></span><b dir="ltr">${esc(v(r.a))}</b>${pill}</div>`;
+}
+const ricoCmpTitle = p=>{ const map = t('ricoCmpPresets') || {}; return [map[p.preset] || map.custom, p.supplier || p.item].filter(Boolean).join(' · '); };
+const ricoCmpRange = r=>{
+  if(!r || !/^\d{4}-\d{2}-\d{2}$/.test(String(r.from || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(r.to || ''))) return '';
+  const d = x=>formatIraqDateTime(new Date(x + 'T12:00:00+03:00'), {day:'numeric', month:'short'});
+  return r.from === r.to ? d(r.from) : t('ricoCmpRangeOf')(d(r.from), d(r.to));
+};
 const invMonthName = m=>{ if(!/^\d{4}-\d{2}$/.test(String(m || ''))) return String(m || ''); return formatIraqDateTime(new Date(m + '-15T12:00:00+03:00'), {month:'long', year:'numeric'}); };
 const invDay = d=>/^\d{4}-\d{2}-\d{2}$/.test(String(d || '')) ? formatIraqDateTime(new Date(d + 'T12:00:00+03:00'), {day:'numeric', month:'short'}) : '';
 function ricoFields(rows){
@@ -912,11 +1001,53 @@ function ricoCard(icon, title, body, actions, p){
 /* ---------- Composer (lives in the bottom stack above the tab bar) ---------- */
 function renderRicoComposer(){
   if(rico.viewing) return `<div class="rico-composer rico-composer-viewing"><button type="button" class="btn btn-primary" data-rico-mine>${esc(t('ricoBackToMine'))}</button></div>`;
-  return `<form class="rico-composer" id="ricoComposer" autocomplete="off">
+  return `<form class="rico-composer${rico.photo ? ' has-photo has-text' : ''}" id="ricoComposer" autocomplete="off">
+    ${ricoPhotoChip()}
+    <button type="button" class="rico-attach" id="ricoAttachBtn" aria-label="${esc(t('ricoAddPhoto'))}" title="${esc(t('ricoAddPhoto'))}" ${rico.streaming ? 'disabled' : ''}>${ICON_CAMERA}</button>
     <label class="sr-only" for="ricoInput">${esc(t('ricoPlaceholder'))}</label>
     <textarea id="ricoInput" rows="1" maxlength="2000" enterkeyhint="send" placeholder="${esc(t('ricoPlaceholder'))}" dir="auto"></textarea>
     <button type="submit" class="rico-send ${rico.streaming?'stop':''}" id="ricoSendBtn" aria-label="${esc(rico.streaming?t('ricoStop'):t('ricoSend'))}">${rico.streaming?ICON_STOP:ICON_SEND_UP}</button>
   </form>`;
+}
+/* A photo to send with the next message: made smaller here (1600 pixels at most, as for receipts), sent
+   only with that one message and never kept in the chat. */
+function ricoPhotoChip(){
+  return rico.photo ? `<div class="rico-photo-chip"><img src="${esc(rico.photo.thumb)}" alt=""><button type="button" class="rico-photo-x" data-rico-photo-x aria-label="${esc(t('ricoRemovePhoto'))}">${ICON_CLOSE_SM}</button></div>` : '';
+}
+async function ricoReadPhoto(file){
+  const img = await globalThis.createImageBitmap(file).catch(()=>null);
+  if(!img) return null;
+  const draw = max=>{ const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k)); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c; };
+  const data = draw(1600).toDataURL('image/jpeg', .82).split(',')[1], thumb = draw(320).toDataURL('image/jpeg', .7);
+  img.close?.();
+  return data && data.length < 4_000_000 ? {data, thumb} : null;
+}
+function ricoPickPhoto(){
+  if(rico.streaming) return;
+  const pick = document.createElement('input');
+  pick.type = 'file'; pick.accept = 'image/*';
+  const account = state.account;
+  pick.onchange = async ()=>{
+    const f = pick.files?.[0]; if(!f) return;
+    const photo = await ricoReadPhoto(f);
+    if(state.account !== account) return;
+    if(!photo){ toast(t('ricoPhotoFailed'), 'warn'); return; }
+    rico.photo = photo;
+    ricoRepaintPhoto();
+    document.getElementById('ricoInput')?.focus({preventScroll:true});
+  };
+  pick.click();
+}
+function ricoRepaintPhoto(){
+  const form = document.getElementById('ricoComposer');
+  if(!form) return;
+  form.querySelector('.rico-photo-chip')?.remove();
+  if(rico.photo) form.insertAdjacentHTML('afterbegin', ricoPhotoChip());
+  form.classList.toggle('has-photo', !!rico.photo);
+  form.classList.toggle('has-text', !!rico.photo || !!document.getElementById('ricoInput')?.value.trim());
+  const x = form.querySelector('[data-rico-photo-x]');
+  if(x) x.onclick = ()=>{ rico.photo = null; ricoRepaintPhoto(); };
 }
 /* Async consent and chat replies belong to the chat that started them. */
 function ricoContext(){ return {epoch:rico.epoch, account:state.account}; }
@@ -935,7 +1066,7 @@ function attachAssistantEvents(){
   const form = document.getElementById('ricoComposer');
   if(input){
     // The send button lights up once there is something to send (like ChatGPT's).
-    const grow = ()=>{ input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; form?.classList.toggle('has-text', !!input.value.trim()); };
+    const grow = ()=>{ input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; form?.classList.toggle('has-text', !!input.value.trim() || !!rico.photo); };
     input.addEventListener('input', grow);
     input.addEventListener('keydown', e=>{
       if(e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); form.requestSubmit(); }
@@ -947,15 +1078,19 @@ function attachAssistantEvents(){
     const draftAccount = state.account;
     input.addEventListener('input', ()=>{ if(state.account === draftAccount) lset(ricoDraftKey(draftAccount), input.value || null); });
   }
+  document.getElementById('ricoAttachBtn')?.addEventListener('click', ricoPickPhoto);
+  ricoRepaintPhoto();
   if(form) form.onsubmit = async e=>{
     e.preventDefault();
     if(rico.streaming){ ricoStop(); return; }
-    const text = input.value.trim();
+    // A photo alone asks what is in it.
+    const photo = rico.photo, text = input.value.trim() || (photo ? t('ricoPhotoAsk') : '');
     if(!text) return;
     const context = ricoContext();
     if(!(await aiConsent()) || !ricoContextCurrent(context)) return;   // the message stays in the box
     input.value = ''; input.style.height = 'auto'; form.classList.remove('has-text'); lset(ricoDraftKey(), null);
-    ricoAsk(text);
+    rico.photo = null; ricoRepaintPhoto();
+    ricoAsk(text, photo ? {photo} : {});
   };
   document.getElementById('ricoNewBtn')?.addEventListener('click', ()=>ricoNewChat());
   document.querySelectorAll('[data-rico-mine]').forEach(b=>b.onclick=()=>ricoNewChat());
@@ -1018,7 +1153,7 @@ function attachRicoThreadEvents(root){
   root.querySelectorAll('[data-inv-file]').forEach(b=>b.onclick=()=>{
     const p = rico.messages.flatMap(m=>m.proposals || []).find(x=>x.id === b.dataset.invCard);
     if(!p) return;
-    withBusy(b, ()=>p.kind === 'invoice_report' ? exportInvoices(p.month, p.supplier, b.dataset.invFile) : exportPriceLookup(p, b.dataset.invFile));
+    withBusy(b, ()=>p.kind === 'invoice_report' ? exportInvoices(p.month, p.supplier, b.dataset.invFile) : p.kind === 'compare' ? exportRicoCompare(p, b.dataset.invFile) : exportPriceLookup(p, b.dataset.invFile));
   });
   root.querySelectorAll('[data-rico-need]').forEach(b=>b.onclick=async()=>{
     const [type, id] = b.dataset.ricoNeed.split('|'), view = type === 'receipt' ? 'receipts' : 'transfers';
@@ -1035,7 +1170,7 @@ function attachRicoThreadEvents(root){
     const i = +b.dataset.ricoRetry;
     const lastUser = [...rico.messages.slice(0, i)].reverse().find(m=>m.role==='user');
     rico.messages.splice(i, 1);
-    if(lastUser){ rico.messages.splice(rico.messages.lastIndexOf(lastUser), 1); ricoAsk(lastUser.text); }
+    if(lastUser){ rico.messages.splice(rico.messages.lastIndexOf(lastUser), 1); ricoAsk(lastUser.text, lastUser.photoData ? {photo:{data:lastUser.photoData, thumb:lastUser.photoThumb}} : {}); }
     else render();
   });
 }
@@ -1060,9 +1195,10 @@ function ricoHistoryForServer(){
   return rico.messages.filter(m=>!m.streaming && !(m.role==='assistant' && !m.text && !(m.proposals||[]).length)).slice(-RICO_HISTORY_SENT).map(m=>{
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
-      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:p.place ? `open ${p.place} (find_in_app)` : `open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:p.mode === 'search' ? `stock of "${p.query}" in ${p.storage}` : `list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, invoice_report:`invoice report for ${p.month}${p.supplier ? ' (' + p.supplier + ')' : ''} with PDF and Excel`, price_lookup:`last prices${p.query ? ' for "' + p.query + '"' : ''}${p.storage ? ' of items going to ' + p.storage : ''} with PDF and Excel`, streak:`bring back the ${p.days}-day streak`}[p.kind] || p.kind;
-      content += p.kind === 'recipe_colors' ? `\n[card colours for the category "${p.category}": shown]` : ['stock_list','needs_list','price_list','spend','rr_link','invoice_report','price_lookup'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
+      const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:p.place ? `open ${p.place} (find_in_app)` : `open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:p.mode === 'search' ? `stock of "${p.query}" in ${p.storage}` : `list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, invoice_report:`invoice report for ${p.month}${p.supplier ? ' (' + p.supplier + ')' : ''} with PDF and Excel`, price_lookup:`last prices${p.query ? ' for "' + p.query + '"' : ''}${p.storage ? ' of items going to ' + p.storage : ''} with PDF and Excel`, streak:`bring back the ${p.days}-day streak`, compare:`comparison of ${p.a?.from} to ${p.a?.to} with ${p.b?.from} to ${p.b?.to} (${p.main}) with Excel and PDF`, contact:`Call and WhatsApp buttons for ${p.name}`}[p.kind] || p.kind;
+      content += p.kind === 'recipe_colors' ? `\n[card colours for the category "${p.category}": shown]` : ['stock_list','needs_list','price_list','spend','rr_link','invoice_report','price_lookup','compare','contact'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
+    if(m.role === 'user' && m.photo) content = '[photo] ' + content;
     return {role:m.role, content: content.trim() || '…'};
   });
 }
@@ -1076,18 +1212,19 @@ async function ricoAsk(text, options = {}){
   const scopeIds = options.supplierIds || [];
   const named = state.suppliers.filter(s=>String(text).toLocaleLowerCase().includes(s.name.toLocaleLowerCase())).map(s=>s.id);
   if(rico.viewing){ rico.viewing = null; rico.messages = []; rico.chatId = null; }
-  if((options.quickAction==='prepare_order' || ricoOrderIntent(text)) && !scopeIds.length && !named.length){
+  const photo = options.photo && typeof options.photo.data === 'string' ? options.photo : null;
+  if(!photo && (options.quickAction==='prepare_order' || ricoOrderIntent(text)) && !scopeIds.length && !named.length){
     rico.messages.push({role:'user', text, ts:Date.now()});
     rico.messages.push({role:'assistant', text:t('ricoChooseSuppliers'), picker:{selectedIds:[], chosen:false}, ts:Date.now()});
     if(state.view !== 'assistant') goView('assistant'); else render();
     ricoScroll(true);
     return;
   }
-  if(named.length && (options.quickAction==='prepare_order' || ricoOrderIntent(text)) && !scopeIds.length){
+  if(!photo && named.length && (options.quickAction==='prepare_order' || ricoOrderIntent(text)) && !scopeIds.length){
     options = {quickAction:'prepare_order', supplierIds:named};
   }
   const previousView = state.view;
-  rico.messages.push({role:'user', text, ts:Date.now()});
+  rico.messages.push(photo ? {role:'user', text, ts:Date.now(), photo:true, photoThumb:photo.thumb, photoData:photo.data} : {role:'user', text, ts:Date.now()});
   const bot = {role:'assistant', text:'', proposals:[], steps:[], streaming:true, statusKey:'thinking', ts:Date.now()};
   rico.messages.push(bot);
   rico.streaming = true;
@@ -1102,6 +1239,7 @@ async function ricoAsk(text, options = {}){
     messages: ricoHistoryForServer(), lang: state.lang, screen: previousView,
     autoOrder: ricoAutoOrder(), cart: Object.fromEntries(Object.entries(state.cart).filter(([,q])=>q>0)),
     quickAction: options.quickAction || undefined, supplierIds: options.supplierIds || undefined, style: typeof ricoStyle === 'function' ? ricoStyle() : undefined,
+    image: photo ? photo.data : undefined,
   };
   await apiStream('assistant/chat', body, ev=>{
     if(!ricoContextCurrent(context)) return;
@@ -1165,9 +1303,8 @@ function ricoPaintMessage(i){
   if(wasNear) ricoScroll(false);
 }
 function ricoRefreshComposer(){
-  const form = document.getElementById('ricoComposer');
-  if(form){
-  }
+  const attach = document.getElementById('ricoAttachBtn');
+  if(attach) attach.disabled = rico.streaming;
   const btn = document.getElementById('ricoSendBtn');
   if(!btn) return;
   btn.classList.toggle('stop', rico.streaming);
@@ -1315,6 +1452,7 @@ function ricoChatTitle(){
 function ricoSerialize(){
   return rico.messages.filter(m=>!m.streaming && (m.role === 'user' || m.text || (m.proposals||[]).length || m.error || m.receipt)).slice(-200).map(m=>{
     const out = {role:m.role, text:m.text || '', ts:m.ts || Date.now()};
+    if(m.role === 'user' && m.photo) out.photo = true;   // the photo itself is never saved
     if(m.mood) out.mood = m.mood;
     if(m.error) out.error = m.error;
     if(m.steps && m.steps.length) out.steps = m.steps;
@@ -1360,7 +1498,7 @@ async function ricoLoadChats(){
   try{
     let r = await api('rico-chats');
     if(r.stale && state.account === account) r = await api('rico-chats');   // a save happened at the same moment
-    if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats;
+    if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats.filter(c=>c.id !== ricoPendingDelete?.id);
     // Offline or refused: say so instead of gray lines that never fill in (opening the list again retries).
     else if(state.account === account) rico.chatsFailed = true;
   }finally{ rico.chatsBusy = false; }

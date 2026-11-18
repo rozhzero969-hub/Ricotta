@@ -1,6 +1,7 @@
 /* Browser checks for the Expenses tab (2026-11-15): Order opens on Food; the switch (or a pull down in the
    Home Screen app) goes to Expenses and back, refreshing the app each time; each tab shows only its items and
-   the suppliers that have them; Expenses has the white summary card; the other tab counts what is picked
+   the suppliers that have them; both tabs have the same green summary card, which turns over like a card
+   when the tab changes; the other tab counts what is picked
    there; a supplier's form saves what we buy from them; an item's form offers only the suppliers for its
    kind. All API calls are local fixtures. */
 const {chromium}=require('playwright'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),os=require('node:os');
@@ -27,23 +28,27 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.goto('http://127.0.0.1:'+server.address().port);await page.locator('#orderResults').waitFor();await page.waitForSelector('#splash',{state:'detached'});
  const shown=()=>page.evaluate(()=>[...document.querySelectorAll('#orderResults [data-item-id]')].map(r=>r.dataset.itemId).sort());
  const tabs=()=>page.evaluate(()=>[...document.querySelectorAll('[data-ordertab]')].map(b=>b.dataset.ordertab));
- const heroBg=()=>page.evaluate(()=>getComputedStyle(document.querySelector('.order-hero')).backgroundColor);
+ const heroBg=()=>page.evaluate(()=>getComputedStyle(document.querySelector('.order-hero')).backgroundImage+'|'+getComputedStyle(document.querySelector('.order-hero')).backgroundColor);
+ const green=await heroBg();
 
  // Food first: only food items, only suppliers with food, the green card.
  assert.equal(await page.locator('.kind-switch .kind-pill.on').getAttribute('data-kind'),'food','Order opens on Food');
  assert.deepEqual(await shown(),['rice','tom'],'Food shows only food (an item without a kind is food)');
  assert.ok(!(await tabs()).includes('c'),'a supplier of expenses only is not in Food');
- assert.notEqual(await heroBg(),'rgb(255, 255, 255)','Food keeps the green card');
+ assert.ok(!/rgb\(255, 255, 255\)$/.test(green),'Food has the green card: '+green);
  assert.match(await page.locator('.hero-eyebrow').textContent(),/Today's order/);
 
- // Pick a food item, then tap Expenses: the other side counts it, and the card turns white.
+ // Pick a food item, then tap Expenses: the other side counts it, and the card turns over (it stays green).
  await page.evaluate(()=>{state.cart={tom:2};refreshOrderView();});
  await page.locator('.kind-switch [data-kind="expense"]').click();
  await page.waitForFunction(()=>orderKind()==='expense');
+ assert.equal(await page.locator('.hero-flip-ghost').count(),1,'the old side turns away above the new one');
+ assert.match(await page.evaluate(()=>document.querySelector('.order-hero').getAnimations().map(a=>JSON.stringify(a.effect.getKeyframes()[0].transform)).join()),/rotateY/,'a card flip');
  assert.deepEqual(await shown(),['tea','tis'],'Expenses shows only expense items');
  const expTabs=await tabs();assert.ok(expTabs.includes('c')&&expTabs.includes('w')&&!expTabs.includes('s'),'only suppliers with expenses: '+expTabs);
  assert.equal(await page.locator('.order-hero.hero-expenses').count(),1);
- await page.waitForTimeout(600);assert.equal(await heroBg(),'rgb(255, 255, 255)','Expenses has the white card');
+ await page.waitForTimeout(600);assert.equal(await heroBg(),green,'Expenses has the same green card');
+ assert.equal(await page.locator('.hero-flip-ghost').count(),0,'the flip has finished and leaves nothing behind');
  assert.match(await page.locator('.hero-eyebrow').textContent(),/Today's expenses/);
  assert.equal(await page.locator('.kind-switch [data-kind="food"] .kind-badge').textContent(),'1','Food counts what is picked there');
  await page.evaluate(()=>{state.cart.tea=3;refreshOrderView();});
@@ -113,5 +118,5 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.keyboard.press('Escape');await page.locator('#mfName').waitFor({state:'detached'});
  await page.locator('.manage-kind [data-mkind="food"]').click();
  assert.deepEqual(errors,[]);await ctx.close();
- console.log(JSON.stringify({result:'PASS',checks:'Food first, switch and pull-down to Expenses and back with a refresh, items and suppliers per tab, white Expenses card, counts on the other tab, supplier buys saved, item form suppliers per kind, Manage switch with one Add button that follows it',artifacts:out}));
+ console.log(JSON.stringify({result:'PASS',checks:'Food first, switch and pull-down to Expenses and back with a refresh, items and suppliers per tab, the same green card on both tabs, turning over as the tab changes, counts on the other tab, supplier buys saved, item form suppliers per kind, Manage switch with one Add button that follows it',artifacts:out}));
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);server.close();process.exitCode=1;});

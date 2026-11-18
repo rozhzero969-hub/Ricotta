@@ -107,6 +107,11 @@ const secrets = (extra = {}) => (k) => ({ RR_PIN: PIN, RR_BRANCH: 'ricotta erbil
 {
   const row = invoiceRow({ id: 9, entry_date: '2026-11-03T00:00:00Z', invoice_number: 77, supplier_name: 'X', total_amount: '1,0', currency_code: 'USD', paid: 'yes', line_count: '2.7' });
   assert.equal(row.id, '9'); assert.equal(row.entry_date, '2026-11-03'); assert.equal(row.currency, 'USD'); assert.equal(row.paid, false); assert.equal(row.total, 0); assert.equal(row.line_count, 2);
+  assert.equal(row.rate, null, 'no exchange rate on the row');
+  // A USD receipt keeps its exchange rate (IQD for 1 USD); an IQD one has none.
+  assert.equal(invoiceRow({ id: 1, currency_code: 'USD', exchange_rate: '1,480' }).rate, 1480);
+  assert.equal(invoiceRow({ id: 2, currency_code: 'IQD', exchange_rate: '1480' }).rate, null);
+  assert.equal(invoiceRow({ id: 3, currency_code: 'USD', exchange_rate: '0' }).rate, null);
   const lines = invoiceLines([{ item_name: 'Lemon', unit_label: null, quantity: '3', unit_cost: '2000', line_total: '6000' }, { item_name: '' }], () => 'کیلۆ');
   assert.deepEqual(lines, [{ item_id: null, item: 'Lemon', unit: 'کیلۆ', qty: 3, unit_cost: 2000, line_total: 6000, returned: 0, wasted: 0 }]);
 }
@@ -235,7 +240,11 @@ const inv = [
   const moz = got.find((r) => r.item === 'Mozzarella');
   assert.equal(moz.price, 120000); assert.equal(moz.unit, 'کارتۆن'); assert.equal(moz.supplier, 'Cheese House'); assert.equal(moz.day, '2026-11-09'); assert.equal(moz.times, 3);
   assert.deepEqual(moz.otherUnits, [{ unit: 'کیلۆ', price: 12500 }]);
-  assert.equal(got.find((r) => r.item === 'Pizza Box').price, 41.46, 'USD to the cent');
+  const box = got.find((r) => r.item === 'Pizza Box');
+  assert.equal(box.currency, 'IQD'); assert.equal(box.paid_in, 'USD', 'a USD receipt is marked paid in USD');
+  // Lines in dollars (the IQD total is the lines times the rate): turned into IQD at the receipt's rate.
+  const usd = lastPrices([{ entry_date: '2026-11-05', invoice_number: '9', supplier_name: 'Import Co', currency: 'USD', rate: 1500, total: 60000, lines: [{ item: 'Cups', unit: 'کارتۆن', unit_cost: 40, qty: 1, line_total: 40 }] }], () => true);
+  assert.equal(usd[0].price, 60000, 'USD price shown in IQD at the receipt rate');
   const tot = reportTotals(inv);
   assert.equal(tot.receipts, 3); assert.equal(tot.unpaid, 1); assert.equal(tot.IQD, 2); assert.equal(tot.USD, 1);
 }

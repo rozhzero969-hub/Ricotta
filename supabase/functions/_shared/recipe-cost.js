@@ -4,8 +4,8 @@
    Manage, Units). Each ingredient is linked to a stock item in Ricotta Restaurant; its price is the LAST
    price paid for that stock item on an invoice there (the newest receipt wins), turned into the stock
    item's base unit: bought per carton of 24 at 48 is 2 per piece, 10 per 1000 ml is 0.01 per ml. Then
-   500 ml of it costs 5. Recipes are in IQD only: a price paid in USD is never used (the last IQD price
-   is, and an item bought only in USD has no cost). A line without an amount, a price, or a unit that
+   500 ml of it costs 5. Recipes are in IQD: a receipt paid in USD counts at its exchange rate (see
+   iqdFactor), so its price shows in IQD like any other. A line without an amount, a price, or a unit that
    can be turned into the stock item's unit has no cost: it is "missing", never 0.
    Needs RicottaSearch (search.js) and RicottaTransfers (transfers.js) loaded first. */
 (function () {
@@ -17,6 +17,9 @@
   /* The suggested price is this many times the cost of making it (a suggestion only). */
   const SUGGEST_TIMES = 3;
   const CURRENCIES = ['IQD'];
+  /* The rate used for a USD receipt when neither it nor any other USD receipt has one: the Receipts
+     tab's usual rate (its placeholder and the lowest normal rate, rateMin). */
+  const DEFAULT_RATE = 1500;
 
   /* The sizes recipes are measured in: grams, millilitres and pieces, each with its bigger size
      (1 kg is 1000 g, 1 L is 1000 ml). {kind, f}: f is how many of the kind one of it is. */
@@ -49,22 +52,50 @@
     return null;
   }
 
+  /* How many IQD one unit of a receipt's line prices is. IQD receipts: 1. USD receipts: Ricotta
+     Restaurant asks for "Today's rate (1 USD to IQD)" (its exchange_rate, kept as rate) and keeps the
+     receipt's total in IQD; its own screens divide the line prices by the rate to show dollars again, so
+     the lines are normally in IQD already. To be sure either way, the lines' sum is compared with the
+     receipt's total: when the sum times the rate is the closer one, the lines are in USD and are
+     turned into IQD. Without a total to compare, they are taken as USD. rate: the receipt's own, else
+     the newest one known (fallback). */
+  function iqdFactor(inv, fallback) {
+    if (!inv || inv.currency !== 'USD') return 1;
+    const rate = Number(inv.rate) > 0 ? Number(inv.rate) : Number(fallback) > 0 ? Number(fallback) : DEFAULT_RATE;
+    const total = Number(inv.total), fee = Number(inv.delivery_fee) || 0;
+    let sum = 0;
+    for (const l of inv.lines || []) sum += Number(l && l.line_total) > 0 ? Number(l.line_total) : (Number(l && l.qty) || 0) * (Number(l && l.unit_cost) || 0);
+    if (total > 0 && sum > 0) {
+      const off = (x) => Math.min(Math.abs(x - total), Math.abs(x + fee - total));
+      return off(sum) <= off(sum * rate) ? 1 : rate;
+    }
+    return rate;
+  }
   /* The newest invoice line of each stock item, from invoices {entry_date, read_at, invoice_number,
-     supplier_name, currency, lines:[{item, unit, unit_cost}]}: the latest receipt date wins (then the
-     one read last, then the higher invoice number). Lines without a price are skipped. The newest IQD
-     price wins over a newer USD one; an item bought only in USD keeps its USD line (shown as missing). */
+     supplier_name, currency, rate, total, delivery_fee, lines:[{item, unit, unit_cost}]}: the latest
+     receipt date wins (then the one read last, then the higher invoice number). Lines without a price are
+     skipped. Every price is in IQD: a USD receipt's at its rate (paid:'USD', with the rate used). */
   function lastPrices(invoices, want) {
     const keep = want ? new Set(want) : null;
     const sorted = [...(invoices || [])].sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date))
       || String(b.read_at ?? '').localeCompare(String(a.read_at ?? ''))
       || String(b.invoice_number ?? '').localeCompare(String(a.invoice_number ?? ''), undefined, { numeric: true }));
-    const by = new Map(), usd = new Map();
-    for (const r of sorted) for (const l of (r && r.lines) || []) {
-      if (!l || !l.item || by.has(l.item) || (keep && !keep.has(l.item)) || !(Number(l.unit_cost) > 0)) continue;
-      const currency = r.currency === 'USD' ? 'USD' : 'IQD', at = currency === 'USD' ? usd : by;
-      if (!at.has(l.item)) at.set(l.item, { item: l.item, unit: String(l.unit || ''), cost: Number(l.unit_cost), currency, day: String(r.entry_date || '').slice(0, 10), supplier: r.supplier_name || '' });
+    // A USD receipt without its own rate uses the newest rate on another USD receipt.
+    const known = sorted.find((r) => r && r.currency === 'USD' && Number(r.rate) > 0);
+    const fallback = known ? Number(known.rate) : DEFAULT_RATE;
+    const by = new Map();
+    for (const r of sorted) {
+      if (!r) continue;
+      const usd = r.currency === 'USD';
+      let f = null;
+      for (const l of r.lines || []) {
+        if (!l || !l.item || by.has(l.item) || (keep && !keep.has(l.item)) || !(Number(l.unit_cost) > 0)) continue;
+        if (f === null) f = iqdFactor(r, fallback);
+        const p = { item: l.item, unit: String(l.unit || ''), cost: Number(l.unit_cost) * f, currency: 'IQD', day: String(r.entry_date || '').slice(0, 10), supplier: r.supplier_name || '' };
+        if (usd) { p.paid = 'USD'; p.rate = Number(r.rate) > 0 ? Number(r.rate) : fallback; }
+        by.set(l.item, p);
+      }
     }
-    for (const [item, p] of usd) if (!by.has(item)) by.set(item, p);
     return by;
   }
   /* A stock item's last price in its base unit: {perBase, base, currency, day, supplier, unit, cost},
@@ -74,6 +105,7 @@
     if (!last) return null;
     const f = titem ? factor(titem, last.unit || titem.base) : null;
     const out = { base: titem ? titem.base : '', currency: last.currency, day: last.day, supplier: last.supplier, unit: last.unit, cost: last.cost };
+    if (last.paid === 'USD') { out.paid = 'USD'; out.rate = last.rate; }
     if (!(f > 0)) return { ...out, error: 'unit' };
     return { ...out, perBase: last.cost / f };
   }
@@ -108,7 +140,7 @@
   /* One line's cost. ctx: {ingredient(id), titem(name), price(name) -> priceOf result, unit(id) -> unit
      name, catalog: true when Ricotta Restaurant's list is known}. status: ok, amount (no amount), link
      (no ingredient or stock item), gone (stock item no longer in Ricotta Restaurant), price (never
-     bought), usd (bought only in USD), unit (the recipe's unit can't be turned into the stock
+     bought, or a price in another currency from an older server), unit (the recipe's unit can't be turned into the stock
      item's), buyUnit (the unit it was bought in can't be). */
   function lineCost(line, ctx) {
     const ing = line && ctx.ingredient(line.ingredient);
@@ -123,9 +155,9 @@
     const baseQty = Number(line.qty) * f;
     const p = ctx.price(ing.stock_item);
     if (!p) return { ...out, status: 'price', base: titem.base, baseQty };
-    if (p.currency !== 'IQD') return { ...out, status: 'usd', base: titem.base, baseQty, day: p.day };
+    if (p.currency !== 'IQD') return { ...out, status: 'price', base: titem.base, baseQty };
     if (p.error) return { ...out, status: 'buyUnit', base: titem.base, baseQty, boughtIn: p.unit };
-    return { ...out, status: 'ok', base: titem.base, baseQty, cost: round(baseQty * p.perBase), currency: 'IQD', perBase: p.perBase, day: p.day };
+    return { ...out, status: 'ok', base: titem.base, baseQty, cost: round(baseQty * p.perBase), currency: 'IQD', perBase: p.perBase, day: p.day, ...(p.paid === 'USD' ? { paid: 'USD' } : {}) };
   }
 
   /* A recipe's cost in IQD. One recipe is one dish: its menu price (data.price) is compared with the cost
@@ -179,5 +211,5 @@
     return lowNames && lowNames.has(titem.name) ? 'low' : 'ok';
   }
 
-  globalThis.RicottaRecipeCost = Object.freeze({ MARGIN_MIN, SUGGEST_TIMES, ROUND_TO, CURRENCIES, MAIN, measure, factor, lastPrices, priceOf, lineCost, recipeCost, context, stockState, roundMoney, roundCost, unitPrices });
+  globalThis.RicottaRecipeCost = Object.freeze({ MARGIN_MIN, SUGGEST_TIMES, ROUND_TO, CURRENCIES, DEFAULT_RATE, MAIN, measure, factor, iqdFactor, lastPrices, priceOf, lineCost, recipeCost, context, stockState, roundMoney, roundCost, unitPrices });
 })();
