@@ -60,7 +60,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   PUT    push/lang                  {endpoint, lang}
 //   PUT    reminder                   {enabled, time}           daily reminder settings
 //   POST   push/send                  {type, ...}               forwarded to send-push
-//   POST   assistant/chat             {messages, lang, ...}     Rico's reply, streamed (see assistant.ts)
+//   POST   assistant/chat             {messages, lang, image?, ...} Rico's reply, streamed (see assistant.ts); image: one JPEG (base64) with the latest message
 //   GET    assistant/suggestion                                 today's "Rico suggests" card (no AI call)
 //   GET    assistant/inbox                                      messages Rico sent first
 //   POST   assistant/inbox/read                                 mark them read
@@ -822,6 +822,7 @@ function cleanChatMessages(v: unknown): any[] | null {
       ...(typeof x.ts === "number" && Number.isFinite(x.ts) ? { ts: x.ts } : {}),
       ...(["happy","excited","grateful","calm","thinking","worried","sad","angry"].includes(x.mood) ? { mood: x.mood } : {}),
       ...(typeof x.error === "string" ? { error: x.error.slice(0, 40) } : {}),
+      ...(x.role === "user" && x.photo === true ? { photo: true } : {}),   // a photo went with it (the photo itself is not kept)
       ...(Array.isArray(x.steps) ? { steps: x.steps.slice(0, 20).map((k: unknown) => String(k).slice(0, 40)) } : {}),
       ...(Array.isArray(x.proposals) ? { proposals: x.proposals.slice(0, 20).filter((p: any) => p && typeof p === "object" && !Array.isArray(p)).map((p: any)=>({...p,status:["pending","saving","applied","dismissed","undone","expired"].includes(p.status)?p.status:"expired"})) } : {}),
     });
@@ -1009,7 +1010,7 @@ Deno.serve(async (req) => {
     if(path.startsWith("rico-chats") && M!=="GET"){keys.push(`account:${s.account}:chats`);limits.push(40);}
     if(path==="assistant/title"){keys.push(`account:${s.account}:title`);limits.push(30);}
     const limited=path==="logout"?null:await requestLimit(keys,limits);if(limited)return limited;
-    const b = M === "GET" ? {} : await readBody(req, (path === "receipts/scan" || /^recipes\/[0-9a-f-]+\/photos$/.test(path)) ? 4_400_000 : MAX_BODY_BYTES);
+    const b = M === "GET" ? {} : await readBody(req, (path === "receipts/scan" || path === "assistant/chat" || /^recipes\/[0-9a-f-]+\/photos$/.test(path)) ? 4_400_000 : MAX_BODY_BYTES);
     let m: RegExpMatchArray | null;
 
     if (path === "recipes" || path.startsWith("recipes/") || path === "recipe-ingredients" || path.startsWith("recipe-ingredients/")) {
@@ -1475,7 +1476,11 @@ Deno.serve(async (req) => {
     if (M === "POST" && path === "assistant/title") return json(await chatTitle(db, b));
 
     // Rico, the assistant
-    if (M === "POST" && path === "assistant/chat") return await handleChat(db, s, b, cors, req.signal);
+    if (M === "POST" && path === "assistant/chat") {
+      // A photo for Rico costs more to read: at most 30 an hour per account, like receipts from a photo.
+      if (b.image) { const limited = await requestLimit(["rico-photo:" + s.account], [30]); if (limited) return limited; }
+      return await handleChat(db, s, b, cors, req.signal);
+    }
     if (M === "GET" && path === "assistant/suggestion") return json(await orderSuggestion(db, s));
     if (M === "GET" && path === "assistant/inbox") return json(await listInbox(s));
     if (M === "POST" && path === "assistant/inbox/read") {
