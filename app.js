@@ -671,6 +671,7 @@ function handleSessionStorage(event){
 window.addEventListener('storage', handleSessionStorage);
 /* Sign Out signs out straight away (no question first): the PIN brings everything back. */
 async function doLogout(){
+  if(typeof ricoFlushDelete === 'function') await ricoFlushDelete();   // a chat just deleted (Undo still showing) is deleted first
   const reply=await api('logout',{method:'POST'});
   if(reply.ok || reply.status===401) signOut();
   else toast(t('saveFailed'), 'error');

@@ -104,23 +104,53 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  assert.ok(pdfCheck.size>1000,'a PDF is made');
  assert.ok(pdfCheck.pieces>=2,'the long name is split into lines');
  assert.ok(pdfCheck.widest<=(595.28-80)*3/4,'no line is wider than its column');
- // Deleting a chat from Rico's side menu on a phone asks first, naming the chat, and the question is on top
- // (it once opened behind the menu, where the tap that closed the menu could land on Delete).
- fixture.chats=[{id:'c1',title:'Bread for Friday',account:'rozha',updatedAt:now}];
- await view('assistant');await page.evaluate(()=>ricoLoadChats());await page.waitForFunction(()=>rico.chats?.length===1);
- await page.evaluate(()=>ricoOpenDrawer());await page.locator('#ricoDrawer [data-side-open="c1"]').waitFor();
- await page.locator('#ricoDrawer [data-side-open="c1"]').dispatchEvent('contextmenu');
- await page.locator('#ctxLayer [data-ctx="delete"]').click();await page.locator('#modalOkBtn').waitFor();
- assert.match(await page.locator('.modal-overlay .modal-msg').innerText(),/Bread for Friday/,'the question names the chat');
- assert.equal(await page.evaluate(()=>{const b=document.getElementById('modalOkBtn'),r=b.getBoundingClientRect(),el=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !!el&&b.contains(el);}),true,'the question is on top, not behind the menu');
- await page.locator('#modalCancelBtn').click();await page.waitForTimeout(300);
- assert.equal(await page.evaluate(()=>rico.chats.length),1,'Cancel keeps the chat');
- assert.equal(calls.filter(c=>c.endpoint==='rico-chats/c1'&&c.method==='DELETE').length,0,'nothing is deleted before Delete is pressed');
+ // Deleting a chat from Rico's side menu on a phone: no question, it is gone at once and the menu closes
+ // first (a stray tap can't land on something under it). Undo brings it back; the server is only told
+ // once the Undo time is over.
+ fixture.chats=[{id:'c1',title:'Bread for Friday',account:'rozha',updatedAt:now},{id:'c2',title:'Cheese stock',account:'rozha',updatedAt:before}];
+ await view('assistant');await page.evaluate(()=>ricoLoadChats());await page.waitForFunction(()=>rico.chats?.length===2);
+ const deleteFromDrawer=async id=>{await page.evaluate(()=>ricoOpenDrawer());await page.locator(`#ricoDrawer [data-side-open="${id}"]`).waitFor();
+  await page.locator(`#ricoDrawer [data-side-open="${id}"]`).dispatchEvent('contextmenu');await page.locator('#ctxLayer [data-ctx="delete"]').click();};
+ await deleteFromDrawer('c1');
+ assert.equal(await page.locator('.modal-overlay').count(),0,'no question before deleting');
+ assert.deepEqual(await page.evaluate(()=>rico.chats.map(c=>c.id)),['c2'],'the chat is gone at once');
+ await page.waitForSelector('#ricoDrawer',{state:'detached'});
+ await page.locator('#toast.show .toast-undo').waitFor();
+ await page.locator('#toast.show .toast-undo').click();
+ assert.deepEqual(await page.evaluate(()=>rico.chats.map(c=>c.id)),['c1','c2'],'Undo puts it back in its place');
+ await page.waitForTimeout(5300);
+ assert.equal(calls.filter(c=>c.endpoint==='rico-chats/c1'&&c.method==='DELETE').length,0,'after Undo nothing is deleted');
+ await deleteFromDrawer('c1');
+ assert.equal(calls.filter(c=>c.endpoint==='rico-chats/c1'&&c.method==='DELETE').length,0,'the server waits while Undo shows');
+ await page.waitForTimeout(5300);
+ assert.equal(calls.filter(c=>c.endpoint==='rico-chats/c1'&&c.method==='DELETE').length,1,'then it is deleted for good');
+ await page.evaluate(()=>ricoLoadChats());await page.waitForFunction(()=>rico.chats?.length===1);
+ assert.deepEqual(await page.evaluate(()=>rico.chats.map(c=>c.id)),['c2']);
+ // Rico's newer cards: two periods compared (with Excel and PDF) and a supplier's Call and WhatsApp.
+ await page.evaluate(()=>{rico.messages=[{role:'assistant',text:'Compared.',ts:Date.now(),proposals:[
+  {id:'cmp1',kind:'compare',preset:'this_month_vs_last_month',a:{from:'2026-11-01',to:'2026-11-18'},b:{from:'2026-10-01',to:'2026-10-18'},main:'orders',by:'item',totals:[{key:'orders',a:3,b:2,pct:50}],rows:[{name:'Tomatoes',a:5,b:2,pct:150,unit:'kg'},{name:'Basil',a:2,b:0,pct:null,unit:'bunch'}],more:0},
+  {id:'k1',kind:'contact',name:'Vegetables',phone:'07501234567',message:'Early please'}]}];render();});
+ const cmp=await page.locator('.rico-data[data-card="cmp1"]').innerText();
+ assert.match(cmp,/This month vs last month/);assert.match(cmp,/\+150%/);assert.match(cmp,/New/);assert.match(cmp,/same days of last month/);
+ assert.equal(await page.locator('.rico-data[data-card="cmp1"] [data-inv-file]').count(),2,'Excel and PDF');
+ assert.equal(await page.locator('.rico-card[data-card="k1"] a[href="tel:+9647501234567"]').count(),1,'Call uses the full number');
+ assert.match(await page.locator('.rico-card[data-card="k1"] a').first().getAttribute('href'),/9647501234567.*text=Early%20please/,'WhatsApp opens with the message typed in');
+ // A photo goes with one message only: it shows in the box, goes in that request, and is not kept in the chat.
+ await page.evaluate(()=>{rico.messages=[];render();rico.photo={data:'/9j/'+'A'.repeat(300),thumb:'data:image/jpeg;base64,/9j/AAAA'};ricoRepaintPhoto();});
+ assert.equal(await page.locator('#ricoComposer .rico-photo-chip img').count(),1,'the photo waits in the message box');
+ assert.equal(await page.locator('#ricoAttachBtn').count(),1);
+ await page.locator('#ricoSendBtn').click();
+ await page.waitForFunction(()=>!rico.streaming&&rico.messages.length===2);
+ const sent=calls.filter(c=>c.endpoint==='assistant/chat').at(-1).body;
+ assert.equal(sent.image,'/9j/'+'A'.repeat(300));assert.match(sent.messages.at(-1).content,/^\[photo\] What is in this photo\?/);
+ assert.equal(await page.evaluate(()=>rico.photo),null,'the box is empty again');
+ assert.equal(await page.locator('.rico-msg.me .rico-photo img').count(),1,'the photo shows with the message');
+ assert.deepEqual(await page.evaluate(()=>Object.keys(ricoSerialize()[0]).sort()),['photo','role','text','ts'],'only that there was a photo is saved');
  // Rico's place button opens Settings at that row and lights it.
  await page.evaluate(()=>{rico.messages=[{role:'assistant',text:'It is in Settings.',ts:Date.now(),proposals:[{id:'p1',kind:'open',screen:'settings',place:'setDark'}]}];render();});
  assert.match(await page.locator('.rico-place').innerText(),/Settings, Light or Dark/);
  await page.locator('.rico-place').click();await page.waitForSelector('.dark-row.spot-flash');
  assert.equal(await page.evaluate(()=>state.view),'settings');
  await page.screenshot({path:path.join(out,'kept-features.png')});assert.deepEqual(errors,[]);await ctx.close();
- console.log(JSON.stringify({result:'PASS',checks:'long names wrap inside their PDF column, saved design, favourites per supplier, remembered places per tab and screen, no send warnings, item delete Undo, Health Check, Rico spark button, reviewed Rico cards, deleting a chat asks first and on top, Rico\'s place button opens the setting',artifacts:out}));
+ console.log(JSON.stringify({result:'PASS',checks:'long names wrap inside their PDF column, saved design, favourites per supplier, remembered places per tab and screen, no send warnings, item delete Undo, Health Check, Rico spark button, reviewed Rico cards, deleting a chat is instant with Undo, the menu closes first, compare and contact cards, a photo goes with one message, Rico\'s place button opens the setting',artifacts:out}));
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);server.close();process.exitCode=1;});
