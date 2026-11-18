@@ -156,12 +156,14 @@ async function readHistory(get: (p: string, ms?: number) => Promise<any>) {
 
 /* ---------- Invoices ---------- */
 const money = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-/* One receipt from the summary list, as kept in app_rr_invoices (without its lines). */
+/* One receipt from the summary list, as kept in app_rr_invoices (without its lines). rate: a USD
+   receipt's exchange rate (Ricotta Restaurant's exchange_rate, IQD for 1 USD), null for IQD ones. */
+const rateOf = (r: any) => { const n = Number(String(r?.exchange_rate ?? "").replace(/,/g, "")); return r?.currency_code === "USD" && Number.isFinite(n) && n > 0 && n < 100000 ? n : null; };
 export function invoiceRow(r: any) {
   return {
     id: String(r.id), entry_date: String(r.entry_date ?? "").slice(0, 10), invoice_number: String(r.invoice_number ?? "").slice(0, 80),
     supplier_id: r.supplier_id ? String(r.supplier_id) : null, supplier_name: String(r.supplier_name ?? "").slice(0, 200),
-    status: String(r.status ?? "").slice(0, 30), currency: r.currency_code === "USD" ? "USD" : "IQD",
+    status: String(r.status ?? "").slice(0, 30), currency: r.currency_code === "USD" ? "USD" : "IQD", rate: rateOf(r),
     total: money(r.total_amount), delivery_fee: money(r.delivery_fee), paid: r.paid === true, line_count: Math.max(0, Math.floor(money(r.line_count))),
     returned_value: money(r.returned_value), wasted_value: money(r.wasted_value),
   };
@@ -181,7 +183,8 @@ export function invoiceLines(lines: any[], baseOf: (item: string) => string | un
 }
 /* Whether a kept receipt must be read again (new, or changed in Ricotta Restaurant). */
 export const invoiceChanged = (kept: any, row: any) => !kept || Number(kept.total) !== row.total || Number(kept.line_count) !== row.line_count
-  || kept.status !== row.status || kept.paid !== row.paid || Number(kept.delivery_fee) !== row.delivery_fee;
+  || kept.status !== row.status || kept.paid !== row.paid || Number(kept.delivery_fee) !== row.delivery_fee
+  || (row.rate !== null && Number(kept.rate) !== row.rate);
 const monthRange = (month: string) => {
   const [y, m] = month.split("-").map(Number);
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -198,7 +201,7 @@ export async function planInvoiceMonth(db: any, month: string, list: any) {
   const { from, to } = monthRange(month);
   const pairs = list.slice(0, 2000).map((raw: any) => ({ raw, row: invoiceRow(raw) })).filter(({ row: r }) => r.id && r.entry_date >= from && r.entry_date <= to);
   const rows = pairs.map((p) => p.row);
-  const { data: kept, error } = await db.from("app_rr_invoices").select("id,total,line_count,status,paid,delivery_fee").gte("entry_date", from).lte("entry_date", to);
+  const { data: kept, error } = await db.from("app_rr_invoices").select("id,total,line_count,status,paid,delivery_fee,rate").gte("entry_date", from).lte("entry_date", to);
   if (error) throw new ReaderError("write", "Could not read the kept invoices from the app's database.");
   const keptBy = new Map((kept ?? []).map((k: any) => [k.id, k]));
   const todo = pairs.filter((p) => invoiceChanged(keptBy.get(p.row.id), p.row));

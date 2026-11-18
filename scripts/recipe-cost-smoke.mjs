@@ -1,5 +1,5 @@
 // Recipe costs (supabase/functions/_shared/recipe-cost.js): unit conversions to the stock item's base
-// unit, the last price paid wins, IQD only (a USD price is never used), missing lines shown as missing (never 0),
+// unit, the last price paid wins, USD receipts in IQD at their rate, missing lines shown as missing (never 0),
 // profit, margin and the suggested price. Run: node scripts/recipe-cost-smoke.mjs
 import assert from 'node:assert/strict';
 import '../supabase/functions/_shared/search.js';
@@ -111,7 +111,7 @@ assert.equal(half.margin, null);
 assert.equal(half.suggested, null);
 assert.equal(half.losing, false, 'never called losing money without a full cost');
 assert.equal(half.state, 'none');
-assert.deepEqual(half.problems, [{ name: 'Eggs', status: 'amount' }, { name: 'Vanilla', status: 'usd' }]);
+assert.deepEqual(half.problems, [{ name: 'Eggs', status: 'amount' }]);
 
 // Prices in plain sizes for the Items and ingredients tab.
 const per = (t, last) => C.unitPrices(C.priceOf(t, last)).map((u) => [u.unit, Number(u.amount.toFixed(4))]);
@@ -144,18 +144,37 @@ assert.equal(C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 5, unit: 'ml' }])
 // Before Ricotta Restaurant's list is known, a link is not called gone.
 assert.equal(C.recipeCost(recipe([{ ingredient: 'i-gone', qty: 5, unit: 'ml' }]), C.context({ ingredients, titems: [], units, invoices })).lines[0].status, 'price');
 
-// Recipes are in IQD only: a USD price is never used. Vanilla was bought only in USD, so it has no cost.
-const withUsd = C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 500, unit: 'ml' }, { ingredient: 'i-vanilla', qty: 4, unit: 'g' }], { price: 20 }), ctx);
-assert.equal(withUsd.lines[1].status, 'usd');
-assert.equal(withUsd.total, null, 'no total while a line has no IQD price');
-assert.equal(withUsd.cost, null);
-assert.equal(withUsd.missing, 1);
-assert.equal(withUsd.profit, null);
+// A USD receipt counts in IQD at its rate. Vanilla's receipt has no total to compare and no rate of its
+// own, and no other USD receipt has one: its 0.5 USD a gram is 750 IQD at the usual 1,500.
+assert.equal(C.DEFAULT_RATE, 1500);
+const withUsd = C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 500, unit: 'ml' }, { ingredient: 'i-vanilla', qty: 4, unit: 'g' }], { price: 20000 }), ctx);
+assert.deepEqual(withUsd.lines.map((l) => [l.status, l.cost]), [['ok', 5], ['ok', 3000]]);
+assert.equal(withUsd.lines[1].paid, 'USD', 'the line says it was paid in USD');
+assert.equal(withUsd.total, 3005);
 assert.equal(withUsd.currency, 'IQD');
-// The newest IQD price wins over a newer USD one.
+const vanilla = ctx.price('Vanilla - ڤانیلا');
+assert.equal(vanilla.currency, 'IQD'); assert.equal(vanilla.paid, 'USD'); assert.equal(vanilla.rate, 1500); assert.equal(vanilla.perBase, 750);
+// Its own rate wins: 1,450.
+const usdInv = (n, day, rate, lines, total, fee = 0) => ({ ...inv(day, day + 'T10:00:00Z', n, 'USD', lines), rate, total, delivery_fee: fee });
+assert.equal(C.lastPrices([usdInv('20', '2026-11-13', 1450, [{ item: 'Milk - شیر', unit: 'لیتر', unit_cost: 2, qty: 3, line_total: 6 }], 0)]).get('Milk - شیر').cost, 2900);
+// Ricotta Restaurant keeps a USD receipt's total in IQD, and usually its lines too: lines that add up to
+// the total are already in IQD and are not multiplied again (a delivery fee on top is allowed).
+const inIqd = C.lastPrices([usdInv('21', '2026-11-13', 1500, [{ item: 'Milk - شیر', unit: 'لیتر', unit_cost: 3000, qty: 2, line_total: 6000 }], 6000)]).get('Milk - شیر');
+assert.equal(inIqd.cost, 3000, 'already in IQD'); assert.equal(inIqd.paid, 'USD'); assert.equal(inIqd.currency, 'IQD');
+assert.equal(C.lastPrices([usdInv('22', '2026-11-13', 1500, [{ item: 'Milk - شیر', unit: 'لیتر', unit_cost: 3000, qty: 2, line_total: 6000 }], 11000, 5000)]).get('Milk - شیر').cost, 3000, 'with its delivery fee');
+// Lines in dollars against an IQD total: turned into IQD.
+assert.equal(C.lastPrices([usdInv('23', '2026-11-13', 1500, [{ item: 'Milk - شیر', unit: 'لیتر', unit_cost: 2, qty: 2, line_total: 4 }], 6000)]).get('Milk - شیر').cost, 3000);
+// No rate of its own: the newest rate on another USD receipt.
+const fb = C.lastPrices([usdInv('24', '2026-11-14', null, [{ item: 'Milk - شیر', unit: 'لیتر', unit_cost: 2 }], 0), usdInv('25', '2026-11-02', 1600, [{ item: 'Eggs - هێلکە', unit: 'کارتۆن', unit_cost: 1 }], 0)]);
+assert.equal(fb.get('Milk - شیر').cost, 3200); assert.equal(fb.get('Milk - شیر').rate, 1600);
+assert.equal(C.iqdFactor({ currency: 'IQD', lines: [] }), 1);
+// The newest receipt wins whatever it was paid in.
 const both = C.lastPrices([inv('2026-11-12', '2026-11-12T10:00:00Z', '16', 'USD', [{ item: 'Milk - شیر', unit: 'لیتر', unit_cost: 1 }]), ...invoices]);
-assert.equal(both.get('Milk - شیر').cost, 10);
+assert.equal(both.get('Milk - شیر').cost, 1500);
 assert.equal(both.get('Milk - شیر').currency, 'IQD');
+// A price in another currency (from an older server) is no price, never a wrong one.
+const oldUsd = C.context({ ingredients, titems, units, prices: { 'Milk - شیر': { perBase: 0.001, base: 'مل', currency: 'USD' } } });
+assert.equal(C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 5, unit: 'ml' }]), oldUsd).lines[0].status, 'price');
 // A unit saved by name before units came from Manage, Units still works.
 assert.equal(C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 1, unit: 'لیتر' }]), ctx).total, 10);
 
@@ -163,4 +182,4 @@ assert.equal(C.recipeCost(recipe([{ ingredient: 'i-milk', qty: 1, unit: 'لیت�
 assert.equal(C.stockState(titems[1], new Set()), 'empty');
 assert.equal(C.stockState(titems[0], new Set(['Milk - شیر'])), 'low');
 assert.equal(C.stockState(titems[2], new Set()), 'ok');
-console.log('Recipe cost PASS: g/kg and ml/L, cartons to pieces, last price wins, IQD only, rounding to the nearest 250 IQD, profit and margin from the rounded numbers, no cost while a price is missing, prices in plain sizes, every kind of missing line');
+console.log('Recipe cost PASS: g/kg and ml/L, cartons to pieces, last price wins, USD receipts in IQD at their rate, rounding to the nearest 250 IQD, profit and margin from the rounded numbers, no cost while a price is missing, prices in plain sizes, every kind of missing line');

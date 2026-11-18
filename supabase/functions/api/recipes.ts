@@ -81,7 +81,7 @@ export async function loadBook(db: any) {
     db.from("app_recipe_ingredients").select("*").order("name").limit(2000),
     db.from("app_units").select("id,en").order("id").limit(1000),
     catalogOf(db),
-    db.from("app_rr_invoices").select("entry_date,read_at,invoice_number,supplier_name,currency,lines").order("entry_date", { ascending: false }).limit(3000),
+    db.from("app_rr_invoices").select("entry_date,read_at,invoice_number,supplier_name,currency,rate,total,delivery_fee,lines").order("entry_date", { ascending: false }).limit(3000),
     db.from("app_items").select("stock_item,stock_items,low_alert").not("low_alert", "is", null).limit(5000),
     loadCategories(db),
   ]);
