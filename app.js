@@ -2348,10 +2348,11 @@ function switchOrderKind(kind){
       if(a) a.onfinish = done; else done();
     }else{
       // To Expenses it turns towards the start side, back to Food the other way (mirrored in Kurdish and Arabic).
-      const dir = (kind === 'expense' ? -1 : 1) * (isRtl() ? -1 : 1), ease = 'cubic-bezier(.45,.05,.25,1)';
+      // The depth grows with the card's width, so a wide card on a computer turns as calmly as a phone's.
+      const dir = (kind === 'expense' ? -1 : 1) * (isRtl() ? -1 : 1), ease = 'cubic-bezier(.45,.05,.25,1)', pv = `perspective(${Math.round(Math.max(1100, at.width * 3))}px)`;
       hero.classList.add('flipping');
-      ghost.animate([{transform:'perspective(1100px) rotateY(0deg)'}, {transform:`perspective(1100px) rotateY(${dir * 180}deg)`}], {duration:460, easing:ease, fill:'forwards'}).onfinish = done;
-      hero.animate([{transform:`perspective(1100px) rotateY(${-dir * 180}deg)`}, {transform:'perspective(1100px) rotateY(0deg)'}], {duration:460, easing:ease});
+      ghost.animate([{transform:`${pv} rotateY(0deg)`}, {transform:`${pv} rotateY(${dir * 180}deg)`}], {duration:460, easing:ease, fill:'forwards'}).onfinish = done;
+      hero.animate([{transform:`${pv} rotateY(${-dir * 180}deg)`}, {transform:`${pv} rotateY(0deg)`}], {duration:460, easing:ease});
     }
   }
   if(reducedMotion()) return true;

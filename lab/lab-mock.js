@@ -175,7 +175,7 @@
      has never been bought, so it has no price), three recipes (Margherita uses Tomato, so it has no
      cost yet) and an alert. */
   const LAB_UNITS = [{id:'g', en:'گرام'}, {id:'kg', en:'کیلۆگرام'}, {id:'ml', en:'مل'}, {id:'l', en:'لیتر'}, {id:'piece', en:'دانە'}];
-  const LAB_PRICES = [['Mozzarella - پەنیری مۆزارێلا', 9000, 'کیلۆ', 'Zakho Dairy'], ['Ricotta Cheese - پەنیری ریکۆتا', 45000, 'کارتۆن', 'Zakho Dairy'], ['Banana - مۆز', 1500, 'کیلۆ', 'Erbil Fruit'], ['Olive Oil - زەیتی زەیتوون', 60000, 'کارتۆن', 'Golden Oils'], ['Lemon - لیمۆ', 2000, 'کیلۆ', 'Erbil Fruit']];
+  const LAB_PRICES = [['Mozzarella - پەنیری مۆزارێلا', 9000, 'کیلۆ', 'Zakho Dairy'], ['Ricotta Cheese - پەنیری ریکۆتا', 45000, 'کارتۆن', 'Zakho Dairy'], ['Banana - مۆز', 1500, 'کیلۆ', 'Erbil Fruit'], ['Olive Oil - زەیتی زەیتوون', 60000, 'کارتۆن', 'Golden Oils'], ['Lemon - لیمۆ', 2000, 'کیلۆ', 'Erbil Fruit', 1480]];
   function labRecipes(){
     if(db.recipeBook2){
       // Categories from a prepared list (2026-11-17): a Lab saved before then gets them now.
@@ -493,7 +493,7 @@
       const R = labRecipes(), RC = globalThis.RicottaRecipeCost;
       if(method === 'GET' && path === 'recipes'){
         const day = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
-        const prices = {}; for(const [name, cost, unit, supplier] of LAB_PRICES){ const t = LAB_STOCK.find(x=>x.name === name); const p = RC.priceOf(t, {item:name, unit, cost, currency:'IQD', day, supplier}); if(p) prices[name] = p; }
+        const prices = {}; for(const [name, cost, unit, supplier, rate] of LAB_PRICES){ const t = LAB_STOCK.find(x=>x.name === name); const p = RC.priceOf(t, {item:name, unit, cost, currency:'IQD', day, supplier, ...(rate ? {paid:'USD', rate} : {})}); if(p) prices[name] = p; }
         // The other names a stock item goes by: the ordering items linked to it and their search names.
         const aka = t=>[...new Set((db.items || []).filter(i=>i.stockItem === t.name || (i.stockItems || []).includes(t.name)).flatMap(i=>[i.name, ...(i.aliases || [])]))];
         return json({recipes:R.recipes, categories:R.categories, ingredients:R.ingredients, units:LAB_UNITS, stock:LAB_STOCK.map(t=>({name:t.name, base:t.base, count:t.count, buy:t.buy, state:RC.stockState(t, new Set()), ...(aka(t).length ? {aka:aka(t)} : {})})),

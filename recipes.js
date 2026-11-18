@@ -400,7 +400,7 @@ function recipeCatBanner(cat){
 /* A photo's two tones from its hue and saturation: pastel in light mode, deep and quiet in dark mode. */
 function recipeToneVars([h, s]){
   const sat = Math.round(Math.min(62, Math.max(s, 6))), h2 = Math.round((h + 14) % 360);
-  return recipeBannerVars(`hsl(${h} ${sat}% 87%)`, `hsl(${h2} ${Math.round(sat * .8)}% 95%)`, `hsl(${h} ${Math.round(Math.min(sat, 38))}% 20%)`, `hsl(${h2} ${Math.round(Math.min(sat, 30))}% 13%)`);
+  return recipeBannerVars(`hsl(${h} ${sat}% 87%)`, `hsl(${h2} ${Math.round(sat * .8)}% 95%)`, `hsl(${h} ${Math.round(Math.min(sat, 46))}% 24%)`, `hsl(${h2} ${Math.round(Math.min(sat, 34))}% 15%)`);
 }
 /* The same photo has a new signed link every time: it is known by its path (or, for a picture kept in the
    page, by its length and end). */

@@ -3248,9 +3248,12 @@ html.dark .rc-act-delete{color:#FF6961}
 .stock-pick-list>.field-hint{margin:0;padding:12px}
 .rc-pick-head{padding:10px 12px 4px;font-size:.75rem;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-soft)}
 /* The stock item list opens under its search box as soon as it is tapped, in the look of the app's menus */
+.rc-stock-search{flex:none}
 .rc-stock-search .search-input{border-radius:12px}
+.rc-stock-field .field-hint.warn:empty{display:none}
 .rc-stock-drop{max-height:min(320px,46vh);padding:4px 0;border-radius:14px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);border:.5px solid var(--line-strong);box-shadow:var(--float-shadow);animation:selPopIn .16s var(--ease-out);overscroll-behavior:contain}
 .rc-stock-drop[hidden]{display:none}
+.rc-stock-drop>*{flex:none}
 .rc-stock-drop .stock-opt{border-radius:0}
 .rc-stock-drop .rc-pick-head+.stock-opt{border-top:0}
 @media (prefers-reduced-motion:reduce){.rc-stock-drop{animation:none}}
