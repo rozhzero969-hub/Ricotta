@@ -926,6 +926,18 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 .rico-composer textarea::placeholder{color:var(--ink-faint)}
 .rico-send{width:40px;height:40px;border-radius:50%;border:0;display:grid;place-items:center;flex-shrink:0;background:var(--accent-strong);color:#fff}
 .rico-send.stop{background:var(--red)}
+/* A photo for Rico: the camera button in the message box, and the photo waiting to go with the message. */
+.rico-attach{width:40px;height:40px;margin-inline-start:-10px;border-radius:50%;border:0;display:grid;place-items:center;flex-shrink:0;background:none;color:var(--ink-soft)}
+.rico-attach svg{width:21px;height:21px}
+.rico-attach:disabled{opacity:.4}
+@media (hover:hover){.rico-attach:not(:disabled):hover{background:var(--fill);color:var(--ink)}}
+.rico-composer.has-photo{flex-wrap:wrap}
+.rico-photo-chip{position:relative;flex-basis:100%;display:flex;padding:6px 0 2px}
+.rico-photo-chip img{width:64px;height:64px;object-fit:cover;border-radius:12px;box-shadow:inset 0 0 0 .5px var(--line)}
+.rico-photo-x{position:absolute;top:0;inset-inline-start:52px;width:24px;height:24px;border-radius:50%;border:0;display:grid;place-items:center;background:var(--ink);color:var(--bg)}
+.rico-msg.me:has(.rico-photo,.rico-photo-tag){flex-direction:column;align-items:flex-end;gap:6px}
+.rico-photo img{display:block;max-width:min(60vw,220px);max-height:220px;border-radius:16px;object-fit:cover}
+.rico-photo-tag{display:inline-flex;align-items:center;gap:6px;font-size:.8125rem;color:var(--ink-soft)}
 
 @keyframes micWave{50%{height:20px}}
 
@@ -2438,6 +2450,10 @@ html.dark .rico-pct.up{color:#FF6961}html.dark .rico-pct.down{color:#30D158}
 .rico-data-more{padding:8px 14px;border-top:.5px solid var(--line);font-size:.8125rem;color:var(--ink-soft)}
 .rico-data-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding:10px 14px;border-top:.5px solid var(--line)}
 .rico-data-foot .btn{min-height:38px;padding:0 14px;border-radius:10px;font-size:.9063rem}
+.rico-card-actions a.btn{text-decoration:none;gap:8px}
+.rico-photo img{box-shadow:inset 0 0 0 .5px var(--line),0 0 0 .5px var(--line)}
+.rico-data-title .rico-cmp-range{display:block;margin-top:2px;font-weight:400;font-size:.8125rem;color:var(--ink-soft)}
+.rico-data-sub{padding:12px 14px 6px;border-top:.5px solid var(--line);font-size:.8125rem;font-weight:600;color:var(--ink-soft)}
 .rico-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--ok)}
 .rico-dot.red{background:var(--red)}.rico-dot.amber{background:#FF9F0A}.rico-dot.gray{background:var(--ink-faint)}
 
