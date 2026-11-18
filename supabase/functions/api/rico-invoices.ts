@@ -6,12 +6,14 @@
 //     items (moved there in the last 60 days, plus name matches), with the unit it was bought in.
 // Only reads. Never invents a price: what is not in the invoices is said so.
 import "../_shared/search.js";
+import "../_shared/recipe-cost.js";
 import { catalogOf } from "./receipts.ts";
 import { readMonthNow, erbilDay, prevMonth } from "./rr-reader.ts";
 
 type Emit = (event: Record<string, unknown>) => void;
 const search = (globalThis as any).RicottaSearch;
 const T = (globalThis as any).RicottaTransfers;
+const RC = (globalThis as any).RicottaRecipeCost;
 const NO_ACCESS = { error: "no_access", note: "This person can't open Receipts or Transfers. Say so briefly." };
 const cardId = (k: string) => `${k}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -29,7 +31,7 @@ export async function invoicesFor(db: any, months: string[], read = readMonthNow
   const out: any[] = [];
   let notSetUp = false;
   for (const month of months) {
-    const q = () => db.from("app_rr_invoices").select("id,entry_date,invoice_number,supplier_name,currency,total,delivery_fee,paid,lines,read_at")
+    const q = () => db.from("app_rr_invoices").select("id,entry_date,invoice_number,supplier_name,currency,rate,total,delivery_fee,paid,lines,read_at")
       .gte("entry_date", `${month}-01`).lte("entry_date", monthEnd(month)).limit(3000);
     let { data, error } = await q();
     if (error) throw error;
@@ -76,15 +78,22 @@ export async function invoiceReport(db: any, w: any, a: any, emit: Emit, read = 
 
 /* ---------- price_lookup ---------- */
 /* The last price per item from invoice lines (newest invoice first), with the unit it was bought in and
-   how many times it was bought; also the last price in each other unit it came in. */
+   how many times it was bought; also the last price in each other unit it came in. Every price is in IQD:
+   a USD receipt's lines are turned into IQD at its rate (_shared/recipe-cost.js iqdFactor, the same rule
+   the Recipes and Items prices use), and marked paid_in USD. */
 export function lastPrices(rows: any[], keep: (item: string) => boolean) {
   const sorted = [...rows].sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date)) || String(b.read_at ?? "").localeCompare(String(a.read_at ?? "")) || String(b.invoice_number).localeCompare(String(a.invoice_number), undefined, { numeric: true }));
+  const known = sorted.find((r) => r?.currency === "USD" && Number(r.rate) > 0);
+  const fallback = known ? Number(known.rate) : RC?.DEFAULT_RATE;
   const by = new Map<string, any>();
-  for (const r of sorted) for (const l of r.lines ?? []) {
-    if (!l?.item || !keep(l.item) || !(Number(l.unit_cost) > 0)) continue;
-    const x = by.get(l.item);
-    if (!x) by.set(l.item, { item: l.item, unit: l.unit || "", price: money(Number(l.unit_cost), r.currency), currency: r.currency === "USD" ? "USD" : "IQD", day: r.entry_date, supplier: r.supplier_name, times: 1, units: { [l.unit || ""]: money(Number(l.unit_cost), r.currency) } });
-    else { x.times++; if (!((l.unit || "") in x.units)) x.units[l.unit || ""] = money(Number(l.unit_cost), r.currency); }
+  for (const r of sorted) {
+    const f = RC ? RC.iqdFactor(r, fallback) : 1, usd = r.currency === "USD";
+    for (const l of r.lines ?? []) {
+      if (!l?.item || !keep(l.item) || !(Number(l.unit_cost) > 0)) continue;
+      const price = money(Number(l.unit_cost) * f, "IQD"), x = by.get(l.item);
+      if (!x) by.set(l.item, { item: l.item, unit: l.unit || "", price, currency: "IQD", ...(usd ? { paid_in: "USD" } : {}), day: r.entry_date, supplier: r.supplier_name, times: 1, units: { [l.unit || ""]: price } });
+      else { x.times++; if (!((l.unit || "") in x.units)) x.units[l.unit || ""] = price; }
+    }
   }
   return [...by.values()].map((x) => ({ ...x, otherUnits: Object.entries(x.units).filter(([u]) => u !== x.unit).map(([unit, price]) => ({ unit, price })) }))
     .map(({ units, ...x }) => x);
@@ -121,7 +130,7 @@ export async function priceLookup(db: any, w: any, a: any, emit: Emit, read = re
   if (!found.length) return { found: 0, months, note: `No invoice in ${months.join(" and ")} has ${query ? `"${query}"` : `items moved to ${storage}`}. Say so; never guess a price.` };
   const shown = found.slice(0, 60);
   emit({ type: "proposal", proposal: { id: cardId("q"), kind: "price_lookup", query: query || null, storage, months, rows: shown, more: Math.max(0, found.length - 60) } });
-  return { found: found.length, months, storage, items: shown.slice(0, 25).map((r) => ({ item: r.item, last_price: r.price, currency: r.currency, per: r.unit, day: r.day, supplier: r.supplier, times_bought: r.times, found_by: r.source })),
+  return { found: found.length, months, storage, items: shown.slice(0, 25).map((r) => ({ item: r.item, last_price: r.price, currency: r.currency, ...(r.paid_in ? { paid_in: r.paid_in } : {}), per: r.unit, day: r.day, supplier: r.supplier, times_bought: r.times, found_by: r.source })),
     ...(neverBought.length ? { moved_but_not_bought_in_period: neverBought } : {}),
     note: "A card lists every item with its last price and unit, with Download PDF and Excel. Say it in one or two lines (mention items found by name vs moved to the storage when both are there)." };
 }

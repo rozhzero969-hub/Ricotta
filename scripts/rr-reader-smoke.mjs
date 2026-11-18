@@ -240,7 +240,11 @@ const inv = [
   const moz = got.find((r) => r.item === 'Mozzarella');
   assert.equal(moz.price, 120000); assert.equal(moz.unit, 'کارتۆن'); assert.equal(moz.supplier, 'Cheese House'); assert.equal(moz.day, '2026-11-09'); assert.equal(moz.times, 3);
   assert.deepEqual(moz.otherUnits, [{ unit: 'کیلۆ', price: 12500 }]);
-  assert.equal(got.find((r) => r.item === 'Pizza Box').price, 41.46, 'USD to the cent');
+  const box = got.find((r) => r.item === 'Pizza Box');
+  assert.equal(box.currency, 'IQD'); assert.equal(box.paid_in, 'USD', 'a USD receipt is marked paid in USD');
+  // Lines in dollars (the IQD total is the lines times the rate): turned into IQD at the receipt's rate.
+  const usd = lastPrices([{ entry_date: '2026-11-05', invoice_number: '9', supplier_name: 'Import Co', currency: 'USD', rate: 1500, total: 60000, lines: [{ item: 'Cups', unit: 'کارتۆن', unit_cost: 40, qty: 1, line_total: 40 }] }], () => true);
+  assert.equal(usd[0].price, 60000, 'USD price shown in IQD at the receipt rate');
   const tot = reportTotals(inv);
   assert.equal(tot.receipts, 3); assert.equal(tot.unpaid, 1); assert.equal(tot.IQD, 2); assert.equal(tot.USD, 1);
 }
