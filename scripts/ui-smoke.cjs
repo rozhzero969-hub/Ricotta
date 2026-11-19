@@ -526,13 +526,19 @@ const server=http.createServer((req,res)=>{
     assert.equal(await q5.inputValue(),'','tapping the quantity clears its 0');
     await page.keyboard.type('7');await page.keyboard.press('Enter');
     assert.equal(await page.evaluate(()=>state.cart.i5),7,'typed quantity is kept');
-    const inc2=page.locator('[data-inc="i2"]');await inc2.scrollIntoViewIfNeeded();
+    const inc2=page.locator('[data-inc="i2"]');
+    // Scrolling a virtualized row into view can take a paint before its controls
+    // receive pointer events. Wait for the real hit target before holding it.
+    await inc2.click({trial:true});
     const box=await inc2.boundingBox();
-    await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.waitForTimeout(1300);await page.mouse.up();
+    await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
+    try{ await page.waitForFunction(()=>state.cart.i2>=4,null,{timeout:2500}); }
+    finally{ await page.mouse.up(); }
     assert.ok(await page.evaluate(()=>state.cart.i2)>=4,'holding + keeps counting');
-    const row=page.locator('[data-item-id="i8"] .item-info');await row.scrollIntoViewIfNeeded();
+    const row=page.locator('[data-item-id="i8"] .item-info');
+    await row.click({trial:true,position:{x:10,y:10}});
     const rb=await row.boundingBox();
-    await page.mouse.move(rb.x+10,rb.y+rb.height/2);await page.mouse.down();await page.waitForTimeout(700);await page.mouse.up();
+    await page.mouse.move(rb.x+10,rb.y+10);await page.mouse.down();await page.waitForTimeout(700);await page.mouse.up();
     await page.locator('#ctxLayer [data-ctx="5"]').click();
     assert.equal(await page.evaluate(()=>state.cart.i8),5,'press-and-hold menu adds 5');
     await page.locator('#clearOrderBtn').click();

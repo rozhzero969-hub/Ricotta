@@ -117,7 +117,7 @@ html.rtl .page-eyebrow,html.rtl .section-title{letter-spacing:0}
 /* Pages sliding side by side (see cardLook). Long lists skip drawing rows that are off screen
    (content-visibility below); a page that is moving must draw all of them, or it slides in blank. */
 .content.carding{will-change:transform}
-.content.carding :is(.list-row,.hist-card):not(.cv-far),.page-ghost :is(.list-row,.hist-card){content-visibility:visible}
+.content.carding :is(.list-row,.hist-card,.item-row):not(.cv-far),.page-ghost :is(.list-row,.hist-card,.item-row){content-visibility:visible}
 .page-ghost>.content{background:var(--bg)}
 .page-ghost .ghost-far{content-visibility:hidden!important;box-sizing:border-box;min-height:0}
 .content.gliding *,.page-ghost *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
@@ -1069,6 +1069,7 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 
 /* Long lists skip drawing rows that are off screen (so changing a filter is cheap). */
 .list-row,.hist-card{content-visibility:auto;contain-intrinsic-size:auto 76px}
+.item-row{content-visibility:auto;contain-intrinsic-size:auto 64px}
 .rico-open small{opacity:.7;font-weight:500;margin-inline-start:4px}
 /* Our own dropdown: a button that looks like the field, and a sheet that slides up with the choices */
 select.sel-native{position:absolute!important;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;border:0!important;opacity:0;pointer-events:none;overflow:hidden}

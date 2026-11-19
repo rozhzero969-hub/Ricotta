@@ -1361,7 +1361,7 @@ function endGlide(){
    slide in blank), except rows well above or below the screen: they never come into view while it
    slides sideways, and laying out two months of History at once held up the tap. */
 function markFarRows(content){
-  const rows = content.querySelectorAll('.list-row,.hist-card');
+  const rows = content.querySelectorAll('.list-row,.hist-card,.item-row');
   if(rows.length < 30) return;
   const top = -window.innerHeight * .5, bottom = window.innerHeight * 1.5, far = [];
   for(const el of rows){ const b = el.getBoundingClientRect(); if(b.bottom < top || b.top > bottom) far.push(el); }
