@@ -3,6 +3,10 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-19a', date:'2026-11-19', notes:{
+    en:['Changing tabs is much faster.','Linking several stock items to one item works with quick taps, and every link is saved.','Recipes: Save waits for your last change, Remove takes out only that ingredient, and amounts like 0,125 stay as they are.','Rico: Undo after deleting a chat still works if you switch apps for a moment.'],
+    ku:['گۆڕینی تابەکان زۆر خێراترە.','بەستنەوەی چەند کاڵایەکی کۆگا بە یەک کاڵاوە بە دەستلێدانی خێرا کار دەکات، و هەموو بەستنەوەیەک پاشەکەوت دەکرێت.','ڕێسیپییەکان: پاشەکەوتکردن چاوەڕێی دوایین گۆڕانکاریت دەکات، لابردن تەنها ئەو پێکهاتەیە لادەبات، و بڕی وەک 0,125 وەک خۆی دەمێنێتەوە.','ریکۆ: گەڕاندنەوەی گفتوگۆی سڕاوە هێشتا کار دەکات ئەگەر بۆ ساتێک بچیتە ئەپێکی تر.'],
+    ar:['تبديل التبويبات أسرع بكثير.','ربط عدة مواد مخزون بمادة واحدة يعمل مع النقر السريع، وكل ربط يُحفظ.','الوصفات: الحفظ ينتظر آخر تعديل، والإزالة تحذف هذا المكوّن فقط، والكميات مثل 0,125 تبقى كما هي.','ريكو: التراجع بعد حذف محادثة يعمل حتى لو انتقلت إلى تطبيق آخر للحظة.']}},
   {id:'2026-11-18a', date:'2026-11-18', notes:{
     en:['A recipe\u2019s page has a soft coloured banner at the top, in the colours of its photo or its category, with the photo or letter on it.',
       'Writing a recipe: Save and Delete recipe sit side by side at the end. Steps and notes grow as you write, so the whole text always shows.',
