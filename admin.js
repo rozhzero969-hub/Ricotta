@@ -957,7 +957,7 @@ function attachAdminNames(slot){
 function renderAdminRestore(){
   const rows = adminValue('backups');
   return `${adminHeading()}
-    ${Array.isArray(rows) ? (rows.length ? `<div class="form-card restore-list">${rows.map(r=>`<div class="restore-row"><div><b>${esc(formatIraqDateTime(r.day + 'T12:00:00Z', {weekday:'long', day:'numeric', month:'long'}))}</b><small>${esc(t('restoreCounts')(r.orders, r.items, r.suppliers))}</small></div><button type="button" class="btn btn-ghost" data-restore-day="${esc(r.day)}">${esc(t('restoreBtn'))}</button></div>`).join('')}</div>` : `<div class="empty-mini">${esc(t('restoreNone'))}</div>`) : `<div class="empty-mini">${esc(t('checking'))}</div>`}`;
+    ${Array.isArray(rows) ? (rows.length ? `<div class="form-card restore-list">${rows.map(r=>`<div class="restore-row"><div><b>${esc(formatIraqDateTime(r.day + 'T12:00:00Z', {weekday:'long', day:'numeric', month:'long'}))}</b><small>${esc(t('restoreCounts')(r.orders, r.items, r.suppliers, r.recipes))}</small></div><button type="button" class="btn btn-ghost" data-restore-day="${esc(r.day)}">${esc(t('restoreBtn'))}</button></div>`).join('')}</div>` : `<div class="empty-mini">${esc(t('restoreNone'))}</div>`) : `<div class="empty-mini">${esc(t('checking'))}</div>`}`;
 }
 function attachAdminRestore(){
   document.querySelectorAll('[data-restore-day]').forEach(b=>b.onclick = ()=>{
@@ -970,7 +970,7 @@ function attachAdminRestore(){
         const r = await api('admin/backups/restore', {method:'POST', body:{day, pin:document.getElementById('restorePin').value}});
         if(!r.ok) return {error:t(r.data?.error === 'wrong_pin' ? 'wrongPin' : 'saveFailed')};
         await loadData(); render();
-        toast(t('restoreDone')(r.data.orders, r.data.items, r.data.suppliers), 'ok');
+        toast(t('restoreDone')(r.data.orders, r.data.items, r.data.suppliers, r.data.recipes), 'ok');
         return {};
       },
     });
