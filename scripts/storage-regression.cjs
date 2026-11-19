@@ -447,3 +447,86 @@ test('a sign-in service outage is not described as a wrong PIN',async()=>{
   c.api=async()=>({ok:false,status:401});
   assert.equal((await c.apiLogin('fixture')).error,'wrong');
 });
+
+/* Changes kept for later (offline.js): one job per thing changed, sent in order, refused ones kept. */
+test('a kept change replaces the waiting one for the same thing and keeps its place in line', async()=>{
+  const {context:c, session} = browser(); session('rozha');
+  c.queueChange('setting', 'darkMode', 'settings', 'PUT', {key:'darkMode', value:'on'}, {label:'Dark'});
+  c.queueChange('recipe', 'r1', 'recipes/r1', 'PUT', {name:'Cake', version:2}, {label:'Cake'});
+  c.queueChange('setting', 'darkMode', 'settings', 'PUT', {key:'darkMode', value:'off'}, {label:'Dark'});
+  assert.deepEqual(plain(c.queuedChanges(null, 'rozha')).map(j=>[j.kind, j.key, j.body.value ?? j.body.name]), [['setting','darkMode','off'], ['recipe','r1','Cake']]);
+  assert.deepEqual(plain(c.queuedChanges(null, 'yunis')), [], 'never another account\'s');
+  const sent = [];
+  c.fetch = async(url, options)=>{ sent.push([url.split('/api/')[1].split('?')[0], JSON.parse(options.body)]); return response(200, {version:3}); };
+  let settled = null; c.onOutboxSettled = (done, failed)=>{ settled = {done:done.length, failed:failed.length}; };
+  await c.flushOutbox();
+  assert.deepEqual(sent.map(s=>s[0]), ['settings', 'recipes/r1'], 'each sent once, oldest first');
+  assert.deepEqual(sent[0][1], {key:'darkMode', value:'off'}, 'the newest value');
+  assert.deepEqual(plain(c.outbox()), []);
+  assert.deepEqual(settled, {done:2, failed:0});
+});
+
+test('a refused kept change stays with its reason until sent again or discarded; a lost answer counts as saved', async()=>{
+  const {context:c, session} = browser(); session('rozha');
+  let server = {version:5, name:'Theirs'};
+  c.recipeKind = {
+    resolve:async(job)=>server.version === job.body.version + 1 && server.name === job.body.name ? server : null,
+    rebase:(body, data)=>({...body, version:data.version}),
+  };
+  vm.runInContext('OUTBOX_KINDS.recipe = recipeKind', c);
+  c.queueChange('recipe', 'r1', 'recipes/r1', 'PUT', {name:'Mine', version:3}, {label:'Mine'});
+  c.fetch = async()=>response(409, {error:'recipe_conflict'});
+  await c.flushOutbox();
+  assert.deepEqual(plain(c.queuedChanges(null, 'rozha')).map(j=>j.lastError), ['recipe_conflict'], 'kept, with the reason');
+  let calls = 0; c.fetch = async()=>{ calls++; return response(409, {error:'recipe_conflict'}); };
+  await c.flushOutbox();
+  assert.equal(calls, 0, 'not sent again on its own');
+  // Sent again over the server's version: goes through.
+  const job = c.queuedChanges(null, 'rozha')[0];
+  c.retryChange(job.id, {body:{...job.body, version:5}});
+  c.fetch = async()=>response(200, {version:6});
+  await c.flushOutbox();
+  assert.deepEqual(plain(c.outbox()), []);
+  // An answer lost on the way: the retry's conflict is the same edit already saved, one version on.
+  c.queueChange('recipe', 'r2', 'recipes/r2', 'PUT', {name:'Lost', version:7}, {label:'Lost'});
+  server = {version:8, name:'Lost'};
+  c.fetch = async()=>response(409, {error:'recipe_conflict'});
+  await c.flushOutbox();
+  assert.deepEqual(plain(c.outbox()), [], 'already saved: nothing waits');
+  // Discard.
+  c.queueChange('setting', 'x', 'settings', 'PUT', {key:'x', value:true});
+  c.discardChange(c.queuedChanges('setting', 'rozha')[0].id);
+  assert.deepEqual(plain(c.outbox()), []);
+});
+
+test('a newer edit made while one is on its way follows the version the server returned', async()=>{
+  const {context:c, session} = browser(); session('rozha');
+  c.recipeKind = {rebase:(body, data)=>({...body, version:data.version})};
+  vm.runInContext('OUTBOX_KINDS.recipe = recipeKind', c);
+  c.queueChange('recipe', 'r1', 'recipes/r1', 'PUT', {name:'One', version:1});
+  const pending = deferred(); c.fetch = async()=>pending.promise;
+  const flushing = c.flushOutbox();
+  await new Promise(resolve=>setImmediate(resolve));
+  c.queueChange('recipe', 'r1', 'recipes/r1', 'PUT', {name:'Two', version:1});
+  pending.resolve(response(200, {version:2}));
+  await flushing;
+  assert.deepEqual(plain(c.outbox()).map(j=>[j.body.name, j.body.version]), [['Two', 2]], 'the newer edit waits, from version 2');
+});
+
+test('kept copies: read back only for the same account, and signing out removes them', async()=>{
+  const {context:c, saved, session} = browser(); session('rozha');
+  // No IndexedDB here: small copies go to localStorage.
+  assert.equal(await c.offlineKeep('rozha', 'recipes', {list:[1]}), true);
+  assert.deepEqual(plain(await c.offlineCopy('rozha', 'recipes')).data, {list:[1]});
+  assert.equal(await c.offlineCopy('yunis', 'recipes'), null, 'never another account\'s copy');
+  assert.equal(await c.offlineKeep('rozha', 'big', {x:'a'.repeat(500000)}), false, 'too big for localStorage: not kept');
+  c.state = {account:'rozha'};
+  c.fetch = async()=>{ throw Error('offline'); };
+  const r = await c.apiCached('recipes');
+  assert.equal(r.ok, true); assert.ok(r.cachedAt, 'offline: the kept copy, saying when');
+  c.fetch = async()=>response(403, {error:'forbidden'});
+  assert.equal((await c.apiCached('recipes')).ok, false, 'a refusal is never covered up with a copy');
+  await c.offlineForget('rozha');
+  assert.equal(await c.offlineCopy('rozha', 'recipes'), null);
+  assert.ok(![...saved.keys()].some(k=>k.includes('offlineCopy:rozha')));
+});

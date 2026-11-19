@@ -500,6 +500,7 @@ function setApiHealth(online){
   if(el) el.hidden = next;
   updateTopbar();   // Offline takes room in the top bar: the screen's name makes way
   if(next) flushOutbox();
+  offlineChanged();   // the line at the top, the grayed buttons, and a refresh once back
 }
 window.addEventListener('online', ()=>{ api('health'); });
 window.addEventListener('offline', ()=> setApiHealth(false));
@@ -550,18 +551,26 @@ async function loadData(){
   lastLoadAt = Date.now();
   applyData(r.data);
   state.offlineSince = null;
+  offlineRead('bootstrap', lastLoadAt, false);
   // Kept on this phone so the app still opens with everything when there is no connection (Offline
-  // access); signing out removes it.
-  if(state.account === r.data.account) lset('bootCache:' + state.account, {at:Date.now(), data:{...r.data, draft:null}});
+  // access); signing out removes it. In IndexedDB: History can be bigger than localStorage allows.
+  if(state.account === r.data.account){
+    const account = state.account;
+    offlineKeep(account, 'bootstrap', {...r.data, draft:null}).then(ok=>{ if(ok) lset('bootCache:' + account, null); });
+  }
   return true;
 }
-/* The last data this phone loaded, when the server can't be reached at start (at most a week old). */
-function loadBootCache(){
-  const c = lget('bootCache:' + state.account);
-  if(!c?.data || c.data.account !== state.account || !(Date.now() - Number(c.at) < 7 * 86400000)) return false;
+/* The last data this phone loaded, when the server can't be reached at start (at most a week old). A
+   copy from before this was kept in IndexedDB (localStorage, bootCache:) is still read once. */
+async function loadBootCache(){
+  const account = state.account;
+  let c = await offlineCopy(account, 'bootstrap', 7 * 86400000);
+  if(!c){ const old = lget('bootCache:' + account); c = old?.data ? {at:Number(old.at), data:old.data} : null; }
+  if(state.account !== account || !c?.data || c.data.account !== account || !(Date.now() - Number(c.at) < 7 * 86400000)) return false;
   applyData(c.data);
   state.sharedDraft = null;   // the shared draft waits for the server; this phone's own draft is kept
   state.offlineSince = Number(c.at);
+  offlineRead('bootstrap', c.at, true);
   return true;
 }
 function applyData(d){
@@ -575,6 +584,7 @@ function applyData(d){
   state.devices = d.devices || [];
   state.activity = d.activity || [];
   state.settings = d.settings && typeof d.settings === 'object' ? d.settings : {};
+  offlineOverlayData();   // changes made offline and not sent yet stay on the screen
   if(d.streak) streakArrived(d.streak);
   state.pins = Array.isArray(d.pins) ? d.pins : [];
   state.months = Array.isArray(d.months) ? d.months : [];
@@ -631,7 +641,13 @@ function signOut(reason, {preserveSession = false} = {}){
   recipeReset(); minibarReset(); rrReset(); tfReset();
   stk.data = null; stk.failed = false;
   liveStop();
-  if(state.account) lset('bootCache:' + state.account, null);   // the kitchen's data does not stay on a signed-out phone
+  if(state.account){
+    // The kitchen's data does not stay on a signed-out phone (its orders and kept changes wait in the outbox).
+    lset('bootCache:' + state.account, null);
+    if(typeof offlineForget === 'function') offlineForget(state.account);
+    for(const k of [...(typeof offlineReads === 'undefined' ? [] : offlineReads.keys())]) if(k.startsWith(state.account + '|')) offlineReads.delete(k);
+    lset('rrCopy:' + state.account, null); lset('tfCopy:' + state.account, null);
+  }
   resetSharedDraft(); state.sharedDraft=null;
   ricoReset();
   if(!preserveSession) clearApiSession();
@@ -732,12 +748,27 @@ setInterval(()=>refreshData(false), 5000);
 document.addEventListener('visibilitychange', ()=>refreshData(true));
 /* Offline at start-up: show what we can, say so, and keep trying quietly. */
 function retryLoad(){
-  toast(state.offlineSince ? t('offlineCached')(formatIraqDateTime(state.offlineSince, {hour:'numeric', minute:'2-digit'})) : t('loadFailed'), 'warn', {ms:4200});
+  // A kept copy says so in the line at the top of the screen; with none, a short message.
+  if(!state.offlineSince) toast(t('loadFailed'), 'warn', {ms:4200});
   const timer = setInterval(async ()=>{
-    if(!state.account){ clearInterval(timer); return; }
+    if(!state.account || loadedOk){ clearInterval(timer); return; }
     if(!isVisible() || !navigator.onLine) return;
-    if(await loadData()){ clearInterval(timer); loadedOk = true; restoreCartDraft(); restoreQueue(); render(); maybeFinishQueue(); }
+    await retryStartLoad();
   }, 10000);
+}
+/* The start-up data, read again once the server can be reached (the timer above, or back online). */
+let startRetry = null;
+function retryStartLoad(){
+  return startRetry ||= (async ()=>{
+    try{ if(!loadedOk && await loadData()){ loadedOk = true; restoreCartDraft(); restoreQueue(); render(); maybeFinishQueue(); } }
+    finally{ startRetry = null; }
+  })();
+}
+/* Back online (offline.js): the start-up data comes again first. */
+async function offlineReloadStart(){
+  if(!state.account) return;
+  if(!loadedOk) await retryStartLoad();
+  else await refreshData('live');
 }
 async function boot(){
   // GitHub Pages cannot set frame-ancestors headers. Refuse to expose the sign-in UI in a frame.
@@ -756,13 +787,14 @@ async function boot(){
       loadedOk = await loadData();
       if(!loadedOk && !apiSession()) state.account = null;   // the session was rejected
       // Offline: open with what this phone saved last time; the real data replaces it once it loads.
-      else if(!loadedOk && loadBootCache()){ restoreCartDraft(); restoreQueue(); }
+      else if(!loadedOk && await loadBootCache()){ restoreCartDraft(); restoreQueue(); }
       // Load the saved local draft only after the catalog is available, keeping
       // it intact if the app starts while offline and needs to retry loading.
       if(loadedOk){ restoreCartDraft(); restoreQueue(); }
     } else if(session){
       clearApiSession();   // a sign-in from before the two accounts: sign in again
     }
+    document.documentElement.classList.toggle('offline', appOffline());
     render();
   }catch(e){
     // Whatever goes wrong while starting, the loading screen never stays up: the app says so and offers Refresh.
@@ -938,7 +970,7 @@ const shellKey = ()=>[state.account, state.lang, state.tabs.join(','), state.vie
 function pageHtml(view){
   const draw = (RENDERERS[view] || RENDERERS.order)[0];
   // Rico has his own header, and an Admin page its own (with Admin's back button).
-  return `${view === 'assistant' || (view === 'admin' && state.adminPage) || (view === 'receipts' && rr.page === 'view') || (view === 'transfers' && tf.page === 'view') ? '' : renderPageHeading()}${view === 'order' ? renderPushBanner() : ''}${managedView(view)?renderManageNav():''}${draw()}`;
+  return `${view === 'assistant' || (view === 'admin' && state.adminPage) || (view === 'receipts' && rr.page === 'view') || (view === 'transfers' && tf.page === 'view') ? '' : renderPageHeading()}${offlineNoteHtml(view)}${view === 'order' ? renderPushBanner() : ''}${managedView(view)?renderManageNav():''}${draw()}`;
 }
 /* A neighbouring screen drawn for a swipe preview: the screens read state.view while they draw, so it
    is set to that screen for the moment (with its own remembered search) and put back. */
@@ -2119,6 +2151,7 @@ function attachContentEvents(){
 /* ============ Login ============ */
 function loginMessage(){
   if(state.pinBusy) return t('signingIn');
+  if(!navigator.onLine) return t('offlineSignIn');   // the keys are grayed out until the phone is online
   return ({wrong:t('wrongPin'), locked:t('tooManyAttempts'), network:t('loadFailed'), verification:t('securityCheckFailed'), device:t('deviceInUse'), session:state.sessionMsg})[state.pinError] || '';
 }
 const LOGIN_ERRORS = ['wrong','locked','network','verification'];
@@ -2184,11 +2217,13 @@ function updateLoginFeedback(){
   document.getElementById('pinCount').textContent = t('pinTyped')(n, MAX_PIN_LEN);
   const sub = document.getElementById('pinLabel');
   sub.textContent = msg || t('loginPinSub');
-  sub.classList.toggle('err', !!msg && !state.pinBusy && state.pinError !== 'session');   // "Signing in…" is not an error
-  document.querySelectorAll('[data-key]').forEach(button=>button.disabled = state.pinBusy);
+  sub.classList.toggle('err', !!msg && !state.pinBusy && state.pinError !== 'session' && navigator.onLine);   // "Signing in…" is not an error
+  document.querySelectorAll('[data-key]').forEach(button=>button.disabled = state.pinBusy || !navigator.onLine);
+  document.querySelector('.keypad')?.classList.toggle('offline-keys', !navigator.onLine);
 }
 async function pressKey(k){
   if(state.pinBusy) return;
+  if(!navigator.onLine){ updateLoginFeedback(); return; }   // signing in needs the internet
   if(state.pinError && state.pinError !== 'session') state.pinError = '';
   if(k==='clear'){ state.pinBuffer=''; updateLoginFeedback(); return; }
   if(k==='back'){ state.pinBuffer = state.pinBuffer.slice(0,-1); updateLoginFeedback(); return; }
@@ -3030,6 +3065,7 @@ async function copyItemName(name){
 }
 /* Pinned items sit at the top of the Order screen (kept per account on the server). */
 async function togglePin(id){
+  if(offlineBlocked()) return;
   const before = state.pins.slice();
   // Items deleted since they were pinned are dropped, so they don't keep using up the 60 places.
   const kept = before.filter(x=>x !== id && state.items.some(i=>i.id === x));
@@ -3600,6 +3636,7 @@ function renderSuppliers(){
     ${renderCatalogSearch()}<div class="section-title">${t('suppliers')} (${state.suppliers.length})</div><div id="suppliersTable">${renderDataTable('suppliers')}</div>`;
 }
 function openSupplierModal(id){
+  if(offlineBlocked()) return;   // the catalog is shared: its edits need the server
   const existing = id ? state.suppliers.find(s=>s.id===id) : null;
   if(id && !existing) return;
   const opened = existing ? structuredClone(existing) : null;   // what the form shows; changes are measured from it
@@ -3692,6 +3729,7 @@ async function testSupplierReminder(id){
   reportSendResult(await callSendPush('supplier-test', {supplierId: sup.id}));
 }
 async function deleteSupplier(id){
+  if(offlineBlocked()) return;
   const sup = state.suppliers.find(s=>s.id===id);
   if(!sup) return;
   if(!(await showConfirm(`<b>${esc(sup.name)}</b><br>${t('confirmDeleteSupplier')}`))) return;
@@ -3834,6 +3872,7 @@ function openSupplierItemOrder(supplierId){
       });
     },
     onSubmit:async()=>{
+      if(appOffline()) return {error:t('offlineNeedsNet')};
       const itemIds=[...list.querySelectorAll('.item-sort-row')].map(row=>row.dataset.itemId);
       const result=await api(`supplier-order/${encodeURIComponent(supplierId)}`,{method:'PUT',body:{itemIds}});
       if(!result.ok) return {error:t('saveFailed')};
@@ -3845,6 +3884,7 @@ function openSupplierItemOrder(supplierId){
   });
 }
 function openItemModal(id, opts = {}){
+  if(offlineBlocked()) return;
   const existing = id ? state.items.find(i=>i.id===id) : null;
   if(id && !existing) return;
   // Food or an expense: a new one starts as the button said (Add expense) or as the Order tab that is open.
@@ -4025,6 +4065,7 @@ const askStockLinksOdd = odd=>!odd.length || showConfirm(`${odd.map(n=>`<b dir="
 async function saveStockLinks(i, names, {asked = false} = {}){
   const odd = stockLinksOdd(i, names);
   if(!asked && !(await askStockLinksOdd(odd))) return null;
+  if(offlineBlocked()) return null;
   const r = await api(`items/${encodeURIComponent(i.id)}/stock`, {method:'PUT', body:linkBody(names, odd)});
   if(!r.ok){ toast(r.data?.error === 'names_dont_match' ? t('stockLinkNoMatch') : t('saveFailed'), 'error'); return null; }
   i.stockItem = r.data.stockItem; i.stockItems = Array.isArray(r.data.stockItems) ? r.data.stockItems : (r.data.stockItem ? [r.data.stockItem] : []);
@@ -4164,7 +4205,18 @@ function mountLowAlert(box, itemId){
   };
   const save = async level=>{
     const i = item(); if(!i) return;
+    // Offline it waits on this phone and goes by itself (one whole value: safe to send later).
+    const later = ()=>{
+      if(!queueChange('low', i.id, `items/${encodeURIComponent(i.id)}/low-alert`, 'PUT', {level}, {label:i.name, offline:true})){ toast(t('saveFailed'), 'error'); return; }
+      if(level === null) delete i.lowAlert; else i.lowAlert = level;
+      on = null; paint();
+      if(state.view === 'order') refreshOrderResults?.();
+      toast(t('offlineWillSend'));
+      if(!appOffline()) flushOutbox();
+    };
+    if(appOffline() || queuedChange('low', i.id)) return later();
     const r = await api(`items/${encodeURIComponent(i.id)}/low-alert`, {method:'PUT', body:{level}});
+    if(r.status === 0 && !r.stale) return later();
     if(!r.ok){
       const e = r.data?.error;
       toast(e === 'not_ready' || e === 'not_found' ? t('lowAlertNotReady') : e === 'not_linked' ? t('lowAlertNeedsLink') : e === 'invalid_input' ? t('lowAlertInvalid') : t('saveFailed'), 'error');
@@ -4292,6 +4344,7 @@ function openStockLinkMany(){
 /* Deleting an item asks first, then offers Undo. The server keeps a copy for 10 minutes that only
    this account on this device can bring back; it comes back with its amount in the order. */
 async function deleteItemWithUndo(id){
+  if(offlineBlocked()) return;
   const account = state.account, item = state.items.find(i=>i.id===id);
   if(!item) return;
   if(!(await showConfirm(`<b>${esc(item.name)}</b><br>${esc(t('confirmDeleteItem'))}`)) || account !== state.account) return;
@@ -4354,6 +4407,7 @@ function renderUnits(){
     ${chips ? `<div class="unit-grid">${chips}</div>` : emptyState(t('noUnitsYet'))}`;
 }
 function openUnitModal(unit){
+  if(offlineBlocked()) return;
   showFormModal({
     title: unit ? t('editUnit') : t('addUnit'),
     banner: unit ? editingBanner(unitName(unit)) : '',
@@ -4424,7 +4478,7 @@ function renderAppearanceRow(){
   const dm=darkMode();
   return `<div class="dark-row"><div class="set-head">${setIcon('darkMode')}<span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span></div><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>`;
 }
-function currentOutbox(){ return outbox().filter(j=>outboxJobAccount(j)===state.account); }
+function currentOutbox(){ return outbox().filter(j=>!j.kind && outboxJobAccount(j)===state.account); }   // orders (kept changes show on their own screens)
 function renderPendingSync(){
  const jobs=currentOutbox();
  if(!jobs.length) return '';

@@ -978,7 +978,7 @@ const rrAct = {list:null, loading:false};
 async function rrLoadActivity(){
   if(rrAct.loading) return;
   rrAct.loading = true;
-  const r = await api('receipts-activity', {quiet:true});
+  const r = await apiCached('receipts-activity', {quiet:true});
   rrAct.loading = false;
   if(r.ok && Array.isArray(r.data?.events)) rrAct.list = r.data.events;
   else if(!rrAct.list) rrAct.list = [];

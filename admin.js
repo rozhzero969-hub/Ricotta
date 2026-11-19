@@ -38,8 +38,10 @@ async function adminFetch(key, force){
   if(adminData.busy[key] || (!force && adminData[key] && Date.now() - adminData[key].at < 60000)) return;
   const account = state.account;
   adminData.busy[key] = true;
-  const r = await api(ADMIN_SOURCES[key]);
+  // Offline its pages are read from the copy kept on this phone; its actions wait for the connection.
+  const r = await apiCached(ADMIN_SOURCES[key]);
   if(account !== state.account || adminData.account !== account) return;
+  if(r.ok) offlineRead(ADMIN_SOURCES[key], r.cachedAt || Date.now(), !!r.cachedAt);
   adminData.busy[key] = false;
   // An answer of the wrong shape (an older server during a release) counts as not loaded. The screen is
   // redrawn only when something on it changed, so the regular refresh below never makes it flicker.

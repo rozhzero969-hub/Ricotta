@@ -1113,6 +1113,8 @@
     const url = typeof input === 'string' ? input : (input && input.url) || '';
     const at = url.indexOf('/functions/v1/api/');
     if(at < 0) return realFetch(input, init);
+    // The browser is offline (DevTools, or a test's setOffline): the pretend server can't be reached either.
+    if(!navigator.onLine) throw new TypeError('Failed to fetch');
     const rest = url.slice(at + '/functions/v1/api/'.length), path = rest.split('?')[0];
     query = new URLSearchParams(rest.split('?')[1] || '');
     const method = (init.method || 'GET').toUpperCase();

@@ -3498,3 +3498,16 @@ html.dark .cl-secrets code.miss{color:#FF6961}
 .item-stock .stock-old{display:block;font-weight:400}
 html.dark .stock-old{color:#FDBA74}
 .inv-per{font-weight:500;color:var(--ink-soft);font-size:.8125rem}
+
+/* ============ Offline (offline.js) ============
+   One calm line at the top of a screen while offline (the same look as Receipts' own offline line), a
+   card for a change the server did not take, and the grayed sign-in keys. Grayed buttons are styled by
+   offline.js from its one list. */
+.offline-slot:empty{display:none}
+.offline-slot{margin:0 0 12px}
+.offline-slot .offline-note{margin:0}
+.offline-slot .offline-failed{margin:8px 0 0}
+.offline-failed p{margin:0;font-size:.9375rem;line-height:1.45}
+.offline-failed .form-actions{margin-top:10px}
+.rc-pending{display:block}
+.keypad.offline-keys .key{opacity:.42}

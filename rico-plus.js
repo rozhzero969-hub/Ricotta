@@ -68,8 +68,8 @@ async function openRicoMemory(){
     });
     rbox.querySelectorAll('[data-routine-del]').forEach(b=>b.onclick = async ()=>{ const r = await api('rico-routines/' + b.dataset.routineDel, {method:'DELETE'}); if(r.ok) loadRoutines(); else toast(t('saveFailed'), 'warn'); });
   };
-  const load = async ()=>{ const r = await api('rico-rules'); if(el.isConnected){ if(r.ok) paint(r.data || []); else box.textContent = t('saveFailed'); } };
-  const loadRoutines = async ()=>{ const r = await api('rico-routines'); if(el.isConnected){ if(r.ok) paintRoutines(r.data || []); else rbox.textContent = t('saveFailed'); } };
+  const load = async ()=>{ const r = await apiCached('rico-rules'); if(el.isConnected){ if(r.ok) paint(r.data || []); else box.textContent = t('saveFailed'); } };
+  const loadRoutines = async ()=>{ const r = await apiCached('rico-routines'); if(el.isConnected){ if(r.ok) paintRoutines(r.data || []); else rbox.textContent = t('saveFailed'); } };
   el.querySelector('#memAdd').onsubmit = async e=>{
     e.preventDefault();
     const input = el.querySelector('#memRule'), rule = input.value.trim();
@@ -137,7 +137,7 @@ function openRicoScheduled(){
       if(r.ok) load(); else { b.disabled = false; toast(t('saveFailed'), 'warn'); }
     });
   };
-  const load = async ()=>{ const r = await api('rico-routines'); if(el.isConnected){ if(r.ok) paint(r.data || []); else list.textContent = t('saveFailed'); } };
+  const load = async ()=>{ const r = await apiCached('rico-routines'); if(el.isConnected){ if(r.ok) paint(r.data || []); else list.textContent = t('saveFailed'); } };
   const sync = ()=>{
     const kind = val('schedKind'), rep = val('schedRepeat');
     // A prepared order repeats (the server never runs it once), so "Once" is not offered for it.

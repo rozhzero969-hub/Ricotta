@@ -1048,7 +1048,7 @@ function renderRicoComposer(){
     ${ricoPhotoChip()}
     <button type="button" class="rico-attach" id="ricoAttachBtn" aria-label="${esc(t('ricoAddPhoto'))}" title="${esc(t('ricoAddPhoto'))}" ${rico.streaming ? 'disabled' : ''}>${ICON_CAMERA}</button>
     <label class="sr-only" for="ricoInput">${esc(t('ricoPlaceholder'))}</label>
-    <textarea id="ricoInput" rows="1" maxlength="2000" enterkeyhint="send" placeholder="${esc(t('ricoPlaceholder'))}" dir="auto"></textarea>
+    <textarea id="ricoInput" rows="1" maxlength="2000" enterkeyhint="send" placeholder="${esc(appOffline() ? t('offlineRicoShort') : t('ricoPlaceholder'))}" dir="auto"></textarea>
     <button type="submit" class="rico-send ${rico.streaming?'stop':''}" id="ricoSendBtn" aria-label="${esc(rico.streaming?t('ricoStop'):t('ricoSend'))}">${rico.streaming?ICON_STOP:ICON_SEND_UP}</button>
   </form>`;
 }
@@ -1126,6 +1126,7 @@ function attachAssistantEvents(){
   if(form) form.onsubmit = async e=>{
     e.preventDefault();
     if(rico.streaming){ ricoStop(); return; }
+    if(offlineBlocked('offlineRicoNet')) return;   // the message stays in the box
     // A photo alone asks what is in it.
     const photo = rico.photo, text = input.value.trim() || (photo ? t('ricoPhotoAsk') : '');
     if(!text) return;
@@ -1540,8 +1541,8 @@ async function ricoLoadChats(){
   const account = state.account;
   try{
     await ricoFlushLeftDelete();
-    let r = await api('rico-chats');
-    if(r.stale && state.account === account) r = await api('rico-chats');   // a save happened at the same moment
+    let r = await apiCached('rico-chats');   // offline: the list kept on this phone
+    if(r.stale && state.account === account) r = await apiCached('rico-chats');   // a save happened at the same moment
     if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats.filter(c=>c.id !== ricoPendingDelete?.id);
     // Offline or refused: say so instead of gray lines that never fill in (opening the list again retries).
     else if(state.account === account) rico.chatsFailed = true;
@@ -1564,7 +1565,7 @@ function ricoNewChat(){
 async function ricoOpenChat(id){
   if(rico.streaming) return false;
   const context = ricoContext(), request = ++rico.chatRequest;
-  const r = await api('rico-chats/' + encodeURIComponent(id));
+  const r = await apiCached('rico-chats/' + encodeURIComponent(id));   // a chat opened before can be read offline
   if(!ricoContextCurrent(context) || request !== rico.chatRequest || r.stale) return false;
   if(!r.ok || !Array.isArray(r.data?.messages)){ toast(t('ricoChatLoadFailed'), 'error'); return false; }
   if(rico.chatId !== id && rico.messages.length) ricoSave();

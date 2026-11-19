@@ -13,9 +13,10 @@ async function minibarLoad(){
   if(minibar.account !== state.account) minibarReset();
   if(minibar.loading) return;
   minibar.loading = true;
-  const account = state.account, r = await api('minibar');
+  const account = state.account, r = await apiCached('minibar');   // offline: the copy kept on this phone
   if(account !== state.account) return;
   minibar.loading = false;
+  if(r.ok) offlineRead('minibar', r.cachedAt || Date.now(), !!r.cachedAt);
   minibar.error = !r.ok && !minibar.data;
   if(r.ok) minibar.data = minibarClean(r.data);
   if(state.view === 'minibar') render();
@@ -103,6 +104,7 @@ function minibarWhy(item, hints){
   return w > 0 ? {score:w, why:t('mb_whyName')} : {score:0, why:''};
 }
 async function minibarSave(ids){
+  if(offlineBlocked()) return false;   // the list comes back with each item's stock: it needs the server
   const r = await api('minibar', {method:'PUT', body:{itemIds:[...ids]}});
   if(!r.ok){ toast(t('saveFailed'), 'error'); return false; }
   minibar.account = state.account; minibar.data = minibarClean(r.data);

@@ -293,7 +293,7 @@ function openMonthsSheet(){
 /* Rico's orders (TEST): orders Rico sent by himself over WhatsApp, kept apart from the kitchen's own
    History. While testing they go only to Rozh's own WhatsApp. Rozh only. */
 async function openRicoOrdersSheet(){
-  const r = await api('rico/orders');
+  const r = await apiCached('rico/orders');
   const orders = r.ok && Array.isArray(r.data?.orders) ? r.data.orders : null;
   const card = o=>`<details class="month-card rico-order">
       <summary><b dir="auto">${esc(o.supplier_name)}</b><span>${esc(formatIraqDateTime(o.created_at, {hour:'numeric', minute:'2-digit'}))} · <em class="${o.status === 'sent' ? 'up' : 'down'}">${esc(o.status === 'sent' ? t('ricoOrderSent') : t('ricoOrderFailed')(o.error))}</em></span></summary>
