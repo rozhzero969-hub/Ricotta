@@ -67,6 +67,10 @@ export function shapeRecipe(row: any) {
   return { ...rest, data: { ...(rest.data ?? {}), category: category_id ?? "" } };
 }
 export const CATEGORY_COLUMNS = "id,name,color,sort";
+/* The recipe columns the API reads. app_recipes.archived is being retired (2026-11-19, stage 1): the API
+   no longer reads or writes it, so the planned migration that drops it (supabase/pending) changes nothing
+   here. */
+export const RECIPE_COLUMNS = "id,name,data,version,updated_by,updated_at,category_id";
 export async function loadCategories(db: any) {
   const r = await db.from("app_recipe_categories").select(CATEGORY_COLUMNS).order("sort").order("name").limit(200);
   if (r.error) throw new Error("load_failed");
@@ -77,7 +81,7 @@ export async function loadCategories(db: any) {
    Ricotta Restaurant's items, the invoices kept (the last 60 days) and the low stock levels. */
 export async function loadBook(db: any) {
   const [r, i, u, cat, inv, low, categories] = await Promise.all([
-    db.from("app_recipes").select("*").order("updated_at", { ascending: false }).limit(500),
+    db.from("app_recipes").select(RECIPE_COLUMNS).order("updated_at", { ascending: false }).limit(500),
     db.from("app_recipe_ingredients").select("*").order("name").limit(2000),
     db.from("app_units").select("id,en").order("id").limit(1000),
     catalogOf(db),
@@ -184,10 +188,11 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
   if (!match[2] && M === "PUT") {
     // A recipe is its name, category, menu price, ingredients with amounts, steps and notes. Fields the
     // old form had (servings, times, draft or ready) are not needed any more and are not kept.
+    // An app from before 2026-11-16.5 may still send "archived": it is accepted and ignored.
     const name = str(b.name, 120), d = b.data;
     const price = d?.price === null || d?.price === undefined || d?.price === "" ? null : d.price;
     const notes = d?.notes ?? "", category = d?.category ?? "";
-    if (!name || !d || typeof d !== "object" || !Number.isInteger(b.version) || b.version < 0 || (b.archived !== undefined && typeof b.archived !== "boolean")
+    if (!name || !d || typeof d !== "object" || !Number.isInteger(b.version) || b.version < 0
       || !Array.isArray(d.lines) || d.lines.length > 100 || !Array.isArray(d.steps) || d.steps.length > 60 || d.steps.some((s: any) => typeof s !== "string" || s.length > 3000)
       || typeof notes !== "string" || notes.length > 8000 || typeof category !== "string" || category.length > 60
       || (price !== null && (!Number.isFinite(price) || price <= 0 || price > MAX_PRICE || Number(price.toFixed(2)) !== price))) return fail("invalid_input");
@@ -209,8 +214,8 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
     if (lines.some((l: any) => !uuid(l.ingredient) || !ingredients.data.some((i: any) => i.id === l.ingredient) || !qtyOk(l.qty) || !l.unit || !known(l))) return fail("invalid_ingredients", 422);
     const clean = { lines, steps: d.steps, notes, price, currency: "IQD" };   // recipes are in IQD only
     const group = cat ? [{ k: "recipeGroup", to: cat.name }] : [];
-    const row = { name, data: clean, category_id: cat?.id ?? null, archived: false, updated_by: c.account, updated_at: new Date().toISOString() };
-    const r = await (b.version === 0 ? table("recipes").insert({ id, ...row }) : table("recipes").update({ ...row, version: b.version + 1 }).eq("id", id).eq("version", b.version)).select();
+    const row = { name, data: clean, category_id: cat?.id ?? null, updated_by: c.account, updated_at: new Date().toISOString() };
+    const r = await (b.version === 0 ? table("recipes").insert({ id, ...row }) : table("recipes").update({ ...row, version: b.version + 1 }).eq("id", id).eq("version", b.version)).select(RECIPE_COLUMNS);
     if (r.error || !r.data?.length) return fail("recipe_conflict", 409);
     if (b.version === 0) await audit(c, "add", "recipe", name, group, id);
     else if (b.version < 40) {
@@ -299,7 +304,7 @@ export async function ricoRecipes(db: any, a: any) {
   let book;
   try { book = await loadBook(db); } catch { return { error: "load_failed", note: "The recipe book could not be read just now. Say so briefly." }; }
   const L = (globalThis as any).RicottaSearch;
-  const ctx = book.ctx, recipes = book.recipes.filter((r: any) => !r.archived);
+  const ctx = book.ctx, recipes = book.recipes;
   const fold = (s: unknown) => String(s ?? "").toLowerCase().normalize("NFKC").replace(/[يى]/g, "ی").replace(/ك/g, "ک").replace(/\s+/g, " ").trim();
   const q = fold(a?.recipe ?? a?.query ?? "");
   const rules = "Costs, profit and suggested prices are rounded to the nearest 250 IQD; the margin comes from the rounded numbers. A recipe with any ingredient without a price has no cost, profit or margin: say which ingredient has no price yet instead of guessing.";

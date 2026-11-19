@@ -500,10 +500,14 @@ try {
   const recipe={name:'Cake',archived:false,version:0,data:{status:'ready',lines:[{ingredient:iid,qty:2,unit:'pcs'}],steps:['Mix'],notes:'',category:'Cakes',price:9000,yield:4,yieldUnit:'slices',prep:10,cook:20}};
   assert.equal((await call('recipes/'+rid,recipe,'PUT')).status,200);
   assert.equal(tables.app_recipes[0].category_id,cid,'a category name from an older app finds its row');
+  // app_recipes.archived is retired (stage 1): an older app may still send it and is not refused, and the API no longer writes it.
+  assert.equal('archived' in tables.app_recipes[0],false,'archived is not written');
   assert.equal((await call('recipes/00000000-0000-4000-8000-000000000019',{...recipe,data:{...recipe.data,category:'Juices'}},'PUT')).status,422,'a category not on the list is refused: only Rico makes them');
   tables.app_recipes[0].version=1;
   assert.equal((await call('recipes/'+rid,{...recipe,version:1,data:{...recipe.data,category:cid}},'PUT')).status,200);
   assert.equal((await call('recipes/'+rid,{...recipe,version:1},'PUT')).status,409,'stale version cannot overwrite');
+  assert.equal((await call('recipes/'+rid,{...recipe,version:2,archived:'yes'},'PUT')).status,200,'any archived value from an older app is ignored');
+  assert.equal('archived' in tables.app_recipes[0],false);tables.app_recipes[0].version=2;
   assert.equal((await call('recipes/'+rid,{...recipe,version:2,data:{...recipe.data,lines:[{ingredient:iid,qty:-1,unit:'pcs'}]}},'PUT')).status,422);
   // Rico reads the recipe book with the same cost rules and rounding as the app.
   tables.app_rr_invoices=[{entry_date:'2026-11-10',read_at:'2026-11-10T10:00:00Z',invoice_number:'1',supplier_name:'Farm',currency:'IQD',lines:[{item:'Eggs',unit:'pcs',unit_cost:1060}]}];
