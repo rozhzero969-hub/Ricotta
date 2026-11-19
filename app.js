@@ -3991,10 +3991,12 @@ function updateLinkAllCount(){
 const linkBody = (names, odd)=> names.length > 1
   ? (odd.length ? {stockItems:names, anyway:odd} : {stockItems:names})
   : (odd.length ? {stockItem:names[0] ?? null, anyway:true} : {stockItem:names[0] ?? null});
-async function saveStockLinks(i, names){
-  const L = globalThis.RicottaStockLink, before = itemLinks(i);
-  const odd = names.filter(n=>!before.includes(n) && !L.matches(i, n));
-  if(odd.length && !(await showConfirm(`${odd.map(n=>`<b dir="auto">${esc(n)}</b>`).join('<br>')}<br>${esc(t('stockLinkAnyway'))}`, {okLabel:t('stockLinkAnywayOk'), okClass:'btn-primary'}))) return null;
+/* The names that don't match the item and are new (they need "Link anyway" first). */
+const stockLinksOdd = (i, names, before = itemLinks(i))=>names.filter(n=>!before.includes(n) && !globalThis.RicottaStockLink.matches(i, n));
+const askStockLinksOdd = odd=>!odd.length || showConfirm(`${odd.map(n=>`<b dir="auto">${esc(n)}</b>`).join('<br>')}<br>${esc(t('stockLinkAnyway'))}`, {okLabel:t('stockLinkAnywayOk'), okClass:'btn-primary'});
+async function saveStockLinks(i, names, {asked = false} = {}){
+  const odd = stockLinksOdd(i, names);
+  if(!asked && !(await askStockLinksOdd(odd))) return null;
   const r = await api(`items/${encodeURIComponent(i.id)}/stock`, {method:'PUT', body:linkBody(names, odd)});
   if(!r.ok){ toast(r.data?.error === 'names_dont_match' ? t('stockLinkNoMatch') : t('saveFailed'), 'error'); return null; }
   i.stockItem = r.data.stockItem; i.stockItems = Array.isArray(r.data.stockItems) ? r.data.stockItems : (r.data.stockItem ? [r.data.stockItem] : []);
@@ -4013,16 +4015,21 @@ function stockOptHtml(r, {on = false, link = false} = {}){
    sauces, each with its own amount and a remove button), the best matches one tap each with "Link all"
    when there are several, and a search for any other stock item. opts.open starts with the search open;
    opts.onSaved(names) after the links are saved; opts.single makes a pick replace the link. */
+/* Taps never wait for the server: each one changes the links on screen at once (want), and one save at a
+   time sends the newest list, again until it is on the server, so quick taps in a row each count once.
+   A tap in the moment after the rows were drawn again is ignored: the row under the finger has just
+   changed (a double tap links one, not the one that moved into its place). */
 function mountStockLink(box, itemId, opts = {}){
   if(!box) return;
-  let open = !!opts.open, query = '';
+  let open = !!opts.open, query = '', want = null, saving = null, quietUntil = 0;
   const item = ()=>state.items.find(x=>x.id === itemId);
+  const linksNow = i=>want || itemLinks(i);
   const L = globalThis.RicottaStockLink, S = globalThis.RicottaSearch;
   const optOf = name=> stockOptions?.items?.find(o=>o.name === name) || null;
   const partOf = (i, name)=> i.stock?.parts?.find(p=>p.name === name) || null;
   const paint = ()=>{
     const i = item(); if(!i){ box.innerHTML = ''; return; }
-    const links = itemLinks(i), st = links.length && i.stock;
+    const links = linksNow(i), st = links.length && !want && i.stock;
     if(!stockOptions && !stockOptionsFailed) loadStockOptions().then(()=>{ if(box.isConnected && stockOptions) paint(); });
     // What it is linked to: each stock item with its own amount (from this item's stock, or the stock list).
     const now = links.length ? `<div class="stock-links">${links.map(n=>{
@@ -4043,7 +4050,7 @@ function mountStockLink(box, itemId, opts = {}){
   };
   const paintList = ()=>{
     const list = box.querySelector('.stock-pick-list'); if(!list) return;
-    const i = item(), links = itemLinks(i);
+    const i = item(), links = linksNow(i);
     if(!stockOptions){ list.innerHTML = stockOptionsFailed ? `<div class="field-hint">${esc(t('loadFailed'))}</div>` : loadingLines(3); return; }
     if(!stockOptions.items.length){ list.innerHTML = `<div class="field-hint">${esc(t('stockLinkNoStock'))}</div>`; return; }
     const ctx = stockCtx(i), byName = new Map(L.rank(i, stockOptions.items, ctx).map(r=>[r.o.name, r]));
@@ -4054,18 +4061,38 @@ function mountStockLink(box, itemId, opts = {}){
     list.innerHTML = rows.length ? rows.map(r=>stockOptHtml(r, {on:links.includes(r.o.name)})).join('')
       : `<div class="field-hint">${esc(query.trim() ? t('rrNoMatch') : t('stockLinkNoSuggest'))}</div>`;
   };
+  const redraw = ()=>{ if(!box.isConnected) return; paint(); if(open) paintList(); };
+  // Sends the newest links until they are the server's. False when a save fails: the screen goes back
+  // to what the server has.
+  const flush = async msg=>{
+    let ok = true;
+    for(let tries = 0; tries < 30; tries++){
+      const i = item();
+      if(!i || !want){ break; }
+      const names = want;
+      if(names.join('\n') === itemLinks(i).join('\n')){ want = null; break; }
+      if(!(await saveStockLinks(i, names, {asked:true}))){ ok = false; want = null; break; }
+      if(want === names) want = null;
+    }
+    redraw();
+    if(ok){ const names = itemLinks(item()); toast(msg || (names.length ? t('stockLinkSaved') : t('stockLinkRemoved'))); opts.onSaved?.(names); }
+    return ok;
+  };
   const save = async (names, msg)=>{
     const i = item(); if(!i) return false;
-    const done = await saveStockLinks(i, names);
-    if(!done) return false;
-    paint();
-    toast(msg || (names.length ? t('stockLinkSaved') : t('stockLinkRemoved')));
-    opts.onSaved?.(names);
-    return true;
+    if(!(await askStockLinksOdd(stockLinksOdd(i, names, linksNow(i))))) return false;
+    want = names;
+    redraw();
+    if(!saving) saving = flush(msg).finally(()=>{ saving = null; });
+    return saving;
   };
   box.onclick = async e=>{
     const i = item(); if(!i) return;
-    const links = itemLinks(i);
+    const links = linksNow(i);
+    if(e.target.closest('[data-stock-pick], [data-stock-all], [data-stock-remove]')){
+      if(performance.now() < quietUntil) return;
+      quietUntil = performance.now() + 300;
+    }
     if(e.target.closest('[data-stock-open]')){ open = true; paint(); box.querySelector('#mfStockSearch')?.focus(); await loadStockOptions(); paintList(); return; }
     if(e.target.closest('[data-stock-cancel]')){ open = false; query = ''; paint(); opts.onCancel?.(); return; }
     if(e.target.closest('[data-stock-unlink]')){ await save([]); return; }
@@ -4083,8 +4110,7 @@ function mountStockLink(box, itemId, opts = {}){
     if(pick){
       const n = pick.dataset.stockPick;
       // opts.single (Link stock items list): a pick replaces the link; elsewhere it adds or removes one.
-      const ok = await save(opts.single ? [n] : links.includes(n) ? links.filter(x=>x !== n) : [...links, n]);
-      if(ok && open) paintList();
+      await save(opts.single ? [n] : links.includes(n) ? links.filter(x=>x !== n) : [...links, n]);
     }
   };
   paint();   // suggestions need the list of stock items: paint() reads it once when needed
