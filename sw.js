@@ -1,12 +1,42 @@
-/* Cache only this build's immutable public assets. HTML, config, credentials,
-   API requests and business data always use the network. Push remains active.
-   Opening the app always asks for the newest page: an older copy could point at
-   files a newer update has already replaced, and the app would then stay on its
-   loading screen. Offline, the copy the browser kept is used. */
+/* Cache only this build's immutable public assets, and a copy of the app's own page that opens them.
+   Config, credentials, API requests and business data always use the network (the app keeps its own
+   offline copies of the data in IndexedDB, per account). Push remains active.
+   Opening the app always asks for the newest page: an older copy could point at files a newer update has
+   already replaced, and the app would then stay on its loading screen. Offline, the copy the browser kept
+   is used, or else the copy kept here: kept only when every file it names is one of this build's (so it
+   always opens), and replaced with each version. Installing a version keeps its files at once, so the
+   app opens offline right after an update too. */
 const STATIC_CACHE = 'ricotta-static-dev';
 const STATIC_FILES = [];
 const assetUrls = new Set(STATIC_FILES.map(file=>new URL(file,self.registration.scope).href));
-self.addEventListener('install', () => self.skipWaiting());
+const PAGE_KEY = self.registration.scope;
+self.addEventListener('install', event => {
+  self.skipWaiting();
+  event.waitUntil(precache());
+});
+/* Best effort: a file that can't be fetched now is fetched the first time it is used. The spreadsheet
+   library (only for exports) is left for then. */
+async function precache(){
+  if(!STATIC_FILES.length) return;
+  try{
+    const cache=await caches.open(STATIC_CACHE);
+    await Promise.all([...assetUrls].filter(u=>!/\/assets\/spreadsheet\./.test(u)).map(async u=>{
+      try{ if(!(await cache.match(u))){ const r=await fetch(u,{cache:'no-cache'}); if(r.ok && r.type==='basic') await cache.put(u,r); } }catch(_){}
+    }));
+    await keepPage(cache, await fetch(PAGE_KEY,{cache:'no-cache',credentials:'same-origin'}));
+  }catch(_){ /* full or private storage: the app still opens online */ }
+}
+const isAppPage = url=>{ const u=new URL(url), s=new URL(PAGE_KEY); return u.origin===s.origin && (u.pathname===s.pathname || u.pathname===s.pathname+'index.html'); };
+/* The page is kept only when it opens with this build's files (every assets/ file it names is here). */
+async function keepPage(cache, response){
+  try{
+    if(!STATIC_FILES.length || !response || !response.ok || response.redirected || response.type!=='basic') return;
+    const html=await response.clone().text();
+    const named=[...html.matchAll(/(?:src|href)="(assets\/[^"]+)"/g)].map(m=>new URL(m[1],self.registration.scope).href);
+    if(!named.length || !named.every(u=>assetUrls.has(u))) return;
+    await cache.put(PAGE_KEY,response);
+  }catch(_){ /* best effort */ }
+}
 self.addEventListener('activate', event => event.waitUntil((async()=>{
   try{
     for(const key of await caches.keys()) if(key.startsWith('ricotta-static-') && key !== STATIC_CACHE) await caches.delete(key);
@@ -16,7 +46,7 @@ self.addEventListener('activate', event => event.waitUntil((async()=>{
 self.addEventListener('fetch', event => {
   const request=event.request;
   if(request.method === 'GET' && request.mode === 'navigate' && request.url.startsWith(self.registration.scope)){
-    event.respondWith(openPage(request.url));
+    event.respondWith(openPage(request.url, event));
     return;
   }
   if(request.method !== 'GET' || !assetUrls.has(request.url)) return;
@@ -37,12 +67,26 @@ self.addEventListener('fetch', event => {
   })());
 });
 
-/* The page, checked with the server every time (a quick "not modified" when nothing changed).
-   It is never stored here. */
-async function openPage(url){
+/* The page, checked with the server every time (a quick "not modified" when nothing changed). With no
+   connection: the browser's own copy, else the copy kept above. */
+async function openPage(url, event){
   let response;
-  try{ response=await fetch(url,{cache:'no-cache',credentials:'same-origin'}); }
-  catch(_){ response=await fetch(url,{cache:'force-cache',credentials:'same-origin'}); }
+  try{
+    response=await fetch(url,{cache:'no-cache',credentials:'same-origin'});
+    if(isAppPage(url) && STATIC_FILES.length && response.ok && response.type==='basic' && !response.redirected){
+      const copy=response.clone();
+      event?.waitUntil(caches.open(STATIC_CACHE).then(cache=>keepPage(cache,copy)).catch(()=>{}));
+    }
+  }
+  catch(_){
+    try{ response=await fetch(url,{cache:'force-cache',credentials:'same-origin'}); }
+    catch(e){
+      let kept=null;
+      try{ kept=isAppPage(url) ? await (await caches.open(STATIC_CACHE)).match(PAGE_KEY) : null; }catch(_){ kept=null; }
+      if(kept) return kept;
+      throw e;
+    }
+  }
   // A page that moved is opened at its new address (a navigation cannot take a followed redirect).
   return response.redirected ? Response.redirect(response.url, 302) : response;
 }

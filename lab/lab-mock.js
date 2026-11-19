@@ -190,7 +190,7 @@
     const categories = [['00000000-0000-4000-8000-00000000d001', 'Pizza', 'peach'], ['00000000-0000-4000-8000-00000000d002', 'Drinks', 'sky'], ['00000000-0000-4000-8000-00000000d003', 'Breakfast', 'butter']]
       .map(([id, name, color], i)=>({id, name, color, sort:i + 1}));
     const catId = n=>categories.find(c=>c.name === n)?.id || '';
-    const recipe = (id, name, category, price, lines, steps, notes = '')=>({id, name, version:1, archived:false, updated_by:'ahmad', updated_at:at,
+    const recipe = (id, name, category, price, lines, steps, notes = '')=>({id, name, version:1, updated_by:'ahmad', updated_at:at,
       data:{category:catId(category), price, currency:'IQD', notes, lines:lines.map(([i, qty, unit])=>({ingredient:ing[i].id, qty, unit})), steps}});
     db.recipeBook2 = {categories, ingredients:ing, photos:{}, alerts:[{id:'00000000-0000-4000-8000-00000000b001', at, read:false, en:'Tomato is out in Main Storage. Margherita uses it.', ku:'تەماتە لە کۆگای سەرەکی نەماوە. مارگەریتا بەکاری دەهێنێت.', ar:'نفدت الطماطم في المخزن الرئيسي. مارغريتا تستخدمها.'}],
       recipes:[
@@ -566,7 +566,7 @@
         // not on the list is refused, as on the server: categories are made by asking Rico.
         const want = String(d.category || '').trim(), cat = !want ? null : R.categories.find(c=>c.id === want) ?? (/^[0-9a-f-]{36}$/i.test(want) ? null : R.categories.find(c=>c.name.toLowerCase() === want.toLowerCase()));
         if(cat === undefined) return fail('unknown_category', 422);
-        const saved = {id:m[1], name:String(body.name || '').slice(0, 120), data:{category:cat?.id || '', price:d.price ?? null, currency:'IQD', lines:d.lines || [], steps:d.steps || [], notes:d.notes || ''}, archived:false, version:(old?.version || 0) + 1, updated_by:account, updated_at:new Date().toISOString()};
+        const saved = {id:m[1], name:String(body.name || '').slice(0, 120), data:{category:cat?.id || '', price:d.price ?? null, currency:'IQD', lines:d.lines || [], steps:d.steps || [], notes:d.notes || ''}, version:(old?.version || 0) + 1, updated_by:account, updated_at:new Date().toISOString()};
         if(i < 0) R.recipes.unshift(saved); else R.recipes[i] = saved; save();
         return json(saved);
       }
@@ -800,8 +800,8 @@
       if(method === 'DELETE'){ db.routines = db.routines.filter(x=>x.id !== id); save(); return json({ok:true}); }
     }
     if(path.startsWith('rico-rules/') && method === 'DELETE'){ db.rules = (db.rules || []).filter(r=>r.id !== path.split('/')[1]); return json({ok:true}); }
-    if(path === 'admin/backups' && method === 'GET') return json(Array.from({length:7}, (_, i)=>({day:new Date(Date.now() - i * 86400000).toISOString().slice(0, 10), suppliers:db.suppliers.length, items:db.items.length, orders:db.history.length, at:new Date().toISOString()})));
-    if(path === 'admin/backups/restore' && method === 'POST') return /^\d{6}$/.test(String(body.pin || '')) && body.pin !== '000000' ? json({suppliers:0, units:0, items:1, orders:2}) : fail('wrong_pin', 403);
+    if(path === 'admin/backups' && method === 'GET') return json(Array.from({length:7}, (_, i)=>({day:new Date(Date.now() - i * 86400000).toISOString().slice(0, 10), suppliers:db.suppliers.length, items:db.items.length, orders:db.history.length, recipes:labRecipes().recipes.length, at:new Date().toISOString()})));
+    if(path === 'admin/backups/restore' && method === 'POST') return /^\d{6}$/.test(String(body.pin || '')) && body.pin !== '000000' ? json({suppliers:0, units:0, items:1, orders:2, recipes:1, recipe_ingredients:0, recipe_categories:0, recipe_photos:0, minibar:0}) : fail('wrong_pin', 403);
     if(path === 'orders/read-list' && method === 'POST') return json({rows:db.items.slice(0, 4).map((i, n)=>({said:i.name, qty:n + 2, itemId:i.id, sure:true})).concat({said:'Something unclear', qty:1, itemId:null, sure:false})});
     if(path === 'draft' && (method === 'GET' || method === 'PUT')){
       db.drafts ||= {};
@@ -1113,6 +1113,8 @@
     const url = typeof input === 'string' ? input : (input && input.url) || '';
     const at = url.indexOf('/functions/v1/api/');
     if(at < 0) return realFetch(input, init);
+    // The browser is offline (DevTools, or a test's setOffline): the pretend server can't be reached either.
+    if(!navigator.onLine) throw new TypeError('Failed to fetch');
     const rest = url.slice(at + '/functions/v1/api/'.length), path = rest.split('?')[0];
     query = new URLSearchParams(rest.split('?')[1] || '');
     const method = (init.method || 'GET').toUpperCase();

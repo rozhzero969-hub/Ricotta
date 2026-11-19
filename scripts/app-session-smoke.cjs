@@ -166,7 +166,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
     const c = {
       state:{account:'ahmad', view:'recipeItems', settings:{}}, console, structuredClone, JSON, Object, Date, Math, Number, String, Set, WeakMap, Promise,
       window:{addEventListener(){}}, document:{addEventListener(){}, getElementById:()=>null, querySelectorAll:()=>[], querySelector:()=>null},
-      t:key=>key, toast:(m, kind)=>toasts.push([m, kind]), render(){}, timeAgo:()=>'now',
+      t:key=>key, toast:(m, kind)=>toasts.push([m, kind]), render(){}, timeAgo:()=>'now', OUTBOX_KINDS:{}, offlineBlocked:()=>false, apiCached:(...a)=>c.api(...a), offlineRead(){}, queuedChanges:()=>[], queuedChange:()=>null, appOffline:()=>false, paintOfflineNote(){},
       setTimeout:(fn)=>{ const id = ++timerId; timers.set(id, fn); return id; }, clearTimeout:id=>timers.delete(id),
       api:(apiPath, opts = {})=>new Promise(resolve=>pending.push({path:apiPath, method:opts.method || 'GET', resolve})),
     };

@@ -153,6 +153,7 @@ const T = {
     ricoCmpChange:'Change',
     ricoCmpEarlier:'Earlier',
     ricoCmpLater:'Later',
+    offlineShowing:x=>'Offline, showing data from '+x+'.', offlineNoCopy:'Offline. This phone has not saved this page yet.', offlineWaiting:n=>n===1?'1 change will be sent when online.':n+' changes will be sent when online.', offlineWillSend:'Will be sent when online', offlineSent:'The changes you made offline were sent.', offlineNeedsNet:'This needs the internet. Try again when you are online.', offlineRicoNet:'Rico needs the internet. Your chats show as this phone saved them.', offlineRicoShort:'Rico needs the internet', offlineSignIn:'Signing in needs the internet.', chgFailedTitle:'Not sent', chgConflict:'Changed on another phone while you were offline. Your copy is kept on this phone.', chgError:'The server did not take it. Your copy is kept on this phone.', chgSendMine:'Send mine anyway', chgTryAgain:'Try again', chgDiscard:'Discard mine', chgFailedToast:n=>n===1?'1 change was not sent. It is kept on this phone.':n+' changes were not sent. They are kept on this phone.',
     ricoBack:'Back to the app', ricoSearchChats:'Search chats', ricoIntroSub:'Ask about stock, prices, orders or transfers.', ricoIntroSubRecipes:'Ask about your recipes, prices or what is in Main Storage.',
     ricoCardLow:z=>'Low in '+z, ricoDaysLeft:n=>n<1?'Less than a day left':'About '+Math.round(n)+' days left', ricoEmptyNow:'Empty',
     ricoMoreRows:n=>'And '+n+' more', ricoMoveLow:'Prepare a transfer', ricoMoveLowAsk:z=>'Prepare a transfer for what is low in '+z,
@@ -534,6 +535,7 @@ const T = {
     ricoCmpChange:'گۆڕان',
     ricoCmpEarlier:'پێشتر',
     ricoCmpLater:'دواتر',
+    offlineShowing:x=>'ئۆفلاینیت، ئەو زانیارییانە پیشان دەدرێن کە لە '+x+' پاشەکەوت کران.', offlineNoCopy:'ئۆفلاینیت. ئەم مۆبایلە هێشتا ئەم پەڕەیەی پاشەکەوت نەکردووە.', offlineWaiting:n=>n+' گۆڕانکاری کە هێڵ هاتەوە دەنێردرێت.', offlineWillSend:'کە هێڵ هاتەوە دەنێردرێت', offlineSent:'ئەو گۆڕانکارییانەی بە ئۆفلاین کردبووت نێردران.', offlineNeedsNet:'ئەمە ئینتەرنێتی پێویستە. کە هێڵ هاتەوە دووبارە هەوڵ بدەرەوە.', offlineRicoNet:'ریکۆ ئینتەرنێتی پێویستە. گفتوگۆکانت وەک ئەوەی ئەم مۆبایلە پاشەکەوتی کردوون پیشان دەدرێن.', offlineRicoShort:'ریکۆ ئینتەرنێتی پێویستە', offlineSignIn:'چوونەژوورەوە ئینتەرنێتی پێویستە.', chgFailedTitle:'نەنێردرا', chgConflict:'لە کاتی ئۆفلاینبوونتدا لە مۆبایلێکی ترەوە گۆڕدرا. کۆپییەکەی تۆ لەسەر ئەم مۆبایلە ماوەتەوە.', chgError:'سێرڤەرەکە وەریینەگرت. کۆپییەکەی تۆ لەسەر ئەم مۆبایلە ماوەتەوە.', chgSendMine:'هەر هی من بنێرە', chgTryAgain:'دووبارە هەوڵ بدەرەوە', chgDiscard:'هی من لابدە', chgFailedToast:n=>n+' گۆڕانکاری نەنێردرا. لەسەر ئەم مۆبایلە ماوەتەوە.',
     ricoBack:'گەڕانەوە بۆ ئەپ',
     ricoSearchChats:'گەڕان لە گفتوگۆکان',
     ricoIntroSub:'پرسیار بکە دەربارەی کۆگا، نرخ، داواکاری یان گواستنەوە.',
@@ -1423,6 +1425,7 @@ const T = {
     ricoCmpChange:'التغيّر',
     ricoCmpEarlier:'الأقدم',
     ricoCmpLater:'الأحدث',
+    offlineShowing:x=>'غير متصل، تُعرض البيانات المحفوظة في '+x+'.', offlineNoCopy:'غير متصل. لم يحفظ هذا الهاتف هذه الصفحة بعد.', offlineWaiting:n=>n===1?'تغيير واحد سيُرسل عند عودة الاتصال.':n+' تغييرات ستُرسل عند عودة الاتصال.', offlineWillSend:'سيُرسل عند عودة الاتصال', offlineSent:'أُرسلت التغييرات التي أجريتها دون اتصال.', offlineNeedsNet:'هذا يحتاج إلى الإنترنت. حاول مرة أخرى عند عودة الاتصال.', offlineRicoNet:'ريكو يحتاج إلى الإنترنت. تظهر محادثاتك كما حفظها هذا الهاتف.', offlineRicoShort:'ريكو يحتاج إلى الإنترنت', offlineSignIn:'تسجيل الدخول يحتاج إلى الإنترنت.', chgFailedTitle:'لم يُرسل', chgConflict:'تغيّر من هاتف آخر أثناء انقطاع الاتصال. نسختك محفوظة على هذا الهاتف.', chgError:'لم يقبله الخادم. نسختك محفوظة على هذا الهاتف.', chgSendMine:'أرسل نسختي على أي حال', chgTryAgain:'حاول مرة أخرى', chgDiscard:'تجاهل نسختي', chgFailedToast:n=>n===1?'لم يُرسل تغيير واحد. هو محفوظ على هذا الهاتف.':n+' تغييرات لم تُرسل. هي محفوظة على هذا الهاتف.',
     ricoBack:'العودة إلى التطبيق', ricoSearchChats:'ابحث في المحادثات', ricoIntroSub:'اسأل عن المخزون أو الأسعار أو الطلبات أو التحويلات.', ricoIntroSubRecipes:'اسأل عن وصفاتك أو الأسعار أو ما في المخزن الرئيسي.',
     ricoCardLow:z=>'ناقص في '+z, ricoDaysLeft:n=>n<1?'أقل من يوم':'نحو '+Math.round(n)+' أيام', ricoEmptyNow:'فارغ',
     ricoMoreRows:n=>'و'+n+' أخرى', ricoMoveLow:'جهّز تحويلًا', ricoMoveLowAsk:z=>'جهّز تحويلًا لما ينقص في '+z,
@@ -2141,7 +2144,7 @@ Object.assign(T.en, {
   inboxTitle:'Rico\'s messages', inboxNone:'No messages.', inboxSeeAll:n=>'See all '+n,
 
   tourBtn:'Show the tour', tourNext:'Next', tourDone:'Start', tour1T:'Make an order', tour1:'Choose amounts on the Order screen. Swipe an item to add its usual amount.', tour2T:'Send it', tour2:'Send opens WhatsApp with each supplier\'s order, ready to go.', tour3T:'Meet Rico', tour3:'Tap the spark at the top. He prepares orders, checks them and answers questions.', tour4T:'You\'re ready', tour4:'Everything you send is saved in History.',
-  adminPage_restore:'Restore', restoreBtn:'Restore', restoreNone:'The first copy is made tonight.', restoreCounts:(o,i,s)=>o+' orders, '+i+' items, '+s+' suppliers', restoreConfirm:'This brings back anything deleted since this day. Enter your PIN to continue.', restorePin:'Your PIN', restoreDone:(o,i,s)=>'Brought back '+o+' orders, '+i+' items and '+s+' suppliers',
+  adminPage_restore:'Restore', restoreBtn:'Restore', restoreNone:'The first copy is made tonight.', restoreCounts:(o,i,s,r)=>o+' orders, '+i+' items, '+s+' suppliers, '+(r||0)+' recipes', restoreConfirm:'This brings back anything deleted since this day. Enter your PIN to continue.', restorePin:'Your PIN', restoreDone:(o,i,s,r)=>'Brought back '+o+' orders, '+i+' items, '+s+' suppliers and '+(r||0)+' recipes',
 });
 Object.assign(T.ku, {
   dayOrderBtn:d=>'ئاسایی '+d, dayOrderLoaded:n=>n+' کاڵای ئاسایی زیاد کرا',
@@ -2172,7 +2175,7 @@ Object.assign(T.ku, {
   inboxTitle:'نامەکانی ریکۆ', inboxNone:'هیچ نامەیەک نییە.', inboxSeeAll:n=>'هەر '+n+' نامە ببینە',
 
   tourBtn:'گەشتەکە پیشان بدە', tourNext:'دواتر', tourDone:'دەستپێک', tour1T:'داواکارییەک دروست بکە', tour1:'بڕەکان لە شاشەی داواکاری هەڵبژێرە. کاڵایەک ڕابکێشە بۆ زیادکردنی بڕی ئاسایی.', tour2T:'بینێرە', tour2:'ناردن واتسئاپ دەکاتەوە بە داواکاری هەر دابینکەرێک، ئامادە.', tour3T:'ریکۆ بناسە', tour3:'لەسەرەوە دەست لە ئەستێرەکە بدە. داواکاری ئامادە دەکات، دەیپشکنێت و وەڵام دەداتەوە.', tour4T:'ئامادەیت', tour4:'هەرچی دەینێریت لە مێژوودا پاشەکەوت دەکرێت.',
-  adminPage_restore:'گەڕاندنەوە', restoreBtn:'گەڕاندنەوە', restoreNone:'یەکەم کۆپی ئەمشەو دروست دەکرێت.', restoreCounts:(o,i,s)=>o+' داواکاری، '+i+' کاڵا، '+s+' دابینکەر', restoreConfirm:"ئەمە هەرچی لەم ڕۆژەوە سڕاوەتەوە دەیهێنێتەوە. کۆدی نهێنییەکەت بنووسە بۆ بەردەوامبوون.", restorePin:"کۆدی نهێنییەکەت", restoreDone:(o,i,s)=>o+' داواکاری، '+i+' کاڵا و '+s+' دابینکەر گەڕێندرانەوە',
+  adminPage_restore:'گەڕاندنەوە', restoreBtn:'گەڕاندنەوە', restoreNone:'یەکەم کۆپی ئەمشەو دروست دەکرێت.', restoreCounts:(o,i,s,r)=>o+' داواکاری، '+i+' کاڵا، '+s+' دابینکەر، '+(r||0)+' ڕێسیپی', restoreConfirm:"ئەمە هەرچی لەم ڕۆژەوە سڕاوەتەوە دەیهێنێتەوە. کۆدی نهێنییەکەت بنووسە بۆ بەردەوامبوون.", restorePin:"کۆدی نهێنییەکەت", restoreDone:(o,i,s,r)=>o+' داواکاری، '+i+' کاڵا، '+s+' دابینکەر و '+(r||0)+' ڕێسیپی گەڕێندرانەوە',
 });
 Object.assign(T.ar, {
   dayOrderBtn:d=>'المعتاد ليوم '+d, dayOrderLoaded:n=>'أُضيفت '+AR_N(n,'مادة معتادة واحدة','مادتان معتادتان','مواد معتادة','مادة معتادة'),
@@ -2203,7 +2206,7 @@ Object.assign(T.ar, {
   inboxTitle:'رسائل ريكو', inboxNone:'لا توجد رسائل.', inboxSeeAll:n=>'عرض الكل ('+n+')',
 
   tourBtn:'اعرض الجولة', tourNext:'التالي', tourDone:'ابدأ', tour1T:'أنشئ طلبًا', tour1:'اختر الكميات في شاشة الطلب. اسحب صنفًا لإضافة كميته المعتادة.', tour2T:'أرسله', tour2:'يفتح الإرسال واتساب بطلب كل مورد جاهزًا.', tour3T:'تعرّف على ريكو', tour3:'اضغط النجمة في الأعلى. يجهّز الطلبات ويفحصها ويجيب عن الأسئلة.', tour4T:'أنت جاهز', tour4:'كل ما ترسله يُحفظ في السجل.',
-  adminPage_restore:'الاستعادة', restoreBtn:'استعادة', restoreNone:'تُنشأ أول نسخة الليلة.', restoreCounts:(o,i,s)=>AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+'، '+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+'، '+AR_N(s,'مورّد واحد','مورّدان','مورّدين','مورّدًا'), restoreConfirm:'سيعيد هذا كل ما حُذف منذ هذا اليوم. أدخل رمزك للمتابعة.', restorePin:'رمزك', restoreDone:(o,i,s)=>'أُعيد: '+AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+'، '+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+'، '+AR_N(s,'مورّد واحد','مورّدان','مورّدين','مورّدًا'),
+  adminPage_restore:'الاستعادة', restoreBtn:'استعادة', restoreNone:'تُنشأ أول نسخة الليلة.', restoreCounts:(o,i,s,r)=>AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+'، '+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+'، '+AR_N(s,'مورّد واحد','مورّدان','مورّدين','مورّدًا')+'، '+AR_N(r||0,'وصفة واحدة','وصفتان','وصفات','وصفة'), restoreConfirm:'سيعيد هذا كل ما حُذف منذ هذا اليوم. أدخل رمزك للمتابعة.', restorePin:'رمزك', restoreDone:(o,i,s,r)=>'أُعيد: '+AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+'، '+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+'، '+AR_N(s,'مورّد واحد','مورّدان','مورّدين','مورّدًا')+'، '+AR_N(r||0,'وصفة واحدة','وصفتان','وصفات','وصفة'),
 });
 
 /* The clean-up: settings in sections, one notification switch, AI switches, pinned suppliers. */

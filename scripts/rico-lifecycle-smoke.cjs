@@ -21,6 +21,7 @@ function fixture() {
     ricoOrderIntent:()=>false, ricoHistoryForServer:()=>[], ricoAutoOrder:()=>false,
     ricoPaintMessage(){}, ricoPaintHeadFace(){}, ricoSaveSoon(){},
     requestAnimationFrame:()=>1, cancelAnimationFrame(){},
+    apiCached:(...a)=>c.api(...a), offlineBlocked:()=>false, appOffline:()=>false,
   });
   vm.runInContext(part('function ricoContext()', '/* ---------- Events ---------- */') +
     part('function ricoNewChat()', '/* Chat history:'), c);

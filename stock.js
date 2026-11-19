@@ -8,8 +8,9 @@ const stk = {data:null, loading:false, failed:false, sort:'name'};
 async function stockLoad(){
   if(stk.loading) return;
   stk.loading = true;
-  const r = await api('stock', {quiet:true});
+  const r = await apiCached('stock', {quiet:true});   // offline: the copy kept on this phone
   stk.loading = false;
+  if(r.ok) offlineRead('stock', r.cachedAt || Date.now(), !!r.cachedAt);
   if(r.ok && Array.isArray(r.data?.items)){ stk.data = r.data; stk.failed = false; } else if(!stk.data) stk.failed = true;
   if(state.view === 'stock') render();
 }

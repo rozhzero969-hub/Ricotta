@@ -2,9 +2,9 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const listeners={},stored=new Map(),deleted=[],network=[];
 const asset='https://example.test/Ricotta/assets/app.123456789abc.js';
-const cache={match:async req=>stored.get(req.url),put:async(req,res)=>stored.set(req.url,res)};
+const cache={match:async req=>stored.get(req.url||req),put:async(req,res)=>stored.set(req.url||req,res)};
 let failStore=false,failOpen=false,failMatch=false,failKeys=false,claims=0,offline=false,moved=false;const pageFetches=[];
-const context=vm.createContext({URL,Set,Promise,console,
+const context=vm.createContext({URL,Set,Promise,console,TypeError,
  self:{registration:{scope:'https://example.test/Ricotta/'},clients:{claim:async()=>{claims++;}},skipWaiting:async()=>{},addEventListener:(type,fn)=>{listeners[type]=fn;}},
  caches:{keys:async()=>{if(failKeys)throw Error('unavailable');return ['ricotta-static-old','ricotta-static-dev','ricotta-badge','another-app'];},delete:async key=>deleted.push(key),open:async()=>{if(failOpen)throw Error('unavailable');return {...cache,match:async req=>{if(failMatch)throw Error('unavailable');return cache.match(req);},put:async(req,res)=>{if(failStore)throw Error('quota');return cache.put(req,res);}};}},
  Response:{redirect:(url,status)=>({redirectTo:url,status})},
@@ -34,6 +34,23 @@ async function runFetch(url,method='GET',mode){
  moved=true;assert.deepEqual(await runFetch(page,'GET','navigate'),{redirectTo:page+'moved/',status:302},'a moved page opens at its new address');moved=false;
  assert.equal(await runFetch('https://example.test/other/','GET','navigate'),null,'pages outside the app are left alone');
  assert.equal(stored.size,0,'pages are never stored');
+ // The app's own page is kept for offline only when every assets/ file it names is this build's, and
+ // opens when neither the network nor the browser's copy can.
+ const pageWith=html=>({ok:true,type:'basic',redirected:false,url:'https://example.test/Ricotta/',clone(){return this;},text:async()=>html});
+ failMatch=false;
+ let nextPage=pageWith('<script src="assets/app.000000000000.js"></script>'),pageDown=false;
+ context.fetch=async(req,init)=>{if(typeof req==='string'){if(pageDown)throw TypeError('offline');return nextPage;}network.push(req.url);return {ok:true,type:'basic',clone(){return this}};};
+ await runFetch('https://example.test/Ricotta/','GET','navigate');
+ assert.equal(stored.size,0,'a page naming files of another build is not kept');
+ nextPage=pageWith('<link href="assets/app.123456789abc.js"><script src="assets/app.123456789abc.js"></script>');
+ await runFetch('https://example.test/Ricotta/?n=update','GET','navigate');
+ assert.equal(stored.get('https://example.test/Ricotta/'),nextPage,'this build\'s page is kept under the app\'s address');
+ await runFetch('https://example.test/Ricotta/privacy.html','GET','navigate');
+ assert.equal(stored.size,1,'other pages are never kept');
+ pageDown=true;
+ assert.equal(await runFetch('https://example.test/Ricotta/','GET','navigate'),nextPage,'offline with no browser copy: the kept page');
+ await assert.rejects(runFetch('https://example.test/Ricotta/privacy.html','GET','navigate'),'other pages are not answered from it');
+ pageDown=false;stored.clear();
  failKeys=true;listeners.activate({waitUntil:p=>{activation=p;}});await activation;assert.equal(claims,2,'cache cleanup failure cannot block activation');
- console.log('Static cache smoke PASS: immutable-only GET cache, the page always fresh (kept copy offline, never stored), no HTML/config/API/user data, safe quota failure and old-version cleanup');
+ console.log('Static cache smoke PASS: immutable-only GET cache, the page always fresh (offline: the browser copy, else this build\'s own page), no config/API/user data, safe quota failure and old-version cleanup');
 })().catch(e=>{console.error(e);process.exitCode=1;});

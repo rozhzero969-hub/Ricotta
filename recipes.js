@@ -33,14 +33,16 @@ async function recipeLoad(){
   if(recipeBook.account !== state.account) recipeReset();
   if(recipeBook.loading) return;
   recipeBook.loading = true;
-  const session = recipeSession(), r = await api('recipes');
+  // With no connection, the copy this phone kept (offline.js), with its changes not sent yet laid over it.
+  const session = recipeSession(), r = await apiCached('recipes');
   if(recipeStale(session)) return;
   recipeBook.loading = false;
   recipeBook.error = !r.ok && !recipeBook.data;
   recipeBook.loadedAt = Date.now();
+  if(r.ok) offlineRead('recipes', r.cachedAt || Date.now(), !!r.cachedAt);
   // A quiet reload that brings nothing new leaves the page alone (a hold or a scroll is not interrupted).
-  const raw = r.ok ? JSON.stringify(r.data) : null, same = r.ok && !!recipeBook.data && raw === recipeBook.raw;
-  if(r.ok && !same){ recipeBook.raw = raw; recipeBook.data = {...r.data, categories:Array.isArray(r.data.categories) ? r.data.categories : []}; recipeBook.ctx = null; recipeBook.stockBy = null; }
+  const raw = r.ok ? JSON.stringify(r.data) + '|' + recipeQueuedMark() : null, same = r.ok && !!recipeBook.data && raw === recipeBook.raw;
+  if(r.ok && !same){ recipeBook.raw = raw; recipeBook.data = {...r.data, categories:Array.isArray(r.data.categories) ? r.data.categories : []}; recipeOverlay(recipeBook.data); recipeBook.ctx = null; recipeBook.stockBy = null; }
   if(same) return;
   if(r.ok && !recipeBook.prices) recipePricesLoad();
   // While a recipe is being written the page is not drawn again (that would take the cursor away):
@@ -239,11 +241,14 @@ async function recipePerformSave(loud = false){
   if(!r || !recipeBook.dirty) return true;
   if(recipeBook.saving) return false;
   if(!r.name.trim()){ if(loud) toast(rt('required'), 'error'); recipeSaveLabel(rt('unsaved')); return false; }
+  // Offline (or while an edit of it waits to be sent) it waits on this phone, behind that one.
+  if(appOffline() || queuedChange('recipe', r.id)) return recipeKeepForLater(r);
   recipeBook.saving = true;
   recipeSaveLabel(rt('saving'), 'busy');
   const session = recipeSession(), sent = recipeEditable(r), answer = await api('recipes/' + r.id, {method:'PUT', body:{name:r.name, data:r.data, version:r.version}});
   if(recipeStale(session)) return false;
   recipeBook.saving = false;
+  if(!answer.ok && answer.status === 0 && !answer.stale) return recipeKeepForLater(r);   // the connection went on the way
   if(!answer.ok){
     const e = answer.data?.error;
     toast(e === 'recipe_conflict' ? rt('conflict') : e === 'invalid_ingredients' ? rt('badLines') : e === 'unknown_category' ? rt('catGone') : t('saveFailed'), 'error');
@@ -327,7 +332,7 @@ function recipeRowsFor(){
 function recipeCard({r, c}){
   const st = recipeState(c), stock = recipeStockIssues(r).length;
   return `<button type="button" class="rc-li rc-rrow" data-rc-open="${esc(r.id)}" aria-haspopup="menu">${recipePic(r, 'rc-thumb')}
-    <span class="rc-li-main"><span class="rc-rrow-name" dir="auto">${esc(r.name)}</span><small class="rc-tile-state ${st.tone}">${esc(st.text)}</small>
+    <span class="rc-li-main"><span class="rc-rrow-name" dir="auto">${esc(r.name)}</span><small class="rc-tile-state ${st.tone}">${esc(st.text)}</small>${recipePendingTag(r)}
       ${stock ? `<small class="rc-tile-state red">${esc(rt('stockIssues')(stock))}</small>` : ''}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
 }
 function recipeListHtml(){
@@ -672,7 +677,7 @@ function recipeIngredientRow(i){
   const s = recipeStock(i.stock_item), price = recipeIngredientPrice(i), word = recipeStockWord(s?.state);
   const why = !price.ok && price.text !== rt('noPriceYet') ? price.text : '';
   return `<button type="button" class="rc-li rc-irow" data-rc-ingredient="${esc(i.id)}" aria-haspopup="menu">
-    <span class="rc-li-main"><span class="rc-irow-name" dir="auto">${esc(i.name)}</span><small class="rc-li-sub"><span>${esc(why || rt('usedIn')(recipeUses(i.id)))}</span>${word}</small></span>
+    <span class="rc-li-main"><span class="rc-irow-name" dir="auto">${esc(i.name)}</span><small class="rc-li-sub"><span>${esc(why || rt('usedIn')(recipeUses(i.id)))}</span>${word}</small>${recipePendingTag(i)}</span>
     ${recipePriceEnd(price)}<i class="sheet-chevron" aria-hidden="true"></i></button>`;
 }
 function recipeIngRows(){
@@ -720,7 +725,16 @@ function recipeIngredientForm(id, onSaved){
       if(!name) return {error:rt('needName')};
       if(!chosen) return {error:rt('needStock')};
       if(!unit) return {error:rt('needUnit')};
-      const r = await api('recipe-ingredients/' + (old?.id || crypto.randomUUID()), {method:'PUT', body:{name, stock_item:chosen, unit, category:old?.category || '', version:old?.version || 0}});
+      const ingId = old?.id || crypto.randomUUID(), body = {name, stock_item:chosen, unit, category:old?.category || '', version:old?.version || 0};
+      const later = ()=>{
+        const row = recipeIngredientKeep(ingId, body);
+        if(!row) return {error:t('saveFailed')};
+        toast(t('offlineWillSend'));
+        if(onSaved) onSaved(row); else render();
+      };
+      if(appOffline() || queuedChange('ingredient', ingId)) return later();
+      const r = await api('recipe-ingredients/' + ingId, {method:'PUT', body});
+      if(r.status === 0 && !r.stale) return later();
       if(!r.ok){ const e = r.data?.error; return {error:e === 'recipe_conflict' ? rt('conflict') : e === 'unknown_unit' ? rt('unknownUnit') : e === 'invalid_stock_link' ? rt('whyGone') : t('saveFailed')}; }
       const i = d.ingredients.findIndex(x=>x.id === r.data.id);
       if(i < 0) d.ingredients.push(r.data); else d.ingredients[i] = r.data;
@@ -799,6 +813,7 @@ function recipeIngredientForm(id, onSaved){
 /* An item a recipe uses can't be deleted: the message says which recipes, so Ahmad knows where to take
    it out first. The server checks too (it answers with their names). */
 async function recipeDeleteIngredient(ing){
+  if(offlineBlocked()) return false;
   const local = recipeUsers(ing.id).map(r=>r.name);
   if(local.length){ await showAlert(esc(rt('inUseNamed')(recipeNameList(local))), {title:rt('cantDelete')}); return false; }
   const d = recipeBook.data, r = await api('recipe-ingredients/' + ing.id, {method:'DELETE'});
@@ -814,6 +829,7 @@ async function recipeDeleteIngredient(ing){
   return true;
 }
 async function recipeDelete(r){
+  if(offlineBlocked()) return false;
   if(!(await showConfirm(esc(rt('deleteAsk')(r.name)), {title:rt('deleteRecipe'), okLabel:t('delete')}))) return false;
   const answer = await api('recipes/' + r.id, {method:'DELETE'});
   if(!answer.ok){ toast(t('saveFailed'), 'error'); return false; }
@@ -913,7 +929,7 @@ function recipePhotosRedraw(){
   recipeBindPhotos();
 }
 async function recipeUpload(file, id = recipeBook.id){
-  if(!file) return false;
+  if(!file || offlineBlocked()) return false;
   if(file.size > 20_000_000){ toast(rt('photoTooBig'), 'error'); return false; }
   const session = recipeSession();
   try{
@@ -958,6 +974,7 @@ function recipePhotoView(start){
   document.body.appendChild(layer);
 }
 async function recipePhotoDelete(id){
+  if(offlineBlocked()) return;
   if(!(await showConfirm(esc(rt('deletePhoto')), {okLabel:t('delete')}))) return;
   const r = await api('recipes/' + recipeBook.id + '/photos/' + id, {method:'DELETE'});
   if(!r.ok){ toast(t('saveFailed'), 'error'); return; }
@@ -972,6 +989,7 @@ function recipePhotoMenu(el){
 /* The new order shows at once (the gallery and the list's cover); if the server refuses it, both go
    back to how they were. */
 async function recipePhotoOrder(ids){
+  if(offlineBlocked()) return false;
   const p = recipeBook.photos, recipe = recipeBook.id, session = recipeSession(), covers = recipeBook.data?.covers;
   if(!p?.list) return;
   const before = p.list.slice();
@@ -1085,6 +1103,7 @@ function recipePricesBar(){
     <button type="button" class="rr-ctl" id="rcPrices" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? '<i class="rr-spin" aria-hidden="true"></i>' : ''}${esc(rt('pricesCheck'))}</button></div>`;
 }
 async function recipePricesCheck(){
+  if(offlineBlocked()) return;
   if(recipeBook.pricesBusy || recipeBook.prices?.state) return;
   recipeBook.pricesBusy = true; recipePricesDraw();
   const session = recipeSession(), r = await api('rico-prices', {method:'POST', body:{}});
@@ -1307,3 +1326,114 @@ function renderRecipeSettings(){
     <div class="section-title">${esc(rt('access'))}</div><div class="form-card settings-rows">${access.map(row).join('')}</div><p class="rc-settings-foot">${esc(rt('lockedHint'))}</p>
     ${renderHelpSettings()}${renderPrivacySettings()}<div class="app-version">${esc(t('appVersionLine')(APP_VERSION))}</div></div>`;
 }
+
+/* ---------- Offline (see offline.js) ----------
+   A recipe or an item changed with no connection waits in the outbox with the version it was changed
+   from, and goes by itself once online. The server's version check still decides: a recipe another
+   phone changed meanwhile comes back as the usual conflict, and the change stays on this phone (its card
+   at the top: send mine anyway, or discard mine). */
+const recipeQueuedMark = ()=>queuedChanges(['recipe', 'ingredient']).map(j=>j.rev + (j.lastError || '')).join(',');
+function recipePendingTag(x){
+  if(!x?.pending) return '';
+  return `<small class="rc-tile-state ${x.pendingFailed ? 'red' : 'amber'} rc-pending">${esc(x.pendingFailed ? t('chgFailedTitle') : t('offlineWillSend'))}</small>`;
+}
+/* The waiting changes laid over the server's (or the kept) recipe book. */
+function recipeOverlay(d){
+  if(!d || !Array.isArray(d.recipes) || !Array.isArray(d.ingredients)) return;
+  for(const j of queuedChanges('ingredient')){
+    const b = j.body || {}, i = d.ingredients.findIndex(x=>x.id === j.key);
+    const row = {...(i >= 0 ? d.ingredients[i] : {id:j.key}), name:b.name, stock_item:b.stock_item, unit:b.unit, category:b.category || '', version:b.version, pending:true, pendingFailed:!!j.lastError};
+    if(i < 0) d.ingredients.push(row); else d.ingredients[i] = row;
+  }
+  d.ingredients.sort((a, b)=>String(a.name).localeCompare(String(b.name)));
+  for(const j of queuedChanges('recipe')){
+    const b = j.body || {}, i = d.recipes.findIndex(x=>x.id === j.key);
+    const row = {...(i >= 0 ? d.recipes[i] : {id:j.key}), name:b.name, data:b.data, version:b.version, pending:true, pendingFailed:!!j.lastError};
+    if(i < 0) d.recipes.unshift(row); else d.recipes[i] = row;
+  }
+}
+/* The version a waiting edit goes from: the newest this phone knows (a save that went through meanwhile
+   moved the waiting one forward). */
+const recipeBaseVersion = (kind, id, v)=>Math.max(Number(v) || 0, Number(queuedChange(kind, id)?.body?.version) || 0);
+function recipeKeepForLater(r){
+  const body = {name:r.name, data:r.data, version:recipeBaseVersion('recipe', r.id, r.version)};
+  if(!queueChange('recipe', r.id, 'recipes/' + r.id, 'PUT', body, {label:r.name, offline:true})){
+    toast(t('saveFailed'), 'error'); recipeSaveLabel(rt('unsaved')); return false;
+  }
+  r.version = body.version;
+  const list = recipeBook.data.recipes, i = list.findIndex(x=>x.id === r.id);
+  const row = {...(i >= 0 ? list[i] : {}), id:r.id, name:r.name, data:structuredClone(r.data), version:body.version, pending:true, pendingFailed:false};
+  if(i < 0) list.unshift(row); else list[i] = row;
+  recipeBook.id = r.id; recipeBook.dirty = false; recipeBook.ctx = null;
+  recipeSaveLabel(t('offlineWillSend'), 'done');
+  paintOfflineNote();
+  if(!appOffline()) flushOutbox();
+  return true;
+}
+function recipeIngredientKeep(id, body){
+  body = {...body, version:recipeBaseVersion('ingredient', id, body.version)};
+  if(!queueChange('ingredient', id, 'recipe-ingredients/' + id, 'PUT', body, {label:body.name, offline:true})) return null;
+  const d = recipeBook.data, i = d.ingredients.findIndex(x=>x.id === id);
+  const row = {...(i >= 0 ? d.ingredients[i] : {id}), ...body, pending:true, pendingFailed:false};
+  if(i < 0) d.ingredients.push(row); else d.ingredients[i] = row;
+  d.ingredients.sort((a, b)=>a.name.localeCompare(b.name));
+  recipeBook.ctx = null;
+  paintOfflineNote();
+  if(!appOffline()) flushOutbox();
+  return row;
+}
+/* What the server has now (for a refusal: is it already ours?). */
+async function recipeServerBook(){ const g = await api('recipes'); return g.ok && Array.isArray(g.data?.recipes) ? g.data : null; }
+const recipeLinesKey = lines=>JSON.stringify((lines || []).map(l=>[l.ingredient, l.qty ?? null, l.unit || '']));
+function recipeSameAs(s, b){
+  const x = s.data || {}, y = b.data || {};
+  return s.name === b.name && String(x.category || '') === String(y.category || '') && (x.price ?? null) === (y.price ?? null)
+    && String(x.notes || '') === String(y.notes || '') && JSON.stringify(x.steps || []) === JSON.stringify(y.steps || []) && recipeLinesKey(x.lines) === recipeLinesKey(y.lines);
+}
+const recipeFollowVersion = (body, data)=>data && Number.isInteger(data.version) ? {...body, version:data.version} : body;
+function recipeSettled(done){
+  for(const {job, data} of done){
+    if(job.kind === 'recipe' && recipeBook.editing?.id === job.key && Number.isInteger(data?.version) && recipeBook.editing.version <= job.body.version) recipeBook.editing.version = data.version;
+  }
+  if(recipeBook.account !== state.account || !recipeBook.data) return;
+  recipeBook.raw = null;
+  recipeLoad();
+}
+OUTBOX_KINDS.recipe = {
+  why(e){ return e === 'invalid_ingredients' ? rt('badLines') : e === 'unknown_category' ? rt('catGone') : ''; },
+  // A conflict right after a lost answer: the server already has exactly this edit, one version on.
+  async resolve(job, r){
+    if(r.status !== 409) return null;
+    const s = (await recipeServerBook())?.recipes.find(x=>x.id === job.key);
+    return s && s.version === job.body.version + 1 && recipeSameAs(s, job.body) ? s : null;
+  },
+  rebase:recipeFollowVersion,
+  // Send mine anyway: over the version the server has now (or as a new recipe if it was deleted).
+  async again(job){
+    if(job.lastError !== 'recipe_conflict') return null;
+    const book = await recipeServerBook();
+    if(!book) return null;
+    const s = book.recipes.find(x=>x.id === job.key);
+    return {body:{...job.body, version:s ? s.version : 0}};
+  },
+  settled(done){ recipeSettled(done); },
+  discarded(){ if(recipeBook.data){ recipeBook.raw = null; if(recipeBook.editing && !recipeBook.dirty) recipeBook.editing = null; recipeLoad(); } },
+};
+OUTBOX_KINDS.ingredient = {
+  why(e){ return e === 'unknown_unit' ? rt('unknownUnit') : e === 'invalid_stock_link' ? rt('whyGone') : ''; },
+  async resolve(job, r){
+    if(r.status !== 409) return null;
+    const s = (await recipeServerBook())?.ingredients.find(x=>x.id === job.key), b = job.body;
+    return s && s.version === b.version + 1 && s.name === b.name && s.stock_item === b.stock_item && s.unit === b.unit ? s : null;
+  },
+  rebase:recipeFollowVersion,
+  async again(job){
+    if(job.lastError !== 'recipe_conflict') return null;
+    const book = await recipeServerBook();
+    if(!book) return null;
+    const s = book.ingredients.find(x=>x.id === job.key);
+    return {body:{...job.body, version:s ? s.version : 0}};
+  },
+  settled(done){ recipeSettled(done); },
+  discarded(){ if(recipeBook.data){ recipeBook.raw = null; recipeLoad(); } },
+};

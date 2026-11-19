@@ -75,18 +75,39 @@ function choice(id){
   return CHOICES[id].includes(saved) ? saved : CHOICES[id][0];
 }
 /* Saves one setting for this account. It applies at once; if the server can't take it, it goes back. */
+/* Offline (or when the server can't be reached) it is kept on this phone and sent by itself once online:
+   a setting is one whole value, so sending it later is safe. A newer change of the same setting replaces
+   the one waiting, and while one waits the next one waits behind it (never sent around it). */
 async function setSetting(id, value){
   const before = state.settings?.[id];
   state.settings = {...(state.settings || {}), [id]:value};
   applyFeatures();
+  if(appOffline() || queuedChange('setting', id)) return keepSettingForLater(id, value);
   const r = await api('settings', {method:'PUT', body:{key:id, value}});
   if(r.ok) return true;
+  if(r.status === 0 && !r.stale) return keepSettingForLater(id, value);
   state.settings = {...state.settings, [id]:before};
   applyFeatures();
   toast(t('saveFailed'), 'warn');
   if(state.view === 'settings') render();
   return false;
 }
+function keepSettingForLater(id, value){
+  const label = t('feat_' + id) || t('settings');
+  if(!queueChange('setting', id, 'settings', 'PUT', {key:id, value}, {label, offline:true})){ toast(t('saveFailed'), 'warn'); return false; }
+  // Said only for the switches a person sets (a tour marked as seen goes quietly).
+  if(SETTINGS.some(f=>f.id === id) || CHOICES[id]) toast(t('offlineWillSend'));
+  paintOfflineNote();
+  if(!appOffline()) flushOutbox();
+  return true;
+}
+OUTBOX_KINDS.setting = {
+  settled(done, failed){
+    // A refused one goes back to what the server has.
+    if(failed.length && state.view === 'settings') render();
+  },
+  discarded(){ refreshData('live'); },
+};
 const setFeature = (id, on)=>setSetting(id, !!on);
 const ricoStyle = ()=>choice('ricoStyle');
 /* Choices made on this phone before settings moved to the account are carried over once. */

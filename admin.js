@@ -38,8 +38,10 @@ async function adminFetch(key, force){
   if(adminData.busy[key] || (!force && adminData[key] && Date.now() - adminData[key].at < 60000)) return;
   const account = state.account;
   adminData.busy[key] = true;
-  const r = await api(ADMIN_SOURCES[key]);
+  // Offline its pages are read from the copy kept on this phone; its actions wait for the connection.
+  const r = await apiCached(ADMIN_SOURCES[key]);
   if(account !== state.account || adminData.account !== account) return;
+  if(r.ok) offlineRead(ADMIN_SOURCES[key], r.cachedAt || Date.now(), !!r.cachedAt);
   adminData.busy[key] = false;
   // An answer of the wrong shape (an older server during a release) counts as not loaded. The screen is
   // redrawn only when something on it changed, so the regular refresh below never makes it flicker.
@@ -957,7 +959,7 @@ function attachAdminNames(slot){
 function renderAdminRestore(){
   const rows = adminValue('backups');
   return `${adminHeading()}
-    ${Array.isArray(rows) ? (rows.length ? `<div class="form-card restore-list">${rows.map(r=>`<div class="restore-row"><div><b>${esc(formatIraqDateTime(r.day + 'T12:00:00Z', {weekday:'long', day:'numeric', month:'long'}))}</b><small>${esc(t('restoreCounts')(r.orders, r.items, r.suppliers))}</small></div><button type="button" class="btn btn-ghost" data-restore-day="${esc(r.day)}">${esc(t('restoreBtn'))}</button></div>`).join('')}</div>` : `<div class="empty-mini">${esc(t('restoreNone'))}</div>`) : `<div class="empty-mini">${esc(t('checking'))}</div>`}`;
+    ${Array.isArray(rows) ? (rows.length ? `<div class="form-card restore-list">${rows.map(r=>`<div class="restore-row"><div><b>${esc(formatIraqDateTime(r.day + 'T12:00:00Z', {weekday:'long', day:'numeric', month:'long'}))}</b><small>${esc(t('restoreCounts')(r.orders, r.items, r.suppliers, r.recipes))}</small></div><button type="button" class="btn btn-ghost" data-restore-day="${esc(r.day)}">${esc(t('restoreBtn'))}</button></div>`).join('')}</div>` : `<div class="empty-mini">${esc(t('restoreNone'))}</div>`) : `<div class="empty-mini">${esc(t('checking'))}</div>`}`;
 }
 function attachAdminRestore(){
   document.querySelectorAll('[data-restore-day]').forEach(b=>b.onclick = ()=>{
@@ -970,7 +972,7 @@ function attachAdminRestore(){
         const r = await api('admin/backups/restore', {method:'POST', body:{day, pin:document.getElementById('restorePin').value}});
         if(!r.ok) return {error:t(r.data?.error === 'wrong_pin' ? 'wrongPin' : 'saveFailed')};
         await loadData(); render();
-        toast(t('restoreDone')(r.data.orders, r.data.items, r.data.suppliers), 'ok');
+        toast(t('restoreDone')(r.data.orders, r.data.items, r.data.suppliers, r.data.recipes), 'ok');
         return {};
       },
     });

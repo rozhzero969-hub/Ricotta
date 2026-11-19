@@ -298,23 +298,144 @@ async function sendOrQueue(path, method, body){
   removeOutboxJob(job.id);
   return 'failed';
 }
+/* ============ Changes kept for later (offline) ============
+   Besides orders, a few changes are safe to send later: they set a whole value (a setting, an item's low
+   stock level) or carry the version they were made from (a recipe, a recipe item), so a change made
+   elsewhere meanwhile comes back as the usual conflict and is never overwritten. Each one is one outbox
+   job per thing changed (kind + key): a newer edit of the same thing replaces the waiting one and keeps
+   its place in the line. The kinds' own rules (OUTBOX_KINDS, filled in by the screens) say when a refusal
+   actually means "already saved" (an answer lost on the way) and how a newer waiting edit follows the
+   version a save returned. A change refused for good stays here with its error until the person sends
+   it again or discards it: nothing is dropped without them knowing. */
+const OUTBOX_KINDS = {};
+function queueChange(kind, key, path, method, body, meta = {}){
+  const account = (typeof state === 'undefined' ? null : state?.account) || apiSession()?.account || null;
+  if(!account) return null;
+  const id = `${kind}-${account}-${key}`, prior = lget(OUTBOX_PREFIX+id);
+  const job = {id, account, kind, key, path, method, body, meta, createdAt:prior?.createdAt || Date.now(), rev:outboxJobId()};
+  return lset(OUTBOX_PREFIX+id, job) ? job : null;
+}
+/* This account's kept changes (orders have no kind and are left out). */
+function queuedChanges(kind = null, account = (typeof state === 'undefined' ? null : state?.account)){
+  return outbox().filter(j=>j.kind && outboxJobAccount(j) === account && (!kind || (Array.isArray(kind) ? kind.includes(j.kind) : j.kind === kind)));
+}
+function queuedChange(kind, key){ return queuedChanges(kind).find(j=>j.key === key) || null; }
+function discardChange(id){ lset(OUTBOX_PREFIX+id, null); }
+/* "Send again": a change refused for good is tried once more (with what a kind's rule changed). */
+function retryChange(id, patch = null){
+  const job = lget(OUTBOX_PREFIX+id);
+  if(!job) return false;
+  const next = {...job, ...(patch || {}), lastError:undefined, rev:outboxJobId()};
+  delete next.lastError;
+  return lset(OUTBOX_PREFIX+id, next);
+}
+/* A job that went through: removed, unless a newer edit of the same thing replaced it meanwhile; that one
+   then follows what the server returned (its new version). */
+function outboxDone(job, data){
+  const stored = lget(OUTBOX_PREFIX+job.id);
+  if(!stored || !job.rev || stored.rev === job.rev){ removeOutboxJob(job.id); return; }
+  const rebase = OUTBOX_KINDS[job.kind]?.rebase;
+  if(rebase) lset(OUTBOX_PREFIX+job.id, {...stored, body:rebase(stored.body, data)});
+}
 let outboxBusy = false;
 async function flushOutbox(){
   const session=apiSession();
   if(outboxBusy || !session) return;
   outboxBusy=true;
+  const done=[], failed=[];
   const flush=async()=>{
     for(const job of outbox()){
       if(!apiSessionMatches(session)) break;
       if(outboxJobAccount(job) && outboxJobAccount(job)!==session.account) continue;
+      // A kept change refused for good waits for the person (Send again or Discard); orders keep trying.
+      if(job.kind && job.lastError) continue;
       const r=await sendOutboxJob(job);
-      if(r.ok) removeOutboxJob(job.id);
+      if(r.ok){ outboxDone(job, r.data); if(job.kind) done.push({job, data:r.data}); }
       else if(retryableApiReply(r)) break;
-      else lset(OUTBOX_PREFIX+job.id,{...job,lastError:r.data?.error || String(r.status)});
+      else{
+        // A refusal can mean the change is already there (its first answer was lost on the way).
+        let saved = null;
+        try{ saved = job.kind && OUTBOX_KINDS[job.kind]?.resolve ? await OUTBOX_KINDS[job.kind].resolve(job, r) : null; }catch(_){ saved = null; }
+        if(!apiSessionMatches(session)) break;
+        if(saved){ outboxDone(job, saved); done.push({job, data:saved}); continue; }
+        if(!lget(OUTBOX_PREFIX+job.id)) continue;   // discarded while it was on its way
+        const kept={...lget(OUTBOX_PREFIX+job.id),lastError:r.data?.error || String(r.status)};
+        lset(OUTBOX_PREFIX+job.id,kept);
+        if(job.kind) failed.push({job:kept, reply:r});
+      }
     }
   };
   try{
     if(navigator.locks?.request) await navigator.locks.request('ricotta-outbox',flush);
     else await flush();
   }finally{ outboxBusy=false; }
+  if(done.length || failed.length){ try{ globalThis.onOutboxSettled?.(done, failed); }catch(_){ /* a screen's repaint never stops the queue */ } }
+}
+
+/* ============ Copies kept for offline ============
+   The last answer of each screen's reads (the start-up data, recipes, stock, Rico's chats, Admin...), so
+   every tab opens with no connection. Kept in IndexedDB (no 5 MB limit; History and the catalog can be
+   large), one record per account and read, and only ever read back for that same account. Signing out
+   removes that account's copies. Without IndexedDB (some private windows), small copies go to
+   localStorage instead and big ones are not kept. */
+const OFFLINE_DB = 'ricotta-offline', OFFLINE_STORE = 'copies', OFFLINE_LS = 'offlineCopy:', OFFLINE_LS_MAX = 400000;
+let offlineDbOpen = null;
+function offlineDb(){
+  return offlineDbOpen ||= new Promise(resolve=>{
+    try{
+      if(typeof indexedDB === 'undefined' || !indexedDB){ resolve(null); return; }
+      const req = indexedDB.open(OFFLINE_DB, 1);
+      req.onupgradeneeded = ()=>{ try{ req.result.createObjectStore(OFFLINE_STORE); }catch(_){} };
+      req.onsuccess = ()=>{ const db = req.result; db.onversionchange = ()=>{ db.close(); offlineDbOpen = null; }; resolve(db); };
+      req.onerror = req.onblocked = ()=>resolve(null);
+    }catch(_){ resolve(null); }
+  });
+}
+function offlineStore(mode, run){
+  return offlineDb().then(db=>db ? new Promise(resolve=>{
+    try{
+      const tx = db.transaction(OFFLINE_STORE, mode), req = run(tx.objectStore(OFFLINE_STORE));
+      tx.oncomplete = ()=>resolve({ok:true, value:req?.result});
+      tx.onerror = tx.onabort = ()=>resolve(null);
+    }catch(_){ resolve(null); }
+  }) : null);
+}
+const offlineKey = (account, name)=>account + '|' + name;
+async function offlineKeep(account, name, data){
+  if(!account) return false;
+  const rec = {account, name, at:Date.now(), data};
+  const done = await offlineStore('readwrite', st=>st.put(rec, offlineKey(account, name)));
+  if(done) return true;
+  try{ const text = JSON.stringify(rec); if(text.length <= OFFLINE_LS_MAX) return lset(OFFLINE_LS+offlineKey(account, name), rec); }catch(_){}
+  return false;
+}
+/* {at, data} or null: never another account's copy, never one older than maxAge. */
+async function offlineCopy(account, name, maxAge = 14 * 86400000){
+  if(!account) return null;
+  const got = await offlineStore('readonly', st=>st.get(offlineKey(account, name)));
+  const rec = got?.value || lget(OFFLINE_LS+offlineKey(account, name));
+  if(!rec || rec.account !== account || rec.name !== name || !(Date.now() - Number(rec.at) < maxAge)) return null;
+  return {at:Number(rec.at), data:rec.data};
+}
+/* Signing out: every copy of that account goes (its orders and kept changes stay in the outbox). */
+async function offlineForget(account){
+  if(!account) return;
+  await offlineStore('readwrite', st=>st.delete(IDBKeyRange.bound(account + '|', account + '|\uffff')));
+  try{
+    const keys = [];
+    for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k?.startsWith(LS_PREFIX+OFFLINE_LS+account+'|')) keys.push(k); }
+    keys.forEach(k=>localStorage.removeItem(k));
+  }catch(_){}
+}
+/* A read that falls back on the kept copy when the server can't be reached (no connection, or no
+   answer in time). The answer says so: {ok:true, data, cachedAt}. A refusal (401, 403...) is never
+   covered up with a copy. */
+async function apiCached(path, opts = {}, name = path){
+  const account = typeof state === 'undefined' ? null : state?.account;
+  const r = await api(path, opts);
+  if(r.ok){ if(account && r.data !== null && r.data !== undefined && account === apiSession()?.account) offlineKeep(account, name, r.data); return r; }
+  if(r.status !== 0 || r.stale || !account) return r;
+  const c = await offlineCopy(account, name);
+  if(!c || (typeof state !== 'undefined' && state?.account !== account)) return r;
+  return {ok:true, status:200, data:c.data, cachedAt:c.at};
 }
