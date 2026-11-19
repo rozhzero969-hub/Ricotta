@@ -117,8 +117,9 @@ html.rtl .page-eyebrow,html.rtl .section-title{letter-spacing:0}
 /* Pages sliding side by side (see cardLook). Long lists skip drawing rows that are off screen
    (content-visibility below); a page that is moving must draw all of them, or it slides in blank. */
 .content.carding{will-change:transform}
-.content.carding :is(.list-row,.hist-card),.page-ghost :is(.list-row,.hist-card){content-visibility:visible}
+.content.carding :is(.list-row,.hist-card):not(.cv-far),.page-ghost :is(.list-row,.hist-card){content-visibility:visible}
 .page-ghost>.content{background:var(--bg)}
+.page-ghost .ghost-far{content-visibility:hidden!important;box-sizing:border-box;min-height:0}
 .content.gliding *,.page-ghost *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 body.page-swiping *{transition:none!important}
 

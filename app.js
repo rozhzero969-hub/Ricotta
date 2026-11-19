@@ -1030,7 +1030,11 @@ setInterval(()=>{ if(state.account && isVisible()) updateRicoBadge(); }, 60000);
    page can be swiped between the tabs, and the bar shrinks to its icons while you scroll down. */
 const VIEW_LABEL_KEYS = {recipes:'recipesTitle', recipeItems:'recipe_tabItems', minibar:'mb_tab',receipts:'rrTitle', transfers:'tfTitle', stock:'stockTitle', manage:'manage',order:'order', assistant:'ricoName', history:'history', suppliers:'suppliers', itemsAdmin:'items', units:'units', record:'record', admin:'adminTitle', settings:'settings', queue:'sendQueueTitle'};
 function viewLabel(id){ return t(VIEW_LABEL_KEYS[id] || 'order'); }
-function isPhoneLayout(){ return window.innerWidth < 960; }
+/* Read on every render and tap: window.innerWidth makes the browser finish laying out the page first
+   (the new page, before it is drawn), so the width is kept and read again only when it changes. */
+let viewportWidth = window.innerWidth;
+addEventListener('resize', ()=>{ viewportWidth = window.innerWidth; }, {passive:true});
+function isPhoneLayout(){ return viewportWidth < 960; }
 /* What scrolls: the screen's content inside the app frame (Home Screen app
    on a phone, see boot.js), otherwise the page itself. */
 function inAppFrame(){ return document.documentElement.classList.contains('app-shell') && isPhoneLayout(); }
@@ -1318,7 +1322,18 @@ function endGlide(){
   glide.anims.forEach(a=>a.cancel());
   glide.ghost?.remove();
   glide.content.classList.remove('gliding', 'carding');
+  glide.content.querySelectorAll('.cv-far').forEach(el=>el.classList.remove('cv-far'));
   glide = null;
+}
+/* A page sliding in draws every row of its lists (they normally skip rows off the screen, which would
+   slide in blank), except rows well above or below the screen: they never come into view while it
+   slides sideways, and laying out two months of History at once held up the tap. */
+function markFarRows(content){
+  const rows = content.querySelectorAll('.list-row,.hist-card');
+  if(rows.length < 30) return;
+  const top = -window.innerHeight * .5, bottom = window.innerHeight * 1.5, far = [];
+  for(const el of rows){ const b = el.getBoundingClientRect(); if(b.bottom < top || b.top > bottom) far.push(el); }
+  far.forEach(el=>el.classList.add('cv-far'));
 }
 const FADE_FRAMES = {inn:[{opacity:0, transform:'translate3d(0,6px,0)'},{opacity:1, transform:'none'}], out:[{opacity:1},{opacity:0}]};
 /* The first time a page opens, its rows fade up one after another, quickly; never again after, so it
@@ -1356,8 +1371,20 @@ function cardFrames(dir, w, p0 = 0, v0 = 0){
 }
 const paintCard = (el, look)=>{ for(const k in look) el.style[k] = look[k]; };
 /* The page that is leaving, laid exactly where it was. Its parts are moved
-   (not copied) into a fixed layer, so even the 179-item Order page costs
-   nothing to set up; the fresh page is then drawn into the emptied .content. */
+   (not copied) into a fixed layer; the fresh page is then drawn into the emptied .content.
+   Moving them makes the browser lay the whole page out again in the layer, which on a long page
+   (two months of History, a few hundred items on Order) took longer than the slide itself: rows
+   more than half a screen above or below the screen keep their size and skip their insides
+   (.ghost-far), since they never come into view while the page slides sideways. */
+function ghostSkipFar(content){
+  const top = -window.innerHeight * .5, bottom = window.innerHeight * 1.5;
+  const rows = content.querySelectorAll('.item-row,.list-row,.hist-card,.rc-li,.st-row,.mb-row');
+  if(rows.length < 30) return;
+  // All the measuring first (the page is laid out already), then the changes.
+  const far = [];
+  for(const el of rows){ const b = el.getBoundingClientRect(); if(b.bottom < top || b.top > bottom) far.push([el, b.height]); }
+  for(const [el, h] of far){ el.classList.add('ghost-far'); el.style.height = h + 'px'; }
+}
 function pageGhost(content){
   // Measured where it sits at rest: after a swipe the page is still slid sideways under the finger, and
   // measuring it there would move the copy twice, off the screen.
@@ -1366,6 +1393,7 @@ function pageGhost(content){
   const r = content.getBoundingClientRect();
   content.style.transform = slid;
   const scrolled = inAppFrame() ? content.scrollTop : 0;
+  ghostSkipFar(content);
   const layer = document.createElement('div');
   layer.className = 'page-ghost'; layer.setAttribute('aria-hidden','true');
   Object.assign(layer.style, {left:r.left+'px', width:r.width+'px'});
@@ -1425,7 +1453,7 @@ function goView(view, {fromOffset=0, speed=0, peek=null, keepLens=false} = {}){
   const opts = slide ? {duration:Math.max(16, frames.ms), easing:'linear'} : {duration:160, easing:PAGE_EASE};
   paintCard(content, {transform:''});
   content.classList.add('gliding');
-  if(slide) content.classList.add('carding');
+  if(slide){ markFarRows(content); content.classList.add('carding'); }
   const anims = [content.animate(frames.inn, opts)];
   if(ghost) anims.push(ghost.copy.animate(frames.out, opts));
   glide = {anims, ghost:ghost?.layer, content};

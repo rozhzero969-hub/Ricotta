@@ -50,6 +50,17 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await tab('all');assert.ok(Math.abs(await top()-allTop)<2,'All comes back to where it was');
  await tab('b');assert.ok(Math.abs(await top()-bakeryTop)<2,'Bakery comes back to where it was');
  await view('history');await view('order');assert.ok(Math.abs(await top()-bakeryTop)<2,'the Order screen keeps its place across screens');
+ // A long page that slides away keeps only what is near the screen laid out (the rest keeps its size), so
+ // leaving it does not hold up the tap; what is on screen is drawn in full.
+ await tab('all');await page.evaluate(()=>{scrollBox().scrollTop=0;});
+ const ghost=await page.evaluate(()=>{const rows=document.querySelectorAll('.content .item-row').length;goView('history');const g=document.querySelector('.page-ghost');
+  const far=[...g.querySelectorAll('.ghost-far')],near=[...g.querySelectorAll('.item-row:not(.ghost-far)')];
+  return {rows,far:far.length,farHidden:far.every(el=>getComputedStyle(el).contentVisibility==='hidden'&&parseFloat(el.style.height)>0),
+   nearOnScreen:near.some(el=>{const b=el.getBoundingClientRect();return b.top<innerHeight&&b.bottom>0;}),firstNear:!!g.querySelector('.item-row')&&!g.querySelector('.item-row').classList.contains('ghost-far')};});
+ assert.ok(ghost.rows>=30&&ghost.far>0&&ghost.farHidden,'rows far off screen skip their insides: '+JSON.stringify(ghost));
+ assert.ok(ghost.nearOnScreen&&ghost.firstNear,'rows on screen are drawn: '+JSON.stringify(ghost));
+ await page.waitForFunction(()=>!document.querySelector('.page-ghost'));
+ await view('order');await tab('b');
  await view('manage');await page.locator('#catalogSearch').fill('Bread 3');await view('history');await view('manage');
  assert.equal(await page.locator('#catalogSearch').inputValue(),'Bread 3','a screen keeps its search');
  await page.locator('#catalogSearch').fill('');await page.locator('#catalogSearch').dispatchEvent('input');
