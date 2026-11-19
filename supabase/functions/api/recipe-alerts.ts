@@ -25,7 +25,7 @@ const names = (list: string[], lang: Lang) => list.slice(0, 3).map(iso).join(lan
 
 /* What each alert says now, for every key (pure, so it can be tested). */
 export function alertInputs(book: any, now = Date.now()) {
-  const live = book.recipes.filter((r: any) => !r.archived);
+  const live = book.recipes;
   const usedIngredients = new Set(live.flatMap((r: any) => (r.data?.lines ?? []).map((l: any) => l?.ingredient)));
   const items: { k: string; v: string }[] = [];
   const stockUsed = new Set<string>();
@@ -47,7 +47,7 @@ export function alertInputs(book: any, now = Date.now()) {
 
 /* The changes that deserve an alert, as plain events (pure). */
 export function alertEvents(changes: { alert_key: string; was: string | null; is_now: string }[], book: any) {
-  const live = book.recipes.filter((r: any) => !r.archived);
+  const live = book.recipes;
   const byIng = new Map(book.ingredients.map((i: any) => [i.id, i]));
   const recipesUsing = (stock: string) => live.filter((r: any) => (r.data?.lines ?? []).some((l: any) => (byIng.get(l?.ingredient) as any)?.stock_item === stock));
   const events: any[] = [];
@@ -132,7 +132,7 @@ export const RECIPE_ALERT_ACCOUNTS = ["ahmad"];
 export async function checkRecipeAlerts(db: any): Promise<number> {
   try {
     const book = await loadBook(db);
-    if (!book.recipes.some((r: any) => !r.archived)) return 0;
+    if (!book.recipes.length) return 0;
     const items = alertInputs(book);
     if (!items.length) return 0;
     const { count, error: countError } = await db.from("app_recipe_alert_state").select("key", { count: "exact", head: true });

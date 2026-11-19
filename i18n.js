@@ -2144,7 +2144,7 @@ Object.assign(T.en, {
   inboxTitle:'Rico\'s messages', inboxNone:'No messages.', inboxSeeAll:n=>'See all '+n,
 
   tourBtn:'Show the tour', tourNext:'Next', tourDone:'Start', tour1T:'Make an order', tour1:'Choose amounts on the Order screen. Swipe an item to add its usual amount.', tour2T:'Send it', tour2:'Send opens WhatsApp with each supplier\'s order, ready to go.', tour3T:'Meet Rico', tour3:'Tap the spark at the top. He prepares orders, checks them and answers questions.', tour4T:'You\'re ready', tour4:'Everything you send is saved in History.',
-  adminPage_restore:'Restore', restoreBtn:'Restore', restoreNone:'The first copy is made tonight.', restoreCounts:(o,i,s)=>o+' orders, '+i+' items, '+s+' suppliers', restoreConfirm:'This brings back anything deleted since this day. Enter your PIN to continue.', restorePin:'Your PIN', restoreDone:(o,i,s)=>'Brought back '+o+' orders, '+i+' items and '+s+' suppliers',
+  adminPage_restore:'Restore', restoreBtn:'Restore', restoreNone:'The first copy is made tonight.', restoreCounts:(o,i,s,r)=>o+' orders, '+i+' items, '+s+' suppliers, '+(r||0)+' recipes', restoreConfirm:'This brings back anything deleted since this day. Enter your PIN to continue.', restorePin:'Your PIN', restoreDone:(o,i,s,r)=>'Brought back '+o+' orders, '+i+' items, '+s+' suppliers and '+(r||0)+' recipes',
 });
 Object.assign(T.ku, {
   dayOrderBtn:d=>'ئاسایی '+d, dayOrderLoaded:n=>n+' کاڵای ئاسایی زیاد کرا',
@@ -2175,7 +2175,7 @@ Object.assign(T.ku, {
   inboxTitle:'نامەکانی ریکۆ', inboxNone:'هیچ نامەیەک نییە.', inboxSeeAll:n=>'هەر '+n+' نامە ببینە',
 
   tourBtn:'گەشتەکە پیشان بدە', tourNext:'دواتر', tourDone:'دەستپێک', tour1T:'داواکارییەک دروست بکە', tour1:'بڕەکان لە شاشەی داواکاری هەڵبژێرە. کاڵایەک ڕابکێشە بۆ زیادکردنی بڕی ئاسایی.', tour2T:'بینێرە', tour2:'ناردن واتسئاپ دەکاتەوە بە داواکاری هەر دابینکەرێک، ئامادە.', tour3T:'ریکۆ بناسە', tour3:'لەسەرەوە دەست لە ئەستێرەکە بدە. داواکاری ئامادە دەکات، دەیپشکنێت و وەڵام دەداتەوە.', tour4T:'ئامادەیت', tour4:'هەرچی دەینێریت لە مێژوودا پاشەکەوت دەکرێت.',
-  adminPage_restore:'گەڕاندنەوە', restoreBtn:'گەڕاندنەوە', restoreNone:'یەکەم کۆپی ئەمشەو دروست دەکرێت.', restoreCounts:(o,i,s)=>o+' داواکاری، '+i+' کاڵا، '+s+' دابینکەر', restoreConfirm:"ئەمە هەرچی لەم ڕۆژەوە سڕاوەتەوە دەیهێنێتەوە. کۆدی نهێنییەکەت بنووسە بۆ بەردەوامبوون.", restorePin:"کۆدی نهێنییەکەت", restoreDone:(o,i,s)=>o+' داواکاری، '+i+' کاڵا و '+s+' دابینکەر گەڕێندرانەوە',
+  adminPage_restore:'گەڕاندنەوە', restoreBtn:'گەڕاندنەوە', restoreNone:'یەکەم کۆپی ئەمشەو دروست دەکرێت.', restoreCounts:(o,i,s,r)=>o+' داواکاری، '+i+' کاڵا، '+s+' دابینکەر، '+(r||0)+' ڕێسیپی', restoreConfirm:"ئەمە هەرچی لەم ڕۆژەوە سڕاوەتەوە دەیهێنێتەوە. کۆدی نهێنییەکەت بنووسە بۆ بەردەوامبوون.", restorePin:"کۆدی نهێنییەکەت", restoreDone:(o,i,s,r)=>o+' داواکاری، '+i+' کاڵا، '+s+' دابینکەر و '+(r||0)+' ڕێسیپی گەڕێندرانەوە',
 });
 Object.assign(T.ar, {
   dayOrderBtn:d=>'المعتاد ليوم '+d, dayOrderLoaded:n=>'أُضيفت '+AR_N(n,'مادة معتادة واحدة','مادتان معتادتان','مواد معتادة','مادة معتادة'),
@@ -2206,7 +2206,7 @@ Object.assign(T.ar, {
   inboxTitle:'رسائل ريكو', inboxNone:'لا توجد رسائل.', inboxSeeAll:n=>'عرض الكل ('+n+')',
 
   tourBtn:'اعرض الجولة', tourNext:'التالي', tourDone:'ابدأ', tour1T:'أنشئ طلبًا', tour1:'اختر الكميات في شاشة الطلب. اسحب صنفًا لإضافة كميته المعتادة.', tour2T:'أرسله', tour2:'يفتح الإرسال واتساب بطلب كل مورد جاهزًا.', tour3T:'تعرّف على ريكو', tour3:'اضغط النجمة في الأعلى. يجهّز الطلبات ويفحصها ويجيب عن الأسئلة.', tour4T:'أنت جاهز', tour4:'كل ما ترسله يُحفظ في السجل.',
-  adminPage_restore:'الاستعادة', restoreBtn:'استعادة', restoreNone:'تُنشأ أول نسخة الليلة.', restoreCounts:(o,i,s)=>AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+'، '+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+'، '+AR_N(s,'مورّد واحد','مورّدان','مورّدين','مورّدًا'), restoreConfirm:'سيعيد هذا كل ما حُذف منذ هذا اليوم. أدخل رمزك للمتابعة.', restorePin:'رمزك', restoreDone:(o,i,s)=>'أُعيد: '+AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+'، '+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+'، '+AR_N(s,'مورّد واحد','مورّدان','مورّدين','مورّدًا'),
+  adminPage_restore:'الاستعادة', restoreBtn:'استعادة', restoreNone:'تُنشأ أول نسخة الليلة.', restoreCounts:(o,i,s,r)=>AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+'، '+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+'، '+AR_N(s,'مورّد واحد','مورّدان','مورّدين','مورّدًا')+'، '+AR_N(r||0,'وصفة واحدة','وصفتان','وصفات','وصفة'), restoreConfirm:'سيعيد هذا كل ما حُذف منذ هذا اليوم. أدخل رمزك للمتابعة.', restorePin:'رمزك', restoreDone:(o,i,s,r)=>'أُعيد: '+AR_N(o,'طلب واحد','طلبان','طلبات','طلبًا')+'، '+AR_N(i,'مادة واحدة','مادتان','مواد','مادة')+'، '+AR_N(s,'مورّد واحد','مورّدان','مورّدين','مورّدًا')+'، '+AR_N(r||0,'وصفة واحدة','وصفتان','وصفات','وصفة'),
 });
 
 /* The clean-up: settings in sections, one notification switch, AI switches, pinned suppliers. */

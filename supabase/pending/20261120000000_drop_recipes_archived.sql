@@ -1,0 +1,11 @@
+-- Stage 3 of retiring app_recipes.archived. NOT applied yet: kept out of supabase/migrations on purpose
+-- (see README.md here).
+--
+-- No recipe was ever archived (2026-11-19: every row false), the app stopped sending it in 2026-11-16.5,
+-- and the API stopped reading and writing it on 2026-11-19 (stage 1, api recipes.ts and recipe-alerts.ts
+-- read RECIPE_COLUMNS only). Before moving this file into supabase/migrations:
+--   * the api with stage 1 must be deployed;
+--   * stage 2: no signed-in phone in app_devices may run an app older than 2026-11-16.5.
+-- The daily copy (20261119120000_backup_recipes.sql) lists the recipe columns by name, so it needs no
+-- change; copies made before this still have "archived" in their rows, and restore simply ignores it.
+alter table public.app_recipes drop column if exists archived;
