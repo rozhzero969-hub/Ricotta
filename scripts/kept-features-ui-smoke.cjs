@@ -126,6 +126,43 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  assert.equal(calls.filter(c=>c.endpoint==='rico-chats/c1'&&c.method==='DELETE').length,1,'then it is deleted for good');
  await page.evaluate(()=>ricoLoadChats());await page.waitForFunction(()=>rico.chats?.length===1);
  assert.deepEqual(await page.evaluate(()=>rico.chats.map(c=>c.id)),['c2']);
+ // A short switch to another app keeps the Undo: nothing is sent while away, and coming back in time shows
+ // Undo again, which still works. Letting the time run out deletes it on the server exactly once.
+ const seen=async state=>page.evaluate(v=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>v});Object.defineProperty(document,'hidden',{configurable:true,get:()=>v==='hidden'});document.dispatchEvent(new Event('visibilitychange'));},state);
+ const dels=id=>calls.filter(c=>c.endpoint==='rico-chats/'+id&&c.method==='DELETE').length;
+ fixture.chats=[{id:'c3',title:'Milk',account:'rozha',updatedAt:now},{id:'c2',title:'Cheese stock',account:'rozha',updatedAt:before}];
+ await page.evaluate(()=>ricoLoadChats());await page.waitForFunction(()=>rico.chats?.length===2);
+ await deleteFromDrawer('c3');await page.waitForSelector('#ricoDrawer',{state:'detached'});
+ await seen('hidden');await page.waitForTimeout(1200);
+ assert.equal(dels('c3'),0,'going to the background does not delete it');
+ await seen('visible');await page.locator('#toast.show .toast-undo').waitFor();
+ await page.locator('#toast.show .toast-undo').click();
+ assert.deepEqual(await page.evaluate(()=>rico.chats.map(c=>c.id)),['c3','c2'],'Undo still works after coming back in time');
+ await page.waitForTimeout(5300);assert.equal(dels('c3'),0,'and nothing is deleted');
+ await deleteFromDrawer('c3');await page.waitForSelector('#ricoDrawer',{state:'detached'});
+ await seen('hidden');
+ // The phone holds timers back in the background: the time is counted by the clock, and coming back after it sends the delete.
+ await page.evaluate(()=>{clearTimeout(ricoPendingDelete.timer);ricoPendingDelete.until=Date.now()-1;});
+ await seen('visible');await page.waitForFunction(()=>!ricoPendingDelete);await page.waitForTimeout(300);
+ assert.equal(dels('c3'),1,'after its time the chat is deleted once');
+ await seen('hidden');await seen('visible');await page.waitForTimeout(5300);
+ assert.equal(dels('c3'),1,'and only once');
+ // A pending delete never goes out with another session: a new sign-in (same account) drops it.
+ fixture.chats=[{id:'c4',title:'Eggs',account:'rozha',updatedAt:now},{id:'c2',title:'Cheese stock',account:'rozha',updatedAt:before}];
+ await page.evaluate(()=>ricoLoadChats());await page.waitForFunction(()=>rico.chats?.length===2);
+ await deleteFromDrawer('c4');await page.waitForSelector('#ricoDrawer',{state:'detached'});
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('ricottaOrders:ricoDeleteLeft')||'null')?.id),'c4','remembered in case the app is closed');
+ await page.evaluate(()=>localStorage.setItem('ricottaOrders:apiSession',JSON.stringify({token:'kept-fixture-2',account:'rozha',name:'Rozha',expiresAt:'2099-01-01T00:00:00Z'})));
+ await page.evaluate(()=>ricoFlushDelete());
+ assert.equal(dels('c4'),0,'never deleted with a different session');
+ await page.evaluate(()=>localStorage.setItem('ricottaOrders:apiSession',JSON.stringify({token:'kept-fixture',account:'rozha',name:'Rozha',expiresAt:'2099-01-01T00:00:00Z'})));
+ // An app closed during the Undo time: the delete is sent at the next start, with that same session.
+ await page.evaluate(()=>localStorage.setItem('ricottaOrders:ricoDeleteLeft',JSON.stringify({id:'c4',account:'rozha',token:'kept-fixture'})));
+ await page.evaluate(()=>ricoLoadChats());await page.waitForFunction(()=>rico.chats?.length===1);
+ assert.equal(dels('c4'),1,'the left-over delete goes once at the next start');
+ await page.evaluate(()=>localStorage.setItem('ricottaOrders:ricoDeleteLeft',JSON.stringify({id:'c2',account:'rozha',token:'another-session'})));
+ await page.evaluate(()=>ricoLoadChats());
+ assert.equal(dels('c2'),0,'a left-over from another session is dropped');
  // Rico's newer cards: two periods compared (with Excel and PDF) and a supplier's Call and WhatsApp.
  await page.evaluate(()=>{rico.messages=[{role:'assistant',text:'Compared.',ts:Date.now(),proposals:[
   {id:'cmp1',kind:'compare',preset:'this_month_vs_last_month',a:{from:'2026-11-01',to:'2026-11-18'},b:{from:'2026-10-01',to:'2026-10-18'},main:'orders',by:'item',totals:[{key:'orders',a:3,b:2,pct:50}],rows:[{name:'Tomatoes',a:5,b:2,pct:150,unit:'kg'},{name:'Basil',a:2,b:0,pct:null,unit:'bunch'}],more:0},

@@ -68,6 +68,7 @@ async function aiConsent(){
 /* Signing out forgets the chat and the inbox on this phone. */
 function ricoReset(){
   rico.epoch++; rico.chatRequest++;
+  ricoDropDelete();
   ricoStop(); clearTimeout(ricoSaveTimer);
   rico.messages = []; rico.streaming = false; rico.inbox = []; rico.chatId = null; rico.chats = null; rico.chatsBusy = false; rico.chatsFailed = false; rico.viewing = null; rico.viewedId = null;
   rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; rico.titleLoaded = false; rico.sideSearch = false; rico.sideQuery = '';
@@ -482,11 +483,15 @@ function ricoRenameChat(id){
 }
 /* Deletes one chat at once, from the menu (the phone's side menu or Chats sheet, or the computer's
    sidebar), with no question first: it leaves the list straight away and a short message offers Undo.
-   The server is told when that message has gone (or at once when the app goes to the background), so
-   Undo truly brings the chat back as it was, with its name, pin and messages. Delete all (Rico settings)
-   still asks once: it removes every chat. */
+   The server is told when that time is over (counted by the clock, so a short switch to another app
+   keeps the Undo, and coming back shows it again), so Undo truly brings the chat back as it was, with
+   its name, pin and messages. A pending delete belongs to the session it was made in: signing out or in
+   again, or another account, never deletes it with a different session (it is simply not deleted). If
+   the app is closed meanwhile, it is remembered on this phone and deleted at the next start with that
+   same session. Delete all (Rico settings) still asks once: it removes every chat. */
 let ricoPendingDelete = null;
-const RICO_UNDO_MS = 4800;
+const RICO_UNDO_MS = 4800, RICO_LEFT_KEY = 'ricoDeleteLeft';
+const ricoSessionToken = ()=>(typeof apiSession === 'function' ? apiSession()?.token : null) || null;
 function ricoDeleteChat(id){
   if(!id) return ricoDeleteAllChats();
   ricoFlushDelete();   // an earlier one goes now
@@ -498,37 +503,75 @@ function ricoDeleteChat(id){
   rico.chats = list.filter(c=>c.id !== id);
   if(rico.chatId === id){ rico.chatId = null; rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = []; }
   if(rico.viewing && id === rico.viewedId){ rico.viewing = null; rico.viewedId = null; rico.messages = []; }
-  const pending = {id, chat, at, open, account:state.account};
-  pending.timer = setTimeout(()=>ricoFlushDelete(), RICO_UNDO_MS + 200);
+  const pending = {id, chat, at, open, account:state.account, token:ricoSessionToken(), until:Date.now() + RICO_UNDO_MS};
   ricoPendingDelete = pending;
+  ricoLeftSave(pending);
+  ricoDeleteTimer(pending);
   ricoAfterChatsChange();
-  toast(t('ricoChatDeleted'), 'ok', {undo:()=>ricoUndoDelete(pending), ms:RICO_UNDO_MS});
+  ricoUndoToast(pending);
   return true;
 }
+function ricoDeleteTimer(pending){
+  clearTimeout(pending.timer);
+  pending.timer = setTimeout(()=>{ if(ricoPendingDelete === pending) ricoFlushDelete(); }, Math.max(0, pending.until - Date.now()) + 200);
+}
+function ricoUndoToast(pending){
+  const left = pending.until - Date.now();
+  if(left > 300) toast(t('ricoChatDeleted'), 'ok', {undo:()=>ricoUndoDelete(pending), ms:left});
+}
+function ricoLeftSave(pending){ try{ lset(RICO_LEFT_KEY, pending ? {id:pending.id, account:pending.account, token:pending.token} : null); }catch{ /* storage full or blocked */ } }
 function ricoUndoDelete(pending){
   if(ricoPendingDelete !== pending) return;
-  clearTimeout(pending.timer); ricoPendingDelete = null;
+  clearTimeout(pending.timer); ricoPendingDelete = null; ricoLeftSave(null);
   if(pending.account !== state.account) return;
   if(pending.chat && rico.chats && !rico.chats.some(c=>c.id === pending.id)) rico.chats.splice(Math.min(Math.max(pending.at, 0), rico.chats.length), 0, pending.chat);
   // The open chat comes back only if nothing new was started meanwhile.
   if(pending.open && !rico.streaming && !rico.chatId && !rico.viewing && !rico.messages.length) Object.assign(rico, pending.open);
   ricoAfterChatsChange();
 }
-/* The server deletes it now: when the Undo time is over, before another delete, or when the app goes to
-   the background. If that fails, the chat comes back in the list. */
-async function ricoFlushDelete(){
+/* The pending delete is still this session's: the same account and the same sign-in. */
+const ricoDeleteOwned = p=>!!p && p.account === state.account && !!p.token && p.token === ricoSessionToken();
+/* Signing out (or another sign-in): a delete still waiting for its Undo time is dropped, never sent with
+   the next session. Sign Out itself sends it first (doLogout). */
+function ricoDropDelete(){
+  const p = ricoPendingDelete;
+  if(p){ clearTimeout(p.timer); ricoPendingDelete = null; }
+  ricoLeftSave(null);
+}
+/* The server deletes it now: when the Undo time is over, before another delete, or before Sign Out.
+   If that fails, the chat comes back in the list. keepalive: the page is closing. */
+async function ricoFlushDelete({keepalive = false} = {}){
   const pending = ricoPendingDelete;
   if(!pending) return;
-  clearTimeout(pending.timer); ricoPendingDelete = null;
-  if(pending.account !== state.account) return;   // signed out meanwhile: nothing is deleted for the next person
-  const r = await api('rico-chats/' + pending.id, {method:'DELETE'});
+  clearTimeout(pending.timer); ricoPendingDelete = null; ricoLeftSave(null);
+  if(!ricoDeleteOwned(pending)) return;   // signed out or in again meanwhile: nothing is deleted with another session
+  const r = await api('rico-chats/' + pending.id, {method:'DELETE', keepalive});
   if(r.ok || pending.account !== state.account) return;
   if(pending.chat && rico.chats && !rico.chats.some(c=>c.id === pending.id)) rico.chats.splice(Math.min(pending.at, rico.chats.length), 0, pending.chat);
   ricoAfterChatsChange();
   toast(t('saveFailed'), 'error');
 }
-document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'hidden') ricoFlushDelete(); });
-addEventListener('pagehide', ()=>ricoFlushDelete());
+/* Coming back to the app: a delete whose time ran out while away goes now; one still in its time shows
+   its Undo again for what is left. */
+document.addEventListener('visibilitychange', ()=>{
+  const p = ricoPendingDelete;
+  if(!p || document.visibilityState !== 'visible') return;
+  if(Date.now() >= p.until) ricoFlushDelete();
+  else { ricoDeleteTimer(p); ricoUndoToast(p); }
+});
+/* Closing the page for good (not kept in the back-forward cache): the delete is sent on its way. */
+addEventListener('pagehide', e=>{ if(!e.persisted) ricoFlushDelete({keepalive:true}); });
+/* A delete left over from an app that was closed during its Undo time: sent at the next start, only with
+   the same account and sign-in it was made with. */
+async function ricoFlushLeftDelete(){
+  let left = null;
+  try{ left = lget(RICO_LEFT_KEY); }catch{ return; }
+  if(!left?.id || ricoPendingDelete?.id === left.id) return;
+  ricoLeftSave(null);
+  if(!ricoDeleteOwned(left)) return;
+  const r = await api('rico-chats/' + left.id, {method:'DELETE'});
+  if(r.ok && rico.chats) rico.chats = rico.chats.filter(c=>c.id !== left.id);
+}
 function ricoAfterChatsChange(){
   ricoRepaintChats();
   if(state.view === 'assistant') render();
@@ -1496,6 +1539,7 @@ async function ricoLoadChats(){
   rico.chatsBusy = true; rico.chatsFailed = false;
   const account = state.account;
   try{
+    await ricoFlushLeftDelete();
     let r = await api('rico-chats');
     if(r.stale && state.account === account) r = await api('rico-chats');   // a save happened at the same moment
     if(r.ok && Array.isArray(r.data?.chats) && state.account === account) rico.chats = r.data.chats.filter(c=>c.id !== ricoPendingDelete?.id);
