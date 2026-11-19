@@ -117,11 +117,11 @@ function onOutboxSettled(done, failed){
    One list of what is grayed out while offline (and why); a tap on one says so instead of failing. */
 const OFFLINE_BLOCKED = [
   // Rico: asking, his photo, and acting on his cards.
-  ['#ricoSendBtn, #ricoAttachBtn, [data-rico-ask], [data-rico-apply], [data-rico-retry], [data-rico-undo], [data-rico-transfer], [data-rc-ask], [data-rc-ask-cat]', 'offlineRicoNet'],
+  ['#ricoSendBtn, #ricoAttachBtn, [data-rico-ask], [data-rico-apply], [data-rico-retry], [data-rico-undo], [data-rico-transfer], [data-routine-ask], [data-rc-ask], [data-rc-ask-cat]', 'offlineRicoNet'],
   // Receipts, Transfers and Stock: approving, cancelling, Rico's controls, photos, Check now, limits.
   ['#rrApprove, #tfApprove, #rrCancel, #tfCancel, #rrRetry, #tfRetry, #rrStop, #rrScan, [data-rr-check], [data-rico], #rrLimEdit, #rrLimStd, #rrTgConnect, #tfAutoSet, [data-rr-photos], [data-tf-photos]', 'offlineNeedsNet'],
   // Recipes: delete, photos, Check all last prices, a category's colour.
-  ['#rcDeleteRecipe, [data-rc-photo-add], #rcPrices, [data-rc-color]', 'offlineNeedsNet'],
+  ['#rcDeleteRecipe, [data-rc-photo-add], #rcPrices, [data-rc-color], #rcAlertsRead', 'offlineNeedsNet'],
   // Manage and History: adding to the catalog, linking many items, deleting an order.
   ['#supAddBtn, #itemAddBtn, #unitAddBtn, #itemLinkAllBtn, [data-delhist]', 'offlineNeedsNet'],
   // Admin: every action (its pages can still be read).
