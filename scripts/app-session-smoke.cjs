@@ -157,5 +157,50 @@ const json = value=>JSON.parse(JSON.stringify(value));
   assert.deepEqual(tapped('update',''),[],'an update message from before it was removed opens nothing');
   assert.deepEqual(tapped('security','admin','rozha'),['admin','admin:security'],'a new-device alert opens Admin, Security');
   assert.deepEqual(tapped('assistant','history',null),[],'nothing else opens while signed out');
-  console.log(JSON.stringify({result:'PASS',checks:'recoverable failed order save, stable retry, a failing chime or save never sticks, stale completion and commands, cross-tab reset preserving session and account draft, WhatsApp numbers, notification taps'}));
+  // Check prices (Recipes, Items): signing out while a check is on its way, then the same account signing in
+  // again, leaves no stuck spinner and no answer from the old session.
+  {
+    const recipeSource = fs.readFileSync(path.join(__dirname, '..', 'recipes.js'), 'utf8');
+    const pending = [], timers = new Map(), toasts = [];
+    let timerId = 0;
+    const c = {
+      state:{account:'ahmad', view:'recipeItems', settings:{}}, console, structuredClone, JSON, Object, Date, Math, Number, String, Set, WeakMap, Promise,
+      window:{addEventListener(){}}, document:{addEventListener(){}, getElementById:()=>null, querySelectorAll:()=>[], querySelector:()=>null},
+      t:key=>key, toast:(m, kind)=>toasts.push([m, kind]), render(){}, timeAgo:()=>'now',
+      setTimeout:(fn)=>{ const id = ++timerId; timers.set(id, fn); return id; }, clearTimeout:id=>timers.delete(id),
+      api:(apiPath, opts = {})=>new Promise(resolve=>pending.push({path:apiPath, method:opts.method || 'GET', resolve})),
+    };
+    c.globalThis = c;
+    vm.createContext(c);
+    vm.runInContext(recipeSource, c);
+    const check = vm.runInContext('recipePricesCheck()', c);
+    assert.equal(vm.runInContext('recipeBook.pricesBusy', c), true, 'the check is on its way');
+    const oldCheck = pending.shift();
+    // Sign out (signOut calls recipeReset), then the same account signs in again.
+    vm.runInContext("recipeReset(); state.account = null; state.account = 'ahmad';", c);
+    assert.equal(vm.runInContext('recipeBook.pricesBusy', c), false, 'signing out resets the busy state');
+    assert.equal(vm.runInContext('recipeBook.prices', c), null, 'and the prices');
+    assert.equal(timers.size, 0, 'and the poll timer');
+    oldCheck.resolve({ok:true, data:{prices:{state:'asked', askedAt:'old'}}});
+    await check;
+    assert.equal(vm.runInContext('recipeBook.prices', c), null, 'the old session\'s answer is ignored even for the same account');
+    assert.equal(vm.runInContext('recipeBook.pricesBusy', c), false);
+    assert.equal(timers.size, 0, 'and it starts no polling');
+    assert.deepEqual(toasts, [], 'and says nothing');
+    // The new session can check again, and its answer is used.
+    const again = vm.runInContext('recipePricesCheck()', c);
+    assert.equal(pending.length, 1, 'Check prices works again at once');
+    pending.shift().resolve({ok:true, data:{prices:{at:'now', state:null}}});
+    await again;
+    assert.equal(vm.runInContext('recipeBook.prices.at', c), 'now');
+    assert.equal(vm.runInContext('recipeBook.pricesBusy', c), false);
+    // A poll that was waiting when the session ended does nothing afterwards.
+    pending.length = 0;   // the fresh prices also load the recipes again
+    vm.runInContext("recipeBook.prices = {state:'reading'}; recipePricesFollow();", c);
+    const [pollFn] = [...timers.values()];
+    vm.runInContext('recipeReset()', c);
+    await pollFn();
+    assert.equal(pending.length, 0, 'an old poll asks nothing');
+  }
+  console.log(JSON.stringify({result:'PASS',checks:'check prices across sign-out and sign-in, recoverable failed order save, stable retry, a failing chime or save never sticks, stale completion and commands, cross-tab reset preserving session and account draft, WhatsApp numbers, notification taps'}));
 })().catch(error=>{console.error(error);process.exitCode=1;});

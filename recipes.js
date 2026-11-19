@@ -13,23 +13,28 @@
    Saves carry a version, so one phone can't overwrite another one's edits. Nothing here changes stock. */
 const recipeBook = {account:null, data:null, raw:null, loadedAt:0, ctx:null, stockBy:null, loading:false, error:false, page:'list', id:null,
   editing:null, dirty:false, saving:false, saveJob:null, prices:null, pricesBusy:false, pricesPoll:null, timer:null, query:'', ingQuery:'',
-  group:'', photos:null, fresh:new Set()};
+  group:'', photos:null, fresh:new Set(), gen:0};
 const rt = k=>t('recipe_' + k);
 const RC = ()=>globalThis.RicottaRecipeCost;
 
+/* A new session (sign out, another account, or the same one signing in again) starts clean: gen goes up,
+   so any answer still on its way from the session before is ignored (recipeStale). */
 function recipeReset(){
   clearTimeout(recipeBook.timer);
   clearTimeout(recipeBook.pricesPoll);
   Object.assign(recipeBook, {account:state.account, data:null, raw:null, loadedAt:0, ctx:null, stockBy:null, loading:false, error:false, page:'list', id:null,
-    editing:null, dirty:false, saving:false, saveJob:null, query:'', ingQuery:'', group:'', photos:null, fresh:new Set()});
+    editing:null, dirty:false, saving:false, saveJob:null, prices:null, pricesBusy:false, pricesPoll:null, timer:null, query:'', ingQuery:'', group:'', photos:null,
+    fresh:new Set(), gen:recipeBook.gen + 1});
 }
+const recipeSession = ()=>({gen:recipeBook.gen, account:state.account});
+const recipeStale = s=>s.gen !== recipeBook.gen || s.account !== state.account;
 const recipeOnScreen = ()=>state.view === 'recipes' || state.view === 'recipeItems';
 async function recipeLoad(){
   if(recipeBook.account !== state.account) recipeReset();
   if(recipeBook.loading) return;
   recipeBook.loading = true;
-  const account = state.account, r = await api('recipes');
-  if(account !== state.account) return;
+  const session = recipeSession(), r = await api('recipes');
+  if(recipeStale(session)) return;
   recipeBook.loading = false;
   recipeBook.error = !r.ok && !recipeBook.data;
   recipeBook.loadedAt = Date.now();
@@ -161,14 +166,30 @@ function recipePic(r, cls){
 }
 /* Out or low in Main Storage, as the app's small status label (the same as on Receipts and Admin). */
 const recipeStockWord = st=>st === 'empty' ? `<span class="st st-bad rc-st">${esc(rt('out'))}</span>` : st === 'low' ? `<span class="st st-wait rc-st">${esc(rt('low'))}</span>` : '';
-/* Numbers as people type them: Kurdish and Arabic digits, and a comma for the decimal point (1,000 with
-   three digits after the comma is a thousand). null when it is not a number above 0. */
-function recipeNumber(v){
-  let s = String(v ?? '').trim().replace(/[٠-٩]/g, d=>d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d=>d.charCodeAt(0) - 0x6f0).replace(/[٫]/g, '.').replace(/\s/g, '');
-  if(/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, ''); else s = s.replace(',', '.');
+/* Numbers as people type them, with Arabic (٠-٩) and Kurdish (۰-۹) digits too. null when it is not a
+   number above 0. Two kinds:
+   - money (recipeNumber): a comma or ٬ groups thousands (4,500 and ٤٬٥٠٠ are 4500); ٫ or a point is
+     the decimal point; a single comma not followed by three digits is a decimal point (2,5).
+   - amounts (recipeAmount): a comma, a point or ٫ is always the decimal point (0,125 is an eighth of a
+     kilo, never 125); only ٬ groups thousands. */
+function recipeDigits(v){
+  return String(v ?? '').trim().replace(/[٠-٩]/g, d=>d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d=>d.charCodeAt(0) - 0x6f0)
+    .replace(/[٫]/g, '.').replace(/[\s\u200e\u200f\u061c]/g, '');
+}
+function recipePositive(s){
   if(!/^\d*\.?\d+$/.test(s)) return null;
   const n = Number(s);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+function recipeNumber(v){
+  let s = recipeDigits(v).replace(/[٬]/g, ',');
+  if(/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, ''); else s = s.replace(',', '.');
+  return recipePositive(s);
+}
+function recipeAmount(v){
+  let s = recipeDigits(v);
+  if(/^\d{1,3}(٬\d{3})+([.,]\d+)?$/.test(s)) s = s.replace(/٬/g, '');
+  return recipePositive(s.replace(',', '.'));
 }
 
 /* ---------- Saving ---------- */
@@ -198,6 +219,19 @@ async function recipeSave(loud = false){
   recipeBook.saveJob = job;
   try{ return await job; } finally { if(recipeBook.saveJob === job) recipeBook.saveJob = null; }
 }
+/* Save (and leaving): saves again until the latest edit is on the server, so a change typed while a save
+   was on its way is never left behind when the editor closes. False when a save fails (a conflict, no
+   name, offline): the editor stays open with the edits. */
+async function recipeSaveAll(loud = false){
+  const r = recipeBook.editing, session = recipeSession();
+  for(let tries = 0; tries < 20; tries++){
+    clearTimeout(recipeBook.timer);
+    if(!(await recipeSave(loud))) return false;
+    if(recipeStale(session) || recipeBook.editing !== r) return false;
+    if(!recipeBook.dirty && !recipeBook.saveJob) return true;
+  }
+  return false;
+}
 const recipeEditable = r=>JSON.stringify({name:r.name, data:r.data});
 /* Saving while typing stays quiet; loud (Save, leaving) says what is wrong. */
 async function recipePerformSave(loud = false){
@@ -207,8 +241,8 @@ async function recipePerformSave(loud = false){
   if(!r.name.trim()){ if(loud) toast(rt('required'), 'error'); recipeSaveLabel(rt('unsaved')); return false; }
   recipeBook.saving = true;
   recipeSaveLabel(rt('saving'), 'busy');
-  const account = state.account, sent = recipeEditable(r), answer = await api('recipes/' + r.id, {method:'PUT', body:{name:r.name, data:r.data, version:r.version}});
-  if(account !== state.account) return false;
+  const session = recipeSession(), sent = recipeEditable(r), answer = await api('recipes/' + r.id, {method:'PUT', body:{name:r.name, data:r.data, version:r.version}});
+  if(recipeStale(session)) return false;
   recipeBook.saving = false;
   if(!answer.ok){
     const e = answer.data?.error;
@@ -864,10 +898,10 @@ function recipeBindWhy(){
    Tap or hold a photo: View or Delete. Hold it and drag: it moves, and the others make room; the first
    one is the cover in the list. */
 async function recipePhotos(){
-  const account = state.account, id = recipeBook.id;
+  const session = recipeSession(), id = recipeBook.id;
   recipeBook.photos = {id, list:null, failed:false, loading:true};
   const r = await api('recipes/' + id + '/photos');
-  if(account !== state.account || recipeBook.id !== id) return;
+  if(recipeStale(session) || recipeBook.id !== id) return;
   recipeBook.photos = {id, list:r.ok ? r.data : null, failed:!r.ok, loading:false};
   if(state.view === 'recipes' && recipeBook.page === 'detail' && !recipeBook.editing) recipePhotosRedraw();
 }
@@ -881,15 +915,16 @@ function recipePhotosRedraw(){
 async function recipeUpload(file, id = recipeBook.id){
   if(!file) return false;
   if(file.size > 20_000_000){ toast(rt('photoTooBig'), 'error'); return false; }
-  const account = state.account;
+  const session = recipeSession();
   try{
     const bmp = await window.createImageBitmap(file), ratio = Math.min(1, 1600 / Math.max(bmp.width, bmp.height)), canvas = document.createElement('canvas');
     canvas.width = Math.round(bmp.width * ratio); canvas.height = Math.round(bmp.height * ratio);
     canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
     bmp.close();
     const image = canvas.toDataURL('image/jpeg', .82);
-    if(account !== state.account) return false;
+    if(recipeStale(session)) return false;
     const r = await api('recipes/' + id + '/photos', {method:'POST', body:{image}});
+    if(recipeStale(session)) return false;
     if(!r.ok){ toast(r.data?.error === 'too_many_photos' ? rt('tooManyPhotos') : rt('photoFailed'), 'error'); return false; }
     toast(rt('photoAdded'));
     // The list's tile and the photos both come again (the first photo becomes the tile).
@@ -934,16 +969,23 @@ function recipePhotoMenu(el){
   const id = el.dataset.rcPhoto;
   recipeMenu(el, [['view', rt('viewPhoto'), ICON_SEARCH, false, ()=>recipePhotoView(id)], ['delete', t('delete'), ICON_DELETE, true, ()=>recipePhotoDelete(id)]]);
 }
+/* The new order shows at once (the gallery and the list's cover); if the server refuses it, both go
+   back to how they were. */
 async function recipePhotoOrder(ids){
-  const p = recipeBook.photos;
+  const p = recipeBook.photos, recipe = recipeBook.id, session = recipeSession(), covers = recipeBook.data?.covers;
   if(!p?.list) return;
-  const before = p.list.map(x=>x.id);
-  if(before.join() === ids.join()) return;
-  p.list = ids.map(id=>p.list.find(x=>x.id === id)).filter(Boolean);
-  if(recipeBook.data.covers && p.list[0]?.url) recipeBook.data.covers[recipeBook.id] = p.list[0].url;
+  const before = p.list.slice();
+  if(before.map(x=>x.id).join() === ids.join()) return;
+  const hadCover = !!covers && Object.hasOwn(covers, recipe), coverBefore = covers?.[recipe];
+  p.list = ids.map(id=>before.find(x=>x.id === id)).filter(Boolean);
+  if(covers && p.list[0]?.url) covers[recipe] = p.list[0].url;
   recipePhotosRedraw();
-  const r = await api('recipes/' + recipeBook.id + '/photos/order', {method:'PUT', body:{ids}});
-  if(!r.ok){ toast(t('saveFailed'), 'error'); p.list = before.map(id=>p.list.find(x=>x.id === id)).filter(Boolean); recipePhotosRedraw(); }
+  const r = await api('recipes/' + recipe + '/photos/order', {method:'PUT', body:{ids}});
+  if(r.ok || recipeStale(session)) return;
+  toast(t('saveFailed'), 'error');
+  if(recipeBook.photos === p) p.list = before;
+  if(covers && recipeBook.data?.covers === covers){ if(hadCover) covers[recipe] = coverBefore; else delete covers[recipe]; }
+  if(recipeBook.photos === p && recipeBook.id === recipe && state.view === 'recipes' && recipeBook.page === 'detail' && !recipeBook.editing) recipePhotosRedraw();
 }
 /* One gesture for each photo: a tap (or a hold that doesn't move) opens its menu; a hold that moves
    drags it. While dragging the page doesn't scroll. */
@@ -1003,7 +1045,7 @@ window.addEventListener('beforeunload', e=>{ if(recipeBook.dirty){ e.preventDefa
    chooses to stay or to leave the changes. True when it may be left. */
 async function recipeLeave(){
   const r = recipeBook.editing;
-  if(r && recipeBook.dirty && !(r.name.trim() && await recipeSave())){
+  if(r && (recipeBook.dirty || recipeBook.saveJob) && !(r.name.trim() && await recipeSaveAll())){
     if(!(await showConfirm(rt('discard')))) return false;
   }
   clearTimeout(recipeBook.timer);
@@ -1024,8 +1066,8 @@ function recipeBindThumbs(root){
    minutes. The button reads them now; while Rico reads, the page asks every few seconds how it is going,
    then shows the new prices. */
 async function recipePricesLoad(){
-  const account = state.account, r = await api('rico-prices');
-  if(account !== state.account || !r.ok) return;
+  const session = recipeSession(), r = await api('rico-prices');
+  if(recipeStale(session) || !r.ok) return;
   recipeBook.prices = r.data;
   recipePricesFollow();
   recipePricesDraw();
@@ -1045,8 +1087,8 @@ function recipePricesBar(){
 async function recipePricesCheck(){
   if(recipeBook.pricesBusy || recipeBook.prices?.state) return;
   recipeBook.pricesBusy = true; recipePricesDraw();
-  const account = state.account, r = await api('rico-prices', {method:'POST', body:{}});
-  if(account !== state.account) return;
+  const session = recipeSession(), r = await api('rico-prices', {method:'POST', body:{}});
+  if(recipeStale(session)) return;   // signed out meanwhile: the next session starts with its own state
   recipeBook.pricesBusy = false;
   if(!r.ok){ toast(t('loadFailed'), 'error'); recipePricesDraw(); return; }
   if(r.data.prices) recipeBook.prices = r.data.prices;
@@ -1062,10 +1104,11 @@ async function recipePricesCheck(){
 function recipePricesFollow(){
   clearTimeout(recipeBook.pricesPoll);
   if(!recipeBook.prices?.state) return;
-  const askedAt = recipeBook.prices.askedAt;
+  const askedAt = recipeBook.prices.askedAt, session = recipeSession();
   recipeBook.pricesPoll = setTimeout(async ()=>{
-    const account = state.account, r = await api('rico-prices');
-    if(account !== state.account) return;
+    if(recipeStale(session)) return;
+    const r = await api('rico-prices');
+    if(recipeStale(session)) return;
     if(r.ok) recipeBook.prices = r.data;
     if(r.ok && !r.data.state){
       const res = r.data.result;
@@ -1138,7 +1181,7 @@ function attachRecipeEvents(){
   on('rcDone', async ()=>{
     if(!r.name.trim()){ toast(rt('required'), 'error'); const n = document.getElementById('rcName'); n?.focus(); n?.scrollIntoView({block:'center', behavior:'smooth'}); return; }
     if(!recipeBook.dirty && !r.version){ recipeBook.dirty = true; }
-    if(await recipeSave(true)){ recipeBook.editing = null; recipeBook.id = r.id; recipeBook.page = 'detail'; recipeBook.photos = null; haptic('success'); toast(rt('savedToast')); render(); recipeTop(); }
+    if(await recipeSaveAll(true) && recipeBook.editing === r){ recipeBook.editing = null; recipeBook.id = r.id; recipeBook.page = 'detail'; recipeBook.photos = null; haptic('success'); toast(rt('savedToast')); render(); recipeTop(); }
   });
   on('rcEditBack', async ()=>{
     if(!(await recipeLeave())) return;
@@ -1154,16 +1197,28 @@ function attachRecipeEvents(){
   const price = document.getElementById('rcPrice');
   if(price) price.oninput = ()=>{ const v = recipeNumber(price.value); d.price = v ? Math.round(v) : null; recipeChange(); recipeRefreshLive(); };
   all('[data-rc-qty]', el=>el.oninput = ()=>{
-    const v = recipeNumber(el.value);
+    const v = recipeAmount(el.value);
     d.lines[Number(el.dataset.rcQty)].qty = v ? Math.min(999999, Math.round(v * 1000) / 1000) : null;
     recipeChange(); recipeRefreshLive();
   });
   all('[data-rc-unit]', el=>el.onchange = ()=>{ d.lines[Number(el.dataset.rcUnit)].unit = el.value; recipeChange(); recipeRefreshLive(); });
   all('[data-rc-step]', el=>el.oninput = ()=>{ d.steps[Number(el.dataset.rcStep)] = el.value; recipeGrow(el); recipeChange(); });
   all('textarea.rc-grow', recipeGrow);
-  all('[data-rc-remove]', b=>b.onclick = ()=>{
-    const line = b.closest('.rc-eline'), go = ()=>{ d.lines.splice(Number(b.dataset.rcRemove), 1); redraw(); };
-    if(line?.animate && !reducedMotion()) line.animate([{opacity:1}, {opacity:0}], {duration:140, easing:'ease-in'}).onfinish = go; else go();
+  // Each button removes its own line, once: the line is found again by itself (not by its place, which
+  // moves when another line goes first), and a second tap while it fades does nothing.
+  const removing = new Set();
+  all('[data-rc-remove]', b=>{
+    const target = d.lines[Number(b.dataset.rcRemove)];
+    b.onclick = ()=>{
+      if(!target || removing.has(target)) return;
+      removing.add(target); b.disabled = true;
+      const line = b.closest('.rc-eline'), go = ()=>{
+        const k = d.lines.indexOf(target);
+        if(k < 0 || recipeBook.editing !== r) return;
+        d.lines.splice(k, 1); recipeBook.fresh.clear(); redraw();
+      };
+      if(line?.animate && !reducedMotion()) line.animate([{opacity:1}, {opacity:0}], {duration:140, easing:'ease-in', fill:'forwards'}).finished.then(go, go); else go();
+    };
   });
   all('[data-rc-delstep]', b=>b.onclick = ()=>{ d.steps.splice(Number(b.dataset.rcDelstep), 1); if(!d.steps.length) d.steps.push(''); redraw(); });
   on('rcAddStep', ()=>{ if(d.steps.length < 60){ d.steps.push(''); redraw(); setTimeout(()=>document.getElementById('rcStep' + (d.steps.length - 1))?.focus(), 0); } });

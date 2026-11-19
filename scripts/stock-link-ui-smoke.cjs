@@ -9,7 +9,7 @@ const root=process.env.UI_SITE_DIR?path.resolve(process.env.UI_SITE_DIR):path.re
 const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);return res.end();}res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.woff2':'font/woff2','.png':'image/png','.webp':'image/webp','.json':'application/json'})[path.extname(file)]||'application/octet-stream');res.end(data);});});
 (async()=>{await new Promise(r=>server.listen(0,'127.0.0.1',r));const browser=await chromium.launch({headless:true});try{
  const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block'});
- const puts=[];
+ const puts=[];let putDelay=0;
  const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','assistant','suppliers','itemsAdmin','units','record','admin','settings'],
   suppliers:[{id:'m',name:'شرکە مختار',phone:''},{id:'d',name:'Dairy',phone:''}],units:[{id:'kg',en:'kg',ku:'کیلۆ',ar:'كيلو'},{id:'c',en:'کارتۆن',ku:null,ar:null}],
   items:[{id:'peach',name:'عصير سن ایچ خۆخ',aliases:['Sunich peach juice'],unit:'c',supplierId:'m'},
@@ -33,6 +33,11 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
   else if(/^items\/[^/]+\/stock$/.test(endpoint)&&method==='PUT'){const id=decodeURIComponent(endpoint.split('/')[1]);puts.push({id,...body});
    const it=fixture.items.find(i=>i.id===id),L=await page.evaluate(()=>!!globalThis.RicottaStockLink);assert.ok(it&&L);
    // Like the server: a name that doesn't match is refused unless the app warned first ({anyway: true}).
+   // Several links at once (like the server): the list is kept as sent. A slow answer when asked.
+   if(Array.isArray(body.stockItems)){if(putDelay)await new Promise(r=>setTimeout(r,putDelay));it.stockItems=[...new Set(body.stockItems)];it.stockItem=it.stockItems[0];
+    await route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,stockItem:it.stockItem,stockItems:it.stockItems,stock:{multi:true,kinds:[{qty:2,unit:'c'}],parts:it.stockItems.map(n=>({name:n,qty:1,unit:'c'})),qty:2,unit:'c',count:{qty:2,unit:'c'},level:'ok'}})});return;}
+   if(putDelay)await new Promise(r=>setTimeout(r,putDelay));
+   if(body.stockItem!==undefined){it.stockItem=body.stockItem;it.stockItems=body.stockItem?[body.stockItem]:[];}
    const ok=body.stockItem===null||await page.evaluate(([i,n])=>RicottaStockLink.matches(i,n),[it,body.stockItem]);
    if(!ok&&body.anyway!==true){status=422;data={error:'names_dont_match'};}else data={ok:true,stockItem:body.stockItem,stock:body.stockItem?{qty:2,unit:'کارتۆن',empty:false,level:'ok'}:null};}
   await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});});
@@ -123,6 +128,39 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.locator('#ctxStock .stock-doubt').waitFor({state:'detached'});
  assert.deepEqual(puts.at(-1),{id:'mango',stockItem:'Sunich Mango Juice - شەربەتی سن ئیچ مەنگۆ'});
  assert.match(await page.locator('#ctxStock .stock-link-name').innerText(),/Sunich Mango Juice/);
+ // Linking one item to many stock items with quick taps while each save is slow (as on a phone far from
+ // the server): every tap links once, a double tap links one, and all of them are there after reopening.
+ const soyNames=['Soy Sauce Kikkoman','Soy Sauce Lee Kum Kee','Soy Sauce Bulk','Soy Sauce Light','Soy Sauce Dark','Soy Sauce Sweet'];
+ fixture.items.push({id:'soy',name:'Soy sauce',aliases:['soya'],unit:'c',supplierId:'m'});stock.push(...soyNames.map(name=>({name,qty:2,unit:'کارتۆن',empty:false,units:['کارتۆن'],bought:1})));
+ await page.evaluate(()=>{state.items.push({id:'soy',name:'Soy sauce',aliases:['soya'],unit:'c',supplierId:'m'});stockOptions=null;});
+ await page.evaluate(()=>closeSelSheet?.());await gone();
+ putDelay=900;const soyPuts=()=>puts.filter(p=>p.id==='soy');
+ await page.evaluate(()=>openStockLinkSheet('soy'));
+ const sugs=page.locator('#ctxStock .stock-sug [data-stock-pick]');await sugs.first().waitFor();
+ const tapped=[];
+ // A double tap on the first suggestion: one link.
+ tapped.push(await sugs.first().getAttribute('data-stock-pick'));
+ await page.evaluate(()=>{const b=document.querySelector('#ctxStock .stock-sug [data-stock-pick]');b.click();setTimeout(()=>document.querySelector('#ctxStock .stock-sug [data-stock-pick]')?.click(),40);});
+ await page.waitForTimeout(350);
+ assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('#ctxStock .stock-link-name')].map(x=>x.textContent)),tapped,'shown as linked at once, and only the one tapped');
+ for(let k=0;k<3;k++){tapped.push(await sugs.first().getAttribute('data-stock-pick'));await sugs.first().click();await page.waitForTimeout(350);}
+ assert.equal(await page.locator('#ctxStock .stock-link-now').count(),4,'four links on screen while the saves are still on their way');
+ assert.ok(soyPuts().length<4,'the taps did not wait for each answer');
+ // The fifth and sixth through the search.
+ await page.locator('#ctxStock [data-stock-open]').click();await page.locator('#mfStockSearch').fill('soy sauce');
+ for(const n of soyNames.filter(n=>!tapped.includes(n))){await page.waitForTimeout(350);await page.locator(`#ctxStock .stock-pick-list [data-stock-pick="${n}"]`).click();tapped.push(n);}
+ await page.waitForFunction(()=>!document.querySelector('#toast.show')||true);
+ const soy=()=>fixture.items.find(i=>i.id==='soy');
+ const end=Date.now()+15000;while((soy().stockItems||[]).length<6&&Date.now()<end)await page.waitForTimeout(100);
+ await page.waitForTimeout(1200);
+ assert.deepEqual(soy().stockItems,tapped,'all six are saved on the server, in the order tapped');
+ assert.deepEqual(await page.evaluate(()=>itemLinks(state.items.find(i=>i.id==='soy'))),tapped,'and in the app');
+ assert.ok(soyPuts().length<=6,'no extra saves: '+soyPuts().length);
+ putDelay=0;
+ await page.evaluate(()=>closeSelSheet?.());await gone();
+ await page.evaluate(()=>openStockLinkSheet('soy'));await page.locator('#ctxStock .stock-link-now').first().waitFor();
+ assert.deepEqual(await page.locator('#ctxStock .stock-link-name').allInnerTexts(),tapped,'all six after reopening');
+ await page.evaluate(()=>closeSelSheet?.());await gone();
  assert.deepEqual(errors,[]);
- console.log('Stock link UI PASS: best match one tap with why, cousins left out, search in the row, mismatch warns then links anyway, sure matches after one question, undo per row, links to check first with the closer match and Keep');
+ console.log('Stock link UI PASS: six links to one item with quick taps during slow saves (each once, kept after reopening), best match one tap with why, cousins left out, search in the row, mismatch warns then links anyway, sure matches after one question, undo per row, links to check first with the closer match and Keep');
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exit(1);});
