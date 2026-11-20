@@ -48,6 +48,7 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   assert.ok(await page.locator('[data-mac-icon] img').evaluateAll(imgs=>imgs.every(i=>/^mac-icons\/[a-z]+\.png$/.test(i.getAttribute('src')))),'icon pictures come from the site');
   await page.evaluate(()=>document.getElementById('seeThroughSwitch').click());
   await page.locator('[data-mac-theme="pink"]').click();
+  await page.waitForFunction(()=>document.documentElement.classList.contains('theme-pink'));   // after a short cross-fade
   assert.deepEqual(await cls(),['mac-shell','theme-pink']);
   assert.equal(await page.locator('#macIconMatch').isVisible(),true,'a new theme offers its own icon');
   assert.equal(await page.locator('[data-mac-icon="wedge"]').getAttribute('aria-checked'),'true','and never switches the icon by itself');
@@ -60,6 +61,7 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('.page-heading h1'),'::after').pointerEvents),'none');
   // The app's own words (View menu) switch them back; unknown words are ignored.
   await page.evaluate(()=>['see-through-on','theme:ricotta','icon:cream','theme:evil','icon:<b>','icon:mint'].forEach(w=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:w}))));
+  await page.waitForFunction(()=>!document.documentElement.classList.contains('theme-pink'));
   assert.deepEqual(await cls(),['mac-shell','see-through']);
   assert.equal(await page.locator('#seeThroughSwitch').isChecked(),true);
   assert.equal(await page.locator('[data-mac-icon="cream"]').getAttribute('aria-checked'),'true');

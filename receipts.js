@@ -399,9 +399,19 @@ function rrComboBind(input, names, onPick, extra){
   const paint = ()=>{
     pop.innerHTML = shown.length ? shown.map((n, i)=>`<div class="rr-opt${i === hi ? ' hi' : ''}${n === picked ? ' on' : ''}" role="option" id="${input.id}O${i}" aria-selected="${i === hi}" data-i="${i}">${extra ? `<span dir="auto">${esc(n)}</span><small>${esc(extra(n))}</small>` : `<span dir="auto">${esc(n)}</span>`}</div>`).join('')
       : `<div class="rr-opt none">${esc(t('rrNoMatch'))}</div>`;
-    if(hi >= 0) input.setAttribute('aria-activedescendant', `${input.id}O${hi}`); else input.removeAttribute('aria-activedescendant');
-    pop.querySelector('.hi')?.scrollIntoView({block:'nearest'});
+    mark(true);
   };
+  // One highlighted row: the arrow keys and the mouse move the same one, like a Mac menu.
+  const mark = scroll=>{
+    pop.querySelectorAll('[data-i]').forEach(o=>{ const on = +o.dataset.i === hi; o.classList.toggle('hi', on); o.setAttribute('aria-selected', String(on)); });
+    if(hi >= 0) input.setAttribute('aria-activedescendant', `${input.id}O${hi}`); else input.removeAttribute('aria-activedescendant');
+    if(scroll) pop.querySelector('.hi')?.scrollIntoView({block:'nearest'});
+  };
+  pop.addEventListener('pointermove', e=>{
+    if(e.pointerType !== 'mouse') return;
+    const o = e.target.closest('[data-i]');
+    if(o && +o.dataset.i !== hi){ hi = +o.dataset.i; mark(false); }
+  });
   const open = q=>{
     shown = (q ? globalThis.RicottaSearch.rank(names, q, n=>n) : names).slice(0, 80);
     hi = shown.length ? (q ? 0 : Math.max(0, shown.indexOf(picked))) : -1;
@@ -425,7 +435,7 @@ function rrComboBind(input, names, onPick, extra){
     if((e.key === 'Tab' || e.key === 'ArrowDown' || e.key === 'ArrowUp') && shown.length){
       e.preventDefault();
       const back = e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey);
-      hi = (hi + (back ? -1 : 1) + shown.length) % shown.length; paint(); return;
+      hi = (hi + (back ? -1 : 1) + shown.length) % shown.length; mark(true); return;
     }
     if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey){ e.preventDefault(); if(hi >= 0) pick(shown[hi]); return; }
     if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); input.value = picked; close(); }
@@ -1060,7 +1070,7 @@ function attachReceiptHistory(){
 }
 
 /* A photo full size: dark backdrop, the photo in the middle at its full readable width (a long receipt
-   scrolls), the receipt's other photos with the arrows; Escape, ✕ or a tap outside closes it. */
+   scrolls), the receipt's other photos with the arrows; Escape, the close button or a tap outside closes it. */
 function attachLightbox(){
   document.querySelectorAll('[data-lb]').forEach(b=>b.onclick = ()=>openLightbox(b.dataset.lb, Number(b.dataset.lbI) || 0));
 }
@@ -1072,7 +1082,7 @@ function openLightbox(id, at){
   const paint = ()=>{
     const p = list[at];
     box.innerHTML = `<div class="rr-lb-bar"><span>${esc(rrPhotoLabel(p.kind))}${list.length > 1 ? ' · ' + (at + 1) + ' / ' + list.length : ''}</span>
-      <span class="rr-lb-acts">${list.length > 1 ? `<button type="button" data-lb-go="-1" aria-label="${esc(t('rrPrevPhoto'))}">‹</button><button type="button" data-lb-go="1" aria-label="${esc(t('rrNextPhoto'))}">›</button>` : ''}<button type="button" data-lb-close aria-label="${esc(t('rrClosePhoto'))}">✕</button></span></div>
+      <span class="rr-lb-acts">${list.length > 1 ? `<button type="button" data-lb-go="-1" aria-label="${esc(t('rrPrevPhoto'))}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><button type="button" data-lb-go="1" aria-label="${esc(t('rrNextPhoto'))}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>` : ''}<button type="button" data-lb-close aria-label="${esc(t('rrClosePhoto'))}">${ICON_CLOSE_SM}</button></span></div>
       <div class="rr-lb-stage"><img src="${esc(p.url)}" alt="${esc(rrPhotoLabel(p.kind))}"></div>`;
     box.scrollTop = 0;
   };

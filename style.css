@@ -833,7 +833,8 @@ html.rtl .install-prompt{right:auto;left:22px}
 /* Messages Rico wrote first, tinted with his mood */
 .rico-inbox{display:grid;gap:8px;margin-bottom:16px}
 .rico-note{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:var(--r-card)}
-.rico-note.unread{box-shadow:inset 0 0 0 1.5px rgba(var(--accent-rgb),.5)}
+/* Not read yet: a small dot before "Rico wrote", like an unread mail (no coloured outline round the card). */
+.rico-note.unread .rico-note-meta::before{content:'';display:inline-block;width:7px;height:7px;margin-inline-end:6px;border-radius:50%;background:var(--accent);vertical-align:1px}
 .rico-note-body{flex:1;min-width:0}
 .rico-note-meta{font-size:.75rem;font-weight:500;color:var(--ink-soft);margin-bottom:2px}
 .rico-note-text{font-size:.9375rem;font-weight:500;line-height:1.55;overflow-wrap:anywhere}
@@ -1052,7 +1053,10 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 }
 /* Hover tints, only for a mouse or trackpad (a finger would leave them stuck on). */
 @media (hover:hover) and (pointer:fine){
-  .icon-btn:hover,.chip:hover,.quick-btn:not(:disabled):hover,.btn-ghost:not(:disabled):hover,.tab-pill:not(.active):hover,.step-btn:not(:disabled):hover,.sheet-row:hover,.settings-link:hover,.sel-opt:hover{background:var(--fill-strong)}
+  .icon-btn:hover,.chip:hover,.quick-btn:not(:disabled):hover,.btn-ghost:not(:disabled):hover,.tab-pill:not(.active):hover,.step-btn:not(:disabled):hover,.sheet-row:hover,.settings-link:hover{background:var(--fill-strong)}
+  /* Rows that open or pick something: a grey highlight under the pointer, like a Mac list. */
+  :is(.settings-row,.rico-side-row,.rd-item,.rc-add-row,.lang-row,.rc-why-row,.ctx-menu button):not(:disabled):hover{background-color:var(--fill)}
+  .report-card:hover{background:linear-gradient(var(--fill),var(--fill)) var(--surface)}
   .list-row.tappable:hover,.item-row:not(.has-qty):hover{background-color:var(--fill)}
   .btn-primary:not(:disabled):hover,.wa-btn:not(.done):hover,.rico-send:hover{filter:brightness(1.08)}
 }
@@ -1095,6 +1099,7 @@ select.sel-native{position:absolute!important;width:1px!important;height:1px!imp
 .sel-opt.on{background:transparent;color:var(--ink);font-weight:600}
 .sel-opt.on b{color:var(--tint)}
 .sel-opt.none{color:var(--ink-soft);font-weight:400}
+.sel-opt.hi{background:var(--fill)}
 .sel-opt b{flex:none}
 @keyframes selUp{from{transform:translateY(110%)}to{transform:none}}
 @media (min-width:700px){.sel-sheet{align-items:center}.sel-panel{margin-bottom:0;border-radius:28px;max-height:70vh;animation:fadeIn 180ms ease both}}
@@ -1678,7 +1683,7 @@ html.rtl .spot-switch.on i{transform:translateX(-16px)}
 .spot-foot kbd{min-width:18px;height:18px;padding:0 4px;border-radius:5px;border:1px solid var(--line-strong);display:inline-grid;place-items:center;font:600 .6875rem var(--font);color:var(--ink)}
 .spot-flash{animation:spotFlash 1.5s ease}
 @keyframes spotFlash{0%,40%{box-shadow:inset 0 0 0 2px var(--tint);background-color:rgba(var(--accent-rgb),.14)}100%{box-shadow:inset 0 0 0 2px transparent}}
-@media (hover:hover) and (pointer:fine){.spot-row:hover{background:var(--fill)}.spot-row.active:hover{background:rgba(var(--accent-rgb),.2)}.spot-mini:hover,.spot-scope[aria-selected="false"]:hover{background:var(--fill-strong)}}
+@media (hover:hover) and (pointer:fine){.spot-mini:hover,.spot-scope[aria-selected="false"]:hover{background:var(--fill-strong)}}
 /* Keyboard shortcuts */
 .short-list{display:flex;flex-direction:column;border-radius:18px;background:var(--fill);padding:2px 14px;margin-top:10px}
 .short-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;font-size:.9375rem}
@@ -1930,7 +1935,8 @@ html.dark .rr-ctl-note.warn{color:#FCD34D}
 .rr-card-title{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 14px;font-size:1rem;font-weight:600;letter-spacing:-.01em}
 .rr-count{font-size:.8125rem;font-weight:500;color:var(--ink-soft)}
 .rr-combo{position:relative}
-.rr-pop{position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:30;max-height:288px;overflow:auto;background:var(--surface);border-radius:14px;box-shadow:0 0 0 .5px var(--line),0 12px 32px rgba(0,0,0,.14);padding:4px}
+.rr-pop{position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:30;max-height:288px;overflow:auto;background:var(--surface);border-radius:14px;box-shadow:0 0 0 .5px var(--line),0 12px 32px rgba(0,0,0,.14);padding:4px;transform-origin:50% 0;animation:selPopIn 140ms var(--ease-out)}
+@media (prefers-reduced-motion:reduce){.rr-pop{animation:none}}
 .rr-opt{padding:9px 10px;border-radius:9px;font-size:.9375rem;cursor:default;display:flex;align-items:baseline;gap:10px}
 .rr-opt>span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rr-opt>small{flex:none;font-size:.75rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
@@ -2138,10 +2144,12 @@ html.dark .cf-alert{background:rgba(248,113,113,.14);color:#FECACA}
 /* The unit menu: a small list right under its box. */
 .sel-pop{position:fixed;z-index:1200;max-height:min(360px,60vh);overflow:auto;padding:6px;border-radius:14px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);border:.5px solid var(--line-strong);box-shadow:var(--float-shadow);animation:selPopIn .16s var(--ease-out)}
 @keyframes selPopIn{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+.sel-pop.up{animation-name:selPopUp}
+@keyframes selPopUp{from{opacity:0;transform:translateY(4px) scale(.98)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.sel-pop{animation:none}}
 .sel-pop-opt{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:10px;background:none;color:var(--ink);font:inherit;font-size:1rem;text-align:start}
 .sel-pop-opt svg{width:18px;height:18px;color:var(--tint);flex:none}
-.sel-pop-opt:hover,.sel-pop-opt.kb{background:var(--fill)}
+.sel-pop-opt.kb{background:var(--fill)}
 .sel-pop-opt.on{font-weight:600}
 .modal-wide .modal-actions .btn{white-space:nowrap}
 
@@ -2578,7 +2586,7 @@ html.dark .tf-drafted-note{color:#A5A3FF}
 .stock-opt small{font-size:.8125rem;color:var(--ink-soft)}
 .stock-opt.on{background:var(--accent-soft)}
 .stock-opt:disabled{cursor:not-allowed;opacity:.5}
-@media (hover:hover){.stock-opt:not(:disabled):hover{background:var(--fill)}}
+.stock-opt.hi{background:var(--fill)}.stock-opt.on.hi{background:rgba(var(--accent-rgb),.2)}
 .stock-pick>.btn{align-self:flex-start;min-height:38px;border-radius:10px}
 
 /* Admin, Stock names: one quiet card per name, the problem as small tags, the name now and the correct
@@ -3582,6 +3590,8 @@ html.mac-shell.theme-pink{
   html.mac-shell.theme-pink.see-through #app::before{background:var(--pk-scatter) 0 0/220px 220px,var(--page-tint)}
 }
 @media (prefers-reduced-motion:reduce){html.mac-shell.theme-pink .order-hero::after{transition:none}html.mac-shell.theme-pink .order-hero:hover::after{transform:none}}
+/* Changing the theme cross-fades the whole window for a moment instead of jumping (see setMacTheme). */
+::view-transition-old(root),::view-transition-new(root){animation-duration:220ms;animation-timing-function:var(--ease-out)}
 /* The theme and app icon pickers in Settings (Mac app only): a row of small round swatches and the icons in
    two groups (the themes' own, then the others), the chosen one ringed. */
 .mac-pick-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 0 4px;border-top:.5px solid var(--line)}

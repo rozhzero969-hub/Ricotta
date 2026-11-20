@@ -5,8 +5,8 @@
 const AR_N = (n, one, two, few, many) => n === 1 ? one : n === 2 ? two : (n % 100 >= 3 && n % 100 <= 10) ? n + ' ' + few : n + ' ' + many;
 const T = {
   en:{
-    rrStartRico:'Start Rico', rrPractice:'Practice mode', rrStopRicoNow:'Stop Rico', rrPracticeShort:'practice', rrLauncherOff:'The Mac is off, or Rico’s launcher is not set up on it.', rrLauncherWorking:'Telling the Mac...',
-    rrCheckNow:'Check now', rrChecking:'Checking...', rrCheckAsked:'Rico is about to read Ricotta Restaurant’s suppliers, storages, items and units.', rrCheckAfterJob:'Rico will check Ricotta Restaurant as soon as he finishes what he is doing.', rrCheckRunning:'Rico is reading Ricotta Restaurant’s suppliers, storages, items and units...',
+    rrStartRico:'Start Rico', rrPractice:'Practice mode', rrStopRicoNow:'Stop Rico', rrPracticeShort:'practice', rrLauncherOff:'The Mac is off, or Rico’s launcher is not set up on it.', rrLauncherWorking:'Telling the Mac…',
+    rrCheckNow:'Check now', rrChecking:'Checking…', rrCheckAsked:'Rico is about to read Ricotta Restaurant’s suppliers, storages, items and units.', rrCheckAfterJob:'Rico will check Ricotta Restaurant as soon as he finishes what he is doing.', rrCheckRunning:'Rico is reading Ricotta Restaurant’s suppliers, storages, items and units…',
     rrCheckNoAnswer:'Rico didn’t answer the check. Try again, or make sure he is running on the Mac.', rrCheckRicoOff:'Rico is off. Start him on the Mac first.', rrCheckOld:'To use Check now, update Rico on the Mac and start him again.',
     rrCheckFailed:(w,e)=>'Rico couldn’t check Ricotta Restaurant at '+w+(e?': '+e:'.'), rrCheckDone:w=>'Checked Ricotta Restaurant at '+w+'. The lists are up to date.', rrCheckNothing:w=>'Checked at '+w+': nothing changed in Ricotta Restaurant.', rrCheckFound:(w,p)=>'Checked at '+w+': '+p+'.',
     rrCheckItemsNew:n=>n===1?'1 new item':n+' new items', rrCheckItemsChanged:n=>n===1?'1 item’s units changed':n+' items’ units changed', rrCheckItemsGone:n=>n===1?'1 item removed':n+' items removed',
@@ -359,8 +359,8 @@ const T = {
 
   },
   ku:{
-    rrStartRico:'دەستپێکردنی ریکۆ', rrPractice:'دۆخی تاقیکردنەوە', rrStopRicoNow:'وەستاندنی ریکۆ', rrPracticeShort:'تاقیکردنەوە', rrLauncherOff:'ماکەکە کوژاوەتەوە، یان دەستپێکەری ریکۆ لەسەری دانەمەزراوە.', rrLauncherWorking:'بە ماکەکە دەڵێین...',
-    rrCheckNow:'ئێستا بپشکنە', rrChecking:'دەپشکنێت...', rrCheckAsked:"ریکۆ خەریکە دابینکەران، کۆگاکان، کاڵاکان و یەکەکانی ریکۆتا ڕێستۆرانت دەخوێنێتەوە.", rrCheckAfterJob:'ریکۆ هەر کە کارەکەی تەواو کرد ریکۆتا ڕێستۆرانت دەپشکنێت.', rrCheckRunning:"ریکۆ دابینکەران، کۆگاکان، کاڵاکان و یەکەکانی ریکۆتا ڕێستۆرانت دەخوێنێتەوە...",
+    rrStartRico:'دەستپێکردنی ریکۆ', rrPractice:'دۆخی تاقیکردنەوە', rrStopRicoNow:'وەستاندنی ریکۆ', rrPracticeShort:'تاقیکردنەوە', rrLauncherOff:'ماکەکە کوژاوەتەوە، یان دەستپێکەری ریکۆ لەسەری دانەمەزراوە.', rrLauncherWorking:'بە ماکەکە دەڵێین…',
+    rrCheckNow:'ئێستا بپشکنە', rrChecking:'دەپشکنێت…', rrCheckAsked:"ریکۆ خەریکە دابینکەران، کۆگاکان، کاڵاکان و یەکەکانی ریکۆتا ڕێستۆرانت دەخوێنێتەوە.", rrCheckAfterJob:'ریکۆ هەر کە کارەکەی تەواو کرد ریکۆتا ڕێستۆرانت دەپشکنێت.', rrCheckRunning:"ریکۆ دابینکەران، کۆگاکان، کاڵاکان و یەکەکانی ریکۆتا ڕێستۆرانت دەخوێنێتەوە…",
     rrCheckNoAnswer:'ریکۆ وەڵامی پشکنینەکەی نەدایەوە. دووبارە هەوڵ بدەرەوە، یان دڵنیابە لەسەر ماک کار دەکات.', rrCheckRicoOff:'ریکۆ کوژاوەتەوە. سەرەتا لەسەر ماک دایبگیرسێنە.', rrCheckOld:'بۆ بەکارهێنانی «ئێستا بپشکنە»، ریکۆ لەسەر ماک نوێ بکەرەوە و دووبارە دایبگیرسێنە.',
     rrCheckFailed:(w,e)=>'ریکۆ نەیتوانی ریکۆتا ڕێستۆرانت بپشکنێت لە '+w+(e?': '+e:'.'), rrCheckDone:w=>'ریکۆتا ڕێستۆرانت پشکنرا لە '+w+'. لیستەکان نوێن.', rrCheckNothing:w=>'پشکنرا لە '+w+': هیچ لە ریکۆتا ڕێستۆرانت نەگۆڕاوە.', rrCheckFound:(w,p)=>'پشکنرا لە '+w+': '+p+'.',
     rrCheckItemsNew:n=>n+' کاڵای نوێ', rrCheckItemsChanged:n=>'یەکەی '+n+' کاڵا گۆڕا', rrCheckItemsGone:n=>n+' کاڵا لابرا',
@@ -1250,8 +1250,8 @@ const T = {
 
   },
   ar:{
-    rrStartRico:'تشغيل ريكو', rrPractice:'وضع التجربة', rrStopRicoNow:'إيقاف ريكو', rrPracticeShort:'تجربة', rrLauncherOff:'الماك مطفأ، أو مشغّل ريكو غير مثبت عليه.', rrLauncherWorking:'جارٍ إبلاغ الماك...',
-    rrCheckNow:'افحص الآن', rrChecking:'جارٍ الفحص...', rrCheckAsked:'سيقرأ ريكو الآن الموردين والمخازن والمواد والوحدات من ريكوتا ريستورانت.', rrCheckAfterJob:'سيفحص ريكو ريكوتا ريستورانت فور انتهائه مما يعمل عليه.', rrCheckRunning:'يقرأ ريكو الموردين والمخازن والمواد والوحدات من ريكوتا ريستورانت...',
+    rrStartRico:'تشغيل ريكو', rrPractice:'وضع التجربة', rrStopRicoNow:'إيقاف ريكو', rrPracticeShort:'تجربة', rrLauncherOff:'الماك مطفأ، أو مشغّل ريكو غير مثبت عليه.', rrLauncherWorking:'جارٍ إبلاغ الماك…',
+    rrCheckNow:'افحص الآن', rrChecking:'جارٍ الفحص…', rrCheckAsked:'سيقرأ ريكو الآن الموردين والمخازن والمواد والوحدات من ريكوتا ريستورانت.', rrCheckAfterJob:'سيفحص ريكو ريكوتا ريستورانت فور انتهائه مما يعمل عليه.', rrCheckRunning:'يقرأ ريكو الموردين والمخازن والمواد والوحدات من ريكوتا ريستورانت…',
     rrCheckNoAnswer:'لم يرد ريكو على الفحص. حاول مرة أخرى، أو تأكد أنه يعمل على الماك.', rrCheckRicoOff:'ريكو متوقف. شغّله على الماك أولاً.', rrCheckOld:'لاستخدام «افحص الآن»، حدّث ريكو على الماك ثم شغّله من جديد.',
     rrCheckFailed:(w,e)=>'لم يتمكن ريكو من فحص ريكوتا ريستورانت عند '+w+(e?': '+e:'.'), rrCheckDone:w=>'تم فحص ريكوتا ريستورانت عند '+w+'. القوائم محدّثة.', rrCheckNothing:w=>'تم الفحص عند '+w+': لم يتغير شيء في ريكوتا ريستورانت.', rrCheckFound:(w,p)=>'تم الفحص عند '+w+': '+p+'.',
     rrCheckItemsNew:n=>AR_N(n,'مادة جديدة واحدة','مادتان جديدتان','مواد جديدة','مادة جديدة'), rrCheckItemsChanged:n=>'تغيّرت وحدات '+AR_N(n,'مادة واحدة','مادتين','مواد','مادة'), rrCheckItemsGone:n=>'أُزيلت '+AR_N(n,'مادة واحدة','مادتان','مواد','مادة'),
@@ -2135,7 +2135,7 @@ Object.assign(T.en, {
   receiptIntro:'Here is your last order.', receiptNone:'There are no orders in History yet.', receiptSame:'Order the same',
   whyLabel:'Why these amounts?',
   styleLabel:'How Rico talks', style_normal:'Normal', style_short:'Short and direct', style_warm:'Warm and chatty',
-  memoryTitle:'What Rico remembers', memoryHint:'Rico keeps what you teach him and what he learns while you chat, so he fits the way you work. Delete anything you like.', memoryRules:'Memories', memoryLoading:'Loading...', memoryNone:'Nothing yet.', memoryAddLabel:'Something to remember', memoryAddHint:'Never order fish on Friday', memoryAdd:'Add',
+  memoryTitle:'What Rico remembers', memoryHint:'Rico keeps what you teach him and what he learns while you chat, so he fits the way you work. Delete anything you like.', memoryRules:'Memories', memoryLoading:'Loading…', memoryNone:'Nothing yet.', memoryAddLabel:'Something to remember', memoryAddHint:'Never order fish on Friday', memoryAdd:'Add',
   memLearned:'Learned', memTaught:'Taught', memSecret:'Rico never keeps PINs, passwords or codes.', memTooMany:'60 memories are saved. Delete one first.',
   routinesTitle:'Routines', routinesNone:'No routines yet.', routinesHint:'Ask Rico, for example: Remind me to do the transfers every day at 9.',
   routineOnce:'Once', routineRemind:'Reminder', routinePrepareFor:n=>'Prepares the order for '+n, routineEvery:'Every day', routineDays:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
@@ -2166,7 +2166,7 @@ Object.assign(T.ku, {
   receiptIntro:'ئەمە دوایین داواکاریتە.', receiptNone:'هێشتا داواکاری لە مێژوودا نییە.', receiptSame:'هەمان داواکاری',
   whyLabel:'بۆچی ئەم بڕانە؟',
   styleLabel:'ریکۆ چۆن قسە دەکات', style_normal:'ئاسایی', style_short:'کورت و ڕاستەوخۆ', style_warm:'گەرم و قسەخۆش',
-  memoryTitle:'ریکۆ چی لەبیرە', memoryHint:'ریکۆ ئەوەی فێری دەکەیت و ئەوەی لە گفتوگۆدا فێری دەبێت دەیهێڵێتەوە، بۆ ئەوەی لەگەڵ شێوازی کارکردنت بگونجێت. هەر شتێک بتەوێت بیسڕەوە.', memoryRules:'بیرەوەرییەکان', memoryLoading:'بارکردن...', memoryNone:'هێشتا هیچ نییە.', memoryAddLabel:'شتێک بۆ لەبیرکردن', memoryAddHint:'هەرگیز ڕۆژی هەینی ماسی داوا مەکە', memoryAdd:'زیادکردن',
+  memoryTitle:'ریکۆ چی لەبیرە', memoryHint:'ریکۆ ئەوەی فێری دەکەیت و ئەوەی لە گفتوگۆدا فێری دەبێت دەیهێڵێتەوە، بۆ ئەوەی لەگەڵ شێوازی کارکردنت بگونجێت. هەر شتێک بتەوێت بیسڕەوە.', memoryRules:'بیرەوەرییەکان', memoryLoading:'بارکردن…', memoryNone:'هێشتا هیچ نییە.', memoryAddLabel:'شتێک بۆ لەبیرکردن', memoryAddHint:'هەرگیز ڕۆژی هەینی ماسی داوا مەکە', memoryAdd:'زیادکردن',
   memLearned:'فێربوو', memTaught:'فێرت کرد', memSecret:'ریکۆ هەرگیز کۆد یان وشەی نهێنی ناهێڵێتەوە.', memTooMany:'60 بیرەوەری پاشەکەوت کراون. سەرەتا یەکێکیان بسڕەوە.',
   routinesTitle:'کارە دووبارەکان', routinesNone:'هێشتا هیچ کارێکی دووبارە نییە.', routinesHint:'لە ریکۆ داوا بکە، بۆ نموونە: هەموو ڕۆژێک کاتژمێر 9 بیرم بخەرەوە گواستنەوەکان بکەم.',
   routineOnce:'یەکجار', routineRemind:'بیرخستنەوە', routinePrepareFor:n=>'داواکاری ئامادە دەکات بۆ '+n, routineEvery:'هەموو ڕۆژێک', routineDays:['یەکشەممە','دووشەممە','سێشەممە','چوارشەممە','پێنجشەممە','هەینی','شەممە'],
@@ -2197,7 +2197,7 @@ Object.assign(T.ar, {
   receiptIntro:'هذا طلبك الأخير.', receiptNone:'لا توجد طلبات في السجل بعد.', receiptSame:'اطلب نفسه',
   whyLabel:'لماذا هذه الكميات؟',
   styleLabel:'كيف يتحدث ريكو', style_normal:'عادي', style_short:'قصير ومباشر', style_warm:'ودود ومتحدث',
-  memoryTitle:'ما يتذكره ريكو', memoryHint:'يحتفظ ريكو بما تعلّمه له وبما يتعلّمه أثناء المحادثة، ليتناسب مع طريقة عملك. احذف ما تشاء.', memoryRules:'الذكريات', memoryLoading:'جارٍ التحميل...', memoryNone:'لا شيء بعد.', memoryAddLabel:'شيء ليتذكره', memoryAddHint:'لا تطلب السمك يوم الجمعة أبدًا', memoryAdd:'إضافة',
+  memoryTitle:'ما يتذكره ريكو', memoryHint:'يحتفظ ريكو بما تعلّمه له وبما يتعلّمه أثناء المحادثة، ليتناسب مع طريقة عملك. احذف ما تشاء.', memoryRules:'الذكريات', memoryLoading:'جارٍ التحميل…', memoryNone:'لا شيء بعد.', memoryAddLabel:'شيء ليتذكره', memoryAddHint:'لا تطلب السمك يوم الجمعة أبدًا', memoryAdd:'إضافة',
   memLearned:'تعلّمه', memTaught:'علّمته', memSecret:'لا يحتفظ ريكو أبدًا برموز أو كلمات مرور.', memTooMany:'حُفظت 60 ذكرى. احذف واحدة أولًا.',
   routinesTitle:'المهام المتكررة', routinesNone:'لا توجد مهام متكررة بعد.', routinesHint:'اطلب من ريكو، مثلًا: ذكّرني بالتحويلات كل يوم الساعة 9.',
   routineOnce:'مرة واحدة', routineRemind:'تذكير', routinePrepareFor:n=>'يجهّز الطلب من '+n, routineEvery:'كل يوم', routineDays:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],

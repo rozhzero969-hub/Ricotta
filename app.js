@@ -1672,6 +1672,32 @@ function selTitle(sel){
   const lab = sel._selBtn?.id && document.querySelector(`label[for="${CSS.escape(sel._selBtn.id)}"]`);
   return (lab?.textContent || sel.closest('.field')?.querySelector('label')?.textContent || sel.getAttribute('aria-label') || '').trim();
 }
+/* Search lists work like a Mac menu: one highlighted row (.hi), moved by the mouse and by the arrow keys
+   alike, and Enter picks it. A finger never highlights anything. keys: the search box that takes the keys. */
+function listHighlight(list, rows, keys){
+  if(!list) return;
+  const set = (row, scroll)=>{
+    list.querySelectorAll('.hi').forEach(r=>{ if(r !== row) r.classList.remove('hi'); });
+    if(!row) return;
+    row.classList.add('hi');
+    if(scroll) row.scrollIntoView({block:'nearest'});
+  };
+  list.addEventListener('pointermove', e=>{
+    if(e.pointerType !== 'mouse') return;
+    const row = e.target.closest(rows);
+    if(row && list.contains(row) && !row.disabled && !row.classList.contains('hi')) set(row);
+  });
+  keys?.addEventListener('keydown', e=>{
+    if(!['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key) || list.hidden || e.isComposing) return;
+    const all = [...list.querySelectorAll(rows)].filter(r=>!r.disabled);
+    const at = all.findIndex(r=>r.classList.contains('hi'));
+    if(e.key === 'Enter'){ if(at >= 0){ e.preventDefault(); all[at].click(); } return; }
+    if(!all.length) return;
+    e.preventDefault();
+    const down = e.key === 'ArrowDown';
+    set(all[at < 0 ? (down ? 0 : all.length - 1) : (at + (down ? 1 : -1) + all.length) % all.length], true);
+  });
+}
 /* A small menu that opens right under its box (units on receipt and transfer lines): the choices with a
    check by the chosen one. Arrow keys and Enter work, Escape or a click outside closes it. */
 function openSelPop(sel){
@@ -1687,6 +1713,8 @@ function openSelPop(sel){
   pop.style.width = w + 'px';
   pop.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
   pop.style.top = (below ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
+  pop.style.transformOrigin = below ? '50% 0' : '50% 100%';   // it grows out of its box
+  if(!below) pop.classList.add('up');
   btn.setAttribute('aria-expanded', 'true');
   const items = [...pop.querySelectorAll('.sel-pop-opt')];
   let at = Math.max(0, items.findIndex(b=>b.classList.contains('on')));
@@ -1703,7 +1731,11 @@ function openSelPop(sel){
     else if(e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab' || (typeof rrKeyOf === 'function' && rrCombo_(e) === rrKeyOf('unit_menu'))){ e.preventDefault(); e.stopPropagation(); at = (at + (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey) ? items.length - 1 : 1)) % items.length; mark(); }
     else if(e.key === 'Enter' || e.key === ' ' || (typeof rrKeyOf === 'function' && rrCombo_(e) === rrKeyOf('next'))){ e.preventDefault(); e.stopPropagation(); choose(items[at].dataset.v); }
   };
-  items.forEach(b=>b.onclick = ()=>choose(b.dataset.v));
+  items.forEach((b, i)=>{
+    b.onclick = ()=>choose(b.dataset.v);
+    // The mouse moves the same highlight as the keys (a Mac menu has one highlighted row).
+    b.onpointermove = e=>{ if(e.pointerType === 'mouse' && at !== i){ at = i; mark(); } };
+  });
   addEventListener('pointerdown', outside, true); addEventListener('keydown', keys, true); addEventListener('scroll', gone, true);
   mark();
 }
@@ -1752,6 +1784,7 @@ function openSelSheet(sel){
   wrap.querySelector('.sel-scrim').onclick = ()=>close();
   attachSheetDrag(wrap, close);
   wrap.querySelector('.sel-search input')?.addEventListener('input', e=>paint(e.target.value));
+  listHighlight(list, '.sel-opt', wrap.querySelector('.sel-search input') || wrap);
   list.onclick = e=>{
     const b = e.target.closest('[data-v]'); if(!b) return;
     if(sel.value !== b.dataset.v){ sel.value = b.dataset.v; sel.dispatchEvent(new Event('input', {bubbles:true})); sel.dispatchEvent(new Event('change', {bubbles:true})); }
@@ -1957,10 +1990,17 @@ const macTheme = ()=>MAC_THEMES.find(n=>document.documentElement.classList.conta
 const macThemeIcon = name=> name === 'ricotta' ? 'green' : name;
 let macMatchOffer = false;
 function setMacTheme(name){
-  if(name !== macTheme()) macMatchOffer = true;
+  if(name !== macTheme()){
+    macMatchOffer = true;
+    // A short cross-fade from the old colours to the new (none with Reduce Motion).
+    if(document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches){ document.startViewTransition(()=>{ applyMacTheme(name); paintMacIconMatch(); }); return; }
+  }
+  applyMacTheme(name);
+  paintMacIconMatch();
+}
+function applyMacTheme(name){
   MAC_THEMES.forEach(n=>document.documentElement.classList.toggle('theme-' + n, n === name && n !== 'ricotta'));
   document.querySelectorAll('[data-mac-theme]').forEach(b=>b.setAttribute('aria-checked', String(b.dataset.macTheme === name)));
-  paintMacIconMatch();
 }
 function setMacIcon(name){
   macIcon = name;
@@ -2504,11 +2544,11 @@ function renderOrder(){
   const [selectedCount, selectedSupplierCount] = orderTabCounts();
 
   const tabsHtml = `<div class="order-tabs-shell">
-    <button class="tab-scroll tab-scroll-prev" id="orderTabsPrev" aria-label="${t('previousSuppliers')}">‹</button>
+    <button class="tab-scroll tab-scroll-prev" id="orderTabsPrev" aria-label="${t('previousSuppliers')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
     <div class="order-tabs" id="orderTabs">${tabs.map(tb=>`
       <button class="tab-pill ${state.orderTab===tb.id?'active':''}" aria-pressed="${state.orderTab===tb.id}" data-ordertab="${esc(tb.id)}">${tb.pinned ? `<span class="tab-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(tb.label)}<span class="tab-count">${tb.id==='all'?items.length:items.filter(i=>(i.supplierId||'__none')===tb.id).length}</span></button>
     `).join('')}</div>
-    <button class="tab-scroll tab-scroll-next" id="orderTabsNext" aria-label="${t('nextSuppliers')}">›</button>
+    <button class="tab-scroll tab-scroll-next" id="orderTabsNext" aria-label="${t('nextSuppliers')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
   </div>`;
 
   const lastMap = lastOrderMap();
@@ -3177,7 +3217,7 @@ function renderRicoSuggestion(){
     ${ricoFace(sg.due ? 'worried' : 'happy', 'rico-xs')}
     <div class="rico-suggest-text"><b>${esc(t('ricoSuggestsLabel'))}</b><span>${esc(text)}</span><small dir="auto">${preview}</small></div>
     <button type="button" class="btn btn-primary rico-suggest-add" id="ricoSuggestAdd">${esc(t('ricoSuggestAdd')(sg.lines.length))}</button>
-    <button type="button" class="rico-suggest-x" id="ricoSuggestHide" aria-label="${esc(t('ricoSuggestDismiss'))}">×</button>
+    <button type="button" class="rico-suggest-x" id="ricoSuggestHide" aria-label="${esc(t('ricoSuggestDismiss'))}">${ICON_CLOSE_SM}</button>
   </div>`;
 }
 function paintRicoSuggestion(){
@@ -4173,7 +4213,7 @@ function mountStockLink(box, itemId, opts = {}){
     box.innerHTML = `<label${open ? ' for="mfStockSearch"' : ''}>${esc(links.length > 1 ? t('stockLinkLabelMany') : t('stockLinkLabel'))}</label>${now}${doubtHtml}${sugHtml}
       <div class="stock-link-actions">${open ? '' : `<button type="button" class="btn btn-ghost" data-stock-open>${esc(links.length ? t('stockLinkAddAnother') : t('stockLinkChoose'))}</button>`}${links.length && !open ? `<button type="button" class="btn btn-ghost danger-text" data-stock-unlink>${esc(links.length > 1 ? t('stockLinkRemoveAll') : t('stockLinkRemove'))}</button>` : ''}</div>
       ${open ? `<div class="stock-pick"><input id="mfStockSearch" class="stock-pick-input" type="search" autocomplete="off" dir="auto" placeholder="${esc(t('stockLinkSearch'))}" value="${esc(query)}"><div class="stock-pick-list" role="listbox" aria-multiselectable="true" aria-label="${esc(t('stockLinkLabel'))}"></div><button type="button" class="btn btn-ghost" data-stock-cancel>${esc(t('stockLinkDone'))}</button></div>` : ''}`;
-    if(open){ paintList(); const input = box.querySelector('#mfStockSearch'); input.oninput = ()=>{ query = input.value; paintList(); }; input.onkeydown = e=>{ if(e.key === 'Enter') e.preventDefault(); }; }
+    if(open){ paintList(); const input = box.querySelector('#mfStockSearch'); input.oninput = ()=>{ query = input.value; paintList(); }; input.onkeydown = e=>{ if(e.key === 'Enter') e.preventDefault(); }; listHighlight(box.querySelector('.stock-pick-list'), '.stock-opt', input); }
   };
   const paintList = ()=>{
     const list = box.querySelector('.stock-pick-list'); if(!list) return;

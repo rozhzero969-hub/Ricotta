@@ -3,6 +3,10 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-20b', date:'2026-11-20', notes:{
+    en:['On a computer, the row under the mouse in lists and dropdowns turns grey, and the arrow keys move the same highlight.','Menus and dropdowns open from where you clicked, and the app feels smoother.','Mac app: new themes (Halloween, Christmas, Discord, Google and Pink), new app icons, and see-through is off unless you turn it on.'],
+    ku:['لە کۆمپیوتەر، ئەو ڕیزەی ماوسەکەی لەسەرە لە لیست و لیستە کراوەکاندا خۆڵەمێشی دەبێت، و دوگمەکانی تیر هەمان دیاریکردن دەجوڵێنن.','مێنیو و لیستە کراوەکان لەو شوێنەوە دەکرێنەوە کە کلیکت کرد، و ئەپەکە نەرمتر هەست دەکرێت.','ئەپی ماک: ڕەنگی نوێ (هالۆوین، کریسمس، Discord، Google و پەمەیی)، ئایکۆنی نوێی ئەپ، و ڕوونی کوژاوەیە تا خۆت هەڵیبکەیت.'],
+    ar:['على الكمبيوتر، يصبح الصف تحت الماوس في القوائم والقوائم المنسدلة رماديًا، وتحرّك مفاتيح الأسهم التحديد نفسه.','تُفتح القوائم والقوائم المنسدلة من مكان النقر، والتطبيق أكثر سلاسة.','تطبيق الماك: سمات جديدة (هالوين، عيد الميلاد، Discord، Google ووردي)، وأيقونات جديدة للتطبيق، والشفافية متوقفة ما لم تشغّلها.']}},
   {id:'2026-11-20a', date:'2026-11-20', notes:{
     en:['Ricotta has its own Mac app: a see-through window, a choice of themes and app icons, and the usual Mac shortcuts. On phones and in browsers nothing changes.'],
     ku:['ریکۆتا ئەپی تایبەتی خۆی بۆ ماک هەیە: پەنجەرەیەکی ڕوون، هەڵبژاردنی ڕووکار و ئایکۆنی ئەپ، و کورتبڕە ئاساییەکانی ماک. لە مۆبایل و وێبگەڕ هیچ ناگۆڕێت.'],
