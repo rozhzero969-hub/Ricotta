@@ -1,0 +1,36 @@
+{
+  "" : {
+    "const-values" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/Ricotta-primary.swiftconstvalues",
+    "dependencies" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/Ricotta-primary.d",
+    "diagnostics" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/Ricotta-primary.dia",
+    "emit-module-dependencies" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/Ricotta-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/Ricotta-primary-emit-module.dia",
+    "pch" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/Ricotta-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/Ricotta-primary.swiftdeps"
+  },
+  "/Users/rozha/Documents/Ricotta-macfs/macos/Ricotta/AppDelegate.swift" : {
+    "index-unit-output-path" : "/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/AppDelegate.o",
+    "llvm-bc" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/AppDelegate.bc",
+    "object" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/AppDelegate.o"
+  },
+  "/Users/rozha/Documents/Ricotta-macfs/macos/Ricotta/MainWindowController.swift" : {
+    "index-unit-output-path" : "/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/MainWindowController.o",
+    "llvm-bc" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/MainWindowController.bc",
+    "object" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/MainWindowController.o"
+  },
+  "/Users/rozha/Documents/Ricotta-macfs/macos/Ricotta/NavigationPolicy.swift" : {
+    "index-unit-output-path" : "/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/NavigationPolicy.o",
+    "llvm-bc" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/NavigationPolicy.bc",
+    "object" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/NavigationPolicy.o"
+  },
+  "/Users/rozha/Documents/Ricotta-macfs/macos/Ricotta/StatusViews.swift" : {
+    "index-unit-output-path" : "/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/StatusViews.o",
+    "llvm-bc" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/StatusViews.bc",
+    "object" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/StatusViews.o"
+  },
+  "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "index-unit-output-path" : "/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Intermediates.noindex/RicottaMac.build/Release/Ricotta.build/Objects-normal/x86_64/GeneratedAssetSymbols.o"
+  }
+}

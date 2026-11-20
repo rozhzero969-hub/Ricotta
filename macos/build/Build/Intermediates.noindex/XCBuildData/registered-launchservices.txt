@@ -1,0 +1,4 @@
+/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Products/Debug/Ricotta.app
+/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Products/Debug/Ricotta.app
+/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Products/Debug/Ricotta.app
+/Users/rozha/Documents/Ricotta-macfs/macos/build/Build/Products/Release/Ricotta.app

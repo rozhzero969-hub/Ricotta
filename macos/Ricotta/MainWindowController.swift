@@ -42,6 +42,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
         window.isReleasedWhenClosed = false
         window.collectionBehavior.insert(.fullScreenPrimary)
         super.init(window: window)
+        self.toolbar = toolbar
         window.delegate = self
         // Size and position are remembered between launches.
         window.setFrameAutosaveName("RicottaMainWindow")
@@ -195,8 +196,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
               let word = message.body as? String else { return }
         switch word {
         case "page-splash": setLook(nil)
-        case "page-dark": setLook(NSAppearance(named: .darkAqua)); reveal()
-        case "page-light": setLook(NSAppearance(named: .aqua)); reveal()
+        case "page-dark", "page-light":
+            setLook(NSAppearance(named: word == "page-dark" ? .darkAqua : .aqua))
+            if isFullScreen { send(.fullScreenOn) } // a page loaded in full screen starts without the mark
+            reveal()
         case "see-through-on", "see-through-off":
             Preferences.seeThrough = word == "see-through-on"
             seeThroughChanged()
@@ -234,8 +237,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
     }
 
     // MARK: Window
-    func windowDidEnterFullScreen(_ notification: Notification) { send(.fullScreenOn) }
-    func windowDidExitFullScreen(_ notification: Notification) { send(.fullScreenOff) }
+    /// In full screen AppKit moves a window's toolbar into its own strip under the menu bar, and that strip
+    /// stays over the top of the page (the profile, Rico and the streak). The toolbar is only there to place
+    /// the window buttons inside the sidebar, so full screen goes without it: the page fills the screen and
+    /// the window buttons slide down with the menu bar like in other Mac apps. It is back before the window
+    /// leaves full screen.
+    private var toolbar: NSToolbar?
+    private var isFullScreen: Bool { window?.styleMask.contains(.fullScreen) == true }
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        window?.toolbar = nil
+        send(.fullScreenOn) // the page drops the room it keeps for the window buttons
+    }
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) { leftFullScreen() }
+    func windowWillExitFullScreen(_ notification: Notification) { leftFullScreen() }
+    func windowDidExitFullScreen(_ notification: Notification) { leftFullScreen() }
+    private func leftFullScreen() {
+        if window?.toolbar == nil, let toolbar { window?.toolbar = toolbar }
+        send(.fullScreenOff)
+    }
 
     // MARK: Navigation (the same rules as the iPhone app)
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
