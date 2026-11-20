@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="200" viewBox="0 0 180 200"><defs><linearGradient id="art" x2=".28" y2="1"><stop stop-color="#fbe09b"/><stop offset="1" stop-color="#f27e3c"/></linearGradient><linearGradient id="tile" x2=".5" y2="1"><stop stop-color="#49264f"/><stop offset="1" stop-color="#201b2f"/></linearGradient></defs><circle cx="132" cy="61" r="43" fill="#efcaff" opacity=".78"/><circle cx="151" cy="48" r="39" fill="#6f3c75"/>
+<path d="M29 64c10 1 17 6 19 12 2-6 9-11 19-12-3 7-2 11 0 15-8-1-14 2-19 10-5-8-11-11-19-10 2-4 3-8 0-15Zm105 37c7-1 13 1 17 6 2-7 7-10 15-12-2 4 0 8 2 11-6 1-9 5-13 10-5-4-10-5-16-4 0-4-1-8-5-11Z" fill="#f5d6ff"/>
+<path d="M85 101c-5-16 2-26 13-27 4 5 2 11-4 17l3 12" fill="#d9c594"/>
+<path d="M85 102c-24-18-59 0-59 29 0 29 19 43 59 43s61-14 61-43c0-29-35-47-61-29Z" fill="url(#art)"/>
+<path d="M62 104c-19 14-19 51-4 63m48-63c19 14 19 51 4 63" fill="none" stroke="#ab492e" opacity=".55" stroke-width="4" stroke-linecap="round"/>
+<path d="m57 127 13-12 9 14Zm35 2 10-14 12 12Zm-28 12q23 21 46-2l-1 12-10 8-8-3-8 4-12-6Z" fill="#49264f"/></svg>

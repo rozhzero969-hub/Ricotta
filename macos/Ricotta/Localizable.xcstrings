@@ -690,38 +690,6 @@
         }
       }
     },
-    "Dark": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "تاریک"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "داكن"
-          }
-        }
-      }
-    },
-    "Wordmark": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ناوی ریکۆتا"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "اسم ريكوتا"
-          }
-        }
-      }
-    },
     "Ricotta": {
       "localizations": {
         "ckb": {
@@ -738,178 +706,194 @@
         }
       }
     },
-    "Halloween": {
+    "Apricot Coast": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "هالۆوین"
+            "value": "کەناری قەیسی"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "هالوين"
+            "value": "ساحل المشمش"
           }
         }
       }
     },
-    "Christmas": {
+    "Basil Leaf": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "کریسمس"
+            "value": "گەڵای ڕەیحان"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "عيد الميلاد"
+            "value": "ورقة ريحان"
           }
         }
       }
     },
-    "Pink": {
+    "Bow Bear": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "پەمەیی"
+            "value": "ورچی پاپیۆندار"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "وردي"
+            "value": "دب بفيونكة"
           }
         }
       }
     },
-    "Cream": {
+    "Cupid’s Kitchen": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "کرێمی"
+            "value": "چێشتخانەی کوپید"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "كريمي"
+            "value": "مطبخ كيوبيد"
           }
         }
       }
     },
-    "Forest": {
+    "Holly Bauble": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "سەوزی دارستان"
+            "value": "گۆی زستان"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "أخضر الغابة"
+            "value": "زينة الشتاء"
           }
         }
       }
     },
-    "Order Slip": {
+    "Jack & Moon": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "پسوولەی داواکاری"
+            "value": "کەدوو و مانگ"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "قسيمة الطلب"
+            "value": "يقطينة وقمر"
           }
         }
       }
     },
-    "Cheese": {
+    "Lunar Orbit": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "پەنیر"
+            "value": "خولی مانگ"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "جبن"
+            "value": "مدار القمر"
           }
         }
       }
     },
-    "Bag": {
+    "Moonlit Pantry": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "جانتا"
+            "value": "کۆگای مانگەشەو"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "حقيبة"
+            "value": "مخزن ضوء القمر"
           }
         }
       }
     },
-    "Glass": {
+    "Pumpkin Hour": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "شووشە"
+            "value": "کاتی کەدوو"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "زجاج"
+            "value": "ساعة اليقطين"
           }
         }
       }
     },
-    "With the Themes": {
+    "Ricotta Verde": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "لەگەڵ ڕەنگەکان"
+            "value": "ریکۆتای سەوز"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "مع السمات"
+            "value": "ريكوتا الخضراء"
           }
         }
       }
     },
-    "More": {
+    "Sunny Side": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "زیاتر"
+            "value": "لای خۆر"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "المزيد"
+            "value": "جهة الشمس"
+          }
+        }
+      }
+    },
+    "Winter Holly": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "زستانی سەوز"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "بهجة الشتاء"
           }
         }
       }

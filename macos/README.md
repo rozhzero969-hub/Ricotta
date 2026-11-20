@@ -39,35 +39,14 @@ if there is no Open button: try to open it once, then go to **System Settings > 
   only while loading, then solid like the website. On: the page background and the sidebar stay see-through; cards,
   lists, sheets and buttons stay solid. Only the person's own choice is ever saved, so a choice made before the default
   changed is kept.
-- **Theme** (View > Theme and Settings > Look): Ricotta (default), Halloween, Christmas, Discord, Google, Pink. It
-  changes the accent colour (buttons, chosen tab, switches, links), the Order card, the page background and the
-  see-through tint, in light and dark, with AA text contrast (`style.css`, "Colour themes"). Colour palettes only: no
-  logos or brand marks. Pink also draws a small bow on the Order card and beside the logo, a thin cupid's arrow under
-  page titles and, when see-through, a faint scatter of hearts (CSS variables `--pk-bow`, `--pk-arrow`, `--pk-scatter`
-  in `style.css`; wide windows only, `pointer-events:none`). Changing theme cross-fades for 220 ms (none with Reduce
-  Motion). Applied before the page paints.
-- **App icon** (View > App Icon and Settings > Look), in two groups. With the themes: `green` (Ricotta, the app's own
-  icon), `halloween`, `christmas`, `discord`, `google`, `pink`. More: `cream`, `forest`, `wordmark`, `slip` (order
-  slip), `wedge` (cheese), `bag`, `glass`, `dark`. Choosing a theme offers its matching icon with a button in Settings;
-  it never changes the icon by itself. The icon is shown in the Dock and the app switcher while Ricotta runs
-  (`NSApp.applicationIconImage`). The app bundle is never changed (that would break its signature), so Finder and
-  Launchpad always show the normal green icon.
-- A hidden title bar with the window buttons inside the top of Ricotta's sidebar; size and position are remembered.
-  An empty part of the top bar or sidebar moves the window, and a double-click zooms it.
-  In full screen the window has no toolbar strip, so the whole page shows; the window buttons slide down with the
-  menu bar, and the page drops the room it keeps for them (`full-screen-on/off`, also re-sent after a reload).
-- Standard menus: Command-R reload, Command-W close (the app keeps running; the Dock icon or Command-N brings the window
-  back), Command-Q quit, Command-comma opens Ricotta's Settings, Command-F focuses the screen's search (or opens search),
-  copy and paste, Command-plus / Command-minus / Command-0 for page zoom, full screen.
-- WhatsApp, phone, mail, Ricotta Restaurant and other sites open in the Mac's own apps or browser. In-app navigation is
-  limited to Ricotta's HTTPS pages, as in the iPhone app.
-- PDF and Excel exports are saved to Downloads and shown in Finder. File and photo pickers use the Mac's open panel.
-  Camera and microphone are offered only to Ricotta's own page.
-- A "Can't Open Ricotta" screen when the site can't be reached at all. Once loaded, the website's own offline mode works
-  (its service worker runs in the app).
-- Persistent storage, with a sign-in separate from Safari. No Reload, Back or Inspect Element in the right-click menu,
-  and no back/forward swipe.
-- English, Kurdish (`ckb`) and Arabic for the app's own words (`Localizable.xcstrings`, `InfoPlist.xcstrings`).
+- **Theme** (View > Theme and Settings > Look): Ricotta Verde, Pumpkin Hour, Winter Holly, Moonlit Pantry,
+  Apricot Coast and Cupid’s Kitchen. Each includes light and dark palettes, artwork and a control style.
+  The five alternate themes also give Rico and the kitchen streak a matching symbol. The theme applies
+  before the page paints. Theme changes cross-fade for 220 ms when Reduce Motion is off.
+- **App icon** (View > App Icon and Settings > Look): Basil Leaf, Jack & Moon, Holly Bauble, Lunar Orbit,
+  Sunny Side and Bow Bear. Selecting a theme offers its matching icon in Settings. The selected icon appears
+  in the Dock and app switcher while Ricotta runs. Finder and Launchpad use the signed app bundle’s icon.
+  Removed Dock icon preferences fall back to Basil Leaf.
 
 ### The page and the app talk only in fixed words
 
@@ -88,10 +67,10 @@ if there is no Open button: try to open it once, then go to **System Settings > 
 - `node macos/IconSources/render-icons.cjs` (from the repository root, after `pnpm install`) writes every size:
   `Ricotta/Assets.xcassets/AppIcon-<name>.imageset/` (512 and 1024 px) and the website's `mac-icons/<name>.png`
   (96 px, the Settings picker). Add `--sheet out.png` to see all of them at 16, 32, 128 and 256 pt.
-- A new icon name also goes in `AppIconChoice` (`AppDelegate.swift`), `MAC_ICONS` (`sounds.js`), `ICONS`
-  (`render-icons.cjs`), the `macIcon_<name>` text in `i18n.js` and its title in `Localizable.xcstrings`.
-- The Pink theme's bow, arrow and hearts are SVGs inside `style.css` (`--pk-bow`, `--pk-arrow`, `--pk-scatter`). To use
-  pictures instead, point those variables at image files next to `style.css` (and add them to `scripts/build-site.cjs`).
+- Icon names are shared by `AppIconChoice` (`Choices.swift`), `MAC_ICONS` (`sounds.js`), `ICONS`
+  (`render-icons.cjs`), and the localized names in `i18n.js` and `Localizable.xcstrings`.
+- Hero and theme picker artwork lives in `mac-icons/*-art.svg`. The small streak and Rico silhouettes
+  live in `style.css`.
 
 ## Not included
 

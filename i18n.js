@@ -154,8 +154,8 @@ const T = {
     ricoCmpLater:'Later',
     offlineShowing:x=>'Offline, showing data from '+x+'.', offlineNoCopy:'Offline. This phone has not saved this page yet.', offlineWaiting:n=>n===1?'1 change will be sent when online.':n+' changes will be sent when online.', offlineWillSend:'Will be sent when online', offlineSent:'The changes you made offline were sent.', offlineNeedsNet:'This needs the internet. Try again when you are online.', offlineRicoNet:'Rico needs the internet. Your chats show as this phone saved them.', offlineRicoShort:'Rico needs the internet', offlineSignIn:'Signing in needs the internet.', chgFailedTitle:'Not sent', chgConflict:'Changed on another phone while you were offline. Your copy is kept on this phone.', chgError:'The server did not take it. Your copy is kept on this phone.', chgSendMine:'Send mine anyway', chgTryAgain:'Try again', chgDiscard:'Discard mine', chgFailedToast:n=>n===1?'1 change was not sent. It is kept on this phone.':n+' changes were not sent. They are kept on this phone.',
     seeThrough:'Always see-through', seeThroughHint:'The window lets your desktop show through, blurred, behind the page and the sidebar. Off: only while the app opens.',
-    macThemeLabel:'Theme', macThemeHint:'The colour of buttons, switches, the Order card and the page on this Mac.', macTheme_ricotta:'Ricotta', macTheme_halloween:'Halloween', macTheme_christmas:'Christmas', macTheme_discord:'Discord', macTheme_google:'Google', macTheme_pink:'Pink',
-    macIconLabel:'App icon', macIconHint:'The icon in the Dock while Ricotta is open.', macIconsThemes:'With the themes', macIconsMore:'More', macIconMatch:'Use the matching icon', macIcon_green:'Ricotta', macIcon_halloween:'Halloween', macIcon_christmas:'Christmas', macIcon_discord:'Discord', macIcon_google:'Google', macIcon_pink:'Pink', macIcon_cream:'Cream', macIcon_forest:'Forest', macIcon_wordmark:'Wordmark', macIcon_slip:'Order slip', macIcon_wedge:'Cheese', macIcon_bag:'Bag', macIcon_glass:'Glass', macIcon_dark:'Dark',
+    macThemeLabel:'Theme', macThemeHint:'Change the colors, controls and artwork on this Mac.', macTheme_ricotta:'Ricotta Verde', macTheme_halloween:'Pumpkin Hour', macTheme_christmas:'Winter Holly', macTheme_discord:'Moonlit Pantry', macTheme_google:'Apricot Coast', macTheme_pink:'Cupid’s Kitchen',
+    macIconLabel:'App icon', macIconHint:'The icon in the Dock while Ricotta is open.', macIconMatch:'Use the matching icon', macIcon_green:'Basil Leaf', macIcon_halloween:'Jack & Moon', macIcon_christmas:'Holly Bauble', macIcon_discord:'Lunar Orbit', macIcon_google:'Sunny Side', macIcon_pink:'Bow Bear',
     ricoBack:'Back to the app', ricoSearchChats:'Search chats', ricoIntroSub:'Ask about stock, prices, orders or transfers.', ricoIntroSubRecipes:'Ask about your recipes, prices or what is in Main Storage.',
     ricoCardLow:z=>'Low in '+z, ricoDaysLeft:n=>n<1?'Less than a day left':'About '+Math.round(n)+' days left', ricoEmptyNow:'Empty',
     ricoMoreRows:n=>'And '+n+' more', ricoMoveLow:'Prepare a transfer', ricoMoveLowAsk:z=>'Prepare a transfer for what is low in '+z,
@@ -538,8 +538,8 @@ const T = {
     ricoCmpLater:'دواتر',
     offlineShowing:x=>'ئۆفلاینیت، ئەو زانیارییانە پیشان دەدرێن کە لە '+x+' پاشەکەوت کران.', offlineNoCopy:'ئۆفلاینیت. ئەم مۆبایلە هێشتا ئەم پەڕەیەی پاشەکەوت نەکردووە.', offlineWaiting:n=>n+' گۆڕانکاری کە هێڵ هاتەوە دەنێردرێت.', offlineWillSend:'کە هێڵ هاتەوە دەنێردرێت', offlineSent:'ئەو گۆڕانکارییانەی بە ئۆفلاین کردبووت نێردران.', offlineNeedsNet:'ئەمە ئینتەرنێتی پێویستە. کە هێڵ هاتەوە دووبارە هەوڵ بدەرەوە.', offlineRicoNet:'ریکۆ ئینتەرنێتی پێویستە. گفتوگۆکانت وەک ئەوەی ئەم مۆبایلە پاشەکەوتی کردوون پیشان دەدرێن.', offlineRicoShort:'ریکۆ ئینتەرنێتی پێویستە', offlineSignIn:'چوونەژوورەوە ئینتەرنێتی پێویستە.', chgFailedTitle:'نەنێردرا', chgConflict:'لە کاتی ئۆفلاینبوونتدا لە مۆبایلێکی ترەوە گۆڕدرا. کۆپییەکەی تۆ لەسەر ئەم مۆبایلە ماوەتەوە.', chgError:'سێرڤەرەکە وەریینەگرت. کۆپییەکەی تۆ لەسەر ئەم مۆبایلە ماوەتەوە.', chgSendMine:'هەر هی من بنێرە', chgTryAgain:'دووبارە هەوڵ بدەرەوە', chgDiscard:'هی من لابدە', chgFailedToast:n=>n+' گۆڕانکاری نەنێردرا. لەسەر ئەم مۆبایلە ماوەتەوە.',
     seeThrough:'هەمیشە شەفاف', seeThroughHint:'پەنجەرەکە باکگراوندی ماکەکەت بە لێڵی لە پشت پەڕە و لیستی لاتەنیشت پیشان دەدات. کوژاوە: تەنها کاتێک ئەپەکە دەکرێتەوە.',
-    macThemeLabel:'ڕەنگی ئەپ', macThemeHint:'ڕەنگی دوگمەکان و سویچەکان و کارتی داواکاری و پەڕەکە لەم ماکەدا.', macTheme_ricotta:'ریکۆتا', macTheme_halloween:'هالۆوین', macTheme_christmas:'کریسمس', macTheme_discord:'Discord', macTheme_google:'Google', macTheme_pink:'پەمەیی',
-    macIconLabel:'ئایکۆنی ئەپ', macIconHint:'ئەو ئایکۆنەی لە Dock دەردەکەوێت کاتێک ریکۆتا کراوەیە.', macIconsThemes:'لەگەڵ ڕەنگەکان', macIconsMore:'زیاتر', macIconMatch:'ئایکۆنی هاوڕەنگ بەکاربهێنە', macIcon_green:'ریکۆتا', macIcon_halloween:'هالۆوین', macIcon_christmas:'کریسمس', macIcon_discord:'Discord', macIcon_google:'Google', macIcon_pink:'پەمەیی', macIcon_cream:'کرێمی', macIcon_forest:'سەوزی دارستان', macIcon_wordmark:'ناوی ریکۆتا', macIcon_slip:'پسوولەی داواکاری', macIcon_wedge:'پەنیر', macIcon_bag:'جانتا', macIcon_glass:'شووشە', macIcon_dark:'تاریک',
+    macThemeLabel:'ڕووکار', macThemeHint:'ڕەنگ و دوگمە و وێنەکانی ئەپ لەم ماکە بگۆڕە.', macTheme_ricotta:'ریکۆتای سەوز', macTheme_halloween:'کاتی کەدوو', macTheme_christmas:'زستانی سەوز', macTheme_discord:'کۆگای مانگەشەو', macTheme_google:'کەناری قەیسی', macTheme_pink:'چێشتخانەی کوپید',
+    macIconLabel:'ئایکۆنی ئەپ', macIconHint:'ئەو ئایکۆنەی لە Dock دەردەکەوێت کاتێک ریکۆتا کراوەیە.', macIconMatch:'ئایکۆنی هاوڕەنگ بەکاربهێنە', macIcon_green:'گەڵای ڕەیحان', macIcon_halloween:'کەدوو و مانگ', macIcon_christmas:'گۆی زستان', macIcon_discord:'خولی مانگ', macIcon_google:'لای خۆر', macIcon_pink:'ورچی پاپیۆندار',
     ricoBack:'گەڕانەوە بۆ ئەپ',
     ricoSearchChats:'گەڕان لە گفتوگۆکان',
     ricoIntroSub:'پرسیار بکە دەربارەی کۆگا، نرخ، داواکاری یان گواستنەوە.',
@@ -1430,8 +1430,8 @@ const T = {
     ricoCmpLater:'الأحدث',
     offlineShowing:x=>'غير متصل، تُعرض البيانات المحفوظة في '+x+'.', offlineNoCopy:'غير متصل. لم يحفظ هذا الهاتف هذه الصفحة بعد.', offlineWaiting:n=>n===1?'تغيير واحد سيُرسل عند عودة الاتصال.':n+' تغييرات ستُرسل عند عودة الاتصال.', offlineWillSend:'سيُرسل عند عودة الاتصال', offlineSent:'أُرسلت التغييرات التي أجريتها دون اتصال.', offlineNeedsNet:'هذا يحتاج إلى الإنترنت. حاول مرة أخرى عند عودة الاتصال.', offlineRicoNet:'ريكو يحتاج إلى الإنترنت. تظهر محادثاتك كما حفظها هذا الهاتف.', offlineRicoShort:'ريكو يحتاج إلى الإنترنت', offlineSignIn:'تسجيل الدخول يحتاج إلى الإنترنت.', chgFailedTitle:'لم يُرسل', chgConflict:'تغيّر من هاتف آخر أثناء انقطاع الاتصال. نسختك محفوظة على هذا الهاتف.', chgError:'لم يقبله الخادم. نسختك محفوظة على هذا الهاتف.', chgSendMine:'أرسل نسختي على أي حال', chgTryAgain:'حاول مرة أخرى', chgDiscard:'تجاهل نسختي', chgFailedToast:n=>n===1?'لم يُرسل تغيير واحد. هو محفوظ على هذا الهاتف.':n+' تغييرات لم تُرسل. هي محفوظة على هذا الهاتف.',
     seeThrough:'شفاف دائمًا', seeThroughHint:'تُظهر النافذة خلفية سطح المكتب ضبابية خلف الصفحة والشريط الجانبي. عند الإيقاف: فقط أثناء فتح التطبيق.',
-    macThemeLabel:'السمة', macThemeHint:'لون الأزرار والمفاتيح وبطاقة الطلب والصفحة على هذا الـMac.', macTheme_ricotta:'ريكوتا', macTheme_halloween:'هالوين', macTheme_christmas:'عيد الميلاد', macTheme_discord:'Discord', macTheme_google:'Google', macTheme_pink:'وردي',
-    macIconLabel:'أيقونة التطبيق', macIconHint:'الأيقونة في Dock أثناء فتح ريكوتا.', macIconsThemes:'مع السمات', macIconsMore:'المزيد', macIconMatch:'استخدم الأيقونة المطابقة', macIcon_green:'ريكوتا', macIcon_halloween:'هالوين', macIcon_christmas:'عيد الميلاد', macIcon_discord:'Discord', macIcon_google:'Google', macIcon_pink:'وردي', macIcon_cream:'كريمي', macIcon_forest:'أخضر الغابة', macIcon_wordmark:'اسم ريكوتا', macIcon_slip:'قسيمة الطلب', macIcon_wedge:'جبن', macIcon_bag:'حقيبة', macIcon_glass:'زجاج', macIcon_dark:'داكن',
+    macThemeLabel:'السمة', macThemeHint:'غيّر الألوان وعناصر التحكم والرسومات على هذا الـMac.', macTheme_ricotta:'ريكوتا الخضراء', macTheme_halloween:'ساعة اليقطين', macTheme_christmas:'بهجة الشتاء', macTheme_discord:'مخزن ضوء القمر', macTheme_google:'ساحل المشمش', macTheme_pink:'مطبخ كيوبيد',
+    macIconLabel:'أيقونة التطبيق', macIconHint:'الأيقونة في Dock أثناء فتح ريكوتا.', macIconMatch:'استخدم الأيقونة المطابقة', macIcon_green:'ورقة ريحان', macIcon_halloween:'يقطينة وقمر', macIcon_christmas:'زينة الشتاء', macIcon_discord:'مدار القمر', macIcon_google:'جهة الشمس', macIcon_pink:'دب بفيونكة',
     ricoBack:'العودة إلى التطبيق', ricoSearchChats:'ابحث في المحادثات', ricoIntroSub:'اسأل عن المخزون أو الأسعار أو الطلبات أو التحويلات.', ricoIntroSubRecipes:'اسأل عن وصفاتك أو الأسعار أو ما في المخزن الرئيسي.',
     ricoCardLow:z=>'ناقص في '+z, ricoDaysLeft:n=>n<1?'أقل من يوم':'نحو '+Math.round(n)+' أيام', ricoEmptyNow:'فارغ',
     ricoMoreRows:n=>'و'+n+' أخرى', ricoMoveLow:'جهّز تحويلًا', ricoMoveLowAsk:z=>'جهّز تحويلًا لما ينقص في '+z,
@@ -1644,10 +1644,10 @@ Object.assign(T.en, {
   darkLabel:'Light or Dark', darkHint:'Automatic follows your phone.', darkOff:'Light', darkOn:'Dark', darkAuto:'Automatic',
 
   streakTitle:'Kitchen streak', streakDays:n=>n+' day'+(n===1?'':'s'), streakChip:n=>'Kitchen streak: '+n+' day'+(n===1?'':'s'),
-  streakLit:'Today’s order is in. The fire is lit!', streakNotYet:'Send one order today to light the fire.',
+  streakLit:'Today’s order is in. Your streak is active!', streakNotYet:'Send one order today to keep your streak going.',
   streakBroken:n=>'The '+n+'-day streak went out.', streakNone:'Send an order today to start a streak.',
   streakAskRico:'Ask Rico to bring it back', streakAskPrompt:'Please bring back our kitchen streak', streakBest:n=>'Best: '+n, streakNext:n=>'Next goal: '+n+' days',
-  streakHow:'Every day with at least one order, from Rozh or Yunis, adds a day. A whole day without an order puts the fire out.',
+  streakHow:'Every day with at least one order, from Rozh or Yunis, adds a day. A whole day without an order ends the streak.',
   streakMilestone:n=>n+'-day streak!', streakMilestoneSub:'The kitchen hasn’t missed a day. Rico is proud of you.',
   streakRecovered:n=>'The streak is back: '+n+' days', streakRecoverFailed:'Rico couldn’t bring this streak back.',
   ricoCardStreak:n=>'Bring back the '+n+'-day streak', ricoStreakBtn:'Bring it back',
@@ -1668,10 +1668,10 @@ Object.assign(T.ku, {
   darkLabel:'ڕووناک یان تاریک', darkHint:'خۆکار وەک ڕێکخستنی مۆبایلەکەت دەبێت.', darkOff:'ڕووناک', darkOn:'تاریک', darkAuto:'خۆکار',
 
   streakTitle:'زنجیرەی چێشتخانە', streakDays:n=>n+' ڕۆژ', streakChip:n=>'زنجیرەی چێشتخانە: '+n+' ڕۆژ',
-  streakLit:'داواکاریی ئەمڕۆ نێردرا. ئاگرەکە هەڵگیرساوە!', streakNotYet:'ئەمڕۆ یەک داواکاری بنێرە بۆ هەڵگیرساندنی ئاگرەکە.',
+  streakLit:'داواکاریی ئەمڕۆ نێردرا. زنجیرەکەت بەردەوامە!', streakNotYet:'ئەمڕۆ یەک داواکاری بنێرە بۆ بەردەوامبوونی زنجیرەکەت.',
   streakBroken:n=>'زنجیرەی '+n+' ڕۆژە کوژایەوە.', streakNone:'ئەمڕۆ داواکارییەک بنێرە بۆ دەستپێکردنی زنجیرە.',
   streakAskRico:'داوا لە ریکۆ بکە بیگەڕێنێتەوە', streakAskPrompt:'تکایە زنجیرەی چێشتخانەکەمان بگەڕێنەوە', streakBest:n=>'باشترین: '+n, streakNext:n=>'ئامانجی داهاتوو: '+n+' ڕۆژ',
-  streakHow:'هەر ڕۆژێک کە لانیکەم یەک داواکاری تێدا بنێردرێت، لە ڕۆژوە یان یونسەوە، ڕۆژێک زیاد دەکات. ڕۆژێکی تەواو بێ داواکاری ئاگرەکە دەکوژێنێتەوە.',
+  streakHow:'هەر ڕۆژێک کە لانیکەم یەک داواکاری تێدا بنێردرێت، لە ڕۆژوە یان یونسەوە، ڕۆژێک زیاد دەکات. ڕۆژێکی تەواو بێ داواکاری زنجیرەکە کۆتایی پێ دەهێنێت.',
   streakMilestone:n=>'زنجیرەی '+n+' ڕۆژە!', streakMilestoneSub:'چێشتخانەکە یەک ڕۆژیشی لەدەست نەداوە. ریکۆ شانازیت پێوە دەکات.',
   streakRecovered:n=>'زنجیرەکە گەڕایەوە: '+n+' ڕۆژ', streakRecoverFailed:'ریکۆ نەیتوانی ئەم زنجیرەیە بگەڕێنێتەوە.',
   ricoCardStreak:n=>'گەڕاندنەوەی زنجیرەی '+n+' ڕۆژە', ricoStreakBtn:'بیگەڕێنەوە',
@@ -1692,10 +1692,10 @@ Object.assign(T.ar, {
   darkLabel:'فاتح أو داكن', darkHint:'التلقائي يتبع إعداد هاتفك.', darkOff:'فاتح', darkOn:'داكن', darkAuto:'تلقائي',
 
   streakTitle:'سلسلة المطبخ', streakDays:n=>AR_DAYS(n), streakChip:n=>'سلسلة المطبخ: '+AR_DAYS(n),
-  streakLit:'طلب اليوم أُرسل. النار مشتعلة!', streakNotYet:'أرسل طلبًا واحدًا اليوم لإشعال النار.',
+  streakLit:'أُرسل طلب اليوم. سلسلتك مستمرة!', streakNotYet:'أرسل طلبًا واحدًا اليوم لتستمر سلسلتك.',
   streakBroken:n=>'انطفأت السلسلة بعد '+AR_N(n,'يوم واحد','يومين','أيام','يومًا')+'.', streakNone:'أرسل طلبًا اليوم لبدء سلسلة.',
   streakAskRico:'اطلب من ريكو إعادتها', streakAskPrompt:'من فضلك أعد سلسلة مطبخنا', streakBest:n=>'الأفضل: '+n, streakNext:n=>'الهدف التالي: '+AR_DAYS(n),
-  streakHow:'كل يوم فيه طلب واحد على الأقل، من روژ أو يونس، يضيف يومًا. يوم كامل بلا طلب يطفئ النار.',
+  streakHow:'كل يوم فيه طلب واحد على الأقل، من روژ أو يونس، يضيف يومًا. يوم كامل بلا طلب ينهي السلسلة.',
   streakMilestone:n=>'السلسلة: '+AR_DAYS(n)+'!', streakMilestoneSub:'لم يفوّت المطبخ يومًا. ريكو فخور بكم.',
   streakRecovered:n=>'عادت السلسلة: '+AR_DAYS(n), streakRecoverFailed:'لم يستطع ريكو إعادة هذه السلسلة.',
   ricoCardStreak:n=>'إعادة السلسلة ('+AR_DAYS(n)+')', ricoStreakBtn:'أعدها',
@@ -2366,3 +2366,29 @@ T.en.accountName = a=>({"rozha": "Rozh", "yunis": "Yunis", "ahmad": "Ahmad"})[a]
 T.ku.accountName = a=>({"rozha": "ڕۆژ", "yunis": "یونس", "ahmad": "ئەحمەد"})[a] || a;
 
 T.ar.accountName = a=>({"rozha": "روژ", "yunis": "يونس", "ahmad": "أحمد"})[a] || a;
+
+T.en.settingPreview = {
+  items:['Tomatoes','Onions','Basil'], kg:'kg', supplier:'Produce',
+  before:'Before', after:'After', question:'How much basil is in stock?', reply:'There’s 1 kg of basil in Main Storage.',
+  transfer:'Main Storage → Kitchen', ai:'Allow Rico to send your question and the order details he needs to an AI service?',
+  recipeAlert:{en:'Chocolate cake · Cocoa is out of stock'},
+  notificationLabel:'Phone notification', notification:'Ricotta Orders · Now', reminder:'Produce order is due at 10:00 AM.',
+};
+T.ku.settingPreview = {
+  items:['تەماتە','پیاز','ڕەیحان'], kg:'کیلۆ', supplier:'سەوزە',
+  before:'پێشتر', after:'دواتر', question:'چەند ڕەیحان لە کۆگادایە؟', reply:'1 کیلۆ ڕەیحان لە کۆگای سەرەکیدایە.',
+  transfer:'کۆگای سەرەکی ← چێشتخانە', ai:'ڕێگە بە ریکۆ دەدەیت پرسیارەکەت و وردەکارییە پێویستەکانی داواکاری بۆ خزمەتگوزاریی زیرەکی دەستکرد بنێرێت؟',
+  recipeAlert:{ku:'کێکی چۆکلێت · کاکاۆ نەماوە'},
+  notificationLabel:'ئاگادارکردنەوەی مۆبایل', notification:'داواکارییەکانی ریکۆتا · ئێستا', reminder:'کاتی داواکاریی سەوزە کاتژمێر 10ی بەیانییە.',
+};
+T.ar.settingPreview = {
+  items:['طماطم','بصل','ريحان'], kg:'كغ', supplier:'الخضار',
+  before:'قبل', after:'بعد', question:'كم كمية الريحان في المخزون؟', reply:'يوجد 1 كغ من الريحان في المخزن الرئيسي.',
+  transfer:'المخزن الرئيسي ← المطبخ', ai:'هل تسمح لريكو بإرسال سؤالك وتفاصيل الطلب التي يحتاجها إلى خدمة ذكاء اصطناعي؟',
+  recipeAlert:{ar:'كعكة الشوكولاتة · نفد الكاكاو'},
+  notificationLabel:'إشعار الهاتف', notification:'طلبات ريكوتا · الآن', reminder:'موعد طلب الخضار الساعة العاشرة صباحًا.',
+};
+
+T.en.settingHelp.swipe = 'Swipe an item right on the Order screen to set it to your usual quantity.';
+T.ku.settingHelp.swipe = 'لە شاشەی داواکاری، کاڵاکە بۆ چەپ ڕابکێشە بۆ دانانی بڕە ئاساییەکەی.';
+T.ar.settingHelp.swipe = 'اسحب الصنف إلى اليسار في شاشة الطلب لضبطه على الكمية المعتادة.';

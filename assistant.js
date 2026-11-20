@@ -886,7 +886,7 @@ function renderRicoProposalCard(p, mi){
     return ricoCard(icon, title, body, actions(t('notifSend')), p);
   }
   if(p.kind === 'streak'){
-    icon = FLAME_SVG; title = t('ricoCardStreak')(p.days);
+    icon = renderStreakMark(); title = t('ricoCardStreak')(p.days);
     body = `<div class="rico-card-note">${esc(t('streakHow'))}</div>`;
     return ricoCard(icon, title, body, actions(t('ricoStreakBtn')), p);
   }

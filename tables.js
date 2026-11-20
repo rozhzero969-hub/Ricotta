@@ -109,23 +109,26 @@ function renderPlainList(kind){
     return `<button type="button" class="list-row tappable" data-search-row data-table-row="${esc(r.id)}" ${kind === 'items' ? `data-edititem="${esc(r.id)}"` : `data-search-text="${esc([r.name, r.phone || ''].join(' '))}"`}><div><div class="name" dir="auto">${esc(r.name)}${r.available === false ? ` <span class="availability-badge">${esc(t('unavailable'))}</span>` : ''}</div><div class="meta">${rowMeta(kind, r)}</div></div><i class="sheet-chevron" aria-hidden="true"></i></button>`;
   }).join('')}</div>`;
 }
-function renderDataTable(kind){
-  if(!featureOn('tables')) return renderPlainList(kind);
-  const cfg = TABLES[kind], {rows, col, prefs} = tableRows(kind);
-  const counts = Object.fromEntries(cfg.filters.map(f=>[f.id, cfg.rows().filter(f.test).length]));
-  const chips = `<div class="table-filters record-filters glass" role="group" aria-label="${esc(t('tableFilter'))}">${cfg.filters.filter(f=>f.id === 'all' || counts[f.id]).map(f=>`<button type="button" class="tab-pill${prefs.filter === f.id ? ' active' : ''}" aria-pressed="${prefs.filter === f.id}" data-table-filter="${f.id}">${esc(f.label())}${f.id === 'all' ? '' : `<span class="tab-count">${counts[f.id]}</span>`}</button>`).join('')}</div>`;
+function renderDataTable(kind, preview){
+  if(!preview && !featureOn('tables')) return renderPlainList(kind);
+  const cfg = TABLES[kind], {rows, col, prefs} = preview
+    ? {rows:preview.rows, col:preview.cols[0], prefs:{sort:'name', dir:1, filter:'all'}}
+    : tableRows(kind);
+  const filters = preview ? cfg.filters.slice(0, 1) : cfg.filters;
+  const counts = preview ? {} : Object.fromEntries(filters.map(f=>[f.id, cfg.rows().filter(f.test).length]));
+  const chips = `<div class="table-filters record-filters glass" role="group" aria-label="${esc(t('tableFilter'))}">${filters.filter(f=>f.id === 'all' || counts[f.id]).map(f=>`<button type="button" class="tab-pill${prefs.filter === f.id ? ' active' : ''}" aria-pressed="${prefs.filter === f.id}" data-table-filter="${f.id}">${esc(f.label())}${f.id === 'all' ? '' : `<span class="tab-count">${counts[f.id]}</span>`}</button>`).join('')}</div>`;
   const tools = `<div class="table-tools">${chips}<div class="table-buttons">
       <button type="button" class="btn btn-ghost table-sort-btn" data-table-sort-menu>${ICON_SORT}<span>${esc(t('tableSortBy')(col.label()))}</span></button>
       <button type="button" class="btn btn-ghost table-cols-btn" data-table-cols>${ICON_COLUMNS}<span>${esc(t('tableColumns'))}</span></button></div></div>`;
   if(!rows.length) return tools + emptyRows(kind, prefs.filter === 'all');
-  const cols = tableColumns(kind);
+  const cols = preview?.cols || tableColumns(kind);
   const head = cols.map(c=>`<th scope="col" class="${c.end ? 'end' : ''}"${prefs.sort === c.id ? ` aria-sort="${prefs.dir > 0 ? 'ascending' : 'descending'}"` : ''}><button type="button" data-table-sort="${c.id}">${esc(c.label())}${prefs.sort === c.id ? `<i class="sort-arrow${prefs.dir < 0 ? ' down' : ''}" aria-hidden="true"></i>` : ''}</button></th>`).join('');
   const rowAttr = r=>`data-search-row data-table-row="${esc(r.id)}" ${kind === 'items' ? `data-edititem="${esc(r.id)}"` : `data-search-text="${esc([r.name, r.phone || ''].join(' '))}"`}`;
   const body = rows.map(r=>`<tr ${rowAttr(r)} tabindex="0">${cols.map(c=>`<td class="${c.end ? 'end' : ''}${c.fixed ? ' lead' : ''}" dir="auto">${c.fixed && r.available === false ? `<span class="availability-badge">${esc(t('unavailable'))}</span> ` : ''}${esc(c.value(r))}</td>`).join('')}</tr>`).join('');
   // Phones: one row each, with what the list is sorted by on the right (not the name, which is the row).
   const side = r=>['name', 'supplier', 'phone'].includes(col.id) ? '' : col.short ? col.short(col.value(r)) : col.value(r);
   const list = rows.map(r=>{
-    return `<button type="button" class="list-row tappable table-row" ${rowAttr(r)}><div><div class="name" dir="auto">${esc(r.name)}${r.available === false ? ` <span class="availability-badge">${esc(t('unavailable'))}</span>` : ''}</div><div class="meta">${rowMeta(kind, r)}</div></div><span class="table-side">${esc(side(r))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
+    return `<button type="button" class="list-row tappable table-row" ${rowAttr(r)}><div><div class="name" dir="auto">${esc(r.name)}${r.available === false ? ` <span class="availability-badge">${esc(t('unavailable'))}</span>` : ''}</div><div class="meta">${preview ? esc(r.previewUnit) : rowMeta(kind, r)}</div></div><span class="table-side">${esc(side(r))}</span><i class="sheet-chevron" aria-hidden="true"></i></button>`;
   }).join('');
   return `${tools}<div class="data-table-scroll"><table class="data-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div><div class="table-list">${list}</div>`;
 }

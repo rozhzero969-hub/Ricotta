@@ -163,35 +163,85 @@ function wipeBanner(){
    sentence or two and a small picture of it. A phone: the round "i" button on the row opens the same in
    a sheet. Only explains: the switch itself is still the only thing that changes a setting. Works on the
    Settings page and in Rico's settings. */
-/* Each picture is a tiny drawing of the thing itself (2026-11-15): the banner that drops in, the item
-   being swiped, the row with last time's amount, the rows before and after, each sound's own moment. */
-const HP_WAVES = '<path d="M92 30a10 10 0 0 1 0 16" class="hp-wave hp-w1"/><path d="M99 23a19 19 0 0 1 0 30" class="hp-wave hp-w2"/><path d="M106 16a28 28 0 0 1 0 44" class="hp-wave hp-w3"/>';
-const HELP_PIC = {
-  bell:'<rect x="38" y="3" width="56" height="70" rx="11" class="hp-card"/><text x="66" y="22" text-anchor="middle" class="hp-clock">9:41</text><rect x="56" y="62" width="20" height="3" rx="1.5" class="hp-line"/><g class="hp-slide"><rect x="42" y="31" width="48" height="20" rx="6" class="hp-card hp-lift"/><rect x="45.5" y="35" width="12" height="12" rx="3.5" class="hp-acc"/><path d="M51.5 38c.4 2.4 1.6 3.6 4 4-2.4.4-3.6 1.6-4 4-.4-2.4-1.6-3.6-4-4 2.4-.4 3.6-1.6 4-4Z" class="hp-white" transform="translate(0 -1)"/><rect x="61" y="36" width="24" height="4" rx="2" class="hp-strong"/><rect x="61" y="43" width="17" height="3.5" rx="1.75" class="hp-line"/></g>',
-  swipe:'<rect x="10" y="20" width="112" height="30" rx="9" class="hp-card"/><rect x="20" y="28" width="40" height="6" rx="3" class="hp-strong"/><rect x="20" y="38" width="26" height="4" rx="2" class="hp-line"/><rect x="88" y="26" width="24" height="18" rx="6" class="hp-line"/><text x="100" y="39.5" text-anchor="middle" class="hp-num hp-fadein">5</text><circle cx="36" cy="35" r="8" class="hp-acc hp-soft hp-finger"/><path d="M30 62h44m-6-5 6 5-6 5" class="hp-grid hp-arrow"/>',
-  last:'<rect x="10" y="18" width="112" height="40" rx="9" class="hp-card"/><rect x="20" y="27" width="46" height="6" rx="3" class="hp-strong"/><g class="hp-pulse"><rect x="20" y="38" width="34" height="12" rx="6" class="hp-acc hp-soft"/><path d="M27.5 44a3.5 3.5 0 1 0 1-2.5" class="hp-mini"/><path d="M27.2 40.6v2h2" class="hp-mini"/><text x="44" y="47.5" text-anchor="middle" class="hp-small">4</text></g><rect x="88" y="28" width="24" height="20" rx="6" class="hp-line"/>',
-  compact:'<rect x="10" y="8" width="50" height="60" rx="8" class="hp-card"/><rect x="16" y="14" width="38" height="14" rx="4" class="hp-line"/><rect x="16" y="31" width="38" height="14" rx="4" class="hp-line"/><rect x="16" y="48" width="38" height="14" rx="4" class="hp-line"/><path d="M62 38h8m-4-4 4 4-4 4" class="hp-grid"/><rect x="72" y="8" width="50" height="60" rx="8" class="hp-card"/><rect x="78" y="13" width="38" height="8" rx="3" class="hp-acc hp-soft"/><rect x="78" y="23" width="38" height="8" rx="3" class="hp-acc hp-soft"/><rect x="78" y="33" width="38" height="8" rx="3" class="hp-acc hp-soft"/><rect x="78" y="43" width="38" height="8" rx="3" class="hp-acc hp-soft"/><rect x="78" y="53" width="38" height="8" rx="3" class="hp-acc hp-soft"/>',
-  soundTap:'<rect x="14" y="24" width="64" height="28" rx="14" class="hp-card"/><path d="M26 38h10" class="hp-stroke"/><path d="M56 38h10M61 33v10" class="hp-stroke"/><circle cx="61" cy="38" r="12" class="hp-acc hp-soft hp-pulse"/>' + HP_WAVES,
-  soundSent:'<path d="M18 38 70 18 58 62 46 46Z" class="hp-acc"/><path d="M46 46 70 18" class="hp-grid hp-onacc"/>' + HP_WAVES,
-  soundRico:'<path d="M18 20h52a8 8 0 0 1 8 8v16a8 8 0 0 1-8 8H36l-10 8v-8h-8a8 8 0 0 1-8-8V28a8 8 0 0 1 8-8Z" class="hp-card"/><path d="M44 26c.7 4.4 3.1 6.8 7.5 7.5-4.4.7-6.8 3.1-7.5 7.5-.7-4.4-3.1-6.8-7.5-7.5 4.4-.7 6.8-3.1 7.5-7.5Z" class="hp-acc"/>' + HP_WAVES,
-  soundError:'<path d="M41 16 16 60h50Z" class="hp-red" stroke-linejoin="round"/><path d="M41 32v12" class="hp-stroke hp-onred"/><circle cx="41" cy="51" r="2.4" class="hp-white"/>' + HP_WAVES,
-  soundFanfare:'<path d="m44 14 7.6 15.4 17 2.5-12.3 12 2.9 16.9L44 52.8l-15.2 8 2.9-16.9-12.3-12 17-2.5Z" class="hp-gold hp-pop"/>' + HP_WAVES,
-  soundUndo:'<path d="M34 24 20 38l14 14" class="hp-stroke hp-bold"/><path d="M21 38h30a14 14 0 0 1 0 28h-8" class="hp-stroke hp-bold"/>' + HP_WAVES,
-  dark:'<rect x="22" y="8" width="88" height="60" rx="10" class="hp-card"/><path d="M66 8h34a10 10 0 0 1 10 10v40a10 10 0 0 1-10 10H66Z" class="hp-darkside"/><circle cx="44" cy="30" r="7" class="hp-gold"/><path d="M44 18v3M44 39v3M32 30h3M53 30h3M35.5 21.5l2 2M50.5 36.5l2 2M35.5 38.5l2-2M50.5 23.5l2-2" class="hp-sunray"/><rect x="32" y="48" width="24" height="5" rx="2.5" class="hp-line"/><path d="M92 23a8 8 0 1 0 6 13 7 7 0 0 1-6-13Z" class="hp-white"/><rect x="76" y="48" width="24" height="5" rx="2.5" class="hp-nightline"/>',
-  simple:'<rect x="14" y="10" width="104" height="56" rx="9" class="hp-card"/><rect x="24" y="20" width="56" height="7" rx="3.5" class="hp-strong"/><rect x="24" y="32" width="84" height="5" rx="2.5" class="hp-line hp-fadeout"/><rect x="24" y="41" width="62" height="5" rx="2.5" class="hp-line hp-fadeout"/><rect x="24" y="52" width="40" height="8" rx="4" class="hp-acc hp-soft"/>',
-  table:'<rect x="12" y="10" width="108" height="56" rx="8" class="hp-card"/><path d="M12 25h108M12 38h108M12 51h108M48 25v41M84 25v41" class="hp-grid"/><rect x="20" y="15" width="20" height="5" rx="2.5" class="hp-strong"/><rect x="56" y="15" width="20" height="5" rx="2.5" class="hp-strong"/><rect x="92" y="15" width="16" height="5" rx="2.5" class="hp-strong"/><path d="M111 15.5l2.5 3 2.5-3" class="hp-grid hp-accline"/>',
-  big:'<text x="40" y="50" text-anchor="middle" class="hp-aa-sm">Aa</text><path d="M60 40h12m-4-4 4 4-4 4" class="hp-grid"/><text x="96" y="52" text-anchor="middle" class="hp-aa">Aa</text>',
-  award:'<path d="m56 46-6 20 16-7 16 7-6-20" class="hp-acc hp-soft"/><circle cx="66" cy="32" r="18" class="hp-gold hp-pop"/><text x="66" y="38" text-anchor="middle" class="hp-medal">30</text>',
-  mac:'<rect x="28" y="10" width="76" height="48" rx="5" class="hp-card"/><path d="M20 64h92" class="hp-grid"/><path d="M66 22c.9 5.4 3.6 8.1 9 9-5.4.9-8.1 3.6-9 9-.9-5.4-3.6-8.1-9-9 5.4-.9 8.1-3.6 9-9Z" class="hp-acc"/><circle cx="94" cy="18" r="3.5" class="hp-ok hp-pulse"/>',
-  move:'<rect x="8" y="16" width="40" height="44" rx="8" class="hp-card"/><rect x="84" y="16" width="40" height="44" rx="8" class="hp-card"/><rect x="16" y="24" width="24" height="5" rx="2.5" class="hp-strong"/><rect x="92" y="24" width="24" height="5" rx="2.5" class="hp-strong"/><path d="M52 52h28" class="hp-grid"/><rect x="21" y="36" width="14" height="14" rx="3" class="hp-acc hp-travel"/><g class="hp-fadein"><circle cx="113" cy="49" r="7" class="hp-ok"/><path d="m109.5 49 2.4 2.4 4.6-4.8" class="hp-mini hp-onacc"/></g>',
-  stop:'<rect x="34" y="10" width="34" height="48" rx="4" class="hp-card hp-dimmed"/><rect x="40" y="18" width="22" height="4" rx="2" class="hp-line"/><rect x="40" y="27" width="16" height="4" rx="2" class="hp-line"/><rect x="40" y="36" width="20" height="4" rx="2" class="hp-line"/><circle cx="78" cy="48" r="16" class="hp-red"/><rect x="71.5" y="41" width="4.5" height="14" rx="1.5" class="hp-white"/><rect x="80" y="41" width="4.5" height="14" rx="1.5" class="hp-white"/>',
-  rico:'<path d="M26 22c1 6.4 4.4 9.8 10.8 10.8-6.4 1-9.8 4.4-10.8 10.8-1-6.4-4.4-9.8-10.8-10.8 6.4-1 9.8-4.4 10.8-10.8Z" class="hp-acc"/><path d="M42 33h8m-4-4 4 4-4 4" class="hp-grid"/><rect x="56" y="10" width="64" height="56" rx="8" class="hp-card"/><rect x="63" y="18" width="30" height="5" rx="2.5" class="hp-strong"/><rect x="63" y="31" width="28" height="4" rx="2" class="hp-line"/><rect x="100" y="28" width="13" height="10" rx="3" class="hp-acc hp-fill1"/><rect x="63" y="45" width="22" height="4" rx="2" class="hp-line"/><rect x="100" y="42" width="13" height="10" rx="3" class="hp-acc hp-fill2"/>',
-  ask:'<rect x="30" y="6" width="72" height="64" rx="10" class="hp-card"/><rect x="38" y="15" width="36" height="5" rx="2.5" class="hp-strong"/><rect x="38" y="26" width="56" height="5" rx="2.5" class="hp-line"/><rect x="38" y="36" width="44" height="5" rx="2.5" class="hp-line"/><g class="hp-pulse"><rect x="46" y="50" width="40" height="13" rx="6.5" class="hp-acc"/><path d="M56 52.5c.4 2.4 1.7 3.7 4.1 4.1-2.4.4-3.7 1.7-4.1 4.1-.4-2.4-1.7-3.7-4.1-4.1 2.4-.4 3.7-1.7 4.1-4.1Z" class="hp-white"/><rect x="63" y="55" width="16" height="3" rx="1.5" class="hp-white"/></g>',
-  ai:'<path d="M14 18h40a8 8 0 0 1 8 8v12a8 8 0 0 1-8 8H30l-8 7v-7h-8a8 8 0 0 1-8-8V26a8 8 0 0 1 8-8Z" class="hp-card"/><rect x="18" y="27" width="30" height="4" rx="2" class="hp-line"/><rect x="18" y="35" width="20" height="4" rx="2" class="hp-line"/><path d="M68 32h14m-5-5 5 5-5 5" class="hp-grid hp-arrow"/><rect x="92" y="18" width="28" height="28" rx="6" class="hp-acc hp-soft"/><rect x="98" y="24" width="16" height="16" rx="3" class="hp-acc"/><path d="M101 18v-4M106 18v-4M111 18v-4M101 46v4M106 46v4M111 46v4M92 27h-4M92 37h-4M120 27h4M120 37h4" class="hp-grid"/>',
-};
-const HELP_OF = {notif:'bell', recipeAlerts:'bell', swipe:'swipe', showLastQty:'last', compactRows:'compact', soundQty:'soundTap', soundSent:'soundSent', soundRico:'soundRico', soundError:'soundError',
-  soundMilestone:'soundFanfare', soundUndo:'soundUndo', darkMode:'dark', simpleView:'simple', tables:'table', kitchenMode:'big', milestones:'award', ricoAutoStart:'mac',
-  tfAuto:'move', rrStop:'stop', ricoAutoOrder:'rico', ricoSheet:'ask', ai:'ai'};
+/* Read-only examples built with the same components as Order, Manage and Rico.
+   Demo data stays here. Previewing a setting never runs the action being shown. */
+const SETTING_PREVIEW_IDS = new Set([
+  'notif', 'recipeAlerts', 'swipe', 'showLastQty', 'compactRows', 'soundQty', 'soundSent',
+  'soundRico', 'soundError', 'soundMilestone', 'soundUndo', 'darkMode', 'simpleView', 'tables',
+  'kitchenMode', 'milestones', 'ricoAutoStart', 'tfAuto', 'rrStop', 'ricoAutoOrder', 'ricoSheet', 'ai'
+]);
+function settingPreview(id){
+  const words = t('settingPreview');
+  const items = words.items.map((name, i)=>({id:'preview-' + i, name}));
+  const row = (i, qty = 0, last = 0)=>itemRowHtml(items[i], {[items[i].id]:last}, {qty, unit:words.kg, pinned:false});
+  const orders = (...rows)=>`<div class="supplier-group demo-order"><div class="supplier-head"><span class="supplier-heading-name">${esc(words.supplier)}</span></div><div class="supplier-items-grid">${rows.join('')}</div></div>`;
+  const toastDemo = (msg, kind = 'ok')=>`<div class="toast show ${kind}"><span dir="auto">${esc(msg)}</span></div>`;
+  const frame = (label, content, cls = '')=>`<section class="demo-frame ${cls}"><b class="demo-label">${esc(label)}</b><div class="demo-screen">${content}</div></section>`;
+  const compare = (label, first, second, cls = '')=>frame(label,
+    `<div class="demo-compare"><div><small>${esc(words.before)}</small>${first}</div><div><small>${esc(words.after)}</small>${second}</div></div>`, cls);
+  const helper = h=>`<div class="form-card rs-card">${rrHelperStatusRow(h)}</div>`;
+  switch(id){
+    case 'swipe':
+      return compare(viewLabel('order'), `<div class="demo-swipe">${row(0)}<span class="demo-touch" aria-hidden="true"></span></div>`,
+        row(0, 3) + toastDemo(t('swipeAdded')(3, words.kg)));
+    case 'showLastQty':
+      return frame(viewLabel('order'), orders(row(0, 0, 3), row(1, 0, 2)));
+    case 'compactRows':
+    case 'kitchenMode': {
+      const rows = orders(row(0, 2), row(1));
+      return compare(viewLabel('order'), rows, rows, id === 'compactRows' ? 'demo-density' : 'demo-kitchen');
+    }
+    case 'soundQty':
+      return frame(viewLabel('order'), orders(row(0, 1)), 'demo-qty');
+    case 'soundSent':
+      return frame(viewLabel('order'), renderQueueSummary(2, 2, 'saved'));
+    case 'soundRico':
+      return frame(t('ricoName'), renderRicoMessage({role:'user', text:words.question}, 0) +
+        renderRicoMessage({role:'assistant', text:words.reply}, 1), 'demo-chat');
+    case 'soundError':
+      return frame(viewLabel('order'), orders(row(0, 2)) + toastDemo(t('saveFailed'), 'error'));
+    case 'soundUndo':
+      return frame(viewLabel('order'), orders(row(0)) + toastDemo(t('orderUndone')));
+    case 'soundMilestone':
+      return frame(t('streakTitle'), streakMilestoneCard(30), 'demo-milestone');
+    case 'milestones':
+      return frame(t('streakTitle'), renderStreakChip({count:30, lit:true}) + streakMilestoneCard(30), 'demo-milestone');
+    case 'darkMode':
+      return frame(t('darkLabel'), `<div class="demo-compare demo-modes">
+        <div class="demo-light"><small>${esc(t('darkOff'))}</small>${orders(row(0, 2))}</div>
+        <div class="demo-dark"><small>${esc(t('darkOn'))}</small>${orders(row(0, 2))}</div></div>`);
+    case 'simpleView': {
+      const hero = renderOrderHero(3, 1, {count:0, expense:false});
+      return compare(viewLabel('order'), hero, hero, 'demo-simple');
+    }
+    case 'tables':
+      return frame(viewLabel('manage'), renderDataTable('items', {
+        rows:items.map(item=>({...item, previewUnit:words.kg})),
+        cols:[{...TABLES.items.columns[0]}, {...TABLES.items.columns[2], value:item=>item.previewUnit}]
+      }), 'demo-table');
+    case 'ricoAutoStart':
+      return compare(t('rrRicoMac'), helper({online:false}), helper({online:true}));
+    case 'rrStop':
+      return frame(t('rrTitle'), helper({online:true, stopped:true}));
+    case 'tfAuto':
+      return frame(t('tfTitle'), `<div class="rr-done"><span class="rr-done-tag">${ICON_CHECK}${esc(t('tfStatus_moved'))}</span>
+        <b dir="auto">${esc(words.transfer)}</b><small>${esc(items[0].name)} · 3 ${esc(words.kg)}</small></div>`);
+    case 'ricoAutoOrder':
+      return frame(viewLabel('order'), orders(row(0, 3), row(1, 2)) + toastDemo(t('reorderReady')(2)));
+    case 'ricoSheet':
+      return frame(viewLabel('order'), `<div class="order-quick-actions">${ricoOrderButtonHtml()}</div>
+        <div class="sel-panel demo-order-sheet">${ricoOrderSheetHtml(t('sheetAskAbout'))}</div>`);
+    case 'ai':
+      return frame(t('ricoName'), `<div class="modal-box modal-alert demo-ai"><div class="modal-alert-title">${esc(t('aiTitle'))}</div>
+        <p class="modal-msg">${esc(words.ai)}</p><div class="modal-actions">
+        <button class="btn btn-ghost">${esc(t('aiNotNow'))}</button><button class="btn btn-primary">${esc(t('aiAllow'))}</button></div></div>`);
+    case 'recipeAlerts':
+      return frame(t('recipesTitle'), recipeAlerts([{...words.recipeAlert, at:Date.now()}]));
+    case 'notif':
+      return frame(words.notificationLabel, `<div class="rico-note unread"><img src="icon-192.png" alt="" width="28" height="28"><div class="rico-note-body">
+        <div class="rico-note-meta">${esc(words.notification)}</div><div class="rico-note-text">${esc(words.reminder)}</div></div></div>`, 'demo-notification');
+  }
+}
 /* Which setting a row is about (from its switch), or null. */
 function helpIdOf(row){
   if(!row) return null;
@@ -200,7 +250,7 @@ function helpIdOf(row){
   if(!box) return null;
   const id = box.dataset.feature || ({pushSwitch:'notif', tfAutoSet:'tfAuto', rrStop:'rrStop'})[box.id]
     || (box.hasAttribute('data-set-auto') ? 'ricoAutoOrder' : box.hasAttribute('data-set-sheet') ? 'ricoSheet' : box.hasAttribute('data-set-ai') ? 'ai' : null);
-  return id && HELP_OF[id] && (t('settingHelp') || {})[id] ? id : null;
+  return id && SETTING_PREVIEW_IDS.has(id) && (t('settingHelp') || {})[id] ? id : null;
 }
 // The setting's name (on phones it sits in .set-title with the "i" button, whose text is left out).
 const helpTitleOf = row=>{
@@ -208,23 +258,36 @@ const helpTitleOf = row=>{
   if(head) return [...head.childNodes].map(n=>n.nodeType === 3 ? n.textContent : n.classList?.contains('set-tail') ? n.firstChild?.textContent || '' : '').join('').trim();
   return row.querySelector('span')?.childNodes[0]?.textContent?.trim() || '';
 };
-/* The card or sheet: the picture on a soft panel in the setting's own colour, then the setting's icon and
-   name, then what it does. */
 const HELP_ICON = {rrStop:'ricoStop', ricoAutoOrder:'ricoSheet', darkMode:'darkMode'};
 function helpBody(id, title){
-  const icon = HELP_ICON[id] || id, colour = SETTING_ICONS[icon]?.[0];
-  const tint = /^#[0-9a-f]{6}$/i.test(colour || '') ? ` style="--hc:${colour}"` : '';
-  return `<div class="help-hero"${tint}><svg class="help-pic" viewBox="0 0 132 76" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${HELP_PIC[HELP_OF[id]]}</svg></div><div class="help-text"><div class="help-name">${setIcon(icon)}<b dir="auto">${esc(title)}</b></div><p dir="auto">${esc(t('settingHelp')[id])}</p></div>`;
+  // Preview copies must not be matched by app event handlers or duplicate live IDs.
+  const demo = document.createElement('template');
+  demo.innerHTML = settingPreview(id);
+  demo.content.querySelectorAll('*').forEach(el=>{
+    for(const attr of el.getAttributeNames()){
+      if(attr === 'id' && el.localName === 'linearGradient' && el.id.startsWith('ricotta-streak-')) continue;
+      if(['id', 'for', 'name', 'aria-live', 'role'].includes(attr) || attr.startsWith('data-')) el.removeAttribute(attr);
+    }
+  });
+  return `<div class="help-text"><div class="help-name">${setIcon(HELP_ICON[id] || id)}<b dir="auto">${esc(title)}</b></div>
+    <p dir="auto">${esc(t('settingHelp')[id])}</p></div><div class="setting-demo" inert aria-hidden="true">${demo.innerHTML}</div>`;
 }
 const HELP_ROWS = 'label.preference-row, label.rico-set-row, .dark-row';
-let helpTimer = 0, helpRow = null;
-function hideSettingHelp(){ clearTimeout(helpTimer); helpRow = null; document.getElementById('settingHelp')?.remove(); }
-function showSettingHelp(row){
+let helpTimer = 0, helpRow = null, helpAnchor = null;
+function hideSettingHelp(){
+  clearTimeout(helpTimer);
+  helpAnchor?.removeAttribute('aria-describedby');
+  helpAnchor = helpRow = null;
+  document.getElementById('settingHelp')?.remove();
+}
+function showSettingHelp(row, anchor){
   const id = helpIdOf(row); if(!id || !row.isConnected) return;
   hideSettingHelp(); helpRow = row;
   const tip = document.createElement('div');
   tip.id = 'settingHelp'; tip.className = 'help-pop'; tip.setAttribute('role', 'tooltip');
   tip.innerHTML = helpBody(id, helpTitleOf(row));
+  helpAnchor = anchor;
+  helpAnchor?.setAttribute('aria-describedby', tip.id);
   document.body.appendChild(tip);
   // Beside the row (the side with room, the reading side first), else under it; never off screen.
   const r = row.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight, gap = 12, rtl = isRtl();
@@ -243,7 +306,13 @@ if(matchMedia('(hover: hover) and (pointer: fine)').matches){
     helpTimer = setTimeout(()=>{ if(row.matches(':hover')) showSettingHelp(row); }, 600);
   });
   document.addEventListener('mouseout', e=>{ if(helpRow && !helpRow.contains(e.relatedTarget)) hideSettingHelp(); });
-  ['scroll', 'pointerdown', 'keydown'].forEach(ev=>document.addEventListener(ev, ()=>{ if(helpRow) hideSettingHelp(); }, true));
+  document.addEventListener('focusin', e=>{
+    const row = e.target.closest?.(HELP_ROWS);
+    if(row && !row.contains(e.relatedTarget) && e.target.matches(':focus-visible')) showSettingHelp(row, e.target);
+  });
+  document.addEventListener('focusout', e=>{ if(e.target === helpAnchor || helpRow?.contains(e.target)) hideSettingHelp(); });
+  ['scroll', 'pointerdown'].forEach(ev=>document.addEventListener(ev, ()=>{ if(helpRow) hideSettingHelp(); }, true));
+  document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && helpRow) hideSettingHelp(); });
 }
 /* Phones: an "i" button on each row that has an explanation (Settings page only). */
 function addSettingHelpButtons(root = document){
@@ -272,8 +341,15 @@ document.addEventListener('click', e=>{
   const b = e.target.closest?.('[data-help]'); if(!b) return;
   e.preventDefault(); e.stopPropagation();
   const row = b.closest(HELP_ROWS), id = b.dataset.help;
-  if(!HELP_OF[id]) return;
-  openKitchenSheet('help-sheet', `<div class="help-sheet-body">${helpBody(id, row ? helpTitleOf(row) : '')}</div>`, row ? helpTitleOf(row) : '');
+  if(!SETTING_PREVIEW_IDS.has(id)) return;
+  const title = row ? helpTitleOf(row) : '';
+  const {el, close} = openKitchenSheet('help-sheet', `<div class="help-sheet-body">${helpBody(id, title)}
+    <button type="button" class="btn btn-ghost help-close">${esc(t('padDone'))}</button></div>`, title,
+    {returnFocus:b});
+  const done = el.querySelector('.help-close');
+  done.onclick = ()=>close();
+  el.querySelector('.sel-panel').tabIndex = -1;
+  el.querySelector('.sel-panel').focus({preventScroll:true});
 }, true);
 
 /* ============ How Expenses work: a short one-time tour (2026-11-15) ============

@@ -317,8 +317,8 @@ function recipeEmpty(title, text, id, label, second = ''){
   return `<section class="rc-empty"><h2>${esc(title)}</h2>${text ? `<p>${esc(text)}</p>` : ''}
     ${id ? `<button type="button" class="btn btn-primary" id="${id}">${/Retry$/.test(id) ? '' : ICON_PLUS}<span>${esc(label)}</span></button>` : ''}${second}</section>`;
 }
-function recipeAlerts(){
-  const list = (recipeBook.data.alerts || []).filter(a=>!a.read);
+function recipeAlerts(alerts = recipeBook.data.alerts || []){
+  const list = alerts.filter(a=>!a.read);
   if(!list.length) return '';
   return `<section class="rc-alerts" aria-label="${esc(rt('alerts'))}"><div class="rc-alerts-head"><b>${esc(rt('alerts'))}</b><button type="button" class="rc-link" id="rcAlertsRead">${esc(rt('markRead'))}</button></div>
     ${list.slice(0, 6).map(a=>`<div class="rc-alert"><p>${esc(a[state.lang] || a.en || '')}</p><small>${esc(timeAgo(a.at))}</small></div>`).join('')}</section>`;

@@ -2000,12 +2000,20 @@ function setMacTheme(name){
 }
 function applyMacTheme(name){
   MAC_THEMES.forEach(n=>document.documentElement.classList.toggle('theme-' + n, n === name && n !== 'ricotta'));
-  document.querySelectorAll('[data-mac-theme]').forEach(b=>b.setAttribute('aria-checked', String(b.dataset.macTheme === name)));
+  document.querySelectorAll('[data-mac-theme]').forEach(button=>{
+    const selected = button.dataset.macTheme === name;
+    button.setAttribute('aria-checked', String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  });
 }
 function setMacIcon(name){
   macIcon = name;
   macMatchOffer = false;
-  document.querySelectorAll('[data-mac-icon]').forEach(b=>b.setAttribute('aria-checked', String(b.dataset.macIcon === name)));
+  document.querySelectorAll('[data-mac-icon]').forEach(button=>{
+    const selected = button.dataset.macIcon === name;
+    button.setAttribute('aria-checked', String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  });
   paintMacIconMatch();
 }
 function paintMacIconMatch(){
@@ -2447,8 +2455,7 @@ function orderTabCounts(){
   const shown = state.orderTab==='all' ? items : items.filter(i=>(i.supplierId||'__none')===state.orderTab);
   return [shown.length, state.orderTab==='all' ? new Set(items.map(i=>i.supplierId).filter(Boolean)).size : (shown.length ? 1 : 0)];
 }
-function renderOrderHero(itemCount=kindItems().length, supplierCount=new Set(kindItems().map(i=>i.supplierId).filter(Boolean)).size){
-  const selCount = cartCount(), exp = orderKind() === 'expense';
+function renderOrderHero(itemCount=kindItems().length, supplierCount=new Set(kindItems().map(i=>i.supplierId).filter(Boolean)).size, {count:selCount = cartCount(), expense:exp = orderKind() === 'expense'} = {}){
   return `<div class="hero-card order-hero${exp ? ' hero-expenses' : ''}">
     <div class="hero-copy"><div class="hero-eyebrow">${t(exp ? 'heroEyebrowExpenses' : 'heroEyebrow')}</div>
     <div class="hero-stat" aria-live="polite" aria-label="${esc(t('heroStat')(selCount))}"><span class="hero-count">${selCount}</span><span class="hero-word">${t('heroStatWord')(selCount)}</span></div>
@@ -2610,14 +2617,13 @@ function renderOrderResults(){
 }
 /* One item on the Order screen: name, unit, its note, and - / quantity / +. A pinned item shows once,
    under Pinned (not again in its supplier's group). */
-function itemRowHtml(i, lastQty){
-  const qty = state.cart[i.id] || 0;
+function itemRowHtml(i, lastQty, {qty = state.cart[i.id] || 0, unit = unitLabel(i.unit), pinned = state.pins.includes(i.id)} = {}){
   return `
       <div class="item-row ${qty>0?'has-qty':''}${itemLowAlert(i) ? ' low-alert' : ''}" data-item-id="${esc(i.id)}">
         <div class="item-info">
-          <div class="item-name">${state.pins.includes(i.id) ? `<span class="item-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(i.name)}</div>
+          <div class="item-name">${pinned ? `<span class="item-pin" aria-hidden="true">${ICON_PIN}</span>` : ''}${esc(i.name)}</div>
 
-          <div class="item-unit">${esc(unitLabel(i.unit))}${lastQty && lastQty[i.id] ? ` · <span class="item-last">${esc(t('lastQty')(lastQty[i.id]))}</span>` : ''}${i.note ? ` · <span class="item-note" dir="auto">“${esc(i.note)}”</span>` : ''}</div>
+          <div class="item-unit">${esc(unit)}${lastQty && lastQty[i.id] ? ` · <span class="item-last">${esc(t('lastQty')(lastQty[i.id]))}</span>` : ''}${i.note ? ` · <span class="item-note" dir="auto">“${esc(i.note)}”</span>` : ''}</div>
           ${itemStockLine(i)}
         </div>
         <div class="stepper">
@@ -3293,12 +3299,15 @@ function renderQueue(){
       <div class="queue-actions">${sendBtn}<button class="pdf-btn" data-pdf="${idx}" aria-label="${esc(t('orderSheet'))}">${NAV_ICONS.record}<span>PDF</span></button></div>
     </div>`;
   }).join('');
+  return renderQueueSummary(done, total, state.queue.saveState) + cards;
+}
+function renderQueueSummary(done, total, saveState){
   return `<div class="queue-head">
       <button class="queue-back" id="queueBackBtn" aria-label="${esc(t('backToOrder'))}">${ICON_BACK}</button>
       <div class="queue-progress"><div class="queue-progress-label">${t('sentProgress')(done,total)}</div><div class="queue-bar"><i style="--p:${Math.round(done/total*100)}%"></i></div></div>
     </div>
-    ${done===total ? `<div class="queue-done" role="status"><span class="tick"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span><b>${t('allSentTitle')}</b><small>${state.queue.saveState === 'failed' ? esc(t('orderRetrySaveHint')) : state.queue.saveState === 'saving' ? esc(t('loading')) : t('allSentSub')}</small></span>${state.queue.saveState === 'failed' ? `<button type="button" class="btn btn-primary" id="queueRetrySave">${esc(t('retry'))}</button>` : ''}</div>` : ''}
-    ${cards}`;
+    ${done===total ? `<div class="queue-done" role="status"><span class="tick"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span><b>${t('allSentTitle')}</b><small>${saveState === 'failed' ? esc(t('orderRetrySaveHint')) : saveState === 'saving' ? esc(t('loading')) : t('allSentSub')}</small></span>${saveState === 'failed' ? `<button type="button" class="btn btn-primary" id="queueRetrySave">${esc(t('retry'))}</button>` : ''}</div>` : ''}
+    `;
 }
 function markQueueSent(idx){
   const entry = state.queue && state.queue[idx];
@@ -4581,13 +4590,13 @@ function renderAppearanceRow(){
 function renderSeeThroughRow(){
   if(!macShell()) return '';
   const theme = macTheme();
-  const themes = MAC_THEMES.map(n=>`<button type="button" role="radio" class="mac-swatch mac-swatch-${n}" data-mac-theme="${n}" aria-checked="${n === theme}" aria-label="${esc(t('macTheme_' + n))}" title="${esc(t('macTheme_' + n))}"></button>`).join('');
-  const icon = n=>`<button type="button" role="radio" class="mac-icon" data-mac-icon="${n}" aria-checked="${n === macIcon}" aria-label="${esc(t('macIcon_' + n))}" title="${esc(t('macIcon_' + n))}"><img src="mac-icons/${n}.png" alt="" width="44" height="44" loading="lazy" decoding="async"></button>`;
-  const group = (label, names)=>`<div class="mac-icon-group"><span>${esc(t(label))}</span><div class="mac-picks">${names.map(icon).join('')}</div></div>`;
-  const icons = group('macIconsThemes', MAC_THEME_ICONS) + group('macIconsMore', MAC_ICONS.filter(n=>!MAC_THEME_ICONS.includes(n)));
+  const choice = (group, name, selected, preview)=>`<button type="button" role="radio" class="mac-choice mac-${group} mac-swatch-${name}"
+      data-mac-${group}="${name}" tabindex="${name === selected ? 0 : -1}" aria-checked="${name === selected}">${preview}<span class="mac-choice-name">${esc(t('mac' + (group === 'theme' ? 'Theme_' : 'Icon_') + name))}</span><span class="mac-choice-check" aria-hidden="true">${ICON_CHECK}</span></button>`;
+  const themes = MAC_THEMES.map(n=>choice('theme', n, theme, `<img class="mac-swatch-preview" src="mac-icons/${macThemeIcon(n)}-art.svg" alt="" width="38" height="38" loading="lazy" decoding="async">`)).join('');
+  const icons = MAC_ICONS.map(n=>choice('icon', n, macIcon, `<img src="mac-icons/${n}.png" alt="" width="38" height="38" loading="lazy" decoding="async">`)).join('');
   return `<label class="check-row preference-row has-ico"><input type="checkbox" id="seeThroughSwitch" ${document.documentElement.classList.contains('see-through') ? 'checked' : ''}>${setIcon('seeThrough')}<span>${esc(t('seeThrough'))}<small>${esc(t('seeThroughHint'))}</small></span></label>
     <div class="mac-pick-row"><div class="set-head">${setIcon('macTheme')}<span>${esc(t('macThemeLabel'))}<small>${esc(t('macThemeHint'))}</small></span></div><div class="mac-picks" role="radiogroup" aria-label="${esc(t('macThemeLabel'))}">${themes}</div></div>
-    <div class="mac-pick-row"><div class="set-head">${setIcon('macIcon')}<span>${esc(t('macIconLabel'))}<small>${esc(t('macIconHint'))}</small></span></div><div class="mac-icon-groups" role="radiogroup" aria-label="${esc(t('macIconLabel'))}">${icons}</div><div class="mac-icon-suggest" id="macIconMatch" hidden></div></div>`;
+    <div class="mac-pick-row"><div class="set-head">${setIcon('macIcon')}<span>${esc(t('macIconLabel'))}<small>${esc(t('macIconHint'))}</small></span></div><div class="mac-picks" role="radiogroup" aria-label="${esc(t('macIconLabel'))}">${icons}</div><div class="mac-icon-suggest" id="macIconMatch" hidden></div></div>`;
 }
 function currentOutbox(){ return outbox().filter(j=>!j.kind && outboxJobAccount(j)===state.account); }   // orders (kept changes show on their own screens)
 function renderPendingSync(){
@@ -4694,6 +4703,14 @@ function bindAppearance(){
   if(see) see.onchange = ()=>{ setSeeThrough(see.checked); tellApp(see.checked ? 'see-through-on' : 'see-through-off'); };
   document.querySelectorAll('[data-mac-theme]').forEach(b=>b.onclick = ()=>{ setMacTheme(b.dataset.macTheme); tellApp('theme:' + b.dataset.macTheme); });
   document.querySelectorAll('[data-mac-icon]').forEach(b=>b.onclick = ()=>{ setMacIcon(b.dataset.macIcon); tellApp('icon:' + b.dataset.macIcon); });
+  document.querySelectorAll('.mac-picks').forEach(group=>group.onkeydown = e=>{
+    const options = [...group.querySelectorAll('[role=radio]')], index = options.indexOf(e.target);
+    if(index < 0 || !['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','Home','End'].includes(e.key)) return;
+    e.preventDefault();
+    const delta = e.key === 'ArrowDown' || e.key === (isRtl() ? 'ArrowLeft' : 'ArrowRight') ? 1 : -1;
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1 : (index + delta + options.length) % options.length;
+    options[next].focus(); options[next].click();
+  });
   const match = document.getElementById('macIconMatch');
   if(match){ match.onclick = e=>{ const b = e.target.closest('[data-mac-icon-match]'); if(b){ setMacIcon(b.dataset.macIconMatch); tellApp('icon:' + b.dataset.macIconMatch); } }; paintMacIconMatch(); }
   document.querySelectorAll('[data-dark]').forEach(b=>b.onclick=()=>{
