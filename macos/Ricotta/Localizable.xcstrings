@@ -50,6 +50,38 @@
         }
       }
     },
+    "App Icon": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ئایکۆنی ئەپ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أيقونة التطبيق"
+          }
+        }
+      }
+    },
+    "Aurora": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شەفەقی جەمسەری"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الشفق القطبي"
+          }
+        }
+      }
+    },
     "Bring All to Front": {
       "localizations": {
         "ckb": {
@@ -130,6 +162,22 @@
         }
       }
     },
+    "Copper Pot": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مەنجەڵی مس"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "قدر نحاسي"
+          }
+        }
+      }
+    },
     "Copy": {
       "localizations": {
         "ckb": {
@@ -142,6 +190,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "نسخ"
+          }
+        }
+      }
+    },
+    "Cupid’s Blush": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پەمەیی کیوپید"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "وردي كيوبيد"
           }
         }
       }
@@ -258,6 +322,70 @@
         }
       }
     },
+    "Gemini": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جێمینای"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جيميني"
+          }
+        }
+      }
+    },
+    "Glass Leaf": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گەڵای شووشە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ورقة زجاجية"
+          }
+        }
+      }
+    },
+    "Gold Monogram": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مۆنۆگرامی زێڕین"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مونوغرام ذهبي"
+          }
+        }
+      }
+    },
+    "Google": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گووگڵ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جوجل"
+          }
+        }
+      }
+    },
     "Help": {
       "localizations": {
         "ckb": {
@@ -302,6 +430,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "إخفاء ريكوتا"
+          }
+        }
+      }
+    },
+    "Kitchen Stamp": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مۆری چێشتخانە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ختم المطبخ"
           }
         }
       }
@@ -386,6 +530,22 @@
         }
       }
     },
+    "Order Ticket": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پسوولەی داواکاری"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تذكرة الطلب"
+          }
+        }
+      }
+    },
     "Paste": {
       "localizations": {
         "ckb": {
@@ -434,6 +594,22 @@
         }
       }
     },
+    "Pumpkin Moon": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مانگی کەدوو"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "قمر اليقطين"
+          }
+        }
+      }
+    },
     "Quit Ricotta": {
       "localizations": {
         "ckb": {
@@ -478,6 +654,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "إعادة تحميل الصفحة"
+          }
+        }
+      }
+    },
+    "Ricotta": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ریکۆتا"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ريكوتا"
           }
         }
       }
@@ -546,6 +738,38 @@
         }
       }
     },
+    "Silver Moon": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مانگی زیوین"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "القمر الفضي"
+          }
+        }
+      }
+    },
+    "Theme": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ڕەنگی ئەپ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "السمة"
+          }
+        }
+      }
+    },
     "Try Again": {
       "localizations": {
         "ckb": {
@@ -610,6 +834,22 @@
         }
       }
     },
+    "Winter Lights": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "چراکانی زستان"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أضواء الشتاء"
+          }
+        }
+      }
+    },
     "Zoom": {
       "localizations": {
         "ckb": {
@@ -654,246 +894,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "تصغير"
-          }
-        }
-      }
-    },
-    "Theme": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ڕەنگی ئەپ"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "السمة"
-          }
-        }
-      }
-    },
-    "App Icon": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ئایکۆنی ئەپ"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "أيقونة التطبيق"
-          }
-        }
-      }
-    },
-    "Ricotta": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ریکۆتا"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ريكوتا"
-          }
-        }
-      }
-    },
-    "Apricot Coast": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "کەناری قەیسی"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ساحل المشمش"
-          }
-        }
-      }
-    },
-    "Basil Leaf": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "گەڵای ڕەیحان"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ورقة ريحان"
-          }
-        }
-      }
-    },
-    "Bow Bear": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ورچی پاپیۆندار"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "دب بفيونكة"
-          }
-        }
-      }
-    },
-    "Cupid’s Kitchen": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "چێشتخانەی کوپید"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "مطبخ كيوبيد"
-          }
-        }
-      }
-    },
-    "Holly Bauble": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "گۆی زستان"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "زينة الشتاء"
-          }
-        }
-      }
-    },
-    "Jack & Moon": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "کەدوو و مانگ"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "يقطينة وقمر"
-          }
-        }
-      }
-    },
-    "Lunar Orbit": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "خولی مانگ"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "مدار القمر"
-          }
-        }
-      }
-    },
-    "Moonlit Pantry": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "کۆگای مانگەشەو"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "مخزن ضوء القمر"
-          }
-        }
-      }
-    },
-    "Pumpkin Hour": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "کاتی کەدوو"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ساعة اليقطين"
-          }
-        }
-      }
-    },
-    "Ricotta Verde": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ریکۆتای سەوز"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ريكوتا الخضراء"
-          }
-        }
-      }
-    },
-    "Sunny Side": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "لای خۆر"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "جهة الشمس"
-          }
-        }
-      }
-    },
-    "Winter Holly": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "زستانی سەوز"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "بهجة الشتاء"
           }
         }
       }

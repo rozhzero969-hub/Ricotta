@@ -4,11 +4,12 @@
    Writes, for every name in ICONS:
      macos/Ricotta/Assets.xcassets/AppIcon-<name>.imageset/  512 and 1024 px (the Dock icon and View > App Icon)
      mac-icons/<name>.png                                    96 px (the website's Settings picker, Mac app only)
+   and, from the first (default) icon, the app bundle's own icon (AppIcon.appiconset: Finder, Launchpad).
    Run from the repository root:  node macos/IconSources/render-icons.cjs  [--sheet out.png]
    The signed app bundle keeps its own icon. These images are used while the app runs. */
 const {chromium}=require('playwright');
 const fs=require('node:fs'),path=require('node:path');
-const ICONS=['green','halloween','christmas','discord','google','pink'];
+const ICONS=['ricotta','pumpkin','holly','moonlit','gemini','cupid','monogram','ticket','aurora','frost','copper','stamp'];
 const repo=path.resolve(__dirname,'../..'),src=__dirname,assets=path.join(repo,'macos/Ricotta/Assets.xcassets');
 const font=path.join(repo,'fonts/manrope-latin.woff2');
 (async()=>{
@@ -31,6 +32,11 @@ const font=path.join(repo,'fonts/manrope-latin.woff2');
     fs.writeFileSync(path.join(dir,`AppIcon-${name}@2x.png`),await draw(name,1024));
     fs.writeFileSync(path.join(dir,'Contents.json'),JSON.stringify({images:[{idiom:'universal',scale:'1x',filename:`AppIcon-${name}.png`},{idiom:'universal',scale:'2x',filename:`AppIcon-${name}@2x.png`}],info:{author:'xcode',version:1}}));
     fs.writeFileSync(path.join(repo,'mac-icons',name+'.png'),await draw(name,96));
+  }
+  const bundle=path.join(assets,'AppIcon.appiconset');
+  for(const pt of [16,32,128,256,512]){
+    fs.writeFileSync(path.join(bundle,`icon_${pt}x${pt}.png`),await draw(ICONS[0],pt));
+    fs.writeFileSync(path.join(bundle,`icon_${pt}x${pt}@2x.png`),await draw(ICONS[0],pt*2));
   }
   // --sheet: every icon at 16, 32, 128 and 512 pt, to check they read well at each size.
   const sheet=process.argv.indexOf('--sheet');

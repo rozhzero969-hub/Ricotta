@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 180 180"><defs><linearGradient id="art" x2=".28" y2="1"><stop stop-color="#efe4ff"/><stop offset="1" stop-color="#a39af5"/></linearGradient><linearGradient id="tile" x2=".5" y2="1"><stop stop-color="#31295c"/><stop offset="1" stop-color="#201b2f"/></linearGradient></defs>
-<rect x="12" y="14" width="156" height="156" rx="35" fill="#211828" opacity=".3"/>
-<rect x="12" y="10" width="156" height="156" rx="35" fill="url(#tile)" stroke="#d8d1ff" stroke-opacity=".5" stroke-width="1.4"/>
-<circle cx="90" cy="88" r="60" fill="#d8d1ff" opacity=".11"/><circle cx="90" cy="88" r="60" fill="none" stroke="#d8d1ff" opacity=".24"/>
-<g transform="translate(13 -7) scale(.85)"><path d="M118 57c-25 4-42 26-42 52 0 31 22 47 48 47-12 11-29 17-48 12-31-8-50-40-42-71 8-30 40-52 84-40Z" fill="url(#art)"/>
-<ellipse cx="89" cy="114" rx="76" ry="26" fill="none" stroke="#e0d7ff" opacity=".72" stroke-width="2" transform="rotate(-27 89 114)"/>
-<g fill="#f7e0af"><path d="M128 65q2 15 16 17-14 2-16 17-2-15-16-17 14-2 16-17Zm28 50q1 8 9 10-8 1-9 9-1-8-9-9 8-2 9-10Z"/><circle cx="50" cy="58" r="4"/><circle cx="133" cy="154" r="3"/></g></g>
-</svg>

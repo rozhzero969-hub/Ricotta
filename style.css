@@ -3545,7 +3545,7 @@ html.mac-shell.see-through,html.mac-shell.see-through body{background:transparen
 html.mac-shell.see-through #app{background:var(--page-tint)}
 html.mac-shell.see-through .page-ghost>.content{background:transparent}
 html.mac-shell.see-through .topbar:not(.scrolled){background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
-:where(html.mac-shell.see-through) .catalog-search input,:where(html.mac-shell.see-through) :is(.search-input,.quick-btn,.tab-pill,.btn-ghost,.rico-open,.tab-scroll,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip,.pick,.sel-btn,.pill-seg,.heading-search,.kind-switch,.xt-seg,.sched-seg,.rr-ctl,.rd-search,.admin-refresh,.help-btn,.streak-chip,.rr-input,.stepper,.wipe-banner){
+:where(html.mac-shell.see-through,html.mac-shell.theme-halloween,html.mac-shell.theme-christmas,html.mac-shell.theme-moonlit,html.mac-shell.theme-pink) .catalog-search input,:where(html.mac-shell.see-through,html.mac-shell.theme-halloween,html.mac-shell.theme-christmas,html.mac-shell.theme-moonlit,html.mac-shell.theme-pink) :is(.search-input,.quick-btn,.tab-pill,.btn-ghost,.rico-open,.tab-scroll,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip,.pick,.sel-btn,.pill-seg,.heading-search,.kind-switch,.xt-seg,.sched-seg,.rr-ctl,.rd-search,.admin-refresh,.help-btn,.streak-chip,.rr-input,.stepper,.wipe-banner){
   background-image:linear-gradient(var(--fill),var(--fill));background-color:var(--surface)}
 @media (hover:hover) and (pointer:fine){
   html.mac-shell.see-through :is(.quick-btn,.btn-ghost,.tab-pill:not(.active),.pick:not(.on)):not(:disabled):hover{background:linear-gradient(var(--fill-strong),var(--fill-strong)) var(--surface)}
@@ -3555,140 +3555,291 @@ html.mac-shell.see-through .topbar:not(.scrolled){background:transparent;-webkit
   html.mac-shell.see-through #app::before{content:'';grid-column:2;grid-row:1/-1;background:var(--page-tint);pointer-events:none}
   html.mac-shell.see-through .bottomnav,html.mac-shell.see-through.rico-mode #app>.rico-side{background:transparent}
 }
-/* Mac themes share the same layout and status colors. Each palette supplies its own surfaces,
-   control treatment and artwork. Decorative elements are clipped and ignore pointer input. */
-html.mac-shell{
-  --theme-art:url("mac-icons/green-art.svg");--theme-glow:#c0eb9b;
-  --theme-deep:#133328;--theme-edge:#2f6951;--theme-sidebar:#e8f0eb;--theme-shell:#eef4ef;
-}
-html.mac-shell.dark{--theme-sidebar:#15211c;--theme-shell:#121a16}
+/* ---------- Mac themes (the Mac app's Settings and View > Theme; boot.js sets html.theme-<name>) ----------
+   Ricotta's own look is the default and has no class: nothing below touches it. Each theme gives its own light
+   and dark palette (white button text on --accent-strong, --ink and --tint on --surface are all at least
+   4.5:1), its own Rico and Order card artwork, and a quiet layer of drawings behind the page (#macDecor from
+   mac-themes.js). Drawings never take a click (pointer-events:none) and sit behind text and controls; moving
+   parts use transform and opacity only, pause while the window is hidden (html.fx-paused) and stand still
+   with Reduce Motion. */
+:root{--fx-ease:cubic-bezier(.45,0,.55,1)}
 html.mac-shell.theme-halloween{
-  --accent:#ee9b57;--accent-rgb:238,155,87;--accent-strong:#983913;--tint:#8c3717;--on-dark:#ffd196;
-  --bg:#f5ecf4;--surface:#fff9fc;--ink:#2d1c33;--ink-soft:#624a69;--fill:#f0e2ed;--fill-strong:#e9d7e5;
-  --bubble:#f2e5f5;--surface-2:#f5ebf4;--menu:#fcf3fa;--bar:#f5ecf4ed;--hero:#3a2147;--page-tint:#f5ecf4b3;
-  --theme-art:url("mac-icons/halloween-art.svg");--theme-glow:#ffad64;--theme-deep:#2e193d;--theme-edge:#743e50;
-  --theme-sidebar:#eee1f0;--theme-shell:#f5ecf4;--theme-button-radius:10px;
-  --t-eyebrow:#ffd19e;--t-word:#f9e8fa;--t-sub:#e8cde9;--t-foot:#f1d8ee;--t-bright:#ffd19e;
-}
+  --bg:#F2ECF4;--surface:#FFFFFF;--surface-2:rgba(92,60,110,.07);--fill:rgba(92,60,110,.1);--fill-strong:rgba(92,60,110,.17);
+  --ink:#23162B;--ink-soft:#66576E;--ink-faint:#85778D;--deep:#2A1638;--deep-rgb:60,40,75;--line:rgba(60,40,75,.13);--line-strong:rgba(60,40,75,.22);
+  --accent:#F28C28;--accent-rgb:242,140,40;--accent-strong:#B4500F;--tint:#A3470C;--on-dark:#FFB15C;--accent-soft:rgba(242,140,40,.16);
+  --hero:#2A1638;--bubble:#ECE4EF;--bar:rgba(242,236,244,.82);--menu:rgba(252,250,253,.95);--page-tint:rgba(242,236,244,.42);--seg-on:#fff;
+  --t-eyebrow:#FFC58A;--t-word:#F3E6F7;--t-sub:#D9C6E0;--t-foot:#DCCBE3;--t-bright:#FFC58A;--tab-ink:#3A2C42;--tab-ink2:#66576E;
+  --sky-a:#E9DDF0;--sky-b:#F6E3D9;--moon-hi:#FFF8E4;--moon-lo:#F2D9A6;--moon-glow:#FFE7B0;--fog:#FFFFFF;--hill:#D9C7E2;--web:rgba(60,40,75,.16);--bat:#3B2450}
 html.mac-shell.dark.theme-halloween{
-  --bg:#17101d;--surface:#25192d;--ink:#fcf2ff;--ink-soft:#d1bad9;--fill:#35263e;--fill-strong:#483451;
-  --bubble:#352341;--surface-2:#2d2036;--menu:#2a1c33;--bar:#1d1425ec;--tint:#ffb878;
-  --theme-sidebar:#21152a;--theme-shell:#1a111f;--page-tint:#21152acc;
-}
+  --bg:#0E0A14;--surface:#1C1524;--surface-2:rgba(170,140,190,.1);--fill:rgba(170,140,190,.15);--fill-strong:rgba(170,140,190,.23);
+  --ink:#F7F0FA;--ink-soft:#B9A9C3;--ink-faint:#93859D;--deep:#F2EAF6;--deep-rgb:235,225,245;--line:rgba(235,225,245,.11);--line-strong:rgba(235,225,245,.18);
+  --tint:#FFA552;--accent-soft:rgba(242,140,40,.2);--hero:#251433;--bubble:#2A1F33;--bar:rgba(14,10,20,.74);--menu:rgba(34,26,42,.95);--page-tint:rgba(14,8,22,.42);--seg-on:#3A2D45;
+  --tab-ink:#E7DCEC;--tab-ink2:#B9A9C3;
+  --sky-a:#160C24;--sky-b:#2B1636;--moon-hi:#FFF6DC;--moon-lo:#E9C987;--moon-glow:#FFD98A;--fog:#B9A3CF;--hill:#08050C;--web:rgba(235,225,245,.14);--bat:#05030A}
 html.mac-shell.theme-christmas{
-  --accent:#d88c9d;--accent-rgb:216,140,157;--accent-strong:#9c2547;--tint:#8a2542;--on-dark:#f8dd98;
-  --bg:#f4f2e7;--surface:#fffdf5;--ink:#17342b;--ink-soft:#506359;--fill:#e9e7da;--fill-strong:#dddfcf;--bubble:#eef0df;
-  --surface-2:#f0f1e6;--menu:#fffdf3;--bar:#f4f2e7ed;--hero:#153e34;--page-tint:#f4f2e7b3;
-  --theme-art:url("mac-icons/christmas-art.svg");--theme-glow:#f5d98e;--theme-deep:#12352c;--theme-edge:#49634a;
-  --theme-sidebar:#e7ecde;--theme-shell:#f0f2e8;--theme-button-radius:18px;
-  --t-eyebrow:#f8db9b;--t-word:#fff6dc;--t-sub:#deeddc;--t-foot:#e6efe0;--t-bright:#f8db9b;
-}
+  --bg:#EEF3EF;--surface:#FFFFFF;--surface-2:rgba(30,70,50,.06);--fill:rgba(30,70,50,.09);--fill-strong:rgba(30,70,50,.15);
+  --ink:#13241B;--ink-soft:#56685E;--ink-faint:#7A8B81;--deep:#12352A;--deep-rgb:30,60,45;--line:rgba(30,60,45,.13);--line-strong:rgba(30,60,45,.22);
+  --accent:#D7263D;--accent-rgb:215,38,61;--accent-strong:#B3122E;--tint:#A3122B;--on-dark:#F4D58D;--accent-soft:rgba(215,38,61,.11);
+  --hero:#0F3B2A;--bubble:#E4EBE6;--bar:rgba(238,243,239,.82);--menu:rgba(250,252,250,.95);--page-tint:rgba(238,243,239,.42);--seg-on:#fff;
+  --t-eyebrow:#F4D58D;--t-word:#F4F1E6;--t-sub:#C9DCCF;--t-foot:#CCDDD2;--t-bright:#F4D58D;--tab-ink:#2A3B32;--tab-ink2:#56685E;
+  --sky-a:#E3ECE6;--sky-b:#F3F1E9;--snow:#FFFFFF;--snow-edge:rgba(120,150,135,.35);--drift:#FFFFFF}
 html.mac-shell.dark.theme-christmas{
-  --bg:#101b16;--surface:#1b2921;--ink:#fff9e8;--ink-soft:#c8d4c7;--fill:#2b3c31;--fill-strong:#395044;--bubble:#2e4135;
-  --surface-2:#23352a;--menu:#223229;--bar:#17241cec;--tint:#ffb4bd;
-  --theme-sidebar:#182820;--theme-shell:#132019;--page-tint:#16251dcb;
-}
-html.mac-shell.theme-discord{
-  --accent:#a9a0ec;--accent-rgb:169,160,236;--accent-strong:#564597;--tint:#4f3f8d;--on-dark:#ddd4ff;
-  --bg:#eeedf8;--surface:#fcfaff;--ink:#28213d;--ink-soft:#5a5273;--fill:#e9e4f4;--fill-strong:#e0daf3;--bubble:#ede6f9;
-  --surface-2:#f1edf9;--menu:#f8f5ff;--bar:#eeedf8ed;--hero:#302456;--page-tint:#eeedf8b3;
-  --theme-art:url("mac-icons/discord-art.svg");--theme-glow:#c8baff;--theme-deep:#29224e;--theme-edge:#5e5194;
-  --theme-sidebar:#e6e2f4;--theme-shell:#eeedf7;--theme-button-radius:9px;
-  --t-eyebrow:#ded4ff;--t-word:#f3edff;--t-sub:#dad3f1;--t-foot:#e7dffb;--t-bright:#e2d9ff;
-}
-html.mac-shell.dark.theme-discord{
-  --bg:#151323;--surface:#211e35;--ink:#f6f1ff;--ink-soft:#d1c8ec;--fill:#322d4e;--fill-strong:#423961;--bubble:#33294e;
-  --surface-2:#2a2541;--menu:#27223d;--bar:#1b182bec;--tint:#cfc1ff;
-  --theme-sidebar:#1d1930;--theme-shell:#191529;--page-tint:#211b38cc;
-}
+  --bg:#07130E;--surface:#12211A;--surface-2:rgba(150,190,165,.09);--fill:rgba(150,190,165,.14);--fill-strong:rgba(150,190,165,.22);
+  --ink:#F4F7F2;--ink-soft:#A9BCB0;--ink-faint:#86998D;--deep:#EAF2EC;--deep-rgb:225,240,230;--line:rgba(225,240,230,.11);--line-strong:rgba(225,240,230,.18);
+  --tint:#FF7A8A;--accent-soft:rgba(255,122,138,.18);--hero:#123F2C;--bubble:#1B2C23;--bar:rgba(7,19,14,.74);--menu:rgba(22,36,29,.95);--page-tint:rgba(4,16,10,.4);--seg-on:#2C4236;
+  --tab-ink:#DDE8E1;--tab-ink2:#A9BCB0;
+  --sky-a:#06110C;--sky-b:#0F2A1E;--snow:#F4FAFF;--snow-edge:rgba(255,255,255,0);--drift:#DCE8E2}
+html.mac-shell.theme-moonlit{
+  --bg:#EDF1F8;--surface:#FFFFFF;--surface-2:rgba(40,60,100,.06);--fill:rgba(40,60,100,.09);--fill-strong:rgba(40,60,100,.15);
+  --ink:#0F1A2E;--ink-soft:#56627A;--ink-faint:#7A859B;--deep:#13224A;--deep-rgb:40,55,90;--line:rgba(40,55,90,.13);--line-strong:rgba(40,55,90,.22);
+  --accent:#6E8FD8;--accent-rgb:110,143,216;--accent-strong:#3A5BA9;--tint:#34539C;--on-dark:#C9D6F2;--accent-soft:rgba(110,143,216,.16);
+  --hero:#13224A;--bubble:#E3E9F3;--bar:rgba(237,241,248,.82);--menu:rgba(250,251,254,.95);--page-tint:rgba(237,241,248,.42);--seg-on:#fff;
+  --t-eyebrow:#B9C8EA;--t-word:#E8EEFA;--t-sub:#C2CDE6;--t-foot:#C6D1E8;--t-bright:#DCE6FF;--tab-ink:#24304A;--tab-ink2:#56627A;
+  --sky-a:#DCE4F3;--sky-b:#F1F3F9;--moon-hi:#FFFFFF;--moon-lo:#C8D4EE;--moon-glow:#D9E3F7;--star:#7F95C6;--hill:#D3DCEE}
+html.mac-shell.dark.theme-moonlit{
+  --bg:#070B18;--surface:#121A2E;--surface-2:rgba(150,170,220,.09);--fill:rgba(150,170,220,.14);--fill-strong:rgba(150,170,220,.22);
+  --ink:#EEF2FA;--ink-soft:#A3AEC7;--ink-faint:#8490AA;--deep:#E6ECF8;--deep-rgb:225,232,248;--line:rgba(225,232,248,.11);--line-strong:rgba(225,232,248,.18);
+  --tint:#A9C0F2;--accent-soft:rgba(140,170,240,.2);--hero:#15244C;--bubble:#1C2640;--bar:rgba(7,11,24,.74);--menu:rgba(22,30,50,.95);--page-tint:rgba(5,9,22,.4);--seg-on:#2A3656;
+  --tab-ink:#DCE3F2;--tab-ink2:#A3AEC7;
+  --sky-a:#050915;--sky-b:#101B3A;--moon-hi:#FFFFFF;--moon-lo:#B8C7E8;--moon-glow:#AFC3F0;--star:#E8EEFF;--hill:#03060E}
 html.mac-shell.theme-google{
-  --accent:#67b6b3;--accent-rgb:103,182,179;--accent-strong:#1c6272;--tint:#195666;--on-dark:#ffe4ae;
-  --bg:#e9f4f2;--surface:#fafffa;--ink:#193842;--ink-soft:#43646b;--fill:#ddeeea;--fill-strong:#d0e5e0;--bubble:#e3f1ee;
-  --surface-2:#eaf4ef;--menu:#f2fbf8;--bar:#e9f4f2ed;--hero:#204c62;--page-tint:#e9f4f2b3;
-  --theme-art:url("mac-icons/google-art.svg");--theme-glow:#ffdb88;--theme-deep:#1d4b60;--theme-edge:#437e7e;
-  --theme-sidebar:#e0efeb;--theme-shell:#e9f4f2;--theme-button-radius:999px;
-  --t-eyebrow:#ffe3a3;--t-word:#edfafa;--t-sub:#d2eae9;--t-foot:#def2f0;--t-bright:#ffe3a3;
-}
+  --font-g:'Google Sans','Product Sans','Google Sans Text','Avenir Next','Avenir',var(--font);
+  --bg:#F8F9FA;--surface:#FFFFFF;--surface-2:#F1F3F4;--fill:#F1F3F4;--fill-strong:#E8EAED;
+  --ink:#202124;--ink-soft:#5F6368;--ink-faint:#80868B;--deep:#202124;--deep-rgb:60,64,67;--line:rgba(60,64,67,.14);--line-strong:rgba(60,64,67,.24);
+  --accent:#1A73E8;--accent-rgb:26,115,232;--accent-strong:#1A73E8;--tint:#1967D2;--on-dark:#AECBFA;--accent-soft:#E8F0FE;
+  --hero:#1A5BC4;--bubble:#F1F3F4;--bar:rgba(248,249,250,.88);--menu:rgba(255,255,255,.97);--page-tint:rgba(248,249,250,.5);--seg-on:#fff;
+  --t-eyebrow:#D2E3FC;--t-word:#FFFFFF;--t-sub:#E8F0FE;--t-foot:#D2E3FC;--t-bright:#FFFFFF;--tab-ink:#3C4043;--tab-ink2:#5F6368;
+  --r-card:16px;--lift:0 1px 2px rgba(60,64,67,.3),0 1px 3px 1px rgba(60,64,67,.15);
+  --g-blue:#4285F4;--g-red:#EA4335;--g-yellow:#FBBC05;--g-green:#34A853}
 html.mac-shell.dark.theme-google{
-  --bg:#101d25;--surface:#1a303b;--ink:#edfffd;--ink-soft:#bcd9db;--fill:#28434e;--fill-strong:#365564;--bubble:#274955;
-  --surface-2:#223c48;--menu:#203744;--bar:#172a36ec;--tint:#a2e3dc;
-  --theme-sidebar:#192e38;--theme-shell:#14252d;--page-tint:#192e38cc;
-}
+  --bg:#202124;--surface:#2D2E31;--surface-2:#35363A;--fill:#3C4043;--fill-strong:#46494D;
+  --ink:#E8EAED;--ink-soft:#9AA0A6;--ink-faint:#80868B;--deep:#E8EAED;--deep-rgb:232,234,237;--line:rgba(232,234,237,.12);--line-strong:rgba(232,234,237,.2);
+  --tint:#8AB4F8;--accent-soft:rgba(138,180,248,.16);--hero:#1C3B70;--bubble:#3C4043;--bar:rgba(32,33,36,.86);--menu:rgba(48,49,52,.97);--page-tint:rgba(32,33,36,.5);--seg-on:#5F6368;
+  --tab-ink:#E8EAED;--tab-ink2:#9AA0A6;--lift:0 1px 2px rgba(0,0,0,.3),0 1px 3px 1px rgba(0,0,0,.15)}
 html.mac-shell.theme-pink{
-  --accent:#eab3c9;--accent-rgb:234,179,201;--accent-strong:#8f3b60;--tint:#863451;--on-dark:#ffe1ee;
-  --bg:#fbebf2;--surface:#fff8fb;--ink:#47283c;--ink-soft:#6f475f;--fill:#f3dfe9;--fill-strong:#efd3e2;--bubble:#f5e0ed;
-  --surface-2:#faedf4;--menu:#fff4f9;--bar:#fbebf2ed;--hero:#773c5a;--page-tint:#fbebf2b3;
-  --theme-art:url("mac-icons/pink-art.svg");--theme-glow:#ffc2da;--theme-deep:#66334f;--theme-edge:#a9607d;--theme-button-radius:22px;
-  --theme-sidebar:#f4deeb;--theme-shell:#fbebf2;
-  --t-eyebrow:#ffe6cd;--t-word:#fff0f8;--t-sub:#f9daea;--t-foot:#ffe2ee;--t-bright:#ffe6cd;
-}
+  --bg:#FCF0F4;--surface:#FFFDFB;--surface-2:rgba(190,90,130,.06);--fill:rgba(190,90,130,.09);--fill-strong:rgba(190,90,130,.15);
+  --ink:#3B1E2B;--ink-soft:#7A5A68;--ink-faint:#9C7F8B;--deep:#5A2A40;--deep-rgb:110,50,80;--line:rgba(110,50,80,.12);--line-strong:rgba(110,50,80,.2);
+  --accent:#F49AB8;--accent-rgb:244,154,184;--accent-strong:#C2457A;--tint:#B03B6E;--on-dark:#E0709A;--accent-soft:rgba(244,154,184,.24);
+  --hero:#9B3D68;--bubble:#F8E4EC;--bar:rgba(252,240,244,.82);--menu:rgba(255,252,250,.96);--page-tint:rgba(252,240,244,.42);--seg-on:#fff;
+  --t-eyebrow:#FFD1E1;--t-word:#FFF0F5;--t-sub:#F6D3E1;--t-foot:#F6D3E1;--t-bright:#FFD1E1;--tab-ink:#4E2B3B;--tab-ink2:#7A5A68;
+  --sky-a:#FDE6EE;--sky-b:#FFF5EC;--heart:#F49AB8;--petal:#FBDDE7;--bow-ink:#E58BAE}
 html.mac-shell.dark.theme-pink{
-  --bg:#211522;--surface:#312030;--ink:#fff1f7;--ink-soft:#e7c1d6;--fill:#422b41;--fill-strong:#593950;--bubble:#493049;
-  --surface-2:#3b2839;--menu:#392638;--bar:#2b1c2bea;--tint:#ffc5dc;
-  --theme-sidebar:#2b1b2c;--theme-shell:#261926;--page-tint:#2c1b2cce;
+  --bg:#1A0F15;--surface:#2A1A22;--surface-2:rgba(255,180,205,.08);--fill:rgba(255,180,205,.13);--fill-strong:rgba(255,180,205,.2);
+  --ink:#FFF0F5;--ink-soft:#D4B3C2;--ink-faint:#AE8E9C;--deep:#FCE8F0;--deep-rgb:250,225,235;--line:rgba(250,225,235,.11);--line-strong:rgba(250,225,235,.18);
+  --tint:#FFB3CC;--on-dark:#FFB3CC;--accent-soft:rgba(244,154,184,.2);--hero:#4A1E33;--bubble:#3A2430;--bar:rgba(26,15,21,.75);--menu:rgba(44,28,36,.95);--page-tint:rgba(26,10,18,.4);--seg-on:#5A3A4A;
+  --t-eyebrow:#FFC2D6;--t-word:#FFEAF2;--t-sub:#E8C3D2;--t-foot:#E8C3D2;--t-bright:#FFC2D6;--tab-ink:#F4DCE6;--tab-ink2:#D4B3C2;
+  --sky-a:#1A0D14;--sky-b:#2E1522;--heart:#E0709A;--petal:#3A1B2A}
+/* The page's own background shows the drawings: the top bar is clear until something scrolls under it. */
+html.mac-shell:is(.theme-halloween,.theme-christmas,.theme-moonlit,.theme-pink) .topbar:not(.scrolled){background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+html.mac-shell:is(.theme-halloween,.theme-christmas,.theme-moonlit,.theme-pink).see-through #app::before{background:var(--page-tint)}
+
+/* ---------- The layer behind the page ---------- */
+#macDecor{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;contain:strict}
+#macDecor>*{position:absolute}
+#macDecor svg{display:block;width:100%;height:100%;overflow:visible}
+.fx-sky{inset:0;background:linear-gradient(180deg,var(--sky-a),var(--sky-b) 70%,var(--bg))}
+html.see-through .fx-sky{opacity:.55}
+.fx-moon{width:clamp(150px,16vw,240px);aspect-ratio:1;top:22px;inset-inline-end:clamp(70px,9vw,150px)}
+.fx-hills{left:0;right:0;bottom:0;height:clamp(90px,14vh,170px);color:var(--hill);fill:currentColor}
+/* Reduce Motion and a hidden window: everything holds still. */
+html.fx-paused #macDecor,html.fx-paused #macDecor *,html.fx-paused .order-hero::before,html.fx-paused .order-hero::after{animation-play-state:paused!important}
+@media (prefers-reduced-motion:reduce){
+  #macDecor,#macDecor *,html.mac-shell .order-hero::before,html.mac-shell .order-hero::after,html.mac-shell .rico-plain::after{animation:none!important}
+  .fx-burst,.fx-ripple,.fx-flock{display:none}
 }
-/* Small, recognizable silhouettes for the streak and Rico. */
-html.mac-shell.theme-halloween{--theme-symbol:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 7c5-4 11 0 11 6.4C23 19.7 19 22 12 22S1 19.7 1 13.4C1 7 7 3 12 7zm-5 7 2.6-2.4 1.6 2.8zm5.5.4 1.6-2.8 2.9 2.4zm-5 2.3 2 2 3 .5 3-.5 2-2zM11 7c-1-2 0-6 3-6l.7 2c-1.6 0-2.4 2-2 4z' fill-rule='evenodd'/%3E%3C/svg%3E")}
-html.mac-shell.theme-christmas{--theme-symbol:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7M10 4l2 2 2-2m-4 16 2-2 2 2M4 9l3-.2-.5-2.9m13.5 9.2-3 .2.5 2.9M4 15l3 .2-.5 2.9m13.5-9.2-3-.2.5-2.9' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
-html.mac-shell.theme-discord{--theme-symbol:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M14.7 1.5C7.5 1.2 2.2 6.3 2.2 12.4c0 5.6 4.7 10.1 10.5 10.1 4.1 0 7.6-2.4 9.2-5.6C13.9 20 7.7 8.8 14.7 1.5Z'/%3E%3Cpath d='M19 3q.6 2.7 3 3-.6.2-3 3-.7-2.6-3-3 2.4-.4 3-3Z'/%3E%3C/svg%3E")}
-html.mac-shell.theme-google{--theme-symbol:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='5'/%3E%3Cpath d='M12 1.8v2.6m0 15.2v2.6M1.8 12h2.6m15.2 0h2.6M4.8 4.8l1.9 1.9m10.6 10.6 1.9 1.9m0-14.4-1.9 1.9M6.7 17.3l-1.9 1.9' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")}
-html.mac-shell.theme-pink{--theme-symbol:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21c-1.8-1.2-10.6-7.2-10.6-12.6A5.7 5.7 0 0 1 12 5.6a5.7 5.7 0 0 1 10.6 2.8C22.6 13.8 13.8 19.8 12 21Z'/%3E%3C/svg%3E")}
-html.mac-shell :is(.topbar,.bottomnav,.rico-side){border-color:var(--line)}
-html.mac-shell:not(.see-through) #app{
-  background:radial-gradient(ellipse at 92% 0%,color-mix(in srgb,var(--theme-glow) 12%,transparent),transparent 48%),var(--theme-shell);
+
+/* Halloween: a twilight (or moonlit) sky, a moon behind slow clouds, a hill with a lit window, fog along the
+   bottom; now and then a few bats cross the top. */
+.fx-halloween .fx-hw-moon{top:8px}
+.fx-halloween .fx-clouds{left:-10%;width:120%;top:40px;height:200px;opacity:.5;animation:fxDrift 140s var(--fx-ease) infinite alternate;
+  background:radial-gradient(14% 16% at 72% 52%,var(--fog),transparent 70%),radial-gradient(18% 12% at 82% 40%,var(--fog),transparent 72%),radial-gradient(12% 10% at 30% 30%,var(--fog),transparent 72%),radial-gradient(16% 12% at 52% 70%,var(--fog),transparent 72%)}
+html.dark .fx-halloween .fx-clouds{opacity:.22}
+.fx-fog{left:-25%;width:150%;bottom:-30px;height:260px;opacity:.5;
+  background:radial-gradient(40% 55% at 20% 80%,var(--fog),transparent 70%),radial-gradient(35% 50% at 55% 85%,var(--fog),transparent 70%),radial-gradient(40% 55% at 88% 78%,var(--fog),transparent 70%)}
+html.dark .fx-fog{opacity:.16}
+.fx-fog-a{animation:fxDrift 70s var(--fx-ease) infinite alternate}
+.fx-fog-b{bottom:-70px;opacity:.36;animation:fxDrift 95s var(--fx-ease) -40s infinite alternate-reverse}
+html.dark .fx-fog-b{opacity:.12}
+@keyframes fxDrift{from{transform:translateX(-6%)}to{transform:translateX(6%)}}
+.fx-flock{left:0;width:100%;height:80px;animation:fxBats 7.5s cubic-bezier(.4,.05,.6,.95) forwards}
+.fx-flock.fx-rtl{animation-name:fxBatsBack}
+.fx-bat{position:absolute;left:0;top:var(--y);width:calc(46px * var(--sc));height:calc(17px * var(--sc));color:var(--bat);fill:currentColor;margin-left:var(--x);opacity:.85}
+.fx-bat svg{animation:fxFlap var(--f) ease-in-out infinite alternate;transform-origin:50% 40%}
+.fx-rtl .fx-bat svg{scale:-1 1}
+@keyframes fxFlap{from{transform:scaleY(1)}to{transform:scaleY(.45) translateY(3px)}}
+@keyframes fxBats{0%{transform:translate(105vw,18px)}35%{transform:translate(64vw,-4px)}70%{transform:translate(26vw,14px)}100%{transform:translate(-30vw,-6px)}}
+@keyframes fxBatsBack{0%{transform:translate(-30vw,10px)}40%{transform:translate(30vw,-6px)}75%{transform:translate(70vw,12px)}100%{transform:translate(110vw,-4px)}}
+/* Halloween's Order card: jack-o'-lanterns whose candles flicker softly. */
+html.mac-shell.theme-halloween .order-hero:not(.hero-expenses),html.mac-shell.theme-halloween .streak-boom-card{background:radial-gradient(120% 140% at 85% 110%,#4A2347,transparent 60%),linear-gradient(135deg,#1E1029,#2E1840)}
+html.mac-shell.theme-halloween .order-hero:not(.hero-expenses):not(.setting-demo *)::before{content:'';position:absolute;z-index:-1;pointer-events:none;inset-inline-end:2%;bottom:-40%;width:clamp(180px,34%,420px);aspect-ratio:1;
+  background:radial-gradient(closest-side,rgba(255,170,70,.42),rgba(255,140,40,.12) 55%,transparent);animation:fxCandle 4.2s steps(1,end) infinite}
+@keyframes fxCandle{0%{opacity:.85;transform:scale(1)}12%{opacity:.7;transform:scale(.97)}24%{opacity:.92;transform:scale(1.02)}37%{opacity:.78}49%{opacity:.95;transform:scale(1)}63%{opacity:.74;transform:scale(.98)}78%{opacity:.9;transform:scale(1.01)}90%{opacity:.8}}
+html.mac-shell.theme-halloween .order-hero:not(.hero-expenses):not(.setting-demo *)::after{content:'';position:absolute;z-index:-1;pointer-events:none;inset-inline-end:3%;bottom:0;height:88%;width:clamp(150px,30%,300px);background:url("mac-icons/fx-hw-card.svg") right bottom/contain no-repeat}
+html.mac-shell.theme-halloween.rtl .order-hero:not(.hero-expenses)::after{background-position:left bottom;scale:-1 1}
+/* Cobwebs in the cards' top corner, faint, behind everything in the card. */
+html.mac-shell.theme-halloween  .supplier-group:not(.setting-demo *){isolation:isolate}
+html.mac-shell.theme-halloween  .supplier-group:not(.setting-demo *)::after{content:'';position:absolute;z-index:-1;top:0;inset-inline-end:0;width:62px;height:62px;pointer-events:none;
+  background:var(--web);-webkit-mask:url("mac-icons/fx-web.svg") top right/contain no-repeat;mask:url("mac-icons/fx-web.svg") top right/contain no-repeat}
+html.mac-shell.theme-halloween.rtl  .supplier-group::after{scale:-1 1}
+
+/* Christmas: three layers of slow snow over the page, a drift at the bottom and warm lights along the top. */
+.fx-snow{left:-400px;right:-400px;color:var(--snow);
+  background-image:radial-gradient(circle at 20% 30%,currentColor 0 1.6px,transparent 2.2px),radial-gradient(circle at 70% 60%,currentColor 0 1.2px,transparent 1.8px),radial-gradient(circle at 45% 85%,currentColor 0 2px,transparent 2.6px),radial-gradient(circle at 85% 15%,currentColor 0 1.4px,transparent 2px);
+  filter:drop-shadow(0 0 1px var(--snow-edge))}
+/* Each layer falls exactly a whole number of its tiles, so the loop never jumps. */
+.fx-snow-far{top:-680px;bottom:0;background-size:160px 170px;opacity:.55;animation:fxSnowFar 80s linear infinite}
+.fx-snow-mid{top:-780px;bottom:0;background-size:240px 260px;opacity:.75;animation:fxSnowMid 55s linear -20s infinite}
+.fx-snow-near{top:-840px;bottom:0;background-size:380px 420px;opacity:.9;animation:fxSnowNear 38s linear -9s infinite}
+html.see-through .fx-snow{opacity:.95}
+@keyframes fxSnowFar{to{transform:translate3d(-160px,680px,0)}}
+@keyframes fxSnowMid{to{transform:translate3d(240px,780px,0)}}
+@keyframes fxSnowNear{to{transform:translate3d(-380px,840px,0)}}
+.fx-drift{left:0;right:0;bottom:0;height:90px;color:var(--drift);fill:currentColor;opacity:.75}
+html.dark .fx-drift{opacity:.12}
+.fx-lights{left:0;top:-2px;width:max(1600px,100vw);height:40px}
+.fx-lights svg{width:100%;height:100%}
+.fx-bulb .fx-glow{opacity:.3;animation:fxTwinkle var(--d) ease-in-out var(--w) infinite}
+.fx-bulb ellipse{animation:fxBulb var(--d) ease-in-out var(--w) infinite}
+@keyframes fxTwinkle{0%,100%{opacity:.25}50%{opacity:.9}}
+@keyframes fxBulb{0%,100%{opacity:.7}50%{opacity:1}}
+/* Christmas's Order card: a satin ribbon tied with a bow and holly, frosted edges on the cards. */
+html.mac-shell.theme-christmas .order-hero:not(.hero-expenses),html.mac-shell.theme-christmas .streak-boom-card{background:radial-gradient(90% 120% at 90% 0%,rgba(244,213,141,.16),transparent 60%),linear-gradient(140deg,#0C3324,#14482F 60%,#0F3B2A)}
+html.mac-shell.theme-christmas .order-hero:not(.hero-expenses):not(.setting-demo *)::before{content:'';position:absolute;z-index:-1;pointer-events:none;top:0;bottom:0;inset-inline-end:clamp(70px,13%,150px);width:26px;
+  background:linear-gradient(90deg,#8E0D24,#D72A40 30%,#F05A68 48%,#C8162F 66%,#8E0D24);box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+html.mac-shell.theme-christmas .order-hero:not(.hero-expenses):not(.setting-demo *)::after{content:'';position:absolute;z-index:-1;pointer-events:none;top:-4px;inset-inline-end:calc(clamp(70px,13%,150px) - 47px);width:120px;height:90px;
+  background:url("mac-icons/fx-xm-card.svg") center top/contain no-repeat;transform-origin:50% 30%}
+@media (hover:hover) and (pointer:fine){
+  html.mac-shell.theme-christmas .order-hero::after{transition:transform 600ms var(--spring-soft)}
+  html.mac-shell.theme-christmas .order-hero:hover::after{transform:rotate(-4deg) scale(1.03)}
 }
-html.mac-shell:not(.see-through) :is(.bottomnav,.rico-side){background:var(--theme-sidebar)}
-html.mac-shell .bottomnav .navbtn.active{background-color:var(--accent-soft)}
-@media (max-width:959px){html.mac-shell .bottomnav .navbtn.active{background-color:transparent}}
-html.mac-shell:where(.theme-halloween,.theme-christmas,.theme-discord,.theme-google,.theme-pink){
-  --accent-soft:color-mix(in srgb,var(--tint) 15%,transparent);
-  --tab-ink:var(--ink);--tab-ink2:var(--ink-soft);--seg-on:var(--surface);--deep:var(--ink);--ink-faint:var(--ink-soft);
+html.mac-shell.theme-christmas :is(.supplier-group,.form-card):not(.setting-demo *){box-shadow:inset 0 1px 0 rgba(255,255,255,.9),inset 0 0 0 1px rgba(200,225,235,.55),0 1px 3px rgba(20,60,40,.06)}
+html.mac-shell.dark.theme-christmas :is(.supplier-group,.form-card):not(.setting-demo *){box-shadow:inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 0 1px rgba(200,230,240,.1)}
+html.mac-shell.theme-christmas .nav-brand::after{content:'';align-self:flex-start;width:30px;height:20px;margin:-8px 0 0 2px;background:url("mac-icons/fx-xm-holly.svg") center/contain no-repeat;pointer-events:none}
+
+/* Moonlit: a calm night (or a silver dawn in light mode), a moon, slow twinkling stars and, rarely, a
+   shooting star; a crescent by the logo. */
+.fx-moonlit .fx-stars{inset:0 0 30% 0;color:var(--star);fill:currentColor}
+.fx-star{position:absolute;width:calc(9px * var(--s));height:calc(9px * var(--s));opacity:.3;animation:fxStar var(--d) ease-in-out var(--w) infinite}
+html.dark .fx-star{opacity:.5}
+@keyframes fxStar{0%,100%{opacity:.18;transform:scale(.8)}50%{opacity:.85;transform:scale(1)}}
+html:not(.dark) .fx-star{animation-name:fxStarDay}
+@keyframes fxStarDay{0%,100%{opacity:.12;transform:scale(.8)}50%{opacity:.45;transform:scale(1)}}
+.fx-shoot{left:var(--sx,50%);top:var(--sy,10%);width:180px;height:2px;rotate:-24deg;opacity:0}
+.fx-shoot i{position:absolute;inset:0;border-radius:2px;background:linear-gradient(90deg,transparent,var(--star) 70%,#fff);box-shadow:0 0 6px var(--star)}
+.fx-shoot.go{animation:fxShoot 1.3s cubic-bezier(.23,1,.32,1) forwards}
+@keyframes fxShoot{0%{opacity:0;transform:translateX(160px)}15%{opacity:1}100%{opacity:0;transform:translateX(-260px)}}
+html.mac-shell.theme-moonlit .order-hero:not(.hero-expenses),html.mac-shell.theme-moonlit .streak-boom-card{background:radial-gradient(70% 120% at 82% 30%,rgba(201,214,242,.22),transparent 60%),linear-gradient(135deg,#0D1733,#172A5A 70%,#1D3468)}
+html.mac-shell.theme-moonlit .order-hero:not(.hero-expenses):not(.setting-demo *)::after{content:"";position:absolute;z-index:-1;pointer-events:none;inset-inline-end:2%;bottom:0;height:92%;width:clamp(170px,34%,340px);background:url("mac-icons/fx-mo-card.svg") right bottom/contain no-repeat;transform-origin:70% 100%}
+html.mac-shell.theme-moonlit.rtl .order-hero:not(.hero-expenses)::after{background-position:left center;scale:-1 1}
+@media (hover:hover) and (pointer:fine){
+  html.mac-shell.theme-moonlit .order-hero::after{transition:transform 900ms var(--spring-soft)}
+  html.mac-shell.theme-moonlit .order-hero:hover::after{transform:translateY(-2px)}
 }
-html.mac-shell.dark:where(.theme-halloween,.theme-christmas,.theme-discord,.theme-google,.theme-pink){--seg-on:var(--fill-strong)}
-html.mac-shell .order-hero:not(.hero-expenses),html.mac-shell .streak-boom-card{
-  background:linear-gradient(120deg,var(--theme-deep),var(--hero) 55%,var(--theme-edge));
+html.mac-shell.theme-moonlit .nav-brand::after{content:'';align-self:flex-start;width:15px;height:15px;margin:-6px 0 0 4px;background:var(--accent);opacity:.9;
+  -webkit-mask:url("mac-icons/fx-mo-crescent.svg") center/contain no-repeat;mask:url("mac-icons/fx-mo-crescent.svg") center/contain no-repeat;pointer-events:none}
+
+/* Cupid: blush and cream, soft hearts rising slowly, satin bows on the cards, ribbon dividers, a cherub's
+   wing by the logo; the Order card is pastel with a big satin bow. */
+.fx-pink .fx-hearts{inset:0;color:var(--heart);fill:currentColor}
+.fx-heart{position:absolute;bottom:-40px;width:calc(22px * var(--s));height:calc(22px * var(--s));opacity:0;animation:fxRise var(--d) linear var(--w) infinite}
+@keyframes fxRise{0%{transform:translate(0,0) rotate(-8deg);opacity:0}10%{opacity:var(--o)}50%{transform:translate(var(--x),-55vh) rotate(6deg)}88%{opacity:var(--o)}100%{transform:translate(0,-112vh) rotate(-6deg);opacity:0}}
+html:not(.dark) .fx-heart{--o:.32!important}
+.fx-pink .fx-petals{left:0;right:0;bottom:0;height:110px;color:var(--petal);fill:currentColor;opacity:.8}
+html.mac-shell.theme-pink:not(.dark) .order-hero:not(.hero-expenses){--t-eyebrow:#A8466F;--t-word:#5A2A40;--t-sub:#7A4A5E;--t-foot:#7A4A5E;--on-dark:#E0709A;color:var(--t-word);background:radial-gradient(80% 140% at 85% 20%,#FFFFFF,transparent 55%),linear-gradient(135deg,#FBD3E1,#FCE3EC 55%,#FFF1E6);box-shadow:inset 0 0 0 1px rgba(229,139,174,.35)}
+html.mac-shell.theme-pink:not(.dark) .order-hero:not(.hero-expenses) .hero-count{color:#8F2F5B}
+html.mac-shell.theme-pink:not(.dark) .kind-thumb{background:linear-gradient(135deg,#F7B8CF,#FBD3E1)}
+html.mac-shell.theme-pink:not(.dark) .kind-pill.on{color:#5A2A40}
+html.mac-shell.theme-pink:not(.dark) .order-hero :is(.hero-footer,.hero-copy){border-color:rgba(160,60,100,.16)!important}
+html.mac-shell.theme-pink.dark .order-hero:not(.hero-expenses),html.mac-shell.theme-pink .streak-boom-card{background:radial-gradient(80% 140% at 85% 20%,rgba(255,194,214,.18),transparent 55%),linear-gradient(135deg,#3E1729,#5A2440 60%,#4A1E33)}
+html.mac-shell.theme-pink .order-hero:not(.hero-expenses):not(.setting-demo *)::after{content:'';position:absolute;z-index:-1;pointer-events:none;inset-inline-end:2%;top:6%;bottom:6%;width:clamp(150px,30%,290px);background:url("mac-icons/fx-pk-card.svg") right center/contain no-repeat;transform-origin:72% 30%}
+html.mac-shell.theme-pink.rtl .order-hero:not(.hero-expenses)::after{background-position:left center;scale:-1 1}
+@media (hover:hover) and (pointer:fine){
+  html.mac-shell.theme-pink .order-hero::after{transition:transform 700ms var(--spring-soft)}
+  html.mac-shell.theme-pink .order-hero:hover::after{transform:rotate(-3deg) scale(1.02)}
 }
-html.mac-shell .order-hero:not(.hero-expenses):not(.setting-demo *):after{
-  content:'';position:absolute;z-index:-1;inset-block:4px;inset-inline-end:4%;width:clamp(104px,24%,255px);
-  background:var(--theme-art) right center/contain no-repeat;pointer-events:none;opacity:.86;
+html.mac-shell.theme-pink  .supplier-group:not(.setting-demo *){isolation:isolate}
+html.mac-shell.theme-pink  .supplier-group:not(.setting-demo *)::after{content:'';position:absolute;z-index:-1;top:6px;inset-inline-end:10px;width:34px;height:27px;pointer-events:none;opacity:.95;
+  background:url("mac-icons/fx-pk-bow.svg") center/contain no-repeat}
+html.mac-shell.theme-pink .nav-brand{position:relative}
+html.mac-shell.theme-pink .nav-brand::after{content:'';align-self:flex-start;width:24px;height:18px;margin:-10px 0 0 0;background:url("mac-icons/fx-pk-wing.svg") center/contain no-repeat;pointer-events:none}
+@media (min-width:960px){
+  html.mac-shell.theme-pink .page-heading h1::after{content:'';display:block;width:150px;height:12px;margin-top:6px;background:url("mac-icons/fx-pk-ribbon.svg") left center/contain no-repeat;pointer-events:none}
+  html.mac-shell.theme-pink.rtl .page-heading h1::after{background-position:right center}
 }
-html.mac-shell.rtl .order-hero:not(.hero-expenses):after{background-position:left center}
-@media (max-width:600px){
-  html.mac-shell .order-hero:not(.hero-expenses):after{display:none}
-}
-html.mac-shell:where(.theme-halloween,.theme-christmas,.theme-discord,.theme-google,.theme-pink) :is(.btn-primary,.quick-btn,.stepper,.tab-pill){
-  border-radius:var(--theme-button-radius);
-}
-html.mac-shell:where(.theme-halloween,.theme-christmas,.theme-discord,.theme-google,.theme-pink) .rico-plain{
-  color:var(--tint);
-}
-html.mac-shell:where(.theme-halloween,.theme-christmas,.theme-discord,.theme-google,.theme-pink) .rico-plain svg{visibility:hidden}
-html.mac-shell:where(.theme-halloween,.theme-christmas,.theme-discord,.theme-google,.theme-pink) .rico-plain::after{
-  content:'';grid-area:1/1;background:currentColor;mask:var(--theme-symbol) center/contain no-repeat;width:88%;height:88%;
-}
+
+/* Google: Google's look. Its four colours in the wordmark and the loaders, Google Sans-style titles, Material
+   cards and buttons, Google's search box, ripples on tap, and Rico shown as Gemini. */
+html.mac-shell.theme-google .nav-brand .brand-mark{font-family:var(--font-g);font-weight:500;letter-spacing:-.02em}
+html.mac-shell.theme-google .nav-brand .brand-mark>span:nth-child(1){color:var(--g-blue)}
+html.mac-shell.theme-google .nav-brand .brand-mark>span:nth-child(2){color:var(--g-red)}
+html.mac-shell.theme-google .nav-brand .brand-mark>span:nth-child(3){color:var(--g-yellow)}
+html.mac-shell.theme-google .nav-brand .brand-mark>span:nth-child(4){color:var(--g-blue)}
+html.mac-shell.theme-google .nav-brand .brand-mark>span:nth-child(5){color:var(--g-green)}
+html.mac-shell.theme-google .nav-brand .brand-mark>span:nth-child(6){color:var(--g-red)}
+html.mac-shell.theme-google .nav-brand .brand-mark>span:nth-child(7){color:var(--g-yellow)}
+html.mac-shell.theme-google .nav-brand .dot{background:var(--g-green)}
+html.mac-shell.theme-google :is(h1,h2,.page-heading h1,.hero-count,.set-title,.sheet-title,.modal-alert-title){font-family:var(--font-g);letter-spacing:-.01em}
+html.mac-shell.theme-google .page-heading h1{font-weight:400}
+html.mac-shell.theme-google :is(.supplier-group,.queue-card,.form-card){box-shadow:var(--lift)}
+html.mac-shell.dark.theme-google :is(.supplier-group,.queue-card,.form-card){box-shadow:none}
+html.mac-shell.theme-google :is(.btn-primary,.btn,.quick-btn,.tab-pill,.pill-seg-btn){border-radius:20px;font-family:var(--font-g);letter-spacing:.01em}
+html.mac-shell.theme-google .btn-primary{box-shadow:0 1px 2px rgba(60,64,67,.3),0 1px 3px 1px rgba(60,64,67,.15)}
+html.mac-shell.theme-google .tab-pill.active{background:var(--accent-soft);color:#0B57D0;box-shadow:none}
+html.mac-shell.dark.theme-google .tab-pill.active{color:#D3E3FD;background:#004A77}
+html.mac-shell.theme-google .bottomnav .navbtn.active{color:#041E49}
+html.mac-shell.dark.theme-google .bottomnav .navbtn.active{color:#D3E3FD}
+html.mac-shell.theme-google .nav-indicator{background:#D3E3FD}
+html.mac-shell.dark.theme-google .nav-indicator{background:#004A77}
+html.mac-shell.theme-google :is(.search-input,.catalog-search input,.rd-search input){border-radius:24px;background:var(--surface);border:1px solid #DFE1E5;box-shadow:none;transition:box-shadow 160ms ease,border-color 160ms ease}
+html.mac-shell.theme-google :is(.search-input,.catalog-search input,.rd-search input):is(:hover,:focus){border-color:transparent;box-shadow:0 1px 6px rgba(32,33,36,.28)}
+html.mac-shell.dark.theme-google :is(.search-input,.catalog-search input,.rd-search input){background:#303134;border-color:#5F6368}
+html.mac-shell.dark.theme-google :is(.search-input,.catalog-search input,.rd-search input):is(:hover,:focus){background:#303134;border-color:transparent;box-shadow:0 1px 6px rgba(0,0,0,.6)}
+html.mac-shell.theme-google .order-hero:not(.hero-expenses),html.mac-shell.theme-google .streak-boom-card{background:linear-gradient(135deg,#1A5BC4,#1A73E8 70%,#4285F4)}
+html.mac-shell.dark.theme-google .order-hero:not(.hero-expenses),html.mac-shell.dark.theme-google .streak-boom-card{background:linear-gradient(135deg,#0F2B57,#1C3B70 70%,#24508F)}
+html.mac-shell.theme-google .order-hero:not(.hero-expenses):not(.setting-demo *)::after{content:'';position:absolute;z-index:-1;pointer-events:none;inset-inline-end:3%;top:8%;bottom:8%;width:clamp(140px,26%,260px);background:url("mac-icons/fx-gg-card.svg") right center/contain no-repeat;opacity:.95}
+html.mac-shell.theme-google.rtl .order-hero:not(.hero-expenses)::after{background-position:left center}
+/* Google's four colours on the progress bars and spinners. */
+html.mac-shell.theme-google :is(.queue-bar i,.streak-bar i,.ad-srv-bar i){background:linear-gradient(90deg,var(--g-blue) 0 25%,var(--g-red) 25% 50%,var(--g-yellow) 50% 75%,var(--g-green) 75%)}
+html.mac-shell.theme-google :is(.dev-pending::before,.rico-status-line i,.rico-step-ic.spin,.rr-spin){border-color:var(--g-blue) var(--g-red) var(--g-yellow) var(--g-green)!important}
+html.mac-shell.theme-google .btn.is-busy::before{border-color:rgba(255,255,255,.95) rgba(255,255,255,.35) rgba(255,255,255,.35) rgba(255,255,255,.35)}
+.fx-ripple{position:fixed;z-index:500;overflow:hidden;pointer-events:none;contain:strict}
+.fx-ripple i{position:absolute;border-radius:50%;background:currentColor;color:var(--g-blue,#4285F4);opacity:0}
+html.dark .fx-ripple i{color:#fff}
+
+/* ---------- Rico in costume (top bar, chat and the Rico tab) ---------- */
+html.mac-shell:is(.theme-halloween,.theme-christmas,.theme-moonlit,.theme-google,.theme-pink) .rico-plain svg{visibility:hidden}
 html.mac-shell .rico-plain svg{grid-area:1/1}
+html.mac-shell:is(.theme-halloween,.theme-christmas,.theme-moonlit,.theme-google,.theme-pink) .rico-plain::after{content:'';grid-area:1/1;width:118%;height:118%;margin:-9%;background:var(--rico-art) center/contain no-repeat;pointer-events:none}
+html.mac-shell.theme-halloween{--rico-art:url("mac-icons/fx-hw-rico.svg")}
+html.mac-shell.theme-christmas{--rico-art:url("mac-icons/fx-xm-rico.svg")}
+html.mac-shell.theme-moonlit{--rico-art:url("mac-icons/fx-mo-rico.svg")}
+html.mac-shell.theme-google{--rico-art:url("mac-icons/fx-gg-rico.svg")}
+html.mac-shell.theme-pink{--rico-art:url("mac-icons/fx-pk-rico.svg")}
+@media (hover:hover) and (pointer:fine){
+  html.mac-shell .rico-top .rico-plain::after{transition:transform 500ms var(--spring-soft)}
+  html.mac-shell.theme-halloween .rico-top:hover .rico-plain::after{transform:rotate(-8deg) scale(1.06)}
+  html.mac-shell.theme-christmas .rico-top:hover .rico-plain::after{transform:rotate(6deg) translateY(-1px)}
+  html.mac-shell.theme-moonlit .rico-top:hover .rico-plain::after{transform:rotate(-10deg)}
+  html.mac-shell.theme-google .rico-top:hover .rico-plain::after{transform:rotate(45deg) scale(1.05)}
+  html.mac-shell.theme-pink .rico-top:hover .rico-plain::after{transform:translateY(-2px) scale(1.06)}
+}
+/* The kitchen streak keeps its flame in every theme (kitchen.js draws both; only the flame shows). */
 .flame-themed{display:none}
-html.mac-shell:where(.theme-halloween,.theme-christmas,.theme-discord,.theme-google,.theme-pink) .flame-default{display:none}
-html.mac-shell:where(.theme-halloween,.theme-christmas,.theme-discord,.theme-google,.theme-pink) .flame-themed{
-  display:inline-block;flex:none;background:linear-gradient(145deg,var(--f3,currentColor),var(--f1,currentColor));mask:var(--theme-symbol) center/contain no-repeat;
-  vertical-align:middle;animation:none;
-}
-html.mac-shell .streak-boom .flame-themed,html.mac-shell .streak-hero.lit .flame-themed,
-html.mac-shell .streak-chip.lit .flame-themed{
-  background:linear-gradient(135deg,var(--theme-glow) 30%,var(--f1));
-}
-html.mac-shell .streak-chip.ignite .flame-themed{transform-origin:center}
-html.mac-shell.theme-pink .quick-btn:active:not(:disabled):not(.setting-demo *)::after{
-  content:'';width:14px;height:14px;position:absolute;inset-inline-end:6px;top:4px;background:var(--theme-glow);
-  mask:var(--theme-symbol) center/contain no-repeat;pointer-events:none;
-}
-html.mac-shell.theme-pink .quick-btn{position:relative}
-@media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){
-  html.mac-shell .order-hero::after{transition:transform .42s var(--ease-out)}
-  html.mac-shell .order-hero:hover::after{transform:translateY(-4px) rotate(-2deg)}
-  html.mac-shell.theme-pink .rico-top:hover .rico-plain::after{animation:cupidBeat .55s var(--ease-out) both}
-  @keyframes cupidBeat{28%{transform:scale(1.12)}56%{transform:scale(.98)}}
-}
+
+/* ---------- Celebrations (mac-themes.js) ---------- */
+.fx-burst{position:fixed;inset:0;z-index:600;pointer-events:none;overflow:hidden;contain:strict}
+.fx-burst>i{position:absolute;display:block;will-change:transform,opacity}
+.fx-bit{width:12px;height:12px}
+.fx-bit b{display:block;width:100%;height:100%;border-radius:2px}
+.fx-flake{width:14px;height:14px}
+.fx-heartbit{width:16px;height:16px}
+.fx-addheart{width:12px;height:12px}
+.fx-spark{width:12px;height:12px}
+.fx-gdot{width:14px;height:14px}
+.fx-gdot b{border-radius:50%}
+.fx-cupid-bow{width:34px;height:68px}
+.fx-cupid-arrow{width:120px;height:24px}
+.fx-burst svg{display:block;width:100%;height:100%;overflow:visible}
 ::view-transition-old(root),::view-transition-new(root){animation-duration:220ms;animation-timing-function:var(--ease-out)}
 /* Appearance choices keep their names visible and the active state marked without relying on color. */
 .mac-pick-row{display:grid;gap:10px;padding:12px 0 6px;border-top:.5px solid var(--line)}
@@ -3701,11 +3852,10 @@ html.mac-shell.theme-pink .quick-btn{position:relative}
 .mac-choice-check{width:13px;height:13px;flex:none;color:var(--tint);visibility:hidden}
 .mac-choice-check svg{width:100%;height:100%}
 .mac-choice[aria-checked=true] .mac-choice-check{visibility:visible}
-.mac-swatch-preview,.mac-icon img{display:block;width:38px;height:38px;flex:none;pointer-events:none}
-.mac-swatch-preview{border-radius:9px;object-fit:contain;background:var(--swatch)}
-.mac-swatch-ricotta{--swatch:#1d5241}.mac-swatch-halloween{--swatch:#4f2b5f}
-.mac-swatch-christmas{--swatch:#244a3a}.mac-swatch-discord{--swatch:#413568}
-.mac-swatch-google{--swatch:#305f72}.mac-swatch-pink{--swatch:#a55d7c}
+.mac-swatch-preview,.mac-icon img{display:block;width:40px;height:40px;margin:-3px -2px;flex:none;pointer-events:none}
+.mac-icon-groups{display:grid;gap:12px}
+.mac-icon-group{display:grid;gap:6px}
+.mac-icon-group>span{font-size:.75rem;font-weight:600;color:var(--ink-soft)}
 .mac-icon-suggest{display:flex;align-items:center;gap:8px;margin:2px 0 0;font-size:.8125rem;color:var(--ink-soft)}
 .mac-icon-suggest img{width:32px;height:32px}
 .mac-icon-suggest .btn-ghost{min-height:40px;padding:0 12px;font-size:.8125rem}

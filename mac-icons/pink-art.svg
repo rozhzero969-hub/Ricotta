@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="180" height="200" viewBox="0 0 180 200"><defs><linearGradient id="art" x2=".28" y2="1"><stop stop-color="#fff3dd"/><stop offset="1" stop-color="#e8a6bd"/></linearGradient><linearGradient id="tile" x2=".5" y2="1"><stop stop-color="#874864"/><stop offset="1" stop-color="#201b2f"/></linearGradient></defs><path d="M145 52c-11-12-24 4-6 16l6 5 6-5c18-12 5-28-6-16Zm-111 63c-9-10-19 3-5 13l5 4 5-4c14-10 4-23-5-13Z" fill="#ffd1e1"/>
-<path d="M90 154c-22-4-38 4-37 15 1 9 19 10 37 10s36-1 37-10c1-10-15-19-37-15Z" fill="#d686a6"/>
-<circle cx="54" cy="81" r="21" fill="#ffe7ca"/><circle cx="125" cy="81" r="21" fill="#ffe7ca"/>
-<circle cx="54" cy="81" r="12" fill="#edb8be"/><circle cx="125" cy="81" r="12" fill="#edb8be"/>
-<path d="M42 116c0-28 20-47 48-47s48 19 48 47-19 45-48 45-48-17-48-45Z" fill="url(#art)"/>
-<ellipse cx="90" cy="129" rx="21" ry="15" fill="#fff5de"/><circle cx="72" cy="113" r="4" fill="#60324d"/><circle cx="108" cy="113" r="4" fill="#60324d"/>
-<path d="M84 125q6-4 12 0-1 5-6 6-5-1-6-6Zm6 6v3m0 0q-4 6-10 2m10-2q4 6 10 2" fill="#60324d" stroke="#60324d" stroke-width="1.3" stroke-linecap="round"/>
-<ellipse cx="60" cy="124" rx="7" ry="4" fill="#e88cb0"/><ellipse cx="120" cy="124" rx="7" ry="4" fill="#e88cb0"/>
-<path d="M123 77c-15-12-17-20-11-21 6-2 12 2 15 9 4-7 15-11 20-7 5 5-3 13-17 18l9 12-9-1-3 7-4-15-11 13-1-7-8-2Z" fill="#ab416d" stroke="#ffe6ee" stroke-width="1.5" stroke-linejoin="round"/><circle cx="126" cy="74" r="5" fill="#dc739e"/></svg>

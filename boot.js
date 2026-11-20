@@ -22,7 +22,7 @@ window.__splashStart = performance.now();
   document.documentElement.classList.add('mac-shell');
   if(window.RICOTTA_SEE_THROUGH === true) document.documentElement.classList.add('see-through');
   // The colour theme chosen in the Mac app, before anything paints (only known names).
-  if(['halloween','christmas','discord','google','pink'].indexOf(window.RICOTTA_THEME) >= 0) document.documentElement.classList.add('theme-' + window.RICOTTA_THEME);
+  if(['halloween','christmas','moonlit','google','pink'].indexOf(window.RICOTTA_THEME) >= 0) document.documentElement.classList.add('theme-' + window.RICOTTA_THEME);
 })();
 /* Light or dark before the first screen shows: the phone's setting unless Settings chose one. */
 (function(){
