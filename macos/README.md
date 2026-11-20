@@ -114,9 +114,9 @@ open ~/Library/Developer/RicottaMacBuild/Build/Products/Debug/Ricotta.app --args
 
 Only `localhost` and `127.0.0.1` are accepted. Web Inspector is on in Debug builds only.
 
-Navigation tests, from the repository root:
+Navigation, theme and icon tests, from the repository root:
 
 ```sh
-xcrun swiftc macos/Ricotta/NavigationPolicy.swift macos/Tests/main.swift -o /tmp/ricotta-mac-navigation-tests
+xcrun swiftc macos/Ricotta/NavigationPolicy.swift macos/Ricotta/Choices.swift macos/Tests/theme-icon-tests.swift macos/Tests/main.swift -o /tmp/ricotta-mac-navigation-tests
 /tmp/ricotta-mac-navigation-tests
 ```

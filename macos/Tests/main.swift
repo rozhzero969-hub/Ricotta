@@ -23,4 +23,5 @@ expect(RicottaNavigation.isAppOrigin(protocol: "https", host: "rozhzero969-hub.g
 expect(!RicottaNavigation.isAppOrigin(protocol: "https", host: "evil.example", port: 0), "other origins may not")
 expect(!RicottaNavigation.isAppOrigin(protocol: "http", host: "rozhzero969-hub.github.io", port: 0), "plain http may not")
 expect(!RicottaNavigation.isAppPage(URL(string: "http://127.0.0.1:8765/")!), "no local Lab without the debug override")
+checkChoices()
 print("PASS (Mac): Ricotta page boundaries, external schemes, export origins and Cloudflare frames")

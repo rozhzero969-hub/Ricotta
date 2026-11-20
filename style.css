@@ -1935,8 +1935,8 @@ html.dark .rr-ctl-note.warn{color:#FCD34D}
 .rr-card-title{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 14px;font-size:1rem;font-weight:600;letter-spacing:-.01em}
 .rr-count{font-size:.8125rem;font-weight:500;color:var(--ink-soft)}
 .rr-combo{position:relative}
-.rr-pop{position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:30;max-height:288px;overflow:auto;background:var(--surface);border-radius:14px;box-shadow:0 0 0 .5px var(--line),0 12px 32px rgba(0,0,0,.14);padding:4px;transform-origin:50% 0;animation:selPopIn 140ms var(--ease-out)}
-@media (prefers-reduced-motion:reduce){.rr-pop{animation:none}}
+.rr-pop{position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:30;max-height:288px;overflow:auto;background:var(--surface);border-radius:14px;box-shadow:0 0 0 .5px var(--line),0 12px 32px rgba(0,0,0,.14);padding:4px}
+/* No opening animation here: the list opens on every Tab and keystroke through a receipt, and typing must never wait. */
 .rr-opt{padding:9px 10px;border-radius:9px;font-size:.9375rem;cursor:default;display:flex;align-items:baseline;gap:10px}
 .rr-opt>span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rr-opt>small{flex:none;font-size:.75rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
@@ -3578,16 +3578,16 @@ html.mac-shell.theme-google .brand .dot{background:conic-gradient(#EA4335 0 25%,
 html.mac-shell.theme-pink{
   --pk-bow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-140 -90 280 230'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23F06C9B'/%3E%3Cstop offset='1' stop-color='%23B0124F'/%3E%3C/linearGradient%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23C2205E'/%3E%3Cstop offset='1' stop-color='%23860C3C'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M-6 8L-62 112L-38 104L-26 128L6 14Z' fill='url(%23b)'/%3E%3Cpath d='M6 8L58 116L34 106L20 130L-6 14Z' fill='url(%23b)'/%3E%3Cpath d='M0 0C-24-58-112-86-128-26C-138 18-74 40 0 0Z' fill='url(%23a)'/%3E%3Cpath d='M0 0C24-58 112-86 128-26C138 18 74 40 0 0Z' fill='url(%23a)'/%3E%3Cpath d='M-6-4C-30-40-82-56-104-30M6-4C30-40 82-56 104-30' fill='none' stroke='%23fff' stroke-opacity='.4' stroke-width='7' stroke-linecap='round'/%3E%3Cellipse cx='0' cy='2' rx='22' ry='26' fill='url(%23b)'/%3E%3Cellipse cx='-5' cy='-6' rx='8' ry='9' fill='%23fff' fill-opacity='.35'/%3E%3C/svg%3E");
   --pk-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 20' fill='none' stroke='%23C2205E' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 10H150M142 5.5L151 10L142 14.5M6 10L1 5M6 10L1 15M11 10L6 5M11 10L6 15'/%3E%3Cpath d='M86 14.2C80 10 77.5 7.6 77.5 5.6C77.5 4 78.8 2.8 80.4 2.8C81.6 2.8 82.6 3.5 83 4.5C83.4 3.5 84.4 2.8 85.6 2.8C87.2 2.8 88.5 4 88.5 5.6C88.5 7.6 86 10 80 14.2' fill='%23E0457B' fill-opacity='.85' stroke='none' transform='translate(3 0)'/%3E%3C/svg%3E");
-  --pk-scatter:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cg fill='%23B0124F' opacity='.07'%3E%3Cpath d='M40 52c-9-6-13-10-13-14a5 5 0 0 1 9-3a5 5 0 0 1 9 3c0 4-4 8-13 14z'/%3E%3Cpath d='M160 150c-7-5-10-8-10-11a4 4 0 0 1 7-2.4a4 4 0 0 1 7 2.4c0 3-3 6-10 11z'/%3E%3Cpath d='M150 40c-3-6-10-8-12-4c-2 4 4 6 12 4zm0 0c3-6 10-8 12-4c2 4-4 6-12 4zm0 0l-4 9m4-9l4 9' stroke='%23B0124F' stroke-width='1.2' fill-opacity='.8'/%3E%3Cpath d='M58 172c-3-6-10-8-12-4c-2 4 4 6 12 4zm0 0c3-6 10-8 12-4c2 4-4 6-12 4z'/%3E%3C/g%3E%3C/svg%3E")}
+  --pk-scatter:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cg fill='%23B0124F' opacity='.035'%3E%3Cpath d='M40 52c-9-6-13-10-13-14a5 5 0 0 1 9-3a5 5 0 0 1 9 3c0 4-4 8-13 14z'/%3E%3Cpath d='M160 150c-7-5-10-8-10-11a4 4 0 0 1 7-2.4a4 4 0 0 1 7 2.4c0 3-3 6-10 11z'/%3E%3Cpath d='M150 40c-3-6-10-8-12-4c-2 4 4 6 12 4zm0 0c3-6 10-8 12-4c2 4-4 6-12 4zm0 0l-4 9m4-9l4 9' stroke='%23B0124F' stroke-width='1.2' fill-opacity='.8'/%3E%3Cpath d='M58 172c-3-6-10-8-12-4c-2 4 4 6 12 4zm0 0c3-6 10-8 12-4c2 4-4 6-12 4z'/%3E%3C/g%3E%3C/svg%3E")}
 @media (min-width:700px){
-  html.mac-shell.theme-pink .order-hero::after{content:'';position:absolute;z-index:1;top:12px;inset-inline-end:16px;width:44px;height:36px;background:var(--pk-bow) center/contain no-repeat;pointer-events:none;transform-origin:50% 30%;transition:transform 600ms var(--spring-soft)}
+  html.mac-shell.theme-pink .order-hero::after{content:'';position:absolute;z-index:1;top:12px;inset-inline-end:16px;width:44px;height:36px;background:var(--pk-bow) center/contain no-repeat;filter:brightness(1.75) saturate(.8);pointer-events:none;transform-origin:50% 30%;transition:transform 600ms var(--spring-soft)}
   html.mac-shell.theme-pink .order-hero:hover::after{transform:rotate(-6deg) scale(1.04)}
   html.mac-shell.theme-pink .page-heading h1::after{content:'';display:block;width:132px;height:16px;margin-top:4px;background:var(--pk-arrow) left center/contain no-repeat;opacity:.7;pointer-events:none}
   html.mac-shell.theme-pink.rtl .page-heading h1::after{transform:scaleX(-1)}
 }
 @media (min-width:960px){
   html.mac-shell.theme-pink .nav-brand::after{content:'';align-self:flex-start;width:22px;height:18px;margin:-2px 0 0 6px;background:var(--pk-bow) center/contain no-repeat;pointer-events:none}
-  html.mac-shell.theme-pink.see-through #app::before{background:var(--pk-scatter) 0 0/220px 220px,var(--page-tint)}
+  html.mac-shell.theme-pink.see-through #app::before{background:var(--pk-scatter) 0 0/300px 300px,var(--page-tint)}
 }
 @media (prefers-reduced-motion:reduce){html.mac-shell.theme-pink .order-hero::after{transition:none}html.mac-shell.theme-pink .order-hero:hover::after{transform:none}}
 /* Changing the theme cross-fades the whole window for a moment instead of jumping (see setMacTheme). */
