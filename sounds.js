@@ -59,9 +59,8 @@ function soundTone(f, dur, gain, at = 0, type = 'sine'){
    - The Mac app only (MainWindowController.swift): "Always see-through" switched in Settings, and a press
      or double-click on an empty part of the top bar or sidebar, which moves or zooms the window, and the
      Dock icon and colour theme chosen in Settings (icon:dark, theme:pink). */
-// The Dock icons, in two groups: the themes' own (in MAC_THEMES order), then the others.
-const MAC_THEME_ICONS = ['green','halloween','christmas','discord','google','pink'];
-const MAC_ICONS = [...MAC_THEME_ICONS,'cream','forest','wordmark','slip','wedge','bag','glass','dark'];
+// The six Dock icons match the six themes in order.
+const MAC_ICONS = ['green','halloween','christmas','discord','google','pink'];
 const MAC_THEMES = ['ricotta','halloween','christmas','discord','google','pink'];
 const NATIVE_WORDS = ['selection','light','medium','success','warning','error','page-splash','page-dark','page-light','see-through-on','see-through-off','window-drag','window-zoom',
   ...MAC_ICONS.map(n=>'icon:' + n), ...MAC_THEMES.map(n=>'theme:' + n)];

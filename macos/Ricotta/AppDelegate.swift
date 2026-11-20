@@ -126,14 +126,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         let icons = add(view, String(localized: "App Icon"), nil)
         icons.submenu = NSMenu(title: String(localized: "App Icon"))
-        for (index, group) in [AppIconChoice.themeIcons, AppIconChoice.moreIcons].enumerated() {
-            if index > 0 { icons.submenu!.addItem(.separator()) }
-            icons.submenu!.addItem(.sectionHeader(title: index == 0 ? String(localized: "With the Themes") : String(localized: "More")))
-            for icon in group {
-                let item = add(icons.submenu!, icon.title, #selector(chooseAppIcon(_:)), target: self)
-                item.representedObject = icon.rawValue
-                item.image = icon.preview(size: 18)
-            }
+        for icon in AppIconChoice.allCases {
+            let item = add(icons.submenu!, icon.title, #selector(chooseAppIcon(_:)), target: self)
+            item.representedObject = icon.rawValue
+            item.image = icon.preview(size: 18)
         }
         view.addItem(.separator())
         _ = add(view, String(localized: "Enter Full Screen"), #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
@@ -189,7 +185,7 @@ enum Preferences {
     /// since that would break its signature, so Finder and Launchpad keep the normal icon.
     static func applyAppIcon() {
         let choice = AppIconChoice(rawValue: appIcon) ?? .green
-        NSApp.applicationIconImage = choice == .green ? nil : NSImage(named: choice.assetName)
+        NSApp.applicationIconImage = NSImage(named: choice.assetName)
     }
     static var zoom: Double {
         get { min(max(UserDefaults.standard.double(forKey: zoomKey), 0.5), 3) }

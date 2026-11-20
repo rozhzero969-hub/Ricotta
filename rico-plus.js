@@ -238,12 +238,19 @@ function ricoAutoFillRoutines(){
 /* ---------- Rico on the Order screen ---------- */
 function renderRicoOrderButton(){
   if(!featureOn('ricoSheet') || !canOpen('assistant')) return '';
+  return ricoOrderButtonHtml();
+}
+function ricoOrderButtonHtml(){
   return `<button class="quick-btn" id="ricoFloat">${ricoFace('')}<span>${esc(t('sheetOpen'))}</span></button>`;
+}
+function ricoOrderSheetHtml(subtitle){
+  return `<div class="check-head">${ricoFace('', 'rico-md')}<div><div class="sel-title">${esc(t('ricoName'))}</div><div class="notif-sub" dir="auto">${esc(subtitle)}</div></div></div>
+    <form id="sheetAsk" class="mem-add"><label class="sr-only" for="sheetInput">${esc(t('sheetAsk'))}</label><input id="sheetInput" maxlength="2000" dir="auto" placeholder="${esc(t('sheetAsk'))}"><button type="submit" class="btn btn-primary">${esc(t('ricoSend'))}</button></form>`;
 }
 function openRicoOrderSheet(){
   const n = ricoNextStep();
-  const {el, close} = openKitchenSheet('rico-order-sheet', `<div class="check-head">${ricoFace('', 'rico-md')}<div><div class="sel-title">${esc(t('ricoName'))}</div><div class="notif-sub" dir="auto">${esc(!cartCount() ? t('sheetEmpty') : n && !n.done ? n.title : t('sheetAskAbout'))}</div></div></div>
-    <form id="sheetAsk" class="mem-add"><label class="sr-only" for="sheetInput">${esc(t('sheetAsk'))}</label><input id="sheetInput" maxlength="2000" dir="auto" placeholder="${esc(t('sheetAsk'))}"><button type="submit" class="btn btn-primary">${esc(t('ricoSend'))}</button></form>`, t('ricoName'));
+  const subtitle = !cartCount() ? t('sheetEmpty') : n && !n.done ? n.title : t('sheetAskAbout');
+  const {el, close} = openKitchenSheet('rico-order-sheet', ricoOrderSheetHtml(subtitle), t('ricoName'));
   el.querySelector('#sheetAsk').onsubmit = e=>{
     e.preventDefault();
     const text = el.querySelector('#sheetInput').value.trim();

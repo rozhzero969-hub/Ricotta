@@ -1,31 +1,22 @@
 import AppKit
 
-/// The Dock icon choices (Assets.xcassets, AppIcon-<name>, drawn from macos/IconSources; see the README).
-/// The first six match the themes, in AppTheme order; the rest are other looks.
+/// The six Dock icons (Assets.xcassets, AppIcon-<name>) in theme order.
 enum AppIconChoice: String, CaseIterable {
     case green, halloween, christmas, discord, google, pink
-    case cream, forest, wordmark, slip, wedge, bag, glass, dark
-    static let themeIcons: [AppIconChoice] = [.green, .halloween, .christmas, .discord, .google, .pink]
-    static var moreIcons: [AppIconChoice] { allCases.filter { !themeIcons.contains($0) } }
+
     var assetName: String { "AppIcon-\(rawValue)" }
+
     var title: String {
         switch self {
-        case .green: String(localized: "Ricotta")
-        case .halloween: String(localized: "Halloween")
-        case .christmas: String(localized: "Christmas")
-        case .discord: "Discord"
-        case .google: "Google"
-        case .pink: String(localized: "Pink")
-        case .cream: String(localized: "Cream")
-        case .forest: String(localized: "Forest")
-        case .wordmark: String(localized: "Wordmark")
-        case .slip: String(localized: "Order Slip")
-        case .wedge: String(localized: "Cheese")
-        case .bag: String(localized: "Bag")
-        case .glass: String(localized: "Glass")
-        case .dark: String(localized: "Dark")
+        case .green: String(localized: "Basil Leaf")
+        case .halloween: String(localized: "Jack & Moon")
+        case .christmas: String(localized: "Holly Bauble")
+        case .discord: String(localized: "Lunar Orbit")
+        case .google: String(localized: "Sunny Side")
+        case .pink: String(localized: "Bow Bear")
         }
     }
+
     func preview(size: CGFloat) -> NSImage? {
         guard let image = NSImage(named: assetName)?.copy() as? NSImage else { return nil }
         image.size = NSSize(width: size, height: size)
@@ -34,28 +25,28 @@ enum AppIconChoice: String, CaseIterable {
 }
 
 /// The page's colour themes (style.css, html.theme-<name>), chosen here or in Ricotta's Settings.
-/// Colours only: Discord and Google are palettes in their style, with no logos.
+/// Raw values match existing preferences and web theme classes.
 enum AppTheme: String, CaseIterable {
     case ricotta, halloween, christmas, discord, google, pink
     var title: String {
         switch self {
-        case .ricotta: String(localized: "Ricotta")
-        case .halloween: String(localized: "Halloween")
-        case .christmas: String(localized: "Christmas")
-        case .discord: "Discord"
-        case .google: "Google"
-        case .pink: String(localized: "Pink")
+        case .ricotta: String(localized: "Ricotta Verde")
+        case .halloween: String(localized: "Pumpkin Hour")
+        case .christmas: String(localized: "Winter Holly")
+        case .discord: String(localized: "Moonlit Pantry")
+        case .google: String(localized: "Apricot Coast")
+        case .pink: String(localized: "Cupid’s Kitchen")
         }
     }
     /// The theme's button colour and, for the two-tone themes, its second colour, as in style.css.
     var colors: (NSColor, NSColor?) {
         switch self {
         case .ricotta: (Self.rgb(0x1F7A4D), nil)
-        case .halloween: (Self.rgb(0xF97316), Self.rgb(0x2B1638))
-        case .christmas: (Self.rgb(0xA51D35), Self.rgb(0x123F2B))
-        case .discord: (Self.rgb(0x5865F2), nil)
-        case .google: (Self.rgb(0x1A73E8), nil)
-        case .pink: (Self.rgb(0xF7A1C0), Self.rgb(0xB0124F))
+        case .halloween: (Self.rgb(0xEE9B57), Self.rgb(0x49264F))
+        case .christmas: (Self.rgb(0xD88C9D), Self.rgb(0x153E34))
+        case .discord: (Self.rgb(0xA9A0EC), Self.rgb(0x302456))
+        case .google: (Self.rgb(0x67B6B3), Self.rgb(0xFFDB88))
+        case .pink: (Self.rgb(0xEAB3C9), Self.rgb(0x8F3B60))
         }
     }
     private static func rgb(_ hex: Int) -> NSColor {

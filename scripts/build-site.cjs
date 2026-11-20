@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'dist');
 // without editing this file. config.js stays separate (the updater reads it); boot.js is built below.
 const scripts=[...fs.readFileSync(path.join(root,'index.html'),'utf8').matchAll(/<script defer src="([^"]+\.js)"><\/script>/g)].map(m=>m[1]).filter(f=>f!=='config.js'&&f!=='boot.js');
 assert.ok(scripts.length>5&&scripts.at(-1)==='update-check.js'&&scripts.includes('app.js'),'the app scripts are read from index.html');
-const copied=['manifest.json','config.js','privacy.html','404.html','icon-192.png','icon-512.png','apple-touch-icon.png','install-icon.webp','vendor/SHEETJS-LICENSE',...fs.readdirSync(path.join(root,'mac-icons')).filter(f=>f.endsWith('.png')).map(f=>'mac-icons/'+f),...['Manrope','NotoKufiArabic'].map(m=>'fonts/'+m+'-OFL.txt')];
+const copied=['manifest.json','config.js','privacy.html','404.html','icon-192.png','icon-512.png','apple-touch-icon.png','install-icon.webp','vendor/SHEETJS-LICENSE',...fs.readdirSync(path.join(root,'mac-icons')).filter(f=>/\.(png|svg)$/.test(f)).map(f=>'mac-icons/'+f),...['Manrope','NotoKufiArabic'].map(m=>'fonts/'+m+'-OFL.txt')];
 fs.rmSync(out,{recursive:true,force:true});fs.mkdirSync(out);
 function read(file){const source=path.join(root,file);assert.ok(fs.lstatSync(source).isFile(),file+' must be a real file');return fs.readFileSync(source);}
 function write(file,bytes){const target=path.join(out,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,bytes);}
@@ -27,7 +27,7 @@ for(const name of ['manrope-latin','noto-kufi-arabic']){
 const fontCss=asset('fonts','css',mincss(fonts));
 // Print windows use this stable alias; its own font URLs still carry hashes.
 write('fonts/fonts.css',mincss(fonts.replaceAll('url(', 'url(../assets/')));
-const css=asset('style','css',mincss(read('style.css').toString()));
+const css=asset('style','css',mincss(read('style.css').toString().replaceAll('url("mac-icons/', 'url("../mac-icons/')));
 const sheet=asset('spreadsheet','js',read('vendor/xlsx-0.20.3.min.js'));
 const boot=asset('boot','js',minjs(read('boot.js').toString().replace("'style.css'",JSON.stringify(css)).replace("'fonts/fonts.css'",JSON.stringify(fontCss))));
 // Ricotta's map picture is a hashed asset too, so the service worker keeps it and it shows offline.

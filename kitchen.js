@@ -18,12 +18,15 @@
 const STREAK_GOALS = [7,14,30,60,100,150,200,300,365,500,1000];
 /* The fire's colour by length: ember, flame, blaze, violet, blue, gold. */
 function streakTier(n){ return n >= 200 ? 'gold' : n >= 100 ? 'blue' : n >= 60 ? 'violet' : n >= 30 ? 'blaze' : n >= 7 ? 'flame' : 'ember'; }
-const FLAME_SVG = `<svg class="flame" viewBox="0 0 24 30" aria-hidden="true"><defs><linearGradient id="flameGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="var(--f1)"/><stop offset="1" stop-color="var(--f2)"/></linearGradient></defs><path class="flame-out" d="M12 1C13 7 19 10 20.5 16.5C22.2 24 17.5 29 12 29S1.8 24 3.5 17.5C4.5 13.6 7.2 12 7.6 8.4C9.8 10 10.6 12 10.4 14.2C12.8 11.6 13.4 6.2 12 1Z" fill="url(#flameGrad)"/><path class="flame-in" d="M12 14C12.8 17 16 18.6 16 22.4C16 25.4 14.2 27.4 12 27.4S8 25.4 8 22.8C8 20.2 10.2 19.4 10.6 17.2C11.4 18 11.9 18.8 11.9 20C13 18.5 12.8 16 12 14Z" fill="var(--f3)"/></svg>`;
+let streakMarkSequence = 0;
+function renderStreakMark(){
+  const gradient = "ricotta-streak-" + (++streakMarkSequence);
+  return `<svg class="flame flame-default" viewBox="0 0 24 30" aria-hidden="true"><defs><linearGradient id="${gradient}" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="var(--f1)"/><stop offset="1" stop-color="var(--f2)"/></linearGradient></defs><path class="flame-out" d="M12 1C13 7 19 10 20.5 16.5C22.2 24 17.5 29 12 29S1.8 24 3.5 17.5C4.5 13.6 7.2 12 7.6 8.4C9.8 10 10.6 12 10.4 14.2C12.8 11.6 13.4 6.2 12 1Z" fill="url(#${gradient})"/><path class="flame-in" d="M12 14C12.8 17 16 18.6 16 22.4C16 25.4 14.2 27.4 12 27.4S8 25.4 8 22.8C8 20.2 10.2 19.4 10.6 17.2C11.4 18 11.9 18.8 11.9 20C13 18.5 12.8 16 12 14Z" fill="var(--f3)"/></svg><span class="flame flame-themed" aria-hidden="true"></span>`;
+}
 function streakNow(){ return state.streak || {count:0, best:0, lit:false, alive:false, recoverable:0}; }
-function renderStreakChip(){
-  const s = streakNow();
+function renderStreakChip(s = streakNow()){
   const n = s.count;
-  return `<button type="button" class="chip streak-chip tier-${streakTier(n)}${s.lit ? ' lit' : ''}${!n && s.recoverable ? ' broken' : ''}" id="streakChip" aria-label="${esc(t('streakChip')(n))}">${FLAME_SVG}<b>${n}</b></button>`;
+  return `<button type="button" class="chip streak-chip tier-${streakTier(n)}${s.lit ? ' lit' : ''}${!n && s.recoverable ? ' broken' : ''}" id="streakChip" aria-label="${esc(t('streakChip')(n))}">${renderStreakMark()}<b>${n}</b></button>`;
 }
 function paintStreakChip(pop){
   const old = document.getElementById('streakChip');
@@ -34,13 +37,13 @@ function paintStreakChip(pop){
   if(pop && !reducedMotion()){
     chip.classList.add('ignite'); setTimeout(()=>chip.classList.remove('ignite'), 1200);
     // The flame flares up and the new count rolls in from below.
-    chip.querySelector('.flame')?.animate?.([{transform:'scale(1) rotate(0)'}, {transform:'scale(1.3) rotate(-6deg)'}, {transform:'scale(1.15) rotate(5deg)'}, {transform:'none'}], {duration:700, easing:'cubic-bezier(.32,.72,0,1)'});
+    chip.querySelectorAll('.flame').forEach(flame=>flame.animate?.([{transform:'scale(1) rotate(0)'}, {transform:'scale(1.3) rotate(-6deg)'}, {transform:'scale(1.15) rotate(5deg)'}, {transform:'none'}], {duration:700, easing:'cubic-bezier(.32,.72,0,1)'}));
     chip.querySelector('b')?.animate?.([{transform:'translateY(60%)', opacity:0}, {transform:'none', opacity:1}], {duration:360, delay:120, easing:'cubic-bezier(.32,.72,0,1)', fill:'backwards'});
   }
 }
 function nextGoal(n){ return STREAK_GOALS.find(g=>g > n) || (Math.floor(n / 100) + 1) * 100; }
 /* A bottom sheet in the app's own style. Returns {el, close}. */
-function openKitchenSheet(cls, html, label){
+function openKitchenSheet(cls, html, label, {returnFocus} = {}){
   closeSelSheet();
   document.activeElement?.blur?.();
   const wrap = document.createElement('div');
@@ -53,6 +56,7 @@ function openKitchenSheet(cls, html, label){
     if(activeSelSheet === close) activeSelSheet = null;
     document.removeEventListener('keydown', onKey, true);
     sheetLeave(wrap, velocity);
+    if(returnFocus?.isConnected) returnFocus.focus({preventScroll:true});
   };
   activeSelSheet = close;
   const onKey = e=>{ if(e.key === 'Escape' && !modalAboveSheet()){ e.preventDefault(); e.stopImmediatePropagation(); close(); } };
@@ -69,7 +73,7 @@ function openStreakSheet(){
   const fact = funFact();
   const {el, close} = openKitchenSheet('streak-sheet', `
     <div class="streak-hero tier-${streakTier(n)}${s.lit ? ' lit' : ''}">
-      <div class="streak-big">${FLAME_SVG}</div>
+      <div class="streak-big">${renderStreakMark()}</div>
       <div class="streak-num">${n}</div><div class="streak-unit">${esc(t('streakDays')(n).replace(/^\d+\s*/, ''))}</div>
       <div class="streak-status">${esc(status)}</div>
     </div>
@@ -98,11 +102,14 @@ async function refreshStreak({celebrate = false, before = null} = {}){
   // "before" is the streak when sending began (a background refresh may already have the new count).
   streakArrived(r.data, celebrate ? before || state.streak : null);
 }
+function streakMilestoneCard(n){
+  return `<div class="streak-boom-card"><div class="streak-big">${renderStreakMark()}</div><div class="streak-boom-title">${esc(t('streakMilestone')(n))}</div><div class="streak-boom-sub">${ricoFace('excited', 'rico-sm')}<span>${esc(t('streakMilestoneSub'))}</span></div></div>`;
+}
 function streakMilestone(n){
   document.getElementById('streakBoom')?.remove();
   const el = document.createElement('div');
   el.id = 'streakBoom'; el.className = 'streak-boom tier-' + streakTier(n); el.setAttribute('role', 'status');
-  el.innerHTML = `<div class="streak-boom-card"><div class="streak-big">${FLAME_SVG}</div><div class="streak-boom-title">${esc(t('streakMilestone')(n))}</div><div class="streak-boom-sub">${ricoFace('excited', 'rico-sm')}<span>${esc(t('streakMilestoneSub'))}</span></div></div>`;
+  el.innerHTML = streakMilestoneCard(n);
   document.body.appendChild(el);
   playMilestone();
   // A ring of small green dots opens around the card once, then fades.
@@ -212,7 +219,7 @@ function openReportSheet(){
       <div><b>${d.orders}</b><span>${esc(t('reportOrders'))}</span></div>
       <div><b>${d.days}</b><span>${esc(t('reportDays'))}</span></div>
       <div><b>${d.lines}</b><span>${esc(t('reportLines'))}</span></div>
-      <div class="tier-${streakTier(s.count)}"><b>${FLAME_SVG}${s.count}</b><span>${esc(t('reportStreak'))}</span></div>
+      <div class="tier-${streakTier(s.count)}"><b>${renderStreakMark()}${s.count}</b><span>${esc(t('reportStreak'))}</span></div>
     </div>
     ${monthChartHtml()}${trendsHtml()}${milestonesHtml()}
     ${d.top.length ? `<div class="report-sec"><div class="report-sec-title">${esc(t('reportTop'))}</div>${d.top.map(x=>`<div class="report-bar"><span dir="auto">${esc(x.name)}</span><i style="--w:${Math.round(x.times/maxTop*100)}%"></i><b>${esc(t('reportTimes')(x.times))}</b></div>`).join('')}</div>` : ''}
