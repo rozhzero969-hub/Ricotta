@@ -3,6 +3,10 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-20a', date:'2026-11-20', notes:{
+    en:['Ricotta has its own Mac app: a see-through window, a choice of themes and app icons, and the usual Mac shortcuts. On phones and in browsers nothing changes.'],
+    ku:['ریکۆتا ئەپی تایبەتی خۆی بۆ ماک هەیە: پەنجەرەیەکی ڕوون، هەڵبژاردنی ڕووکار و ئایکۆنی ئەپ، و کورتبڕە ئاساییەکانی ماک. لە مۆبایل و وێبگەڕ هیچ ناگۆڕێت.'],
+    ar:['لريكوتا تطبيق خاص على الماك: نافذة شفافة، واختيار السمات وأيقونات التطبيق، واختصارات الماك المعتادة. لا شيء يتغير على الهواتف والمتصفحات.']}},
   {id:'2026-11-19b', date:'2026-11-19', notes:{
     en:['Every tab opens without internet, with what this phone saved last time. A line at the top says from when.','Settings, an item\u2019s low stock level, recipes and recipe items you change offline are kept on this phone and sent by themselves when you are back online. If someone changed the same recipe meanwhile, yours is kept and you choose.','What needs the internet right away, like Rico, approving, deleting, Admin and Check now, is grayed out while offline.'],
     ku:['هەموو تابەکان بێ ئینتەرنێت دەکرێنەوە، بەوەی ئەم مۆبایلە دوایین جار پاشەکەوتی کرد. هێڵێک لە سەرەوە دەڵێت لە کەیەوە.','ڕێکخستنەکان، ئاستی کەمبوونی کاڵایەک، ڕێسیپی و کاڵاکانی ڕێسیپی کە بە ئۆفلاین دەیانگۆڕیت لەسەر ئەم مۆبایلە دەمێننەوە و کە هێڵ هاتەوە خۆیان دەنێردرێن. ئەگەر کەسێک لەو کاتەدا هەمان ڕێسیپی گۆڕیبێت، هی تۆ دەمێنێتەوە و تۆ هەڵدەبژێریت.','ئەوەی یەکسەر ئینتەرنێتی پێویستە، وەک ریکۆ، پەسەندکردن، سڕینەوە، ئەدمین و ئێستا بپشکنە، لە کاتی ئۆفلایندا کاڵ دەبێتەوە.'],
