@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key>
+	<integer>13</integer>
+	<key>logs</key>
+	<dict>
+		<key>405B976A-9721-4FD6-B7A2-FA8EAD689C61</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>405B976A-9721-4FD6-B7A2-FA8EAD689C61.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>RicottaMac project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>Ricotta</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Building project RicottaMac with scheme Ricotta and configuration Debug</string>
+			<key>timeStartedRecording</key>
+			<real>816887023.39754105</real>
+			<key>timeStoppedRecording</key>
+			<real>816887030.25113904</real>
+			<key>title</key>
+			<string>Building project RicottaMac with scheme Ricotta and configuration Debug</string>
+			<key>uniqueIdentifier</key>
+			<string>405B976A-9721-4FD6-B7A2-FA8EAD689C61</string>
+		</dict>
+		<key>4A7A4C15-DF13-407A-B63E-A786BEB21F4D</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>4A7A4C15-DF13-407A-B63E-A786BEB21F4D.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>RicottaMac project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>Ricotta</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Building project RicottaMac with scheme Ricotta and configuration Debug</string>
+			<key>timeStartedRecording</key>
+			<real>816887189.69035196</real>
+			<key>timeStoppedRecording</key>
+			<real>816887190.96106899</real>
+			<key>title</key>
+			<string>Building project RicottaMac with scheme Ricotta and configuration Debug</string>
+			<key>uniqueIdentifier</key>
+			<string>4A7A4C15-DF13-407A-B63E-A786BEB21F4D</string>
+		</dict>
+		<key>5440942D-1B15-4953-81C2-DC77B91EEA4C</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>5440942D-1B15-4953-81C2-DC77B91EEA4C.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>RicottaMac project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>Ricotta</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Building project RicottaMac with scheme Ricotta and configuration Release</string>
+			<key>timeStartedRecording</key>
+			<real>816887287.83931005</real>
+			<key>timeStoppedRecording</key>
+			<real>816887292.32023704</real>
+			<key>title</key>
+			<string>Building project RicottaMac with scheme Ricotta and configuration Release</string>
+			<key>uniqueIdentifier</key>
+			<string>5440942D-1B15-4953-81C2-DC77B91EEA4C</string>
+		</dict>
+		<key>8A8B944E-E76D-46D7-A810-616E28CA81A4</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>8A8B944E-E76D-46D7-A810-616E28CA81A4.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>RicottaMac project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>Ricotta</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Building project RicottaMac with scheme Ricotta and configuration Debug</string>
+			<key>timeStartedRecording</key>
+			<real>816887084.28307998</real>
+			<key>timeStoppedRecording</key>
+			<real>816887085.75459695</real>
+			<key>title</key>
+			<string>Building project RicottaMac with scheme Ricotta and configuration Debug</string>
+			<key>uniqueIdentifier</key>
+			<string>8A8B944E-E76D-46D7-A810-616E28CA81A4</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

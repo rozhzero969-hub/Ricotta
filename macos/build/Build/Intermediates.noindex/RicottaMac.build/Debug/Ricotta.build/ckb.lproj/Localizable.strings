@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>About Ricotta</key>
+	<string>دەربارەی ریکۆتا</string>
+	<key>Actual Size</key>
+	<string>قەبارەی ڕاستەقینە</string>
+	<key>Always See-Through</key>
+	<string>هەمیشە شەفاف</string>
+	<key>App Icon</key>
+	<string>ئایکۆنی ئەپ</string>
+	<key>Bring All to Front</key>
+	<string>هێنانی هەموو بۆ پێشەوە</string>
+	<key>Cancel</key>
+	<string>پاشگەزبوونەوە</string>
+	<key>Can’t Open Ricotta</key>
+	<string>ریکۆتا نەکرایەوە</string>
+	<key>Check your internet connection, then try again.</key>
+	<string>هێڵی ئینتەرنێتەکەت بپشکنە، پاشان دووبارە هەوڵ بدەرەوە.</string>
+	<key>Close Window</key>
+	<string>داخستنی پەنجەرە</string>
+	<key>Copy</key>
+	<string>لەبەرگرتنەوە</string>
+	<key>Cut</key>
+	<string>بڕین</string>
+	<key>Dark</key>
+	<string>تاریک</string>
+	<key>Delete</key>
+	<string>سڕینەوە</string>
+	<key>Edit</key>
+	<string>دەستکاری</string>
+	<key>Enter Full Screen</key>
+	<string>پڕ بە شاشە</string>
+	<key>Export Couldn’t Finish</key>
+	<string>هەناردەکردن تەواو نەبوو</string>
+	<key>File</key>
+	<string>فایل</string>
+	<key>Find</key>
+	<string>گەڕان</string>
+	<key>Graphite</key>
+	<string>خۆڵەمێشی</string>
+	<key>Help</key>
+	<string>یارمەتی</string>
+	<key>Hide Others</key>
+	<string>شاردنەوەی ئەوانی تر</string>
+	<key>Hide Ricotta</key>
+	<string>شاردنەوەی ریکۆتا</string>
+	<key>Light</key>
+	<string>ڕووناک</string>
+	<key>Midnight</key>
+	<string>شینی شەو</string>
+	<key>Minimize</key>
+	<string>بچووککردنەوەی پەنجەرە</string>
+	<key>Mint</key>
+	<string>نەعنایی</string>
+	<key>New Window</key>
+	<string>پەنجەرەی نوێ</string>
+	<key>OK</key>
+	<string>باشە</string>
+	<key>Ocean</key>
+	<string>شینی دەریایی</string>
+	<key>Open Ricotta in Browser</key>
+	<string>کردنەوەی ریکۆتا لە وێبگەڕ</string>
+	<key>Open in Browser</key>
+	<string>لە وێبگەڕ بیکەرەوە</string>
+	<key>Paste</key>
+	<string>لکاندن</string>
+	<key>Paste and Match Style</key>
+	<string>لکاندن بە هەمان شێواز</string>
+	<key>Please try the export again.</key>
+	<string>تکایە دووبارە هەناردە بکەرەوە.</string>
+	<key>Quit Ricotta</key>
+	<string>داخستنی ریکۆتا</string>
+	<key>Redo</key>
+	<string>دووبارەکردنەوە</string>
+	<key>Reload Page</key>
+	<string>نوێکردنەوەی پەڕە</string>
+	<key>Ricotta</key>
+	<string>ریکۆتا</string>
+	<key>Ricotta Green</key>
+	<string>سەوزی ریکۆتا</string>
+	<key>Rose</key>
+	<string>پەمەیی</string>
+	<key>Sand</key>
+	<string>لمی</string>
+	<key>Select All</key>
+	<string>هەڵبژاردنی هەموو</string>
+	<key>Services</key>
+	<string>خزمەتگوزارییەکان</string>
+	<key>Settings…</key>
+	<string>ڕێکخستنەکان…</string>
+	<key>Show All</key>
+	<string>پیشاندانی هەموو</string>
+	<key>Sky</key>
+	<string>ئاسمانی</string>
+	<key>Theme</key>
+	<string>ڕەنگی ئەپ</string>
+	<key>Try Again</key>
+	<string>دووبارە هەوڵ بدەرەوە</string>
+	<key>Undo</key>
+	<string>گەڕاندنەوە</string>
+	<key>View</key>
+	<string>پیشاندان</string>
+	<key>Window</key>
+	<string>پەنجەرە</string>
+	<key>Wordmark</key>
+	<string>ناوی ریکۆتا</string>
+	<key>Zoom</key>
+	<string>گەورەکردنی پەنجەرە</string>
+	<key>Zoom In</key>
+	<string>گەورەکردن</string>
+	<key>Zoom Out</key>
+	<string>بچووککردنەوە</string>
+</dict>
+</plist>

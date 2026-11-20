@@ -42,6 +42,8 @@ if there is no Open button: try to open it once, then go to **System Settings > 
   break its signature), so Finder and Launchpad always show the normal green icon.
 - A hidden title bar with the window buttons inside the top of Ricotta's sidebar; size and position are remembered.
   An empty part of the top bar or sidebar moves the window, and a double-click zooms it.
+  In full screen the window has no toolbar strip, so the whole page shows; the window buttons slide down with the
+  menu bar, and the page drops the room it keeps for them (`full-screen-on/off`, also re-sent after a reload).
 - Standard menus: Command-R reload, Command-W close (the app keeps running; the Dock icon or Command-N brings the window
   back), Command-Q quit, Command-comma opens Ricotta's Settings, Command-F focuses the screen's search (or opens search),
   copy and paste, Command-plus / Command-minus / Command-0 for page zoom, full screen.
