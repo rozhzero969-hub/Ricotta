@@ -56,7 +56,7 @@ function t(key){
   return typeof text === 'function' ? (...args)=>asGemini(text(...args)) : asGemini(text);
 }
 /* The Mac app's Google theme shows Rico as Gemini (on screen only: Rico keeps his own name everywhere else).
-   "Ricotta" is never touched. */
+   "Ricotta" is never touched. The same flag splits the sidebar's wordmark into letters for Google's colours. */
 let geminiNames = document.documentElement.classList.contains('mac-shell') && document.documentElement.classList.contains('theme-google');
 const asGemini = text=> typeof text === 'string' ? text.replace(/\bRico\b/g, 'Gemini').replace(/ریکۆ(?!تا)/g, 'جێمینای').replace(/ريكو(?!تا)/g, 'جيميني') : text;
 const isRtl = ()=> state.lang !== 'en';
@@ -1095,7 +1095,7 @@ function renderBottomNav(){
   const more = moreViews();
   // On a computer the tab bar is the sidebar, with the ricotta mark at its top. More exists only when
   // there are more than four screens.
-  return `<nav class="bottomnav" style="--n:${state.tabs.length + (more.length ? 1 : 0)}" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">${[...'ricotta'].map(c=>`<span>${c}</span>`).join('')}</span><span class="dot"></span></div><button type="button" class="side-toggle" data-side-toggle aria-label="${esc(t('sideHide'))}" title="${esc(t('sideHide'))} (${sideKeysText()})">${ICON_SIDEBAR}</button><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}${more.length ? `<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${more.map(button).join('')}</div>` : ''}</nav>`;
+  return `<nav class="bottomnav" style="--n:${state.tabs.length + (more.length ? 1 : 0)}" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">${geminiNames ? [...'ricotta'].map(c=>`<span>${c}</span>`).join('') : 'ricotta'}</span><span class="dot"></span></div><button type="button" class="side-toggle" data-side-toggle aria-label="${esc(t('sideHide'))}" title="${esc(t('sideHide'))} (${sideKeysText()})">${ICON_SIDEBAR}</button><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}${more.length ? `<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${more.map(button).join('')}</div>` : ''}</nav>`;
 }
 function renderManageNav(){
   return `<div class="manage-nav"><nav class="manage-sections" aria-label="${esc(t('catalog'))}">${[['manage','items'],['suppliers','suppliers'],['units','units']].filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav></div>`;

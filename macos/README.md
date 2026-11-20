@@ -39,14 +39,28 @@ if there is no Open button: try to open it once, then go to **System Settings > 
   only while loading, then solid like the website. On: the page background and the sidebar stay see-through; cards,
   lists, sheets and buttons stay solid. Only the person's own choice is ever saved, so a choice made before the default
   changed is kept.
-- **Theme** (View > Theme and Settings > Look): Ricotta Verde, Pumpkin Hour, Winter Holly, Moonlit Pantry,
-  Apricot Coast and Cupid’s Kitchen. Each includes light and dark palettes, artwork and a control style.
-  The five alternate themes also give Rico and the kitchen streak a matching symbol. The theme applies
-  before the page paints. Theme changes cross-fade for 220 ms when Reduce Motion is off.
-- **App icon** (View > App Icon and Settings > Look): Basil Leaf, Jack & Moon, Holly Bauble, Lunar Orbit,
-  Sunny Side and Bow Bear. Selecting a theme offers its matching icon in Settings. The selected icon appears
-  in the Dock and app switcher while Ricotta runs. Finder and Launchpad use the signed app bundle’s icon.
-  Removed Dock icon preferences fall back to Basil Leaf.
+- **Theme** (View > Theme and Settings > Look). **Ricotta** (the default, no class) is the normal app look, exactly as
+  on the website. The others each have light and dark palettes (AA), their own Order card artwork, Rico in costume and a
+  quiet layer of drawings behind the page (`mac-themes.js`, `#macDecor`):
+  - **Pumpkin Moon** (`halloween`): a twilight or moonlit sky, slow clouds, fog along the bottom, a few bats now and
+    then, flickering candle glow on the Order card, cobwebs in the cards' corners, a jack-o'-lantern Rico.
+  - **Winter Lights** (`christmas`): slow snow in three layers, twinkling fairy lights along the top, a ribbon and bow
+    with holly on the Order card, frosted card edges, Rico in a Santa hat, a snow burst when every order is sent.
+  - **Silver Moon** (`moonlit`): a moon, slowly twinkling stars, a rare shooting star, Erbil's citadel on the Order
+    card, a crescent by the logo, a silver Rico.
+  - **Google** (`google`): Google's four colours in the wordmark and loaders, Google Sans-style titles (Google Sans if
+    installed, otherwise Avenir Next; no font files are shipped), Material cards, ripples, Google's search box, Rico shown
+    as Gemini (on screen only).
+  - **Cupid's Blush** (`pink`): blush and cream, a few slow hearts, satin bows on the cards, ribbon dividers, a cherub's
+    wing by the logo, Rico with wings and a halo, hearts on +, a bow and arrow when every order is sent.
+  Drawings never take a click and sit behind text and controls; motion is transform and opacity only, pauses while the
+  window is hidden and stands still with Reduce Motion. The theme applies before the page paints and changes with a
+  220 ms cross-fade. A saved theme that no longer exists reads as Ricotta (the old `discord` reads as Silver Moon).
+- **App icon** (View > App Icon and Settings > Look): one for each theme first (Ricotta, Pumpkin Moon, Winter Lights,
+  Silver Moon, Gemini, Cupid's Blush), then Gold Monogram, Order Ticket, Aurora, Glass Leaf, Copper Pot and Kitchen
+  Stamp. Selecting a theme offers its matching icon in Settings. The selected icon appears in the Dock and app switcher
+  while Ricotta runs; Finder and Launchpad use the bundle's icon, which is the Ricotta icon. A saved icon that no longer
+  exists reads as Ricotta.
 
 ### The page and the app talk only in fixed words
 
@@ -66,11 +80,12 @@ if there is no Open button: try to open it once, then go to **System Settings > 
   is used instead of the SVG. Keep the transparent margin and the squircle shape so it lines up with the others.
 - `node macos/IconSources/render-icons.cjs` (from the repository root, after `pnpm install`) writes every size:
   `Ricotta/Assets.xcassets/AppIcon-<name>.imageset/` (512 and 1024 px) and the website's `mac-icons/<name>.png`
-  (96 px, the Settings picker). Add `--sheet out.png` to see all of them at 16, 32, 128 and 256 pt.
+  (96 px, the Settings picker), and the bundle's AppIcon.appiconset from the first (default) icon. Add `--sheet out.png`
+  to see all of them at 16, 32, 128 and 256 pt.
 - Icon names are shared by `AppIconChoice` (`Choices.swift`), `MAC_ICONS` (`sounds.js`), `ICONS`
   (`render-icons.cjs`), and the localized names in `i18n.js` and `Localizable.xcstrings`.
-- Hero and theme picker artwork lives in `mac-icons/*-art.svg`. The small streak and Rico silhouettes
-  live in `style.css`.
+- The themes' artwork lives in `mac-icons/fx-*.svg` (Order cards, Rico's costumes, bows, cobweb, holly, wing, ribbon);
+  the moving background drawings are drawn by `mac-themes.js`.
 
 ## Not included
 
