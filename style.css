@@ -2729,9 +2729,8 @@ html.dark .stock-warn{color:#FDBA74}
 .rico-head-btn.icon{width:34px;padding:0;justify-content:center}
 .rico-head-btn:disabled{opacity:.4;cursor:default}
 @media (hover:hover){.rico-head-btn:not(:disabled):hover{background:var(--fill)}}
-/* The Chats sheet on a phone: a quiet hint under the list; Delete all moved to Rico settings. */
+/* The Chats sheet on a phone: a quiet hint under the list. */
 .rico-hist-hint{margin:10px 6px 4px;font-size:.8125rem;color:var(--ink-faint);text-align:center}
-.rico-set-danger{color:var(--red);justify-content:center}
 .ctx-menu.small button{height:42px;font-size:.9688rem}
 /* A chat's Rename/Delete menu: the page stays clear behind it (a plain menu, like the computer's). */
 .rico-chat-ctx .ctx-scrim{background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}

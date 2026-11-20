@@ -488,12 +488,12 @@ function ricoRenameChat(id){
    its name, pin and messages. A pending delete belongs to the session it was made in: signing out or in
    again, or another account, never deletes it with a different session (it is simply not deleted). If
    the app is closed meanwhile, it is remembered on this phone and deleted at the next start with that
-   same session. Delete all (Rico settings) still asks once: it removes every chat. */
+   same session. */
 let ricoPendingDelete = null;
 const RICO_UNDO_MS = 4800, RICO_LEFT_KEY = 'ricoDeleteLeft';
 const ricoSessionToken = ()=>(typeof apiSession === 'function' ? apiSession()?.token : null) || null;
 function ricoDeleteChat(id){
-  if(!id) return ricoDeleteAllChats();
+  if(!id) return;
   ricoFlushDelete();   // an earlier one goes now
   const list = rico.chats || [], at = list.findIndex(c=>c.id === id), chat = list[at] || null;
   // What was on screen, if this chat was the one open (put back by Undo, unless a new chat began since).
@@ -576,22 +576,6 @@ function ricoAfterChatsChange(){
   ricoRepaintChats();
   if(state.view === 'assistant') render();
 }
-/* Delete all (Rico settings): asked once. Rozh's removes both people's chats (and says so); anyone else's
-   removes only their own. */
-async function ricoDeleteAllChats(){
-  if(!(await showConfirm(esc(isRozha() ? t('ricoDeleteAllAskBoth') : t('ricoDeleteAllAsk')), {okLabel:t('delete'), okClass:'btn-danger'}))) return false;
-  ricoFlushDelete();
-  clearTimeout(ricoSaveTimer);
-  const account = state.account, r = await api('rico-chats?account=all', {method:'DELETE'});
-  if(account !== state.account) return false;   // signed out meanwhile: the next person's list stays as it is
-  if(!r.ok){ toast(t('saveFailed'), 'error'); return false; }
-  rico.chats = isRozha() ? [] : (rico.chats || []).filter(c=>c.account && c.account !== state.account);
-  rico.chatId = null; rico.chatTitle = null; rico.titleTries = 0; rico.titleManual = false; if(rico.messages.length && !rico.streaming && !rico.viewing) rico.messages = [];
-  if(rico.viewing){ rico.viewing = null; rico.viewedId = null; rico.messages = []; }
-  toast(t('ricoChatsDeleted'));
-  if(state.view === 'assistant') render();
-  return true;
-}
 /* Letting Rico fill the order on this device: asked once when turned on. */
 async function ricoSetAuto(on){
   if(on && !(await showConfirm(t('ricoAutoOrderConfirm'), {okLabel:t('ricoAllow'), okClass:'btn-primary'}))){ render(); return; }
@@ -616,12 +600,10 @@ function openRicoSettings(){
     <div class="rico-set-group">
       ${order ? sw('data-set-sheet', featureOn('ricoSheet'), t('feat_ricoSheet'), t('feat_ricoSheet_hint')) : ''}
       ${sw('data-set-ai', aiConsented(), t('aiSettingLabel'), t('aiSettingHint'))}
-    </div>
-    <div class="rico-set-group"><button type="button" class="rico-side-row rico-set-row rico-set-danger" data-set-delall><span>${esc(t('ricoDeleteAll'))}</span></button></div>`, t('ricoSettings'));
+    </div>`, t('ricoSettings'));
   const auto = el.querySelector('[data-set-auto]'), sheet = el.querySelector('[data-set-sheet]');
   if(auto) auto.onchange = e=>{ const on = e.currentTarget.checked; close(); ricoSetAuto(on); };
   el.querySelector('[data-set-memory]').onclick = ()=>{ close(); openRicoMemory(); };
-  el.querySelector('[data-set-delall]').onclick = ()=>{ close(); ricoDeleteChat(null); };
   el.querySelectorAll('input[name=ricoStyle]').forEach(r=>r.onchange = ()=>setSetting('ricoStyle', r.value));
   if(sheet) sheet.onchange = async e=>{ const box = e.currentTarget; if(!(await setFeature('ricoSheet', box.checked))) box.checked = !box.checked; };
   // Turning the AI on asks first, in a box that must not sit behind this sheet: the sheet closes.
@@ -1584,7 +1566,7 @@ async function ricoOpenChat(id){
 }
 /* Chat history: a sheet from the bottom with one list of every chat, Rozh's and Yunis's, newest first
    and grouped by day; each shows whose it is. Both can open any chat (the other person's opens read only).
-   Hold a chat to rename or delete one of your own; Delete all is in Rico settings. */
+   Hold a chat to rename or delete one of your own. */
 function ricoOpenHistory(){
   closeSelSheet();
   document.activeElement?.blur?.();

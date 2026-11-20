@@ -47,7 +47,6 @@
     { id: 'ricoAutoOrder', kind: 'setting', n: ['Let Rico fill my order', 'با ریکۆ داواکارییەکەم پڕ بکاتەوە', 'دع ريكو يملأ طلبي'], w: 'rico automatic order fill by himself خۆکار تلقائي', in: 'rico', need: { v: ['assistant', 'order'] }, go: { view: 'assistant', rico: '[data-set-auto]' } },
     { id: 'ricoSheet', kind: 'setting', n: ['Rico on the Order screen', 'ریکۆ لە شاشەی داواکاری', 'ريكو في شاشة الطلب'], w: 'rico button order screen ask دوگمەی ریکۆ زر ريكو', in: 'rico', need: { v: ['assistant', 'order'] }, go: { view: 'assistant', rico: '[data-set-sheet]' } },
     { id: 'ricoAi', kind: 'setting', n: ['Rico’s AI permission', 'ڕێپێدانی زیرەکی دەستکردی ریکۆ', 'إذن ذكاء ريكو الاصطناعي'], w: 'ai consent permission privacy data sent ڕێپێدان تایبەتمەندی إذن خصوصية', in: 'rico', need: { v: 'assistant' }, go: { view: 'assistant', rico: '[data-set-ai]' } },
-    { id: 'ricoDeleteAll', kind: 'action', n: ['Delete all chats with Rico', 'سڕینەوەی هەموو گفتوگۆکان', 'حذف كل المحادثات'], w: 'delete all chats clear سڕینەوە حذف', in: 'rico', need: { v: 'assistant' }, go: { view: 'assistant', rico: '[data-set-delall]' } },
 
     // ---- Settings ----
     { id: 'settings', kind: 'tab', n: ['Settings', 'ڕێکخستن', 'الإعدادات'], w: 'settings preferences options ڕێکخستنەکان إعدادات', need: { v: 'settings' }, go: { view: 'settings' } },
