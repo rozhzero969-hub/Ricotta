@@ -127,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let icons = add(view, String(localized: "App Icon"), nil)
         icons.submenu = NSMenu(title: String(localized: "App Icon"))
         for icon in AppIconChoice.allCases {
+            if !icon.isThemeIcon && AppIconChoice.allCases.first(where: { !$0.isThemeIcon }) == icon { icons.submenu!.addItem(.separator()) }
             let item = add(icons.submenu!, icon.title, #selector(chooseAppIcon(_:)), target: self)
             item.representedObject = icon.rawValue
             item.image = icon.preview(size: 18)
@@ -171,20 +172,24 @@ enum Preferences {
     }
     static let appIconKey = "AppIcon"
     static let themeKey = "Theme"
-    /// The Dock icon: one of AppIconChoice (anything else reads as the normal green icon).
+    /// The Dock icon: one of AppIconChoice (anything else, such as a removed icon, reads as the default).
     static var appIcon: String {
-        get { AppIconChoice(rawValue: UserDefaults.standard.string(forKey: appIconKey) ?? "")?.rawValue ?? AppIconChoice.green.rawValue }
-        set { UserDefaults.standard.set(AppIconChoice(rawValue: newValue)?.rawValue ?? AppIconChoice.green.rawValue, forKey: appIconKey) }
+        get { AppIconChoice(rawValue: UserDefaults.standard.string(forKey: appIconKey) ?? "")?.rawValue ?? AppIconChoice.ricotta.rawValue }
+        set { UserDefaults.standard.set(AppIconChoice(rawValue: newValue)?.rawValue ?? AppIconChoice.ricotta.rawValue, forKey: appIconKey) }
     }
-    /// The page's colours: one of AppTheme.
+    /// The page's colours: one of AppTheme. The old "discord" slot is Moonlit now; any other removed theme
+    /// reads as Ricotta.
     static var theme: String {
-        get { AppTheme(rawValue: UserDefaults.standard.string(forKey: themeKey) ?? "")?.rawValue ?? AppTheme.ricotta.rawValue }
+        get {
+            let saved = UserDefaults.standard.string(forKey: themeKey) ?? ""
+            return AppTheme(rawValue: saved == "discord" ? "moonlit" : saved)?.rawValue ?? AppTheme.ricotta.rawValue
+        }
         set { UserDefaults.standard.set(AppTheme(rawValue: newValue)?.rawValue ?? AppTheme.ricotta.rawValue, forKey: themeKey) }
     }
     /// Shown in the Dock (and the app switcher) while the app runs. The app bundle itself is never changed,
     /// since that would break its signature, so Finder and Launchpad keep the normal icon.
     static func applyAppIcon() {
-        let choice = AppIconChoice(rawValue: appIcon) ?? .green
+        let choice = AppIconChoice(rawValue: appIcon) ?? .ricotta
         NSApp.applicationIconImage = NSImage(named: choice.assetName)
     }
     static var zoom: Double {

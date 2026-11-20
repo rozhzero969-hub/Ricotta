@@ -1,21 +1,30 @@
 import AppKit
 
-/// The six Dock icons (Assets.xcassets, AppIcon-<name>) in theme order.
+/// The Dock icons (Assets.xcassets, AppIcon-<name>): one for each theme first (in AppTheme order), then the
+/// others. The first is the default; a saved name that no longer exists reads as it.
 enum AppIconChoice: String, CaseIterable {
-    case green, halloween, christmas, discord, google, pink
+    case ricotta, pumpkin, holly, moonlit, gemini, cupid, monogram, ticket, aurora, frost, copper, stamp
 
     var assetName: String { "AppIcon-\(rawValue)" }
 
     var title: String {
         switch self {
-        case .green: String(localized: "Basil Leaf")
-        case .halloween: String(localized: "Jack & Moon")
-        case .christmas: String(localized: "Holly Bauble")
-        case .discord: String(localized: "Lunar Orbit")
-        case .google: String(localized: "Sunny Side")
-        case .pink: String(localized: "Bow Bear")
+        case .ricotta: String(localized: "Ricotta")
+        case .pumpkin: String(localized: "Pumpkin Moon")
+        case .holly: String(localized: "Winter Lights")
+        case .moonlit: String(localized: "Silver Moon")
+        case .gemini: String(localized: "Gemini")
+        case .cupid: String(localized: "Cupid’s Blush")
+        case .monogram: String(localized: "Gold Monogram")
+        case .ticket: String(localized: "Order Ticket")
+        case .aurora: String(localized: "Aurora")
+        case .frost: String(localized: "Glass Leaf")
+        case .copper: String(localized: "Copper Pot")
+        case .stamp: String(localized: "Kitchen Stamp")
         }
     }
+    /// Theme icons come first in the menu; the rest follow after a separator.
+    var isThemeIcon: Bool { (Self.allCases.firstIndex(of: self) ?? 0) < AppTheme.allCases.count }
 
     func preview(size: CGFloat) -> NSImage? {
         guard let image = NSImage(named: assetName)?.copy() as? NSImage else { return nil }
@@ -25,28 +34,29 @@ enum AppIconChoice: String, CaseIterable {
 }
 
 /// The page's colour themes (style.css, html.theme-<name>), chosen here or in Ricotta's Settings.
-/// Raw values match existing preferences and web theme classes.
+/// Raw values match the web theme classes. Removed themes (discord, the old Moonlit Pantry, is now moonlit)
+/// read as Ricotta, except for that one rename (Preferences.theme).
 enum AppTheme: String, CaseIterable {
-    case ricotta, halloween, christmas, discord, google, pink
+    case ricotta, halloween, christmas, moonlit, google, pink
     var title: String {
         switch self {
-        case .ricotta: String(localized: "Ricotta Verde")
-        case .halloween: String(localized: "Pumpkin Hour")
-        case .christmas: String(localized: "Winter Holly")
-        case .discord: String(localized: "Moonlit Pantry")
-        case .google: String(localized: "Apricot Coast")
-        case .pink: String(localized: "Cupid’s Kitchen")
+        case .ricotta: String(localized: "Ricotta")
+        case .halloween: String(localized: "Pumpkin Moon")
+        case .christmas: String(localized: "Winter Lights")
+        case .moonlit: String(localized: "Silver Moon")
+        case .google: String(localized: "Google")
+        case .pink: String(localized: "Cupid’s Blush")
         }
     }
-    /// The theme's button colour and, for the two-tone themes, its second colour, as in style.css.
+    /// The theme's main colour and its second colour, as in style.css (the menu's small swatch).
     var colors: (NSColor, NSColor?) {
         switch self {
         case .ricotta: (Self.rgb(0x1F7A4D), nil)
-        case .halloween: (Self.rgb(0xEE9B57), Self.rgb(0x49264F))
-        case .christmas: (Self.rgb(0xD88C9D), Self.rgb(0x153E34))
-        case .discord: (Self.rgb(0xA9A0EC), Self.rgb(0x302456))
-        case .google: (Self.rgb(0x67B6B3), Self.rgb(0xFFDB88))
-        case .pink: (Self.rgb(0xEAB3C9), Self.rgb(0x8F3B60))
+        case .halloween: (Self.rgb(0xF28C28), Self.rgb(0x2A1638))
+        case .christmas: (Self.rgb(0xB3122E), Self.rgb(0x0F3B2A))
+        case .moonlit: (Self.rgb(0xC9D6F2), Self.rgb(0x13224A))
+        case .google: (Self.rgb(0x1A73E8), Self.rgb(0xFBBC05))
+        case .pink: (Self.rgb(0xF7B8CF), Self.rgb(0xC2457A))
         }
     }
     private static func rgb(_ hex: Int) -> NSColor {

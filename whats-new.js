@@ -3,6 +3,10 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-21a', date:'2026-11-21', notes:{
+    en:['Mac app: the Ricotta theme looks like the app again, green and plain, with no extra artwork.','Mac app: new themes with gentle moving artwork: Pumpkin Moon (Halloween), Winter Lights (Christmas), Silver Moon, Google and Cupid’s Blush. They move only now and then, stop while the window is hidden, and stay still when Reduce Motion is on.','Mac app: twelve new app icons, with each theme’s own icon first.'],
+    ku:['ئەپی ماک: ڕووکاری ریکۆتا دیسان وەک ئەپەکە دەردەکەوێت، سەوز و سادە، بێ وێنەی زیادە.','ئەپی ماک: ڕووکاری نوێ لەگەڵ وێنەی جوڵاوی نەرم: مانگی کەدوو (هالۆوین)، چراکانی زستان (کریسمس)، مانگی زیوین، گووگڵ و پەمەیی کیوپید. تەنها جار جار دەجوڵێن، کاتێک پەنجەرەکە شاراوەیە دەوەستن، و کاتێک کەمکردنەوەی جوڵە هەڵکراوە ناجوڵێن.','ئەپی ماک: دوازدە ئایکۆنی نوێی ئەپ، ئایکۆنی هەر ڕووکارێک لە سەرەتادا.'],
+    ar:['تطبيق Mac: سمة ريكوتا تبدو مثل التطبيق مجددًا، خضراء وبسيطة، بلا رسومات إضافية.','تطبيق Mac: سمات جديدة برسومات تتحرك بهدوء: قمر اليقطين (الهالوين)، أضواء الشتاء (عيد الميلاد)، القمر الفضي، جوجل ووردي كيوبيد. تتحرك بين حين وآخر فقط، وتتوقف عندما تكون النافذة مخفية، وتبقى ساكنة عند تشغيل تقليل الحركة.','تطبيق Mac: اثنتا عشرة أيقونة جديدة للتطبيق، وأيقونة كل سمة أولًا.']}},
   {id:'2026-11-20b', date:'2026-11-20', notes:{
     en:['On a computer, the row under the mouse in lists and dropdowns turns grey, and the arrow keys move the same highlight.','Menus and dropdowns open from where you clicked, and the app feels smoother.','Mac app: new themes (Halloween, Christmas, Discord, Google and Pink), new app icons, and see-through is off unless you turn it on.'],
     ku:['لە کۆمپیوتەر، ئەو ڕیزەی ماوسەکەی لەسەرە لە لیست و لیستە کراوەکاندا خۆڵەمێشی دەبێت، و دوگمەکانی تیر هەمان دیاریکردن دەجوڵێنن.','مێنیو و لیستە کراوەکان لەو شوێنەوە دەکرێنەوە کە کلیکت کرد، و ئەپەکە نەرمتر هەست دەکرێت.','ئەپی ماک: ڕەنگی نوێ (هالۆوین، کریسمس، Discord، Google و پەمەیی)، ئایکۆنی نوێی ئەپ، و ڕوونی کوژاوەیە تا خۆت هەڵیبکەیت.'],
