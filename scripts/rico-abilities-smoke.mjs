@@ -65,14 +65,15 @@ const month = today.slice(0, 7), inv = [
   { id: 'i1', entry_date: daysAgo(1), supplier_name: 'Dairy Co', currency: 'IQD', total: 60000, lines: [{ item: 'Milk', unit: 'لتر', qty: 40, unit_cost: 1500, line_total: 60000 }] },
   { id: 'i2', entry_date: daysAgo(2), supplier_name: 'Veg', currency: 'IQD', total: 26000, lines: [{ item: 'Tomato - تەماتە', unit: 'کیلۆ', qty: 20, unit_cost: 1300, line_total: 26000 }] },
   { id: 'i3', entry_date: daysAgo(9), supplier_name: 'Dairy Co', currency: 'IQD', total: 40000, lines: [{ item: 'Milk', unit: 'لتر', qty: 25, unit_cost: 1600, line_total: 40000 }] },
-  { id: 'i4', entry_date: daysAgo(9), supplier_name: 'Coffee', currency: 'USD', total: 42.5, lines: [{ item: 'Beans', unit: 'کیلۆ', qty: 1, unit_cost: 42.5, line_total: 42.5 }] },
+  // Paid in USD: Ricotta Restaurant keeps its total and lines in IQD, so it is counted in IQD.
+  { id: 'i4', entry_date: daysAgo(9), supplier_name: 'Coffee', currency: 'USD', rate: 1500, total: 63750, lines: [{ item: 'Beans', unit: 'کیلۆ', qty: 1, unit_cost: 63750, line_total: 63750 }] },
 ];
 const invDb = { from() { const f = []; const q = { select() { return q; }, gte(k, v) { f.push(r => r[k] >= v); return q; }, lte(k, v) { f.push(r => r[k] <= v); return q; }, limit() { return q; },
   then(res) { return Promise.resolve({ data: inv.filter(r => f.every(fn => fn(r))), error: null }).then(res); } }; return q; } };
 const noRead = async () => ({ ok: true });
 const sp = await ab.compareSpending(invDb, { from: daysAgo(6), to: today }, { from: daysAgo(13), to: daysAgo(7) }, {}, noRead);
-assert.deepEqual(sp.totals.IQD, { a: 86000, b: 40000, change_pct: 115 });
-assert.deepEqual(sp.totals.USD, { a: 0, b: 42.5, change_pct: -100 }, 'USD is its own total');
+assert.deepEqual(sp.totals.IQD, { a: 86000, b: 103750, change_pct: -17.1 }, 'a USD-paid receipt counts in IQD');
+assert.equal(sp.totals.USD.a + sp.totals.USD.b, 0, 'nothing is shown as dollars');
 assert.deepEqual(sp.rows.find(r => r.name === 'Dairy Co'), { name: 'Dairy Co', currency: 'IQD', a: 60000, b: 40000, change_pct: 50 });
 const spi = await ab.compareSpending(invDb, { from: daysAgo(6), to: today }, { from: daysAgo(13), to: daysAgo(7) }, { by: 'item', item: 'milk' }, noRead);
 assert.equal(spi.rows.length, 1); assert.deepEqual([spi.rows[0].qty_a, spi.rows[0].qty_b], [{ 'لتر': 40 }, { 'لتر': 25 }]);
@@ -85,7 +86,7 @@ const cards = [];
 const c = await ab.comparePeriods(invDb, world(), { preset: 'last_7_days' }, e => cards.push(e), noRead);
 assert.equal(c.orders.totals.orders.a, 3); assert.equal(c.spending.totals.IQD.a, 86000);
 assert.equal(cards.length, 1); assert.equal(cards[0].proposal.kind, 'compare'); assert.equal(cards[0].proposal.main, 'spending');
-assert.deepEqual(cards[0].proposal.totals.map(t => t.key), ['iqd', 'usd', 'invoices', 'orders', 'lines']);
+assert.deepEqual(cards[0].proposal.totals.map(t => t.key), ['iqd', 'invoices', 'orders', 'lines'], 'no USD line: USD-paid receipts are in IQD');
 const yunisNoRoles = world({ account: 'yunis', full: false, can: { history: false, receipts: false } });
 assert.equal((await ab.comparePeriods(invDb, yunisNoRoles, {}, () => {}, noRead)).error, 'no_access');
 const yunisHistory = world({ account: 'yunis', full: false, can: { history: true, receipts: false } });
@@ -140,4 +141,4 @@ for (const tool of ['calculate', 'compare_periods', 'item_overview', 'contact_su
 assert.match(_internals.MANUAL, /PHOTOS/); assert.match(_internals.MANUAL, /use calculate first/);
 assert.doesNotMatch(ab.ABILITY_MANUAL + _internals.MANUAL.split('PHOTOS')[1].split('UNTRUSTED')[0], /[—–]/, 'no dashes in the new notes');
 
-console.log('Rico abilities smoke: PASS (exact sums with %, ×, ÷ and Kurdish/Arabic digits; fair month vs month and week vs week for orders and invoices, IQD and USD apart; one item\'s pace, stock, last price and how much lasts N days; supplier Call and WhatsApp card by role; data freshness in CONTEXT; Ahmad gets sums only)');
+console.log('Rico abilities smoke: PASS (exact sums with %, ×, ÷ and Kurdish/Arabic digits; fair month vs month and week vs week for orders and invoices, USD-paid receipts in IQD; one item\'s pace, stock, last price and how much lasts N days; supplier Call and WhatsApp card by role; data freshness in CONTEXT; Ahmad gets sums only)');

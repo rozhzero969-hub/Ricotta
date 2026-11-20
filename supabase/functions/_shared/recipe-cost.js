@@ -71,6 +71,20 @@
     }
     return rate;
   }
+  /* Invoices with every amount in IQD. Ricotta Restaurant keeps a USD receipt's total (and delivery) in
+     IQD; its lines too, normally (iqdFactor checks and turns USD lines into IQD at the rate). The copy says
+     currency 'IQD' and paid_in 'USD', so reports, Rico and price lists never show dinars as dollars. */
+  function invoicesInIqd(invoices) {
+    const list = invoices || [];
+    const known = list.find((r) => r && r.currency === 'USD' && Number(r.rate) > 0);
+    const fallback = known ? Number(known.rate) : DEFAULT_RATE;
+    return list.map((r) => {
+      if (!r || r.currency !== 'USD') return r;
+      const f = iqdFactor(r, fallback);
+      const lines = (r.lines || []).map((l) => (l && f !== 1 ? { ...l, unit_cost: (Number(l.unit_cost) || 0) * f, line_total: (Number(l.line_total) || 0) * f } : l));
+      return { ...r, currency: 'IQD', paid_in: 'USD', rate: Number(r.rate) > 0 ? Number(r.rate) : fallback, lines };
+    });
+  }
   /* The newest invoice line of each stock item, from invoices {entry_date, read_at, invoice_number,
      supplier_name, currency, rate, total, delivery_fee, lines:[{item, unit, unit_cost}]}: the latest
      receipt date wins (then the one read last, then the higher invoice number). Lines without a price are
@@ -211,5 +225,5 @@
     return lowNames && lowNames.has(titem.name) ? 'low' : 'ok';
   }
 
-  globalThis.RicottaRecipeCost = Object.freeze({ MARGIN_MIN, SUGGEST_TIMES, ROUND_TO, CURRENCIES, DEFAULT_RATE, MAIN, measure, factor, iqdFactor, lastPrices, priceOf, lineCost, recipeCost, context, stockState, roundMoney, roundCost, unitPrices });
+  globalThis.RicottaRecipeCost = Object.freeze({ MARGIN_MIN, SUGGEST_TIMES, ROUND_TO, CURRENCIES, DEFAULT_RATE, MAIN, measure, factor, iqdFactor, invoicesInIqd, lastPrices, priceOf, lineCost, recipeCost, context, stockState, roundMoney, roundCost, unitPrices });
 })();

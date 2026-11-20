@@ -10,6 +10,8 @@ import { readerTick, readerView, readMonthNow, erbilDay, readerConfig } from "./
 import { checkRecipeAlerts } from "./recipe-alerts.ts";
 import { autoCheckNames } from "./stock-names.ts";
 import { pricesView, askPrices } from "./rr-prices.ts";
+import "../_shared/recipe-cost.js";
+const RC = (globalThis as any).RicottaRecipeCost;
 
 type Ctx = { db: any; json: (b: unknown, s?: number) => Response; fail: (e: string, s?: number) => Response };
 type Who = { account: string; rozha: boolean; can: (role: string) => boolean } | null;
@@ -92,8 +94,9 @@ export async function rrReaderRoute(ctx: Ctx, req: Request, M: string, path: str
 export async function monthInvoices(db: any, month: string) {
   const [y, m] = month.split("-").map(Number);
   const to = `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
-  const { data, error } = await db.from("app_rr_invoices").select("id,entry_date,invoice_number,supplier_name,status,currency,total,delivery_fee,paid,lines")
+  const { data, error } = await db.from("app_rr_invoices").select("id,entry_date,invoice_number,supplier_name,status,currency,rate,total,delivery_fee,paid,lines")
     .gte("entry_date", `${month}-01`).lte("entry_date", to).order("entry_date").order("invoice_number").limit(3000);
   if (error) throw error;
-  return data ?? [];
+  // Every amount in IQD, as Ricotta Restaurant keeps them (a USD receipt is marked paid_in USD).
+  return RC ? RC.invoicesInIqd(data ?? []) : data ?? [];
 }

@@ -245,6 +245,12 @@ const inv = [
   // Lines in dollars (the IQD total is the lines times the rate): turned into IQD at the receipt's rate.
   const usd = lastPrices([{ entry_date: '2026-11-05', invoice_number: '9', supplier_name: 'Import Co', currency: 'USD', rate: 1500, total: 60000, lines: [{ item: 'Cups', unit: 'کارتۆن', unit_cost: 40, qty: 1, line_total: 40 }] }], () => true);
   assert.equal(usd[0].price, 60000, 'USD price shown in IQD at the receipt rate');
+  // A USD receipt as Ricotta Restaurant really keeps it (total and lines in IQD): reports count it in IQD.
+  const RCx = globalThis.RicottaRecipeCost;
+  const real = RCx.invoicesInIqd([{ entry_date: '2026-11-15', invoice_number: '7', supplier_name: 'Magical Dessert Company', currency: 'USD', rate: null, total: 534240, paid: true, lines: [{ item: 'Cake', unit: 'دانە', qty: 1, unit_cost: 534240, line_total: 534240 }] }]);
+  assert.equal(real[0].currency, 'IQD'); assert.equal(real[0].paid_in, 'USD'); assert.equal(real[0].lines[0].unit_cost, 534240);
+  const rt = reportTotals(real);
+  assert.equal(rt.IQD, 534240, 'a USD-paid receipt counts in IQD'); assert.equal(rt.USD, 0, 'never shown as dollars');
   const tot = reportTotals(inv);
   assert.equal(tot.receipts, 3); assert.equal(tot.unpaid, 1); assert.equal(tot.IQD, 2); assert.equal(tot.USD, 1);
 }
