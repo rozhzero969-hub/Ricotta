@@ -690,22 +690,6 @@
         }
       }
     },
-    "Ricotta Green": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "سەوزی ریکۆتا"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "أخضر ريكوتا"
-          }
-        }
-      }
-    },
     "Dark": {
       "localizations": {
         "ckb": {
@@ -718,54 +702,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "داكن"
-          }
-        }
-      }
-    },
-    "Light": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ڕووناک"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "فاتح"
-          }
-        }
-      }
-    },
-    "Mint": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "نەعنایی"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "نعناعي"
-          }
-        }
-      }
-    },
-    "Sky": {
-      "localizations": {
-        "ckb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ئاسمانی"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "سماوي"
           }
         }
       }
@@ -802,39 +738,39 @@
         }
       }
     },
-    "Graphite": {
+    "Halloween": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "خۆڵەمێشی"
+            "value": "هالۆوین"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "رمادي"
+            "value": "هالوين"
           }
         }
       }
     },
-    "Ocean": {
+    "Christmas": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "شینی دەریایی"
+            "value": "کریسمس"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "أزرق المحيط"
+            "value": "عيد الميلاد"
           }
         }
       }
     },
-    "Rose": {
+    "Pink": {
       "localizations": {
         "ckb": {
           "stringUnit": {
@@ -850,34 +786,130 @@
         }
       }
     },
-    "Sand": {
+    "Cream": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "لمی"
+            "value": "کرێمی"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "رملي"
+            "value": "كريمي"
           }
         }
       }
     },
-    "Midnight": {
+    "Forest": {
       "localizations": {
         "ckb": {
           "stringUnit": {
             "state": "translated",
-            "value": "شینی شەو"
+            "value": "سەوزی دارستان"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "أزرق الليل"
+            "value": "أخضر الغابة"
+          }
+        }
+      }
+    },
+    "Order Slip": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پسوولەی داواکاری"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "قسيمة الطلب"
+          }
+        }
+      }
+    },
+    "Cheese": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پەنیر"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جبن"
+          }
+        }
+      }
+    },
+    "Bag": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جانتا"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حقيبة"
+          }
+        }
+      }
+    },
+    "Glass": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شووشە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "زجاج"
+          }
+        }
+      }
+    },
+    "With the Themes": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لەگەڵ ڕەنگەکان"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مع السمات"
+          }
+        }
+      }
+    },
+    "More": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "زیاتر"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "المزيد"
           }
         }
       }

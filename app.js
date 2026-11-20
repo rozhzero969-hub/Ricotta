@@ -1952,13 +1952,27 @@ function setSeeThrough(on){
 /* The colour theme (style.css, html.theme-<name>) and the Dock icon, chosen in Settings or the Mac app's View menu. */
 let macIcon = MAC_ICONS.includes(window.RICOTTA_APP_ICON) ? window.RICOTTA_APP_ICON : 'green';
 const macTheme = ()=>MAC_THEMES.find(n=>document.documentElement.classList.contains('theme-' + n)) || 'ricotta';
+/* Each theme has its own Dock icon. Choosing a theme never changes the icon; Settings offers the matching
+   one with a small button. */
+const macThemeIcon = name=> name === 'ricotta' ? 'green' : name;
+let macMatchOffer = false;
 function setMacTheme(name){
+  if(name !== macTheme()) macMatchOffer = true;
   MAC_THEMES.forEach(n=>document.documentElement.classList.toggle('theme-' + n, n === name && n !== 'ricotta'));
   document.querySelectorAll('[data-mac-theme]').forEach(b=>b.setAttribute('aria-checked', String(b.dataset.macTheme === name)));
+  paintMacIconMatch();
 }
 function setMacIcon(name){
   macIcon = name;
+  macMatchOffer = false;
   document.querySelectorAll('[data-mac-icon]').forEach(b=>b.setAttribute('aria-checked', String(b.dataset.macIcon === name)));
+  paintMacIconMatch();
+}
+function paintMacIconMatch(){
+  const box = document.getElementById('macIconMatch'); if(!box) return;
+  const want = macThemeIcon(macTheme());
+  box.hidden = !macMatchOffer || want === macIcon;
+  box.innerHTML = box.hidden ? '' : `<img src="mac-icons/${want}.png" alt="" width="28" height="28"><button type="button" class="btn btn-ghost" data-mac-icon-match="${want}">${esc(t('macIconMatch'))}</button>`;
 }
 function focusAppSearch(){
   const box = [...document.querySelectorAll('.content .search-input, .content input[type=search], .rico-side-search input')].find(el=>el.offsetParent && !el.disabled);
@@ -4528,10 +4542,12 @@ function renderSeeThroughRow(){
   if(!macShell()) return '';
   const theme = macTheme();
   const themes = MAC_THEMES.map(n=>`<button type="button" role="radio" class="mac-swatch mac-swatch-${n}" data-mac-theme="${n}" aria-checked="${n === theme}" aria-label="${esc(t('macTheme_' + n))}" title="${esc(t('macTheme_' + n))}"></button>`).join('');
-  const icons = MAC_ICONS.map(n=>`<button type="button" role="radio" class="mac-icon mac-icon-${n}" data-mac-icon="${n}" aria-checked="${n === macIcon}" aria-label="${esc(t('macIcon_' + n))}" title="${esc(t('macIcon_' + n))}">${n === 'wordmark' ? '<b dir="ltr">ricotta<i></i></b>' : '<b dir="ltr">R<i></i></b>'}</button>`).join('');
+  const icon = n=>`<button type="button" role="radio" class="mac-icon" data-mac-icon="${n}" aria-checked="${n === macIcon}" aria-label="${esc(t('macIcon_' + n))}" title="${esc(t('macIcon_' + n))}"><img src="mac-icons/${n}.png" alt="" width="44" height="44" loading="lazy" decoding="async"></button>`;
+  const group = (label, names)=>`<div class="mac-icon-group"><span>${esc(t(label))}</span><div class="mac-picks">${names.map(icon).join('')}</div></div>`;
+  const icons = group('macIconsThemes', MAC_THEME_ICONS) + group('macIconsMore', MAC_ICONS.filter(n=>!MAC_THEME_ICONS.includes(n)));
   return `<label class="check-row preference-row has-ico"><input type="checkbox" id="seeThroughSwitch" ${document.documentElement.classList.contains('see-through') ? 'checked' : ''}>${setIcon('seeThrough')}<span>${esc(t('seeThrough'))}<small>${esc(t('seeThroughHint'))}</small></span></label>
     <div class="mac-pick-row"><div class="set-head">${setIcon('macTheme')}<span>${esc(t('macThemeLabel'))}<small>${esc(t('macThemeHint'))}</small></span></div><div class="mac-picks" role="radiogroup" aria-label="${esc(t('macThemeLabel'))}">${themes}</div></div>
-    <div class="mac-pick-row"><div class="set-head">${setIcon('macIcon')}<span>${esc(t('macIconLabel'))}<small>${esc(t('macIconHint'))}</small></span></div><div class="mac-picks" role="radiogroup" aria-label="${esc(t('macIconLabel'))}">${icons}</div></div>`;
+    <div class="mac-pick-row"><div class="set-head">${setIcon('macIcon')}<span>${esc(t('macIconLabel'))}<small>${esc(t('macIconHint'))}</small></span></div><div class="mac-icon-groups" role="radiogroup" aria-label="${esc(t('macIconLabel'))}">${icons}</div><div class="mac-icon-suggest" id="macIconMatch" hidden></div></div>`;
 }
 function currentOutbox(){ return outbox().filter(j=>!j.kind && outboxJobAccount(j)===state.account); }   // orders (kept changes show on their own screens)
 function renderPendingSync(){
@@ -4638,6 +4654,8 @@ function bindAppearance(){
   if(see) see.onchange = ()=>{ setSeeThrough(see.checked); tellApp(see.checked ? 'see-through-on' : 'see-through-off'); };
   document.querySelectorAll('[data-mac-theme]').forEach(b=>b.onclick = ()=>{ setMacTheme(b.dataset.macTheme); tellApp('theme:' + b.dataset.macTheme); });
   document.querySelectorAll('[data-mac-icon]').forEach(b=>b.onclick = ()=>{ setMacIcon(b.dataset.macIcon); tellApp('icon:' + b.dataset.macIcon); });
+  const match = document.getElementById('macIconMatch');
+  if(match){ match.onclick = e=>{ const b = e.target.closest('[data-mac-icon-match]'); if(b){ setMacIcon(b.dataset.macIconMatch); tellApp('icon:' + b.dataset.macIconMatch); } }; paintMacIconMatch(); }
   document.querySelectorAll('[data-dark]').forEach(b=>b.onclick=()=>{
     setSetting('darkMode',b.dataset.dark).then(()=>{applyPrefs();syncAppearance();});applyPrefs();syncAppearance();
     document.querySelectorAll('[data-dark]').forEach(x=>x.setAttribute('aria-checked',String(x.dataset.dark===darkMode())));

@@ -17,7 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        UserDefaults.standard.register(defaults: [Preferences.seeThroughKey: true, Preferences.zoomKey: 1.0])
+        // Always See-Through starts off. Only the person's own choice is ever saved (the View menu or Settings),
+        // so someone who turned it on or off keeps that.
+        UserDefaults.standard.register(defaults: [Preferences.seeThroughKey: false, Preferences.zoomKey: 1.0])
         NSApp.mainMenu = buildMenu()
         Preferences.applyAppIcon()
         let controller = MainWindowController()
@@ -124,10 +126,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         let icons = add(view, String(localized: "App Icon"), nil)
         icons.submenu = NSMenu(title: String(localized: "App Icon"))
-        for icon in AppIconChoice.allCases {
-            let item = add(icons.submenu!, icon.title, #selector(chooseAppIcon(_:)), target: self)
-            item.representedObject = icon.rawValue
-            item.image = icon.preview(size: 18)
+        for (index, group) in [AppIconChoice.themeIcons, AppIconChoice.moreIcons].enumerated() {
+            if index > 0 { icons.submenu!.addItem(.separator()) }
+            icons.submenu!.addItem(.sectionHeader(title: index == 0 ? String(localized: "With the Themes") : String(localized: "More")))
+            for icon in group {
+                let item = add(icons.submenu!, icon.title, #selector(chooseAppIcon(_:)), target: self)
+                item.representedObject = icon.rawValue
+                item.image = icon.preview(size: 18)
+            }
         }
         view.addItem(.separator())
         _ = add(view, String(localized: "Enter Full Screen"), #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
@@ -150,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 enum Preferences {
     static let seeThroughKey = "AlwaysSeeThrough"
     static let zoomKey = "PageZoom"
-    /// On (the default): the page background and sidebar stay see-through. Off: see-through only while loading.
+    /// On: the page background and sidebar stay see-through. Off (the default): see-through only while loading.
     static var seeThrough: Bool {
         get { UserDefaults.standard.bool(forKey: seeThroughKey) }
         set { UserDefaults.standard.set(newValue, forKey: seeThroughKey) }
@@ -179,18 +185,30 @@ enum Preferences {
     }
 }
 
-/// The Dock icon choices (Assets.xcassets, AppIcon-<name>), all made from the Ricotta icon art.
+/// The Dock icon choices (Assets.xcassets, AppIcon-<name>, drawn from macos/IconSources; see the README).
+/// The first six match the themes, in AppTheme order; the rest are other looks.
 enum AppIconChoice: String, CaseIterable {
-    case green, dark, light, mint, sky, wordmark
+    case green, halloween, christmas, discord, google, pink
+    case cream, forest, wordmark, slip, wedge, bag, glass, dark
+    static let themeIcons: [AppIconChoice] = [.green, .halloween, .christmas, .discord, .google, .pink]
+    static var moreIcons: [AppIconChoice] { allCases.filter { !themeIcons.contains($0) } }
     var assetName: String { "AppIcon-\(rawValue)" }
     var title: String {
         switch self {
-        case .green: String(localized: "Ricotta Green")
-        case .dark: String(localized: "Dark")
-        case .light: String(localized: "Light")
-        case .mint: String(localized: "Mint")
-        case .sky: String(localized: "Sky")
+        case .green: String(localized: "Ricotta")
+        case .halloween: String(localized: "Halloween")
+        case .christmas: String(localized: "Christmas")
+        case .discord: "Discord"
+        case .google: "Google"
+        case .pink: String(localized: "Pink")
+        case .cream: String(localized: "Cream")
+        case .forest: String(localized: "Forest")
         case .wordmark: String(localized: "Wordmark")
+        case .slip: String(localized: "Order Slip")
+        case .wedge: String(localized: "Cheese")
+        case .bag: String(localized: "Bag")
+        case .glass: String(localized: "Glass")
+        case .dark: String(localized: "Dark")
         }
     }
     func preview(size: CGFloat) -> NSImage? {
@@ -201,34 +219,50 @@ enum AppIconChoice: String, CaseIterable {
 }
 
 /// The page's colour themes (style.css, html.theme-<name>), chosen here or in Ricotta's Settings.
+/// Colours only: Discord and Google are palettes in their style, with no logos.
 enum AppTheme: String, CaseIterable {
-    case ricotta, graphite, ocean, rose, sand, midnight
+    case ricotta, halloween, christmas, discord, google, pink
     var title: String {
         switch self {
         case .ricotta: String(localized: "Ricotta")
-        case .graphite: String(localized: "Graphite")
-        case .ocean: String(localized: "Ocean")
-        case .rose: String(localized: "Rose")
-        case .sand: String(localized: "Sand")
-        case .midnight: String(localized: "Midnight")
+        case .halloween: String(localized: "Halloween")
+        case .christmas: String(localized: "Christmas")
+        case .discord: "Discord"
+        case .google: "Google"
+        case .pink: String(localized: "Pink")
         }
     }
-    /// The theme's button colour, as in style.css.
-    var color: NSColor {
-        let hex: Int = switch self {
-        case .ricotta: 0x1F7A4D
-        case .graphite: 0x48484A
-        case .ocean: 0x1F5A93
-        case .rose: 0x9C2F4C
-        case .sand: 0x6E5530
-        case .midnight: 0x2C3E8C
+    /// The theme's button colour and, for the two-tone themes, its second colour, as in style.css.
+    var colors: (NSColor, NSColor?) {
+        switch self {
+        case .ricotta: (Self.rgb(0x1F7A4D), nil)
+        case .halloween: (Self.rgb(0xF97316), Self.rgb(0x2B1638))
+        case .christmas: (Self.rgb(0xA51D35), Self.rgb(0x123F2B))
+        case .discord: (Self.rgb(0x5865F2), nil)
+        case .google: (Self.rgb(0x1A73E8), nil)
+        case .pink: (Self.rgb(0xF7A1C0), Self.rgb(0xB0124F))
         }
-        return NSColor(srgbRed: CGFloat(hex >> 16 & 255) / 255, green: CGFloat(hex >> 8 & 255) / 255, blue: CGFloat(hex & 255) / 255, alpha: 1)
+    }
+    private static func rgb(_ hex: Int) -> NSColor {
+        NSColor(srgbRed: CGFloat(hex >> 16 & 255) / 255, green: CGFloat(hex >> 8 & 255) / 255, blue: CGFloat(hex & 255) / 255, alpha: 1)
     }
     var swatch: NSImage {
         NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in
-            self.color.setFill()
-            NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5)).fill()
+            let circle = NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5))
+            self.colors.0.setFill()
+            circle.fill()
+            if let second = self.colors.1 {
+                NSGraphicsContext.saveGraphicsState()
+                circle.addClip()
+                let half = NSBezierPath()
+                half.move(to: NSPoint(x: rect.maxX, y: rect.maxY))
+                half.line(to: NSPoint(x: rect.maxX, y: rect.minY))
+                half.line(to: NSPoint(x: rect.minX, y: rect.minY))
+                half.close()
+                second.setFill()
+                half.fill()
+                NSGraphicsContext.restoreGraphicsState()
+            }
             return true
         }
     }

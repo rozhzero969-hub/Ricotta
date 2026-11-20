@@ -15,6 +15,7 @@ done
 mkdir -p dist/supabase/functions/_shared
 cp ../supabase/functions/_shared/search.js ../supabase/functions/_shared/app-map.js ../supabase/functions/_shared/receipts.js ../supabase/functions/_shared/transfers.js ../supabase/functions/_shared/stock-link.js ../supabase/functions/_shared/recipe-cost.js ../supabase/functions/_shared/recipe-colors.js dist/supabase/functions/_shared/
 cp -R ../fonts dist/fonts
+cp -R ../mac-icons dist/mac-icons
 cp ../install-icon.webp dist/
 mkdir -p dist/vendor
 cp ../vendor/xlsx-0.20.3.min.js dist/vendor/
