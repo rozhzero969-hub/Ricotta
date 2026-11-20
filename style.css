@@ -3815,6 +3815,9 @@ html.mac-shell.theme-christmas{--rico-art:url("mac-icons/fx-xm-rico.svg")}
 html.mac-shell.theme-moonlit{--rico-art:url("mac-icons/fx-mo-rico.svg")}
 html.mac-shell.theme-google{--rico-art:url("mac-icons/fx-gg-rico.svg")}
 html.mac-shell.theme-pink{--rico-art:url("mac-icons/fx-pk-rico.svg")}
+/* On the light pages the silver and blush Rico get a little deeper, so he still stands out. */
+html.mac-shell.theme-moonlit:not(.dark) .rico-plain::after{filter:brightness(.62) saturate(1.8)}
+html.mac-shell.theme-pink:not(.dark) .rico-plain::after{filter:saturate(1.35) brightness(.9)}
 @media (hover:hover) and (pointer:fine){
   html.mac-shell .rico-top .rico-plain::after{transition:transform 500ms var(--spring-soft)}
   html.mac-shell.theme-halloween .rico-top:hover .rico-plain::after{transform:rotate(-8deg) scale(1.06)}

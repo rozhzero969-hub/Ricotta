@@ -123,6 +123,8 @@
     return box;
   }
   const anchor = ()=> (document.querySelector('.queue-done, .order-hero') || document.body).getBoundingClientRect();
+  // Celebrations start in the card's empty side (the end away from its text), never over the numbers.
+  const side = (r, f = .28)=> root.classList.contains('rtl') ? r.left + r.width * f : r.right - r.width * f;
   function piece(box, cls, html, x, y, keyframes, ms, delay = 0){
     const el = document.createElement('i');
     el.className = cls; el.innerHTML = html;
@@ -133,11 +135,11 @@
   }
   // Christmas: snow and a little gold and red confetti rise from the card and drift down.
   function snowBurst(){
-    const box = burstLayer(), r = anchor(), cx = r.left + r.width / 2, cy = r.top + Math.min(r.height, 140) / 2;
+    const box = burstLayer(), r = anchor(), cx = side(r), cy = r.top + Math.min(r.height, 140) / 2;
     const colors = ['#ffffff','#ffffff','#F4D58D','#E5484D','#ffffff','#BFE3CF'];
     for(let i = 0; i < 30; i++){
-      const a = rand(-Math.PI * .95, -Math.PI * .05), d = rand(90, 260), c = colors[i % colors.length], flake = i % 3 === 0;
-      const html = flake ? svg('0 0 24 24', `<path d="M12 1v22M2.5 6.5l19 11M2.5 17.5l19-11" stroke="${c}" stroke-width="2.4" stroke-linecap="round" fill="none"/>`) : `<b style="background:${c}"></b>`;
+      const a = rand(-Math.PI * .9, -Math.PI * .1), d = rand(70, 200), c = colors[i % colors.length], flake = i % 3 === 0;
+      const html = flake ? svg('0 0 24 24', `<path d="M12 1v22M2.5 6.5l19 11M2.5 17.5l19-11" stroke="${c}" stroke-width="2.4" stroke-linecap="round" fill="none"/>`) : `<b style="background:${c};border-radius:${i % 2 ? '50%' : '1.5px'}"></b>`;
       const dx = Math.cos(a) * d, dy = Math.sin(a) * d;
       piece(box, 'fx-bit' + (flake ? ' fx-flake' : ''), html, cx, cy, [
         {transform:'translate(-50%,-50%) scale(.4) rotate(0deg)', opacity:0},
@@ -148,11 +150,11 @@
   // Cupid: a bow draws at the card's edge and lets an arrow fly; a heart opens where it lands.
   function cupidShot(){
     const box = burstLayer(), r = anchor(), y = r.top + Math.min(r.height, 160) / 2;
-    const rtl = root.classList.contains('rtl'), x0 = rtl ? r.right - 40 : r.left + 40, x1 = rtl ? r.left + r.width * .3 : r.right - r.width * .3;
+    const rtl = root.classList.contains('rtl'), x0 = side(r, .52), x1 = side(r, .2);
     const flip = rtl ? ' scale(-1,1)' : '';
-    piece(box, 'fx-cupid-bow', svg('0 0 40 80', '<path d="M8 4c26 10 26 62 0 72" fill="none" stroke="#C9A24B" stroke-width="4" stroke-linecap="round"/><path d="M8 4v72" stroke="#F7D9E4" stroke-width="1.5"/>'), x0, y,
+    piece(box, 'fx-cupid-bow', svg('0 0 40 80', '<path d="M8 4c26 10 26 62 0 72" fill="none" stroke="#B8862E" stroke-width="5" stroke-linecap="round"/><path d="M8 4v72" stroke="#F7D9E4" stroke-width="1.5"/>'), x0, y,
       [{transform:`translate(-50%,-50%)${flip} scale(.8)`, opacity:0}, {transform:`translate(-50%,-50%)${flip}`, opacity:1, offset:.2}, {transform:`translate(-50%,-50%)${flip}`, opacity:1, offset:.7}, {transform:`translate(-50%,-50%)${flip} scale(.9)`, opacity:0}], 1300);
-    piece(box, 'fx-cupid-arrow', svg('0 0 120 24', `<path d="M6 12h96" stroke="#C9A24B" stroke-width="3" stroke-linecap="round"/><path d="M2 6l10 6-10 6M10 6l10 6-10 6" fill="none" stroke="#E58BAE" stroke-width="2.4" stroke-linejoin="round"/><path transform="translate(96 1) scale(.9)" d="${HEART}" fill="#E0457B"/>`), x0, y,
+    piece(box, 'fx-cupid-arrow', svg('0 0 120 24', `<path d="M6 12h96" stroke="#B8862E" stroke-width="3.4" stroke-linecap="round"/><path d="M2 6l10 6-10 6M10 6l10 6-10 6" fill="none" stroke="#E58BAE" stroke-width="2.4" stroke-linejoin="round"/><path transform="translate(96 1) scale(.9)" d="${HEART}" fill="#E0457B"/>`), x0, y,
       [{transform:`translate(-20%,-50%)${flip}`, opacity:0}, {transform:`translate(-20%,-50%)${flip}`, opacity:1, offset:.18}, {transform:`translate(calc(-20% + ${x1 - x0}px),-50%)${flip}`, opacity:1, offset:.62}, {transform:`translate(calc(-20% + ${x1 - x0}px),-50%)${flip}`, opacity:0}], 1250, 120);
     for(let i = 0; i < 12; i++){
       const a = i / 12 * Math.PI * 2, d = rand(40, 90);
@@ -164,9 +166,9 @@
   }
   // Halloween and Moonlit: a short, soft rise of sparks (embers, or stars) from the card.
   function sparks(colors, path){
-    const box = burstLayer(), r = anchor(), cx = r.left + r.width / 2, cy = r.top + Math.min(r.height, 140) / 2;
+    const box = burstLayer(), r = anchor(), cx = side(r), cy = r.top + Math.min(r.height, 140) / 2;
     for(let i = 0; i < 18; i++){
-      const dx = rand(-r.width * .35, r.width * .35), dy = rand(-160, -60);
+      const dx = rand(-r.width * .18, r.width * .18), dy = rand(-160, -60);
       piece(box, 'fx-bit fx-spark', svg('0 0 24 24', `<path d="${path}" fill="${colors[i % colors.length]}"/>`), cx + rand(-40, 40), cy, [
         {transform:'translate(-50%,-50%) scale(.3)', opacity:0},
         {transform:`translate(calc(-50% + ${dx * .5}px),calc(-50% + ${dy * .5}px)) scale(1)`, opacity:1, offset:.3},
@@ -175,7 +177,7 @@
   }
   // Google: four coloured dots hop once, like Google's own loader.
   function googleDots(){
-    const box = burstLayer(), r = anchor(), cx = r.left + r.width / 2, cy = r.top + Math.min(r.height, 140) / 2;
+    const box = burstLayer(), r = anchor(), cx = side(r), cy = r.top + Math.min(r.height, 140) / 2;
     ['#4285F4','#EA4335','#FBBC05','#34A853'].forEach((c, i)=>{
       piece(box, 'fx-bit fx-gdot', `<b style="background:${c}"></b>`, cx + (i - 1.5) * 26, cy, [
         {transform:'translate(-50%,-50%) scale(.6)', opacity:0}, {transform:'translate(-50%,-50%)', opacity:1, offset:.15},
