@@ -21,3 +21,6 @@ private-backups/
 *.log
 *.pem
 *.key
+
+# Xcode build output for the Mac app (see macos/README.md)
+macos/build/
