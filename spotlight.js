@@ -395,6 +395,12 @@ function openSpotlight(initial = ''){
   scopes.onclick = e=>{ const b = e.target.closest('[data-spot-scope]'); if(!b) return; spotScope = b.dataset.spotScope; paint(); input.focus({preventScroll:true}); };
   layer.querySelector('.spot-scrim').onclick = close;
   layer.querySelector('.spot-cancel').onclick = close;
+  // The mouse moves the same highlight as the arrow keys, like a Mac menu.
+  list.addEventListener('pointermove', e=>{
+    if(e.pointerType !== 'mouse') return;
+    const row = e.target.closest('[data-spot]:not([aria-disabled])');
+    if(row && Number(row.dataset.spot) !== active){ active = Number(row.dataset.spot); mark(); }
+  });
   list.addEventListener('click', e=>{
     if(!mine()) return;
     const step = e.target.closest('[data-spot-add],[data-spot-dec]');

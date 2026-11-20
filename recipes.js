@@ -793,6 +793,7 @@ function recipeIngredientForm(id, onSaved){
         input.onclick = ()=>openList(true);
         input.oninput = ()=>{ query = input.value; openList(true); paintList(); };
         input.onkeydown = e=>{ if(e.key === 'Enter') e.preventDefault(); if(e.key === 'Escape' && !list.hidden){ e.preventDefault(); e.stopPropagation(); openList(false); } };
+        listHighlight(list, '.stock-opt', input);
         // A tap in the list keeps the box focused (the list stays open while it scrolls).
         list.addEventListener('pointerdown', e=>{ if(e.target.closest('[data-rc-stock]') || e.target === list) e.preventDefault(); });
         box.querySelector('.stock-pick').addEventListener('focusout', e=>{ if(!e.currentTarget.contains(e.relatedTarget)) setTimeout(()=>{ if(!box.contains(document.activeElement)) openList(false); }, 120); });

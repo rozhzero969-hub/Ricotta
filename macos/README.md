@@ -11,12 +11,15 @@ From Terminal (no paid developer account needed; the app is signed "ad hoc" so i
 
 ```sh
 cd macos
-xcodebuild -project RicottaMac.xcodeproj -scheme Ricotta -configuration Release -derivedDataPath build build
+xcodebuild -project RicottaMac.xcodeproj -scheme Ricotta -configuration Release -derivedDataPath ~/Library/Developer/RicottaMacBuild build
 mkdir -p ~/Applications
 rm -rf ~/Applications/Ricotta.app
-cp -R build/Build/Products/Release/Ricotta.app ~/Applications/
+cp -R ~/Library/Developer/RicottaMacBuild/Build/Products/Release/Ricotta.app ~/Applications/
 open ~/Applications/Ricotta.app
 ```
+
+Keep `-derivedDataPath` outside the repository (as above): build output must never be committed. `.gitignore` also
+ignores `macos/build/`, `ios/build/`, `DerivedData/`, `xcuserdata/` and `*.xcuserstate`.
 
 To build without any signing, add `CODE_SIGNING_ALLOWED=NO` (the app then runs without its sandbox).
 
@@ -32,14 +35,23 @@ if there is no Open button: try to open it once, then go to **System Settings > 
 - **See-through window.** The window's background is the Mac's blurred window material (`NSVisualEffectView`,
   behind-window blending), and the page is drawn with a transparent background. While the page loads, the window is
   see-through with the Ricotta icon in the middle.
-- **Always See-Through** (View menu, Option-Command-T, and in Ricotta's Settings > Look). On by default: the page
-  background and the sidebar stay see-through; cards, lists, sheets and buttons stay solid. Off: see-through only while
-  loading, then solid like the website.
-- **Theme** (View > Theme and Settings > Look): Ricotta, Graphite, Ocean, Rose, Sand, Midnight. It changes the accent
-  colour (buttons, chosen tab, switches, links), the Order card and the see-through tint. Applied before the page paints.
-- **App icon** (View > App Icon and Settings > Look): green, dark, light, mint, sky, or the wordmark. It is shown in the
-  Dock and the app switcher while Ricotta runs (`NSApp.applicationIconImage`). The app bundle is never changed (that would
-  break its signature), so Finder and Launchpad always show the normal green icon.
+- **Always See-Through** (View menu, Option-Command-T, and in Ricotta's Settings > Look). Off by default: see-through
+  only while loading, then solid like the website. On: the page background and the sidebar stay see-through; cards,
+  lists, sheets and buttons stay solid. Only the person's own choice is ever saved, so a choice made before the default
+  changed is kept.
+- **Theme** (View > Theme and Settings > Look): Ricotta (default), Halloween, Christmas, Discord, Google, Pink. It
+  changes the accent colour (buttons, chosen tab, switches, links), the Order card, the page background and the
+  see-through tint, in light and dark, with AA text contrast (`style.css`, "Colour themes"). Colour palettes only: no
+  logos or brand marks. Pink also draws a small bow on the Order card and beside the logo, a thin cupid's arrow under
+  page titles and, when see-through, a faint scatter of hearts (CSS variables `--pk-bow`, `--pk-arrow`, `--pk-scatter`
+  in `style.css`; wide windows only, `pointer-events:none`). Changing theme cross-fades for 220 ms (none with Reduce
+  Motion). Applied before the page paints.
+- **App icon** (View > App Icon and Settings > Look), in two groups. With the themes: `green` (Ricotta, the app's own
+  icon), `halloween`, `christmas`, `discord`, `google`, `pink`. More: `cream`, `forest`, `wordmark`, `slip` (order
+  slip), `wedge` (cheese), `bag`, `glass`, `dark`. Choosing a theme offers its matching icon with a button in Settings;
+  it never changes the icon by itself. The icon is shown in the Dock and the app switcher while Ricotta runs
+  (`NSApp.applicationIconImage`). The app bundle is never changed (that would break its signature), so Finder and
+  Launchpad always show the normal green icon.
 - A hidden title bar with the window buttons inside the top of Ricotta's sidebar; size and position are remembered.
   An empty part of the top bar or sidebar moves the window, and a double-click zooms it.
   In full screen the window has no toolbar strip, so the whole page shows; the window buttons slide down with the
@@ -68,6 +80,19 @@ if there is no Open button: try to open it once, then go to **System Settings > 
 - The app sends fixed words back as a `ricotta-mac` event: `settings`, `find`, `see-through-on/off`, `full-screen-on/off`,
   `theme:<name>`, `icon:<name>`.
 
+## App icons: where they live and how to swap one
+
+- `IconSources/<name>.svg`: the drawing, 1024 x 1024 on Apple's macOS icon grid (an 824 pt squircle with its shadow).
+- `IconSources/<name>.png` (optional): a finished 1024 x 1024 PNG, for example one made elsewhere. When it is there it
+  is used instead of the SVG. Keep the transparent margin and the squircle shape so it lines up with the others.
+- `node macos/IconSources/render-icons.cjs` (from the repository root, after `pnpm install`) writes every size:
+  `Ricotta/Assets.xcassets/AppIcon-<name>.imageset/` (512 and 1024 px) and the website's `mac-icons/<name>.png`
+  (96 px, the Settings picker). Add `--sheet out.png` to see all of them at 16, 32, 128 and 256 pt.
+- A new icon name also goes in `AppIconChoice` (`AppDelegate.swift`), `MAC_ICONS` (`sounds.js`), `ICONS`
+  (`render-icons.cjs`), the `macIcon_<name>` text in `i18n.js` and its title in `Localizable.xcstrings`.
+- The Pink theme's bow, arrow and hearts are SVGs inside `style.css` (`--pk-bow`, `--pk-arrow`, `--pk-scatter`). To use
+  pictures instead, point those variables at image files next to `style.css` (and add them to `scripts/build-site.cjs`).
+
 ## Not included
 
 - **Notifications.** Web push does not work inside a WKWebView app on macOS (`PushManager` is not available to the
@@ -83,14 +108,15 @@ live site.
 ```sh
 sh lab/build.sh
 python3 -m http.server 8765 --directory lab/dist
-open macos/build/Build/Products/Debug/Ricotta.app --args -RicottaDevURL http://127.0.0.1:8765/
+xcodebuild -project macos/RicottaMac.xcodeproj -scheme Ricotta -configuration Debug -derivedDataPath ~/Library/Developer/RicottaMacBuild build
+open ~/Library/Developer/RicottaMacBuild/Build/Products/Debug/Ricotta.app --args -RicottaDevURL http://127.0.0.1:8765/
 ```
 
 Only `localhost` and `127.0.0.1` are accepted. Web Inspector is on in Debug builds only.
 
-Navigation tests, from the repository root:
+Navigation, theme and icon tests, from the repository root:
 
 ```sh
-xcrun swiftc macos/Ricotta/NavigationPolicy.swift macos/Tests/main.swift -o /tmp/ricotta-mac-navigation-tests
+xcrun swiftc macos/Ricotta/NavigationPolicy.swift macos/Ricotta/Choices.swift macos/Tests/theme-icon-tests.swift macos/Tests/main.swift -o /tmp/ricotta-mac-navigation-tests
 /tmp/ricotta-mac-navigation-tests
 ```

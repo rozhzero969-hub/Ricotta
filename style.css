@@ -833,7 +833,8 @@ html.rtl .install-prompt{right:auto;left:22px}
 /* Messages Rico wrote first, tinted with his mood */
 .rico-inbox{display:grid;gap:8px;margin-bottom:16px}
 .rico-note{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:var(--r-card)}
-.rico-note.unread{box-shadow:inset 0 0 0 1.5px rgba(var(--accent-rgb),.5)}
+/* Not read yet: a small dot before "Rico wrote", like an unread mail (no coloured outline round the card). */
+.rico-note.unread .rico-note-meta::before{content:'';display:inline-block;width:7px;height:7px;margin-inline-end:6px;border-radius:50%;background:var(--accent);vertical-align:1px}
 .rico-note-body{flex:1;min-width:0}
 .rico-note-meta{font-size:.75rem;font-weight:500;color:var(--ink-soft);margin-bottom:2px}
 .rico-note-text{font-size:.9375rem;font-weight:500;line-height:1.55;overflow-wrap:anywhere}
@@ -1052,7 +1053,10 @@ html.rtl .rico-steps.done summary svg{transform:scaleX(-1)}
 }
 /* Hover tints, only for a mouse or trackpad (a finger would leave them stuck on). */
 @media (hover:hover) and (pointer:fine){
-  .icon-btn:hover,.chip:hover,.quick-btn:not(:disabled):hover,.btn-ghost:not(:disabled):hover,.tab-pill:not(.active):hover,.step-btn:not(:disabled):hover,.sheet-row:hover,.settings-link:hover,.sel-opt:hover{background:var(--fill-strong)}
+  .icon-btn:hover,.chip:hover,.quick-btn:not(:disabled):hover,.btn-ghost:not(:disabled):hover,.tab-pill:not(.active):hover,.step-btn:not(:disabled):hover,.sheet-row:hover,.settings-link:hover{background:var(--fill-strong)}
+  /* Rows that open or pick something: a grey highlight under the pointer, like a Mac list. */
+  :is(.settings-row,.rico-side-row,.rd-item,.rc-add-row,.lang-row,.rc-why-row,.ctx-menu button):not(:disabled):hover{background-color:var(--fill)}
+  .report-card:hover{background:linear-gradient(var(--fill),var(--fill)) var(--surface)}
   .list-row.tappable:hover,.item-row:not(.has-qty):hover{background-color:var(--fill)}
   .btn-primary:not(:disabled):hover,.wa-btn:not(.done):hover,.rico-send:hover{filter:brightness(1.08)}
 }
@@ -1095,6 +1099,7 @@ select.sel-native{position:absolute!important;width:1px!important;height:1px!imp
 .sel-opt.on{background:transparent;color:var(--ink);font-weight:600}
 .sel-opt.on b{color:var(--tint)}
 .sel-opt.none{color:var(--ink-soft);font-weight:400}
+.sel-opt.hi{background:var(--fill)}
 .sel-opt b{flex:none}
 @keyframes selUp{from{transform:translateY(110%)}to{transform:none}}
 @media (min-width:700px){.sel-sheet{align-items:center}.sel-panel{margin-bottom:0;border-radius:28px;max-height:70vh;animation:fadeIn 180ms ease both}}
@@ -1678,7 +1683,7 @@ html.rtl .spot-switch.on i{transform:translateX(-16px)}
 .spot-foot kbd{min-width:18px;height:18px;padding:0 4px;border-radius:5px;border:1px solid var(--line-strong);display:inline-grid;place-items:center;font:600 .6875rem var(--font);color:var(--ink)}
 .spot-flash{animation:spotFlash 1.5s ease}
 @keyframes spotFlash{0%,40%{box-shadow:inset 0 0 0 2px var(--tint);background-color:rgba(var(--accent-rgb),.14)}100%{box-shadow:inset 0 0 0 2px transparent}}
-@media (hover:hover) and (pointer:fine){.spot-row:hover{background:var(--fill)}.spot-row.active:hover{background:rgba(var(--accent-rgb),.2)}.spot-mini:hover,.spot-scope[aria-selected="false"]:hover{background:var(--fill-strong)}}
+@media (hover:hover) and (pointer:fine){.spot-mini:hover,.spot-scope[aria-selected="false"]:hover{background:var(--fill-strong)}}
 /* Keyboard shortcuts */
 .short-list{display:flex;flex-direction:column;border-radius:18px;background:var(--fill);padding:2px 14px;margin-top:10px}
 .short-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;font-size:.9375rem}
@@ -1931,6 +1936,7 @@ html.dark .rr-ctl-note.warn{color:#FCD34D}
 .rr-count{font-size:.8125rem;font-weight:500;color:var(--ink-soft)}
 .rr-combo{position:relative}
 .rr-pop{position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:30;max-height:288px;overflow:auto;background:var(--surface);border-radius:14px;box-shadow:0 0 0 .5px var(--line),0 12px 32px rgba(0,0,0,.14);padding:4px}
+/* No opening animation here: the list opens on every Tab and keystroke through a receipt, and typing must never wait. */
 .rr-opt{padding:9px 10px;border-radius:9px;font-size:.9375rem;cursor:default;display:flex;align-items:baseline;gap:10px}
 .rr-opt>span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rr-opt>small{flex:none;font-size:.75rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
@@ -2138,10 +2144,12 @@ html.dark .cf-alert{background:rgba(248,113,113,.14);color:#FECACA}
 /* The unit menu: a small list right under its box. */
 .sel-pop{position:fixed;z-index:1200;max-height:min(360px,60vh);overflow:auto;padding:6px;border-radius:14px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);border:.5px solid var(--line-strong);box-shadow:var(--float-shadow);animation:selPopIn .16s var(--ease-out)}
 @keyframes selPopIn{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+.sel-pop.up{animation-name:selPopUp}
+@keyframes selPopUp{from{opacity:0;transform:translateY(4px) scale(.98)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.sel-pop{animation:none}}
 .sel-pop-opt{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:10px;background:none;color:var(--ink);font:inherit;font-size:1rem;text-align:start}
 .sel-pop-opt svg{width:18px;height:18px;color:var(--tint);flex:none}
-.sel-pop-opt:hover,.sel-pop-opt.kb{background:var(--fill)}
+.sel-pop-opt.kb{background:var(--fill)}
 .sel-pop-opt.on{font-weight:600}
 .modal-wide .modal-actions .btn{white-space:nowrap}
 
@@ -2578,7 +2586,7 @@ html.dark .tf-drafted-note{color:#A5A3FF}
 .stock-opt small{font-size:.8125rem;color:var(--ink-soft)}
 .stock-opt.on{background:var(--accent-soft)}
 .stock-opt:disabled{cursor:not-allowed;opacity:.5}
-@media (hover:hover){.stock-opt:not(:disabled):hover{background:var(--fill)}}
+.stock-opt.hi{background:var(--fill)}.stock-opt.on.hi{background:rgba(var(--accent-rgb),.2)}
 .stock-pick>.btn{align-self:flex-start;min-height:38px;border-radius:10px}
 
 /* Admin, Stock names: one quiet card per name, the problem as small tags, the name now and the correct
@@ -3543,38 +3551,62 @@ html.mac-shell.see-through .topbar:not(.scrolled){background:transparent;-webkit
   html.mac-shell.see-through .bottomnav,html.mac-shell.see-through.rico-mode #app>.rico-side{background:transparent}
 }
 /* Colour themes (the Mac app's Settings and View > Theme; boot.js sets html.theme-<name> before the first
-   paint). A theme changes the accent (buttons, the chosen tab, switches, links), the Order card and the
-   see-through tint. White button text keeps at least 7:1 contrast on every --accent-strong below, and the
-   dark-mode tints stay light enough to read on black. Ricotta's own green is the default (no class). */
-html.mac-shell.theme-graphite{--accent:#8E8E93;--accent-rgb:142,142,147;--on-dark:#C7C7CC;--accent-strong:#48484A;--tint:#48484A;--mint-ink:#48484A;--accent-soft:rgba(142,142,147,.2);--hero:#2C2C2E;--page-tint:rgba(236,236,240,.5)}
-html.mac-shell.theme-ocean{--accent:#3B8BD9;--accent-rgb:59,139,217;--on-dark:#93C2F1;--accent-strong:#1F5A93;--tint:#1F5A93;--mint-ink:#1F5A93;--accent-soft:rgba(59,139,217,.16);--hero:#173A5C;--page-tint:rgba(220,235,251,.45)}
-html.mac-shell.theme-rose{--accent:#D9668A;--accent-rgb:217,102,138;--on-dark:#F2A3B7;--accent-strong:#9C2F4C;--tint:#9C2F4C;--mint-ink:#9C2F4C;--accent-soft:rgba(217,102,138,.16);--hero:#4A1F2C;--page-tint:rgba(251,224,230,.45)}
-html.mac-shell.theme-sand{--accent:#C8A46A;--accent-rgb:200,164,106;--on-dark:#E8CFA0;--accent-strong:#6E5530;--tint:#6E5530;--mint-ink:#6E5530;--accent-soft:rgba(200,164,106,.2);--hero:#3A2F20;--page-tint:rgba(241,232,218,.5)}
-html.mac-shell.theme-midnight{--accent:#5E7CE2;--accent-rgb:94,124,226;--on-dark:#A3B5F5;--accent-strong:#2C3E8C;--tint:#2C3E8C;--mint-ink:#2C3E8C;--accent-soft:rgba(94,124,226,.16);--hero:#141B3A;--page-tint:rgba(222,227,245,.45)}
-html.mac-shell.dark.theme-graphite{--tint:#C7C7CC;--mint-ink:#C7C7CC;--accent-soft:rgba(142,142,147,.26);--page-tint:rgba(0,0,0,.32)}
-html.mac-shell.dark.theme-ocean{--tint:#7FB6EE;--mint-ink:#7FB6EE;--accent-soft:rgba(59,139,217,.24);--page-tint:rgba(4,16,32,.4)}
-html.mac-shell.dark.theme-rose{--tint:#F2A3B7;--mint-ink:#F2A3B7;--accent-soft:rgba(217,102,138,.24);--page-tint:rgba(32,8,16,.38)}
-html.mac-shell.dark.theme-sand{--tint:#D9C29B;--mint-ink:#D9C29B;--accent-soft:rgba(200,164,106,.24);--page-tint:rgba(28,20,8,.38)}
-html.mac-shell.dark.theme-midnight{--tint:#A3B5F5;--mint-ink:#A3B5F5;--accent-soft:rgba(94,124,226,.26);--hero:#1A2350;--page-tint:rgba(6,10,36,.45)}
-/* The theme and app icon pickers in Settings (Mac app only): a row of small round swatches and a row of
-   small icon previews, the chosen one ringed. */
+   paint). A theme changes the accent (buttons, the chosen tab, switches, links), the Order card, the
+   see-through tint and the page behind the cards. Colours only: no logos or brand marks. White button text
+   on every --accent-strong is at least 4.5:1 (AA), and so is every --tint on the light and dark surfaces.
+   Ricotta's own green is the default (no class). */
+html.mac-shell.theme-halloween{--accent:#F97316;--accent-rgb:249,115,22;--on-dark:#FDBA74;--accent-strong:#C2410C;--tint:#B23A0A;--accent-soft:rgba(249,115,22,.16);--hero:#2B1638;--bg:#F5F1F4;--page-tint:rgba(250,236,226,.48);
+  --t-eyebrow:#FDBA74;--t-word:#F5E6F7;--t-sub:#D9C6DE;--t-foot:#DCCAE0}
+html.mac-shell.dark.theme-halloween{--bg:#0D0910;--surface:#1B1520;--tint:#FF9F5A;--accent-soft:rgba(249,115,22,.22);--hero:#2E1A3B;--page-tint:rgba(18,8,24,.5)}
+html.mac-shell.theme-christmas{--accent:#2E8B57;--accent-rgb:46,139,87;--on-dark:#F4D58D;--accent-strong:#A51D35;--tint:#A51D35;--accent-soft:rgba(165,29,53,.12);--hero:#123F2B;--bg:#F3F5F2;--page-tint:rgba(247,250,247,.55);
+  --t-eyebrow:#F4D58D;--t-word:#F7F5EE;--t-sub:#C9DCCF;--t-foot:#CCDDD2}
+html.mac-shell.dark.theme-christmas{--bg:#06110B;--surface:#132019;--tint:#FF8A9A;--accent-soft:rgba(255,138,154,.16);--hero:#163F2C;--page-tint:rgba(4,22,14,.48)}
+html.mac-shell.theme-discord{--accent:#5865F2;--accent-rgb:88,101,242;--on-dark:#A5ACFA;--accent-strong:#4E5AE6;--tint:#4752C4;--accent-soft:rgba(88,101,242,.14);--hero:#313338;--bg:#F2F3F5;--page-tint:rgba(235,237,250,.45);
+  --t-eyebrow:#A5ACFA;--t-word:#F2F3F5;--t-sub:#B5BAC1;--t-foot:#B5BAC1}
+html.mac-shell.dark.theme-discord{--bg:#1E1F22;--surface:#2B2D31;--menu:rgba(43,45,49,.96);--bubble:#383A40;--tint:#A5ACFA;--accent-soft:rgba(88,101,242,.26);--hero:#383A40;--page-tint:rgba(30,31,34,.6)}
+html.mac-shell.theme-google{--accent:#1A73E8;--accent-rgb:26,115,232;--on-dark:#8AB4F8;--accent-strong:#1A68D2;--tint:#1967D2;--accent-soft:rgba(26,115,232,.1);--hero:#174EA6;--bg:#F8F9FA;--page-tint:rgba(248,249,250,.6);
+  --t-eyebrow:#AECBFA;--t-word:#FFFFFF;--t-sub:#D2E3FC;--t-foot:#D2E3FC}
+html.mac-shell.dark.theme-google{--bg:#202124;--surface:#2D2E31;--menu:rgba(45,46,49,.96);--tint:#8AB4F8;--accent-soft:rgba(138,180,248,.18);--hero:#1B3A6B;--page-tint:rgba(32,33,36,.55)}
+html.mac-shell.theme-pink{--accent:#E0457B;--accent-rgb:224,69,123;--on-dark:#F9B8CE;--accent-strong:#B0124F;--tint:#A3134A;--accent-soft:rgba(224,69,123,.13);--hero:#5A1231;--bg:#FBF3F6;--page-tint:rgba(253,228,237,.5);
+  --t-eyebrow:#F9B8CE;--t-word:#FDEAF1;--t-sub:#EDC4D3;--t-foot:#EFC8D6}
+html.mac-shell.dark.theme-pink{--bg:#120709;--surface:#221218;--tint:#F7A1C0;--accent-soft:rgba(247,161,192,.18);--hero:#5E1636;--page-tint:rgba(40,6,20,.45)}
+/* Google: its four colours only in the logo's small dot. */
+html.mac-shell.theme-google .brand .dot{background:conic-gradient(#EA4335 0 25%,#FBBC05 0 50%,#34A853 0 75%,#4285F4 0)}
+/* Pink: a small satin bow on the Order card and beside the logo, a thin cupid's arrow under each title and,
+   when see-through, a faint scatter of hearts and bows. Drawings only, behind nothing anyone reads or taps;
+   the bow tilts a little when the pointer is over the card. Gone on narrow windows, where they would crowd. */
+html.mac-shell.theme-pink{
+  --pk-bow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-140 -90 280 230'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23F06C9B'/%3E%3Cstop offset='1' stop-color='%23B0124F'/%3E%3C/linearGradient%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23C2205E'/%3E%3Cstop offset='1' stop-color='%23860C3C'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M-6 8L-62 112L-38 104L-26 128L6 14Z' fill='url(%23b)'/%3E%3Cpath d='M6 8L58 116L34 106L20 130L-6 14Z' fill='url(%23b)'/%3E%3Cpath d='M0 0C-24-58-112-86-128-26C-138 18-74 40 0 0Z' fill='url(%23a)'/%3E%3Cpath d='M0 0C24-58 112-86 128-26C138 18 74 40 0 0Z' fill='url(%23a)'/%3E%3Cpath d='M-6-4C-30-40-82-56-104-30M6-4C30-40 82-56 104-30' fill='none' stroke='%23fff' stroke-opacity='.4' stroke-width='7' stroke-linecap='round'/%3E%3Cellipse cx='0' cy='2' rx='22' ry='26' fill='url(%23b)'/%3E%3Cellipse cx='-5' cy='-6' rx='8' ry='9' fill='%23fff' fill-opacity='.35'/%3E%3C/svg%3E");
+  --pk-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 20' fill='none' stroke='%23C2205E' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 10H150M142 5.5L151 10L142 14.5M6 10L1 5M6 10L1 15M11 10L6 5M11 10L6 15'/%3E%3Cpath d='M86 14.2C80 10 77.5 7.6 77.5 5.6C77.5 4 78.8 2.8 80.4 2.8C81.6 2.8 82.6 3.5 83 4.5C83.4 3.5 84.4 2.8 85.6 2.8C87.2 2.8 88.5 4 88.5 5.6C88.5 7.6 86 10 80 14.2' fill='%23E0457B' fill-opacity='.85' stroke='none' transform='translate(3 0)'/%3E%3C/svg%3E");
+  --pk-scatter:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cg fill='%23B0124F' opacity='.035'%3E%3Cpath d='M40 52c-9-6-13-10-13-14a5 5 0 0 1 9-3a5 5 0 0 1 9 3c0 4-4 8-13 14z'/%3E%3Cpath d='M160 150c-7-5-10-8-10-11a4 4 0 0 1 7-2.4a4 4 0 0 1 7 2.4c0 3-3 6-10 11z'/%3E%3Cpath d='M150 40c-3-6-10-8-12-4c-2 4 4 6 12 4zm0 0c3-6 10-8 12-4c2 4-4 6-12 4zm0 0l-4 9m4-9l4 9' stroke='%23B0124F' stroke-width='1.2' fill-opacity='.8'/%3E%3Cpath d='M58 172c-3-6-10-8-12-4c-2 4 4 6 12 4zm0 0c3-6 10-8 12-4c2 4-4 6-12 4z'/%3E%3C/g%3E%3C/svg%3E")}
+@media (min-width:700px){
+  html.mac-shell.theme-pink .order-hero::after{content:'';position:absolute;z-index:1;top:12px;inset-inline-end:16px;width:44px;height:36px;background:var(--pk-bow) center/contain no-repeat;filter:brightness(1.75) saturate(.8);pointer-events:none;transform-origin:50% 30%;transition:transform 600ms var(--spring-soft)}
+  html.mac-shell.theme-pink .order-hero:hover::after{transform:rotate(-6deg) scale(1.04)}
+  html.mac-shell.theme-pink .page-heading h1::after{content:'';display:block;width:132px;height:16px;margin-top:4px;background:var(--pk-arrow) left center/contain no-repeat;opacity:.7;pointer-events:none}
+  html.mac-shell.theme-pink.rtl .page-heading h1::after{transform:scaleX(-1)}
+}
+@media (min-width:960px){
+  html.mac-shell.theme-pink .nav-brand::after{content:'';align-self:flex-start;width:22px;height:18px;margin:-2px 0 0 6px;background:var(--pk-bow) center/contain no-repeat;pointer-events:none}
+  html.mac-shell.theme-pink.see-through #app::before{background:var(--pk-scatter) 0 0/300px 300px,var(--page-tint)}
+}
+@media (prefers-reduced-motion:reduce){html.mac-shell.theme-pink .order-hero::after{transition:none}html.mac-shell.theme-pink .order-hero:hover::after{transform:none}}
+/* Changing the theme cross-fades the whole window for a moment instead of jumping (see setMacTheme). */
+::view-transition-old(root),::view-transition-new(root){animation-duration:220ms;animation-timing-function:var(--ease-out)}
+/* The theme and app icon pickers in Settings (Mac app only): a row of small round swatches and the icons in
+   two groups (the themes' own, then the others), the chosen one ringed. */
 .mac-pick-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 0 4px;border-top:.5px solid var(--line)}
 .mac-pick-row>.set-head{flex:1 1 220px}
 .mac-pick-row small{font-size:.8125rem;color:var(--ink-soft);margin-top:2px}
 .mac-picks{display:flex;flex-wrap:wrap;gap:10px}
+.mac-icon-groups{display:flex;flex-direction:column;gap:10px;flex:1 1 100%}
+.mac-icon-group{display:flex;flex-direction:column;gap:6px}
+.mac-icon-group>span{font-size:.75rem;color:var(--ink-soft)}
 .mac-swatch{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:var(--sw);box-shadow:inset 0 0 0 .5px rgba(0,0,0,.15)}
-.mac-swatch[aria-checked=true],.mac-icon[aria-checked=true]{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--sw,var(--tint))}
-.mac-swatch-ricotta{--sw:#1F7A4D}.mac-swatch-graphite{--sw:#48484A}.mac-swatch-ocean{--sw:#1F5A93}.mac-swatch-rose{--sw:#9C2F4C}.mac-swatch-sand{--sw:#6E5530}.mac-swatch-midnight{--sw:#2C3E8C}
-.mac-icon{display:grid;place-items:center;width:40px;height:40px;padding:0;border:0;border-radius:10px;background:var(--ib);color:var(--ii);box-shadow:inset 0 0 0 .5px rgba(0,0,0,.14);--sw:var(--tint)}
-.mac-icon b{position:relative;font:700 21px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:-.02em}
-.mac-icon b i{position:absolute;top:-1px;right:-6px;width:5px;height:5px;border-radius:50%;background:#34C27A}
-.mac-icon-wordmark b{font:800 9.5px/1 'Manrope',var(--font);letter-spacing:-.04em}
-.mac-icon-wordmark b i{top:auto;bottom:0;right:-4px;width:3px;height:3px}
-.mac-icon-green{--ib:#152B22;--ii:#F6F3EC}.mac-icon-dark{--ib:#1C1C1E;--ii:#F5F5F7}.mac-icon-light{--ib:#FAFAF7;--ii:#14382C}
-.mac-icon-mint{--ib:#DDF3E6;--ii:#1F6B46}.mac-icon-sky{--ib:#DCEBFB;--ii:#1F5A93}.mac-icon-wordmark{--ib:#14382C;--ii:#F2F7F4}
-/* The Order card's words take the theme's own light tones. */
-html.mac-shell.theme-graphite{--t-eyebrow:#C7C7CC;--t-word:#E5E5EA;--t-sub:#D1D1D6;--t-foot:#D1D1D6;--t-bright:#E5E5EA}
-html.mac-shell.theme-ocean{--t-eyebrow:#A9C8EA;--t-word:#D6E6F7;--t-sub:#BCD3EC;--t-foot:#BFD5EC;--t-bright:#9CCBF6}
-html.mac-shell.theme-rose{--t-eyebrow:#F0B8C7;--t-word:#F8DCE3;--t-sub:#EDC3CE;--t-foot:#EEC6D0;--t-bright:#F7AFC2}
-html.mac-shell.theme-sand{--t-eyebrow:#E2CFAE;--t-word:#F1E8DA;--t-sub:#E3D5BE;--t-foot:#E5D8C2;--t-bright:#F0D7A8}
-html.mac-shell.theme-midnight{--t-eyebrow:#B4C2F2;--t-word:#DCE2F8;--t-sub:#C3CEF0;--t-foot:#C6D0F2;--t-bright:#AFC0FA}
+.mac-swatch[aria-checked=true],.mac-icon[aria-checked=true]{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--tint)}
+.mac-swatch-ricotta{--sw:#1F7A4D}.mac-swatch-halloween{--sw:linear-gradient(135deg,#F97316 50%,#2B1638 50%)}.mac-swatch-christmas{--sw:linear-gradient(135deg,#A51D35 50%,#123F2B 50%)}
+.mac-swatch-discord{--sw:#5865F2}.mac-swatch-google{--sw:#1A73E8}.mac-swatch-pink{--sw:linear-gradient(135deg,#F7A1C0 50%,#B0124F 50%)}
+.mac-icon{width:44px;height:44px;padding:0;border:0;border-radius:11px;background:none}
+.mac-icon img{display:block;width:44px;height:44px;margin:-2px 0 0;pointer-events:none}
+.mac-icon-suggest{display:flex;align-items:center;gap:10px;flex:1 1 100%;margin:2px 0 0;font-size:.8125rem;color:var(--ink-soft)}
+.mac-icon-suggest img{width:28px;height:28px}
+.mac-icon-suggest .btn-ghost{min-height:30px;padding:0 12px;font-size:.8125rem}

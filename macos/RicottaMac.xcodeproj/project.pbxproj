@@ -2,13 +2,14 @@
 { archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
 100000000000000000000001 = { isa = PBXProject; attributes = { LastUpgradeCheck = 2700; }; buildConfigurationList = 10000000000000000000000A; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en,Base,ar,ckb); mainGroup = 100000000000000000000002; productRefGroup = 100000000000000000000004; projectDirPath = ""; projectRoot = ""; targets = (100000000000000000000005); };
 100000000000000000000002 = { isa = PBXGroup; children = (100000000000000000000003,100000000000000000000004); sourceTree = "<group>"; };
-100000000000000000000003 = { isa = PBXGroup; path = Ricotta; sourceTree = "<group>"; children = (100000000000000000000010,100000000000000000000011,100000000000000000000012,100000000000000000000019,100000000000000000000013,100000000000000000000014,10000000000000000000001F,10000000000000000000001A,10000000000000000000001B); };
+100000000000000000000003 = { isa = PBXGroup; path = Ricotta; sourceTree = "<group>"; children = (100000000000000000000010,100000000000000000000011,100000000000000000000012,100000000000000000000019,100000000000000000000020,100000000000000000000013,100000000000000000000014,10000000000000000000001F,10000000000000000000001A,10000000000000000000001B); };
 100000000000000000000004 = { isa = PBXGroup; name = Products; sourceTree = "<group>"; children = (100000000000000000000006); };
 100000000000000000000006 = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ricotta.app; sourceTree = BUILT_PRODUCTS_DIR; };
 100000000000000000000010 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 100000000000000000000011 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowController.swift; sourceTree = "<group>"; };
 100000000000000000000012 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationPolicy.swift; sourceTree = "<group>"; };
 100000000000000000000019 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusViews.swift; sourceTree = "<group>"; };
+100000000000000000000020 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Choices.swift; sourceTree = "<group>"; };
 100000000000000000000013 = { isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 100000000000000000000014 = { isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 10000000000000000000001F = { isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Ricotta.entitlements; sourceTree = "<group>"; };
@@ -18,11 +19,12 @@
 100000000000000000000016 = { isa = PBXBuildFile; fileRef = 100000000000000000000011; };
 100000000000000000000017 = { isa = PBXBuildFile; fileRef = 100000000000000000000012; };
 10000000000000000000001C = { isa = PBXBuildFile; fileRef = 100000000000000000000019; };
+100000000000000000000021 = { isa = PBXBuildFile; fileRef = 100000000000000000000020; };
 100000000000000000000018 = { isa = PBXBuildFile; fileRef = 100000000000000000000013; };
 10000000000000000000001D = { isa = PBXBuildFile; fileRef = 10000000000000000000001A; };
 10000000000000000000001E = { isa = PBXBuildFile; fileRef = 10000000000000000000001B; };
 100000000000000000000005 = { isa = PBXNativeTarget; buildConfigurationList = 10000000000000000000000B; buildPhases = (100000000000000000000007,100000000000000000000009,100000000000000000000008); buildRules = (); dependencies = (); name = Ricotta; productName = Ricotta; productReference = 100000000000000000000006; productType = "com.apple.product-type.application"; };
-100000000000000000000007 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000015,100000000000000000000016,100000000000000000000017,10000000000000000000001C); runOnlyForDeploymentPostprocessing = 0; };
+100000000000000000000007 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000015,100000000000000000000016,100000000000000000000017,10000000000000000000001C,100000000000000000000021); runOnlyForDeploymentPostprocessing = 0; };
 100000000000000000000008 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000018,10000000000000000000001D,10000000000000000000001E); runOnlyForDeploymentPostprocessing = 0; };
 100000000000000000000009 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 10000000000000000000000A = { isa = XCConfigurationList; buildConfigurations = (10000000000000000000000C,10000000000000000000000D); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };

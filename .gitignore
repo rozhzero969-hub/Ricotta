@@ -21,3 +21,10 @@ private-backups/
 *.log
 *.pem
 *.key
+
+# Xcode build output and per-person Xcode state (build with -derivedDataPath outside the repository)
+macos/build/
+ios/build/
+DerivedData/
+*.xcuserstate
+xcuserdata/

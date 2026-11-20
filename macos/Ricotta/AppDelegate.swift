@@ -17,7 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        UserDefaults.standard.register(defaults: [Preferences.seeThroughKey: true, Preferences.zoomKey: 1.0])
+        // Always See-Through starts off (it was on until 2026-11-20).
+        UserDefaults.standard.register(defaults: [Preferences.seeThroughKey: false, Preferences.zoomKey: 1.0])
+        Preferences.migrateSeeThroughDefault()
         NSApp.mainMenu = buildMenu()
         Preferences.applyAppIcon()
         let controller = MainWindowController()
@@ -124,10 +126,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         let icons = add(view, String(localized: "App Icon"), nil)
         icons.submenu = NSMenu(title: String(localized: "App Icon"))
-        for icon in AppIconChoice.allCases {
-            let item = add(icons.submenu!, icon.title, #selector(chooseAppIcon(_:)), target: self)
-            item.representedObject = icon.rawValue
-            item.image = icon.preview(size: 18)
+        for (index, group) in [AppIconChoice.themeIcons, AppIconChoice.moreIcons].enumerated() {
+            if index > 0 { icons.submenu!.addItem(.separator()) }
+            icons.submenu!.addItem(.sectionHeader(title: index == 0 ? String(localized: "With the Themes") : String(localized: "More")))
+            for icon in group {
+                let item = add(icons.submenu!, icon.title, #selector(chooseAppIcon(_:)), target: self)
+                item.representedObject = icon.rawValue
+                item.image = icon.preview(size: 18)
+            }
         }
         view.addItem(.separator())
         _ = add(view, String(localized: "Enter Full Screen"), #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
@@ -150,10 +156,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 enum Preferences {
     static let seeThroughKey = "AlwaysSeeThrough"
     static let zoomKey = "PageZoom"
-    /// On (the default): the page background and sidebar stay see-through. Off: see-through only while loading.
+    /// On: the page background and sidebar stay see-through. Off (the default): see-through only while loading.
     static var seeThrough: Bool {
         get { UserDefaults.standard.bool(forKey: seeThroughKey) }
         set { UserDefaults.standard.set(newValue, forKey: seeThroughKey) }
+    }
+    /// Once, when see-through became off by default: a saved "off" was someone's own choice and stays.
+    /// A saved "on" can't be told apart from the old default (it was also saved while testing builds),
+    /// so it goes back to the new default, off, one time only; turning it on again is kept from then on.
+    static func migrateSeeThroughDefault() {
+        let done = "SeeThroughOffByDefault"
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: done) else { return }
+        if defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?[seeThroughKey] as? Bool == true {
+            defaults.removeObject(forKey: seeThroughKey)
+        }
+        defaults.set(true, forKey: done)
     }
     static let appIconKey = "AppIcon"
     static let themeKey = "Theme"
@@ -176,60 +194,5 @@ enum Preferences {
     static var zoom: Double {
         get { min(max(UserDefaults.standard.double(forKey: zoomKey), 0.5), 3) }
         set { UserDefaults.standard.set(min(max(newValue, 0.5), 3), forKey: zoomKey) }
-    }
-}
-
-/// The Dock icon choices (Assets.xcassets, AppIcon-<name>), all made from the Ricotta icon art.
-enum AppIconChoice: String, CaseIterable {
-    case green, dark, light, mint, sky, wordmark
-    var assetName: String { "AppIcon-\(rawValue)" }
-    var title: String {
-        switch self {
-        case .green: String(localized: "Ricotta Green")
-        case .dark: String(localized: "Dark")
-        case .light: String(localized: "Light")
-        case .mint: String(localized: "Mint")
-        case .sky: String(localized: "Sky")
-        case .wordmark: String(localized: "Wordmark")
-        }
-    }
-    func preview(size: CGFloat) -> NSImage? {
-        guard let image = NSImage(named: assetName)?.copy() as? NSImage else { return nil }
-        image.size = NSSize(width: size, height: size)
-        return image
-    }
-}
-
-/// The page's colour themes (style.css, html.theme-<name>), chosen here or in Ricotta's Settings.
-enum AppTheme: String, CaseIterable {
-    case ricotta, graphite, ocean, rose, sand, midnight
-    var title: String {
-        switch self {
-        case .ricotta: String(localized: "Ricotta")
-        case .graphite: String(localized: "Graphite")
-        case .ocean: String(localized: "Ocean")
-        case .rose: String(localized: "Rose")
-        case .sand: String(localized: "Sand")
-        case .midnight: String(localized: "Midnight")
-        }
-    }
-    /// The theme's button colour, as in style.css.
-    var color: NSColor {
-        let hex: Int = switch self {
-        case .ricotta: 0x1F7A4D
-        case .graphite: 0x48484A
-        case .ocean: 0x1F5A93
-        case .rose: 0x9C2F4C
-        case .sand: 0x6E5530
-        case .midnight: 0x2C3E8C
-        }
-        return NSColor(srgbRed: CGFloat(hex >> 16 & 255) / 255, green: CGFloat(hex >> 8 & 255) / 255, blue: CGFloat(hex & 255) / 255, alpha: 1)
-    }
-    var swatch: NSImage {
-        NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in
-            self.color.setFill()
-            NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5)).fill()
-            return true
-        }
     }
 }

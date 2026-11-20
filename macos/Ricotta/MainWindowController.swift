@@ -150,7 +150,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
         guard isLoading else { return }
         isLoading = false
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.28
+            // Apple's ease-out: quick to appear, settling softly; a plain cut with Reduce Motion.
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.26
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
             webView.animator().alphaValue = 1
             loading.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
