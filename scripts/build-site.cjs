@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'dist');
 // without editing this file. config.js stays separate (the updater reads it); boot.js is built below.
 const scripts=[...fs.readFileSync(path.join(root,'index.html'),'utf8').matchAll(/<script defer src="([^"]+\.js)"><\/script>/g)].map(m=>m[1]).filter(f=>f!=='config.js'&&f!=='boot.js');
 assert.ok(scripts.length>5&&scripts.at(-1)==='update-check.js'&&scripts.includes('app.js'),'the app scripts are read from index.html');
-const copied=['manifest.json','config.js','privacy.html','404.html','icon-192.png','icon-512.png','apple-touch-icon.png','install-icon.webp','vendor/SHEETJS-LICENSE',...['Manrope','NotoKufiArabic'].map(m=>'fonts/'+m+'-OFL.txt')];
+const copied=['manifest.json','config.js','privacy.html','404.html','icon-192.png','icon-512.png','apple-touch-icon.png','install-icon.webp','vendor/SHEETJS-LICENSE',...fs.readdirSync(path.join(root,'mac-icons')).filter(f=>f.endsWith('.png')).map(f=>'mac-icons/'+f),...['Manrope','NotoKufiArabic'].map(m=>'fonts/'+m+'-OFL.txt')];
 fs.rmSync(out,{recursive:true,force:true});fs.mkdirSync(out);
 function read(file){const source=path.join(root,file);assert.ok(fs.lstatSync(source).isFile(),file+' must be a real file');return fs.readFileSync(source);}
 function write(file,bytes){const target=path.join(out,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,bytes);}
@@ -50,5 +50,5 @@ write('sw.js',minjs(sw));
 for(const match of html.matchAll(/(?:src|href)="([^"#?]+)"/g)){
  const file=match[1];if(!/^(https?:|data:)/.test(file))assert.ok(fs.existsSync(path.join(out,file)),'unpublished asset: '+file);
 }
-for(const file of [...copied,...emitted])assert.ok(!/(^|\/)(?:\.env|\.git|lab|scripts|node_modules)(?:\/|$)|\.(?:sql|ts|map)$/.test(file),'private/development file in site: '+file);
+for(const file of [...copied,...emitted])assert.ok(!/(^|\/)(?:\.env|\.git|lab|scripts|node_modules|macos|ios)(?:\/|$)|\.(?:sql|ts|map)$/.test(file),'private/development file in site: '+file);
 console.log('Site build PASS: minified hashed assets, local fonts, on-demand spreadsheets; backend/source/test files excluded');
