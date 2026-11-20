@@ -1,0 +1,235 @@
+import AppKit
+
+/// Ricotta for Mac: one window around the published website (see MainWindowController), with the
+/// Mac's standard menus. Closing the window keeps the app running, like Mail; the Dock icon or
+/// File > New Window brings it back with the page as it was.
+@main
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
+    private var controller: MainWindowController?
+    private weak var seeThroughItem: NSMenuItem?
+
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.setActivationPolicy(.regular)
+        app.run()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        UserDefaults.standard.register(defaults: [Preferences.seeThroughKey: true, Preferences.zoomKey: 1.0])
+        NSApp.mainMenu = buildMenu()
+        Preferences.applyAppIcon()
+        let controller = MainWindowController()
+        self.controller = controller
+        controller.showWindow(nil)
+        NSApp.activate()
+    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { controller?.showWindow(nil) }
+        return true
+    }
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
+
+    // MARK: Menu actions (the window's own actions are sent to MainWindowController through the responder chain)
+    @objc func newWindow(_ sender: Any?) { controller?.showWindow(nil) }
+    @objc func openSettings(_ sender: Any?) { controller?.showWindow(nil); controller?.send(.settings) }
+    @objc func toggleSeeThrough(_ sender: Any?) { Preferences.seeThrough.toggle(); controller?.seeThroughChanged() }
+    @objc func openInBrowser(_ sender: Any?) { NSWorkspace.shared.open(RicottaNavigation.live) }
+    @objc func chooseAppIcon(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        controller?.setAppIcon(name)
+    }
+    @objc func chooseTheme(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        controller?.setTheme(name)
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleSeeThrough(_:)) { menuItem.state = Preferences.seeThrough ? .on : .off }
+        if menuItem.action == #selector(chooseAppIcon(_:)) { menuItem.state = menuItem.representedObject as? String == Preferences.appIcon ? .on : .off }
+        if menuItem.action == #selector(chooseTheme(_:)) { menuItem.state = menuItem.representedObject as? String == Preferences.theme ? .on : .off }
+        return true
+    }
+
+    // MARK: The menu bar
+    private func buildMenu() -> NSMenu {
+        let main = NSMenu()
+        func submenu(_ title: String) -> NSMenu {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            let menu = NSMenu(title: title)
+            item.submenu = menu
+            main.addItem(item)
+            return menu
+        }
+        func add(_ menu: NSMenu, _ title: String, _ action: Selector?, _ key: String = "", _ modifiers: NSEvent.ModifierFlags = .command, target: AnyObject? = nil) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = modifiers
+            item.target = target
+            menu.addItem(item)
+            return item
+        }
+
+        let app = submenu("Ricotta")
+        _ = add(app, String(localized: "About Ricotta"), #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
+        app.addItem(.separator())
+        _ = add(app, String(localized: "Settings…"), #selector(openSettings(_:)), ",", target: self)
+        app.addItem(.separator())
+        let services = add(app, String(localized: "Services"), nil)
+        services.submenu = NSMenu()
+        NSApp.servicesMenu = services.submenu
+        app.addItem(.separator())
+        _ = add(app, String(localized: "Hide Ricotta"), #selector(NSApplication.hide(_:)), "h")
+        _ = add(app, String(localized: "Hide Others"), #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option])
+        _ = add(app, String(localized: "Show All"), #selector(NSApplication.unhideAllApplications(_:)))
+        app.addItem(.separator())
+        _ = add(app, String(localized: "Quit Ricotta"), #selector(NSApplication.terminate(_:)), "q")
+
+        let file = submenu(String(localized: "File"))
+        _ = add(file, String(localized: "New Window"), #selector(newWindow(_:)), "n", target: self)
+        _ = add(file, String(localized: "Close Window"), #selector(NSWindow.performClose(_:)), "w")
+
+        let edit = submenu(String(localized: "Edit"))
+        _ = add(edit, String(localized: "Undo"), Selector(("undo:")), "z")
+        _ = add(edit, String(localized: "Redo"), Selector(("redo:")), "z", [.command, .shift])
+        edit.addItem(.separator())
+        _ = add(edit, String(localized: "Cut"), #selector(NSText.cut(_:)), "x")
+        _ = add(edit, String(localized: "Copy"), #selector(NSText.copy(_:)), "c")
+        _ = add(edit, String(localized: "Paste"), #selector(NSText.paste(_:)), "v")
+        _ = add(edit, String(localized: "Paste and Match Style"), #selector(NSTextView.pasteAsPlainText(_:)), "v", [.command, .option, .shift])
+        _ = add(edit, String(localized: "Delete"), #selector(NSText.delete(_:)))
+        _ = add(edit, String(localized: "Select All"), #selector(NSText.selectAll(_:)), "a")
+        edit.addItem(.separator())
+        _ = add(edit, String(localized: "Find"), #selector(MainWindowController.findInApp(_:)), "f")
+
+        let view = submenu(String(localized: "View"))
+        _ = add(view, String(localized: "Reload Page"), #selector(MainWindowController.reloadPage(_:)), "r")
+        view.addItem(.separator())
+        _ = add(view, String(localized: "Actual Size"), #selector(MainWindowController.actualSize(_:)), "0")
+        _ = add(view, String(localized: "Zoom In"), #selector(MainWindowController.zoomIn(_:)), "+")
+        // ⌘= is the same key as ⌘+ without Shift on most keyboards.
+        let zoomInEquals = add(view, String(localized: "Zoom In"), #selector(MainWindowController.zoomIn(_:)), "=")
+        zoomInEquals.isHidden = true
+        zoomInEquals.allowsKeyEquivalentWhenHidden = true
+        _ = add(view, String(localized: "Zoom Out"), #selector(MainWindowController.zoomOut(_:)), "-")
+        view.addItem(.separator())
+        seeThroughItem = add(view, String(localized: "Always See-Through"), #selector(toggleSeeThrough(_:)), "t", [.command, .option], target: self)
+        let themes = add(view, String(localized: "Theme"), nil)
+        themes.submenu = NSMenu(title: String(localized: "Theme"))
+        for theme in AppTheme.allCases {
+            let item = add(themes.submenu!, theme.title, #selector(chooseTheme(_:)), target: self)
+            item.representedObject = theme.rawValue
+            item.image = theme.swatch
+        }
+        let icons = add(view, String(localized: "App Icon"), nil)
+        icons.submenu = NSMenu(title: String(localized: "App Icon"))
+        for icon in AppIconChoice.allCases {
+            let item = add(icons.submenu!, icon.title, #selector(chooseAppIcon(_:)), target: self)
+            item.representedObject = icon.rawValue
+            item.image = icon.preview(size: 18)
+        }
+        view.addItem(.separator())
+        _ = add(view, String(localized: "Enter Full Screen"), #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
+
+        let window = submenu(String(localized: "Window"))
+        _ = add(window, String(localized: "Minimize"), #selector(NSWindow.performMiniaturize(_:)), "m")
+        _ = add(window, String(localized: "Zoom"), #selector(NSWindow.performZoom(_:)))
+        window.addItem(.separator())
+        _ = add(window, String(localized: "Bring All to Front"), #selector(NSApplication.arrangeInFront(_:)))
+        NSApp.windowsMenu = window
+
+        let help = submenu(String(localized: "Help"))
+        _ = add(help, String(localized: "Open Ricotta in Browser"), #selector(openInBrowser(_:)), target: self)
+        NSApp.helpMenu = help
+        return main
+    }
+}
+
+/// The app's own choices, kept in UserDefaults.
+enum Preferences {
+    static let seeThroughKey = "AlwaysSeeThrough"
+    static let zoomKey = "PageZoom"
+    /// On (the default): the page background and sidebar stay see-through. Off: see-through only while loading.
+    static var seeThrough: Bool {
+        get { UserDefaults.standard.bool(forKey: seeThroughKey) }
+        set { UserDefaults.standard.set(newValue, forKey: seeThroughKey) }
+    }
+    static let appIconKey = "AppIcon"
+    static let themeKey = "Theme"
+    /// The Dock icon: one of AppIconChoice (anything else reads as the normal green icon).
+    static var appIcon: String {
+        get { AppIconChoice(rawValue: UserDefaults.standard.string(forKey: appIconKey) ?? "")?.rawValue ?? AppIconChoice.green.rawValue }
+        set { UserDefaults.standard.set(AppIconChoice(rawValue: newValue)?.rawValue ?? AppIconChoice.green.rawValue, forKey: appIconKey) }
+    }
+    /// The page's colours: one of AppTheme.
+    static var theme: String {
+        get { AppTheme(rawValue: UserDefaults.standard.string(forKey: themeKey) ?? "")?.rawValue ?? AppTheme.ricotta.rawValue }
+        set { UserDefaults.standard.set(AppTheme(rawValue: newValue)?.rawValue ?? AppTheme.ricotta.rawValue, forKey: themeKey) }
+    }
+    /// Shown in the Dock (and the app switcher) while the app runs. The app bundle itself is never changed,
+    /// since that would break its signature, so Finder and Launchpad keep the normal icon.
+    static func applyAppIcon() {
+        let choice = AppIconChoice(rawValue: appIcon) ?? .green
+        NSApp.applicationIconImage = choice == .green ? nil : NSImage(named: choice.assetName)
+    }
+    static var zoom: Double {
+        get { min(max(UserDefaults.standard.double(forKey: zoomKey), 0.5), 3) }
+        set { UserDefaults.standard.set(min(max(newValue, 0.5), 3), forKey: zoomKey) }
+    }
+}
+
+/// The Dock icon choices (Assets.xcassets, AppIcon-<name>), all made from the Ricotta icon art.
+enum AppIconChoice: String, CaseIterable {
+    case green, dark, light, mint, sky, wordmark
+    var assetName: String { "AppIcon-\(rawValue)" }
+    var title: String {
+        switch self {
+        case .green: String(localized: "Ricotta Green")
+        case .dark: String(localized: "Dark")
+        case .light: String(localized: "Light")
+        case .mint: String(localized: "Mint")
+        case .sky: String(localized: "Sky")
+        case .wordmark: String(localized: "Wordmark")
+        }
+    }
+    func preview(size: CGFloat) -> NSImage? {
+        guard let image = NSImage(named: assetName)?.copy() as? NSImage else { return nil }
+        image.size = NSSize(width: size, height: size)
+        return image
+    }
+}
+
+/// The page's colour themes (style.css, html.theme-<name>), chosen here or in Ricotta's Settings.
+enum AppTheme: String, CaseIterable {
+    case ricotta, graphite, ocean, rose, sand, midnight
+    var title: String {
+        switch self {
+        case .ricotta: String(localized: "Ricotta")
+        case .graphite: String(localized: "Graphite")
+        case .ocean: String(localized: "Ocean")
+        case .rose: String(localized: "Rose")
+        case .sand: String(localized: "Sand")
+        case .midnight: String(localized: "Midnight")
+        }
+    }
+    /// The theme's button colour, as in style.css.
+    var color: NSColor {
+        let hex: Int = switch self {
+        case .ricotta: 0x1F7A4D
+        case .graphite: 0x48484A
+        case .ocean: 0x1F5A93
+        case .rose: 0x9C2F4C
+        case .sand: 0x6E5530
+        case .midnight: 0x2C3E8C
+        }
+        return NSColor(srgbRed: CGFloat(hex >> 16 & 255) / 255, green: CGFloat(hex >> 8 & 255) / 255, blue: CGFloat(hex & 255) / 255, alpha: 1)
+    }
+    var swatch: NSImage {
+        NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in
+            self.color.setFill()
+            NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5)).fill()
+            return true
+        }
+    }
+}

@@ -55,8 +55,14 @@ function soundTone(f, dur, gain, at = 0, type = 'sine'){
    - Haptics, used sparingly as Apple's apps do: a tick when an amount changes, a success tap when
      the orders are sent, an error buzz for a wrong PIN and a bump when the press-and-hold menu opens.
    - The page's look (the dark green loading screen, then dark or light), so the app paints the same colour
-     behind the page and the status bar text stays readable. */
-const NATIVE_WORDS = ['selection','light','medium','success','warning','error','page-splash','page-dark','page-light'];
+     behind the page and the status bar text stays readable.
+   - The Mac app only (MainWindowController.swift): "Always see-through" switched in Settings, and a press
+     or double-click on an empty part of the top bar or sidebar, which moves or zooms the window, and the
+     Dock icon and colour theme chosen in Settings (icon:dark, theme:ocean). */
+const MAC_ICONS = ['green','dark','light','mint','sky','wordmark'];
+const MAC_THEMES = ['ricotta','graphite','ocean','rose','sand','midnight'];
+const NATIVE_WORDS = ['selection','light','medium','success','warning','error','page-splash','page-dark','page-light','see-through-on','see-through-off','window-drag','window-zoom',
+  ...MAC_ICONS.map(n=>'icon:' + n), ...MAC_THEMES.map(n=>'theme:' + n)];
 function tellApp(word){
   try{ if(NATIVE_WORDS.includes(word)) window.webkit?.messageHandlers?.ricotta?.postMessage(word); }catch(_){ /* never interrupt the app */ }
 }
