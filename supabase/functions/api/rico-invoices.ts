@@ -43,7 +43,8 @@ export async function invoicesFor(db: any, months: string[], read = readMonthNow
     }
     out.push(...(data ?? []));
   }
-  return { rows: out, notSetUp };
+  // Every amount in IQD (a USD receipt is kept in IQD by Ricotta Restaurant; marked paid_in USD).
+  return { rows: RC ? RC.invoicesInIqd(out) : out, notSetUp };
 }
 
 /* ---------- invoice_report ---------- */
@@ -67,7 +68,7 @@ export async function invoiceReport(db: any, w: any, a: any, emit: Emit, read = 
   const { rows: all, notSetUp } = await invoicesFor(db, [month], read);
   if (notSetUp) return { error: "not_set_up", note: "The server can't read Ricotta Restaurant yet: Rozh needs to add the Ricotta Restaurant PIN in Supabase secrets (RR_PIN, RR_BRANCH). Say so in one line." };
   const want = String(a?.supplier ?? "").trim();
-  const rows = want ? all.filter((r) => search.normalize(r.supplier_name).includes(search.normalize(want)) || Number.isFinite(search.score(want, [r.supplier_name], true))) : all;
+  const rows = want ? all.filter((r: any) => search.normalize(r.supplier_name).includes(search.normalize(want)) || Number.isFinite(search.score(want, [r.supplier_name], true))) : all;
   if (!rows.length) return { month, receipts: 0, note: want ? `No invoices from "${want}" in ${month}. Say so.` : `No invoices in ${month}. Say so.` };
   const tot = reportTotals(rows);
   emit({ type: "proposal", proposal: { id: cardId("v"), kind: "invoice_report", month, supplier: want || null, receipts: tot.receipts, IQD: tot.IQD, USD: tot.USD,
@@ -87,7 +88,7 @@ export function lastPrices(rows: any[], keep: (item: string) => boolean) {
   const fallback = known ? Number(known.rate) : RC?.DEFAULT_RATE;
   const by = new Map<string, any>();
   for (const r of sorted) {
-    const f = RC ? RC.iqdFactor(r, fallback) : 1, usd = r.currency === "USD";
+    const f = RC ? RC.iqdFactor(r, fallback) : 1, usd = r.currency === "USD" || r.paid_in === "USD";
     for (const l of r.lines ?? []) {
       if (!l?.item || !keep(l.item) || !(Number(l.unit_cost) > 0)) continue;
       const price = money(Number(l.unit_cost) * f, "IQD"), x = by.get(l.item);
