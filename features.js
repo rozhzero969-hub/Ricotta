@@ -51,6 +51,9 @@ const SETTING_ICONS = {
   // Telegram's own app icon: the white paper plane on its blue gradient.
   telegram:['linear-gradient(180deg,#37AEE2,#1E96C8)', '<svg viewBox="4.2 4.2 15.6 15.6" aria-hidden="true"><path fill="#fff" d="M5.2 11.6c3.8-1.66 6.33-2.75 7.6-3.28 3.62-1.5 4.37-1.77 4.86-1.78.11 0 .35.03.5.15.13.1.17.25.18.35.02.1.04.33.02.51-.2 2.06-1.04 7.06-1.47 9.37-.18.98-.54 1.3-.88 1.34-.75.07-1.32-.5-2.05-.97-1.13-.74-1.77-1.2-2.87-1.93-1.27-.84-.45-1.3.28-2.05.19-.2 3.48-3.19 3.55-3.46 0-.04.02-.16-.06-.23-.07-.06-.18-.04-.26-.02-.11.03-1.89 1.2-5.33 3.53-.5.35-.96.52-1.37.51-.45-.01-1.32-.26-1.97-.47-.79-.26-1.42-.4-1.37-.84.03-.23.34-.47.94-.71Z"/></svg>'],
   simpleView:['#8E8E93', SF('<rect x="4" y="5" width="16" height="14" rx="2.6"/><path d="M8 10h8M8 14h5"/>')],
+  macTheme:['#FF9500', SF('<circle cx="12" cy="12" r="8.4"/><circle cx="8.6" cy="10" r="1.3" fill="#fff"/><circle cx="12" cy="7.8" r="1.3" fill="#fff"/><circle cx="15.4" cy="10" r="1.3" fill="#fff"/>')],
+  macIcon:['#5856D6', SF('<rect x="4.4" y="4.4" width="15.2" height="15.2" rx="4.4"/><circle cx="15.6" cy="8.4" r="1.4" fill="#fff"/>')],
+  seeThrough:['#30B0C7', SF('<rect x="3.4" y="4.4" width="12.6" height="10.6" rx="2.2"/><rect x="8" y="9" width="12.6" height="10.6" rx="2.2" stroke-dasharray="2.2 2"/>')],
   darkMode:['#007AFF', SF('<circle cx="12" cy="12" r="8.2"/><path d="M12 3.8a8.2 8.2 0 0 1 0 16.4Z" fill="#fff" stroke="none"/>')],
   tables:['#32ADE6', SF('<rect x="3.6" y="4.8" width="16.8" height="14.4" rx="2.4"/><path d="M3.6 9.8h16.8M3.6 14.6h16.8M9.4 9.8v9.4M14.6 9.8v9.4"/>')],
   kitchenMode:['#5E5CE6', SF('<path d="M3.4 18.6 8.3 5.6h1.4l4.9 13M5.3 14h7.4"/><path d="M15.6 18.6l2.5-6.5h.8l2.5 6.5M16.6 16.2h3.8" stroke-width="1.7"/>')],

@@ -3511,3 +3511,70 @@ html.dark .stock-old{color:#FDBA74}
 .offline-failed .form-actions{margin-top:10px}
 .rc-pending{display:block}
 .keypad.offline-keys .key{opacity:.42}
+
+/* ---------- The Mac app (macos/, html.mac-shell from boot.js) ----------
+   The window's buttons (close, minimise, zoom) sit inside the top of the sidebar, so the page leaves room
+   for them; in full screen they are gone and so is the room. */
+@media (min-width:960px){
+  html.mac-shell:not(.mac-full-screen) .bottomnav,html.mac-shell:not(.mac-full-screen).rico-mode #app>.rico-side{padding-top:54px}
+  html.mac-shell:not(.mac-full-screen) :is(.bottomnav,.rico-side)>.side-toggle{top:10px}
+  html.mac-shell:not(.mac-full-screen).side-hidden:not(.rtl) .topbar,html.mac-shell:not(.mac-full-screen).rtl .topbar{padding-left:96px}
+}
+@media (max-width:959px){html.mac-shell:not(.mac-full-screen) .topbar{padding-left:92px}}
+@media (min-width:960px){html.mac-shell:not(.mac-full-screen) .login-map-top{padding-top:64px}}
+/* "Always see-through" (html.see-through): the Mac's blurred window background shows behind the page and
+   the sidebar, a light tint over the page side. Cards, lists, sheets, menus and fields keep their solid
+   surfaces, and buttons drawn straight on the page get a solid base, so text never sits on the wallpaper
+   itself. The top bar is clear at the top and frosted once something scrolls under it. */
+html.mac-shell.see-through{--page-tint:rgba(242,242,247,.45);--bar:rgba(246,246,248,.8)}
+html.mac-shell.see-through.dark{--page-tint:rgba(0,0,0,.3);--bar:rgba(24,24,26,.82)}
+html.mac-shell.see-through,html.mac-shell.see-through body{background:transparent}
+html.mac-shell.see-through #app{background:var(--page-tint)}
+html.mac-shell.see-through .page-ghost>.content{background:transparent}
+html.mac-shell.see-through .topbar:not(.scrolled){background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+:where(html.mac-shell.see-through) .catalog-search input,:where(html.mac-shell.see-through) :is(.search-input,.quick-btn,.tab-pill,.btn-ghost,.rico-open,.tab-scroll,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip,.pick,.sel-btn,.pill-seg,.heading-search,.kind-switch,.xt-seg,.sched-seg,.rr-ctl,.rd-search,.admin-refresh,.help-btn,.streak-chip,.rr-input,.stepper,.wipe-banner){
+  background-image:linear-gradient(var(--fill),var(--fill));background-color:var(--surface)}
+@media (hover:hover) and (pointer:fine){
+  html.mac-shell.see-through :is(.quick-btn,.btn-ghost,.tab-pill:not(.active),.pick:not(.on)):not(:disabled):hover{background:linear-gradient(var(--fill-strong),var(--fill-strong)) var(--surface)}
+}
+@media (min-width:960px){
+  html.mac-shell.see-through #app{background:none}
+  html.mac-shell.see-through #app::before{content:'';grid-column:2;grid-row:1/-1;background:var(--page-tint);pointer-events:none}
+  html.mac-shell.see-through .bottomnav,html.mac-shell.see-through.rico-mode #app>.rico-side{background:transparent}
+}
+/* Colour themes (the Mac app's Settings and View > Theme; boot.js sets html.theme-<name> before the first
+   paint). A theme changes the accent (buttons, the chosen tab, switches, links), the Order card and the
+   see-through tint. White button text keeps at least 7:1 contrast on every --accent-strong below, and the
+   dark-mode tints stay light enough to read on black. Ricotta's own green is the default (no class). */
+html.mac-shell.theme-graphite{--accent:#8E8E93;--accent-rgb:142,142,147;--on-dark:#C7C7CC;--accent-strong:#48484A;--tint:#48484A;--mint-ink:#48484A;--accent-soft:rgba(142,142,147,.2);--hero:#2C2C2E;--page-tint:rgba(236,236,240,.5)}
+html.mac-shell.theme-ocean{--accent:#3B8BD9;--accent-rgb:59,139,217;--on-dark:#93C2F1;--accent-strong:#1F5A93;--tint:#1F5A93;--mint-ink:#1F5A93;--accent-soft:rgba(59,139,217,.16);--hero:#173A5C;--page-tint:rgba(220,235,251,.45)}
+html.mac-shell.theme-rose{--accent:#D9668A;--accent-rgb:217,102,138;--on-dark:#F2A3B7;--accent-strong:#9C2F4C;--tint:#9C2F4C;--mint-ink:#9C2F4C;--accent-soft:rgba(217,102,138,.16);--hero:#4A1F2C;--page-tint:rgba(251,224,230,.45)}
+html.mac-shell.theme-sand{--accent:#C8A46A;--accent-rgb:200,164,106;--on-dark:#E8CFA0;--accent-strong:#6E5530;--tint:#6E5530;--mint-ink:#6E5530;--accent-soft:rgba(200,164,106,.2);--hero:#3A2F20;--page-tint:rgba(241,232,218,.5)}
+html.mac-shell.theme-midnight{--accent:#5E7CE2;--accent-rgb:94,124,226;--on-dark:#A3B5F5;--accent-strong:#2C3E8C;--tint:#2C3E8C;--mint-ink:#2C3E8C;--accent-soft:rgba(94,124,226,.16);--hero:#141B3A;--page-tint:rgba(222,227,245,.45)}
+html.mac-shell.dark.theme-graphite{--tint:#C7C7CC;--mint-ink:#C7C7CC;--accent-soft:rgba(142,142,147,.26);--page-tint:rgba(0,0,0,.32)}
+html.mac-shell.dark.theme-ocean{--tint:#7FB6EE;--mint-ink:#7FB6EE;--accent-soft:rgba(59,139,217,.24);--page-tint:rgba(4,16,32,.4)}
+html.mac-shell.dark.theme-rose{--tint:#F2A3B7;--mint-ink:#F2A3B7;--accent-soft:rgba(217,102,138,.24);--page-tint:rgba(32,8,16,.38)}
+html.mac-shell.dark.theme-sand{--tint:#D9C29B;--mint-ink:#D9C29B;--accent-soft:rgba(200,164,106,.24);--page-tint:rgba(28,20,8,.38)}
+html.mac-shell.dark.theme-midnight{--tint:#A3B5F5;--mint-ink:#A3B5F5;--accent-soft:rgba(94,124,226,.26);--hero:#1A2350;--page-tint:rgba(6,10,36,.45)}
+/* The theme and app icon pickers in Settings (Mac app only): a row of small round swatches and a row of
+   small icon previews, the chosen one ringed. */
+.mac-pick-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 0 4px;border-top:.5px solid var(--line)}
+.mac-pick-row>.set-head{flex:1 1 220px}
+.mac-pick-row small{font-size:.8125rem;color:var(--ink-soft);margin-top:2px}
+.mac-picks{display:flex;flex-wrap:wrap;gap:10px}
+.mac-swatch{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:var(--sw);box-shadow:inset 0 0 0 .5px rgba(0,0,0,.15)}
+.mac-swatch[aria-checked=true],.mac-icon[aria-checked=true]{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--sw,var(--tint))}
+.mac-swatch-ricotta{--sw:#1F7A4D}.mac-swatch-graphite{--sw:#48484A}.mac-swatch-ocean{--sw:#1F5A93}.mac-swatch-rose{--sw:#9C2F4C}.mac-swatch-sand{--sw:#6E5530}.mac-swatch-midnight{--sw:#2C3E8C}
+.mac-icon{display:grid;place-items:center;width:40px;height:40px;padding:0;border:0;border-radius:10px;background:var(--ib);color:var(--ii);box-shadow:inset 0 0 0 .5px rgba(0,0,0,.14);--sw:var(--tint)}
+.mac-icon b{position:relative;font:700 21px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:-.02em}
+.mac-icon b i{position:absolute;top:-1px;right:-6px;width:5px;height:5px;border-radius:50%;background:#34C27A}
+.mac-icon-wordmark b{font:800 9.5px/1 'Manrope',var(--font);letter-spacing:-.04em}
+.mac-icon-wordmark b i{top:auto;bottom:0;right:-4px;width:3px;height:3px}
+.mac-icon-green{--ib:#152B22;--ii:#F6F3EC}.mac-icon-dark{--ib:#1C1C1E;--ii:#F5F5F7}.mac-icon-light{--ib:#FAFAF7;--ii:#14382C}
+.mac-icon-mint{--ib:#DDF3E6;--ii:#1F6B46}.mac-icon-sky{--ib:#DCEBFB;--ii:#1F5A93}.mac-icon-wordmark{--ib:#14382C;--ii:#F2F7F4}
+/* The Order card's words take the theme's own light tones. */
+html.mac-shell.theme-graphite{--t-eyebrow:#C7C7CC;--t-word:#E5E5EA;--t-sub:#D1D1D6;--t-foot:#D1D1D6;--t-bright:#E5E5EA}
+html.mac-shell.theme-ocean{--t-eyebrow:#A9C8EA;--t-word:#D6E6F7;--t-sub:#BCD3EC;--t-foot:#BFD5EC;--t-bright:#9CCBF6}
+html.mac-shell.theme-rose{--t-eyebrow:#F0B8C7;--t-word:#F8DCE3;--t-sub:#EDC3CE;--t-foot:#EEC6D0;--t-bright:#F7AFC2}
+html.mac-shell.theme-sand{--t-eyebrow:#E2CFAE;--t-word:#F1E8DA;--t-sub:#E3D5BE;--t-foot:#E5D8C2;--t-bright:#F0D7A8}
+html.mac-shell.theme-midnight{--t-eyebrow:#B4C2F2;--t-word:#DCE2F8;--t-sub:#C3CEF0;--t-foot:#C6D0F2;--t-bright:#AFC0FA}

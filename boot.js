@@ -13,6 +13,17 @@ window.__splashStart = performance.now();
   var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true || window.RICOTTA_NATIVE_SHELL === true;
   if(standalone && window.matchMedia && matchMedia('(pointer: coarse)').matches) document.documentElement.classList.add('app-shell');
 })();
+/* Inside the Mac app (macos/): the app sets window.RICOTTA_MAC_SHELL before the page runs, and
+   RICOTTA_SEE_THROUGH while "Always see-through" is on, and RICOTTA_THEME for its colour theme. Then the page leaves room for the window's
+   buttons and, when see-through, lets the window's blurred background show (style.css). Browsers,
+   phones and the iPhone app never set these, so nothing changes there. */
+(function(){
+  if(window.RICOTTA_MAC_SHELL !== true) return;
+  document.documentElement.classList.add('mac-shell');
+  if(window.RICOTTA_SEE_THROUGH === true) document.documentElement.classList.add('see-through');
+  // The colour theme chosen in the Mac app, before anything paints (only known names).
+  if(['graphite','ocean','rose','sand','midnight'].indexOf(window.RICOTTA_THEME) >= 0) document.documentElement.classList.add('theme-' + window.RICOTTA_THEME);
+})();
 /* Light or dark before the first screen shows: the phone's setting unless Settings chose one. */
 (function(){
   try{

@@ -837,7 +837,8 @@ async function hideSplash(minShown = 1150){
   const el = document.getElementById('splash');
   if(!el || el.dataset.state === 'leaving') return;
   await cssReady();
-  if(reducedMotion()) minShown=0;
+  // The Mac app shows its own see-through loading screen over this one, so there is nothing to wait for.
+  if(reducedMotion() || macShell()) minShown=0;
   const wait = Math.max(0, minShown - (performance.now() - (window.__splashStart || 0)));
   await new Promise(r=>setTimeout(r, wait));
   el.dataset.state = 'leaving';
@@ -1938,6 +1939,49 @@ function syncAppearance(){
   // The iPhone app matches it behind the page and in the status bar.
   tellApp(splash ? 'page-splash' : dark ? 'page-dark' : 'page-light');
 }
+/* ============ The Mac app (macos/) ============
+   boot.js marks html.mac-shell (and html.see-through while "Always see-through" is on). The app sends a
+   few fixed words as a "ricotta-mac" event: Settings (Command-comma), Find (Command-F), the see-through
+   switch from its View menu, and full screen (no room is kept for the window buttons then). */
+const macShell = ()=>document.documentElement.classList.contains('mac-shell');
+function setSeeThrough(on){
+  document.documentElement.classList.toggle('see-through', on);
+  const box = document.getElementById('seeThroughSwitch');
+  if(box) box.checked = on;
+}
+/* The colour theme (style.css, html.theme-<name>) and the Dock icon, chosen in Settings or the Mac app's View menu. */
+let macIcon = MAC_ICONS.includes(window.RICOTTA_APP_ICON) ? window.RICOTTA_APP_ICON : 'green';
+const macTheme = ()=>MAC_THEMES.find(n=>document.documentElement.classList.contains('theme-' + n)) || 'ricotta';
+function setMacTheme(name){
+  MAC_THEMES.forEach(n=>document.documentElement.classList.toggle('theme-' + n, n === name && n !== 'ricotta'));
+  document.querySelectorAll('[data-mac-theme]').forEach(b=>b.setAttribute('aria-checked', String(b.dataset.macTheme === name)));
+}
+function setMacIcon(name){
+  macIcon = name;
+  document.querySelectorAll('[data-mac-icon]').forEach(b=>b.setAttribute('aria-checked', String(b.dataset.macIcon === name)));
+}
+function focusAppSearch(){
+  const box = [...document.querySelectorAll('.content .search-input, .content input[type=search], .rico-side-search input')].find(el=>el.offsetParent && !el.disabled);
+  if(box){ box.focus(); box.select?.(); return; }
+  if(typeof openSpotlight === 'function') openSpotlight();
+}
+window.addEventListener('ricotta-mac', e=>{
+  if(!macShell()) return;
+  const word = e.detail;
+  if(word === 'see-through-on' || word === 'see-through-off') setSeeThrough(word === 'see-through-on');
+  else if(word === 'full-screen-on' || word === 'full-screen-off') document.documentElement.classList.toggle('mac-full-screen', word === 'full-screen-on');
+  else if(/^theme:/.test(word) && MAC_THEMES.includes(word.slice(6))) setMacTheme(word.slice(6));
+  else if(/^icon:/.test(word) && MAC_ICONS.includes(word.slice(5))) setMacIcon(word.slice(5));
+  else if(word === 'settings' && state.account && canOpen('settings')) goView('settings');
+  else if(word === 'find' && state.account) focusAppSearch();
+});
+/* An empty part of the top bar or the sidebar works like a Mac title bar: press and drag to move the
+   window, double-click to zoom it. */
+document.addEventListener('mousedown', e=>{
+  if(!macShell() || e.button !== 0 || !e.target.closest?.('.topbar, .bottomnav, .rico-side')) return;
+  if(e.target.closest('button, a, input, textarea, select, label, summary, [role=button], [tabindex], [contenteditable], .navbtn, .chip, .brand-slot>*, .rico-side-list')) return;
+  tellApp(e.detail === 2 ? 'window-zoom' : 'window-drag');
+});
 /* A small badge identifying who made a change. */
 function whoBadge(account){
   const name = accountLabel(account);
@@ -4476,7 +4520,18 @@ function fmtDateTime(iso){
    in Admin. */
 function renderAppearanceRow(){
   const dm=darkMode();
-  return `<div class="dark-row"><div class="set-head">${setIcon('darkMode')}<span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span></div><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>`;
+  return `<div class="dark-row"><div class="set-head">${setIcon('darkMode')}<span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span></div><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>${renderSeeThroughRow()}`;
+}
+/* The Mac app only: the window's blurred background behind the page and sidebar, kept on this Mac (the app
+   remembers it; View > Always See-Through is the same switch). */
+function renderSeeThroughRow(){
+  if(!macShell()) return '';
+  const theme = macTheme();
+  const themes = MAC_THEMES.map(n=>`<button type="button" role="radio" class="mac-swatch mac-swatch-${n}" data-mac-theme="${n}" aria-checked="${n === theme}" aria-label="${esc(t('macTheme_' + n))}" title="${esc(t('macTheme_' + n))}"></button>`).join('');
+  const icons = MAC_ICONS.map(n=>`<button type="button" role="radio" class="mac-icon mac-icon-${n}" data-mac-icon="${n}" aria-checked="${n === macIcon}" aria-label="${esc(t('macIcon_' + n))}" title="${esc(t('macIcon_' + n))}">${n === 'wordmark' ? '<b dir="ltr">ricotta<i></i></b>' : '<b dir="ltr">R<i></i></b>'}</button>`).join('');
+  return `<label class="check-row preference-row has-ico"><input type="checkbox" id="seeThroughSwitch" ${document.documentElement.classList.contains('see-through') ? 'checked' : ''}>${setIcon('seeThrough')}<span>${esc(t('seeThrough'))}<small>${esc(t('seeThroughHint'))}</small></span></label>
+    <div class="mac-pick-row"><div class="set-head">${setIcon('macTheme')}<span>${esc(t('macThemeLabel'))}<small>${esc(t('macThemeHint'))}</small></span></div><div class="mac-picks" role="radiogroup" aria-label="${esc(t('macThemeLabel'))}">${themes}</div></div>
+    <div class="mac-pick-row"><div class="set-head">${setIcon('macIcon')}<span>${esc(t('macIconLabel'))}<small>${esc(t('macIconHint'))}</small></span></div><div class="mac-picks" role="radiogroup" aria-label="${esc(t('macIconLabel'))}">${icons}</div></div>`;
 }
 function currentOutbox(){ return outbox().filter(j=>!j.kind && outboxJobAccount(j)===state.account); }   // orders (kept changes show on their own screens)
 function renderPendingSync(){
@@ -4579,6 +4634,10 @@ async function withBusy(btn, fn){
 }
 /* Appearance changes update in place, preserving scroll position. */
 function bindAppearance(){
+  const see = document.getElementById('seeThroughSwitch');
+  if(see) see.onchange = ()=>{ setSeeThrough(see.checked); tellApp(see.checked ? 'see-through-on' : 'see-through-off'); };
+  document.querySelectorAll('[data-mac-theme]').forEach(b=>b.onclick = ()=>{ setMacTheme(b.dataset.macTheme); tellApp('theme:' + b.dataset.macTheme); });
+  document.querySelectorAll('[data-mac-icon]').forEach(b=>b.onclick = ()=>{ setMacIcon(b.dataset.macIcon); tellApp('icon:' + b.dataset.macIcon); });
   document.querySelectorAll('[data-dark]').forEach(b=>b.onclick=()=>{
     setSetting('darkMode',b.dataset.dark).then(()=>{applyPrefs();syncAppearance();});applyPrefs();syncAppearance();
     document.querySelectorAll('[data-dark]').forEach(x=>x.setAttribute('aria-checked',String(x.dataset.dark===darkMode())));

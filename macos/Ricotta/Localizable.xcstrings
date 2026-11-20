@@ -1,0 +1,886 @@
+{
+  "sourceLanguage": "en",
+  "version": "1.0",
+  "strings": {
+    "About Ricotta": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "دەربارەی ریکۆتا"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حول ريكوتا"
+          }
+        }
+      }
+    },
+    "Actual Size": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "قەبارەی ڕاستەقینە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الحجم الفعلي"
+          }
+        }
+      }
+    },
+    "Always See-Through": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هەمیشە شەفاف"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شفاف دائمًا"
+          }
+        }
+      }
+    },
+    "Bring All to Front": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هێنانی هەموو بۆ پێشەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إحضار الكل إلى المقدمة"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پاشگەزبوونەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إلغاء"
+          }
+        }
+      }
+    },
+    "Can’t Open Ricotta": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ریکۆتا نەکرایەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر فتح ريكوتا"
+          }
+        }
+      }
+    },
+    "Check your internet connection, then try again.": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هێڵی ئینتەرنێتەکەت بپشکنە، پاشان دووبارە هەوڵ بدەرەوە."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحقّق من اتصالك بالإنترنت، ثم حاول مرة أخرى."
+          }
+        }
+      }
+    },
+    "Close Window": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "داخستنی پەنجەرە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إغلاق النافذة"
+          }
+        }
+      }
+    },
+    "Copy": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لەبەرگرتنەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نسخ"
+          }
+        }
+      }
+    },
+    "Cut": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "بڕین"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "قص"
+          }
+        }
+      }
+    },
+    "Delete": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سڕینەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حذف"
+          }
+        }
+      }
+    },
+    "Edit": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "دەستکاری"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحرير"
+          }
+        }
+      }
+    },
+    "Enter Full Screen": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پڕ بە شاشە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الدخول إلى ملء الشاشة"
+          }
+        }
+      }
+    },
+    "Export Couldn’t Finish": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هەناردەکردن تەواو نەبوو"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر إكمال التصدير"
+          }
+        }
+      }
+    },
+    "File": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فایل"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ملف"
+          }
+        }
+      }
+    },
+    "Find": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گەڕان"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "بحث"
+          }
+        }
+      }
+    },
+    "Help": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یارمەتی"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مساعدة"
+          }
+        }
+      }
+    },
+    "Hide Others": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شاردنەوەی ئەوانی تر"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إخفاء الآخرين"
+          }
+        }
+      }
+    },
+    "Hide Ricotta": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شاردنەوەی ریکۆتا"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إخفاء ريكوتا"
+          }
+        }
+      }
+    },
+    "Minimize": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "بچووککردنەوەی پەنجەرە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تصغير النافذة"
+          }
+        }
+      }
+    },
+    "New Window": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پەنجەرەی نوێ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نافذة جديدة"
+          }
+        }
+      }
+    },
+    "OK": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "باشە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حسنًا"
+          }
+        }
+      }
+    },
+    "Open Ricotta in Browser": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کردنەوەی ریکۆتا لە وێبگەڕ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فتح ريكوتا في المتصفح"
+          }
+        }
+      }
+    },
+    "Open in Browser": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لە وێبگەڕ بیکەرەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فتح في المتصفح"
+          }
+        }
+      }
+    },
+    "Paste": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لکاندن"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لصق"
+          }
+        }
+      }
+    },
+    "Paste and Match Style": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لکاندن بە هەمان شێواز"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لصق ومطابقة النمط"
+          }
+        }
+      }
+    },
+    "Please try the export again.": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تکایە دووبارە هەناردە بکەرەوە."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يرجى إعادة محاولة التصدير."
+          }
+        }
+      }
+    },
+    "Quit Ricotta": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "داخستنی ریکۆتا"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إنهاء ريكوتا"
+          }
+        }
+      }
+    },
+    "Redo": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "دووبارەکردنەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة"
+          }
+        }
+      }
+    },
+    "Reload Page": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نوێکردنەوەی پەڕە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة تحميل الصفحة"
+          }
+        }
+      }
+    },
+    "Select All": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هەڵبژاردنی هەموو"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحديد الكل"
+          }
+        }
+      }
+    },
+    "Services": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "خزمەتگوزارییەکان"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الخدمات"
+          }
+        }
+      }
+    },
+    "Settings…": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ڕێکخستنەکان…"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الإعدادات…"
+          }
+        }
+      }
+    },
+    "Show All": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پیشاندانی هەموو"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إظهار الكل"
+          }
+        }
+      }
+    },
+    "Try Again": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "دووبارە هەوڵ بدەرەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حاول مرة أخرى"
+          }
+        }
+      }
+    },
+    "Undo": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گەڕاندنەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تراجع"
+          }
+        }
+      }
+    },
+    "View": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پیشاندان"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عرض"
+          }
+        }
+      }
+    },
+    "Window": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پەنجەرە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نافذة"
+          }
+        }
+      }
+    },
+    "Zoom": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گەورەکردنی پەنجەرە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تكبير/تصغير"
+          }
+        }
+      }
+    },
+    "Zoom In": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گەورەکردن"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تكبير"
+          }
+        }
+      }
+    },
+    "Zoom Out": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "بچووککردنەوە"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تصغير"
+          }
+        }
+      }
+    },
+    "Theme": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ڕەنگی ئەپ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "السمة"
+          }
+        }
+      }
+    },
+    "App Icon": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ئایکۆنی ئەپ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أيقونة التطبيق"
+          }
+        }
+      }
+    },
+    "Ricotta Green": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سەوزی ریکۆتا"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أخضر ريكوتا"
+          }
+        }
+      }
+    },
+    "Dark": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تاریک"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "داكن"
+          }
+        }
+      }
+    },
+    "Light": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ڕووناک"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فاتح"
+          }
+        }
+      }
+    },
+    "Mint": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نەعنایی"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نعناعي"
+          }
+        }
+      }
+    },
+    "Sky": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ئاسمانی"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سماوي"
+          }
+        }
+      }
+    },
+    "Wordmark": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ناوی ریکۆتا"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اسم ريكوتا"
+          }
+        }
+      }
+    },
+    "Ricotta": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ریکۆتا"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ريكوتا"
+          }
+        }
+      }
+    },
+    "Graphite": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "خۆڵەمێشی"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "رمادي"
+          }
+        }
+      }
+    },
+    "Ocean": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شینی دەریایی"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أزرق المحيط"
+          }
+        }
+      }
+    },
+    "Rose": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پەمەیی"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "وردي"
+          }
+        }
+      }
+    },
+    "Sand": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لمی"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "رملي"
+          }
+        }
+      }
+    },
+    "Midnight": {
+      "localizations": {
+        "ckb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شینی شەو"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أزرق الليل"
+          }
+        }
+      }
+    }
+  }
+}

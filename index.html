@@ -32,6 +32,9 @@
      the time and battery while it shows. A green bar paints the word in, the dot pops, and the bar
      below fills while the app loads (it completes as the screen lifts). */
   html.booting,html.booting body{background:#14382C;overflow:hidden;margin:0}
+  /* The Mac app shows its own see-through loading screen instead (boot.js marks html.mac-shell). */
+  html.mac-shell.booting,html.mac-shell.booting body{background:transparent}
+  html.mac-shell .splash{opacity:0}
   .splash{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;overflow:hidden;
     background:#14382C;color:#F2F7F4;direction:ltr;font-family:'RicottaMark','Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;
     -webkit-user-select:none;user-select:none}
