@@ -54,7 +54,9 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.waitForFunction(()=>state.items.find(i=>i.id==='cups').lowAlert===12);
  assert.deepEqual(puts.at(-1),{id:'cups',level:12});
  assert.equal(await row('cups').evaluate(e=>e.classList.contains('low-alert')),true,'10 cartons with an alert at 12: yellow at once');
- assert.match(await row('cups').locator('.item-stock').innerText(),/Low$/);
+ // The row was just drawn again (rows are content-visibility:auto, so their text shows from the next frame).
+ await page.waitForFunction(()=>/Low$/.test(document.querySelector('#orderResults .item-row[data-item-id="cups"] .item-stock')?.innerText||''),null,{timeout:5000})
+  .catch(async()=>{throw new Error('cups stock line should end in Low: '+await row('cups').innerHTML());});
  // Off again.
  await box.locator('[data-low-on]').uncheck();
  await page.waitForFunction(()=>state.items.find(i=>i.id==='cups').lowAlert===undefined);
