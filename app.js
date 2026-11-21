@@ -4353,7 +4353,11 @@ function mountLowAlert(box, itemId, {auto = false} = {}){
      false when the level can't be read (the form then stays open). */
   const saveTyped = async ()=>{
     const input = box.isConnected && box.querySelector('[data-low-level]'); if(!input) return true;
-    const level = input.value.trim() === '' ? null : globalThis.RicottaStockLink.lowLevel(input.value);
+    // A text box now (no arrows), so read it as people type it: Kurdish or Arabic digits, and a comma or ٫
+    // as the decimal point (2,5 kilos), as a number box used to.
+    const typed = input.value.trim().replace(/[٠-٩]/g, d=>d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d=>d.charCodeAt(0) - 0x6f0)
+      .replace(/[٫,]/g, '.').replace(/[\s\u200e\u200f\u061c]/g, '');
+    const level = typed === '' ? null : /^\d*\.?\d+$/.test(typed) ? globalThis.RicottaStockLink.lowLevel(typed) : null;
     if(level === null){ toast(t('lowAlertInvalid'), 'error'); input.focus(); return false; }
     if(level === item()?.lowAlert) return true;
     await save(level);

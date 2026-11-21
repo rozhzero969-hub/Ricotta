@@ -68,7 +68,7 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  assert.equal(await page.locator('#mfLow [data-low-level]').inputValue(),'4');
  // The level in the form goes with the form's one Save.
  const putsBefore=puts.length;
- await page.locator('#mfLow [data-low-level]').fill('5');
+ await page.locator('#mfLow [data-low-level]').fill('٥');   // an Arabic or Kurdish keyboard's 5
  assert.equal(puts.length,putsBefore,'nothing is sent while typing');
  await page.evaluate(()=>[...document.querySelectorAll('.modal-overlay button')].find(b=>b.textContent.trim()==='Save').click());
  await page.waitForFunction(()=>state.items.find(i=>i.id==='mozz').lowAlert===5);
