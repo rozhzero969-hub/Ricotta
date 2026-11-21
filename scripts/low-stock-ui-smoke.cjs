@@ -32,26 +32,31 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
 
  // At or below its level: yellow, and the line says the level in its counting unit.
  assert.equal(await row('mozz').evaluate(e=>e.classList.contains('low-alert')),true,'Mozzarella at 3 of 4 kilos is yellow');
- assert.match(await row('mozz').locator('.item-stock').innerText(),/3 کیلۆ[\s\S]*Low \(alert at 4 کیلۆ\)/);
+ assert.match(await row('mozz').locator('.item-stock').innerText(),/3 کیلۆ[\s\S]*Low$/,'just Low: no alert level next to the stock');
+ assert.doesNotMatch(await row('mozz').locator('.item-stock').innerText(),/alert at/);
  const bg=await row('mozz').evaluate(e=>getComputedStyle(e).backgroundColor);
  assert.match(bg,/rgba\(250, 204, 21/,'a yellow background');
  assert.equal(await row('cups').evaluate(e=>e.classList.contains('low-alert')),false,'no level: not yellow');
 
- // The setting in the item's stock sheet: on, a level, Save.
+ // The setting in the item's stock sheet (no Save of its own there: the level saves when the box is left).
  await page.evaluate(()=>openStockLinkSheet('cups'));
  const box=page.locator('#ctxLow');
  await box.locator('[data-low-on]').waitFor();
  assert.equal(await box.locator('[data-low-level]').count(),0,'off: no level yet');
  await box.locator('[data-low-on]').check();
  await box.locator('[data-low-level]').waitFor();
+ assert.equal(await box.locator('[data-low-save]').count(),0,'no separate Save button');
+ assert.equal(await box.locator('[data-low-level]').getAttribute('type'),'text','no up and down arrows');
  assert.match(await box.innerText(),/At or below[\s\S]*کارتۆن[\s\S]*Counted in کارتۆن[\s\S]*Now: 10 کارتۆن/,'counted in its counting format');
- await box.locator('[data-low-level]').fill('-2');await box.locator('[data-low-save]').click();
+ await box.locator('[data-low-level]').fill('-2');await box.locator('[data-low-level]').press('Enter');
  assert.equal(puts.length,0,'a level below 0 is not sent');
- await box.locator('[data-low-level]').fill('12');await box.locator('[data-low-save]').click();
+ await box.locator('[data-low-level]').fill('12');await box.locator('[data-low-level]').press('Enter');
  await page.waitForFunction(()=>state.items.find(i=>i.id==='cups').lowAlert===12);
  assert.deepEqual(puts.at(-1),{id:'cups',level:12});
  assert.equal(await row('cups').evaluate(e=>e.classList.contains('low-alert')),true,'10 cartons with an alert at 12: yellow at once');
- assert.match(await row('cups').locator('.item-stock').innerText(),/alert at 12 کارتۆن/);
+ // The row was just drawn again (rows are content-visibility:auto, so their text shows from the next frame).
+ await page.waitForFunction(()=>/Low$/.test(document.querySelector('#orderResults .item-row[data-item-id="cups"] .item-stock')?.innerText||''),null,{timeout:5000})
+  .catch(async()=>{throw new Error('cups stock line should end in Low: '+await row('cups').innerHTML());});
  // Off again.
  await box.locator('[data-low-on]').uncheck();
  await page.waitForFunction(()=>state.items.find(i=>i.id==='cups').lowAlert===undefined);
@@ -63,6 +68,16 @@ const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http:
  await page.evaluate(()=>openItemModal('mozz'));
  await page.locator('#mfLow [data-low-level]').waitFor();
  assert.equal(await page.locator('#mfLow [data-low-level]').inputValue(),'4');
+ // The level in the form goes with the form's one Save.
+ const putsBefore=puts.length;
+ await page.locator('#mfLow [data-low-level]').fill('٥');   // an Arabic or Kurdish keyboard's 5
+ assert.equal(puts.length,putsBefore,'nothing is sent while typing');
+ await page.evaluate(()=>[...document.querySelectorAll('.modal-overlay button')].find(b=>b.textContent.trim()==='Save').click());
+ await page.waitForFunction(()=>state.items.find(i=>i.id==='mozz').lowAlert===5);
+ assert.deepEqual(puts.at(-1),{id:'mozz',level:5},'Save sends the alert level');
+ await page.waitForFunction(()=>!document.querySelector('#mfLow'));
+ await page.evaluate(()=>openItemModal('mozz'));
+ await page.locator('#mfLow [data-low-level]').waitFor();
  await page.evaluate(()=>closeModal(document.querySelector('#mfLow').closest('.modal-overlay')));
  await page.waitForFunction(()=>!document.querySelector('#mfLow'));
  await page.evaluate(()=>openItemModal('milk'));

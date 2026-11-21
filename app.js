@@ -2672,7 +2672,7 @@ function itemStockLine(i){
   const alerted = itemLowAlert(i);
   const lvl = st.empty ? 'empty' : alerted ? 'low' : ['low', 'ok'].includes(st.level) ? st.level : '';
   const when = [st.at ? t('stockReadAgo')(timeAgo(st.at)) : '', lvl === 'low' && !alerted ? t('stockLowHint') : ''].filter(Boolean).join(' · ');
-  const tag = lvl !== 'low' ? '' : alerted ? t('lowAlertTag')(stockQty(i.lowAlert), st.count.unit || '') : t('stockLowTag');
+  const tag = lvl !== 'low' ? '' : t('stockLowTag');
   // Read more than 30 minutes ago (the reader is behind): say so calmly next to the number.
   const stale = stockIsOld(st.at) ? ` <span class="stock-old" dir="auto">${esc(t('stockOld')(timeAgo(st.at)))}</span>` : '';
   return `<div class="item-stock${lvl ? ' lvl-' + lvl : ''}${st.empty ? ' none' : ''}"${when ? ` title="${esc(when)}"` : ''}>${stockHtml(st)}${tag ? ` <span class="item-stock-tag" dir="auto">${esc(tag)}</span>` : ''}${stale}</div>`;
@@ -3171,7 +3171,7 @@ function placeStockParts(layer, item){
 /* The item's stock link on its own, from the item menu: suggestions first, search for anything else. */
 function openStockLinkSheet(id){
   const {el} = openKitchenSheet('stock-link-sheet', `<div class="sel-title" dir="auto">${esc(state.items.find(i=>i.id === id)?.name || '')}</div><div class="field stock-link" id="ctxStock"></div><div class="field low-alert" id="ctxLow"></div>`, t('cmLinkStock'));
-  mountStockLink(el.querySelector('#ctxStock'), id, {onSaved:mountLowAlert(el.querySelector('#ctxLow'), id)});
+  mountStockLink(el.querySelector('#ctxStock'), id, {onSaved:mountLowAlert(el.querySelector('#ctxLow'), id, {auto:true})});
 }
 async function copyItemName(name){
   try{ await navigator.clipboard.writeText(name); toast(t('cmCopied')); }
@@ -4022,6 +4022,7 @@ function openItemModal(id, opts = {}){
   const banner = existing
     ? editingBanner(existing.name, `${unitLabel(existing.unit)} \u00b7 ${existing.supplierId ? supplierName(existing.supplierId) : t('noSupplier')}`)
     : '';
+  let lowCommit = null;   // the low stock alert's commit(), set when the form opens (existing items only)
   showFormModal({
     title: existing ? t('editItem') : t(startKind === 'expense' ? 'addExpenseItem' : 'addItem'),
     banner,
@@ -4041,7 +4042,7 @@ function openItemModal(id, opts = {}){
     okLabel: t('save'),
     againLabel: existing ? null : t('saveAndAddAnother'),
     onOpen: (box)=>{
-      if(existing){ const low = mountLowAlert(box.querySelector('#mfLow'), existing.id); mountStockLink(box.querySelector('#mfStock'), existing.id, {onSaved:low}); }
+      if(existing){ const low = mountLowAlert(box.querySelector('#mfLow'), existing.id); lowCommit = low.commit; mountStockLink(box.querySelector('#mfStock'), existing.id, {onSaved:low}); }
       const sel = box.querySelector('#mfSupplier');
       const hint = box.querySelector('#mfSupHint');
       if(sel && hint) sel.onchange = ()=>{
@@ -4068,6 +4069,8 @@ function openItemModal(id, opts = {}){
       if(!name) return {error: t('nameRequired')};
       if(!unit) return {error: t('chooseUnit')};
       if(!supplierId && (!existing || existing.supplierId)) return {error: t('supplierRequired')};
+      // The low stock alert level goes with the form's Save (there is no separate Save for it).
+      if(lowCommit && !(await lowCommit())) return {error: t('lowAlertInvalid')};
       const newSupName = supplierId ? (state.suppliers.find(s=>s.id===supplierId)?.name || '') : '';
       const editing = existing;
       if(editing){
@@ -4303,9 +4306,11 @@ function mountStockLink(box, itemId, opts = {}){
   if(open) box.querySelector('#mfStockSearch')?.focus();
 }
 /* The low stock alert of one item: on or off, and the level, in its stock item's counting format (the
-   unit Ricotta Restaurant counts it in: cartons, pieces, kilos). It saves on its own, apart from the
-   form's Save. Returns a function that paints it again (after the stock link changed). */
-function mountLowAlert(box, itemId){
+   unit Ricotta Restaurant counts it in: cartons, pieces, kilos). The switch saves at once; the level is
+   saved by the form's own Save (commit()), or, where there is no form Save (the stock link sheet), when
+   the box is left or Enter is pressed. Returns a function that paints it again (after the stock link
+   changed), with .commit() on it. */
+function mountLowAlert(box, itemId, {auto = false} = {}){
   if(!box) return ()=>{};
   let on = null;   // switched on, level not saved yet
   const item = ()=>state.items.find(x=>x.id === itemId);
@@ -4317,7 +4322,7 @@ function mountLowAlert(box, itemId){
     const now = st?.count ? `${stockQty(st.count.qty)} ${unit}`.trim() : '';
     box.innerHTML = `<label>${esc(t('lowAlertLabel'))}</label>
       <label class="check-row low-alert-on"><input type="checkbox" data-low-on ${isOn ? 'checked' : ''}><span>${esc(t('lowAlertOn'))}</span></label>
-      ${isOn ? `<div class="low-alert-level"><label for="lowLevel${esc(i.id)}">${esc(t('lowAlertAt'))}</label><input id="lowLevel${esc(i.id)}" type="number" inputmode="decimal" min="0" max="999999" step="any" placeholder="4" value="${i.lowAlert ?? ''}" data-low-level><b dir="auto">${esc(unit)}</b><button type="button" class="btn btn-primary" data-low-save>${esc(t('save'))}</button></div>
+      ${isOn ? `<div class="low-alert-level"><label for="lowLevel${esc(i.id)}">${esc(t('lowAlertAt'))}</label><input id="lowLevel${esc(i.id)}" type="text" inputmode="decimal" autocomplete="off" placeholder="4" value="${i.lowAlert ?? ''}" data-low-level><b dir="auto">${esc(unit)}</b></div>
       ${now ? `<div class="field-hint" dir="auto">${esc(t('lowAlertHint')(unit, now))}</div>` : ''}` : ''}`;
   };
   const save = async level=>{
@@ -4344,11 +4349,19 @@ function mountLowAlert(box, itemId){
     if(state.view === 'order') refreshOrderResults?.();
     toast(level === null ? t('lowAlertOff') : t('lowAlertSaved'));
   };
-  const saveTyped = ()=>{
-    const input = box.querySelector('[data-low-level]'); if(!input) return;
-    const level = input.value.trim() === '' ? null : globalThis.RicottaStockLink.lowLevel(input.value);
-    if(level === null){ toast(t('lowAlertInvalid'), 'error'); input.focus(); return; }
-    return save(level);
+  /* The typed level, saved only when it changed. True when there is nothing wrong (saved or unchanged),
+     false when the level can't be read (the form then stays open). */
+  const saveTyped = async ()=>{
+    const input = box.isConnected && box.querySelector('[data-low-level]'); if(!input) return true;
+    // A text box now (no arrows), so read it as people type it: Kurdish or Arabic digits, and a comma or ٫
+    // as the decimal point (2,5 kilos), as a number box used to.
+    const typed = input.value.trim().replace(/[٠-٩]/g, d=>d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d=>d.charCodeAt(0) - 0x6f0)
+      .replace(/[٫,]/g, '.').replace(/[\s\u200e\u200f\u061c]/g, '');
+    const level = typed === '' ? null : /^\d*\.?\d+$/.test(typed) ? globalThis.RicottaStockLink.lowLevel(typed) : null;
+    if(level === null){ toast(t('lowAlertInvalid'), 'error'); input.focus(); return false; }
+    if(level === item()?.lowAlert) return true;
+    await save(level);
+    return true;
   };
   box.onchange = e=>{
     const cb = e.target.closest?.('[data-low-on]'); if(!cb) return;
@@ -4357,10 +4370,14 @@ function mountLowAlert(box, itemId){
     on = false;
     if(i.lowAlert !== null && i.lowAlert !== undefined) save(null); else paint();
   };
-  box.onclick = e=>{ const b = e.target.closest('[data-low-save]'); if(b) withBusy(b, saveTyped); };
-  box.onkeydown = e=>{ if(e.key === 'Enter' && e.target.matches?.('[data-low-level]')){ e.preventDefault(); saveTyped(); } };
+  if(auto){
+    box.addEventListener('focusout', e=>{ if(e.target.matches?.('[data-low-level]')) saveTyped(); });
+    box.onkeydown = e=>{ if(e.key === 'Enter' && e.target.matches?.('[data-low-level]')){ e.preventDefault(); e.target.blur(); } };
+  }
   paint();
-  return ()=>{ on = null; paint(); };
+  const repaint = ()=>{ on = null; paint(); };
+  repaint.commit = saveTyped;
+  return repaint;
 }
 /* Link many items quickly (Manage, Items): first the links that may be wrong (stockDoubt()), then every
    item not linked yet, each with its best matches, one tap each, and a search for any other stock item

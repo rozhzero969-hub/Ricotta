@@ -29,6 +29,8 @@ function tableStats(){
   return tableStatsCache;
 }
 const QUIET_MS = 30 * 86400000;
+/* An item with a low stock alert set (Manage, Items: its column and the With alert / No alert chips). */
+const itemHasAlert = i=>i.lowAlert !== null && i.lowAlert !== undefined;
 /* Manage showing expense items: the empty list says so and its button adds an expense item. */
 const expenseList = kind=> kind === 'items' && typeof manageSplit === 'function' && manageSplit() && manageKind() === 'expense';
 const emptyRows = (kind, all)=> expenseList(kind) ? emptyState(t(all ? 'noExpenseItemsYet' : 'tableNoneHere'), all && canDo('catalog') ? 'expense' : null)
@@ -45,6 +47,8 @@ const TABLES = {
       {id:'month', label:()=>t('fileOrdersMonth'), value:i=>String(tableStats().items[i.id]?.orders.size || 0), sort:i=>tableStats().items[i.id]?.orders.size || 0, end:true, short:n=>t('tableOrders')(n)},
       {id:'last', label:()=>t('fileLastOrdered'), value:i=>itemLast(i) ? timeAgo(itemLast(i)) : t('never'), sort:i=>itemLast(i) || '', short:v=>v},
       {id:'available', label:()=>t('fileAvailable'), value:i=>i.available === false ? t('fileNo') : t('fileYes'), sort:i=>i.available === false ? 1 : 0},
+      // The low stock alert: on or off only (its level shows in the item's own form).
+      {id:'alert', label:()=>t('lowAlertLabel'), value:i=>itemHasAlert(i) ? t('alertOnShort') : t('alertOffShort'), sort:i=>itemHasAlert(i) ? 0 : 1, short:v=>v},
       {id:'kind', label:()=>t('itemKindLabel'), value:i=>t(itemKind(i) === 'expense' ? 'kindExpense' : 'kindFood'), sort:i=>itemKind(i), text:true, hidden:true},
       {id:'note', label:()=>t('itemNoteLabel'), value:i=>i.note || '', sort:i=>i.note || '', text:true, hidden:true},
     ],
@@ -52,6 +56,8 @@ const TABLES = {
     get filters(){ return [
       {id:'all', label:()=>t('filterAll'), test:()=>true},
       {id:'unavailable', label:()=>t('fileUnavailable'), test:i=>i.available === false},
+      {id:'withAlert', label:()=>t('filterWithAlert'), test:i=>itemHasAlert(i)},
+      {id:'noAlert', label:()=>t('filterNoAlert'), test:i=>!itemHasAlert(i)},
       {id:'noSupplier', label:()=>t('noSupplier'), test:i=>!i.supplierId || !state.suppliers.some(s=>s.id === i.supplierId)},
       {id:'quiet', label:()=>t('check_quiet'), test:i=>i.available !== false && (itemLast(i) ? Date.now() - Date.parse(itemLast(i)) > QUIET_MS : !!i.createdAt && Date.now() - Date.parse(i.createdAt) > QUIET_MS)},
       {id:'ordered', label:()=>t('fileOrderedMonth'), test:i=>!!tableStats().items[i.id]},
@@ -99,7 +105,7 @@ function tableRows(kind){
    Kurdish unit never turns the whole line around. */
 function rowMeta(kind, r){
   if(kind !== 'items') return `<span dir="ltr">${esc(r.phone || t('noPhoneOnFile'))}</span>${supplierBuys(r) !== 'food' ? ` · <span>${esc(t('buys_'+supplierBuys(r)))}</span>` : ''}`;
-  return `${itemKind(r) === 'expense' ? `<span class="kind-tag">${esc(t('kindExpense'))}</span> ` : ''}<span dir="auto">${esc(r.supplierId ? supplierName(r.supplierId) : t('noSupplier'))}</span> · <span dir="auto">${esc(unitLabel(r.unit) || '·')}</span>`;
+  return `${itemKind(r) === 'expense' ? `<span class="kind-tag">${esc(t('kindExpense'))}</span> ` : ''}<span dir="auto">${esc(r.supplierId ? supplierName(r.supplierId) : t('noSupplier'))}</span> · <span dir="auto">${esc(unitLabel(r.unit) || '·')}</span>${itemHasAlert(r) ? ` <span class="alert-tag">${esc(t('alertOnShort'))}</span>` : ''}`;
 }
 /* Settings > Look can turn the tables off: a plain list by name, and a tap opens the form. */
 function renderPlainList(kind){

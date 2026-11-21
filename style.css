@@ -436,6 +436,8 @@ html:not(.app-shell) .kind-hint{display:none}
 .pull-label{position:fixed;left:50%;top:calc(var(--safe-top) + 100px);z-index:35;padding:6px 13px;border-radius:999px;background:var(--menu);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);box-shadow:var(--lift);font:600 .8125rem var(--font);color:var(--ink);white-space:nowrap;opacity:0;pointer-events:none;transform:translate(-50%,0);transition:background-color .2s ease,color .2s ease}
 .pull-label.ready{background:var(--hero);color:#fff}
 .pull-label.ready[data-to="expense"]{background:#FFFFFF;color:#1C1C1E}
+.alert-tag{display:inline-block;padding:1px 7px;border-radius:999px;background:rgba(255,159,10,.16);color:#9a5b00;font-size:.6875rem;font-weight:600;margin-inline-start:4px}
+html.dark .alert-tag{color:#ffcc66;background:rgba(255,159,10,.2)}
 .kind-tag{display:inline-block;padding:1px 7px;border-radius:999px;background:var(--fill);color:var(--ink-soft);font-size:.6875rem;font-weight:600}
 .field-hint.warn{color:var(--clay-ink)}
 .buys-seg .pill-seg-btn,.kind-seg .pill-seg-btn{gap:6px}
@@ -2642,7 +2644,6 @@ html.dark .item-row.low-alert{background:rgba(250,204,21,.14)}
 .field .low-alert-level label{display:inline;margin:0;font-size:.9375rem;font-weight:400;color:var(--ink)}
 .field .low-alert-level input{width:104px;flex:0 0 auto;text-align:center;font-variant-numeric:tabular-nums}
 .low-alert-level b{font-weight:600}
-.low-alert-level .btn{margin-inline-start:auto}
 /* Stock link suggestions: the best matches, one tap each, Link on the right. */
 .stock-sug{margin-top:8px;border-radius:12px;background:var(--surface-2);overflow:hidden}
 .stock-sug-title{padding:8px 12px 2px;font-size:.75rem;font-weight:600;color:var(--ink-soft)}
