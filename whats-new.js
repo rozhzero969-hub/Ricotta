@@ -3,6 +3,10 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-22a', date:'2026-11-22', notes:{
+    en:['Mac app: Always see-through now looks like frosted glass. The window is smoky glass over your desktop, groups are soft glass panels with darker tiles inside, the main buttons are solid, and the send button glows.'],
+    ku:['ئەپی ماک: هەمیشە شەفاف ئێستا وەک شووشەی تەماوی دەردەکەوێت. پەنجەرەکە شووشەیەکی دووکەڵاوییە لەسەر باکگراوندی ماکەکەت، گرووپەکان پانێڵی شووشەی نەرمن و خانەی تاریکتریان تێدایە، دوگمە سەرەکییەکان پڕن، و دوگمەی ناردن دەدرەوشێتەوە.'],
+    ar:['تطبيق Mac: الشفافية الدائمة تبدو الآن مثل الزجاج المصنفر. النافذة زجاج دخاني فوق سطح المكتب، والمجموعات ألواح زجاجية ناعمة بداخلها خانات أغمق، والأزرار الرئيسية صلبة، وزر الإرسال يتوهج.']}},
   {id:'2026-11-21a', date:'2026-11-21', notes:{
     en:['Mac app: the Ricotta theme looks like the app again, green and plain, with no extra artwork.','Mac app: new themes with gentle moving artwork: Pumpkin Moon (Halloween), Winter Lights (Christmas), Silver Moon, Google and Cupid’s Blush. They move only now and then, stop while the window is hidden, and stay still when Reduce Motion is on.','Mac app: twelve new app icons, with each theme’s own icon first.'],
     ku:['ئەپی ماک: ڕووکاری ریکۆتا دیسان وەک ئەپەکە دەردەکەوێت، سەوز و سادە، بێ وێنەی زیادە.','ئەپی ماک: ڕووکاری نوێ لەگەڵ وێنەی جوڵاوی نەرم: مانگی کەدوو (هالۆوین)، چراکانی زستان (کریسمس)، مانگی زیوین، گووگڵ و پەمەیی کیوپید. تەنها جار جار دەجوڵێن، کاتێک پەنجەرەکە شاراوەیە دەوەستن، و کاتێک کەمکردنەوەی جوڵە هەڵکراوە ناجوڵێن.','ئەپی ماک: دوازدە ئایکۆنی نوێی ئەپ، ئایکۆنی هەر ڕووکارێک لە سەرەتادا.'],
