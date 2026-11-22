@@ -22,6 +22,11 @@ const titems = [
   {name:'Donuts', base:'piece', stock:{'Main Storage':10}},
   {name:'Potatoes', base:'گرام', count:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':20000}},
   {name:'Oranges', base:'گرام', count:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':5000}},
+  {name:'Yellow Apple - سێوی زەرد', base:'گرام', count:{name:'کیلۆ',factor:1000}, stock:{'Main Storage':20000}},
+  {name:'Yamama Pomegranate Molasses', base:'piece', stock:{'Main Storage':20}},
+  {name:'Dark Soy Sauce', base:'piece', stock:{'Main Storage':10}},
+  {name:'Light Soy Sauce', base:'piece', stock:{'Main Storage':10}},
+
 ];
 const ids = ['00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002'];
 const date = '2026-11-22T12:00:00.000Z';
@@ -83,9 +88,27 @@ async function run(){
     assert.match(await reserved.innerText(),/10 piece.*Kitchen/);
     await page.locator('#tfItem0').press('Enter');
     await page.locator('[data-tf-mode=smart]').click();
-    assert.equal(await page.locator('#tfSmartEntry').isDisabled(),true);
-    await page.locator('#tfSmartDay').selectOption('today');
     const entry = page.locator('#tfSmartEntry');
+    assert.equal(await entry.isDisabled(),false);
+    assert.equal(await entry.getAttribute('placeholder'),'Oranges 5 kilos');
+    assert.equal(await page.locator('#tfSmartDay, #tfSmartAdd').count(),0);
+    for(const [input, pattern, selected] of [
+      ['apple 5 kilos', /Yellow Apple/, true],
+      ['yellow appple 5 kilo', /Yellow Apple/, false],
+      ['yamama pomegranate 2 pieces', /Yamama Pomegranate Molasses/, true],
+    ]){
+      await entry.fill(input);
+      const match = page.locator('#tfSmartMatches [role=option]');
+      assert.match(await match.innerText(),pattern);
+      assert.equal(await match.getAttribute('aria-selected'),String(selected));
+    }
+    await entry.fill('soy sauce 2 pieces');
+    assert.equal(await page.locator('#tfSmartMatches [role=option]').count(),2);
+    assert.equal(await page.locator('#tfSmartMatches [aria-selected=true]').count(),0);
+    await entry.press('Tab');
+    await entry.press('Tab');
+    assert.equal(await page.locator('#tfSmartMatches [aria-selected=true]').innerText(),'Light Soy Sauce');
+
     await entry.fill('potato 5 pieces');
     await entry.press('Enter');
     assert.equal(await entry.getAttribute('aria-invalid'),'true');
@@ -104,6 +127,10 @@ async function run(){
     await pickUnit.getByText('کیلۆ',{exact:true}).click();
     assert.equal(await page.locator('#tfQty1').inputValue(),'5');
     assert.equal(await page.locator('#tfUnit1').inputValue(),'کیلۆ');
+    const review = page.locator('.tf-smart-review');
+    assert.match(await review.innerText(),/Oranges.*5 کیلۆ.*Potatoes.*5 کیلۆ/s);
+    assert.equal(await entry.evaluate(el=>el === document.activeElement),true);
+
     await page.locator('[data-tf-mode=manual]').click();
     await page.locator('#tfAdd').click();
     await page.locator('#tfItem2').fill('Oranges');
@@ -130,13 +157,29 @@ async function run(){
     assert.equal(queue.length,3);
     assert.equal(queue[1].yesterday,false);
     assert.equal(queue[2].yesterday,true);
+    await page.locator('[data-tf-mode=smart]').click();
+    await page.locator('#tfTo').fill('Kitchen');
+    await page.locator('#tfTo').press('Enter');
+    await page.locator('#tfYest').click();
+    await page.getByRole('button',{name:'Yes, for yesterday',exact:true}).click();
+    await page.locator('#tfYest[aria-checked=true]').waitFor();
+    assert.equal(await page.locator('#tfYest').getAttribute('aria-checked'),'true');
+    await entry.fill('apple 2 kilos');
+    await entry.press('Enter');
+    await page.locator('#tfKeepDraft').click();
+    assert.equal(await page.locator('#tfFrom').inputValue(),'Main Storage');
+    assert.equal(await page.locator('#tfTo').inputValue(),'Minibar');
+    assert.equal(await page.locator('#tfYest').getAttribute('aria-checked'),'true');
+    await page.locator('[data-tf-mode=manual]').click();
+    assert.equal(await page.locator('#tfTo').inputValue(),'');
+    assert.equal(await page.locator('#tfYest').getAttribute('aria-checked'),'false');
     await page.evaluate(()=>goView('receipts'));
     const delivery = page.locator('#rrDelivery'), rate = page.locator('#rrRate');
     assert.equal(await delivery.count(),0);
     assert.equal(await rate.count(),0);
-    await page.locator('#rrDeliveryOn').click();
+    await page.locator('[data-delivery=on]').click();
     await delivery.waitFor();
-    await page.locator('#rrDeliveryOn').click();
+    await page.locator('[data-delivery=off]').click();
     await delivery.waitFor({state:'detached'});
     await page.locator('[data-cur=USD]').click();
     await rate.waitFor();
@@ -144,7 +187,12 @@ async function run(){
     await page.locator('[data-cur=IQD]').click();
     await rate.waitFor({state:'detached'});
     assert.equal(await delivery.count(),0);
-    await page.locator('#rrMath').click();
+    const mathOn = page.locator('.rr-options [data-rr-math=on]');
+    const mathOff = page.locator('.rr-options [data-rr-math=off]');
+    assert.equal(await mathOff.getAttribute('aria-pressed'),'true');
+    await mathOn.click();
+    assert.equal(await mathOn.getAttribute('aria-pressed'),'true');
+
     await page.locator('#rrItem0').fill('Lettuce');
     await page.locator('#rrItem0').press('Enter');
     await page.locator('#rrQty0').fill('19.2');
@@ -154,6 +202,9 @@ async function run(){
     const saved = page.waitForResponse(r=>r.request().method()==='PUT' && /\/receipts\//.test(r.url()) && r.request().postDataJSON().lines[0]?.cost === 690.104);
     await page.locator('#rrCost0').press('Enter');
     assert.equal(await page.locator('#rrCost0').inputValue(),'690.104');
+    const [qtyBox,costBox] = await Promise.all([page.locator('#rrQty0').boundingBox(),page.locator('#rrCost0').boundingBox()]);
+    assert.ok(Math.abs(qtyBox.y - costBox.y) < 1, 'calculation leaves fields aligned');
+
     assert.match(await page.locator('.rr-line').first().locator('.rr-total').innerText(),/13,250/);
     await page.waitForFunction(()=>document.querySelector('#rrItem1') === document.activeElement);
     await saved;
