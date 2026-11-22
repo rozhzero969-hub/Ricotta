@@ -2401,8 +2401,8 @@ T.ar.settingHelp.swipe = 'اسحب الصنف إلى اليسار في شاشة 
 
 Object.assign(T.en, {
   tfManual:'Manual Transfer', tfSmart:'Smart Transfer', tfReserved:'Reserved · unavailable',
-  tfSmartChooseDay:'Choose the transfer date', tfSmartEntry:'Item, quantity and unit', tfSmartExample:'Donuts 5 pieces',
-  tfSmartHint:'Press Enter to add one item. Check the matched name and unit. Edit any added item below.',
+  rrSwitchOff:'Off', rrSwitchOn:'On', tfSmartAdded:'Added to this transfer', tfSmartEntry:'Item, quantity and unit', tfSmartExample:'Oranges 5 kilos',
+  tfSmartHint:'Enter adds an item. Use Tab or the arrow keys to choose between matches.',
   tfSmartFormat:'Enter the item, quantity and unit in that order.', tfSmartAmount:'Enter a positive quantity with up to 3 decimal places.',
   tfSmartMissing:'No exact item match. Choose a suggestion or use the manual item search.',
   tfSmartAmbiguous:'More than one item matches. Choose the full catalog name.',
@@ -2426,8 +2426,8 @@ Object.assign(T.en, {
 });
 Object.assign(T.ku, {
   tfManual:'گواستنەوەی دەستی', tfSmart:'گواستنەوەی زیرەک', tfReserved:'گیراوە · بەردەست نییە',
-  tfSmartChooseDay:'ڕۆژی گواستنەوە هەڵبژێرە', tfSmartEntry:'کاڵا، بڕ و یەکە', tfSmartExample:'دۆنات 5 دانە',
-  tfSmartHint:'Enter دابگرە بۆ زیادکردنی یەک کاڵا. ناو و یەکەکە بپشکنە. لە خوارەوە دەتوانیت دەستکاری بکەیت.',
+  rrSwitchOff:'ناچالاک', rrSwitchOn:'چالاک', tfSmartAdded:'زیاد کراوە بۆ ئەم گواستنەوەیە', tfSmartEntry:'کاڵا، بڕ و یەکە', tfSmartExample:'پرتەقاڵ 5 کیلۆ',
+  tfSmartHint:'Enter بۆ زیادکردنی کاڵا. Tab یان تیرەکان بۆ هەڵبژاردن.',
   tfSmartFormat:'ناوی کاڵا، بڕ و یەکە بەم ڕیزە بنووسە.', tfSmartAmount:'بڕێکی پۆزەتیڤ بە زۆرترین 3 ژمارەی دوای خاڵ بنووسە.',
   tfSmartMissing:'کاڵای هاوتا نەدۆزرایەوە. پێشنیارێک هەڵبژێرە یان بە دەستی بگەڕێ.',
   tfSmartAmbiguous:'زیاتر لە یەک کاڵا دەگونجێت. ناوی تەواوی کاڵاکە هەڵبژێرە.',
@@ -2451,8 +2451,8 @@ Object.assign(T.ku, {
 });
 Object.assign(T.ar, {
   tfManual:'تحويل يدوي', tfSmart:'تحويل ذكي', tfReserved:'محجوز · غير متاح',
-  tfSmartChooseDay:'اختر تاريخ التحويل', tfSmartEntry:'الصنف والكمية والوحدة', tfSmartExample:'دونات 5 قطع',
-  tfSmartHint:'اضغط Enter لإضافة صنف. راجع الاسم والوحدة المطابقين. يمكنك تعديل الأصناف في الأسفل.',
+  rrSwitchOff:'إيقاف', rrSwitchOn:'تشغيل', tfSmartAdded:'أضيف إلى هذا التحويل', tfSmartEntry:'الصنف والكمية والوحدة', tfSmartExample:'برتقال 5 كيلو',
+  tfSmartHint:'اضغط Enter للإضافة، واستخدم Tab أو مفاتيح الأسهم للاختيار.',
   tfSmartFormat:'أدخل الصنف ثم الكمية ثم الوحدة.', tfSmartAmount:'أدخل كمية موجبة بما لا يزيد على 3 منازل عشرية.',
   tfSmartMissing:'لا يوجد صنف مطابق. اختر اقتراحًا أو ابحث يدويًا.',
   tfSmartAmbiguous:'هناك أكثر من صنف مطابق. اختر الاسم الكامل من القائمة.',

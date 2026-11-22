@@ -5,11 +5,11 @@
    then moved). Storages, items and units are named exactly as there; the rules are shared with the API
    and Rico (RicottaTransfers). Stock is Ricotta Restaurant's, as Rico last read it, and Rico checks the
    live stock again on their page right before moving. */
-const tf = {data:null, loading:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false, lastFrom:null, failed:false};
+const tf = {data:null, loading:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false, failed:false};
 /* Signing out keeps nothing of that account on the screen (see rrReset). */
 function tfReset(){
   clearTimeout(tf.saveTimer);
-  Object.assign(tf, {data:null, loading:false, loadAgain:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false, lastFrom:null,
+  Object.assign(tf, {data:null, loading:false, loadAgain:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false,
     failed:false, copyAt:null, netDown:false, asking:false, smartMode:false});
 }
 const TF = ()=> globalThis.RicottaTransfers;
@@ -216,18 +216,23 @@ function tfDropBlankForm(keep){
   const f = tfFind(tf.formId);
   if(f && f.id !== keep && f.status === 'draft' && !f.version && tfIsEmpty(f)) tf.data.transfers = tf.data.transfers.filter(x=>x.id !== f.id);
 }
-function tfNewDraft(copyOf, draw = true){
+function tfNextDraft(r){
+  const zones = TF().zonesOf(tf.data.catalog).filter(z=>z !== 'Main Storage');
+  const index = zones.indexOf(r.to);
+  tfNewDraft(null, true, tf.smartMode ? {to:index >= 0 ? zones[index + 1] : '', yesterday:r.yesterday} : null);
+}
+function tfNewDraft(copyOf, draw = true, next = null){
   if(!tf.data?.catalog?.titems?.length){ if(draw) toast(t('tfNoStock'), 'error'); return; }
   tfDropBlankForm();
   const zones = TF().zonesOf(tf.data.catalog), src = copyOf || {};
-  // From starts on Main Storage (or the storage of the last transfer sent); To is chosen each time.
-  const from = src.from || (zones.includes(tf.lastFrom) ? tf.lastFrom : zones.includes('Main Storage') ? 'Main Storage' : '');
-  const r = {id:crypto.randomUUID(), by:state.account, source:'app', status:'draft', from, to:src.to || '', yesterday:false,
+  const from = src.from || (zones.includes('Main Storage') ? 'Main Storage' : '');
+  const r = {id:crypto.randomUUID(), by:state.account, source:'app', status:'draft', from, to:src.to || next?.to || '', yesterday:!!next?.yesterday,
+    dayPickedOn:next?.yesterday ? tfToday() : null, nextDefaults:!!next,
     lines:(src.lines || []).map(l=>({...l})), warnings:[], log:[], photos:[], version:0, createdAt:new Date().toISOString()};
   if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null});
   tf.data.transfers.unshift(r);
   tf.id = tf.formId = r.id; tf.page = 'edit'; tf.fresh = true;
-  if(draw){ render(); scrollBox().scrollTo({top:0}); }
+  if(draw){ render(); scrollBox().scrollTo({top:0}); if(next?.to) document.getElementById('tfSmartEntry')?.focus({preventScroll:true}); }
 }
 
 /* ---------- Writing a transfer (like Ricotta Restaurant's page) ---------- */
@@ -236,22 +241,24 @@ function tfNeedByItem(r){
   for(const l of r.lines){ const it = tfItem(l.item), o = it && TF().unitOptions(it).find(u=>u.name === l.unit); if(o && l.qty > 0) m.set(l.item, (m.get(l.item) || 0) + l.qty * o.factor); }
   return m;
 }
-/* The quick entry only commits a unique catalog name and a unit allowed for that item. */
-function tfSmartMatch(text, items, linked, selectedUnit){
+/* Exact names win. A unique whole-word abbreviation can be added directly;
+   fuzzy or ambiguous matches always require an explicit choice. */
+function tfSmartMatch(text, items, linked, selectedUnit, picked){
   const search = globalThis.RicottaSearch, norm = search.normalize;
   const parts = text.trim().match(/^(.+)\s+([0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٫٬]*)(?:\s*([^0-9٠-٩۰-۹].*))?$/u);
-  if(!parts) return {error:'tfSmartFormat'};
-  const [, name, amount, unit = ''] = parts;
-  const qty = rrStrictAmount(amount, 3);
-  if(!(qty > 0 && qty <= 999999)) return {error:'tfSmartAmount'};
-  const shortName = item=>item.name.split(' - ')[0].trim();
-  const simplify = value=>norm(value).replace(/\b([a-z]{3,})ies$/, '$1y').replace(/\b([a-z]{3,}(?:t|s|h|x|z|o))es$/, '$1').replace(/\b([a-z]{3,}[^s])s$/, '$1');
-  const aliases = item=>[item.name, shortName(item), ...(linked.get(item.name) || [])];
-  let hits = items.filter(item=>norm(item.name) === norm(name));
+  const [, name = text.trim(), amount, unit = ''] = parts || [];
+  const qty = amount ? rrStrictAmount(amount, 3) : null;
+  const simplify = value=>norm(value).split(' ').map(word=>word.replace(/^([a-z]{3,})ies$/, '$1y').replace(/^([a-z]{3,}(?:t|s|h|x|z|o))es$/, '$1').replace(/^([a-z]{3,}[^s])s$/, '$1')).join(' ');
+  const aliases = item=>[item.name, ...item.name.split(' - ').map(n=>n.trim()), ...(linked.get(item.name) || [])];
+  const query = simplify(name), words = query.split(' ');
+  let hits = picked ? items.filter(item=>item.name === picked) : items.filter(item=>item.name === name);
+  if(!hits.length) hits = items.filter(item=>norm(item.name) === norm(name));
   if(!hits.length) hits = items.filter(item=>aliases(item).some(alias=>norm(alias) === norm(name)));
-  if(!hits.length) hits = items.filter(item=>aliases(item).some(alias=>simplify(alias) === simplify(name)));
-  if(hits.length !== 1) return {error:hits.length ? 'tfSmartAmbiguous' : 'tfSmartMissing',
-    choices:(hits.length ? hits : search.rank(items, name, aliases)).slice(0, 5).map(item=>({item, text:`${item.name} ${amount} ${unit.trim()}`}))};
+  if(!hits.length && query.length >= 3) hits = items.filter(item=>aliases(item).some(alias=>words.every(word=>simplify(alias).split(' ').includes(word))));
+  const choices = (hits.length ? hits : query.length >= 3 ? search.rank(items, name, aliases) : []).slice(0, 5).map(item=>({item}));
+  if(!parts) return {error:'tfSmartFormat', choices};
+  if(!(qty > 0 && qty <= 999999)) return {error:'tfSmartAmount'};
+  if(hits.length !== 1) return {error:hits.length ? 'tfSmartAmbiguous' : 'tfSmartMissing', choices};
   const item = hits[0], units = TF().unitOptions(item);
   const exact = units.filter(u=>selectedUnit ? u.name === selectedUnit : norm(u.name) === norm(unit));
   const options = exact.length || selectedUnit || !unit.trim() ? exact : units.filter(u=>search.unit([u.name], unit));
@@ -270,7 +277,6 @@ function tfSmartAliases(){
   return linked;
 }
 function tfSmartPanel(r, ready){
-  const day = r.dayPickedOn === tfToday() ? (r.yesterday ? 'yesterday' : 'today') : '';
   const cat = tf.data.catalog;
   const suggested = ready ? TF().itemsIn(cat, r.from).flatMap(item=>{
     const usual = TF().usualFor(cat, item.name, r.from, r.to).stat;
@@ -278,22 +284,29 @@ function tfSmartPanel(r, ready){
     const amount = TF().inCounting(item, Math.min(usual.q, tfLeft(item, r.from, r.id)), true);
     return amount.qty > 0 ? [{item, amount}] : [];
   }).slice(0, 4) : [];
+  const added = r.lines.map((line,i)=>({line,i})).filter(({line})=>line.item).reverse();
   return `<section class="rr-card tf-smart">
-    <h2 class="rr-card-title">${esc(t('tfSmart'))}</h2><div class="tf-smart-body">
-    <div class="rr-field"><label for="tfSmartDay">${esc(t('tfWhichDay'))}</label><select id="tfSmartDay">
-      <option value="" disabled ${day ? '' : 'selected'}>${esc(t('tfSmartChooseDay'))}</option>
-      <option value="today" ${day === 'today' ? 'selected' : ''}>${esc(t('tfToday'))} · ${esc(tfDayLabel(tfToday()))}</option>
-      <option value="yesterday" ${day === 'yesterday' ? 'selected' : ''}>${esc(t('tfForYesterdayBtn'))} · ${esc(tfDayLabel(tfYesterday()))}</option></select></div>
+    <h2 class="rr-card-title">${esc(t('tfSmart'))}</h2><div class="tf-smart-body"><div class="tf-smart-form">
     <label for="tfSmartEntry">${esc(t('tfSmartEntry'))}</label>
-    <div class="tf-smart-entry"><input type="text" id="tfSmartEntry" class="rr-input" maxlength="250" value="${esc(r.smartText || '')}" placeholder="${esc(t('tfSmartExample'))}"
-      autocomplete="off" dir="auto" aria-describedby="tfSmartHelp tfSmartStatus" ${ready && day ? '' : 'disabled'}>
-      <button class="btn btn-primary" id="tfSmartAdd" type="button" ${ready && day ? '' : 'disabled'}>${esc(t('rrAddItem'))}</button></div>
+    <input type="text" id="tfSmartEntry" class="rr-input" maxlength="250" value="${esc(r.smartText || '')}" placeholder="${esc(t('tfSmartExample'))}"
+      autocomplete="off" enterkeyhint="next" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tfSmartMatches"
+      dir="auto" aria-describedby="tfSmartHelp tfSmartStatus" ${ready ? '' : 'disabled'}>
     <small id="tfSmartHelp">${esc(t('tfSmartHint'))}</small>
     <div id="tfSmartStatus" class="tf-smart-status" role="status">${esc(r.smartAdded ? t('tfSmartMatched') + ' · ' + r.smartAdded : '')}</div>
+    <div id="tfSmartMatches" role="listbox" aria-label="${esc(t('rrSearchItem'))}"></div>
     <div id="tfSmartChoices"></div>
     ${suggested.length ? `<div class="tf-smart-suggestions"><b>${esc(t('tfSmartSuggestions'))}</b><small>${esc(t('tfSmartSuggestionsHint')(r.to))}</small>
-      <div>${suggested.map(({item, amount})=>`<button type="button" class="btn btn-ghost" data-tf-suggestion="${esc(`${item.name} ${amount.qty} ${amount.unit}`)}" ${day ? '' : 'disabled'}>
-        <bdi>${esc(item.name)} · ${esc(tfQty(amount.qty) + ' ' + amount.unit)}</bdi></button>`).join('')}</div></div>` : ''}</div></section>`;
+      <div>${suggested.map(({item, amount})=>`<button type="button" class="btn btn-ghost" data-tf-suggestion="${esc(`${item.name} ${amount.qty} ${amount.unit}`)}">
+        <bdi>${esc(item.name)} · ${esc(tfQty(amount.qty) + ' ' + amount.unit)}</bdi></button>`).join('')}</div></div>` : ''}</div>
+    <aside class="tf-smart-review" aria-label="${esc(t('tfSmartAdded'))}">
+      <div><b>${esc(t('tfSmartAdded'))}</b><span class="rr-count">${esc(t('rrItemCount')(added.length))}</span></div>
+      ${added.length ? `<ul>${added.map(({line,i})=>{
+        const item = tfItem(line.item);
+        const routeNote = item && TF().usualFor(cat, item.name, r.from, r.to).never ? tfUsualNote(item,r) : '';
+        return `<li><button type="button" class="tf-smart-review-line" data-tf-review-line="${i}">
+          <bdi>${esc(line.item)}</bdi><bdi>${line.qty > 0 && line.unit ? esc(tfQty(line.qty) + ' ' + line.unit) : '—'}</bdi></button>${routeNote}</li>`;
+      }).join('')}</ul>` : ''}
+    </aside></div></section>`;
 }
 function tfUnfinishedSmart(r){
   if(!r.smartText?.trim()) return false;
@@ -301,25 +314,38 @@ function tfUnfinishedSmart(r){
   return true;
 }
 function tfBindSmart(r, changed, go){
-  const day = document.getElementById('tfSmartDay'), entry = document.getElementById('tfSmartEntry');
+  const entry = document.getElementById('tfSmartEntry'), matches = document.getElementById('tfSmartMatches');
   const status = document.getElementById('tfSmartStatus'), choices = document.getElementById('tfSmartChoices');
   const linked = tfSmartAliases(), items = tf.data.catalog.titems;
-  day.onchange = ()=>{
-    r.yesterday = day.value === 'yesterday';
-    r.dayPickedOn = tfToday();
-    changed(true);
-    if(r.from && r.to) go('tfSmartEntry');
+  let options = [], active = -1;
+  const setActive = index=>{
+    active = index;
+    matches.querySelectorAll('[role=option]').forEach((el,i)=>el.setAttribute('aria-selected', String(i === active)));
+    if(active < 0) entry.removeAttribute('aria-activedescendant');
+    else entry.setAttribute('aria-activedescendant', 'tfSmartMatch' + active);
   };
-  const add = selectedUnit=>{
+  const preview = ()=>{
+    const result = tfSmartMatch(entry.value, items, linked);
+    options = entry.value.trim() && !entry.disabled ? (result.choices || (result.item ? [{item:result.item}] : [])) : [];
+    matches.innerHTML = options.map(({item},i)=>`<div id="tfSmartMatch${i}" role="option" aria-selected="false" data-tf-match="${i}"><bdi>${esc(item.name)}</bdi></div>`).join('');
+    setActive(result.line || (result.item && result.error === 'tfSmartUnit') ? 0 : -1);
+    entry.setAttribute('aria-expanded', String(!!options.length));
+  };
+  const add = (selectedUnit, picked)=>{
     if(entry.disabled || !entry.value.trim()) return;
-    if(r.dayPickedOn !== tfToday()){ r.dayPickedOn = null; changed(true); toast(t('tfBatchChanged'), 'warn'); return; }
-    const result = tfSmartMatch(entry.value, items, linked, selectedUnit);
+    const result = tfSmartMatch(entry.value, items, linked, selectedUnit, picked);
+    if(picked && result.error === 'tfSmartFormat'){
+      entry.value = picked + ' ';
+      entry.oninput();
+      return;
+    }
     const {item, line, factor} = result;
     const current = r.lines.findIndex(l=>!l.item && !l.qty);
     let error = result.error;
     if(!error && line.qty * factor > tfLeftForOtherLines(item, r, current) + 1e-9) error = 'tfSmartUnavailable';
     if(!error && r.lines.filter(l=>l.item).length >= TF().MAX_LINES) error = 'rrErrNoLines';
     if(error){
+      matches.replaceChildren(); options = []; setActive(-1); entry.setAttribute('aria-expanded','false');
       status.className = 'tf-smart-status bad';
       status.textContent = t(error === 'tfSmartUnit' && result.units.length ? 'tfSmartPickUnit' : error);
       entry.setAttribute('aria-invalid','true');
@@ -332,18 +358,11 @@ function tfBindSmart(r, changed, go){
           <select id="tfSmartUnitPick" data-inline><option value="" selected hidden>${esc(t('tfSmartPickUnit'))}</option>
           ${result.units.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')}</select></div>`;
         const select = choices.querySelector('select'), text = entry.value;
-        select.onchange = ()=>{ if(entry.value === text && select.value) add(select.value); };
+        select.onchange = ()=>{ if(entry.value === text && select.value) add(select.value, item.name); };
         enhanceSelects(choices);
         select._selBtn.focus({preventScroll:true});
         openSelPop(select);
         return;
-      }
-      for(const choice of result.choices || []){
-        const button = document.createElement('button');
-        button.type = 'button'; button.className = 'btn btn-ghost';
-        button.textContent = choice.item.name;
-        button.onclick = ()=>{ entry.value = choice.text; r.smartText = choice.text; add(); entry.focus(); };
-        choices.append(button);
       }
       const manual = document.createElement('button');
       manual.type = 'button'; manual.className = 'btn btn-ghost'; manual.textContent = t('tfManual');
@@ -362,9 +381,34 @@ function tfBindSmart(r, changed, go){
     r.smartAdded = ''; tfKeep();
     status.textContent = ''; status.className = 'tf-smart-status'; choices.replaceChildren();
     entry.removeAttribute('aria-invalid');
+    preview();
   };
-  entry.onkeydown = e=>{ if(e.key === 'Enter' && !e.isComposing && !e.metaKey && !e.ctrlKey){ e.preventDefault(); add(); } };
-  document.getElementById('tfSmartAdd').onclick = ()=>add();
+  const selectMatch = index=>{
+    const item = options[index]?.item;
+    if(item){ entry.focus({preventScroll:true}); add(null, item.name); }
+  };
+  matches.onpointerdown = e=>{ if(e.target.closest('[data-tf-match]')) e.preventDefault(); };
+  matches.onclick = e=>{ const el = e.target.closest('[data-tf-match]'); if(el) selectMatch(+el.dataset.tfMatch); };
+  entry.onkeydown = e=>{
+    if(e.isComposing || e.metaKey || e.ctrlKey) return;
+    if(e.key === 'Escape' && options.length){
+      e.preventDefault(); matches.replaceChildren(); options = []; setActive(-1); entry.setAttribute('aria-expanded','false');
+    } else if(options.length && ['Tab','ArrowDown','ArrowUp'].includes(e.key)){
+      // Allow Tab to exit at either end, and when the single exact result is already selected.
+      const step = e.shiftKey || e.key === 'ArrowUp' ? -1 : 1;
+      const next = active < 0 ? (step > 0 ? 0 : options.length - 1) : active + step;
+      if(e.key === 'Tab' && (next < 0 || next >= options.length)) return;
+      e.preventDefault();
+      setActive((next + options.length) % options.length);
+    } else if(e.key === 'Enter'){
+      e.preventDefault();
+      if(active >= 0) selectMatch(active);
+      else if(options.length) setActive(0);
+      else add();
+    }
+  };
+  if(entry.value) preview();
+  document.querySelectorAll('[data-tf-review-line]').forEach(button=>button.onclick = ()=>go('tfQty' + button.dataset.tfReviewLine));
   document.querySelectorAll('[data-tf-suggestion]').forEach(button=>button.onclick = ()=>{
     if(entry.value.trim()) return;
     entry.value = button.dataset.tfSuggestion;
@@ -421,7 +465,7 @@ function renderTransferEdit(){
     ${tfBelow()}
   </div>`;
 }
-const tfIsEmpty = r=> !r.smartText && !r.to && !r.yesterday && !r.lines.some(l=>l.item || l.qty);
+const tfIsEmpty = r=> !r.smartText && (r.nextDefaults || (!r.to && !r.yesterday)) && !r.lines.some(l=>l.item || l.qty);
 function tfSaveSoon(r){ r.dirty = true; r.edits = (r.edits || 0) + 1; tfKeep(); clearTimeout(tf.saveTimer); tf.saveTimer = setTimeout(()=>tfSaveDraft(r), 600); }
 function tfSaveDraft(r){
   clearTimeout(tf.saveTimer);
@@ -440,11 +484,13 @@ function attachTransferEdit(){
   const r = tfFind(tf.id); if(!r) return;
   const cat = tf.data.catalog, zones = TF().zonesOf(cat);
   const repaint = ()=>{ const top = scrollBox().scrollTop; render(); scrollBox().scrollTop = top; };
-  const changed = (redraw = false)=>{ tfSaveSoon(r); if(redraw) repaint(); };
+  const changed = (redraw = false)=>{ if(!r.nextDefaults || r.lines.some(l=>l.item || l.qty)) tfSaveSoon(r); if(redraw) repaint(); };
   const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); if(!el.matches('[role=combobox]')) el.select?.(); rrReveal(el); };
   const enter = (el, fn)=>{ if(el) el.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.isComposing){ e.preventDefault(); fn(); } }); };
-  const firstBox = ()=>tf.smartMode ? (document.getElementById('tfSmartEntry')?.disabled ? 'tfSmartDay' : 'tfSmartEntry') : 'tfItem' + Math.max(0, r.lines.findIndex(l=>!l.item));
-  document.querySelectorAll('[data-tf-mode]').forEach(b=>b.onclick = ()=>{ tf.smartMode = b.dataset.tfMode === 'smart'; repaint(); });
+  const firstBox = ()=>tf.smartMode ? 'tfSmartEntry' : 'tfItem' + Math.max(0, r.lines.findIndex(l=>!l.item));
+  document.querySelectorAll('[data-tf-mode]').forEach(b=>b.onclick = ()=>{ tf.smartMode = b.dataset.tfMode === 'smart';
+    if(!tf.smartMode && r.nextDefaults && tfIsEmpty(r)){ r.to = ''; r.yesterday = false; r.dayPickedOn = null; r.nextDefaults = false; }
+    repaint(); });
   if(tf.smartMode) tfBindSmart(r, changed, go);
   // From, then To (never the same storage), then the first item.
   rrComboBind(document.getElementById('tfFrom'), zones, (v, again)=>{
@@ -513,11 +559,11 @@ function attachTransferEdit(){
     clearTimeout(tf.saveTimer);
     if(r.version) await api('transfers/' + r.id, {method:'DELETE'});
     tf.data.transfers = tf.data.transfers.filter(x=>x.id !== r.id); tfKeep();
-    tfNewDraft({from:r.from});
+    tfNewDraft(null, true, tf.smartMode ? {to:r.to, yesterday:r.yesterday} : null);
   };
   document.getElementById('tfSend').onclick = ()=>tfSend(r);
   // Keep as draft: this one stays in Drafts (on the server, or on this device with no connection) and the form is free.
-  document.getElementById('tfKeepDraft').onclick = ()=>{ if(tfIsEmpty(r) || tfUnfinishedSmart(r)) return; r.dirty = true; tfKeep(); tfSaveDraft(r); tf.lastFrom = r.from; toast(t('rrDraftKept')); tfNewDraft(); };
+  document.getElementById('tfKeepDraft').onclick = ()=>{ if(tfIsEmpty(r) || tfUnfinishedSmart(r)) return; r.dirty = true; tfKeep(); tfSaveDraft(r); toast(t('rrDraftKept')); tfNextDraft(r); };
   document.onkeydown = e=>{
     if(state.view !== 'transfers' || tf.page !== 'edit'){ document.onkeydown = null; return; }
     if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.activeElement?.blur?.(); tfSend(r); return; }
@@ -654,7 +700,7 @@ async function tfQueueReviewedDrafts(rows, days, today){
         res?.data?.errors?.map(e=>tfErrText(e, lines)).join(' · ') || t('saveFailed');
       break;
     }
-    Object.assign(r, res.data); delete r.pendingSend; delete r.dirty; tfKeep(); tf.lastFrom = r.from;
+    Object.assign(r, res.data); delete r.pendingSend; delete r.dirty; tfKeep();
     sent++;
   }
   return {sent, stopped};
@@ -699,8 +745,8 @@ async function tfSendNow(r, keepForm){
   // Moving without a second approval: this is the approval, so what will move is always shown first.
   if(featureOn('tfAuto') && !ask.length && !await showConfirm(tfSummary(r, []), {title:t('tfApproveTitle')(r.lines.filter(l=>l.item).length), okLabel:t('tfSendMove'), okClass:'btn-primary', enter:true, wide:true})) return false;
   if(ask.length && !await showConfirm(tfSummary(r, ask.map(w=>tfWarnText(w, r))), {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary', enter:true, wide:true})) return false;
-  // No connection: kept here, waiting to send; the form is free for the next one (From stays).
-  const parkIt = ()=>{ r.pendingSend = true; r.dirty = true; tfKeep(); tf.lastFrom = r.from; toast(t('rrSavedOffline'), 'warn'); if(!keepForm) tfNewDraft(); else render(); };
+  // No connection: kept here, waiting to send; the form is free for the next one.
+  const parkIt = ()=>{ r.pendingSend = true; r.dirty = true; tfKeep(); toast(t('rrSavedOffline'), 'warn'); if(!keepForm) tfNextDraft(r); else render(); };
   if(tfToday() !== reviewDay){ toast(t('tfBatchChanged'), 'warn'); return false; }
   if(rrOffline()) return parkIt();
   tf.sending = true;
@@ -711,9 +757,8 @@ async function tfSendNow(r, keepForm){
     if(!res) return false;
     if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(e=>tfErrText(e, r.lines)).join(' · ') : t('saveFailed'), 'error'); return false; }
     Object.assign(r, res.data); delete r.pendingSend; delete r.dirty; tfKeep();
-    tf.lastFrom = r.from;
     toast(t('rrSent'));
-    if(keepForm) render(); else tfNewDraft();   // like Ricotta Restaurant: the form clears, From stays
+    if(keepForm) render(); else tfNextDraft(r);
     return true;
   } finally { tf.sending = false; }
 }

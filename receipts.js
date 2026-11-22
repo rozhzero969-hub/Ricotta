@@ -552,11 +552,12 @@ function renderReceiptEdit(){
       <div class="rr-field rr-f-item"><label for="rrItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('rrItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
       <div class="rr-field rr-f-unit"><label for="rrUnit${i}">${esc(t('rrUnit'))}</label><select id="rrUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${!l.unit ? `<option value="" selected hidden>${esc(t(item ? 'rrErrUnit' : 'rrBaseUnit'))}</option>` : ''}${units.map(u=>opt(u.label, rrUnitShow(u.label), u.label === l.unit)).join('')}</select></div>
       <div class="rr-field"><label for="rrQty${i}">${esc(t('rrQty'))}</label><input id="rrQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${esc(rrBoxText(l, 'qty'))}" placeholder="0"></div>
-      <div class="rr-field"><label for="rrCost${i}">${esc(t(typingTotal ? 'rrMathLineTotal' : 'rrUnitCost'))}${usd ? ' ($)' : ''}</label><input id="rrCost${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-cost="${i}" ${typingTotal ? 'data-rr-total-entry' : ''} value="${esc(typingTotal ? l.mathText || '' : rrBoxText(l, 'cost', true))}" placeholder="0">
-        ${r.math && !typingTotal ? `<button type="button" class="rr-link rr-total-edit" data-rr-recalc="${i}">${esc(t('rrMathLineTotal'))}</button>` : ''}
-        ${l.mathError ? `<small class="rr-math-error" role="alert">${esc(t(l.mathError))}</small>` : ''}</div>
+      <div class="rr-field"><label for="rrCost${i}">${esc(t(typingTotal ? 'rrMathLineTotal' : 'rrUnitCost'))}${usd ? ' ($)' : ''}</label>
+        <div class="rr-cost-box"><input id="rrCost${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-cost="${i}" ${typingTotal ? 'data-rr-total-entry' : ''} value="${esc(typingTotal ? l.mathText || '' : rrBoxText(l, 'cost', true))}" placeholder="0">
+        ${r.math && !typingTotal ? `<button type="button" class="rr-total-edit" data-rr-recalc="${i}" aria-label="${esc(t('rrMathLineTotal'))}" title="${esc(t('rrMathLineTotal'))}">${ICON_EDIT_ITEM}</button>` : ''}</div></div>
       <div class="rr-field rr-total"><span>${esc(t('rrTotal'))}</span><b>${lineTotal ? esc(rrMoney(lineTotal, r.currency)) : ''}</b></div>
       <button type="button" class="rr-del" data-l-del="${i}" tabindex="-1" aria-label="${esc(t('rrRemoveItem')(i + 1))}">${ICON_DELETE}</button>
+      ${l.mathError ? `<p class="rr-line-warn rr-math-error" role="alert">${esc(t(l.mathError))}</p>` : ''}
       ${warn ? `<p class="rr-line-warn">${esc(warn)}</p>` : ''}</div>`;
   }).join('');
   return `<div class="rr-page rr-edit">${rrRicoBar(rr.data.helper, rr.copyAt)}
@@ -565,15 +566,21 @@ function renderReceiptEdit(){
         <div class="rr-field"><label for="rrSupplier">${esc(t('rrSupplier'))}</label>${rrCombo('rrSupplier', r.supplier, t('rrSearchSupplier'))}</div>
         <div class="rr-field"><label for="rrZone">${esc(t('rrZone'))}</label><select id="rrZone">${cat.zones.includes(r.zone) ? '' : `<option value="" selected hidden>${esc(t('rrErrZone'))}</option>`}${cat.zones.map(z=>opt(z, z, z === r.zone)).join('')}</select></div>
         <div class="rr-field"><label for="rrInvoice">${esc(t('rrInvoice'))}</label><input id="rrInvoice" class="rr-input rr-n" inputmode="numeric" autocomplete="off" maxlength="30" value="${esc(r.invoice || '')}" placeholder="${esc(t('rrInvoiceHint'))}"></div>
-        <div class="rr-field"><span class="rr-label">${esc(t('rrCurrency'))}</span><div class="rr-options"><div class="pill-seg rr-cur" role="radiogroup" aria-label="${esc(t('rrCurrency'))}">
-          <button type="button" class="pill-seg-btn" role="radio" aria-checked="${!usd}" data-cur="IQD">IQD</button><button type="button" class="pill-seg-btn" role="radio" aria-checked="${usd}" data-cur="USD">USD $</button></div>
-          <button type="button" class="btn btn-ghost rr-toggle" id="rrDeliveryOn" aria-pressed="${deliveryOn}" ${usd ? 'disabled' : ''}>${esc(t('rrDelivery'))}</button></div></div>
+        <div class="rr-options">
+          <div class="rr-field"><span class="rr-label">${esc(t('rrCurrency'))}</span><div class="pill-seg rr-cur" role="group" aria-label="${esc(t('rrCurrency'))}">
+            <button type="button" class="pill-seg-btn" aria-pressed="${!usd}" data-cur="IQD">IQD</button><button type="button" class="pill-seg-btn" aria-pressed="${usd}" data-cur="USD">USD $</button></div></div>
+          <div class="rr-field"><span class="rr-label">${esc(t('rrDelivery'))}</span><div class="pill-seg rr-cur rr-switch" role="group" aria-label="${esc(t('rrDelivery'))}">
+            <button type="button" class="pill-seg-btn" data-delivery="off" aria-pressed="${!deliveryOn}" ${usd ? 'disabled' : ''}>${esc(t('rrSwitchOff'))}</button>
+            <button type="button" class="pill-seg-btn" data-delivery="on" aria-pressed="${deliveryOn}" ${usd ? 'disabled' : ''}>${esc(t('rrSwitchOn'))}</button></div></div>
+          <div class="rr-field"><span class="rr-label">${esc(t('rrMath'))}</span><div class="pill-seg rr-cur rr-switch" role="group" aria-label="${esc(t('rrMath'))}">
+            <button type="button" class="pill-seg-btn" data-rr-math="off" aria-pressed="${!r.math}">${esc(t('rrSwitchOff'))}</button>
+            <button type="button" class="pill-seg-btn" data-rr-math="on" aria-pressed="${!!r.math}">${esc(t('rrSwitchOn'))}</button></div></div>
+        </div>
         ${usd ? `<div class="rr-field"><label for="rrRate">${esc(t('rrRate'))}</label><input id="rrRate" class="rr-input rr-n" inputmode="decimal" autocomplete="off" value="${esc(rrBoxText(r, 'rate'))}" placeholder="1500"></div>`
           : deliveryOn ? `<div class="rr-field"><label for="rrDelivery">${esc(t('rrDelivery'))}</label><input id="rrDelivery" class="rr-input rr-n" inputmode="numeric" autocomplete="off" value="${esc(rrBoxText(r, 'delivery', true))}" placeholder="${esc(t('rrNoDelivery'))}"></div>` : ''}
       </div></section>
     <section class="rr-card"><h2 class="rr-card-title"><span>${esc(t('rrItems'))}</span><span class="rr-count">${esc(t('rrItemCount')(r.lines.filter(l=>l.item).length))}</span></h2>
-      <div class="rr-math"><button type="button" class="btn btn-ghost rr-toggle" id="rrMath" aria-pressed="${!!r.math}">${esc(t('rrMath'))}</button>
-        ${r.math ? `<small>${esc(t('rrMathHint'))}</small>` : ''}</div>
+      ${r.math ? `<p class="rr-math-hint">${esc(t('rrMathHint'))}</p>` : ''}
       <div class="rr-lines">${lines}</div>
       <button type="button" class="rr-add" id="rrAdd">${ICON_PLUS}<span>${esc(t('rrAddItem'))}</span></button>
       <p class="rr-keys">${esc(t('rrKeysHint')(RR_MOD))}</p></section>
@@ -681,16 +688,22 @@ function attachReceiptEdit(){
     r.delivery = null; delete r.deliveryText; r.deliveryOn = false;
     return true;
   };
-  document.getElementById('rrDeliveryOn').onclick = async ()=>{
-    if(r.deliveryOn ?? r.delivery != null){ if(!await switchDeliveryOff()) return; }
-    else r.deliveryOn = true;
-    changed(true); go(r.deliveryOn ? 'rrDelivery' : 'rrDeliveryOn');
-  };
-  document.getElementById('rrMath').onclick = ()=>{
-    if(r.math && r.lines.some(l=>l.mathText?.trim())){ toast(t('rrMathPending'), 'warn'); return; }
-    r.math = !r.math;
-    rrKeep(); repaint(); go('rrMath');
-  };
+  document.querySelectorAll('[data-delivery]').forEach(b=>b.onclick = async ()=>{
+    const on = b.dataset.delivery === 'on';
+    if(r.currency === 'USD' || on === (r.deliveryOn ?? r.delivery != null)) return;
+    if(!on && !await switchDeliveryOff()) return;
+    r.deliveryOn = on;
+    changed(true);
+    if(on) go('rrDelivery'); else document.querySelector('[data-delivery="off"]')?.focus({preventScroll:true});
+  });
+  document.querySelectorAll('[data-rr-math]').forEach(b=>b.onclick = ()=>{
+    const on = b.dataset.rrMath === 'on';
+    if(on === !!r.math) return;
+    if(!on && r.lines.some(l=>l.mathText?.trim())){ toast(t('rrMathPending'), 'warn'); return; }
+    r.math = on;
+    rrKeep(); repaint();
+    document.querySelector(`[data-rr-math="${on ? 'on' : 'off'}"]`)?.focus({preventScroll:true});
+  });
   document.querySelectorAll('[data-cur]').forEach(b=>b.onclick = async ()=>{
     if(r.currency === b.dataset.cur) return;
     if(r.lines.some(l=>l.mathText?.trim())){ toast(t('rrMathPending'), 'warn'); return; }
