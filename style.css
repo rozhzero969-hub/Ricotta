@@ -3926,3 +3926,74 @@ html.dark .rr-edit .rr-cancel:hover{background:var(--fill-strong)}
 .tf-smart-review-line bdi:first-child{overflow-wrap:anywhere}
 .tf-smart-review-line bdi:last-child{white-space:nowrap;color:var(--tint);font-weight:600}
 @media(max-width:680px){.tf-smart-body{grid-template-columns:minmax(0,1fr)}.tf-smart-review ul{max-height:132px}}
+/* ---------- "Always see-through" as frosted glass (html.mac-shell.see-through only) ----------
+   The window is one sheet of smoky glass over the Mac's blurred desktop: the page and the sidebar share
+   the same tint, split by a hairline. Groups and cards are soft panels of slightly lighter glass, the tiles
+   inside them darker glass, fields and chips clear glass with a hairline. The main button is solid white
+   (black in light mode) and the send button is a dark pill with a soft glowing ring. Only the page inside
+   #app changes: sheets, menus and pop-ups (outside #app, or listed below) keep their solid surfaces, so
+   their text never sits on the desktop. Nothing here applies in a browser, on a phone or in the iPhone app. */
+html.mac-shell.see-through{
+  --g-solid:var(--surface);--g-solid-2:var(--bg);
+  --g-window:rgba(250,250,252,.34);--g-panel:rgba(255,255,255,.44);--g-panel-line:rgba(255,255,255,.62);
+  --g-card:rgba(255,255,255,.6);--g-card-line:rgba(0,0,0,.05);--g-card-on:rgba(255,255,255,.86);
+  --g-fill:rgba(255,255,255,.5);--g-fill-strong:rgba(255,255,255,.78);--g-line:rgba(0,0,0,.08);--g-seg:rgba(255,255,255,.92);
+  --g-sticky:rgba(250,250,252,.86);--g-shadow:0 1px 2px rgba(0,0,0,.04),0 10px 30px -12px rgba(0,0,0,.14);
+  --g-primary:#1D1D1F;--g-on-primary:#FFFFFF;--g-pill:rgba(28,28,30,.8);
+  --bar:rgba(250,250,252,.6)}
+html.mac-shell.see-through.dark{
+  --g-window:rgba(24,23,22,.5);--g-panel:rgba(255,255,255,.065);--g-panel-line:rgba(255,255,255,.08);
+  --g-card:rgba(0,0,0,.26);--g-card-line:rgba(255,255,255,.06);--g-card-on:rgba(0,0,0,.34);
+  --g-fill:rgba(255,255,255,.07);--g-fill-strong:rgba(255,255,255,.13);--g-line:rgba(255,255,255,.09);--g-seg:rgba(255,255,255,.16);
+  --g-sticky:rgba(38,37,36,.88);--g-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 12px 34px -14px rgba(0,0,0,.45);
+  --g-primary:#FFFFFF;--g-on-primary:#111111;--g-pill:rgba(20,20,22,.72);
+  --bar:rgba(30,29,28,.58)}
+html.mac-shell.see-through #app{
+  --surface:var(--g-panel);--surface-2:var(--g-card);--fill:var(--g-fill);--fill-strong:var(--g-fill-strong);
+  --line:var(--g-line);--line-strong:var(--g-panel-line);--seg-on:var(--g-seg);--bubble:var(--g-fill-strong);
+  background:var(--g-window)}
+/* Pop-ups that open over the page stay solid. */
+html.mac-shell.see-through #app :is(.rr-pop,.help-pop,.ctx-preview,.item-sort-ghost,.rc-ctx-preview,.sel-panel,.modal-box,.rico-suggest-x,kbd,.qty-input:focus,.rr-input:focus,.rc-tp-rows){
+  --surface:var(--g-solid);--surface-2:var(--g-solid-2)}
+html.mac-shell.see-through #app .data-table thead th{background:var(--g-sticky);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+@media (min-width:960px){
+  html.mac-shell.see-through #app{background:var(--g-window)}
+  html.mac-shell.see-through #app::before{content:none}
+  html.mac-shell.see-through .bottomnav,html.mac-shell.see-through.rico-mode #app>.rico-side{background:transparent;border-inline-end:1px solid var(--g-line)}
+  html.mac-shell.see-through .nav-indicator{background:var(--g-fill-strong);box-shadow:inset 0 0 0 1px var(--g-panel-line)}
+}
+/* Panels and the tiles inside them. */
+html.mac-shell.see-through #app :is(.glass,.supplier-group,.hist-card,.rec-card,.dev-card,.queue-card,.form-card,.month-card,.report-card,.ad-group,.ad-card,.ad-status,.ad-tile-card,.table-list,.plain-list,.data-table-scroll,.rr-list,.rr-card,.rr-state,.rr-sum,.rr-done,.day-card,.adh-status,.adh-list,.adh-card,.stk-list,.nm-row,.rc-list,.rc-alerts,.rc-ask,.rc-money,.rc-photo-box,.rc-why-list,.rc-sum,.rc-missing-box,.rico-note,.rico-card,.push-banner,.skel-row){
+  border:1px solid var(--g-panel-line);box-shadow:var(--g-shadow)}
+html.mac-shell.see-through #app .supplier-group{border-radius:20px}
+@media (min-width:600px){
+  html.mac-shell.see-through #app .item-row{background:var(--g-card);box-shadow:inset 0 0 0 1px var(--g-card-line);border-radius:14px}
+  html.mac-shell.see-through #app .item-row.has-qty{background:var(--g-card-on);box-shadow:inset 0 0 0 1.5px rgba(var(--accent-rgb),.55)}
+}
+html.mac-shell.see-through #app .item-row.low-alert{background:rgba(250,204,21,.16)}
+/* Fields, chips and plain buttons: clear glass with a hairline. */
+html.mac-shell.see-through #app :is(.search-input,.catalog-search input,.quick-btn,.tab-pill:not(.active),.btn-ghost,.rico-open,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip,.pick:not(.on),.sel-btn,.heading-search,.kind-switch,.admin-refresh,.help-btn,.streak-chip,.rr-input,.rd-search,.stepper){
+  background:var(--g-fill);border:1px solid var(--g-panel-line)}
+html.mac-shell.see-through #app :is(.search-input,.catalog-search input,.rr-input){background:var(--g-card)}
+html.mac-shell.see-through.dark #app :is(.search-input,.catalog-search input,.rr-input){border-color:var(--g-line)}
+@media (hover:hover) and (pointer:fine){
+  html.mac-shell.see-through #app :is(.quick-btn,.btn-ghost,.tab-pill:not(.active),.pick:not(.on),.heading-search):not(:disabled):hover{background:var(--g-fill-strong)}
+}
+/* The main button: solid white on dark glass, near-black on light glass. */
+html.mac-shell.see-through #app .btn-primary:not(.danger){background:var(--g-primary);color:var(--g-on-primary);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+html.mac-shell.see-through #app .tab-pill.active{background:var(--g-primary);color:var(--g-on-primary)}
+/* The send button: a dark glass pill with a glowing ring in Ricotta's green. */
+html.mac-shell.see-through #app .send-btn{border:1.5px solid transparent;border-radius:999px;
+  background:linear-gradient(var(--g-pill),var(--g-pill)) padding-box,linear-gradient(115deg,rgba(var(--accent-rgb),.95),rgba(150,205,255,.85) 55%,rgba(var(--accent-rgb),.9)) border-box;
+  -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+  box-shadow:0 0 0 4px rgba(var(--accent-rgb),.12),0 0 26px rgba(var(--accent-rgb),.32),0 18px 40px -14px rgba(0,0,0,.55)}
+html.mac-shell.see-through #app .send-btn:disabled{background:linear-gradient(var(--g-pill),var(--g-pill)) padding-box,linear-gradient(rgba(255,255,255,.2),rgba(255,255,255,.2)) border-box;box-shadow:0 18px 40px -14px rgba(0,0,0,.45)}
+html.mac-shell.see-through #app .send-meta{color:rgba(255,255,255,.66)}
+/* Ricotta's own green card becomes green-tinted glass in dark mode; the themes keep their artwork. */
+html.mac-shell.see-through.dark:not(.theme-halloween,.theme-christmas,.theme-moonlit,.theme-google,.theme-pink) #app .hero-card{
+  background:radial-gradient(120% 140% at 100% 0%,rgba(var(--accent-rgb),.2),transparent 60%),linear-gradient(rgba(var(--accent-rgb),.1),rgba(var(--accent-rgb),.04)),var(--g-panel);
+  border:1px solid var(--g-panel-line);box-shadow:var(--g-shadow)}
+html.mac-shell.see-through.dark:not(.theme-halloween,.theme-christmas,.theme-moonlit,.theme-google,.theme-pink) #app .hero-card .hero-footer{border-top-color:var(--g-line)}
+/* Food / Expenses: the chosen side is a lighter glass chip, as on a Mac segmented control. */
+html.mac-shell.see-through #app .kind-thumb{background:var(--g-seg);box-shadow:inset 0 0 0 1px var(--g-panel-line),0 1px 3px rgba(0,0,0,.12)}
+html.mac-shell.see-through #app .kind-pill.on{color:var(--ink)}
