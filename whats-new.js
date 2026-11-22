@@ -3,6 +3,10 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-22c', date:'2026-11-22', notes:{
+    en:['Supplier reminders and Rico\u2019s Scheduled tasks ask for the time as hour, minutes and AM or PM, on any phone or computer.','Times in notifications and in Rico\u2019s messages use AM and PM, Erbil time.'],
+    ku:['بیرخەرەوەی دابینکەران و کارە کاتدیاریکراوەکانی ریکۆ کات بە کاتژمێر و خولەک و پ.ن یان د.ن دەپرسن، لەسەر هەر مۆبایل و کۆمپیوتەرێک.','کاتەکان لە ئاگادارکردنەوەکان و نامەکانی ریکۆدا پ.ن و د.ن بەکاردێنن، بە کاتی هەولێر.'],
+    ar:['تذكيرات الموردين ومهام ريكو المجدولة تطلب الوقت بالساعة والدقائق وص أو م، على أي هاتف أو كمبيوتر.','الأوقات في الإشعارات ورسائل ريكو بنظام ص وم، بتوقيت أربيل.']}},
   {id:'2026-11-21a', date:'2026-11-21', notes:{
     en:['Mac app: the Ricotta theme looks like the app again, green and plain, with no extra artwork.','Mac app: new themes with gentle moving artwork: Pumpkin Moon (Halloween), Winter Lights (Christmas), Silver Moon, Google and Cupid’s Blush. They move only now and then, stop while the window is hidden, and stay still when Reduce Motion is on.','Mac app: twelve new app icons, with each theme’s own icon first.'],
     ku:['ئەپی ماک: ڕووکاری ریکۆتا دیسان وەک ئەپەکە دەردەکەوێت، سەوز و سادە، بێ وێنەی زیادە.','ئەپی ماک: ڕووکاری نوێ لەگەڵ وێنەی جوڵاوی نەرم: مانگی کەدوو (هالۆوین)، چراکانی زستان (کریسمس)، مانگی زیوین، گووگڵ و پەمەیی کیوپید. تەنها جار جار دەجوڵێن، کاتێک پەنجەرەکە شاراوەیە دەوەستن، و کاتێک کەمکردنەوەی جوڵە هەڵکراوە ناجوڵێن.','ئەپی ماک: دوازدە ئایکۆنی نوێی ئەپ، ئایکۆنی هەر ڕووکارێک لە سەرەتادا.'],

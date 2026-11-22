@@ -560,6 +560,13 @@ html.rtl .ctx-menu{transform-origin:top left}
 .field textarea{padding:12px 14px;min-height:88px;resize:vertical;line-height:1.5;font:inherit;font-size:1.0625rem}
 .field select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238E8E93' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-inline-end:36px}
 html.rtl .field select{background-position:left 14px center}
+/* The 12-hour time picker (hour, minutes, AM/PM): three small boxes in a row, always read left to right like 3:30 PM. */
+.time12{display:flex;align-items:center;gap:6px}
+html .field .time12 select{flex:1 1 0;min-width:0;width:auto;padding-inline:12px 30px;background-position:right 10px center;font-variant-numeric:tabular-nums}
+.time12-colon{font-weight:600;color:var(--ink-soft)}
+.time12-when{display:flex;flex-wrap:wrap;gap:8px}
+.time12-when > input{flex:1 1 150px;min-width:0}
+.time12-when > .time12{flex:2 1 220px}
 .field-hint{font-size:.8125rem;font-weight:400;color:var(--ink-soft);margin:6px 4px 0;line-height:1.4}
 .field-hint:empty{display:none}
 .form-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}

@@ -1044,7 +1044,7 @@ async function photoFiles(list, kind){
   for(const r of list){
     if(!r.photos?.length) continue;
     const res = await api(`${kind}/${r.id}/photos`, {quiet:true});
-    const folder = safeFileName(kind === 'receipts' ? `${r.supplier} #${r.invoice || ''}` : `${r.from} to ${r.to} ${(r.sentAt || '').slice(11, 16).replace(':', '')}`);
+    const folder = safeFileName(kind === 'receipts' ? `${r.supplier} #${r.invoice || ''}` : `${r.from} to ${r.to} ${r.sentAt ? FILE_TIME.format(new Date(r.sentAt)).replace(':', '') : ''}`);
     let n = 0;
     for(const p of res.data?.photos || []){
       try{ const b = await (await fetch(p.url)).arrayBuffer(); out.push([`${folder}/${p.kind}-${++n}.jpg`, new Uint8Array(b)]); }catch(_){}

@@ -935,7 +935,7 @@ await restHome();
       if (!w?.want) continue;
       const img = (await page.screenshot({ type: "jpeg", quality: 70, scale: "css" })).toString("base64");
       const what = await page.title().catch(() => "");
-      await api("helper/shot", { method: "POST", body: { chat: w.chat, image: img, caption: `Rico's screen at ${new Date().toLocaleTimeString()}${PRACTICE ? " (practice mode)" : ""}${what ? ": " + what : ""}` } });
+      await api("helper/shot", { method: "POST", body: { chat: w.chat, image: img, caption: `Rico's screen at ${new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Baghdad", hour: "numeric", minute: "2-digit", hour12: true })}${PRACTICE ? " (practice mode)" : ""}${what ? ": " + what : ""}` } });
       log("sent a live screenshot");
     } catch (e) { log("screenshot:", e.message); await sleep(5000); }
   }

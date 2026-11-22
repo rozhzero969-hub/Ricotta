@@ -31,7 +31,7 @@
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders } from "../_shared/security.ts";
-import { type PastOrder, type RoutineKind, runRoutines } from "../_shared/routines.ts";
+import { clock12, type PastOrder, type RoutineKind, runRoutines } from "../_shared/routines.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const VAPID_PUBLIC = Deno.env.get("VAPID_PUBLIC_KEY");
@@ -297,13 +297,14 @@ async function overdueTick() {
   const out: unknown[] = [];
   for (const s of due) {
     if (sentSince(s.date, s.id)) continue;
-    const name = String(s.name).slice(0, 60), time = s.reminder.time;
+    // The time on the 12-hour clock, in each language's AM/PM words (Erbil reads 3:30 PM, not 15:30).
+    const name = String(s.name).slice(0, 60), at = clock12(s.reminder.time);
     const said = await saysOnce(`overdue|${s.id}|${s.date}`, "overdue", s.id, () => ricoSays("overdue", `overdue|${s.id}|${s.date}`, {
-      en: () => `${iso(name)}: not sent yet, due at ${time}.`,
-      ku: () => `${iso(name)}: هێشتا نەنێردراوە، کاتەکەی ${time} بوو.`,
-      ar: () => `${iso(name)}: لم يُرسل بعد، موعده ${time}.`,
+      en: () => `${iso(name)}: not sent yet, due at ${iso(at.en)}.`,
+      ku: () => `${iso(name)}: هێشتا نەنێردراوە، کاتەکەی ${iso(at.ku)} بوو.`,
+      ar: () => `${iso(name)}: لم يُرسل بعد، موعده ${iso(at.ar)}.`,
     }, { supplierId: String(s.id), title: name, push: {
-      en: `Not sent yet, due at ${time}.`, ku: `هێشتا نەنێردراوە، کاتەکەی ${time} بوو.`, ar: `لم يُرسل بعد، موعده ${time}.`,
+      en: `Not sent yet, due at ${at.en}.`, ku: `هێشتا نەنێردراوە، کاتەکەی ${iso(at.ku)} بوو.`, ar: `لم يُرسل بعد، موعده ${iso(at.ar)}.`,
     } }));
     if (said) out.push({ supplier: name, ...said });
   }

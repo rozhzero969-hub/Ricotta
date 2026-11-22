@@ -419,7 +419,7 @@ function suppliersTable(rep){
   return sortedByName(state.suppliers).map(s=>{
     const m = rep.suppliers?.[s.id] || {}, r = s.reminder;
     const days = r && r.enabled ? (reminderDays(r).length === 7 ? t('everyDay') : DAY_ORDER.filter(d=>reminderDays(r).includes(d)).map(d=>t('daysShort')[d]).join(', ')) : '';
-    return {supplier:s, cells:[s.name, s.phone || '', state.items.filter(i=>i.supplierId === s.id).length, r && r.enabled ? r.time : '', days, Number(m.orders || 0), Number(m.lines || 0), shortDate(m.last)]};
+    return {supplier:s, cells:[s.name, s.phone || '', state.items.filter(i=>i.supplierId === s.id).length, r && r.enabled ? formatStoredIraqTime(r.time) : '', days, Number(m.orders || 0), Number(m.lines || 0), shortDate(m.last)]};
   });
 }
 async function exportCatalog(kind, format){
