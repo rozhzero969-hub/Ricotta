@@ -62,7 +62,7 @@
     ['غرام','گرام','جرام','غم','غ','g','gm','gms','gr','grs','grm','gram','grams','gramme','grammes'],
     ['ملی لتر','ملی لیتر','مل','مللتر','ملليتر','مليلتر','ml','mls','millilitre','milliliter','millilitres','milliliters'],
     ['لتر','لیتر','ليتر','l','lt','ltr','ltrs','litre','liter','litres','liters'],
-    ['دانە','دانه','قطعة','حبة','عدد','piece','pieces','pcs','pc','pce','each','bottle','bottles'],
+    ['دانە','دانه','قطعة','قطع','حبة','عدد','piece','pieces','pcs','pc','pce','each','bottle','bottles'],
     ['سیت','سێت','set','sets'],
     ['ستل','سەتڵ','سطل','bucket','buckets','pail','pails','tub','tubs'],
     ['فەردە','فردة','کیسە','كيس','sack','sacks','bag','bags'],

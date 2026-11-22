@@ -113,7 +113,24 @@ function rrMergeDrafts(kind, list){
     // The form open on the screen already holds everything typed: it is saved as it is, never replaced by the
     // device copy (that dropped a just-added empty row, and typing into it was lost).
     else if(s.status === 'draft' && s.id === openId){ if(d.dirty) push.push(s); if(d.pendingSend) s.pendingSend = true; }
-    else if(s.status === 'draft'){ if(d.dirty && (d.version || 0) >= (s.version || 0)){ Object.assign(s, d); push.push(s); } else if(d.pendingSend) s.pendingSend = true; }
+    else if(s.status === 'draft'){
+      if(d.dirty && (d.version || 0) >= (s.version || 0)){ Object.assign(s, d); push.push(s); }
+      else {
+        if(d.pendingSend) s.pendingSend = true;
+        // Restore local entry controls only when they belong to this exact server revision.
+        if(s.version === d.version && kind === 'rr'){
+          s.math = d.math; s.deliveryOn = d.deliveryOn;
+          s.lines.forEach((line, i)=>{
+            const old = d.lines?.[i];
+            if(old && line.item === old.item && line.unit === old.unit && line.qty === old.qty && line.cost === old.cost){
+              line.mathCost = old.mathCost; line.mathText = old.mathText;
+            }
+          });
+        } else if(s.version === d.version && kind === 'tf'){
+          s.dayPickedOn = d.dayPickedOn; s.smartText = d.smartText;
+        }
+      }
+    }
   }
   return push;
 }
@@ -393,11 +410,12 @@ function rrFocusFree(){
 function rrCombo(id, value, placeholder, attrs = ''){
   return `<div class="rr-combo"><input id="${id}" class="rr-input" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="${id}List" autocomplete="off" spellcheck="false" dir="auto" value="${esc(value || '')}" placeholder="${esc(placeholder)}" ${attrs}><div class="rr-pop" id="${id}List" role="listbox" hidden></div></div>`;
 }
-function rrComboBind(input, names, onPick, extra){
+function rrComboBind(input, names, onPick, extra, locked){
   const pop = input.nextElementSibling;
   let shown = [], hi = -1, picked = input.value;
+  const blocked = n=>!!locked?.(n);
   const paint = ()=>{
-    pop.innerHTML = shown.length ? shown.map((n, i)=>`<div class="rr-opt${i === hi ? ' hi' : ''}${n === picked ? ' on' : ''}" role="option" id="${input.id}O${i}" aria-selected="${i === hi}" data-i="${i}">${extra ? `<span dir="auto">${esc(n)}</span><small>${esc(extra(n))}</small>` : `<span dir="auto">${esc(n)}</span>`}</div>`).join('')
+    pop.innerHTML = shown.length ? shown.map((n, i)=>`<div class="rr-opt${i === hi ? ' hi' : ''}${n === picked ? ' on' : ''}${blocked(n) ? ' tf-option-locked' : ''}" role="option" aria-disabled="${blocked(n)}" id="${input.id}O${i}" aria-selected="${i === hi}" data-i="${i}">${extra ? `<span dir="auto">${esc(n)}</span><small>${esc(extra(n))}</small>` : `<span dir="auto">${esc(n)}</span>`}</div>`).join('')
       : `<div class="rr-opt none">${esc(t('rrNoMatch'))}</div>`;
     mark(true);
   };
@@ -413,12 +431,13 @@ function rrComboBind(input, names, onPick, extra){
     if(o && +o.dataset.i !== hi){ hi = +o.dataset.i; mark(false); }
   });
   const open = q=>{
-    shown = (q ? globalThis.RicottaSearch.rank(names, q, n=>n) : names).slice(0, 80);
+    const choices = typeof names === 'function' ? names() : names;
+    shown = (q ? globalThis.RicottaSearch.rank(choices, q, n=>n) : choices).slice(0, 80);
     hi = shown.length ? (q ? 0 : Math.max(0, shown.indexOf(picked))) : -1;
     pop.hidden = false; input.setAttribute('aria-expanded', 'true'); paint();
   };
   const close = ()=>{ pop.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); };
-  const pick = n=>{ picked = n; input.value = n; close(); onPick(n, false); };
+  const pick = n=>{ if(blocked(n)) return; picked = n; input.value = n; close(); onPick(n, false); };
   // A click (or Tab) on a box shows the whole list, the chosen one marked; nothing is selected. The first
   // letter typed starts a new search in place of the chosen name; Delete clears it.
   input.addEventListener('focus', ()=>{ open(''); });
@@ -429,7 +448,7 @@ function rrComboBind(input, names, onPick, extra){
     if((e.key === 'Backspace' || e.key === 'Delete') && picked && input.value === picked){ e.preventDefault(); input.value = ''; open(''); return; }
     if(pop.hidden){
       if(e.key === 'ArrowDown'){ e.preventDefault(); open(''); }
-      else if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && picked && input.value === picked){ e.preventDefault(); onPick(picked, true); }
+      else if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && picked && input.value === picked){ e.preventDefault(); if(!blocked(picked)) onPick(picked, true); }
       return;
     }
     if((e.key === 'Tab' || e.key === 'ArrowDown' || e.key === 'ArrowUp') && shown.length){
@@ -489,26 +508,53 @@ function rrTidyTyped(o, key, el){
   // still on the page and no longer focused has really been left.
   setTimeout(()=>{ if(!o || !el?.isConnected || document.activeElement === el || Number.isNaN(o[key])) return; const x = o[key + 'Text']; if(typeof x === 'string' && x.endsWith('.')) o[key + 'Text'] = x.slice(0, -1); }, 0);
 }
+/* Strict entry for amounts that will be acted on. Commas must be thousands separators. */
+function rrStrictAmount(value, decimals){
+  const text = String(value ?? '').trim().replace(/[٠-٩]/g, d=>d.charCodeAt(0) - 0x660)
+    .replace(/[۰-۹]/g, d=>d.charCodeAt(0) - 0x6f0).replaceAll('٬', ',').replace('٫', '.');
+  const parts = text.split('.');
+  if(parts.length > 2 || !/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(parts[0]) ||
+    (parts.length === 2 && (!/^\d+$/.test(parts[1]) || parts[1].length > decimals))) return NaN;
+  return Number(text.replaceAll(',', ''));
+}
+function rrCostFromTotal(text, qty, currency){
+  const usd = currency === 'USD', scale = usd ? 1000 : 1;
+  const amount = rrStrictAmount(text, usd ? 3 : 0);
+  if(!(qty > 0 && qty <= 99999 && Number(qty.toFixed(3)) === qty && Number.isSafeInteger(Math.round(amount * scale)) && amount > 0)) return {error:'rrMathAmount'};
+  const qtyMillis = BigInt(Math.round(qty * 1000)), totalUnits = BigInt(Math.round(amount * scale));
+  const denominator = qtyMillis * BigInt(scale);
+  const cost = Number((totalUnits * 1000000n + denominator / 2n) / denominator) / 1000;
+  if(!(cost > 0 && cost < 1e10) || globalThis.RicottaReceipts.lineTotal({qty, cost}, currency) !== amount) return {error:'rrMathMismatch'};
+  return {cost};
+}
+function rrMathReset(l){
+  delete l.mathText;
+  delete l.mathError;
+  delete l.mathCost;
+}
 const RR_MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';
 function renderReceiptEdit(){
   const r = rrFind(rr.id); if(!r){ rr.page = 'edit'; rr.formId = null; return renderReceipts(); }
   const cat = rr.data.catalog;
   const opt = (v, label, on)=>`<option value="${esc(v)}"${on ? ' selected' : ''}>${esc(label)}</option>`;
   const c = globalThis.RicottaReceipts.check(r, cat, rrLimits(), rr.data.last);
-  const usd = r.currency === 'USD';
+  const usd = r.currency === 'USD', deliveryOn = !usd && (r.deliveryOn ?? r.delivery != null);
   const lines = r.lines.map((l, i)=>{
     const item = rrItem(l.item), units = item ? globalThis.RicottaReceipts.unitOptions(item) : [];
     // A unit the item no longer has (changed in Ricotta Restaurant) is cleared, so it is picked again: put in
     // quietly, the quantity typed would count a different unit.
     if(item && l.unit && !units.some(u=>u.label === l.unit)){ l.unit = ''; rrSaveSoon(r); }
     const lineTotal = globalThis.RicottaReceipts.lineTotal(l, r.currency);
+    const typingTotal = r.math && (l.mathText != null || l.cost == null);
     // The line being typed in isn't judged until its box is left (8 on the way to 800 is not "price down").
     const warn = rr.typingLine === i ? '' : c.warnings.filter(w=>w.line === i + 1).map(w=>rrWarnText(w)).join(' ');
     return `<div class="rr-line${warn ? ' warn' : ''}" data-line="${i}">
       <div class="rr-field rr-f-item"><label for="rrItem${i}">${esc(t('rrItem'))} ${i + 1}</label>${rrCombo('rrItem' + i, l.item, t('rrSearchItem'), `data-l-item="${i}"`)}</div>
       <div class="rr-field rr-f-unit"><label for="rrUnit${i}">${esc(t('rrUnit'))}</label><select id="rrUnit${i}" data-l-unit="${i}" data-inline ${item ? '' : 'disabled'}>${!l.unit ? `<option value="" selected hidden>${esc(t(item ? 'rrErrUnit' : 'rrBaseUnit'))}</option>` : ''}${units.map(u=>opt(u.label, rrUnitShow(u.label), u.label === l.unit)).join('')}</select></div>
       <div class="rr-field"><label for="rrQty${i}">${esc(t('rrQty'))}</label><input id="rrQty${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-qty="${i}" value="${esc(rrBoxText(l, 'qty'))}" placeholder="0"></div>
-      <div class="rr-field"><label for="rrCost${i}">${esc(t('rrUnitCost'))}${usd ? ' ($)' : ''}</label><input id="rrCost${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-cost="${i}" value="${esc(rrBoxText(l, 'cost', true))}" placeholder="0"></div>
+      <div class="rr-field"><label for="rrCost${i}">${esc(t(typingTotal ? 'rrMathLineTotal' : 'rrUnitCost'))}${usd ? ' ($)' : ''}</label><input id="rrCost${i}" class="rr-input rr-n" inputmode="decimal" autocomplete="off" data-l-cost="${i}" ${typingTotal ? 'data-rr-total-entry' : ''} value="${esc(typingTotal ? l.mathText || '' : rrBoxText(l, 'cost', true))}" placeholder="0">
+        ${r.math && !typingTotal ? `<button type="button" class="rr-link rr-total-edit" data-rr-recalc="${i}">${esc(t('rrMathLineTotal'))}</button>` : ''}
+        ${l.mathError ? `<small class="rr-math-error" role="alert">${esc(t(l.mathError))}</small>` : ''}</div>
       <div class="rr-field rr-total"><span>${esc(t('rrTotal'))}</span><b>${lineTotal ? esc(rrMoney(lineTotal, r.currency)) : ''}</b></div>
       <button type="button" class="rr-del" data-l-del="${i}" tabindex="-1" aria-label="${esc(t('rrRemoveItem')(i + 1))}">${ICON_DELETE}</button>
       ${warn ? `<p class="rr-line-warn">${esc(warn)}</p>` : ''}</div>`;
@@ -519,12 +565,15 @@ function renderReceiptEdit(){
         <div class="rr-field"><label for="rrSupplier">${esc(t('rrSupplier'))}</label>${rrCombo('rrSupplier', r.supplier, t('rrSearchSupplier'))}</div>
         <div class="rr-field"><label for="rrZone">${esc(t('rrZone'))}</label><select id="rrZone">${cat.zones.includes(r.zone) ? '' : `<option value="" selected hidden>${esc(t('rrErrZone'))}</option>`}${cat.zones.map(z=>opt(z, z, z === r.zone)).join('')}</select></div>
         <div class="rr-field"><label for="rrInvoice">${esc(t('rrInvoice'))}</label><input id="rrInvoice" class="rr-input rr-n" inputmode="numeric" autocomplete="off" maxlength="30" value="${esc(r.invoice || '')}" placeholder="${esc(t('rrInvoiceHint'))}"></div>
-        <div class="rr-field"><span class="rr-label">${esc(t('rrCurrency'))}</span><div class="pill-seg rr-cur" role="radiogroup" aria-label="${esc(t('rrCurrency'))}">
-          <button type="button" class="pill-seg-btn" role="radio" aria-checked="${!usd}" data-cur="IQD">IQD</button><button type="button" class="pill-seg-btn" role="radio" aria-checked="${usd}" data-cur="USD">USD $</button></div></div>
+        <div class="rr-field"><span class="rr-label">${esc(t('rrCurrency'))}</span><div class="rr-options"><div class="pill-seg rr-cur" role="radiogroup" aria-label="${esc(t('rrCurrency'))}">
+          <button type="button" class="pill-seg-btn" role="radio" aria-checked="${!usd}" data-cur="IQD">IQD</button><button type="button" class="pill-seg-btn" role="radio" aria-checked="${usd}" data-cur="USD">USD $</button></div>
+          <button type="button" class="btn btn-ghost rr-toggle" id="rrDeliveryOn" aria-pressed="${deliveryOn}" ${usd ? 'disabled' : ''}>${esc(t('rrDelivery'))}</button></div></div>
         ${usd ? `<div class="rr-field"><label for="rrRate">${esc(t('rrRate'))}</label><input id="rrRate" class="rr-input rr-n" inputmode="decimal" autocomplete="off" value="${esc(rrBoxText(r, 'rate'))}" placeholder="1500"></div>`
-          : `<div class="rr-field"><label for="rrDelivery">${esc(t('rrDelivery'))}</label><input id="rrDelivery" class="rr-input rr-n" inputmode="numeric" autocomplete="off" value="${esc(rrBoxText(r, 'delivery', true))}" placeholder="${esc(t('rrNoDelivery'))}"></div>`}
+          : deliveryOn ? `<div class="rr-field"><label for="rrDelivery">${esc(t('rrDelivery'))}</label><input id="rrDelivery" class="rr-input rr-n" inputmode="numeric" autocomplete="off" value="${esc(rrBoxText(r, 'delivery', true))}" placeholder="${esc(t('rrNoDelivery'))}"></div>` : ''}
       </div></section>
     <section class="rr-card"><h2 class="rr-card-title"><span>${esc(t('rrItems'))}</span><span class="rr-count">${esc(t('rrItemCount')(r.lines.filter(l=>l.item).length))}</span></h2>
+      <div class="rr-math"><button type="button" class="btn btn-ghost rr-toggle" id="rrMath" aria-pressed="${!!r.math}">${esc(t('rrMath'))}</button>
+        ${r.math ? `<small>${esc(t('rrMathHint'))}</small>` : ''}</div>
       <div class="rr-lines">${lines}</div>
       <button type="button" class="rr-add" id="rrAdd">${ICON_PLUS}<span>${esc(t('rrAddItem'))}</span></button>
       <p class="rr-keys">${esc(t('rrKeysHint')(RR_MOD))}</p></section>
@@ -617,7 +666,7 @@ function attachReceiptEdit(){
   const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); if(!el.matches('[role=combobox]')) el.select?.(); rrReveal(el); };
   const enter = (el, fn)=>{ if(el) el.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.isComposing){ e.preventDefault(); fn(); } }); };
   const firstItem = ()=>{ const i = r.lines.findIndex(l=>!l.item); return 'rrItem' + (i < 0 ? 0 : i); };
-  const moneyBox = ()=> r.currency === 'USD' ? 'rrRate' : 'rrDelivery';
+  const moneyBox = ()=> r.currency === 'USD' ? 'rrRate' : document.getElementById('rrDelivery') ? 'rrDelivery' : firstItem();
   // Supplier: pick, then the invoice number.
   rrComboBind(document.getElementById('rrSupplier'), cat.suppliers, (v, again)=>{
     if(!again && v !== r.supplier){ r.supplier = v; changed(true); }
@@ -627,7 +676,30 @@ function attachReceiptEdit(){
   const inv = document.getElementById('rrInvoice');
   inv.oninput = ()=>{ const v = String(inv.value).replace(/[٠-٩]/g, d=>d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d=>d.charCodeAt(0) - 0x6f0).replace(/\D/g, ''); if(v !== inv.value) inv.value = v; r.invoice = v; changed(); };
   enter(inv, ()=>go(moneyBox()));
-  document.querySelectorAll('[data-cur]').forEach(b=>b.onclick = ()=>{ if(r.currency === b.dataset.cur) return; r.currency = b.dataset.cur; if(r.currency === 'USD') r.delivery = null; else r.rate = null; changed(true); });
+  const switchDeliveryOff = async ()=>{
+    if(r.delivery && !await showConfirm(esc(t('rrDeliveryRemove')), {okLabel:t('rrDiscard'), okClass:'btn-primary'})) return false;
+    r.delivery = null; delete r.deliveryText; r.deliveryOn = false;
+    return true;
+  };
+  document.getElementById('rrDeliveryOn').onclick = async ()=>{
+    if(r.deliveryOn ?? r.delivery != null){ if(!await switchDeliveryOff()) return; }
+    else r.deliveryOn = true;
+    changed(true); go(r.deliveryOn ? 'rrDelivery' : 'rrDeliveryOn');
+  };
+  document.getElementById('rrMath').onclick = ()=>{
+    if(r.math && r.lines.some(l=>l.mathText?.trim())){ toast(t('rrMathPending'), 'warn'); return; }
+    r.math = !r.math;
+    rrKeep(); repaint(); go('rrMath');
+  };
+  document.querySelectorAll('[data-cur]').forEach(b=>b.onclick = async ()=>{
+    if(r.currency === b.dataset.cur) return;
+    if(r.lines.some(l=>l.mathText?.trim())){ toast(t('rrMathPending'), 'warn'); return; }
+    if(b.dataset.cur === 'USD' && !await switchDeliveryOff()) return;
+    r.currency = b.dataset.cur;
+    for(const l of r.lines) if(l.mathCost){ l.cost = null; delete l.costText; rrMathReset(l); r.math = true; }
+    if(r.currency !== 'USD'){ r.rate = null; delete r.rateText; }
+    changed(true);
+  });
   const num = (id, key, dec)=>{ const el = document.getElementById(id); if(!el) return; el.oninput = ()=>{ r[key] = rrOnlyNum(el, dec, key === 'delivery'); rrKeepTyped(r, key, el); el.classList.toggle('bad', Number.isNaN(r[key])); changed(); }; el.addEventListener('blur', ()=>rrTidyTyped(r, key, el)); enter(el, ()=>go(firstItem())); };
   num('rrRate', 'rate', true); num('rrDelivery', 'delivery', false);
   const names = cat.items.map(i=>i.name);
@@ -636,6 +708,7 @@ function attachReceiptEdit(){
     rrComboBind(inp, names, (v, again)=>{
       const l = r.lines[i]; if(!l) return;   // the line went away while the list was open
       if(!again && v !== l.item){
+        if(l.mathCost){ l.cost = null; delete l.costText; rrMathReset(l); }
         l.item = v;
         // The unit bought last time, else the biggest one whose name agrees with its size (never a
         // "gram" that counts 1000 grams); a click changes it.
@@ -646,7 +719,7 @@ function attachReceiptEdit(){
       go('rrQty' + i);
     });
   });
-  document.querySelectorAll('[data-l-unit]').forEach(s=>s.onchange = ()=>{ const i = +s.dataset.lUnit; if(!r.lines[i]) return; r.lines[i].unit = s.value; changed(true); go('rrQty' + i); });
+  document.querySelectorAll('[data-l-unit]').forEach(s=>s.onchange = ()=>{ const i = +s.dataset.lUnit; if(!r.lines[i]) return; const l = r.lines[i]; if(l.mathCost && l.unit !== s.value){ l.cost = null; delete l.costText; rrMathReset(l); } l.unit = s.value; changed(true); go('rrQty' + i); });
   // Typing an amount or a price: that line's question waits; leaving the box shows it at once (or clears it).
   const judgeOnLeave = (el, i)=>{
     el.addEventListener('focus', ()=>{ rr.typingLine = i; });
@@ -663,7 +736,12 @@ function attachReceiptEdit(){
   document.querySelectorAll('[data-l-qty]').forEach(el=>{
     const i = +el.dataset.lQty;
     judgeOnLeave(el, i);
-    el.oninput = ()=>{ if(!r.lines[i] || rrFind(rr.id) !== r) return; const v = rrOnlyNum(el, true); r.lines[i].qty = v; rrKeepTyped(r.lines[i], 'qty', el); el.classList.toggle('bad', Number.isNaN(v)); changed(); autoLine(el); };
+    el.oninput = ()=>{ if(!r.lines[i] || rrFind(rr.id) !== r) return; const v = rrOnlyNum(el, true), l = r.lines[i];
+      const recalc = l.mathCost && v !== l.qty;
+      if(recalc){ l.mathText = l.mathCost.text; delete l.mathCost; delete l.costText; l.cost = null; }
+      l.qty = v; rrKeepTyped(r.lines[i], 'qty', el); el.classList.toggle('bad', Number.isNaN(v)); changed();
+      if(recalc){ r.math = true; rrRepaintKeepFocus(); } else autoLine(el);
+    };
     el.addEventListener('blur', ()=>rrTidyTyped(r.lines[i], 'qty', el));
     enter(el, ()=>go('rrCost' + i));
     // Tab opens the line's unit menu, as on Transfers; Enter still goes on to the unit cost.
@@ -682,10 +760,40 @@ function attachReceiptEdit(){
   };
   document.querySelectorAll('[data-l-cost]').forEach(el=>{
     const i = +el.dataset.lCost;
+    const totalEntry = el.hasAttribute('data-rr-total-entry');
     judgeOnLeave(el, i);
-    el.oninput = ()=>{ if(!r.lines[i] || rrFind(rr.id) !== r) return; const v = rrOnlyNum(el, true, true); r.lines[i].cost = v; rrKeepTyped(r.lines[i], 'cost', el); el.classList.toggle('bad', Number.isNaN(v)); changed(); autoLine(el); };
-    el.addEventListener('blur', ()=>rrTidyTyped(r.lines[i], 'cost', el));
-    enter(el, ()=>{ rrSaveSoon(r); if(i < r.lines.length - 1) go('rrItem' + (i + 1)); else addLine(); });
+    el.oninput = ()=>{
+      const l = r.lines[i];
+      if(!l || rrFind(rr.id) !== r) return;
+      rrMathReset(l);
+      if(totalEntry){ l.mathText = el.value; l.cost = null; delete l.costText; }
+      else { l.cost = rrOnlyNum(el, true, true); rrKeepTyped(l, 'cost', el); }
+      el.classList.toggle('bad', Number.isNaN(l.cost));
+      changed();
+      if(!totalEntry) autoLine(el);
+    };
+    if(!totalEntry) el.addEventListener('blur', ()=>rrTidyTyped(r.lines[i], 'cost', el));
+    enter(el, ()=>{
+      if(totalEntry){
+        const l = r.lines[i], result = rrCostFromTotal(el.value, l.qty, r.currency);
+        if(result.error){
+          l.mathError = result.error;
+          repaint(); go('rrCost' + i);
+          return;
+        }
+        l.mathCost = {text:el.value};
+        l.cost = result.cost;
+        delete l.costText; delete l.mathText; delete l.mathError;
+        changed(true);
+      } else rrSaveSoon(r);
+      if(i < r.lines.length - 1) go('rrItem' + (i + 1)); else addLine();
+    });
+  });
+  document.querySelectorAll('[data-rr-recalc]').forEach(b=>b.onclick = ()=>{
+    const i = +b.dataset.rrRecalc, l = r.lines[i];
+    if(!l) return;
+    l.mathText = '';
+    repaint(); go('rrCost' + i);
   });
   document.querySelectorAll('[data-l-del]').forEach(b=>b.onclick = ()=>{ r.lines.splice(+b.dataset.lDel, 1); if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null, cost:null}); changed(true); });
   document.getElementById('rrAdd').onclick = addLine;
@@ -704,7 +812,7 @@ function attachReceiptEdit(){
   document.onkeydown = e=>{
     if(state.view !== 'receipts' || rr.page !== 'edit'){ document.onkeydown = null; return; }
     if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.activeElement?.blur?.(); rrSend(r); return; }
-    rrLineKeys(e, {add:()=>addLine(), dup:i=>{ const l = r.lines[i]; if(!l) return; r.lines.splice(i + 1, 0, {item:l.item, unit:l.unit, qty:null, cost:l.cost}); changed(true); go('rrQty' + (i + 1)); }});
+    rrLineKeys(e, {add:()=>addLine(), dup:i=>{ const l = r.lines[i]; if(!l) return; r.lines.splice(i + 1, 0, {item:l.item, unit:l.unit, qty:null, cost:l.mathCost ? null : l.cost}); changed(true); go('rrQty' + (i + 1)); }});
   };
   // A new receipt starts on the supplier box (on a computer; a phone waits for a tap).
   if(rr.fresh){ rr.fresh = false; if(!r.supplier && !matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>go('rrSupplier')); }
@@ -724,6 +832,7 @@ async function rrSend(r, keepForm = false){
   try{ return await rrSendNow(r, keepForm); } finally { rr.asking = false; }
 }
 async function rrSendNow(r, keepForm){
+  if(r.lines.some(l=>l.mathText?.trim())){ toast(t('rrMathPending'), 'warn'); return false; }
   const before = r.lines.length;
   r.lines = r.lines.filter(l=>l.item || l.qty || l.cost);
   // Empty rows taken out: the screen is redrawn now, so each row on it is the line it edits and line numbers match.
@@ -866,7 +975,7 @@ function rrScanPhoto(r, btn){
     if(d.invoice) r.invoice = d.invoice;
     r.currency = d.currency || r.currency;
     if(r.currency === 'USD') r.delivery = null; else r.rate = null;
-    if(d.delivery != null && r.currency === 'IQD') r.delivery = Math.round(d.delivery);
+    if(d.delivery != null && r.currency === 'IQD') { r.delivery = Math.round(d.delivery); r.deliveryOn = true; }
     if(d.lines?.length) r.lines = [...d.lines.map(l=>({item:l.item, unit:l.unit, qty:l.qty, cost:l.cost})), {item:'', unit:'', qty:null, cost:null}];
     rrSaveSoon(r); render();
     toast(t('rrScanned')(d.lines?.length || 0), 'warn', {ms:5000});

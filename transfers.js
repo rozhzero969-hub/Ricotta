@@ -10,7 +10,7 @@ const tf = {data:null, loading:false, page:'edit', id:null, formId:null, filter:
 function tfReset(){
   clearTimeout(tf.saveTimer);
   Object.assign(tf, {data:null, loading:false, loadAgain:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false, lastFrom:null,
-    failed:false, copyAt:null, netDown:false, asking:false});
+    failed:false, copyAt:null, netDown:false, asking:false, smartMode:false});
 }
 const TF = ()=> globalThis.RicottaTransfers;
 const tfFind = id=> tf.data?.transfers.find(r=>r.id === id) || null;
@@ -55,13 +55,16 @@ const tfDraftedSum = (item, zone, formId)=> tfDrafted(item, zone, formId).reduce
 function tfLeft(item, zone, formId){ return Math.max(0, TF().available(item, zone) - tfTakenElsewhere(item, zone, formId) - tfDraftedSum(item, zone, formId)); }
 /* "5 کیلۆ in a draft to Appetizers" for each draft holding this item; when the line wants more than is
    left because of them, it says to cancel that draft first. */
-function tfDraftNote(item, r, unit, short){
+function tfDraftWords(item, r, unit){
   const list = tfDrafted(item, r.from, r.id);
   if(!list.length) return '';
   const o = TF().unitOptions(item).find(u=>u.name === unit);
   const amt = base=>{ const c = o ? {qty:Math.floor((base / o.factor) * 1000 + 1e-6) / 1000, unit:o.name} : TF().inCounting(item, base, true); return `\u2066${tfQty(c.qty)} ${c.unit}\u2069`; };   // "1 کیلۆ" in this order, in one piece, in any language
-  const words = list.map(d=>t('tfInDraftTo')(amt(d.base), '\u2068' + (d.zone || t('tfNoStorage')) + '\u2069')).join(' · ');
-  return `<span class="tf-drafted-note">${esc(words)}${short ? ' · ' + esc(t('tfCancelDraftFirst')) : ''}</span>`;
+  return list.map(d=>t('tfInDraftTo')(amt(d.base), '\u2068' + (d.zone || t('tfNoStorage')) + '\u2069')).join(' · ');
+}
+function tfDraftNote(item, r, unit, short){
+  const words = tfDraftWords(item, r, unit);
+  return words ? `<span class="tf-drafted-note">${esc(words)}${short ? ' · ' + esc(t('tfCancelDraftFirst')) : ''}</span>` : '';
 }
 /* What a line shows as available: what is left, less the same item on the lines above it in this form
    (10 kg carrots, 3 kg on item 1: item 2 shows 7 kg). */
@@ -69,6 +72,19 @@ function tfLeftForLine(item, r, i){
   let before = 0;
   r.lines.slice(0, i).forEach(l=>{ if(l.item !== item.name || !(l.qty > 0)) return; const o = TF().unitOptions(item).find(u=>u.name === l.unit); if(o) before += l.qty * o.factor; });
   return Math.max(0, tfLeft(item, r.from, r.id) - before);
+}
+function tfItemChoices(names, r, i){
+  return names.filter(name=>{
+    const item = tfItem(name);
+    return !item || tfLeft(item, r.from, r.id) <= 1e-9 ||
+      tfLeftForOtherLines(item, r, i) > 1e-9 || r.lines[i]?.item === name;
+  });
+}
+function tfLeftForOtherLines(item, r, current){
+  const options = TF().unitOptions(item);
+  const assigned = r.lines.reduce((sum, l, i)=>sum + (i !== current && l.item === item.name && l.qty > 0
+    ? l.qty * (options.find(u=>u.name === l.unit)?.factor || 0) : 0), 0);
+  return Math.max(0, tfLeft(item, r.from, r.id) - assigned);
 }
 /* The catalog as the Send check should see it: From's stock less what other transfers are taking. */
 function tfCatalogLeft(r){
@@ -129,7 +145,12 @@ const tfFiltered = list=> list.filter(r=>tf.filter.src === 'all' || (r.source ==
 function tfUsualNote(item, r){
   if(!item || !r.from || !r.to || !TF().usualFor) return '';
   const u = TF().usualFor(tf.data?.catalog, item.name, r.from, r.to);
-  if(u.never) return ` <span class="tf-never">· ${esc(t('tfNeverTo')(r.to))}</span>`;
+  if(u.never){
+    const cat = tf.data.catalog;
+    const zones = TF().zonesOf(cat).filter(z=>z !== r.from && TF().usualFor(cat, item.name, r.from, z).stat).slice(0, 3);
+    const note = zones.length ? ' · ' + t('tfUsuallyTo')(zones.join(', ')) : '';
+    return ` <span class="tf-never">· ${esc(t('tfNeverTo')(r.to) + note)}</span>`;
+  }
   if(!u.stat) return '';
   const c = TF().inCounting(item, u.stat.q);
   return ` <span class="tf-usual">· ${esc(t('tfUsuallyGets')(r.to, tfQty(c.qty) + ' ' + c.unit))}</span>`;
@@ -153,7 +174,7 @@ function tfBelow(){
   const isToday = r=> erbilDate(new Date(r.sentAt || r.createdAt)) === today;
   const needs = shown.filter(r=>r.status === 'review' || r.status === 'problem');
   const waiting = list.filter(r=>r.status === 'draft' && r.pendingSend && r.id !== tf.id);
-  const drafts = shown.filter(r=>r.status === 'draft' && !r.pendingSend && r.id !== tf.id && !tfIsEmpty(r));
+  const drafts = tfBatchDrafts();
   const done = shown.filter(r=>!needs.includes(r) && r.status !== 'draft' && isToday(r));
   const moved = done.filter(r=>r.status === 'moved');
   return `<div class="rr-below">${rrWaitingHtml(waiting, tfRow, 'tf')}${tfFilterBar(list)}
@@ -215,11 +236,148 @@ function tfNeedByItem(r){
   for(const l of r.lines){ const it = tfItem(l.item), o = it && TF().unitOptions(it).find(u=>u.name === l.unit); if(o && l.qty > 0) m.set(l.item, (m.get(l.item) || 0) + l.qty * o.factor); }
   return m;
 }
+/* The quick entry only commits a unique catalog name and a unit allowed for that item. */
+function tfSmartMatch(text, items, linked, selectedUnit){
+  const search = globalThis.RicottaSearch, norm = search.normalize;
+  const parts = text.trim().match(/^(.+)\s+([0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٫٬]*)(?:\s*([^0-9٠-٩۰-۹].*))?$/u);
+  if(!parts) return {error:'tfSmartFormat'};
+  const [, name, amount, unit = ''] = parts;
+  const qty = rrStrictAmount(amount, 3);
+  if(!(qty > 0 && qty <= 999999)) return {error:'tfSmartAmount'};
+  const shortName = item=>item.name.split(' - ')[0].trim();
+  const simplify = value=>norm(value).replace(/\b([a-z]{3,})ies$/, '$1y').replace(/\b([a-z]{3,}(?:t|s|h|x|z|o))es$/, '$1').replace(/\b([a-z]{3,}[^s])s$/, '$1');
+  const aliases = item=>[item.name, shortName(item), ...(linked.get(item.name) || [])];
+  let hits = items.filter(item=>norm(item.name) === norm(name));
+  if(!hits.length) hits = items.filter(item=>aliases(item).some(alias=>norm(alias) === norm(name)));
+  if(!hits.length) hits = items.filter(item=>aliases(item).some(alias=>simplify(alias) === simplify(name)));
+  if(hits.length !== 1) return {error:hits.length ? 'tfSmartAmbiguous' : 'tfSmartMissing',
+    choices:(hits.length ? hits : search.rank(items, name, aliases)).slice(0, 5).map(item=>({item, text:`${item.name} ${amount} ${unit.trim()}`}))};
+  const item = hits[0], units = TF().unitOptions(item);
+  const exact = units.filter(u=>selectedUnit ? u.name === selectedUnit : norm(u.name) === norm(unit));
+  const options = exact.length || selectedUnit || !unit.trim() ? exact : units.filter(u=>search.unit([u.name], unit));
+  if(options.length !== 1 || options[0].unclear) return {error:'tfSmartUnit', item, units:units.filter(u=>!u.unclear).map(u=>u.name)};
+  return {item, line:{item:item.name, qty, unit:options[0].name}, factor:options[0].factor};
+}
+function tfSmartAliases(){
+  const linked = new Map();
+  for(const row of state.items){
+    for(const name of [row.stockItem, ...(Array.isArray(row.stockItems) ? row.stockItems : [])]){
+      if(typeof name !== 'string') continue;
+      if(!linked.has(name)) linked.set(name, []);
+      linked.get(name).push(row.name, ...(row.aliases || []));
+    }
+  }
+  return linked;
+}
+function tfSmartPanel(r, ready){
+  const day = r.dayPickedOn === tfToday() ? (r.yesterday ? 'yesterday' : 'today') : '';
+  const cat = tf.data.catalog;
+  const suggested = ready ? TF().itemsIn(cat, r.from).flatMap(item=>{
+    const usual = TF().usualFor(cat, item.name, r.from, r.to).stat;
+    if(!usual || TF().available(item, r.to) >= usual.q || r.lines.some(l=>l.item === item.name)) return [];
+    const amount = TF().inCounting(item, Math.min(usual.q, tfLeft(item, r.from, r.id)), true);
+    return amount.qty > 0 ? [{item, amount}] : [];
+  }).slice(0, 4) : [];
+  return `<section class="rr-card tf-smart">
+    <h2 class="rr-card-title">${esc(t('tfSmart'))}</h2><div class="tf-smart-body">
+    <div class="rr-field"><label for="tfSmartDay">${esc(t('tfWhichDay'))}</label><select id="tfSmartDay">
+      <option value="" disabled ${day ? '' : 'selected'}>${esc(t('tfSmartChooseDay'))}</option>
+      <option value="today" ${day === 'today' ? 'selected' : ''}>${esc(t('tfToday'))} · ${esc(tfDayLabel(tfToday()))}</option>
+      <option value="yesterday" ${day === 'yesterday' ? 'selected' : ''}>${esc(t('tfForYesterdayBtn'))} · ${esc(tfDayLabel(tfYesterday()))}</option></select></div>
+    <label for="tfSmartEntry">${esc(t('tfSmartEntry'))}</label>
+    <div class="tf-smart-entry"><input type="text" id="tfSmartEntry" class="rr-input" maxlength="250" value="${esc(r.smartText || '')}" placeholder="${esc(t('tfSmartExample'))}"
+      autocomplete="off" dir="auto" aria-describedby="tfSmartHelp tfSmartStatus" ${ready && day ? '' : 'disabled'}>
+      <button class="btn btn-primary" id="tfSmartAdd" type="button" ${ready && day ? '' : 'disabled'}>${esc(t('rrAddItem'))}</button></div>
+    <small id="tfSmartHelp">${esc(t('tfSmartHint'))}</small>
+    <div id="tfSmartStatus" class="tf-smart-status" role="status">${esc(r.smartAdded ? t('tfSmartMatched') + ' · ' + r.smartAdded : '')}</div>
+    <div id="tfSmartChoices"></div>
+    ${suggested.length ? `<div class="tf-smart-suggestions"><b>${esc(t('tfSmartSuggestions'))}</b><small>${esc(t('tfSmartSuggestionsHint')(r.to))}</small>
+      <div>${suggested.map(({item, amount})=>`<button type="button" class="btn btn-ghost" data-tf-suggestion="${esc(`${item.name} ${amount.qty} ${amount.unit}`)}" ${day ? '' : 'disabled'}>
+        <bdi>${esc(item.name)} · ${esc(tfQty(amount.qty) + ' ' + amount.unit)}</bdi></button>`).join('')}</div></div>` : ''}</div></section>`;
+}
+function tfUnfinishedSmart(r){
+  if(!r.smartText?.trim()) return false;
+  toast(t('tfSmartUnfinished'), 'warn');
+  return true;
+}
+function tfBindSmart(r, changed, go){
+  const day = document.getElementById('tfSmartDay'), entry = document.getElementById('tfSmartEntry');
+  const status = document.getElementById('tfSmartStatus'), choices = document.getElementById('tfSmartChoices');
+  const linked = tfSmartAliases(), items = tf.data.catalog.titems;
+  day.onchange = ()=>{
+    r.yesterday = day.value === 'yesterday';
+    r.dayPickedOn = tfToday();
+    changed(true);
+    if(r.from && r.to) go('tfSmartEntry');
+  };
+  const add = selectedUnit=>{
+    if(entry.disabled || !entry.value.trim()) return;
+    if(r.dayPickedOn !== tfToday()){ r.dayPickedOn = null; changed(true); toast(t('tfBatchChanged'), 'warn'); return; }
+    const result = tfSmartMatch(entry.value, items, linked, selectedUnit);
+    const {item, line, factor} = result;
+    const current = r.lines.findIndex(l=>!l.item && !l.qty);
+    let error = result.error;
+    if(!error && line.qty * factor > tfLeftForOtherLines(item, r, current) + 1e-9) error = 'tfSmartUnavailable';
+    if(!error && r.lines.filter(l=>l.item).length >= TF().MAX_LINES) error = 'rrErrNoLines';
+    if(error){
+      status.className = 'tf-smart-status bad';
+      status.textContent = t(error === 'tfSmartUnit' && result.units.length ? 'tfSmartPickUnit' : error);
+      entry.setAttribute('aria-invalid','true');
+      const note = item && error === 'tfSmartUnavailable' ? tfDraftWords(item, r, line.unit) : '';
+      if(note) status.textContent += ' · ' + note;
+      choices.replaceChildren();
+      if(result.units?.length){
+        // Enhance it exactly like the Unit field on a manual transfer line.
+        choices.innerHTML = `<div class="rr-field rr-f-unit"><label for="tfSmartUnitPick">${esc(t('rrUnit'))}</label>
+          <select id="tfSmartUnitPick" data-inline><option value="" selected hidden>${esc(t('tfSmartPickUnit'))}</option>
+          ${result.units.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')}</select></div>`;
+        const select = choices.querySelector('select'), text = entry.value;
+        select.onchange = ()=>{ if(entry.value === text && select.value) add(select.value); };
+        enhanceSelects(choices);
+        select._selBtn.focus({preventScroll:true});
+        openSelPop(select);
+        return;
+      }
+      for(const choice of result.choices || []){
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'btn btn-ghost';
+        button.textContent = choice.item.name;
+        button.onclick = ()=>{ entry.value = choice.text; r.smartText = choice.text; add(); entry.focus(); };
+        choices.append(button);
+      }
+      const manual = document.createElement('button');
+      manual.type = 'button'; manual.className = 'btn btn-ghost'; manual.textContent = t('tfManual');
+      manual.onclick = ()=>{ r.smartText = ''; tf.smartMode = false; tfKeep(); render(); go('tfItem' + (current < 0 ? 0 : current)); };
+      choices.append(manual);
+      return;
+    }
+    if(current < 0) r.lines.push(line); else r.lines[current] = line;
+    r.smartText = '';
+    r.smartAdded = line.item + ' · ' + tfQty(line.qty) + ' ' + line.unit;
+    changed(true);
+    go('tfSmartEntry');
+  };
+  entry.oninput = ()=>{
+    r.smartText = entry.value;
+    r.smartAdded = ''; tfKeep();
+    status.textContent = ''; status.className = 'tf-smart-status'; choices.replaceChildren();
+    entry.removeAttribute('aria-invalid');
+  };
+  entry.onkeydown = e=>{ if(e.key === 'Enter' && !e.isComposing && !e.metaKey && !e.ctrlKey){ e.preventDefault(); add(); } };
+  document.getElementById('tfSmartAdd').onclick = ()=>add();
+  document.querySelectorAll('[data-tf-suggestion]').forEach(button=>button.onclick = ()=>{
+    if(entry.value.trim()) return;
+    entry.value = button.dataset.tfSuggestion;
+    entry.oninput();
+    go('tfSmartEntry');
+  });
+}
+
 function renderTransferEdit(){
   const r = tfFind(tf.id); if(!r){ tf.page = 'edit'; tf.formId = null; return renderTransfers(); }
   const cat = tf.data.catalog, need = tfNeedByItem(r);
   const opt = (v, label, on)=>`<option value="${esc(v)}"${on ? ' selected' : ''}>${esc(label)}</option>`;
-  const ready = r.from && r.to;
+  const ready = r.from && r.to && r.from !== r.to;
   const lines = r.lines.map((l, i)=>{
     const item = tfItem(l.item), units = item ? TF().unitOptions(item) : [];
     // Picking an item gives its counting unit (see the item box below). A unit it no longer has (changed
@@ -237,12 +395,17 @@ function renderTransferEdit(){
     </div>`;
   }).join('');
   return `<div class="rr-page rr-edit tf-edit">${rrRicoBar(tf.data.helper, tf.copyAt)}
+    <div class="pill-seg tf-modes" role="group" aria-label="${esc(viewLabel('transfers'))}">
+      <button type="button" class="pill-seg-btn" aria-pressed="${!tf.smartMode}" data-tf-mode="manual">${esc(t('tfManual'))}</button>
+      <button type="button" class="pill-seg-btn" aria-pressed="${!!tf.smartMode}" data-tf-mode="smart">${esc(t('tfSmart'))}</button>
+    </div>
     <section class="rr-card"><h2 class="rr-card-title">${esc(t('tfStorages'))}</h2>
       <div class="tf-zones">
         <div class="rr-field"><label for="tfFrom">${esc(t('tfFrom'))}</label>${rrCombo('tfFrom', r.from, t('tfChoose'))}</div>
         <span class="tf-arrow" aria-hidden="true">→</span>
         <div class="rr-field"><label for="tfTo">${esc(t('tfTo'))}</label>${rrCombo('tfTo', r.to, t('tfChoose'))}</div>
       </div></section>
+    ${tf.smartMode ? tfSmartPanel(r, ready) : ''}
     <section class="rr-card"><h2 class="rr-card-title"><span>${esc(t('tfWhat'))}</span><span class="rr-count">${esc(t('rrItemCount')(r.lines.filter(l=>l.item).length))}</span></h2>
       ${!r.from ? `<p class="tf-empty">${esc(t('tfPickFrom'))}</p>` : !r.to ? `<p class="tf-empty">${esc(t('tfPickTo'))}</p>` : `<div class="rr-lines">${lines}</div>
       <div class="tf-adds"><button type="button" class="rr-add" id="tfAdd">${ICON_PLUS}<span>${esc(t('rrAddItem'))}</span></button><button type="button" class="tf-addn" data-add="5">+5</button><button type="button" class="tf-addn" data-add="10">+10</button></div>
@@ -258,7 +421,7 @@ function renderTransferEdit(){
     ${tfBelow()}
   </div>`;
 }
-const tfIsEmpty = r=> !r.to && !r.yesterday && !r.lines.some(l=>l.item || l.qty);
+const tfIsEmpty = r=> !r.smartText && !r.to && !r.yesterday && !r.lines.some(l=>l.item || l.qty);
 function tfSaveSoon(r){ r.dirty = true; r.edits = (r.edits || 0) + 1; tfKeep(); clearTimeout(tf.saveTimer); tf.saveTimer = setTimeout(()=>tfSaveDraft(r), 600); }
 function tfSaveDraft(r){
   clearTimeout(tf.saveTimer);
@@ -280,31 +443,38 @@ function attachTransferEdit(){
   const changed = (redraw = false)=>{ tfSaveSoon(r); if(redraw) repaint(); };
   const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); if(!el.matches('[role=combobox]')) el.select?.(); rrReveal(el); };
   const enter = (el, fn)=>{ if(el) el.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.isComposing){ e.preventDefault(); fn(); } }); };
+  const firstBox = ()=>tf.smartMode ? (document.getElementById('tfSmartEntry')?.disabled ? 'tfSmartDay' : 'tfSmartEntry') : 'tfItem' + Math.max(0, r.lines.findIndex(l=>!l.item));
+  document.querySelectorAll('[data-tf-mode]').forEach(b=>b.onclick = ()=>{ tf.smartMode = b.dataset.tfMode === 'smart'; repaint(); });
+  if(tf.smartMode) tfBindSmart(r, changed, go);
   // From, then To (never the same storage), then the first item.
   rrComboBind(document.getElementById('tfFrom'), zones, (v, again)=>{
     if(!again && v !== r.from){ r.from = v; if(r.to === v) r.to = ''; changed(true); }
-    go(r.to ? 'tfItem0' : 'tfTo');
+    go(r.to ? firstBox() : 'tfTo');
   });
   const toInput = document.getElementById('tfTo');
   if(toInput) rrComboBind(toInput, zones.filter(z=>z !== r.from), (v, again)=>{
     if(!again && v !== r.to){ r.to = v; changed(true); }
-    go('tfItem' + Math.max(0, r.lines.findIndex(l=>!l.item)));
+    go(firstBox());
   });
   // Items: only what the From storage has, with how much it has.
   const names = r.from ? TF().itemsIn(cat, r.from).map(i=>i.name).sort((a, b)=>a.localeCompare(b)) : [];
-  const stockOf = n=>{ const it = tfItem(n); if(!it) return ''; const c = TF().inCounting(it, TF().available(it, r.from), true); return tfQty(c.qty) + ' ' + c.unit; };
   document.querySelectorAll('[data-l-item]').forEach(inp=>{
     const i = +inp.dataset.lItem;
-    rrComboBind(inp, names, (v, again)=>{
-      const l = r.lines[i]; if(!l) return;   // the line went away while the list was open
+    const stockOf = n=>{
+      const it = tfItem(n); if(!it) return '';
+      const left = tfLeftForOtherLines(it, r, i), c = TF().inCounting(it, left, true);
+      return [tfQty(c.qty) + ' ' + c.unit, tfDraftWords(it, r), ...(left <= 1e-9 ? [t('tfReserved')] : [])].filter(Boolean).join(' · ');
+    };
+    const blocked = n=>{ const item = tfItem(n); return !item || tfLeftForOtherLines(item, r, i) <= 1e-9; };
+    rrComboBind(inp, ()=>tfItemChoices(names, r, i), (v, again)=>{
+      const l = r.lines[i]; if(!l || blocked(v)) return;
       if(!again && v !== l.item){
         l.item = v;
-        // The unit Ricotta Restaurant counts it in (what "available" is shown in); a click changes it.
         const units = TF().unitOptions(tfItem(v)); l.unit = units.length ? units[0].name : '';
         changed(true);
       }
       go('tfQty' + i);
-    }, stockOf);
+    }, stockOf, blocked);
   });
   document.querySelectorAll('[data-l-unit]').forEach(s=>s.onchange = ()=>{ const i = +s.dataset.lUnit; if(!r.lines[i]) return; r.lines[i].unit = s.value; changed(true); go('tfQty' + i); });
   const addLine = (n = 1)=>{ for(let k = 0; k < n; k++) r.lines.push({item:'', unit:'', qty:null}); repaint(); go('tfItem' + (r.lines.length - n)); };
@@ -336,7 +506,7 @@ function attachTransferEdit(){
   // Record for yesterday asks first, every time it is turned on.
   document.getElementById('tfYest').onclick = async ()=>{
     if(!r.yesterday && !await showConfirm(esc(t('tfYesterdayAsk')(tfDayLabel(tfYesterday()))), {title:t('tfYesterday'), okLabel:t('tfYesterdayYes'), okClass:'btn-primary'})) return;
-    r.yesterday = !r.yesterday; changed(true);
+    r.yesterday = !r.yesterday; r.dayPickedOn = tfToday(); changed(true);
   };
   document.getElementById('tfDiscard').onclick = async ()=>{
     if(!tfIsEmpty(r) && !await showConfirm(esc(t('tfDiscardAsk')), {okLabel:t('rrDiscard')})) return;
@@ -347,7 +517,7 @@ function attachTransferEdit(){
   };
   document.getElementById('tfSend').onclick = ()=>tfSend(r);
   // Keep as draft: this one stays in Drafts (on the server, or on this device with no connection) and the form is free.
-  document.getElementById('tfKeepDraft').onclick = ()=>{ if(tfIsEmpty(r)) return; r.dirty = true; tfKeep(); tfSaveDraft(r); tf.lastFrom = r.from; toast(t('rrDraftKept')); tfNewDraft(); };
+  document.getElementById('tfKeepDraft').onclick = ()=>{ if(tfIsEmpty(r) || tfUnfinishedSmart(r)) return; r.dirty = true; tfKeep(); tfSaveDraft(r); tf.lastFrom = r.from; toast(t('rrDraftKept')); tfNewDraft(); };
   document.onkeydown = e=>{
     if(state.view !== 'transfers' || tf.page !== 'edit'){ document.onkeydown = null; return; }
     if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); document.activeElement?.blur?.(); tfSend(r); return; }
@@ -393,25 +563,101 @@ function tfWarnText(w, r){
   if(w.code === 'yesterday') return t('tfYesterdayOn')(tfDayLabel(tfYesterday()));
   return '';
 }
-/* Send all drafts: every draft in the list goes to Rico one after another, the one written first going
-   first. Each is opened on the form and gets exactly the checks a single Send gives (Fix these first,
-   anything unusual, the day it counts on); if one needs fixing or is not confirmed, it stays open there
-   and the rest wait. Receipts never do this: each receipt is filled and approved on its own. */
+const tfBatchDrafts = ()=>tfFiltered(tf.data.transfers).filter(r=>r.status === 'draft' && !r.pendingSend && r.id !== tf.id && !tfIsEmpty(r))
+  .sort((a, b)=>Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0));
+function tfBatchDay(r, today){
+  const written = r.dayPickedOn || erbilDate(new Date(r.createdAt || Date.now()));
+  const meant = r.yesterday ? tfDayBefore(written) : written;
+  return meant === today ? 'today' : meant === tfDayBefore(today) ? 'yesterday' : '';
+}
+const tfLinesToSend = r=>r.lines.filter(l=>l.item || l.qty);
+const tfReviewKey = r=>JSON.stringify([r.version, r.from, r.to, r.yesterday, r.dayPickedOn, r.createdAt,
+  tfLinesToSend(r).map(l=>[l.item, l.qty, l.unit])]);
+function tfBatchCheck(r, lines){
+  const c = TF().check({...r, lines}, tfCatalogLeft(r), tf.data.usual);
+  // Show every warning the normal server check can derive from the same snapshot too.
+  const raw = TF().check({...r, lines}, tf.data.catalog, tf.data.usual);
+  const warnings = [...c.warnings, ...raw.warnings.filter(w=>!c.warnings.some(a=>a.code === w.code && a.line === w.line))];
+  return {...c, warnings:warnings.filter(w=>w.code !== 'yesterday')};
+}
 async function tfSendAllDrafts(){
-  const drafts = tf.data.transfers.filter(r=>r.status === 'draft' && !r.pendingSend && r.id !== tf.id && !tfIsEmpty(r) && !tfIsPractice(r))
-    .sort((a, b)=>Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0));
+  if(tf.asking || tf.sending || rrOffline()) return;
+  const drafts = tfBatchDrafts();
   if(drafts.length < 2) return;
-  const list = `<ol class="cf-list">${drafts.map(r=>`<li dir="auto">${esc(tfRoute(r))} · ${esc(t('rrItemCount')(r.lines.filter(l=>l.item).length))}</li>`).join('')}</ol>`;
-  if(!await showConfirm(`<p>${esc(t('tfSendAllAsk'))}</p>${list}`, {title:t('tfSendAllDrafts')(drafts.length), okLabel:t('tfSendAllGo'), okClass:'btn-primary', enter:true, wide:true})) return;
-  let sent = 0;
-  for(const r of drafts){
-    if(!tfFind(r.id) || r.status !== 'draft') continue;
-    tfOpen(r.id);
-    if(await tfSend(r, true) !== true){ toast(t('tfSendAllStopped')(sent, drafts.length), 'warn'); return; }
+  const unfinished = drafts.find(r=>r.smartText?.trim());
+  if(unfinished){ tf.smartMode = true; tfOpen(unfinished.id); tfUnfinishedSmart(unfinished); return; }
+  const today = tfToday();
+  const rows = drafts.map(r=>{
+    const lines = tfLinesToSend(r), check = tfBatchCheck(r, lines);
+    return {r, lines, check, day:tfBatchDay(r, today), key:tfReviewKey(r)};
+  });
+  const bad = rows.find(x=>x.check.errors.length);
+  if(bad){
+    tfOpen(bad.r.id);
+    await showAlert(tfSummary({...bad.r, lines:bad.lines}, bad.check.errors.map(e=>tfErrText(e, bad.lines))), {title:t('rrFixFirst')});
+    return;
+  }
+  let outcome;
+  tf.asking = true;
+  try{
+    const approval = showFormModal({title:esc(t('tfSendAllDrafts')(rows.length)), okLabel:t(featureOn('tfAuto') ? 'tfSendMove' : 'tfSendAllGo'),
+      bodyHtml:`<p>${esc(t(featureOn('tfAuto') ? 'tfBatchAuto' : 'tfBatchReview'))}</p><div class="tf-batch-actions"><button type="button" class="btn btn-ghost" data-tf-all-day="today">${esc(t('tfBatchAllToday'))}</button><button type="button" class="btn btn-ghost" data-tf-all-day="yesterday">${esc(t('tfBatchAllYesterday'))}</button></div><div class="tf-batch">${rows.map(({r,lines,check,day},i)=>`
+        <section><div class="tf-batch-head"><b dir="auto">${esc(tfRoute(r))}</b><select aria-label="${esc(t('tfWhichDay') + ' · ' + tfRoute(r))}" data-tf-batch-day="${i}">
+          <option value="" ${day ? '' : 'selected'} disabled>${esc(t('tfWhichDay'))}</option>
+          <option value="today" ${day === 'today' ? 'selected' : ''}>${esc(t('tfToday'))} · ${esc(tfDayLabel(today))}</option>
+          <option value="yesterday" ${day === 'yesterday' ? 'selected' : ''}>${esc(t('tfForYesterdayBtn'))} · ${esc(tfDayLabel(tfDayBefore(today)))}</option></select></div>
+          <div class="tf-batch-lines" dir="auto">${lines.map(l=>`<bdi>${esc(l.item)} · ${esc(tfQty(l.qty) + ' ' + l.unit)}</bdi>`).join('')}</div>
+          ${check.warnings.length ? `<ul class="cf-list">${check.warnings.map(w=>`<li dir="auto">${esc(tfWarnText(w, {...r, lines}))}</li>`).join('')}</ul>` : ''}</section>`).join('')}</div>`,
+      onSubmit:async ()=>{ const days = [...document.querySelectorAll('[data-tf-batch-day]')].map(el=>el.value);
+        if(days.length !== rows.length || days.some(d=>!['today','yesterday'].includes(d))) return {error:t('tfBatchDayMissing')};
+        outcome = await tfQueueReviewedDrafts(rows, days, today);
+      }});
+    document.querySelectorAll('[data-tf-all-day]').forEach(b=>b.onclick = ()=>{
+      document.querySelectorAll('[data-tf-batch-day]').forEach(el=>{ el.value = b.dataset.tfAllDay; });
+    });
+    await approval;
+    if(!outcome) return;
+    const {sent, stopped} = outcome;
+    if(sent === rows.length) toast(t('tfSendAllDone')(sent));
+    else toast(t('tfSendAllStopped')(sent, rows.length) + (stopped ? ' ' + stopped : ''), 'warn');
+    if(state.view === 'transfers') render();
+  } finally { tf.asking = false; }
+}
+async function tfQueueReviewedDrafts(rows, days, today){
+  let sent = 0, stopped;
+
+  for(const [i, reviewed] of rows.entries()){
+    const r = tfFind(reviewed.r.id), {lines, check, key} = reviewed;
+    const unchanged = r?.status === 'draft' && !r.smartText?.trim() && tfReviewKey(r) === key;
+    const fresh = unchanged && tfBatchCheck(r, lines);
+    if(tfToday() !== today || rrOffline() || !fresh || fresh.errors.length ||
+      fresh.warnings.some(w=>!check.warnings.some(a=>JSON.stringify(a) === JSON.stringify(w)))){
+      stopped = t('tfBatchChanged'); break;
+    }
+    r.yesterday = days[i] === 'yesterday';
+    r.dayPickedOn = today;
+    r.dirty = true;
+    tfKeep();
+    const edits = r.edits;
+    if(!await tfSaveDraft(r) || r.edits !== edits || tfToday() !== today){ stopped = t('tfBatchChanged'); break; }
+    // Let the server identify its current warnings before acknowledging any of them.
+    // It queues immediately if none are needed. Only the reviewed warning details carry over.
+    let res = await tfPost(r, [], false);
+    if(!res?.ok && res?.data?.error === 'needs_confirmation'){
+      const serverWarnings = res.data.warnings || [];
+      const reviewed = serverWarnings.length && serverWarnings.every(w=>w.code === 'yesterday' ? r.yesterday :
+        fresh.warnings.some(a=>a.code === w.code && a.line === w.line && tfWarnText(a, r) === tfWarnText(w, r)));
+      if(reviewed && r.edits === edits && tfToday() === today) res = await tfPost(r, serverWarnings.map(w=>w.code), false);
+    }
+    if(!res?.ok){
+      stopped = res?.data?.error === 'needs_confirmation' ? t('tfBatchNewWarning') :
+        res?.data?.errors?.map(e=>tfErrText(e, lines)).join(' · ') || t('saveFailed');
+      break;
+    }
+    Object.assign(r, res.data); delete r.pendingSend; delete r.dirty; tfKeep(); tf.lastFrom = r.from;
     sent++;
   }
-  toast(t('tfSendAllDone')(sent));
-  tfNewDraft();
+  return {sent, stopped};
 }
 /* One Send at a time, from the first press (see rrSend). */
 async function tfSend(r, keepForm = false){
@@ -420,6 +666,8 @@ async function tfSend(r, keepForm = false){
   try{ return await tfSendNow(r, keepForm); } finally { tf.asking = false; }
 }
 async function tfSendNow(r, keepForm){
+  if(tfUnfinishedSmart(r)) return false;
+  const reviewDay = tfToday();
   const before = r.lines.length;
   r.lines = r.lines.filter(l=>l.item || l.qty);
   // Empty rows taken out: the screen is redrawn now, so each row on it is the line it edits and line numbers match.
@@ -436,15 +684,15 @@ async function tfSendNow(r, keepForm){
   }
   // Written on an earlier day (with no connection, or a draft kept overnight): which day it counts on is
   // asked, because Ricotta Restaurant can record only today or yesterday.
-  const written = erbilDate(new Date(r.createdAt || Date.now())), meant = r.yesterday ? tfDayBefore(written) : written;
-  if(meant !== tfToday()){
-    if(meant === tfYesterday()){
+  const written = r.dayPickedOn || erbilDate(new Date(r.createdAt || Date.now())), meant = r.yesterday ? tfDayBefore(written) : written;
+  if(meant !== reviewDay && r.dayPickedOn !== reviewDay){
+    if(meant === tfDayBefore(reviewDay)){
       const forYesterday = await showConfirm(esc(t('tfWrittenEarlier')(tfDayLabel(meant))), {title:t('tfWhichDay'), okLabel:t('tfForYesterdayBtn'), cancelLabel:t('tfForTodayBtn'), okClass:'btn-primary', enter:true});
-      if(r.yesterday !== forYesterday){ r.yesterday = forYesterday; tfSaveSoon(r); }
+      r.yesterday = forYesterday; r.dayPickedOn = reviewDay; tfSaveSoon(r);
       if(forYesterday) c.warnings.some(w=>w.code === 'yesterday') || c.warnings.push({code:'yesterday'});
       else c.warnings = c.warnings.filter(w=>w.code !== 'yesterday');
     } else if(!await showConfirm(esc(t('tfTooOld')(tfDayLabel(meant))), {title:t('tfWhichDay'), okLabel:t('tfForTodayBtn'), okClass:'btn-primary'})) return false;
-    else { if(r.yesterday){ r.yesterday = false; tfSaveSoon(r); } c.warnings = c.warnings.filter(w=>w.code !== 'yesterday'); }
+    else { r.yesterday = false; r.dayPickedOn = reviewDay; tfSaveSoon(r); c.warnings = c.warnings.filter(w=>w.code !== 'yesterday'); }
   }
   // Record for yesterday was confirmed when it was turned on; everything else is read and confirmed here.
   const ask = c.warnings.filter(w=>w.code !== 'yesterday');
@@ -453,10 +701,12 @@ async function tfSendNow(r, keepForm){
   if(ask.length && !await showConfirm(tfSummary(r, ask.map(w=>tfWarnText(w, r))), {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary', enter:true, wide:true})) return false;
   // No connection: kept here, waiting to send; the form is free for the next one (From stays).
   const parkIt = ()=>{ r.pendingSend = true; r.dirty = true; tfKeep(); tf.lastFrom = r.from; toast(t('rrSavedOffline'), 'warn'); if(!keepForm) tfNewDraft(); else render(); };
+  if(tfToday() !== reviewDay){ toast(t('tfBatchChanged'), 'warn'); return false; }
   if(rrOffline()) return parkIt();
   tf.sending = true;
   try{
     if(!await tfSaveDraft(r)){ if(tf.netDown) return parkIt(); toast(t('saveFailed'), 'error'); return false; }
+    if(tfToday() !== reviewDay){ toast(t('tfBatchChanged'), 'warn'); return false; }
     const res = await tfPost(r, c.warnings.map(w=>w.code));
     if(!res) return false;
     if(!res.ok){ toast(res.data?.errors ? res.data.errors.map(e=>tfErrText(e, r.lines)).join(' · ') : t('saveFailed'), 'error'); return false; }
@@ -478,13 +728,15 @@ function tfSummary(r, ws){
 }
 /* Sends to Rico. The server may ask about more than the app knows (Rico already pressed Move it for this
    one, or the same transfer was already sent): those are shown and confirmed before it goes. */
-async function tfPost(r, codes){
+async function tfPost(r, codes, ask = true){
   codes = [...new Set(codes)];
+  const sendDay = tfToday();
   let res = await api(`transfers/${r.id}/send`, {method:'POST', body:{confirm:codes}});
-  if(!res.ok && res.data?.error === 'needs_confirmation'){
+  if(ask && !res.ok && res.data?.error === 'needs_confirmation'){
     const more = (res.data.warnings || []).filter(w=>!codes.includes(w.code));
     if(!more.length) return res;
     if(!await showConfirm(tfSummary(r, more.map(w=>tfWarnText(w, r))), {title:t('rrSureTitle'), okLabel:t('rrSendAnyway'), okClass:'btn-danger', wide:true})) return null;
+    if(tfToday() !== sendDay){ toast(t('tfBatchChanged'), 'warn'); return null; }
     res = await api(`transfers/${r.id}/send`, {method:'POST', body:{confirm:[...codes, ...more.map(w=>w.code)]}});
   }
   return res;

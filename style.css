@@ -3863,3 +3863,30 @@ html.mac-shell.theme-pink:not(.dark) .rico-plain::after{filter:saturate(1.35) br
 .mac-icon-suggest{display:flex;align-items:center;gap:8px;margin:2px 0 0;font-size:.8125rem;color:var(--ink-soft)}
 .mac-icon-suggest img{width:32px;height:32px}
 .mac-icon-suggest .btn-ghost{min-height:40px;padding:0 12px;font-size:.8125rem}
+
+/* Transfer review and quick entry */
+.tf-modes{width:max-content;max-width:100%;margin-bottom:14px}
+.tf-modes [aria-pressed=true],.rr-toggle[aria-pressed=true]{background:var(--accent-soft);color:var(--tint);box-shadow:inset 0 0 0 1px var(--tint)}
+.tf-batch,.tf-smart-body,.tf-smart-suggestions{display:grid;gap:10px}
+.tf-batch section{border:1px solid var(--line);border-radius:12px;padding:12px}
+.tf-batch-head,.tf-batch-actions,.rr-options,.rr-math{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.tf-batch-head{justify-content:space-between}
+.tf-batch-actions{margin:10px 0}
+.tf-batch-head select,.tf-smart-body select{min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--fill);padding-inline:8px;color:var(--ink);max-width:100%}
+.tf-batch-lines{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:8px;color:var(--ink-soft);font-size:.875rem}
+.tf-smart-body{padding:16px}
+.tf-smart-entry{display:flex;flex-wrap:wrap;gap:8px}
+.tf-smart-entry input{flex:1 1 180px;min-width:0}
+.tf-smart-status{color:var(--ok-ink);font-weight:600}
+.tf-smart-status.bad,.rr-math-error{color:var(--clay-ink)}
+.tf-smart-status:empty,#tfSmartChoices:empty{display:none}
+.tf-smart-suggestions>div,#tfSmartChoices{display:flex;gap:6px;flex-wrap:wrap}
+.tf-smart-suggestions small,.tf-smart-body>small,.rr-math>small{color:var(--ink-soft)}
+.rr-opt.tf-option-locked{background:color-mix(in srgb,#8067d6 13%,var(--surface));flex-wrap:wrap;color:#49368f;cursor:not-allowed}
+.rr-opt.tf-option-locked small{color:inherit;flex-basis:100%;white-space:normal}
+html.dark .rr-opt.tf-option-locked{color:#c9bcff}
+.rr-math{padding:12px 16px 0}
+.rr-options .rr-cur{flex:none}
+.rr-toggle{padding-inline:12px}
+.rr-total-edit{align-self:flex-start;background:none;border:0;font-size:.8125rem;padding:4px 0;color:var(--tint)}
+#tfSmartChoices .rr-field{width:min(100%,280px)}
