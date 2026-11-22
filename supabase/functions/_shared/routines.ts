@@ -28,6 +28,15 @@ const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 export function baghdadTime(ms: number) {
   return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Baghdad", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(ms));
 }
+/* A stored "HH:MM" (24-hour, Baghdad) as Erbil reads it, on the 12-hour clock (Rozh, 2026-11-22):
+   "14:05" is 2:05 PM in English, 2:05 د.ن in Kurdish and 2:05 م in Arabic; "00:30" is 12:30 AM. Anything
+   that is not a clock time comes back as it was. */
+export function clock12(time: string): Words {
+  const m = String(time ?? "").match(/^(\d{1,2}):(\d{2})$/);
+  if (!m || Number(m[1]) > 23) return { en: String(time ?? ""), ku: String(time ?? ""), ar: String(time ?? "") };
+  const h = Number(m[1]), pm = h >= 12, clock = `${h % 12 || 12}:${m[2]}`;
+  return { en: `${clock} ${pm ? "PM" : "AM"}`, ku: `${clock} ${pm ? "د.ن" : "پ.ن"}`, ar: `${clock} ${pm ? "م" : "ص"}` };
+}
 /* When a one-off reminder should come, from what Rico read in the message: in_seconds from now, or at
    "HH:MM" (today, or tomorrow if that time has passed) or "YYYY-MM-DD HH:MM", Baghdad time. */
 export function whenOnce(a: any, nowMs = Date.now()): number | { error: string } {
@@ -213,8 +222,8 @@ async function inbox(db: any, account: string, kind: string, words: Words, key: 
   if (error) throw new Error("inbox_failed");
 }
 
-/* "Every day at 09:00", "Sun, Mon at 07:30": the time and days in plain words, for Rico's answers. */
+/* "Every day at 9:00 AM", "Sun, Mon at 7:30 AM": the time and days in plain words, for Rico's answers. */
 export function whenWords(time: string, days: number[]) {
-  const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  return days.length === 7 ? `every day at ${time}` : `${days.map((d) => names[d]).join(", ")} at ${time}`;
+  const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], at = clock12(time).en;
+  return days.length === 7 ? `every day at ${at}` : `${days.map((d) => names[d]).join(", ")} at ${at}`;
 }

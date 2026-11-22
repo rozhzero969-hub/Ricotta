@@ -3,6 +3,10 @@
    yet; opening the list marks it read on this device. Newest first. Depends on: t, esc, state, lget,
    lset, openKitchenSheet, formatIraqDateTime. */
 const WHATS_NEW = [
+  {id:'2026-11-22c', date:'2026-11-22', notes:{
+    en:['Supplier reminders and Rico\u2019s Scheduled tasks ask for the time as hour, minutes and AM or PM, on any phone or computer.','Times in notifications and in Rico\u2019s messages use AM and PM, Erbil time.'],
+    ku:['بیرخەرەوەی دابینکەران و کارە کاتدیاریکراوەکانی ریکۆ کات بە کاتژمێر و خولەک و پ.ن یان د.ن دەپرسن، لەسەر هەر مۆبایل و کۆمپیوتەرێک.','کاتەکان لە ئاگادارکردنەوەکان و نامەکانی ریکۆدا پ.ن و د.ن بەکاردێنن، بە کاتی هەولێر.'],
+    ar:['تذكيرات الموردين ومهام ريكو المجدولة تطلب الوقت بالساعة والدقائق وص أو م، على أي هاتف أو كمبيوتر.','الأوقات في الإشعارات ورسائل ريكو بنظام ص وم، بتوقيت أربيل.']}},
   {id:'2026-11-22a', date:'2026-11-22', notes:{
     en:['Mac app: Always see-through now looks like frosted glass. The window is smoky glass over your desktop, groups are soft glass panels with darker tiles inside, the main buttons are solid, and the send button glows.'],
     ku:['ئەپی ماک: هەمیشە شەفاف ئێستا وەک شووشەی تەماوی دەردەکەوێت. پەنجەرەکە شووشەیەکی دووکەڵاوییە لەسەر باکگراوندی ماکەکەت، گرووپەکان پانێڵی شووشەی نەرمن و خانەی تاریکتریان تێدایە، دوگمە سەرەکییەکان پڕن، و دوگمەی ناردن دەدرەوشێتەوە.'],

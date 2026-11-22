@@ -4,7 +4,7 @@
 /* The one thing that needs the person now: late, closing soon, due today, or nothing. */
 function ricoNextStep(){
   const late = ricoLateOrders();
-  if(late.length){ const l = late[0]; return {supplierId:l.supplierId, title:t('nextLate')(l.name), sub:t('ricoLateSub')(l.time, Math.floor(l.mins / 60), l.mins % 60), others:late.length - 1, urgent:true}; }
+  if(late.length){ const l = late[0]; return {supplierId:l.supplierId, title:t('nextLate')(l.name), sub:t('ricoLateSub')(formatStoredIraqTime(l.time), Math.floor(l.mins / 60), l.mins % 60), others:late.length - 1, urgent:true}; }
   if(!canOpen('order')) return null;
   const now = erbilNow();
   const unsent = state.suppliers.filter(s=>!sentTodayTo(s.id, now.date) && state.items.some(i=>i.supplierId === s.id));
@@ -86,7 +86,7 @@ function routineLabel(r){
   if(r.runAt) return `${r.kind === 'ask' ? t('schedKindAsk') : t('routineRemind')} · ${t('routineOnce')}, ${formatIraqDateTime(r.runAt, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'})}`;
   const days = r.days?.length === 7 ? t('routineEvery') : (r.days || []).map(d=>t('routineDays')[d]).join(state.lang === 'en' ? ', ' : '، ');
   const what = r.kind === 'ask' ? t('schedKindAsk') : r.kind === 'prepare_order' ? t('routinePrepareFor')((r.supplierIds || []).map(id=>supplierName(id) || '').filter(Boolean).join(', ') || r.suppliers?.join(', ') || '') : t('routineRemind');
-  return `${what} · ${days} ${r.time}`;
+  return `${what} · ${days} ${formatStoredIraqTime(r.time)}`;
 }
 /* ---------- Scheduled (from the Rico menu) ----------
    Like a tasks list: what Rico does by himself and when. Each task can be paused or deleted, and
@@ -110,8 +110,8 @@ function openRicoScheduled(){
         ${[['daily', t('schedRepeatDaily')], ['days', t('schedRepeatDays')], ['once', t('schedRepeatOnce')]].map(([v, l], i)=>`<label><input type="radio" name="schedRepeat" value="${v}"${i ? '' : ' checked'}><span>${esc(l)}</span></label>`).join('')}
       </div>
       <div class="sched-days" id="schedDays" hidden>${days.map((d, i)=>`<label><input type="checkbox" value="${i}" checked><span>${esc(d)}</span></label>`).join('')}</div>
-      <div class="field" id="schedTimeWrap"><label for="schedTime">${esc(t('schedTime'))}</label><input id="schedTime" type="time" value="09:00" required></div>
-      <div class="field" id="schedWhenWrap" hidden><label for="schedWhen">${esc(t('schedWhen'))}</label><input id="schedWhen" type="datetime-local"></div>
+      <div class="field" id="schedTimeWrap"><label>${esc(t('schedTime'))}</label>${timePickerHtml('schedTime', '09:00', t('schedTime'))}</div>
+      <div class="field" id="schedWhenWrap" hidden><label for="schedWhen">${esc(t('schedWhen'))}</label><div class="time12-when"><input id="schedWhen" type="date">${timePickerHtml('schedWhenTime', '09:00', t('schedWhen'))}</div></div>
       <div class="sched-error" id="schedErr" role="alert"></div>
       <div class="form-actions sched-actions"><button type="button" class="btn btn-ghost" data-sched-cancel>${esc(t('schedCancel'))}</button><button type="submit" class="btn btn-primary">${esc(t('schedSave'))}</button></div>
     </form>`, t('schedTitle'));
@@ -154,10 +154,13 @@ function openRicoScheduled(){
   const showForm = on=>{
     form.hidden = !on; list.hidden = on; newBtn.hidden = on;
     if(on){
-      const n = erbilNow(), when = form.querySelector('#schedWhen');
-      const hh = String(Math.floor(n.minutes / 60)).padStart(2, '0'), mm = String(n.minutes % 60).padStart(2, '0');
-      when.min = `${n.date}T${hh}:${mm}`;
-      if(!when.value) when.value = `${n.date}T${String(Math.min(23, Math.floor(n.minutes / 60) + 1)).padStart(2, '0')}:00`;
+      // A one-off task starts on the next full hour, Baghdad time (UTC+3 is a whole hour, so it lines up).
+      const when = form.querySelector('#schedWhen'), next = new Date(Math.ceil((Date.now() + 1) / 3600_000) * 3600_000);
+      when.min = erbilNow().date;
+      if(!when.value){
+        when.value = erbilDate(next.toISOString());
+        setTimePicker(form.querySelector('#schedWhenTime'), String((next.getUTCHours() + 3) % 24).padStart(2, '0') + ':00');
+      }
       sync();
       form.querySelector('#schedText').focus({preventScroll:true});
     }
@@ -173,12 +176,12 @@ function openRicoScheduled(){
     if(!text){ say('schedNeedText'); return; }
     const body = {kind, text};
     if(rep === 'once'){
-      const v = form.querySelector('#schedWhen').value;
-      const at = v ? Date.parse(v + ':00+03:00') : NaN;
+      const day = form.querySelector('#schedWhen').value, clock = timePickerValue(form.querySelector('#schedWhenTime'));
+      const at = day && clock ? Date.parse(`${day}T${clock}:00+03:00`) : NaN;
       if(!Number.isFinite(at) || at < Date.now() - 60_000 || at > Date.now() + 60 * 86400_000){ say('schedBadWhen'); return; }
       body.runAt = new Date(at).toISOString();
     } else {
-      body.time = form.querySelector('#schedTime').value;
+      body.time = timePickerValue(form.querySelector('#schedTime'));
       if(!/^\d{2}:\d{2}$/.test(body.time || '')){ say('schedBadWhen'); return; }
       body.days = rep === 'days' ? [...form.querySelectorAll('#schedDays input:checked')].map(x=>Number(x.value)) : [0, 1, 2, 3, 4, 5, 6];
       if(!body.days.length){ say('schedNeedDay'); return; }

@@ -139,6 +139,50 @@ function formatStoredIraqTime(value){
     timeZone:'UTC', hour:'numeric', minute:'2-digit', hour12:true
   }).format(date);
 }
+/* A clock time to pick, the way Erbil reads it: hour 1 to 12, minutes, and AM or PM in the app's
+   language (Rozh, 2026-11-22). The browser's own time box follows the device and shows 24 hours on
+   many Macs and phones, so the app draws its own. Underneath it still reads and writes the 24-hour
+   "HH:MM" Baghdad wall-clock value the server stores, so saved reminders and tasks don't change. */
+const DAY_PERIOD_WORDS = {en:['AM', 'PM'], ku:['پ.ن', 'د.ن'], ar:['ص', 'م']};
+function splitClock(value){
+  const m = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
+  const h = m ? Math.min(23, Number(m[1])) : 9, min = m ? Math.min(59, Number(m[2])) : 0;
+  return {h12:h % 12 || 12, min, pm:h >= 12};
+}
+function timePickerHtml(id, value, label){
+  const {h12, min, pm} = splitClock(value);
+  const words = DAY_PERIOD_WORDS[state.lang] || DAY_PERIOD_WORDS.en;
+  const two = n=>String(n).padStart(2, '0');
+  const mins = Array.from({length:12}, (_, i)=>i * 5);
+  if(!mins.includes(min)) mins.push(min), mins.sort((a, b)=>a - b);   // keep a time saved off the 5-minute marks
+  return `<div class="time12" id="${id}" role="group" aria-label="${esc(label)}" dir="ltr">
+    <select data-t12="h" aria-label="${esc(t('timeHour'))}">${Array.from({length:12}, (_, i)=>i + 1).map(h=>`<option value="${h}"${h === h12 ? ' selected' : ''}>${h}</option>`).join('')}</select>
+    <span class="time12-colon" aria-hidden="true">:</span>
+    <select data-t12="m" aria-label="${esc(t('timeMinute'))}">${mins.map(m=>`<option value="${m}"${m === min ? ' selected' : ''}>${two(m)}</option>`).join('')}</select>
+    <select data-t12="p" aria-label="${esc(t('timeAmPm'))}"><option value="am"${pm ? '' : ' selected'}>${esc(words[0])}</option><option value="pm"${pm ? ' selected' : ''}>${esc(words[1])}</option></select>
+  </div>`;
+}
+/* The picked time as "HH:MM" (24-hour), or '' if the picker is missing. */
+function timePickerValue(root){
+  if(!root) return '';
+  const get = k=>root.querySelector(`[data-t12="${k}"]`)?.value;
+  const h12 = Number(get('h')), min = Number(get('m')), pm = get('p') === 'pm';
+  if(!(h12 >= 1 && h12 <= 12) || !(min >= 0 && min <= 59)) return '';
+  const h = (h12 % 12) + (pm ? 12 : 0);
+  return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+}
+function setTimePicker(root, value){
+  if(!root) return;
+  const {h12, min, pm} = splitClock(value);
+  const mSel = root.querySelector('[data-t12="m"]');
+  if(mSel && ![...mSel.options].some(o=>Number(o.value) === min)){
+    const o = document.createElement('option'); o.value = String(min); o.textContent = String(min).padStart(2, '0');
+    mSel.append(o); [...mSel.options].sort((a, b)=>Number(a.value) - Number(b.value)).forEach(x=>mSel.append(x));
+  }
+  root.querySelector('[data-t12="h"]').value = String(h12);
+  if(mSel) mSel.value = String(min);
+  root.querySelector('[data-t12="p"]').value = pm ? 'pm' : 'am';
+}
 /* While something loads: gray lines where the rows will be, breathing softly; the rows then fade in
    in the same place, so nothing jumps. */
 function loadingLines(n = 3){
@@ -3696,7 +3740,7 @@ function reminderFieldsHtml(r){
     <hr class="notif-divider">
     <label class="check-row"><input type="checkbox" id="mfRemOn" ${on?'checked':''}> ${ICON_BELL} ${t('supplierReminderLabel')}</label>
     <div id="mfRemBox" ${on?'':'hidden'}>
-      <div class="field"><label>${t('reminderTimeLabel')}</label><input id="mfRemTime" type="time" value="${esc(time)}"></div>
+      <div class="field"><label>${t('reminderTimeLabel')}</label>${timePickerHtml('mfRemTime', time, t('reminderTimeLabel'))}</div>
       <div class="field"><label>${t('reminderDaysLabel')}</label>
         <div class="day-chips">${DAY_ORDER.map(d=>`<button type="button" class="day-chip ${days.includes(d)?'on':''}" data-day="${d}">${t('daysShort')[d]}</button>`).join('')}</div>
       </div>
@@ -3712,7 +3756,7 @@ function readReminderFields(){
   const box = document.querySelector('#modalRoot .modal-box');
   return {
     on: box.querySelector('#mfRemOn').checked,
-    time: box.querySelector('#mfRemTime').value,
+    time: timePickerValue(box.querySelector('#mfRemTime')),
     days: Array.from(box.querySelectorAll('.day-chip.on')).map(b=>Number(b.dataset.day))
   };
 }
@@ -3721,7 +3765,7 @@ function resetReminderFields(){
   if(!box) return;
   box.querySelector('#mfRemOn').checked = false;
   box.querySelector('#mfRemBox').hidden = true;
-  box.querySelector('#mfRemTime').value = DEFAULT_REMINDER_TIME;
+  setTimePicker(box.querySelector('#mfRemTime'), DEFAULT_REMINDER_TIME);
   box.querySelectorAll('.day-chip').forEach(b=>b.classList.add('on'));
 }
 
