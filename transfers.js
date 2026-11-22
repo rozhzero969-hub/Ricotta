@@ -237,11 +237,11 @@ function tfNeedByItem(r){
   return m;
 }
 /* The quick entry only commits a unique catalog name and a unit allowed for that item. */
-function tfSmartMatch(text, items, linked){
+function tfSmartMatch(text, items, linked, selectedUnit){
   const search = globalThis.RicottaSearch, norm = search.normalize;
-  const parts = text.trim().match(/^(.+)\s+([0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٫٬]*)\s*([^0-9٠-٩۰-۹].*)$/u);
+  const parts = text.trim().match(/^(.+)\s+([0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٫٬]*)(?:\s*([^0-9٠-٩۰-۹].*))?$/u);
   if(!parts) return {error:'tfSmartFormat'};
-  const [, name, amount, unit] = parts;
+  const [, name, amount, unit = ''] = parts;
   const qty = rrStrictAmount(amount, 3);
   if(!(qty > 0 && qty <= 999999)) return {error:'tfSmartAmount'};
   const shortName = item=>item.name.split(' - ')[0].trim();
@@ -253,8 +253,8 @@ function tfSmartMatch(text, items, linked){
   if(hits.length !== 1) return {error:hits.length ? 'tfSmartAmbiguous' : 'tfSmartMissing',
     choices:(hits.length ? hits : search.rank(items, name, aliases)).slice(0, 5).map(item=>({item, text:`${item.name} ${amount} ${unit.trim()}`}))};
   const item = hits[0], units = TF().unitOptions(item);
-  const direct = units.filter(u=>norm(u.name) === norm(unit));
-  const options = direct.length ? direct : units.filter(u=>search.unit([u.name], unit));
+  const exact = units.filter(u=>selectedUnit ? u.name === selectedUnit : norm(u.name) === norm(unit));
+  const options = exact.length || selectedUnit || !unit.trim() ? exact : units.filter(u=>search.unit([u.name], unit));
   if(options.length !== 1 || options[0].unclear) return {error:'tfSmartUnit', item, units:units.filter(u=>!u.unclear).map(u=>u.name)};
   return {item, line:{item:item.name, qty, unit:options[0].name}, factor:options[0].factor};
 }
@@ -310,10 +310,10 @@ function tfBindSmart(r, changed, go){
     changed(true);
     if(r.from && r.to) go('tfSmartEntry');
   };
-  const add = ()=>{
+  const add = selectedUnit=>{
     if(entry.disabled || !entry.value.trim()) return;
     if(r.dayPickedOn !== tfToday()){ r.dayPickedOn = null; changed(true); toast(t('tfBatchChanged'), 'warn'); return; }
-    const result = tfSmartMatch(entry.value, items, linked);
+    const result = tfSmartMatch(entry.value, items, linked, selectedUnit);
     const {item, line, factor} = result;
     const current = r.lines.findIndex(l=>!l.item && !l.qty);
     let error = result.error;
@@ -321,11 +321,23 @@ function tfBindSmart(r, changed, go){
     if(!error && r.lines.filter(l=>l.item).length >= TF().MAX_LINES) error = 'rrErrNoLines';
     if(error){
       status.className = 'tf-smart-status bad';
-      status.textContent = t(error) + (result.units?.length ? ' · ' + result.units.join(' / ') : '');
+      status.textContent = t(error === 'tfSmartUnit' && result.units.length ? 'tfSmartPickUnit' : error);
       entry.setAttribute('aria-invalid','true');
       const note = item && error === 'tfSmartUnavailable' ? tfDraftWords(item, r, line.unit) : '';
       if(note) status.textContent += ' · ' + note;
       choices.replaceChildren();
+      if(result.units?.length){
+        // Enhance it exactly like the Unit field on a manual transfer line.
+        choices.innerHTML = `<div class="rr-field rr-f-unit"><label for="tfSmartUnitPick">${esc(t('rrUnit'))}</label>
+          <select id="tfSmartUnitPick" data-inline><option value="" selected hidden>${esc(t('tfSmartPickUnit'))}</option>
+          ${result.units.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')}</select></div>`;
+        const select = choices.querySelector('select'), text = entry.value;
+        select.onchange = ()=>{ if(entry.value === text && select.value) add(select.value); };
+        enhanceSelects(choices);
+        select._selBtn.focus({preventScroll:true});
+        openSelPop(select);
+        return;
+      }
       for(const choice of result.choices || []){
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'btn btn-ghost';
@@ -352,7 +364,7 @@ function tfBindSmart(r, changed, go){
     entry.removeAttribute('aria-invalid');
   };
   entry.onkeydown = e=>{ if(e.key === 'Enter' && !e.isComposing && !e.metaKey && !e.ctrlKey){ e.preventDefault(); add(); } };
-  document.getElementById('tfSmartAdd').onclick = add;
+  document.getElementById('tfSmartAdd').onclick = ()=>add();
   document.querySelectorAll('[data-tf-suggestion]').forEach(button=>button.onclick = ()=>{
     if(entry.value.trim()) return;
     entry.value = button.dataset.tfSuggestion;

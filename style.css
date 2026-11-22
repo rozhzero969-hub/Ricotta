@@ -3889,3 +3889,4 @@ html.dark .rr-opt.tf-option-locked{color:#c9bcff}
 .rr-options .rr-cur{flex:none}
 .rr-toggle{padding-inline:12px}
 .rr-total-edit{align-self:flex-start;background:none;border:0;font-size:.8125rem;padding:4px 0;color:var(--tint)}
+#tfSmartChoices .rr-field{width:min(100%,280px)}

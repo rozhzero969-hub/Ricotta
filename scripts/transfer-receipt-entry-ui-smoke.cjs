@@ -20,14 +20,14 @@ const views = ['order','history','receipts','transfers','settings'];
 const zones = ['Main Storage','Kitchen','Minibar'];
 const titems = [
   {name:'Donuts', base:'piece', stock:{'Main Storage':10}},
-  {name:'Potatoes', base:'gram', count:{name:'kg', factor:1000}, stock:{'Main Storage':20000}},
-  {name:'Oranges', base:'gram', count:{name:'kg', factor:1000}, stock:{'Main Storage':5000}},
+  {name:'Potatoes', base:'گرام', count:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':20000}},
+  {name:'Oranges', base:'گرام', count:{name:'کیلۆ', factor:1000}, stock:{'Main Storage':5000}},
 ];
 const ids = ['00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002'];
 const date = '2026-11-22T12:00:00.000Z';
 const transfers = ids.map((id,i)=>({id, by:'rozha', status:'draft', source:'app', version:1,
   from:zones[0], to:zones[i+1], yesterday:i===1, createdAt:date, lines:[i===0
-    ? {item:'Donuts', qty:10, unit:'piece'} : {item:'Potatoes', qty:5, unit:'kg'}]}));
+    ? {item:'Donuts', qty:10, unit:'piece'} : {item:'Potatoes', qty:5, unit:'کیلۆ'}]}));
 const queue = [], receiptSaves = [];
 let flagNewWarning = false;
 async function run(){
@@ -90,12 +90,20 @@ async function run(){
     await entry.press('Enter');
     assert.equal(await entry.getAttribute('aria-invalid'),'true');
     assert.match(await page.locator('#tfSmartStatus').innerText(),/unit/);
+    await page.keyboard.press('Escape');
     await entry.fill('potato 5 kilo');
     await entry.press('Enter');
-    assert.match(await page.locator('#tfSmartStatus').innerText(),/Potatoes.*5 kg/);
+    assert.match(await page.locator('#tfSmartStatus').innerText(),/Potatoes.*5 کیلۆ/);
+    assert.equal(await page.locator('#tfUnit0').inputValue(),'کیلۆ');
     assert.equal(await page.locator('#tfQty0').inputValue(),'5');
-    await entry.fill('Oranges 5 kilos');
+    await entry.fill('Oranges 5 unknown-unit');
     await entry.press('Enter');
+    const pickUnit = page.locator('.sel-pop [role=option]');
+    assert.deepEqual(await pickUnit.allTextContents(),['کیلۆ','گرام']);
+    assert.equal(await page.locator('#tfQty1').count(),0,'an unknown unit does not add a line');
+    await pickUnit.getByText('کیلۆ',{exact:true}).click();
+    assert.equal(await page.locator('#tfQty1').inputValue(),'5');
+    assert.equal(await page.locator('#tfUnit1').inputValue(),'کیلۆ');
     await page.locator('[data-tf-mode=manual]').click();
     await page.locator('#tfAdd').click();
     await page.locator('#tfItem2').fill('Oranges');
