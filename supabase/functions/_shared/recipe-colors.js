@@ -7,16 +7,16 @@
    needs a migration that widens that check. */
 (function () {
   const PALETTE = Object.freeze([
-    { key: 'mint',    bg: '#DDF3E6', ink: '#1F6B46', bgDark: '#1C3529', inkDark: '#8FDDB4', bg2: '#EFFAF3', bg2Dark: '#152A20' },
-    { key: 'butter',  bg: '#FBF0C4', ink: '#7A5B00', bgDark: '#3A3115', inkDark: '#EBCF72', bg2: '#FEF9E6', bg2Dark: '#2B2410' },
-    { key: 'peach',   bg: '#FDE3D3', ink: '#99461C', bgDark: '#3D271C', inkDark: '#F3B08C', bg2: '#FEF2EA', bg2Dark: '#2E1E16' },
-    { key: 'sky',     bg: '#DCEBFB', ink: '#1F5A93', bgDark: '#1B2C3F', inkDark: '#93C2F1', bg2: '#F2F8FE', bg2Dark: '#142231' },
-    { key: 'lilac',   bg: '#E9E2F8', ink: '#5B3F9E', bgDark: '#2B2540', inkDark: '#BDA9EE', bg2: '#F6F2FD', bg2Dark: '#201B32' },
-    { key: 'rose',    bg: '#FBE0E6', ink: '#9C2F4C', bgDark: '#3C2129', inkDark: '#F2A3B7', bg2: '#FEF2F5', bg2Dark: '#2D1920' },
-    { key: 'sand',    bg: '#F1E8DA', ink: '#6E5530', bgDark: '#332C21', inkDark: '#D9C29B', bg2: '#FAF6F0', bg2Dark: '#27221A' },
-    { key: 'sage',    bg: '#E3EBDD', ink: '#49603A', bgDark: '#273024', inkDark: '#B4CBA3', bg2: '#F3F7F0', bg2Dark: '#1D251B' },
-    { key: 'apricot', bg: '#FDE8C8', ink: '#8A5200', bgDark: '#3B2D17', inkDark: '#F0C27E', bg2: '#FEF5E8', bg2Dark: '#2D2313' },
-    { key: 'mist',    bg: '#E4EAEE', ink: '#44586A', bgDark: '#262D33', inkDark: '#AFC0CE', bg2: '#F4F7F9', bg2Dark: '#1C2227' },
+    { key: 'mint',    bg: '#DDF3E6', ink: '#1F6B46', bgDark: '#1C3529', inkDark: '#8FDDB4', bg2: '#EBF7FC', bg2Dark: '#152A20' },
+    { key: 'butter',  bg: '#FBF0C4', ink: '#7A5B00', bgDark: '#3A3115', inkDark: '#EBCF72', bg2: '#FFF0E8', bg2Dark: '#2B2410' },
+    { key: 'peach',   bg: '#FDE3D3', ink: '#99461C', bgDark: '#3D271C', inkDark: '#F3B08C', bg2: '#FDEBF0', bg2Dark: '#2E1E16' },
+    { key: 'sky',     bg: '#DCEBFB', ink: '#1F5A93', bgDark: '#1B2C3F', inkDark: '#93C2F1', bg2: '#F0ECFC', bg2Dark: '#142231' },
+    { key: 'lilac',   bg: '#E9E2F8', ink: '#5B3F9E', bgDark: '#2B2540', inkDark: '#BDA9EE', bg2: '#FCEFF7', bg2Dark: '#201B32' },
+    { key: 'rose',    bg: '#FBE0E6', ink: '#9C2F4C', bgDark: '#3C2129', inkDark: '#F2A3B7', bg2: '#FFF1E7', bg2Dark: '#2D1920' },
+    { key: 'sand',    bg: '#F1E8DA', ink: '#6E5530', bgDark: '#332C21', inkDark: '#D9C29B', bg2: '#FFF1DB', bg2Dark: '#27221A' },
+    { key: 'sage',    bg: '#E3EBDD', ink: '#49603A', bgDark: '#273024', inkDark: '#B4CBA3', bg2: '#FAF7DE', bg2Dark: '#1D251B' },
+    { key: 'apricot', bg: '#FDE8C8', ink: '#8A5200', bgDark: '#3B2D17', inkDark: '#F0C27E', bg2: '#FFF0E6', bg2Dark: '#2D2313' },
+    { key: 'mist',    bg: '#E4EAEE', ink: '#44586A', bgDark: '#262D33', inkDark: '#AFC0CE', bg2: '#EDF6FE', bg2Dark: '#1C2227' },
   ].map(Object.freeze));
   const KEYS = Object.freeze(PALETTE.map((c) => c.key));
   const get = (key) => PALETTE.find((c) => c.key === key) || null;

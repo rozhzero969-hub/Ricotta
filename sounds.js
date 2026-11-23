@@ -60,8 +60,41 @@ function soundTone(f, dur, gain, at = 0, type = 'sine'){
      or double-click on an empty part of the top bar or sidebar, which moves or zooms the window, and the
      Dock icon and colour theme chosen in Settings (icon:monogram, theme:pink). */
 // The Dock icons: one for each theme first (in MAC_THEMES order), then the others. The first is the default.
-const MAC_ICONS = ['ricotta','pumpkin','holly','moonlit','gemini','cupid','monogram','ticket','aurora','frost','copper','stamp'];
-const MAC_THEMES = ['ricotta','halloween','christmas','moonlit','google','pink'];
+const MAC_ICONS = ['ricotta','pumpkin','holly','moonlit','gemini','cupid','discord'];
+const MAC_THEMES = ['ricotta','halloween','christmas','moonlit','google','pink','discord'];
+/* Original Ricotta palettes inspired by the range of Discord's color themes.
+   Each uses solid reading surfaces with color reserved for the surround and accents. */
+const COLOR_PALETTES = [
+  ['discord','Discord','#252633','#24252A','#AEB6FF'],
+  ['berry','Blackberry','#3C223E','#241928','#F2A7D8'],
+  ['iris','Iris Hour','#302952','#211B35','#C5B5FF'],
+  ['lagoon','Blue Lagoon','#15404B','#142935','#83E0EA'],
+  ['linen','Linen','#493A2B','#2C241D','#F7CF9A'],
+  ['evening','Evening Peach','#4B293C','#35222B','#FFC1A0'],
+  ['matcha','Iced Matcha','#2E4233','#1E2B24','#C2E495'],
+  ['sea','Deep Sea','#20365C','#122033','#90C3FF'],
+  ['embers','Embers','#4C2A20','#2D1C1A','#FFA983'],
+  ['noir','Noir','#31313A','#131319','#D8D9EA'],
+  ['plum','Plum Fizz','#482D5A','#2E213B','#E7B2FF'],
+  ['mintwave','Mint Wave','#1D4347','#152933','#99E9CC'],
+  ['cocoa','Cocoa','#49312C','#2C211F','#EBC3AF'],
+  ['tiramisu','Tiramisu','#463543','#2A202F','#EAC2D6'],
+  ['opal','Opal','#2B3857','#1F2539','#D0DFFD'],
+  ['papaya','Papaya','#4C3626','#312522','#FFCA77'],
+  ['moss','Moss Garden','#374331','#242D24','#C7DEA5'],
+  ['slate','Blue Slate','#303E48','#202932','#B3D8E9'],
+  ['cobalt','Cobalt','#25346B','#1D2141','#A6C1FF'],
+  ['orchid','Orchid Night','#472D55','#282039','#E5B9FF'],
+  ['pom','Pomegranate','#4C253A','#321E29','#FFAACD'],
+  ['dawn','Soft Dawn','#453349','#2B2B40','#F6BEE8'],
+  ['jade','Jade','#1F443F','#152D2A','#9BE6C1'],
+  ['marine','Aquamarine','#1C3D53','#172C36','#92E2F3'],
+  ['caramel','Caramel','#4A3A22','#302618','#FFDF92'],
+  ['lavender','Lavender Milk','#373151','#242231','#D8CBFF'],
+  ['brick','Rosy Brick','#493033','#2E2329','#FFB8B8'],
+  ['polar','Polar Haze','#283846','#182530','#A7E0FF'],
+  ['cosmic','Cosmic Sorbet','#3D2B62','#262341','#FFB7EA'],
+];
 const NATIVE_WORDS = ['selection','light','medium','success','warning','error','page-splash','page-dark','page-light','see-through-on','see-through-off','window-drag','window-zoom',
   ...MAC_ICONS.map(n=>'icon:' + n), ...MAC_THEMES.map(n=>'theme:' + n)];
 function tellApp(word){

@@ -3144,8 +3144,8 @@ html.dark .rc-pill-btn{background:rgba(0,0,0,.32);color:#fff}
 html.rtl #rcBack svg{transform:scaleX(-1)}
 .rc-pill-btn:not(:disabled):active{transform:scale(.96)}
 @media (hover:hover){.rc-pill-btn:hover{background:rgba(255,255,255,.8)}html.dark .rc-pill-btn:hover{background:rgba(0,0,0,.45)}}
-.rc-avatar{position:relative;z-index:1;width:84px;height:84px;margin:-42px 0 0;margin-inline-start:16px;border:4px solid var(--bg);border-radius:24px;background-clip:padding-box}
-.rc-avatar img{border-radius:20px}
+.rc-avatar{position:relative;z-index:1;width:84px;height:84px;margin:-42px 0 0;margin-inline-start:16px;border:0;border-radius:22px;overflow:hidden}
+.rc-avatar img{border-radius:inherit}
 .rc-avatar b{font-size:2rem}
 .rc-head-text{min-width:0;padding:10px 16px 0}
 .rc-cat{display:block;margin:0 0 4px;font-size:.8125rem;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-soft)}
@@ -3373,14 +3373,6 @@ html.dark .settings-row>.rc-access-value.on{color:var(--ok)}
 .sched-form[hidden]{display:none}
 .sched-form .field{margin:0}
 .sched-form-title{font-size:1.0625rem;margin:0;text-align:start}
-.sched-seg{display:flex;gap:2px;padding:2px;border-radius:10px;background:var(--fill)}
-.sched-seg label{flex:1;min-width:0;position:relative}
-.sched-seg label[hidden]{display:none}
-.sched-seg input{position:absolute;opacity:0;pointer-events:none}
-.sched-seg span{display:flex;align-items:center;justify-content:center;min-height:36px;padding:0 6px;border-radius:8px;font-size:.875rem;font-weight:500;color:var(--ink);text-align:center;line-height:1.2;cursor:pointer;transition:background-color .2s ease}
-.sched-seg input:checked+span{background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12);font-weight:600}
-.sched-seg input:focus-visible+span{outline:2px solid var(--accent);outline-offset:1px}
-html.dark .sched-seg input:checked+span{background:#636366}
 .sched-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
 .sched-days[hidden]{display:none}
 .sched-days label{position:relative}
@@ -3553,7 +3545,7 @@ html.mac-shell.see-through,html.mac-shell.see-through body{background:transparen
 html.mac-shell.see-through #app{background:var(--page-tint)}
 html.mac-shell.see-through .page-ghost>.content{background:transparent}
 html.mac-shell.see-through .topbar:not(.scrolled){background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
-:where(html.mac-shell.see-through,html.mac-shell.theme-halloween,html.mac-shell.theme-christmas,html.mac-shell.theme-moonlit,html.mac-shell.theme-pink) .catalog-search input,:where(html.mac-shell.see-through,html.mac-shell.theme-halloween,html.mac-shell.theme-christmas,html.mac-shell.theme-moonlit,html.mac-shell.theme-pink) :is(.search-input,.quick-btn,.tab-pill,.btn-ghost,.rico-open,.tab-scroll,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip,.pick,.sel-btn,.pill-seg,.heading-search,.kind-switch,.xt-seg,.sched-seg,.rr-ctl,.rd-search,.admin-refresh,.help-btn,.streak-chip,.rr-input,.stepper,.wipe-banner){
+:where(html.mac-shell.see-through,html.mac-shell.theme-halloween,html.mac-shell.theme-christmas,html.mac-shell.theme-moonlit,html.mac-shell.theme-pink) .catalog-search input,:where(html.mac-shell.see-through,html.mac-shell.theme-halloween,html.mac-shell.theme-christmas,html.mac-shell.theme-moonlit,html.mac-shell.theme-pink) :is(.search-input,.quick-btn,.tab-pill,.btn-ghost,.rico-open,.tab-scroll,.queue-back,.item-sort-trigger,.pdf-btn,.day-chip,.pick,.sel-btn,.pill-seg,.heading-search,.kind-switch,.xt-seg,.rr-ctl,.rd-search,.admin-refresh,.help-btn,.streak-chip,.rr-input,.stepper,.wipe-banner){
   background-image:linear-gradient(var(--fill),var(--fill));background-color:var(--surface)}
 @media (hover:hover) and (pointer:fine){
   html.mac-shell.see-through :is(.quick-btn,.btn-ghost,.tab-pill:not(.active),.pick:not(.on)):not(:disabled):hover{background:linear-gradient(var(--fill-strong),var(--fill-strong)) var(--surface)}
@@ -3997,3 +3989,56 @@ html.mac-shell.see-through.dark:not(.theme-halloween,.theme-christmas,.theme-moo
 /* Food / Expenses: the chosen side is a lighter glass chip, as on a Mac segmented control. */
 html.mac-shell.see-through #app .kind-thumb{background:var(--g-seg);box-shadow:inset 0 0 0 1px var(--g-panel-line),0 1px 3px rgba(0,0,0,.12)}
 html.mac-shell.see-through #app .kind-pill.on{color:var(--ink)}
+
+/* Quiet, static color themes. Reading surfaces keep contrast even on the brighter palettes. */
+html:is([data-color-palette],.theme-discord){
+  color-scheme:dark;
+  --bg:var(--palette-bottom,#24252A);--surface:color-mix(in srgb,var(--bg) 75%,#3A3C49);
+  --surface-2:color-mix(in srgb,var(--surface) 84%,#555765);
+  --ink:#F5F6FC;--ink-soft:#CCD0DE;--ink-faint:#B0B5C7;--deep:#F5F6FC;--deep-rgb:245,246,252;
+  --fill:#ffffff10;--fill-strong:#ffffff21;--line:#ffffff26;--line-strong:#ffffff3d;
+  --accent:var(--palette-accent,#AEB6FF);--accent-strong:color-mix(in srgb,var(--accent) 36%,#242036);
+  --tint:var(--accent);--on-dark:var(--accent);--accent-soft:color-mix(in srgb,var(--accent) 17%,transparent);
+  --hero:color-mix(in srgb,var(--palette-top,#252633) 85%,#121423);
+  --t-eyebrow:var(--accent);--t-bright:var(--accent);--t-word:#fff;--t-sub:#DBDDEB;--t-foot:#DBDDEB;
+  --bubble:var(--surface-2);--bar:var(--bg);--menu:var(--surface);--page-tint:var(--bg);
+  --seg-on:var(--surface-2);--tab-ink:var(--ink);--tab-ink2:var(--ink-soft);
+  --rr-box:var(--surface-2);
+  background:linear-gradient(150deg,var(--palette-top,#252633),var(--bg) 66%) fixed;
+}
+html[data-color-palette]:not(.dark,[data-color-palette=discord]){
+  color-scheme:light;
+  --bg:color-mix(in srgb,var(--palette-accent) 12%,#F7F7FA);--surface:#fff;
+  --surface-2:color-mix(in srgb,var(--palette-accent) 13%,#F3F4F7);
+  --ink:#171822;--ink-soft:#4D5064;--ink-faint:#5D6177;--deep:#181825;--deep-rgb:24,24,37;
+  --fill:#1e244412;--fill-strong:#1e24441d;--line:#21274524;--line-strong:#2127453a;
+  --accent:color-mix(in srgb,var(--palette-top) 80%,#343568);--tint:var(--accent);
+  --accent-strong:var(--accent);--accent-soft:color-mix(in srgb,var(--palette-accent) 28%,transparent);
+  --hero:var(--palette-top);--t-eyebrow:var(--palette-accent);--t-bright:var(--palette-accent);
+  --tab-ink:var(--ink);--tab-ink2:var(--ink-soft);--seg-on:var(--surface);
+  background:linear-gradient(150deg,color-mix(in srgb,var(--palette-accent) 27%,#FBFBFE),var(--bg) 68%) fixed;
+}
+html:is([data-color-palette],.theme-discord) body{background:transparent}
+.palette-settings{padding:12px 0}
+.palette-settings summary{cursor:pointer;color:var(--ink);font-weight:650;min-height:36px}
+.palette-settings>p{font-size:.875rem;color:var(--ink-soft);margin:0 0 12px}
+.palette-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,124px),1fr));gap:8px}
+.palette-choice{display:flex;align-items:center;gap:8px;min-height:52px;padding:7px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:600 .81rem var(--font);text-align:start}
+.palette-choice[aria-checked=true]{border-color:var(--tint);background:var(--accent-soft)}
+.palette-choice:focus-visible,.sched-sheet :is(button,input,textarea):focus-visible{outline:2px solid var(--tint);outline-offset:2px}
+.palette-preview{display:grid;place-content:center;grid-auto-flow:column;align-items:end;width:34px;height:34px;flex:none;border-radius:9px;background:linear-gradient(135deg,var(--pc-a),var(--pc-b));color:#fff;font:800 21px/1 system-ui;letter-spacing:-.09em}
+.palette-preview span{color:var(--pc-c)}
+.sched-form textarea{width:100%;min-height:62px;padding:10px;border:1px solid var(--line-strong);border-radius:10px;background:var(--fill);color:var(--ink);font:inherit;resize:vertical}
+.sched-list[hidden]{display:none}
+.sched-list .mem-rule>span{min-width:0;overflow-wrap:anywhere}
+.sched-list .mem-rule .icon-btn{flex:none}
+
+.rc-pic.tinted{background:radial-gradient(ellipse at 18% 10%,var(--rc-bg2),transparent 68%),linear-gradient(140deg,var(--rc-bg),var(--rc-bg2) 75%)}
+html.dark .rc-pic.tinted{background:radial-gradient(ellipse at 18% 10%,var(--rc-bgd),transparent 72%),linear-gradient(140deg,var(--rc-bg2d),var(--rc-bgd))}
+.rc-banner:not(:has(.rc-banner-tone)){background:radial-gradient(ellipse at 92% 12%,var(--rb2,var(--surface)),transparent 42%),radial-gradient(ellipse at 8% 94%,var(--rb2,var(--surface)),transparent 48%),linear-gradient(142deg,var(--rb1,var(--fill)),var(--rb2,var(--surface)) 55%,var(--rb1,var(--fill)))}
+html.dark .rc-banner:not(:has(.rc-banner-tone)){background:radial-gradient(ellipse at 92% 12%,var(--rb1d,var(--fill)),transparent 45%),linear-gradient(142deg,var(--rb1d,var(--fill)),var(--rb2d,var(--surface)) 72%)}
+
+html.mac-shell.theme-google:not(.dark){--bg:#F3F6FC;--surface:#fff;--surface-2:#F0F4FA;--fill:#E8EFF9;--accent-strong:#1555B6;--tint:#174EA6;--r-card:22px}
+html.mac-shell.theme-google.dark{--bg:#171A20;--surface:#222731;--surface-2:#2B303A;--tint:#A9C7FF;--r-card:22px}
+html.mac-shell.theme-google .order-hero{background:linear-gradient(128deg,#163E90,#285CC4 61%,#3645A4)}
+html.mac-shell.theme-google .mac-choice[aria-checked=true]{background:var(--accent-soft)}

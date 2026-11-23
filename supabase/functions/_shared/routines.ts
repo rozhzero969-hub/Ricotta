@@ -56,7 +56,7 @@ export function whenOnce(a: any, nowMs = Date.now()): number | { error: string }
   m = at.match(/^(\d{4}-\d{2}-\d{2})[ T]([01]\d|2[0-3]):([0-5]\d)$/);
   if (m) {
     const t = Date.parse(`${m[1]}T${m[2]}:${m[3]}:00${OFFSET}`);
-    if (!Number.isFinite(t) || t <= nowMs || t > nowMs + ONCE_MAX_DAYS * 86400_000) return { error: "when" };
+    if (!Number.isFinite(t) || new Date(t + 3 * 3600_000).toISOString().slice(0, 10) !== m[1] || t <= nowMs || t > nowMs + ONCE_MAX_DAYS * 86400_000) return { error: "when" };
     return t;
   }
   return { error: "when" };
@@ -147,14 +147,20 @@ export async function runRoutines(db: any, deps: RunDeps) {
   // One-off reminders that can never come any more (already sent, or missed by more than the window,
   // or switched off) are removed, so they don't fill the list or count toward the limit.
   const stale = ((data ?? []) as Routine[]).filter((r) => r.run_at && (r.last_run_day != null || nowMs - Date.parse(r.run_at) >= RUN_WINDOW_MIN * 60_000));
-  for (const r of stale) await db.from("app_rico_routines").delete().eq("id", r.id);
+  for (const r of stale) {
+    let remove = db.from("app_rico_routines").delete().eq("id", r.id);
+    if (r.updated_at) remove = remove.eq("updated_at", r.updated_at);
+    await remove;
+  }
   const due = ((data ?? []) as Routine[]).filter((r) => !stale.includes(r) && isDue(r, deps.now, nowMs) && deps.canUse(r.account, r.kind));
   if (!due.length) return { skipped: "nothing due" };
   let pastP: ReturnType<RunDeps["history"]> | null = null;   // read once, only if a prepared order runs
   const out: unknown[] = [];
   for (const r of due) {
-    const claim = await db.from("app_rico_routines").update({ last_run_day: deps.now.date })
-      .eq("id", r.id).or(`last_run_day.is.null,last_run_day.neq.${deps.now.date}`).select("id");
+    let claimQuery = db.from("app_rico_routines").update({ last_run_day: deps.now.date })
+      .eq("id", r.id).eq("enabled", true).or(`last_run_day.is.null,last_run_day.neq.${deps.now.date}`);
+    if (r.updated_at) claimQuery = claimQuery.eq("updated_at", r.updated_at);
+    const claim = await claimQuery.select("id");
     if (claim.error || !claim.data?.length) continue;
     // One routine failing (a write that did not go through) never stops the others.
     try { out.push(...await runOne(db, deps, r, () => (pastP ??= deps.history()))); }

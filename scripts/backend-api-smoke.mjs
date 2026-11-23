@@ -408,8 +408,17 @@ try {
   tables.app_rico_routines[0].id = '00000000-0000-4000-8000-000000000001';
   assert.equal((await call('rico-routines/00000000-0000-4000-8000-000000000001', { enabled: false }, 'PUT')).status, 200);
   assert.equal(tables.app_rico_routines[0].enabled, false, 'switched off');
+  const schedulePath = 'rico-routines/' + tables.app_rico_routines[0].id;
+  const editSchedule = {text:'Check cold storage',time:'22:15',days:[1,4]};
+  assert.equal((await call(schedulePath, editSchedule, 'PUT')).status, 200, 'edit the real saved task');
+  assert.deepEqual(tables.app_rico_routines[0].days, [1,4]);
+  assert.equal(tables.app_rico_routines[0].time, '22:15');
+  assert.equal(tables.app_rico_routines[0].enabled, false, 'editing a paused task does not turn it on');
+  assert.equal((await call(schedulePath, {...editSchedule,time:'25:15'}, 'PUT')).status, 400);
+
   tables.app_sessions[0].account = 'yunis'; tables.app_devices[0].account = 'yunis'; tables.app_sessions[0].app_accounts = { roles: ['send', 'assistant'] };
   assert.deepEqual(await (await call('rico-routines', null, 'GET')).json(), [], 'Yunis sees only his own');
+  assert.equal((await call(schedulePath, editSchedule, 'PUT')).status, 404, 'Yunis cannot edit another account’s task');
   assert.equal((await call('rico-routines/00000000-0000-4000-8000-000000000001', {}, 'DELETE')).status, 404, 'and cannot delete Rozh\'s');
   assert.equal((await call('rico-routines', { kind: 'prepare_order', text: 'x', time: '07:00', supplierIds: ['supplier'] })).status, 403, 'preparing orders needs History');
   tables.app_sessions[0].account = 'rozha'; tables.app_devices[0].account = 'rozha'; delete tables.app_sessions[0].app_accounts;

@@ -8,6 +8,7 @@ const environment = new Map();
 globalThis.Deno = { env: { get: (key) => environment.get(key) ?? '' } };
 const aiStatus = new Map();
 const ricoOrders = [];
+const routines = [];
 let kitchen = null; // set for the WhatsApp tests: { app_suppliers: [...], ... }
 let reserveFails = false;
 const { adminAi, handleChat, handleTranscribe, _internals } = await import('../supabase/functions/api/assistant.ts');
@@ -48,11 +49,18 @@ const db = {
       eq(field, value) { filters.push([field, [value]]); return query; },
       gte() { return query; }, order() { return query; },
       limit() { return query; }, range() { return query; },
-      maybeSingle() { return Promise.resolve({ data: null }); },
+      maybeSingle() {
+        if(table === 'app_rico_routines' && action === 'insert'){
+          const row = {id:'fixture-'+(routines.length+1),enabled:true,...change};
+          routines.push(row); return Promise.resolve({data:row,error:null});
+        }
+        return Promise.resolve({ data: null });
+      },
       delete() { action = 'delete'; return query; },
       update(row) { action = 'update'; change = row; return query; },
       upsert(row) { if (table === 'app_ai_status') aiStatus.set(row.provider, row); else secrets.set(row.key, row.value); return Promise.resolve({ error: null }); },
       insert(row) {
+        if (table === 'app_rico_routines') { action = 'insert'; change = row; return query; }
         if (table === 'app_secrets') {
           if (secrets.has(row.key)) return Promise.resolve({ error: { code: '23505' } });
           secrets.set(row.key, row.value);
@@ -78,6 +86,7 @@ const db = {
             .map(([key, value]) => ({ key, value }))
           : table === 'app_ai_status' ? [...aiStatus.values()]
           : table === 'app_assistant_usage' ? usage
+          : table === 'app_rico_routines' ? routines.filter(r=>filters.every(([field,values])=>values.includes(r[field])))
           : kitchen?.[table] ?? [];
         return Promise.resolve(resolve({ data, count: 0, error: null }));
       },
@@ -486,4 +495,24 @@ assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname ===
   assert.match(_internals.MANUAL, /Ahmad \(who runs the minibar/); assert.ok(_internals.TOOLS.some(t => t.name === 'minibar_stock'), 'Rico reads Ahmad\'s minibar stock');
 }
 
+// Chat saves a clearly specified repeating task directly, without a confirmation card.
+{
+  const world = await _internals.loadWorld(db, session);
+  const schedule = {kind:'remind',text:'Check stock',time:'22:00',days:[1,4]};
+  const run = (w, args) => _internals.runTool(db,w,'schedule_task',args,()=>assert.fail('no extra card'),false);
+  assert.equal((await run(world,{kind:'remind',text:'Check stock'})).error,'when');
+  assert.equal((await run(world,{...schedule,days:[null,4]})).error,'days');
+  assert.equal(routines.length,0);
+  const result = await run(world,schedule);
+  assert.equal(result.saved,true);
+  assert.match(result.when,/Mon, Thu.*10:00 PM/);
+  assert.equal(world.acted,true,'provider retries do not restart a saved task');
+  assert.deepEqual(routines.map(r=>[r.account,r.time,r.days]), [['rozha','22:00',[1,4]]]);
+  assert.equal((await run(world,schedule)).saved,true);
+  assert.equal(routines.length,1,'an identical schedule stays a single task');
+  const question = await run(world,{kind:'ask',text:'What is low?',time:'21:30',days:[0]});
+  assert.match(question.note,/after they tap/);
+  const ahmad = await _internals.loadWorld(db,{id:'a',account:'ahmad',deviceId:null,roles:['assistant']});
+  assert.equal((await run(ahmad,{...schedule,kind:'prepare_order',suppliers:['Supplier']})).error,'no_access');
+}
 console.log('Rico provider smoke: PASS (History and Record roles inside Rico; Rico sends test orders by WhatsApp to Rozh only; Claude Haiku first with tool calls, thinking and caching; free AIs take over on no credit, rejected key, busy or slow; Admin AI states and tokens, never keys; Gemini, Groq tool calls, Groq-to-Gemini fallback (never twice), mood tags dropped (any shape), Kurdish to Gemini, a photo to Haiku or Gemini but never Groq, quick answers, draft check, insights, empty response)');

@@ -33,7 +33,7 @@ import { monthStart, monthKey } from "../_shared/month.ts";
 //   PUT    rico-chats/:id/pin {pinned}                           pin a chat to the top (own; Rozh any)
 //   POST   assistant/title {question, answer, lang}              a short topic name for a new chat
 //   GET    rico-routines | POST rico-routines {kind,text,time,days,supplierIds,runAt}   Rico's routines (runAt: a one-off reminder)
-//   PUT    rico-routines/:id {enabled} | DELETE rico-routines/:id                  switch one on or off, delete
+//   PUT    rico-routines/:id {enabled} or edited timing and text | DELETE rico-routines/:id                  switch one on or off, delete
 //   GET    activity                                             the Record
 //   GET    devices                    rozha: all, yunis: own row
 //   POST   devices/me                 {seconds?}                heartbeat ("still here") and time spent in the app
@@ -1395,12 +1395,28 @@ Deno.serve(async (req) => {
       return r.error === "too_many" ? fail("too_many", 409) : r.error === "invalid_input" ? fail("invalid_input") : r.error ? fail("save_failed", 500) : json({ routine: r.routine });
     }
     if ((m = path.match(/^rico-routines\/([0-9a-f-]{36})$/)) && (M === "PUT" || M === "DELETE")) {
-      if (M === "PUT" && typeof b.enabled !== "boolean") return fail("invalid_input");
-      let q = M === "DELETE" ? app("rico_routines").delete().eq("id", m[1])
-        : app("rico_routines").update({ enabled: b.enabled, updated_at: nowIso() }).eq("id", m[1]);
-      if (!isRozha(s)) q = q.eq("account", s.account);
+      const owned = (q: any) => isRozha(s) ? q : q.eq("account", s.account);
+      if (M === "DELETE") {
+        const { data, error } = await owned(app("rico_routines").delete().eq("id", m[1])).select("id");
+        return error ? fail("save_failed", 500) : data?.length ? ok() : fail("not_found", 404);
+      }
+      if (typeof b.enabled === "boolean" && Object.keys(b).length === 1) {
+        const { data, error } = await owned(app("rico_routines").update({ enabled: b.enabled, updated_at: nowIso() }).eq("id", m[1])).select("id");
+        return error ? fail("save_failed", 500) : data?.length ? ok() : fail("not_found", 404);
+      }
+      if (typeof b.text !== "string" || Object.keys(b).some(k => !["text", "time", "days", "runAt"].includes(k))) return fail("invalid_input");
+      const { data: row, error: loadError } = await owned(app("rico_routines").select("*").eq("id", m[1])).maybeSingle();
+      if (loadError) return fail("load_failed", 500);
+      if (!row) return fail("not_found", 404);
+      if (row.kind === "prepare_order" && !can(s, "history")) return fail("forbidden", 403);
+      if (row.run_at ? typeof b.runAt !== "string" || "time" in b || "days" in b : typeof b.time !== "string" || !Array.isArray(b.days) || "runAt" in b) return fail("invalid_input");
+      if (row.run_at && row.last_run_day) return fail("schedule_changed", 409);
+      const c = cleanRoutine({ kind: row.kind, text: b.text, time: b.time, days: b.days, supplier_ids: row.supplier_ids, run_at: b.runAt });
+      if ("error" in c) return fail("invalid_input");
+      let q = owned(app("rico_routines").update({ ...c.value, updated_at: nowIso() }).eq("id", m[1]).eq("updated_at", row.updated_at));
+      if (row.run_at) q = q.is("last_run_day", null);
       const { data, error } = await q.select("id");
-      return error ? fail("save_failed", 500) : data?.length ? ok() : fail("not_found", 404);
+      return error ? fail("save_failed", 500) : data?.length ? ok() : fail("schedule_changed", 409);
     }
     if ((m = path.match(/^rico-rules\/([0-9a-f-]{36})$/)) && M === "DELETE") {
       let q = app("rico_rules").delete().eq("id", m[1]);
