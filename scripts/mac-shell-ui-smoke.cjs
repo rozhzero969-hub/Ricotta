@@ -12,9 +12,12 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   const ctx=await browser.newContext({viewport:{width:1280,height:800},serviceWorkers:'block',...options});
   await ctx.addInitScript(flags=>{Object.assign(window,flags);window.__posted=[];window.webkit={messageHandlers:{ricotta:{postMessage:w=>window.__posted.push(w)}}};
    localStorage.setItem('ricottaOrders:toured:rozha','true');localStorage.setItem('ricottaOrders:xtSeen:rozha','true');localStorage.setItem('ricottaOrders:apiSession',JSON.stringify({token:'mac-fixture',account:'rozha',name:'Rozha',expiresAt:'2099-01-01T00:00:00Z'}));localStorage.setItem('ricottaOrders:lang',JSON.stringify(flags.demoLang || 'en'));localStorage.setItem('ricottaOrders:aiConsent2:rozha','true');localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',String(Date.now()));},flags);
+  const task = {id:'10000000-0000-4000-8000-000000000002',kind:'remind',text:'Check stock',time:'22:00',days:[1,4],enabled:true};
   await ctx.route('**/functions/v1/api/**',async route=>{const endpoint=new URL(route.request().url()).pathname.split('/api/')[1];let data={ok:true};
    if(endpoint==='bootstrap')data={...fixture,streak:{count:12,lit:true},draft:{cart:{},revision:0}};else if(endpoint==='draft')data={cart:{},revision:0,conflicts:[]};else if(endpoint==='auth/security')data={required:false};
    else if(['devices','activity','assistant/inbox'].includes(endpoint))data=[];
+   else if(endpoint==='rico-routines')data=[task];
+   else if(endpoint==='rico-routines/'+task.id && route.request().method()==='PUT') Object.assign(task,route.request().postDataJSON());
    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});});
   const page=await ctx.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(url);await page.locator('#orderResults').waitFor();await page.waitForSelector('#splash',{state:'detached'});
@@ -35,14 +38,14 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
  {const {ctx,page,errors,cls}=await open({RICOTTA_NATIVE_SHELL:true,RICOTTA_MAC_SHELL:true,RICOTTA_SEE_THROUGH:false,RICOTTA_THEME:'evil'});
   assert.deepEqual(await cls(),['mac-shell']);
   // Removed themes are unknown now, so an old saved choice shows Ricotta's own colours.
-  for(const old of ['graphite','ocean','rose','sand','midnight','discord']){await page.evaluate(w=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:w})),'theme:'+old);assert.deepEqual(await cls(),['mac-shell'],old);}assert.deepEqual(errors,[]);await ctx.close();}
- // Inside the Mac app, see-through on, Halloween: all three, and Settings has the rows (6 themes and 12 icons).
+  for(const old of ['graphite','ocean','rose','sand','midnight']){await page.evaluate(w=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:w})),'theme:'+old);assert.deepEqual(await cls(),['mac-shell'],old);}assert.deepEqual(errors,[]);await ctx.close();}
+ // Inside the Mac app, see-through on, Halloween: all three, and Settings has the rows (7 themes and 7 icons).
  {const {ctx,page,errors,cls}=await open({RICOTTA_NATIVE_SHELL:true,RICOTTA_MAC_SHELL:true,RICOTTA_SEE_THROUGH:true,RICOTTA_THEME:'halloween',RICOTTA_APP_ICON:'wedge'});
   assert.deepEqual(await cls(),['mac-shell','see-through','theme-halloween']);
   assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgba(0, 0, 0, 0)','the page is see-through');
-  assert.deepEqual(await settingsRows(page),[true,18]);
+  assert.deepEqual(await settingsRows(page),[true,14]);
   assert.deepEqual(await page.locator('[data-mac-icon]').evaluateAll(options=>options.map(b=>b.dataset.macIcon)),
-    ['ricotta','pumpkin','holly','moonlit','gemini','cupid','monogram','ticket','aurora','frost','copper','stamp'],'theme icons first, then the others');
+    ['ricotta','pumpkin','holly','moonlit','gemini','cupid','discord'],'only branded theme icons');
   assert.equal(await page.locator('[data-mac-icon="ricotta"]').getAttribute('aria-checked'),'true','a removed icon falls back to the default');
   // Halloween's drawings sit behind the page and never take a click.
   assert.equal(await page.locator('#macDecor').evaluate(el=>getComputedStyle(el).pointerEvents+' '+getComputedStyle(el).zIndex),'none -1');
@@ -57,8 +60,8 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   await page.locator('[data-mac-icon-match]').click();
   assert.equal(await page.locator('[data-mac-icon="cupid"]').getAttribute('aria-checked'),'true');
   assert.equal(await page.locator('#macIconMatch').isHidden(),true);
-  await page.locator('[data-mac-icon="monogram"]').click();
-  assert.deepEqual(await page.evaluate(()=>window.__posted.filter(w=>/^(see-through|theme|icon)/.test(w))),['see-through-off','theme:pink','icon:cupid','icon:monogram'],'only fixed words are sent');
+  await page.locator('[data-mac-icon="discord"]').click();
+  assert.deepEqual(await page.evaluate(()=>window.__posted.filter(w=>/^(see-through|theme|icon)/.test(w))),['see-through-off','theme:pink','icon:cupid','icon:discord'],'only fixed words are sent');
   assert.equal(await page.locator('[data-mac-theme="pink"]').innerText(),'Cupid’s Blush');
   assert.equal(await page.locator('[data-mac-icon="gemini"]').innerText(),'Gemini');
   await page.evaluate(()=>goView('order'));
@@ -79,23 +82,36 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   assert.equal(await page.locator('#ricoTopBtn').getAttribute('aria-label'),'Rico');
   if(process.env.RICOTTA_THEME_PREVIEW_DIR) await page.screenshot({path:path.join(process.env.RICOTTA_THEME_PREVIEW_DIR,'cupid-order.png'),animations:'disabled'});
   await page.evaluate(()=>goView('settings'));
+  await page.locator('.palette-settings summary').click();
+  assert.equal(await page.locator('[data-color-choice]').count(),30);
+  await page.locator('[data-color-choice=discord]').click();
+  assert.equal(await page.locator('html').getAttribute('data-color-palette'),'discord');
+  assert.match(await page.locator('[data-color-choice=discord]').innerText(),/R\s*\.[\s\S]*Discord/);
+  await page.reload();
+  await page.locator('#splash').waitFor({state:'detached'});
+  assert.equal(await page.locator('html').getAttribute('data-color-palette'),'discord','palette stays after reload');
+  await page.evaluate(()=>goView('settings'));
+  await page.locator('[data-color-choice=""]').click();
+  assert.equal(await page.locator('html').getAttribute('data-color-palette'),null);
   // The app's own words (View menu) switch them back; unknown words are ignored.
-  await page.evaluate(()=>['see-through-on','theme:ricotta','icon:ricotta','icon:green','theme:discord','theme:evil','icon:<b>','icon:pink'].forEach(w=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:w}))));
+  await page.evaluate(()=>['see-through-on','theme:ricotta','icon:ricotta','icon:green','theme:evil','icon:<b>','icon:pink'].forEach(w=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:w}))));
   await page.waitForFunction(()=>!document.documentElement.classList.contains('theme-pink'));
   assert.deepEqual(await cls(),['mac-shell','see-through']);
   assert.equal(await page.locator('#seeThroughSwitch').isChecked(),true);
   assert.equal(await page.locator('[data-mac-icon="ricotta"]').getAttribute('aria-checked'),'true');
   assert.equal(await page.locator('#macDecor').count(),0,'Ricotta has no drawings');
   assert.deepEqual(errors,[]);await ctx.close();}
- // A native boot keeps the same preferences while each of the six themes changes the visible palette.
+ // A native boot keeps the same preferences while each of the illustrated themes changes the visible palette.
  {const {ctx,page,errors}=await open({RICOTTA_NATIVE_SHELL:true,RICOTTA_MAC_SHELL:true},{reducedMotion:'reduce'});
   const checks = await page.evaluate(()=>{
    const html = document.documentElement;
    const channel = c=>c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
-   const lightness = hex=>[1,3,5].reduce((v,n,i)=>v + [.2126,.7152,.0722][i] * channel(parseInt(hex.slice(n,n+2),16) / 255),0);
+   const pixel = document.createElement('canvas').getContext('2d',{willReadFrequently:true});
+   const lightness = color=>{ pixel.fillStyle = '#000'; pixel.fillStyle = color; pixel.fillRect(0,0,1,1);
+    return [...pixel.getImageData(0,0,1,1).data].slice(0,3).reduce((sum,c,i)=>sum + [.2126,.7152,.0722][i] * channel(c / 255),0); };
    return [false,true].map(dark=>{
     html.classList.toggle('dark',dark);
-    return MAC_THEMES.map(name=>{
+    return MAC_THEMES.filter(name=>name!=='discord').map(name=>{
      applyMacTheme(name);
      const hero = document.querySelector('.order-hero');   // Google draws the screen again (Gemini's name)
      const styles=getComputedStyle(html), varColor=k=>styles.getPropertyValue(k).trim();
@@ -114,6 +130,28 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
    assert.match(check.art,new RegExp('fx-'+{halloween:'hw',christmas:'xm',moonlit:'mo',google:'gg',pink:'pk'}[check.name]+'-card'));
    for(const key of ['primary','text','tint']) assert.ok(check[key]>=4.5,check.name+' contrast for '+key+': '+check[key]);
   }
+  const palettes = await page.evaluate(()=>{
+    const px = document.createElement('canvas').getContext('2d',{willReadFrequently:true});
+    const luminance = value=>{
+      px.fillStyle = '#000'; px.fillStyle = value; px.fillRect(0,0,1,1);
+      return [...px.getImageData(0,0,1,1).data].slice(0,3).reduce((sum,x,i)=>{
+        const c=x/255; return sum+[.2126,.7152,.0722][i]*(c<=.04045?c/12.92:((c+.055)/1.055)**2.4);
+      },0);
+    };
+    const probe = document.createElement('span'); document.body.append(probe);
+    const style = token=>{probe.style.color='var('+token+')';return luminance(getComputedStyle(probe).color);};
+    const ratio = (a,b)=>(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+    const out = [false,true].flatMap(dark=>{
+      document.documentElement.classList.toggle('dark',dark);
+      return COLOR_PALETTES.map(([key])=>{
+        setColorPalette(key,false);
+        const surface = style('--surface');
+        return [key+':'+(dark?'dark':'light'),1.05/(style('--accent-strong')+.05),ratio(style('--ink'),surface),ratio(style('--tint'),surface)];
+      });
+    });
+    setColorPalette('',false); probe.remove(); return out;
+  });
+  for(const [name,...ratios] of palettes) assert.ok(ratios.every(x=>x>=4.5),name+' contrast '+ratios);
   assert.deepEqual(errors,[]);await ctx.close();
  }
  // Desktop tooltip uses real Order controls, and all 22 scenes render without duplicate live IDs.
@@ -140,6 +178,21 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   assert.deepEqual(errors,[]);await ctx.close();
  }
  {const {ctx,page,errors}=await open({demoLang:'ku'},{viewport:{width:375,height:812},isMobile:true,hasTouch:true,reducedMotion:'reduce'});
+  await page.evaluate(()=>{goView('assistant');openRicoScheduled();});
+  const scheduled = page.locator('.sched-sheet:not(.out)');
+  await scheduled.locator('[data-sched-edit]').tap();
+  const schedClock = scheduled.locator('#schedClock');
+  await schedClock.tap();
+  await schedClock.fill('١١:٣٧ د.ن');
+  assert.equal(await scheduled.isVisible(),true,'the panel stays open while changing the time');
+  await scheduled.locator('button[type=submit]').tap();
+  await scheduled.locator('[data-sched-edit]').waitFor();
+  assert.equal(await page.evaluate(()=>scheduleClock('12 AM')),'00:00');
+  assert.equal(await page.evaluate(()=>scheduleClock('12:43 PM')),'12:43');
+  assert.equal(await page.evaluate(()=>scheduleClock('9')) ,null);
+  await scheduled.locator('[data-sched-new]').tap();
+  await scheduled.waitFor({state:'hidden'});
+  assert.ok(await page.locator('#ricoInput').evaluate(el=>el === document.activeElement),'New task starts in chat');
   const initial = await page.evaluate(()=>{goView('settings');return featureOn('swipe');});
   const info = page.locator('[data-help="swipe"]');
   await info.tap();
@@ -153,5 +206,5 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   assert.equal(await page.evaluate(()=>featureOn('swipe')),initial,'tutorial does not toggle the setting');
   assert.deepEqual(errors,[]);await ctx.close();
  }
- console.log('Mac shell and Settings UI PASS: six palettes, twelve icons, Ricotta restored, Gemini name, theme drawings, contrast, desktop and touch tutorials, reduced motion, native messages');
+ console.log('Mac shell and Settings UI PASS: color palette contrast, seven branded Dock icons, Gemini, scheduled task edit, desktop and touch tutorials, reduced motion, native messages');
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exit(1);});

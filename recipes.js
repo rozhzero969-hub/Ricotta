@@ -159,7 +159,7 @@ const recipeCat = id=>id ? (recipeBook.data?.categories || []).find(c=>c.id === 
 /* A category's soft colour as CSS variables, light and dark (the palette is in _shared/recipe-colors.js). */
 function recipeTint(cat){
   const c = cat && globalThis.RicottaRecipeColors?.get(cat.color);
-  return c ? ` style="--rc-bg:${c.bg};--rc-ink:${c.ink};--rc-bgd:${c.bgDark};--rc-inkd:${c.inkDark}"` : '';
+  return c ? ` style="--rc-bg:${c.bg};--rc-bg2:${c.bg2};--rc-bg2d:${c.bg2Dark};--rc-ink:${c.ink};--rc-bgd:${c.bgDark};--rc-inkd:${c.inkDark}"` : '';
 }
 /* The recipe's first photo on its category's colour, or its first letter (gray without a category). */
 function recipePic(r, cls){
@@ -489,7 +489,7 @@ function recipeToneRead(url){
   });
 }
 function recipeBanner(r, cat){
-  const url = recipeBook.data.covers?.[r.id], tone = url && recipeToneCached(url);
+  const url = !cat && recipeBook.data.covers?.[r.id], tone = url && recipeToneCached(url);
   return `<div class="rc-banner" style="${recipeCatBanner(cat)}">${url ? `<i class="rc-banner-tone${tone ? ' on' : ''}" data-rc-tone="${esc(url)}"${tone ? ` style="${recipeToneVars(tone)}"` : ''} aria-hidden="true"></i>` : ''}
     <button type="button" class="rc-pill-btn" id="rcBack" aria-label="${esc(rt('backToRecipes'))}">${ICON_BACK}</button>
     <button type="button" class="rc-pill-btn" id="rcEdit">${ICON_EDIT}<span>${esc(rt('edit'))}</span></button></div>`;
@@ -1259,7 +1259,7 @@ function recipeColorCard(p){
   if(!C || !canOpen('recipes') || !p.categoryId) return '';
   return `<div class="rico-data rc-colors" data-card="${esc(p.id)}"><div class="rico-data-head"><span class="rico-data-title" dir="auto">${esc(rt('colorFor')(p.category || ''))}</span></div>
     <div class="rc-swatches" role="radiogroup" aria-label="${esc(rt('colorFor')(p.category || ''))}">${C.PALETTE.map(c=>`<button type="button" class="rc-swatch${c.key === p.color ? ' on' : ''}" role="radio" aria-checked="${c.key === p.color}" data-rc-color="${c.key}" data-rc-catid="${esc(p.categoryId)}" data-rc-card="${esc(p.id)}">
-      <i class="rc-pic tinted" style="--rc-bg:${c.bg};--rc-ink:${c.ink};--rc-bgd:${c.bgDark};--rc-inkd:${c.inkDark}" aria-hidden="true">${c.key === p.color ? ICON_CHECK : ''}</i><span>${esc(rt('colorName')(c.key))}</span></button>`).join('')}</div></div>`;
+      <i class="rc-pic tinted" style="--rc-bg:${c.bg};--rc-bg2:${c.bg2};--rc-bg2d:${c.bg2Dark};--rc-ink:${c.ink};--rc-bgd:${c.bgDark};--rc-inkd:${c.inkDark}" aria-hidden="true">${c.key === p.color ? ICON_CHECK : ''}</i><span>${esc(rt('colorName')(c.key))}</span></button>`).join('')}</div></div>`;
 }
 document.addEventListener('click', async e=>{
   const b = e.target.closest?.('[data-rc-color]');

@@ -1239,14 +1239,16 @@ async function ricoAsk(text, options = {}){
   const named = state.suppliers.filter(s=>String(text).toLocaleLowerCase().includes(s.name.toLocaleLowerCase())).map(s=>s.id);
   if(rico.viewing){ rico.viewing = null; rico.messages = []; rico.chatId = null; }
   const photo = options.photo && typeof options.photo.data === 'string' ? options.photo : null;
-  if(!photo && (options.quickAction==='prepare_order' || ricoOrderIntent(text)) && !scopeIds.length && !named.length){
+  const scheduled = !options.quickAction && /\b(remind|schedul\w*|every|tomorrow|daily|weekly|am|pm)\b|بیرم بخەرەوە|خشتە|هەموو ڕۆژ|سبەی|ذكّر|ذكرني|جدول|كل يوم|غد[اً]?/iu.test(text);
+  const prepareNow = options.quickAction === 'prepare_order' || (!scheduled && ricoOrderIntent(text));
+  if(!photo && prepareNow && !scopeIds.length && !named.length){
     rico.messages.push({role:'user', text, ts:Date.now()});
     rico.messages.push({role:'assistant', text:t('ricoChooseSuppliers'), picker:{selectedIds:[], chosen:false}, ts:Date.now()});
     if(state.view !== 'assistant') goView('assistant'); else render();
     ricoScroll(true);
     return;
   }
-  if(!photo && named.length && (options.quickAction==='prepare_order' || ricoOrderIntent(text)) && !scopeIds.length){
+  if(!photo && named.length && prepareNow && !scopeIds.length){
     options = {quickAction:'prepare_order', supplierIds:named};
   }
   const previousView = state.view;

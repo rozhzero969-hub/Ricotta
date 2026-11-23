@@ -3,7 +3,7 @@ import AppKit
 /// The Dock icons (Assets.xcassets, AppIcon-<name>): one for each theme first (in AppTheme order), then the
 /// others. The first is the default; a saved name that no longer exists reads as it.
 enum AppIconChoice: String, CaseIterable {
-    case ricotta, pumpkin, holly, moonlit, gemini, cupid, monogram, ticket, aurora, frost, copper, stamp
+    case ricotta, pumpkin, holly, moonlit, gemini, cupid, discord
 
     var assetName: String { "AppIcon-\(rawValue)" }
 
@@ -15,12 +15,7 @@ enum AppIconChoice: String, CaseIterable {
         case .moonlit: String(localized: "Silver Moon")
         case .gemini: String(localized: "Gemini")
         case .cupid: String(localized: "Cupid’s Blush")
-        case .monogram: String(localized: "Gold Monogram")
-        case .ticket: String(localized: "Order Ticket")
-        case .aurora: String(localized: "Aurora")
-        case .frost: String(localized: "Glass Leaf")
-        case .copper: String(localized: "Copper Pot")
-        case .stamp: String(localized: "Kitchen Stamp")
+        case .discord: String(localized: "Discord · Ricotta")
         }
     }
     /// Theme icons come first in the menu; the rest follow after a separator.
@@ -34,10 +29,9 @@ enum AppIconChoice: String, CaseIterable {
 }
 
 /// The page's colour themes (style.css, html.theme-<name>), chosen here or in Ricotta's Settings.
-/// Raw values match the web theme classes. Removed themes (discord, the old Moonlit Pantry, is now moonlit)
-/// read as Ricotta, except for that one rename (Preferences.theme).
+/// Raw values match the web theme classes.
 enum AppTheme: String, CaseIterable {
-    case ricotta, halloween, christmas, moonlit, google, pink
+    case ricotta, halloween, christmas, moonlit, google, pink, discord
     var title: String {
         switch self {
         case .ricotta: String(localized: "Ricotta")
@@ -46,6 +40,7 @@ enum AppTheme: String, CaseIterable {
         case .moonlit: String(localized: "Silver Moon")
         case .google: String(localized: "Google")
         case .pink: String(localized: "Cupid’s Blush")
+        case .discord: String(localized: "Discord")
         }
     }
     /// The theme's main colour and its second colour, as in style.css (the menu's small swatch).
@@ -57,6 +52,7 @@ enum AppTheme: String, CaseIterable {
         case .moonlit: (Self.rgb(0xC9D6F2), Self.rgb(0x13224A))
         case .google: (Self.rgb(0x1A73E8), Self.rgb(0xFBBC05))
         case .pink: (Self.rgb(0xF7B8CF), Self.rgb(0xC2457A))
+        case .discord: (Self.rgb(0xAEB6FF), Self.rgb(0x252633))
         }
     }
     private static func rgb(_ hex: Int) -> NSColor {

@@ -177,12 +177,11 @@ enum Preferences {
         get { AppIconChoice(rawValue: UserDefaults.standard.string(forKey: appIconKey) ?? "")?.rawValue ?? AppIconChoice.ricotta.rawValue }
         set { UserDefaults.standard.set(AppIconChoice(rawValue: newValue)?.rawValue ?? AppIconChoice.ricotta.rawValue, forKey: appIconKey) }
     }
-    /// The page's colours: one of AppTheme. The old "discord" slot is Moonlit now; any other removed theme
-    /// reads as Ricotta.
+    /// The page's colours: one of AppTheme. A removed theme reads as Ricotta.
     static var theme: String {
         get {
             let saved = UserDefaults.standard.string(forKey: themeKey) ?? ""
-            return AppTheme(rawValue: saved == "discord" ? "moonlit" : saved)?.rawValue ?? AppTheme.ricotta.rawValue
+            return AppTheme(rawValue: saved)?.rawValue ?? AppTheme.ricotta.rawValue
         }
         set { UserDefaults.standard.set(AppTheme(rawValue: newValue)?.rawValue ?? AppTheme.ricotta.rawValue, forKey: themeKey) }
     }

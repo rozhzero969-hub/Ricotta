@@ -2041,7 +2041,35 @@ const macTheme = ()=>MAC_THEMES.find(n=>document.documentElement.classList.conta
    one with a small button. */
 const macThemeIcon = name=> MAC_ICONS[Math.max(0, MAC_THEMES.indexOf(name))];
 let macMatchOffer = false;
+const COLOR_PALETTE_KEY = 'ricottaOrders:colorPalette';
+const pickedPalette = ()=>document.documentElement.dataset.colorPalette || '';
+function setColorPalette(id, remember = true){
+  const row = COLOR_PALETTES.find(x=>x[0] === id), html = document.documentElement;
+  if(remember){ try{ if(row) localStorage.setItem(COLOR_PALETTE_KEY,id); else localStorage.removeItem(COLOR_PALETTE_KEY); }catch{} }
+  const tokens = ['--palette-top','--palette-bottom','--palette-accent'];
+  if(row){
+    if(macTheme() !== 'ricotta') applyMacTheme('ricotta');
+    html.dataset.colorPalette = id;
+    for(const [i,name] of tokens.entries()) html.style.setProperty(name,row[i+2]);
+  }else{
+    delete html.dataset.colorPalette;
+    for(const name of tokens) html.style.removeProperty(name);
+  }
+  document.querySelectorAll('[data-color-choice]').forEach(button=>{
+    const active = button.dataset.colorChoice === (row ? id : '');
+    button.setAttribute('aria-checked', String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+  if(macShell()){ macMatchOffer = row?.[0] === 'discord'; paintMacIconMatch(); }
+}
+try{ const savedPalette = localStorage.getItem(COLOR_PALETTE_KEY); if(savedPalette) setColorPalette(savedPalette,false); }catch{}
+function colorPalettesHtml(){
+  const active = pickedPalette(), choice = ([id,name,a,b,c])=>`<button type="button" role="radio" aria-checked="${id === active}" tabindex="${id === active ? 0 : -1}" data-color-choice="${id}" class="palette-choice">
+    <span class="palette-preview" aria-hidden="true" style="--pc-a:${a};--pc-b:${b};--pc-c:${c}">R<span>.</span></span><span>${esc(name)}</span></button>`;
+  return `<details class="palette-settings" ${active ? 'open' : ''}><summary>${esc(t('colorThemes'))}</summary><p>${esc(t('colorThemesHint'))}</p><div class="palette-grid" role="radiogroup" aria-label="${esc(t('colorThemes'))}">${[['',t('colorThemesDefault'),'#225740','#102F23','#ABF2C7'],...COLOR_PALETTES].map(choice).join('')}</div></details>`;
+}
 function setMacTheme(name){
+  if(pickedPalette()) setColorPalette('');
   if(name !== macTheme()){
     macMatchOffer = true;
     // A short cross-fade from the old colours to the new (none with Reduce Motion).
@@ -2072,7 +2100,7 @@ function setMacIcon(name){
 }
 function paintMacIconMatch(){
   const box = document.getElementById('macIconMatch'); if(!box) return;
-  const want = macThemeIcon(macTheme());
+  const want = pickedPalette() === 'discord' ? 'discord' : macThemeIcon(macTheme());
   box.hidden = !macMatchOffer || want === macIcon;
   box.innerHTML = box.hidden ? '' : `<img src="mac-icons/${want}.png" alt="" width="28" height="28"><button type="button" class="btn btn-ghost" data-mac-icon-match="${want}">${esc(t('macIconMatch'))}</button>`;
 }
@@ -4654,7 +4682,7 @@ function fmtDateTime(iso){
    in Admin. */
 function renderAppearanceRow(){
   const dm=darkMode();
-  return `<div class="dark-row"><div class="set-head">${setIcon('darkMode')}<span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span></div><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>${renderSeeThroughRow()}`;
+  return `<div class="dark-row"><div class="set-head">${setIcon('darkMode')}<span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span></div><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>${renderSeeThroughRow()}${colorPalettesHtml()}`;
 }
 /* The Mac app only: the window's blurred background behind the page and sidebar, kept on this Mac (the app
    remembers it; View > Always See-Through is the same switch). */
@@ -4667,7 +4695,7 @@ function renderSeeThroughRow(){
   // The icons in two groups: each theme's own (theme order), then the others.
   const icon = n=>choice('icon', n, macIcon, `<img src="mac-icons/${n}.png" alt="" width="38" height="38" loading="lazy" decoding="async">`);
   const group = (label, names)=>`<div class="mac-icon-group"><span>${esc(t(label))}</span><div class="mac-picks">${names.map(icon).join('')}</div></div>`;
-  const icons = group('macIconsThemes', MAC_ICONS.slice(0, MAC_THEMES.length)) + group('macIconsMore', MAC_ICONS.slice(MAC_THEMES.length));
+  const icons = group('macIconsThemes', MAC_ICONS);
   return `<label class="check-row preference-row has-ico"><input type="checkbox" id="seeThroughSwitch" ${document.documentElement.classList.contains('see-through') ? 'checked' : ''}>${setIcon('seeThrough')}<span>${esc(t('seeThrough'))}<small>${esc(t('seeThroughHint'))}</small></span></label>
     <div class="mac-pick-row"><div class="set-head">${setIcon('macTheme')}<span>${esc(t('macThemeLabel'))}<small>${esc(t('macThemeHint'))}</small></span></div><div class="mac-picks" role="radiogroup" aria-label="${esc(t('macThemeLabel'))}">${themes}</div></div>
     <div class="mac-pick-row"><div class="set-head">${setIcon('macIcon')}<span>${esc(t('macIconLabel'))}<small>${esc(t('macIconHint'))}</small></span></div><div class="mac-icon-groups" role="radiogroup" aria-label="${esc(t('macIconLabel'))}">${icons}</div><div class="mac-icon-suggest" id="macIconMatch" hidden></div></div>`;
@@ -4777,7 +4805,8 @@ function bindAppearance(){
   if(see) see.onchange = ()=>{ setSeeThrough(see.checked); tellApp(see.checked ? 'see-through-on' : 'see-through-off'); };
   document.querySelectorAll('[data-mac-theme]').forEach(b=>b.onclick = ()=>{ setMacTheme(b.dataset.macTheme); tellApp('theme:' + b.dataset.macTheme); });
   document.querySelectorAll('[data-mac-icon]').forEach(b=>b.onclick = ()=>{ setMacIcon(b.dataset.macIcon); tellApp('icon:' + b.dataset.macIcon); });
-  document.querySelectorAll('.mac-pick-row [role=radiogroup]').forEach(group=>group.onkeydown = e=>{
+  document.querySelectorAll('[data-color-choice]').forEach(b=>b.onclick = ()=>setColorPalette(b.dataset.colorChoice));
+  document.querySelectorAll('.mac-pick-row [role=radiogroup], .palette-grid').forEach(group=>group.onkeydown = e=>{
     const options = [...group.querySelectorAll('[role=radio]')], index = options.indexOf(e.target);
     if(index < 0 || !['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','Home','End'].includes(e.key)) return;
     e.preventDefault();
