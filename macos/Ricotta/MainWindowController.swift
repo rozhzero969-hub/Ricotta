@@ -2,6 +2,8 @@ import AppKit
 import WebKit
 import UserNotifications
 import LocalAuthentication
+import OSLog
+import WidgetKit
 
 /// Fixed words the app sends to the page (as a `ricotta-mac` event; app.js listens only inside the Mac app).
 enum PageCommand: String {
@@ -271,7 +273,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { failed(NSError(domain: "Ricotta", code: 1)) }
 
     func openWidget(_ view: String) {
-        guard ["order", "recipes", "assistant"].contains(view) else { return }
+        guard ["order", "recipes", "assistant", "report"].contains(view) else { return }
         showWindow(nil)
         if isLoading { pendingWidget = view } else { dispatch("widget:" + view) }
     }
@@ -309,6 +311,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
         if let event = message.body as? [String: Any], event["kind"] as? String == "rico-reminder",
            let id = event["id"] as? String, UUID(uuidString: id) != nil, let body = event["body"] as? String {
             deliverReminder(id: id, body: body)
+            return
+        }
+        if let event = message.body as? [String: Any], event["kind"] as? String == "monthly-report" {
+            do {
+                let report: MonthlyReport?
+                if event["report"] is NSNull {
+                    report = nil
+                } else {
+                    guard let fields = event["report"] as? [String: Any],
+                          let bytes = try? JSONSerialization.data(withJSONObject: fields), bytes.count < 4096,
+                          let decoded = try? JSONDecoder().decode(MonthlyReport.self, from: bytes) else { return }
+                    report = decoded
+                }
+                if try MonthlyReport.store(report) {
+                    WidgetCenter.shared.reloadTimelines(ofKind: MonthlyReport.kind)
+                }
+            } catch {
+                Logger(subsystem: "com.rozh.ricotta.mac", category: "Widgets")
+                    .error("Could not update the report widget: \(error.localizedDescription, privacy: .private)")
+            }
             return
         }
         guard let word = message.body as? String else { return }

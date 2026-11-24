@@ -556,7 +556,7 @@ function applyAccount(a){
   const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
   // Items comes with Recipes, and Ahmad has his minibar Stock tab: both are screens of this app only.
   state.views = state.account ? [...new Set([...views, ...(views.includes('recipes') ? ['recipeItems'] : []), ...(state.account === 'ahmad' ? ['minibar'] : []), 'settings'])] : [];
-  if(state.account && pendingMacWidget){
+  if(state.account && pendingMacWidget && pendingMacWidget !== 'report'){
     if(state.views.includes(pendingMacWidget)) state.view = pendingMacWidget;
     pendingMacWidget = null;
   }
@@ -571,6 +571,14 @@ async function loadData(){
   if(!r.ok || !r.data || !r.data.account) return false;
   lastLoadAt = Date.now();
   applyData(r.data);
+  syncMacReport(r.data.history);
+  if(pendingMacWidget === 'report'){
+    pendingMacWidget = null;
+    if(canOpen('history')){
+      state.view = 'history';
+      requestAnimationFrame(()=>{ if(state.account && state.view === 'history' && canOpen('history')) openReportSheet(); });
+    }
+  }
   state.offlineSince = null;
   offlineRead('bootstrap', lastLoadAt, false);
   // Kept on this phone so the app still opens with everything when there is no connection (Offline
@@ -659,6 +667,7 @@ window.addEventListener('appinstalled',()=>{
 document.addEventListener('dblclick',event=>event.preventDefault(),{passive:false});
 /* Clears this device's sign-in and returns to the PIN pad. */
 function signOut(reason, {preserveSession = false} = {}){
+  if(!preserveSession) postMacReport(null);
   recipeReset(); minibarReset(); rrReset(); tfReset();
   stk.data = null; stk.failed = false;
   liveStop();
@@ -2015,7 +2024,11 @@ try{localStorage.removeItem('ricottaOrders:colorPalette');}catch{}
 function setMacTheme(name){
   if(!macShell() || !MAC_THEMES.includes(name)) return;
   if(name !== macTheme()) macMatchOffer = true;
-  applyMacTheme(name); paintMacIconMatch();
+  applyMacTheme(name); applyPrefs(); syncAppearance(); paintMacIconMatch();
+  const status = document.querySelector('[data-mac-current=theme]');
+  if(status) status.textContent = t('macTheme_' + name);
+  const preview = document.querySelector('.mac-theme-preview');
+  if(preview) preview.dataset.palette = name;
 }
 function applyMacTheme(name){
   MAC_THEMES.forEach(n=>document.documentElement.classList.toggle('theme-' + n, n === name));
@@ -2027,6 +2040,8 @@ function applyMacTheme(name){
 }
 function setMacIcon(name){
   macIcon = name;
+  const status = document.querySelector('[data-mac-current=icon]');
+  if(status) status.textContent = t('macIcon_' + name);
   macMatchOffer = false;
   document.querySelectorAll('[data-mac-icon]').forEach(button=>{
     const selected = button.dataset.macIcon === name;
@@ -2053,9 +2068,10 @@ window.addEventListener('ricotta-mac', e=>{
   else if(word === 'full-screen-on' || word === 'full-screen-off') document.documentElement.classList.toggle('mac-full-screen', word === 'full-screen-on');
   else if(/^theme:/.test(word) && MAC_THEMES.includes(word.slice(6))) setMacTheme(word.slice(6));
   else if(/^icon:/.test(word) && MAC_ICONS.includes(word.slice(5))) setMacIcon(word.slice(5));
-  else if(/^widget:(order|recipes|assistant)$/.test(word)){
+  else if(/^widget:(order|recipes|assistant|report)$/.test(word)){
     const view = word.split(':')[1];
-    if(state.account && canOpen(view)) goView(view);
+    if(view === 'report' && state.account && canOpen('history')){ goView('history'); openReportSheet(); }
+    else if(state.account && canOpen(view)) goView(view);
     else if(!state.account) pendingMacWidget = view;
   }
   else if(word === 'settings' && state.account && canOpen('settings')) goView('settings');
@@ -2082,7 +2098,7 @@ const DARK_QUERY = matchMedia('(prefers-color-scheme: dark)');
 function applyPrefs(){
   applyFeatures();
   const m = darkMode();
-  document.documentElement.classList.toggle('dark', m === 'on' || (m === 'auto' && DARK_QUERY.matches));
+  document.documentElement.classList.toggle('dark', (macShell() && macTheme() !== 'ricotta') || m === 'on' || (m === 'auto' && DARK_QUERY.matches));
 }
 DARK_QUERY.addEventListener?.('change', ()=>{ if(darkMode() === 'auto'){ applyPrefs(); syncAppearance(); } });
 /* What each item was last ordered at (newest order that had it), for "Show last quantity". */
@@ -4633,17 +4649,42 @@ function renderAppearanceRow(){
    remembers it; View > Always See-Through is the same switch). */
 function renderSeeThroughRow(){
   if(!macShell()) return '';
-  const theme = macTheme();
-  const choice = (group, name, selected, preview)=>`<button type="button" role="radio" class="mac-choice mac-${group} mac-swatch-${name}"
-      data-mac-${group}="${name}" tabindex="${name === selected ? 0 : -1}" aria-checked="${name === selected}">${preview}<span class="mac-choice-name">${esc(t('mac' + (group === 'theme' ? 'Theme_' : 'Icon_') + name))}</span><span class="mac-choice-check" aria-hidden="true">${ICON_CHECK}</span></button>`;
-  const themes = MAC_THEMES.map(n=>choice('theme', n, theme, `<img class="mac-swatch-preview" src="mac-icons/${macThemeIcon(n)}.png" alt="" width="38" height="38" loading="lazy" decoding="async">`)).join('');
-  // The icons in two groups: each theme's own (theme order), then the others.
-  const icon = n=>choice('icon', n, macIcon, `<img src="mac-icons/${n}.png" alt="" width="38" height="38" loading="lazy" decoding="async">`);
-  const group = (label, names)=>`<div class="mac-icon-group"><span>${esc(t(label))}</span><div class="mac-picks">${names.map(icon).join('')}</div></div>`;
-  const icons = ['macIconDefaultGroup','macTheme_cosmetic','macTheme_beauty','macTheme_ricotta'].map((label,i)=>group(label, MAC_ICON_GROUPS[i])).join('');
+  const row = (kind, label, hint, current)=>`<button type="button" class="mac-pick-row mac-picker-trigger" data-mac-picker="${kind}" aria-haspopup="dialog"><span class="set-head">${setIcon(kind === 'theme' ? 'macTheme' : 'macIcon')}<span>${esc(t(label))}<small>${esc(t(hint))}</small></span></span><span class="mac-picker-value"><span data-mac-current="${kind}">${esc(current)}</span><i class="sheet-chevron" aria-hidden="true"></i></span></button>`;
   return `<label class="check-row preference-row has-ico"><input type="checkbox" id="seeThroughSwitch" ${document.documentElement.classList.contains('see-through') ? 'checked' : ''}>${setIcon('seeThrough')}<span>${esc(t('seeThrough'))}<small>${esc(t('seeThroughHint'))}</small></span></label>
-    <div class="mac-pick-row"><div class="set-head">${setIcon('macTheme')}<span>${esc(t('macThemeLabel'))}<small>${esc(t('macThemeHint'))}</small></span></div><div class="mac-picks" role="radiogroup" aria-label="${esc(t('macThemeLabel'))}">${themes}</div></div>
-    <div class="mac-pick-row"><div class="set-head">${setIcon('macIcon')}<span>${esc(t('macIconLabel'))}<small>${esc(t('macIconHint'))}</small></span></div><div class="mac-icon-groups" role="radiogroup" aria-label="${esc(t('macIconLabel'))}">${icons}</div><div class="mac-icon-suggest" id="macIconMatch" hidden></div></div>`;
+    ${row('theme', 'macThemeLabel', 'macThemeHint', t('macTheme_' + macTheme()))}
+    ${row('icon', 'macIconLabel', 'macIconHint', t('macIcon_' + macIcon))}`;
+}
+function openMacPicker(kind, trigger){
+  const theme = kind === 'theme', selected = theme ? macTheme() : macIcon;
+  const option = name=>`<button type="button" role="radio" class="mac-choice" data-mac-${kind}="${name}" tabindex="${name === selected ? 0 : -1}" aria-checked="${name === selected}"><img src="mac-icons/${theme ? macThemeIcon(name) : name}.png" alt="" width="38" height="38"><span class="mac-choice-name">${esc(t((theme ? 'macTheme_' : 'macIcon_') + name))}</span><span class="mac-choice-check" aria-hidden="true">${ICON_CHECK}</span></button>`;
+  const groups = ['macIconDefaultGroup','macTheme_cosmetic','macTheme_beauty','macTheme_ricotta'];
+  const choices = theme ? `<div class="mac-picks">${MAC_THEMES.map(option).join('')}</div>` :
+    `<div class="mac-icon-groups">${MAC_ICON_GROUPS.map((names,i)=>`<div class="mac-icon-group"><span>${esc(t(groups[i]))}</span><div class="mac-picks">${names.map(option).join('')}</div></div>`).join('')}</div>`;
+  const preview = theme ? `<div class="mac-theme-preview" data-palette="${selected}"><div class="mac-demo-nav"><b>ricotta<span>.</span></b><span>${NAV_ICONS.order} ${esc(t('order'))}</span></div><div class="mac-demo-main"><b>${esc(t('order'))}</b><div class="mac-demo-hero">${esc(t('reportOrders'))}<strong>3</strong></div><div class="mac-demo-item"><span>${esc(t('reportLines'))}</span><b>3</b></div></div></div>` : '';
+  const title = t(theme ? 'macThemeLabel' : 'macChangeIcon');
+  const {el, close} = openKitchenSheet('mac-picker-sheet', `<div class="sel-title">${esc(title)}</div><div role="radiogroup" aria-label="${esc(title)}">${choices}</div>${preview}${theme ? '' : '<div class="mac-icon-suggest" id="macIconMatch" hidden></div>'}
+    <div class="form-actions">${theme ? '' : `<button type="button" class="btn btn-ghost" data-reset-icon>${esc(t('macResetIcon'))}</button>`}<button type="button" class="btn btn-primary" data-picker-done>${esc(t('done'))}</button></div>`, title, {returnFocus:trigger});
+  const chooseIcon = name=>{ setMacIcon(name); tellApp('icon:' + name); };
+  const radios = [...el.querySelectorAll('[role=radio]')];
+  radios.forEach(button=>button.onclick = ()=>{
+    const name = theme ? button.dataset.macTheme : button.dataset.macIcon;
+    if(theme){ setMacTheme(name); tellApp('theme:' + name); }
+    else chooseIcon(name);
+  });
+  el.querySelector('[role=radiogroup]').onkeydown = event=>{
+    const index = radios.indexOf(event.target);
+    if(index < 0 || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const step = event.key === 'ArrowDown' || event.key === (isRtl() ? 'ArrowLeft' : 'ArrowRight') ? 1 : -1;
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? radios.length - 1 : (index + step + radios.length) % radios.length;
+    radios[next].focus(); radios[next].click();
+  };
+  const match = el.querySelector('#macIconMatch');
+  if(match) match.onclick = event=>{ const button = event.target.closest('[data-mac-icon-match]'); if(button){ chooseIcon(button.dataset.macIconMatch); radios.find(r=>r.dataset.macIcon === macIcon)?.focus(); } };
+  el.querySelector('[data-reset-icon]')?.addEventListener('click', ()=>chooseIcon(MAC_ICONS[0]));
+  el.querySelector('[data-picker-done]').onclick = ()=>close();
+  paintMacIconMatch();
+  el.querySelector('[aria-checked=true]')?.focus({preventScroll:true});
 }
 function currentOutbox(){ return outbox().filter(j=>!j.kind && outboxJobAccount(j)===state.account); }   // orders (kept changes show on their own screens)
 function renderPendingSync(){
@@ -4748,18 +4789,7 @@ async function withBusy(btn, fn){
 function bindAppearance(){
   const see = document.getElementById('seeThroughSwitch');
   if(see) see.onchange = ()=>{ setSeeThrough(see.checked); tellApp(see.checked ? 'see-through-on' : 'see-through-off'); };
-  document.querySelectorAll('[data-mac-theme]').forEach(b=>b.onclick = ()=>{ setMacTheme(b.dataset.macTheme); tellApp('theme:' + b.dataset.macTheme); });
-  document.querySelectorAll('[data-mac-icon]').forEach(b=>b.onclick = ()=>{ setMacIcon(b.dataset.macIcon); tellApp('icon:' + b.dataset.macIcon); });
-  document.querySelectorAll('.mac-pick-row [role=radiogroup]').forEach(group=>group.onkeydown = e=>{
-    const options = [...group.querySelectorAll('[role=radio]')], index = options.indexOf(e.target);
-    if(index < 0 || !['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','Home','End'].includes(e.key)) return;
-    e.preventDefault();
-    const delta = e.key === 'ArrowDown' || e.key === (isRtl() ? 'ArrowLeft' : 'ArrowRight') ? 1 : -1;
-    const next = e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1 : (index + delta + options.length) % options.length;
-    options[next].focus(); options[next].click();
-  });
-  const match = document.getElementById('macIconMatch');
-  if(match){ match.onclick = e=>{ const b = e.target.closest('[data-mac-icon-match]'); if(b){ setMacIcon(b.dataset.macIconMatch); tellApp('icon:' + b.dataset.macIconMatch); } }; paintMacIconMatch(); }
+  document.querySelectorAll('[data-mac-picker]').forEach(button=>button.onclick = ()=>openMacPicker(button.dataset.macPicker, button));
   document.querySelectorAll('[data-dark]').forEach(b=>b.onclick=()=>{
     setSetting('darkMode',b.dataset.dark).then(()=>{applyPrefs();syncAppearance();});applyPrefs();syncAppearance();
     document.querySelectorAll('[data-dark]').forEach(x=>x.setAttribute('aria-checked',String(x.dataset.dark===darkMode())));

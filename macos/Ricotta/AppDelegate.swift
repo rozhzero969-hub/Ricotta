@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first, url.scheme == "ricotta-mac", let target = url.host,
-              ["order", "recipes", "assistant"].contains(target) else { return }
+              ["order", "recipes", "assistant", "report"].contains(target) else { return }
         if let controller { controller.openWidget(target); NSApp.activate() }
         else { pendingWidget = target }
     }

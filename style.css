@@ -3682,11 +3682,32 @@ html.dark .rc-banner:not(:has(.rc-banner-tone)){background:radial-gradient(ellip
 
 
 /* Only the signed Mac wrapper applies these brand palettes. */
-html.mac-shell.theme-cosmetic{--bg:#eeeae6;--surface:#fffcf8;--fill:#211e1b10;--ink:#201d1b;--ink-soft:#665e57;--tint:#554841;--accent:#67564d;--accent-strong:#342c28;--accent-soft:#67564d22;--hero:#282321;--bar:#eeeae6}
-html.mac-shell.dark.theme-cosmetic{--bg:#151313;--surface:#252121;--ink:#fff7ee;--ink-soft:#d4c7bd;--fill:#ffffff14;--tint:#f0d8c5;--accent-soft:#fbdfc525;--bar:#151313}
-html.mac-shell.theme-beauty{--bg:#eaf2eb;--surface:#fbfff9;--fill:#14392d14;--ink:#16382e;--ink-soft:#476657;--tint:#71571e;--accent:#8c6728;--accent-strong:#285342;--accent-soft:#c5963630;--hero:#103d32;--bar:#eaf2eb}
-html.mac-shell.dark.theme-beauty{--bg:#0b211a;--surface:#153329;--ink:#f6f0dc;--ink-soft:#d8cabc;--fill:#ffffff14;--tint:#eecf83;--accent-soft:#f5d17b26;--bar:#0b211a}
-html.mac-shell:is(.theme-cosmetic,.theme-beauty) .order-hero{background:var(--hero)}
+html.mac-shell.theme-cosmetic,.mac-theme-preview[data-palette=cosmetic]{--bg:#0b0b0c;--surface:#202022;--fill:#ffffff12;--ink:#fafafa;--ink-soft:#c2c2c5;--tint:#f4f4f5;--accent:#a4a4aa;--accent-strong:#55555e;--accent-soft:#ffffff19;--hero:linear-gradient(159deg,#47474d 0%,#232326 37%,#111113 80%);--bar:#141416}
+html.mac-shell.theme-beauty,.mac-theme-preview[data-palette=beauty]{--bg:#061b16;--surface:#102c23;--fill:#d6f3e513;--ink:#f5faf6;--ink-soft:#bcd3c8;--tint:#f4d580;--accent:#e5c46b;--accent-strong:#52602c;--accent-soft:#f4d58024;--hero:linear-gradient(142deg,#184538,#0c2b22);--bar:#0b241c}
+html.mac-shell:is(.theme-cosmetic,.theme-beauty) .order-hero{background:var(--hero);color:var(--ink)}
+html.mac-shell.theme-cosmetic .mac-choice[aria-checked=true]{box-shadow:inset 0 1px #ffffff3b}
+html.mac-shell.theme-beauty .order-hero{border:1px solid #e5c46b50}
+html.mac-shell.theme-beauty .btn-primary{background:#e5c46b;color:#102c23}
+html.mac-shell.theme-cosmetic .btn-primary{background:#ededf0;color:#141416}
+.mac-picker-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;text-align:start;background:none;color:var(--ink);padding:12px 0}
+.mac-picker-trigger .set-head{min-width:0}
+.mac-picker-value{display:flex;align-items:center;gap:8px;flex-shrink:0;color:var(--ink-soft);font-size:.86rem}
+.mac-picker-sheet .sel-panel{max-width:650px}
+.mac-picker-sheet .sel-panel{padding:20px;max-height:calc(100dvh - 40px);overflow:auto}
+.mac-picker-sheet .form-actions{margin-top:16px}
+.mac-picker-sheet .mac-choice img{border-radius:10px;flex:none}
+.mac-theme-preview{--bg:#eff3f0;--surface:#fff;--ink:#14382c;--ink-soft:#486259;--tint:#166548;--accent-soft:#d8eee2;--hero:linear-gradient(145deg,#25523e,#11362a);display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,2.5fr);margin-top:16px;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--bg);color:var(--ink);min-height:177px}
+.mac-demo-nav{display:grid;align-content:start;gap:14px;padding:14px 10px;background:var(--surface)}
+.mac-demo-nav b{font-size:1.05rem;letter-spacing:-.035em}
+.mac-demo-nav b span{color:var(--tint)}
+.mac-demo-nav>span{display:flex;align-items:center;gap:5px;padding:6px;border-radius:6px;background:var(--accent-soft);font-size:.73rem}
+.mac-demo-nav svg{width:13px;height:13px;color:var(--tint)}
+.mac-demo-main{display:grid;gap:8px;padding:14px}
+.mac-demo-hero{display:grid;gap:3px;padding:9px 12px;border-radius:9px;background:var(--hero);color:white;font-size:.73rem}
+.mac-demo-hero strong{font-size:1.26rem}
+.mac-demo-item{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:7px;background:var(--surface);font-size:.73rem}
+.mac-demo-item b{color:var(--tint)}
+@media (max-width:450px){.mac-picker-trigger{align-items:flex-start}.mac-picker-value{max-width:42%;flex-shrink:1}.mac-picker-sheet .sel-panel{padding:14px}}
 html.mac-shell .mac-choice img{border-radius:9px}
 
 .rc-banner.has-photo{height:clamp(190px,34vw,310px);background:var(--surface-2)}

@@ -23,7 +23,7 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   await page.goto(url);await page.locator('#orderResults').waitFor();await page.waitForSelector('#splash',{state:'detached'});
   return {ctx,page,errors,cls:()=>page.evaluate(()=>[...document.documentElement.classList].filter(c=>/^(mac-|see-through|theme-)/.test(c)).sort())};
  }
- const settingsRows=page=>page.evaluate(()=>{goView('settings');return ['seeThroughSwitch'].map(id=>!!document.getElementById(id)).concat(document.querySelectorAll('[data-mac-theme],[data-mac-icon]').length);});
+ const settingsRows=page=>page.evaluate(()=>{goView('settings');return ['seeThroughSwitch'].map(id=>!!document.getElementById(id)).concat(document.querySelectorAll('[data-mac-picker]').length);});
 
  // A browser, a phone, the iPhone app, or someone setting only the other flags: nothing changes.
  for(const flags of [{}, {RICOTTA_NATIVE_SHELL:true}, {RICOTTA_SEE_THROUGH:true, RICOTTA_THEME:'pink', RICOTTA_APP_ICON:'dark'}, {RICOTTA_MAC_SHELL:'yes', RICOTTA_SEE_THROUGH:true}]){
@@ -37,14 +37,29 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
  // Only the native Mac wrapper shows three themes and the default plus nine supplied icons.
  {const {ctx,page,errors,cls}=await open({RICOTTA_NATIVE_SHELL:true,RICOTTA_MAC_SHELL:true,RICOTTA_SEE_THROUGH:true,RICOTTA_THEME:'cosmetic',RICOTTA_APP_ICON:'discord'},{reducedMotion:'reduce'});
   assert.deepEqual(await cls(),['mac-shell','see-through','theme-cosmetic']);
-  assert.deepEqual(await settingsRows(page),[true,13]);
+  assert.deepEqual(await settingsRows(page),[true,2]);
+  await page.locator('[data-mac-picker=theme]').click();
   assert.deepEqual(await page.locator('[data-mac-theme]').evaluateAll(xs=>xs.map(x=>x.dataset.macTheme)),['ricotta','cosmetic','beauty']);
-  assert.deepEqual(await page.locator('[data-mac-icon]').evaluateAll(xs=>xs.map(x=>x.dataset.macIcon)),['ricotta','cosmetic-ink','cosmetic-pearl','cosmetic-signature','beauty-feather','beauty-gold','beauty-signature','ricotta-mark','ricotta-cheese','ricotta-word']);
-  assert.equal(await page.locator('[data-mac-icon=ricotta]').getAttribute('aria-checked'),'true','removed icon falls back');
   await page.locator('[data-mac-theme=beauty]').click();
   assert.deepEqual(await cls(),['mac-shell','see-through','theme-beauty']);
+  assert.equal(await page.locator('.mac-theme-preview').getAttribute('data-palette'),'beauty');
+  await page.locator('[data-picker-done]').click();
+  await page.locator('.mac-picker-sheet').waitFor({state:'detached'});
+  await page.locator('[data-mac-picker=icon]').click();
+  assert.deepEqual(await page.locator('[data-mac-icon]').evaluateAll(xs=>xs.map(x=>x.dataset.macIcon)),['ricotta','cosmetic-ink','cosmetic-pearl','cosmetic-signature','beauty-feather','beauty-gold','beauty-signature','ricotta-mark','ricotta-cheese','ricotta-word']);
+  assert.equal(await page.locator('[data-mac-icon=ricotta]').getAttribute('aria-checked'),'true','removed icon falls back');
   await page.locator('[data-mac-icon-match=beauty-feather]').click();
-  assert.deepEqual(await page.evaluate(()=>window.__posted.filter(w=>typeof w==='string' && /^(theme|icon):/.test(w))), ['theme:beauty','icon:beauty-feather']);
+  await page.locator('[data-reset-icon]').click();
+  assert.equal(await page.locator('[data-mac-icon=ricotta]').getAttribute('aria-checked'),'true');
+  assert.deepEqual(await page.evaluate(()=>window.__posted.filter(w=>typeof w==='string' && /^(theme|icon):/.test(w))), ['theme:beauty','icon:beauty-feather','icon:ricotta']);
+  await page.keyboard.press('Escape');
+  await page.locator('.mac-picker-sheet').waitFor({state:'detached'});
+  const report = await page.evaluate(()=>window.__posted.find(x=>x?.kind==='monthly-report').report);
+  assert.equal(report.orders,0);
+  assert.equal(report.streak,12);
+  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:'widget:report'})));
+  await page.locator('.report-sheet').waitFor();
+  await page.keyboard.press('Escape');
   await page.evaluate(()=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:'widget:assistant'})));
   assert.equal(await page.evaluate(()=>state.view),'assistant','widget opens Rico');
   const id = '77918325-8ee5-49e9-b91f-e4fbf4ed7540';
