@@ -30,10 +30,26 @@ enum AppIconChoice: String, CaseIterable {
         }
     }
 
+    /// The supplied square artwork sits in the same rounded footprint as the default Dock icon.
+    func dockImage() -> NSImage? {
+        guard let source = NSImage(named: assetName) else { return nil }
+        if self == .ricotta { return source }
+        return NSImage(size: NSSize(width: 512, height: 512), flipped: false) { rect in
+            let tile = rect.insetBy(dx: 26, dy: 26)
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(roundedRect: tile, xRadius: 103, yRadius: 103).addClip()
+            source.draw(in: tile, from: .zero, operation: .sourceOver, fraction: 1)
+            NSGraphicsContext.restoreGraphicsState()
+            return true
+        }
+    }
+
     func preview(size: CGFloat) -> NSImage? {
-        guard let image = NSImage(named: assetName)?.copy() as? NSImage else { return nil }
-        image.size = NSSize(width: size, height: size)
-        return image
+        guard let icon = dockImage() else { return nil }
+        return NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+            icon.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            return true
+        }
     }
 }
 

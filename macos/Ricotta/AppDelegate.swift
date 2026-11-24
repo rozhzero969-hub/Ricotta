@@ -196,7 +196,7 @@ enum Preferences {
     /// since that would break its signature, so Finder and Launchpad keep the normal icon.
     static func applyAppIcon() {
         let choice = AppIconChoice(rawValue: appIcon) ?? .ricotta
-        NSApp.applicationIconImage = NSImage(named: choice.assetName)
+        NSApp.applicationIconImage = choice.dockImage()
     }
     static var zoom: Double {
         get { min(max(UserDefaults.standard.double(forKey: zoomKey), 0.5), 3) }
