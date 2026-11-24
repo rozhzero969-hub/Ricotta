@@ -34,126 +34,23 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   assert.deepEqual(await cls(),[],'the app\'s words do nothing outside the Mac app');
   assert.deepEqual(errors,[]);await ctx.close();
  }
- // Inside the Mac app with see-through off: only mac-shell; an unknown theme is ignored.
- {const {ctx,page,errors,cls}=await open({RICOTTA_NATIVE_SHELL:true,RICOTTA_MAC_SHELL:true,RICOTTA_SEE_THROUGH:false,RICOTTA_THEME:'evil'});
-  assert.deepEqual(await cls(),['mac-shell']);
-  // Removed themes are unknown now, so an old saved choice shows Ricotta's own colours.
-  for(const old of ['graphite','ocean','rose','sand','midnight']){await page.evaluate(w=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:w})),'theme:'+old);assert.deepEqual(await cls(),['mac-shell'],old);}assert.deepEqual(errors,[]);await ctx.close();}
- // Inside the Mac app, see-through on, Halloween: all three, and Settings has the rows (7 themes and 7 icons).
- {const {ctx,page,errors,cls}=await open({RICOTTA_NATIVE_SHELL:true,RICOTTA_MAC_SHELL:true,RICOTTA_SEE_THROUGH:true,RICOTTA_THEME:'halloween',RICOTTA_APP_ICON:'wedge'});
-  assert.deepEqual(await cls(),['mac-shell','see-through','theme-halloween']);
-  assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgba(0, 0, 0, 0)','the page is see-through');
-  assert.deepEqual(await settingsRows(page),[true,14]);
-  assert.deepEqual(await page.locator('[data-mac-icon]').evaluateAll(options=>options.map(b=>b.dataset.macIcon)),
-    ['ricotta','pumpkin','holly','moonlit','gemini','cupid','discord'],'only branded theme icons');
-  assert.equal(await page.locator('[data-mac-icon="ricotta"]').getAttribute('aria-checked'),'true','a removed icon falls back to the default');
-  // Halloween's drawings sit behind the page and never take a click.
-  assert.equal(await page.locator('#macDecor').evaluate(el=>getComputedStyle(el).pointerEvents+' '+getComputedStyle(el).zIndex),'none -1');
-  assert.equal(await page.locator('#macIconMatch').isHidden(),true,'no icon offer until the theme changes');
-  assert.ok(await page.locator('[data-mac-icon] img').evaluateAll(imgs=>imgs.every(i=>/^mac-icons\/[a-z]+\.png$/.test(i.getAttribute('src')))),'icon pictures come from the site');
-  await page.evaluate(()=>document.getElementById('seeThroughSwitch').click());
-  await page.locator('[data-mac-theme="pink"]').click();
-  await page.waitForFunction(()=>document.documentElement.classList.contains('theme-pink'));   // after a short cross-fade
-  assert.deepEqual(await cls(),['mac-shell','theme-pink']);
-  assert.equal(await page.locator('#macIconMatch').isVisible(),true,'a new theme offers its own icon');
-  assert.equal(await page.locator('[data-mac-icon="ricotta"]').getAttribute('aria-checked'),'true','and never switches the icon by itself');
-  await page.locator('[data-mac-icon-match]').click();
-  assert.equal(await page.locator('[data-mac-icon="cupid"]').getAttribute('aria-checked'),'true');
-  assert.equal(await page.locator('#macIconMatch').isHidden(),true);
-  await page.locator('[data-mac-icon="discord"]').click();
-  assert.deepEqual(await page.evaluate(()=>window.__posted.filter(w=>/^(see-through|theme|icon)/.test(w))),['see-through-off','theme:pink','icon:cupid','icon:discord'],'only fixed words are sent');
-  assert.equal(await page.locator('[data-mac-theme="pink"]').innerText(),'Cupid’s Blush');
-  assert.equal(await page.locator('[data-mac-icon="gemini"]').innerText(),'Gemini');
-  await page.evaluate(()=>goView('order'));
-  assert.equal(await page.locator('.order-hero').evaluate(el=>getComputedStyle(el,'::after').pointerEvents),'none');
-  const art = await page.locator('.order-hero').evaluate(el=>getComputedStyle(el,'::after').backgroundImage);
-  assert.match(art,/fx-pk-card\.svg/);
-  const artworkUrl = await page.evaluate(asset=>new URL(asset,document.querySelector('link[href*="style"]').href).href, art.match(/url\("([^"]+)"\)/)[1]);
-  assert.equal((await page.request.get(artworkUrl)).status(),200,'hero artwork exists at the deployed CSS path');
-  assert.equal(await page.locator('#streakChip .flame-default').isVisible(),true,'the streak keeps its flame');
-  // Google shows Rico as Gemini (on screen only), and Ricotta's own name never changes.
-  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:'theme:google'})));
-  await page.waitForFunction(()=>document.documentElement.classList.contains('theme-google'));
-  assert.equal(await page.locator('#ricoTopBtn').getAttribute('aria-label'),'Gemini');
-  assert.equal(await page.evaluate(()=>[t('ricoName'),t('macIconHint')].join('|')),'Gemini|The icon in the Dock while Ricotta is open.');
-  assert.equal(await page.locator('#macDecor').count(),0,'Google has no background drawings');
-  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:'theme:pink'})));
-  await page.waitForFunction(()=>document.documentElement.classList.contains('theme-pink'));
-  assert.equal(await page.locator('#ricoTopBtn').getAttribute('aria-label'),'Rico');
-  if(process.env.RICOTTA_THEME_PREVIEW_DIR) await page.screenshot({path:path.join(process.env.RICOTTA_THEME_PREVIEW_DIR,'cupid-order.png'),animations:'disabled'});
-  await page.evaluate(()=>goView('settings'));
-  await page.locator('.palette-settings summary').click();
-  assert.equal(await page.locator('[data-color-choice]').count(),30);
-  await page.locator('[data-color-choice=discord]').click();
-  assert.equal(await page.locator('html').getAttribute('data-color-palette'),'discord');
-  assert.match(await page.locator('[data-color-choice=discord]').innerText(),/R\s*\.[\s\S]*Discord/);
-  await page.reload();
-  await page.locator('#splash').waitFor({state:'detached'});
-  assert.equal(await page.locator('html').getAttribute('data-color-palette'),'discord','palette stays after reload');
-  await page.evaluate(()=>goView('settings'));
-  await page.locator('[data-color-choice=""]').click();
-  assert.equal(await page.locator('html').getAttribute('data-color-palette'),null);
-  // The app's own words (View menu) switch them back; unknown words are ignored.
-  await page.evaluate(()=>['see-through-on','theme:ricotta','icon:ricotta','icon:green','theme:evil','icon:<b>','icon:pink'].forEach(w=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:w}))));
-  await page.waitForFunction(()=>!document.documentElement.classList.contains('theme-pink'));
-  assert.deepEqual(await cls(),['mac-shell','see-through']);
-  assert.equal(await page.locator('#seeThroughSwitch').isChecked(),true);
-  assert.equal(await page.locator('[data-mac-icon="ricotta"]').getAttribute('aria-checked'),'true');
-  assert.equal(await page.locator('#macDecor').count(),0,'Ricotta has no drawings');
+ // Only the native Mac wrapper shows three themes and the default plus nine supplied icons.
+ {const {ctx,page,errors,cls}=await open({RICOTTA_NATIVE_SHELL:true,RICOTTA_MAC_SHELL:true,RICOTTA_SEE_THROUGH:true,RICOTTA_THEME:'cosmetic',RICOTTA_APP_ICON:'discord'},{reducedMotion:'reduce'});
+  assert.deepEqual(await cls(),['mac-shell','see-through','theme-cosmetic']);
+  assert.deepEqual(await settingsRows(page),[true,13]);
+  assert.deepEqual(await page.locator('[data-mac-theme]').evaluateAll(xs=>xs.map(x=>x.dataset.macTheme)),['ricotta','cosmetic','beauty']);
+  assert.deepEqual(await page.locator('[data-mac-icon]').evaluateAll(xs=>xs.map(x=>x.dataset.macIcon)),['ricotta','cosmetic-ink','cosmetic-pearl','cosmetic-signature','beauty-feather','beauty-gold','beauty-signature','ricotta-mark','ricotta-cheese','ricotta-word']);
+  assert.equal(await page.locator('[data-mac-icon=ricotta]').getAttribute('aria-checked'),'true','removed icon falls back');
+  await page.locator('[data-mac-theme=beauty]').click();
+  assert.deepEqual(await cls(),['mac-shell','see-through','theme-beauty']);
+  await page.locator('[data-mac-icon-match=beauty-feather]').click();
+  assert.deepEqual(await page.evaluate(()=>window.__posted.filter(w=>typeof w==='string' && /^(theme|icon):/.test(w))), ['theme:beauty','icon:beauty-feather']);
+  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:'widget:assistant'})));
+  assert.equal(await page.evaluate(()=>state.view),'assistant','widget opens Rico');
+  const id = '77918325-8ee5-49e9-b91f-e4fbf4ed7540';
+  await page.evaluate(id=>ricoSetInbox([{id,kind:'routine',at:new Date().toISOString(),en:'Do your receipts',read:false}]),id);
+  assert.deepEqual(await page.evaluate(()=>window.__posted.find(x=>x?.kind==='rico-reminder')),{kind:'rico-reminder',id,body:'Do your receipts'});
   assert.deepEqual(errors,[]);await ctx.close();}
- // A native boot keeps the same preferences while each of the illustrated themes changes the visible palette.
- {const {ctx,page,errors}=await open({RICOTTA_NATIVE_SHELL:true,RICOTTA_MAC_SHELL:true},{reducedMotion:'reduce'});
-  const checks = await page.evaluate(()=>{
-   const html = document.documentElement;
-   const channel = c=>c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
-   const pixel = document.createElement('canvas').getContext('2d',{willReadFrequently:true});
-   const lightness = color=>{ pixel.fillStyle = '#000'; pixel.fillStyle = color; pixel.fillRect(0,0,1,1);
-    return [...pixel.getImageData(0,0,1,1).data].slice(0,3).reduce((sum,c,i)=>sum + [.2126,.7152,.0722][i] * channel(c / 255),0); };
-   return [false,true].map(dark=>{
-    html.classList.toggle('dark',dark);
-    return MAC_THEMES.filter(name=>name!=='discord').map(name=>{
-     applyMacTheme(name);
-     const hero = document.querySelector('.order-hero');   // Google draws the screen again (Gemini's name)
-     const styles=getComputedStyle(html), varColor=k=>styles.getPropertyValue(k).trim();
-     const readable = (ink,paper)=>{
-      const values=[lightness(varColor(ink)),lightness(varColor(paper))].sort((a,b)=>b-a);
-      return (values[0]+.05)/(values[1]+.05);
-     };
-     return {name, art:getComputedStyle(hero,'::after').backgroundImage, heroBg:getComputedStyle(hero).backgroundImage,
-      primary:(1.05)/(lightness(varColor('--accent-strong'))+.05), text:readable('--ink','--surface'), tint:readable('--tint','--surface')};
-    });
-   });
-  });
-  for(const palette of checks) for(const check of palette){
-   // Ricotta is the app's own look: no artwork and the plain green card.
-   if(check.name==='ricotta'){assert.equal(check.art,'none');assert.equal(check.heroBg,'none');continue;}
-   assert.match(check.art,new RegExp('fx-'+{halloween:'hw',christmas:'xm',moonlit:'mo',google:'gg',pink:'pk'}[check.name]+'-card'));
-   for(const key of ['primary','text','tint']) assert.ok(check[key]>=4.5,check.name+' contrast for '+key+': '+check[key]);
-  }
-  const palettes = await page.evaluate(()=>{
-    const px = document.createElement('canvas').getContext('2d',{willReadFrequently:true});
-    const luminance = value=>{
-      px.fillStyle = '#000'; px.fillStyle = value; px.fillRect(0,0,1,1);
-      return [...px.getImageData(0,0,1,1).data].slice(0,3).reduce((sum,x,i)=>{
-        const c=x/255; return sum+[.2126,.7152,.0722][i]*(c<=.04045?c/12.92:((c+.055)/1.055)**2.4);
-      },0);
-    };
-    const probe = document.createElement('span'); document.body.append(probe);
-    const style = token=>{probe.style.color='var('+token+')';return luminance(getComputedStyle(probe).color);};
-    const ratio = (a,b)=>(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
-    const out = [false,true].flatMap(dark=>{
-      document.documentElement.classList.toggle('dark',dark);
-      return COLOR_PALETTES.map(([key])=>{
-        setColorPalette(key,false);
-        const surface = style('--surface');
-        return [key+':'+(dark?'dark':'light'),1.05/(style('--accent-strong')+.05),ratio(style('--ink'),surface),ratio(style('--tint'),surface)];
-      });
-    });
-    setColorPalette('',false); probe.remove(); return out;
-  });
-  for(const [name,...ratios] of palettes) assert.ok(ratios.every(x=>x>=4.5),name+' contrast '+ratios);
-  assert.deepEqual(errors,[]);await ctx.close();
- }
  // Desktop tooltip uses real Order controls, and all 22 scenes render without duplicate live IDs.
  {const {ctx,page,errors}=await open({});
   await settingsRows(page);
@@ -206,5 +103,5 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   assert.equal(await page.evaluate(()=>featureOn('swipe')),initial,'tutorial does not toggle the setting');
   assert.deepEqual(errors,[]);await ctx.close();
  }
- console.log('Mac shell and Settings UI PASS: color palette contrast, seven branded Dock icons, Gemini, scheduled task edit, desktop and touch tutorials, reduced motion, native messages');
+ console.log('Mac shell and Settings UI PASS: three Mac themes, ten Mac icons, native reminder handoff, widget link, scheduled task edit, desktop and touch tutorials, reduced motion, native messages');
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exit(1);});

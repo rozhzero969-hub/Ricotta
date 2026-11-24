@@ -135,7 +135,7 @@ async function loadWorld(db: any, s: Session) {
     // Memories: this person's own (taught and learned), plus the rules Rozh taught, which reach everyone.
     // What Rico learned about one person never steers another's Rico.
     app("rico_rules").select("id,account,rule,source,created_at").in("account", [...new Set(["rozha", s.account])]).order("created_at").limit(MEMORY_CAP * 2),
-    app("rico_routines").select("id,kind,text,supplier_ids,time,days,enabled,last_run_day,run_at").eq("account", s.account).order("created_at").limit(MAX_ROUTINES),
+    app("rico_routines").select("id,kind,text,supplier_ids,time,days,enabled,last_run_day,run_at,updated_at").eq("account", s.account).order("created_at").limit(MAX_ROUTINES),
   ]), DB_TIMEOUT_MS, "load_world");
   for (const result of [sup, items, units, orders, devices, activity, streak, months, rules, routines]) {
     if (result.error) throw new Error("kitchen_data_unavailable");
@@ -683,8 +683,42 @@ async function scheduleTask(db: any, w: World, a: any) {
     ? "Confirm the schedule and explain that at this time Rico will send the request with an Ask now button; the answer is generated after they tap. Manage it in Scheduled."
     : "Confirm exactly what was saved and when (Baghdad time); manage it in Scheduled. Prepared orders wait for review and are never sent automatically." };
 }
+/* Routine management from chat stays scoped to the signed-in account. */
+async function changeScheduledTask(db: any, w: World, a: any) {
+  const action = a?.action;
+  const needle = text(a?.task, 200);
+  if (!needle || !["pause","resume","rename","reschedule"].includes(action)) return {error:"invalid_input"};
+  const rows = w.routines.filter(r => r.id === needle || sameWords(r.text,needle));
+  if (rows.length !== 1) return {error:"not_unique", note:"Use list_routines to find the exact task. Ask which one if names match."};
+  const row = rows[0];
+  if (row.kind === "prepare_order" && !w.can.history) return {error:"no_access"};
+  let change: Record<string, unknown> = {};
+  if (action === "pause" || action === "resume") {
+    if (row.run_at && (row.last_run_day || Date.parse(row.run_at) <= Date.now())) return {error:"already_due"};
+    change.enabled = action === "resume";
+  } else if (action === "rename") {
+    const title = text(a.text,200);
+    if (!title) return {error:"text"};
+    change.text = title;
+  } else {
+    const at = row.run_at ? whenOnce(a) : null;
+    if (row.run_at && (row.last_run_day || typeof at !== "number")) return {error:"when"};
+    const checked = cleanRoutine({ kind:row.kind, text:row.text, supplier_ids:row.supplier_ids,
+      time:row.run_at ? undefined : a.time, days:row.run_at ? undefined : (a.days ?? row.days), run_at:at });
+    if ("error" in checked) return {error:checked.error};
+    change = checked.value;
+  }
+  let q = db.from("app_rico_routines").update({...change,updated_at:new Date().toISOString()}).eq("id",row.id).eq("account",w.account);
+  if (row.updated_at) q = q.eq("updated_at",row.updated_at);
+  if (row.run_at) q = q.is("last_run_day",null);
+  const {data,error} = await q.select("*").maybeSingle();
+  if (error || !data) return {error:"not_saved",note:"Say that the task was not changed."};
+  Object.assign(row,data);
+  w.acted = true;
+  return {saved:true,task:row.text,enabled:row.enabled,when:row.run_at || whenWords(row.time,row.days)};
+}
 function listRoutines(w: World) {
-  return { routines: w.routines.map((r) => ({ kind: r.kind, text: r.text, when: r.run_at ? `once at ${clock12(baghdadTime(Date.parse(r.run_at))).en}` : whenWords(r.time, (r.days ?? []).map(Number)), on: r.enabled !== false,
+  return { routines: w.routines.map((r) => ({ id:r.id, kind: r.kind, text: r.text, when: r.run_at ? `once at ${clock12(baghdadTime(Date.parse(r.run_at))).en}` : whenWords(r.time, (r.days ?? []).map(Number)), on: r.enabled !== false,
     suppliers: (r.supplier_ids ?? []).map((id: string) => w.suppliers.find((x) => x.id === id)?.name ?? "deleted supplier"), ran_today: r.last_run_day === w.now.date })),
     note: "They can edit, pause or delete tasks in Scheduled." };
 }
@@ -903,6 +937,8 @@ const TOOLS = [
     input_schema: {type:"object",properties:{kind:{type:"string",enum:["remind","prepare_order","ask"]},text:{type:"string"},time:{type:"string"},days:{type:"array",items:{type:"integer"}},at:{type:"string"},in_seconds:{type:"integer"},suppliers:{type:"array",items:{type:"string"}}},required:["kind","text"]} },
   { name: "set_reminder", description: "Set a ONE-OFF reminder for this person and save it right away: 'remind me in 30 seconds / in 10 minutes / at 5 pm / tomorrow at 9 to do the transfers'. It arrives as a notification on their phones plus a message from you. You CAN do this: never say you can't set timed reminders. Use in_seconds for 'in X' (30 seconds = 30, 10 minutes = 600, 2 hours = 7200), or at for a clock time. For repeating ones (every day, every Monday) use propose_routine instead.",
     input_schema: { type: "object", properties: { text: { type: "string", description: "What to remind them about, short, in their language" }, in_seconds: { type: "integer", description: "10 to 2592000" }, at: { type: "string", description: "HH:MM (today, or tomorrow if passed) or YYYY-MM-DD HH:MM, 24h, Erbil time" } }, required: ["text"] } },
+  { name:"change_scheduled_task", description:"On an explicit request, pause, resume, rename, or change the time of a saved task on this account. Use list_routines first to find a unique match. For a recurring change, give time (Baghdad HH:MM) and days only if requested; for a one-off change give at (YYYY-MM-DD HH:MM or HH:MM). This never sends anything to a supplier.",
+    input_schema:{type:"object",properties:{task:{type:"string"},action:{type:"string",enum:["pause","resume","rename","reschedule"]},text:{type:"string"},time:{type:"string"},days:{type:"array",items:{type:"integer"}},at:{type:"string"}},required:["task","action"]} },
   { name: "list_routines", description: "This person's saved routines (reminders and orders Rico prepares by himself), with their times and whether they are on.",
     input_schema: { type: "object", properties: {} } },
   { name: "propose_new_item", description: "Show a card to add a new catalog item. You must know the name, the unit and the supplier (or 'none') -- ask for anything missing first, one short question at a time.",
@@ -975,7 +1011,7 @@ WHAT YOU CAN DO NOW (never say you can't do one of these; only what CONTEXT says
 - Items and suppliers: find them, add or edit them, aliases (cards).
 - Notifications to the team (a card). Files: Excel, PDF and photo files of a day, receipts or transfers.
 - Stock in each storage, what is low, prices and price changes, spending, transfers summaries, transfer drafts, and what needs the person (stopped or waiting receipts and transfers).
-- Scheduling in chat: for an explicit request to create a task, use schedule_task. Ask for missing timing or AM/PM instead of guessing. Confirm only after the tool says saved. General prompts are delivered at the requested time with Ask now; never claim those prompts execute unattended. Never schedule transfers, purchases, WhatsApp messages, payments, or account changes for automatic execution. Scheduled lets the person edit, pause or delete tasks. Use save_rule only for lasting preferences, not dates or times.
+- Scheduling in chat: for an explicit request to create a task, use schedule_task. Ask for missing timing or AM/PM instead of guessing. Confirm only after the tool says saved. General prompts are delivered at the requested time with Ask now; never claim those prompts execute unattended. Never schedule transfers, purchases, WhatsApp messages, payments, or account changes for automatic execution. Use change_scheduled_task when the person asks to edit, pause or resume an existing task in chat. Scheduled also lets them edit, pause or delete tasks. Use save_rule only for lasting preferences, not dates or times.
 - Show where anything is in the app (a tab, a page, a setting or a thing to do), with a button that opens it (find_in_app, then open_screen with place).
 - Exact sums (calculate), two periods compared with Excel and PDF (compare_periods), one item's ordering pace, stock, last price and how much would last N days (item_overview), a supplier's Call and WhatsApp card (contact_supplier), and reading a photo the person attaches (a price list, a receipt, a delivery note, a shelf).
 - After an answer, when a next step clearly helps, offer it as a card (an order draft, a reminder, a button that opens the screen); never do it without their tap.
@@ -1946,7 +1982,7 @@ const TRANSFER_TOOLS = new Set(["low_stock", "stock_levels", "transfers_summary"
 const RR_TOOLS = new Set(RICO_RR_TOOLS.map((t) => t.name));
 // Ahmad's account is the recipe book: without Order or Manage he gets only the recipes, the app and his
 // own reminders and memories, never ordering, catalog, stock, invoices or files.
-const RECIPE_ONLY_TOOLS = new Set(["recipes", "recipe_categories", "minibar_stock", "save_rule", "remember", "set_reminder", "schedule_task", "list_routines", "open_screen", "find_in_app", "calculate"]);
+const RECIPE_ONLY_TOOLS = new Set(["recipes", "recipe_categories", "minibar_stock", "save_rule", "remember", "set_reminder", "schedule_task", "change_scheduled_task", "list_routines", "open_screen", "find_in_app", "calculate"]);
 async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto: boolean): Promise<unknown> {
   if (!STATUS_TOOLS.has(name)) return { error: "Unknown tool." };
   if (w.catalog === false && !RECIPE_ONLY_TOOLS.has(name)) return { error: "no_access", note: "This account is the recipe book only. Say briefly that you can help with recipes here." };
@@ -1985,6 +2021,7 @@ async function runTool(db: any, w: World, name: string, a: any, emit: Emit, auto
     case "propose_routine": return proposeRoutine(w, a, emit);
     case "set_reminder": return await setReminder(db, w, a);
     case "schedule_task": return await scheduleTask(db, w, a);
+    case "change_scheduled_task": return await changeScheduledTask(db,w,a);
     case "list_routines": return listRoutines(w);
     case "propose_new_item": return proposeNewItem(w, a, emit);
     case "propose_edit_item": return proposeEditItem(w, a, emit);

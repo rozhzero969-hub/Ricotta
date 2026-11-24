@@ -119,4 +119,13 @@ const askNote = askDb.writes.find((w) => w.table === 'app_rico_inbox').rows[0];
 assert.equal(askNote.kind, 'routine_ask'); assert.equal(askNote.account, 'yunis');
 assert.deepEqual(askNote.payload, { question: 'Which items are low?' }, 'the question rides with the message');
 assert.equal(pushes.length - p1, 1, 'and a push');
+// A transient push failure does not consume the reminder for the entire day.
+const retryRow = {...base,id:'retry',last_run_day:null};
+const retryDB = fakeDb([retryRow]);
+await R.runRoutines(retryDB,deps({notify:async()=>({sent:0,failed:1})}));
+assert.equal(retryRow.last_run_day,null);
+await R.runRoutines(retryDB,deps({notify:async()=>({sent:1,failed:0})}));
+assert.ok(retryRow.last_run_day);
+const retryTags = retryDB.writes.filter(x=>x.table==='app_rico_inbox').map(x=>x.rows[0].dedupe_key);
+assert.equal(new Set(retryTags).size,1,'retry updates the same inbox delivery, never a second reminder');
 console.log('Rico routines PASS: ask kind writes routine_ask with its question, one-off reminders (in seconds, at a time, tomorrow) fire once and go, checked input, due within 3 hours once a day, roles, usual order from real orders, only the person\'s own inbox and push, never sent to a supplier');

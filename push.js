@@ -76,7 +76,7 @@ async function initPush(){
         }catch(e){ console.error('silent re-subscribe failed', e); }
       }
       pushStatus.subscribed = !!sub && Notification.permission === 'granted';
-      if(pushStatus.subscribed && apiSession()) savePushSubscription(sub);
+      if(pushStatus.subscribed && apiSession()) pushStatus.subscribed = await savePushSubscription(sub);
     }
   }catch(e){ console.error('push init failed', e); }
   pushStatus.ready = true;
@@ -137,7 +137,7 @@ async function resyncPush(){
   try{
     const reg = await navigator.serviceWorker.getRegistration();
     const sub = reg && await reg.pushManager.getSubscription();
-    if(sub) await savePushSubscription(sub);
+    if(sub && typeof Notification !== 'undefined' && Notification.permission === 'granted') pushStatus.subscribed = await savePushSubscription(sub);
   }catch(e){ /* not fatal */ }
 }
 function snoozePushBanner(){ lset('pushBannerSnoozedAt', Date.now()); }

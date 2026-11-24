@@ -56,6 +56,20 @@
     .splash-wipe{display:none}
     .splash .splash-retry{animation-delay:15s!important}
   }
+
+  html.mac-shell:is(.theme-cosmetic,.theme-beauty,.theme-ricotta) .splash{--launch-ink:#eaf6ea;--launch-accent:#8dd8ad}
+  html.mac-shell.theme-cosmetic .splash{--launch-ink:#f4ebe0;--launch-accent:#d2beb1;background:#171414}
+  html.mac-shell.theme-beauty .splash{--launch-ink:#f6e6b3;--launch-accent:#dfbf72;background:#10352b}
+  html.mac-shell:is(.theme-cosmetic,.theme-beauty,.theme-ricotta) .splash-word{color:var(--launch-ink)}
+  html.mac-shell:is(.theme-cosmetic,.theme-beauty,.theme-ricotta) :is(.splash-dot,.splash-wipe,.splash-bar i){background:var(--launch-accent)}
+  @media(prefers-reduced-motion:no-preference){
+    html.mac-shell.theme-cosmetic .splash-word{animation:brand-satin .7s ease-out both}
+    html.mac-shell.theme-beauty .splash-word{animation:brand-gold .85s ease-out both}
+    html.mac-shell.theme-ricotta .splash-word{animation:brand-rise .55s ease-out both}
+  }
+  @keyframes brand-satin{from{clip-path:inset(0 0 100% 0);opacity:.3}to{clip-path:inset(0);opacity:1}}
+  @keyframes brand-gold{from{clip-path:inset(0 50% 0 50%);opacity:.3}to{clip-path:inset(0);opacity:1}}
+  @keyframes brand-rise{from{clip-path:inset(0);opacity:.2;transform:translateY(.18em)}to{clip-path:inset(0);opacity:1;transform:translateY(0)}}
 </style>
 <link rel="stylesheet" href="lab-panel.css">
 <script src="lab-mock.js"></script>
@@ -89,7 +103,6 @@
 <script defer src="rico-plus.js"></script>
 <script defer src="kitchen.js"></script>
 <script defer src="whats-new.js"></script>
-<script defer src="mac-themes.js"></script>
 <script defer src="supabase/functions/_shared/search.js"></script>
 <script defer src="supabase/functions/_shared/app-map.js"></script>
 <script defer src="ordering-tools.js"></script>
@@ -106,7 +119,6 @@
 <script defer src="stock.js"></script>
 <script defer src="admin.js"></script>
 <script defer src="supabase/functions/_shared/recipe-cost.js"></script>
-<script defer src="supabase/functions/_shared/recipe-colors.js"></script>
 <script defer src="recipes.js"></script>
 <script defer src="minibar.js"></script>
 <script defer src="app.js"></script>

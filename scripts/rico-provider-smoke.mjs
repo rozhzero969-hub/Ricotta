@@ -54,6 +54,10 @@ const db = {
           const row = {id:'fixture-'+(routines.length+1),enabled:true,...change};
           routines.push(row); return Promise.resolve({data:row,error:null});
         }
+        if(table === 'app_rico_routines' && action === 'update'){
+          const row = routines.find(r=>filters.every(([field,values])=>values.includes(r[field])));
+          return Promise.resolve({data:row ? Object.assign(row,change) : null,error:null});
+        }
         return Promise.resolve({ data: null });
       },
       delete() { action = 'delete'; return query; },
@@ -510,6 +514,12 @@ assert.equal(requests.slice(beforeNoHaiku).some(r => new URL(r.url).hostname ===
   assert.deepEqual(routines.map(r=>[r.account,r.time,r.days]), [['rozha','22:00',[1,4]]]);
   assert.equal((await run(world,schedule)).saved,true);
   assert.equal(routines.length,1,'an identical schedule stays a single task');
+  const edit = (w, args) => _internals.runTool(db,w,'change_scheduled_task',args,()=>{},false);
+  assert.equal((await edit(world,{task:'Check stock',action:'reschedule',time:'23:15'})).saved,true);
+  assert.deepEqual([routines[0].time,routines[0].days],['23:15',[1,4]],'chat edits the exact schedule and preserves the days');
+  assert.equal((await edit(world,{task:'Check stock',action:'pause'})).enabled,false);
+  const yunis = await _internals.loadWorld(db,{id:'y',account:'yunis',deviceId:null,roles:['assistant']});
+  assert.equal((await edit(yunis,{task:routines[0].id,action:'resume'})).error,'not_unique','chat cannot edit another account’s task');
   const question = await run(world,{kind:'ask',text:'What is low?',time:'21:30',days:[0]});
   assert.match(question.note,/after they tap/);
   const ahmad = await _internals.loadWorld(db,{id:'a',account:'ahmad',deviceId:null,roles:['assistant']});

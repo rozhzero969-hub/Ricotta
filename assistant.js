@@ -75,7 +75,18 @@ function ricoReset(){
 }
 
 /* ---------- Rico's inbox ---------- */
-function ricoSetInbox(list){ rico.inbox = Array.isArray(list) ? list : []; if(typeof ricoAutoFillRoutines === 'function') ricoAutoFillRoutines(); }
+function ricoSetInbox(list){
+  rico.inbox = Array.isArray(list) ? list : [];
+  if(typeof ricoAutoFillRoutines === 'function') ricoAutoFillRoutines();
+  if(window.RICOTTA_MAC_SHELL === true && state.account && apiSession()){
+    for(const m of rico.inbox){
+      const age = Date.now() - Date.parse(m.at);
+      if(!m.read && ['routine','routine_ask','routine_order'].includes(m.kind) && age >= 0 && age < 15*60_000){
+        try{ window.webkit?.messageHandlers?.ricotta?.postMessage({kind:'rico-reminder',id:String(m.id),body:String(ricoInboxText(m) || '').slice(0,300)}); }catch{}
+      }
+    }
+  }
+}
 function ricoUnread(){ return rico.inbox.filter(m=>!m.read).length; }
 function ricoInboxText(m){ return (state.lang === 'ku' ? m.ku : state.lang === 'ar' ? m.ar : m.en) || m.en; }
 /* A note as HTML: a scheduled question is the person's own words, kept as one piece (an English question
@@ -96,14 +107,15 @@ function ricoMarkInboxRead(){
    and when the app comes back to the front). */
 async function ricoRefreshInbox(){
   if(!state.account || !canOpen('assistant')) return;   // Rico is off for this person
+  const session = apiSession()?.token;
   const r = await api('assistant/inbox');
-  if(!r.ok || !Array.isArray(r.data)) return;
+  if(!session || apiSession()?.token !== session || !r.ok || !Array.isArray(r.data)) return;
   const before = rico.inbox.map(m=>m.id+':'+m.read).join();
   ricoSetInbox(r.data);
   if(rico.inbox.map(m=>m.id+':'+m.read).join() === before) return;
   if(state.view === 'assistant'){ render(); ricoMarkInboxRead(); } else updateRicoBadge();
 }
-setInterval(()=>{ if(document.visibilityState === 'visible') ricoRefreshInbox(); }, 3*60*1000);
+setInterval(()=>{ if(document.visibilityState === 'visible' || window.RICOTTA_MAC_SHELL === true) ricoRefreshInbox(); }, window.RICOTTA_MAC_SHELL === true ? 60_000 : 180_000);
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') ricoRefreshInbox(); });
 
 /* ---------- Late orders (same rule as the server's push alert) ---------- */
@@ -912,7 +924,7 @@ function renderRicoProposalCard(p, mi){
     return ricoCard(ICON_PHONE, p.name, body, `<div class="rico-card-actions"><a class="btn btn-primary" href="${esc(chat)}"${out}>${ICON_CHAT}<span>${esc(t('contactSupplier'))}</span></a><a class="btn btn-ghost" href="tel:+${esc(num)}">${ICON_PHONE}<span>${esc(t('callSupplier'))}</span></a></div>`, p);
   }
   // A recipe category's colours (recipes.js draws it; a tap sets the colour).
-  if(p.kind === 'recipe_colors') return typeof recipeColorCard === 'function' ? recipeColorCard(p) : '';
+  if(p.kind === 'recipe_colors') return '';
   // A page of Ricotta Restaurant Rico was asked to open: a plain link (only to that site).
   if(p.kind === 'rr_link'){
     if(typeof p.url !== 'string' || !p.url.startsWith('https://pos.shaydattendance.com/')) return '';
@@ -1222,7 +1234,7 @@ function ricoHistoryForServer(){
     let content = ricoClean(m.text);
     (m.proposals||[]).forEach(p=>{
       const what = {order:`order draft (${(p.lines||[]).length} items)`, new_item:`add item "${p.name}"`, edit_item:`edit item "${p.name}"`, item_aliases:`update aliases for ${(p.entries||[]).length} items`, new_supplier:`add supplier "${p.name}"`, notify:'notification', open:p.place ? `open ${p.place} (find_in_app)` : `open ${p.screen}`, transfer_draft:`transfer draft ${p.from} to ${p.to} (saved as a draft)`, routine:`save routine "${p.routine?.text}" (${p.routine?.kind}) at ${p.routine?.time}`, stock_list:p.mode === 'search' ? `stock of "${p.query}" in ${p.storage}` : `list of what is low in ${p.storage}`, rr_link:`button to open Ricotta Restaurant ${p.page}`, needs_list:'list of what needs the person', price_list:'list of price changes', spend:`spending for ${p.period}`, invoice_report:`invoice report for ${p.month}${p.supplier ? ' (' + p.supplier + ')' : ''} with PDF and Excel`, price_lookup:`last prices${p.query ? ' for "' + p.query + '"' : ''}${p.storage ? ' of items going to ' + p.storage : ''} with PDF and Excel`, streak:`bring back the ${p.days}-day streak`, compare:`comparison of ${p.a?.from} to ${p.a?.to} with ${p.b?.from} to ${p.b?.to} (${p.main}) with Excel and PDF`, contact:`Call and WhatsApp buttons for ${p.name}`}[p.kind] || p.kind;
-      content += p.kind === 'recipe_colors' ? `\n[card colours for the category "${p.category}": shown]` : ['stock_list','needs_list','price_list','spend','rr_link','invoice_report','price_lookup','compare','contact'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
+      content += ['stock_list','needs_list','price_list','spend','rr_link','invoice_report','price_lookup','compare','contact'].includes(p.kind) ? `\n[card ${what}: shown]` : `\n[card ${what}: ${p.status || 'waiting for the person'}]`;
     });
     if(m.role === 'user' && m.photo) content = '[photo] ' + content;
     return {role:m.role, content: content.trim() || '…'};

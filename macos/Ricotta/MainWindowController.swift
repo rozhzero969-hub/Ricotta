@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import UserNotifications
 
 /// Fixed words the app sends to the page (as a `ricotta-mac` event; app.js listens only inside the Mac app).
 enum PageCommand: String {
@@ -11,12 +12,14 @@ enum PageCommand: String {
 /// The one window: the Mac's blurred window material (the desktop shows through it), Ricotta's page on
 /// top with a transparent background, a see-through loading screen with the Ricotta logo while the page
 /// loads, and Apple's "content unavailable" screen when Ricotta can't be reached.
-final class MainWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
+final class MainWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
     private let material = NSVisualEffectView()
     private var webView: RicottaWebView!
     private let loading = LoadingView()
     private let offline = OfflineView()
     private var isLoading = false
+    private var pendingWidget: String?
+    private var notificationInFlight = Set<String>()
     private var loadGeneration = 0
     private var downloadFiles: [ObjectIdentifier: URL] = [:]
 
@@ -190,16 +193,68 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(error) }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { failed(NSError(domain: "Ricotta", code: 1)) }
 
+    func openWidget(_ view: String) {
+        guard ["order", "recipes", "assistant"].contains(view) else { return }
+        showWindow(nil)
+        if isLoading { pendingWidget = view } else { dispatch("widget:" + view) }
+    }
+
+    private func deliverReminder(id: String, body: String) {
+        guard !body.isEmpty, notificationInFlight.insert(id).inserted else { return }
+        let key = "DeliveredRicoReminders"
+        let seen = UserDefaults.standard.stringArray(forKey: key) ?? []
+        guard !seen.contains(id) else { notificationInFlight.remove(id); return }
+        let content = UNMutableNotificationContent()
+        content.title = "Rico"
+        content.body = String(body.prefix(300))
+        content.threadIdentifier = "rico-reminders"
+        content.sound = UNNotificationSound(named: UNNotificationSoundName("RicoReminder.wav"))
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: nil)) { [weak self] error in
+            DispatchQueue.main.async {
+                self?.notificationInFlight.remove(id)
+                if error == nil {
+                    let current = UserDefaults.standard.stringArray(forKey: key) ?? []
+                    UserDefaults.standard.set(Array((current + [id]).suffix(128)), forKey: key)
+                }
+            }
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .list, .sound]
+    }
+
     // MARK: Words from the page
     /// The only words the page can send (sounds.js `NATIVE_WORDS`); anything else, or anything from
     /// another page or frame, is ignored.
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame, message.frameInfo.request.url.map(RicottaNavigation.isAppPage) == true,
-              let word = message.body as? String else { return }
+        guard message.frameInfo.isMainFrame, message.frameInfo.request.url.map(RicottaNavigation.isAppPage) == true else { return }
+        if let event = message.body as? [String: Any], event["kind"] as? String == "rico-reminder",
+           let id = event["id"] as? String, UUID(uuidString: id) != nil, let body = event["body"] as? String {
+            deliverReminder(id: id, body: body)
+            return
+        }
+        guard let word = message.body as? String else { return }
         switch word {
+        case "enable-rico-notifications":
+            let center = UNUserNotificationCenter.current()
+            center.delegate = self
+            center.requestAuthorization(options: [.alert, .sound]) { [weak self] allowed, _ in
+                DispatchQueue.main.async {
+                    if allowed { self?.deliverReminder(id: "rico-notifications-test", body: String(localized: "Rico reminders are enabled.")) }
+                    else {
+                        let alert = NSAlert()
+                        alert.messageText = String(localized: "Notifications are off")
+                        alert.informativeText = String(localized: "Allow Ricotta in System Settings → Notifications to receive Rico alerts.")
+                        if let window = self?.window { alert.beginSheetModal(for: window) }
+                    }
+                }
+            }
         case "page-splash": setLook(nil)
         case "page-dark", "page-light":
             setLook(NSAppearance(named: word == "page-dark" ? .darkAqua : .aqua))
+            UNUserNotificationCenter.current().delegate = self
+            if let view = pendingWidget { pendingWidget = nil; dispatch("widget:" + view) }
             if isFullScreen { send(.fullScreenOn) } // a page loaded in full screen starts without the mark
             reveal()
         case "see-through-on", "see-through-off":
@@ -424,7 +479,7 @@ final class RicottaWebView: WKWebView {
 
 /// WKUserContentController keeps its message handlers alive; this one passes messages on without
 /// keeping the window alive with them.
-private final class WeakMessageHandler: NSObject, WKScriptMessageHandler {
+private final class WeakMessageHandler: NSObject, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
     private weak var target: WKScriptMessageHandler?
     init(_ target: WKScriptMessageHandler) { self.target = target }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {

@@ -164,13 +164,21 @@ export async function runRoutines(db: any, deps: RunDeps) {
     if (claim.error || !claim.data?.length) continue;
     // One routine failing (a write that did not go through) never stops the others.
     try { out.push(...await runOne(db, deps, r, () => (pastP ??= deps.history()))); }
-    catch (e) { out.push({ id: r.id, kind: r.kind, error: String((e as Error)?.message ?? e).slice(0, 80) }); }
+    catch (e) {
+      if (e instanceof RetryRoutinePush) {
+        let release = db.from("app_rico_routines").update({last_run_day:r.last_run_day}).eq("id",r.id).eq("last_run_day",deps.now.date);
+        if (r.updated_at) release = release.eq("updated_at",r.updated_at);
+        await release;
+      }
+      out.push({ id: r.id, kind: r.kind, error: String((e as Error)?.message ?? e).slice(0, 80) }); }
   }
   return out;
 }
 
 /* A name kept as one piece inside a sentence (an Arabic or Kurdish name in English text, or the other way). */
 const iso = (s: string) => `\u2068${s}\u2069`;
+
+class RetryRoutinePush extends Error {}
 
 async function runOne(db: any, deps: RunDeps, r: Routine, history: () => ReturnType<RunDeps["history"]>) {
   const out: unknown[] = [];
@@ -184,7 +192,10 @@ async function runOne(db: any, deps: RunDeps, r: Routine, history: () => ReturnT
       const words = ask ? { en: `Scheduled: ${said}`, ku: `خشتەکراو: ${said}`, ar: `مجدول: ${said}` }
         : { en: `Reminder: ${said}`, ku: `بیرخستنەوە: ${said}`, ar: `تذكير: ${said}` };
       await inbox(db, r.account, ask ? "routine_ask" : "routine", words, key, ask ? { question: r.text } : null);
-      await deps.notify(r.account, words, `ricotta-${key}`);
+      let delivery: {sent?: number; failed?: number} | undefined;
+      try { delivery = await deps.notify(r.account, words, `ricotta-${key}`) as typeof delivery; }
+      catch { throw new RetryRoutinePush("push_temporarily_unavailable"); }
+      if (Number(delivery?.failed) > 0 && Number(delivery?.sent) === 0) throw new RetryRoutinePush("push_temporarily_unavailable");
       // A one-off reminder is done once it has come.
       if (r.run_at) await db.from("app_rico_routines").delete().eq("id", r.id);
       out.push({ id: r.id, kind: r.kind, once: !!r.run_at });

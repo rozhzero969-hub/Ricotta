@@ -114,28 +114,17 @@ try{
  await page.locator('#rcDone').click();await page.locator('#rcEdit').waitFor();
  assert.deepEqual(stored().data.lines.map(l=>l.ingredient),[milk]);
 
- // 5. A photo order the server refuses: the gallery and the list's cover both go back.
- await page.locator('[data-rc-photo="p1"]').waitFor();
+ // Photos stay in order while dragging, and the cover stays the first stored photo.
+ const firstPhoto=page.locator('[data-rc-photo="p1"]');
+ await firstPhoto.waitFor();
  const order=()=>page.locator('[data-rc-photo]').evaluateAll(x=>x.map(b=>b.dataset.rcPhoto));
  assert.deepEqual(await order(),['p1','p2']);
- const moving=page.evaluate(()=>recipePhotoOrder(['p2','p1']));
- await page.waitForTimeout(100);
- assert.deepEqual(await order(),['p2','p1'],'the new order shows at once');
- assert.equal(await page.evaluate(id=>recipeBook.data.covers[id],cake.id),'/icon-512.png','and the new cover');
- await moving;
- assert.equal(orderCalls,1);
- assert.deepEqual(await order(),['p1','p2'],'refused: the gallery goes back');
- assert.equal(await page.evaluate(id=>recipeBook.data.covers[id],cake.id),'/icon-192.png','and the cover');
+ await firstPhoto.dragTo(page.locator('[data-rc-photo="p2"]'));
+ assert.equal(orderCalls,0,'no photo ordering request');
+ assert.deepEqual(await order(),['p1','p2']);
  await page.locator('#rcBack').click();await page.locator(`[data-rc-open="${cake.id}"]`).waitFor();
- assert.match(await page.locator(`[data-rc-open="${cake.id}"] .rc-pic img`).getAttribute('src'),/icon-192\.png$/,'the list shows the first cover again');
- // Accepted: the new cover stays.
- orderFails=false;
- await page.locator(`[data-rc-open="${cake.id}"]`).click();await page.locator('[data-rc-photo="p1"]').waitFor();
- await page.evaluate(()=>recipePhotoOrder(['p2','p1']));
- assert.deepEqual(await order(),['p2','p1']);
- await page.locator('#rcBack').click();await page.locator(`[data-rc-open="${cake.id}"]`).waitFor();
- assert.match(await page.locator(`[data-rc-open="${cake.id}"] .rc-pic img`).getAttribute('src'),/icon-512\.png$/,'an accepted order changes the cover');
+ assert.match(await page.locator(`[data-rc-open="${cake.id}"] .rc-pic img`).getAttribute('src'),/icon-192\.png$/,'no change to the cover');
 
  assert.deepEqual(errors,[]);await context.close();
- console.log('Recipes fixes UI PASS: Save waits for the newest edit and keeps the version check, Remove takes its own line once, fractional amounts in Latin/Arabic/Kurdish digits, grouped prices, a refused photo order restores the gallery and the cover');
+ console.log('Recipes fixes UI PASS: Save waits for the newest edit and keeps the version check, Remove takes its own line once, fractional amounts in Latin/Arabic/Kurdish digits, grouped prices, dragging keeps the gallery and cover fixed');
 }finally{await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);process.exit(1);});

@@ -1,5 +1,5 @@
 import { recipesRoute, ricoRecipes } from '../supabase/functions/api/recipes.ts';
-import { runRecipeCategoryTool, recipeCategoryRoute } from '../supabase/functions/api/recipe-categories.ts';
+import { runRecipeCategoryTool } from '../supabase/functions/api/recipe-categories.ts';
 import {turnstileConfig,verifyTurnstile} from '../supabase/functions/_shared/turnstile.ts';
 // Node 24+: execute the API handler with an in-memory database and no network.
 import assert from 'node:assert/strict';
@@ -102,7 +102,7 @@ let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory } = new Function('recipesRoute', 'createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', 'checkLowStock', 'relinkedLowStock', 'rrReaderRoute', 'recipeCategoryRoute', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( recipesRoute, () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf, checkLowStock, relinkedLowStock, async () => null, recipeCategoryRoute );
+const { groupHistory } = new Function('recipesRoute', 'createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', 'checkLowStock', 'relinkedLowStock', 'rrReaderRoute', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( recipesRoute, () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf, checkLowStock, relinkedLowStock, async () => null );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -536,13 +536,11 @@ try {
   tables.app_recipe_photos=[{id:'00000000-0000-4000-8000-000000000020',recipe_id:rid,path:rid+'/p.jpg'}];
   const inUse=await call('recipe-ingredients/'+iid,{},'DELETE');assert.equal(inUse.status,409,'an ingredient a recipe uses is not deleted');
   assert.deepEqual((await inUse.json()).recipes,['Cake'],'the answer says which recipes use it');
-  // Categories: a colour tapped on Rico's card, and Rico's tool (add, rename, colour, delete with a yes first).
-  assert.equal((await call('recipe-categories/'+cid,{color:'sky'},'PUT')).status,200);assert.equal(tables.app_recipe_categories[0].color,'sky');
-  assert.equal((await call('recipe-categories/'+cid,{color:'neon'},'PUT')).status,400,'only the ten colours');
-  const added=await runRecipeCategoryTool(db,'ahmad',{action:'add',name:'Smoothies'},()=>{});assert.equal(added.added.name,'Smoothies');assert.equal(added.added.color,'mint','the next free colour');
-  assert.equal((await runRecipeCategoryTool(db,'ahmad',{action:'add',name:'smoothies'},()=>{})).error,'exists');
-  assert.equal((await runRecipeCategoryTool(db,'ahmad',{action:'set_color',category:'smoothie',color:'yellow'},()=>{})).color,'butter','everyday colour words, close spellings');
-  const cards=[];assert.equal((await runRecipeCategoryTool(db,'ahmad',{action:'set_color',category:'Smoothies',color:'neon green'},e=>cards.push(e))).error,'unknown_color');assert.equal(cards[0].proposal.kind,'recipe_colors','an unknown colour shows the colour card');
+  // Named categories remain; the old coloring route and assistant action are retired.
+  assert.equal((await call('recipe-categories/'+cid,{color:'sky'},'PUT')).status,404);
+  const added=await runRecipeCategoryTool(db,'ahmad',{action:'add',name:'Smoothies'});assert.equal(added.added.name,'Smoothies');assert.equal(added.added.color,undefined);
+  assert.equal((await runRecipeCategoryTool(db,'ahmad',{action:'add',name:'smoothies'})).error,'exists');
+  assert.equal((await runRecipeCategoryTool(db,'ahmad',{action:'set_color',category:'Smoothies',color:'yellow'})).error,'retired');
   assert.equal((await runRecipeCategoryTool(db,'ahmad',{action:'rename',category:'Cakes',new_name:'Cakes and sweets'},()=>{})).renamed.to,'Cakes and sweets');
   tables.app_recipes[0].category_id=cid;
   const ask=await runRecipeCategoryTool(db,'ahmad',{action:'delete',category:'Cakes and sweets'},()=>{});assert.equal(ask.needs_confirmation,true);assert.equal(ask.recipes_in_it,1);assert.equal(tables.app_recipe_categories.length,2,'nothing deleted before a yes');
