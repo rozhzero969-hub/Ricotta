@@ -152,6 +152,7 @@ const T = {
     seeThrough:'Always see-through', seeThroughHint:'The window lets your desktop show through, blurred, behind the page and the sidebar. Off: only while the app opens.',
     macThemeLabel:'Theme', macThemeHint:'Colors, artwork and gentle motion, on this Mac only.',
     macIconLabel:'App icon', macIconHint:'The icon in the Dock while Ricotta is open.', macIconMatch:'Use the matching icon', macIconsThemes:'Theme icons', macIconsMore:'More icons',
+    recipe_askRicoCat:"Ask Rico", recipe_askCatQ:"Add a recipe category called ",
     recipe_colorWord:'Color',
     macIconDefaultGroup:'Default', macTheme_ricotta:'Ricotta', macTheme_cosmetic:'Shayda Cosmetic', macTheme_beauty:'Shayda Beauty', 'macIcon_ricotta':'Default Ricotta', 'macIcon_cosmetic-ink':'Ink', 'macIcon_cosmetic-pearl':'Pearl', 'macIcon_cosmetic-signature':'Cosmetic Signature', 'macIcon_beauty-feather':'Gold Feather', 'macIcon_beauty-gold':'Golden S', 'macIcon_beauty-signature':'Beauty Signature', 'macIcon_ricotta-mark':'Ricotta R', 'macIcon_ricotta-cheese':'Ricotta Cheese', 'macIcon_ricotta-word':'Ricotta Wordmark',
     alertOnShort:'Alert on', alertOffShort:'No alert', filterWithAlert:'With alert', filterNoAlert:'No alert',
