@@ -15,7 +15,6 @@
 //                                          409 {error: "ingredient_in_use", recipes: [their names]}
 //   POST   recipes/alerts/read             this account's recipe alerts are read
 //   GET|POST recipes/:id/photos, DELETE recipes/:id/photos/:photo
-//   PUT    recipes/:id/photos/order        {ids} the photos in Ahmad's order (the first is the tile)
 // Each new recipe and each new item, and each one deleted, goes in the Record (app_audit_events, types
 // "recipe" and "ingredient"), so Rozh sees what Ahmad did.
 // Ahmad adds every recipe himself (nothing is imported). Units only come from Manage, Units: this route
@@ -66,7 +65,7 @@ export function shapeRecipe(row: any) {
   const { category_id, ...rest } = row ?? {};
   return { ...rest, data: { ...(rest.data ?? {}), category: category_id ?? "" } };
 }
-export const CATEGORY_COLUMNS = "id,name,color,sort";
+export const CATEGORY_COLUMNS = "id,name,sort";
 /* The recipe columns the API reads. app_recipes.archived is being retired (2026-11-19, stage 1): the API
    no longer reads or writes it, so the planned migration that drops it (supabase/pending) changes nothing
    here. */
@@ -182,7 +181,7 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
     if (old.data) await audit(c, "delete", "ingredient", old.data.name, [{ k: "stock", from: old.data.stock_item }]);
     return json({ ok: true });
   }
-  const match = path.match(/^recipes\/([0-9a-f-]+)(?:\/(photos)(?:\/([0-9a-f-]+|order))?)?$/i);
+  const match = path.match(/^recipes\/([0-9a-f-]+)(?:\/(photos)(?:\/([0-9a-f-]+))?)?$/i);
   if (!match || !uuid(match[1])) return fail("not_found", 404);
   const id = match[1];
   if (!match[2] && M === "PUT") {
@@ -268,17 +267,7 @@ export async function recipesRoute(c: Ctx, M: string, path: string, b: any) {
     if (r.error) { await store.remove([key]); return fail("save_failed", 503); }
     return json({ ok: true });
   }
-  if (match[3] === "order" && M === "PUT") {
-    // Ahmad dragged the photos into a new order: ids, first one first (it becomes the recipe's tile).
-    const ids = Array.isArray(b.ids) ? b.ids.filter(uuid) : null;
-    if (!ids || !ids.length || ids.length > 8 || new Set(ids).size !== ids.length) return fail("invalid_input");
-    const have = await table("recipe_photos").select("id").eq("recipe_id", id);
-    if (have.error) return fail("load_failed", 503);
-    const mine = new Set((have.data ?? []).map((p: any) => p.id));
-    if (ids.some((x: string) => !mine.has(x))) return fail("invalid_input");
-    const results = await Promise.all(ids.map((x: string, n: number) => table("recipe_photos").update({ sort_order: n + 1 }).eq("id", x).eq("recipe_id", id)));
-    return results.some((x: any) => x.error) ? fail("save_failed", 503) : json({ ok: true });
-  }
+
   if (match[3] && uuid(match[3]) && M === "DELETE") {
     const p = await table("recipe_photos").select("*").eq("recipe_id", id).eq("id", match[3]).maybeSingle();
     if (p.error) return fail("load_failed", 503);

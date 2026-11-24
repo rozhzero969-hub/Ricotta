@@ -2,6 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>CFBundleURLTypes</key>
+  <array><dict><key>CFBundleURLName</key><string>Ricotta widgets</string><key>CFBundleURLSchemes</key><array><string>ricotta-mac</string></array></dict></array>
+
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>

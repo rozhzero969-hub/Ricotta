@@ -6,6 +6,7 @@ import AppKit
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var controller: MainWindowController?
+    private var pendingWidget: String?
     private weak var seeThroughItem: NSMenuItem?
 
     static func main() {
@@ -24,8 +25,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Preferences.applyAppIcon()
         let controller = MainWindowController()
         self.controller = controller
+        if let view = pendingWidget { controller.openWidget(view); pendingWidget = nil }
         controller.showWindow(nil)
         NSApp.activate()
+    }
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let url = urls.first, url.scheme == "ricotta-mac", let target = url.host,
+              ["order", "recipes", "assistant"].contains(target) else { return }
+        if let controller { controller.openWidget(target); NSApp.activate() }
+        else { pendingWidget = target }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -127,7 +135,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let icons = add(view, String(localized: "App Icon"), nil)
         icons.submenu = NSMenu(title: String(localized: "App Icon"))
         for icon in AppIconChoice.allCases {
-            if !icon.isThemeIcon && AppIconChoice.allCases.first(where: { !$0.isThemeIcon }) == icon { icons.submenu!.addItem(.separator()) }
             let item = add(icons.submenu!, icon.title, #selector(chooseAppIcon(_:)), target: self)
             item.representedObject = icon.rawValue
             item.image = icon.preview(size: 18)

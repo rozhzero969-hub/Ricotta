@@ -52,13 +52,8 @@ const LANG_NAMES = {en:'English', ku:'کوردی', ar:'العربية'};
 /* A translation for the current language (English if a key is missing). */
 function t(key){
   const v = T[state.lang] && T[state.lang][key], text = v !== undefined ? v : T.en[key];
-  if(!geminiNames) return text;
-  return typeof text === 'function' ? (...args)=>asGemini(text(...args)) : asGemini(text);
+  return text;
 }
-/* The Mac app's Google theme shows Rico as Gemini (on screen only: Rico keeps his own name everywhere else).
-   "Ricotta" is never touched. The same flag splits the sidebar's wordmark into letters for Google's colours. */
-let geminiNames = document.documentElement.classList.contains('mac-shell') && document.documentElement.classList.contains('theme-google');
-const asGemini = text=> typeof text === 'string' ? text.replace(/\bRico\b/g, 'Gemini').replace(/ریکۆ(?!تا)/g, 'جێمینای').replace(/ريكو(?!تا)/g, 'جيميني') : text;
 const isRtl = ()=> state.lang !== 'en';
 const isRozha = ()=> state.account === 'rozha';
 /* What this account may do (the server checks the same roles on every request). Changing the catalog
@@ -143,46 +138,16 @@ function formatStoredIraqTime(value){
    language (Rozh, 2026-11-22). The browser's own time box follows the device and shows 24 hours on
    many Macs and phones, so the app draws its own. Underneath it still reads and writes the 24-hour
    "HH:MM" Baghdad wall-clock value the server stores, so saved reminders and tasks don't change. */
-const DAY_PERIOD_WORDS = {en:['AM', 'PM'], ku:['پ.ن', 'د.ن'], ar:['ص', 'م']};
 function splitClock(value){
   const m = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
   const h = m ? Math.min(23, Number(m[1])) : 9, min = m ? Math.min(59, Number(m[2])) : 0;
   return {h12:h % 12 || 12, min, pm:h >= 12};
 }
 function timePickerHtml(id, value, label){
-  const {h12, min, pm} = splitClock(value);
-  const words = DAY_PERIOD_WORDS[state.lang] || DAY_PERIOD_WORDS.en;
-  const two = n=>String(n).padStart(2, '0');
-  const mins = Array.from({length:12}, (_, i)=>i * 5);
-  if(!mins.includes(min)) mins.push(min), mins.sort((a, b)=>a - b);   // keep a time saved off the 5-minute marks
-  return `<div class="time12" id="${id}" role="group" aria-label="${esc(label)}" dir="ltr">
-    <select data-t12="h" aria-label="${esc(t('timeHour'))}">${Array.from({length:12}, (_, i)=>i + 1).map(h=>`<option value="${h}"${h === h12 ? ' selected' : ''}>${h}</option>`).join('')}</select>
-    <span class="time12-colon" aria-hidden="true">:</span>
-    <select data-t12="m" aria-label="${esc(t('timeMinute'))}">${mins.map(m=>`<option value="${m}"${m === min ? ' selected' : ''}>${two(m)}</option>`).join('')}</select>
-    <select data-t12="p" aria-label="${esc(t('timeAmPm'))}"><option value="am"${pm ? '' : ' selected'}>${esc(words[0])}</option><option value="pm"${pm ? ' selected' : ''}>${esc(words[1])}</option></select>
-  </div>`;
+  return `<input type="time" step="60" id="${id}" value="${esc(value)}" aria-label="${esc(label)}" required dir="ltr" lang="en-US">`;
 }
-/* The picked time as "HH:MM" (24-hour), or '' if the picker is missing. */
-function timePickerValue(root){
-  if(!root) return '';
-  const get = k=>root.querySelector(`[data-t12="${k}"]`)?.value;
-  const h12 = Number(get('h')), min = Number(get('m')), pm = get('p') === 'pm';
-  if(!(h12 >= 1 && h12 <= 12) || !(min >= 0 && min <= 59)) return '';
-  const h = (h12 % 12) + (pm ? 12 : 0);
-  return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0');
-}
-function setTimePicker(root, value){
-  if(!root) return;
-  const {h12, min, pm} = splitClock(value);
-  const mSel = root.querySelector('[data-t12="m"]');
-  if(mSel && ![...mSel.options].some(o=>Number(o.value) === min)){
-    const o = document.createElement('option'); o.value = String(min); o.textContent = String(min).padStart(2, '0');
-    mSel.append(o); [...mSel.options].sort((a, b)=>Number(a.value) - Number(b.value)).forEach(x=>mSel.append(x));
-  }
-  root.querySelector('[data-t12="h"]').value = String(h12);
-  if(mSel) mSel.value = String(min);
-  root.querySelector('[data-t12="p"]').value = pm ? 'pm' : 'am';
-}
+const timePickerValue = box=>box?.value || '';
+function setTimePicker(box, value){ if(box) box.value = value; }
 /* While something loads: gray lines where the rows will be, breathing softly; the rows then fade in
    in the same place, so nothing jumps. */
 function loadingLines(n = 3){
@@ -591,6 +556,10 @@ function applyAccount(a){
   const views = Array.isArray(a.views) && a.views.length ? a.views : (ACCOUNT_VIEWS[state.account] || []);
   // Items comes with Recipes, and Ahmad has his minibar Stock tab: both are screens of this app only.
   state.views = state.account ? [...new Set([...views, ...(views.includes('recipes') ? ['recipeItems'] : []), ...(state.account === 'ahmad' ? ['minibar'] : []), 'settings'])] : [];
+  if(state.account && pendingMacWidget){
+    if(state.views.includes(pendingMacWidget)) state.view = pendingMacWidget;
+    pendingMacWidget = null;
+  }
   const roles = Array.isArray(a.roles) ? a.roles : (ACCOUNT_ROLES[state.account] || []);
   state.roles = state.account ? roles.filter(r=>ALL_ROLES.includes(r)) : [];
   state.tabs = tabsFor();
@@ -1139,7 +1108,7 @@ function renderBottomNav(){
   const more = moreViews();
   // On a computer the tab bar is the sidebar, with the ricotta mark at its top. More exists only when
   // there are more than four screens.
-  return `<nav class="bottomnav" style="--n:${state.tabs.length + (more.length ? 1 : 0)}" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">${geminiNames ? [...'ricotta'].map(c=>`<span>${c}</span>`).join('') : 'ricotta'}</span><span class="dot"></span></div><button type="button" class="side-toggle" data-side-toggle aria-label="${esc(t('sideHide'))}" title="${esc(t('sideHide'))} (${sideKeysText()})">${ICON_SIDEBAR}</button><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}${more.length ? `<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${more.map(button).join('')}</div>` : ''}</nav>`;
+  return `<nav class="bottomnav" style="--n:${state.tabs.length + (more.length ? 1 : 0)}" aria-label="${esc(t('workspaceLabel'))}"><div class="brand nav-brand" aria-hidden="true"><span class="brand-mark">${'ricotta'}</span><span class="dot"></span></div><button type="button" class="side-toggle" data-side-toggle aria-label="${esc(t('sideHide'))}" title="${esc(t('sideHide'))} (${sideKeysText()})">${ICON_SIDEBAR}</button><span class="nav-indicator" aria-hidden="true"></span>${state.tabs.map(button).join('')}${more.length ? `<button type="button" class="navbtn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMore">${ICON_MORE}<span>${esc(t('more'))}</span></button><div class="nav-more" id="navMore" role="group" aria-label="${esc(t('more'))}">${more.map(button).join('')}</div>` : ''}</nav>`;
 }
 function renderManageNav(){
   return `<div class="manage-nav"><nav class="manage-sections" aria-label="${esc(t('catalog'))}">${[['manage','items'],['suppliers','suppliers'],['units','units']].filter(([v])=>canOpen(v)).map(([v,k])=>`<button type="button" class="manage-section ${(state.view==='itemsAdmin'?'manage':state.view)===v?'active':''}" data-manage-view="${v}" aria-current="${(state.view==='itemsAdmin'?'manage':state.view)===v?'page':'false'}">${esc(t(k))}</button>`).join('')}</nav></div>`;
@@ -2035,53 +2004,21 @@ function setSeeThrough(on){
   if(box) box.checked = on;
 }
 /* The colour theme (style.css, html.theme-<name>) and the Dock icon, chosen in Settings or the Mac app's View menu. */
+let pendingMacWidget = null;
 let macIcon = MAC_ICONS.includes(window.RICOTTA_APP_ICON) ? window.RICOTTA_APP_ICON : MAC_ICONS[0];   // a removed icon reads as the default
 const macTheme = ()=>MAC_THEMES.find(n=>document.documentElement.classList.contains('theme-' + n)) || 'ricotta';
 /* Each theme has its own Dock icon. Choosing a theme never changes the icon; Settings offers the matching
    one with a small button. */
-const macThemeIcon = name=> MAC_ICONS[Math.max(0, MAC_THEMES.indexOf(name))];
+const macThemeIcon = name=>({ricotta:'ricotta-mark',cosmetic:'cosmetic-ink',beauty:'beauty-feather'})[name] || 'ricotta';
 let macMatchOffer = false;
-const COLOR_PALETTE_KEY = 'ricottaOrders:colorPalette';
-const pickedPalette = ()=>document.documentElement.dataset.colorPalette || '';
-function setColorPalette(id, remember = true){
-  const row = COLOR_PALETTES.find(x=>x[0] === id), html = document.documentElement;
-  if(remember){ try{ if(row) localStorage.setItem(COLOR_PALETTE_KEY,id); else localStorage.removeItem(COLOR_PALETTE_KEY); }catch{} }
-  const tokens = ['--palette-top','--palette-bottom','--palette-accent'];
-  if(row){
-    if(macTheme() !== 'ricotta') applyMacTheme('ricotta');
-    html.dataset.colorPalette = id;
-    for(const [i,name] of tokens.entries()) html.style.setProperty(name,row[i+2]);
-  }else{
-    delete html.dataset.colorPalette;
-    for(const name of tokens) html.style.removeProperty(name);
-  }
-  document.querySelectorAll('[data-color-choice]').forEach(button=>{
-    const active = button.dataset.colorChoice === (row ? id : '');
-    button.setAttribute('aria-checked', String(active));
-    button.tabIndex = active ? 0 : -1;
-  });
-  if(macShell()){ macMatchOffer = row?.[0] === 'discord'; paintMacIconMatch(); }
-}
-try{ const savedPalette = localStorage.getItem(COLOR_PALETTE_KEY); if(savedPalette) setColorPalette(savedPalette,false); }catch{}
-function colorPalettesHtml(){
-  const active = pickedPalette(), choice = ([id,name,a,b,c])=>`<button type="button" role="radio" aria-checked="${id === active}" tabindex="${id === active ? 0 : -1}" data-color-choice="${id}" class="palette-choice">
-    <span class="palette-preview" aria-hidden="true" style="--pc-a:${a};--pc-b:${b};--pc-c:${c}">R<span>.</span></span><span>${esc(name)}</span></button>`;
-  return `<details class="palette-settings" ${active ? 'open' : ''}><summary>${esc(t('colorThemes'))}</summary><p>${esc(t('colorThemesHint'))}</p><div class="palette-grid" role="radiogroup" aria-label="${esc(t('colorThemes'))}">${[['',t('colorThemesDefault'),'#225740','#102F23','#ABF2C7'],...COLOR_PALETTES].map(choice).join('')}</div></details>`;
-}
+try{localStorage.removeItem('ricottaOrders:colorPalette');}catch{}
 function setMacTheme(name){
-  if(pickedPalette()) setColorPalette('');
-  if(name !== macTheme()){
-    macMatchOffer = true;
-    // A short cross-fade from the old colours to the new (none with Reduce Motion).
-    if(document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches){ document.startViewTransition(()=>{ applyMacTheme(name); paintMacIconMatch(); }); return; }
-  }
-  applyMacTheme(name);
-  paintMacIconMatch();
+  if(!macShell() || !MAC_THEMES.includes(name)) return;
+  if(name !== macTheme()) macMatchOffer = true;
+  applyMacTheme(name); paintMacIconMatch();
 }
 function applyMacTheme(name){
-  MAC_THEMES.forEach(n=>document.documentElement.classList.toggle('theme-' + n, n === name && n !== 'ricotta'));
-  // Rico's name follows the Google theme (Gemini); the screen is drawn again only when that changes.
-  if(geminiNames !== (name === 'google')){ geminiNames = name === 'google'; if(state.account) render(); }
+  MAC_THEMES.forEach(n=>document.documentElement.classList.toggle('theme-' + n, n === name));
   document.querySelectorAll('[data-mac-theme]').forEach(button=>{
     const selected = button.dataset.macTheme === name;
     button.setAttribute('aria-checked', String(selected));
@@ -2100,7 +2037,7 @@ function setMacIcon(name){
 }
 function paintMacIconMatch(){
   const box = document.getElementById('macIconMatch'); if(!box) return;
-  const want = pickedPalette() === 'discord' ? 'discord' : macThemeIcon(macTheme());
+  const want = macThemeIcon(macTheme());
   box.hidden = !macMatchOffer || want === macIcon;
   box.innerHTML = box.hidden ? '' : `<img src="mac-icons/${want}.png" alt="" width="28" height="28"><button type="button" class="btn btn-ghost" data-mac-icon-match="${want}">${esc(t('macIconMatch'))}</button>`;
 }
@@ -2116,6 +2053,11 @@ window.addEventListener('ricotta-mac', e=>{
   else if(word === 'full-screen-on' || word === 'full-screen-off') document.documentElement.classList.toggle('mac-full-screen', word === 'full-screen-on');
   else if(/^theme:/.test(word) && MAC_THEMES.includes(word.slice(6))) setMacTheme(word.slice(6));
   else if(/^icon:/.test(word) && MAC_ICONS.includes(word.slice(5))) setMacIcon(word.slice(5));
+  else if(/^widget:(order|recipes|assistant)$/.test(word)){
+    const view = word.split(':')[1];
+    if(state.account && canOpen(view)) goView(view);
+    else if(!state.account) pendingMacWidget = view;
+  }
   else if(word === 'settings' && state.account && canOpen('settings')) goView('settings');
   else if(word === 'find' && state.account) focusAppSearch();
 });
@@ -2445,7 +2387,7 @@ async function completeSignIn(res){
   hideWelcome();
   heartbeat();
   liveStart();
-  if(pushStatus.subscribed) resyncPush();
+  if(pushStatus.supported) resyncPush();
 }
 function attachLoginEvents(){
   updateLoginFeedback();
@@ -3443,7 +3385,7 @@ async function maybeFinishQueue(){
         items: e.items.map(i=>({itemId:i.itemId, name:i.name, qty:i.qty, unit:i.unit}))
       }))
     };
-    if(!queue.record){try{playOrdersSent();haptic('success');window.macThemeFx?.('sent');}catch(_){/* Audio and artwork must never interrupt saving. */}}
+    if(!queue.record){try{playOrdersSent();haptic('success');}catch(_){/* Audio and artwork must never interrupt saving. */}}
     queue.record = record;
     queue.saveState = 'saving';
     persistQueue();   // the same order id after a restart, so it is never saved twice
@@ -3768,7 +3710,7 @@ function reminderFieldsHtml(r){
     <hr class="notif-divider">
     <label class="check-row"><input type="checkbox" id="mfRemOn" ${on?'checked':''}> ${ICON_BELL} ${t('supplierReminderLabel')}</label>
     <div id="mfRemBox" ${on?'':'hidden'}>
-      <div class="field"><label>${t('reminderTimeLabel')}</label>${timePickerHtml('mfRemTime', time, t('reminderTimeLabel'))}</div>
+      <div class="field"><label for="mfRemTime">${t('reminderTimeLabel')}</label>${timePickerHtml('mfRemTime', time, t('reminderTimeLabel'))}</div>
       <div class="field"><label>${t('reminderDaysLabel')}</label>
         <div class="day-chips">${DAY_ORDER.map(d=>`<button type="button" class="day-chip ${days.includes(d)?'on':''}" data-day="${d}">${t('daysShort')[d]}</button>`).join('')}</div>
       </div>
@@ -3777,7 +3719,9 @@ function reminderFieldsHtml(r){
 }
 function attachReminderFields(box){
   const on = box.querySelector('#mfRemOn'), rb = box.querySelector('#mfRemBox');
-  on.onchange = ()=>{ rb.hidden = !on.checked; };
+  const clock = rb.querySelector('#mfRemTime');
+  on.onchange = ()=>{ rb.hidden = !on.checked; clock.disabled = !on.checked; };
+  clock.disabled = !on.checked;
   box.querySelectorAll('.day-chip').forEach(b=>b.onclick = ()=> b.classList.toggle('on'));
 }
 function readReminderFields(){
@@ -3794,6 +3738,7 @@ function resetReminderFields(){
   box.querySelector('#mfRemOn').checked = false;
   box.querySelector('#mfRemBox').hidden = true;
   setTimePicker(box.querySelector('#mfRemTime'), DEFAULT_REMINDER_TIME);
+  box.querySelector('#mfRemTime').disabled = true;
   box.querySelectorAll('.day-chip').forEach(b=>b.classList.add('on'));
 }
 
@@ -4682,7 +4627,7 @@ function fmtDateTime(iso){
    in Admin. */
 function renderAppearanceRow(){
   const dm=darkMode();
-  return `<div class="dark-row"><div class="set-head">${setIcon('darkMode')}<span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span></div><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>${renderSeeThroughRow()}${colorPalettesHtml()}`;
+  return `<div class="dark-row"><div class="set-head">${setIcon('darkMode')}<span>${esc(t('darkLabel'))}<small>${esc(t('darkHint'))}</small></span></div><div class="pill-seg dark-seg" role="radiogroup" aria-label="${esc(t('darkLabel'))}">${[['off','darkOff'],['on','darkOn'],['auto','darkAuto']].map(([v,k])=>`<button type="button" role="radio" class="pill-seg-btn" aria-checked="${dm===v}" data-dark="${v}">${esc(t(k))}</button>`).join('')}</div></div>${renderSeeThroughRow()}`;
 }
 /* The Mac app only: the window's blurred background behind the page and sidebar, kept on this Mac (the app
    remembers it; View > Always See-Through is the same switch). */
@@ -4695,7 +4640,7 @@ function renderSeeThroughRow(){
   // The icons in two groups: each theme's own (theme order), then the others.
   const icon = n=>choice('icon', n, macIcon, `<img src="mac-icons/${n}.png" alt="" width="38" height="38" loading="lazy" decoding="async">`);
   const group = (label, names)=>`<div class="mac-icon-group"><span>${esc(t(label))}</span><div class="mac-picks">${names.map(icon).join('')}</div></div>`;
-  const icons = group('macIconsThemes', MAC_ICONS);
+  const icons = ['macIconDefaultGroup','macTheme_cosmetic','macTheme_beauty','macTheme_ricotta'].map((label,i)=>group(label, MAC_ICON_GROUPS[i])).join('');
   return `<label class="check-row preference-row has-ico"><input type="checkbox" id="seeThroughSwitch" ${document.documentElement.classList.contains('see-through') ? 'checked' : ''}>${setIcon('seeThrough')}<span>${esc(t('seeThrough'))}<small>${esc(t('seeThroughHint'))}</small></span></label>
     <div class="mac-pick-row"><div class="set-head">${setIcon('macTheme')}<span>${esc(t('macThemeLabel'))}<small>${esc(t('macThemeHint'))}</small></span></div><div class="mac-picks" role="radiogroup" aria-label="${esc(t('macThemeLabel'))}">${themes}</div></div>
     <div class="mac-pick-row"><div class="set-head">${setIcon('macIcon')}<span>${esc(t('macIconLabel'))}<small>${esc(t('macIconHint'))}</small></span></div><div class="mac-icon-groups" role="radiogroup" aria-label="${esc(t('macIconLabel'))}">${icons}</div><div class="mac-icon-suggest" id="macIconMatch" hidden></div></div>`;
@@ -4805,8 +4750,7 @@ function bindAppearance(){
   if(see) see.onchange = ()=>{ setSeeThrough(see.checked); tellApp(see.checked ? 'see-through-on' : 'see-through-off'); };
   document.querySelectorAll('[data-mac-theme]').forEach(b=>b.onclick = ()=>{ setMacTheme(b.dataset.macTheme); tellApp('theme:' + b.dataset.macTheme); });
   document.querySelectorAll('[data-mac-icon]').forEach(b=>b.onclick = ()=>{ setMacIcon(b.dataset.macIcon); tellApp('icon:' + b.dataset.macIcon); });
-  document.querySelectorAll('[data-color-choice]').forEach(b=>b.onclick = ()=>setColorPalette(b.dataset.colorChoice));
-  document.querySelectorAll('.mac-pick-row [role=radiogroup], .palette-grid').forEach(group=>group.onkeydown = e=>{
+  document.querySelectorAll('.mac-pick-row [role=radiogroup]').forEach(group=>group.onkeydown = e=>{
     const options = [...group.querySelectorAll('[role=radio]')], index = options.indexOf(e.target);
     if(index < 0 || !['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','Home','End'].includes(e.key)) return;
     e.preventDefault();

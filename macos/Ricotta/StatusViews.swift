@@ -32,15 +32,40 @@ final class LoadingView: NSView {
 
     func start() {
         spinner.startAnimation(nil)
+        let theme = AppTheme(rawValue: Preferences.theme) ?? .ricotta
+        let icon: AppIconChoice
+        switch theme {
+        case .ricotta: icon = .ricotta_mark
+        case .cosmetic: icon = .cosmetic_pearl
+        case .beauty: icon = .beauty_feather
+        }
+        logo.image = NSImage(named: icon.assetName) ?? NSImage(named: "LoadingLogo")
+        logo.layer?.cornerRadius = 22
+        logo.layer?.masksToBounds = true
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let layer = logo.layer else { return }
-        let breathe = CABasicAnimation(keyPath: "opacity")
-        breathe.fromValue = 1
-        breathe.toValue = 0.72
-        breathe.duration = 1.1
-        breathe.autoreverses = true
-        breathe.repeatCount = .infinity
-        breathe.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.add(breathe, forKey: "breathe")
+        let sequence = CAAnimationGroup()
+        let reveal = CABasicAnimation(keyPath: "opacity")
+        reveal.fromValue = 0.1
+        reveal.toValue = 1
+        reveal.duration = 0.5
+        var animations: [CAAnimation] = [reveal]
+        if theme == .beauty {
+            let scale = CABasicAnimation(keyPath: "transform.scale")
+            scale.fromValue = 0.83
+            scale.toValue = 1
+            scale.duration = 0.52
+            animations.append(scale)
+        } else if theme == .ricotta {
+            let rise = CABasicAnimation(keyPath: "transform.translation.y")
+            rise.fromValue = -12
+            rise.toValue = 0
+            rise.duration = 0.45
+            animations.append(rise)
+        }
+        sequence.animations = animations
+        sequence.duration = 0.54
+        sequence.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(sequence, forKey: "brand-reveal")
     }
     func stop() {
         spinner.stopAnimation(nil)

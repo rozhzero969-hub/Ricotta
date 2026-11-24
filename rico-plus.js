@@ -90,10 +90,14 @@ function routineLabel(r){
 }
 /* Creating a schedule starts in chat. This sheet manages the saved tasks. */
 function openRicoScheduled(){
-  const days = t('routineDays');
+  const days = t('routineDays'), isMac = window.RICOTTA_MAC_SHELL === true;
+  const showWebPush = !isMac && !pushStatus.subscribed && pushStatus.supported && !(pushStatus.ios && !pushStatus.standalone);
+  const delivery = isMac || showWebPush
+    ? `<div class="sched-delivery"><span>${esc(t(isMac ? 'schedMacDelivery' : 'schedPushDelivery'))}</span><button type="button" class="btn btn-ghost" data-sched-notify>${esc(t('notifEnable'))}</button></div>`
+    : !pushStatus.subscribed ? `<p class="sched-delivery">${esc(t('schedInboxDelivery'))}</p>` : '';
   const opener = document.activeElement;
   const {el, close} = openKitchenSheet('sched-sheet', `<div class="sched-head"><div class="sel-title">${esc(t('schedTitle'))}</div><button type="button" class="btn btn-primary sched-new" data-sched-new>${esc(t('schedNew'))}</button></div>
-    <div class="notif-sub">${esc(t('schedChatHint'))}</div>
+    <div class="notif-sub">${esc(t('schedChatHint'))}</div>${delivery}
     <div class="sched-list status-line" id="schedList">${esc(t('memoryLoading'))}</div>
     <form class="sched-form" hidden novalidate>
       <h3 class="sched-form-title">${esc(t('schedEdit'))}</h3>
@@ -143,6 +147,13 @@ function openRicoScheduled(){
     }));
   };
   const load = async ()=>{ const r = await apiCached('rico-routines'); if(el.isConnected){ if(r.ok) paint(r.data || []); else list.textContent = t('saveFailed'); } };
+  const notifyBtn = el.querySelector('[data-sched-notify]');
+  if(notifyBtn) notifyBtn.onclick = ()=>withBusy(notifyBtn,async ()=>{
+    if(isMac){ window.webkit?.messageHandlers?.ricotta?.postMessage('enable-rico-notifications'); return; }
+    const result = await enablePush();
+    if(result.ok){ notifyBtn.closest('.sched-delivery')?.remove(); toast(t('schedPushReady'), 'ok'); }
+    else toast(t('schedInboxDelivery'), 'warn');
+  });
   newBtn.onclick = ()=>{
     close();
     if(state.view !== 'assistant') goView('assistant');

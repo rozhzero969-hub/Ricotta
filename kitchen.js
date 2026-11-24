@@ -21,7 +21,7 @@ function streakTier(n){ return n >= 200 ? 'gold' : n >= 100 ? 'blue' : n >= 60 ?
 let streakMarkSequence = 0;
 function renderStreakMark(){
   const gradient = "ricotta-streak-" + (++streakMarkSequence);
-  return `<svg class="flame flame-default" viewBox="0 0 24 30" aria-hidden="true"><defs><linearGradient id="${gradient}" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="var(--f1)"/><stop offset="1" stop-color="var(--f2)"/></linearGradient></defs><path class="flame-out" d="M12 1C13 7 19 10 20.5 16.5C22.2 24 17.5 29 12 29S1.8 24 3.5 17.5C4.5 13.6 7.2 12 7.6 8.4C9.8 10 10.6 12 10.4 14.2C12.8 11.6 13.4 6.2 12 1Z" fill="url(#${gradient})"/><path class="flame-in" d="M12 14C12.8 17 16 18.6 16 22.4C16 25.4 14.2 27.4 12 27.4S8 25.4 8 22.8C8 20.2 10.2 19.4 10.6 17.2C11.4 18 11.9 18.8 11.9 20C13 18.5 12.8 16 12 14Z" fill="var(--f3)"/></svg><span class="flame flame-themed" aria-hidden="true"></span>`;
+  return `<svg class="flame flame-default" viewBox="0 0 24 30" aria-hidden="true"><defs><linearGradient id="${gradient}" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="var(--f1)"/><stop offset="1" stop-color="var(--f2)"/></linearGradient></defs><path class="flame-out" d="M12 1C13 7 19 10 20.5 16.5C22.2 24 17.5 29 12 29S1.8 24 3.5 17.5C4.5 13.6 7.2 12 7.6 8.4C9.8 10 10.6 12 10.4 14.2C12.8 11.6 13.4 6.2 12 1Z" fill="url(#${gradient})"/><path class="flame-in" d="M12 14C12.8 17 16 18.6 16 22.4C16 25.4 14.2 27.4 12 27.4S8 25.4 8 22.8C8 20.2 10.2 19.4 10.6 17.2C11.4 18 11.9 18.8 11.9 20C13 18.5 12.8 16 12 14Z" fill="var(--f3)"/></svg>`;
 }
 function streakNow(){ return state.streak || {count:0, best:0, lit:false, alive:false, recoverable:0}; }
 function renderStreakChip(s = streakNow()){

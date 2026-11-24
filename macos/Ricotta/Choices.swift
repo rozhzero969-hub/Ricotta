@@ -3,23 +3,32 @@ import AppKit
 /// The Dock icons (Assets.xcassets, AppIcon-<name>): one for each theme first (in AppTheme order), then the
 /// others. The first is the default; a saved name that no longer exists reads as it.
 enum AppIconChoice: String, CaseIterable {
-    case ricotta, pumpkin, holly, moonlit, gemini, cupid, discord
+    case ricotta
+    case cosmetic_ink = "cosmetic-ink"
+    case cosmetic_pearl = "cosmetic-pearl"
+    case cosmetic_signature = "cosmetic-signature"
+    case beauty_feather = "beauty-feather"
+    case beauty_gold = "beauty-gold"
+    case beauty_signature = "beauty-signature"
+    case ricotta_mark = "ricotta-mark"
+    case ricotta_cheese = "ricotta-cheese"
+    case ricotta_word = "ricotta-word"
 
     var assetName: String { "AppIcon-\(rawValue)" }
-
     var title: String {
         switch self {
-        case .ricotta: String(localized: "Ricotta")
-        case .pumpkin: String(localized: "Pumpkin Moon")
-        case .holly: String(localized: "Winter Lights")
-        case .moonlit: String(localized: "Silver Moon")
-        case .gemini: String(localized: "Gemini")
-        case .cupid: String(localized: "Cupid’s Blush")
-        case .discord: String(localized: "Discord · Ricotta")
+        case .ricotta: String(localized: "Default Ricotta")
+        case .cosmetic_ink: String(localized: "Ink")
+        case .cosmetic_pearl: String(localized: "Pearl")
+        case .cosmetic_signature: String(localized: "Cosmetic Signature")
+        case .beauty_feather: String(localized: "Gold Feather")
+        case .beauty_gold: String(localized: "Golden S")
+        case .beauty_signature: String(localized: "Beauty Signature")
+        case .ricotta_mark: String(localized: "Ricotta R")
+        case .ricotta_cheese: String(localized: "Ricotta Cheese")
+        case .ricotta_word: String(localized: "Ricotta Wordmark")
         }
     }
-    /// Theme icons come first in the menu; the rest follow after a separator.
-    var isThemeIcon: Bool { (Self.allCases.firstIndex(of: self) ?? 0) < AppTheme.allCases.count }
 
     func preview(size: CGFloat) -> NSImage? {
         guard let image = NSImage(named: assetName)?.copy() as? NSImage else { return nil }
@@ -31,28 +40,19 @@ enum AppIconChoice: String, CaseIterable {
 /// The page's colour themes (style.css, html.theme-<name>), chosen here or in Ricotta's Settings.
 /// Raw values match the web theme classes.
 enum AppTheme: String, CaseIterable {
-    case ricotta, halloween, christmas, moonlit, google, pink, discord
+    case ricotta, cosmetic, beauty
     var title: String {
         switch self {
         case .ricotta: String(localized: "Ricotta")
-        case .halloween: String(localized: "Pumpkin Moon")
-        case .christmas: String(localized: "Winter Lights")
-        case .moonlit: String(localized: "Silver Moon")
-        case .google: String(localized: "Google")
-        case .pink: String(localized: "Cupid’s Blush")
-        case .discord: String(localized: "Discord")
+        case .cosmetic: String(localized: "Shayda Cosmetic")
+        case .beauty: String(localized: "Shayda Beauty")
         }
     }
-    /// The theme's main colour and its second colour, as in style.css (the menu's small swatch).
     var colors: (NSColor, NSColor?) {
         switch self {
-        case .ricotta: (Self.rgb(0x1F7A4D), nil)
-        case .halloween: (Self.rgb(0xF28C28), Self.rgb(0x2A1638))
-        case .christmas: (Self.rgb(0xB3122E), Self.rgb(0x0F3B2A))
-        case .moonlit: (Self.rgb(0xC9D6F2), Self.rgb(0x13224A))
-        case .google: (Self.rgb(0x1A73E8), Self.rgb(0xFBBC05))
-        case .pink: (Self.rgb(0xF7B8CF), Self.rgb(0xC2457A))
-        case .discord: (Self.rgb(0xAEB6FF), Self.rgb(0x252633))
+        case .ricotta: (Self.rgb(0x135B43), Self.rgb(0xF6F2DC))
+        case .cosmetic: (Self.rgb(0x211E1C), Self.rgb(0xF6F1EA))
+        case .beauty: (Self.rgb(0x10463C), Self.rgb(0xDFC375))
         }
     }
     private static func rgb(_ hex: Int) -> NSColor {

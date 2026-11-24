@@ -120,9 +120,30 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  assert.match(await page.locator('.rc-money').innerText(),/500/,'the recipe costs 500 IQD');
  assert.equal(await page.locator('.rc-detail .rc-li-main>span').first().innerText(),'Eggs','the item name shows once');
  assert.equal(await page.locator('#rcCook, [data-rc-cook]').count(),0,'no Cooking view');
- // The banner: the category's two tones, Back and Edit on it, the letter tile overlapping its bottom edge.
- const ban=await page.evaluate(()=>{const b=document.querySelector('.rc-banner'),a=document.querySelector('.rc-avatar'),B=b.getBoundingClientRect(),A=a.getBoundingClientRect();return {bg:getComputedStyle(b).backgroundImage,over:A.top<B.bottom&&A.bottom>B.bottom,pills:b.querySelectorAll('#rcBack,#rcEdit').length,size:Math.round(A.width)};});
- assert.match(ban.bg,/gradient/,'a soft blend');assert.ok(ban.over,'the tile overlaps the banner');assert.equal(ban.pills,2);assert.equal(ban.size,84);
+ // A recipe with no photo has a simple, neutral header and no colored avatar.
+ assert.equal(await page.locator('.rc-banner #rcBack,.rc-banner #rcEdit').count(),2);
+ assert.equal(await page.locator('.rc-banner.has-photo,.rc-avatar,.rc-pic.tinted').count(),0);
+ if(first){
+  await page.evaluate(()=>{
+    const url = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    recipeBook.data.covers[recipeBook.id] = url;
+    recipeBook.photos = {id:recipeBook.id,list:[{id:'first',url},{id:'second',url}]};
+    render();
+  });
+  const hero = page.locator('#rcHeroPhoto');
+  await hero.click();
+  await page.locator('.rc-viewer:not(.out)').waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('.rc-viewer').waitFor({state:'detached'});
+  const photos = page.locator('#rcPhotos [data-rc-photo]');
+  await photos.first().click({button:'right'});
+  await page.locator('.ctx-menu [data-ctx="view"]').click();
+  await page.locator('.rc-viewer:not(.out)').waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('.rc-viewer').waitFor({state:'detached'});
+  await photos.first().dragTo(photos.last());
+  assert.deepEqual(await photos.evaluateAll(xs=>xs.map(x=>x.dataset.rcPhoto)),['first','second']);
+ }
  await shot('detail');
  // See how it adds up: each item's working, the total and the rounding.
  await page.locator('[data-rc-why]').click();await page.locator('.rc-why-sheet .rc-why-card').waitFor();
@@ -147,7 +168,7 @@ try{for(const width of [390,1440])for(const lang of ['en','ku','ar']){
  assert.ok(book.ingredients.some(i=>i.id===egg),'still there');
  await page.locator('.navbtn[data-view="recipes"]').click();await page.waitForTimeout(400);if(await page.locator('#rcBack').count())await page.locator('#rcBack').click();const row=page.locator('[data-rc-open]').first();await row.waitFor();
  assert.match(await page.locator('.rc-group .section-title').first().innerText(),/Cakes/i,'the list is grouped by category');
- assert.equal(await page.locator('[data-rc-open] .rc-pic.tinted').count(),1,'the category colour behind the picture');
+ assert.equal(await page.locator('[data-rc-open] .rc-pic.tinted').count(),0,'categories do not color pictures');
  assert.match(await row.innerText(),/Flour/);await shot('list');
  if(first){await page.evaluate(()=>{state.settings.darkMode='off';applyFeatures();});await shot('list-light');}
  if(width<600){const b=await row.boundingBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();await page.waitForTimeout(700);await page.mouse.up();}

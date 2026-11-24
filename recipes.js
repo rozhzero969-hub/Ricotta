@@ -2,7 +2,7 @@
    Two bottom tabs: Recipes, and Items (the app's views 'recipes' and 'recipeItems'). Ahmad adds each item
    once, linked to a stock item in Ricotta Restaurant; Items shows its last price paid in plain sizes
    (2,250 IQD / kg), A to Z. A recipe is its name, a category from a prepared list (Cakes, Smoothies...:
-   made, renamed and coloured by asking Rico, never typed here), its menu price, its items with amounts,
+   made or renamed by asking Rico, never typed here), its menu price, its items with amounts,
    steps and notes. Recipes are listed by category, A to Z, each on its category's soft colour.
    They look like the rest of the app: grouped white cards, hairline rows, the app's own buttons.
    Its cost works itself out from the last price paid for each stock item (_shared/recipe-cost.js, the
@@ -156,15 +156,9 @@ function recipeLetter(name){ return ([...String(name || '').trim()][0] || '?').t
 /* ---------- Categories: a prepared list (Rico adds, renames and colours them; nobody types one here) ---------- */
 const recipeCats = ()=>[...(recipeBook.data?.categories || [])].sort((a, b)=>a.name.localeCompare(b.name, state.lang));
 const recipeCat = id=>id ? (recipeBook.data?.categories || []).find(c=>c.id === id) || null : null;
-/* A category's soft colour as CSS variables, light and dark (the palette is in _shared/recipe-colors.js). */
-function recipeTint(cat){
-  const c = cat && globalThis.RicottaRecipeColors?.get(cat.color);
-  return c ? ` style="--rc-bg:${c.bg};--rc-bg2:${c.bg2};--rc-bg2d:${c.bg2Dark};--rc-ink:${c.ink};--rc-bgd:${c.bgDark};--rc-inkd:${c.inkDark}"` : '';
-}
-/* The recipe's first photo on its category's colour, or its first letter (gray without a category). */
 function recipePic(r, cls){
-  const cat = recipeCat(r.data?.category), url = recipeBook.data.covers?.[r.id], letter = recipeLetter(r.name);
-  return `<span class="rc-pic ${cls}${cat ? ' tinted' : ''}"${recipeTint(cat)} aria-hidden="true">${url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" draggable="false" data-letter="${esc(letter)}">` : `<b>${esc(letter)}</b>`}</span>`;
+  const url = recipeBook.data.covers?.[r.id], letter = recipeLetter(r.name);
+  return `<span class="rc-pic ${cls}${url ? ' has-image' : ''}" aria-hidden="true">${url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" draggable="false" data-letter="${esc(letter)}">` : `<b>${esc(letter)}</b>`}</span>`;
 }
 /* Out or low in Main Storage, as the app's small status label (the same as on Receipts and Admin). */
 const recipeStockWord = st=>st === 'empty' ? `<span class="st st-bad rc-st">${esc(rt('out'))}</span>` : st === 'low' ? `<span class="st st-wait rc-st">${esc(rt('low'))}</span>` : '';
@@ -404,16 +398,15 @@ function recipePhotosHtml(r, photos){
   if(!photos?.list) return `<p class="rc-quiet">${esc(photos?.failed ? t('loadFailed') : t('loading'))}</p>`;
   if(!photos.list.length) return `<button type="button" class="rc-photo-add-big" data-rc-photo-add>${ICON_CAMERA}<span>${esc(rt('addPhotoBig'))}</span></button>`;
   return `<div class="rc-photos" id="rcPhotos">${photos.list.map((p, i)=>`<button type="button" class="rc-photo" data-rc-photo="${esc(p.id)}" aria-haspopup="menu" aria-label="${esc(rt('photoN')(i + 1))}"><img src="${esc(p.url || '')}" loading="lazy" alt="" draggable="false">${i === 0 ? `<span class="rc-cover">${esc(rt('cover'))}</span>` : ''}</button>`).join('')}
-    ${photos.list.length < 8 ? `<button type="button" class="rc-photo rc-photo-plus" data-rc-photo-add aria-label="${esc(rt('addPhoto'))}">${ICON_PLUS}</button>` : ''}</div>
-    ${photos.list.length > 1 ? `<p class="rc-hint">${esc(rt('photoOrderHint'))}</p>` : ''}`;
+    ${photos.list.length < 8 ? `<button type="button" class="rc-photo rc-photo-plus" data-rc-photo-add aria-label="${esc(rt('addPhoto'))}">${ICON_PLUS}</button>` : ''}</div>`;
 }
 function recipeDetailPage(r){
   const d = r.data, c = recipeCostOf(r), cat = recipeCat(d.category);
   const photos = recipeBook.photos?.id === r.id ? recipeBook.photos : null;
   const steps = (d.steps || []).filter(s=>s.trim());
   return `<div class="rc-page rc-detail">
-    <header class="rc-head">${recipeBanner(r, cat)}${recipePic(r, 'rc-avatar')}<div class="rc-head-text">
-      ${cat ? `<span class="rc-cat"${recipeTint(cat)} dir="auto">${esc(cat.name)}</span>` : ''}<h2 dir="auto">${esc(r.name)}</h2>
+    <header class="rc-head">${recipeBanner(r)}<div class="rc-head-text">
+      ${cat ? `<span class="rc-cat" dir="auto">${esc(cat.name)}</span>` : ''}<h2 dir="auto">${esc(r.name)}</h2>
       ${d.price ? `<p>${esc(rt('onMenuFor')(recipeMoney(d.price)))}</p>` : ''}</div></header>
     ${recipeCostCard(c)}
     <h3 class="section-title">${esc(rt('ingredients'))}</h3>
@@ -429,13 +422,8 @@ function recipeDetailPage(r){
 
 /* ---------- The banner at the top of a recipe's page ----------
    A soft blend of two pastels of one colour: the photo's own background colour when the recipe has a
-   photo (read from the photo's edges once, then kept on this device), else its category's colour (the
-   two tones in _shared/recipe-colors.js). Back and Edit sit on it as small pills. */
+   photo (read from the photo’s edges once and cached locally), or a neutral surface. */
 const recipeBannerVars = (b1, b2, d1, d2)=>`--rb1:${b1};--rb2:${b2};--rb1d:${d1};--rb2d:${d2}`;
-function recipeCatBanner(cat){
-  const C = globalThis.RicottaRecipeColors, c = (cat && C?.get(cat.color)) || C?.get('mist');
-  return c ? recipeBannerVars(c.bg, c.bg2, c.bgDark, c.bg2Dark) : '';
-}
 /* A photo's two tones from its hue and saturation: pastel in light mode, deep and quiet in dark mode. */
 function recipeToneVars([h, s]){
   const sat = Math.round(Math.min(62, Math.max(s, 6))), h2 = Math.round((h + 14) % 360);
@@ -488,9 +476,10 @@ function recipeToneRead(url){
     img.src = url;
   });
 }
-function recipeBanner(r, cat){
-  const url = !cat && recipeBook.data.covers?.[r.id], tone = url && recipeToneCached(url);
-  return `<div class="rc-banner" style="${recipeCatBanner(cat)}">${url ? `<i class="rc-banner-tone${tone ? ' on' : ''}" data-rc-tone="${esc(url)}"${tone ? ` style="${recipeToneVars(tone)}"` : ''} aria-hidden="true"></i>` : ''}
+function recipeBanner(r){
+  const url = recipeBook.data.covers?.[r.id], tone = url && recipeToneCached(url);
+  return `<div class="rc-banner${url ? ' has-photo' : ''}">${url ? `<i class="rc-banner-tone${tone ? ' on' : ''}" data-rc-tone="${esc(url)}"${tone ? ` style="${recipeToneVars(tone)}"` : ''} aria-hidden="true"></i>` : ''}
+    ${url ? `<button type="button" id="rcHeroPhoto" class="rc-hero-photo" aria-label="${esc(rt('viewPhoto'))}"><img src="${esc(url)}" alt="" draggable="false" decoding="async"></button>` : ''}
     <button type="button" class="rc-pill-btn" id="rcBack" aria-label="${esc(rt('backToRecipes'))}">${ICON_BACK}</button>
     <button type="button" class="rc-pill-btn" id="rcEdit">${ICON_EDIT}<span>${esc(rt('edit'))}</span></button></div>`;
 }
@@ -951,7 +940,9 @@ async function recipeUpload(file, id = recipeBook.id){
   }catch{ toast(rt('photoFailed'), 'error'); return false; }
 }
 function recipePhotoView(start){
-  const list = recipeBook.photos?.list || [];
+  const opener = document.activeElement;
+  const cover = recipeBook.data?.covers?.[recipeBook.id];
+  const list = recipeBook.photos?.list?.length ? recipeBook.photos.list : cover ? [{id:"cover",url:cover}] : [];
   if(!list.length) return;
   let i = Math.max(0, list.findIndex(p=>p.id === start));
   const layer = document.createElement('div');
@@ -965,7 +956,7 @@ function recipePhotoView(start){
   };
   const go = d=>{ i = (i + d + list.length) % list.length; paint(); };
   const key = e=>{ if(e.key === 'Escape') close(); else if(e.key === 'ArrowRight') go(isRtl() ? -1 : 1); else if(e.key === 'ArrowLeft') go(isRtl() ? 1 : -1); };
-  function close(){ document.removeEventListener('keydown', key, true); layer.classList.add('out'); setTimeout(()=>layer.remove(), 220); }
+  function close(){ document.removeEventListener('keydown', key, true); layer.classList.add('out'); setTimeout(()=>layer.remove(), 220); if(opener?.isConnected) opener.focus({preventScroll:true}); }
   let sx = 0;
   layer.addEventListener('pointerdown', e=>{ sx = e.clientX; });
   layer.addEventListener('pointerup', e=>{ const dx = e.clientX - sx; if(Math.abs(dx) > 50 && list.length > 1) go((dx < 0 ? 1 : -1) * (isRtl() ? -1 : 1)); });
@@ -973,6 +964,7 @@ function recipePhotoView(start){
   document.addEventListener('keydown', key, true);
   paint();
   document.body.appendChild(layer);
+  layer.querySelector('.rc-viewer-close')?.focus({preventScroll:true});
 }
 async function recipePhotoDelete(id){
   if(offlineBlocked()) return;
@@ -987,75 +979,20 @@ function recipePhotoMenu(el){
   const id = el.dataset.rcPhoto;
   recipeMenu(el, [['view', rt('viewPhoto'), ICON_SEARCH, false, ()=>recipePhotoView(id)], ['delete', t('delete'), ICON_DELETE, true, ()=>recipePhotoDelete(id)]]);
 }
-/* The new order shows at once (the gallery and the list's cover); if the server refuses it, both go
-   back to how they were. */
-async function recipePhotoOrder(ids){
-  if(offlineBlocked()) return false;
-  const p = recipeBook.photos, recipe = recipeBook.id, session = recipeSession(), covers = recipeBook.data?.covers;
-  if(!p?.list) return;
-  const before = p.list.slice();
-  if(before.map(x=>x.id).join() === ids.join()) return;
-  const hadCover = !!covers && Object.hasOwn(covers, recipe), coverBefore = covers?.[recipe];
-  p.list = ids.map(id=>before.find(x=>x.id === id)).filter(Boolean);
-  if(covers && p.list[0]?.url) covers[recipe] = p.list[0].url;
-  recipePhotosRedraw();
-  const r = await api('recipes/' + recipe + '/photos/order', {method:'PUT', body:{ids}});
-  if(r.ok || recipeStale(session)) return;
-  toast(t('saveFailed'), 'error');
-  if(recipeBook.photos === p) p.list = before;
-  if(covers && recipeBook.data?.covers === covers){ if(hadCover) covers[recipe] = coverBefore; else delete covers[recipe]; }
-  if(recipeBook.photos === p && recipeBook.id === recipe && state.view === 'recipes' && recipeBook.page === 'detail' && !recipeBook.editing) recipePhotosRedraw();
-}
-/* One gesture for each photo: a tap (or a hold that doesn't move) opens its menu; a hold that moves
-   drags it. While dragging the page doesn't scroll. */
+/* Photos stay in their saved positions. Tap to view; right-click or hold for options. */
 function recipeBindPhotos(){
-  const box = document.getElementById('rcPhotos');
   document.querySelectorAll('[data-rc-photo-add]').forEach(b=>b.onclick = ()=>document.getElementById('rcPhoto')?.click());
-  if(!box) return;
-  let drag = null;
-  const tiles = ()=>[...box.querySelectorAll('[data-rc-photo]')];
-  box.addEventListener('touchmove', e=>{ if(drag?.lifted) e.preventDefault(); }, {passive:false});
-  box.addEventListener('contextmenu', e=>{ if(e.target.closest('[data-rc-photo]')) e.preventDefault(); });
-  tiles().forEach(el=>{
-    el.onclick = e=>{ e.preventDefault(); };
-    el.addEventListener('keydown', e=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); recipePhotoMenu(el); } });
-    el.addEventListener('pointerdown', e=>{
-      if(e.button > 0) return;
-      drag = {el, x:e.clientX, y:e.clientY, lifted:false, moved:false, id:e.pointerId};
-      drag.timer = setTimeout(()=>{ if(!drag || drag.el !== el) return; drag.lifted = true; el.classList.add('lifted'); haptic('light'); try{ el.setPointerCapture(drag.id); }catch{ /* older browsers */ } }, 320);
-    });
+  document.querySelectorAll('#rcPhotos [data-rc-photo]').forEach(el=>{
+    el.onclick = ()=>recipePhotoView(el.dataset.rcPhoto);
+    recipeHold(el, recipePhotoMenu);
   });
-  const place = e=>{
-    const others = tiles().filter(x=>x !== drag.el);
-    let target = null;
-    for(const o of others){ const r = o.getBoundingClientRect(); if(e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom){ target = o; break; } }
-    if(!target) return;
-    const first = new Map(tiles().map(x=>[x, x.getBoundingClientRect()]));
-    const all = tiles(), from = all.indexOf(drag.el), to = all.indexOf(target);
-    box.insertBefore(drag.el, from < to ? target.nextSibling : target);
-    const home = drag.el.getBoundingClientRect(), was = first.get(drag.el);
-    drag.ox += home.left - was.left; drag.oy += home.top - was.top;
-    tiles().forEach(x=>{ if(x === drag.el) return; const a = first.get(x), b = x.getBoundingClientRect(); if(!a || (a.left === b.left && a.top === b.top)) return;
-      x.animate([{transform:`translate(${a.left - b.left}px,${a.top - b.top}px)`}, {transform:'none'}], {duration:220, easing:'cubic-bezier(.23,1,.32,1)'}); });
-  };
-  box.addEventListener('pointermove', e=>{
-    if(!drag || e.pointerId !== drag.id) return;
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if(!drag.lifted){ if(Math.abs(dx) > 8 || Math.abs(dy) > 8){ clearTimeout(drag.timer); drag = null; } return; }
-    if(!drag.moved){ drag.moved = true; drag.ox = 0; drag.oy = 0; drag.el.classList.add('dragging'); }
-    drag.el.style.transform = `translate(${dx - drag.ox}px,${dy - drag.oy}px) scale(1.06)`;
-    place(e);
-  });
-  const end = e=>{
-    if(!drag || e.pointerId !== drag.id) return;
-    const d = drag; drag = null;
-    clearTimeout(d.timer);
-    d.el.classList.remove('lifted', 'dragging');
-    if(d.moved){ d.el.style.transform = ''; recipePhotoOrder(tiles().map(x=>x.dataset.rcPhoto)); }
-    else if(e.type === 'pointerup') recipePhotoMenu(d.el);
-  };
-  box.addEventListener('pointerup', end);
-  box.addEventListener('pointercancel', end);
+  const hero = document.getElementById('rcHeroPhoto');
+  if(hero){
+    const view = ()=>recipePhotoView();
+    hero.onclick = view;
+    recipeHold(hero, el=>recipeMenu(el,[['view',rt('viewPhoto'),ICON_SEARCH,false,view]]));
+  }
+
 }
 
 window.addEventListener('beforeunload', e=>{ if(recipeBook.dirty){ e.preventDefault(); e.returnValue = ''; } });
@@ -1251,32 +1188,6 @@ function attachRecipeEvents(){
   };
   on('rcAddLine', ()=>recipePickItem(addLine));
 }
-
-/* ---------- Rico's colour card (assistant.js shows it for a 'recipe_colors' card) ----------
-   The ten colours with their names; the one in use is ticked. A tap sets it at once. */
-function recipeColorCard(p){
-  const C = globalThis.RicottaRecipeColors;
-  if(!C || !canOpen('recipes') || !p.categoryId) return '';
-  return `<div class="rico-data rc-colors" data-card="${esc(p.id)}"><div class="rico-data-head"><span class="rico-data-title" dir="auto">${esc(rt('colorFor')(p.category || ''))}</span></div>
-    <div class="rc-swatches" role="radiogroup" aria-label="${esc(rt('colorFor')(p.category || ''))}">${C.PALETTE.map(c=>`<button type="button" class="rc-swatch${c.key === p.color ? ' on' : ''}" role="radio" aria-checked="${c.key === p.color}" data-rc-color="${c.key}" data-rc-catid="${esc(p.categoryId)}" data-rc-card="${esc(p.id)}">
-      <i class="rc-pic tinted" style="--rc-bg:${c.bg};--rc-bg2:${c.bg2};--rc-bg2d:${c.bg2Dark};--rc-ink:${c.ink};--rc-bgd:${c.bgDark};--rc-inkd:${c.inkDark}" aria-hidden="true">${c.key === p.color ? ICON_CHECK : ''}</i><span>${esc(rt('colorName')(c.key))}</span></button>`).join('')}</div></div>`;
-}
-document.addEventListener('click', async e=>{
-  const b = e.target.closest?.('[data-rc-color]');
-  if(!b || b.disabled) return;
-  const key = b.dataset.rcColor, id = b.dataset.rcCatid, card = b.closest('.rc-colors');
-  card?.querySelectorAll('[data-rc-color]').forEach(x=>{ x.disabled = true; });
-  const r = await api('recipe-categories/' + id, {method:'PUT', body:{color:key}});
-  card?.querySelectorAll('[data-rc-color]').forEach(x=>{ x.disabled = false; });
-  if(!r.ok){ toast(r.data?.error === 'not_found' ? rt('catGone') : t('saveFailed'), 'error'); return; }
-  card?.querySelectorAll('[data-rc-color]').forEach(x=>{ const v = x.dataset.rcColor === key; x.classList.toggle('on', v); x.setAttribute('aria-checked', String(v)); x.querySelector('i').innerHTML = v ? ICON_CHECK : ''; });
-  // The card remembers it (it is drawn again from its message), and the recipe book shows it next time.
-  for(const m of (typeof rico !== 'undefined' ? rico.messages : [])) for(const p of m.proposals || []) if(p.id === b.dataset.rcCard) p.color = key;
-  const cat = recipeBook.data?.categories?.find(c=>c.id === id);
-  if(cat) cat.color = key;
-  haptic('light');
-  toast(rt('colorSaved'));
-});
 
 /* ---------- How Recipes work: a short one-time tour for Ahmad ----------
    Shown once after this update on whichever device he opens first: Done, Skip or closing it saves

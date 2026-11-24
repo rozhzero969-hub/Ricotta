@@ -76,7 +76,6 @@ import { adminAi, chatTitle, handleChat, orderSuggestion, whatsappReady } from "
 import { saveMemory, saveRoutine, toRoutine } from "./rico-memory.ts";
 import { cleanRoutine } from "../_shared/routines.ts";
 import { recipesRoute } from "./recipes.ts";
-import { recipeCategoryRoute } from "./recipe-categories.ts";
 import { MINIBAR_MAX, minibarStock, saveMinibar } from "./minibar.ts";
 import { askSync, helperAllowed, helperRoute, receiptsRoute } from "./receipts.ts";
 import { stockView, transfersRoute } from "./transfers.ts";
@@ -1017,11 +1016,7 @@ Deno.serve(async (req) => {
       if (!can(s,"recipes")) return fail("forbidden",403);
       return await recipesRoute({db,json,fail,account:s.account,device:s.deviceId},M,path,b);
     }
-    // A colour tapped on Rico's colour card (recipe-categories.ts); everything else about categories is Rico's tool.
-    if (path.startsWith("recipe-categories/")) {
-      if (!can(s,"recipes")) return fail("forbidden",403);
-      return await recipeCategoryRoute({db,json,fail,account:s.account,device:s.deviceId},M,path,b);
-    }
+    if (path.startsWith("recipe-categories/")) return fail("not_found",404);
     // Ahmad's Stock tab (minibar.ts): the items Rozh picked for him, with what is in Main Storage.
     if (path === "minibar") {
       if (M === "GET") {

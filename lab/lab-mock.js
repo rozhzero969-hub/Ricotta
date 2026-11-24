@@ -186,7 +186,7 @@
       ['00000000-0000-4000-8000-00000000a003', 'Olive oil', 'Olive Oil - زەیتی زەیتوون', 'ml', 'Dry goods'], ['00000000-0000-4000-8000-00000000a004', 'Tomato', 'Tomato - تەماتە', 'g', 'Vegetables'],
       ['00000000-0000-4000-8000-00000000a005', 'Banana', 'Banana - مۆز', 'g', 'Fruit'], ['00000000-0000-4000-8000-00000000a006', 'Lemon', 'Lemon - لیمۆ', 'g', 'Fruit']].map(([id, name, stock_item, unit, category])=>({id, name, stock_item, unit, category, version:1}));
     const at = new Date(Date.now() - 86400000).toISOString();
-    // Categories with their soft colours (the palette in _shared/recipe-colors.js); Rico adds more.
+    // Recipe categories; Rico can add more.
     const categories = [['00000000-0000-4000-8000-00000000d001', 'Pizza', 'peach'], ['00000000-0000-4000-8000-00000000d002', 'Drinks', 'sky'], ['00000000-0000-4000-8000-00000000d003', 'Breakfast', 'butter']]
       .map(([id, name, color], i)=>({id, name, color, sort:i + 1}));
     const catId = n=>categories.find(c=>c.name === n)?.id || '';
@@ -329,18 +329,15 @@
     } else if(/calculate|margin|profit|\d\s*[x×*]\s*\d|حیساب|قازانج|احسب|ربح/.test(q)){
       say('calm', 'A smoothie that costs 1,750 IQD to make and sells for 5,000 IQD makes **3,250 IQD**, a 65% margin ((5,000 - 1,750) / 5,000).', 'سموزییەک کە تێچوونی 1,750 دینارە و بە 5,000 دینار دەفرۆشرێت، **3,250 دینار** قازانج دەکات، واتە 65% ((5,000 - 1,750) / 5,000).', 'سموذي تكلفته 1,750 دينار ويُباع بـ5,000 دينار يربح **3,250 دينار**، أي هامش 65% ((5,000 - 1,750) / 5,000).');
     } else if(catAsk){
-      const R = labRecipes(), C = globalThis.RicottaRecipeColors, raw = String(last?.text || last?.content || '');
+      const R = labRecipes(), raw = String(last?.text || last?.content || '');
       const named = raw.match(/(?:called|named|بە ناوی|اسمها)\s+(.+?)[.?!؟]*\s*$/i)?.[1]?.trim();
       if(named && /add|زیاد|أضف/.test(q)){
         const had = R.categories.find(c=>c.name.toLowerCase() === named.toLowerCase());
-        if(!had){ R.categories.push({id:crypto.randomUUID(), name:named.slice(0, 60), color:C.next(R.categories.map(c=>c.color)), sort:R.categories.length + 1}); save(); }
+        if(!had){ R.categories.push({id:crypto.randomUUID(), name:named.slice(0, 60), sort:R.categories.length + 1}); save(); }
         say('calm', had ? `"${named}" is already a category.` : `Done. "${named}" is in the category list now.`, had ? `«${named}» پێشتر هەیە.` : `تەواو. «${named}» ئێستا لە لیستی جۆرەکاندایە.`, had ? `«${named}» موجودة مسبقًا.` : `تم. «${named}» الآن في قائمة الفئات.`);
       } else {
-        const c = R.categories.find(x=>q.includes(x.name.toLowerCase())) || R.categories[0];
-        if(c){
-          say('calm', `Here are the colours for ${c.name}. Tap one to use it.`, `ئەمە ڕەنگەکانی ${c.name}ن. دەست لە یەکێکیان بدە.`, `هذه ألوان ${c.name}. اضغط على لون لاستخدامه.`);
-          events.push({type:'proposal', proposal:{id:pid('rc'), kind:'recipe_colors', categoryId:c.id, category:c.name, color:c.color}});
-        } else say('calm', 'There are no categories yet. Tell me the name of one to add.', 'هێشتا هیچ جۆرێک نییە. ناوی یەکێکم پێ بڵێ بۆ زیادکردن.', 'لا توجد فئات بعد. أخبرني باسم فئة لإضافتها.');
+        const names = R.categories.map(c=>c.name).join(', ');
+        say('calm', names || 'There are no categories yet.', names || 'هێشتا هیچ جۆرێک نییە.', names || 'لا توجد فئات بعد.');
       }
     } else if(findsPlace){
       const M = globalThis.RicottaAppMap, found = M ? M.find(q, {account, roles:rolesOf(account)}, 3) : [];
@@ -525,14 +522,6 @@
     }
     // Recipes (Ahmad and Rozh): the book with Manage's units, the stock items and practice last prices,
     // so costs work out the same way as on the server (supabase/functions/api/recipes.ts).
-    // A colour tapped on Rico's colour card (recipe-categories.ts).
-    if(path.startsWith('recipe-categories/')){
-      if(account === 'yunis') return fail('forbidden', 403);
-      const R = labRecipes(), c = R.categories.find(x=>x.id === path.split('/')[1]);
-      if(method !== 'PUT' || !c) return fail('not_found', 404);
-      if(!globalThis.RicottaRecipeColors.KEYS.includes(body.color)) return fail('invalid_input');
-      c.color = body.color; save(); return json(c);
-    }
     if(path === 'recipes' || path.startsWith('recipes/') || path.startsWith('recipe-ingredients/')){
       if(account === 'yunis') return fail('forbidden', 403);
       const R = labRecipes(), RC = globalThis.RicottaRecipeCost;
