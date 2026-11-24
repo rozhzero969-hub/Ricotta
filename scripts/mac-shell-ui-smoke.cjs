@@ -6,7 +6,7 @@ const {chromium}=require('playwright'),http=require('node:http'),fs=require('nod
 const root=process.env.UI_SITE_DIR?path.resolve(process.env.UI_SITE_DIR):path.resolve(__dirname,'..');
 const server=http.createServer((req,res)=>{const pathname=new URL(req.url,'http://localhost').pathname;const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(root+path.sep)){res.writeHead(403);return res.end();}fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);return res.end();}res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.woff2':'font/woff2','.png':'image/png','.svg':'image/svg+xml','.webp':'image/webp','.json':'application/json'})[path.extname(file)]||'application/octet-stream');res.end(data);});});
 const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','assistant','suppliers','itemsAdmin','units','record','admin','settings'],
- suppliers:[{id:'d',name:'Dairy',phone:''}],units:[{id:'kg',en:'kg'}],items:[{id:'milk',name:'Milk',unit:'kg',supplierId:'d'}],pins:[],history:[],devices:[],activity:[],inbox:[]};
+ suppliers:[{id:'d',name:'Dairy',phone:''}],units:[{id:'kg',en:'kg'}],items:[{id:'milk',name:'Milk',unit:'kg',supplierId:'d'}],pins:[],history:[{id:'report-fixture',date:new Date().toISOString(),entries:[{supplierId:'d',items:[{name:'Milk',qty:3,unit:'kg'},{name:'Yogurt',qty:2,unit:'kg'}]}]}],devices:[],activity:[],inbox:[]};
 (async()=>{await new Promise(r=>server.listen(0,'127.0.0.1',r));const browser=await chromium.launch({headless:true});const url='http://127.0.0.1:'+server.address().port;try{
  async function open(flags, options = {}){
   const ctx=await browser.newContext({viewport:{width:1280,height:800},serviceWorkers:'block',...options});
@@ -55,7 +55,10 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   await page.keyboard.press('Escape');
   await page.locator('.mac-picker-sheet').waitFor({state:'detached'});
   const report = await page.evaluate(()=>window.__posted.find(x=>x?.kind==='monthly-report').report);
-  assert.equal(report.orders,0);
+  assert.equal(report.orders,1);
+  assert.equal(report.lines,2);
+  assert.equal(report.days,1);
+  assert.equal(report.daily[report.elapsed - 1],1);
   assert.equal(report.streak,12);
   await page.evaluate(()=>window.dispatchEvent(new CustomEvent('ricotta-mac',{detail:'widget:report'})));
   await page.locator('.report-sheet').waitFor();
