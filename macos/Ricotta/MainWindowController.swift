@@ -1,6 +1,7 @@
 import AppKit
 import WebKit
 import UserNotifications
+import LocalAuthentication
 
 /// Fixed words the app sends to the page (as a `ricotta-mac` event; app.js listens only inside the Mac app).
 enum PageCommand: String {
@@ -19,6 +20,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
     private let offline = OfflineView()
     private var isLoading = false
     private var pendingWidget: String?
+    private(set) var startupLocked = Preferences.useTouchID
+    private var clearSavedSessionForPIN = false
+    private var biometricContext: LAContext?
     private var notificationInFlight = Set<String>()
     private var loadGeneration = 0
     private var downloadFiles: [ObjectIdentifier: URL] = [:]
@@ -51,7 +55,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
         window.setFrameAutosaveName("RicottaMainWindow")
         if !window.setFrameUsingName("RicottaMainWindow") { window.center() }
         buildContent()
-        loadHome()
+        if startupLocked {
+            startLoading()
+            DispatchQueue.main.async { [weak self] in self?.unlockSavedSession() }
+        } else { loadHome() }
     }
     required init?(coder: NSCoder) { fatalError("Use init()") }
 
@@ -102,8 +109,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
     private func installFlags(_ controller: WKUserContentController) {
         controller.removeAllUserScripts()
         // Only known names reach the page (Preferences reads anything else as the default).
-        let source = "window.RICOTTA_NATIVE_SHELL = true; window.RICOTTA_MAC_SHELL = true; window.RICOTTA_SEE_THROUGH = \(Preferences.seeThrough ? "true" : "false"); " +
+        var source = "window.RICOTTA_NATIVE_SHELL = true; window.RICOTTA_MAC_SHELL = true; window.RICOTTA_SEE_THROUGH = \(Preferences.seeThrough ? "true" : "false"); " +
             "window.RICOTTA_APP_ICON = '\(Preferences.appIcon)'; window.RICOTTA_THEME = '\(Preferences.theme)';"
+        if clearSavedSessionForPIN,
+           let origin = URLComponents(url: RicottaNavigation.home, resolvingAgainstBaseURL: false),
+           let scheme = origin.scheme, let host = origin.host {
+            let port = origin.port.map { ":\($0)" } ?? ""
+            let values = ["\(scheme)://\(host)\(port)"]
+            if let data = try? JSONEncoder().encode(values), let expected = String(data: data, encoding: .utf8) {
+                source += "if (\(expected).includes(location.origin)) { localStorage.removeItem('ricottaOrders:apiSession'); }"
+            }
+        }
         controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
 
@@ -133,8 +149,69 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
         send(Preferences.seeThrough ? .seeThroughOn : .seeThroughOff)
     }
 
+    /// Touch ID unlocks this copy of Ricotta. The server still verifies the saved session and may ask for a PIN.
+    func toggleTouchID() {
+        guard !startupLocked, biometricContext == nil else { return }
+        if Preferences.useTouchID { Preferences.useTouchID = false; return }
+        authenticateBiometrics(reason: String(localized: "Turn on Touch ID for Ricotta.")) { [weak self] allowed in
+            guard let self else { return }
+            if allowed { Preferences.useTouchID = true }
+            else if let window = self.window {
+                let alert = NSAlert()
+                alert.messageText = String(localized: "Touch ID wasn’t enabled")
+                alert.informativeText = String(localized: "Set up Touch ID in System Settings, then try again from Ricotta’s menu.")
+                alert.beginSheetModal(for: window)
+            }
+        }
+    }
+
+    private func authenticateBiometrics(reason: String, completion: @escaping (Bool) -> Void) {
+        guard biometricContext == nil else { return }
+        let context = LAContext()
+        context.localizedFallbackTitle = ""
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil),
+              context.biometryType == .touchID else { completion(false); return }
+        biometricContext = context
+        context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { [weak self] passed, _ in
+            DispatchQueue.main.async {
+                guard let self, self.biometricContext === context else { return }
+                self.biometricContext = nil
+                completion(passed)
+            }
+        }
+    }
+
+    private func unlockSavedSession() {
+        guard startupLocked, biometricContext == nil else { return }
+        authenticateBiometrics(reason: String(localized: "Unlock your saved Ricotta session.")) { [weak self] allowed in
+            guard let self, self.startupLocked else { return }
+            if allowed {
+                self.startupLocked = false
+                self.loadHome()
+                return
+            }
+            guard let window = self.window else { return }
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Unlock Ricotta")
+            alert.informativeText = String(localized: "Try Touch ID again or sign in with your Ricotta PIN.")
+            alert.addButton(withTitle: String(localized: "Use PIN"))
+            alert.addButton(withTitle: String(localized: "Try Touch ID Again"))
+            alert.beginSheetModal(for: window) { [weak self] response in
+                guard let self else { return }
+                if response == .alertSecondButtonReturn { self.unlockSavedSession(); return }
+                guard response == .alertFirstButtonReturn else { return }
+                // Fallback loads the web sign-in, never the saved bearer session.
+                self.clearSavedSessionForPIN = true
+                self.installFlags(self.webView.configuration.userContentController)
+                self.startupLocked = false
+                self.loadHome()
+            }
+        }
+    }
+
     // MARK: Loading
     private func loadHome() {
+        guard !startupLocked else { return }
         startLoading()
         webView.load(URLRequest(url: RicottaNavigation.home, cachePolicy: .reloadRevalidatingCacheData, timeoutInterval: 30))
     }
@@ -252,6 +329,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, WKNaviga
             }
         case "page-splash": setLook(nil)
         case "page-dark", "page-light":
+            if clearSavedSessionForPIN {
+                clearSavedSessionForPIN = false
+                installFlags(webView.configuration.userContentController)
+            }
             setLook(NSAppearance(named: word == "page-dark" ? .darkAqua : .aqua))
             UNUserNotificationCenter.current().delegate = self
             if let view = pendingWidget { pendingWidget = nil; dispatch("widget:" + view) }

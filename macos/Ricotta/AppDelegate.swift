@@ -56,7 +56,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         controller?.setTheme(name)
     }
 
+    @objc func toggleTouchID(_ sender: Any?) { controller?.toggleTouchID() }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleTouchID(_:)) {
+            menuItem.state = Preferences.useTouchID ? .on : .off
+            return controller?.startupLocked == false
+        }
         if menuItem.action == #selector(toggleSeeThrough(_:)) { menuItem.state = Preferences.seeThrough ? .on : .off }
         if menuItem.action == #selector(chooseAppIcon(_:)) { menuItem.state = menuItem.representedObject as? String == Preferences.appIcon ? .on : .off }
         if menuItem.action == #selector(chooseTheme(_:)) { menuItem.state = menuItem.representedObject as? String == Preferences.theme ? .on : .off }
@@ -85,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         _ = add(app, String(localized: "About Ricotta"), #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
         app.addItem(.separator())
         _ = add(app, String(localized: "Settings…"), #selector(openSettings(_:)), ",", target: self)
+        _ = add(app, String(localized: "Unlock with Touch ID"), #selector(toggleTouchID(_:)), target: self)
         app.addItem(.separator())
         let services = add(app, String(localized: "Services"), nil)
         services.submenu = NSMenu()
@@ -158,6 +165,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
 /// The app's own choices, kept in UserDefaults.
 enum Preferences {
+    static var useTouchID: Bool {
+        get { UserDefaults.standard.bool(forKey: "UnlockWithTouchID") }
+        set { UserDefaults.standard.set(newValue, forKey: "UnlockWithTouchID") }
+    }
     static let seeThroughKey = "AlwaysSeeThrough"
     static let zoomKey = "PageZoom"
     /// On: the page background and sidebar stay see-through. Off (the default): see-through only while loading.

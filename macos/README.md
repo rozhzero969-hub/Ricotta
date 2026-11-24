@@ -42,6 +42,7 @@ if there is no Open button: try to open it once, then go to **System Settings > 
 - **Theme**: Ricotta, Shayda Cosmetic, or Shayda Beauty. These choices stay on the Mac. Each has a native loading animation that respects Reduce Motion. The browser and phone always use the standard Ricotta appearance.
 - **App icon**: the default Ricotta icon or one of nine supplied choices grouped into Cosmetic, Beauty, and Ricotta. The choice affects the running app’s Dock icon.
 - **Desktop widget**: choose **Ricotta shortcuts** in the macOS widget gallery. The small widget opens Orders; the medium widget links to Orders, Recipes, and Rico. The shortcuts still require the app’s normal sign-in and permissions.
+- **Touch ID**: after signing in with your PIN, enable **Ricotta → Unlock with Touch ID**. On launch the app checks your fingerprint through macOS before opening the site. **Use PIN** clears this Mac app’s saved session before opening the sign-in page. Ricotta never stores the PIN or fingerprint, and Touch ID does not extend the server session.
 - **Rico notifications**: open **Rico → Scheduled → Turn on notifications** and allow alerts in macOS. The custom chime and banners work while Ricotta is running and signed in, including when its window is closed. When Ricotta is quit, use a device with web push enabled. macOS Focus and notification preferences still apply.
 
 - **Notifications.** Web push does not work inside a WKWebView app on macOS (`PushManager` is not available to the
