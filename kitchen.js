@@ -186,19 +186,40 @@ function daysLeftInMonth(){
   const last = new Date(Date.UTC(p[0], p[1], 0)).getUTCDate();
   return {day:p[2], last, left:last - p[2]};
 }
+function monthReportSummary(history = state.history){
+  const month = erbilDate(new Date().toISOString()).slice(0, 7);
+  const {day, last} = daysLeftInMonth();
+  const daily = Array(last).fill(0);
+  const orders = history.filter(order=>erbilDate(order.date).slice(0, 7) === month);
+  let lines = 0;
+  orders.forEach(order=>{
+    daily[Number(erbilDate(order.date).slice(8)) - 1]++;
+    for(const entry of order.entries || []) lines += (entry.items || []).length;
+  });
+  const days = daily.filter(n=>n > 0).length, ratio = days / day;
+  const grade = !orders.length ? '·' : ratio >= .95 ? 'A+' : ratio >= .85 ? 'A' : ratio >= .7 ? 'B' : ratio >= .5 ? 'C' : 'D';
+  return {month, orders:orders.length, days, elapsed:day, lines, grade, daily};
+}
+function postMacReport(report){
+  if(!macShell()) return;
+  try{ window.webkit?.messageHandlers?.ricotta?.postMessage({kind:'monthly-report', report}); }catch{}
+}
+function syncMacReport(history){
+  if(!macShell()) return;
+  if(!state.account || !canOpen('history')){ postMacReport(null); return; }
+  if(!Array.isArray(history)) return;
+  postMacReport({...monthReportSummary(history), streak:streakNow().count});
+}
 function reportData(){
   const orders = thisMonthOrders();
-  const days = new Set(orders.map(h=>erbilDate(h.date)));
-  const {day} = daysLeftInMonth();
+  const summary = monthReportSummary();
   const tally = itemTally();
   const sup = new Map();
   monthLines().forEach(l=>{ const k = l.supplierId || l.supplierName || ''; const x = sup.get(k) || {name:l.supplierId ? supplierName(l.supplierId) : (l.supplierName || t('noSupplier')), n:0}; x.n++; sup.set(k, x); });
   const who = {rozha:0, yunis:0};
   orders.forEach(h=>{ if(h.by in who) who[h.by]++; });
-  const ratio = day ? days.size / day : 0;
-  const grade = !orders.length ? '·' : ratio >= .95 ? 'A+' : ratio >= .85 ? 'A' : ratio >= .7 ? 'B' : ratio >= .5 ? 'C' : 'D';
-  return {orders:orders.length, days:days.size, elapsed:day, lines:monthLines().length, top:tally.slice(0, 5),
-    suppliers:[...sup.values()].sort((a, b)=>b.n - a.n).slice(0, 4), who, grade, busiest:busiestWeekday()};
+  return {...summary, top:tally.slice(0, 5),
+    suppliers:[...sup.values()].sort((a, b)=>b.n - a.n).slice(0, 4), who, busiest:busiestWeekday()};
 }
 function renderReportCard(){
   if(!thisMonthOrders().length) return '';
