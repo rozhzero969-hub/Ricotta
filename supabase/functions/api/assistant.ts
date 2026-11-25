@@ -141,33 +141,47 @@ async function loadWorld(db: any, s: Session) {
     if (result.error) throw new Error("kitchen_data_unavailable");
   }
   // Items linked to a stock item (Manage): how much of it is in Main Storage, from the stock Rico last read.
-  const linked = (items.data ?? []).filter((i: any) => i.stock_item);
-  const stockOf = new Map<string, any>();
-  if (linked.length) {
-    const { data: cat } = await withTimeout<any>(app("rr_catalog").select("data,updated_at").eq("id", true).maybeSingle(), DB_TIMEOUT_MS, "stock");
-    const byName = new Map(((cat?.data?.titems ?? []) as any[]).map((t: any) => [t.name, t]));
-    const L = (globalThis as any).RicottaStockLink;
-    for (const i of linked) {
-      // Several linked stock items: added together (stock-link.js combine()), with each part for Rico to list.
-      const names: string[] = L.linksOf(i), found = names.map((n) => byName.get(n)).filter(Boolean);
-      const read_at = cat?.updated_at ?? null;
-      if (!found.length) stockOf.set(i.id, { stock_item: i.stock_item, missing: true });
-      else if (names.length === 1) stockOf.set(i.id, { stock_item: i.stock_item, ...L.amount(found[0]), read_at });
-      else { const c = L.combine(found); stockOf.set(i.id, { stock_items: names, kinds: c.kinds, parts: c.parts, empty: c.empty, read_at }); }
-    }
-  }
   const orderRows = (orders.data ?? []).reverse();
-  const lines: any[] = [];
-  for (let i = 0; i < orderRows.length; i += 60) {
-    const ids = orderRows.slice(i, i + 60).map((o: any) => o.id);
+  const readLinkedStock = async () => {
+    const linked = (items.data ?? []).filter((i: any) => i.stock_item);
+    const stockOf = new Map<string, any>();
+    if (linked.length) {
+      const { data: cat } = await withTimeout<any>(app("rr_catalog").select("data,updated_at").eq("id", true).maybeSingle(), DB_TIMEOUT_MS, "stock");
+      const byName = new Map(((cat?.data?.titems ?? []) as any[]).map((t: any) => [t.name, t]));
+      const L = (globalThis as any).RicottaStockLink;
+      for (const i of linked) {
+        // Several linked stock items: added together (stock-link.js combine()), with each part for Rico to list.
+        const names: string[] = L.linksOf(i), found = names.map((n) => byName.get(n)).filter(Boolean);
+        const read_at = cat?.updated_at ?? null;
+        if (!found.length) stockOf.set(i.id, { stock_item: i.stock_item, missing: true });
+        else if (names.length === 1) stockOf.set(i.id, { stock_item: i.stock_item, ...L.amount(found[0]), read_at });
+        else { const c = L.combine(found); stockOf.set(i.id, { stock_items: names, kinds: c.kinds, parts: c.parts, empty: c.empty, read_at }); }
+      }
+    }
+    return stockOf;
+  };
+  const loadOrderLines = async (batch: any[]) => {
+    const ids = batch.map(o => o.id);
+    const lines: any[] = [];
     for (let from = 0; ; from += 1000) {
       const { data, error } = await withTimeout<any>(app("order_lines").select("order_id,supplier_id,supplier_name,item_id,item_name,unit_id,qty")
         .in("order_id", ids).order("id").range(from, from + 999), DB_TIMEOUT_MS, "order_lines");
       if (error) throw new Error("order_history_unavailable");
       lines.push(...(data ?? []));
-      if (!data || data.length < 1000) break;
+      if (!data || data.length < 1000) return lines;
     }
-  }
+  };
+  const readHistoryLines = async () => {
+    const lines: any[] = [];
+    // Two bounded reads at once. Preserve batch order and pagination for large histories.
+    for (let i = 0; i < orderRows.length; i += 120) {
+      const batches = [orderRows.slice(i, i + 60), orderRows.slice(i + 60, i + 120)];
+      const results = await Promise.all(batches.filter(batch => batch.length).map(loadOrderLines));
+      for (const batch of results) lines.push(...batch);
+    }
+    return lines;
+  };
+  const [stockOf, lines] = await Promise.all([readLinkedStock(), readHistoryLines()]);
   const supplierById = new Map<string, any>((sup.data ?? []).map((x: any) => [x.id, x]));
   const byOrder = new Map<string, any[]>();
   for (const l of lines) (byOrder.get(l.order_id) ?? byOrder.set(l.order_id, []).get(l.order_id)!).push(l);
@@ -1011,6 +1025,7 @@ WHAT YOU CAN DO NOW (never say you can't do one of these; only what CONTEXT says
 - Items and suppliers: find them, add or edit them, aliases (cards).
 - Notifications to the team (a card). Files: Excel, PDF and photo files of a day, receipts or transfers.
 - Stock in each storage, what is low, prices and price changes, spending, transfers summaries, transfer drafts, and what needs the person (stopped or waiting receipts and transfers).
+- For facts about the restaurant, use the narrowest relevant tool first. State the answer with exact item names, units and storage, and the stock read time when the tool provides it. If the inputs could match more than one item or storage, name the options and ask which one. After taking an action, say whether it was drafted, queued, or completed using the tool's actual result. Never say it was sent or moved if it is waiting for review.
 - Scheduling in chat: for an explicit request to create a task, use schedule_task. Ask for missing timing or AM/PM instead of guessing. Confirm only after the tool says saved. General prompts are delivered at the requested time with Ask now; never claim those prompts execute unattended. Never schedule transfers, purchases, WhatsApp messages, payments, or account changes for automatic execution. Use change_scheduled_task when the person asks to edit, pause or resume an existing task in chat. Scheduled also lets them edit, pause or delete tasks. Use save_rule only for lasting preferences, not dates or times.
 - Show where anything is in the app (a tab, a page, a setting or a thing to do), with a button that opens it (find_in_app, then open_screen with place).
 - Exact sums (calculate), two periods compared with Excel and PDF (compare_periods), one item's ordering pace, stock, last price and how much would last N days (item_overview), a supplier's Call and WhatsApp card (contact_supplier), and reading a photo the person attaches (a price list, a receipt, a delivery note, a shelf).
@@ -1191,16 +1206,16 @@ async function* readSSE(res: Response) {
 
 /* With forChat, an AI switched off in Admin > Rico is left out, as if it had no key. */
 export async function config(db: any, forChat = false) {
-  const { data, error } = await withTimeout<any>(db.from("app_secrets").select("key,value")
-    .in("key", ["gemini_api_key", "groq_api_key", "anthropic_api_key"]), DB_TIMEOUT_MS, "assistant_config");
-  if (error) throw new Error("assistant_config_unavailable");
-  const saved = Object.fromEntries((data ?? []).map((r: any) => [r.key, r.value]));
-  const off = new Set<string>();
-  if (forChat) {
-    const { data: switches, error: switchError } = await withTimeout<any>(db.from("app_ai_switches").select("provider,enabled"), DB_TIMEOUT_MS, "ai_switches");
-    if (switchError) throw new Error("assistant_config_unavailable");
-    for (const sw of switches ?? []) if (sw.enabled === false) off.add(sw.provider);
-  }
+  const [secrets, switches] = await Promise.all([
+    withTimeout<any>(db.from("app_secrets").select("key,value")
+      .in("key", ["gemini_api_key", "groq_api_key", "anthropic_api_key"]), DB_TIMEOUT_MS, "assistant_config"),
+    forChat
+      ? withTimeout<any>(db.from("app_ai_switches").select("provider,enabled"), DB_TIMEOUT_MS, "ai_switches")
+      : Promise.resolve({ data: [] }),
+  ]);
+  if (secrets.error || switches.error) throw new Error("assistant_config_unavailable");
+  const saved = Object.fromEntries((secrets.data ?? []).map((r: any) => [r.key, r.value]));
+  const off = new Set<string>((switches.data ?? []).filter((sw: any) => sw.enabled === false).map((sw: any) => sw.provider));
   const geminiSecret = Deno.env.get("GEMINI_API_KEY") ?? "";
   const groqSecret = Deno.env.get("GROQ_API_KEY") ?? "";
   const geminiKey = off.has("gemini") ? "" : geminiSecret || saved.gemini_api_key || "";

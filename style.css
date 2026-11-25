@@ -3764,3 +3764,41 @@ html.mac-shell.see-through #app .data-table-scroll{border-radius:var(--r-card)}
 .rico-response-actions button:hover,.rico-response-actions button:focus-visible{background:var(--fill);color:var(--ink)}
 .mac-theme-preview .rico-response-actions{display:none}
 @media(min-width:721px){.mac-picker-sheet .sel-grab{display:none}}
+
+/* Smart Transfer commands use the same indigo as reserved draft stock. */
+.tf-command-choice,.tf-command-help dt{color:#5856d6;font-weight:650}
+#tfSmartMatches .tf-command-choice[aria-selected=true],#tfSmartMatches .tf-command-choice:hover{
+  color:#5856d6;background:#5856d619}
+html.dark .tf-command-choice,html.dark .tf-command-help dt,
+html.dark #tfSmartMatches .tf-command-choice[aria-selected=true],html.dark #tfSmartMatches .tf-command-choice:hover{
+  color:#a5a3ff}
+.tf-command-choice>small{color:var(--ink-soft);font-weight:400}
+.tf-command-help dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:9px 14px;margin:0;padding:8px}
+.tf-command-help dd{margin:0;color:var(--ink-soft)}
+.tf-command-results .sheet-row{justify-content:space-between;gap:10px}
+.tf-command-results small{color:var(--ink-soft);flex-shrink:0}
+.mac-picker-trigger{padding-inline:0}
+.mac-picker-trigger .set-head{gap:var(--settings-icon-gap,12px)}
+.mac-picker-trigger [data-mac-current=theme]{color:var(--ink-soft);font-weight:400}
+.mac-theme-preview .demo-label{border-bottom:0;border-radius:12px 12px 0 0}
+.mac-theme-preview .demo-frame{border-color:transparent}
+
+.tf-route-locked{min-height:46px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 5px 3px 12px;border-radius:12px;background:var(--fill);border:1px solid var(--line)}
+.tf-route-locked .btn{min-height:34px;padding:0 10px;font-size:.82rem}
+.rico-jump-latest{position:absolute;inset-inline-start:50%;bottom:calc(100% + 8px);translate:-50% 0;width:38px;height:38px;border:1px solid var(--line-strong);border-radius:50%;background:var(--surface);color:var(--ink);font-size:1.15rem;box-shadow:0 3px 12px #0002;cursor:pointer}
+html.rtl .rico-jump-latest{translate:50% 0}
+.rico-jump-latest[hidden]{display:none}
+.rico-composer{position:relative}
+@media(min-width:960px){
+  .rico-composer{position:sticky}
+  html.rico-mode .rico-intro>.rico-chips{display:grid;width:min(100%,640px);grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  html.rico-mode .rico-chip{border-radius:14px;justify-content:flex-start;min-height:46px;text-align:start}
+}
+@media(max-width:959px){
+  .rico-intro>.rico-chips{display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch}
+  .rico-intro .rico-chip{border-radius:14px;text-align:start;width:100%;padding:9px 13px;min-height:44px}
+  .rico-hello .rico-bot{display:inline-grid;--size:33px;margin-bottom:5px}
+}
+.tf-command-guide{appearance:none;border:0;background:none;color:#5856d6;font:inherit;font-weight:650;cursor:pointer}
+.tf-command-token{justify-self:start;padding:3px 7px;border-radius:7px;background:#5856d619;color:#5856d6;font-size:.78rem;font-weight:650}
+html.dark :is(.tf-command-guide,.tf-command-token){color:#a5a3ff}

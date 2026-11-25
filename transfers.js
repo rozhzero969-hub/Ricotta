@@ -219,17 +219,26 @@ function tfDropBlankForm(keep){
 function tfNextDraft(r){
   const zones = TF().zonesOf(tf.data.catalog).filter(z=>z !== 'Main Storage');
   const index = zones.indexOf(r.to);
-  tfNewDraft(null, true, tf.smartMode ? {to:index >= 0 ? zones[index + 1] : '', yesterday:r.yesterday} : null);
+  const to = index >= 0 ? zones[index + 1] : '';
+  const existing = to && tf.smartMode && tf.data.transfers.find(x=>x.id !== r.id && x.by === state.account &&
+    x.status === 'draft' && !x.pendingSend && x.from === r.from && x.to === to && x.yesterday === r.yesterday && x.lines.some(line=>line.item));
+  if(existing){ existing.smartRouteLocked = true; tfOpen(existing.id); document.getElementById('tfSmartEntry')?.focus(); return; }
+  tfNewDraft(null, true, tf.smartMode ? {to, yesterday:r.yesterday} : null);
+}
+function tfDraftRecord(from, to, yesterday, lines, dayPickedOn){
+  return {id:crypto.randomUUID(), by:state.account, source:'app', status:'draft', from, to, yesterday,
+    dayPickedOn, lines, warnings:[], log:[], photos:[], version:0, createdAt:new Date().toISOString()};
 }
 function tfNewDraft(copyOf, draw = true, next = null){
   if(!tf.data?.catalog?.titems?.length){ if(draw) toast(t('tfNoStock'), 'error'); return; }
   tfDropBlankForm();
   const zones = TF().zonesOf(tf.data.catalog), src = copyOf || {};
   const from = src.from || (zones.includes('Main Storage') ? 'Main Storage' : '');
-  const r = {id:crypto.randomUUID(), by:state.account, source:'app', status:'draft', from, to:src.to || next?.to || '', yesterday:!!next?.yesterday,
-    dayPickedOn:next?.yesterday ? tfToday() : null, nextDefaults:!!next,
-    lines:(src.lines || []).map(l=>({...l})), warnings:[], log:[], photos:[], version:0, createdAt:new Date().toISOString()};
-  if(!r.lines.length) r.lines.push({item:'', unit:'', qty:null});
+  const lines = (src.lines || []).map(l=>({...l}));
+  if(!lines.length) lines.push({item:'', unit:'', qty:null});
+  const r = tfDraftRecord(from, src.to || next?.to || '', !!next?.yesterday, lines, next?.yesterday ? tfToday() : null);
+  r.nextDefaults = !!next;
+  r.smartRouteLocked = !!next?.to && tf.smartMode;
   tf.data.transfers.unshift(r);
   tf.id = tf.formId = r.id; tf.page = 'edit'; tf.fresh = true;
   if(draw){ render(); scrollBox().scrollTo({top:0}); if(next?.to) document.getElementById('tfSmartEntry')?.focus({preventScroll:true}); }
@@ -243,11 +252,29 @@ function tfNeedByItem(r){
 }
 /* Exact names win. A unique whole-word abbreviation can be added directly;
    fuzzy or ambiguous matches always require an explicit choice. */
-function tfSmartMatch(text, items, linked, selectedUnit, picked, available){
+function tfSmartExactLine(item, base, candidates = TF().unitOptions(item)){
+  for(const option of candidates){
+    if(option.unclear) continue;
+    const qty = Number((base / option.factor).toFixed(3));
+    if(qty > 0 && qty <= 999999 && Math.abs(qty * option.factor - base) <= 1e-9){
+      return {item, line:{item:item.name, qty, unit:option.name}, factor:option.factor};
+    }
+  }
+  return {error:'tfSmartAllPrecision', item};
+}
+function tfSmartStockCommand(text){
+  const m = text.trim().match(/^(.+?)\s+(all|half|usual|leave|split|هەموو|الكل)(?=\s|$)(?:\s+(.*))?$/iu);
+  if(!m || (['all','half','usual','هەموو','الكل'].includes(m[2].toLowerCase()) && m[3])) return null;
+  return {name:m[1], mode:m[2].toLowerCase().replace(/^(هەموو|الكل)$/u,'all'), rest:m[3] || ''};
+}
+function tfSmartMatch(text, items, linked, selectedUnit, picked, available, route){
+
   const search = globalThis.RicottaSearch, norm = search.normalize;
   const parts = text.trim().match(/^(.+)\s+([0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٫٬]*)(?:\s*([^0-9٠-٩۰-۹].*))?$/u);
-  const all = text.trim().match(/^(.+)\s+(?:all|هەموو|الكل)$/iu);
-  const [, name = text.trim(), amount, unit = ''] = all || parts || [];
+  const command = tfSmartStockCommand(text);
+  const increment = text.trim().match(/^(.+?)\s+\+\s*([0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٫٬]*)(?:\s*([^0-9٠-٩۰-۹].*))?$/u);
+  const [, inputName = text.trim(), amount, unit = ''] = increment || parts || [];
+  const name = command?.name || inputName;
   const qty = amount ? rrStrictAmount(amount, 3) : null;
   const simplify = value=>norm(value).split(' ').map(word=>word.replace(/^([a-z]{3,})ies$/, '$1y').replace(/^([a-z]{3,}(?:t|s|h|x|z|o))es$/, '$1').replace(/^([a-z]{3,}[^s])s$/, '$1')).join(' ');
   const aliases = item=>[item.name, ...item.name.split(' - ').map(n=>n.trim()), ...(linked.get(item.name) || [])];
@@ -257,32 +284,39 @@ function tfSmartMatch(text, items, linked, selectedUnit, picked, available){
   if(!hits.length) hits = items.filter(item=>aliases(item).some(alias=>norm(alias) === norm(name)));
   if(!hits.length && query.length >= 3) hits = items.filter(item=>aliases(item).some(alias=>words.every(word=>simplify(alias).split(' ').includes(word))));
   const choices = (hits.length ? hits : query.length >= 3 ? search.rank(items, name, aliases) : []).slice(0, 5).map(item=>({item}));
-  if(!parts && !all) return {error:'tfSmartFormat', choices};
-  if(!all && !(qty > 0 && qty <= 999999)) return {error:'tfSmartAmount', choices};
+  if(!parts && !command && !increment) return {error:'tfSmartFormat', choices};
+  if(!command && !(qty > 0 && qty <= 999999)) return {error:'tfSmartAmount', choices};
   if(hits.length !== 1) return {error:hits.length ? 'tfSmartAmbiguous' : 'tfSmartMissing', choices};
   const item = hits[0], units = TF().unitOptions(item);
   const usable = units.filter(u=>!u.unclear);
-  if(all){
+  if(command){
     const left = available(item);
-    if(left <= 1e-9) return {error:'tfSmartUnavailable', item};
-    for(const option of usable){
-      const quantity = Number((left / option.factor).toFixed(3));
-      if(quantity > 0 && quantity <= 999999 && Math.abs(quantity * option.factor - left) <= 1e-9){
-        return {item, line:{item:item.name, qty:quantity, unit:option.name}, factor:option.factor};
-      }
+    let base = left;
+    if(command.mode === 'half' || command.mode === 'split') base = left / 2;
+    if(command.mode === 'usual'){
+      base = route && TF().usualFor(tf.data.catalog, item.name, route.from, route.to).stat?.q;
+      if(!(base > 0)) return {error:'tfCommandNoUsual', item};
     }
-    return {error:'tfSmartAllPrecision', item};
+    if(command.mode === 'leave'){
+      const keep = command.rest.match(/^([0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٫٬]*)\s*(.+)$/u);
+      const amount = rrStrictAmount(keep?.[1], 3);
+      const matches = usable.filter(option=>keep && search.unit([option.name], keep[2]));
+      if(!(amount > 0) || matches.length !== 1) return {error:'tfCommandLeaveFormat', item};
+      base -= amount * matches[0].factor;
+    }
+    if(!(base > 1e-9) || base > left + 1e-9) return {error:'tfSmartUnavailable', item};
+    return tfSmartExactLine(item, base);
   }
   if(!unit.trim() && !selectedUnit){
     const grams = usable.find(u=>u.factor === 1 && search.unit([u.name], 'gram'));
     const kilos = usable.find(u=>u.factor === 1000 && search.unit([u.name], 'kilo'));
     const option = grams && kilos ? (Number.isInteger(qty) && qty >= 1000 ? grams : kilos) : usable.find(u=>u === units[0]);
-    if(option) return {item, line:{item:item.name, qty, unit:option.name}, factor:option.factor};
+    if(option) return {item, line:{item:item.name, qty, unit:option.name}, factor:option.factor, increment:!!increment};
   }
   const exact = units.filter(u=>selectedUnit ? u.name === selectedUnit : norm(u.name) === norm(unit));
   const options = exact.length || selectedUnit || !unit.trim() ? exact : units.filter(u=>search.unit([u.name], unit));
   if(options.length !== 1 || options[0].unclear) return {error:'tfSmartUnit', item, units:units.filter(u=>!u.unclear).map(u=>u.name)};
-  return {item, line:{item:item.name, qty, unit:options[0].name}, factor:options[0].factor};
+  return {item, line:{item:item.name, qty, unit:options[0].name}, factor:options[0].factor, increment:!!increment};
 }
 function tfSmartAliases(){
   const linked = new Map();
@@ -310,7 +344,8 @@ function tfSmartPanel(r, ready){
     <input type="text" id="tfSmartEntry" class="rr-input" maxlength="250" value="${esc(r.smartText || '')}" placeholder="${esc(t('tfSmartExample'))}"
       autocomplete="off" enterkeyhint="next" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tfSmartMatches"
       dir="auto" aria-describedby="tfSmartHelp tfSmartStatus" ${ready ? '' : 'disabled'}>
-    <small id="tfSmartHelp">${esc(t('tfSmartHint'))}</small>
+    <small id="tfSmartHelp">${esc(t('tfSmartHint'))} <button type="button" class="tf-command-guide" data-tf-command-guide>/help</button></small>
+    <span class="tf-command-token" id="tfCommandToken" hidden></span>
     <div id="tfSmartStatus" class="tf-smart-status" role="status">${esc(r.smartAdded ? t('tfSmartMatched') + ' · ' + r.smartAdded : '')}</div>
     <div id="tfSmartMatches" role="listbox" aria-label="${esc(t('rrSearchItem'))}"></div>
     <div id="tfSmartChoices"></div>
@@ -332,6 +367,58 @@ function tfUnfinishedSmart(r){
   toast(t('tfSmartUnfinished'), 'warn');
   return true;
 }
+const TF_COMMANDS = ['help','repeat','undo','draft','ok','related','find'];
+const TF_COMMAND_EXAMPLES = ['Orange half','Orange usual','Orange leave 5 kg','Orange split Appetizers & Minibar','Orange + 2 kg'];
+function tfSmartCommandInput(value){
+  const text = value.trim();
+  if(/^repeat last transfer$/i.test(text)) return {name:'repeat', query:''};
+  const match = text.match(/^\/?([a-z]+)(?:\s+(.*))?$/i);
+  if(!match || (!text.startsWith('/') && (!TF_COMMANDS.includes(match[1].toLowerCase()) || (match[2] && !/^(?:related|find)$/i.test(match[1]))))) return null;
+  return {name:match[1].toLowerCase(), query:match[2] || ''};
+}
+function tfSmartSplitZones(command, r){
+  if(command?.mode !== 'split') return null;
+  const norm = globalThis.RicottaSearch.normalize;
+  const zones = TF().zonesOf(tf.data.catalog).filter(zone=>zone !== r.from);
+  const pieces = command.rest.split('&');
+  const first = zones.find(zone=>norm(zone) === norm(pieces[0]));
+  const second = pieces.length === 2 && zones.find(zone=>norm(zone) === norm(pieces[1]));
+  if(first && second && first !== second && [first,second].includes(r.to)){
+    return {other:first === r.to ? second : first};
+  }
+  const prefix = norm(pieces.at(-1));
+  const suggestions = zones.filter(zone=>norm(zone).includes(prefix) && (pieces.length === 1 || (first && zone !== first && (first === r.to || zone === r.to))));
+  return {suggestions:pieces.length < 3 ? suggestions : [], first:pieces.length === 2 ? first : ''};
+}
+function tfSmartFind(r, related, pick, trigger, query){
+  const title = t(related ? 'tfCommand_related' : 'tfCommand_find');
+  const catalog = tf.data.catalog;
+  const aliases = tfSmartAliases();
+  const norm = globalThis.RicottaSearch.normalize;
+  const to = related && query ? TF().zonesOf(catalog).find(zone=>norm(zone) === norm(query)) : r.to;
+  if(!to && related){ toast(t('tfPickTo'),'warn'); return; }
+  const items = (catalog.titems || []).filter(item=>!related || TF().usualFor(catalog, item.name, r.from, to).stat);
+  const {el, close} = openKitchenSheet('tf-command-search', `<div class="sel-title">${esc(title)}</div>
+    <input type="search" class="rr-input" aria-label="${esc(t('rrSearchItem'))}" placeholder="${esc(t('rrSearchItem'))}">
+    <div class="tf-command-results"></div>`, title, {returnFocus:trigger});
+  const input = el.querySelector('input'), results = el.querySelector('.tf-command-results');
+  input.oninput = ()=>{
+    const matches = input.value.trim() ? globalThis.RicottaSearch.rank(items, input.value, item=>[item.name, ...(aliases.get(item.name) || [])]) : items;
+    results.innerHTML = matches.slice(0, 60).map((item,i)=>{
+      const available = TF().inCounting(item, tfLeftForOtherLines(item, r, -1), true);
+      return `<button type="button" class="sheet-row" data-tf-found="${i}"><bdi>${esc(item.name)}</bdi><small dir="auto">${esc(tfQty(available.qty) + ' ' + available.unit)}</small></button>`;
+    }).join('') || `<p>${esc(t('rrNoMatch'))}</p>`;
+    results.onclick = event=>{
+      const button = event.target.closest('[data-tf-found]');
+      if(button){ close(); pick(matches[Number(button.dataset.tfFound)].name); }
+    };
+    input.onkeydown = event=>{
+      if(event.key === 'Enter' && !event.isComposing && matches.length === 1){ event.preventDefault(); close(); pick(matches[0].name); }
+    };
+  };
+  if(!related) input.value = query || '';
+  input.oninput(); input.focus();
+}
 function tfBindSmart(r, changed, go){
   const entry = document.getElementById('tfSmartEntry'), matches = document.getElementById('tfSmartMatches');
   const status = document.getElementById('tfSmartStatus'), choices = document.getElementById('tfSmartChoices');
@@ -349,15 +436,90 @@ function tfBindSmart(r, changed, go){
     if(active < 0) entry.removeAttribute('aria-activedescendant');
     else entry.setAttribute('aria-activedescendant', 'tfSmartMatch' + active);
   };
+  const refill = value=>{ entry.value = value; entry.oninput(); entry.focus({preventScroll:true}); };
+  const finish = message=>{
+    r.smartText = ''; r.smartAdded = message;
+    changed(true); go('tfSmartEntry');
+  };
+  const remember = lines=>{ r.smartUndo = {before:lines, after:JSON.stringify(r.lines)}; };
+  const runCommand = (name, query)=>{
+    const previousText = r.smartText;
+    r.smartText = '';
+    const clear = ()=>refill('');
+    if(name === 'help'){
+      clear();
+      openKitchenSheet('tf-command-help', `<div class="sel-title">${esc(t('tfCommand_help'))}</div>
+        <dl>${TF_COMMANDS.map(command=>`<dt>/${command}</dt><dd>${esc(t('tfCommand_' + command))}</dd>`).join('')}
+        ${TF_COMMAND_EXAMPLES.map((example,i)=>`<dt>${esc(example)}</dt><dd>${esc(t('tfCommand_example_' + i))}</dd>`).join('')}</dl>`,
+        t('tfCommand_help'), {returnFocus:entry});
+    } else if(name === 'find' || name === 'related'){
+      clear();
+      tfSmartFind(r, name === 'related', item=>refill(item + ' '), entry, query);
+    } else if(name === 'ok' || name === 'draft'){
+      clear();
+      document.getElementById(name === 'ok' ? 'tfSend' : 'tfKeepDraft')?.click();
+    } else if(name === 'undo'){
+      if(!r.smartUndo || r.smartUndo.after !== JSON.stringify(r.lines)){ clear(); status.textContent = t('tfCommandNothingUndo'); return; }
+      r.lines = r.smartUndo.before; delete r.smartUndo;
+      finish(t('tfCommandUndone'));
+    } else if(name === 'repeat'){
+      const last = tf.data.transfers.filter(x=>x.status === 'moved' && x.from === r.from && x.to === r.to)
+        .sort((a,b)=>String(b.movedAt || b.sentAt || b.createdAt).localeCompare(String(a.movedAt || a.sentAt || a.createdAt)))[0];
+      if(r.lines.some(line=>line.item) || !last?.lines?.length){ clear(); status.textContent = t('tfCommandRepeatEmpty'); return; }
+      const lines = last.lines.map(({item,qty,unit})=>({item,qty,unit}));
+      const check = TF().check({...r,lines},tfCatalogLeft(r),tf.data.usual);
+      const details = `<ul class="cf-list">${lines.map(l=>`<li><bdi>${esc(l.item)}</bdi> · <bdi>${esc(tfQty(l.qty) + ' ' + l.unit)}</bdi></li>`).join('')}</ul>`;
+      r.smartText = previousText;
+      const open = async()=>{
+        if(check.errors.length){
+          await showAlert(`<ul class="rr-errs">${check.errors.map(error=>`<li>${esc(tfErrText(error, lines))}</li>`).join('')}</ul>`, {title:t('rrFixFirst')});
+          return;
+        }
+        if(!await showConfirm(details,{title:t('tfCommand_repeat'),okLabel:t('rrAddItem'),okClass:'btn-primary'})) return;
+        if(tfFind(tf.id) !== r || r.lines.some(line=>line.item) || r.smartText !== previousText) return;
+        if(TF().check({...r,lines},tfCatalogLeft(r),tf.data.usual).errors.length){ toast(t('tfBatchChanged'),'warn'); return; }
+        const before = r.lines;
+        r.lines = lines;
+        remember(before); finish(t('tfCommand_repeat'));
+      };
+      void open();
+    }
+  };
   const preview = ()=>{
-    const result = tfSmartMatch(entry.value, items, linked, null, null, available);
+    const text = entry.value.trim();
+    const command = tfSmartCommandInput(text);
+    const stockCommand = tfSmartStockCommand(text);
+    const split = tfSmartSplitZones(stockCommand, r);
+    const token = document.getElementById('tfCommandToken');
+    const word = stockCommand?.mode || (command && TF_COMMANDS.includes(command.name) ? '/' + command.name : /\s\+\s*\d/.test(text) ? '+' : '');
+    token.textContent = word;
+    token.hidden = !word;
+    const completions = split && !split.other
+      ? split.suggestions.map(zone=>({label:zone, hint:t('tfCommandSplitZone'), action:()=>{
+        const input = tfSmartStockCommand(text);
+        const rest = split.first ? split.first + ' & ' + zone : zone + ' & ';
+        refill(input.name + ' split ' + rest);
+      }}))
+      : command || text === '/' ? TF_COMMANDS.filter(name=>name.startsWith(command?.name || '')).map(name=>({
+        label:'/' + name, hint:t('tfCommand_' + name),
+        complete:'/' + name + (command?.query ? ' ' + command.query : ''), action:()=>runCommand(name, command?.query),
+      })) : null;
+    if(completions){
+      options = completions;
+      matches.innerHTML = options.map(({label,hint},i)=>`<div id="tfSmartMatch${i}" role="option" data-tf-match="${i}" class="tf-command-choice"><bdi>${esc(label)}</bdi><small>${esc(hint)}</small></div>`).join('');
+      setActive(options.length ? 0 : -1);
+      entry.setAttribute('aria-expanded', String(!!options.length));
+      if(split && !options.length) status.textContent = t('tfCommandSplitZones');
+      return;
+    }
+    const result = tfSmartMatch(entry.value, items, linked, null, null, available, r);
     options = entry.value.trim() && !entry.disabled ? (result.choices || (result.item ? [{item:result.item}] : [])) : [];
     matches.innerHTML = options.map(({item},i)=>{
       const left = available(item), counting = TF().inCounting(item, left, true);
       const quantity = `${tfQty(counting.qty)} ${counting.unit}`;
       const interpreted = result.line && result.item === item ? `${tfQty(result.line.qty)} ${result.line.unit}` : '';
       const unavailable = left <= 1e-9 || (interpreted && result.line.qty * result.factor > left + 1e-9);
-      return `<div id="tfSmartMatch${i}" role="option" aria-selected="false" data-tf-match="${i}"><bdi>${esc(item.name)}</bdi><small class="tf-smart-stock${unavailable ? ' short' : ''}">
+      return `<div id="tfSmartMatch${i}" role="option" aria-selected="false" data-tf-match="${i}"${tfSmartStockCommand(text) || result.increment ? ' class="tf-command-choice"' : ''}><bdi>${esc(item.name)}</bdi><small class="tf-smart-stock${unavailable ? ' short' : ''}">
         ${esc(t('tfAvailLabel'))} <bdi>${esc(quantity)}</bdi>${interpreted ? ` · ${esc(t('tfSmartAddAmount'))} <bdi>${esc(interpreted)}</bdi>` : ''}</small></div>`;
     }).join('');
     setActive(result.item && options.length ? 0 : -1);
@@ -366,7 +528,7 @@ function tfBindSmart(r, changed, go){
   const add = (selectedUnit, picked)=>{
     if(entry.disabled || !entry.value.trim()) return;
     stock.clear();
-    const result = tfSmartMatch(entry.value, items, linked, selectedUnit, picked, available);
+    const result = tfSmartMatch(entry.value, items, linked, selectedUnit, picked, available, r);
     if(picked && result.error === 'tfSmartFormat'){
       entry.value = picked + ' ';
       entry.oninput();
@@ -374,9 +536,21 @@ function tfBindSmart(r, changed, go){
     }
     const {item, line, factor} = result;
     const index = current();
+    const split = tfSmartSplitZones(tfSmartStockCommand(entry.value), r);
+    const same = result.increment ? r.lines.map((l,i)=>l.item === item?.name && l.qty > 0 ? i : -1).filter(i=>i >= 0) : [];
     let error = result.error;
-    if(!error && line.qty * factor > tfLeftForOtherLines(item, r, index) + 1e-9) error = 'tfSmartUnavailable';
-    if(!error && r.lines.filter(l=>l.item).length >= TF().MAX_LINES) error = 'rrErrNoLines';
+    if(!error && split && !split.other) error = 'tfCommandSplitZones';
+    if(!error && result.increment && same.length !== 1) error = 'tfCommandOneLine';
+    if(!error && line.qty * factor * (split ? 2 : 1) > tfLeftForOtherLines(item, r, index) + 1e-9) error = 'tfSmartUnavailable';
+    if(!error && !result.increment && r.lines.filter(l=>l.item).length >= TF().MAX_LINES) error = 'rrErrNoLines';
+    let incrementLine;
+    if(!error && result.increment){
+      const old = r.lines[same[0]];
+      const unit = TF().unitOptions(item).find(option=>option.name === old.unit);
+      const combined = unit && tfSmartExactLine(item, old.qty * unit.factor + line.qty * factor, [unit]);
+      if(!combined?.line) error = 'tfSmartAllPrecision';
+      else incrementLine = combined.line;
+    }
     if(error){
       matches.replaceChildren(); options = []; setActive(-1); entry.setAttribute('aria-expanded','false');
       status.className = 'tf-smart-status bad';
@@ -403,11 +577,23 @@ function tfBindSmart(r, changed, go){
       choices.append(manual);
       return;
     }
-    if(index < 0) r.lines.push(line); else r.lines[index] = line;
-    r.smartText = '';
-    r.smartAdded = line.item + ' · ' + tfQty(line.qty) + ' ' + line.unit;
-    changed(true);
-    go('tfSmartEntry');
+    const before = r.lines.map(line=>({...line}));
+    if(incrementLine) r.lines[same[0]] = incrementLine;
+    else if(index < 0) r.lines.push(line);
+    else r.lines[index] = line;
+    if(split){
+      const second = tfDraftRecord(r.from, split.other, r.yesterday, [{...line}], r.dayPickedOn);
+      r.dirty = second.dirty = true;
+      second.smartRouteLocked = true;
+      tf.data.transfers.unshift(second);
+      delete r.smartUndo;
+      finish(`${line.item} · ${tfQty(line.qty)} ${line.unit} → ${r.to} & ${split.other}`);
+      void tfSaveDraft(second); void tfSaveDraft(r);
+      return;
+    }
+    remember(before);
+    const added = incrementLine || line;
+    finish(added.item + ' · ' + tfQty(added.qty) + ' ' + added.unit);
   };
   entry.oninput = ()=>{
     r.smartText = entry.value;
@@ -417,7 +603,9 @@ function tfBindSmart(r, changed, go){
     stock.clear(); preview();
   };
   const selectMatch = index=>{
-    const item = options[index]?.item;
+    const option = options[index];
+    if(option?.action){ option.action(); return; }
+    const item = option?.item;
     if(item){ entry.focus({preventScroll:true}); add(null, item.name); }
   };
   matches.onpointerdown = e=>{ if(e.target.closest('[data-tf-match]')) e.preventDefault(); };
@@ -426,6 +614,11 @@ function tfBindSmart(r, changed, go){
     if(e.isComposing || e.metaKey || e.ctrlKey) return;
     if(e.key === 'Escape' && options.length){
       e.preventDefault(); matches.replaceChildren(); options = []; setActive(-1); entry.setAttribute('aria-expanded','false');
+    } else if(e.key === 'Tab' && !e.shiftKey && options[active]?.action && entry.value.trim() !== options[active].complete){
+      e.preventDefault();
+      const option = options[active];
+      if(option.complete) refill(option.complete);
+      else option.action();
     } else if(options.length && ['Tab','ArrowDown','ArrowUp'].includes(e.key)){
       // Allow Tab to exit at either end, and when the single exact result is already selected.
       const step = e.shiftKey || e.key === 'ArrowUp' ? -1 : 1;
@@ -441,6 +634,7 @@ function tfBindSmart(r, changed, go){
     }
   };
   if(entry.value) preview();
+  document.querySelector('[data-tf-command-guide]').onclick = ()=>{ if(!entry.value.trim()) runCommand('help'); else showAlert(esc(TF_COMMAND_EXAMPLES.join(' · ')),{title:t('tfCommand_help')}); };
   document.querySelectorAll('[data-tf-review-line]').forEach(button=>button.onclick = ()=>go('tfQty' + button.dataset.tfReviewLine));
   document.querySelectorAll('[data-tf-suggestion]').forEach(button=>button.onclick = ()=>{
     if(entry.value.trim()) return;
@@ -480,7 +674,9 @@ function renderTransferEdit(){
       <div class="tf-zones">
         <div class="rr-field"><label for="tfFrom">${esc(t('tfFrom'))}</label>${rrCombo('tfFrom', r.from, t('tfChoose'))}</div>
         <span class="tf-arrow" aria-hidden="true">→</span>
-        <div class="rr-field"><label for="tfTo">${esc(t('tfTo'))}</label>${rrCombo('tfTo', r.to, t('tfChoose'))}</div>
+        <div class="rr-field"><label for="tfTo">${esc(t('tfTo'))}</label>${tf.smartMode && r.smartRouteLocked && r.to
+          ? `<div class="tf-route-locked"><span class="sr-only" id="tfTo">${esc(t('tfLockedDestination'))}</span><bdi>${esc(r.to)}</bdi><button type="button" class="btn btn-ghost" id="tfChangeTo">${ICON_EDIT}<span>${esc(t('shortChange'))}</span></button></div>`
+          : rrCombo('tfTo', r.to, t('tfChoose'))}</div>
       </div></section>
     ${tf.smartMode ? tfSmartPanel(r, ready) : ''}
     <section class="rr-card"><h2 class="rr-card-title"><span>${esc(t('tfWhat'))}</span><span class="rr-count">${esc(t('rrItemCount')(r.lines.filter(l=>l.item).length))}</span></h2>
@@ -530,7 +726,10 @@ function attachTransferEdit(){
     if(!again && v !== r.from){ r.from = v; if(r.to === v) r.to = ''; changed(true); }
     go(r.to ? firstBox() : 'tfTo');
   });
-  const toInput = document.getElementById('tfTo');
+  document.getElementById('tfChangeTo')?.addEventListener('click', ()=>{
+    r.smartRouteLocked = false; tfKeep(); repaint(); go('tfTo');
+  });
+  const toInput = document.querySelector('input#tfTo');
   if(toInput) rrComboBind(toInput, zones.filter(z=>z !== r.from), (v, again)=>{
     if(!again && v !== r.to){ r.to = v; changed(true); }
     go(firstBox());
@@ -603,7 +802,7 @@ function attachTransferEdit(){
     rrLineKeys(e, {add:()=>addLine(), yesterday:()=>document.getElementById('tfYest')?.click(),
       dup:i=>{ const l = r.lines[i]; if(!l) return; r.lines.splice(i + 1, 0, {item:l.item, unit:l.unit, qty:null}); changed(true); go('tfQty' + (i + 1)); }});
   };
-  if(tf.fresh){ tf.fresh = false; scrollBox().scrollTo({top:0}); if(!matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>go(r.from ? 'tfTo' : 'tfFrom')); }
+  if(tf.fresh){ tf.fresh = false; scrollBox().scrollTo({top:0}); if(!matchMedia('(pointer: coarse)').matches) requestAnimationFrame(()=>go(r.from ? (tf.smartMode && r.to ? 'tfSmartEntry' : 'tfTo') : 'tfFrom')); }
 }
 /* While an amount is typed, only the "available" lines change (the box keeps its focus). */
 function tfPaintStock(r){

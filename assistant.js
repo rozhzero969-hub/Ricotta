@@ -1040,6 +1040,7 @@ function ricoCard(icon, title, body, actions, p){
 function renderRicoComposer(){
   if(rico.viewing) return `<div class="rico-composer rico-composer-viewing"><button type="button" class="btn btn-primary" data-rico-mine>${esc(t('ricoBackToMine'))}</button></div>`;
   return `<form class="rico-composer${rico.photo ? ' has-photo has-text' : ''}" id="ricoComposer" autocomplete="off">
+    <button type="button" id="ricoJumpLatest" class="rico-jump-latest" aria-label="${esc(t('ricoJumpLatest'))}" title="${esc(t('ricoJumpLatest'))}" hidden><span aria-hidden="true">↓</span></button>
     ${ricoPhotoChip()}
     <button type="button" class="rico-attach" id="ricoAttachBtn" aria-label="${esc(t('ricoAddPhoto'))}" title="${esc(t('ricoAddPhoto'))}" ${rico.streaming ? 'disabled' : ''}>${ICON_CAMERA}</button>
     <label class="sr-only" for="ricoInput">${esc(t('ricoPlaceholder'))}</label>
@@ -1139,6 +1140,15 @@ function attachAssistantEvents(){
   if(rico.chats === null) ricoLoadChats().then(()=>{ if(state.view === 'assistant') syncRicoSide(); });
   attachRicoThreadEvents(document.getElementById('mainContent') || document);
   attachRicoChips();
+  const jump = document.getElementById('ricoJumpLatest'), scroll = scrollBox();
+  if(jump){
+    const update = ()=>{ jump.hidden = !rico.messages.length || ricoNearBottom(); };
+    jump.onclick = ()=>ricoScroll(true);
+    scroll.removeEventListener('scroll', scroll.ricoJumpUpdate);
+    scroll.ricoJumpUpdate = update;
+    scroll.addEventListener('scroll',update,{passive:true});
+    update();
+  }
   if(rico.messages.length) ricoScroll(false);
   ricoMarkInboxRead();
 }
@@ -1250,6 +1260,22 @@ function ricoHistoryForServer(){
 function ricoStop(){
   if(rico.abort){ rico.abort.abort(); rico.abort = null; }
 }
+function ricoShowNewTurns(count = 2){
+  if(state.view !== 'assistant'){ goView('assistant'); return; }
+  const thread = document.getElementById('ricoThread');
+  if(!thread || rico.viewing || thread.classList.contains('read-only')){ render(); return; }
+  const start = rico.messages.length - count;
+  if(start === 0){
+    thread.closest('.rico-page')?.classList.remove('empty');
+    thread.insertAdjacentHTML('beforebegin', renderRicoInbox());
+    thread.replaceChildren();
+  }
+  const batch = document.createElement('template');
+  batch.innerHTML = rico.messages.slice(start).map((m, i)=>ricoTimeDivider(rico.messages[start+i-1], m) + renderRicoMessage(m, start+i)).join('');
+  attachRicoThreadEvents(batch.content);
+  thread.append(batch.content);
+  ricoRefreshComposer(); ricoRefreshHead();
+}
 async function ricoAsk(text, options = {}){
   if(rico.streaming || !state.account) return;
   const context = ricoContext();
@@ -1263,7 +1289,7 @@ async function ricoAsk(text, options = {}){
   if(!photo && prepareNow && !scopeIds.length && !named.length){
     rico.messages.push({role:'user', text, ts:Date.now()});
     rico.messages.push({role:'assistant', text:t('ricoChooseSuppliers'), picker:{selectedIds:[], chosen:false}, ts:Date.now()});
-    if(state.view !== 'assistant') goView('assistant'); else render();
+    ricoShowNewTurns();
     ricoScroll(true);
     return;
   }
@@ -1275,7 +1301,7 @@ async function ricoAsk(text, options = {}){
   const bot = {role:'assistant', text:'', proposals:[], steps:[], streaming:true, statusKey:'thinking', ts:Date.now()};
   rico.messages.push(bot);
   rico.streaming = true;
-  if(state.view !== 'assistant') goView('assistant'); else render();
+  ricoShowNewTurns();
   ricoScroll(true);
   const idx = rico.messages.length - 1;
   const controller = new AbortController();
