@@ -500,7 +500,10 @@ function tfBindSmart(r, changed, go){
     const word = stockCommand?.mode || (command && TF_COMMANDS.includes(command.name) ? '/' + command.name : /\s\+\s*\d/.test(text) ? '+' : '');
     token.textContent = word;
     token.hidden = !word;
-    const completions = split && !split.other
+    const repeatPhrase = /^repeat\s+l/i.test(text) && ['repeat last transfer','repeat last order'].some(phrase=>phrase.startsWith(text.toLowerCase()));
+    const completions = repeatPhrase
+      ? [{label:'repeat last transfer', hint:t('tfCommand_repeat'), complete:'repeat last transfer', action:()=>runCommand('repeat')}]
+      : split && !split.other
       ? split.suggestions.map(zone=>({label:zone, hint:t('tfCommandSplitZone'), action:()=>{
         const input = tfSmartStockCommand(text);
         const rest = split.first ? split.first + ' & ' + zone : zone + ' & ';
@@ -521,6 +524,22 @@ function tfBindSmart(r, changed, go){
     const result = tfSmartMatch(entry.value, items, linked, null, null, available, r);
     options = entry.value.trim() && !entry.disabled
       ? (result.choices || (result.item ? [{item:result.item}] : [])) : [];
+    const suffix = !options.length && text.match(/^(.+)\s+([a-z]{2,})$/i);
+    if(suffix && !stockCommand){
+      const names = ['all','half','usual','leave','split'].filter(name=>name.startsWith(suffix[2].toLowerCase()));
+      const prefix = names.length && tfSmartMatch(suffix[1], items, linked, null, null, available, r);
+      if(prefix?.item || prefix?.choices?.length){
+        options = names.map(name=>({
+          label:name,
+          complete:suffix[1] + ' ' + name + (['leave','split'].includes(name) ? ' ' : ''),
+          action:()=>refill(suffix[1] + ' ' + name + (['leave','split'].includes(name) ? ' ' : '')),
+        }));
+        matches.innerHTML = options.map(({label},i)=>`<div id="tfSmartMatch${i}" role="option" data-tf-match="${i}" class="tf-command-choice">${esc(label)}</div>`).join('');
+        setActive(0);
+        entry.setAttribute('aria-expanded','true');
+        return;
+      }
+    }
     matches.innerHTML = options.map(({item},i)=>{
       const left = available(item), counting = TF().inCounting(item, left, true);
       const quantity = `${tfQty(counting.qty)} ${counting.unit}`;

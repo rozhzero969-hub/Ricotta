@@ -192,7 +192,9 @@ async function run(){
     await entry.press('Enter');
     await page.locator('.tf-command-help').waitFor();
     await page.keyboard.press('Escape');
-    await entry.fill('Yamama Pomegranate Molasses half');
+    await entry.fill('Yamama Pomegranate Molasses ha');
+    await entry.press('Tab');
+    assert.equal(await entry.inputValue(),'Yamama Pomegranate Molasses half');
     await entry.press('Enter');
     assert.equal(await page.locator('#tfQty0').inputValue(),'10');
     await entry.fill('Yamama Pomegranate Molasses + 2 pieces');
