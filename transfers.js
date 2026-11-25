@@ -250,8 +250,8 @@ function tfNeedByItem(r){
   for(const l of r.lines){ const it = tfItem(l.item), o = it && TF().unitOptions(it).find(u=>u.name === l.unit); if(o && l.qty > 0) m.set(l.item, (m.get(l.item) || 0) + l.qty * o.factor); }
   return m;
 }
-/* Exact names win. A unique whole-word abbreviation can be added directly;
-   fuzzy or ambiguous matches always require an explicit choice. */
+/* Exact matches win. Longer prefixes and close typos get a default only
+   when the other catalog matches are clearly weaker. */
 function tfSmartExactLine(item, base, candidates = TF().unitOptions(item)){
   for(const option of candidates){
     if(option.unclear) continue;
@@ -268,7 +268,6 @@ function tfSmartStockCommand(text){
   return {name:m[1], mode:m[2].toLowerCase().replace(/^(هەموو|الكل)$/u,'all'), rest:m[3] || ''};
 }
 function tfSmartMatch(text, items, linked, selectedUnit, picked, available, route){
-
   const search = globalThis.RicottaSearch, norm = search.normalize;
   const parts = text.trim().match(/^(.+)\s+([0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٫٬]*)(?:\s*([^0-9٠-٩۰-۹].*))?$/u);
   const command = tfSmartStockCommand(text);
@@ -283,8 +282,15 @@ function tfSmartMatch(text, items, linked, selectedUnit, picked, available, rout
   if(!hits.length) hits = items.filter(item=>norm(item.name) === norm(name));
   if(!hits.length) hits = items.filter(item=>aliases(item).some(alias=>norm(alias) === norm(name)));
   if(!hits.length && query.length >= 3) hits = items.filter(item=>aliases(item).some(alias=>words.every(word=>simplify(alias).split(' ').includes(word))));
-  const choices = (hits.length ? hits : query.length >= 3 ? search.rank(items, name, aliases) : []).slice(0, 5).map(item=>({item}));
-  if(!parts && !command && !increment) return {error:'tfSmartFormat', choices};
+  const ranked = hits.length || query.length < 2 ? [] : items.map(item=>({item, score:search.score(name, aliases(item))}))
+    .filter(({score})=>Number.isFinite(score)).sort((a,b)=>a.score - b.score);
+  const choices = (hits.length ? hits.map(item=>({item})) : ranked).slice(0, 5);
+  const best = ranked[0];
+  // Short prefixes can list candidates. A full-word typo needs a clear lead before Enter has a default.
+  if(!hits.length && query.length >= 3 && best?.score < 45 && (!ranked[1] || ranked[1].score - best.score >= 8)){
+    hits = [best.item];
+  }
+  if(!parts && !command && !increment) return {error:'tfSmartFormat', choices, item:hits.length === 1 ? hits[0] : null};
   if(!command && !(qty > 0 && qty <= 999999)) return {error:'tfSmartAmount', choices};
   if(hits.length !== 1) return {error:hits.length ? 'tfSmartAmbiguous' : 'tfSmartMissing', choices};
   const item = hits[0], units = TF().unitOptions(item);
@@ -305,18 +311,18 @@ function tfSmartMatch(text, items, linked, selectedUnit, picked, available, rout
       base -= amount * matches[0].factor;
     }
     if(!(base > 1e-9) || base > left + 1e-9) return {error:'tfSmartUnavailable', item};
-    return tfSmartExactLine(item, base);
+    return {...tfSmartExactLine(item, base), choices};
   }
   if(!unit.trim() && !selectedUnit){
     const grams = usable.find(u=>u.factor === 1 && search.unit([u.name], 'gram'));
     const kilos = usable.find(u=>u.factor === 1000 && search.unit([u.name], 'kilo'));
     const option = grams && kilos ? (Number.isInteger(qty) && qty >= 1000 ? grams : kilos) : usable.find(u=>u === units[0]);
-    if(option) return {item, line:{item:item.name, qty, unit:option.name}, factor:option.factor, increment:!!increment};
+    if(option) return {item, line:{item:item.name, qty, unit:option.name}, factor:option.factor, increment:!!increment, choices};
   }
   const exact = units.filter(u=>selectedUnit ? u.name === selectedUnit : norm(u.name) === norm(unit));
   const options = exact.length || selectedUnit || !unit.trim() ? exact : units.filter(u=>search.unit([u.name], unit));
   if(options.length !== 1 || options[0].unclear) return {error:'tfSmartUnit', item, units:units.filter(u=>!u.unclear).map(u=>u.name)};
-  return {item, line:{item:item.name, qty, unit:options[0].name}, factor:options[0].factor, increment:!!increment};
+  return {item, line:{item:item.name, qty, unit:options[0].name}, factor:options[0].factor, increment:!!increment, choices};
 }
 function tfSmartAliases(){
   const linked = new Map();
@@ -513,7 +519,8 @@ function tfBindSmart(r, changed, go){
       return;
     }
     const result = tfSmartMatch(entry.value, items, linked, null, null, available, r);
-    options = entry.value.trim() && !entry.disabled ? (result.choices || (result.item ? [{item:result.item}] : [])) : [];
+    options = entry.value.trim() && !entry.disabled
+      ? (result.choices || (result.item ? [{item:result.item}] : [])) : [];
     matches.innerHTML = options.map(({item},i)=>{
       const left = available(item), counting = TF().inCounting(item, left, true);
       const quantity = `${tfQty(counting.qty)} ${counting.unit}`;
@@ -522,7 +529,7 @@ function tfBindSmart(r, changed, go){
       return `<div id="tfSmartMatch${i}" role="option" aria-selected="false" data-tf-match="${i}"${tfSmartStockCommand(text) || result.increment ? ' class="tf-command-choice"' : ''}><bdi>${esc(item.name)}</bdi><small class="tf-smart-stock${unavailable ? ' short' : ''}">
         ${esc(t('tfAvailLabel'))} <bdi>${esc(quantity)}</bdi>${interpreted ? ` · ${esc(t('tfSmartAddAmount'))} <bdi>${esc(interpreted)}</bdi>` : ''}</small></div>`;
     }).join('');
-    setActive(result.item && options.length ? 0 : -1);
+    setActive(result.item ? options.findIndex(option=>option.item === result.item) : -1);
     entry.setAttribute('aria-expanded', String(!!options.length));
   };
   const add = (selectedUnit, picked)=>{

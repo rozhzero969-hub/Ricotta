@@ -94,7 +94,8 @@ async function run(){
     assert.equal(await page.locator('#tfSmartDay, #tfSmartAdd').count(),0);
     for(const [input, pattern, selected] of [
       ['apple 5 kilos', /Yellow Apple/, true],
-      ['yellow appple 5 kilo', /Yellow Apple/, false],
+      ['yellow appple 5 kilo', /Yellow Apple/, true],
+      ['oran 1.5', /Oranges.*Add 1.5/s, true],
       ['yamama pomegranate 2 pieces', /Yamama Pomegranate Molasses/, true],
     ]){
       await entry.fill(input);
