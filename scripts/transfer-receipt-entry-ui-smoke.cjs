@@ -87,6 +87,7 @@ async function run(){
     assert.equal(await reserved.getAttribute('aria-disabled'),'true');
     assert.match(await reserved.innerText(),/10 piece.*Kitchen/);
     await page.locator('#tfItem0').press('Enter');
+    assert.equal(await page.evaluate(()=>tfFind(tf.id).lines.some(line=>line.item)),false,'reserved stock cannot enter this draft');
     await page.locator('[data-tf-mode=smart]').click();
     const entry = page.locator('#tfSmartEntry');
     assert.equal(await entry.isDisabled(),false);
@@ -123,11 +124,13 @@ async function run(){
     assert.equal(await entry.getAttribute('aria-invalid'),'true');
     assert.match(await page.locator('#tfSmartStatus').innerText(),/unit/);
     await page.keyboard.press('Escape');
+    await page.locator('.sel-pop').waitFor({state:'detached'});
     await entry.fill('potato 5 kilo');
     await entry.press('Enter');
     assert.match(await page.locator('#tfSmartStatus').innerText(),/Potatoes.*5 کیلۆ/);
-    assert.equal(await page.locator('#tfUnit0').inputValue(),'کیلۆ');
-    assert.equal(await page.locator('#tfQty0').inputValue(),'5');
+    const potatoLines = await page.evaluate(()=>tfFind(tf.id).lines.filter(line=>line.item));
+    assert.deepEqual(potatoLines.map(({item,unit,qty})=>({item,unit,qty})),[{item:'Potatoes',unit:'کیلۆ',qty:5}]);
+    await page.waitForFunction(()=>document.querySelector('#tfUnit0')?.value === 'کیلۆ' && document.querySelector('#tfQty0')?.value === '5');
     await entry.fill('Oranges 5 unknown-unit');
     await entry.press('Enter');
     const pickUnit = page.locator('.sel-pop [role=option]');

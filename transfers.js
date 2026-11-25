@@ -552,7 +552,7 @@ function tfBindSmart(r, changed, go){
     entry.setAttribute('aria-expanded', String(!!options.length));
   };
   const add = (selectedUnit, picked)=>{
-    if(entry.disabled || !entry.value.trim()) return;
+    if(!entry.isConnected || tfFind(tf.id) !== r || entry.disabled || !entry.value.trim()) return;
     stock.clear();
     const result = tfSmartMatch(entry.value, items, linked, selectedUnit, picked, available, r);
     if(picked && result.error === 'tfSmartFormat'){
