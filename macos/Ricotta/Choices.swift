@@ -67,8 +67,8 @@ enum AppTheme: String, CaseIterable {
     var colors: (NSColor, NSColor?) {
         switch self {
         case .ricotta: (Self.rgb(0x135B43), Self.rgb(0xF6F2DC))
-        case .cosmetic: (Self.rgb(0x211E1C), Self.rgb(0xF6F1EA))
-        case .beauty: (Self.rgb(0x10463C), Self.rgb(0xDFC375))
+        case .cosmetic: (Self.rgb(0x28282E), Self.rgb(0xF4F4F8))
+        case .beauty: (Self.rgb(0x285045), Self.rgb(0xE5BF5B))
         }
     }
     private static func rgb(_ hex: Int) -> NSColor {

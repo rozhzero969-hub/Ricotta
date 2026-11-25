@@ -721,7 +721,7 @@ function renderRicoMessage(m, i){
   }
   const body = m.text ? ricoFormat(m.text) : '';
   const steps = m.steps || [];
-  const typing = m.streaming && !m.text && !steps.length ? `<div class="rico-typing"><i></i><i></i><i></i><span>${esc(ricoStatusLabel(m.statusKey))}</span></div>` : '';
+  const typing = m.streaming && !m.text && !steps.length ? `<div class="rico-typing"><i aria-hidden="true"></i><span>${esc(ricoStatusLabel(m.statusKey))}</span></div>` : '';
   const tick = '<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   const stepRow = (k, running)=>`<div class="rico-step"><span class="rico-step-ic ${running?'spin':'ok'}">${running?'':tick}</span>${esc(ricoStatusLabel(k))}</div>`;
   // What Rico is doing, as a short checklist; it folds into one line once the answer starts.
@@ -736,6 +736,7 @@ function renderRicoMessage(m, i){
     ${ricoFace('', 'rico-sm')}
     <div class="rico-col">
       ${stepsHtml}${typing}${body ? `<div class="rico-bubble" dir="auto"><div class="rico-text">${body}</div></div>` : ''}${status}${picker}${cards}${renderRicoReceipt(m, i)}${err}
+      ${body && !m.streaming && !m.error ? `<div class="rico-response-actions"><button type="button" data-rico-copy="${i}" aria-label="${esc(t('ricoCopyReply'))}" title="${esc(t('ricoCopyReply'))}">${ICON_COPY}</button></div>` : ''}
     </div>
   </div>`;
 }
@@ -1142,6 +1143,12 @@ function attachAssistantEvents(){
   ricoMarkInboxRead();
 }
 function attachRicoThreadEvents(root){
+  root.querySelectorAll('[data-rico-copy]').forEach(button=>button.onclick = async()=>{
+    const reply = rico.messages[Number(button.dataset.ricoCopy)];
+    if(reply?.role !== 'assistant' || !reply.text || reply.streaming) return;
+    try{ await navigator.clipboard.writeText(reply.text); toast(t('ricoReplyCopied')); }
+    catch{ toast(t('ricoReplyCopyFailed'), 'error'); }
+  });
   root.querySelectorAll('[data-rico-ask]').forEach(b=>b.onclick=()=>{
     // These two are answered on this phone, as a receipt and a checklist.
     if(b.dataset.ricoAction === 'last_order' && canOpen('history')) return ricoAnswerLastOrder(b.dataset.ricoAsk);
@@ -1331,10 +1338,10 @@ function ricoPaintMessage(i){
   tmp.innerHTML = renderRicoMessage(m, i);
   const fresh = tmp.firstElementChild;
   fresh.classList.add('painted');
-  // Rico's answer grows out of Spark the first time it appears, then stays still while text streams in.
+  // Ease the answer in once, then keep it steady while text streams.
   const hadBubble = !!el.querySelector('.rico-bubble'), bubble = fresh.querySelector('.rico-bubble');
   el.replaceWith(fresh);
-  if(bubble && !hadBubble && !reducedMotion()) bubble.animate?.([{transform:'scale(.6)', opacity:0}, {transform:'none', opacity:1}], {duration:420, easing:'cubic-bezier(.32,.72,0,1)'});
+  if(bubble && !hadBubble && !reducedMotion()) bubble.animate?.([{transform:'translateY(4px)', opacity:0}, {transform:'none', opacity:1}], {duration:170, easing:'ease-out'});
   if(m.streaming && m.text){
     const last = fresh.querySelector('.rico-text > :last-child');
     if(last) last.insertAdjacentHTML('beforeend', '<span class="rico-caret" aria-hidden="true"></span>');

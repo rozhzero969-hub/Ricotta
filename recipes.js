@@ -423,78 +423,12 @@ function recipeDetailPage(r){
 /* ---------- The banner at the top of a recipe's page ----------
    A soft blend of two pastels of one colour: the photo's own background colour when the recipe has a
    photo (read from the photo’s edges once and cached locally), or a neutral surface. */
-const recipeBannerVars = (b1, b2, d1, d2)=>`--rb1:${b1};--rb2:${b2};--rb1d:${d1};--rb2d:${d2}`;
-/* A photo's two tones from its hue and saturation: pastel in light mode, deep and quiet in dark mode. */
-function recipeToneVars([h, s]){
-  const sat = Math.round(Math.min(62, Math.max(s, 6))), h2 = Math.round((h + 14) % 360);
-  return recipeBannerVars(`hsl(${h} ${sat}% 87%)`, `hsl(${h2} ${Math.round(sat * .8)}% 95%)`, `hsl(${h} ${Math.round(Math.min(sat, 46))}% 24%)`, `hsl(${h2} ${Math.round(Math.min(sat, 34))}% 15%)`);
-}
-/* The same photo has a new signed link every time: it is known by its path (or, for a picture kept in the
-   page, by its length and end). */
-const recipeToneKey = url=>/^data:/.test(url) ? 'd' + url.length + url.slice(-48) : String(url).split('?')[0].replace(/^https?:\/\/[^/]+/, '');
-function recipeToneCached(url){
-  try{ const all = lget('rcTones') || {}; return Array.isArray(all[recipeToneKey(url)]) ? all[recipeToneKey(url)] : null; }catch{ return null; }
-}
-function recipeToneKeep(url, tone){
-  try{
-    const all = lget('rcTones') || {}, keys = Object.keys(all);
-    if(keys.length > 200) keys.slice(0, keys.length - 150).forEach(k=>delete all[k]);
-    all[recipeToneKey(url)] = tone; lset('rcTones', all);
-  }catch{ /* storage full or blocked: worked out again next time */ }
-}
-/* The photo's background colour: its outer ring of pixels, grouped by hue (grays apart), the biggest
-   group wins, then that group's average hue and saturation. null when the photo can't be read (a link
-   from another site without permission taints the canvas): the category's colour stays. */
-function recipeToneRead(url){
-  return new Promise(done=>{
-    const img = new Image();
-    img.crossOrigin = 'anonymous'; img.decoding = 'async';
-    img.onerror = ()=>done(null);
-    img.onload = ()=>{
-      try{
-        const n = 40, c = document.createElement('canvas'); c.width = n; c.height = n;
-        const g = c.getContext('2d', {willReadFrequently:true}); g.drawImage(img, 0, 0, n, n);
-        const px = g.getImageData(0, 0, n, n).data, groups = new Map();
-        for(let y = 0; y < n; y++) for(let x = 0; x < n; x++){
-          if(x > 4 && x < n - 5 && y > 4 && y < n - 5) continue;
-          const i = (y * n + x) * 4, r = px[i] / 255, gr = px[i + 1] / 255, b = px[i + 2] / 255;
-          const max = Math.max(r, gr, b), min = Math.min(r, gr, b), l = (max + min) / 2, d = max - min;
-          const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
-          let h = 0;
-          if(d){ h = max === r ? ((gr - b) / d) % 6 : max === gr ? (b - r) / d + 2 : (r - gr) / d + 4; h = (h * 60 + 360) % 360; }
-          const key = s < .12 || l < .08 || l > .96 ? 'gray' : Math.round(h / 30) % 12;
-          const e = groups.get(key) || {n:0, x:0, y:0, s:0};
-          e.n++; e.x += Math.cos(h * Math.PI / 180); e.y += Math.sin(h * Math.PI / 180); e.s += s;
-          groups.set(key, e);
-        }
-        const [key, best] = [...groups].sort((a, b)=>b[1].n - a[1].n)[0] || [];
-        if(!best) return done(null);
-        const hue = Math.round((Math.atan2(best.y, best.x) * 180 / Math.PI + 360) % 360);
-        done(key === 'gray' ? [hue, 4] : [hue, Math.round(best.s / best.n * 100)]);
-      }catch{ done(null); }
-    };
-    img.src = url;
-  });
-}
 function recipeBanner(r){
-  const url = recipeBook.data.covers?.[r.id], tone = url && recipeToneCached(url);
-  return `<div class="rc-banner${url ? ' has-photo' : ''}">${url ? `<i class="rc-banner-tone${tone ? ' on' : ''}" data-rc-tone="${esc(url)}"${tone ? ` style="${recipeToneVars(tone)}"` : ''} aria-hidden="true"></i>` : ''}
-    ${url ? `<button type="button" id="rcHeroPhoto" class="rc-hero-photo" aria-label="${esc(rt('viewPhoto'))}"><img src="${esc(url)}" alt="" draggable="false" decoding="async"></button>` : ''}
-    <button type="button" class="rc-pill-btn" id="rcBack" aria-label="${esc(rt('backToRecipes'))}">${ICON_BACK}</button>
-    <button type="button" class="rc-pill-btn" id="rcEdit">${ICON_EDIT}<span>${esc(rt('edit'))}</span></button></div>`;
-}
-/* A photo seen for the first time: its colour is read, kept, and the banner fades to it. */
-function recipeBindBanner(){
-  const layer = document.querySelector('[data-rc-tone]:not(.on)');
-  if(!layer) return;
-  const url = layer.dataset.rcTone;
-  recipeToneRead(url).then(tone=>{
-    if(!tone) return;
-    recipeToneKeep(url, tone);
-    if(!layer.isConnected) return;
-    layer.setAttribute('style', recipeToneVars(tone));
-    requestAnimationFrame(()=>layer.classList.add('on'));
-  });
+  const url = recipeBook.data.covers?.[r.id];
+  return `<div class="rc-banner${url ? ' has-photo' : ''}">
+    <div class="rc-banner-actions"><button type="button" class="rc-pill-btn" id="rcBack" aria-label="${esc(rt('backToRecipes'))}">${ICON_BACK}</button>
+    <button type="button" class="rc-pill-btn" id="rcEdit">${ICON_EDIT}<span>${esc(rt('edit'))}</span></button></div>
+    ${url ? `<button type="button" id="rcHeroPhoto" class="rc-hero-photo" aria-label="${esc(rt('viewPhoto'))}"><img src="${esc(url)}" alt="" draggable="false" decoding="async"></button>` : ''}</div>`;
 }
 
 /* ---------- How it adds up (Where do these numbers come from?) ----------
@@ -1126,7 +1060,6 @@ function attachRecipeEvents(){
   const current = recipeBook.page === 'detail' && !recipeBook.editing ? recipeCurrent() : null;
   if(current && recipeBook.photos?.id !== current.id) recipePhotos();
   on('rcEdit', ()=>{ const r = recipeCurrent(); if(r) recipeEdit(r); });
-  if(current) recipeBindBanner();
   const photo = document.getElementById('rcPhoto');
   if(photo) photo.onchange = ()=>{ recipeUpload(photo.files[0]); photo.value = ''; };
   recipeBindPhotos();

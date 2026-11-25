@@ -102,12 +102,20 @@ async function run(){
       assert.match(await match.innerText(),pattern);
       assert.equal(await match.getAttribute('aria-selected'),String(selected));
     }
+    for(const [typed, expected] of [['orange 1.5', /Add 1.5 کیلۆ/], ['orange 1500', /Add 1,500 گرام/], ['orange all', /Add 5 کیلۆ/]]){
+      await entry.fill(typed);
+      assert.match(await page.locator('#tfSmartMatches [aria-selected=true]').innerText(),/Available/);
+      assert.match(await page.locator('#tfSmartMatches [aria-selected=true]').innerText(),expected);
+    }
+    const zero = await page.evaluate(()=>tfSmartMatch('Donuts all', tf.data.catalog.titems, tfSmartAliases(), null, null,
+      item=>tfLeftForOtherLines(item, tfFind(tf.id), -1)));
+    assert.equal(zero.error,'tfSmartUnavailable','all respects reserved stock');
     await entry.fill('soy sauce 2 pieces');
     assert.equal(await page.locator('#tfSmartMatches [role=option]').count(),2);
     assert.equal(await page.locator('#tfSmartMatches [aria-selected=true]').count(),0);
     await entry.press('Tab');
     await entry.press('Tab');
-    assert.equal(await page.locator('#tfSmartMatches [aria-selected=true]').innerText(),'Light Soy Sauce');
+    assert.match(await page.locator('#tfSmartMatches [aria-selected=true]').innerText(),/Light Soy Sauce/);
 
     await entry.fill('potato 5 pieces');
     await entry.press('Enter');
