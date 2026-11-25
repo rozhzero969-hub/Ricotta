@@ -14,6 +14,9 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
    localStorage.setItem('ricottaOrders:toured:rozha','true');localStorage.setItem('ricottaOrders:xtSeen:rozha','true');localStorage.setItem('ricottaOrders:apiSession',JSON.stringify({token:'mac-fixture',account:'rozha',name:'Rozha',expiresAt:'2099-01-01T00:00:00Z'}));localStorage.setItem('ricottaOrders:lang',JSON.stringify(flags.demoLang || 'en'));localStorage.setItem('ricottaOrders:aiConsent2:rozha','true');localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',String(Date.now()));},flags);
   const task = {id:'10000000-0000-4000-8000-000000000002',kind:'remind',text:'Check stock',time:'22:00',days:[1,4],enabled:true};
   await ctx.route('**/functions/v1/api/**',async route=>{const endpoint=new URL(route.request().url()).pathname.split('/api/')[1];let data={ok:true};
+   if(endpoint==='assistant/chat'){
+     return route.fulfill({status:200,contentType:'application/x-ndjson',body:'{"type":"text","text":"Fixture stock reply."}\n{"type":"done"}\n'});
+   }
    if(endpoint==='bootstrap')data={...fixture,streak:{count:12,lit:true},draft:{cart:{},revision:0}};else if(endpoint==='draft')data={cart:{},revision:0,conflicts:[]};else if(endpoint==='auth/security')data={required:false};
    else if(['devices','activity','assistant/inbox'].includes(endpoint))data=[];
    else if(endpoint==='rico-routines')data=[task];
@@ -134,6 +137,19 @@ const fixture={account:'rozha',name:'Rozha',views:['order','history','manage','a
   await sheet.locator('.help-close').tap();
   assert.equal(await page.evaluate(()=>featureOn('swipe')),initial,'tutorial does not toggle the setting');
   assert.deepEqual(errors,[]);await ctx.close();
+ }
+ for(const width of [375,1280]){
+  const {ctx,page,errors}=await open({}, {viewport:{width,height:812},reducedMotion:'reduce'});
+  await page.evaluate(()=>goView('assistant'));
+  const composer = page.locator('#ricoInput');
+  await composer.fill('How much milk is left?');
+  const previous = await composer.elementHandle();
+  await composer.press('Enter');
+  await page.getByText('Fixture stock reply.',{exact:true}).waitFor();
+  assert.equal(await previous.evaluate(node=>node.isConnected && document.activeElement === node),true,'composer stays mounted and focused');
+  assert.equal(await page.locator('[data-rico-copy]').count(),1);
+  assert.deepEqual(errors,[]);
+  await ctx.close();
  }
  console.log('Mac shell and Settings UI PASS: three Mac themes, ten Mac icons, native reminder handoff, widget link, scheduled task edit, desktop and touch tutorials, reduced motion, native messages');
 }finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exit(1);});

@@ -15,7 +15,7 @@ function fixture() {
     lget:key=>saved.get(key), lset:(key,v)=>v == null?saved.delete(key):saved.set(key,v),
     t:key=>key, toast:msg=>notices.push(msg), render(){}, ricoScroll(){}, ricoSave(){},
     clearTimeout, AbortController, Blob, console, navigator:{mediaDevices:{}}, window:{},
-    ricoRefreshComposer(){}, aiConsent:async()=>true,
+    ricoRefreshComposer(){}, ricoShowNewTurns(){}, aiConsent:async()=>true,
     ricoAsk:text=>asked.push(text),
     ricoStop(){ c.rico.abort?.abort(); },
     ricoOrderIntent:()=>false, ricoHistoryForServer:()=>[], ricoAutoOrder:()=>false,

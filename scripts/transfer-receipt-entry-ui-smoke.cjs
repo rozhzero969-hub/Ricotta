@@ -87,6 +87,7 @@ async function run(){
     assert.equal(await reserved.getAttribute('aria-disabled'),'true');
     assert.match(await reserved.innerText(),/10 piece.*Kitchen/);
     await page.locator('#tfItem0').press('Enter');
+    assert.equal(await page.evaluate(()=>tfFind(tf.id).lines.some(line=>line.item)),false,'reserved stock cannot enter this draft');
     await page.locator('[data-tf-mode=smart]').click();
     const entry = page.locator('#tfSmartEntry');
     assert.equal(await entry.isDisabled(),false);
@@ -94,7 +95,8 @@ async function run(){
     assert.equal(await page.locator('#tfSmartDay, #tfSmartAdd').count(),0);
     for(const [input, pattern, selected] of [
       ['apple 5 kilos', /Yellow Apple/, true],
-      ['yellow appple 5 kilo', /Yellow Apple/, false],
+      ['yellow appple 5 kilo', /Yellow Apple/, true],
+      ['oran 1.5', /Oranges.*Add 1.5/s, true],
       ['yamama pomegranate 2 pieces', /Yamama Pomegranate Molasses/, true],
     ]){
       await entry.fill(input);
@@ -122,11 +124,13 @@ async function run(){
     assert.equal(await entry.getAttribute('aria-invalid'),'true');
     assert.match(await page.locator('#tfSmartStatus').innerText(),/unit/);
     await page.keyboard.press('Escape');
+    await page.locator('.sel-pop').waitFor({state:'detached'});
     await entry.fill('potato 5 kilo');
     await entry.press('Enter');
     assert.match(await page.locator('#tfSmartStatus').innerText(),/Potatoes.*5 کیلۆ/);
-    assert.equal(await page.locator('#tfUnit0').inputValue(),'کیلۆ');
-    assert.equal(await page.locator('#tfQty0').inputValue(),'5');
+    const potatoLines = await page.evaluate(()=>tfFind(tf.id).lines.filter(line=>line.item));
+    assert.deepEqual(potatoLines.map(({item,unit,qty})=>({item,unit,qty})),[{item:'Potatoes',unit:'کیلۆ',qty:5}]);
+    await page.waitForFunction(()=>document.querySelector('#tfUnit0')?.value === 'کیلۆ' && document.querySelector('#tfQty0')?.value === '5');
     await entry.fill('Oranges 5 unknown-unit');
     await entry.press('Enter');
     const pickUnit = page.locator('.sel-pop [role=option]');
@@ -176,11 +180,48 @@ async function run(){
     await entry.press('Enter');
     await page.locator('#tfKeepDraft').click();
     assert.equal(await page.locator('#tfFrom').inputValue(),'Main Storage');
-    assert.equal(await page.locator('#tfTo').inputValue(),'Minibar');
+    assert.equal(await page.locator('.tf-route-locked bdi').innerText(),'Minibar');
+    assert.equal(await entry.evaluate(el=>el === document.activeElement),true);
     assert.equal(await page.locator('#tfYest').getAttribute('aria-checked'),'true');
     await page.locator('[data-tf-mode=manual]').click();
     assert.equal(await page.locator('#tfTo').inputValue(),'');
     assert.equal(await page.locator('#tfYest').getAttribute('aria-checked'),'false');
+    await page.locator('[data-tf-mode=smart]').click();
+    await page.locator('#tfTo').fill('Kitchen');
+    await page.locator('#tfTo').press('Enter');
+    await entry.fill('/he');
+    await entry.press('Tab');
+    assert.equal(await entry.inputValue(),'/help');
+    await entry.press('Enter');
+    await page.locator('.tf-command-help').waitFor();
+    await page.keyboard.press('Escape');
+    await entry.fill('Yamama Pomegranate Molasses ha');
+    await entry.press('Tab');
+    assert.equal(await entry.inputValue(),'Yamama Pomegranate Molasses half');
+    await entry.press('Enter');
+    assert.equal(await page.locator('#tfQty0').inputValue(),'10');
+    await entry.fill('Yamama Pomegranate Molasses + 2 pieces');
+    await entry.press('Enter');
+    assert.equal(await page.locator('#tfQty0').inputValue(),'12');
+    await entry.fill('undo');
+    await entry.press('Enter');
+    assert.equal(await page.locator('#tfQty0').inputValue(),'10');
+    await entry.fill('/undo');
+    // Only one edit is undoable. Leave the first line in this draft and split the rest.
+    await entry.press('Enter');
+    await entry.fill('Yamama Pomegranate Molasses split');
+    await page.getByRole('option').filter({hasText:'Kitchen'}).click();
+    assert.match(await entry.inputValue(),/split Kitchen & $/);
+    await page.getByRole('option').filter({hasText:'Minibar'}).click();
+    await entry.press('Enter');
+    assert.equal(await page.locator('#tfQty1').inputValue(),'5');
+    await entry.fill('/draft');
+    await entry.press('Enter');
+    assert.equal(await page.locator('.tf-route-locked bdi').innerText(),'Minibar');
+    assert.equal(await page.locator('#tfQty0').inputValue(),'5');
+    assert.equal(await entry.evaluate(el=>el === document.activeElement),true);
+    await page.locator('#tfChangeTo').click();
+    await page.locator('input#tfTo').waitFor();
     await page.evaluate(()=>goView('receipts'));
     const delivery = page.locator('#rrDelivery'), rate = page.locator('#rrRate');
     assert.equal(await delivery.count(),0);

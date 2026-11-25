@@ -127,7 +127,7 @@ function rrMergeDrafts(kind, list){
             }
           });
         } else if(s.version === d.version && kind === 'tf'){
-          s.dayPickedOn = d.dayPickedOn; s.smartText = d.smartText;
+          s.dayPickedOn = d.dayPickedOn; s.smartText = d.smartText; s.smartRouteLocked = d.smartRouteLocked;
         }
       }
     }

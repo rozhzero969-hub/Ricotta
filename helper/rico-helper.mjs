@@ -664,26 +664,34 @@ async function fillTransfer(t) {
    item, unit and amount, and that each amount is there in the From storage right now. */
 async function verifyTransfer(t, items, when) {
   const bad = (m) => stop(`Rico checked the transfer ${when} and stopped: ${m}. Nothing was moved.`);
-  const from = flat(await page.locator('button[aria-label="From storage"]').innerText()), to = flat(await page.locator('button[aria-label="To storage"]').innerText());
+  const [from, to, yesterday, n] = await Promise.all([
+    page.locator('button[aria-label="From storage"]').innerText().then(flat),
+    page.locator('button[aria-label="To storage"]').innerText().then(flat),
+    page.getByRole("button", { name: /^Record for yesterday/ }).getAttribute("aria-pressed"),
+    transferRows().count(),
+  ]);
   if (from !== flat(t.from)) bad(`From reads "${from}"`);
   if (to !== flat(t.to)) bad(`To reads "${to}"`);
-  const y = (await page.getByRole("button", { name: /^Record for yesterday/ }).getAttribute("aria-pressed")) === "true";
+  const y = yesterday === "true";
   if (y !== !!t.rrYesterday) bad(`Record for yesterday is ${y ? "on" : "off"}`);
-  const n = await transferRows().count();
   if (n !== t.lines.length) bad(`the form has ${n} items, the transfer has ${t.lines.length}`);
   const need = new Map();
   for (let i = 0; i < t.lines.length; i++) {
     const l = t.lines[i], row = rowOf(i), item = items.get(l.item);
-    const name = flat(await transferRows().nth(i).getAttribute("title") ?? await transferRows().nth(i).innerText());
+    const trigger = transferRows().nth(i);
+    const [name, { unit }, q, available] = await Promise.all([
+      trigger.getAttribute("title").then(async (title) => flat(title ?? await trigger.innerText())),
+      rowUnit(row),
+      page.locator('input[placeholder="amount"]').nth(i).inputValue().then(digits),
+      row.locator("p", { hasText: "available in" }).innerText().catch(() => ""),
+    ]);
     if (name !== flat(l.item)) bad(`item ${i + 1} reads "${name}", not "${l.item}"`);
-    const { unit } = await rowUnit(row);
     if (unit !== flat(l.unit)) bad(`item ${i + 1}'s unit reads "${unit}", not "${l.unit}"`);
-    const q = digits(await page.locator('input[placeholder="amount"]').nth(i).inputValue());
     if (Number(q) !== Number(l.qty)) bad(`item ${i + 1}'s amount reads ${q}, not ${l.qty}`);
     const opt = TR.unitOptions(item).find((o) => o.name === l.unit);
     if (!item || !opt) bad(`item ${i + 1}'s unit can't be checked`);
     need.set(l.item, (need.get(l.item) ?? 0) + l.qty * opt.factor);
-    const have = availableBase(await row.locator("p", { hasText: "available in" }).innerText().catch(() => ""), item);
+    const have = availableBase(available, item);
     if (have == null) bad(`item ${i + 1}: the stock available couldn't be read`);
     if (need.get(l.item) > have + 1e-9) bad(`item ${i + 1} (${l.item}): only ${TR.inCounting(item, have).qty} ${TR.inCounting(item, have).unit} is in ${t.from} now`);
   }
