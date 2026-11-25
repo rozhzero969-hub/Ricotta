@@ -1272,8 +1272,9 @@ function ricoShowNewTurns(count = 2){
   }
   const batch = document.createElement('template');
   batch.innerHTML = rico.messages.slice(start).map((m, i)=>ricoTimeDivider(rico.messages[start+i-1], m) + renderRicoMessage(m, start+i)).join('');
-  attachRicoThreadEvents(batch.content);
+  const messages = batch.content.querySelectorAll('.rico-msg');
   thread.append(batch.content);
+  messages.forEach(attachRicoThreadEvents);
   ricoRefreshComposer(); ricoRefreshHead();
 }
 async function ricoAsk(text, options = {}){
