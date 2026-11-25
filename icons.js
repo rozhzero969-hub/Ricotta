@@ -14,7 +14,12 @@ const ICON_MORE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" s
 /* Rico's sparkle: a four-pointed star with a small one beside it (his pill in the top bar, his screen,
    and "Read the list" on Transfers), in the current text colour. */
 function ricoSparkSvg(color){
-  return `<svg class="rico-spark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="${color}"><path d="M10.5 3.5c.8 5.2 2.8 7.2 8 8-5.2.8-7.2 2.8-8 8-.8-5.2-2.8-7.2-8-8 5.2-.8 7.2-2.8 8-8Z"/><path d="M19 1.8c.35 2.1 1.1 2.85 3.2 3.2-2.1.35-2.85 1.1-3.2 3.2-.35-2.1-1.1-2.85-3.2-3.2 2.1-.35 2.85-1.1 3.2-3.2Z"/></svg>`;
+  const large = 'M10.5 3.5c.8 5.2 2.8 7.2 8 8-5.2.8-7.2 2.8-8 8-.8-5.2-2.8-7.2-8-8 5.2-.8 7.2-2.8 8-8Z';
+  const small = 'M19 1.8c.35 2.1 1.1 2.85 3.2 3.2-2.1.35-2.85 1.1-3.2 3.2-.35-2.1-1.1-2.85-3.2-3.2 2.1-.35 2.85-1.1 3.2-3.2Z';
+  return `<svg class="rico-spark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="${color}">
+    <path class="rico-basic rico-main" d="${large}"/><path class="rico-basic rico-small" d="${small}"/>
+    <path class="rico-shine" d="M6.8 11c1.6-.6 2.6-1.6 3.1-3.1"/><path class="rico-gold" fill="url(#rico-gold)" stroke="#816021" stroke-width=".6" d="${large}"/><path class="rico-gold" fill="url(#rico-gold)" stroke="#816021" stroke-width=".45" d="${small}"/></svg>`;
+
 }
 const ICON_SPARKLE = ricoSparkSvg('currentColor');
 /* Back to the top (the round button beside the tab bar) and a check mark (success, chosen options). */

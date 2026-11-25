@@ -243,10 +243,11 @@ function tfNeedByItem(r){
 }
 /* Exact names win. A unique whole-word abbreviation can be added directly;
    fuzzy or ambiguous matches always require an explicit choice. */
-function tfSmartMatch(text, items, linked, selectedUnit, picked){
+function tfSmartMatch(text, items, linked, selectedUnit, picked, available){
   const search = globalThis.RicottaSearch, norm = search.normalize;
   const parts = text.trim().match(/^(.+)\s+([0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٫٬]*)(?:\s*([^0-9٠-٩۰-۹].*))?$/u);
-  const [, name = text.trim(), amount, unit = ''] = parts || [];
+  const all = text.trim().match(/^(.+)\s+(?:all|هەموو|الكل)$/iu);
+  const [, name = text.trim(), amount, unit = ''] = all || parts || [];
   const qty = amount ? rrStrictAmount(amount, 3) : null;
   const simplify = value=>norm(value).split(' ').map(word=>word.replace(/^([a-z]{3,})ies$/, '$1y').replace(/^([a-z]{3,}(?:t|s|h|x|z|o))es$/, '$1').replace(/^([a-z]{3,}[^s])s$/, '$1')).join(' ');
   const aliases = item=>[item.name, ...item.name.split(' - ').map(n=>n.trim()), ...(linked.get(item.name) || [])];
@@ -256,10 +257,28 @@ function tfSmartMatch(text, items, linked, selectedUnit, picked){
   if(!hits.length) hits = items.filter(item=>aliases(item).some(alias=>norm(alias) === norm(name)));
   if(!hits.length && query.length >= 3) hits = items.filter(item=>aliases(item).some(alias=>words.every(word=>simplify(alias).split(' ').includes(word))));
   const choices = (hits.length ? hits : query.length >= 3 ? search.rank(items, name, aliases) : []).slice(0, 5).map(item=>({item}));
-  if(!parts) return {error:'tfSmartFormat', choices};
-  if(!(qty > 0 && qty <= 999999)) return {error:'tfSmartAmount'};
+  if(!parts && !all) return {error:'tfSmartFormat', choices};
+  if(!all && !(qty > 0 && qty <= 999999)) return {error:'tfSmartAmount', choices};
   if(hits.length !== 1) return {error:hits.length ? 'tfSmartAmbiguous' : 'tfSmartMissing', choices};
   const item = hits[0], units = TF().unitOptions(item);
+  const usable = units.filter(u=>!u.unclear);
+  if(all){
+    const left = available(item);
+    if(left <= 1e-9) return {error:'tfSmartUnavailable', item};
+    for(const option of usable){
+      const quantity = Number((left / option.factor).toFixed(3));
+      if(quantity > 0 && quantity <= 999999 && Math.abs(quantity * option.factor - left) <= 1e-9){
+        return {item, line:{item:item.name, qty:quantity, unit:option.name}, factor:option.factor};
+      }
+    }
+    return {error:'tfSmartAllPrecision', item};
+  }
+  if(!unit.trim() && !selectedUnit){
+    const grams = usable.find(u=>u.factor === 1 && search.unit([u.name], 'gram'));
+    const kilos = usable.find(u=>u.factor === 1000 && search.unit([u.name], 'kilo'));
+    const option = grams && kilos ? (Number.isInteger(qty) && qty >= 1000 ? grams : kilos) : usable.find(u=>u === units[0]);
+    if(option) return {item, line:{item:item.name, qty, unit:option.name}, factor:option.factor};
+  }
   const exact = units.filter(u=>selectedUnit ? u.name === selectedUnit : norm(u.name) === norm(unit));
   const options = exact.length || selectedUnit || !unit.trim() ? exact : units.filter(u=>search.unit([u.name], unit));
   if(options.length !== 1 || options[0].unclear) return {error:'tfSmartUnit', item, units:units.filter(u=>!u.unclear).map(u=>u.name)};
@@ -317,6 +336,12 @@ function tfBindSmart(r, changed, go){
   const entry = document.getElementById('tfSmartEntry'), matches = document.getElementById('tfSmartMatches');
   const status = document.getElementById('tfSmartStatus'), choices = document.getElementById('tfSmartChoices');
   const linked = tfSmartAliases(), items = tf.data.catalog.titems;
+  const current = ()=>r.lines.findIndex(l=>!l.item && !l.qty);
+  const stock = new Map();
+  const available = item=>{
+    if(!stock.has(item.name)) stock.set(item.name, tfLeftForOtherLines(item, r, current()));
+    return stock.get(item.name);
+  };
   let options = [], active = -1;
   const setActive = index=>{
     active = index;
@@ -325,31 +350,39 @@ function tfBindSmart(r, changed, go){
     else entry.setAttribute('aria-activedescendant', 'tfSmartMatch' + active);
   };
   const preview = ()=>{
-    const result = tfSmartMatch(entry.value, items, linked);
+    const result = tfSmartMatch(entry.value, items, linked, null, null, available);
     options = entry.value.trim() && !entry.disabled ? (result.choices || (result.item ? [{item:result.item}] : [])) : [];
-    matches.innerHTML = options.map(({item},i)=>`<div id="tfSmartMatch${i}" role="option" aria-selected="false" data-tf-match="${i}"><bdi>${esc(item.name)}</bdi></div>`).join('');
-    setActive(result.line || (result.item && result.error === 'tfSmartUnit') ? 0 : -1);
+    matches.innerHTML = options.map(({item},i)=>{
+      const left = available(item), counting = TF().inCounting(item, left, true);
+      const quantity = `${tfQty(counting.qty)} ${counting.unit}`;
+      const interpreted = result.line && result.item === item ? `${tfQty(result.line.qty)} ${result.line.unit}` : '';
+      const unavailable = left <= 1e-9 || (interpreted && result.line.qty * result.factor > left + 1e-9);
+      return `<div id="tfSmartMatch${i}" role="option" aria-selected="false" data-tf-match="${i}"><bdi>${esc(item.name)}</bdi><small class="tf-smart-stock${unavailable ? ' short' : ''}">
+        ${esc(t('tfAvailLabel'))} <bdi>${esc(quantity)}</bdi>${interpreted ? ` · ${esc(t('tfSmartAddAmount'))} <bdi>${esc(interpreted)}</bdi>` : ''}</small></div>`;
+    }).join('');
+    setActive(result.item && options.length ? 0 : -1);
     entry.setAttribute('aria-expanded', String(!!options.length));
   };
   const add = (selectedUnit, picked)=>{
     if(entry.disabled || !entry.value.trim()) return;
-    const result = tfSmartMatch(entry.value, items, linked, selectedUnit, picked);
+    stock.clear();
+    const result = tfSmartMatch(entry.value, items, linked, selectedUnit, picked, available);
     if(picked && result.error === 'tfSmartFormat'){
       entry.value = picked + ' ';
       entry.oninput();
       return;
     }
     const {item, line, factor} = result;
-    const current = r.lines.findIndex(l=>!l.item && !l.qty);
+    const index = current();
     let error = result.error;
-    if(!error && line.qty * factor > tfLeftForOtherLines(item, r, current) + 1e-9) error = 'tfSmartUnavailable';
+    if(!error && line.qty * factor > tfLeftForOtherLines(item, r, index) + 1e-9) error = 'tfSmartUnavailable';
     if(!error && r.lines.filter(l=>l.item).length >= TF().MAX_LINES) error = 'rrErrNoLines';
     if(error){
       matches.replaceChildren(); options = []; setActive(-1); entry.setAttribute('aria-expanded','false');
       status.className = 'tf-smart-status bad';
       status.textContent = t(error === 'tfSmartUnit' && result.units.length ? 'tfSmartPickUnit' : error);
       entry.setAttribute('aria-invalid','true');
-      const note = item && error === 'tfSmartUnavailable' ? tfDraftWords(item, r, line.unit) : '';
+      const note = item && error === 'tfSmartUnavailable' ? tfDraftWords(item, r, line?.unit) : '';
       if(note) status.textContent += ' · ' + note;
       choices.replaceChildren();
       if(result.units?.length){
@@ -366,11 +399,11 @@ function tfBindSmart(r, changed, go){
       }
       const manual = document.createElement('button');
       manual.type = 'button'; manual.className = 'btn btn-ghost'; manual.textContent = t('tfManual');
-      manual.onclick = ()=>{ r.smartText = ''; tf.smartMode = false; tfKeep(); render(); go('tfItem' + (current < 0 ? 0 : current)); };
+      manual.onclick = ()=>{ r.smartText = ''; tf.smartMode = false; tfKeep(); render(); go('tfItem' + (index < 0 ? 0 : index)); };
       choices.append(manual);
       return;
     }
-    if(current < 0) r.lines.push(line); else r.lines[current] = line;
+    if(index < 0) r.lines.push(line); else r.lines[index] = line;
     r.smartText = '';
     r.smartAdded = line.item + ' · ' + tfQty(line.qty) + ' ' + line.unit;
     changed(true);
@@ -381,7 +414,7 @@ function tfBindSmart(r, changed, go){
     r.smartAdded = ''; tfKeep();
     status.textContent = ''; status.className = 'tf-smart-status'; choices.replaceChildren();
     entry.removeAttribute('aria-invalid');
-    preview();
+    stock.clear(); preview();
   };
   const selectMatch = index=>{
     const item = options[index]?.item;
