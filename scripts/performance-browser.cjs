@@ -33,7 +33,11 @@ const server=http.createServer((req,res)=>{
     await new Promise(r=>setTimeout(r,300));await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
    });
    await ctx.addInitScript(({loggedIn,session})=>{
-    if(loggedIn)localStorage.setItem('ricottaOrders:apiSession',JSON.stringify(session));
+    if(loggedIn){
+     localStorage.setItem('ricottaOrders:apiSession',JSON.stringify(session));
+     localStorage.setItem('ricottaOrders:toured:'+session.account,'true');
+     localStorage.setItem('ricottaOrders:xtSeen:'+session.account,'true');
+    }
     localStorage.setItem('ricottaOrders:pushBannerSnoozedAt',JSON.stringify(Date.now()));
     window.measure={cls:0,lcp:0,tasks:[],events:[]};
     new PerformanceObserver(list=>list.getEntries().forEach(e=>{if(!e.hadRecentInput)window.measure.cls+=e.value;})).observe({type:'layout-shift',buffered:true});

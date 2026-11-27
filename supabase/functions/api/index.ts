@@ -83,7 +83,7 @@ import { scanReceipt } from "./scan.ts";
 import { autoCheckNames, checkStockNames, stockNames } from "./stock-names.ts";
 import { checkLowStock, relinkedLowStock } from "./low-stock.ts";
 import { rrReaderRoute } from "./rr-reader-route.ts";
-import { dailySummary, telegramLink, telegramStatus, telegramWebhook } from "./telegram.ts";
+import { dailySummary, telegramLink, telegramStatus, telegramWebhook, telegramWebhookAllowed } from "./telegram.ts";
 import { BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson } from "../_shared/security.ts";
 import "../_shared/overview.js";
 import "../_shared/search.js";
@@ -202,16 +202,25 @@ async function authenticate(req: Request): Promise<Session | null | "unavailable
     .select("id,account,device_id,expires_at,revoked_at,last_seen_at,app_accounts(roles)")
     .eq("token_hash", await hash(raw)).maybeSingle();
   if (lookupError) return "unavailable";
-  if (!data || data.revoked_at || !Number.isFinite(Date.parse(data.expires_at)) || Date.parse(data.expires_at) <= Date.now()) return null;
+  if (!data || data.revoked_at) return null;
+  const expiresAt = Date.parse(data.expires_at);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
   if (!["rozha", "yunis", "ahmad"].includes(data.account)) return null;
-  if (Date.now() - new Date(data.last_seen_at).getTime() > SEEN_WRITE_EVERY_MS) {
-    // Used devices stay signed in: 30 days from the last use (a phone used every day never signs out).
-    await app("sessions").update({ last_seen_at: nowIso(), expires_at: new Date(Date.now() + SESSION_IDLE_MS).toISOString() }).eq("id", data.id).is("revoked_at", null);
-  }
   if(data.device_id){
     const {data:device,error}=await app("devices").select("account").eq("id",data.device_id).maybeSingle();
     if(error)return "unavailable";
     if(device?.account!==data.account)return null;
+  }
+  const checkedAt = Date.now();
+  if (expiresAt <= checkedAt) return null;
+  if (checkedAt - Date.parse(data.last_seen_at) > SEEN_WRITE_EVERY_MS) {
+    // Renew only after confirming ownership, and only while the session is still live.
+    const seenAt = new Date(checkedAt).toISOString();
+    const { data: renewed, error } = await app("sessions").update({
+      last_seen_at: seenAt, expires_at: new Date(checkedAt + SESSION_IDLE_MS).toISOString(),
+    }).eq("id", data.id).is("revoked_at", null).gt("expires_at", seenAt).select("id").maybeSingle();
+    if (error) return "unavailable";
+    if (!renewed) return null;
   }
   return { id: data.id, account: data.account, deviceId: data.device_id, roles: rolesOf(data.account, (data as any).app_accounts?.roles) };
 }
@@ -275,7 +284,7 @@ async function readAll(build: () => any): Promise<any[]> {
     if (!data || data.length < PAGE) return rows;
   }
 }
-function groupHistory(orders: any[], lines: any[]) {
+function groupHistory(orders: any[], lines: any[], includeItems = true) {
   const byOrder = new Map<string, any[]>();
   for (const l of lines) (byOrder.get(l.order_id) ?? byOrder.set(l.order_id, []).get(l.order_id)!).push(l);
   return orders.map((o) => {
@@ -286,7 +295,7 @@ function groupHistory(orders: any[], lines: any[]) {
       // separate supplier sections in History instead of merging their lines.
       let e = entries.find((x) => x.supplierId === supplierId && (supplierId !== null || x.supplierName === supplierName));
       if (!e) { e = { supplierId, supplierName, items: [] }; entries.push(e); }
-      e.items.push({ itemId: l.item_id, name: l.item_name, unit: l.unit_id, qty: Number(l.qty) });
+      if (includeItems) e.items.push({ itemId: l.item_id, name: l.item_name, unit: l.unit_id, qty: Number(l.qty) });
     }
     return { id: o.id, date: o.sent_at ?? o.created_at, by: o.sent_by ?? null, entries };
   });
@@ -329,14 +338,15 @@ async function readAccount(id: string) {
   if (error) throw error;
   return data ? { account: data.id, name: data.name, pins: Array.isArray(data.pins) ? data.pins : [], settings: data.settings ?? {} } : null;
 }
-async function orderLinesFor(orderRows: any[]): Promise<any[]> {
+async function orderLinesFor(orderRows: any[], includeItems = true): Promise<any[]> {
   // Lines are read in small batches of orders: a long id list in one request
   // can exceed the URL length limit, and each batch is paged past 1000 rows.
   const lines: any[] = [];
+  const columns = includeItems ? "order_id,supplier_id,supplier_name,item_id,item_name,unit_id,qty" : "order_id,supplier_id,supplier_name";
   for (let i = 0; i < orderRows.length; i += 60) {
     const ids = orderRows.slice(i, i + 60).map((o) => o.id);
     lines.push(...await readAll(() => app("order_lines")
-      .select("order_id,supplier_id,supplier_name,item_id,item_name,unit_id,qty").in("order_id", ids).order("id")));
+      .select(columns).in("order_id", ids).order("id")));
   }
   return lines;
 }
@@ -418,17 +428,18 @@ async function withStock(items: any[]) {
 }
 async function bootstrap(s: Session) {
   const catalogAccess=can(s,"order") || can(s,"manage");
+  const historyAccess = can(s, "history");
   const [me, suppliers, items, units, orders, devices, activity, inbox, streak, months, draft, wipe] = await Promise.all([
     readAccount(s.account),
     catalogAccess ? readAll(() => app("suppliers").select("id,name,phone,reminder,buys").order("name").order("id")) : Promise.resolve([]),
     catalogAccess ? readAll(() => app("items").select("id,name,unit_id,supplier_id,sort_order,note,aliases,available,created_at,last_ordered_at,stock_item,stock_items,kind").order("name").order("id")) : Promise.resolve([]),
     catalogAccess ? readAll(() => app("units").select("id,en,ku,ar").order("id")) : Promise.resolve([]),
-    (can(s,"order") || can(s,"history")) ? readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")) : Promise.resolve([]),
+    (can(s,"order") || historyAccess) ? readAll(() => app("orders").select("id,created_at,sent_at,sent_by").eq("status", "sent").order("sent_at").order("id")) : Promise.resolve([]),
     listDevices(s),
     can(s, "record") ? listActivity() : Promise.resolve([]),
     can(s, "assistant") ? listInbox(s) : Promise.resolve([]),
-    (can(s,"order") || can(s,"history")) ? readStreak() : Promise.resolve(null),
-    can(s, "history") ? listMonths(12) : Promise.resolve([]),
+    (can(s,"order") || historyAccess) ? readStreak() : Promise.resolve(null),
+    historyAccess ? listMonths(12) : Promise.resolve([]),
     can(s,"order") ? readDraft(s.account) : Promise.resolve(null),
     app("wipe").select("next_wipe").eq("id", true).maybeSingle(),
   ]);
@@ -436,10 +447,9 @@ async function bootstrap(s: Session) {
   // Without History, the phone gets only today's orders and which suppliers they went to (the Order
   // screen marks those suppliers sent): no items, amounts or earlier days. Same rule as Rico's.
   const today = baghdadDay();
-  const orderRows = can(s, "history") ? orders : orders.filter((o: any) => baghdadDay(o.sent_at ?? o.created_at) === today);
-  const lines = await orderLinesFor(orderRows);
-  const history = groupHistory(orderRows, lines);
-  if (!can(s, "history")) for (const o of history) for (const e of o.entries) e.items = [];
+  const orderRows = historyAccess ? orders : orders.filter((o: any) => baghdadDay(o.sent_at ?? o.created_at) === today);
+  const lines = await orderLinesFor(orderRows, historyAccess);
+  const history = groupHistory(orderRows, lines, historyAccess);
   return {
     account: s.account, name: me?.name ?? accountName(s.account),
     views: viewsFor(s), roles: s.roles,
@@ -979,10 +989,12 @@ Deno.serve(async (req) => {
       return error ? json({ ok: false }, 503) : json({ ok: true });
     }
 
-    // Telegram calls this for the Ricotta Helper bot; telegram.ts checks its secret header first.
+    // Only authenticated Telegram deliveries use the bot's shared rate limit.
     if (M === "POST" && path === "telegram/webhook") {
+      if (!(await telegramWebhookAllowed(req))) return fail("forbidden", 403);
       const limited = await requestLimit(["telegram"], [600]); if (limited) return limited;
-      return (await telegramWebhook(db, req, await readBody(req, MAX_BODY_BYTES))) ? ok() : fail("forbidden", 403);
+      await telegramWebhook(db, await readBody(req, MAX_BODY_BYTES));
+      return ok();
     }
     // The server's own reader of Ricotta Restaurant, run by send-push's tick (cron secret).
     if (path === "rr-reader/tick") return (await rrReaderRoute({ db, json, fail }, req, M, path, null)) ?? fail("not_found", 404);

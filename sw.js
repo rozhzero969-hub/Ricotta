@@ -15,13 +15,13 @@ self.addEventListener('install', event => {
   event.waitUntil(precache());
 });
 /* Best effort: a file that can't be fetched now is fetched the first time it is used. The spreadsheet
-   library (only for exports) is left for then. */
+   library (only for exports) is left for then. Hashed URLs can use the browser's cache unchanged. */
 async function precache(){
   if(!STATIC_FILES.length) return;
   try{
     const cache=await caches.open(STATIC_CACHE);
     await Promise.all([...assetUrls].filter(u=>!/\/assets\/spreadsheet\./.test(u)).map(async u=>{
-      try{ if(!(await cache.match(u))){ const r=await fetch(u,{cache:'no-cache'}); if(r.ok && r.type==='basic') await cache.put(u,r); } }catch(_){}
+      try{ if(!(await cache.match(u))){ const r=await fetch(u,{cache:'force-cache'}); if(r.ok && r.type==='basic') await cache.put(u,r); } }catch(_){}
     }));
     await keepPage(cache, await fetch(PAGE_KEY,{cache:'no-cache',credentials:'same-origin'}));
   }catch(_){ /* full or private storage: the app still opens online */ }
@@ -100,6 +100,7 @@ self.addEventListener('push', event => {
   try { data = event.data ? event.data.json() : {}; }
   catch (e) { data = { body: event.data ? event.data.text() : '' }; }
 
+  if(!data || typeof data !== 'object' || Array.isArray(data)) data = {};
   const kind = data.kind || 'general';   /* 'reminder' | 'supplier' | 'assistant' | 'security' | 'general' */
   const icon = 'icon-192.png';
   const title = data.title || 'Ricotta Orders';
@@ -116,10 +117,10 @@ self.addEventListener('push', event => {
         icon,
         /* Buttons on the notification appear where the phone supports them; on an iPhone, a tap does the same. */
         actions: data.actionTitle ? [{ action: 'prepare', title: String(data.actionTitle).slice(0, 40) }] : [],
-        data: { kind, supplierId, view, body: data.body || '' }
+        data: { kind, supplierId, view }
       });
     } catch (e) {
-      await self.registration.showNotification(title, { body: data.body || '', data: { kind, supplierId, view, body: data.body || '' } });
+      await self.registration.showNotification(title, { body: data.body || '', data: { kind, supplierId, view } });
     }
     /* The red number on the app icon: one of Rico's warnings adds one while the app is closed.
        The app sets the exact number again whenever it is opened. */
@@ -143,19 +144,17 @@ self.addEventListener('notificationclick', event => {
   const kind = d.kind || 'general';
   const supplierId = d.supplierId || '';
   const view = d.view || '';
-  const body = '';
   event.waitUntil((async () => {
-    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const wins = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true })).filter(w => isAppPage(w.url));
     if (wins.length) {
       const w = wins.find(x => x.visibilityState === 'visible') || wins[0];
       try { await w.focus(); } catch (e) {}
-      w.postMessage({ kind, supplierId, view, body });
+      w.postMessage({ kind, supplierId, view });
       return;
     }
     let url = self.registration.scope + '?n=' + encodeURIComponent(kind);
     if (supplierId) url += '&s=' + encodeURIComponent(supplierId);
     if (view) url += '&v=' + encodeURIComponent(view);
-    if (body) url += '&m=' + encodeURIComponent(body);
     await self.clients.openWindow(url);
   })());
 });

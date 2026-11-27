@@ -530,3 +530,30 @@ test('kept copies: read back only for the same account, and signing out removes 
   assert.equal(await c.offlineCopy('rozha', 'recipes'), null);
   assert.ok(![...saved.keys()].some(k=>k.includes('offlineCopy:rozha')));
 });
+
+test('a delayed retry does not send an old screen’s read as a new session', async()=>{
+  const {context:c, session, calls} = browser();
+  session('first');
+  const backoff = deferred();
+  c.setTimeout = (callback, delay)=>delay === 700 ? (backoff.resolve(callback), 0) : setTimeout(callback, delay);
+  c.fetch = async(url, options)=>{ calls.push(options.headers['x-session-token']); return response(503); };
+  const reading = c.api('receipts');
+  const resume = await backoff.promise;
+  session('second');
+  resume();
+  assert.equal((await reading).stale, true);
+  assert.deepEqual(calls, ['first']);
+});
+
+test('an abandoned Rico stream does not deliver errors from a previous session', async()=>{
+  const {context:c, session} = browser();
+  session('first');
+  const body = deferred(), readingBody = deferred(), events = [];
+  c.fetch = async()=>({status:503, ok:false, text:()=>{ readingBody.resolve(); return body.promise; }});
+  const streaming = c.apiStream('assistant/chat', {}, event=>events.push(event));
+  await readingBody.promise;
+  session('second');
+  body.resolve('{"type":"error","code":"offline"}');
+  await streaming;
+  assert.deepEqual(events, []);
+});

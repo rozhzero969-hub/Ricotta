@@ -180,14 +180,12 @@ async function reportSendResult(res){
   else if(res.skipped) await showAlert(t('notifNoDevicesLoggedOut'));
   else await showAlert(t('notifNoDevices'));
 }
-/* ---------- Daily reminder settings ---------- */
-
 /* ---------- Notification taps ---------- */
 /* kind: 'supplier' (a supplier's reminder -> Order on that
    supplier's tab), 'assistant' (Rico; his month-end message opens History) and 'security' (a sign-in
    from a new device -> Admin, Security), 'low-stock' (items at their low stock level -> Order),
    'recipe' (a recipe alert -> Recipes), 'minibar' (Ahmad's 3:30 PM nudge -> his Stock tab). */
-function handlePushIntent(kind, supplierId, message, view){
+function handlePushIntent(kind, supplierId, view){
   if(!state.account) return;
   if(kind === 'security'){ if(canOpen('admin')){ goView('admin'); openAdminPage('security'); } return; }
   if(kind === 'assistant'){
@@ -209,16 +207,16 @@ function handlePushIntent(kind, supplierId, message, view){
   }
 }
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.addEventListener('message', e => handlePushIntent(e.data && e.data.kind, e.data && e.data.supplierId, e.data && e.data.body, e.data && e.data.view));
+  navigator.serviceWorker.addEventListener('message', e => handlePushIntent(e.data && e.data.kind, e.data && e.data.supplierId, e.data && e.data.view));
 }
 /* App launched by tapping a notification while it was closed: sw.js opens
-   ./?n=<kind>&s=<supplierId>&v=<view>&m=<message>. */
+   ./?n=<kind>&s=<supplierId>&v=<view>. */
 function handleLaunchIntent(){
   try{
     const p = new URLSearchParams(location.search);
     const kind = p.get('n');
     if(!kind) return;
     history.replaceState(null, '', location.pathname);
-    handlePushIntent(kind, p.get('s'), p.get('m'), p.get('v'));
+    handlePushIntent(kind, p.get('s'), p.get('v'));
   }catch(e){}
 }

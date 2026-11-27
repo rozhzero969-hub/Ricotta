@@ -858,8 +858,7 @@ function showStartFailure(){
 }
 /* The branded loading screen lives in index.html so it shows instantly.
    It lifts away once the first real screen is on the page and style.css is
-   in. On a fast start it waits only until the green wipe has painted the word
-   (about a second after it first appeared), so it never cuts off half-way. */
+   in. A brief minimum lets the wordmark finish its wipe on a fast start. */
 function cssReady(){
   if(window.__cssReady || getComputedStyle(document.documentElement).getPropertyValue('--bg')) return Promise.resolve();
   return new Promise(res=>{
@@ -867,14 +866,15 @@ function cssReady(){
     setTimeout(res, 4000);   // never keep the app hidden because of a slow stylesheet
   });
 }
-async function hideSplash(minShown = 1150){
+async function hideSplash(minShown = 420){
   const el = document.getElementById('splash');
   if(!el || el.dataset.state === 'leaving') return;
   await cssReady();
   // The Mac app shows its own see-through loading screen over this one, so there is nothing to wait for.
-  if(reducedMotion() || macShell()) minShown=0;
+  if(reducedMotion() || macShell() || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) minShown=0;
   const wait = Math.max(0, minShown - (performance.now() - (window.__splashStart || 0)));
-  await new Promise(r=>setTimeout(r, wait));
+  if(wait) await new Promise(r=>setTimeout(r, wait));
+  if(!el.isConnected || el.dataset.state === 'leaving') return;
   el.dataset.state = 'leaving';
   document.documentElement.classList.remove('booting');
   syncAppearance();

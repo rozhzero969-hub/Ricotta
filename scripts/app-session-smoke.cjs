@@ -148,7 +148,7 @@ const json = value=>JSON.parse(JSON.stringify(value));
     const c = vm.createContext({state:{account, view:'order', suppliers:[]}, goView:v=>opened.push(v),
       refreshData:()=>{}, ricoRefreshInbox:()=>{}, canOpen:()=>true, render:()=>{}, openAdminPage:p=>opened.push('admin:'+p)});
     vm.runInContext(intentCode, c);
-    vm.runInContext(`handlePushIntent(${JSON.stringify(kind)}, '', '', ${JSON.stringify(view)})`, c);
+    vm.runInContext(`handlePushIntent(${JSON.stringify(kind)}, '', ${JSON.stringify(view)})`, c);
     return opened;
   };
   assert.deepEqual(tapped('assistant','history'),['history'],"Rico's end-of-month message opens History");

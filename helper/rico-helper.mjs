@@ -36,7 +36,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function api(path, { method = "GET", body } = {}) {
   for (let tries = 0; ; tries++) {
     try {
-      const res = await fetch(`${API}/${path}`, { method, headers: { "content-type": "application/json", "x-helper-token": TOKEN }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(70_000) });
+      const res = await fetch(`${API}/${path}`, { method, headers: { "content-type": "application/json", "x-helper-token": TOKEN }, body: body === undefined ? undefined : JSON.stringify(body), redirect: "error", signal: AbortSignal.timeout(70_000) });
       const data = await res.json().catch(() => null);
       if (res.ok) return data;
       if (res.status === 401) throw new Error("Ricotta Orders did not accept Rico's token. Run node helper/setup.mjs --new-token");
@@ -99,8 +99,12 @@ async function joinPhotos(pieces, height, geo) {
   } finally { await p.close(); }
 }
 async function photo(page, id, kind, what = "receipts") {
-  const upload = (b64) => api(`helper/${what}/${id}/photo`, { method: "POST", body: { kind, image: b64 } });
+  const upload = (b64) => {
+    requireRestaurantOrigin(page.url());
+    return api(`helper/${what}/${id}/photo`, { method: "POST", body: { kind, image: b64 } });
+  };
   try {
+    requireRestaurantOrigin(page.url());
     const box = await page.evaluateHandle(() => {
       const all = [...document.querySelectorAll("main, div, section")].filter((el) => {
         const st = getComputedStyle(el);
@@ -145,43 +149,62 @@ async function ensureSignedIn(id) {
   await page.waitForLoadState("domcontentloaded");
   // Ricotta Restaurant decides in the page itself whether to show the sign-in, a moment after loading:
   // wait until either the sign-in box or the app is there.
+  requireRestaurantOrigin(page.url());
   const passBox = page.locator("input[type=password]").first();
   await Promise.race([passBox.waitFor({ timeout: 20_000 }), page.getByText("INVENTORY").first().waitFor({ timeout: 20_000 }), page.getByText("Receipt details").first().waitFor({ timeout: 20_000 })]).catch(() => {});
-  if (!/\/login/.test(page.url()) && !(await passBox.isVisible().catch(() => false))) { signedIn = true; return; }
+  requireRestaurantOrigin(page.url());
+  if (!/\/login/.test(new URL(page.url()).pathname) && !(await passBox.isVisible().catch(() => false))) { signedIn = true; return; }
   signedIn = false;
   const user = readSecret("rr-username"), pass = readSecret("rr-password");
   if (!user || !pass) stop("Ricotta Restaurant signed out and Rico has no sign-in saved. Run node helper/setup.mjs");
   // The Password tab (not PIN), then the two boxes, found by their kind rather than their labels.
   await page.getByRole("tab", { name: /^Password$/ }).or(page.getByRole("button", { name: /^Password$/ })).first().click().catch(() => {});
   await passBox.waitFor({ timeout: 10_000 });
+  requireRestaurantOrigin(page.url());
   await page.locator("input:not([type=password]):not([type=hidden]):not([type=checkbox]):not([type=radio])").first().fill(user);
+  requireRestaurantOrigin(page.url());
   await passBox.fill(pass);
+  requireRestaurantOrigin(page.url());
   await page.getByRole("button", { name: /^Sign in$/ }).click();
-  await page.waitForURL((u) => !/\/login/.test(String(u)), { timeout: 20_000 }).catch(() => stop("Rico could not sign in to Ricotta Restaurant (wrong sign-in or a new check on the page)."));
+  await page.waitForURL((u) => u.origin === RR && !/\/login/.test(u.pathname), { timeout: 20_000 }).catch(() => stop("Rico could not sign in to Ricotta Restaurant (wrong sign-in or a new check on the page)."));
   signedIn = true;
   log("signed in again");
   if (id) await report(id, { log: ["Ricotta Restaurant had signed out. Signed in again."] });
 }
+function requireRestaurantOrigin(url) {
+  if (new URL(url).origin !== RR) {
+    signedIn = false;
+    stop("Ricotta Restaurant opened an unexpected site. Rico will only continue on Ricotta Restaurant.");
+  }
+}
 async function go(path, id) {
   await page.goto(RR + path, { waitUntil: "domcontentloaded" });
   await ensureSignedIn(id);
-  if (!page.url().startsWith(RR + path)) await page.goto(RR + path, { waitUntil: "domcontentloaded" });
+  if (new URL(page.url()).pathname.replace(/\/$/, "") !== path) {
+    await page.goto(RR + path, { waitUntil: "domcontentloaded" });
+    requireRestaurantOrigin(page.url());
+  }
 }
-/* Waits for the answers to these API calls while a page loads, and returns their JSON. */
-function capture(paths) {
+/* Captures the requested JSON responses during a navigation and always removes its listener. */
+async function capture(paths, load) {
   const got = {};
-  const done = new Promise((resolve) => {
-    const on = async (res) => {
-      const u = new URL(res.url());
-      const key = paths.find((p) => u.pathname === p);
-      if (!key || res.request().method() !== "GET" || !res.ok()) return;
-      try { got[key] = await res.json(); } catch {}
-      if (paths.every((p) => p in got)) { page.off("response", on); resolve(got); }
-    };
-    page.on("response", on);
-    setTimeout(() => { page.off("response", on); resolve(got); }, 45_000);
-  });
-  return done;
+  let timer, finish;
+  const done = new Promise((resolve) => { finish = () => resolve(got); });
+  const on = async (res) => {
+    const url = new URL(res.url());
+    if (url.origin !== RR || !paths.includes(url.pathname) || res.request().method() !== "GET" || !res.ok()) return;
+    try { got[url.pathname] = await res.json(); } catch {}
+    if (paths.every((path) => Object.hasOwn(got, path))) finish();
+  };
+  page.on("response", on);
+  timer = setTimeout(finish, 45_000);
+  try {
+    await load();
+    return await done;
+  } finally {
+    clearTimeout(timer);
+    page.off("response", on);
+  }
 }
 
 /* What Rico reads from Ricotta Restaurant for the app: suppliers, zones (not the two Breakfast ones)
@@ -204,7 +227,7 @@ let rrTok = null;
 async function rrToken(fresh = false) {
   if (rrTok && !fresh) return rrTok;
   for (let i = 0; i < 12; i++) {
-    const v = await page.evaluate(() => localStorage.getItem("ricotta_token")).catch(() => null);
+    const v = await page.evaluate((origin) => location.origin === origin ? localStorage.getItem("ricotta_token") : null, RR).catch(() => null);
     if (v) return (rrTok = v);
     await page.waitForLoadState("domcontentloaded").catch(() => {});
     await sleep(1000);
@@ -214,7 +237,7 @@ async function rrToken(fresh = false) {
 /* A read from Ricotta Restaurant's server with Rico's sign-in (nothing is changed there). */
 async function rrGet(path) {
   for (const fresh of [false, true]) {
-    const r = await fetch(RR + path, { headers: { Authorization: "Bearer " + (await rrToken(fresh)) }, signal: AbortSignal.timeout(30_000) });
+    const r = await fetch(RR + path, { headers: { Authorization: "Bearer " + (await rrToken(fresh)) }, redirect: "error", signal: AbortSignal.timeout(30_000) });
     if (r.status === 401 || r.status === 403) continue;
     if (!r.ok) throw new Error(`Ricotta Restaurant answered ${r.status}`);
     return r.json();
@@ -268,12 +291,10 @@ function learnSoon() {
 }
 async function readCatalog({ sync = false } = {}) {
   // The unit names (غرام, کیلۆ, ...) load on the Units page; everything else on New receipt.
-  const waitUnits = capture(["/api/v1/inventory/units"]);
-  await go("/inventory/units");
-  const u = await waitUnits;
-  const wait = capture(["/api/v1/inventory/items", "/api/v1/purchasing/conversions", "/api/v1/purchasing/suppliers", "/api/v1/inventory/zones"]);
-  await go("/inventory/new-receipt");
-  const c = await wait;
+  const u = await capture(["/api/v1/inventory/units"], () => go("/inventory/units"));
+  const c = await capture([
+    "/api/v1/inventory/items", "/api/v1/purchasing/suppliers", "/api/v1/inventory/zones",
+  ], () => go("/inventory/new-receipt"));
   if (!c["/api/v1/inventory/items"] || !c["/api/v1/purchasing/suppliers"] || !c["/api/v1/inventory/zones"]) throw new Error("Could not read the lists from Ricotta Restaurant (the page did not load them)");
   if (!u["/api/v1/inventory/units"]?.units?.length) throw new Error("Could not read the unit names from Ricotta Restaurant");
   const units = Object.fromEntries(u["/api/v1/inventory/units"].units.map((x) => [x.id, x.name]));
@@ -281,7 +302,8 @@ async function readCatalog({ sync = false } = {}) {
   const zones = (Array.isArray(zonesRaw) ? zonesRaw : zonesRaw?.zones ?? []).map((z) => z.name).filter((n) => n && !/breakfast/i.test(n));
   const supRaw = c["/api/v1/purchasing/suppliers"];
   const suppliers = (Array.isArray(supRaw) ? supRaw : supRaw?.suppliers ?? []).filter((s) => s.is_active !== false).map((s) => s.name);
-  const items = c["/api/v1/inventory/items"].items.filter((i) => i.is_active && i.has_purchase_history && i.name.trim() !== "-").map((i) => {
+  const purchased = c["/api/v1/inventory/items"].items.filter((i) => i.is_active && i.has_purchase_history && i.name.trim() !== "-");
+  const items = purchased.map((i) => {
     // Only the item's own formats, as on its page in Ricotta Restaurant: the counting format and the
     // buying format (the usage unit is the base). Old supplier units left in the conversions list
     // (Veal Kebab's "غرام = 1000", Glass Water's "box") never show up.
@@ -294,7 +316,7 @@ async function readCatalog({ sync = false } = {}) {
   // For transfers: every active item with its counting, base and buying units and its stock in each
   // storage (base units), as Ricotta Restaurant's Stock tab and transfer page show it.
   // Only items that were ever bought (as on the Stock tab), never the ones named "-".
-  const titems = c["/api/v1/inventory/items"].items.filter((i) => i.is_active && i.has_purchase_history && i.name.trim() !== "-").map((i) => ({
+  const titems = purchased.map((i) => ({
     name: i.name, base: units[i.usage_unit_id] || i.base_unit,
     count: i.inventory_unit_name ? { name: i.inventory_unit_name, factor: Number(i.inventory_factor_to_base) || 1 } : null,
     buy: i.purchase_unit_name ? { name: i.purchase_unit_name, factor: Number(i.purchase_factor) || 1 } : null,
@@ -345,7 +367,7 @@ function unitMatches(label, want) {
   const a = unitParts(label), w = unitParts(want);
   return a.name === w.name && a.factor === w.factor;
 }
-async function fill(r) {
+async function fill(r, takeForm) {
   await go("/inventory/new-receipt", r.id);
   await page.getByText("Receipt details").first().waitFor({ timeout: 20_000 });
   if (await page.getByText(/We kept your unsaved receipt/i).isVisible().catch(() => false))
@@ -353,6 +375,7 @@ async function fill(r) {
   const supplierBtn = page.getByRole("button", { name: "Supplier" });
   if (!/^\s*Select\s*$/.test(await supplierBtn.innerText())) stop("The New receipt form in Ricotta Restaurant was not empty. Rico did not touch it.");
   const steps = [];
+  takeForm();
   await pick(supplierBtn, r.supplier, "Supplier");
   const zoneBtn = page.getByRole("button", { name: "Zone" });
   if ((await zoneBtn.innerText()).trim() !== r.zone) await pick(zoneBtn, r.zone, "Zone");
@@ -438,21 +461,26 @@ async function checkTotals(r) {
   if (!ok) stop(`Ricotta Restaurant's total reads "${foot}", ours is ${r.currency === "USD" ? `$${t.total} = IQD ${t.iqd}` : `IQD ${t.total}`}.`);
 }
 async function discard() {
+  requireRestaurantOrigin(page.url());
+  if (!/^\/inventory\/new-receipt\/?$/.test(new URL(page.url()).pathname)) return;
   await page.getByRole("button", { name: /^Cancel$/ }).last().click();
   await page.getByRole("button", { name: /^Discard$/ }).click({ timeout: 8000 });
 }
 
-async function save(r) {
+async function save(r, takeForm) {
   // Still the same receipt on the screen? (After a sign-out Ricotta Restaurant brings the draft back.)
   if (!/\/inventory\/new-receipt/.test(page.url()) || !(await page.getByRole("button", { name: "Supplier" }).innerText()).includes(r.supplier.trim().slice(0, 12))) {
     await go("/inventory/new-receipt", r.id);
     if (!(await page.getByText(/We kept your unsaved receipt/i).isVisible().catch(() => false))) stop("The filled-in receipt was gone from Ricotta Restaurant before saving. Nothing was saved; send it again.");
   }
   // The last look before anything is saved: the whole form again, line by line.
+  requireRestaurantOrigin(page.url());
   await verifyForm(r, "just before saving");
+  takeForm();
   // Recorded before pressing (if it can't be recorded, Rico doesn't press): the app then knows Save may
   // have happened, whatever comes after.
   await report(r.id, { pressed: true, log: ["Whole form checked again just before saving: everything matches. Pressing Save."] });
+  requireRestaurantOrigin(page.url());
   pressedSave = true;
   const pressedAt = Date.now();
   await page.getByRole("button", { name: /Receive & send to finance/ }).click();
@@ -481,10 +509,9 @@ async function save(r) {
 async function findInInvoices(r) {
   const month = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baghdad", year: "numeric", month: "2-digit" }).format(new Date());
   const tried = [];
+  const invoiceText = new RegExp(`#${r.invoice}(?![0-9])`);
   for (let pass = 1; pass <= 2; pass++) {
-    const wait = capture(["/api/v1/purchasing/receipts/summary"]);
-    await go("/inventory/invoices", r.id);
-    await wait;
+    await capture(["/api/v1/purchasing/receipts/summary"], () => go("/inventory/invoices", r.id));
     // The tab bar is drawn after the data: wait for it, then give the supplier's own tab a few seconds to show.
     await page.getByRole("button", { name: exact("Purchases") }).first().waitFor({ timeout: 15_000 }).catch(() => {});
     const own = page.getByRole("button", { name: exact(r.supplier) });
@@ -494,9 +521,9 @@ async function findInInvoices(r) {
       if (!tried.includes(tab)) tried.push(tab);
       const button = page.getByRole("button", { name: exact(tab) }).first();
       if (await button.count()) await button.click().catch(() => {});
-      const seen = await page.getByText(`#${r.invoice}`).first().waitFor({ timeout: 12_000 }).then(() => true, () => false);
+      const row = page.locator("tr, [role=row], li, div").filter({ hasText: invoiceText }).filter({ hasText: r.supplier.slice(0, 10) }).last();
+      const seen = await row.waitFor({ timeout: 12_000 }).then(() => true, () => false);
       if (!seen) continue;
-      const row = page.locator("tr, [role=row], li, div").filter({ hasText: `#${r.invoice}` }).filter({ hasText: r.supplier.slice(0, 10) }).last();
       const first = (await row.innerText().catch(() => "")).trim().match(/^(\d+)/);
       await row.click().catch(() => {});
       await sleep(800);
@@ -625,7 +652,7 @@ function checkDay(t) {
   stop(`This transfer is for ${t.forDay}, but Ricotta Restaurant is on ${R} now (its day changes at 3:00 in the morning, Erbil time), so it can't be recorded on ${t.forDay} there. Nothing was moved. Send it again after 3:00, or with Record for yesterday set for the day it belongs to.`);
 }
 let tfFillingAt = null;   // the line being filled in, for a readable message if Rico gets stuck
-async function fillTransfer(t) {
+async function fillTransfer(t, takeForm) {
   tfFillingAt = null;
   t.rrYesterday = checkDay(t).yesterday;
   // Against the lists as they are now (re-read if older than 10 minutes): stock and names.
@@ -638,6 +665,7 @@ async function fillTransfer(t) {
   await page.getByText("Move stock between storages").first().waitFor({ timeout: 20_000 });
   const fromB = page.locator('button[aria-label="From storage"]'), toB = page.locator('button[aria-label="To storage"]');
   if (!/Choose/.test(await fromB.innerText())) stop("The Move between storages form in Ricotta Restaurant was not empty. Rico did not touch it.");
+  takeForm();
   await pickByName(fromB, t.from, "Storage");
   await pickByName(toB, t.to, "Storage");
   const yb = page.getByRole("button", { name: /^Record for yesterday/ });
@@ -702,6 +730,7 @@ async function pressMove(t) {
   // Recorded before pressing (if it can't be recorded, Rico doesn't press): the app then knows Move it
   // may have happened, whatever comes after.
   await treport(t.id, { pressed: true, log: ["Pressing Move it"] });
+  requireRestaurantOrigin(page.url());
   pressedMove = true;
   const pressedAt = Date.now();
   await page.getByRole("button", { name: /^Move it$/ }).click();
@@ -733,10 +762,12 @@ async function pressMove(t) {
 let pressedMove = false;
 async function workTransfer(t) {
   pressedMove = false;
+  let ownsForm = false;
+  const takeForm = () => { ownsForm = true; };
   log(`transfer ${t.id.slice(0, 8)} ${t.status} ${t.from} -> ${t.to}`);
   try {
     if (t.status === "filling") {
-      const steps = await fillTransfer(t);
+      const steps = await fillTransfer(t, takeForm);
       await photo(page, t.id, "before", "transfers");
       if (PRACTICE) {
         await go("/inventory/transfer", t.id);   // a reload clears the form there: nothing moves
@@ -765,8 +796,8 @@ async function workTransfer(t) {
     if (t.status === "moving" || t.status === "approved") {
       // Filled in again from the start (Ricotta Restaurant keeps no unfinished transfer), checked again
       // against the live stock, then moved.
+      if (!t.filled) await fillTransfer(t, takeForm);   // still filled in when moved without a second approval
       const items = new Map((catalogNow?.titems ?? []).map((i) => [i.name, i]));
-      if (!t.filled) await fillTransfer(t);   // still filled in when moved without a second approval
       await verifyTransfer(t, items, "just before moving");
       await treport(t.id, { log: [t.filled ? "Checked against the live stock again just before moving: everything matches" : "Filled in again and checked against the live stock just before moving: everything matches"] });
       const r = await pressMove(t);
@@ -779,8 +810,10 @@ async function workTransfer(t) {
     const msg = e instanceof Stop ? e.message
       : `Rico got stuck${where} and stopped. ${pressedMove ? "Move it was already pressed: check Recent transfers in Ricotta Restaurant before doing anything." : "Nothing was moved; use Copy to send it again."}`;
     log("STOPPED:", msg, e instanceof Stop ? "" : `(${String(e.message).split("\n")[0]})`);
-    await photo(page, t.id, "problem", "transfers").catch(() => {});
-    if (!pressedMove) await go("/inventory/transfer", t.id).catch(() => {});   // nothing moved: the form is cleared
+    if (ownsForm) {
+      await photo(page, t.id, "problem", "transfers").catch(() => {});
+      if (!pressedMove) await go("/inventory/transfer", t.id).catch(() => {});
+    }
     await treport(t.id, { status: "problem", problem: msg, log: [msg] }).catch((x) => log("report failed:", x.message));
   }
 }
@@ -790,6 +823,8 @@ let pressedSave = false, lastSaveChecked = true;
 let catalogNow = null;   // the lists as Rico last read them from Ricotta Restaurant
 async function work(r) {
   pressedSave = false;
+  let ownsForm = false;
+  const takeForm = () => { ownsForm = true; };
   log(`receipt ${r.id.slice(0, 8)} ${r.status} ${r.supplier} #${r.invoice}`);
   try {
     if (r.status === "filling") {
@@ -801,7 +836,7 @@ async function work(r) {
         const c = R.check(r, catalogNow, {}, {});
         if (c.errors.length) stop(`This receipt no longer matches Ricotta Restaurant's lists (${c.errors.map((e) => (e.line ? "item " + e.line + ": " : "") + e.code).join(", ")}). Something was renamed or removed there. Nothing was filled in; fix the receipt and send it again.`);
       }
-      const steps = await fill(r);
+      const steps = await fill(r, takeForm);
       await photo(page, r.id, "before");
       if (PRACTICE) {
         await discard();
@@ -819,24 +854,27 @@ async function work(r) {
       if (!r) return;
     }
     if (r.status === "saving" || r.status === "approved") {
-      const text = await save(r);
-      const found = await findInInvoices(r);
+      const text = await save(r, takeForm);
+      const found = await findInInvoices(r).catch((e) => {
+        log("Could not check the saved receipt in Invoices:", String(e.message).split("\n")[0]);
+        return { tab: "", month: erbilDay().slice(0, 7), no: null, missing: [] };
+      });
       // The row number in Invoices is only its place in the list (it moves when Ricotta Restaurant changes its
       // tabs), so the receipt is known by its tab, its invoice number and the day. Saved but not found in
       // Invoices is still a saved receipt (it was confirmed in the stock record): it just shows "Check this".
       const finance = { tab: found.tab, month: found.month, no: found.no, checked: lastSaveChecked && !found.missing };
       await report(r.id, { status: "saved", finance, log: [`Saved: "${text}"`, found.missing
-        ? `Saved, but invoice #${r.invoice} wasn't found in Invoices (looked in: ${found.missing.join(", ")}). Please look for it there.`
+        ? `Saved, but invoice #${r.invoice} couldn't be confirmed in Invoices${found.missing.length ? ` (looked in: ${found.missing.join(", ")})` : ""}. Please look for it there.`
         : `Found in Invoices, ${found.tab} tab, invoice #${r.invoice} (row ${found.no ?? "?"} today)`] });
       log(found.missing ? `saved invoice #${r.invoice} (not found in Invoices)` : `saved ${found.tab} invoice #${r.invoice}`);
     }
   } catch (e) {
     const msg = e instanceof Stop ? e.message : `Rico ran into an error: ${e.message}`;
     log("STOPPED:", msg);
-    await photo(page, r.id, "problem").catch(() => {});
-    // Nothing was saved yet while filling in, so the half-filled form is cleared away. Once saving has
-    // started it is never touched: Ricotta Restaurant may already have it.
-    if (r.status === "filling" || ((r.status === "saving" || r.status === "approved") && !pressedSave)) await discard().catch(() => {});
+    if (ownsForm) {
+      await photo(page, r.id, "problem").catch(() => {});
+      if (!pressedSave) await discard().catch(() => {});
+    }
     await report(r.id, { status: "problem", problem: msg, log: [msg] }).catch((x) => log("report failed:", x.message));
   }
 }
@@ -941,8 +979,10 @@ await restHome();
     try {
       const w = await api("helper/shot/wait", { method: "POST", body: { wait: 50 } });
       if (!w?.want) continue;
+      requireRestaurantOrigin(page.url());
       const img = (await page.screenshot({ type: "jpeg", quality: 70, scale: "css" })).toString("base64");
       const what = await page.title().catch(() => "");
+      requireRestaurantOrigin(page.url());
       await api("helper/shot", { method: "POST", body: { chat: w.chat, image: img, caption: `Rico's screen at ${new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Baghdad", hour: "numeric", minute: "2-digit", hour12: true })}${PRACTICE ? " (practice mode)" : ""}${what ? ": " + what : ""}` } });
       log("sent a live screenshot");
     } catch (e) { log("screenshot:", e.message); await sleep(5000); }

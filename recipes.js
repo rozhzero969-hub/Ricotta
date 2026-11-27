@@ -9,7 +9,7 @@
    same rules the API uses for the alerts), rounded to the nearest 250 IQD. A recipe with an item that has
    no price yet shows no cost at all, and says which one.
    Hold a recipe or an item (right-click on a computer) for its menu: edit or delete. Photos: tap or hold
-   one to view or delete it, hold and drag to change their order (the first is the cover).
+   one to view it. Photo options open on hold or right-click (the first photo is the cover).
    Saves carry a version, so one phone can't overwrite another one's edits. Nothing here changes stock. */
 const recipeBook = {account:null, data:null, raw:null, loadedAt:0, ctx:null, stockBy:null, loading:false, error:false, page:'list', id:null,
   editing:null, dirty:false, saving:false, saveJob:null, prices:null, pricesBusy:false, pricesPoll:null, timer:null, query:'', ingQuery:'',
@@ -210,7 +210,11 @@ function recipeShow(){
 }
 function recipeTop(){ document.getElementById('mainContent')?.scrollTo?.({top:0}); window.scrollTo({top:0}); }
 async function recipeSave(loud = false){
-  if(recipeBook.saveJob){ const ok = await recipeBook.saveJob; if(!ok) return false; return recipeBook.dirty ? recipeSave(loud) : true; }
+  if(recipeBook.saveJob){
+    const session = recipeSession(), ok = await recipeBook.saveJob;
+    if(!ok || recipeStale(session)) return false;
+    return recipeBook.dirty ? recipeSave(loud) : true;
+  }
   const job = recipePerformSave(loud);
   recipeBook.saveJob = job;
   try{ return await job; } finally { if(recipeBook.saveJob === job) recipeBook.saveJob = null; }
@@ -281,9 +285,14 @@ function recipeGroups(rows){
 }
 /* Rico with a question already written (the person sends it): the chat's own draft, so it waits there. */
 function recipeAskRicoFor(text){
+  const session = recipeSession();
   if(typeof ricoDraftKey === 'function') lset(ricoDraftKey(), text);
   goView('assistant');
-  setTimeout(()=>{ const i = document.getElementById('ricoInput'); if(i){ i.value = text; i.dispatchEvent(new Event('input')); i.focus(); } }, 120);
+  setTimeout(()=>{
+    if(recipeStale(session) || state.view !== 'assistant') return;
+    const i = document.getElementById('ricoInput');
+    if(i){ i.value = text; i.dispatchEvent(new Event('input')); i.focus(); }
+  }, 120);
 }
 
 /* ---------- Pages ---------- */

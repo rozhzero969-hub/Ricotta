@@ -1,11 +1,12 @@
 /* Cache boundaries are security boundaries: only exact public build assets may be stored. */
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const listeners={},stored=new Map(),deleted=[],network=[];
+const listeners={},stored=new Map(),deleted=[],network=[],notifications=[],windowsOpened=[],windowsMessaged=[];
+let windows=[];
 const asset='https://example.test/Ricotta/assets/app.123456789abc.js';
 const cache={match:async req=>stored.get(req.url||req),put:async(req,res)=>stored.set(req.url||req,res)};
 let failStore=false,failOpen=false,failMatch=false,failKeys=false,claims=0,offline=false,moved=false;const pageFetches=[];
 const context=vm.createContext({URL,Set,Promise,console,TypeError,
- self:{registration:{scope:'https://example.test/Ricotta/'},clients:{claim:async()=>{claims++;}},skipWaiting:async()=>{},addEventListener:(type,fn)=>{listeners[type]=fn;}},
+ self:{registration:{scope:'https://example.test/Ricotta/',showNotification:async(title,options)=>notifications.push({title,options})},clients:{claim:async()=>{claims++;},matchAll:async()=>windows,openWindow:async url=>windowsOpened.push(url)},skipWaiting:async()=>{},addEventListener:(type,fn)=>{listeners[type]=fn;}},
  caches:{keys:async()=>{if(failKeys)throw Error('unavailable');return ['ricotta-static-old','ricotta-static-dev','ricotta-badge','another-app'];},delete:async key=>deleted.push(key),open:async()=>{if(failOpen)throw Error('unavailable');return {...cache,match:async req=>{if(failMatch)throw Error('unavailable');return cache.match(req);},put:async(req,res)=>{if(failStore)throw Error('quota');return cache.put(req,res);}};}},
  Response:{redirect:(url,status)=>({redirectTo:url,status})},
  fetch:async(req,init)=>{
@@ -52,5 +53,20 @@ async function runFetch(url,method='GET',mode){
  await assert.rejects(runFetch('https://example.test/Ricotta/privacy.html','GET','navigate'),'other pages are not answered from it');
  pageDown=false;stored.clear();
  failKeys=true;listeners.activate({waitUntil:p=>{activation=p;}});await activation;assert.equal(claims,2,'cache cleanup failure cannot block activation');
+ const dispatch = (kind, data)=>{
+  let done;listeners[kind]({...data,waitUntil:p=>{done=p;}});return done;
+ };
+ await dispatch('push',{data:{json:()=>null}});
+ assert.equal(notifications[0].title,'Ricotta Orders','even a null payload shows a notification');
+ await dispatch('push',{data:{json:()=>({kind:'assistant',body:'Reminder text',view:'history'})}});
+ assert.equal(notifications[1].options.body,'Reminder text');
+ assert.equal(Object.hasOwn(notifications[1].options.data,'body'),false,'the tap payload only contains routing data');
+ const outside={url:'https://example.test/other/',visibilityState:'visible',focus:async()=>assert.fail('other apps must not be focused'),postMessage:()=>assert.fail('other apps must not receive tap details')};
+ const inside={url:'https://example.test/Ricotta/index.html',visibilityState:'hidden',focus:async()=>{},postMessage:data=>windowsMessaged.push(JSON.parse(JSON.stringify(data)))};
+ const tap={notification:{data:{kind:'assistant',supplierId:'',view:'history'},close(){}}};
+ windows=[outside,inside];await dispatch('notificationclick',tap);
+ assert.deepEqual(windowsMessaged,[{kind:'assistant',supplierId:'',view:'history'}]);
+ windows=[outside];await dispatch('notificationclick',tap);
+ assert.deepEqual(windowsOpened,['https://example.test/Ricotta/?n=assistant&v=history']);
  console.log('Static cache smoke PASS: immutable-only GET cache, the page always fresh (offline: the browser copy, else this build\'s own page), no config/API/user data, safe quota failure and old-version cleanup');
 })().catch(e=>{console.error(e);process.exitCode=1;});
