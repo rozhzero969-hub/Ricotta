@@ -36,7 +36,7 @@ const browser = await chromium.launch(), page = await browser.newPage();
 
 async function run(receipt, opts) {
   setup = { own: opts?.own ?? null, late: opts?.late ?? 0 };
-  const stub = { page, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), capture: () => Promise.resolve({}), photo: async () => {},
+  const stub = { page, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), capture: async (_paths, load) => { await load(); return {}; }, photo: async () => {},
     go: async () => { await page.goto(base); }, exact: (s) => new RegExp(`^\\s*${String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`), stop: (m) => { throw new Error(m); } };
   const fn = new Function(...Object.keys(stub), `${code}; return findInInvoices;`)(...Object.values(stub));
   return fn(receipt);
@@ -50,8 +50,32 @@ try {
   // 2. A supplier without an own tab: found in Purchases.
   f = await run({ id: "r2", supplier: "Bread House Bakery", invoice: "3673" });
   assert.equal(f.tab, "Purchases", "no own tab: Purchases");
-  // 3. An invoice that isn't there: reported, not thrown (the receipt stays saved).
-  f = await run({ id: "r3", supplier: "Bread House Bakery", invoice: "999999" });
-  assert.ok(Array.isArray(f.missing) && f.missing.includes("Purchases") && f.tab === "", "not found: reported with where he looked");
-  console.log("Rico invoices PASS: the supplier's own tab drawn late is still used, Purchases otherwise, and a missing invoice is reported instead of stopping the receipt");
+  // 3. Invoice #3673 is present, but #367 must still be reported missing.
+  f = await run({ id: "r3", supplier: "Bread House Bakery", invoice: "367" });
+  assert.ok(Array.isArray(f.missing) && f.missing.includes("Purchases") && f.tab === "", "an invoice number prefix is not a match");
+  // The receipt worker can only clear its own form, and invoice lookup is evidence after Save.
+  const workSource = src.slice(src.indexOf("async function work(r) {"), src.indexOf("/* Waits (keeping the filled-in form open)"));
+  class Stop extends Error {}
+  async function runWorker(status, { ownsForm = false } = {}) {
+    const events = [];
+    const dependencies = {
+      page: {}, log: () => {}, Stop, catalogNow: { at: Date.now() }, R: { check: () => ({ errors: [] }) },
+      fill: async (_r, takeForm) => { if (ownsForm) takeForm(); throw new Stop("Rico could not fill this receipt."); },
+      save: async () => "Receipt sent", findInInvoices: async () => { throw new Error("Invoices did not load"); },
+      erbilDay: () => "2026-11-27", photo: async () => { events.push("photo"); },
+      discard: async () => { events.push("discard"); }, report: async (_id, result) => { events.push(result); },
+    };
+    const work = new Function(...Object.keys(dependencies),
+      `let pressedSave = false, lastSaveChecked = true; ${workSource}; return work;`)(...Object.values(dependencies));
+    await work({ ...base_, status });
+    return events;
+  }
+  let events = await runWorker("filling");
+  assert.deepEqual(events.map((e) => e.status), ["problem"], "a receipt opened by someone else is neither photographed nor discarded");
+  events = await runWorker("filling", { ownsForm: true });
+  assert.deepEqual(events.slice(0, 2), ["photo", "discard"], "Rico still cleans up the form he filled");
+  events = await runWorker("approved");
+  assert.equal(events[0].status, "saved", "a confirmed save stays saved if invoice lookup throws");
+  assert.equal(events[0].finance.checked, false);
+  console.log("Rico invoices PASS: late supplier tab, missing invoice, owned form cleanup, and saved receipt status when lookup fails");
 } finally { await browser.close(); server.close(); }

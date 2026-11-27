@@ -104,9 +104,12 @@ const appVersionHeader = () => typeof APP_VERSION === 'string' ? {'x-app-version
 /* A read that meets a short server hiccup (503) is tried once more before anyone hears about it. */
 async function api(path, opts = {}){
   const read = (opts.method || 'GET') === 'GET';
+  const session = read ? apiSession() : null;
   const first = await apiOnce(path, {...opts, retrying:read});
   if(!read || first.status !== 503 || opts.signal?.aborted) return first;
   await new Promise(resolve=>setTimeout(resolve, 700));
+  if(!apiPathIsPublic(path) && (!apiSessionMatches(session) || !apiAccountMatchesUi(session))) return staleApiReply();
+  if(opts.signal?.aborted) return first;
   return apiOnce(path, opts);
 }
 async function apiOnce(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepalive=false, signal=null, quiet=false, retrying=false} = {}){
@@ -114,9 +117,10 @@ async function apiOnce(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepal
   const s = apiSession();
   if(!apiPathIsPublic(path) && !apiAccountMatchesUi(s)) return staleApiReply();
   const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort(), timeout);
-  if(signal?.aborted) controller.abort();
-  else signal?.addEventListener('abort', ()=>controller.abort(), {once:true});
+  const stop = ()=>controller.abort();
+  const timer = setTimeout(stop, timeout);
+  if(signal?.aborted) stop();
+  else signal?.addEventListener('abort', stop, {once:true});
   const sessionCurrent = ()=>apiPathIsPublic(path) || (apiSessionMatches(s) && apiAccountMatchesUi(s));
   const headers = {'Content-Type':'application/json', 'x-device-id':String(lget('deviceId')||''), 'x-device-label':deviceLabel(), ...appVersionHeader()};
   if(s) headers['x-session-token'] = s.token;
@@ -135,9 +139,12 @@ async function apiOnce(path, {method='GET', body, timeout=API_TIMEOUT_MS, keepal
     return {ok:res.ok, status:res.status, data};
   }catch(e){
     if(!sessionCurrent()) return staleApiReply();
-    if(!quiet) setApiHealth(false);
+    if(!quiet && !signal?.aborted) setApiHealth(false);
     return {ok:false, status:0, data:null};
-  }finally{ clearTimeout(timer); }
+  }finally{
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', stop);
+  }
 }
 
 /* Streams an NDJSON reply (Rico's chat): calls onEvent(object) for every line
@@ -164,6 +171,7 @@ async function apiStream(path, body, onEvent, signal){
     if(!res.ok){
       let said = null;
       try{ said = String(await res.text()).split('\n').map(l=>{ try{ return JSON.parse(l); }catch(_){ return null; } }).find(e=>e && e.type === 'error' && typeof e.code === 'string') || null; }catch(_){ said = null; }
+      if(!sessionCurrent() || signal?.aborted) return;
       onEvent({type:'error', code:said?.code || (res.status===429?'busy':'failed')});
       return;
     }

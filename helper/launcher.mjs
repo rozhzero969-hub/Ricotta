@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { readSecret } from "./keychain.mjs";
 
@@ -15,14 +16,14 @@ const LOG = createWriteStream(join(homedir(), "Library", "Logs", "Rico.log"), { 
 const note = (s) => LOG.write(`${new Date().toISOString()} ${s}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let child = null, mode = null, lastLine = "";
+let child = null, mode = null;
 const token = () => readSecret("helper-token");
 async function call(body, ms) {
   const t = token();
   if (!t) return null;
   try {
     const res = await fetch(`${API}/helper/launcher`, { method: "POST", headers: { "content-type": "application/json", "x-helper-token": t },
-      body: JSON.stringify({ running: !!child, mode, ...body }), signal: AbortSignal.timeout(ms) });
+      body: JSON.stringify({ running: !!child, mode, ...body }), redirect: "error", signal: AbortSignal.timeout(ms) });
     return res.ok ? await res.json() : null;
   } catch { return null; }
 }
@@ -36,36 +37,63 @@ async function report(text) {
 function start(m) {
   mode = m;
   const label = m === "practice" ? "Rico (practice mode, nothing is saved)" : "Rico";
-  child = spawn(process.execPath, [join(HERE, "rico-helper.mjs"), ...(m === "practice" ? ["--practice"] : [])], { cwd: dirname(HERE), stdio: ["ignore", "pipe", "pipe"] });
-  // The Mac stays awake while Rico runs (macOS's own caffeinate, which ends by itself when Rico stops);
-  // a sleeping Mac would stop him in the middle of a receipt.
-  try { spawn("/usr/bin/caffeinate", ["-i", "-w", String(child.pid)], { stdio: "ignore", detached: true }).unref(); } catch (e) { note("caffeinate: " + e.message); }
-  let ready = false;
-  const timer = setTimeout(() => { if (!ready && child) report(`${label} started, but the lists haven't loaded after 2 minutes. Check the Mac.`); }, 120_000);
-  const read = (buf) => {
-    for (const line of String(buf).split("\n").filter(Boolean)) {
-      LOG.write(line + "\n"); lastLine = line;
-      const ok = line.match(/read (\d+) items, (\d+) suppliers, (\d+) zones/);
-      if (ok && !ready) { ready = true; clearTimeout(timer); report(`${label} is on: signed in to Ricotta Restaurant and read ${ok[1]} items, ${ok[2]} suppliers and ${ok[3]} zones.`); }
-      else if (!ready && /Could not read the lists|not set up|did not accept|could not sign in/i.test(line)) report(`${label} couldn't load: ${line.replace(/^\S+ \S+ /, "")}`);
+  const me = spawn(process.execPath, [join(HERE, "rico-helper.mjs"), ...(m === "practice" ? ["--practice"] : [])], { cwd: dirname(HERE), stdio: ["ignore", "pipe", "pipe"] });
+  child = me;
+  // Keep the Mac awake while Rico is running. macOS releases the assertion when his process exits.
+  me.once("spawn", () => {
+    const awake = spawn("/usr/bin/caffeinate", ["-i", "-w", String(me.pid)], { stdio: "ignore", detached: true });
+    awake.on("error", (e) => note("caffeinate: " + e.message));
+    awake.unref();
+  });
+  let ready = false, lastLine = "";
+  const timer = setTimeout(() => {
+    if (!ready && child === me && !me.stopping) report(`${label} started, but the lists haven't loaded after 2 minutes. Check the Mac.`);
+  }, 120_000);
+  const read = (line) => {
+    if (!line) return;
+    LOG.write(line + "\n");
+    lastLine = line;
+    if (child !== me || me.stopping) return;
+    const ok = line.match(/read (\d+) items, (\d+) suppliers, (\d+) zones/);
+    if (ok && !ready) {
+      ready = true;
+      clearTimeout(timer);
+      report(`${label} is on: signed in to Ricotta Restaurant and read ${ok[1]} items, ${ok[2]} suppliers and ${ok[3]} zones.`);
+    } else if (!ready && /Could not read the lists|not set up|did not accept|could not sign in/i.test(line)) {
+      report(`${label} couldn't load: ${line.replace(/^\S+ \S+ /, "")}`);
     }
   };
-  child.stdout.on("data", read); child.stderr.on("data", read);
-  const me = child;
-  child.on("exit", (code) => {
+  for (const input of [me.stdout, me.stderr]) createInterface({ input, crlfDelay: Infinity }).on("line", read);
+  const finish = () => {
     clearTimeout(timer);
-    if (child !== me) return;
-    child = null; mode = null;
-    if (!me.stopping) report(`Rico stopped by himself${code ? ` (${lastLine.slice(0, 200)})` : ""}.`);
+    if (child !== me) return false;
+    child = null;
+    mode = null;
+    return !me.stopping;
+  };
+  me.on("error", (error) => {
+    if (me.pid) { note("Rico process: " + error.message); return; }
+    if (finish()) report(`${label} couldn't start: ${error.message}`);
+  });
+  me.on("exit", (code) => {
+    if (finish()) report(`Rico stopped by himself${code ? ` (${lastLine.slice(0, 200)})` : ""}.`);
   });
 }
 function stop() {
   return new Promise((done) => {
     if (!child) return done();
-    const me = child; me.stopping = true;
-    me.once("exit", () => { child = null; mode = null; done(); });
+    const me = child;
+    me.stopping = true;
+    const timer = setTimeout(() => { if (child === me) me.kill("SIGKILL"); }, 15_000);
+    const stopped = () => {
+      clearTimeout(timer);
+      me.off("exit", stopped);
+      me.off("close", stopped);
+      done();
+    };
+    me.once("exit", stopped);
+    me.once("close", stopped);
     me.kill("SIGINT");
-    setTimeout(() => { if (child === me) me.kill("SIGKILL"); }, 15_000);
   });
 }
 

@@ -5,11 +5,11 @@
    then moved). Storages, items and units are named exactly as there; the rules are shared with the API
    and Rico (RicottaTransfers). Stock is Ricotta Restaurant's, as Rico last read it, and Rico checks the
    live stock again on their page right before moving. */
-const tf = {data:null, loading:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false, failed:false};
+const tf = {data:null, loading:false, page:'edit', id:null, formId:null, filter:{src:'all'}, gen:0, saveTimer:0, sending:false, fresh:false, failed:false};
 /* Signing out keeps nothing of that account on the screen (see rrReset). */
 function tfReset(){
   clearTimeout(tf.saveTimer);
-  Object.assign(tf, {data:null, loading:false, loadAgain:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, sending:false, fresh:false,
+  Object.assign(tf, {data:null, loading:false, loadAgain:false, page:'edit', id:null, formId:null, filter:{src:'all'}, saveTimer:0, gen:tf.gen + 1, sending:false, fresh:false,
     failed:false, copyAt:null, netDown:false, asking:false, smartMode:false});
 }
 const TF = ()=> globalThis.RicottaTransfers;
@@ -76,15 +76,16 @@ function tfLeftForLine(item, r, i){
 function tfItemChoices(names, r, i){
   return names.filter(name=>{
     const item = tfItem(name);
-    return !item || tfLeft(item, r.from, r.id) <= 1e-9 ||
-      tfLeftForOtherLines(item, r, i) > 1e-9 || r.lines[i]?.item === name;
+    if(!item || r.lines[i]?.item === name) return true;
+    const left = tfLeft(item, r.from, r.id);
+    return left <= 1e-9 || tfLeftForOtherLines(item, r, i, left) > 1e-9;
   });
 }
-function tfLeftForOtherLines(item, r, current){
+function tfLeftForOtherLines(item, r, current, left = tfLeft(item, r.from, r.id)){
   const options = TF().unitOptions(item);
   const assigned = r.lines.reduce((sum, l, i)=>sum + (i !== current && l.item === item.name && l.qty > 0
     ? l.qty * (options.find(u=>u.name === l.unit)?.factor || 0) : 0), 0);
-  return Math.max(0, tfLeft(item, r.from, r.id) - assigned);
+  return Math.max(0, left - assigned);
 }
 /* The catalog as the Send check should see it: From's stock less what other transfers are taking. */
 function tfCatalogLeft(r){
@@ -107,9 +108,14 @@ async function tfLoad(quiet = false){
   // Asked again while one is on its way: read once more after it (see rrLoad).
   if(tf.loading){ tf.loadAgain = true; return; }
   tf.loading = true;
-  const r = await api('transfers', {quiet});
+  const gen = tf.gen, r = await api('transfers', {quiet});
+  if(gen !== tf.gen) return;
   tf.loading = false;
-  if(tf.loadAgain){ tf.loadAgain = false; setTimeout(()=>tfLoad(true), 0); }
+  if(tf.loadAgain){
+    tf.loadAgain = false;
+    setTimeout(()=>{ if(gen === tf.gen) tfLoad(true); }, 0);
+  }
+  if(r.stale) return;
   if(r.ok && r.data && Array.isArray(r.data.transfers)){
     // A draft being typed keeps what is on the screen until it is saved.
     const editing = tfFind(tf.formId)?.status === 'draft' ? tfFind(tf.formId) : null;
@@ -448,16 +454,17 @@ function tfBindSmart(r, changed, go){
     changed(true); go('tfSmartEntry');
   };
   const remember = lines=>{ r.smartUndo = {before:lines, after:JSON.stringify(r.lines)}; };
+  const openHelp = ()=>openKitchenSheet('tf-command-help', `<div class="sel-title">${esc(t('tfCommand_help'))}</div>
+    <dl>${TF_COMMANDS.map(command=>`<dt>/${command}</dt><dd>${esc(t('tfCommand_' + command))}</dd>`).join('')}
+    ${TF_COMMAND_EXAMPLES.map((example,i)=>`<dt>${esc(example)}</dt><dd>${esc(t('tfCommand_example_' + i))}</dd>`).join('')}</dl>`,
+    t('tfCommand_help'), {returnFocus:entry});
   const runCommand = (name, query)=>{
     const previousText = r.smartText;
     r.smartText = '';
     const clear = ()=>refill('');
     if(name === 'help'){
       clear();
-      openKitchenSheet('tf-command-help', `<div class="sel-title">${esc(t('tfCommand_help'))}</div>
-        <dl>${TF_COMMANDS.map(command=>`<dt>/${command}</dt><dd>${esc(t('tfCommand_' + command))}</dd>`).join('')}
-        ${TF_COMMAND_EXAMPLES.map((example,i)=>`<dt>${esc(example)}</dt><dd>${esc(t('tfCommand_example_' + i))}</dd>`).join('')}</dl>`,
-        t('tfCommand_help'), {returnFocus:entry});
+      openHelp();
     } else if(name === 'find' || name === 'related'){
       clear();
       tfSmartFind(r, name === 'related', item=>refill(item + ' '), entry, query);
@@ -660,7 +667,7 @@ function tfBindSmart(r, changed, go){
     }
   };
   if(entry.value) preview();
-  document.querySelector('[data-tf-command-guide]').onclick = ()=>{ if(!entry.value.trim()) runCommand('help'); else showAlert(esc(TF_COMMAND_EXAMPLES.join(' · ')),{title:t('tfCommand_help')}); };
+  document.querySelector('[data-tf-command-guide]').onclick = openHelp;
   document.querySelectorAll('[data-tf-review-line]').forEach(button=>button.onclick = ()=>go('tfQty' + button.dataset.tfReviewLine));
   document.querySelectorAll('[data-tf-suggestion]').forEach(button=>button.onclick = ()=>{
     if(entry.value.trim()) return;
@@ -724,15 +731,18 @@ const tfIsEmpty = r=> !r.smartText && (r.nextDefaults || (!r.to && !r.yesterday)
 function tfSaveSoon(r){ r.dirty = true; r.edits = (r.edits || 0) + 1; tfKeep(); clearTimeout(tf.saveTimer); tf.saveTimer = setTimeout(()=>tfSaveDraft(r), 600); }
 function tfSaveDraft(r){
   clearTimeout(tf.saveTimer);
+  const gen = tf.gen;
   // One save at a time; typing during a save keeps the draft unsaved on this device (see rrSaveDraft).
   return rrOneAtATime(r.id, async()=>{
-  const edits = r.edits || 0;
-  const body = {from:r.from || null, to:r.to || null, yesterday:!!r.yesterday,
-    lines:r.lines.filter(l=>l.item).map(l=>({item:l.item, unit:l.unit, qty:Number.isFinite(l.qty) ? l.qty : null}))};
-  const res = await api('transfers/' + r.id, {method:'PUT', body, quiet:true});
-  if(res.ok && res.data?.id){ r.version = res.data.version; if((r.edits || 0) === edits) r.dirty = false; tfKeep(); }
-  tf.netDown = res.status === 0;
-  return res.ok;
+    if(gen !== tf.gen || tfFind(r.id) !== r || r.status !== 'draft') return false;
+    const edits = r.edits || 0;
+    const body = {from:r.from || null, to:r.to || null, yesterday:!!r.yesterday,
+      lines:r.lines.filter(l=>l.item).map(l=>({item:l.item, unit:l.unit, qty:Number.isFinite(l.qty) ? l.qty : null}))};
+    const res = await api('transfers/' + r.id, {method:'PUT', body, quiet:true});
+    if(gen !== tf.gen || res.stale) return false;
+    if(res.ok && res.data?.id){ r.version = res.data.version; if((r.edits || 0) === edits) r.dirty = false; tfKeep(); }
+    tf.netDown = res.status === 0;
+    return res.ok;
   });
 }
 function attachTransferEdit(){
@@ -741,7 +751,6 @@ function attachTransferEdit(){
   const repaint = ()=>{ const top = scrollBox().scrollTop; render(); scrollBox().scrollTop = top; };
   const changed = (redraw = false)=>{ if(!r.nextDefaults || r.lines.some(l=>l.item || l.qty)) tfSaveSoon(r); if(redraw) repaint(); };
   const go = id=>{ const el = document.getElementById(id); if(!el) return; el.focus({preventScroll:true}); if(!el.matches('[role=combobox]')) el.select?.(); rrReveal(el); };
-  const enter = (el, fn)=>{ if(el) el.addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.isComposing){ e.preventDefault(); fn(); } }); };
   const firstBox = ()=>tf.smartMode ? 'tfSmartEntry' : 'tfItem' + Math.max(0, r.lines.findIndex(l=>!l.item));
   document.querySelectorAll('[data-tf-mode]').forEach(b=>b.onclick = ()=>{ tf.smartMode = b.dataset.tfMode === 'smart';
     if(!tf.smartMode && r.nextDefaults && tfIsEmpty(r)){ r.to = ''; r.yesterday = false; r.dayPickedOn = null; r.nextDefaults = false; }
@@ -902,6 +911,7 @@ async function tfSendAllDrafts(){
     return;
   }
   let outcome;
+  const gen = tf.gen;
   tf.asking = true;
   try{
     const approval = showFormModal({title:esc(t('tfSendAllDrafts')(rows.length)), okLabel:t(featureOn('tfAuto') ? 'tfSendMove' : 'tfSendAllGo'),
@@ -914,18 +924,19 @@ async function tfSendAllDrafts(){
           ${check.warnings.length ? `<ul class="cf-list">${check.warnings.map(w=>`<li dir="auto">${esc(tfWarnText(w, {...r, lines}))}</li>`).join('')}</ul>` : ''}</section>`).join('')}</div>`,
       onSubmit:async ()=>{ const days = [...document.querySelectorAll('[data-tf-batch-day]')].map(el=>el.value);
         if(days.length !== rows.length || days.some(d=>!['today','yesterday'].includes(d))) return {error:t('tfBatchDayMissing')};
+        if(gen !== tf.gen) return;
         outcome = await tfQueueReviewedDrafts(rows, days, today);
       }});
     document.querySelectorAll('[data-tf-all-day]').forEach(b=>b.onclick = ()=>{
       document.querySelectorAll('[data-tf-batch-day]').forEach(el=>{ el.value = b.dataset.tfAllDay; });
     });
     await approval;
-    if(!outcome) return;
+    if(gen !== tf.gen || !outcome) return;
     const {sent, stopped} = outcome;
     if(sent === rows.length) toast(t('tfSendAllDone')(sent));
     else toast(t('tfSendAllStopped')(sent, rows.length) + (stopped ? ' ' + stopped : ''), 'warn');
     if(state.view === 'transfers') render();
-  } finally { tf.asking = false; }
+  } finally { if(gen === tf.gen) tf.asking = false; }
 }
 async function tfQueueReviewedDrafts(rows, days, today){
   let sent = 0, stopped;
@@ -967,9 +978,10 @@ async function tfQueueReviewedDrafts(rows, days, today){
 async function tfSend(r, keepForm = false){
   if(tf.sending || tf.asking) return false;
   tf.asking = true;
-  try{ return await tfSendNow(r, keepForm); } finally { tf.asking = false; }
+  const gen = tf.gen;
+  try{ return await tfSendNow(r, keepForm, gen); } finally { if(gen === tf.gen) tf.asking = false; }
 }
-async function tfSendNow(r, keepForm){
+async function tfSendNow(r, keepForm, gen){
   if(tfUnfinishedSmart(r)) return false;
   const reviewDay = tfToday();
   const before = r.lines.length;
@@ -983,7 +995,7 @@ async function tfSendNow(r, keepForm){
     // Sent from the list (Waiting to send, Send all): it opens on the form, so the boxes marked are its own.
     if(tf.id !== r.id || tf.page !== 'edit') tfOpen(r.id); else render();
     await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li dir="auto">${esc(tfErrText(e, r.lines))}</li>`).join('')}</ul>`, {title:t('rrFixFirst')});
-    rrMarkErrors(c.errors, true);
+    if(gen === tf.gen) rrMarkErrors(c.errors, true);
     return false;
   }
   // Written on an earlier day (with no connection, or a draft kept overnight): which day it counts on is
@@ -992,24 +1004,26 @@ async function tfSendNow(r, keepForm){
   if(meant !== reviewDay && r.dayPickedOn !== reviewDay){
     if(meant === tfDayBefore(reviewDay)){
       const forYesterday = await showConfirm(esc(t('tfWrittenEarlier')(tfDayLabel(meant))), {title:t('tfWhichDay'), okLabel:t('tfForYesterdayBtn'), cancelLabel:t('tfForTodayBtn'), okClass:'btn-primary', enter:true});
+      if(gen !== tf.gen) return false;
       r.yesterday = forYesterday; r.dayPickedOn = reviewDay; tfSaveSoon(r);
       if(forYesterday) c.warnings.some(w=>w.code === 'yesterday') || c.warnings.push({code:'yesterday'});
       else c.warnings = c.warnings.filter(w=>w.code !== 'yesterday');
     } else if(!await showConfirm(esc(t('tfTooOld')(tfDayLabel(meant))), {title:t('tfWhichDay'), okLabel:t('tfForTodayBtn'), okClass:'btn-primary'})) return false;
-    else { r.yesterday = false; r.dayPickedOn = reviewDay; tfSaveSoon(r); c.warnings = c.warnings.filter(w=>w.code !== 'yesterday'); }
+    else { if(gen !== tf.gen) return false; r.yesterday = false; r.dayPickedOn = reviewDay; tfSaveSoon(r); c.warnings = c.warnings.filter(w=>w.code !== 'yesterday'); }
   }
   // Record for yesterday was confirmed when it was turned on; everything else is read and confirmed here.
   const ask = c.warnings.filter(w=>w.code !== 'yesterday');
   // Moving without a second approval: this is the approval, so what will move is always shown first.
   if(featureOn('tfAuto') && !ask.length && !await showConfirm(tfSummary(r, []), {title:t('tfApproveTitle')(r.lines.filter(l=>l.item).length), okLabel:t('tfSendMove'), okClass:'btn-primary', enter:true, wide:true})) return false;
   if(ask.length && !await showConfirm(tfSummary(r, ask.map(w=>tfWarnText(w, r))), {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary', enter:true, wide:true})) return false;
+  if(gen !== tf.gen) return false;
   // No connection: kept here, waiting to send; the form is free for the next one.
   const parkIt = ()=>{ r.pendingSend = true; r.dirty = true; tfKeep(); toast(t('rrSavedOffline'), 'warn'); if(!keepForm) tfNextDraft(r); else render(); };
   if(tfToday() !== reviewDay){ toast(t('tfBatchChanged'), 'warn'); return false; }
   if(rrOffline()) return parkIt();
   tf.sending = true;
   try{
-    if(!await tfSaveDraft(r)){ if(tf.netDown) return parkIt(); toast(t('saveFailed'), 'error'); return false; }
+    if(!await tfSaveDraft(r)){ if(gen !== tf.gen) return false; if(tf.netDown) return parkIt(); toast(t('saveFailed'), 'error'); return false; }
     if(tfToday() !== reviewDay){ toast(t('tfBatchChanged'), 'warn'); return false; }
     const res = await tfPost(r, c.warnings.map(w=>w.code));
     if(!res) return false;
@@ -1018,7 +1032,7 @@ async function tfSendNow(r, keepForm){
     toast(t('rrSent'));
     if(keepForm) render(); else tfNextDraft(r);
     return true;
-  } finally { tf.sending = false; }
+  } finally { if(gen === tf.gen) tf.sending = false; }
 }
 
 /* A transfer at a glance for the approve and check boxes: From → To, how many items and the day, then
@@ -1032,17 +1046,20 @@ function tfSummary(r, ws){
 /* Sends to Rico. The server may ask about more than the app knows (Rico already pressed Move it for this
    one, or the same transfer was already sent): those are shown and confirmed before it goes. */
 async function tfPost(r, codes, ask = true){
+  const gen = tf.gen;
   codes = [...new Set(codes)];
   const sendDay = tfToday();
   let res = await api(`transfers/${r.id}/send`, {method:'POST', body:{confirm:codes}});
+  if(gen !== tf.gen || res.stale) return null;
   if(ask && !res.ok && res.data?.error === 'needs_confirmation'){
     const more = (res.data.warnings || []).filter(w=>!codes.includes(w.code));
     if(!more.length) return res;
     if(!await showConfirm(tfSummary(r, more.map(w=>tfWarnText(w, r))), {title:t('rrSureTitle'), okLabel:t('rrSendAnyway'), okClass:'btn-danger', wide:true})) return null;
+    if(gen !== tf.gen) return null;
     if(tfToday() !== sendDay){ toast(t('tfBatchChanged'), 'warn'); return null; }
     res = await api(`transfers/${r.id}/send`, {method:'POST', body:{confirm:[...codes, ...more.map(w=>w.code)]}});
   }
-  return res;
+  return gen === tf.gen && !res.stale ? res : null;
 }
 
 /* ---------- A sent transfer ---------- */

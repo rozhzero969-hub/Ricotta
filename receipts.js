@@ -4,12 +4,12 @@
    Restaurant's own New receipt page: Receipt details, then Items received, then the total) and one
    that was sent (Rico's photo to approve, or the saved receipt with its finance number). Names are the
    exact ones Rico read from Ricotta Restaurant; the rules are shared with the API (RicottaReceipts). */
-const rr = {data:null, loading:false, page:'edit', id:null, formId:null, saveTimer:0, photos:{}, sending:false, filter:{src:'all'}, fresh:false};
+const rr = {data:null, loading:false, page:'edit', id:null, formId:null, saveTimer:0, photos:{}, sending:false, filter:{src:'all'}, gen:0, fresh:false};
 /* Signing out keeps nothing of that account on the screen: its drafts stay on this device under its own
    name (rrKeepDrafts) and come back when it signs in again, never into the next person's list. */
 function rrReset(){
   clearTimeout(rr.saveTimer);
-  Object.assign(rr, {data:null, loading:false, loadAgain:false, page:'edit', id:null, formId:null, saveTimer:0, photos:{}, sending:false, filter:{src:'all'}, fresh:false,
+  Object.assign(rr, {data:null, loading:false, loadAgain:false, page:'edit', id:null, formId:null, saveTimer:0, gen:rr.gen + 1, photos:{}, sending:false, filter:{src:'all'}, fresh:false,
     copyAt:null, failed:false, netDown:false, asking:false, typingLine:null, tg:null, tgLoading:false});
 }
 const rrNum = (n, d = 0)=> Number(n || 0).toLocaleString('en-US', {maximumFractionDigits:d});
@@ -25,9 +25,14 @@ async function rrLoad(quiet = false){
   // so an answer from before the change never stays on the screen.
   if(rr.loading){ rr.loadAgain = true; return; }
   rr.loading = true;
-  const r = await api('receipts', {quiet});
+  const gen = rr.gen, r = await api('receipts', {quiet});
+  if(gen !== rr.gen) return;
   rr.loading = false;
-  if(rr.loadAgain){ rr.loadAgain = false; setTimeout(()=>rrLoad(true), 0); }
+  if(rr.loadAgain){
+    rr.loadAgain = false;
+    setTimeout(()=>{ if(gen === rr.gen) rrLoad(true); }, 0);
+  }
+  if(r.stale) return;
   if(r.ok && r.data && Array.isArray(r.data.receipts)){
     // A draft being typed keeps what is on the screen until it is saved.
     const editing = rrFind(rr.formId)?.status === 'draft' ? rrFind(rr.formId) : null;
@@ -106,10 +111,18 @@ function rrKeepDrafts(kind, list, isEmpty){
    saved there; one the server no longer has and that wasn't changed here was removed elsewhere. */
 function rrMergeDrafts(kind, list){
   const openId = kind === 'rr' ? (typeof rr === 'object' ? rr.formId : null) : (typeof tf === 'object' ? tf.formId : null);
-  const push = [];
-  for(const d of lget(kind + 'Drafts:' + state.account) || []){
-    const s = list.find(x=>x.id === d.id);
-    if(!s){ if(d.dirty || d.pendingSend || !d.version){ list.unshift(d); if(d.dirty || !d.version) push.push(d); } }
+  const push = [], drafts = lget(kind + 'Drafts:' + state.account) || [];
+  if(!drafts.length) return push;
+  const byId = new Map(list.map(d=>[d.id, d]));
+  for(const d of drafts){
+    const s = byId.get(d.id);
+    if(!s){
+      if(d.dirty || d.pendingSend || !d.version){
+        list.unshift(d);
+        byId.set(d.id, d);
+        if(d.dirty || !d.version) push.push(d);
+      }
+    }
     // The form open on the screen already holds everything typed: it is saved as it is, never replaced by the
     // device copy (that dropped a just-added empty row, and typing into it was lost).
     else if(s.status === 'draft' && s.id === openId){ if(d.dirty) push.push(s); if(d.pendingSend) s.pendingSend = true; }
@@ -654,15 +667,18 @@ function rrSaveSoon(r){
 }
 function rrSaveDraft(r){
   clearTimeout(rr.saveTimer);
+  const gen = rr.gen;
   return rrOneAtATime(r.id, async()=>{
-  // Typing that goes on while this save is on its way keeps the draft unsaved on this device.
-  const edits = r.edits || 0;
-  const body = {supplier:r.supplier || null, invoice:r.invoice || null, zone:r.zone, currency:r.currency, rate:Number.isFinite(r.rate) ? r.rate : null,
-    delivery:Number.isFinite(r.delivery) ? r.delivery : null, lines:r.lines.filter(l=>l.item).map(l=>({item:l.item, unit:l.unit, qty:Number.isFinite(l.qty) ? l.qty : null, cost:Number.isFinite(l.cost) ? l.cost : null}))};
-  const res = await api('receipts/' + r.id, {method:'PUT', body, quiet:true});
-  if(res.ok && res.data?.id){ r.version = res.data.version; if((r.edits || 0) === edits) r.dirty = false; rrKeep(); }
-  rr.netDown = res.status === 0;
-  return res.ok;
+    if(gen !== rr.gen || rrFind(r.id) !== r || r.status !== 'draft') return false;
+    // Typing that goes on while this save is on its way keeps the draft unsaved on this device.
+    const edits = r.edits || 0;
+    const body = {supplier:r.supplier || null, invoice:r.invoice || null, zone:r.zone, currency:r.currency, rate:Number.isFinite(r.rate) ? r.rate : null,
+      delivery:Number.isFinite(r.delivery) ? r.delivery : null, lines:r.lines.filter(l=>l.item).map(l=>({item:l.item, unit:l.unit, qty:Number.isFinite(l.qty) ? l.qty : null, cost:Number.isFinite(l.cost) ? l.cost : null}))};
+    const res = await api('receipts/' + r.id, {method:'PUT', body, quiet:true});
+    if(gen !== rr.gen || res.stale) return false;
+    if(res.ok && res.data?.id){ r.version = res.data.version; if((r.edits || 0) === edits) r.dirty = false; rrKeep(); }
+    rr.netDown = res.status === 0;
+    return res.ok;
   });
 }
 function attachReceiptEdit(){
@@ -842,9 +858,10 @@ function rrPaintTotals(r){
 async function rrSend(r, keepForm = false){
   if(rr.sending || rr.asking) return false;
   rr.asking = true;
-  try{ return await rrSendNow(r, keepForm); } finally { rr.asking = false; }
+  const gen = rr.gen;
+  try{ return await rrSendNow(r, keepForm, gen); } finally { if(gen === rr.gen) rr.asking = false; }
 }
-async function rrSendNow(r, keepForm){
+async function rrSendNow(r, keepForm, gen){
   if(r.lines.some(l=>l.mathText?.trim())){ toast(t('rrMathPending'), 'warn'); return false; }
   const before = r.lines.length;
   r.lines = r.lines.filter(l=>l.item || l.qty || l.cost);
@@ -856,18 +873,20 @@ async function rrSendNow(r, keepForm){
     // Sent from the list (Waiting to send): it opens on the form, so the boxes marked are its own.
     if(rr.id !== r.id || rr.page !== 'edit') rrOpen(r.id); else render();
     await showAlert(`<ul class="rr-errs">${c.errors.slice(0, 8).map(e=>`<li dir="auto">${esc(rrErrText(e, r.lines))}</li>`).join('')}</ul>`, {title:t('rrFixFirst')});
-    rrMarkErrors(c.errors);
+    if(gen === rr.gen) rrMarkErrors(c.errors);
     return false;
   }
   // Every warning is read and confirmed before Rico gets the receipt.
   if(c.warnings.length && !await showConfirm(rrSummary(r, c.warnings.map(w=>rrWarnLine(w, r))), {title:t('rrCheckThese'), okLabel:t('rrSendAnyway'), okClass:'btn-primary', enter:true, wide:true})) return;
+  if(gen !== rr.gen) return false;
   if(c.warnings.some(w=>w.code === 'bigTotal') && !await showConfirm(esc(t('rrBigAgain')(rrNum(c.iqd))), {title:t('rrSureTitle'), okLabel:t('rrSend'), okClass:'btn-primary'})) return;
+  if(gen !== rr.gen) return false;
   // No connection: kept here, waiting to send; the form is free for the next one.
   const parkIt = ()=>{ r.pendingSend = true; r.dirty = true; rrKeep(); toast(t('rrSavedOffline'), 'warn'); if(!keepForm) rrNewDraft({zone:r.zone}); else render(); };
   if(rrOffline()) return parkIt();
   rr.sending = true;
   try{
-    if(!await rrSaveDraft(r)){ if(rr.netDown) return parkIt(); toast(t('saveFailed'), 'error'); return; }
+    if(!await rrSaveDraft(r)){ if(gen !== rr.gen) return false; if(rr.netDown) return parkIt(); toast(t('saveFailed'), 'error'); return; }
     const res = await rrPost(r, c.warnings.map(w=>w.code));
     if(!res) return;
     if(!res.ok){
@@ -878,21 +897,24 @@ async function rrSendNow(r, keepForm){
     toast(t('rrSent'));
     if(keepForm) render(); else rrNewDraft({zone:r.zone});
     return true;
-  } finally { rr.sending = false; }
+  } finally { if(gen === rr.gen) rr.sending = false; }
 }
 
 /* Sends to Rico. The server may ask about more than the app knows (Rico already pressed Save for this
    receipt or one with the same invoice): that is shown and confirmed before it goes. */
 async function rrPost(r, codes){
+  const gen = rr.gen;
   codes = [...new Set(codes)];
   let res = await api(`receipts/${r.id}/send`, {method:'POST', body:{confirm:codes}});
+  if(gen !== rr.gen || res.stale) return null;
   if(!res.ok && res.data?.error === 'needs_confirmation'){
     const more = (res.data.warnings || []).filter(w=>!codes.includes(w.code));
     if(!more.length) return res;
     if(!await showConfirm(rrSummary(r, more.map(w=>rrWarnLine(w, r))), {title:t('rrSureTitle'), okLabel:t('rrSendAnyway'), okClass:'btn-danger', wide:true})) return null;
+    if(gen !== rr.gen) return null;
     res = await api(`receipts/${r.id}/send`, {method:'POST', body:{confirm:[...codes, ...more.map(w=>w.code)]}});
   }
-  return res;
+  return gen === rr.gen && !res.stale ? res : null;
 }
 
 /* ---------- A sent receipt ---------- */

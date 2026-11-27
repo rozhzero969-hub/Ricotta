@@ -11,6 +11,7 @@ import { cleanTimeZone, clientIp, placeOf } from '../supabase/functions/api/geo.
 import { saveMemory, saveRoutine, toRoutine } from '../supabase/functions/api/rico-memory.ts';
 import { cleanRoutine } from '../supabase/functions/_shared/routines.ts';
 import { checkLowStock, relinkedLowStock } from '../supabase/functions/api/low-stock.ts';
+import { telegramWebhook, telegramWebhookAllowed } from '../supabase/functions/api/telegram.ts';
 import '../supabase/functions/_shared/search.js';
 import '../supabase/functions/_shared/transfers.js';
 import '../supabase/functions/_shared/stock-link.js';
@@ -59,10 +60,10 @@ const db = {
     throw new Error(`Unexpected RPC ${name}`);
   },
   from(table) {
-    let action = 'read', change, selected = false, from = 0, to = Infinity;
+    let action = 'read', change, selected = false, from = 0, to = Infinity, columns;
     const filters = [];
     const run = () => {
-      calls.push({ table, action });
+      calls.push({ table, action, columns });
       if (errors.has(`${table}:${action}`)) return { data: null, error: { message: 'offline' } };
       const rows = tables[table] ?? [];
       const matching = rows.filter(row => filters.every(filter => filter(row)));
@@ -78,7 +79,7 @@ const db = {
       return { data: action === 'read' || selected ? matching.slice(from,to+1).map(row => ({ ...row })) : null, count: matching.length, error: null };
     };
     const q = {
-      select() { selected = true; return q; },
+      select(fields) { selected = true; columns = fields; return q; },
       eq(field, value) { filters.push(row => row[field] === value); return q; },
       neq(field, value) { filters.push(row => row[field] !== value); return q; },
       not(field, op, value) { filters.push(row => !(op === 'is' ? (row[field] ?? null) === value : row[field] === value)); return q; },
@@ -101,8 +102,9 @@ const db = {
 let handler;
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test', SUPABASE_ANON_KEY: 'test' };
 const deno = { env: { get: key => environment[key] }, serve(fn) { handler = fn; } };
+globalThis.Deno = deno;
 const source = (await readFile(new URL('../supabase/functions/api/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const { groupHistory } = new Function('recipesRoute', 'createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', 'checkLowStock', 'relinkedLowStock', 'rrReaderRoute', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( recipesRoute, () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf, checkLowStock, relinkedLowStock, async () => null );
+const { groupHistory } = new Function('recipesRoute', 'createClient', 'Deno', 'BodyTooLarge', 'InvalidBody', 'isPushEndpoint', 'readJsonBody', 'securityHeaders', 'acceptsJson', 'monthKey', 'monthStart', 'turnstileConfig', 'verifyTurnstile', 'saveMemory', 'saveRoutine', 'toRoutine', 'cleanRoutine', 'cleanTimeZone', 'clientIp', 'placeOf', 'checkLowStock', 'relinkedLowStock', 'rrReaderRoute', 'telegramWebhookAllowed', 'telegramWebhook', stripTypeScriptTypes(source) + '\nreturn { groupHistory };')( recipesRoute, () => db, deno, BodyTooLarge, InvalidBody, isPushEndpoint, readJsonBody, securityHeaders, acceptsJson, monthKey, monthStart,turnstileConfig,verifyTurnstile, saveMemory, saveRoutine, toRoutine, cleanRoutine, cleanTimeZone, clientIp, placeOf, checkLowStock, relinkedLowStock, async () => null, telegramWebhookAllowed, telegramWebhook );
 const call = (path, body, method = 'POST', auth = true) => handler(new Request(`https://example.supabase.co/functions/v1/api/${path}`, {
   method, headers: { 'content-type': 'application/json', ...(auth ? { 'x-session-token': token, 'x-device-id': 'device-1' } : {}) },
   ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -156,6 +158,17 @@ try {
   assert.equal(preflight.status,204);assert.equal(preflight.headers.get('Access-Control-Allow-Origin'),'https://rozhzero969-hub.github.io');
   assert.equal(preflight.headers.get('Access-Control-Allow-Credentials'),null);
   const locked=await call('devices/command',{ids:['peer'],type:'logout'},'POST',false);assert.equal(locked.status,401);
+  reset();
+  environment.TELEGRAM_BOT_TOKEN = 'fixture-not-a-telegram-token';
+  const webhook = (secret, body) => handler(new Request('https://example.supabase.co/functions/v1/api/telegram/webhook', {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-telegram-bot-api-secret-token': secret }, body,
+  }));
+  assert.equal((await webhook('0'.repeat(48), '{broken')).status, 403, 'invalid Telegram credentials are rejected before JSON parsing');
+  assert.equal(calls.length, 0, 'unauthenticated requests do not consume the Telegram quota');
+  const webhookSecret = (await digest('ricotta-telegram:' + environment.TELEGRAM_BOT_TOKEN)).slice(0, 48);
+  assert.equal((await webhook(webhookSecret, '{}')).status, 200, 'authenticated Telegram updates still work');
+  assert.deepEqual(calls.map(call => call.args?.p_keys), [['telegram']]);
+  delete environment.TELEGRAM_BOT_TOKEN;
   reset();requestAllowed=false;
   const throttled=await call('orders',{});assert.equal(throttled.status,429);assert.equal(throttled.headers.get('Retry-After'),'60');
   assert.equal(calls.some(c=>c.name==='app_internal_save_order'),false);
@@ -452,6 +465,7 @@ try {
   let bootData = await staffBoot.json();
   assert.deepEqual(bootData.history.map(h => h.id), ['o-today'], 'no earlier days without History');
   assert.deepEqual(bootData.history[0].entries, [{ supplierId: 'supplier', supplierName: 'Supplier', items: [] }], 'only which supplier was sent today');
+  assert.equal(calls.find(c => c.table === 'app_order_lines')?.columns, 'order_id,supplier_id,supplier_name', 'staff bootstrap skips database reads of restricted item details');
   assert.deepEqual(bootData.months, [], 'no past months without History');
   assert.equal(calls.some(c => c.table === 'app_month_summaries'), false);
   assert.equal((await call('months', null, 'GET')).status, 403);
@@ -466,7 +480,16 @@ try {
   reset(); errors.set('app_devices:read', true);
   assert.equal((await call('bootstrap', null, 'GET')).status, 503);
   reset(); tables.app_devices[0].account = 'yunis';
+  const staleSeen = new Date(Date.now() - 600_000).toISOString();
+  tables.app_sessions[0].last_seen_at = staleSeen;
+  const originalExpiry = tables.app_sessions[0].expires_at;
   assert.equal((await call('bootstrap', null, 'GET')).status, 401, 'a device of another account is refused');
+  assert.equal(tables.app_sessions[0].expires_at, originalExpiry, 'wrong-device sessions never extend their expiry');
+  reset(); tables.app_sessions[0].last_seen_at = staleSeen;
+  assert.equal((await call('bootstrap', null, 'GET')).status, 200, 'active sessions renew normally');
+  assert.ok(Date.parse(tables.app_sessions[0].expires_at) > Date.now() + 29 * 86_400_000);
+  reset(); tables.app_sessions[0].last_seen_at = staleSeen; errors.set('app_sessions:update', true);
+  assert.equal((await call('bootstrap', null, 'GET')).status, 503, 'unavailable renewal does not sign anyone out');
   reset(); tables.app_sessions[0].revoked_at = new Date().toISOString();
   assert.equal((await call('bootstrap', null, 'GET')).status, 401);
   reset(); tables.app_sessions[0].expires_at = new Date(Date.now() - 1000).toISOString();

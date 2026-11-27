@@ -195,7 +195,13 @@ async function run(){
     await entry.press('Enter');
     await page.locator('.tf-command-help').waitFor();
     await page.keyboard.press('Escape');
+    await page.locator('.tf-command-help').waitFor({state:'detached'});
     await entry.fill('Yamama Pomegranate Molasses ha');
+    await page.locator('[data-tf-command-guide]').click();
+    await page.locator('.tf-command-help').getByText('/draft', {exact:true}).waitFor();
+    await page.keyboard.press('Escape');
+    await page.locator('.tf-command-help').waitFor({state:'detached'});
+    assert.equal(await entry.inputValue(), 'Yamama Pomegranate Molasses ha', 'opening command help preserves the current entry');
     await entry.press('Tab');
     assert.equal(await entry.inputValue(),'Yamama Pomegranate Molasses half');
     await entry.press('Enter');
@@ -266,6 +272,19 @@ async function run(){
       rrCostFromTotal('10.0001',3,'USD').error,
     ]);
     assert.deepEqual(math,['rrMathAmount','rrMathMismatch',690.104,3.5,'rrMathAmount']);
+    const queued = await page.evaluate(async ()=>{
+      const receipt = rrFind(rr.formId), transfer = tfFind(tf.formId);
+      let release;
+      const gate = new Promise(resolve=>{ release = resolve; });
+      rrOneAtATime(receipt.id, ()=>gate);
+      rrOneAtATime(transfer.id, ()=>gate);
+      const saves = [rrSaveDraft(receipt), tfSaveDraft(transfer)];
+      rrReset();
+      tfReset();
+      release();
+      return Promise.all(saves);
+    });
+    assert.deepEqual(queued,[false,false],'draft saves waiting behind older work stop when the session resets');
     assert.deepEqual(errors,[]);
     console.log('Transfer and receipt entry UI PASS');
   } finally {

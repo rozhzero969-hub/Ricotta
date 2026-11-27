@@ -10,6 +10,7 @@
 //
 // The bot token is the TELEGRAM_BOT_TOKEN secret. Telegram's calls to us carry a secret header made
 // from it, so nobody else can pretend to be Telegram.
+import { timingSafeEqual } from "node:crypto";
 import "../_shared/search.js";
 import "../_shared/receipts.js";
 import { approveTransfer, cancelTransfer, erbilDay, onTransferEvent, sendTransfer, transferPhotoLinks } from "./transfers.ts";
@@ -111,10 +112,14 @@ export async function telegramStatus(d: any, account = "rozha") {
 }
 
 /* ---------- Telegram calls us ---------- */
-export async function telegramWebhook(d: any, req: Request, update: any) {
-  // Compared as hashes, so the secret's length or first letters never leak through timing.
+export async function telegramWebhookAllowed(req: Request) {
   const given = req.headers.get("x-telegram-bot-api-secret-token") ?? "";
-  if (!telegramReady() || !given || given.length > 256 || (await sha(given)) !== (await sha(await webhookSecret()))) return false;
+  if (!telegramReady() || !/^[a-f0-9]{48}$/.test(given)) return false;
+  const encode = new TextEncoder();
+  return timingSafeEqual(encode.encode(given), encode.encode(await webhookSecret()));
+}
+
+export async function telegramWebhook(d: any, update: any) {
   const msg = update.message, cb = update.callback_query;
   const chat = Number(msg?.chat?.id ?? cb?.message?.chat?.id);
   if (!Number.isSafeInteger(chat)) return true;
