@@ -8,6 +8,7 @@ const rr = {data:null, loading:false, page:'edit', id:null, formId:null, saveTim
 /* Signing out keeps nothing of that account on the screen: its drafts stay on this device under its own
    name (rrKeepDrafts) and come back when it signs in again, never into the next person's list. */
 function rrReset(){
+  rrCloseWatch?.(); rrWatchPosition = null;
   clearTimeout(rr.saveTimer);
   Object.assign(rr, {data:null, loading:false, loadAgain:false, page:'edit', id:null, formId:null, saveTimer:0, gen:rr.gen + 1, photos:{}, sending:false, filter:{src:'all'}, fresh:false,
     copyAt:null, failed:false, netDown:false, asking:false, typingLine:null, tg:null, tgLoading:false});
@@ -253,81 +254,99 @@ function rrCheckSummary(c, when){
 }
 const RR_WATCH_URL = 'http://127.0.0.1:17692';
 let rrCloseWatch = null;
-function rrWatchPopover(trigger, label, html, floating = false){
-  const findAnchor = ()=>document.querySelector('#mainContent [data-rr-activity]') ||
-    document.querySelector('#mainContent .rr-ricobar [data-rico]');
-  if(!floating){
-    const wasOpen = document.querySelector('.rr-watch-chooser');
-    closeSelSheet();
-    if(wasOpen) return null;
-  }
+let rrWatchPosition = null;
 
+function rrWatchPopover(trigger, label){
   const el = document.createElement('div');
-  el.className = 'rr-watch-popover ' + (floating ? 'rr-watch-floating' : 'rr-watch-chooser');
-  el.id = floating ? 'rrWatchFloating' : 'rrWatchModes';
+  el.className = 'rr-watch-popover rr-watch-floating';
+  el.id = 'rrWatchFloating';
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', label);
-  el.innerHTML = html;
+  el.innerHTML = `<header class="rr-watch-heading" data-watch-grip>
+    <button type="button" class="rr-watch-title" data-watch-size aria-expanded="false"><strong>${esc(label)}</strong><span class="rr-watch-size-icon" aria-hidden="true"></span></button>
+    <button type="button" class="rr-ctl" data-close-activity aria-label="${esc(t('rrClosePhoto'))}">×</button></header>
+    <button type="button" class="rr-watch-screen" data-watch-size aria-label="${esc(t('rrWatchExpand'))}" aria-expanded="false" hidden><img alt="${esc(t('rrWatchAlt'))}"><i hidden aria-hidden="true"></i></button>
+    <p class="rr-watch-status" data-watch-status role="status">${esc(t('rrWatchConnecting'))}</p>`;
   document.body.appendChild(el);
 
-  const view = state.view, session = apiSession();
-  const events = new AbortController();
-  let anchor, resizeObserver, renderObserver;
-  const expand = (button, open)=>{
-    button?.setAttribute('aria-expanded', String(open));
-    if(open) button?.setAttribute('aria-controls', el.id);
-    else button?.removeAttribute('aria-controls');
+  const session = apiSession(), events = new AbortController(), signal = events.signal;
+  const grip = el.querySelector('[data-watch-grip]');
+  const sizes = [...el.querySelectorAll('[data-watch-size]')];
+  let anchor, drag, dragged = false, expanded = false, editing = null, workingPoint = null, pointerRelease = 0, positionFrame = 0;
+  const gutter = 12, gap = 8;
+  const clamp = (n, max)=>Math.max(gutter, Math.min(n, max));
+  const findAnchor = ()=>document.querySelector('#mainContent [data-rr-activity]') ||
+    document.querySelector('#mainContent .rr-ricobar [data-rico]') || (trigger?.isConnected ? trigger : null);
+  const markOpen = (button, open)=>{
+    if(!button?.matches('[data-rr-activity]')) return;
+    button.setAttribute('aria-expanded', String(open));
+    if(open) button.setAttribute('aria-controls', el.id);
+    else button.removeAttribute('aria-controls');
   };
   const dismiss = (focus = false)=>{
     events.abort();
-    resizeObserver?.disconnect();
-    renderObserver?.disconnect();
-    expand(anchor, false);
+    resizeObserver.disconnect();
+    renderObserver.disconnect();
+    cancelAnimationFrame(positionFrame);
+    clearTimeout(pointerRelease);
+    markOpen(anchor, false);
     el.remove();
-    if(activeSelSheet === close) activeSelSheet = null;
     if(rrCloseWatch === close) rrCloseWatch = null;
-    if(focus) (findAnchor() || trigger)?.focus({preventScroll:true});
+    if(focus) findAnchor()?.focus({preventScroll:true});
   };
   const close = ()=>dismiss();
   const active = ()=>{
-    if(el.isConnected && (floating || state.view === view) && apiSessionMatches(session)) return true;
+    if(el.isConnected && apiSessionMatches(session)) return true;
     if(el.isConnected) close();
     return false;
   };
   const place = ()=>{
     if(!active()) return;
-    const next = findAnchor() || (trigger?.isConnected ? trigger : null);
-    if(next !== anchor){
-      if(!floating) { expand(anchor, false); expand(next, true); }
-      anchor = next;
+    const next = findAnchor();
+    if(next !== anchor){ markOpen(anchor, false); anchor = next; markOpen(anchor, true); }
+    const rect = anchor?.getBoundingClientRect(), viewportHeight = innerHeight;
+    const width = Math.min(expanded ? 620 : 280, innerWidth - 2 * gutter);
+    const height = el.offsetHeight;
+    const right = innerWidth - width - gutter, bottom = viewportHeight - height - gutter;
+    const nav = document.querySelector('.bottom-stack')?.getBoundingClientRect().height || 0;
+    const rtl = isRtl(), dock = {x:rtl ? gutter : right, y:bottom - nav};
+    let home = {x:dock.x, y:dock.y};
+    if(rect && rect.bottom > 0 && rect.top < viewportHeight){
+      const below = viewportHeight - rect.bottom;
+      home = {
+        x:rtl ? rect.left : rect.right - width,
+        y:below >= height + gap || below >= rect.top ? rect.bottom + gap : rect.top - height - gap,
+      };
     }
-    const rect = anchor?.getBoundingClientRect(), width = el.offsetWidth, height = el.offsetHeight;
-    const gutter = 12, gap = 8;
-    const canAnchor = rect && rect.bottom > 0 && rect.top < innerHeight;
-    if(!canAnchor){
-      if(!floating){ close(); return; }
-      const bottom = document.querySelector('.bottom-stack')?.getBoundingClientRect().height || 0;
-      el.style.left = (isRtl() ? gutter : innerWidth - width - gutter) + 'px';
-      el.style.top = Math.max(gutter, innerHeight - height - bottom - gutter) + 'px';
-      return;
+    const preferred = drag ? drag.position : rrWatchPosition || home;
+    let x = clamp(preferred.x, right), y = clamp(preferred.y, bottom);
+    const field = editing?.isConnected && !editing.closest('.modal-overlay') ? editing.getBoundingClientRect() : null;
+    const overlaps = (left, top)=>
+      (field && left < field.right + gap && left + width > field.left - gap &&
+        top < field.bottom + gap && top + height > field.top - gap) ||
+      (workingPoint && workingPoint.x > left - 20 && workingPoint.x < left + width + 20 &&
+        workingPoint.y > top - 20 && workingPoint.y < top + height + 20);
+    // Make room for the active field or an in-progress pointer gesture. Hovering the player can
+    // still reach its controls, and a temporary move does not overwrite the dragged position.
+    if(!drag && overlaps(x, y)){
+      const alternatives = [
+        {x:gutter, y}, {x:right, y}, {x, y:gutter}, {x, y:clamp(dock.y, bottom)},
+      ].filter(point=>!overlaps(point.x, point.y));
+      alternatives.sort((a,b)=>Math.hypot(a.x-x, a.y-y) - Math.hypot(b.x-x, b.y-y));
+      if(alternatives.length) ({x,y} = alternatives[0]);
     }
-    const left = getComputedStyle(anchor).direction === 'rtl' ? rect.left : rect.right - width;
-    el.style.left = Math.max(gutter, Math.min(left, innerWidth - width - gutter)) + 'px';
-    const below = innerHeight - rect.bottom, above = rect.top;
-    const top = below >= height + gap || below >= above ? rect.bottom + gap : rect.top - height - gap;
-    el.style.top = Math.max(gutter, Math.min(top, innerHeight - height - gutter)) + 'px';
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
   };
-
-  if(floating) rrCloseWatch = close;
-  else activeSelSheet = close;
-  place();
-  if(!el.isConnected) return null;
-  const signal = events.signal;
-  resizeObserver = new ResizeObserver(place);
+  const schedule = ()=>{
+    if(positionFrame) return;
+    positionFrame = requestAnimationFrame(()=>{ positionFrame = 0; place(); });
+  };
+  const resizeObserver = new ResizeObserver(schedule);
   resizeObserver.observe(el);
-  renderObserver = new MutationObserver(()=>{
+  const renderObserver = new MutationObserver(()=>{
     observePage();
-    place();
+    schedule();
   });
   const observePage = ()=>{
     renderObserver.disconnect();
@@ -336,63 +355,98 @@ function rrWatchPopover(trigger, label, html, floating = false){
     if(content) renderObserver.observe(content, {childList:true});
   };
   observePage();
-  addEventListener('resize', place, {signal});
-  addEventListener('scroll', place, {capture:true, signal});
-  addEventListener('pointerdown', event=>{
-    if(!floating && !el.contains(event.target) && !anchor?.contains(event.target)) close();
-  }, {capture:true, signal});
+  addEventListener('resize', schedule, {signal});
+  addEventListener('scroll', schedule, {capture:true, signal});
+  const trackWork = event=>{
+    if(drag || !event.isPrimary || el.contains(event.target) || !event.target.closest?.('#mainContent') ||
+      event.target.closest?.('[data-rr-activity]')) return;
+    clearTimeout(pointerRelease);
+    workingPoint = {x:event.clientX, y:event.clientY};
+    schedule();
+  };
+  addEventListener('pointerdown', trackWork, {signal});
+  addEventListener('pointermove', event=>{ if(event.buttons === 1 && workingPoint) trackWork(event); }, {signal});
+  const endWork = ()=>{
+    if(!workingPoint) return;
+    clearTimeout(pointerRelease);
+    pointerRelease = setTimeout(()=>{ workingPoint = null; schedule(); }, 550);
+  };
+  addEventListener('pointerup', endWork, {signal});
+  addEventListener('pointercancel', endWork, {signal});
+  addEventListener('focusin', event=>{
+    if(el.contains(event.target)) return;
+    editing = event.target.matches?.('input:not([type=checkbox]):not([type=radio]),textarea,select,[contenteditable=true]') ? event.target : null;
+    schedule();
+  }, {signal});
+  addEventListener('focusout', event=>{
+    if(editing === event.target){ editing = null; schedule(); }
+  }, {signal});
   addEventListener('keydown', event=>{
-    if(event.key !== 'Escape' || modalAboveSheet() || (floating && !el.contains(document.activeElement))) return;
+    if(event.key !== 'Escape' || !el.contains(document.activeElement)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     dismiss(true);
   }, {capture:true, signal});
-  const button = el.querySelector('[data-close-activity]');
-  if(button) button.onclick = ()=>dismiss(true);
-  (button || el.querySelector('button'))?.focus({preventScroll:true});
+
+  function toggleSize(){
+    expanded = !expanded;
+    el.classList.toggle('expanded', expanded);
+    for(const button of sizes){
+      button.setAttribute('aria-expanded', String(expanded));
+      button.setAttribute('aria-label', t(expanded ? 'rrWatchShrink' : 'rrWatchExpand'));
+    }
+    place();
+  }
+  for(const button of sizes) button.onclick = event=>{
+    if(dragged && event.detail){ dragged = false; return; }
+    toggleSize();
+  };
+  grip.onpointerdown = event=>{
+    if(!event.isPrimary || event.button !== 0 || event.target.closest('[data-close-activity]')) return;
+    dragged = false;
+    const rect = el.getBoundingClientRect();
+    drag = {id:event.pointerId, x:event.clientX, y:event.clientY, left:rect.left, top:rect.top, position:{x:rect.left,y:rect.top}};
+  };
+  addEventListener('pointermove', event=>{
+    if(!drag || drag.id !== event.pointerId) return;
+    const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+    if(!dragged && Math.hypot(dx,dy) < 5) return;
+    if(!dragged){
+      dragged = true;
+      grip.setPointerCapture(event.pointerId);
+      el.classList.add('dragging');
+    }
+    drag.position = {x:drag.left + dx, y:drag.top + dy};
+    schedule();
+  }, {signal});
+  const finishDrag = event=>{
+    if(drag?.id !== event.pointerId) return;
+    if(dragged) rrWatchPosition = {
+      x:clamp(drag.position.x, innerWidth - el.offsetWidth - gutter),
+      y:clamp(drag.position.y, innerHeight - el.offsetHeight - gutter),
+    };
+    drag = null;
+    el.classList.remove('dragging');
+    schedule();
+  };
+  addEventListener('pointerup', finishDrag, {signal});
+  addEventListener('pointercancel', finishDrag, {signal});
+  grip.onlostpointercapture = finishDrag;
+  el.querySelector('[data-close-activity]').onclick = ()=>dismiss(true);
+  rrCloseWatch = close;
+  place();
+  if(el.isConnected && document.activeElement === trigger) sizes[0].focus({preventScroll:true});
   requestAnimationFrame(()=>el.classList.add('positioned'));
-  return {el, active, signal, close};
+  return {el, active, signal};
 }
+
 function rrOpenActivity(trigger, {starting = false} = {}){
   if(!isRozha() || !['receipts','transfers'].includes(state.view)) return;
-  const label = t('rrActivityTitle');
-  const chooser = rrWatchPopover(trigger, label, `<div class="rr-watch-heading"><strong>${esc(label)}</strong></div>
-    <button type="button" class="rr-watch-choice" data-watch-mode="large"><b>${esc(t('rrWatchLarge'))}</b><small>${esc(t('rrWatchLargeHint'))}</small></button>
-    <button type="button" class="rr-watch-choice" data-watch-mode="floating"><b>${esc(t('rrWatchFloating'))}</b><small>${esc(t('rrWatchFloatingHint'))}</small></button>`);
-  chooser?.el.querySelectorAll('[data-watch-mode]').forEach(button=>{ button.onclick = ()=>{
-    chooser.close();
-    rrShowActivity(trigger, button.dataset.watchMode, starting);
-  }; });
-}
-function rrWatchLarge(trigger, label, html){
-  const {el, close} = openKitchenSheet('rr-watch-large', html, label, {returnFocus:trigger});
-  const events = new AbortController(), session = apiSession(), view = state.view;
-  const active = ()=>el.isConnected && !el.classList.contains('out') && state.view === view && apiSessionMatches(session);
-  const observer = new MutationObserver(()=>{
-    if(active()) return;
-    observer.disconnect();
-    events.abort();
-    if(el.isConnected && !el.classList.contains('out')) close();
-  });
-  observer.observe(el, {attributes:true, attributeFilter:['class']});
-  observer.observe(document.getElementById('app'), {attributes:true, attributeFilter:['data-screen']});
-  rrCloseWatch = close;
-  events.signal.addEventListener('abort', ()=>{ if(rrCloseWatch === close) rrCloseWatch = null; }, {once:true});
-  const button = el.querySelector('[data-close-activity]');
-  button.onclick = ()=>close();
-  button.focus({preventScroll:true});
-  return {el, active, signal:events.signal};
-}
-function rrShowActivity(trigger, mode, starting){
-  rrCloseWatch?.();
-  const label = t('rrActivityTitle');
-  const html = `<header class="rr-watch-heading"><strong>${esc(label)}</strong>
-    <button type="button" class="rr-ctl" data-close-activity aria-label="${esc(t('rrClosePhoto'))}">×</button></header>
-    <p class="rr-watch-status" data-watch-status role="status">${esc(t('rrWatchConnecting'))}</p>
-    <div class="rr-watch-screen" hidden><img alt="${esc(t('rrWatchAlt'))}"><i hidden aria-hidden="true"></i></div>`;
-  const viewer = mode === 'large' ? rrWatchLarge(trigger, label, html) : rrWatchPopover(trigger, label, html, true);
-  if(!viewer) return;
-  const {el, active, signal} = viewer;
+  if(rrCloseWatch){
+    rrCloseWatch();
+    if(!starting) return;
+  }
+  const {el, active, signal} = rrWatchPopover(trigger, t('rrActivityTitle'));
   const panel = el.querySelector('.rr-watch-screen'), image = panel.querySelector('img'), cursor = panel.querySelector('i');
   const status = el.querySelector('[data-watch-status]');
   let picture = '', ticket = null, expires = 0;
@@ -414,7 +468,8 @@ function rrShowActivity(trigger, mode, starting){
     }
     return fetch(RR_WATCH_URL + path, {
       headers:frameTicket ? {Authorization:'Bearer ' + frameTicket} : undefined,
-      cache:'no-store', credentials:'omit', redirect:'error', targetAddressSpace:'loopback', signal:AbortSignal.timeout(3000),
+      cache:'no-store', credentials:'omit', redirect:'error', targetAddressSpace:'loopback',
+      signal:AbortSignal.any([signal, AbortSignal.timeout(3000)]),
     });
   };
   const delay = ms=>new Promise(resolve=>setTimeout(resolve, ms));
@@ -439,6 +494,8 @@ function rrShowActivity(trigger, mode, starting){
           }
           ({ticket, expires} = res.data);
         }
+        const requestedAt = performance.now();
+        let frameDelay = 145;
         try{
           const res = await local('/frame', ticket);
           if(!active() || document.hidden) continue;
@@ -461,13 +518,15 @@ function rrShowActivity(trigger, mode, starting){
               cursor.style.left = Number(x) * 100 + '%'; cursor.style.top = Number(y) * 100 + '%';
               cursor.dataset.mode = ['press','type'].includes(mode) ? mode : 'point';
             }
-          }else if(res.status !== 429){
+          }else if(res.status === 429){
+            frameDelay = 255;
+          }else{
             clear(); status.textContent = t('rrWatchWaiting');
           }
         }catch{
           clear(); status.textContent = t('rrWatchUnavailable'); break;
         }
-        await delay(panel.hidden ? 650 : 280);
+        await delay(panel.hidden ? 475 : Math.max(16, frameDelay - (performance.now() - requestedAt)));
       }
     }finally{
       if(!active()) clear();

@@ -8,7 +8,7 @@ const localHost = '127.0.0.1';
 export async function setupWatchCursor(page, origin) {
   await page.addInitScript(origin => {
     if(location.origin !== origin || window.top !== window) return;
-    const mark = (x, y, mode) => { window.__ricoWatchPointer = [x / innerWidth, y / innerHeight, mode]; };
+    const mark = (x, y, mode) => { window.__ricoWatchPointer = [x / innerWidth, y / innerHeight, mode, performance.now()]; };
     addEventListener('pointermove', event => {
       if(event.isTrusted) mark(event.clientX, event.clientY, 'point');
     }, {passive:true});
@@ -30,7 +30,9 @@ export async function captureWatchFrame(page, origin, isSignedIn) {
   const safePage = () => page.evaluate(expected => {
     if(location.origin !== expected || !/^\/inventory(?:\/|$)/.test(location.pathname) ||
       document.readyState === 'loading' || document.querySelector('input[type=password]')) return null;
-    return { identity: location.href + ':' + performance.timeOrigin, pointer: window.__ricoWatchPointer };
+    const pointer = window.__ricoWatchPointer?.slice();
+    if(pointer?.[2] === 'press' && performance.now() - pointer[3] > 220) pointer[2] = 'point';
+    return { identity: location.href + ':' + performance.timeOrigin, pointer: pointer?.slice(0, 3) };
   }, origin).catch(() => null);
   if (!isSignedIn()) return null;
   const before = await safePage();
@@ -70,7 +72,7 @@ export function startWatchServer({ secret, capture, port = WATCH_PORT, origin = 
     try {
       const ticket = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
       if (!await verifyWatchTicket(secret, ticket)) { send(401); return; }
-      if (capturing || performance.now() - lastCapture < 250) { send(429); return; }
+      if (capturing || performance.now() - lastCapture < 140) { send(429); return; }
       capturing = true;
       lastCapture = performance.now();
       let frame;

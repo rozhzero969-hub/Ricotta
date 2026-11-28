@@ -21,7 +21,7 @@ import { captureWatchFrame, setupWatchCursor, startWatchServer } from "./watch.m
 import "../supabase/functions/_shared/receipts.js";
 import "../supabase/functions/_shared/transfers.js";
 
-const VERSION = "2026-11-28.2";
+const VERSION = "2026-11-28.3";
 const API = "https://pxufdcyqjtmtklmrjodg.supabase.co/functions/v1/api";
 const RR = "https://pos.shaydattendance.com";
 const PRACTICE = process.argv.includes("--practice");
@@ -121,9 +121,14 @@ async function photo(page, id, kind, what = "receipts") {
       const want = Math.min(y, height - view);
       // Scrolled at once (the page scrolls smoothly otherwise), and placed by where it really is, so
       // the pieces line up exactly when they are joined.
-      await box.evaluate((el, v) => el.scrollTo({ top: v, behavior: "instant" }), want);
-      await sleep(350);
-      const at = await box.evaluate((el) => el.scrollTop);
+      const at = await box.evaluate(async (el, v) => {
+        el.scrollTo({ top: v, behavior: "instant" });
+        await new Promise(resolve => {
+          const timeout = setTimeout(resolve, 180);
+          requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(timeout); resolve(); }));
+        });
+        return el.scrollTop;
+      }, want);
       pieces.push({ y: at, b64: (await box.asElement().screenshot({ type: "png" })).toString("base64") });
       if (at >= height - view - 1 || want >= height - view || pieces.length >= 12) break;
     }
