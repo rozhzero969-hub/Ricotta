@@ -94,7 +94,7 @@ export async function lastPrices(db: any) {
   return last;
 }
 function receiptRetry(r: any) {
-  return !!r.sent_at && (r.log ?? []).some((entry: any) => entry.retry === true && Date.parse(entry.at) === Date.parse(r.sent_at));
+  return r.sent_at && (r.log ?? []).find((entry: any) => entry.retry === true && Date.parse(entry.at) === Date.parse(r.sent_at));
 }
 function receiptPhotos(r: any) {
   return (r.photos ?? []).filter((photo: any) => !r.sent_at || !photo.at || Date.parse(photo.at) >= Date.parse(r.sent_at));
@@ -105,8 +105,9 @@ export function view(r: any, withLog = true) {
     currency: r.currency, rate: r.rate == null ? null : Number(r.rate), delivery: r.delivery == null ? null : Number(r.delivery),
     lines: r.lines ?? [], total: r.total == null ? null : Number(r.total), warnings: r.warnings ?? [], problem: r.problem,
     finance: r.finance, photos: receiptPhotos(r).map((p: any) => ({ kind: p.kind, at: p.at })),
-    retry: receiptRetry(r), previousDraftPhoto: !!r.sent_at && (r.photos ?? []).some((p: any) =>
-      (p.kind === "before" || p.kind === "problem") && Date.parse(p.at) < Date.parse(r.sent_at)), log: withLog ? r.log ?? [] : undefined,
+    retry: !!receiptRetry(r), previousDraftPhoto: receiptRetry(r)?.previousDraftPhoto === true ||
+      (!!r.sent_at && (r.photos ?? []).some((p: any) =>
+        (p.kind === "before" || p.kind === "problem") && Date.parse(p.at) < Date.parse(r.sent_at))), log: withLog ? r.log ?? [] : undefined,
     approvedBy: r.approved_by, approvedAt: r.approved_at, sentAt: r.sent_at, savedAt: r.saved_at, pressedAt: r.pressed_at ?? null, version: r.version,
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
@@ -257,18 +258,29 @@ export async function sendReceipt(db: any, r: any, who: string, confirm: unknown
   const warnings = [...c.warnings];
   let pressed = r.pressed_at;
   if (!pressed && r.invoice) {
-    const { data: o } = await rr(db, "receipts").select("pressed_at").eq("supplier", r.supplier).eq("invoice", r.invoice).neq("id", r.id).eq("status", "problem").not("pressed_at", "is", null).limit(1);
+    const { data: o } = await rr(db, "receipts").select("pressed_at").eq("supplier", r.supplier).eq("invoice", r.invoice).neq("id", r.id).in("status", ["problem", "cancelled"]).not("pressed_at", "is", null).limit(1);
     pressed = o?.[0]?.pressed_at ?? null;
   }
   if (pressed) warnings.push({ code: "pressed", at: pressed });
   if (warnings.some((w: any) => !confirmed.has(w.code))) return { error: "needs_confirmation", extra: { warnings } };
   const sentAt = now(), retrying = r.status !== "draft";
+  let previousDraftPhoto = false;
+  if (retrying && r.invoice) {
+    // Copying/cancelling in Orders does not remove the unsaved form in Restaurant. The helper
+    // still checks the live supplier, invoice and storage before clearing any legacy draft.
+    const { data: previous, error } = await rr(db, "receipts").select("photos").eq("supplier", r.supplier)
+      .eq("invoice", r.invoice).eq("zone", r.zone).neq("id", r.id).eq("status", "cancelled")
+      .order("updated_at", { ascending: false }).limit(20);
+    if (error) return { error: "send_failed", status: 503 };
+    previousDraftPhoto = (previous ?? []).some((row: any) => (row.photos ?? []).some((p: any) =>
+      (p.kind === "before" || p.kind === "problem") && Date.parse(p.at) < Date.parse(sentAt)));
+  }
   const event = logEntry(retrying ? `Retry requested by ${nameOf(who)}` : `Sent to Rico by ${nameOf(who)}${source === "telegram" ? " on Telegram" : ""}`, who);
   const { data: sent, error } = await rr(db, "receipts").update({
     status: "queued", total: c.total, warnings, problem: null, pressed_at: null, approved_at: null, approved_by: null,
     sent_at: sentAt, version: r.version + 1, updated_at: sentAt,
     ...(source ? { source } : {}),
-    log: [...(r.log ?? []), { ...event, at: sentAt, ...(retrying ? { retry: true } : {}) }],
+    log: [...(r.log ?? []), { ...event, at: sentAt, ...(retrying ? { retry: true, previousDraftPhoto } : {}) }],
   }).eq("id", r.id).eq("version", r.version).select("*").maybeSingle();
   if (error?.code === "23505") return { error: "invoice_already_sent" };
   if (error || !sent) return { error: error ? "send_failed" : "changed_elsewhere", status: error ? 503 : 409 };

@@ -405,8 +405,8 @@ try {
   const oldPhoto = {kind:'before', at:new Date(Date.now()-30000).toISOString()};
   const draft = {id:receiptId, status:'review', created_by:'rozha', supplier:'Test supplier', invoice:'18',
     zone:'Main Storage', currency:'IQD', lines:[{item:'Cups',unit:'piece',qty:2,cost:100}],
-    sent_at:wasSent, approved_at:wasSent, photos:[oldPhoto], version:3};
-  tables.app_rr_receipts=[draft];
+    sent_at:wasSent, approved_at:wasSent, photos:[], version:3};
+  tables.app_rr_receipts=[draft, {...draft,id:'earlier',status:'cancelled',photos:[oldPhoto]}];
   tables.app_rr_catalog=[{id:true,data:{items:[{name:'Cups',base:'piece'}],suppliers:['Test supplier'],zones:['Main Storage']}}];
   const receiptCtx = {db,account:'rozha',json:(v,status)=>Response.json(v,{status}),fail:(error,status)=>Response.json({error},{status})};
   const receiptRequest = (action,body)=>receiptsRoute(receiptCtx,'POST',`receipts/${receiptId}/${action}`,body);
