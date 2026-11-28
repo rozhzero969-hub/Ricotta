@@ -214,7 +214,7 @@ function rrStockNote(at, learntAt){
 function rrRicoBar(h, copyAt){
   if(!h) return '';
   const on = h.online && !h.stopped && !rrOffline();
-  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrOffline() ? t('rrOfflineShort') : rrHelperLine(h))}</span>${on && isRozha() && state.settings?.ricoInlineWindow !== false ? `<button type="button" class="rr-ctl" data-rr-activity>${esc(t('rrActivityTitle'))}</button>` : ''}${!rrOffline() ? rrCheckBtn(h) : ''}${isRozha() && !rrOffline() ? rrRicoControls(h) : ''}</div>${isRozha() && !rrOffline() ? rrRicoNote(h) : ''}${!rrOffline() ? rrCheckNote(h) : ''}${h.online && h.signedIn === false ? `<p class="rr-offline">${esc(t('rrNotSignedIn'))}</p>` : ''}${rrOfflineNote(copyAt)}<p class="rr-ctl-note warn" data-rr-slow hidden role="status">${esc(t('rrSlowConnection'))}</p></section>`;
+  return `<section class="rr-card rr-ricobar"><div class="rr-ov-rico"><i class="rr-dot ${on ? 'ok' : ''}" aria-hidden="true"></i><span>${esc(rrOffline() ? t('rrOfflineShort') : rrHelperLine(h))}</span>${on && isRozha() && state.settings?.ricoInlineWindow !== false ? `<button type="button" class="rr-ctl" data-rr-activity aria-haspopup="dialog" aria-expanded="false">${esc(t('rrActivityTitle'))}</button>` : ''}${!rrOffline() ? rrCheckBtn(h) : ''}${isRozha() && !rrOffline() ? rrRicoControls(h) : ''}</div>${isRozha() && !rrOffline() ? rrRicoNote(h) : ''}${!rrOffline() ? rrCheckNote(h) : ''}${h.online && h.signedIn === false ? `<p class="rr-offline">${esc(t('rrNotSignedIn'))}</p>` : ''}${rrOfflineNote(copyAt)}<p class="rr-ctl-note warn" data-rr-slow hidden role="status">${esc(t('rrSlowConnection'))}</p></section>`;
 }
 /* Check now: Rico reads Ricotta Restaurant's suppliers, zones, items and units straight away (he also
    does it by himself every 10 minutes). Only while he is on; one check at a time. */
@@ -252,17 +252,104 @@ function rrCheckSummary(c, when){
   return t('rrCheckFound')(when, parts.join(sep)) + names(t('rrCheckNewLabel'), it.addedNames) + names(t('rrCheckChangedLabel'), it.changedNames);
 }
 const RR_WATCH_URL = 'http://127.0.0.1:17692';
+function rrWatchPopover(trigger, label, html){
+  const findAnchor = ()=>document.querySelector('#mainContent [data-rr-activity]') ||
+    document.querySelector('#mainContent .rr-ricobar [data-rico]');
+  const previous = document.querySelector('.rr-watch-popover');
+  closeSelSheet();
+  if(previous && trigger?.matches('[data-rr-activity]')) return null;
+
+  const el = document.createElement('div');
+  el.className = 'rr-watch-popover';
+  el.id = 'rrWatchPopover';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', label);
+  el.innerHTML = html;
+  document.body.appendChild(el);
+
+  const view = state.view, session = apiSession();
+  const events = new AbortController();
+  let anchor, resizeObserver, renderObserver;
+  const expand = (button, open)=>{
+    button?.setAttribute('aria-expanded', String(open));
+    if(open) button?.setAttribute('aria-controls', el.id);
+    else button?.removeAttribute('aria-controls');
+  };
+  const dismiss = (focus = false)=>{
+    events.abort();
+    resizeObserver?.disconnect();
+    renderObserver?.disconnect();
+    expand(anchor, false);
+    el.remove();
+    if(activeSelSheet === close) activeSelSheet = null;
+    if(focus) (findAnchor() || trigger)?.focus({preventScroll:true});
+  };
+  const close = ()=>dismiss();
+  const active = ()=>{
+    if(el.isConnected && state.view === view && apiSessionMatches(session)) return true;
+    if(el.isConnected) close();
+    return false;
+  };
+  const place = ()=>{
+    if(!active()) return;
+    const next = findAnchor() || (trigger?.isConnected ? trigger : null);
+    if(!next){ close(); return; }
+    if(next !== anchor){ expand(anchor, false); anchor = next; expand(anchor, true); }
+    const rect = anchor.getBoundingClientRect(), width = el.offsetWidth, height = el.offsetHeight;
+    const gutter = 12, gap = 8;
+    if(rect.bottom < 0 || rect.top > innerHeight){ close(); return; }
+    const left = getComputedStyle(anchor).direction === 'rtl' ? rect.left : rect.right - width;
+    el.style.left = Math.max(gutter, Math.min(left, innerWidth - width - gutter)) + 'px';
+    const below = innerHeight - rect.bottom, above = rect.top;
+    const top = below >= height + gap || below >= above ? rect.bottom + gap : rect.top - height - gap;
+    el.style.top = Math.max(gutter, Math.min(top, innerHeight - height - gutter)) + 'px';
+  };
+
+  activeSelSheet = close;
+  place();
+  if(!el.isConnected) return null;
+  const signal = events.signal;
+  resizeObserver = new ResizeObserver(place);
+  resizeObserver.observe(el);
+  renderObserver = new MutationObserver(()=>{
+    observePage();
+    place();
+  });
+  const observePage = ()=>{
+    renderObserver.disconnect();
+    renderObserver.observe(document.getElementById('app'), {childList:true});
+    const content = document.getElementById('mainContent');
+    if(content) renderObserver.observe(content, {childList:true});
+  };
+  observePage();
+  addEventListener('resize', place, {signal});
+  addEventListener('scroll', place, {capture:true, signal});
+  addEventListener('pointerdown', event=>{
+    if(!el.contains(event.target) && !anchor.contains(event.target)) close();
+  }, {capture:true, signal});
+  addEventListener('keydown', event=>{
+    if(event.key !== 'Escape' || modalAboveSheet()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    dismiss(true);
+  }, {capture:true, signal});
+  const button = el.querySelector('[data-close-activity]');
+  button.onclick = ()=>dismiss(true);
+  button.focus({preventScroll:true});
+  return {el, active, signal};
+}
 function rrOpenActivity(trigger, {starting = false} = {}){
   if(!isRozha() || !['receipts','transfers'].includes(state.view)) return;
-  const label = t('rrActivityTitle'), session = apiSession();
-  const {el, close} = openKitchenSheet('rr-activity-sheet', `<div class="sched-head"><div class="sel-title">${esc(label)}</div>
-    <button type="button" class="btn btn-ghost" data-close-activity aria-label="${esc(t('cancel'))}">×</button></div>
-    <p class="rr-ctl-note" data-watch-status role="status">${esc(t('rrWatchConnecting'))}</p>
-    <div class="rr-watch-screen" hidden><img alt="${esc(t('rrWatchAlt'))}"><i hidden aria-hidden="true"></i></div>`, label, {returnFocus:trigger});
+  const label = t('rrActivityTitle');
+  const popover = rrWatchPopover(trigger, label, `<header class="rr-watch-heading"><strong>${esc(label)}</strong>
+    <button type="button" class="rr-ctl" data-close-activity aria-label="${esc(t('cancel'))}">×</button></header>
+    <p class="rr-watch-status" data-watch-status role="status">${esc(t('rrWatchConnecting'))}</p>
+    <div class="rr-watch-screen" hidden><img alt="${esc(t('rrWatchAlt'))}"><i hidden aria-hidden="true"></i></div>`);
+  if(!popover) return;
+  const {el, active, signal} = popover;
   const panel = el.querySelector('.rr-watch-screen'), image = panel.querySelector('img'), cursor = panel.querySelector('i');
   const status = el.querySelector('[data-watch-status]');
   let picture = '', ticket = null, expires = 0;
-  const active = ()=>el.isConnected && !el.classList.contains('out') && apiSessionMatches(session);
   const clear = ()=>{
     if(picture) URL.revokeObjectURL(picture);
     picture = '';
@@ -270,7 +357,7 @@ function rrOpenActivity(trigger, {starting = false} = {}){
     panel.hidden = true;
     cursor.hidden = true;
   };
-  el.querySelector('[data-close-activity]').onclick = ()=>close();
+  signal.addEventListener('abort', clear, {once:true});
   const local = async (path, frameTicket = '')=>{
     const bridge = window.webkit?.messageHandlers?.ricoWatch;
     if(bridge){
@@ -380,7 +467,7 @@ function attachRicoBar(){
     if(!res.ok) toast(res.data?.error === 'launcher_off' ? t('rrLauncherOff') : t('saveFailed'), 'error');
     rrRepaintKeep();
     if(res.ok && action !== 'stop' && state.view === view && state.settings?.ricoInlineWindow !== false){
-      rrOpenActivity(document.querySelector('[data-rico="' + action + '"]'), {starting:true});
+      rrOpenActivity(document.querySelector('#mainContent [data-rr-activity], #mainContent [data-rico="' + action + '"]'), {starting:true});
     }
   });
   document.querySelectorAll('[data-to-history]').forEach(b=>b.onclick = ()=>{ state.histMode = b.dataset.toHistory; goView('history'); });

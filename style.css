@@ -3821,7 +3821,13 @@ html.rtl #tfSmartEntry{text-align:right}
 .stk-qty{flex:none;display:grid;gap:2px;max-width:52%;text-align:end}
 .stk-qty small{color:var(--ink-soft);font-size:.75rem;overflow-wrap:anywhere}
 .stk-qty bdi{display:inline-block}
-.rr-activity-sheet .sel-panel{max-width:min(94vw,1060px)}
+.rr-watch-popover{position:fixed;z-index:220;width:min(380px,calc(100vw - 24px));max-height:calc(100dvh - 24px);
+  overflow:auto;overscroll-behavior:contain;padding:12px;background:var(--surface);color:var(--ink);
+  border:1px solid var(--line);border-radius:16px;box-shadow:var(--float-shadow)}
+.rr-watch-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.rr-watch-heading strong{font-size:.9375rem}
+.rr-watch-heading button{padding:0;min-width:32px;min-height:32px;font-size:1.125rem}
+.rr-watch-status{margin:4px 0 0;font-size:.8125rem;line-height:1.4;color:var(--ink-soft)}
 .rr-watch-screen{position:relative;margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;direction:ltr}
 .rr-watch-screen img{display:block;width:100%;height:auto}
 .rr-watch-screen i{position:absolute;width:19px;height:22px;pointer-events:none;filter:drop-shadow(0 1px 1px #173e32);transition:top .1s ease-out,left .1s ease-out}
